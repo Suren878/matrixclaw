@@ -5,18 +5,21 @@
 ![Telegram](https://img.shields.io/badge/Telegram-client-26A5E4?logo=telegram&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
-**Open-source local AI operator written in Go.**
+**A daemon-first local AI assistant that follows you from terminal to Telegram.**
 
-`matrixclaw` is a lightweight personal assistant runtime for your own machine.
-It runs as a small Go daemon, keeps state locally in SQLite, connects to multiple
-AI providers, and exposes the same assistant through Terminal TUI and Telegram.
+`matrixclaw` is an open-source personal AI assistant runtime written in Go. It
+runs as a small local daemon, keeps its state in SQLite, and connects to
+OpenAI-compatible APIs, Anthropic, Gemini, or custom providers.
 
-Unlike UI-first AI tools, matrixclaw is daemon-first: one local process owns
-sessions, approvals, tools, storage, provider routing, and automation state.
-Clients are just surfaces. Start in the terminal, continue in Telegram, then
-come back to the same session later.
+The core idea is simple: the daemon owns the session, not the UI. You can start
+work in the Terminal TUI, approve tools locally, continue the same session from
+Telegram, and come back later without losing context, files, approvals, model
+choice, or tool history.
 
-## Matrix Claw
+It is built for single-user developer machines today: local-first state,
+explicit approvals for tools, provider switching, and a runtime shape that can
+grow into scheduled tasks and agent workflows without tying everything to one
+interface.
 
 <p align="center">
   <img src="assets/matrixclaw-rain.gif" alt="matrixclaw terminal demo">
@@ -31,23 +34,46 @@ come back to the same session later.
 - **Tools with approvals:** file and shell tools pause before risky changes.
 - **Automation-ready:** reminders, scheduled AI tasks, deliveries, and future agent workflows.
 
-## How It Works
+## Session handoff: terminal to Telegram and back
 
-```text
-Terminal TUI              Telegram bot              future clients
-     |                         |                          |
-     v                         v                          v
-                         matrixclawd
-                              |
-          sessions / runs / approvals / files / deliveries
-                              |
-                 providers / tools / local SQLite
+Most AI tools keep the real conversation inside one UI process. That makes every
+other client feel like a separate product.
+
+`matrixclaw` keeps the session in the daemon instead. The Terminal TUI and
+Telegram bot are just clients connected to the same local runtime.
+
+```mermaid
+flowchart TD
+    TUI[Terminal TUI]
+    TG[Telegram Bot]
+    FC[Future Clients]
+
+    TUI --> D
+    TG --> D
+    FC --> D
+
+    D["matrixclawd<br/>Core AI Server"]
+
+    D --> S[Sessions / Runs]
+    D --> A[Approvals / ACL]
+    D --> F[Files / Deliveries]
+
+    S --> B[Providers / Tools / Local SQLite]
+    A --> B
+    F --> B
 ```
 
-The important bit is the handoff: clients do not own the conversation. The
-daemon does. That means a session can move between local terminal work and
-remote Telegram control without losing context, approvals, provider selection,
-or tool history.
+A typical flow:
+
+1. Start a session in `matrixclaw tui`.
+2. Ask the assistant to inspect files or prepare a change.
+3. Review and approve tool actions from the terminal.
+4. Leave your machine and continue the same session in Telegram.
+5. Come back later and pick up the session in the TUI with the same context and history.
+
+The goal is not to replace your editor or host your work in the cloud. The goal
+is to give your own machine a small, durable AI operator that can be reached
+from more than one surface.
 
 ## Install
 
@@ -82,21 +108,6 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
 - Service-owned tool execution with approval previews before writes and shell actions.
 - SQLite-backed local state with reconnectable clients and session handoff.
 - Automation jobs for reminders and scheduled AI tasks.
-
-## Why This Shape?
-
-Most AI coding tools keep runtime truth inside one UI process. That makes
-terminal, Telegram, and future clients drift apart.
-
-`matrixclaw` uses a local-service shape:
-
-- one runtime owner: `matrixclawd`
-- one operator CLI/TUI: `matrixclaw`
-- one SQLite-backed source of truth
-- one approval path for risky actions
-- one provider/model policy per session
-- one session that can move between clients
-- clients render state; they do not own it
 
 ## Commands
 
