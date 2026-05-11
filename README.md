@@ -5,28 +5,49 @@
 ![Telegram](https://img.shields.io/badge/Telegram-client-26A5E4?logo=telegram&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
+**Open-source local AI operator written in Go.**
+
+`matrixclaw` is a lightweight personal assistant runtime for your own machine.
+It runs as a small Go daemon, keeps state locally in SQLite, connects to multiple
+AI providers, and exposes the same assistant through Terminal TUI and Telegram.
+
+Unlike UI-first AI tools, matrixclaw is daemon-first: one local process owns
+sessions, approvals, tools, storage, provider routing, and automation state.
+Clients are just surfaces. Start in the terminal, continue in Telegram, then
+come back to the same session later.
+
 ## Matrix Claw
 
 <p align="center">
   <img src="assets/matrixclaw-rain.gif" alt="matrixclaw terminal demo">
 </p>
 
-Local daemon-backed AI coding operator for terminal and Telegram.
+## Why Matrixclaw?
 
-`matrixclaw` keeps runtime state in one local service. Terminal and Telegram are
-thin clients over the same sessions, runs, approvals, provider selection, tool
-history, and SQLite store.
+- **Lightweight Go daemon:** about 26 MB RAM while idle on the current Linux daemon.
+- **One assistant, many clients:** begin a session in Terminal TUI and continue it in Telegram.
+- **Local-first state:** sessions, runs, approvals, files, and provider choices live in SQLite.
+- **Provider switching:** OpenAI-compatible APIs, Anthropic, Gemini, and custom endpoints.
+- **Tools with approvals:** file and shell tools pause before risky changes.
+- **Automation-ready:** reminders, scheduled AI tasks, deliveries, and future agent workflows.
+
+## How It Works
 
 ```text
-terminal TUI       Telegram bot
-     |                 |
-     v                 v
-              matrixclawd
-                  |
-      sessions / runs / approvals
-                  |
-       providers / tools / SQLite
+Terminal TUI              Telegram bot              future clients
+     |                         |                          |
+     v                         v                          v
+                         matrixclawd
+                              |
+          sessions / runs / approvals / files / deliveries
+                              |
+                 providers / tools / local SQLite
 ```
+
+The important bit is the handoff: clients do not own the conversation. The
+daemon does. That means a session can move between local terminal work and
+remote Telegram control without losing context, approvals, provider selection,
+or tool history.
 
 ## Install
 
@@ -54,12 +75,12 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
 
 ## What It Does
 
-- Terminal setup and chat TUI.
-- Telegram client for remote sessions, provider/model commands, and approvals.
-- Durable sessions, messages, runs, approvals, file snapshots, and tool results.
+- Terminal setup and chat TUI for local operator work.
+- Telegram client for remote sessions, files, images, provider/model commands, and approvals.
+- Durable sessions, messages, runs, approvals, file snapshots, deliveries, and tool results.
 - OpenAI-compatible, Anthropic-compatible, Gemini, and custom provider adapters.
-- Service-owned tool execution and approval flow.
-- SQLite-backed local state with reconnectable clients.
+- Service-owned tool execution with approval previews before writes and shell actions.
+- SQLite-backed local state with reconnectable clients and session handoff.
 - Automation jobs for reminders and scheduled AI tasks.
 
 ## Why This Shape?
@@ -67,13 +88,14 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
 Most AI coding tools keep runtime truth inside one UI process. That makes
 terminal, Telegram, and future clients drift apart.
 
-`matrixclaw` uses a local-service shape instead:
+`matrixclaw` uses a local-service shape:
 
 - one runtime owner: `matrixclawd`
 - one operator CLI/TUI: `matrixclaw`
 - one SQLite-backed source of truth
 - one approval path for risky actions
 - one provider/model policy per session
+- one session that can move between clients
 - clients render state; they do not own it
 
 ## Commands
