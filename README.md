@@ -5,7 +5,7 @@
 ![Telegram](https://img.shields.io/badge/Telegram-client-26A5E4?logo=telegram&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
-## Demo
+## Matrix Claw
 
 <p align="center">
   <img src="assets/matrixclaw-rain.gif" alt="matrixclaw terminal demo">
