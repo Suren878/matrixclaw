@@ -5,6 +5,10 @@
 ![Telegram](https://img.shields.io/badge/Telegram-client-26A5E4?logo=telegram&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
+<p align="center">
+  <img src="assets/matrixclaw-rain.gif" alt="MATRIX CLAW terminal rain animation">
+</p>
+
 Local daemon-backed AI coding operator for terminal and Telegram.
 
 `matrixclaw` keeps runtime state in one local service. Terminal and Telegram are
