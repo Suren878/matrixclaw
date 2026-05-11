@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.0
 
 - Added daemon-backed terminal and Telegram clients.
 - Added SQLite-backed sessions, runs, approvals, files, and client deliveries.
