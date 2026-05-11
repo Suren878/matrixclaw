@@ -1,0 +1,46 @@
+# Local runtime state
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.log
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary and coverage artifacts
+*.test
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+
+# Build outputs and scratch workspaces
+tmpverify/
+bin/
+dist/
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Environment files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local agent orchestration notes
+.agents/*.local.md
+.codex/
+
+# Editor and OS noise
+.DS_Store
+.idea/
+.vscode/

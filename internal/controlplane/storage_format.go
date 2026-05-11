@@ -1,0 +1,61 @@
+package controlplane
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+
+	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
+)
+
+func formatTempSettings(settings localstorage.TempSettings) string {
+	return fmt.Sprintf("%s · %s",
+		formatTempRetention(settings),
+		formatStorageGB(settings.MaxBytes),
+	)
+}
+
+func formatTempCleanupImpact(settings localstorage.TempSettings) string {
+	if settings.TotalFiles == 0 {
+		return "0 files"
+	}
+	return fmt.Sprintf("%d files · %s", settings.TotalFiles, formatStorageSize(settings.TotalBytes))
+}
+
+func formatEnabled(enabled bool) string {
+	if enabled {
+		return "On"
+	}
+	return "Off"
+}
+
+func formatTempRetention(settings localstorage.TempSettings) string {
+	days := settings.TTLSeconds / (24 * 3600)
+	if days <= 0 {
+		days = 1
+	}
+	return fmt.Sprintf("%d days", days)
+}
+
+func formatStorageGB(bytes int64) string {
+	gb := float64(bytes) / (1024 * 1024 * 1024)
+	text := strconv.FormatFloat(gb, 'f', 1, 64)
+	text = strings.TrimRight(strings.TrimRight(text, "0"), ".")
+	if text == "" {
+		text = "0"
+	}
+	return text + " GB"
+}
+
+func formatStorageSize(bytes int64) string {
+	if bytes >= 1024*1024*1024 {
+		return formatStorageGB(bytes)
+	}
+	if bytes >= 1024*1024 {
+		return fmt.Sprintf("%d MB", bytes/(1024*1024))
+	}
+	if bytes >= 1024 {
+		return fmt.Sprintf("%d KB", bytes/1024)
+	}
+	return fmt.Sprintf("%d bytes", bytes)
+}

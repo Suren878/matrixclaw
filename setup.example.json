@@ -1,0 +1,38 @@
+{
+  "version": 3,
+  "active_provider_id": "openai",
+  "assistant": {
+    "name": "matrixclaw",
+    "custom_instructions": ""
+  },
+  "providers": [
+    {
+      "id": "openai",
+      "catalog_id": "openai",
+      "name": "OpenAI",
+      "type": "openai-compatible",
+      "api_key": "",
+      "api_key_env": "OPENAI_API_KEY",
+      "base_url": "https://api.openai.com/v1",
+      "model": "gpt-5.4-mini",
+      "reasoning_effort": "medium"
+    }
+  ],
+  "daemon": {
+    "http_addr": "127.0.0.1:8080",
+    "db_path": "~/.local/state/matrixclaw/matrixclaw.db",
+    "timezone": "UTC",
+    "autostart_on_boot": false
+  },
+  "clients": {
+    "terminal": {
+      "enabled": true
+    },
+    "telegram": {
+      "enabled": false,
+      "bot_token": "",
+      "allowed_user_id": "",
+      "allow_provider_setup": false
+    }
+  }
+}

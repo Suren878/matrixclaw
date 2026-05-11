@@ -1,0 +1,162 @@
+package chat
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
+
+	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
+	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
+	"github.com/Suren878/matrixclaw/internal/tools"
+)
+
+func (t *baseToolMessageItem) HandleKeyEvent(key tea.KeyPressMsg) (bool, tea.Cmd) {
+	switch key.String() {
+	case "enter", "v":
+	default:
+		return false, nil
+	}
+
+	data, ok := t.diffPreviewData()
+	if ok {
+		return true, func() tea.Msg {
+			return surfacedialog.ActionOpenDiffPreview{Data: data}
+		}
+	}
+
+	fileData, ok := t.filePreviewData()
+	if ok {
+		return true, func() tea.Msg {
+			return surfacedialog.ActionOpenFilePreview{Data: fileData}
+		}
+	}
+
+	return false, nil
+}
+
+func (t *baseToolMessageItem) diffPreviewData() (surfacedialog.DiffPreviewData, bool) {
+	if t.result == nil || t.result.IsError {
+		return surfacedialog.DiffPreviewData{}, false
+	}
+
+	switch t.toolCall.Name {
+	case "write":
+		var params tools.WriteParams
+		var meta tools.WriteResponseMetadata
+		if err := json.Unmarshal([]byte(t.toolCall.Input), &params); err != nil {
+			return surfacedialog.DiffPreviewData{}, false
+		}
+		if err := json.Unmarshal([]byte(t.result.Metadata), &meta); err != nil {
+			return surfacedialog.DiffPreviewData{}, false
+		}
+		if meta.NewContent == "" {
+			meta.NewContent = params.Content
+		}
+		return surfacedialog.DiffPreviewData{
+			Title:      "Write Changes",
+			FilePath:   params.FilePath,
+			OldContent: meta.OldContent,
+			NewContent: meta.NewContent,
+			Additions:  meta.Additions,
+			Removals:   meta.Removals,
+		}, true
+	case "edit":
+		var params tools.EditParams
+		var meta tools.EditResponseMetadata
+		if err := json.Unmarshal([]byte(t.toolCall.Input), &params); err != nil {
+			return surfacedialog.DiffPreviewData{}, false
+		}
+		if err := json.Unmarshal([]byte(t.result.Metadata), &meta); err != nil {
+			return surfacedialog.DiffPreviewData{}, false
+		}
+		return surfacedialog.DiffPreviewData{
+			Title:      "Edit Changes",
+			FilePath:   params.FilePath,
+			OldContent: meta.OldContent,
+			NewContent: meta.NewContent,
+			Additions:  meta.Additions,
+			Removals:   meta.Removals,
+		}, true
+	case "multiedit":
+		var params tools.MultiEditParams
+		var meta tools.MultiEditResponseMetadata
+		if err := json.Unmarshal([]byte(t.toolCall.Input), &params); err != nil {
+			return surfacedialog.DiffPreviewData{}, false
+		}
+		if err := json.Unmarshal([]byte(t.result.Metadata), &meta); err != nil {
+			return surfacedialog.DiffPreviewData{}, false
+		}
+		return surfacedialog.DiffPreviewData{
+			Title:      "Multi-Edit Changes",
+			FilePath:   params.FilePath,
+			OldContent: meta.OldContent,
+			NewContent: meta.NewContent,
+			Additions:  meta.Additions,
+			Removals:   meta.Removals,
+		}, true
+	default:
+		return surfacedialog.DiffPreviewData{}, false
+	}
+}
+
+func (t *baseToolMessageItem) filePreviewData() (surfacedialog.FilePreviewData, bool) {
+	if t.result == nil || t.result.IsError || t.toolCall.Name != "read" {
+		return surfacedialog.FilePreviewData{}, false
+	}
+
+	var params tools.ReadParams
+	if err := json.Unmarshal([]byte(t.toolCall.Input), &params); err != nil {
+		return surfacedialog.FilePreviewData{}, false
+	}
+
+	path, content := resolveReadResult(params.FilePath, *t.result)
+	return surfacedialog.FilePreviewData{
+		Title:    "Read File",
+		FilePath: path,
+		Content:  readPreviewContent(*t.result, content, params.Offset+1),
+	}, true
+}
+
+func readPreviewContent(result surfacemessage.ToolResult, fallbackContent string, startLine int) string {
+	raw := strings.TrimSpace(result.Content)
+	if raw != "" {
+		return unwrapTaggedFileContentPreserveLineNumbers(raw)
+	}
+	return addReadPreviewLineNumbers(fallbackContent, startLine)
+}
+
+func unwrapTaggedFileContentPreserveLineNumbers(content string) string {
+	content = strings.TrimSpace(content)
+	if !strings.HasPrefix(content, "<file>") || !strings.HasSuffix(content, "</file>") {
+		return content
+	}
+	content = strings.TrimPrefix(content, "<file>")
+	content = strings.TrimSuffix(content, "</file>")
+	content = strings.TrimSpace(content)
+	lines := strings.Split(content, "\n")
+	for len(lines) > 0 && strings.HasPrefix(strings.TrimSpace(lines[len(lines)-1]), "(File has more lines.") {
+		lines = lines[:len(lines)-1]
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func addReadPreviewLineNumbers(content string, startLine int) string {
+	content = strings.TrimRight(content, "\n")
+	if strings.TrimSpace(content) == "" {
+		return ""
+	}
+	if startLine < 1 {
+		startLine = 1
+	}
+	lines := strings.Split(content, "\n")
+	var out strings.Builder
+	for i, line := range lines {
+		fmt.Fprintf(&out, "%6d\t%s", startLine+i, line)
+		if i != len(lines)-1 {
+			out.WriteByte('\n')
+		}
+	}
+	return out.String()
+}

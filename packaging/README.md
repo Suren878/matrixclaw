@@ -1,0 +1,15 @@
+# Packaging
+
+`matrixclaw` uses GitHub Releases as the source of truth for installable
+artifacts.
+
+Release channels:
+
+- `scripts/install.sh` downloads a release archive and installs `matrixclaw` and
+  `matrixclawd` into `~/.local/bin`.
+- GitHub Releases provide manual `.tar.gz` downloads and `checksums.txt`.
+- Homebrew can use the formula template in `homebrew/` from a tap repository.
+
+Do not duplicate runtime configuration here. Packaging installs binaries and
+service files; `matrixclaw setup` owns provider, daemon, Telegram, and storage
+configuration.

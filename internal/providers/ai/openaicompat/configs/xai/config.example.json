@@ -1,0 +1,15 @@
+{
+  "providers": {
+    "xai": {
+      "type": "openai-compatible",
+      "base_url": "https://api.x.ai/v1",
+      "api_key": "$XAI_API_KEY",
+      "models": [
+        {
+          "id": "grok-4",
+          "name": "Grok 4"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,52 @@
+package list
+
+import (
+	"strings"
+)
+
+// Item represents a single item in the lazy-loaded list.
+type Item interface {
+	// Render returns the string representation of the item for the given
+	// width.
+	Render(width int) string
+}
+
+// RawRenderable represents an item that can provide a raw rendering
+// without additional styling.
+type RawRenderable interface {
+	// RawRender returns the raw rendered string without any additional
+	// styling.
+	RawRender(width int) string
+}
+
+// Focusable represents an item that can be aware of focus state changes.
+type Focusable interface {
+	// SetFocused sets the focus state of the item.
+	SetFocused(focused bool)
+}
+
+// Highlightable represents an item that can highlight a portion of its content.
+type Highlightable interface {
+	// SetHighlight highlights the content from the given start to end
+	// positions. Use -1 for no highlight.
+	SetHighlight(startLine, startCol, endLine, endCol int)
+	// Highlight returns the current highlight positions within the item.
+	Highlight() (startLine, startCol, endLine, endCol int)
+}
+
+// SpacerItem is a spacer item that adds vertical space in the list.
+type SpacerItem struct {
+	Height int
+}
+
+// NewSpacerItem creates a new [SpacerItem] with the specified height.
+func NewSpacerItem(height int) *SpacerItem {
+	return &SpacerItem{
+		Height: max(0, height-1),
+	}
+}
+
+// Render implements the Item interface for [SpacerItem].
+func (s *SpacerItem) Render(width int) string {
+	return strings.Repeat("\n", s.Height)
+}
