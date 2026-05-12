@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 
 	tuiruntime "github.com/Suren878/matrixclaw/clients/terminal/chat/runtime"
 	terminalsetup "github.com/Suren878/matrixclaw/clients/terminal/setup"
@@ -71,7 +73,7 @@ func Run(io IO, binaryName string, args []string) int {
 	case "providers":
 		return runProvidersCommand(stdout, stderr, binaryName, service, args[1:])
 	case "tui":
-		return runTUICommand(stderr, binaryName, service)
+		return runTUICommand(stderr, binaryName, service, args[1:])
 	case "help", "-h", "--help":
 		printUsage(stdout, binaryName)
 		return 0
@@ -90,7 +92,7 @@ func runDefaultCommand(stdout io.Writer, stderr io.Writer, binaryName string, se
 	if !configured {
 		return runSetupCommand(stdout, stderr, binaryName, service)
 	}
-	return runTUICommand(stderr, binaryName, service)
+	return runTUICommand(stderr, binaryName, service, nil)
 }
 
 func runSetupCommand(stdout io.Writer, stderr io.Writer, binaryName string, service *appsetup.Service) int {
@@ -118,5 +120,34 @@ func printUsage(w io.Writer, binaryName string) {
 	fmt.Fprintf(w, "  %s service logs     Print recent matrixclaw service logs\n", binaryName)
 	fmt.Fprintf(w, "  %s providers        List setup provider catalog\n", binaryName)
 	fmt.Fprintf(w, "  %s providers verify Verify configured provider model access\n", binaryName)
-	fmt.Fprintf(w, "  %s tui              Open the terminal chat surface\n", binaryName)
+	fmt.Fprintf(w, "  %s tui [WORKDIR]    Open terminal chat for the current or given directory\n", binaryName)
+}
+
+func resolveTUIWorkingDir(args []string) (string, error) {
+	if len(args) > 1 {
+		return "", fmt.Errorf("tui accepts at most one WORKDIR argument")
+	}
+	value := ""
+	if len(args) == 1 {
+		value = args[0]
+	}
+	if value == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+		return wd, nil
+	}
+	abs, err := filepath.Abs(filepath.Clean(value))
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("WORKDIR is not a directory: %s", abs)
+	}
+	return abs, nil
 }

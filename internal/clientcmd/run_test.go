@@ -47,6 +47,9 @@ func TestHelpUsesBinaryName(t *testing.T) {
 	if !strings.Contains(out, "matrixclaw providers verify") {
 		t.Fatalf("stdout = %q, want help mentioning matrixclaw providers verify", out)
 	}
+	if !strings.Contains(out, "matrixclaw tui [WORKDIR]") {
+		t.Fatalf("stdout = %q, want help mentioning matrixclaw tui [WORKDIR]", out)
+	}
 }
 
 func TestStatusMasksAPIKeyAndShowsSetupStates(t *testing.T) {
@@ -788,6 +791,7 @@ func TestTUIEnsuresDaemonBeforeLaunching(t *testing.T) {
 	}
 
 	launched := false
+	explicitWorkingDir := t.TempDir()
 	openTUI = func(_ context.Context, cfg tuiruntime.Config) error {
 		launched = true
 		if cfg.BaseURL != "http://127.0.0.1:8080" {
@@ -799,12 +803,15 @@ func TestTUIEnsuresDaemonBeforeLaunching(t *testing.T) {
 		if cfg.Model != "gpt-5.4-mini" {
 			t.Fatalf("Model = %q, want gpt-5.4-mini", cfg.Model)
 		}
+		if cfg.WorkingDir != explicitWorkingDir {
+			t.Fatalf("WorkingDir = %q, want %q", cfg.WorkingDir, explicitWorkingDir)
+		}
 		return nil
 	}
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := Run(IO{Stdout: &stdout, Stderr: &stderr}, "matrixclaw", []string{"tui"})
+	code := Run(IO{Stdout: &stdout, Stderr: &stderr}, "matrixclaw", []string{"tui", explicitWorkingDir})
 
 	if code != 0 {
 		t.Fatalf("Run() code = %d, want 0, stderr=%q", code, stderr.String())

@@ -6,6 +6,13 @@ version="${MATRIXCLAW_VERSION:-latest}"
 install_dir="${MATRIXCLAW_INSTALL_DIR:-"$HOME/.local/bin"}"
 run_setup="${MATRIXCLAW_RUN_SETUP:-1}"
 from_source=0
+release_tmp=""
+
+cleanup_release_tmp() {
+  if [[ -n "${release_tmp:-}" ]]; then
+    rm -rf "$release_tmp"
+  fi
+}
 
 usage() {
   cat <<'EOF'
@@ -88,7 +95,7 @@ detect_arch() {
 
 latest_tag() {
   local api="https://api.github.com/repos/${repo}/releases/latest"
-  curl -fsSL "$api" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/; t print; b; :print; p; q'
+  curl -fsSL "$api" | awk -F'"' '/"tag_name"[[:space:]]*:/ {print $4; exit}'
 }
 
 install_from_source() {
@@ -108,9 +115,8 @@ install_from_release() {
   need_cmd install
   need_cmd mktemp
   need_cmd tar
-  need_cmd sed
 
-  local os arch tag archive url checksum_url tmp
+  local os arch tag archive url checksum_url
   os="$(detect_os)"
   arch="$(detect_arch)"
   tag="$version"
@@ -125,22 +131,22 @@ install_from_release() {
   archive="matrixclaw-${tag}-${os}-${arch}.tar.gz"
   url="https://github.com/${repo}/releases/download/${tag}/${archive}"
   checksum_url="https://github.com/${repo}/releases/download/${tag}/checksums.txt"
-  tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' EXIT
+  release_tmp="$(mktemp -d)"
+  trap cleanup_release_tmp EXIT
 
   echo "[1/4] Downloading ${archive}"
-  curl -fL "$url" -o "$tmp/$archive"
-  if curl -fsSL "$checksum_url" -o "$tmp/checksums.txt"; then
+  curl -fL "$url" -o "$release_tmp/$archive"
+  if curl -fsSL "$checksum_url" -o "$release_tmp/checksums.txt"; then
     local expected actual
-    expected="$(awk -v f="$archive" '$2 == f {print $1}' "$tmp/checksums.txt")"
+    expected="$(awk -v f="$archive" '$2 == f {print $1}' "$release_tmp/checksums.txt")"
     if [[ -z "$expected" ]]; then
       echo "install.sh: checksum not found for ${archive}" >&2
       exit 1
     fi
     if command -v sha256sum >/dev/null 2>&1; then
-      (cd "$tmp" && awk -v f="$archive" '$2 == f {print $0}' checksums.txt | sha256sum -c - >/dev/null)
+      (cd "$release_tmp" && awk -v f="$archive" '$2 == f {print $0}' checksums.txt | sha256sum -c - >/dev/null)
     elif command -v shasum >/dev/null 2>&1; then
-      actual="$(shasum -a 256 "$tmp/$archive" | awk '{print $1}')"
+      actual="$(shasum -a 256 "$release_tmp/$archive" | awk '{print $1}')"
       if [[ "$actual" != "$expected" ]]; then
         echo "install.sh: checksum mismatch for ${archive}" >&2
         exit 1
@@ -154,9 +160,9 @@ install_from_release() {
 
   echo "[2/4] Installing binaries to ${install_dir}"
   mkdir -p "$install_dir"
-  tar -xzf "$tmp/$archive" -C "$tmp"
-  install -m 0755 "$tmp/matrixclaw" "$install_dir/matrixclaw"
-  install -m 0755 "$tmp/matrixclawd" "$install_dir/matrixclawd"
+  tar -xzf "$release_tmp/$archive" -C "$release_tmp"
+  install -m 0755 "$release_tmp/matrixclaw" "$install_dir/matrixclaw"
+  install -m 0755 "$release_tmp/matrixclawd" "$install_dir/matrixclawd"
 }
 
 if [[ "$from_source" == "1" ]]; then

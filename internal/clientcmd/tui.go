@@ -5,14 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 
 	tuiruntime "github.com/Suren878/matrixclaw/clients/terminal/chat/runtime"
 	"github.com/Suren878/matrixclaw/internal/core"
 	appsetup "github.com/Suren878/matrixclaw/internal/setup"
 )
 
-func runTUICommand(stderr io.Writer, binaryName string, service *appsetup.Service) int {
+func runTUICommand(stderr io.Writer, binaryName string, service *appsetup.Service, args []string) int {
 	cfg, err := service.Load()
 	if err != nil {
 		if errors.Is(err, appsetup.ErrConfigNotFound) {
@@ -35,7 +34,11 @@ func runTUICommand(stderr io.Writer, binaryName string, service *appsetup.Servic
 	if refreshed, err := service.Load(); err == nil {
 		cfg = refreshed
 	}
-	workingDir, _ := os.Getwd()
+	workingDir, err := resolveTUIWorkingDir(args)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: tui: %v\n", binaryName, err)
+		return 2
+	}
 	providerName, providerModel := activeProviderInfo(cfg)
 	if err := openTUI(context.Background(), tuiruntime.Config{
 		BaseURL:     daemonBaseURL(cfg.Daemon.HTTPAddr),

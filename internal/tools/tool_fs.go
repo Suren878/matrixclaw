@@ -93,7 +93,14 @@ func resolvePathUnderWorkingDir(workingDir string, value string) (FilesystemPath
 		return FilesystemPathPolicy{}, &Result{Content: fmt.Sprintf("Invalid path: %v", err), IsError: true}
 	}
 	if policy.WorkingDirProvided && policy.EscapesWorkingDir {
-		return policy, &Result{Content: fmt.Sprintf("Path resolves outside working directory: %s", policy.Path), IsError: true}
+		return policy, &Result{
+			Content: fmt.Sprintf(
+				"Path resolves outside working directory: %s (working directory: %s). Start matrixclaw from the project directory or run matrixclaw tui <path> for that project.",
+				policy.Path,
+				policy.WorkingDir,
+			),
+			IsError: true,
+		}
 	}
 	return policy, nil
 }

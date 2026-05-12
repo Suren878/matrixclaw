@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.2
+
+- Fixed macOS installer compatibility by removing a GNU-specific `sed` script
+  from latest-release detection.
+- Fixed installer cleanup after download failures so network errors do not
+  trigger a secondary `tmp: unbound variable` failure.
+- Added `matrixclaw tui [WORKDIR]` for opening a terminal session rooted at an
+  explicit project directory, including external macOS volumes.
+- Improved filesystem tool errors to show the active working directory when a
+  requested path is outside the session root.
+
 ## v0.1.1
 
 - Added `Kimi (Subscription)` provider for Kimi Code members using the

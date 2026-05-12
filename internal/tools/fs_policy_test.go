@@ -50,6 +50,9 @@ func TestFilesystemPathPolicyRejectsSymlinkEscape(t *testing.T) {
 	if !result.IsError || !strings.Contains(result.Content, "outside working directory") {
 		t.Fatalf("result = %#v, want outside-working-dir tool error", result)
 	}
+	if !strings.Contains(result.Content, "working directory: "+work) {
+		t.Fatalf("result = %#v, want working directory hint", result)
+	}
 }
 
 func TestFilesystemPathPolicyAllowsAbsolutePathUnderWorkingDir(t *testing.T) {
