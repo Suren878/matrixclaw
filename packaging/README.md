@@ -10,6 +10,6 @@ Release channels:
 - GitHub Releases provide manual `.tar.gz` downloads and `checksums.txt`.
 - Homebrew can use the formula template in `homebrew/` from a tap repository.
 
-Do not duplicate runtime configuration here. Packaging installs binaries and
-service files; `matrixclaw setup` owns provider, daemon, Telegram, and storage
-configuration.
+Do not duplicate runtime configuration here. Packaging installs binaries;
+`matrixclaw setup` and the `matrixclaw service` commands own provider, daemon,
+Telegram, storage, and service-file configuration.

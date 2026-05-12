@@ -2,10 +2,17 @@
 set -euo pipefail
 
 repo="${MATRIXCLAW_REPO:-Suren878/matrixclaw}"
+home_dir="${HOME:-}"
+if [[ -z "$home_dir" ]]; then
+  echo "install.sh: HOME is not set" >&2
+  exit 2
+fi
+
 version="${MATRIXCLAW_VERSION:-latest}"
-install_dir="${MATRIXCLAW_INSTALL_DIR:-"$HOME/.local/bin"}"
+install_dir="${MATRIXCLAW_INSTALL_DIR:-"$home_dir/.local/bin"}"
 run_setup="${MATRIXCLAW_RUN_SETUP:-1}"
 from_source=0
+self_test=0
 release_tmp=""
 
 cleanup_release_tmp() {
@@ -19,7 +26,7 @@ usage() {
 Install matrixclaw.
 
 Usage:
-  install.sh [--version TAG] [--install-dir DIR] [--no-setup] [--from-source]
+  install.sh [--version TAG] [--install-dir DIR] [--no-setup] [--from-source] [--self-test]
 
 Environment:
   MATRIXCLAW_REPO         GitHub repo, default Suren878/matrixclaw
@@ -32,10 +39,18 @@ EOF
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --version)
+      if [[ "$#" -lt 2 ]]; then
+        echo "install.sh: --version requires a value" >&2
+        exit 2
+      fi
       version="${2:-}"
       shift 2
       ;;
     --install-dir)
+      if [[ "$#" -lt 2 ]]; then
+        echo "install.sh: --install-dir requires a value" >&2
+        exit 2
+      fi
       install_dir="${2:-}"
       shift 2
       ;;
@@ -45,6 +60,10 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --from-source)
       from_source=1
+      shift
+      ;;
+    --self-test)
+      self_test=1
       shift
       ;;
     -h|--help)
@@ -71,42 +90,129 @@ need_cmd() {
   fi
 }
 
-detect_os() {
-  case "$(uname -s)" in
+detect_os_name() {
+  case "$1" in
     Linux) echo "linux" ;;
     Darwin) echo "darwin" ;;
     *)
-      echo "install.sh: unsupported OS: $(uname -s)" >&2
+      echo "install.sh: unsupported OS: $1" >&2
+      exit 1
+      ;;
+  esac
+}
+
+detect_os() {
+  detect_os_name "$(uname -s)"
+}
+
+detect_arch_name() {
+  case "$1" in
+    x86_64|amd64) echo "amd64" ;;
+    arm64|aarch64) echo "arm64" ;;
+    *)
+      echo "install.sh: unsupported architecture: $1" >&2
       exit 1
       ;;
   esac
 }
 
 detect_arch() {
-  case "$(uname -m)" in
-    x86_64|amd64) echo "amd64" ;;
-    arm64|aarch64) echo "arm64" ;;
-    *)
-      echo "install.sh: unsupported architecture: $(uname -m)" >&2
-      exit 1
-      ;;
-  esac
+  detect_arch_name "$(uname -m)"
 }
 
 latest_tag() {
   local api="https://api.github.com/repos/${repo}/releases/latest"
-  curl -fsSL "$api" | awk -F'"' '/"tag_name"[[:space:]]*:/ {print $4; exit}'
+  local response
+  response="$(curl -fsSL "$api")"
+  printf '%s\n' "$response" | parse_latest_tag
+}
+
+parse_latest_tag_awk() {
+  awk -F'"' '/"tag_name"[[:space:]]*:/ && tag == "" {tag = $4} END {print tag}'
+}
+
+parse_latest_tag() {
+  if command -v jq >/dev/null 2>&1; then
+    jq -r '.tag_name // empty'
+  else
+    parse_latest_tag_awk
+  fi
+}
+
+archive_name() {
+  printf 'matrixclaw-%s-%s-%s.tar.gz\n' "$1" "$2" "$3"
+}
+
+make_tmp_dir() {
+  local base="${TMPDIR:-/tmp}"
+  mktemp -d 2>/dev/null || mktemp -d "${base%/}/matrixclaw.XXXXXX"
+}
+
+self_test_equal() {
+  local name="$1"
+  local got="$2"
+  local want="$3"
+  if [[ "$got" != "$want" ]]; then
+    echo "install.sh: self-test failed: ${name}: got ${got:-<empty>}, want ${want}" >&2
+    exit 1
+  fi
+}
+
+run_self_test() {
+  local got tmp
+
+  got="$(printf '%s\n' '{"tag_name":"v1.2.3"}' | parse_latest_tag_awk)"
+  self_test_equal "awk compact tag parser" "$got" "v1.2.3"
+
+  got="$(printf '%s\n' '{' '  "name": "release",' '  "tag_name" : "v0.1.2",' '  "body": "ok"' '}' | parse_latest_tag_awk)"
+  self_test_equal "awk spaced tag parser" "$got" "v0.1.2"
+
+  got="$({ printf '%s\n' '{"tag_name":"v9.8.7"}'; awk 'BEGIN {for (i = 0; i < 20000; i++) print "padding"}'; } | parse_latest_tag_awk)"
+  self_test_equal "awk long tag parser" "$got" "v9.8.7"
+
+  got="$(printf '%s\n' '{"tag_name":"v2.0.0"}' | parse_latest_tag)"
+  self_test_equal "latest tag parser" "$got" "v2.0.0"
+
+  got="$(archive_name "v1.2.3" "darwin" "arm64")"
+  self_test_equal "archive name" "$got" "matrixclaw-v1.2.3-darwin-arm64.tar.gz"
+
+  got="$(detect_os_name "Darwin")"
+  self_test_equal "darwin OS mapping" "$got" "darwin"
+
+  got="$(detect_os_name "Linux")"
+  self_test_equal "linux OS mapping" "$got" "linux"
+
+  got="$(detect_arch_name "x86_64")"
+  self_test_equal "x86_64 arch mapping" "$got" "amd64"
+
+  got="$(detect_arch_name "aarch64")"
+  self_test_equal "aarch64 arch mapping" "$got" "arm64"
+
+  got="$(detect_arch_name "arm64")"
+  self_test_equal "arm64 arch mapping" "$got" "arm64"
+
+  tmp="$(make_tmp_dir)"
+  if [[ ! -d "$tmp" ]]; then
+    echo "install.sh: self-test failed: make_tmp_dir did not create a directory" >&2
+    exit 1
+  fi
+  rm -rf "$tmp"
+  echo "install.sh: self-test passed"
 }
 
 install_from_source() {
   need_cmd go
   local root
-  root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+  if [[ ! -d "$root/cmd/matrixclaw" || ! -d "$root/cmd/matrixclawd" ]]; then
+    echo "install.sh: --from-source requires a matrixclaw source checkout" >&2
+    exit 1
+  fi
   echo "[1/4] Building matrixclaw from source"
   mkdir -p "$install_dir"
-  go -C "$root" build -o "$install_dir/matrixclaw" ./cmd/matrixclaw
+  (cd "$root" && go build -o "$install_dir/matrixclaw" ./cmd/matrixclaw)
   echo "[2/4] Building matrixclawd from source"
-  go -C "$root" build -o "$install_dir/matrixclawd" ./cmd/matrixclawd
+  (cd "$root" && go build -o "$install_dir/matrixclawd" ./cmd/matrixclawd)
 }
 
 install_from_release() {
@@ -121,17 +227,20 @@ install_from_release() {
   arch="$(detect_arch)"
   tag="$version"
   if [[ "$tag" == "latest" ]]; then
-    tag="$(latest_tag)"
+    if ! tag="$(latest_tag)"; then
+      echo "install.sh: could not resolve release tag for ${repo}" >&2
+      exit 1
+    fi
   fi
   if [[ -z "$tag" ]]; then
     echo "install.sh: could not resolve release tag for ${repo}" >&2
     exit 1
   fi
 
-  archive="matrixclaw-${tag}-${os}-${arch}.tar.gz"
+  archive="$(archive_name "$tag" "$os" "$arch")"
   url="https://github.com/${repo}/releases/download/${tag}/${archive}"
   checksum_url="https://github.com/${repo}/releases/download/${tag}/checksums.txt"
-  release_tmp="$(mktemp -d)"
+  release_tmp="$(make_tmp_dir)"
   trap cleanup_release_tmp EXIT
 
   echo "[1/4] Downloading ${archive}"
@@ -165,6 +274,11 @@ install_from_release() {
   install -m 0755 "$release_tmp/matrixclawd" "$install_dir/matrixclawd"
 }
 
+if [[ "$self_test" == "1" ]]; then
+  run_self_test
+  exit 0
+fi
+
 if [[ "$from_source" == "1" ]]; then
   install_from_source
 else
@@ -172,13 +286,13 @@ else
 fi
 
 echo "[3/4] Preparing local directories"
-mkdir -p "$HOME/.config/matrixclaw" "$HOME/.local/state/matrixclaw"
+mkdir -p "$home_dir/.config/matrixclaw" "$home_dir/.local/state/matrixclaw"
 
 echo "[4/4] Installed matrixclaw"
 echo "  $install_dir/matrixclaw"
 echo "  $install_dir/matrixclawd"
 
-case ":$PATH:" in
+case ":${PATH:-}:" in
   *":$install_dir:"*) ;;
   *)
     echo

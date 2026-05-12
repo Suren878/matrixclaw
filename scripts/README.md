@@ -5,6 +5,9 @@ This directory holds operational scripts only.
 Scripts:
 - `install.sh`
   Install release binaries into `~/.local/bin` and start `matrixclaw setup`.
+  Re-run it to replace the installed binaries with a newer release, or pass
+  `--version TAG` for a specific release. Use `--self-test` for shell-level
+  installer checks that do not download or install anything.
   After setup is saved, plain `matrixclaw` opens the terminal TUI and starts
   the daemon when needed. Use `--from-source` for local development installs.
 - `uninstall.sh`

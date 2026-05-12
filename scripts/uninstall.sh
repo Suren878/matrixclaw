@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-install_dir="${MATRIXCLAW_INSTALL_DIR:-"$HOME/.local/bin"}"
-config_dir="${MATRIXCLAW_CONFIG_DIR:-"$HOME/.config/matrixclaw"}"
-state_dir="${MATRIXCLAW_STATE_DIR:-"$HOME/.local/state/matrixclaw"}"
+home_dir="${HOME:-}"
+if [[ -z "$home_dir" ]]; then
+  echo "uninstall.sh: HOME is not set" >&2
+  exit 2
+fi
+
+install_dir="${MATRIXCLAW_INSTALL_DIR:-"$home_dir/.local/bin"}"
+config_dir="${MATRIXCLAW_CONFIG_DIR:-"$home_dir/.config/matrixclaw"}"
+state_dir="${MATRIXCLAW_STATE_DIR:-"$home_dir/.local/state/matrixclaw"}"
 purge=0
 yes=0
 
@@ -31,6 +37,10 @@ while [[ "$#" -gt 0 ]]; do
       shift
       ;;
     --install-dir)
+      if [[ "$#" -lt 2 ]]; then
+        echo "uninstall.sh: --install-dir requires a value" >&2
+        exit 2
+      fi
       install_dir="${2:-}"
       shift 2
       ;;
@@ -50,11 +60,11 @@ if [[ -z "$install_dir" || "$install_dir" == "/" ]]; then
   echo "uninstall.sh: invalid install dir: ${install_dir:-<empty>}" >&2
   exit 2
 fi
-if [[ -z "$config_dir" || "$config_dir" == "/" || "$config_dir" == "$HOME" ]]; then
+if [[ -z "$config_dir" || "$config_dir" == "/" || "$config_dir" == "$home_dir" ]]; then
   echo "uninstall.sh: invalid config dir: ${config_dir:-<empty>}" >&2
   exit 2
 fi
-if [[ -z "$state_dir" || "$state_dir" == "/" || "$state_dir" == "$HOME" ]]; then
+if [[ -z "$state_dir" || "$state_dir" == "/" || "$state_dir" == "$home_dir" ]]; then
   echo "uninstall.sh: invalid state dir: ${state_dir:-<empty>}" >&2
   exit 2
 fi
@@ -82,7 +92,7 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 echo "[2/4] Removing service files"
-rm -f "$HOME/.config/systemd/user/matrixclawd.service"
+rm -f "$home_dir/.config/systemd/user/matrixclawd.service"
 if command -v systemctl >/dev/null 2>&1; then
   systemctl --user daemon-reload >/dev/null 2>&1 || true
 fi
