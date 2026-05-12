@@ -16,8 +16,6 @@ Scripts:
 - `build_release.sh`
   Build `matrixclaw` and `matrixclawd` with version, commit, and build date
   stamped through Go ldflags.
-- `bootstrap/`
-  Helper assets for remote or local installation.
 
 Rule:
 - scripts install files and print the next setup step

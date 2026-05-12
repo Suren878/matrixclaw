@@ -90,6 +90,9 @@ The installer downloads the matching GitHub Release archive, installs
 `matrixclaw` and `matrixclawd` into `~/.local/bin`, prepares local config/state
 directories, and starts `matrixclaw setup`.
 
+After setup is saved, run `matrixclaw` to open the terminal TUI. On a fresh
+machine, plain `matrixclaw` opens setup first and opens the TUI on later runs.
+
 Uninstall keeps config and state by default:
 
 ```bash
@@ -125,7 +128,7 @@ matrixclaw providers verify verify configured provider model access
 matrixclaw service status   print service state
 matrixclaw service restart  restart service
 matrixclaw service logs     print recent service logs
-matrixclaw tui              open terminal chat
+matrixclaw tui [WORKDIR]    open terminal chat for the current or given directory
 matrixclawd                 service binary used by systemd/direct launch
 ```
 
@@ -156,8 +159,7 @@ mkdir -p ./bin
 go build -o ./bin/matrixclaw ./cmd/matrixclaw
 go build -o ./bin/matrixclawd ./cmd/matrixclawd
 
-./bin/matrixclaw setup
-./bin/matrixclaw tui
+./bin/matrixclaw
 ```
 
 For a local source install:
