@@ -87,6 +87,10 @@ func (t *saveTool) Spec() tools.Spec {
 		Name:        "Storage Save",
 		Description: "Save text or document content into matrixclaw local storage. Use for user documents, generated notes, contracts, IDs, and reusable project files.",
 		Risk:        tools.RiskSafe,
+		Namespace:   "module.storage",
+		Category:    tools.CategoryStorage,
+		Profiles:    []tools.Profile{tools.ProfileStorage},
+		OutputKind:  tools.OutputStorageEntry,
 		InputJSONSchema: json.RawMessage(`{
   "type": "object",
   "properties": {
@@ -133,6 +137,10 @@ func (t *readTool) Spec() tools.Spec {
 		Name:        "Storage Read",
 		Description: "Read a text file from matrixclaw local storage by relative storage path.",
 		Risk:        tools.RiskSafe,
+		Namespace:   "module.storage",
+		Category:    tools.CategoryStorage,
+		Profiles:    []tools.Profile{tools.ProfileStorage},
+		OutputKind:  tools.OutputFileContent,
 		InputJSONSchema: json.RawMessage(`{
   "type": "object",
   "properties": {
@@ -175,6 +183,10 @@ func (t *listTool) Spec() tools.Spec {
 		Name:        "Storage List",
 		Description: "List matrixclaw local storage files. Filter by prefix or query over path, title, and tags.",
 		Risk:        tools.RiskSafe,
+		Namespace:   "module.storage",
+		Category:    tools.CategoryStorage,
+		Profiles:    []tools.Profile{tools.ProfileStorage},
+		OutputKind:  tools.OutputStorageList,
 		InputJSONSchema: json.RawMessage(`{
   "type": "object",
   "properties": {
@@ -232,6 +244,10 @@ func (t *updateMetadataTool) Spec() tools.Spec {
 		Name:        "Storage Update Metadata",
 		Description: "Update title, tags, and MIME type for a file in matrixclaw local storage.",
 		Risk:        tools.RiskSafe,
+		Namespace:   "module.storage",
+		Category:    tools.CategoryStorage,
+		Profiles:    []tools.Profile{tools.ProfileStorage},
+		OutputKind:  tools.OutputStorageEntry,
 		InputJSONSchema: json.RawMessage(`{
   "type": "object",
   "properties": {
@@ -276,6 +292,10 @@ func (t *deleteTool) Spec() tools.Spec {
 		Name:        "Storage Delete",
 		Description: "Delete a file from matrixclaw local storage. Ask for approval before deleting user documents.",
 		Risk:        tools.RiskApproval,
+		Namespace:   "module.storage",
+		Category:    tools.CategoryStorage,
+		Profiles:    []tools.Profile{tools.ProfileStorage},
+		OutputKind:  tools.OutputStorageEntry,
 		InputJSONSchema: json.RawMessage(`{
   "type": "object",
   "properties": {
@@ -327,6 +347,10 @@ func (t *saveTemporaryTool) Spec() tools.Spec {
 		Name:        "Storage Save Temporary File",
 		Description: "Copy a temporary upload or attachment into permanent matrixclaw local storage. Use when the user asks to keep an uploaded image or file.",
 		Risk:        tools.RiskSafe,
+		Namespace:   "module.storage",
+		Category:    tools.CategoryStorage,
+		Profiles:    []tools.Profile{tools.ProfileStorage},
+		OutputKind:  tools.OutputStorageEntry,
 		InputJSONSchema: json.RawMessage(`{
   "type": "object",
   "properties": {

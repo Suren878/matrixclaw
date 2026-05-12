@@ -68,6 +68,13 @@ func (s *Server) handleSessionLLMUpdate(w http.ResponseWriter, r *http.Request, 
 		writeJSON(w, http.StatusOK, core.SessionResponse{Session: session})
 	case strings.TrimSpace(req.ModelID) != "":
 		session, err := s.core.UpdateSessionModel(r.Context(), sessionID, req.ModelID)
+		if shouldReloadSessionLLM(err) {
+			if reloadErr := s.reloadSessionLLMRegistry(r.Context()); reloadErr != nil {
+				writeErrorMessage(w, http.StatusInternalServerError, "reload provider registry: "+reloadErr.Error())
+				return
+			}
+			session, err = s.core.UpdateSessionModel(r.Context(), sessionID, req.ModelID)
+		}
 		if err != nil {
 			writeError(w, err)
 			return
@@ -114,5 +121,6 @@ func shouldReloadSessionLLM(err error) bool {
 	}
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "not configured") ||
+		strings.Contains(message, "no active provider configured") ||
 		strings.Contains(message, "provider registry unavailable")
 }

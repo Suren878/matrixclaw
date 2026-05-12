@@ -13,25 +13,50 @@ const (
 	DefaultReasoningEffort   = "medium"
 )
 
-var reasoningEfforts = []string{"low", DefaultReasoningEffort, "high"}
+const (
+	ReasoningEffortNone    = "none"
+	ReasoningEffortMinimal = "minimal"
+	ReasoningEffortLow     = "low"
+	ReasoningEffortMedium  = DefaultReasoningEffort
+	ReasoningEffortHigh    = "high"
+	ReasoningEffortXHigh   = "xhigh"
+)
+
+var reasoningEfforts = []string{ReasoningEffortLow, ReasoningEffortMedium, ReasoningEffortHigh}
+var openAIReasoningEfforts = []string{
+	ReasoningEffortNone,
+	ReasoningEffortMinimal,
+	ReasoningEffortLow,
+	ReasoningEffortMedium,
+	ReasoningEffortHigh,
+	ReasoningEffortXHigh,
+}
 
 type CatalogEntry struct {
-	ID              string       `json:"id"`
-	Name            string       `json:"name"`
-	Type            string       `json:"type"`
-	Implemented     bool         `json:"implemented"`
-	RequiresBaseURL bool         `json:"requires_base_url"`
-	Capabilities    Capabilities `json:"capabilities"`
-	DefaultBaseURL  string       `json:"default_base_url,omitempty"`
-	DefaultModel    string       `json:"default_model,omitempty"`
-	APIKeyEnv       string       `json:"api_key_env,omitempty"`
-	ConfigPath      string       `json:"config_path,omitempty"`
-	Notes           string       `json:"notes,omitempty"`
+	ID              string          `json:"id"`
+	Name            string          `json:"name"`
+	Type            string          `json:"type"`
+	Implemented     bool            `json:"implemented"`
+	RequiresBaseURL bool            `json:"requires_base_url"`
+	Capabilities    Capabilities    `json:"capabilities"`
+	DefaultBaseURL  string          `json:"default_base_url,omitempty"`
+	BaseURLOptions  []BaseURLOption `json:"base_url_options,omitempty"`
+	DefaultModel    string          `json:"default_model,omitempty"`
+	APIKeyEnv       string          `json:"api_key_env,omitempty"`
+	ConfigPath      string          `json:"config_path,omitempty"`
+	Notes           string          `json:"notes,omitempty"`
+}
+
+type BaseURLOption struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	URL  string `json:"url"`
 }
 
 type Capabilities struct {
 	ModelDiscovery  bool `json:"model_discovery,omitempty"`
 	ReasoningEffort bool `json:"reasoning_effort,omitempty"`
+	ToolCalling     bool `json:"tool_calling,omitempty"`
 	NormalizeModel  bool `json:"normalize_model,omitempty"`
 }
 
@@ -46,6 +71,7 @@ func Catalog() []CatalogEntry {
 			Capabilities: Capabilities{
 				ModelDiscovery:  true,
 				ReasoningEffort: true,
+				ToolCalling:     true,
 			},
 			DefaultBaseURL: "https://api.openai.com/v1",
 			DefaultModel:   DefaultOpenAICompatModel,
@@ -59,7 +85,7 @@ func Catalog() []CatalogEntry {
 			Type:            TypeOpenAICompat,
 			Implemented:     true,
 			RequiresBaseURL: true,
-			Capabilities:    Capabilities{ModelDiscovery: true},
+			Capabilities:    Capabilities{ModelDiscovery: true, ToolCalling: true},
 			DefaultBaseURL:  "https://api.deepseek.com/v1",
 			DefaultModel:    "deepseek-chat",
 			APIKeyEnv:       "DEEPSEEK_API_KEY",
@@ -67,12 +93,25 @@ func Catalog() []CatalogEntry {
 			Notes:           "Known-good third-party OpenAI-compatible gateway configuration.",
 		},
 		{
+			ID:              "openrouter",
+			Name:            "OpenRouter",
+			Type:            TypeOpenAICompat,
+			Implemented:     true,
+			RequiresBaseURL: true,
+			Capabilities:    Capabilities{ModelDiscovery: true, ToolCalling: true},
+			DefaultBaseURL:  "https://openrouter.ai/api/v1",
+			DefaultModel:    "qwen/qwen3-coder-next",
+			APIKeyEnv:       "OPENROUTER_API_KEY",
+			ConfigPath:      "internal/providers/ai/openaicompat/configs/openrouter/config.example.json",
+			Notes:           "OpenAI-compatible gateway for many hosted models; OpenRouter-specific reasoning output is not mapped by the generic runtime.",
+		},
+		{
 			ID:              "xai",
 			Name:            "xAI",
 			Type:            TypeOpenAICompat,
 			Implemented:     true,
 			RequiresBaseURL: true,
-			Capabilities:    Capabilities{ModelDiscovery: true},
+			Capabilities:    Capabilities{ModelDiscovery: true, ToolCalling: true},
 			DefaultBaseURL:  "https://api.x.ai/v1",
 			DefaultModel:    "grok-4",
 			APIKeyEnv:       "XAI_API_KEY",
@@ -85,7 +124,7 @@ func Catalog() []CatalogEntry {
 			Type:            TypeOpenAICompat,
 			Implemented:     true,
 			RequiresBaseURL: true,
-			Capabilities:    Capabilities{ModelDiscovery: true},
+			Capabilities:    Capabilities{ModelDiscovery: true, ToolCalling: true},
 			DefaultBaseURL:  "https://api.z.ai/api/paas/v4",
 			DefaultModel:    "glm-5",
 			APIKeyEnv:       "ZAI_API_KEY",
@@ -93,12 +132,44 @@ func Catalog() []CatalogEntry {
 			Notes:           "Uses the OpenAI-compatible path; the coding endpoint is also possible.",
 		},
 		{
+			ID:              "minimax",
+			Name:            "MiniMax",
+			Type:            TypeOpenAICompat,
+			Implemented:     true,
+			RequiresBaseURL: true,
+			Capabilities:    Capabilities{ModelDiscovery: true, ToolCalling: true},
+			DefaultBaseURL:  "https://api.minimax.io/v1",
+			DefaultModel:    "MiniMax-M2.7",
+			APIKeyEnv:       "MINIMAX_API_KEY",
+			ConfigPath:      "internal/providers/ai/openaicompat/configs/minimax/config.example.json",
+			Notes:           "MiniMax OpenAI-compatible endpoint with model listing and tool use support.",
+		},
+		{
+			ID:              "qwen",
+			Name:            "Qwen / DashScope",
+			Type:            TypeOpenAICompat,
+			Implemented:     true,
+			RequiresBaseURL: true,
+			Capabilities:    Capabilities{ModelDiscovery: true, ToolCalling: true},
+			DefaultBaseURL:  "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+			BaseURLOptions: []BaseURLOption{
+				{ID: "singapore", Name: "Singapore / International", URL: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"},
+				{ID: "us-virginia", Name: "US (Virginia)", URL: "https://dashscope-us.aliyuncs.com/compatible-mode/v1"},
+				{ID: "china-beijing", Name: "China (Beijing)", URL: "https://dashscope.aliyuncs.com/compatible-mode/v1"},
+				{ID: "hong-kong", Name: "Hong Kong (China)", URL: "https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1"},
+			},
+			DefaultModel: "qwen-plus",
+			APIKeyEnv:    "DASHSCOPE_API_KEY",
+			ConfigPath:   "internal/providers/ai/openaicompat/configs/qwen/config.example.json",
+			Notes:        "Alibaba Cloud Model Studio OpenAI-compatible endpoint. API keys are region-specific; select the endpoint matching the key region.",
+		},
+		{
 			ID:              "kimi",
 			Name:            "Kimi",
 			Type:            TypeOpenAICompat,
 			Implemented:     true,
 			RequiresBaseURL: true,
-			Capabilities:    Capabilities{ModelDiscovery: true},
+			Capabilities:    Capabilities{ModelDiscovery: true, ToolCalling: true},
 			DefaultModel:    "YOUR_KIMI_MODEL",
 			APIKeyEnv:       "KIMI_API_KEY",
 			ConfigPath:      "internal/providers/ai/openaicompat/configs/kimi/config.example.json",
@@ -110,7 +181,7 @@ func Catalog() []CatalogEntry {
 			Type:            TypeOpenAICompat,
 			Implemented:     true,
 			RequiresBaseURL: true,
-			Capabilities:    Capabilities{ModelDiscovery: true},
+			Capabilities:    Capabilities{ModelDiscovery: true, ToolCalling: true},
 			DefaultModel:    "YOUR_MODEL_ID",
 			APIKeyEnv:       "AIHUBMIX_API_KEY",
 			ConfigPath:      "internal/providers/ai/openaicompat/configs/aihubmix/config.example.json",
@@ -138,6 +209,7 @@ func Catalog() []CatalogEntry {
 			Capabilities: Capabilities{
 				ModelDiscovery: true,
 				NormalizeModel: true,
+				ToolCalling:    true,
 			},
 			DefaultBaseURL: "https://generativelanguage.googleapis.com/v1beta",
 			DefaultModel:   DefaultGeminiModel,
@@ -184,9 +256,13 @@ func NormalizeModelID(providerID string, providerType string, modelID string) st
 	return modelID
 }
 
+func ProviderCapabilities(providerID string, providerType string) Capabilities {
+	return providerCapabilities(providerID, providerType)
+}
+
 func NormalizeReasoningEffort(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
-	for _, effort := range reasoningEfforts {
+	for _, effort := range allReasoningEfforts() {
 		if value == effort {
 			return effort
 		}
@@ -195,9 +271,17 @@ func NormalizeReasoningEffort(value string) string {
 }
 
 func ReasoningEfforts() []string {
-	out := make([]string, len(reasoningEfforts))
-	copy(out, reasoningEfforts)
-	return out
+	return copyStrings(reasoningEfforts)
+}
+
+func ReasoningEffortsForProvider(providerID string, providerType string) []string {
+	if !providerCapabilities(providerID, providerType).ReasoningEffort {
+		return nil
+	}
+	if NormalizeProviderID(providerID) == "openai" {
+		return copyStrings(openAIReasoningEfforts)
+	}
+	return ReasoningEfforts()
 }
 
 func DefaultReasoningEffortForProvider(providerID string, providerType string) string {
@@ -211,10 +295,32 @@ func NormalizeReasoningEffortForProvider(providerID string, providerType string,
 	if !providerCapabilities(providerID, providerType).ReasoningEffort {
 		return ""
 	}
-	if effort := NormalizeReasoningEffort(value); effort != "" {
-		return effort
+	value = strings.ToLower(strings.TrimSpace(value))
+	for _, effort := range ReasoningEffortsForProvider(providerID, providerType) {
+		if value == effort {
+			return effort
+		}
 	}
 	return DefaultReasoningEffort
+}
+
+func allReasoningEfforts() []string {
+	seen := map[string]bool{}
+	efforts := make([]string, 0, len(reasoningEfforts)+len(openAIReasoningEfforts))
+	for _, effort := range append(copyStrings(reasoningEfforts), openAIReasoningEfforts...) {
+		if effort == "" || seen[effort] {
+			continue
+		}
+		seen[effort] = true
+		efforts = append(efforts, effort)
+	}
+	return efforts
+}
+
+func copyStrings(values []string) []string {
+	out := make([]string, len(values))
+	copy(out, values)
+	return out
 }
 
 func providerCapabilities(providerID string, providerType string) Capabilities {
@@ -225,11 +331,11 @@ func providerCapabilities(providerID string, providerType string) Capabilities {
 	}
 	switch providerType {
 	case TypeOpenAICompat:
-		return Capabilities{ModelDiscovery: true}
+		return Capabilities{ModelDiscovery: true, ToolCalling: true}
 	case TypeAnthropic:
 		return Capabilities{ModelDiscovery: true}
 	case TypeGemini:
-		return Capabilities{ModelDiscovery: true, NormalizeModel: true}
+		return Capabilities{ModelDiscovery: true, NormalizeModel: true, ToolCalling: true}
 	default:
 		return Capabilities{}
 	}

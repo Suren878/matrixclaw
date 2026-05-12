@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -307,6 +308,66 @@ func TestControlplanePickerClosesStalePrompt(t *testing.T) {
 	}
 	if model.dialog.ContainsDialog(surfacedialog.CommandsID) {
 		t.Fatal("expected commands dialog to close")
+	}
+}
+
+func TestControlplaneCommandErrorKeepsProviderFormOpen(t *testing.T) {
+	model := newApp(nil, nil)
+	model.dialog.OpenDialog(surfacedialog.NewFormCommand(model.com, surfacedialog.FormCommandData{
+		Title:         "Edit Qwen",
+		SubmitCommand: "/provider edit save qwen token",
+		CancelCommand: "/provider",
+		Fields:        []surfacedialog.FormCommandField{{ID: "key", Label: "API Key", Value: "Required"}},
+	}))
+
+	next, cmd := model.Update(surfacedialog.ActionRunControlplaneCommand{Command: "/provider edit save qwen token"})
+	if next == nil {
+		t.Fatal("expected model")
+	}
+	if cmd == nil {
+		t.Fatal("expected controlplane command")
+	}
+	if !model.dialog.ContainsDialog(surfacedialog.FormCommandID) {
+		t.Fatal("provider form should stay open while save command runs")
+	}
+
+	next, cmd = model.Update(controlplaneResultMsg{err: errors.New("changing provider base URL requires re-entering the API key")})
+	if next == nil {
+		t.Fatal("expected model after error")
+	}
+	if cmd != nil {
+		t.Fatal("expected no follow-up command")
+	}
+	if !model.dialog.ContainsDialog(surfacedialog.FormCommandID) {
+		t.Fatal("provider form should remain open after save error")
+	}
+}
+
+func TestRuntimeRoutesPasteToPromptDialog(t *testing.T) {
+	model := newApp(nil, nil)
+	model.dialog.OpenDialog(surfacedialog.NewPromptCommand(model.com, surfacedialog.PromptCommandData{
+		Title:               "API Key",
+		Placeholder:         "Enter API key",
+		SubmitCommandPrefix: "/provider edit set key qwen token ",
+	}))
+
+	next, cmd := model.Update(tea.PasteMsg{Content: "sk-pasted"})
+	if next == nil {
+		t.Fatal("expected model after paste")
+	}
+	if cmd != nil {
+		if msg := cmd(); msg != nil {
+			_, _ = model.Update(msg)
+		}
+	}
+
+	action := model.dialog.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	run, ok := action.(surfacedialog.ActionRunControlplaneCommand)
+	if !ok {
+		t.Fatalf("action = %T, want ActionRunControlplaneCommand", action)
+	}
+	if run.Command != "/provider edit set key qwen token sk-pasted" {
+		t.Fatalf("command = %q, want pasted key command", run.Command)
 	}
 }
 

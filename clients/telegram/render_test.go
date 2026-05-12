@@ -214,7 +214,7 @@ func TestRenderTelegramHTMLDoesNotFormatInsideInlineCode(t *testing.T) {
 	}
 }
 
-func TestRenderModelPickerPaginatesLargeLists(t *testing.T) {
+func TestRenderPickerPaginatesLargeLists(t *testing.T) {
 	api := &fakeBotAPI{}
 	worker := newTestWorker(t, api, "http://127.0.0.1:1")
 	items := make([]controlplane.PickerItem, 0, 26)
@@ -231,8 +231,8 @@ func TestRenderModelPickerPaginatesLargeLists(t *testing.T) {
 		externalKey: "42",
 	}, 0, controlplane.Result{
 		Picker: &controlplane.PickerData{
-			Kind:  controlplane.PickerModel,
-			Title: "Model",
+			Kind:  controlplane.PickerProvider,
+			Title: "Provider",
 			Items: items,
 		},
 	})

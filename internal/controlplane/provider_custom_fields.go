@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
 func encodeCustomProviderField(value string) string {
@@ -25,6 +26,7 @@ func encodeCustomProviderFormToken(data customProviderForm) string {
 		data.BaseURL,
 		data.Model,
 		data.APIKey,
+		data.Reasoning,
 		string(data.ToolUseMode),
 	}
 	return encodeCustomProviderField(strings.Join(fields, "\x1f"))
@@ -36,7 +38,10 @@ func decodeCustomProviderFormToken(token string) (customProviderForm, error) {
 		return customProviderForm{}, err
 	}
 	parts := strings.Split(decoded, "\x1f")
-	for len(parts) < 5 {
+	if len(parts) == 5 {
+		parts = append(parts[:4], "", parts[4])
+	}
+	for len(parts) < 6 {
 		parts = append(parts, "")
 	}
 	return customProviderForm{
@@ -44,7 +49,8 @@ func decodeCustomProviderFormToken(token string) (customProviderForm, error) {
 		BaseURL:     strings.TrimSpace(parts[1]),
 		Model:       strings.TrimSpace(parts[2]),
 		APIKey:      strings.TrimSpace(parts[3]),
-		ToolUseMode: providers.ToolUseMode(strings.TrimSpace(parts[4])),
+		Reasoning:   strings.TrimSpace(parts[4]),
+		ToolUseMode: providers.ToolUseMode(strings.TrimSpace(parts[5])),
 	}, nil
 }
 
@@ -63,19 +69,24 @@ func customProviderCommandPrefix(parts ...string) string {
 }
 
 type customProviderFormResultData struct {
-	Title              string
-	Data               customProviderForm
-	KeyStatus          string
-	IncludeToolProfile bool
-	SubmitCommand      func(token string) string
-	CancelCommand      string
-	EditCommand        func(field string, token string) string
-	Error              string
+	Title                  string
+	Data                   customProviderForm
+	ProviderID             string
+	CatalogID              string
+	ProviderType           string
+	KeyStatus              string
+	IncludeIdentity        bool
+	IncludeReasoningEffort bool
+	IncludeToolProfile     bool
+	SubmitCommand          func(token string) string
+	CancelCommand          string
+	EditCommand            func(field string, token string) string
+	Error                  string
 }
 
 func customProviderFormResult(config customProviderFormResultData) Result {
 	token := encodeCustomProviderFormToken(config.Data)
-	fields := customProviderFormFields(config.Data, config.KeyStatus, config.IncludeToolProfile, func(field string) string {
+	fields := customProviderFormFieldsForProvider(config.Data, config.KeyStatus, config.ProviderID, config.CatalogID, config.ProviderType, config.IncludeIdentity, config.IncludeReasoningEffort, config.IncludeToolProfile, func(field string) string {
 		return config.EditCommand(field, token)
 	})
 	return Result{
@@ -92,19 +103,76 @@ func customProviderFormResult(config customProviderFormResultData) Result {
 	}
 }
 
-func customProviderFormFields(data customProviderForm, keyStatus string, includeToolProfile bool, editCommand func(string) string) []FormField {
-	fields := []FormField{
-		{ID: "name", Label: "Name", Value: fieldStatus(data.Name), EditCommand: editCommand("name")},
-		{ID: "base", Label: "Base URL", Value: fieldStatus(data.BaseURL), EditCommand: editCommand("base")},
-		{ID: "model", Label: "Model", Value: fieldStatus(data.Model), EditCommand: editCommand("model")},
-		{ID: "key", Label: "API Key", Value: keyStatus, EditCommand: editCommand("key")},
+func customProviderFormFields(data customProviderForm, keyStatus string, includeIdentity bool, includeReasoningEffort bool, includeToolProfile bool, editCommand func(string) string) []FormField {
+	return customProviderFormFieldsForProvider(data, keyStatus, "", "", "", includeIdentity, includeReasoningEffort, includeToolProfile, editCommand)
+}
+
+func customProviderFormFieldsForProvider(data customProviderForm, keyStatus string, providerID string, catalogID string, providerType string, includeIdentity bool, includeReasoningEffort bool, includeToolProfile bool, editCommand func(string) string) []FormField {
+	capabilities := providers.Capabilities{
+		ReasoningEffort: includeReasoningEffort,
+		ToolCalling:     includeToolProfile,
 	}
-	if includeToolProfile {
-		fields = append(fields,
-			FormField{ID: "tools", Label: "Tool Mode", Value: toolUseModeStatus(data.ToolUseMode), EditCommand: editCommand("tools")},
-		)
+	spec := setup.ProviderFormSpecFromInput(setup.ProviderFormSpecInput{
+		ID:                providerID,
+		CatalogID:         catalogID,
+		Name:              data.Name,
+		Type:              providerType,
+		BaseURL:           data.BaseURL,
+		Model:             data.Model,
+		APIKey:            data.APIKey,
+		ReasoningEffort:   data.Reasoning,
+		ToolUseMode:       data.ToolUseMode,
+		Custom:            includeIdentity,
+		CustomKnown:       true,
+		Capabilities:      capabilities,
+		CapabilitiesKnown: true,
+	})
+	fields := make([]FormField, 0, len(spec.Fields))
+	for _, field := range spec.Fields {
+		id := controlplaneProviderFieldID(field.ID)
+		value := field.Status
+		if field.ID == setup.ProviderFormFieldAPIKey {
+			value = keyStatus
+		}
+		if field.Required {
+			value = fieldStatus(value)
+		}
+		fields = append(fields, FormField{
+			ID:          id,
+			Label:       controlplaneProviderFieldLabel(field),
+			Value:       value,
+			EditCommand: editCommand(id),
+		})
 	}
 	return fields
+}
+
+func controlplaneProviderFieldID(id setup.ProviderFormFieldID) string {
+	switch id {
+	case setup.ProviderFormFieldBaseURL:
+		return "base"
+	case setup.ProviderFormFieldAPIKey:
+		return "key"
+	case setup.ProviderFormFieldReasoningEffort:
+		return "reasoning"
+	case setup.ProviderFormFieldToolUse:
+		return "tools"
+	default:
+		return string(id)
+	}
+}
+
+func controlplaneProviderFieldLabel(field setup.ProviderFormField) string {
+	switch field.ID {
+	case setup.ProviderFormFieldAPIKey:
+		return "API Key"
+	case setup.ProviderFormFieldToolUse:
+		return "Tool Use"
+	case setup.ProviderFormFieldReasoningEffort:
+		return "Reasoning Effort"
+	default:
+		return field.Label
+	}
 }
 
 func customProviderToolModePicker(titlePrefix string, data customProviderForm, submitPrefix string, cancelCommand string) Result {
@@ -121,18 +189,73 @@ func customProviderToolModePicker(titlePrefix string, data customProviderForm, s
 func customProviderToolModeItems(data customProviderForm, prefix string) []PickerItem {
 	current := providers.NormalizeToolUseMode(data.ToolUseMode)
 	return []PickerItem{
-		{ID: "native", Title: "Native", Info: "provider tools", Selected: current == providers.ToolUseNative, Command: prefix + string(providers.ToolUseNative)},
-		{ID: "disabled", Title: "Disabled", Info: "no tools", Selected: current == providers.ToolUseDisabled, Command: prefix + string(providers.ToolUseDisabled)},
+		{ID: "native", Title: "Enabled", Selected: current == providers.ToolUseNative, Command: prefix + string(providers.ToolUseNative)},
+		{ID: "disabled", Title: "Disabled", Selected: current == providers.ToolUseDisabled, Command: prefix + string(providers.ToolUseDisabled)},
 	}
 }
 
 func toolUseModeStatus(value providers.ToolUseMode) string {
-	switch providers.NormalizeToolUseMode(value) {
-	case providers.ToolUseDisabled:
-		return "Disabled"
-	default:
-		return "Native"
+	return setup.ProviderFormToolUseModeStatus(value)
+}
+
+func customProviderBaseURLPicker(titlePrefix string, data customProviderForm, catalogID string, submitPrefix string, cancelCommand string) Result {
+	entry, ok := providers.CatalogEntryByID(catalogID)
+	if !ok || len(entry.BaseURLOptions) == 0 {
+		return customProviderFieldPrompt(titlePrefix, "base", data, "", submitPrefix, cancelCommand)
 	}
+	current := strings.TrimSpace(data.BaseURL)
+	items := make([]PickerItem, 0, len(entry.BaseURLOptions))
+	for _, option := range entry.BaseURLOptions {
+		items = append(items, PickerItem{
+			ID:       option.ID,
+			Title:    option.Name,
+			Info:     option.URL,
+			Selected: strings.TrimSpace(option.URL) == current,
+			Command:  submitPrefix + strings.TrimSpace(option.URL),
+		})
+	}
+	return Result{
+		Handled: true,
+		Picker: NewPickerData(PickerProviderCustom, titlePrefix+": endpoint").
+			Back(cancelCommand).
+			Items(items...).
+			Ptr(),
+	}
+}
+
+func customProviderReasoningEffortPickerWithOptions(titlePrefix string, data customProviderForm, efforts []string, submitPrefix string, cancelCommand string) Result {
+	return Result{
+		Handled: true,
+		Picker: NewPickerData(PickerProviderCustom, titlePrefix+": reasoning effort").
+			HideBack(true).
+			Close(cancelCommand).
+			Items(customProviderReasoningEffortItems(data, efforts, submitPrefix)...).
+			Ptr(),
+	}
+}
+
+func customProviderReasoningEffortItems(data customProviderForm, efforts []string, prefix string) []PickerItem {
+	current := providers.NormalizeReasoningEffort(data.Reasoning)
+	if current == "" {
+		current = providers.DefaultReasoningEffort
+	}
+	items := make([]PickerItem, 0, len(efforts))
+	for _, effort := range efforts {
+		items = append(items, PickerItem{
+			ID:       effort,
+			Title:    strings.Title(effort),
+			Selected: current == effort,
+			Command:  prefix + effort,
+		})
+	}
+	return items
+}
+
+func reasoningEffortStatus(value string) string {
+	if effort := providers.NormalizeReasoningEffort(value); effort != "" {
+		return strings.Title(effort)
+	}
+	return strings.Title(providers.DefaultReasoningEffort)
 }
 
 func firstField(value string) string {

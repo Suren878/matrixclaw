@@ -68,6 +68,10 @@ func (m *model) providerViewportHeight() int {
 	return height
 }
 
+func (m *model) providerModelViewportHeight() int {
+	return m.providerViewportHeight()
+}
+
 func (m *model) providerSearchQuery() string {
 	return strings.ToLower(strings.TrimSpace(m.filterInput.Value()))
 }

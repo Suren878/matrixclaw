@@ -8,6 +8,17 @@ import (
 )
 
 func (d *Dispatcher) customSetupProvider(ctx context.Context, providerID string) (setup.ProviderSetupItem, error) {
+	provider, err := d.setupProvider(ctx, providerID)
+	if err != nil {
+		return setup.ProviderSetupItem{}, err
+	}
+	if !isCustomSetupProvider(provider) {
+		return setup.ProviderSetupItem{}, fmt.Errorf("provider %q is built in and cannot be edited here", provider.Name)
+	}
+	return provider, nil
+}
+
+func (d *Dispatcher) setupProvider(ctx context.Context, providerID string) (setup.ProviderSetupItem, error) {
 	providerID, err := decodeCustomProviderField(providerID)
 	if err != nil {
 		return setup.ProviderSetupItem{}, err
@@ -22,9 +33,6 @@ func (d *Dispatcher) customSetupProvider(ctx context.Context, providerID string)
 	provider, ok := findSetupProvider(providers, providerID)
 	if !ok {
 		return setup.ProviderSetupItem{}, fmt.Errorf("provider %q was not found", providerID)
-	}
-	if !isCustomSetupProvider(provider) {
-		return setup.ProviderSetupItem{}, fmt.Errorf("provider %q is built in and cannot be edited here", provider.Name)
 	}
 	return provider, nil
 }

@@ -14,6 +14,8 @@ import (
 const defaultTimeout = 90 * time.Second
 
 type Config struct {
+	ProviderID      string
+	CatalogID       string
 	APIKey          string
 	BaseURL         string
 	Model           string
@@ -33,6 +35,7 @@ type Runtime struct {
 	reasoningEffort  string
 	useCompletionMax bool
 	profile          providers.RuntimeProfile
+	capabilities     providers.ModelCapabilities
 }
 
 func New(_ context.Context, cfg Config) (providers.Runtime, error) {
@@ -60,11 +63,16 @@ func New(_ context.Context, cfg Config) (providers.Runtime, error) {
 		reasoningEffort:  reasoningEffort,
 		useCompletionMax: useMaxCompletionTokens(baseURL, model),
 		profile:          profile,
+		capabilities:     providerProfile.Capabilities,
 	}, nil
 }
 
 func (r *Runtime) RuntimeProfile() providers.RuntimeProfile {
 	return r.profile
+}
+
+func (r *Runtime) ModelCapabilities() providers.ModelCapabilities {
+	return r.capabilities
 }
 
 func normalizeConfig(cfg Config) (*http.Client, string, string, string, error) {

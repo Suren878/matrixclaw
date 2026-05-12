@@ -3,21 +3,41 @@ package providers
 import "strings"
 
 type ProviderProfile struct {
+	ProviderID              string
+	Model                   string
 	ProviderType            string
 	RuntimeProviderType     string
 	RuntimeProfile          RuntimeProfile
+	Capabilities            ModelCapabilities
 	SupportsReasoningEffort bool
 }
 
 func ProfileForProvider(providerType string) ProviderProfile {
+	return ProfileForModel("", providerType, "")
+}
+
+func ProfileForModel(providerID string, providerType string, modelID string) ProviderProfile {
+	providerID = NormalizeProviderID(providerID)
 	providerType = normalizeProviderTypeForProfile(providerType)
-	profile := ProviderProfile{
-		ProviderType:        providerType,
-		RuntimeProviderType: providerType,
-		RuntimeProfile:      runtimeProfileDefaults(providerType),
+	modelID = strings.TrimSpace(modelID)
+	capabilities := ResolveModelCapabilities(providerID, providerType, modelID)
+	runtimeProfile := runtimeProfileDefaults(providerType)
+	if capabilities.ToolSchemaDialect != "" {
+		runtimeProfile.ToolSchemaDialect = capabilities.ToolSchemaDialect
 	}
-	if providerType == TypeOpenAICompat {
-		profile.SupportsReasoningEffort = true
+	if !capabilities.ToolCalling {
+		runtimeProfile.ToolUseMode = ToolUseDisabled
+	}
+	runtimeProfile = NormalizeRuntimeProfile(runtimeProfile)
+
+	profile := ProviderProfile{
+		ProviderID:              providerID,
+		Model:                   modelID,
+		ProviderType:            providerType,
+		RuntimeProviderType:     providerType,
+		RuntimeProfile:          runtimeProfile,
+		Capabilities:            capabilities,
+		SupportsReasoningEffort: capabilities.ReasoningEffort,
 	}
 	return profile
 }

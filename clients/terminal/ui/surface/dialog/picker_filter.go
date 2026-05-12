@@ -17,7 +17,7 @@ func (p *Picker) setItems() {
 			footer: entry.Footer,
 		})
 	}
-	p.input.SetValue("")
+	p.input = p.input.Reset("")
 	p.applyFilter()
 }
 

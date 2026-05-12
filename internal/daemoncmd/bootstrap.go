@@ -70,12 +70,10 @@ func loadBootstrap() (bootstrapConfig, error) {
 			return bootstrapConfig{}, fmt.Errorf("load setup daemon environment %s: %w", setup.DaemonEnvironmentFilePath(service.Path()), err)
 		}
 
-		activeProvider, ok := setup.ActiveProviderConfig(setupCfg)
-		if !ok {
-			return bootstrapConfig{}, fmt.Errorf("load setup config %s: no active provider configured", service.Path())
-		}
-		if _, ok := setup.ProviderConfigWithResolvedAPIKey(activeProvider); !ok {
-			return bootstrapConfig{}, fmt.Errorf("load setup config %s: %s API key is required; set api_key or %s", service.Path(), firstNonEmpty(activeProvider.Name, activeProvider.ID, activeProvider.Type), firstNonEmpty(activeProvider.APIKeyEnv, "the provider API key environment variable"))
+		if activeProvider, ok := setup.ActiveProviderConfig(setupCfg); ok {
+			if _, ok := setup.ProviderConfigWithResolvedAPIKey(activeProvider); !ok {
+				return bootstrapConfig{}, fmt.Errorf("load setup config %s: %s API key is required; set api_key or %s", service.Path(), firstNonEmpty(activeProvider.Name, activeProvider.ID, activeProvider.Type), firstNonEmpty(activeProvider.APIKeyEnv, "the provider API key environment variable"))
+			}
 		}
 
 		cfg.SessionLLMs = sessionllm.New(setupCfg.ActiveProviderID, sessionProviderSpecsFromSetup(setupCfg))

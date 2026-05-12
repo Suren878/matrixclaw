@@ -14,7 +14,7 @@ func (c *Core) buildProviderRequest(ctx context.Context, turn turnExecution) (pr
 	if err != nil {
 		return providers.Request{}, err
 	}
-	toolUseMode, hasRuntimeProfile := runtimeToolUseMode(turn.Runtime)
+	toolUseAllowed := runtimeToolUseAllowed(turn.Runtime)
 
 	assistant := c.assistantProfile()
 	compactSummary, effectiveHistory := latestCompactSummary(history)
@@ -28,7 +28,7 @@ func (c *Core) buildProviderRequest(ctx context.Context, turn turnExecution) (pr
 		SystemPrompt:       systemPrompt,
 		CustomInstructions: assistant.CustomInstructions,
 	}
-	if hasRuntimeProfile && toolUseMode == providers.ToolUseDisabled {
+	if !toolUseAllowed {
 		request.Messages = buildTextOnlyProviderConversation(effectiveHistory)
 		request.Messages = providers.NormalizeMessages(request.Messages, providers.ToolUseDisabled)
 		return request, nil
@@ -60,6 +60,17 @@ func runtimeToolUseMode(runtime providers.Runtime) (providers.ToolUseMode, bool)
 	}
 	profile := providers.NormalizeRuntimeProfile(profiler.RuntimeProfile())
 	return profile.ToolUseMode, true
+}
+
+func runtimeToolUseAllowed(runtime providers.Runtime) bool {
+	if toolUseMode, ok := runtimeToolUseMode(runtime); ok && toolUseMode == providers.ToolUseDisabled {
+		return false
+	}
+	capabilityProvider, ok := runtime.(providers.RuntimeCapabilityProvider)
+	if !ok {
+		return true
+	}
+	return capabilityProvider.ModelCapabilities().ToolCalling
 }
 
 func AssistantSystemPrompt(profile AssistantProfile) string {

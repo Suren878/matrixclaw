@@ -62,6 +62,17 @@ func (d *Dispatcher) handleCustomProviderCreateStep(ctx context.Context, session
 			token := encodeCustomProviderFormToken(data)
 			return customProviderToolModePicker("Custom "+label, data, customProviderCommandPrefix(kind, "set-tools", token), customProviderCommand(kind, "form", token)), true, nil
 		}
+		if field == "reasoning" {
+			data = data.withDefaultProviderOptions(providers.ProviderCapabilities("", providerType))
+			token := encodeCustomProviderFormToken(data)
+			return customProviderReasoningEffortPickerWithOptions(
+				"Custom "+label,
+				data,
+				providers.ReasoningEffortsForProvider("", providerType),
+				customProviderCommandPrefix(kind, "set-reasoning", token),
+				customProviderCommand(kind, "form", token),
+			), true, nil
+		}
 		token := encodeCustomProviderFormToken(data)
 		return customProviderFieldPrompt("Custom "+label, field, data, "", customProviderCommandPrefix(kind, "set-"+field, token), customProviderCommand(kind, "form", token)), true, nil
 	}
@@ -99,26 +110,36 @@ func (d *Dispatcher) handleCustomProviderCreateStep(ctx context.Context, session
 			return customProviderFormPicker(kind, label, data, message), true, nil
 		}
 		data = data.withDefaultToolProfile(providerType)
-		result, err := d.saveCustomProvider(ctx, session, providerType, data.Name, data.BaseURL, data.Model, data.APIKey, data.ToolUseMode)
+		result, err := d.saveCustomProvider(ctx, session, providerType, data.Name, data.BaseURL, data.Model, data.APIKey, data.Reasoning, data.ToolUseMode)
 		return result, true, err
 	default:
 		return Result{}, false, nil
 	}
 }
 
-func (d *Dispatcher) saveCustomProvider(ctx context.Context, session *core.Session, providerType string, name string, baseURL string, model string, apiKey string, toolUseMode providers.ToolUseMode) (Result, error) {
+func (d *Dispatcher) saveCustomProvider(ctx context.Context, session *core.Session, providerType string, name string, baseURL string, model string, apiKey string, reasoningEffort string, toolUseMode providers.ToolUseMode) (Result, error) {
 	providerID := customProviderID(name)
 	if providerID == "" {
 		return Result{Handled: true, Text: "Provider name is required."}, nil
 	}
-	configured, err := d.providers.ConfigureSetupProvider(ctx, providerID, setup.ProviderSetupUpdate{
+	capabilities := providers.ProviderCapabilities("", providerType)
+	form := customProviderForm{
 		Name:        name,
-		Type:        providerType,
 		BaseURL:     baseURL,
 		Model:       model,
 		APIKey:      apiKey,
+		Reasoning:   reasoningEffort,
 		ToolUseMode: toolUseMode,
-		Active:      true,
+	}.withDefaultProviderOptions(capabilities)
+	configured, err := d.providers.ConfigureSetupProvider(ctx, providerID, setup.ProviderSetupUpdate{
+		Name:            form.Name,
+		Type:            providerType,
+		BaseURL:         form.BaseURL,
+		Model:           form.Model,
+		APIKey:          form.APIKey,
+		ReasoningEffort: form.Reasoning,
+		ToolUseMode:     form.ToolUseMode,
+		Active:          true,
 	})
 	if err != nil {
 		return Result{}, err
@@ -141,20 +162,23 @@ type customProviderForm struct {
 	BaseURL     string
 	Model       string
 	APIKey      string
+	Reasoning   string
 	ToolUseMode providers.ToolUseMode
 }
 
 func customProviderFormPicker(kind string, label string, data customProviderForm, message string) Result {
-	includeToolProfile := false
+	capabilities := providers.Capabilities{}
 	if providerType, _, ok := customProviderType(kind); ok {
-		data = data.withDefaultToolProfile(providerType)
-		includeToolProfile = providerType == providers.TypeOpenAICompat
+		capabilities = providers.ProviderCapabilities("", providerType)
+		data = data.withDefaultProviderOptions(capabilities)
 	}
 	return customProviderFormResult(customProviderFormResultData{
-		Title:              "Custom " + label,
-		Data:               data,
-		KeyStatus:          secretFieldStatus(data.APIKey),
-		IncludeToolProfile: includeToolProfile,
+		Title:                  "Custom " + label,
+		Data:                   data,
+		KeyStatus:              secretFieldStatus(data.APIKey),
+		IncludeIdentity:        true,
+		IncludeReasoningEffort: capabilities.ReasoningEffort,
+		IncludeToolProfile:     capabilities.ToolCalling,
 		SubmitCommand: func(token string) string {
 			return customProviderCommand(kind, "save", token)
 		},
@@ -190,6 +214,8 @@ func (data customProviderForm) field(field string) string {
 		return data.Model
 	case "key":
 		return data.APIKey
+	case "reasoning":
+		return data.Reasoning
 	case "tools":
 		return string(data.ToolUseMode)
 	default:
@@ -208,6 +234,8 @@ func (data customProviderForm) withField(field string, value string) customProvi
 		data.Model = value
 	case "key":
 		data.APIKey = value
+	case "reasoning":
+		data.Reasoning = providers.NormalizeReasoningEffort(value)
 	case "tools":
 		data.ToolUseMode = providers.NormalizeToolUseMode(providers.ToolUseMode(value))
 	}
@@ -215,7 +243,21 @@ func (data customProviderForm) withField(field string, value string) customProvi
 }
 
 func (data customProviderForm) withDefaultToolProfile(providerType string) customProviderForm {
-	if strings.TrimSpace(providerType) != providers.TypeOpenAICompat {
+	return data.withDefaultProviderOptions(providers.ProviderCapabilities("", providerType))
+}
+
+func (data customProviderForm) withDefaultProviderOptions(capabilities providers.Capabilities) customProviderForm {
+	if capabilities.ReasoningEffort {
+		if effort := providers.NormalizeReasoningEffort(data.Reasoning); effort != "" {
+			data.Reasoning = effort
+		} else {
+			data.Reasoning = providers.DefaultReasoningEffort
+		}
+	} else {
+		data.Reasoning = ""
+	}
+	if !capabilities.ToolCalling {
+		data.ToolUseMode = ""
 		return data
 	}
 	if strings.TrimSpace(string(data.ToolUseMode)) == "" {
@@ -245,6 +287,8 @@ func customProviderFieldTitle(field string) string {
 		return "base URL"
 	case "key":
 		return "API key"
+	case "reasoning":
+		return "reasoning effort"
 	default:
 		return field
 	}
@@ -260,6 +304,8 @@ func customProviderFieldPlaceholder(field string) string {
 		return "model-id"
 	case "key":
 		return "API key"
+	case "reasoning":
+		return "medium"
 	default:
 		return ""
 	}
@@ -273,8 +319,8 @@ func fieldStatus(value string) string {
 }
 
 func secretFieldStatus(value string) string {
-	if strings.TrimSpace(value) != "" {
-		return "Set"
+	if value := strings.TrimSpace(value); value != "" {
+		return setup.MaskSecret(value)
 	}
 	return "Required"
 }

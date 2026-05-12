@@ -100,38 +100,44 @@ type ProviderOption struct {
 	Type            string
 	Implemented     bool
 	RequiresBaseURL bool
+	Capabilities    providers.Capabilities
 	DefaultBaseURL  string
+	BaseURLOptions  []providers.BaseURLOption
 	DefaultModel    string
 	APIKeyEnv       string
 	Notes           string
 }
 
 type ProviderSetupItem struct {
-	ID              string                `json:"id"`
-	CatalogID       string                `json:"catalog_id,omitempty"`
-	Name            string                `json:"name"`
-	Type            string                `json:"type"`
-	Status          string                `json:"status"`
-	Configured      bool                  `json:"configured"`
-	Active          bool                  `json:"active"`
-	Implemented     bool                  `json:"implemented"`
-	RequiresBaseURL bool                  `json:"requires_base_url,omitempty"`
-	BaseURL         string                `json:"base_url,omitempty"`
-	Model           string                `json:"model,omitempty"`
-	ToolUseMode     providers.ToolUseMode `json:"tool_use_mode,omitempty"`
-	DefaultModel    string                `json:"default_model,omitempty"`
-	APIKeyPreview   string                `json:"api_key_preview,omitempty"`
-	Notes           string                `json:"notes,omitempty"`
+	ID              string                    `json:"id"`
+	CatalogID       string                    `json:"catalog_id,omitempty"`
+	Name            string                    `json:"name"`
+	Type            string                    `json:"type"`
+	Status          string                    `json:"status"`
+	Configured      bool                      `json:"configured"`
+	Active          bool                      `json:"active"`
+	Implemented     bool                      `json:"implemented"`
+	RequiresBaseURL bool                      `json:"requires_base_url,omitempty"`
+	Capabilities    providers.Capabilities    `json:"capabilities,omitempty"`
+	BaseURL         string                    `json:"base_url,omitempty"`
+	BaseURLOptions  []providers.BaseURLOption `json:"base_url_options,omitempty"`
+	Model           string                    `json:"model,omitempty"`
+	ReasoningEffort string                    `json:"reasoning_effort,omitempty"`
+	ToolUseMode     providers.ToolUseMode     `json:"tool_use_mode,omitempty"`
+	DefaultModel    string                    `json:"default_model,omitempty"`
+	APIKeyPreview   string                    `json:"api_key_preview,omitempty"`
+	Notes           string                    `json:"notes,omitempty"`
 }
 
 type ProviderSetupUpdate struct {
-	Name        string                `json:"name,omitempty"`
-	Type        string                `json:"type,omitempty"`
-	APIKey      string                `json:"api_key,omitempty"`
-	BaseURL     string                `json:"base_url,omitempty"`
-	Model       string                `json:"model,omitempty"`
-	ToolUseMode providers.ToolUseMode `json:"tool_use_mode,omitempty"`
-	Active      bool                  `json:"active,omitempty"`
+	Name            string                `json:"name,omitempty"`
+	Type            string                `json:"type,omitempty"`
+	APIKey          string                `json:"api_key,omitempty"`
+	BaseURL         string                `json:"base_url,omitempty"`
+	Model           string                `json:"model,omitempty"`
+	ReasoningEffort string                `json:"reasoning_effort,omitempty"`
+	ToolUseMode     providers.ToolUseMode `json:"tool_use_mode,omitempty"`
+	Active          bool                  `json:"active,omitempty"`
 }
 
 type ProviderSetupListResponse struct {
@@ -140,6 +146,10 @@ type ProviderSetupListResponse struct {
 
 type ProviderSetupResponse struct {
 	Provider ProviderSetupItem `json:"provider"`
+}
+
+type ProviderModelsResponse struct {
+	Models []string `json:"models"`
 }
 
 type ProviderSetupOKResponse struct {

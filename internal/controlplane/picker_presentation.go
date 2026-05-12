@@ -44,7 +44,7 @@ func PickerLegend(picker PickerData) string {
 		return "enter open · esc " + closeLabel
 	case PickerSessionActions, PickerProviderActions, PickerContext, PickerTasks, PickerTaskActions, PickerTaskArchive, PickerServer:
 		return "enter run · esc " + closeLabel
-	case PickerProvider, PickerProviderCustom, PickerModel:
+	case PickerProvider, PickerProviderCustom:
 		return "enter select · esc " + closeLabel
 	case PickerPermissions:
 		return "enter apply · esc " + closeLabel
@@ -157,8 +157,6 @@ func pickerCompactPrefix(kind PickerKind, item PickerItem) string {
 		default:
 			return ""
 		}
-	case PickerModel:
-		return "🤖 "
 	case PickerServer:
 		switch itemID {
 		case "status":

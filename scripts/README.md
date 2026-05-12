@@ -5,7 +5,8 @@ This directory holds operational scripts only.
 Scripts:
 - `install.sh`
   Install release binaries into `~/.local/bin` and start `matrixclaw setup`.
-  Use `--from-source` for local development installs.
+  After setup is saved, plain `matrixclaw` opens the terminal TUI and starts
+  the daemon when needed. Use `--from-source` for local development installs.
 - `uninstall.sh`
   Remove installed binaries and the user service. Keeps config and state unless
   `--purge` is explicitly passed.

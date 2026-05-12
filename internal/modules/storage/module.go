@@ -48,7 +48,7 @@ func (m *Module) RegisterTools(registry *tools.Registry) error {
 	if m == nil || m.store == nil || registry == nil {
 		return nil
 	}
-	registry.Register(
+	return registry.Register(
 		NewSaveTool(m.store),
 		NewReadTool(m.store),
 		NewListTool(m.store),
@@ -56,7 +56,6 @@ func (m *Module) RegisterTools(registry *tools.Registry) error {
 		NewDeleteTool(m.store),
 		NewSaveTemporaryTool(m.store),
 	)
-	return nil
 }
 
 func (m *Module) Context() string {

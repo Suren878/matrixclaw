@@ -47,7 +47,8 @@ func (m *model) updateProviderList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case providerEntryContinue:
 				if len(setup.ConfiguredProviders(m.draft)) == 0 {
-					m.formError = "configure at least one provider before continuing"
+					m.providerNoProviderCursor = 0
+					m.screen = screenProviderNoProviderConfirm
 					return m, nil
 				}
 				m.openDraftForm(screenAssistantForm)
@@ -63,6 +64,28 @@ func (m *model) updateProviderList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cursor = max(0, len(entries)-1)
 	}
 	return m, cmd
+}
+
+func (m *model) updateProviderNoProviderConfirm(msg tea.Msg) (tea.Model, tea.Cmd) {
+	keyMsg, ok := msg.(tea.KeyPressMsg)
+	if !ok {
+		return m, nil
+	}
+	switch keyMsg.String() {
+	case "esc", "n":
+		m.screen = screenProviderList
+		return m, nil
+	case "up", "k", "down", "j":
+		m.moveIndex(keyMsg.String(), &m.providerNoProviderCursor, 1)
+	case "enter", "y":
+		if m.providerNoProviderCursor == 0 || keyMsg.String() == "y" {
+			m.openDraftForm(screenAssistantForm)
+			return m, nil
+		}
+		m.screen = screenProviderList
+		return m, nil
+	}
+	return m, nil
 }
 
 func (m *model) updateProviderTypeList(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -106,7 +129,7 @@ func (m *model) updateProviderForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case textEditProviderAPIKey:
 			m.openTextEditor(textEditProviderAPIKey, "API Key", m.providerAPIKeyPlaceholder(), "", true)
 		case textEditProviderModel:
-			if m.editingProviderIsCustom() {
+			if !m.providerModelUsesPicker() {
 				m.openTextEditor(textEditProviderModel, "Model", "model-id", m.editingProvider.Model, false)
 			} else {
 				if err := m.openProviderModelPicker(context.Background()); err != nil {
@@ -114,14 +137,44 @@ func (m *model) updateProviderForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case textEditProviderBaseURL:
-			m.openTextEditor(textEditProviderBaseURL, "Base URL", "https://api.example.com/v1", m.editingProvider.BaseURL, false)
+			if item.BaseURL {
+				m.providerBaseURLCursor = m.providerBaseURLIndex()
+				m.screen = screenProviderBaseURLList
+			} else {
+				m.openTextEditor(textEditProviderBaseURL, "Base URL", "https://api.example.com/v1", m.editingProvider.BaseURL, false)
+			}
 		case textEditNone:
 			if item.Reasoning {
 				m.providerEffortCursor = m.reasoningEffortIndex()
 				m.screen = screenProviderEffortList
+			} else if item.ToolUse {
+				m.providerToolUseCursor = m.toolUseModeIndex()
+				m.screen = screenProviderToolUseList
 			}
 		}
 	})
+}
+
+func (m *model) updateProviderBaseURLList(msg tea.Msg) (tea.Model, tea.Cmd) {
+	keyMsg, ok := msg.(tea.KeyPressMsg)
+	if !ok {
+		return m, nil
+	}
+	options := m.providerBaseURLOptions()
+	switch keyMsg.String() {
+	case "esc":
+		m.screen = screenProviderForm
+		return m, nil
+	case "up", "k", "down", "j":
+		m.moveIndex(keyMsg.String(), &m.providerBaseURLCursor, len(options)-1)
+	case "enter":
+		if len(options) > 0 {
+			m.editingProvider.BaseURL = options[m.providerBaseURLCursor]
+		}
+		m.screen = screenProviderForm
+		return m, nil
+	}
+	return m, nil
 }
 
 func (m *model) updateProviderModelList(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -156,7 +209,7 @@ func (m *model) updateProviderEffortList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	efforts := setup.ReasoningEfforts()
+	efforts := m.providerReasoningEfforts()
 	switch keyMsg.String() {
 	case "esc":
 		m.screen = screenProviderForm
@@ -166,6 +219,28 @@ func (m *model) updateProviderEffortList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "enter":
 		if len(efforts) > 0 {
 			m.editingProvider.ReasoningEffort = efforts[m.providerEffortCursor]
+		}
+		m.screen = screenProviderForm
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m *model) updateProviderToolUseList(msg tea.Msg) (tea.Model, tea.Cmd) {
+	keyMsg, ok := msg.(tea.KeyPressMsg)
+	if !ok {
+		return m, nil
+	}
+	modes := providerToolUseModes()
+	switch keyMsg.String() {
+	case "esc":
+		m.screen = screenProviderForm
+		return m, nil
+	case "up", "k", "down", "j":
+		m.moveIndex(keyMsg.String(), &m.providerToolUseCursor, len(modes)-1)
+	case "enter":
+		if len(modes) > 0 {
+			m.editingProvider.ToolUseMode = modes[m.providerToolUseCursor]
 		}
 		m.screen = screenProviderForm
 		return m, nil

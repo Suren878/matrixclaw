@@ -22,9 +22,7 @@ func (d *Dispatcher) handleCustomProvider(ctx context.Context, session *core.Ses
 		if len(fields) < 2 {
 			return Result{Handled: true, Text: "Provider id is required."}, nil
 		}
-		return d.customProviderEditForm(ctx, fields[1])
-	case "edit-form", "edit-field", "edit-set", "edit-save":
-		return d.handleCustomProviderEditStep(ctx, fields[0], strings.TrimSpace(strings.TrimPrefix(args, fields[0])))
+		return d.handleProviderEdit(ctx, session, fields[1])
 	case "delete":
 		if len(fields) < 2 {
 			return Result{Handled: true, Text: "Provider id is required."}, nil

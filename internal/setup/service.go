@@ -106,39 +106,47 @@ func ProviderSetupItemsFromDraft(draft Draft, options []ProviderOption) []Provid
 }
 
 type providerItemSource struct {
-	id            string
-	catalogID     string
-	name          string
-	providerTyp   string
-	baseURL       string
-	model         string
-	toolUseMode   providers.ToolUseMode
-	apiKeyPreview string
+	id              string
+	catalogID       string
+	name            string
+	providerTyp     string
+	capabilities    providers.Capabilities
+	baseURL         string
+	model           string
+	reasoningEffort string
+	toolUseMode     providers.ToolUseMode
+	apiKeyPreview   string
 }
 
 func providerDraftItemSource(provider ProviderDraft) providerItemSource {
+	catalogID := firstNonEmptyTrimmed(provider.CatalogID, provider.ID)
 	return providerItemSource{
-		id:            provider.ID,
-		catalogID:     provider.CatalogID,
-		name:          provider.Name,
-		providerTyp:   provider.Type,
-		baseURL:       provider.BaseURL,
-		model:         provider.Model,
-		toolUseMode:   providers.NormalizeOptionalToolUseMode(provider.ToolUseMode),
-		apiKeyPreview: currentDraftAPIKeyPreview(provider),
+		id:              provider.ID,
+		catalogID:       provider.CatalogID,
+		name:            provider.Name,
+		providerTyp:     provider.Type,
+		capabilities:    providers.ProviderCapabilities(catalogID, provider.Type),
+		baseURL:         provider.BaseURL,
+		model:           provider.Model,
+		reasoningEffort: providers.NormalizeReasoningEffortForProvider(catalogID, provider.Type, provider.ReasoningEffort),
+		toolUseMode:     providers.NormalizeOptionalToolUseMode(provider.ToolUseMode),
+		apiKeyPreview:   currentDraftAPIKeyPreview(provider),
 	}
 }
 
 func providerConfigItemSource(provider ProviderConfig) providerItemSource {
+	catalogID := firstNonEmptyTrimmed(provider.CatalogID, provider.ID)
 	return providerItemSource{
-		id:            provider.ID,
-		catalogID:     provider.CatalogID,
-		name:          provider.Name,
-		providerTyp:   provider.Type,
-		baseURL:       provider.BaseURL,
-		model:         provider.Model,
-		toolUseMode:   providers.NormalizeOptionalToolUseMode(provider.ToolUseMode),
-		apiKeyPreview: ProviderAPIKeyPreview(provider),
+		id:              provider.ID,
+		catalogID:       provider.CatalogID,
+		name:            provider.Name,
+		providerTyp:     provider.Type,
+		capabilities:    providers.ProviderCapabilities(catalogID, provider.Type),
+		baseURL:         provider.BaseURL,
+		model:           provider.Model,
+		reasoningEffort: providers.NormalizeReasoningEffortForProvider(catalogID, provider.Type, provider.ReasoningEffort),
+		toolUseMode:     providers.NormalizeOptionalToolUseMode(provider.ToolUseMode),
+		apiKeyPreview:   ProviderAPIKeyPreview(provider),
 	}
 }
 
@@ -194,8 +202,11 @@ func providerSetupItem(provider providerItemSource, active bool) ProviderSetupIt
 		Active:          active,
 		Implemented:     true,
 		RequiresBaseURL: strings.TrimSpace(provider.baseURL) != "",
+		Capabilities:    provider.capabilities,
 		BaseURL:         provider.baseURL,
+		BaseURLOptions:  providerBaseURLOptions(firstNonEmptyTrimmed(provider.catalogID, provider.id)),
 		Model:           provider.model,
+		ReasoningEffort: provider.reasoningEffort,
 		ToolUseMode:     provider.toolUseMode,
 		APIKeyPreview:   provider.apiKeyPreview,
 	}
@@ -216,8 +227,11 @@ func providerOptionSetupItem(option ProviderOption) ProviderSetupItem {
 		Active:          false,
 		Implemented:     option.Implemented,
 		RequiresBaseURL: option.RequiresBaseURL,
+		Capabilities:    option.Capabilities,
 		BaseURL:         option.DefaultBaseURL,
+		BaseURLOptions:  append([]providers.BaseURLOption(nil), option.BaseURLOptions...),
 		DefaultModel:    option.DefaultModel,
+		ReasoningEffort: providers.DefaultReasoningEffortForProvider(option.ID, option.Type),
 		Notes:           option.Notes,
 	}
 }
@@ -341,35 +355,9 @@ func (s *Service) ConfigureProviderContext(ctx context.Context, providerID strin
 		return ProviderSetupItem{}, err
 	}
 	wasConfigured := ProviderDraftConfigured(provider)
-	if isCustomProviderDraft(provider) {
-		if name := strings.TrimSpace(update.Name); name != "" {
-			provider.Name = name
-		}
-		if providerType := strings.TrimSpace(update.Type); providerType != "" {
-			switch providerType {
-			case providers.TypeOpenAICompat, providers.TypeAnthropic:
-				provider.Type = providerType
-			default:
-				return ProviderSetupItem{}, fmt.Errorf("unsupported custom provider type %q", providerType)
-			}
-		}
-	}
-	if apiKey := strings.TrimSpace(update.APIKey); apiKey != "" {
-		provider.APIKey = apiKey
-		provider.HasStoredAPIKey = true
-		provider.StoredAPIKeyPreview = MaskSecret(apiKey)
-	}
-	if baseURL := strings.TrimSpace(update.BaseURL); baseURL != "" {
-		if provider.HasStoredAPIKey && strings.TrimSpace(update.APIKey) == "" && strings.TrimSpace(provider.BaseURL) != "" && strings.TrimSpace(provider.BaseURL) != baseURL {
-			return ProviderSetupItem{}, errors.New("changing provider base URL requires re-entering the API key")
-		}
-		provider.BaseURL = baseURL
-	}
-	if model := strings.TrimSpace(update.Model); model != "" {
-		provider.Model = model
-	}
-	if toolUseMode := providers.NormalizeOptionalToolUseMode(update.ToolUseMode); toolUseMode != "" {
-		provider.ToolUseMode = toolUseMode
+	provider, err = applyProviderSetupUpdate(provider, update)
+	if err != nil {
+		return ProviderSetupItem{}, err
 	}
 
 	draft = UpsertProviderDraft(draft, provider)
@@ -397,9 +385,6 @@ func (s *Service) DeleteProviderContext(ctx context.Context, providerID string) 
 	}
 	if !isCustomProviderDraft(provider) {
 		return fmt.Errorf("provider %q is built in and cannot be deleted here", provider.Name)
-	}
-	if ProviderDraftConfigured(provider) && len(ConfiguredProviders(draft)) <= 1 {
-		return errors.New("cannot delete the last configured provider")
 	}
 	wasActive := sameProvider(draft.ActiveProviderID, providerID)
 	draft = DeleteProviderDraft(draft, providerID)
@@ -466,6 +451,9 @@ func (s *Service) SaveRuntimeConfigContext(ctx context.Context, draft Draft) (Ap
 }
 
 func (s *Service) ProviderModels(ctx context.Context, provider ProviderDraft) ([]string, error) {
+	if !providers.ProviderCapabilities(firstNonEmptyTrimmed(provider.CatalogID, provider.ID), provider.Type).ModelDiscovery {
+		return nil, fmt.Errorf("%s does not support model discovery", providerDisplayName(provider, ProviderOption{}, false))
+	}
 	if strings.TrimSpace(provider.APIKey) == "" {
 		existing, err := s.Load()
 		if err == nil {
@@ -485,6 +473,65 @@ func (s *Service) ProviderModels(ctx context.Context, provider ProviderDraft) ([
 		APIKey:    provider.APIKey,
 		Model:     provider.Model,
 	})
+}
+
+func (s *Service) ProviderModelsContext(ctx context.Context, providerID string, update ProviderSetupUpdate) ([]string, error) {
+	draft, err := s.Draft()
+	if err != nil {
+		return nil, err
+	}
+	provider, ok := FindProviderDraft(draft, providerID)
+	if !ok {
+		provider, err = s.BuiltInProviderDraft(draft, providerID)
+		if err != nil {
+			provider, err = s.providerDraftForSetupUpdate(draft, providerID, update)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	provider, err = applyProviderSetupUpdate(provider, update)
+	if err != nil {
+		return nil, err
+	}
+	return s.ProviderModels(ctx, provider)
+}
+
+func applyProviderSetupUpdate(provider ProviderDraft, update ProviderSetupUpdate) (ProviderDraft, error) {
+	if isCustomProviderDraft(provider) {
+		if name := strings.TrimSpace(update.Name); name != "" {
+			provider.Name = name
+		}
+		if providerType := strings.TrimSpace(update.Type); providerType != "" {
+			switch providerType {
+			case providers.TypeOpenAICompat, providers.TypeAnthropic:
+				provider.Type = providerType
+			default:
+				return ProviderDraft{}, fmt.Errorf("unsupported custom provider type %q", providerType)
+			}
+		}
+	}
+	if apiKey := strings.TrimSpace(update.APIKey); apiKey != "" {
+		provider.APIKey = apiKey
+		provider.HasStoredAPIKey = true
+		provider.StoredAPIKeyPreview = MaskSecret(apiKey)
+	}
+	if baseURL := strings.TrimSpace(update.BaseURL); baseURL != "" {
+		if provider.HasStoredAPIKey && strings.TrimSpace(update.APIKey) == "" && strings.TrimSpace(provider.BaseURL) != "" && strings.TrimSpace(provider.BaseURL) != baseURL {
+			return ProviderDraft{}, errors.New("changing provider base URL requires re-entering the API key")
+		}
+		provider.BaseURL = baseURL
+	}
+	if model := strings.TrimSpace(update.Model); model != "" {
+		provider.Model = model
+	}
+	if reasoningEffort := providers.NormalizeReasoningEffortForProvider(firstNonEmptyTrimmed(provider.CatalogID, provider.ID), provider.Type, update.ReasoningEffort); reasoningEffort != "" {
+		provider.ReasoningEffort = reasoningEffort
+	}
+	if toolUseMode := providers.NormalizeOptionalToolUseMode(update.ToolUseMode); toolUseMode != "" {
+		provider.ToolUseMode = toolUseMode
+	}
+	return provider, nil
 }
 
 func (s *Service) providerSetupItem(providerID string) (ProviderSetupItem, error) {

@@ -27,10 +27,9 @@ type SessionRuntime interface {
 type ProviderRuntime interface {
 	ListSetupProviders(ctx context.Context) ([]setup.ProviderSetupItem, error)
 	ConfigureSetupProvider(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) (setup.ProviderSetupItem, error)
+	ProviderModels(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) ([]string, error)
 	DeleteSetupProvider(ctx context.Context, providerID string) error
-	ModelsForSession(ctx context.Context, sessionID string) (string, string, []string, error)
 	UpdateSessionProvider(ctx context.Context, sessionID string, providerID string) (core.Session, error)
-	UpdateSessionModel(ctx context.Context, sessionID string, modelID string) (core.Session, error)
 }
 
 type PermissionRuntime interface {
@@ -161,8 +160,6 @@ func (d *Dispatcher) Handle(ctx context.Context, externalKey string, text string
 		return d.handleSession(ctx, externalKey, args)
 	case CommandProvider:
 		return d.handleProvider(ctx, externalKey, args)
-	case CommandModel:
-		return d.handleModel(ctx, externalKey, args)
 	case CommandPermissions:
 		return d.handlePermissions(ctx, externalKey, args)
 	case CommandContext:

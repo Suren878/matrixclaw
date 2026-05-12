@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	terminaltextfield "github.com/Suren878/matrixclaw/clients/terminal/ui/textfield"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -17,9 +18,12 @@ const (
 	screenDaemonForm
 	screenProviderList
 	screenProviderTypeList
+	screenProviderNoProviderConfirm
 	screenProviderForm
+	screenProviderBaseURLList
 	screenProviderModelList
 	screenProviderEffortList
+	screenProviderToolUseList
 	screenDaemonTimezoneList
 	screenAssistantForm
 	screenChannelsList
@@ -95,17 +99,20 @@ type model struct {
 	aborted          bool
 	hasExisting      bool
 
-	providerTypeCursor   int
-	providerModelCursor  int
-	providerEffortCursor int
-	timezoneCursor       int
-	boolPickerCursor     int
-	formFocus            int
-	formAction           int
-	formError            string
-	draftSnapshot        setup.Draft
+	providerTypeCursor       int
+	providerNoProviderCursor int
+	providerBaseURLCursor    int
+	providerModelCursor      int
+	providerEffortCursor     int
+	providerToolUseCursor    int
+	timezoneCursor           int
+	boolPickerCursor         int
+	formFocus                int
+	formAction               int
+	formError                string
+	draftSnapshot            setup.Draft
 
-	textEditorInput  textinput.Model
+	textEditorInput  terminaltextfield.Model
 	textAreaInput    textarea.Model
 	textEditState    commandui.TextEditState
 	textEditorTitle  string
@@ -174,12 +181,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateProviderList(msg)
 	case screenProviderTypeList:
 		return m.updateProviderTypeList(msg)
+	case screenProviderNoProviderConfirm:
+		return m.updateProviderNoProviderConfirm(msg)
 	case screenProviderForm:
 		return m.updateProviderForm(msg)
+	case screenProviderBaseURLList:
+		return m.updateProviderBaseURLList(msg)
 	case screenProviderModelList:
 		return m.updateProviderModelList(msg)
 	case screenProviderEffortList:
 		return m.updateProviderEffortList(msg)
+	case screenProviderToolUseList:
+		return m.updateProviderToolUseList(msg)
 	case screenDaemonTimezoneList:
 		return m.updateDaemonTimezoneList(msg)
 	case screenAssistantForm:

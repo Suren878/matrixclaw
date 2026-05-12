@@ -21,6 +21,9 @@ type fakeRuntime struct {
 	configuredProvider string
 	configuredAPIKey   string
 	configuredUpdate   setup.ProviderSetupUpdate
+	modelsProvider     string
+	modelsUpdate       setup.ProviderSetupUpdate
+	models             []string
 	deletedProvider    string
 	updatedProvider    string
 	updatedPermission  core.PermissionMode
@@ -187,6 +190,15 @@ func (f *fakeRuntime) ConfigureSetupProvider(_ context.Context, providerID strin
 	return setup.ProviderSetupItem{ID: providerID, Name: name, Model: update.Model, Configured: true, Active: true, Implemented: true}, nil
 }
 
+func (f *fakeRuntime) ProviderModels(_ context.Context, providerID string, update setup.ProviderSetupUpdate) ([]string, error) {
+	f.modelsProvider = providerID
+	f.modelsUpdate = update
+	if f.models != nil {
+		return append([]string(nil), f.models...), nil
+	}
+	return []string{"gpt-current", "gpt-alt"}, nil
+}
+
 func (f *fakeRuntime) DeleteSetupProvider(_ context.Context, providerID string) error {
 	f.deletedProvider = providerID
 	next := f.setupProviders[:0]
@@ -257,10 +269,6 @@ func (f *fakeRuntime) setAutomationJobStatus(jobID string, status automation.Job
 	return automation.Job{}, core.ErrNotFound
 }
 
-func (f *fakeRuntime) ModelsForSession(context.Context, string) (string, string, []string, error) {
-	return "openai", "gpt-current", []string{"gpt-current", "gpt-alt"}, nil
-}
-
 func (f *fakeRuntime) UpdateSessionProvider(_ context.Context, sessionID string, providerID string) (core.Session, error) {
 	f.updatedProvider = providerID
 	for i := range f.sessions {
@@ -270,10 +278,6 @@ func (f *fakeRuntime) UpdateSessionProvider(_ context.Context, sessionID string,
 		}
 	}
 	return core.Session{ID: sessionID, ProviderID: providerID}, nil
-}
-
-func (f *fakeRuntime) UpdateSessionModel(context.Context, string, string) (core.Session, error) {
-	return core.Session{}, nil
 }
 
 func (f *fakeRuntime) UpdateSessionPermissionMode(_ context.Context, sessionID string, mode core.PermissionMode) (core.Session, error) {
@@ -370,7 +374,6 @@ func TestDispatcherSharedCommandSmoke(t *testing.T) {
 		"/sessions",
 		"/provider",
 		"/provider custom",
-		"/model",
 		"/permissions",
 		"/tasks",
 		"/tasks archive",
@@ -600,7 +603,7 @@ func TestDispatcherTaskActionsCanArchiveAndDeleteClosed(t *testing.T) {
 	}
 }
 
-func TestDispatcherProviderPromptsForMissingAPIKey(t *testing.T) {
+func TestDispatcherProviderOpensProviderScopedFormForMissingAPIKey(t *testing.T) {
 	rt := testRuntimeWithSession(core.Session{ProviderID: "openai"})
 	d := testDispatcher(rt)
 
@@ -608,14 +611,141 @@ func TestDispatcherProviderPromptsForMissingAPIKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handle(/provider anthropic) error = %v", err)
 	}
-	if result.Prompt == nil {
-		t.Fatal("expected provider API key prompt")
+	if result.Form == nil {
+		t.Fatal("expected provider-scoped setup form")
 	}
-	if !result.Prompt.Sensitive {
-		t.Fatal("provider API key prompt should be sensitive")
+	if customFormFieldValue(t, result.Form, "model") == "" {
+		t.Fatalf("provider setup form = %#v, want model field", result.Form)
 	}
-	if result.Prompt.SubmitCommandPrefix != "/provider key anthropic " {
-		t.Fatalf("SubmitCommandPrefix = %q", result.Prompt.SubmitCommandPrefix)
+	if customFormFieldValue(t, result.Form, "key") != "Required" {
+		t.Fatalf("provider setup form = %#v, want required API key field", result.Form)
+	}
+	if formHasField(result.Form, "reasoning") {
+		t.Fatalf("anthropic provider form should not expose reasoning: %#v", result.Form.Fields)
+	}
+	if formHasField(result.Form, "tools") {
+		t.Fatalf("anthropic provider form should not expose tool use: %#v", result.Form.Fields)
+	}
+	for _, field := range result.Form.Fields {
+		if field.ID == "name" || field.ID == "base" {
+			t.Fatalf("built-in provider form should not expose %q field: %#v", field.ID, result.Form.Fields)
+		}
+	}
+}
+
+func TestDispatcherConfiguredBuiltInProviderUsesCapabilityScopedEditForm(t *testing.T) {
+	rt := testRuntimeWithSession(core.Session{ProviderID: "openai", ModelID: "gpt-current"})
+	rt.setupProviders = []setup.ProviderSetupItem{
+		{
+			ID:            "openai",
+			CatalogID:     "openai",
+			Name:          "OpenAI",
+			Type:          providers.TypeOpenAICompat,
+			DefaultModel:  "gpt-5.4",
+			APIKeyPreview: "****1234",
+			Configured:    true,
+			Active:        true,
+			Implemented:   true,
+		},
+		{ID: "anthropic", CatalogID: "anthropic", Name: "Anthropic", Type: providers.TypeAnthropic, Implemented: true},
+	}
+	rt.models = []string{"gpt-current", "gpt-next"}
+	d := testDispatcher(rt)
+
+	result, err := d.Handle(context.Background(), "local", "/provider openai")
+	if err != nil {
+		t.Fatalf("Handle(/provider openai) error = %v", err)
+	}
+	if result.Form == nil {
+		t.Fatal("expected provider edit form")
+	}
+	if formHasField(result.Form, "name") || formHasField(result.Form, "base") {
+		t.Fatalf("built-in provider form should not expose identity fields: %#v", result.Form.Fields)
+	}
+	if got := customFormFieldValue(t, result.Form, "reasoning"); got != "medium" {
+		t.Fatalf("reasoning field = %q, want medium", got)
+	}
+	if got := customFormFieldValue(t, result.Form, "tools"); got != "Enabled" {
+		t.Fatalf("tool use field = %q, want Enabled", got)
+	}
+	if got := customFormFieldValue(t, result.Form, "key"); got != "****1234" {
+		t.Fatalf("api key field = %q, want stored preview", got)
+	}
+
+	result, err = d.Handle(context.Background(), "local", customFormFieldCommand(t, result.Form, "model"))
+	if err != nil {
+		t.Fatalf("Handle(model field) error = %v", err)
+	}
+	if result.Picker == nil || result.Picker.Title != "Model" {
+		t.Fatalf("model picker = %#v", result.Picker)
+	}
+	if rt.modelsProvider != "openai" || rt.modelsUpdate.Model != "gpt-5.4" {
+		t.Fatalf("models request = provider %q update %#v", rt.modelsProvider, rt.modelsUpdate)
+	}
+	if got := pickerItemCommand(t, result.Picker, "gpt-next"); !strings.Contains(got, "/provider edit set model openai ") || !strings.HasSuffix(got, " gpt-next") {
+		t.Fatalf("model item command = %q", got)
+	}
+}
+
+func TestDispatcherQwenProviderFormUsesEndpointPickerAndStackBack(t *testing.T) {
+	rt := testRuntimeWithSession(core.Session{ProviderID: "qwen", ModelID: "qwen-plus"})
+	rt.setupProviders = []setup.ProviderSetupItem{
+		{
+			ID:             "qwen",
+			CatalogID:      "qwen",
+			Name:           "Qwen / DashScope",
+			Type:           providers.TypeOpenAICompat,
+			BaseURL:        "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+			Model:          "qwen-plus",
+			DefaultModel:   "qwen-plus",
+			APIKeyPreview:  "****qwen",
+			Configured:     true,
+			Active:         true,
+			Implemented:    true,
+			Capabilities:   providers.Capabilities{ModelDiscovery: true, ToolCalling: true},
+			BaseURLOptions: qwenBaseURLOptionsForTest(),
+		},
+	}
+	d := testDispatcher(rt)
+
+	result, err := d.Handle(context.Background(), "local", "/provider qwen")
+	if err != nil {
+		t.Fatalf("Handle(/provider qwen) error = %v", err)
+	}
+	if result.Form == nil {
+		t.Fatal("expected qwen provider form")
+	}
+	if got := customFormFieldValue(t, result.Form, "base"); got != "Singapore / International" {
+		t.Fatalf("qwen endpoint field = %q, want Singapore / International", got)
+	}
+	if result.Form.CancelCommand != "" {
+		t.Fatalf("cancel command = %q, want empty stack back", result.Form.CancelCommand)
+	}
+	form := result.Form
+
+	result, err = d.Handle(context.Background(), "local", customFormFieldCommand(t, result.Form, "base"))
+	if err != nil {
+		t.Fatalf("Handle(qwen base field) error = %v", err)
+	}
+	if result.Picker == nil || result.Picker.Title != "Edit Qwen / DashScope: endpoint" {
+		t.Fatalf("endpoint picker = %#v", result.Picker)
+	}
+	if got := pickerItemCommand(t, result.Picker, "china-beijing"); !strings.HasSuffix(got, " https://dashscope.aliyuncs.com/compatible-mode/v1") {
+		t.Fatalf("china endpoint command = %q", got)
+	}
+
+	result, err = d.Handle(context.Background(), "local", form.SubmitCommand)
+	if err != nil {
+		t.Fatalf("Handle(qwen save) error = %v", err)
+	}
+	if result.Form == nil {
+		t.Fatal("save should return updated provider form")
+	}
+	if result.Form.Error != "Saved." {
+		t.Fatalf("save form error/status = %q, want Saved.", result.Form.Error)
+	}
+	if !result.ReloadSnapshot {
+		t.Fatal("save should request snapshot reload")
 	}
 }
 
@@ -692,7 +822,10 @@ func TestDispatcherCustomProviderFlow(t *testing.T) {
 	if result.Form == nil || result.Form.Title != "Custom OpenAI-Compatible" {
 		t.Fatalf("custom provider form = %#v, want form", result.Form)
 	}
-	if customFormFieldValue(t, result.Form, "tools") != "Native" {
+	if formHasField(result.Form, "reasoning") {
+		t.Fatalf("generic custom OpenAI-compatible form should not expose reasoning: %#v", result.Form.Fields)
+	}
+	if customFormFieldValue(t, result.Form, "tools") != "Enabled" {
 		t.Fatalf("tool mode field = %#v", result.Form.Fields)
 	}
 
@@ -767,6 +900,18 @@ func customFormFieldValue(t *testing.T, form *FormData, id string) string {
 	return ""
 }
 
+func formHasField(form *FormData, id string) bool {
+	if form == nil {
+		return false
+	}
+	for _, field := range form.Fields {
+		if field.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
 func pickerItemCommand(t *testing.T, picker *PickerData, id string) string {
 	t.Helper()
 	if picker == nil {
@@ -781,6 +926,11 @@ func pickerItemCommand(t *testing.T, picker *PickerData, id string) string {
 	return ""
 }
 
+func qwenBaseURLOptionsForTest() []providers.BaseURLOption {
+	entry, _ := providers.CatalogEntryByID("qwen")
+	return append([]providers.BaseURLOption(nil), entry.BaseURLOptions...)
+}
+
 func TestDispatcherCustomProviderActionsEditAndDelete(t *testing.T) {
 	rt := &fakeRuntime{
 		binding: core.ClientBinding{SessionID: "session_1"},
@@ -788,7 +938,7 @@ func TestDispatcherCustomProviderActionsEditAndDelete(t *testing.T) {
 			{ID: "session_1", Title: "Docs", ProviderID: "local-ai"},
 		},
 		setupProviders: []setup.ProviderSetupItem{
-			{ID: "local-ai", CatalogID: "local-ai", Name: "Local AI", Type: providers.TypeOpenAICompat, BaseURL: "http://127.0.0.1:11434/v1", Model: "llama3", ToolUseMode: providers.ToolUseNative, Configured: true, Active: true, Implemented: true},
+			{ID: "local-ai", CatalogID: "local-ai", Name: "Local AI", Type: providers.TypeOpenAICompat, Capabilities: providers.Capabilities{ToolCalling: true}, BaseURL: "http://127.0.0.1:11434/v1", Model: "llama3", ToolUseMode: providers.ToolUseNative, Configured: true, Active: true, Implemented: true},
 			{ID: "openai", CatalogID: "openai", Name: "OpenAI", Type: providers.TypeOpenAICompat, Configured: true, Implemented: true},
 		},
 	}
@@ -798,9 +948,10 @@ func TestDispatcherCustomProviderActionsEditAndDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handle(custom provider) error = %v", err)
 	}
-	if result.Picker == nil || result.Picker.Kind != PickerProviderActions || result.Picker.ContextID != "local-ai" {
-		t.Fatalf("custom provider picker = %#v, want provider actions", result.Picker)
+	if result.Form == nil || customFormFieldValue(t, result.Form, "name") != "Local AI" || customFormFieldValue(t, result.Form, "key") != "Required" {
+		t.Fatalf("custom provider form = %#v", result.Form)
 	}
+	editForm := result.Form
 
 	result, err = d.Handle(context.Background(), "local", "/provider use local-ai")
 	if err != nil {
@@ -810,23 +961,16 @@ func TestDispatcherCustomProviderActionsEditAndDelete(t *testing.T) {
 		t.Fatalf("updatedProvider=%q reload=%v, want local-ai/reload", rt.updatedProvider, result.ReloadSnapshot)
 	}
 
-	result, err = d.Handle(context.Background(), "local", "/provider custom edit local-ai")
-	if err != nil {
-		t.Fatalf("Handle(custom edit) error = %v", err)
-	}
-	if result.Form == nil || customFormFieldValue(t, result.Form, "name") != "Local AI" || customFormFieldValue(t, result.Form, "key") != "Required" {
-		t.Fatalf("edit form = %#v", result.Form)
-	}
-	if customFormFieldValue(t, result.Form, "tools") != "Native" {
-		t.Fatalf("edit tool mode field = %#v, want Native", result.Form.Fields)
+	if customFormFieldValue(t, editForm, "tools") != "Enabled" {
+		t.Fatalf("edit tool mode field = %#v, want Enabled", editForm.Fields)
 	}
 
-	result, err = d.Handle(context.Background(), "local", customFormFieldCommand(t, result.Form, "tools"))
+	result, err = d.Handle(context.Background(), "local", customFormFieldCommand(t, editForm, "tools"))
 	if err != nil {
 		t.Fatalf("Handle(custom edit tools field) error = %v", err)
 	}
-	if result.Picker == nil || !result.Picker.HideBackItem {
-		t.Fatalf("edit tool mode picker = %#v, want picker without back", result.Picker)
+	if result.Picker == nil || result.Picker.HideBackItem != true {
+		t.Fatalf("edit tool mode picker = %#v, want picker without back row", result.Picker)
 	}
 
 	result, err = d.Handle(context.Background(), "local", pickerItemCommand(t, result.Picker, "disabled"))

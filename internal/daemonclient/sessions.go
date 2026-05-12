@@ -123,15 +123,6 @@ func (c *Client) SendMessageParts(ctx context.Context, sessionID string, text st
 	return response, nil
 }
 
-func (c *Client) ModelsForSession(ctx context.Context, sessionID string) (string, string, []string, error) {
-	var response core.SessionModelsResponse
-	path := "/v1/sessions/" + escapedPath(sessionID) + "/models"
-	if err := c.doJSON(ctx, http.MethodGet, path, nil, &response); err != nil {
-		return "", "", nil, err
-	}
-	return response.ProviderID, response.ModelID, response.Models, nil
-}
-
 func (c *Client) ListSessionProviders(ctx context.Context) ([]core.SessionProviderOption, error) {
 	var response core.SessionProvidersResponse
 	if err := c.doJSON(ctx, http.MethodGet, "/v1/session-providers", nil, &response); err != nil {
@@ -144,16 +135,6 @@ func (c *Client) UpdateSessionProvider(ctx context.Context, sessionID string, pr
 	var response core.SessionResponse
 	path := "/v1/sessions/" + escapedPath(sessionID) + "/llm"
 	request := core.UpdateSessionLLMRequest{ProviderID: strings.TrimSpace(providerID)}
-	if err := c.doJSON(ctx, http.MethodPatch, path, request, &response); err != nil {
-		return core.Session{}, err
-	}
-	return response.Session, nil
-}
-
-func (c *Client) UpdateSessionModel(ctx context.Context, sessionID string, modelID string) (core.Session, error) {
-	var response core.SessionResponse
-	path := "/v1/sessions/" + escapedPath(sessionID) + "/llm"
-	request := core.UpdateSessionLLMRequest{ModelID: strings.TrimSpace(modelID)}
 	if err := c.doJSON(ctx, http.MethodPatch, path, request, &response); err != nil {
 		return core.Session{}, err
 	}

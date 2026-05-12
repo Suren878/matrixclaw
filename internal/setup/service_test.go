@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -117,6 +118,28 @@ func saveDaemonDelegationConfig(t *testing.T, service *Service) {
 		},
 	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
+	}
+}
+
+func TestServiceApplyAllowsNoProvider(t *testing.T) {
+	service := newTestService(filepath.Join(t.TempDir(), "setup.json"))
+
+	result, err := service.Apply(Draft{
+		AssistantName:         "Clawdia",
+		AssistantSystemPrompt: "Base system prompt.",
+		HTTPAddr:              "127.0.0.1:8080",
+		DBPath:                "/tmp/matrixclaw.db",
+		AutostartOnBoot:       "no",
+		TelegramEnabled:       "no",
+	})
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if result.Config.ActiveProviderID != "" || len(result.Config.Providers) != 0 {
+		t.Fatalf("provider config = %q/%#v, want no active provider", result.Config.ActiveProviderID, result.Config.Providers)
+	}
+	if result.Summary.Provider.Status != "Not configured" {
+		t.Fatalf("provider status = %q, want Not configured", result.Summary.Provider.Status)
 	}
 }
 
@@ -614,6 +637,115 @@ func TestProviderSetupItemsHideConfiguredBuiltIns(t *testing.T) {
 	if !foundGemini {
 		t.Fatal("gemini should be visible in available provider options")
 	}
+}
+
+func TestProviderOptionsIncludeOpenCrabsComparableOpenAICompatibleProviders(t *testing.T) {
+	service := newTestService(filepath.Join(t.TempDir(), "setup.json"))
+	options := service.ProviderOptions()
+
+	tests := []struct {
+		id             string
+		name           string
+		baseURL        string
+		model          string
+		apiKeyEnv      string
+		modelDiscovery bool
+	}{
+		{
+			id:             "openrouter",
+			name:           "OpenRouter",
+			baseURL:        "https://openrouter.ai/api/v1",
+			model:          "qwen/qwen3-coder-next",
+			apiKeyEnv:      "OPENROUTER_API_KEY",
+			modelDiscovery: true,
+		},
+		{
+			id:             "minimax",
+			name:           "MiniMax",
+			baseURL:        "https://api.minimax.io/v1",
+			model:          "MiniMax-M2.7",
+			apiKeyEnv:      "MINIMAX_API_KEY",
+			modelDiscovery: true,
+		},
+		{
+			id:             "qwen",
+			name:           "Qwen / DashScope",
+			baseURL:        "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+			model:          "qwen-plus",
+			apiKeyEnv:      "DASHSCOPE_API_KEY",
+			modelDiscovery: true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.id, func(t *testing.T) {
+			option, ok := findProviderOptionForTest(options, tt.id)
+			if !ok {
+				t.Fatalf("provider option %q not found", tt.id)
+			}
+			if option.Name != tt.name || option.Type != providers.TypeOpenAICompat || !option.Implemented || !option.RequiresBaseURL {
+				t.Fatalf("option = %#v, want implemented OpenAI-compatible %s", option, tt.name)
+			}
+			if option.DefaultBaseURL != tt.baseURL || option.DefaultModel != tt.model || option.APIKeyEnv != tt.apiKeyEnv {
+				t.Fatalf("option defaults = base:%q model:%q env:%q", option.DefaultBaseURL, option.DefaultModel, option.APIKeyEnv)
+			}
+			if tt.id == "qwen" && len(option.BaseURLOptions) != 4 {
+				t.Fatalf("qwen base URL options = %#v, want 4 Alibaba regions", option.BaseURLOptions)
+			}
+			if option.Capabilities.ModelDiscovery != tt.modelDiscovery || !option.Capabilities.ToolCalling || option.Capabilities.ReasoningEffort || option.Capabilities.NormalizeModel {
+				t.Fatalf("option capabilities = %#v", option.Capabilities)
+			}
+
+			draft, err := service.BuiltInProviderDraft(Draft{}, tt.id)
+			if err != nil {
+				t.Fatalf("BuiltInProviderDraft(%q) error = %v", tt.id, err)
+			}
+			if draft.ID != tt.id || draft.CatalogID != tt.id || draft.BaseURL != tt.baseURL || draft.Model != tt.model || draft.APIKeyEnv != tt.apiKeyEnv {
+				t.Fatalf("draft = %#v", draft)
+			}
+			if draft.ReasoningEffort != "" {
+				t.Fatalf("draft reasoning effort = %q, want empty for %s", draft.ReasoningEffort, tt.id)
+			}
+		})
+	}
+}
+
+func TestProviderModelsContextRequiresAPIKeyWhenChangingStoredKeyBaseURL(t *testing.T) {
+	service := newTestService(filepath.Join(t.TempDir(), "setup.json"))
+	if err := service.SaveDraft(Draft{
+		ActiveProviderID: "local-ai",
+		Providers: []ProviderDraft{{
+			ID:                  "local-ai",
+			Name:                "Local AI",
+			Type:                providers.TypeOpenAICompat,
+			BaseURL:             "https://old.example.com/v1",
+			Model:               "model-id",
+			HasStoredAPIKey:     true,
+			StoredAPIKeyPreview: "****cret",
+		}},
+		HTTPAddr:        "127.0.0.1:8080",
+		DBPath:          "/tmp/matrixclaw.db",
+		AutostartOnBoot: "no",
+	}); err != nil {
+		t.Fatalf("SaveDraft() error = %v", err)
+	}
+
+	_, err := service.ProviderModelsContext(context.Background(), "local-ai", ProviderSetupUpdate{
+		BaseURL: "https://new.example.com/v1",
+	})
+	if err == nil || !strings.Contains(err.Error(), "requires re-entering the API key") {
+		t.Fatalf("ProviderModelsContext() error = %v, want re-enter API key error", err)
+	}
+}
+
+func findProviderOptionForTest(options []ProviderOption, providerID string) (ProviderOption, bool) {
+	for _, option := range options {
+		if option.ID == providerID {
+			return option, true
+		}
+	}
+	return ProviderOption{}, false
 }
 
 func TestSummaryFromDraftTelegramStatuses(t *testing.T) {

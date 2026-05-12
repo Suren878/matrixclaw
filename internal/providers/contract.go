@@ -59,6 +59,10 @@ type RuntimeProfiler interface {
 	RuntimeProfile() RuntimeProfile
 }
 
+type RuntimeCapabilityProvider interface {
+	ModelCapabilities() ModelCapabilities
+}
+
 type Usage struct {
 	InputTokens     int64
 	OutputTokens    int64

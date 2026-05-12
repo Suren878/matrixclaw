@@ -75,7 +75,7 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 		case "use":
 			return "/provider use " + contextID
 		case "edit":
-			return "/provider custom edit " + contextID
+			return "/provider edit " + contextID
 		case "delete":
 			return "/provider custom delete " + contextID
 		case "back":
@@ -85,14 +85,6 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 		default:
 			return "/provider " + contextID
 		}
-	case PickerModel:
-		if itemID == "" {
-			return "/model"
-		}
-		if itemID == "cancel" {
-			return ""
-		}
-		return "/model " + itemID
 	case PickerPermissions:
 		if itemID == "" {
 			return "/permissions"

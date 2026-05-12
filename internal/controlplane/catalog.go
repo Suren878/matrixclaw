@@ -13,7 +13,6 @@ const (
 	CommandSessions    = commandcatalog.CommandSessions
 	CommandSession     = commandcatalog.CommandSession
 	CommandProvider    = commandcatalog.CommandProvider
-	CommandModel       = commandcatalog.CommandModel
 	CommandPermissions = commandcatalog.CommandPermissions
 	CommandContext     = commandcatalog.CommandContext
 	CommandModules     = commandcatalog.CommandModules
@@ -33,7 +32,6 @@ const (
 	PickerProvider        PickerKind = "provider"
 	PickerProviderCustom  PickerKind = "provider_custom"
 	PickerProviderActions PickerKind = "provider_actions"
-	PickerModel           PickerKind = "model"
 	PickerPermissions     PickerKind = "permissions"
 	PickerContext         PickerKind = "context"
 	PickerModules         PickerKind = "modules"

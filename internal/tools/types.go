@@ -13,11 +13,46 @@ const (
 	RiskApproval RiskLevel = "approval"
 )
 
+type Category string
+
+const (
+	CategoryFilesystem Category = "filesystem"
+	CategoryShell      Category = "shell"
+	CategoryAutomation Category = "automation"
+	CategoryStorage    Category = "storage"
+)
+
+type Profile string
+
+const (
+	ProfileReadOnly   Profile = "readonly"
+	ProfileCoding     Profile = "coding"
+	ProfileAutomation Profile = "automation"
+	ProfileStorage    Profile = "storage"
+)
+
+type OutputKind string
+
+const (
+	OutputText          OutputKind = "text"
+	OutputFileContent   OutputKind = "file_content"
+	OutputFileTree      OutputKind = "file_tree"
+	OutputSearchResults OutputKind = "search_results"
+	OutputDiff          OutputKind = "diff"
+	OutputJob           OutputKind = "job"
+	OutputStorageEntry  OutputKind = "storage_entry"
+	OutputStorageList   OutputKind = "storage_list"
+)
+
 type Spec struct {
 	ID              string          `json:"id"`
 	Name            string          `json:"name"`
 	Description     string          `json:"description,omitempty"`
 	Risk            RiskLevel       `json:"risk"`
+	Namespace       string          `json:"namespace,omitempty"`
+	Category        Category        `json:"category,omitempty"`
+	Profiles        []Profile       `json:"profiles,omitempty"`
+	OutputKind      OutputKind      `json:"output_kind,omitempty"`
 	InputJSONSchema json.RawMessage `json:"input_json_schema,omitempty"`
 }
 

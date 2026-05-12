@@ -15,6 +15,12 @@ func TestReasoningEffortDefaults(t *testing.T) {
 	if got := NormalizeReasoningEffort(" Medium "); got != DefaultReasoningEffort {
 		t.Fatalf("NormalizeReasoningEffort() = %q, want %q", got, DefaultReasoningEffort)
 	}
+	if got := ReasoningEffortsForProvider("openai", TypeOpenAICompat); !reflect.DeepEqual(got, []string{"none", "minimal", "low", "medium", "high", "xhigh"}) {
+		t.Fatalf("ReasoningEffortsForProvider(openai) = %#v, want OpenAI reasoning efforts", got)
+	}
+	if got := NormalizeReasoningEffortForProvider("openai", TypeOpenAICompat, "xHigh"); got != "xhigh" {
+		t.Fatalf("NormalizeReasoningEffortForProvider(openai, xHigh) = %q, want xhigh", got)
+	}
 
 	tests := []struct {
 		name        string
@@ -88,7 +94,7 @@ func TestCatalogEntryByID(t *testing.T) {
 func TestOpenAICompatibleCatalogEntriesStayGeneric(t *testing.T) {
 	t.Parallel()
 
-	for _, providerID := range []string{"openai", "deepseek", "xai", "zai", "kimi", "aihubmix"} {
+	for _, providerID := range []string{"openai", "deepseek", "openrouter", "xai", "zai", "minimax", "qwen", "kimi", "aihubmix"} {
 		providerID := providerID
 		t.Run(providerID, func(t *testing.T) {
 			t.Parallel()
@@ -103,6 +109,9 @@ func TestOpenAICompatibleCatalogEntriesStayGeneric(t *testing.T) {
 			if entry.Capabilities.NormalizeModel {
 				t.Fatalf("%s should not use Gemini model normalization", providerID)
 			}
+			if !entry.Capabilities.ToolCalling {
+				t.Fatalf("%s should expose tool calling capability", providerID)
+			}
 
 			profile := ProfileForProvider(entry.Type)
 			if profile.ProviderType != TypeOpenAICompat {
@@ -110,6 +119,80 @@ func TestOpenAICompatibleCatalogEntriesStayGeneric(t *testing.T) {
 			}
 			if profile.RuntimeProfile.ToolSchemaDialect != ToolSchemaJSONSchema {
 				t.Fatalf("%s ToolSchemaDialect = %q, want %q", providerID, profile.RuntimeProfile.ToolSchemaDialect, ToolSchemaJSONSchema)
+			}
+		})
+	}
+}
+
+func TestOpenCrabsComparableCatalogEntries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		id              string
+		name            string
+		baseURL         string
+		model           string
+		apiKeyEnv       string
+		modelDiscovery  bool
+		reasoningEffort bool
+		toolCalling     bool
+		normalizeModel  bool
+	}{
+		{
+			id:             "openrouter",
+			name:           "OpenRouter",
+			baseURL:        "https://openrouter.ai/api/v1",
+			model:          "qwen/qwen3-coder-next",
+			apiKeyEnv:      "OPENROUTER_API_KEY",
+			modelDiscovery: true,
+			toolCalling:    true,
+		},
+		{
+			id:             "minimax",
+			name:           "MiniMax",
+			baseURL:        "https://api.minimax.io/v1",
+			model:          "MiniMax-M2.7",
+			apiKeyEnv:      "MINIMAX_API_KEY",
+			modelDiscovery: true,
+			toolCalling:    true,
+		},
+		{
+			id:             "qwen",
+			name:           "Qwen / DashScope",
+			baseURL:        "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+			model:          "qwen-plus",
+			apiKeyEnv:      "DASHSCOPE_API_KEY",
+			modelDiscovery: true,
+			toolCalling:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.id, func(t *testing.T) {
+			t.Parallel()
+
+			entry, ok := CatalogEntryByID(tt.id)
+			if !ok {
+				t.Fatalf("CatalogEntryByID(%q) not found", tt.id)
+			}
+			if entry.Name != tt.name || entry.Type != TypeOpenAICompat || !entry.Implemented || !entry.RequiresBaseURL {
+				t.Fatalf("entry = %#v, want implemented OpenAI-compatible %s", entry, tt.name)
+			}
+			if entry.DefaultBaseURL != tt.baseURL || entry.DefaultModel != tt.model || entry.APIKeyEnv != tt.apiKeyEnv {
+				t.Fatalf("entry defaults = base:%q model:%q env:%q", entry.DefaultBaseURL, entry.DefaultModel, entry.APIKeyEnv)
+			}
+			if tt.id == "qwen" && len(entry.BaseURLOptions) != 4 {
+				t.Fatalf("qwen base URL options = %#v, want 4 Alibaba regions", entry.BaseURLOptions)
+			}
+			wantCapabilities := Capabilities{
+				ModelDiscovery:  tt.modelDiscovery,
+				ReasoningEffort: tt.reasoningEffort,
+				ToolCalling:     tt.toolCalling,
+				NormalizeModel:  tt.normalizeModel,
+			}
+			if entry.Capabilities != wantCapabilities {
+				t.Fatalf("capabilities = %#v, want %#v", entry.Capabilities, wantCapabilities)
 			}
 		})
 	}

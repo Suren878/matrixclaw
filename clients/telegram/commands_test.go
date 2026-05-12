@@ -21,11 +21,11 @@ func TestRegisterCommandsUsesSharedTopLevelMenu(t *testing.T) {
 		got = append(got, command.Command)
 		descriptions = append(descriptions, command.Description)
 	}
-	want := []string{"sessions", "provider", "model", "permissions", "context", "modules", "tasks", "server", "help"}
+	want := []string{"sessions", "provider", "permissions", "context", "modules", "tasks", "server", "help"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("registered commands = %#v, want %#v", got, want)
 	}
-	wantDescriptions := []string{"Sessions", "Provider", "Model", "Permission Mode", "Context", "Modules", "Tasks", "Server", "Help"}
+	wantDescriptions := []string{"Sessions", "Provider", "Permission Mode", "Context", "Modules", "Tasks", "Server", "Help"}
 	if strings.Join(descriptions, ",") != strings.Join(wantDescriptions, ",") {
 		t.Fatalf("registered descriptions = %#v, want %#v", descriptions, wantDescriptions)
 	}

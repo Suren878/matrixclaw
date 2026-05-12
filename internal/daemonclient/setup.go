@@ -25,6 +25,15 @@ func (c *Client) ConfigureSetupProvider(ctx context.Context, providerID string, 
 	return response.Provider, nil
 }
 
+func (c *Client) ProviderModels(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) ([]string, error) {
+	var response setup.ProviderModelsResponse
+	path := "/v1/setup/providers/" + escapedPath(providerID) + "/models?" + c.clientQuery()
+	if err := c.doJSON(ctx, http.MethodPost, path, update, &response); err != nil {
+		return nil, err
+	}
+	return response.Models, nil
+}
+
 func (c *Client) DeleteSetupProvider(ctx context.Context, providerID string) error {
 	var response setup.ProviderSetupOKResponse
 	path := "/v1/setup/providers/" + escapedPath(providerID) + "?" + c.clientQuery()

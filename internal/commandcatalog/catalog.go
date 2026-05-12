@@ -7,7 +7,6 @@ const (
 	CommandSessions    CommandID = "sessions"
 	CommandSession     CommandID = "session"
 	CommandProvider    CommandID = "provider"
-	CommandModel       CommandID = "model"
 	CommandPermissions CommandID = "permissions"
 	CommandContext     CommandID = "context"
 	CommandModules     CommandID = "modules"
@@ -34,7 +33,6 @@ func Catalog() []CommandSpec {
 		{ID: CommandSessions, Command: "/sessions", Description: "Sessions", Menu: true, Public: true},
 		{ID: CommandSession, Command: "/session", Description: "Session commands", Menu: false, Public: false},
 		{ID: CommandProvider, Command: "/provider", Description: "Provider", Menu: true, Public: true},
-		{ID: CommandModel, Command: "/model", Description: "Model", Menu: true, Public: true},
 		{ID: CommandPermissions, Command: "/permissions", Aliases: []string{"mode"}, Description: "Permission mode", Menu: true, Public: true},
 		{ID: CommandContext, Command: "/context", Aliases: []string{"usage"}, Description: "Context", Menu: true, Public: true},
 		{ID: CommandModules, Command: "/modules", Description: "Modules", Menu: true, Public: true},

@@ -86,6 +86,108 @@ func TestSessionLLMUpdateReloadsStaleProviderRegistry(t *testing.T) {
 	}
 }
 
+func TestSessionLLMUpdateReloadsEmptyProviderRegistry(t *testing.T) {
+	sqliteStore, err := store.NewSQLite(filepath.Join(t.TempDir(), "api.db"))
+	if err != nil {
+		t.Fatalf("NewSQLite() error = %v", err)
+	}
+	defer sqliteStore.Close()
+
+	app := core.New(sqliteStore).WithSessionLLMs(sessionLLMsFromSetupConfig(setup.Config{}))
+	session, err := app.CreateSession(context.Background(), core.CreateSessionInput{Title: "Docs"})
+	if err != nil {
+		t.Fatalf("CreateSession() error = %v", err)
+	}
+
+	reloads := 0
+	server := New(app)
+	server.SetAdminReload(func(context.Context) error {
+		reloads++
+		app.SetSessionLLMs(sessionLLMsFromSetupConfig(setup.Config{
+			ActiveProviderID: "openai",
+			Providers: []setup.ProviderConfig{{
+				ID:      "openai",
+				Name:    "OpenAI",
+				Type:    "openai-compatible",
+				Model:   "gpt-5.4",
+				BaseURL: "https://api.openai.com/v1",
+				APIKey:  "openai-secret",
+			}},
+		}))
+		return nil
+	})
+
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	resp := patchSessionLLM(t, httpServer, session.ID, `{"provider_id":"openai"}`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if reloads != 1 {
+		t.Fatalf("reloads = %d, want 1", reloads)
+	}
+	var payload core.SessionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("Decode(session) error = %v", err)
+	}
+	if payload.Session.ProviderID != "openai" || payload.Session.ModelID != "gpt-5.4" {
+		t.Fatalf("session llm = provider %q model %q, want openai/gpt-5.4", payload.Session.ProviderID, payload.Session.ModelID)
+	}
+}
+
+func TestSessionModelUpdateReloadsEmptyProviderRegistry(t *testing.T) {
+	sqliteStore, err := store.NewSQLite(filepath.Join(t.TempDir(), "api.db"))
+	if err != nil {
+		t.Fatalf("NewSQLite() error = %v", err)
+	}
+	defer sqliteStore.Close()
+
+	app := core.New(sqliteStore).WithSessionLLMs(sessionLLMsFromSetupConfig(setup.Config{}))
+	session, err := app.CreateSession(context.Background(), core.CreateSessionInput{Title: "Docs"})
+	if err != nil {
+		t.Fatalf("CreateSession() error = %v", err)
+	}
+
+	reloads := 0
+	server := New(app)
+	server.SetAdminReload(func(context.Context) error {
+		reloads++
+		app.SetSessionLLMs(sessionLLMsFromSetupConfig(setup.Config{
+			ActiveProviderID: "openai",
+			Providers: []setup.ProviderConfig{{
+				ID:      "openai",
+				Name:    "OpenAI",
+				Type:    "openai-compatible",
+				Model:   "gpt-5.4-mini",
+				BaseURL: "https://api.openai.com/v1",
+				APIKey:  "openai-secret",
+			}},
+		}))
+		return nil
+	})
+
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	resp := patchSessionLLM(t, httpServer, session.ID, `{"model_id":"gpt-5.4"}`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if reloads != 1 {
+		t.Fatalf("reloads = %d, want 1", reloads)
+	}
+	var payload core.SessionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("Decode(session) error = %v", err)
+	}
+	if payload.Session.ProviderID != "openai" || payload.Session.ModelID != "gpt-5.4" {
+		t.Fatalf("session llm = provider %q model %q, want openai/gpt-5.4", payload.Session.ProviderID, payload.Session.ModelID)
+	}
+}
+
 func TestSessionModelUpdatePersistsProviderModelSelection(t *testing.T) {
 	sqliteStore, err := store.NewSQLite(filepath.Join(t.TempDir(), "api.db"))
 	if err != nil {

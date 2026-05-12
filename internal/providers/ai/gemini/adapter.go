@@ -25,6 +25,8 @@ var transientRetryBackoffs = []time.Duration{
 }
 
 type Config struct {
+	ProviderID      string
+	CatalogID       string
 	APIKey          string
 	BaseURL         string
 	Model           string
@@ -41,6 +43,7 @@ type Runtime struct {
 	model           string
 	maxOutputTokens int64
 	profile         providers.RuntimeProfile
+	capabilities    providers.ModelCapabilities
 }
 
 func New(_ context.Context, cfg Config) (providers.Runtime, error) {
@@ -62,11 +65,16 @@ func New(_ context.Context, cfg Config) (providers.Runtime, error) {
 		profile: providerProfile.RuntimeProfileWithOverrides(providers.RuntimeProfile{
 			ToolUseMode: cfg.ToolUseMode,
 		}),
+		capabilities: providerProfile.Capabilities,
 	}, nil
 }
 
 func (r *Runtime) RuntimeProfile() providers.RuntimeProfile {
 	return r.profile
+}
+
+func (r *Runtime) ModelCapabilities() providers.ModelCapabilities {
+	return r.capabilities
 }
 
 func ListModels(ctx context.Context, cfg Config) ([]string, error) {

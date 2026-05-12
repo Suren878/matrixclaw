@@ -12,8 +12,8 @@ func TestNewCommandsIncludesRuntimeSafeItems(t *testing.T) {
 	dialog := NewCommands(surfacecommon.DefaultCommon(), CommandsData{Entries: testCommandEntries(false)})
 
 	items := dialog.visible
-	if len(items) < 5 {
-		t.Fatalf("len(items) = %d, want at least 5", len(items))
+	if len(items) < 4 {
+		t.Fatalf("len(items) = %d, want at least 4", len(items))
 	}
 
 	first := items[0]
@@ -89,11 +89,35 @@ func TestCommandsNavigationSkipsNonSelectableItems(t *testing.T) {
 	}
 }
 
+func TestPromptCommandUsesSharedTextFieldWithPaste(t *testing.T) {
+	dialog := NewPromptCommand(surfacecommon.DefaultCommon(), PromptCommandData{
+		Title:               "API Key",
+		Placeholder:         "Enter API key",
+		SubmitCommandPrefix: "/provider edit set key qwen token ",
+	})
+
+	if dialog.input.Placeholder() != "Enter API key" {
+		t.Fatalf("placeholder = %q, want Enter API key", dialog.input.Placeholder())
+	}
+	if action := dialog.HandleMsg(tea.PasteMsg{Content: "sk-pasted"}); action != nil {
+		if _, ok := action.(ActionCmd); !ok {
+			t.Fatalf("paste action = %T, want nil or ActionCmd", action)
+		}
+	}
+	action := dialog.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter})
+	run, ok := action.(ActionRunControlplaneCommand)
+	if !ok {
+		t.Fatalf("action = %T, want ActionRunControlplaneCommand", action)
+	}
+	if run.Command != "/provider edit set key qwen token sk-pasted" {
+		t.Fatalf("command = %q, want pasted key command", run.Command)
+	}
+}
+
 func testCommandEntries(editorAvailable bool) []CommandEntry {
 	entries := []CommandEntry{
 		{ID: "switch_session", Title: "Sessions", Shortcut: "ctrl+s", Action: ActionRunControlplaneCommand{Command: "/sessions"}},
 		{ID: "switch_provider", Title: "Provider", Action: ActionRunControlplaneCommand{Command: "/provider"}},
-		{ID: "switch_model", Title: "Model", Action: ActionRunControlplaneCommand{Command: "/model"}},
 		{Kind: ListEntryDivider, ID: "divider_interface"},
 	}
 	if editorAvailable {

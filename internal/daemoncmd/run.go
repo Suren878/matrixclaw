@@ -58,20 +58,13 @@ func Run(ctx context.Context) error {
 
 	app.WithOrchestrator(orchestrator)
 	automationService := automation.NewService(automationStore, app, bootstrap.Timezone)
-	toolRegistry := tools.NewRegistry(
-		tools.NewReadExecutor(),
-		tools.NewGlobExecutor(),
-		tools.NewGrepExecutor(),
-		tools.NewLSExecutor(),
-		tools.NewWriteExecutor(),
-		tools.NewEditExecutor(),
-		tools.NewMultiEditExecutor(),
-		tools.NewBashExecutor(),
-		tools.NewJobOutputExecutor(),
-		tools.NewJobKillExecutor(),
+	toolRegistry := tools.NewCoreCodingRegistry(
 		automation.NewReminderTool(automationService),
 		automation.NewScheduledAITaskTool(automationService),
 	)
+	if err := toolRegistry.Err(); err != nil {
+		return err
+	}
 	if err := moduleRegistry.RegisterTools(toolRegistry); err != nil {
 		return err
 	}

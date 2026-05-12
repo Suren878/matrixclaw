@@ -206,6 +206,40 @@ func TestHandleSetupProviderDeleteRemovesCustomAndReloads(t *testing.T) {
 	}
 }
 
+func TestHandleSetupProviderMethodsAreScoped(t *testing.T) {
+	setupService := newSetupService(t, setup.Draft{
+		ActiveProviderID: "openai",
+		Providers:        []setup.ProviderDraft{openAIProviderDraft()},
+	})
+	httpServer := newSetupProviderHTTPServer(t, newTestCore(t), setupService, nil)
+
+	req, err := http.NewRequest(http.MethodPost, httpServer.URL+"/v1/setup/providers/openai", bytes.NewBufferString(`{}`))
+	if err != nil {
+		t.Fatalf("NewRequest(base post) error = %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST setup provider error = %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("POST base provider status = %d, want %d", resp.StatusCode, http.StatusMethodNotAllowed)
+	}
+
+	req, err = http.NewRequest(http.MethodGet, httpServer.URL+"/v1/setup/providers/openai/models", nil)
+	if err != nil {
+		t.Fatalf("NewRequest(models get) error = %v", err)
+	}
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET setup provider models error = %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("GET provider models status = %d, want %d", resp.StatusCode, http.StatusMethodNotAllowed)
+	}
+}
+
 func TestSetupProvidersUseSetupClientPolicy(t *testing.T) {
 	setupService := newSetupService(t, setup.Draft{
 		ActiveProviderID:      "openai",

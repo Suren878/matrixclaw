@@ -12,6 +12,8 @@ import (
 )
 
 type Config struct {
+	ProviderID      string
+	CatalogID       string
 	Type            string
 	APIKey          string
 	BaseURL         string
@@ -41,11 +43,17 @@ func NewRuntime(ctx context.Context, cfg Config) (providers.Runtime, error) {
 	apiKey := strings.TrimSpace(cfg.APIKey)
 	baseURL := strings.TrimSpace(cfg.BaseURL)
 	model := strings.TrimSpace(cfg.Model)
-	profile := providers.ProfileForProvider(providerType)
+	profileID := strings.TrimSpace(cfg.CatalogID)
+	if profileID == "" {
+		profileID = strings.TrimSpace(cfg.ProviderID)
+	}
+	profile := providers.ProfileForModel(profileID, providerType, model)
 
 	switch profile.RuntimeProviderType {
 	case providers.TypeOpenAICompat:
 		return newOpenAICompatRuntime(ctx, openaicompat.Config{
+			ProviderID:      strings.TrimSpace(cfg.ProviderID),
+			CatalogID:       strings.TrimSpace(cfg.CatalogID),
 			APIKey:          apiKey,
 			BaseURL:         baseURL,
 			Model:           model,
@@ -56,6 +64,8 @@ func NewRuntime(ctx context.Context, cfg Config) (providers.Runtime, error) {
 		})
 	case providers.TypeAnthropic:
 		return newAnthropicRuntime(ctx, anthropic.Config{
+			ProviderID:      strings.TrimSpace(cfg.ProviderID),
+			CatalogID:       strings.TrimSpace(cfg.CatalogID),
 			APIKey:          apiKey,
 			BaseURL:         baseURL,
 			Model:           model,
@@ -64,6 +74,8 @@ func NewRuntime(ctx context.Context, cfg Config) (providers.Runtime, error) {
 		})
 	case providers.TypeGemini:
 		return newGeminiRuntime(ctx, gemini.Config{
+			ProviderID:      strings.TrimSpace(cfg.ProviderID),
+			CatalogID:       strings.TrimSpace(cfg.CatalogID),
 			APIKey:          apiKey,
 			BaseURL:         baseURL,
 			Model:           model,

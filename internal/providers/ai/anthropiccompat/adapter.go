@@ -21,6 +21,8 @@ const (
 )
 
 type Config struct {
+	ProviderID      string
+	CatalogID       string
 	APIKey          string
 	BaseURL         string
 	Model           string
@@ -30,12 +32,13 @@ type Config struct {
 }
 
 type Runtime struct {
-	client    *http.Client
-	endpoint  string
-	apiKey    string
-	model     string
-	maxTokens int64
-	profile   providers.RuntimeProfile
+	client       *http.Client
+	endpoint     string
+	apiKey       string
+	model        string
+	maxTokens    int64
+	profile      providers.RuntimeProfile
+	capabilities providers.ModelCapabilities
 }
 
 func New(_ context.Context, cfg Config) (providers.Runtime, error) {
@@ -49,17 +52,22 @@ func New(_ context.Context, cfg Config) (providers.Runtime, error) {
 	}
 
 	return &Runtime{
-		client:    client,
-		endpoint:  strings.TrimRight(baseURL, "/") + "/messages",
-		apiKey:    apiKey,
-		model:     model,
-		maxTokens: maxTokens,
-		profile:   providerProfile.RuntimeProfile,
+		client:       client,
+		endpoint:     strings.TrimRight(baseURL, "/") + "/messages",
+		apiKey:       apiKey,
+		model:        model,
+		maxTokens:    maxTokens,
+		profile:      providerProfile.RuntimeProfile,
+		capabilities: providerProfile.Capabilities,
 	}, nil
 }
 
 func (r *Runtime) RuntimeProfile() providers.RuntimeProfile {
 	return r.profile
+}
+
+func (r *Runtime) ModelCapabilities() providers.ModelCapabilities {
+	return r.capabilities
 }
 
 func ListModels(ctx context.Context, cfg Config) ([]string, error) {

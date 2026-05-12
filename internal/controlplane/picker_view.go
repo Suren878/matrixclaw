@@ -67,8 +67,6 @@ func PickerCommandLabel(picker PickerData) string {
 		return "/session"
 	case PickerProvider, PickerProviderCustom, PickerProviderActions:
 		return "/provider"
-	case PickerModel:
-		return "/model"
 	case PickerPermissions:
 		return "/permissions"
 	case PickerContext:
@@ -97,7 +95,7 @@ func PickerSelectedPage(items []PickerItem, pageSize int) int {
 }
 
 func PaginatePicker(picker PickerData, page int, pageSize int) PickerPage {
-	if pageSize <= 0 || picker.Kind != PickerModel {
+	if pageSize <= 0 {
 		return PickerPage{Items: append([]PickerItem(nil), picker.Items...), Page: 0, Pages: 1}
 	}
 	trailing := []PickerItem{}

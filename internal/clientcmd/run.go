@@ -56,7 +56,9 @@ func Run(io IO, binaryName string, args []string) int {
 	}
 
 	switch command {
-	case "", "setup":
+	case "":
+		return runDefaultCommand(stdout, stderr, binaryName, service)
+	case "setup":
 		return runSetupCommand(stdout, stderr, binaryName, service)
 	case "status":
 		return runStatusCommand(stdout, stderr, binaryName, service)
@@ -79,6 +81,18 @@ func Run(io IO, binaryName string, args []string) int {
 	}
 }
 
+func runDefaultCommand(stdout io.Writer, stderr io.Writer, binaryName string, service *appsetup.Service) int {
+	configured, err := service.IsConfigured()
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: setup: %v\n", binaryName, err)
+		return 1
+	}
+	if !configured {
+		return runSetupCommand(stdout, stderr, binaryName, service)
+	}
+	return runTUICommand(stderr, binaryName, service)
+}
+
 func runSetupCommand(stdout io.Writer, stderr io.Writer, binaryName string, service *appsetup.Service) int {
 	result, err := openSetupUI(context.Background(), service)
 	if errors.Is(err, terminalsetup.ErrAborted) {
@@ -94,7 +108,7 @@ func runSetupCommand(stdout io.Writer, stderr io.Writer, binaryName string, serv
 
 func printUsage(w io.Writer, binaryName string) {
 	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintf(w, "  %s                  Open the setup UI\n", binaryName)
+	fmt.Fprintf(w, "  %s                  Open TUI when configured, otherwise setup\n", binaryName)
 	fmt.Fprintf(w, "  %s setup            Open the setup UI\n", binaryName)
 	fmt.Fprintf(w, "  %s status           Print setup and matrixclaw service state\n", binaryName)
 	fmt.Fprintf(w, "  %s doctor           Diagnose setup, daemon, and provider registry\n", binaryName)

@@ -65,10 +65,12 @@ func TestRenderRowWidthIncludesStylePadding(t *testing.T) {
 
 func TestRowToneForStatus(t *testing.T) {
 	cases := map[string]RowTone{
-		"Configured": RowToneAccent,
-		"enabled":    RowToneAccent,
-		"Disabled":   RowToneWarning,
-		"Active":     RowToneNormal,
+		"Configured":     RowToneAccent,
+		"enabled":        RowToneNormal,
+		"Disabled":       RowToneNormal,
+		"Active":         RowToneAccent,
+		"gpt-5 · Active": RowToneAccent,
+		"Inactive":       RowToneNormal,
 	}
 	for status, want := range cases {
 		if got := RowToneForStatus(status); got != want {

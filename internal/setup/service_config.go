@@ -75,25 +75,23 @@ func (s *Service) buildConfig(draft Draft) (Config, error) {
 		seen[provider.ID] = struct{}{}
 		configured = append(configured, provider)
 	}
-	if len(configured) == 0 {
-		return Config{}, errors.New("configure at least one provider before saving setup")
-	}
 
 	activeProviderID := providers.NormalizeProviderID(draft.ActiveProviderID)
-	if activeProviderID == "" {
+	if activeProviderID == "" && len(configured) > 0 {
 		activeProviderID = configured[0].ID
 	}
-	var active ProviderConfig
-	foundActive := false
-	for _, provider := range configured {
-		if sameProvider(provider.ID, activeProviderID) {
-			active = provider
-			foundActive = true
-			break
+	if activeProviderID != "" {
+		foundActive := false
+		for _, provider := range configured {
+			if sameProvider(provider.ID, activeProviderID) {
+				activeProviderID = provider.ID
+				foundActive = true
+				break
+			}
 		}
-	}
-	if !foundActive {
-		return Config{}, errors.New("active provider is not configured")
+		if !foundActive {
+			return Config{}, errors.New("active provider is not configured")
+		}
 	}
 
 	apiToken, err := existingOrNewAPIToken(existing.Daemon.APIToken)
@@ -103,7 +101,7 @@ func (s *Service) buildConfig(draft Draft) (Config, error) {
 	cfg := Config{
 		Version:          CurrentVersion,
 		CompletedAt:      s.now().UTC(),
-		ActiveProviderID: active.ID,
+		ActiveProviderID: activeProviderID,
 		Assistant: AssistantConfig{
 			Name:               strings.TrimSpace(draft.AssistantName),
 			SystemPrompt:       strings.TrimSpace(draft.AssistantSystemPrompt),
@@ -289,6 +287,9 @@ func (s *Service) buildProviderConfig(draft ProviderDraft, existing Config) (Pro
 	}
 
 	toolUseMode := providers.NormalizeOptionalToolUseMode(draft.ToolUseMode)
+	if !providers.ProviderCapabilities(catalogID, providerType).ToolCalling {
+		toolUseMode = ""
+	}
 
 	return ProviderConfig{
 		ID:              providerID,
@@ -391,6 +392,10 @@ func ParseBool(v string) bool {
 
 func ReasoningEfforts() []string {
 	return providers.ReasoningEfforts()
+}
+
+func ReasoningEffortsForProvider(providerID string, providerType string) []string {
+	return providers.ReasoningEffortsForProvider(providerID, providerType)
 }
 
 func sameProvider(left string, right string) bool {

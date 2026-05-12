@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -17,10 +18,15 @@ func (m *model) handleProviderFormSave() error {
 	}
 	if m.providerSupportsReasoningEffort() {
 		if m.editingProvider.ReasoningEffort == "" {
-			m.editingProvider.ReasoningEffort = "medium"
+			m.editingProvider.ReasoningEffort = providers.DefaultReasoningEffortForProvider(m.editingProvider.CatalogID, m.editingProvider.Type)
 		}
 	} else {
 		m.editingProvider.ReasoningEffort = ""
+	}
+	if m.providerSupportsToolUse() {
+		m.editingProvider.ToolUseMode = providers.NormalizeToolUseMode(m.editingProvider.ToolUseMode)
+	} else {
+		m.editingProvider.ToolUseMode = ""
 	}
 
 	m.draft = setup.UpsertProviderDraft(m.draft, m.editingProvider)

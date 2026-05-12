@@ -145,6 +145,26 @@ func TestLoadBootstrapUsesDaemonEnvironmentFile(t *testing.T) {
 	}
 }
 
+func TestLoadBootstrapAllowsSetupWithoutProvider(t *testing.T) {
+	setupPath := filepath.Join(t.TempDir(), "setup.json")
+	t.Setenv("MATRIXCLAW_SETUP_PATH", setupPath)
+	t.Setenv("MATRIXCLAW_HTTP_ADDR", "")
+	t.Setenv("MATRIXCLAW_DB_PATH", "")
+
+	saveBootstrapTestConfig(t, setupPath, func(cfg *setup.Config) {
+		cfg.ActiveProviderID = ""
+		cfg.Providers = nil
+	})
+
+	cfg, err := loadBootstrap()
+	if err != nil {
+		t.Fatalf("loadBootstrap() error = %v", err)
+	}
+	if providerID, modelID := cfg.SessionLLMs.ActiveSelection(); providerID != "" || modelID != "" {
+		t.Fatalf("ActiveSelection() = %q/%q, want empty", providerID, modelID)
+	}
+}
+
 func TestLoadBootstrapFailsOnBrokenSetupProvider(t *testing.T) {
 	setupPath := filepath.Join(t.TempDir(), "setup.json")
 	t.Setenv("MATRIXCLAW_SETUP_PATH", setupPath)

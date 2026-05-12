@@ -83,10 +83,15 @@ func (d *FormCommand) title() string {
 func (d *FormCommand) items() []commandui.Item {
 	items := make([]commandui.Item, 0, len(d.data.Fields))
 	for _, field := range d.data.Fields {
+		tone := commandui.RowToneNormal
+		if strings.TrimSpace(field.ID) == "model" && strings.TrimSpace(field.Value) != "" {
+			tone = commandui.RowToneAccent
+		}
 		items = append(items, commandui.Item{
 			ID:     strings.TrimSpace(field.ID),
 			Title:  strings.TrimSpace(field.Label),
 			Status: strings.TrimSpace(field.Value),
+			Tone:   tone,
 		})
 	}
 	return items

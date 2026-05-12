@@ -14,6 +14,10 @@ func (e *multiEditExecutor) Spec() Spec {
 		Name:            "MultiEdit",
 		Description:     "Apply several edits to one file",
 		Risk:            RiskApproval,
+		Namespace:       namespaceCoreFilesystem,
+		Category:        CategoryFilesystem,
+		Profiles:        []Profile{ProfileCoding},
+		OutputKind:      OutputDiff,
 		InputJSONSchema: multiEditInputSchema,
 	}
 }

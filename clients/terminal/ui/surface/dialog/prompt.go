@@ -4,12 +4,12 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/key"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
 	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
 	surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
+	terminaltextfield "github.com/Suren878/matrixclaw/clients/terminal/ui/textfield"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 )
 
@@ -19,7 +19,7 @@ type PromptCommandData = controlplane.PromptData
 
 type PromptCommand struct {
 	com   *surfacecommon.Common
-	input textinput.Model
+	input terminaltextfield.Model
 	data  PromptCommandData
 
 	keyMap struct {
@@ -32,20 +32,15 @@ func NewPromptCommand(com *surfacecommon.Common, data PromptCommandData) *Prompt
 	if com == nil {
 		com = surfacecommon.DefaultCommon()
 	}
-	input := textinput.New()
-	input.Placeholder = strings.TrimSpace(data.Placeholder)
-	input.SetValue(strings.TrimSpace(data.Value))
-	input.CursorEnd()
-	if data.Sensitive {
-		input.EchoMode = textinput.EchoPassword
-	}
-	applyTextInputStyles(&input, com.Styles.TextInput)
-	_ = input.Focus()
-
 	d := &PromptCommand{
-		com:   com,
-		input: input,
-		data:  data,
+		com: com,
+		input: terminaltextfield.New(
+			strings.TrimSpace(data.Placeholder),
+			strings.TrimSpace(data.Value),
+			terminaltextfield.WithSecret(data.Sensitive),
+			terminaltextfield.WithSurfaceStyles(com.Styles.TextInput),
+		),
+		data: data,
 	}
 	d.keyMap.Submit = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "save"))
 	d.keyMap.Close = key.NewBinding(key.WithKeys("esc", "alt+esc"), key.WithHelp("esc", "cancel"))
@@ -65,7 +60,7 @@ func (d *PromptCommand) HandleMsg(msg tea.Msg) Action {
 		}
 	}
 	var cmd tea.Cmd
-	d.input, cmd = d.input.Update(msg)
+	cmd = d.input.Update(msg)
 	if cmd != nil {
 		return ActionCmd{Cmd: cmd}
 	}

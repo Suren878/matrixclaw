@@ -34,6 +34,10 @@ func (t *ReminderTool) Spec() tools.Spec {
 		Name:        "Create Reminder",
 		Description: "Create a one-time reminder. Use only after resolving the exact time and timezone with the user.",
 		Risk:        tools.RiskSafe,
+		Namespace:   "core.automation",
+		Category:    tools.CategoryAutomation,
+		Profiles:    []tools.Profile{tools.ProfileAutomation},
+		OutputKind:  tools.OutputText,
 		InputJSONSchema: json.RawMessage(`{
   "type": "object",
   "properties": {
@@ -85,6 +89,10 @@ func (t *ScheduledAITaskTool) Spec() tools.Spec {
 		Name:        "Create Scheduled AI Task",
 		Description: "Create a scheduled AI task. Use for recurring or one-time tasks that should run later in the current session.",
 		Risk:        tools.RiskApproval,
+		Namespace:   "core.automation",
+		Category:    tools.CategoryAutomation,
+		Profiles:    []tools.Profile{tools.ProfileAutomation},
+		OutputKind:  tools.OutputText,
 		InputJSONSchema: json.RawMessage(`{
   "type": "object",
   "properties": {
@@ -103,15 +111,13 @@ func (t *ScheduledAITaskTool) Execute(ctx context.Context, call tools.Call) (too
 	if t == nil || t.service == nil {
 		return tools.Result{}, fmt.Errorf("%w: automation service not configured", core.ErrExecutionUnavailable)
 	}
-	var input struct {
-		ScheduleMode string `json:"schedule_mode"`
-		RunAt        string `json:"run_at"`
-		CronExpr     string `json:"cron_expr"`
-		Prompt       string `json:"prompt"`
-		Title        string `json:"title"`
-	}
+	var input scheduledAITaskToolInput
 	if err := json.Unmarshal(call.Args, &input); err != nil {
 		return tools.Result{IsError: true, Content: "Invalid scheduled task arguments."}, nil
+	}
+	create, result := t.validateScheduledAITaskInput(input, call.SessionID)
+	if result.IsError {
+		return result, nil
 	}
 	if !call.Approved {
 		return tools.Result{
@@ -123,26 +129,6 @@ func (t *ScheduledAITaskTool) Execute(ctx context.Context, call tools.Call) (too
 			},
 		}, nil
 	}
-	create := CreateJobInput{
-		Kind:      JobKindAITask,
-		SessionID: call.SessionID,
-		Title:     strings.TrimSpace(input.Title),
-		Prompt:    strings.TrimSpace(input.Prompt),
-	}
-	switch ScheduleMode(strings.TrimSpace(input.ScheduleMode)) {
-	case ScheduleModeOnce:
-		runAt, err := time.Parse(time.RFC3339, strings.TrimSpace(input.RunAt))
-		if err != nil {
-			return tools.Result{IsError: true, Content: "run_at must be an RFC3339 timestamp for once schedules."}, nil
-		}
-		create.ScheduleMode = ScheduleModeOnce
-		create.RunAt = &runAt
-	case ScheduleModeCron:
-		create.ScheduleMode = ScheduleModeCron
-		create.CronExpr = strings.TrimSpace(input.CronExpr)
-	default:
-		return tools.Result{IsError: true, Content: "schedule_mode must be once or cron."}, nil
-	}
 	job, err := t.service.CreateJobForRun(ctx, call.RunID, create)
 	if err != nil {
 		if errors.Is(err, core.ErrInvalidInput) {
@@ -151,4 +137,42 @@ func (t *ScheduledAITaskTool) Execute(ctx context.Context, call tools.Call) (too
 		return tools.Result{}, err
 	}
 	return tools.Result{Content: fmt.Sprintf("Scheduled AI task created: %s", job.ID)}, nil
+}
+
+type scheduledAITaskToolInput struct {
+	ScheduleMode string `json:"schedule_mode"`
+	RunAt        string `json:"run_at"`
+	CronExpr     string `json:"cron_expr"`
+	Prompt       string `json:"prompt"`
+	Title        string `json:"title"`
+}
+
+func (t *ScheduledAITaskTool) validateScheduledAITaskInput(input scheduledAITaskToolInput, sessionID string) (CreateJobInput, tools.Result) {
+	create := CreateJobInput{
+		Kind:      JobKindAITask,
+		SessionID: sessionID,
+		Title:     strings.TrimSpace(input.Title),
+		Prompt:    strings.TrimSpace(input.Prompt),
+	}
+	switch ScheduleMode(strings.TrimSpace(input.ScheduleMode)) {
+	case ScheduleModeOnce:
+		runAt, err := time.Parse(time.RFC3339, strings.TrimSpace(input.RunAt))
+		if err != nil {
+			return CreateJobInput{}, tools.Result{IsError: true, Content: "run_at must be an RFC3339 timestamp for once schedules."}
+		}
+		create.ScheduleMode = ScheduleModeOnce
+		create.RunAt = &runAt
+	case ScheduleModeCron:
+		create.ScheduleMode = ScheduleModeCron
+		create.CronExpr = strings.TrimSpace(input.CronExpr)
+	default:
+		return CreateJobInput{}, tools.Result{IsError: true, Content: "schedule_mode must be once or cron."}
+	}
+	if _, err := t.service.buildJob(create); err != nil {
+		if errors.Is(err, core.ErrInvalidInput) {
+			return CreateJobInput{}, tools.Result{IsError: true, Content: err.Error()}
+		}
+		return CreateJobInput{}, tools.Result{IsError: true, Content: err.Error()}
+	}
+	return create, tools.Result{}
 }

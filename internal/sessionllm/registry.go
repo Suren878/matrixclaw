@@ -2,6 +2,7 @@ package sessionllm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -11,6 +12,8 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers/discovery"
 	providerfactory "github.com/Suren878/matrixclaw/internal/providers/factory"
 )
+
+var ErrNoActiveProvider = errors.New("no active provider configured; open setup providers to configure one")
 
 type Registry struct {
 	mu        sync.Mutex
@@ -83,6 +86,12 @@ func (r *Registry) Providers() []core.SessionProviderOption {
 func (r *Registry) Normalize(providerID string, modelID string) (core.SessionProviderOption, string, error) {
 	cfg, ok := r.resolveProvider(providerID)
 	if !ok {
+		if len(r.order) == 0 {
+			if strings.TrimSpace(providerID) == "" && strings.TrimSpace(modelID) == "" {
+				return core.SessionProviderOption{}, "", nil
+			}
+			return core.SessionProviderOption{}, "", ErrNoActiveProvider
+		}
 		return core.SessionProviderOption{}, "", fmt.Errorf("provider %q is not configured", strings.TrimSpace(providerID))
 	}
 	option := core.SessionProviderOption{
@@ -106,6 +115,9 @@ func (r *Registry) Normalize(providerID string, modelID string) (core.SessionPro
 func (r *Registry) Models(ctx context.Context, providerID string) ([]string, error) {
 	cfg, ok := r.resolveProvider(providerID)
 	if !ok {
+		if len(r.order) == 0 {
+			return nil, ErrNoActiveProvider
+		}
 		return nil, fmt.Errorf("provider %q is not configured", strings.TrimSpace(providerID))
 	}
 	models, err := discovery.Models(ctx, discovery.ModelDiscoveryInput{
@@ -126,6 +138,9 @@ func (r *Registry) Resolve(ctx context.Context, providerID string, modelID strin
 	option, resolvedModel, err := r.Normalize(providerID, modelID)
 	if err != nil {
 		return nil, core.SessionProviderOption{}, "", err
+	}
+	if strings.TrimSpace(option.ID) == "" {
+		return nil, core.SessionProviderOption{}, "", ErrNoActiveProvider
 	}
 	cfg, _ := r.resolveProvider(option.ID)
 	cacheKey := option.ID + "\x00" + resolvedModel
@@ -163,6 +178,8 @@ func (r *Registry) lookup(providerID string) (ProviderSpec, bool) {
 
 func runtimeConfigWithModel(provider ProviderSpec, model string) providerfactory.Config {
 	return providerfactory.Config{
+		ProviderID:      provider.ID,
+		CatalogID:       provider.CatalogID,
 		Type:            provider.Type,
 		APIKey:          provider.APIKey,
 		BaseURL:         provider.BaseURL,

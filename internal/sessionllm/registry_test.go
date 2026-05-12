@@ -1,6 +1,7 @@
 package sessionllm
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -48,10 +49,30 @@ func TestNewBuildsRegistryFromProviderSpecs(t *testing.T) {
 	}
 }
 
+func TestRegistryAllowsEmptyConfigurationUntilResolve(t *testing.T) {
+	t.Parallel()
+
+	reg := New("", nil)
+	if providerID, modelID := reg.ActiveSelection(); providerID != "" || modelID != "" {
+		t.Fatalf("ActiveSelection() = %q/%q, want empty", providerID, modelID)
+	}
+	if providers := reg.Providers(); len(providers) != 0 {
+		t.Fatalf("Providers() = %#v, want none", providers)
+	}
+	if option, model, err := reg.Normalize("", ""); err != nil || option.ID != "" || model != "" {
+		t.Fatalf("Normalize(empty) = %#v/%q/%v, want empty nil result", option, model, err)
+	}
+	if _, _, _, err := reg.Resolve(nil, "", ""); !errors.Is(err, ErrNoActiveProvider) {
+		t.Fatalf("Resolve() error = %v, want ErrNoActiveProvider", err)
+	}
+}
+
 func TestRuntimeConfigWithModelUsesProviderSpec(t *testing.T) {
 	t.Parallel()
 
 	got := runtimeConfigWithModel(ProviderSpec{
+		ID:              "provider-1",
+		CatalogID:       "openai",
 		Type:            providers.TypeOpenAICompat,
 		APIKey:          "secret",
 		BaseURL:         "https://api.example.com/v1",
@@ -63,6 +84,9 @@ func TestRuntimeConfigWithModelUsesProviderSpec(t *testing.T) {
 
 	if got.Type != providers.TypeOpenAICompat || got.Model != "override-model" {
 		t.Fatalf("runtime config identity = %#v, want OpenAI-compatible override model", got)
+	}
+	if got.ProviderID != "provider-1" || got.CatalogID != "openai" {
+		t.Fatalf("runtime config provider ids = %#v", got)
 	}
 	if got.APIKey != "secret" || got.BaseURL != "https://api.example.com/v1" || got.MaxOutputTokens != 4096 {
 		t.Fatalf("runtime config transport = %#v", got)

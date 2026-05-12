@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/providers"
 	appsetup "github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -53,6 +54,10 @@ func runProviderVerifyCommand(stdout io.Writer, stderr io.Writer, binaryName str
 		if name == "" {
 			name = strings.TrimSpace(provider.ID)
 		}
+		if !providers.ProviderCapabilities(firstNonEmptyTrimmed(provider.CatalogID, provider.ID), provider.Type).ModelDiscovery {
+			fmt.Fprintf(stdout, "%s: provider %s: skipped (model discovery unsupported)\n", binaryName, name)
+			continue
+		}
 		models, err := service.ProviderModels(context.Background(), provider)
 		if err != nil {
 			fmt.Fprintf(stdout, "%s: provider %s: ERROR %s\n", binaryName, name, redactSecrets(err.Error(), provider.APIKey, providerSecret(cfg, provider.ID)))
@@ -67,6 +72,15 @@ func runProviderVerifyCommand(stdout io.Writer, stderr io.Writer, binaryName str
 	}
 	fmt.Fprintf(stdout, "%s: providers verify: ok\n", binaryName)
 	return 0
+}
+
+func firstNonEmptyTrimmed(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func providerSecret(cfg appsetup.Config, providerID string) string {

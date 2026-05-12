@@ -1,0 +1,37 @@
+{
+  "providers": {
+    "qwen": {
+      "type": "openai-compatible",
+      "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+      "api_key": "$DASHSCOPE_API_KEY",
+      "base_url_options": [
+        {
+          "id": "singapore",
+          "name": "Singapore / International",
+          "url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+        },
+        {
+          "id": "us-virginia",
+          "name": "US (Virginia)",
+          "url": "https://dashscope-us.aliyuncs.com/compatible-mode/v1"
+        },
+        {
+          "id": "china-beijing",
+          "name": "China (Beijing)",
+          "url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        },
+        {
+          "id": "hong-kong",
+          "name": "Hong Kong (China)",
+          "url": "https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1"
+        }
+      ],
+      "models": [
+        {
+          "id": "qwen-plus",
+          "name": "Qwen Plus"
+        }
+      ]
+    }
+  }
+}

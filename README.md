@@ -112,7 +112,7 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
 ## Commands
 
 ```text
-matrixclaw                  open setup
+matrixclaw                  open TUI when configured, otherwise setup
 matrixclaw setup            open setup
 matrixclaw status           print setup and service state
 matrixclaw doctor           diagnose setup, daemon, and providers
@@ -126,8 +126,13 @@ matrixclaw tui              open terminal chat
 matrixclawd                 service binary used by systemd/direct launch
 ```
 
+The setup file is the configured marker. First run `matrixclaw` or explicit
+`matrixclaw setup` writes it; later `matrixclaw` starts the daemon when needed
+and opens the terminal TUI. Exiting the TUI closes only the terminal client, not
+the background daemon.
+
 Commands that read setup report missing or unsupported setup on stderr and exit
-nonzero. Run `matrixclaw setup` before normal runtime commands.
+nonzero. Use `matrixclaw setup` to recreate setup explicitly.
 
 ## From Source
 

@@ -30,7 +30,23 @@ func (s *Server) handleSetupProviders(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSetupProviderByID(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPatch && r.Method != http.MethodDelete {
+	providerPath := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/setup/providers/"), "/")
+	providerID := providerPath
+	modelsRequest := false
+	if before, ok := strings.CutSuffix(providerPath, "/models"); ok {
+		providerID = strings.Trim(before, "/")
+		modelsRequest = true
+	}
+	if providerID == "" {
+		writeErrorMessage(w, http.StatusBadRequest, "provider id is required")
+		return
+	}
+	if modelsRequest {
+		if r.Method != http.MethodPost {
+			writeMethodNotAllowed(w, http.MethodPost)
+			return
+		}
+	} else if r.Method != http.MethodPatch && r.Method != http.MethodDelete {
 		writeMethodNotAllowed(w, http.MethodPatch, http.MethodDelete)
 		return
 	}
@@ -38,13 +54,21 @@ func (s *Server) handleSetupProviderByID(w http.ResponseWriter, r *http.Request)
 		writeErrorMessage(w, http.StatusNotImplemented, "setup service is not configured")
 		return
 	}
-	providerID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/setup/providers/"), "/")
-	if providerID == "" {
-		writeErrorMessage(w, http.StatusBadRequest, "provider id is required")
-		return
-	}
 	if !s.allowProviderSetup(r) {
 		writeErrorMessage(w, http.StatusForbidden, "provider setup is disabled for this client")
+		return
+	}
+	if modelsRequest {
+		var update setup.ProviderSetupUpdate
+		if !decodeJSONBody(w, r, &update) {
+			return
+		}
+		models, err := s.setup.ProviderModelsContext(r.Context(), providerID, update)
+		if err != nil {
+			writeErrorMessage(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, setup.ProviderModelsResponse{Models: models})
 		return
 	}
 	if r.Method == http.MethodDelete {

@@ -115,6 +115,14 @@ func (r ControlplaneRuntime) ConfigureSetupProvider(ctx context.Context, provide
 	return client.ConfigureSetupProvider(ctx, providerID, update)
 }
 
+func (r ControlplaneRuntime) ProviderModels(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) ([]string, error) {
+	client, err := r.client("")
+	if err != nil {
+		return nil, err
+	}
+	return client.ProviderModels(ctx, providerID, update)
+}
+
 func (r ControlplaneRuntime) DeleteSetupProvider(ctx context.Context, providerID string) error {
 	client, err := r.client("")
 	if err != nil {
@@ -236,28 +244,12 @@ func (r ControlplaneRuntime) RunAutomationJobNow(ctx context.Context, jobID stri
 	return client.RunAutomationJobNow(ctx, jobID)
 }
 
-func (r ControlplaneRuntime) ModelsForSession(ctx context.Context, sessionID string) (string, string, []string, error) {
-	client, err := r.client("")
-	if err != nil {
-		return "", "", nil, err
-	}
-	return client.ModelsForSession(ctx, sessionID)
-}
-
 func (r ControlplaneRuntime) UpdateSessionProvider(ctx context.Context, sessionID string, providerID string) (core.Session, error) {
 	client, err := r.client("")
 	if err != nil {
 		return core.Session{}, err
 	}
 	return client.UpdateSessionProvider(ctx, sessionID, providerID)
-}
-
-func (r ControlplaneRuntime) UpdateSessionModel(ctx context.Context, sessionID string, modelID string) (core.Session, error) {
-	client, err := r.client("")
-	if err != nil {
-		return core.Session{}, err
-	}
-	return client.UpdateSessionModel(ctx, sessionID, modelID)
 }
 
 func (r ControlplaneRuntime) UpdateSessionPermissionMode(ctx context.Context, sessionID string, mode core.PermissionMode) (core.Session, error) {

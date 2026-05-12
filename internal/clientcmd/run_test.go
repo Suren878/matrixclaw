@@ -449,6 +449,48 @@ func TestProvidersVerifyChecksModelsWithoutLeakingKeys(t *testing.T) {
 	}
 }
 
+func TestProvidersVerifySkipsProvidersWithoutModelDiscovery(t *testing.T) {
+	setupPath := filepath.Join(t.TempDir(), "setup.json")
+	t.Setenv("MATRIXCLAW_SETUP_PATH", setupPath)
+
+	store := setup.NewFileStore(setupPath)
+	if err := store.Save(setup.Config{
+		Version:          setup.CurrentVersion,
+		ActiveProviderID: "local-text",
+		Providers: []setup.ProviderConfig{{
+			ID:      "local-text",
+			Name:    "Local Text",
+			Type:    "text-only",
+			APIKey:  "test-api-key",
+			Model:   "local-model",
+			BaseURL: "http://127.0.0.1:11434/v1",
+		}},
+		Daemon: setup.DaemonConfig{
+			HTTPAddr: "127.0.0.1:8080",
+			DBPath:   filepath.Join(t.TempDir(), "matrixclaw.db"),
+		},
+		Clients: setup.ClientsConfig{
+			Terminal: setup.TerminalConfig{Enabled: true},
+			Telegram: setup.TelegramConfig{Enabled: false},
+		},
+	}); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(IO{Stdout: &stdout, Stderr: &stderr}, "matrixclaw", []string{"providers", "verify"})
+	if code != 0 {
+		t.Fatalf("Run() code = %d, want 0, stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "provider Local Text: skipped (model discovery unsupported)") {
+		t.Fatalf("stdout = %q, want skip message", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "providers verify: ok") {
+		t.Fatalf("stdout = %q, want verify ok", stdout.String())
+	}
+}
+
 func TestProvidersVerifyRedactsProviderKeyFromErrors(t *testing.T) {
 	setupPath := filepath.Join(t.TempDir(), "setup.json")
 	t.Setenv("MATRIXCLAW_SETUP_PATH", setupPath)
@@ -558,81 +600,139 @@ func TestDoctorFailsWhenRuntimeProviderIsMissing(t *testing.T) {
 	}
 }
 
-func TestDefaultRunStartsSetupUI(t *testing.T) {
-	tests := []struct {
-		name          string
-		existingSetup bool
-	}{
-		{name: "without existing setup"},
-		{name: "with existing setup", existingSetup: true},
+func TestDefaultRunStartsSetupUIWhenSetupIsMissing(t *testing.T) {
+	originalService := newSetupService
+	originalSetupUI := openSetupUI
+	defer func() {
+		newSetupService = originalService
+		openSetupUI = originalSetupUI
+	}()
+
+	setupPath := filepath.Join(t.TempDir(), "setup.json")
+	store := setup.NewFileStore(setupPath)
+	newSetupService = func() (*setup.Service, error) {
+		return setup.NewService(store), nil
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			originalService := newSetupService
-			originalSetupUI := openSetupUI
-			defer func() {
-				newSetupService = originalService
-				openSetupUI = originalSetupUI
-			}()
+	setupCalled := false
+	openSetupUI = func(_ context.Context, service *setup.Service) (setup.ApplyResult, error) {
+		setupCalled = true
+		if service.Path() != setupPath {
+			t.Fatalf("service path = %q, want %q", service.Path(), setupPath)
+		}
+		return setup.ApplyResult{Path: service.Path()}, nil
+	}
 
-			setupPath := filepath.Join(t.TempDir(), "setup.json")
-			store := setup.NewFileStore(setupPath)
-			if tt.existingSetup {
-				if err := store.Save(setup.Config{
-					Version:          setup.CurrentVersion,
-					ActiveProviderID: "openai",
-					Providers: []setup.ProviderConfig{{
-						ID:      "openai",
-						Name:    "OpenAI",
-						Type:    "openai-compatible",
-						APIKey:  "test-api-key",
-						Model:   "gpt-5.4-mini",
-						BaseURL: "https://api.openai.com/v1",
-					}},
-					Daemon: setup.DaemonConfig{
-						HTTPAddr: "127.0.0.1:8080",
-						DBPath:   "/tmp/matrixclaw.db",
-					},
-					Clients: setup.ClientsConfig{
-						Terminal: setup.TerminalConfig{Enabled: true},
-						Telegram: setup.TelegramConfig{Enabled: false},
-					},
-				}); err != nil {
-					t.Fatalf("Save() error = %v", err)
-				}
-			}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(IO{
+		Stdout: &stdout,
+		Stderr: &stderr,
+	}, "matrixclaw", nil)
 
-			newSetupService = func() (*setup.Service, error) {
-				return setup.NewService(store), nil
-			}
+	if code != 0 {
+		t.Fatalf("Run() code = %d, want 0", code)
+	}
+	if !setupCalled {
+		t.Fatal("setup UI was not called")
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
 
-			setupCalled := false
-			openSetupUI = func(_ context.Context, service *setup.Service) (setup.ApplyResult, error) {
-				setupCalled = true
-				if service.Path() != setupPath {
-					t.Fatalf("service path = %q, want %q", service.Path(), setupPath)
-				}
-				return setup.ApplyResult{Path: service.Path()}, nil
-			}
+func TestDefaultRunLaunchesTUIWhenSetupExists(t *testing.T) {
+	originalService := newSetupService
+	originalSetupUI := openSetupUI
+	originalTUI := openTUI
+	originalEnsureDaemon := ensureDaemon
+	defer func() {
+		newSetupService = originalService
+		openSetupUI = originalSetupUI
+		openTUI = originalTUI
+		ensureDaemon = originalEnsureDaemon
+	}()
 
-			var stdout bytes.Buffer
-			var stderr bytes.Buffer
-			code := Run(IO{
-				Stdout: &stdout,
-				Stderr: &stderr,
-			}, "matrixclaw", nil)
+	setupPath := filepath.Join(t.TempDir(), "setup.json")
+	store := setup.NewFileStore(setupPath)
+	if err := store.Save(setup.Config{
+		Version:          setup.CurrentVersion,
+		ActiveProviderID: "openai",
+		Providers: []setup.ProviderConfig{{
+			ID:      "openai",
+			Name:    "OpenAI",
+			Type:    "openai-compatible",
+			APIKey:  "test-api-key",
+			Model:   "gpt-5.4-mini",
+			BaseURL: "https://api.openai.com/v1",
+		}},
+		Daemon: setup.DaemonConfig{
+			HTTPAddr: "127.0.0.1:8080",
+			DBPath:   "/tmp/matrixclaw.db",
+		},
+		Clients: setup.ClientsConfig{
+			Terminal: setup.TerminalConfig{Enabled: true},
+			Telegram: setup.TelegramConfig{Enabled: false},
+		},
+	}); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	service := setup.NewService(store)
+	newSetupService = func() (*setup.Service, error) {
+		return service, nil
+	}
 
-			if code != 0 {
-				t.Fatalf("Run() code = %d, want 0", code)
-			}
-			if !setupCalled {
-				t.Fatal("setup UI was not called")
-			}
-			if stderr.Len() != 0 {
-				t.Fatalf("stderr = %q, want empty", stderr.String())
-			}
-		})
+	setupCalled := false
+	openSetupUI = func(_ context.Context, _ *setup.Service) (setup.ApplyResult, error) {
+		setupCalled = true
+		return setup.ApplyResult{}, nil
+	}
+
+	ensureCalls := 0
+	ensureDaemon = func(_ context.Context, got *setup.Service) (setup.DaemonSummary, error) {
+		ensureCalls++
+		if got != service {
+			t.Fatal("ensure daemon got unexpected service")
+		}
+		return setup.DaemonSummary{
+			Status:        "Configured",
+			RuntimeStatus: "Running",
+			HTTPAddr:      "127.0.0.1:8080",
+			DBPath:        "/tmp/matrixclaw.db",
+			Running:       true,
+		}, nil
+	}
+
+	tuiCalled := false
+	openTUI = func(_ context.Context, cfg tuiruntime.Config) error {
+		tuiCalled = true
+		if cfg.Provider != "OpenAI" {
+			t.Fatalf("Provider = %q, want OpenAI", cfg.Provider)
+		}
+		return nil
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(IO{
+		Stdout: &stdout,
+		Stderr: &stderr,
+	}, "matrixclaw", nil)
+
+	if code != 0 {
+		t.Fatalf("Run() code = %d, want 0, stderr=%q", code, stderr.String())
+	}
+	if setupCalled {
+		t.Fatal("setup UI was called")
+	}
+	if !tuiCalled {
+		t.Fatal("tui runtime was not launched")
+	}
+	if ensureCalls != 1 {
+		t.Fatalf("ensureCalls = %d, want 1", ensureCalls)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
 	}
 }
 

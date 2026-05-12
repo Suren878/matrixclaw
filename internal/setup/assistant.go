@@ -158,8 +158,7 @@ func compactCommandContext() string {
 		"/sessions -> create/select/rename/delete sessions",
 		"/remind -> create one-time reminders",
 		"/tasks -> list/create/pause/resume/delete scheduled AI tasks",
-		"/provider key <provider> <key> -> configure provider API key",
-		"/model <model> -> switch current session model",
+		"/provider -> select or edit provider model/settings",
 		"/restart -> full daemon service restart",
 	)
 	return strings.Join(items, "; ")

@@ -6,10 +6,10 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/textarea"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
 	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	terminaltextfield "github.com/Suren878/matrixclaw/clients/terminal/ui/textfield"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -28,7 +28,7 @@ func (m *model) renderTextEditor() string {
 	card := commandui.RenderPromptCard(m.commandFrame(), commandui.PromptData{
 		Title:       m.textEditorTitle,
 		Value:       m.textEditorInput.View(),
-		Placeholder: m.textEditorInput.Placeholder,
+		Placeholder: m.textEditorInput.Placeholder(),
 		Error:       m.formError,
 	})
 	return m.renderCommandCard(card)
@@ -51,7 +51,7 @@ func (m *model) updateTextEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	var cmd tea.Cmd
-	m.textEditorInput, cmd = m.textEditorInput.Update(msg)
+	cmd = m.textEditorInput.Update(msg)
 	return m, cmd
 }
 
@@ -81,8 +81,7 @@ func (m *model) openTextEditor(target textEditTarget, title string, placeholder 
 		m.screen = screenTextEditor
 		return
 	}
-	m.textEditorInput = newInput(placeholder, value, secret)
-	m.textEditorInput.Focus()
+	m.textEditorInput = newTextField(placeholder, value, secret)
 	m.screen = screenTextEditor
 }
 
@@ -165,18 +164,12 @@ func (m *model) textEditorReturnScreen() screen {
 	}
 }
 
-func newInput(placeholder string, value string, secret bool) textinput.Model {
-	input := textinput.New()
-	input.Placeholder = placeholder
-	input.SetValue(value)
-	input.CharLimit = 512
-	input.SetWidth(64)
-	styleTextInput(&input)
-	if secret {
-		input.EchoMode = textinput.EchoPassword
-		input.EchoCharacter = '•'
-	}
-	return input
+func newTextField(placeholder string, value string, secret bool) terminaltextfield.Model {
+	return terminaltextfield.New(placeholder, value,
+		terminaltextfield.WithCharLimit(4096),
+		terminaltextfield.WithWidth(64),
+		terminaltextfield.WithSecret(secret),
+	)
 }
 
 func newTextArea(placeholder string, value string) textarea.Model {

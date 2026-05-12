@@ -11,18 +11,7 @@ import (
 )
 
 func newCoreCodingRegistry() *tools.Registry {
-	return tools.NewRegistry(
-		tools.NewReadExecutor(),
-		tools.NewGlobExecutor(),
-		tools.NewGrepExecutor(),
-		tools.NewLSExecutor(),
-		tools.NewWriteExecutor(),
-		tools.NewEditExecutor(),
-		tools.NewMultiEditExecutor(),
-		tools.NewBashExecutor(),
-		tools.NewJobOutputExecutor(),
-		tools.NewJobKillExecutor(),
-	)
+	return tools.NewCoreCodingRegistry()
 }
 
 type sessionLLMRegistryStub struct {

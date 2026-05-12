@@ -55,9 +55,8 @@ func TestPickerCommandBuildsSharedCommands(t *testing.T) {
 		{kind: PickerProvider, itemID: "custom", want: "/provider custom"},
 		{kind: PickerProvider, itemID: "cancel", want: ""},
 		{kind: PickerProviderCustom, itemID: "openai", want: "/provider custom openai"},
-		{kind: PickerProviderActions, contextID: "local-ai", itemID: "edit", want: "/provider custom edit local-ai"},
+		{kind: PickerProviderActions, contextID: "local-ai", itemID: "edit", want: "/provider edit local-ai"},
 		{kind: PickerProviderActions, contextID: "local-ai", itemID: "delete", want: "/provider custom delete local-ai"},
-		{kind: PickerModel, itemID: "gpt-5.4", want: "/model gpt-5.4"},
 		{kind: PickerPermissions, itemID: "full_auto", want: "/permissions full_auto"},
 		{kind: PickerModules, itemID: "storage", want: "/modules storage"},
 		{kind: PickerStorageTemp, itemID: "toggle", want: "/modules storage temp-cleanup-mode"},
@@ -95,19 +94,22 @@ func TestBuildCommandViewMarksMenuItems(t *testing.T) {
 			items = append(items, view)
 		}
 	}
-	if len(items) != 9 {
-		t.Fatalf("len(items) = %d, want 9", len(items))
+	if len(items) != 8 {
+		t.Fatalf("len(items) = %d, want 8", len(items))
 	}
 	byCommand := make(map[string]CommandView, len(items))
 	for _, item := range items {
 		byCommand[item.Command] = item
 	}
-	for _, command := range []string{"/new", "/sessions", "/provider", "/model", "/permissions", "/context", "/modules", "/tasks", "/server"} {
+	for _, command := range []string{"/new", "/sessions", "/provider", "/permissions", "/context", "/modules", "/tasks", "/server"} {
 		if _, ok := byCommand[command]; !ok {
 			t.Fatalf("menu items missing %s: %#v", command, items)
 		}
 	}
-	if byCommand["/sessions"].Status != "Docs" || byCommand["/provider"].Status != "openai" || byCommand["/model"].Status != "gpt-5.4" {
+	if _, ok := byCommand["/model"]; ok {
+		t.Fatalf("menu items should configure models through providers now: %#v", items)
+	}
+	if byCommand["/sessions"].Status != "Docs" || byCommand["/provider"].Status != "openai" {
 		t.Fatalf("menu status split mismatch: %#v", items)
 	}
 	if byCommand["/provider"].Group != MenuItemGroupPrimary || byCommand["/server"].Group != MenuItemGroupSecondary {
@@ -142,9 +144,12 @@ func TestHelpTextShowsOnlyPublicCommands(t *testing.T) {
 	if strings.Contains(text, "/new") || strings.Contains(text, "/session -") || strings.Contains(text, "/status") || strings.Contains(text, "/restart") {
 		t.Fatalf("HelpText() unexpectedly includes hidden commands: %q", text)
 	}
-	for _, command := range []string{"/sessions", "/provider", "/model", "/server", "/help"} {
+	for _, command := range []string{"/sessions", "/provider", "/server", "/help"} {
 		if !strings.Contains(text, command) {
 			t.Fatalf("HelpText() missing %s: %q", command, text)
 		}
+	}
+	if strings.Contains(text, "/model") {
+		t.Fatalf("HelpText() should not expose separate model setup: %q", text)
 	}
 }

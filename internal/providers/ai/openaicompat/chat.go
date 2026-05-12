@@ -126,7 +126,7 @@ func (r *Runtime) chatPayload(ctx context.Context, request providers.Request) ch
 	if len(payload.Tools) > 0 {
 		payload.ToolChoice = "auto"
 	}
-	if r.reasoningEffort != "" && len(payload.Tools) == 0 {
+	if r.reasoningEffort != "" && (len(payload.Tools) == 0 || r.capabilities.ReasoningWithTools) {
 		payload.ReasoningEffort = r.reasoningEffort
 	}
 	if providers.TextStreamFromContext(ctx) != nil {

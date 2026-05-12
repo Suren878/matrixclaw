@@ -118,6 +118,10 @@ func (e *bashExecutor) Spec() Spec {
 		Name:            "Bash",
 		Description:     "Run a shell command",
 		Risk:            RiskApproval,
+		Namespace:       namespaceCoreShell,
+		Category:        CategoryShell,
+		Profiles:        []Profile{ProfileCoding},
+		OutputKind:      OutputText,
 		InputJSONSchema: bashInputSchema,
 	}
 }
@@ -128,6 +132,10 @@ func (e *jobOutputExecutor) Spec() Spec {
 		Name:            "JobOutput",
 		Description:     "Read background job output",
 		Risk:            RiskSafe,
+		Namespace:       namespaceCoreShell,
+		Category:        CategoryShell,
+		Profiles:        []Profile{ProfileCoding},
+		OutputKind:      OutputJob,
 		InputJSONSchema: jobOutputInputSchema,
 	}
 }
@@ -138,6 +146,10 @@ func (e *jobKillExecutor) Spec() Spec {
 		Name:            "JobKill",
 		Description:     "Kill a background job",
 		Risk:            RiskApproval,
+		Namespace:       namespaceCoreShell,
+		Category:        CategoryShell,
+		Profiles:        []Profile{ProfileCoding},
+		OutputKind:      OutputJob,
 		InputJSONSchema: jobKillInputSchema,
 	}
 }

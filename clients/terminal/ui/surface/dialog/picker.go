@@ -4,11 +4,11 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/key"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
 	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
 	surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
+	terminaltextfield "github.com/Suren878/matrixclaw/clients/terminal/ui/textfield"
 )
 
 // PickerID is the identifier for the generic picker popup.
@@ -52,7 +52,7 @@ type pickerOption struct {
 // Picker is a generic list picker with optional search and grouped entries.
 type Picker struct {
 	id      string
-	input   textinput.Model
+	input   terminaltextfield.Model
 	options []pickerOption
 	visible []pickerOption
 	cursor  int
@@ -89,10 +89,7 @@ func NewPicker(com *surfacecommon.Common, data PickerData) *Picker {
 		p.id = PickerID
 	}
 
-	p.input = textinput.New()
-	p.input.Placeholder = "Search"
-	applyTextInputStyles(&p.input, com.Styles.TextInput)
-	_ = p.input.Focus()
+	p.input = terminaltextfield.New("Search", "", terminaltextfield.WithSurfaceStyles(com.Styles.TextInput))
 
 	p.keyMap.Select = key.NewBinding(
 		key.WithKeys("enter", "ctrl+y"),
@@ -147,8 +144,7 @@ func (p *Picker) HandleMsg(msg tea.Msg) Action {
 			if !p.data.Filter {
 				return nil
 			}
-			var cmd tea.Cmd
-			p.input, cmd = p.input.Update(msg)
+			cmd := p.input.Update(msg)
 			p.applyFilter()
 			if cmd != nil {
 				return ActionCmd{Cmd: cmd}

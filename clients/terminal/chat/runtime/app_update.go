@@ -75,6 +75,14 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleDialogInput(msg)
 		}
 		return m.handleMouse(msg)
+	case tea.PasteMsg, tea.PasteStartMsg, tea.PasteEndMsg:
+		if m.dialog.HasDialogs() {
+			return m.handleDialogInput(msg)
+		}
+		if m.focus == appFocusEditor {
+			return m, m.input.Update(msg)
+		}
+		return m, nil
 	case surfacemodel.DelayedClickMsg:
 		if m.chat == nil {
 			return m, nil
@@ -131,6 +139,12 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		m.autoEditSessions = map[string]struct{}{}
 		return m, m.loadInitialCmd()
+	}
+	if m.dialog.HasDialogs() {
+		return m.handleDialogInput(msg)
+	}
+	if m.focus == appFocusEditor {
+		return m, m.input.Update(msg)
 	}
 	return m, nil
 }

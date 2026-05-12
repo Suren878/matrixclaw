@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
-	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
 func (m *model) renderProviderList() string {
@@ -30,7 +29,7 @@ func (m *model) renderProviderList() string {
 		EmptyText:         "No providers match the current filter.",
 		TopItems:          []commandui.Item{{Title: "Continue", Role: commandui.RoleSubmit}},
 		TopSelected:       topSelected,
-		Items:             providerListItems(rows[start:end], start > 0, end < len(rows)),
+		Items:             pagedSearchItems(rows[start:end], start > 0, end < len(rows)),
 		Selected:          selected,
 		Help:              "ctrl+a add · enter select · ↑/↓ move · esc back",
 		Error:             m.formError,
@@ -46,27 +45,44 @@ func (m *model) renderProviderTypeList() string {
 	return m.renderPickerFrame("Add Provider", items, m.providerTypeCursor)
 }
 
+func (m *model) renderProviderNoProviderConfirm() string {
+	items := []listItem{
+		{Title: "Continue without provider", Status: "Chat and runs can be enabled later from Providers"},
+		{Title: "Back to Providers", Status: ""},
+	}
+	return m.renderPickerFrame("No Provider Configured", items, m.providerNoProviderCursor)
+}
+
 func (m *model) renderProviderForm() string {
 	return m.renderEditableForm("Provider", providerFormRows(m.providerFormItems()), m.providerFormSubtitle())
 }
 
+func (m *model) renderProviderBaseURLList() string {
+	return m.renderPickerFrame("Endpoint", m.providerBaseURLItems(), m.providerBaseURLCursor)
+}
+
 func (m *model) renderProviderModelList() string {
 	rows := m.providerModelRows()
+	selectedRow := m.currentProviderModelRowIndex(rows)
+	if selectedRow < 0 {
+		selectedRow = 0
+	}
+	start, end := viewportBounds(selectedRow, len(rows), m.providerModelViewportHeight())
 	card := commandui.RenderSearchListCard(m.commandFrame(), commandui.SearchListData{
 		Title:             "Models",
 		SearchValue:       m.filterInput.Value(),
 		SearchPlaceholder: "Search models",
 		SearchActive:      true,
 		EmptyText:         "No models match the current filter.",
-		Items:             searchItems(rows),
-		Selected:          m.currentProviderModelRowIndex(rows),
+		Items:             pagedSearchItems(rows[start:end], start > 0, end < len(rows)),
+		Selected:          selectedProviderItemIndex(rows[start:end], m.providerModelCursor, start > 0),
 		Help:              "enter select · ↑/↓ move · esc cancel",
 	})
 	return m.renderCommandCard(card)
 }
 
 func (m *model) renderProviderEffortList() string {
-	efforts := setup.ReasoningEfforts()
+	efforts := m.providerReasoningEfforts()
 	items := make([]listItem, 0, len(efforts))
 	for _, effort := range efforts {
 		items = append(items, listItem{Title: strings.Title(effort)})
@@ -74,7 +90,15 @@ func (m *model) renderProviderEffortList() string {
 	return m.renderPickerFrame("Reasoning Effort", items, m.providerEffortCursor)
 }
 
-func providerListItems(rows []listEntry, hasPrevious bool, hasNext bool) []commandui.Item {
+func (m *model) renderProviderToolUseList() string {
+	items := []listItem{
+		{Title: "Enabled"},
+		{Title: "Disabled"},
+	}
+	return m.renderPickerFrame("Tool Use", items, m.providerToolUseCursor)
+}
+
+func pagedSearchItems(rows []listEntry, hasPrevious bool, hasNext bool) []commandui.Item {
 	items := make([]commandui.Item, 0, len(rows)+2)
 	if hasPrevious {
 		items = append(items, commandui.Header("↑ more"))

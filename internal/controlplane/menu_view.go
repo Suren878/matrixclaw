@@ -42,11 +42,6 @@ func BuildCommandView(state MenuState) []CommandView {
 			if value := strings.TrimSpace(state.ProviderID); value != "" {
 				status = value
 			}
-		case CommandModel:
-			title = "Model"
-			if value := strings.TrimSpace(state.ModelID); value != "" {
-				status = value
-			}
 		case CommandPermissions:
 			title = "Permission Mode"
 			status = permissionModeStatus(state.PermissionMode)

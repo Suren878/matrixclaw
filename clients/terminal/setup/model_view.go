@@ -28,12 +28,18 @@ func (m *model) viewContent() string {
 		return m.renderProviderList()
 	case screenProviderTypeList:
 		return m.renderProviderTypeList()
+	case screenProviderNoProviderConfirm:
+		return m.renderProviderNoProviderConfirm()
 	case screenProviderForm:
 		return m.renderProviderForm()
+	case screenProviderBaseURLList:
+		return m.renderProviderBaseURLList()
 	case screenProviderModelList:
 		return m.renderProviderModelList()
 	case screenProviderEffortList:
 		return m.renderProviderEffortList()
+	case screenProviderToolUseList:
+		return m.renderProviderToolUseList()
 	case screenDaemonTimezoneList:
 		return m.renderDaemonTimezoneList()
 	case screenAssistantForm:

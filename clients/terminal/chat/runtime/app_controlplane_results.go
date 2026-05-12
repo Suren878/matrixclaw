@@ -16,7 +16,12 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 		return nil
 	}
 	if dialog := m.controlplaneDialog(msg.result); dialog != nil {
-		m.replaceControlplaneDialog(dialog)
+		m.showControlplaneDialog(dialog)
+		if msg.result.ReloadSnapshot {
+			m.returnToCommands = false
+			m.loading = true
+			return m.loadInitialCmd()
+		}
 		return nil
 	}
 	if m.dialog.HasDialogs() {
@@ -95,7 +100,7 @@ func (m *appModel) preparePicker(picker controlplane.PickerData) controlplane.Pi
 
 func (m *appModel) pickerCloseAction(picker controlplane.PickerData) surfacedialog.Action {
 	action := commandmenu.PickerCloseAction(picker)
-	if _, closes := action.(surfacedialog.ActionClose); closes && m.returnToCommands {
+	if _, closes := action.(surfacedialog.ActionClose); closes && m.returnToCommands && !m.dialog.ContainsDialog(surfacedialog.CommandsID) {
 		return surfacedialog.ActionOpenCommands{}
 	}
 	return action
@@ -113,5 +118,29 @@ func (m *appModel) closeControlplaneDialogs() {
 func (m *appModel) replaceControlplaneDialog(dialog surfacedialog.Dialog) {
 	m.err = ""
 	m.closeControlplaneDialogs()
+	m.dialog.OpenDialog(dialog)
+}
+
+func (m *appModel) showControlplaneDialog(dialog surfacedialog.Dialog) {
+	m.err = ""
+	if dialog == nil {
+		return
+	}
+	top := m.dialog.DialogLast()
+	if top == nil {
+		m.dialog.OpenDialog(dialog)
+		return
+	}
+	topID := top.ID()
+	nextID := dialog.ID()
+	switch {
+	case topID == nextID:
+		m.dialog.CloseFrontDialog()
+	case topID == surfacedialog.PromptCommandID && nextID == surfacedialog.FormCommandID:
+		m.dialog.CloseFrontDialog()
+		m.dialog.CloseDialog(surfacedialog.FormCommandID)
+	case topID == surfacedialog.PromptCommandID || topID == surfacedialog.ConfirmCommandID:
+		m.dialog.CloseFrontDialog()
+	}
 	m.dialog.OpenDialog(dialog)
 }

@@ -14,6 +14,10 @@ func (e *editExecutor) Spec() Spec {
 		Name:            "Edit",
 		Description:     "Replace content inside an existing file",
 		Risk:            RiskApproval,
+		Namespace:       namespaceCoreFilesystem,
+		Category:        CategoryFilesystem,
+		Profiles:        []Profile{ProfileCoding},
+		OutputKind:      OutputDiff,
 		InputJSONSchema: editInputSchema,
 	}
 }

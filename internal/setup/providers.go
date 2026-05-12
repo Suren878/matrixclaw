@@ -193,8 +193,9 @@ func DeleteProviderDraft(draft Draft, providerID string) Draft {
 	draft.Providers = next
 	if sameProvider(draft.ActiveProviderID, providerID) {
 		draft.ActiveProviderID = ""
-		if len(draft.Providers) > 0 {
-			draft.ActiveProviderID = draft.Providers[0].ID
+		for _, provider := range ConfiguredProviders(draft) {
+			draft.ActiveProviderID = provider.ID
+			break
 		}
 	}
 	return draft
@@ -210,7 +211,9 @@ func builtInProviderOptions() []ProviderOption {
 			Type:            entry.Type,
 			Implemented:     entry.Implemented,
 			RequiresBaseURL: entry.RequiresBaseURL,
+			Capabilities:    entry.Capabilities,
 			DefaultBaseURL:  entry.DefaultBaseURL,
+			BaseURLOptions:  append([]providers.BaseURLOption(nil), entry.BaseURLOptions...),
 			DefaultModel:    entry.DefaultModel,
 			APIKeyEnv:       entry.APIKeyEnv,
 			Notes:           entry.Notes,

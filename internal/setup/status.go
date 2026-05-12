@@ -36,13 +36,20 @@ func SummaryFromConfig(cfg Config) Summary {
 
 func SummaryFromDraft(d Draft) Summary {
 	active, ok := FindProviderDraft(d, d.ActiveProviderID)
-	if !ok && len(d.Providers) > 0 {
-		active = d.Providers[0]
-		ok = true
+	if !ok || !ProviderDraftConfigured(active) {
+		active = ProviderDraft{}
+		ok = false
 	}
-	name := active.Name
 	if !ok {
-		name = ""
+		for _, provider := range ConfiguredProviders(d) {
+			active = provider
+			ok = true
+			break
+		}
+	}
+	name := ""
+	if ok {
+		name = active.Name
 	}
 
 	return Summary{

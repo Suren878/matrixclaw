@@ -13,18 +13,20 @@ func TestInitializeAssistantSystemPromptAddsCommandContext(t *testing.T) {
 		"commands=",
 		"/sessions",
 		"/provider",
-		"/model",
 		"/remind",
 		"/tasks",
 		"/server",
 		"/restart",
 		"automation=enabled",
 		"automation_tools=create_reminder,create_scheduled_ai_task",
-		"/provider key <provider> <key>",
+		"/provider -> select or edit provider model/settings",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("InitializeAssistantSystemPrompt() missing %q in:\n%s", want, prompt)
 		}
+	}
+	if strings.Contains(prompt, "/provider key <provider> <key>") {
+		t.Fatalf("InitializeAssistantSystemPrompt() exposed legacy provider key shortcut:\n%s", prompt)
 	}
 }
 

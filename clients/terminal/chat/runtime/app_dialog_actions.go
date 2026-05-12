@@ -82,7 +82,6 @@ func (m *appModel) handleRunControlplaneCommand(msg surfacedialog.ActionRunContr
 	if fromCommands {
 		m.returnToCommands = true
 	}
-	m.closeControlplaneDialogs()
 	return m.controlplaneCmd(msg.Command)
 }
 

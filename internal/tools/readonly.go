@@ -1,16 +1,18 @@
 package tools
 
 const (
-	readToolName         = "read"
-	globToolName         = "glob"
-	grepToolName         = "grep"
-	lsToolName           = "ls"
-	defaultReadLimit     = 2000
-	maxReadBytes         = 5 * 1024 * 1024
-	defaultSearchLimit   = 100
-	defaultListDepth     = 3
-	maxListEntries       = 1000
-	maxRenderedLineWidth = 500
+	namespaceCoreFilesystem = "core.filesystem"
+	namespaceCoreShell      = "core.shell"
+	readToolName            = "read"
+	globToolName            = "glob"
+	grepToolName            = "grep"
+	lsToolName              = "ls"
+	defaultReadLimit        = 2000
+	maxReadBytes            = 5 * 1024 * 1024
+	defaultSearchLimit      = 100
+	defaultListDepth        = 3
+	maxListEntries          = 1000
+	maxRenderedLineWidth    = 500
 )
 
 type ReadParams struct {
@@ -87,6 +89,10 @@ func (e *readExecutor) Spec() Spec {
 		Name:            "Read",
 		Description:     "Read a file with line numbers",
 		Risk:            RiskSafe,
+		Namespace:       namespaceCoreFilesystem,
+		Category:        CategoryFilesystem,
+		Profiles:        []Profile{ProfileReadOnly, ProfileCoding},
+		OutputKind:      OutputFileContent,
 		InputJSONSchema: readInputSchema,
 	}
 }
@@ -97,6 +103,10 @@ func (e *globExecutor) Spec() Spec {
 		Name:            "Glob",
 		Description:     "Find files by path pattern",
 		Risk:            RiskSafe,
+		Namespace:       namespaceCoreFilesystem,
+		Category:        CategoryFilesystem,
+		Profiles:        []Profile{ProfileReadOnly, ProfileCoding},
+		OutputKind:      OutputSearchResults,
 		InputJSONSchema: globInputSchema,
 	}
 }
@@ -107,6 +117,10 @@ func (e *grepExecutor) Spec() Spec {
 		Name:            "Grep",
 		Description:     "Search file contents by pattern",
 		Risk:            RiskSafe,
+		Namespace:       namespaceCoreFilesystem,
+		Category:        CategoryFilesystem,
+		Profiles:        []Profile{ProfileReadOnly, ProfileCoding},
+		OutputKind:      OutputSearchResults,
 		InputJSONSchema: grepInputSchema,
 	}
 }
@@ -117,6 +131,10 @@ func (e *lsExecutor) Spec() Spec {
 		Name:            "LS",
 		Description:     "List files in a tree",
 		Risk:            RiskSafe,
+		Namespace:       namespaceCoreFilesystem,
+		Category:        CategoryFilesystem,
+		Profiles:        []Profile{ProfileReadOnly, ProfileCoding},
+		OutputKind:      OutputFileTree,
 		InputJSONSchema: lsInputSchema,
 	}
 }

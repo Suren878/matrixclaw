@@ -51,8 +51,8 @@ func TestPickerBuilderAutoCommandsUseFinalContext(t *testing.T) {
 }
 
 func TestPickerBuilderPreservesExplicitAndPlainItems(t *testing.T) {
-	picker := NewPickerData(PickerProviderCustom, "Tool Mode").
-		Row("native", "Native", "", "/provider custom openai set-tools token native").
+	picker := NewPickerData(PickerProviderCustom, "Tool Use").
+		Row("native", "Enabled", "", "/provider custom openai set-tools token native").
 		Items(PickerItem{ID: "openai", Title: "OpenAI Compatible"}).
 		Build()
 
@@ -74,7 +74,7 @@ func TestPickerCloseCommandUsesExplicitCloseThenBack(t *testing.T) {
 }
 
 func TestPaginatePickerKeepsCancelTrailingAndStartsAtSelected(t *testing.T) {
-	picker := PickerData{Kind: PickerModel}
+	picker := PickerData{Kind: PickerProvider}
 	for _, id := range []string{"m1", "m2", "m3", "m4", "m5"} {
 		picker.Items = append(picker.Items, PickerItem{ID: id, Title: id, Selected: id == "m4"})
 	}

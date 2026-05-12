@@ -43,6 +43,8 @@ func TestNewRuntimeRoutesToProviderBackends(t *testing.T) {
 	}
 
 	runtime, err := NewRuntime(context.Background(), Config{
+		ProviderID:      " configured-openai ",
+		CatalogID:       " openai ",
 		Type:            providers.TypeOpenAICompat,
 		APIKey:          " key ",
 		BaseURL:         " https://example.com/v1 ",
@@ -59,6 +61,9 @@ func TestNewRuntimeRoutesToProviderBackends(t *testing.T) {
 	if openAICalls != 1 || anthropicCalls != 0 || geminiCalls != 0 {
 		t.Fatalf("backend calls after openai route: openai=%d anthropic=%d gemini=%d", openAICalls, anthropicCalls, geminiCalls)
 	}
+	if openAIConfig.ProviderID != "configured-openai" || openAIConfig.CatalogID != "openai" {
+		t.Fatalf("openai provider identity = %#v, want trimmed ids", openAIConfig)
+	}
 	if openAIConfig.APIKey != "key" || openAIConfig.BaseURL != "https://example.com/v1" || openAIConfig.Model != "model-id" {
 		t.Fatalf("openai config = %#v, want trimmed openai-compatible config", openAIConfig)
 	}
@@ -70,10 +75,12 @@ func TestNewRuntimeRoutesToProviderBackends(t *testing.T) {
 	}
 
 	runtime, err = NewRuntime(context.Background(), Config{
-		Type:    providers.TypeAnthropic,
-		APIKey:  " anthropic-key ",
-		BaseURL: " https://api.anthropic.com/v1 ",
-		Model:   " claude-sonnet ",
+		ProviderID: "anthropic-local",
+		CatalogID:  "anthropic",
+		Type:       providers.TypeAnthropic,
+		APIKey:     " anthropic-key ",
+		BaseURL:    " https://api.anthropic.com/v1 ",
+		Model:      " claude-sonnet ",
 	})
 	if err != nil {
 		t.Fatalf("NewRuntime(anthropic) error = %v", err)
@@ -92,6 +99,8 @@ func TestNewRuntimeRoutesToProviderBackends(t *testing.T) {
 	}
 
 	runtime, err = NewRuntime(context.Background(), Config{
+		ProviderID:      "gemini-local",
+		CatalogID:       "gemini",
 		Type:            providers.TypeGemini,
 		APIKey:          " gemini-key ",
 		BaseURL:         " https://generativelanguage.googleapis.com/v1beta ",
@@ -145,6 +154,41 @@ func TestNewRuntimeOpenAICompatibleCustomBaseURLStaysGeneric(t *testing.T) {
 	}
 	if got.Profile.RuntimeProfile.ToolSchemaDialect != providers.ToolSchemaJSONSchema {
 		t.Fatalf("ToolSchemaDialect = %q, want %q", got.Profile.RuntimeProfile.ToolSchemaDialect, providers.ToolSchemaJSONSchema)
+	}
+}
+
+func TestNewRuntimeUsesCatalogCapabilities(t *testing.T) {
+	prev := newOpenAICompatRuntime
+	defer func() {
+		newOpenAICompatRuntime = prev
+	}()
+
+	var got openaicompat.Config
+	newOpenAICompatRuntime = func(_ context.Context, cfg openaicompat.Config) (providers.Runtime, error) {
+		got = cfg
+		return newProviderStub(), nil
+	}
+
+	_, err := NewRuntime(context.Background(), Config{
+		ProviderID:      "provider-1",
+		CatalogID:       "openrouter",
+		Type:            providers.TypeOpenAICompat,
+		APIKey:          "key",
+		BaseURL:         "https://openrouter.ai/api/v1",
+		Model:           "qwen/qwen3-coder-next",
+		ReasoningEffort: "high",
+	})
+	if err != nil {
+		t.Fatalf("NewRuntime() error = %v", err)
+	}
+	if got.Profile.ProviderID != "openrouter" {
+		t.Fatalf("Profile.ProviderID = %q, want openrouter", got.Profile.ProviderID)
+	}
+	if got.Profile.SupportsReasoningEffort {
+		t.Fatalf("openrouter SupportsReasoningEffort = true, want false")
+	}
+	if !got.Profile.Capabilities.ToolCalling {
+		t.Fatalf("openrouter ToolCalling = false, want true")
 	}
 }
 

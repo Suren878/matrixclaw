@@ -88,6 +88,7 @@ func TestNewRuntimeProfiles(t *testing.T) {
 				BaseURL:         "https://api.example.com/v1",
 				Model:           "gpt-test",
 				ReasoningEffort: "high",
+				Profile:         providers.ProfileForModel("openai", providers.TypeOpenAICompat, "gpt-test"),
 			},
 			wantProfile: providers.RuntimeProfile{
 				ToolUseMode:       providers.ToolUseNative,
@@ -152,6 +153,7 @@ func TestGenerateUsesMaxCompletionTokensForGPT5Models(t *testing.T) {
 		Model:           "gpt-5.4-nano",
 		MaxOutputTokens: 2048,
 		ReasoningEffort: "high",
+		Profile:         providers.ProfileForModel("openai", providers.TypeOpenAICompat, "gpt-5.4-nano"),
 		HTTPClient:      server.Client(),
 	})
 	if err != nil {
@@ -356,8 +358,8 @@ func TestGenerateReturnsToolCalls(t *testing.T) {
 		if got := body["tool_choice"]; got != "auto" {
 			t.Fatalf("tool_choice = %#v, want auto", got)
 		}
-		if got := body["reasoning_effort"]; got != nil {
-			t.Fatalf("reasoning_effort = %#v, want omitted for tools", got)
+		if got := body["reasoning_effort"]; got != "high" {
+			t.Fatalf("reasoning_effort = %#v, want high", got)
 		}
 		if got := r.Header.Get("Accept"); got != "application/json" {
 			t.Fatalf("Accept = %q, want application/json", got)
@@ -385,6 +387,7 @@ func TestGenerateReturnsToolCalls(t *testing.T) {
 		BaseURL:         server.URL,
 		Model:           "gpt-test",
 		ReasoningEffort: "high",
+		Profile:         providers.ProfileForModel("openai", providers.TypeOpenAICompat, "gpt-test"),
 		HTTPClient:      server.Client(),
 	})
 	if err != nil {

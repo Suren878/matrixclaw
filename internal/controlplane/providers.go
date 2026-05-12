@@ -31,6 +31,9 @@ func (d *Dispatcher) handleProvider(ctx context.Context, externalKey string, arg
 	if strings.HasPrefix(value, "custom") {
 		return d.handleCustomProvider(ctx, session, strings.TrimSpace(strings.TrimPrefix(value, "custom")))
 	}
+	if strings.HasPrefix(value, "edit ") {
+		return d.handleProviderEdit(ctx, session, strings.TrimSpace(strings.TrimPrefix(value, "edit ")))
+	}
 	if strings.HasPrefix(value, "use ") {
 		return d.useProvider(ctx, session, strings.TrimSpace(strings.TrimPrefix(value, "use ")))
 	}
@@ -41,11 +44,8 @@ func (d *Dispatcher) handleProvider(ctx context.Context, externalKey string, arg
 	}
 	if value != "" {
 		provider, ok := findSetupProvider(providers, value)
-		if ok && provider.Configured && isCustomSetupProvider(provider) {
-			return customProviderActions(provider, strings.EqualFold(strings.TrimSpace(provider.ID), strings.TrimSpace(session.ProviderID))), nil
-		}
-		if ok && !provider.Configured {
-			return providerKeyPrompt(provider), nil
+		if ok {
+			return providerEditFormResult(provider, formFromProvider(provider), ""), nil
 		}
 		return d.useProvider(ctx, session, value)
 	}
@@ -78,21 +78,20 @@ func (d *Dispatcher) useProvider(ctx context.Context, session *core.Session, pro
 	}, nil
 }
 
-func customProviderActions(provider setup.ProviderSetupItem, selected bool) Result {
+func providerActions(provider setup.ProviderSetupItem, selected bool) Result {
 	title := strings.TrimSpace(provider.Name)
 	if title == "" {
 		title = strings.TrimSpace(provider.ID)
 	}
-	return Result{
-		Handled: true,
-		Picker: NewPickerData(PickerProviderActions, title).
-			Context(strings.TrimSpace(provider.ID)).
-			Back("/provider").
-			Item(PickerItem{ID: "use", Title: "Use", Selected: selected}).
-			Row("edit", "Edit", "").
-			Danger("delete", "Delete", "").
-			Ptr(),
+	picker := NewPickerData(PickerProviderActions, title).
+		Context(strings.TrimSpace(provider.ID)).
+		Back("/provider").
+		Item(PickerItem{ID: "use", Title: "Use", Selected: selected}).
+		Row("edit", "Edit", "", "/provider edit "+encodeCustomProviderField(provider.ID))
+	if isCustomSetupProvider(provider) {
+		picker.Danger("delete", "Delete", "")
 	}
+	return Result{Handled: true, Picker: picker.Ptr()}
 }
 
 func isCustomSetupProvider(provider setup.ProviderSetupItem) bool {
@@ -109,61 +108,6 @@ func isCustomSetupProvider(provider setup.ProviderSetupItem) bool {
 		}
 	}
 	return true
-}
-
-func (d *Dispatcher) handleModel(ctx context.Context, externalKey string, args string) (Result, error) {
-	if d.providers == nil {
-		return unsupportedRuntime("provider"), nil
-	}
-	if d.sessions == nil {
-		return unsupportedRuntime("sessions"), nil
-	}
-	_, session, err := d.currentSession(ctx, externalKey)
-	if err != nil {
-		return Result{}, err
-	}
-	if session == nil {
-		return Result{Handled: true, Text: "No active session. Use /new or /sessions."}, nil
-	}
-	if value := strings.TrimSpace(args); value != "" {
-		session, err := d.providers.UpdateSessionModel(ctx, session.ID, value)
-		if err != nil {
-			return Result{}, err
-		}
-		text := fmt.Sprintf("✅ Model selected: %s", session.ModelID)
-		if d.messages != nil {
-			if _, err := d.messages.CreateSystemMessage(ctx, session.ID, text); err != nil {
-				return Result{}, err
-			}
-		}
-		return Result{
-			Handled:        true,
-			Text:           text,
-			ReloadSnapshot: true,
-		}, nil
-	}
-
-	providerID, modelID, models, err := d.providers.ModelsForSession(ctx, session.ID)
-	if err != nil {
-		return Result{}, err
-	}
-	pickerItems := make([]PickerItem, 0, len(models)+1)
-	for _, model := range models {
-		pickerItems = append(pickerItems, PickerItem{
-			ID:       model,
-			Title:    model,
-			Selected: strings.TrimSpace(model) == strings.TrimSpace(modelID),
-		})
-	}
-	pickerItems = append(pickerItems, CloseItem())
-	title := "Model"
-	if strings.TrimSpace(providerID) != "" {
-		title = "Model: " + strings.TrimSpace(providerID)
-	}
-	return Result{
-		Handled: true,
-		Picker:  NewPickerData(PickerModel, title).HideBack(true).Items(pickerItems...).Ptr(),
-	}, nil
 }
 
 func (d *Dispatcher) handleProviderKey(ctx context.Context, session *core.Session, args string) (Result, error) {

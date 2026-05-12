@@ -54,15 +54,24 @@ func (styles RowStyles) WithWidth(width int) RowStyles {
 }
 
 func RowToneForStatus(status string) RowTone {
-	status = strings.TrimSpace(status)
+	status = strings.ToLower(strings.TrimSpace(status))
 	switch {
-	case strings.HasPrefix(strings.ToLower(status), "configured"), strings.EqualFold(status, "enabled"):
+	case strings.HasPrefix(status, "configured"), statusHasWord(status, "active"):
 		return RowToneAccent
-	case strings.EqualFold(status, "disabled"):
-		return RowToneWarning
 	default:
 		return RowToneNormal
 	}
+}
+
+func statusHasWord(status string, word string) bool {
+	for _, field := range strings.FieldsFunc(status, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
+	}) {
+		if field == word {
+			return true
+		}
+	}
+	return false
 }
 
 func renderRows(styles Styles, rows []row, selected int, width int) []string {

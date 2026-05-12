@@ -1,0 +1,15 @@
+{
+  "providers": {
+    "openrouter": {
+      "type": "openai-compatible",
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key": "$OPENROUTER_API_KEY",
+      "models": [
+        {
+          "id": "qwen/qwen3-coder-next",
+          "name": "Qwen3 Coder Next"
+        }
+      ]
+    }
+  }
+}
