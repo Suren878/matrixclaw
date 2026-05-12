@@ -5,27 +5,30 @@
 ![Telegram](https://img.shields.io/badge/Telegram-client-26A5E4?logo=telegram&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
-**A daemon-first local AI assistant that follows you from terminal to Telegram.**
+**Open-source personal AI infrastructure that runs locally and follows you
+across clients.**
 
-`matrixclaw` is an open-source personal AI assistant runtime written in Go. It
-runs as a small local daemon, keeps its state in SQLite, and connects to
-OpenAI-compatible APIs, Anthropic, Gemini, or custom providers.
+`matrixclaw` is a personal AI assistant runtime written in Go. It runs as a
+lightweight local daemon, stores state in SQLite, and gives your AI sessions a
+home outside any single app or chat window.
 
-The core idea is simple: the daemon owns the session, not the UI. You can start
-work in the Terminal TUI, approve tools locally, continue the same session from
-Telegram, and come back later without losing context, files, approvals, model
-choice, or tool history.
+The core owns the session: context, files, tool history, approvals, provider
+settings, and model choice. The Terminal TUI, Telegram bot, and future mobile
+clients are only interfaces connected to the same local runtime.
 
-It is built for single-user developer machines today: local-first state,
-explicit approvals for tools, provider switching, and a runtime shape that can
-grow into scheduled tasks and agent workflows without tying everything to one
-interface.
+That means you can start a conversation in the terminal, approve a tool call on
+your machine, continue from Telegram, and later return to the same session
+without losing the thread.
+
+`matrixclaw` is built for personal work first: development, research, files,
+remote checks, reminders, provider switching, and future agent workflows where
+continuity and explicit control matter.
 
 <p align="center">
-  <img src="assets/matrixclaw-rain.gif" alt="matrixclaw terminal demo">
+  <img src=".github/assets/matrixclaw-rain.gif" alt="matrixclaw terminal demo">
 </p>
 
-## Why Matrixclaw?
+## Why matrixclaw?
 
 - **Lightweight Go daemon:** about 26 MB RAM while idle on the current Linux daemon.
 - **One assistant, many clients:** begin a session in Terminal TUI and continue it in Telegram.

@@ -136,6 +136,9 @@ func (m *appModel) showControlplaneDialog(dialog surfacedialog.Dialog) {
 	switch {
 	case topID == nextID:
 		m.dialog.CloseFrontDialog()
+	case topID == surfacedialog.PickerID && nextID == surfacedialog.FormCommandID:
+		m.dialog.CloseFrontDialog()
+		m.dialog.CloseDialog(surfacedialog.FormCommandID)
 	case topID == surfacedialog.PromptCommandID && nextID == surfacedialog.FormCommandID:
 		m.dialog.CloseFrontDialog()
 		m.dialog.CloseDialog(surfacedialog.FormCommandID)

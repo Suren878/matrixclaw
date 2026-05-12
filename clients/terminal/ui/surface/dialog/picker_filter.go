@@ -12,9 +12,10 @@ func (p *Picker) setItems() {
 	p.options = make([]pickerOption, 0, len(p.data.Entries))
 	for _, entry := range p.data.Entries {
 		p.options = append(p.options, pickerOption{
-			item:   pickerEntryItem(entry),
-			action: entry.Action,
-			footer: entry.Footer,
+			item:     pickerEntryItem(entry),
+			action:   entry.Action,
+			selected: entry.Selected,
+			footer:   entry.Footer,
 		})
 	}
 	p.input = p.input.Reset("")
@@ -53,7 +54,7 @@ func (p *Picker) applyFilter() {
 	query := strings.TrimSpace(p.input.Value())
 	if query == "" {
 		p.visible = append(p.visible[:0], p.options...)
-		p.selectFirstSelectable()
+		p.selectPreferredSelectable()
 		return
 	}
 	p.visible = p.visible[:0]
@@ -66,7 +67,7 @@ func (p *Picker) applyFilter() {
 		}
 	}
 	p.visible = append(p.visible, footerOptions...)
-	p.selectFirstSelectable()
+	p.selectPreferredSelectable()
 }
 
 type pickerOptionSource []pickerOption

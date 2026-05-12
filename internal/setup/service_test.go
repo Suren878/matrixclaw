@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -675,6 +677,13 @@ func TestProviderOptionsIncludeOpenCrabsComparableOpenAICompatibleProviders(t *t
 			apiKeyEnv:      "DASHSCOPE_API_KEY",
 			modelDiscovery: true,
 		},
+		{
+			id:        "kimi-subscription",
+			name:      "Kimi (Subscription)",
+			baseURL:   "https://api.kimi.com/coding/v1",
+			model:     "kimi-for-coding",
+			apiKeyEnv: "KIMI_CODE_API_KEY",
+		},
 	}
 
 	for _, tt := range tests {
@@ -708,6 +717,34 @@ func TestProviderOptionsIncludeOpenCrabsComparableOpenAICompatibleProviders(t *t
 				t.Fatalf("draft reasoning effort = %q, want empty for %s", draft.ReasoningEffort, tt.id)
 			}
 		})
+	}
+}
+
+func TestKimiSubscriptionProviderModelsSkipsRemoteDiscovery(t *testing.T) {
+	remoteCalled := false
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		remoteCalled = true
+		t.Fatalf("unexpected remote model discovery request: %s %s", r.Method, r.URL.Path)
+	}))
+	defer remote.Close()
+
+	service := newTestService(filepath.Join(t.TempDir(), "setup.json"))
+	draft, err := service.BuiltInProviderDraft(Draft{}, "kimi-subscription")
+	if err != nil {
+		t.Fatalf("BuiltInProviderDraft() error = %v", err)
+	}
+	draft.BaseURL = remote.URL
+	draft.APIKey = "test-api-key"
+
+	_, err = service.ProviderModels(context.Background(), draft)
+	if err == nil {
+		t.Fatal("ProviderModels() error = nil, want unsupported discovery error")
+	}
+	if !strings.Contains(err.Error(), "does not support model discovery") {
+		t.Fatalf("ProviderModels() error = %q, want unsupported discovery", err)
+	}
+	if remoteCalled {
+		t.Fatal("ProviderModels() called remote discovery for kimi-subscription")
 	}
 }
 

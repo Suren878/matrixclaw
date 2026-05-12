@@ -734,7 +734,39 @@ func TestDispatcherQwenProviderFormUsesEndpointPickerAndStackBack(t *testing.T) 
 		t.Fatalf("china endpoint command = %q", got)
 	}
 
-	result, err = d.Handle(context.Background(), "local", form.SubmitCommand)
+	result, err = d.Handle(context.Background(), "local", customFormFieldCommand(t, form, "key"))
+	if err != nil {
+		t.Fatalf("Handle(qwen key field) error = %v", err)
+	}
+	if result.Prompt == nil || !result.Prompt.Sensitive || result.Prompt.Placeholder != "leave empty to keep" {
+		t.Fatalf("qwen key prompt = %#v, want sensitive keep-key prompt", result.Prompt)
+	}
+
+	result, err = d.Handle(context.Background(), "local", result.Prompt.SubmitCommandPrefix+"sk-qwen")
+	if err != nil {
+		t.Fatalf("Handle(qwen set key) error = %v", err)
+	}
+	if result.Form == nil || customFormFieldValue(t, result.Form, "key") == "Required" {
+		t.Fatalf("qwen form after key = %#v, want masked key", result.Form)
+	}
+	keyedForm := result.Form
+
+	rt.models = []string{"qwen-max", "qwen-plus", "qwen-turbo"}
+	result, err = d.Handle(context.Background(), "local", customFormFieldCommand(t, keyedForm, "model"))
+	if err != nil {
+		t.Fatalf("Handle(qwen model field) error = %v", err)
+	}
+	if result.Picker == nil || result.Picker.Title != "Model" {
+		t.Fatalf("qwen model picker = %#v", result.Picker)
+	}
+	if rt.modelsProvider != "qwen" || rt.modelsUpdate.APIKey != "sk-qwen" || rt.modelsUpdate.BaseURL != "https://dashscope-intl.aliyuncs.com/compatible-mode/v1" {
+		t.Fatalf("qwen models request = provider %q update %#v", rt.modelsProvider, rt.modelsUpdate)
+	}
+	if item := pickerItem(t, result.Picker, "qwen-plus"); !item.Selected {
+		t.Fatalf("qwen-plus picker item = %#v, want selected active model marker", item)
+	}
+
+	result, err = d.Handle(context.Background(), "local", keyedForm.SubmitCommand)
 	if err != nil {
 		t.Fatalf("Handle(qwen save) error = %v", err)
 	}
@@ -914,16 +946,21 @@ func formHasField(form *FormData, id string) bool {
 
 func pickerItemCommand(t *testing.T, picker *PickerData, id string) string {
 	t.Helper()
+	return pickerItem(t, picker, id).Command
+}
+
+func pickerItem(t *testing.T, picker *PickerData, id string) PickerItem {
+	t.Helper()
 	if picker == nil {
 		t.Fatal("picker is nil")
 	}
 	for _, item := range picker.Items {
 		if item.ID == id {
-			return item.Command
+			return item
 		}
 	}
 	t.Fatalf("picker item %q not found in %#v", id, picker.Items)
-	return ""
+	return PickerItem{}
 }
 
 func qwenBaseURLOptionsForTest() []providers.BaseURLOption {
@@ -971,6 +1008,9 @@ func TestDispatcherCustomProviderActionsEditAndDelete(t *testing.T) {
 	}
 	if result.Picker == nil || result.Picker.HideBackItem != true {
 		t.Fatalf("edit tool mode picker = %#v, want picker without back row", result.Picker)
+	}
+	if item := pickerItem(t, result.Picker, "native"); !item.Focused || item.Selected {
+		t.Fatalf("native tool mode item = %#v, want focused without selected active marker", item)
 	}
 
 	result, err = d.Handle(context.Background(), "local", pickerItemCommand(t, result.Picker, "disabled"))

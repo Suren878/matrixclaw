@@ -104,3 +104,22 @@ func TestPickerVisibleWindowCentersSelection(t *testing.T) {
 		t.Fatalf("footer = %#v selected=%d, want empty/-1", footer, footerSelected)
 	}
 }
+
+func TestPickerInitialSelectionUsesSelectedEntry(t *testing.T) {
+	dialog := NewPicker(surfacecommon.DefaultCommon(), PickerData{
+		Title: "Models",
+		Entries: []PickerEntry{
+			{ID: "m1", Title: "m1", Action: ActionClose{}},
+			{ID: "m2", Title: "m2", Selected: true, Action: ActionClose{}},
+			{ID: "m3", Title: "m3", Action: ActionClose{}},
+		},
+	})
+
+	selected := dialog.selectedOption()
+	if selected == nil {
+		t.Fatal("selected item is nil")
+	}
+	if selected.item.ID != "m2" {
+		t.Fatalf("selected item id = %q, want m2", selected.item.ID)
+	}
+}

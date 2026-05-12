@@ -189,8 +189,8 @@ func customProviderToolModePicker(titlePrefix string, data customProviderForm, s
 func customProviderToolModeItems(data customProviderForm, prefix string) []PickerItem {
 	current := providers.NormalizeToolUseMode(data.ToolUseMode)
 	return []PickerItem{
-		{ID: "native", Title: "Enabled", Selected: current == providers.ToolUseNative, Command: prefix + string(providers.ToolUseNative)},
-		{ID: "disabled", Title: "Disabled", Selected: current == providers.ToolUseDisabled, Command: prefix + string(providers.ToolUseDisabled)},
+		{ID: "native", Title: "Enabled", Focused: current == providers.ToolUseNative, Command: prefix + string(providers.ToolUseNative)},
+		{ID: "disabled", Title: "Disabled", Focused: current == providers.ToolUseDisabled, Command: prefix + string(providers.ToolUseDisabled)},
 	}
 }
 

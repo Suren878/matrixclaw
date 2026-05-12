@@ -22,6 +22,16 @@ func (p *Picker) selectFirstSelectable() {
 	p.cursor = -1
 }
 
+func (p *Picker) selectPreferredSelectable() {
+	for i, option := range p.visible {
+		if option.selected && option.item.Selectable() {
+			p.cursor = i
+			return
+		}
+	}
+	p.selectFirstSelectable()
+}
+
 func (p *Picker) moveSelection(delta int) {
 	if len(p.visible) == 0 {
 		p.cursor = -1

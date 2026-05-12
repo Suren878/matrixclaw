@@ -311,6 +311,44 @@ func TestControlplanePickerClosesStalePrompt(t *testing.T) {
 	}
 }
 
+func TestControlplanePickerSelectionReplacesProviderFormLayer(t *testing.T) {
+	model := newApp(nil, nil)
+	model.dialog.OpenDialog(surfacedialog.NewFormCommand(model.com, surfacedialog.FormCommandData{
+		Title:         "Edit Qwen",
+		SubmitCommand: "/provider edit save qwen token",
+		Fields:        []surfacedialog.FormCommandField{{ID: "model", Label: "Model", Value: "qwen-plus"}},
+	}))
+	model.dialog.OpenDialog(surfacedialog.NewPicker(model.com, surfacedialog.PickerData{
+		ID:    surfacedialog.PickerID,
+		Title: "Model",
+		Entries: []surfacedialog.PickerEntry{
+			{ID: "qwen-max", Title: "qwen-max", Action: surfacedialog.ActionRunControlplaneCommand{Command: "/provider edit set model qwen token qwen-max"}},
+		},
+	}))
+
+	next, cmd := model.Update(controlplaneResultMsg{
+		result: controlplane.Result{
+			Form: &controlplane.FormData{
+				Title:         "Edit Qwen",
+				SubmitCommand: "/provider edit save qwen token2",
+				Fields:        []controlplane.FormField{{ID: "model", Label: "Model", Value: "qwen-max"}},
+			},
+		},
+	})
+	if next == nil {
+		t.Fatal("expected model")
+	}
+	if cmd != nil {
+		t.Fatal("expected no follow-up command")
+	}
+	if model.dialog.ContainsDialog(surfacedialog.PickerID) {
+		t.Fatal("expected picker layer to close after picker selection returns a form")
+	}
+	if top := model.dialog.DialogLast(); top == nil || top.ID() != surfacedialog.FormCommandID {
+		t.Fatalf("top dialog = %#v, want provider form", top)
+	}
+}
+
 func TestControlplaneCommandErrorKeepsProviderFormOpen(t *testing.T) {
 	model := newApp(nil, nil)
 	model.dialog.OpenDialog(surfacedialog.NewFormCommand(model.com, surfacedialog.FormCommandData{

@@ -94,7 +94,7 @@ func TestCatalogEntryByID(t *testing.T) {
 func TestOpenAICompatibleCatalogEntriesStayGeneric(t *testing.T) {
 	t.Parallel()
 
-	for _, providerID := range []string{"openai", "deepseek", "openrouter", "xai", "zai", "minimax", "qwen", "kimi", "aihubmix"} {
+	for _, providerID := range []string{"openai", "deepseek", "openrouter", "xai", "zai", "minimax", "qwen", "kimi", "kimi-subscription", "aihubmix"} {
 		providerID := providerID
 		t.Run(providerID, func(t *testing.T) {
 			t.Parallel()
@@ -164,6 +164,14 @@ func TestOpenCrabsComparableCatalogEntries(t *testing.T) {
 			apiKeyEnv:      "DASHSCOPE_API_KEY",
 			modelDiscovery: true,
 			toolCalling:    true,
+		},
+		{
+			id:          "kimi-subscription",
+			name:        "Kimi (Subscription)",
+			baseURL:     "https://api.kimi.com/coding/v1",
+			model:       "kimi-for-coding",
+			apiKeyEnv:   "KIMI_CODE_API_KEY",
+			toolCalling: true,
 		},
 	}
 

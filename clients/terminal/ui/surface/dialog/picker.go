@@ -30,6 +30,7 @@ type PickerEntry struct {
 	Shortcut string
 	Role     commandui.Role
 	Tone     commandui.RowTone
+	Selected bool
 	Footer   bool
 	Action   Action
 }
@@ -44,9 +45,10 @@ type PickerData struct {
 }
 
 type pickerOption struct {
-	item   commandui.Item
-	action Action
-	footer bool
+	item     commandui.Item
+	action   Action
+	selected bool
+	footer   bool
 }
 
 // Picker is a generic list picker with optional search and grouped entries.

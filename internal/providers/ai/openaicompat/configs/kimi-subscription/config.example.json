@@ -1,0 +1,15 @@
+{
+  "providers": {
+    "kimi-subscription": {
+      "type": "openai-compatible",
+      "base_url": "https://api.kimi.com/coding/v1",
+      "api_key": "$KIMI_CODE_API_KEY",
+      "models": [
+        {
+          "id": "kimi-for-coding",
+          "name": "Kimi for Coding"
+        }
+      ]
+    }
+  }
+}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/clients/terminal/chat/viewmodel"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/version"
 )
 
 func TestRebuildChatPreservesSelectedMessageWhenNotFollowing(t *testing.T) {
@@ -172,7 +173,7 @@ func TestHeaderViewUsesCompactShellBelowBreakpoint(t *testing.T) {
 	if strings.Contains(view, "ctrl+d") {
 		t.Fatalf("compact header contains removed details shortcut: %q", view)
 	}
-	if !strings.Contains(view, "matrixclaw v0.1.0") {
+	if !strings.Contains(view, "matrixclaw v"+version.Current().Version) {
 		t.Fatalf("compact header missing product title: %q", view)
 	}
 	if strings.Contains(view, "/workspace/matrixclaw") {
@@ -200,7 +201,7 @@ func TestHeaderViewUsesFullShellAboveBreakpoint(t *testing.T) {
 	if strings.Contains(view, "ctrl+d") {
 		t.Fatalf("full header should not show compact details shortcut: %q", view)
 	}
-	if !strings.Contains(view, "matrixclaw v0.1.0") {
+	if !strings.Contains(view, "matrixclaw v"+version.Current().Version) {
 		t.Fatalf("full header missing product title: %q", view)
 	}
 	if strings.Contains(view, "/workspace/matrixclaw") {
@@ -224,7 +225,7 @@ func TestHeaderViewDoesNotExposeFileHistoryWorkingDir(t *testing.T) {
 	})
 
 	view := model.headerView()
-	if !strings.Contains(view, "matrixclaw v0.1.0") {
+	if !strings.Contains(view, "matrixclaw v"+version.Current().Version) {
 		t.Fatalf("header missing product title: %q", view)
 	}
 	if strings.Contains(view, "/workspace/matrixclaw") {
@@ -243,7 +244,7 @@ func TestHeaderViewShowsModelProviderAndApproxTokens(t *testing.T) {
 	model.read = viewmodel.NewReadModel(snapshot)
 
 	view := model.headerView()
-	for _, want := range []string{"matrixclaw v0.1.0", "gemma-3", "gemini", "Context:", "tokens"} {
+	for _, want := range []string{"matrixclaw v" + version.Current().Version, "gemma-3", "gemini", "Context:", "tokens"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("header = %q, want %q", view, want)
 		}

@@ -66,6 +66,22 @@ func TestPickerEntriesKeepSelectedItemDescription(t *testing.T) {
 	}
 }
 
+func TestPickerEntriesUseFocusedItemWithoutActiveMarker(t *testing.T) {
+	entries := PickerEntries(controlplane.PickerData{
+		Kind: controlplane.PickerProviderCustom,
+		Items: []controlplane.PickerItem{
+			{ID: "native", Title: "Enabled", Focused: true},
+			{ID: "disabled", Title: "Disabled"},
+		},
+	})
+	if !entries[0].Selected {
+		t.Fatalf("focused entry = %#v, want initial selection", entries[0])
+	}
+	if entries[0].Status != "" || entries[0].Tone != commandui.RowToneNormal {
+		t.Fatalf("focused entry presentation = %#v, want no active marker", entries[0])
+	}
+}
+
 func TestPickerEntriesRenderBackAsFooter(t *testing.T) {
 	picker := controlplane.PickerData{
 		Kind:        controlplane.PickerProviderActions,

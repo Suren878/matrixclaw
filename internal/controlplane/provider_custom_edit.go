@@ -147,44 +147,35 @@ func (d *Dispatcher) providerModelPicker(ctx context.Context, provider setup.Pro
 }
 
 func providerEditBaseURLUsesPicker(provider setup.ProviderSetupItem, data customProviderForm) bool {
-	spec := setup.ProviderFormSpecFromInput(setup.ProviderFormSpecInput{
-		ID:                provider.ID,
-		CatalogID:         providerFormCatalogID(provider),
-		Name:              data.Name,
-		Type:              providerFormType(provider),
-		BaseURL:           data.BaseURL,
-		Model:             data.Model,
-		ReasoningEffort:   data.Reasoning,
-		ToolUseMode:       data.ToolUseMode,
-		Custom:            isCustomSetupProvider(provider),
-		CustomKnown:       true,
-		Capabilities:      providerFormCapabilities(provider),
-		CapabilitiesKnown: true,
-	})
+	spec := providerEditFormSpec(provider, data)
 	field, ok := spec.Field(setup.ProviderFormFieldBaseURL)
 	return ok && field.Picker
 }
 
 func providerEditModelUsesPicker(provider setup.ProviderSetupItem, data customProviderForm) bool {
-	spec := setup.ProviderFormSpecForSetupItem(provider)
-	if isCustomSetupProvider(provider) {
-		spec = setup.ProviderFormSpecFromInput(setup.ProviderFormSpecInput{
-			ID:                provider.ID,
-			CatalogID:         provider.CatalogID,
-			Name:              data.Name,
-			Type:              providerFormType(provider),
-			BaseURL:           data.BaseURL,
-			Model:             data.Model,
-			ReasoningEffort:   data.Reasoning,
-			ToolUseMode:       data.ToolUseMode,
-			Custom:            true,
-			CustomKnown:       true,
-			Capabilities:      providerFormCapabilities(provider),
-			CapabilitiesKnown: true,
-		})
-	}
+	spec := providerEditFormSpec(provider, data)
 	field, ok := spec.Field(setup.ProviderFormFieldModel)
 	return ok && field.Picker
+}
+
+func providerEditFormSpec(provider setup.ProviderSetupItem, data customProviderForm) setup.ProviderFormSpec {
+	return setup.ProviderFormSpecFromInput(setup.ProviderFormSpecInput{
+		ID:                  provider.ID,
+		CatalogID:           providerFormCatalogID(provider),
+		Name:                data.Name,
+		Type:                providerFormType(provider),
+		BaseURL:             data.BaseURL,
+		BaseURLOptions:      provider.BaseURLOptions,
+		Model:               data.Model,
+		ReasoningEffort:     data.Reasoning,
+		ToolUseMode:         data.ToolUseMode,
+		HasStoredAPIKey:     strings.TrimSpace(provider.APIKeyPreview) != "",
+		StoredAPIKeyPreview: provider.APIKeyPreview,
+		Custom:              isCustomSetupProvider(provider),
+		CustomKnown:         true,
+		Capabilities:        providerFormCapabilities(provider),
+		CapabilitiesKnown:   true,
+	})
 }
 
 func providerEditFormResult(provider setup.ProviderSetupItem, data customProviderForm, message string) Result {

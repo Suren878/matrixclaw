@@ -82,6 +82,7 @@ type PickerItem struct {
 	Info     string
 	Command  string
 	Selected bool
+	Focused  bool
 	Role     PickerItemRole
 }
 

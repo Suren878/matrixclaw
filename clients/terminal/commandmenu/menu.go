@@ -85,13 +85,14 @@ func PickerEntriesWithCloseAction(picker controlplane.PickerData, closeAction su
 			role = commandui.RoleBack
 		}
 		entries = append(entries, surfacedialog.PickerEntry{
-			ID:     presented.Item.ID,
-			Title:  presented.Title,
-			Status: presented.Status,
-			Role:   role,
-			Tone:   tone,
-			Footer: footer,
-			Action: pickerItemAction(presented, footer, closeAction),
+			ID:       presented.Item.ID,
+			Title:    presented.Title,
+			Status:   presented.Status,
+			Role:     role,
+			Tone:     tone,
+			Selected: presented.Selected || presented.Item.Focused,
+			Footer:   footer,
+			Action:   pickerItemAction(presented, footer, closeAction),
 		})
 	}
 	return entries

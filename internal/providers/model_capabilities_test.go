@@ -35,6 +35,13 @@ func TestResolveModelCapabilities(t *testing.T) {
 			wantReasoningMode: ReasoningModeOpenRouter,
 		},
 		{
+			name:            "kimi subscription keeps native tools without reasoning effort",
+			providerID:      "kimi-subscription",
+			providerType:    TypeOpenAICompat,
+			wantToolCalling: true,
+			wantSchema:      ToolSchemaJSONSchema,
+		},
+		{
 			name:              "gemini uses native schema and thought signatures",
 			providerID:        "gemini",
 			providerType:      TypeGemini,
