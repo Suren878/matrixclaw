@@ -9,17 +9,7 @@ import (
 )
 
 func (e *editExecutor) Spec() Spec {
-	return Spec{
-		ID:              editToolName,
-		Name:            "Edit",
-		Description:     "Replace content inside an existing file",
-		Risk:            RiskApproval,
-		Namespace:       namespaceCoreFilesystem,
-		Category:        CategoryFilesystem,
-		Profiles:        []Profile{ProfileCoding},
-		OutputKind:      OutputDiff,
-		InputJSONSchema: editInputSchema,
-	}
+	return coreDefinitionSpec(editToolName)
 }
 
 func (e *editExecutor) Execute(_ context.Context, call Call) (Result, error) {

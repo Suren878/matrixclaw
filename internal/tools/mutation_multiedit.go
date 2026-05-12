@@ -9,17 +9,7 @@ import (
 )
 
 func (e *multiEditExecutor) Spec() Spec {
-	return Spec{
-		ID:              multiEditToolName,
-		Name:            "MultiEdit",
-		Description:     "Apply several edits to one file",
-		Risk:            RiskApproval,
-		Namespace:       namespaceCoreFilesystem,
-		Category:        CategoryFilesystem,
-		Profiles:        []Profile{ProfileCoding},
-		OutputKind:      OutputDiff,
-		InputJSONSchema: multiEditInputSchema,
-	}
+	return coreDefinitionSpec(multiEditToolName)
 }
 
 func (e *multiEditExecutor) Execute(_ context.Context, call Call) (Result, error) {

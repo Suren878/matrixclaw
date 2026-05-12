@@ -13,6 +13,20 @@ const (
 	RiskApproval RiskLevel = "approval"
 )
 
+type Effect string
+
+const (
+	EffectReadOnly Effect = "readonly"
+	EffectMutation Effect = "mutation"
+)
+
+type ApprovalMode string
+
+const (
+	ApprovalNever     ApprovalMode = "never"
+	ApprovalOnRequest ApprovalMode = "on_request"
+)
+
 type Category string
 
 const (
@@ -45,15 +59,18 @@ const (
 )
 
 type Spec struct {
-	ID              string          `json:"id"`
-	Name            string          `json:"name"`
-	Description     string          `json:"description,omitempty"`
-	Risk            RiskLevel       `json:"risk"`
-	Namespace       string          `json:"namespace,omitempty"`
-	Category        Category        `json:"category,omitempty"`
-	Profiles        []Profile       `json:"profiles,omitempty"`
-	OutputKind      OutputKind      `json:"output_kind,omitempty"`
-	InputJSONSchema json.RawMessage `json:"input_json_schema,omitempty"`
+	ID               string          `json:"id"`
+	Name             string          `json:"name"`
+	Description      string          `json:"description,omitempty"`
+	Risk             RiskLevel       `json:"risk"`
+	Effect           Effect          `json:"effect,omitempty"`
+	ApprovalMode     ApprovalMode    `json:"approval_mode,omitempty"`
+	PermissionParams string          `json:"permission_params,omitempty"`
+	Namespace        string          `json:"namespace,omitempty"`
+	Category         Category        `json:"category,omitempty"`
+	Profiles         []Profile       `json:"profiles,omitempty"`
+	OutputKind       OutputKind      `json:"output_kind,omitempty"`
+	InputJSONSchema  json.RawMessage `json:"input_json_schema,omitempty"`
 }
 
 type Call struct {
@@ -113,4 +130,16 @@ type Result struct {
 type Executor interface {
 	Spec() Spec
 	Execute(ctx context.Context, call Call) (Result, error)
+}
+
+func (s Spec) Mutates() bool {
+	return normalizeEffect(s.Effect) == EffectMutation
+}
+
+func (s Spec) RequiresApproval() bool {
+	return normalizeApprovalMode(s.ApprovalMode) == ApprovalOnRequest || normalizeRiskLevel(s.Risk) == RiskApproval
+}
+
+func (s Spec) IsFilesystemMutation() bool {
+	return s.Mutates() && normalizeCategory(s.Category) == CategoryFilesystem
 }

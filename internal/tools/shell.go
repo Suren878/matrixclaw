@@ -113,45 +113,15 @@ func NewJobOutputExecutor() Executor { return &jobOutputExecutor{} }
 func NewJobKillExecutor() Executor   { return &jobKillExecutor{} }
 
 func (e *bashExecutor) Spec() Spec {
-	return Spec{
-		ID:              bashToolName,
-		Name:            "Bash",
-		Description:     "Run a shell command",
-		Risk:            RiskApproval,
-		Namespace:       namespaceCoreShell,
-		Category:        CategoryShell,
-		Profiles:        []Profile{ProfileCoding},
-		OutputKind:      OutputText,
-		InputJSONSchema: bashInputSchema,
-	}
+	return coreDefinitionSpec(bashToolName)
 }
 
 func (e *jobOutputExecutor) Spec() Spec {
-	return Spec{
-		ID:              jobOutputToolName,
-		Name:            "JobOutput",
-		Description:     "Read background job output",
-		Risk:            RiskSafe,
-		Namespace:       namespaceCoreShell,
-		Category:        CategoryShell,
-		Profiles:        []Profile{ProfileCoding},
-		OutputKind:      OutputJob,
-		InputJSONSchema: jobOutputInputSchema,
-	}
+	return coreDefinitionSpec(jobOutputToolName)
 }
 
 func (e *jobKillExecutor) Spec() Spec {
-	return Spec{
-		ID:              jobKillToolName,
-		Name:            "JobKill",
-		Description:     "Kill a background job",
-		Risk:            RiskApproval,
-		Namespace:       namespaceCoreShell,
-		Category:        CategoryShell,
-		Profiles:        []Profile{ProfileCoding},
-		OutputKind:      OutputJob,
-		InputJSONSchema: jobKillInputSchema,
-	}
+	return coreDefinitionSpec(jobKillToolName)
 }
 
 func (e *bashExecutor) Execute(ctx context.Context, call Call) (Result, error) {

@@ -26,9 +26,7 @@ func acceptEditsAllows(prepared preparedToolCall, result tools.Result, session S
 	if result.Approval == nil {
 		return false
 	}
-	switch strings.ToLower(strings.TrimSpace(prepared.ToolName)) {
-	case "write", "edit", "multiedit":
-	default:
+	if !prepared.Spec.IsFilesystemMutation() {
 		return false
 	}
 	root := firstNonEmpty(normalizeWorkingDir(session.WorkingDir), normalizeWorkingDir(prepared.WorkingDir))

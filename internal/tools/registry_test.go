@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -25,6 +26,8 @@ func registryTestSpec(id string) Spec {
 		Name:            id,
 		Description:     id + " test tool",
 		Risk:            RiskSafe,
+		Effect:          EffectReadOnly,
+		ApprovalMode:    ApprovalNever,
 		Namespace:       "test.registry",
 		Category:        CategoryFilesystem,
 		Profiles:        []Profile{ProfileCoding},
@@ -137,5 +140,56 @@ func TestRegistryRejectsInvalidToolPolicyMetadata(t *testing.T) {
 	}
 	if got := registry.List(); len(got) != 0 {
 		t.Fatalf("List() = %#v, want invalid tool omitted", got)
+	}
+}
+
+func TestCoreDefinitionsDriveRegistryContract(t *testing.T) {
+	definitions := CoreDefinitions()
+	if len(definitions) == 0 {
+		t.Fatal("CoreDefinitions() is empty")
+	}
+
+	seen := map[string]struct{}{}
+	for _, definition := range definitions {
+		spec := definition.Spec
+		if _, exists := seen[spec.ID]; exists {
+			t.Fatalf("duplicate core definition %q", spec.ID)
+		}
+		seen[spec.ID] = struct{}{}
+		if definition.NewExecutor == nil {
+			t.Fatalf("%s has nil executor factory", spec.ID)
+		}
+		if spec.Effect == "" || spec.ApprovalMode == "" {
+			t.Fatalf("%s policy metadata incomplete: %#v", spec.ID, spec)
+		}
+		if spec.RequiresApproval() && spec.PermissionParams == "" {
+			t.Fatalf("%s requires approval but has no permission params hint", spec.ID)
+		}
+		if spec.OutputKind == "" {
+			t.Fatalf("%s has empty renderer output kind", spec.ID)
+		}
+	}
+
+	registry := NewRegistry(executorsFromDefinitions(definitions)...)
+	if err := registry.Err(); err != nil {
+		t.Fatalf("registry.Err() = %v", err)
+	}
+	if got := len(registry.List()); got != len(definitions) {
+		t.Fatalf("registered core tools = %d, want %d", got, len(definitions))
+	}
+}
+
+func TestCoreExecutorProfilesComeFromDefinitions(t *testing.T) {
+	readOnly := NewCoreReadOnlyRegistry()
+	for _, spec := range readOnly.List() {
+		if !slices.Contains(spec.Profiles, ProfileReadOnly) {
+			t.Fatalf("readonly registry includes non-readonly tool: %#v", spec)
+		}
+	}
+
+	coding := NewCoreCodingRegistry()
+	wantCoding := CoreDefinitionsFor(Policy{Profiles: []Profile{ProfileCoding}})
+	if got := len(coding.List()); got != len(wantCoding) {
+		t.Fatalf("coding registry tools = %d, want %d from definitions", got, len(wantCoding))
 	}
 }

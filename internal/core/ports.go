@@ -65,6 +65,7 @@ type Store interface {
 
 type ToolExecutor interface {
 	List() []tools.Spec
+	Spec(toolID string) (tools.Spec, bool)
 	Execute(ctx context.Context, toolID string, call tools.Call) (tools.Result, error)
 }
 

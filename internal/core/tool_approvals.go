@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 func (c *Core) ResolveApproval(ctx context.Context, approvalID string, approved bool) (Approval, error) {
@@ -99,12 +101,11 @@ func (c *Core) ListApprovals(ctx context.Context, sessionID string, state Approv
 	return c.store.ListApprovals(ctx, normalizeText(sessionID), state)
 }
 
-func workingDirForApprovalResume(sessionWorkingDir string, approvalToolName string, approvalPath string) string {
+func workingDirForApprovalResume(sessionWorkingDir string, spec tools.Spec, approvalPath string) string {
 	if dir := normalizeWorkingDir(sessionWorkingDir); dir != "" {
 		return dir
 	}
-	switch strings.ToLower(strings.TrimSpace(approvalToolName)) {
-	case "write", "edit", "multiedit":
+	if spec.IsFilesystemMutation() {
 		if path := normalizeWorkingDir(approvalPath); path != "" {
 			return filepath.Dir(path)
 		}
@@ -128,12 +129,17 @@ func (c *Core) replayApprovedTool(ctx context.Context, approval Approval) (Execu
 		return ExecuteToolResult{}, err
 	}
 
+	var spec tools.Spec
+	if c.tools != nil {
+		spec, _ = c.tools.Spec(approval.ToolName)
+	}
+
 	return c.ExecuteTool(ctx, ExecuteToolInput{
 		SessionID:  approval.SessionID,
 		RunID:      approval.RunID,
 		ToolName:   approval.ToolName,
 		ToolCallID: approval.ToolCallRef,
-		WorkingDir: workingDirForApprovalResume(session.WorkingDir, approval.ToolName, approval.Path),
+		WorkingDir: workingDirForApprovalResume(session.WorkingDir, spec, approval.Path),
 		Approved:   true,
 		Args:       args,
 	})

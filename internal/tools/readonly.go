@@ -88,57 +88,17 @@ func NewGrepExecutor() Executor { return &grepExecutor{} }
 func NewLSExecutor() Executor   { return &lsExecutor{} }
 
 func (e *readExecutor) Spec() Spec {
-	return Spec{
-		ID:              readToolName,
-		Name:            "Read",
-		Description:     "Read a file with line numbers",
-		Risk:            RiskSafe,
-		Namespace:       namespaceCoreFilesystem,
-		Category:        CategoryFilesystem,
-		Profiles:        []Profile{ProfileReadOnly, ProfileCoding},
-		OutputKind:      OutputFileContent,
-		InputJSONSchema: readInputSchema,
-	}
+	return coreDefinitionSpec(readToolName)
 }
 
 func (e *globExecutor) Spec() Spec {
-	return Spec{
-		ID:              globToolName,
-		Name:            "Glob",
-		Description:     "Find files by path pattern",
-		Risk:            RiskSafe,
-		Namespace:       namespaceCoreFilesystem,
-		Category:        CategoryFilesystem,
-		Profiles:        []Profile{ProfileReadOnly, ProfileCoding},
-		OutputKind:      OutputSearchResults,
-		InputJSONSchema: globInputSchema,
-	}
+	return coreDefinitionSpec(globToolName)
 }
 
 func (e *grepExecutor) Spec() Spec {
-	return Spec{
-		ID:              grepToolName,
-		Name:            "Grep",
-		Description:     "Search file contents by pattern",
-		Risk:            RiskSafe,
-		Namespace:       namespaceCoreFilesystem,
-		Category:        CategoryFilesystem,
-		Profiles:        []Profile{ProfileReadOnly, ProfileCoding},
-		OutputKind:      OutputSearchResults,
-		InputJSONSchema: grepInputSchema,
-	}
+	return coreDefinitionSpec(grepToolName)
 }
 
 func (e *lsExecutor) Spec() Spec {
-	return Spec{
-		ID:              lsToolName,
-		Name:            "LS",
-		Description:     "List files in a tree",
-		Risk:            RiskSafe,
-		Namespace:       namespaceCoreFilesystem,
-		Category:        CategoryFilesystem,
-		Profiles:        []Profile{ProfileReadOnly, ProfileCoding},
-		OutputKind:      OutputFileTree,
-		InputJSONSchema: lsInputSchema,
-	}
+	return coreDefinitionSpec(lsToolName)
 }

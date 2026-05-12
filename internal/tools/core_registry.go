@@ -1,25 +1,11 @@
 package tools
 
 func CoreReadOnlyExecutors() []Executor {
-	return []Executor{
-		NewReadExecutor(),
-		NewGlobExecutor(),
-		NewGrepExecutor(),
-		NewLSExecutor(),
-	}
+	return executorsFromDefinitions(CoreDefinitionsFor(Policy{Profiles: []Profile{ProfileReadOnly}}))
 }
 
 func CoreCodingExecutors() []Executor {
-	executors := CoreReadOnlyExecutors()
-	executors = append(executors,
-		NewWriteExecutor(),
-		NewEditExecutor(),
-		NewMultiEditExecutor(),
-		NewBashExecutor(),
-		NewJobOutputExecutor(),
-		NewJobKillExecutor(),
-	)
-	return executors
+	return executorsFromDefinitions(CoreDefinitionsFor(Policy{Profiles: []Profile{ProfileCoding}}))
 }
 
 func NewCoreReadOnlyRegistry(extra ...Executor) *Registry {

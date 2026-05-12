@@ -10,17 +10,7 @@ import (
 )
 
 func (e *writeExecutor) Spec() Spec {
-	return Spec{
-		ID:              writeToolName,
-		Name:            "Write",
-		Description:     "Create or replace a file",
-		Risk:            RiskApproval,
-		Namespace:       namespaceCoreFilesystem,
-		Category:        CategoryFilesystem,
-		Profiles:        []Profile{ProfileCoding},
-		OutputKind:      OutputDiff,
-		InputJSONSchema: writeInputSchema,
-	}
+	return coreDefinitionSpec(writeToolName)
 }
 
 func (e *writeExecutor) Execute(_ context.Context, call Call) (Result, error) {

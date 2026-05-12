@@ -166,6 +166,17 @@ func (r *PolicyRegistry) Execute(ctx context.Context, toolID string, call Call) 
 	return r.registry.Execute(ctx, toolID, call)
 }
 
+func (r *PolicyRegistry) Spec(toolID string) (Spec, bool) {
+	if r == nil || r.registry == nil {
+		return Spec{}, false
+	}
+	spec, ok := r.registry.Spec(toolID)
+	if !ok || !r.policy.Allows(spec) {
+		return Spec{}, false
+	}
+	return spec, true
+}
+
 func (r *Registry) Spec(toolID string) (Spec, bool) {
 	if r == nil {
 		return Spec{}, false
@@ -227,6 +238,25 @@ func normalizeSpec(spec Spec) (Spec, error) {
 	if !knownRiskLevel(spec.Risk) {
 		return Spec{}, InvalidToolSpecError{Reason: fmt.Sprintf("%s: unknown risk %q", spec.ID, spec.Risk)}
 	}
+	spec.Effect = normalizeEffect(spec.Effect)
+	if spec.Effect == "" {
+		spec.Effect = EffectReadOnly
+	}
+	if !knownEffect(spec.Effect) {
+		return Spec{}, InvalidToolSpecError{Reason: fmt.Sprintf("%s: unknown effect %q", spec.ID, spec.Effect)}
+	}
+	spec.ApprovalMode = normalizeApprovalMode(spec.ApprovalMode)
+	if spec.ApprovalMode == "" {
+		if spec.Risk == RiskApproval {
+			spec.ApprovalMode = ApprovalOnRequest
+		} else {
+			spec.ApprovalMode = ApprovalNever
+		}
+	}
+	if !knownApprovalMode(spec.ApprovalMode) {
+		return Spec{}, InvalidToolSpecError{Reason: fmt.Sprintf("%s: unknown approval mode %q", spec.ID, spec.ApprovalMode)}
+	}
+	spec.PermissionParams = strings.TrimSpace(spec.PermissionParams)
 	spec.Category = normalizeCategory(spec.Category)
 	if !knownCategory(spec.Category) {
 		return Spec{}, InvalidToolSpecError{Reason: fmt.Sprintf("%s: unknown category %q", spec.ID, spec.Category)}
@@ -340,6 +370,32 @@ func normalizeRiskLevel(value RiskLevel) RiskLevel {
 func knownRiskLevel(value RiskLevel) bool {
 	switch value {
 	case RiskSafe, RiskApproval:
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeEffect(value Effect) Effect {
+	return Effect(strings.ToLower(strings.TrimSpace(string(value))))
+}
+
+func knownEffect(value Effect) bool {
+	switch value {
+	case EffectReadOnly, EffectMutation:
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeApprovalMode(value ApprovalMode) ApprovalMode {
+	return ApprovalMode(strings.ToLower(strings.TrimSpace(string(value))))
+}
+
+func knownApprovalMode(value ApprovalMode) bool {
+	switch value {
+	case ApprovalNever, ApprovalOnRequest:
 		return true
 	default:
 		return false

@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 type preparedToolCall struct {
 	SessionID  string
 	RunID      string
 	ToolName   string
+	Spec       tools.Spec
 	ToolCallID string
 	WorkingDir string
 	Message    Message
@@ -26,6 +29,10 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 	}
 	if toolName == "" {
 		return preparedToolCall{}, fmt.Errorf("%w: tool_name is required", ErrInvalidInput)
+	}
+	spec, ok := c.tools.Spec(toolName)
+	if !ok {
+		return preparedToolCall{}, fmt.Errorf("%w: unknown tool %q", ErrInvalidInput, toolName)
 	}
 	session, err := c.store.GetSession(ctx, sessionID)
 	if err != nil {
@@ -46,6 +53,7 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 		SessionID:  sessionID,
 		RunID:      runID,
 		ToolName:   toolName,
+		Spec:       spec,
 		ToolCallID: toolCallID,
 		WorkingDir: workingDir,
 		Message:    message,

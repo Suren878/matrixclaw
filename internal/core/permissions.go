@@ -1,6 +1,10 @@
 package core
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/tools"
+)
 
 func NormalizePermissionMode(mode string) PermissionMode {
 	switch PermissionMode(strings.ToLower(strings.TrimSpace(mode))) {
@@ -14,10 +18,9 @@ func NormalizePermissionMode(mode string) PermissionMode {
 }
 
 func PermissionModeForSessionApproval(toolName string) (PermissionMode, bool) {
-	switch strings.ToLower(strings.TrimSpace(toolName)) {
-	case "write", "edit", "multiedit", "multi_edit":
+	spec, ok := tools.CoreSpec(toolName)
+	if ok && spec.IsFilesystemMutation() {
 		return PermissionModeAcceptEdits, true
-	default:
-		return PermissionModeDefault, false
 	}
+	return PermissionModeDefault, false
 }

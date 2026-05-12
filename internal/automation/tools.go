@@ -30,14 +30,16 @@ func NewScheduledAITaskTool(service *Service) *ScheduledAITaskTool {
 
 func (t *ReminderTool) Spec() tools.Spec {
 	return tools.Spec{
-		ID:          "create_reminder",
-		Name:        "Create Reminder",
-		Description: "Create a one-time reminder. Use only after resolving the exact time and timezone with the user.",
-		Risk:        tools.RiskSafe,
-		Namespace:   "core.automation",
-		Category:    tools.CategoryAutomation,
-		Profiles:    []tools.Profile{tools.ProfileAutomation},
-		OutputKind:  tools.OutputText,
+		ID:           "create_reminder",
+		Name:         "Create Reminder",
+		Description:  "Create a one-time reminder. Use only after resolving the exact time and timezone with the user.",
+		Risk:         tools.RiskSafe,
+		Effect:       tools.EffectMutation,
+		ApprovalMode: tools.ApprovalNever,
+		Namespace:    "core.automation",
+		Category:     tools.CategoryAutomation,
+		Profiles:     []tools.Profile{tools.ProfileAutomation},
+		OutputKind:   tools.OutputText,
 		InputJSONSchema: json.RawMessage(`{
   "type": "object",
   "properties": {
@@ -85,14 +87,17 @@ func (t *ReminderTool) Execute(ctx context.Context, call tools.Call) (tools.Resu
 
 func (t *ScheduledAITaskTool) Spec() tools.Spec {
 	return tools.Spec{
-		ID:          "create_scheduled_ai_task",
-		Name:        "Create Scheduled AI Task",
-		Description: "Create a scheduled AI task. Use for recurring or one-time tasks that should run later in the current session.",
-		Risk:        tools.RiskApproval,
-		Namespace:   "core.automation",
-		Category:    tools.CategoryAutomation,
-		Profiles:    []tools.Profile{tools.ProfileAutomation},
-		OutputKind:  tools.OutputText,
+		ID:               "create_scheduled_ai_task",
+		Name:             "Create Scheduled AI Task",
+		Description:      "Create a scheduled AI task. Use for recurring or one-time tasks that should run later in the current session.",
+		Risk:             tools.RiskApproval,
+		Effect:           tools.EffectMutation,
+		ApprovalMode:     tools.ApprovalOnRequest,
+		PermissionParams: "scheduled_ai_task",
+		Namespace:        "core.automation",
+		Category:         tools.CategoryAutomation,
+		Profiles:         []tools.Profile{tools.ProfileAutomation},
+		OutputKind:       tools.OutputText,
 		InputJSONSchema: json.RawMessage(`{
   "type": "object",
   "properties": {
