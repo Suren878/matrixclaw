@@ -10,6 +10,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 func TestRestartCallbackOpensConfirm(t *testing.T) {
@@ -252,7 +253,20 @@ func TestHandleCallbackQueryResolvesApproval(t *testing.T) {
 }
 
 func TestApprovalKeyboardShowsSessionOnlyForEdits(t *testing.T) {
-	editKeyboard := approvalKeyboard(core.Approval{ID: "apr_1", ToolName: "edit"})
+	safeParams, err := json.Marshal(tools.EditPermissionsParams{
+		FilesystemPathMetadata: tools.FilesystemPathMetadata{WithinWorkingDir: true},
+	})
+	if err != nil {
+		t.Fatalf("Marshal(safeParams) error = %v", err)
+	}
+	unsafeParams, err := json.Marshal(tools.EditPermissionsParams{
+		FilesystemPathMetadata: tools.FilesystemPathMetadata{WithinWorkingDir: false},
+	})
+	if err != nil {
+		t.Fatalf("Marshal(unsafeParams) error = %v", err)
+	}
+
+	editKeyboard := approvalKeyboard(core.Approval{ID: "apr_1", ToolName: "edit", Params: safeParams})
 	if len(editKeyboard.InlineKeyboard[0]) != 2 {
 		t.Fatalf("edit approval first row len = %d, want Allow and Session", len(editKeyboard.InlineKeyboard[0]))
 	}
@@ -263,5 +277,39 @@ func TestApprovalKeyboardShowsSessionOnlyForEdits(t *testing.T) {
 	bashKeyboard := approvalKeyboard(core.Approval{ID: "apr_2", ToolName: "bash"})
 	if len(bashKeyboard.InlineKeyboard[0]) != 1 {
 		t.Fatalf("bash approval first row len = %d, want only Allow", len(bashKeyboard.InlineKeyboard[0]))
+	}
+
+	outsideKeyboard := approvalKeyboard(core.Approval{ID: "apr_3", ToolName: "edit", Params: unsafeParams})
+	if len(outsideKeyboard.InlineKeyboard[0]) != 1 {
+		t.Fatalf("outside edit approval first row len = %d, want only Allow", len(outsideKeyboard.InlineKeyboard[0]))
+	}
+}
+
+func TestAutoEditSessionRequiresWithinWorkingDirMetadata(t *testing.T) {
+	worker := &Worker{autoEdits: map[string]struct{}{}}
+	target := chatTarget{externalKey: "42"}
+	worker.rememberAutoEditSession(target, "session_1")
+
+	safeParams, err := json.Marshal(tools.WritePermissionsParams{
+		FilesystemPathMetadata: tools.FilesystemPathMetadata{WithinWorkingDir: true},
+	})
+	if err != nil {
+		t.Fatalf("Marshal(safeParams) error = %v", err)
+	}
+	outsideParams, err := json.Marshal(tools.WritePermissionsParams{
+		FilesystemPathMetadata: tools.FilesystemPathMetadata{WithinWorkingDir: false},
+	})
+	if err != nil {
+		t.Fatalf("Marshal(outsideParams) error = %v", err)
+	}
+
+	safe := core.Approval{SessionID: "session_1", ToolName: "write", Params: safeParams}
+	if !worker.autoApprovesEditApproval(target, safe) {
+		t.Fatal("safe write approval should be auto-approved for edit session")
+	}
+
+	outside := core.Approval{SessionID: "session_1", ToolName: "write", Params: outsideParams}
+	if worker.autoApprovesEditApproval(target, outside) {
+		t.Fatal("outside-root write approval should not be auto-approved for edit session")
 	}
 }

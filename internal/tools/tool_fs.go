@@ -11,7 +11,6 @@ import (
 type FilesystemPathPolicy struct {
 	Input              string
 	WorkingDir         string
-	WorkingDirProvided bool
 	Path               string
 	RealPath           string
 	RealWorkingDir     string
@@ -34,7 +33,6 @@ type FilesystemPathMetadata struct {
 
 func ResolveFilesystemPath(workingDir string, value string) (FilesystemPathPolicy, error) {
 	wd := strings.TrimSpace(workingDir)
-	workingDirProvided := wd != ""
 	if wd == "" {
 		wd = "."
 	}
@@ -70,7 +68,6 @@ func ResolveFilesystemPath(workingDir string, value string) (FilesystemPathPolic
 	return FilesystemPathPolicy{
 		Input:              value,
 		WorkingDir:         absWD,
-		WorkingDirProvided: workingDirProvided,
 		Path:               path,
 		RealPath:           realPath,
 		RealWorkingDir:     realWD,
@@ -109,26 +106,6 @@ func resolvePath(workingDir string, value string) string {
 		return cleanValue
 	}
 	return filepath.Clean(filepath.Join(workingDir, cleanValue))
-}
-
-func resolvePathUnderWorkingDir(workingDir string, value string) (FilesystemPathPolicy, *Result) {
-	policy, err := ResolveFilesystemPath(workingDir, value)
-	if err != nil {
-		return FilesystemPathPolicy{}, &Result{Content: fmt.Sprintf("Invalid path: %v", err), IsError: true}
-	}
-	if policy.WorkingDirProvided && policy.EscapesWorkingDir {
-		return policy, &Result{
-			Content: fmt.Sprintf(
-				"Path resolves outside working directory: requested path %q resolved to %s (working directory: %s). Start matrixclaw from the project directory or run matrixclaw tui <path> for that project.",
-				policy.Input,
-				policy.Path,
-				policy.WorkingDir,
-			),
-			Metadata: filesystemPathMetadata(policy),
-			IsError:  true,
-		}
-	}
-	return policy, nil
 }
 
 func resolveReadablePath(workingDir string, value string) (FilesystemPathPolicy, *Result) {

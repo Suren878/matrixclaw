@@ -117,43 +117,6 @@ func TestFilesystemPathPolicyResolvesRelativePathUnderWorkingDir(t *testing.T) {
 	}
 }
 
-func TestStrictFilesystemPathPolicyOutsideWorkingDirErrorIncludesPathMetadata(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	work := filepath.Join(root, "work")
-	outside := filepath.Join(root, "outside")
-	if err := os.MkdirAll(work, 0o755); err != nil {
-		t.Fatalf("MkdirAll(work) error = %v", err)
-	}
-	if err := os.MkdirAll(outside, 0o755); err != nil {
-		t.Fatalf("MkdirAll(outside) error = %v", err)
-	}
-
-	policy, result := resolvePathUnderWorkingDir(work, outside)
-	if result == nil {
-		t.Fatal("resolvePathUnderWorkingDir() result = nil, want outside working dir error")
-	}
-	if !result.IsError {
-		t.Fatalf("result.IsError = false, want outside working dir error")
-	}
-	for _, want := range []string{`requested path "` + outside + `"`, "resolved to " + outside, "working directory: " + work} {
-		if !strings.Contains(result.Content, want) {
-			t.Fatalf("content = %q, want %q", result.Content, want)
-		}
-	}
-	meta, ok := result.Metadata.(FilesystemPathMetadata)
-	if !ok {
-		t.Fatalf("metadata type = %T, want FilesystemPathMetadata", result.Metadata)
-	}
-	if meta.RequestedPath != outside || meta.ResolvedPath != outside || meta.WorkingDir != work || meta.WithinWorkingDir {
-		t.Fatalf("metadata = %#v, want outside root metadata", meta)
-	}
-	if !policy.EscapesWorkingDir {
-		t.Fatalf("policy = %#v, want outside root policy", policy)
-	}
-}
-
 func TestReadonlyFilesystemToolsAllowOutsideWorkingDir(t *testing.T) {
 	t.Parallel()
 
@@ -271,6 +234,13 @@ func TestMutatingFilesystemToolsOutsideWorkingDirRequireApproval(t *testing.T) {
 	}
 	if result.Approval.Path != outsideFile {
 		t.Fatalf("approval path = %q, want %q", result.Approval.Path, outsideFile)
+	}
+	params, ok := result.Approval.Params.(WritePermissionsParams)
+	if !ok {
+		t.Fatalf("approval params type = %T, want WritePermissionsParams", result.Approval.Params)
+	}
+	if params.ResolvedPath != outsideFile || params.WorkingDir != work || params.WithinWorkingDir {
+		t.Fatalf("approval filesystem metadata = %#v, want outside-root path metadata", params.FilesystemPathMetadata)
 	}
 	if _, err := os.Stat(outsideFile); !os.IsNotExist(err) {
 		t.Fatalf("outside file was written before approval, stat err = %v", err)

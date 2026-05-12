@@ -27,12 +27,11 @@ func TestResolveModelCapabilities(t *testing.T) {
 			wantWithTools:     true,
 		},
 		{
-			name:              "openrouter keeps tools but avoids generic reasoning effort",
-			providerID:        "openrouter",
-			providerType:      TypeOpenAICompat,
-			wantToolCalling:   true,
-			wantSchema:        ToolSchemaJSONSchema,
-			wantReasoningMode: ReasoningModeOpenRouter,
+			name:            "openrouter keeps tools but avoids generic reasoning effort",
+			providerID:      "openrouter",
+			providerType:    TypeOpenAICompat,
+			wantToolCalling: true,
+			wantSchema:      ToolSchemaJSONSchema,
 		},
 		{
 			name:            "kimi subscription keeps native tools without reasoning effort",

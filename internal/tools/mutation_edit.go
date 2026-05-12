@@ -55,13 +55,14 @@ func (e *editExecutor) Execute(_ context.Context, call Call) (Result, error) {
 			newContentBytes = 0
 		}
 		return approvalResult(editToolName, "edit", path, "Edit "+path, EditPermissionsParams{
-			FilePath:            path,
-			OldContent:          oldPreview.Content,
-			NewContent:          newPreview.Content,
-			OldContentTruncated: oldPreview.Truncated,
-			NewContentTruncated: !newPreviewExact || newPreview.Truncated,
-			OldContentBytes:     oldPreview.Bytes,
-			NewContentBytes:     newContentBytes,
+			FilesystemPathMetadata: filesystemPathMetadata(policy),
+			FilePath:               path,
+			OldContent:             oldPreview.Content,
+			NewContent:             newPreview.Content,
+			OldContentTruncated:    oldPreview.Truncated,
+			NewContentTruncated:    !newPreviewExact || newPreview.Truncated,
+			OldContentBytes:        oldPreview.Bytes,
+			NewContentBytes:        newContentBytes,
 		}), nil
 	}
 

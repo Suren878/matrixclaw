@@ -12,6 +12,7 @@ type WriteParams struct {
 }
 
 type WritePermissionsParams struct {
+	FilesystemPathMetadata
 	FilePath            string `json:"file_path"`
 	OldContent          string `json:"old_content,omitempty"`
 	NewContent          string `json:"new_content,omitempty"`
@@ -38,6 +39,7 @@ type EditParams struct {
 }
 
 type EditPermissionsParams struct {
+	FilesystemPathMetadata
 	FilePath            string `json:"file_path"`
 	OldContent          string `json:"old_content,omitempty"`
 	NewContent          string `json:"new_content,omitempty"`
@@ -62,6 +64,7 @@ type MultiEditParams struct {
 }
 
 type MultiEditPermissionsParams struct {
+	FilesystemPathMetadata
 	FilePath            string `json:"file_path"`
 	OldContent          string `json:"old_content,omitempty"`
 	NewContent          string `json:"new_content,omitempty"`

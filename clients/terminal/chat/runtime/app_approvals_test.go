@@ -6,7 +6,9 @@ import (
 
 	"github.com/Suren878/matrixclaw/clients/terminal/chat/viewmodel"
 	surfacechat "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/chat"
+	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 func TestResolveApprovalMsgAppliesLocalApprovalLifecycle(t *testing.T) {
@@ -143,5 +145,29 @@ func TestResolveApprovalDeniedReloadsSnapshot(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Fatal("expected snapshot reload command")
+	}
+}
+
+func TestAutoEditSessionRequiresWithinWorkingDirMetadata(t *testing.T) {
+	model := newApp(nil, &Runtime{})
+	model.autoEditSessions["session-1"] = struct{}{}
+
+	safe := surfacepermission.PermissionRequest{
+		SessionID: "session-1",
+		ToolName:  "write",
+		Params: tools.WritePermissionsParams{
+			FilesystemPathMetadata: tools.FilesystemPathMetadata{WithinWorkingDir: true},
+		},
+	}
+	if !model.autoApprovesEditApproval(safe) {
+		t.Fatal("safe write approval should be auto-approved for edit session")
+	}
+
+	outside := safe
+	outside.Params = tools.WritePermissionsParams{
+		FilesystemPathMetadata: tools.FilesystemPathMetadata{WithinWorkingDir: false},
+	}
+	if model.autoApprovesEditApproval(outside) {
+		t.Fatal("outside-root write approval should not be auto-approved for edit session")
 	}
 }

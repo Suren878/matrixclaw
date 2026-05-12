@@ -11,7 +11,7 @@ import (
 func approvalKeyboard(approval core.Approval) *InlineKeyboardMarkup {
 	approvalID := approval.ID
 	firstRow := []InlineKeyboardButton{{Text: "✅ Allow", CallbackData: cbApprovalOnce + approvalID}}
-	if _, ok := core.PermissionModeForSessionApproval(approval.ToolName); ok {
+	if canAllowSessionApproval(approval) {
 		firstRow = append(firstRow, InlineKeyboardButton{Text: "🟢 Session", CallbackData: cbApprovalSession + approvalID})
 	}
 	return &InlineKeyboardMarkup{

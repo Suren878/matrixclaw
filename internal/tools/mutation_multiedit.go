@@ -65,13 +65,14 @@ func (e *multiEditExecutor) Execute(_ context.Context, call Call) (Result, error
 			newContentBytes = 0
 		}
 		return approvalResult(multiEditToolName, "multiedit", path, "Apply multiple edits to "+path, MultiEditPermissionsParams{
-			FilePath:            path,
-			OldContent:          oldPreview.Content,
-			NewContent:          newPreview.Content,
-			OldContentTruncated: oldPreview.Truncated,
-			NewContentTruncated: !previewExact || newPreview.Truncated,
-			OldContentBytes:     oldPreview.Bytes,
-			NewContentBytes:     newContentBytes,
+			FilesystemPathMetadata: filesystemPathMetadata(policy),
+			FilePath:               path,
+			OldContent:             oldPreview.Content,
+			NewContent:             newPreview.Content,
+			OldContentTruncated:    oldPreview.Truncated,
+			NewContentTruncated:    !previewExact || newPreview.Truncated,
+			OldContentBytes:        oldPreview.Bytes,
+			NewContentBytes:        newContentBytes,
 		}), nil
 	}
 

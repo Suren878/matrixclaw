@@ -99,7 +99,7 @@ func (w *Worker) resolveApprovalCallback(ctx context.Context, target chatTarget,
 	if approved {
 		status = "Approved"
 	}
-	if approved && allowSession {
+	if approved && allowSession && canAllowSessionApproval(approval) {
 		w.rememberAutoEditSession(target, approval.SessionID)
 		status = "Approved for session"
 	}

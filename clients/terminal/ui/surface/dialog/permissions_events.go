@@ -6,6 +6,8 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
 )
 
 func (p *Permissions) HandleMsg(msg tea.Msg) Action {
@@ -171,12 +173,7 @@ func (p *Permissions) permissionOptions() []permissionOption {
 }
 
 func (p *Permissions) canAllowSession() bool {
-	switch p.permission.ToolName {
-	case toolNameEdit, toolNameWrite, toolNameMultiEdit:
-		return true
-	default:
-		return false
-	}
+	return surfacepermission.CanAllowSessionApproval(p.permission)
 }
 
 func (p *Permissions) hasDiffView() bool {

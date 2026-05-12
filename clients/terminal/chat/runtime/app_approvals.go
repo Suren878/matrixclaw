@@ -72,8 +72,7 @@ func (m *appModel) autoApprovesEditApproval(approval surfacepermission.Permissio
 	if _, ok := m.autoEditSessions[sessionID]; !ok {
 		return false
 	}
-	_, ok := core.PermissionModeForSessionApproval(approval.ToolName)
-	return ok
+	return surfacepermission.CanAllowSessionApproval(approval)
 }
 
 func (m *appModel) pruneSuppressedApprovals() {

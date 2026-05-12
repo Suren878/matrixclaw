@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 type DownloadPermissionsParams struct {
@@ -84,5 +86,21 @@ func FormatParams(raw any) string {
 			return strings.TrimSpace(fmt.Sprintf("%v", value))
 		}
 		return strings.TrimSpace(string(body))
+	}
+}
+
+func CanAllowSessionApproval(request PermissionRequest) bool {
+	switch strings.ToLower(strings.TrimSpace(request.ToolName)) {
+	case "write":
+		params, ok := DecodeParams[tools.WritePermissionsParams](request.Params)
+		return ok && params.WithinWorkingDir
+	case "edit":
+		params, ok := DecodeParams[tools.EditPermissionsParams](request.Params)
+		return ok && params.WithinWorkingDir
+	case "multiedit", "multi_edit":
+		params, ok := DecodeParams[tools.MultiEditPermissionsParams](request.Params)
+		return ok && params.WithinWorkingDir
+	default:
+		return false
 	}
 }

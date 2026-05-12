@@ -809,6 +809,50 @@ func TestCoreFullAutoAllowsMutationOutsideWorkingDir(t *testing.T) {
 	}
 }
 
+func TestCoreAcceptEditsRequiresApprovalForSymlinkEscape(t *testing.T) {
+	t.Parallel()
+
+	app := newTestCore(t, nil).WithTools(newCoreCodingRegistry())
+	ctx := context.Background()
+	root := t.TempDir()
+	workdir := filepath.Join(root, "work")
+	outside := filepath.Join(root, "outside")
+	outsideSubdir := filepath.Join(outside, "sub")
+	if err := os.MkdirAll(workdir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(workdir) error = %v", err)
+	}
+	if err := os.MkdirAll(outsideSubdir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(outsideSubdir) error = %v", err)
+	}
+	if err := os.Symlink(outside, filepath.Join(workdir, "link")); err != nil {
+		t.Skipf("Symlink() unavailable: %v", err)
+	}
+	outsideFile := filepath.Join(outsideSubdir, "notes.txt")
+
+	session := createSession(t, app, ctx, core.CreateSessionInput{
+		Title:          "accept edits symlink escape",
+		WorkingDir:     workdir,
+		PermissionMode: core.PermissionModeAcceptEdits,
+	})
+	args, _ := json.Marshal(tools.WriteParams{FilePath: "link/sub/notes.txt", Content: "outside\n"})
+
+	result, err := app.ExecuteTool(ctx, core.ExecuteToolInput{
+		SessionID:  session.ID,
+		WorkingDir: workdir,
+		ToolName:   "write",
+		Args:       args,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTool() error = %v", err)
+	}
+	if result.Approval == nil {
+		t.Fatalf("Approval = nil, want approval for symlink escape")
+	}
+	if _, err := os.Stat(outsideFile); !os.IsNotExist(err) {
+		t.Fatalf("outside file was written without approval, stat err = %v", err)
+	}
+}
+
 func TestCoreApprovalReplayUsesParentDirForExactMutationPath(t *testing.T) {
 	t.Parallel()
 

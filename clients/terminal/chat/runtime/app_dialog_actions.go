@@ -6,13 +6,14 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
+	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
 func (m *appModel) handlePermissionResponse(msg surfacedialog.ActionPermissionResponse) tea.Cmd {
 	m.dialog.CloseDialog(surfacedialog.PermissionsID)
 	m.suppressedApprovals[msg.Permission.ID] = struct{}{}
-	if msg.Action == surfacedialog.PermissionAllowSession {
+	if msg.Action == surfacedialog.PermissionAllowSession && surfacepermission.CanAllowSessionApproval(msg.Permission) {
 		sessionID := strings.TrimSpace(msg.Permission.SessionID)
 		if sessionID == "" {
 			sessionID = strings.TrimSpace(m.session)

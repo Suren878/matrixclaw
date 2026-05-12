@@ -45,13 +45,14 @@ func (e *writeExecutor) Execute(_ context.Context, call Call) (Result, error) {
 		}
 		newPreview := approvalPreviewString(params.Content)
 		return approvalResult(writeToolName, "write", path, "Create or replace "+path, WritePermissionsParams{
-			FilePath:            path,
-			OldContent:          oldPreview.Content,
-			NewContent:          newPreview.Content,
-			OldContentTruncated: oldPreview.Truncated,
-			NewContentTruncated: newPreview.Truncated,
-			OldContentBytes:     oldPreview.Bytes,
-			NewContentBytes:     newPreview.Bytes,
+			FilesystemPathMetadata: filesystemPathMetadata(policy),
+			FilePath:               path,
+			OldContent:             oldPreview.Content,
+			NewContent:             newPreview.Content,
+			OldContentTruncated:    oldPreview.Truncated,
+			NewContentTruncated:    newPreview.Truncated,
+			OldContentBytes:        oldPreview.Bytes,
+			NewContentBytes:        newPreview.Bytes,
 		}), nil
 	}
 	oldContent := ""

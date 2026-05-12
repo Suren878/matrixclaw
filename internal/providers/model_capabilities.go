@@ -9,7 +9,6 @@ const (
 	ReasoningModeOpenAIEffort      ReasoningMode = "openai_effort"
 	ReasoningModeAnthropicThinking ReasoningMode = "anthropic_thinking"
 	ReasoningModeGeminiThinking    ReasoningMode = "gemini_thinking"
-	ReasoningModeOpenRouter        ReasoningMode = "openrouter_reasoning"
 )
 
 type ModelCapabilities struct {
@@ -48,8 +47,6 @@ func ResolveModelCapabilities(providerID string, providerType string, modelID st
 		if providerCapabilities.ReasoningEffort {
 			capabilities.ReasoningMode = ReasoningModeOpenAIEffort
 			capabilities.ReasoningWithTools = providerCapabilities.ToolCalling
-		} else if providerID == "openrouter" {
-			capabilities.ReasoningMode = ReasoningModeOpenRouter
 		}
 	}
 

@@ -101,6 +101,9 @@ func TestPermissionsAllowSessionOnlyForEdits(t *testing.T) {
 	edit := NewPermissions(com, surfacepermission.PermissionRequest{
 		ID:       "perm-edit",
 		ToolName: toolNameWrite,
+		Params: tools.WritePermissionsParams{
+			FilesystemPathMetadata: tools.FilesystemPathMetadata{WithinWorkingDir: true},
+		},
 	})
 	if !edit.canAllowSession() {
 		t.Fatal("write permission should allow session auto-edits")
@@ -112,6 +115,17 @@ func TestPermissionsAllowSessionOnlyForEdits(t *testing.T) {
 	})
 	if bash.canAllowSession() {
 		t.Fatal("bash permission should not allow session auto-edits")
+	}
+
+	outsideEdit := NewPermissions(com, surfacepermission.PermissionRequest{
+		ID:       "perm-outside-edit",
+		ToolName: toolNameWrite,
+		Params: tools.WritePermissionsParams{
+			FilesystemPathMetadata: tools.FilesystemPathMetadata{WithinWorkingDir: false},
+		},
+	})
+	if outsideEdit.canAllowSession() {
+		t.Fatal("outside-root write permission should not allow session auto-edits")
 	}
 }
 
