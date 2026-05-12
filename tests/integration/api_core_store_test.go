@@ -33,7 +33,7 @@ func TestAPICoreStoreFlow(t *testing.T) {
 	}
 	defer workflowRuntime.Close()
 
-	app.WithOrchestrator(workflowRuntime)
+	app.WithRunStarter(workflowRuntime)
 	server := api.New(app)
 
 	sessionResp := postJSON(t, server.Handler(), "/v1/sessions", map[string]any{

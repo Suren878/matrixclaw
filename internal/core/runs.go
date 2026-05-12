@@ -160,10 +160,10 @@ func (c *Core) startRun(ctx context.Context, runID string) error {
 	if runID == "" {
 		return fmt.Errorf("%w: run id is required", ErrInvalidInput)
 	}
-	if c.orchestrator == nil {
-		return fmt.Errorf("%w: orchestrator not configured", ErrExecutionUnavailable)
+	if c.runStarter == nil {
+		return fmt.Errorf("%w: run starter not configured", ErrExecutionUnavailable)
 	}
-	return c.orchestrator.StartRun(ctx, runID)
+	return c.runStarter.StartRun(ctx, runID)
 }
 
 func deterministicRunID(triggerID string) string {

@@ -8,14 +8,12 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/Suren878/matrixclaw/internal/orchestration"
 )
 
 type Core struct {
 	mu           sync.RWMutex
 	store        Store
-	orchestrator orchestration.RunStarter
+	runStarter   RunStarter
 	llms         SessionLLMRegistry
 	assistant    AssistantProfile
 	attachments  AttachmentReader
@@ -76,9 +74,9 @@ func (c *Core) WithIDGenerator(newID func(prefix string) string) *Core {
 	return c
 }
 
-func (c *Core) WithOrchestrator(orchestrator orchestration.RunStarter) *Core {
-	if orchestrator != nil {
-		c.orchestrator = orchestrator
+func (c *Core) WithRunStarter(starter RunStarter) *Core {
+	if starter != nil {
+		c.runStarter = starter
 	}
 	return c
 }

@@ -50,13 +50,13 @@ func Run(ctx context.Context) error {
 		WithSessionLLMs(bootstrap.SessionLLMs).
 		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()})
 	app.SetAssistantProfile(assistant)
-	orchestrator, err := goworkflows.New(bootstrap.DBPath, app)
+	runStarter, err := goworkflows.New(bootstrap.DBPath, app)
 	if err != nil {
 		return err
 	}
-	defer orchestrator.Close()
+	defer runStarter.Close()
 
-	app.WithOrchestrator(orchestrator)
+	app.WithRunStarter(runStarter)
 	automationService := automation.NewService(automationStore, app, bootstrap.Timezone)
 	toolRegistry := tools.NewCoreCodingRegistry(
 		automation.NewReminderTool(automationService),

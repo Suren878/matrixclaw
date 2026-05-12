@@ -1628,7 +1628,7 @@ func newTestCore(t *testing.T, providerRuntime providers.Runtime) *core.Core {
 
 	app := core.New(sqliteStore).WithSessionLLMs(newSessionLLMRegistryStub(providerRuntime))
 	app.WithClock(func() time.Time { return time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC) })
-	app.WithOrchestrator(orchestration.NewStub(app))
+	app.WithRunStarter(orchestration.NewStub(app))
 	return app
 }
 

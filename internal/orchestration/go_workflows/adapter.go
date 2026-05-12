@@ -17,10 +17,10 @@ import (
 )
 
 type Adapter struct {
-	backend      workflowbackend.Backend
-	orchestrator *workflowworker.WorkflowOrchestrator
-	cancel       context.CancelFunc
-	sequence     uint64
+	backend  workflowbackend.Backend
+	worker   *workflowworker.WorkflowOrchestrator
+	cancel   context.CancelFunc
+	sequence uint64
 }
 
 func New(path string, executor orchestration.RunExecutor) (*Adapter, error) {
@@ -32,30 +32,30 @@ func New(path string, executor orchestration.RunExecutor) (*Adapter, error) {
 	}
 
 	backend := workflowsqlite.NewSqliteBackend(path, workflowsqlite.WithApplyMigrations(true))
-	orchestratorRuntime := workflowworker.NewWorkflowOrchestrator(backend, nil)
+	worker := workflowworker.NewWorkflowOrchestrator(backend, nil)
 
-	if err := orchestratorRuntime.RegisterWorkflow(runWorkflow); err != nil {
+	if err := worker.RegisterWorkflow(runWorkflow); err != nil {
 		_ = backend.Close()
 		return nil, fmt.Errorf("go-workflows: register workflow: %w", err)
 	}
 
 	activities := &runActivities{executor: executor}
-	if err := orchestratorRuntime.RegisterActivity(activities.ExecuteRun, workflowregistry.WithName(executeRunActivityName)); err != nil {
+	if err := worker.RegisterActivity(activities.ExecuteRun, workflowregistry.WithName(executeRunActivityName)); err != nil {
 		_ = backend.Close()
 		return nil, fmt.Errorf("go-workflows: register activity: %w", err)
 	}
 
 	runCtx, cancel := context.WithCancel(context.Background())
-	if err := orchestratorRuntime.Start(runCtx); err != nil {
+	if err := worker.Start(runCtx); err != nil {
 		cancel()
 		_ = backend.Close()
 		return nil, fmt.Errorf("go-workflows: start worker: %w", err)
 	}
 
 	return &Adapter{
-		backend:      backend,
-		orchestrator: orchestratorRuntime,
-		cancel:       cancel,
+		backend: backend,
+		worker:  worker,
+		cancel:  cancel,
 	}, nil
 }
 
@@ -66,7 +66,7 @@ func (a *Adapter) StartRun(ctx context.Context, runID string) error {
 	}
 
 	instanceID := fmt.Sprintf("%s_%d", runID, atomic.AddUint64(&a.sequence, 1))
-	_, err := a.orchestrator.CreateWorkflowInstance(ctx, workflowclient.WorkflowInstanceOptions{
+	_, err := a.worker.CreateWorkflowInstance(ctx, workflowclient.WorkflowInstanceOptions{
 		InstanceID: instanceID,
 	}, runWorkflow, runID)
 	if err != nil {
@@ -84,7 +84,7 @@ func (a *Adapter) Close() error {
 
 	if a.cancel != nil {
 		a.cancel()
-		if err := a.orchestrator.WaitForCompletion(); err != nil && firstErr == nil {
+		if err := a.worker.WaitForCompletion(); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("go-workflows: wait for completion: %w", err)
 		}
 	}

@@ -63,6 +63,10 @@ type Store interface {
 	FileSnapshotStore
 }
 
+type RunStarter interface {
+	StartRun(ctx context.Context, runID string) error
+}
+
 type ToolExecutor interface {
 	List() []tools.Spec
 	Spec(toolID string) (tools.Spec, bool)
