@@ -20,7 +20,7 @@ func ProfileForModel(providerID string, providerType string, modelID string) Pro
 	providerID = NormalizeProviderID(providerID)
 	providerType = normalizeProviderTypeForProfile(providerType)
 	modelID = strings.TrimSpace(modelID)
-	capabilities := ResolveModelCapabilities(providerID, providerType, modelID)
+	capabilities := ProviderRuntimeCapabilities(providerID, providerType)
 	runtimeProfile := runtimeProfileDefaults(providerType)
 	if capabilities.ToolSchemaDialect != "" {
 		runtimeProfile.ToolSchemaDialect = capabilities.ToolSchemaDialect

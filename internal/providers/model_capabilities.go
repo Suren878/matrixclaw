@@ -1,14 +1,11 @@
 package providers
 
-import "strings"
-
 type ReasoningMode string
 
 const (
-	ReasoningModeNone              ReasoningMode = ""
-	ReasoningModeOpenAIEffort      ReasoningMode = "openai_effort"
-	ReasoningModeAnthropicThinking ReasoningMode = "anthropic_thinking"
-	ReasoningModeGeminiThinking    ReasoningMode = "gemini_thinking"
+	ReasoningModeNone           ReasoningMode = ""
+	ReasoningModeOpenAIEffort   ReasoningMode = "openai_effort"
+	ReasoningModeGeminiThinking ReasoningMode = "gemini_thinking"
 )
 
 type ModelCapabilities struct {
@@ -22,10 +19,12 @@ type ModelCapabilities struct {
 	NormalizeModel     bool
 }
 
-func ResolveModelCapabilities(providerID string, providerType string, modelID string) ModelCapabilities {
+// ProviderRuntimeCapabilities resolves runtime behavior from the provider catalog.
+// The catalog is currently provider-level; model-specific capabilities should be
+// added here only when the catalog carries real model data for them.
+func ProviderRuntimeCapabilities(providerID string, providerType string) ModelCapabilities {
 	providerID = NormalizeProviderID(providerID)
 	providerType = normalizeProviderTypeForProfile(providerType)
-	_ = strings.TrimSpace(modelID)
 
 	providerCapabilities := ProviderCapabilities(providerID, providerType)
 	capabilities := ModelCapabilities{
@@ -40,9 +39,6 @@ func ResolveModelCapabilities(providerID string, providerType string, modelID st
 	case TypeGemini:
 		capabilities.ToolSchemaDialect = ToolSchemaGemini
 		capabilities.ReasoningMode = ReasoningModeGeminiThinking
-		capabilities.ThoughtSignatures = providerCapabilities.ToolCalling
-	case TypeAnthropic:
-		capabilities.ReasoningMode = ReasoningModeAnthropicThinking
 	case TypeOpenAICompat:
 		if providerCapabilities.ReasoningEffort {
 			capabilities.ReasoningMode = ReasoningModeOpenAIEffort

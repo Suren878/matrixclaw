@@ -2,7 +2,7 @@ package providers
 
 import "testing"
 
-func TestResolveModelCapabilities(t *testing.T) {
+func TestProviderRuntimeCapabilities(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -41,20 +41,18 @@ func TestResolveModelCapabilities(t *testing.T) {
 			wantSchema:      ToolSchemaJSONSchema,
 		},
 		{
-			name:              "gemini uses native schema and thought signatures",
+			name:              "gemini uses native schema and decodes thought parts",
 			providerID:        "gemini",
 			providerType:      TypeGemini,
 			wantToolCalling:   true,
 			wantSchema:        ToolSchemaGemini,
 			wantReasoningMode: ReasoningModeGeminiThinking,
-			wantThoughts:      true,
 		},
 		{
-			name:              "anthropic adapter currently runs without tools",
-			providerID:        "anthropic",
-			providerType:      TypeAnthropic,
-			wantSchema:        ToolSchemaJSONSchema,
-			wantReasoningMode: ReasoningModeAnthropicThinking,
+			name:         "anthropic adapter currently runs without tools or thinking",
+			providerID:   "anthropic",
+			providerType: TypeAnthropic,
+			wantSchema:   ToolSchemaJSONSchema,
 		},
 	}
 
@@ -63,7 +61,7 @@ func TestResolveModelCapabilities(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := ResolveModelCapabilities(tt.providerID, tt.providerType, "model")
+			got := ProviderRuntimeCapabilities(tt.providerID, tt.providerType)
 			if got.ToolCalling != tt.wantToolCalling {
 				t.Fatalf("ToolCalling = %v, want %v", got.ToolCalling, tt.wantToolCalling)
 			}
