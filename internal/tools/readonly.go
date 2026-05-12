@@ -22,6 +22,7 @@ type ReadParams struct {
 }
 
 type ReadResponseMetadata struct {
+	FilesystemPathMetadata
 	FilePath string `json:"file_path"`
 	Content  string `json:"content"`
 }
@@ -32,6 +33,7 @@ type GlobParams struct {
 }
 
 type GlobResponseMetadata struct {
+	FilesystemPathMetadata
 	NumberOfFiles int  `json:"number_of_files"`
 	Truncated     bool `json:"truncated"`
 }
@@ -44,6 +46,7 @@ type GrepParams struct {
 }
 
 type GrepResponseMetadata struct {
+	FilesystemPathMetadata
 	NumberOfMatches int  `json:"number_of_matches"`
 	Truncated       bool `json:"truncated"`
 }
@@ -55,6 +58,7 @@ type LSParams struct {
 }
 
 type LSResponseMetadata struct {
+	FilesystemPathMetadata
 	NumberOfFiles int  `json:"number_of_files"`
 	Truncated     bool `json:"truncated"`
 }

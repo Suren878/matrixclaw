@@ -43,6 +43,35 @@ type WriteToolRenderContext struct{}
 type EditToolRenderContext struct{}
 type MultiEditToolRenderContext struct{}
 
+type filesystemPathMetadata struct {
+	FilePath      string `json:"file_path"`
+	RequestedPath string `json:"requested_path"`
+	ResolvedPath  string `json:"resolved_path"`
+	WorkingDir    string `json:"working_dir"`
+}
+
+func metadataDisplayPath(raw string, fallback string) string {
+	var meta filesystemPathMetadata
+	if err := json.Unmarshal([]byte(raw), &meta); err != nil {
+		return prettyPath(fallback)
+	}
+	switch {
+	case strings.TrimSpace(meta.ResolvedPath) != "":
+		return prettyPath(meta.ResolvedPath)
+	case strings.TrimSpace(meta.FilePath) != "":
+		return prettyPath(meta.FilePath)
+	default:
+		return prettyPath(fallback)
+	}
+}
+
+func resultDisplayPath(result *surfacemessage.ToolResult, fallback string) string {
+	if result == nil {
+		return prettyPath(fallback)
+	}
+	return metadataDisplayPath(result.Metadata, fallback)
+}
+
 func (v *ReadToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
@@ -54,7 +83,7 @@ func (v *ReadToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int,
 		return toolErrorContent(sty, &surfacemessage.ToolResult{Content: "Invalid parameters"}, cappedWidth)
 	}
 
-	file := prettyPath(params.FilePath)
+	file := resultDisplayPath(opts.Result, params.FilePath)
 	toolParams := []string{file}
 	if params.Offset != 0 {
 		toolParams = append(toolParams, "offset", fmt.Sprintf("%d", params.Offset))
@@ -88,7 +117,7 @@ func (w *WriteToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int
 		return toolErrorContent(sty, &surfacemessage.ToolResult{Content: "Invalid parameters"}, cappedWidth)
 	}
 
-	file := prettyPath(params.FilePath)
+	file := resultDisplayPath(opts.Result, params.FilePath)
 	header := toolHeader(sty, opts.Status, "Write", cappedWidth, opts.Compact, file)
 	if opts.Compact {
 		return header
@@ -119,7 +148,7 @@ func (e *EditToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int,
 		return toolErrorContent(sty, &surfacemessage.ToolResult{Content: "Invalid parameters"}, cappedWidth)
 	}
 
-	file := prettyPath(params.FilePath)
+	file := resultDisplayPath(opts.Result, params.FilePath)
 	header := toolHeader(sty, opts.Status, "Edit", cappedWidth, opts.Compact, file)
 	if opts.Compact {
 		return header
@@ -149,7 +178,7 @@ func (m *MultiEditToolRenderContext) RenderTool(sty *surfacestyles.Styles, width
 		return toolErrorContent(sty, &surfacemessage.ToolResult{Content: "Invalid parameters"}, width)
 	}
 
-	file := prettyPath(params.FilePath)
+	file := resultDisplayPath(opts.Result, params.FilePath)
 	toolParams := []string{file}
 	if len(params.Edits) > 0 {
 		toolParams = append(toolParams, "edits", fmt.Sprintf("%d", len(params.Edits)))
@@ -225,12 +254,10 @@ func readHeader(sty *surfacestyles.Styles, _ ToolStatus, width int, nested bool,
 
 func resolveReadResult(path string, result surfacemessage.ToolResult) (string, string) {
 	content := strings.TrimSpace(result.Content)
+	path = metadataDisplayPath(result.Metadata, path)
 
 	var meta tools.ReadResponseMetadata
 	if err := json.Unmarshal([]byte(result.Metadata), &meta); err == nil {
-		if strings.TrimSpace(meta.FilePath) != "" {
-			path = prettyPath(meta.FilePath)
-		}
 		if strings.TrimSpace(meta.Content) != "" {
 			content = meta.Content
 		}

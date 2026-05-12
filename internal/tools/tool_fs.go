@@ -21,6 +21,17 @@ type FilesystemPathPolicy struct {
 	SymlinkEvalApplied bool
 }
 
+type FilesystemPathMetadata struct {
+	RequestedPath      string `json:"requested_path,omitempty"`
+	ResolvedPath       string `json:"resolved_path,omitempty"`
+	WorkingDir         string `json:"working_dir,omitempty"`
+	RealPath           string `json:"real_path,omitempty"`
+	RealWorkingDir     string `json:"real_working_dir,omitempty"`
+	BoundaryKnown      bool   `json:"boundary_known,omitempty"`
+	WithinWorkingDir   bool   `json:"within_working_dir,omitempty"`
+	SymlinkEvalApplied bool   `json:"symlink_eval_applied,omitempty"`
+}
+
 func ResolveFilesystemPath(workingDir string, value string) (FilesystemPathPolicy, error) {
 	wd := strings.TrimSpace(workingDir)
 	workingDirProvided := wd != ""
@@ -70,6 +81,19 @@ func ResolveFilesystemPath(workingDir string, value string) (FilesystemPathPolic
 	}, nil
 }
 
+func filesystemPathMetadata(policy FilesystemPathPolicy) FilesystemPathMetadata {
+	return FilesystemPathMetadata{
+		RequestedPath:      policy.Input,
+		ResolvedPath:       policy.Path,
+		WorkingDir:         policy.WorkingDir,
+		RealPath:           policy.RealPath,
+		RealWorkingDir:     policy.RealWorkingDir,
+		BoundaryKnown:      policy.BoundaryKnown,
+		WithinWorkingDir:   policy.WithinWorkingDir,
+		SymlinkEvalApplied: policy.SymlinkEvalApplied,
+	}
+}
+
 func resolvePath(workingDir string, value string) string {
 	if strings.TrimSpace(value) == "" {
 		if strings.TrimSpace(workingDir) == "" {
@@ -95,12 +119,30 @@ func resolvePathUnderWorkingDir(workingDir string, value string) (FilesystemPath
 	if policy.WorkingDirProvided && policy.EscapesWorkingDir {
 		return policy, &Result{
 			Content: fmt.Sprintf(
-				"Path resolves outside working directory: %s (working directory: %s). Start matrixclaw from the project directory or run matrixclaw tui <path> for that project.",
+				"Path resolves outside working directory: requested path %q resolved to %s (working directory: %s). Start matrixclaw from the project directory or run matrixclaw tui <path> for that project.",
+				policy.Input,
 				policy.Path,
 				policy.WorkingDir,
 			),
-			IsError: true,
+			Metadata: filesystemPathMetadata(policy),
+			IsError:  true,
 		}
+	}
+	return policy, nil
+}
+
+func resolveReadablePath(workingDir string, value string) (FilesystemPathPolicy, *Result) {
+	policy, err := ResolveFilesystemPath(workingDir, value)
+	if err != nil {
+		return FilesystemPathPolicy{}, &Result{Content: fmt.Sprintf("Invalid path: %v", err), IsError: true}
+	}
+	return policy, nil
+}
+
+func resolveMutationPath(workingDir string, value string) (FilesystemPathPolicy, *Result) {
+	policy, err := ResolveFilesystemPath(workingDir, value)
+	if err != nil {
+		return FilesystemPathPolicy{}, &Result{Content: fmt.Sprintf("Invalid path: %v", err), IsError: true}
 	}
 	return policy, nil
 }

@@ -19,7 +19,7 @@ func (e *globExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 		return Result{Content: "pattern is required", IsError: true}, nil
 	}
 
-	policy, pathErr := resolvePathUnderWorkingDir(call.WorkingDir, params.Path)
+	policy, pathErr := resolveReadablePath(call.WorkingDir, params.Path)
 	if pathErr != nil {
 		return *pathErr, nil
 	}
@@ -39,8 +39,9 @@ func (e *globExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 	return Result{
 		Content: content,
 		Metadata: GlobResponseMetadata{
-			NumberOfFiles: len(files),
-			Truncated:     truncated,
+			FilesystemPathMetadata: filesystemPathMetadata(policy),
+			NumberOfFiles:          len(files),
+			Truncated:              truncated,
 		},
 	}, nil
 }

@@ -30,7 +30,7 @@ func (e *editExecutor) Execute(_ context.Context, call Call) (Result, error) {
 	if strings.TrimSpace(params.FilePath) == "" {
 		return Result{Content: "file_path is required", IsError: true}, nil
 	}
-	policy, pathErr := resolvePathUnderWorkingDir(call.WorkingDir, params.FilePath)
+	policy, pathErr := resolveMutationPath(call.WorkingDir, params.FilePath)
 	if pathErr != nil {
 		return *pathErr, nil
 	}
@@ -89,11 +89,12 @@ func (e *editExecutor) Execute(_ context.Context, call Call) (Result, error) {
 	return Result{
 		Content: fmt.Sprintf("File edited: %s", path),
 		Metadata: EditResponseMetadata{
-			Diff:       diffText,
-			Additions:  additions,
-			Removals:   removals,
-			OldContent: oldContent,
-			NewContent: newContent,
+			FilesystemPathMetadata: filesystemPathMetadata(policy),
+			Diff:                   diffText,
+			Additions:              additions,
+			Removals:               removals,
+			OldContent:             oldContent,
+			NewContent:             newContent,
 		},
 		FileVersion: &FileVersion{
 			Path:       path,

@@ -40,8 +40,8 @@ func (g *GlobToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int,
 	}
 
 	toolParams := []string{params.Pattern}
-	if params.Path != "" {
-		toolParams = append(toolParams, "path", prettyPath(params.Path))
+	if path := resultDisplayPath(opts.Result, params.Path); path != "" && path != "." {
+		toolParams = append(toolParams, "path", path)
 	}
 
 	header := toolHeader(sty, opts.Status, "Glob", cappedWidth, opts.Compact, toolParams...)
@@ -72,8 +72,8 @@ func (g *GrepToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int,
 	}
 
 	toolParams := []string{params.Pattern}
-	if params.Path != "" {
-		toolParams = append(toolParams, "path", prettyPath(params.Path))
+	if path := resultDisplayPath(opts.Result, params.Path); path != "" && path != "." {
+		toolParams = append(toolParams, "path", path)
 	}
 	if params.Include != "" {
 		toolParams = append(toolParams, "include", params.Include)
@@ -114,7 +114,7 @@ func (l *LSToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, o
 		path = "."
 	}
 
-	header := toolHeader(sty, opts.Status, "List", cappedWidth, opts.Compact, prettyPath(path))
+	header := toolHeader(sty, opts.Status, "List", cappedWidth, opts.Compact, resultDisplayPath(opts.Result, path))
 	if opts.Compact {
 		return header
 	}

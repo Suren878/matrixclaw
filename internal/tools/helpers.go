@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -27,14 +26,7 @@ func normalizeApprovalPath(path string) string {
 	if path == "" {
 		return ""
 	}
-	info, err := os.Stat(path)
-	if err == nil {
-		if info.IsDir() {
-			return filepath.Clean(path)
-		}
-		return filepath.Dir(filepath.Clean(path))
-	}
-	return filepath.Dir(filepath.Clean(path))
+	return filepath.Clean(path)
 }
 
 func relativeDisplayPath(workingDir string, path string) string {

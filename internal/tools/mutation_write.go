@@ -31,7 +31,7 @@ func (e *writeExecutor) Execute(_ context.Context, call Call) (Result, error) {
 	if strings.TrimSpace(params.FilePath) == "" {
 		return Result{Content: "file_path is required", IsError: true}, nil
 	}
-	policy, errResult := resolvePathUnderWorkingDir(call.WorkingDir, params.FilePath)
+	policy, errResult := resolveMutationPath(call.WorkingDir, params.FilePath)
 	if errResult != nil {
 		return *errResult, nil
 	}
@@ -75,11 +75,12 @@ func (e *writeExecutor) Execute(_ context.Context, call Call) (Result, error) {
 	return Result{
 		Content: fmt.Sprintf("File written: %s", path),
 		Metadata: WriteResponseMetadata{
-			Diff:       diffText,
-			Additions:  additions,
-			Removals:   removals,
-			OldContent: oldContent,
-			NewContent: params.Content,
+			FilesystemPathMetadata: filesystemPathMetadata(policy),
+			Diff:                   diffText,
+			Additions:              additions,
+			Removals:               removals,
+			OldContent:             oldContent,
+			NewContent:             params.Content,
 		},
 		FileVersion: &FileVersion{
 			Path:       path,

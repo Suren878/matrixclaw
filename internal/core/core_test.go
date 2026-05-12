@@ -113,6 +113,47 @@ func TestCoreSendsAssistantProfileToProvider(t *testing.T) {
 	}
 }
 
+func TestCoreProviderRequestIncludesCurrentProjectRoot(t *testing.T) {
+	t.Parallel()
+
+	requests := make(chan providers.Request, 1)
+	provider := newProviderStub()
+	provider.GenerateFunc = func(ctx context.Context, request providers.Request) (providers.Response, error) {
+		requests <- request
+		return providers.Response{Text: "root received"}, nil
+	}
+
+	app := newTestCore(t, provider)
+	ctx := context.Background()
+	createBoundSession(t, app, ctx, core.CreateSessionInput{Title: "Docs"})
+
+	accepted, err := app.AcceptRun(ctx, core.HandleMessageInput{
+		Client:      "terminal",
+		ExternalKey: "local",
+		Text:        "list files",
+		WorkingDir:  "/Volumes/LVM/Downloads/project",
+	})
+	if err != nil {
+		t.Fatalf("AcceptRun() error = %v", err)
+	}
+	waitForRunStatus(t, app, accepted.Run.ID, core.RunStatusCompleted)
+
+	select {
+	case request := <-requests:
+		if !strings.Contains(request.SystemPrompt, "Current project root:") {
+			t.Fatalf("SystemPrompt = %q, want current project root block", request.SystemPrompt)
+		}
+		if !strings.Contains(request.SystemPrompt, `/Volumes/LVM/Downloads/project`) {
+			t.Fatalf("SystemPrompt = %q, want working directory", request.SystemPrompt)
+		}
+		if !strings.Contains(request.SystemPrompt, "Resolve relative filesystem tool paths under this directory.") {
+			t.Fatalf("SystemPrompt = %q, want path instruction", request.SystemPrompt)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("provider request was not captured")
+	}
+}
+
 func TestCoreSessionContextIncludesAssistantPromptAndMessages(t *testing.T) {
 	t.Parallel()
 
@@ -722,6 +763,82 @@ func TestCorePermissionModesForToolExecution(t *testing.T) {
 				t.Fatalf("ExecuteTool(%s) should create tool result when auto-approved", tc.toolName)
 			}
 		})
+	}
+}
+
+func TestCoreFullAutoAllowsMutationOutsideWorkingDir(t *testing.T) {
+	t.Parallel()
+
+	app := newTestCore(t, nil).WithTools(newCoreCodingRegistry())
+	ctx := context.Background()
+	root := t.TempDir()
+	workdir := filepath.Join(root, "work")
+	outside := filepath.Join(root, "outside")
+	if err := os.MkdirAll(workdir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(workdir) error = %v", err)
+	}
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatalf("MkdirAll(outside) error = %v", err)
+	}
+	outsideFile := filepath.Join(outside, "notes.txt")
+
+	session := createSession(t, app, ctx, core.CreateSessionInput{
+		Title:          "full auto outside mutation",
+		WorkingDir:     workdir,
+		PermissionMode: core.PermissionModeFullAuto,
+	})
+	args, _ := json.Marshal(tools.WriteParams{FilePath: outsideFile, Content: "full auto\n"})
+
+	result, err := app.ExecuteTool(ctx, core.ExecuteToolInput{
+		SessionID:  session.ID,
+		WorkingDir: workdir,
+		ToolName:   "write",
+		Args:       args,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTool() error = %v", err)
+	}
+	if result.Approval != nil {
+		t.Fatalf("Approval = %#v, want full-auto write without approval", result.Approval)
+	}
+	if result.ToolResultMessage == nil || result.ToolResultMessage.Parts[0].ToolResult == nil {
+		t.Fatalf("ToolResultMessage = %#v, want completed write", result.ToolResultMessage)
+	}
+	if content, err := os.ReadFile(outsideFile); err != nil || string(content) != "full auto\n" {
+		t.Fatalf("outside file content = %q err=%v, want full auto write", string(content), err)
+	}
+}
+
+func TestCoreApprovalReplayUsesParentDirForExactMutationPath(t *testing.T) {
+	t.Parallel()
+
+	app := newTestCore(t, nil).WithTools(newCoreCodingRegistry())
+	ctx := context.Background()
+	workdir := t.TempDir()
+	target := filepath.Join(workdir, "notes.txt")
+	session := createSession(t, app, ctx, core.CreateSessionInput{Title: "exact approval path"})
+	args, _ := json.Marshal(tools.WriteParams{FilePath: "notes.txt", Content: "approved\n"})
+
+	pending, err := app.ExecuteTool(ctx, core.ExecuteToolInput{
+		SessionID:  session.ID,
+		WorkingDir: workdir,
+		ToolName:   "write",
+		Args:       args,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTool(pending) error = %v", err)
+	}
+	if pending.Approval == nil {
+		t.Fatal("ExecuteTool() approval = nil, want pending approval")
+	}
+	if pending.Approval.Path != target {
+		t.Fatalf("approval path = %q, want exact target %q", pending.Approval.Path, target)
+	}
+	if _, err := app.ResolveApproval(ctx, pending.Approval.ID, true); err != nil {
+		t.Fatalf("ResolveApproval() error = %v", err)
+	}
+	if content, err := os.ReadFile(target); err != nil || string(content) != "approved\n" {
+		t.Fatalf("target content = %q err=%v, want approved write", string(content), err)
 	}
 }
 

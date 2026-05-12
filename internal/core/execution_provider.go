@@ -19,6 +19,9 @@ func (c *Core) buildProviderRequest(ctx context.Context, turn turnExecution) (pr
 	assistant := c.assistantProfile()
 	compactSummary, effectiveHistory := latestCompactSummary(history)
 	systemPrompt := AssistantSystemPrompt(assistant)
+	if workingDir := strings.TrimSpace(turn.WorkingDir); workingDir != "" {
+		systemPrompt = strings.TrimSpace(systemPrompt + "\n\n" + currentProjectRootPrompt(workingDir))
+	}
 	if compactSummary != "" {
 		systemPrompt = strings.TrimSpace(systemPrompt + "\n\nSession compact summary:\n" + compactSummary)
 	}
@@ -84,6 +87,10 @@ func AssistantSystemPrompt(profile AssistantProfile) string {
 		return identity
 	}
 	return identity + "\n\n" + systemPrompt
+}
+
+func currentProjectRootPrompt(workingDir string) string {
+	return fmt.Sprintf("Current project root:\n- The filesystem working directory for this session is %q.\n- Resolve relative filesystem tool paths under this directory.\n- Use paths inside this project root unless the user explicitly asks for another location.", workingDir)
 }
 
 func buildProviderConversation(history []Message) []providers.Message {

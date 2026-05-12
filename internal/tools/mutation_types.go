@@ -22,6 +22,7 @@ type WritePermissionsParams struct {
 }
 
 type WriteResponseMetadata struct {
+	FilesystemPathMetadata
 	Diff       string `json:"diff"`
 	Additions  int    `json:"additions"`
 	Removals   int    `json:"removals"`
@@ -47,6 +48,7 @@ type EditPermissionsParams struct {
 }
 
 type EditResponseMetadata struct {
+	FilesystemPathMetadata
 	Diff       string `json:"diff"`
 	Additions  int    `json:"additions"`
 	Removals   int    `json:"removals"`
@@ -82,6 +84,7 @@ type FailedEdit struct {
 }
 
 type MultiEditResponseMetadata struct {
+	FilesystemPathMetadata
 	Diff         string       `json:"diff"`
 	Additions    int          `json:"additions"`
 	Removals     int          `json:"removals"`

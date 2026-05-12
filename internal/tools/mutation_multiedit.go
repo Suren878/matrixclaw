@@ -33,7 +33,7 @@ func (e *multiEditExecutor) Execute(_ context.Context, call Call) (Result, error
 	if len(params.Edits) == 0 {
 		return Result{Content: "edits is required", IsError: true}, nil
 	}
-	policy, pathErr := resolvePathUnderWorkingDir(call.WorkingDir, params.FilePath)
+	policy, pathErr := resolveMutationPath(call.WorkingDir, params.FilePath)
 	if pathErr != nil {
 		return *pathErr, nil
 	}
@@ -105,12 +105,13 @@ func (e *multiEditExecutor) Execute(_ context.Context, call Call) (Result, error
 	return Result{
 		Content: fmt.Sprintf("Applied %d edits to %s", applied, path),
 		Metadata: MultiEditResponseMetadata{
-			Diff:         diffText,
-			Additions:    additions,
-			Removals:     removals,
-			EditsApplied: applied,
-			OldContent:   oldContent,
-			NewContent:   current,
+			FilesystemPathMetadata: filesystemPathMetadata(policy),
+			Diff:                   diffText,
+			Additions:              additions,
+			Removals:               removals,
+			EditsApplied:           applied,
+			OldContent:             oldContent,
+			NewContent:             current,
 		},
 		FileVersion: &FileVersion{
 			Path:       path,

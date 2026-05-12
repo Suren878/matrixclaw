@@ -71,6 +71,61 @@ func TestReadToolRenderOmitsLimitFromHeader(t *testing.T) {
 	}
 }
 
+func TestReadToolRenderUsesResolvedPathMetadata(t *testing.T) {
+	sty := surfacestyles.DefaultStyles()
+	renderer := &ReadToolRenderContext{}
+	opts := &ToolRenderOpts{
+		ToolCall: surfacemessage.ToolCall{
+			ID:       "tool-read-resolved",
+			Name:     "read",
+			Input:    `{"file_path":"notes.txt"}`,
+			Finished: true,
+		},
+		Result: &surfacemessage.ToolResult{
+			ToolCallID: "tool-read-resolved",
+			Name:       "read",
+			Metadata:   `{"requested_path":"notes.txt","resolved_path":"/Volumes/LVM/Downloads/project/notes.txt","working_dir":"/Volumes/LVM/Downloads/project","content":"hello"}`,
+		},
+		Status: ToolStatusSuccess,
+	}
+
+	rendered := xansi.Strip(renderer.RenderTool(&sty, 120, opts))
+	if !strings.Contains(rendered, "/Volumes/LVM/Downloads/project/notes.txt") {
+		t.Fatalf("expected read header to use resolved path metadata, got %q", rendered)
+	}
+	if strings.Contains(rendered, "Read notes.txt") {
+		t.Fatalf("expected read header not to fall back to requested path, got %q", rendered)
+	}
+}
+
+func TestListToolRenderUsesResolvedPathMetadata(t *testing.T) {
+	sty := surfacestyles.DefaultStyles()
+	renderer := &LSToolRenderContext{}
+	opts := &ToolRenderOpts{
+		ToolCall: surfacemessage.ToolCall{
+			ID:       "tool-ls-resolved",
+			Name:     "ls",
+			Input:    `{"path":"Downloads"}`,
+			Finished: true,
+		},
+		Result: &surfacemessage.ToolResult{
+			ToolCallID: "tool-ls-resolved",
+			Name:       "ls",
+			Content:    "notes.txt",
+			Metadata:   `{"requested_path":"Downloads","resolved_path":"/Volumes/LVM/Downloads","working_dir":"/Volumes/LVM"}`,
+		},
+		Status: ToolStatusSuccess,
+	}
+
+	rendered := xansi.Strip(renderer.RenderTool(&sty, 120, opts))
+	if !strings.Contains(rendered, "/Volumes/LVM/Downloads") {
+		t.Fatalf("expected list header to use resolved path metadata, got %q", rendered)
+	}
+	if strings.Contains(rendered, "List Downloads") {
+		t.Fatalf("expected list header not to fall back to requested path, got %q", rendered)
+	}
+}
+
 func TestCommonReadRootAndRelativePaths(t *testing.T) {
 	paths := []string{
 		"/workspace/matrixclaw/internal/api/server.go",

@@ -52,11 +52,18 @@ func (m *ReadGroupMessageItem) RawRender(width int) string {
 		return m.renderHighlighted(content, cappedWidth, height)
 	}
 	paths := make([]string, 0, len(m.toolCalls))
+	resultsByCallID := make(map[string]surfacemessage.ToolResult, len(m.results))
+	for _, result := range m.results {
+		resultsByCallID[result.ToolCallID] = result
+	}
 	for _, toolCall := range m.toolCalls {
 		var params tools.ReadParams
 		_ = json.Unmarshal([]byte(toolCall.Input), &params)
 
 		path := prettyPath(params.FilePath)
+		if result, ok := resultsByCallID[toolCall.ID]; ok {
+			path = resultDisplayPath(&result, path)
+		}
 		if path != "" {
 			paths = append(paths, path)
 		}

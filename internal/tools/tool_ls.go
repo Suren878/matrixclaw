@@ -16,15 +16,16 @@ func (e *lsExecutor) Execute(_ context.Context, call Call) (Result, error) {
 		return Result{}, InvalidArgs(lsToolName, err)
 	}
 
-	policy, pathErr := resolvePathUnderWorkingDir(call.WorkingDir, params.Path)
+	policy, pathErr := resolveReadablePath(call.WorkingDir, params.Path)
 	if pathErr != nil {
 		return *pathErr, nil
 	}
 	root := policy.Path
 	output, metadata, err := listDirectoryTree(root, params)
 	if err != nil {
-		return Result{Content: err.Error(), IsError: true}, nil
+		return Result{Content: err.Error(), Metadata: filesystemPathMetadata(policy), IsError: true}, nil
 	}
+	metadata.FilesystemPathMetadata = filesystemPathMetadata(policy)
 	return Result{
 		Content:  output,
 		Metadata: metadata,

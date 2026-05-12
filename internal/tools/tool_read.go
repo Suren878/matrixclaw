@@ -18,20 +18,20 @@ func (e *readExecutor) Execute(_ context.Context, call Call) (Result, error) {
 		return Result{Content: "file_path is required", IsError: true}, nil
 	}
 
-	policy, pathErr := resolvePathUnderWorkingDir(call.WorkingDir, params.FilePath)
+	policy, pathErr := resolveReadablePath(call.WorkingDir, params.FilePath)
 	if pathErr != nil {
 		return *pathErr, nil
 	}
 	path := policy.Path
 	info, err := os.Stat(path)
 	if err != nil {
-		return Result{Content: fmt.Sprintf("File not found: %s", path), IsError: true}, nil
+		return Result{Content: fmt.Sprintf("File not found: %s", path), Metadata: filesystemPathMetadata(policy), IsError: true}, nil
 	}
 	if info.IsDir() {
-		return Result{Content: fmt.Sprintf("Path is a directory, not a file: %s", path), IsError: true}, nil
+		return Result{Content: fmt.Sprintf("Path is a directory, not a file: %s", path), Metadata: filesystemPathMetadata(policy), IsError: true}, nil
 	}
 	if info.Size() > maxReadBytes {
-		return Result{Content: fmt.Sprintf("File is too large (%d bytes)", info.Size()), IsError: true}, nil
+		return Result{Content: fmt.Sprintf("File is too large (%d bytes)", info.Size()), Metadata: filesystemPathMetadata(policy), IsError: true}, nil
 	}
 
 	limit := params.Limit
@@ -52,8 +52,9 @@ func (e *readExecutor) Execute(_ context.Context, call Call) (Result, error) {
 	return Result{
 		Content: body,
 		Metadata: ReadResponseMetadata{
-			FilePath: path,
-			Content:  content,
+			FilesystemPathMetadata: filesystemPathMetadata(policy),
+			FilePath:               path,
+			Content:                content,
 		},
 	}, nil
 }

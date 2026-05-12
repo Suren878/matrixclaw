@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestFilesystemPathPolicyRejectsSymlinkEscape(t *testing.T) {
+func TestFilesystemPathPolicyDetectsSymlinkEscape(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -47,11 +47,15 @@ func TestFilesystemPathPolicyRejectsSymlinkEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if !result.IsError || !strings.Contains(result.Content, "outside working directory") {
-		t.Fatalf("result = %#v, want outside-working-dir tool error", result)
+	if result.IsError || !strings.Contains(result.Content, "secret") {
+		t.Fatalf("result = %#v, want readonly symlink escape to be readable", result)
 	}
-	if !strings.Contains(result.Content, "working directory: "+work) {
-		t.Fatalf("result = %#v, want working directory hint", result)
+	meta, ok := result.Metadata.(ReadResponseMetadata)
+	if !ok {
+		t.Fatalf("metadata type = %T, want ReadResponseMetadata", result.Metadata)
+	}
+	if !meta.SymlinkEvalApplied || meta.WithinWorkingDir {
+		t.Fatalf("metadata = %#v, want symlink outside root diagnostics", meta.FilesystemPathMetadata)
 	}
 }
 
@@ -74,6 +78,213 @@ func TestFilesystemPathPolicyAllowsAbsolutePathUnderWorkingDir(t *testing.T) {
 	}
 	if result.IsError || !strings.Contains(result.Content, "hello") {
 		t.Fatalf("result = %#v, want absolute path under working dir to read", result)
+	}
+	meta, ok := result.Metadata.(ReadResponseMetadata)
+	if !ok {
+		t.Fatalf("metadata type = %T, want ReadResponseMetadata", result.Metadata)
+	}
+	if meta.RequestedPath != path || meta.ResolvedPath != path || meta.WorkingDir != work {
+		t.Fatalf("metadata = %#v, want requested/resolved/root paths", meta.FilesystemPathMetadata)
+	}
+}
+
+func TestFilesystemPathPolicyResolvesRelativePathUnderWorkingDir(t *testing.T) {
+	t.Parallel()
+
+	work := t.TempDir()
+	path := filepath.Join(work, "notes.txt")
+	if err := os.WriteFile(path, []byte("hello"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	args, _ := json.Marshal(ReadParams{FilePath: "notes.txt"})
+	result, err := NewReadExecutor().Execute(context.Background(), Call{
+		WorkingDir: work,
+		Args:       args,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if result.IsError || !strings.Contains(result.Content, "hello") {
+		t.Fatalf("result = %#v, want relative path to read under working dir", result)
+	}
+	meta, ok := result.Metadata.(ReadResponseMetadata)
+	if !ok {
+		t.Fatalf("metadata type = %T, want ReadResponseMetadata", result.Metadata)
+	}
+	if meta.RequestedPath != "notes.txt" || meta.ResolvedPath != path || meta.WorkingDir != work || !meta.WithinWorkingDir {
+		t.Fatalf("metadata = %#v, want requested relative path resolved under root", meta.FilesystemPathMetadata)
+	}
+}
+
+func TestStrictFilesystemPathPolicyOutsideWorkingDirErrorIncludesPathMetadata(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	work := filepath.Join(root, "work")
+	outside := filepath.Join(root, "outside")
+	if err := os.MkdirAll(work, 0o755); err != nil {
+		t.Fatalf("MkdirAll(work) error = %v", err)
+	}
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatalf("MkdirAll(outside) error = %v", err)
+	}
+
+	policy, result := resolvePathUnderWorkingDir(work, outside)
+	if result == nil {
+		t.Fatal("resolvePathUnderWorkingDir() result = nil, want outside working dir error")
+	}
+	if !result.IsError {
+		t.Fatalf("result.IsError = false, want outside working dir error")
+	}
+	for _, want := range []string{`requested path "` + outside + `"`, "resolved to " + outside, "working directory: " + work} {
+		if !strings.Contains(result.Content, want) {
+			t.Fatalf("content = %q, want %q", result.Content, want)
+		}
+	}
+	meta, ok := result.Metadata.(FilesystemPathMetadata)
+	if !ok {
+		t.Fatalf("metadata type = %T, want FilesystemPathMetadata", result.Metadata)
+	}
+	if meta.RequestedPath != outside || meta.ResolvedPath != outside || meta.WorkingDir != work || meta.WithinWorkingDir {
+		t.Fatalf("metadata = %#v, want outside root metadata", meta)
+	}
+	if !policy.EscapesWorkingDir {
+		t.Fatalf("policy = %#v, want outside root policy", policy)
+	}
+}
+
+func TestReadonlyFilesystemToolsAllowOutsideWorkingDir(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	work := filepath.Join(root, "work")
+	outside := filepath.Join(root, "outside")
+	if err := os.MkdirAll(work, 0o755); err != nil {
+		t.Fatalf("MkdirAll(work) error = %v", err)
+	}
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatalf("MkdirAll(outside) error = %v", err)
+	}
+	outsideFile := filepath.Join(outside, "notes.txt")
+	if err := os.WriteFile(outsideFile, []byte("alpha\nbeta\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	t.Run("read", func(t *testing.T) {
+		args, _ := json.Marshal(ReadParams{FilePath: outsideFile})
+		result, err := NewReadExecutor().Execute(context.Background(), Call{WorkingDir: work, Args: args})
+		if err != nil {
+			t.Fatalf("read Execute() error = %v", err)
+		}
+		if result.IsError || !strings.Contains(result.Content, "alpha") {
+			t.Fatalf("read result = %#v, want outside file content", result)
+		}
+		meta, ok := result.Metadata.(ReadResponseMetadata)
+		if !ok {
+			t.Fatalf("read metadata type = %T, want ReadResponseMetadata", result.Metadata)
+		}
+		if meta.WorkingDir != work || meta.ResolvedPath != outsideFile || meta.WithinWorkingDir {
+			t.Fatalf("read metadata = %#v, want outside-readable metadata", meta.FilesystemPathMetadata)
+		}
+	})
+
+	t.Run("ls", func(t *testing.T) {
+		args, _ := json.Marshal(LSParams{Path: outside})
+		result, err := NewLSExecutor().Execute(context.Background(), Call{WorkingDir: work, Args: args})
+		if err != nil {
+			t.Fatalf("ls Execute() error = %v", err)
+		}
+		if result.IsError || !strings.Contains(result.Content, "notes.txt") {
+			t.Fatalf("ls result = %#v, want outside directory listing", result)
+		}
+		meta, ok := result.Metadata.(LSResponseMetadata)
+		if !ok {
+			t.Fatalf("ls metadata type = %T, want LSResponseMetadata", result.Metadata)
+		}
+		if meta.WorkingDir != work || meta.ResolvedPath != outside || meta.WithinWorkingDir {
+			t.Fatalf("ls metadata = %#v, want outside-readable metadata", meta.FilesystemPathMetadata)
+		}
+	})
+
+	t.Run("grep", func(t *testing.T) {
+		args, _ := json.Marshal(GrepParams{Pattern: "beta", Path: outside})
+		result, err := NewGrepExecutor().Execute(context.Background(), Call{WorkingDir: work, Args: args})
+		if err != nil {
+			t.Fatalf("grep Execute() error = %v", err)
+		}
+		if result.IsError || !strings.Contains(result.Content, "beta") {
+			t.Fatalf("grep result = %#v, want outside grep match", result)
+		}
+		meta, ok := result.Metadata.(GrepResponseMetadata)
+		if !ok {
+			t.Fatalf("grep metadata type = %T, want GrepResponseMetadata", result.Metadata)
+		}
+		if meta.WorkingDir != work || meta.ResolvedPath != outside || meta.WithinWorkingDir {
+			t.Fatalf("grep metadata = %#v, want outside-readable metadata", meta.FilesystemPathMetadata)
+		}
+	})
+
+	t.Run("glob", func(t *testing.T) {
+		args, _ := json.Marshal(GlobParams{Pattern: "*.txt", Path: outside})
+		result, err := NewGlobExecutor().Execute(context.Background(), Call{WorkingDir: work, Args: args})
+		if err != nil {
+			t.Fatalf("glob Execute() error = %v", err)
+		}
+		if result.IsError || !strings.Contains(result.Content, "notes.txt") {
+			t.Fatalf("glob result = %#v, want outside glob match", result)
+		}
+		meta, ok := result.Metadata.(GlobResponseMetadata)
+		if !ok {
+			t.Fatalf("glob metadata type = %T, want GlobResponseMetadata", result.Metadata)
+		}
+		if meta.WorkingDir != work || meta.ResolvedPath != outside || meta.WithinWorkingDir {
+			t.Fatalf("glob metadata = %#v, want outside-readable metadata", meta.FilesystemPathMetadata)
+		}
+	})
+}
+
+func TestMutatingFilesystemToolsOutsideWorkingDirRequireApproval(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	work := filepath.Join(root, "work")
+	outside := filepath.Join(root, "outside")
+	if err := os.MkdirAll(work, 0o755); err != nil {
+		t.Fatalf("MkdirAll(work) error = %v", err)
+	}
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatalf("MkdirAll(outside) error = %v", err)
+	}
+
+	outsideFile := filepath.Join(outside, "notes.txt")
+	args, _ := json.Marshal(WriteParams{FilePath: outsideFile, Content: "write outside"})
+	result, err := NewWriteExecutor().Execute(context.Background(), Call{WorkingDir: work, Args: args})
+	if err != nil {
+		t.Fatalf("write Execute() error = %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("write result = %#v, want approval request instead of error", result)
+	}
+	if result.Approval == nil {
+		t.Fatalf("write result = %#v, want approval request", result)
+	}
+	if result.Approval.Path != outsideFile {
+		t.Fatalf("approval path = %q, want %q", result.Approval.Path, outsideFile)
+	}
+	if _, err := os.Stat(outsideFile); !os.IsNotExist(err) {
+		t.Fatalf("outside file was written before approval, stat err = %v", err)
+	}
+
+	approved, err := NewWriteExecutor().Execute(context.Background(), Call{WorkingDir: work, Approved: true, Args: args})
+	if err != nil {
+		t.Fatalf("approved write Execute() error = %v", err)
+	}
+	if approved.IsError || approved.FileVersion == nil {
+		t.Fatalf("approved write result = %#v, want file version", approved)
+	}
+	if content, err := os.ReadFile(outsideFile); err != nil || string(content) != "write outside" {
+		t.Fatalf("outside file content = %q err=%v, want write outside", string(content), err)
 	}
 }
 

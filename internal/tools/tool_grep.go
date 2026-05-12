@@ -30,7 +30,7 @@ func (e *grepExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 		return Result{Content: "pattern is required", IsError: true}, nil
 	}
 
-	policy, pathErr := resolvePathUnderWorkingDir(call.WorkingDir, params.Path)
+	policy, pathErr := resolveReadablePath(call.WorkingDir, params.Path)
 	if pathErr != nil {
 		return *pathErr, nil
 	}
@@ -49,8 +49,9 @@ func (e *grepExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 		return Result{
 			Content: "No files found",
 			Metadata: GrepResponseMetadata{
-				NumberOfMatches: 0,
-				Truncated:       false,
+				FilesystemPathMetadata: filesystemPathMetadata(policy),
+				NumberOfMatches:        0,
+				Truncated:              false,
 			},
 		}, nil
 	}
@@ -83,8 +84,9 @@ func (e *grepExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 	return Result{
 		Content: out.String(),
 		Metadata: GrepResponseMetadata{
-			NumberOfMatches: len(matches),
-			Truncated:       truncated,
+			FilesystemPathMetadata: filesystemPathMetadata(policy),
+			NumberOfMatches:        len(matches),
+			Truncated:              truncated,
 		},
 	}, nil
 }
