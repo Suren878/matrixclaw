@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.3
+
+- Replaced the repository-hosted README demo GIF with a GitHub attachment link
+  and removed the large media file from git history.
+- Changed empty-provider setup continuation to use the shared confirmation card.
+
 ## v0.1.2
 
 - Fixed macOS installer compatibility by removing a GNU-specific `sed` script
