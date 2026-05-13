@@ -57,6 +57,14 @@ func (d *Dispatcher) storageFilesPicker(ctx context.Context) (Result, error) {
 			Info:  storageFileInfo(file),
 		})
 	}
+	if len(items) == 0 {
+		items = append(items, PickerItem{
+			ID:      "empty",
+			Title:   "No stored files yet",
+			Info:    "Import a file or ask the assistant to save one.",
+			Command: "/modules storage import",
+		})
+	}
 	return Result{
 		Handled: true,
 		Picker:  NewPickerData(PickerStorageFiles, "Stored Files").Back("/modules storage").Items(items...).Ptr(),

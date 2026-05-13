@@ -493,6 +493,29 @@ func TestDispatcherStorageLabelsStayClean(t *testing.T) {
 	}
 }
 
+func TestDispatcherStorageFilesShowsEmptyState(t *testing.T) {
+	rt := &fakeRuntime{}
+	d := New(rt, "/tmp")
+
+	result, err := d.Handle(context.Background(), "local", "/modules storage files")
+	if err != nil {
+		t.Fatalf("Handle(/modules storage files) error = %v", err)
+	}
+	if result.Picker == nil || result.Picker.Title != "Stored Files" {
+		t.Fatalf("stored files picker = %#v", result.Picker)
+	}
+	if len(result.Picker.Items) == 0 {
+		t.Fatal("stored files picker should include empty state item")
+	}
+	item := result.Picker.Items[0]
+	if item.Title != "No stored files yet" {
+		t.Fatalf("empty title = %q, want empty state", item.Title)
+	}
+	if item.Command != "/modules storage import" {
+		t.Fatalf("empty command = %q, want import command", item.Command)
+	}
+}
+
 func TestDispatcherStorageAutoCleanupUsesPicker(t *testing.T) {
 	rt := &fakeRuntime{}
 	d := New(rt, "/tmp")
