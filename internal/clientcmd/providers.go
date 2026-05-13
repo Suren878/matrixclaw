@@ -54,7 +54,11 @@ func runProviderVerifyCommand(stdout io.Writer, stderr io.Writer, binaryName str
 		if name == "" {
 			name = strings.TrimSpace(provider.ID)
 		}
-		if !providers.ProviderCapabilities(firstNonEmptyTrimmed(provider.CatalogID, provider.ID), provider.Type).ModelDiscovery {
+		if !providers.ResolveModelCapabilities(providers.ModelCapabilityInput{
+			ProviderID:   firstNonEmptyTrimmed(provider.CatalogID, provider.ID),
+			ProviderType: provider.Type,
+			ModelID:      provider.Model,
+		}).ProviderCapabilities.ModelDiscovery {
 			fmt.Fprintf(stdout, "%s: provider %s: skipped (model discovery unsupported)\n", binaryName, name)
 			continue
 		}

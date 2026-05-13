@@ -42,6 +42,25 @@ func TestProviderFormSpecForBuiltInDraftUsesCapabilities(t *testing.T) {
 	}
 }
 
+func TestProviderFormSpecUsesSelectedModelCapabilities(t *testing.T) {
+	spec := ProviderFormSpecForDraft(ProviderDraft{
+		ID:        "openai",
+		CatalogID: "openai",
+		Name:      "OpenAI",
+		Type:      providers.TypeOpenAICompat,
+		Model:     "gpt-4.1",
+	})
+
+	assertProviderFormFieldIDs(t, spec, []ProviderFormFieldID{
+		ProviderFormFieldAPIKey,
+		ProviderFormFieldModel,
+		ProviderFormFieldToolUse,
+	})
+	if _, ok := spec.Field(ProviderFormFieldReasoningEffort); ok {
+		t.Fatal("non-reasoning OpenAI model should not show reasoning effort")
+	}
+}
+
 func TestProviderFormSpecForQwenIncludesEndpointOptions(t *testing.T) {
 	spec := ProviderFormSpecForDraft(ProviderDraft{
 		ID:        "qwen",

@@ -237,7 +237,7 @@ func (m *model) updateProviderToolUseList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	modes := providerToolUseModes()
+	modes := setup.ProviderFormToolUseModes()
 	switch keyMsg.String() {
 	case "esc":
 		m.screen = screenProviderForm

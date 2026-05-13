@@ -108,25 +108,44 @@ func customProviderFormFields(data customProviderForm, keyStatus string, include
 }
 
 func customProviderFormFieldsForProvider(data customProviderForm, keyStatus string, providerID string, catalogID string, providerType string, includeIdentity bool, includeReasoningEffort bool, includeToolProfile bool, editCommand func(string) string) []FormField {
-	capabilities := providers.Capabilities{
-		ReasoningEffort: includeReasoningEffort,
-		ToolCalling:     includeToolProfile,
+	if strings.TrimSpace(providerType) == "" {
+		capabilities := providers.Capabilities{
+			ReasoningEffort: includeReasoningEffort,
+			ToolCalling:     includeToolProfile,
+		}
+		return customProviderFormFieldsFromSpec(data, keyStatus, editCommand, setup.ProviderFormSpecFromInput(setup.ProviderFormSpecInput{
+			ID:                providerID,
+			CatalogID:         catalogID,
+			Name:              data.Name,
+			Type:              providerType,
+			BaseURL:           data.BaseURL,
+			Model:             data.Model,
+			APIKey:            data.APIKey,
+			ReasoningEffort:   data.Reasoning,
+			ToolUseMode:       data.ToolUseMode,
+			Custom:            includeIdentity,
+			CustomKnown:       true,
+			Capabilities:      capabilities,
+			CapabilitiesKnown: true,
+		}))
 	}
 	spec := setup.ProviderFormSpecFromInput(setup.ProviderFormSpecInput{
-		ID:                providerID,
-		CatalogID:         catalogID,
-		Name:              data.Name,
-		Type:              providerType,
-		BaseURL:           data.BaseURL,
-		Model:             data.Model,
-		APIKey:            data.APIKey,
-		ReasoningEffort:   data.Reasoning,
-		ToolUseMode:       data.ToolUseMode,
-		Custom:            includeIdentity,
-		CustomKnown:       true,
-		Capabilities:      capabilities,
-		CapabilitiesKnown: true,
+		ID:              providerID,
+		CatalogID:       catalogID,
+		Name:            data.Name,
+		Type:            providerType,
+		BaseURL:         data.BaseURL,
+		Model:           data.Model,
+		APIKey:          data.APIKey,
+		ReasoningEffort: data.Reasoning,
+		ToolUseMode:     data.ToolUseMode,
+		Custom:          includeIdentity,
+		CustomKnown:     true,
 	})
+	return customProviderFormFieldsFromSpec(data, keyStatus, editCommand, spec)
+}
+
+func customProviderFormFieldsFromSpec(data customProviderForm, keyStatus string, editCommand func(string) string, spec setup.ProviderFormSpec) []FormField {
 	fields := make([]FormField, 0, len(spec.Fields))
 	for _, field := range spec.Fields {
 		id := controlplaneProviderFieldID(field.ID)

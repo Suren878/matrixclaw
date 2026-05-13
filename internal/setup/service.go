@@ -120,15 +120,20 @@ type providerItemSource struct {
 
 func providerDraftItemSource(provider ProviderDraft) providerItemSource {
 	catalogID := firstNonEmptyTrimmed(provider.CatalogID, provider.ID)
+	capabilitySet := providers.ResolveModelCapabilities(providers.ModelCapabilityInput{
+		ProviderID:   catalogID,
+		ProviderType: provider.Type,
+		ModelID:      provider.Model,
+	})
 	return providerItemSource{
 		id:              provider.ID,
 		catalogID:       provider.CatalogID,
 		name:            provider.Name,
 		providerTyp:     provider.Type,
-		capabilities:    providers.ProviderCapabilities(catalogID, provider.Type),
+		capabilities:    capabilitySet.ProviderCapabilities,
 		baseURL:         provider.BaseURL,
 		model:           provider.Model,
-		reasoningEffort: providers.NormalizeReasoningEffortForProvider(catalogID, provider.Type, provider.ReasoningEffort),
+		reasoningEffort: providers.NormalizeReasoningEffortForModel(catalogID, provider.Type, provider.Model, provider.ReasoningEffort),
 		toolUseMode:     providers.NormalizeOptionalToolUseMode(provider.ToolUseMode),
 		apiKeyPreview:   currentDraftAPIKeyPreview(provider),
 	}
@@ -136,15 +141,20 @@ func providerDraftItemSource(provider ProviderDraft) providerItemSource {
 
 func providerConfigItemSource(provider ProviderConfig) providerItemSource {
 	catalogID := firstNonEmptyTrimmed(provider.CatalogID, provider.ID)
+	capabilitySet := providers.ResolveModelCapabilities(providers.ModelCapabilityInput{
+		ProviderID:   catalogID,
+		ProviderType: provider.Type,
+		ModelID:      provider.Model,
+	})
 	return providerItemSource{
 		id:              provider.ID,
 		catalogID:       provider.CatalogID,
 		name:            provider.Name,
 		providerTyp:     provider.Type,
-		capabilities:    providers.ProviderCapabilities(catalogID, provider.Type),
+		capabilities:    capabilitySet.ProviderCapabilities,
 		baseURL:         provider.BaseURL,
 		model:           provider.Model,
-		reasoningEffort: providers.NormalizeReasoningEffortForProvider(catalogID, provider.Type, provider.ReasoningEffort),
+		reasoningEffort: providers.NormalizeReasoningEffortForModel(catalogID, provider.Type, provider.Model, provider.ReasoningEffort),
 		toolUseMode:     providers.NormalizeOptionalToolUseMode(provider.ToolUseMode),
 		apiKeyPreview:   ProviderAPIKeyPreview(provider),
 	}
@@ -217,6 +227,11 @@ func providerOptionSetupItem(option ProviderOption) ProviderSetupItem {
 	if !option.Implemented {
 		status = "Planned"
 	}
+	capabilitySet := providers.ResolveModelCapabilities(providers.ModelCapabilityInput{
+		ProviderID:   option.ID,
+		ProviderType: option.Type,
+		ModelID:      option.DefaultModel,
+	})
 	return ProviderSetupItem{
 		ID:              option.ID,
 		CatalogID:       option.ID,
@@ -227,11 +242,11 @@ func providerOptionSetupItem(option ProviderOption) ProviderSetupItem {
 		Active:          false,
 		Implemented:     option.Implemented,
 		RequiresBaseURL: option.RequiresBaseURL,
-		Capabilities:    option.Capabilities,
+		Capabilities:    capabilitySet.ProviderCapabilities,
 		BaseURL:         option.DefaultBaseURL,
 		BaseURLOptions:  append([]providers.BaseURLOption(nil), option.BaseURLOptions...),
 		DefaultModel:    option.DefaultModel,
-		ReasoningEffort: providers.DefaultReasoningEffortForProvider(option.ID, option.Type),
+		ReasoningEffort: capabilitySet.DefaultReasoningEffort,
 		Notes:           option.Notes,
 	}
 }
@@ -426,7 +441,7 @@ func (s *Service) providerDraftForSetupUpdate(draft Draft, providerID string, up
 		BaseURL:         strings.TrimSpace(update.BaseURL),
 		Model:           strings.TrimSpace(update.Model),
 		ToolUseMode:     providers.NormalizeOptionalToolUseMode(update.ToolUseMode),
-		ReasoningEffort: providers.DefaultReasoningEffortForProvider("", providerType),
+		ReasoningEffort: providers.DefaultReasoningEffortForModel(providerID, providerType, update.Model),
 		HasStoredAPIKey: false,
 	}, nil
 }
@@ -451,7 +466,11 @@ func (s *Service) SaveRuntimeConfigContext(ctx context.Context, draft Draft) (Ap
 }
 
 func (s *Service) ProviderModels(ctx context.Context, provider ProviderDraft) ([]string, error) {
-	if !providers.ProviderCapabilities(firstNonEmptyTrimmed(provider.CatalogID, provider.ID), provider.Type).ModelDiscovery {
+	if !providers.ResolveModelCapabilities(providers.ModelCapabilityInput{
+		ProviderID:   firstNonEmptyTrimmed(provider.CatalogID, provider.ID),
+		ProviderType: provider.Type,
+		ModelID:      provider.Model,
+	}).ProviderCapabilities.ModelDiscovery {
 		return nil, fmt.Errorf("%s does not support model discovery", providerDisplayName(provider, ProviderOption{}, false))
 	}
 	if strings.TrimSpace(provider.APIKey) == "" {
@@ -525,7 +544,7 @@ func applyProviderSetupUpdate(provider ProviderDraft, update ProviderSetupUpdate
 	if model := strings.TrimSpace(update.Model); model != "" {
 		provider.Model = model
 	}
-	if reasoningEffort := providers.NormalizeReasoningEffortForProvider(firstNonEmptyTrimmed(provider.CatalogID, provider.ID), provider.Type, update.ReasoningEffort); reasoningEffort != "" {
+	if reasoningEffort := providers.NormalizeReasoningEffortForModel(firstNonEmptyTrimmed(provider.CatalogID, provider.ID), provider.Type, firstNonEmptyTrimmed(update.Model, provider.Model), update.ReasoningEffort); reasoningEffort != "" {
 		provider.ReasoningEffort = reasoningEffort
 	}
 	if toolUseMode := providers.NormalizeOptionalToolUseMode(update.ToolUseMode); toolUseMode != "" {

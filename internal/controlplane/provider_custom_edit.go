@@ -216,7 +216,7 @@ func formFromProvider(provider setup.ProviderSetupItem) customProviderForm {
 		Name:        firstNonEmptyTrimmed(provider.Name, provider.ID),
 		BaseURL:     strings.TrimSpace(provider.BaseURL),
 		Model:       strings.TrimSpace(firstNonEmptyTrimmed(provider.Model, defaultModel)),
-		Reasoning:   firstNonEmptyTrimmed(provider.ReasoningEffort, providers.DefaultReasoningEffortForProvider(catalogID, providerType)),
+		Reasoning:   firstNonEmptyTrimmed(provider.ReasoningEffort, providers.DefaultReasoningEffortForModel(catalogID, providerType, firstNonEmptyTrimmed(provider.Model, defaultModel))),
 		ToolUseMode: provider.ToolUseMode,
 	}.withDefaultProviderOptions(providerFormCapabilities(provider))
 }
@@ -280,7 +280,11 @@ func providerFormCapabilities(provider setup.ProviderSetupItem) providers.Capabi
 	if provider.Capabilities.ModelDiscovery || provider.Capabilities.ReasoningEffort || provider.Capabilities.ToolCalling || provider.Capabilities.NormalizeModel {
 		return provider.Capabilities
 	}
-	return providers.ProviderCapabilities(providerFormCatalogID(provider), providerFormType(provider))
+	return providers.ResolveModelCapabilities(providers.ModelCapabilityInput{
+		ProviderID:   providerFormCatalogID(provider),
+		ProviderType: providerFormType(provider),
+		ModelID:      firstNonEmptyTrimmed(provider.Model, provider.DefaultModel),
+	}).ProviderCapabilities
 }
 
 func (d *Dispatcher) saveProviderEdit(ctx context.Context, session *core.Session, provider setup.ProviderSetupItem, data customProviderForm) (Result, error) {

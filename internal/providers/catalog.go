@@ -288,33 +288,45 @@ func ReasoningEfforts() []string {
 }
 
 func ReasoningEffortsForProvider(providerID string, providerType string) []string {
-	if !providerCapabilities(providerID, providerType).ReasoningEffort {
-		return nil
-	}
-	if NormalizeProviderID(providerID) == "openai" {
-		return copyStrings(openAIReasoningEfforts)
-	}
-	return ReasoningEfforts()
+	return ReasoningEffortsForModel(providerID, providerType, "")
+}
+
+func ReasoningEffortsForModel(providerID string, providerType string, modelID string) []string {
+	return ResolveModelCapabilities(ModelCapabilityInput{
+		ProviderID:   providerID,
+		ProviderType: providerType,
+		ModelID:      modelID,
+	}).ReasoningEfforts
 }
 
 func DefaultReasoningEffortForProvider(providerID string, providerType string) string {
-	if !providerCapabilities(providerID, providerType).ReasoningEffort {
-		return ""
-	}
-	return DefaultReasoningEffort
+	return DefaultReasoningEffortForModel(providerID, providerType, "")
+}
+
+func DefaultReasoningEffortForModel(providerID string, providerType string, modelID string) string {
+	return ResolveModelCapabilities(ModelCapabilityInput{
+		ProviderID:   providerID,
+		ProviderType: providerType,
+		ModelID:      modelID,
+	}).DefaultReasoningEffort
 }
 
 func NormalizeReasoningEffortForProvider(providerID string, providerType string, value string) string {
-	if !providerCapabilities(providerID, providerType).ReasoningEffort {
+	return NormalizeReasoningEffortForModel(providerID, providerType, "", value)
+}
+
+func NormalizeReasoningEffortForModel(providerID string, providerType string, modelID string, value string) string {
+	efforts := ReasoningEffortsForModel(providerID, providerType, modelID)
+	if len(efforts) == 0 {
 		return ""
 	}
 	value = strings.ToLower(strings.TrimSpace(value))
-	for _, effort := range ReasoningEffortsForProvider(providerID, providerType) {
+	for _, effort := range efforts {
 		if value == effort {
 			return effort
 		}
 	}
-	return DefaultReasoningEffort
+	return DefaultReasoningEffortForModel(providerID, providerType, modelID)
 }
 
 func allReasoningEfforts() []string {

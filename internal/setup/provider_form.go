@@ -101,8 +101,23 @@ func ProviderFormSpecFromInput(input ProviderFormSpecInput) ProviderFormSpec {
 		custom = catalogID == ""
 	}
 	capabilities := input.Capabilities
+	reasoningOptions := []string(nil)
+	defaultReasoningEffort := ""
 	if !input.CapabilitiesKnown {
-		capabilities = providers.ProviderCapabilities(firstNonEmptyTrimmed(catalogID, providerID), providerType)
+		capabilitySet := providers.ResolveModelCapabilities(providers.ModelCapabilityInput{
+			ProviderID:   firstNonEmptyTrimmed(catalogID, providerID),
+			ProviderType: providerType,
+			ModelID:      input.Model,
+		})
+		capabilities = capabilitySet.ProviderCapabilities
+		reasoningOptions = capabilitySet.ReasoningEfforts
+		defaultReasoningEffort = capabilitySet.DefaultReasoningEffort
+	} else if capabilities.ReasoningEffort {
+		reasoningOptions = providers.ReasoningEffortsForModel(firstNonEmptyTrimmed(catalogID, providerID), providerType, input.Model)
+		if len(reasoningOptions) == 0 {
+			reasoningOptions = providers.ReasoningEfforts()
+		}
+		defaultReasoningEffort = providers.DefaultReasoningEffort
 	}
 	baseURLOptions := append([]providers.BaseURLOption(nil), input.BaseURLOptions...)
 	if len(baseURLOptions) == 0 {
@@ -157,12 +172,11 @@ func ProviderFormSpecFromInput(input ProviderFormSpecInput) ProviderFormSpec {
 	)
 
 	if capabilities.ReasoningEffort {
-		reasoningOptions := providers.ReasoningEffortsForProvider(firstNonEmptyTrimmed(catalogID, providerID), providerType)
 		fields = append(fields, ProviderFormField{
 			ID:       ProviderFormFieldReasoningEffort,
 			Label:    "Reasoning effort",
 			Value:    strings.TrimSpace(input.ReasoningEffort),
-			Status:   firstNonEmptyTrimmed(input.ReasoningEffort, providers.DefaultReasoningEffortForProvider(firstNonEmptyTrimmed(catalogID, providerID), providerType)),
+			Status:   firstNonEmptyTrimmed(input.ReasoningEffort, defaultReasoningEffort),
 			Options:  reasoningOptions,
 			Picker:   true,
 			Editable: true,

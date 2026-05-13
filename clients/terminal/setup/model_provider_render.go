@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
 func (m *model) renderProviderList() string {
@@ -93,9 +94,10 @@ func (m *model) renderProviderEffortList() string {
 }
 
 func (m *model) renderProviderToolUseList() string {
-	items := []listItem{
-		{Title: "Enabled"},
-		{Title: "Disabled"},
+	modes := setup.ProviderFormToolUseModes()
+	items := make([]listItem, 0, len(modes))
+	for _, mode := range modes {
+		items = append(items, listItem{Title: setup.ProviderFormToolUseModeStatus(mode)})
 	}
 	return m.renderPickerFrame("Tool Use", items, m.providerToolUseCursor)
 }

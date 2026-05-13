@@ -18,7 +18,7 @@ func (m *model) handleProviderFormSave() error {
 	}
 	if m.providerSupportsReasoningEffort() {
 		if m.editingProvider.ReasoningEffort == "" {
-			m.editingProvider.ReasoningEffort = providers.DefaultReasoningEffortForProvider(m.editingProvider.CatalogID, m.editingProvider.Type)
+			m.editingProvider.ReasoningEffort = providers.DefaultReasoningEffortForModel(m.editingProvider.CatalogID, m.editingProvider.Type, m.editingProvider.Model)
 		}
 	} else {
 		m.editingProvider.ReasoningEffort = ""

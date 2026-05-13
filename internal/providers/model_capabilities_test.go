@@ -83,3 +83,31 @@ func TestProviderRuntimeCapabilities(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveModelCapabilitiesUsesSelectedModel(t *testing.T) {
+	t.Parallel()
+
+	reasoningModel := ResolveModelCapabilities(ModelCapabilityInput{
+		ProviderID:   "openai",
+		ProviderType: TypeOpenAICompat,
+		ModelID:      "gpt-5.4-mini",
+	})
+	if !reasoningModel.ProviderCapabilities.ReasoningEffort || len(reasoningModel.ReasoningEfforts) == 0 {
+		t.Fatalf("gpt-5.4-mini capabilities = %#v, want OpenAI reasoning effort options", reasoningModel)
+	}
+	if reasoningModel.DefaultReasoningEffort != DefaultReasoningEffort {
+		t.Fatalf("DefaultReasoningEffort = %q, want %q", reasoningModel.DefaultReasoningEffort, DefaultReasoningEffort)
+	}
+
+	chatModel := ResolveModelCapabilities(ModelCapabilityInput{
+		ProviderID:   "openai",
+		ProviderType: TypeOpenAICompat,
+		ModelID:      "gpt-4.1",
+	})
+	if chatModel.ProviderCapabilities.ReasoningEffort || chatModel.RuntimeCapabilities.ReasoningEffort || len(chatModel.ReasoningEfforts) != 0 {
+		t.Fatalf("gpt-4.1 capabilities = %#v, want no reasoning effort field", chatModel)
+	}
+	if !chatModel.ProviderCapabilities.ToolCalling {
+		t.Fatalf("gpt-4.1 capabilities = %#v, want tool calling preserved", chatModel)
+	}
+}

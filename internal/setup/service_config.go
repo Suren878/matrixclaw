@@ -275,7 +275,7 @@ func (s *Service) buildProviderConfig(draft ProviderDraft, existing Config) (Pro
 		return ProviderConfig{}, fmt.Errorf("%s model is required", providerDisplayName(draft, option, hasOption))
 	}
 
-	reasoningEffort := providers.NormalizeReasoningEffortForProvider(catalogID, providerType, draft.ReasoningEffort)
+	reasoningEffort := providers.NormalizeReasoningEffortForModel(catalogID, providerType, model, draft.ReasoningEffort)
 
 	maxOutputTokens := int64(0)
 	if value := strings.TrimSpace(draft.MaxOutputTokens); value != "" {
@@ -287,7 +287,11 @@ func (s *Service) buildProviderConfig(draft ProviderDraft, existing Config) (Pro
 	}
 
 	toolUseMode := providers.NormalizeOptionalToolUseMode(draft.ToolUseMode)
-	if !providers.ProviderCapabilities(catalogID, providerType).ToolCalling {
+	if !providers.ResolveModelCapabilities(providers.ModelCapabilityInput{
+		ProviderID:   catalogID,
+		ProviderType: providerType,
+		ModelID:      model,
+	}).ProviderCapabilities.ToolCalling {
 		toolUseMode = ""
 	}
 

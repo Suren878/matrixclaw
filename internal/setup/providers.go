@@ -99,7 +99,7 @@ func normalizeProviderConfig(provider ProviderConfig) (ProviderConfig, bool) {
 		}
 	}
 	provider.Model = providers.NormalizeModelID(provider.CatalogID, provider.Type, provider.Model)
-	provider.ReasoningEffort = providers.NormalizeReasoningEffortForProvider(provider.CatalogID, provider.Type, provider.ReasoningEffort)
+	provider.ReasoningEffort = providers.NormalizeReasoningEffortForModel(provider.CatalogID, provider.Type, provider.Model, provider.ReasoningEffort)
 	return provider, true
 }
 
@@ -261,7 +261,7 @@ func draftProviderFromOption(option ProviderOption) ProviderDraft {
 		APIKeyEnv:       option.APIKeyEnv,
 		BaseURL:         option.DefaultBaseURL,
 		Model:           option.DefaultModel,
-		ReasoningEffort: providers.DefaultReasoningEffortForProvider(option.ID, option.Type),
+		ReasoningEffort: providers.DefaultReasoningEffortForModel(option.ID, option.Type, option.DefaultModel),
 		HasStoredAPIKey: false,
 	}
 }
@@ -384,7 +384,7 @@ func newCustomDraftProvider(baseType string, existing []ProviderDraft) ProviderD
 		APIKeyEnv:       apiKeyEnv,
 		BaseURL:         baseURL,
 		Model:           "",
-		ReasoningEffort: providers.DefaultReasoningEffortForProvider("", baseType),
+		ReasoningEffort: providers.DefaultReasoningEffortForModel("", baseType, ""),
 		HasStoredAPIKey: false,
 	}
 }

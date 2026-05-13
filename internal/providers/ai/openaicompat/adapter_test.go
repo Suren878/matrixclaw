@@ -86,9 +86,9 @@ func TestNewRuntimeProfiles(t *testing.T) {
 			cfg: Config{
 				APIKey:          "secret",
 				BaseURL:         "https://api.example.com/v1",
-				Model:           "gpt-test",
+				Model:           "gpt-5.4-mini",
 				ReasoningEffort: "high",
-				Profile:         providers.ProfileForModel("openai", providers.TypeOpenAICompat, "gpt-test"),
+				Profile:         providers.ProfileForModel("openai", providers.TypeOpenAICompat, "gpt-5.4-mini"),
 			},
 			wantProfile: providers.RuntimeProfile{
 				ToolUseMode:       providers.ToolUseNative,
@@ -233,9 +233,9 @@ func TestGenerateRetriesWithoutUnsupportedReasoningEffort(t *testing.T) {
 	runtime, err := New(context.Background(), Config{
 		APIKey:          "secret",
 		BaseURL:         server.URL,
-		Model:           "gpt-test",
+		Model:           "gpt-5.4-mini",
 		ReasoningEffort: "high",
-		Profile:         providers.ProfileForModel("openai", providers.TypeOpenAICompat, "gpt-test"),
+		Profile:         providers.ProfileForModel("openai", providers.TypeOpenAICompat, "gpt-5.4-mini"),
 		HTTPClient:      server.Client(),
 	})
 	if err != nil {
@@ -529,9 +529,9 @@ func TestGenerateReturnsToolCalls(t *testing.T) {
 	runtime, err := New(context.Background(), Config{
 		APIKey:          "secret",
 		BaseURL:         server.URL,
-		Model:           "gpt-test",
+		Model:           "gpt-5.4-mini",
 		ReasoningEffort: "high",
-		Profile:         providers.ProfileForModel("openai", providers.TypeOpenAICompat, "gpt-test"),
+		Profile:         providers.ProfileForModel("openai", providers.TypeOpenAICompat, "gpt-5.4-mini"),
 		HTTPClient:      server.Client(),
 	})
 	if err != nil {

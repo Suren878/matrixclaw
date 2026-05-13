@@ -122,10 +122,6 @@ func (m *model) providerSupportsToolUse() bool {
 	return ok
 }
 
-func providerToolUseModes() []providers.ToolUseMode {
-	return setup.ProviderFormToolUseModes()
-}
-
 func defaultReasoningEffortIndex(efforts []string) int {
 	for i, effort := range efforts {
 		if effort == providers.DefaultReasoningEffort {
@@ -137,7 +133,7 @@ func defaultReasoningEffortIndex(efforts []string) int {
 
 func (m *model) toolUseModeIndex() int {
 	current := providers.NormalizeToolUseMode(m.editingProvider.ToolUseMode)
-	for i, mode := range providerToolUseModes() {
+	for i, mode := range setup.ProviderFormToolUseModes() {
 		if mode == current {
 			return i
 		}
