@@ -1437,6 +1437,54 @@ func TestCoreExecuteRunSanitizesAssistantReasoningOutput(t *testing.T) {
 	}
 }
 
+func TestCoreCompactSessionGeneratesSummaryWithoutTools(t *testing.T) {
+	t.Parallel()
+
+	requests := make(chan providers.Request, 2)
+	provider := newProviderStub()
+	provider.GenerateFunc = func(ctx context.Context, request providers.Request) (providers.Response, error) {
+		requests <- request
+		if strings.Contains(request.SystemPrompt, "compact matrixclaw chat histories") {
+			return providers.Response{
+				Text:     "Durable summary.",
+				Model:    "stub-model",
+				Provider: "stub-provider",
+			}, nil
+		}
+		return providers.Response{
+			Text:     "Initial assistant reply.",
+			Model:    "stub-model",
+			Provider: "stub-provider",
+		}, nil
+	}
+
+	app := newTestCore(t, provider).WithTools(newCoreCodingRegistry())
+	ctx := context.Background()
+	session := createSession(t, app, ctx, core.CreateSessionInput{Title: "Summaries"})
+	accepted, err := app.AcceptRun(ctx, core.HandleMessageInput{SessionID: session.ID, Text: "Keep this context."})
+	if err != nil {
+		t.Fatalf("AcceptRun() error = %v", err)
+	}
+	waitForRunStatus(t, app, accepted.Run.ID, core.RunStatusCompleted)
+	<-requests
+
+	result, err := app.CompactSession(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("CompactSession() error = %v", err)
+	}
+	if !strings.Contains(result.Message.Content, "Durable summary.") {
+		t.Fatalf("compact message content = %q, want summary", result.Message.Content)
+	}
+
+	compactRequest := <-requests
+	if len(compactRequest.Tools) != 0 {
+		t.Fatalf("compact provider request Tools len = %d, want 0", len(compactRequest.Tools))
+	}
+	if len(compactRequest.Messages) != 1 || !strings.Contains(compactRequest.Messages[0].Content, "Keep this context.") {
+		t.Fatalf("compact provider messages = %#v, want session history prompt", compactRequest.Messages)
+	}
+}
+
 func TestCoreCancelRunRejectsPendingApprovals(t *testing.T) {
 	t.Parallel()
 

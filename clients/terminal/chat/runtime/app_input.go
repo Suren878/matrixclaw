@@ -3,6 +3,8 @@ package runtime
 import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+
+	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
 )
 
 func (m *appModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -101,11 +103,30 @@ func (m *appModel) handleDialogInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.dialog == nil || !m.dialog.HasDialogs() {
 		return m, nil
 	}
+	sourceID := ""
+	if top := m.dialog.DialogLast(); top != nil {
+		sourceID = top.ID()
+	}
 	action := m.dialog.Update(msg)
 	if action == nil {
 		return m, nil
 	}
-	return m.Update(action)
+	next, cmd := m.Update(action)
+	if dialogActionClosesSource(action, sourceID) && sourceID != "" {
+		m.dialog.CloseDialog(sourceID)
+	}
+	return next, cmd
+}
+
+func dialogActionClosesSource(action tea.Msg, sourceID string) bool {
+	switch action := action.(type) {
+	case surfacedialog.ActionRunControlplaneCommand:
+		return action.CloseSource || sourceID != surfacedialog.FormCommandID
+	case surfacedialog.ActionOpenCommands:
+		return true
+	default:
+		return false
+	}
 }
 
 func (m *appModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {

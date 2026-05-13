@@ -11,7 +11,10 @@ import (
 )
 
 func (c *Client) doJSON(ctx context.Context, method string, path string, body any, out any) error {
-	httpClient := c.HTTPClient
+	return c.doJSONWithClient(ctx, method, path, body, out, c.HTTPClient)
+}
+
+func (c *Client) doJSONWithClient(ctx context.Context, method string, path string, body any, out any, httpClient *http.Client) error {
 	if httpClient == nil {
 		httpClient = defaultHTTPClient
 	}
@@ -45,6 +48,13 @@ func (c *Client) doJSON(ctx context.Context, method string, path string, body an
 		return nil
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+func (c *Client) compactHTTPClient() *http.Client {
+	if c == nil || c.HTTPClient == nil || c.HTTPClient == defaultHTTPClient {
+		return defaultCompactHTTPClient
+	}
+	return c.HTTPClient
 }
 
 func (c *Client) authorize(req *http.Request) {

@@ -110,6 +110,24 @@ func TestNewClientUsesSeparateJSONAndEventHTTPClients(t *testing.T) {
 	}
 }
 
+func TestCompactSessionUsesLongDefaultJSONTimeout(t *testing.T) {
+	t.Parallel()
+
+	client := New("http://127.0.0.1:8080", "tui", "local")
+	if client.compactHTTPClient() == client.HTTPClient {
+		t.Fatal("compactHTTPClient() reused default short JSON client")
+	}
+	if got := client.compactHTTPClient().Timeout; got <= client.HTTPClient.Timeout {
+		t.Fatalf("compact timeout = %s, want greater than JSON timeout %s", got, client.HTTPClient.Timeout)
+	}
+
+	custom := &http.Client{Timeout: time.Second}
+	client.HTTPClient = custom
+	if got := client.compactHTTPClient(); got != custom {
+		t.Fatalf("compactHTTPClient() = %#v, want custom client", got)
+	}
+}
+
 func TestClientSendsAPIToken(t *testing.T) {
 	t.Parallel()
 

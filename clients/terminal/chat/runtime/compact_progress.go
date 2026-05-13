@@ -36,11 +36,15 @@ func (m *appModel) completeContextCompactProgress(text string) {
 
 func (m *appModel) failContextCompactProgress(err error) {
 	text := compactFailedPrefix + "."
+	details := ""
 	if err != nil && strings.TrimSpace(err.Error()) != "" {
-		text = compactFailedPrefix + ": " + strings.TrimSpace(err.Error())
+		details = strings.TrimSpace(err.Error())
+		text = compactFailedPrefix + ": " + details
 	}
 	m.err = ""
-	m.upsertTransientMessage(newCompactTransientMessage(text))
+	message := newCompactTransientMessage(text)
+	message.AddFinish(surfacemessage.FinishReasonError, compactFailedPrefix, details)
+	m.upsertTransientMessage(message)
 	m.rebuildChat()
 }
 

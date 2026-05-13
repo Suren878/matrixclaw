@@ -770,11 +770,11 @@ func TestDispatcherQwenProviderFormUsesEndpointPickerAndStackBack(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Handle(qwen save) error = %v", err)
 	}
-	if result.Form == nil {
-		t.Fatal("save should return updated provider form")
+	if result.Form != nil {
+		t.Fatalf("save should close the provider form, got %#v", result.Form)
 	}
-	if result.Form.Error != "Saved." {
-		t.Fatalf("save form error/status = %q, want Saved.", result.Form.Error)
+	if !strings.Contains(result.Text, "saved") {
+		t.Fatalf("save text = %q, want saved message", result.Text)
 	}
 	if !result.ReloadSnapshot {
 		t.Fatal("save should request snapshot reload")

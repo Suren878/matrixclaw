@@ -9,8 +9,10 @@ import (
 )
 
 const defaultJSONTimeout = 10 * time.Second
+const defaultCompactJSONTimeout = 2 * time.Minute
 
 var defaultHTTPClient = &http.Client{Timeout: defaultJSONTimeout}
+var defaultCompactHTTPClient = &http.Client{Timeout: defaultCompactJSONTimeout}
 
 type APIError struct {
 	StatusCode int

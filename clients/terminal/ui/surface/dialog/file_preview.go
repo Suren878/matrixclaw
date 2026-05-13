@@ -201,12 +201,12 @@ func (p *FilePreview) renderContent(width int) string {
 	if content == "" {
 		return p.com.Styles.Muted.Render("(empty file)")
 	}
+	return wrapPreviewContent(content, width)
+}
 
-	lines := strings.Split(content, "\n")
-	for i, line := range lines {
-		lines[i] = ansi.Truncate(line, width, "…")
-	}
-	return strings.Join(lines, "\n")
+func wrapPreviewContent(content string, width int) string {
+	width = max(1, width)
+	return ansi.Wrap(content, width, " \t/\\._:=,;|")
 }
 
 func (p *FilePreview) ShortHelp() []key.Binding {

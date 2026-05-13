@@ -11,6 +11,7 @@ import (
 	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
 	surfaceeditor "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/editor"
 	surfaceinput "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/input"
+	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
 )
@@ -193,6 +194,13 @@ func TestContextCompactResultUpdatesChatProgress(t *testing.T) {
 	}
 	if text := model.transientMessages[0].Content().Text; !strings.Contains(text, "❌ Summarizing failed") {
 		t.Fatalf("transient text = %q, want failure message", text)
+	}
+	finish := model.transientMessages[0].FinishPart()
+	if finish == nil || finish.Reason != surfacemessage.FinishReasonError {
+		t.Fatalf("finish = %#v, want error finish for preview", finish)
+	}
+	if !strings.Contains(finish.Details, "provider rejected reasoning") {
+		t.Fatalf("finish details = %q, want provider error", finish.Details)
 	}
 }
 
@@ -403,6 +411,113 @@ func TestControlplaneCommandErrorKeepsProviderFormOpen(t *testing.T) {
 	}
 	if !model.dialog.ContainsDialog(surfacedialog.FormCommandID) {
 		t.Fatal("provider form should remain open after save error")
+	}
+}
+
+func TestDialogControlplaneActionClosesSourceDialog(t *testing.T) {
+	tests := []struct {
+		name string
+		keys []tea.KeyPressMsg
+	}{
+		{
+			name: "save",
+			keys: []tea.KeyPressMsg{
+				{Code: tea.KeyDown},
+				{Code: tea.KeyEnter},
+			},
+		},
+		{
+			name: "cancel command",
+			keys: []tea.KeyPressMsg{
+				{Code: tea.KeyDown},
+				{Code: tea.KeyRight},
+				{Code: tea.KeyEnter},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			model := newApp(nil, nil)
+			model.dialog.OpenDialog(surfacedialog.NewFormCommand(model.com, surfacedialog.FormCommandData{
+				Title:         "Edit Qwen",
+				SubmitCommand: "/provider edit save qwen token",
+				CancelCommand: "/provider",
+				Fields:        []surfacedialog.FormCommandField{{ID: "key", Label: "API Key", Value: "Required"}},
+			}))
+
+			var cmd tea.Cmd
+			for _, keyMsg := range tt.keys {
+				next, nextCmd := model.Update(keyMsg)
+				if next == nil {
+					t.Fatal("expected model")
+				}
+				cmd = nextCmd
+			}
+			if cmd == nil {
+				t.Fatal("expected controlplane command")
+			}
+			if model.dialog.ContainsDialog(surfacedialog.FormCommandID) {
+				t.Fatal("provider form should close once a form action is submitted from the dialog")
+			}
+		})
+	}
+}
+
+func TestDialogFormFieldEditKeepsSourceFormBehindPrompt(t *testing.T) {
+	model := newApp(nil, nil)
+	model.dialog.OpenDialog(surfacedialog.NewFormCommand(model.com, surfacedialog.FormCommandData{
+		Title:         "Edit Qwen",
+		SubmitCommand: "/provider edit save qwen token",
+		Fields: []surfacedialog.FormCommandField{{
+			ID:          "key",
+			Label:       "API Key",
+			Value:       "Required",
+			EditCommand: "/provider edit field key qwen token",
+		}},
+	}))
+
+	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if next == nil {
+		t.Fatal("expected model")
+	}
+	if cmd == nil {
+		t.Fatal("expected field edit command")
+	}
+	if !model.dialog.ContainsDialog(surfacedialog.FormCommandID) {
+		t.Fatal("provider form should stay behind field edit prompt")
+	}
+
+	next, cmd = model.Update(controlplaneResultMsg{
+		result: controlplane.Result{
+			Prompt: &controlplane.PromptData{
+				Title:               "API Key",
+				SubmitCommandPrefix: "/provider edit set key qwen token ",
+			},
+		},
+	})
+	if next == nil {
+		t.Fatal("expected model after prompt result")
+	}
+	if cmd != nil {
+		t.Fatal("expected no follow-up command")
+	}
+	if top := model.dialog.DialogLast(); top == nil || top.ID() != surfacedialog.PromptCommandID {
+		t.Fatalf("top dialog = %#v, want prompt", top)
+	}
+
+	next, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	if next == nil {
+		t.Fatal("expected model after prompt cancel")
+	}
+	if cmd != nil {
+		t.Fatal("expected no command on local prompt cancel")
+	}
+	if model.dialog.ContainsDialog(surfacedialog.PromptCommandID) {
+		t.Fatal("prompt should close on cancel")
+	}
+	if !model.dialog.ContainsDialog(surfacedialog.FormCommandID) {
+		t.Fatal("provider form should remain after prompt cancel")
 	}
 }
 

@@ -32,6 +32,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 	}
 
 	retriedWithoutReasoning := false
+	retriedWithMaxCompletionTokens := false
 	for attempt := 0; ; attempt++ {
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, r.endpoint, bytes.NewReader(body))
 		if err != nil {
@@ -71,6 +72,17 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 				attempt = -1
 				continue
 			}
+			if !retriedWithMaxCompletionTokens && shouldRetryWithMaxCompletionTokens(payload, httpRes.StatusCode, resBody) {
+				payload.MaxCompletionTokens = payload.MaxTokens
+				payload.MaxTokens = nil
+				body, err = json.Marshal(payload)
+				if err != nil {
+					return providers.Response{}, fmt.Errorf("openaicompat: marshal request: %w", err)
+				}
+				retriedWithMaxCompletionTokens = true
+				attempt = -1
+				continue
+			}
 			return providers.Response{}, fmt.Errorf("openaicompat: %s", decodeOpenAIError(httpRes.StatusCode, resBody))
 		}
 		defer httpRes.Body.Close()
@@ -101,6 +113,28 @@ func shouldRetryWithoutReasoningEffort(payload chatCompletionRequest, statusCode
 		"unknown parameter",
 		"invalid parameter",
 		"does not support",
+	} {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldRetryWithMaxCompletionTokens(payload chatCompletionRequest, statusCode int, body []byte) bool {
+	if payload.MaxTokens == nil || payload.MaxCompletionTokens != nil || statusCode < 400 || statusCode >= 500 {
+		return false
+	}
+	text := strings.ToLower(decodeOpenAIError(statusCode, body) + "\n" + string(body))
+	if !strings.Contains(text, "max_tokens") {
+		return false
+	}
+	for _, marker := range []string{
+		"unsupported",
+		"not supported",
+		"not compatible",
+		"incompatible",
+		"invalid parameter",
 	} {
 		if strings.Contains(text, marker) {
 			return true
@@ -157,9 +191,6 @@ func (r *Runtime) chatPayload(ctx context.Context, request providers.Request) ch
 		}
 	}
 	payload.Tools = encodeTools(request.Tools)
-	if len(payload.Tools) > 0 {
-		payload.ToolChoice = "auto"
-	}
 	if r.reasoningEffort != "" && (len(payload.Tools) == 0 || r.capabilities.ReasoningWithTools) {
 		payload.ReasoningEffort = r.reasoningEffort
 	}

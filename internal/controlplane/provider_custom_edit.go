@@ -296,9 +296,11 @@ func (d *Dispatcher) saveProviderEdit(ctx context.Context, session *core.Session
 			configured.Model = updated.ModelID
 		}
 	}
-	result := providerEditFormResult(configured, formFromProvider(configured), "Saved.")
-	result.ReloadSnapshot = true
-	return result, nil
+	return Result{
+		Handled:        true,
+		Text:           "Provider `" + firstNonEmptyTrimmed(configured.Name, configured.ID) + "` saved.",
+		ReloadSnapshot: true,
+	}, nil
 }
 
 func providerUpdateFromForm(provider setup.ProviderSetupItem, data customProviderForm, active bool) setup.ProviderSetupUpdate {

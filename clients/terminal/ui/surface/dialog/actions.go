@@ -22,7 +22,8 @@ type ActionOpenCommands struct{}
 
 // ActionRunControlplaneCommand executes a shared controlplane command.
 type ActionRunControlplaneCommand struct {
-	Command string
+	Command     string
+	CloseSource bool
 }
 
 // ActionPermissionResponse is emitted when the user responds to a permission dialog.

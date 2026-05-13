@@ -256,6 +256,61 @@ func TestGenerateRetriesWithoutUnsupportedReasoningEffort(t *testing.T) {
 	}
 }
 
+func TestGenerateRetriesWithMaxCompletionTokensWhenMaxTokensUnsupported(t *testing.T) {
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt := attempts.Add(1)
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if attempt == 1 {
+			if got := body["max_tokens"]; got != float64(512) {
+				t.Fatalf("first max_tokens = %#v, want 512", got)
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error": map[string]any{"message": "Unsupported parameter: 'max_tokens' is not compatible with this model. Use 'max_completion_tokens' instead."},
+			})
+			return
+		}
+		if _, ok := body["max_tokens"]; ok {
+			t.Fatalf("retry max_tokens unexpectedly present: %#v", body["max_tokens"])
+		}
+		if got := body["max_completion_tokens"]; got != float64(512) {
+			t.Fatalf("retry max_completion_tokens = %#v, want 512", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{"message": map[string]any{"content": "ok with max completion"}}},
+		})
+	}))
+	defer server.Close()
+
+	runtime, err := New(context.Background(), Config{
+		APIKey:          "secret",
+		BaseURL:         server.URL,
+		Model:           "reasoning-compatible",
+		MaxOutputTokens: 512,
+		HTTPClient:      server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	response, err := runtime.Generate(context.Background(), providers.Request{
+		Messages: []providers.Message{{Role: "user", Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if response.Text != "ok with max completion" {
+		t.Fatalf("Text = %q, want retry response", response.Text)
+	}
+	if got := attempts.Load(); got != 2 {
+		t.Fatalf("attempts = %d, want 2", got)
+	}
+}
+
 func TestGenerateSendsSystemAndCustomInstructions(t *testing.T) {
 	t.Parallel()
 
@@ -444,8 +499,8 @@ func TestGenerateReturnsToolCalls(t *testing.T) {
 		if !ok || len(toolsBody) != 1 {
 			t.Fatalf("tools = %#v, want one tool definition", body["tools"])
 		}
-		if got := body["tool_choice"]; got != "auto" {
-			t.Fatalf("tool_choice = %#v, want auto", got)
+		if _, ok := body["tool_choice"]; ok {
+			t.Fatalf("tool_choice unexpectedly present: %#v", body["tool_choice"])
 		}
 		if got := body["reasoning_effort"]; got != "high" {
 			t.Fatalf("reasoning_effort = %#v, want high", got)

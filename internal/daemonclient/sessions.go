@@ -73,7 +73,7 @@ func (c *Client) SessionContext(ctx context.Context, sessionID string) (core.Con
 func (c *Client) CompactSession(ctx context.Context, sessionID string) (core.CompactSessionResult, error) {
 	var response core.SessionCompactResponse
 	path := "/v1/sessions/" + escapedPath(sessionID) + "/compact"
-	if err := c.doJSON(ctx, http.MethodPost, path, nil, &response); err != nil {
+	if err := c.doJSONWithClient(ctx, http.MethodPost, path, nil, &response, c.compactHTTPClient()); err != nil {
 		return core.CompactSessionResult{}, err
 	}
 	return response.Compact, nil
