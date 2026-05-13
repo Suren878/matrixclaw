@@ -64,6 +64,7 @@ func (m *appModel) reconnectCmd() tea.Cmd {
 }
 
 func (m *appModel) applySnapshot(snapshot core.ClientSnapshot, restartStream bool) {
+	m.clearContextCompactProgress()
 	if restartStream {
 		m.streamID++
 		if strings.TrimSpace(m.session) != strings.TrimSpace(snapshot.SessionID) {

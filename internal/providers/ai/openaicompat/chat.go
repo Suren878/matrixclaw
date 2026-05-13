@@ -31,6 +31,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 		return providers.Response{}, fmt.Errorf("openaicompat: marshal request: %w", err)
 	}
 
+	retriedWithoutReasoning := false
 	for attempt := 0; ; attempt++ {
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, r.endpoint, bytes.NewReader(body))
 		if err != nil {
@@ -60,6 +61,16 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 				}
 				continue
 			}
+			if !retriedWithoutReasoning && shouldRetryWithoutReasoningEffort(payload, httpRes.StatusCode, resBody) {
+				payload.ReasoningEffort = ""
+				body, err = json.Marshal(payload)
+				if err != nil {
+					return providers.Response{}, fmt.Errorf("openaicompat: marshal request: %w", err)
+				}
+				retriedWithoutReasoning = true
+				attempt = -1
+				continue
+			}
 			return providers.Response{}, fmt.Errorf("openaicompat: %s", decodeOpenAIError(httpRes.StatusCode, resBody))
 		}
 		defer httpRes.Body.Close()
@@ -73,6 +84,29 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 		}
 		return r.decodeChatResponse(resBody)
 	}
+}
+
+func shouldRetryWithoutReasoningEffort(payload chatCompletionRequest, statusCode int, body []byte) bool {
+	if strings.TrimSpace(payload.ReasoningEffort) == "" || statusCode < 400 || statusCode >= 500 {
+		return false
+	}
+	text := strings.ToLower(decodeOpenAIError(statusCode, body) + "\n" + string(body))
+	if !strings.Contains(text, "reasoning_effort") && !strings.Contains(text, "reasoning effort") && !strings.Contains(text, "reasoning") {
+		return false
+	}
+	for _, marker := range []string{
+		"unsupported",
+		"not supported",
+		"unrecognized",
+		"unknown parameter",
+		"invalid parameter",
+		"does not support",
+	} {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func shouldRetryStatus(statusCode int) bool {

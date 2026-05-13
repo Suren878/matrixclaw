@@ -138,12 +138,12 @@ func TestServerStatusActionOpensLiveDialog(t *testing.T) {
 
 func TestContextCompactActions(t *testing.T) {
 	tests := []struct {
-		name     string
-		command  string
-		wantInfo bool
+		name          string
+		command       string
+		wantTransient bool
 	}{
 		{name: "waits for confirm", command: "/context compact"},
-		{name: "confirmed shows progress", command: "/context compact confirm", wantInfo: true},
+		{name: "confirmed shows progress", command: "/context compact confirm", wantTransient: true},
 	}
 
 	for _, tt := range tests {
@@ -161,13 +161,38 @@ func TestContextCompactActions(t *testing.T) {
 			if model.err != "" {
 				t.Fatalf("err = %q, want empty progress state", model.err)
 			}
-			if got := model.dialog.ContainsDialog(surfacedialog.InfoID); got != tt.wantInfo {
-				t.Fatalf("info dialog open = %v, want %v", got, tt.wantInfo)
+			if got := len(model.transientMessages) > 0; got != tt.wantTransient {
+				t.Fatalf("transient progress message = %v, want %v", got, tt.wantTransient)
 			}
-			if tt.wantInfo && model.dialog.ContainsDialog(surfacedialog.PickerID) {
+			if tt.wantTransient && model.dialog.ContainsDialog(surfacedialog.PickerID) {
 				t.Fatal("expected context picker to close")
 			}
 		})
+	}
+}
+
+func TestContextCompactResultUpdatesChatProgress(t *testing.T) {
+	model := newApp(nil, nil)
+	model.startContextCompactProgress()
+
+	next, cmd := model.Update(controlplaneResultMsg{
+		command: "/context compact confirm",
+		err:     errors.New("provider rejected reasoning"),
+	})
+	if next == nil {
+		t.Fatal("expected model")
+	}
+	if cmd != nil {
+		t.Fatal("expected no command after compact failure")
+	}
+	if model.err != "" {
+		t.Fatalf("err = %q, want failure rendered in chat", model.err)
+	}
+	if got := len(model.transientMessages); got != 1 {
+		t.Fatalf("transient messages = %d, want 1", got)
+	}
+	if text := model.transientMessages[0].Content().Text; !strings.Contains(text, "❌ Summarizing failed") {
+		t.Fatalf("transient text = %q, want failure message", text)
 	}
 }
 

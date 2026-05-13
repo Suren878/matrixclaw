@@ -64,11 +64,7 @@ func (m *appModel) handleRunControlplaneCommand(msg surfacedialog.ActionRunContr
 	fromCommands := m.dialog.ContainsDialog(surfacedialog.CommandsID)
 	if isContextCompactCommand(msg.Command) {
 		m.dialog.CloseAll()
-		m.err = ""
-		m.dialog.OpenDialog(surfacedialog.NewInfo(m.com, surfacedialog.InfoData{
-			Title: "Compact",
-			Text:  compactProgressText,
-		}))
+		m.startContextCompactProgress()
 		return m.controlplaneCmd(msg.Command)
 	}
 	if strings.TrimSpace(msg.Command) == "/server" {

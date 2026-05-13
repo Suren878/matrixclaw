@@ -24,6 +24,11 @@ func (m *appModel) handleControlplaneSubmit(content string, attachments []surfac
 		m.returnToCommands = false
 		return true, m.openServerRestartDialog()
 	}
+	if isContextCompactCommand(content) {
+		m.returnToCommands = false
+		m.startContextCompactProgress()
+		return true, m.controlplaneCmd(content)
+	}
 	m.returnToCommands = false
 	return true, m.controlplaneCmd(content)
 }
@@ -32,6 +37,6 @@ func (m *appModel) controlplaneCmd(content string) tea.Cmd {
 	return func() tea.Msg {
 		dispatcher := controlplane.New(m.rt, m.workingDir)
 		result, err := dispatcher.Handle(m.ctx, strings.TrimSpace(m.rt.config.ExternalKey), content)
-		return controlplaneResultMsg{result: result, err: err}
+		return controlplaneResultMsg{command: strings.TrimSpace(content), result: result, err: err}
 	}
 }

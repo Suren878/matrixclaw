@@ -52,7 +52,7 @@ func New(_ context.Context, cfg Config) (providers.Runtime, error) {
 	})
 	reasoningEffort := ""
 	if providerProfile.SupportsReasoningEffort {
-		reasoningEffort = providers.NormalizeReasoningEffort(cfg.ReasoningEffort)
+		reasoningEffort = runtimeReasoningEffort(cfg.ReasoningEffort)
 	}
 	return &Runtime{
 		client:           client,
@@ -65,6 +65,14 @@ func New(_ context.Context, cfg Config) (providers.Runtime, error) {
 		profile:          profile,
 		capabilities:     providerProfile.Capabilities,
 	}, nil
+}
+
+func runtimeReasoningEffort(value string) string {
+	effort := providers.NormalizeReasoningEffort(value)
+	if effort == providers.ReasoningEffortNone {
+		return ""
+	}
+	return effort
 }
 
 func (r *Runtime) RuntimeProfile() providers.RuntimeProfile {

@@ -11,6 +11,9 @@ import (
 )
 
 func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
+	if isContextCompactCommand(msg.command) {
+		return m.handleContextCompactResult(msg)
+	}
 	if msg.err != nil {
 		m.err = msg.err.Error()
 		return nil
@@ -41,6 +44,25 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 		m.loading = true
 		return m.loadInitialCmd()
 	}
+	return nil
+}
+
+func (m *appModel) handleContextCompactResult(msg controlplaneResultMsg) tea.Cmd {
+	if msg.err != nil {
+		m.failContextCompactProgress(msg.err)
+		return nil
+	}
+	text := strings.TrimSpace(msg.result.Text)
+	if msg.result.ReloadSnapshot {
+		m.completeContextCompactProgress(compactCompleteText)
+		m.returnToCommands = false
+		m.loading = true
+		return m.loadInitialCmd()
+	}
+	if text == "" {
+		text = compactCompleteText
+	}
+	m.completeContextCompactProgress(text)
 	return nil
 }
 

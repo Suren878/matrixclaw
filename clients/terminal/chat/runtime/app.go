@@ -15,6 +15,7 @@ import (
 	surfaceeditor "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/editor"
 	surfaceheader "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/header"
 	surfaceinput "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/input"
+	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacemodel "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/model"
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
@@ -77,8 +78,9 @@ type workingTickMsg struct {
 }
 
 type controlplaneResultMsg struct {
-	result controlplane.Result
-	err    error
+	command string
+	result  controlplane.Result
+	err     error
 }
 
 type serverStatusRefreshMsg struct {
@@ -134,6 +136,7 @@ type appModel struct {
 	events   <-chan daemonclient.LiveEvent
 	eventErr <-chan error
 
+	transientMessages   []surfacemessage.Message
 	workingDir          string
 	version             string
 	providerName        string

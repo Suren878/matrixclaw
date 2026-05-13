@@ -167,6 +167,95 @@ func TestGenerateUsesMaxCompletionTokensForGPT5Models(t *testing.T) {
 	}
 }
 
+func TestGenerateOmitsReasoningEffortWhenDisabled(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if _, ok := body["reasoning_effort"]; ok {
+			t.Fatalf("reasoning_effort unexpectedly present: %#v", body["reasoning_effort"])
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{"message": map[string]any{"content": "ok"}}},
+		})
+	}))
+	defer server.Close()
+
+	runtime, err := New(context.Background(), Config{
+		APIKey:          "secret",
+		BaseURL:         server.URL,
+		Model:           "gpt-test",
+		ReasoningEffort: providers.ReasoningEffortNone,
+		Profile:         providers.ProfileForModel("openai", providers.TypeOpenAICompat, "gpt-test"),
+		HTTPClient:      server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	if _, err := runtime.Generate(context.Background(), providers.Request{
+		Messages: []providers.Message{{Role: "user", Content: "hello"}},
+	}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+}
+
+func TestGenerateRetriesWithoutUnsupportedReasoningEffort(t *testing.T) {
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt := attempts.Add(1)
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if attempt == 1 {
+			if got := body["reasoning_effort"]; got != "high" {
+				t.Fatalf("first reasoning_effort = %#v, want high", got)
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error": map[string]any{"message": "Unsupported parameter: 'reasoning_effort' is not supported with this model."},
+			})
+			return
+		}
+		if _, ok := body["reasoning_effort"]; ok {
+			t.Fatalf("retry reasoning_effort unexpectedly present: %#v", body["reasoning_effort"])
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{"message": map[string]any{"content": "ok without reasoning"}}},
+		})
+	}))
+	defer server.Close()
+
+	runtime, err := New(context.Background(), Config{
+		APIKey:          "secret",
+		BaseURL:         server.URL,
+		Model:           "gpt-test",
+		ReasoningEffort: "high",
+		Profile:         providers.ProfileForModel("openai", providers.TypeOpenAICompat, "gpt-test"),
+		HTTPClient:      server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	response, err := runtime.Generate(context.Background(), providers.Request{
+		Messages: []providers.Message{{Role: "user", Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if response.Text != "ok without reasoning" {
+		t.Fatalf("Text = %q, want retry response", response.Text)
+	}
+	if got := attempts.Load(); got != 2 {
+		t.Fatalf("attempts = %d, want 2", got)
+	}
+}
+
 func TestGenerateSendsSystemAndCustomInstructions(t *testing.T) {
 	t.Parallel()
 

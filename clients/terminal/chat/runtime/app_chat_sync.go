@@ -1,6 +1,10 @@
 package runtime
 
-import "strings"
+import (
+	"strings"
+
+	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
+)
 
 func (m *appModel) rebuildChat() {
 	if m.read == nil {
@@ -12,7 +16,11 @@ func (m *appModel) rebuildChat() {
 		selectedID = m.chat.SelectedMessageID()
 		follow = m.chat.Follow()
 	}
-	chatModel := buildChatModel(&m.styles, m.read.Snapshot())
+	snapshot := m.read.Snapshot()
+	if len(m.transientMessages) > 0 {
+		snapshot.Messages = append(append([]surfacemessage.Message(nil), snapshot.Messages...), m.transientMessages...)
+	}
+	chatModel := buildChatModel(&m.styles, snapshot)
 	chatModel.Focus()
 	if follow || strings.TrimSpace(selectedID) == "" {
 		chatModel.SelectLast()
