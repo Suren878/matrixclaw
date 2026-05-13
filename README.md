@@ -25,7 +25,7 @@ remote checks, reminders, provider switching, and future agent workflows where
 continuity and explicit control matter.
 
 <p align="center">
-  <img src=".github/assets/matrixclaw-rain.gif" alt="matrixclaw terminal demo">
+  <img src="https://github.com/user-attachments/assets/8a3bdb40-1891-4a95-9bce-941ed48f4b72" alt="matrixclaw terminal demo">
 </p>
 
 ## Why matrixclaw?
