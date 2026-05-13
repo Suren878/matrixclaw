@@ -9,8 +9,8 @@
 across clients.**
 
 `matrixclaw` is a personal AI assistant runtime written in Go. It runs as a
-lightweight local daemon, stores state in SQLite, and gives your AI sessions a
-home outside any single app or chat window.
+small local daemon, stores state in SQLite, and gives your AI sessions a home
+outside any single app or chat window.
 
 The core owns the session: context, files, tool history, approvals, provider
 settings, and model choice. The Terminal TUI, Telegram bot, and future mobile
@@ -30,7 +30,8 @@ continuity and explicit control matter.
 
 ## Why matrixclaw?
 
-- **Lightweight Go daemon:** about 26 MB RAM while idle on the current Linux daemon.
+- **Small Go daemon:** about 10 MB RAM while idle on the current Linux server,
+  with exact usage depending on OS, build, and active clients.
 - **One assistant, many clients:** begin a session in Terminal TUI and continue it in Telegram.
 - **Local-first state:** sessions, runs, approvals, files, and provider choices live in SQLite.
 - **Provider switching:** OpenAI-compatible APIs, Anthropic, Gemini, and custom endpoints.

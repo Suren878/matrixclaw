@@ -1,5 +1,5 @@
 class Matrixclaw < Formula
-  desc "Local daemon-backed AI coding operator for terminal and Telegram"
+  desc "Local personal AI assistant runtime for terminal and Telegram"
   homepage "https://github.com/Suren878/matrixclaw"
   version "VERSION"
 
