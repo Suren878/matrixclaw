@@ -311,11 +311,30 @@ func TestProviderContinueWithoutConfiguredProviderAsksConfirmation(t *testing.T)
 	if updated.screen != screenProviderNoProviderConfirm {
 		t.Fatalf("screen = %v, want no-provider confirmation", updated.screen)
 	}
+	rendered := updated.renderProviderNoProviderConfirm()
+	for _, want := range []string{"No provider is configured", "Yes", "No"} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("confirmation view missing %q: %q", want, rendered)
+		}
+	}
 
 	next, _ = updated.updateProviderNoProviderConfirm(tea.KeyPressMsg{Code: tea.KeyEnter})
 	updated = next.(*model)
 	if updated.screen != screenAssistantForm {
 		t.Fatalf("screen after confirm = %v, want assistant form", updated.screen)
+	}
+}
+
+func TestProviderNoProviderConfirmationNoReturnsToProviders(t *testing.T) {
+	m := &model{
+		screen:                   screenProviderNoProviderConfirm,
+		providerNoProviderCursor: 1,
+	}
+
+	next, _ := m.updateProviderNoProviderConfirm(tea.KeyPressMsg{Code: tea.KeyEnter})
+	updated := next.(*model)
+	if updated.screen != screenProviderList {
+		t.Fatalf("screen after no = %v, want provider list", updated.screen)
 	}
 }
 

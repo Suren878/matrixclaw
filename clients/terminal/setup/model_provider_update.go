@@ -75,8 +75,14 @@ func (m *model) updateProviderNoProviderConfirm(msg tea.Msg) (tea.Model, tea.Cmd
 	case "esc", "n":
 		m.screen = screenProviderList
 		return m, nil
-	case "up", "k", "down", "j":
-		m.moveIndex(keyMsg.String(), &m.providerNoProviderCursor, 1)
+	case "left", "h", "up", "k":
+		if m.providerNoProviderCursor > 0 {
+			m.providerNoProviderCursor--
+		}
+	case "right", "l", "down", "j":
+		if m.providerNoProviderCursor < 1 {
+			m.providerNoProviderCursor++
+		}
 	case "enter", "y":
 		if m.providerNoProviderCursor == 0 || keyMsg.String() == "y" {
 			m.openDraftForm(screenAssistantForm)

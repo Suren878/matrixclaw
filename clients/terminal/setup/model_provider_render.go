@@ -46,11 +46,13 @@ func (m *model) renderProviderTypeList() string {
 }
 
 func (m *model) renderProviderNoProviderConfirm() string {
-	items := []listItem{
-		{Title: "Continue without provider", Status: "Chat and runs can be enabled later from Providers"},
-		{Title: "Back to Providers", Status: ""},
-	}
-	return m.renderPickerFrame("No Provider Configured", items, m.providerNoProviderCursor)
+	card := commandui.RenderConfirmCard(m.commandFrame(), commandui.ConfirmData{
+		Message:      "No provider is configured. You can finish setup now, but chat and runs will not work until a provider is added. Continue without a provider?",
+		ConfirmLabel: "Yes",
+		CancelLabel:  "No",
+		Selected:     m.providerNoProviderCursor,
+	})
+	return m.renderCommandCard(card)
 }
 
 func (m *model) renderProviderForm() string {
