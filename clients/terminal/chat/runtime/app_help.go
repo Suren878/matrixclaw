@@ -35,6 +35,7 @@ func (m *appModel) ShortHelp() []key.Binding {
 		tab,
 		sessions,
 		copyBinding(km.Chat.UpDown),
+		copyBinding(km.Chat.View),
 		copyBinding(km.Chat.Copy),
 		quit,
 		helpKey,
@@ -77,6 +78,7 @@ func (m *appModel) FullHelp() [][]key.Binding {
 			copyBinding(km.Chat.UpDown),
 			copyBinding(km.Chat.HalfPageDown),
 			copyBinding(km.Chat.HalfPageUp),
+			copyBinding(km.Chat.View),
 			copyBinding(km.Chat.Copy),
 		},
 		{

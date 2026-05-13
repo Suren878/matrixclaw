@@ -44,6 +44,7 @@ type KeyMap struct {
 		Copy           key.Binding
 		ClearHighlight key.Binding
 		Expand         key.Binding
+		View           key.Binding
 	}
 
 	Initialize struct {
@@ -227,6 +228,10 @@ func DefaultKeyMap() KeyMap {
 	km.Chat.Expand = key.NewBinding(
 		key.WithKeys("space"),
 		key.WithHelp("space", "expand/collapse"),
+	)
+	km.Chat.View = key.NewBinding(
+		key.WithKeys("enter", "v"),
+		key.WithHelp("enter/v", "view"),
 	)
 	km.Initialize.Yes = key.NewBinding(
 		key.WithKeys("y", "Y"),

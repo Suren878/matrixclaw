@@ -19,6 +19,13 @@ func (t *baseToolMessageItem) HandleKeyEvent(key tea.KeyPressMsg) (bool, tea.Cmd
 		return false, nil
 	}
 
+	errorData, ok := t.errorPreviewData()
+	if ok {
+		return true, func() tea.Msg {
+			return surfacedialog.ActionOpenFilePreview{Data: errorData}
+		}
+	}
+
 	data, ok := t.diffPreviewData()
 	if ok {
 		return true, func() tea.Msg {
@@ -34,6 +41,39 @@ func (t *baseToolMessageItem) HandleKeyEvent(key tea.KeyPressMsg) (bool, tea.Cmd
 	}
 
 	return false, nil
+}
+
+func (t *baseToolMessageItem) errorPreviewData() (surfacedialog.FilePreviewData, bool) {
+	if t.result == nil || t.computeStatus() != ToolStatusError {
+		return surfacedialog.FilePreviewData{}, false
+	}
+
+	var out strings.Builder
+	fmt.Fprintf(&out, "Tool: %s\n", strings.TrimSpace(t.toolCall.Name))
+	if status := strings.TrimSpace(t.result.Status); status != "" {
+		fmt.Fprintf(&out, "Status: %s\n", status)
+	}
+
+	if content := strings.TrimSpace(t.result.Content); content != "" {
+		out.WriteString("\n")
+		out.WriteString(content)
+		out.WriteString("\n")
+	}
+
+	if metadata := strings.TrimSpace(t.result.Metadata); metadata != "" {
+		out.WriteString("\nMetadata:\n")
+		out.WriteString(metadata)
+		out.WriteString("\n")
+	}
+
+	content := strings.TrimSpace(out.String())
+	if content == "" {
+		content = "Tool failed without error details."
+	}
+	return surfacedialog.FilePreviewData{
+		Title:   "Tool Error",
+		Content: content,
+	}, true
 }
 
 func (t *baseToolMessageItem) diffPreviewData() (surfacedialog.DiffPreviewData, bool) {

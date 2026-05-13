@@ -5,11 +5,13 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
 	uv "github.com/charmbracelet/ultraviolet"
 	xansi "github.com/charmbracelet/x/ansi"
 
+	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
 )
@@ -148,6 +150,41 @@ func TestAssistantMessageItemRenderContainsText(t *testing.T) {
 	plain := xansi.Strip(rendered)
 	if !strings.Contains(plain, "hello from assistant") {
 		t.Fatalf("rendered assistant message missing text: %q", plain)
+	}
+}
+
+func TestAssistantErrorItemEnterOpensErrorPreview(t *testing.T) {
+	styles := surfacestyles.DefaultStyles()
+	message := surfacemessage.Message{
+		ID:   "msg-assistant-error",
+		Role: surfacemessage.Assistant,
+		Parts: []surfacemessage.ContentPart{
+			surfacemessage.Finish{
+				Reason:  surfacemessage.FinishReasonError,
+				Message: "provider request failed",
+				Details: "openai: unsupported parameter reasoning_effort for this request",
+			},
+		},
+	}
+
+	item := NewAssistantMessageItem(&styles, &message)
+	handler, ok := item.(KeyEventHandler)
+	if !ok {
+		t.Fatalf("item does not implement KeyEventHandler: %T", item)
+	}
+	handled, cmd := handler.HandleKeyEvent(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !handled || cmd == nil {
+		t.Fatalf("expected enter to open assistant error preview, handled=%v cmd=%v", handled, cmd)
+	}
+	msg := cmd()
+	action, ok := msg.(surfacedialog.ActionOpenFilePreview)
+	if !ok {
+		t.Fatalf("msg = %T, want ActionOpenFilePreview", msg)
+	}
+	for _, want := range []string{"provider request failed", "unsupported parameter reasoning_effort"} {
+		if !strings.Contains(action.Data.Content, want) {
+			t.Fatalf("expected %q in error preview content, got %q", want, action.Data.Content)
+		}
 	}
 }
 

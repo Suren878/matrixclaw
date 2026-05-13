@@ -11,6 +11,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/clients/terminal/ui/surface/anim"
 	"github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
+	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
 )
@@ -206,6 +207,60 @@ func (a *AssistantMessageItem) renderError(width int) string {
 	title := fmt.Sprintf("%s %s", errTag, a.sty.Chat.Message.ErrorTitle.Render(truncated))
 	details := a.sty.Chat.Message.ErrorDetails.Width(width - 2).Render(finishPart.Details)
 	return fmt.Sprintf("%s\n\n%s", title, details)
+}
+
+func (a *AssistantMessageItem) HandleKeyEvent(key tea.KeyPressMsg) (bool, tea.Cmd) {
+	switch key.String() {
+	case "enter", "v":
+	default:
+		return false, nil
+	}
+	data, ok := a.errorPreviewData()
+	if !ok {
+		return false, nil
+	}
+	return true, func() tea.Msg {
+		return surfacedialog.ActionOpenFilePreview{Data: data}
+	}
+}
+
+func (a *AssistantMessageItem) errorPreviewData() (surfacedialog.FilePreviewData, bool) {
+	if a.message.FinishReason() != surfacemessage.FinishReasonError {
+		return surfacedialog.FilePreviewData{}, false
+	}
+	finishPart := a.message.FinishPart()
+	if finishPart == nil {
+		return surfacedialog.FilePreviewData{}, false
+	}
+
+	var out strings.Builder
+	if message := strings.TrimSpace(finishPart.Message); message != "" {
+		out.WriteString(message)
+		out.WriteString("\n")
+	}
+	if details := strings.TrimSpace(finishPart.Details); details != "" {
+		if out.Len() > 0 {
+			out.WriteString("\n")
+		}
+		out.WriteString(details)
+		out.WriteString("\n")
+	}
+	if content := strings.TrimSpace(a.message.Content().Text); content != "" {
+		if out.Len() > 0 {
+			out.WriteString("\n")
+		}
+		out.WriteString("Message content:\n")
+		out.WriteString(content)
+		out.WriteString("\n")
+	}
+	preview := strings.TrimSpace(out.String())
+	if preview == "" {
+		preview = "Assistant failed without error details."
+	}
+	return surfacedialog.FilePreviewData{
+		Title:   "Assistant Error",
+		Content: preview,
+	}, true
 }
 
 func safeTextRenderWidth(width int) int {

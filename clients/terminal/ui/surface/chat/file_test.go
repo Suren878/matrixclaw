@@ -350,3 +350,48 @@ func TestReadToolItemEnterOpensFilePreview(t *testing.T) {
 		t.Fatalf("expected file preview line numbers, got %q", action.Data.Content)
 	}
 }
+
+func TestToolErrorItemEnterOpensErrorPreview(t *testing.T) {
+	sty := surfacestyles.DefaultStyles()
+	item := NewToolMessageItem(
+		&sty,
+		"msg-tool",
+		surfacemessage.ToolCall{
+			ID:       "tool-ls-1",
+			Name:     "ls",
+			Input:    `{"path":"/Volumes/LVM/Downloads"}`,
+			Finished: true,
+		},
+		&surfacemessage.ToolResult{
+			ToolCallID: "tool-ls-1",
+			Name:       "ls",
+			Content:    "ERROR Path resolves outside working directory: /Volumes/LVM/Downloads",
+			Metadata:   `{"path":"/Volumes/LVM/Downloads"}`,
+			Status:     "error",
+			IsError:    true,
+		},
+		false,
+	)
+
+	handler, ok := item.(KeyEventHandler)
+	if !ok {
+		t.Fatalf("item does not implement KeyEventHandler: %T", item)
+	}
+	handled, cmd := handler.HandleKeyEvent(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !handled || cmd == nil {
+		t.Fatalf("expected enter to open error preview, handled=%v cmd=%v", handled, cmd)
+	}
+	msg := cmd()
+	action, ok := msg.(surfacedialog.ActionOpenFilePreview)
+	if !ok {
+		t.Fatalf("msg = %T, want ActionOpenFilePreview", msg)
+	}
+	if action.Data.Title != "Tool Error" {
+		t.Fatalf("title = %q, want Tool Error", action.Data.Title)
+	}
+	for _, want := range []string{"Tool: ls", "Path resolves outside working directory", "/Volumes/LVM/Downloads", "Metadata:"} {
+		if !strings.Contains(action.Data.Content, want) {
+			t.Fatalf("expected %q in error preview content, got %q", want, action.Data.Content)
+		}
+	}
+}
