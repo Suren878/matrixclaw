@@ -72,6 +72,8 @@ func Run(io IO, binaryName string, args []string) int {
 		return runServiceCommand(stdout, stderr, binaryName, service, args[1:])
 	case "providers":
 		return runProvidersCommand(stdout, stderr, binaryName, service, args[1:])
+	case "agents":
+		return runAgentsCommand(stdout, stderr, binaryName, service, args[1:])
 	case "tui":
 		return runTUICommand(stderr, binaryName, service, args[1:])
 	case "help", "-h", "--help":
@@ -120,6 +122,8 @@ func printUsage(w io.Writer, binaryName string) {
 	fmt.Fprintf(w, "  %s service logs     Print recent matrixclaw service logs\n", binaryName)
 	fmt.Fprintf(w, "  %s providers        List setup provider catalog\n", binaryName)
 	fmt.Fprintf(w, "  %s providers verify Verify configured provider model access\n", binaryName)
+	fmt.Fprintf(w, "  %s agents           List external agent runtimes\n", binaryName)
+	fmt.Fprintf(w, "  %s agents start     Create an external agent session\n", binaryName)
 	fmt.Fprintf(w, "  %s tui [WORKDIR]    Open terminal chat for the current or given directory\n", binaryName)
 }
 

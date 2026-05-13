@@ -36,6 +36,7 @@ type Worker struct {
 	runs      map[string]context.CancelFunc
 	states    map[string]*runDeliveryState
 	prompts   map[string]controlplane.PromptData
+	callbacks map[string]string
 	autoEdits map[string]struct{}
 }
 

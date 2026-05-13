@@ -14,10 +14,11 @@ type chatCompletionRequest struct {
 }
 
 type chatCompletionMessage struct {
-	Role       string                   `json:"role"`
-	Content    any                      `json:"content"`
-	ToolCallID string                   `json:"tool_call_id,omitempty"`
-	ToolCalls  []chatCompletionToolCall `json:"tool_calls,omitempty"`
+	Role             string                   `json:"role"`
+	Content          any                      `json:"content"`
+	ReasoningContent *string                  `json:"reasoning_content,omitempty"`
+	ToolCallID       string                   `json:"tool_call_id,omitempty"`
+	ToolCalls        []chatCompletionToolCall `json:"tool_calls,omitempty"`
 }
 
 type chatCompletionContentPart struct {
@@ -55,8 +56,9 @@ type chatCompletionToolFunctionCall struct {
 type chatCompletionResponse struct {
 	Choices []struct {
 		Message struct {
-			Content   string                   `json:"content"`
-			ToolCalls []chatCompletionToolCall `json:"tool_calls,omitempty"`
+			Content          string                   `json:"content"`
+			ReasoningContent *string                  `json:"reasoning_content,omitempty"`
+			ToolCalls        []chatCompletionToolCall `json:"tool_calls,omitempty"`
 		} `json:"message"`
 	} `json:"choices"`
 	Usage chatCompletionUsage `json:"usage,omitempty"`
@@ -65,11 +67,13 @@ type chatCompletionResponse struct {
 type chatCompletionChunk struct {
 	Choices []struct {
 		Delta struct {
-			Content   string                        `json:"content"`
-			ToolCalls []chatCompletionToolCallDelta `json:"tool_calls,omitempty"`
+			Content          string                        `json:"content"`
+			ReasoningContent *string                       `json:"reasoning_content,omitempty"`
+			ToolCalls        []chatCompletionToolCallDelta `json:"tool_calls,omitempty"`
 		} `json:"delta"`
 		Message struct {
-			Content string `json:"content"`
+			Content          string  `json:"content"`
+			ReasoningContent *string `json:"reasoning_content,omitempty"`
 		} `json:"message"`
 	} `json:"choices"`
 	Usage chatCompletionUsage `json:"usage,omitempty"`

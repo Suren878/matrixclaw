@@ -13,25 +13,39 @@ func (c *Core) CreateSession(ctx context.Context, input CreateSessionInput) (Ses
 	if title == "" {
 		return Session{}, fmt.Errorf("%w: session title is required", ErrInvalidInput)
 	}
+	runtimeID := sessionRuntimeForCreate(input.RuntimeID, input.Kind, input.ExternalAgentID)
+	kind := sessionKindForRuntime(runtimeID)
 	workingDir := normalizeWorkingDir(input.WorkingDir)
 	providerID := normalizeText(input.ProviderID)
 	modelID := normalizeText(input.ModelID)
+	rawPermissionMode := normalizeText(string(input.PermissionMode))
 	permissionMode := NormalizePermissionMode(string(input.PermissionMode))
-	if llms := c.sessionLLMs(); llms != nil {
-		var err error
-		_, modelID, err = llms.Normalize(providerID, modelID)
-		if err != nil {
-			return Session{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	if kind == SessionKindExternalAgent && rawPermissionMode == "" {
+		permissionMode = PermissionModeFullAuto
+	}
+	if kind == SessionKindAssistant {
+		llms := c.sessionLLMs()
+		if llms != nil {
+			var err error
+			_, modelID, err = llms.Normalize(providerID, modelID)
+			if err != nil {
+				return Session{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+			}
+			if providerID == "" {
+				providerID, _ = llms.ActiveSelection()
+			}
 		}
-		if providerID == "" {
-			providerID, _ = llms.ActiveSelection()
-		}
+	} else {
+		providerID = ""
+		modelID = normalizeText(input.ModelID)
 	}
 
 	now := c.now().UTC()
 	session := Session{
 		ID:             c.newID("session"),
 		Title:          title,
+		Kind:           kind,
+		RuntimeID:      runtimeID,
 		WorkingDir:     workingDir,
 		ProviderID:     providerID,
 		ModelID:        modelID,
@@ -42,6 +56,12 @@ func (c *Core) CreateSession(ctx context.Context, input CreateSessionInput) (Ses
 	}
 	if err := c.store.CreateSession(ctx, session); err != nil {
 		return Session{}, err
+	}
+	if kind == SessionKindExternalAgent {
+		if err := c.createExternalAgentAttachment(ctx, session, input); err != nil {
+			_ = c.store.DeleteSession(ctx, session.ID)
+			return Session{}, err
+		}
 	}
 	return session, nil
 }
@@ -88,10 +108,24 @@ func (c *Core) UpdateSessionPermissionMode(ctx context.Context, input UpdateSess
 	if err != nil {
 		return Session{}, err
 	}
+	session = c.decorateSessionLLM(session)
 	session.PermissionMode = NormalizePermissionMode(string(input.PermissionMode))
 	session.UpdatedAt = c.now().UTC()
 	if err := c.store.UpdateSession(ctx, session); err != nil {
 		return Session{}, err
+	}
+	if session.Kind == SessionKindExternalAgent && c.externalStore != nil {
+		if attachment, err := c.externalStore.GetExternalAgentSession(ctx, session.ID); err == nil {
+			approvalPolicy, sandbox := externalAgentPolicyForPermissionMode(session.PermissionMode)
+			attachment.ApprovalPolicy = approvalPolicy
+			attachment.Sandbox = sandbox
+			attachment.UpdatedAt = session.UpdatedAt
+			if err := c.externalStore.SaveExternalAgentSession(ctx, attachment); err != nil {
+				return Session{}, err
+			}
+		} else if !errors.Is(err, ErrNotFound) {
+			return Session{}, err
+		}
 	}
 	return c.decorateSessionLLM(session), nil
 }
@@ -276,7 +310,18 @@ func (c *Core) ModelsForSession(ctx context.Context, sessionID string) (string, 
 }
 
 func (c *Core) decorateSessionLLM(session Session) Session {
+	session.Kind = NormalizeSessionKind(session.Kind)
+	if session.Kind == SessionKindExternalAgent && (session.RuntimeID == "" || NormalizeSessionRuntime(session.RuntimeID) == SessionRuntimeMatrixClaw) {
+		session.RuntimeID = SessionRuntimeCodex
+	}
+	if session.RuntimeID == "" {
+		session.RuntimeID = SessionRuntimeMatrixClaw
+	}
+	session.RuntimeID = NormalizeSessionRuntime(session.RuntimeID)
 	session.PermissionMode = NormalizePermissionMode(string(session.PermissionMode))
+	if session.Kind == SessionKindExternalAgent {
+		return session
+	}
 	llms := c.sessionLLMs()
 	if llms == nil {
 		return session

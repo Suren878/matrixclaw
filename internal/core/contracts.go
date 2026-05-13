@@ -6,8 +6,14 @@ import (
 )
 
 type CreateSessionRequest struct {
-	Title      string `json:"title"`
-	WorkingDir string `json:"working_dir"`
+	Title           string `json:"title"`
+	Kind            string `json:"kind,omitempty"`
+	RuntimeID       string `json:"runtime_id,omitempty"`
+	WorkingDir      string `json:"working_dir"`
+	ProviderID      string `json:"provider_id,omitempty"`
+	ModelID         string `json:"model_id,omitempty"`
+	PermissionMode  string `json:"permission_mode,omitempty"`
+	ExternalAgentID string `json:"external_agent_id,omitempty"`
 }
 
 type RenameSessionRequest struct {
@@ -61,6 +67,10 @@ type SessionsResponse struct {
 
 type SessionResponse struct {
 	Session Session `json:"session"`
+}
+
+type ExternalAgentsResponse struct {
+	Agents []ExternalAgentDescriptor `json:"agents"`
 }
 
 type MessagesResponse struct {

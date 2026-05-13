@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.4
+
+- Added Codex as an external agent runtime with app-server session attachment,
+  CLI discovery/start commands, and daemon API support.
+- Moved session architecture toward runtime-scoped settings: sessions now carry
+  runtime, provider/model, and permission mode state.
+- Added runtime-aware session creation for MatrixClaw and Codex in the shared
+  controlplane used by TUI and Telegram.
+- Moved Provider and Permission Mode out of the top-level menu and into
+  session-scoped actions.
+- Fixed Telegram provider switching callbacks and DeepSeek/OpenAI-compatible
+  reasoning-content handling.
+
 ## v0.1.3
 
 - Replaced the repository-hosted README demo GIF with a GitHub attachment link

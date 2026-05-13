@@ -64,6 +64,50 @@ func TestBuildProviderConversationRepairsDanglingToolCalls(t *testing.T) {
 	}
 }
 
+func TestBuildProviderConversationKeepsAssistantReasoningContent(t *testing.T) {
+	t.Parallel()
+
+	history := []Message{
+		{
+			ID:      "msg_user_1",
+			Role:    MessageRoleUser,
+			Content: "check it",
+			Parts: []MessagePart{{
+				Kind: MessagePartKindText,
+				Text: &TextPart{Text: "check it"},
+			}},
+		},
+		{
+			ID:   "call_1",
+			Role: MessageRoleAssistant,
+			Parts: []MessagePart{
+				{
+					Kind: MessagePartKindReasoning,
+					Reasoning: &ReasoningPart{
+						Text: "private thinking",
+					},
+				},
+				{
+					Kind: MessagePartKindToolCall,
+					ToolCall: &ToolCallPart{
+						ID:    "call_1",
+						Name:  "read",
+						Input: `{"file_path":"notes.txt"}`,
+					},
+				},
+			},
+		},
+	}
+
+	conversation := buildProviderConversation(history)
+	if len(conversation) != 3 {
+		t.Fatalf("len(conversation) = %d, want user, assistant tool call, synthetic tool result", len(conversation))
+	}
+	if conversation[1].ReasoningContent == nil || *conversation[1].ReasoningContent != "private thinking" {
+		t.Fatalf("assistant reasoning = %#v, want private thinking", conversation[1].ReasoningContent)
+	}
+}
+
 func TestBuildProviderConversationBatchesConsecutiveToolCallsAndPairsResults(t *testing.T) {
 	t.Parallel()
 

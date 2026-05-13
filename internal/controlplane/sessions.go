@@ -47,6 +47,28 @@ func (d *Dispatcher) handleSessions(ctx context.Context, externalKey string) (Re
 	}, nil
 }
 
+func (d *Dispatcher) handleNewSession(ctx context.Context, externalKey string, args string) (Result, error) {
+	if d.sessions == nil {
+		return unsupportedRuntime("sessions"), nil
+	}
+	args = strings.TrimSpace(args)
+	if args == "" {
+		return d.sessionRuntimePicker(), nil
+	}
+	return d.createSession(ctx, externalKey, core.SessionRuntimeMatrixClaw, args)
+}
+
+func (d *Dispatcher) sessionRuntimePicker() Result {
+	return Result{
+		Handled: true,
+		Picker: NewPickerData(PickerSessionRuntime, "New Session").
+			Back("/sessions").
+			Row("matrixclaw", "MatrixClaw", "Providers, tools, approvals").
+			Row("codex", "Codex", "External Codex agent runtime").
+			Ptr(),
+	}
+}
+
 func (d *Dispatcher) handleSession(ctx context.Context, externalKey string, args string) (Result, error) {
 	if d.sessions == nil {
 		return unsupportedRuntime("sessions"), nil
@@ -57,11 +79,13 @@ func (d *Dispatcher) handleSession(ctx context.Context, externalKey string, args
 	}
 	fields := strings.Fields(args)
 	switch strings.ToLower(fields[0]) {
+	case "new":
+		return d.handleSessionNew(ctx, externalKey, strings.TrimSpace(strings.TrimPrefix(args, fields[0])))
 	case "menu":
 		if len(fields) < 2 {
 			return Result{Handled: true, Text: "Usage: /session menu <id>"}, nil
 		}
-		return d.handleSessionMenu(ctx, fields[1])
+		return d.handleSessionMenu(ctx, externalKey, fields[1])
 	case "use":
 		if len(fields) < 2 {
 			return Result{Handled: true, Text: "Usage: /session use <id>"}, nil
@@ -105,8 +129,68 @@ func (d *Dispatcher) handleSession(ctx context.Context, externalKey string, args
 	}
 }
 
-func (d *Dispatcher) handleSessionMenu(ctx context.Context, sessionID string) (Result, error) {
+func (d *Dispatcher) handleSessionNew(ctx context.Context, externalKey string, args string) (Result, error) {
+	args = strings.TrimSpace(args)
+	if args == "" {
+		return d.sessionRuntimePicker(), nil
+	}
+	runtimeValue, title, _ := strings.Cut(args, " ")
+	runtimeID := parseSessionRuntime(runtimeValue)
+	if runtimeID == "" {
+		return Result{Handled: true, Text: "Usage: /session new matrixclaw|codex [title]"}, nil
+	}
+	return d.createSession(ctx, externalKey, runtimeID, strings.TrimSpace(title))
+}
+
+func (d *Dispatcher) createSession(ctx context.Context, externalKey string, runtimeID core.SessionRuntime, title string) (Result, error) {
+	runtimeID = core.NormalizeSessionRuntime(runtimeID)
+	if title = strings.TrimSpace(title); title == "" {
+		title = d.defaultSessionTitle(externalKey)
+	}
+	var session core.Session
+	var err error
+	if options, ok := d.sessions.(SessionRuntimeOptions); ok {
+		request := core.CreateSessionRequest{
+			Title:      title,
+			RuntimeID:  string(runtimeID),
+			WorkingDir: d.workingDir,
+		}
+		if runtimeID == core.SessionRuntimeCodex {
+			request.PermissionMode = string(core.PermissionModeFullAuto)
+		}
+		session, err = options.CreateSessionWithOptions(ctx, externalKey, request)
+	} else if runtimeID == core.SessionRuntimeMatrixClaw {
+		session, err = d.sessions.CreateSession(ctx, externalKey, title, d.workingDir)
+	} else {
+		return Result{Handled: true, Text: "Session runtime " + string(runtimeID) + " is not supported by this client."}, nil
+	}
+	if err != nil {
+		return Result{}, err
+	}
+	return Result{
+		Handled:        true,
+		Text:           "Current session: " + formatSessionLabel(session, true),
+		ReloadSnapshot: true,
+	}, nil
+}
+
+func parseSessionRuntime(value string) core.SessionRuntime {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "matrixclaw", "matrix", "default", "assistant", "core":
+		return core.SessionRuntimeMatrixClaw
+	case "codex", "codex-app":
+		return core.SessionRuntimeCodex
+	default:
+		return ""
+	}
+}
+
+func (d *Dispatcher) handleSessionMenu(ctx context.Context, externalKey string, sessionID string) (Result, error) {
 	session, err := d.findSession(ctx, sessionID)
+	if err != nil {
+		return Result{}, err
+	}
+	currentSessionID, _, err := d.currentSession(ctx, externalKey)
 	if err != nil {
 		return Result{}, err
 	}
@@ -114,19 +198,42 @@ func (d *Dispatcher) handleSessionMenu(ctx context.Context, sessionID string) (R
 	if title == "" {
 		title = session.ID
 	}
-	return Result{
-		Handled: true,
-		Picker: NewPickerData(PickerSessionActions, "Session: "+title).
-			Context(session.ID).
-			Back("/sessions").
-			Row("use", "Use", "Make active").
-			Row("rename", "Rename", title).
-			Danger("delete", "Delete", "Permanent").
-			Ptr(),
-	}, nil
+	picker := NewPickerData(PickerSessionActions, "Session: "+title).
+		Context(session.ID).
+		Back("/sessions").
+		Row("use", "Use", "Make active")
+	if strings.TrimSpace(session.ID) == strings.TrimSpace(currentSessionID) {
+		if core.NormalizeSessionRuntime(session.RuntimeID) == core.SessionRuntimeMatrixClaw {
+			picker.Row("provider", "Provider", sessionProviderStatus(session), "/provider")
+		}
+		picker.Row("permissions", "Permissions", permissionModeStatus(session.PermissionMode), "/permissions")
+	}
+	picker.Row("rename", "Rename", title).
+		Danger("delete", "Delete", "Permanent")
+	return Result{Handled: true, Picker: picker.Ptr()}, nil
 }
 
 func sessionListInfo(session core.Session) string {
+	parts := []string{sessionRuntimeLabel(session)}
+	if provider := strings.TrimSpace(session.ProviderID); provider != "" {
+		parts = append(parts, provider)
+	}
+	if model := strings.TrimSpace(session.ModelID); model != "" {
+		parts = append(parts, model)
+	}
+	return strings.Join(parts, " · ")
+}
+
+func sessionRuntimeLabel(session core.Session) string {
+	switch core.NormalizeSessionRuntime(session.RuntimeID) {
+	case core.SessionRuntimeCodex:
+		return "Codex"
+	default:
+		return "MatrixClaw"
+	}
+}
+
+func sessionProviderStatus(session core.Session) string {
 	parts := []string{}
 	if provider := strings.TrimSpace(session.ProviderID); provider != "" {
 		parts = append(parts, provider)
@@ -212,7 +319,10 @@ func (d *Dispatcher) handleCurrent(ctx context.Context, externalKey string) (Res
 	if session == nil {
 		return Result{Handled: true, Text: "No active session. Use /new or /sessions."}, nil
 	}
-	lines := []string{"Current session: " + formatSessionLabel(*session, true)}
+	lines := []string{
+		"Current session: " + formatSessionLabel(*session, true),
+		"Runtime: " + sessionRuntimeLabel(*session),
+	}
 	if strings.TrimSpace(session.ProviderID) != "" {
 		lines = append(lines, "Provider: "+strings.TrimSpace(session.ProviderID))
 	}
@@ -276,11 +386,11 @@ func (d *Dispatcher) rebindAfterDelete(ctx context.Context, externalKey string) 
 		}
 		return "Current session: " + formatSessionLabel(sessions[0], true), nil
 	}
-	session, err := d.sessions.CreateSession(ctx, externalKey, d.defaultSessionTitle(externalKey), d.workingDir)
+	result, err := d.createSession(ctx, externalKey, core.SessionRuntimeMatrixClaw, d.defaultSessionTitle(externalKey))
 	if err != nil {
 		return "", err
 	}
-	return "Current session: " + formatSessionLabel(session, true), nil
+	return result.Text, nil
 }
 
 func (d *Dispatcher) defaultSessionTitle(externalKey string) string {

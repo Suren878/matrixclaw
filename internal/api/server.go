@@ -110,6 +110,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/v1/setup/providers", s.handleSetupProviders)
 	s.mux.HandleFunc("/v1/setup/providers/", s.handleSetupProviderByID)
 	s.mux.HandleFunc("/v1/session-providers", s.handleSessionProviders)
+	s.mux.HandleFunc("/v1/external-agents", s.handleExternalAgents)
 	s.mux.HandleFunc("/v1/admin/reload", s.handleAdminReload)
 	s.mux.HandleFunc("/v1/admin/restart", s.handleAdminRestart)
 	s.mux.HandleFunc("/v1/automation/jobs", s.handleAutomationJobs)

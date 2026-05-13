@@ -49,6 +49,9 @@ func TestPickerCommandBuildsSharedCommands(t *testing.T) {
 		{kind: PickerSessions, itemID: "new", want: "/new"},
 		{kind: PickerSessions, itemID: "cancel", want: ""},
 		{kind: PickerSessions, itemID: "session_1", want: "/session menu session_1"},
+		{kind: PickerSessionRuntime, itemID: "matrixclaw", want: "/session new matrixclaw"},
+		{kind: PickerSessionRuntime, itemID: "codex", want: "/session new codex"},
+		{kind: PickerSessionRuntime, itemID: "back", want: "/sessions"},
 		{kind: PickerSessionActions, contextID: "session_1", itemID: "use", want: "/session use session_1"},
 		{kind: PickerSessionActions, contextID: "session_1", itemID: "delete", want: "/session delete session_1"},
 		{kind: PickerProvider, itemID: "openai", want: "/provider openai"},
@@ -94,26 +97,32 @@ func TestBuildCommandViewMarksMenuItems(t *testing.T) {
 			items = append(items, view)
 		}
 	}
-	if len(items) != 8 {
-		t.Fatalf("len(items) = %d, want 8", len(items))
+	if len(items) != 6 {
+		t.Fatalf("len(items) = %d, want 6", len(items))
 	}
 	byCommand := make(map[string]CommandView, len(items))
 	for _, item := range items {
 		byCommand[item.Command] = item
 	}
-	for _, command := range []string{"/new", "/sessions", "/provider", "/permissions", "/context", "/modules", "/tasks", "/server"} {
+	for _, command := range []string{"/new", "/sessions", "/context", "/modules", "/tasks", "/server"} {
 		if _, ok := byCommand[command]; !ok {
 			t.Fatalf("menu items missing %s: %#v", command, items)
 		}
 	}
+	if _, ok := byCommand["/provider"]; ok {
+		t.Fatalf("menu items should not expose provider globally: %#v", items)
+	}
+	if _, ok := byCommand["/permissions"]; ok {
+		t.Fatalf("menu items should not expose permissions globally: %#v", items)
+	}
 	if _, ok := byCommand["/model"]; ok {
 		t.Fatalf("menu items should configure models through providers now: %#v", items)
 	}
-	if byCommand["/sessions"].Status != "Docs" || byCommand["/provider"].Status != "openai" {
+	if byCommand["/sessions"].Status != "Docs" {
 		t.Fatalf("menu status split mismatch: %#v", items)
 	}
-	if byCommand["/provider"].Group != MenuItemGroupPrimary || byCommand["/server"].Group != MenuItemGroupSecondary {
-		t.Fatalf("menu group mismatch: provider=%#v server=%#v", byCommand["/provider"], byCommand["/server"])
+	if byCommand["/server"].Group != MenuItemGroupSecondary {
+		t.Fatalf("menu group mismatch: server=%#v", byCommand["/server"])
 	}
 }
 
@@ -144,10 +153,13 @@ func TestHelpTextShowsOnlyPublicCommands(t *testing.T) {
 	if strings.Contains(text, "/new") || strings.Contains(text, "/session -") || strings.Contains(text, "/status") || strings.Contains(text, "/restart") {
 		t.Fatalf("HelpText() unexpectedly includes hidden commands: %q", text)
 	}
-	for _, command := range []string{"/sessions", "/provider", "/server", "/help"} {
+	for _, command := range []string{"/sessions", "/server", "/help"} {
 		if !strings.Contains(text, command) {
 			t.Fatalf("HelpText() missing %s: %q", command, text)
 		}
+	}
+	if strings.Contains(text, "/provider") || strings.Contains(text, "/permissions") {
+		t.Fatalf("HelpText() should keep session-scoped settings out of top-level help: %q", text)
 	}
 	if strings.Contains(text, "/model") {
 		t.Fatalf("HelpText() should not expose separate model setup: %q", text)

@@ -24,6 +24,10 @@ func newRunExecution(run Run, session Session, runtime providers.Runtime) *runEx
 }
 
 func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
+	if handled, err := c.tryExecuteExternalAgentRun(ctx, runID); handled || err != nil {
+		return err
+	}
+
 	execution, ok, err := c.prepareRunExecution(ctx, runID)
 	if err != nil || !ok {
 		return err

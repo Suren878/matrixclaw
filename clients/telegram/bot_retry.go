@@ -7,6 +7,7 @@ import (
 )
 
 func (w *Worker) sendTelegramMessage(ctx context.Context, req SendMessageRequest) (SentMessage, error) {
+	req.ReplyMarkup = w.compactInlineKeyboardMarkup(req.ReplyMarkup)
 	reply, err := w.api.SendMessage(ctx, req)
 	if !shouldRetryTelegramAfter(err) {
 		return reply, err
@@ -18,6 +19,7 @@ func (w *Worker) sendTelegramMessage(ctx context.Context, req SendMessageRequest
 }
 
 func (w *Worker) editTelegramMessage(ctx context.Context, req EditMessageTextRequest) (EditMessageTextResponse, error) {
+	req.ReplyMarkup = w.compactInlineKeyboardMarkup(req.ReplyMarkup)
 	response, err := w.api.EditMessageText(ctx, req)
 	if !shouldRetryTelegramAfter(err) {
 		return response, err

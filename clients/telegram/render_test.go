@@ -119,6 +119,45 @@ func TestRenderPickerUsesCommandCallbackForExplicitItemCommand(t *testing.T) {
 	}
 }
 
+func TestRenderPickerCompactsLongCommandCallbackData(t *testing.T) {
+	api := &fakeBotAPI{}
+	worker := newTestWorker(t, api, "http://127.0.0.1:1")
+	longCommand := "/provider edit set model custom-provider " + strings.Repeat("token", 20) + " claude-3-7-sonnet-20250219"
+	if got := len([]byte(commandCallbackData(longCommand))); got <= maxCallbackDataBytes {
+		t.Fatalf("test command callback len = %d, want > %d", got, maxCallbackDataBytes)
+	}
+
+	err := worker.renderCommandResult(context.Background(), chatTarget{
+		chatID:      42,
+		externalKey: "42",
+	}, 0, controlplane.Result{
+		Picker: &controlplane.PickerData{
+			Kind:  controlplane.PickerProviderCustom,
+			Title: "Model",
+			Items: []controlplane.PickerItem{
+				{ID: "claude", Title: "Claude", Command: longCommand},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("renderCommandResult() error = %v", err)
+	}
+	callback := api.sendMessageRequests[0].ReplyMarkup.InlineKeyboard[0][0].CallbackData
+	if got := len([]byte(callback)); got > maxCallbackDataBytes {
+		t.Fatalf("callback_data len = %d, want <= %d", got, maxCallbackDataBytes)
+	}
+	if !strings.HasPrefix(callback, cbCallbackRef) {
+		t.Fatalf("callback_data = %q, want compact ref prefix %q", callback, cbCallbackRef)
+	}
+	kind, command, ok := parsePickerCallbackData(worker.resolveCallbackData(callback))
+	if !ok {
+		t.Fatalf("parse compacted callback %q failed", callback)
+	}
+	if kind != callbackKindCommand || command != longCommand {
+		t.Fatalf("resolved callback = (%q, %q), want command %q", kind, command, longCommand)
+	}
+}
+
 func TestSendTextUsesHTMLParseMode(t *testing.T) {
 	api := &fakeBotAPI{}
 	worker := newTestWorker(t, api, "http://127.0.0.1:1")

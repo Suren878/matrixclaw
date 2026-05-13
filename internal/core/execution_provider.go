@@ -300,6 +300,7 @@ func toProviderMessages(ctx context.Context, message Message, reader AttachmentR
 	var toolCalls []providers.ToolCall
 	var imageParts []ImagePart
 	var images []providers.ImageContent
+	reasoningContent := messageReasoningContent(message.Parts)
 	for _, part := range message.Parts {
 		if part.Image != nil {
 			imagePart := *part.Image
@@ -324,10 +325,11 @@ func toProviderMessages(ctx context.Context, message Message, reader AttachmentR
 	}
 	if len(toolCalls) > 0 {
 		return []providers.Message{{
-			Role:      string(message.Role),
-			Content:   messageContentWithAttachmentRefs(message.Content, imageParts),
-			Images:    images,
-			ToolCalls: toolCalls,
+			Role:             string(message.Role),
+			Content:          messageContentWithAttachmentRefs(message.Content, imageParts),
+			ReasoningContent: reasoningContent,
+			Images:           images,
+			ToolCalls:        toolCalls,
 		}}, nil
 	}
 
@@ -346,10 +348,26 @@ func toProviderMessages(ctx context.Context, message Message, reader AttachmentR
 		return nil, nil
 	}
 	return []providers.Message{{
-		Role:    string(message.Role),
-		Content: messageContentWithAttachmentRefs(message.Content, imageParts),
-		Images:  images,
+		Role:             string(message.Role),
+		Content:          messageContentWithAttachmentRefs(message.Content, imageParts),
+		ReasoningContent: reasoningContent,
+		Images:           images,
 	}}, nil
+}
+
+func messageReasoningContent(parts []MessagePart) *string {
+	var values []string
+	for _, part := range parts {
+		if part.Reasoning == nil {
+			continue
+		}
+		values = append(values, part.Reasoning.Text)
+	}
+	if len(values) == 0 {
+		return nil
+	}
+	value := strings.Join(values, "\n")
+	return &value
 }
 
 func imagePartLabel(part ImagePart) string {

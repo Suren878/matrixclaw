@@ -219,14 +219,11 @@ func (w *Worker) handleSessionSelectionRequired(ctx context.Context, target chat
 		return true, w.sendText(ctx, target, fmt.Sprintf("Load sessions failed: %v", err))
 	}
 	if len(sessions) == 0 {
-		session, err := daemon.CreateSession(ctx, "Telegram chat "+time.Now().Format("2006-01-02 15:04"), w.config.WorkingDir)
+		result, err := w.dispatcher().Handle(ctx, target.externalKey, "/new")
 		if err != nil {
 			return true, w.sendText(ctx, target, fmt.Sprintf("Create session failed: %v", err))
 		}
-		if _, err := daemon.UseSession(ctx, session.ID); err != nil {
-			return true, w.sendText(ctx, target, fmt.Sprintf("Bind session failed: %v", err))
-		}
-		return true, w.sendText(ctx, target, fmt.Sprintf("Created session %s. Send the message again.", session.Title))
+		return true, w.renderCommandResult(ctx, target, 0, withSessionSelectionPrompt(result))
 	}
 	result, err := w.dispatcher().Handle(ctx, target.externalKey, "/sessions")
 	if err != nil {

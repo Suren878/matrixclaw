@@ -8,21 +8,25 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/externalagents"
 )
 
 type Core struct {
-	mu           sync.RWMutex
-	store        Store
-	runStarter   RunStarter
-	llms         SessionLLMRegistry
-	assistant    AssistantProfile
-	attachments  AttachmentReader
-	activeRuns   map[string]*activeRun
-	tools        ToolExecutor
-	events       *eventBus
-	now          func() time.Time
-	newID        func(prefix string) string
-	historyLimit int
+	mu             sync.RWMutex
+	store          Store
+	runStarter     RunStarter
+	llms           SessionLLMRegistry
+	assistant      AssistantProfile
+	attachments    AttachmentReader
+	externalAgents *externalagents.Registry
+	externalStore  externalagents.AttachmentStore
+	activeRuns     map[string]*activeRun
+	tools          ToolExecutor
+	events         *eventBus
+	now            func() time.Time
+	newID          func(prefix string) string
+	historyLimit   int
 }
 
 type AssistantProfile struct {
@@ -78,6 +82,12 @@ func (c *Core) WithRunStarter(starter RunStarter) *Core {
 	if starter != nil {
 		c.runStarter = starter
 	}
+	return c
+}
+
+func (c *Core) WithExternalAgents(registry *externalagents.Registry, store externalagents.AttachmentStore) *Core {
+	c.externalAgents = registry
+	c.externalStore = store
 	return c
 }
 

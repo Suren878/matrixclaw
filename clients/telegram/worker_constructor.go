@@ -56,6 +56,7 @@ func NewWorker(cfg Config) (*Worker, error) {
 		runs:      map[string]context.CancelFunc{},
 		states:    map[string]*runDeliveryState{},
 		prompts:   map[string]controlplane.PromptData{},
+		callbacks: map[string]string{},
 		autoEdits: map[string]struct{}{},
 	}, nil
 }

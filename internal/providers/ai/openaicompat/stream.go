@@ -13,6 +13,8 @@ import (
 
 func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.Response, error) {
 	var text strings.Builder
+	var reasoningContent strings.Builder
+	reasoningContentSeen := false
 	toolCalls := map[int]*streamToolCall{}
 	var usage providers.Usage
 	if err := providers.ScanSSE(ctx, body, func(event providers.SSEEvent) error {
@@ -35,10 +37,18 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 		for _, toolCall := range deltaChunk.ToolCalls {
 			mergeStreamToolCall(toolCalls, toolCall)
 		}
+		if deltaChunk.ReasoningContent != nil {
+			reasoningContentSeen = true
+			reasoningContent.WriteString(*deltaChunk.ReasoningContent)
+		}
 
 		delta := deltaChunk.Content
 		if delta == "" {
 			delta = chunk.Choices[0].Message.Content
+		}
+		if chunk.Choices[0].Message.ReasoningContent != nil {
+			reasoningContentSeen = true
+			reasoningContent.WriteString(*chunk.Choices[0].Message.ReasoningContent)
 		}
 		if delta == "" {
 			return nil
@@ -55,12 +65,18 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 	if reply == "" && len(calls) == 0 {
 		return providers.Response{}, errors.New("openaicompat: empty assistant reply")
 	}
+	var responseReasoningContent *string
+	if reasoningContentSeen {
+		value := reasoningContent.String()
+		responseReasoningContent = &value
+	}
 	return providers.Response{
-		Text:      reply,
-		Model:     r.model,
-		Provider:  providers.TypeOpenAICompat,
-		ToolCalls: calls,
-		Usage:     usage,
+		Text:             reply,
+		ReasoningContent: responseReasoningContent,
+		Model:            r.model,
+		Provider:         providers.TypeOpenAICompat,
+		ToolCalls:        calls,
+		Usage:            usage,
 	}, nil
 }
 

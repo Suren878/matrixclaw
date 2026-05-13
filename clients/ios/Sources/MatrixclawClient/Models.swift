@@ -20,6 +20,11 @@ public enum SessionStatus: String, Codable, Sendable {
     case archived
 }
 
+public enum SessionRuntime: String, Codable, Sendable {
+    case matrixclaw
+    case codex
+}
+
 public enum PermissionMode: String, Codable, Sendable {
     case `default`
     case acceptEdits = "accept_edits"
@@ -29,6 +34,8 @@ public enum PermissionMode: String, Codable, Sendable {
 public struct Session: Codable, Identifiable, Equatable, Sendable {
     public var id: String
     public var title: String
+    public var kind: String?
+    public var runtimeId: SessionRuntime?
     public var workingDir: String?
     public var providerId: String?
     public var modelId: String?

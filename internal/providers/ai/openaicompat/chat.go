@@ -33,6 +33,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 
 	retriedWithoutReasoning := false
 	retriedWithMaxCompletionTokens := false
+	retriedWithReasoningContent := false
 	for attempt := 0; ; attempt++ {
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, r.endpoint, bytes.NewReader(body))
 		if err != nil {
@@ -83,6 +84,19 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 				attempt = -1
 				continue
 			}
+			if !retriedWithReasoningContent && shouldRetryWithReasoningContent(payload, httpRes.StatusCode, resBody) {
+				var changed bool
+				payload, changed = withMissingAssistantReasoningContent(payload)
+				if changed {
+					body, err = json.Marshal(payload)
+					if err != nil {
+						return providers.Response{}, fmt.Errorf("openaicompat: marshal request: %w", err)
+					}
+					retriedWithReasoningContent = true
+					attempt = -1
+					continue
+				}
+			}
 			return providers.Response{}, fmt.Errorf("openaicompat: %s", decodeOpenAIError(httpRes.StatusCode, resBody))
 		}
 		defer httpRes.Body.Close()
@@ -96,6 +110,36 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 		}
 		return r.decodeChatResponse(resBody)
 	}
+}
+
+func shouldRetryWithReasoningContent(payload chatCompletionRequest, statusCode int, body []byte) bool {
+	if statusCode < 400 || statusCode >= 500 {
+		return false
+	}
+	if _, changed := withMissingAssistantReasoningContent(payload); !changed {
+		return false
+	}
+	text := strings.ToLower(decodeOpenAIError(statusCode, body) + "\n" + string(body))
+	return strings.Contains(text, "reasoning_content") &&
+		(strings.Contains(text, "must be passed back") || strings.Contains(text, "thinking mode"))
+}
+
+func withMissingAssistantReasoningContent(payload chatCompletionRequest) (chatCompletionRequest, bool) {
+	var emptyReasoning string
+	out := payload
+	out.Messages = make([]chatCompletionMessage, len(payload.Messages))
+	copy(out.Messages, payload.Messages)
+
+	changed := false
+	for i := range out.Messages {
+		message := &out.Messages[i]
+		if normalizeOpenAIRole(message.Role) != "assistant" || message.ReasoningContent != nil || len(message.ToolCalls) == 0 {
+			continue
+		}
+		message.ReasoningContent = &emptyReasoning
+		changed = true
+	}
+	return out, changed
 }
 
 func shouldRetryWithoutReasoningEffort(payload chatCompletionRequest, statusCode int, body []byte) bool {
@@ -262,12 +306,21 @@ func (r *Runtime) decodeChatResponse(body []byte) (providers.Response, error) {
 	}
 
 	return providers.Response{
-		Text:      text,
-		Model:     r.model,
-		Provider:  providers.TypeOpenAICompat,
-		ToolCalls: toolCalls,
-		Usage:     openAIUsage(response.Usage),
+		Text:             text,
+		ReasoningContent: cloneStringPtr(choice.Message.ReasoningContent),
+		Model:            r.model,
+		Provider:         providers.TypeOpenAICompat,
+		ToolCalls:        toolCalls,
+		Usage:            openAIUsage(response.Usage),
 	}, nil
+}
+
+func cloneStringPtr(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
 }
 
 func openAIUsage(usage chatCompletionUsage) providers.Usage {

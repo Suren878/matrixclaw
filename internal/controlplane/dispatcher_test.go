@@ -18,6 +18,7 @@ type fakeRuntime struct {
 	sessions           []core.Session
 	setupProviders     []setup.ProviderSetupItem
 	created            int
+	createdRequest     core.CreateSessionRequest
 	configuredProvider string
 	configuredAPIKey   string
 	configuredUpdate   setup.ProviderSetupUpdate
@@ -48,8 +49,23 @@ func (f *fakeRuntime) ListSessions(context.Context) ([]core.Session, error) {
 }
 
 func (f *fakeRuntime) CreateSession(_ context.Context, _ string, title string, _ string) (core.Session, error) {
+	return f.CreateSessionWithOptions(context.Background(), "", core.CreateSessionRequest{Title: title})
+}
+
+func (f *fakeRuntime) CreateSessionWithOptions(_ context.Context, _ string, request core.CreateSessionRequest) (core.Session, error) {
 	f.created++
-	session := core.Session{ID: "session_new", Title: title}
+	f.createdRequest = request
+	session := core.Session{
+		ID:             "session_new",
+		Title:          request.Title,
+		RuntimeID:      core.NormalizeSessionRuntime(core.SessionRuntime(request.RuntimeID)),
+		PermissionMode: core.NormalizePermissionMode(request.PermissionMode),
+	}
+	if session.RuntimeID == core.SessionRuntimeCodex {
+		session.Kind = core.SessionKindExternalAgent
+	} else {
+		session.Kind = core.SessionKindAssistant
+	}
 	f.sessions = append(f.sessions, session)
 	f.binding.SessionID = session.ID
 	return session, nil
@@ -345,6 +361,12 @@ func TestDispatcherSessionPickersAndRenamePrompt(t *testing.T) {
 	if result.Picker == nil || result.Picker.Kind != PickerSessionActions || result.Picker.ContextID != "session_1" {
 		t.Fatalf("Handle(menu) picker = %#v", result.Picker)
 	}
+	if pickerItemCommand(t, result.Picker, "provider") != "/provider" {
+		t.Fatalf("session menu provider command missing: %#v", result.Picker.Items)
+	}
+	if pickerItemCommand(t, result.Picker, "permissions") != "/permissions" {
+		t.Fatalf("session menu permissions command missing: %#v", result.Picker.Items)
+	}
 
 	result, err = d.Handle(context.Background(), "local", "/session rename session_1")
 	if err != nil {
@@ -532,7 +554,7 @@ func TestDispatcherStorageAutoCleanupUsesPicker(t *testing.T) {
 	}
 }
 
-func TestDispatcherDefaultSessionTitleUsesClientChannel(t *testing.T) {
+func TestDispatcherNewSessionShowsRuntimePicker(t *testing.T) {
 	rt := &fakeRuntime{}
 	d := New(rt, "/tmp")
 	d.now = func() time.Time { return time.Date(2026, 4, 23, 17, 0, 0, 0, time.UTC) }
@@ -544,7 +566,52 @@ func TestDispatcherDefaultSessionTitleUsesClientChannel(t *testing.T) {
 	if !result.Handled {
 		t.Fatal("expected command to be handled")
 	}
+	if result.Picker == nil || result.Picker.Kind != PickerSessionRuntime {
+		t.Fatalf("picker = %#v, want session runtime picker", result.Picker)
+	}
+	if len(rt.sessions) != 0 {
+		t.Fatalf("created sessions = %#v, want none before runtime selection", rt.sessions)
+	}
+}
+
+func TestDispatcherCreatesSessionWithRuntimeChoice(t *testing.T) {
+	rt := &fakeRuntime{}
+	d := New(rt, "/tmp")
+	d.now = func() time.Time { return time.Date(2026, 4, 23, 17, 0, 0, 0, time.UTC) }
+
+	result, err := d.Handle(context.Background(), "telegram:42", "/session new codex")
+	if err != nil {
+		t.Fatalf("Handle(/session new codex) error = %v", err)
+	}
+	if !result.Handled || !result.ReloadSnapshot {
+		t.Fatalf("result = %#v, want handled reload", result)
+	}
 	if len(rt.sessions) != 1 || rt.sessions[0].Title != "Telegram chat 2026-04-23 17:00" {
+		t.Fatalf("created sessions = %#v", rt.sessions)
+	}
+	if rt.createdRequest.RuntimeID != string(core.SessionRuntimeCodex) {
+		t.Fatalf("created runtime = %q, want codex", rt.createdRequest.RuntimeID)
+	}
+	if rt.createdRequest.PermissionMode != string(core.PermissionModeFullAuto) {
+		t.Fatalf("created permission = %q, want full_auto", rt.createdRequest.PermissionMode)
+	}
+}
+
+func TestDispatcherNewSessionWithTitleKeepsMatrixClawShortcut(t *testing.T) {
+	rt := &fakeRuntime{}
+	d := New(rt, "/tmp")
+
+	result, err := d.Handle(context.Background(), "local", "/new Docs")
+	if err != nil {
+		t.Fatalf("Handle(/new Docs) error = %v", err)
+	}
+	if !result.Handled || !result.ReloadSnapshot {
+		t.Fatalf("result = %#v, want handled reload", result)
+	}
+	if rt.createdRequest.RuntimeID != string(core.SessionRuntimeMatrixClaw) {
+		t.Fatalf("created runtime = %q, want matrixclaw", rt.createdRequest.RuntimeID)
+	}
+	if len(rt.sessions) != 1 || rt.sessions[0].Title != "Docs" {
 		t.Fatalf("created sessions = %#v", rt.sessions)
 	}
 }

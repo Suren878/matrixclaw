@@ -27,11 +27,12 @@ type ImageContent struct {
 }
 
 type Message struct {
-	Role       string
-	Content    string
-	Images     []ImageContent
-	ToolCallID string
-	ToolCalls  []ToolCall
+	Role             string
+	Content          string
+	ReasoningContent *string
+	Images           []ImageContent
+	ToolCallID       string
+	ToolCalls        []ToolCall
 }
 
 type Request struct {
@@ -44,11 +45,12 @@ type Request struct {
 }
 
 type Response struct {
-	Text      string
-	Model     string
-	Provider  string
-	ToolCalls []ToolCall
-	Usage     Usage
+	Text             string
+	ReasoningContent *string
+	Model            string
+	Provider         string
+	ToolCalls        []ToolCall
+	Usage            Usage
 }
 
 type Runtime interface {

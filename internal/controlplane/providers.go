@@ -24,6 +24,9 @@ func (d *Dispatcher) handleProvider(ctx context.Context, externalKey string, arg
 	if session == nil {
 		return Result{Handled: true, Text: "No active session. Use /new or /sessions."}, nil
 	}
+	if core.NormalizeSessionRuntime(session.RuntimeID) != core.SessionRuntimeMatrixClaw {
+		return Result{Handled: true, Text: "This session uses " + sessionRuntimeLabel(*session) + ". Provider selection is available for MatrixClaw sessions only."}, nil
+	}
 	value := strings.TrimSpace(args)
 	if strings.HasPrefix(value, "key ") {
 		return d.handleProviderKey(ctx, session, strings.TrimSpace(strings.TrimPrefix(value, "key ")))

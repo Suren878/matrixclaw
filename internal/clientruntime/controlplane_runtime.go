@@ -58,14 +58,21 @@ func (r ControlplaneRuntime) ListSessions(ctx context.Context) ([]core.Session, 
 }
 
 func (r ControlplaneRuntime) CreateSession(ctx context.Context, externalKey string, title string, workingDir string) (core.Session, error) {
+	return r.CreateSessionWithOptions(ctx, externalKey, core.CreateSessionRequest{
+		Title:      title,
+		WorkingDir: workingDir,
+	})
+}
+
+func (r ControlplaneRuntime) CreateSessionWithOptions(ctx context.Context, externalKey string, request core.CreateSessionRequest) (core.Session, error) {
 	client, err := r.client(externalKey)
 	if err != nil {
 		return core.Session{}, err
 	}
-	if strings.TrimSpace(workingDir) == "" {
-		workingDir = r.WorkingDir
+	if strings.TrimSpace(request.WorkingDir) == "" {
+		request.WorkingDir = r.WorkingDir
 	}
-	session, err := client.CreateSession(ctx, title, workingDir)
+	session, err := client.CreateSessionWithRequest(ctx, request)
 	if err != nil {
 		return core.Session{}, err
 	}

@@ -72,6 +72,78 @@ func TestGenerateSuccess(t *testing.T) {
 	}
 }
 
+func TestGenerateRoundTripsReasoningContent(t *testing.T) {
+	t.Parallel()
+
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt := attempts.Add(1)
+		var body struct {
+			Messages []chatCompletionMessage `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if attempt == 2 {
+			found := false
+			for _, message := range body.Messages {
+				if message.Role != "assistant" || message.ReasoningContent == nil {
+					continue
+				}
+				found = true
+				if *message.ReasoningContent != "private thinking" {
+					t.Fatalf("reasoning_content = %q, want private thinking", *message.ReasoningContent)
+				}
+			}
+			if !found {
+				t.Fatalf("second request messages = %#v, want assistant reasoning_content", body.Messages)
+			}
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{
+					"message": map[string]any{
+						"content":           "final answer",
+						"reasoning_content": "private thinking",
+					},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	runtime, err := New(context.Background(), Config{
+		APIKey:     "secret",
+		BaseURL:    server.URL,
+		Model:      "deepseek-test",
+		HTTPClient: server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	response, err := runtime.Generate(context.Background(), providers.Request{
+		Messages: []providers.Message{{Role: "user", Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("first Generate() error = %v", err)
+	}
+	if response.ReasoningContent == nil || *response.ReasoningContent != "private thinking" {
+		t.Fatalf("ReasoningContent = %#v, want private thinking", response.ReasoningContent)
+	}
+
+	if _, err := runtime.Generate(context.Background(), providers.Request{
+		Messages: []providers.Message{
+			{Role: "user", Content: "hello"},
+			{Role: "assistant", Content: response.Text, ReasoningContent: response.ReasoningContent},
+			{Role: "user", Content: "continue"},
+		},
+	}); err != nil {
+		t.Fatalf("second Generate() error = %v", err)
+	}
+}
+
 func TestNewRuntimeProfiles(t *testing.T) {
 	t.Parallel()
 
@@ -560,6 +632,181 @@ func TestGenerateReturnsToolCalls(t *testing.T) {
 	}
 }
 
+func TestGenerateReturnsReasoningContent(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message": map[string]any{
+					"content":           "done",
+					"reasoning_content": "",
+				},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	runtime, err := New(context.Background(), Config{
+		APIKey:     "secret",
+		BaseURL:    server.URL,
+		Model:      "gpt-test",
+		HTTPClient: server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	response, err := runtime.Generate(context.Background(), providers.Request{
+		Messages: []providers.Message{{Role: "user", Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if response.ReasoningContent == nil {
+		t.Fatal("ReasoningContent = nil, want empty string pointer")
+	}
+	if *response.ReasoningContent != "" {
+		t.Fatalf("ReasoningContent = %q, want empty string", *response.ReasoningContent)
+	}
+}
+
+func TestGenerateSendsAssistantReasoningContent(t *testing.T) {
+	t.Parallel()
+
+	reasoningContent := ""
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []map[string]any `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if len(body.Messages) != 2 {
+			t.Fatalf("len(messages) = %d, want 2", len(body.Messages))
+		}
+		if got := body.Messages[0]["role"]; got != "assistant" {
+			t.Fatalf("messages[0].role = %#v, want assistant", got)
+		}
+		got, exists := body.Messages[0]["reasoning_content"]
+		if !exists {
+			t.Fatalf("messages[0].reasoning_content missing: %#v", body.Messages[0])
+		}
+		if got != "" {
+			t.Fatalf("messages[0].reasoning_content = %#v, want empty string", got)
+		}
+		if _, exists := body.Messages[1]["reasoning_content"]; exists {
+			t.Fatalf("user reasoning_content unexpectedly present: %#v", body.Messages[1])
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message": map[string]any{"content": "done"},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	runtime, err := New(context.Background(), Config{
+		APIKey:     "secret",
+		BaseURL:    server.URL,
+		Model:      "gpt-test",
+		HTTPClient: server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, err = runtime.Generate(context.Background(), providers.Request{
+		Messages: []providers.Message{
+			{
+				Role:             "assistant",
+				Content:          "previous answer",
+				ReasoningContent: &reasoningContent,
+			},
+			{
+				Role:             "user",
+				Content:          "follow up",
+				ReasoningContent: &reasoningContent,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+}
+
+func TestGenerateRetriesWithEmptyReasoningContentForLegacyToolCalls(t *testing.T) {
+	t.Parallel()
+
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt := attempts.Add(1)
+		var body struct {
+			Messages []map[string]any `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if attempt == 1 {
+			if _, exists := body.Messages[0]["reasoning_content"]; exists {
+				t.Fatalf("first request unexpectedly has reasoning_content: %#v", body.Messages[0])
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error": map[string]any{
+					"message": "The `reasoning_content` in the thinking mode must be passed back to the API.",
+				},
+			})
+			return
+		}
+
+		got, exists := body.Messages[0]["reasoning_content"]
+		if !exists {
+			t.Fatalf("retry request missing reasoning_content: %#v", body.Messages[0])
+		}
+		if got != "" {
+			t.Fatalf("retry reasoning_content = %#v, want empty string", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message": map[string]any{"content": "done"},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	runtime, err := New(context.Background(), Config{
+		APIKey:     "secret",
+		BaseURL:    server.URL,
+		Model:      "deepseek-test",
+		HTTPClient: server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	response, err := runtime.Generate(context.Background(), providers.Request{
+		Messages: []providers.Message{
+			{
+				Role:      "assistant",
+				ToolCalls: []providers.ToolCall{{ID: "call_1", Name: "read", Arguments: json.RawMessage(`{"file_path":"notes.txt"}`)}},
+			},
+			{Role: "tool", ToolCallID: "call_1", Content: "<file>ok</file>"},
+			{Role: "user", Content: "continue"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if response.Text != "done" {
+		t.Fatalf("Text = %q, want done", response.Text)
+	}
+	if got := attempts.Load(); got != 2 {
+		t.Fatalf("attempts = %d, want 2", got)
+	}
+}
+
 func TestGenerateSendsNativeToolMessages(t *testing.T) {
 	t.Parallel()
 
@@ -739,6 +986,51 @@ func TestGenerateStreamsTextDeltas(t *testing.T) {
 	}
 	if !reflect.DeepEqual(deltas, []string{"hello ", "world"}) {
 		t.Fatalf("streamed deltas = %#v, want %#v", deltas, []string{"hello ", "world"})
+	}
+}
+
+func TestGenerateStreamsReasoningContent(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"\"}}]}\n\n")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"done\"}}]}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	runtime, err := New(context.Background(), Config{
+		APIKey:     "secret",
+		BaseURL:    server.URL,
+		Model:      "gpt-test",
+		HTTPClient: server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	var deltas []string
+	response, err := runtime.Generate(providers.WithTextStream(context.Background(), func(delta string) error {
+		deltas = append(deltas, delta)
+		return nil
+	}), providers.Request{
+		Messages: []providers.Message{{Role: "user", Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if response.Text != "done" {
+		t.Fatalf("Text = %q, want done", response.Text)
+	}
+	if response.ReasoningContent == nil {
+		t.Fatal("ReasoningContent = nil, want empty string pointer")
+	}
+	if *response.ReasoningContent != "" {
+		t.Fatalf("ReasoningContent = %q, want empty string", *response.ReasoningContent)
+	}
+	if !reflect.DeepEqual(deltas, []string{"done"}) {
+		t.Fatalf("streamed deltas = %#v, want only visible text", deltas)
 	}
 }
 

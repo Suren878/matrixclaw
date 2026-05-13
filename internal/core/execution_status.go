@@ -15,7 +15,7 @@ func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID st
 	}
 	finishedAt := c.now().UTC()
 	assistant.Content = sanitizeAssistantOutput(response.Text)
-	assistant.Parts = NormalizeMessageParts(assistant.Content, nil)
+	assistant.Parts = providerResponseMessageParts(assistant.Content, response.ReasoningContent)
 	if finish := providerUsageFinishPart(response.Usage); finish != nil {
 		assistant.Parts = append(assistant.Parts, *finish)
 	}
@@ -72,6 +72,20 @@ func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID st
 		Payload:   *run,
 	})
 	return nil
+}
+
+func providerResponseMessageParts(content string, reasoningContent *string) []MessagePart {
+	parts := NormalizeMessageParts(content, nil)
+	if reasoningContent == nil {
+		return parts
+	}
+	text := *reasoningContent
+	return append(parts, MessagePart{
+		Kind: MessagePartKindReasoning,
+		Reasoning: &ReasoningPart{
+			Text: text,
+		},
+	})
 }
 
 func providerUsageFinishPart(usage providers.Usage) *MessagePart {

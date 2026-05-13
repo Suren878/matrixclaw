@@ -51,6 +51,8 @@ func TestSQLiteStoreSessionLifecyclePersistsAcrossReopen(t *testing.T) {
 	first := openTestSQLite(t, dbPath)
 	session := createTestSession(t, ctx, first, core.Session{
 		ID:             "session_1",
+		Kind:           core.SessionKindExternalAgent,
+		RuntimeID:      core.SessionRuntimeCodex,
 		WorkingDir:     "/workspace/matrixclaw",
 		PermissionMode: core.PermissionModeAcceptEdits,
 	})
@@ -67,6 +69,12 @@ func TestSQLiteStoreSessionLifecyclePersistsAcrossReopen(t *testing.T) {
 	if got.ID != session.ID {
 		t.Fatalf("GetSession().ID = %q, want %q", got.ID, session.ID)
 	}
+	if got.Kind != core.SessionKindExternalAgent {
+		t.Fatalf("GetSession().Kind = %q, want %q", got.Kind, core.SessionKindExternalAgent)
+	}
+	if got.RuntimeID != core.SessionRuntimeCodex {
+		t.Fatalf("GetSession().RuntimeID = %q, want %q", got.RuntimeID, core.SessionRuntimeCodex)
+	}
 	if got.WorkingDir != session.WorkingDir {
 		t.Fatalf("GetSession().WorkingDir = %q, want %q", got.WorkingDir, session.WorkingDir)
 	}
@@ -75,6 +83,8 @@ func TestSQLiteStoreSessionLifecyclePersistsAcrossReopen(t *testing.T) {
 	}
 
 	session.Title = "Renamed"
+	session.Kind = core.SessionKindAssistant
+	session.RuntimeID = core.SessionRuntimeMatrixClaw
 	session.WorkingDir = "/workspace/project"
 	session.PermissionMode = core.PermissionModeFullAuto
 	session.UpdatedAt = session.UpdatedAt.Add(time.Minute)
@@ -95,6 +105,12 @@ func TestSQLiteStoreSessionLifecyclePersistsAcrossReopen(t *testing.T) {
 	}
 	if got.Title != "Renamed" {
 		t.Fatalf("GetSession().Title = %q, want %q", got.Title, "Renamed")
+	}
+	if got.Kind != core.SessionKindAssistant {
+		t.Fatalf("GetSession().Kind = %q, want %q", got.Kind, core.SessionKindAssistant)
+	}
+	if got.RuntimeID != core.SessionRuntimeMatrixClaw {
+		t.Fatalf("GetSession().RuntimeID = %q, want %q", got.RuntimeID, core.SessionRuntimeMatrixClaw)
 	}
 	if got.WorkingDir != "/workspace/project" {
 		t.Fatalf("GetSession().WorkingDir = %q, want %q", got.WorkingDir, "/workspace/project")

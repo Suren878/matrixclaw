@@ -32,6 +32,10 @@ func (r *Runtime) chatMessage(message providers.Message) chatCompletionMessage {
 	if strings.TrimSpace(message.ToolCallID) != "" {
 		chatMessage.ToolCallID = strings.TrimSpace(message.ToolCallID)
 	}
+	if chatMessage.Role == "assistant" && message.ReasoningContent != nil {
+		reasoningContent := *message.ReasoningContent
+		chatMessage.ReasoningContent = &reasoningContent
+	}
 	return chatMessage
 }
 

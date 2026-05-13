@@ -65,7 +65,7 @@ func (t turnExecution) toolInput(toolCall providers.ToolCall) (ExecuteToolInput,
 func (c *Core) handleAssistantTurnResponse(runCtx context.Context, turn turnExecution, assistant *Message, assistantSaved bool, response providers.Response) turnStepResult {
 	response.Text = sanitizeAssistantOutput(response.Text)
 	if len(response.ToolCalls) > 0 {
-		waitingApproval, execErr := c.executeRequestedTools(runCtx, turn, response.ToolCalls)
+		waitingApproval, execErr := c.executeRequestedTools(runCtx, turn, response)
 		if execErr != nil {
 			return turnStepResult{
 				Outcome:        turnStepCompleted,
@@ -204,14 +204,19 @@ func (c *Core) generateAssistantTurn(ctx context.Context, turn turnExecution, re
 	return assistant, assistantSaved, response, err
 }
 
-func (c *Core) executeRequestedTools(ctx context.Context, turn turnExecution, toolCalls []providers.ToolCall) (bool, error) {
+func (c *Core) executeRequestedTools(ctx context.Context, turn turnExecution, response providers.Response) (bool, error) {
 	waitingApproval := false
-	for _, toolCall := range toolCalls {
+	for index, toolCall := range response.ToolCalls {
 		input, err := turn.toolInput(toolCall)
 		if err != nil {
 			return false, err
 		}
 		result, err := c.ExecuteTool(ctx, input)
+		if index == 0 {
+			if attachErr := c.attachReasoningToToolCallMessage(ctx, result.ToolCallMessage, response.ReasoningContent); attachErr != nil {
+				return false, attachErr
+			}
+		}
 		if err != nil {
 			return false, err
 		}
@@ -220,4 +225,32 @@ func (c *Core) executeRequestedTools(ctx context.Context, turn turnExecution, to
 		}
 	}
 	return waitingApproval, nil
+}
+
+func (c *Core) attachReasoningToToolCallMessage(ctx context.Context, message Message, reasoningContent *string) error {
+	if reasoningContent == nil || strings.TrimSpace(message.ID) == "" {
+		return nil
+	}
+	for _, part := range message.Parts {
+		if part.Reasoning != nil {
+			return nil
+		}
+	}
+	message.Parts = append([]MessagePart{{
+		Kind: MessagePartKindReasoning,
+		Reasoning: &ReasoningPart{
+			Text: *reasoningContent,
+		},
+	}}, message.Parts...)
+	message.UpdatedAt = c.now().UTC()
+	if err := c.store.UpdateMessage(ctx, message); err != nil {
+		return err
+	}
+	c.publishEvent(Event{
+		Type:      EventMessageUpdated,
+		SessionID: message.SessionID,
+		RunID:     message.RunID,
+		Payload:   message,
+	})
+	return nil
 }

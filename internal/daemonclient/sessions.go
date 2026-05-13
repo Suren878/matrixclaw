@@ -35,15 +35,34 @@ func (c *Client) ListSessions(ctx context.Context) ([]core.Session, error) {
 }
 
 func (c *Client) CreateSession(ctx context.Context, title string, workingDir string) (core.Session, error) {
+	return c.CreateSessionWithRequest(ctx, core.CreateSessionRequest{
+		Title:      title,
+		WorkingDir: workingDir,
+	})
+}
+
+func (c *Client) CreateSessionWithRequest(ctx context.Context, request core.CreateSessionRequest) (core.Session, error) {
 	var response core.SessionResponse
-	request := core.CreateSessionRequest{
-		Title:      strings.TrimSpace(title),
-		WorkingDir: strings.TrimSpace(workingDir),
-	}
+	request.Title = strings.TrimSpace(request.Title)
+	request.Kind = strings.TrimSpace(request.Kind)
+	request.RuntimeID = strings.TrimSpace(request.RuntimeID)
+	request.WorkingDir = strings.TrimSpace(request.WorkingDir)
+	request.ProviderID = strings.TrimSpace(request.ProviderID)
+	request.ModelID = strings.TrimSpace(request.ModelID)
+	request.PermissionMode = strings.TrimSpace(request.PermissionMode)
+	request.ExternalAgentID = strings.TrimSpace(request.ExternalAgentID)
 	if err := c.doJSON(ctx, http.MethodPost, "/v1/sessions", request, &response); err != nil {
 		return core.Session{}, err
 	}
 	return response.Session, nil
+}
+
+func (c *Client) ListExternalAgents(ctx context.Context) ([]core.ExternalAgentDescriptor, error) {
+	var response core.ExternalAgentsResponse
+	if err := c.doJSON(ctx, http.MethodGet, "/v1/external-agents", nil, &response); err != nil {
+		return nil, err
+	}
+	return response.Agents, nil
 }
 
 func (c *Client) RenameSession(ctx context.Context, sessionID string, title string) (core.Session, error) {

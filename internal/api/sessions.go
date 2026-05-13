@@ -23,8 +23,14 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		}
 
 		session, err := s.core.CreateSession(r.Context(), core.CreateSessionInput{
-			Title:      req.Title,
-			WorkingDir: req.WorkingDir,
+			Title:           req.Title,
+			Kind:            core.SessionKind(req.Kind),
+			RuntimeID:       core.SessionRuntime(req.RuntimeID),
+			WorkingDir:      req.WorkingDir,
+			ProviderID:      req.ProviderID,
+			ModelID:         req.ModelID,
+			PermissionMode:  core.PermissionMode(req.PermissionMode),
+			ExternalAgentID: req.ExternalAgentID,
 		})
 		if err != nil {
 			writeError(w, err)

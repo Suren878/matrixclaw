@@ -13,9 +13,11 @@ const (
 	ClientName                 = "telegram"
 	defaultClientName          = ClientName
 	defaultMessageLimit        = 4000
+	maxCallbackDataBytes       = 64
 
 	cbPicker          = "pk:"
 	cbPickerPage      = "pg:"
+	cbCallbackRef     = "rf:"
 	cbApprovalOnce    = "ao:"
 	cbApprovalSession = "as:"
 	cbApprovalDeny    = "ad:"

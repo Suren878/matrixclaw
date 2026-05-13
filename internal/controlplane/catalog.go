@@ -28,6 +28,7 @@ type PickerKind string
 
 const (
 	PickerSessions        PickerKind = "sessions"
+	PickerSessionRuntime  PickerKind = "session_runtime"
 	PickerSessionActions  PickerKind = "session_actions"
 	PickerProvider        PickerKind = "provider"
 	PickerProviderCustom  PickerKind = "provider_custom"

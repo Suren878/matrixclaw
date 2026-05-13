@@ -24,6 +24,10 @@ type SessionRuntime interface {
 	DeleteSession(ctx context.Context, sessionID string) error
 }
 
+type SessionRuntimeOptions interface {
+	CreateSessionWithOptions(ctx context.Context, externalKey string, input core.CreateSessionRequest) (core.Session, error)
+}
+
 type ProviderRuntime interface {
 	ListSetupProviders(ctx context.Context) ([]setup.ProviderSetupItem, error)
 	ConfigureSetupProvider(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) (setup.ProviderSetupItem, error)
@@ -141,19 +145,7 @@ func (d *Dispatcher) Handle(ctx context.Context, externalKey string, text string
 		if d.sessions == nil {
 			return unsupportedRuntime("sessions"), nil
 		}
-		title := strings.TrimSpace(args)
-		if title == "" {
-			title = d.defaultSessionTitle(externalKey)
-		}
-		session, err := d.sessions.CreateSession(ctx, externalKey, title, d.workingDir)
-		if err != nil {
-			return Result{}, err
-		}
-		return Result{
-			Handled:        true,
-			Text:           "Current session: " + formatSessionLabel(session, true),
-			ReloadSnapshot: true,
-		}, nil
+		return d.handleNewSession(ctx, externalKey, args)
 	case CommandSessions:
 		return d.handleSessions(ctx, externalKey)
 	case CommandSession:

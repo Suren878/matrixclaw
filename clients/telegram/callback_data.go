@@ -1,6 +1,8 @@
 package telegram
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -62,4 +64,60 @@ func unescapeCallbackPart(value string) (string, bool) {
 		return "", false
 	}
 	return decoded, true
+}
+
+func (w *Worker) compactInlineKeyboardMarkup(markup *InlineKeyboardMarkup) *InlineKeyboardMarkup {
+	if markup == nil {
+		return nil
+	}
+	rows := make([][]InlineKeyboardButton, len(markup.InlineKeyboard))
+	changed := false
+	for rowIndex, row := range markup.InlineKeyboard {
+		rows[rowIndex] = make([]InlineKeyboardButton, len(row))
+		for buttonIndex, button := range row {
+			compact := w.compactCallbackData(button.CallbackData)
+			if compact != button.CallbackData {
+				changed = true
+				button.CallbackData = compact
+			}
+			rows[rowIndex][buttonIndex] = button
+		}
+	}
+	if !changed {
+		return markup
+	}
+	return &InlineKeyboardMarkup{InlineKeyboard: rows}
+}
+
+func (w *Worker) compactCallbackData(data string) string {
+	if data == "" || len([]byte(data)) <= maxCallbackDataBytes {
+		return data
+	}
+	ref := callbackRefData(data)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.callbacks == nil {
+		w.callbacks = map[string]string{}
+	}
+	w.callbacks[ref] = data
+	return ref
+}
+
+func (w *Worker) resolveCallbackData(data string) string {
+	if !strings.HasPrefix(data, cbCallbackRef) {
+		return data
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	resolved := w.callbacks[data]
+	if resolved == "" {
+		return data
+	}
+	return resolved
+}
+
+func callbackRefData(data string) string {
+	sum := sha256.Sum256([]byte(data))
+	token := base64.RawURLEncoding.EncodeToString(sum[:12])
+	return cbCallbackRef + token
 }

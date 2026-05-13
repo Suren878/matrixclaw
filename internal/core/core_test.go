@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/orchestration"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/store"
@@ -58,6 +59,133 @@ func TestCoreAcceptRunAndCompleteMessageFlow(t *testing.T) {
 	}
 	if messages[1].Role != core.MessageRoleAssistant {
 		t.Fatalf("assistant message role = %q, want %q", messages[1].Role, core.MessageRoleAssistant)
+	}
+}
+
+func TestCoreExecutesExternalAgentAttachment(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	sqliteStore := openCoreTestStore(t)
+	runtime := &externalRuntimeStub{
+		events: []externalagents.Event{
+			{Kind: externalagents.EventMessageDelta, Text: "hello from codex"},
+			{Kind: externalagents.EventTurnCompleted},
+		},
+	}
+	registry, err := externalagents.NewRegistry(runtime)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := core.New(sqliteStore).WithSessionLLMs(newSessionLLMRegistryStub(newProviderStub()))
+	app.WithExternalAgents(registry, sqliteStore)
+	app.WithClock(func() time.Time { return time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC) })
+	app.WithRunStarter(orchestration.NewStub(app))
+
+	session := createSession(t, app, ctx, core.CreateSessionInput{Title: "Codex"})
+	if err := sqliteStore.SaveExternalAgentSession(ctx, externalagents.SessionAttachment{
+		SessionID:        session.ID,
+		AgentID:          runtime.ID(),
+		ExternalThreadID: "thread_1",
+		Model:            "gpt-5.4",
+		MetadataJSON:     "{}",
+	}); err != nil {
+		t.Fatalf("SaveExternalAgentSession() error = %v", err)
+	}
+
+	accepted, err := app.AcceptRun(ctx, core.HandleMessageInput{
+		SessionID: session.ID,
+		Text:      "use codex",
+	})
+	if err != nil {
+		t.Fatalf("AcceptRun() error = %v", err)
+	}
+	run := waitForRunStatus(t, app, accepted.Run.ID, core.RunStatusCompleted)
+	if run.Status != core.RunStatusCompleted {
+		t.Fatalf("run status = %q, want completed", run.Status)
+	}
+	if runtime.inputText.Load().(string) != "use codex" {
+		t.Fatalf("runtime input = %q, want use codex", runtime.inputText.Load())
+	}
+	if runtime.resumeReq.Load().(externalagents.ExternalSession).ExternalThreadID != "thread_1" {
+		t.Fatalf("runtime resume = %#v, want thread_1", runtime.resumeReq.Load())
+	}
+
+	messages, err := app.ListMessages(ctx, session.ID, 10)
+	if err != nil {
+		t.Fatalf("ListMessages() error = %v", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("message count = %d, want 2", len(messages))
+	}
+	if messages[1].Content != "hello from codex" {
+		t.Fatalf("assistant content = %q, want external response", messages[1].Content)
+	}
+	if messages[1].Provider != runtime.ID() {
+		t.Fatalf("assistant provider = %q, want %q", messages[1].Provider, runtime.ID())
+	}
+}
+
+func TestCoreCreateExternalAgentSessionStartsAttachment(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	sqliteStore := openCoreTestStore(t)
+	runtime := &externalRuntimeStub{
+		startSession: externalagents.ExternalSession{
+			AgentID:           "codex-app",
+			ExternalThreadID:  "thread_1",
+			ExternalSessionID: "session_1",
+			CWD:               "/workspace",
+			Model:             "gpt-5.4",
+		},
+	}
+	registry, err := externalagents.NewRegistry(runtime)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := core.New(sqliteStore).WithSessionLLMs(newSessionLLMRegistryStub(newProviderStub()))
+	app.WithExternalAgents(registry, sqliteStore)
+
+	session, err := app.CreateSession(ctx, core.CreateSessionInput{
+		Title:      "Codex",
+		RuntimeID:  core.SessionRuntimeCodex,
+		WorkingDir: "/workspace",
+		ModelID:    "gpt-5.4",
+	})
+	if err != nil {
+		t.Fatalf("CreateSession() error = %v", err)
+	}
+	if session.Kind != core.SessionKindExternalAgent {
+		t.Fatalf("session kind = %q, want external_agent", session.Kind)
+	}
+	if session.RuntimeID != core.SessionRuntimeCodex {
+		t.Fatalf("session runtime = %q, want codex", session.RuntimeID)
+	}
+	if session.PermissionMode != core.PermissionModeFullAuto {
+		t.Fatalf("session permission mode = %q, want full_auto", session.PermissionMode)
+	}
+	if session.ProviderID != "" {
+		t.Fatalf("external session provider_id = %q, want empty", session.ProviderID)
+	}
+
+	req := runtime.startReq.Load().(externalagents.StartSessionRequest)
+	if req.CWD != "/workspace" || req.Model != "gpt-5.4" {
+		t.Fatalf("StartSession request = %#v, want cwd/model", req)
+	}
+	if req.ApprovalPolicy != "never" || req.Sandbox != "danger-full-access" {
+		t.Fatalf("StartSession policy = %q/%q, want never/danger-full-access", req.ApprovalPolicy, req.Sandbox)
+	}
+
+	attachment, err := sqliteStore.GetExternalAgentSession(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("GetExternalAgentSession() error = %v", err)
+	}
+	if attachment.AgentID != "codex-app" || attachment.ExternalThreadID != "thread_1" {
+		t.Fatalf("attachment = %#v, want codex thread", attachment)
+	}
+	if attachment.ApprovalPolicy != "never" || attachment.Sandbox != "danger-full-access" {
+		t.Fatalf("attachment policy = %q/%q, want never/danger-full-access", attachment.ApprovalPolicy, attachment.Sandbox)
 	}
 }
 
@@ -1437,6 +1565,106 @@ func TestCoreExecuteRunSanitizesAssistantReasoningOutput(t *testing.T) {
 	}
 }
 
+func TestCoreExecuteRunStoresProviderReasoningContent(t *testing.T) {
+	t.Parallel()
+
+	reasoningContent := "private thinking"
+	provider := newProviderStub()
+	provider.GenerateFunc = func(ctx context.Context, request providers.Request) (providers.Response, error) {
+		return providers.Response{
+			Text:             "Final answer.",
+			ReasoningContent: &reasoningContent,
+			Model:            "stub-model",
+			Provider:         "stub-provider",
+		}, nil
+	}
+
+	app := newTestCore(t, provider)
+	ctx := context.Background()
+
+	session := createBoundSession(t, app, ctx, core.CreateSessionInput{Title: "Reasoning"})
+	accepted, err := app.AcceptRun(ctx, core.HandleMessageInput{
+		Client:      "terminal",
+		ExternalKey: "local",
+		Text:        "answer",
+	})
+	if err != nil {
+		t.Fatalf("AcceptRun() error = %v", err)
+	}
+	waitForRunStatus(t, app, accepted.Run.ID, core.RunStatusCompleted)
+
+	messages, err := app.ListMessages(ctx, session.ID, 0)
+	if err != nil {
+		t.Fatalf("ListMessages() error = %v", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("len(ListMessages()) = %d, want 2", len(messages))
+	}
+	var gotReasoning string
+	for _, part := range messages[1].Parts {
+		if part.Reasoning != nil {
+			gotReasoning = part.Reasoning.Text
+			break
+		}
+	}
+	if gotReasoning != reasoningContent {
+		t.Fatalf("stored reasoning = %q, want %q", gotReasoning, reasoningContent)
+	}
+}
+
+func TestCoreExecuteRunStoresEmptyProviderReasoningContentForToolCalls(t *testing.T) {
+	t.Parallel()
+
+	reasoningContent := ""
+	args, _ := json.Marshal(tools.WriteParams{
+		FilePath: filepath.Join(t.TempDir(), "notes.txt"),
+		Content:  "hello",
+	})
+	provider := newProviderStub()
+	provider.GenerateFunc = func(ctx context.Context, request providers.Request) (providers.Response, error) {
+		return providers.Response{
+			ReasoningContent: &reasoningContent,
+			ToolCalls: []providers.ToolCall{{
+				ID:        "call_1",
+				Name:      "write",
+				Arguments: args,
+			}},
+			Model:    "stub-model",
+			Provider: "stub-provider",
+		}, nil
+	}
+
+	app := newTestCore(t, provider).WithTools(newCoreCodingRegistry())
+	ctx := context.Background()
+
+	session := createSession(t, app, ctx, core.CreateSessionInput{Title: "Tool reasoning"})
+	accepted, err := app.AcceptRun(ctx, core.HandleMessageInput{SessionID: session.ID, Text: "read"})
+	if err != nil {
+		t.Fatalf("AcceptRun() error = %v", err)
+	}
+	waitForRunStatus(t, app, accepted.Run.ID, core.RunStatusWaitingApproval)
+
+	messages, err := app.ListMessages(ctx, session.ID, 0)
+	if err != nil {
+		t.Fatalf("ListMessages() error = %v", err)
+	}
+	var found bool
+	for _, message := range messages {
+		for _, part := range message.Parts {
+			if part.Reasoning == nil {
+				continue
+			}
+			found = true
+			if part.Reasoning.Text != "" {
+				t.Fatalf("stored reasoning = %q, want empty string", part.Reasoning.Text)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("stored reasoning part not found")
+	}
+}
+
 func TestCoreCompactSessionGeneratesSummaryWithoutTools(t *testing.T) {
 	t.Parallel()
 
@@ -1659,17 +1887,7 @@ func createBoundSession(t *testing.T, app *core.Core, ctx context.Context, input
 func newTestCore(t *testing.T, providerRuntime providers.Runtime) *core.Core {
 	t.Helper()
 
-	dbPath := filepath.Join(t.TempDir(), "matrixclaw.db")
-	sqliteStore, err := store.NewSQLite(dbPath)
-	if err != nil {
-		t.Fatalf("NewSQLite() error = %v", err)
-	}
-	t.Cleanup(func() {
-		if err := sqliteStore.Close(); err != nil {
-			t.Fatalf("Close() error = %v", err)
-		}
-	})
-
+	sqliteStore := openCoreTestStore(t)
 	if providerRuntime == nil {
 		providerRuntime = newProviderStub()
 	}
@@ -1680,6 +1898,21 @@ func newTestCore(t *testing.T, providerRuntime providers.Runtime) *core.Core {
 	return app
 }
 
+func openCoreTestStore(t *testing.T) *store.SQLiteStore {
+	t.Helper()
+
+	sqliteStore, err := store.NewSQLite(filepath.Join(t.TempDir(), "matrixclaw.db"))
+	if err != nil {
+		t.Fatalf("NewSQLite() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	})
+	return sqliteStore
+}
+
 type profiledRuntime struct {
 	*providerStub
 	profile providers.RuntimeProfile
@@ -1687,6 +1920,77 @@ type profiledRuntime struct {
 
 func (r *profiledRuntime) RuntimeProfile() providers.RuntimeProfile {
 	return r.profile
+}
+
+type externalRuntimeStub struct {
+	events        []externalagents.Event
+	startSession  externalagents.ExternalSession
+	resumeSession externalagents.ExternalSession
+	startErr      error
+	resumeErr     error
+	startReq      atomic.Value
+	resumeReq     atomic.Value
+	inputText     atomic.Value
+}
+
+func (r *externalRuntimeStub) ID() string {
+	return "codex-app"
+}
+
+func (r *externalRuntimeStub) DisplayName() string {
+	return "Codex"
+}
+
+func (r *externalRuntimeStub) Available(context.Context) externalagents.Availability {
+	return externalagents.Availability{Installed: true, Enabled: true, Mode: "test"}
+}
+
+func (r *externalRuntimeStub) StartSession(_ context.Context, req externalagents.StartSessionRequest) (externalagents.ExternalSession, error) {
+	r.startReq.Store(req)
+	if r.startErr != nil {
+		return externalagents.ExternalSession{}, r.startErr
+	}
+	if r.startSession.ExternalThreadID == "" {
+		return externalagents.ExternalSession{}, errors.New("unexpected StartSession")
+	}
+	return r.startSession, nil
+}
+
+func (r *externalRuntimeStub) ResumeSession(_ context.Context, session externalagents.ExternalSession) (externalagents.ExternalSession, error) {
+	r.resumeReq.Store(session)
+	if r.resumeErr != nil {
+		return externalagents.ExternalSession{}, r.resumeErr
+	}
+	if r.resumeSession.ExternalThreadID != "" {
+		return r.resumeSession, nil
+	}
+	return session, nil
+}
+
+func (r *externalRuntimeStub) Send(ctx context.Context, session externalagents.ExternalSession, input externalagents.Input) (<-chan externalagents.Event, error) {
+	r.inputText.Store(input.Text)
+	out := make(chan externalagents.Event, len(r.events))
+	go func() {
+		defer close(out)
+		for _, event := range r.events {
+			event.AgentID = session.AgentID
+			event.ExternalThreadID = session.ExternalThreadID
+			select {
+			case out <- event:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return out, nil
+}
+
+func (r *externalRuntimeStub) Interrupt(context.Context, externalagents.ExternalSession) error {
+	return nil
+}
+
+func (r *externalRuntimeStub) Close() error {
+	return nil
 }
 
 func waitForRunStatus(t *testing.T, app *core.Core, runID string, want core.RunStatus) core.Run {

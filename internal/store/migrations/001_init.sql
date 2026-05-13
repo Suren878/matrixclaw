@@ -1,6 +1,8 @@
 CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'assistant',
+    runtime_id TEXT NOT NULL DEFAULT 'matrixclaw',
     working_dir TEXT NOT NULL DEFAULT '',
     provider_id TEXT NOT NULL DEFAULT '',
     model_id TEXT NOT NULL DEFAULT '',
@@ -129,6 +131,21 @@ CREATE TABLE IF NOT EXISTS automation_fires (
     FOREIGN KEY (job_id) REFERENCES automation_jobs(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS external_agent_sessions (
+    session_id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    external_thread_id TEXT NOT NULL,
+    external_session_id TEXT NOT NULL DEFAULT '',
+    cwd TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    approval_policy TEXT NOT NULL DEFAULT '',
+    sandbox TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_messages_session_created_at
     ON messages(session_id, created_at);
 
@@ -149,3 +166,6 @@ CREATE INDEX IF NOT EXISTS idx_automation_jobs_due
 
 CREATE INDEX IF NOT EXISTS idx_automation_fires_job
     ON automation_fires(job_id, scheduled_for);
+
+CREATE INDEX IF NOT EXISTS idx_external_agent_sessions_agent
+    ON external_agent_sessions(agent_id, external_thread_id);

@@ -17,6 +17,12 @@ func (w *Worker) handleCallbackQuery(ctx context.Context, cq *CallbackQuery) err
 	target := targetFromMessage(cq.Message)
 	_ = w.api.AnswerCallbackQuery(telegramCtx, AnswerCallbackQueryRequest{CallbackQueryID: cq.ID})
 
+	if resolved := w.resolveCallbackData(cq.Data); resolved != cq.Data {
+		copy := *cq
+		copy.Data = resolved
+		cq = &copy
+	}
+
 	switch {
 	case strings.HasPrefix(cq.Data, cbPicker):
 		return w.handlePickerCallback(telegramCtx, target, cq)

@@ -17,6 +17,21 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 			return "/new"
 		}
 		return "/session menu " + itemID
+	case PickerSessionRuntime:
+		switch itemID {
+		case "":
+			return "/new"
+		case "matrixclaw":
+			return "/session new matrixclaw"
+		case "codex":
+			return "/session new codex"
+		case "back":
+			return "/sessions"
+		case "cancel":
+			return ""
+		default:
+			return "/new"
+		}
 	case PickerSessionActions:
 		switch itemID {
 		case "use":

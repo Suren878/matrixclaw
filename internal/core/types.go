@@ -25,6 +25,20 @@ const (
 	SessionStatusArchived SessionStatus = "archived"
 )
 
+type SessionKind string
+
+const (
+	SessionKindAssistant     SessionKind = "assistant"
+	SessionKindExternalAgent SessionKind = "external_agent"
+)
+
+type SessionRuntime string
+
+const (
+	SessionRuntimeMatrixClaw SessionRuntime = "matrixclaw"
+	SessionRuntimeCodex      SessionRuntime = "codex"
+)
+
 type MessageRole string
 
 const (
@@ -48,6 +62,8 @@ const (
 type Session struct {
 	ID             string         `json:"id"`
 	Title          string         `json:"title"`
+	Kind           SessionKind    `json:"kind"`
+	RuntimeID      SessionRuntime `json:"runtime_id,omitempty"`
 	WorkingDir     string         `json:"working_dir,omitempty"`
 	ProviderID     string         `json:"provider_id,omitempty"`
 	ModelID        string         `json:"model_id,omitempty"`
@@ -288,11 +304,14 @@ type ToolUpdate struct {
 }
 
 type CreateSessionInput struct {
-	Title          string
-	WorkingDir     string
-	ProviderID     string
-	ModelID        string
-	PermissionMode PermissionMode
+	Title           string
+	Kind            SessionKind
+	RuntimeID       SessionRuntime
+	WorkingDir      string
+	ProviderID      string
+	ModelID         string
+	PermissionMode  PermissionMode
+	ExternalAgentID string
 }
 
 type RenameSessionInput struct {
