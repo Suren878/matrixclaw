@@ -11,6 +11,8 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/api"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/externalagents"
+	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
 )
 
 const (
@@ -20,10 +22,12 @@ const (
 )
 
 type supervisor struct {
-	ctx     context.Context
-	server  *api.Server
-	app     *core.Core
-	clients *clientRegistry
+	ctx              context.Context
+	server           *api.Server
+	app              *core.Core
+	clients          *clientRegistry
+	externalStore    externalagents.AttachmentStore
+	externalRuntimes []externalagents.RuntimeAgent
 
 	restartMu  sync.Mutex
 	restarting bool
@@ -56,7 +60,34 @@ func (s *supervisor) Reload(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if s.app != nil && s.externalStore != nil {
+		registry, runtimes, err := builtins.BuildRegistry(bootstrap.ExternalAgents)
+		if err != nil {
+			return err
+		}
+		s.app.WithExternalAgents(registry, s.externalStore)
+		s.replaceExternalRuntimes(runtimes)
+	}
 	return s.ApplyBootstrap(bootstrap)
+}
+
+func (s *supervisor) SetExternalAgents(store externalagents.AttachmentStore, runtimes []externalagents.RuntimeAgent) {
+	s.externalStore = store
+	s.externalRuntimes = append([]externalagents.RuntimeAgent(nil), runtimes...)
+}
+
+func (s *supervisor) CloseExternalAgents() {
+	s.replaceExternalRuntimes(nil)
+}
+
+func (s *supervisor) replaceExternalRuntimes(runtimes []externalagents.RuntimeAgent) {
+	old := s.externalRuntimes
+	s.externalRuntimes = append([]externalagents.RuntimeAgent(nil), runtimes...)
+	for _, runtime := range old {
+		if runtime != nil {
+			_ = runtime.Close()
+		}
+	}
 }
 
 func (s *supervisor) RestartDaemon(ctx context.Context, req core.AdminRestartRequest) error {

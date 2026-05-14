@@ -73,6 +73,11 @@ type ExternalAgentsResponse struct {
 	Agents []ExternalAgentDescriptor `json:"agents"`
 }
 
+type UpdateExternalAgentRequest struct {
+	Enabled bool   `json:"enabled"`
+	Path    string `json:"path,omitempty"`
+}
+
 type MessagesResponse struct {
 	Messages []Message `json:"messages"`
 }

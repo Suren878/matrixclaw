@@ -17,6 +17,8 @@ type ExternalAgentDescriptor struct {
 	Enabled     bool     `json:"enabled"`
 	AuthState   string   `json:"auth_state,omitempty"`
 	Mode        string   `json:"mode,omitempty"`
+	Path        string   `json:"path,omitempty"`
+	Version     string   `json:"version,omitempty"`
 	Detail      string   `json:"detail,omitempty"`
 }
 
@@ -102,6 +104,8 @@ func (c *Core) ExternalAgents(ctx context.Context) []ExternalAgentDescriptor {
 			Enabled:     descriptor.Enabled,
 			AuthState:   descriptor.AuthState,
 			Mode:        descriptor.Mode,
+			Path:        descriptor.Path,
+			Version:     descriptor.Version,
 			Detail:      descriptor.Detail,
 		})
 	}

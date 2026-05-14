@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.1.6
+
+- Added TUI startup update checks against the latest GitHub Release, with a
+  shared confirmation dialog and `matrixclaw update` CLI commands.
+- Added update installation through the release installer and a follow-up TUI
+  prompt to restart the daemon so the service binary is refreshed.
+- Added `/modules -> External Agents` management with enable/disable controls,
+  installed state, resolved binary path, mode, and version details.
+- Moved external-agent daemon wiring into a built-in registry factory so future
+  agents can be added without changing core session logic.
+- Fixed Server Status back navigation by giving status info dialogs a return
+  command and expanding the generic Info back key handling.
+- Documented auto-update and external-agent management flows.
+
 ## v0.1.5
 
 - Improved Codex external-agent sessions: restored thread resume handling,

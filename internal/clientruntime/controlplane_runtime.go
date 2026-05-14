@@ -82,6 +82,22 @@ func (r ControlplaneRuntime) CreateSessionWithOptions(ctx context.Context, exter
 	return session, nil
 }
 
+func (r ControlplaneRuntime) ListExternalAgents(ctx context.Context) ([]core.ExternalAgentDescriptor, error) {
+	client, err := r.client("")
+	if err != nil {
+		return nil, err
+	}
+	return client.ListExternalAgents(ctx)
+}
+
+func (r ControlplaneRuntime) UpdateExternalAgent(ctx context.Context, agentID string, enabled bool) ([]core.ExternalAgentDescriptor, error) {
+	client, err := r.client("")
+	if err != nil {
+		return nil, err
+	}
+	return client.UpdateExternalAgent(ctx, agentID, enabled)
+}
+
 func (r ControlplaneRuntime) UseSession(ctx context.Context, externalKey string, sessionID string) (core.ClientBinding, error) {
 	client, err := r.client(externalKey)
 	if err != nil {

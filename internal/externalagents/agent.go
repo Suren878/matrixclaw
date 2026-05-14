@@ -10,6 +10,8 @@ type Availability struct {
 	Enabled   bool
 	AuthState string
 	Mode      string
+	Path      string
+	Version   string
 	Detail    string
 }
 
@@ -21,6 +23,8 @@ type Descriptor struct {
 	Enabled     bool
 	AuthState   string
 	Mode        string
+	Path        string
+	Version     string
 	Detail      string
 }
 

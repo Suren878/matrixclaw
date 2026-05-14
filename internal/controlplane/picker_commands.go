@@ -30,7 +30,7 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 		case "cancel":
 			return ""
 		default:
-			return "/new"
+			return "/session new " + itemID
 		}
 	case PickerSessionActions:
 		switch itemID {
@@ -114,10 +114,41 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 			return "/modules"
 		case "storage":
 			return "/modules storage"
+		case "agents":
+			return "/modules agents"
 		case "cancel":
 			return ""
 		default:
 			return "/modules"
+		}
+	case PickerExternalAgents:
+		switch {
+		case itemID == "":
+			return "/modules agents"
+		case itemID == "back":
+			return "/modules"
+		case itemID == "cancel":
+			return ""
+		default:
+			return "/modules agents " + itemID
+		}
+	case PickerExternalAgent:
+		if contextID == "" {
+			return "/modules agents"
+		}
+		switch itemID {
+		case "enable":
+			return "/modules agents enable " + contextID
+		case "disable":
+			return "/modules agents disable " + contextID
+		case "new":
+			return "/session new " + contextID
+		case "back":
+			return "/modules agents"
+		case "cancel":
+			return ""
+		default:
+			return "/modules agents " + contextID
 		}
 	case PickerStorage:
 		switch itemID {

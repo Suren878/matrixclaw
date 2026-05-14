@@ -61,6 +61,8 @@ internal/externalagents/
   agent.go
   registry.go
   store.go
+  builtins/
+    registry.go
   docs/
     README.md
     codex-app.md
@@ -73,6 +75,10 @@ internal/externalagents/
 ```
 
 The only Codex-specific package should be `codexapp`.
+
+The only daemon composition code that should know which concrete adapters exist
+is `internal/externalagents/builtins`. Add future adapters there as factories
+instead of teaching core, setup, TUI, or Telegram about each runtime.
 
 Core packages should depend on the generic `externalagents` interfaces, never
 on `codexapp` directly.
@@ -112,6 +118,9 @@ type Descriptor struct {
     Enabled     bool
     AuthState   string
     Mode        string
+    Path        string
+    Version     string
+    Detail      string
 }
 ```
 
@@ -200,6 +209,14 @@ auth is usable, if exposed by protocol
 ```
 
 Setup should not import `codexapp`. It should ask the registry for descriptors.
+TUI management currently lives under:
+
+```text
+/modules -> External Agents
+```
+
+Enabled agents appear in the New Session picker. Disabled or missing agents are
+visible in Modules but cannot be used to create a session.
 
 ## Session Creation Flow
 
@@ -239,8 +256,10 @@ Codex app-server runtime bridge
 normalized message.delta / turn.completed / turn.failed events
 daemon bootstrap wiring for Codex app-server
 API endpoint to list external agents
+API endpoint to enable/disable external agents
 API/session creation flow for external-agent sessions
-controlplane session creation choice for Codex
+controlplane session creation choices from enabled external-agent descriptors
+TUI Modules screen for external-agent status and enable/disable
 ```
 
 It can:

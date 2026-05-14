@@ -63,6 +63,9 @@ func (m *appModel) handleExternalEditorAction() tea.Cmd {
 func (m *appModel) handleRunControlplaneCommand(msg surfacedialog.ActionRunControlplaneCommand) tea.Cmd {
 	fromCommands := m.dialog.ContainsDialog(surfacedialog.CommandsID)
 	command := strings.TrimSpace(msg.Command)
+	if strings.HasPrefix(command, "/update ") {
+		return m.handleUpdateCommand(command)
+	}
 	if isContextCompactCommand(command) {
 		m.dialog.CloseAll()
 		m.startContextCompactProgress()

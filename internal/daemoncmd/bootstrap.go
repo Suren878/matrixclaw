@@ -20,15 +20,16 @@ const (
 var ErrSetupRequired = errors.New("setup is required before starting the daemon")
 
 type bootstrapConfig struct {
-	Addr         string
-	DBPath       string
-	SessionLLMs  core.SessionLLMRegistry
-	Assistant    core.AssistantProfile
-	SetupService *setup.Service
-	SetupPath    string
-	Timezone     string
-	APIToken     string
-	Clients      map[string]setup.ClientBootstrap
+	Addr           string
+	DBPath         string
+	SessionLLMs    core.SessionLLMRegistry
+	Assistant      core.AssistantProfile
+	SetupService   *setup.Service
+	SetupPath      string
+	Timezone       string
+	APIToken       string
+	Clients        map[string]setup.ClientBootstrap
+	ExternalAgents setup.ModulesConfig
 }
 
 func loadBootstrap() (bootstrapConfig, error) {
@@ -87,6 +88,7 @@ func loadBootstrap() (bootstrapConfig, error) {
 			return bootstrapConfig{}, fmt.Errorf("load setup config %s: %w", service.Path(), err)
 		}
 		cfg.Clients = clients
+		cfg.ExternalAgents = setupCfg.Modules
 	}
 
 	if addr := strings.TrimSpace(getenv("MATRIXCLAW_HTTP_ADDR", "")); addr != "" {

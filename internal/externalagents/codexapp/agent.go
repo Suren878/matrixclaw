@@ -25,8 +25,9 @@ func (a Agent) Aliases() []string {
 	return []string{"codex"}
 }
 
-func (a Agent) Available(context.Context) externalagents.Availability {
-	installed := Available(a.Path)
+func (a Agent) Available(ctx context.Context) externalagents.Availability {
+	resolved, err := LookupPath(a.Path)
+	installed := err == nil
 	detail := ""
 	if !installed {
 		detail = "codex binary not found"
@@ -36,6 +37,8 @@ func (a Agent) Available(context.Context) externalagents.Availability {
 		Enabled:   a.Enabled && installed,
 		AuthState: "unknown",
 		Mode:      "app-server",
+		Path:      resolved,
+		Version:   Version(ctx, a.Path),
 		Detail:    detail,
 	}
 }

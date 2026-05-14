@@ -65,6 +65,16 @@ func (c *Client) ListExternalAgents(ctx context.Context) ([]core.ExternalAgentDe
 	return response.Agents, nil
 }
 
+func (c *Client) UpdateExternalAgent(ctx context.Context, agentID string, enabled bool) ([]core.ExternalAgentDescriptor, error) {
+	var response core.ExternalAgentsResponse
+	path := "/v1/external-agents/" + escapedPath(agentID)
+	request := core.UpdateExternalAgentRequest{Enabled: enabled}
+	if err := c.doJSON(ctx, http.MethodPatch, path, request, &response); err != nil {
+		return nil, err
+	}
+	return response.Agents, nil
+}
+
 func (c *Client) RenameSession(ctx context.Context, sessionID string, title string) (core.Session, error) {
 	var response core.SessionResponse
 	path := "/v1/sessions/" + escapedPath(sessionID)

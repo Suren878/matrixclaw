@@ -36,6 +36,8 @@ const (
 	PickerPermissions     PickerKind = "permissions"
 	PickerContext         PickerKind = "context"
 	PickerModules         PickerKind = "modules"
+	PickerExternalAgents  PickerKind = "external_agents"
+	PickerExternalAgent   PickerKind = "external_agent"
 	PickerStorage         PickerKind = "storage"
 	PickerStorageFiles    PickerKind = "storage_files"
 	PickerStorageFile     PickerKind = "storage_file"

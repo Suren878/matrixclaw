@@ -77,6 +77,8 @@ func (r *Registry) List(ctx context.Context) []Descriptor {
 			Enabled:     availability.Enabled,
 			AuthState:   availability.AuthState,
 			Mode:        availability.Mode,
+			Path:        availability.Path,
+			Version:     availability.Version,
 			Detail:      availability.Detail,
 		})
 	}

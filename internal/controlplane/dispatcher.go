@@ -28,6 +28,11 @@ type SessionRuntimeOptions interface {
 	CreateSessionWithOptions(ctx context.Context, externalKey string, input core.CreateSessionRequest) (core.Session, error)
 }
 
+type ExternalAgentRuntime interface {
+	ListExternalAgents(ctx context.Context) ([]core.ExternalAgentDescriptor, error)
+	UpdateExternalAgent(ctx context.Context, agentID string, enabled bool) ([]core.ExternalAgentDescriptor, error)
+}
+
 type ProviderRuntime interface {
 	ListSetupProviders(ctx context.Context) ([]setup.ProviderSetupItem, error)
 	ConfigureSetupProvider(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) (setup.ProviderSetupItem, error)
@@ -91,6 +96,7 @@ type Result struct {
 type Dispatcher struct {
 	configured     bool
 	sessions       SessionRuntime
+	externalAgents ExternalAgentRuntime
 	providers      ProviderRuntime
 	permissions    PermissionRuntime
 	messages       SessionMessageRuntime
@@ -110,6 +116,7 @@ func New(runtime any, workingDir string) *Dispatcher {
 	}
 	if runtime != nil {
 		d.sessions, _ = runtime.(SessionRuntime)
+		d.externalAgents, _ = runtime.(ExternalAgentRuntime)
 		d.providers, _ = runtime.(ProviderRuntime)
 		d.permissions, _ = runtime.(PermissionRuntime)
 		d.messages, _ = runtime.(SessionMessageRuntime)

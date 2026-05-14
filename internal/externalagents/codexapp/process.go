@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
+	"time"
 )
 
 type ProcessOptions struct {
@@ -15,11 +17,32 @@ type ProcessOptions struct {
 }
 
 func Available(path string) bool {
+	_, err := LookupPath(path)
+	return err == nil
+}
+
+func LookupPath(path string) (string, error) {
 	if path == "" {
 		path = "codex"
 	}
-	_, err := exec.LookPath(path)
-	return err == nil
+	return exec.LookPath(path)
+}
+
+func Version(ctx context.Context, path string) string {
+	resolved, err := LookupPath(path)
+	if err != nil {
+		return ""
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, resolved, "--version").CombinedOutput()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(output))
 }
 
 func Start(ctx context.Context, opts ProcessOptions) (*Client, error) {

@@ -21,6 +21,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
+	"github.com/Suren878/matrixclaw/internal/updater"
 )
 
 const reconnectDelay = time.Second
@@ -106,6 +107,18 @@ type serverRestartAckMsg struct {
 	err error
 }
 
+type updateCheckMsg struct {
+	update updater.Update
+	ok     bool
+	err    error
+}
+
+type updateInstallMsg struct {
+	version string
+	output  string
+	err     error
+}
+
 type appFocus int
 
 const (
@@ -152,6 +165,8 @@ type appModel struct {
 	restartPending      bool
 	restartRequestedAt  time.Time
 	returnToCommands    bool
+	updatePrompted      bool
+	updateInstalling    bool
 }
 
 func newApp(ctx context.Context, rt *Runtime) *appModel {
@@ -195,5 +210,5 @@ func newApp(ctx context.Context, rt *Runtime) *appModel {
 }
 
 func (m *appModel) Init() tea.Cmd {
-	return tea.Batch(m.loadInitialCmd(), m.input.Focus(), m.workingTickCmd())
+	return tea.Batch(m.loadInitialCmd(), m.input.Focus(), m.workingTickCmd(), m.checkUpdateCmd())
 }

@@ -11,8 +11,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/api"
 	"github.com/Suren878/matrixclaw/internal/automation"
 	"github.com/Suren878/matrixclaw/internal/core"
-	"github.com/Suren878/matrixclaw/internal/externalagents"
-	"github.com/Suren878/matrixclaw/internal/externalagents/codexapp"
+	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
 	"github.com/Suren878/matrixclaw/internal/modules"
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
 	goworkflows "github.com/Suren878/matrixclaw/internal/orchestration/go_workflows"
@@ -52,12 +51,9 @@ func Run(ctx context.Context) error {
 		WithSessionLLMs(bootstrap.SessionLLMs).
 		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()})
 	app.SetAssistantProfile(assistant)
-	externalRegistry, externalRuntimes, err := buildExternalAgentRegistry()
+	externalRegistry, externalRuntimes, err := builtins.BuildRegistry(bootstrap.ExternalAgents)
 	if err != nil {
 		return err
-	}
-	for _, runtime := range externalRuntimes {
-		defer runtime.Close()
 	}
 	app.WithExternalAgents(externalRegistry, sqliteStore)
 	runStarter, err := goworkflows.New(bootstrap.DBPath, app)
@@ -85,6 +81,8 @@ func Run(ctx context.Context) error {
 	server.SetStorageStore(storageModule.Store())
 	server.SetSetupService(bootstrap.SetupService)
 	supervisor := newSupervisor(ctx, server, app)
+	supervisor.SetExternalAgents(sqliteStore, externalRuntimes)
+	defer supervisor.CloseExternalAgents()
 	httpServer := &http.Server{
 		Addr:              bootstrap.Addr,
 		Handler:           server.Handler(),
@@ -184,15 +182,4 @@ func daemonBaseURL(addr string) string {
 		return strings.TrimRight(addr, "/")
 	}
 	return "http://" + addr
-}
-
-func buildExternalAgentRegistry() (*externalagents.Registry, []externalagents.RuntimeAgent, error) {
-	codexRuntime := codexapp.NewRuntime(codexapp.RuntimeOptions{
-		Enabled: true,
-	})
-	registry, err := externalagents.NewRegistry(codexRuntime)
-	if err != nil {
-		return nil, nil, err
-	}
-	return registry, []externalagents.RuntimeAgent{codexRuntime}, nil
 }

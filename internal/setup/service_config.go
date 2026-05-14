@@ -124,6 +124,7 @@ func (s *Service) buildConfig(draft Draft) (Config, error) {
 				AllowProviderSetup: telegramProviderSetup,
 			},
 		},
+		Modules: existing.Modules,
 	}
 	return normalizeConfig(cfg), nil
 }

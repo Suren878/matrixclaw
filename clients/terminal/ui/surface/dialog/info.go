@@ -42,7 +42,7 @@ func NewInfo(_ *surfacecommon.Common, data InfoData) *Info {
 		keyMap: struct {
 			Close key.Binding
 		}{
-			Close: key.NewBinding(key.WithKeys("esc", "enter", "alt+esc"), key.WithHelp("esc/enter", "close")),
+			Close: key.NewBinding(key.WithKeys("esc", "enter", "alt+esc", "b", "backspace"), key.WithHelp("esc/enter/b", "back")),
 		},
 	}
 }
@@ -87,7 +87,7 @@ func (d *Info) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 		Selected:       -1,
 		Footer:         d.footerItems(),
 		FooterSelected: 0,
-		Help:           "esc/enter back",
+		Help:           "esc/enter/b back",
 	})
 	DrawCenter(scr, area, view)
 	return nil

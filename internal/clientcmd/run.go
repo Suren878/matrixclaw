@@ -66,6 +66,8 @@ func Run(io IO, binaryName string, args []string) int {
 		return runStatusCommand(stdout, stderr, binaryName, service)
 	case "version":
 		return runVersionCommand(stdout, binaryName, service)
+	case "update":
+		return runUpdateCommand(stdout, stderr, binaryName, args[1:])
 	case "doctor":
 		return runDoctorCommand(stdout, stderr, binaryName, service)
 	case "service":
@@ -117,6 +119,7 @@ func printUsage(w io.Writer, binaryName string) {
 	fmt.Fprintf(w, "  %s status           Print setup and matrixclaw service state\n", binaryName)
 	fmt.Fprintf(w, "  %s doctor           Diagnose setup, daemon, and provider registry\n", binaryName)
 	fmt.Fprintf(w, "  %s version          Print client and daemon version\n", binaryName)
+	fmt.Fprintf(w, "  %s update           Check for and install newer releases\n", binaryName)
 	fmt.Fprintf(w, "  %s service status   Print matrixclaw service state\n", binaryName)
 	fmt.Fprintf(w, "  %s service restart  Restart matrixclaw service\n", binaryName)
 	fmt.Fprintf(w, "  %s service logs     Print recent matrixclaw service logs\n", binaryName)

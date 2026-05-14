@@ -53,20 +53,31 @@ func (d *Dispatcher) handleNewSession(ctx context.Context, externalKey string, a
 	}
 	args = strings.TrimSpace(args)
 	if args == "" {
-		return d.sessionRuntimePicker(), nil
+		return d.sessionRuntimePicker(ctx)
 	}
 	return d.createSession(ctx, externalKey, sessionTarget{runtimeID: core.SessionRuntimeMatrixClaw}, args)
 }
 
-func (d *Dispatcher) sessionRuntimePicker() Result {
+func (d *Dispatcher) sessionRuntimePicker(ctx context.Context) (Result, error) {
+	picker := NewPickerData(PickerSessionRuntime, "New Session").
+		Back("/sessions").
+		Row("matrixclaw", "MatrixClaw", "Providers, tools, approvals")
+	if d.externalAgents != nil {
+		agents, err := d.externalAgents.ListExternalAgents(ctx)
+		if err != nil {
+			return Result{}, err
+		}
+		for _, agent := range agents {
+			if !agent.Installed || !agent.Enabled {
+				continue
+			}
+			picker.Row(agent.ID, externalAgentTitle(agent), "External agent runtime")
+		}
+	}
 	return Result{
 		Handled: true,
-		Picker: NewPickerData(PickerSessionRuntime, "New Session").
-			Back("/sessions").
-			Row("matrixclaw", "MatrixClaw", "Providers, tools, approvals").
-			Row("codex", "Codex", "External Codex agent runtime").
-			Ptr(),
-	}
+		Picker:  picker.Ptr(),
+	}, nil
 }
 
 func (d *Dispatcher) handleSession(ctx context.Context, externalKey string, args string) (Result, error) {
@@ -132,7 +143,7 @@ func (d *Dispatcher) handleSession(ctx context.Context, externalKey string, args
 func (d *Dispatcher) handleSessionNew(ctx context.Context, externalKey string, args string) (Result, error) {
 	args = strings.TrimSpace(args)
 	if args == "" {
-		return d.sessionRuntimePicker(), nil
+		return d.sessionRuntimePicker(ctx)
 	}
 	runtimeValue, title, _ := strings.Cut(args, " ")
 	target := parseSessionTarget(runtimeValue)

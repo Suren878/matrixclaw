@@ -96,6 +96,17 @@ directories, and starts `matrixclaw setup`.
 After setup is saved, run `matrixclaw` to open the terminal TUI. On a fresh
 machine, plain `matrixclaw` opens setup first and opens the TUI on later runs.
 
+When the TUI starts, it checks the latest GitHub Release. If a newer version is
+available, it asks before updating. A successful TUI update then asks whether to
+restart the daemon so the background service uses the new binary.
+
+Manual update:
+
+```bash
+matrixclaw update install
+matrixclaw service restart
+```
+
 Uninstall keeps config and state by default:
 
 ```bash
@@ -127,8 +138,11 @@ matrixclaw setup            open setup
 matrixclaw status           print setup and service state
 matrixclaw doctor           diagnose setup, daemon, and providers
 matrixclaw version          print client and daemon build info
+matrixclaw update           check for and install newer releases
 matrixclaw providers        list setup provider catalog
 matrixclaw providers verify verify configured provider model access
+matrixclaw agents           list external agent runtimes
+matrixclaw agents start     create an external agent session
 matrixclaw service status   print service state
 matrixclaw service restart  restart service
 matrixclaw service logs     print recent service logs
@@ -202,6 +216,28 @@ Core rules:
 - tool approvals are durable and restart-safe
 - provider and model selection are session data
 - orchestration, providers, and tools are replaceable adapter families
+
+## External Agents
+
+External agents are optional runtimes attached to matrixclaw sessions. They are
+not normal LLM providers. matrixclaw still owns the session, local history,
+client handoff, and normalized event display; the external agent owns its own
+thread or process protocol.
+
+Current built-in runtime:
+
+- Codex app-server, detected from the `codex` binary.
+
+Manage them from the TUI:
+
+```text
+/modules -> External Agents
+```
+
+The screen shows installed/enabled state, mode, resolved binary path, and
+version when available. Enabling Codex adds it to the New Session picker. Future
+agents such as Claude Code, Kimi Code, or OpenCode are expected to plug into the
+same built-in external-agent registry without changing the core session model.
 
 ## Repository Map
 

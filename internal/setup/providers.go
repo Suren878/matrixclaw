@@ -43,8 +43,31 @@ func normalizeConfig(cfg Config) Config {
 	} else {
 		cfg.ActiveProviderID = ""
 	}
+	cfg.Modules = normalizeModulesConfig(cfg.Modules)
 	cfg.Version = CurrentVersion
 	return cfg
+}
+
+func normalizeModulesConfig(modules ModulesConfig) ModulesConfig {
+	if len(modules.ExternalAgents) == 0 {
+		modules.ExternalAgents = nil
+		return modules
+	}
+	normalized := make(map[string]ExternalAgentConfig, len(modules.ExternalAgents))
+	for id, cfg := range modules.ExternalAgents {
+		id = strings.ToLower(strings.TrimSpace(id))
+		if id == "" {
+			continue
+		}
+		cfg.Path = strings.TrimSpace(cfg.Path)
+		normalized[id] = cfg
+	}
+	if len(normalized) == 0 {
+		modules.ExternalAgents = nil
+		return modules
+	}
+	modules.ExternalAgents = normalized
+	return modules
 }
 
 func normalizeAssistantConfig(assistant AssistantConfig) AssistantConfig {

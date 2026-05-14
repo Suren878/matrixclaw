@@ -16,6 +16,7 @@ type Config struct {
 	Providers        []ProviderConfig `json:"providers,omitempty"`
 	Daemon           DaemonConfig     `json:"daemon"`
 	Clients          ClientsConfig    `json:"clients"`
+	Modules          ModulesConfig    `json:"modules,omitempty"`
 }
 
 type AssistantConfig struct {
@@ -60,6 +61,15 @@ type TelegramConfig struct {
 	BotToken           string `json:"bot_token,omitempty"`
 	AllowedUserID      string `json:"allowed_user_id,omitempty"`
 	AllowProviderSetup bool   `json:"allow_provider_setup,omitempty"`
+}
+
+type ModulesConfig struct {
+	ExternalAgents map[string]ExternalAgentConfig `json:"external_agents,omitempty"`
+}
+
+type ExternalAgentConfig struct {
+	Enabled bool   `json:"enabled,omitempty"`
+	Path    string `json:"path,omitempty"`
 }
 
 type Draft struct {

@@ -34,8 +34,9 @@ func (d *Dispatcher) handleStatus(ctx context.Context) (Result, error) {
 		Handled: true,
 		Text:    FormatServerStatus(status),
 		Info: &InfoData{
-			Title: "Server Status",
-			Rows:  FormatServerStatusRows(status),
+			Title:        "Server Status",
+			Rows:         FormatServerStatusRows(status),
+			CloseCommand: "/server",
 		},
 	}, nil
 }

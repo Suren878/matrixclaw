@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,7 @@ import (
 	tuiruntime "github.com/Suren878/matrixclaw/clients/terminal/chat/runtime"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	appstore "github.com/Suren878/matrixclaw/internal/store"
+	"github.com/Suren878/matrixclaw/internal/updater"
 )
 
 func TestHelpUsesBinaryName(t *testing.T) {
@@ -47,8 +49,43 @@ func TestHelpUsesBinaryName(t *testing.T) {
 	if !strings.Contains(out, "matrixclaw providers verify") {
 		t.Fatalf("stdout = %q, want help mentioning matrixclaw providers verify", out)
 	}
+	if !strings.Contains(out, "matrixclaw update") {
+		t.Fatalf("stdout = %q, want help mentioning matrixclaw update", out)
+	}
 	if !strings.Contains(out, "matrixclaw tui [WORKDIR]") {
 		t.Fatalf("stdout = %q, want help mentioning matrixclaw tui [WORKDIR]", out)
+	}
+}
+
+func TestUpdateInstallUsesLatestRelease(t *testing.T) {
+	originalCheck := checkLatestUpdate
+	originalInstall := installUpdate
+	defer func() {
+		checkLatestUpdate = originalCheck
+		installUpdate = originalInstall
+	}()
+
+	checkLatestUpdate = func(context.Context, string) (updater.Update, bool, error) {
+		return updater.Update{Current: "v0.1.5", Latest: "v0.1.6"}, true, nil
+	}
+	var installed string
+	installUpdate = func(_ context.Context, tag string, stdout io.Writer, _ io.Writer) error {
+		installed = tag
+		_, _ = stdout.Write([]byte("installed\n"))
+		return nil
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(IO{Stdout: &stdout, Stderr: &stderr}, "matrixclaw", []string{"update", "install"})
+	if code != 0 {
+		t.Fatalf("Run() code = %d, want 0, stderr=%q", code, stderr.String())
+	}
+	if installed != "v0.1.6" {
+		t.Fatalf("installed tag = %q, want v0.1.6", installed)
+	}
+	if !strings.Contains(stdout.String(), "updated to v0.1.6") {
+		t.Fatalf("stdout = %q, want updated message", stdout.String())
 	}
 }
 

@@ -123,6 +123,10 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.handleServerRestartPoll(msg)
 	case serverRestartAckMsg:
 		return m, m.handleServerRestartAck(msg)
+	case updateCheckMsg:
+		return m, m.handleUpdateCheck(msg)
+	case updateInstallMsg:
+		return m, m.handleUpdateInstall(msg)
 	case loadInitialMsg:
 		return m, m.handleLoadInitial(msg)
 	case subscribeReadyMsg:
