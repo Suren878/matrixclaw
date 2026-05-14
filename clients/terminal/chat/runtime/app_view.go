@@ -11,6 +11,7 @@ import (
 func (m *appModel) View() tea.View {
 	view := tea.NewView(m.viewContent())
 	view.AltScreen = true
+	view.MouseMode = tea.MouseModeCellMotion
 	// Do not set View.ForegroundColor/BackgroundColor here. Bubble Tea v2 maps
 	// those fields to terminal default colors (OSC 10/11), which leaks into all
 	// child rendering and makes setup/chat palettes drift globally.
