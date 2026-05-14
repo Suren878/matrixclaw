@@ -18,7 +18,7 @@ func ProfileForProvider(providerType string) ProviderProfile {
 
 func ProfileForModel(providerID string, providerType string, modelID string) ProviderProfile {
 	providerID = NormalizeProviderID(providerID)
-	providerType = normalizeProviderTypeForProfile(providerType)
+	providerType = NormalizeProviderType(providerType)
 	modelID = strings.TrimSpace(modelID)
 	capabilitySet := ResolveModelCapabilities(ModelCapabilityInput{
 		ProviderID:   providerID,
@@ -62,7 +62,7 @@ func (p ProviderProfile) RuntimeProfileWithOverrides(profile RuntimeProfile) Run
 	return NormalizeRuntimeProfile(profile)
 }
 
-func normalizeProviderTypeForProfile(providerType string) string {
+func NormalizeProviderType(providerType string) string {
 	switch strings.ToLower(strings.TrimSpace(providerType)) {
 	case "", TypeOpenAICompat:
 		return TypeOpenAICompat
@@ -73,4 +73,11 @@ func normalizeProviderTypeForProfile(providerType string) string {
 	default:
 		return strings.ToLower(strings.TrimSpace(providerType))
 	}
+}
+
+func NormalizeOptionalProviderType(providerType string) string {
+	if strings.TrimSpace(providerType) == "" {
+		return ""
+	}
+	return NormalizeProviderType(providerType)
 }

@@ -68,17 +68,7 @@ func (d *Dispatcher) useProvider(ctx context.Context, session *core.Session, pro
 	if err != nil {
 		return Result{}, err
 	}
-	text := fmt.Sprintf("✅ Provider selected: %s · %s", updated.ProviderID, updated.ModelID)
-	if d.messages != nil {
-		if _, err := d.messages.CreateSystemMessage(ctx, updated.ID, text); err != nil {
-			return Result{}, err
-		}
-	}
-	return Result{
-		Handled:        true,
-		Text:           text,
-		ReloadSnapshot: true,
-	}, nil
+	return d.providerSelectedResult(ctx, updated)
 }
 
 func providerActions(provider setup.ProviderSetupItem, selected bool) Result {
@@ -141,20 +131,24 @@ func (d *Dispatcher) handleProviderKey(ctx context.Context, session *core.Sessio
 	if session != nil {
 		updated, updateErr := d.providers.UpdateSessionProvider(ctx, session.ID, configured.ID)
 		if updateErr == nil {
-			text := fmt.Sprintf("✅ Provider selected: %s · %s", updated.ProviderID, updated.ModelID)
-			if d.messages != nil {
-				if _, err := d.messages.CreateSystemMessage(ctx, updated.ID, text); err != nil {
-					return Result{}, err
-				}
-			}
-			return Result{
-				Handled:        true,
-				Text:           text,
-				ReloadSnapshot: true,
-			}, nil
+			return d.providerSelectedResult(ctx, updated)
 		}
 	}
 	text := fmt.Sprintf("✅ Provider configured: %s", configured.Name)
+	return Result{
+		Handled:        true,
+		Text:           text,
+		ReloadSnapshot: true,
+	}, nil
+}
+
+func (d *Dispatcher) providerSelectedResult(ctx context.Context, session core.Session) (Result, error) {
+	text := fmt.Sprintf("✅ Provider selected: %s · %s", session.ProviderID, session.ModelID)
+	if d.messages != nil {
+		if _, err := d.messages.CreateSystemMessage(ctx, session.ID, text); err != nil {
+			return Result{}, err
+		}
+	}
 	return Result{
 		Handled:        true,
 		Text:           text,

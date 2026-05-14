@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/commandcatalog"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 )
 
@@ -93,7 +94,7 @@ func (w *Worker) deleteMenuMessage(ctx context.Context, target chatTarget, messa
 const compactProgressText = "🧠 Compact started..."
 
 func isContextCompactCommand(command string) bool {
-	return strings.EqualFold(strings.TrimSpace(command), "/context compact confirm")
+	return matchesCatalogCommand(command, commandcatalog.CommandContext, "compact confirm")
 }
 
 func (w *Worker) resolveApprovalCallback(ctx context.Context, target chatTarget, cq *CallbackQuery, approvalID string, approved bool, allowSession bool) error {

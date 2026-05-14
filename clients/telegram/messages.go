@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/commandcatalog"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
@@ -219,13 +220,13 @@ func (w *Worker) handleSessionSelectionRequired(ctx context.Context, target chat
 		return true, w.sendText(ctx, target, fmt.Sprintf("Load sessions failed: %v", err))
 	}
 	if len(sessions) == 0 {
-		result, err := w.dispatcher().Handle(ctx, target.externalKey, "/new")
+		result, err := w.dispatcher().Handle(ctx, target.externalKey, catalogCommand(commandcatalog.CommandNewSession, ""))
 		if err != nil {
 			return true, w.sendText(ctx, target, fmt.Sprintf("Create session failed: %v", err))
 		}
 		return true, w.renderCommandResult(ctx, target, 0, withSessionSelectionPrompt(result))
 	}
-	result, err := w.dispatcher().Handle(ctx, target.externalKey, "/sessions")
+	result, err := w.dispatcher().Handle(ctx, target.externalKey, catalogCommand(commandcatalog.CommandSessions, ""))
 	if err != nil {
 		return true, w.sendText(ctx, target, fmt.Sprintf("Load sessions failed: %v", err))
 	}

@@ -220,7 +220,7 @@ func (s *Service) buildProviderConfig(draft ProviderDraft, existing Config) (Pro
 		return ProviderConfig{}, fmt.Errorf("provider %q is listed but not implemented yet", option.Name)
 	}
 
-	providerType := strings.TrimSpace(draft.Type)
+	providerType := providers.NormalizeOptionalProviderType(draft.Type)
 	providerName := strings.TrimSpace(draft.Name)
 	apiKeyEnv := strings.TrimSpace(draft.APIKeyEnv)
 	if hasOption {
@@ -392,14 +392,6 @@ func ParseBool(v string) bool {
 	default:
 		return false
 	}
-}
-
-func ReasoningEfforts() []string {
-	return providers.ReasoningEfforts()
-}
-
-func ReasoningEffortsForProvider(providerID string, providerType string) []string {
-	return providers.ReasoningEffortsForProvider(providerID, providerType)
 }
 
 func sameProvider(left string, right string) bool {

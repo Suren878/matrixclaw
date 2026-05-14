@@ -61,7 +61,7 @@ func Models(ctx context.Context, input ModelDiscoveryInput) ([]string, error) {
 }
 
 func fetchRemoteModels(ctx context.Context, input ModelDiscoveryInput) ([]string, error) {
-	providerType := strings.ToLower(strings.TrimSpace(input.Type))
+	providerType := providers.NormalizeOptionalProviderType(input.Type)
 	if providerType == "" {
 		return nil, errors.New("remote model list unavailable")
 	}

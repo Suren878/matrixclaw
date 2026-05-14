@@ -36,7 +36,7 @@ type ModelCapabilitySet struct {
 
 func ResolveModelCapabilities(input ModelCapabilityInput) ModelCapabilitySet {
 	providerID := NormalizeProviderID(input.ProviderID)
-	providerType := normalizeProviderTypeForProfile(input.ProviderType)
+	providerType := NormalizeProviderType(input.ProviderType)
 	modelID := strings.ToLower(strings.TrimSpace(input.ModelID))
 
 	providerCapabilities := ProviderCapabilities(providerID, providerType)

@@ -36,7 +36,7 @@ var (
 )
 
 func NewRuntime(ctx context.Context, cfg Config) (providers.Runtime, error) {
-	providerType := strings.ToLower(strings.TrimSpace(cfg.Type))
+	providerType := providers.NormalizeOptionalProviderType(cfg.Type)
 	if providerType == "" {
 		return nil, fmt.Errorf("unsupported provider type %q", strings.TrimSpace(cfg.Type))
 	}

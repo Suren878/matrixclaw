@@ -1,5 +1,7 @@
 package commandcatalog
 
+import "strings"
+
 type CommandID string
 
 const (
@@ -43,4 +45,25 @@ func Catalog() []CommandSpec {
 		{ID: CommandRestart, Command: "/restart", Description: "Restart daemon", Menu: false, Public: true},
 		{ID: CommandHelp, Command: "/help", Aliases: []string{"commands", "start"}, Description: "Help", Menu: false, Public: true},
 	}
+}
+
+func Lookup(id CommandID) (CommandSpec, bool) {
+	for _, spec := range Catalog() {
+		if spec.ID == id {
+			return spec, true
+		}
+	}
+	return CommandSpec{}, false
+}
+
+func CommandLine(id CommandID, args string) string {
+	spec, ok := Lookup(id)
+	if !ok {
+		return ""
+	}
+	args = strings.TrimSpace(args)
+	if args == "" {
+		return spec.Command
+	}
+	return spec.Command + " " + args
 }

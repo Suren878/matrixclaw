@@ -21,9 +21,7 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 	if dialog := m.controlplaneDialog(msg.result); dialog != nil {
 		m.showControlplaneDialog(dialog)
 		if msg.result.ReloadSnapshot {
-			m.returnToCommands = false
-			m.loading = true
-			return m.loadInitialCmd()
+			return m.reloadSnapshotCmd()
 		}
 		return nil
 	}
@@ -40,9 +38,7 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 		m.err = ""
 	}
 	if msg.result.ReloadSnapshot {
-		m.returnToCommands = false
-		m.loading = true
-		return m.loadInitialCmd()
+		return m.reloadSnapshotCmd()
 	}
 	return nil
 }
@@ -55,9 +51,7 @@ func (m *appModel) handleContextCompactResult(msg controlplaneResultMsg) tea.Cmd
 	text := strings.TrimSpace(msg.result.Text)
 	if msg.result.ReloadSnapshot {
 		m.completeContextCompactProgress(compactCompleteText)
-		m.returnToCommands = false
-		m.loading = true
-		return m.loadInitialCmd()
+		return m.reloadSnapshotCmd()
 	}
 	if text == "" {
 		text = compactCompleteText
@@ -137,12 +131,6 @@ func (m *appModel) closeControlplaneDialogs() {
 	m.dialog.CloseDialog(surfacedialog.InfoID)
 }
 
-func (m *appModel) replaceControlplaneDialog(dialog surfacedialog.Dialog) {
-	m.err = ""
-	m.closeControlplaneDialogs()
-	m.dialog.OpenDialog(dialog)
-}
-
 func (m *appModel) showControlplaneDialog(dialog surfacedialog.Dialog) {
 	m.err = ""
 	if dialog == nil {
@@ -168,4 +156,10 @@ func (m *appModel) showControlplaneDialog(dialog surfacedialog.Dialog) {
 		m.dialog.CloseFrontDialog()
 	}
 	m.dialog.OpenDialog(dialog)
+}
+
+func (m *appModel) reloadSnapshotCmd() tea.Cmd {
+	m.returnToCommands = false
+	m.loading = true
+	return m.loadInitialCmd()
 }

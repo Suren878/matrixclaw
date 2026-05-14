@@ -67,7 +67,7 @@ func DefaultAssistantSystemPrompt() string {
 func normalizeProviderConfig(provider ProviderConfig) (ProviderConfig, bool) {
 	provider.ID = providers.NormalizeProviderID(provider.ID)
 	provider.CatalogID = providers.NormalizeProviderID(provider.CatalogID)
-	provider.Type = strings.TrimSpace(provider.Type)
+	provider.Type = providers.NormalizeOptionalProviderType(provider.Type)
 	provider.Name = strings.TrimSpace(provider.Name)
 	provider.APIKey = strings.TrimSpace(provider.APIKey)
 	provider.APIKeyEnv = strings.TrimSpace(provider.APIKeyEnv)
@@ -316,38 +316,22 @@ func ProviderAPIKeyPreview(provider ProviderConfig) string {
 }
 
 func providerAPIKeyEnvName(provider ProviderConfig) string {
-	if envName := strings.TrimSpace(provider.APIKeyEnv); envName != "" {
-		return envName
-	}
-	catalogID := providers.NormalizeProviderID(provider.CatalogID)
-	if catalogID == "" {
-		catalogID = providers.NormalizeProviderID(provider.ID)
-	}
-	if option, ok := lookupProviderOption(catalogID); ok {
-		return strings.TrimSpace(option.APIKeyEnv)
-	}
-	switch strings.TrimSpace(provider.Type) {
-	case providers.TypeAnthropic:
-		return "ANTHROPIC_API_KEY"
-	case providers.TypeOpenAICompat:
-		return "OPENAI_COMPAT_API_KEY"
-	default:
-		return ""
-	}
+	return providerAPIKeyEnvNameFor(provider.APIKeyEnv, provider.CatalogID, provider.ID, provider.Type)
 }
 
 func providerDraftAPIKeyEnvName(provider ProviderDraft) string {
-	if envName := strings.TrimSpace(provider.APIKeyEnv); envName != "" {
+	return providerAPIKeyEnvNameFor(provider.APIKeyEnv, provider.CatalogID, provider.ID, provider.Type)
+}
+
+func providerAPIKeyEnvNameFor(explicit string, catalogID string, providerID string, providerType string) string {
+	if envName := strings.TrimSpace(explicit); envName != "" {
 		return envName
 	}
-	catalogID := providers.NormalizeProviderID(provider.CatalogID)
-	if catalogID == "" {
-		catalogID = providers.NormalizeProviderID(provider.ID)
-	}
+	catalogID = providers.NormalizeProviderID(firstNonEmptyTrimmed(catalogID, providerID))
 	if option, ok := lookupProviderOption(catalogID); ok {
 		return strings.TrimSpace(option.APIKeyEnv)
 	}
-	switch strings.TrimSpace(provider.Type) {
+	switch providers.NormalizeOptionalProviderType(providerType) {
 	case providers.TypeAnthropic:
 		return "ANTHROPIC_API_KEY"
 	case providers.TypeOpenAICompat:
@@ -366,7 +350,7 @@ func providerAPIKeyFromEnvName(envName string) string {
 }
 
 func newCustomDraftProvider(baseType string, existing []ProviderDraft) ProviderDraft {
-	baseType = strings.TrimSpace(baseType)
+	baseType = providers.NormalizeOptionalProviderType(baseType)
 	name := "Custom OpenAI-Compatible"
 	baseURL := "https://api.example.com/v1"
 	apiKeyEnv := "OPENAI_COMPAT_API_KEY"

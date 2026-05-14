@@ -4,9 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
 
-	"github.com/Suren878/matrixclaw/internal/controlplane"
+	"github.com/Suren878/matrixclaw/internal/commandcatalog"
 )
 
 func (w *Worker) dispatchRestartCommandAndEdit(ctx context.Context, target chatTarget, messageID int64) error {
@@ -45,6 +44,5 @@ func (w *Worker) dispatchRestartCommandAndEdit(ctx context.Context, target chatT
 }
 
 func isDaemonRestartCommand(text string) bool {
-	spec, args, ok := controlplane.Parse(text)
-	return ok && spec.ID == controlplane.CommandRestart && strings.EqualFold(strings.TrimSpace(args), "confirm")
+	return matchesCatalogCommand(text, commandcatalog.CommandRestart, "confirm")
 }

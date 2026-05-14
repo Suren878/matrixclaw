@@ -15,6 +15,7 @@ func TestProfileForProviderSelectsRuntimeAndDefaults(t *testing.T) {
 		wantToolUse            ToolUseMode
 	}{
 		{name: "default", provider: "", baseURL: "https://api.example.com/v1", wantType: TypeOpenAICompat, wantRuntime: TypeOpenAICompat, wantToolUse: ToolUseNative},
+		{name: "case insensitive", provider: " Gemini ", baseURL: "https://generativelanguage.googleapis.com/v1beta", wantType: TypeGemini, wantRuntime: TypeGemini, wantToolUse: ToolUseNative},
 		{name: "gemini", provider: TypeGemini, baseURL: "https://generativelanguage.googleapis.com/v1beta", wantType: TypeGemini, wantRuntime: TypeGemini, wantToolUse: ToolUseNative},
 		{name: "anthropic", provider: TypeAnthropic, baseURL: "https://api.anthropic.com/v1", wantType: TypeAnthropic, wantRuntime: TypeAnthropic, wantToolUse: ToolUseDisabled},
 	}

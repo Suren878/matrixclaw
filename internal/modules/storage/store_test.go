@@ -120,3 +120,20 @@ func TestLocalStoreTemporaryPromote(t *testing.T) {
 		t.Fatalf("promoted read entry/content = %#v/%q, want promoted file content", entry, content)
 	}
 }
+
+func TestLocalStoreSaveTemporaryRejectsFilesOverTemporaryLimit(t *testing.T) {
+	store, err := NewLocalStore(t.TempDir(), 1024)
+	if err != nil {
+		t.Fatalf("NewLocalStore() error = %v", err)
+	}
+	if _, err := store.UpdateTemporarySettings(nil, 0, 0.000000001); err != nil {
+		t.Fatalf("UpdateTemporarySettings() error = %v", err)
+	}
+
+	if _, err := store.SaveTemporary("scratch/large.txt", []byte("large temporary content"), "Large", nil, "text/plain"); err == nil {
+		t.Fatal("SaveTemporary() error = nil, want temporary limit error")
+	}
+	if _, _, err := store.ReadTemporaryBytes("scratch/large.txt"); err == nil {
+		t.Fatal("ReadTemporaryBytes() error = nil, want file not saved")
+	}
+}

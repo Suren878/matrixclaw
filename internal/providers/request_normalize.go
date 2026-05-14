@@ -39,7 +39,7 @@ func NormalizeRuntimeProfile(profile RuntimeProfile) RuntimeProfile {
 }
 
 func runtimeProfileDefaults(providerType string) RuntimeProfile {
-	providerType = strings.TrimSpace(providerType)
+	providerType = NormalizeProviderType(providerType)
 	if providerType == TypeGemini {
 		return RuntimeProfile{
 			ToolUseMode:       ToolUseNative,

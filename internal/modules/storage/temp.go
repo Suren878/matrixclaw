@@ -69,6 +69,9 @@ func (s *LocalStore) SaveTemporary(rawPath string, content []byte, title string,
 	if err := s.loadTemporarySettingsLocked(); err != nil {
 		return TempEntry{}, err
 	}
+	if s.tempMaxBytes > 0 && entry.Size > s.tempMaxBytes {
+		return TempEntry{}, fmt.Errorf("temporary content is too large: %d bytes exceeds %d", entry.Size, s.tempMaxBytes)
+	}
 
 	index, err := s.loadTempIndexLocked()
 	if err != nil {

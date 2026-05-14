@@ -350,7 +350,7 @@ func copyStrings(values []string) []string {
 
 func providerCapabilities(providerID string, providerType string) Capabilities {
 	providerID = NormalizeProviderID(providerID)
-	providerType = strings.TrimSpace(providerType)
+	providerType = NormalizeProviderType(providerType)
 	if entry, ok := CatalogEntryByID(providerID); ok {
 		return entry.Capabilities
 	}

@@ -103,10 +103,6 @@ func customProviderFormResult(config customProviderFormResultData) Result {
 	}
 }
 
-func customProviderFormFields(data customProviderForm, keyStatus string, includeIdentity bool, includeReasoningEffort bool, includeToolProfile bool, editCommand func(string) string) []FormField {
-	return customProviderFormFieldsForProvider(data, keyStatus, "", "", "", includeIdentity, includeReasoningEffort, includeToolProfile, editCommand)
-}
-
 func customProviderFormFieldsForProvider(data customProviderForm, keyStatus string, providerID string, catalogID string, providerType string, includeIdentity bool, includeReasoningEffort bool, includeToolProfile bool, editCommand func(string) string) []FormField {
 	if strings.TrimSpace(providerType) == "" {
 		capabilities := providers.Capabilities{
@@ -213,10 +209,6 @@ func customProviderToolModeItems(data customProviderForm, prefix string) []Picke
 	}
 }
 
-func toolUseModeStatus(value providers.ToolUseMode) string {
-	return setup.ProviderFormToolUseModeStatus(value)
-}
-
 func customProviderBaseURLPicker(titlePrefix string, data customProviderForm, catalogID string, submitPrefix string, cancelCommand string) Result {
 	entry, ok := providers.CatalogEntryByID(catalogID)
 	if !ok || len(entry.BaseURLOptions) == 0 {
@@ -268,13 +260,6 @@ func customProviderReasoningEffortItems(data customProviderForm, efforts []strin
 		})
 	}
 	return items
-}
-
-func reasoningEffortStatus(value string) string {
-	if effort := providers.NormalizeReasoningEffort(value); effort != "" {
-		return strings.Title(effort)
-	}
-	return strings.Title(providers.DefaultReasoningEffort)
 }
 
 func firstField(value string) string {

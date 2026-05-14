@@ -343,7 +343,8 @@ func (s *Service) BuiltInProviderDraft(draft Draft, providerID string) (Provider
 }
 
 func (s *Service) NewCustomProviderDraft(draft Draft, providerType string) (ProviderDraft, error) {
-	switch strings.TrimSpace(providerType) {
+	providerType = providers.NormalizeOptionalProviderType(providerType)
+	switch providerType {
 	case providers.TypeOpenAICompat, providers.TypeAnthropic:
 		return newCustomDraftProvider(providerType, draft.Providers), nil
 	default:
@@ -420,7 +421,7 @@ func (s *Service) providerDraftForSetupUpdate(draft Draft, providerID string, up
 	if err == nil {
 		return provider, nil
 	}
-	providerType := strings.TrimSpace(update.Type)
+	providerType := providers.NormalizeOptionalProviderType(update.Type)
 	switch providerType {
 	case providers.TypeOpenAICompat, providers.TypeAnthropic:
 	default:
@@ -521,7 +522,7 @@ func applyProviderSetupUpdate(provider ProviderDraft, update ProviderSetupUpdate
 		if name := strings.TrimSpace(update.Name); name != "" {
 			provider.Name = name
 		}
-		if providerType := strings.TrimSpace(update.Type); providerType != "" {
+		if providerType := providers.NormalizeOptionalProviderType(update.Type); providerType != "" {
 			switch providerType {
 			case providers.TypeOpenAICompat, providers.TypeAnthropic:
 				provider.Type = providerType

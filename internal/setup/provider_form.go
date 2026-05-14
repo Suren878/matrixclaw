@@ -95,7 +95,7 @@ func ProviderFormSpecForSetupItem(item ProviderSetupItem) ProviderFormSpec {
 func ProviderFormSpecFromInput(input ProviderFormSpecInput) ProviderFormSpec {
 	providerID := providers.NormalizeProviderID(input.ID)
 	catalogID := providers.NormalizeProviderID(input.CatalogID)
-	providerType := strings.TrimSpace(input.Type)
+	providerType := providers.NormalizeOptionalProviderType(input.Type)
 	custom := input.Custom
 	if !input.CustomKnown {
 		custom = catalogID == ""

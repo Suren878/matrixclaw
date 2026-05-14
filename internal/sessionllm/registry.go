@@ -48,6 +48,10 @@ func New(activeProviderID string, providerSpecs []ProviderSpec) *Registry {
 		if id == "" {
 			continue
 		}
+		provider.ID = id
+		provider.CatalogID = providers.NormalizeProviderID(provider.CatalogID)
+		provider.Type = providers.NormalizeOptionalProviderType(provider.Type)
+		provider.Model = strings.TrimSpace(provider.Model)
 		reg.providers[id] = provider
 		reg.order = append(reg.order, id)
 	}
@@ -75,7 +79,7 @@ func (r *Registry) Providers() []core.SessionProviderOption {
 		options = append(options, core.SessionProviderOption{
 			ID:           cfg.ID,
 			Label:        firstNonEmpty(cfg.Name, cfg.ID),
-			Type:         strings.TrimSpace(cfg.Type),
+			Type:         providers.NormalizeOptionalProviderType(cfg.Type),
 			DefaultModel: strings.TrimSpace(cfg.Model),
 			Configured:   true,
 		})
@@ -97,7 +101,7 @@ func (r *Registry) Normalize(providerID string, modelID string) (core.SessionPro
 	option := core.SessionProviderOption{
 		ID:           cfg.ID,
 		Label:        firstNonEmpty(cfg.Name, cfg.ID),
-		Type:         strings.TrimSpace(cfg.Type),
+		Type:         providers.NormalizeOptionalProviderType(cfg.Type),
 		DefaultModel: strings.TrimSpace(cfg.Model),
 		Configured:   true,
 	}

@@ -62,24 +62,25 @@ func (m *appModel) handleExternalEditorAction() tea.Cmd {
 
 func (m *appModel) handleRunControlplaneCommand(msg surfacedialog.ActionRunControlplaneCommand) tea.Cmd {
 	fromCommands := m.dialog.ContainsDialog(surfacedialog.CommandsID)
-	if isContextCompactCommand(msg.Command) {
+	command := strings.TrimSpace(msg.Command)
+	if isContextCompactCommand(command) {
 		m.dialog.CloseAll()
 		m.startContextCompactProgress()
-		return m.controlplaneCmd(msg.Command)
+		return m.controlplaneCmd(command)
 	}
-	if strings.TrimSpace(msg.Command) == "/server" {
+	if command == "/server" {
 		m.dialog.CloseDialog(surfacedialog.ServerStatusInfoID)
 	}
-	if strings.TrimSpace(msg.Command) == "/status" {
+	if command == "/status" {
 		return m.openServerStatusDialog()
 	}
-	if isDaemonRestartCommand(msg.Command) {
+	if isDaemonRestartCommand(command) {
 		return m.openServerRestartDialog()
 	}
 	if fromCommands {
 		m.returnToCommands = true
 	}
-	return m.controlplaneCmd(msg.Command)
+	return m.controlplaneCmd(command)
 }
 
 func (m *appModel) handleResolveApproval(msg resolveApprovalMsg) tea.Cmd {
