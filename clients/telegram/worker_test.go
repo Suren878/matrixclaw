@@ -184,3 +184,147 @@ func TestHandleUpdateConflictRendersSharedSessionPicker(t *testing.T) {
 		t.Fatalf("last picker label = %q, want ✖️ Cancel", got)
 	}
 }
+
+func TestHandleUpdateRendersProviderAndPermissionsCommands(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/bindings/current":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"binding": core.ClientBinding{Client: "telegram", ExternalKey: "42", SessionID: "session_1"},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/sessions":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"sessions": []core.Session{{
+					ID:             "session_1",
+					Title:          "docs",
+					ProviderID:     "openai",
+					ModelID:        "gpt-5.4",
+					PermissionMode: core.PermissionModeAcceptEdits,
+				}},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/setup/providers":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"providers": []map[string]any{
+					{"id": "openai", "catalog_id": "openai", "name": "OpenAI", "configured": true, "active": true, "implemented": true, "model": "gpt-5.4"},
+					{"id": "deepseek", "catalog_id": "deepseek", "name": "DeepSeek", "configured": true, "implemented": true, "model": "deepseek-v4"},
+				},
+			})
+		default:
+			t.Fatalf("unexpected daemon request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	api := &fakeBotAPI{}
+	worker := newTestWorker(t, api, server.URL)
+
+	for _, tt := range []struct {
+		text      string
+		wantTitle string
+		wantRows  int
+	}{
+		{text: "/provider", wantTitle: "Provider", wantRows: 4},
+		{text: "/permissions", wantTitle: "Permission Mode", wantRows: 3},
+	} {
+		err := worker.handleUpdate(context.Background(), Update{
+			UpdateID: 10,
+			Message: &Message{
+				MessageID: 10,
+				Text:      tt.text,
+				Chat:      Chat{ID: 42, Type: "private"},
+				From:      &User{ID: 42},
+			},
+		})
+		if err != nil {
+			t.Fatalf("handleUpdate(%s) error = %v", tt.text, err)
+		}
+		if len(api.sendMessageRequests) == 0 {
+			t.Fatalf("handleUpdate(%s) sent no messages", tt.text)
+		}
+		request := api.sendMessageRequests[len(api.sendMessageRequests)-1]
+		if request.Text != tt.wantTitle {
+			t.Fatalf("handleUpdate(%s) text = %q, want %q", tt.text, request.Text, tt.wantTitle)
+		}
+		if request.ReplyMarkup == nil || len(request.ReplyMarkup.InlineKeyboard) != tt.wantRows {
+			t.Fatalf("handleUpdate(%s) reply markup = %+v, want %d rows", tt.text, request.ReplyMarkup, tt.wantRows)
+		}
+	}
+}
+
+func TestHandleUpdateContextCompactConfirmFlow(t *testing.T) {
+	var compactCalled bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/bindings/current":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"binding": core.ClientBinding{Client: "telegram", ExternalKey: "42", SessionID: "session_1"},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/sessions":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"sessions": []core.Session{{ID: "session_1", Title: "docs"}},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/sessions/session_1/compact":
+			compactCalled = true
+			_ = json.NewEncoder(w).Encode(core.SessionCompactResponse{
+				Compact: core.CompactSessionResult{
+					Message: core.Message{Content: "Context compacted."},
+				},
+			})
+		default:
+			t.Fatalf("unexpected daemon request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	api := &fakeBotAPI{}
+	worker := newTestWorker(t, api, server.URL)
+
+	err := worker.handleUpdate(context.Background(), Update{
+		UpdateID: 11,
+		Message: &Message{
+			MessageID: 11,
+			Text:      "/context compact",
+			Chat:      Chat{ID: 42, Type: "private"},
+			From:      &User{ID: 42},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleUpdate(/context compact) error = %v", err)
+	}
+	if len(api.sendMessageRequests) != 1 {
+		t.Fatalf("sendMessageRequests len = %d, want 1", len(api.sendMessageRequests))
+	}
+	confirm := api.sendMessageRequests[0]
+	if confirm.Text != "Compact context now?" {
+		t.Fatalf("confirm text = %q", confirm.Text)
+	}
+	if confirm.ReplyMarkup == nil || len(confirm.ReplyMarkup.InlineKeyboard) != 1 {
+		t.Fatalf("confirm markup = %+v", confirm.ReplyMarkup)
+	}
+
+	err = worker.handleCallbackQuery(context.Background(), &CallbackQuery{
+		ID:   "cb-compact",
+		From: &User{ID: 42},
+		Message: &Message{
+			MessageID: 77,
+			Text:      confirm.Text,
+			Chat:      Chat{ID: 42, Type: "private"},
+		},
+		Data: commandCallbackData("/context compact confirm"),
+	})
+	if err != nil {
+		t.Fatalf("handleCallbackQuery(compact confirm) error = %v", err)
+	}
+	if !compactCalled {
+		t.Fatal("compact endpoint was not called")
+	}
+	if len(api.editMessageRequests) < 2 {
+		t.Fatalf("editMessageRequests len = %d, want progress and result edits", len(api.editMessageRequests))
+	}
+	if got := api.editMessageRequests[0].Text; got != compactProgressText {
+		t.Fatalf("progress edit = %q, want %q", got, compactProgressText)
+	}
+	if got := api.editMessageRequests[len(api.editMessageRequests)-1].Text; got != "Context compacted." {
+		t.Fatalf("result edit = %q, want compact result", got)
+	}
+}

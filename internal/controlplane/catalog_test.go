@@ -147,13 +147,10 @@ func TestHelpTextShowsOnlyPublicCommands(t *testing.T) {
 	if strings.Contains(text, "/new") || strings.Contains(text, "/session -") || strings.Contains(text, "/status") || strings.Contains(text, "/restart") {
 		t.Fatalf("HelpText() unexpectedly includes hidden commands: %q", text)
 	}
-	for _, command := range []string{"/sessions", "/server", "/help"} {
+	for _, command := range []string{"/sessions", "/provider", "/permissions", "/server", "/help"} {
 		if !strings.Contains(text, command) {
 			t.Fatalf("HelpText() missing %s: %q", command, text)
 		}
-	}
-	if strings.Contains(text, "/provider") || strings.Contains(text, "/permissions") {
-		t.Fatalf("HelpText() should keep session-scoped settings out of top-level help: %q", text)
 	}
 	if strings.Contains(text, "/model") {
 		t.Fatalf("HelpText() should not expose separate model setup: %q", text)
