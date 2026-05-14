@@ -108,6 +108,28 @@ func TestBuildProviderConversationKeepsAssistantReasoningContent(t *testing.T) {
 	}
 }
 
+func TestExternalAssistantPartsPreserveInterleavedReasoningAndText(t *testing.T) {
+	t.Parallel()
+
+	assistant := &Message{}
+	appendExternalReasoningDelta(assistant, "first")
+	assistant.Content += "hello"
+	upsertExternalTextPart(assistant)
+	appendExternalReasoningDelta(assistant, " second")
+	assistant.Content += " world"
+	upsertExternalTextPart(assistant)
+
+	if len(assistant.Parts) != 2 {
+		t.Fatalf("len(parts) = %d, want text and reasoning: %#v", len(assistant.Parts), assistant.Parts)
+	}
+	if assistant.Parts[0].Kind != MessagePartKindText || assistant.Parts[0].Text == nil || assistant.Parts[0].Text.Text != "hello world" {
+		t.Fatalf("text part = %#v, want hello world", assistant.Parts[0])
+	}
+	if assistant.Parts[1].Kind != MessagePartKindReasoning || assistant.Parts[1].Reasoning == nil || assistant.Parts[1].Reasoning.Text != "first second" {
+		t.Fatalf("reasoning part = %#v, want merged reasoning", assistant.Parts[1])
+	}
+}
+
 func TestBuildProviderConversationBatchesConsecutiveToolCallsAndPairsResults(t *testing.T) {
 	t.Parallel()
 

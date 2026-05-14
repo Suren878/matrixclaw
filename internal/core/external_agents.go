@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -19,6 +20,11 @@ type ExternalAgentDescriptor struct {
 	Detail      string   `json:"detail,omitempty"`
 }
 
+const (
+	legacyCodexRuntime    SessionRuntime = "codex"
+	legacyCodexAppRuntime SessionRuntime = "codex-app"
+)
+
 func NormalizeSessionKind(kind SessionKind) SessionKind {
 	switch SessionKind(strings.TrimSpace(string(kind))) {
 	case "", SessionKindAssistant:
@@ -34,7 +40,7 @@ func NormalizeSessionRuntime(runtimeID SessionRuntime) SessionRuntime {
 	switch SessionRuntime(strings.ToLower(strings.TrimSpace(string(runtimeID)))) {
 	case "", SessionRuntimeMatrixClaw, "assistant", "native", "core":
 		return SessionRuntimeMatrixClaw
-	case SessionRuntimeExternalAgent, "external", "agent", SessionRuntimeCodex, "codex-app":
+	case SessionRuntimeExternalAgent, "external", "agent", legacyCodexRuntime, legacyCodexAppRuntime:
 		return SessionRuntimeExternalAgent
 	default:
 		return SessionRuntime(strings.ToLower(strings.TrimSpace(string(runtimeID))))
@@ -47,7 +53,7 @@ func sessionRuntimeForCreate(runtimeID SessionRuntime, kind SessionKind, externa
 		return SessionRuntimeExternalAgent
 	}
 	switch rawRuntimeID {
-	case string(SessionRuntimeCodex), "codex-app":
+	case string(legacyCodexRuntime), string(legacyCodexAppRuntime):
 		return SessionRuntimeExternalAgent
 	}
 	runtimeID = NormalizeSessionRuntime(runtimeID)
@@ -135,6 +141,10 @@ func (c *Core) createExternalAgentAttachment(ctx context.Context, session Sessio
 	if err != nil {
 		return err
 	}
+	metadataJSON, err := externalAgentMetadataJSON(externalSession.Metadata)
+	if err != nil {
+		return err
+	}
 	if err := c.externalStore.SaveExternalAgentSession(ctx, externalagents.SessionAttachment{
 		SessionID:         session.ID,
 		AgentID:           externalSession.AgentID,
@@ -144,13 +154,24 @@ func (c *Core) createExternalAgentAttachment(ctx context.Context, session Sessio
 		Model:             externalSession.Model,
 		ApprovalPolicy:    approvalPolicy,
 		Sandbox:           sandbox,
-		MetadataJSON:      `{"mode":"app-server"}`,
+		MetadataJSON:      metadataJSON,
 		CreatedAt:         session.CreatedAt,
 		UpdatedAt:         session.UpdatedAt,
 	}); err != nil {
 		return err
 	}
 	return nil
+}
+
+func externalAgentMetadataJSON(metadata map[string]any) (string, error) {
+	if len(metadata) == 0 {
+		return "{}", nil
+	}
+	data, err := json.Marshal(metadata)
+	if err != nil {
+		return "", fmt.Errorf("%w: external agent metadata: %v", ErrInvalidInput, err)
+	}
+	return string(data), nil
 }
 
 func externalAgentPolicyForPermissionMode(mode PermissionMode) (string, string) {

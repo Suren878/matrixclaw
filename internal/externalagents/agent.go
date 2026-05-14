@@ -107,3 +107,15 @@ type SessionAttachment struct {
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }
+
+func (a SessionAttachment) ExternalSession() ExternalSession {
+	return ExternalSession{
+		AgentID:           a.AgentID,
+		ExternalThreadID:  a.ExternalThreadID,
+		ExternalSessionID: a.ExternalSessionID,
+		CWD:               a.CWD,
+		Model:             a.Model,
+		ApprovalPolicy:    a.ApprovalPolicy,
+		Sandbox:           a.Sandbox,
+	}
+}

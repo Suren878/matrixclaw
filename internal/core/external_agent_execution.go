@@ -34,7 +34,8 @@ func (c *Core) tryExecuteExternalAgentRun(ctx context.Context, runID string) (bo
 		}
 		return true, c.failRunByID(ctx, run, err)
 	}
-	if _, err := c.externalRuntime(attachment.AgentID); err != nil {
+	runtime, err := c.externalRuntime(attachment.AgentID)
+	if err != nil {
 		return true, c.failRunByID(ctx, run, err)
 	}
 
@@ -45,7 +46,7 @@ func (c *Core) tryExecuteExternalAgentRun(ctx context.Context, runID string) (bo
 	runCtx, unregisterRun := c.activeRunContext(ctx, run.ID)
 	defer unregisterRun()
 
-	return true, c.executeExternalAgentRun(ctx, runCtx, run, attachment)
+	return true, c.executeExternalAgentRun(ctx, runCtx, run, runtime, attachment)
 }
 
 func (c *Core) externalRuntime(agentID string) (externalagents.RuntimeAgent, error) {
@@ -63,24 +64,12 @@ func (c *Core) externalRuntime(agentID string) (externalagents.RuntimeAgent, err
 	return runtime, nil
 }
 
-func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Context, run Run, attachment externalagents.SessionAttachment) error {
-	runtime, err := c.externalRuntime(attachment.AgentID)
-	if err != nil {
-		return c.failRunByID(ctx, run, err)
-	}
+func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Context, run Run, runtime externalagents.RuntimeAgent, attachment externalagents.SessionAttachment) error {
 	userMessage, err := c.findRunUserMessage(ctx, run)
 	if err != nil {
 		return c.failRunByID(ctx, run, err)
 	}
-	externalSession := externalagents.ExternalSession{
-		AgentID:           attachment.AgentID,
-		ExternalThreadID:  attachment.ExternalThreadID,
-		ExternalSessionID: attachment.ExternalSessionID,
-		CWD:               attachment.CWD,
-		Model:             attachment.Model,
-		ApprovalPolicy:    attachment.ApprovalPolicy,
-		Sandbox:           attachment.Sandbox,
-	}
+	externalSession := attachment.ExternalSession()
 	events, err := runtime.Send(runCtx, externalSession, externalagents.Input{Text: userMessage.Content})
 	if err != nil {
 		return c.failRunByID(ctx, run, err)
@@ -140,12 +129,27 @@ func (c *Core) applyExternalMessageDelta(ctx context.Context, assistant *Message
 	if assistant == nil || saved == nil {
 		return nil
 	}
-	if delta == "" && *saved {
+	if delta == "" {
 		return nil
 	}
-	now := c.now().UTC()
 	assistant.Content += delta
-	assistant.Parts = NormalizeMessageParts(assistant.Content, nil)
+	upsertExternalTextPart(assistant)
+	return c.saveExternalAssistantProgress(ctx, assistant, saved)
+}
+
+func (c *Core) applyExternalReasoningDelta(ctx context.Context, assistant *Message, saved *bool, delta string) error {
+	if strings.TrimSpace(delta) == "" {
+		return nil
+	}
+	if assistant == nil || saved == nil {
+		return nil
+	}
+	appendExternalReasoningDelta(assistant, delta)
+	return c.saveExternalAssistantProgress(ctx, assistant, saved)
+}
+
+func (c *Core) saveExternalAssistantProgress(ctx context.Context, assistant *Message, saved *bool) error {
+	now := c.now().UTC()
 	if !*saved {
 		assistant.CreatedAt = now
 		assistant.UpdatedAt = now
@@ -164,34 +168,35 @@ func (c *Core) applyExternalMessageDelta(ctx context.Context, assistant *Message
 	return nil
 }
 
-func (c *Core) applyExternalReasoningDelta(ctx context.Context, assistant *Message, saved *bool, delta string) error {
-	if strings.TrimSpace(delta) == "" {
-		return nil
+func upsertExternalTextPart(assistant *Message) {
+	if assistant.Content == "" {
+		return
 	}
-	if assistant == nil || saved == nil {
-		return nil
+	for i := range assistant.Parts {
+		if assistant.Parts[i].Kind == MessagePartKindText && assistant.Parts[i].Text != nil {
+			assistant.Parts[i].Text.Text = assistant.Content
+			return
+		}
 	}
-	now := c.now().UTC()
+	textPart := MessagePart{
+		Kind: MessagePartKindText,
+		Text: &TextPart{Text: assistant.Content},
+	}
+	assistant.Parts = append([]MessagePart{textPart}, assistant.Parts...)
+}
+
+func appendExternalReasoningDelta(assistant *Message, delta string) {
+	if len(assistant.Parts) > 0 {
+		last := &assistant.Parts[len(assistant.Parts)-1]
+		if last.Kind == MessagePartKindReasoning && last.Reasoning != nil {
+			last.Reasoning.Text += delta
+			return
+		}
+	}
 	assistant.Parts = append(assistant.Parts, MessagePart{
 		Kind:      MessagePartKindReasoning,
 		Reasoning: &ReasoningPart{Text: delta},
 	})
-	if !*saved {
-		assistant.CreatedAt = now
-		assistant.UpdatedAt = now
-		if err := c.store.SaveMessage(ctx, *assistant); err != nil {
-			return err
-		}
-		*saved = true
-		c.publishEvent(Event{Type: EventMessageCreated, SessionID: assistant.SessionID, RunID: assistant.RunID, Payload: *assistant})
-		return nil
-	}
-	assistant.UpdatedAt = now
-	if err := c.store.UpdateMessage(ctx, *assistant); err != nil {
-		return err
-	}
-	c.publishEvent(Event{Type: EventMessageUpdated, SessionID: assistant.SessionID, RunID: assistant.RunID, Payload: *assistant})
-	return nil
 }
 
 func (c *Core) completeExternalAgentRun(ctx context.Context, run *Run, assistant *Message, assistantSaved bool) error {

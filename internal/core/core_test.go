@@ -149,7 +149,7 @@ func TestCoreCreateExternalAgentSessionStartsAttachment(t *testing.T) {
 
 	session, err := app.CreateSession(ctx, core.CreateSessionInput{
 		Title:      "Codex",
-		RuntimeID:  core.SessionRuntimeCodex,
+		RuntimeID:  core.SessionRuntime("codex"),
 		WorkingDir: "/workspace",
 		ModelID:    "gpt-5.4",
 	})
