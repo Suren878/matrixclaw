@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.5
+
+- Improved Codex external-agent sessions: restored thread resume handling,
+  normalized Codex tool activity into shared tool-call events, and preserved
+  streamed `text -> tool -> text` ordering.
+- Fixed TUI rendering so assistant text before and after tool calls is shown in
+  the correct order without reimplementing Codex edits or diffs.
+- Restored mouse-wheel scrolling in the terminal chat while keeping keyboard
+  copy support for selected chat blocks.
+- Cleaned up external-agent runtime plumbing and documentation so future
+  runtimes can reuse the same event path.
+- Refined TUI and Telegram command-menu parity.
+
 ## v0.1.4
 
 - Added Codex as an external agent runtime with app-server session attachment,
