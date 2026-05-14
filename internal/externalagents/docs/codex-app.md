@@ -7,7 +7,8 @@ It is intentionally isolated under:
 internal/externalagents/codexapp
 ```
 
-The connector is not wired into matrixclaw runtime yet.
+The connector is wired into the daemon as an optional external-agent runtime.
+It remains isolated from normal provider-backed assistant sessions.
 
 ## Why App-Server
 
@@ -93,7 +94,7 @@ Then the client sends:
 
 ## Start Thread
 
-First message in a Codex-backed matrixclaw session should create a Codex thread:
+Creating a Codex-backed matrixclaw session starts a Codex thread:
 
 ```json
 {
@@ -163,24 +164,28 @@ or path. Prefer thread id.
 
 ## Approval Policy
 
-For the first matrixclaw integration stage:
+matrixclaw maps the session permission mode into Codex app-server policy:
+
+```text
+full-auto    -> approvalPolicy: never,      sandbox: danger-full-access
+accept-edits -> approvalPolicy: on-request, sandbox: workspace-write
+default      -> approvalPolicy: on-request, sandbox: read-only
+```
+
+The Codex adapter also has a trusted-local fallback when no policy is supplied:
 
 ```text
 approvalPolicy: never
 sandbox: danger-full-access
 ```
 
-This is intentionally scoped to the optional Codex external-agent module.
-The Codex app-server sandbox depends on `bubblewrap`; on some hosts it fails
-before the model can even run safe commands such as `ls`. MatrixClaw starts
-Codex in a trusted local execution mode so the integration is usable, while
-MatrixClaw's own tool approvals remain separate.
+The fallback is intentionally scoped to the optional Codex external-agent
+module. The Codex app-server sandbox depends on `bubblewrap`; on some hosts it
+fails before the model can even run safe commands such as `ls`.
 
-Later stages can support:
+Later stages still need:
 
 ```text
-on-request
-workspace-write
 approval request notifications
 matrixclaw approval UI
 ```
@@ -253,4 +258,6 @@ The core can execute a run for a session that has an
 internal/core/external_agent_execution.go
 ```
 
-The daemon does not wire Codex into setup/session creation yet.
+The daemon registers the Codex runtime during bootstrap. The API can list
+external agents and create external-agent sessions; setup UI wiring is still
+pending.

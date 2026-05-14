@@ -15,7 +15,9 @@ Scripts:
   `--purge` is explicitly passed.
 - `build_release.sh`
   Build `matrixclaw` and `matrixclawd` with version, commit, and build date
-  stamped through Go ldflags.
+  stamped through Go ldflags. By default it writes local builds to `bin/`;
+  GitHub release packaging writes archives to `dist/`. Both directories are
+  ignored and should not be committed.
 
 Rule:
 - scripts install files and print the next setup step

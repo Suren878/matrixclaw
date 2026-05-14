@@ -237,6 +237,10 @@ SQLite external_agent_sessions store
 core branch for sessions with external-agent attachments
 Codex app-server runtime bridge
 normalized message.delta / turn.completed / turn.failed events
+daemon bootstrap wiring for Codex app-server
+API endpoint to list external agents
+API/session creation flow for external-agent sessions
+controlplane session creation choice for Codex
 ```
 
 It can:
@@ -250,7 +254,7 @@ turn/start
 turn/steer
 receive notifications
 map Codex notifications to generic external-agent events
-execute an attached external-agent run through core without UI wiring
+execute an attached external-agent run through core
 run fake protocol tests
 run live initialize smoke test
 run live thread+turn smoke test
@@ -260,10 +264,6 @@ Not implemented yet:
 
 ```text
 setup UI
-TUI/Telegram session creation
 approval request handling
-Codex runtime wiring in daemon bootstrap
-API endpoint to list external agents
-API/session creation flow for external-agent sessions
 tool/diff/approval event rendering beyond message/turn events
 ```

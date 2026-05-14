@@ -13,8 +13,9 @@ small local daemon, stores state in SQLite, and gives your AI sessions a home
 outside any single app or chat window.
 
 The core owns the session: context, files, tool history, approvals, provider
-settings, and model choice. The Terminal TUI, Telegram bot, and future mobile
-clients are only interfaces connected to the same local runtime.
+settings, model choice, and optional external-agent attachments. The Terminal
+TUI, Telegram bot, and future mobile clients are only interfaces connected to
+the same local runtime.
 
 That means you can start a conversation in the terminal, approve a tool call on
 your machine, continue from Telegram, and later return to the same session
@@ -35,6 +36,7 @@ continuity and explicit control matter.
 - **One assistant, many clients:** begin a session in Terminal TUI and continue it in Telegram.
 - **Local-first state:** sessions, runs, approvals, files, and provider choices live in SQLite.
 - **Provider switching:** OpenAI-compatible APIs, Anthropic, Gemini, and custom endpoints.
+- **External agents:** experimental Codex app-server sessions attach to the same session model.
 - **Tools with approvals:** file and shell tools pause before risky changes.
 - **Automation-ready:** reminders, scheduled AI tasks, deliveries, and future agent workflows.
 
@@ -112,6 +114,7 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
 - Telegram client for remote sessions, files, images, provider/model commands, and approvals.
 - Durable sessions, messages, runs, approvals, file snapshots, deliveries, and tool results.
 - OpenAI-compatible, Anthropic-compatible, Gemini, and custom provider adapters.
+- Experimental external-agent sessions through Codex app-server.
 - Service-owned tool execution with approval previews before writes and shell actions.
 - SQLite-backed local state with reconnectable clients and session handoff.
 - Automation jobs for reminders and scheduled AI tasks.
@@ -185,6 +188,7 @@ flowchart LR
     CORE --> STORE[(SQLite)]
     CORE --> ORCH[Orchestration]
     ORCH --> PROVIDERS[LLM providers]
+    ORCH --> AGENTS[External agents]
     ORCH --> TOOLS[Tools]
     TOOLS --> APPROVALS[Durable approvals]
     APPROVALS --> STORE
@@ -210,6 +214,7 @@ Core rules:
 - [`internal/controlplane`](internal/controlplane): shared command surface
 - [`internal/store`](internal/store): SQLite persistence
 - [`internal/providers`](internal/providers): provider adapters and catalog
+- [`internal/externalagents`](internal/externalagents): external-agent registry and Codex app-server adapter
 - [`internal/tools`](internal/tools): builtin tools
 - [`scripts`](scripts): install, uninstall, and release-build scripts
 - [`packaging`](packaging): release and Homebrew packaging notes
@@ -227,6 +232,7 @@ Local by default:
 Can leave your machine:
 
 - Prompts, selected context, tool results, and conversation history sent to the configured LLM provider.
+- External-agent prompts, working directories, and agent events sent through the configured external agent.
 - Telegram messages and buttons when the Telegram client is enabled.
 - Network traffic caused by tools you approve or run.
 - Any custom provider endpoint you configure.
