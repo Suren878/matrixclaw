@@ -114,19 +114,63 @@ func TestExternalAssistantPartsPreserveInterleavedReasoningAndText(t *testing.T)
 	assistant := &Message{}
 	appendExternalReasoningDelta(assistant, "first")
 	assistant.Content += "hello"
-	upsertExternalTextPart(assistant)
+	appendExternalTextDelta(assistant, "hello")
 	appendExternalReasoningDelta(assistant, " second")
 	assistant.Content += " world"
-	upsertExternalTextPart(assistant)
+	appendExternalTextDelta(assistant, " world")
 
-	if len(assistant.Parts) != 2 {
-		t.Fatalf("len(parts) = %d, want text and reasoning: %#v", len(assistant.Parts), assistant.Parts)
+	if len(assistant.Parts) != 4 {
+		t.Fatalf("len(parts) = %d, want reasoning, text, reasoning, text sequence: %#v", len(assistant.Parts), assistant.Parts)
 	}
-	if assistant.Parts[0].Kind != MessagePartKindText || assistant.Parts[0].Text == nil || assistant.Parts[0].Text.Text != "hello world" {
-		t.Fatalf("text part = %#v, want hello world", assistant.Parts[0])
+	if assistant.Parts[0].Kind != MessagePartKindReasoning || assistant.Parts[0].Reasoning == nil || assistant.Parts[0].Reasoning.Text != "first" {
+		t.Fatalf("first part = %#v, want first reasoning", assistant.Parts[0])
 	}
-	if assistant.Parts[1].Kind != MessagePartKindReasoning || assistant.Parts[1].Reasoning == nil || assistant.Parts[1].Reasoning.Text != "first second" {
-		t.Fatalf("reasoning part = %#v, want merged reasoning", assistant.Parts[1])
+	if assistant.Parts[1].Kind != MessagePartKindText || assistant.Parts[1].Text == nil || assistant.Parts[1].Text.Text != "hello" {
+		t.Fatalf("second part = %#v, want hello text", assistant.Parts[1])
+	}
+	if assistant.Parts[2].Kind != MessagePartKindReasoning || assistant.Parts[2].Reasoning == nil || assistant.Parts[2].Reasoning.Text != " second" {
+		t.Fatalf("third part = %#v, want second reasoning", assistant.Parts[2])
+	}
+	if assistant.Parts[3].Kind != MessagePartKindText || assistant.Parts[3].Text == nil || assistant.Parts[3].Text.Text != " world" {
+		t.Fatalf("fourth part = %#v, want world text", assistant.Parts[3])
+	}
+}
+
+func TestExternalAssistantPartsPreserveToolOrderBetweenTextDeltas(t *testing.T) {
+	t.Parallel()
+
+	assistant := &Message{}
+	assistant.Content += "Checking the folder.\n"
+	appendExternalTextDelta(assistant, "Checking the folder.\n")
+	upsertExternalToolCall(assistant, "item_1", "bash", `{"command":"ls"}`, false)
+	upsertExternalToolResult(assistant, "item_1", "bash", "file.txt\n", false, true)
+	upsertExternalToolCall(assistant, "item_1", "bash", `{"command":"ls"}`, true)
+	assistant.Content += "The folder contains file.txt.\n"
+	appendExternalTextDelta(assistant, "The folder contains file.txt.\n")
+
+	kinds := make([]MessagePartKind, len(assistant.Parts))
+	for i, part := range assistant.Parts {
+		kinds[i] = part.Kind
+	}
+	want := []MessagePartKind{
+		MessagePartKindText,
+		MessagePartKindToolCall,
+		MessagePartKindToolResult,
+		MessagePartKindText,
+	}
+	if len(kinds) != len(want) {
+		t.Fatalf("parts = %#v, want kinds %v", assistant.Parts, want)
+	}
+	for i := range want {
+		if kinds[i] != want[i] {
+			t.Fatalf("parts kinds = %v, want %v", kinds, want)
+		}
+	}
+	if assistant.Parts[0].Text.Text != "Checking the folder.\n" {
+		t.Fatalf("before-tool text = %q", assistant.Parts[0].Text.Text)
+	}
+	if assistant.Parts[3].Text.Text != "The folder contains file.txt.\n" {
+		t.Fatalf("after-tool text = %q", assistant.Parts[3].Text.Text)
 	}
 }
 

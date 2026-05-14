@@ -145,7 +145,7 @@ func (c *Core) applyExternalMessageDelta(ctx context.Context, assistant *Message
 		return nil
 	}
 	assistant.Content += delta
-	upsertExternalTextPart(assistant)
+	appendExternalTextDelta(assistant, delta)
 	return c.saveExternalAssistantProgress(ctx, assistant, saved)
 }
 
@@ -208,21 +208,21 @@ func (c *Core) saveExternalAssistantProgress(ctx context.Context, assistant *Mes
 	return nil
 }
 
-func upsertExternalTextPart(assistant *Message) {
-	if assistant.Content == "" {
+func appendExternalTextDelta(assistant *Message, delta string) {
+	if delta == "" {
 		return
 	}
-	for i := range assistant.Parts {
-		if assistant.Parts[i].Kind == MessagePartKindText && assistant.Parts[i].Text != nil {
-			assistant.Parts[i].Text.Text = assistant.Content
+	if len(assistant.Parts) > 0 {
+		last := &assistant.Parts[len(assistant.Parts)-1]
+		if last.Kind == MessagePartKindText && last.Text != nil {
+			last.Text.Text += delta
 			return
 		}
 	}
-	textPart := MessagePart{
+	assistant.Parts = append(assistant.Parts, MessagePart{
 		Kind: MessagePartKindText,
-		Text: &TextPart{Text: assistant.Content},
-	}
-	assistant.Parts = append([]MessagePart{textPart}, assistant.Parts...)
+		Text: &TextPart{Text: delta},
+	})
 }
 
 func appendExternalReasoningDelta(assistant *Message, delta string) {
