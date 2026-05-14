@@ -282,26 +282,70 @@ func ExtractMessageItems(sty *surfacestyles.Styles, msg *surfacemessage.Message,
 	case surfacemessage.User:
 		return []MessageItem{NewUserMessageItem(sty, msg)}
 	case surfacemessage.Assistant, surfacemessage.System:
-		var items []MessageItem
-		if ShouldRenderAssistantMessage(msg) {
-			items = append(items, NewAssistantMessageItem(sty, msg))
+		return extractAssistantMessageItems(sty, msg, toolResults)
+	}
+	return nil
+}
+
+func extractAssistantMessageItems(sty *surfacestyles.Styles, msg *surfacemessage.Message, toolResults map[string]surfacemessage.ToolResult) []MessageItem {
+	var items []MessageItem
+	segment := newAssistantSegment(msg, 0)
+	segmentIndex := 0
+	flushSegment := func() {
+		if !ShouldRenderAssistantSegment(&segment) {
+			return
 		}
-		for _, tc := range msg.ToolCalls() {
+		current := segment
+		items = append(items, NewAssistantMessageItem(sty, &current))
+		segmentIndex++
+		segment = newAssistantSegment(msg, segmentIndex)
+	}
+
+	for _, part := range msg.Parts {
+		switch part := part.(type) {
+		case surfacemessage.TextContent, surfacemessage.ReasoningContent:
+			segment.Parts = append(segment.Parts, part)
+		case surfacemessage.ToolCall:
+			flushSegment()
 			var result *surfacemessage.ToolResult
-			if tr, ok := toolResults[tc.ID]; ok {
+			if tr, ok := toolResults[part.ID]; ok {
 				result = &tr
 			}
 			items = append(items, NewToolMessageItem(
 				sty,
 				msg.ID,
-				tc,
+				part,
 				result,
 				msg.FinishReason() == surfacemessage.FinishReasonCanceled,
 			))
+		case surfacemessage.ToolResult:
+			continue
+		case surfacemessage.Finish:
+			segment.Parts = append(segment.Parts, part)
+		default:
+			segment.Parts = append(segment.Parts, part)
 		}
-		return items
 	}
-	return nil
+	flushSegment()
+
+	return items
+}
+
+func ShouldRenderAssistantSegment(msg *surfacemessage.Message) bool {
+	content := strings.TrimSpace(msg.Content().Text)
+	thinking := strings.TrimSpace(msg.ReasoningContent().Thinking)
+	isError := msg.FinishReason() == surfacemessage.FinishReasonError
+	isCancelled := msg.FinishReason() == surfacemessage.FinishReasonCanceled
+	return content != "" || thinking != "" || msg.IsThinking() || isError || isCancelled
+}
+
+func newAssistantSegment(msg *surfacemessage.Message, index int) surfacemessage.Message {
+	segment := *msg
+	segment.Parts = nil
+	if index > 0 {
+		segment.ID = fmt.Sprintf("%s:part:%d", msg.ID, index)
+	}
+	return segment
 }
 
 func ShouldRenderAssistantMessage(msg *surfacemessage.Message) bool {
