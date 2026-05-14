@@ -52,7 +52,7 @@ func TestSQLiteStoreSessionLifecyclePersistsAcrossReopen(t *testing.T) {
 	session := createTestSession(t, ctx, first, core.Session{
 		ID:             "session_1",
 		Kind:           core.SessionKindExternalAgent,
-		RuntimeID:      core.SessionRuntimeCodex,
+		RuntimeID:      core.SessionRuntimeExternalAgent,
 		WorkingDir:     "/workspace/matrixclaw",
 		PermissionMode: core.PermissionModeAcceptEdits,
 	})
@@ -72,8 +72,8 @@ func TestSQLiteStoreSessionLifecyclePersistsAcrossReopen(t *testing.T) {
 	if got.Kind != core.SessionKindExternalAgent {
 		t.Fatalf("GetSession().Kind = %q, want %q", got.Kind, core.SessionKindExternalAgent)
 	}
-	if got.RuntimeID != core.SessionRuntimeCodex {
-		t.Fatalf("GetSession().RuntimeID = %q, want %q", got.RuntimeID, core.SessionRuntimeCodex)
+	if got.RuntimeID != core.SessionRuntimeExternalAgent {
+		t.Fatalf("GetSession().RuntimeID = %q, want %q", got.RuntimeID, core.SessionRuntimeExternalAgent)
 	}
 	if got.WorkingDir != session.WorkingDir {
 		t.Fatalf("GetSession().WorkingDir = %q, want %q", got.WorkingDir, session.WorkingDir)

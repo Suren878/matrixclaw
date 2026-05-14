@@ -9,13 +9,14 @@ import (
 )
 
 type ExternalAgentDescriptor struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"display_name"`
-	Installed   bool   `json:"installed"`
-	Enabled     bool   `json:"enabled"`
-	AuthState   string `json:"auth_state,omitempty"`
-	Mode        string `json:"mode,omitempty"`
-	Detail      string `json:"detail,omitempty"`
+	ID          string   `json:"id"`
+	Aliases     []string `json:"aliases,omitempty"`
+	DisplayName string   `json:"display_name"`
+	Installed   bool     `json:"installed"`
+	Enabled     bool     `json:"enabled"`
+	AuthState   string   `json:"auth_state,omitempty"`
+	Mode        string   `json:"mode,omitempty"`
+	Detail      string   `json:"detail,omitempty"`
 }
 
 func NormalizeSessionKind(kind SessionKind) SessionKind {
@@ -33,24 +34,28 @@ func NormalizeSessionRuntime(runtimeID SessionRuntime) SessionRuntime {
 	switch SessionRuntime(strings.ToLower(strings.TrimSpace(string(runtimeID)))) {
 	case "", SessionRuntimeMatrixClaw, "assistant", "native", "core":
 		return SessionRuntimeMatrixClaw
-	case SessionRuntimeCodex, "codex-app":
-		return SessionRuntimeCodex
+	case SessionRuntimeExternalAgent, "external", "agent", SessionRuntimeCodex, "codex-app":
+		return SessionRuntimeExternalAgent
 	default:
 		return SessionRuntime(strings.ToLower(strings.TrimSpace(string(runtimeID))))
 	}
 }
 
 func sessionRuntimeForCreate(runtimeID SessionRuntime, kind SessionKind, externalAgentID string) SessionRuntime {
+	rawRuntimeID := strings.ToLower(strings.TrimSpace(string(runtimeID)))
+	if strings.TrimSpace(externalAgentID) != "" {
+		return SessionRuntimeExternalAgent
+	}
+	switch rawRuntimeID {
+	case string(SessionRuntimeCodex), "codex-app":
+		return SessionRuntimeExternalAgent
+	}
 	runtimeID = NormalizeSessionRuntime(runtimeID)
 	if runtimeID != SessionRuntimeMatrixClaw {
-		return runtimeID
-	}
-	externalAgentID = strings.ToLower(strings.TrimSpace(externalAgentID))
-	if externalAgentID == "codex" || externalAgentID == "codex-app" {
-		return SessionRuntimeCodex
+		return SessionRuntimeExternalAgent
 	}
 	if NormalizeSessionKind(kind) == SessionKindExternalAgent {
-		return SessionRuntimeCodex
+		return SessionRuntimeExternalAgent
 	}
 	return SessionRuntimeMatrixClaw
 }
@@ -65,15 +70,15 @@ func sessionKindForRuntime(runtimeID SessionRuntime) SessionKind {
 func externalAgentIDForRuntime(runtimeID SessionRuntime, explicit string) string {
 	explicit = normalizeText(explicit)
 	if explicit != "" {
-		if strings.EqualFold(explicit, "codex") {
-			return "codex-app"
-		}
 		return explicit
 	}
-	if NormalizeSessionRuntime(runtimeID) == SessionRuntimeCodex {
-		return "codex-app"
+	rawRuntimeID := strings.ToLower(strings.TrimSpace(string(runtimeID)))
+	switch rawRuntimeID {
+	case "", string(SessionRuntimeMatrixClaw), string(SessionRuntimeExternalAgent), "external", "agent", "assistant", "native", "core":
+		return ""
+	default:
+		return rawRuntimeID
 	}
-	return ""
 }
 
 func (c *Core) ExternalAgents(ctx context.Context) []ExternalAgentDescriptor {
@@ -85,6 +90,7 @@ func (c *Core) ExternalAgents(ctx context.Context) []ExternalAgentDescriptor {
 	for _, descriptor := range descriptors {
 		out = append(out, ExternalAgentDescriptor{
 			ID:          descriptor.ID,
+			Aliases:     descriptor.Aliases,
 			DisplayName: descriptor.DisplayName,
 			Installed:   descriptor.Installed,
 			Enabled:     descriptor.Enabled,
@@ -100,7 +106,7 @@ func (c *Core) createExternalAgentAttachment(ctx context.Context, session Sessio
 	if c.externalStore == nil {
 		return fmt.Errorf("%w: external agent store unavailable", ErrExecutionUnavailable)
 	}
-	agentID := externalAgentIDForRuntime(session.RuntimeID, input.ExternalAgentID)
+	agentID := externalAgentIDForRuntime(input.RuntimeID, input.ExternalAgentID)
 	if agentID == "" {
 		return fmt.Errorf("%w: external_agent_id is required", ErrInvalidInput)
 	}

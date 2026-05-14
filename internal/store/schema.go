@@ -26,7 +26,7 @@ func applyCanonicalSchema(db *sql.DB) error {
 	if err := ensureColumn(db, "external_agent_sessions", "sandbox", `ALTER TABLE external_agent_sessions ADD COLUMN sandbox TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
 	}
-	if _, err := db.Exec(`UPDATE sessions SET runtime_id = 'codex' WHERE kind = 'external_agent' AND runtime_id = 'matrixclaw'`); err != nil {
+	if _, err := db.Exec(`UPDATE sessions SET runtime_id = 'external_agent' WHERE kind = 'external_agent' AND runtime_id IN ('matrixclaw', 'codex', 'codex-app')`); err != nil {
 		return fmt.Errorf("store: backfill external session runtime: %w", err)
 	}
 	if _, err := db.Exec(`UPDATE sessions SET permission_mode = 'full_auto' WHERE kind = 'external_agent' AND permission_mode = 'default'`); err != nil {

@@ -312,7 +312,7 @@ func (c *Core) ModelsForSession(ctx context.Context, sessionID string) (string, 
 func (c *Core) decorateSessionLLM(session Session) Session {
 	session.Kind = NormalizeSessionKind(session.Kind)
 	if session.Kind == SessionKindExternalAgent && (session.RuntimeID == "" || NormalizeSessionRuntime(session.RuntimeID) == SessionRuntimeMatrixClaw) {
-		session.RuntimeID = SessionRuntimeCodex
+		session.RuntimeID = SessionRuntimeExternalAgent
 	}
 	if session.RuntimeID == "" {
 		session.RuntimeID = SessionRuntimeMatrixClaw

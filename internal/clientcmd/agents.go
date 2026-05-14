@@ -88,7 +88,7 @@ func runAgentStartCommand(stdout io.Writer, stderr io.Writer, binaryName string,
 	session, err := client.CreateSessionWithRequest(context.Background(), core.CreateSessionRequest{
 		Title:           externalAgentSessionTitle(agents, agentID),
 		Kind:            string(core.SessionKindExternalAgent),
-		RuntimeID:       string(core.SessionRuntimeCodex),
+		RuntimeID:       string(core.SessionRuntimeExternalAgent),
 		WorkingDir:      workingDir,
 		PermissionMode:  string(core.PermissionModeFullAuto),
 		ExternalAgentID: agentID,
@@ -128,16 +128,12 @@ func resolveAgentWorkingDir(args []string) (string, error) {
 }
 
 func normalizeAgentID(value string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
-	if value == "codex" {
-		return "codex-app"
-	}
-	return value
+	return strings.ToLower(strings.TrimSpace(value))
 }
 
 func externalAgentReady(agents []core.ExternalAgentDescriptor, agentID string) bool {
 	for _, agent := range agents {
-		if strings.EqualFold(strings.TrimSpace(agent.ID), agentID) {
+		if externalAgentMatches(agent, agentID) {
 			return agent.Installed && agent.Enabled
 		}
 	}
@@ -146,17 +142,30 @@ func externalAgentReady(agents []core.ExternalAgentDescriptor, agentID string) b
 
 func externalAgentSessionTitle(agents []core.ExternalAgentDescriptor, agentID string) string {
 	for _, agent := range agents {
-		if strings.EqualFold(strings.TrimSpace(agent.ID), agentID) && strings.TrimSpace(agent.DisplayName) != "" {
+		if externalAgentMatches(agent, agentID) && strings.TrimSpace(agent.DisplayName) != "" {
 			return strings.TrimSpace(agent.DisplayName)
 		}
 	}
 	return agentID
 }
 
+func externalAgentMatches(agent core.ExternalAgentDescriptor, agentID string) bool {
+	agentID = strings.ToLower(strings.TrimSpace(agentID))
+	if strings.EqualFold(strings.TrimSpace(agent.ID), agentID) {
+		return true
+	}
+	for _, alias := range agent.Aliases {
+		if strings.EqualFold(strings.TrimSpace(alias), agentID) {
+			return true
+		}
+	}
+	return false
+}
+
 func printAgentsUsage(w io.Writer, binaryName string) {
 	fmt.Fprintln(w, "Usage:")
 	fmt.Fprintf(w, "  %s agents                    List external agent runtimes\n", binaryName)
-	fmt.Fprintf(w, "  %s agents start codex [DIR]  Create a Codex-backed session\n", binaryName)
+	fmt.Fprintf(w, "  %s agents start AGENT [DIR]  Create an external-agent session\n", binaryName)
 }
 
 func isHelpArg(value string) bool {

@@ -32,6 +32,28 @@ The external agent is an attachment, not the source of truth. matrixclaw should
 store enough local history and metadata to show the session, recover from
 adapter failures, and detach the external agent later if needed.
 
+`sessions.runtime_id` is a broad runtime family, not a concrete app name:
+
+```text
+matrixclaw       normal provider-backed assistant session
+external_agent   Codex / Claude Code / Kimi Code / OpenCode / future adapters
+```
+
+The concrete adapter is selected by `external_agent_sessions.agent_id`. Legacy
+values such as `runtime_id=codex` are accepted as aliases at API boundaries, but
+new code should create external-agent sessions with:
+
+```json
+{
+  "kind": "external_agent",
+  "runtime_id": "external_agent",
+  "external_agent_id": "codex"
+}
+```
+
+Do not add a new `SessionRuntime*` constant for every tool. New tools belong in
+the external-agent registry as adapters.
+
 ## Desired Package Layout
 
 ```text
@@ -84,6 +106,7 @@ type Registry interface {
 ```go
 type Descriptor struct {
     ID          string
+    Aliases     []string
     DisplayName string
     Installed   bool
     Enabled     bool
@@ -115,6 +138,7 @@ Main session metadata only needs a generic kind:
 
 ```text
 sessions.kind = assistant | external_agent
+sessions.runtime_id = matrixclaw | external_agent
 ```
 
 If keeping the main sessions table untouched is easier during early
@@ -184,15 +208,22 @@ New session should offer:
 ```text
 Assistant
 Codex
+Claude Code
+Kimi Code
+OpenCode
 ```
 
 Assistant sessions use normal matrixclaw providers and tools.
 
-Codex sessions use external-agent runtime:
+External-agent sessions use the common runtime path:
 
 ```text
-matrixclaw session -> codex app-server thread -> turn/start
+matrixclaw session -> external agent attachment -> adapter thread/session -> turn/send
 ```
+
+The UI may show friendly choices, but the core API should receive an
+`external_agent_id`. That keeps session creation stable as more adapters are
+added.
 
 ## Current Experimental Status
 

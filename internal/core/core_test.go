@@ -159,8 +159,8 @@ func TestCoreCreateExternalAgentSessionStartsAttachment(t *testing.T) {
 	if session.Kind != core.SessionKindExternalAgent {
 		t.Fatalf("session kind = %q, want external_agent", session.Kind)
 	}
-	if session.RuntimeID != core.SessionRuntimeCodex {
-		t.Fatalf("session runtime = %q, want codex", session.RuntimeID)
+	if session.RuntimeID != core.SessionRuntimeExternalAgent {
+		t.Fatalf("session runtime = %q, want external_agent", session.RuntimeID)
 	}
 	if session.PermissionMode != core.PermissionModeFullAuto {
 		t.Fatalf("session permission mode = %q, want full_auto", session.PermissionMode)
@@ -1940,6 +1940,10 @@ func (r *externalRuntimeStub) ID() string {
 
 func (r *externalRuntimeStub) DisplayName() string {
 	return "Codex"
+}
+
+func (r *externalRuntimeStub) Aliases() []string {
+	return []string{"codex"}
 }
 
 func (r *externalRuntimeStub) Available(context.Context) externalagents.Availability {

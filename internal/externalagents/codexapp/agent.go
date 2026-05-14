@@ -21,6 +21,10 @@ func (a Agent) DisplayName() string {
 	return "Codex"
 }
 
+func (a Agent) Aliases() []string {
+	return []string{"codex"}
+}
+
 func (a Agent) Available(context.Context) externalagents.Availability {
 	installed := Available(a.Path)
 	detail := ""

@@ -36,8 +36,39 @@ func TestRegistryRejectsDuplicateIDs(t *testing.T) {
 	}
 }
 
+func TestRegistryResolvesAliases(t *testing.T) {
+	registry, err := NewRegistry(fakeAgent{id: "codex-app", aliases: []string{"codex"}})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+
+	agent, ok := registry.Get(" CODEX ")
+	if !ok {
+		t.Fatal("Get(alias) ok = false, want true")
+	}
+	if agent.ID() != "codex-app" {
+		t.Fatalf("Get(alias).ID() = %q, want codex-app", agent.ID())
+	}
+
+	items := registry.List(context.Background())
+	if len(items) != 1 || len(items[0].Aliases) != 1 || items[0].Aliases[0] != "codex" {
+		t.Fatalf("List aliases = %#v, want codex", items)
+	}
+}
+
+func TestRegistryRejectsAliasConflicts(t *testing.T) {
+	_, err := NewRegistry(
+		fakeAgent{id: "codex-app", aliases: []string{"codex"}},
+		fakeAgent{id: "codex"},
+	)
+	if err == nil {
+		t.Fatal("expected alias conflict error")
+	}
+}
+
 type fakeAgent struct {
 	id          string
+	aliases     []string
 	displayName string
 	installed   bool
 	enabled     bool
@@ -49,6 +80,10 @@ func (a fakeAgent) ID() string {
 
 func (a fakeAgent) DisplayName() string {
 	return a.displayName
+}
+
+func (a fakeAgent) Aliases() []string {
+	return a.aliases
 }
 
 func (a fakeAgent) Available(context.Context) Availability {

@@ -61,7 +61,7 @@ func (f *fakeRuntime) CreateSessionWithOptions(_ context.Context, _ string, requ
 		RuntimeID:      core.NormalizeSessionRuntime(core.SessionRuntime(request.RuntimeID)),
 		PermissionMode: core.NormalizePermissionMode(request.PermissionMode),
 	}
-	if session.RuntimeID == core.SessionRuntimeCodex {
+	if session.RuntimeID == core.SessionRuntimeExternalAgent {
 		session.Kind = core.SessionKindExternalAgent
 	} else {
 		session.Kind = core.SessionKindAssistant
@@ -586,8 +586,11 @@ func TestDispatcherCreatesSessionWithRuntimeChoice(t *testing.T) {
 	if len(rt.sessions) != 1 || rt.sessions[0].Title != "Telegram chat 2026-04-23 17:00" {
 		t.Fatalf("created sessions = %#v", rt.sessions)
 	}
-	if rt.createdRequest.RuntimeID != string(core.SessionRuntimeCodex) {
-		t.Fatalf("created runtime = %q, want codex", rt.createdRequest.RuntimeID)
+	if rt.createdRequest.RuntimeID != string(core.SessionRuntimeExternalAgent) {
+		t.Fatalf("created runtime = %q, want external_agent", rt.createdRequest.RuntimeID)
+	}
+	if rt.createdRequest.ExternalAgentID != "codex" {
+		t.Fatalf("created external agent = %q, want codex", rt.createdRequest.ExternalAgentID)
 	}
 	if rt.createdRequest.PermissionMode != string(core.PermissionModeFullAuto) {
 		t.Fatalf("created permission = %q, want full_auto", rt.createdRequest.PermissionMode)

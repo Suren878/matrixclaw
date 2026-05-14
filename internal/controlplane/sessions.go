@@ -55,7 +55,7 @@ func (d *Dispatcher) handleNewSession(ctx context.Context, externalKey string, a
 	if args == "" {
 		return d.sessionRuntimePicker(), nil
 	}
-	return d.createSession(ctx, externalKey, core.SessionRuntimeMatrixClaw, args)
+	return d.createSession(ctx, externalKey, sessionTarget{runtimeID: core.SessionRuntimeMatrixClaw}, args)
 }
 
 func (d *Dispatcher) sessionRuntimePicker() Result {
@@ -135,15 +135,20 @@ func (d *Dispatcher) handleSessionNew(ctx context.Context, externalKey string, a
 		return d.sessionRuntimePicker(), nil
 	}
 	runtimeValue, title, _ := strings.Cut(args, " ")
-	runtimeID := parseSessionRuntime(runtimeValue)
-	if runtimeID == "" {
-		return Result{Handled: true, Text: "Usage: /session new matrixclaw|codex [title]"}, nil
+	target := parseSessionTarget(runtimeValue)
+	if target.runtimeID == "" {
+		return Result{Handled: true, Text: "Usage: /session new matrixclaw|AGENT [title]"}, nil
 	}
-	return d.createSession(ctx, externalKey, runtimeID, strings.TrimSpace(title))
+	return d.createSession(ctx, externalKey, target, strings.TrimSpace(title))
 }
 
-func (d *Dispatcher) createSession(ctx context.Context, externalKey string, runtimeID core.SessionRuntime, title string) (Result, error) {
-	runtimeID = core.NormalizeSessionRuntime(runtimeID)
+type sessionTarget struct {
+	runtimeID       core.SessionRuntime
+	externalAgentID string
+}
+
+func (d *Dispatcher) createSession(ctx context.Context, externalKey string, target sessionTarget, title string) (Result, error) {
+	runtimeID := core.NormalizeSessionRuntime(target.runtimeID)
 	if title = strings.TrimSpace(title); title == "" {
 		title = d.defaultSessionTitle(externalKey)
 	}
@@ -155,8 +160,9 @@ func (d *Dispatcher) createSession(ctx context.Context, externalKey string, runt
 			RuntimeID:  string(runtimeID),
 			WorkingDir: d.workingDir,
 		}
-		if runtimeID == core.SessionRuntimeCodex {
+		if runtimeID == core.SessionRuntimeExternalAgent {
 			request.PermissionMode = string(core.PermissionModeFullAuto)
+			request.ExternalAgentID = target.externalAgentID
 		}
 		session, err = options.CreateSessionWithOptions(ctx, externalKey, request)
 	} else if runtimeID == core.SessionRuntimeMatrixClaw {
@@ -174,14 +180,15 @@ func (d *Dispatcher) createSession(ctx context.Context, externalKey string, runt
 	}, nil
 }
 
-func parseSessionRuntime(value string) core.SessionRuntime {
-	switch strings.ToLower(strings.TrimSpace(value)) {
+func parseSessionTarget(value string) sessionTarget {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch value {
 	case "matrixclaw", "matrix", "default", "assistant", "core":
-		return core.SessionRuntimeMatrixClaw
-	case "codex", "codex-app":
-		return core.SessionRuntimeCodex
+		return sessionTarget{runtimeID: core.SessionRuntimeMatrixClaw}
+	case "":
+		return sessionTarget{}
 	default:
-		return ""
+		return sessionTarget{runtimeID: core.SessionRuntimeExternalAgent, externalAgentID: value}
 	}
 }
 
@@ -216,8 +223,8 @@ func sessionListInfo(session core.Session) string {
 
 func sessionRuntimeLabel(session core.Session) string {
 	switch core.NormalizeSessionRuntime(session.RuntimeID) {
-	case core.SessionRuntimeCodex:
-		return "Codex"
+	case core.SessionRuntimeExternalAgent:
+		return "External Agent"
 	default:
 		return "MatrixClaw"
 	}
@@ -376,7 +383,7 @@ func (d *Dispatcher) rebindAfterDelete(ctx context.Context, externalKey string) 
 		}
 		return "Current session: " + formatSessionLabel(sessions[0], true), nil
 	}
-	result, err := d.createSession(ctx, externalKey, core.SessionRuntimeMatrixClaw, d.defaultSessionTitle(externalKey))
+	result, err := d.createSession(ctx, externalKey, sessionTarget{runtimeID: core.SessionRuntimeMatrixClaw}, d.defaultSessionTitle(externalKey))
 	if err != nil {
 		return "", err
 	}

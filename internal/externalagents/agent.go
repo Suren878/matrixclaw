@@ -15,6 +15,7 @@ type Availability struct {
 
 type Descriptor struct {
 	ID          string
+	Aliases     []string
 	DisplayName string
 	Installed   bool
 	Enabled     bool
@@ -27,6 +28,10 @@ type Agent interface {
 	ID() string
 	DisplayName() string
 	Available(ctx context.Context) Availability
+}
+
+type AliasProvider interface {
+	Aliases() []string
 }
 
 type RuntimeAgent interface {

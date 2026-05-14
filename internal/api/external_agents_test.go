@@ -47,6 +47,9 @@ func TestExternalAgentsAPIListsAndCreatesSession(t *testing.T) {
 	if len(agents.Agents) != 1 || agents.Agents[0].ID != "codex-app" || !agents.Agents[0].Enabled {
 		t.Fatalf("external agents = %#v, want enabled codex-app", agents.Agents)
 	}
+	if len(agents.Agents[0].Aliases) != 1 || agents.Agents[0].Aliases[0] != "codex" {
+		t.Fatalf("external agent aliases = %#v, want codex", agents.Agents[0].Aliases)
+	}
 
 	body := strings.NewReader(`{"title":"Codex","runtime_id":"codex","working_dir":"/tmp","model_id":"gpt-5.4"}`)
 	resp, err = http.Post(server.URL+"/v1/sessions", "application/json", body)
@@ -64,8 +67,8 @@ func TestExternalAgentsAPIListsAndCreatesSession(t *testing.T) {
 	if sessionResp.Session.Kind != core.SessionKindExternalAgent {
 		t.Fatalf("session kind = %q, want external_agent", sessionResp.Session.Kind)
 	}
-	if sessionResp.Session.RuntimeID != core.SessionRuntimeCodex {
-		t.Fatalf("session runtime = %q, want codex", sessionResp.Session.RuntimeID)
+	if sessionResp.Session.RuntimeID != core.SessionRuntimeExternalAgent {
+		t.Fatalf("session runtime = %q, want external_agent", sessionResp.Session.RuntimeID)
 	}
 	attachment, err := sqliteStore.GetExternalAgentSession(context.Background(), sessionResp.Session.ID)
 	if err != nil {
@@ -81,6 +84,8 @@ type apiExternalRuntimeStub struct{}
 func (s *apiExternalRuntimeStub) ID() string { return "codex-app" }
 
 func (s *apiExternalRuntimeStub) DisplayName() string { return "Codex" }
+
+func (s *apiExternalRuntimeStub) Aliases() []string { return []string{"codex"} }
 
 func (s *apiExternalRuntimeStub) Available(context.Context) externalagents.Availability {
 	return externalagents.Availability{Installed: true, Enabled: true, Mode: "test"}

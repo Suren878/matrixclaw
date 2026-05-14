@@ -35,8 +35,9 @@ const (
 type SessionRuntime string
 
 const (
-	SessionRuntimeMatrixClaw SessionRuntime = "matrixclaw"
-	SessionRuntimeCodex      SessionRuntime = "codex"
+	SessionRuntimeMatrixClaw    SessionRuntime = "matrixclaw"
+	SessionRuntimeExternalAgent SessionRuntime = "external_agent"
+	SessionRuntimeCodex         SessionRuntime = "codex"
 )
 
 type MessageRole string
