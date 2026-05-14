@@ -76,6 +76,7 @@ const (
 	EventReasoningDelta  EventKind = "reasoning.delta"
 	EventToolStarted     EventKind = "tool.started"
 	EventToolOutputDelta EventKind = "tool.output.delta"
+	EventToolCompleted   EventKind = "tool.completed"
 	EventDiffUpdated     EventKind = "diff.updated"
 	EventTurnCompleted   EventKind = "turn.completed"
 	EventTurnFailed      EventKind = "turn.failed"
@@ -87,6 +88,8 @@ type Event struct {
 	ExternalThreadID string    `json:"external_thread_id,omitempty"`
 	ExternalTurnID   string    `json:"external_turn_id,omitempty"`
 	ItemID           string    `json:"item_id,omitempty"`
+	ToolName         string    `json:"tool_name,omitempty"`
+	ToolInput        string    `json:"tool_input,omitempty"`
 	Text             string    `json:"text,omitempty"`
 	Error            string    `json:"error,omitempty"`
 	RawMethod        string    `json:"raw_method,omitempty"`

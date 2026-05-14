@@ -130,6 +130,34 @@ func TestExternalAssistantPartsPreserveInterleavedReasoningAndText(t *testing.T)
 	}
 }
 
+func TestExternalToolPartsPreserveCallInputAndStreamedOutput(t *testing.T) {
+	t.Parallel()
+
+	assistant := &Message{}
+	upsertExternalToolCall(assistant, "item_1", "bash", `{"command":"ls"}`, false)
+	upsertExternalToolResult(assistant, "item_1", "", "a", false, true)
+	upsertExternalToolResult(assistant, "item_1", "", "b", false, true)
+	upsertExternalToolCall(assistant, "item_1", "bash", `{"command":"ls"}`, true)
+
+	if len(assistant.Parts) != 2 {
+		t.Fatalf("len(parts) = %d, want tool call and result: %#v", len(assistant.Parts), assistant.Parts)
+	}
+	call := assistant.Parts[0].ToolCall
+	if assistant.Parts[0].Kind != MessagePartKindToolCall || call == nil {
+		t.Fatalf("first part = %#v, want tool call", assistant.Parts[0])
+	}
+	if call.ID != "item_1" || call.Name != "bash" || call.Input != `{"command":"ls"}` || !call.Finished {
+		t.Fatalf("tool call = %#v, want finished bash call with input", call)
+	}
+	result := assistant.Parts[1].ToolResult
+	if assistant.Parts[1].Kind != MessagePartKindToolResult || result == nil {
+		t.Fatalf("second part = %#v, want tool result", assistant.Parts[1])
+	}
+	if result.ToolCallID != "item_1" || result.Name != "bash" || result.Content != "ab" || result.Status != "success" {
+		t.Fatalf("tool result = %#v, want streamed bash result", result)
+	}
+}
+
 func TestBuildProviderConversationBatchesConsecutiveToolCallsAndPairsResults(t *testing.T) {
 	t.Parallel()
 

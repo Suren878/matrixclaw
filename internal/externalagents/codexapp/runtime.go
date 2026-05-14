@@ -235,6 +235,33 @@ func (r *Runtime) forwardTurnEvents(ctx context.Context, out chan<- externalagen
 func normalizeNotification(event Notification, threadID string, turnID string) ([]externalagents.Event, bool) {
 	now := time.Now().UTC()
 	switch params := event.Params.(type) {
+	case ItemNotification:
+		if params.ThreadID != threadID || params.TurnID != turnID {
+			return nil, false
+		}
+		completed := event.Method == "item/completed"
+		tool, ok := codexToolFromItem(params.Item, completed)
+		if !ok {
+			return nil, false
+		}
+		kind := externalagents.EventToolStarted
+		if completed {
+			kind = externalagents.EventToolCompleted
+		}
+		return []externalagents.Event{{
+			Kind:             kind,
+			AgentID:          AgentID,
+			ExternalThreadID: params.ThreadID,
+			ExternalTurnID:   params.TurnID,
+			ItemID:           tool.ID,
+			ToolName:         tool.Name,
+			ToolInput:        tool.Input,
+			Text:             tool.Output,
+			Error:            tool.Error,
+			RawMethod:        event.Method,
+			Raw:              event.Raw,
+			At:               now,
+		}}, false
 	case AgentMessageDelta:
 		if params.ThreadID != threadID || params.TurnID != turnID {
 			return nil, false
@@ -246,6 +273,53 @@ func normalizeNotification(event Notification, threadID string, turnID string) (
 			ExternalTurnID:   params.TurnID,
 			ItemID:           params.ItemID,
 			Text:             params.Delta,
+			RawMethod:        event.Method,
+			Raw:              event.Raw,
+			At:               now,
+		}}, false
+	case ReasoningTextDelta:
+		if params.ThreadID != threadID || params.TurnID != turnID {
+			return nil, false
+		}
+		return []externalagents.Event{{
+			Kind:             externalagents.EventReasoningDelta,
+			AgentID:          AgentID,
+			ExternalThreadID: params.ThreadID,
+			ExternalTurnID:   params.TurnID,
+			ItemID:           params.ItemID,
+			Text:             params.Delta,
+			RawMethod:        event.Method,
+			Raw:              event.Raw,
+			At:               now,
+		}}, false
+	case ToolOutputDelta:
+		if params.ThreadID != threadID || params.TurnID != turnID {
+			return nil, false
+		}
+		return []externalagents.Event{{
+			Kind:             externalagents.EventToolOutputDelta,
+			AgentID:          AgentID,
+			ExternalThreadID: params.ThreadID,
+			ExternalTurnID:   params.TurnID,
+			ItemID:           params.ItemID,
+			Text:             params.Delta,
+			RawMethod:        event.Method,
+			Raw:              event.Raw,
+			At:               now,
+		}}, false
+	case FileChangePatchUpdated:
+		if params.ThreadID != threadID || params.TurnID != turnID {
+			return nil, false
+		}
+		text := formatFileChanges(params.Changes)
+		return []externalagents.Event{{
+			Kind:             externalagents.EventDiffUpdated,
+			AgentID:          AgentID,
+			ExternalThreadID: params.ThreadID,
+			ExternalTurnID:   params.TurnID,
+			ItemID:           params.ItemID,
+			ToolName:         "edit",
+			Text:             text,
 			RawMethod:        event.Method,
 			Raw:              event.Raw,
 			At:               now,

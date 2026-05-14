@@ -268,9 +268,6 @@ func (a *AssistantInfoItem) renderContent(width int) string {
 func BuildToolResultMap(messages []surfacemessage.Message) map[string]surfacemessage.ToolResult {
 	resultMap := make(map[string]surfacemessage.ToolResult)
 	for _, msg := range messages {
-		if msg.Role != surfacemessage.Tool {
-			continue
-		}
 		for _, result := range msg.ToolResults() {
 			if result.ToolCallID != "" {
 				resultMap[result.ToolCallID] = result

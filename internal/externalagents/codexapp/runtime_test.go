@@ -3,6 +3,7 @@ package codexapp
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,6 +52,43 @@ func TestRuntimeStartsSessionAndNormalizesTurnEvents(t *testing.T) {
 	}
 	if got[1].Kind != externalagents.EventTurnCompleted {
 		t.Fatalf("second event = %+v, want turn completed", got[1])
+	}
+}
+
+func TestNormalizeNotificationMapsCodexToolItems(t *testing.T) {
+	t.Parallel()
+
+	startedRaw := json.RawMessage(`{"threadId":"thread_1","turnId":"turn_1","item":{"id":"item_1","type":"commandExecution","command":"ls -la","commandActions":[],"cwd":"/tmp/project","status":"inProgress"}}`)
+	started := decodeNotificationParams("item/started", startedRaw)
+	events, done := normalizeNotification(Notification{Method: "item/started", Params: started, Raw: startedRaw}, "thread_1", "turn_1")
+	if done || len(events) != 1 {
+		t.Fatalf("started events = %+v done=%v, want one non-terminal event", events, done)
+	}
+	if events[0].Kind != externalagents.EventToolStarted || events[0].ItemID != "item_1" || events[0].ToolName != "bash" {
+		t.Fatalf("started event = %+v, want bash tool started", events[0])
+	}
+	if !strings.Contains(events[0].ToolInput, "ls -la") {
+		t.Fatalf("tool input = %q, want command", events[0].ToolInput)
+	}
+
+	deltaRaw := json.RawMessage(`{"threadId":"thread_1","turnId":"turn_1","itemId":"item_1","delta":"file\n"}`)
+	delta := decodeNotificationParams("item/commandExecution/outputDelta", deltaRaw)
+	events, done = normalizeNotification(Notification{Method: "item/commandExecution/outputDelta", Params: delta, Raw: deltaRaw}, "thread_1", "turn_1")
+	if done || len(events) != 1 || events[0].Kind != externalagents.EventToolOutputDelta || events[0].Text != "file\n" {
+		t.Fatalf("delta events = %+v done=%v, want output delta", events, done)
+	}
+
+	completedRaw := json.RawMessage(`{"threadId":"thread_1","turnId":"turn_1","item":{"id":"item_1","type":"commandExecution","command":"ls -la","commandActions":[],"cwd":"/tmp/project","status":"completed","aggregatedOutput":"file\n","exitCode":0}}`)
+	completed := decodeNotificationParams("item/completed", completedRaw)
+	events, done = normalizeNotification(Notification{Method: "item/completed", Params: completed, Raw: completedRaw}, "thread_1", "turn_1")
+	if done || len(events) != 1 {
+		t.Fatalf("completed events = %+v done=%v, want one non-terminal event", events, done)
+	}
+	if events[0].Kind != externalagents.EventToolCompleted || events[0].Text != "file\n" {
+		t.Fatalf("completed event = %+v, want tool completed with output", events[0])
+	}
+	if !strings.Contains(events[0].ToolInput, "ls -la") {
+		t.Fatalf("completed tool input = %q, want command input preserved", events[0].ToolInput)
 	}
 }
 

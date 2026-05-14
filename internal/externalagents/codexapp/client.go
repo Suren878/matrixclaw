@@ -247,8 +247,28 @@ func (c *Client) handleNotification(msg rpcIncoming, raw []byte) {
 
 func decodeNotificationParams(method string, raw json.RawMessage) any {
 	switch method {
+	case "item/started", "item/completed":
+		var params ItemNotification
+		if json.Unmarshal(raw, &params) == nil {
+			return params
+		}
 	case "item/agentMessage/delta":
 		var params AgentMessageDelta
+		if json.Unmarshal(raw, &params) == nil {
+			return params
+		}
+	case "item/reasoning/textDelta", "item/reasoning/summaryTextDelta":
+		var params ReasoningTextDelta
+		if json.Unmarshal(raw, &params) == nil {
+			return params
+		}
+	case "item/commandExecution/outputDelta", "item/fileChange/outputDelta":
+		var params ToolOutputDelta
+		if json.Unmarshal(raw, &params) == nil {
+			return params
+		}
+	case "item/fileChange/patchUpdated":
+		var params FileChangePatchUpdated
 		if json.Unmarshal(raw, &params) == nil {
 			return params
 		}

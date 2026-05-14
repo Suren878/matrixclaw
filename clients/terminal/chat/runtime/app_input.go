@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"strings"
+
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
@@ -78,6 +80,13 @@ func (m *appModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case " ":
 		m.chat.ToggleExpandedSelectedItem()
 		return m, nil
+	case "c", "y", "C", "Y":
+		content := strings.TrimSpace(m.chat.CopyContent())
+		if content == "" {
+			return m, nil
+		}
+		m.err = ""
+		return m, tea.SetClipboard(content)
 	default:
 		if handled, cmd := m.chat.HandleKeyMsg(msg); handled {
 			return m, cmd

@@ -251,6 +251,29 @@ func (m *Chat) HighlightContent() string {
 	return strings.TrimSpace(sb.String())
 }
 
+// CopyContent returns the active chat selection, falling back to the selected
+// item when there is no mouse highlight.
+func (m *Chat) CopyContent() string {
+	if highlighted := strings.TrimSpace(m.HighlightContent()); highlighted != "" {
+		return highlighted
+	}
+	item := m.list.SelectedItem()
+	if item == nil {
+		return ""
+	}
+	width := m.list.Width()
+	if width <= 0 {
+		return ""
+	}
+	var rendered string
+	if rr, ok := item.(list.RawRenderable); ok {
+		rendered = rr.RawRender(width)
+	} else {
+		rendered = item.Render(width)
+	}
+	return strings.TrimSpace(ansi.Strip(rendered))
+}
+
 // ClearMouse clears the current mouse interaction state.
 func (m *Chat) ClearMouse() {
 	m.mouseDown = false

@@ -247,6 +247,11 @@ external-agent events:
 
 ```text
 item/agentMessage/delta -> message.delta
+item/reasoning/*Delta   -> reasoning.delta
+item/started            -> tool.started
+item/*/outputDelta      -> tool.output.delta
+item/completed          -> tool.completed
+item/fileChange/*       -> diff.updated / tool output
 turn/completed          -> turn.completed
 closed/error stream     -> turn.failed
 ```

@@ -97,6 +97,18 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 			if err := c.applyExternalReasoningDelta(ctx, &assistant, &assistantSaved, event.Text); err != nil {
 				return c.failRunByID(ctx, run, err)
 			}
+		case externalagents.EventToolStarted:
+			if err := c.applyExternalToolStarted(ctx, &assistant, &assistantSaved, event); err != nil {
+				return c.failRunByID(ctx, run, err)
+			}
+		case externalagents.EventToolOutputDelta, externalagents.EventDiffUpdated:
+			if err := c.applyExternalToolOutputDelta(ctx, &assistant, &assistantSaved, event); err != nil {
+				return c.failRunByID(ctx, run, err)
+			}
+		case externalagents.EventToolCompleted:
+			if err := c.applyExternalToolCompleted(ctx, &assistant, &assistantSaved, event); err != nil {
+				return c.failRunByID(ctx, run, err)
+			}
 		case externalagents.EventTurnCompleted:
 			return c.completeExternalAgentRun(ctx, &run, &assistant, assistantSaved)
 		case externalagents.EventTurnFailed:
@@ -145,6 +157,34 @@ func (c *Core) applyExternalReasoningDelta(ctx context.Context, assistant *Messa
 		return nil
 	}
 	appendExternalReasoningDelta(assistant, delta)
+	return c.saveExternalAssistantProgress(ctx, assistant, saved)
+}
+
+func (c *Core) applyExternalToolStarted(ctx context.Context, assistant *Message, saved *bool, event externalagents.Event) error {
+	if assistant == nil || saved == nil || strings.TrimSpace(event.ItemID) == "" {
+		return nil
+	}
+	upsertExternalToolCall(assistant, event.ItemID, defaultExternalToolName(event.ToolName), event.ToolInput, false)
+	return c.saveExternalAssistantProgress(ctx, assistant, saved)
+}
+
+func (c *Core) applyExternalToolOutputDelta(ctx context.Context, assistant *Message, saved *bool, event externalagents.Event) error {
+	if assistant == nil || saved == nil || strings.TrimSpace(event.ItemID) == "" || event.Text == "" {
+		return nil
+	}
+	upsertExternalToolResult(assistant, event.ItemID, defaultExternalToolName(event.ToolName), event.Text, false, true)
+	return c.saveExternalAssistantProgress(ctx, assistant, saved)
+}
+
+func (c *Core) applyExternalToolCompleted(ctx context.Context, assistant *Message, saved *bool, event externalagents.Event) error {
+	if assistant == nil || saved == nil || strings.TrimSpace(event.ItemID) == "" {
+		return nil
+	}
+	name := defaultExternalToolName(event.ToolName)
+	upsertExternalToolCall(assistant, event.ItemID, name, event.ToolInput, true)
+	if strings.TrimSpace(event.Text) != "" || strings.TrimSpace(event.Error) != "" {
+		upsertExternalToolResult(assistant, event.ItemID, name, event.Text, strings.TrimSpace(event.Error) != "", false)
+	}
 	return c.saveExternalAssistantProgress(ctx, assistant, saved)
 }
 
@@ -197,6 +237,98 @@ func appendExternalReasoningDelta(assistant *Message, delta string) {
 		Kind:      MessagePartKindReasoning,
 		Reasoning: &ReasoningPart{Text: delta},
 	})
+}
+
+func upsertExternalToolCall(assistant *Message, id string, name string, input string, finished bool) {
+	for i := range assistant.Parts {
+		if assistant.Parts[i].Kind != MessagePartKindToolCall || assistant.Parts[i].ToolCall == nil {
+			continue
+		}
+		if assistant.Parts[i].ToolCall.ID != id {
+			continue
+		}
+		if name != "" {
+			assistant.Parts[i].ToolCall.Name = name
+		}
+		if strings.TrimSpace(input) != "" {
+			assistant.Parts[i].ToolCall.Input = input
+		}
+		if finished {
+			assistant.Parts[i].ToolCall.Finished = true
+		}
+		return
+	}
+	assistant.Parts = append(assistant.Parts, MessagePart{
+		Kind: MessagePartKindToolCall,
+		ToolCall: &ToolCallPart{
+			ID:       id,
+			Name:     name,
+			Input:    input,
+			Finished: finished,
+		},
+	})
+}
+
+func upsertExternalToolResult(assistant *Message, id string, name string, content string, isError bool, appendContent bool) {
+	name = externalToolResultName(assistant, id, name)
+	for i := range assistant.Parts {
+		if assistant.Parts[i].Kind != MessagePartKindToolResult || assistant.Parts[i].ToolResult == nil {
+			continue
+		}
+		if assistant.Parts[i].ToolResult.ToolCallID != id {
+			continue
+		}
+		if appendContent {
+			assistant.Parts[i].ToolResult.Content += content
+		} else if strings.TrimSpace(content) != "" {
+			assistant.Parts[i].ToolResult.Content = content
+		}
+		if name != "" {
+			assistant.Parts[i].ToolResult.Name = name
+		}
+		if isError {
+			assistant.Parts[i].ToolResult.IsError = true
+			assistant.Parts[i].ToolResult.Status = "error"
+		} else if assistant.Parts[i].ToolResult.Status == "" {
+			assistant.Parts[i].ToolResult.Status = "success"
+		}
+		return
+	}
+	status := "success"
+	if isError {
+		status = "error"
+	}
+	assistant.Parts = append(assistant.Parts, MessagePart{
+		Kind: MessagePartKindToolResult,
+		ToolResult: &ToolResultPart{
+			ToolCallID: id,
+			Name:       name,
+			Content:    content,
+			Status:     status,
+			IsError:    isError,
+		},
+	})
+}
+
+func externalToolResultName(assistant *Message, id string, fallback string) string {
+	fallback = defaultExternalToolName(fallback)
+	for _, part := range assistant.Parts {
+		if part.Kind != MessagePartKindToolCall || part.ToolCall == nil {
+			continue
+		}
+		if part.ToolCall.ID == id && strings.TrimSpace(part.ToolCall.Name) != "" {
+			return part.ToolCall.Name
+		}
+	}
+	return fallback
+}
+
+func defaultExternalToolName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "external_tool"
+	}
+	return name
 }
 
 func (c *Core) completeExternalAgentRun(ctx context.Context, run *Run, assistant *Message, assistantSaved bool) error {

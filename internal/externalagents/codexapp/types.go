@@ -1,5 +1,7 @@
 package codexapp
 
+import "encoding/json"
+
 type ClientInfo struct {
 	Name    string  `json:"name"`
 	Title   *string `json:"title"`
@@ -130,11 +132,44 @@ type Notification struct {
 	Raw    []byte
 }
 
+type ItemNotification struct {
+	ThreadID string          `json:"threadId"`
+	TurnID   string          `json:"turnId"`
+	Item     json.RawMessage `json:"item"`
+}
+
 type AgentMessageDelta struct {
 	ThreadID string `json:"threadId"`
 	TurnID   string `json:"turnId"`
 	ItemID   string `json:"itemId"`
 	Delta    string `json:"delta"`
+}
+
+type ReasoningTextDelta struct {
+	ThreadID string `json:"threadId"`
+	TurnID   string `json:"turnId"`
+	ItemID   string `json:"itemId"`
+	Delta    string `json:"delta"`
+}
+
+type ToolOutputDelta struct {
+	ThreadID string `json:"threadId"`
+	TurnID   string `json:"turnId"`
+	ItemID   string `json:"itemId"`
+	Delta    string `json:"delta"`
+}
+
+type FileChangePatchUpdated struct {
+	ThreadID string             `json:"threadId"`
+	TurnID   string             `json:"turnId"`
+	ItemID   string             `json:"itemId"`
+	Changes  []FileUpdateChange `json:"changes"`
+}
+
+type FileUpdateChange struct {
+	Path string          `json:"path"`
+	Diff string          `json:"diff"`
+	Kind json.RawMessage `json:"kind"`
 }
 
 type TurnCompleted struct {
