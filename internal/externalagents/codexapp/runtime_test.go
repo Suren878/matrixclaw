@@ -123,6 +123,17 @@ func TestRuntimeStartsSessionWithUsableSandboxDefaults(t *testing.T) {
 }
 
 func TestRuntimeResumesWhenTurnThreadIsNotLoaded(t *testing.T) {
+	t.Run("missing rollout", func(t *testing.T) {
+		testRuntimeResumesWhenTurnThreadIsNotLoaded(t, "no rollout found for thread id thread_1")
+	})
+	t.Run("thread not found", func(t *testing.T) {
+		testRuntimeResumesWhenTurnThreadIsNotLoaded(t, "thread not found: thread_1")
+	})
+}
+
+func testRuntimeResumesWhenTurnThreadIsNotLoaded(t *testing.T, startTurnError string) {
+	t.Helper()
+
 	clientConn, serverConn := pipePair()
 	defer clientConn.Close()
 	defer serverConn.Close()
@@ -149,7 +160,7 @@ func TestRuntimeResumesWhenTurnThreadIsNotLoaded(t *testing.T) {
 			case "turn/start":
 				turnStartCalls++
 				if turnStartCalls == 1 {
-					writeError(t, enc, req.ID, "no rollout found for thread id thread_1")
+					writeError(t, enc, req.ID, startTurnError)
 					continue
 				}
 				writeResult(t, enc, req.ID, TurnStartResponse{

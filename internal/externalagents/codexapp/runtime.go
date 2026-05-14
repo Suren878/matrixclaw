@@ -123,7 +123,7 @@ func (r *Runtime) Send(ctx context.Context, session externalagents.ExternalSessi
 		ApprovalPolicy: defaultString(session.ApprovalPolicy, defaultApprovalPolicy),
 	})
 	if err != nil {
-		if !isMissingRolloutError(err) {
+		if !isThreadNotLoadedError(err) {
 			return nil, err
 		}
 		resumed, resumeErr := r.ResumeSession(ctx, session)
@@ -276,6 +276,10 @@ func defaultString(value string, fallback string) string {
 	return value
 }
 
-func isMissingRolloutError(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "no rollout found for thread id")
+func isThreadNotLoadedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "no rollout found for thread id") || strings.Contains(msg, "thread not found")
 }
