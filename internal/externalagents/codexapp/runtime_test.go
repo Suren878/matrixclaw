@@ -121,3 +121,101 @@ func TestRuntimeStartsSessionWithUsableSandboxDefaults(t *testing.T) {
 		t.Fatal("timed out waiting for thread/start params")
 	}
 }
+
+func TestRuntimeResumesWhenTurnThreadIsNotLoaded(t *testing.T) {
+	clientConn, serverConn := pipePair()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	resumeCalled := make(chan ThreadResumeParams, 1)
+	go func() {
+		dec := json.NewDecoder(serverConn)
+		enc := json.NewEncoder(serverConn)
+		turnStartCalls := 0
+		for {
+			var req wireRequest
+			if err := dec.Decode(&req); err != nil {
+				return
+			}
+			switch req.Method {
+			case "initialize":
+				writeResult(t, enc, req.ID, InitializeResponse{
+					UserAgent:      "codex-test/0",
+					CodexHome:      "/tmp/codex",
+					PlatformFamily: "unix",
+					PlatformOS:     "linux",
+				})
+			case "initialized":
+			case "turn/start":
+				turnStartCalls++
+				if turnStartCalls == 1 {
+					writeError(t, enc, req.ID, "no rollout found for thread id thread_1")
+					continue
+				}
+				writeResult(t, enc, req.ID, TurnStartResponse{
+					Turn: Turn{ID: "turn_1", ThreadID: "thread_1", Status: "running"},
+				})
+				writeNotification(t, enc, "item/agentMessage/delta", AgentMessageDelta{
+					ThreadID: "thread_1",
+					TurnID:   "turn_1",
+					ItemID:   "item_1",
+					Delta:    "pong",
+				})
+				writeNotification(t, enc, "turn/completed", TurnCompleted{
+					ThreadID: "thread_1",
+					Turn:     Turn{ID: "turn_1", ThreadID: "thread_1", Status: "completed"},
+				})
+			case "thread/resume":
+				var params ThreadResumeParams
+				if err := json.Unmarshal(req.Params, &params); err != nil {
+					t.Errorf("decode thread/resume params: %v", err)
+					return
+				}
+				resumeCalled <- params
+				writeResult(t, enc, req.ID, ThreadResumeResponse{
+					Thread: Thread{ID: "thread_1", SessionID: "session_1", CWD: "/tmp/project"},
+					Model:  "gpt-5.4",
+					CWD:    "/tmp/project",
+				})
+			default:
+				writeError(t, enc, req.ID, "unexpected method "+req.Method)
+			}
+		}
+	}()
+
+	runtime := NewRuntime(RuntimeOptions{
+		Enabled: true,
+		Client:  NewClient(clientConn),
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	events, err := runtime.Send(ctx, externalagents.ExternalSession{
+		AgentID:          AgentID,
+		ExternalThreadID: "thread_1",
+		CWD:              "/tmp/project",
+		Model:            "gpt-5.4",
+		ApprovalPolicy:   "never",
+		Sandbox:          "danger-full-access",
+	}, externalagents.Input{Text: "hello"})
+	if err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+
+	var got []externalagents.Event
+	for event := range events {
+		got = append(got, event)
+	}
+	if len(got) != 2 || got[0].Text != "pong" || got[1].Kind != externalagents.EventTurnCompleted {
+		t.Fatalf("events = %+v, want message delta and completed", got)
+	}
+
+	select {
+	case params := <-resumeCalled:
+		if params.ThreadID != "thread_1" {
+			t.Fatalf("resume thread id = %q, want thread_1", params.ThreadID)
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for thread/resume")
+	}
+}

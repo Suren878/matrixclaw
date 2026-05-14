@@ -107,8 +107,8 @@ func TestCoreExecutesExternalAgentAttachment(t *testing.T) {
 	if runtime.inputText.Load().(string) != "use codex" {
 		t.Fatalf("runtime input = %q, want use codex", runtime.inputText.Load())
 	}
-	if runtime.resumeReq.Load().(externalagents.ExternalSession).ExternalThreadID != "thread_1" {
-		t.Fatalf("runtime resume = %#v, want thread_1", runtime.resumeReq.Load())
+	if runtime.resumeCalled.Load() {
+		t.Fatal("runtime ResumeSession was called before Send; fresh external sessions should be sent directly")
 	}
 
 	messages, err := app.ListMessages(ctx, session.ID, 10)
@@ -1928,6 +1928,7 @@ type externalRuntimeStub struct {
 	resumeSession externalagents.ExternalSession
 	startErr      error
 	resumeErr     error
+	resumeCalled  atomic.Bool
 	startReq      atomic.Value
 	resumeReq     atomic.Value
 	inputText     atomic.Value
@@ -1957,6 +1958,7 @@ func (r *externalRuntimeStub) StartSession(_ context.Context, req externalagents
 }
 
 func (r *externalRuntimeStub) ResumeSession(_ context.Context, session externalagents.ExternalSession) (externalagents.ExternalSession, error) {
+	r.resumeCalled.Store(true)
 	r.resumeReq.Store(session)
 	if r.resumeErr != nil {
 		return externalagents.ExternalSession{}, r.resumeErr

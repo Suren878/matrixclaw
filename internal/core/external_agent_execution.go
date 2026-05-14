@@ -81,10 +81,6 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 		ApprovalPolicy:    attachment.ApprovalPolicy,
 		Sandbox:           attachment.Sandbox,
 	}
-	externalSession, err = runtime.ResumeSession(runCtx, externalSession)
-	if err != nil {
-		return c.failRunByID(ctx, run, err)
-	}
 	events, err := runtime.Send(runCtx, externalSession, externalagents.Input{Text: userMessage.Content})
 	if err != nil {
 		return c.failRunByID(ctx, run, err)

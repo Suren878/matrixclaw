@@ -123,7 +123,22 @@ func (r *Runtime) Send(ctx context.Context, session externalagents.ExternalSessi
 		ApprovalPolicy: defaultString(session.ApprovalPolicy, defaultApprovalPolicy),
 	})
 	if err != nil {
-		return nil, err
+		if !isMissingRolloutError(err) {
+			return nil, err
+		}
+		resumed, resumeErr := r.ResumeSession(ctx, session)
+		if resumeErr != nil {
+			return nil, fmt.Errorf("codexapp: start turn failed: %w; resume failed: %v", err, resumeErr)
+		}
+		session = resumed
+		resp, err = client.StartTurn(ctx, TurnStartParams{
+			ThreadID:       session.ExternalThreadID,
+			Input:          []UserInput{TextInput(text)},
+			ApprovalPolicy: defaultString(session.ApprovalPolicy, defaultApprovalPolicy),
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	out := make(chan externalagents.Event, 64)
@@ -259,4 +274,8 @@ func defaultString(value string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func isMissingRolloutError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "no rollout found for thread id")
 }
