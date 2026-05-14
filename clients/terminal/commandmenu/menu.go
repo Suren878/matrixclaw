@@ -18,8 +18,8 @@ type State struct {
 }
 
 func Entries(state State) []surfacedialog.CommandEntry {
-	entries := make([]surfacedialog.CommandEntry, 0, 12)
-	var secondary []surfacedialog.CommandEntry
+	views := make(map[string]controlplane.CommandView)
+	order := make([]string, 0, 12)
 	for _, item := range controlplane.BuildCommandView(controlplane.MenuState{
 		SessionTitle:   state.SessionTitle,
 		ProviderID:     state.ProviderID,
@@ -32,25 +32,60 @@ func Entries(state State) []surfacedialog.CommandEntry {
 		if item.ID == string(controlplane.CommandNewSession) {
 			continue
 		}
-		entry := surfacedialog.CommandEntry{
-			ID:     item.ID,
-			Title:  item.Title,
-			Status: item.Status,
-			Tone:   commandui.RowToneNormal,
-			Action: surfacedialog.ActionRunControlplaneCommand{Command: item.Command},
-		}
-		if item.Group == controlplane.MenuItemGroupSecondary {
-			secondary = append(secondary, entry)
+		views[item.ID] = item
+		order = append(order, item.ID)
+	}
+
+	entries := make([]surfacedialog.CommandEntry, 0, 12)
+	primary := []controlplane.CommandID{
+		controlplane.CommandSessions,
+		controlplane.CommandContext,
+		controlplane.CommandProvider,
+		controlplane.CommandPermissions,
+	}
+	used := make(map[string]bool, len(primary))
+	for _, id := range primary {
+		item, ok := views[string(id)]
+		if !ok {
 			continue
 		}
-		entries = append(entries, entry)
+		if id == controlplane.CommandContext {
+			item.Title = "Compact"
+			item.Command = "/context compact"
+		}
+		if id == controlplane.CommandProvider {
+			item.Title = "Providers"
+		}
+		if id == controlplane.CommandPermissions {
+			item.Title = "Permissions"
+		}
+		entries = append(entries, commandEntry(item))
+		used[item.ID] = true
 	}
-	entries = append(entries, secondary...)
+	if len(entries) > 0 {
+		entries = append(entries, surfacedialog.CommandEntry{Kind: surfacedialog.ListEntryDivider, ID: "divider_general"})
+	}
+	for _, id := range order {
+		if used[id] {
+			continue
+		}
+		entries = append(entries, commandEntry(views[id]))
+	}
 	if state.ExternalEditorAvailable {
 		entries = append(entries, surfacedialog.CommandEntry{ID: "open_external_editor", Title: "External Editor", Shortcut: "ctrl+o", Action: surfacedialog.ActionExternalEditor{}})
 	}
 	entries = append(entries, surfacedialog.CommandEntry{ID: "quit", Title: "Exit", Role: commandui.RoleExit, Footer: true, Action: surfacedialog.ActionQuit{}})
 	return entries
+}
+
+func commandEntry(item controlplane.CommandView) surfacedialog.CommandEntry {
+	return surfacedialog.CommandEntry{
+		ID:     item.ID,
+		Title:  item.Title,
+		Status: item.Status,
+		Tone:   commandui.RowToneNormal,
+		Action: surfacedialog.ActionRunControlplaneCommand{Command: item.Command},
+	}
 }
 
 func PickerTitle(picker controlplane.PickerData) string {

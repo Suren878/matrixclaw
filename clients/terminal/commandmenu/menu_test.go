@@ -53,6 +53,41 @@ func TestEntriesUseSharedMenuCatalog(t *testing.T) {
 	}
 }
 
+func TestEntriesPutSessionActionsBeforeGeneralCommands(t *testing.T) {
+	entries := Entries(State{PermissionMode: core.PermissionModeDefault})
+	wantIDs := []string{
+		string(controlplane.CommandSessions),
+		string(controlplane.CommandContext),
+		string(controlplane.CommandProvider),
+		string(controlplane.CommandPermissions),
+		"divider_general",
+	}
+	if len(entries) < len(wantIDs) {
+		t.Fatalf("entries = %#v, want at least %d", entries, len(wantIDs))
+	}
+	for i, want := range wantIDs {
+		if entries[i].ID != want {
+			t.Fatalf("entry[%d] = %q, want %q; entries=%#v", i, entries[i].ID, want, entries)
+		}
+	}
+	if entries[1].Title != "Compact" {
+		t.Fatalf("compact title = %q, want Compact", entries[1].Title)
+	}
+	if entries[2].Title != "Providers" {
+		t.Fatalf("provider title = %q, want Providers", entries[2].Title)
+	}
+	if entries[3].Title != "Permissions" {
+		t.Fatalf("permissions title = %q, want Permissions", entries[3].Title)
+	}
+	action, ok := entries[1].Action.(surfacedialog.ActionRunControlplaneCommand)
+	if !ok || action.Command != "/context compact" {
+		t.Fatalf("compact action = %#v, want /context compact", entries[1].Action)
+	}
+	if entries[4].Kind != surfacedialog.ListEntryDivider {
+		t.Fatalf("entry[4] = %#v, want divider", entries[4])
+	}
+}
+
 func TestPickerEntriesKeepSelectedItemDescription(t *testing.T) {
 	entries := PickerEntries(controlplane.PickerData{
 		Kind: controlplane.PickerPermissions,

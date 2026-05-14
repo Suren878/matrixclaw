@@ -190,10 +190,6 @@ func (d *Dispatcher) handleSessionMenu(ctx context.Context, externalKey string, 
 	if err != nil {
 		return Result{}, err
 	}
-	currentSessionID, _, err := d.currentSession(ctx, externalKey)
-	if err != nil {
-		return Result{}, err
-	}
 	title := strings.TrimSpace(session.Title)
 	if title == "" {
 		title = session.ID
@@ -202,12 +198,6 @@ func (d *Dispatcher) handleSessionMenu(ctx context.Context, externalKey string, 
 		Context(session.ID).
 		Back("/sessions").
 		Row("use", "Use", "Make active")
-	if strings.TrimSpace(session.ID) == strings.TrimSpace(currentSessionID) {
-		if core.NormalizeSessionRuntime(session.RuntimeID) == core.SessionRuntimeMatrixClaw {
-			picker.Row("provider", "Provider", sessionProviderStatus(session), "/provider")
-		}
-		picker.Row("permissions", "Permissions", permissionModeStatus(session.PermissionMode), "/permissions")
-	}
 	picker.Row("rename", "Rename", title).
 		Danger("delete", "Delete", "Permanent")
 	return Result{Handled: true, Picker: picker.Ptr()}, nil

@@ -361,11 +361,8 @@ func TestDispatcherSessionPickersAndRenamePrompt(t *testing.T) {
 	if result.Picker == nil || result.Picker.Kind != PickerSessionActions || result.Picker.ContextID != "session_1" {
 		t.Fatalf("Handle(menu) picker = %#v", result.Picker)
 	}
-	if pickerItemCommand(t, result.Picker, "provider") != "/provider" {
-		t.Fatalf("session menu provider command missing: %#v", result.Picker.Items)
-	}
-	if pickerItemCommand(t, result.Picker, "permissions") != "/permissions" {
-		t.Fatalf("session menu permissions command missing: %#v", result.Picker.Items)
+	if pickerHasItem(result.Picker, "provider") || pickerHasItem(result.Picker, "permissions") {
+		t.Fatalf("session menu should not duplicate provider/permissions actions: %#v", result.Picker.Items)
 	}
 
 	result, err = d.Handle(context.Background(), "local", "/session rename session_1")
@@ -1037,6 +1034,18 @@ func formHasField(form *FormData, id string) bool {
 func pickerItemCommand(t *testing.T, picker *PickerData, id string) string {
 	t.Helper()
 	return pickerItem(t, picker, id).Command
+}
+
+func pickerHasItem(picker *PickerData, id string) bool {
+	if picker == nil {
+		return false
+	}
+	for _, item := range picker.Items {
+		if item.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func pickerItem(t *testing.T, picker *PickerData, id string) PickerItem {

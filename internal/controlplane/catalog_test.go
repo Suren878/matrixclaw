@@ -97,23 +97,17 @@ func TestBuildCommandViewMarksMenuItems(t *testing.T) {
 			items = append(items, view)
 		}
 	}
-	if len(items) != 6 {
-		t.Fatalf("len(items) = %d, want 6", len(items))
+	if len(items) != 8 {
+		t.Fatalf("len(items) = %d, want 8", len(items))
 	}
 	byCommand := make(map[string]CommandView, len(items))
 	for _, item := range items {
 		byCommand[item.Command] = item
 	}
-	for _, command := range []string{"/new", "/sessions", "/context", "/modules", "/tasks", "/server"} {
+	for _, command := range []string{"/new", "/sessions", "/provider", "/permissions", "/context", "/modules", "/tasks", "/server"} {
 		if _, ok := byCommand[command]; !ok {
 			t.Fatalf("menu items missing %s: %#v", command, items)
 		}
-	}
-	if _, ok := byCommand["/provider"]; ok {
-		t.Fatalf("menu items should not expose provider globally: %#v", items)
-	}
-	if _, ok := byCommand["/permissions"]; ok {
-		t.Fatalf("menu items should not expose permissions globally: %#v", items)
 	}
 	if _, ok := byCommand["/model"]; ok {
 		t.Fatalf("menu items should configure models through providers now: %#v", items)
