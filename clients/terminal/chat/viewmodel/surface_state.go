@@ -12,6 +12,7 @@ import (
 type Snapshot struct {
 	SessionID             string
 	Session               *core.Session
+	Capabilities          *core.SessionCapabilities
 	Context               *core.ContextReport
 	Plan                  *core.SessionPlan
 	Run                   *core.Run
@@ -31,6 +32,14 @@ func cloneSession(session *core.Session) *core.Session {
 	return &copy
 }
 
+func cloneSessionCapabilities(capabilities *core.SessionCapabilities) *core.SessionCapabilities {
+	if capabilities == nil {
+		return nil
+	}
+	copy := *capabilities
+	return &copy
+}
+
 func cloneRun(run *core.Run) *core.Run {
 	if run == nil {
 		return nil
@@ -41,15 +50,16 @@ func cloneRun(run *core.Run) *core.Run {
 
 func FromStateSnapshot(snapshot clientruntime.StateSnapshot) Snapshot {
 	out := Snapshot{
-		SessionID:   snapshot.SessionID,
-		Session:     cloneSession(snapshot.Session),
-		Context:     cloneContextReport(snapshot.Context),
-		Plan:        cloneSessionPlan(snapshot.Plan),
-		Run:         cloneRun(snapshot.Run),
-		Timing:      cloneTiming(snapshot.Timing),
-		Messages:    ToSurfaceMessages(snapshot.Messages),
-		ToolUpdates: append([]core.ToolUpdate(nil), snapshot.ToolUpdates...),
-		Files:       ToSurfaceFiles(snapshot.Files),
+		SessionID:    snapshot.SessionID,
+		Session:      cloneSession(snapshot.Session),
+		Capabilities: cloneSessionCapabilities(snapshot.Capabilities),
+		Context:      cloneContextReport(snapshot.Context),
+		Plan:         cloneSessionPlan(snapshot.Plan),
+		Run:          cloneRun(snapshot.Run),
+		Timing:       cloneTiming(snapshot.Timing),
+		Messages:     ToSurfaceMessages(snapshot.Messages),
+		ToolUpdates:  append([]core.ToolUpdate(nil), snapshot.ToolUpdates...),
+		Files:        ToSurfaceFiles(snapshot.Files),
 	}
 	for _, approval := range snapshot.Approvals {
 		out.Approvals = append(out.Approvals, ToSurfacePermissionRequest(approval))

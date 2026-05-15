@@ -61,7 +61,7 @@ func (d *Dispatcher) handleNewSession(ctx context.Context, externalKey string, a
 func (d *Dispatcher) sessionRuntimePicker(ctx context.Context) (Result, error) {
 	picker := NewPickerData(PickerSessionRuntime, "New Session").
 		Back("/sessions").
-		Row("matrixclaw", "MatrixClaw", "Providers, tools, approvals")
+		Row("matrixclaw", "Matrixclaw", "Built-in assistant · providers, tools, approvals")
 	if d.externalAgents != nil {
 		agents, err := d.externalAgents.ListExternalAgents(ctx)
 		if err != nil {
@@ -71,13 +71,20 @@ func (d *Dispatcher) sessionRuntimePicker(ctx context.Context) (Result, error) {
 			if !agent.Installed || !agent.Enabled {
 				continue
 			}
-			picker.Row(agent.ID, externalAgentTitle(agent), "External agent runtime")
+			picker.Row(agent.ID, externalAgentTitle(agent), externalAgentSessionRuntimeInfo(agent))
 		}
 	}
 	return Result{
 		Handled: true,
 		Picker:  picker.Ptr(),
 	}, nil
+}
+
+func externalAgentSessionRuntimeInfo(agent core.ExternalAgentDescriptor) string {
+	if strings.EqualFold(strings.TrimSpace(agent.DisplayName), "Codex") || strings.EqualFold(strings.TrimSpace(agent.ID), "codex-app") {
+		return "External coding agent · native Codex sessions"
+	}
+	return "External agent"
 }
 
 func (d *Dispatcher) handleSession(ctx context.Context, externalKey string, args string) (Result, error) {

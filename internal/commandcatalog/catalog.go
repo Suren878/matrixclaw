@@ -41,7 +41,7 @@ func Catalog() []CommandSpec {
 		{ID: CommandPermissions, Command: "/permissions", Aliases: []string{"mode"}, Description: "Permission mode", Menu: true, Public: true},
 		{ID: CommandContext, Command: "/context", Description: "Context", Menu: true, Public: true},
 		{ID: CommandUsage, Command: "/usage", Description: "Token usage", Menu: false, Public: true},
-		{ID: CommandPlan, Command: "/plan", Description: "Goal and plan", Menu: true, Public: true},
+		{ID: CommandPlan, Command: "/plan", Description: "Planning Mode", Menu: true, Public: true},
 		{ID: CommandSearch, Command: "/search", Description: "Search history", Menu: false, Public: true},
 		{ID: CommandModules, Command: "/modules", Description: "Modules", Menu: true, Public: true},
 		{ID: CommandRemind, Command: "/remind", Description: "Create reminder", Menu: false, Public: true},

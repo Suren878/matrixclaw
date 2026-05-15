@@ -11,6 +11,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
+	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/store"
 )
 
@@ -76,6 +77,43 @@ func TestExternalAgentsAPIListsAndCreatesSession(t *testing.T) {
 	}
 	if attachment.ExternalThreadID != "thread_1" {
 		t.Fatalf("attachment thread = %q, want thread_1", attachment.ExternalThreadID)
+	}
+}
+
+func TestExternalAgentsAPIPatchPathPreservesEnabledState(t *testing.T) {
+	t.Parallel()
+
+	setupStore := setup.NewFileStore(filepath.Join(t.TempDir(), "setup.json"))
+	setupService := setup.NewService(setupStore)
+	if err := setupStore.Save(setup.Config{
+		Daemon:  setup.DaemonConfig{HTTPAddr: "127.0.0.1:18081", DBPath: filepath.Join(t.TempDir(), "matrixclaw.db")},
+		Modules: setup.ModulesConfig{ExternalAgents: map[string]setup.ExternalAgentConfig{"codex-app": {Enabled: true}}},
+	}); err != nil {
+		t.Fatalf("Save setup() error = %v", err)
+	}
+	httpServer := newSetupProviderHTTPServer(t, newTestCore(t), setupService, nil)
+
+	req, err := http.NewRequest(http.MethodPatch, httpServer.URL+"/v1/external-agents/codex-app", strings.NewReader(`{"path":"/opt/bin/codex"}`))
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PATCH external agent: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH external agent status = %d, want 200", resp.StatusCode)
+	}
+
+	cfg, err := setupService.Load()
+	if err != nil {
+		t.Fatalf("Load setup() error = %v", err)
+	}
+	agent := cfg.ExternalAgentConfig("codex-app")
+	if !agent.Enabled || agent.Path != "/opt/bin/codex" {
+		t.Fatalf("external agent config = %#v, want enabled with updated path", agent)
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 type StateSnapshot struct {
 	SessionID             string
 	Session               *core.Session
+	Capabilities          *core.SessionCapabilities
 	Context               *core.ContextReport
 	Plan                  *core.SessionPlan
 	Run                   *core.Run
@@ -26,6 +27,7 @@ type State struct {
 	mu                    sync.RWMutex
 	sessionID             string
 	session               *core.Session
+	capabilities          *core.SessionCapabilities
 	context               *core.ContextReport
 	plan                  *core.SessionPlan
 	run                   *core.Run
@@ -41,6 +43,7 @@ func NewState(snapshot core.ClientSnapshot) *State {
 	model := &State{
 		sessionID:             snapshot.SessionID,
 		session:               cloneSession(snapshot.Session),
+		capabilities:          cloneSessionCapabilities(snapshot.Capabilities),
 		context:               cloneContextReport(snapshot.Context),
 		plan:                  cloneSessionPlan(snapshot.Plan),
 		run:                   cloneRun(snapshot.Run),
@@ -78,13 +81,14 @@ func (s *State) Snapshot() StateSnapshot {
 	defer s.mu.RUnlock()
 
 	out := StateSnapshot{
-		SessionID: s.sessionID,
-		Session:   cloneSession(s.session),
-		Context:   cloneContextReport(s.context),
-		Plan:      cloneSessionPlan(s.plan),
-		Run:       cloneRun(s.run),
-		Timing:    cloneTiming(s.timing),
-		Messages:  append([]core.Message(nil), s.messages...),
+		SessionID:    s.sessionID,
+		Session:      cloneSession(s.session),
+		Capabilities: cloneSessionCapabilities(s.capabilities),
+		Context:      cloneContextReport(s.context),
+		Plan:         cloneSessionPlan(s.plan),
+		Run:          cloneRun(s.run),
+		Timing:       cloneTiming(s.timing),
+		Messages:     append([]core.Message(nil), s.messages...),
 	}
 	for _, update := range s.toolUpdates {
 		out.ToolUpdates = append(out.ToolUpdates, update)
@@ -250,6 +254,14 @@ func cloneSession(session *core.Session) *core.Session {
 		return nil
 	}
 	copy := *session
+	return &copy
+}
+
+func cloneSessionCapabilities(capabilities *core.SessionCapabilities) *core.SessionCapabilities {
+	if capabilities == nil {
+		return nil
+	}
+	copy := *capabilities
 	return &copy
 }
 

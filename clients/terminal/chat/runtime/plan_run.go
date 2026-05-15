@@ -15,6 +15,11 @@ import (
 const planSummaryMessageID = "local:session-plan-summary"
 
 func (m *appModel) startPlanRunCmd() tea.Cmd {
+	if !m.currentSessionCapabilities().PlanningMode {
+		m.err = "Planning Mode is available for Matrixclaw sessions only."
+		m.planAutoRun = false
+		return nil
+	}
 	snapshot := m.currentSnapshot()
 	if !planHasOpenWork(snapshot.Plan) {
 		m.planAutoRun = false

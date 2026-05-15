@@ -73,6 +73,26 @@ type Session struct {
 	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
+type SessionCapabilities struct {
+	ProviderSelection bool `json:"provider_selection"`
+	PermissionMode    bool `json:"permission_mode"`
+	PlanningMode      bool `json:"planning_mode"`
+	NativeTools       bool `json:"native_tools"`
+	ExternalAgent     bool `json:"external_agent"`
+}
+
+func CapabilitiesForSession(session Session) SessionCapabilities {
+	if NormalizeSessionRuntime(session.RuntimeID) == SessionRuntimeExternalAgent || NormalizeSessionKind(session.Kind) == SessionKindExternalAgent {
+		return SessionCapabilities{ExternalAgent: true}
+	}
+	return SessionCapabilities{
+		ProviderSelection: true,
+		PermissionMode:    true,
+		PlanningMode:      true,
+		NativeTools:       true,
+	}
+}
+
 type SessionListFilter struct {
 	IncludeArchived bool
 }

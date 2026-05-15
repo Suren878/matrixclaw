@@ -107,6 +107,7 @@ func (m *appModel) controlplanePickerDialog(data controlplane.PickerData) surfac
 	return surfacedialog.NewPicker(m.com, surfacedialog.PickerData{
 		ID:          surfacedialog.PickerID,
 		Title:       commandmenu.PickerTitle(picker),
+		Meta:        strings.TrimSpace(picker.Meta),
 		Legend:      commandmenu.PickerLegend(picker),
 		Filter:      surfacedialog.PickerNeedsFilter(entries),
 		Entries:     entries,

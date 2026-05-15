@@ -31,6 +31,7 @@ type PickerEntry struct {
 	Role     commandui.Role
 	Tone     commandui.RowTone
 	Selected bool
+	Disabled bool
 	Footer   bool
 	Action   Action
 }
@@ -38,6 +39,7 @@ type PickerEntry struct {
 type PickerData struct {
 	ID          string
 	Title       string
+	Meta        string
 	Legend      string
 	Filter      bool
 	Entries     []PickerEntry
@@ -81,6 +83,7 @@ func NewPicker(com *surfacecommon.Common, data PickerData) *Picker {
 		data: PickerData{
 			ID:          strings.TrimSpace(data.ID),
 			Title:       data.Title,
+			Meta:        data.Meta,
 			Legend:      data.Legend,
 			Filter:      data.Filter,
 			Entries:     append([]PickerEntry(nil), data.Entries...),

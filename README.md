@@ -209,13 +209,13 @@ These are client commands, not model tools.
 /permissions                 change the current session permission mode
 /context                     inspect compacted context and token estimate
 /usage                       show recorded input/output/reasoning/cached tokens
-/plan                        show the current goal and plan
+/plan                        show Planning Mode
 /plan goal <text>            set the session goal
 /plan add <text>             add a plan item
 /plan subtask <n> <text>     add a subtask under an item
 /plan edit <n> <text>        edit a plan item
 /plan active|done|skip <n>   update a plan item by number
-/plan clear                  clear goal and plan after confirmation
+/plan clear                  clear Planning Mode after confirmation
 /search <query>              search stored message history
 /modules storage             manage local stored and temporary files
 /modules agents              enable or disable external agent runtimes
@@ -276,7 +276,7 @@ flowchart LR
     ORCH --> TOOLS[Tools]
     TOOLS --> APPROVALS[Durable approvals]
     APPROVALS --> STORE
-    CORE --> PLAN[Goal / Plan state]
+    CORE --> PLAN[Planning Mode state]
     CORE --> SEARCH[Search / Usage]
     CORE --> MODULES[Storage / Automation modules]
     PLAN --> STORE
@@ -291,7 +291,7 @@ Core rules:
 - all real work becomes a persisted run
 - tool approvals are durable and restart-safe
 - provider and model selection are session data
-- goal/plan state and plan-run checkpoints are session data
+- Planning Mode state and plan-run checkpoints are session data
 - search and token usage are read-only views over local SQLite state
 - orchestration, providers, and tools are replaceable adapter families
 
@@ -313,9 +313,9 @@ Manage them from the TUI:
 ```
 
 The screen shows installed/enabled state, mode, resolved binary path, and
-version when available. Enabling Codex adds it to the New Session picker. Future
-agents such as Claude Code, Kimi Code, or OpenCode are expected to plug into the
-same built-in external-agent registry without changing the core session model.
+version when available. Enabling Codex adds it to the New Session picker.
+Codex options use the same shared controls as the rest of the TUI: `Path` opens
+the standard text prompt, and `Enabled` opens a small Enable/Disable picker.
 
 ## Repository Map
 

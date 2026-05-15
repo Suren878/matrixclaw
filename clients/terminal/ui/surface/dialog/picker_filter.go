@@ -36,6 +36,7 @@ func pickerEntryItem(entry PickerEntry) commandui.Item {
 			Shortcut: entry.Shortcut,
 			Role:     entry.Role,
 			Tone:     entry.Tone,
+			Disabled: entry.Disabled,
 		}
 	}
 }

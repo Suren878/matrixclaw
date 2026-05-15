@@ -11,16 +11,18 @@ type MenuState struct {
 	ProviderID     string
 	ModelID        string
 	PermissionMode core.PermissionMode
+	Capabilities   core.SessionCapabilities
 }
 
 type CommandView struct {
-	ID      string
-	Command string
-	Title   string
-	Status  string
-	Group   MenuItemGroup
-	Public  bool
-	Menu    bool
+	ID       string
+	Command  string
+	Title    string
+	Status   string
+	Group    MenuItemGroup
+	Public   bool
+	Menu     bool
+	Disabled bool
 }
 
 func BuildCommandView(state MenuState) []CommandView {
@@ -29,6 +31,7 @@ func BuildCommandView(state MenuState) []CommandView {
 		title := spec.Description
 		status := ""
 		group := MenuItemGroupPrimary
+		disabled := false
 		switch spec.ID {
 		case CommandNewSession:
 			title = "New Session"
@@ -39,15 +42,29 @@ func BuildCommandView(state MenuState) []CommandView {
 			}
 		case CommandProvider:
 			title = "Provider"
-			if value := strings.TrimSpace(state.ProviderID); value != "" {
+			if !state.Capabilities.ProviderSelection && hasSessionCapabilities(state.Capabilities) {
+				status = "Matrixclaw only"
+				disabled = true
+			} else if value := strings.TrimSpace(state.ProviderID); value != "" {
 				status = value
 			}
 		case CommandPermissions:
 			title = "Permission Mode"
-			status = permissionModeStatus(state.PermissionMode)
+			if !state.Capabilities.PermissionMode && hasSessionCapabilities(state.Capabilities) {
+				status = "Matrixclaw only"
+				disabled = true
+			} else {
+				status = permissionModeStatus(state.PermissionMode)
+			}
 		case CommandContext:
 			title = "Context"
 			group = MenuItemGroupSecondary
+		case CommandPlan:
+			title = "Planning Mode"
+			if !state.Capabilities.PlanningMode && hasSessionCapabilities(state.Capabilities) {
+				status = "Matrixclaw only"
+				disabled = true
+			}
 		case CommandModules:
 			title = "Modules"
 			group = MenuItemGroupSecondary
@@ -66,16 +83,25 @@ func BuildCommandView(state MenuState) []CommandView {
 			title = "Restart Daemon"
 		}
 		items = append(items, CommandView{
-			ID:      string(spec.ID),
-			Command: spec.Command,
-			Title:   title,
-			Status:  status,
-			Group:   group,
-			Public:  spec.Public,
-			Menu:    spec.Menu,
+			ID:       string(spec.ID),
+			Command:  spec.Command,
+			Title:    title,
+			Status:   status,
+			Group:    group,
+			Public:   spec.Public,
+			Menu:     spec.Menu,
+			Disabled: disabled,
 		})
 	}
 	return items
+}
+
+func hasSessionCapabilities(capabilities core.SessionCapabilities) bool {
+	return capabilities.ProviderSelection ||
+		capabilities.PermissionMode ||
+		capabilities.PlanningMode ||
+		capabilities.NativeTools ||
+		capabilities.ExternalAgent
 }
 
 func PublicCommandView() []CommandView {

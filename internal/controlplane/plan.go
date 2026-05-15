@@ -23,6 +23,9 @@ func (d *Dispatcher) handlePlan(ctx context.Context, externalKey string, args st
 	if session == nil {
 		return Result{Handled: true, Text: "Select or create a session first."}, nil
 	}
+	if !core.CapabilitiesForSession(*session).PlanningMode {
+		return Result{Handled: true, Text: "Planning Mode is available for Matrixclaw sessions only."}, nil
+	}
 
 	args = strings.TrimSpace(args)
 	lower := strings.ToLower(args)
@@ -61,7 +64,7 @@ func (d *Dispatcher) handlePlan(ctx context.Context, externalKey string, args st
 		return d.updatePlanItemByOrdinal(ctx, session.ID, args[len("skip "):], core.PlanItemSkipped)
 	case lower == "clear":
 		return Result{Handled: true, Confirm: &ConfirmData{
-			Message:        "Clear goal and plan?",
+			Message:        "Clear Planning Mode?",
 			ConfirmLabel:   "Clear",
 			CancelLabel:    "Cancel",
 			ConfirmCommand: "/plan clear confirm",
@@ -146,7 +149,7 @@ func planInfoData(plan core.SessionPlan) InfoData {
 		})
 	}
 	return InfoData{
-		Title: "Goal / Plan",
+		Title: "Planning Mode",
 		Text:  planInfoText(plan),
 		Rows:  rows,
 	}

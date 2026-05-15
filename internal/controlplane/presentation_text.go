@@ -7,6 +7,9 @@ func PickerPresentationText(picker PickerData) string {
 	if title == "" {
 		return "Choose:"
 	}
+	if meta := strings.TrimSpace(picker.Meta); meta != "" {
+		return title + "\n" + meta
+	}
 	return title
 }
 

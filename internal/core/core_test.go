@@ -189,6 +189,18 @@ func TestCoreCreateExternalAgentSessionStartsAttachment(t *testing.T) {
 	}
 }
 
+func TestCapabilitiesForSession(t *testing.T) {
+	matrixclaw := core.CapabilitiesForSession(core.Session{Kind: core.SessionKindAssistant, RuntimeID: core.SessionRuntimeMatrixClaw})
+	if !matrixclaw.ProviderSelection || !matrixclaw.PermissionMode || !matrixclaw.PlanningMode || !matrixclaw.NativeTools || matrixclaw.ExternalAgent {
+		t.Fatalf("matrixclaw capabilities = %#v", matrixclaw)
+	}
+
+	external := core.CapabilitiesForSession(core.Session{Kind: core.SessionKindExternalAgent, RuntimeID: core.SessionRuntimeExternalAgent})
+	if external.ProviderSelection || external.PermissionMode || external.PlanningMode || external.NativeTools || !external.ExternalAgent {
+		t.Fatalf("external capabilities = %#v", external)
+	}
+}
+
 func TestCoreSendsAssistantProfileToProvider(t *testing.T) {
 	t.Parallel()
 

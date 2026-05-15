@@ -88,6 +88,23 @@ func TestEntriesPutSessionActionsBeforeGeneralCommands(t *testing.T) {
 	}
 }
 
+func TestEntriesDisableMatrixclawOnlyCommandsForExternalAgent(t *testing.T) {
+	entries := Entries(State{
+		PermissionMode: core.PermissionModeFullAuto,
+		Capabilities:   core.SessionCapabilities{ExternalAgent: true},
+	})
+	byID := map[string]surfacedialog.CommandEntry{}
+	for _, entry := range entries {
+		byID[entry.ID] = entry
+	}
+	for _, id := range []controlplane.CommandID{controlplane.CommandProvider, controlplane.CommandPermissions, controlplane.CommandPlan} {
+		entry := byID[string(id)]
+		if !entry.Disabled || entry.Status != "Matrixclaw only" {
+			t.Fatalf("%s entry = %#v, want disabled Matrixclaw only", id, entry)
+		}
+	}
+}
+
 func TestPickerEntriesKeepSelectedItemDescription(t *testing.T) {
 	entries := PickerEntries(controlplane.PickerData{
 		Kind: controlplane.PickerPermissions,

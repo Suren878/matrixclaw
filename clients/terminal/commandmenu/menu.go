@@ -14,6 +14,7 @@ type State struct {
 	ProviderID              string
 	ModelID                 string
 	PermissionMode          core.PermissionMode
+	Capabilities            core.SessionCapabilities
 	ExternalEditorAvailable bool
 }
 
@@ -25,6 +26,7 @@ func Entries(state State) []surfacedialog.CommandEntry {
 		ProviderID:     state.ProviderID,
 		ModelID:        state.ModelID,
 		PermissionMode: state.PermissionMode,
+		Capabilities:   state.Capabilities,
 	}) {
 		if !item.Menu {
 			continue
@@ -80,11 +82,12 @@ func Entries(state State) []surfacedialog.CommandEntry {
 
 func commandEntry(item controlplane.CommandView) surfacedialog.CommandEntry {
 	return surfacedialog.CommandEntry{
-		ID:     item.ID,
-		Title:  item.Title,
-		Status: item.Status,
-		Tone:   commandui.RowToneNormal,
-		Action: surfacedialog.ActionRunControlplaneCommand{Command: item.Command},
+		ID:       item.ID,
+		Title:    item.Title,
+		Status:   item.Status,
+		Tone:     commandui.RowToneNormal,
+		Disabled: item.Disabled,
+		Action:   surfacedialog.ActionRunControlplaneCommand{Command: item.Command},
 	}
 }
 

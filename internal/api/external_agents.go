@@ -36,9 +36,16 @@ func (s *Server) handleExternalAgentByID(w http.ResponseWriter, r *http.Request)
 	if !decodeJSONBody(w, r, &update) {
 		return
 	}
+	cfg := s.setup.ExternalAgentConfig(agentID)
+	if update.Enabled != nil {
+		cfg.Enabled = *update.Enabled
+	}
+	if strings.TrimSpace(update.Path) != "" {
+		cfg.Path = strings.TrimSpace(update.Path)
+	}
 	if _, err := s.setup.UpdateExternalAgent(agentID, setup.ExternalAgentConfig{
-		Enabled: update.Enabled,
-		Path:    update.Path,
+		Enabled: cfg.Enabled,
+		Path:    cfg.Path,
 	}); err != nil {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return

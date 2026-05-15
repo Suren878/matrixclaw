@@ -3,6 +3,8 @@ package controlplane
 import (
 	"strings"
 	"testing"
+
+	"github.com/Suren878/matrixclaw/internal/core"
 )
 
 func TestParseRecognizesPrimaryCommandsAndAliases(t *testing.T) {
@@ -117,6 +119,26 @@ func TestBuildCommandViewMarksMenuItems(t *testing.T) {
 	}
 	if byCommand["/server"].Group != MenuItemGroupSecondary {
 		t.Fatalf("menu group mismatch: server=%#v", byCommand["/server"])
+	}
+}
+
+func TestBuildCommandViewMarksMatrixclawOnlyCommandsForExternalAgent(t *testing.T) {
+	views := BuildCommandView(MenuState{
+		SessionTitle: "Codex work",
+		Capabilities: core.SessionCapabilities{ExternalAgent: true},
+	})
+	byCommand := make(map[string]CommandView, len(views))
+	for _, item := range views {
+		byCommand[item.Command] = item
+	}
+	for _, command := range []string{"/provider", "/permissions", "/plan"} {
+		item := byCommand[command]
+		if !item.Disabled || item.Status != "Matrixclaw only" {
+			t.Fatalf("%s item = %#v, want disabled Matrixclaw only", command, item)
+		}
+	}
+	if byCommand["/sessions"].Disabled || byCommand["/modules"].Disabled {
+		t.Fatalf("shared commands should stay enabled: sessions=%#v modules=%#v", byCommand["/sessions"], byCommand["/modules"])
 	}
 }
 

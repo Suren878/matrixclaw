@@ -30,7 +30,7 @@ type SessionRuntimeOptions interface {
 
 type ExternalAgentRuntime interface {
 	ListExternalAgents(ctx context.Context) ([]core.ExternalAgentDescriptor, error)
-	UpdateExternalAgent(ctx context.Context, agentID string, enabled bool) ([]core.ExternalAgentDescriptor, error)
+	UpdateExternalAgent(ctx context.Context, agentID string, update core.UpdateExternalAgentRequest) ([]core.ExternalAgentDescriptor, error)
 }
 
 type ProviderRuntime interface {

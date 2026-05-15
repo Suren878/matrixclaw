@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.8
+
+- Added session capabilities so Matrixclaw and external-agent sessions expose
+  only the controls that apply to their runtime.
+- Marked Provider, Permission Mode, and Planning Mode as Matrixclaw-only for
+  Codex sessions, with explicit explanations instead of silent no-op behavior.
+- Refined the New Session picker copy for Matrixclaw and Codex runtime choices.
+- Reworked Codex module options into editable Path and Enabled controls, with
+  Enabled opening a standard picker and Path using the standard text prompt.
+- Fixed external-agent path updates so changing the Codex binary path does not
+  accidentally reset the enabled state.
+- Renamed user-facing Goal/Plan labels to Planning Mode.
+
 ## v0.1.7
 
 - Added a persistent Planning Mode runner with SQLite-backed checkpoints for

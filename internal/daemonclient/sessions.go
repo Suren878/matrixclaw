@@ -65,11 +65,10 @@ func (c *Client) ListExternalAgents(ctx context.Context) ([]core.ExternalAgentDe
 	return response.Agents, nil
 }
 
-func (c *Client) UpdateExternalAgent(ctx context.Context, agentID string, enabled bool) ([]core.ExternalAgentDescriptor, error) {
+func (c *Client) UpdateExternalAgent(ctx context.Context, agentID string, update core.UpdateExternalAgentRequest) ([]core.ExternalAgentDescriptor, error) {
 	var response core.ExternalAgentsResponse
 	path := "/v1/external-agents/" + escapedPath(agentID)
-	request := core.UpdateExternalAgentRequest{Enabled: enabled}
-	if err := c.doJSON(ctx, http.MethodPatch, path, request, &response); err != nil {
+	if err := c.doJSON(ctx, http.MethodPatch, path, update, &response); err != nil {
 		return nil, err
 	}
 	return response.Agents, nil

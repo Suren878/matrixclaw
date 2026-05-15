@@ -16,6 +16,11 @@ func (b *PickerBuilder) Context(id string) *PickerBuilder {
 	return b
 }
 
+func (b *PickerBuilder) Meta(meta string) *PickerBuilder {
+	b.data.Meta = strings.TrimSpace(meta)
+	return b
+}
+
 func (b *PickerBuilder) Back(command string) *PickerBuilder {
 	b.data.BackCommand = command
 	b.data.CloseCommand = command

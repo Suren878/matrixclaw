@@ -32,6 +32,9 @@ type fakeRuntime struct {
 	storageFiles       []localstorage.Entry
 	tempStorageFiles   []localstorage.TempEntry
 	deletedStoragePath string
+	externalAgents     []core.ExternalAgentDescriptor
+	updatedAgentID     string
+	updatedAgent       core.UpdateExternalAgentRequest
 	restarted          bool
 	compacted          bool
 }
@@ -69,6 +72,44 @@ func (f *fakeRuntime) CreateSessionWithOptions(_ context.Context, _ string, requ
 	f.sessions = append(f.sessions, session)
 	f.binding.SessionID = session.ID
 	return session, nil
+}
+
+func (f *fakeRuntime) ListExternalAgents(context.Context) ([]core.ExternalAgentDescriptor, error) {
+	if f.externalAgents != nil {
+		return append([]core.ExternalAgentDescriptor(nil), f.externalAgents...), nil
+	}
+	return []core.ExternalAgentDescriptor{
+		{ID: "codex-app", Aliases: []string{"codex"}, DisplayName: "Codex", Installed: true, Enabled: true, Mode: "app-server", Version: "0.1.0", Path: "/usr/local/bin/codex"},
+	}, nil
+}
+
+func (f *fakeRuntime) UpdateExternalAgent(_ context.Context, agentID string, update core.UpdateExternalAgentRequest) ([]core.ExternalAgentDescriptor, error) {
+	f.updatedAgentID = agentID
+	f.updatedAgent = update
+	agents, _ := f.ListExternalAgents(context.Background())
+	for i := range agents {
+		if strings.EqualFold(agents[i].ID, agentID) || stringInSliceFold(agents[i].Aliases, agentID) {
+			if update.Enabled != nil {
+				agents[i].Enabled = *update.Enabled
+			}
+			if strings.TrimSpace(update.Path) != "" {
+				agents[i].Path = strings.TrimSpace(update.Path)
+				agents[i].Installed = true
+				agents[i].Detail = ""
+			}
+		}
+	}
+	f.externalAgents = agents
+	return agents, nil
+}
+
+func stringInSliceFold(values []string, value string) bool {
+	for _, item := range values {
+		if strings.EqualFold(item, value) {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *fakeRuntime) UseSession(_ context.Context, _ string, sessionID string) (core.ClientBinding, error) {
@@ -114,6 +155,26 @@ func (f *fakeRuntime) SessionContext(context.Context, string) (core.ContextRepor
 			Included:      true,
 		}},
 	}, nil
+}
+
+func (f *fakeRuntime) SessionPlan(context.Context, string) (core.SessionPlan, error) {
+	return core.SessionPlan{}, nil
+}
+
+func (f *fakeRuntime) SetSessionGoal(_ context.Context, sessionID string, goal string) (core.SessionPlan, error) {
+	return core.SessionPlan{SessionID: sessionID, Goal: goal}, nil
+}
+
+func (f *fakeRuntime) ClearSessionPlan(_ context.Context, sessionID string) (core.SessionPlan, error) {
+	return core.SessionPlan{SessionID: sessionID}, nil
+}
+
+func (f *fakeRuntime) AddPlanItem(_ context.Context, sessionID string, text string, parentID string) (core.SessionPlan, error) {
+	return core.SessionPlan{SessionID: sessionID, Items: []core.PlanItem{{ID: "plan_1", SessionID: sessionID, ParentID: parentID, Text: text, Status: core.PlanItemPending}}}, nil
+}
+
+func (f *fakeRuntime) UpdatePlanItem(_ context.Context, sessionID string, itemID string, status core.PlanItemStatus, text string) (core.SessionPlan, error) {
+	return core.SessionPlan{SessionID: sessionID, Items: []core.PlanItem{{ID: itemID, SessionID: sessionID, Text: text, Status: status}}}, nil
 }
 
 func (f *fakeRuntime) CompactSession(context.Context, string) (core.CompactSessionResult, error) {
@@ -551,6 +612,140 @@ func TestDispatcherStorageAutoCleanupUsesPicker(t *testing.T) {
 	}
 }
 
+func TestDispatcherExternalAgentUsesEditableRowsAndStatePicker(t *testing.T) {
+	rt := &fakeRuntime{
+		externalAgents: []core.ExternalAgentDescriptor{{
+			ID:          "codex-app",
+			Aliases:     []string{"codex"},
+			DisplayName: "Codex",
+			Installed:   true,
+			Enabled:     true,
+			Mode:        "app-server",
+			Version:     "0.1.0",
+			Path:        "/usr/local/bin/codex",
+		}},
+	}
+	d := New(rt, "/tmp")
+
+	result, err := d.Handle(context.Background(), "local", "/modules")
+	if err != nil {
+		t.Fatalf("Handle(/modules) error = %v", err)
+	}
+	agents := pickerItem(t, result.Picker, "agents")
+	if agents.Info != "Codex" {
+		t.Fatalf("external agents module info = %q, want Codex", agents.Info)
+	}
+
+	result, err = d.Handle(context.Background(), "local", "/modules agents codex")
+	if err != nil {
+		t.Fatalf("Handle(/modules agents codex) error = %v", err)
+	}
+	if result.Picker == nil || result.Picker.Kind != PickerExternalAgent {
+		t.Fatalf("external agent picker = %#v", result.Picker)
+	}
+	if result.Picker.Title != "Codex" || result.Picker.Meta != "0.1.0 · app-server" {
+		t.Fatalf("external agent header = %q/%q, want Codex with version meta", result.Picker.Title, result.Picker.Meta)
+	}
+	path := pickerItem(t, result.Picker, "path")
+	enabled := pickerItem(t, result.Picker, "enabled")
+	if path.Title != "Path" || path.Info != "/usr/local/bin/codex" {
+		t.Fatalf("path item = %#v", path)
+	}
+	if enabled.Title != "Enabled" || enabled.Info != "On" {
+		t.Fatalf("enabled item = %#v", enabled)
+	}
+	if !pickerItem(t, result.Picker, "new").IsAction() {
+		t.Fatalf("new session item should be an action: %#v", pickerItem(t, result.Picker, "new"))
+	}
+
+	result, err = d.Handle(context.Background(), "local", PickerItemCommand(*result.Picker, enabled))
+	if err != nil {
+		t.Fatalf("Handle(enabled picker) error = %v", err)
+	}
+	if result.Picker == nil || result.Picker.Kind != PickerExternalAgentOn {
+		t.Fatalf("enabled picker = %#v", result.Picker)
+	}
+	enable := pickerItem(t, result.Picker, "enable")
+	disable := pickerItem(t, result.Picker, "disable")
+	if enable.Title != "Enable" || !enable.Selected {
+		t.Fatalf("enable item = %#v, want selected Enable", enable)
+	}
+	if disable.Title != "Disable" || disable.Selected {
+		t.Fatalf("disable item = %#v, want unselected Disable", disable)
+	}
+	if command := PickerItemCommand(*result.Picker, disable); command != "/modules agents codex-app set-enabled disable" {
+		t.Fatalf("disable command = %q", command)
+	}
+
+	result, err = d.Handle(context.Background(), "local", PickerItemCommand(*result.Picker, disable))
+	if err != nil {
+		t.Fatalf("Handle(disable) error = %v", err)
+	}
+	if rt.updatedAgentID != "codex-app" || rt.updatedAgent.Enabled == nil || *rt.updatedAgent.Enabled {
+		t.Fatalf("updated agent = %q/%#v, want codex-app disabled", rt.updatedAgentID, rt.updatedAgent)
+	}
+	if pickerItem(t, result.Picker, "enabled").Info != "Off" {
+		t.Fatalf("enabled item should show Off after disabling: %#v", result.Picker.Items)
+	}
+	if pickerHasItem(result.Picker, "new") {
+		t.Fatalf("new session should be hidden when disabled: %#v", result.Picker.Items)
+	}
+
+	result, err = d.Handle(context.Background(), "local", PickerItemCommand(*result.Picker, pickerItem(t, result.Picker, "path")))
+	if err != nil {
+		t.Fatalf("Handle(path prompt) error = %v", err)
+	}
+	if result.Prompt == nil || result.Prompt.Value != "/usr/local/bin/codex" {
+		t.Fatalf("path prompt = %#v", result.Prompt)
+	}
+	result, err = d.Handle(context.Background(), "local", result.Prompt.SubmitCommandPrefix+"/opt/bin/codex")
+	if err != nil {
+		t.Fatalf("Handle(path update) error = %v", err)
+	}
+	if rt.updatedAgent.Path != "/opt/bin/codex" {
+		t.Fatalf("updated path = %#v, want /opt/bin/codex", rt.updatedAgent)
+	}
+	if rt.updatedAgent.Enabled != nil {
+		t.Fatalf("path update should not include enabled state: %#v", rt.updatedAgent)
+	}
+}
+
+func TestDispatcherExternalAgentPathUpdatePreservesUnavailableEnabledState(t *testing.T) {
+	rt := &fakeRuntime{
+		externalAgents: []core.ExternalAgentDescriptor{{
+			ID:          "codex-app",
+			Aliases:     []string{"codex"},
+			DisplayName: "Codex",
+			Installed:   false,
+			Enabled:     false,
+			Detail:      "codex binary not found",
+		}},
+	}
+	d := New(rt, "/tmp")
+
+	result, err := d.Handle(context.Background(), "local", "/modules agents codex")
+	if err != nil {
+		t.Fatalf("Handle(/modules agents codex) error = %v", err)
+	}
+	if pickerHasItem(result.Picker, "not_installed") {
+		t.Fatalf("external agent screen should only expose editable rows: %#v", result.Picker.Items)
+	}
+	if got := pickerItem(t, result.Picker, "path").Info; got != "codex binary not found" {
+		t.Fatalf("path info = %q, want missing binary detail", got)
+	}
+
+	result, err = d.Handle(context.Background(), "local", "/modules agents codex-app path /custom/bin/codex")
+	if err != nil {
+		t.Fatalf("Handle(path update) error = %v", err)
+	}
+	if rt.updatedAgent.Path != "/custom/bin/codex" {
+		t.Fatalf("updated path = %#v", rt.updatedAgent)
+	}
+	if rt.updatedAgent.Enabled != nil {
+		t.Fatalf("path update must not overwrite enabled state when unavailable: %#v", rt.updatedAgent)
+	}
+}
+
 func TestDispatcherNewSessionShowsRuntimePicker(t *testing.T) {
 	rt := &fakeRuntime{}
 	d := New(rt, "/tmp")
@@ -594,6 +789,27 @@ func TestDispatcherCreatesSessionWithRuntimeChoice(t *testing.T) {
 	}
 	if rt.createdRequest.PermissionMode != string(core.PermissionModeFullAuto) {
 		t.Fatalf("created permission = %q, want full_auto", rt.createdRequest.PermissionMode)
+	}
+}
+
+func TestDispatcherBlocksMatrixclawOnlyCommandsForExternalAgentSession(t *testing.T) {
+	rt := testRuntimeWithSession(core.Session{
+		ID:             "session_codex",
+		Title:          "Codex",
+		Kind:           core.SessionKindExternalAgent,
+		RuntimeID:      core.SessionRuntimeExternalAgent,
+		PermissionMode: core.PermissionModeFullAuto,
+	})
+	d := New(rt, "/tmp")
+
+	for _, command := range []string{"/plan", "/permissions"} {
+		result, err := d.Handle(context.Background(), "local", command)
+		if err != nil {
+			t.Fatalf("Handle(%q) error = %v", command, err)
+		}
+		if !strings.Contains(result.Text, "Matrixclaw sessions only") {
+			t.Fatalf("Handle(%q) text = %q, want Matrixclaw-only explanation", command, result.Text)
+		}
 	}
 }
 

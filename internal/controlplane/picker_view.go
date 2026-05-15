@@ -71,7 +71,7 @@ func PickerCommandLabel(picker PickerData) string {
 		return "/permissions"
 	case PickerContext:
 		return "/context"
-	case PickerModules, PickerStorage, PickerStorageFiles, PickerStorageFile, PickerStorageTemp, PickerStorageCleanup, PickerStorageTempFile:
+	case PickerModules, PickerExternalAgents, PickerExternalAgent, PickerExternalAgentOn, PickerStorage, PickerStorageFiles, PickerStorageFile, PickerStorageTemp, PickerStorageCleanup, PickerStorageTempFile:
 		return "/modules"
 	case PickerTasks, PickerTaskActions, PickerTaskArchive:
 		return "/tasks"

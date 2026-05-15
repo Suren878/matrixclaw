@@ -11,6 +11,7 @@ const defaultClientSnapshotMessageLimit = 50
 type ClientSnapshot struct {
 	SessionID             string                   `json:"session_id"`
 	Session               *Session                 `json:"session,omitempty"`
+	Capabilities          *SessionCapabilities     `json:"capabilities,omitempty"`
 	Context               *ContextReport           `json:"context,omitempty"`
 	Plan                  *SessionPlan             `json:"plan,omitempty"`
 	Messages              []Message                `json:"messages"`
@@ -39,6 +40,8 @@ func (c *Core) ClientSnapshot(ctx context.Context, client string, externalKey st
 	}
 	session = c.decorateSessionLLM(session)
 	snapshot.Session = &session
+	capabilities := CapabilitiesForSession(session)
+	snapshot.Capabilities = &capabilities
 	if plan, err := c.store.GetSessionPlan(ctx, binding.SessionID); err != nil {
 		return ClientSnapshot{}, err
 	} else {

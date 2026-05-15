@@ -46,18 +46,22 @@ func PickerLegend(picker PickerData) string {
 		return "enter run · esc " + closeLabel
 	case PickerProvider, PickerProviderCustom:
 		return "enter select · esc " + closeLabel
-	case PickerPermissions:
+	case PickerPermissions, PickerExternalAgentOn:
 		return "enter apply · esc " + closeLabel
 	default:
 		return "enter select · esc " + closeLabel
 	}
 }
 
-func pickerPresentationStatus(selected bool, info string) string {
+func pickerPresentationStatus(kind PickerKind, selected bool, info string) string {
 	if !selected {
 		return info
 	}
 	info = strings.TrimSpace(info)
+	switch kind {
+	case PickerExternalAgents, PickerExternalAgentOn:
+		return info
+	}
 	if info == "" {
 		return "Active"
 	}
@@ -75,7 +79,7 @@ func presentPickerItem(picker PickerData, item PickerItem) PickerPresentationIte
 		Selected:   item.Selected,
 		Navigation: item.IsNavigation(),
 	}
-	presented.Status = pickerPresentationStatus(presented.Selected, presented.Info)
+	presented.Status = pickerPresentationStatus(picker.Kind, presented.Selected, presented.Info)
 	presented.CompactLabel = pickerCompactLabel(picker.Kind, presented)
 	return presented
 }
@@ -157,6 +161,8 @@ func pickerCompactPrefix(kind PickerKind, item PickerItem) string {
 		default:
 			return ""
 		}
+	case PickerExternalAgentOn:
+		return "⚙️ "
 	case PickerServer:
 		switch itemID {
 		case "status":

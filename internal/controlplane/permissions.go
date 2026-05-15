@@ -21,6 +21,9 @@ func (d *Dispatcher) handlePermissions(ctx context.Context, externalKey string, 
 	if session == nil {
 		return Result{Handled: true, Text: "Select or create a session first."}, nil
 	}
+	if !core.CapabilitiesForSession(*session).PermissionMode {
+		return Result{Handled: true, Text: "Permission Mode is available for Matrixclaw sessions only."}, nil
+	}
 
 	args = strings.TrimSpace(args)
 	if args == "" {

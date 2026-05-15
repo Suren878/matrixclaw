@@ -42,6 +42,7 @@ const (
 	PickerModules         PickerKind = "modules"
 	PickerExternalAgents  PickerKind = "external_agents"
 	PickerExternalAgent   PickerKind = "external_agent"
+	PickerExternalAgentOn PickerKind = "external_agent_enabled"
 	PickerStorage         PickerKind = "storage"
 	PickerStorageFiles    PickerKind = "storage_files"
 	PickerStorageFile     PickerKind = "storage_file"
@@ -60,6 +61,7 @@ type PickerData struct {
 	Kind         PickerKind
 	ContextID    string
 	Title        string
+	Meta         string
 	BackCommand  string
 	CloseCommand string
 	HideBackItem bool

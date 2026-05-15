@@ -29,6 +29,7 @@ func (p *Picker) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 	}
 	view := commandui.RenderPickerCard(frame, commandui.PickerData{
 		Title:          p.title(),
+		Meta:           p.meta(),
 		Items:          items,
 		Selected:       selected,
 		Footer:         footer,
@@ -44,6 +45,10 @@ func (p *Picker) title() string {
 		return title
 	}
 	return "Choose"
+}
+
+func (p *Picker) meta() string {
+	return strings.TrimSpace(p.data.Meta)
 }
 
 func (p *Picker) legend() string {

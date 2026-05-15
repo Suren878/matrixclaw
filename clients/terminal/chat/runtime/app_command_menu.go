@@ -32,7 +32,26 @@ func (m *appModel) commandMenuState() commandmenu.State {
 		ProviderID:              m.currentProviderID(),
 		ModelID:                 m.currentModelLabel(),
 		PermissionMode:          m.currentPermissionMode(),
+		Capabilities:            m.currentSessionCapabilities(),
 		ExternalEditorAvailable: strings.TrimSpace(os.Getenv("EDITOR")) != "",
+	}
+}
+
+func (m *appModel) currentSessionCapabilities() core.SessionCapabilities {
+	if m.read != nil {
+		snapshot := m.read.Snapshot()
+		if snapshot.Capabilities != nil {
+			return *snapshot.Capabilities
+		}
+		if snapshot.Session != nil {
+			return core.CapabilitiesForSession(*snapshot.Session)
+		}
+	}
+	return core.SessionCapabilities{
+		ProviderSelection: true,
+		PermissionMode:    true,
+		PlanningMode:      true,
+		NativeTools:       true,
 	}
 }
 

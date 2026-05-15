@@ -25,7 +25,7 @@ func TestRegisterCommandsUsesSharedTopLevelMenu(t *testing.T) {
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("registered commands = %#v, want %#v", got, want)
 	}
-	wantDescriptions := []string{"Sessions", "Provider", "Permission Mode", "Context", "Goal and plan", "Modules", "Tasks", "Server", "Help"}
+	wantDescriptions := []string{"Sessions", "Provider", "Permission Mode", "Context", "Planning Mode", "Modules", "Tasks", "Server", "Help"}
 	if strings.Join(descriptions, ",") != strings.Join(wantDescriptions, ",") {
 		t.Fatalf("registered descriptions = %#v, want %#v", descriptions, wantDescriptions)
 	}

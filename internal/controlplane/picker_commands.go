@@ -137,6 +137,10 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 			return "/modules agents"
 		}
 		switch itemID {
+		case "path":
+			return "/modules agents " + contextID + " path"
+		case "enabled":
+			return "/modules agents " + contextID + " enabled"
 		case "enable":
 			return "/modules agents enable " + contextID
 		case "disable":
@@ -149,6 +153,22 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 			return ""
 		default:
 			return "/modules agents " + contextID
+		}
+	case PickerExternalAgentOn:
+		if contextID == "" {
+			return "/modules agents"
+		}
+		switch itemID {
+		case "enable":
+			return "/modules agents " + contextID + " set-enabled enable"
+		case "disable":
+			return "/modules agents " + contextID + " set-enabled disable"
+		case "back":
+			return "/modules agents " + contextID
+		case "cancel":
+			return ""
+		default:
+			return "/modules agents " + contextID + " enabled"
 		}
 	case PickerStorage:
 		switch itemID {

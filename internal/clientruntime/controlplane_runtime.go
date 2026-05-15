@@ -90,12 +90,12 @@ func (r ControlplaneRuntime) ListExternalAgents(ctx context.Context) ([]core.Ext
 	return client.ListExternalAgents(ctx)
 }
 
-func (r ControlplaneRuntime) UpdateExternalAgent(ctx context.Context, agentID string, enabled bool) ([]core.ExternalAgentDescriptor, error) {
+func (r ControlplaneRuntime) UpdateExternalAgent(ctx context.Context, agentID string, update core.UpdateExternalAgentRequest) ([]core.ExternalAgentDescriptor, error) {
 	client, err := r.client("")
 	if err != nil {
 		return nil, err
 	}
-	return client.UpdateExternalAgent(ctx, agentID, enabled)
+	return client.UpdateExternalAgent(ctx, agentID, update)
 }
 
 func (r ControlplaneRuntime) UseSession(ctx context.Context, externalKey string, sessionID string) (core.ClientBinding, error) {

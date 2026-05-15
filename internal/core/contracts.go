@@ -102,7 +102,7 @@ type ExternalAgentsResponse struct {
 }
 
 type UpdateExternalAgentRequest struct {
-	Enabled bool   `json:"enabled"`
+	Enabled *bool  `json:"enabled,omitempty"`
 	Path    string `json:"path,omitempty"`
 }
 
