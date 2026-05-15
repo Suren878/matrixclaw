@@ -231,6 +231,116 @@ type Run struct {
 	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
+type UsageRecord struct {
+	ID              string    `json:"id"`
+	SessionID       string    `json:"session_id"`
+	RunID           string    `json:"run_id"`
+	MessageID       string    `json:"message_id,omitempty"`
+	Provider        string    `json:"provider,omitempty"`
+	Model           string    `json:"model,omitempty"`
+	InputTokens     int64     `json:"input_tokens,omitempty"`
+	OutputTokens    int64     `json:"output_tokens,omitempty"`
+	TotalTokens     int64     `json:"total_tokens,omitempty"`
+	CachedTokens    int64     `json:"cached_tokens,omitempty"`
+	ReasoningTokens int64     `json:"reasoning_tokens,omitempty"`
+	Estimated       bool      `json:"estimated,omitempty"`
+	ProviderRaw     string    `json:"provider_raw,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+type UsageFilter struct {
+	SessionID string
+	RunID     string
+	Limit     int
+}
+
+type UsageSummary struct {
+	SessionID       string `json:"session_id,omitempty"`
+	Runs            int    `json:"runs"`
+	InputTokens     int64  `json:"input_tokens,omitempty"`
+	OutputTokens    int64  `json:"output_tokens,omitempty"`
+	TotalTokens     int64  `json:"total_tokens,omitempty"`
+	CachedTokens    int64  `json:"cached_tokens,omitempty"`
+	ReasoningTokens int64  `json:"reasoning_tokens,omitempty"`
+}
+
+type UsageReport struct {
+	Summary UsageSummary  `json:"summary"`
+	Records []UsageRecord `json:"records,omitempty"`
+}
+
+type PlanItemStatus string
+
+const (
+	PlanItemPending PlanItemStatus = "pending"
+	PlanItemActive  PlanItemStatus = "active"
+	PlanItemDone    PlanItemStatus = "done"
+	PlanItemSkipped PlanItemStatus = "skipped"
+)
+
+type SessionPlan struct {
+	SessionID string     `json:"session_id"`
+	Goal      string     `json:"goal,omitempty"`
+	Items     []PlanItem `json:"items,omitempty"`
+	UpdatedAt time.Time  `json:"updated_at,omitempty"`
+}
+
+type PlanItem struct {
+	ID        string         `json:"id"`
+	SessionID string         `json:"session_id"`
+	ParentID  string         `json:"parent_id,omitempty"`
+	Text      string         `json:"text"`
+	Status    PlanItemStatus `json:"status"`
+	Position  int            `json:"position"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+}
+
+type PlanRunStatus string
+
+const (
+	PlanRunIdle      PlanRunStatus = "idle"
+	PlanRunRunning   PlanRunStatus = "running"
+	PlanRunBlocked   PlanRunStatus = "blocked"
+	PlanRunFailed    PlanRunStatus = "failed"
+	PlanRunCompleted PlanRunStatus = "completed"
+	PlanRunCanceled  PlanRunStatus = "canceled"
+)
+
+type PlanRun struct {
+	SessionID     string        `json:"session_id"`
+	Status        PlanRunStatus `json:"status"`
+	CurrentItemID string        `json:"current_item_id,omitempty"`
+	LastRunID     string        `json:"last_run_id,omitempty"`
+	LastError     string        `json:"last_error,omitempty"`
+	StepNo        int           `json:"step_no,omitempty"`
+	Attempt       int           `json:"attempt,omitempty"`
+	CreatedAt     time.Time     `json:"created_at,omitempty"`
+	UpdatedAt     time.Time     `json:"updated_at,omitempty"`
+}
+
+type SearchFilter struct {
+	Query     string
+	SessionID string
+	Limit     int
+}
+
+type SearchResult struct {
+	MessageID string    `json:"message_id"`
+	SessionID string    `json:"session_id"`
+	Role      string    `json:"role,omitempty"`
+	Snippet   string    `json:"snippet,omitempty"`
+	Provider  string    `json:"provider,omitempty"`
+	Model     string    `json:"model,omitempty"`
+	Rank      float64   `json:"rank,omitempty"`
+	CreatedAt time.Time `json:"created_at,omitempty"`
+}
+
+type SearchReport struct {
+	Query   string         `json:"query"`
+	Results []SearchResult `json:"results"`
+}
+
 type ApprovalState string
 
 const (

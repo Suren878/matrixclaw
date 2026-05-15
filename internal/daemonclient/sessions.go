@@ -99,6 +99,97 @@ func (c *Client) SessionContext(ctx context.Context, sessionID string) (core.Con
 	return response.Context, nil
 }
 
+func (c *Client) SessionUsage(ctx context.Context, sessionID string) (core.UsageReport, error) {
+	var response core.UsageResponse
+	path := "/v1/sessions/" + escapedPath(sessionID) + "/usage"
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return core.UsageReport{}, err
+	}
+	return response.Usage, nil
+}
+
+func (c *Client) SessionPlan(ctx context.Context, sessionID string) (core.SessionPlan, error) {
+	var response core.SessionPlanResponse
+	path := "/v1/sessions/" + escapedPath(sessionID) + "/plan"
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return core.SessionPlan{}, err
+	}
+	return response.Plan, nil
+}
+
+func (c *Client) SetSessionGoal(ctx context.Context, sessionID string, goal string) (core.SessionPlan, error) {
+	var response core.SessionPlanResponse
+	path := "/v1/sessions/" + escapedPath(sessionID) + "/plan"
+	request := core.UpdateSessionPlanRequest{Goal: &goal}
+	if err := c.doJSON(ctx, http.MethodPatch, path, request, &response); err != nil {
+		return core.SessionPlan{}, err
+	}
+	return response.Plan, nil
+}
+
+func (c *Client) ClearSessionPlan(ctx context.Context, sessionID string) (core.SessionPlan, error) {
+	var response core.SessionPlanResponse
+	path := "/v1/sessions/" + escapedPath(sessionID) + "/plan"
+	request := core.UpdateSessionPlanRequest{Clear: true}
+	if err := c.doJSON(ctx, http.MethodPatch, path, request, &response); err != nil {
+		return core.SessionPlan{}, err
+	}
+	return response.Plan, nil
+}
+
+func (c *Client) AddPlanItem(ctx context.Context, sessionID string, text string) (core.SessionPlan, error) {
+	return c.AddPlanItemWithParent(ctx, sessionID, text, "")
+}
+
+func (c *Client) AddPlanItemWithParent(ctx context.Context, sessionID string, text string, parentID string) (core.SessionPlan, error) {
+	var response core.SessionPlanResponse
+	path := "/v1/sessions/" + escapedPath(sessionID) + "/plan/items"
+	request := core.AddPlanItemRequest{Text: strings.TrimSpace(text), ParentID: strings.TrimSpace(parentID)}
+	if err := c.doJSON(ctx, http.MethodPost, path, request, &response); err != nil {
+		return core.SessionPlan{}, err
+	}
+	return response.Plan, nil
+}
+
+func (c *Client) UpdatePlanItem(ctx context.Context, sessionID string, itemID string, status core.PlanItemStatus, text string) (core.SessionPlan, error) {
+	var response core.SessionPlanResponse
+	path := "/v1/sessions/" + escapedPath(sessionID) + "/plan/status"
+	request := core.UpdatePlanItemRequest{ItemID: strings.TrimSpace(itemID), Status: string(status), Text: strings.TrimSpace(text)}
+	if err := c.doJSON(ctx, http.MethodPatch, path, request, &response); err != nil {
+		return core.SessionPlan{}, err
+	}
+	return response.Plan, nil
+}
+
+func (c *Client) SessionPlanRun(ctx context.Context, sessionID string) (core.PlanRun, core.SessionPlan, error) {
+	var response core.PlanRunResponse
+	path := "/v1/sessions/" + escapedPath(sessionID) + "/plan/run"
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return core.PlanRun{}, core.SessionPlan{}, err
+	}
+	return response.PlanRun, response.Plan, nil
+}
+
+func (c *Client) StartSessionPlanRun(ctx context.Context, sessionID string, reset bool) (core.PlanRun, core.SessionPlan, error) {
+	var response core.PlanRunResponse
+	path := "/v1/sessions/" + escapedPath(sessionID) + "/plan/run"
+	request := core.PlanRunStartRequest{Reset: reset}
+	if err := c.doJSON(ctx, http.MethodPost, path, request, &response); err != nil {
+		return core.PlanRun{}, core.SessionPlan{}, err
+	}
+	return response.PlanRun, response.Plan, nil
+}
+
+func (c *Client) BindSessionPlanRunStep(ctx context.Context, sessionID string, runID string) (core.PlanRun, core.SessionPlan, error) {
+	var response core.PlanRunResponse
+	path := "/v1/sessions/" + escapedPath(sessionID) + "/plan/run"
+	request := core.PlanRunBindRequest{RunID: strings.TrimSpace(runID)}
+	if err := c.doJSON(ctx, http.MethodPatch, path, request, &response); err != nil {
+		return core.PlanRun{}, core.SessionPlan{}, err
+	}
+	return response.PlanRun, response.Plan, nil
+}
+
 func (c *Client) CompactSession(ctx context.Context, sessionID string) (core.CompactSessionResult, error) {
 	var response core.SessionCompactResponse
 	path := "/v1/sessions/" + escapedPath(sessionID) + "/compact"

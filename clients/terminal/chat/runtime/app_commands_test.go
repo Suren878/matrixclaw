@@ -137,6 +137,52 @@ func TestServerStatusActionOpensLiveDialog(t *testing.T) {
 	}
 }
 
+func TestPlanActionTogglesRightPanel(t *testing.T) {
+	model := newApp(nil, nil)
+	model.width = 160
+	model.height = 40
+	model.dialog.OpenDialog(surfacedialog.NewCommands(model.com, surfacedialog.CommandsData{}))
+
+	next, cmd := model.Update(surfacedialog.ActionRunControlplaneCommand{Command: "/plan"})
+	if next == nil {
+		t.Fatal("expected model")
+	}
+	if cmd != nil {
+		t.Fatal("expected no controlplane command")
+	}
+	if model.dialog.HasDialogs() {
+		t.Fatal("expected command dialog to close")
+	}
+	if !model.planPanelOpen || model.focus != appFocusPlan {
+		t.Fatalf("plan panel open=%v focus=%v, want open plan focus", model.planPanelOpen, model.focus)
+	}
+
+	next, cmd = model.Update(surfacedialog.ActionRunControlplaneCommand{Command: "/plan"})
+	if next == nil {
+		t.Fatal("expected model")
+	}
+	if model.planPanelOpen || model.focus != appFocusEditor {
+		t.Fatalf("plan panel open=%v focus=%v, want closed editor focus", model.planPanelOpen, model.focus)
+	}
+}
+
+func TestPlanSlashSubmitTogglesRightPanel(t *testing.T) {
+	model := newApp(nil, &Runtime{})
+	model.width = 160
+	model.height = 40
+
+	handled, cmd := model.handleControlplaneSubmit("/plan", nil)
+	if !handled {
+		t.Fatal("expected /plan to be handled")
+	}
+	if cmd != nil {
+		t.Fatal("expected no controlplane command")
+	}
+	if !model.planPanelOpen || model.focus != appFocusPlan {
+		t.Fatalf("plan panel open=%v focus=%v, want open plan focus", model.planPanelOpen, model.focus)
+	}
+}
+
 func TestContextCompactActions(t *testing.T) {
 	tests := []struct {
 		name          string

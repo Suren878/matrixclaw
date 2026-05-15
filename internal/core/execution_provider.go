@@ -25,6 +25,9 @@ func (c *Core) buildProviderRequest(ctx context.Context, turn turnExecution) (pr
 	if compactSummary != "" {
 		systemPrompt = strings.TrimSpace(systemPrompt + "\n\nSession compact summary:\n" + compactSummary)
 	}
+	if planPrompt := c.sessionPlanPrompt(ctx, turn.SessionID); planPrompt != "" {
+		systemPrompt = strings.TrimSpace(systemPrompt + "\n\n" + planPrompt)
+	}
 	request := providers.Request{
 		RunID:              turn.RunID,
 		SessionID:          turn.SessionID,
@@ -32,11 +35,11 @@ func (c *Core) buildProviderRequest(ctx context.Context, turn turnExecution) (pr
 		CustomInstructions: assistant.CustomInstructions,
 	}
 	if !toolUseAllowed {
-		request.Messages = buildTextOnlyProviderConversation(effectiveHistory)
+		request.Messages = buildTextOnlyProviderConversationForRun(effectiveHistory, turn.RunID)
 		request.Messages = providers.NormalizeMessages(request.Messages, providers.ToolUseDisabled)
 		return request, nil
 	}
-	request.Messages, err = c.buildProviderConversation(ctx, effectiveHistory)
+	request.Messages, err = c.buildProviderConversation(ctx, effectiveHistory, turn.RunID)
 	if err != nil {
 		return providers.Request{}, err
 	}
@@ -93,20 +96,54 @@ func currentProjectRootPrompt(workingDir string) string {
 	return fmt.Sprintf("Current project root:\n- The filesystem working directory for this session is %q.\n- Resolve relative filesystem tool paths under this directory.\n- Use paths inside this project root unless the user explicitly asks for another location.", workingDir)
 }
 
+func (c *Core) sessionPlanPrompt(ctx context.Context, sessionID string) string {
+	plan, err := c.store.GetSessionPlan(ctx, sessionID)
+	if err != nil {
+		return ""
+	}
+	lines := []string{
+		"Session goal and plan:",
+		"- Use plan tools for multi-step work so the user can see progress.",
+		"- Available plan tools: plan_get, plan_set_goal, plan_add_item, plan_update_item, plan_clear.",
+		"- For simple one-step requests, answer or act directly without creating a plan.",
+		"- For larger tasks, set a goal, add top-level plan items, and mark items active/done/skipped as work progresses.",
+		"- Use plan tools sparingly: update status when starting or finishing meaningful items, not before and after every small tool operation.",
+		"- Use subtasks with plan_add_item parent_id only when a task is large enough to need breakdown.",
+		"- Treat a plan item with subtasks as a parent section: execute its subtasks, then mark the parent done; do not duplicate the same work at both parent and child levels.",
+		"- Do not claim the plan is complete while any item is still pending or active; update completed items with plan_update_item first.",
+	}
+	if strings.TrimSpace(plan.Goal) != "" {
+		lines = append(lines, "- Current goal: "+strings.TrimSpace(plan.Goal))
+	}
+	depths := PlanItemDepths(plan.Items)
+	for i, item := range plan.Items {
+		indent := strings.Repeat("  ", min(depths[item.ID], 4))
+		lines = append(lines, fmt.Sprintf("- %s%d. [%s] %s (id: %s)", indent, i+1, item.Status, item.Text, item.ID))
+	}
+	return strings.Join(lines, "\n")
+}
+
 func buildProviderConversation(history []Message) []providers.Message {
 	conversation, _ := buildProviderConversationWithAttachments(context.Background(), history, nil)
 	return conversation
 }
 
-func (c *Core) buildProviderConversation(ctx context.Context, history []Message) ([]providers.Message, error) {
-	return buildProviderConversationWithAttachments(ctx, history, c.attachments)
+func (c *Core) buildProviderConversation(ctx context.Context, history []Message, currentRunID string) ([]providers.Message, error) {
+	return buildProviderConversationWithAttachmentsForRun(ctx, history, c.attachments, currentRunID)
 }
 
 func buildProviderConversationWithAttachments(ctx context.Context, history []Message, reader AttachmentReader) ([]providers.Message, error) {
+	return buildProviderConversationWithAttachmentsForRun(ctx, history, reader, "")
+}
+
+func buildProviderConversationWithAttachmentsForRun(ctx context.Context, history []Message, reader AttachmentReader, currentRunID string) ([]providers.Message, error) {
 	conversation := make([]providers.Message, 0, len(history))
 	toolResults := make(map[string]providers.Message)
 
 	for _, message := range history {
+		if skipInternalPlanPromptForProvider(message, currentRunID) {
+			continue
+		}
 		providerMessages, err := toProviderMessages(ctx, message, reader)
 		if err != nil {
 			return nil, err
@@ -127,6 +164,9 @@ func buildProviderConversationWithAttachments(ctx context.Context, history []Mes
 	}
 
 	for i := 0; i < len(history); i++ {
+		if skipInternalPlanPromptForProvider(history[i], currentRunID) {
+			continue
+		}
 		providerMessages, err := toProviderMessages(ctx, history[i], reader)
 		if err != nil {
 			return nil, err
@@ -147,6 +187,9 @@ func buildProviderConversationWithAttachments(ctx context.Context, history []Mes
 
 		batched := providerMessage
 		for j := i + 1; j < len(history); j++ {
+			if skipInternalPlanPromptForProvider(history[j], currentRunID) {
+				continue
+			}
 			nextMessages, err := toProviderMessages(ctx, history[j], reader)
 			if err != nil {
 				return nil, err
@@ -184,9 +227,13 @@ func buildProviderConversationWithAttachments(ctx context.Context, history []Mes
 }
 
 func buildTextOnlyProviderConversation(history []Message) []providers.Message {
+	return buildTextOnlyProviderConversationForRun(history, "")
+}
+
+func buildTextOnlyProviderConversationForRun(history []Message, currentRunID string) []providers.Message {
 	conversation := make([]providers.Message, 0, len(history))
 	for _, message := range history {
-		if message.Role == MessageRoleSystem {
+		if message.Role == MessageRoleSystem || skipInternalPlanPromptForProvider(message, currentRunID) {
 			continue
 		}
 		role := string(message.Role)
@@ -203,6 +250,30 @@ func buildTextOnlyProviderConversation(history []Message) []providers.Message {
 		})
 	}
 	return conversation
+}
+
+func skipInternalPlanPromptForProvider(message Message, currentRunID string) bool {
+	if !IsPlanRunPromptMessage(message) {
+		return false
+	}
+	currentRunID = strings.TrimSpace(currentRunID)
+	if currentRunID == "" {
+		return true
+	}
+	return strings.TrimSpace(message.RunID) != currentRunID
+}
+
+// IsPlanRunPromptMessage reports whether message is an internal plan runner prompt.
+// These prompts are stored so clients can audit local actions, but provider context
+// already receives the current plan through sessionPlanPrompt.
+func IsPlanRunPromptMessage(message Message) bool {
+	if message.Role != MessageRoleUser {
+		return false
+	}
+	content := strings.TrimSpace(message.Content)
+	return strings.HasPrefix(content, "Execute the current session plan.") ||
+		strings.HasPrefix(content, "Execute the next session plan item.") ||
+		strings.HasPrefix(content, "The session plan was updated.")
 }
 
 func textOnlyProviderContent(message Message) string {

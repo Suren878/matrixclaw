@@ -23,6 +23,8 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.setFocus(appFocusChat)
 	case surfaceinput.NewSessionMsg:
 		return m, m.handleNewSession()
+	case surfaceinput.OpenPlanMsg:
+		return m, m.openPlanPanel()
 	case surfaceinput.OpenCommandsMsg:
 		return m, m.openCommandsDialogCmd()
 	case surfaceinput.AddImageMsg, surfaceinput.PasteImageMsg:

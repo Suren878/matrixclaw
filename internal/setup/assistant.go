@@ -105,6 +105,15 @@ func compactProjectContext(promptContext AssistantPromptContext) string {
 		parts = append(parts, "active_provider="+activeProviderID)
 	}
 	parts = append(parts,
+		"session_runtime=daemon_owned_shared_between_terminal_telegram_future_clients",
+		"control_plane=shared_commands_across_tui_and_telegram",
+		"tool_policy=read_safe_write_and_shell_need_approval_by_permission_mode",
+		"plan_tools=plan_get,plan_set_goal,plan_add_item,plan_update_item,plan_clear",
+		"plan_guidance=use_plan_tools_for_multi_step_work_and_mark_items_active_done_skipped",
+		"search=/search queries SQLite-backed session history",
+		"usage=/usage reports provider token usage when providers return usage",
+		"storage=/modules storage imports_reads_deletes_promotes_temporary_files",
+		"external_agents=/modules agents can enable Codex app-server sessions when installed",
 		"automation=enabled",
 		"automation_schedules=once,interval,cron",
 		"automation_tools=create_reminder,create_scheduled_ai_task",
@@ -156,9 +165,13 @@ func compactCommandContext() string {
 	}
 	items = append(items,
 		"/sessions -> create/select/rename/delete sessions",
+		"/usage -> show provider token accounting for the current session",
+		"/plan -> show/set goal and add/update/clear visible plan items",
+		"/search -> search persisted message history",
 		"/remind -> create one-time reminders",
 		"/tasks -> list/create/pause/resume/delete scheduled AI tasks",
 		"/provider -> select or edit provider model/settings",
+		"/permissions -> choose ask-first, edits-only, or full-auto approvals for the session",
 		"/restart -> full daemon service restart",
 	)
 	return strings.Join(items, "; ")

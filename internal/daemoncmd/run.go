@@ -68,6 +68,9 @@ func Run(ctx context.Context) error {
 		automation.NewReminderTool(automationService),
 		automation.NewScheduledAITaskTool(automationService),
 	)
+	if err := toolRegistry.Register(core.PlanToolExecutors(app)...); err != nil {
+		return err
+	}
 	if err := toolRegistry.Err(); err != nil {
 		return err
 	}

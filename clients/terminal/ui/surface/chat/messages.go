@@ -303,8 +303,10 @@ func extractAssistantMessageItems(sty *surfacestyles.Styles, msg *surfacemessage
 
 	for _, part := range msg.Parts {
 		switch part := part.(type) {
-		case surfacemessage.TextContent, surfacemessage.ReasoningContent:
+		case surfacemessage.TextContent:
 			segment.Parts = append(segment.Parts, part)
+		case surfacemessage.ReasoningContent:
+			continue
 		case surfacemessage.ToolCall:
 			flushSegment()
 			var result *surfacemessage.ToolResult
@@ -333,10 +335,9 @@ func extractAssistantMessageItems(sty *surfacestyles.Styles, msg *surfacemessage
 
 func ShouldRenderAssistantSegment(msg *surfacemessage.Message) bool {
 	content := strings.TrimSpace(msg.Content().Text)
-	thinking := strings.TrimSpace(msg.ReasoningContent().Thinking)
 	isError := msg.FinishReason() == surfacemessage.FinishReasonError
 	isCancelled := msg.FinishReason() == surfacemessage.FinishReasonCanceled
-	return content != "" || thinking != "" || msg.IsThinking() || isError || isCancelled
+	return content != "" || isError || isCancelled
 }
 
 func newAssistantSegment(msg *surfacemessage.Message, index int) surfacemessage.Message {
@@ -350,11 +351,10 @@ func newAssistantSegment(msg *surfacemessage.Message, index int) surfacemessage.
 
 func ShouldRenderAssistantMessage(msg *surfacemessage.Message) bool {
 	content := strings.TrimSpace(msg.Content().Text)
-	thinking := strings.TrimSpace(msg.ReasoningContent().Thinking)
 	isError := msg.FinishReason() == surfacemessage.FinishReasonError
 	isCancelled := msg.FinishReason() == surfacemessage.FinishReasonCanceled
 	hasToolCalls := len(msg.ToolCalls()) > 0
-	return !hasToolCalls || content != "" || thinking != "" || msg.IsThinking() || isError || isCancelled
+	return !hasToolCalls || content != "" || isError || isCancelled
 }
 
 func AssistantInfoID(messageID string) string {

@@ -64,6 +64,109 @@ func TestBuildProviderConversationRepairsDanglingToolCalls(t *testing.T) {
 	}
 }
 
+func TestBuildProviderConversationSkipsInternalPlanRunPrompts(t *testing.T) {
+	t.Parallel()
+
+	history := []Message{
+		{
+			ID:      "msg_plan_run",
+			Role:    MessageRoleUser,
+			Content: "Execute the current session plan. Start with the first pending item.",
+		},
+		{
+			ID:      "msg_user",
+			Role:    MessageRoleUser,
+			Content: "real user request",
+		},
+		{
+			ID:      "msg_plan_update",
+			Role:    MessageRoleUser,
+			Content: "The session plan was updated. Continue the current work using this updated plan.",
+		},
+		{
+			ID:      "msg_assistant",
+			Role:    MessageRoleAssistant,
+			Content: "done",
+		},
+	}
+
+	conversation := buildProviderConversation(history)
+	if len(conversation) != 2 {
+		t.Fatalf("len(buildProviderConversation()) = %d, want 2: %#v", len(conversation), conversation)
+	}
+	if conversation[0].Role != string(MessageRoleUser) || conversation[0].Content != "real user request" {
+		t.Fatalf("conversation[0] = %#v, want real user request", conversation[0])
+	}
+	if conversation[1].Role != string(MessageRoleAssistant) || conversation[1].Content != "done" {
+		t.Fatalf("conversation[1] = %#v, want assistant response", conversation[1])
+	}
+}
+
+func TestBuildProviderConversationKeepsCurrentInternalPlanRunPrompt(t *testing.T) {
+	t.Parallel()
+
+	history := []Message{
+		{
+			ID:      "msg_old_plan_run",
+			RunID:   "run_old",
+			Role:    MessageRoleUser,
+			Content: "Execute the current session plan. Old run.",
+		},
+		{
+			ID:      "msg_current_plan_run",
+			RunID:   "run_current",
+			Role:    MessageRoleUser,
+			Content: "Execute the current session plan. Current run.",
+		},
+	}
+
+	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "run_current")
+	if err != nil {
+		t.Fatalf("buildProviderConversationWithAttachmentsForRun() error = %v", err)
+	}
+	if len(conversation) != 1 {
+		t.Fatalf("len(conversation) = %d, want current plan prompt only: %#v", len(conversation), conversation)
+	}
+	if conversation[0].Content != "Execute the current session plan. Current run." {
+		t.Fatalf("conversation[0].Content = %q, want current plan prompt", conversation[0].Content)
+	}
+}
+
+func TestBuildTextOnlyProviderConversationSkipsInternalPlanRunPrompts(t *testing.T) {
+	t.Parallel()
+
+	history := []Message{
+		{Role: MessageRoleUser, Content: "Execute the current session plan. Start with the first pending item."},
+		{Role: MessageRoleUser, Content: "real user request"},
+		{Role: MessageRoleUser, Content: "The session plan was updated. Continue the current work using this updated plan."},
+	}
+
+	conversation := buildTextOnlyProviderConversation(history)
+	if len(conversation) != 1 {
+		t.Fatalf("len(buildTextOnlyProviderConversation()) = %d, want 1: %#v", len(conversation), conversation)
+	}
+	if conversation[0].Content != "real user request" {
+		t.Fatalf("conversation[0].Content = %q, want real user request", conversation[0].Content)
+	}
+}
+
+func TestBuildTextOnlyProviderConversationKeepsCurrentInternalPlanRunPrompt(t *testing.T) {
+	t.Parallel()
+
+	history := []Message{
+		{RunID: "run_old", Role: MessageRoleUser, Content: "Execute the current session plan. Old run."},
+		{RunID: "run_current", Role: MessageRoleUser, Content: "Execute the current session plan. Current run."},
+	}
+
+	conversation := buildTextOnlyProviderConversationForRun(history, "run_current")
+	if len(conversation) != 1 {
+		t.Fatalf("len(conversation) = %d, want current plan prompt only: %#v", len(conversation), conversation)
+	}
+	if conversation[0].Content != "Execute the current session plan. Current run." {
+		t.Fatalf("conversation[0].Content = %q, want current plan prompt", conversation[0].Content)
+	}
+}
+
 func TestBuildProviderConversationKeepsAssistantReasoningContent(t *testing.T) {
 	t.Parallel()
 

@@ -54,6 +54,7 @@ func (d *ConfirmCommand) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 		CancelLabel:   firstNonEmptyTrimmed(d.data.CancelLabel, "Cancel"),
 		Selected:      d.selected,
 		ConfirmDanger: d.data.ConfirmDanger,
+		CancelDanger:  d.data.CancelDanger,
 	})
 	DrawCenter(scr, area, view)
 	return nil

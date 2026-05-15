@@ -13,6 +13,7 @@ type ConfirmData struct {
 	CancelLabel   string
 	Selected      int
 	ConfirmDanger bool
+	CancelDanger  bool
 }
 
 func RenderConfirmCard(frame Frame, data ConfirmData) string {
@@ -45,6 +46,7 @@ func confirmBody(frame Frame, data ConfirmData) []string {
 		},
 		Button{
 			Label:   firstNonEmpty(data.CancelLabel, "Cancel"),
+			Danger:  data.CancelDanger,
 			Focused: data.Selected == 1,
 		},
 	))

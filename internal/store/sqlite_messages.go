@@ -16,6 +16,7 @@ func (s *SQLiteStore) SaveMessage(ctx context.Context, message core.Message) err
 	if err := insertMessage(ctx, s.db, message); err != nil {
 		return fmt.Errorf("store: save message: %w", err)
 	}
+	_ = upsertMessageSearch(ctx, s.db, message)
 	return nil
 }
 
@@ -42,6 +43,7 @@ WHERE id = ?`,
 	if count == 0 {
 		return core.ErrNotFound
 	}
+	_ = upsertMessageSearch(ctx, s.db, message)
 	return nil
 }
 
@@ -143,6 +145,7 @@ func (s *SQLiteStore) CompleteRun(ctx context.Context, assistantMessage core.Mes
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("store: commit complete run: %w", err)
 	}
+	_ = upsertMessageSearch(ctx, s.db, assistantMessage)
 	return nil
 }
 
@@ -170,6 +173,7 @@ func (s *SQLiteStore) AcceptMessage(ctx context.Context, message core.Message, r
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("store: commit accept message: %w", err)
 	}
+	_ = upsertMessageSearch(ctx, s.db, message)
 	return nil
 }
 

@@ -207,6 +207,101 @@ func TestCanonicalClientDeliveriesSchemaOmitsPayloadAndDefaults(t *testing.T) {
 	}
 }
 
+func TestSQLiteUsagePlanAndSearch(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	now := time.Now().UTC()
+	sqliteStore := openTestSQLite(t, filepath.Join(t.TempDir(), "matrixclaw.db"))
+	defer sqliteStore.Close()
+	createTestSession(t, ctx, sqliteStore, core.Session{ID: "session_usage"})
+
+	message := core.Message{
+		ID:        "msg_1",
+		SessionID: "session_usage",
+		RunID:     "run_1",
+		Role:      core.MessageRoleUser,
+		Content:   "Find the billing ledger",
+		Parts: []core.MessagePart{{
+			Kind: core.MessagePartKindText,
+			Text: &core.TextPart{Text: "Find the billing ledger"},
+		}},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	run := core.Run{
+		ID:            "run_1",
+		SessionID:     "session_usage",
+		UserMessageID: "msg_1",
+		Status:        core.RunStatusAccepted,
+		StartedAt:     now,
+		UpdatedAt:     now,
+	}
+	if err := sqliteStore.AcceptMessage(ctx, message, run); err != nil {
+		t.Fatalf("AcceptMessage() error = %v", err)
+	}
+	if err := sqliteStore.SaveUsageRecord(ctx, core.UsageRecord{
+		ID:           "usage_1",
+		SessionID:    "session_usage",
+		RunID:        "run_1",
+		MessageID:    "msg_1",
+		InputTokens:  10,
+		OutputTokens: 5,
+		CreatedAt:    now,
+	}); err != nil {
+		t.Fatalf("SaveUsageRecord() error = %v", err)
+	}
+	usage, err := sqliteStore.ListUsageRecords(ctx, core.UsageFilter{SessionID: "session_usage"})
+	if err != nil {
+		t.Fatalf("ListUsageRecords() error = %v", err)
+	}
+	if len(usage) != 1 || usage[0].InputTokens != 10 || usage[0].OutputTokens != 5 {
+		t.Fatalf("usage = %#v, want saved token usage", usage)
+	}
+
+	if err := sqliteStore.SetSessionGoal(ctx, "session_usage", "Audit billing", now); err != nil {
+		t.Fatalf("SetSessionGoal() error = %v", err)
+	}
+	if err := sqliteStore.AddPlanItem(ctx, core.PlanItem{
+		ID:        "plan_1",
+		SessionID: "session_usage",
+		Text:      "Open ledger file",
+		Status:    core.PlanItemPending,
+		Position:  1,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("AddPlanItem() error = %v", err)
+	}
+	if err := sqliteStore.AddPlanItem(ctx, core.PlanItem{
+		ID:        "plan_2",
+		SessionID: "session_usage",
+		ParentID:  "plan_1",
+		Text:      "Check overdue rows",
+		Status:    core.PlanItemPending,
+		Position:  1,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("AddPlanItem(child) error = %v", err)
+	}
+	plan, err := sqliteStore.GetSessionPlan(ctx, "session_usage")
+	if err != nil {
+		t.Fatalf("GetSessionPlan() error = %v", err)
+	}
+	if plan.Goal != "Audit billing" || len(plan.Items) != 2 || plan.Items[0].Text != "Open ledger file" || plan.Items[1].ParentID != "plan_1" {
+		t.Fatalf("plan = %#v, want goal and item", plan)
+	}
+
+	results, err := sqliteStore.SearchMessages(ctx, core.SearchFilter{SessionID: "session_usage", Query: "billing ledger"})
+	if err != nil {
+		t.Fatalf("SearchMessages() error = %v", err)
+	}
+	if len(results) != 1 || results[0].MessageID != "msg_1" {
+		t.Fatalf("search results = %#v, want msg_1", results)
+	}
+}
+
 func TestUnmarshalMessagePartsDoesNotFallbackToContent(t *testing.T) {
 	t.Parallel()
 

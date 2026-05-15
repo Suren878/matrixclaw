@@ -13,17 +13,17 @@ small local daemon, stores state in SQLite, and gives your AI sessions a home
 outside any single app or chat window.
 
 The core owns the session: context, files, tool history, approvals, provider
-settings, model choice, and optional external-agent attachments. The Terminal
-TUI, Telegram bot, and future mobile clients are only interfaces connected to
-the same local runtime.
+settings, model choice, usage records, goals/plans, searchable history, and
+optional external-agent attachments. The Terminal TUI, Telegram bot, and future
+mobile clients are only interfaces connected to the same local runtime.
 
 That means you can start a conversation in the terminal, approve a tool call on
 your machine, continue from Telegram, and later return to the same session
 without losing the thread.
 
 `matrixclaw` is built for personal work first: development, research, files,
-remote checks, reminders, provider switching, and future agent workflows where
-continuity and explicit control matter.
+remote checks, reminders, provider switching, visible task plans, and future
+agent workflows where continuity and explicit control matter.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/8a3bdb40-1891-4a95-9bce-941ed48f4b72" alt="matrixclaw terminal demo">
@@ -34,10 +34,13 @@ continuity and explicit control matter.
 - **Small Go daemon:** about 10 MB RAM while idle on the current Linux server,
   with exact usage depending on OS, build, and active clients.
 - **One assistant, many clients:** begin a session in Terminal TUI and continue it in Telegram.
-- **Local-first state:** sessions, runs, approvals, files, and provider choices live in SQLite.
+- **Local-first state:** sessions, runs, approvals, files, plans, usage, and provider choices live in SQLite.
 - **Provider switching:** OpenAI-compatible APIs, Anthropic, Gemini, and custom endpoints.
 - **External agents:** experimental Codex app-server sessions attach to the same session model.
 - **Tools with approvals:** file and shell tools pause before risky changes.
+- **Planning Mode:** persistent goals, tasks, subtasks, resumable execution, and a core-owned runner.
+- **Search and usage:** session history is searchable, and provider token usage is recorded when available.
+- **Storage module:** temporary uploads can be promoted into local stored files and retrieved later.
 - **Automation-ready:** reminders, scheduled AI tasks, deliveries, and future agent workflows.
 
 ## Session handoff: terminal to Telegram and back
@@ -63,10 +66,14 @@ flowchart TD
     D --> S[Sessions / Runs]
     D --> A[Approvals / ACL]
     D --> F[Files / Deliveries]
+    D --> P[Goals / Plans]
+    D --> U[Usage / Search]
 
     S --> B[Providers / Tools / Local SQLite]
     A --> B
     F --> B
+    P --> B
+    U --> B
 ```
 
 A typical flow:
@@ -127,8 +134,39 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
 - OpenAI-compatible, Anthropic-compatible, Gemini, and custom provider adapters.
 - Experimental external-agent sessions through Codex app-server.
 - Service-owned tool execution with approval previews before writes and shell actions.
+- Planning Mode for multi-step work, with persistent tasks/subtasks, resumable execution, model-facing `plan_*` tools, and manual `/plan` commands.
+- Token usage ledger from provider finish metadata, surfaced in the TUI header and `/usage`.
+- SQLite-backed message search through `/search`.
+- Local storage module for temporary uploads, stored files, imports, previews, promotion, deletion, and cleanup settings.
 - SQLite-backed local state with reconnectable clients and session handoff.
 - Automation jobs for reminders and scheduled AI tasks.
+
+## Planning Mode
+
+Planning Mode turns a loose multi-step request into durable session work. A plan
+has a goal, top-level tasks, optional subtasks, and explicit item statuses:
+`pending`, `active`, `done`, and `skipped`.
+
+The TUI shows the plan in a side panel with tree rendering for subtasks. You can
+create and edit tasks manually, or let the assistant create/update the plan
+through safe plan tools.
+
+Execution is owned by the core runtime:
+
+- The daemon stores plan state in SQLite.
+- A persisted plan runner checkpoints the current item, last run, attempts, and status.
+- Parent tasks with open subtasks are treated as sections, not executable work.
+- The runner selects the next executable leaf item and runs one item at a time.
+- On successful completion, core closes the item and auto-closes parent sections when all children are terminal.
+- If the model reports a blocked step, the runner records the blocked state instead of marking it done.
+- If the TUI or daemon restarts, unfinished plans can be resumed from stored state.
+
+This keeps the model from being the source of truth for whether the plan is
+complete. The model performs the current task; the daemon owns the workflow
+state.
+
+See [Planning Mode](docs/PLANNING.md) for the implementation model and edge
+cases.
 
 ## Commands
 
@@ -157,6 +195,38 @@ the background daemon.
 
 Commands that read setup report missing or unsupported setup on stderr and exit
 nonzero. Use `matrixclaw setup` to recreate setup explicitly.
+
+## In-session controls
+
+The Terminal TUI and Telegram client share the same control-plane commands, so a
+command that changes session state in one client is visible from the other.
+These are client commands, not model tools.
+
+```text
+/new                         create a session
+/sessions                    list, select, rename, or delete sessions
+/provider                    select provider/model for the current session
+/permissions                 change the current session permission mode
+/context                     inspect compacted context and token estimate
+/usage                       show recorded input/output/reasoning/cached tokens
+/plan                        show the current goal and plan
+/plan goal <text>            set the session goal
+/plan add <text>             add a plan item
+/plan subtask <n> <text>     add a subtask under an item
+/plan edit <n> <text>        edit a plan item
+/plan active|done|skip <n>   update a plan item by number
+/plan clear                  clear goal and plan after confirmation
+/search <query>              search stored message history
+/modules storage             manage local stored and temporary files
+/modules agents              enable or disable external agent runtimes
+/remind                      create a one-time reminder
+/tasks                       list and manage scheduled AI tasks
+/server, /status, /restart   inspect or restart the local service
+```
+
+For multi-step user requests, the assistant also receives safe plan tools:
+`plan_get`, `plan_set_goal`, `plan_add_item`, `plan_update_item`, and
+`plan_clear`. These update the same session plan that manual commands display.
 
 ## From Source
 
@@ -206,6 +276,12 @@ flowchart LR
     ORCH --> TOOLS[Tools]
     TOOLS --> APPROVALS[Durable approvals]
     APPROVALS --> STORE
+    CORE --> PLAN[Goal / Plan state]
+    CORE --> SEARCH[Search / Usage]
+    CORE --> MODULES[Storage / Automation modules]
+    PLAN --> STORE
+    SEARCH --> STORE
+    MODULES --> STORE
 ```
 
 Core rules:
@@ -215,6 +291,8 @@ Core rules:
 - all real work becomes a persisted run
 - tool approvals are durable and restart-safe
 - provider and model selection are session data
+- goal/plan state and plan-run checkpoints are session data
+- search and token usage are read-only views over local SQLite state
 - orchestration, providers, and tools are replaceable adapter families
 
 ## External Agents

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/clients/terminal/chat/viewmodel"
+	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 )
@@ -123,6 +124,45 @@ func TestRunUpdatedCompletedTriggersSnapshotReload(t *testing.T) {
 	}
 }
 
+func TestRunUpdatedFailedKeepsPlanPanelOpen(t *testing.T) {
+	now := time.Now().UTC()
+	model := newApp(nil, &Runtime{})
+	model.streamID = 1
+	model.session = "session-1"
+	model.planPanelOpen = true
+	model.focus = appFocusPlan
+	model.read = viewmodel.NewReadModel(snapshotWithTexts(now, "first"))
+
+	runPayload, _ := json.Marshal(core.Run{
+		ID:        "run-1",
+		SessionID: "session-1",
+		Status:    core.RunStatusFailed,
+		Error:     "provider failed",
+		UpdatedAt: now,
+	})
+	next, cmd := model.Update(liveEventMsg{
+		streamID: 1,
+		event: daemonclient.LiveEvent{
+			Type:      core.EventRunUpdated,
+			SessionID: "session-1",
+			RunID:     "run-1",
+			Payload:   runPayload,
+		},
+	})
+	if next == nil {
+		t.Fatal("expected model")
+	}
+	if cmd == nil {
+		t.Fatal("expected snapshot reload command")
+	}
+	if !model.planPanelOpen || model.focus != appFocusPlan {
+		t.Fatalf("plan panel open=%v focus=%v, want open plan focus", model.planPanelOpen, model.focus)
+	}
+	if model.err != "provider failed" {
+		t.Fatalf("err = %q, want provider failed", model.err)
+	}
+}
+
 func TestRunIsActiveTreatsWaitingApprovalAsBusy(t *testing.T) {
 	if !runIsActive(&core.Run{Status: core.RunStatusWaitingApproval}) {
 		t.Fatal("expected waiting approval run to be active")
@@ -161,6 +201,41 @@ func TestLoadInitialErrorWithExistingSessionSchedulesReconnect(t *testing.T) {
 	}
 	if model.err == "" {
 		t.Fatal("expected error message to be set")
+	}
+}
+
+func TestPlanResumePromptOnlyOnFirstLoad(t *testing.T) {
+	now := time.Now().UTC()
+	model := newApp(context.Background(), &Runtime{})
+	snapshot := snapshotWithTexts(now, "ok")
+	snapshot.Plan = &core.SessionPlan{
+		SessionID: "session-1",
+		Items: []core.PlanItem{{
+			ID:        "plan-1",
+			SessionID: "session-1",
+			Text:      "unfinished",
+			Status:    core.PlanItemPending,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}},
+		UpdatedAt: now,
+	}
+
+	next, _ := model.Update(loadInitialMsg{snapshot: snapshot})
+	if next == nil {
+		t.Fatal("expected model")
+	}
+	if !model.dialog.ContainsDialog(surfacedialog.ConfirmCommandID) {
+		t.Fatal("expected resume dialog on first load")
+	}
+	model.dialog.CloseAll()
+
+	next, _ = model.Update(loadInitialMsg{snapshot: snapshot})
+	if next == nil {
+		t.Fatal("expected model")
+	}
+	if model.dialog.ContainsDialog(surfacedialog.ConfirmCommandID) {
+		t.Fatal("did not expect resume dialog after later snapshot reload")
 	}
 }
 

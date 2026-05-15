@@ -91,3 +91,33 @@ func TestToSurfaceMessageFallsBackToLegacyContent(t *testing.T) {
 		t.Fatalf("surface.Content().Text = %q, want %q", got, "legacy text only")
 	}
 }
+
+func TestToSurfaceMessagesHidesPlanRunUserPrompts(t *testing.T) {
+	now := time.Now().UTC()
+	messages := []core.Message{
+		{
+			ID:        "msg-plan",
+			SessionID: "session-1",
+			Role:      core.MessageRoleUser,
+			Content:   "Execute the current session plan. Start with the first pending item.",
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		{
+			ID:        "msg-user",
+			SessionID: "session-1",
+			Role:      core.MessageRoleUser,
+			Content:   "real user message",
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
+
+	surface := ToSurfaceMessages(messages)
+	if len(surface) != 1 {
+		t.Fatalf("len(surface) = %d, want 1", len(surface))
+	}
+	if got := surface[0].Content().Text; got != "real user message" {
+		t.Fatalf("surface[0] = %q, want real user message", got)
+	}
+}

@@ -731,6 +731,293 @@ func TestCoreToolApprovalAndExecutionFlow(t *testing.T) {
 	}
 }
 
+func TestCorePlanToolsUpdateSessionPlanWithoutApproval(t *testing.T) {
+	t.Parallel()
+
+	app := newTestCore(t, nil)
+	app.WithTools(tools.NewCoreCodingRegistry(core.PlanToolExecutors(app)...))
+	ctx := context.Background()
+	session := createSession(t, app, ctx, core.CreateSessionInput{Title: "Plan tools"})
+
+	goalArgs, _ := json.Marshal(map[string]string{"goal": "Ship agent planning"})
+	goalResult, err := app.ExecuteTool(ctx, core.ExecuteToolInput{
+		SessionID: session.ID,
+		ToolName:  "plan_set_goal",
+		Args:      goalArgs,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTool(plan_set_goal) error = %v", err)
+	}
+	if goalResult.Approval != nil {
+		t.Fatal("plan_set_goal requested approval, want auto execution")
+	}
+
+	addArgs, _ := json.Marshal(map[string]string{"text": "Add plan tools"})
+	if _, err := app.ExecuteTool(ctx, core.ExecuteToolInput{SessionID: session.ID, ToolName: "plan_add_item", Args: addArgs}); err != nil {
+		t.Fatalf("ExecuteTool(plan_add_item) error = %v", err)
+	}
+
+	plan, err := app.SessionPlan(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("SessionPlan() error = %v", err)
+	}
+	if plan.Goal != "Ship agent planning" || len(plan.Items) != 1 || plan.Items[0].Text != "Add plan tools" {
+		t.Fatalf("plan = %#v, want goal and one item", plan)
+	}
+
+	childArgs, _ := json.Marshal(map[string]string{"text": "Render plan tree", "parent_id": plan.Items[0].ID})
+	if _, err := app.ExecuteTool(ctx, core.ExecuteToolInput{SessionID: session.ID, ToolName: "plan_add_item", Args: childArgs}); err != nil {
+		t.Fatalf("ExecuteTool(plan_add_item child) error = %v", err)
+	}
+	plan, err = app.SessionPlan(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("SessionPlan() after child error = %v", err)
+	}
+	if len(plan.Items) != 2 || plan.Items[1].ParentID != plan.Items[0].ID {
+		t.Fatalf("plan child = %#v, want child under first item", plan.Items)
+	}
+
+	updateArgs, _ := json.Marshal(map[string]string{"item_id": plan.Items[0].ID, "status": "done"})
+	if _, err := app.ExecuteTool(ctx, core.ExecuteToolInput{SessionID: session.ID, ToolName: "plan_update_item", Args: updateArgs}); err != nil {
+		t.Fatalf("ExecuteTool(plan_update_item) error = %v", err)
+	}
+	plan, err = app.SessionPlan(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("SessionPlan() after update error = %v", err)
+	}
+	if plan.Items[0].Status != core.PlanItemDone {
+		t.Fatalf("plan item status = %q, want done", plan.Items[0].Status)
+	}
+}
+
+func TestCoreProviderRequestIncludesPlanToolsAndPrompt(t *testing.T) {
+	t.Parallel()
+
+	requests := make(chan providers.Request, 1)
+	provider := newProviderStub()
+	provider.GenerateFunc = func(ctx context.Context, request providers.Request) (providers.Response, error) {
+		requests <- request
+		return providers.Response{Text: "planned"}, nil
+	}
+
+	app := newTestCore(t, provider)
+	app.WithTools(tools.NewCoreCodingRegistry(core.PlanToolExecutors(app)...))
+	ctx := context.Background()
+	createBoundSession(t, app, ctx, core.CreateSessionInput{Title: "Plan request"})
+
+	accepted, err := app.AcceptRun(ctx, core.HandleMessageInput{
+		Client:      "terminal",
+		ExternalKey: "local",
+		Text:        "make a plan and do the task",
+	})
+	if err != nil {
+		t.Fatalf("AcceptRun() error = %v", err)
+	}
+	waitForRunStatus(t, app, accepted.Run.ID, core.RunStatusCompleted)
+
+	select {
+	case request := <-requests:
+		if !strings.Contains(request.SystemPrompt, "Use plan tools for multi-step work") {
+			t.Fatalf("SystemPrompt = %q, want plan tool instruction", request.SystemPrompt)
+		}
+		toolNames := map[string]bool{}
+		for _, tool := range request.Tools {
+			toolNames[tool.Name] = true
+		}
+		for _, name := range []string{"plan_get", "plan_set_goal", "plan_add_item", "plan_update_item", "plan_clear"} {
+			if !toolNames[name] {
+				t.Fatalf("provider request missing tool %q; tools=%#v", name, request.Tools)
+			}
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("provider request was not captured")
+	}
+}
+
+func TestCoreCompletesActivePlanItemsWhenRunFinishesWithoutPendingWork(t *testing.T) {
+	t.Parallel()
+
+	provider := newProviderStub()
+	provider.GenerateFunc = func(context.Context, providers.Request) (providers.Response, error) {
+		return providers.Response{Text: "All planned work is complete."}, nil
+	}
+	app := newTestCore(t, provider)
+	ctx := context.Background()
+	session := createBoundSession(t, app, ctx, core.CreateSessionInput{Title: "Plan completion"})
+
+	plan, err := app.SetSessionGoal(ctx, session.ID, "finish plan")
+	if err != nil {
+		t.Fatalf("SetSessionGoal() error = %v", err)
+	}
+	plan, err = app.AddPlanItem(ctx, session.ID, "write summary", "")
+	if err != nil {
+		t.Fatalf("AddPlanItem() error = %v", err)
+	}
+	plan, err = app.UpdatePlanItem(ctx, session.ID, plan.Items[0].ID, core.PlanItemActive, "")
+	if err != nil {
+		t.Fatalf("UpdatePlanItem(active) error = %v", err)
+	}
+
+	accepted, err := app.AcceptRun(ctx, core.HandleMessageInput{
+		Client:      "terminal",
+		ExternalKey: "local",
+		Text:        "continue",
+	})
+	if err != nil {
+		t.Fatalf("AcceptRun() error = %v", err)
+	}
+	waitForRunStatus(t, app, accepted.Run.ID, core.RunStatusCompleted)
+
+	plan, err = app.SessionPlan(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("SessionPlan() error = %v", err)
+	}
+	if plan.Items[0].Status != core.PlanItemDone {
+		t.Fatalf("plan item status = %q, want done", plan.Items[0].Status)
+	}
+}
+
+func TestCoreCompletesPlanRunPromptItemAndParentWhenRunFinishes(t *testing.T) {
+	t.Parallel()
+
+	provider := newProviderStub()
+	provider.GenerateFunc = func(context.Context, providers.Request) (providers.Response, error) {
+		return providers.Response{Text: "The requested plan item is complete."}, nil
+	}
+	app := newTestCore(t, provider)
+	ctx := context.Background()
+	session := createBoundSession(t, app, ctx, core.CreateSessionInput{Title: "Plan item runner"})
+
+	plan, err := app.SetSessionGoal(ctx, session.ID, "finish plan")
+	if err != nil {
+		t.Fatalf("SetSessionGoal() error = %v", err)
+	}
+	plan, err = app.AddPlanItem(ctx, session.ID, "parent", "")
+	if err != nil {
+		t.Fatalf("AddPlanItem(parent) error = %v", err)
+	}
+	parentID := plan.Items[0].ID
+	plan, err = app.AddPlanItem(ctx, session.ID, "child", parentID)
+	if err != nil {
+		t.Fatalf("AddPlanItem(child) error = %v", err)
+	}
+	childID := plan.Items[1].ID
+	if _, _, err := app.StartSessionPlanRun(ctx, session.ID, false); err != nil {
+		t.Fatalf("StartSessionPlanRun() error = %v", err)
+	}
+
+	accepted, err := app.AcceptRun(ctx, core.HandleMessageInput{
+		Client:      "terminal",
+		ExternalKey: "local",
+		Text:        "Execute the next session plan item.\n\nPlan item id: " + childID + "\nPlan item text: child",
+	})
+	if err != nil {
+		t.Fatalf("AcceptRun() error = %v", err)
+	}
+	waitForRunStatus(t, app, accepted.Run.ID, core.RunStatusCompleted)
+
+	plan, err = app.SessionPlan(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("SessionPlan() error = %v", err)
+	}
+	if plan.Items[0].Status != core.PlanItemDone || plan.Items[1].Status != core.PlanItemDone {
+		t.Fatalf("plan item statuses = (%q,%q), want done/done", plan.Items[0].Status, plan.Items[1].Status)
+	}
+}
+
+func TestCoreKeepsPlanRunPromptItemOpenWhenAssistantReportsBlocked(t *testing.T) {
+	t.Parallel()
+
+	provider := newProviderStub()
+	provider.GenerateFunc = func(context.Context, providers.Request) (providers.Response, error) {
+		return providers.Response{Text: "PLAN_BLOCKED: missing credentials."}, nil
+	}
+	app := newTestCore(t, provider)
+	ctx := context.Background()
+	session := createBoundSession(t, app, ctx, core.CreateSessionInput{Title: "Blocked plan item"})
+
+	plan, err := app.SetSessionGoal(ctx, session.ID, "finish plan")
+	if err != nil {
+		t.Fatalf("SetSessionGoal() error = %v", err)
+	}
+	plan, err = app.AddPlanItem(ctx, session.ID, "needs credentials", "")
+	if err != nil {
+		t.Fatalf("AddPlanItem() error = %v", err)
+	}
+	itemID := plan.Items[0].ID
+	if _, _, err := app.StartSessionPlanRun(ctx, session.ID, false); err != nil {
+		t.Fatalf("StartSessionPlanRun() error = %v", err)
+	}
+
+	accepted, err := app.AcceptRun(ctx, core.HandleMessageInput{
+		Client:      "terminal",
+		ExternalKey: "local",
+		Text:        "Execute the next session plan item.\n\nPlan item id: " + itemID + "\nPlan item text: needs credentials",
+	})
+	if err != nil {
+		t.Fatalf("AcceptRun() error = %v", err)
+	}
+	waitForRunStatus(t, app, accepted.Run.ID, core.RunStatusCompleted)
+
+	plan, err = app.SessionPlan(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("SessionPlan() error = %v", err)
+	}
+	if plan.Items[0].Status != core.PlanItemActive {
+		t.Fatalf("plan item status = %q, want active", plan.Items[0].Status)
+	}
+}
+
+func TestCoreDoesNotCompleteActivePlanItemsWhenPendingWorkRemains(t *testing.T) {
+	t.Parallel()
+
+	provider := newProviderStub()
+	provider.GenerateFunc = func(context.Context, providers.Request) (providers.Response, error) {
+		return providers.Response{Text: "Partial work is complete."}, nil
+	}
+	app := newTestCore(t, provider)
+	ctx := context.Background()
+	session := createBoundSession(t, app, ctx, core.CreateSessionInput{Title: "Partial plan"})
+
+	plan, err := app.SetSessionGoal(ctx, session.ID, "finish plan")
+	if err != nil {
+		t.Fatalf("SetSessionGoal() error = %v", err)
+	}
+	plan, err = app.AddPlanItem(ctx, session.ID, "active task", "")
+	if err != nil {
+		t.Fatalf("AddPlanItem(active) error = %v", err)
+	}
+	plan, err = app.AddPlanItem(ctx, session.ID, "pending task", "")
+	if err != nil {
+		t.Fatalf("AddPlanItem(pending) error = %v", err)
+	}
+	plan, err = app.UpdatePlanItem(ctx, session.ID, plan.Items[0].ID, core.PlanItemActive, "")
+	if err != nil {
+		t.Fatalf("UpdatePlanItem(active) error = %v", err)
+	}
+
+	accepted, err := app.AcceptRun(ctx, core.HandleMessageInput{
+		Client:      "terminal",
+		ExternalKey: "local",
+		Text:        "continue",
+	})
+	if err != nil {
+		t.Fatalf("AcceptRun() error = %v", err)
+	}
+	waitForRunStatus(t, app, accepted.Run.ID, core.RunStatusCompleted)
+
+	plan, err = app.SessionPlan(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("SessionPlan() error = %v", err)
+	}
+	if plan.Items[0].Status != core.PlanItemActive {
+		t.Fatalf("active item status = %q, want active", plan.Items[0].Status)
+	}
+	if plan.Items[1].Status != core.PlanItemPending {
+		t.Fatalf("pending item status = %q, want pending", plan.Items[1].Status)
+	}
+}
+
 func TestCoreResolveApprovalRejectsConflictingSecondDecision(t *testing.T) {
 	t.Parallel()
 

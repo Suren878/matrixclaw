@@ -54,6 +54,22 @@ type ContextRuntime interface {
 	CompactSession(ctx context.Context, sessionID string) (core.CompactSessionResult, error)
 }
 
+type UsageRuntime interface {
+	SessionUsage(ctx context.Context, sessionID string) (core.UsageReport, error)
+}
+
+type PlanRuntime interface {
+	SessionPlan(ctx context.Context, sessionID string) (core.SessionPlan, error)
+	SetSessionGoal(ctx context.Context, sessionID string, goal string) (core.SessionPlan, error)
+	ClearSessionPlan(ctx context.Context, sessionID string) (core.SessionPlan, error)
+	AddPlanItem(ctx context.Context, sessionID string, text string, parentID string) (core.SessionPlan, error)
+	UpdatePlanItem(ctx context.Context, sessionID string, itemID string, status core.PlanItemStatus, text string) (core.SessionPlan, error)
+}
+
+type SearchRuntime interface {
+	Search(ctx context.Context, filter core.SearchFilter) (core.SearchReport, error)
+}
+
 type StorageRuntime interface {
 	SaveStorageFile(ctx context.Context, storagePath string, content []byte, title string, tags []string, mimeType string) (localstorage.Entry, error)
 	ListTemporaryStorageFiles(ctx context.Context, limit int) (localstorage.TempListResult, error)
@@ -101,6 +117,9 @@ type Dispatcher struct {
 	permissions    PermissionRuntime
 	messages       SessionMessageRuntime
 	contextRuntime ContextRuntime
+	usage          UsageRuntime
+	plan           PlanRuntime
+	search         SearchRuntime
 	storage        StorageRuntime
 	automation     AutomationRuntime
 	server         ServerRuntime
@@ -121,6 +140,9 @@ func New(runtime any, workingDir string) *Dispatcher {
 		d.permissions, _ = runtime.(PermissionRuntime)
 		d.messages, _ = runtime.(SessionMessageRuntime)
 		d.contextRuntime, _ = runtime.(ContextRuntime)
+		d.usage, _ = runtime.(UsageRuntime)
+		d.plan, _ = runtime.(PlanRuntime)
+		d.search, _ = runtime.(SearchRuntime)
 		d.storage, _ = runtime.(StorageRuntime)
 		d.automation, _ = runtime.(AutomationRuntime)
 		d.server, _ = runtime.(ServerRuntime)
@@ -163,6 +185,12 @@ func (d *Dispatcher) Handle(ctx context.Context, externalKey string, text string
 		return d.handlePermissions(ctx, externalKey, args)
 	case CommandContext:
 		return d.handleContext(ctx, externalKey, args)
+	case CommandUsage:
+		return d.handleUsage(ctx, externalKey)
+	case CommandPlan:
+		return d.handlePlan(ctx, externalKey, args)
+	case CommandSearch:
+		return d.handleSearch(ctx, externalKey, args)
 	case CommandModules:
 		return d.handleModules(ctx, args)
 	case CommandRemind:

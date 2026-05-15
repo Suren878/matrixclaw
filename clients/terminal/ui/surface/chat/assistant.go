@@ -118,7 +118,11 @@ func (a *AssistantMessageItem) renderMessageContent(width int) string {
 		if thinking != "" {
 			messageParts = append(messageParts, "")
 		}
-		messageParts = append(messageParts, a.renderMarkdown(content, width))
+		if a.message.IsSummaryMessage {
+			messageParts = append(messageParts, a.renderPlainText(content, width))
+		} else {
+			messageParts = append(messageParts, a.renderMarkdown(content, width))
+		}
 	}
 
 	if a.message.IsFinished() {
@@ -179,6 +183,24 @@ func (a *AssistantMessageItem) renderMarkdown(content string, width int) string 
 	return strings.TrimRight(rendered, "\n")
 }
 
+func (a *AssistantMessageItem) renderPlainText(content string, width int) string {
+	width = safeTextRenderWidth(width)
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimRight(line, " ")
+		if line == "" {
+			out = append(out, "")
+			continue
+		}
+		wrapped := strings.TrimRight(ansi.Wrap(line, width, " \t/\\._:=,;|-"), "\n")
+		out = append(out, strings.Split(wrapped, "\n")...)
+	}
+	rendered := strings.Join(out, "\n")
+	rendered = common.HighlightPlainPaths(rendered, a.sty)
+	return strings.TrimRight(rendered, "\n")
+}
+
 func normalizeAssistantMarkdownANSI(rendered string) string {
 	rendered = strings.ReplaceAll(rendered, goTermMarkdownInlineCodeBlueBg, assistantInlineCodeCyan)
 	rendered = strings.ReplaceAll(rendered, goTermMarkdownGreenBullet, assistantDashBullet)
@@ -189,11 +211,11 @@ func normalizeAssistantMarkdownANSI(rendered string) string {
 
 func (a *AssistantMessageItem) renderSpinning() string {
 	if a.message.IsThinking() {
-		a.anim.SetLabel("Thinking")
+		return a.anim.RenderDots(":: Thinking")
 	} else if a.message.IsSummaryMessage {
-		a.anim.SetLabel("Summarizing")
+		return a.anim.RenderDots(":: Summarizing")
 	}
-	return a.anim.Render()
+	return a.anim.RenderDots(":: Working")
 }
 
 func (a *AssistantMessageItem) renderError(width int) string {

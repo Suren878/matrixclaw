@@ -20,6 +20,10 @@ func (m *appModel) handleControlplaneSubmit(content string, attachments []surfac
 		m.returnToCommands = false
 		return true, m.openServerStatusDialog()
 	}
+	if isPlanOpenCommand(content) {
+		m.returnToCommands = false
+		return true, m.openPlanPanel()
+	}
 	if isDaemonRestartCommand(content) {
 		m.returnToCommands = false
 		return true, m.openServerRestartDialog()
@@ -31,6 +35,10 @@ func (m *appModel) handleControlplaneSubmit(content string, attachments []surfac
 	}
 	m.returnToCommands = false
 	return true, m.controlplaneCmd(content)
+}
+
+func isPlanOpenCommand(command string) bool {
+	return strings.EqualFold(strings.TrimSpace(command), "/plan")
 }
 
 func (m *appModel) controlplaneCmd(content string) tea.Cmd {

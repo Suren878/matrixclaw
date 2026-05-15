@@ -122,8 +122,9 @@ func buildConversationItems(sty *surfacestyles.Styles, messages []surfacemessage
 		if msg.Role == surfacemessage.User && msg.CreatedAt > 0 {
 			lastUserMessageTime = time.Unix(msg.CreatedAt, 0)
 		}
+		before := len(items)
 		items = append(items, surfacechat.ExtractMessageItems(sty, msg, toolResults)...)
-		if msg.Role == surfacemessage.Assistant {
+		if msg.Role == surfacemessage.Assistant && len(items) > before {
 			finish := msg.FinishPart()
 			if finish != nil && finish.Reason == surfacemessage.FinishReasonEndTurn {
 				items = append(items, surfacechat.NewAssistantInfoItem(sty, msg, lastUserMessageTime))
@@ -186,9 +187,6 @@ func isStandaloneReadToolCall(message surfacemessage.Message) bool {
 		return false
 	}
 	if strings.TrimSpace(message.Content().Text) != "" {
-		return false
-	}
-	if strings.TrimSpace(message.ReasoningContent().Thinking) != "" {
 		return false
 	}
 	toolCalls := message.ToolCalls()

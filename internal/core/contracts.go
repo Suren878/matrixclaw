@@ -20,6 +20,34 @@ type RenameSessionRequest struct {
 	Title string `json:"title"`
 }
 
+type UpdateSessionPlanRequest struct {
+	Goal  *string `json:"goal,omitempty"`
+	Clear bool    `json:"clear,omitempty"`
+}
+
+type AddPlanItemRequest struct {
+	Text     string `json:"text"`
+	ParentID string `json:"parent_id,omitempty"`
+}
+
+type UpdatePlanItemRequest struct {
+	ItemID string `json:"item_id"`
+	Status string `json:"status,omitempty"`
+	Text   string `json:"text,omitempty"`
+}
+
+type PlanRunStartRequest struct {
+	Reset bool `json:"reset,omitempty"`
+}
+
+type PlanRunBindRequest struct {
+	RunID string `json:"run_id"`
+}
+
+type SearchResponse struct {
+	Search SearchReport `json:"search"`
+}
+
 type UpdateSessionPermissionModeRequest struct {
 	PermissionMode string `json:"permission_mode"`
 }
@@ -100,6 +128,19 @@ type ClientSnapshotResponse struct {
 
 type SessionContextResponse struct {
 	Context ContextReport `json:"context"`
+}
+
+type UsageResponse struct {
+	Usage UsageReport `json:"usage"`
+}
+
+type SessionPlanResponse struct {
+	Plan SessionPlan `json:"plan"`
+}
+
+type PlanRunResponse struct {
+	PlanRun PlanRun     `json:"plan_run"`
+	Plan    SessionPlan `json:"plan"`
 }
 
 type SessionCompactResponse struct {

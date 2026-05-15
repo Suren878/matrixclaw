@@ -35,6 +35,16 @@ CREATE TABLE IF NOT EXISTS messages (
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
+CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
+    message_id UNINDEXED,
+    session_id UNINDEXED,
+    role,
+    content,
+    provider,
+    model,
+    tokenize = 'unicode61'
+);
+
 CREATE TABLE IF NOT EXISTS runs (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
@@ -45,6 +55,57 @@ CREATE TABLE IF NOT EXISTS runs (
     error TEXT NOT NULL DEFAULT '',
     started_at TEXT NOT NULL,
     finished_at TEXT,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS run_usage (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    run_id TEXT NOT NULL UNIQUE,
+    message_id TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    cached_tokens INTEGER NOT NULL DEFAULT 0,
+    reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+    estimated INTEGER NOT NULL DEFAULT 0,
+    provider_raw TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS session_goals (
+    session_id TEXT PRIMARY KEY,
+    goal TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS session_plan_items (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    parent_id TEXT NOT NULL DEFAULT '',
+    text TEXT NOT NULL,
+    status TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS plan_runs (
+    session_id TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    current_item_id TEXT NOT NULL DEFAULT '',
+    last_run_id TEXT NOT NULL DEFAULT '',
+    last_error TEXT NOT NULL DEFAULT '',
+    step_no INTEGER NOT NULL DEFAULT 0,
+    attempt INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
@@ -151,6 +212,12 @@ CREATE INDEX IF NOT EXISTS idx_messages_session_created_at
 
 CREATE INDEX IF NOT EXISTS idx_runs_session_started_at
     ON runs(session_id, started_at);
+
+CREATE INDEX IF NOT EXISTS idx_run_usage_session_created_at
+    ON run_usage(session_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_session_plan_items_session_position
+    ON session_plan_items(session_id, position);
 
 CREATE INDEX IF NOT EXISTS idx_file_snapshots_session_path_version
     ON file_snapshots(session_id, path, version DESC);

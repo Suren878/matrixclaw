@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
@@ -21,6 +22,12 @@ func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID st
 	}
 	assistant.Model = response.Model
 	assistant.Provider = response.Provider
+	if err := c.CompleteSessionPlanRunStep(ctx, *run, assistant.Content); err != nil {
+		return fmt.Errorf("complete plan run step: %w", err)
+	}
+	if err := c.completeActivePlanItemsIfRunFinished(ctx, sessionID); err != nil {
+		return fmt.Errorf("complete active plan items: %w", err)
+	}
 	if !assistantSaved {
 		assistant.CreatedAt = finishedAt
 		assistant.UpdatedAt = finishedAt
@@ -32,6 +39,7 @@ func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID st
 		if err := c.store.CompleteRun(ctx, *assistant, *run); err != nil {
 			return fmt.Errorf("complete run: %w", err)
 		}
+		c.saveRunUsage(ctx, *run, *assistant, response.Usage)
 		c.publishEvent(Event{
 			Type:      EventMessageCreated,
 			SessionID: sessionID,
@@ -59,6 +67,7 @@ func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID st
 	if err := c.store.UpdateRun(ctx, *run); err != nil {
 		return err
 	}
+	c.saveRunUsage(ctx, *run, *assistant, response.Usage)
 	c.publishEvent(Event{
 		Type:      EventMessageUpdated,
 		SessionID: sessionID,
@@ -71,6 +80,92 @@ func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID st
 		RunID:     run.ID,
 		Payload:   *run,
 	})
+	return nil
+}
+
+func planRunLooksBlocked(content string) bool {
+	content = strings.ToLower(strings.TrimSpace(content))
+	if content == "" {
+		return false
+	}
+	for _, marker := range []string{"plan_blocked", "blocked", "cannot complete", "can't complete", "не могу выполнить", "не удалось", "заблокировано"} {
+		if strings.Contains(content, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Core) completeDonePlanParents(ctx context.Context, sessionID string) error {
+	for {
+		plan, err := c.store.GetSessionPlan(ctx, sessionID)
+		if err != nil {
+			return nil
+		}
+		children := make(map[string][]PlanItem, len(plan.Items))
+		for _, item := range plan.Items {
+			parentID := strings.TrimSpace(item.ParentID)
+			if parentID != "" {
+				children[parentID] = append(children[parentID], item)
+			}
+		}
+		changed := false
+		for _, item := range plan.Items {
+			if item.Status == PlanItemDone || item.Status == PlanItemSkipped || len(children[item.ID]) == 0 {
+				continue
+			}
+			if !allPlanChildrenTerminal(children[item.ID]) {
+				continue
+			}
+			if _, err := c.UpdatePlanItem(ctx, sessionID, item.ID, PlanItemDone, ""); err != nil {
+				return err
+			}
+			changed = true
+			break
+		}
+		if !changed {
+			return nil
+		}
+	}
+}
+
+func allPlanChildrenTerminal(items []PlanItem) bool {
+	if len(items) == 0 {
+		return false
+	}
+	for _, item := range items {
+		switch item.Status {
+		case PlanItemDone, PlanItemSkipped:
+			continue
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func (c *Core) completeActivePlanItemsIfRunFinished(ctx context.Context, sessionID string) error {
+	if planRun, err := c.store.GetPlanRun(ctx, sessionID); err == nil && planRun.Status == PlanRunBlocked {
+		return nil
+	}
+	plan, err := c.store.GetSessionPlan(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	var active []PlanItem
+	for _, item := range plan.Items {
+		switch item.Status {
+		case PlanItemPending:
+			return nil
+		case PlanItemActive:
+			active = append(active, item)
+		}
+	}
+	for _, item := range active {
+		if _, err := c.UpdatePlanItem(ctx, sessionID, item.ID, PlanItemDone, ""); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

@@ -18,6 +18,13 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 		m.err = msg.err.Error()
 		return nil
 	}
+	if isPlanSnapshotCommand(msg.command) && msg.result.ReloadSnapshot {
+		m.dialog.CloseAll()
+		m.err = ""
+		m.skipPlanResumeOnce = true
+		m.planPanelOpen = !isPlanClearCommand(msg.command)
+		return m.reloadSnapshotCmd()
+	}
 	if dialog := m.controlplaneDialog(msg.result); dialog != nil {
 		m.showControlplaneDialog(dialog)
 		if msg.result.ReloadSnapshot {
@@ -41,6 +48,22 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 		return m.reloadSnapshotCmd()
 	}
 	return nil
+}
+
+func isPlanSnapshotCommand(command string) bool {
+	command = strings.ToLower(strings.TrimSpace(command))
+	return strings.HasPrefix(command, "/plan goal ") ||
+		strings.HasPrefix(command, "/plan add ") ||
+		strings.HasPrefix(command, "/plan subtask ") ||
+		strings.HasPrefix(command, "/plan edit ") ||
+		strings.HasPrefix(command, "/plan done ") ||
+		strings.HasPrefix(command, "/plan active ") ||
+		strings.HasPrefix(command, "/plan skip ") ||
+		isPlanClearCommand(command)
+}
+
+func isPlanClearCommand(command string) bool {
+	return strings.EqualFold(strings.TrimSpace(command), "/plan clear confirm")
 }
 
 func (m *appModel) handleContextCompactResult(msg controlplaneResultMsg) tea.Cmd {

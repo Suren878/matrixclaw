@@ -19,6 +19,8 @@ func (m *appModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+s":
 		return m, m.controlplaneCmd("/sessions")
+	case "ctrl+n":
+		return m, m.openPlanPanel()
 	}
 
 	if key.Matches(msg, km.Commands) {
@@ -29,9 +31,6 @@ func (m *appModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		switch {
 		case m.busy && key.Matches(msg, km.Editor.Escape):
 			return m, m.openCancelRunDialog()
-		case m.busy && key.Matches(msg, km.Chat.NewSession):
-			m.err = "agent is busy, please wait before starting a new session"
-			return m, nil
 		case m.busy && key.Matches(msg, km.Editor.OpenEditor):
 			m.err = "agent is working, please wait"
 			return m, nil
@@ -45,11 +44,18 @@ func (m *appModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, m.openCancelRunDialog()
 		}
 	case "tab":
+		if m.focus == appFocusChat && m.planPanelVisible() {
+			return m, m.setFocus(appFocusPlan)
+		}
 		return m, m.setFocus(appFocusEditor)
 	case "r":
 		m.loading = true
 		m.err = ""
 		return m, m.loadInitialCmd()
+	}
+
+	if m.focus == appFocusPlan {
+		return m.handlePlanKey(msg)
 	}
 
 	if m.chat == nil {

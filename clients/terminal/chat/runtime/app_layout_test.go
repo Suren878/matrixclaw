@@ -251,6 +251,30 @@ func TestHeaderViewShowsModelProviderAndApproxTokens(t *testing.T) {
 	}
 }
 
+func TestHeaderViewShowsLastProviderUsage(t *testing.T) {
+	now := time.Now().UTC()
+	model := newApp(nil, nil)
+	model.width = 120
+	model.height = 29
+	snapshot := snapshotWithTexts(now, "done")
+	snapshot.Session = &core.Session{ID: "session-1", ProviderID: "openai", ModelID: "gpt-5.4"}
+	snapshot.Messages[0].Parts = append(snapshot.Messages[0].Parts, core.MessagePart{
+		Kind: core.MessagePartKindFinish,
+		Finish: &core.FinishPart{
+			Reason:  "end_turn",
+			Details: []byte(`{"usage":{"input_tokens":1234,"output_tokens":567,"reasoning_tokens":89}}`),
+		},
+	})
+	model.read = viewmodel.NewReadModel(snapshot)
+
+	view := model.headerView()
+	for _, want := range []string{"Context:", "Last:", "in 1.2k", "out 567", "reasoning 89"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("header = %q, want %q", view, want)
+		}
+	}
+}
+
 func TestHeaderViewIncludesAssistantPromptTokens(t *testing.T) {
 	model := newApp(nil, &Runtime{config: Config{
 		Assistant: core.AssistantProfile{

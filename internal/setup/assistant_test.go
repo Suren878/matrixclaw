@@ -17,8 +17,14 @@ func TestInitializeAssistantSystemPromptAddsCommandContext(t *testing.T) {
 		"/tasks",
 		"/server",
 		"/restart",
+		"/plan",
+		"/usage",
+		"/search",
 		"automation=enabled",
 		"automation_tools=create_reminder,create_scheduled_ai_task",
+		"plan_tools=plan_get,plan_set_goal,plan_add_item,plan_update_item,plan_clear",
+		"session_runtime=daemon_owned_shared_between_terminal_telegram_future_clients",
+		"storage=/modules storage imports_reads_deletes_promotes_temporary_files",
 		"/provider -> select or edit provider model/settings",
 	} {
 		if !strings.Contains(prompt, want) {

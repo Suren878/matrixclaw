@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -41,6 +42,28 @@ type RunStore interface {
 	AcceptMessage(ctx context.Context, message Message, run Run) error
 }
 
+type UsageStore interface {
+	SaveUsageRecord(ctx context.Context, record UsageRecord) error
+	ListUsageRecords(ctx context.Context, filter UsageFilter) ([]UsageRecord, error)
+}
+
+type PlanStore interface {
+	GetSessionPlan(ctx context.Context, sessionID string) (SessionPlan, error)
+	SetSessionGoal(ctx context.Context, sessionID string, goal string, updatedAt time.Time) error
+	ClearSessionPlan(ctx context.Context, sessionID string) error
+	AddPlanItem(ctx context.Context, item PlanItem) error
+	UpdatePlanItem(ctx context.Context, item PlanItem) error
+	GetPlanItem(ctx context.Context, itemID string) (PlanItem, error)
+	NextPlanItemPosition(ctx context.Context, sessionID string, parentID string) (int, error)
+	GetPlanRun(ctx context.Context, sessionID string) (PlanRun, error)
+	SavePlanRun(ctx context.Context, run PlanRun) error
+	ClearPlanRun(ctx context.Context, sessionID string) error
+}
+
+type SearchStore interface {
+	SearchMessages(ctx context.Context, filter SearchFilter) ([]SearchResult, error)
+}
+
 type ApprovalStore interface {
 	CreateApproval(ctx context.Context, approval Approval) error
 	GetApproval(ctx context.Context, approvalID string) (Approval, error)
@@ -59,6 +82,9 @@ type Store interface {
 	DeliveryStore
 	MessageStore
 	RunStore
+	UsageStore
+	PlanStore
+	SearchStore
 	ApprovalStore
 	FileSnapshotStore
 }

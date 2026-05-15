@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.1.7
+
+- Added a persistent Planning Mode runner with SQLite-backed checkpoints for
+  current item, last run, status, attempts, and errors.
+- Changed plan execution from "model runs the whole plan" to one executable
+  item at a time, with the daemon selecting the next leaf task.
+- Added task/subtask execution semantics: parent items with open children are
+  treated as sections and auto-close when all children are terminal.
+- Made successful plan-run steps close the checkpointed item in core, reducing
+  reliance on the model remembering to call `plan_update_item`.
+- Kept blocked plan steps open and recorded blocked runner state instead of
+  incorrectly marking work done.
+- Improved TUI planning panel behavior, auto-run continuation, and plan summary
+  display during multi-item execution.
+- Documented Planning Mode architecture in `docs/PLANNING.md`.
+
 ## v0.1.6
 
 - Added TUI startup update checks against the latest GitHub Release, with a

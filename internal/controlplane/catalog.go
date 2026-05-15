@@ -15,6 +15,9 @@ const (
 	CommandProvider    = commandcatalog.CommandProvider
 	CommandPermissions = commandcatalog.CommandPermissions
 	CommandContext     = commandcatalog.CommandContext
+	CommandUsage       = commandcatalog.CommandUsage
+	CommandPlan        = commandcatalog.CommandPlan
+	CommandSearch      = commandcatalog.CommandSearch
 	CommandModules     = commandcatalog.CommandModules
 	CommandRemind      = commandcatalog.CommandRemind
 	CommandTasks       = commandcatalog.CommandTasks
@@ -35,6 +38,7 @@ const (
 	PickerProviderActions PickerKind = "provider_actions"
 	PickerPermissions     PickerKind = "permissions"
 	PickerContext         PickerKind = "context"
+	PickerPlan            PickerKind = "plan"
 	PickerModules         PickerKind = "modules"
 	PickerExternalAgents  PickerKind = "external_agents"
 	PickerExternalAgent   PickerKind = "external_agent"

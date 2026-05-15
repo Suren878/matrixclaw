@@ -11,6 +11,9 @@ const (
 	CommandProvider    CommandID = "provider"
 	CommandPermissions CommandID = "permissions"
 	CommandContext     CommandID = "context"
+	CommandUsage       CommandID = "usage"
+	CommandPlan        CommandID = "plan"
+	CommandSearch      CommandID = "search"
 	CommandModules     CommandID = "modules"
 	CommandRemind      CommandID = "remind"
 	CommandTasks       CommandID = "tasks"
@@ -36,7 +39,10 @@ func Catalog() []CommandSpec {
 		{ID: CommandSession, Command: "/session", Description: "Session commands", Menu: false, Public: false},
 		{ID: CommandProvider, Command: "/provider", Description: "Provider", Menu: true, Public: true},
 		{ID: CommandPermissions, Command: "/permissions", Aliases: []string{"mode"}, Description: "Permission mode", Menu: true, Public: true},
-		{ID: CommandContext, Command: "/context", Aliases: []string{"usage"}, Description: "Context", Menu: true, Public: true},
+		{ID: CommandContext, Command: "/context", Description: "Context", Menu: true, Public: true},
+		{ID: CommandUsage, Command: "/usage", Description: "Token usage", Menu: false, Public: true},
+		{ID: CommandPlan, Command: "/plan", Description: "Goal and plan", Menu: true, Public: true},
+		{ID: CommandSearch, Command: "/search", Description: "Search history", Menu: false, Public: true},
 		{ID: CommandModules, Command: "/modules", Description: "Modules", Menu: true, Public: true},
 		{ID: CommandRemind, Command: "/remind", Description: "Create reminder", Menu: false, Public: true},
 		{ID: CommandTasks, Command: "/tasks", Description: "Tasks", Menu: true, Public: true},

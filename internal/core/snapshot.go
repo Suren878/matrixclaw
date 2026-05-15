@@ -12,6 +12,7 @@ type ClientSnapshot struct {
 	SessionID             string                   `json:"session_id"`
 	Session               *Session                 `json:"session,omitempty"`
 	Context               *ContextReport           `json:"context,omitempty"`
+	Plan                  *SessionPlan             `json:"plan,omitempty"`
 	Messages              []Message                `json:"messages"`
 	Run                   *Run                     `json:"run,omitempty"`
 	Timing                *RunTiming               `json:"timing,omitempty"`
@@ -38,6 +39,11 @@ func (c *Core) ClientSnapshot(ctx context.Context, client string, externalKey st
 	}
 	session = c.decorateSessionLLM(session)
 	snapshot.Session = &session
+	if plan, err := c.store.GetSessionPlan(ctx, binding.SessionID); err != nil {
+		return ClientSnapshot{}, err
+	} else {
+		snapshot.Plan = &plan
+	}
 
 	approvals, err := c.store.ListApprovals(ctx, binding.SessionID, "")
 	if err != nil {

@@ -26,6 +26,27 @@ func applyCanonicalSchema(db *sql.DB) error {
 	if err := ensureColumn(db, "external_agent_sessions", "sandbox", `ALTER TABLE external_agent_sessions ADD COLUMN sandbox TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
 	}
+	if err := ensureColumn(db, "session_plan_items", "parent_id", `ALTER TABLE session_plan_items ADD COLUMN parent_id TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_session_plan_items_session_parent_position ON session_plan_items(session_id, parent_id, position)`); err != nil {
+		return fmt.Errorf("store: create session plan parent index: %w", err)
+	}
+	if _, err := db.Exec(`
+CREATE TABLE IF NOT EXISTS plan_runs (
+    session_id TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    current_item_id TEXT NOT NULL DEFAULT '',
+    last_run_id TEXT NOT NULL DEFAULT '',
+    last_error TEXT NOT NULL DEFAULT '',
+    step_no INTEGER NOT NULL DEFAULT 0,
+    attempt INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+)`); err != nil {
+		return fmt.Errorf("store: create plan runs table: %w", err)
+	}
 	if _, err := db.Exec(`UPDATE sessions SET runtime_id = 'external_agent' WHERE kind = 'external_agent' AND runtime_id IN ('matrixclaw', 'codex', 'codex-app')`); err != nil {
 		return fmt.Errorf("store: backfill external session runtime: %w", err)
 	}
@@ -37,6 +58,15 @@ func applyCanonicalSchema(db *sql.DB) error {
 	}
 	if _, err := db.Exec(`UPDATE external_agent_sessions SET sandbox = 'danger-full-access' WHERE sandbox = ''`); err != nil {
 		return fmt.Errorf("store: backfill external session sandbox: %w", err)
+	}
+	if _, err := db.Exec(`
+INSERT INTO message_fts(message_id, session_id, role, content, provider, model)
+SELECT m.id, m.session_id, m.role, m.content, m.provider, m.model
+FROM messages m
+WHERE NOT EXISTS (
+    SELECT 1 FROM message_fts f WHERE f.message_id = m.id
+)`); err != nil {
+		return fmt.Errorf("store: backfill message search: %w", err)
 	}
 	return nil
 }

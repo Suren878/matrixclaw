@@ -12,6 +12,7 @@ type StateSnapshot struct {
 	SessionID             string
 	Session               *core.Session
 	Context               *core.ContextReport
+	Plan                  *core.SessionPlan
 	Run                   *core.Run
 	Timing                *core.RunTiming
 	Messages              []core.Message
@@ -26,6 +27,7 @@ type State struct {
 	sessionID             string
 	session               *core.Session
 	context               *core.ContextReport
+	plan                  *core.SessionPlan
 	run                   *core.Run
 	timing                *core.RunTiming
 	messages              []core.Message
@@ -40,6 +42,7 @@ func NewState(snapshot core.ClientSnapshot) *State {
 		sessionID:             snapshot.SessionID,
 		session:               cloneSession(snapshot.Session),
 		context:               cloneContextReport(snapshot.Context),
+		plan:                  cloneSessionPlan(snapshot.Plan),
 		run:                   cloneRun(snapshot.Run),
 		timing:                cloneTiming(snapshot.Timing),
 		messages:              append([]core.Message(nil), snapshot.Messages...),
@@ -78,6 +81,7 @@ func (s *State) Snapshot() StateSnapshot {
 		SessionID: s.sessionID,
 		Session:   cloneSession(s.session),
 		Context:   cloneContextReport(s.context),
+		Plan:      cloneSessionPlan(s.plan),
 		Run:       cloneRun(s.run),
 		Timing:    cloneTiming(s.timing),
 		Messages:  append([]core.Message(nil), s.messages...),
@@ -134,6 +138,15 @@ func cloneContextReport(report *core.ContextReport) *core.ContextReport {
 	return &copy
 }
 
+func cloneSessionPlan(plan *core.SessionPlan) *core.SessionPlan {
+	if plan == nil {
+		return nil
+	}
+	copy := *plan
+	copy.Items = append([]core.PlanItem(nil), plan.Items...)
+	return &copy
+}
+
 func (s *State) Apply(event daemonclient.LiveEvent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -187,6 +200,12 @@ func (s *State) Apply(event daemonclient.LiveEvent) error {
 		}
 		s.run = cloneRun(&run)
 		s.timing = nil
+	case core.EventPlanUpdated:
+		plan, err := event.DecodeSessionPlan()
+		if err != nil {
+			return err
+		}
+		s.plan = cloneSessionPlan(&plan)
 	case core.EventFileVersioned:
 		file, err := event.DecodeFileSnapshot()
 		if err != nil {

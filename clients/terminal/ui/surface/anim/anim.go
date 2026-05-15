@@ -316,6 +316,15 @@ func (a *Anim) Render() string {
 	return b.String()
 }
 
+// RenderDots renders a compact label with animated trailing dots.
+func (a *Anim) RenderDots(label string) string {
+	step := int(a.step.Load())
+	index := (step / max(1, fps/3)) % len(ellipsisFrames)
+	return lipgloss.NewStyle().
+		Foreground(a.labelColor).
+		Render(label + ellipsisFrames[index])
+}
+
 // Step is a command that triggers the next step in the animation.
 func (a *Anim) Step() tea.Cmd {
 	return tea.Tick(time.Second/time.Duration(fps), func(t time.Time) tea.Msg {

@@ -11,6 +11,7 @@ type appLayout struct {
 	statusHelpView string
 	statusInfoView string
 	inputView      string
+	planWidth      int
 	headerHeight   int
 	footerHeight   int
 	inputHeight    int
@@ -22,6 +23,10 @@ type appLayout struct {
 
 func (layout appLayout) bodyHeight() int {
 	return max(0, layout.bodyBottom-layout.bodyTop)
+}
+
+func (layout appLayout) chatWidth(totalWidth int) int {
+	return max(0, totalWidth-layout.planWidth)
 }
 
 func (layout appLayout) footerView() string {
@@ -60,6 +65,7 @@ func (m *appModel) layout() appLayout {
 		statusHelpView: statusHelpView,
 		statusInfoView: statusInfoView,
 		inputView:      inputView,
+		planWidth:      m.visiblePlanPanelWidth(),
 		headerHeight:   headerHeight,
 		footerHeight:   footerHeight,
 		inputHeight:    inputHeight,
@@ -79,7 +85,7 @@ func (m *appModel) resizeChat() {
 	if bodyHeight < 1 {
 		bodyHeight = m.height
 	}
-	m.chat.SetSize(m.width, bodyHeight)
+	m.chat.SetSize(layout.chatWidth(m.width), bodyHeight)
 }
 
 func (m *appModel) bodyBounds() (int, int) {
@@ -120,6 +126,27 @@ func (m *appModel) editorWidth() int {
 		return 0
 	}
 	return m.width
+}
+
+func (m *appModel) visiblePlanPanelWidth() int {
+	if !m.shouldShowPlanPanel() {
+		return 0
+	}
+	return m.availablePlanPanelWidth()
+}
+
+func (m *appModel) availablePlanPanelWidth() int {
+	if m.width < 132 || m.height < compactModeHeightBreakpoint {
+		return 0
+	}
+	width := 36
+	if m.width >= 170 {
+		width = 42
+	}
+	if m.width-width < 80 {
+		return 0
+	}
+	return width
 }
 
 func (m *appModel) isCompactLayout() bool {

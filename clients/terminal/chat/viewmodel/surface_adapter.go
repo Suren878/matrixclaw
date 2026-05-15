@@ -42,6 +42,9 @@ func ToSurfaceMessage(message core.Message) surfacemessage.Message {
 			}
 		case core.MessagePartKindToolCall:
 			if part.ToolCall != nil {
+				if isPlanToolName(part.ToolCall.Name) {
+					continue
+				}
 				out.Parts = append(out.Parts, surfacemessage.ToolCall{
 					ID:       part.ToolCall.ID,
 					Name:     part.ToolCall.Name,
@@ -51,6 +54,9 @@ func ToSurfaceMessage(message core.Message) surfacemessage.Message {
 			}
 		case core.MessagePartKindToolResult:
 			if part.ToolResult != nil {
+				if isPlanToolName(part.ToolResult.Name) {
+					continue
+				}
 				out.Parts = append(out.Parts, surfacemessage.ToolResult{
 					ToolCallID: part.ToolResult.ToolCallID,
 					Name:       part.ToolResult.Name,
@@ -81,9 +87,40 @@ func ToSurfaceMessage(message core.Message) surfacemessage.Message {
 func ToSurfaceMessages(messages []core.Message) []surfacemessage.Message {
 	out := make([]surfacemessage.Message, 0, len(messages))
 	for _, message := range messages {
-		out = append(out, ToSurfaceMessage(message))
+		if core.IsPlanRunPromptMessage(message) {
+			continue
+		}
+		surface := ToSurfaceMessage(message)
+		if shouldKeepSurfaceMessage(surface) {
+			out = append(out, surface)
+		}
 	}
 	return out
+}
+
+func shouldKeepSurfaceMessage(message surfacemessage.Message) bool {
+	if strings.TrimSpace(message.Content().Text) != "" {
+		return true
+	}
+	if strings.TrimSpace(message.ReasoningContent().Thinking) != "" {
+		return true
+	}
+	for _, part := range message.Parts {
+		switch part.(type) {
+		case surfacemessage.ToolCall, surfacemessage.ToolResult, surfacemessage.Finish:
+			return true
+		}
+	}
+	return message.Role == surfacemessage.User
+}
+
+func isPlanToolName(name string) bool {
+	switch strings.TrimSpace(name) {
+	case "plan_get", "plan_set_goal", "plan_add_item", "plan_update_item", "plan_clear":
+		return true
+	default:
+		return false
+	}
 }
 
 func ToSurfacePermissionRequest(request core.PermissionRequest) surfacepermission.PermissionRequest {

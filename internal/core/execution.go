@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
 // maxRunToolSteps caps the tool-call loop per run to prevent unbounded execution.
-const maxRunToolSteps = 8
+// Multi-step plans commonly need more than a few tool turns because models may
+// alternate between plan updates and project tools.
+const maxRunToolSteps = 32
 
 type runExecution struct {
 	Run  Run
@@ -144,6 +147,13 @@ func (c *Core) applyRunTurnResult(ctx context.Context, execution *runExecution, 
 	case turnStepContinue:
 		return false, nil
 	case turnStepWaitingApproval:
+		pending, err := c.runHasPendingApprovals(ctx, execution.Run.SessionID, execution.Run.ID)
+		if err != nil {
+			return true, err
+		}
+		if !pending {
+			return false, nil
+		}
 		return true, c.setRunStatus(ctx, &execution.Run, RunStatusWaitingApproval, "")
 	case turnStepCompleted:
 		if result.Assistant == nil {
@@ -153,6 +163,19 @@ func (c *Core) applyRunTurnResult(ctx context.Context, execution *runExecution, 
 	default:
 		return true, fmt.Errorf("unknown turn step outcome %d", result.Outcome)
 	}
+}
+
+func (c *Core) runHasPendingApprovals(ctx context.Context, sessionID string, runID string) (bool, error) {
+	approvals, err := c.store.ListApprovals(ctx, sessionID, ApprovalStatePending)
+	if err != nil {
+		return false, err
+	}
+	for _, approval := range approvals {
+		if strings.TrimSpace(approval.RunID) == strings.TrimSpace(runID) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (c *Core) resolveSessionRuntime(ctx context.Context, session Session) (providers.Runtime, error) {

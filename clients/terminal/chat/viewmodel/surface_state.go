@@ -13,6 +13,7 @@ type Snapshot struct {
 	SessionID             string
 	Session               *core.Session
 	Context               *core.ContextReport
+	Plan                  *core.SessionPlan
 	Run                   *core.Run
 	Timing                *core.RunTiming
 	Messages              []surfacemessage.Message
@@ -43,6 +44,7 @@ func FromStateSnapshot(snapshot clientruntime.StateSnapshot) Snapshot {
 		SessionID:   snapshot.SessionID,
 		Session:     cloneSession(snapshot.Session),
 		Context:     cloneContextReport(snapshot.Context),
+		Plan:        cloneSessionPlan(snapshot.Plan),
 		Run:         cloneRun(snapshot.Run),
 		Timing:      cloneTiming(snapshot.Timing),
 		Messages:    ToSurfaceMessages(snapshot.Messages),
@@ -71,6 +73,15 @@ func cloneContextReport(report *core.ContextReport) *core.ContextReport {
 		}
 		copy.LastProviderUsage = &usage
 	}
+	return &copy
+}
+
+func cloneSessionPlan(plan *core.SessionPlan) *core.SessionPlan {
+	if plan == nil {
+		return nil
+	}
+	copy := *plan
+	copy.Items = append([]core.PlanItem(nil), plan.Items...)
 	return &copy
 }
 

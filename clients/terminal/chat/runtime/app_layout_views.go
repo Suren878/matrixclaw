@@ -8,6 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	surfaceheader "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/header"
+	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
 	"github.com/Suren878/matrixclaw/internal/core"
 )
@@ -93,7 +94,29 @@ func (m *appModel) workingStatusPhase() string {
 	if snapshot.Run != nil && snapshot.Run.Status == core.RunStatusAccepted {
 		return "Queued"
 	}
+	if m.modelIsThinking(snapshot.Messages) {
+		return "Thinking"
+	}
 	return "Waiting for model"
+}
+
+func (m *appModel) modelIsThinking(messages []surfacemessage.Message) bool {
+	for i := len(messages) - 1; i >= 0; i-- {
+		message := messages[i]
+		if message.Role == surfacemessage.User {
+			return false
+		}
+		if message.Role != surfacemessage.Assistant && message.Role != surfacemessage.System {
+			continue
+		}
+		if message.IsThinking() {
+			return true
+		}
+		if strings.TrimSpace(message.Content().Text) != "" || len(message.ToolCalls()) > 0 || message.IsFinished() {
+			return false
+		}
+	}
+	return false
 }
 
 func (m *appModel) workingIdleElapsed() string {

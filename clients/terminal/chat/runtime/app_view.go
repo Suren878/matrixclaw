@@ -23,14 +23,12 @@ func (m *appModel) viewContent() string {
 		return ""
 	}
 	layout := m.layout()
+	canvas := uv.NewScreenBuffer(m.width, m.height)
+	m.drawContent(canvas, layout)
 	if m.dialog.HasDialogs() {
-		canvas := uv.NewScreenBuffer(m.width, m.height)
-		m.drawContent(canvas, layout)
 		m.dialog.Draw(canvas, canvas.Bounds())
-		return normalizeScreenContent(canvas.Render())
 	}
-
-	return normalizeScreenContent(m.contentView(layout))
+	return normalizeScreenContent(canvas.Render())
 }
 
 func (m *appModel) drawContent(canvas uv.Screen, layout appLayout) {
@@ -47,14 +45,18 @@ func (m *appModel) drawContent(canvas uv.Screen, layout appLayout) {
 		}
 	}
 
+	chatWidth := layout.chatWidth(m.width)
 	if m.chat != nil && layout.bodyBottom > layout.bodyTop {
-		m.chat.Draw(canvas, uv.Rect(0, layout.bodyTop, m.width, layout.bodyBottom))
+		m.chat.Draw(canvas, uv.Rect(0, layout.bodyTop, chatWidth, layout.bodyBottom))
 	} else if m.loading {
-		uv.NewStyledString(m.styles.Base.Render("Loading terminal...")).Draw(canvas, uv.Rect(0, layout.bodyTop, m.width, layout.bodyBottom))
+		uv.NewStyledString(m.styles.Base.Render("Loading terminal...")).Draw(canvas, uv.Rect(0, layout.bodyTop, chatWidth, layout.bodyBottom))
 	} else if m.err != "" {
-		uv.NewStyledString(m.styles.TagError.Render("Error: ")+m.styles.Base.Render(m.err)).Draw(canvas, uv.Rect(0, layout.bodyTop, m.width, layout.bodyBottom))
+		uv.NewStyledString(m.styles.TagError.Render("Error: ")+m.styles.Base.Render(m.err)).Draw(canvas, uv.Rect(0, layout.bodyTop, chatWidth, layout.bodyBottom))
 	} else {
-		uv.NewStyledString(m.styles.Base.Render("No active session")).Draw(canvas, uv.Rect(0, layout.bodyTop, m.width, layout.bodyBottom))
+		uv.NewStyledString(m.styles.Base.Render("No active session")).Draw(canvas, uv.Rect(0, layout.bodyTop, chatWidth, layout.bodyBottom))
+	}
+	if layout.planWidth > 0 && layout.bodyBottom > layout.bodyTop {
+		uv.NewStyledString(m.planPanelView(layout.planWidth, layout.bodyHeight())).Draw(canvas, uv.Rect(chatWidth, layout.bodyTop, m.width, layout.bodyBottom))
 	}
 	if layout.inputHeight > 0 {
 		uv.NewStyledString(layout.inputView).Draw(canvas, uv.Rect(0, layout.editorTop, m.width, layout.editorBottom))
@@ -67,7 +69,11 @@ func (m *appModel) contentView(layout appLayout) string {
 		sections = append(sections, renderRegion(m.width, layout.headerHeight, layout.headerView))
 	}
 	if bodyHeight := layout.bodyHeight(); bodyHeight > 0 {
-		sections = append(sections, renderRegion(m.width, bodyHeight, m.bodyView()))
+		body := renderRegion(layout.chatWidth(m.width), bodyHeight, m.bodyView())
+		if layout.planWidth > 0 {
+			body = lipgloss.JoinHorizontal(lipgloss.Top, body, m.planPanelView(layout.planWidth, bodyHeight))
+		}
+		sections = append(sections, renderRegion(m.width, bodyHeight, body))
 	}
 	if layout.inputHeight > 0 {
 		sections = append(sections, renderRegion(m.width, layout.inputHeight, layout.inputView))

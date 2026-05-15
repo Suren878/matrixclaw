@@ -34,6 +34,7 @@ type ConfirmData struct {
 	ConfirmCommand string
 	CancelCommand  string
 	ConfirmDanger  bool
+	CancelDanger   bool
 }
 
 type InfoData struct {
