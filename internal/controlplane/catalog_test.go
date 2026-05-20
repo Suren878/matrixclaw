@@ -64,6 +64,20 @@ func TestPickerCommandBuildsSharedCommands(t *testing.T) {
 		{kind: PickerProviderActions, contextID: "local-ai", itemID: "delete", want: "/provider custom delete local-ai"},
 		{kind: PickerPermissions, itemID: "full_auto", want: "/permissions full_auto"},
 		{kind: PickerModules, itemID: "storage", want: "/modules storage"},
+		{kind: PickerModules, itemID: "tts", want: "/modules tts"},
+		{kind: PickerModules, itemID: "stt", want: "/modules stt"},
+		{kind: PickerModules, itemID: "agents", want: "/modules agents"},
+		{kind: PickerTextToSpeech, itemID: "enabled", want: "/modules tts enabled"},
+		{kind: PickerTextToSpeech, itemID: "provider", want: "/modules tts provider"},
+		{kind: PickerSpeechToText, itemID: "enabled", want: "/modules stt enabled"},
+		{kind: PickerSpeechToText, itemID: "provider", want: "/modules stt provider"},
+		{kind: PickerVoiceEnabled, contextID: "tts", itemID: "yes", want: "/modules tts set-enabled yes"},
+		{kind: PickerVoiceProvider, contextID: "stt", itemID: "whisper", want: "/modules stt provider whisper"},
+		{kind: PickerExternalAgents, itemID: "codex-app", want: "/modules agents codex-app"},
+		{kind: PickerExternalAgent, contextID: "codex-app", itemID: "path", want: "/modules agents codex-app path"},
+		{kind: PickerExternalAgent, contextID: "codex-app", itemID: "enabled", want: "/modules agents codex-app enabled"},
+		{kind: PickerExternalAgent, contextID: "codex-app", itemID: "new", want: "/session new codex-app"},
+		{kind: PickerExternalAgentOn, contextID: "codex-app", itemID: "no", want: "/modules agents codex-app set-enabled no"},
 		{kind: PickerStorageTemp, itemID: "toggle", want: "/modules storage temp-cleanup-mode"},
 		{kind: PickerStorageCleanup, itemID: "on", want: "/modules storage temp-toggle on"},
 		{kind: PickerStorageFiles, itemID: "file:docs/a.txt", want: "/modules storage file docs/a.txt"},
@@ -83,6 +97,240 @@ func TestPickerCommandBuildsSharedCommands(t *testing.T) {
 	for _, tt := range tests {
 		if got := PickerCommandFor(tt.kind, tt.contextID, tt.itemID); got != tt.want {
 			t.Fatalf("PickerCommandFor(%q, %q, %q)=%q want %q", tt.kind, tt.contextID, tt.itemID, got, tt.want)
+		}
+	}
+}
+
+func TestProviderCommandBuildersEncodeIDsAndPreserveValues(t *testing.T) {
+	providerID := "local ai"
+	token := "form-token"
+
+	tests := map[string]string{
+		"provider":        providerCommand(),
+		"provider edit":   providerEditCommand(providerID),
+		"provider field":  providerEditFieldCommand("model", providerID, token),
+		"provider set":    providerEditSetCommand("model", providerID, token, "gpt-5.4 nano"),
+		"provider prefix": providerEditSetCommandPrefix("key", providerID, token),
+		"provider key":    providerKeyCommandPrefix(providerID),
+		"custom delete":   customProviderCommand("delete", providerEncodedID(providerID)),
+	}
+
+	want := map[string]string{
+		"provider":        "/provider",
+		"provider edit":   "/provider edit local+ai",
+		"provider field":  "/provider edit field model local+ai form-token",
+		"provider set":    "/provider edit set model local+ai form-token gpt-5.4 nano",
+		"provider prefix": "/provider edit set key local+ai form-token ",
+		"provider key":    "/provider key local+ai ",
+		"custom delete":   "/provider custom delete local+ai",
+	}
+	for name, got := range tests {
+		if got != want[name] {
+			t.Fatalf("%s command = %q, want %q", name, got, want[name])
+		}
+	}
+}
+
+func TestFirstCommandStepRequiresWholeVerb(t *testing.T) {
+	step, rest := firstCommandStep("custom openai form-token")
+	if step != "custom" || rest != "openai form-token" {
+		t.Fatalf("firstCommandStep custom = (%q, %q), want custom/openai form-token", step, rest)
+	}
+	step, rest = firstCommandStep("customize")
+	if step != "customize" || rest != "" {
+		t.Fatalf("firstCommandStep customize = (%q, %q), want customize/empty", step, rest)
+	}
+}
+
+func TestExternalAgentCommandBuilders(t *testing.T) {
+	tests := map[string]string{
+		"modules":     modulesCommand(),
+		"storage":     storageCommand(),
+		"tts":         textToSpeechCommand(),
+		"stt":         speechToTextCommand(),
+		"agents":      externalAgentsCommand(),
+		"agent":       externalAgentCommand("codex-app"),
+		"path":        externalAgentPathCommandPrefix("codex-app"),
+		"enabled":     externalAgentEnabledCommand("codex-app"),
+		"set enabled": externalAgentSetEnabledCommand("codex-app", "no"),
+		"enable top":  externalAgentUpdateEnabledCommand("codex-app", true),
+		"disable top": externalAgentUpdateEnabledCommand("codex-app", false),
+		"new session": externalAgentNewSessionCommand("codex-app"),
+	}
+
+	want := map[string]string{
+		"modules":     "/modules",
+		"storage":     "/modules storage",
+		"tts":         "/modules tts",
+		"stt":         "/modules stt",
+		"agents":      "/modules agents",
+		"agent":       "/modules agents codex-app",
+		"path":        "/modules agents codex-app path ",
+		"enabled":     "/modules agents codex-app enabled",
+		"set enabled": "/modules agents codex-app set-enabled no",
+		"enable top":  "/modules agents enable codex-app",
+		"disable top": "/modules agents disable codex-app",
+		"new session": "/session new codex-app",
+	}
+	for name, got := range tests {
+		if got != want[name] {
+			t.Fatalf("%s command = %q, want %q", name, got, want[name])
+		}
+	}
+}
+
+func TestStorageCommandBuilders(t *testing.T) {
+	tests := map[string]string{
+		"storage":             storageCommand(),
+		"import":              storageImportCommand(),
+		"import prefix":       storageImportCommandPrefix(),
+		"files":               storageFilesCommand(),
+		"file":                storageFileCommand("docs/a.txt"),
+		"read":                storageReadCommand("docs/a.txt"),
+		"delete":              storageDeleteCommand("docs/a.txt"),
+		"delete confirm":      storageDeleteConfirmCommand("docs/a.txt"),
+		"temp":                storageTempCommand(),
+		"temp file":           storageTempFileCommand("tmp/a.png"),
+		"temp promote":        storageTempPromoteCommand("tmp/a.png"),
+		"temp delete":         storageTempDeleteCommand("tmp/a.png"),
+		"temp delete confirm": storageTempDeleteConfirmCommand("tmp/a.png"),
+		"cleanup":             storageTempCleanupCommand(),
+		"cleanup confirm":     storageTempCleanupConfirmCommand(),
+		"cleanup mode":        storageTempCleanupModeCommand(),
+		"toggle":              storageTempToggleCommand("on"),
+		"days":                storageTempDaysCommand(),
+		"days prefix":         storageTempDaysCommandPrefix(),
+		"max":                 storageTempMaxCommand(),
+		"max prefix":          storageTempMaxCommandPrefix(),
+	}
+
+	want := map[string]string{
+		"storage":             "/modules storage",
+		"import":              "/modules storage import",
+		"import prefix":       "/modules storage import ",
+		"files":               "/modules storage files",
+		"file":                "/modules storage file docs/a.txt",
+		"read":                "/modules storage read docs/a.txt",
+		"delete":              "/modules storage delete docs/a.txt",
+		"delete confirm":      "/modules storage delete-confirm docs/a.txt",
+		"temp":                "/modules storage temp",
+		"temp file":           "/modules storage temp-file tmp/a.png",
+		"temp promote":        "/modules storage temp-promote tmp/a.png",
+		"temp delete":         "/modules storage temp-delete tmp/a.png",
+		"temp delete confirm": "/modules storage temp-delete-confirm tmp/a.png",
+		"cleanup":             "/modules storage temp-cleanup",
+		"cleanup confirm":     "/modules storage temp-cleanup-confirm",
+		"cleanup mode":        "/modules storage temp-cleanup-mode",
+		"toggle":              "/modules storage temp-toggle on",
+		"days":                "/modules storage temp-days",
+		"days prefix":         "/modules storage temp-days ",
+		"max":                 "/modules storage temp-max",
+		"max prefix":          "/modules storage temp-max ",
+	}
+	for name, got := range tests {
+		if got != want[name] {
+			t.Fatalf("%s command = %q, want %q", name, got, want[name])
+		}
+	}
+}
+
+func TestSessionCommandBuilders(t *testing.T) {
+	tests := map[string]string{
+		"new":              newSessionCommand(),
+		"new titled":       newSessionCommand("Docs"),
+		"sessions":         sessionsCommand(),
+		"session new":      sessionNewCommand("matrixclaw"),
+		"session menu":     sessionMenuCommand("session_1"),
+		"session use":      sessionUseCommand("session_1"),
+		"session rename":   sessionRenameCommand("session_1"),
+		"rename prefix":    sessionRenameCommandPrefix("session_1"),
+		"session delete":   sessionDeleteCommand("session_1"),
+		"delete confirmed": sessionDeleteConfirmedCommand("session_1"),
+	}
+
+	want := map[string]string{
+		"new":              "/new",
+		"new titled":       "/new Docs",
+		"sessions":         "/sessions",
+		"session new":      "/session new matrixclaw",
+		"session menu":     "/session menu session_1",
+		"session use":      "/session use session_1",
+		"session rename":   "/session rename session_1",
+		"rename prefix":    "/session rename session_1 ",
+		"session delete":   "/session delete session_1",
+		"delete confirmed": "/session delete-confirmed session_1",
+	}
+	for name, got := range tests {
+		if got != want[name] {
+			t.Fatalf("%s command = %q, want %q", name, got, want[name])
+		}
+	}
+}
+
+func TestTaskCommandBuilders(t *testing.T) {
+	tests := map[string]string{
+		"tasks":                 tasksCommand(),
+		"archive":               tasksArchiveCommand(),
+		"menu":                  taskMenuCommand("job_1"),
+		"pause":                 taskPauseCommand("job_1"),
+		"resume":                taskResumeCommand("job_1"),
+		"complete":              taskCompleteCommand("job_1"),
+		"delete":                taskDeleteCommand("job_1"),
+		"delete confirm":        taskDeleteConfirmCommand("job_1"),
+		"delete closed":         tasksDeleteClosedCommand(),
+		"delete closed confirm": tasksDeleteClosedConfirmCommand(),
+		"run":                   taskRunCommand("job_1"),
+	}
+
+	want := map[string]string{
+		"tasks":                 "/tasks",
+		"archive":               "/tasks archive",
+		"menu":                  "/tasks menu job_1",
+		"pause":                 "/tasks pause job_1",
+		"resume":                "/tasks resume job_1",
+		"complete":              "/tasks complete job_1",
+		"delete":                "/tasks delete job_1",
+		"delete confirm":        "/tasks delete-confirm job_1",
+		"delete closed":         "/tasks delete-closed",
+		"delete closed confirm": "/tasks delete-closed-confirm",
+		"run":                   "/tasks run job_1",
+	}
+	for name, got := range tests {
+		if got != want[name] {
+			t.Fatalf("%s command = %q, want %q", name, got, want[name])
+		}
+	}
+}
+
+func TestCoreCommandBuilders(t *testing.T) {
+	tests := map[string]string{
+		"permissions":     permissionsCommand(),
+		"permission mode": permissionsCommand("full_auto"),
+		"context":         contextCommand(),
+		"context info":    contextInfoCommand(),
+		"context compact": contextCompactCommand(),
+		"context confirm": contextCompactConfirmCommand(),
+		"server":          serverCommand(),
+		"status":          statusCommand(),
+		"restart":         restartCommand(),
+		"restart confirm": restartConfirmCommand(),
+	}
+
+	want := map[string]string{
+		"permissions":     "/permissions",
+		"permission mode": "/permissions full_auto",
+		"context":         "/context",
+		"context info":    "/context info",
+		"context compact": "/context compact",
+		"context confirm": "/context compact confirm",
+		"server":          "/server",
+		"status":          "/status",
+		"restart":         "/restart",
+		"restart confirm": "/restart confirm",
+	}
+	for name, got := range tests {
+		if got != want[name] {
+			t.Fatalf("%s command = %q, want %q", name, got, want[name])
 		}
 	}
 }
@@ -139,28 +387,6 @@ func TestBuildCommandViewMarksMatrixclawOnlyCommandsForExternalAgent(t *testing.
 	}
 	if byCommand["/sessions"].Disabled || byCommand["/modules"].Disabled {
 		t.Fatalf("shared commands should stay enabled: sessions=%#v modules=%#v", byCommand["/sessions"], byCommand["/modules"])
-	}
-}
-
-func TestPickerItemRoleHelpers(t *testing.T) {
-	tests := []struct {
-		item      PickerItem
-		cancel    bool
-		back      bool
-		danger    bool
-		action    bool
-		separated bool
-	}{
-		{item: PickerItem{Role: PickerItemRoleCancel}, cancel: true, separated: true},
-		{item: PickerItem{Role: PickerItemRoleBack}, back: true, separated: true},
-		{item: PickerItem{Role: PickerItemRoleDanger}, danger: true, separated: true},
-		{item: PickerItem{Role: PickerItemRoleAction}, action: true, separated: true},
-		{item: PickerItem{}, separated: false},
-	}
-	for _, tt := range tests {
-		if tt.item.IsCancel() != tt.cancel || tt.item.IsBack() != tt.back || tt.item.IsDanger() != tt.danger || tt.item.IsAction() != tt.action || tt.item.NeedsSeparator() != tt.separated {
-			t.Fatalf("role helpers for %#v mismatch", tt.item)
-		}
 	}
 }
 

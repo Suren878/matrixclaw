@@ -65,9 +65,18 @@ func (m *appModel) reconnectCmd() tea.Cmd {
 
 func (m *appModel) applySnapshot(snapshot core.ClientSnapshot, restartStream bool) {
 	m.clearContextCompactProgress()
+	previousSessionID := strings.TrimSpace(m.session)
+	nextSessionID := strings.TrimSpace(snapshot.SessionID)
+	sessionChanged := previousSessionID != "" && nextSessionID != "" && previousSessionID != nextSessionID
+	if sessionChanged {
+		m.transientMessages = nil
+		m.planPanelOpen = false
+		m.planAutoRun = false
+		m.planResumePrompted = false
+	}
 	if restartStream {
 		m.streamID++
-		if strings.TrimSpace(m.session) != strings.TrimSpace(snapshot.SessionID) {
+		if previousSessionID != nextSessionID {
 			m.lastEventID = 0
 		}
 	}
@@ -86,10 +95,7 @@ func snapshotError(snapshot core.ClientSnapshot) string {
 }
 
 func (m *appModel) currentRun() *core.Run {
-	if m.read == nil {
-		return nil
-	}
-	return cloneRun(m.read.Snapshot().Run)
+	return cloneRun(m.currentSnapshot().Run)
 }
 
 func (m *appModel) currentModelLabel() string {
@@ -97,12 +103,10 @@ func (m *appModel) currentModelLabel() string {
 	if sessionModel != "" {
 		return sessionModel
 	}
-	if m.read != nil {
-		snapshot := m.read.Snapshot()
-		for i := len(snapshot.Messages) - 1; i >= 0; i-- {
-			if label := strings.TrimSpace(snapshot.Messages[i].Model); label != "" {
-				return label
-			}
+	snapshot := m.currentSnapshot()
+	for i := len(snapshot.Messages) - 1; i >= 0; i-- {
+		if label := strings.TrimSpace(snapshot.Messages[i].Model); label != "" {
+			return label
 		}
 	}
 	if label := strings.TrimSpace(m.providerModel); label != "" {
@@ -115,12 +119,12 @@ func (m *appModel) currentModelLabel() string {
 }
 
 func (m *appModel) currentSessionLLM() (string, string) {
-	if m.read == nil {
-		return "", ""
-	}
-	session := m.read.Snapshot().Session
+	session := m.currentSnapshot().Session
 	if session == nil {
 		return "", ""
+	}
+	if sessionIsExternalAgent(session) {
+		return "", strings.TrimSpace(session.ModelID)
 	}
 	return strings.TrimSpace(session.ProviderID), strings.TrimSpace(session.ModelID)
 }

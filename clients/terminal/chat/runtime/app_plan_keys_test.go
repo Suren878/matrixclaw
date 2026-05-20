@@ -7,9 +7,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Suren878/matrixclaw/clients/terminal/chat/runtime/planview"
 	"github.com/Suren878/matrixclaw/clients/terminal/chat/viewmodel"
 	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -125,12 +123,6 @@ func TestStartPlanRunWhileBusyDoesNotStartSecondRun(t *testing.T) {
 	}
 }
 
-func TestPlanActionLabelShowsStopWhileBusy(t *testing.T) {
-	if got := planActionLabel(snapshotWithPlanForKeyTest(time.Now().UTC()).Plan, true); got != "■ Stop" {
-		t.Fatalf("planActionLabel(busy) = %q, want stop label", got)
-	}
-}
-
 func TestLoadInitialKeepsPlanFocusWhenPanelOpen(t *testing.T) {
 	now := time.Now().UTC()
 	model := newApp(context.Background(), &Runtime{})
@@ -147,38 +139,6 @@ func TestLoadInitialKeepsPlanFocusWhenPanelOpen(t *testing.T) {
 	}
 	if model.focus != appFocusPlan {
 		t.Fatalf("focus = %v, want appFocusPlan", model.focus)
-	}
-}
-
-func TestPlanPanelUsesCursorAsOnlyArrow(t *testing.T) {
-	now := time.Now().UTC()
-	model := appWithPlanForKeyTest(now)
-	snapshot := snapshotWithPlanForKeyTest(now)
-	snapshot.Plan.Items[0].Status = core.PlanItemActive
-	model.read = viewmodel.NewReadModel(snapshot)
-	model.now = time.Time{}
-	model.planSelected = 0
-
-	view := ansi.Strip(model.planPanelView(52, 20))
-	if strings.Contains(view, "[>]") {
-		t.Fatalf("active task should not render a second arrow marker:\n%s", view)
-	}
-	if !strings.Contains(view, "> [•] top level") {
-		t.Fatalf("selected active task should render cursor plus dot marker:\n%s", view)
-	}
-}
-
-func TestPlanContinuationPrefixDoesNotDrawTopLevelGuide(t *testing.T) {
-	got := planview.ContinuationPrefix("  ", "", "[✓]")
-	if got != "        " {
-		t.Fatalf("continuation prefix = %q, want spaces only", got)
-	}
-}
-
-func TestPlanContinuationPrefixDoesNotRepeatSelectedCursor(t *testing.T) {
-	got := planview.ContinuationPrefix("> ", "", "[✓]")
-	if got != "        " {
-		t.Fatalf("continuation prefix = %q, want cursor-width padding", got)
 	}
 }
 

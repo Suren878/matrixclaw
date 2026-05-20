@@ -46,13 +46,16 @@ func (e *globExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 	}, nil
 }
 
-func globFiles(_ context.Context, pattern string, root string, limit int) ([]string, bool, error) {
+func globFiles(ctx context.Context, pattern string, root string, limit int) ([]string, bool, error) {
 	regex, err := globToRegexp(pattern)
 	if err != nil {
 		return nil, false, err
 	}
 	matches := make([]string, 0, limit)
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if walkErr != nil {
 			return walkErr
 		}

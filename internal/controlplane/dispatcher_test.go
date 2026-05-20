@@ -550,29 +550,6 @@ func TestDispatcherPermissionsPickerUsesCompactLabels(t *testing.T) {
 	}
 }
 
-func TestDispatcherStorageLabelsStayClean(t *testing.T) {
-	rt := &fakeRuntime{
-		storageFiles: []localstorage.Entry{{Path: "docs/smoke.md", Title: "Smoke", Size: 12}},
-	}
-	d := New(rt, "/tmp")
-
-	result, err := d.Handle(context.Background(), "local", "/modules storage files")
-	if err != nil {
-		t.Fatalf("Handle(/modules storage files) error = %v", err)
-	}
-	if result.Picker == nil || result.Picker.Title != "Stored Files" {
-		t.Fatalf("stored files picker = %#v", result.Picker)
-	}
-
-	result, err = d.Handle(context.Background(), "local", "/modules storage import")
-	if err != nil {
-		t.Fatalf("Handle(/modules storage import) error = %v", err)
-	}
-	if result.Prompt == nil || result.Prompt.Title != "Local File Path" || result.Prompt.Placeholder != "/absolute/path/to/file.txt" {
-		t.Fatalf("import prompt = %#v", result.Prompt)
-	}
-}
-
 func TestDispatcherStorageFilesShowsEmptyState(t *testing.T) {
 	rt := &fakeRuntime{}
 	d := New(rt, "/tmp")
@@ -593,6 +570,25 @@ func TestDispatcherStorageFilesShowsEmptyState(t *testing.T) {
 	}
 	if item.Command != "/modules storage import" {
 		t.Fatalf("empty command = %q, want import command", item.Command)
+	}
+}
+
+func TestDispatcherStorageRootLabelsFilesClearly(t *testing.T) {
+	rt := &fakeRuntime{}
+	d := New(rt, "/tmp")
+
+	result, err := d.Handle(context.Background(), "local", "/modules storage")
+	if err != nil {
+		t.Fatalf("Handle(/modules storage) error = %v", err)
+	}
+	if result.Picker == nil {
+		t.Fatal("expected storage picker")
+	}
+	if item := pickerItem(t, result.Picker, "temp"); item.Title != "Temporary Files" {
+		t.Fatalf("temp title = %q, want Temporary Files", item.Title)
+	}
+	if item := pickerItem(t, result.Picker, "files"); item.Title != "Stored Files" {
+		t.Fatalf("files title = %q, want Stored Files", item.Title)
 	}
 }
 
@@ -665,19 +661,22 @@ func TestDispatcherExternalAgentUsesEditableRowsAndStatePicker(t *testing.T) {
 	if result.Picker == nil || result.Picker.Kind != PickerExternalAgentOn {
 		t.Fatalf("enabled picker = %#v", result.Picker)
 	}
-	enable := pickerItem(t, result.Picker, "enable")
-	disable := pickerItem(t, result.Picker, "disable")
-	if enable.Title != "Enable" || !enable.Selected {
-		t.Fatalf("enable item = %#v, want selected Enable", enable)
+	if result.Picker.Title != "Enable Codex module?" {
+		t.Fatalf("enabled picker title = %q, want question", result.Picker.Title)
 	}
-	if disable.Title != "Disable" || disable.Selected {
-		t.Fatalf("disable item = %#v, want unselected Disable", disable)
+	yes := pickerItem(t, result.Picker, "yes")
+	no := pickerItem(t, result.Picker, "no")
+	if yes.Title != "Yes" || !yes.Selected {
+		t.Fatalf("yes item = %#v, want selected Yes", yes)
 	}
-	if command := PickerItemCommand(*result.Picker, disable); command != "/modules agents codex-app set-enabled disable" {
-		t.Fatalf("disable command = %q", command)
+	if no.Title != "No" || no.Selected {
+		t.Fatalf("no item = %#v, want unselected No", no)
+	}
+	if command := PickerItemCommand(*result.Picker, no); command != "/modules agents codex-app set-enabled no" {
+		t.Fatalf("no command = %q", command)
 	}
 
-	result, err = d.Handle(context.Background(), "local", PickerItemCommand(*result.Picker, disable))
+	result, err = d.Handle(context.Background(), "local", PickerItemCommand(*result.Picker, no))
 	if err != nil {
 		t.Fatalf("Handle(disable) error = %v", err)
 	}
@@ -985,6 +984,9 @@ func TestDispatcherConfiguredBuiltInProviderUsesCapabilityScopedEditForm(t *test
 	if result.Picker == nil || result.Picker.Title != "Model" {
 		t.Fatalf("model picker = %#v", result.Picker)
 	}
+	if got := PickerCloseCommand(*result.Picker); got != "" {
+		t.Fatalf("model picker close command = %q, want stack close", got)
+	}
 	if rt.modelsProvider != "openai" || rt.modelsUpdate.Model != "gpt-5.4" {
 		t.Fatalf("models request = provider %q update %#v", rt.modelsProvider, rt.modelsUpdate)
 	}
@@ -1036,6 +1038,9 @@ func TestDispatcherQwenProviderFormUsesEndpointPickerAndStackBack(t *testing.T) 
 	if result.Picker == nil || result.Picker.Title != "Edit Qwen / DashScope: endpoint" {
 		t.Fatalf("endpoint picker = %#v", result.Picker)
 	}
+	if got := PickerCloseCommand(*result.Picker); got != "" {
+		t.Fatalf("endpoint picker close command = %q, want stack close", got)
+	}
 	if got := pickerItemCommand(t, result.Picker, "china-beijing"); !strings.HasSuffix(got, " https://dashscope.aliyuncs.com/compatible-mode/v1") {
 		t.Fatalf("china endpoint command = %q", got)
 	}
@@ -1084,41 +1089,6 @@ func TestDispatcherQwenProviderFormUsesEndpointPickerAndStackBack(t *testing.T) 
 	}
 	if !result.ReloadSnapshot {
 		t.Fatal("save should request snapshot reload")
-	}
-}
-
-func TestDispatcherProviderPickerOnlyAnnotatesConfiguredProviders(t *testing.T) {
-	rt := testRuntimeWithSession(core.Session{ProviderID: "openai", ModelID: "gpt-current"})
-	d := testDispatcher(rt)
-
-	result, err := d.Handle(context.Background(), "local", "/provider")
-	if err != nil {
-		t.Fatalf("Handle(/provider) error = %v", err)
-	}
-	if result.Picker == nil {
-		t.Fatal("expected provider picker")
-	}
-	for _, item := range result.Picker.Items {
-		switch item.ID {
-		case "openai":
-			if strings.Contains(item.Info, "Configured") {
-				t.Fatalf("configured provider info = %q, should not contain Configured", item.Info)
-			}
-			if item.Info != "gpt-current" {
-				t.Fatalf("configured provider info = %q, want current session model", item.Info)
-			}
-		case "anthropic":
-			if item.Info != "" {
-				t.Fatalf("available provider info = %q, want empty", item.Info)
-			}
-			if item.Title != "Anthropic" {
-				t.Fatalf("available provider title = %q, want Anthropic", item.Title)
-			}
-		case "custom":
-			if item.Title != "Custom Provider" {
-				t.Fatalf("custom provider item = %#v", item)
-			}
-		}
 	}
 }
 
@@ -1175,7 +1145,7 @@ func TestDispatcherCustomProviderFlow(t *testing.T) {
 		t.Fatalf("api key prompt = %#v, want sensitive key prompt", result.Prompt)
 	}
 
-	token := encodeCustomProviderFormToken(customProviderForm{
+	token := encodeCustomProviderFormToken(setup.ProviderFormState{
 		Name:        "Local AI",
 		BaseURL:     "http://127.0.0.1:11434/v1",
 		Model:       "llama3",
@@ -1279,6 +1249,17 @@ func pickerItem(t *testing.T, picker *PickerData, id string) PickerItem {
 	}
 	t.Fatalf("picker item %q not found in %#v", id, picker.Items)
 	return PickerItem{}
+}
+
+func presentedItem(t *testing.T, items []PickerPresentationItem, id string) PickerPresentationItem {
+	t.Helper()
+	for _, item := range items {
+		if item.Item.ID == id {
+			return item
+		}
+	}
+	t.Fatalf("presented item %q not found in %#v", id, items)
+	return PickerPresentationItem{}
 }
 
 func qwenBaseURLOptionsForTest() []providers.BaseURLOption {

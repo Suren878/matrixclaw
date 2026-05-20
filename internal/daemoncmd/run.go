@@ -13,7 +13,9 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
 	"github.com/Suren878/matrixclaw/internal/modules"
+	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
+	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
 	goworkflows "github.com/Suren878/matrixclaw/internal/orchestration/go_workflows"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/store"
@@ -67,6 +69,7 @@ func Run(ctx context.Context) error {
 	toolRegistry := tools.NewCoreCodingRegistry(
 		automation.NewReminderTool(automationService),
 		automation.NewScheduledAITaskTool(automationService),
+		voicemodule.NewTextToSpeechTool(bootstrap.SetupService),
 	)
 	if err := toolRegistry.Register(core.PlanToolExecutors(app)...); err != nil {
 		return err
@@ -106,6 +109,7 @@ func Run(ctx context.Context) error {
 	if err := supervisor.ApplyBootstrap(bootstrap); err != nil {
 		return err
 	}
+	startConfiguredVoiceRuntimes(ctx, bootstrap.SetupService)
 	go automationService.Run(ctx)
 	go supervisor.DeliverPendingStartupNotifications(bootstrap)
 
@@ -118,6 +122,34 @@ func Run(ctx context.Context) error {
 		return httpServer.Shutdown(shutdownCtx)
 	case err := <-errCh:
 		return err
+	}
+}
+
+func startConfiguredVoiceRuntimes(ctx context.Context, service *setup.Service) {
+	if service == nil {
+		return
+	}
+	modules, err := service.VoiceModules()
+	if err != nil {
+		log.Printf("voice runtime bootstrap skipped: %s", err)
+		return
+	}
+	runtime := localruntime.New("")
+	for _, module := range modules {
+		if !module.Enabled {
+			continue
+		}
+		for _, provider := range module.Providers {
+			if provider.ID != module.ProviderID || !provider.Local || provider.ID != "piper" {
+				continue
+			}
+			if !strings.EqualFold(strings.TrimSpace(provider.Config.RuntimeMode), "always_running") {
+				continue
+			}
+			if _, err := runtime.ApplyVoiceAction(ctx, module.ID, provider, setup.VoiceProviderActionRequest{Action: localruntime.ActionStart}); err != nil {
+				log.Printf("%s %s runtime autostart failed: %s", module.ID, provider.ID, err)
+			}
+		}
 	}
 }
 

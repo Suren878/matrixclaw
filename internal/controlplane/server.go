@@ -13,10 +13,9 @@ func (d *Dispatcher) handleServer() Result {
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerServer, "Server").
-			Close("/server").
 			HideBack(true).
-			Row("status", "Status", "Uptime, CPU, memory", "/status").
-			Row("restart", "Restart", "", "/restart").
+			Row("status", "Status", "Uptime, CPU, memory", statusCommand()).
+			Row("restart", "Restart", "", restartCommand()).
 			CloseItem().
 			Ptr(),
 	}
@@ -36,7 +35,7 @@ func (d *Dispatcher) handleStatus(ctx context.Context) (Result, error) {
 		Info: &InfoData{
 			Title:        "Server Status",
 			Rows:         FormatServerStatusRows(status),
-			CloseCommand: "/server",
+			CloseCommand: serverCommand(),
 		},
 	}, nil
 }
@@ -52,8 +51,8 @@ func (d *Dispatcher) handleRestart(ctx context.Context, args string) (Result, er
 				Message:        "Restart server daemon?",
 				ConfirmLabel:   "Restart",
 				CancelLabel:    "Cancel",
-				ConfirmCommand: "/restart confirm",
-				CancelCommand:  "/server",
+				ConfirmCommand: restartConfirmCommand(),
+				CancelCommand:  serverCommand(),
 				ConfirmDanger:  true,
 			},
 		}, nil

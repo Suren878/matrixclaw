@@ -60,7 +60,7 @@ func (d *Dispatcher) handleNewSession(ctx context.Context, externalKey string, a
 
 func (d *Dispatcher) sessionRuntimePicker(ctx context.Context) (Result, error) {
 	picker := NewPickerData(PickerSessionRuntime, "New Session").
-		Back("/sessions").
+		Back(sessionsCommand()).
 		Row("matrixclaw", "Matrixclaw", "Built-in assistant · providers, tools, approvals")
 	if d.externalAgents != nil {
 		agents, err := d.externalAgents.ListExternalAgents(ctx)
@@ -95,20 +95,22 @@ func (d *Dispatcher) handleSession(ctx context.Context, externalKey string, args
 	if args == "" {
 		return d.handleSessions(ctx, externalKey)
 	}
-	fields := strings.Fields(args)
-	switch strings.ToLower(fields[0]) {
+	step, rest := firstCommandStep(args)
+	switch step {
 	case "new":
-		return d.handleSessionNew(ctx, externalKey, strings.TrimSpace(strings.TrimPrefix(args, fields[0])))
+		return d.handleSessionNew(ctx, externalKey, rest)
 	case "menu":
-		if len(fields) < 2 {
+		sessionID, _ := firstCommandToken(rest)
+		if sessionID == "" {
 			return Result{Handled: true, Text: "Usage: /session menu <id>"}, nil
 		}
-		return d.handleSessionMenu(ctx, externalKey, fields[1])
+		return d.handleSessionMenu(ctx, externalKey, sessionID)
 	case "use":
-		if len(fields) < 2 {
+		sessionID, _ := firstCommandToken(rest)
+		if sessionID == "" {
 			return Result{Handled: true, Text: "Usage: /session use <id>"}, nil
 		}
-		binding, err := d.sessions.UseSession(ctx, externalKey, fields[1])
+		binding, err := d.sessions.UseSession(ctx, externalKey, sessionID)
 		if err != nil {
 			return Result{}, err
 		}
@@ -128,20 +130,23 @@ func (d *Dispatcher) handleSession(ctx context.Context, externalKey string, args
 	case "current":
 		return d.handleCurrent(ctx, externalKey)
 	case "rename":
-		if len(fields) < 2 {
+		sessionID, title := firstCommandToken(rest)
+		if sessionID == "" {
 			return Result{Handled: true, Text: "Usage: /session rename <id> [title]"}, nil
 		}
-		return d.handleSessionRename(ctx, fields[1], strings.TrimSpace(strings.TrimPrefix(args, fields[0]+" "+fields[1])))
+		return d.handleSessionRename(ctx, sessionID, title)
 	case "delete":
-		if len(fields) < 2 {
+		sessionID, _ := firstCommandToken(rest)
+		if sessionID == "" {
 			return Result{Handled: true, Text: "Usage: /session delete <id>"}, nil
 		}
-		return d.handleSessionDelete(fields[1]), nil
+		return d.handleSessionDelete(sessionID), nil
 	case "delete-confirmed":
-		if len(fields) < 2 {
+		sessionID, _ := firstCommandToken(rest)
+		if sessionID == "" {
 			return Result{Handled: true, Text: "Usage: /session delete-confirmed <id>"}, nil
 		}
-		return d.handleSessionDeleteConfirmed(ctx, externalKey, fields[1])
+		return d.handleSessionDeleteConfirmed(ctx, externalKey, sessionID)
 	default:
 		return Result{Handled: true, Text: "Usage:\n/session\n/session menu <id>\n/session use <id>\n/session rename <id> [title]\n/session delete <id>\n/session current"}, nil
 	}
@@ -221,7 +226,7 @@ func (d *Dispatcher) handleSessionMenu(ctx context.Context, externalKey string, 
 	}
 	picker := NewPickerData(PickerSessionActions, "Session: "+title).
 		Context(session.ID).
-		Back("/sessions").
+		Back(sessionsCommand()).
 		Row("use", "Use", "Make active")
 	picker.Row("rename", "Rename", title).
 		Danger("delete", "Delete", "Permanent")
@@ -272,8 +277,8 @@ func (d *Dispatcher) handleSessionRename(ctx context.Context, sessionID string, 
 				Title:               "Rename Session",
 				Placeholder:         "New session title",
 				Value:               strings.TrimSpace(session.Title),
-				SubmitCommandPrefix: "/session rename " + session.ID + " ",
-				CancelCommand:       "/session menu " + session.ID,
+				SubmitCommandPrefix: sessionRenameCommandPrefix(session.ID),
+				CancelCommand:       sessionMenuCommand(session.ID),
 			},
 		}, nil
 	}
@@ -292,7 +297,7 @@ func (d *Dispatcher) handleSessionDelete(sessionID string) Result {
 	sessionID = strings.TrimSpace(sessionID)
 	return Result{
 		Handled: true,
-		Confirm: deleteConfirmData("This removes the session history permanently.", "/session delete-confirmed "+sessionID, "/session menu "+sessionID),
+		Confirm: deleteConfirmData("This removes the session history permanently.", sessionDeleteConfirmedCommand(sessionID), sessionMenuCommand(sessionID)),
 	}
 }
 

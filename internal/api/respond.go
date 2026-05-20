@@ -15,6 +15,7 @@ const (
 	storageMaxBase64ContentBytes  int64 = ((storageMaxContentBytes + 2) / 3) * 4
 	storageReadLimitBytes         int64 = storageMaxContentBytes
 	storageSaveJSONBodyLimitBytes int64 = 36 << 20
+	voiceAudioJSONBodyLimitBytes  int64 = 36 << 20
 )
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

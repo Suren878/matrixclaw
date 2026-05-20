@@ -98,6 +98,30 @@ func (r ControlplaneRuntime) UpdateExternalAgent(ctx context.Context, agentID st
 	return client.UpdateExternalAgent(ctx, agentID, update)
 }
 
+func (r ControlplaneRuntime) VoiceModules(ctx context.Context) ([]setup.VoiceModuleDescriptor, error) {
+	client, err := r.client("")
+	if err != nil {
+		return nil, err
+	}
+	return client.VoiceModules(ctx)
+}
+
+func (r ControlplaneRuntime) UpdateVoiceModule(ctx context.Context, moduleID string, update setup.VoiceModuleUpdate) ([]setup.VoiceModuleDescriptor, error) {
+	client, err := r.client("")
+	if err != nil {
+		return nil, err
+	}
+	return client.UpdateVoiceModule(ctx, moduleID, update)
+}
+
+func (r ControlplaneRuntime) VoiceProviderAction(ctx context.Context, moduleID string, providerID string, request setup.VoiceProviderActionRequest) (setup.VoiceProviderOption, error) {
+	client, err := r.client("")
+	if err != nil {
+		return setup.VoiceProviderOption{}, err
+	}
+	return client.VoiceProviderAction(ctx, moduleID, providerID, request)
+}
+
 func (r ControlplaneRuntime) UseSession(ctx context.Context, externalKey string, sessionID string) (core.ClientBinding, error) {
 	client, err := r.client(externalKey)
 	if err != nil {

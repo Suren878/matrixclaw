@@ -78,7 +78,7 @@ func (m *appModel) workingStatusPhase() string {
 	if m.read == nil {
 		return "Waiting for model"
 	}
-	snapshot := m.read.Snapshot()
+	snapshot := m.currentSnapshot()
 	if len(snapshot.Approvals) > 0 {
 		return "Waiting for permission"
 	}
@@ -123,7 +123,7 @@ func (m *appModel) workingIdleElapsed() string {
 	if m.read == nil {
 		return ""
 	}
-	timing := m.read.Snapshot().Timing
+	timing := m.currentSnapshot().Timing
 	if timing == nil || timing.LastEventAt.IsZero() {
 		return ""
 	}

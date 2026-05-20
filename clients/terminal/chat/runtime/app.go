@@ -81,6 +81,7 @@ type workingTickMsg struct {
 
 type controlplaneResultMsg struct {
 	command string
+	seq     uint64
 	result  controlplane.Result
 	err     error
 }
@@ -169,6 +170,7 @@ type appModel struct {
 	returnToCommands    bool
 	updatePrompted      bool
 	updateInstalling    bool
+	controlplaneSeq     uint64
 	planPanelOpen       bool
 	planAutoRun         bool
 	planResumePrompted  bool

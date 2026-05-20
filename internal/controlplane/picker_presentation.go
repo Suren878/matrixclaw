@@ -10,6 +10,7 @@ type PickerPresentationItem struct {
 	Status          string
 	CompactLabel    string
 	Selected        bool
+	Disabled        bool
 	Navigation      bool
 	SeparatorBefore bool
 }
@@ -46,7 +47,7 @@ func PickerLegend(picker PickerData) string {
 		return "enter run · esc " + closeLabel
 	case PickerProvider, PickerProviderCustom:
 		return "enter select · esc " + closeLabel
-	case PickerPermissions, PickerExternalAgentOn:
+	case PickerPermissions, PickerExternalAgentOn, PickerVoiceEnabled:
 		return "enter apply · esc " + closeLabel
 	default:
 		return "enter select · esc " + closeLabel
@@ -62,10 +63,22 @@ func pickerPresentationStatus(kind PickerKind, selected bool, info string) strin
 	case PickerExternalAgents, PickerExternalAgentOn:
 		return info
 	}
+	info = trimLeadingActiveStatus(info)
 	if info == "" {
 		return "Active"
 	}
 	return "Active · " + info
+}
+
+func trimLeadingActiveStatus(info string) string {
+	parts := strings.Split(info, "·")
+	for len(parts) > 0 && strings.EqualFold(strings.TrimSpace(parts[0]), "Active") {
+		parts = parts[1:]
+	}
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return strings.TrimSpace(strings.Join(nonEmptyStrings(parts...), " · "))
 }
 
 func presentPickerItem(picker PickerData, item PickerItem) PickerPresentationItem {
@@ -77,6 +90,7 @@ func presentPickerItem(picker PickerData, item PickerItem) PickerPresentationIte
 		Title:      title,
 		Info:       info,
 		Selected:   item.Selected,
+		Disabled:   item.Disabled,
 		Navigation: item.IsNavigation(),
 	}
 	presented.Status = pickerPresentationStatus(picker.Kind, presented.Selected, presented.Info)
@@ -150,6 +164,10 @@ func pickerCompactPrefix(kind PickerKind, item PickerItem) string {
 		}
 	case PickerProvider, PickerProviderCustom:
 		return "🔌 "
+	case PickerTextToSpeech, PickerVoiceProvider:
+		return "TTS "
+	case PickerSpeechToText:
+		return "STT "
 	case PickerProviderActions:
 		switch itemID {
 		case "use":

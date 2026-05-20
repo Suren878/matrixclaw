@@ -10,16 +10,17 @@ import (
 )
 
 type ExternalAgentDescriptor struct {
-	ID          string   `json:"id"`
-	Aliases     []string `json:"aliases,omitempty"`
-	DisplayName string   `json:"display_name"`
-	Installed   bool     `json:"installed"`
-	Enabled     bool     `json:"enabled"`
-	AuthState   string   `json:"auth_state,omitempty"`
-	Mode        string   `json:"mode,omitempty"`
-	Path        string   `json:"path,omitempty"`
-	Version     string   `json:"version,omitempty"`
-	Detail      string   `json:"detail,omitempty"`
+	ID           string                      `json:"id"`
+	Aliases      []string                    `json:"aliases,omitempty"`
+	DisplayName  string                      `json:"display_name"`
+	Installed    bool                        `json:"installed"`
+	Enabled      bool                        `json:"enabled"`
+	AuthState    string                      `json:"auth_state,omitempty"`
+	Mode         string                      `json:"mode,omitempty"`
+	Path         string                      `json:"path,omitempty"`
+	Version      string                      `json:"version,omitempty"`
+	Detail       string                      `json:"detail,omitempty"`
+	Capabilities externalagents.Capabilities `json:"capabilities,omitempty"`
 }
 
 const (
@@ -97,19 +98,27 @@ func (c *Core) ExternalAgents(ctx context.Context) []ExternalAgentDescriptor {
 	out := make([]ExternalAgentDescriptor, 0, len(descriptors))
 	for _, descriptor := range descriptors {
 		out = append(out, ExternalAgentDescriptor{
-			ID:          descriptor.ID,
-			Aliases:     descriptor.Aliases,
-			DisplayName: descriptor.DisplayName,
-			Installed:   descriptor.Installed,
-			Enabled:     descriptor.Enabled,
-			AuthState:   descriptor.AuthState,
-			Mode:        descriptor.Mode,
-			Path:        descriptor.Path,
-			Version:     descriptor.Version,
-			Detail:      descriptor.Detail,
+			ID:           descriptor.ID,
+			Aliases:      descriptor.Aliases,
+			DisplayName:  descriptor.DisplayName,
+			Installed:    descriptor.Installed,
+			Enabled:      descriptor.Enabled,
+			AuthState:    descriptor.AuthState,
+			Mode:         descriptor.Mode,
+			Path:         descriptor.Path,
+			Version:      descriptor.Version,
+			Detail:       descriptor.Detail,
+			Capabilities: descriptor.Capabilities,
 		})
 	}
 	return out
+}
+
+func (c *Core) ResolveExternalAgentID(id string) (string, bool) {
+	if c.externalAgents == nil {
+		return "", false
+	}
+	return c.externalAgents.CanonicalID(id)
 }
 
 func (c *Core) createExternalAgentAttachment(ctx context.Context, session Session, input CreateSessionInput) error {
@@ -120,7 +129,11 @@ func (c *Core) createExternalAgentAttachment(ctx context.Context, session Sessio
 	if agentID == "" {
 		return fmt.Errorf("%w: external_agent_id is required", ErrInvalidInput)
 	}
-	runtime, err := c.externalRuntime(agentID)
+	canonicalAgentID, ok := c.ResolveExternalAgentID(agentID)
+	if !ok {
+		return fmt.Errorf("%w: external agent %q is not configured", ErrExecutionUnavailable, agentID)
+	}
+	runtime, err := c.externalRuntime(canonicalAgentID)
 	if err != nil {
 		return err
 	}
@@ -151,7 +164,7 @@ func (c *Core) createExternalAgentAttachment(ctx context.Context, session Sessio
 	}
 	if err := c.externalStore.SaveExternalAgentSession(ctx, externalagents.SessionAttachment{
 		SessionID:         session.ID,
-		AgentID:           externalSession.AgentID,
+		AgentID:           canonicalAgentID,
 		ExternalThreadID:  externalSession.ExternalThreadID,
 		ExternalSessionID: externalSession.ExternalSessionID,
 		CWD:               externalSession.CWD,

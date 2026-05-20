@@ -15,6 +15,7 @@ type FormFocus struct {
 type FormState struct {
 	Focus  FormFocus
 	Button int
+	NoWrap bool
 }
 
 func (s *FormState) Update(key string, fields []Item, buttons []ButtonSpec, closeRole Role) Event {
@@ -35,10 +36,7 @@ func (s *FormState) Update(key string, fields []Item, buttons []ButtonSpec, clos
 		}
 	case "enter":
 		if s.Focus.Kind == FormFocusButton {
-			if s.Button >= 0 && s.Button < len(buttons) {
-				return eventForRole(buttons[s.Button].Role)
-			}
-			return Event{}
+			return eventForButton(buttons, s.Button)
 		}
 		if s.Focus.Index >= 0 && s.Focus.Index < len(fields) {
 			return Event{Kind: EventEdit, ID: fields[s.Focus.Index].ID}
@@ -58,9 +56,15 @@ func (s *FormState) move(delta int, fieldCount int, buttonCount int) {
 	}
 	current += delta
 	if current < 0 {
+		if s.NoWrap {
+			return
+		}
 		current = maxIndex
 	}
 	if current > maxIndex {
+		if s.NoWrap {
+			return
+		}
 		current = 0
 	}
 	if buttonCount > 0 && current == fieldCount {

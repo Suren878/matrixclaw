@@ -28,16 +28,17 @@ type providerFormItem struct {
 
 func (m *model) providerFormItems() []providerFormItem {
 	spec := m.providerFormSpec()
-	items := make([]providerFormItem, 0, len(spec.Fields))
-	for _, field := range spec.Fields {
+	fields := setup.ProviderFormViewFields(spec, setup.ProviderFormViewOptions{})
+	items := make([]providerFormItem, 0, len(fields))
+	for _, field := range fields {
 		row := listItem{Title: field.Label, Status: field.Status}
-		if field.ID == setup.ProviderFormFieldModel && strings.TrimSpace(field.Status) != "" {
+		if field.Accent {
 			row.Tone = commandui.RowToneAccent
 		}
 		item := providerFormItem{
 			Row:             row,
 			Target:          providerFormTarget(field.ID),
-			RequiredMessage: providerFormRequiredMessage(field),
+			RequiredMessage: field.RequiredMessage,
 			BaseURL:         field.ID == setup.ProviderFormFieldBaseURL && field.Picker,
 			Reasoning:       field.ID == setup.ProviderFormFieldReasoningEffort,
 			ToolUse:         field.ID == setup.ProviderFormFieldToolUse,
@@ -64,22 +65,13 @@ func (m *model) providerBaseURLOptions() []string {
 }
 
 func (m *model) providerBaseURLItems() []listItem {
-	catalogID := providers.NormalizeProviderID(m.editingProvider.CatalogID)
-	if catalogID == "" {
-		catalogID = providers.NormalizeProviderID(m.editingProvider.ID)
+	field, ok := m.providerFormSpec().Field(setup.ProviderFormFieldBaseURL)
+	if !ok || len(field.Choices) == 0 {
+		return nil
 	}
-	entry, ok := providers.CatalogEntryByID(catalogID)
-	if !ok || len(entry.BaseURLOptions) == 0 {
-		options := m.providerBaseURLOptions()
-		items := make([]listItem, 0, len(options))
-		for _, option := range options {
-			items = append(items, listItem{Title: option})
-		}
-		return items
-	}
-	items := make([]listItem, 0, len(entry.BaseURLOptions))
-	for _, option := range entry.BaseURLOptions {
-		items = append(items, listItem{Title: option.Name, Status: option.URL})
+	items := make([]listItem, 0, len(field.Choices))
+	for _, choice := range field.Choices {
+		items = append(items, listItem{Title: choice.Title, Status: choice.Status})
 	}
 	return items
 }
@@ -167,29 +159,14 @@ func providerFormTarget(fieldID setup.ProviderFormFieldID) textEditTarget {
 	}
 }
 
-func providerFormRequiredMessage(field setup.ProviderFormField) string {
-	if !field.Required {
-		return ""
-	}
-	switch field.ID {
-	case setup.ProviderFormFieldName:
-		return "provider name is required"
-	case setup.ProviderFormFieldBaseURL:
-		return "provider base URL is required"
-	case setup.ProviderFormFieldAPIKey:
-		return "provider API key is required"
-	case setup.ProviderFormFieldModel:
-		return "provider model is required"
-	default:
-		return ""
-	}
-}
-
 func (m *model) providerModelUsesPicker() bool {
 	field, ok := m.providerFormSpec().Field(setup.ProviderFormFieldModel)
 	return ok && field.Picker
 }
 
 func (m *model) providerRequiresKeyCheck() bool {
+	if providers.NormalizeProviderType(m.editingProvider.Type) == providers.TypeOpenAICodex {
+		return false
+	}
 	return m.providerModelUsesPicker()
 }

@@ -20,22 +20,22 @@ func decodeCustomProviderField(value string) (string, error) {
 	return strings.TrimSpace(decoded), nil
 }
 
-func encodeCustomProviderFormToken(data customProviderForm) string {
+func encodeCustomProviderFormToken(data setup.ProviderFormState) string {
 	fields := []string{
 		data.Name,
 		data.BaseURL,
 		data.Model,
 		data.APIKey,
-		data.Reasoning,
+		data.ReasoningEffort,
 		string(data.ToolUseMode),
 	}
 	return encodeCustomProviderField(strings.Join(fields, "\x1f"))
 }
 
-func decodeCustomProviderFormToken(token string) (customProviderForm, error) {
+func decodeCustomProviderFormToken(token string) (setup.ProviderFormState, error) {
 	decoded, err := decodeCustomProviderField(token)
 	if err != nil {
-		return customProviderForm{}, err
+		return setup.ProviderFormState{}, err
 	}
 	parts := strings.Split(decoded, "\x1f")
 	if len(parts) == 5 {
@@ -44,24 +44,73 @@ func decodeCustomProviderFormToken(token string) (customProviderForm, error) {
 	for len(parts) < 6 {
 		parts = append(parts, "")
 	}
-	return customProviderForm{
-		Name:        strings.TrimSpace(parts[0]),
-		BaseURL:     strings.TrimSpace(parts[1]),
-		Model:       strings.TrimSpace(parts[2]),
-		APIKey:      strings.TrimSpace(parts[3]),
-		Reasoning:   strings.TrimSpace(parts[4]),
-		ToolUseMode: providers.ToolUseMode(strings.TrimSpace(parts[5])),
+	return setup.ProviderFormState{
+		Name:            strings.TrimSpace(parts[0]),
+		BaseURL:         strings.TrimSpace(parts[1]),
+		Model:           strings.TrimSpace(parts[2]),
+		APIKey:          strings.TrimSpace(parts[3]),
+		ReasoningEffort: strings.TrimSpace(parts[4]),
+		ToolUseMode:     providers.ToolUseMode(strings.TrimSpace(parts[5])),
 	}, nil
 }
 
-func customProviderCommand(parts ...string) string {
-	values := []string{"provider", "custom"}
+func controlplaneCommand(parts ...string) string {
+	values := make([]string, 0, len(parts))
 	for _, part := range parts {
 		if trimmed := strings.TrimSpace(part); trimmed != "" {
 			values = append(values, trimmed)
 		}
 	}
+	if len(values) == 0 {
+		return ""
+	}
 	return "/" + strings.Join(values, " ")
+}
+
+func providerCommand(parts ...string) string {
+	values := append([]string{"provider"}, parts...)
+	return controlplaneCommand(values...)
+}
+
+func providerCommandPrefix(parts ...string) string {
+	return providerCommand(parts...) + " "
+}
+
+func providerEncodedID(providerID string) string {
+	return encodeCustomProviderField(providerID)
+}
+
+func providerUseCommand(providerID string) string {
+	return providerCommand("use", providerEncodedID(providerID))
+}
+
+func providerEditCommand(providerID string) string {
+	return providerCommand("edit", providerEncodedID(providerID))
+}
+
+func providerEditFieldCommand(field string, providerID string, token string) string {
+	return providerCommand("edit", "field", field, providerEncodedID(providerID), token)
+}
+
+func providerEditSetCommand(field string, providerID string, token string, value string) string {
+	return providerCommand("edit", "set", field, providerEncodedID(providerID), token, value)
+}
+
+func providerEditSetCommandPrefix(field string, providerID string, token string) string {
+	return providerCommandPrefix("edit", "set", field, providerEncodedID(providerID), token)
+}
+
+func providerEditSaveCommand(providerID string, token string) string {
+	return providerCommand("edit", "save", providerEncodedID(providerID), token)
+}
+
+func providerKeyCommandPrefix(providerID string) string {
+	return providerCommandPrefix("key", providerEncodedID(providerID))
+}
+
+func customProviderCommand(parts ...string) string {
+	values := append([]string{"provider", "custom"}, parts...)
+	return controlplaneCommand(values...)
 }
 
 func customProviderCommandPrefix(parts ...string) string {
@@ -70,7 +119,7 @@ func customProviderCommandPrefix(parts ...string) string {
 
 type customProviderFormResultData struct {
 	Title                  string
-	Data                   customProviderForm
+	Data                   setup.ProviderFormState
 	ProviderID             string
 	CatalogID              string
 	ProviderType           string
@@ -103,7 +152,7 @@ func customProviderFormResult(config customProviderFormResultData) Result {
 	}
 }
 
-func customProviderFormFieldsForProvider(data customProviderForm, keyStatus string, providerID string, catalogID string, providerType string, includeIdentity bool, includeReasoningEffort bool, includeToolProfile bool, editCommand func(string) string) []FormField {
+func customProviderFormFieldsForProvider(data setup.ProviderFormState, keyStatus string, providerID string, catalogID string, providerType string, includeIdentity bool, includeReasoningEffort bool, includeToolProfile bool, editCommand func(string) string) []FormField {
 	if strings.TrimSpace(providerType) == "" {
 		capabilities := providers.Capabilities{
 			ReasoningEffort: includeReasoningEffort,
@@ -117,7 +166,7 @@ func customProviderFormFieldsForProvider(data customProviderForm, keyStatus stri
 			BaseURL:           data.BaseURL,
 			Model:             data.Model,
 			APIKey:            data.APIKey,
-			ReasoningEffort:   data.Reasoning,
+			ReasoningEffort:   data.ReasoningEffort,
 			ToolUseMode:       data.ToolUseMode,
 			Custom:            includeIdentity,
 			CustomKnown:       true,
@@ -126,138 +175,154 @@ func customProviderFormFieldsForProvider(data customProviderForm, keyStatus stri
 		}))
 	}
 	spec := setup.ProviderFormSpecFromInput(setup.ProviderFormSpecInput{
-		ID:              providerID,
-		CatalogID:       catalogID,
-		Name:            data.Name,
-		Type:            providerType,
-		BaseURL:         data.BaseURL,
-		Model:           data.Model,
-		APIKey:          data.APIKey,
-		ReasoningEffort: data.Reasoning,
-		ToolUseMode:     data.ToolUseMode,
-		Custom:          includeIdentity,
-		CustomKnown:     true,
+		ID:                providerID,
+		CatalogID:         catalogID,
+		Name:              data.Name,
+		Type:              providerType,
+		BaseURL:           data.BaseURL,
+		Model:             data.Model,
+		APIKey:            data.APIKey,
+		ReasoningEffort:   data.ReasoningEffort,
+		ToolUseMode:       data.ToolUseMode,
+		Custom:            includeIdentity,
+		CustomKnown:       true,
+		Capabilities:      providers.Capabilities{ReasoningEffort: includeReasoningEffort, ToolCalling: includeToolProfile},
+		CapabilitiesKnown: true,
 	})
 	return customProviderFormFieldsFromSpec(data, keyStatus, editCommand, spec)
 }
 
-func customProviderFormFieldsFromSpec(data customProviderForm, keyStatus string, editCommand func(string) string, spec setup.ProviderFormSpec) []FormField {
-	fields := make([]FormField, 0, len(spec.Fields))
-	for _, field := range spec.Fields {
-		id := controlplaneProviderFieldID(field.ID)
-		value := field.Status
-		if field.ID == setup.ProviderFormFieldAPIKey {
-			value = keyStatus
-		}
-		if field.Required {
-			value = fieldStatus(value)
-		}
+func customProviderFormFieldsFromSpec(data setup.ProviderFormState, keyStatus string, editCommand func(string) string, spec setup.ProviderFormSpec) []FormField {
+	viewFields := setup.ProviderFormViewFields(spec, setup.ProviderFormViewOptions{
+		APIKeyStatus:       keyStatus,
+		ShowRequiredStatus: true,
+	})
+	fields := make([]FormField, 0, len(viewFields)+1)
+	if spec.Type == providers.TypeOpenAICodex {
 		fields = append(fields, FormField{
-			ID:          id,
-			Label:       controlplaneProviderFieldLabel(field),
-			Value:       value,
-			EditCommand: editCommand(id),
+			ID:          "auth",
+			Label:       "Authorization",
+			Value:       openAICodexAuthInfo(),
+			EditCommand: providerCommand("auth", providerEncodedID(spec.ID)),
+		})
+	}
+	for _, field := range viewFields {
+		fields = append(fields, FormField{
+			ID:          field.CommandID,
+			Label:       field.Label,
+			Value:       field.Status,
+			EditCommand: editCommand(field.CommandID),
 		})
 	}
 	return fields
 }
 
-func controlplaneProviderFieldID(id setup.ProviderFormFieldID) string {
-	switch id {
-	case setup.ProviderFormFieldBaseURL:
-		return "base"
-	case setup.ProviderFormFieldAPIKey:
-		return "key"
-	case setup.ProviderFormFieldReasoningEffort:
-		return "reasoning"
-	case setup.ProviderFormFieldToolUse:
-		return "tools"
-	default:
-		return string(id)
-	}
-}
-
-func controlplaneProviderFieldLabel(field setup.ProviderFormField) string {
-	switch field.ID {
-	case setup.ProviderFormFieldAPIKey:
-		return "API Key"
-	case setup.ProviderFormFieldToolUse:
-		return "Tool Use"
-	case setup.ProviderFormFieldReasoningEffort:
-		return "Reasoning Effort"
-	default:
-		return field.Label
-	}
-}
-
-func customProviderToolModePicker(titlePrefix string, data customProviderForm, submitPrefix string, cancelCommand string) Result {
+func customProviderToolModePicker(titlePrefix string, data setup.ProviderFormState, submitPrefix string, cancelCommand string) Result {
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerProviderCustom, titlePrefix+": tool mode").
 			HideBack(true).
 			Close(cancelCommand).
-			Items(customProviderToolModeItems(data, submitPrefix)...).
+			Items(customProviderChoiceItems(providerToolUseField(data), submitPrefix)...).
 			Ptr(),
 	}
 }
 
-func customProviderToolModeItems(data customProviderForm, prefix string) []PickerItem {
-	current := providers.NormalizeToolUseMode(data.ToolUseMode)
-	return []PickerItem{
-		{ID: "native", Title: "Enabled", Focused: current == providers.ToolUseNative, Command: prefix + string(providers.ToolUseNative)},
-		{ID: "disabled", Title: "Disabled", Focused: current == providers.ToolUseDisabled, Command: prefix + string(providers.ToolUseDisabled)},
-	}
+func providerToolUseField(data setup.ProviderFormState) setup.ProviderFormField {
+	spec := setup.ProviderFormSpecFromInput(setup.ProviderFormSpecInput{
+		Type:              providers.TypeOpenAICompat,
+		Model:             data.Model,
+		ToolUseMode:       data.ToolUseMode,
+		Custom:            true,
+		CustomKnown:       true,
+		Capabilities:      providers.Capabilities{ToolCalling: true},
+		CapabilitiesKnown: true,
+	})
+	field, _ := spec.Field(setup.ProviderFormFieldToolUse)
+	return field
 }
 
-func customProviderBaseURLPicker(titlePrefix string, data customProviderForm, catalogID string, submitPrefix string, cancelCommand string) Result {
-	entry, ok := providers.CatalogEntryByID(catalogID)
-	if !ok || len(entry.BaseURLOptions) == 0 {
+func customProviderBaseURLPicker(titlePrefix string, data setup.ProviderFormState, catalogID string, submitPrefix string, cancelCommand string) Result {
+	field, ok := setup.ProviderFormSpecFromInput(setup.ProviderFormSpecInput{
+		CatalogID: catalogID,
+		BaseURL:   data.BaseURL,
+		Custom:    false,
+	}).Field(setup.ProviderFormFieldBaseURL)
+	if !ok || len(field.Choices) == 0 {
 		return customProviderFieldPrompt(titlePrefix, "base", data, "", submitPrefix, cancelCommand)
-	}
-	current := strings.TrimSpace(data.BaseURL)
-	items := make([]PickerItem, 0, len(entry.BaseURLOptions))
-	for _, option := range entry.BaseURLOptions {
-		items = append(items, PickerItem{
-			ID:       option.ID,
-			Title:    option.Name,
-			Info:     option.URL,
-			Selected: strings.TrimSpace(option.URL) == current,
-			Command:  submitPrefix + strings.TrimSpace(option.URL),
-		})
 	}
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerProviderCustom, titlePrefix+": endpoint").
 			Back(cancelCommand).
-			Items(items...).
+			Items(customProviderChoiceItems(field, submitPrefix)...).
 			Ptr(),
 	}
 }
 
-func customProviderReasoningEffortPickerWithOptions(titlePrefix string, data customProviderForm, efforts []string, submitPrefix string, cancelCommand string) Result {
+func customProviderReasoningEffortPickerWithOptions(titlePrefix string, data setup.ProviderFormState, efforts []string, submitPrefix string, cancelCommand string) Result {
+	field := providerReasoningField(data, efforts)
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerProviderCustom, titlePrefix+": reasoning effort").
 			HideBack(true).
 			Close(cancelCommand).
-			Items(customProviderReasoningEffortItems(data, efforts, submitPrefix)...).
+			Items(customProviderChoiceItems(field, submitPrefix)...).
 			Ptr(),
 	}
 }
 
-func customProviderReasoningEffortItems(data customProviderForm, efforts []string, prefix string) []PickerItem {
-	current := providers.NormalizeReasoningEffort(data.Reasoning)
-	if current == "" {
-		current = providers.DefaultReasoningEffort
+func providerReasoningField(data setup.ProviderFormState, efforts []string) setup.ProviderFormField {
+	spec := setup.ProviderFormSpecFromInput(setup.ProviderFormSpecInput{
+		Type:              providers.TypeOpenAICompat,
+		Model:             data.Model,
+		ReasoningEffort:   data.ReasoningEffort,
+		Custom:            true,
+		CustomKnown:       true,
+		Capabilities:      providers.Capabilities{ReasoningEffort: true},
+		CapabilitiesKnown: true,
+	})
+	field, _ := spec.Field(setup.ProviderFormFieldReasoningEffort)
+	if len(efforts) > 0 {
+		field.Choices = make([]setup.ProviderFormChoice, 0, len(efforts))
+		current := providers.NormalizeReasoningEffort(data.ReasoningEffort)
+		if current == "" {
+			current = providers.DefaultReasoningEffort
+		}
+		for _, effort := range efforts {
+			effort = providers.NormalizeReasoningEffort(effort)
+			if effort == "" {
+				continue
+			}
+			field.Choices = append(field.Choices, setup.ProviderFormChoice{
+				ID:       effort,
+				Title:    strings.Title(effort),
+				Value:    effort,
+				Selected: current == effort,
+			})
+		}
 	}
-	items := make([]PickerItem, 0, len(efforts))
-	for _, effort := range efforts {
+	return field
+}
+
+func customProviderChoiceItems(field setup.ProviderFormField, prefix string) []PickerItem {
+	items := make([]PickerItem, 0, len(field.Choices))
+	for _, choice := range field.Choices {
+		value := strings.TrimSpace(choice.Value)
+		if value == "" {
+			value = strings.TrimSpace(choice.ID)
+		}
 		items = append(items, PickerItem{
-			ID:       effort,
-			Title:    strings.Title(effort),
-			Selected: current == effort,
-			Command:  prefix + effort,
+			ID:       firstNonEmptyTrimmed(choice.ID, value),
+			Title:    firstNonEmptyTrimmed(choice.Title, value),
+			Info:     strings.TrimSpace(choice.Status),
+			Selected: choice.Selected,
+			Focused:  field.ID == setup.ProviderFormFieldToolUse && choice.Selected,
+			Command:  prefix + value,
 		})
+		if field.ID == setup.ProviderFormFieldToolUse {
+			items[len(items)-1].Selected = false
+		}
 	}
 	return items
 }
@@ -314,7 +379,7 @@ func customProviderStepField(step string, prefix string) (string, bool) {
 	return field, ok && isCustomProviderFormField(field)
 }
 
-func customProviderFieldPrompt(titlePrefix string, field string, data customProviderForm, placeholder string, submitPrefix string, cancelCommand string) Result {
+func customProviderFieldPrompt(titlePrefix string, field string, data setup.ProviderFormState, placeholder string, submitPrefix string, cancelCommand string) Result {
 	if placeholder == "" {
 		placeholder = customProviderFieldPlaceholder(field)
 	}
@@ -323,7 +388,7 @@ func customProviderFieldPrompt(titlePrefix string, field string, data customProv
 		Prompt: &PromptData{
 			Title:               titlePrefix + ": " + customProviderFieldTitle(field),
 			Placeholder:         placeholder,
-			Value:               data.field(field),
+			Value:               data.Field(field),
 			SubmitCommandPrefix: submitPrefix,
 			CancelCommand:       cancelCommand,
 			Sensitive:           field == "key",

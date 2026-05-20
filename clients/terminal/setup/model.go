@@ -2,7 +2,6 @@ package setup
 
 import (
 	"charm.land/bubbles/v2/textarea"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
 	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
@@ -89,7 +88,7 @@ type model struct {
 	cursor    int
 	tickCount int
 
-	filterInput textinput.Model
+	filterInput terminaltextfield.Model
 
 	draft            setup.Draft
 	builtInProviders []setup.ProviderOption
@@ -112,13 +111,15 @@ type model struct {
 	formError                string
 	draftSnapshot            setup.Draft
 
-	textEditorInput  terminaltextfield.Model
-	textAreaInput    textarea.Model
-	textEditState    commandui.TextEditState
-	textEditorTitle  string
-	textEditorTarget textEditTarget
-	boolPickerTarget boolEditTarget
-	providerModels   []string
+	textEditorInput       terminaltextfield.Model
+	textAreaInput         textarea.Model
+	textEditState         commandui.TextEditState
+	textEditorTitle       string
+	textEditorTarget      textEditTarget
+	boolPickerTarget      boolEditTarget
+	providerModels        []string
+	providerModelsLoading bool
+	providerModelLoadSeq  int
 }
 
 func newModel(service *setup.Service) (*model, error) {
@@ -132,25 +133,19 @@ func newModel(service *setup.Service) (*model, error) {
 		return nil, err
 	}
 
-	filter := textinput.New()
-	filter.Prompt = ""
-	filter.Placeholder = "Find a provider"
-	filter.CharLimit = 128
-	filter.Focus()
-
 	m := &model{
 		service:          service,
 		screen:           screenIntro,
 		draft:            draft,
 		builtInProviders: service.ProviderOptions(),
 		hasExisting:      hasExisting,
-		filterInput:      filter,
+		filterInput:      newSearchField("Find a provider"),
 	}
 	return m, nil
 }
 
 func (m *model) Init() tea.Cmd {
-	return tea.Batch(textinput.Blink, tickCmd())
+	return tea.Batch(m.filterInput.Focus(), tickCmd())
 }
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -163,6 +158,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		m.updateRain()
 		return m, tickCmd()
+	case providerModelsLoadedMsg:
+		return m.handleProviderModelsLoaded(msg)
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
 			m.aborted = true

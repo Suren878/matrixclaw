@@ -289,27 +289,11 @@ func normalizePolicy(policy Policy) Policy {
 }
 
 func normalizeToolIDs(values []string) []string {
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		normalized := normalizeToolID(value)
-		if normalized == "" || slices.Contains(out, normalized) {
-			continue
-		}
-		out = append(out, normalized)
-	}
-	return out
+	return normalizeUnique(values, normalizeToolID)
 }
 
 func normalizeProfiles(values []Profile) []Profile {
-	out := make([]Profile, 0, len(values))
-	for _, value := range values {
-		normalized := normalizeProfile(value)
-		if normalized == "" || slices.Contains(out, normalized) {
-			continue
-		}
-		out = append(out, normalized)
-	}
-	return out
+	return normalizeUnique(values, normalizeProfile)
 }
 
 func normalizeProfile(value Profile) Profile {
@@ -326,15 +310,7 @@ func knownProfile(value Profile) bool {
 }
 
 func normalizeCategories(values []Category) []Category {
-	out := make([]Category, 0, len(values))
-	for _, value := range values {
-		normalized := normalizeCategory(value)
-		if normalized == "" || slices.Contains(out, normalized) {
-			continue
-		}
-		out = append(out, normalized)
-	}
-	return out
+	return normalizeUnique(values, normalizeCategory)
 }
 
 func normalizeCategory(value Category) Category {
@@ -356,7 +332,7 @@ func normalizeOutputKind(value OutputKind) OutputKind {
 
 func knownOutputKind(value OutputKind) bool {
 	switch value {
-	case OutputText, OutputFileContent, OutputFileTree, OutputSearchResults, OutputDiff, OutputJob, OutputStorageEntry, OutputStorageList:
+	case OutputText, OutputFileContent, OutputFileTree, OutputSearchResults, OutputDiff, OutputJob, OutputAudio, OutputStorageEntry, OutputStorageList:
 		return true
 	default:
 		return false
@@ -408,4 +384,17 @@ func cloneSpec(spec Spec) Spec {
 		spec.InputJSONSchema = slices.Clone(spec.InputJSONSchema)
 	}
 	return spec
+}
+
+func normalizeUnique[T comparable](values []T, normalize func(T) T) []T {
+	out := make([]T, 0, len(values))
+	var zero T
+	for _, value := range values {
+		normalized := normalize(value)
+		if normalized == zero || slices.Contains(out, normalized) {
+			continue
+		}
+		out = append(out, normalized)
+	}
+	return out
 }

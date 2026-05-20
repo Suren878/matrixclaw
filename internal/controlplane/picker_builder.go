@@ -24,11 +24,14 @@ func (b *PickerBuilder) Meta(meta string) *PickerBuilder {
 func (b *PickerBuilder) Back(command string) *PickerBuilder {
 	b.data.BackCommand = command
 	b.data.CloseCommand = command
+	b.data.HasBack = true
+	b.data.HasClose = true
 	return b
 }
 
 func (b *PickerBuilder) Close(command string) *PickerBuilder {
 	b.data.CloseCommand = command
+	b.data.HasClose = true
 	return b
 }
 
@@ -83,7 +86,7 @@ func (b *PickerBuilder) Build() PickerData {
 		}
 		item.Command = PickerCommandFor(data.Kind, data.ContextID, item.ID)
 	}
-	if !data.HideBackItem && strings.TrimSpace(data.BackCommand) != "" && !hasNavigationItem(data.Items) {
+	if shouldAppendBackItem(data) {
 		data.Items = append(data.Items, BackItem())
 	}
 	return data
@@ -121,4 +124,8 @@ func hasNavigationItem(items []PickerItem) bool {
 		}
 	}
 	return false
+}
+
+func shouldAppendBackItem(data PickerData) bool {
+	return !data.HideBackItem && strings.TrimSpace(data.BackCommand) != "" && !hasNavigationItem(data.Items)
 }

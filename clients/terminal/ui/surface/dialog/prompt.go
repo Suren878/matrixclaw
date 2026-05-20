@@ -18,9 +18,11 @@ const PromptCommandID = "prompt_command"
 type PromptCommandData = controlplane.PromptData
 
 type PromptCommand struct {
-	com   *surfacecommon.Common
-	input terminaltextfield.Model
-	data  PromptCommandData
+	com     *surfacecommon.Common
+	input   terminaltextfield.Model
+	data    PromptCommandData
+	loading bool
+	frame   int
 
 	keyMap struct {
 		Submit key.Binding
@@ -50,6 +52,13 @@ func NewPromptCommand(com *surfacecommon.Common, data PromptCommandData) *Prompt
 func (*PromptCommand) ID() string { return PromptCommandID }
 
 func (d *PromptCommand) HandleMsg(msg tea.Msg) Action {
+	if _, ok := msg.(loadingTickMsg); ok {
+		if !d.loading {
+			return nil
+		}
+		d.frame = (d.frame + 1) % len(loadingFrames)
+		return ActionCmd{Cmd: loadingTickCmd()}
+	}
 	keyMsg, ok := msg.(tea.KeyPressMsg)
 	if ok {
 		switch {
@@ -82,10 +91,21 @@ func (d *PromptCommand) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 	frame = frame.WithInnerWidth(0)
 	d.input.SetWidth(max(1, frame.InnerWidth()-2))
 	view := commandui.RenderPromptCard(frame, commandui.PromptData{
-		Title: strings.TrimSpace(d.data.Title),
+		Title: loadingTitle(d.data.Title, d.loading, d.frame),
 		Value: d.input.View(),
 	})
 	cur := d.Cursor()
 	DrawCenterCursor(scr, area, view, cur)
 	return cur
+}
+
+func (d *PromptCommand) StartLoading() tea.Cmd {
+	d.loading = true
+	d.frame = 0
+	return loadingTickCmd()
+}
+
+func (d *PromptCommand) StopLoading() {
+	d.loading = false
+	d.frame = 0
 }

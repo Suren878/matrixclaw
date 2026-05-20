@@ -33,6 +33,12 @@ type ExternalAgentRuntime interface {
 	UpdateExternalAgent(ctx context.Context, agentID string, update core.UpdateExternalAgentRequest) ([]core.ExternalAgentDescriptor, error)
 }
 
+type VoiceModuleRuntime interface {
+	VoiceModules(ctx context.Context) ([]setup.VoiceModuleDescriptor, error)
+	UpdateVoiceModule(ctx context.Context, moduleID string, update setup.VoiceModuleUpdate) ([]setup.VoiceModuleDescriptor, error)
+	VoiceProviderAction(ctx context.Context, moduleID string, providerID string, request setup.VoiceProviderActionRequest) (setup.VoiceProviderOption, error)
+}
+
 type ProviderRuntime interface {
 	ListSetupProviders(ctx context.Context) ([]setup.ProviderSetupItem, error)
 	ConfigureSetupProvider(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) (setup.ProviderSetupItem, error)
@@ -113,6 +119,7 @@ type Dispatcher struct {
 	configured     bool
 	sessions       SessionRuntime
 	externalAgents ExternalAgentRuntime
+	voiceModules   VoiceModuleRuntime
 	providers      ProviderRuntime
 	permissions    PermissionRuntime
 	messages       SessionMessageRuntime
@@ -136,6 +143,7 @@ func New(runtime any, workingDir string) *Dispatcher {
 	if runtime != nil {
 		d.sessions, _ = runtime.(SessionRuntime)
 		d.externalAgents, _ = runtime.(ExternalAgentRuntime)
+		d.voiceModules, _ = runtime.(VoiceModuleRuntime)
 		d.providers, _ = runtime.(ProviderRuntime)
 		d.permissions, _ = runtime.(PermissionRuntime)
 		d.messages, _ = runtime.(SessionMessageRuntime)

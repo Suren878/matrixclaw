@@ -7,6 +7,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/providers/ai/openaicodex"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -28,17 +29,20 @@ func (d *Dispatcher) handleProvider(ctx context.Context, externalKey string, arg
 		return Result{Handled: true, Text: "This session uses " + sessionRuntimeLabel(*session) + ". Provider selection is available for MatrixClaw sessions only."}, nil
 	}
 	value := strings.TrimSpace(args)
-	if strings.HasPrefix(value, "key ") {
-		return d.handleProviderKey(ctx, session, strings.TrimSpace(strings.TrimPrefix(value, "key ")))
-	}
-	if strings.HasPrefix(value, "custom") {
-		return d.handleCustomProvider(ctx, session, strings.TrimSpace(strings.TrimPrefix(value, "custom")))
-	}
-	if strings.HasPrefix(value, "edit ") {
-		return d.handleProviderEdit(ctx, session, strings.TrimSpace(strings.TrimPrefix(value, "edit ")))
-	}
-	if strings.HasPrefix(value, "use ") {
-		return d.useProvider(ctx, session, strings.TrimSpace(strings.TrimPrefix(value, "use ")))
+	step, rest := firstCommandStep(value)
+	switch step {
+	case "key":
+		return d.handleProviderKey(ctx, session, rest)
+	case "custom":
+		return d.handleCustomProvider(ctx, session, rest)
+	case "edit":
+		return d.handleProviderEdit(ctx, session, rest)
+	case "auth":
+		return d.handleOpenAICodexAuth(ctx, rest)
+	case "auth-complete":
+		return d.handleOpenAICodexAuthComplete(ctx, rest)
+	case "use":
+		return d.useProvider(ctx, session, rest)
 	}
 
 	providers, err := d.providers.ListSetupProviders(ctx)
@@ -57,6 +61,21 @@ func (d *Dispatcher) handleProvider(ctx context.Context, externalKey string, arg
 		Handled: true,
 		Picker:  NewPickerData(PickerProvider, "Provider").HideBack(true).Items(ProviderPickerItems(providers, session)...).Ptr(),
 	}, nil
+}
+
+func firstCommandStep(value string) (string, string) {
+	token, rest := firstCommandToken(value)
+	return strings.ToLower(token), rest
+}
+
+func firstCommandToken(value string) (string, string) {
+	value = strings.TrimSpace(value)
+	fields := strings.Fields(value)
+	if len(fields) == 0 {
+		return "", ""
+	}
+	token := strings.TrimSpace(fields[0])
+	return token, strings.TrimSpace(strings.TrimPrefix(value, token))
 }
 
 func (d *Dispatcher) useProvider(ctx context.Context, session *core.Session, providerID string) (Result, error) {
@@ -78,13 +97,34 @@ func providerActions(provider setup.ProviderSetupItem, selected bool) Result {
 	}
 	picker := NewPickerData(PickerProviderActions, title).
 		Context(strings.TrimSpace(provider.ID)).
-		Back("/provider").
-		Item(PickerItem{ID: "use", Title: "Use", Selected: selected}).
-		Row("edit", "Edit", "", "/provider edit "+encodeCustomProviderField(provider.ID))
+		Back(providerCommand()).
+		Item(PickerItem{ID: "use", Title: "Use", Selected: selected, Disabled: !provider.Configured}).
+		Row("edit", "Edit", "", providerEditCommand(provider.ID))
+	if isOpenAICodexProvider(provider) {
+		picker.Row("auth", "Authorization", openAICodexAuthInfo(), providerCommand("auth", providerEncodedID(provider.ID)))
+	}
 	if isCustomSetupProvider(provider) {
 		picker.Danger("delete", "Delete", "")
 	}
 	return Result{Handled: true, Picker: picker.Ptr()}
+}
+
+func isOpenAICodexProvider(provider setup.ProviderSetupItem) bool {
+	return providerFormType(provider) == providers.TypeOpenAICodex || providerFormCatalogID(provider) == "openai-codex"
+}
+
+func openAICodexAuthInfo() string {
+	status := openaicodex.CurrentAuthStatus()
+	if status.SignedIn {
+		if strings.TrimSpace(status.Source) != "" {
+			return "Signed in"
+		}
+		return "Signed in"
+	}
+	if status.Expired {
+		return "Expired"
+	}
+	return "Not signed in"
 }
 
 func isCustomSetupProvider(provider setup.ProviderSetupItem) bool {

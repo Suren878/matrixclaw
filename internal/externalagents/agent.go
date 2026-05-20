@@ -15,17 +15,27 @@ type Availability struct {
 	Detail    string
 }
 
+type Capabilities struct {
+	StartSession     bool `json:"start_session"`
+	ResumeSession    bool `json:"resume_session"`
+	StreamingEvents  bool `json:"streaming_events"`
+	ToolEvents       bool `json:"tool_events"`
+	Interrupt        bool `json:"interrupt"`
+	ConfigurablePath bool `json:"configurable_path"`
+}
+
 type Descriptor struct {
-	ID          string
-	Aliases     []string
-	DisplayName string
-	Installed   bool
-	Enabled     bool
-	AuthState   string
-	Mode        string
-	Path        string
-	Version     string
-	Detail      string
+	ID           string
+	Aliases      []string
+	DisplayName  string
+	Installed    bool
+	Enabled      bool
+	AuthState    string
+	Mode         string
+	Path         string
+	Version      string
+	Detail       string
+	Capabilities Capabilities
 }
 
 type Agent interface {
@@ -36,6 +46,10 @@ type Agent interface {
 
 type AliasProvider interface {
 	Aliases() []string
+}
+
+type CapabilityProvider interface {
+	Capabilities() Capabilities
 }
 
 type RuntimeAgent interface {

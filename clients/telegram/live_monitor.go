@@ -86,6 +86,9 @@ func (w *Worker) renderInitialRunSnapshot(ctx context.Context, target chatTarget
 		return nil, true, nil
 	}
 	liveState := clientruntime.NewState(snapshot)
+	if err := w.renderVoiceToolResultUpdates(ctx, target, snapshot.Messages, runID, state); err != nil {
+		return nil, false, err
+	}
 	if err := w.renderAssistantUpdates(ctx, target, snapshot.Messages, runID, state); err != nil {
 		return nil, false, err
 	}
@@ -123,6 +126,12 @@ func (w *Worker) handleRunEvent(ctx context.Context, target chatTarget, daemon *
 		message, err := event.DecodeMessage()
 		if err != nil {
 			return runEventOutcome{}, err
+		}
+		if message.Role == core.MessageRoleTool && strings.TrimSpace(message.RunID) == strings.TrimSpace(runID) {
+			if err := w.renderVoiceToolResultUpdates(ctx, target, []core.Message{message}, runID, state); err != nil {
+				return runEventOutcome{}, err
+			}
+			return runEventOutcome{}, nil
 		}
 		if message.Role == core.MessageRoleAssistant && strings.TrimSpace(message.RunID) == strings.TrimSpace(runID) {
 			return runEventOutcome{assistantDirty: true}, nil

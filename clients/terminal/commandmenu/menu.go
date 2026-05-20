@@ -106,39 +106,42 @@ func PickerEntries(picker controlplane.PickerData) []surfacedialog.PickerEntry {
 func PickerEntriesWithCloseAction(picker controlplane.PickerData, closeAction surfacedialog.Action) []surfacedialog.PickerEntry {
 	entries := make([]surfacedialog.PickerEntry, 0, len(picker.Items)+2)
 	for _, presented := range controlplane.PresentPickerItems(picker) {
-		footer := presented.Navigation
-		if footer {
-			if picker.HideBackItem {
+		if presented.Navigation {
+			if picker.HideBackItem && presented.Item.IsBack() {
 				continue
 			}
 		} else if presented.SeparatorBefore && len(entries) > 0 && entries[len(entries)-1].Kind != surfacedialog.ListEntryDivider && entries[len(entries)-1].Kind != surfacedialog.ListEntryHeader {
 			entries = append(entries, surfacedialog.PickerEntry{Kind: surfacedialog.ListEntryDivider, ID: "divider_destructive"})
 		}
 		tone := commandui.RowToneNormal
-		if presented.Selected && !footer {
+		if presented.Selected && !presented.Navigation {
 			tone = commandui.RowToneAccent
-		}
-		role := commandui.RoleNormal
-		if footer {
-			role = commandui.RoleBack
 		}
 		entries = append(entries, surfacedialog.PickerEntry{
 			ID:       presented.Item.ID,
 			Title:    presented.Title,
 			Status:   presented.Status,
-			Role:     role,
+			Role:     pickerEntryRole(presented),
 			Tone:     tone,
 			Selected: presented.Selected || presented.Item.Focused,
-			Footer:   footer,
-			Action:   pickerItemAction(presented, footer, closeAction),
+			Disabled: presented.Disabled,
+			Footer:   presented.Navigation,
+			Action:   pickerItemAction(presented, closeAction),
 		})
 	}
 	return entries
 }
 
-func pickerItemAction(item controlplane.PickerPresentationItem, footer bool, closeAction surfacedialog.Action) surfacedialog.Action {
+func pickerEntryRole(item controlplane.PickerPresentationItem) commandui.Role {
+	if item.Navigation {
+		return commandui.RoleBack
+	}
+	return commandui.RoleNormal
+}
+
+func pickerItemAction(item controlplane.PickerPresentationItem, closeAction surfacedialog.Action) surfacedialog.Action {
 	if strings.TrimSpace(item.Command) == "" {
-		if closeAction != nil && footer {
+		if closeAction != nil && item.Navigation {
 			return closeAction
 		}
 		return surfacedialog.ActionClose{}

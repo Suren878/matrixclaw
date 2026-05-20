@@ -69,7 +69,7 @@ func permissionModeItems(current core.PermissionMode) []PickerItem {
 		items = append(items, PickerItem{
 			ID:       string(mode.mode),
 			Title:    mode.title,
-			Command:  "/permissions " + string(mode.mode),
+			Command:  permissionsCommand(string(mode.mode)),
 			Selected: current == mode.mode,
 		})
 	}

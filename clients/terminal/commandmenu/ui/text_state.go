@@ -29,9 +29,7 @@ func (s *TextEditState) Update(key string, buttons []ButtonSpec, closeRole Role)
 	case "enter":
 		if s.ButtonsFocused {
 			s.clampButton(len(buttons))
-			if s.Button >= 0 && s.Button < len(buttons) {
-				return eventForRole(buttons[s.Button].Role)
-			}
+			return eventForButton(buttons, s.Button)
 		}
 	}
 	return Event{}

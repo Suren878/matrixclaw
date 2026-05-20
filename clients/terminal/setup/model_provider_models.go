@@ -5,7 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	tea "charm.land/bubbletea/v2"
+
+	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
 )
+
+type providerModelsLoadedMsg struct {
+	seq    int
+	models []string
+	err    error
+}
 
 func (m *model) providerModelRows() []listEntry {
 	query := m.providerSearchQuery()
@@ -19,13 +29,18 @@ func (m *model) providerModelRows() []listEntry {
 	return rows
 }
 
-func (m *model) openProviderModelPicker(ctx context.Context) error {
+func (m *model) openProviderModelPicker(ctx context.Context) tea.Cmd {
 	m.resetFilter("Find a model")
-	if err := m.loadProviderModels(ctx); err != nil {
-		return err
-	}
+	m.providerModels = nil
+	m.providerModelsLoading = true
+	m.providerModelLoadSeq++
+	seq := m.providerModelLoadSeq
+	provider := m.editingProvider
 	m.screen = screenProviderModelList
-	return nil
+	return func() tea.Msg {
+		models, err := m.service.ProviderModels(ctx, provider)
+		return providerModelsLoadedMsg{seq: seq, models: models, err: err}
+	}
 }
 
 func (m *model) openProviderModelTextEditor(message string) {
@@ -59,6 +74,31 @@ func (m *model) loadProviderModels(ctx context.Context) error {
 	return nil
 }
 
+func (m *model) handleProviderModelsLoaded(msg providerModelsLoadedMsg) (tea.Model, tea.Cmd) {
+	if msg.seq != m.providerModelLoadSeq {
+		return m, nil
+	}
+	m.providerModelsLoading = false
+	if msg.err != nil {
+		m.openProviderModelTextEditor(modelDiscoveryErrorMessage(msg.err))
+		return m, nil
+	}
+	if len(msg.models) == 0 {
+		m.openProviderModelTextEditor(modelDiscoveryErrorMessage(errors.New("no models available")))
+		return m, nil
+	}
+	m.providerModels = append([]string(nil), msg.models...)
+	m.providerModelCursor = 0
+	for i, modelID := range m.providerModels {
+		if strings.TrimSpace(modelID) == strings.TrimSpace(m.editingProvider.Model) {
+			m.providerModelCursor = i
+			break
+		}
+	}
+	m.screen = screenProviderModelList
+	return m, nil
+}
+
 func (m *model) currentProviderModelRowIndex(rows []listEntry) int {
 	for i, row := range rows {
 		if row.EntryIndex == m.providerModelCursor {
@@ -68,21 +108,23 @@ func (m *model) currentProviderModelRowIndex(rows []listEntry) int {
 	return -1
 }
 
-func (m *model) moveProviderModelCursor(key string, rows []listEntry) bool {
-	if len(rows) == 0 {
-		return false
+func providerModelRowSelection(key string, cursor int, rows []listEntry, closeRole commandui.Role) (int, commandui.Event) {
+	state := commandui.ListState{Cursor: cursor, NoWrap: true}
+	event := state.Update(key, listEntryItems(rows), closeRole)
+	state.Clamp(len(rows))
+	return state.Cursor, event
+}
+
+func listEntryItems(rows []listEntry) []commandui.Item {
+	items := make([]commandui.Item, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, commandui.Item{
+			Title:    row.Text,
+			Status:   row.Status,
+			Disabled: row.Kind != listEntryRow,
+		})
 	}
-	current := m.currentProviderModelRowIndex(rows)
-	if current < 0 {
-		m.providerModelCursor = rows[0].EntryIndex
-		return true
-	}
-	next := current
-	if !m.moveIndex(key, &next, len(rows)-1) || next == current {
-		return false
-	}
-	m.providerModelCursor = rows[next].EntryIndex
-	return true
+	return items
 }
 
 func (m *model) clampProviderModelCursor(rows []listEntry) {

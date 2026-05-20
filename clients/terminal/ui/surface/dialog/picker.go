@@ -61,6 +61,8 @@ type Picker struct {
 	visible []pickerOption
 	cursor  int
 	data    PickerData
+	loading bool
+	frame   int
 
 	keyMap struct {
 		Select   key.Binding
@@ -72,6 +74,7 @@ type Picker struct {
 }
 
 var _ Dialog = (*Picker)(nil)
+var _ LoadingDialog = (*Picker)(nil)
 
 func NewPicker(com *surfacecommon.Common, data PickerData) *Picker {
 	if com == nil {
@@ -113,7 +116,7 @@ func NewPicker(com *surfacecommon.Common, data PickerData) *Picker {
 		key.WithHelp("↑", "previous item"),
 	)
 	closeKey := CloseKey
-	closeKey.SetHelp("esc", "cancel")
+	closeKey.SetHelp("esc", "back")
 	p.keyMap.Close = closeKey
 
 	p.setItems()
@@ -127,6 +130,12 @@ func (p *Picker) ID() string {
 
 func (p *Picker) HandleMsg(msg tea.Msg) Action {
 	switch msg := msg.(type) {
+	case loadingTickMsg:
+		if !p.loading {
+			return nil
+		}
+		p.frame = (p.frame + 1) % len(loadingFrames)
+		return ActionCmd{Cmd: p.loadingTickCmd()}
 	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, p.keyMap.Close):
@@ -158,4 +167,19 @@ func (p *Picker) HandleMsg(msg tea.Msg) Action {
 	}
 
 	return nil
+}
+
+func (p *Picker) StartLoading() tea.Cmd {
+	p.loading = true
+	p.frame = 0
+	return p.loadingTickCmd()
+}
+
+func (p *Picker) StopLoading() {
+	p.loading = false
+	p.frame = 0
+}
+
+func (p *Picker) loadingTickCmd() tea.Cmd {
+	return loadingTickCmd()
 }

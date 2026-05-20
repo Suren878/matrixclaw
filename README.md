@@ -35,13 +35,32 @@ agent workflows where continuity and explicit control matter.
   with exact usage depending on OS, build, and active clients.
 - **One assistant, many clients:** begin a session in Terminal TUI and continue it in Telegram.
 - **Local-first state:** sessions, runs, approvals, files, plans, usage, and provider choices live in SQLite.
-- **Provider switching:** OpenAI-compatible APIs, Anthropic, Gemini, and custom endpoints.
+- **Provider switching:** OpenAI-compatible APIs, OpenAI Codex subscription OAuth, Anthropic, Gemini, and custom endpoints.
 - **External agents:** experimental Codex app-server sessions attach to the same session model.
 - **Tools with approvals:** file and shell tools pause before risky changes.
 - **Planning Mode:** persistent goals, tasks, subtasks, resumable execution, and a core-owned runner.
 - **Search and usage:** session history is searchable, and provider token usage is recorded when available.
-- **Storage module:** temporary uploads can be promoted into local stored files and retrieved later.
+- **Storage module:** Telegram uploads and generated files land in local storage, with temporary files promoted only when needed.
+- **Local voice modules:** Piper TTS and Whisper.cpp STT run locally, either per task to save RAM or as managed warm processes.
 - **Automation-ready:** reminders, scheduled AI tasks, deliveries, and future agent workflows.
+
+## Daemon-first Architecture
+
+`matrixclaw` is daemon-first, not UI-first. The daemon owns the durable session,
+the SQLite database, approvals, runs, storage, modules, automation, and external
+agent attachments. Clients render state and send commands.
+
+This keeps the Terminal TUI and Telegram bot small:
+
+- exiting the TUI does not end the session
+- restarting Telegram does not lose history or approvals
+- provider/model choices and permissions stay attached to the session
+- local voice and storage modules are selected once and reused by all clients
+- external agents can attach to a matrixclaw session without becoming normal LLM providers
+
+The daemon is also the memory boundary. Idle matrixclaw stays small, while
+optional heavy work such as Whisper.cpp can run only for the current request
+unless you explicitly choose an always-running local process.
 
 ## Session handoff: terminal to Telegram and back
 
@@ -100,6 +119,30 @@ The installer downloads the matching GitHub Release archive, installs
 `matrixclaw` and `matrixclawd` into `~/.local/bin`, prepares local config/state
 directories, and starts `matrixclaw setup`.
 
+Local TTS/STT runtimes are optional because they install extra system packages
+and build native binaries. To prepare Piper and Whisper.cpp during install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/install.sh | bash -s -- --voice-runtime
+```
+
+You can also install them later:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/install_voice_runtime.sh | bash
+```
+
+On systems where packages are managed separately, install `git`, `cmake`, a C++
+compiler, Python 3 with venv support, and `ffmpeg`, then run:
+
+```bash
+scripts/install_voice_runtime.sh --no-system-deps
+```
+
+The voice runtime installer prepares local binaries only. Voices and STT models
+are selected and downloaded later from the module UI, so an open-source install
+can stay small until you choose local audio features.
+
 After setup is saved, run `matrixclaw` to open the terminal TUI. On a fresh
 machine, plain `matrixclaw` opens setup first and opens the TUI on later runs.
 
@@ -131,13 +174,16 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
 - Terminal setup and chat TUI for local operator work.
 - Telegram client for remote sessions, files, images, provider/model commands, and approvals.
 - Durable sessions, messages, runs, approvals, file snapshots, deliveries, and tool results.
-- OpenAI-compatible, Anthropic-compatible, Gemini, and custom provider adapters.
+- OpenAI-compatible, OpenAI Codex subscription OAuth, Anthropic-compatible, Gemini, and custom provider adapters.
 - Experimental external-agent sessions through Codex app-server.
 - Service-owned tool execution with approval previews before writes and shell actions.
 - Planning Mode for multi-step work, with persistent tasks/subtasks, resumable execution, model-facing `plan_*` tools, and manual `/plan` commands.
 - Token usage ledger from provider finish metadata, surfaced in the TUI header and `/usage`.
 - SQLite-backed message search through `/search`.
 - Local storage module for temporary uploads, stored files, imports, previews, promotion, deletion, and cleanup settings.
+- Telegram image/document uploads stored as temporary files, with explicit save/delete controls.
+- Telegram voice and audio messages transcribed through the configured STT provider and sent into the active session as text.
+- Telegram `/tts` and assistant `text_to_speech` tool results sent back as voice messages and archived in storage.
 - SQLite-backed local state with reconnectable clients and session handoff.
 - Automation jobs for reminders and scheduled AI tasks.
 
@@ -178,6 +224,7 @@ matrixclaw doctor           diagnose setup, daemon, and providers
 matrixclaw version          print client and daemon build info
 matrixclaw update           check for and install newer releases
 matrixclaw providers        list setup provider catalog
+matrixclaw providers login openai-codex
 matrixclaw providers verify verify configured provider model access
 matrixclaw agents           list external agent runtimes
 matrixclaw agents start     create an external agent session
@@ -195,6 +242,17 @@ the background daemon.
 
 Commands that read setup report missing or unsupported setup on stderr and exit
 nonzero. Use `matrixclaw setup` to recreate setup explicitly.
+
+OpenAI Codex Subscription uses ChatGPT/Codex OAuth instead of an API key. Select
+`OpenAI Codex Subscription` in setup, authorize with:
+
+```bash
+matrixclaw providers login openai-codex
+```
+
+Then open the provider's `Model` picker. Matrixclaw loads the available Codex
+models from the Codex backend and stores the chosen model like any other session
+provider.
 
 ## In-session controls
 
@@ -218,6 +276,8 @@ These are client commands, not model tools.
 /plan clear                  clear Planning Mode after confirmation
 /search <query>              search stored message history
 /modules storage             manage local stored and temporary files
+/modules tts                 manage Text to Speech providers and voices
+/modules stt                 manage Speech to Text providers and models
 /modules agents              enable or disable external agent runtimes
 /remind                      create a one-time reminder
 /tasks                       list and manage scheduled AI tasks
@@ -293,6 +353,7 @@ Core rules:
 - provider and model selection are session data
 - Planning Mode state and plan-run checkpoints are session data
 - search and token usage are read-only views over local SQLite state
+- storage, voice, and external agents are daemon modules behind the same local API
 - orchestration, providers, and tools are replaceable adapter families
 
 ## External Agents
@@ -317,6 +378,68 @@ version when available. Enabling Codex adds it to the New Session picker.
 Codex options use the same shared controls as the rest of the TUI: `Path` opens
 the standard text prompt, and `Enabled` opens a small Enable/Disable picker.
 
+## Local Voice
+
+Text to Speech supports Piper as a local provider. Speech to Text supports
+Whisper.cpp as a local provider. Voice models are downloaded from the module UI,
+while the local runtime binaries are prepared by:
+
+```bash
+scripts/install_voice_runtime.sh
+```
+
+The script installs/updates:
+
+- Piper in `~/.local/state/matrixclaw/runtime/piper-venv`
+- Whisper.cpp CLI and server in `~/.local/state/matrixclaw/runtime/whisper.cpp`
+- `ffmpeg` for audio formats such as Telegram voice messages
+
+Voice is part of the same daemon-first architecture as sessions and storage:
+clients request speech through the daemon API, the daemon selects the active
+module/provider/model, and generated Telegram TTS audio is saved into Storage
+under `telegram/audio/`.
+
+Local providers support two runtime modes:
+
+- **Run per task:** default mode for Piper and Whisper.cpp. The native runtime
+  starts only for the current TTS/STT job, then exits. This keeps idle memory
+  near zero and is the best default for laptops and small servers. Whisper.cpp
+  still needs RAM while a transcription is running; the selected model size
+  controls that peak.
+- **Always running:** keeps a managed local process warm for lower startup
+  latency. Piper uses the local Piper process manager; Whisper.cpp uses
+  `whisper-server` and the local `/inference` endpoint.
+
+Piper voices are fetched from the online Piper voice catalog when available,
+with bundled English and Russian fallbacks. The TUI flow is:
+
+```text
+/modules -> Text to Speech -> Provider -> Piper
+```
+
+Choose `Add voice`, pick a language, download a voice, then choose the active
+voice. The status screen reports local model storage and current process RAM.
+
+Whisper.cpp models are fetched from the upstream Whisper.cpp model catalog when
+available, with bundled size tiers from `tiny` through `large-v3`. Language is
+`Auto` by default, and the TUI exposes Whisper's supported language codes from
+Afrikaans through Chinese instead of hard-coding only English/Russian:
+
+```text
+/modules -> Speech to Text -> Provider -> Whisper.cpp
+```
+
+Choose `Add model`, download a model size, select the active model, then leave
+language on `Auto` or pin a specific spoken language. The status screen reports
+local model storage and current process RAM.
+
+The STT API accepts voice JSON bodies up to 36 MB, which is roughly 25 MB of raw
+audio after base64 overhead.
+
+See [Local Voice](docs/VOICE.md) and [Storage and Telegram Files](docs/STORAGE.md)
+for the local model paths, run modes, temporary-file lifecycle, and Telegram
+voice/file flow.
+
 ## Repository Map
 
 - [`cmd/matrixclaw`](cmd/matrixclaw): operator CLI and terminal entrypoint
@@ -330,6 +453,7 @@ the standard text prompt, and `Enabled` opens a small Enable/Disable picker.
 - [`internal/providers`](internal/providers): provider adapters and catalog
 - [`internal/externalagents`](internal/externalagents): external-agent registry and Codex app-server adapter
 - [`internal/tools`](internal/tools): builtin tools
+- [`docs`](docs): planning, local voice, and storage notes
 - [`scripts`](scripts): install, uninstall, and release-build scripts
 - [`packaging`](packaging): release and Homebrew packaging notes
 - [`tests`](tests): contract and integration test suites

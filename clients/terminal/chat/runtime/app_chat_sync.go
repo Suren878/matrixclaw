@@ -17,7 +17,7 @@ func (m *appModel) rebuildChat() {
 		selectedID = m.chat.SelectedMessageID()
 		follow = m.chat.Follow()
 	}
-	snapshot := m.read.Snapshot()
+	snapshot := m.currentSnapshot()
 	if len(m.transientMessages) > 0 {
 		snapshot.Messages = append(append([]surfacemessage.Message(nil), snapshot.Messages...), m.transientMessages...)
 		slices.SortStableFunc(snapshot.Messages, func(a surfacemessage.Message, b surfacemessage.Message) int {

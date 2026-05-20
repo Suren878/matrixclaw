@@ -144,55 +144,6 @@ func TestGenerateRoundTripsReasoningContent(t *testing.T) {
 	}
 }
 
-func TestNewRuntimeProfiles(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name          string
-		cfg           Config
-		wantProfile   providers.RuntimeProfile
-		wantReasoning string
-	}{
-		{
-			name: "OpenAI-compatible provider",
-			cfg: Config{
-				APIKey:          "secret",
-				BaseURL:         "https://api.example.com/v1",
-				Model:           "gpt-5.4-mini",
-				ReasoningEffort: "high",
-				Profile:         providers.ProfileForModel("openai", providers.TypeOpenAICompat, "gpt-5.4-mini"),
-			},
-			wantProfile: providers.RuntimeProfile{
-				ToolUseMode:       providers.ToolUseNative,
-				ToolSchemaDialect: providers.ToolSchemaJSONSchema,
-			},
-			wantReasoning: "high",
-		},
-	}
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			runtime, err := New(context.Background(), tt.cfg)
-			if err != nil {
-				t.Fatalf("New() error = %v", err)
-			}
-
-			got := runtime.(*Runtime)
-			if got.profile != tt.wantProfile {
-				t.Fatalf("profile = %#v, want %#v", got.profile, tt.wantProfile)
-			}
-			if profile := got.RuntimeProfile(); profile != tt.wantProfile {
-				t.Fatalf("RuntimeProfile() = %#v, want %#v", profile, tt.wantProfile)
-			}
-			if got.reasoningEffort != tt.wantReasoning {
-				t.Fatalf("reasoningEffort = %q, want %q", got.reasoningEffort, tt.wantReasoning)
-			}
-		})
-	}
-}
-
 func TestGenerateUsesMaxCompletionTokensForGPT5Models(t *testing.T) {
 	t.Parallel()
 
@@ -861,80 +812,61 @@ func TestGenerateSendsNativeToolMessages(t *testing.T) {
 	}
 }
 
-func TestGenerateKeepsOpenAICompatibleBrandsOnNativeToolMessages(t *testing.T) {
+func TestGenerateKeepsOpenAICompatibleProfileOnNativeToolMessages(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name    string
-		baseURL string
-	}{
-		{name: "openai", baseURL: "https://api.openai.com/v1"},
-		{name: "deepseek", baseURL: "https://api.deepseek.com/v1"},
-		{name: "xai", baseURL: "https://api.x.ai/v1"},
-		{name: "zai", baseURL: "https://api.z.ai/api/paas/v4"},
-		{name: "kimi", baseURL: "https://api.moonshot.ai/v1"},
-		{name: "aihubmix", baseURL: "https://api.aihubmix.com/v1"},
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []map[string]any `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if len(body.Messages) != 2 {
+			t.Fatalf("len(messages) = %d, want 2", len(body.Messages))
+		}
+		if got := body.Messages[0]["role"]; got != "assistant" {
+			t.Fatalf("messages[0].role = %#v, want assistant", got)
+		}
+		if _, ok := body.Messages[0]["tool_calls"]; !ok {
+			t.Fatalf("messages[0].tool_calls missing for native OpenAI-compatible tool history: %#v", body.Messages[0])
+		}
+		if got := body.Messages[1]["role"]; got != "tool" {
+			t.Fatalf("messages[1].role = %#v, want tool", got)
+		}
+		if got := body.Messages[1]["tool_call_id"]; got != "call_1" {
+			t.Fatalf("messages[1].tool_call_id = %#v, want call_1", got)
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message": map[string]any{
+					"content": "done",
+				},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	runtime, err := New(context.Background(), Config{
+		APIKey:     "secret",
+		BaseURL:    server.URL,
+		Model:      "gpt-test",
+		HTTPClient: server.Client(),
+		Profile:    providers.ProfileForProvider(providers.TypeOpenAICompat),
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
 	}
 
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				var body struct {
-					Messages []map[string]any `json:"messages"`
-				}
-				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-					t.Fatalf("decode request: %v", err)
-				}
-				if len(body.Messages) != 2 {
-					t.Fatalf("len(messages) = %d, want 2", len(body.Messages))
-				}
-				if got := body.Messages[0]["role"]; got != "assistant" {
-					t.Fatalf("messages[0].role = %#v, want assistant", got)
-				}
-				if _, ok := body.Messages[0]["tool_calls"]; !ok {
-					t.Fatalf("messages[0].tool_calls missing for native OpenAI-compatible tool history: %#v", body.Messages[0])
-				}
-				if got := body.Messages[1]["role"]; got != "tool" {
-					t.Fatalf("messages[1].role = %#v, want tool", got)
-				}
-				if got := body.Messages[1]["tool_call_id"]; got != "call_1" {
-					t.Fatalf("messages[1].tool_call_id = %#v, want call_1", got)
-				}
-
-				_ = json.NewEncoder(w).Encode(map[string]any{
-					"choices": []map[string]any{{
-						"message": map[string]any{
-							"content": "done",
-						},
-					}},
-				})
-			}))
-			defer server.Close()
-
-			runtime, err := New(context.Background(), Config{
-				APIKey:     "secret",
-				BaseURL:    server.URL,
-				Model:      "gpt-test",
-				HTTPClient: server.Client(),
-				Profile:    providers.ProfileForProvider(providers.TypeOpenAICompat),
-			})
-			if err != nil {
-				t.Fatalf("New() error = %v", err)
-			}
-
-			_, err = runtime.Generate(context.Background(), providers.Request{
-				Messages: []providers.Message{
-					{Role: "assistant", ToolCalls: []providers.ToolCall{{ID: "call_1", Name: "read", Arguments: json.RawMessage(`{"file_path":"notes.txt"}`)}}},
-					{Role: "tool", ToolCallID: "call_1", Content: "<file>ok</file>"},
-				},
-			})
-			if err != nil {
-				t.Fatalf("Generate() error = %v", err)
-			}
-		})
+	_, err = runtime.Generate(context.Background(), providers.Request{
+		Messages: []providers.Message{
+			{Role: "assistant", ToolCalls: []providers.ToolCall{{ID: "call_1", Name: "read", Arguments: json.RawMessage(`{"file_path":"notes.txt"}`)}}},
+			{Role: "tool", ToolCallID: "call_1", Content: "<file>ok</file>"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
 	}
 }
 

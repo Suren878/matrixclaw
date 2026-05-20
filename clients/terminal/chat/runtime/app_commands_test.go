@@ -356,6 +356,56 @@ func TestEscFromCommandRootPickerReturnsToCommands(t *testing.T) {
 	}
 }
 
+func TestServerRootPickerBackClosesInsteadOfReopeningServer(t *testing.T) {
+	model := newApp(nil, nil)
+	model.dialog.OpenDialog(surfacedialog.NewCommands(model.com, surfacedialog.CommandsData{}))
+
+	next, cmd := model.Update(surfacedialog.ActionRunControlplaneCommand{Command: "/server"})
+	if next == nil {
+		t.Fatal("expected model")
+	}
+	if cmd == nil {
+		t.Fatal("expected controlplane command")
+	}
+
+	next, cmd = model.Update(controlplaneResultMsg{
+		result: controlplane.Result{
+			Picker: &controlplane.PickerData{
+				Kind:  controlplane.PickerServer,
+				Title: "Server",
+				Items: []controlplane.PickerItem{
+					{ID: "status", Title: "Status", Command: "/status"},
+					{ID: "restart", Title: "Restart", Command: "/restart"},
+					controlplane.CloseItem(),
+				},
+			},
+		},
+	})
+	if next == nil {
+		t.Fatal("expected model")
+	}
+	if cmd != nil {
+		t.Fatal("expected no command after server picker result")
+	}
+	if !model.dialog.ContainsDialog(surfacedialog.PickerID) {
+		t.Fatal("expected server picker")
+	}
+
+	next, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	if next == nil {
+		t.Fatal("expected model")
+	}
+	if cmd != nil {
+		t.Fatal("expected back to close server picker without re-running /server")
+	}
+	if model.dialog.ContainsDialog(surfacedialog.PickerID) {
+		t.Fatal("expected server picker to close")
+	}
+	if !model.dialog.ContainsDialog(surfacedialog.CommandsID) {
+		t.Fatal("expected commands dialog to remain behind server picker")
+	}
+}
+
 func TestControlplanePickerClosesStalePrompt(t *testing.T) {
 	model := newApp(nil, nil)
 	model.dialog.OpenDialog(surfacedialog.NewPromptCommand(model.com, surfacedialog.PromptCommandData{
@@ -387,6 +437,59 @@ func TestControlplanePickerClosesStalePrompt(t *testing.T) {
 	}
 	if model.dialog.ContainsDialog(surfacedialog.CommandsID) {
 		t.Fatal("expected commands dialog to close")
+	}
+}
+
+func TestStaleControlplaneResultDoesNotReopenDialogAfterBack(t *testing.T) {
+	model := newApp(nil, nil)
+	model.controlplaneSeq = 2
+	model.dialog.OpenDialog(surfacedialog.NewPicker(model.com, surfacedialog.PickerData{
+		ID:    surfacedialog.PickerID,
+		Title: "Modules",
+	}))
+
+	next, cmd := model.Update(controlplaneResultMsg{
+		command: "/modules stt provider-status whispercpp",
+		seq:     1,
+		result: controlplane.Result{
+			Info: &controlplane.InfoData{
+				Title: "Whisper.cpp Status",
+				Rows:  []controlplane.InfoRow{{Label: "RAM", Value: "10 MB"}},
+			},
+		},
+	})
+	if next == nil {
+		t.Fatal("expected model")
+	}
+	if cmd != nil {
+		t.Fatal("expected no command for stale result")
+	}
+	if model.dialog.ContainsDialog(surfacedialog.InfoID) {
+		t.Fatal("stale status result should not reopen info dialog")
+	}
+}
+
+func TestControlplaneInfoBackClosesSourceBeforeNavigation(t *testing.T) {
+	action := controlplaneCloseAction("/modules stt provider whispercpp")
+	run, ok := action.(surfacedialog.ActionRunControlplaneCommand)
+	if !ok {
+		t.Fatalf("close action = %T, want ActionRunControlplaneCommand", action)
+	}
+	if !run.CloseSource {
+		t.Fatal("controlplane info back must close the info dialog source")
+	}
+
+	model := newApp(nil, nil)
+	model.dialog.OpenDialog(surfacedialog.NewInfo(model.com, surfacedialog.InfoData{
+		Title:       "Whisper.cpp Status",
+		CloseAction: action,
+	}))
+	_, cmd := model.handleDialogInput(tea.KeyPressMsg{Code: tea.KeyEsc})
+	if cmd == nil {
+		t.Fatal("expected controlplane navigation command")
+	}
+	if model.dialog.ContainsDialog(surfacedialog.InfoID) {
+		t.Fatal("info dialog should close when navigating back")
 	}
 }
 

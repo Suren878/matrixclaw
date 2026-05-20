@@ -65,6 +65,17 @@ func (d *Overlay) OpenDialog(dialog Dialog) {
 	d.dialogs = append(d.dialogs, dialog)
 }
 
+// ReplaceFrontDialog replaces the top-most dialog without changing the stack
+// shape. This avoids visible close/open flicker when navigating between
+// controlplane views that share the same dialog type.
+func (d *Overlay) ReplaceFrontDialog(dialog Dialog) {
+	if len(d.dialogs) == 0 {
+		d.OpenDialog(dialog)
+		return
+	}
+	d.dialogs[len(d.dialogs)-1] = dialog
+}
+
 // CloseDialog closes a dialog by ID.
 func (d *Overlay) CloseDialog(dialogID string) {
 	for i, dialog := range d.dialogs {

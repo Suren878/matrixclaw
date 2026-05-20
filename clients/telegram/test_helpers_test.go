@@ -34,6 +34,7 @@ type fakeBotAPI struct {
 	editMessageErr        error
 	nextMessageID         int64
 	sendMessageRequests   []SendMessageRequest
+	sendVoiceRequests     []SendVoiceRequest
 	editMessageRequests   []EditMessageTextRequest
 	deleteMessageRequests []DeleteMessageRequest
 	answerRequests        []AnswerCallbackQueryRequest
@@ -83,6 +84,14 @@ func (f *fakeBotAPI) SendMessage(_ context.Context, req SendMessageRequest) (Sen
 
 func (f *fakeBotAPI) SendChatAction(context.Context, SendChatActionRequest) error {
 	return nil
+}
+
+func (f *fakeBotAPI) SendVoice(_ context.Context, req SendVoiceRequest) (SentMessage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.nextMessageID++
+	f.sendVoiceRequests = append(f.sendVoiceRequests, req)
+	return SentMessage{MessageID: f.nextMessageID}, nil
 }
 
 func (f *fakeBotAPI) EditMessageText(_ context.Context, req EditMessageTextRequest) (EditMessageTextResponse, error) {

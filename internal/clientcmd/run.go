@@ -124,6 +124,7 @@ func printUsage(w io.Writer, binaryName string) {
 	fmt.Fprintf(w, "  %s service restart  Restart matrixclaw service\n", binaryName)
 	fmt.Fprintf(w, "  %s service logs     Print recent matrixclaw service logs\n", binaryName)
 	fmt.Fprintf(w, "  %s providers        List setup provider catalog\n", binaryName)
+	fmt.Fprintf(w, "  %s providers login openai-codex\n", binaryName)
 	fmt.Fprintf(w, "  %s providers verify Verify configured provider model access\n", binaryName)
 	fmt.Fprintf(w, "  %s agents           List external agent runtimes\n", binaryName)
 	fmt.Fprintf(w, "  %s agents start     Create an external agent session\n", binaryName)

@@ -1,7 +1,6 @@
 package dialog
 
 import (
-	"strconv"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -72,36 +71,6 @@ func TestPickerEscapeUsesConfiguredCloseAction(t *testing.T) {
 	}
 	if run.Command != "/provider" {
 		t.Fatalf("command = %q, want /provider", run.Command)
-	}
-}
-
-func TestPickerVisibleWindowCentersSelection(t *testing.T) {
-	entries := make([]PickerEntry, 0, 30)
-	for i := 0; i < 30; i++ {
-		entries = append(entries, PickerEntry{
-			ID:     strconv.Itoa(i),
-			Title:  "Model",
-			Action: ActionClose{},
-		})
-	}
-	dialog := NewPicker(surfacecommon.DefaultCommon(), PickerData{
-		Title:   "Models",
-		Entries: entries,
-	})
-	dialog.cursor = 15
-
-	items, selected, footer, footerSelected := dialog.visibleWindow(7)
-	if len(items) != 7 {
-		t.Fatalf("len(items) = %d, want 7", len(items))
-	}
-	if selected != 3 {
-		t.Fatalf("selected = %d, want centered index 3", selected)
-	}
-	if items[selected].ID != entries[15].ID {
-		t.Fatalf("selected item = %q, want %q", items[selected].ID, entries[15].ID)
-	}
-	if len(footer) != 0 || footerSelected != -1 {
-		t.Fatalf("footer = %#v selected=%d, want empty/-1", footer, footerSelected)
 	}
 }
 

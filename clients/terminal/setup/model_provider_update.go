@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
@@ -12,20 +13,19 @@ import (
 func (m *model) updateProviderList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
+		entries := m.providerEntries()
+		event := m.updateListSelection(msg.String(), &m.cursor, len(entries), commandui.RoleBack)
 		switch msg.String() {
-		case "esc":
-			m.returnToList(screenDaemonList)
-			return m, nil
 		case "ctrl+a":
 			m.providerTypeCursor = 0
 			m.screen = screenProviderTypeList
 			return m, nil
-		case "up", "k", "down", "j":
-			entries := m.providerEntries()
-			m.moveIndex(msg.String(), &m.cursor, len(entries)-1)
+		}
+		switch event.Kind {
+		case commandui.EventBack:
+			m.returnToList(screenDaemonList)
 			return m, nil
-		case "enter":
-			entries := m.providerEntries()
+		case commandui.EventSelect:
 			if len(entries) == 0 {
 				return m, nil
 			}
@@ -57,8 +57,7 @@ func (m *model) updateProviderList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	var cmd tea.Cmd
-	m.filterInput, cmd = m.filterInput.Update(msg)
+	cmd := m.filterInput.Update(msg)
 	entries := m.providerEntries()
 	if m.cursor >= len(entries) {
 		m.cursor = max(0, len(entries)-1)
@@ -71,24 +70,13 @@ func (m *model) updateProviderNoProviderConfirm(msg tea.Msg) (tea.Model, tea.Cmd
 	if !ok {
 		return m, nil
 	}
-	switch keyMsg.String() {
-	case "esc", "n":
+	event := updateConfirmSelection(keyMsg.String(), &m.providerNoProviderCursor)
+	switch event.Kind {
+	case commandui.EventCancel:
 		m.screen = screenProviderList
 		return m, nil
-	case "left", "h", "up", "k":
-		if m.providerNoProviderCursor > 0 {
-			m.providerNoProviderCursor--
-		}
-	case "right", "l", "down", "j":
-		if m.providerNoProviderCursor < 1 {
-			m.providerNoProviderCursor++
-		}
-	case "enter", "y":
-		if m.providerNoProviderCursor == 0 || keyMsg.String() == "y" {
-			m.openDraftForm(screenAssistantForm)
-			return m, nil
-		}
-		m.screen = screenProviderList
+	case commandui.EventSubmit:
+		m.openDraftForm(screenAssistantForm)
 		return m, nil
 	}
 	return m, nil
@@ -99,13 +87,12 @@ func (m *model) updateProviderTypeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	switch keyMsg.String() {
-	case "esc":
+	event := m.updateListSelection(keyMsg.String(), &m.providerTypeCursor, 2, commandui.RoleBack)
+	switch event.Kind {
+	case commandui.EventBack:
 		m.screen = screenProviderList
 		return m, nil
-	case "up", "k", "down", "j":
-		m.moveIndex(keyMsg.String(), &m.providerTypeCursor, 1)
-	case "enter":
+	case commandui.EventSelect:
 		providerType := providers.TypeOpenAICompat
 		if m.providerTypeCursor == 1 {
 			providerType = providers.TypeAnthropic
@@ -124,9 +111,9 @@ func (m *model) updateProviderTypeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) updateProviderForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 	items := m.providerFormItems()
-	return m.updateForm(msg, len(items), func() { m.returnToList(screenProviderList) }, m.handleProviderFormSave, func() {
+	return m.updateForm(msg, len(items), func() { m.returnToList(screenProviderList) }, m.handleProviderFormSave, func() tea.Cmd {
 		if m.formFocus < 0 || m.formFocus >= len(items) {
-			return
+			return nil
 		}
 		item := items[m.formFocus]
 		switch item.Target {
@@ -138,9 +125,7 @@ func (m *model) updateProviderForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.providerModelUsesPicker() {
 				m.openTextEditor(textEditProviderModel, "Model", "model-id", m.editingProvider.Model, false)
 			} else {
-				if err := m.openProviderModelPicker(context.Background()); err != nil {
-					m.openProviderModelTextEditor(modelDiscoveryErrorMessage(err))
-				}
+				return m.openProviderModelPicker(context.Background())
 			}
 		case textEditProviderBaseURL:
 			if item.BaseURL {
@@ -158,6 +143,7 @@ func (m *model) updateProviderForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.screen = screenProviderToolUseList
 			}
 		}
+		return nil
 	})
 }
 
@@ -167,13 +153,12 @@ func (m *model) updateProviderBaseURLList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	options := m.providerBaseURLOptions()
-	switch keyMsg.String() {
-	case "esc":
+	event := m.updateListSelection(keyMsg.String(), &m.providerBaseURLCursor, len(options), commandui.RoleBack)
+	switch event.Kind {
+	case commandui.EventBack:
 		m.screen = screenProviderForm
 		return m, nil
-	case "up", "k", "down", "j":
-		m.moveIndex(keyMsg.String(), &m.providerBaseURLCursor, len(options)-1)
-	case "enter":
+	case commandui.EventSelect:
 		if len(options) > 0 {
 			m.editingProvider.BaseURL = options[m.providerBaseURLCursor]
 		}
@@ -186,15 +171,31 @@ func (m *model) updateProviderBaseURLList(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) updateProviderModelList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
+		if m.providerModelsLoading {
+			state := commandui.ListState{NoWrap: true}
+			event := state.Update(msg.String(), nil, commandui.RoleBack)
+			if event.Kind == commandui.EventBack {
+				m.providerModelsLoading = false
+				m.providerModelLoadSeq++
+				m.screen = screenProviderForm
+				return m, nil
+			}
+			return m, nil
+		}
 		rows := m.providerModelRows()
-		switch msg.String() {
-		case "esc":
+		rowCursor := m.currentProviderModelRowIndex(rows)
+		if rowCursor < 0 {
+			rowCursor = 0
+		}
+		nextRowCursor, event := providerModelRowSelection(msg.String(), rowCursor, rows, commandui.RoleBack)
+		if len(rows) > 0 {
+			m.providerModelCursor = rows[nextRowCursor].EntryIndex
+		}
+		switch event.Kind {
+		case commandui.EventBack:
 			m.screen = screenProviderForm
 			return m, nil
-		case "up", "k", "down", "j":
-			m.moveProviderModelCursor(msg.String(), rows)
-			return m, nil
-		case "enter":
+		case commandui.EventSelect:
 			if len(rows) == 0 {
 				return m, nil
 			}
@@ -202,10 +203,12 @@ func (m *model) updateProviderModelList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen = screenProviderForm
 			return m, nil
 		}
+		if nextRowCursor != rowCursor {
+			return m, nil
+		}
 	}
 
-	var cmd tea.Cmd
-	m.filterInput, cmd = m.filterInput.Update(msg)
+	cmd := m.filterInput.Update(msg)
 	m.clampProviderModelCursor(m.providerModelRows())
 	return m, cmd
 }
@@ -216,13 +219,12 @@ func (m *model) updateProviderEffortList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	efforts := m.providerReasoningEfforts()
-	switch keyMsg.String() {
-	case "esc":
+	event := m.updateListSelection(keyMsg.String(), &m.providerEffortCursor, len(efforts), commandui.RoleBack)
+	switch event.Kind {
+	case commandui.EventBack:
 		m.screen = screenProviderForm
 		return m, nil
-	case "up", "k", "down", "j":
-		m.moveIndex(keyMsg.String(), &m.providerEffortCursor, len(efforts)-1)
-	case "enter":
+	case commandui.EventSelect:
 		if len(efforts) > 0 {
 			m.editingProvider.ReasoningEffort = efforts[m.providerEffortCursor]
 		}
@@ -238,13 +240,12 @@ func (m *model) updateProviderToolUseList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	modes := setup.ProviderFormToolUseModes()
-	switch keyMsg.String() {
-	case "esc":
+	event := m.updateListSelection(keyMsg.String(), &m.providerToolUseCursor, len(modes), commandui.RoleBack)
+	switch event.Kind {
+	case commandui.EventBack:
 		m.screen = screenProviderForm
 		return m, nil
-	case "up", "k", "down", "j":
-		m.moveIndex(keyMsg.String(), &m.providerToolUseCursor, len(modes)-1)
-	case "enter":
+	case commandui.EventSelect:
 		if len(modes) > 0 {
 			m.editingProvider.ToolUseMode = modes[m.providerToolUseCursor]
 		}

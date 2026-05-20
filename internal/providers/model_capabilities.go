@@ -85,7 +85,7 @@ func runtimeCapabilitiesFromProvider(providerCapabilities Capabilities, provider
 	case TypeGemini:
 		capabilities.ToolSchemaDialect = ToolSchemaGemini
 		capabilities.ReasoningMode = ReasoningModeGeminiThinking
-	case TypeOpenAICompat:
+	case TypeOpenAICompat, TypeOpenAICodex:
 		if providerCapabilities.ReasoningEffort {
 			capabilities.ReasoningMode = ReasoningModeOpenAIEffort
 			capabilities.ReasoningWithTools = providerCapabilities.ToolCalling
@@ -113,7 +113,7 @@ func reasoningEffortsForProviderModel(providerID string, providerType string, mo
 	if !capabilities.ReasoningEffort {
 		return nil
 	}
-	if providerID == "openai" {
+	if providerID == "openai" || providerID == "openai-codex" {
 		if modelID != "" && !openAIModelSupportsReasoningEffort(modelID) {
 			return nil
 		}

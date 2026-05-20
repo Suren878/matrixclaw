@@ -42,7 +42,7 @@ func customProviderTypePicker() Result {
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerProviderCustom, "Custom Provider").
-			Back("/provider").
+			Back(providerCommand()).
 			Row("openai", "OpenAI Compatible", "").
 			Row("anthropic", "Anthropic Compatible", "").
 			Ptr(),

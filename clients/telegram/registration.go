@@ -16,6 +16,7 @@ func (w *Worker) registerCommands(ctx context.Context) {
 			Description: view.Title,
 		})
 	}
+	commands = append(commands, BotCommand{Command: "tts", Description: "Text to speech"})
 	if err := w.api.SetMyCommands(ctx, SetMyCommandsRequest{Commands: commands}); err != nil {
 		log.Printf("telegram: set bot commands failed: %v", err)
 	}

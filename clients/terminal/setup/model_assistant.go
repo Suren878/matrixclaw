@@ -35,12 +35,11 @@ func (m *model) updateAssistantForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	itemCount := 4
-	switch keyMsg.String() {
-	case "esc":
+	event := m.updateListSelection(keyMsg.String(), &m.formFocus, itemCount, commandui.RoleBack)
+	switch event.Kind {
+	case commandui.EventBack:
 		m.cancelDraftForm(screenProviderList)
-	case "up", "k", "down", "j":
-		m.moveIndex(keyMsg.String(), &m.formFocus, itemCount-1)
-	case "enter":
+	case commandui.EventSelect:
 		if m.formFocus == 0 {
 			if err := m.handleAssistantFormSave(); err != nil {
 				m.formError = err.Error()

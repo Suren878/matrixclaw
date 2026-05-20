@@ -143,3 +143,10 @@ func eventForRole(role Role) Event {
 		return Event{}
 	}
 }
+
+func eventForButton(buttons []ButtonSpec, index int) Event {
+	if index < 0 || index >= len(buttons) {
+		return Event{}
+	}
+	return eventForRole(buttons[index].Role)
+}

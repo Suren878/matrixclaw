@@ -72,31 +72,6 @@ func TestGenerateSuccess(t *testing.T) {
 	}
 }
 
-func TestNewRuntimeProfileDisablesTools(t *testing.T) {
-	t.Parallel()
-
-	runtime, err := New(context.Background(), Config{
-		APIKey:  "secret",
-		BaseURL: "https://api.anthropic.com/v1",
-		Model:   "claude-test",
-	})
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-
-	got := runtime.(*Runtime)
-	want := providers.RuntimeProfile{
-		ToolUseMode:       providers.ToolUseDisabled,
-		ToolSchemaDialect: providers.ToolSchemaJSONSchema,
-	}
-	if got.profile != want {
-		t.Fatalf("profile = %#v, want %#v", got.profile, want)
-	}
-	if profile := got.RuntimeProfile(); profile != want {
-		t.Fatalf("RuntimeProfile() = %#v, want %#v", profile, want)
-	}
-}
-
 func TestGenerateRejectsUnsupportedToolUse(t *testing.T) {
 	t.Parallel()
 

@@ -17,12 +17,12 @@ func (d *Dispatcher) handleCustomProviderCreate(ctx context.Context, session *co
 	}
 	form := strings.TrimSpace(strings.TrimPrefix(args, kind))
 	if form == "" {
-		return customProviderFormPicker(kind, typeLabel, customProviderForm{}.withDefaultToolProfile(providerType), ""), nil
+		return customProviderFormPicker(kind, typeLabel, setup.ProviderFormState{}.WithDefaultToolProfile(providerType), ""), nil
 	}
 	if result, ok, err := d.handleCustomProviderCreateStep(ctx, session, kind, providerType, typeLabel, form); ok || err != nil {
 		return result, err
 	}
-	return customProviderFormPicker(kind, typeLabel, customProviderForm{}, ""), nil
+	return customProviderFormPicker(kind, typeLabel, setup.ProviderFormState{}, ""), nil
 }
 
 func customProviderType(value string) (string, string, bool) {
@@ -49,7 +49,7 @@ func (d *Dispatcher) handleCustomProviderCreateStep(ctx context.Context, session
 		if err != nil {
 			return Result{}, true, err
 		}
-		data = data.withDefaultToolProfile(providerType)
+		data = data.WithDefaultToolProfile(providerType)
 		return customProviderFormPicker(kind, label, data, ""), true, nil
 	}
 	if field, ok := customProviderStepField(step, "edit-"); ok {
@@ -58,12 +58,12 @@ func (d *Dispatcher) handleCustomProviderCreateStep(ctx context.Context, session
 			return Result{}, true, err
 		}
 		if field == "tools" {
-			data = data.withDefaultToolProfile(providerType)
+			data = data.WithDefaultToolProfile(providerType)
 			token := encodeCustomProviderFormToken(data)
 			return customProviderToolModePicker("Custom "+label, data, customProviderCommandPrefix(kind, "set-tools", token), customProviderCommand(kind, "form", token)), true, nil
 		}
 		if field == "reasoning" {
-			data = data.withDefaultProviderOptions(providers.ProviderCapabilities("", providerType))
+			data = data.WithDefaultProviderOptions(providers.ProviderCapabilities("", providerType))
 			token := encodeCustomProviderFormToken(data)
 			return customProviderReasoningEffortPickerWithOptions(
 				"Custom "+label,
@@ -83,9 +83,9 @@ func (d *Dispatcher) handleCustomProviderCreateStep(ctx context.Context, session
 			return Result{}, true, err
 		}
 		fieldValue := strings.TrimSpace(strings.TrimPrefix(value, token))
-		data = data.withField(field, fieldValue)
+		data = data.WithField(field, fieldValue)
 		if field == "tools" {
-			data = data.withDefaultToolProfile(providerType)
+			data = data.WithDefaultToolProfile(providerType)
 		}
 		return customProviderFormPicker(kind, label, data, ""), true, nil
 	}
@@ -96,8 +96,8 @@ func (d *Dispatcher) handleCustomProviderCreateStep(ctx context.Context, session
 		if err != nil {
 			return Result{}, true, err
 		}
-		data = data.withDefaultToolProfile(providerType)
-		if message := data.validationMessage(true); message != "" {
+		data = data.WithDefaultToolProfile(providerType)
+		if message := data.ValidationMessage(true); message != "" {
 			return customProviderFormPicker(kind, label, data, message), true, nil
 		}
 		return customProviderSaveConfirm(kind, data), true, nil
@@ -106,41 +106,24 @@ func (d *Dispatcher) handleCustomProviderCreateStep(ctx context.Context, session
 		if err != nil {
 			return Result{}, true, err
 		}
-		if message := data.validationMessage(true); message != "" {
+		if message := data.ValidationMessage(true); message != "" {
 			return customProviderFormPicker(kind, label, data, message), true, nil
 		}
-		data = data.withDefaultToolProfile(providerType)
-		result, err := d.saveCustomProvider(ctx, session, providerType, data.Name, data.BaseURL, data.Model, data.APIKey, data.Reasoning, data.ToolUseMode)
+		data = data.WithDefaultToolProfile(providerType)
+		result, err := d.saveCustomProvider(ctx, session, providerType, data)
 		return result, true, err
 	default:
 		return Result{}, false, nil
 	}
 }
 
-func (d *Dispatcher) saveCustomProvider(ctx context.Context, session *core.Session, providerType string, name string, baseURL string, model string, apiKey string, reasoningEffort string, toolUseMode providers.ToolUseMode) (Result, error) {
-	providerID := customProviderID(name)
+func (d *Dispatcher) saveCustomProvider(ctx context.Context, session *core.Session, providerType string, data setup.ProviderFormState) (Result, error) {
+	providerID := customProviderID(data.Name)
 	if providerID == "" {
 		return Result{Handled: true, Text: "Provider name is required."}, nil
 	}
-	capabilities := providers.ProviderCapabilities("", providerType)
-	form := customProviderForm{
-		Name:        name,
-		BaseURL:     baseURL,
-		Model:       model,
-		APIKey:      apiKey,
-		Reasoning:   reasoningEffort,
-		ToolUseMode: toolUseMode,
-	}.withDefaultProviderOptions(capabilities)
-	configured, err := d.providers.ConfigureSetupProvider(ctx, providerID, setup.ProviderSetupUpdate{
-		Name:            form.Name,
-		Type:            providerType,
-		BaseURL:         form.BaseURL,
-		Model:           form.Model,
-		APIKey:          form.APIKey,
-		ReasoningEffort: form.Reasoning,
-		ToolUseMode:     form.ToolUseMode,
-		Active:          true,
-	})
+	update := data.WithDefaultProviderOptions(providers.ProviderCapabilities("", providerType)).ToSetupUpdate(providerType, true)
+	configured, err := d.providers.ConfigureSetupProvider(ctx, providerID, update)
 	if err != nil {
 		return Result{}, err
 	}
@@ -157,20 +140,11 @@ func (d *Dispatcher) saveCustomProvider(ctx context.Context, session *core.Sessi
 	return Result{Handled: true, Text: fmt.Sprintf("Provider `%s` configured.", configured.Name), ReloadSnapshot: true}, nil
 }
 
-type customProviderForm struct {
-	Name        string
-	BaseURL     string
-	Model       string
-	APIKey      string
-	Reasoning   string
-	ToolUseMode providers.ToolUseMode
-}
-
-func customProviderFormPicker(kind string, label string, data customProviderForm, message string) Result {
+func customProviderFormPicker(kind string, label string, data setup.ProviderFormState, message string) Result {
 	capabilities := providers.Capabilities{}
 	if providerType, _, ok := customProviderType(kind); ok {
 		capabilities = providers.ProviderCapabilities("", providerType)
-		data = data.withDefaultProviderOptions(capabilities)
+		data = data.WithDefaultProviderOptions(capabilities)
 	}
 	return customProviderFormResult(customProviderFormResultData{
 		Title:                  "Custom " + label,
@@ -190,7 +164,7 @@ func customProviderFormPicker(kind string, label string, data customProviderForm
 	})
 }
 
-func customProviderSaveConfirm(kind string, data customProviderForm) Result {
+func customProviderSaveConfirm(kind string, data setup.ProviderFormState) Result {
 	token := encodeCustomProviderFormToken(data)
 	return Result{
 		Handled: true,
@@ -201,83 +175,6 @@ func customProviderSaveConfirm(kind string, data customProviderForm) Result {
 			ConfirmCommand: customProviderCommand(kind, "save-confirm", token),
 			CancelCommand:  customProviderCommand(kind, "form", token),
 		},
-	}
-}
-
-func (data customProviderForm) field(field string) string {
-	switch field {
-	case "name":
-		return data.Name
-	case "base":
-		return data.BaseURL
-	case "model":
-		return data.Model
-	case "key":
-		return data.APIKey
-	case "reasoning":
-		return data.Reasoning
-	case "tools":
-		return string(data.ToolUseMode)
-	default:
-		return ""
-	}
-}
-
-func (data customProviderForm) withField(field string, value string) customProviderForm {
-	value = strings.TrimSpace(value)
-	switch field {
-	case "name":
-		data.Name = value
-	case "base":
-		data.BaseURL = value
-	case "model":
-		data.Model = value
-	case "key":
-		data.APIKey = value
-	case "reasoning":
-		data.Reasoning = providers.NormalizeReasoningEffort(value)
-	case "tools":
-		data.ToolUseMode = providers.NormalizeToolUseMode(providers.ToolUseMode(value))
-	}
-	return data
-}
-
-func (data customProviderForm) withDefaultToolProfile(providerType string) customProviderForm {
-	return data.withDefaultProviderOptions(providers.ProviderCapabilities("", providerType))
-}
-
-func (data customProviderForm) withDefaultProviderOptions(capabilities providers.Capabilities) customProviderForm {
-	if capabilities.ReasoningEffort {
-		if effort := providers.NormalizeReasoningEffort(data.Reasoning); effort != "" {
-			data.Reasoning = effort
-		} else {
-			data.Reasoning = providers.DefaultReasoningEffort
-		}
-	} else {
-		data.Reasoning = ""
-	}
-	if !capabilities.ToolCalling {
-		data.ToolUseMode = ""
-		return data
-	}
-	if strings.TrimSpace(string(data.ToolUseMode)) == "" {
-		data.ToolUseMode = providers.ToolUseNative
-	}
-	return data
-}
-
-func (data customProviderForm) validationMessage(requireAPIKey bool) string {
-	switch {
-	case strings.TrimSpace(data.Name) == "":
-		return "Provider name is required."
-	case strings.TrimSpace(data.BaseURL) == "":
-		return "Base URL is required."
-	case strings.TrimSpace(data.Model) == "":
-		return "Model is required."
-	case requireAPIKey && strings.TrimSpace(data.APIKey) == "":
-		return "API key is required."
-	default:
-		return ""
 	}
 }
 
@@ -309,13 +206,6 @@ func customProviderFieldPlaceholder(field string) string {
 	default:
 		return ""
 	}
-}
-
-func fieldStatus(value string) string {
-	if trimmed := strings.TrimSpace(value); trimmed != "" {
-		return trimmed
-	}
-	return "Required"
 }
 
 func secretFieldStatus(value string) string {

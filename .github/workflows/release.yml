@@ -70,6 +70,10 @@ jobs:
           go build -trimpath -ldflags "$ldflags" -o "dist/${package}/matrixclaw" ./cmd/matrixclaw
           go build -trimpath -ldflags "$ldflags" -o "dist/${package}/matrixclawd" ./cmd/matrixclawd
           cp LICENSE README.md "dist/${package}/"
+          cp -R docs "dist/${package}/"
+          mkdir -p "dist/${package}/scripts"
+          cp scripts/README.md "dist/${package}/scripts/"
+          cp scripts/install_voice_runtime.sh "dist/${package}/scripts/"
           tar -C "dist/${package}" -czf "dist/${package}.tar.gz" .
 
       - uses: actions/upload-artifact@v4

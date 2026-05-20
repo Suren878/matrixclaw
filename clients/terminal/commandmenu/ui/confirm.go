@@ -38,19 +38,15 @@ func confirmBody(frame Frame, data ConfirmData) []string {
 		body = append(body, renderInputLine(styles.Muted.Align(lipgloss.Center), line, width))
 	}
 	body = append(body, "")
-	body = append(body, RenderButtons(styles, width,
-		Button{
-			Label:   firstNonEmpty(data.ConfirmLabel, "Confirm"),
-			Danger:  data.ConfirmDanger,
-			Focused: data.Selected == 0,
-		},
-		Button{
-			Label:   firstNonEmpty(data.CancelLabel, "Cancel"),
-			Danger:  data.CancelDanger,
-			Focused: data.Selected == 1,
-		},
-	))
+	body = append(body, renderButtonSpecs(styles, width, confirmButtonSpecs(data), data.Selected, true, false))
 	return body
+}
+
+func confirmButtonSpecs(data ConfirmData) []ButtonSpec {
+	return []ButtonSpec{
+		{Label: firstNonEmpty(data.ConfirmLabel, "Confirm"), Role: RoleSubmit, Danger: data.ConfirmDanger},
+		{Label: firstNonEmpty(data.CancelLabel, "Cancel"), Role: RoleCancel, Danger: data.CancelDanger},
+	}
 }
 
 func wrapText(text string, width int) []string {

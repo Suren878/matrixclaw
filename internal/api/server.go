@@ -128,6 +128,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/v1/modules/storage/files/", s.handleStorageFileByPath)
 	s.mux.HandleFunc("/v1/modules/storage/temp", s.handleStorageTemp)
 	s.mux.HandleFunc("/v1/modules/storage/temp/", s.handleStorageTempByPath)
+	s.mux.HandleFunc("/v1/modules/voice", s.handleVoiceModules)
+	s.mux.HandleFunc("/v1/modules/voice/", s.handleVoiceModuleByID)
 	s.mux.HandleFunc("/v1/approvals", s.handleApprovals)
 	s.mux.HandleFunc("/v1/approvals/", s.handleApprovalByID)
 	s.mux.HandleFunc("/v1/events", s.handleEvents)

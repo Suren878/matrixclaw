@@ -11,6 +11,10 @@ import (
 )
 
 func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
+	if msg.seq != 0 && msg.seq != m.controlplaneSeq {
+		return nil
+	}
+	m.dialog.StopLoading()
 	if isContextCompactCommand(msg.command) {
 		return m.handleContextCompactResult(msg)
 	}
@@ -26,7 +30,7 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 		return m.reloadSnapshotCmd()
 	}
 	if dialog := m.controlplaneDialog(msg.result); dialog != nil {
-		m.showControlplaneDialog(dialog)
+		m.showControlplaneResultDialog(dialog, msg.result)
 		if msg.result.ReloadSnapshot {
 			return m.reloadSnapshotCmd()
 		}
@@ -64,6 +68,24 @@ func isPlanSnapshotCommand(command string) bool {
 
 func isPlanClearCommand(command string) bool {
 	return strings.EqualFold(strings.TrimSpace(command), "/plan clear confirm")
+}
+
+func (m *appModel) detachCommandsForControlplaneResult(result controlplane.Result) {
+	if !m.returnToCommands || !m.dialog.ContainsDialog(surfacedialog.CommandsID) {
+		return
+	}
+	if !controlplaneResultLeavesCommandRoot(result) {
+		return
+	}
+	m.dialog.CloseDialog(surfacedialog.CommandsID)
+	m.returnToCommands = false
+}
+
+func controlplaneResultLeavesCommandRoot(result controlplane.Result) bool {
+	if picker := result.Picker; picker != nil {
+		return picker.HasBack || picker.HasClose
+	}
+	return result.Form != nil || result.Prompt != nil || result.Confirm != nil || result.Info != nil
 }
 
 func (m *appModel) handleContextCompactResult(msg controlplaneResultMsg) tea.Cmd {
@@ -128,7 +150,7 @@ func controlplaneCloseAction(command string) surfacedialog.Action {
 	if strings.TrimSpace(command) == "" {
 		return nil
 	}
-	return surfacedialog.ActionRunControlplaneCommand{Command: command}
+	return surfacedialog.ActionRunControlplaneCommand{Command: command, CloseSource: true}
 }
 
 func (m *appModel) preparePicker(picker controlplane.PickerData) controlplane.PickerData {
@@ -169,8 +191,13 @@ func (m *appModel) showControlplaneDialog(dialog surfacedialog.Dialog) {
 	nextID := dialog.ID()
 	switch {
 	case topID == nextID:
-		m.dialog.CloseFrontDialog()
+		m.dialog.ReplaceFrontDialog(dialog)
+		return
 	case topID == surfacedialog.PickerID && nextID == surfacedialog.FormCommandID:
+		if !m.dialog.ContainsDialog(surfacedialog.FormCommandID) {
+			m.dialog.OpenDialog(dialog)
+			return
+		}
 		m.dialog.CloseFrontDialog()
 		m.dialog.CloseDialog(surfacedialog.FormCommandID)
 	case topID == surfacedialog.PromptCommandID && nextID == surfacedialog.FormCommandID:
@@ -180,6 +207,20 @@ func (m *appModel) showControlplaneDialog(dialog surfacedialog.Dialog) {
 		m.dialog.CloseFrontDialog()
 	}
 	m.dialog.OpenDialog(dialog)
+}
+
+func (m *appModel) showControlplaneResultDialog(dialog surfacedialog.Dialog, result controlplane.Result) {
+	if m.returnToCommands && controlplaneResultLeavesCommandRoot(result) {
+		top := m.dialog.DialogLast()
+		if top != nil && top.ID() == surfacedialog.CommandsID {
+			m.err = ""
+			m.dialog.ReplaceFrontDialog(dialog)
+			m.returnToCommands = false
+			return
+		}
+		m.detachCommandsForControlplaneResult(result)
+	}
+	m.showControlplaneDialog(dialog)
 }
 
 func (m *appModel) reloadSnapshotCmd() tea.Cmd {

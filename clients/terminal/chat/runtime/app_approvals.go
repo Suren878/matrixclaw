@@ -47,7 +47,7 @@ func (m *appModel) pendingApprovals() []surfacepermission.PermissionRequest {
 	if m.read == nil {
 		return nil
 	}
-	snapshot := m.read.Snapshot()
+	snapshot := m.currentSnapshot()
 	pending := make([]surfacepermission.PermissionRequest, 0, len(snapshot.Approvals))
 	for _, approval := range snapshot.Approvals {
 		if _, suppressed := m.suppressedApprovals[approval.ID]; suppressed {
@@ -80,7 +80,7 @@ func (m *appModel) pruneSuppressedApprovals() {
 		return
 	}
 	active := map[string]struct{}{}
-	for _, approval := range m.read.Snapshot().Approvals {
+	for _, approval := range m.currentSnapshot().Approvals {
 		active[approval.ID] = struct{}{}
 	}
 	for id := range m.suppressedApprovals {

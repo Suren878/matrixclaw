@@ -16,11 +16,7 @@ import (
 )
 
 func pendingTool(sty *surfacestyles.Styles, name string, anim *anim.Anim, nested bool) string {
-	nameStyle := sty.Tool.NameNormal
-	if nested {
-		nameStyle = sty.Tool.NameNested
-	}
-	toolName := nameStyle.Render(name)
+	toolName := toolNameStyle(sty, nested).Render(name)
 
 	var animView string
 	if anim != nil {
@@ -30,6 +26,13 @@ func pendingTool(sty *surfacestyles.Styles, name string, anim *anim.Anim, nested
 		return fmt.Sprintf("%s %s", toolName, animView)
 	}
 	return toolName
+}
+
+func toolNameStyle(sty *surfacestyles.Styles, nested bool) lipgloss.Style {
+	if nested {
+		return sty.Tool.NameNested
+	}
+	return sty.Tool.NameNormal
 }
 
 func toolEarlyStateContent(sty *surfacestyles.Styles, opts *ToolRenderOpts, width int) (string, bool) {
@@ -112,11 +115,7 @@ func toolParamList(sty *surfacestyles.Styles, params []string, width int) string
 }
 
 func toolHeader(sty *surfacestyles.Styles, _ ToolStatus, name string, width int, nested bool, params ...string) string {
-	nameStyle := sty.Tool.NameNormal
-	if nested {
-		nameStyle = sty.Tool.NameNested
-	}
-	toolName := nameStyle.Render(name)
+	toolName := toolNameStyle(sty, nested).Render(name)
 	prefix := fmt.Sprintf("%s ", toolName)
 	prefixWidth := lipgloss.Width(prefix)
 	remainingWidth := width - prefixWidth
@@ -125,12 +124,7 @@ func toolHeader(sty *surfacestyles.Styles, _ ToolStatus, name string, width int,
 }
 
 func toolDiffSummaryHeader(sty *surfacestyles.Styles, _ ToolStatus, name, file string, additions, removals int, hint string, width int, nested bool) string {
-	nameStyle := sty.Tool.NameNormal
-	if nested {
-		nameStyle = sty.Tool.NameNested
-	}
-
-	toolName := nameStyle.Render(name)
+	toolName := toolNameStyle(sty, nested).Render(name)
 	path := sty.Tool.ParamMain.Render(file)
 	diff := fmt.Sprintf(
 		"(%s %s)",

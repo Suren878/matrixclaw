@@ -49,13 +49,5 @@ func formButtonsOrDefault(buttons []ButtonSpec) []ButtonSpec {
 }
 
 func renderFormButtons(styles Styles, width int, specs []ButtonSpec, selected int, focused bool) string {
-	buttons := make([]Button, 0, len(specs))
-	for i, spec := range specs {
-		buttons = append(buttons, Button{
-			Label:   firstNonEmpty(spec.Label, string(spec.Role)),
-			Danger:  spec.Role == RoleBack || spec.Role == RoleCancel || spec.Role == RoleExit,
-			Focused: focused && i == selected,
-		})
-	}
-	return RenderButtons(styles, width, buttons...)
+	return renderButtonSpecs(styles, width, specs, selected, focused, true)
 }

@@ -2,6 +2,7 @@ package commandui
 
 type ListState struct {
 	Cursor int
+	NoWrap bool
 }
 
 func (s *ListState) Update(key string, items []Item, closeRole Role) Event {
@@ -61,9 +62,15 @@ func (s *ListState) move(delta int, items []Item) {
 	for range items {
 		next += delta
 		if next < 0 {
+			if s.NoWrap {
+				return
+			}
 			next = len(items) - 1
 		}
 		if next >= len(items) {
+			if s.NoWrap {
+				return
+			}
 			next = 0
 		}
 		if items[next].Selectable() {

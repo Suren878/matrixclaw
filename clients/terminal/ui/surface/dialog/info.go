@@ -29,7 +29,9 @@ type InfoData struct {
 type InfoRow = controlplane.InfoRow
 
 type Info struct {
-	data InfoData
+	data    InfoData
+	loading bool
+	frame   int
 
 	keyMap struct {
 		Close key.Binding
@@ -65,6 +67,13 @@ func (d *Info) SetRows(rows []InfoRow) {
 }
 
 func (d *Info) HandleMsg(msg tea.Msg) Action {
+	if _, ok := msg.(loadingTickMsg); ok {
+		if !d.loading {
+			return nil
+		}
+		d.frame = (d.frame + 1) % len(loadingFrames)
+		return ActionCmd{Cmd: loadingTickCmd()}
+	}
 	keyMsg, ok := msg.(tea.KeyPressMsg)
 	if ok && key.Matches(keyMsg, d.keyMap.Close) {
 		if d.data.CloseAction != nil {
@@ -82,7 +91,7 @@ func (d *Info) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 		items = []commandui.Item{{Title: "(empty)", Disabled: true}}
 	}
 	view := commandui.RenderInfoCard(frame, commandui.InfoData{
-		Title:          d.title(),
+		Title:          loadingTitle(d.title(), d.loading, d.frame),
 		Items:          items,
 		Selected:       -1,
 		Footer:         d.footerItems(),
@@ -91,6 +100,17 @@ func (d *Info) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 	})
 	DrawCenter(scr, area, view)
 	return nil
+}
+
+func (d *Info) StartLoading() tea.Cmd {
+	d.loading = true
+	d.frame = 0
+	return loadingTickCmd()
+}
+
+func (d *Info) StopLoading() {
+	d.loading = false
+	d.frame = 0
 }
 
 func (d *Info) title() string {

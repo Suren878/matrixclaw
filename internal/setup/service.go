@@ -345,7 +345,7 @@ func (s *Service) BuiltInProviderDraft(draft Draft, providerID string) (Provider
 func (s *Service) NewCustomProviderDraft(draft Draft, providerType string) (ProviderDraft, error) {
 	providerType = providers.NormalizeOptionalProviderType(providerType)
 	switch providerType {
-	case providers.TypeOpenAICompat, providers.TypeAnthropic:
+	case providers.TypeOpenAICompat, providers.TypeOpenAICodex, providers.TypeAnthropic:
 		return newCustomDraftProvider(providerType, draft.Providers), nil
 	default:
 		return ProviderDraft{}, fmt.Errorf("unsupported custom provider type %q", providerType)
@@ -423,7 +423,7 @@ func (s *Service) providerDraftForSetupUpdate(draft Draft, providerID string, up
 	}
 	providerType := providers.NormalizeOptionalProviderType(update.Type)
 	switch providerType {
-	case providers.TypeOpenAICompat, providers.TypeAnthropic:
+	case providers.TypeOpenAICompat, providers.TypeOpenAICodex, providers.TypeAnthropic:
 	default:
 		return ProviderDraft{}, err
 	}
@@ -524,14 +524,14 @@ func applyProviderSetupUpdate(provider ProviderDraft, update ProviderSetupUpdate
 		}
 		if providerType := providers.NormalizeOptionalProviderType(update.Type); providerType != "" {
 			switch providerType {
-			case providers.TypeOpenAICompat, providers.TypeAnthropic:
+			case providers.TypeOpenAICompat, providers.TypeOpenAICodex, providers.TypeAnthropic:
 				provider.Type = providerType
 			default:
 				return ProviderDraft{}, fmt.Errorf("unsupported custom provider type %q", providerType)
 			}
 		}
 	}
-	if apiKey := strings.TrimSpace(update.APIKey); apiKey != "" {
+	if apiKey := normalizeProviderAPIKey(update.APIKey); apiKey != "" {
 		provider.APIKey = apiKey
 		provider.HasStoredAPIKey = true
 		provider.StoredAPIKeyPreview = MaskSecret(apiKey)

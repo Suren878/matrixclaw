@@ -13,6 +13,7 @@ var errRunCanceled = errors.New("run canceled")
 type turnExecution struct {
 	RunID      string
 	SessionID  string
+	Client     string
 	WorkingDir string
 	Runtime    providers.Runtime
 }
@@ -38,6 +39,7 @@ func newTurnExecution(run Run, session Session, runtime providers.Runtime) turnE
 	return turnExecution{
 		RunID:      run.ID,
 		SessionID:  session.ID,
+		Client:     run.Client,
 		WorkingDir: session.WorkingDir,
 		Runtime:    runtime,
 	}

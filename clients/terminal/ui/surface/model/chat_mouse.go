@@ -39,26 +39,18 @@ func (m *Chat) HandleViewportMouse(msg tea.MouseMsg, x, y int) (bool, tea.Cmd) {
 		}
 		switch mouse.Button {
 		case tea.MouseWheelUp:
-			cmd := m.ScrollByAndAnimate(-mouseScrollLines)
-			if !m.SelectedItemInView() {
+			cmd := m.scrollByAndKeepSelection(-mouseScrollLines, func() {
 				m.SelectPrev()
-				if scmd := m.ScrollToSelectedAndAnimate(); scmd != nil {
-					cmd = tea.Batch(cmd, scmd)
-				}
-			}
+			})
 			return true, cmd
 		case tea.MouseWheelDown:
-			cmd := m.ScrollByAndAnimate(mouseScrollLines)
-			if !m.SelectedItemInView() {
+			cmd := m.scrollByAndKeepSelection(mouseScrollLines, func() {
 				if m.AtBottom() {
 					m.SelectLast()
 				} else {
 					m.SelectNext()
 				}
-				if scmd := m.ScrollToSelectedAndAnimate(); scmd != nil {
-					cmd = tea.Batch(cmd, scmd)
-				}
-			}
+			})
 			return true, cmd
 		default:
 			return true, nil
@@ -70,24 +62,16 @@ func (m *Chat) HandleViewportMouse(msg tea.MouseMsg, x, y int) (bool, tea.Cmd) {
 		return m.HandleMouseDown(x, y)
 	case isMouseMotion(msg):
 		if y <= 0 {
-			cmd := m.ScrollByAndAnimate(-1)
-			if !m.SelectedItemInView() {
+			cmd := m.scrollByAndKeepSelection(-1, func() {
 				m.SelectPrev()
-				if scmd := m.ScrollToSelectedAndAnimate(); scmd != nil {
-					cmd = tea.Batch(cmd, scmd)
-				}
-			}
+			})
 			m.HandleMouseDrag(x, y)
 			return true, cmd
 		}
 		if y >= m.Height()-1 {
-			cmd := m.ScrollByAndAnimate(1)
-			if !m.SelectedItemInView() {
+			cmd := m.scrollByAndKeepSelection(1, func() {
 				m.SelectNext()
-				if scmd := m.ScrollToSelectedAndAnimate(); scmd != nil {
-					cmd = tea.Batch(cmd, scmd)
-				}
-			}
+			})
 			m.HandleMouseDrag(x, y)
 			return true, cmd
 		}
@@ -97,6 +81,18 @@ func (m *Chat) HandleViewportMouse(msg tea.MouseMsg, x, y int) (bool, tea.Cmd) {
 	default:
 		return false, nil
 	}
+}
+
+func (m *Chat) scrollByAndKeepSelection(lines int, selectOutOfView func()) tea.Cmd {
+	cmd := m.ScrollByAndAnimate(lines)
+	if m.SelectedItemInView() {
+		return cmd
+	}
+	selectOutOfView()
+	if scmd := m.ScrollToSelectedAndAnimate(); scmd != nil {
+		cmd = tea.Batch(cmd, scmd)
+	}
+	return cmd
 }
 
 // HandleMouseDown handles mouse down events for the chat component.
@@ -230,12 +226,7 @@ func (m *Chat) HighlightContent() string {
 		if hi, ok := item.(list.Highlightable); ok {
 			startLine, startCol, endLine, endCol := hi.Highlight()
 			listWidth := m.list.Width()
-			var rendered string
-			if rr, ok := item.(list.RawRenderable); ok {
-				rendered = rr.RawRender(listWidth)
-			} else {
-				rendered = item.Render(listWidth)
-			}
+			rendered := renderListItemContent(item, listWidth)
 			sb.WriteString(list.HighlightContent(
 				rendered,
 				uv.Rect(0, 0, listWidth, lipgloss.Height(rendered)),
@@ -265,12 +256,7 @@ func (m *Chat) CopyContent() string {
 	if width <= 0 {
 		return ""
 	}
-	var rendered string
-	if rr, ok := item.(list.RawRenderable); ok {
-		rendered = rr.RawRender(width)
-	} else {
-		rendered = item.Render(width)
-	}
+	rendered := renderListItemContent(item, width)
 	return strings.TrimSpace(ansi.Strip(rendered))
 }
 
@@ -361,12 +347,7 @@ func (m *Chat) selectWord(itemIdx, x, itemY int) {
 		return
 	}
 
-	var rendered string
-	if rr, ok := item.(list.RawRenderable); ok {
-		rendered = rr.RawRender(m.list.Width())
-	} else {
-		rendered = item.Render(m.list.Width())
-	}
+	rendered := renderListItemContent(item, m.list.Width())
 
 	lines := strings.Split(rendered, "\n")
 	if itemY < 0 || itemY >= len(lines) {
@@ -405,12 +386,7 @@ func (m *Chat) selectLine(itemIdx, itemY int) {
 		return
 	}
 
-	var rendered string
-	if rr, ok := item.(list.RawRenderable); ok {
-		rendered = rr.RawRender(m.list.Width())
-	} else {
-		rendered = item.Render(m.list.Width())
-	}
+	rendered := renderListItemContent(item, m.list.Width())
 
 	lines := strings.Split(rendered, "\n")
 	if itemY < 0 || itemY >= len(lines) {
@@ -427,6 +403,16 @@ func (m *Chat) selectLine(itemIdx, itemY int) {
 	m.mouseDragItem = itemIdx
 	m.mouseDragX = lineLen + offset
 	m.mouseDragY = itemY
+}
+
+func renderListItemContent(item list.Item, width int) string {
+	if item == nil {
+		return ""
+	}
+	if rr, ok := item.(list.RawRenderable); ok {
+		return rr.RawRender(width)
+	}
+	return item.Render(width)
 }
 
 // findWordBoundaries finds the start and end column of the word at the given column.

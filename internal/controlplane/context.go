@@ -40,8 +40,8 @@ func (d *Dispatcher) handleContext(ctx context.Context, externalKey string, args
 				Message:        "Compact context now?",
 				ConfirmLabel:   "Compact",
 				CancelLabel:    "Cancel",
-				ConfirmCommand: "/context compact confirm",
-				CancelCommand:  "/context",
+				ConfirmCommand: contextCompactConfirmCommand(),
+				CancelCommand:  contextCommand(),
 			},
 		}, nil
 	case "compact confirm":
@@ -68,8 +68,8 @@ func (d *Dispatcher) handleContext(ctx context.Context, externalKey string, args
 func contextItems(report core.ContextReport) []PickerItem {
 	info := contextTokenLabel(report)
 	items := []PickerItem{
-		{ID: "info", Title: "Usage", Info: info, Command: "/context info"},
-		{ID: "compact", Title: "Compact", Command: "/context compact"},
+		{ID: "info", Title: "Usage", Info: info, Command: contextInfoCommand()},
+		{ID: "compact", Title: "Compact", Command: contextCompactCommand()},
 		CloseItem(),
 	}
 	return items
@@ -97,7 +97,7 @@ func contextInfoData(report core.ContextReport) InfoData {
 		Title:        "Context Usage",
 		Text:         contextInfoText(report),
 		Rows:         rows,
-		CloseCommand: "/context",
+		CloseCommand: contextCommand(),
 	}
 }
 

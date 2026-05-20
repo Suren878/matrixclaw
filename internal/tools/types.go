@@ -54,6 +54,7 @@ const (
 	OutputSearchResults OutputKind = "search_results"
 	OutputDiff          OutputKind = "diff"
 	OutputJob           OutputKind = "job"
+	OutputAudio         OutputKind = "audio"
 	OutputStorageEntry  OutputKind = "storage_entry"
 	OutputStorageList   OutputKind = "storage_list"
 )

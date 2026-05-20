@@ -91,7 +91,7 @@ func (e *grepExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 	}, nil
 }
 
-func grepFiles(_ context.Context, pattern string, root string, include string, limit int) ([]grepMatch, bool, error) {
+func grepFiles(ctx context.Context, pattern string, root string, include string, limit int) ([]grepMatch, bool, error) {
 	regex, err := regexp.Compile(pattern)
 	if err != nil {
 		return nil, false, err
@@ -106,6 +106,9 @@ func grepFiles(_ context.Context, pattern string, root string, include string, l
 
 	matches := make([]grepMatch, 0, limit)
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if walkErr != nil {
 			return walkErr
 		}

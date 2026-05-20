@@ -25,6 +25,17 @@ func (a Agent) Aliases() []string {
 	return []string{"codex"}
 }
 
+func (a Agent) Capabilities() externalagents.Capabilities {
+	return externalagents.Capabilities{
+		StartSession:     true,
+		ResumeSession:    true,
+		StreamingEvents:  true,
+		ToolEvents:       true,
+		Interrupt:        false,
+		ConfigurablePath: true,
+	}
+}
+
 func (a Agent) Available(ctx context.Context) externalagents.Availability {
 	resolved, err := LookupPath(a.Path)
 	installed := err == nil

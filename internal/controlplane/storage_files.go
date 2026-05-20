@@ -19,8 +19,8 @@ func (d *Dispatcher) storageImport(ctx context.Context, localPath string) (Resul
 			Prompt: &PromptData{
 				Title:               "Local File Path",
 				Placeholder:         "/absolute/path/to/file.txt",
-				SubmitCommandPrefix: "/modules storage import ",
-				CancelCommand:       "/modules storage",
+				SubmitCommandPrefix: storageImportCommandPrefix(),
+				CancelCommand:       storageCommand(),
 			},
 		}, nil
 	}
@@ -41,7 +41,14 @@ func (d *Dispatcher) storageImport(ctx context.Context, localPath string) (Resul
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Handled: true, Text: "Imported to storage: " + entry.Path}, nil
+	result, err := d.storageFilesPicker(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+	if result.Picker != nil {
+		result.Picker.Meta = "Imported " + entry.Path
+	}
+	return result, nil
 }
 
 func (d *Dispatcher) storageFilesPicker(ctx context.Context) (Result, error) {
@@ -62,12 +69,19 @@ func (d *Dispatcher) storageFilesPicker(ctx context.Context) (Result, error) {
 			ID:      "empty",
 			Title:   "No stored files yet",
 			Info:    "Import a file or ask the assistant to save one.",
-			Command: "/modules storage import",
+			Command: storageImportCommand(),
+		})
+	} else {
+		items = append(items, PickerItem{
+			ID:    "clear",
+			Title: "Clear All",
+			Info:  "Delete all files",
+			Role:  PickerItemRoleDanger,
 		})
 	}
 	return Result{
 		Handled: true,
-		Picker:  NewPickerData(PickerStorageFiles, "Stored Files").Back("/modules storage").Items(items...).Ptr(),
+		Picker:  NewPickerData(PickerStorageFiles, "Stored Files").Back(storageCommand()).Items(items...).Ptr(),
 	}, nil
 }
 
@@ -84,7 +98,7 @@ func (d *Dispatcher) storageFilePicker(ctx context.Context, storagePath string) 
 		Handled: true,
 		Picker: NewPickerData(PickerStorageFile, "Storage File").
 			Context(read.File.Path).
-			Back("/modules storage files").
+			Back(storageFilesCommand()).
 			Row("read", "Preview", storageFileTitle(read.File)).
 			Danger("delete", "Delete", "").
 			Ptr(),
@@ -102,7 +116,11 @@ func (d *Dispatcher) storageRead(ctx context.Context, storagePath string) (Resul
 	}
 	return Result{
 		Handled: true,
-		Text:    fmt.Sprintf("%s\n\n%s", storageFileTitle(read.File), content),
+		Info: &InfoData{
+			Title:        storageFileTitle(read.File),
+			Text:         content,
+			CloseCommand: storageFileCommand(read.File.Path),
+		},
 	}, nil
 }
 
@@ -113,16 +131,55 @@ func (d *Dispatcher) storageDeleteConfirm(storagePath string) Result {
 	}
 	return Result{
 		Handled: true,
-		Confirm: deleteConfirmData("Delete "+storagePath+"?", "/modules storage delete-confirm "+storagePath, "/modules storage file "+storagePath),
+		Confirm: deleteConfirmData("Delete "+storagePath+"?", storageDeleteConfirmCommand(storagePath), storageFileCommand(storagePath)),
 	}
 }
 
 func (d *Dispatcher) storageDelete(ctx context.Context, storagePath string) (Result, error) {
-	entry, err := d.storage.DeleteStorageFile(ctx, strings.TrimSpace(storagePath))
+	if _, err := d.storage.DeleteStorageFile(ctx, strings.TrimSpace(storagePath)); err != nil {
+		return Result{}, err
+	}
+	return d.storageFilesPicker(ctx)
+}
+
+func (d *Dispatcher) storageClearConfirm() Result {
+	return Result{
+		Handled: true,
+		Confirm: deleteConfirmData("Delete all files?", storageClearConfirmCommand(), storageFilesCommand()),
+	}
+}
+
+func (d *Dispatcher) storageClear(ctx context.Context) (Result, error) {
+	var deleted int
+	var freed int64
+	for {
+		list, err := d.storage.ListStorageFiles(ctx, localstorage.ListFilter{Limit: 200})
+		if err != nil {
+			return Result{}, err
+		}
+		if len(list.Files) == 0 {
+			break
+		}
+		for _, file := range list.Files {
+			entry, err := d.storage.DeleteStorageFile(ctx, file.Path)
+			if err != nil {
+				return Result{}, err
+			}
+			deleted++
+			freed += entry.Size
+		}
+		if len(list.Files) < 200 {
+			break
+		}
+	}
+	result, err := d.storageFilesPicker(ctx)
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Handled: true, Text: "Deleted storage file: " + entry.Path}, nil
+	if result.Picker != nil {
+		result.Picker.Meta = fmt.Sprintf("Deleted %d files · freed %s", deleted, formatStorageSize(freed))
+	}
+	return result, nil
 }
 
 func storageFileTitle(file localstorage.Entry) string {

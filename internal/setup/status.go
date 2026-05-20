@@ -1,6 +1,10 @@
 package setup
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/providers"
+)
 
 func SummaryFromConfig(cfg Config) Summary {
 	active, _ := ActiveProviderConfig(cfg)
@@ -148,6 +152,9 @@ func firstNonEmptyStatus(values ...string) string {
 }
 
 func currentDraftAPIKeyPreview(provider ProviderDraft) string {
+	if providers.NormalizeProviderType(provider.Type) == providers.TypeOpenAICodex {
+		return "OAuth"
+	}
 	if provider.HasStoredAPIKey {
 		return provider.StoredAPIKeyPreview
 	}
@@ -162,6 +169,9 @@ func currentDraftAPIKeyPreview(provider ProviderDraft) string {
 }
 
 func providerConfigHasAPIKey(provider ProviderConfig) bool {
+	if strings.TrimSpace(provider.Type) == providers.TypeOpenAICodex {
+		return strings.TrimSpace(provider.Model) != ""
+	}
 	_, ok := ResolvedProviderAPIKey(provider)
 	return ok
 }

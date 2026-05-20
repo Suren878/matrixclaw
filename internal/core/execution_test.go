@@ -64,6 +64,53 @@ func TestBuildProviderConversationRepairsDanglingToolCalls(t *testing.T) {
 	}
 }
 
+func TestBuildProviderConversationKeepsToolResultFallbackContent(t *testing.T) {
+	t.Parallel()
+
+	history := []Message{
+		{
+			ID:      "msg_user",
+			Role:    MessageRoleUser,
+			Content: "run it",
+		},
+		{
+			ID:   "call_1",
+			Role: MessageRoleAssistant,
+			Parts: []MessagePart{{
+				Kind: MessagePartKindToolCall,
+				ToolCall: &ToolCallPart{
+					ID:    "call_1",
+					Name:  "bash",
+					Input: `{"command":"true"}`,
+				},
+			}},
+		},
+		{
+			ID:      "result_1",
+			Role:    MessageRoleTool,
+			Content: "Tool completed",
+			Parts: []MessagePart{{
+				Kind: MessagePartKindToolResult,
+				ToolResult: &ToolResultPart{
+					ToolCallID: "call_1",
+					Name:       "bash",
+				},
+			}},
+		},
+	}
+
+	conversation := buildProviderConversation(history)
+	if len(conversation) != 3 {
+		t.Fatalf("len(buildProviderConversation()) = %d, want 3", len(conversation))
+	}
+	if conversation[2].Role != string(MessageRoleTool) || conversation[2].ToolCallID != "call_1" {
+		t.Fatalf("conversation[2] = %#v, want tool result for call_1", conversation[2])
+	}
+	if conversation[2].Content != "Tool completed" {
+		t.Fatalf("conversation[2].Content = %q, want fallback content", conversation[2].Content)
+	}
+}
+
 func TestBuildProviderConversationSkipsInternalPlanRunPrompts(t *testing.T) {
 	t.Parallel()
 
@@ -385,6 +432,85 @@ func TestBuildProviderConversationBatchesConsecutiveToolCallsAndPairsResults(t *
 	}
 }
 
+func TestBuildProviderConversationBatchesToolCallsAcrossSkippedPlanPrompt(t *testing.T) {
+	t.Parallel()
+
+	history := []Message{
+		{
+			ID:      "msg_user_1",
+			Role:    MessageRoleUser,
+			Content: "edit all files",
+		},
+		{
+			ID:   "call_1",
+			Role: MessageRoleAssistant,
+			Parts: []MessagePart{{
+				Kind: MessagePartKindToolCall,
+				ToolCall: &ToolCallPart{
+					ID:    "call_1",
+					Name:  "edit",
+					Input: `{"file_path":"a.txt"}`,
+				},
+			}},
+		},
+		{
+			ID:      "msg_plan_update",
+			RunID:   "run_old",
+			Role:    MessageRoleUser,
+			Content: "The session plan was updated. Continue the current work using this updated plan.",
+		},
+		{
+			ID:   "call_2",
+			Role: MessageRoleAssistant,
+			Parts: []MessagePart{{
+				Kind: MessagePartKindToolCall,
+				ToolCall: &ToolCallPart{
+					ID:    "call_2",
+					Name:  "edit",
+					Input: `{"file_path":"b.txt"}`,
+				},
+			}},
+		},
+		{
+			ID:      "result_1",
+			Role:    MessageRoleTool,
+			Content: "edited a",
+			Parts: []MessagePart{{
+				Kind: MessagePartKindToolResult,
+				ToolResult: &ToolResultPart{
+					ToolCallID: "call_1",
+					Name:       "edit",
+					Content:    "edited a",
+				},
+			}},
+		},
+		{
+			ID:      "result_2",
+			Role:    MessageRoleTool,
+			Content: "edited b",
+			Parts: []MessagePart{{
+				Kind: MessagePartKindToolResult,
+				ToolResult: &ToolResultPart{
+					ToolCallID: "call_2",
+					Name:       "edit",
+					Content:    "edited b",
+				},
+			}},
+		},
+	}
+
+	conversation := buildProviderConversation(history)
+	if len(conversation) != 4 {
+		t.Fatalf("len(buildProviderConversation()) = %d, want 4: %#v", len(conversation), conversation)
+	}
+	if conversation[1].Role != string(MessageRoleAssistant) || len(conversation[1].ToolCalls) != 2 {
+		t.Fatalf("conversation[1] = %#v, want batched assistant tool calls", conversation[1])
+	}
+	if conversation[2].ToolCallID != "call_1" || conversation[3].ToolCallID != "call_2" {
+		t.Fatalf("tool result order = %#v, want call_1 then call_2", conversation[2:4])
+	}
+}
+
 func TestBuildProviderConversationKeepsToolCallsProviderNeutral(t *testing.T) {
 	t.Parallel()
 
@@ -553,5 +679,34 @@ func TestBuildTextOnlyProviderConversationPreservesToolHistoryAsText(t *testing.
 	}
 	if conversation[2].Role != string(MessageRoleUser) || !strings.Contains(conversation[2].Content, "Previous tool result from read:") || !strings.Contains(conversation[2].Content, "file contents") {
 		t.Fatalf("conversation[2] = %#v, want user text tool-result context", conversation[2])
+	}
+}
+
+func TestBuildTextOnlyProviderConversationPreservesImageHistoryAsText(t *testing.T) {
+	t.Parallel()
+
+	history := []Message{{
+		ID:   "msg_user_1",
+		Role: MessageRoleUser,
+		Parts: []MessagePart{{
+			Kind: MessagePartKindImage,
+			Image: &ImagePart{
+				MIMEType:    "image/png",
+				Name:        "screenshot.png",
+				StoragePath: "uploads/screenshot.png",
+				Temporary:   true,
+			},
+		}},
+	}}
+
+	conversation := buildTextOnlyProviderConversation(history)
+	if len(conversation) != 1 {
+		t.Fatalf("len(buildTextOnlyProviderConversation()) = %d, want 1: %#v", len(conversation), conversation)
+	}
+	if len(conversation[0].Images) != 0 || len(conversation[0].ToolCalls) != 0 || conversation[0].ToolCallID != "" {
+		t.Fatalf("conversation[0] contains formal provider attachments/tool data: %#v", conversation[0])
+	}
+	if !strings.Contains(conversation[0].Content, "Attached image: screenshot.png") || !strings.Contains(conversation[0].Content, "temp_path=uploads/screenshot.png") {
+		t.Fatalf("conversation[0].Content = %q, want image label", conversation[0].Content)
 	}
 }

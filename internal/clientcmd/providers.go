@@ -11,6 +11,9 @@ import (
 )
 
 func runProvidersCommand(stdout io.Writer, stderr io.Writer, binaryName string, service *appsetup.Service, args []string) int {
+	if len(args) > 0 && strings.TrimSpace(args[0]) == "login" {
+		return runProviderLoginCommand(stdout, stderr, binaryName, service, args[1:])
+	}
 	if len(args) > 0 && strings.TrimSpace(args[0]) == "verify" {
 		return runProviderVerifyCommand(stdout, stderr, binaryName, service)
 	}

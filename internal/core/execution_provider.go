@@ -14,27 +14,16 @@ func (c *Core) buildProviderRequest(ctx context.Context, turn turnExecution) (pr
 	if err != nil {
 		return providers.Request{}, err
 	}
-	toolUseAllowed := runtimeToolUseAllowed(turn.Runtime)
 
 	assistant := c.assistantProfile()
 	compactSummary, effectiveHistory := latestCompactSummary(history)
-	systemPrompt := AssistantSystemPrompt(assistant)
-	if workingDir := strings.TrimSpace(turn.WorkingDir); workingDir != "" {
-		systemPrompt = strings.TrimSpace(systemPrompt + "\n\n" + currentProjectRootPrompt(workingDir))
-	}
-	if compactSummary != "" {
-		systemPrompt = strings.TrimSpace(systemPrompt + "\n\nSession compact summary:\n" + compactSummary)
-	}
-	if planPrompt := c.sessionPlanPrompt(ctx, turn.SessionID); planPrompt != "" {
-		systemPrompt = strings.TrimSpace(systemPrompt + "\n\n" + planPrompt)
-	}
 	request := providers.Request{
 		RunID:              turn.RunID,
 		SessionID:          turn.SessionID,
-		SystemPrompt:       systemPrompt,
+		SystemPrompt:       c.providerSystemPrompt(ctx, turn, assistant, compactSummary),
 		CustomInstructions: assistant.CustomInstructions,
 	}
-	if !toolUseAllowed {
+	if !runtimeToolUseAllowed(turn.Runtime) {
 		request.Messages = buildTextOnlyProviderConversationForRun(effectiveHistory, turn.RunID)
 		request.Messages = providers.NormalizeMessages(request.Messages, providers.ToolUseDisabled)
 		return request, nil
@@ -43,18 +32,58 @@ func (c *Core) buildProviderRequest(ctx context.Context, turn turnExecution) (pr
 	if err != nil {
 		return providers.Request{}, err
 	}
+	request.Tools = c.providerToolDefinitions(turn)
+	return request, nil
+}
+
+func (c *Core) providerSystemPrompt(ctx context.Context, turn turnExecution, assistant AssistantProfile, compactSummary string) string {
+	sections := []string{AssistantSystemPrompt(assistant)}
+	if runtimeToolUseAllowed(turn.Runtime) && clientSupportsVoiceDelivery(turn.Client) {
+		sections = append(sections, voiceOutputGuidancePrompt())
+	}
+	if workingDir := strings.TrimSpace(turn.WorkingDir); workingDir != "" {
+		sections = append(sections, currentProjectRootPrompt(workingDir))
+	}
+	if compactSummary != "" {
+		sections = append(sections, "Session compact summary:\n"+compactSummary)
+	}
+	if planPrompt := c.sessionPlanPrompt(ctx, turn.SessionID); planPrompt != "" {
+		sections = append(sections, planPrompt)
+	}
+	return joinPromptSections(sections...)
+}
+
+func joinPromptSections(sections ...string) string {
+	values := make([]string, 0, len(sections))
+	for _, section := range sections {
+		if section = strings.TrimSpace(section); section != "" {
+			values = append(values, section)
+		}
+	}
+	return strings.Join(values, "\n\n")
+}
+
+func (c *Core) providerToolDefinitions(turn turnExecution) []providers.ToolDefinition {
 	if c.tools != nil {
 		specs := c.tools.List()
-		request.Tools = make([]providers.ToolDefinition, 0, len(specs))
+		definitions := make([]providers.ToolDefinition, 0, len(specs))
 		for _, spec := range specs {
-			request.Tools = append(request.Tools, providers.ToolDefinition{
+			if spec.ID == "text_to_speech" && !clientSupportsVoiceDelivery(turn.Client) {
+				continue
+			}
+			definitions = append(definitions, providers.ToolDefinition{
 				Name:        spec.ID,
 				Description: spec.Description,
 				InputSchema: spec.InputJSONSchema,
 			})
 		}
+		return definitions
 	}
-	return request, nil
+	return nil
+}
+
+func clientSupportsVoiceDelivery(client string) bool {
+	return strings.EqualFold(strings.TrimSpace(client), "telegram")
 }
 
 const maxProviderImageBytes int64 = 8 * 1024 * 1024
@@ -82,14 +111,23 @@ func runtimeToolUseAllowed(runtime providers.Runtime) bool {
 func AssistantSystemPrompt(profile AssistantProfile) string {
 	name := strings.Join(strings.Fields(profile.Name), " ")
 	systemPrompt := strings.TrimSpace(profile.SystemPrompt)
+	languageGuidance := responseLanguageGuidancePrompt()
 	if name == "" {
-		return systemPrompt
+		return joinPromptSections(systemPrompt, languageGuidance)
 	}
 	identity := fmt.Sprintf("Assistant identity:\n- Your configured assistant name is %q. Use this exact name when asked who you are. If older/default instructions mention a different assistant name, this configured name takes precedence.", name)
 	if systemPrompt == "" {
-		return identity
+		return joinPromptSections(identity, languageGuidance)
 	}
-	return identity + "\n\n" + systemPrompt
+	return joinPromptSections(identity, systemPrompt, languageGuidance)
+}
+
+func responseLanguageGuidancePrompt() string {
+	return "Response language:\n- Reply in the same language the user uses for the current request.\n- If the user mixes languages, use the language that best matches the user's latest request.\n- Do not force English or Russian unless the user asks for that language."
+}
+
+func voiceOutputGuidancePrompt() string {
+	return "Voice output:\n- When the user asks for spoken, audio, voice, or TTS output, call the text_to_speech tool with the text that should be spoken.\n- Do not use shell commands, Piper runtime inspection, or local audio files for client voice output.\n- After a successful text_to_speech tool call, keep any follow-up text minimal unless the user asks for an explanation."
 }
 
 func currentProjectRootPrompt(workingDir string) string {
@@ -137,9 +175,43 @@ func buildProviderConversationWithAttachments(ctx context.Context, history []Mes
 }
 
 func buildProviderConversationWithAttachmentsForRun(ctx context.Context, history []Message, reader AttachmentReader, currentRunID string) ([]providers.Message, error) {
-	conversation := make([]providers.Message, 0, len(history))
-	toolResults := make(map[string]providers.Message)
+	entries, err := convertProviderConversationHistory(ctx, history, reader, currentRunID)
+	if err != nil {
+		return nil, err
+	}
+	toolResults := collectProviderToolResults(entries)
 
+	conversation := make([]providers.Message, 0, len(entries))
+	for i := 0; i < len(entries); i++ {
+		providerMessages := entries[i].messages
+		if len(providerMessages) == 0 {
+			continue
+		}
+
+		providerMessage := providerMessages[0]
+		if isPairedToolResultMessage(providerMessage) {
+			continue
+		}
+
+		if !isToolCallOnlyProviderMessage(providerMessage) {
+			conversation = append(conversation, providerMessages...)
+			continue
+		}
+
+		var batched providers.Message
+		batched, i = batchAdjacentToolCallMessages(entries, i)
+		conversation = append(conversation, batched)
+		conversation = appendProviderToolResults(conversation, batched.ToolCalls, toolResults)
+	}
+	return conversation, nil
+}
+
+type providerConversationEntry struct {
+	messages []providers.Message
+}
+
+func convertProviderConversationHistory(ctx context.Context, history []Message, reader AttachmentReader, currentRunID string) ([]providerConversationEntry, error) {
+	entries := make([]providerConversationEntry, 0, len(history))
 	for _, message := range history {
 		if skipInternalPlanPromptForProvider(message, currentRunID) {
 			continue
@@ -148,82 +220,77 @@ func buildProviderConversationWithAttachmentsForRun(ctx context.Context, history
 		if err != nil {
 			return nil, err
 		}
-		for _, providerMessage := range providerMessages {
-			if strings.TrimSpace(providerMessage.Role) != string(MessageRoleTool) {
+		entries = append(entries, providerConversationEntry{messages: providerMessages})
+	}
+	return entries, nil
+}
+
+func collectProviderToolResults(entries []providerConversationEntry) map[string]providers.Message {
+	toolResults := make(map[string]providers.Message)
+	for _, entry := range entries {
+		for _, providerMessage := range entry.messages {
+			if !isPairedToolResultMessage(providerMessage) {
 				continue
 			}
 			toolCallID := strings.TrimSpace(providerMessage.ToolCallID)
-			if toolCallID == "" {
-				continue
-			}
 			if _, exists := toolResults[toolCallID]; exists {
 				continue
 			}
 			toolResults[toolCallID] = providerMessage
 		}
 	}
+	return toolResults
+}
 
-	for i := 0; i < len(history); i++ {
-		if skipInternalPlanPromptForProvider(history[i], currentRunID) {
-			continue
-		}
-		providerMessages, err := toProviderMessages(ctx, history[i], reader)
-		if err != nil {
-			return nil, err
-		}
-		if len(providerMessages) == 0 {
-			continue
-		}
+func isPairedToolResultMessage(message providers.Message) bool {
+	return strings.TrimSpace(message.Role) == string(MessageRoleTool) && strings.TrimSpace(message.ToolCallID) != ""
+}
 
-		providerMessage := providerMessages[0]
-		if strings.TrimSpace(providerMessage.Role) == string(MessageRoleTool) && strings.TrimSpace(providerMessage.ToolCallID) != "" {
-			continue
-		}
+func isToolCallOnlyProviderMessage(message providers.Message) bool {
+	return len(message.ToolCalls) > 0 && strings.TrimSpace(message.Content) == ""
+}
 
-		if len(providerMessage.ToolCalls) == 0 || strings.TrimSpace(providerMessage.Content) != "" {
-			conversation = append(conversation, providerMessages...)
-			continue
+func batchAdjacentToolCallMessages(entries []providerConversationEntry, start int) (providers.Message, int) {
+	batched := entries[start].messages[0]
+	for i := start + 1; i < len(entries); i++ {
+		if len(entries[i].messages) != 1 {
+			return batched, i - 1
 		}
-
-		batched := providerMessage
-		for j := i + 1; j < len(history); j++ {
-			if skipInternalPlanPromptForProvider(history[j], currentRunID) {
-				continue
-			}
-			nextMessages, err := toProviderMessages(ctx, history[j], reader)
-			if err != nil {
-				return nil, err
-			}
-			if len(nextMessages) != 1 {
-				break
-			}
-			next := nextMessages[0]
-			if strings.TrimSpace(next.Role) != string(MessageRoleAssistant) || len(next.ToolCalls) == 0 || strings.TrimSpace(next.Content) != "" {
-				break
-			}
-			batched.ToolCalls = append(batched.ToolCalls, next.ToolCalls...)
-			i = j
+		next := entries[i].messages[0]
+		if !isAdditionalBatchableToolCallMessage(next) {
+			return batched, i - 1
 		}
-
-		conversation = append(conversation, batched)
-		for _, toolCall := range batched.ToolCalls {
-			toolCallID := strings.TrimSpace(toolCall.ID)
-			if toolCallID == "" {
-				continue
-			}
-			if toolResult, ok := toolResults[toolCallID]; ok {
-				conversation = append(conversation, toolResult)
-				delete(toolResults, toolCallID)
-				continue
-			}
-			conversation = append(conversation, providers.Message{
-				Role:       string(MessageRoleTool),
-				ToolCallID: toolCallID,
-				Content:    "Tool execution failed before completion.",
-			})
-		}
+		batched.ToolCalls = append(batched.ToolCalls, next.ToolCalls...)
 	}
-	return conversation, nil
+	return batched, len(entries) - 1
+}
+
+func isAdditionalBatchableToolCallMessage(message providers.Message) bool {
+	return strings.TrimSpace(message.Role) == string(MessageRoleAssistant) && isToolCallOnlyProviderMessage(message)
+}
+
+func appendProviderToolResults(conversation []providers.Message, toolCalls []providers.ToolCall, toolResults map[string]providers.Message) []providers.Message {
+	for _, toolCall := range toolCalls {
+		toolCallID := strings.TrimSpace(toolCall.ID)
+		if toolCallID == "" {
+			continue
+		}
+		if toolResult, ok := toolResults[toolCallID]; ok {
+			conversation = append(conversation, toolResult)
+			delete(toolResults, toolCallID)
+			continue
+		}
+		conversation = append(conversation, syntheticFailedToolResult(toolCallID))
+	}
+	return conversation
+}
+
+func syntheticFailedToolResult(toolCallID string) providers.Message {
+	return providers.Message{
+		Role:       string(MessageRoleTool),
+		ToolCallID: toolCallID,
+		Content:    "Tool execution failed before completion.",
+	}
 }
 
 func buildTextOnlyProviderConversation(history []Message) []providers.Message {
@@ -408,9 +475,16 @@ func toProviderMessages(ctx context.Context, message Message, reader AttachmentR
 		if part.ToolResult == nil {
 			continue
 		}
+		content := part.ToolResult.Content
+		if strings.TrimSpace(content) == "" {
+			content = message.Content
+		}
+		if strings.TrimSpace(content) == "" {
+			content = "(empty result)"
+		}
 		return []providers.Message{{
 			Role:       string(message.Role),
-			Content:    part.ToolResult.Content,
+			Content:    content,
 			ToolCallID: strings.TrimSpace(part.ToolResult.ToolCallID),
 		}}, nil
 	}

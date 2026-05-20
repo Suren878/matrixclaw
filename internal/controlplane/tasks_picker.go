@@ -56,7 +56,7 @@ func (d *Dispatcher) tasksArchivePicker(ctx context.Context) (Result, error) {
 	}
 	return Result{
 		Handled: true,
-		Picker:  NewPickerData(PickerTaskArchive, "Task Archive").Back("/tasks").Items(items...).Ptr(),
+		Picker:  NewPickerData(PickerTaskArchive, "Task Archive").Back(tasksCommand()).Items(items...).Ptr(),
 	}, nil
 }
 
@@ -85,7 +85,7 @@ func (d *Dispatcher) taskActionsPicker(ctx context.Context, jobID string) (Resul
 		Handled: true,
 		Picker: NewPickerData(PickerTaskActions, taskListTitle(job)).
 			Context(job.ID).
-			Back("/tasks").
+			Back(tasksCommand()).
 			Items(items...).
 			Ptr(),
 	}, nil

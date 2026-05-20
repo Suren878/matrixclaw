@@ -1,68 +1,71 @@
 package controlplane
 
-import (
-	"context"
-	"strings"
-)
+import "context"
 
 func (d *Dispatcher) handleTasks(ctx context.Context, externalKey string, args string) (Result, error) {
 	if d.automation == nil {
 		return unsupportedRuntime("tasks"), nil
 	}
-	fields := strings.Fields(strings.TrimSpace(args))
-	if len(fields) == 0 {
+	step, rest := firstCommandStep(args)
+	if step == "" {
 		return d.tasksPicker(ctx)
 	}
-	switch strings.ToLower(fields[0]) {
+	switch step {
 	case "add":
-		return d.handleTaskAdd(ctx, externalKey, strings.TrimSpace(strings.TrimPrefix(args, fields[0])))
+		return d.handleTaskAdd(ctx, externalKey, rest)
 	case "archive":
 		return d.tasksArchivePicker(ctx)
 	case "menu":
-		if len(fields) < 2 {
+		jobID, _ := firstCommandToken(rest)
+		if jobID == "" {
 			return d.tasksPicker(ctx)
 		}
-		return d.taskActionsPicker(ctx, fields[1])
+		return d.taskActionsPicker(ctx, jobID)
 	case "pause":
-		if len(fields) < 2 {
+		jobID, _ := firstCommandToken(rest)
+		if jobID == "" {
 			return Result{Handled: true, Text: "Usage: /tasks pause <id>"}, nil
 		}
-		job, err := d.automation.PauseAutomationJob(ctx, fields[1])
+		job, err := d.automation.PauseAutomationJob(ctx, jobID)
 		if err != nil {
 			return Result{}, err
 		}
 		return Result{Handled: true, Text: "Paused: " + formatAutomationJob(job)}, nil
 	case "resume":
-		if len(fields) < 2 {
+		jobID, _ := firstCommandToken(rest)
+		if jobID == "" {
 			return Result{Handled: true, Text: "Usage: /tasks resume <id>"}, nil
 		}
-		job, err := d.automation.ResumeAutomationJob(ctx, fields[1])
+		job, err := d.automation.ResumeAutomationJob(ctx, jobID)
 		if err != nil {
 			return Result{}, err
 		}
 		return Result{Handled: true, Text: "Resumed: " + formatAutomationJob(job)}, nil
 	case "complete":
-		if len(fields) < 2 {
+		jobID, _ := firstCommandToken(rest)
+		if jobID == "" {
 			return Result{Handled: true, Text: "Usage: /tasks complete <id>"}, nil
 		}
-		job, err := d.automation.CompleteAutomationJob(ctx, fields[1])
+		job, err := d.automation.CompleteAutomationJob(ctx, jobID)
 		if err != nil {
 			return Result{}, err
 		}
 		return Result{Handled: true, Text: "Archived: " + formatAutomationJob(job)}, nil
 	case "delete":
-		if len(fields) < 2 {
+		jobID, _ := firstCommandToken(rest)
+		if jobID == "" {
 			return Result{Handled: true, Text: "Usage: /tasks delete <id>"}, nil
 		}
 		return Result{
 			Handled: true,
-			Confirm: deleteConfirmData("Delete task?", "/tasks delete-confirm "+fields[1], "/tasks menu "+fields[1]),
+			Confirm: deleteConfirmData("Delete task?", taskDeleteConfirmCommand(jobID), taskMenuCommand(jobID)),
 		}, nil
 	case "delete-confirm":
-		if len(fields) < 2 {
+		jobID, _ := firstCommandToken(rest)
+		if jobID == "" {
 			return Result{Handled: true, Text: "Usage: /tasks delete-confirm <id>"}, nil
 		}
-		job, err := d.automation.DeleteAutomationJob(ctx, fields[1])
+		job, err := d.automation.DeleteAutomationJob(ctx, jobID)
 		if err != nil {
 			return Result{}, err
 		}
@@ -70,15 +73,16 @@ func (d *Dispatcher) handleTasks(ctx context.Context, externalKey string, args s
 	case "delete-closed":
 		return Result{
 			Handled: true,
-			Confirm: deleteConfirmData("Delete completed tasks?", "/tasks delete-closed-confirm", "/tasks archive"),
+			Confirm: deleteConfirmData("Delete completed tasks?", tasksDeleteClosedConfirmCommand(), tasksArchiveCommand()),
 		}, nil
 	case "delete-closed-confirm":
 		return d.deleteClosedTasks(ctx)
 	case "run":
-		if len(fields) < 2 {
+		jobID, _ := firstCommandToken(rest)
+		if jobID == "" {
 			return Result{Handled: true, Text: "Usage: /tasks run <id>"}, nil
 		}
-		fire, err := d.automation.RunAutomationJobNow(ctx, fields[1])
+		fire, err := d.automation.RunAutomationJobNow(ctx, jobID)
 		if err != nil {
 			return Result{}, err
 		}

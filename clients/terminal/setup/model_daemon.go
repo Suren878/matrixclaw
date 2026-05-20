@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -35,7 +36,7 @@ func (m *model) renderDaemonTimezoneList() string {
 }
 
 func (m *model) updateDaemonForm(msg tea.Msg) (tea.Model, tea.Cmd) {
-	return m.updateForm(msg, 4, func() { m.cancelDraftForm(screenDaemonList) }, m.handleDaemonFormSave, func() {
+	return m.updateForm(msg, 4, func() { m.cancelDraftForm(screenDaemonList) }, m.handleDaemonFormSave, func() tea.Cmd {
 		switch m.formFocus {
 		case 0:
 			m.openTextEditor(textEditDaemonHTTPAddr, "HTTP Address", "127.0.0.1:8080", m.draft.HTTPAddr, false)
@@ -46,6 +47,7 @@ func (m *model) updateDaemonForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case 3:
 			m.openBoolPicker(boolEditDaemonAutostart, m.draft.AutostartOnBoot)
 		}
+		return nil
 	})
 }
 
@@ -55,14 +57,12 @@ func (m *model) updateDaemonTimezoneList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	options := setup.TimezoneOptions(time.Now())
-	maxCursor := len(options)
-	switch keyMsg.String() {
-	case "esc":
+	event := m.updateListSelection(keyMsg.String(), &m.timezoneCursor, len(options)+1, commandui.RoleBack)
+	switch event.Kind {
+	case commandui.EventBack:
 		m.screen = screenDaemonForm
 		return m, nil
-	case "up", "k", "down", "j":
-		m.moveIndex(keyMsg.String(), &m.timezoneCursor, maxCursor)
-	case "enter":
+	case commandui.EventSelect:
 		if m.timezoneCursor >= 0 && m.timezoneCursor < len(options) {
 			m.draft.Timezone = options[m.timezoneCursor].ID
 			m.screen = screenDaemonForm

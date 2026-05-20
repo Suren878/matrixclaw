@@ -14,7 +14,7 @@ func (m *model) renderSummary() string {
 	summary := setup.SummaryFromDraft(m.draft)
 	items := []commandui.Item{
 		summaryItem("Active provider", fmt.Sprintf("%s (%s)", nonEmpty(summary.Provider.Name, "Not configured"), nonEmpty(summary.Provider.Model, "no model"))),
-		summaryItem("API key", nonEmpty(summary.Provider.APIKeyPreview, "Not configured")),
+		summaryItem(providerAuthSummaryLabel(summary.Provider.ID), nonEmpty(summary.Provider.APIKeyPreview, "Not configured")),
 		summaryItem("Configured providers", fmt.Sprintf("%d", len(setup.ConfiguredProviders(m.draft)))),
 		summaryItem("Assistant", fmt.Sprintf("%s · %s", nonEmpty(summary.Assistant.Name, "matrixclaw"), summary.Assistant.Status)),
 		summaryItem("Daemon HTTP", m.draft.HTTPAddr),
@@ -37,7 +37,7 @@ func (m *model) renderSuccess() string {
 		summaryItem("Config path", m.result.Path),
 		summaryItem("Active provider", fmt.Sprintf("%s (%s)", nonEmpty(summary.Provider.Name, "Not configured"), nonEmpty(summary.Provider.Model, "no model"))),
 		summaryItem("Assistant", fmt.Sprintf("%s · %s", nonEmpty(summary.Assistant.Name, "matrixclaw"), summary.Assistant.Status)),
-		summaryItem("API key", nonEmpty(summary.Provider.APIKeyPreview, "Not configured")),
+		summaryItem(providerAuthSummaryLabel(summary.Provider.ID), nonEmpty(summary.Provider.APIKeyPreview, "Not configured")),
 		summaryItem("Configured providers", fmt.Sprintf("%d", len(m.result.Config.Providers))),
 		summaryItem("Daemon", fmt.Sprintf("%s · %s", summary.Daemon.Status, nonEmpty(summary.Daemon.RuntimeStatus, "Unknown"))),
 		summaryItem("Telegram", summary.Telegram.Status),
@@ -65,6 +65,13 @@ func (m *model) renderInfoScreen(title string, meta string, items []commandui.It
 
 func summaryItem(label string, value string) commandui.Item {
 	return commandui.Item{Title: label, Status: value, Disabled: true}
+}
+
+func providerAuthSummaryLabel(providerID string) string {
+	if strings.TrimSpace(providerID) == "openai-codex" {
+		return "Auth"
+	}
+	return "API key"
 }
 
 func appendOptionalSummaryItem(items []commandui.Item, label string, value string) []commandui.Item {

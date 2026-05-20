@@ -203,7 +203,7 @@ func (e *bashExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 	}, nil
 }
 
-func (e *jobOutputExecutor) Execute(_ context.Context, call Call) (Result, error) {
+func (e *jobOutputExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 	var params JobOutputParams
 	if err := json.Unmarshal(call.Args, &params); err != nil {
 		return Result{}, InvalidArgs(jobOutputToolName, err)
@@ -213,12 +213,18 @@ func (e *jobOutputExecutor) Execute(_ context.Context, call Call) (Result, error
 		return Result{Content: "job not found", IsError: true}, nil
 	}
 	if params.Wait {
+		ticker := time.NewTicker(50 * time.Millisecond)
+		defer ticker.Stop()
 		for {
 			_, done, _, _ := job.snapshot()
 			if done {
 				break
 			}
-			time.Sleep(50 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				return Result{}, ctx.Err()
+			case <-ticker.C:
+			}
 		}
 	}
 	output, done, _, jobErr := job.snapshot()

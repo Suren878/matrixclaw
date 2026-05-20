@@ -136,7 +136,7 @@ func (m *appModel) handleDialogInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 func dialogActionClosesSource(action tea.Msg, sourceID string) bool {
 	switch action := action.(type) {
 	case surfacedialog.ActionRunControlplaneCommand:
-		return action.CloseSource || sourceID != surfacedialog.FormCommandID
+		return action.CloseSource
 	case surfacedialog.ActionOpenCommands:
 		return true
 	default:

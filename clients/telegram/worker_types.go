@@ -43,6 +43,7 @@ type Worker struct {
 type runDeliveryState struct {
 	assistant      map[string]sentAssistantMessage
 	approvals      map[string]int64
+	voiceResults   map[string]int64
 	statusNotified bool
 	deliveryID     string
 }

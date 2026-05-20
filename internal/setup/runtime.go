@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/user"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -47,6 +48,7 @@ type systemdUserDaemonManager struct {
 	resolveDaemon func() (string, error)
 	currentUser   func() (systemUser, error)
 	checkLinger   func(context.Context, string) (bool, error)
+	runtimeOS     func() string
 	httpClient    *http.Client
 }
 
@@ -70,6 +72,7 @@ func newSystemdUserDaemonManager() *systemdUserDaemonManager {
 			}, nil
 		},
 		checkLinger: userLingerEnabled,
+		runtimeOS:   func() string { return runtime.GOOS },
 		httpClient:  &http.Client{Timeout: 2 * time.Second},
 	}
 }
@@ -150,7 +153,7 @@ func (m *systemdUserDaemonManager) Apply(ctx context.Context, setupPath string, 
 func (m *systemdUserDaemonManager) Inspect(ctx context.Context, _ string, cfg Config) (DaemonSummary, error) {
 	summary := daemonConfiguredSummary(cfg)
 	if _, err := m.lookPath("systemctl"); err != nil {
-		return m.inspectViaHealth(ctx, cfg, "systemctl is not available")
+		return m.inspectViaHealth(ctx, cfg, m.systemctlUnavailableWarning())
 	}
 
 	output, err := m.runner.Output(
@@ -182,6 +185,13 @@ func (m *systemdUserDaemonManager) Inspect(ctx context.Context, _ string, cfg Co
 	}
 
 	return summary, nil
+}
+
+func (m *systemdUserDaemonManager) systemctlUnavailableWarning() string {
+	if m.runtimeOS != nil && m.runtimeOS() == "darwin" {
+		return ""
+	}
+	return "systemctl is not available"
 }
 
 func daemonConfiguredSummary(cfg Config) DaemonSummary {

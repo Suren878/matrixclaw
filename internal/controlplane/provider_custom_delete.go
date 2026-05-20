@@ -13,7 +13,7 @@ func (d *Dispatcher) customProviderDeleteConfirm(ctx context.Context, providerID
 	name := firstNonEmptyTrimmed(provider.Name, provider.ID)
 	return Result{
 		Handled: true,
-		Confirm: deleteConfirmData("Delete custom provider `"+name+"`?", customProviderCommand("delete-confirm", encodeCustomProviderField(provider.ID)), "/provider "+provider.ID),
+		Confirm: deleteConfirmData("Delete custom provider `"+name+"`?", customProviderCommand("delete-confirm", providerEncodedID(provider.ID)), providerCommand(providerEncodedID(provider.ID))),
 	}, nil
 }
 

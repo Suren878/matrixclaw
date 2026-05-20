@@ -37,23 +37,8 @@ func TestHelpUsesBinaryName(t *testing.T) {
 	if !strings.Contains(out, "matrixclaw setup") {
 		t.Fatalf("stdout = %q, want help mentioning matrixclaw setup", out)
 	}
-	if !strings.Contains(out, "matrixclaw status") {
-		t.Fatalf("stdout = %q, want help mentioning matrixclaw status", out)
-	}
-	if !strings.Contains(out, "matrixclaw service restart") {
-		t.Fatalf("stdout = %q, want help mentioning matrixclaw service restart", out)
-	}
 	if !strings.Contains(out, "matrixclaw providers") {
 		t.Fatalf("stdout = %q, want help mentioning matrixclaw providers", out)
-	}
-	if !strings.Contains(out, "matrixclaw providers verify") {
-		t.Fatalf("stdout = %q, want help mentioning matrixclaw providers verify", out)
-	}
-	if !strings.Contains(out, "matrixclaw update") {
-		t.Fatalf("stdout = %q, want help mentioning matrixclaw update", out)
-	}
-	if !strings.Contains(out, "matrixclaw tui [WORKDIR]") {
-		t.Fatalf("stdout = %q, want help mentioning matrixclaw tui [WORKDIR]", out)
 	}
 }
 

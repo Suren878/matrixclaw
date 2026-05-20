@@ -1,8 +1,6 @@
 package setup
 
 import (
-	"strings"
-
 	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
@@ -24,7 +22,7 @@ func (m *model) renderProviderList() string {
 	card := commandui.RenderSearchListCard(m.commandFrame(), commandui.SearchListData{
 		Title:             "Providers",
 		Meta:              "Step 2/5",
-		SearchValue:       m.filterInput.Value(),
+		SearchValue:       m.filterInput.View(),
 		SearchPlaceholder: "Search providers",
 		SearchActive:      true,
 		EmptyText:         "No providers match the current filter.",
@@ -65,6 +63,14 @@ func (m *model) renderProviderBaseURLList() string {
 }
 
 func (m *model) renderProviderModelList() string {
+	if m.providerModelsLoading {
+		card := commandui.RenderListCard(m.commandFrame(), commandui.ListData{
+			Title:      "Models " + setupLoadingFrame(m.tickCount),
+			ExtraLines: []string{"Loading models"},
+			Help:       "esc cancel",
+		})
+		return m.renderCommandCard(card)
+	}
 	rows := m.providerModelRows()
 	selectedRow := m.currentProviderModelRowIndex(rows)
 	if selectedRow < 0 {
@@ -73,7 +79,7 @@ func (m *model) renderProviderModelList() string {
 	start, end := viewportBounds(selectedRow, len(rows), m.providerModelViewportHeight())
 	card := commandui.RenderSearchListCard(m.commandFrame(), commandui.SearchListData{
 		Title:             "Models",
-		SearchValue:       m.filterInput.Value(),
+		SearchValue:       m.filterInput.View(),
 		SearchPlaceholder: "Search models",
 		SearchActive:      true,
 		EmptyText:         "No models match the current filter.",
@@ -84,20 +90,34 @@ func (m *model) renderProviderModelList() string {
 	return m.renderCommandCard(card)
 }
 
+func setupLoadingFrame(frame int) string {
+	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"}
+	if len(frames) == 0 {
+		return ""
+	}
+	return frames[frame%len(frames)]
+}
+
 func (m *model) renderProviderEffortList() string {
-	efforts := m.providerReasoningEfforts()
-	items := make([]listItem, 0, len(efforts))
-	for _, effort := range efforts {
-		items = append(items, listItem{Title: strings.Title(effort)})
+	field, ok := m.providerFormSpec().Field(setup.ProviderFormFieldReasoningEffort)
+	if !ok {
+		return m.renderPickerFrame("Reasoning Effort", nil, m.providerEffortCursor)
+	}
+	items := make([]listItem, 0, len(field.Choices))
+	for _, choice := range field.Choices {
+		items = append(items, listItem{Title: choice.Title, Status: choice.Status})
 	}
 	return m.renderPickerFrame("Reasoning Effort", items, m.providerEffortCursor)
 }
 
 func (m *model) renderProviderToolUseList() string {
-	modes := setup.ProviderFormToolUseModes()
-	items := make([]listItem, 0, len(modes))
-	for _, mode := range modes {
-		items = append(items, listItem{Title: setup.ProviderFormToolUseModeStatus(mode)})
+	field, ok := m.providerFormSpec().Field(setup.ProviderFormFieldToolUse)
+	if !ok {
+		return m.renderPickerFrame("Tool Use", nil, m.providerToolUseCursor)
+	}
+	items := make([]listItem, 0, len(field.Choices))
+	for _, choice := range field.Choices {
+		items = append(items, listItem{Title: choice.Title, Status: choice.Status})
 	}
 	return m.renderPickerFrame("Tool Use", items, m.providerToolUseCursor)
 }

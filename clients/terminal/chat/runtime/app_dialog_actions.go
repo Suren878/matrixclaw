@@ -103,7 +103,7 @@ func (m *appModel) handleRunControlplaneCommand(msg surfacedialog.ActionRunContr
 	if fromCommands {
 		m.returnToCommands = true
 	}
-	return m.controlplaneCmd(command)
+	return tea.Batch(m.dialog.StartLoading(), m.controlplaneCmd(command))
 }
 
 func (m *appModel) handleResolveApproval(msg resolveApprovalMsg) tea.Cmd {

@@ -42,9 +42,20 @@ func isPlanOpenCommand(command string) bool {
 }
 
 func (m *appModel) controlplaneCmd(content string) tea.Cmd {
+	seq := m.nextControlplaneSeq()
 	return func() tea.Msg {
 		dispatcher := controlplane.New(m.rt, m.workingDir)
 		result, err := dispatcher.Handle(m.ctx, strings.TrimSpace(m.rt.config.ExternalKey), content)
-		return controlplaneResultMsg{command: strings.TrimSpace(content), result: result, err: err}
+		return controlplaneResultMsg{command: strings.TrimSpace(content), seq: seq, result: result, err: err}
 	}
+}
+
+func (m *appModel) nextControlplaneSeq() uint64 {
+	m.controlplaneSeq++
+	return m.controlplaneSeq
+}
+
+func (m *appModel) invalidateControlplaneResults() {
+	m.controlplaneSeq++
+	m.dialog.StopLoading()
 }

@@ -8,321 +8,391 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 	switch kind {
 	case PickerSessions:
 		if itemID == "" {
-			return "/sessions"
+			return sessionsCommand()
 		}
 		if itemID == "cancel" {
 			return ""
 		}
 		if itemID == "new" {
-			return "/new"
+			return newSessionCommand()
 		}
-		return "/session menu " + itemID
+		return sessionMenuCommand(itemID)
 	case PickerSessionRuntime:
 		switch itemID {
 		case "":
-			return "/new"
+			return newSessionCommand()
 		case "matrixclaw":
-			return "/session new matrixclaw"
+			return sessionNewCommand("matrixclaw")
 		case "codex":
-			return "/session new codex"
+			return sessionNewCommand("codex")
 		case "back":
-			return "/sessions"
+			return sessionsCommand()
 		case "cancel":
 			return ""
 		default:
-			return "/session new " + itemID
+			return sessionNewCommand(itemID)
 		}
 	case PickerSessionActions:
 		switch itemID {
 		case "use":
 			if contextID == "" {
-				return "/sessions"
+				return sessionsCommand()
 			}
-			return "/session use " + contextID
+			return sessionUseCommand(contextID)
 		case "rename":
 			if contextID == "" {
-				return "/sessions"
+				return sessionsCommand()
 			}
-			return "/session rename " + contextID
+			return sessionRenameCommand(contextID)
 		case "delete":
 			if contextID == "" {
-				return "/sessions"
+				return sessionsCommand()
 			}
-			return "/session delete " + contextID
+			return sessionDeleteCommand(contextID)
 		case "back", "cancel":
-			return "/sessions"
+			return sessionsCommand()
 		default:
-			return "/sessions"
+			return sessionsCommand()
 		}
 	case PickerProvider:
 		if itemID == "" {
-			return "/provider"
+			return providerCommand()
 		}
 		if itemID == "cancel" {
 			return ""
 		}
 		if itemID == "custom" {
-			return "/provider custom"
+			return customProviderCommand()
 		}
-		return "/provider " + itemID
+		return providerCommand(itemID)
 	case PickerProviderCustom:
 		switch itemID {
 		case "":
-			return "/provider custom"
+			return customProviderCommand()
 		case "openai":
-			return "/provider custom openai"
+			return customProviderCommand("openai")
 		case "anthropic":
-			return "/provider custom anthropic"
+			return customProviderCommand("anthropic")
 		case "back":
-			return "/provider"
+			return providerCommand()
 		case "cancel":
-			return "/provider"
+			return providerCommand()
 		default:
-			return "/provider custom"
+			return customProviderCommand()
 		}
 	case PickerProviderActions:
 		if contextID == "" {
-			return "/provider"
+			return providerCommand()
 		}
 		switch itemID {
 		case "":
-			return "/provider " + contextID
+			return providerCommand(contextID)
 		case "use":
-			return "/provider use " + contextID
+			return providerUseCommand(contextID)
 		case "edit":
-			return "/provider edit " + contextID
+			return providerEditCommand(contextID)
 		case "delete":
-			return "/provider custom delete " + contextID
+			return customProviderCommand("delete", providerEncodedID(contextID))
 		case "back":
-			return "/provider"
+			return providerCommand()
 		case "cancel":
-			return "/provider"
+			return providerCommand()
 		default:
-			return "/provider " + contextID
+			return providerCommand(contextID)
 		}
 	case PickerPermissions:
 		if itemID == "" {
-			return "/permissions"
+			return permissionsCommand()
 		}
 		if itemID == "cancel" {
 			return ""
 		}
-		return "/permissions " + itemID
+		return permissionsCommand(itemID)
 	case PickerModules:
 		switch itemID {
 		case "":
-			return "/modules"
+			return modulesCommand()
 		case "storage":
-			return "/modules storage"
+			return storageCommand()
+		case "tts":
+			return textToSpeechCommand()
+		case "stt":
+			return speechToTextCommand()
 		case "agents":
-			return "/modules agents"
+			return externalAgentsCommand()
 		case "cancel":
 			return ""
 		default:
-			return "/modules"
+			return modulesCommand()
+		}
+	case PickerTextToSpeech:
+		switch itemID {
+		case "":
+			return textToSpeechCommand()
+		case "enabled":
+			return textToSpeechCommand("enabled")
+		case "provider":
+			return textToSpeechCommand("provider")
+		case "local", "info":
+			return textToSpeechCommand("info")
+		case "back":
+			return modulesCommand()
+		case "cancel":
+			return ""
+		default:
+			return textToSpeechCommand()
+		}
+	case PickerSpeechToText:
+		switch itemID {
+		case "":
+			return speechToTextCommand()
+		case "enabled":
+			return speechToTextCommand("enabled")
+		case "provider":
+			return speechToTextCommand("provider")
+		case "local", "info":
+			return speechToTextCommand("info")
+		case "back":
+			return modulesCommand()
+		case "cancel":
+			return ""
+		default:
+			return speechToTextCommand()
+		}
+	case PickerVoiceEnabled:
+		if contextID == "" {
+			return modulesCommand()
+		}
+		switch itemID {
+		case "yes":
+			return voiceModuleCommand(contextID, "set-enabled", "yes")
+		case "no":
+			return voiceModuleCommand(contextID, "set-enabled", "no")
+		case "back":
+			return voiceModuleCommand(contextID)
+		case "cancel":
+			return ""
+		default:
+			return voiceModuleCommand(contextID, "enabled")
+		}
+	case PickerVoiceProvider:
+		if contextID == "" {
+			return modulesCommand()
+		}
+		switch itemID {
+		case "":
+			return voiceModuleCommand(contextID, "provider")
+		case "back":
+			return voiceModuleCommand(contextID)
+		case "cancel":
+			return ""
+		default:
+			return voiceModuleCommand(contextID, "provider", itemID)
 		}
 	case PickerExternalAgents:
 		switch {
 		case itemID == "":
-			return "/modules agents"
+			return externalAgentsCommand()
 		case itemID == "back":
-			return "/modules"
+			return modulesCommand()
 		case itemID == "cancel":
 			return ""
 		default:
-			return "/modules agents " + itemID
+			return externalAgentCommand(itemID)
 		}
 	case PickerExternalAgent:
 		if contextID == "" {
-			return "/modules agents"
+			return externalAgentsCommand()
 		}
 		switch itemID {
 		case "path":
-			return "/modules agents " + contextID + " path"
+			return externalAgentCommand(contextID, "path")
 		case "enabled":
-			return "/modules agents " + contextID + " enabled"
+			return externalAgentEnabledCommand(contextID)
 		case "enable":
-			return "/modules agents enable " + contextID
+			return externalAgentUpdateEnabledCommand(contextID, true)
 		case "disable":
-			return "/modules agents disable " + contextID
+			return externalAgentUpdateEnabledCommand(contextID, false)
 		case "new":
-			return "/session new " + contextID
+			return externalAgentNewSessionCommand(contextID)
 		case "back":
-			return "/modules agents"
+			return externalAgentsCommand()
 		case "cancel":
 			return ""
 		default:
-			return "/modules agents " + contextID
+			return externalAgentCommand(contextID)
 		}
 	case PickerExternalAgentOn:
 		if contextID == "" {
-			return "/modules agents"
+			return externalAgentsCommand()
 		}
 		switch itemID {
-		case "enable":
-			return "/modules agents " + contextID + " set-enabled enable"
-		case "disable":
-			return "/modules agents " + contextID + " set-enabled disable"
+		case "yes", "enable":
+			return externalAgentSetEnabledCommand(contextID, "yes")
+		case "no", "disable":
+			return externalAgentSetEnabledCommand(contextID, "no")
 		case "back":
-			return "/modules agents " + contextID
+			return externalAgentCommand(contextID)
 		case "cancel":
 			return ""
 		default:
-			return "/modules agents " + contextID + " enabled"
+			return externalAgentEnabledCommand(contextID)
 		}
 	case PickerStorage:
 		switch itemID {
 		case "":
-			return "/modules storage"
+			return storageCommand()
 		case "import":
-			return "/modules storage import"
+			return storageImportCommand()
 		case "temp":
-			return "/modules storage temp"
+			return storageTempCommand()
 		case "files":
-			return "/modules storage files"
+			return storageFilesCommand()
 		case "back":
-			return "/modules"
+			return modulesCommand()
 		case "cancel":
 			return ""
 		default:
-			return "/modules storage"
+			return storageCommand()
 		}
 	case PickerStorageFiles:
 		switch {
 		case itemID == "":
-			return "/modules storage files"
+			return storageFilesCommand()
+		case itemID == "clear":
+			return storageClearCommand()
 		case itemID == "back":
-			return "/modules storage"
+			return storageCommand()
 		case itemID == "cancel":
 			return ""
 		case strings.HasPrefix(itemID, "file:"):
-			return "/modules storage file " + strings.TrimPrefix(itemID, "file:")
+			return storageFileCommand(strings.TrimPrefix(itemID, "file:"))
 		default:
-			return "/modules storage files"
+			return storageFilesCommand()
 		}
 	case PickerStorageFile:
 		if contextID == "" {
-			return "/modules storage files"
+			return storageFilesCommand()
 		}
 		switch itemID {
 		case "read":
-			return "/modules storage read " + contextID
+			return storageReadCommand(contextID)
 		case "delete":
-			return "/modules storage delete " + contextID
+			return storageDeleteCommand(contextID)
 		case "back":
-			return "/modules storage files"
+			return storageFilesCommand()
 		case "cancel":
 			return ""
 		default:
-			return "/modules storage file " + contextID
+			return storageFileCommand(contextID)
 		}
 	case PickerStorageTemp:
 		switch {
 		case itemID == "":
-			return "/modules storage temp"
+			return storageTempCommand()
 		case itemID == "cleanup":
-			return "/modules storage temp-cleanup"
+			return storageTempCleanupCommand()
 		case itemID == "toggle":
-			return "/modules storage temp-cleanup-mode"
+			return storageTempCleanupModeCommand()
 		case itemID == "days":
-			return "/modules storage temp-days"
+			return storageTempDaysCommand()
 		case itemID == "max":
-			return "/modules storage temp-max"
+			return storageTempMaxCommand()
 		case itemID == "back":
-			return "/modules storage"
+			return storageCommand()
 		case itemID == "cancel":
 			return ""
 		case strings.HasPrefix(itemID, "temp:"):
-			return "/modules storage temp-file " + strings.TrimPrefix(itemID, "temp:")
+			return storageTempFileCommand(strings.TrimPrefix(itemID, "temp:"))
 		default:
-			return "/modules storage temp"
+			return storageTempCommand()
 		}
 	case PickerStorageCleanup:
 		switch itemID {
 		case "on":
-			return "/modules storage temp-toggle on"
+			return storageTempToggleCommand("on")
 		case "off":
-			return "/modules storage temp-toggle off"
+			return storageTempToggleCommand("off")
 		case "back", "cancel":
-			return "/modules storage temp"
+			return storageTempCommand()
 		default:
-			return "/modules storage temp-cleanup-mode"
+			return storageTempCleanupModeCommand()
 		}
 	case PickerStorageTempFile:
 		if contextID == "" {
-			return "/modules storage temp"
+			return storageTempCommand()
 		}
 		switch itemID {
 		case "promote":
-			return "/modules storage temp-promote " + contextID
+			return storageTempPromoteCommand(contextID)
 		case "delete":
-			return "/modules storage temp-delete " + contextID
+			return storageTempDeleteCommand(contextID)
 		case "back":
-			return "/modules storage temp"
+			return storageTempCommand()
 		case "cancel":
 			return ""
 		default:
-			return "/modules storage temp-file " + contextID
+			return storageTempFileCommand(contextID)
 		}
 	case PickerServer:
 		switch itemID {
 		case "":
-			return "/server"
+			return serverCommand()
 		case "status":
-			return "/status"
+			return statusCommand()
 		case "restart":
-			return "/restart"
+			return restartCommand()
 		case "cancel":
 			return ""
 		default:
-			return "/server"
+			return serverCommand()
 		}
 	case PickerTasks:
 		if itemID == "" {
-			return "/tasks"
+			return tasksCommand()
 		}
 		if itemID == "cancel" {
 			return ""
 		}
 		if itemID == "archive" {
-			return "/tasks archive"
+			return tasksArchiveCommand()
 		}
 		if strings.HasPrefix(itemID, "open:") {
-			return "/tasks menu " + strings.TrimPrefix(itemID, "open:")
+			return taskMenuCommand(strings.TrimPrefix(itemID, "open:"))
 		}
 		if strings.HasPrefix(itemID, "closed:") {
-			return "/tasks menu " + strings.TrimPrefix(itemID, "closed:")
+			return taskMenuCommand(strings.TrimPrefix(itemID, "closed:"))
 		}
-		return "/tasks"
+		return tasksCommand()
 	case PickerTaskActions:
 		if contextID == "" {
-			return "/tasks"
+			return tasksCommand()
 		}
 		switch itemID {
 		case "run":
-			return "/tasks run " + contextID
+			return taskRunCommand(contextID)
 		case "archive":
-			return "/tasks complete " + contextID
+			return taskCompleteCommand(contextID)
 		case "delete":
-			return "/tasks delete " + contextID
+			return taskDeleteCommand(contextID)
 		case "back", "cancel":
-			return "/tasks"
+			return tasksCommand()
 		default:
-			return "/tasks"
+			return tasksCommand()
 		}
 	case PickerTaskArchive:
 		switch itemID {
 		case "":
-			return "/tasks archive"
+			return tasksArchiveCommand()
 		case "delete_closed":
-			return "/tasks delete-closed"
+			return tasksDeleteClosedCommand()
 		case "back", "cancel":
-			return "/tasks"
+			return tasksCommand()
 		default:
 			if strings.HasPrefix(itemID, "closed:") {
-				return "/tasks menu " + strings.TrimPrefix(itemID, "closed:")
+				return taskMenuCommand(strings.TrimPrefix(itemID, "closed:"))
 			}
-			return "/tasks archive"
+			return tasksArchiveCommand()
 		}
 	default:
 		return ""

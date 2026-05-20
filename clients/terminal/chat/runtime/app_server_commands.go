@@ -35,12 +35,11 @@ func (m *appModel) serverStatusTickCmd() tea.Cmd {
 }
 
 func (m *appModel) openServerStatusDialog() tea.Cmd {
-	m.dialog.CloseAll()
-	m.dialog.OpenDialog(surfacedialog.NewInfo(m.com, surfacedialog.InfoData{
+	m.showControlplaneDialog(surfacedialog.NewInfo(m.com, surfacedialog.InfoData{
 		ID:          surfacedialog.ServerStatusInfoID,
 		Title:       "Server Status",
 		Rows:        []surfacedialog.InfoRow{{Label: "Status", Value: "Loading..."}},
-		CloseAction: surfacedialog.ActionRunControlplaneCommand{Command: "/server"},
+		CloseAction: surfacedialog.ActionClose{},
 	}))
 	return tea.Batch(m.serverStatusCmd(), m.serverStatusTickCmd())
 }

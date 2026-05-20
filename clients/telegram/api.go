@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -22,6 +24,7 @@ type BotAPI interface {
 	DownloadFile(ctx context.Context, filePath string) ([]byte, error)
 	SendMessage(ctx context.Context, req SendMessageRequest) (SentMessage, error)
 	SendChatAction(ctx context.Context, req SendChatActionRequest) error
+	SendVoice(ctx context.Context, req SendVoiceRequest) (SentMessage, error)
 	EditMessageText(ctx context.Context, req EditMessageTextRequest) (EditMessageTextResponse, error)
 	AnswerCallbackQuery(ctx context.Context, req AnswerCallbackQueryRequest) error
 	DeleteMessage(ctx context.Context, req DeleteMessageRequest) error
@@ -146,6 +149,23 @@ func (c *Client) SendChatAction(ctx context.Context, req SendChatActionRequest) 
 	return err
 }
 
+func (c *Client) SendVoice(ctx context.Context, req SendVoiceRequest) (SentMessage, error) {
+	fields := map[string]string{
+		"chat_id": strconv.FormatInt(req.ChatID, 10),
+	}
+	if req.MessageThreadID != 0 {
+		fields["message_thread_id"] = strconv.FormatInt(req.MessageThreadID, 10)
+	}
+	if caption := strings.TrimSpace(req.Caption); caption != "" {
+		fields["caption"] = caption
+	}
+	fileName := strings.TrimSpace(req.FileName)
+	if fileName == "" {
+		fileName = "voice.mp3"
+	}
+	return callMultipartAPI[SentMessage](ctx, c, "sendVoice", fields, "voice", fileName, req.MIMEType, req.Voice)
+}
+
 func (c *Client) EditMessageText(ctx context.Context, req EditMessageTextRequest) (EditMessageTextResponse, error) {
 	return callAPI[EditMessageTextResponse](ctx, c, "editMessageText", req)
 }
@@ -233,6 +253,64 @@ func callAPI[T any](ctx context.Context, c *Client, method string, payload any) 
 		}
 	}
 
+	return envelope.Result, nil
+}
+
+func callMultipartAPI[T any](ctx context.Context, c *Client, method string, fields map[string]string, fileField string, fileName string, mimeType string, content []byte) (T, error) {
+	var zero T
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	for key, value := range fields {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		if err := writer.WriteField(key, value); err != nil {
+			return zero, fmt.Errorf("telegram: build %s field %s: %w", method, key, err)
+		}
+	}
+	part, err := writer.CreateFormFile(fileField, fileName)
+	if err != nil {
+		return zero, fmt.Errorf("telegram: build %s file field: %w", method, err)
+	}
+	if _, err := part.Write(content); err != nil {
+		return zero, fmt.Errorf("telegram: write %s file field: %w", method, err)
+	}
+	if err := writer.Close(); err != nil {
+		return zero, fmt.Errorf("telegram: close %s multipart body: %w", method, err)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/bot"+c.token+"/"+method, body)
+	if err != nil {
+		return zero, fmt.Errorf("telegram: build %s request: %w", method, err)
+	}
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	if strings.TrimSpace(mimeType) != "" {
+		request.Header.Set("X-Matrixclaw-Upload-Mime", strings.TrimSpace(mimeType))
+	}
+	response, err := c.http.Do(request)
+	if err != nil {
+		return zero, fmt.Errorf("telegram: execute %s request: %s", method, redactBotTokenInError(err, c.token))
+	}
+	defer response.Body.Close()
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return zero, fmt.Errorf("telegram: read %s response: %w", method, err)
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return zero, decodeAPIError(method, response.StatusCode, responseBody)
+	}
+	var envelope apiResponse[T]
+	if err := json.Unmarshal(responseBody, &envelope); err != nil {
+		return zero, fmt.Errorf("telegram: decode %s response: %w", method, err)
+	}
+	if !envelope.OK {
+		return zero, &APIError{
+			Method:      method,
+			StatusCode:  response.StatusCode,
+			ErrorCode:   envelope.ErrorCode,
+			Description: envelope.Description,
+			RetryAfter:  time.Duration(envelope.Parameters.RetryAfter) * time.Second,
+		}
+	}
 	return envelope.Result, nil
 }
 

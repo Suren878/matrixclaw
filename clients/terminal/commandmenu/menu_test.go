@@ -53,39 +53,19 @@ func TestEntriesUseSharedMenuCatalog(t *testing.T) {
 	}
 }
 
-func TestEntriesPutSessionActionsBeforeGeneralCommands(t *testing.T) {
+func TestEntriesExposeCompactAction(t *testing.T) {
 	entries := Entries(State{PermissionMode: core.PermissionModeDefault})
-	wantIDs := []string{
-		string(controlplane.CommandSessions),
-		string(controlplane.CommandContext),
-		string(controlplane.CommandProvider),
-		string(controlplane.CommandPermissions),
-		"divider_general",
-	}
-	if len(entries) < len(wantIDs) {
-		t.Fatalf("entries = %#v, want at least %d", entries, len(wantIDs))
-	}
-	for i, want := range wantIDs {
-		if entries[i].ID != want {
-			t.Fatalf("entry[%d] = %q, want %q; entries=%#v", i, entries[i].ID, want, entries)
+	for _, entry := range entries {
+		if entry.ID != string(controlplane.CommandContext) {
+			continue
 		}
+		action, ok := entry.Action.(surfacedialog.ActionRunControlplaneCommand)
+		if !ok || action.Command != "/context compact" {
+			t.Fatalf("compact action = %#v, want /context compact", entry.Action)
+		}
+		return
 	}
-	if entries[1].Title != "Compact" {
-		t.Fatalf("compact title = %q, want Compact", entries[1].Title)
-	}
-	if entries[2].Title != "Providers" {
-		t.Fatalf("provider title = %q, want Providers", entries[2].Title)
-	}
-	if entries[3].Title != "Permissions" {
-		t.Fatalf("permissions title = %q, want Permissions", entries[3].Title)
-	}
-	action, ok := entries[1].Action.(surfacedialog.ActionRunControlplaneCommand)
-	if !ok || action.Command != "/context compact" {
-		t.Fatalf("compact action = %#v, want /context compact", entries[1].Action)
-	}
-	if entries[4].Kind != surfacedialog.ListEntryDivider {
-		t.Fatalf("entry[4] = %#v, want divider", entries[4])
-	}
+	t.Fatalf("entries missing compact command: %#v", entries)
 }
 
 func TestEntriesDisableMatrixclawOnlyCommandsForExternalAgent(t *testing.T) {
@@ -139,6 +119,7 @@ func TestPickerEntriesRenderBackAsFooter(t *testing.T) {
 		Kind:        controlplane.PickerProviderActions,
 		ContextID:   "local-ai",
 		BackCommand: "/provider",
+		HasBack:     true,
 		Items: []controlplane.PickerItem{
 			{ID: "use", Title: "Use"},
 			controlplane.BackItem("Return"),
@@ -162,6 +143,7 @@ func TestPickerEntriesCanHideBack(t *testing.T) {
 		Kind:         controlplane.PickerProviderActions,
 		ContextID:    "local-ai",
 		BackCommand:  "/provider",
+		HasBack:      true,
 		HideBackItem: true,
 		Items: []controlplane.PickerItem{
 			{ID: "use", Title: "Use"},
@@ -178,6 +160,21 @@ func TestPickerEntriesCanHideBack(t *testing.T) {
 	}
 	if action.Command != "/provider" {
 		t.Fatalf("close command = %q, want /provider", action.Command)
+	}
+}
+
+func TestPickerEntriesHideBackDoesNotHideExplicitClose(t *testing.T) {
+	picker := controlplane.PickerData{
+		Kind:         controlplane.PickerModules,
+		HideBackItem: true,
+		Items: []controlplane.PickerItem{
+			{ID: "stt", Title: "Speech to Text"},
+			controlplane.CloseItem("Back"),
+		},
+	}
+	entries := PickerEntries(picker)
+	if len(entries) != 2 || entries[1].ID != "cancel" || entries[1].Title != "Back" || !entries[1].Footer {
+		t.Fatalf("entries = %#v, want explicit close footer to remain visible", entries)
 	}
 }
 
@@ -199,6 +196,35 @@ func TestPickerEntriesRenderCloseAsFooter(t *testing.T) {
 	}
 	if _, ok := entries[1].Action.(surfacedialog.ActionOpenCommands); !ok {
 		t.Fatalf("close action = %#v, want ActionOpenCommands", entries[1].Action)
+	}
+}
+
+func TestPickerEntriesVoiceProviderBackDoesNotRunStatus(t *testing.T) {
+	picker := controlplane.NewPickerData(controlplane.PickerVoiceProvider, "Whisper.cpp").
+		Context("stt").
+		Back("/modules stt provider").
+		Item(controlplane.PickerItem{
+			ID:      "status",
+			Title:   "Status",
+			Command: "/modules stt provider-status whispercpp",
+		}).
+		Build()
+	entries := PickerEntries(picker)
+	if len(entries) != 2 {
+		t.Fatalf("entries = %#v, want status and back", entries)
+	}
+	if entries[1].ID != "back" || !entries[1].Footer {
+		t.Fatalf("back entry = %#v, want footer back", entries[1])
+	}
+	action, ok := entries[1].Action.(surfacedialog.ActionRunControlplaneCommand)
+	if !ok {
+		t.Fatalf("back action = %T, want ActionRunControlplaneCommand", entries[1].Action)
+	}
+	if action.Command != "/modules stt provider" {
+		t.Fatalf("back command = %q, want provider list", action.Command)
+	}
+	if action.Command == "/modules stt provider-status whispercpp" {
+		t.Fatal("back must not reuse the status command")
 	}
 }
 

@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -535,6 +533,38 @@ func TestServiceApplyKeepsStoredKeyWhenDraftKeyEmpty(t *testing.T) {
 	}
 }
 
+func TestServiceApplyNormalizesPastedProviderAPIKey(t *testing.T) {
+	service := newTestService(filepath.Join(t.TempDir(), "setup.json"))
+
+	result, err := service.Apply(Draft{
+		ActiveProviderID: "openai",
+		Providers: []ProviderDraft{{
+			ID:              "openai",
+			CatalogID:       "openai",
+			Name:            "OpenAI",
+			Type:            providers.TypeOpenAICompat,
+			APIKey:          "Bearer sk-test-secret",
+			BaseURL:         "https://api.openai.com/v1",
+			Model:           "gpt-test",
+			HasStoredAPIKey: true,
+		}},
+		HTTPAddr:        "127.0.0.1:8080",
+		DBPath:          "/tmp/matrixclaw.db",
+		AutostartOnBoot: "no",
+		TelegramEnabled: "no",
+	})
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	active, ok := ActiveProviderConfig(result.Config)
+	if !ok {
+		t.Fatal("active provider not found")
+	}
+	if active.APIKey != "sk-test-secret" {
+		t.Fatalf("api key = %q, want normalized sk-test-secret", active.APIKey)
+	}
+}
+
 func TestServiceDraftPrefersSavedDraftOverConfig(t *testing.T) {
 	store := NewFileStore(filepath.Join(t.TempDir(), "setup.json"))
 	service := newTestService(store.Path())
@@ -641,7 +671,7 @@ func TestProviderSetupItemsHideConfiguredBuiltIns(t *testing.T) {
 	}
 }
 
-func TestProviderOptionsIncludeOpenCrabsComparableOpenAICompatibleProviders(t *testing.T) {
+func TestProviderOptionsIncludeRepresentativeOpenAICompatibleProviders(t *testing.T) {
 	service := newTestService(filepath.Join(t.TempDir(), "setup.json"))
 	options := service.ProviderOptions()
 
@@ -654,35 +684,12 @@ func TestProviderOptionsIncludeOpenCrabsComparableOpenAICompatibleProviders(t *t
 		modelDiscovery bool
 	}{
 		{
-			id:             "openrouter",
-			name:           "OpenRouter",
-			baseURL:        "https://openrouter.ai/api/v1",
-			model:          "qwen/qwen3-coder-next",
-			apiKeyEnv:      "OPENROUTER_API_KEY",
-			modelDiscovery: true,
-		},
-		{
-			id:             "minimax",
-			name:           "MiniMax",
-			baseURL:        "https://api.minimax.io/v1",
-			model:          "MiniMax-M2.7",
-			apiKeyEnv:      "MINIMAX_API_KEY",
-			modelDiscovery: true,
-		},
-		{
 			id:             "qwen",
 			name:           "Qwen / DashScope",
 			baseURL:        "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
 			model:          "qwen-plus",
 			apiKeyEnv:      "DASHSCOPE_API_KEY",
 			modelDiscovery: true,
-		},
-		{
-			id:        "kimi-subscription",
-			name:      "Kimi (Subscription)",
-			baseURL:   "https://api.kimi.com/coding/v1",
-			model:     "kimi-for-coding",
-			apiKeyEnv: "KIMI_CODE_API_KEY",
 		},
 	}
 
@@ -717,34 +724,6 @@ func TestProviderOptionsIncludeOpenCrabsComparableOpenAICompatibleProviders(t *t
 				t.Fatalf("draft reasoning effort = %q, want empty for %s", draft.ReasoningEffort, tt.id)
 			}
 		})
-	}
-}
-
-func TestKimiSubscriptionProviderModelsSkipsRemoteDiscovery(t *testing.T) {
-	remoteCalled := false
-	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		remoteCalled = true
-		t.Fatalf("unexpected remote model discovery request: %s %s", r.Method, r.URL.Path)
-	}))
-	defer remote.Close()
-
-	service := newTestService(filepath.Join(t.TempDir(), "setup.json"))
-	draft, err := service.BuiltInProviderDraft(Draft{}, "kimi-subscription")
-	if err != nil {
-		t.Fatalf("BuiltInProviderDraft() error = %v", err)
-	}
-	draft.BaseURL = remote.URL
-	draft.APIKey = "test-api-key"
-
-	_, err = service.ProviderModels(context.Background(), draft)
-	if err == nil {
-		t.Fatal("ProviderModels() error = nil, want unsupported discovery error")
-	}
-	if !strings.Contains(err.Error(), "does not support model discovery") {
-		t.Fatalf("ProviderModels() error = %q, want unsupported discovery", err)
-	}
-	if remoteCalled {
-		t.Fatal("ProviderModels() called remote discovery for kimi-subscription")
 	}
 }
 

@@ -384,6 +384,33 @@ func TestSystemdUserDaemonManagerApplyLiveReloadWithoutSystemd(t *testing.T) {
 	}
 }
 
+func TestSystemdUserDaemonManagerInspectOnDarwinDoesNotWarnAboutSystemd(t *testing.T) {
+	server := newLiveReloadServer(t, http.StatusOK)
+	defer server.Close()
+
+	manager := &systemdUserDaemonManager{
+		lookPath:   func(string) (string, error) { return "", os.ErrNotExist },
+		runtimeOS:  func() string { return "darwin" },
+		httpClient: server.Client(),
+	}
+
+	summary, err := manager.Inspect(context.Background(), "", Config{
+		Daemon: DaemonConfig{
+			HTTPAddr: server.URL,
+			DBPath:   filepath.Join(t.TempDir(), "matrixclaw.db"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+	if !summary.Running || summary.RuntimeStatus != "Running" {
+		t.Fatalf("summary = %#v, want running direct daemon", summary)
+	}
+	if summary.Warning != "" {
+		t.Fatalf("warning = %q, want none on macOS direct daemon", summary.Warning)
+	}
+}
+
 func TestResolveDaemonBinaryFindsMatrixclawdOnPath(t *testing.T) {
 	dir, daemonBin := executableOnStablePath(t, "matrixclawd")
 

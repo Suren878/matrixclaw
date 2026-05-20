@@ -8,6 +8,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 	anthropic "github.com/Suren878/matrixclaw/internal/providers/ai/anthropiccompat"
 	"github.com/Suren878/matrixclaw/internal/providers/ai/gemini"
+	"github.com/Suren878/matrixclaw/internal/providers/ai/openaicodex"
 	"github.com/Suren878/matrixclaw/internal/providers/ai/openaicompat"
 )
 
@@ -26,6 +27,9 @@ type Config struct {
 var (
 	newOpenAICompatRuntime = func(ctx context.Context, cfg openaicompat.Config) (providers.Runtime, error) {
 		return openaicompat.New(ctx, cfg)
+	}
+	newOpenAICodexRuntime = func(ctx context.Context, cfg openaicodex.Config) (providers.Runtime, error) {
+		return openaicodex.New(ctx, cfg)
 	}
 	newAnthropicRuntime = func(ctx context.Context, cfg anthropic.Config) (providers.Runtime, error) {
 		return anthropic.New(ctx, cfg)
@@ -55,6 +59,17 @@ func NewRuntime(ctx context.Context, cfg Config) (providers.Runtime, error) {
 			ProviderID:      strings.TrimSpace(cfg.ProviderID),
 			CatalogID:       strings.TrimSpace(cfg.CatalogID),
 			APIKey:          apiKey,
+			BaseURL:         baseURL,
+			Model:           model,
+			MaxOutputTokens: cfg.MaxOutputTokens,
+			ReasoningEffort: strings.TrimSpace(cfg.ReasoningEffort),
+			ToolUseMode:     cfg.ToolUseMode,
+			Profile:         profile,
+		})
+	case providers.TypeOpenAICodex:
+		return newOpenAICodexRuntime(ctx, openaicodex.Config{
+			ProviderID:      strings.TrimSpace(cfg.ProviderID),
+			CatalogID:       strings.TrimSpace(cfg.CatalogID),
 			BaseURL:         baseURL,
 			Model:           model,
 			MaxOutputTokens: cfg.MaxOutputTokens,

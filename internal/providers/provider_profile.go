@@ -66,6 +66,8 @@ func NormalizeProviderType(providerType string) string {
 	switch strings.ToLower(strings.TrimSpace(providerType)) {
 	case "", TypeOpenAICompat:
 		return TypeOpenAICompat
+	case TypeOpenAICodex:
+		return TypeOpenAICodex
 	case TypeAnthropic:
 		return TypeAnthropic
 	case TypeGemini:

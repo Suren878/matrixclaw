@@ -42,6 +42,28 @@ func TestProviderFormSpecForBuiltInDraftUsesCapabilities(t *testing.T) {
 	}
 }
 
+func TestProviderFormViewFieldsCanUseRequiredDisplayStatus(t *testing.T) {
+	spec := ProviderFormSpecForDraft(ProviderDraft{
+		ID:        "openai",
+		CatalogID: "openai",
+		Name:      "OpenAI",
+		Type:      providers.TypeOpenAICompat,
+		Model:     "gpt-5.4-mini",
+	})
+
+	plain := ProviderFormViewFields(spec, ProviderFormViewOptions{})
+	withRequired := ProviderFormViewFields(spec, ProviderFormViewOptions{ShowRequiredStatus: true})
+	if plain[0].Status != "" {
+		t.Fatalf("plain API key status = %q, want empty", plain[0].Status)
+	}
+	if withRequired[0].Status != "Required" {
+		t.Fatalf("required API key status = %q, want Required", withRequired[0].Status)
+	}
+	if withRequired[0].CommandID != "key" {
+		t.Fatalf("API key command id = %q, want key", withRequired[0].CommandID)
+	}
+}
+
 func TestProviderFormSpecUsesSelectedModelCapabilities(t *testing.T) {
 	spec := ProviderFormSpecForDraft(ProviderDraft{
 		ID:        "openai",
@@ -83,6 +105,9 @@ func TestProviderFormSpecForQwenIncludesEndpointOptions(t *testing.T) {
 	}
 	if len(baseURL.Options) < 3 {
 		t.Fatalf("qwen endpoint options = %#v, want regional endpoints", baseURL.Options)
+	}
+	if len(baseURL.Choices) < 3 || baseURL.Choices[0].Value == "" || baseURL.Choices[0].Title == "" {
+		t.Fatalf("qwen endpoint choices = %#v, want display choices with values", baseURL.Choices)
 	}
 }
 

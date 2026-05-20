@@ -34,13 +34,6 @@ func TestProviderRuntimeCapabilities(t *testing.T) {
 			wantSchema:      ToolSchemaJSONSchema,
 		},
 		{
-			name:            "kimi subscription keeps native tools without reasoning effort",
-			providerID:      "kimi-subscription",
-			providerType:    TypeOpenAICompat,
-			wantToolCalling: true,
-			wantSchema:      ToolSchemaJSONSchema,
-		},
-		{
 			name:              "gemini uses native schema and decodes thought parts",
 			providerID:        "gemini",
 			providerType:      TypeGemini,

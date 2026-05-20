@@ -1,6 +1,10 @@
 package setup
 
-import tea "charm.land/bubbletea/v2"
+import (
+	tea "charm.land/bubbletea/v2"
+
+	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+)
 
 func (m *model) updateIntro(msg tea.Msg) (tea.Model, tea.Cmd) {
 	keyMsg, ok := msg.(tea.KeyPressMsg)
@@ -22,10 +26,9 @@ func (m *model) updateStepList(msg tea.Msg, back screen, next screen, edit scree
 	if !ok {
 		return m, nil
 	}
-	switch keyMsg.String() {
-	case "up", "k", "down", "j":
-		m.moveIndex(keyMsg.String(), &m.cursor, 1)
-	case "enter":
+	event := m.updateListSelection(keyMsg.String(), &m.cursor, 2, commandui.RoleBack)
+	switch event.Kind {
+	case commandui.EventSelect:
 		if m.cursor == 0 {
 			m.cursor = 0
 			m.screen = next
@@ -35,53 +38,29 @@ func (m *model) updateStepList(msg tea.Msg, back screen, next screen, edit scree
 			m.openDraftForm(edit)
 			return m, nil
 		}
-	case "esc":
+	case commandui.EventBack:
 		m.screen = back
 		m.cursor = 0
 	}
 	return m, nil
 }
 
-func (m *model) moveFormCursor(key string, fieldCount int) bool {
-	switch key {
-	case "up", "k":
-		if m.formFocus > 0 {
-			m.formFocus--
-		}
-	case "down", "j":
-		if m.formFocus < fieldCount {
-			m.formFocus++
-		}
-	case "left", "h":
-		if m.formFocus == fieldCount && m.formAction > 0 {
-			m.formAction--
-		}
-	case "right", "l":
-		if m.formFocus == fieldCount && m.formAction < 1 {
-			m.formAction++
-		}
-	default:
-		return false
-	}
-	return true
-}
-
-func (m *model) updateForm(msg tea.Msg, fieldCount int, cancel func(), save func() error, selectField func()) (tea.Model, tea.Cmd) {
+func (m *model) updateForm(msg tea.Msg, fieldCount int, cancel func(), save func() error, selectField func() tea.Cmd) (tea.Model, tea.Cmd) {
 	keyMsg, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		return m, nil
 	}
-	switch keyMsg.String() {
-	case "esc":
+	state := m.formState(fieldCount)
+	event := state.Update(keyMsg.String(), stateItems(fieldCount), setupFormButtons(), commandui.RoleCancel)
+	m.applyFormState(state, fieldCount)
+	switch event.Kind {
+	case commandui.EventCancel, commandui.EventBack:
 		cancel()
-	case "up", "k", "down", "j", "left", "h", "right", "l":
-		m.moveFormCursor(keyMsg.String(), fieldCount)
-	case "enter":
-		if m.formFocus == fieldCount {
-			m.submitFormAction(save, cancel)
-			return m, nil
-		}
-		selectField()
+	case commandui.EventSubmit:
+		m.submitFormAction(save, cancel)
+		return m, nil
+	case commandui.EventEdit:
+		return m, selectField()
 	}
 	return m, nil
 }
@@ -91,19 +70,58 @@ func (m *model) moveIndex(key string, index *int, maxIndex int) bool {
 		*index = 0
 		return false
 	}
-	switch key {
-	case "up", "k":
-		if *index > 0 {
-			*index--
-		}
-	case "down", "j":
-		if *index < maxIndex {
-			*index++
-		}
-	default:
-		return false
+	before := *index
+	_ = m.updateListSelection(key, index, maxIndex+1, commandui.RoleBack)
+	return before != *index
+}
+
+func (m *model) updateListSelection(key string, cursor *int, count int, closeRole commandui.Role) commandui.Event {
+	state := commandui.ListState{Cursor: *cursor, NoWrap: true}
+	event := state.Update(key, stateItems(count), closeRole)
+	state.Clamp(count)
+	*cursor = state.Cursor
+	return event
+}
+
+func (m *model) formState(fieldCount int) commandui.FormState {
+	return commandui.FormState{
+		Focus:  formFocus(m.formFocus, fieldCount),
+		Button: m.formAction,
+		NoWrap: true,
 	}
-	return true
+}
+
+func (m *model) applyFormState(state commandui.FormState, fieldCount int) {
+	if state.Focus.Kind == commandui.FormFocusButton {
+		m.formFocus = fieldCount
+		m.formAction = state.Button
+		return
+	}
+	m.formFocus = state.Focus.Index
+	if m.formFocus < 0 {
+		m.formFocus = 0
+	}
+	if m.formFocus > fieldCount {
+		m.formFocus = fieldCount
+	}
+}
+
+func stateItems(count int) []commandui.Item {
+	if count <= 0 {
+		return nil
+	}
+	items := make([]commandui.Item, count)
+	for i := range items {
+		items[i] = commandui.Item{Title: "Item"}
+	}
+	return items
+}
+
+func updateConfirmSelection(key string, selected *int) commandui.Event {
+	state := commandui.ConfirmState{Selected: *selected}
+	event := state.Update(key)
+	*selected = state.Selected
+	return event
 }
 
 func (m *model) openDraftForm(target screen) {

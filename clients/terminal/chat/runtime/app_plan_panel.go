@@ -221,17 +221,6 @@ func (m *appModel) placePlanPanelWithFooter(width int, height int, lines []strin
 	return lipgloss.Place(width, height, lipgloss.Left, lipgloss.Top, strings.Join(rendered, "\n"))
 }
 
-func (m *appModel) currentSnapshot() viewSnapshot {
-	if m.read == nil {
-		return viewSnapshot{}
-	}
-	return viewSnapshot{Plan: m.read.Snapshot().Plan}
-}
-
-type viewSnapshot struct {
-	Plan *core.SessionPlan
-}
-
 func (m *appModel) clampPlanSelection(plan *core.SessionPlan) {
 	count := planSelectionCount(plan)
 	if count == 0 {

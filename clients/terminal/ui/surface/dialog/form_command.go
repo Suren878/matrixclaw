@@ -17,8 +17,10 @@ type FormCommandData = controlplane.FormData
 type FormCommandField = controlplane.FormField
 
 type FormCommand struct {
-	data  FormCommandData
-	state commandui.FormState
+	data    FormCommandData
+	state   commandui.FormState
+	loading bool
+	frame   int
 }
 
 func NewFormCommand(_ *surfacecommon.Common, data FormCommandData) *FormCommand {
@@ -33,6 +35,13 @@ func NewFormCommand(_ *surfacecommon.Common, data FormCommandData) *FormCommand 
 func (*FormCommand) ID() string { return FormCommandID }
 
 func (d *FormCommand) HandleMsg(msg tea.Msg) Action {
+	if _, ok := msg.(loadingTickMsg); ok {
+		if !d.loading {
+			return nil
+		}
+		d.frame = (d.frame + 1) % len(loadingFrames)
+		return ActionCmd{Cmd: loadingTickCmd()}
+	}
 	keyMsg, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		return nil
@@ -64,7 +73,7 @@ func (d *FormCommand) cancelAction() Action {
 
 func (d *FormCommand) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 	view := commandui.RenderFormCard(commandui.NewFrame(area.Dx(), area.Dy()), commandui.FormData{
-		Title:   d.title(),
+		Title:   loadingTitle(d.title(), d.loading, d.frame),
 		Fields:  d.items(),
 		Focus:   d.state.Focus,
 		Buttons: d.buttons(),
@@ -74,6 +83,17 @@ func (d *FormCommand) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 	})
 	DrawCenter(scr, area, view)
 	return nil
+}
+
+func (d *FormCommand) StartLoading() tea.Cmd {
+	d.loading = true
+	d.frame = 0
+	return loadingTickCmd()
+}
+
+func (d *FormCommand) StopLoading() {
+	d.loading = false
+	d.frame = 0
 }
 
 func (d *FormCommand) title() string {

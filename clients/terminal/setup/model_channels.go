@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -25,7 +26,7 @@ func (m *model) renderBoolPicker() string {
 }
 
 func (m *model) updateTelegramForm(msg tea.Msg) (tea.Model, tea.Cmd) {
-	return m.updateForm(msg, 4, func() { m.cancelDraftForm(screenChannelsList) }, m.handleTelegramFormSave, func() {
+	return m.updateForm(msg, 4, func() { m.cancelDraftForm(screenChannelsList) }, m.handleTelegramFormSave, func() tea.Cmd {
 		switch m.formFocus {
 		case 0:
 			m.openBoolPicker(boolEditTelegramEnabled, m.draft.TelegramEnabled)
@@ -36,6 +37,7 @@ func (m *model) updateTelegramForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case 3:
 			m.openBoolPicker(boolEditTelegramProviderSetup, m.draft.TelegramProviderSetup)
 		}
+		return nil
 	})
 }
 
@@ -44,12 +46,11 @@ func (m *model) updateBoolPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	switch keyMsg.String() {
-	case "esc":
+	event := m.updateListSelection(keyMsg.String(), &m.boolPickerCursor, 2, commandui.RoleBack)
+	switch event.Kind {
+	case commandui.EventBack:
 		m.screen = m.boolPickerReturnScreen()
-	case "up", "k", "down", "j":
-		m.moveIndex(keyMsg.String(), &m.boolPickerCursor, 1)
-	case "enter":
+	case commandui.EventSelect:
 		value := "no"
 		if m.boolPickerCursor == 0 {
 			value = "yes"

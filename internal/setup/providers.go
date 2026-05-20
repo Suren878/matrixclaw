@@ -3,6 +3,7 @@ package setup
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -49,17 +50,28 @@ func normalizeConfig(cfg Config) Config {
 }
 
 func normalizeModulesConfig(modules ModulesConfig) ModulesConfig {
+	modules.TextToSpeech = normalizeVoiceModuleConfig("tts", modules.TextToSpeech)
+	modules.SpeechToText = normalizeVoiceModuleConfig("stt", modules.SpeechToText)
 	if len(modules.ExternalAgents) == 0 {
 		modules.ExternalAgents = nil
 		return modules
 	}
+	ids := make([]string, 0, len(modules.ExternalAgents))
+	for id := range modules.ExternalAgents {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
 	normalized := make(map[string]ExternalAgentConfig, len(modules.ExternalAgents))
-	for id, cfg := range modules.ExternalAgents {
-		id = strings.ToLower(strings.TrimSpace(id))
+	for _, rawID := range ids {
+		cfg := modules.ExternalAgents[rawID]
+		id := normalizeExternalAgentID(rawID)
 		if id == "" {
 			continue
 		}
 		cfg.Path = strings.TrimSpace(cfg.Path)
+		if _, exists := normalized[id]; exists && id != strings.ToLower(strings.TrimSpace(rawID)) {
+			continue
+		}
 		normalized[id] = cfg
 	}
 	if len(normalized) == 0 {
@@ -84,7 +96,7 @@ func normalizeAssistantConfig(assistant AssistantConfig) AssistantConfig {
 }
 
 func DefaultAssistantSystemPrompt() string {
-	return "You are matrixclaw, a personal AI operator running through matrixclaw's local background runtime. You work across terminal and Telegram clients on durable sessions with files, deliveries, provider/model selection, explicit tool approvals, reminders, scheduled AI tasks, and optional external-agent sessions. Use the actual tools made available in each turn; plan tools can read and update the visible session goal and plan for multi-step work. The client control-plane also has slash commands for session management, providers, permissions, context, token usage, plan, search, modules, tasks, and server actions; explain those commands when useful, but do not claim you can run a control-plane command unless it is exposed as a tool. Prefer precise actions, preserve user files, ask for approval before risky or destructive changes, keep responses concise, and update the session plan as work progresses. In user-facing explanations, call the background runtime matrixclaw architect instead of daemon. When users ask for reminders or scheduled work, resolve exact time and timezone before creating automation."
+	return "You are matrixclaw, a personal AI operator running through matrixclaw's local background runtime. You work across terminal and Telegram clients on durable sessions with files, deliveries, provider/model selection, explicit tool approvals, reminders, scheduled AI tasks, optional text-to-speech and speech-to-text modules, and optional external-agent sessions. Reply in the same language the user uses for the current request; if the user mixes languages, use the language that best matches the user's latest request. Use the actual tools made available in each turn; plan tools can read and update the visible session goal and plan for multi-step work. When the user asks for spoken, audio, voice, or TTS output, call the text_to_speech tool with the text that should be spoken; do not use shell commands, Piper runtime inspection, or local audio files for client voice output. The client control-plane also has slash commands for session management, providers, permissions, context, token usage, plan, search, modules, tasks, and server actions; explain those commands when useful, but do not claim you can run a control-plane command unless it is exposed as a tool. Prefer precise actions, preserve user files, ask for approval before risky or destructive changes, keep responses concise, and update the session plan as work progresses. In user-facing explanations, call the background runtime matrixclaw architect instead of daemon. When users ask for reminders or scheduled work, resolve exact time and timezone before creating automation."
 }
 
 func normalizeProviderConfig(provider ProviderConfig) (ProviderConfig, bool) {
@@ -92,7 +104,7 @@ func normalizeProviderConfig(provider ProviderConfig) (ProviderConfig, bool) {
 	provider.CatalogID = providers.NormalizeProviderID(provider.CatalogID)
 	provider.Type = providers.NormalizeOptionalProviderType(provider.Type)
 	provider.Name = strings.TrimSpace(provider.Name)
-	provider.APIKey = strings.TrimSpace(provider.APIKey)
+	provider.APIKey = normalizeProviderAPIKey(provider.APIKey)
 	provider.APIKeyEnv = strings.TrimSpace(provider.APIKeyEnv)
 	provider.BaseURL = strings.TrimSpace(provider.BaseURL)
 	provider.Model = strings.TrimSpace(provider.Model)
@@ -166,6 +178,9 @@ func findProviderConfig(cfg Config, providerID string) (ProviderConfig, bool) {
 }
 
 func ProviderDraftConfigured(provider ProviderDraft) bool {
+	if providers.NormalizeProviderType(provider.Type) == providers.TypeOpenAICodex {
+		return strings.TrimSpace(provider.Model) != ""
+	}
 	if strings.TrimSpace(provider.APIKey) != "" {
 		return true
 	}
@@ -312,30 +327,57 @@ func draftProviderFromConfig(provider ProviderConfig) ProviderDraft {
 }
 
 func ProviderConfigWithResolvedAPIKey(provider ProviderConfig) (ProviderConfig, bool) {
+	if providers.NormalizeProviderType(provider.Type) == providers.TypeOpenAICodex {
+		provider.APIKey = ""
+		return provider, true
+	}
 	resolved, ok := ResolvedProviderAPIKey(provider)
 	provider.APIKey = resolved
 	return provider, ok
 }
 
 func ResolvedProviderAPIKey(provider ProviderConfig) (string, bool) {
-	if apiKey := strings.TrimSpace(provider.APIKey); apiKey != "" {
+	if apiKey := normalizeProviderAPIKey(provider.APIKey); apiKey != "" {
 		return apiKey, true
 	}
-	if apiKey := strings.TrimSpace(providerAPIKeyFromEnvName(providerAPIKeyEnvName(provider))); apiKey != "" {
+	if apiKey := normalizeProviderAPIKey(providerAPIKeyFromEnvName(providerAPIKeyEnvName(provider))); apiKey != "" {
 		return apiKey, true
 	}
 	return "", false
 }
 
 func ProviderAPIKeyPreview(provider ProviderConfig) string {
-	if apiKey := strings.TrimSpace(provider.APIKey); apiKey != "" {
+	if providers.NormalizeProviderType(provider.Type) == providers.TypeOpenAICodex {
+		return "OAuth"
+	}
+	if apiKey := normalizeProviderAPIKey(provider.APIKey); apiKey != "" {
 		return MaskSecret(apiKey)
 	}
 	envName := providerAPIKeyEnvName(provider)
-	if envName == "" || strings.TrimSpace(providerAPIKeyFromEnvName(envName)) == "" {
+	if envName == "" || normalizeProviderAPIKey(providerAPIKeyFromEnvName(envName)) == "" {
 		return ""
 	}
 	return "env:" + envName
+}
+
+func normalizeProviderAPIKey(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.Trim(value, "\"'")
+	value = strings.TrimSpace(value)
+	if strings.HasPrefix(strings.ToLower(value), "bearer ") {
+		value = strings.TrimSpace(value[len("bearer "):])
+	}
+	fields := strings.Fields(value)
+	if len(fields) <= 1 {
+		return value
+	}
+	for _, field := range fields {
+		field = strings.Trim(field, "\"'`,;")
+		if strings.HasPrefix(field, "sk-") {
+			return field
+		}
+	}
+	return value
 }
 
 func providerAPIKeyEnvName(provider ProviderConfig) string {
@@ -357,6 +399,8 @@ func providerAPIKeyEnvNameFor(explicit string, catalogID string, providerID stri
 	switch providers.NormalizeOptionalProviderType(providerType) {
 	case providers.TypeAnthropic:
 		return "ANTHROPIC_API_KEY"
+	case providers.TypeOpenAICodex:
+		return ""
 	case providers.TypeOpenAICompat:
 		return "OPENAI_COMPAT_API_KEY"
 	default:
@@ -369,7 +413,7 @@ func providerAPIKeyFromEnvName(envName string) string {
 	if envName == "" {
 		return ""
 	}
-	return strings.TrimSpace(os.Getenv(envName))
+	return normalizeProviderAPIKey(os.Getenv(envName))
 }
 
 func newCustomDraftProvider(baseType string, existing []ProviderDraft) ProviderDraft {

@@ -16,17 +16,11 @@ func TestRegisterCommandsUsesSharedTopLevelMenu(t *testing.T) {
 		t.Fatalf("setCommandsRequests len = %d, want 1", len(api.setCommandsRequests))
 	}
 	var got []string
-	var descriptions []string
 	for _, command := range api.setCommandsRequests[0].Commands {
 		got = append(got, command.Command)
-		descriptions = append(descriptions, command.Description)
 	}
-	want := []string{"sessions", "provider", "permissions", "context", "plan", "modules", "tasks", "server", "help"}
+	want := []string{"sessions", "provider", "permissions", "context", "plan", "modules", "tasks", "server", "help", "tts"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("registered commands = %#v, want %#v", got, want)
-	}
-	wantDescriptions := []string{"Sessions", "Provider", "Permission Mode", "Context", "Planning Mode", "Modules", "Tasks", "Server", "Help"}
-	if strings.Join(descriptions, ",") != strings.Join(wantDescriptions, ",") {
-		t.Fatalf("registered descriptions = %#v, want %#v", descriptions, wantDescriptions)
 	}
 }

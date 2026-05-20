@@ -30,7 +30,7 @@ func (d *Dispatcher) storageTempPicker(ctx context.Context) (Result, error) {
 	)
 	return Result{
 		Handled: true,
-		Picker:  NewPickerData(PickerStorageTemp, "Temporary Files").Back("/modules storage").Items(items...).Ptr(),
+		Picker:  NewPickerData(PickerStorageTemp, "Temporary Files").Back(storageCommand()).Items(items...).Ptr(),
 	}, nil
 }
 
@@ -43,7 +43,7 @@ func (d *Dispatcher) storageTempFilePicker(ctx context.Context, tempPath string)
 		Handled: true,
 		Picker: NewPickerData(PickerStorageTempFile, "Temporary File").
 			Context(tempPath).
-			Back("/modules storage temp").
+			Back(storageTempCommand()).
 			Row("promote", "Save", tempPath).
 			Danger("delete", "Delete", "").
 			Ptr(),
@@ -65,7 +65,7 @@ func (d *Dispatcher) storageTempDeleteConfirm(tempPath string) Result {
 	}
 	return Result{
 		Handled: true,
-		Confirm: deleteConfirmData("Delete temporary file "+tempPath+"?", "/modules storage temp-delete-confirm "+tempPath, "/modules storage temp-file "+tempPath),
+		Confirm: deleteConfirmData("Delete temporary file "+tempPath+"?", storageTempDeleteConfirmCommand(tempPath), storageTempFileCommand(tempPath)),
 	}
 }
 
@@ -80,7 +80,7 @@ func (d *Dispatcher) storageTempDelete(ctx context.Context, tempPath string) (Re
 func (d *Dispatcher) storageTempCleanup(ctx context.Context) (Result, error) {
 	return Result{
 		Handled: true,
-		Confirm: deleteConfirmData("Delete all temporary files?", "/modules storage temp-cleanup-confirm", "/modules storage temp"),
+		Confirm: deleteConfirmData("Delete all temporary files?", storageTempCleanupConfirmCommand(), storageTempCommand()),
 	}, nil
 }
 
@@ -101,7 +101,7 @@ func (d *Dispatcher) storageTempCleanupModePicker(ctx context.Context) (Result, 
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerStorageCleanup, "Auto Cleanup").
-			Back("/modules storage temp").
+			Back(storageTempCommand()).
 			Item(PickerItem{ID: "on", Title: "On", Selected: current}).
 			Item(PickerItem{ID: "off", Title: "Off", Selected: !current}).
 			Ptr(),
@@ -135,8 +135,8 @@ func (d *Dispatcher) storageTempDays(ctx context.Context, raw string) (Result, e
 		return Result{Handled: true, Prompt: &PromptData{
 			Title:               "Delete Temporary Files After",
 			Placeholder:         "7",
-			SubmitCommandPrefix: "/modules storage temp-days ",
-			CancelCommand:       "/modules storage temp",
+			SubmitCommandPrefix: storageTempDaysCommandPrefix(),
+			CancelCommand:       storageTempCommand(),
 		}}, nil
 	}
 	days, err := strconv.ParseInt(raw, 10, 64)
@@ -155,8 +155,8 @@ func (d *Dispatcher) storageTempMax(ctx context.Context, raw string) (Result, er
 		return Result{Handled: true, Prompt: &PromptData{
 			Title:               "Temporary Files Max Size",
 			Placeholder:         "0.1",
-			SubmitCommandPrefix: "/modules storage temp-max ",
-			CancelCommand:       "/modules storage temp",
+			SubmitCommandPrefix: storageTempMaxCommandPrefix(),
+			CancelCommand:       storageTempCommand(),
 		}}, nil
 	}
 	gb, err := strconv.ParseFloat(raw, 64)

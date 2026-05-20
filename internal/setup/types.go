@@ -65,11 +65,92 @@ type TelegramConfig struct {
 
 type ModulesConfig struct {
 	ExternalAgents map[string]ExternalAgentConfig `json:"external_agents,omitempty"`
+	TextToSpeech   VoiceModuleConfig              `json:"tts,omitempty"`
+	SpeechToText   VoiceModuleConfig              `json:"stt,omitempty"`
 }
 
 type ExternalAgentConfig struct {
 	Enabled bool   `json:"enabled,omitempty"`
 	Path    string `json:"path,omitempty"`
+}
+
+type VoiceModuleConfig struct {
+	Enabled    bool                           `json:"enabled,omitempty"`
+	ProviderID string                         `json:"provider_id,omitempty"`
+	Providers  map[string]VoiceProviderConfig `json:"providers,omitempty"`
+}
+
+type VoiceProviderConfig struct {
+	ModelID     string `json:"model_id,omitempty"`
+	VoiceID     string `json:"voice_id,omitempty"`
+	Language    string `json:"language,omitempty"`
+	Autostart   bool   `json:"autostart,omitempty"`
+	RuntimeMode string `json:"runtime_mode,omitempty"`
+	BinaryPath  string `json:"binary_path,omitempty"`
+	Endpoint    string `json:"endpoint,omitempty"`
+	Threads     int    `json:"threads,omitempty"`
+}
+
+type VoiceModelOption struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Size         string `json:"size,omitempty"`
+	RAM          string `json:"ram,omitempty"`
+	Description  string `json:"description,omitempty"`
+	Default      bool   `json:"default,omitempty"`
+	LanguageCode string `json:"language_code,omitempty"`
+	LanguageName string `json:"language_name,omitempty"`
+	Quality      string `json:"quality,omitempty"`
+	Installed    bool   `json:"installed,omitempty"`
+	Path         string `json:"path,omitempty"`
+}
+
+type VoiceProviderOption struct {
+	ID            string              `json:"id"`
+	Name          string              `json:"name"`
+	Local         bool                `json:"local"`
+	Status        string              `json:"status,omitempty"`
+	CatalogStatus string              `json:"catalog_status,omitempty"`
+	CatalogDetail string              `json:"catalog_detail,omitempty"`
+	Endpoint      string              `json:"endpoint,omitempty"`
+	Downloaded    bool                `json:"downloaded,omitempty"`
+	ModelPath     string              `json:"model_path,omitempty"`
+	RuntimeState  string              `json:"runtime_state,omitempty"`
+	RuntimeDetail string              `json:"runtime_detail,omitempty"`
+	RuntimeRSS    uint64              `json:"runtime_rss_bytes,omitempty"`
+	Config        VoiceProviderConfig `json:"config,omitempty"`
+	Models        []VoiceModelOption  `json:"models,omitempty"`
+}
+
+type VoiceModuleDescriptor struct {
+	ID           string                `json:"id"`
+	Title        string                `json:"title"`
+	Enabled      bool                  `json:"enabled"`
+	ProviderID   string                `json:"provider_id"`
+	ProviderName string                `json:"provider_name"`
+	Local        bool                  `json:"local"`
+	Status       string                `json:"status"`
+	Config       VoiceProviderConfig   `json:"config,omitempty"`
+	Providers    []VoiceProviderOption `json:"providers,omitempty"`
+}
+
+type VoiceModuleUpdate struct {
+	Enabled        *bool                `json:"enabled,omitempty"`
+	ProviderID     string               `json:"provider_id,omitempty"`
+	ProviderConfig *VoiceProviderConfig `json:"provider_config,omitempty"`
+}
+
+type VoiceModulesResponse struct {
+	Modules []VoiceModuleDescriptor `json:"modules"`
+}
+
+type VoiceProviderActionRequest struct {
+	Action  string `json:"action"`
+	ModelID string `json:"model_id,omitempty"`
+}
+
+type VoiceProviderActionResponse struct {
+	Provider VoiceProviderOption `json:"provider"`
 }
 
 type Draft struct {

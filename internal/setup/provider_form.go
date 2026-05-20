@@ -52,10 +52,19 @@ type ProviderFormField struct {
 	Value     string
 	Status    string
 	Options   []string
+	Choices   []ProviderFormChoice
 	Required  bool
 	Sensitive bool
 	Editable  bool
 	Picker    bool
+}
+
+type ProviderFormChoice struct {
+	ID       string
+	Title    string
+	Status   string
+	Value    string
+	Selected bool
 }
 
 func ProviderFormSpecForDraft(provider ProviderDraft) ProviderFormSpec {
@@ -144,14 +153,15 @@ func ProviderFormSpecFromInput(input ProviderFormSpecInput) ProviderFormSpec {
 			Value:    strings.TrimSpace(input.BaseURL),
 			Status:   providerBaseURLStatus(input.BaseURL, baseURLOptions),
 			Options:  providerBaseURLValues(baseURLOptions),
+			Choices:  providerBaseURLChoices(input.BaseURL, baseURLOptions),
 			Required: true,
 			Editable: true,
 			Picker:   len(baseURLOptions) > 0,
 		})
 	}
 
-	fields = append(fields,
-		ProviderFormField{
+	if providerType != providers.TypeOpenAICodex {
+		fields = append(fields, ProviderFormField{
 			ID:        ProviderFormFieldAPIKey,
 			Label:     "API key",
 			Value:     strings.TrimSpace(input.APIKey),
@@ -159,7 +169,9 @@ func ProviderFormSpecFromInput(input ProviderFormSpecInput) ProviderFormSpec {
 			Required:  true,
 			Sensitive: true,
 			Editable:  true,
-		},
+		})
+	}
+	fields = append(fields,
 		ProviderFormField{
 			ID:       ProviderFormFieldModel,
 			Label:    "Model",
@@ -178,6 +190,7 @@ func ProviderFormSpecFromInput(input ProviderFormSpecInput) ProviderFormSpec {
 			Value:    strings.TrimSpace(input.ReasoningEffort),
 			Status:   firstNonEmptyTrimmed(input.ReasoningEffort, defaultReasoningEffort),
 			Options:  reasoningOptions,
+			Choices:  providerReasoningChoices(input.ReasoningEffort, defaultReasoningEffort, reasoningOptions),
 			Picker:   true,
 			Editable: true,
 		})
@@ -188,6 +201,7 @@ func ProviderFormSpecFromInput(input ProviderFormSpecInput) ProviderFormSpec {
 			Label:    "Tool use",
 			Value:    string(providers.NormalizeOptionalToolUseMode(input.ToolUseMode)),
 			Status:   ProviderFormToolUseModeStatus(input.ToolUseMode),
+			Choices:  providerToolUseChoices(input.ToolUseMode),
 			Picker:   true,
 			Editable: true,
 		})
@@ -219,6 +233,69 @@ func providerBaseURLValues(options []providers.BaseURLOption) []string {
 		}
 	}
 	return values
+}
+
+func providerBaseURLChoices(current string, options []providers.BaseURLOption) []ProviderFormChoice {
+	current = strings.TrimSpace(current)
+	choices := make([]ProviderFormChoice, 0, len(options))
+	for _, option := range options {
+		value := strings.TrimSpace(option.URL)
+		if value == "" {
+			continue
+		}
+		id := strings.TrimSpace(option.ID)
+		if id == "" {
+			id = value
+		}
+		title := strings.TrimSpace(option.Name)
+		if title == "" {
+			title = value
+		}
+		choices = append(choices, ProviderFormChoice{
+			ID:       id,
+			Title:    title,
+			Status:   value,
+			Value:    value,
+			Selected: value == current,
+		})
+	}
+	return choices
+}
+
+func providerReasoningChoices(current string, fallback string, options []string) []ProviderFormChoice {
+	current = providers.NormalizeReasoningEffort(current)
+	if current == "" {
+		current = providers.NormalizeReasoningEffort(fallback)
+	}
+	choices := make([]ProviderFormChoice, 0, len(options))
+	for _, option := range options {
+		option = providers.NormalizeReasoningEffort(option)
+		if option == "" {
+			continue
+		}
+		choices = append(choices, ProviderFormChoice{
+			ID:       option,
+			Title:    strings.Title(option),
+			Value:    option,
+			Selected: option == current,
+		})
+	}
+	return choices
+}
+
+func providerToolUseChoices(current providers.ToolUseMode) []ProviderFormChoice {
+	normalized := providers.NormalizeToolUseMode(current)
+	modes := ProviderFormToolUseModes()
+	choices := make([]ProviderFormChoice, 0, len(modes))
+	for _, mode := range modes {
+		choices = append(choices, ProviderFormChoice{
+			ID:       string(mode),
+			Title:    ProviderFormToolUseModeStatus(mode),
+			Value:    string(mode),
+			Selected: providers.NormalizeToolUseMode(mode) == normalized,
+		})
+	}
+	return choices
 }
 
 func providerBaseURLStatus(baseURL string, options []providers.BaseURLOption) string {

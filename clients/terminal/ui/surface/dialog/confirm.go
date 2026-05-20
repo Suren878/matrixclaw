@@ -11,16 +11,13 @@ import (
 const ConfirmRunCancelID = "confirm_run_cancel"
 
 type ConfirmRunCancel struct {
-	runID    string
-	selected int
-	keyMap   twoButtonConfirmKeyMap
+	runID string
+	state commandui.ConfirmState
 }
 
 func NewConfirmRunCancel(_ *surfacecommon.Common, runID string) *ConfirmRunCancel {
 	return &ConfirmRunCancel{
-		runID:    runID,
-		selected: 0,
-		keyMap:   defaultTwoButtonConfirmKeyMap(),
+		runID: runID,
 	}
 }
 
@@ -29,11 +26,15 @@ func (d *ConfirmRunCancel) ID() string {
 }
 
 func (d *ConfirmRunCancel) HandleMsg(msg tea.Msg) Action {
-	switch handleTwoButtonConfirmKey(msg, &d.selected, d.keyMap) {
-	case twoButtonConfirmKeyClose:
+	keyMsg, ok := msg.(tea.KeyPressMsg)
+	if !ok {
+		return nil
+	}
+	switch d.state.Update(keyMsg.String()).Kind {
+	case commandui.EventCancel:
 		return ActionConfirmRunCancel{RunID: d.runID, Confirmed: false}
-	case twoButtonConfirmKeySelect:
-		return ActionConfirmRunCancel{RunID: d.runID, Confirmed: d.selected == 0}
+	case commandui.EventSubmit:
+		return ActionConfirmRunCancel{RunID: d.runID, Confirmed: true}
 	}
 	return nil
 }
@@ -43,7 +44,7 @@ func (d *ConfirmRunCancel) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 		Message:       "The current response will stop and the run will be marked as canceled.",
 		ConfirmLabel:  "Cancel request",
 		CancelLabel:   "Keep waiting",
-		Selected:      d.selected,
+		Selected:      d.state.Selected,
 		ConfirmDanger: true,
 	})
 	DrawCenter(scr, area, view)

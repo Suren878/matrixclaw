@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -169,6 +170,58 @@ func TestBashProcessProbeNoMatchIsNotError(t *testing.T) {
 	}
 	if meta.ExitCode != 1 {
 		t.Fatalf("ExitCode = %d, want 1", meta.ExitCode)
+	}
+}
+
+func TestSearchHelpersReturnContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "notes.txt"), []byte("alpha\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, _, err := globFiles(ctx, "*.txt", root, defaultSearchLimit); !errors.Is(err, context.Canceled) {
+		t.Fatalf("globFiles() error = %v, want context.Canceled", err)
+	}
+	if _, _, err := grepFiles(ctx, "alpha", root, "", defaultSearchLimit); !errors.Is(err, context.Canceled) {
+		t.Fatalf("grepFiles() error = %v, want context.Canceled", err)
+	}
+}
+
+func TestJobOutputWaitReturnsContextCancellation(t *testing.T) {
+	args, _ := json.Marshal(BashParams{
+		Command:         "sleep 10",
+		RunInBackground: true,
+	})
+	bgResult, err := NewBashExecutor().Execute(context.Background(), Call{
+		WorkingDir: t.TempDir(),
+		Approved:   true,
+		Args:       args,
+	})
+	if err != nil {
+		t.Fatalf("background bash Execute() error = %v", err)
+	}
+	if bgResult.Background == nil {
+		t.Fatal("background bash did not return job metadata")
+	}
+	t.Cleanup(func() {
+		_ = defaultJobManager.kill(bgResult.Background.ID)
+	})
+
+	waitArgs, _ := json.Marshal(JobOutputParams{ShellID: bgResult.Background.ID, Wait: true})
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	started := time.Now()
+	_, err = NewJobOutputExecutor().Execute(ctx, Call{Args: waitArgs})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("job_output Execute() error = %v, want context deadline", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("job_output wait cancellation took %s, want under 1s", elapsed)
 	}
 }
 

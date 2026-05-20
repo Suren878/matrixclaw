@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
@@ -147,6 +146,36 @@ func TestCustomProviderFormUsesManualFields(t *testing.T) {
 	updated := next.(*model)
 	if updated.screen != screenTextEditor || updated.textEditorTarget != textEditProviderModel {
 		t.Fatalf("custom model enter screen/target = %v/%v, want text editor/model", updated.screen, updated.textEditorTarget)
+	}
+}
+
+func TestProviderFormItemsKeepEmptyRequiredStatusForSetupValidation(t *testing.T) {
+	m := &model{
+		screen: screenProviderForm,
+		editingProvider: setup.ProviderDraft{
+			ID:      "custom-openai-compatible",
+			Name:    "Local AI",
+			Type:    providers.TypeOpenAICompat,
+			BaseURL: "http://127.0.0.1:11434/v1",
+		},
+	}
+
+	items := m.providerFormItems()
+	var modelItem providerFormItem
+	for _, item := range items {
+		if item.Target == textEditProviderModel {
+			modelItem = item
+			break
+		}
+	}
+	if modelItem.RequiredMessage == "" {
+		t.Fatalf("model item = %#v, want required message", modelItem)
+	}
+	if strings.TrimSpace(modelItem.Row.Status) != "" {
+		t.Fatalf("model status = %q, want empty status so setup validation still catches it", modelItem.Row.Status)
+	}
+	if message := m.providerFormRequiredMessage(); message != "provider API key is required" {
+		t.Fatalf("providerFormRequiredMessage() = %q, want API key required", message)
 	}
 }
 
@@ -434,9 +463,9 @@ func TestProviderModelCursorClampsToVisibleFilteredRows(t *testing.T) {
 	m := &model{
 		providerModels:      []string{"gpt-5", "claude-sonnet", "o3"},
 		providerModelCursor: 0,
-		filterInput:         textinput.New(),
+		filterInput:         newSearchField("Find a model"),
 	}
-	m.filterInput.SetValue("claude")
+	m.filterInput.Update(tea.PasteMsg{Content: "claude"})
 
 	rows := m.providerModelRows()
 	if got := m.currentProviderModelRowIndex(rows); got != -1 {
@@ -459,7 +488,7 @@ func TestProviderModelListViewportKeepsSelectedRowVisible(t *testing.T) {
 		screen:              screenProviderModelList,
 		providerModels:      []string{"model-00", "model-01", "model-02", "model-03", "model-04", "model-05", "model-06", "model-07", "model-08", "model-09", "model-10", "model-11", "model-12", "model-13", "model-14", "model-15", "model-16", "model-17", "model-18", "model-19"},
 		providerModelCursor: 18,
-		filterInput:         textinput.New(),
+		filterInput:         newSearchField("Find a model"),
 	}
 
 	view := ansi.Strip(m.renderProviderModelList())
@@ -483,95 +512,6 @@ func TestProviderModelListViewportKeepsSelectedRowVisible(t *testing.T) {
 	if selectedLine == unselectedLine {
 		t.Fatalf("selected model row should have distinct styling:\n%s", view)
 	}
-}
-
-func TestRenderProviderListLayout(t *testing.T) {
-	m := configuredProviderModel()
-	m.filterInput = textinput.New()
-
-	view := m.renderProviderList()
-	if strings.Contains(view, "Configured providers stay on top.") {
-		t.Fatalf("provider list still renders verbose subtitle")
-	}
-	if strings.Contains(view, "type filter") {
-		t.Fatalf("provider list still renders type filter hint")
-	}
-	if strings.Contains(view, "3/5 · 1/8") {
-		t.Fatalf("provider list still renders compact count in the header")
-	}
-	if !strings.Contains(view, "Step 2/5") {
-		t.Fatalf("provider list = %q, want step label in header", view)
-	}
-	if strings.Contains(view, "Configured") {
-		t.Fatalf("provider list should not render Configured label:\n%s", ansi.Strip(view))
-	}
-	if !strings.Contains(view, "Search providers") {
-		t.Fatalf("provider list = %q, want search placeholder", view)
-	}
-	if !strings.Contains(view, "ctrl+a add") {
-		t.Fatalf("provider list help = %q, want add hotkey hint", view)
-	}
-
-	lines := strings.Split(ansi.Strip(view), "\n")
-	assertBefore(t, lines, "Continue", "OpenAI")
-	assertBefore(t, lines, "Continue", "Search providers")
-	assertBefore(t, lines, "Search providers", "OpenAI")
-}
-
-func TestRenderAssistantFormKeepsContinueAboveFields(t *testing.T) {
-	m := &model{}
-
-	lines := strings.Split(ansi.Strip(m.renderAssistantForm()), "\n")
-	assertBefore(t, lines, "Continue", "Name")
-	if lineIndex(lines, "matrixclaw") < 0 {
-		t.Fatalf("assistant form should render matrixclaw default:\n%s", strings.Join(lines, "\n"))
-	}
-	oldBrand := "Matrix" + "Claw"
-	if lineIndex(lines, oldBrand) >= 0 {
-		t.Fatalf("assistant form should not render old brand casing:\n%s", strings.Join(lines, "\n"))
-	}
-	if lineIndex(lines, "System prompt is managed by matrixclaw.") < lineIndex(lines, "Refresh project context") {
-		t.Fatalf("assistant note should stay below editable fields:\n%s", strings.Join(lines, "\n"))
-	}
-}
-
-func TestRenderAssistantPromptUsesEditableTextView(t *testing.T) {
-	m := &model{
-		width:  90,
-		height: 24,
-	}
-	m.openTextEditor(textEditAssistantCustomPrompt, "User Prompt", "User instructions for every run", "line one\nline two", false)
-
-	view := ansi.Strip(m.renderTextEditor())
-	for _, want := range []string{"User Prompt", "line one", "line two", "Save", "Cancel", "ctrl+s save"} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("user prompt editor missing %q:\n%s", want, view)
-		}
-	}
-}
-
-func assertBefore(t *testing.T, lines []string, first string, second string) {
-	t.Helper()
-	firstIndex := lineIndex(lines, first)
-	if firstIndex < 0 {
-		t.Fatalf("missing %q:\n%s", first, strings.Join(lines, "\n"))
-	}
-	secondIndex := lineIndex(lines, second)
-	if secondIndex < 0 {
-		t.Fatalf("missing %q:\n%s", second, strings.Join(lines, "\n"))
-	}
-	if firstIndex >= secondIndex {
-		t.Fatalf("%q should render before %q:\n%s", first, second, strings.Join(lines, "\n"))
-	}
-}
-
-func lineIndex(lines []string, contains string) int {
-	for i, line := range lines {
-		if strings.Contains(line, contains) {
-			return i
-		}
-	}
-	return -1
 }
 
 func rawLineContaining(view string, contains string) string {

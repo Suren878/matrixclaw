@@ -16,29 +16,37 @@ const ConfirmCommandID = "confirm_command"
 type ConfirmCommandData = controlplane.ConfirmData
 
 type ConfirmCommand struct {
-	data     ConfirmCommandData
-	selected int
-	keyMap   twoButtonConfirmKeyMap
+	data    ConfirmCommandData
+	state   commandui.ConfirmState
+	loading bool
+	frame   int
 }
 
 func NewConfirmCommand(_ *surfacecommon.Common, data ConfirmCommandData) *ConfirmCommand {
 	return &ConfirmCommand{
-		data:   data,
-		keyMap: defaultTwoButtonConfirmKeyMap(),
+		data: data,
 	}
 }
 
 func (*ConfirmCommand) ID() string { return ConfirmCommandID }
 
 func (d *ConfirmCommand) HandleMsg(msg tea.Msg) Action {
-	switch handleTwoButtonConfirmKey(msg, &d.selected, d.keyMap) {
-	case twoButtonConfirmKeyClose:
-		return d.cancelAction()
-	case twoButtonConfirmKeySelect:
-		if d.selected == 0 {
-			return ActionRunControlplaneCommand{Command: d.data.ConfirmCommand}
+	if _, ok := msg.(loadingTickMsg); ok {
+		if !d.loading {
+			return nil
 		}
+		d.frame = (d.frame + 1) % len(loadingFrames)
+		return ActionCmd{Cmd: loadingTickCmd()}
+	}
+	keyMsg, ok := msg.(tea.KeyPressMsg)
+	if !ok {
+		return nil
+	}
+	switch d.state.Update(keyMsg.String()).Kind {
+	case commandui.EventCancel:
 		return d.cancelAction()
+	case commandui.EventSubmit:
+		return ActionRunControlplaneCommand{Command: d.data.ConfirmCommand}
 	}
 	return nil
 }
@@ -48,16 +56,31 @@ func (d *ConfirmCommand) cancelAction() Action {
 }
 
 func (d *ConfirmCommand) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
+	message := strings.TrimSpace(d.data.Message)
+	if d.loading {
+		message = strings.TrimSpace(message + " " + loadingFrame(d.frame))
+	}
 	view := commandui.RenderConfirmCard(commandui.NewFrame(area.Dx(), area.Dy()), commandui.ConfirmData{
-		Message:       strings.TrimSpace(d.data.Message),
+		Message:       message,
 		ConfirmLabel:  firstNonEmptyTrimmed(d.data.ConfirmLabel, "Confirm"),
 		CancelLabel:   firstNonEmptyTrimmed(d.data.CancelLabel, "Cancel"),
-		Selected:      d.selected,
+		Selected:      d.state.Selected,
 		ConfirmDanger: d.data.ConfirmDanger,
 		CancelDanger:  d.data.CancelDanger,
 	})
 	DrawCenter(scr, area, view)
 	return nil
+}
+
+func (d *ConfirmCommand) StartLoading() tea.Cmd {
+	d.loading = true
+	d.frame = 0
+	return loadingTickCmd()
+}
+
+func (d *ConfirmCommand) StopLoading() {
+	d.loading = false
+	d.frame = 0
 }
 
 func firstNonEmptyTrimmed(values ...string) string {

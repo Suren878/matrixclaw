@@ -14,13 +14,13 @@ func (m *appModel) contextUsageText() string {
 	if m.read == nil {
 		return ""
 	}
-	snapshot := m.read.Snapshot()
+	snapshot := m.currentSnapshot()
 	if snapshot.Session == nil && len(snapshot.Messages) == 0 {
 		return ""
 	}
 	model := strings.TrimSpace(m.currentModelLabel())
 	provider, _ := m.currentSessionLLM()
-	if provider = strings.TrimSpace(provider); provider == "" {
+	if provider = strings.TrimSpace(provider); provider == "" && !sessionIsExternalAgent(snapshot.Session) {
 		provider = strings.TrimSpace(m.providerName)
 	}
 	tokens := estimateMessagesTokens(snapshot.Messages) + m.assistantPromptTokens()
@@ -39,6 +39,14 @@ func (m *appModel) contextUsageText() string {
 		parts = append(parts, provider)
 	}
 	return strings.Join(parts, " · ")
+}
+
+func sessionIsExternalAgent(session *core.Session) bool {
+	if session == nil {
+		return false
+	}
+	return core.NormalizeSessionRuntime(session.RuntimeID) == core.SessionRuntimeExternalAgent ||
+		core.NormalizeSessionKind(session.Kind) == core.SessionKindExternalAgent
 }
 
 func latestHeaderProviderUsage(report *core.ContextReport, messages []surfacemessage.Message) (core.ProviderUsage, bool) {

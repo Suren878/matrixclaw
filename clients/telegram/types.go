@@ -16,6 +16,8 @@ type Message struct {
 	Caption         string      `json:"caption,omitempty"`
 	Photo           []PhotoSize `json:"photo,omitempty"`
 	Document        *Document   `json:"document,omitempty"`
+	Voice           *Voice      `json:"voice,omitempty"`
+	Audio           *Audio      `json:"audio,omitempty"`
 	ReplyToMessage  *Message    `json:"reply_to_message,omitempty"`
 }
 
@@ -31,6 +33,21 @@ type Document struct {
 	FileName string `json:"file_name,omitempty"`
 	MIMEType string `json:"mime_type,omitempty"`
 	FileSize int64  `json:"file_size,omitempty"`
+}
+
+type Voice struct {
+	FileID   string `json:"file_id"`
+	MIMEType string `json:"mime_type,omitempty"`
+	FileSize int64  `json:"file_size,omitempty"`
+	Duration int    `json:"duration,omitempty"`
+}
+
+type Audio struct {
+	FileID   string `json:"file_id"`
+	FileName string `json:"file_name,omitempty"`
+	MIMEType string `json:"mime_type,omitempty"`
+	FileSize int64  `json:"file_size,omitempty"`
+	Duration int    `json:"duration,omitempty"`
 }
 
 type File struct {
@@ -73,6 +90,15 @@ type SendChatActionRequest struct {
 	ChatID          int64  `json:"chat_id"`
 	MessageThreadID int64  `json:"message_thread_id,omitempty"`
 	Action          string `json:"action"`
+}
+
+type SendVoiceRequest struct {
+	ChatID          int64
+	MessageThreadID int64
+	Voice           []byte
+	FileName        string
+	Caption         string
+	MIMEType        string
 }
 
 type SentMessage struct {

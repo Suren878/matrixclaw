@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.1.9
+
+- Added local voice runtime installation with `install.sh --voice-runtime` and
+  `scripts/install_voice_runtime.sh` for Piper, Whisper.cpp, and ffmpeg.
+- Added local Whisper.cpp speech-to-text execution through `whisper-cli` and
+  raised the STT request body limit for longer audio uploads.
+- Added daemon-first Text to Speech and Speech to Text module flows with local
+  provider status, run mode controls, voice/model management, and spinner-backed
+  loading states.
+- Added run-per-task voice execution for memory-efficient defaults, with
+  always-on local runtimes available where they are useful.
+- Fixed local Piper text-to-speech so longer responses are generated without
+  returning only the first chunk.
+- Added Telegram voice delivery gating so TTS tools are exposed only when the
+  client can receive generated audio files.
+- Added storage/temp file documentation and kept Telegram-downloaded files in
+  Matrixclaw storage with collision-safe names.
+- Documented daemon-first architecture, local voice run modes, storage/temp
+  files, Telegram voice/file flow, and open-source voice runtime installation.
+
 ## v0.1.8
 
 - Added session capabilities so Matrixclaw and external-agent sessions expose
@@ -88,9 +108,6 @@
 
 ## v0.1.1
 
-- Added `Kimi (Subscription)` provider for Kimi Code members using the
-  OpenAI-compatible `https://api.kimi.com/coding/v1` endpoint and stable
-  `kimi-for-coding` model.
 - Improved provider setup and TUI provider editing: model pickers now open on
   the active model, tool-use pickers no longer show a misleading active marker,
   and provider edit dialogs keep consistent back/save navigation.

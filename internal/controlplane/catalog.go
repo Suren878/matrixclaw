@@ -40,6 +40,10 @@ const (
 	PickerContext         PickerKind = "context"
 	PickerPlan            PickerKind = "plan"
 	PickerModules         PickerKind = "modules"
+	PickerTextToSpeech    PickerKind = "text_to_speech"
+	PickerSpeechToText    PickerKind = "speech_to_text"
+	PickerVoiceEnabled    PickerKind = "voice_enabled"
+	PickerVoiceProvider   PickerKind = "voice_provider"
 	PickerExternalAgents  PickerKind = "external_agents"
 	PickerExternalAgent   PickerKind = "external_agent"
 	PickerExternalAgentOn PickerKind = "external_agent_enabled"
@@ -64,6 +68,8 @@ type PickerData struct {
 	Meta         string
 	BackCommand  string
 	CloseCommand string
+	HasBack      bool
+	HasClose     bool
 	HideBackItem bool
 	Items        []PickerItem
 }
@@ -92,6 +98,7 @@ type PickerItem struct {
 	Command  string
 	Selected bool
 	Focused  bool
+	Disabled bool
 	Role     PickerItemRole
 }
 

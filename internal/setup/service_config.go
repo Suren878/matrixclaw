@@ -232,7 +232,7 @@ func (s *Service) buildProviderConfig(draft ProviderDraft, existing Config) (Pro
 		apiKeyEnv = option.APIKeyEnv
 	} else {
 		switch providerType {
-		case providers.TypeOpenAICompat, providers.TypeAnthropic:
+		case providers.TypeOpenAICompat, providers.TypeOpenAICodex, providers.TypeAnthropic:
 		default:
 			return ProviderConfig{}, fmt.Errorf("unsupported provider type %q", providerType)
 		}
@@ -249,13 +249,13 @@ func (s *Service) buildProviderConfig(draft ProviderDraft, existing Config) (Pro
 		catalogID = ""
 	}
 
-	apiKey := strings.TrimSpace(draft.APIKey)
+	apiKey := normalizeProviderAPIKey(draft.APIKey)
 	if apiKey == "" && draft.HasStoredAPIKey {
 		if stored, ok := findProviderConfig(existing, providerID); ok {
-			apiKey = strings.TrimSpace(stored.APIKey)
+			apiKey = normalizeProviderAPIKey(stored.APIKey)
 		}
 	}
-	if apiKey == "" && strings.TrimSpace(providerAPIKeyFromEnvName(apiKeyEnv)) == "" {
+	if apiKey == "" && providerType != providers.TypeOpenAICodex && normalizeProviderAPIKey(providerAPIKeyFromEnvName(apiKeyEnv)) == "" {
 		return ProviderConfig{}, fmt.Errorf("%s API key is required", providerDisplayName(draft, option, hasOption))
 	}
 

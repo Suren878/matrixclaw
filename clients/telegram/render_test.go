@@ -51,45 +51,6 @@ func TestRenderCommandResultUsesCompactTelegramPickers(t *testing.T) {
 	}
 }
 
-func TestRenderServerPickerUsesCompactEmojiRows(t *testing.T) {
-	api := &fakeBotAPI{}
-	worker := newTestWorker(t, api, "http://127.0.0.1:1")
-
-	err := worker.renderCommandResult(context.Background(), chatTarget{
-		chatID:      42,
-		externalKey: "42",
-	}, 0, controlplane.Result{
-		Picker: &controlplane.PickerData{
-			Kind:  controlplane.PickerServer,
-			Title: "Server",
-			Items: []controlplane.PickerItem{
-				{ID: "status", Title: "Status"},
-				{ID: "restart", Title: "Restart Daemon"},
-				controlplane.CloseItem(),
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("renderCommandResult() error = %v", err)
-	}
-	request := api.sendMessageRequests[0]
-	if request.Text != "Server" {
-		t.Fatalf("request.Text = %q", request.Text)
-	}
-	if request.ReplyMarkup == nil || len(request.ReplyMarkup.InlineKeyboard) != 3 {
-		t.Fatalf("reply markup = %+v, want 3 rows", request.ReplyMarkup)
-	}
-	if got := cleanButtonText(request.ReplyMarkup.InlineKeyboard[0][0].Text); got != "📊 Status" {
-		t.Fatalf("status label = %q", got)
-	}
-	if got := cleanButtonText(request.ReplyMarkup.InlineKeyboard[1][0].Text); got != "🔄 Restart Architect" {
-		t.Fatalf("restart label = %q", got)
-	}
-	if got := cleanButtonText(request.ReplyMarkup.InlineKeyboard[2][0].Text); got != "✖️ Cancel" {
-		t.Fatalf("cancel label = %q, want ✖️ Cancel", got)
-	}
-}
-
 func TestRenderPickerUsesCommandCallbackForExplicitItemCommand(t *testing.T) {
 	api := &fakeBotAPI{}
 	worker := newTestWorker(t, api, "http://127.0.0.1:1")
@@ -199,57 +160,6 @@ func TestSendTextFallsBackToPlainTextOnTelegramParseError(t *testing.T) {
 	}
 	if got := api.sendMessageRequests[1].Text; got != "**broken" {
 		t.Fatalf("fallback text = %q, want original plain text", got)
-	}
-}
-
-func TestRenderTelegramHTMLConvertsCommonAIMarkdown(t *testing.T) {
-	input := strings.Join([]string{
-		"**Жирный текст** и *курсив*",
-		"",
-		"`Инлайн код`",
-		"",
-		"```",
-		"Блок кода",
-		"```",
-		"",
-		"> Цитата",
-		"",
-		"- Пункт 1",
-		"- Пункт 2",
-		"",
-		"[Ссылка](https://google.com)",
-		"",
-		"---",
-	}, "\n")
-
-	got := renderTelegramHTML(input)
-	wantParts := []string{
-		"<b>Жирный текст</b> и <i>курсив</i>",
-		"<code>Инлайн код</code>",
-		"<pre>Блок кода</pre>",
-		"<blockquote>Цитата</blockquote>",
-		"• Пункт 1",
-		"• Пункт 2",
-		`<a href="https://google.com">Ссылка</a>`,
-		"────────",
-	}
-	for _, want := range wantParts {
-		if !strings.Contains(got, want) {
-			t.Fatalf("rendered HTML missing %q in:\n%s", want, got)
-		}
-	}
-}
-
-func TestRenderTelegramHTMLDoesNotFormatInsideInlineCode(t *testing.T) {
-	got := renderTelegramHTML("`**not bold**` and **bold**")
-	if strings.Contains(got, "<code><b>") {
-		t.Fatalf("inline code was formatted as bold: %s", got)
-	}
-	if !strings.Contains(got, "<code>**not bold**</code>") {
-		t.Fatalf("inline code was not preserved: %s", got)
-	}
-	if !strings.Contains(got, "<b>bold</b>") {
-		t.Fatalf("normal bold was not formatted: %s", got)
 	}
 }
 

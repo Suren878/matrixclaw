@@ -172,6 +172,13 @@ func newTextField(placeholder string, value string, secret bool) terminaltextfie
 	)
 }
 
+func newSearchField(placeholder string) terminaltextfield.Model {
+	return terminaltextfield.New(placeholder, "",
+		terminaltextfield.WithCharLimit(128),
+		terminaltextfield.WithWidth(64),
+	)
+}
+
 func newTextArea(placeholder string, value string) textarea.Model {
 	input := textarea.New()
 	input.Prompt = ""
@@ -214,8 +221,5 @@ func (m *model) syncTextAreaSize() {
 }
 
 func (m *model) resetFilter(placeholder string) {
-	m.filterInput.SetValue("")
-	m.filterInput.Placeholder = placeholder
-	m.filterInput.CursorEnd()
-	m.filterInput.Focus()
+	m.filterInput = newSearchField(placeholder)
 }

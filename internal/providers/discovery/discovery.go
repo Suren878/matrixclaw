@@ -10,6 +10,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 	anthropic "github.com/Suren878/matrixclaw/internal/providers/ai/anthropiccompat"
 	"github.com/Suren878/matrixclaw/internal/providers/ai/gemini"
+	"github.com/Suren878/matrixclaw/internal/providers/ai/openaicodex"
 	"github.com/Suren878/matrixclaw/internal/providers/ai/openaicompat"
 )
 
@@ -23,7 +24,7 @@ type ModelDiscoveryInput struct {
 }
 
 func Models(ctx context.Context, input ModelDiscoveryInput) ([]string, error) {
-	if strings.TrimSpace(input.APIKey) == "" {
+	if strings.TrimSpace(input.APIKey) == "" && providers.NormalizeProviderType(input.Type) != providers.TypeOpenAICodex {
 		return nil, errors.New("enter a valid API key first")
 	}
 
@@ -68,6 +69,12 @@ func fetchRemoteModels(ctx context.Context, input ModelDiscoveryInput) ([]string
 	profile := providers.ProfileForProvider(providerType)
 
 	switch profile.RuntimeProviderType {
+	case providers.TypeOpenAICodex:
+		return openaicodex.ListModels(ctx, openaicodex.Config{
+			BaseURL: strings.TrimSpace(input.BaseURL),
+			Model:   strings.TrimSpace(input.Model),
+			Profile: profile,
+		})
 	case providers.TypeOpenAICompat:
 		return openaicompat.ListModels(ctx, openaicompat.Config{
 			APIKey:  strings.TrimSpace(input.APIKey),

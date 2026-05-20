@@ -32,51 +32,65 @@ func PickerItemCommand(picker PickerData, item PickerItem) string {
 	if command := strings.TrimSpace(item.Command); command != "" {
 		return command
 	}
-	if command := pickerItemNavigationCommand(picker, item); command != "" {
+	if command, ok := pickerItemNavigationCommand(picker, item); ok {
 		return command
 	}
 	return PickerCommandFor(picker.Kind, picker.ContextID, item.ID)
 }
 
-func pickerItemNavigationCommand(picker PickerData, item PickerItem) string {
+func pickerItemNavigationCommand(picker PickerData, item PickerItem) (string, bool) {
 	switch {
 	case item.IsBack():
-		return strings.TrimSpace(picker.BackCommand)
+		return pickerBackCommand(picker)
 	case item.IsCancel():
-		return strings.TrimSpace(picker.CloseCommand)
+		return pickerCloseCommand(picker)
 	default:
-		return ""
+		return "", false
 	}
 }
 
 func PickerCloseCommand(picker PickerData) string {
-	if command := strings.TrimSpace(picker.CloseCommand); command != "" {
+	if command, ok := pickerBackCommand(picker); ok {
 		return command
 	}
-	if command := strings.TrimSpace(picker.BackCommand); command != "" {
+	if command, ok := pickerCloseCommand(picker); ok {
 		return command
 	}
 	return PickerCommandFor(picker.Kind, picker.ContextID, "cancel")
 }
 
+func pickerBackCommand(picker PickerData) (string, bool) {
+	if !picker.HasBack {
+		return "", false
+	}
+	return strings.TrimSpace(picker.BackCommand), true
+}
+
+func pickerCloseCommand(picker PickerData) (string, bool) {
+	if !picker.HasClose {
+		return "", false
+	}
+	return strings.TrimSpace(picker.CloseCommand), true
+}
+
 func PickerCommandLabel(picker PickerData) string {
 	switch picker.Kind {
 	case PickerSessions:
-		return "/sessions"
+		return sessionsCommand()
 	case PickerSessionActions:
-		return "/session"
+		return sessionCommand()
 	case PickerProvider, PickerProviderCustom, PickerProviderActions:
-		return "/provider"
+		return providerCommand()
 	case PickerPermissions:
-		return "/permissions"
+		return permissionsCommand()
 	case PickerContext:
-		return "/context"
-	case PickerModules, PickerExternalAgents, PickerExternalAgent, PickerExternalAgentOn, PickerStorage, PickerStorageFiles, PickerStorageFile, PickerStorageTemp, PickerStorageCleanup, PickerStorageTempFile:
-		return "/modules"
+		return contextCommand()
+	case PickerModules, PickerTextToSpeech, PickerSpeechToText, PickerVoiceEnabled, PickerVoiceProvider, PickerExternalAgents, PickerExternalAgent, PickerExternalAgentOn, PickerStorage, PickerStorageFiles, PickerStorageFile, PickerStorageTemp, PickerStorageCleanup, PickerStorageTempFile:
+		return modulesCommand()
 	case PickerTasks, PickerTaskActions, PickerTaskArchive:
-		return "/tasks"
+		return tasksCommand()
 	case PickerServer:
-		return "/server"
+		return serverCommand()
 	default:
 		return strings.TrimSpace(picker.Title)
 	}

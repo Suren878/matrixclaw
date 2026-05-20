@@ -13,7 +13,9 @@ install_dir="${MATRIXCLAW_INSTALL_DIR:-"$home_dir/.local/bin"}"
 run_setup="${MATRIXCLAW_RUN_SETUP:-1}"
 from_source=0
 self_test=0
+voice_runtime=0
 release_tmp=""
+resolved_release_tag=""
 
 cleanup_release_tmp() {
   if [[ -n "${release_tmp:-}" ]]; then
@@ -26,7 +28,7 @@ usage() {
 Install matrixclaw.
 
 Usage:
-  install.sh [--version TAG] [--install-dir DIR] [--no-setup] [--from-source] [--self-test]
+  install.sh [--version TAG] [--install-dir DIR] [--no-setup] [--from-source] [--voice-runtime] [--self-test]
 
 Environment:
   MATRIXCLAW_REPO         GitHub repo, default Suren878/matrixclaw
@@ -60,6 +62,10 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --from-source)
       from_source=1
+      shift
+      ;;
+    --voice-runtime)
+      voice_runtime=1
       shift
       ;;
     --self-test)
@@ -236,6 +242,7 @@ install_from_release() {
     echo "install.sh: could not resolve release tag for ${repo}" >&2
     exit 1
   fi
+  resolved_release_tag="$tag"
 
   archive="$(archive_name "$tag" "$os" "$arch")"
   url="https://github.com/${repo}/releases/download/${tag}/${archive}"
@@ -274,6 +281,25 @@ install_from_release() {
   install -m 0755 "$release_tmp/matrixclawd" "$install_dir/matrixclawd"
 }
 
+install_voice_runtime() {
+  local root script_url
+  root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+  if [[ -f "$root/scripts/install_voice_runtime.sh" && -d "$root/cmd/matrixclaw" ]]; then
+    bash "$root/scripts/install_voice_runtime.sh" --all
+    return
+  fi
+  need_cmd curl
+  local tag="$resolved_release_tag"
+  if [[ -z "$tag" || "$tag" == "latest" ]]; then
+    tag="$version"
+  fi
+  if [[ -z "$tag" || "$tag" == "latest" ]]; then
+    tag="$(latest_tag)"
+  fi
+  script_url="https://raw.githubusercontent.com/${repo}/${tag}/scripts/install_voice_runtime.sh"
+  curl -fsSL "$script_url" | bash -s -- --all
+}
+
 if [[ "$self_test" == "1" ]]; then
   run_self_test
   exit 0
@@ -288,7 +314,16 @@ fi
 echo "[3/4] Preparing local directories"
 mkdir -p "$home_dir/.config/matrixclaw" "$home_dir/.local/state/matrixclaw"
 
-echo "[4/4] Installed matrixclaw"
+if [[ "$voice_runtime" == "1" ]]; then
+  echo "[4/5] Preparing local voice runtime"
+  install_voice_runtime
+fi
+
+if [[ "$voice_runtime" == "1" ]]; then
+  echo "[5/5] Installed matrixclaw"
+else
+  echo "[4/4] Installed matrixclaw"
+fi
 echo "  $install_dir/matrixclaw"
 echo "  $install_dir/matrixclawd"
 

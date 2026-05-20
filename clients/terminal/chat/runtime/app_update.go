@@ -52,6 +52,7 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case surfacedialog.ActionExternalEditor:
 		return m, m.handleExternalEditorAction()
 	case surfacedialog.ActionOpenCommands:
+		m.invalidateControlplaneResults()
 		return m, m.openCommandsDialogCmd()
 	case surfacedialog.ActionRunControlplaneCommand:
 		return m, m.handleRunControlplaneCommand(msg)
@@ -60,6 +61,7 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case surfacedialog.ActionCmd:
 		return m, msg.Cmd
 	case surfacedialog.ActionClose:
+		m.invalidateControlplaneResults()
 		m.dialog.CloseFrontDialog()
 		return m, nil
 	case controlplaneResultMsg:

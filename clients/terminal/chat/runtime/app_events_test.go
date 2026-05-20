@@ -9,6 +9,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/clients/terminal/chat/viewmodel"
 	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
+	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 )
@@ -183,6 +184,53 @@ func TestCurrentModelLabelPrefersSessionModelOverMessageHistory(t *testing.T) {
 
 	if got := model.currentModelLabel(); got != "glm-4.7" {
 		t.Fatalf("currentModelLabel() = %q, want glm-4.7", got)
+	}
+}
+
+func TestExternalAgentSessionDoesNotExposeProviderLabel(t *testing.T) {
+	model := newApp(nil, nil)
+	snapshot := core.ClientSnapshot{
+		SessionID: "session-1",
+		Session: &core.Session{
+			ID:         "session-1",
+			Kind:       core.SessionKindExternalAgent,
+			RuntimeID:  core.SessionRuntimeExternalAgent,
+			ProviderID: "deepseek",
+			ModelID:    "gpt-5.5",
+		},
+	}
+	model.read = viewmodel.NewReadModel(snapshot)
+
+	provider, modelID := model.currentSessionLLM()
+	if provider != "" || modelID != "gpt-5.5" {
+		t.Fatalf("currentSessionLLM() = %q/%q, want empty provider/gpt-5.5", provider, modelID)
+	}
+	if got := model.currentModelLabel(); got != "gpt-5.5" {
+		t.Fatalf("currentModelLabel() = %q, want gpt-5.5", got)
+	}
+}
+
+func TestApplySnapshotClearsTransientPlanSummaryOnSessionChange(t *testing.T) {
+	now := time.Now().UTC()
+	model := newApp(nil, nil)
+	model.session = "session-1"
+	model.transientMessages = []surfacemessage.Message{
+		newPlanSummaryTransientMessageAt("✅ Plan Finished\n[✓] old", core.RunStatusCompleted, now),
+	}
+	model.planPanelOpen = true
+	model.planAutoRun = true
+	model.planResumePrompted = true
+
+	model.applySnapshot(core.ClientSnapshot{
+		SessionID: "session-2",
+		Session:   &core.Session{ID: "session-2"},
+	}, true)
+
+	if len(model.transientMessages) != 0 {
+		t.Fatalf("transient messages = %#v, want cleared", model.transientMessages)
+	}
+	if model.planPanelOpen || model.planAutoRun || model.planResumePrompted {
+		t.Fatalf("plan state open=%v auto=%v prompted=%v, want cleared", model.planPanelOpen, model.planAutoRun, model.planResumePrompted)
 	}
 }
 

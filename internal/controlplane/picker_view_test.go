@@ -7,6 +7,7 @@ func TestPickerViewItemsAddsCommandsAndSeparators(t *testing.T) {
 		Kind:        PickerProviderActions,
 		ContextID:   "local-ai",
 		BackCommand: "/provider",
+		HasBack:     true,
 		Items: []PickerItem{
 			{ID: "use", Title: "Use", Command: "/provider use local-ai"},
 			{ID: "delete", Title: "Delete", Role: PickerItemRoleDanger, Command: "/provider custom delete local-ai"},
@@ -28,7 +29,7 @@ func TestPickerViewItemsAddsCommandsAndSeparators(t *testing.T) {
 }
 
 func TestPickerItemCommandPrefersExplicitCommand(t *testing.T) {
-	picker := PickerData{Kind: PickerProviderActions, ContextID: "local-ai", BackCommand: "/provider"}
+	picker := PickerData{Kind: PickerProviderActions, ContextID: "local-ai", BackCommand: "/provider", HasBack: true}
 	item := PickerItem{ID: "use", Command: "/custom command"}
 	if got := PickerItemCommand(picker, item); got != "/custom command" {
 		t.Fatalf("PickerItemCommand = %q, want explicit command", got)
@@ -64,12 +65,62 @@ func TestPickerBuilderPreservesExplicitAndPlainItems(t *testing.T) {
 	}
 }
 
-func TestPickerCloseCommandUsesExplicitCloseThenBack(t *testing.T) {
-	if got := PickerCloseCommand(PickerData{CloseCommand: "/close", BackCommand: "/back"}); got != "/close" {
-		t.Fatalf("close command = %q, want /close", got)
-	}
-	if got := PickerCloseCommand(PickerData{BackCommand: "/back"}); got != "/back" {
+func TestPickerCloseCommandUsesBackBeforeExplicitClose(t *testing.T) {
+	if got := PickerCloseCommand(PickerData{CloseCommand: "/close", BackCommand: "/back", HasClose: true, HasBack: true}); got != "/back" {
 		t.Fatalf("close command = %q, want /back", got)
+	}
+	if got := PickerCloseCommand(PickerData{BackCommand: "/back", HasBack: true}); got != "/back" {
+		t.Fatalf("close command = %q, want /back", got)
+	}
+	if got := PickerCloseCommand(PickerData{Kind: PickerProviderCustom, CloseCommand: "", HasClose: true}); got != "" {
+		t.Fatalf("explicit empty close command = %q, want empty", got)
+	}
+	if got := PickerCloseCommand(PickerData{Kind: PickerProviderCustom, BackCommand: "", HasBack: true}); got != "" {
+		t.Fatalf("explicit empty back command = %q, want empty", got)
+	}
+}
+
+func TestPickerItemCommandHonorsExplicitEmptyNavigation(t *testing.T) {
+	picker := PickerData{
+		Kind:         PickerProviderCustom,
+		BackCommand:  "",
+		CloseCommand: "",
+		HasBack:      true,
+		HasClose:     true,
+	}
+	if got := PickerItemCommand(picker, BackItem()); got != "" {
+		t.Fatalf("empty back command = %q, want no fallback command", got)
+	}
+	if got := PickerItemCommand(picker, CloseItem()); got != "" {
+		t.Fatalf("empty close command = %q, want no fallback command", got)
+	}
+}
+
+func TestPickerBuilderPreservesExplicitEmptyNavigation(t *testing.T) {
+	stackBack := NewPickerData(PickerProviderCustom, "Model").
+		Back("").
+		Row("gpt-next", "gpt-next", "", "/provider edit set model token gpt-next").
+		Build()
+	if !stackBack.HasBack || !stackBack.HasClose {
+		t.Fatalf("stack back picker flags = back:%v close:%v, want explicit flags", stackBack.HasBack, stackBack.HasClose)
+	}
+	if got := PickerCloseCommand(stackBack); got != "" {
+		t.Fatalf("stack back close command = %q, want empty", got)
+	}
+
+	stackClose := NewPickerData(PickerStorage, "Storage").
+		Back("/modules").
+		Close("").
+		Row("files", "Files", "").
+		Build()
+	if !stackClose.HasBack || !stackClose.HasClose {
+		t.Fatalf("stack close picker flags = back:%v close:%v, want explicit flags", stackClose.HasBack, stackClose.HasClose)
+	}
+	if got := PickerItemCommand(stackClose, BackItem()); got != "/modules" {
+		t.Fatalf("stack close back item command = %q, want /modules", got)
+	}
+	if got := PickerCloseCommand(stackClose); got != "/modules" {
+		t.Fatalf("stack close command = %q, want /modules", got)
 	}
 }
 

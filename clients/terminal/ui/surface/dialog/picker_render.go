@@ -28,13 +28,14 @@ func (p *Picker) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 		return nil
 	}
 	view := commandui.RenderPickerCard(frame, commandui.PickerData{
-		Title:          p.title(),
-		Meta:           p.meta(),
-		Items:          items,
-		Selected:       selected,
-		Footer:         footer,
-		FooterSelected: footerSelected,
-		Help:           p.legend(),
+		Title:           p.title(),
+		Meta:            p.meta(),
+		Items:           items,
+		Selected:        selected,
+		Footer:          footer,
+		FooterSelected:  footerSelected,
+		MinVisibleItems: p.maxVisibleItems(area),
+		Help:            p.legend(),
 	})
 	DrawCenter(scr, area, view)
 	return nil
@@ -42,9 +43,9 @@ func (p *Picker) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 
 func (p *Picker) title() string {
 	if title := strings.TrimSpace(p.data.Title); title != "" {
-		return title
+		return loadingTitle(title, p.loading, p.frame)
 	}
-	return "Choose"
+	return loadingTitle("Choose", p.loading, p.frame)
 }
 
 func (p *Picker) meta() string {

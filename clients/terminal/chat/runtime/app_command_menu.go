@@ -38,14 +38,12 @@ func (m *appModel) commandMenuState() commandmenu.State {
 }
 
 func (m *appModel) currentSessionCapabilities() core.SessionCapabilities {
-	if m.read != nil {
-		snapshot := m.read.Snapshot()
-		if snapshot.Capabilities != nil {
-			return *snapshot.Capabilities
-		}
-		if snapshot.Session != nil {
-			return core.CapabilitiesForSession(*snapshot.Session)
-		}
+	snapshot := m.currentSnapshot()
+	if snapshot.Capabilities != nil {
+		return *snapshot.Capabilities
+	}
+	if snapshot.Session != nil {
+		return core.CapabilitiesForSession(*snapshot.Session)
 	}
 	return core.SessionCapabilities{
 		ProviderSelection: true,
@@ -56,10 +54,7 @@ func (m *appModel) currentSessionCapabilities() core.SessionCapabilities {
 }
 
 func (m *appModel) currentPermissionMode() core.PermissionMode {
-	if m.read == nil {
-		return core.PermissionModeDefault
-	}
-	if session := m.read.Snapshot().Session; session != nil {
+	if session := m.currentSnapshot().Session; session != nil {
 		return core.NormalizePermissionMode(string(session.PermissionMode))
 	}
 	return core.PermissionModeDefault
@@ -69,7 +64,7 @@ func (m *appModel) currentSessionTitle() string {
 	if m.read == nil {
 		return ""
 	}
-	snapshot := m.read.Snapshot()
+	snapshot := m.currentSnapshot()
 	if session := snapshot.Session; session != nil {
 		if title := strings.TrimSpace(session.Title); title != "" {
 			return title
