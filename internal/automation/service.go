@@ -40,6 +40,7 @@ type Service struct {
 	tickInterval time.Duration
 	now          func() time.Time
 	newID        func(prefix string) string
+	deliveries   []core.ClientDeliveryTarget
 	mu           sync.Mutex
 }
 
@@ -68,6 +69,14 @@ func (s *Service) WithTickInterval(interval time.Duration) *Service {
 	if interval > 0 {
 		s.tickInterval = interval
 	}
+	return s
+}
+
+func (s *Service) WithDeliveryTargets(targets []core.ClientDeliveryTarget) *Service {
+	if s == nil {
+		return s
+	}
+	s.deliveries = normalizeDeliveryTargets(targets)
 	return s
 }
 
@@ -354,8 +363,8 @@ func (s *Service) runFire(ctx context.Context, job Job, fire Fire, scheduledFor 
 	if err := s.store.UpdateAutomationFire(ctx, fire); err != nil {
 		return fire, err
 	}
-	if strings.TrimSpace(job.Client) != "" && strings.TrimSpace(job.ExternalKey) != "" {
-		_ = s.createRunDelivery(ctx, job, result)
+	if len(s.deliveryTargetsForJob(job)) > 0 {
+		_ = s.createRunDeliveries(ctx, job, result)
 	}
 	if err := s.advanceJob(ctx, job, scheduledFor); err != nil {
 		return fire, err
@@ -408,7 +417,7 @@ func (s *Service) setJobStatus(ctx context.Context, jobID string, status JobStat
 	return job, nil
 }
 
-func (s *Service) createRunDelivery(ctx context.Context, job Job, result core.AcceptRunResult) error {
+func (s *Service) createRunDeliveries(ctx context.Context, job Job, result core.AcceptRunResult) error {
 	if s == nil {
 		return fmt.Errorf("%w: automation delivery creator not configured", core.ErrExecutionUnavailable)
 	}
@@ -416,18 +425,88 @@ func (s *Service) createRunDelivery(ctx context.Context, job Job, result core.Ac
 	if !ok {
 		return fmt.Errorf("%w: automation delivery creator not configured", core.ErrExecutionUnavailable)
 	}
-	_, err := deliveryCreator.CreateClientDelivery(ctx, core.ClientDelivery{
-		Type:        core.ClientDeliveryTypeAutomationRun,
-		Client:      job.Client,
-		ExternalKey: job.ExternalKey,
-		SessionID:   result.SessionID,
-		RunID:       result.Run.ID,
-		TaskID:      job.ID,
-		Summary:     job.Title,
-		Address:     deliveryAddressForJob(job),
-		Status:      core.ClientDeliveryStatusPending,
-	})
-	return err
+	var firstErr error
+	for _, target := range s.deliveryTargetsForJob(job) {
+		_, err := deliveryCreator.CreateClientDelivery(ctx, core.ClientDelivery{
+			Type:        core.ClientDeliveryTypeAutomationRun,
+			Client:      target.Client,
+			ExternalKey: target.ExternalKey,
+			SessionID:   firstNonEmpty(result.SessionID, target.SessionID),
+			RunID:       firstNonEmpty(result.Run.ID, target.RunID),
+			TaskID:      firstNonEmpty(job.ID, target.TaskID),
+			Summary:     firstNonEmpty(job.Title, target.Summary),
+			Address:     target.Address,
+			Status:      core.ClientDeliveryStatusPending,
+		})
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func (s *Service) deliveryTargetsForJob(job Job) []core.ClientDeliveryTarget {
+	targets := []core.ClientDeliveryTarget{}
+	if strings.TrimSpace(job.Client) != "" && strings.TrimSpace(job.ExternalKey) != "" {
+		targets = append(targets, core.ClientDeliveryTarget{
+			Client:      job.Client,
+			ExternalKey: job.ExternalKey,
+			Address:     deliveryAddressForJob(job),
+		})
+	}
+	targets = append(targets, s.deliveries...)
+	return dedupeDeliveryTargets(targets)
+}
+
+func normalizeDeliveryTargets(targets []core.ClientDeliveryTarget) []core.ClientDeliveryTarget {
+	normalized := make([]core.ClientDeliveryTarget, 0, len(targets))
+	for _, target := range targets {
+		target.Client = strings.TrimSpace(target.Client)
+		target.ExternalKey = strings.TrimSpace(target.ExternalKey)
+		target.SessionID = strings.TrimSpace(target.SessionID)
+		target.RunID = strings.TrimSpace(target.RunID)
+		target.TaskID = strings.TrimSpace(target.TaskID)
+		target.Summary = strings.TrimSpace(target.Summary)
+		if target.Client == "" {
+			continue
+		}
+		if target.ExternalKey == "" && len(target.Address) == 0 {
+			continue
+		}
+		if len(target.Address) == 0 {
+			target.Address = nil
+		}
+		normalized = append(normalized, target)
+	}
+	return normalized
+}
+
+func dedupeDeliveryTargets(targets []core.ClientDeliveryTarget) []core.ClientDeliveryTarget {
+	normalized := normalizeDeliveryTargets(targets)
+	deduped := make([]core.ClientDeliveryTarget, 0, len(normalized))
+	seen := map[string]bool{}
+	for _, target := range normalized {
+		keyPart := target.ExternalKey
+		if len(target.Address) > 0 {
+			keyPart = string(target.Address)
+		}
+		key := strings.ToLower(target.Client) + "\x00" + keyPart
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		deduped = append(deduped, target)
+	}
+	return deduped
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func deliveryAddressForJob(job Job) json.RawMessage {

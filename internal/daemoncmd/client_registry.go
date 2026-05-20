@@ -2,12 +2,15 @@ package daemoncmd
 
 import (
 	"context"
+	"encoding/json"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/Suren878/matrixclaw/clients/telegram"
+	"github.com/Suren878/matrixclaw/internal/core"
 )
 
 type clientRegistry struct {
@@ -139,4 +142,20 @@ func telegramBootstrap(bootstrap bootstrapConfig) telegramClientBootstrap {
 		AllowedUserID: client.Int64Values["allowed_user_id"],
 	}
 	return cfg
+}
+
+func automationDeliveryTargets(bootstrap bootstrapConfig) []core.ClientDeliveryTarget {
+	targets := []core.ClientDeliveryTarget{}
+	cfg := telegramBootstrap(bootstrap)
+	if cfg.Enabled && cfg.BotToken != "" && cfg.AllowedUserID != 0 {
+		address, err := json.Marshal(telegram.DeliveryAddress{ChatID: cfg.AllowedUserID})
+		if err == nil {
+			targets = append(targets, core.ClientDeliveryTarget{
+				Client:      telegram.ClientName,
+				ExternalKey: strconv.FormatInt(cfg.AllowedUserID, 10),
+				Address:     address,
+			})
+		}
+	}
+	return targets
 }

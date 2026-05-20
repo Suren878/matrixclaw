@@ -65,7 +65,8 @@ func Run(ctx context.Context) error {
 	defer runStarter.Close()
 
 	app.WithRunStarter(runStarter)
-	automationService := automation.NewService(automationStore, app, bootstrap.Timezone)
+	automationService := automation.NewService(automationStore, app, bootstrap.Timezone).
+		WithDeliveryTargets(automationDeliveryTargets(bootstrap))
 	toolRegistry := tools.NewCoreCodingRegistry(
 		automation.NewReminderTool(automationService),
 		automation.NewScheduledAITaskTool(automationService),

@@ -233,6 +233,81 @@ func TestServiceCreatesTelegramDeliveryAddress(t *testing.T) {
 	}
 }
 
+func TestServiceCreatesConfiguredDeliveryTarget(t *testing.T) {
+	store := newFakeStore()
+	runner := &fakeDeliveryRunner{}
+	now := time.Date(2026, 4, 25, 10, 0, 0, 0, time.UTC)
+	service := NewService(store, runner, "UTC").
+		WithClock(func() time.Time { return now }).
+		WithDeliveryTargets([]core.ClientDeliveryTarget{{
+			Client:      "telegram",
+			ExternalKey: "42",
+			Address:     json.RawMessage(`{"chat_id":42}`),
+		}})
+	runAt := now.Add(time.Minute)
+
+	_, err := service.CreateJob(context.Background(), CreateJobInput{
+		Kind:         JobKindReminder,
+		SessionID:    "session_1",
+		Client:       "terminal:local",
+		ExternalKey:  "local",
+		ScheduleMode: ScheduleModeOnce,
+		RunAt:        &runAt,
+		Prompt:       "test reminder",
+	})
+	if err != nil {
+		t.Fatalf("CreateJob() error = %v", err)
+	}
+	now = runAt.Add(time.Second)
+	if err := service.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if len(runner.deliveries) != 2 {
+		t.Fatalf("deliveries = %d, want original and configured targets", len(runner.deliveries))
+	}
+	telegramDelivery := runner.deliveries[1]
+	if telegramDelivery.Client != "telegram" || telegramDelivery.ExternalKey != "42" {
+		t.Fatalf("telegram delivery target = %s/%s, want telegram/42", telegramDelivery.Client, telegramDelivery.ExternalKey)
+	}
+	if string(telegramDelivery.Address) != `{"chat_id":42}` {
+		t.Fatalf("telegram delivery address = %s, want chat_id 42", telegramDelivery.Address)
+	}
+}
+
+func TestServiceDedupesConfiguredDeliveryTarget(t *testing.T) {
+	store := newFakeStore()
+	runner := &fakeDeliveryRunner{}
+	now := time.Date(2026, 4, 25, 10, 0, 0, 0, time.UTC)
+	service := NewService(store, runner, "UTC").
+		WithClock(func() time.Time { return now }).
+		WithDeliveryTargets([]core.ClientDeliveryTarget{{
+			Client:      "telegram",
+			ExternalKey: "42:7",
+			Address:     json.RawMessage(`{"chat_id":42,"thread_id":7}`),
+		}})
+	runAt := now.Add(time.Minute)
+
+	_, err := service.CreateJob(context.Background(), CreateJobInput{
+		Kind:         JobKindReminder,
+		SessionID:    "session_1",
+		Client:       "telegram",
+		ExternalKey:  "42:7",
+		ScheduleMode: ScheduleModeOnce,
+		RunAt:        &runAt,
+		Prompt:       "test reminder",
+	})
+	if err != nil {
+		t.Fatalf("CreateJob() error = %v", err)
+	}
+	now = runAt.Add(time.Second)
+	if err := service.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick() error = %v", err)
+	}
+	if len(runner.deliveries) != 1 {
+		t.Fatalf("deliveries = %d, want 1", len(runner.deliveries))
+	}
+}
+
 func TestServiceRejectsPastOnceJob(t *testing.T) {
 	store := newFakeStore()
 	now := time.Date(2026, 4, 25, 10, 0, 0, 0, time.UTC)
