@@ -19,9 +19,11 @@ type fakeDaemonManager struct {
 	applyErr       error
 	inspectErr     error
 	restartErr     error
+	stopErr        error
 	applyCalls     *int
 	inspectCalls   *int
 	restartCalls   *int
+	stopCalls      *int
 }
 
 func (f fakeDaemonManager) Apply(_ context.Context, _ string, cfg Config) (DaemonSummary, []string, error) {
@@ -69,6 +71,21 @@ func (f fakeDaemonManager) Restart(_ context.Context, _ string, cfg Config) (Dae
 		summary.Running = true
 		summary.Enabled = cfg.Daemon.AutostartOnBoot
 	}
+	return summary, nil
+}
+
+func (f fakeDaemonManager) Stop(_ context.Context, _ string, cfg Config) (DaemonSummary, error) {
+	if f.stopCalls != nil {
+		*f.stopCalls = *f.stopCalls + 1
+	}
+	if f.stopErr != nil {
+		return DaemonSummary{}, f.stopErr
+	}
+	summary := daemonConfiguredSummary(cfg)
+	summary.RuntimeStatus = "Stopped"
+	summary.Installed = true
+	summary.Running = false
+	summary.Enabled = cfg.Daemon.AutostartOnBoot
 	return summary, nil
 }
 

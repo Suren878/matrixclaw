@@ -24,6 +24,7 @@ const (
 	CommandServer      = commandcatalog.CommandServer
 	CommandStatus      = commandcatalog.CommandStatus
 	CommandRestart     = commandcatalog.CommandRestart
+	CommandStop        = commandcatalog.CommandStop
 	CommandHelp        = commandcatalog.CommandHelp
 )
 

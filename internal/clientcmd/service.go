@@ -52,6 +52,15 @@ func runServiceCommand(stdout io.Writer, stderr io.Writer, binaryName string, se
 		fmt.Fprintf(stdout, "%s: matrixclaw service restarted\n", binaryName)
 		printServiceSummary(stdout, binaryName, summary)
 		return 0
+	case "stop":
+		fmt.Fprintf(stdout, "%s: stopping matrixclaw service...\n", binaryName)
+		summary, err := stopService(context.Background(), service)
+		if err != nil {
+			return handleSetupReadError(stderr, binaryName, service, "service stop", err)
+		}
+		fmt.Fprintf(stdout, "%s: matrixclaw service stopped\n", binaryName)
+		printServiceSummary(stdout, binaryName, summary)
+		return 0
 	case "logs":
 		return runServiceLogsCommand(stdout, stderr, binaryName, args[1:])
 	case "help", "-h", "--help":
@@ -89,6 +98,7 @@ func printServiceUsage(w io.Writer, binaryName string) {
 	fmt.Fprintln(w, "Usage:")
 	fmt.Fprintf(w, "  %s service status   Print matrixclaw service state\n", binaryName)
 	fmt.Fprintf(w, "  %s service restart  Restart matrixclaw service\n", binaryName)
+	fmt.Fprintf(w, "  %s service stop     Stop matrixclaw service\n", binaryName)
 	fmt.Fprintf(w, "  %s service logs     Print recent matrixclaw service logs\n", binaryName)
 }
 

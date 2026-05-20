@@ -30,6 +30,9 @@ var (
 	restartService = func(ctx context.Context, service *appsetup.Service) (appsetup.DaemonSummary, error) {
 		return service.RestartDaemonContext(ctx)
 	}
+	stopService = func(ctx context.Context, service *appsetup.Service) (appsetup.DaemonSummary, error) {
+		return service.StopDaemonContext(ctx)
+	}
 	readServiceLogs = defaultReadServiceLogs
 	newDaemonClient = func(baseURL string) *daemonclient.Client {
 		return daemonclient.New(baseURL, "doctor", "local")
@@ -122,6 +125,7 @@ func printUsage(w io.Writer, binaryName string) {
 	fmt.Fprintf(w, "  %s update           Check for and install newer releases\n", binaryName)
 	fmt.Fprintf(w, "  %s service status   Print matrixclaw service state\n", binaryName)
 	fmt.Fprintf(w, "  %s service restart  Restart matrixclaw service\n", binaryName)
+	fmt.Fprintf(w, "  %s service stop     Stop matrixclaw service\n", binaryName)
 	fmt.Fprintf(w, "  %s service logs     Print recent matrixclaw service logs\n", binaryName)
 	fmt.Fprintf(w, "  %s providers        List setup provider catalog\n", binaryName)
 	fmt.Fprintf(w, "  %s providers login openai-codex\n", binaryName)

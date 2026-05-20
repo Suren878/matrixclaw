@@ -24,6 +24,7 @@ type daemonManager interface {
 	Apply(ctx context.Context, setupPath string, cfg Config) (DaemonSummary, []string, error)
 	Inspect(ctx context.Context, setupPath string, cfg Config) (DaemonSummary, error)
 	Restart(ctx context.Context, setupPath string, cfg Config) (DaemonSummary, error)
+	Stop(ctx context.Context, setupPath string, cfg Config) (DaemonSummary, error)
 }
 
 type telegramValidator interface {

@@ -312,6 +312,18 @@ func (s *Service) RestartDaemonContext(ctx context.Context) (DaemonSummary, erro
 	return s.daemonManager.Restart(ctx, s.store.Path(), cfg)
 }
 
+func (s *Service) StopDaemonContext(ctx context.Context) (DaemonSummary, error) {
+	cfg, err := s.Load()
+	if err != nil {
+		return DaemonSummary{}, err
+	}
+	summary := daemonConfiguredSummary(cfg)
+	if s.daemonManager == nil {
+		return summary, nil
+	}
+	return s.daemonManager.Stop(ctx, s.store.Path(), cfg)
+}
+
 func (s *Service) SummaryContext(ctx context.Context) (Summary, error) {
 	cfg, err := s.Load()
 	if err != nil {

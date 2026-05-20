@@ -194,6 +194,14 @@ func (r ControlplaneRuntime) RestartDaemon(ctx context.Context) error {
 	return client.RestartDaemon(ctx)
 }
 
+func (r ControlplaneRuntime) StopDaemon(ctx context.Context) error {
+	client, err := r.client("")
+	if err != nil {
+		return err
+	}
+	return client.StopDaemon(ctx)
+}
+
 func (r ControlplaneRuntime) RestartDaemonWithNotification(ctx context.Context) error {
 	client, err := r.client("")
 	if err != nil {

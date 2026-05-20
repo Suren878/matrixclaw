@@ -20,6 +20,7 @@ const (
 	CommandServer      CommandID = "server"
 	CommandStatus      CommandID = "status"
 	CommandRestart     CommandID = "restart"
+	CommandStop        CommandID = "stop"
 	CommandHelp        CommandID = "help"
 )
 
@@ -49,6 +50,7 @@ func Catalog() []CommandSpec {
 		{ID: CommandServer, Command: "/server", Description: "Server", Menu: true, Public: true},
 		{ID: CommandStatus, Command: "/status", Description: "Server status", Menu: false, Public: true},
 		{ID: CommandRestart, Command: "/restart", Description: "Restart daemon", Menu: false, Public: true},
+		{ID: CommandStop, Command: "/stop", Description: "Stop daemon", Menu: false, Public: true},
 		{ID: CommandHelp, Command: "/help", Aliases: []string{"commands", "start"}, Description: "Help", Menu: false, Public: true},
 	}
 }

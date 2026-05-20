@@ -318,6 +318,17 @@ func voiceLocalTTSPicker(module setup.VoiceModuleDescriptor, provider setup.Voic
 		Title:   "Status",
 		Command: voiceModuleCommand(module.ID, "provider-status", provider.ID),
 	})
+	if provider.ID == "piper" {
+		runtimeAction := piperRuntimeInstallAction(provider)
+		picker.Item(PickerItem{
+			ID:       "piper-runtime",
+			Title:    "Piper runtime",
+			Info:     voiceRuntimeInstallInfo(provider),
+			Command:  voiceModuleCommand(module.ID, "provider-action", provider.ID, runtimeAction),
+			Disabled: runtimeAction == "delete-runtime" && voiceRuntimeState(provider) == "running",
+			Role:     piperRuntimeActionRole(runtimeAction),
+		})
+	}
 	if voiceRunModeAlways(provider) {
 		picker.Item(PickerItem{
 			ID:       "runtime",
@@ -727,6 +738,28 @@ func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID stri
 		return Result{}, err
 	}
 	switch action {
+	case "install-runtime":
+		if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: action}); err != nil {
+			return Result{}, err
+		}
+		return d.voiceLocalProviderPicker(ctx, module.ID, provider.ID)
+	case "delete-runtime":
+		if voiceRuntimeState(provider) == "running" {
+			return Result{Handled: true, Text: "Stop the local runtime before deleting Piper runtime."}, nil
+		}
+		return Result{Handled: true, Confirm: &ConfirmData{
+			Message:        "Delete Piper runtime?",
+			ConfirmLabel:   "Delete",
+			CancelLabel:    "Cancel",
+			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, "delete-runtime-confirm"),
+			CancelCommand:  voiceModuleCommand(module.ID, "provider", provider.ID),
+			ConfirmDanger:  true,
+		}}, nil
+	case "delete-runtime-confirm":
+		if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "delete-runtime"}); err != nil {
+			return Result{}, err
+		}
+		return d.voiceLocalProviderPicker(ctx, module.ID, provider.ID)
 	case "download":
 		if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "download", ModelID: modelID}); err != nil {
 			return Result{}, err
@@ -1336,6 +1369,27 @@ func deleteActionInfo(provider setup.VoiceProviderOption) string {
 	return "Remove local files"
 }
 
+func piperRuntimeInstallAction(provider setup.VoiceProviderOption) string {
+	if provider.RuntimeInstalled {
+		return "delete-runtime"
+	}
+	return "install-runtime"
+}
+
+func piperRuntimeActionRole(action string) PickerItemRole {
+	if action == "delete-runtime" {
+		return PickerItemRoleDanger
+	}
+	return PickerItemRoleAction
+}
+
+func voiceRuntimeInstallInfo(provider setup.VoiceProviderOption) string {
+	if provider.RuntimeInstalled {
+		return "Installed"
+	}
+	return "Not installed"
+}
+
 func startActionInfo(provider setup.VoiceProviderOption) string {
 	if !voiceProviderDownloaded(provider) {
 		return "Install local files first"
@@ -1627,7 +1681,7 @@ func ttsRuntimeActionInfo(provider setup.VoiceProviderOption) string {
 
 func voiceLocalTTSStatus(provider setup.VoiceProviderOption) Result {
 	model, hasActive := activeInstalledVoice(provider)
-	rows := []InfoRow{}
+	rows := []InfoRow{{Label: "Runtime", Value: voiceRuntimeInstallInfo(provider)}}
 	if hasActive {
 		rows = append(rows,
 			InfoRow{Label: "Storage", Value: voiceModelStorageStatus(model)},

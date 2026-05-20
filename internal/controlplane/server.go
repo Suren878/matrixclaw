@@ -16,6 +16,7 @@ func (d *Dispatcher) handleServer() Result {
 			HideBack(true).
 			Row("status", "Status", "Uptime, CPU, memory", statusCommand()).
 			Row("restart", "Restart", "", restartCommand()).
+			Row("stop", "Stop", "", stopCommand()).
 			CloseItem().
 			Ptr(),
 	}
@@ -61,6 +62,29 @@ func (d *Dispatcher) handleRestart(ctx context.Context, args string) (Result, er
 		return Result{}, err
 	}
 	return Result{Handled: true, Text: "Server daemon restart requested."}, nil
+}
+
+func (d *Dispatcher) handleStop(ctx context.Context, args string) (Result, error) {
+	if d.server == nil {
+		return unsupportedRuntime("server"), nil
+	}
+	if !strings.EqualFold(strings.TrimSpace(args), "confirm") {
+		return Result{
+			Handled: true,
+			Confirm: &ConfirmData{
+				Message:        "Stop server daemon?",
+				ConfirmLabel:   "Stop",
+				CancelLabel:    "Cancel",
+				ConfirmCommand: stopConfirmCommand(),
+				CancelCommand:  serverCommand(),
+				ConfirmDanger:  true,
+			},
+		}, nil
+	}
+	if err := d.server.StopDaemon(ctx); err != nil {
+		return Result{}, err
+	}
+	return Result{Handled: true, Text: "Server daemon stop requested."}, nil
 }
 
 func FormatServerStatus(status core.ServerStatus) string {

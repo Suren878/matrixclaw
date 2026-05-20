@@ -42,3 +42,19 @@ func (s *Server) handleAdminRestart(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, core.OKResponse{OK: true})
 }
+
+func (s *Server) handleAdminStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+	if s.adminStop == nil {
+		writeErrorMessage(w, http.StatusNotImplemented, "admin stop is not configured")
+		return
+	}
+	if err := s.adminStop(r.Context()); err != nil {
+		writeErrorMessage(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, core.OKResponse{OK: true})
+}

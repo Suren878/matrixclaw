@@ -235,6 +235,65 @@ func TestServiceRestartUsesSetupService(t *testing.T) {
 	}
 }
 
+func TestServiceStopUsesSetupService(t *testing.T) {
+	originalService := newSetupService
+	originalStop := stopService
+	defer func() {
+		newSetupService = originalService
+		stopService = originalStop
+	}()
+
+	setupPath := filepath.Join(t.TempDir(), "setup.json")
+	store := setup.NewFileStore(setupPath)
+	if err := store.Save(setup.Config{
+		Version: setup.CurrentVersion,
+		Daemon: setup.DaemonConfig{
+			HTTPAddr:        "127.0.0.1:8080",
+			DBPath:          "/tmp/matrixclaw.db",
+			AutostartOnBoot: true,
+		},
+		Clients: setup.ClientsConfig{
+			Terminal: setup.TerminalConfig{Enabled: true},
+			Telegram: setup.TelegramConfig{Enabled: false},
+		},
+	}); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	service := setup.NewService(store)
+	newSetupService = func() (*setup.Service, error) {
+		return service, nil
+	}
+
+	stopCalls := 0
+	stopService = func(_ context.Context, got *setup.Service) (setup.DaemonSummary, error) {
+		stopCalls++
+		if got != service {
+			t.Fatal("stop got unexpected service")
+		}
+		return setup.DaemonSummary{
+			RuntimeStatus: "Stopped",
+			HTTPAddr:      "127.0.0.1:8080",
+			DBPath:        "/tmp/matrixclaw.db",
+			Autostart:     true,
+			Running:       false,
+		}, nil
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(IO{Stdout: &stdout, Stderr: &stderr}, "matrixclaw", []string{"service", "stop"})
+
+	if code != 0 {
+		t.Fatalf("Run() code = %d, want 0, stderr=%q", code, stderr.String())
+	}
+	if stopCalls != 1 {
+		t.Fatalf("stopCalls = %d, want 1", stopCalls)
+	}
+	if !strings.Contains(stdout.String(), "matrixclaw service stopped") {
+		t.Fatalf("stdout = %q, want stop success", stdout.String())
+	}
+}
+
 func TestServiceLogsUsesJournalReader(t *testing.T) {
 	originalReadLogs := readServiceLogs
 	defer func() {

@@ -21,6 +21,7 @@ type Server struct {
 	setup        *setup.Service
 	adminReload  func(context.Context) error
 	adminRestart func(context.Context, core.AdminRestartRequest) error
+	adminStop    func(context.Context) error
 	apiToken     string
 	statusMu     sync.RWMutex
 	startedAt    time.Time
@@ -45,6 +46,10 @@ func (s *Server) SetAdminReload(fn func(context.Context) error) {
 
 func (s *Server) SetAdminRestart(fn func(context.Context, core.AdminRestartRequest) error) {
 	s.adminRestart = fn
+}
+
+func (s *Server) SetAdminStop(fn func(context.Context) error) {
+	s.adminStop = fn
 }
 
 func (s *Server) SetSetupService(service *setup.Service) {
@@ -114,6 +119,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/v1/external-agents/", s.handleExternalAgentByID)
 	s.mux.HandleFunc("/v1/admin/reload", s.handleAdminReload)
 	s.mux.HandleFunc("/v1/admin/restart", s.handleAdminRestart)
+	s.mux.HandleFunc("/v1/admin/stop", s.handleAdminStop)
 	s.mux.HandleFunc("/v1/automation/jobs", s.handleAutomationJobs)
 	s.mux.HandleFunc("/v1/automation/jobs/", s.handleAutomationJobByID)
 	s.mux.HandleFunc("/v1/client-deliveries", s.handleClientDeliveries)

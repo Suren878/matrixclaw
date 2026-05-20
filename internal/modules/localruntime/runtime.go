@@ -16,10 +16,12 @@ import (
 )
 
 const (
-	ActionDownload = "download"
-	ActionDelete   = "delete"
-	ActionStart    = "start"
-	ActionStop     = "stop"
+	ActionDownload       = "download"
+	ActionDelete         = "delete"
+	ActionInstallRuntime = "install-runtime"
+	ActionDeleteRuntime  = "delete-runtime"
+	ActionStart          = "start"
+	ActionStop           = "stop"
 
 	RuntimeUnavailable    = "unavailable"
 	RuntimeNotImplemented = "not_implemented"
@@ -83,6 +85,10 @@ func (r *Runtime) DecorateVoiceProvider(moduleID string, provider setup.VoicePro
 	}
 	provider = r.decorateVoiceModels(moduleID, provider)
 	provider.RuntimeRSS = r.VoiceRuntimeRSSBytes(provider)
+	if path, err := r.VoiceBinaryPath(provider); err == nil {
+		provider.RuntimeInstalled = true
+		provider.RuntimePath = path
+	}
 	installed, path := r.VoiceModelInstalled(moduleID, provider)
 	provider.Downloaded = installed
 	provider.ModelPath = path
@@ -260,6 +266,10 @@ func (r *Runtime) ApplyVoiceAction(ctx context.Context, moduleID string, provide
 		return r.downloadVoiceModel(ctx, moduleID, provider)
 	case ActionDelete:
 		return r.deleteVoiceModel(moduleID, provider)
+	case ActionInstallRuntime:
+		return r.installVoiceRuntime(ctx, moduleID, provider)
+	case ActionDeleteRuntime:
+		return r.deleteVoiceRuntime(moduleID, provider)
 	case ActionStart:
 		return r.startVoiceRuntime(ctx, moduleID, provider)
 	case ActionStop:
@@ -267,6 +277,33 @@ func (r *Runtime) ApplyVoiceAction(ctx context.Context, moduleID string, provide
 	default:
 		return provider, fmt.Errorf("unsupported local voice action %q", action)
 	}
+}
+
+func (r *Runtime) installVoiceRuntime(ctx context.Context, moduleID string, provider setup.VoiceProviderOption) (setup.VoiceProviderOption, error) {
+	switch provider.ID {
+	case "piper":
+		if err := r.installPiperRuntime(ctx); err != nil {
+			return provider, err
+		}
+	default:
+		return provider, fmt.Errorf("%s runtime installation is not implemented yet", provider.Name)
+	}
+	return r.DecorateVoiceProvider(moduleID, provider), nil
+}
+
+func (r *Runtime) deleteVoiceRuntime(moduleID string, provider setup.VoiceProviderOption) (setup.VoiceProviderOption, error) {
+	switch provider.ID {
+	case "piper":
+		if err := r.stopPiperProcess(provider); err != nil {
+			return provider, err
+		}
+		if err := os.RemoveAll(filepath.Dir(filepath.Dir(r.managedPiperBinaryPath()))); err != nil {
+			return provider, err
+		}
+	default:
+		return provider, fmt.Errorf("%s runtime deletion is not implemented yet", provider.Name)
+	}
+	return r.DecorateVoiceProvider(moduleID, provider), nil
 }
 
 func voiceProviderForActionTarget(provider setup.VoiceProviderOption, modelID string) setup.VoiceProviderOption {
@@ -395,16 +432,68 @@ func (r *Runtime) VoiceBinaryPath(provider setup.VoiceProviderOption) (string, e
 			return value, nil
 		}
 	}
-	if path, err := exec.LookPath(value); err == nil {
-		return path, nil
-	}
 	if provider.ID == "piper" {
-		path := filepath.Join(r.runtimeDir(), "piper-venv", "bin", "piper")
+		path := r.managedPiperBinaryPath()
 		if info, err := os.Stat(path); err == nil && !info.IsDir() {
 			return path, nil
 		}
 	}
+	if path, err := exec.LookPath(value); err == nil {
+		return path, nil
+	}
 	return "", fmt.Errorf("%s runtime is not installed", provider.Name)
+}
+
+func (r *Runtime) managedPiperBinaryPath() string {
+	return filepath.Join(r.runtimeDir(), "piper-venv", "bin", "piper")
+}
+
+func (r *Runtime) managedPiperPythonPath() string {
+	return filepath.Join(r.runtimeDir(), "piper-venv", "bin", "python")
+}
+
+func (r *Runtime) installPiperRuntime(ctx context.Context) error {
+	if info, err := os.Stat(r.managedPiperBinaryPath()); err == nil && !info.IsDir() {
+		return nil
+	}
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		python, err = exec.LookPath("python")
+	}
+	if err != nil {
+		return fmt.Errorf("Python 3 is required to install Piper runtime")
+	}
+	venvDir := filepath.Dir(filepath.Dir(r.managedPiperBinaryPath()))
+	if err := os.MkdirAll(r.runtimeDir(), 0o755); err != nil {
+		return err
+	}
+	if err := runRuntimeCommand(ctx, python, "-m", "venv", venvDir); err != nil {
+		return err
+	}
+	venvPython := r.managedPiperPythonPath()
+	if err := runRuntimeCommand(ctx, venvPython, "-m", "pip", "install", "--upgrade", "pip"); err != nil {
+		return err
+	}
+	if err := runRuntimeCommand(ctx, venvPython, "-m", "pip", "install", "piper-tts"); err != nil {
+		return err
+	}
+	if info, err := os.Stat(r.managedPiperBinaryPath()); err != nil || info.IsDir() {
+		return fmt.Errorf("Piper runtime installation finished without piper binary")
+	}
+	return nil
+}
+
+func runRuntimeCommand(ctx context.Context, name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		message := strings.TrimSpace(string(output))
+		if message == "" {
+			message = err.Error()
+		}
+		return fmt.Errorf("%s %s failed: %s", filepath.Base(name), strings.Join(args, " "), message)
+	}
+	return nil
 }
 
 func (r *Runtime) PiperTextToSpeech(ctx context.Context, provider setup.VoiceProviderOption, text string) ([]byte, error) {

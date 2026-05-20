@@ -102,6 +102,7 @@ type AutomationRuntime interface {
 type ServerRuntime interface {
 	ServerStatus(ctx context.Context) (core.ServerStatus, error)
 	RestartDaemon(ctx context.Context) error
+	StopDaemon(ctx context.Context) error
 }
 
 type Result struct {
@@ -211,6 +212,8 @@ func (d *Dispatcher) Handle(ctx context.Context, externalKey string, text string
 		return d.handleStatus(ctx)
 	case CommandRestart:
 		return d.handleRestart(ctx, args)
+	case CommandStop:
+		return d.handleStop(ctx, args)
 	default:
 		return Result{Handled: true, Text: "Unknown command.\n\n" + HelpText()}, nil
 	}

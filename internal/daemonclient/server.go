@@ -30,6 +30,11 @@ func (c *Client) RestartDaemon(ctx context.Context) error {
 	return c.doJSON(ctx, http.MethodPost, "/v1/admin/restart", nil, &response)
 }
 
+func (c *Client) StopDaemon(ctx context.Context) error {
+	var response core.OKResponse
+	return c.doJSON(ctx, http.MethodPost, "/v1/admin/stop", nil, &response)
+}
+
 func (c *Client) RestartDaemonWithNotification(ctx context.Context, notification core.ClientDeliveryTarget) error {
 	var response core.OKResponse
 	return c.doJSON(ctx, http.MethodPost, "/v1/admin/restart", core.AdminRestartRequest{Notification: &notification}, &response)

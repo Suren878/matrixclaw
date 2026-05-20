@@ -36,6 +36,7 @@ type fakeRuntime struct {
 	updatedAgentID     string
 	updatedAgent       core.UpdateExternalAgentRequest
 	restarted          bool
+	stopped            bool
 	compacted          bool
 }
 
@@ -305,6 +306,11 @@ func (f *fakeRuntime) ServerStatus(context.Context) (core.ServerStatus, error) {
 
 func (f *fakeRuntime) RestartDaemon(context.Context) error {
 	f.restarted = true
+	return nil
+}
+
+func (f *fakeRuntime) StopDaemon(context.Context) error {
+	f.stopped = true
 	return nil
 }
 
@@ -1383,6 +1389,28 @@ func TestDispatcherStatusAndRestart(t *testing.T) {
 	}
 	if result.Text != "Server daemon restart requested." {
 		t.Fatalf("restart text = %q", result.Text)
+	}
+
+	result, err = d.Handle(context.Background(), "local", "/stop")
+	if err != nil {
+		t.Fatalf("Handle(/stop) error = %v", err)
+	}
+	if result.Confirm == nil || result.Confirm.ConfirmCommand != "/stop confirm" {
+		t.Fatalf("stop confirm = %#v", result.Confirm)
+	}
+	if rt.stopped {
+		t.Fatal("stop should wait for confirmation")
+	}
+
+	result, err = d.Handle(context.Background(), "local", "/stop confirm")
+	if err != nil {
+		t.Fatalf("Handle(/stop confirm) error = %v", err)
+	}
+	if !rt.stopped {
+		t.Fatal("expected daemon stop")
+	}
+	if result.Text != "Server daemon stop requested." {
+		t.Fatalf("stop text = %q", result.Text)
 	}
 }
 

@@ -173,6 +173,7 @@ func compactCommandContext() string {
 		"/provider -> select or edit provider model/settings",
 		"/permissions -> choose ask-first, edits-only, or full-auto approvals for the session",
 		"/restart -> full daemon service restart",
+		"/stop -> stop the daemon service",
 	)
 	return strings.Join(items, "; ")
 }

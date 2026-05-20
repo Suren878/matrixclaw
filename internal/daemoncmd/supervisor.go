@@ -43,6 +43,7 @@ func newSupervisor(ctx context.Context, server *api.Server, app *core.Core) *sup
 	if server != nil {
 		server.SetAdminReload(s.Reload)
 		server.SetAdminRestart(s.RestartDaemon)
+		server.SetAdminStop(s.StopDaemon)
 	}
 	return s
 }
@@ -161,6 +162,38 @@ func (s *supervisor) restartSystemdService(ctx context.Context) error {
 		message = message + "\n" + startMsg
 	}
 	return fmt.Errorf("systemctl restart matrixclawd.service failed: %w: %s", err, message)
+}
+
+func (s *supervisor) StopDaemon(ctx context.Context) error {
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		if err := s.stopSystemdService(context.Background()); err != nil {
+			log.Printf("matrixclawd daemon stop failed: %v", err)
+		}
+	}()
+	return nil
+}
+
+func (s *supervisor) stopSystemdService(ctx context.Context) error {
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return err
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, daemonRestartTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "systemctl", "--user", "stop", daemonSystemdService)
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	message := strings.TrimSpace(string(output))
+	if message == "" {
+		message = "systemctl stop failed"
+	}
+	return fmt.Errorf("systemctl stop matrixclawd.service failed: %w: %s", err, message)
 }
 
 func (s *supervisor) saveRestartDelivery(ctx context.Context, req core.AdminRestartRequest) (core.ClientDelivery, error) {

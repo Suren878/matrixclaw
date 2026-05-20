@@ -93,3 +93,31 @@ func TestAdminRestartCallsConfiguredRestart(t *testing.T) {
 		t.Fatalf("restart request = %#v", got)
 	}
 }
+
+func TestAdminStopCallsConfiguredStop(t *testing.T) {
+	server := New(nil)
+	called := false
+	server.SetAdminStop(func(context.Context) error {
+		called = true
+		return nil
+	})
+
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	req, err := http.NewRequest(http.MethodPost, httpServer.URL+"/v1/admin/stop", nil)
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Do(stop) error = %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("stop status = %d, want 200", resp.StatusCode)
+	}
+	if !called {
+		t.Fatal("expected stop callback")
+	}
+}

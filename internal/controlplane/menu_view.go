@@ -81,6 +81,8 @@ func BuildCommandView(state MenuState) []CommandView {
 			title = "Server Status"
 		case CommandRestart:
 			title = "Restart Daemon"
+		case CommandStop:
+			title = "Stop Daemon"
 		}
 		items = append(items, CommandView{
 			ID:       string(spec.ID),

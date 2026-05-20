@@ -38,6 +38,17 @@ chosen later from:
 Local model files live under `~/.local/state/matrixclaw/local/voice/` by
 default. `MATRIXCLAW_LOCAL_DIR` can override that local module root.
 
+Piper can also be installed from the TUI without running the full voice runtime
+installer:
+
+```text
+/modules -> Text to Speech -> Provider -> Piper -> Piper runtime
+```
+
+That row installs or deletes the managed local `piper-tts` runtime. It is
+separate from `Add voice`: voices are model files, while Piper runtime is the
+native executable that reads those voices.
+
 ## Run Modes
 
 Local voice providers support two modes:

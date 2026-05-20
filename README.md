@@ -230,6 +230,7 @@ matrixclaw agents           list external agent runtimes
 matrixclaw agents start     create an external agent session
 matrixclaw service status   print service state
 matrixclaw service restart  restart service
+matrixclaw service stop     stop service
 matrixclaw service logs     print recent service logs
 matrixclaw tui [WORKDIR]    open terminal chat for the current or given directory
 matrixclawd                 service binary used by systemd/direct launch
@@ -281,7 +282,7 @@ These are client commands, not model tools.
 /modules agents              enable or disable external agent runtimes
 /remind                      create a one-time reminder
 /tasks                       list and manage scheduled AI tasks
-/server, /status, /restart   inspect or restart the local service
+/server, /status, /restart, /stop   inspect, restart, or stop the local service
 ```
 
 For multi-step user requests, the assistant also receives safe plan tools:
@@ -418,7 +419,10 @@ with bundled English and Russian fallbacks. The TUI flow is:
 ```
 
 Choose `Add voice`, pick a language, download a voice, then choose the active
-voice. The status screen reports local model storage and current process RAM.
+voice. Piper also has a separate `Piper runtime` row for installing or deleting
+the managed local `piper-tts` runtime itself; voice downloads and runtime
+installation are intentionally separate. The status screen reports runtime
+state, local model storage, and current process RAM.
 
 Whisper.cpp models are fetched from the upstream Whisper.cpp model catalog when
 available, with bundled size tiers from `tiny` through `large-v3`. Language is

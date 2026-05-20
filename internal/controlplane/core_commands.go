@@ -38,3 +38,12 @@ func restartCommand(parts ...string) string {
 func restartConfirmCommand() string {
 	return restartCommand("confirm")
 }
+
+func stopCommand(parts ...string) string {
+	values := append([]string{"stop"}, parts...)
+	return controlplaneCommand(values...)
+}
+
+func stopConfirmCommand() string {
+	return stopCommand("confirm")
+}
