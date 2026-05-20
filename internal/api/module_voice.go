@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -112,7 +113,50 @@ func (s *Server) handleVoiceProvider(w http.ResponseWriter, r *http.Request, mod
 		writeVoiceError(w, err)
 		return
 	}
+	if strings.EqualFold(strings.TrimSpace(request.Action), localruntime.ActionDownload) {
+		if modules, ok, err := s.persistDownloadedVoiceModel(r.Context(), moduleID, providerID, request.ModelID, updated); err != nil {
+			writeVoiceError(w, err)
+			return
+		} else if ok {
+			if decorated, found := findVoiceProvider(localruntime.New("").DecorateVoiceModules(modules), moduleID, providerID); found {
+				updated = decorated
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, setup.VoiceProviderActionResponse{Provider: updated})
+}
+
+func (s *Server) persistDownloadedVoiceModel(ctx context.Context, moduleID string, providerID string, modelID string, provider setup.VoiceProviderOption) ([]setup.VoiceModuleDescriptor, bool, error) {
+	modelID = strings.TrimSpace(modelID)
+	if modelID == "" {
+		return nil, false, nil
+	}
+	cfg := provider.Config
+	switch moduleID {
+	case setup.VoiceModuleTTS:
+		if providerID != "piper" {
+			return nil, false, nil
+		}
+		cfg.VoiceID = modelID
+		cfg.Language = voiceLanguageFromVoiceID(modelID)
+	case setup.VoiceModuleSTT:
+		if providerID != "whispercpp" {
+			return nil, false, nil
+		}
+		cfg.ModelID = modelID
+	default:
+		return nil, false, nil
+	}
+	modules, err := s.setup.UpdateVoiceModule(moduleID, setup.VoiceModuleUpdate{ProviderID: providerID, ProviderConfig: &cfg})
+	if err != nil {
+		return nil, false, err
+	}
+	if s.adminReload != nil {
+		if err := s.adminReload(ctx); err != nil {
+			return nil, false, err
+		}
+	}
+	return modules, true, nil
 }
 
 func findVoiceProvider(modules []setup.VoiceModuleDescriptor, moduleID string, providerID string) (setup.VoiceProviderOption, bool) {
@@ -127,6 +171,14 @@ func findVoiceProvider(modules []setup.VoiceModuleDescriptor, moduleID string, p
 		}
 	}
 	return setup.VoiceProviderOption{}, false
+}
+
+func voiceLanguageFromVoiceID(voiceID string) string {
+	voiceID = strings.TrimSpace(voiceID)
+	if before, _, ok := strings.Cut(voiceID, "-"); ok {
+		return before
+	}
+	return ""
 }
 
 func (s *Server) handleTextToSpeech(w http.ResponseWriter, r *http.Request) {

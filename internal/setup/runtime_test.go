@@ -61,6 +61,9 @@ func newSystemdApplyTestManager(t *testing.T, runner *fakeRunner, httpClient *ht
 		},
 		checkLinger: func(context.Context, string) (bool, error) { return linger, nil },
 		httpClient:  httpClient,
+		portAvailable: func(string) error {
+			return nil
+		},
 	}
 	return manager, home, daemonBin
 }
@@ -153,6 +156,9 @@ func TestSystemdUserDaemonManagerApplyEnableNow(t *testing.T) {
 	content := string(data)
 	if !strings.Contains(content, "Environment=MATRIXCLAW_SETUP_PATH="+filepath.Join(home, "setup.json")) {
 		t.Fatalf("unit content = %q, want setup path env", content)
+	}
+	if !strings.Contains(content, "Environment=PATH="+filepath.Join(home, ".local", "bin")+":"+filepath.Join(home, ".npm-global", "bin")) {
+		t.Fatalf("unit content = %q, want user bin paths", content)
 	}
 	if !strings.Contains(content, "ExecStart="+daemonBin) {
 		t.Fatalf("unit content = %q, want daemon binary path", content)

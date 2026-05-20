@@ -50,6 +50,7 @@ type systemdUserDaemonManager struct {
 	checkLinger   func(context.Context, string) (bool, error)
 	runtimeOS     func() string
 	httpClient    *http.Client
+	portAvailable func(string) error
 }
 
 type telegramHTTPValidator struct {
@@ -91,6 +92,8 @@ func (m *systemdUserDaemonManager) Apply(ctx context.Context, setupPath string, 
 	if daemonRunning {
 		liveReloadErr = m.reloadLiveDaemon(ctx, cfg)
 		liveReloaded = liveReloadErr == nil
+	} else if err := m.ensureDaemonPortAvailable(ctx, cfg.Daemon.HTTPAddr); err != nil {
+		return summary, warnings, err
 	}
 
 	if _, err := m.lookPath("systemctl"); err == nil {

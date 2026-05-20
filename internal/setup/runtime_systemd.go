@@ -74,6 +74,7 @@ func renderSystemdUserUnit(daemonBin string, setupPath string, homeDir string, e
 	daemonBin = systemdUnitValue(daemonBin)
 	setupPath = systemdUnitValue(setupPath)
 	homeDir = systemdUnitValue(homeDir)
+	path := systemdUnitValue(daemonSystemdPath(homeDir))
 	envFileLine := ""
 	if strings.TrimSpace(envFilePath) != "" {
 		envFileLine = "EnvironmentFile=" + systemdUnitValue(envFilePath) + "\n"
@@ -88,6 +89,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=%s
 Environment=HOME=%s
+Environment=PATH=%s
 %sEnvironment=MATRIXCLAW_SETUP_PATH=%s
 ExecStart=%s
 Restart=always
@@ -99,7 +101,23 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
 [Install]
 WantedBy=default.target
-`, homeDir, homeDir, envFileLine, setupPath, daemonBin))
+`, homeDir, homeDir, path, envFileLine, setupPath, daemonBin))
+}
+
+func daemonSystemdPath(homeDir string) string {
+	homeDir = strings.TrimRight(strings.TrimSpace(homeDir), string(os.PathSeparator))
+	parts := []string{}
+	if homeDir != "" {
+		parts = append(parts,
+			filepath.Join(homeDir, ".local", "bin"),
+			filepath.Join(homeDir, ".npm-global", "bin"),
+			filepath.Join(homeDir, ".npm", "bin"),
+			filepath.Join(homeDir, ".volta", "bin"),
+			filepath.Join(homeDir, ".bun", "bin"),
+		)
+	}
+	parts = append(parts, "/usr/local/bin", "/usr/bin", "/bin", "/snap/bin", "/opt/homebrew/bin")
+	return strings.Join(parts, ":")
 }
 
 func systemdUnitValue(value string) string {

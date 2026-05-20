@@ -338,7 +338,7 @@ func defaultHTTPAddr() string {
 	if value := strings.TrimSpace(os.Getenv("MATRIXCLAW_HTTP_ADDR")); value != "" {
 		return value
 	}
-	return "127.0.0.1:8080"
+	return firstAvailableLoopbackHTTPAddr()
 }
 
 func defaultDBPath() string {

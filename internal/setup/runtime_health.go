@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -41,6 +44,25 @@ func (m *systemdUserDaemonManager) waitForHealth(ctx context.Context, addr strin
 		}
 	}
 	return lastErr
+}
+
+func (m *systemdUserDaemonManager) ensureDaemonPortAvailable(ctx context.Context, addr string) error {
+	if m.healthCheck(ctx, addr) == nil {
+		return nil
+	}
+	if m.portAvailable != nil {
+		return m.portAvailable(addr)
+	}
+	listenAddr, ok := daemonTCPListenAddr(addr)
+	if !ok {
+		return nil
+	}
+	ln, err := net.Listen("tcp", listenAddr)
+	if err == nil {
+		_ = ln.Close()
+		return nil
+	}
+	return fmt.Errorf("daemon API address %s is already in use; stop the process using that port or choose another address in setup", listenAddr)
 }
 
 func (m *systemdUserDaemonManager) healthCheck(ctx context.Context, addr string) error {
@@ -113,6 +135,40 @@ func daemonHealthURL(addr string) string {
 		return strings.TrimRight(trimmed, "/") + "/v1/health"
 	}
 	return "http://" + strings.TrimRight(trimmed, "/") + "/v1/health"
+}
+
+func daemonTCPListenAddr(addr string) (string, bool) {
+	trimmed := strings.TrimSpace(addr)
+	if trimmed == "" {
+		trimmed = "127.0.0.1:8080"
+	}
+	if strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") {
+		parsed, err := url.Parse(trimmed)
+		if err != nil {
+			return "", false
+		}
+		trimmed = parsed.Host
+	}
+	host, port, err := net.SplitHostPort(trimmed)
+	if err != nil || strings.TrimSpace(port) == "" {
+		return "", false
+	}
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	return net.JoinHostPort(host, port), true
+}
+
+func firstAvailableLoopbackHTTPAddr() string {
+	for port := 8080; port <= 8099; port++ {
+		addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+		ln, err := net.Listen("tcp", addr)
+		if err == nil {
+			_ = ln.Close()
+			return "127.0.0.1:" + strconv.Itoa(port)
+		}
+	}
+	return "127.0.0.1:8080"
 }
 
 func daemonReloadURL(addr string) string {
