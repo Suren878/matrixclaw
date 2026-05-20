@@ -106,3 +106,7 @@ type SessionLLMRegistry interface {
 	Models(ctx context.Context, providerID string) ([]string, error)
 	Resolve(ctx context.Context, providerID string, modelID string) (providers.Runtime, SessionProviderOption, string, error)
 }
+
+type SessionLLMContextWindowRegistry interface {
+	ContextWindowTokens(providerID string, modelID string) (int, bool)
+}

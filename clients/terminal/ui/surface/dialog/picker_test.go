@@ -92,3 +92,21 @@ func TestPickerInitialSelectionUsesSelectedEntry(t *testing.T) {
 		t.Fatalf("selected item id = %q, want m2", selected.item.ID)
 	}
 }
+
+func TestPickerLoadingIgnoresKeys(t *testing.T) {
+	dialog := NewPicker(surfacecommon.DefaultCommon(), PickerData{
+		Title: "Provider",
+		Entries: []PickerEntry{
+			{ID: "piper", Title: "Piper", Action: ActionRunControlplaneCommand{Command: "/modules tts set-provider piper"}},
+			{ID: "supertonic", Title: "Supertonic", Action: ActionRunControlplaneCommand{Command: "/modules tts set-provider supertonic"}},
+		},
+	})
+	_ = dialog.StartLoading()
+
+	if action := dialog.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter}); action != nil {
+		t.Fatalf("enter while loading action = %T, want nil", action)
+	}
+	if action := dialog.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEsc}); action != nil {
+		t.Fatalf("esc while loading action = %T, want nil", action)
+	}
+}

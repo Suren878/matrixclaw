@@ -134,11 +134,13 @@ func (s *Server) persistDownloadedVoiceModel(ctx context.Context, moduleID strin
 	cfg := provider.Config
 	switch moduleID {
 	case setup.VoiceModuleTTS:
-		if providerID != "piper" {
+		if providerID != "piper" && providerID != "supertonic" {
 			return nil, false, nil
 		}
 		cfg.VoiceID = modelID
-		cfg.Language = voiceLanguageFromVoiceID(modelID)
+		if providerID == "piper" {
+			cfg.Language = voiceLanguageFromVoiceID(modelID)
+		}
 	case setup.VoiceModuleSTT:
 		if providerID != "whispercpp" {
 			return nil, false, nil

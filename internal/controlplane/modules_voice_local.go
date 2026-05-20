@@ -8,7 +8,8 @@ import (
 )
 
 func (d *Dispatcher) voiceLocalProviderModelPicker(ctx context.Context, moduleID string, args string) (Result, error) {
-	providerID := firstField(args)
+	providerID, rest := firstCommandToken(args)
+	languageFilter := firstField(rest)
 	module, provider, ok, err := d.voiceLocalProvider(ctx, moduleID, providerID)
 	if err != nil || !ok {
 		return Result{}, err
@@ -17,16 +18,23 @@ func (d *Dispatcher) voiceLocalProviderModelPicker(ctx context.Context, moduleID
 	current := provider.Config.ModelID
 	title := "Model"
 	if module.ID == setup.VoiceModuleTTS {
+		field = "voice"
 		current = provider.Config.VoiceID
-		title = voiceLanguageTitleForProvider(provider, ttsLanguageCode(provider, provider.Config)) + " voices"
+		languageCode := firstNonEmptyTrimmed(languageFilter, ttsLanguageCode(provider, provider.Config))
+		title = voiceLanguageTitleForProvider(provider, languageCode) + " voices"
+		if provider.ID == "supertonic" {
+			title = "Voice Style"
+		}
 	}
 	picker := NewPickerData(PickerVoiceProvider, title).
 		Context(module.ID).
-		Back(voiceModuleCommand(module.ID, "provider", provider.ID))
+		Back(voiceProviderSettingsBackCommand(module.ID, provider.ID))
 	models := provider.Models
 	if module.ID == setup.VoiceModuleTTS {
-		models = voiceModelsForLanguage(provider.Models, ttsLanguageCode(provider, provider.Config))
-		picker.Back(voiceModuleCommand(module.ID, "provider-language", provider.ID))
+		if provider.ID != "supertonic" {
+			models = voiceModelsForLanguage(provider.Models, firstNonEmptyTrimmed(languageFilter, ttsLanguageCode(provider, provider.Config)))
+			picker.Back(voiceModuleCommand(module.ID, "provider-language", provider.ID))
+		}
 	}
 	if len(models) == 0 {
 		picker.Item(PickerItem{ID: "empty", Title: "No voices found", Info: "Choose another language", Disabled: true})
@@ -41,7 +49,14 @@ func (d *Dispatcher) voiceLocalProviderModelPicker(ctx context.Context, moduleID
 			Selected: strings.EqualFold(model.ID, current),
 			Command:  voiceModuleCommand(module.ID, "provider-set-local", provider.ID, field, model.ID),
 		}
-		if module.ID == setup.VoiceModuleTTS {
+		if module.ID == setup.VoiceModuleTTS && provider.ID == "supertonic" {
+			if strings.EqualFold(model.ID, current) {
+				item.Info = "Active"
+			} else {
+				item.Info = ""
+			}
+			item.Command = voiceModuleCommand(module.ID, "provider-set-local", provider.ID, field, model.ID)
+		} else if module.ID == setup.VoiceModuleTTS {
 			if model.Installed {
 				item.Command = voiceModuleCommand(module.ID, "provider-use", provider.ID, model.ID)
 			} else {
@@ -70,18 +85,28 @@ func (d *Dispatcher) voiceLocalProviderLanguagePicker(ctx context.Context, modul
 		current = "auto"
 	}
 	if module.ID == setup.VoiceModuleTTS {
+		if provider.ID == "supertonic" {
+			picker := NewPickerData(PickerVoiceProvider, "Language").
+				Context(module.ID).
+				Back(voiceProviderSettingsBackCommand(module.ID, provider.ID))
+			current = normalizeSupertonicLanguageCode(provider.Config.Language)
+			for _, option := range supertonicLanguageOptions() {
+				picker.Item(PickerItem{ID: option.id, Title: option.title, Selected: option.id == current, Command: voiceModuleCommand(module.ID, "provider-set-local", provider.ID, "language", option.id)})
+			}
+			return Result{Handled: true, Picker: picker.Ptr()}, nil
+		}
 		current = ttsLanguageCode(provider, provider.Config)
-		picker := NewPickerData(PickerVoiceProvider, "Add voice").
+		picker := NewPickerData(PickerVoiceProvider, "Add Voice").
 			Context(module.ID).
-			Back(voiceModuleCommand(module.ID, "provider", provider.ID))
+			Back(voiceProviderSettingsBackCommand(module.ID, provider.ID))
 		for _, option := range voiceLanguageOptions(provider.Models) {
-			picker.Item(PickerItem{ID: option.id, Title: option.title, Info: option.info, Selected: option.id == current, Command: voiceModuleCommand(module.ID, "provider-set-local", provider.ID, "language", option.id)})
+			picker.Item(PickerItem{ID: option.id, Title: option.title, Info: option.info, Selected: option.id == current, Command: voiceModuleCommand(module.ID, "provider-model", provider.ID, option.id)})
 		}
 		return Result{Handled: true, Picker: picker.Ptr()}, nil
 	}
 	picker := NewPickerData(PickerVoiceProvider, "Language").
 		Context(module.ID).
-		Back(voiceModuleCommand(module.ID, "provider", provider.ID))
+		Back(voiceProviderSettingsBackCommand(module.ID, provider.ID))
 	for _, option := range whisperLanguageOptions() {
 		picker.Item(PickerItem{ID: option.id, Title: option.title, Selected: option.id == current, Command: voiceModuleCommand(module.ID, "provider-set-local", provider.ID, "language", option.id)})
 	}
@@ -99,15 +124,15 @@ func (d *Dispatcher) voiceInstalledLocalPicker(ctx context.Context, moduleID str
 	}
 	installed := installedVoiceModels(provider)
 	title := "Voice"
-	addTitle := "Add voice"
+	addTitle := "Add Voice"
 	if module.ID == setup.VoiceModuleSTT {
 		title = "Model"
-		addTitle = "Add model"
+		addTitle = "Add Model"
 	}
 	picker := NewPickerData(PickerVoiceProvider, title).
 		Context(module.ID).
 		Meta(activeLocalModelSummary(module.ID, provider)).
-		Back(voiceModuleCommand(module.ID, "provider", provider.ID))
+		Back(voiceProviderSettingsBackCommand(module.ID, provider.ID))
 	if len(installed) == 0 {
 		picker.Item(PickerItem{ID: "empty", Title: noInstalledLocalModelTitle(module.ID), Disabled: true})
 		picker.Item(PickerItem{ID: "add", Title: addTitle, Command: addLocalModelCommand(module.ID, provider.ID)})
@@ -179,7 +204,9 @@ func (d *Dispatcher) useInstalledLocalModel(ctx context.Context, moduleID string
 	cfg := provider.Config
 	if module.ID == setup.VoiceModuleTTS {
 		cfg.VoiceID = model.ID
-		cfg.Language = voiceLanguageFromVoiceID(model.ID)
+		if provider.ID == "piper" {
+			cfg.Language = voiceLanguageFromVoiceID(model.ID)
+		}
 	} else {
 		cfg.ModelID = model.ID
 	}
@@ -207,7 +234,7 @@ func (d *Dispatcher) voiceLocalProviderThreadsPicker(ctx context.Context, module
 	}{{"auto", "Auto", 0}, {"2", "2 threads", 2}, {"4", "4 threads", 4}, {"8", "8 threads", 8}}
 	picker := NewPickerData(PickerVoiceProvider, "Threads").
 		Context(module.ID).
-		Back(voiceModuleCommand(module.ID, "provider", provider.ID))
+		Back(voiceProviderSettingsBackCommand(module.ID, provider.ID))
 	for _, option := range options {
 		picker.Item(PickerItem{ID: option.id, Title: option.title, Selected: option.threads == provider.Config.Threads, Command: voiceModuleCommand(module.ID, "provider-set-local", provider.ID, "threads", option.id)})
 	}
@@ -222,12 +249,12 @@ func (d *Dispatcher) voiceLocalProviderRunModePicker(ctx context.Context, module
 	}
 	return Result{
 		Handled: true,
-		Picker: NewPickerData(PickerVoiceEnabled, "Run mode").
+		Picker: NewPickerData(PickerVoiceEnabled, "Run Mode").
 			Context(module.ID).
 			Meta(voiceRunModeLabel(provider)).
-			Back(voiceModuleCommand(module.ID, "provider", provider.ID)).
-			Item(PickerItem{ID: "per-task", Title: "Run per task", Selected: voiceRunModePerTaskSelected(provider), Command: voiceModuleCommand(module.ID, "provider-set-local", provider.ID, "runtime-mode", voiceRuntimeModePerTask)}).
-			Item(PickerItem{ID: "always-running", Title: "Always running", Info: voicePersistentRuntimeInfo(provider), Selected: voiceRunModeAlways(provider), Disabled: !voicePersistentRuntimeAvailable(provider), Command: voiceModuleCommand(module.ID, "provider-set-local", provider.ID, "runtime-mode", voiceRuntimeModeAlways)}).
+			Back(voiceProviderSettingsBackCommand(module.ID, provider.ID)).
+			Item(PickerItem{ID: "per-task", Title: voiceRunPerTaskTitle(provider), Selected: voiceRunModePerTaskSelected(provider), Command: voiceModuleCommand(module.ID, "provider-set-local", provider.ID, "runtime-mode", voiceRuntimeModePerTask)}).
+			Item(PickerItem{ID: "always-running", Title: "Always Running", Selected: voiceRunModeAlways(provider), Disabled: !voicePersistentRuntimeAvailable(provider), Command: voiceModuleCommand(module.ID, "provider-set-local", provider.ID, "runtime-mode", voiceRuntimeModeAlways)}).
 			Ptr(),
 	}, nil
 }
@@ -244,14 +271,18 @@ func (d *Dispatcher) setVoiceLocalProviderConfig(ctx context.Context, moduleID s
 	switch field {
 	case "voice":
 		cfg.VoiceID = strings.TrimSpace(value)
-		if module.ID == setup.VoiceModuleTTS {
+		if module.ID == setup.VoiceModuleTTS && provider.ID == "piper" {
 			cfg.Language = voiceLanguageFromVoiceID(cfg.VoiceID)
 		}
 	case "model":
 		cfg.ModelID = strings.TrimSpace(value)
 	case "language":
 		if module.ID == setup.VoiceModuleTTS {
-			cfg.Language = normalizeVoiceLanguageCode(value)
+			if provider.ID == "supertonic" {
+				cfg.Language = normalizeSupertonicLanguageCode(value)
+			} else {
+				cfg.Language = normalizeVoiceLanguageCode(value)
+			}
 		} else {
 			cfg.Language = strings.TrimSpace(value)
 		}
@@ -285,11 +316,14 @@ func (d *Dispatcher) setVoiceLocalProviderConfig(ctx context.Context, moduleID s
 		return Result{}, err
 	}
 	if voicePersistentProvider(module.ID, provider.ID) && nextRuntimeMode == voiceRuntimeModeAlways && (field == "runtime-mode" || field == "voice" || field == "model") {
+		if err := d.stopOtherVoiceModuleProviders(ctx, module, provider.ID); err != nil {
+			return Result{}, err
+		}
 		if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "start"}); err != nil {
 			return Result{}, err
 		}
 	}
-	if module.ID == setup.VoiceModuleTTS && field == "language" {
+	if module.ID == setup.VoiceModuleTTS && field == "language" && provider.ID != "supertonic" {
 		return d.voiceLocalProviderModelPicker(ctx, module.ID, provider.ID)
 	}
 	return d.voiceLocalProviderPicker(ctx, module.ID, provider.ID)
@@ -301,7 +335,7 @@ func (d *Dispatcher) voiceLocalProviderStatus(ctx context.Context, moduleID stri
 	if err != nil || !ok {
 		return Result{}, err
 	}
-	if module.ID == setup.VoiceModuleTTS && provider.ID == "piper" {
+	if module.ID == setup.VoiceModuleTTS && (provider.ID == "piper" || provider.ID == "supertonic") {
 		return voiceLocalTTSStatus(provider), nil
 	}
 	if module.ID == setup.VoiceModuleSTT && provider.ID == "whispercpp" {
@@ -338,7 +372,7 @@ func (d *Dispatcher) voiceLocalProviderStatus(ctx context.Context, moduleID stri
 			InfoRow{Label: "ffmpeg", Value: "Not checked yet"},
 		)
 	}
-	return Result{Handled: true, Info: &InfoData{Title: voiceProviderTitle(module, provider), Rows: rows, CloseCommand: voiceModuleCommand(module.ID, "provider", provider.ID)}}, nil
+	return Result{Handled: true, Info: &InfoData{Title: voiceProviderTitle(module, provider), Rows: rows, CloseCommand: voiceProviderSettingsBackCommand(module.ID, provider.ID)}}, nil
 }
 
 func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID string, args string) (Result, error) {
@@ -351,42 +385,107 @@ func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID stri
 	}
 	switch action {
 	case "install-runtime":
-		if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: action}); err != nil {
+		return Result{Handled: true, Confirm: &ConfirmData{
+			Message:        "Download " + provider.Name + " engine?",
+			ConfirmLabel:   "Download",
+			CancelLabel:    "Cancel",
+			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, "install-runtime-confirm"),
+			CancelCommand:  voiceProviderSettingsBackCommand(module.ID, provider.ID),
+		}}, nil
+	case "install-runtime-confirm":
+		updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "install-runtime"})
+		if err != nil {
 			return Result{}, err
 		}
-		return d.voiceLocalProviderPicker(ctx, module.ID, provider.ID)
-	case "delete-runtime":
-		if voiceRuntimeState(provider) == "running" {
-			return Result{Handled: true, Text: "Stop the local runtime before deleting Piper runtime."}, nil
+		provider = updated
+		if !provider.RuntimeInstalled {
+			if refreshed, ok, err := d.waitForVoiceProviderRuntimeInstalled(ctx, module.ID, provider.ID); err != nil {
+				return Result{}, err
+			} else if ok {
+				provider = refreshed
+			}
 		}
+		if module.ID == setup.VoiceModuleTTS && provider.ID == "supertonic" {
+			if err := d.ensureSupertonicDefaultVoice(ctx, module, provider); err != nil {
+				return Result{}, err
+			}
+			if refreshed, ok, err := d.waitForVoiceProviderRuntimeInstalled(ctx, module.ID, provider.ID); err != nil {
+				return Result{}, err
+			} else if ok {
+				provider = refreshed
+			}
+		}
+		if module.ID == setup.VoiceModuleTTS && provider.ID == "piper" {
+			if _, ok := activeInstalledVoice(provider); !ok {
+				return voiceProviderNeedsVoiceResult(module, provider, voiceProviderSettingsBackCommand(module.ID, provider.ID)), nil
+			}
+		}
+		if module.ID == setup.VoiceModuleTTS && provider.ID == "supertonic" && provider.RuntimeInstalled {
+			modules, err := d.activateVoiceModuleProviderState(ctx, module, provider, false)
+			if err != nil {
+				return Result{}, err
+			}
+			if activated, ok := voiceProviderFromModules(modules, module.ID, provider.ID); ok {
+				return d.voiceLocalProviderPickerWithProvider(module, activated)
+			}
+			return d.voiceLocalProviderPicker(ctx, module.ID, provider.ID)
+		}
+		if voicePersistentProvider(module.ID, provider.ID) && normalizeVoiceRunMode(provider.Config.RuntimeMode) == voiceRuntimeModeAlways {
+			updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "start"})
+			if err != nil {
+				return Result{}, err
+			}
+			provider = updated
+		}
+		return d.voiceLocalProviderPickerWithProvider(module, provider)
+	case "delete-runtime":
 		return Result{Handled: true, Confirm: &ConfirmData{
-			Message:        "Delete Piper runtime?",
+			Message:        voiceRuntimeDeleteConfirmMessage(module, provider),
 			ConfirmLabel:   "Delete",
 			CancelLabel:    "Cancel",
 			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, "delete-runtime-confirm"),
-			CancelCommand:  voiceModuleCommand(module.ID, "provider", provider.ID),
+			CancelCommand:  voiceProviderSettingsBackCommand(module.ID, provider.ID),
 			ConfirmDanger:  true,
 		}}, nil
 	case "delete-runtime-confirm":
-		if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "delete-runtime"}); err != nil {
+		updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "delete-runtime"})
+		if err != nil {
 			return Result{}, err
 		}
-		return d.voiceLocalProviderPicker(ctx, module.ID, provider.ID)
+		if disabled, err := d.disableVoiceModuleIfActiveProvider(ctx, module, provider); err != nil {
+			return Result{}, err
+		} else if disabled {
+			return d.voiceModulePicker(ctx, module.ID)
+		}
+		return d.voiceLocalProviderPickerWithProvider(module, updated)
 	case "download":
-		if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "download", ModelID: modelID}); err != nil {
+		updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "download", ModelID: modelID})
+		if err != nil {
 			return Result{}, err
 		}
+		provider = updated
 		if module.ID == setup.VoiceModuleTTS && strings.TrimSpace(modelID) != "" {
 			cfg := provider.Config
 			cfg.VoiceID = strings.TrimSpace(modelID)
-			cfg.Language = voiceLanguageFromVoiceID(modelID)
-			if _, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg}); err != nil {
+			if provider.ID == "piper" {
+				cfg.Language = voiceLanguageFromVoiceID(modelID)
+			}
+			modules, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg})
+			if err != nil {
 				return Result{}, err
 			}
-			if voicePersistentProvider(module.ID, provider.ID) && normalizeVoiceRunMode(cfg.RuntimeMode) == voiceRuntimeModeAlways {
-				if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "start"}); err != nil {
+			if refreshed, ok := voiceProviderFromModules(modules, module.ID, provider.ID); ok {
+				provider = refreshed
+			}
+			if provider.ID == "piper" && provider.RuntimeInstalled {
+				modules, err := d.activateVoiceModuleProviderState(ctx, module, provider, false)
+				if err != nil {
 					return Result{}, err
 				}
+				if activated, ok := voiceProviderFromModules(modules, module.ID, provider.ID); ok {
+					return d.voiceLocalProviderPickerWithProvider(module, activated)
+				}
+				return d.voiceLocalProviderPicker(ctx, module.ID, provider.ID)
 			}
 		}
 		if module.ID == setup.VoiceModuleTTS {
@@ -413,7 +512,7 @@ func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID stri
 			ConfirmLabel:   confirmLabelAfterDownload(module.ID),
 			CancelLabel:    "Close",
 			ConfirmCommand: voiceCommandAfterDownload(module.ID, provider.ID),
-			CancelCommand:  voiceModuleCommand(module.ID, "provider", provider.ID),
+			CancelCommand:  voiceProviderSettingsBackCommand(module.ID, provider.ID),
 		}}, nil
 	case "start", "stop":
 		if !voiceProviderDownloaded(provider) {
@@ -424,19 +523,17 @@ func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID stri
 			ConfirmLabel:   voiceRuntimeConfirmLabel(action),
 			CancelLabel:    "Cancel",
 			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, action+"-confirm"),
-			CancelCommand:  voiceModuleCommand(module.ID, "provider", provider.ID),
+			CancelCommand:  voiceProviderSettingsBackCommand(module.ID, provider.ID),
 			ConfirmDanger:  action == "stop",
 		}}, nil
 	case "start-confirm", "stop-confirm", "restart":
 		action = strings.TrimSuffix(action, "-confirm")
-		if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: action}); err != nil {
+		updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: action})
+		if err != nil {
 			return Result{}, err
 		}
-		return d.voiceLocalProviderPicker(ctx, module.ID, provider.ID)
+		return d.voiceLocalProviderPickerWithProvider(module, updated)
 	case "delete":
-		if voiceRuntimeState(provider) == "running" {
-			return Result{Handled: true, Text: "Stop the local runtime before deleting model files."}, nil
-		}
 		return Result{Handled: true, Confirm: &ConfirmData{
 			Message:        voiceDeleteConfirmMessage(module, provider, modelID),
 			ConfirmLabel:   "Delete",
@@ -446,18 +543,23 @@ func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID stri
 			ConfirmDanger:  true,
 		}}, nil
 	case "delete-confirm":
-		if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "delete", ModelID: modelID}); err != nil {
+		updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "delete", ModelID: modelID})
+		if err != nil {
 			return Result{}, err
 		}
 		if module.ID == setup.VoiceModuleTTS {
-			if err := d.reselectTTSVoiceAfterDelete(ctx, module, provider, modelID); err != nil {
+			if disabled, err := d.reselectTTSVoiceAfterDelete(ctx, module, updated, modelID); err != nil {
 				return Result{}, err
+			} else if disabled {
+				return d.voiceModulePicker(ctx, module.ID)
 			}
 			return d.voiceInstalledLocalPicker(ctx, module.ID, provider.ID)
 		}
 		if module.ID == setup.VoiceModuleSTT && provider.ID == "whispercpp" {
-			if err := d.reselectSTTModelAfterDelete(ctx, module, provider, modelID); err != nil {
+			if disabled, err := d.reselectSTTModelAfterDelete(ctx, module, updated, modelID); err != nil {
 				return Result{}, err
+			} else if disabled {
+				return d.voiceModulePicker(ctx, module.ID)
 			}
 			return d.voiceInstalledLocalPicker(ctx, module.ID, provider.ID)
 		}
@@ -467,17 +569,26 @@ func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID stri
 			ConfirmLabel:   confirmLabelAfterDelete(module.ID),
 			CancelLabel:    "Close",
 			ConfirmCommand: voiceCommandAfterDelete(module.ID, provider.ID),
-			CancelCommand:  voiceModuleCommand(module.ID, "provider", provider.ID),
+			CancelCommand:  voiceProviderSettingsBackCommand(module.ID, provider.ID),
 		}}, nil
 	default:
 		return Result{Handled: true, Text: provider.Name + " local runtime action `" + action + "` is not implemented yet."}, nil
 	}
 }
 
-func (d *Dispatcher) reselectTTSVoiceAfterDelete(ctx context.Context, module setup.VoiceModuleDescriptor, provider setup.VoiceProviderOption, deletedVoiceID string) error {
+func (d *Dispatcher) disableVoiceModuleIfActiveProvider(ctx context.Context, module setup.VoiceModuleDescriptor, provider setup.VoiceProviderOption) (bool, error) {
+	if !module.Enabled || !strings.EqualFold(strings.TrimSpace(module.ProviderID), strings.TrimSpace(provider.ID)) {
+		return false, nil
+	}
+	enabled := false
+	_, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{Enabled: &enabled})
+	return err == nil, err
+}
+
+func (d *Dispatcher) reselectTTSVoiceAfterDelete(ctx context.Context, module setup.VoiceModuleDescriptor, provider setup.VoiceProviderOption, deletedVoiceID string) (bool, error) {
 	deletedVoiceID = strings.TrimSpace(deletedVoiceID)
 	if deletedVoiceID == "" || !strings.EqualFold(provider.Config.VoiceID, deletedVoiceID) {
-		return nil
+		return false, nil
 	}
 	cfg := provider.Config
 	for _, model := range installedVoiceModels(provider) {
@@ -487,18 +598,47 @@ func (d *Dispatcher) reselectTTSVoiceAfterDelete(ctx context.Context, module set
 		cfg.VoiceID = model.ID
 		cfg.Language = voiceLanguageFromVoiceID(model.ID)
 		_, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg})
-		return err
+		return false, err
 	}
-	cfg.VoiceID = deletedVoiceID
-	cfg.Language = voiceLanguageFromVoiceID(deletedVoiceID)
+	return d.disableVoiceModuleIfActiveProvider(ctx, module, provider)
+}
+
+func (d *Dispatcher) ensureSupertonicDefaultVoice(ctx context.Context, module setup.VoiceModuleDescriptor, provider setup.VoiceProviderOption) error {
+	cfg := provider.Config
+	if strings.TrimSpace(cfg.VoiceID) == "" {
+		cfg.VoiceID = defaultSupertonicVoiceID(provider)
+	}
+	if strings.TrimSpace(cfg.Language) == "" {
+		cfg.Language = "auto"
+	}
+	if strings.TrimSpace(cfg.RuntimeMode) == "" {
+		cfg.RuntimeMode = voiceRuntimeModePerTask
+	}
+	if strings.TrimSpace(cfg.Endpoint) == "" {
+		cfg.Endpoint = "http://127.0.0.1:7788"
+	}
 	_, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg})
 	return err
 }
 
-func (d *Dispatcher) reselectSTTModelAfterDelete(ctx context.Context, module setup.VoiceModuleDescriptor, provider setup.VoiceProviderOption, deletedModelID string) error {
+func defaultSupertonicVoiceID(provider setup.VoiceProviderOption) string {
+	for _, model := range provider.Models {
+		if model.Default && strings.TrimSpace(model.ID) != "" {
+			return model.ID
+		}
+	}
+	for _, model := range provider.Models {
+		if strings.TrimSpace(model.ID) != "" {
+			return model.ID
+		}
+	}
+	return "M1"
+}
+
+func (d *Dispatcher) reselectSTTModelAfterDelete(ctx context.Context, module setup.VoiceModuleDescriptor, provider setup.VoiceProviderOption, deletedModelID string) (bool, error) {
 	deletedModelID = strings.TrimSpace(deletedModelID)
 	if deletedModelID == "" || !strings.EqualFold(provider.Config.ModelID, deletedModelID) {
-		return nil
+		return false, nil
 	}
 	cfg := provider.Config
 	for _, model := range installedVoiceModels(provider) {
@@ -507,11 +647,9 @@ func (d *Dispatcher) reselectSTTModelAfterDelete(ctx context.Context, module set
 		}
 		cfg.ModelID = model.ID
 		_, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg})
-		return err
+		return false, err
 	}
-	cfg.ModelID = deletedModelID
-	_, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg})
-	return err
+	return d.disableVoiceModuleIfActiveProvider(ctx, module, provider)
 }
 
 func (d *Dispatcher) voiceLocalProvider(ctx context.Context, moduleID string, providerID string) (setup.VoiceModuleDescriptor, setup.VoiceProviderOption, bool, error) {

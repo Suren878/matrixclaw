@@ -108,6 +108,9 @@ func normalizeProviderConfig(provider ProviderConfig) (ProviderConfig, bool) {
 	provider.APIKeyEnv = strings.TrimSpace(provider.APIKeyEnv)
 	provider.BaseURL = strings.TrimSpace(provider.BaseURL)
 	provider.Model = strings.TrimSpace(provider.Model)
+	if provider.ContextWindow < 0 {
+		provider.ContextWindow = 0
+	}
 	provider.ToolUseMode = providers.NormalizeOptionalToolUseMode(provider.ToolUseMode)
 
 	if provider.ID == "" {
@@ -319,6 +322,9 @@ func draftProviderFromConfig(provider ProviderConfig) ProviderDraft {
 		ReasoningEffort:     provider.ReasoningEffort,
 		HasStoredAPIKey:     hasStoredAPIKey,
 		StoredAPIKeyPreview: MaskSecret(provider.APIKey),
+	}
+	if provider.ContextWindow > 0 {
+		draft.ContextWindow = strconv.Itoa(provider.ContextWindow)
 	}
 	if provider.MaxOutputTokens > 0 {
 		draft.MaxOutputTokens = strconv.FormatInt(provider.MaxOutputTokens, 10)

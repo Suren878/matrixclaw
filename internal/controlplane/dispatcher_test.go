@@ -35,6 +35,7 @@ type fakeRuntime struct {
 	externalAgents     []core.ExternalAgentDescriptor
 	updatedAgentID     string
 	updatedAgent       core.UpdateExternalAgentRequest
+	voiceModules       []setup.VoiceModuleDescriptor
 	restarted          bool
 	stopped            bool
 	compacted          bool
@@ -102,6 +103,48 @@ func (f *fakeRuntime) UpdateExternalAgent(_ context.Context, agentID string, upd
 	}
 	f.externalAgents = agents
 	return agents, nil
+}
+
+func (f *fakeRuntime) VoiceModules(context.Context) ([]setup.VoiceModuleDescriptor, error) {
+	return append([]setup.VoiceModuleDescriptor(nil), f.voiceModules...), nil
+}
+
+func (f *fakeRuntime) UpdateVoiceModule(_ context.Context, moduleID string, update setup.VoiceModuleUpdate) ([]setup.VoiceModuleDescriptor, error) {
+	for i := range f.voiceModules {
+		if f.voiceModules[i].ID != moduleID {
+			continue
+		}
+		if update.Enabled != nil {
+			f.voiceModules[i].Enabled = *update.Enabled
+		}
+		if strings.TrimSpace(update.ProviderID) != "" {
+			f.voiceModules[i].ProviderID = strings.TrimSpace(update.ProviderID)
+		}
+		if update.ProviderConfig != nil {
+			for j := range f.voiceModules[i].Providers {
+				if f.voiceModules[i].Providers[j].ID == f.voiceModules[i].ProviderID {
+					f.voiceModules[i].Providers[j].Config = *update.ProviderConfig
+					f.voiceModules[i].Config = *update.ProviderConfig
+				}
+			}
+		}
+		break
+	}
+	return f.VoiceModules(context.Background())
+}
+
+func (f *fakeRuntime) VoiceProviderAction(_ context.Context, moduleID string, providerID string, _ setup.VoiceProviderActionRequest) (setup.VoiceProviderOption, error) {
+	for _, module := range f.voiceModules {
+		if module.ID != moduleID {
+			continue
+		}
+		for _, provider := range module.Providers {
+			if provider.ID == providerID {
+				return provider, nil
+			}
+		}
+	}
+	return setup.VoiceProviderOption{}, nil
 }
 
 func stringInSliceFold(values []string, value string) bool {

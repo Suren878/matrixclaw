@@ -2,6 +2,8 @@ package telegram
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"strings"
 
@@ -15,6 +17,9 @@ func (w *Worker) renderVoiceToolResultUpdates(ctx context.Context, target chatTa
 	}
 	if state.voiceResults == nil {
 		state.voiceResults = map[string]int64{}
+	}
+	if state.voiceFingerprints == nil {
+		state.voiceFingerprints = map[string]int64{}
 	}
 	for _, message := range messages {
 		if strings.TrimSpace(message.RunID) != strings.TrimSpace(runID) || message.Role != core.MessageRoleTool {
@@ -36,11 +41,21 @@ func (w *Worker) renderVoiceToolResultUpdates(ctx context.Context, target chatTa
 			if !ok {
 				continue
 			}
+			fingerprint := textToSpeechResponseFingerprint(response)
+			if fingerprint != "" {
+				if sentID, sent := state.voiceFingerprints[fingerprint]; sent {
+					state.voiceResults[key] = sentID
+					continue
+				}
+			}
 			sent, err := w.sendGeneratedSpeech(ctx, target, response)
 			if err != nil {
 				return err
 			}
 			state.voiceResults[key] = sent.MessageID
+			if fingerprint != "" {
+				state.voiceFingerprints[fingerprint] = sent.MessageID
+			}
 		}
 	}
 	return nil
@@ -96,4 +111,17 @@ func voiceToolResultKey(message core.Message, result *core.ToolResultPart) strin
 		key += ":" + callID
 	}
 	return key
+}
+
+func textToSpeechResponseFingerprint(response voicemodule.TextToSpeechResponse) string {
+	content := strings.TrimSpace(response.ContentBase64)
+	if content == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(strings.Join([]string{
+		content,
+		strings.TrimSpace(response.MIMEType),
+		strings.TrimSpace(response.FileName),
+	}, "\x00")))
+	return hex.EncodeToString(sum[:])
 }

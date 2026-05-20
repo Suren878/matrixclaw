@@ -42,6 +42,9 @@ func (d *ConfirmCommand) HandleMsg(msg tea.Msg) Action {
 	if !ok {
 		return nil
 	}
+	if d.loading {
+		return nil
+	}
 	switch d.state.Update(keyMsg.String()).Kind {
 	case commandui.EventCancel:
 		return d.cancelAction()
@@ -67,6 +70,7 @@ func (d *ConfirmCommand) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 		Selected:      d.state.Selected,
 		ConfirmDanger: d.data.ConfirmDanger,
 		CancelDanger:  d.data.CancelDanger,
+		OnlyCancel:    d.loading,
 	})
 	DrawCenter(scr, area, view)
 	return nil

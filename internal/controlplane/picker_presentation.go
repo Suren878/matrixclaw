@@ -60,6 +60,10 @@ func pickerPresentationStatus(kind PickerKind, selected bool, info string) strin
 	}
 	info = strings.TrimSpace(info)
 	switch kind {
+	case PickerTTSProvider:
+		return info
+	case PickerVoiceProvider:
+		return trimLeadingActiveStatus(info)
 	case PickerExternalAgents, PickerExternalAgentOn:
 		return info
 	}
@@ -164,7 +168,7 @@ func pickerCompactPrefix(kind PickerKind, item PickerItem) string {
 		}
 	case PickerProvider, PickerProviderCustom:
 		return "🔌 "
-	case PickerTextToSpeech, PickerVoiceProvider:
+	case PickerTextToSpeech, PickerTTSProvider, PickerVoiceProvider:
 		return "TTS "
 	case PickerSpeechToText:
 		return "STT "

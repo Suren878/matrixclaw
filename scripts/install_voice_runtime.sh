@@ -13,6 +13,7 @@ runtime_dir="${MATRIXCLAW_RUNTIME_DIR:-"$state_dir/runtime"}"
 whisper_repo="${MATRIXCLAW_WHISPER_CPP_REPO:-https://github.com/ggml-org/whisper.cpp.git}"
 install_piper=1
 install_whisper=1
+install_supertonic=1
 install_system_deps=1
 self_test=0
 target_set=0
@@ -22,7 +23,7 @@ usage() {
 Install local matrixclaw voice runtimes.
 
 Usage:
-  install_voice_runtime.sh [--piper] [--whisper] [--all] [--no-system-deps] [--self-test]
+  install_voice_runtime.sh [--piper] [--whisper] [--supertonic] [--all] [--no-system-deps] [--self-test]
 
 Environment:
   MATRIXCLAW_STATE_DIR          State directory, default ~/.local/state/matrixclaw
@@ -37,6 +38,7 @@ while [[ "$#" -gt 0 ]]; do
       if [[ "$target_set" == "0" ]]; then
         install_piper=0
         install_whisper=0
+        install_supertonic=0
         target_set=1
       fi
       install_piper=1
@@ -46,14 +48,26 @@ while [[ "$#" -gt 0 ]]; do
       if [[ "$target_set" == "0" ]]; then
         install_piper=0
         install_whisper=0
+        install_supertonic=0
         target_set=1
       fi
       install_whisper=1
       shift
       ;;
+    --supertonic)
+      if [[ "$target_set" == "0" ]]; then
+        install_piper=0
+        install_whisper=0
+        install_supertonic=0
+        target_set=1
+      fi
+      install_supertonic=1
+      shift
+      ;;
     --all)
       install_piper=1
       install_whisper=1
+      install_supertonic=1
       target_set=1
       shift
       ;;
@@ -146,11 +160,11 @@ install_system_packages() {
     linux)
       if have_cmd apt-get; then
         sudo_cmd apt-get update
-        sudo_cmd apt-get install -y git cmake g++ make python3 python3-venv ffmpeg
+        sudo_cmd apt-get install -y git cmake curl g++ make python3 python3-venv ffmpeg
       elif have_cmd dnf; then
-        sudo_cmd dnf install -y git cmake gcc-c++ make python3 ffmpeg
+        sudo_cmd dnf install -y git cmake curl gcc-c++ make python3 ffmpeg
       elif have_cmd pacman; then
-        sudo_cmd pacman -Sy --needed git cmake gcc make python python-pip ffmpeg
+        sudo_cmd pacman -Sy --needed git cmake curl gcc make python python-pip ffmpeg
       else
         echo "install_voice_runtime.sh: install git, cmake, a C++ compiler, python3, python3-venv, and ffmpeg, then rerun with --no-system-deps" >&2
         exit 1
@@ -165,7 +179,7 @@ install_system_packages() {
         echo "install_voice_runtime.sh: Homebrew is required on macOS for voice runtime dependencies" >&2
         exit 1
       fi
-      "$brew" install git cmake python ffmpeg
+      "$brew" install git cmake curl python ffmpeg
       ;;
   esac
 }
@@ -180,6 +194,10 @@ whisper_binary() {
 
 whisper_server_binary() {
   printf '%s/whisper.cpp/build/bin/whisper-server\n' "$runtime_dir"
+}
+
+supertonic_binary() {
+  printf '%s/supertonic-venv/bin/supertonic\n' "$runtime_dir"
 }
 
 install_piper_runtime() {
@@ -238,6 +256,22 @@ install_whisper_runtime() {
   echo "Whisper.cpp server installed: $server_binary"
 }
 
+install_supertonic_runtime() {
+  local binary
+  binary="$(supertonic_binary)"
+  need_cmd python3
+  mkdir -p "$runtime_dir"
+  python3 -m venv "$runtime_dir/supertonic-venv"
+  "$runtime_dir/supertonic-venv/bin/python" -m pip install --upgrade pip
+  "$runtime_dir/supertonic-venv/bin/pip" install 'supertonic[serve]'
+  if [[ ! -x "$binary" ]]; then
+    echo "install_voice_runtime.sh: Supertonic install finished but binary was not found: $binary" >&2
+    exit 1
+  fi
+  "$binary" download
+  echo "Supertonic runtime installed: $binary"
+}
+
 run_self_test() {
   local tmp
   tmp="$(mktemp -d)"
@@ -259,6 +293,9 @@ if [[ "$install_piper" == "1" ]]; then
 fi
 if [[ "$install_whisper" == "1" ]]; then
   install_whisper_runtime
+fi
+if [[ "$install_supertonic" == "1" ]]; then
+  install_supertonic_runtime
 fi
 
 echo "Local voice runtime is ready."

@@ -3,6 +3,7 @@ package voice
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -66,6 +67,9 @@ func (t *textToSpeechTool) Execute(ctx context.Context, call tools.Call) (tools.
 	}
 	response, err := t.service.TextToSpeech(ctx, TextToSpeechRequest{Text: text})
 	if err != nil {
+		if errors.Is(err, ErrModuleDisabled) {
+			return tools.Result{Content: "Text to speech is disabled.", IsError: true, Status: tools.ResultStatusError}, nil
+		}
 		return tools.Result{Content: fmt.Sprintf("Text to speech failed: %s", err), IsError: true, Status: tools.ResultStatusError}, nil
 	}
 	return tools.Result{

@@ -68,6 +68,60 @@ func (d *Dispatcher) voiceModuleProviderSet(ctx context.Context, moduleID string
 	return d.voiceProviderFormResult(ctx, moduleID, providerID, provider, data, "")
 }
 
+func (d *Dispatcher) voiceModuleProviderSetupFormFromToken(ctx context.Context, moduleID string, args string) (Result, error) {
+	providerID, rest := firstCommandToken(args)
+	provider, data, err := d.voiceProviderFormData(ctx, providerID, rest)
+	if err != nil {
+		return Result{}, err
+	}
+	return d.voiceProviderSetupFormResult(ctx, moduleID, providerID, provider, data, "")
+}
+
+func (d *Dispatcher) voiceModuleProviderSetupField(ctx context.Context, moduleID string, args string) (Result, error) {
+	field, rest := firstCommandStep(args)
+	providerID, rest := firstCommandToken(rest)
+	provider, data, err := d.voiceProviderFormData(ctx, providerID, rest)
+	if err != nil {
+		return Result{}, err
+	}
+	token := encodeCustomProviderFormToken(data)
+	return customProviderFieldPrompt(
+		voiceProviderFormTitle(moduleID, providerID, provider),
+		field,
+		data,
+		"leave empty to keep",
+		voiceModuleCommandPrefix(moduleID, "provider-setup-set", field, providerID, token),
+		voiceModuleCommand(moduleID, "provider-setup-form", providerID, token),
+	), nil
+}
+
+func (d *Dispatcher) voiceModuleProviderSetupSet(ctx context.Context, moduleID string, args string) (Result, error) {
+	field, rest := firstCommandStep(args)
+	providerID, rest := firstCommandToken(rest)
+	token := firstField(rest)
+	provider, data, err := d.voiceProviderFormData(ctx, providerID, token)
+	if err != nil {
+		return Result{}, err
+	}
+	data = data.WithField(field, strings.TrimSpace(strings.TrimPrefix(rest, token)))
+	return d.voiceProviderSetupFormResult(ctx, moduleID, providerID, provider, data, "")
+}
+
+func (d *Dispatcher) saveVoiceModuleProviderSetup(ctx context.Context, moduleID string, args string) (Result, error) {
+	providerID, rest := firstCommandToken(args)
+	provider, data, err := d.voiceProviderFormData(ctx, providerID, rest)
+	if err != nil {
+		return Result{}, err
+	}
+	if message := providerEditValidationMessage(provider, data); message != "" {
+		return d.voiceProviderSetupFormResult(ctx, moduleID, providerID, provider, data, message)
+	}
+	if _, err := d.providers.ConfigureSetupProvider(ctx, provider.ID, providerUpdateFromForm(provider, data, false)); err != nil {
+		return Result{}, err
+	}
+	return d.voiceModuleProviderSetup(ctx, moduleID, "")
+}
+
 func (d *Dispatcher) saveVoiceModuleProvider(ctx context.Context, moduleID string, args string) (Result, error) {
 	providerID, rest := firstCommandToken(args)
 	provider, data, err := d.voiceProviderFormData(ctx, providerID, rest)
@@ -143,6 +197,22 @@ func (d *Dispatcher) voiceSetupProvider(ctx context.Context, providerID string) 
 }
 
 func (d *Dispatcher) voiceProviderFormResult(ctx context.Context, moduleID string, providerID string, provider setup.ProviderSetupItem, data setup.ProviderFormState, message string) (Result, error) {
+	return d.voiceProviderFormResultWithCommands(ctx, moduleID, providerID, provider, data, message, voiceModuleCommand(moduleID, "provider"), func(token string) string {
+		return voiceModuleCommand(moduleID, "provider-save", providerID, token)
+	}, func(field string, token string) string {
+		return voiceModuleCommand(moduleID, "provider-field", field, providerID, token)
+	})
+}
+
+func (d *Dispatcher) voiceProviderSetupFormResult(ctx context.Context, moduleID string, providerID string, provider setup.ProviderSetupItem, data setup.ProviderFormState, message string) (Result, error) {
+	return d.voiceProviderFormResultWithCommands(ctx, moduleID, providerID, provider, data, message, voiceModuleCommand(moduleID, "provider-setup"), func(token string) string {
+		return voiceModuleCommand(moduleID, "provider-setup-save", providerID, token)
+	}, func(field string, token string) string {
+		return voiceModuleCommand(moduleID, "provider-setup-field", field, providerID, token)
+	})
+}
+
+func (d *Dispatcher) voiceProviderFormResultWithCommands(ctx context.Context, moduleID string, providerID string, provider setup.ProviderSetupItem, data setup.ProviderFormState, message string, cancelCommand string, submitCommand func(string) string, editCommand func(string, string) string) (Result, error) {
 	if strings.TrimSpace(provider.ID) == "" {
 		return d.voiceModuleProviderPicker(ctx, moduleID)
 	}
@@ -157,14 +227,10 @@ func (d *Dispatcher) voiceProviderFormResult(ctx context.Context, moduleID strin
 		IncludeIdentity:        false,
 		IncludeReasoningEffort: false,
 		IncludeToolProfile:     false,
-		SubmitCommand: func(token string) string {
-			return voiceModuleCommand(moduleID, "provider-save", providerID, token)
-		},
-		CancelCommand: voiceModuleCommand(moduleID, "provider"),
-		EditCommand: func(field string, token string) string {
-			return voiceModuleCommand(moduleID, "provider-field", field, providerID, token)
-		},
-		Error: message,
+		SubmitCommand:          submitCommand,
+		CancelCommand:          cancelCommand,
+		EditCommand:            editCommand,
+		Error:                  message,
 	})
 	if result.Form != nil {
 		result.Form.Fields = voiceProviderFormFields(result.Form.Fields)
@@ -184,12 +250,7 @@ func voiceProviderFormFields(fields []FormField) []FormField {
 }
 
 func setupProviderIDForVoiceProvider(providerID string) string {
-	switch strings.ToLower(strings.TrimSpace(providerID)) {
-	case "grok":
-		return "xai"
-	default:
-		return ""
-	}
+	return ""
 }
 
 func voiceProviderFormTitle(moduleID string, providerID string, provider setup.ProviderSetupItem) string {

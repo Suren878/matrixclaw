@@ -25,6 +25,7 @@ type BotAPI interface {
 	SendMessage(ctx context.Context, req SendMessageRequest) (SentMessage, error)
 	SendChatAction(ctx context.Context, req SendChatActionRequest) error
 	SendVoice(ctx context.Context, req SendVoiceRequest) (SentMessage, error)
+	SendAudio(ctx context.Context, req SendAudioRequest) (SentMessage, error)
 	EditMessageText(ctx context.Context, req EditMessageTextRequest) (EditMessageTextResponse, error)
 	AnswerCallbackQuery(ctx context.Context, req AnswerCallbackQueryRequest) error
 	DeleteMessage(ctx context.Context, req DeleteMessageRequest) error
@@ -164,6 +165,23 @@ func (c *Client) SendVoice(ctx context.Context, req SendVoiceRequest) (SentMessa
 		fileName = "voice.mp3"
 	}
 	return callMultipartAPI[SentMessage](ctx, c, "sendVoice", fields, "voice", fileName, req.MIMEType, req.Voice)
+}
+
+func (c *Client) SendAudio(ctx context.Context, req SendAudioRequest) (SentMessage, error) {
+	fields := map[string]string{
+		"chat_id": strconv.FormatInt(req.ChatID, 10),
+	}
+	if req.MessageThreadID != 0 {
+		fields["message_thread_id"] = strconv.FormatInt(req.MessageThreadID, 10)
+	}
+	if caption := strings.TrimSpace(req.Caption); caption != "" {
+		fields["caption"] = caption
+	}
+	fileName := strings.TrimSpace(req.FileName)
+	if fileName == "" {
+		fileName = "audio.wav"
+	}
+	return callMultipartAPI[SentMessage](ctx, c, "sendAudio", fields, "audio", fileName, req.MIMEType, req.Audio)
 }
 
 func (c *Client) EditMessageText(ctx context.Context, req EditMessageTextRequest) (EditMessageTextResponse, error) {

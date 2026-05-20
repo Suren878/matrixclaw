@@ -28,7 +28,7 @@ func (c *Client) UpdateVoiceModule(ctx context.Context, moduleID string, update 
 func (c *Client) VoiceProviderAction(ctx context.Context, moduleID string, providerID string, request setup.VoiceProviderActionRequest) (setup.VoiceProviderOption, error) {
 	var response setup.VoiceProviderActionResponse
 	path := "/v1/modules/voice/" + escapedPath(moduleID) + "/providers/" + escapedPath(providerID) + "/action"
-	if err := c.doJSON(ctx, http.MethodPost, path, request, &response); err != nil {
+	if err := c.doJSONWithClient(ctx, http.MethodPost, path, request, &response, c.voiceRuntimeHTTPClient()); err != nil {
 		return setup.VoiceProviderOption{}, err
 	}
 	return response.Provider, nil

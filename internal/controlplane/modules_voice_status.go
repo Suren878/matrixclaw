@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -13,6 +14,9 @@ func (d *Dispatcher) voiceModuleInfo(ctx context.Context, moduleID string) (Resu
 	module, err := d.voiceModule(ctx, moduleID)
 	if err != nil {
 		return Result{}, err
+	}
+	if module.ID == setup.VoiceModuleTTS {
+		return ttsModuleStatus(module), nil
 	}
 	return Result{
 		Handled: true,
@@ -27,6 +31,27 @@ func (d *Dispatcher) voiceModuleInfo(ctx context.Context, moduleID string) (Resu
 			CloseCommand: voiceModuleCommand(module.ID),
 		},
 	}, nil
+}
+
+func ttsModuleStatus(module setup.VoiceModuleDescriptor) Result {
+	rows := []InfoRow{
+		{Label: "Active provider", Value: "Disabled"},
+		{Label: "Mode", Value: "Disabled"},
+		{Label: "RAM", Value: "0 B"},
+	}
+	if module.Enabled {
+		if provider, ok := selectedVoiceProvider(module); ok {
+			rows = []InfoRow{
+				{Label: "Active provider", Value: firstNonEmptyTrimmed(provider.Name, module.ProviderName, provider.ID)},
+				{Label: "Mode", Value: voiceRunModeLabel(provider)},
+				{Label: "RAM", Value: voiceRuntimeRAMStatus(provider)},
+			}
+		} else {
+			rows[0].Value = firstNonEmptyTrimmed(module.ProviderName, module.ProviderID, "Unknown")
+			rows[1].Value = "Unknown"
+		}
+	}
+	return Result{Handled: true, Info: &InfoData{Title: module.Title + " Status", Rows: rows, CloseCommand: voiceModuleCommand(module.ID)}}
 }
 
 func (d *Dispatcher) voiceModule(ctx context.Context, moduleID string) (setup.VoiceModuleDescriptor, error) {
@@ -64,9 +89,6 @@ func voiceProviderInfo(provider setup.VoiceProviderOption) string {
 }
 
 func voiceProviderPickerTitle(module setup.VoiceModuleDescriptor, provider setup.VoiceProviderOption) string {
-	if module.ID == setup.VoiceModuleTTS && provider.ID == "grok" {
-		return "Grok TTS"
-	}
 	return provider.Name
 }
 
@@ -75,6 +97,12 @@ func voiceProviderPickerInfo(module setup.VoiceModuleDescriptor, provider setup.
 		return ""
 	}
 	if provider.Local {
+		if provider.ID == "supertonic" {
+			if provider.RuntimeInstalled && (voiceRunModePerTaskSelected(provider) || voiceRuntimeState(provider) == "running") {
+				return "Active"
+			}
+			return ""
+		}
 		if provider.ID == "piper" && (voiceRunModePerTaskSelected(provider) || voiceRuntimeState(provider) == "running") {
 			if _, ok := activeInstalledVoice(provider); ok {
 				return "Active"
@@ -146,7 +174,7 @@ func voiceDownloadState(provider setup.VoiceProviderOption) string {
 	if voiceProviderDownloaded(provider) {
 		return "Installed"
 	}
-	return "Not installed"
+	return "Not Installed"
 }
 
 func voiceRuntimeStateLabel(state string) string {
@@ -158,7 +186,7 @@ func voiceRuntimeStateLabel(state string) string {
 	case "error":
 		return "Error"
 	case "stopped":
-		return "Stopped"
+		return "Not running"
 	case "not_implemented", "unsupported":
 		return "Not implemented yet"
 	default:
@@ -167,6 +195,9 @@ func voiceRuntimeStateLabel(state string) string {
 }
 
 func voiceRuntimeManagerInfo(provider setup.VoiceProviderOption) string {
+	if voiceRunModePerTaskSelected(provider) {
+		return "Run per task"
+	}
 	state := voiceRuntimeState(provider)
 	switch strings.ToLower(strings.TrimSpace(state)) {
 	case "not_implemented", "unsupported":
@@ -212,6 +243,17 @@ func voiceRunModeLabel(provider setup.VoiceProviderOption) string {
 	return "Run per task"
 }
 
+func voiceRunPerTaskTitle(provider setup.VoiceProviderOption) string {
+	switch provider.ID {
+	case "piper":
+		return "Run Per Task (~1.4s)"
+	case "supertonic":
+		return "Run Per Task (~1.2s)"
+	default:
+		return "Run Per Task"
+	}
+}
+
 func voiceRunModeAlways(provider setup.VoiceProviderOption) bool {
 	return normalizeVoiceRunMode(provider.Config.RuntimeMode) == voiceRuntimeModeAlways && voicePersistentRuntimeAvailable(provider)
 }
@@ -221,13 +263,13 @@ func voiceRunModePerTaskSelected(provider setup.VoiceProviderOption) bool {
 }
 
 func voicePersistentRuntimeAvailable(provider setup.VoiceProviderOption) bool {
-	return provider.ID == "piper" || provider.ID == "whispercpp"
+	return provider.ID == "piper" || provider.ID == "whispercpp" || provider.ID == "supertonic"
 }
 
 func voicePersistentProvider(moduleID string, providerID string) bool {
 	switch moduleID {
 	case setup.VoiceModuleTTS:
-		return providerID == "piper"
+		return providerID == "piper" || providerID == "supertonic"
 	case setup.VoiceModuleSTT:
 		return providerID == "whispercpp"
 	default:
@@ -235,11 +277,17 @@ func voicePersistentProvider(moduleID string, providerID string) bool {
 	}
 }
 
-func voicePersistentRuntimeInfo(provider setup.VoiceProviderOption) string {
-	if voicePersistentRuntimeAvailable(provider) {
+func persistentRuntimeRAMEstimate(provider setup.VoiceProviderOption) string {
+	switch provider.ID {
+	case "piper":
+		return "≈130 MB RAM"
+	case "supertonic":
+		return "≈550 MB RAM"
+	case "whispercpp":
+		return "Model RAM"
+	default:
 		return ""
 	}
-	return "Not available yet"
 }
 
 func downloadActionInfo(provider setup.VoiceProviderOption) string {
@@ -257,15 +305,12 @@ func downloadActionInfo(provider setup.VoiceProviderOption) string {
 
 func deleteActionInfo(provider setup.VoiceProviderOption) string {
 	if !voiceProviderDownloaded(provider) {
-		return "Not installed"
-	}
-	if voiceRuntimeState(provider) == "running" {
-		return "Stop runtime first"
+		return "Not Installed"
 	}
 	return "Remove local files"
 }
 
-func piperRuntimeInstallAction(provider setup.VoiceProviderOption) string {
+func voiceRuntimeInstallAction(provider setup.VoiceProviderOption) string {
 	if provider.RuntimeInstalled {
 		return "delete-runtime"
 	}
@@ -283,7 +328,14 @@ func voiceRuntimeInstallInfo(provider setup.VoiceProviderOption) string {
 	if provider.RuntimeInstalled {
 		return "Installed"
 	}
-	return "Not installed"
+	return "Not Installed"
+}
+
+func supertonicRuntimeInstallInfo(provider setup.VoiceProviderOption) string {
+	if provider.RuntimeInstalled {
+		return "Installed"
+	}
+	return "Not Installed"
 }
 
 func startActionInfo(provider setup.VoiceProviderOption) string {
@@ -333,6 +385,13 @@ func voiceRuntimeConfirmMessage(provider setup.VoiceProviderOption, action strin
 	default:
 		return "Start " + provider.Name + " runtime?"
 	}
+}
+
+func voiceRuntimeDeleteConfirmMessage(module setup.VoiceModuleDescriptor, provider setup.VoiceProviderOption) string {
+	if module.ID == setup.VoiceModuleTTS && provider.ID == "piper" {
+		return "Delete Piper engine and installed voices?"
+	}
+	return "Delete " + provider.Name + " engine?"
 }
 
 func voiceRuntimeConfirmLabel(action string) string {
@@ -492,6 +551,9 @@ func noInstalledLocalModelTitle(moduleID string) string {
 
 func addLocalModelCommand(moduleID string, providerID string) string {
 	if moduleID == setup.VoiceModuleTTS {
+		if providerID == "supertonic" {
+			return voiceModuleCommand(moduleID, "provider-model", providerID)
+		}
 		return voiceModuleCommand(moduleID, "provider-language", providerID)
 	}
 	return voiceModuleCommand(moduleID, "provider-model", providerID)
@@ -499,7 +561,7 @@ func addLocalModelCommand(moduleID string, providerID string) string {
 
 func localModelActionMeta(moduleID string, provider setup.VoiceProviderOption, model setup.VoiceModelOption) string {
 	parts := nonEmptyStrings(installedVoiceState(model.ID, activeLocalModelID(moduleID, provider)), model.Size)
-	if moduleID == setup.VoiceModuleTTS {
+	if moduleID == setup.VoiceModuleTTS && provider.ID != "supertonic" {
 		parts = append(parts, voiceLanguageTitleForProvider(provider, model.LanguageCode))
 	}
 	return strings.TrimSpace(strings.Join(parts, " · "))
@@ -551,45 +613,85 @@ func voiceModelPickerInfo(model setup.VoiceModelOption) string {
 	return strings.TrimSpace(strings.Join(nonEmptyStrings(state, model.Size), " · "))
 }
 
-func ttsRuntimeAction(provider setup.VoiceProviderOption) string {
-	if voiceRuntimeState(provider) == "running" {
-		return "stop"
-	}
-	return "start"
-}
-
-func ttsRuntimeActionTitle(provider setup.VoiceProviderOption) string {
-	if ttsRuntimeAction(provider) == "stop" {
-		return "Stop runtime"
-	}
-	return "Start runtime"
-}
-
-func ttsRuntimeActionInfo(provider setup.VoiceProviderOption) string {
-	if _, ok := activeInstalledVoice(provider); !ok {
-		return "No voice"
-	}
-	if ttsRuntimeAction(provider) == "stop" {
-		return "Running"
-	}
-	return "Stopped"
-}
-
 func voiceLocalTTSStatus(provider setup.VoiceProviderOption) Result {
+	if provider.ID == "supertonic" {
+		return voiceLocalSupertonicStatus(provider)
+	}
 	model, hasActive := activeInstalledVoice(provider)
 	rows := []InfoRow{{Label: "Runtime", Value: voiceRuntimeInstallInfo(provider)}}
 	if hasActive {
+		storage := voiceModelStorageStatus(model)
+		if provider.ID == "supertonic" {
+			storage = firstNonEmptyTrimmed(model.Size, storage)
+		}
 		rows = append(rows,
-			InfoRow{Label: "Storage", Value: voiceModelStorageStatus(model)},
+			InfoRow{Label: "Storage", Value: storage},
 			InfoRow{Label: "RAM", Value: voiceRuntimeRAMStatus(provider)},
 		)
 	} else {
 		rows = append(rows,
-			InfoRow{Label: "Storage", Value: "Not installed"},
+			InfoRow{Label: "Storage", Value: "Not Installed"},
 			InfoRow{Label: "RAM", Value: "0 B"},
 		)
 	}
-	return Result{Handled: true, Info: &InfoData{Title: "Piper Status", Rows: rows, CloseCommand: voiceModuleCommand(setup.VoiceModuleTTS, "provider", provider.ID)}}
+	return Result{Handled: true, Info: &InfoData{Title: provider.Name + " Status", Rows: rows, CloseCommand: voiceProviderSettingsBackCommand(setup.VoiceModuleTTS, provider.ID)}}
+}
+
+func voiceLocalSupertonicStatus(provider setup.VoiceProviderOption) Result {
+	rows := []InfoRow{
+		{Label: "Runtime", Value: supertonicRuntimeInstallInfo(provider)},
+		{Label: "Model storage", Value: supertonicStorageStatus(provider)},
+		{Label: "RAM", Value: voiceRuntimeRAMStatus(provider)},
+		{Label: "Voice style", Value: voiceModelName(provider, firstNonEmptyTrimmed(provider.Config.VoiceID, "M1"))},
+		{Label: "Language", Value: voiceLanguageStatus(provider.Config.Language)},
+	}
+	if detail := strings.TrimSpace(provider.RuntimeDetail); detail != "" {
+		rows = append(rows, InfoRow{Label: "Detail", Value: detail})
+	}
+	return Result{Handled: true, Info: &InfoData{Title: provider.Name + " Status", Rows: rows, CloseCommand: voiceProviderSettingsBackCommand(setup.VoiceModuleTTS, provider.ID)}}
+}
+
+func supertonicStorageStatus(provider setup.VoiceProviderOption) string {
+	if !provider.RuntimeInstalled {
+		return "Not Installed"
+	}
+	total := supertonicStorageBytes(provider)
+	if total == 0 {
+		return "Installed"
+	}
+	return formatBytes(total)
+}
+
+func supertonicStorageBytes(provider setup.VoiceProviderOption) uint64 {
+	var total uint64
+	if runtimePath := strings.TrimSpace(provider.RuntimePath); runtimePath != "" {
+		total += directoryStorageBytes(filepath.Dir(filepath.Dir(runtimePath)))
+	}
+	if cacheDir, err := os.UserCacheDir(); err == nil && strings.TrimSpace(cacheDir) != "" {
+		for _, name := range []string{"supertonic", "supertonic2", "supertonic3"} {
+			total += directoryStorageBytes(filepath.Join(cacheDir, name))
+		}
+		total += directoryStorageBytes(filepath.Join(cacheDir, "huggingface", "hub", "models--Supertone--supertonic-3"))
+	}
+	return total
+}
+
+func directoryStorageBytes(root string) uint64 {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return 0
+	}
+	var total uint64
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return nil
+		}
+		if info, err := entry.Info(); err == nil && info.Size() > 0 {
+			total += uint64(info.Size())
+		}
+		return nil
+	})
+	return total
 }
 
 func voiceLocalSTTStatus(provider setup.VoiceProviderOption) Result {
@@ -602,7 +704,7 @@ func voiceLocalSTTStatus(provider setup.VoiceProviderOption) Result {
 		)
 	} else {
 		rows = append(rows,
-			InfoRow{Label: "Storage", Value: "Not installed"},
+			InfoRow{Label: "Storage", Value: "Not Installed"},
 			InfoRow{Label: "RAM", Value: "0 B"},
 		)
 	}
@@ -614,7 +716,7 @@ func voiceModelStorageStatus(model setup.VoiceModelOption) string {
 		return formatBytes(bytes)
 	}
 	if strings.TrimSpace(model.Path) == "" {
-		return "Not installed"
+		return "Not Installed"
 	}
 	return "Unknown"
 }
@@ -665,6 +767,9 @@ func voiceCatalogInfo(provider setup.VoiceProviderOption) string {
 }
 
 func ttsLanguageCode(provider setup.VoiceProviderOption, cfg setup.VoiceProviderConfig) string {
+	if provider.ID == "supertonic" {
+		return normalizeSupertonicLanguageCode(cfg.Language)
+	}
 	if language := normalizeVoiceLanguageCode(cfg.Language); language != "" {
 		if len(voiceModelsForLanguage(provider.Models, language)) > 0 {
 			return language

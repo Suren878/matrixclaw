@@ -10,9 +10,11 @@ import (
 
 const defaultJSONTimeout = 10 * time.Second
 const defaultCompactJSONTimeout = 2 * time.Minute
+const defaultVoiceRuntimeTimeout = 30 * time.Minute
 
 var defaultHTTPClient = &http.Client{Timeout: defaultJSONTimeout}
 var defaultCompactHTTPClient = &http.Client{Timeout: defaultCompactJSONTimeout}
+var defaultVoiceRuntimeHTTPClient = &http.Client{Timeout: defaultVoiceRuntimeTimeout}
 
 type APIError struct {
 	StatusCode int

@@ -261,11 +261,11 @@ func TestHandleUpdateTextToSpeechCommandSendsVoice(t *testing.T) {
 	if ttsRequest.Text != "say this" || ttsRequest.VoiceID != "" || ttsRequest.Language != "" {
 		t.Fatalf("tts request = %#v, want command text and daemon-selected defaults", ttsRequest)
 	}
-	if len(api.sendVoiceRequests) != 1 {
-		t.Fatalf("sendVoiceRequests len = %d, want 1", len(api.sendVoiceRequests))
+	if len(api.sendAudioRequests) != 1 {
+		t.Fatalf("sendAudioRequests len = %d, want 1", len(api.sendAudioRequests))
 	}
-	if string(api.sendVoiceRequests[0].Voice) != string(audio) || api.sendVoiceRequests[0].FileName != "speech.mp3" {
-		t.Fatalf("send voice request = %#v, want generated audio", api.sendVoiceRequests[0])
+	if string(api.sendAudioRequests[0].Audio) != string(audio) || api.sendAudioRequests[0].FileName != "speech.mp3" {
+		t.Fatalf("send audio request = %#v, want generated audio", api.sendAudioRequests[0])
 	}
 	if !strings.HasPrefix(storageRequest.Path, "telegram/audio/chat42-") || !strings.HasSuffix(storageRequest.Path, "-speech.mp3") {
 		t.Fatalf("storage path = %q, want generated tts path", storageRequest.Path)

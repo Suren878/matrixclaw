@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -115,6 +116,7 @@ type providerItemSource struct {
 	model           string
 	reasoningEffort string
 	toolUseMode     providers.ToolUseMode
+	contextWindow   int
 	apiKeyPreview   string
 }
 
@@ -135,6 +137,7 @@ func providerDraftItemSource(provider ProviderDraft) providerItemSource {
 		model:           provider.Model,
 		reasoningEffort: providers.NormalizeReasoningEffortForModel(catalogID, provider.Type, provider.Model, provider.ReasoningEffort),
 		toolUseMode:     providers.NormalizeOptionalToolUseMode(provider.ToolUseMode),
+		contextWindow:   parsePositiveInt(provider.ContextWindow),
 		apiKeyPreview:   currentDraftAPIKeyPreview(provider),
 	}
 }
@@ -156,6 +159,7 @@ func providerConfigItemSource(provider ProviderConfig) providerItemSource {
 		model:           provider.Model,
 		reasoningEffort: providers.NormalizeReasoningEffortForModel(catalogID, provider.Type, provider.Model, provider.ReasoningEffort),
 		toolUseMode:     providers.NormalizeOptionalToolUseMode(provider.ToolUseMode),
+		contextWindow:   provider.ContextWindow,
 		apiKeyPreview:   ProviderAPIKeyPreview(provider),
 	}
 }
@@ -216,6 +220,7 @@ func providerSetupItem(provider providerItemSource, active bool) ProviderSetupIt
 		BaseURL:         provider.baseURL,
 		BaseURLOptions:  providerBaseURLOptions(firstNonEmptyTrimmed(provider.catalogID, provider.id)),
 		Model:           provider.model,
+		ContextWindow:   provider.contextWindow,
 		ReasoningEffort: provider.reasoningEffort,
 		ToolUseMode:     provider.toolUseMode,
 		APIKeyPreview:   provider.apiKeyPreview,
@@ -557,6 +562,9 @@ func applyProviderSetupUpdate(provider ProviderDraft, update ProviderSetupUpdate
 	if model := strings.TrimSpace(update.Model); model != "" {
 		provider.Model = model
 	}
+	if update.ContextWindow > 0 {
+		provider.ContextWindow = strconv.Itoa(update.ContextWindow)
+	}
 	if reasoningEffort := providers.NormalizeReasoningEffortForModel(firstNonEmptyTrimmed(provider.CatalogID, provider.ID), provider.Type, firstNonEmptyTrimmed(update.Model, provider.Model), update.ReasoningEffort); reasoningEffort != "" {
 		provider.ReasoningEffort = reasoningEffort
 	}
@@ -564,6 +572,14 @@ func applyProviderSetupUpdate(provider ProviderDraft, update ProviderSetupUpdate
 		provider.ToolUseMode = toolUseMode
 	}
 	return provider, nil
+}
+
+func parsePositiveInt(value string) int {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed <= 0 {
+		return 0
+	}
+	return parsed
 }
 
 func (s *Service) providerSetupItem(providerID string) (ProviderSetupItem, error) {

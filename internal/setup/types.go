@@ -34,6 +34,7 @@ type ProviderConfig struct {
 	APIKeyEnv       string                `json:"api_key_env,omitempty"`
 	BaseURL         string                `json:"base_url,omitempty"`
 	Model           string                `json:"model"`
+	ContextWindow   int                   `json:"context_window,omitempty"`
 	MaxOutputTokens int64                 `json:"max_output_tokens,omitempty"`
 	ReasoningEffort string                `json:"reasoning_effort,omitempty"`
 	ToolUseMode     providers.ToolUseMode `json:"tool_use_mode,omitempty"`
@@ -181,6 +182,7 @@ type ProviderDraft struct {
 	BaseURL             string
 	Model               string
 	ToolUseMode         providers.ToolUseMode
+	ContextWindow       string
 	MaxOutputTokens     string
 	ReasoningEffort     string
 	HasStoredAPIKey     bool
@@ -215,6 +217,7 @@ type ProviderSetupItem struct {
 	BaseURL         string                    `json:"base_url,omitempty"`
 	BaseURLOptions  []providers.BaseURLOption `json:"base_url_options,omitempty"`
 	Model           string                    `json:"model,omitempty"`
+	ContextWindow   int                       `json:"context_window,omitempty"`
 	ReasoningEffort string                    `json:"reasoning_effort,omitempty"`
 	ToolUseMode     providers.ToolUseMode     `json:"tool_use_mode,omitempty"`
 	DefaultModel    string                    `json:"default_model,omitempty"`
@@ -228,6 +231,7 @@ type ProviderSetupUpdate struct {
 	APIKey          string                `json:"api_key,omitempty"`
 	BaseURL         string                `json:"base_url,omitempty"`
 	Model           string                `json:"model,omitempty"`
+	ContextWindow   int                   `json:"context_window,omitempty"`
 	ReasoningEffort string                `json:"reasoning_effort,omitempty"`
 	ToolUseMode     providers.ToolUseMode `json:"tool_use_mode,omitempty"`
 	Active          bool                  `json:"active,omitempty"`

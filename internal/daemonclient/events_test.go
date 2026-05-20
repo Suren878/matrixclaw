@@ -50,6 +50,55 @@ func TestSubscribeEventsFlushesFinalEventAtEOF(t *testing.T) {
 	}
 }
 
+func TestSubscribeEventsHandlesLargeEventLine(t *testing.T) {
+	largeMetadata := strings.Repeat("x", 2*1024*1024)
+	event := core.Event{
+		ID:        8,
+		Type:      core.EventMessageUpdated,
+		SessionID: "session-1",
+		RunID:     "run-1",
+		At:        time.Now().UTC(),
+		Payload: core.Message{
+			ID:        "message-1",
+			SessionID: "session-1",
+			RunID:     "run-1",
+			Role:      core.MessageRoleTool,
+			Parts: []core.MessagePart{{
+				Kind: core.MessagePartKindToolResult,
+				ToolResult: &core.ToolResultPart{
+					Name:     "text_to_speech",
+					Metadata: json.RawMessage(`{"content_base64":"` + largeMetadata + `"}`),
+				},
+			}},
+		},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		body, _ := json.Marshal(event)
+		fmt.Fprint(w, "id: 8\n")
+		fmt.Fprint(w, "event: message.updated\n")
+		fmt.Fprintf(w, "data: %s\n\n", body)
+	}))
+	defer server.Close()
+
+	client := New(server.URL, "test", "local")
+	events, errs, err := client.SubscribeEvents(context.Background(), "session-1", 0)
+	if err != nil {
+		t.Fatalf("SubscribeEvents() error = %v", err)
+	}
+
+	select {
+	case got := <-events:
+		if got.ID != 8 || got.Type != core.EventMessageUpdated {
+			t.Fatalf("event = %#v, want id 8 message.updated", got)
+		}
+	case err := <-errs:
+		t.Fatalf("SubscribeEvents() async error = %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for large SSE event")
+	}
+}
+
 func TestSubscribeEventsDecodesErrorBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

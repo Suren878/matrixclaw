@@ -15,7 +15,11 @@ func newCoreCodingRegistry() *tools.Registry {
 }
 
 type sessionLLMRegistryStub struct {
-	runtime providers.Runtime
+	runtime       providers.Runtime
+	providerID    string
+	providerType  string
+	modelID       string
+	contextWindow int
 }
 
 func newSessionLLMRegistryStub(runtime providers.Runtime) *sessionLLMRegistryStub {
@@ -23,7 +27,7 @@ func newSessionLLMRegistryStub(runtime providers.Runtime) *sessionLLMRegistryStu
 }
 
 func (s *sessionLLMRegistryStub) ActiveSelection() (string, string) {
-	return "stub-provider", "stub-model"
+	return s.providerIDValue(), s.modelIDValue()
 }
 
 func (s *sessionLLMRegistryStub) Providers() []core.SessionProviderOption {
@@ -35,7 +39,7 @@ func (s *sessionLLMRegistryStub) Normalize(providerID string, modelID string) (c
 	if providerID == "" {
 		providerID, _ = s.ActiveSelection()
 	}
-	if providerID != "stub-provider" {
+	if providerID != s.providerIDValue() {
 		return core.SessionProviderOption{}, "", fmt.Errorf("provider %q is not configured", providerID)
 	}
 	modelID = strings.TrimSpace(modelID)
@@ -46,7 +50,7 @@ func (s *sessionLLMRegistryStub) Normalize(providerID string, modelID string) (c
 }
 
 func (s *sessionLLMRegistryStub) Models(context.Context, string) ([]string, error) {
-	return []string{"stub-model"}, nil
+	return []string{s.modelIDValue()}, nil
 }
 
 func (s *sessionLLMRegistryStub) Resolve(ctx context.Context, providerID string, modelID string) (providers.Runtime, core.SessionProviderOption, string, error) {
@@ -57,12 +61,40 @@ func (s *sessionLLMRegistryStub) Resolve(ctx context.Context, providerID string,
 	return s.runtime, option, resolvedModel, nil
 }
 
+func (s *sessionLLMRegistryStub) ContextWindowTokens(string, string) (int, bool) {
+	if s.contextWindow <= 0 {
+		return 0, false
+	}
+	return s.contextWindow, true
+}
+
 func (s *sessionLLMRegistryStub) option() core.SessionProviderOption {
 	return core.SessionProviderOption{
-		ID:           "stub-provider",
+		ID:           s.providerIDValue(),
 		Label:        "Stub Provider",
-		Type:         "stub",
-		DefaultModel: "stub-model",
+		Type:         s.providerTypeValue(),
+		DefaultModel: s.modelIDValue(),
 		Configured:   true,
 	}
+}
+
+func (s *sessionLLMRegistryStub) providerIDValue() string {
+	if value := strings.TrimSpace(s.providerID); value != "" {
+		return value
+	}
+	return "stub-provider"
+}
+
+func (s *sessionLLMRegistryStub) providerTypeValue() string {
+	if value := strings.TrimSpace(s.providerType); value != "" {
+		return value
+	}
+	return "stub"
+}
+
+func (s *sessionLLMRegistryStub) modelIDValue() string {
+	if value := strings.TrimSpace(s.modelID); value != "" {
+		return value
+	}
+	return "stub-model"
 }

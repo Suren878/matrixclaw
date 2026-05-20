@@ -263,23 +263,47 @@ func (w *Worker) sendGeneratedSpeech(ctx context.Context, target chatTarget, res
 	if int64(len(content)) > maxTelegramAudioBytes {
 		return SentMessage{}, w.sendText(ctx, target, fmt.Sprintf("Generated audio is too large: %d bytes", len(content)))
 	}
-	w.saveGeneratedSpeechToStorage(ctx, target, response, content)
-	req := SendVoiceRequest{
-		ChatID:          target.chatID,
-		MessageThreadID: target.threadID,
-		Voice:           content,
-		FileName:        firstNonEmpty(response.FileName, "matrixclaw-tts.mp3"),
-		MIMEType:        firstNonEmpty(response.MIMEType, "audio/mpeg"),
+	fileName := firstNonEmpty(response.FileName, "matrixclaw-tts.mp3")
+	mimeType := firstNonEmpty(response.MIMEType, "audio/mpeg")
+	var sent SentMessage
+	if useTelegramVoiceUpload(fileName, mimeType) {
+		req := SendVoiceRequest{
+			ChatID:          target.chatID,
+			MessageThreadID: target.threadID,
+			Voice:           content,
+			FileName:        fileName,
+			MIMEType:        mimeType,
+		}
+		sent, err = w.api.SendVoice(ctx, req)
+	} else {
+		req := SendAudioRequest{
+			ChatID:          target.chatID,
+			MessageThreadID: target.threadID,
+			Audio:           content,
+			FileName:        fileName,
+			MIMEType:        mimeType,
+		}
+		sent, err = w.api.SendAudio(ctx, req)
 	}
-	return w.api.SendVoice(ctx, req)
+	if err != nil {
+		return SentMessage{}, err
+	}
+	w.saveGeneratedSpeechToStorage(ctx, target, response, content)
+	return sent, nil
+}
+
+func useTelegramVoiceUpload(fileName string, mimeType string) bool {
+	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
+	name := strings.ToLower(strings.TrimSpace(fileName))
+	return strings.Contains(mimeType, "ogg") || strings.Contains(mimeType, "opus") || strings.HasSuffix(name, ".ogg") || strings.HasSuffix(name, ".opus")
 }
 
 func (w *Worker) saveGeneratedSpeechToStorage(ctx context.Context, target chatTarget, response voicemodule.TextToSpeechResponse, content []byte) {
-	name := safeStorageFileName(firstNonEmpty(response.FileName, "matrixclaw-tts.wav"))
+	name := safeStorageFileName(firstNonEmpty(response.FileName, "matrixclaw-tts.mp3"))
 	if name == "" {
-		name = "matrixclaw-tts.wav"
+		name = "matrixclaw-tts.mp3"
 	}
-	mimeType := firstNonEmpty(response.MIMEType, "audio/wav")
+	mimeType := firstNonEmpty(response.MIMEType, "audio/mpeg")
 	storagePath := fmt.Sprintf("telegram/audio/chat%d-%d-%s", target.chatID, time.Now().UnixNano(), name)
 	if _, err := w.daemon(target.externalKey).SaveStorageFile(ctx, storagePath, content, name, []string{"telegram", "generated", "audio", "tts"}, mimeType); err != nil {
 		log.Printf("telegram: save generated speech to storage failed: %v", err)

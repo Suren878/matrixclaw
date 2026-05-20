@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -28,10 +27,7 @@ func (m *appModel) contextUsageText() string {
 		tokens = snapshot.Context.TokenEstimate
 	}
 
-	parts := []string{"Context: ~" + formatTokenCount(tokens) + " tokens"}
-	if usage, ok := latestHeaderProviderUsage(snapshot.Context, snapshot.Messages); ok {
-		parts = append(parts, formatHeaderProviderUsage(usage))
-	}
+	parts := []string{formatHeaderContextUsage(tokens, snapshot.Context)}
 	if model != "" {
 		parts = append(parts, model)
 	}
@@ -41,78 +37,24 @@ func (m *appModel) contextUsageText() string {
 	return strings.Join(parts, " · ")
 }
 
+func formatHeaderContextUsage(tokens int, report *core.ContextReport) string {
+	if report != nil {
+		if report.TokenEstimate > tokens {
+			tokens = report.TokenEstimate
+		}
+		if report.WindowTokens > 0 {
+			return "Context: ~" + formatTokenCount(tokens) + " / " + formatTokenCount(report.WindowTokens)
+		}
+	}
+	return "Context: ~" + formatTokenCount(tokens)
+}
+
 func sessionIsExternalAgent(session *core.Session) bool {
 	if session == nil {
 		return false
 	}
 	return core.NormalizeSessionRuntime(session.RuntimeID) == core.SessionRuntimeExternalAgent ||
 		core.NormalizeSessionKind(session.Kind) == core.SessionKindExternalAgent
-}
-
-func latestHeaderProviderUsage(report *core.ContextReport, messages []surfacemessage.Message) (core.ProviderUsage, bool) {
-	for i := len(messages) - 1; i >= 0; i-- {
-		for j := len(messages[i].Parts) - 1; j >= 0; j-- {
-			finish, ok := messages[i].Parts[j].(surfacemessage.Finish)
-			if !ok || strings.TrimSpace(finish.Details) == "" {
-				continue
-			}
-			usage, ok := providerUsageFromFinishDetails(finish.Details)
-			if ok {
-				return usage, true
-			}
-		}
-	}
-	if report != nil && report.LastProviderUsage != nil && !providerUsageEmptyForHeader(*report.LastProviderUsage) {
-		return *report.LastProviderUsage, true
-	}
-	return core.ProviderUsage{}, false
-}
-
-func providerUsageFromFinishDetails(details string) (core.ProviderUsage, bool) {
-	var payload struct {
-		Usage core.ProviderUsage `json:"usage"`
-	}
-	if err := json.Unmarshal([]byte(details), &payload); err != nil || providerUsageEmptyForHeader(payload.Usage) {
-		return core.ProviderUsage{}, false
-	}
-	return payload.Usage, true
-}
-
-func formatHeaderProviderUsage(usage core.ProviderUsage) string {
-	input := usage.InputTokens
-	output := usage.OutputTokens
-	total := usage.TotalTokens
-	if total == 0 {
-		total = input + output
-	}
-	segments := make([]string, 0, 4)
-	if input > 0 {
-		segments = append(segments, "in "+formatTokenCount64(input))
-	}
-	if output > 0 {
-		segments = append(segments, "out "+formatTokenCount64(output))
-	}
-	if usage.ReasoningTokens > 0 {
-		segments = append(segments, "reasoning "+formatTokenCount64(usage.ReasoningTokens))
-	}
-	if usage.CachedTokens > 0 {
-		segments = append(segments, "cached "+formatTokenCount64(usage.CachedTokens))
-	}
-	if len(segments) == 0 && total > 0 {
-		segments = append(segments, formatTokenCount64(total))
-	}
-	if len(segments) == 0 {
-		return ""
-	}
-	return "Last: " + strings.Join(segments, " / ")
-}
-
-func providerUsageEmptyForHeader(usage core.ProviderUsage) bool {
-	return usage.InputTokens == 0 &&
-		usage.OutputTokens == 0 &&
-		usage.TotalTokens == 0 &&
-		usage.CachedTokens == 0 &&
-		usage.ReasoningTokens == 0
 }
 
 func (m *appModel) assistantPromptTokens() int {
@@ -130,6 +72,10 @@ func estimateMessagesTokens(messages []surfacemessage.Message) int {
 			switch part := part.(type) {
 			case surfacemessage.TextContent:
 				total += estimateTokens(part.Text)
+			case surfacemessage.ImageURLContent:
+				total += core.EstimatedImageTokens
+			case surfacemessage.BinaryContent:
+				total += core.EstimatedImageTokens
 			case surfacemessage.ToolResult:
 				total += estimateTokens(part.Content)
 			case surfacemessage.ToolCall:

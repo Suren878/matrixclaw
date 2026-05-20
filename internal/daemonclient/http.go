@@ -57,6 +57,18 @@ func (c *Client) compactHTTPClient() *http.Client {
 	return c.HTTPClient
 }
 
+func (c *Client) voiceRuntimeHTTPClient() *http.Client {
+	if c == nil || c.HTTPClient == nil || c.HTTPClient == defaultHTTPClient {
+		return defaultVoiceRuntimeHTTPClient
+	}
+	if c.HTTPClient.Timeout > 0 && c.HTTPClient.Timeout < defaultVoiceRuntimeTimeout {
+		clone := *c.HTTPClient
+		clone.Timeout = defaultVoiceRuntimeTimeout
+		return &clone
+	}
+	return c.HTTPClient
+}
+
 func (c *Client) authorize(req *http.Request) {
 	if c == nil || req == nil {
 		return

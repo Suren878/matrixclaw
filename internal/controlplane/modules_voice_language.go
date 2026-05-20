@@ -179,6 +179,63 @@ func normalizeVoiceLanguageCode(languageCode string) string {
 	}
 }
 
+func normalizeSupertonicLanguageCode(languageCode string) string {
+	languageCode = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(languageCode, "_", "-")))
+	switch languageCode {
+	case "", "auto":
+		return "auto"
+	case "unknown", "fallback":
+		return "na"
+	}
+	if before, _, ok := strings.Cut(languageCode, "-"); ok {
+		languageCode = before
+	}
+	for _, option := range supertonicLanguageOptions() {
+		if option.id == languageCode {
+			return option.id
+		}
+	}
+	return "auto"
+}
+
+func supertonicLanguageOptions() []struct{ id, title string } {
+	return []struct{ id, title string }{
+		{"auto", "Auto"},
+		{"na", "Fallback"},
+		{"ar", "Arabic"},
+		{"bg", "Bulgarian"},
+		{"cs", "Czech"},
+		{"da", "Danish"},
+		{"de", "German"},
+		{"el", "Greek"},
+		{"en", "English"},
+		{"es", "Spanish"},
+		{"et", "Estonian"},
+		{"fi", "Finnish"},
+		{"fr", "French"},
+		{"hi", "Hindi"},
+		{"hr", "Croatian"},
+		{"hu", "Hungarian"},
+		{"id", "Indonesian"},
+		{"it", "Italian"},
+		{"ja", "Japanese"},
+		{"ko", "Korean"},
+		{"lt", "Lithuanian"},
+		{"lv", "Latvian"},
+		{"nl", "Dutch"},
+		{"pl", "Polish"},
+		{"pt", "Portuguese"},
+		{"ro", "Romanian"},
+		{"ru", "Russian"},
+		{"sk", "Slovak"},
+		{"sl", "Slovenian"},
+		{"sv", "Swedish"},
+		{"tr", "Turkish"},
+		{"uk", "Ukrainian"},
+		{"vi", "Vietnamese"},
+	}
+}
+
 func voiceInstallInfo(provider setup.VoiceProviderOption, voiceID string) string {
 	for _, model := range provider.Models {
 		if model.ID == voiceID {
@@ -204,6 +261,13 @@ func voiceLocalModelStatus(provider setup.VoiceProviderOption, modelID string) s
 }
 
 func voiceLanguageStatus(language string) string {
+	if code := normalizeSupertonicLanguageCode(language); code != "auto" || strings.EqualFold(strings.TrimSpace(language), "auto") {
+		for _, option := range supertonicLanguageOptions() {
+			if option.id == code {
+				return option.title
+			}
+		}
+	}
 	switch strings.ToLower(strings.TrimSpace(language)) {
 	case "", "auto":
 		return "Auto"

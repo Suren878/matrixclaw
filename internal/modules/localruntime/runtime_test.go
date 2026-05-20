@@ -128,6 +128,14 @@ done
 	}
 }
 
+func TestNormalizeTTSInputTextKeepsPiperOnSingleUtterance(t *testing.T) {
+	input := "first line\nsecond line\n\nthird\tline"
+	got := normalizeTTSInputText(input)
+	if got != "first line second line third line" {
+		t.Fatalf("normalizeTTSInputText() = %q", got)
+	}
+}
+
 func TestDecorateVoiceProviderKeepsInstalledConfiguredPiperVoiceOutsideCatalog(t *testing.T) {
 	tmp := t.TempDir()
 	root := filepath.Join(tmp, "local")
@@ -138,6 +146,9 @@ func TestDecorateVoiceProviderKeepsInstalledConfiguredPiperVoiceOutsideCatalog(t
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(modelPath, []byte("model"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(modelPath+".json", []byte("{}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

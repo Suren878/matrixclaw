@@ -14,6 +14,7 @@ type ConfirmData struct {
 	Selected      int
 	ConfirmDanger bool
 	CancelDanger  bool
+	OnlyCancel    bool
 }
 
 func RenderConfirmCard(frame Frame, data ConfirmData) string {
@@ -21,7 +22,7 @@ func RenderConfirmCard(frame Frame, data ConfirmData) string {
 	body := confirmBody(frame, data)
 	return frame.RenderCard(FrameData{
 		Body:       body,
-		Help:       "←/→ switch · enter confirm · esc cancel",
+		Help:       confirmHelp(data),
 		HideHeader: true,
 	})
 }
@@ -43,10 +44,22 @@ func confirmBody(frame Frame, data ConfirmData) []string {
 }
 
 func confirmButtonSpecs(data ConfirmData) []ButtonSpec {
+	if data.OnlyCancel {
+		return []ButtonSpec{
+			{Label: firstNonEmpty(data.CancelLabel, "Cancel"), Role: RoleCancel, Danger: data.CancelDanger},
+		}
+	}
 	return []ButtonSpec{
 		{Label: firstNonEmpty(data.ConfirmLabel, "Confirm"), Role: RoleSubmit, Danger: data.ConfirmDanger},
 		{Label: firstNonEmpty(data.CancelLabel, "Cancel"), Role: RoleCancel, Danger: data.CancelDanger},
 	}
+}
+
+func confirmHelp(data ConfirmData) string {
+	if data.OnlyCancel {
+		return "enter/esc cancel"
+	}
+	return "←/→ switch · enter confirm · esc cancel"
 }
 
 func wrapText(text string, width int) []string {

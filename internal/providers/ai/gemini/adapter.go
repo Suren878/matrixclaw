@@ -120,6 +120,8 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 		for _, item := range payload.Models {
 			if supportsGenerateContent(item.SupportedGenerationMethods) {
 				if name := strings.TrimSpace(item.Name); name != "" {
+					providers.RegisterContextWindowTokens(cfg.ProviderID, providers.TypeGemini, name, item.InputTokenLimit)
+					providers.RegisterContextWindowTokens(cfg.CatalogID, providers.TypeGemini, name, item.InputTokenLimit)
 					models = append(models, name)
 				}
 			}

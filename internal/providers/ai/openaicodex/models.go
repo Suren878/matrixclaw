@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
 func ListModels(ctx context.Context, cfg Config) ([]string, error) {
@@ -62,11 +64,13 @@ func decodeModels(raw []byte) ([]string, error) {
 	values := make([]string, 0, len(payload.Data)+len(payload.Models))
 	for _, item := range payload.Data {
 		if id := item.modelID(); id != "" {
+			providers.RegisterContextWindowTokens("openai-codex", providers.TypeOpenAICodex, id, item.contextWindowTokens())
 			values = append(values, id)
 		}
 	}
 	for _, item := range payload.Models {
 		if id := item.modelID(); id != "" {
+			providers.RegisterContextWindowTokens("openai-codex", providers.TypeOpenAICodex, id, item.contextWindowTokens())
 			values = append(values, id)
 		}
 	}
@@ -74,14 +78,30 @@ func decodeModels(raw []byte) ([]string, error) {
 }
 
 type modelItem struct {
-	ID    string `json:"id"`
-	Model string `json:"model"`
-	Name  string `json:"name"`
-	Slug  string `json:"slug"`
+	ID            string `json:"id"`
+	Model         string `json:"model"`
+	Name          string `json:"name"`
+	Slug          string `json:"slug"`
+	ContextWindow int    `json:"context_window"`
+	ContextLength int    `json:"context_length"`
+	MaxTokens     int    `json:"max_tokens"`
 }
 
 func (m modelItem) modelID() string {
 	return firstNonEmpty(m.ID, m.Model, m.Name, m.Slug)
+}
+
+func (m modelItem) contextWindowTokens() int {
+	switch {
+	case m.ContextWindow > 0:
+		return m.ContextWindow
+	case m.ContextLength > 0:
+		return m.ContextLength
+	case m.MaxTokens > 0:
+		return m.MaxTokens
+	default:
+		return 0
+	}
 }
 
 func cleanModels(values []string) []string {

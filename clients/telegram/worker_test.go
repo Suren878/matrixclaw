@@ -87,6 +87,8 @@ func TestHandleUpdatePhotoSendsImagePart(t *testing.T) {
 				SessionID: "session_1",
 				Run:       core.Run{ID: "run_1"},
 			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/events":
+			w.Header().Set("Content-Type", "text/event-stream")
 		default:
 			t.Fatalf("unexpected daemon request %s %s", r.Method, r.URL.Path)
 		}

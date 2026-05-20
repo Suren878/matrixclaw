@@ -72,6 +72,78 @@ func TestGenerateSuccess(t *testing.T) {
 	}
 }
 
+func TestListModelsRegistersEndpointContextWindow(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" {
+			t.Fatalf("path = %q, want /models", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"id":            "custom-context-model",
+				"max_model_len": 131_072,
+			}},
+		})
+	}))
+	defer server.Close()
+
+	models, err := ListModels(context.Background(), Config{
+		ProviderID: "custom-provider",
+		APIKey:     "secret",
+		BaseURL:    server.URL,
+		Model:      "custom-context-model",
+		HTTPClient: server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("ListModels() error = %v", err)
+	}
+	if len(models) != 1 || models[0] != "custom-context-model" {
+		t.Fatalf("models = %#v, want custom-context-model", models)
+	}
+	if got := providers.ResolveContextWindowTokens("custom-provider", providers.TypeOpenAICompat, "custom-context-model"); got != 131_072 {
+		t.Fatalf("ResolveContextWindowTokens() = %d, want endpoint max_model_len", got)
+	}
+}
+
+func TestListModelsRegistersOllamaRuntimeContextWindow(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"id": "qwen3:8b"}},
+			})
+		case "/api/show":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"parameters": "num_ctx 32768\n",
+				"model_info": map[string]any{
+					"llama.context_length": 131_072,
+				},
+			})
+		case "/api/v1/models", "/v1/models/qwen3:8b":
+			http.NotFound(w, r)
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	if _, err := ListModels(context.Background(), Config{
+		ProviderID: "ollama",
+		APIKey:     "secret",
+		BaseURL:    server.URL + "/v1",
+		Model:      "qwen3:8b",
+		HTTPClient: server.Client(),
+	}); err != nil {
+		t.Fatalf("ListModels() error = %v", err)
+	}
+	if got := providers.ResolveContextWindowTokens("ollama", providers.TypeOpenAICompat, "qwen3:8b"); got != 32_768 {
+		t.Fatalf("ResolveContextWindowTokens() = %d, want Ollama runtime num_ctx", got)
+	}
+}
+
 func TestGenerateRoundTripsReasoningContent(t *testing.T) {
 	t.Parallel()
 

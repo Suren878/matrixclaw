@@ -9,7 +9,7 @@ session.
 
 Current local providers:
 
-- Text to Speech: Piper
+- Text to Speech: Piper, Supertonic 3
 - Speech to Text: Whisper.cpp
 
 The runtime installer prepares binaries:
@@ -18,7 +18,8 @@ The runtime installer prepares binaries:
 scripts/install_voice_runtime.sh
 ```
 
-It installs Piper into `~/.local/state/matrixclaw/runtime/piper-venv`, builds
+It installs Piper into `~/.local/state/matrixclaw/runtime/piper-venv`,
+Supertonic into `~/.local/state/matrixclaw/runtime/supertonic-venv`, builds
 Whisper.cpp under `~/.local/state/matrixclaw/runtime/whisper.cpp`, and installs
 `ffmpeg` when the host package manager is supported.
 
@@ -38,16 +39,26 @@ chosen later from:
 Local model files live under `~/.local/state/matrixclaw/local/voice/` by
 default. `MATRIXCLAW_LOCAL_DIR` can override that local module root.
 
-Piper can also be installed from the TUI without running the full voice runtime
-installer:
+Piper and Supertonic can also be installed from the TUI without running the full
+voice runtime installer:
 
 ```text
 /modules -> Text to Speech -> Provider -> Piper -> Piper runtime
+/modules -> Text to Speech -> Provider -> Supertonic 3 -> Runtime
 ```
 
-That row installs or deletes the managed local `piper-tts` runtime. It is
-separate from `Add voice`: voices are model files, while Piper runtime is the
-native executable that reads those voices.
+The Piper runtime row installs or deletes the managed local `piper-tts`
+runtime. It is separate from `Add voice`: Piper voices are model files, while
+Piper runtime is the native executable that reads those voices.
+
+The Supertonic runtime row installs the Python SDK with local server support and
+runs the official `supertonic download` command. Supertonic voice styles are
+built into the shared Supertonic model, so changing M1-M5/F1-F5 does not
+download a separate voice file.
+Supertonic can encode WAV, FLAC, and OGG/Vorbis natively. Matrixclaw requests
+WAV from local TTS runtimes, converts it to MP3 through `ffmpeg`, and returns the
+MP3 to clients. Temporary WAV files are removed immediately after the daemon
+reads them.
 
 ## Run Modes
 
@@ -55,10 +66,11 @@ Local voice providers support two modes:
 
 - **Run per task:** default mode. Piper or `whisper-cli` starts for one TTS/STT
   request and exits. Idle RAM stays near zero, which is the best default for a
-  laptop, VPS, or single-user workstation.
+  laptop, VPS, or single-user workstation. Supertonic also defaults to this
+  mode.
 - **Always running:** keeps a local process warm for lower latency. Piper uses a
-  managed Piper process. Whisper.cpp uses `whisper-server` and its local
-  `/inference` endpoint.
+  managed Piper process, Supertonic uses `supertonic serve` on loopback, and
+  Whisper.cpp uses `whisper-server` with its local `/inference` endpoint.
 
 Always-running mode is useful when voice is frequent and startup latency matters.
 Run-per-task mode is better when RAM matters more than latency. Whisper.cpp
@@ -70,6 +82,11 @@ model size controls peak memory during transcription: `tiny` is lightest,
 Piper voices are loaded from the online Piper voice catalog when available, with
 bundled English and Russian fallbacks. The TUI groups voices by language so you
 can select a language first, then a voice.
+
+Supertonic voice styles are loaded from the Supertonic 3 Hugging Face model tree
+when available. The language setting can stay on `Auto`; pin a language code
+when text needs explicit language handling. Supertonic 3 supports 31 language
+codes plus its automatic fallback.
 
 Whisper.cpp models are loaded from the upstream model catalog when available,
 with bundled size tiers from `tiny` through `large-v3`. STT language can stay on
@@ -112,8 +129,10 @@ Telegram voice/audio uploads are capped at 25 MB before transcription. The local
 STT API accepts JSON request bodies up to 36 MB, which accounts for base64
 overhead around that raw audio size.
 
-Piper returns WAV audio for local TTS. Telegram rejects generated audio over
-25 MB, so very long TTS responses should be shortened or split by the user.
+Piper and Supertonic generate WAV audio internally, then Matrixclaw converts the
+result to MP3 before sending it to clients or Telegram. Telegram rejects
+generated audio over 25 MB, so very long TTS responses should be shortened or
+split by the user.
 
 ## Privacy
 

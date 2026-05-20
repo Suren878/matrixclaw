@@ -186,7 +186,7 @@ func (p *piperProcess) synthesize(ctx context.Context, text string) ([]byte, err
 		return nil, fmt.Errorf("Piper output directory is empty")
 	}
 	before := piperOutputFiles(outputDir)
-	if _, err := fmt.Fprintln(p.stdin, strings.TrimSpace(text)); err != nil {
+	if _, err := fmt.Fprintln(p.stdin, normalizeTTSInputText(text)); err != nil {
 		return nil, err
 	}
 	path, err := waitForPiperOutput(ctx, outputDir, before)
@@ -310,7 +310,7 @@ func (r *Runtime) piperOneShotTextToSpeech(ctx context.Context, provider setup.V
 
 	args := []string{"--model", modelPath, "--config", modelPath + ".json", "--output-file", outputPath}
 	cmd := exec.CommandContext(ctx, binaryPath, args...)
-	cmd.Stdin = strings.NewReader(text)
+	cmd.Stdin = strings.NewReader(normalizeTTSInputText(text))
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {

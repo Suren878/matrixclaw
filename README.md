@@ -381,9 +381,9 @@ the standard text prompt, and `Enabled` opens a small Enable/Disable picker.
 
 ## Local Voice
 
-Text to Speech supports Piper as a local provider. Speech to Text supports
-Whisper.cpp as a local provider. Voice models are downloaded from the module UI,
-while the local runtime binaries are prepared by:
+Text to Speech supports Piper and Supertonic 3 as local providers.
+Speech to Text supports Whisper.cpp as a local provider. Voice models are
+downloaded from the module UI, while the local runtime binaries are prepared by:
 
 ```bash
 scripts/install_voice_runtime.sh
@@ -392,8 +392,9 @@ scripts/install_voice_runtime.sh
 The script installs/updates:
 
 - Piper in `~/.local/state/matrixclaw/runtime/piper-venv`
+- Supertonic in `~/.local/state/matrixclaw/runtime/supertonic-venv`
 - Whisper.cpp CLI and server in `~/.local/state/matrixclaw/runtime/whisper.cpp`
-- `ffmpeg` for audio formats such as Telegram voice messages
+- `ffmpeg` for STT input conversion and local TTS MP3 output
 
 Voice is part of the same daemon-first architecture as sessions and storage:
 clients request speech through the daemon API, the daemon selects the active
@@ -402,14 +403,15 @@ under `telegram/audio/`.
 
 Local providers support two runtime modes:
 
-- **Run per task:** default mode for Piper and Whisper.cpp. The native runtime
-  starts only for the current TTS/STT job, then exits. This keeps idle memory
-  near zero and is the best default for laptops and small servers. Whisper.cpp
-  still needs RAM while a transcription is running; the selected model size
-  controls that peak.
+- **Run per task:** default mode for Piper, Supertonic, and
+  Whisper.cpp. The native runtime starts only for the current TTS/STT job, then
+  exits. This keeps idle memory near zero and is the best default for laptops
+  and small servers. Whisper.cpp still needs RAM while a transcription is
+  running; the selected model size controls that peak.
 - **Always running:** keeps a managed local process warm for lower startup
-  latency. Piper uses the local Piper process manager; Whisper.cpp uses
-  `whisper-server` and the local `/inference` endpoint.
+  latency. Piper uses the local Piper process manager, Supertonic uses
+  `supertonic serve` on loopback, and Whisper.cpp uses `whisper-server` with
+  the local `/inference` endpoint.
 
 Piper voices are fetched from the online Piper voice catalog when available,
 with bundled English and Russian fallbacks. The TUI flow is:
@@ -423,6 +425,17 @@ voice. Piper also has a separate `Piper runtime` row for installing or deleting
 the managed local `piper-tts` runtime itself; voice downloads and runtime
 installation are intentionally separate. The status screen reports runtime
 state, local model storage, and current process RAM.
+
+Supertonic 3 is the heavier local TTS option. Its `Runtime` row installs the
+Python SDK with local server support and runs the official `supertonic download`
+command for the shared model. Voice styles M1-M5/F1-F5 are selected without
+separate per-voice downloads, and language can stay on `Auto` or be pinned to
+one of Supertonic's 31 supported language codes. In `Always running` mode,
+matrixclaw keeps `supertonic serve` on loopback and sends TTS requests to that
+local API. Supertonic can encode WAV, FLAC, and OGG/Vorbis natively; Matrixclaw
+converts local TTS output to MP3 through `ffmpeg` before returning it to clients.
+The temporary WAV files produced by local runtimes are removed immediately after
+the daemon reads them.
 
 Whisper.cpp models are fetched from the upstream Whisper.cpp model catalog when
 available, with bundled size tiers from `tiny` through `large-v3`. Language is

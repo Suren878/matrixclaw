@@ -70,6 +70,7 @@ type geminiModelsResponse struct {
 	Models []struct {
 		Name                       string   `json:"name"`
 		SupportedGenerationMethods []string `json:"supportedGenerationMethods,omitempty"`
+		InputTokenLimit            int      `json:"inputTokenLimit,omitempty"`
 	} `json:"models"`
 	NextPageToken string `json:"nextPageToken,omitempty"`
 }

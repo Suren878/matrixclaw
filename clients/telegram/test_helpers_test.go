@@ -35,6 +35,7 @@ type fakeBotAPI struct {
 	nextMessageID         int64
 	sendMessageRequests   []SendMessageRequest
 	sendVoiceRequests     []SendVoiceRequest
+	sendAudioRequests     []SendAudioRequest
 	editMessageRequests   []EditMessageTextRequest
 	deleteMessageRequests []DeleteMessageRequest
 	answerRequests        []AnswerCallbackQueryRequest
@@ -91,6 +92,14 @@ func (f *fakeBotAPI) SendVoice(_ context.Context, req SendVoiceRequest) (SentMes
 	defer f.mu.Unlock()
 	f.nextMessageID++
 	f.sendVoiceRequests = append(f.sendVoiceRequests, req)
+	return SentMessage{MessageID: f.nextMessageID}, nil
+}
+
+func (f *fakeBotAPI) SendAudio(_ context.Context, req SendAudioRequest) (SentMessage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.nextMessageID++
+	f.sendAudioRequests = append(f.sendAudioRequests, req)
 	return SentMessage{MessageID: f.nextMessageID}, nil
 }
 

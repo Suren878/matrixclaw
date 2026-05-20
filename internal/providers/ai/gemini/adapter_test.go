@@ -182,7 +182,7 @@ func TestListModelsUsesNativeModelsEndpoint(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"models": []map[string]any{
-				{"name": "models/gemini-2.5-flash", "supportedGenerationMethods": []string{"generateContent"}},
+				{"name": "models/gemini-2.5-flash", "supportedGenerationMethods": []string{"generateContent"}, "inputTokenLimit": 1_048_576},
 				{"name": "models/text-embedding-004", "supportedGenerationMethods": []string{"embedContent"}},
 			},
 		})
@@ -199,6 +199,9 @@ func TestListModelsUsesNativeModelsEndpoint(t *testing.T) {
 	}
 	if len(models) != 1 || models[0] != "models/gemini-2.5-flash" {
 		t.Fatalf("models = %#v, want one generateContent model", models)
+	}
+	if got := providers.ResolveContextWindowTokens("gemini", providers.TypeGemini, "gemini-2.5-flash"); got != 1_048_576 {
+		t.Fatalf("ResolveContextWindowTokens() = %d, want Gemini inputTokenLimit", got)
 	}
 }
 

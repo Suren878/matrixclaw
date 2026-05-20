@@ -107,6 +107,40 @@ func TestGenerateRejectsUnsupportedToolUse(t *testing.T) {
 	}
 }
 
+func TestListModelsRegistersContextWindow(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" {
+			t.Fatalf("path = %q, want /models", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"id":               "claude-test",
+				"max_input_tokens": 200_000,
+			}},
+		})
+	}))
+	defer server.Close()
+
+	models, err := ListModels(context.Background(), Config{
+		ProviderID: "anthropic",
+		APIKey:     "secret",
+		BaseURL:    server.URL,
+		Model:      "claude-test",
+		HTTPClient: server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("ListModels() error = %v", err)
+	}
+	if len(models) != 1 || models[0] != "claude-test" {
+		t.Fatalf("models = %#v, want claude-test", models)
+	}
+	if got := providers.ResolveContextWindowTokens("anthropic", providers.TypeAnthropic, "claude-test"); got != 200_000 {
+		t.Fatalf("ResolveContextWindowTokens() = %d, want Anthropic max_input_tokens", got)
+	}
+}
+
 func TestGenerateSendsSystemAndCustomInstructions(t *testing.T) {
 	t.Parallel()
 

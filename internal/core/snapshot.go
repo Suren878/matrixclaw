@@ -60,10 +60,18 @@ func (c *Core) ClientSnapshot(ctx context.Context, client string, externalKey st
 	if err != nil {
 		return ClientSnapshot{}, err
 	}
+	contextMessages := messages
+	if limit := c.clientSnapshotMessageLimit(); limit > 0 && len(messages) >= limit {
+		allMessages, err := c.store.ListMessages(ctx, binding.SessionID, 0)
+		if err != nil {
+			return ClientSnapshot{}, err
+		}
+		contextMessages = allMessages
+	}
 
 	snapshot.Files = files
 	snapshot.Messages = messages
-	context := c.contextReport(binding.SessionID, messages)
+	context := c.contextReportForSession(session, contextMessages)
 	snapshot.Context = &context
 	snapshot.Approvals, snapshot.ToolUpdates, snapshot.ApprovalNotifications = deriveClientSnapshotToolState(approvals, messages)
 	if len(messages) == 0 {

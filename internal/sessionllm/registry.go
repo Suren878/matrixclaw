@@ -31,6 +31,7 @@ type ProviderSpec struct {
 	APIKey          string
 	BaseURL         string
 	Model           string
+	ContextWindow   int
 	MaxOutputTokens int64
 	ReasoningEffort string
 	ToolUseMode     providers.ToolUseMode
@@ -136,6 +137,14 @@ func (r *Registry) Models(ctx context.Context, providerID string) ([]string, err
 		return nil, err
 	}
 	return models, nil
+}
+
+func (r *Registry) ContextWindowTokens(providerID string, modelID string) (int, bool) {
+	cfg, ok := r.resolveProvider(providerID)
+	if !ok || cfg.ContextWindow <= 0 {
+		return 0, false
+	}
+	return cfg.ContextWindow, true
 }
 
 func (r *Registry) Resolve(ctx context.Context, providerID string, modelID string) (providers.Runtime, core.SessionProviderOption, string, error) {

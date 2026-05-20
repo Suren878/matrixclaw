@@ -133,7 +133,7 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 			return textToSpeechCommand("enabled")
 		case "provider":
 			return textToSpeechCommand("provider")
-		case "local", "info":
+		case "local", "info", "status":
 			return textToSpeechCommand("info")
 		case "back":
 			return modulesCommand()
@@ -141,6 +141,20 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 			return ""
 		default:
 			return textToSpeechCommand()
+		}
+	case PickerTTSProvider:
+		if contextID == "" {
+			return textToSpeechCommand("provider")
+		}
+		switch itemID {
+		case "":
+			return voiceModuleCommand(contextID, "provider-select")
+		case "back":
+			return voiceModuleCommand(contextID)
+		case "cancel":
+			return ""
+		default:
+			return voiceModuleCommand(contextID, "set-provider", itemID)
 		}
 	case PickerSpeechToText:
 		switch itemID {

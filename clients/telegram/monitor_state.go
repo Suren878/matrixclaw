@@ -26,9 +26,10 @@ func (w *Worker) startMonitorWithDelivery(ctx context.Context, target chatTarget
 	state := w.states[key]
 	if state == nil {
 		state = &runDeliveryState{
-			assistant:    map[string]sentAssistantMessage{},
-			approvals:    map[string]int64{},
-			voiceResults: map[string]int64{},
+			assistant:         map[string]sentAssistantMessage{},
+			approvals:         map[string]int64{},
+			voiceResults:      map[string]int64{},
+			voiceFingerprints: map[string]int64{},
 		}
 		w.states[key] = state
 	}

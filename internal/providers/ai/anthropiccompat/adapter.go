@@ -104,7 +104,8 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 
 	var payload struct {
 		Data []struct {
-			ID string `json:"id"`
+			ID             string `json:"id"`
+			MaxInputTokens int    `json:"max_input_tokens"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -114,6 +115,8 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 	models := make([]string, 0, len(payload.Data))
 	for _, item := range payload.Data {
 		if id := strings.TrimSpace(item.ID); id != "" {
+			providers.RegisterContextWindowTokens(cfg.ProviderID, providers.TypeAnthropic, id, item.MaxInputTokens)
+			providers.RegisterContextWindowTokens(cfg.CatalogID, providers.TypeAnthropic, id, item.MaxInputTokens)
 			models = append(models, id)
 		}
 	}

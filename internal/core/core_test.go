@@ -327,6 +327,69 @@ func TestCoreSessionContextIncludesAssistantPromptAndMessages(t *testing.T) {
 	}
 }
 
+func TestCoreSessionContextIncludesSelectedModelWindow(t *testing.T) {
+	t.Parallel()
+
+	app := newTestCore(t, nil)
+	app.SetSessionLLMs(&sessionLLMRegistryStub{
+		runtime:      newProviderStub(),
+		providerID:   "openai-codex",
+		providerType: providers.TypeOpenAICodex,
+		modelID:      "gpt-5.3-codex-spark",
+	})
+	ctx := context.Background()
+	session := createSession(t, app, ctx, core.CreateSessionInput{Title: "Codex"})
+
+	report, err := app.SessionContext(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("SessionContext() error = %v", err)
+	}
+	if report.WindowTokens != 128_000 {
+		t.Fatalf("SessionContext().WindowTokens = %d, want 128000", report.WindowTokens)
+	}
+}
+
+func TestCoreSessionContextUsesManualModelWindowOverride(t *testing.T) {
+	t.Parallel()
+
+	app := newTestCore(t, nil)
+	app.SetSessionLLMs(&sessionLLMRegistryStub{
+		runtime:       newProviderStub(),
+		providerID:    "openai",
+		providerType:  providers.TypeOpenAICompat,
+		modelID:       "gpt-5.4",
+		contextWindow: 123_456,
+	})
+	ctx := context.Background()
+	session := createSession(t, app, ctx, core.CreateSessionInput{Title: "Manual"})
+
+	report, err := app.SessionContext(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("SessionContext() error = %v", err)
+	}
+	if report.WindowTokens != 123_456 {
+		t.Fatalf("SessionContext().WindowTokens = %d, want manual override", report.WindowTokens)
+	}
+}
+
+func TestEstimateMessageTokensUsesPartsAndImageWeight(t *testing.T) {
+	t.Parallel()
+
+	tokens := core.EstimateMessageTokens([]core.Message{{
+		Content: "duplicate text",
+		Parts: []core.MessagePart{
+			{Kind: core.MessagePartKindText, Text: &core.TextPart{Text: "duplicate text"}},
+			{Kind: core.MessagePartKindImage, Image: &core.ImagePart{Name: "screen.png"}},
+		},
+	}})
+	if tokens < core.EstimatedImageTokens {
+		t.Fatalf("EstimateMessageTokens() = %d, want at least image weight", tokens)
+	}
+	if tokens >= core.EstimatedImageTokens+core.EstimateTextTokens("duplicate text")*2 {
+		t.Fatalf("EstimateMessageTokens() = %d, content text appears double-counted", tokens)
+	}
+}
+
 func TestCoreSendsAssistantProfileToTriggeredRun(t *testing.T) {
 	t.Parallel()
 
@@ -1988,6 +2051,12 @@ func TestCoreCompactSessionGeneratesSummaryWithoutTools(t *testing.T) {
 	app := newTestCore(t, provider).WithTools(newCoreCodingRegistry())
 	ctx := context.Background()
 	session := createSession(t, app, ctx, core.CreateSessionInput{Title: "Summaries"})
+	if _, err := app.SetSessionGoal(ctx, session.ID, "Ship context compaction"); err != nil {
+		t.Fatalf("SetSessionGoal() error = %v", err)
+	}
+	if _, err := app.AddPlanItem(ctx, session.ID, "Keep tool context stable", ""); err != nil {
+		t.Fatalf("AddPlanItem() error = %v", err)
+	}
 	accepted, err := app.AcceptRun(ctx, core.HandleMessageInput{SessionID: session.ID, Text: "Keep this context."})
 	if err != nil {
 		t.Fatalf("AcceptRun() error = %v", err)
@@ -2009,6 +2078,51 @@ func TestCoreCompactSessionGeneratesSummaryWithoutTools(t *testing.T) {
 	}
 	if len(compactRequest.Messages) != 1 || !strings.Contains(compactRequest.Messages[0].Content, "Keep this context.") {
 		t.Fatalf("compact provider messages = %#v, want session history prompt", compactRequest.Messages)
+	}
+	if !strings.Contains(compactRequest.Messages[0].Content, "Current session plan:") ||
+		!strings.Contains(compactRequest.Messages[0].Content, "Ship context compaction") ||
+		!strings.Contains(compactRequest.Messages[0].Content, "Keep tool context stable") {
+		t.Fatalf("compact provider prompt missing current plan snapshot:\n%s", compactRequest.Messages[0].Content)
+	}
+}
+
+func TestCoreCompactsAndRetriesOnContextLengthExceeded(t *testing.T) {
+	t.Parallel()
+
+	requests := make(chan providers.Request, 3)
+	var normalCalls atomic.Int32
+	provider := newProviderStub()
+	provider.GenerateFunc = func(ctx context.Context, request providers.Request) (providers.Response, error) {
+		requests <- request
+		if strings.Contains(request.SystemPrompt, "compact matrixclaw chat histories") {
+			return providers.Response{Text: "Durable retry summary.", Model: "stub-model", Provider: "stub-provider"}, nil
+		}
+		if normalCalls.Add(1) == 1 {
+			return providers.Response{}, errors.New("context_length_exceeded: maximum context length exceeded")
+		}
+		return providers.Response{Text: "retried ok", Model: "stub-model", Provider: "stub-provider"}, nil
+	}
+
+	app := newTestCore(t, provider).WithTools(newCoreCodingRegistry())
+	ctx := context.Background()
+	session := createSession(t, app, ctx, core.CreateSessionInput{Title: "Retry"})
+	accepted, err := app.AcceptRun(ctx, core.HandleMessageInput{SessionID: session.ID, Text: "Keep this context."})
+	if err != nil {
+		t.Fatalf("AcceptRun() error = %v", err)
+	}
+	waitForRunStatus(t, app, accepted.Run.ID, core.RunStatusCompleted)
+
+	first := <-requests
+	compact := <-requests
+	retry := <-requests
+	if strings.Contains(first.SystemPrompt, "compact matrixclaw chat histories") {
+		t.Fatalf("first request unexpectedly compact request")
+	}
+	if !strings.Contains(compact.SystemPrompt, "compact matrixclaw chat histories") {
+		t.Fatalf("second request SystemPrompt = %q, want compact request", compact.SystemPrompt)
+	}
+	if !strings.Contains(retry.SystemPrompt, "Session compact summary:") {
+		t.Fatalf("retry SystemPrompt = %q, want compact summary", retry.SystemPrompt)
 	}
 }
 

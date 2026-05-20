@@ -137,6 +137,9 @@ func (p *Picker) HandleMsg(msg tea.Msg) Action {
 		p.frame = (p.frame + 1) % len(loadingFrames)
 		return ActionCmd{Cmd: p.loadingTickCmd()}
 	case tea.KeyPressMsg:
+		if p.loading {
+			return nil
+		}
 		switch {
 		case key.Matches(msg, p.keyMap.Close):
 			if p.data.CloseAction != nil {

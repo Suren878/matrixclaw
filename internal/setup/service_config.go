@@ -286,6 +286,14 @@ func (s *Service) buildProviderConfig(draft ProviderDraft, existing Config) (Pro
 		}
 		maxOutputTokens = parsed
 	}
+	contextWindow := 0
+	if value := strings.TrimSpace(draft.ContextWindow); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed <= 0 {
+			return ProviderConfig{}, errors.New("context window must be a positive integer")
+		}
+		contextWindow = parsed
+	}
 
 	toolUseMode := providers.NormalizeOptionalToolUseMode(draft.ToolUseMode)
 	if !providers.ResolveModelCapabilities(providers.ModelCapabilityInput{
@@ -305,6 +313,7 @@ func (s *Service) buildProviderConfig(draft ProviderDraft, existing Config) (Pro
 		APIKeyEnv:       apiKeyEnv,
 		BaseURL:         baseURL,
 		Model:           model,
+		ContextWindow:   contextWindow,
 		ToolUseMode:     toolUseMode,
 		MaxOutputTokens: maxOutputTokens,
 		ReasoningEffort: reasoningEffort,

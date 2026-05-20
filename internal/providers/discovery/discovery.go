@@ -71,29 +71,38 @@ func fetchRemoteModels(ctx context.Context, input ModelDiscoveryInput) ([]string
 	switch profile.RuntimeProviderType {
 	case providers.TypeOpenAICodex:
 		return openaicodex.ListModels(ctx, openaicodex.Config{
-			BaseURL: strings.TrimSpace(input.BaseURL),
-			Model:   strings.TrimSpace(input.Model),
-			Profile: profile,
+			ProviderID: strings.TrimSpace(input.ID),
+			CatalogID:  strings.TrimSpace(input.CatalogID),
+			BaseURL:    strings.TrimSpace(input.BaseURL),
+			Model:      strings.TrimSpace(input.Model),
+			Profile:    profile,
 		})
 	case providers.TypeOpenAICompat:
 		return openaicompat.ListModels(ctx, openaicompat.Config{
-			APIKey:  strings.TrimSpace(input.APIKey),
-			BaseURL: strings.TrimSpace(input.BaseURL),
-			Model:   strings.TrimSpace(input.Model),
-			Profile: profile,
+			ProviderID: strings.TrimSpace(input.ID),
+			CatalogID:  strings.TrimSpace(input.CatalogID),
+			APIKey:     strings.TrimSpace(input.APIKey),
+			BaseURL:    strings.TrimSpace(input.BaseURL),
+			Model:      strings.TrimSpace(input.Model),
+			Profile:    profile,
 		})
 	case providers.TypeAnthropic:
 		return anthropic.ListModels(ctx, anthropic.Config{
-			APIKey:  strings.TrimSpace(input.APIKey),
-			BaseURL: strings.TrimSpace(input.BaseURL),
-			Model:   strings.TrimSpace(input.Model),
+			ProviderID: strings.TrimSpace(input.ID),
+			CatalogID:  strings.TrimSpace(input.CatalogID),
+			APIKey:     strings.TrimSpace(input.APIKey),
+			BaseURL:    strings.TrimSpace(input.BaseURL),
+			Model:      strings.TrimSpace(input.Model),
+			Profile:    profile,
 		})
 	case providers.TypeGemini:
 		return gemini.ListModels(ctx, gemini.Config{
-			APIKey:  strings.TrimSpace(input.APIKey),
-			BaseURL: strings.TrimSpace(input.BaseURL),
-			Model:   strings.TrimSpace(input.Model),
-			Profile: profile,
+			ProviderID: strings.TrimSpace(input.ID),
+			CatalogID:  strings.TrimSpace(input.CatalogID),
+			APIKey:     strings.TrimSpace(input.APIKey),
+			BaseURL:    strings.TrimSpace(input.BaseURL),
+			Model:      strings.TrimSpace(input.Model),
+			Profile:    profile,
 		})
 	default:
 		return nil, errors.New("remote model list unavailable")

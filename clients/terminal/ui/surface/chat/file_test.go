@@ -395,3 +395,46 @@ func TestToolErrorItemEnterOpensErrorPreview(t *testing.T) {
 		}
 	}
 }
+
+func TestCompactSummaryMessageItemEnterOpensPreview(t *testing.T) {
+	sty := surfacestyles.DefaultStyles()
+	message := &surfacemessage.Message{
+		ID:   "msg-compact",
+		Role: surfacemessage.System,
+		Parts: []surfacemessage.ContentPart{
+			surfacemessage.TextContent{Text: "🧠 Context compacted: ~93k -> ~3.5k tokens\n\nFull compact summary."},
+		},
+	}
+	items := ExtractMessageItems(&sty, message, nil)
+	if len(items) != 1 {
+		t.Fatalf("len(items) = %d, want compact summary item", len(items))
+	}
+	plain := xansi.Strip(items[0].Render(100))
+	if strings.Contains(plain, "Full compact summary.") {
+		t.Fatalf("compact summary body rendered inline: %q", plain)
+	}
+	for _, want := range []string{"Context compacted", "~93k -> ~3.5k tokens", "press enter"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("expected %q in compact summary row, got %q", want, plain)
+		}
+	}
+	handler, ok := items[0].(KeyEventHandler)
+	if !ok {
+		t.Fatalf("item does not implement KeyEventHandler: %T", items[0])
+	}
+	handled, cmd := handler.HandleKeyEvent(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !handled || cmd == nil {
+		t.Fatalf("expected enter to open compact preview, handled=%v cmd=%v", handled, cmd)
+	}
+	msg := cmd()
+	action, ok := msg.(surfacedialog.ActionOpenFilePreview)
+	if !ok {
+		t.Fatalf("msg = %T, want ActionOpenFilePreview", msg)
+	}
+	if action.Data.Title != "Context Summary" {
+		t.Fatalf("title = %q, want Context Summary", action.Data.Title)
+	}
+	if !strings.Contains(action.Data.Content, "Full compact summary.") {
+		t.Fatalf("preview content = %q, want full summary", action.Data.Content)
+	}
+}

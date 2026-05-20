@@ -42,6 +42,7 @@ const (
 	PickerPlan            PickerKind = "plan"
 	PickerModules         PickerKind = "modules"
 	PickerTextToSpeech    PickerKind = "text_to_speech"
+	PickerTTSProvider     PickerKind = "tts_provider"
 	PickerSpeechToText    PickerKind = "speech_to_text"
 	PickerVoiceEnabled    PickerKind = "voice_enabled"
 	PickerVoiceProvider   PickerKind = "voice_provider"

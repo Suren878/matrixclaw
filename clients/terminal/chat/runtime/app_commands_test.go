@@ -563,6 +563,41 @@ func TestControlplaneCommandErrorKeepsProviderFormOpen(t *testing.T) {
 	}
 }
 
+func TestControlplaneCommandErrorClosesConfirmAndShowsInfo(t *testing.T) {
+	model := newApp(nil, nil)
+	model.dialog.OpenDialog(surfacedialog.NewConfirmCommand(model.com, surfacedialog.ConfirmCommandData{
+		Message:        "Download Supertonic engine?",
+		ConfirmLabel:   "Download",
+		CancelLabel:    "Cancel",
+		ConfirmCommand: "/modules tts set-provider-install supertonic",
+	}))
+
+	next, cmd := model.Update(surfacedialog.ActionRunControlplaneCommand{Command: "/modules tts set-provider-install supertonic"})
+	if next == nil {
+		t.Fatal("expected model")
+	}
+	if cmd == nil {
+		t.Fatal("expected controlplane command")
+	}
+	if !model.dialog.ContainsDialog(surfacedialog.ConfirmCommandID) {
+		t.Fatal("confirm should stay open while install command runs")
+	}
+
+	next, cmd = model.Update(controlplaneResultMsg{err: errors.New("Supertonic engine installation did not finish")})
+	if next == nil {
+		t.Fatal("expected model after error")
+	}
+	if cmd != nil {
+		t.Fatal("expected no follow-up command")
+	}
+	if model.dialog.ContainsDialog(surfacedialog.ConfirmCommandID) {
+		t.Fatal("confirm should close after command error")
+	}
+	if top := model.dialog.DialogLast(); top == nil || top.ID() != surfacedialog.InfoID {
+		t.Fatalf("top dialog = %#v, want info", top)
+	}
+}
+
 func TestDialogControlplaneActionClosesSourceDialog(t *testing.T) {
 	tests := []struct {
 		name string

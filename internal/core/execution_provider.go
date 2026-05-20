@@ -16,7 +16,7 @@ func (c *Core) buildProviderRequest(ctx context.Context, turn turnExecution) (pr
 	}
 
 	assistant := c.assistantProfile()
-	compactSummary, effectiveHistory := latestCompactSummary(history)
+	compactSummary, effectiveHistory := latestCompactSummaryForRun(history, turn.RunID)
 	request := providers.Request{
 		RunID:              turn.RunID,
 		SessionID:          turn.SessionID,

@@ -149,7 +149,11 @@ func normalizeVoiceProviderConfig(moduleID string, providerID string, cfg VoiceP
 	cfg.ModelID = strings.TrimSpace(cfg.ModelID)
 	cfg.VoiceID = strings.TrimSpace(cfg.VoiceID)
 	if normalizeVoiceModuleID(moduleID) == VoiceModuleTTS {
-		cfg.Language = normalizeVoiceLanguageCode(cfg.Language)
+		if normalizeVoiceProviderID(providerID) == "supertonic" {
+			cfg.Language = normalizeSupertonicLanguageCode(cfg.Language)
+		} else {
+			cfg.Language = normalizeVoiceLanguageCode(cfg.Language)
+		}
 	} else {
 		cfg.Language = strings.ToLower(strings.TrimSpace(cfg.Language))
 	}
@@ -207,6 +211,29 @@ func normalizeVoiceLanguageCode(language string) string {
 	return language
 }
 
+func normalizeSupertonicLanguageCode(language string) string {
+	language = strings.TrimSpace(language)
+	if language == "" {
+		return "auto"
+	}
+	language = strings.ToLower(strings.ReplaceAll(language, "_", "-"))
+	switch language {
+	case "auto":
+		return "auto"
+	case "unknown", "fallback":
+		return "na"
+	}
+	if before, _, ok := strings.Cut(language, "-"); ok {
+		language = before
+	}
+	switch language {
+	case "en", "ko", "ja", "ar", "bg", "cs", "da", "de", "el", "es", "et", "fi", "fr", "hi", "hr", "hu", "id", "it", "lt", "lv", "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "tr", "uk", "vi", "na":
+		return language
+	default:
+		return "auto"
+	}
+}
+
 func defaultVoiceProviderConfig(moduleID string, providerID string) VoiceProviderConfig {
 	switch normalizeVoiceProviderID(providerID) {
 	case "piper":
@@ -214,6 +241,14 @@ func defaultVoiceProviderConfig(moduleID string, providerID string) VoiceProvide
 			VoiceID:     "en_US-lessac-medium",
 			RuntimeMode: "per_task",
 			BinaryPath:  "piper",
+		}
+	case "supertonic":
+		return VoiceProviderConfig{
+			VoiceID:     "M1",
+			Language:    "auto",
+			RuntimeMode: "per_task",
+			BinaryPath:  "supertonic",
+			Endpoint:    "http://127.0.0.1:7788",
 		}
 	case "whispercpp":
 		return VoiceProviderConfig{
@@ -264,8 +299,10 @@ func normalizeVoiceProviderID(id string) string {
 
 func defaultVoiceProviderID(moduleID string) string {
 	switch normalizeVoiceModuleID(moduleID) {
-	case VoiceModuleTTS, VoiceModuleSTT:
-		return "grok"
+	case VoiceModuleTTS:
+		return "piper"
+	case VoiceModuleSTT:
+		return "whispercpp"
 	default:
 		return ""
 	}
@@ -303,15 +340,14 @@ func voiceProviders(moduleID string) []VoiceProviderOption {
 	switch normalizeVoiceModuleID(moduleID) {
 	case VoiceModuleTTS:
 		return []VoiceProviderOption{
-			{ID: "grok", Name: "Grok TTS", Local: false, Status: "Cloud · paid", Endpoint: "https://api.x.ai/v1/tts"},
 			{ID: "piper", Name: "Piper", Local: true, Status: "Local · not installed", Models: []VoiceModelOption{
 				{ID: "en_US-lessac-medium", Name: "Lessac Medium", Size: "~60 MB", Description: "Fallback English voice", Default: true, LanguageCode: "en_US", LanguageName: "English", Quality: "medium"},
 				{ID: "ru_RU-ruslan-medium", Name: "Ruslan Medium", Size: "~60 MB", Description: "Fallback Russian voice", LanguageCode: "ru_RU", LanguageName: "Russian", Quality: "medium"},
 			}},
+			{ID: "supertonic", Name: "Supertonic 3", Local: true, Status: "Local · not installed"},
 		}
 	case VoiceModuleSTT:
 		return []VoiceProviderOption{
-			{ID: "grok", Name: "Grok Speech to Text", Local: false, Status: "Cloud · paid", Endpoint: "https://api.x.ai/v1/stt"},
 			{ID: "whispercpp", Name: "Whisper.cpp", Local: true, Status: "Local · not downloaded", Models: []VoiceModelOption{
 				{ID: "tiny", Name: "Tiny", Size: "~39 MB", RAM: "~390 MB", Description: "Fastest, lowest accuracy"},
 				{ID: "base", Name: "Base", Size: "~142 MB", RAM: "~500 MB", Description: "Balanced default", Default: true},

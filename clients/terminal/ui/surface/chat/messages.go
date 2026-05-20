@@ -278,6 +278,9 @@ func BuildToolResultMap(messages []surfacemessage.Message) map[string]surfacemes
 }
 
 func ExtractMessageItems(sty *surfacestyles.Styles, msg *surfacemessage.Message, toolResults map[string]surfacemessage.ToolResult) []MessageItem {
+	if IsCompactSummaryMessage(msg) {
+		return []MessageItem{NewCompactSummaryMessageItem(sty, msg)}
+	}
 	switch msg.Role {
 	case surfacemessage.User:
 		return []MessageItem{NewUserMessageItem(sty, msg)}

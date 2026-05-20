@@ -128,6 +128,7 @@ func sessionProviderSpecsFromSetup(cfg setup.Config) []sessionllm.ProviderSpec {
 			APIKey:          runtimeProvider.APIKey,
 			BaseURL:         runtimeProvider.BaseURL,
 			Model:           runtimeProvider.Model,
+			ContextWindow:   runtimeProvider.ContextWindow,
 			MaxOutputTokens: runtimeProvider.MaxOutputTokens,
 			ReasoningEffort: runtimeProvider.ReasoningEffort,
 			ToolUseMode:     runtimeProvider.ToolUseMode,

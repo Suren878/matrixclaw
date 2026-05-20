@@ -101,6 +101,15 @@ type SendVoiceRequest struct {
 	MIMEType        string
 }
 
+type SendAudioRequest struct {
+	ChatID          int64
+	MessageThreadID int64
+	Audio           []byte
+	FileName        string
+	Caption         string
+	MIMEType        string
+}
+
 type SentMessage struct {
 	MessageID       int64 `json:"message_id"`
 	MessageThreadID int64 `json:"message_thread_id,omitempty"`

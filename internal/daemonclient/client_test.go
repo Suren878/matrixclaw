@@ -128,6 +128,32 @@ func TestCompactSessionUsesLongDefaultJSONTimeout(t *testing.T) {
 	}
 }
 
+func TestVoiceRuntimeActionsUseLongDefaultJSONTimeout(t *testing.T) {
+	t.Parallel()
+
+	client := New("http://127.0.0.1:8080", "tui", "local")
+	if client.voiceRuntimeHTTPClient() == client.HTTPClient {
+		t.Fatal("voiceRuntimeHTTPClient() reused default short JSON client")
+	}
+	if got := client.voiceRuntimeHTTPClient().Timeout; got <= client.HTTPClient.Timeout {
+		t.Fatalf("voice runtime timeout = %s, want greater than JSON timeout %s", got, client.HTTPClient.Timeout)
+	}
+
+	custom := &http.Client{Timeout: time.Second}
+	client.HTTPClient = custom
+	if got := client.voiceRuntimeHTTPClient(); got == custom {
+		t.Fatal("voiceRuntimeHTTPClient() reused custom short-timeout client")
+	} else if got.Timeout != defaultVoiceRuntimeTimeout {
+		t.Fatalf("voiceRuntimeHTTPClient().Timeout = %s, want %s", got.Timeout, defaultVoiceRuntimeTimeout)
+	}
+
+	longCustom := &http.Client{Timeout: time.Hour}
+	client.HTTPClient = longCustom
+	if got := client.voiceRuntimeHTTPClient(); got != longCustom {
+		t.Fatalf("voiceRuntimeHTTPClient() = %#v, want long custom client", got)
+	}
+}
+
 func TestClientSendsAPIToken(t *testing.T) {
 	t.Parallel()
 

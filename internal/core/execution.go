@@ -105,13 +105,49 @@ func (c *Core) executeRunStep(ctx context.Context, runCtx context.Context, execu
 		return turnStepResult{Outcome: turnStepWaitingApproval}, nil
 	}
 
-	request, err := c.buildProviderRequest(ctx, turn)
+	compacted, err := c.autoCompactSessionIfNeeded(ctx, execution.Turn)
 	if err != nil {
 		return turnStepResult{Outcome: turnStepCompleted, Err: err}, nil
 	}
 
+	request, err := c.buildProviderRequest(ctx, turn)
+	if err != nil {
+		return turnStepResult{Outcome: turnStepCompleted, Err: err}, nil
+	}
+	if !compacted && c.providerRequestNeedsCompact(ctx, turn, request) {
+		compacted, err = c.forceCompactSessionForRetry(ctx, turn)
+		if err != nil {
+			return turnStepResult{Outcome: turnStepCompleted, Err: err}, nil
+		}
+		if compacted {
+			request, err = c.buildProviderRequest(ctx, turn)
+			if err != nil {
+				return turnStepResult{Outcome: turnStepCompleted, Err: err}, nil
+			}
+		}
+	}
+
 	assistant, assistantSaved, response, err := c.generateAssistantTurn(runCtx, turn, request)
 	if err != nil {
+		if isContextLengthExceededError(err) {
+			compacted, compactErr := c.forceCompactSessionForRetry(ctx, turn)
+			if compactErr != nil {
+				return turnStepResult{Outcome: turnStepCompleted, Err: compactErr}, nil
+			}
+			if compacted {
+				retryRequest, buildErr := c.buildProviderRequest(ctx, turn)
+				if buildErr != nil {
+					return turnStepResult{Outcome: turnStepCompleted, Err: buildErr}, nil
+				}
+				assistant, assistantSaved, response, err = c.generateAssistantTurn(runCtx, turn, retryRequest)
+				if err == nil {
+					if handled, cancelErr := c.checkAndHandleCanceled(ctx, execution.Run, &assistant, assistantSaved); handled {
+						return turnStepResult{Outcome: turnStepCompleted}, cancelErr
+					}
+					return c.handleAssistantTurnResponse(runCtx, turn, &assistant, assistantSaved, response), nil
+				}
+			}
+		}
 		return turnStepResult{
 			Outcome:              turnStepCompleted,
 			Assistant:            &assistant,

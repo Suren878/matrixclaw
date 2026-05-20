@@ -19,7 +19,7 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 		return m.handleContextCompactResult(msg)
 	}
 	if msg.err != nil {
-		m.err = msg.err.Error()
+		m.showControlplaneError(msg.err)
 		return nil
 	}
 	if isPlanSnapshotCommand(msg.command) && msg.result.ReloadSnapshot {
@@ -52,6 +52,28 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 		return m.reloadSnapshotCmd()
 	}
 	return nil
+}
+
+func (m *appModel) showControlplaneError(err error) {
+	if err == nil {
+		return
+	}
+	text := strings.TrimSpace(err.Error())
+	if text == "" {
+		return
+	}
+	if m.dialog.ContainsDialog(surfacedialog.ConfirmCommandID) {
+		for m.dialog.ContainsDialog(surfacedialog.ConfirmCommandID) {
+			m.dialog.CloseDialog(surfacedialog.ConfirmCommandID)
+		}
+		m.err = ""
+		m.dialog.OpenDialog(surfacedialog.NewInfo(m.com, surfacedialog.InfoData{
+			Title: "Command Failed",
+			Text:  text,
+		}))
+		return
+	}
+	m.err = text
 }
 
 func isPlanSnapshotCommand(command string) bool {
@@ -182,13 +204,23 @@ func (m *appModel) showControlplaneDialog(dialog surfacedialog.Dialog) {
 	if dialog == nil {
 		return
 	}
+	nextID := dialog.ID()
+	if nextID == surfacedialog.ConfirmCommandID {
+		for m.dialog.ContainsDialog(surfacedialog.ConfirmCommandID) {
+			m.dialog.CloseDialog(surfacedialog.ConfirmCommandID)
+		}
+	}
+	if nextID != surfacedialog.ConfirmCommandID {
+		for m.dialog.ContainsDialog(surfacedialog.ConfirmCommandID) {
+			m.dialog.CloseDialog(surfacedialog.ConfirmCommandID)
+		}
+	}
 	top := m.dialog.DialogLast()
 	if top == nil {
 		m.dialog.OpenDialog(dialog)
 		return
 	}
 	topID := top.ID()
-	nextID := dialog.ID()
 	switch {
 	case topID == nextID:
 		m.dialog.ReplaceFrontDialog(dialog)

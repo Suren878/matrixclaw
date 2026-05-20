@@ -103,7 +103,7 @@ func readSSE(ctx context.Context, body io.ReadCloser, events chan<- LiveEvent, e
 	defer body.Close()
 
 	scanner := bufio.NewScanner(body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, 64*1024), 64*1024*1024)
 
 	var eventType string
 	var eventID uint64

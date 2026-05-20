@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
 func ListModels(ctx context.Context, cfg Config) ([]string, error) {
@@ -42,7 +44,20 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 
 	var payload struct {
 		Data []struct {
-			ID string `json:"id"`
+			ID                    string `json:"id"`
+			ContextLength         int    `json:"context_length"`
+			ContextWindow         int    `json:"context_window"`
+			ContextSize           int    `json:"context_size"`
+			MaxContextLength      int    `json:"max_context_length"`
+			MaxPositionEmbeddings int    `json:"max_position_embeddings"`
+			MaxModelLen           int    `json:"max_model_len"`
+			MaxInputTokens        int    `json:"max_input_tokens"`
+			MaxSequenceLength     int    `json:"max_sequence_length"`
+			MaxSeqLen             int    `json:"max_seq_len"`
+			NCtxTrain             int    `json:"n_ctx_train"`
+			NCtx                  int    `json:"n_ctx"`
+			CtxSize               int    `json:"ctx_size"`
+			MaxTokens             int    `json:"max_tokens"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -52,11 +67,38 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 	models := make([]string, 0, len(payload.Data))
 	for _, item := range payload.Data {
 		if id := strings.TrimSpace(item.ID); id != "" {
+			contextWindow := modelContextWindowTokens(
+				item.ContextLength,
+				item.ContextWindow,
+				item.ContextSize,
+				item.MaxContextLength,
+				item.MaxPositionEmbeddings,
+				item.MaxModelLen,
+				item.MaxInputTokens,
+				item.MaxSequenceLength,
+				item.MaxSeqLen,
+				item.NCtxTrain,
+				item.NCtx,
+				item.CtxSize,
+				item.MaxTokens,
+			)
+			providers.RegisterContextWindowTokens(cfg.ProviderID, providers.TypeOpenAICompat, id, contextWindow)
+			providers.RegisterContextWindowTokens(cfg.CatalogID, providers.TypeOpenAICompat, id, contextWindow)
 			models = append(models, id)
 		}
 	}
 	if len(models) == 0 {
 		return nil, fmt.Errorf("openaicompat: no models available")
 	}
+	registerLocalContextWindows(ctx, cfg, client, baseURL, apiKey, models)
 	return models, nil
+}
+
+func modelContextWindowTokens(values ...int) int {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
 }
