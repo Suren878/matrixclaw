@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
@@ -124,5 +125,68 @@ done
 	}
 	if files := piperOutputFiles(runtime.piperOutputDir(provider)); len(files) != 0 {
 		t.Fatalf("persistent Piper output files = %#v, want cleaned up", files)
+	}
+}
+
+func TestDecorateVoiceProviderKeepsInstalledConfiguredPiperVoiceOutsideCatalog(t *testing.T) {
+	tmp := t.TempDir()
+	root := filepath.Join(tmp, "local")
+	voiceID := "de_DE-thorsten-medium"
+	runtime := New(root)
+	modelPath := runtime.VoiceModelPathForID(setup.VoiceModuleTTS, setup.VoiceProviderOption{ID: "piper"}, voiceID)
+	if err := os.MkdirAll(filepath.Dir(modelPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(modelPath, []byte("model"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	piperCatalogCache.Lock()
+	oldExpires := piperCatalogCache.expires
+	oldFailUntil := piperCatalogCache.failUntil
+	oldModels := append([]setup.VoiceModelOption(nil), piperCatalogCache.models...)
+	piperCatalogCache.expires = time.Now().Add(time.Hour)
+	piperCatalogCache.failUntil = time.Time{}
+	piperCatalogCache.models = []setup.VoiceModelOption{{ID: "en_US-lessac-medium", Name: "Lessac Medium"}}
+	piperCatalogCache.Unlock()
+	t.Cleanup(func() {
+		piperCatalogCache.Lock()
+		piperCatalogCache.expires = oldExpires
+		piperCatalogCache.failUntil = oldFailUntil
+		piperCatalogCache.models = oldModels
+		piperCatalogCache.Unlock()
+	})
+
+	provider := setup.VoiceProviderOption{
+		ID:    "piper",
+		Name:  "Piper",
+		Local: true,
+		Config: setup.VoiceProviderConfig{
+			VoiceID:     voiceID,
+			RuntimeMode: "per_task",
+			BinaryPath:  "piper",
+		},
+		Models: []setup.VoiceModelOption{{ID: "ru_RU-ruslan-medium", Name: "Ruslan Medium"}},
+	}
+
+	got := runtime.DecorateVoiceProvider(setup.VoiceModuleTTS, provider)
+	if !got.Downloaded {
+		t.Fatal("DecorateVoiceProvider().Downloaded = false, want true")
+	}
+	var installed setup.VoiceModelOption
+	for _, model := range got.Models {
+		if model.ID == voiceID {
+			installed = model
+			break
+		}
+	}
+	if installed.ID == "" {
+		t.Fatalf("DecorateVoiceProvider().Models missing configured voice %q", voiceID)
+	}
+	if !installed.Installed {
+		t.Fatalf("configured voice Installed = false, want true")
+	}
+	if installed.Path != modelPath {
+		t.Fatalf("configured voice Path = %q, want %q", installed.Path, modelPath)
 	}
 }

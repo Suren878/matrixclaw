@@ -72,6 +72,7 @@ func (r *Runtime) DecorateVoiceProvider(moduleID string, provider setup.VoicePro
 			provider.CatalogStatus = "fallback"
 			provider.CatalogDetail = "using bundled fallback voices"
 		}
+		provider = ensureConfiguredPiperVoiceModel(provider)
 	}
 	if provider.ID == "whispercpp" {
 		if models, ok := whisperCatalogModels(); ok && len(models) > 0 {
@@ -151,6 +152,32 @@ func (r *Runtime) DecorateVoiceProvider(moduleID string, provider setup.VoicePro
 			provider.Status = "Local · not installed"
 		}
 	}
+	return provider
+}
+
+func ensureConfiguredPiperVoiceModel(provider setup.VoiceProviderOption) setup.VoiceProviderOption {
+	voiceID := strings.TrimSpace(provider.Config.VoiceID)
+	if voiceID == "" {
+		return provider
+	}
+	for _, model := range provider.Models {
+		if strings.EqualFold(model.ID, voiceID) {
+			return provider
+		}
+	}
+	model := setup.VoiceModelOption{
+		ID:   voiceID,
+		Name: voiceID,
+	}
+	if language, voice, quality, ok := splitPiperVoiceID(voiceID); ok {
+		model.Name = strings.TrimSpace(strings.Join(nonEmptyLocal(titleWords(voice), qualityLabel(quality)), " "))
+		model.LanguageCode = language
+		model.Quality = quality
+		if model.Name == "" {
+			model.Name = voiceID
+		}
+	}
+	provider.Models = append(provider.Models, model)
 	return provider
 }
 
