@@ -141,7 +141,7 @@ func startConfiguredVoiceRuntimes(ctx context.Context, service *setup.Service) {
 			continue
 		}
 		for _, provider := range module.Providers {
-			if provider.ID != module.ProviderID || !provider.Local || provider.ID != "piper" {
+			if provider.ID != module.ProviderID || !provider.Local || (provider.ID != "piper" && provider.ID != "supertonic") {
 				continue
 			}
 			if !strings.EqualFold(strings.TrimSpace(provider.Config.RuntimeMode), "always_running") {

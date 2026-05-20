@@ -412,6 +412,9 @@ func (r *Runtime) deleteVoiceRuntime(moduleID string, provider setup.VoiceProvid
 		if err := os.RemoveAll(filepath.Dir(filepath.Dir(r.managedSupertonicBinaryPath()))); err != nil {
 			return provider, err
 		}
+		if err := os.RemoveAll(filepath.Join(r.runtimeDir(), "supertonic3")); err != nil {
+			return provider, err
+		}
 	default:
 		return provider, fmt.Errorf("%s runtime deletion is not implemented yet", provider.Name)
 	}
@@ -569,6 +572,9 @@ func (r *Runtime) voiceRuntimeRunning(provider setup.VoiceProviderOption) bool {
 }
 
 func (r *Runtime) VoiceBinaryPath(provider setup.VoiceProviderOption) (string, error) {
+	if provider.ID == "supertonic" && !r.supertonicModelCacheComplete() {
+		return "", fmt.Errorf("%s runtime is not installed", provider.Name)
+	}
 	if path, err := r.ManagedVoiceBinaryPath(provider); err == nil {
 		return path, nil
 	}

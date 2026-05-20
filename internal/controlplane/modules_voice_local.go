@@ -213,7 +213,7 @@ func (d *Dispatcher) useInstalledLocalModel(ctx context.Context, moduleID string
 	if _, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg}); err != nil {
 		return Result{}, err
 	}
-	if voicePersistentProvider(module.ID, provider.ID) && normalizeVoiceRunMode(cfg.RuntimeMode) == voiceRuntimeModeAlways {
+	if voicePersistentProvider(module.ID, provider.ID) && normalizeVoiceRunMode(cfg.RuntimeMode) == voiceRuntimeModeAlways && voiceLocalRuntimeStartReady(module.ID, provider, cfg) {
 		if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "start"}); err != nil {
 			return Result{}, err
 		}
@@ -315,7 +315,7 @@ func (d *Dispatcher) setVoiceLocalProviderConfig(ctx context.Context, moduleID s
 	if _, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg}); err != nil {
 		return Result{}, err
 	}
-	if voicePersistentProvider(module.ID, provider.ID) && nextRuntimeMode == voiceRuntimeModeAlways && (field == "runtime-mode" || field == "voice" || field == "model") {
+	if voicePersistentProvider(module.ID, provider.ID) && nextRuntimeMode == voiceRuntimeModeAlways && (field == "runtime-mode" || field == "voice" || field == "model") && voiceLocalRuntimeStartReady(module.ID, provider, cfg) {
 		if err := d.stopOtherVoiceModuleProviders(ctx, module, provider.ID); err != nil {
 			return Result{}, err
 		}
@@ -430,7 +430,7 @@ func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID stri
 			}
 			return d.voiceLocalProviderPicker(ctx, module.ID, provider.ID)
 		}
-		if voicePersistentProvider(module.ID, provider.ID) && normalizeVoiceRunMode(provider.Config.RuntimeMode) == voiceRuntimeModeAlways {
+		if voicePersistentProvider(module.ID, provider.ID) && normalizeVoiceRunMode(provider.Config.RuntimeMode) == voiceRuntimeModeAlways && voiceLocalRuntimeStartReady(module.ID, provider, provider.Config) {
 			updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "start"})
 			if err != nil {
 				return Result{}, err
@@ -499,7 +499,7 @@ func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID stri
 					return Result{}, err
 				}
 			}
-			if normalizeVoiceRunMode(cfg.RuntimeMode) == voiceRuntimeModeAlways {
+			if normalizeVoiceRunMode(cfg.RuntimeMode) == voiceRuntimeModeAlways && voiceLocalRuntimeStartReady(module.ID, provider, cfg) {
 				if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "start"}); err != nil {
 					return Result{}, err
 				}
@@ -583,6 +583,29 @@ func (d *Dispatcher) disableVoiceModuleIfActiveProvider(ctx context.Context, mod
 	enabled := false
 	_, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{Enabled: &enabled})
 	return err == nil, err
+}
+
+func voiceLocalRuntimeStartReady(moduleID string, provider setup.VoiceProviderOption, cfg setup.VoiceProviderConfig) bool {
+	if !provider.RuntimeInstalled {
+		return false
+	}
+	provider.Config = cfg
+	switch moduleID {
+	case setup.VoiceModuleTTS:
+		switch provider.ID {
+		case "piper":
+			_, ok := activeInstalledVoice(provider)
+			return ok
+		case "supertonic":
+			return true
+		}
+	case setup.VoiceModuleSTT:
+		if provider.ID == "whispercpp" {
+			_, ok := activeInstalledModel(provider)
+			return ok
+		}
+	}
+	return voiceProviderDownloaded(provider)
 }
 
 func (d *Dispatcher) reselectTTSVoiceAfterDelete(ctx context.Context, module setup.VoiceModuleDescriptor, provider setup.VoiceProviderOption, deletedVoiceID string) (bool, error) {

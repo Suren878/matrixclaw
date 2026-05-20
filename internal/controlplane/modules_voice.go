@@ -336,7 +336,7 @@ func (d *Dispatcher) activateVoiceModuleProviderState(ctx context.Context, modul
 	if err != nil {
 		return nil, err
 	}
-	if provider, ok := voiceProviderFromModules(modules, module.ID, provider.ID); ok && provider.Local && voiceRunModeAlways(provider) {
+	if provider, ok := voiceProviderFromModules(modules, module.ID, provider.ID); ok && provider.Local && voiceRunModeAlways(provider) && voiceLocalRuntimeStartReady(module.ID, provider, provider.Config) {
 		if err := d.stopOtherVoiceModuleProviders(ctx, module, provider.ID); err != nil {
 			return nil, err
 		}
@@ -550,19 +550,23 @@ func (d *Dispatcher) setVoiceModuleEnabled(ctx context.Context, moduleID string,
 	default:
 		return d.voiceModuleEnabledPicker(ctx, moduleID)
 	}
-	update := setup.VoiceModuleUpdate{Enabled: &enabled}
 	if enabled && moduleID == setup.VoiceModuleTTS {
 		module, err := d.voiceModule(ctx, moduleID)
 		if err != nil {
 			return Result{}, err
 		}
-		if module.ProviderID == "piper" {
-			cfg := module.Config
-			cfg.RuntimeMode = voiceRuntimeModePerTask
-			update.ProviderID = module.ProviderID
-			update.ProviderConfig = &cfg
+		return d.setVoiceModuleProvider(ctx, moduleID, module.ProviderID)
+	}
+	if !enabled {
+		module, err := d.voiceModule(ctx, moduleID)
+		if err != nil {
+			return Result{}, err
+		}
+		if err := d.stopOtherVoiceModuleProviders(ctx, module, ""); err != nil {
+			return Result{}, err
 		}
 	}
+	update := setup.VoiceModuleUpdate{Enabled: &enabled}
 	if _, err := d.voiceModules.UpdateVoiceModule(ctx, moduleID, update); err != nil {
 		return Result{}, err
 	}
