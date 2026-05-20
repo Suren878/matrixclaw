@@ -44,8 +44,8 @@ func (dv *DiffView) createSyntaxCacheKey(source string, bgColor color.Color) str
 	colorStr := fmt.Sprintf("%d,%d,%d,%d", r, g, b, a)
 
 	h := xxh3.New()
-	h.Write([]byte(source))
-	h.Write([]byte(colorStr))
+	_, _ = h.Write([]byte(source))
+	_, _ = h.Write([]byte(colorStr))
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 

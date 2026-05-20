@@ -12,8 +12,8 @@ import (
 
 func TestClientThreadAndTurnProtocol(t *testing.T) {
 	clientConn, serverConn := pipePair()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	go serveCodexAppProtocol(t, serverConn)
 
@@ -75,8 +75,8 @@ func TestClientThreadAndTurnProtocol(t *testing.T) {
 
 func TestClientReturnsRPCError(t *testing.T) {
 	clientConn, serverConn := pipePair()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	go func() {
 		dec := json.NewDecoder(serverConn)
@@ -122,7 +122,7 @@ func TestLiveInitialize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start codex app-server: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	resp, err := client.Initialize(ctx, InitializeParams{
 		ClientInfo: ClientInfo{Name: "matrixclaw-live-test", Version: "0"},
@@ -153,7 +153,7 @@ func TestLiveThreadTurn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start codex app-server: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	_, err = client.Initialize(ctx, InitializeParams{
 		ClientInfo: ClientInfo{Name: "matrixclaw-live-turn-test", Version: "0"},

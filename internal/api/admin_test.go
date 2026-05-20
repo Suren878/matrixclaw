@@ -30,7 +30,7 @@ func TestAdminReloadResetsRuntimeStatusClock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Do(reload) error = %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("reload status = %d, want 200", resp.StatusCode)
 	}
@@ -39,7 +39,7 @@ func TestAdminReloadResetsRuntimeStatusClock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get(status) error = %v", err)
 	}
-	defer statusResp.Body.Close()
+	defer func() { _ = statusResp.Body.Close() }()
 	var body core.ServerStatusResponse
 	if err := json.NewDecoder(statusResp.Body).Decode(&body); err != nil {
 		t.Fatalf("Decode(status) error = %v", err)
@@ -74,7 +74,7 @@ func TestAdminRestartCallsConfiguredRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Do(restart) error = %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("restart status = %d, want 200", resp.StatusCode)
 	}
@@ -113,7 +113,7 @@ func TestAdminStopCallsConfiguredStop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Do(stop) error = %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("stop status = %d, want 200", resp.StatusCode)
 	}

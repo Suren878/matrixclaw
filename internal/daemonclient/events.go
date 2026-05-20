@@ -87,7 +87,7 @@ func (c *Client) SubscribeEvents(ctx context.Context, sessionID string, afterID 
 		return nil, nil, err
 	}
 	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		return nil, nil, decodeAPIError(resp)
 	}
 
@@ -100,7 +100,7 @@ func (c *Client) SubscribeEvents(ctx context.Context, sessionID string, afterID 
 func readSSE(ctx context.Context, body io.ReadCloser, events chan<- LiveEvent, errs chan<- error) {
 	defer close(events)
 	defer close(errs)
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 64*1024*1024)

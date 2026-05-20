@@ -26,9 +26,9 @@ func TestSubscribeEventsFlushesFinalEventAtEOF(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		body, _ := json.Marshal(event)
-		fmt.Fprint(w, "id: 7\n")
-		fmt.Fprint(w, "event: run.updated\n")
-		fmt.Fprintf(w, "data: %s\n", body)
+		_, _ = fmt.Fprint(w, "id: 7\n")
+		_, _ = fmt.Fprint(w, "event: run.updated\n")
+		_, _ = fmt.Fprintf(w, "data: %s\n", body)
 	}))
 	defer server.Close()
 
@@ -75,9 +75,9 @@ func TestSubscribeEventsHandlesLargeEventLine(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		body, _ := json.Marshal(event)
-		fmt.Fprint(w, "id: 8\n")
-		fmt.Fprint(w, "event: message.updated\n")
-		fmt.Fprintf(w, "data: %s\n\n", body)
+		_, _ = fmt.Fprint(w, "id: 8\n")
+		_, _ = fmt.Fprint(w, "event: message.updated\n")
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", body)
 	}))
 	defer server.Close()
 

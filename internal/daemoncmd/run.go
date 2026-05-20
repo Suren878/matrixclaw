@@ -32,12 +32,12 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer sqliteStore.Close()
+	defer func() { _ = sqliteStore.Close() }()
 	automationStore, err := automation.NewSQLiteStore(bootstrap.DBPath)
 	if err != nil {
 		return err
 	}
-	defer automationStore.Close()
+	defer func() { _ = automationStore.Close() }()
 
 	storageModule, err := localstorage.New(localstorage.Config{
 		Root: defaultStorageRoot(bootstrap.DBPath),
@@ -62,7 +62,7 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer runStarter.Close()
+	defer func() { _ = runStarter.Close() }()
 
 	app.WithRunStarter(runStarter)
 	automationService := automation.NewService(automationStore, app, bootstrap.Timezone).

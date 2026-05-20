@@ -58,7 +58,7 @@ var animCacheMap sync.Map
 
 func settingsHash(opts Settings) string {
 	h := xxh3.New()
-	fmt.Fprintf(h, "%d-%s-%v-%v-%v-%t",
+	_, _ = fmt.Fprintf(h, "%d-%s-%v-%v-%v-%t",
 		opts.Size, opts.Label, opts.LabelColor, opts.GradColorA, opts.GradColorB, opts.CycleColors)
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
