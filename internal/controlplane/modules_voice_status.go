@@ -15,8 +15,8 @@ func (d *Dispatcher) voiceModuleInfo(ctx context.Context, moduleID string) (Resu
 	if err != nil {
 		return Result{}, err
 	}
-	if module.ID == setup.VoiceModuleTTS {
-		return ttsModuleStatus(module), nil
+	if module.ID == setup.VoiceModuleTTS || module.ID == setup.VoiceModuleSTT {
+		return voiceModuleStatus(module), nil
 	}
 	return Result{
 		Handled: true,
@@ -33,18 +33,18 @@ func (d *Dispatcher) voiceModuleInfo(ctx context.Context, moduleID string) (Resu
 	}, nil
 }
 
-func ttsModuleStatus(module setup.VoiceModuleDescriptor) Result {
+func voiceModuleStatus(module setup.VoiceModuleDescriptor) Result {
 	rows := []InfoRow{
 		{Label: "Active provider", Value: "Disabled"},
 		{Label: "Mode", Value: "Disabled"},
-		{Label: "RAM", Value: "0 B"},
+		{Label: "Used RAM", Value: "0 B"},
 	}
 	if module.Enabled {
 		if provider, ok := selectedVoiceProvider(module); ok {
 			rows = []InfoRow{
 				{Label: "Active provider", Value: firstNonEmptyTrimmed(provider.Name, module.ProviderName, provider.ID)},
 				{Label: "Mode", Value: voiceRunModeLabel(provider)},
-				{Label: "RAM", Value: voiceRuntimeRAMStatus(provider)},
+				{Label: "Used RAM", Value: voiceRuntimeRAMStatus(provider)},
 			}
 		} else {
 			rows[0].Value = firstNonEmptyTrimmed(module.ProviderName, module.ProviderID, "Unknown")
@@ -108,7 +108,7 @@ func voiceProviderPickerInfo(module setup.VoiceModuleDescriptor, provider setup.
 				return "Active"
 			}
 		}
-		if provider.ID == "whispercpp" {
+		if provider.ID == "whispercpp" && (voiceRunModePerTaskSelected(provider) || voiceRuntimeState(provider) == "running") {
 			if _, ok := activeInstalledModel(provider); ok {
 				return "Active"
 			}
@@ -328,7 +328,32 @@ func voiceRuntimeInstallInfo(provider setup.VoiceProviderOption) string {
 	if provider.RuntimeInstalled {
 		return "Installed"
 	}
+	if provider.ID == "whispercpp" {
+		return "Not Installed · Builds Locally"
+	}
 	return "Not Installed"
+}
+
+func voiceRuntimeInstallConfirmMessage(provider setup.VoiceProviderOption) string {
+	if provider.ID == "whispercpp" {
+		return "Build " + provider.Name + " engine?"
+	}
+	return "Download " + provider.Name + " engine?"
+}
+
+func voiceRuntimeInstallConfirmLabel(provider setup.VoiceProviderOption) string {
+	if provider.ID == "whispercpp" {
+		return "Build"
+	}
+	return "Download"
+}
+
+func voiceModelInstallWithRuntimeMessage(provider setup.VoiceProviderOption, modelID string) string {
+	name := voiceModelName(provider, modelID)
+	if provider.ID == "whispercpp" {
+		return "Build Whisper.cpp engine and download `" + name + "` model?"
+	}
+	return "Download `" + name + "`?"
 }
 
 func supertonicRuntimeInstallInfo(provider setup.VoiceProviderOption) string {
@@ -605,12 +630,15 @@ func voiceModelByID(models []setup.VoiceModelOption, modelID string) (setup.Voic
 	return setup.VoiceModelOption{}, false
 }
 
-func voiceModelPickerInfo(model setup.VoiceModelOption) string {
+func voiceModelPickerInfo(moduleID string, provider setup.VoiceProviderOption, model setup.VoiceModelOption) string {
 	state := "Download"
 	if model.Installed {
 		state = "Installed"
 	}
-	return strings.TrimSpace(strings.Join(nonEmptyStrings(state, model.Size), " · "))
+	if moduleID == setup.VoiceModuleSTT && provider.ID == "whispercpp" && !provider.RuntimeInstalled && !model.Installed {
+		state = "Download Engine + Model"
+	}
+	return strings.TrimSpace(strings.Join(nonEmptyStrings(state, model.Size, model.RAM), " · "))
 }
 
 func voiceLocalTTSStatus(provider setup.VoiceProviderOption) Result {
@@ -626,12 +654,12 @@ func voiceLocalTTSStatus(provider setup.VoiceProviderOption) Result {
 		}
 		rows = append(rows,
 			InfoRow{Label: "Storage", Value: storage},
-			InfoRow{Label: "RAM", Value: voiceRuntimeRAMStatus(provider)},
+			InfoRow{Label: "Used RAM", Value: voiceRuntimeRAMStatus(provider)},
 		)
 	} else {
 		rows = append(rows,
 			InfoRow{Label: "Storage", Value: "Not Installed"},
-			InfoRow{Label: "RAM", Value: "0 B"},
+			InfoRow{Label: "Used RAM", Value: "0 B"},
 		)
 	}
 	return Result{Handled: true, Info: &InfoData{Title: provider.Name + " Status", Rows: rows, CloseCommand: voiceProviderSettingsBackCommand(setup.VoiceModuleTTS, provider.ID)}}
@@ -641,7 +669,7 @@ func voiceLocalSupertonicStatus(provider setup.VoiceProviderOption) Result {
 	rows := []InfoRow{
 		{Label: "Runtime", Value: supertonicRuntimeInstallInfo(provider)},
 		{Label: "Model storage", Value: supertonicStorageStatus(provider)},
-		{Label: "RAM", Value: voiceRuntimeRAMStatus(provider)},
+		{Label: "Used RAM", Value: voiceRuntimeRAMStatus(provider)},
 		{Label: "Voice style", Value: voiceModelName(provider, firstNonEmptyTrimmed(provider.Config.VoiceID, "M1"))},
 		{Label: "Language", Value: voiceLanguageStatus(provider.Config.Language)},
 	}
@@ -700,15 +728,15 @@ func voiceLocalSTTStatus(provider setup.VoiceProviderOption) Result {
 	if hasActive {
 		rows = append(rows,
 			InfoRow{Label: "Storage", Value: voiceModelStorageStatus(model)},
-			InfoRow{Label: "RAM", Value: voiceRuntimeRAMStatus(provider)},
+			InfoRow{Label: "Used RAM", Value: voiceRuntimeRAMStatus(provider)},
 		)
 	} else {
 		rows = append(rows,
 			InfoRow{Label: "Storage", Value: "Not Installed"},
-			InfoRow{Label: "RAM", Value: "0 B"},
+			InfoRow{Label: "Used RAM", Value: "0 B"},
 		)
 	}
-	return Result{Handled: true, Info: &InfoData{Title: "Whisper.cpp Status", Rows: rows, CloseCommand: voiceModuleCommand(setup.VoiceModuleSTT, "provider", provider.ID)}}
+	return Result{Handled: true, Info: &InfoData{Title: "Whisper.cpp Status", Rows: rows, CloseCommand: voiceProviderSettingsBackCommand(setup.VoiceModuleSTT, provider.ID)}}
 }
 
 func voiceModelStorageStatus(model setup.VoiceModelOption) string {

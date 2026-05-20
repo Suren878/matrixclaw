@@ -41,7 +41,7 @@ agent workflows where continuity and explicit control matter.
 - **Planning Mode:** persistent goals, tasks, subtasks, resumable execution, and a core-owned runner.
 - **Search and usage:** session history is searchable, and provider token usage is recorded when available.
 - **Storage module:** Telegram uploads and generated files land in local storage, with temporary files promoted only when needed.
-- **Local voice modules:** Piper TTS and Whisper.cpp STT run locally, either per task to save RAM or as managed warm processes.
+- **Local voice modules:** Piper and Supertonic TTS plus Whisper.cpp STT run locally, either per task to save RAM or as managed warm processes.
 - **Automation-ready:** reminders, scheduled AI tasks, deliveries, and future agent workflows.
 
 ## Daemon-first Architecture
@@ -120,7 +120,8 @@ The installer downloads the matching GitHub Release archive, installs
 directories, and starts `matrixclaw setup`.
 
 Local TTS/STT runtimes are optional because they install extra system packages
-and build native binaries. To prepare Piper and Whisper.cpp during install:
+and build native binaries. To prepare Piper, Supertonic, Whisper.cpp, and
+`ffmpeg` during install:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/install.sh | bash -s -- --voice-runtime
@@ -396,10 +397,21 @@ The script installs/updates:
 - Whisper.cpp CLI and server in `~/.local/state/matrixclaw/runtime/whisper.cpp`
 - `ffmpeg` for STT input conversion and local TTS MP3 output
 
-Voice is part of the same daemon-first architecture as sessions and storage:
-clients request speech through the daemon API, the daemon selects the active
-module/provider/model, and generated Telegram TTS audio is saved into Storage
-under `telegram/audio/`.
+Voice is part of the same daemon-first architecture as sessions and storage.
+Clients request speech through the daemon API, the daemon selects the active
+module/provider/model, and Terminal plus Telegram use the same module state.
+Generated Telegram TTS audio is saved into Storage under `telegram/audio/`.
+
+The TUI exposes voice as normal modules:
+
+```text
+/modules -> Text to Speech
+/modules -> Speech to Text
+```
+
+Each module has a provider picker, provider setup, and a status screen. The
+provider picker selects what the assistant should use; setup installs engines,
+downloads voices/models, chooses language/model/voice, and selects runtime mode.
 
 Local providers support two runtime modes:
 
@@ -414,17 +426,17 @@ Local providers support two runtime modes:
   the local `/inference` endpoint.
 
 Piper voices are fetched from the online Piper voice catalog when available,
-with bundled English and Russian fallbacks. The TUI flow is:
+with bundled English and Russian fallbacks. The setup flow is:
 
 ```text
-/modules -> Text to Speech -> Provider -> Piper
+/modules -> Text to Speech -> Setup Provider -> Piper
 ```
 
-Choose `Add voice`, pick a language, download a voice, then choose the active
-voice. Piper also has a separate `Piper runtime` row for installing or deleting
-the managed local `piper-tts` runtime itself; voice downloads and runtime
-installation are intentionally separate. The status screen reports runtime
-state, local model storage, and current process RAM.
+Choose `Engine` to install or delete the managed `piper-tts` runtime. Then open
+`Voice`, choose `Add Voice`, pick a language, download a voice, and make it the
+active voice. Piper engine installation and voice downloads stay separate so a
+small open-source install does not pull every voice by default. The status
+screen reports local model storage, runtime mode, and current process RAM.
 
 Supertonic 3 is the heavier local TTS option. Its `Runtime` row installs the
 Python SDK with local server support and runs the official `supertonic download`
@@ -438,17 +450,21 @@ The temporary WAV files produced by local runtimes are removed immediately after
 the daemon reads them.
 
 Whisper.cpp models are fetched from the upstream Whisper.cpp model catalog when
-available, with bundled size tiers from `tiny` through `large-v3`. Language is
-`Auto` by default, and the TUI exposes Whisper's supported language codes from
-Afrikaans through Chinese instead of hard-coding only English/Russian:
+available, with bundled size tiers from `tiny` through `large-v3`. If the
+Whisper engine is not installed yet, choosing a model can build the engine and
+download the model in one flow. Language is `Auto` by default, and the TUI
+exposes Whisper's supported language codes from Afrikaans through Chinese
+instead of hard-coding only English/Russian:
 
 ```text
-/modules -> Speech to Text -> Provider -> Whisper.cpp
+/modules -> Speech to Text -> Setup Provider -> Whisper.cpp
 ```
 
-Choose `Add model`, download a model size, select the active model, then leave
-language on `Auto` or pin a specific spoken language. The status screen reports
-local model storage and current process RAM.
+Open `Model`, download a model size, select the active model, then leave
+language on `Auto` or pin a specific spoken language. `Run Per Task` starts
+`whisper-cli` only for the current transcription; `Always Running` keeps
+`whisper-server` warm on loopback. The status screen reports local model storage
+and current process RAM.
 
 The STT API accepts voice JSON bodies up to 36 MB, which is roughly 25 MB of raw
 audio after base64 overhead.

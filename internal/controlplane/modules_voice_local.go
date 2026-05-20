@@ -41,7 +41,7 @@ func (d *Dispatcher) voiceLocalProviderModelPicker(ctx context.Context, moduleID
 		return Result{Handled: true, Picker: picker.Ptr()}, nil
 	}
 	for _, model := range models {
-		info := voiceModelPickerInfo(model)
+		info := voiceModelPickerInfo(module.ID, provider, model)
 		item := PickerItem{
 			ID:       model.ID,
 			Title:    firstNonEmptyTrimmed(model.Name, model.ID),
@@ -65,6 +65,8 @@ func (d *Dispatcher) voiceLocalProviderModelPicker(ctx context.Context, moduleID
 		} else if module.ID == setup.VoiceModuleSTT && provider.ID == "whispercpp" {
 			if model.Installed {
 				item.Command = voiceModuleCommand(module.ID, "provider-use", provider.ID, model.ID)
+			} else if !provider.RuntimeInstalled {
+				item.Command = voiceModuleCommand(module.ID, "provider-action", provider.ID, "download-with-runtime", model.ID)
 			} else {
 				item.Command = voiceModuleCommand(module.ID, "provider-action", provider.ID, "download", model.ID)
 			}
@@ -386,8 +388,8 @@ func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID stri
 	switch action {
 	case "install-runtime":
 		return Result{Handled: true, Confirm: &ConfirmData{
-			Message:        "Download " + provider.Name + " engine?",
-			ConfirmLabel:   "Download",
+			Message:        voiceRuntimeInstallConfirmMessage(provider),
+			ConfirmLabel:   voiceRuntimeInstallConfirmLabel(provider),
 			CancelLabel:    "Cancel",
 			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, "install-runtime-confirm"),
 			CancelCommand:  voiceProviderSettingsBackCommand(module.ID, provider.ID),
@@ -458,7 +460,30 @@ func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID stri
 			return d.voiceModulePicker(ctx, module.ID)
 		}
 		return d.voiceLocalProviderPickerWithProvider(module, updated)
+	case "download-with-runtime":
+		return Result{Handled: true, Confirm: &ConfirmData{
+			Title:          "Install " + provider.Name,
+			Message:        voiceModelInstallWithRuntimeMessage(provider, modelID),
+			ConfirmLabel:   "Install",
+			CancelLabel:    "Cancel",
+			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, "download", modelID),
+			CancelCommand:  voiceModuleCommand(module.ID, "provider-model", provider.ID),
+		}}, nil
 	case "download":
+		if module.ID == setup.VoiceModuleSTT && provider.ID == "whispercpp" && !provider.RuntimeInstalled {
+			updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "install-runtime"})
+			if err != nil {
+				return Result{}, err
+			}
+			provider = updated
+			if !provider.RuntimeInstalled {
+				if refreshed, ok, err := d.waitForVoiceProviderRuntimeInstalled(ctx, module.ID, provider.ID); err != nil {
+					return Result{}, err
+				} else if ok {
+					provider = refreshed
+				}
+			}
+		}
 		updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "download", ModelID: modelID})
 		if err != nil {
 			return Result{}, err
@@ -495,16 +520,27 @@ func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID stri
 			cfg := provider.Config
 			if strings.TrimSpace(modelID) != "" {
 				cfg.ModelID = strings.TrimSpace(modelID)
-				if _, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg}); err != nil {
+				if strings.TrimSpace(cfg.RuntimeMode) == "" {
+					cfg.RuntimeMode = voiceRuntimeModePerTask
+				}
+				enabled := true
+				modules, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{Enabled: &enabled, ProviderID: provider.ID, ProviderConfig: &cfg})
+				if err != nil {
 					return Result{}, err
 				}
+				if refreshed, ok := voiceProviderFromModules(modules, module.ID, provider.ID); ok {
+					provider = refreshed
+				}
+			}
+			if err := d.stopOtherVoiceModuleProviders(ctx, module, provider.ID); err != nil {
+				return Result{}, err
 			}
 			if normalizeVoiceRunMode(cfg.RuntimeMode) == voiceRuntimeModeAlways && voiceLocalRuntimeStartReady(module.ID, provider, cfg) {
 				if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "start"}); err != nil {
 					return Result{}, err
 				}
 			}
-			return d.voiceInstalledLocalPicker(ctx, module.ID, provider.ID)
+			return d.voiceLocalProviderPicker(ctx, module.ID, provider.ID)
 		}
 		return Result{Handled: true, Confirm: &ConfirmData{
 			Title:          "Installed",

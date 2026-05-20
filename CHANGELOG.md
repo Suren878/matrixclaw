@@ -1,20 +1,30 @@
 # Changelog
 
-## v0.1.9
+## v0.1.10
 
+- Added daemon-first local voice modules: Text to Speech now supports Piper and
+  Supertonic 3, while Speech to Text supports Whisper.cpp through the same
+  shared module UI used by Terminal and Telegram.
 - Added local voice runtime installation with `install.sh --voice-runtime` and
-  `scripts/install_voice_runtime.sh` for Piper, Whisper.cpp, and ffmpeg.
+  `scripts/install_voice_runtime.sh` for Piper, Supertonic, Whisper.cpp, and
+  ffmpeg.
+- Added Run Per Task and Always Running modes for local voice providers. Run Per
+  Task is the memory-saving default; Always Running keeps Piper, Supertonic, or
+  Whisper.cpp warm for lower startup latency.
+- Added online catalog-backed voice/model selection: Piper voices by language,
+  Supertonic voice styles and language modes, and Whisper.cpp model tiers from
+  `tiny` through `large-v3`.
 - Added local Whisper.cpp speech-to-text execution through `whisper-cli` and
-  raised the STT request body limit for longer audio uploads.
-- Added daemon-first Text to Speech and Speech to Text module flows with local
-  provider status, run mode controls, voice/model management, and spinner-backed
-  loading states.
-- Added run-per-task voice execution for memory-efficient defaults, with
-  always-on local runtimes available where they are useful.
+  `whisper-server`, with STT request limits sized for Telegram voice/audio
+  uploads.
+- Added voice status screens with installed storage, selected provider/model,
+  runtime mode, and live RAM usage for managed local processes.
 - Fixed local Piper text-to-speech so longer responses are generated without
   returning only the first chunk.
-- Added Telegram voice delivery gating so TTS tools are exposed only when the
-  client can receive generated audio files.
+- Added Telegram voice delivery for TTS tool results and `/tts`, with generated
+  audio saved into Matrixclaw Storage under `telegram/audio/`.
+- Fixed Telegram TTS/STT daemon calls to use the long voice-runtime timeout
+  instead of the short JSON timeout.
 - Added storage/temp file documentation and kept Telegram-downloaded files in
   Matrixclaw storage with collision-safe names.
 - Documented daemon-first architecture, local voice run modes, storage/temp

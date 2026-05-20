@@ -3,7 +3,8 @@
 matrixclaw can use local speech runtimes without turning them into separate
 apps. Clients ask the daemon for TTS or STT, the daemon reads the selected
 module/provider/model from setup, and the result flows back through the same
-session.
+session. Terminal, Telegram, and future clients all use this same daemon-owned
+voice configuration.
 
 ## Providers
 
@@ -39,12 +40,13 @@ chosen later from:
 Local model files live under `~/.local/state/matrixclaw/local/voice/` by
 default. `MATRIXCLAW_LOCAL_DIR` can override that local module root.
 
-Piper and Supertonic can also be installed from the TUI without running the full
-voice runtime installer:
+Piper, Supertonic, and Whisper.cpp can also be installed from the TUI without
+running the full voice runtime installer:
 
 ```text
-/modules -> Text to Speech -> Provider -> Piper -> Piper runtime
-/modules -> Text to Speech -> Provider -> Supertonic 3 -> Runtime
+/modules -> Text to Speech -> Setup Provider -> Piper -> Engine
+/modules -> Text to Speech -> Setup Provider -> Supertonic 3 -> Engine
+/modules -> Speech to Text -> Setup Provider -> Whisper.cpp -> Engine
 ```
 
 The Piper runtime row installs or deletes the managed local `piper-tts`
@@ -59,6 +61,11 @@ Supertonic can encode WAV, FLAC, and OGG/Vorbis natively. Matrixclaw requests
 WAV from local TTS runtimes, converts it to MP3 through `ffmpeg`, and returns the
 MP3 to clients. Temporary WAV files are removed immediately after the daemon
 reads them.
+
+The Whisper.cpp engine row builds local `whisper-cli` and `whisper-server`
+under matrixclaw runtime state. If the engine is missing, selecting a Whisper
+model can also run a combined flow: build the engine, download the selected
+model, select it as active, and enable STT in Run Per Task mode.
 
 ## Run Modes
 
@@ -76,6 +83,11 @@ Always-running mode is useful when voice is frequent and startup latency matters
 Run-per-task mode is better when RAM matters more than latency. Whisper.cpp
 model size controls peak memory during transcription: `tiny` is lightest,
 `base` is the balanced default, and `large-v3` is heavy.
+
+The main module screens show the selected provider and run mode. Provider setup
+screens handle engine installation, model/voice selection, language, threads,
+and runtime mode. Status screens show installed storage and `Used RAM` for the
+currently running managed process.
 
 ## Catalogs
 
@@ -98,6 +110,35 @@ Status screens show:
 - local installation state
 - model file storage size
 - current runtime RAM when a managed process is running
+
+## Text To Speech
+
+TTS has one active provider at a time. `Disabled` makes the assistant report
+that local TTS is off; selecting Piper or Supertonic enables that provider after
+its engine/model requirements are satisfied.
+
+Piper is the light local TTS option. Install the engine, add a voice by
+language, then choose the active voice. Multiple voices can be installed, but
+only one Piper voice is active for generation.
+
+Supertonic 3 is the higher-resource local TTS option. Install the engine once,
+then choose a voice style. Its language setting can stay on `Auto` for normal
+use; pin a language only when text needs explicit handling.
+
+Matrixclaw converts local TTS output to MP3 before returning it to clients.
+Telegram sends that MP3 as audio and stores a copy in local Storage under
+`telegram/audio/`.
+
+## Speech To Text
+
+STT currently has one local provider: Whisper.cpp. Choose a model tier from the
+catalog; Matrixclaw downloads only the selected model. `Auto` language lets
+Whisper detect the spoken language, while the language picker can pin a specific
+spoken language when detection is undesirable.
+
+Run Per Task starts `whisper-cli` for the current upload and exits afterward.
+Always Running starts `whisper-server` on loopback and uses its `/inference`
+endpoint. Both modes use the same selected model and language setting.
 
 ## Telegram Flow
 

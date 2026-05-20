@@ -10,15 +10,15 @@ Scripts:
   installer checks that do not download or install anything.
   After setup is saved, plain `matrixclaw` opens the terminal TUI and starts
   the daemon when needed. Use `--from-source` for local development installs.
-  Use `--voice-runtime` when the user explicitly wants local Piper and
-  Whisper.cpp dependencies installed during setup.
+  Use `--voice-runtime` when the user explicitly wants local Piper,
+  Supertonic, Whisper.cpp, and ffmpeg dependencies installed during setup.
 - `install_voice_runtime.sh`
-  Install optional local voice runtime dependencies. It prepares Piper in a
-  local Python venv, builds Whisper.cpp CLI under matrixclaw state, and installs
-  `ffmpeg` through the host package manager when available. It is idempotent and
-  can be rerun after updates. Use `--piper`, `--whisper`, or `--all` to choose
-  runtime targets, and `--no-system-deps` when system packages are managed
-  outside the script.
+  Install optional local voice runtime dependencies. It prepares Piper and
+  Supertonic in local Python venvs, builds Whisper.cpp CLI/server under
+  matrixclaw state, and installs `ffmpeg` through the host package manager when
+  available. It is idempotent and can be rerun after updates. Use `--piper`,
+  `--supertonic`, `--whisper`, or `--all` to choose runtime targets, and
+  `--no-system-deps` when system packages are managed outside the script.
 - `uninstall.sh`
   Remove installed binaries and the user service. Keeps config and state unless
   `--purge` is explicitly passed.
@@ -39,7 +39,8 @@ Voice runtime notes:
   the release binaries.
 - voice runtime files default to `~/.local/state/matrixclaw/runtime`
 - voice model files are not downloaded by the scripts; choose Piper voices and
-  Whisper.cpp models later from `/modules tts` and `/modules stt`
+  Whisper.cpp models later from `/modules tts` and `/modules stt`; Supertonic
+  downloads its shared model during runtime install
 - macOS voice runtime install requires Homebrew and Xcode Command Line Tools
   (`xcode-select --install`)
 - `MATRIXCLAW_STATE_DIR`, `MATRIXCLAW_RUNTIME_DIR`, and

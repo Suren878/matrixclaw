@@ -91,22 +91,20 @@ func voiceLocalSTTPicker(module setup.VoiceModuleDescriptor, provider setup.Voic
 	}
 	picker := NewPickerData(PickerVoiceProvider, provider.Name).
 		Context(module.ID).
-		Back(voiceModuleCommand(module.ID, "provider"))
+		Meta("Local STT").
+		Back(voiceProviderSettingsBackCommand(module.ID, provider.ID))
 	picker.Item(PickerItem{
-		ID:      "add-model",
-		Title:   "Add Model",
-		Command: voiceModuleCommand(module.ID, "provider-model", provider.ID),
+		ID:      "engine",
+		Title:   "Engine",
+		Info:    voiceRuntimeInstallInfo(provider),
+		Command: voiceModuleCommand(module.ID, "provider-action", provider.ID, voiceRuntimeInstallAction(provider)),
+		Role:    piperRuntimeActionRole(voiceRuntimeInstallAction(provider)),
 	})
 	picker.Item(PickerItem{
 		ID:      "model",
 		Title:   "Model",
 		Info:    modelInfo,
 		Command: voiceModuleCommand(module.ID, "provider-installed", provider.ID),
-	})
-	picker.Item(PickerItem{
-		ID:      "status",
-		Title:   "Status",
-		Command: voiceModuleCommand(module.ID, "provider-status", provider.ID),
 	})
 	picker.Item(PickerItem{
 		ID:      "run-mode",

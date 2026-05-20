@@ -286,8 +286,10 @@ func (w *Worker) sendGeneratedSpeech(ctx context.Context, target chatTarget, res
 		sent, err = w.api.SendAudio(ctx, req)
 	}
 	if err != nil {
+		log.Printf("telegram: send generated speech failed chat=%d thread=%d file=%s mime=%s bytes=%d: %v", target.chatID, target.threadID, fileName, mimeType, len(content), err)
 		return SentMessage{}, err
 	}
+	log.Printf("telegram: sent generated speech chat=%d thread=%d message=%d file=%s mime=%s bytes=%d", target.chatID, target.threadID, sent.MessageID, fileName, mimeType, len(content))
 	w.saveGeneratedSpeechToStorage(ctx, target, response, content)
 	return sent, nil
 }

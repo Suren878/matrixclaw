@@ -387,6 +387,10 @@ func (r *Runtime) installVoiceRuntime(ctx context.Context, moduleID string, prov
 		if err := r.installSupertonicRuntime(ctx); err != nil {
 			return provider, err
 		}
+	case "whispercpp":
+		if err := r.installWhisperRuntime(ctx); err != nil {
+			return provider, err
+		}
 	default:
 		return provider, fmt.Errorf("%s runtime installation is not implemented yet", provider.Name)
 	}
@@ -413,6 +417,16 @@ func (r *Runtime) deleteVoiceRuntime(moduleID string, provider setup.VoiceProvid
 			return provider, err
 		}
 		if err := os.RemoveAll(filepath.Join(r.runtimeDir(), "supertonic3")); err != nil {
+			return provider, err
+		}
+	case "whispercpp":
+		if err := r.stopWhisperServerProcess(provider); err != nil {
+			return provider, err
+		}
+		if err := os.RemoveAll(r.managedWhisperRuntimeDir()); err != nil {
+			return provider, err
+		}
+		if err := os.RemoveAll(filepath.Join(r.rootDir(), "voice", "stt", "whispercpp")); err != nil {
 			return provider, err
 		}
 	default:
@@ -607,6 +621,12 @@ func (r *Runtime) ManagedVoiceBinaryPath(provider setup.VoiceProviderOption) (st
 			return path, nil
 		}
 	}
+	if provider.ID == "whispercpp" {
+		path := r.managedWhisperCLIPath()
+		if executableFileExists(path) && executableFileExists(r.managedWhisperServerPath()) {
+			return path, nil
+		}
+	}
 	return "", fmt.Errorf("%s runtime is not installed", provider.Name)
 }
 
@@ -624,6 +644,18 @@ func (r *Runtime) managedSupertonicBinaryPath() string {
 
 func (r *Runtime) managedSupertonicPythonPath() string {
 	return filepath.Join(r.runtimeDir(), "supertonic-venv", "bin", "python")
+}
+
+func (r *Runtime) managedWhisperRuntimeDir() string {
+	return filepath.Join(r.runtimeDir(), "whisper.cpp")
+}
+
+func (r *Runtime) managedWhisperCLIPath() string {
+	return filepath.Join(r.managedWhisperRuntimeDir(), "build", "bin", "whisper-cli")
+}
+
+func (r *Runtime) managedWhisperServerPath() string {
+	return filepath.Join(r.managedWhisperRuntimeDir(), "build", "bin", "whisper-server")
 }
 
 func (r *Runtime) supertonicInstallMarkerPath() string {
@@ -822,11 +854,99 @@ func (r *Runtime) installSupertonicRuntime(ctx context.Context) error {
 	return nil
 }
 
+func (r *Runtime) installWhisperRuntime(ctx context.Context) error {
+	if err := requireFFmpegForLocalSTT(); err != nil {
+		return err
+	}
+	cliPath := r.managedWhisperCLIPath()
+	serverPath := r.managedWhisperServerPath()
+	if executableFileExists(cliPath) && executableFileExists(serverPath) {
+		return nil
+	}
+	git, err := exec.LookPath("git")
+	if err != nil {
+		return fmt.Errorf("git is required to install Whisper.cpp runtime")
+	}
+	cmake, err := exec.LookPath("cmake")
+	if err != nil {
+		return fmt.Errorf("cmake is required to install Whisper.cpp runtime")
+	}
+	if _, err := cxxCompilerPath(); err != nil {
+		return err
+	}
+	sourceDir := r.managedWhisperRuntimeDir()
+	if err := os.MkdirAll(r.runtimeDir(), 0o755); err != nil {
+		return err
+	}
+	if _, err := os.Stat(filepath.Join(sourceDir, ".git")); err == nil {
+		if err := runRuntimeCommand(ctx, git, "-C", sourceDir, "fetch", "--depth", "1", "origin"); err != nil {
+			return err
+		}
+		if err := runRuntimeCommand(ctx, git, "-C", sourceDir, "reset", "--hard", "FETCH_HEAD"); err != nil {
+			return err
+		}
+	} else if _, err := os.Stat(sourceDir); err == nil {
+		return fmt.Errorf("%s exists but is not a git checkout", sourceDir)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	} else {
+		repo := strings.TrimSpace(os.Getenv("MATRIXCLAW_WHISPER_CPP_REPO"))
+		if repo == "" {
+			repo = "https://github.com/ggml-org/whisper.cpp.git"
+		}
+		if err := runRuntimeCommand(ctx, git, "clone", "--depth", "1", repo, sourceDir); err != nil {
+			return err
+		}
+	}
+	buildDir := filepath.Join(sourceDir, "build")
+	if err := runRuntimeCommand(ctx, cmake, "-S", sourceDir, "-B", buildDir, "-DWHISPER_BUILD_TESTS=OFF", "-DWHISPER_BUILD_EXAMPLES=ON", "-DCMAKE_BUILD_TYPE=Release"); err != nil {
+		return err
+	}
+	if err := runRuntimeCommand(ctx, cmake, "--build", buildDir, "-j", "4", "--config", "Release", "--target", "whisper-cli", "whisper-server"); err != nil {
+		return err
+	}
+	if !executableFileExists(cliPath) {
+		return fmt.Errorf("Whisper.cpp runtime installation finished without whisper-cli binary")
+	}
+	if !executableFileExists(serverPath) {
+		return fmt.Errorf("Whisper.cpp runtime installation finished without whisper-server binary")
+	}
+	return nil
+}
+
+func executableFileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir() && info.Mode()&0o111 != 0
+}
+
+func cxxCompilerPath() (string, error) {
+	for _, name := range []string{"c++", "g++", "clang++"} {
+		if path, err := exec.LookPath(name); err == nil {
+			return path, nil
+		}
+	}
+	return "", fmt.Errorf("C++ compiler is required to install Whisper.cpp runtime")
+}
+
 func requireFFmpegForLocalTTS() error {
-	if _, err := exec.LookPath("ffmpeg"); err == nil {
+	if hasFFmpeg() {
 		return nil
 	}
 	return errors.New("ffmpeg is required for local TTS MP3 output; install it or run scripts/install_voice_runtime.sh --all")
+}
+
+func requireFFmpegForLocalSTT() error {
+	if hasFFmpeg() {
+		return nil
+	}
+	return errors.New("ffmpeg is required for local STT audio conversion; install it or run scripts/install_voice_runtime.sh --all")
+}
+
+func hasFFmpeg() bool {
+	if _, err := exec.LookPath("ffmpeg"); err == nil {
+		return true
+	}
+	return false
 }
 
 func runRuntimeCommand(ctx context.Context, name string, args ...string) error {

@@ -60,6 +60,8 @@ func pickerPresentationStatus(kind PickerKind, selected bool, info string) strin
 	}
 	info = strings.TrimSpace(info)
 	switch kind {
+	case PickerTextToSpeech, PickerSpeechToText:
+		return info
 	case PickerTTSProvider:
 		return info
 	case PickerVoiceProvider:
@@ -111,7 +113,7 @@ func pickerCompactLabel(kind PickerKind, presented PickerPresentationItem) strin
 		title += " · " + presented.Info
 	}
 	prefix := pickerCompactPrefix(kind, presented.Item)
-	if presented.Selected {
+	if presented.Selected && kind != PickerTextToSpeech && kind != PickerSpeechToText {
 		return "✅ " + prefix + title
 	}
 	return prefix + title
