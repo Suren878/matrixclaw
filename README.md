@@ -31,17 +31,19 @@ agent workflows where continuity and explicit control matter.
 
 ## Why matrixclaw?
 
-- **Small Go daemon:** about 10 MB RAM while idle on the current Linux server,
+- **Small Go daemon:** about 26 MiB RAM while idle on the current Linux server,
   with exact usage depending on OS, build, and active clients.
 - **One assistant, many clients:** begin a session in Terminal TUI and continue it in Telegram.
 - **Local-first state:** sessions, runs, approvals, files, plans, usage, and provider choices live in SQLite.
-- **Provider switching:** OpenAI-compatible APIs, OpenAI Codex subscription OAuth, Anthropic, Gemini, and custom endpoints.
+- **Provider switching:** OpenAI-compatible APIs, OpenAI Codex subscription OAuth, Anthropic, Gemini, Chinese provider presets, and custom endpoints.
 - **External agents:** experimental Codex app-server sessions attach to the same session model.
 - **Tools with approvals:** file and shell tools pause before risky changes.
 - **Planning Mode:** persistent goals, tasks, subtasks, resumable execution, and a core-owned runner.
 - **Search and usage:** session history is searchable, and provider token usage is recorded when available.
 - **Storage module:** Telegram uploads and generated files land in local storage, with temporary files promoted only when needed.
+- **Web search module:** `web_search` and `web_fetch` tools with four provider options — DuckDuckGo (free, no key), Tavily (1 000 req/mo free), Serper (2 500 req/mo free), SearXNG (self-hosted). Configure from `/modules` without restarting.
 - **Local voice modules:** Piper and Supertonic TTS plus Whisper.cpp STT run locally, either per task to save RAM or as managed warm processes.
+- **MCP module:** connect external MCP servers as assistant tools, or expose matrixclaw tools to MCP hosts.
 - **Automation-ready:** reminders, scheduled AI tasks, deliveries, and future agent workflows.
 
 ## Daemon-first Architecture
@@ -56,6 +58,7 @@ This keeps the Terminal TUI and Telegram bot small:
 - restarting Telegram does not lose history or approvals
 - provider/model choices and permissions stay attached to the session
 - local voice and storage modules are selected once and reused by all clients
+- MCP tools connect once in the daemon and flow through the same approval system
 - external agents can attach to a matrixclaw session without becoming normal LLM providers
 
 The daemon is also the memory boundary. Idle matrixclaw stays small, while
@@ -175,7 +178,7 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
 - Terminal setup and chat TUI for local operator work.
 - Telegram client for remote sessions, files, images, provider/model commands, and approvals.
 - Durable sessions, messages, runs, approvals, file snapshots, deliveries, and tool results.
-- OpenAI-compatible, OpenAI Codex subscription OAuth, Anthropic-compatible, Gemini, and custom provider adapters.
+- OpenAI-compatible, OpenAI Codex subscription OAuth, Anthropic-compatible, Gemini, and custom provider adapters, including presets such as DeepSeek, Qwen / DashScope, Z.AI / GLM, Kimi, MiniMax, OpenRouter, Vercel AI Gateway, NVIDIA NIM, Hugging Face, NovitaAI, GMI Cloud, StepFun, Ollama Cloud, and Kilo Code.
 - Experimental external-agent sessions through Codex app-server.
 - Service-owned tool execution with approval previews before writes and shell actions.
 - Planning Mode for multi-step work, with persistent tasks/subtasks, resumable execution, model-facing `plan_*` tools, and manual `/plan` commands.
@@ -185,6 +188,9 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
 - Telegram image/document uploads stored as temporary files, with explicit save/delete controls.
 - Telegram voice and audio messages transcribed through the configured STT provider and sent into the active session as text.
 - Telegram `/tts` and assistant `text_to_speech` tool results sent back as voice messages and archived in storage.
+- Web search and web fetch tools with provider selection and per-provider credential storage; provider switch takes effect immediately without a daemon restart.
+- MCP client module for stdio and streamable HTTP MCP servers, registering remote tools as matrixclaw tools.
+- MCP stdio server mode for exposing matrixclaw daemon tools to external MCP hosts.
 - SQLite-backed local state with reconnectable clients and session handoff.
 - Automation jobs for reminders and scheduled AI tasks.
 
@@ -227,8 +233,10 @@ matrixclaw update           check for and install newer releases
 matrixclaw providers        list setup provider catalog
 matrixclaw providers login openai-codex
 matrixclaw providers verify verify configured provider model access
+matrixclaw providers verify --catalogs
 matrixclaw agents           list external agent runtimes
 matrixclaw agents start     create an external agent session
+matrixclaw mcp serve --session SESSION_ID
 matrixclaw service status   print service state
 matrixclaw service restart  restart service
 matrixclaw service stop     stop service
@@ -245,6 +253,51 @@ the background daemon.
 Commands that read setup report missing or unsupported setup on stderr and exit
 nonzero. Use `matrixclaw setup` to recreate setup explicitly.
 
+## MCP
+
+matrixclaw supports the Model Context Protocol as a daemon module.
+
+As an **MCP client**, `matrixclawd` can connect configured MCP servers and
+expose their remote tools to the assistant as normal matrixclaw tools. The first
+supported transports are stdio command servers and streamable HTTP endpoints.
+Remote tools are registered with prefixed IDs such as `mcp_browser_navigate`.
+
+Example `setup.json` fragment:
+
+```json
+{
+  "modules": {
+    "mcp": {
+      "enabled": true,
+      "servers": [
+        {
+          "id": "browser",
+          "enabled": true,
+          "transport": "stdio",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-playwright"],
+          "read_only": false
+        }
+      ]
+    }
+  }
+}
+```
+
+As an **MCP server**, matrixclaw can expose its daemon tool registry to an
+external MCP host:
+
+```bash
+matrixclaw mcp serve --session SESSION_ID --workdir /path/to/project
+```
+
+External MCP tools are conservative by default: unless a configured server is
+marked `read_only`, its tools are treated as mutation tools and require
+matrixclaw approval before execution.
+
+See [MCP Module](docs/MCP.md) for configuration fields, safety rules, and
+current protocol limits.
+
 OpenAI Codex Subscription uses ChatGPT/Codex OAuth instead of an API key. Select
 `OpenAI Codex Subscription` in setup, authorize with:
 
@@ -255,6 +308,18 @@ matrixclaw providers login openai-codex
 Then open the provider's `Model` picker. Matrixclaw loads the available Codex
 models from the Codex backend and stores the chosen model like any other session
 provider.
+
+Provider presets are backed by a registry in `internal/providers`: each provider
+declares its catalog metadata, auth mode, transport, runtime adapter, aliases,
+defaults, capabilities, and OpenAI-compatible wire quirks in one place. This
+keeps API-key providers, Codex OAuth, Anthropic, Gemini, OpenAI-compatible
+gateways, and custom endpoints on the same setup path instead of scattering
+provider-specific checks through the UI and runtime adapters. Model pickers load
+the provider catalog live when the provider exposes one. If a catalog requires
+credentials, the model picker is disabled until an API key or OAuth session is
+available. `matrixclaw providers verify --catalogs` checks configured providers
+and public catalogs in one pass, reporting whether a model list came from a
+configured key, public catalog, or live OAuth/backend catalog.
 
 ## In-session controls
 
@@ -302,7 +367,6 @@ Prerequisites:
 git clone https://github.com/Suren878/matrixclaw.git
 cd matrixclaw
 
-go test ./...
 go vet ./...
 
 mkdir -p ./bin
@@ -340,7 +404,7 @@ flowchart LR
     APPROVALS --> STORE
     CORE --> PLAN[Planning Mode state]
     CORE --> SEARCH[Search / Usage]
-    CORE --> MODULES[Storage / Automation modules]
+    CORE --> MODULES[Storage / Voice / MCP / Automation modules]
     PLAN --> STORE
     SEARCH --> STORE
     MODULES --> STORE
@@ -355,7 +419,7 @@ Core rules:
 - provider and model selection are session data
 - Planning Mode state and plan-run checkpoints are session data
 - search and token usage are read-only views over local SQLite state
-- storage, voice, and external agents are daemon modules behind the same local API
+- storage, voice, MCP, and external agents are daemon modules behind the same local API
 - orchestration, providers, and tools are replaceable adapter families
 
 ## External Agents
@@ -471,7 +535,7 @@ audio after base64 overhead.
 
 See [Local Voice](docs/VOICE.md) and [Storage and Telegram Files](docs/STORAGE.md)
 for the local model paths, run modes, temporary-file lifecycle, and Telegram
-voice/file flow.
+voice/file flow. See [MCP Module](docs/MCP.md) for MCP client/server setup.
 
 ## Repository Map
 
@@ -485,11 +549,12 @@ voice/file flow.
 - [`internal/store`](internal/store): SQLite persistence
 - [`internal/providers`](internal/providers): provider adapters and catalog
 - [`internal/externalagents`](internal/externalagents): external-agent registry and Codex app-server adapter
+- [`internal/mcp`](internal/mcp): MCP client/server bridge
+- [`internal/modules/mcp`](internal/modules/mcp): daemon MCP module
 - [`internal/tools`](internal/tools): builtin tools
-- [`docs`](docs): planning, local voice, and storage notes
+- [`docs`](docs): planning, MCP, local voice, and storage notes
 - [`scripts`](scripts): install, uninstall, and release-build scripts
 - [`packaging`](packaging): release and Homebrew packaging notes
-- [`tests`](tests): contract and integration test suites
 
 ## Privacy And Security
 
@@ -504,6 +569,7 @@ Can leave your machine:
 
 - Prompts, selected context, tool results, and conversation history sent to the configured LLM provider.
 - External-agent prompts, working directories, and agent events sent through the configured external agent.
+- Remote MCP tool arguments and results sent to configured MCP servers.
 - Telegram messages and buttons when the Telegram client is enabled.
 - Network traffic caused by tools you approve or run.
 - Any custom provider endpoint you configure.

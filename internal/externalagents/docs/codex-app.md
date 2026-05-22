@@ -190,31 +190,6 @@ approval request notifications
 matrixclaw approval UI
 ```
 
-## Tests
-
-Normal tests use a fake in-memory JSON-RPC server:
-
-```bash
-go test ./internal/externalagents/codexapp
-```
-
-Live handshake:
-
-```bash
-MATRIXCLAW_CODEXAPP_LIVE=1 \
-go test ./internal/externalagents/codexapp -run TestLiveInitialize -count=1
-```
-
-Live thread and turn:
-
-```bash
-MATRIXCLAW_CODEXAPP_LIVE_TURN=1 \
-go test ./internal/externalagents/codexapp -run TestLiveThreadTurn -count=1 -v
-```
-
-The live turn sends one short message to the locally authenticated Codex
-account.
-
 ## Known Protocol Notes
 
 The generated TypeScript schema showed `thread.status` as a string-like shape,

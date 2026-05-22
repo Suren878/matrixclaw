@@ -23,10 +23,27 @@ type Core struct {
 	externalStore  externalagents.AttachmentStore
 	activeRuns     map[string]*activeRun
 	tools          ToolExecutor
+	skillsContext  SkillsPromptContextProvider
 	events         *eventBus
 	now            func() time.Time
 	newID          func(prefix string) string
 	historyLimit   int
+}
+
+type SkillsPromptContextRequest struct {
+	SessionID  string
+	RunID      string
+	WorkingDir string
+	Messages   []SkillsPromptMessage
+}
+
+type SkillsPromptMessage struct {
+	Role    string
+	Content string
+}
+
+type SkillsPromptContextProvider interface {
+	SkillsPromptContext(context.Context, SkillsPromptContextRequest) string
 }
 
 type AssistantProfile struct {
@@ -134,6 +151,13 @@ func (c *Core) sessionLLMs() SessionLLMRegistry {
 func (c *Core) WithTools(toolExecutor ToolExecutor) *Core {
 	if toolExecutor != nil {
 		c.tools = toolExecutor
+	}
+	return c
+}
+
+func (c *Core) WithSkillsContext(provider SkillsPromptContextProvider) *Core {
+	if provider != nil {
+		c.skillsContext = provider
 	}
 	return c
 }

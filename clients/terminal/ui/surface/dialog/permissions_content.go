@@ -30,6 +30,8 @@ func (p *Permissions) renderContent(width int) string {
 		return p.renderReadContent(width)
 	case toolNameLS:
 		return p.renderLSContent(width)
+	case toolNameSkillManage:
+		return p.renderSkillManageContent(width)
 	default:
 		return p.renderDefaultContent(width)
 	}
@@ -164,6 +166,29 @@ func (p *Permissions) renderLSContent(width int) string {
 	}
 
 	return p.renderContentPanel(content, width)
+}
+
+func (p *Permissions) renderSkillManageContent(width int) string {
+	params, ok := surfacepermission.DecodeParams[tools.SkillManagePermissionsParams](p.permission.Params)
+	if !ok {
+		return p.renderDefaultContent(width)
+	}
+	switch strings.ToLower(strings.TrimSpace(params.Action)) {
+	case "create":
+		lines := []string{}
+		if name := strings.TrimSpace(params.Name); name != "" {
+			lines = append(lines, "Name: "+name)
+		}
+		if description := strings.TrimSpace(params.Description); description != "" {
+			lines = append(lines, "Description: "+description)
+		}
+		if body := strings.TrimSpace(params.Content); body != "" {
+			lines = append(lines, "SKILL.md:", "", body)
+		}
+		return p.renderContentPanel(strings.TrimSpace(strings.Join(lines, "\n")), width)
+	default:
+		return p.renderDefaultContent(width)
+	}
 }
 
 func (p *Permissions) renderDefaultContent(width int) string {

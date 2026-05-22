@@ -198,7 +198,7 @@ func customProviderFormFieldsFromSpec(data setup.ProviderFormState, keyStatus st
 		ShowRequiredStatus: true,
 	})
 	fields := make([]FormField, 0, len(viewFields)+1)
-	if spec.Type == providers.TypeOpenAICodex {
+	if providers.PolicyForProvider(firstNonEmptyTrimmed(spec.CatalogID, spec.ID), spec.Type).AuthMode == providers.ProviderAuthOAuth {
 		fields = append(fields, FormField{
 			ID:          "auth",
 			Label:       "Authorization",
@@ -207,11 +207,16 @@ func customProviderFormFieldsFromSpec(data setup.ProviderFormState, keyStatus st
 		})
 	}
 	for _, field := range viewFields {
+		editCommandValue := ""
+		if !field.Disabled {
+			editCommandValue = editCommand(field.CommandID)
+		}
 		fields = append(fields, FormField{
 			ID:          field.CommandID,
 			Label:       field.Label,
 			Value:       field.Status,
-			EditCommand: editCommand(field.CommandID),
+			EditCommand: editCommandValue,
+			Disabled:    field.Disabled,
 		})
 	}
 	return fields

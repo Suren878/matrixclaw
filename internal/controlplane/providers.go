@@ -110,7 +110,13 @@ func providerActions(provider setup.ProviderSetupItem, selected bool) Result {
 }
 
 func isOpenAICodexProvider(provider setup.ProviderSetupItem) bool {
-	return providerFormType(provider) == providers.TypeOpenAICodex || providerFormCatalogID(provider) == "openai-codex"
+	policy := providerPolicy(provider)
+	return policy.AuthMode == providers.ProviderAuthOAuth &&
+		policy.RuntimeProviderType == providers.TypeOpenAICodex
+}
+
+func providerPolicy(provider setup.ProviderSetupItem) providers.ProviderPolicy {
+	return providers.PolicyForProvider(providerFormCatalogID(provider), providerFormType(provider))
 }
 
 func openAICodexAuthInfo() string {

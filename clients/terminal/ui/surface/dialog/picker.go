@@ -27,6 +27,7 @@ type PickerEntry struct {
 	ID       string
 	Title    string
 	Status   string
+	Search   string
 	Shortcut string
 	Role     commandui.Role
 	Tone     commandui.RowTone
@@ -49,6 +50,7 @@ type PickerData struct {
 type pickerOption struct {
 	item     commandui.Item
 	action   Action
+	search   string
 	selected bool
 	footer   bool
 }

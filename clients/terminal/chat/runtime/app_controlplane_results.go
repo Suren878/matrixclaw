@@ -107,7 +107,7 @@ func controlplaneResultLeavesCommandRoot(result controlplane.Result) bool {
 	if picker := result.Picker; picker != nil {
 		return picker.HasBack || picker.HasClose
 	}
-	return result.Form != nil || result.Prompt != nil || result.Confirm != nil || result.Info != nil
+	return result.Form != nil || result.Prompt != nil || result.TextEdit != nil || result.Confirm != nil || result.Info != nil
 }
 
 func (m *appModel) handleContextCompactResult(msg controlplaneResultMsg) tea.Cmd {
@@ -135,6 +135,8 @@ func (m *appModel) controlplaneDialog(result controlplane.Result) surfacedialog.
 		return surfacedialog.NewFormCommand(m.com, *result.Form)
 	case result.Prompt != nil:
 		return surfacedialog.NewPromptCommand(m.com, *result.Prompt)
+	case result.TextEdit != nil:
+		return surfacedialog.NewTextEditCommand(m.com, *result.TextEdit)
 	case result.Confirm != nil:
 		return surfacedialog.NewConfirmCommand(m.com, *result.Confirm)
 	case result.Info != nil:
@@ -195,6 +197,7 @@ func (m *appModel) closeControlplaneDialogs() {
 	m.dialog.CloseDialog(surfacedialog.PickerID)
 	m.dialog.CloseDialog(surfacedialog.FormCommandID)
 	m.dialog.CloseDialog(surfacedialog.PromptCommandID)
+	m.dialog.CloseDialog(surfacedialog.TextEditCommandID)
 	m.dialog.CloseDialog(surfacedialog.ConfirmCommandID)
 	m.dialog.CloseDialog(surfacedialog.InfoID)
 }
@@ -225,17 +228,17 @@ func (m *appModel) showControlplaneDialog(dialog surfacedialog.Dialog) {
 	case topID == nextID:
 		m.dialog.ReplaceFrontDialog(dialog)
 		return
-	case topID == surfacedialog.PickerID && nextID == surfacedialog.FormCommandID:
-		if !m.dialog.ContainsDialog(surfacedialog.FormCommandID) {
+	case topID == surfacedialog.PickerID && (nextID == surfacedialog.FormCommandID || nextID == surfacedialog.TextEditCommandID):
+		if !m.dialog.ContainsDialog(nextID) {
 			m.dialog.OpenDialog(dialog)
 			return
 		}
 		m.dialog.CloseFrontDialog()
-		m.dialog.CloseDialog(surfacedialog.FormCommandID)
+		m.dialog.CloseDialog(nextID)
 	case topID == surfacedialog.PromptCommandID && nextID == surfacedialog.FormCommandID:
 		m.dialog.CloseFrontDialog()
 		m.dialog.CloseDialog(surfacedialog.FormCommandID)
-	case topID == surfacedialog.PromptCommandID || topID == surfacedialog.ConfirmCommandID:
+	case topID == surfacedialog.PromptCommandID || topID == surfacedialog.TextEditCommandID || topID == surfacedialog.ConfirmCommandID:
 		m.dialog.CloseFrontDialog()
 	}
 	m.dialog.OpenDialog(dialog)

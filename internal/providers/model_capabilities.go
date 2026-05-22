@@ -37,26 +37,25 @@ type ModelCapabilitySet struct {
 func ResolveModelCapabilities(input ModelCapabilityInput) ModelCapabilitySet {
 	providerID := NormalizeProviderID(input.ProviderID)
 	providerType := NormalizeProviderType(input.ProviderType)
-	modelID := strings.ToLower(strings.TrimSpace(input.ModelID))
-
-	providerCapabilities := ProviderCapabilities(providerID, providerType)
-	runtimeCapabilities := runtimeCapabilitiesFromProvider(providerCapabilities, providerType)
-	reasoningEfforts := reasoningEffortsForProviderModel(providerID, providerType, modelID, runtimeCapabilities)
-	if runtimeCapabilities.ReasoningEffort && len(reasoningEfforts) == 0 {
-		runtimeCapabilities.ReasoningEffort = false
-		runtimeCapabilities.ReasoningMode = ReasoningModeNone
-		runtimeCapabilities.ReasoningWithTools = false
-	}
-	defaultReasoning := ""
-	if len(reasoningEfforts) > 0 {
-		defaultReasoning = DefaultReasoningEffort
+	modelID := strings.TrimSpace(input.ModelID)
+	metadata := ResolveModelMetadata(providerID, providerType, modelID)
+	policy := PolicyForProvider(providerID, providerType)
+	providerCapabilities := policy.Capabilities
+	runtimeCapabilities := ModelCapabilities{
+		ToolCalling:        metadata.ToolCalling,
+		ToolSchemaDialect:  runtimeCapabilitiesFromProvider(providerCapabilities, policy.RuntimeProviderType).ToolSchemaDialect,
+		ParallelToolCalls:  metadata.ParallelToolCalls,
+		ReasoningEffort:    metadata.ReasoningEffort,
+		ReasoningMode:      metadata.ReasoningMode,
+		ReasoningWithTools: metadata.ReasoningWithTools,
+		NormalizeModel:     providerCapabilities.NormalizeModel,
 	}
 
 	return ModelCapabilitySet{
 		ProviderCapabilities:   providerCapabilitiesFromRuntime(providerCapabilities, runtimeCapabilities),
 		RuntimeCapabilities:    runtimeCapabilities,
-		ReasoningEfforts:       reasoningEfforts,
-		DefaultReasoningEffort: defaultReasoning,
+		ReasoningEfforts:       metadata.ReasoningEfforts,
+		DefaultReasoningEffort: metadata.DefaultReasoningEffort,
 	}
 }
 

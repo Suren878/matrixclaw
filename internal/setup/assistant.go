@@ -6,8 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/Suren878/matrixclaw/internal/commandcatalog"
 )
 
 const projectContextTitle = "Project context:"
@@ -55,7 +53,7 @@ func InitializeAssistantSystemPromptForConfig(current string, cfg Config) string
 
 func InitializeAssistantSystemPromptWithContext(current string, promptContext AssistantPromptContext) string {
 	base := strings.TrimSpace(current)
-	if base == "" {
+	if base == "" || isLegacyDefaultAssistantSystemPrompt(base) {
 		base = DefaultAssistantSystemPrompt()
 	}
 	context := compactProjectContext(promptContext)
@@ -66,6 +64,19 @@ func InitializeAssistantSystemPromptWithContext(current string, promptContext As
 		base = strings.TrimSpace(base[:idx])
 	}
 	return strings.TrimSpace(base + "\n\n" + projectContextTitle + "\n" + context)
+}
+
+func isLegacyDefaultAssistantSystemPrompt(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	if idx := strings.Index(value, projectContextTitle); idx >= 0 {
+		value = strings.TrimSpace(value[:idx])
+	}
+	return strings.HasPrefix(value, "You are matrixclaw, a personal AI operator running through matrixclaw's local background runtime.") &&
+		strings.Contains(value, "optional text-to-speech and speech-to-text modules") &&
+		strings.Contains(value, "call the text_to_speech tool")
 }
 
 func compactProjectContext(promptContext AssistantPromptContext) string {
@@ -87,7 +98,7 @@ func compactProjectContext(promptContext AssistantPromptContext) string {
 		parts = append(parts, "git_remote="+remote)
 	}
 	if _, err := os.Stat(filepath.Join(root, "go.mod")); err == nil {
-		parts = append(parts, "language=Go", "test=go test ./...")
+		parts = append(parts, "language=Go", "verify=go build ./cmd/matrixclaw ./cmd/matrixclawd")
 	}
 	if httpAddr := strings.TrimSpace(promptContext.HTTPAddr); httpAddr != "" {
 		parts = append(parts, "daemon_http="+httpAddr)
@@ -105,25 +116,16 @@ func compactProjectContext(promptContext AssistantPromptContext) string {
 		parts = append(parts, "active_provider="+activeProviderID)
 	}
 	parts = append(parts,
-		"session_runtime=daemon_owned_shared_between_terminal_telegram_future_clients",
-		"control_plane=shared_commands_across_tui_and_telegram",
-		"tool_policy=read_safe_write_and_shell_need_approval_by_permission_mode",
-		"plan_tools=plan_get,plan_set_goal,plan_add_item,plan_update_item,plan_clear",
-		"plan_guidance=use_plan_tools_for_multi_step_work_and_mark_items_active_done_skipped",
-		"search=/search queries SQLite-backed session history",
-		"usage=/usage reports provider token usage when providers return usage",
-		"storage=/modules storage imports_reads_deletes_promotes_temporary_files",
-		"external_agents=/modules agents can enable Codex app-server sessions when installed",
-		"automation=enabled",
-		"automation_schedules=once,interval,cron",
-		"automation_tools=create_reminder,create_scheduled_ai_task",
+		"runtime=durable_sessions_shared_by_terminal_and_telegram",
+		"control_plane=/modules,/provider,/permissions,/context,/usage,/plan,/search,/tasks,/server",
+		"tools=files,shell,web,storage,automation,tts,skills,mcp_when_enabled",
+		"voice=tts_output_tool_when_available;stt_transcribes_user_speech_before_chat",
+		"approvals=write_shell_skill_manage_and_risky_tools_need_permission",
+		"automation=reminders_and_scheduled_ai_tasks",
 		"autostart="+enabledLabel(promptContext.AutostartOnBoot),
 		"telegram="+enabledLabel(promptContext.TelegramEnabled),
 		"telegram_provider_setup="+enabledLabel(promptContext.TelegramProviderSetup),
 	)
-	if commands := compactCommandContext(); commands != "" {
-		parts = append(parts, "commands="+commands)
-	}
 	return "- " + strings.Join(parts, "\n- ")
 }
 
@@ -152,30 +154,6 @@ func resolveProjectRoot() string {
 func hasGoModule(root string) bool {
 	data, err := os.ReadFile(filepath.Join(root, "go.mod"))
 	return err == nil && strings.Contains(string(data), "module github.com/Suren878/matrixclaw")
-}
-
-func compactCommandContext() string {
-	items := make([]string, 0, len(commandcatalog.Catalog())+4)
-	for _, spec := range commandcatalog.Catalog() {
-		command := strings.TrimSpace(spec.Command)
-		if command == "" {
-			continue
-		}
-		items = append(items, command+" ("+strings.TrimSpace(spec.Description)+")")
-	}
-	items = append(items,
-		"/sessions -> create/select/rename/delete sessions",
-		"/usage -> show provider token accounting for the current session",
-		"/plan -> show/set goal and add/update/clear visible plan items",
-		"/search -> search persisted message history",
-		"/remind -> create one-time reminders",
-		"/tasks -> list/create/pause/resume/delete scheduled AI tasks",
-		"/provider -> select or edit provider model/settings",
-		"/permissions -> choose ask-first, edits-only, or full-auto approvals for the session",
-		"/restart -> full daemon service restart",
-		"/stop -> stop the daemon service",
-	)
-	return strings.Join(items, "; ")
 }
 
 func gitOutput(root string, args ...string) string {

@@ -14,6 +14,7 @@ func (p *Picker) setItems() {
 		p.options = append(p.options, pickerOption{
 			item:     pickerEntryItem(entry),
 			action:   entry.Action,
+			search:   strings.TrimSpace(entry.Search),
 			selected: entry.Selected,
 			footer:   entry.Footer,
 		})
@@ -79,5 +80,8 @@ func (s pickerOptionSource) Len() int {
 
 func (s pickerOptionSource) String(index int) string {
 	option := s[index]
+	if option.search != "" {
+		return option.search
+	}
 	return strings.TrimSpace(option.item.Title + " " + option.item.Status)
 }

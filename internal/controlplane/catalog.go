@@ -18,6 +18,7 @@ const (
 	CommandUsage       = commandcatalog.CommandUsage
 	CommandPlan        = commandcatalog.CommandPlan
 	CommandSearch      = commandcatalog.CommandSearch
+	CommandSkills      = commandcatalog.CommandSkills
 	CommandModules     = commandcatalog.CommandModules
 	CommandRemind      = commandcatalog.CommandRemind
 	CommandTasks       = commandcatalog.CommandTasks
@@ -31,34 +32,46 @@ const (
 type PickerKind string
 
 const (
-	PickerSessions        PickerKind = "sessions"
-	PickerSessionRuntime  PickerKind = "session_runtime"
-	PickerSessionActions  PickerKind = "session_actions"
-	PickerProvider        PickerKind = "provider"
-	PickerProviderCustom  PickerKind = "provider_custom"
-	PickerProviderActions PickerKind = "provider_actions"
-	PickerPermissions     PickerKind = "permissions"
-	PickerContext         PickerKind = "context"
-	PickerPlan            PickerKind = "plan"
-	PickerModules         PickerKind = "modules"
-	PickerTextToSpeech    PickerKind = "text_to_speech"
-	PickerTTSProvider     PickerKind = "tts_provider"
-	PickerSpeechToText    PickerKind = "speech_to_text"
-	PickerVoiceEnabled    PickerKind = "voice_enabled"
-	PickerVoiceProvider   PickerKind = "voice_provider"
-	PickerExternalAgents  PickerKind = "external_agents"
-	PickerExternalAgent   PickerKind = "external_agent"
-	PickerExternalAgentOn PickerKind = "external_agent_enabled"
-	PickerStorage         PickerKind = "storage"
-	PickerStorageFiles    PickerKind = "storage_files"
-	PickerStorageFile     PickerKind = "storage_file"
-	PickerStorageTemp     PickerKind = "storage_temp"
-	PickerStorageCleanup  PickerKind = "storage_cleanup"
-	PickerStorageTempFile PickerKind = "storage_temp_file"
-	PickerTasks           PickerKind = "tasks"
-	PickerTaskActions     PickerKind = "task_actions"
-	PickerTaskArchive     PickerKind = "task_archive"
-	PickerServer          PickerKind = "server"
+	PickerSessions          PickerKind = "sessions"
+	PickerSessionRuntime    PickerKind = "session_runtime"
+	PickerSessionActions    PickerKind = "session_actions"
+	PickerProvider          PickerKind = "provider"
+	PickerProviderCustom    PickerKind = "provider_custom"
+	PickerProviderActions   PickerKind = "provider_actions"
+	PickerPermissions       PickerKind = "permissions"
+	PickerContext           PickerKind = "context"
+	PickerPlan              PickerKind = "plan"
+	PickerModules           PickerKind = "modules"
+	PickerTextToSpeech      PickerKind = "text_to_speech"
+	PickerTTSProvider       PickerKind = "tts_provider"
+	PickerSpeechToText      PickerKind = "speech_to_text"
+	PickerVoiceEnabled      PickerKind = "voice_enabled"
+	PickerVoiceProvider     PickerKind = "voice_provider"
+	PickerExternalAgents    PickerKind = "external_agents"
+	PickerExternalAgent     PickerKind = "external_agent"
+	PickerExternalAgentOn   PickerKind = "external_agent_enabled"
+	PickerStorage           PickerKind = "storage"
+	PickerStorageFiles      PickerKind = "storage_files"
+	PickerStorageFile       PickerKind = "storage_file"
+	PickerStorageTemp       PickerKind = "storage_temp"
+	PickerStorageCleanup    PickerKind = "storage_cleanup"
+	PickerStorageTempFile   PickerKind = "storage_temp_file"
+	PickerSessionSkills     PickerKind = "session_skills"
+	PickerSessionSkill      PickerKind = "session_skill"
+	PickerSkills            PickerKind = "skills"
+	PickerSkillsSection     PickerKind = "skills_section"
+	PickerSkillEnabled      PickerKind = "skill_enabled"
+	PickerSkill             PickerKind = "skill"
+	PickerMCP               PickerKind = "mcp"
+	PickerMCPServer         PickerKind = "mcp_server"
+	PickerMCPEnabled        PickerKind = "mcp_enabled"
+	PickerMCPServerOn       PickerKind = "mcp_server_enabled"
+	PickerTasks             PickerKind = "tasks"
+	PickerTaskActions       PickerKind = "task_actions"
+	PickerTaskArchive       PickerKind = "task_archive"
+	PickerServer            PickerKind = "server"
+	PickerWebSearch         PickerKind = "web_search"
+	PickerWebSearchProvider PickerKind = "web_search_provider"
 )
 
 type CommandSpec = commandcatalog.CommandSpec
@@ -97,6 +110,7 @@ type PickerItem struct {
 	ID       string
 	Title    string
 	Info     string
+	Search   string
 	Command  string
 	Selected bool
 	Focused  bool

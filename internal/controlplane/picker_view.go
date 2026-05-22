@@ -85,7 +85,9 @@ func PickerCommandLabel(picker PickerData) string {
 		return permissionsCommand()
 	case PickerContext:
 		return contextCommand()
-	case PickerModules, PickerTextToSpeech, PickerTTSProvider, PickerSpeechToText, PickerVoiceEnabled, PickerVoiceProvider, PickerExternalAgents, PickerExternalAgent, PickerExternalAgentOn, PickerStorage, PickerStorageFiles, PickerStorageFile, PickerStorageTemp, PickerStorageCleanup, PickerStorageTempFile:
+	case PickerSessionSkills, PickerSessionSkill:
+		return sessionSkillsCommand()
+	case PickerModules, PickerTextToSpeech, PickerTTSProvider, PickerSpeechToText, PickerVoiceEnabled, PickerVoiceProvider, PickerExternalAgents, PickerExternalAgent, PickerExternalAgentOn, PickerStorage, PickerStorageFiles, PickerStorageFile, PickerStorageTemp, PickerStorageCleanup, PickerStorageTempFile, PickerSkills, PickerSkillsSection, PickerSkill, PickerSkillEnabled, PickerMCP, PickerMCPServer, PickerMCPEnabled, PickerMCPServerOn:
 		return modulesCommand()
 	case PickerTasks, PickerTaskActions, PickerTaskArchive:
 		return tasksCommand()

@@ -52,7 +52,7 @@ func New(_ context.Context, cfg Config) (providers.Runtime, error) {
 		return nil, err
 	}
 	providerProfile := cfg.Profile
-	if providerProfile == (providers.ProviderProfile{}) {
+	if providerProfile.IsZero() {
 		providerProfile = providers.ProfileForProvider(providers.TypeGemini)
 	}
 

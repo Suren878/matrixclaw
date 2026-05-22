@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -92,8 +93,9 @@ func searchItems(rows []listEntry) []commandui.Item {
 }
 
 func lookupOption(options []setup.ProviderOption, providerID string) (setup.ProviderOption, bool) {
+	providerID = providers.CanonicalProviderID(providerID)
 	for _, option := range options {
-		if sameProviderID(option.ID, providerID) {
+		if providers.CanonicalProviderID(option.ID) == providerID {
 			return option, true
 		}
 	}

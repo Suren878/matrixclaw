@@ -220,16 +220,17 @@ func (s *Service) buildProviderConfig(draft ProviderDraft, existing Config) (Pro
 	if option, hasOption = lookupProviderOption(catalogID); hasOption && !option.Implemented {
 		return ProviderConfig{}, fmt.Errorf("provider %q is listed but not implemented yet", option.Name)
 	}
+	policy := providers.PolicyForProvider(catalogID, draft.Type)
 
 	providerType := providers.NormalizeOptionalProviderType(draft.Type)
 	providerName := strings.TrimSpace(draft.Name)
 	apiKeyEnv := strings.TrimSpace(draft.APIKeyEnv)
 	if hasOption {
-		providerID = option.ID
-		catalogID = option.ID
-		providerType = option.Type
-		providerName = option.Name
-		apiKeyEnv = option.APIKeyEnv
+		providerID = policy.CatalogID
+		catalogID = policy.CatalogID
+		providerType = policy.Type
+		providerName = policy.Name
+		apiKeyEnv = policy.APIKeyEnv
 	} else {
 		switch providerType {
 		case providers.TypeOpenAICompat, providers.TypeOpenAICodex, providers.TypeAnthropic:
@@ -255,21 +256,21 @@ func (s *Service) buildProviderConfig(draft ProviderDraft, existing Config) (Pro
 			apiKey = normalizeProviderAPIKey(stored.APIKey)
 		}
 	}
-	if apiKey == "" && providerType != providers.TypeOpenAICodex && normalizeProviderAPIKey(providerAPIKeyFromEnvName(apiKeyEnv)) == "" {
+	if apiKey == "" && policy.RequiresAPIKey && normalizeProviderAPIKey(providerAPIKeyFromEnvName(apiKeyEnv)) == "" {
 		return ProviderConfig{}, fmt.Errorf("%s API key is required", providerDisplayName(draft, option, hasOption))
 	}
 
 	baseURL := strings.TrimSpace(draft.BaseURL)
 	if hasOption && baseURL == "" {
-		baseURL = option.DefaultBaseURL
+		baseURL = policy.DefaultBaseURL
 	}
-	if baseURL == "" {
+	if policy.RequiresBaseURL && baseURL == "" {
 		return ProviderConfig{}, fmt.Errorf("%s base URL is required", providerDisplayName(draft, option, hasOption))
 	}
 
 	model := strings.TrimSpace(draft.Model)
 	if hasOption && model == "" {
-		model = option.DefaultModel
+		model = policy.DefaultModel
 	}
 	model = providers.NormalizeModelID(catalogID, providerType, model)
 	if model == "" {
@@ -405,7 +406,7 @@ func ParseBool(v string) bool {
 }
 
 func sameProvider(left string, right string) bool {
-	return providers.NormalizeProviderID(left) == providers.NormalizeProviderID(right)
+	return providers.CanonicalProviderID(left) == providers.CanonicalProviderID(right)
 }
 
 func providerDisplayName(draft ProviderDraft, option ProviderOption, hasOption bool) string {

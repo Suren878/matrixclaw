@@ -152,8 +152,8 @@ func firstNonEmptyStatus(values ...string) string {
 }
 
 func currentDraftAPIKeyPreview(provider ProviderDraft) string {
-	if providers.NormalizeProviderType(provider.Type) == providers.TypeOpenAICodex {
-		return "OAuth"
+	if policy := providers.PolicyForProvider(firstNonEmptyStatus(provider.CatalogID, provider.ID), provider.Type); !policy.RequiresAPIKey {
+		return policy.AuthStatusLabel
 	}
 	if provider.HasStoredAPIKey {
 		return provider.StoredAPIKeyPreview
@@ -169,7 +169,7 @@ func currentDraftAPIKeyPreview(provider ProviderDraft) string {
 }
 
 func providerConfigHasAPIKey(provider ProviderConfig) bool {
-	if strings.TrimSpace(provider.Type) == providers.TypeOpenAICodex {
+	if !providers.PolicyForProvider(firstNonEmptyStatus(provider.CatalogID, provider.ID), provider.Type).RequiresAPIKey {
 		return strings.TrimSpace(provider.Model) != ""
 	}
 	_, ok := ResolvedProviderAPIKey(provider)

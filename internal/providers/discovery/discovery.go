@@ -24,7 +24,9 @@ type ModelDiscoveryInput struct {
 }
 
 func Models(ctx context.Context, input ModelDiscoveryInput) ([]string, error) {
-	if strings.TrimSpace(input.APIKey) == "" && providers.NormalizeProviderType(input.Type) != providers.TypeOpenAICodex {
+	providerID := firstNonEmpty(input.CatalogID, input.ID)
+	policy := providers.PolicyForProvider(providerID, input.Type)
+	if strings.TrimSpace(input.APIKey) == "" && policy.RequiresAPIKey && !policy.PublicModelCatalog {
 		return nil, errors.New("enter a valid API key first")
 	}
 
@@ -36,13 +38,18 @@ func Models(ctx context.Context, input ModelDiscoveryInput) ([]string, error) {
 		return nil, errors.New("no models available")
 	}
 
+	models = normalizedModels(providerID, input.Type, models)
+	if len(models) == 0 {
+		return nil, errors.New("no models available")
+	}
+	return models, nil
+}
+
+func normalizedModels(providerID string, providerType string, models []string) []string {
 	normalized := make([]string, 0, len(models))
 	seen := make(map[string]struct{}, len(models))
 	for _, model := range models {
-		model = providers.NormalizeModelID(input.CatalogID, input.Type, model)
-		if strings.TrimSpace(model) == "" {
-			model = providers.NormalizeModelID(input.ID, input.Type, model)
-		}
+		model = providers.NormalizeModelID(providerID, providerType, model)
 		model = strings.TrimSpace(model)
 		if model == "" {
 			continue
@@ -53,12 +60,8 @@ func Models(ctx context.Context, input ModelDiscoveryInput) ([]string, error) {
 		seen[model] = struct{}{}
 		normalized = append(normalized, model)
 	}
-	models = normalized
-	if len(models) == 0 {
-		return nil, errors.New("no models available")
-	}
-	sort.Strings(models)
-	return models, nil
+	sort.Strings(normalized)
+	return normalized
 }
 
 func fetchRemoteModels(ctx context.Context, input ModelDiscoveryInput) ([]string, error) {
@@ -66,7 +69,8 @@ func fetchRemoteModels(ctx context.Context, input ModelDiscoveryInput) ([]string
 	if providerType == "" {
 		return nil, errors.New("remote model list unavailable")
 	}
-	profile := providers.ProfileForProvider(providerType)
+	providerID := firstNonEmpty(input.CatalogID, input.ID)
+	profile := providers.ProfileForModel(providerID, providerType, input.Model)
 
 	switch profile.RuntimeProviderType {
 	case providers.TypeOpenAICodex:
@@ -78,13 +82,16 @@ func fetchRemoteModels(ctx context.Context, input ModelDiscoveryInput) ([]string
 			Profile:    profile,
 		})
 	case providers.TypeOpenAICompat:
+		policy := providers.PolicyForProvider(providerID, providerType)
 		return openaicompat.ListModels(ctx, openaicompat.Config{
-			ProviderID: strings.TrimSpace(input.ID),
-			CatalogID:  strings.TrimSpace(input.CatalogID),
-			APIKey:     strings.TrimSpace(input.APIKey),
-			BaseURL:    strings.TrimSpace(input.BaseURL),
-			Model:      strings.TrimSpace(input.Model),
-			Profile:    profile,
+			ProviderID:   strings.TrimSpace(input.ID),
+			CatalogID:    strings.TrimSpace(input.CatalogID),
+			APIKey:       strings.TrimSpace(input.APIKey),
+			BaseURL:      strings.TrimSpace(input.BaseURL),
+			ModelsURL:    policy.ModelsURL,
+			PublicModels: policy.PublicModelCatalog,
+			Model:        strings.TrimSpace(input.Model),
+			Profile:      profile,
 		})
 	case providers.TypeAnthropic:
 		return anthropic.ListModels(ctx, anthropic.Config{
@@ -107,4 +114,13 @@ func fetchRemoteModels(ctx context.Context, input ModelDiscoveryInput) ([]string
 	default:
 		return nil, errors.New("remote model list unavailable")
 	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }

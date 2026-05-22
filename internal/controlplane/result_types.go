@@ -9,6 +9,14 @@ type PromptData struct {
 	Sensitive           bool
 }
 
+type TextEditData struct {
+	Title               string
+	Placeholder         string
+	Value               string
+	SubmitCommandPrefix string
+	CancelCommand       string
+}
+
 type FormData struct {
 	Title         string
 	Fields        []FormField
@@ -24,6 +32,7 @@ type FormField struct {
 	Label       string
 	Value       string
 	EditCommand string
+	Disabled    bool
 }
 
 type ConfirmData struct {

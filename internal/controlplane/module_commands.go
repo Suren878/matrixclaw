@@ -152,3 +152,58 @@ func externalAgentUpdateEnabledCommand(agentID string, enabled bool) string {
 func externalAgentNewSessionCommand(agentID string) string {
 	return sessionNewCommand(agentID)
 }
+
+func webSearchCommand(parts ...string) string {
+	values := append([]string{"web"}, parts...)
+	return modulesCommand(values...)
+}
+
+func skillsCommand(parts ...string) string {
+	values := append([]string{"skills"}, parts...)
+	return modulesCommand(values...)
+}
+
+func skillsCommandPrefix(parts ...string) string {
+	return skillsCommand(parts...) + " "
+}
+
+func skillCommand(skillID string, parts ...string) string {
+	values := append([]string{skillID}, parts...)
+	return skillsCommand(values...)
+}
+
+func skillInstallCommand() string {
+	return skillsCommand("install")
+}
+
+func skillInstallCommandPrefix() string {
+	return skillsCommandPrefix("install")
+}
+
+func skillSearchCommand() string {
+	return skillsCommand("search")
+}
+
+func skillSearchCommandPrefix() string {
+	return skillsCommandPrefix("search")
+}
+
+func sessionSkillsCommand(parts ...string) string {
+	values := append([]string{"skills"}, parts...)
+	return controlplaneCommand(values...)
+}
+
+func sessionSkillCommand(skillID string, parts ...string) string {
+	values := append([]string{skillID}, parts...)
+	return sessionSkillsCommand(values...)
+}
+
+func mcpCommand(parts ...string) string {
+	values := append([]string{"mcp"}, parts...)
+	return modulesCommand(values...)
+}
+
+func mcpServerCommand(serverID string, parts ...string) string {
+	values := append([]string{serverID}, parts...)
+	return mcpCommand(values...)
+}

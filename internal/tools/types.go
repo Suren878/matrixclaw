@@ -34,6 +34,8 @@ const (
 	CategoryShell      Category = "shell"
 	CategoryAutomation Category = "automation"
 	CategoryStorage    Category = "storage"
+	CategoryWeb        Category = "web"
+	CategorySkills     Category = "skills"
 )
 
 type Profile string
@@ -43,6 +45,8 @@ const (
 	ProfileCoding     Profile = "coding"
 	ProfileAutomation Profile = "automation"
 	ProfileStorage    Profile = "storage"
+	ProfileWeb        Profile = "web"
+	ProfileSkills     Profile = "skills"
 )
 
 type OutputKind string
@@ -57,6 +61,7 @@ const (
 	OutputAudio         OutputKind = "audio"
 	OutputStorageEntry  OutputKind = "storage_entry"
 	OutputStorageList   OutputKind = "storage_list"
+	OutputWebContent    OutputKind = "web_content"
 )
 
 type Spec struct {
@@ -90,6 +95,15 @@ type ApprovalRequest struct {
 	Path        string `json:"path,omitempty"`
 	Description string `json:"description,omitempty"`
 	Params      any    `json:"params,omitempty"`
+}
+
+type SkillManagePermissionsParams struct {
+	Action      string `json:"action"`
+	ID          string `json:"id,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+	Path        string `json:"path,omitempty"`
+	Content     string `json:"content,omitempty"`
 }
 
 type FileVersion struct {

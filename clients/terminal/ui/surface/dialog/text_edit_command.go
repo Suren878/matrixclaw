@@ -1,0 +1,103 @@
+package dialog
+
+import (
+	"strings"
+
+	"charm.land/bubbles/v2/textarea"
+	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
+
+	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
+	"github.com/Suren878/matrixclaw/internal/controlplane"
+)
+
+const TextEditCommandID = "text_edit_command"
+
+type TextEditCommandData = controlplane.TextEditData
+
+type TextEditCommand struct {
+	data      TextEditCommandData
+	input     textarea.Model
+	state     commandui.TextEditState
+	loading   bool
+	frame     int
+	lastWidth int
+	lastY     int
+}
+
+func NewTextEditCommand(_ *surfacecommon.Common, data TextEditCommandData) *TextEditCommand {
+	input := textarea.New()
+	input.Prompt = ""
+	input.Placeholder = strings.TrimSpace(data.Placeholder)
+	input.ShowLineNumbers = false
+	input.SetValue(data.Value)
+	input.Focus()
+	return &TextEditCommand{data: data, input: input}
+}
+
+func (*TextEditCommand) ID() string { return TextEditCommandID }
+
+func (d *TextEditCommand) HandleMsg(msg tea.Msg) Action {
+	if _, ok := msg.(loadingTickMsg); ok {
+		if !d.loading {
+			return nil
+		}
+		d.frame = (d.frame + 1) % len(loadingFrames)
+		return ActionCmd{Cmd: loadingTickCmd()}
+	}
+	keyMsg, ok := msg.(tea.KeyPressMsg)
+	if ok {
+		event := d.state.Update(keyMsg.String(), d.buttons(), commandui.RoleCancel)
+		switch event.Kind {
+		case commandui.EventCancel, commandui.EventBack:
+			return controlplaneCommandOrClose(d.data.CancelCommand)
+		case commandui.EventSubmit:
+			return ActionRunControlplaneCommand{Command: d.data.SubmitCommandPrefix + d.input.Value(), CloseSource: true}
+		}
+		if d.state.ButtonsFocused {
+			return nil
+		}
+	}
+	var cmd tea.Cmd
+	d.input, cmd = d.input.Update(msg)
+	if cmd != nil {
+		return ActionCmd{Cmd: cmd}
+	}
+	return nil
+}
+
+func (d *TextEditCommand) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
+	frame := commandui.NewFrame(area.Dx(), area.Dy()).WithInnerWidth(0)
+	d.input.SetWidth(max(1, frame.InnerWidth()))
+	d.input.SetHeight(commandui.TextViewEditorHeight(frame))
+	d.lastWidth = frame.InnerWidth()
+	d.lastY = 4
+	view := commandui.RenderTextViewCard(frame, commandui.TextViewData{
+		Title:          loadingTitle(d.data.Title, d.loading, d.frame),
+		Text:           d.input.View(),
+		Buttons:        d.buttons(),
+		Button:         d.state.Button,
+		ButtonsFocused: d.state.ButtonsFocused,
+	})
+	DrawCenter(scr, area, view)
+	return nil
+}
+
+func (d *TextEditCommand) StartLoading() tea.Cmd {
+	d.loading = true
+	d.frame = 0
+	return loadingTickCmd()
+}
+
+func (d *TextEditCommand) StopLoading() {
+	d.loading = false
+	d.frame = 0
+}
+
+func (d *TextEditCommand) buttons() []commandui.ButtonSpec {
+	return []commandui.ButtonSpec{
+		{Label: "Save", Role: commandui.RoleSubmit},
+		{Label: "Cancel", Role: commandui.RoleCancel},
+	}
+}

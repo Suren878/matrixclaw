@@ -36,6 +36,7 @@ var openAIReasoningEfforts = []string{
 
 type CatalogEntry struct {
 	ID              string          `json:"id"`
+	CatalogID       string          `json:"catalog_id,omitempty"`
 	Name            string          `json:"name"`
 	Type            string          `json:"type"`
 	Implemented     bool            `json:"implemented"`
@@ -62,167 +63,12 @@ type Capabilities struct {
 }
 
 func Catalog() []CatalogEntry {
-	return []CatalogEntry{
-		{
-			ID:              "openai",
-			Name:            "OpenAI",
-			Type:            TypeOpenAICompat,
-			Implemented:     true,
-			RequiresBaseURL: true,
-			Capabilities: Capabilities{
-				ModelDiscovery:  true,
-				ReasoningEffort: true,
-				ToolCalling:     true,
-			},
-			DefaultBaseURL: "https://api.openai.com/v1",
-			DefaultModel:   DefaultOpenAICompatModel,
-			APIKeyEnv:      "OPENAI_API_KEY",
-			Notes:          "Standard OpenAI endpoint through the generic OpenAI-compatible path.",
-		},
-		{
-			ID:              "openai-codex",
-			Name:            "OpenAI Codex Subscription",
-			Type:            TypeOpenAICodex,
-			Implemented:     true,
-			RequiresBaseURL: false,
-			Capabilities: Capabilities{
-				ModelDiscovery:  true,
-				ReasoningEffort: true,
-				ToolCalling:     true,
-			},
-			DefaultBaseURL: "https://chatgpt.com/backend-api/codex",
-			DefaultModel:   DefaultOpenAICodexModel,
-			Notes:          "Uses ChatGPT/Codex subscription OAuth through the Codex backend, not OpenAI API-key billing.",
-		},
-		{
-			ID:              "deepseek",
-			Name:            "DeepSeek",
-			Type:            TypeOpenAICompat,
-			Implemented:     true,
-			RequiresBaseURL: true,
-			Capabilities:    Capabilities{ModelDiscovery: true, ToolCalling: true},
-			DefaultBaseURL:  "https://api.deepseek.com/v1",
-			DefaultModel:    "deepseek-chat",
-			APIKeyEnv:       "DEEPSEEK_API_KEY",
-			Notes:           "Known-good third-party OpenAI-compatible gateway configuration.",
-		},
-		{
-			ID:              "openrouter",
-			Name:            "OpenRouter",
-			Type:            TypeOpenAICompat,
-			Implemented:     true,
-			RequiresBaseURL: true,
-			Capabilities:    Capabilities{ModelDiscovery: true, ToolCalling: true},
-			DefaultBaseURL:  "https://openrouter.ai/api/v1",
-			DefaultModel:    "qwen/qwen3-coder-next",
-			APIKeyEnv:       "OPENROUTER_API_KEY",
-			Notes:           "OpenAI-compatible gateway for many hosted models; OpenRouter-specific reasoning output is not mapped by the generic runtime.",
-		},
-		{
-			ID:              "xai",
-			Name:            "xAI / Grok",
-			Type:            TypeOpenAICompat,
-			Implemented:     true,
-			RequiresBaseURL: true,
-			Capabilities:    Capabilities{ModelDiscovery: true, ToolCalling: true},
-			DefaultBaseURL:  "https://api.x.ai/v1",
-			DefaultModel:    "grok-4.3",
-			APIKeyEnv:       "XAI_API_KEY",
-			Notes:           "xAI Grok OpenAI-compatible endpoint.",
-		},
-		{
-			ID:              "zai",
-			Name:            "Z.AI / GLM",
-			Type:            TypeOpenAICompat,
-			Implemented:     true,
-			RequiresBaseURL: true,
-			Capabilities:    Capabilities{ModelDiscovery: true, ToolCalling: true},
-			DefaultBaseURL:  "https://api.z.ai/api/paas/v4",
-			DefaultModel:    "glm-5",
-			APIKeyEnv:       "ZAI_API_KEY",
-			Notes:           "Uses the OpenAI-compatible path; the coding endpoint is also possible.",
-		},
-		{
-			ID:              "minimax",
-			Name:            "MiniMax",
-			Type:            TypeOpenAICompat,
-			Implemented:     true,
-			RequiresBaseURL: true,
-			Capabilities:    Capabilities{ModelDiscovery: true, ToolCalling: true},
-			DefaultBaseURL:  "https://api.minimax.io/v1",
-			DefaultModel:    "MiniMax-M2.7",
-			APIKeyEnv:       "MINIMAX_API_KEY",
-			Notes:           "MiniMax OpenAI-compatible endpoint with model listing and tool use support.",
-		},
-		{
-			ID:              "qwen",
-			Name:            "Qwen / DashScope",
-			Type:            TypeOpenAICompat,
-			Implemented:     true,
-			RequiresBaseURL: true,
-			Capabilities:    Capabilities{ModelDiscovery: true, ToolCalling: true},
-			DefaultBaseURL:  "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-			BaseURLOptions: []BaseURLOption{
-				{ID: "singapore", Name: "Singapore / International", URL: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"},
-				{ID: "us-virginia", Name: "US (Virginia)", URL: "https://dashscope-us.aliyuncs.com/compatible-mode/v1"},
-				{ID: "china-beijing", Name: "China (Beijing)", URL: "https://dashscope.aliyuncs.com/compatible-mode/v1"},
-				{ID: "hong-kong", Name: "Hong Kong (China)", URL: "https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1"},
-			},
-			DefaultModel: "qwen-plus",
-			APIKeyEnv:    "DASHSCOPE_API_KEY",
-			Notes:        "Alibaba Cloud Model Studio OpenAI-compatible endpoint. API keys are region-specific; select the endpoint matching the key region.",
-		},
-		{
-			ID:              "kimi",
-			Name:            "Kimi",
-			Type:            TypeOpenAICompat,
-			Implemented:     true,
-			RequiresBaseURL: true,
-			Capabilities:    Capabilities{ModelDiscovery: true, ToolCalling: true},
-			DefaultModel:    "YOUR_KIMI_MODEL",
-			APIKeyEnv:       "KIMI_API_KEY",
-			Notes:           "Use this when Kimi is exposed through an OpenAI-compatible endpoint.",
-		},
-		{
-			ID:              "aihubmix",
-			Name:            "AiHubMix",
-			Type:            TypeOpenAICompat,
-			Implemented:     true,
-			RequiresBaseURL: true,
-			Capabilities:    Capabilities{ModelDiscovery: true, ToolCalling: true},
-			DefaultModel:    "YOUR_MODEL_ID",
-			APIKeyEnv:       "AIHUBMIX_API_KEY",
-			Notes:           "Generic OpenAI-compatible gateway; exact base URL depends on the account.",
-		},
-		{
-			ID:              "anthropic",
-			Name:            "Anthropic",
-			Type:            TypeAnthropic,
-			Implemented:     true,
-			RequiresBaseURL: true,
-			Capabilities:    Capabilities{ModelDiscovery: true},
-			DefaultBaseURL:  "https://api.anthropic.com/v1",
-			DefaultModel:    DefaultAnthropicModel,
-			APIKeyEnv:       "ANTHROPIC_API_KEY",
-			Notes:           "Native Anthropic path with Messages API semantics.",
-		},
-		{
-			ID:              "gemini",
-			Name:            "Google Gemini",
-			Type:            TypeGemini,
-			Implemented:     true,
-			RequiresBaseURL: true,
-			Capabilities: Capabilities{
-				ModelDiscovery: true,
-				NormalizeModel: true,
-				ToolCalling:    true,
-			},
-			DefaultBaseURL: "https://generativelanguage.googleapis.com/v1beta",
-			DefaultModel:   DefaultGeminiModel,
-			APIKeyEnv:      "GEMINI_API_KEY",
-			Notes:          "Uses Google's native Gemini generateContent API.",
-		},
+	specs := ProviderSpecs()
+	entries := make([]CatalogEntry, 0, len(specs))
+	for _, spec := range specs {
+		entries = append(entries, spec.Entry)
 	}
+	return entries
 }
 
 func AvailableCatalog() []CatalogEntry {
@@ -237,16 +83,11 @@ func AvailableCatalog() []CatalogEntry {
 }
 
 func CatalogEntryByID(providerID string) (CatalogEntry, bool) {
-	providerID = NormalizeProviderID(providerID)
-	if providerID == "" {
+	spec, ok := ProviderSpecByID(providerID)
+	if !ok {
 		return CatalogEntry{}, false
 	}
-	for _, entry := range Catalog() {
-		if NormalizeProviderID(entry.ID) == providerID {
-			return entry, true
-		}
-	}
-	return CatalogEntry{}, false
+	return spec.Entry, true
 }
 
 func NormalizeProviderID(value string) string {
@@ -341,11 +182,10 @@ func copyStrings(values []string) []string {
 }
 
 func providerCapabilities(providerID string, providerType string) Capabilities {
-	providerID = NormalizeProviderID(providerID)
-	providerType = NormalizeProviderType(providerType)
-	if entry, ok := CatalogEntryByID(providerID); ok {
-		return entry.Capabilities
-	}
+	return PolicyForProvider(providerID, providerType).Capabilities
+}
+
+func defaultCapabilitiesForCustomProviderType(providerType string) Capabilities {
 	switch providerType {
 	case TypeOpenAICompat, TypeOpenAICodex:
 		return Capabilities{ModelDiscovery: true, ReasoningEffort: providerType == TypeOpenAICodex, ToolCalling: true}

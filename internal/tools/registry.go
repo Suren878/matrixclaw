@@ -302,7 +302,7 @@ func normalizeProfile(value Profile) Profile {
 
 func knownProfile(value Profile) bool {
 	switch value {
-	case ProfileReadOnly, ProfileCoding, ProfileAutomation, ProfileStorage:
+	case ProfileReadOnly, ProfileCoding, ProfileAutomation, ProfileStorage, ProfileWeb, ProfileSkills:
 		return true
 	default:
 		return false
@@ -319,7 +319,7 @@ func normalizeCategory(value Category) Category {
 
 func knownCategory(value Category) bool {
 	switch value {
-	case CategoryFilesystem, CategoryShell, CategoryAutomation, CategoryStorage:
+	case CategoryFilesystem, CategoryShell, CategoryAutomation, CategoryStorage, CategoryWeb, CategorySkills:
 		return true
 	default:
 		return false
@@ -332,7 +332,7 @@ func normalizeOutputKind(value OutputKind) OutputKind {
 
 func knownOutputKind(value OutputKind) bool {
 	switch value {
-	case OutputText, OutputFileContent, OutputFileTree, OutputSearchResults, OutputDiff, OutputJob, OutputAudio, OutputStorageEntry, OutputStorageList:
+	case OutputText, OutputFileContent, OutputFileTree, OutputSearchResults, OutputDiff, OutputJob, OutputAudio, OutputStorageEntry, OutputStorageList, OutputWebContent:
 		return true
 	default:
 		return false

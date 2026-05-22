@@ -8,6 +8,7 @@ type PickerPresentationItem struct {
 	Title           string
 	Info            string
 	Status          string
+	Search          string
 	CompactLabel    string
 	Selected        bool
 	Disabled        bool
@@ -100,8 +101,16 @@ func presentPickerItem(picker PickerData, item PickerItem) PickerPresentationIte
 		Navigation: item.IsNavigation(),
 	}
 	presented.Status = pickerPresentationStatus(picker.Kind, presented.Selected, presented.Info)
+	presented.Search = pickerPresentationSearch(presented)
 	presented.CompactLabel = pickerCompactLabel(picker.Kind, presented)
 	return presented
+}
+
+func pickerPresentationSearch(presented PickerPresentationItem) string {
+	if value := strings.TrimSpace(presented.Item.Search); value != "" {
+		return value
+	}
+	return strings.TrimSpace(presented.Title + " " + presented.Status)
 }
 
 func pickerCompactLabel(kind PickerKind, presented PickerPresentationItem) string {
@@ -187,6 +196,10 @@ func pickerCompactPrefix(kind PickerKind, item PickerItem) string {
 		}
 	case PickerExternalAgentOn:
 		return "⚙️ "
+	case PickerSkills, PickerSkillsSection, PickerSkill, PickerSessionSkills, PickerSessionSkill:
+		return "📘 "
+	case PickerMCP, PickerMCPServer:
+		return "🔌 "
 	case PickerServer:
 		switch itemID {
 		case "status":

@@ -122,6 +122,10 @@ func (m *model) updateProviderForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case textEditProviderAPIKey:
 			m.openTextEditor(textEditProviderAPIKey, "API Key", m.providerAPIKeyPlaceholder(), "", true)
 		case textEditProviderModel:
+			if item.Row.Disabled {
+				m.formError = "Enter an API key before loading models."
+				return nil
+			}
 			if !m.providerModelUsesPicker() {
 				m.openTextEditor(textEditProviderModel, "Model", "model-id", m.editingProvider.Model, false)
 			} else {

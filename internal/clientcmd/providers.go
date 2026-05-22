@@ -15,7 +15,7 @@ func runProvidersCommand(stdout io.Writer, stderr io.Writer, binaryName string, 
 		return runProviderLoginCommand(stdout, stderr, binaryName, service, args[1:])
 	}
 	if len(args) > 0 && strings.TrimSpace(args[0]) == "verify" {
-		return runProviderVerifyCommand(stdout, stderr, binaryName, service)
+		return runProviderVerifyCommand(stdout, stderr, binaryName, service, args[1:])
 	}
 	cfg, err := service.Load()
 	if err != nil {
@@ -40,19 +40,41 @@ func runProvidersCommand(stdout io.Writer, stderr io.Writer, binaryName string, 
 	return 0
 }
 
-func runProviderVerifyCommand(stdout io.Writer, stderr io.Writer, binaryName string, service *appsetup.Service) int {
+func runProviderVerifyCommand(stdout io.Writer, stderr io.Writer, binaryName string, service *appsetup.Service, args []string) int {
 	draft, err := service.Draft()
 	if err != nil {
 		return handleSetupReadError(stderr, binaryName, service, "providers verify", err)
 	}
-	configured := appsetup.ConfiguredProviders(draft)
-	if len(configured) == 0 {
+	includeCatalogs := providerVerifyIncludesCatalogs(args)
+	items := []appsetup.ProviderSetupItem(nil)
+	if includeCatalogs {
+		items, err = service.ProviderSetupItems()
+		if err != nil {
+			return handleSetupReadError(stderr, binaryName, service, "providers verify", err)
+		}
+	} else {
+		configured := appsetup.ConfiguredProviders(draft)
+		for _, provider := range configured {
+			items = append(items, appsetup.ProviderSetupItem{
+				ID:         provider.ID,
+				CatalogID:  provider.CatalogID,
+				Name:       provider.Name,
+				Type:       provider.Type,
+				Model:      provider.Model,
+				Configured: true,
+			})
+		}
+	}
+	if len(items) == 0 {
 		fmt.Fprintf(stdout, "%s: providers verify: no configured providers\n", binaryName)
 		return 1
 	}
 	cfg, _ := service.Load()
 	failures := 0
-	for _, provider := range configured {
+	for _, provider := range items {
+		if !includeCatalogs && !provider.Configured {
+			continue
+		}
 		name := strings.TrimSpace(provider.Name)
 		if name == "" {
 			name = strings.TrimSpace(provider.ID)
@@ -65,13 +87,27 @@ func runProviderVerifyCommand(stdout io.Writer, stderr io.Writer, binaryName str
 			fmt.Fprintf(stdout, "%s: provider %s: skipped (model discovery unsupported)\n", binaryName, name)
 			continue
 		}
-		models, err := service.ProviderModels(context.Background(), provider)
+		result, err := service.ProviderModelCatalogContext(context.Background(), provider.ID, appsetup.ProviderSetupUpdate{})
 		if err != nil {
-			fmt.Fprintf(stdout, "%s: provider %s: ERROR %s\n", binaryName, name, redactSecrets(err.Error(), provider.APIKey, providerSecret(cfg, provider.ID)))
+			fmt.Fprintf(stdout, "%s: provider %s: ERROR %s\n", binaryName, name, redactSecrets(err.Error(), providerSecret(cfg, provider.ID)))
 			failures++
 			continue
 		}
-		fmt.Fprintf(stdout, "%s: provider %s: ok (%d models)\n", binaryName, name, len(models))
+		if result.Status != appsetup.ProviderModelStatusOK {
+			fmt.Fprintf(stdout, "%s: provider %s: %s %s\n", binaryName, name, strings.ToUpper(result.Status), redactSecrets(result.Message, providerSecret(cfg, provider.ID)))
+			if provider.Configured && result.Status != appsetup.ProviderModelStatusRequiresKey && result.Status != appsetup.ProviderModelStatusUnsupported {
+				failures++
+			}
+			if !provider.Configured && result.Status != appsetup.ProviderModelStatusRequiresKey && result.Status != appsetup.ProviderModelStatusUnsupported {
+				failures++
+			}
+			continue
+		}
+		if metadata := providerCatalogMetadataSummary(result.Metadata); metadata != "" {
+			fmt.Fprintf(stdout, "%s: provider %s: ok (%d models, %s; %s)\n", binaryName, name, len(result.Models), result.Source, metadata)
+			continue
+		}
+		fmt.Fprintf(stdout, "%s: provider %s: ok (%d models, %s)\n", binaryName, name, len(result.Models), result.Source)
 	}
 	if failures > 0 {
 		fmt.Fprintf(stdout, "%s: providers verify: failed (%d issue(s))\n", binaryName, failures)
@@ -79,6 +115,51 @@ func runProviderVerifyCommand(stdout io.Writer, stderr io.Writer, binaryName str
 	}
 	fmt.Fprintf(stdout, "%s: providers verify: ok\n", binaryName)
 	return 0
+}
+
+func providerCatalogMetadataSummary(metadata []providers.ModelMetadata) string {
+	if len(metadata) == 0 {
+		return ""
+	}
+	contextReady := 0
+	toolReady := 0
+	reasoningReady := 0
+	liveReady := 0
+	for _, item := range metadata {
+		if item.ContextWindow > 0 {
+			contextReady++
+		}
+		if item.ToolCalling {
+			toolReady++
+		}
+		if item.ReasoningEffort {
+			reasoningReady++
+		}
+		if item.Source == providers.ModelMetadataSourceLiveCatalog {
+			liveReady++
+		}
+	}
+	parts := []string{fmt.Sprintf("metadata context %d/%d", contextReady, len(metadata))}
+	if toolReady > 0 {
+		parts = append(parts, fmt.Sprintf("tools %d/%d", toolReady, len(metadata)))
+	}
+	if reasoningReady > 0 {
+		parts = append(parts, fmt.Sprintf("reasoning %d/%d", reasoningReady, len(metadata)))
+	}
+	if liveReady > 0 {
+		parts = append(parts, fmt.Sprintf("live %d/%d", liveReady, len(metadata)))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func providerVerifyIncludesCatalogs(args []string) bool {
+	for _, arg := range args {
+		switch strings.ToLower(strings.TrimSpace(arg)) {
+		case "--catalogs", "catalogs", "--all", "all":
+			return true
+		}
+	}
+	return false
 }
 
 func firstNonEmptyTrimmed(values ...string) string {

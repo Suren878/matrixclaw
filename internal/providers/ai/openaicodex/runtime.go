@@ -49,7 +49,7 @@ func New(_ context.Context, cfg Config) (providers.Runtime, error) {
 		model = providers.DefaultOpenAICodexModel
 	}
 	providerProfile := cfg.Profile
-	if providerProfile == (providers.ProviderProfile{}) {
+	if providerProfile.IsZero() {
 		providerProfile = providers.ProfileForModel("openai-codex", providers.TypeOpenAICodex, model)
 	}
 	profile := providerProfile.RuntimeProfileWithOverrides(providers.RuntimeProfile{

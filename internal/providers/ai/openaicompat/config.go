@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -18,6 +17,8 @@ type Config struct {
 	CatalogID       string
 	APIKey          string
 	BaseURL         string
+	ModelsURL       string
+	PublicModels    bool
 	Model           string
 	MaxOutputTokens int64
 	ReasoningEffort string
@@ -34,6 +35,8 @@ type Runtime struct {
 	maxOutputTokens  int64
 	reasoningEffort  string
 	useCompletionMax bool
+	headers          map[string]string
+	quirks           providers.OpenAIChatRequestQuirks
 	profile          providers.RuntimeProfile
 	capabilities     providers.ModelCapabilities
 }
@@ -44,7 +47,7 @@ func New(_ context.Context, cfg Config) (providers.Runtime, error) {
 		return nil, err
 	}
 	providerProfile := cfg.Profile
-	if providerProfile == (providers.ProviderProfile{}) {
+	if providerProfile.IsZero() {
 		providerProfile = providers.ProfileForProvider(providers.TypeOpenAICompat)
 	}
 	profile := providerProfile.RuntimeProfileWithOverrides(providers.RuntimeProfile{
@@ -54,6 +57,7 @@ func New(_ context.Context, cfg Config) (providers.Runtime, error) {
 	if providerProfile.SupportsReasoningEffort {
 		reasoningEffort = runtimeReasoningEffort(cfg.ReasoningEffort)
 	}
+	chatOptions := providers.ResolveOpenAIChatOptions(providerProfile, baseURL, model)
 	return &Runtime{
 		client:           client,
 		endpoint:         strings.TrimRight(baseURL, "/") + "/chat/completions",
@@ -61,7 +65,9 @@ func New(_ context.Context, cfg Config) (providers.Runtime, error) {
 		model:            model,
 		maxOutputTokens:  cfg.MaxOutputTokens,
 		reasoningEffort:  reasoningEffort,
-		useCompletionMax: useMaxCompletionTokens(baseURL, model),
+		useCompletionMax: chatOptions.MaxTokensField == providers.OpenAIChatMaxCompletionTokens,
+		headers:          chatOptions.DefaultHeaders,
+		quirks:           chatOptions.RequestQuirks,
 		profile:          profile,
 		capabilities:     providerProfile.Capabilities,
 	}, nil
@@ -104,21 +110,4 @@ func normalizeConfig(cfg Config) (*http.Client, string, string, string, error) {
 		client = &http.Client{Timeout: defaultTimeout}
 	}
 	return client, apiKey, baseURL, model, nil
-}
-
-func useMaxCompletionTokens(baseURL string, model string) bool {
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "gpt-5") {
-		return true
-	}
-	parsed, err := url.Parse(strings.TrimSpace(baseURL))
-	if err != nil {
-		return false
-	}
-	host := strings.ToLower(strings.TrimSpace(parsed.Host))
-	switch host {
-	case "api.openai.com", "api.openai.com:443":
-		return true
-	default:
-		return false
-	}
 }

@@ -235,6 +235,11 @@ func decodePermissionParams(toolName string, raw json.RawMessage) any {
 		if err := json.Unmarshal(raw, &params); err == nil {
 			return params
 		}
+	case "skill_manage":
+		var params tools.SkillManagePermissionsParams
+		if err := json.Unmarshal(raw, &params); err == nil {
+			return params
+		}
 	}
 
 	var generic map[string]any

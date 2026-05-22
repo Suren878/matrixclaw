@@ -121,6 +121,7 @@ func PickerEntriesWithCloseAction(picker controlplane.PickerData, closeAction su
 			ID:       presented.Item.ID,
 			Title:    presented.Title,
 			Status:   presented.Status,
+			Search:   presented.Search,
 			Role:     pickerEntryRole(presented),
 			Tone:     tone,
 			Selected: presented.Selected || presented.Item.Focused,

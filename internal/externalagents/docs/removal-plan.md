@@ -122,6 +122,5 @@ No codexapp import outside registry/wiring.
 No Codex-specific fields in core session/run/provider types.
 No Codex-specific UI text outside setup/session choice and docs.
 All Codex event payloads converted to normalized matrixclaw events.
-Normal go test ./... passes without Codex installed.
-Live Codex tests require explicit env flags.
+Normal builds pass without Codex installed.
 ```

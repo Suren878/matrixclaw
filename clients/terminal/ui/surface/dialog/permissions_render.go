@@ -150,6 +150,15 @@ func (p *Permissions) renderHeader(contentWidth int) string {
 		if params, ok := surfacepermission.DecodeParams[surfacepermission.LSPermissionsParams](p.permission.Params); ok {
 			lines = append(lines, p.renderKeyValue("Directory", prettyPath(params.Path), contentWidth))
 		}
+	case toolNameSkillManage:
+		if params, ok := surfacepermission.DecodeParams[tools.SkillManagePermissionsParams](p.permission.Params); ok {
+			if params.Action != "" {
+				lines = append(lines, p.renderKeyValue("Action", strings.TrimSpace(params.Action), contentWidth))
+			}
+			if params.Name != "" {
+				lines = append(lines, p.renderKeyValue("Skill", strings.TrimSpace(params.Name), contentWidth))
+			}
+		}
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
@@ -170,6 +179,8 @@ func (p *Permissions) renderToolName(width int) string {
 	toolName := p.permission.ToolName
 	if toolName == toolNameBash {
 		toolName = "Run"
+	} else if toolName == toolNameSkillManage {
+		toolName = "Skill Approval"
 	} else if strings.HasPrefix(toolName, "mcp_") {
 		parts := strings.SplitN(toolName, "_", 3)
 		if len(parts) == 3 {

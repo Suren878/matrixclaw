@@ -136,10 +136,23 @@ func (m *model) afterTextEditorApply(ctx context.Context) (bool, error) {
 	if !m.providerRequiresKeyCheck() {
 		return false, nil
 	}
-	if err := m.loadProviderModels(ctx); err != nil {
+	response, err := m.loadProviderModels(ctx)
+	if err != nil {
 		m.editingProvider.HasStoredAPIKey = true
 		m.editingProvider.StoredAPIKeyPreview = setup.MaskSecret(m.editingProvider.APIKey)
-		m.openProviderModelTextEditor(modelDiscoveryErrorMessage(err))
+		m.formError = "Could not load remote models: " + err.Error()
+		m.screen = screenProviderForm
+		return true, nil
+	}
+	if response.Status != setup.ProviderModelStatusOK {
+		m.editingProvider.HasStoredAPIKey = true
+		m.editingProvider.StoredAPIKeyPreview = setup.MaskSecret(m.editingProvider.APIKey)
+		if setup.ProviderModelCatalogAllowsManualInput(response) {
+			m.openProviderModelTextEditor(setup.ProviderModelCatalogManualMessage(response))
+		} else {
+			m.formError = setup.ProviderModelCatalogMessage(response)
+			m.screen = screenProviderForm
+		}
 		return true, nil
 	}
 	m.editingProvider.HasStoredAPIKey = true

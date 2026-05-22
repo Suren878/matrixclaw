@@ -35,6 +35,7 @@ func (m *model) providerFormItems() []providerFormItem {
 		if field.Accent {
 			row.Tone = commandui.RowToneAccent
 		}
+		row.Disabled = field.Disabled
 		item := providerFormItem{
 			Row:             row,
 			Target:          providerFormTarget(field.ID),
@@ -165,7 +166,11 @@ func (m *model) providerModelUsesPicker() bool {
 }
 
 func (m *model) providerRequiresKeyCheck() bool {
-	if providers.NormalizeProviderType(m.editingProvider.Type) == providers.TypeOpenAICodex {
+	providerID := strings.TrimSpace(m.editingProvider.CatalogID)
+	if providerID == "" {
+		providerID = m.editingProvider.ID
+	}
+	if !providers.PolicyForProvider(providerID, m.editingProvider.Type).RequiresAPIKey {
 		return false
 	}
 	return m.providerModelUsesPicker()

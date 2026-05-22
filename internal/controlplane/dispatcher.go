@@ -9,6 +9,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
 	"github.com/Suren878/matrixclaw/internal/setup"
+	"github.com/Suren878/matrixclaw/internal/skills"
 )
 
 type ClientRuntime interface {
@@ -43,6 +44,7 @@ type ProviderRuntime interface {
 	ListSetupProviders(ctx context.Context) ([]setup.ProviderSetupItem, error)
 	ConfigureSetupProvider(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) (setup.ProviderSetupItem, error)
 	ProviderModels(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) ([]string, error)
+	ProviderModelCatalog(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) (setup.ProviderModelsResponse, error)
 	DeleteSetupProvider(ctx context.Context, providerID string) error
 	UpdateSessionProvider(ctx context.Context, sessionID string, providerID string) (core.Session, error)
 }
@@ -53,6 +55,10 @@ type PermissionRuntime interface {
 
 type SessionMessageRuntime interface {
 	CreateSystemMessage(ctx context.Context, sessionID string, content string) (core.Message, error)
+}
+
+type SessionSendRuntime interface {
+	SendMessage(ctx context.Context, sessionID string, content string) (core.AcceptRunResult, error)
 }
 
 type ContextRuntime interface {
@@ -105,6 +111,32 @@ type ServerRuntime interface {
 	StopDaemon(ctx context.Context) error
 }
 
+type WebSearchRuntime interface {
+	GetWebSearchConfig(ctx context.Context) (setup.WebSearchConfigResponse, error)
+	UpdateWebSearchConfig(ctx context.Context, update setup.WebSearchConfig) (setup.WebSearchConfigResponse, error)
+}
+
+type SkillsRuntime interface {
+	ListSkills(ctx context.Context, opts skills.SearchOptions) ([]skills.Skill, error)
+	SearchSkills(ctx context.Context, query string, opts skills.SearchOptions) ([]skills.Skill, error)
+	GetSkill(ctx context.Context, id string) (skills.SkillDetail, error)
+	InstallSkill(ctx context.Context, path string) ([]skills.Skill, error)
+	SkillAction(ctx context.Context, id string, action string) error
+	SessionSkills(ctx context.Context, sessionID string) ([]skills.Skill, error)
+	UseSkill(ctx context.Context, sessionID string, skillID string) (skills.SkillDetail, error)
+	UnloadSkill(ctx context.Context, sessionID string, skillID string) error
+	CreateSkillDraft(ctx context.Context, name string, description string, tags []string, body string) (skills.Skill, error)
+	UpdateSkillMetadata(ctx context.Context, id string, update skills.MetadataUpdate) (skills.Skill, error)
+	UpdateSkillBody(ctx context.Context, id string, body string) error
+	SetSkillEnabled(ctx context.Context, id string, enabled bool) error
+}
+
+type MCPRuntime interface {
+	MCPConfig(ctx context.Context) (setup.MCPConfigResponse, error)
+	UpdateMCPConfig(ctx context.Context, update setup.MCPConfigUpdate) (setup.MCPConfigResponse, error)
+	UpdateMCPServer(ctx context.Context, serverID string, update setup.MCPServerUpdate) (setup.MCPConfigResponse, error)
+}
+
 type Result struct {
 	Handled        bool
 	Text           string
@@ -112,6 +144,7 @@ type Result struct {
 	Picker         *PickerData
 	Form           *FormData
 	Prompt         *PromptData
+	TextEdit       *TextEditData
 	Confirm        *ConfirmData
 	Info           *InfoData
 }
@@ -124,6 +157,7 @@ type Dispatcher struct {
 	providers      ProviderRuntime
 	permissions    PermissionRuntime
 	messages       SessionMessageRuntime
+	sender         SessionSendRuntime
 	contextRuntime ContextRuntime
 	usage          UsageRuntime
 	plan           PlanRuntime
@@ -131,6 +165,9 @@ type Dispatcher struct {
 	storage        StorageRuntime
 	automation     AutomationRuntime
 	server         ServerRuntime
+	webSearch      WebSearchRuntime
+	skills         SkillsRuntime
+	mcp            MCPRuntime
 	workingDir     string
 	now            func() time.Time
 }
@@ -148,6 +185,7 @@ func New(runtime any, workingDir string) *Dispatcher {
 		d.providers, _ = runtime.(ProviderRuntime)
 		d.permissions, _ = runtime.(PermissionRuntime)
 		d.messages, _ = runtime.(SessionMessageRuntime)
+		d.sender, _ = runtime.(SessionSendRuntime)
 		d.contextRuntime, _ = runtime.(ContextRuntime)
 		d.usage, _ = runtime.(UsageRuntime)
 		d.plan, _ = runtime.(PlanRuntime)
@@ -155,6 +193,9 @@ func New(runtime any, workingDir string) *Dispatcher {
 		d.storage, _ = runtime.(StorageRuntime)
 		d.automation, _ = runtime.(AutomationRuntime)
 		d.server, _ = runtime.(ServerRuntime)
+		d.webSearch, _ = runtime.(WebSearchRuntime)
+		d.skills, _ = runtime.(SkillsRuntime)
+		d.mcp, _ = runtime.(MCPRuntime)
 	}
 	return d
 }
@@ -200,8 +241,10 @@ func (d *Dispatcher) Handle(ctx context.Context, externalKey string, text string
 		return d.handlePlan(ctx, externalKey, args)
 	case CommandSearch:
 		return d.handleSearch(ctx, externalKey, args)
+	case CommandSkills:
+		return d.handleSessionSkills(ctx, externalKey, args)
 	case CommandModules:
-		return d.handleModules(ctx, args)
+		return d.handleModules(ctx, externalKey, args)
 	case CommandRemind:
 		return d.handleRemind(ctx, externalKey, args)
 	case CommandTasks:

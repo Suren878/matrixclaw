@@ -42,6 +42,7 @@ const (
 	toolNameAgenticFetch = "agentic_fetch"
 	toolNameRead         = "read"
 	toolNameLS           = "ls"
+	toolNameSkillManage  = "skill_manage"
 )
 
 const horizontalScrollStep = 5

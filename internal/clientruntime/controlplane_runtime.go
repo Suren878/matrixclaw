@@ -11,6 +11,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
 	"github.com/Suren878/matrixclaw/internal/setup"
+	"github.com/Suren878/matrixclaw/internal/skills"
 )
 
 type DaemonClientFunc func(externalKey string) (*daemonclient.Client, error)
@@ -168,6 +169,14 @@ func (r ControlplaneRuntime) ProviderModels(ctx context.Context, providerID stri
 		return nil, err
 	}
 	return client.ProviderModels(ctx, providerID, update)
+}
+
+func (r ControlplaneRuntime) ProviderModelCatalog(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) (setup.ProviderModelsResponse, error) {
+	client, err := r.client("")
+	if err != nil {
+		return setup.ProviderModelsResponse{}, err
+	}
+	return client.ProviderModelCatalog(ctx, providerID, update)
 }
 
 func (r ControlplaneRuntime) DeleteSetupProvider(ctx context.Context, providerID string) error {
@@ -412,6 +421,14 @@ func (r ControlplaneRuntime) CreateSystemMessage(ctx context.Context, sessionID 
 	return client.CreateSystemMessage(ctx, sessionID, content)
 }
 
+func (r ControlplaneRuntime) SendMessage(ctx context.Context, sessionID string, content string) (core.AcceptRunResult, error) {
+	client, err := r.client("")
+	if err != nil {
+		return core.AcceptRunResult{}, err
+	}
+	return client.SendMessage(ctx, sessionID, content, r.WorkingDir)
+}
+
 func (r ControlplaneRuntime) SaveStorageFile(ctx context.Context, storagePath string, content []byte, title string, tags []string, mimeType string) (localstorage.Entry, error) {
 	client, err := r.client("")
 	if err != nil {
@@ -482,4 +499,140 @@ func (r ControlplaneRuntime) DeleteStorageFile(ctx context.Context, storagePath 
 		return localstorage.Entry{}, err
 	}
 	return client.DeleteStorageFile(ctx, storagePath)
+}
+
+func (r ControlplaneRuntime) GetWebSearchConfig(ctx context.Context) (setup.WebSearchConfigResponse, error) {
+	client, err := r.client("")
+	if err != nil {
+		return setup.WebSearchConfigResponse{}, err
+	}
+	return client.GetWebSearchConfig(ctx)
+}
+
+func (r ControlplaneRuntime) UpdateWebSearchConfig(ctx context.Context, update setup.WebSearchConfig) (setup.WebSearchConfigResponse, error) {
+	client, err := r.client("")
+	if err != nil {
+		return setup.WebSearchConfigResponse{}, err
+	}
+	return client.UpdateWebSearchConfig(ctx, update)
+}
+
+func (r ControlplaneRuntime) ListSkills(ctx context.Context, opts skills.SearchOptions) ([]skills.Skill, error) {
+	client, err := r.client("")
+	if err != nil {
+		return nil, err
+	}
+	return client.ListSkills(ctx, opts)
+}
+
+func (r ControlplaneRuntime) SearchSkills(ctx context.Context, query string, opts skills.SearchOptions) ([]skills.Skill, error) {
+	client, err := r.client("")
+	if err != nil {
+		return nil, err
+	}
+	return client.SearchSkills(ctx, query, opts)
+}
+
+func (r ControlplaneRuntime) GetSkill(ctx context.Context, id string) (skills.SkillDetail, error) {
+	client, err := r.client("")
+	if err != nil {
+		return skills.SkillDetail{}, err
+	}
+	return client.GetSkill(ctx, id)
+}
+
+func (r ControlplaneRuntime) InstallSkill(ctx context.Context, path string) ([]skills.Skill, error) {
+	client, err := r.client("")
+	if err != nil {
+		return nil, err
+	}
+	return client.InstallSkill(ctx, path)
+}
+
+func (r ControlplaneRuntime) SkillAction(ctx context.Context, id string, action string) error {
+	client, err := r.client("")
+	if err != nil {
+		return err
+	}
+	return client.SkillAction(ctx, id, action)
+}
+
+func (r ControlplaneRuntime) SessionSkills(ctx context.Context, sessionID string) ([]skills.Skill, error) {
+	client, err := r.client("")
+	if err != nil {
+		return nil, err
+	}
+	return client.SessionSkills(ctx, sessionID)
+}
+
+func (r ControlplaneRuntime) UseSkill(ctx context.Context, sessionID string, skillID string) (skills.SkillDetail, error) {
+	client, err := r.client("")
+	if err != nil {
+		return skills.SkillDetail{}, err
+	}
+	return client.UseSkill(ctx, sessionID, skillID)
+}
+
+func (r ControlplaneRuntime) UnloadSkill(ctx context.Context, sessionID string, skillID string) error {
+	client, err := r.client("")
+	if err != nil {
+		return err
+	}
+	return client.UnloadSkill(ctx, sessionID, skillID)
+}
+
+func (r ControlplaneRuntime) CreateSkillDraft(ctx context.Context, name string, description string, tags []string, body string) (skills.Skill, error) {
+	client, err := r.client("")
+	if err != nil {
+		return skills.Skill{}, err
+	}
+	return client.CreateSkillDraft(ctx, name, description, tags, body)
+}
+
+func (r ControlplaneRuntime) UpdateSkillMetadata(ctx context.Context, id string, update skills.MetadataUpdate) (skills.Skill, error) {
+	client, err := r.client("")
+	if err != nil {
+		return skills.Skill{}, err
+	}
+	return client.UpdateSkillMetadata(ctx, id, update)
+}
+
+func (r ControlplaneRuntime) UpdateSkillBody(ctx context.Context, id string, body string) error {
+	client, err := r.client("")
+	if err != nil {
+		return err
+	}
+	return client.UpdateSkillBody(ctx, id, body)
+}
+
+func (r ControlplaneRuntime) SetSkillEnabled(ctx context.Context, id string, enabled bool) error {
+	client, err := r.client("")
+	if err != nil {
+		return err
+	}
+	return client.SetSkillEnabled(ctx, id, enabled)
+}
+
+func (r ControlplaneRuntime) MCPConfig(ctx context.Context) (setup.MCPConfigResponse, error) {
+	client, err := r.client("")
+	if err != nil {
+		return setup.MCPConfigResponse{}, err
+	}
+	return client.MCPConfig(ctx)
+}
+
+func (r ControlplaneRuntime) UpdateMCPConfig(ctx context.Context, update setup.MCPConfigUpdate) (setup.MCPConfigResponse, error) {
+	client, err := r.client("")
+	if err != nil {
+		return setup.MCPConfigResponse{}, err
+	}
+	return client.UpdateMCPConfig(ctx, update)
+}
+
+func (r ControlplaneRuntime) UpdateMCPServer(ctx context.Context, serverID string, update setup.MCPServerUpdate) (setup.MCPConfigResponse, error) {
+	client, err := r.client("")
+	if err != nil {
+		return setup.MCPConfigResponse{}, err
+	}
+	return client.UpdateMCPServer(ctx, serverID, update)
 }

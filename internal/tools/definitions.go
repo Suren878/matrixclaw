@@ -232,4 +232,20 @@ var coreDefinitions = []Definition{
 		},
 		NewExecutor: NewJobKillExecutor,
 	},
+	{
+		Spec: Spec{
+			ID:              webFetchToolName,
+			Name:            "WebFetch",
+			Description:     "Fetch a URL and return its text content as markdown",
+			Risk:            RiskSafe,
+			Effect:          EffectReadOnly,
+			ApprovalMode:    ApprovalNever,
+			Namespace:       namespaceCoreWeb,
+			Category:        CategoryWeb,
+			Profiles:        []Profile{ProfileCoding, ProfileWeb},
+			OutputKind:      OutputWebContent,
+			InputJSONSchema: webFetchInputSchema,
+		},
+		NewExecutor: NewWebFetchExecutor,
+	},
 }

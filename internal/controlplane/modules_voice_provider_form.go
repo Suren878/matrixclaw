@@ -37,8 +37,11 @@ func (d *Dispatcher) voiceModuleProviderField(ctx context.Context, moduleID stri
 			), nil
 		}
 	case "model":
+		if message := providerEditModelDisabledMessage(provider, data); message != "" {
+			return d.voiceProviderFormResult(ctx, moduleID, providerID, provider, data, message)
+		}
 		if providerEditModelUsesPicker(provider, data) {
-			return d.voiceProviderModelPicker(ctx, moduleID, providerID, provider, data), nil
+			return d.voiceProviderModelPicker(ctx, moduleID, providerID, provider, data)
 		}
 	}
 	token := encodeCustomProviderFormToken(data)
@@ -140,22 +143,18 @@ func (d *Dispatcher) saveVoiceModuleProvider(ctx context.Context, moduleID strin
 	return d.voiceModuleProviderPicker(ctx, moduleID)
 }
 
-func (d *Dispatcher) voiceProviderModelPicker(ctx context.Context, moduleID string, providerID string, provider setup.ProviderSetupItem, data setup.ProviderFormState) Result {
+func (d *Dispatcher) voiceProviderModelPicker(ctx context.Context, moduleID string, providerID string, provider setup.ProviderSetupItem, data setup.ProviderFormState) (Result, error) {
 	token := encodeCustomProviderFormToken(data)
-	models, err := d.providers.ProviderModels(ctx, provider.ID, providerUpdateFromForm(provider, data, false))
+	response, err := d.providers.ProviderModelCatalog(ctx, provider.ID, providerUpdateFromForm(provider, data, false))
 	if err != nil {
-		return customProviderFieldPrompt(
-			voiceProviderFormTitle(moduleID, providerID, provider),
-			"model",
-			data,
-			"Could not load remote models: "+err.Error()+". Enter the model manually.",
-			voiceModuleCommandPrefix(moduleID, "provider-set", "model", providerID, token),
-			voiceModuleCommand(moduleID, "provider-form", providerID, token),
-		)
+		return d.voiceProviderFormResult(ctx, moduleID, providerID, provider, data, "Could not load remote models: "+err.Error())
+	}
+	if response.Status != setup.ProviderModelStatusOK {
+		return d.voiceProviderFormResult(ctx, moduleID, providerID, provider, data, setup.ProviderModelCatalogMessage(response))
 	}
 	current := strings.TrimSpace(data.Model)
-	items := make([]PickerItem, 0, len(models))
-	for _, modelID := range models {
+	items := make([]PickerItem, 0, len(response.Models))
+	for _, modelID := range response.Models {
 		modelID = strings.TrimSpace(modelID)
 		if modelID == "" {
 			continue
@@ -173,7 +172,7 @@ func (d *Dispatcher) voiceProviderModelPicker(ctx context.Context, moduleID stri
 			Back(voiceModuleCommand(moduleID, "provider-form", providerID, token)).
 			Items(items...).
 			Ptr(),
-	}
+	}, nil
 }
 
 func (d *Dispatcher) voiceProviderFormData(ctx context.Context, providerID string, token string) (setup.ProviderSetupItem, setup.ProviderFormState, error) {

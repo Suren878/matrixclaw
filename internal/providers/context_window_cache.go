@@ -8,7 +8,8 @@ import (
 )
 
 type contextWindowCacheFile struct {
-	ContextWindows map[string]int `json:"context_windows"`
+	ContextWindows map[string]int                 `json:"context_windows"`
+	ModelMetadata  map[string]cachedModelMetadata `json:"model_metadata,omitempty"`
 }
 
 func loadContextWindowCache() {
@@ -25,10 +26,26 @@ func loadContextWindowCache() {
 		return
 	}
 	contextWindowOverrides.Lock()
-	defer contextWindowOverrides.Unlock()
 	for key, value := range payload.ContextWindows {
 		if strings.TrimSpace(key) != "" && value > 0 {
 			contextWindowOverrides.values[key] = value
+		}
+	}
+	contextWindowOverrides.Unlock()
+	modelMetadataOverrides.Lock()
+	defer modelMetadataOverrides.Unlock()
+	for key, value := range payload.ModelMetadata {
+		if strings.TrimSpace(key) != "" {
+			modelMetadataOverrides.values[key] = mergeCachedMetadata(modelMetadataOverrides.values[key], value)
+		}
+	}
+	for key, value := range payload.ContextWindows {
+		if strings.TrimSpace(key) != "" && value > 0 {
+			existing := modelMetadataOverrides.values[key]
+			if existing.ContextWindow <= 0 {
+				existing.ContextWindow = value
+				modelMetadataOverrides.values[key] = existing
+			}
 		}
 	}
 }
@@ -39,14 +56,30 @@ func saveContextWindowCache() {
 		return
 	}
 	contextWindowOverrides.RLock()
-	payload := contextWindowCacheFile{ContextWindows: make(map[string]int, len(contextWindowOverrides.values))}
+	payload := contextWindowCacheFile{
+		ContextWindows: make(map[string]int, len(contextWindowOverrides.values)),
+		ModelMetadata:  make(map[string]cachedModelMetadata, len(modelMetadataOverrides.values)),
+	}
 	for key, value := range contextWindowOverrides.values {
 		if strings.TrimSpace(key) != "" && value > 0 {
 			payload.ContextWindows[key] = value
 		}
 	}
 	contextWindowOverrides.RUnlock()
-	if len(payload.ContextWindows) == 0 {
+	modelMetadataOverrides.RLock()
+	for key, value := range modelMetadataOverrides.values {
+		if strings.TrimSpace(key) != "" && cachedModelMetadataNonZero(value) {
+			payload.ModelMetadata[key] = value
+			if value.ContextWindow > 0 {
+				payload.ContextWindows[key] = value.ContextWindow
+			}
+		}
+	}
+	modelMetadataOverrides.RUnlock()
+	if len(payload.ModelMetadata) == 0 {
+		payload.ModelMetadata = nil
+	}
+	if len(payload.ContextWindows) == 0 && len(payload.ModelMetadata) == 0 {
 		return
 	}
 	raw, err := json.MarshalIndent(payload, "", "  ")

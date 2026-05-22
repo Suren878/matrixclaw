@@ -63,12 +63,12 @@ func (s *Server) handleSetupProviderByID(w http.ResponseWriter, r *http.Request)
 		if !decodeJSONBody(w, r, &update) {
 			return
 		}
-		models, err := s.setup.ProviderModelsContext(r.Context(), providerID, update)
+		models, err := s.setup.ProviderModelCatalogContext(r.Context(), providerID, update)
 		if err != nil {
 			writeErrorMessage(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, setup.ProviderModelsResponse{Models: models})
+		writeJSON(w, http.StatusOK, models)
 		return
 	}
 	if r.Method == http.MethodDelete {

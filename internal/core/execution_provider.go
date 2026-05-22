@@ -20,7 +20,7 @@ func (c *Core) buildProviderRequest(ctx context.Context, turn turnExecution) (pr
 	request := providers.Request{
 		RunID:              turn.RunID,
 		SessionID:          turn.SessionID,
-		SystemPrompt:       c.providerSystemPrompt(ctx, turn, assistant, compactSummary),
+		SystemPrompt:       c.providerSystemPrompt(ctx, turn, assistant, compactSummary, effectiveHistory),
 		CustomInstructions: assistant.CustomInstructions,
 	}
 	if !runtimeToolUseAllowed(turn.Runtime) {
@@ -36,7 +36,7 @@ func (c *Core) buildProviderRequest(ctx context.Context, turn turnExecution) (pr
 	return request, nil
 }
 
-func (c *Core) providerSystemPrompt(ctx context.Context, turn turnExecution, assistant AssistantProfile, compactSummary string) string {
+func (c *Core) providerSystemPrompt(ctx context.Context, turn turnExecution, assistant AssistantProfile, compactSummary string, history []Message) string {
 	sections := []string{AssistantSystemPrompt(assistant)}
 	if runtimeToolUseAllowed(turn.Runtime) && clientSupportsVoiceDelivery(turn.Client) {
 		sections = append(sections, voiceOutputGuidancePrompt())
@@ -50,7 +50,29 @@ func (c *Core) providerSystemPrompt(ctx context.Context, turn turnExecution, ass
 	if planPrompt := c.sessionPlanPrompt(ctx, turn.SessionID); planPrompt != "" {
 		sections = append(sections, planPrompt)
 	}
+	if skillsPrompt := c.skillsPromptContext(ctx, turn, history); skillsPrompt != "" {
+		sections = append(sections, skillsPrompt)
+	}
 	return joinPromptSections(sections...)
+}
+
+func (c *Core) skillsPromptContext(ctx context.Context, turn turnExecution, history []Message) string {
+	if c == nil || c.skillsContext == nil {
+		return ""
+	}
+	messages := make([]SkillsPromptMessage, 0, len(history))
+	for _, message := range history {
+		messages = append(messages, SkillsPromptMessage{
+			Role:    string(message.Role),
+			Content: message.Content,
+		})
+	}
+	return c.skillsContext.SkillsPromptContext(ctx, SkillsPromptContextRequest{
+		SessionID:  turn.SessionID,
+		RunID:      turn.RunID,
+		WorkingDir: turn.WorkingDir,
+		Messages:   messages,
+	})
 }
 
 func joinPromptSections(sections ...string) string {
@@ -135,20 +157,18 @@ func currentProjectRootPrompt(workingDir string) string {
 }
 
 func (c *Core) sessionPlanPrompt(ctx context.Context, sessionID string) string {
+	if c == nil || c.store == nil {
+		return ""
+	}
 	plan, err := c.store.GetSessionPlan(ctx, sessionID)
 	if err != nil {
 		return ""
 	}
 	lines := []string{
 		"Session goal and plan:",
-		"- Use plan tools for multi-step work so the user can see progress.",
-		"- Available plan tools: plan_get, plan_set_goal, plan_add_item, plan_update_item, plan_clear.",
-		"- For simple one-step requests, answer or act directly without creating a plan.",
-		"- For larger tasks, set a goal, add top-level plan items, and mark items active/done/skipped as work progresses.",
-		"- Use plan tools sparingly: update status when starting or finishing meaningful items, not before and after every small tool operation.",
-		"- Use subtasks with plan_add_item parent_id only when a task is large enough to need breakdown.",
-		"- Treat a plan item with subtasks as a parent section: execute its subtasks, then mark the parent done; do not duplicate the same work at both parent and child levels.",
-		"- Do not claim the plan is complete while any item is still pending or active; update completed items with plan_update_item first.",
+		"- Use plan tools for multi-step work: plan_get, plan_set_goal, plan_add_item, plan_update_item, plan_clear.",
+		"- Skip plans for simple one-step requests; for larger tasks, keep top-level items current and mark completed work done before claiming completion.",
+		"- Use subtasks only for genuinely large items; finish subtasks before marking the parent done.",
 	}
 	if strings.TrimSpace(plan.Goal) != "" {
 		lines = append(lines, "- Current goal: "+strings.TrimSpace(plan.Goal))

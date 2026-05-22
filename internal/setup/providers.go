@@ -52,6 +52,8 @@ func normalizeConfig(cfg Config) Config {
 func normalizeModulesConfig(modules ModulesConfig) ModulesConfig {
 	modules.TextToSpeech = normalizeVoiceModuleConfig("tts", modules.TextToSpeech)
 	modules.SpeechToText = normalizeVoiceModuleConfig("stt", modules.SpeechToText)
+	modules.MCP = normalizeMCPConfig(modules.MCP)
+	modules.Skills = normalizeSkillsConfig(modules.Skills)
 	if len(modules.ExternalAgents) == 0 {
 		modules.ExternalAgents = nil
 		return modules
@@ -82,6 +84,116 @@ func normalizeModulesConfig(modules ModulesConfig) ModulesConfig {
 	return modules
 }
 
+func normalizeSkillsConfig(cfg SkillsConfig) SkillsConfig {
+	if strings.TrimSpace(cfg.TrustPolicy) == "" {
+		cfg.TrustPolicy = "quarantine"
+	}
+	if strings.TrimSpace(cfg.SelfImprove) == "" {
+		cfg.SelfImprove = "drafts"
+	}
+	if !cfg.Enabled {
+		cfg.Enabled = true
+	}
+	if !cfg.AutoInvoke {
+		cfg.AutoInvoke = true
+	}
+	return cfg
+}
+
+func normalizeMCPConfig(cfg MCPConfig) MCPConfig {
+	servers := make([]MCPServerConfig, 0, len(cfg.Servers))
+	seen := map[string]struct{}{}
+	for _, server := range cfg.Servers {
+		server.ID = normalizeMCPID(server.ID)
+		server.Name = strings.TrimSpace(server.Name)
+		server.Transport = normalizeMCPTransport(server.Transport)
+		server.Command = strings.TrimSpace(server.Command)
+		server.Endpoint = strings.TrimRight(strings.TrimSpace(server.Endpoint), "/")
+		server.ToolPrefix = normalizeMCPID(server.ToolPrefix)
+		if server.ToolPrefix == "" {
+			server.ToolPrefix = server.ID
+		}
+		if server.TimeoutSeconds < 0 {
+			server.TimeoutSeconds = 0
+		}
+		server.Args = trimStringSlice(server.Args)
+		server.Env = trimStringMap(server.Env)
+		if server.ID == "" {
+			continue
+		}
+		if _, ok := seen[server.ID]; ok {
+			continue
+		}
+		if server.Transport == "http" {
+			if server.Endpoint == "" {
+				continue
+			}
+		} else if server.Command == "" {
+			continue
+		}
+		seen[server.ID] = struct{}{}
+		servers = append(servers, server)
+	}
+	cfg.Servers = servers
+	return cfg
+}
+
+func normalizeMCPID(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	var b strings.Builder
+	lastUnderscore := false
+	for _, r := range value {
+		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+		if ok {
+			b.WriteRune(r)
+			lastUnderscore = false
+			continue
+		}
+		if !lastUnderscore {
+			b.WriteByte('_')
+			lastUnderscore = true
+		}
+	}
+	return strings.Trim(b.String(), "_")
+}
+
+func normalizeMCPTransport(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "http", "streamable_http", "streamable-http":
+		return "http"
+	default:
+		return "stdio"
+	}
+}
+
+func trimStringSlice(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func trimStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key != "" && value != "" {
+			out[key] = value
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 func normalizeAssistantConfig(assistant AssistantConfig) AssistantConfig {
 	assistant.Name = strings.TrimSpace(assistant.Name)
 	assistant.SystemPrompt = strings.TrimSpace(assistant.SystemPrompt)
@@ -96,7 +208,7 @@ func normalizeAssistantConfig(assistant AssistantConfig) AssistantConfig {
 }
 
 func DefaultAssistantSystemPrompt() string {
-	return "You are matrixclaw, a personal AI operator running through matrixclaw's local background runtime. You work across terminal and Telegram clients on durable sessions with files, deliveries, provider/model selection, explicit tool approvals, reminders, scheduled AI tasks, optional text-to-speech and speech-to-text modules, and optional external-agent sessions. Reply in the same language the user uses for the current request; if the user mixes languages, use the language that best matches the user's latest request. Use the actual tools made available in each turn; plan tools can read and update the visible session goal and plan for multi-step work. When the user asks for spoken, audio, voice, or TTS output, call the text_to_speech tool with the text that should be spoken; do not use shell commands, Piper runtime inspection, or local audio files for client voice output. The client control-plane also has slash commands for session management, providers, permissions, context, token usage, plan, search, modules, tasks, and server actions; explain those commands when useful, but do not claim you can run a control-plane command unless it is exposed as a tool. Prefer precise actions, preserve user files, ask for approval before risky or destructive changes, keep responses concise, and update the session plan as work progresses. In user-facing explanations, call the background runtime matrixclaw architect instead of daemon. When users ask for reminders or scheduled work, resolve exact time and timezone before creating automation."
+	return "You are matrixclaw, a personal AI operator in matrixclaw's local background runtime across terminal and Telegram durable sessions. Use available tools only; risky mutations require approval. Keep replies concise, preserve user files, and update visible plans for multi-step work. Use skills when helpful: skill_search finds trusted workflows, skill_use activates one for the session, and skill_manage creates/edits skills only after approval; for AI-created skills, discuss and revise the draft in chat, then call skill_manage create only after explicit user confirmation. Explain slash-command control-plane features when useful, but do not claim you can run them unless exposed as tools. For reminders or scheduled work, resolve exact time and timezone first. In user-facing text call the background runtime matrixclaw architect, not daemon."
 }
 
 func normalizeProviderConfig(provider ProviderConfig) (ProviderConfig, bool) {
@@ -119,21 +231,23 @@ func normalizeProviderConfig(provider ProviderConfig) (ProviderConfig, bool) {
 	if provider.CatalogID == "" {
 		provider.CatalogID = provider.ID
 	}
-	if option, ok := lookupProviderOption(provider.CatalogID); ok {
+	if policy := providers.PolicyForProvider(provider.CatalogID, provider.Type); policy.Known {
+		provider.ID = policy.CatalogID
+		provider.CatalogID = policy.CatalogID
 		if provider.Name == "" {
-			provider.Name = option.Name
+			provider.Name = policy.Name
 		}
 		if provider.Type == "" {
-			provider.Type = option.Type
+			provider.Type = policy.Type
 		}
 		if provider.APIKeyEnv == "" {
-			provider.APIKeyEnv = option.APIKeyEnv
+			provider.APIKeyEnv = policy.APIKeyEnv
 		}
 		if provider.BaseURL == "" {
-			provider.BaseURL = option.DefaultBaseURL
+			provider.BaseURL = policy.DefaultBaseURL
 		}
 		if provider.Model == "" {
-			provider.Model = option.DefaultModel
+			provider.Model = policy.DefaultModel
 		}
 	}
 	provider.Model = providers.NormalizeModelID(provider.CatalogID, provider.Type, provider.Model)
@@ -181,7 +295,7 @@ func findProviderConfig(cfg Config, providerID string) (ProviderConfig, bool) {
 }
 
 func ProviderDraftConfigured(provider ProviderDraft) bool {
-	if providers.NormalizeProviderType(provider.Type) == providers.TypeOpenAICodex {
+	if !providerPolicyForDraft(provider).RequiresAPIKey {
 		return strings.TrimSpace(provider.Model) != ""
 	}
 	if strings.TrimSpace(provider.APIKey) != "" {
@@ -243,24 +357,32 @@ func DeleteProviderDraft(draft Draft, providerID string) Draft {
 }
 
 func builtInProviderOptions() []ProviderOption {
-	entries := providers.AvailableCatalog()
-	options := make([]ProviderOption, 0, len(entries))
-	for _, entry := range entries {
-		options = append(options, ProviderOption{
-			ID:              entry.ID,
-			Name:            entry.Name,
-			Type:            entry.Type,
-			Implemented:     entry.Implemented,
-			RequiresBaseURL: entry.RequiresBaseURL,
-			Capabilities:    entry.Capabilities,
-			DefaultBaseURL:  entry.DefaultBaseURL,
-			BaseURLOptions:  append([]providers.BaseURLOption(nil), entry.BaseURLOptions...),
-			DefaultModel:    entry.DefaultModel,
-			APIKeyEnv:       entry.APIKeyEnv,
-			Notes:           entry.Notes,
-		})
+	specs := providers.ProviderSpecs()
+	options := make([]ProviderOption, 0, len(specs))
+	for _, spec := range specs {
+		policy := providers.PolicyForProvider(spec.Entry.ID, spec.Entry.Type)
+		if !policy.Implemented {
+			continue
+		}
+		options = append(options, providerOptionFromPolicy(policy))
 	}
 	return options
+}
+
+func providerOptionFromPolicy(policy providers.ProviderPolicy) ProviderOption {
+	return ProviderOption{
+		ID:              policy.CatalogID,
+		Name:            policy.Name,
+		Type:            policy.Type,
+		Implemented:     policy.Implemented,
+		RequiresBaseURL: policy.RequiresBaseURL,
+		Capabilities:    policy.Capabilities,
+		DefaultBaseURL:  policy.DefaultBaseURL,
+		BaseURLOptions:  append([]providers.BaseURLOption(nil), policy.BaseURLOptions...),
+		DefaultModel:    policy.DefaultModel,
+		APIKeyEnv:       policy.APIKeyEnv,
+		Notes:           policy.Notes,
+	}
 }
 
 func ConfiguredProviders(draft Draft) []ProviderDraft {
@@ -285,12 +407,7 @@ func availableBuiltInProviders(draft Draft, options []ProviderOption) []Provider
 }
 
 func isCustomProviderDraft(provider ProviderDraft) bool {
-	catalogID := providers.NormalizeProviderID(provider.CatalogID)
-	if catalogID == "" {
-		catalogID = providers.NormalizeProviderID(provider.ID)
-	}
-	_, builtIn := lookupProviderOption(catalogID)
-	return !builtIn
+	return !providerPolicyForDraft(provider).Known
 }
 
 func draftProviderFromOption(option ProviderOption) ProviderDraft {
@@ -333,7 +450,7 @@ func draftProviderFromConfig(provider ProviderConfig) ProviderDraft {
 }
 
 func ProviderConfigWithResolvedAPIKey(provider ProviderConfig) (ProviderConfig, bool) {
-	if providers.NormalizeProviderType(provider.Type) == providers.TypeOpenAICodex {
+	if !providerPolicyForConfig(provider).RequiresAPIKey {
 		provider.APIKey = ""
 		return provider, true
 	}
@@ -353,8 +470,8 @@ func ResolvedProviderAPIKey(provider ProviderConfig) (string, bool) {
 }
 
 func ProviderAPIKeyPreview(provider ProviderConfig) string {
-	if providers.NormalizeProviderType(provider.Type) == providers.TypeOpenAICodex {
-		return "OAuth"
+	if policy := providerPolicyForConfig(provider); !policy.RequiresAPIKey {
+		return policy.AuthStatusLabel
 	}
 	if apiKey := normalizeProviderAPIKey(provider.APIKey); apiKey != "" {
 		return MaskSecret(apiKey)
@@ -398,15 +515,16 @@ func providerAPIKeyEnvNameFor(explicit string, catalogID string, providerID stri
 	if envName := strings.TrimSpace(explicit); envName != "" {
 		return envName
 	}
-	catalogID = providers.NormalizeProviderID(firstNonEmptyTrimmed(catalogID, providerID))
-	if option, ok := lookupProviderOption(catalogID); ok {
-		return strings.TrimSpace(option.APIKeyEnv)
+	policy := providers.PolicyForProvider(firstNonEmptyTrimmed(catalogID, providerID), providerType)
+	if policy.Known {
+		return strings.TrimSpace(policy.APIKeyEnv)
+	}
+	if !policy.RequiresAPIKey {
+		return ""
 	}
 	switch providers.NormalizeOptionalProviderType(providerType) {
 	case providers.TypeAnthropic:
 		return "ANTHROPIC_API_KEY"
-	case providers.TypeOpenAICodex:
-		return ""
 	case providers.TypeOpenAICompat:
 		return "OPENAI_COMPAT_API_KEY"
 	default:
@@ -467,11 +585,17 @@ func uniqueProviderID(base string, existing []ProviderDraft) string {
 }
 
 func lookupProviderOption(providerID string) (ProviderOption, bool) {
-	providerID = providers.NormalizeProviderID(providerID)
-	for _, option := range builtInProviderOptions() {
-		if option.ID == providerID {
-			return option, true
-		}
+	policy := providers.PolicyForProvider(providerID, "")
+	if policy.Known && policy.Implemented {
+		return providerOptionFromPolicy(policy), true
 	}
 	return ProviderOption{}, false
+}
+
+func providerPolicyForDraft(provider ProviderDraft) providers.ProviderPolicy {
+	return providers.PolicyForProvider(firstNonEmptyTrimmed(provider.CatalogID, provider.ID), provider.Type)
+}
+
+func providerPolicyForConfig(provider ProviderConfig) providers.ProviderPolicy {
+	return providers.PolicyForProvider(firstNonEmptyTrimmed(provider.CatalogID, provider.ID), provider.Type)
 }

@@ -16,6 +16,7 @@ type ProviderFormViewField struct {
 	Sensitive       bool
 	Picker          bool
 	Accent          bool
+	Disabled        bool
 }
 
 func ProviderFormViewFields(spec ProviderFormSpec, options ProviderFormViewOptions) []ProviderFormViewField {
@@ -36,7 +37,8 @@ func ProviderFormViewFields(spec ProviderFormSpec, options ProviderFormViewOptio
 			RequiredMessage: ProviderRequiredMessage(field),
 			Sensitive:       field.Sensitive,
 			Picker:          field.Picker,
-			Accent:          field.ID == ProviderFormFieldModel && strings.TrimSpace(field.Status) != "",
+			Accent:          field.ID == ProviderFormFieldModel && strings.TrimSpace(field.Status) != "" && !field.Disabled,
+			Disabled:        field.Disabled,
 		})
 	}
 	return fields

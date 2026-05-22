@@ -14,10 +14,13 @@ import (
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
 	"github.com/Suren878/matrixclaw/internal/modules"
 	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
+	mcpmodule "github.com/Suren878/matrixclaw/internal/modules/mcp"
+	skillsmodule "github.com/Suren878/matrixclaw/internal/modules/skills"
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
 	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
 	goworkflows "github.com/Suren878/matrixclaw/internal/orchestration/go_workflows"
 	"github.com/Suren878/matrixclaw/internal/setup"
+	"github.com/Suren878/matrixclaw/internal/skills"
 	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
@@ -45,13 +48,24 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	moduleRegistry := modules.NewRegistry(storageModule)
+	mcpModule, err := mcpmodule.New(ctx, bootstrap.ExternalAgents.MCP)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = mcpModule.Close() }()
+	skillsModule, err := skillsmodule.New(skillsConfigFromBootstrap(bootstrap))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = skillsModule.Close() }()
+	moduleRegistry := modules.NewRegistry(storageModule, mcpModule, skillsModule)
 	assistant := bootstrap.Assistant
 	assistant.SystemPrompt = appendModuleContext(assistant.SystemPrompt, moduleRegistry.Context())
 
 	app := core.New(sqliteStore).
 		WithSessionLLMs(bootstrap.SessionLLMs).
-		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()})
+		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()}).
+		WithSkillsContext(skillsModule)
 	app.SetAssistantProfile(assistant)
 	externalRegistry, externalRuntimes, err := builtins.BuildRegistry(bootstrap.ExternalAgents)
 	if err != nil {
@@ -71,6 +85,21 @@ func Run(ctx context.Context) error {
 		automation.NewReminderTool(automationService),
 		automation.NewScheduledAITaskTool(automationService),
 		voicemodule.NewTextToSpeechTool(bootstrap.SetupService),
+		tools.NewWebSearchExecutor(func() (tools.WebSearchProviderConfig, error) {
+			if bootstrap.SetupService == nil {
+				return tools.WebSearchProviderConfig{}, nil
+			}
+			cfg, err := bootstrap.SetupService.GetWebSearchConfig()
+			if err != nil {
+				return tools.WebSearchProviderConfig{}, err
+			}
+			return tools.WebSearchProviderConfig{
+				Provider:  cfg.Provider,
+				TavilyKey: cfg.TavilyKey,
+				SerperKey: cfg.SerperKey,
+				BaseURL:   cfg.BaseURL,
+			}, nil
+		}),
 	)
 	if err := toolRegistry.Register(core.PlanToolExecutors(app)...); err != nil {
 		return err
@@ -86,6 +115,7 @@ func Run(ctx context.Context) error {
 	server.SetAPIToken(bootstrap.APIToken)
 	server.SetAutomationService(automationService)
 	server.SetStorageStore(storageModule.Store())
+	server.SetSkillsService(skillsModule.Service())
 	server.SetSetupService(bootstrap.SetupService)
 	supervisor := newSupervisor(ctx, server, app)
 	supervisor.SetExternalAgents(sqliteStore, externalRuntimes)
@@ -123,6 +153,17 @@ func Run(ctx context.Context) error {
 		return httpServer.Shutdown(shutdownCtx)
 	case err := <-errCh:
 		return err
+	}
+}
+
+func skillsConfigFromBootstrap(bootstrap bootstrapConfig) skills.Config {
+	cfg := bootstrap.ExternalAgents.Skills
+	return skills.Config{
+		DBPath:      bootstrap.DBPath,
+		Enabled:     cfg.Enabled,
+		AutoInvoke:  cfg.AutoInvoke,
+		TrustPolicy: cfg.TrustPolicy,
+		SelfImprove: cfg.SelfImprove,
 	}
 }
 

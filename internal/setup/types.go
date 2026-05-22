@@ -68,7 +68,82 @@ type ModulesConfig struct {
 	ExternalAgents map[string]ExternalAgentConfig `json:"external_agents,omitempty"`
 	TextToSpeech   VoiceModuleConfig              `json:"tts,omitempty"`
 	SpeechToText   VoiceModuleConfig              `json:"stt,omitempty"`
+	WebSearch      WebSearchConfig                `json:"web_search,omitempty"`
+	MCP            MCPConfig                      `json:"mcp,omitempty"`
+	Skills         SkillsConfig                   `json:"skills,omitempty"`
 }
+
+type SkillsConfig struct {
+	Enabled     bool   `json:"enabled,omitempty"`
+	AutoInvoke  bool   `json:"auto_invoke,omitempty"`
+	TrustPolicy string `json:"trust_policy,omitempty"`
+	SelfImprove string `json:"self_improve,omitempty"`
+}
+
+type MCPConfig struct {
+	Enabled bool              `json:"enabled,omitempty"`
+	Servers []MCPServerConfig `json:"servers,omitempty"`
+}
+
+type MCPConfigResponse struct {
+	Config  MCPConfig `json:"config"`
+	Enabled bool      `json:"enabled"`
+	Status  string    `json:"status"`
+}
+
+type MCPConfigUpdate struct {
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+type MCPServerUpdate struct {
+	Name            *string  `json:"name,omitempty"`
+	Enabled         *bool    `json:"enabled,omitempty"`
+	Transport       *string  `json:"transport,omitempty"`
+	Command         *string  `json:"command,omitempty"`
+	Args            []string `json:"args,omitempty"`
+	Endpoint        *string  `json:"endpoint,omitempty"`
+	ToolPrefix      *string  `json:"tool_prefix,omitempty"`
+	ReadOnly        *bool    `json:"read_only,omitempty"`
+	RequireApproval *bool    `json:"require_approval,omitempty"`
+	TimeoutSeconds  *int     `json:"timeout_seconds,omitempty"`
+}
+
+type MCPServerConfig struct {
+	ID              string            `json:"id"`
+	Name            string            `json:"name,omitempty"`
+	Enabled         bool              `json:"enabled,omitempty"`
+	Transport       string            `json:"transport,omitempty"`
+	Command         string            `json:"command,omitempty"`
+	Args            []string          `json:"args,omitempty"`
+	Env             map[string]string `json:"env,omitempty"`
+	Endpoint        string            `json:"endpoint,omitempty"`
+	ToolPrefix      string            `json:"tool_prefix,omitempty"`
+	ReadOnly        bool              `json:"read_only,omitempty"`
+	RequireApproval bool              `json:"require_approval,omitempty"`
+	TimeoutSeconds  int               `json:"timeout_seconds,omitempty"`
+}
+
+// WebSearchConfig stores the web search provider choice and credentials.
+type WebSearchConfig struct {
+	Provider  string `json:"provider,omitempty"`
+	APIKey    string `json:"api_key,omitempty"` // legacy field, migrated on read
+	TavilyKey string `json:"tavily_key,omitempty"`
+	SerperKey string `json:"serper_key,omitempty"`
+	BaseURL   string `json:"base_url,omitempty"`
+}
+
+type WebSearchConfigResponse struct {
+	Config   WebSearchConfig `json:"config"`
+	Provider string          `json:"provider"`
+	Status   string          `json:"status"`
+}
+
+const (
+	WebSearchProviderDDG     = "ddg"
+	WebSearchProviderTavily  = "tavily"
+	WebSearchProviderSerper  = "serper"
+	WebSearchProviderSearXNG = "searxng"
+)
 
 type ExternalAgentConfig struct {
 	Enabled bool   `json:"enabled,omitempty"`
@@ -245,8 +320,27 @@ type ProviderSetupResponse struct {
 	Provider ProviderSetupItem `json:"provider"`
 }
 
+const (
+	ProviderModelStatusOK          = "ok"
+	ProviderModelStatusRequiresKey = "requires_key"
+	ProviderModelStatusAuthError   = "auth_error"
+	ProviderModelStatusUnavailable = "unavailable"
+	ProviderModelStatusUnsupported = "unsupported"
+
+	ProviderModelSourceLiveCatalog   = "live_catalog"
+	ProviderModelSourcePublicCatalog = "public_catalog"
+	ProviderModelSourceConfiguredKey = "configured_key"
+	ProviderModelSourceManual        = "manual"
+)
+
 type ProviderModelsResponse struct {
-	Models []string `json:"models"`
+	Models         []string                  `json:"models"`
+	Metadata       []providers.ModelMetadata `json:"metadata,omitempty"`
+	Status         string                    `json:"status,omitempty"`
+	Source         string                    `json:"source,omitempty"`
+	Message        string                    `json:"message,omitempty"`
+	RequiresAPIKey bool                      `json:"requires_api_key,omitempty"`
+	ManualInput    bool                      `json:"manual_input,omitempty"`
 }
 
 type ProviderSetupOKResponse struct {

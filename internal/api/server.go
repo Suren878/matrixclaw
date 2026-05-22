@@ -11,12 +11,14 @@ import (
 	"github.com/Suren878/matrixclaw/internal/automation"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/setup"
+	"github.com/Suren878/matrixclaw/internal/skills"
 )
 
 type Server struct {
 	core         *core.Core
 	automation   *automation.Service
 	storage      storageStore
+	skills       *skills.Service
 	mux          *http.ServeMux
 	setup        *setup.Service
 	adminReload  func(context.Context) error
@@ -62,6 +64,10 @@ func (s *Server) SetAutomationService(service *automation.Service) {
 
 func (s *Server) SetStorageStore(store storageStore) {
 	s.storage = store
+}
+
+func (s *Server) SetSkillsService(service *skills.Service) {
+	s.skills = service
 }
 
 func (s *Server) SetAPIToken(token string) {
@@ -136,6 +142,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/v1/modules/storage/temp/", s.handleStorageTempByPath)
 	s.mux.HandleFunc("/v1/modules/voice", s.handleVoiceModules)
 	s.mux.HandleFunc("/v1/modules/voice/", s.handleVoiceModuleByID)
+	s.mux.HandleFunc("/v1/modules/web-search", s.handleWebSearch)
+	s.mux.HandleFunc("/v1/modules/mcp", s.handleMCP)
+	s.mux.HandleFunc("/v1/modules/mcp/", s.handleMCPByID)
+	s.mux.HandleFunc("/v1/modules/skills", s.handleSkills)
+	s.mux.HandleFunc("/v1/modules/skills/", s.handleSkillByID)
 	s.mux.HandleFunc("/v1/approvals", s.handleApprovals)
 	s.mux.HandleFunc("/v1/approvals/", s.handleApprovalByID)
 	s.mux.HandleFunc("/v1/events", s.handleEvents)

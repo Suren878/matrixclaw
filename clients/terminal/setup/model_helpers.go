@@ -29,10 +29,6 @@ func max(left int, right int) int {
 	return right
 }
 
-func sameProviderID(left string, right string) bool {
-	return strings.EqualFold(strings.TrimSpace(left), strings.TrimSpace(right))
-}
-
 func cloneDraft(d setup.Draft) setup.Draft {
 	out := d
 	if d.Providers != nil {

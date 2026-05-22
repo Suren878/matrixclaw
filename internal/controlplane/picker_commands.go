@@ -120,6 +120,10 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 			return speechToTextCommand()
 		case "agents":
 			return externalAgentsCommand()
+		case "skills":
+			return skillsCommand()
+		case "mcp":
+			return mcpCommand()
 		case "cancel":
 			return ""
 		default:
@@ -347,6 +351,156 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 			return ""
 		default:
 			return storageTempFileCommand(contextID)
+		}
+	case PickerSkills:
+		switch {
+		case itemID == "":
+			return skillsCommand()
+		case itemID == "library", itemID == "review", itemID == "installed", itemID == "drafts", itemID == "usage", itemID == "add":
+			return skillsCommand(itemID)
+		case itemID == "install", itemID == "import":
+			return skillsCommand("import")
+		case itemID == "create":
+			return skillsCommand("create")
+		case itemID == "ai-create":
+			return skillsCommand("ai-create")
+		case itemID == "search":
+			return skillSearchCommand()
+		case itemID == "back":
+			return modulesCommand()
+		case itemID == "cancel":
+			return ""
+		case itemID == "empty":
+			return skillsCommand()
+		default:
+			return skillsCommand(itemID)
+		}
+	case PickerSkillsSection:
+		section := contextID
+		if section == "" {
+			section = "library"
+		}
+		switch itemID {
+		case "":
+			return skillsCommand(section)
+		case "back":
+			return skillsCommand()
+		case "cancel":
+			return ""
+		case "empty":
+			return skillsCommand(section)
+		case "manual":
+			return skillsCommand("create")
+		case "ai":
+			return skillsCommand("ai-create")
+		case "import":
+			return skillsCommand("import")
+		default:
+			return skillsCommand(section, itemID)
+		}
+	case PickerSkill:
+		section, skillID := splitSkillPickerContext(contextID)
+		if skillID == "" {
+			return skillsCommand()
+		}
+		switch itemID {
+		case "view":
+			return skillsCommand(section, skillID, "view")
+		case "trust", "trust-enable", "quarantine", "archive", "restore", "remove", "enable", "disable", "pin", "unpin", "keep", "edit", "edit-metadata", "edit-body":
+			return skillsCommand(section, skillID, itemID)
+		case "back":
+			return skillsCommand(section)
+		case "cancel":
+			return ""
+		default:
+			return skillsCommand(section, skillID)
+		}
+	case PickerSessionSkills:
+		switch itemID {
+		case "":
+			return sessionSkillsCommand()
+		case "back", "cancel":
+			return ""
+		case "empty":
+			return sessionSkillsCommand()
+		default:
+			return sessionSkillCommand(itemID)
+		}
+	case PickerSessionSkill:
+		if contextID == "" {
+			return sessionSkillsCommand()
+		}
+		switch itemID {
+		case "view", "use", "unload":
+			return sessionSkillCommand(contextID, itemID)
+		case "back":
+			return sessionSkillsCommand()
+		case "cancel":
+			return ""
+		default:
+			return sessionSkillCommand(contextID)
+		}
+	case PickerMCP:
+		switch itemID {
+		case "":
+			return mcpCommand()
+		case "enabled":
+			return mcpCommand("enabled")
+		case "back":
+			return modulesCommand()
+		case "cancel":
+			return ""
+		case "empty":
+			return mcpCommand()
+		default:
+			return mcpServerCommand(itemID)
+		}
+	case PickerMCPEnabled:
+		switch itemID {
+		case "yes":
+			return mcpCommand("set-enabled", "yes")
+		case "no":
+			return mcpCommand("set-enabled", "no")
+		case "back":
+			return mcpCommand()
+		case "cancel":
+			return ""
+		default:
+			return mcpCommand("enabled")
+		}
+	case PickerMCPServer:
+		if contextID == "" {
+			return mcpCommand()
+		}
+		switch itemID {
+		case "enabled":
+			return mcpServerCommand(contextID, "enabled")
+		case "info":
+			return mcpServerCommand(contextID, "info")
+		case "edit":
+			return mcpServerCommand(contextID, "edit")
+		case "back":
+			return mcpCommand()
+		case "cancel":
+			return ""
+		default:
+			return mcpServerCommand(contextID)
+		}
+	case PickerMCPServerOn:
+		if contextID == "" {
+			return mcpCommand()
+		}
+		switch itemID {
+		case "yes":
+			return mcpServerCommand(contextID, "set-enabled", "yes")
+		case "no":
+			return mcpServerCommand(contextID, "set-enabled", "no")
+		case "back":
+			return mcpServerCommand(contextID)
+		case "cancel":
+			return ""
+		default:
+			return mcpServerCommand(contextID, "enabled")
 		}
 	case PickerServer:
 		switch itemID {

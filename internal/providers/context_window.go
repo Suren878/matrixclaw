@@ -78,40 +78,43 @@ func RegisterContextWindowTokens(providerID string, providerType string, modelID
 		return
 	}
 	contextWindowCacheOnce.Do(loadContextWindowCache)
-	key := contextWindowProviderKey(providerID, modelID)
-	if key == "" {
-		key = contextWindowTypeKey(providerType, modelID)
+	for _, key := range contextWindowKeys(providerID, providerType, modelID) {
+		if key == "" {
+			continue
+		}
+		contextWindowOverrides.Lock()
+		contextWindowOverrides.values[key] = tokens
+		contextWindowOverrides.Unlock()
+		modelMetadataOverrides.Lock()
+		existing := modelMetadataOverrides.values[key]
+		existing.ContextWindow = tokens
+		modelMetadataOverrides.values[key] = existing
+		modelMetadataOverrides.Unlock()
 	}
-	if key == "" {
-		return
-	}
-	contextWindowOverrides.Lock()
-	contextWindowOverrides.values[key] = tokens
-	contextWindowOverrides.Unlock()
 	saveContextWindowCache()
 }
 
 func ResolveContextWindowTokens(providerID string, providerType string, modelID string) int {
-	contextWindowCacheOnce.Do(loadContextWindowCache)
+	return ResolveModelMetadata(providerID, providerType, modelID).ContextWindow
+}
+
+func resolveStaticContextWindowTokens(providerID string, providerType string, modelID string) (int, ModelMetadataSource) {
 	model := normalizeContextModelID(modelID)
 	if model == "" {
-		return 0
+		return 0, ""
 	}
 	providerID = NormalizeProviderID(providerID)
 	providerType = NormalizeProviderType(providerType)
-	if tokens := lookupContextWindowOverride(providerID, providerType, model); tokens > 0 {
-		return tokens
-	}
 	if providerID == "openai-codex" || providerType == TypeOpenAICodex {
 		if tokens := matchContextWindow(model, codexSubscriptionContextWindows); tokens > 0 {
-			return tokens
+			return tokens, ModelMetadataSourceStaticRule
 		}
-		return DefaultFallbackContextWindowTokens
+		return DefaultFallbackContextWindowTokens, ModelMetadataSourceFallback
 	}
 	if tokens := matchContextWindow(model, providerContextWindows); tokens > 0 {
-		return tokens
+		return tokens, ModelMetadataSourceStaticRule
 	}
-	return DefaultFallbackContextWindowTokens
+	return DefaultFallbackContextWindowTokens, ModelMetadataSourceFallback
 }
 
 func lookupContextWindowOverride(providerID string, providerType string, modelID string) int {

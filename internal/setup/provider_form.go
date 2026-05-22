@@ -57,6 +57,7 @@ type ProviderFormField struct {
 	Sensitive bool
 	Editable  bool
 	Picker    bool
+	Disabled  bool
 }
 
 type ProviderFormChoice struct {
@@ -65,6 +66,15 @@ type ProviderFormChoice struct {
 	Status   string
 	Value    string
 	Selected bool
+}
+
+type ProviderModelPickerState struct {
+	Picker        bool
+	Disabled      bool
+	Status        string
+	ManualInput   bool
+	RequiresKey   bool
+	PublicCatalog bool
 }
 
 func ProviderFormSpecForDraft(provider ProviderDraft) ProviderFormSpec {
@@ -105,9 +115,10 @@ func ProviderFormSpecFromInput(input ProviderFormSpecInput) ProviderFormSpec {
 	providerID := providers.NormalizeProviderID(input.ID)
 	catalogID := providers.NormalizeProviderID(input.CatalogID)
 	providerType := providers.NormalizeOptionalProviderType(input.Type)
+	policy := providers.PolicyForProvider(firstNonEmptyTrimmed(catalogID, providerID), providerType)
 	custom := input.Custom
 	if !input.CustomKnown {
-		custom = catalogID == ""
+		custom = !policy.Known
 	}
 	capabilities := input.Capabilities
 	reasoningOptions := []string(nil)
@@ -160,7 +171,7 @@ func ProviderFormSpecFromInput(input ProviderFormSpecInput) ProviderFormSpec {
 		})
 	}
 
-	if providerType != providers.TypeOpenAICodex {
+	if policy.RequiresAPIKey {
 		fields = append(fields, ProviderFormField{
 			ID:        ProviderFormFieldAPIKey,
 			Label:     "API key",
@@ -171,17 +182,17 @@ func ProviderFormSpecFromInput(input ProviderFormSpecInput) ProviderFormSpec {
 			Editable:  true,
 		})
 	}
-	fields = append(fields,
-		ProviderFormField{
-			ID:       ProviderFormFieldModel,
-			Label:    "Model",
-			Value:    strings.TrimSpace(input.Model),
-			Status:   strings.TrimSpace(input.Model),
-			Required: true,
-			Editable: true,
-			Picker:   !custom && capabilities.ModelDiscovery,
-		},
-	)
+	modelPicker := ProviderModelPickerStateForInput(input, custom, capabilities, policy)
+	fields = append(fields, ProviderFormField{
+		ID:       ProviderFormFieldModel,
+		Label:    "Model",
+		Value:    strings.TrimSpace(input.Model),
+		Status:   modelPicker.Status,
+		Required: true,
+		Editable: true,
+		Picker:   modelPicker.Picker,
+		Disabled: modelPicker.Disabled,
+	})
 
 	if capabilities.ReasoningEffort {
 		fields = append(fields, ProviderFormField{
@@ -217,12 +228,32 @@ func ProviderFormSpecFromInput(input ProviderFormSpecInput) ProviderFormSpec {
 	}
 }
 
+func ProviderModelPickerStateForInput(input ProviderFormSpecInput, custom bool, capabilities providers.Capabilities, policy providers.ProviderPolicy) ProviderModelPickerState {
+	picker := !custom && capabilities.ModelDiscovery
+	state := ProviderModelPickerState{
+		Picker:        picker,
+		ManualInput:   !picker,
+		RequiresKey:   policy.RequiresAPIKey,
+		PublicCatalog: policy.PublicModelCatalog,
+		Status:        strings.TrimSpace(input.Model),
+	}
+	if !picker {
+		return state
+	}
+	keyAvailable := strings.TrimSpace(input.APIKey) != "" || input.HasStoredAPIKey
+	if policy.RequiresAPIKey && !policy.PublicModelCatalog && !keyAvailable {
+		state.Disabled = true
+		state.Status = "API key required"
+	}
+	return state
+}
+
 func providerBaseURLOptions(providerID string) []providers.BaseURLOption {
-	entry, ok := providers.CatalogEntryByID(providerID)
-	if !ok || len(entry.BaseURLOptions) == 0 {
+	options := providers.PolicyForProvider(providerID, "").BaseURLOptions
+	if len(options) == 0 {
 		return nil
 	}
-	return append([]providers.BaseURLOption(nil), entry.BaseURLOptions...)
+	return options
 }
 
 func providerBaseURLValues(options []providers.BaseURLOption) []string {

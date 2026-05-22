@@ -49,6 +49,9 @@ func (d *Dispatcher) handleProviderEditStep(ctx context.Context, session *core.S
 				), nil
 			}
 		case "model":
+			if message := providerEditModelDisabledMessage(provider, data); message != "" {
+				return providerEditFormResult(provider, data, message), nil
+			}
 			if providerEditModelUsesPicker(provider, data) {
 				return d.providerModelPicker(ctx, provider, data), nil
 			}
@@ -110,20 +113,20 @@ func (d *Dispatcher) providerEditData(ctx context.Context, raw string) (setup.Pr
 
 func (d *Dispatcher) providerModelPicker(ctx context.Context, provider setup.ProviderSetupItem, data setup.ProviderFormState) Result {
 	token := encodeCustomProviderFormToken(data)
-	models, err := d.providers.ProviderModels(ctx, provider.ID, providerUpdateFromForm(provider, data, false))
+	response, err := d.providers.ProviderModelCatalog(ctx, provider.ID, providerUpdateFromForm(provider, data, false))
 	if err != nil {
-		return customProviderFieldPrompt(
-			"Edit "+firstNonEmptyTrimmed(provider.Name, provider.ID),
-			"model",
-			data,
-			"Could not load remote models: "+err.Error()+". Enter the model manually.",
-			providerEditSetCommandPrefix("model", provider.ID, token),
-			"",
-		)
+		return providerEditFormResult(provider, data, "Could not load remote models: "+err.Error())
+	}
+	if response.Status != setup.ProviderModelStatusOK {
+		message := setup.ProviderModelCatalogMessage(response)
+		if setup.ProviderModelCatalogAllowsManualInput(response) {
+			return providerEditManualModelPrompt(provider, data, token, setup.ProviderModelCatalogManualMessage(response))
+		}
+		return providerEditFormResult(provider, data, message)
 	}
 	current := strings.TrimSpace(data.Model)
-	items := make([]PickerItem, 0, len(models)+1)
-	for _, modelID := range models {
+	items := make([]PickerItem, 0, len(response.Models)+1)
+	for _, modelID := range response.Models {
 		modelID = strings.TrimSpace(modelID)
 		if modelID == "" {
 			continue
@@ -144,6 +147,17 @@ func (d *Dispatcher) providerModelPicker(ctx context.Context, provider setup.Pro
 	}
 }
 
+func providerEditManualModelPrompt(provider setup.ProviderSetupItem, data setup.ProviderFormState, token string, message string) Result {
+	return customProviderFieldPrompt(
+		"Edit "+firstNonEmptyTrimmed(provider.Name, provider.ID),
+		"model",
+		data,
+		message,
+		providerEditSetCommandPrefix("model", provider.ID, token),
+		"",
+	)
+}
+
 func providerEditBaseURLUsesPicker(provider setup.ProviderSetupItem, data setup.ProviderFormState) bool {
 	spec := providerEditFormSpec(provider, data)
 	field, ok := spec.Field(setup.ProviderFormFieldBaseURL)
@@ -153,7 +167,16 @@ func providerEditBaseURLUsesPicker(provider setup.ProviderSetupItem, data setup.
 func providerEditModelUsesPicker(provider setup.ProviderSetupItem, data setup.ProviderFormState) bool {
 	spec := providerEditFormSpec(provider, data)
 	field, ok := spec.Field(setup.ProviderFormFieldModel)
-	return ok && field.Picker
+	return ok && field.Picker && !field.Disabled
+}
+
+func providerEditModelDisabledMessage(provider setup.ProviderSetupItem, data setup.ProviderFormState) string {
+	spec := providerEditFormSpec(provider, data)
+	field, ok := spec.Field(setup.ProviderFormFieldModel)
+	if ok && field.Disabled {
+		return "Enter an API key before loading models."
+	}
+	return ""
 }
 
 func providerEditFormSpec(provider setup.ProviderSetupItem, data setup.ProviderFormState) setup.ProviderFormSpec {
@@ -205,9 +228,7 @@ func formFromProvider(provider setup.ProviderSetupItem) setup.ProviderFormState 
 	providerType := providerFormType(provider)
 	defaultModel := strings.TrimSpace(provider.DefaultModel)
 	if defaultModel == "" {
-		if entry, ok := providers.CatalogEntryByID(catalogID); ok {
-			defaultModel = strings.TrimSpace(entry.DefaultModel)
-		}
+		defaultModel = strings.TrimSpace(providers.PolicyForProvider(catalogID, providerType).DefaultModel)
 	}
 	return setup.ProviderFormState{
 		Name:            firstNonEmptyTrimmed(provider.Name, provider.ID),
@@ -239,14 +260,14 @@ func providerEditValidationMessage(provider setup.ProviderSetupItem, data setup.
 		if strings.TrimSpace(data.Name) == "" {
 			return "Provider name is required."
 		}
-		if strings.TrimSpace(data.BaseURL) == "" {
-			return "Base URL is required."
-		}
+	}
+	if field, ok := providerEditFormSpec(provider, data).Field(setup.ProviderFormFieldBaseURL); ok && field.Required && strings.TrimSpace(data.BaseURL) == "" {
+		return "Base URL is required."
 	}
 	if strings.TrimSpace(data.Model) == "" {
 		return "Model is required."
 	}
-	if !isOpenAICodexProvider(provider) && !provider.Configured && strings.TrimSpace(data.APIKey) == "" && strings.TrimSpace(provider.APIKeyPreview) == "" {
+	if providerPolicy(provider).RequiresAPIKey && !provider.Configured && strings.TrimSpace(data.APIKey) == "" && strings.TrimSpace(provider.APIKeyPreview) == "" {
 		return "API key is required."
 	}
 	return ""
@@ -263,10 +284,7 @@ func providerFormType(provider setup.ProviderSetupItem) string {
 	if providerType := strings.TrimSpace(provider.Type); providerType != "" {
 		return providerType
 	}
-	if entry, ok := providers.CatalogEntryByID(providerFormCatalogID(provider)); ok {
-		return entry.Type
-	}
-	return ""
+	return providers.PolicyForProvider(providerFormCatalogID(provider), "").Type
 }
 
 func providerFormCapabilities(provider setup.ProviderSetupItem) providers.Capabilities {

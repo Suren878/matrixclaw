@@ -7,26 +7,34 @@ type ProviderProfile struct {
 	Model                   string
 	ProviderType            string
 	RuntimeProviderType     string
+	AuthMode                ProviderAuthMode
+	Transport               ProviderTransport
 	RuntimeProfile          RuntimeProfile
 	Capabilities            ModelCapabilities
 	SupportsReasoningEffort bool
+	OpenAIChat              OpenAIChatOptions
 }
 
 func ProfileForProvider(providerType string) ProviderProfile {
 	return ProfileForModel("", providerType, "")
 }
 
+func (p ProviderProfile) IsZero() bool {
+	return p.ProviderID == "" && p.ProviderType == "" && p.RuntimeProviderType == ""
+}
+
 func ProfileForModel(providerID string, providerType string, modelID string) ProviderProfile {
 	providerID = NormalizeProviderID(providerID)
 	providerType = NormalizeProviderType(providerType)
 	modelID = strings.TrimSpace(modelID)
+	policy := PolicyForProvider(providerID, providerType)
 	capabilitySet := ResolveModelCapabilities(ModelCapabilityInput{
 		ProviderID:   providerID,
 		ProviderType: providerType,
 		ModelID:      modelID,
 	})
 	capabilities := capabilitySet.RuntimeCapabilities
-	runtimeProfile := runtimeProfileDefaults(providerType)
+	runtimeProfile := runtimeProfileDefaults(policy.RuntimeProviderType)
 	if capabilities.ToolSchemaDialect != "" {
 		runtimeProfile.ToolSchemaDialect = capabilities.ToolSchemaDialect
 	}
@@ -39,10 +47,13 @@ func ProfileForModel(providerID string, providerType string, modelID string) Pro
 		ProviderID:              providerID,
 		Model:                   modelID,
 		ProviderType:            providerType,
-		RuntimeProviderType:     providerType,
+		RuntimeProviderType:     policy.RuntimeProviderType,
+		AuthMode:                policy.AuthMode,
+		Transport:               policy.Transport,
 		RuntimeProfile:          runtimeProfile,
 		Capabilities:            capabilities,
 		SupportsReasoningEffort: capabilities.ReasoningEffort,
+		OpenAIChat:              cloneOpenAIChatOptions(policy.OpenAIChat),
 	}
 	return profile
 }

@@ -2,19 +2,18 @@ package setup
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
 	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	setupcore "github.com/Suren878/matrixclaw/internal/setup"
 )
 
 type providerModelsLoadedMsg struct {
-	seq    int
-	models []string
-	err    error
+	seq      int
+	response setupcore.ProviderModelsResponse
+	err      error
 }
 
 func (m *model) providerModelRows() []listEntry {
@@ -38,8 +37,8 @@ func (m *model) openProviderModelPicker(ctx context.Context) tea.Cmd {
 	provider := m.editingProvider
 	m.screen = screenProviderModelList
 	return func() tea.Msg {
-		models, err := m.service.ProviderModels(ctx, provider)
-		return providerModelsLoadedMsg{seq: seq, models: models, err: err}
+		response, err := m.service.ProviderModelCatalog(ctx, provider)
+		return providerModelsLoadedMsg{seq: seq, response: response, err: err}
 	}
 }
 
@@ -48,22 +47,19 @@ func (m *model) openProviderModelTextEditor(message string) {
 	m.formError = strings.TrimSpace(message)
 }
 
-func modelDiscoveryErrorMessage(err error) string {
-	if err == nil {
-		return ""
-	}
-	return fmt.Sprintf("Could not load remote models: %s. Enter the model manually.", err)
-}
-
-func (m *model) loadProviderModels(ctx context.Context) error {
-	models, err := m.service.ProviderModels(ctx, m.editingProvider)
+func (m *model) loadProviderModels(ctx context.Context) (setupcore.ProviderModelsResponse, error) {
+	response, err := m.service.ProviderModelCatalog(ctx, m.editingProvider)
 	if err != nil {
-		return err
+		return setupcore.ProviderModelsResponse{}, err
 	}
-	if len(models) == 0 {
-		return errors.New("no models available")
+	if response.Status == setupcore.ProviderModelStatusOK && len(response.Models) == 0 {
+		response.Status = setupcore.ProviderModelStatusUnavailable
+		response.Message = "No models available"
 	}
-	m.providerModels = append([]string(nil), models...)
+	if response.Status != setupcore.ProviderModelStatusOK {
+		return response, nil
+	}
+	m.providerModels = append([]string(nil), response.Models...)
 	m.providerModelCursor = 0
 	for i, modelID := range m.providerModels {
 		if strings.TrimSpace(modelID) == strings.TrimSpace(m.editingProvider.Model) {
@@ -71,7 +67,7 @@ func (m *model) loadProviderModels(ctx context.Context) error {
 			break
 		}
 	}
-	return nil
+	return response, nil
 }
 
 func (m *model) handleProviderModelsLoaded(msg providerModelsLoadedMsg) (tea.Model, tea.Cmd) {
@@ -80,14 +76,25 @@ func (m *model) handleProviderModelsLoaded(msg providerModelsLoadedMsg) (tea.Mod
 	}
 	m.providerModelsLoading = false
 	if msg.err != nil {
-		m.openProviderModelTextEditor(modelDiscoveryErrorMessage(msg.err))
+		m.formError = "Could not load remote models: " + msg.err.Error()
+		m.screen = screenProviderForm
 		return m, nil
 	}
-	if len(msg.models) == 0 {
-		m.openProviderModelTextEditor(modelDiscoveryErrorMessage(errors.New("no models available")))
+	response := msg.response
+	if response.Status == setupcore.ProviderModelStatusOK && len(response.Models) == 0 {
+		response.Status = setupcore.ProviderModelStatusUnavailable
+		response.Message = "No models available"
+	}
+	if response.Status != setupcore.ProviderModelStatusOK {
+		if setupcore.ProviderModelCatalogAllowsManualInput(response) {
+			m.openProviderModelTextEditor(setupcore.ProviderModelCatalogManualMessage(response))
+		} else {
+			m.formError = setupcore.ProviderModelCatalogMessage(response)
+			m.screen = screenProviderForm
+		}
 		return m, nil
 	}
-	m.providerModels = append([]string(nil), msg.models...)
+	m.providerModels = append([]string(nil), response.Models...)
 	m.providerModelCursor = 0
 	for i, modelID := range m.providerModels {
 		if strings.TrimSpace(modelID) == strings.TrimSpace(m.editingProvider.Model) {

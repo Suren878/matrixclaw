@@ -71,7 +71,6 @@ internal/externalagents/
     client.go
     process.go
     types.go
-    *_test.go
 ```
 
 The only Codex-specific package should be `codexapp`.

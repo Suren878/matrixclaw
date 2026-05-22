@@ -112,6 +112,7 @@ type providerItemSource struct {
 	name            string
 	providerTyp     string
 	capabilities    providers.Capabilities
+	requiresBaseURL bool
 	baseURL         string
 	model           string
 	reasoningEffort string
@@ -133,6 +134,7 @@ func providerDraftItemSource(provider ProviderDraft) providerItemSource {
 		name:            provider.Name,
 		providerTyp:     provider.Type,
 		capabilities:    capabilitySet.ProviderCapabilities,
+		requiresBaseURL: providers.PolicyForProvider(catalogID, provider.Type).RequiresBaseURL,
 		baseURL:         provider.BaseURL,
 		model:           provider.Model,
 		reasoningEffort: providers.NormalizeReasoningEffortForModel(catalogID, provider.Type, provider.Model, provider.ReasoningEffort),
@@ -155,6 +157,7 @@ func providerConfigItemSource(provider ProviderConfig) providerItemSource {
 		name:            provider.Name,
 		providerTyp:     provider.Type,
 		capabilities:    capabilitySet.ProviderCapabilities,
+		requiresBaseURL: providers.PolicyForProvider(catalogID, provider.Type).RequiresBaseURL,
 		baseURL:         provider.BaseURL,
 		model:           provider.Model,
 		reasoningEffort: providers.NormalizeReasoningEffortForModel(catalogID, provider.Type, provider.Model, provider.ReasoningEffort),
@@ -164,10 +167,10 @@ func providerConfigItemSource(provider ProviderConfig) providerItemSource {
 	}
 }
 
-func providerSetupItems(providers []providerItemSource, activeProviderID string, options []ProviderOption) []ProviderSetupItem {
-	items := make([]ProviderSetupItem, 0, len(providers)+len(options))
-	seen := make(map[string]struct{}, len(providers))
-	for _, provider := range providers {
+func providerSetupItems(providerSources []providerItemSource, activeProviderID string, options []ProviderOption) []ProviderSetupItem {
+	items := make([]ProviderSetupItem, 0, len(providerSources)+len(options))
+	seen := make(map[string]struct{}, len(providerSources))
+	for _, provider := range providerSources {
 		id := strings.TrimSpace(provider.id)
 		if id == "" {
 			continue
@@ -175,22 +178,23 @@ func providerSetupItems(providers []providerItemSource, activeProviderID string,
 		active := sameProvider(id, activeProviderID)
 		if active {
 			items = append(items, providerSetupItem(provider, active))
-			seen[id] = struct{}{}
+			seen[providers.CanonicalProviderID(id)] = struct{}{}
 		}
 	}
-	for _, provider := range providers {
+	for _, provider := range providerSources {
 		id := strings.TrimSpace(provider.id)
 		if id == "" {
 			continue
 		}
-		if _, ok := seen[id]; ok {
+		seenID := providers.CanonicalProviderID(id)
+		if _, ok := seen[seenID]; ok {
 			continue
 		}
 		items = append(items, providerSetupItem(provider, false))
-		seen[id] = struct{}{}
+		seen[seenID] = struct{}{}
 	}
 	for _, option := range options {
-		if _, ok := seen[strings.TrimSpace(option.ID)]; ok {
+		if _, ok := seen[providers.CanonicalProviderID(option.ID)]; ok {
 			continue
 		}
 		items = append(items, providerOptionSetupItem(option))
@@ -215,7 +219,7 @@ func providerSetupItem(provider providerItemSource, active bool) ProviderSetupIt
 		Configured:      true,
 		Active:          active,
 		Implemented:     true,
-		RequiresBaseURL: strings.TrimSpace(provider.baseURL) != "",
+		RequiresBaseURL: provider.requiresBaseURL,
 		Capabilities:    provider.capabilities,
 		BaseURL:         provider.baseURL,
 		BaseURLOptions:  providerBaseURLOptions(firstNonEmptyTrimmed(provider.catalogID, provider.id)),
@@ -484,12 +488,30 @@ func (s *Service) SaveRuntimeConfigContext(ctx context.Context, draft Draft) (Ap
 }
 
 func (s *Service) ProviderModels(ctx context.Context, provider ProviderDraft) ([]string, error) {
+	result, err := s.ProviderModelCatalog(ctx, provider)
+	if err != nil {
+		return nil, err
+	}
+	if result.Status != ProviderModelStatusOK {
+		return nil, providerModelsResponseError(result)
+	}
+	return result.Models, nil
+}
+
+func (s *Service) ProviderModelCatalog(ctx context.Context, provider ProviderDraft) (ProviderModelsResponse, error) {
+	providerID := firstNonEmptyTrimmed(provider.CatalogID, provider.ID)
+	policy := providers.PolicyForProvider(providerID, provider.Type)
 	if !providers.ResolveModelCapabilities(providers.ModelCapabilityInput{
-		ProviderID:   firstNonEmptyTrimmed(provider.CatalogID, provider.ID),
+		ProviderID:   providerID,
 		ProviderType: provider.Type,
 		ModelID:      provider.Model,
 	}).ProviderCapabilities.ModelDiscovery {
-		return nil, fmt.Errorf("%s does not support model discovery", providerDisplayName(provider, ProviderOption{}, false))
+		return ProviderModelsResponse{
+			Status:      ProviderModelStatusUnsupported,
+			Source:      ProviderModelSourceManual,
+			Message:     fmt.Sprintf("%s does not support model discovery", providerDisplayName(provider, ProviderOption{}, false)),
+			ManualInput: true,
+		}, nil
 	}
 	if strings.TrimSpace(provider.APIKey) == "" {
 		existing, err := s.Load()
@@ -502,7 +524,15 @@ func (s *Service) ProviderModels(ctx context.Context, provider ProviderDraft) ([
 	if strings.TrimSpace(provider.APIKey) == "" {
 		provider.APIKey = providerAPIKeyFromEnvName(providerDraftAPIKeyEnvName(provider))
 	}
-	return providerdiscovery.Models(ctx, providerdiscovery.ModelDiscoveryInput{
+	if strings.TrimSpace(provider.APIKey) == "" && policy.RequiresAPIKey && !policy.PublicModelCatalog {
+		return ProviderModelsResponse{
+			Status:         ProviderModelStatusRequiresKey,
+			Source:         ProviderModelSourceManual,
+			Message:        "API key required",
+			RequiresAPIKey: true,
+		}, nil
+	}
+	models, err := providerdiscovery.Models(ctx, providerdiscovery.ModelDiscoveryInput{
 		ID:        provider.ID,
 		CatalogID: provider.CatalogID,
 		Type:      provider.Type,
@@ -510,12 +540,56 @@ func (s *Service) ProviderModels(ctx context.Context, provider ProviderDraft) ([
 		APIKey:    provider.APIKey,
 		Model:     provider.Model,
 	})
+	if err != nil {
+		status := ProviderModelStatusUnavailable
+		if isProviderModelAuthError(err) {
+			status = ProviderModelStatusAuthError
+		}
+		return ProviderModelsResponse{
+			Status:         status,
+			Source:         providerModelCatalogSource(policy, provider.APIKey),
+			Message:        "Could not load remote models: " + err.Error(),
+			RequiresAPIKey: policy.RequiresAPIKey,
+			ManualInput:    !policy.Known && status != ProviderModelStatusAuthError,
+		}, nil
+	}
+	if len(models) == 0 {
+		return ProviderModelsResponse{
+			Status:         ProviderModelStatusUnavailable,
+			Source:         providerModelCatalogSource(policy, provider.APIKey),
+			Message:        "No models available",
+			RequiresAPIKey: policy.RequiresAPIKey,
+			ManualInput:    !policy.Known,
+		}, nil
+	}
+	return ProviderModelsResponse{
+		Models:         models,
+		Metadata:       providerCatalogMetadata(firstNonEmptyTrimmed(provider.CatalogID, provider.ID), provider.Type, models),
+		Status:         ProviderModelStatusOK,
+		Source:         providerModelCatalogSource(policy, provider.APIKey),
+		RequiresAPIKey: policy.RequiresAPIKey,
+	}, nil
 }
 
-func (s *Service) ProviderModelsContext(ctx context.Context, providerID string, update ProviderSetupUpdate) ([]string, error) {
+func providerCatalogMetadata(providerID string, providerType string, models []string) []providers.ModelMetadata {
+	metadata := make([]providers.ModelMetadata, 0, len(models))
+	for _, model := range models {
+		item := providers.ResolveModelMetadata(providerID, providerType, model)
+		if strings.TrimSpace(item.ID) == "" {
+			continue
+		}
+		metadata = append(metadata, item)
+	}
+	if len(metadata) == 0 {
+		return nil
+	}
+	return metadata
+}
+
+func (s *Service) ProviderModelCatalogContext(ctx context.Context, providerID string, update ProviderSetupUpdate) (ProviderModelsResponse, error) {
 	draft, err := s.Draft()
 	if err != nil {
-		return nil, err
+		return ProviderModelsResponse{}, err
 	}
 	provider, ok := FindProviderDraft(draft, providerID)
 	if !ok {
@@ -523,15 +597,43 @@ func (s *Service) ProviderModelsContext(ctx context.Context, providerID string, 
 		if err != nil {
 			provider, err = s.providerDraftForSetupUpdate(draft, providerID, update)
 			if err != nil {
-				return nil, err
+				return ProviderModelsResponse{}, err
 			}
 		}
 	}
 	provider, err = applyProviderSetupUpdate(provider, update)
 	if err != nil {
-		return nil, err
+		return ProviderModelsResponse{}, err
 	}
-	return s.ProviderModels(ctx, provider)
+	return s.ProviderModelCatalog(ctx, provider)
+}
+
+func providerModelCatalogSource(policy providers.ProviderPolicy, apiKey string) string {
+	if policy.PublicModelCatalog {
+		return ProviderModelSourcePublicCatalog
+	}
+	if strings.TrimSpace(apiKey) != "" {
+		return ProviderModelSourceConfiguredKey
+	}
+	return ProviderModelSourceLiveCatalog
+}
+
+func providerModelsResponseError(response ProviderModelsResponse) error {
+	return errors.New(ProviderModelCatalogMessage(response))
+}
+
+func isProviderModelAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "401") ||
+		strings.Contains(message, "403") ||
+		strings.Contains(message, "unauthorized") ||
+		strings.Contains(message, "forbidden") ||
+		strings.Contains(message, "invalid api key") ||
+		strings.Contains(message, "incorrect api key") ||
+		strings.Contains(message, "permission")
 }
 
 func applyProviderSetupUpdate(provider ProviderDraft, update ProviderSetupUpdate) (ProviderDraft, error) {

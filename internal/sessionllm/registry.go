@@ -185,8 +185,27 @@ func (r *Registry) resolveProvider(providerID string) (ProviderSpec, bool) {
 }
 
 func (r *Registry) lookup(providerID string) (ProviderSpec, bool) {
-	cfg, ok := r.providers[strings.TrimSpace(providerID)]
-	return cfg, ok
+	providerID = strings.TrimSpace(providerID)
+	cfg, ok := r.providers[providerID]
+	if ok {
+		return cfg, true
+	}
+	canonicalID := providers.CanonicalProviderID(providerID)
+	if canonicalID == "" || canonicalID == providerID {
+		return ProviderSpec{}, false
+	}
+	for _, id := range r.order {
+		cfg, ok := r.providers[id]
+		if !ok {
+			continue
+		}
+		for _, candidate := range []string{cfg.ID, cfg.CatalogID} {
+			if providers.CanonicalProviderID(candidate) == canonicalID {
+				return cfg, true
+			}
+		}
+	}
+	return ProviderSpec{}, false
 }
 
 func runtimeConfigWithModel(provider ProviderSpec, model string) providerfactory.Config {

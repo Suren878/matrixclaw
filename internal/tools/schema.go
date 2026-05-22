@@ -118,4 +118,22 @@ var (
   "required": ["shell_id"],
   "additionalProperties": false
 }`)
+	webFetchInputSchema = rawSchema(`{
+  "type": "object",
+  "properties": {
+    "url": {"type": "string", "description": "URL to fetch (http or https)"},
+    "max_length": {"type": "integer", "minimum": 1000, "maximum": 100000, "description": "Maximum characters to return (default 20000)"}
+  },
+  "required": ["url"],
+  "additionalProperties": false
+}`)
+	webSearchInputSchema = rawSchema(`{
+  "type": "object",
+  "properties": {
+    "query": {"type": "string", "description": "Search query"},
+    "limit": {"type": "integer", "minimum": 1, "maximum": 20, "description": "Number of results (default 8)"}
+  },
+  "required": ["query"],
+  "additionalProperties": false
+}`)
 )

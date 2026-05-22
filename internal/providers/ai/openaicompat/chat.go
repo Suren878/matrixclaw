@@ -42,6 +42,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 		httpReq.Header.Set("Authorization", "Bearer "+r.apiKey)
 		httpReq.Header.Set("Content-Type", "application/json")
 		httpReq.Header.Set("Accept", "application/json")
+		applyDefaultHeaders(httpReq, r.headers)
 		if payload.Stream {
 			httpReq.Header.Set("Accept", "text/event-stream")
 		}
@@ -63,7 +64,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 				}
 				continue
 			}
-			if !retriedWithoutReasoning && shouldRetryWithoutReasoningEffort(payload, httpRes.StatusCode, resBody) {
+			if r.quirks.RetryUnsupportedReasoningEffort && !retriedWithoutReasoning && shouldRetryWithoutReasoningEffort(payload, httpRes.StatusCode, resBody) {
 				payload.ReasoningEffort = ""
 				body, err = json.Marshal(payload)
 				if err != nil {
@@ -73,7 +74,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 				attempt = -1
 				continue
 			}
-			if !retriedWithMaxCompletionTokens && shouldRetryWithMaxCompletionTokens(payload, httpRes.StatusCode, resBody) {
+			if r.quirks.RetryMaxTokensField && !retriedWithMaxCompletionTokens && shouldRetryWithMaxCompletionTokens(payload, httpRes.StatusCode, resBody) {
 				payload.MaxCompletionTokens = payload.MaxTokens
 				payload.MaxTokens = nil
 				body, err = json.Marshal(payload)
@@ -84,7 +85,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 				attempt = -1
 				continue
 			}
-			if !retriedWithReasoningContent && shouldRetryWithReasoningContent(payload, httpRes.StatusCode, resBody) {
+			if r.quirks.RetryAssistantReasoningContent && !retriedWithReasoningContent && shouldRetryWithReasoningContent(payload, httpRes.StatusCode, resBody) {
 				var changed bool
 				payload, changed = withMissingAssistantReasoningContent(payload)
 				if changed {
@@ -109,6 +110,26 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 			return providers.Response{}, fmt.Errorf("openaicompat: read response: %w", err)
 		}
 		return r.decodeChatResponse(resBody)
+	}
+}
+
+func applyDefaultHeaders(req *http.Request, headers map[string]string) {
+	for name, value := range headers {
+		name = strings.TrimSpace(name)
+		value = strings.TrimSpace(value)
+		if name == "" || value == "" || reservedHeader(name) {
+			continue
+		}
+		req.Header.Set(name, value)
+	}
+}
+
+func reservedHeader(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "authorization", "content-type", "accept":
+		return true
+	default:
+		return false
 	}
 }
 
