@@ -1,4 +1,4 @@
-package commandui
+package components
 
 type PromptData struct {
 	Title       string
@@ -17,7 +17,6 @@ func RenderPromptCard(frame Frame, data PromptData) string {
 			Inset:       1,
 			Active:      true,
 		})},
-		Help:  "enter save · esc cancel",
 		Error: data.Error,
 	})
 }

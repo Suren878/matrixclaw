@@ -1,10 +1,6 @@
 package controlplane
 
-import (
-	"strings"
-
-	"github.com/Suren878/matrixclaw/internal/commandcatalog"
-)
+import "github.com/Suren878/matrixclaw/internal/commandcatalog"
 
 type CommandID = commandcatalog.CommandID
 
@@ -43,13 +39,10 @@ const (
 	PickerPlan              PickerKind = "plan"
 	PickerModules           PickerKind = "modules"
 	PickerTextToSpeech      PickerKind = "text_to_speech"
-	PickerTTSProvider       PickerKind = "tts_provider"
 	PickerSpeechToText      PickerKind = "speech_to_text"
-	PickerVoiceEnabled      PickerKind = "voice_enabled"
 	PickerVoiceProvider     PickerKind = "voice_provider"
 	PickerExternalAgents    PickerKind = "external_agents"
 	PickerExternalAgent     PickerKind = "external_agent"
-	PickerExternalAgentOn   PickerKind = "external_agent_enabled"
 	PickerStorage           PickerKind = "storage"
 	PickerStorageFiles      PickerKind = "storage_files"
 	PickerStorageFile       PickerKind = "storage_file"
@@ -60,12 +53,9 @@ const (
 	PickerSessionSkill      PickerKind = "session_skill"
 	PickerSkills            PickerKind = "skills"
 	PickerSkillsSection     PickerKind = "skills_section"
-	PickerSkillEnabled      PickerKind = "skill_enabled"
 	PickerSkill             PickerKind = "skill"
 	PickerMCP               PickerKind = "mcp"
 	PickerMCPServer         PickerKind = "mcp_server"
-	PickerMCPEnabled        PickerKind = "mcp_enabled"
-	PickerMCPServerOn       PickerKind = "mcp_server_enabled"
 	PickerTasks             PickerKind = "tasks"
 	PickerTaskActions       PickerKind = "task_actions"
 	PickerTaskArchive       PickerKind = "task_archive"
@@ -85,7 +75,7 @@ type PickerData struct {
 	CloseCommand string
 	HasBack      bool
 	HasClose     bool
-	HideBackItem bool
+	Popup        bool
 	Items        []PickerItem
 }
 
@@ -101,8 +91,6 @@ type PickerItemRole string
 const (
 	PickerItemRoleNormal PickerItemRole = ""
 	PickerItemRoleDanger PickerItemRole = "danger"
-	PickerItemRoleBack   PickerItemRole = "back"
-	PickerItemRoleCancel PickerItemRole = "cancel"
 	PickerItemRoleAction PickerItemRole = "action"
 )
 
@@ -118,35 +106,6 @@ type PickerItem struct {
 	Role     PickerItemRole
 }
 
-func BackItem(label ...string) PickerItem {
-	return PickerItem{ID: "back", Title: pickerItemLabel("Back", label...), Role: PickerItemRoleBack}
-}
-
-func CloseItem(label ...string) PickerItem {
-	return PickerItem{ID: "cancel", Title: pickerItemLabel("Back", label...), Role: PickerItemRoleCancel, Command: ""}
-}
-
-func pickerItemLabel(fallback string, labels ...string) string {
-	for _, label := range labels {
-		if trimmed := strings.TrimSpace(label); trimmed != "" {
-			return trimmed
-		}
-	}
-	return fallback
-}
-
-func (item PickerItem) IsCancel() bool {
-	return item.Role == PickerItemRoleCancel
-}
-
-func (item PickerItem) IsBack() bool {
-	return item.Role == PickerItemRoleBack
-}
-
-func (item PickerItem) IsNavigation() bool {
-	return item.IsCancel() || item.IsBack()
-}
-
 func (item PickerItem) IsDanger() bool {
 	return item.Role == PickerItemRoleDanger
 }
@@ -157,7 +116,7 @@ func (item PickerItem) IsAction() bool {
 
 func (item PickerItem) NeedsSeparator() bool {
 	switch item.Role {
-	case PickerItemRoleCancel, PickerItemRoleBack, PickerItemRoleDanger, PickerItemRoleAction:
+	case PickerItemRoleDanger, PickerItemRoleAction:
 		return true
 	default:
 		return false

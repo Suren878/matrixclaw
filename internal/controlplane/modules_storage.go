@@ -19,8 +19,6 @@ func (d *Dispatcher) handleStorage(ctx context.Context, args string) (Result, er
 	}
 	rest := strings.TrimSpace(strings.TrimPrefix(args, fields[0]))
 	switch strings.ToLower(fields[0]) {
-	case "import":
-		return d.storageImport(ctx, rest)
 	case "temp":
 		return d.storageTempPicker(ctx)
 	case "temp-file":
@@ -35,6 +33,8 @@ func (d *Dispatcher) handleStorage(ctx context.Context, args string) (Result, er
 		return d.storageTempCleanup(ctx)
 	case "temp-cleanup-confirm":
 		return d.storageTempCleanupConfirmed(ctx)
+	case "temp-cleanup-settings":
+		return d.storageTempCleanupSettings(ctx)
 	case "temp-cleanup-mode":
 		return d.storageTempCleanupModePicker(ctx)
 	case "temp-toggle":

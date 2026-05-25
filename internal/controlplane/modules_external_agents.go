@@ -105,12 +105,12 @@ func (d *Dispatcher) externalAgentEnabledPicker(ctx context.Context, agentID str
 	}
 	return Result{
 		Handled: true,
-		Picker: NewPickerData(PickerExternalAgentOn, "Enable "+externalAgentTitle(agent)+" module?").
+		Picker: NewPickerData(PickerExternalAgent, externalAgentTitle(agent)).
 			Context(agent.ID).
 			Meta("Currently " + strings.ToLower(formatEnabled(agent.Enabled))).
-			Back(externalAgentCommand(agent.ID)).
-			Item(PickerItem{ID: "yes", Title: "Yes", Selected: agent.Enabled}).
-			Item(PickerItem{ID: "no", Title: "No", Selected: !agent.Enabled}).
+			Popup().
+			Item(PickerItem{ID: "on", Title: "On", Selected: agent.Enabled, Command: externalAgentSetEnabledCommand(agent.ID, "on")}).
+			Item(PickerItem{ID: "off", Title: "Off", Selected: !agent.Enabled, Command: externalAgentSetEnabledCommand(agent.ID, "off")}).
 			Ptr(),
 	}, nil
 }

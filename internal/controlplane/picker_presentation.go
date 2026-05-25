@@ -12,7 +12,6 @@ type PickerPresentationItem struct {
 	CompactLabel    string
 	Selected        bool
 	Disabled        bool
-	Navigation      bool
 	SeparatorBefore bool
 }
 
@@ -48,59 +47,25 @@ func PickerLegend(picker PickerData) string {
 		return "enter run · esc " + closeLabel
 	case PickerProvider, PickerProviderCustom:
 		return "enter select · esc " + closeLabel
-	case PickerPermissions, PickerExternalAgentOn, PickerVoiceEnabled:
+	case PickerPermissions:
 		return "enter apply · esc " + closeLabel
 	default:
 		return "enter select · esc " + closeLabel
 	}
 }
 
-func pickerPresentationStatus(kind PickerKind, selected bool, info string) string {
-	if !selected {
-		return info
-	}
-	info = strings.TrimSpace(info)
-	switch kind {
-	case PickerTextToSpeech, PickerSpeechToText:
-		return info
-	case PickerTTSProvider:
-		return info
-	case PickerVoiceProvider:
-		return trimLeadingActiveStatus(info)
-	case PickerExternalAgents, PickerExternalAgentOn:
-		return info
-	}
-	info = trimLeadingActiveStatus(info)
-	if info == "" {
-		return "Active"
-	}
-	return "Active · " + info
-}
-
-func trimLeadingActiveStatus(info string) string {
-	parts := strings.Split(info, "·")
-	for len(parts) > 0 && strings.EqualFold(strings.TrimSpace(parts[0]), "Active") {
-		parts = parts[1:]
-	}
-	for i := range parts {
-		parts[i] = strings.TrimSpace(parts[i])
-	}
-	return strings.TrimSpace(strings.Join(nonEmptyStrings(parts...), " · "))
-}
-
 func presentPickerItem(picker PickerData, item PickerItem) PickerPresentationItem {
 	title := PickerItemDisplayTitle(item)
 	info := PickerItemDisplayInfo(picker.Kind, item)
 	presented := PickerPresentationItem{
-		Item:       item,
-		Command:    PickerItemCommand(picker, item),
-		Title:      title,
-		Info:       info,
-		Selected:   item.Selected,
-		Disabled:   item.Disabled,
-		Navigation: item.IsNavigation(),
+		Item:     item,
+		Command:  PickerItemCommand(picker, item),
+		Title:    title,
+		Info:     info,
+		Selected: item.Selected,
+		Disabled: item.Disabled,
 	}
-	presented.Status = pickerPresentationStatus(picker.Kind, presented.Selected, presented.Info)
+	presented.Status = presented.Info
 	presented.Search = pickerPresentationSearch(presented)
 	presented.CompactLabel = pickerCompactLabel(picker.Kind, presented)
 	return presented
@@ -114,45 +79,17 @@ func pickerPresentationSearch(presented PickerPresentationItem) string {
 }
 
 func pickerCompactLabel(kind PickerKind, presented PickerPresentationItem) string {
-	if label, ok := pickerNavigationCompactLabel(presented); ok {
-		return label
-	}
 	title := presented.Title
 	if presented.Info != "" {
 		title += " · " + presented.Info
 	}
 	prefix := pickerCompactPrefix(kind, presented.Item)
-	if presented.Selected && kind != PickerTextToSpeech && kind != PickerSpeechToText {
-		return "✅ " + prefix + title
-	}
 	return prefix + title
-}
-
-func pickerNavigationCompactLabel(presented PickerPresentationItem) (string, bool) {
-	command := strings.TrimSpace(presented.Command)
-	switch {
-	case presented.Item.IsBack():
-		if command == "" {
-			return "✖️ Cancel", true
-		}
-		return "‹ Back", true
-	case presented.Item.IsCancel():
-		if command == "" {
-			return "✖️ Cancel", true
-		}
-		return "‹ Back", true
-	default:
-		return "", false
-	}
 }
 
 func pickerCompactPrefix(kind PickerKind, item PickerItem) string {
 	itemID := strings.TrimSpace(item.ID)
 	switch {
-	case item.IsCancel():
-		return "✖️ "
-	case item.IsBack():
-		return "‹ "
 	case item.IsDanger():
 		return "🗑️ "
 	case item.IsAction():
@@ -179,7 +116,7 @@ func pickerCompactPrefix(kind PickerKind, item PickerItem) string {
 		}
 	case PickerProvider, PickerProviderCustom:
 		return "🔌 "
-	case PickerTextToSpeech, PickerTTSProvider, PickerVoiceProvider:
+	case PickerTextToSpeech:
 		return "TTS "
 	case PickerSpeechToText:
 		return "STT "
@@ -194,8 +131,6 @@ func pickerCompactPrefix(kind PickerKind, item PickerItem) string {
 		default:
 			return ""
 		}
-	case PickerExternalAgentOn:
-		return "⚙️ "
 	case PickerSkills, PickerSkillsSection, PickerSkill, PickerSessionSkills, PickerSessionSkill:
 		return "📘 "
 	case PickerMCP, PickerMCPServer:

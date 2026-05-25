@@ -176,12 +176,13 @@ func (d *Dispatcher) voiceModuleEnabledPicker(ctx context.Context, moduleID stri
 	}
 	return Result{
 		Handled: true,
-		Picker: NewPickerData(PickerVoiceEnabled, module.Title).
+		Picker: NewPickerData(PickerVoiceProvider, module.Title).
 			Context(module.ID).
 			Meta("Module is " + strings.ToLower(formatEnabled(module.Enabled))).
-			Back(voiceModuleCommand(module.ID)).
-			Item(PickerItem{ID: "enable", Title: "Turn on", Info: module.Title, Selected: module.Enabled, Command: voiceModuleCommand(module.ID, "set-enabled", "enable")}).
-			Item(PickerItem{ID: "disable", Title: "Turn off", Info: module.Title, Selected: !module.Enabled, Command: voiceModuleCommand(module.ID, "set-enabled", "disable")}).
+			Popup().
+			Close(voiceModuleCommand(module.ID)).
+			Item(PickerItem{ID: "on", Title: "On", Info: module.Title, Selected: module.Enabled, Command: voiceModuleCommand(module.ID, "set-enabled", "on")}).
+			Item(PickerItem{ID: "off", Title: "Off", Info: module.Title, Selected: !module.Enabled, Command: voiceModuleCommand(module.ID, "set-enabled", "off")}).
 			Ptr(),
 	}, nil
 }
@@ -220,15 +221,14 @@ func (d *Dispatcher) voiceModuleProviderSelectPicker(ctx context.Context, module
 	if module.ID != setup.VoiceModuleTTS && module.ID != setup.VoiceModuleSTT {
 		return d.voiceModuleProviderPicker(ctx, moduleID)
 	}
-	kind := PickerTTSProvider
 	title := "TTS Provider"
 	if module.ID == setup.VoiceModuleSTT {
-		kind = PickerSpeechToText
 		title = "STT Provider"
 	}
-	picker := NewPickerData(kind, title).
+	picker := NewPickerData(PickerVoiceProvider, title).
 		Context(module.ID).
-		Back(voiceModuleCommand(module.ID)).
+		Popup().
+		Close(voiceModuleCommand(module.ID)).
 		Item(PickerItem{
 			ID:       "disabled",
 			Title:    "Disabled",

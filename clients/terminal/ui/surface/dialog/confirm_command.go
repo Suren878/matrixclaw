@@ -6,7 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 )
@@ -17,7 +17,7 @@ type ConfirmCommandData = controlplane.ConfirmData
 
 type ConfirmCommand struct {
 	data    ConfirmCommandData
-	state   commandui.ConfirmState
+	state   components.ConfirmState
 	loading bool
 	frame   int
 }
@@ -46,9 +46,9 @@ func (d *ConfirmCommand) HandleMsg(msg tea.Msg) Action {
 		return nil
 	}
 	switch d.state.Update(keyMsg.String()).Kind {
-	case commandui.EventCancel:
+	case components.EventCancel:
 		return d.cancelAction()
-	case commandui.EventSubmit:
+	case components.EventSubmit:
 		return ActionRunControlplaneCommand{Command: d.data.ConfirmCommand}
 	}
 	return nil
@@ -63,7 +63,7 @@ func (d *ConfirmCommand) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 	if d.loading {
 		message = strings.TrimSpace(message + " " + loadingFrame(d.frame))
 	}
-	view := commandui.RenderConfirmCard(commandui.NewFrame(area.Dx(), area.Dy()), commandui.ConfirmData{
+	view := components.RenderConfirmCard(components.NewFrame(area.Dx(), area.Dy()), components.ConfirmData{
 		Message:       message,
 		ConfirmLabel:  firstNonEmptyTrimmed(d.data.ConfirmLabel, "Confirm"),
 		CancelLabel:   firstNonEmptyTrimmed(d.data.CancelLabel, "Cancel"),

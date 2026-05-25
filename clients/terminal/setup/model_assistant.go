@@ -5,7 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -17,7 +17,7 @@ func (m *model) renderAssistantForm() string {
 		{Title: "Refresh project context"},
 	}
 	extraLines := []string{"", setupFooterStyle.Render("System prompt is managed by matrixclaw.")}
-	card := commandui.RenderListCard(m.commandFrame(), commandui.ListData{
+	card := components.RenderListCard(m.commandFrame(), components.ListData{
 		Title:      "Assistant Profile",
 		Meta:       "Step 3/5",
 		Items:      commandItems(items),
@@ -35,11 +35,11 @@ func (m *model) updateAssistantForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	itemCount := 4
-	event := m.updateListSelection(keyMsg.String(), &m.formFocus, itemCount, commandui.RoleBack)
+	event := m.updateListSelection(keyMsg.String(), &m.formFocus, itemCount, components.RoleBack)
 	switch event.Kind {
-	case commandui.EventBack:
+	case components.EventBack:
 		m.cancelDraftForm(screenProviderList)
-	case commandui.EventSelect:
+	case components.EventSelect:
 		if m.formFocus == 0 {
 			if err := m.handleAssistantFormSave(); err != nil {
 				m.formError = err.Error()

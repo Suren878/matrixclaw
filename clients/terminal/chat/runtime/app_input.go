@@ -138,7 +138,7 @@ func dialogActionClosesSource(action tea.Msg, sourceID string) bool {
 	case surfacedialog.ActionRunControlplaneCommand:
 		return action.CloseSource
 	case surfacedialog.ActionOpenCommands:
-		return true
+		return false
 	default:
 		return false
 	}

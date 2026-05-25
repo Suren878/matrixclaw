@@ -30,7 +30,13 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 		return m.reloadSnapshotCmd()
 	}
 	if dialog := m.controlplaneDialog(msg.result); dialog != nil {
-		m.showControlplaneResultDialog(dialog, msg.result)
+		m.showControlplaneResultDialog(dialog)
+		if msg.result.ReloadSnapshot {
+			return m.reloadSnapshotCmd()
+		}
+		return nil
+	}
+	if m.showControlplaneTextResult(msg.result) {
 		if msg.result.ReloadSnapshot {
 			return m.reloadSnapshotCmd()
 		}
@@ -52,6 +58,20 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 		return m.reloadSnapshotCmd()
 	}
 	return nil
+}
+
+func (m *appModel) showControlplaneTextResult(result controlplane.Result) bool {
+	text := strings.TrimSpace(result.Text)
+	if text == "" || !m.returnToCommands || !m.dialog.ContainsDialog(surfacedialog.CommandsID) {
+		return false
+	}
+	m.err = ""
+	m.dialog.OpenDialog(surfacedialog.NewInfo(m.com, surfacedialog.InfoData{
+		Title:       resultTitle(text),
+		Text:        text,
+		CloseAction: surfacedialog.ActionOpenCommands{},
+	}))
+	return true
 }
 
 func (m *appModel) showControlplaneError(err error) {
@@ -92,24 +112,6 @@ func isPlanClearCommand(command string) bool {
 	return strings.EqualFold(strings.TrimSpace(command), "/plan clear confirm")
 }
 
-func (m *appModel) detachCommandsForControlplaneResult(result controlplane.Result) {
-	if !m.returnToCommands || !m.dialog.ContainsDialog(surfacedialog.CommandsID) {
-		return
-	}
-	if !controlplaneResultLeavesCommandRoot(result) {
-		return
-	}
-	m.dialog.CloseDialog(surfacedialog.CommandsID)
-	m.returnToCommands = false
-}
-
-func controlplaneResultLeavesCommandRoot(result controlplane.Result) bool {
-	if picker := result.Picker; picker != nil {
-		return picker.HasBack || picker.HasClose
-	}
-	return result.Form != nil || result.Prompt != nil || result.TextEdit != nil || result.Confirm != nil || result.Info != nil
-}
-
 func (m *appModel) handleContextCompactResult(msg controlplaneResultMsg) tea.Cmd {
 	if msg.err != nil {
 		m.failContextCompactProgress(msg.err)
@@ -147,18 +149,49 @@ func (m *appModel) controlplaneDialog(result controlplane.Result) surfacedialog.
 }
 
 func (m *appModel) controlplanePickerDialog(data controlplane.PickerData) surfacedialog.Dialog {
-	picker := m.preparePicker(data)
+	picker := data
+	if m.controlplanePickerIsPopup(picker) {
+		entries := commandmenu.PickerRows(picker)
+		return surfacedialog.NewPicker(m.com, surfacedialog.PickerData{
+			ID:      surfacedialog.PickerID,
+			Title:   commandmenu.PickerTitle(picker),
+			Meta:    strings.TrimSpace(picker.Meta),
+			Legend:  popupPickerLegend(picker),
+			Filter:  surfacedialog.PickerNeedsFilter(entries),
+			Entries: entries,
+		})
+	}
 	closeAction := m.pickerCloseAction(picker)
 	entries := commandmenu.PickerEntriesWithCloseAction(picker, closeAction)
-	return surfacedialog.NewPicker(m.com, surfacedialog.PickerData{
-		ID:          surfacedialog.PickerID,
+	return surfacedialog.NewCommands(m.com, surfacedialog.CommandsData{
 		Title:       commandmenu.PickerTitle(picker),
 		Meta:        strings.TrimSpace(picker.Meta),
 		Legend:      commandmenu.PickerLegend(picker),
-		Filter:      surfacedialog.PickerNeedsFilter(entries),
 		Entries:     entries,
 		CloseAction: closeAction,
 	})
+}
+
+func (m *appModel) controlplanePickerIsPopup(picker controlplane.PickerData) bool {
+	if picker.Popup {
+		return true
+	}
+	if top := m.dialog.DialogLast(); top != nil {
+		switch top.ID() {
+		case surfacedialog.FormCommandID, surfacedialog.PromptCommandID, surfacedialog.TextEditCommandID:
+			return true
+		}
+	}
+	return false
+}
+
+func popupPickerLegend(picker controlplane.PickerData) string {
+	switch picker.Kind {
+	case controlplane.PickerPermissions:
+		return "enter apply · esc close"
+	default:
+		return "enter select · esc close"
+	}
 }
 
 func infoData(info controlplane.InfoData) surfacedialog.InfoData {
@@ -177,16 +210,12 @@ func controlplaneCloseAction(command string) surfacedialog.Action {
 	return surfacedialog.ActionRunControlplaneCommand{Command: command, CloseSource: true}
 }
 
-func (m *appModel) preparePicker(picker controlplane.PickerData) controlplane.PickerData {
-	if m.returnToCommands {
-		picker.HideBackItem = false
-	}
-	return picker
-}
-
 func (m *appModel) pickerCloseAction(picker controlplane.PickerData) surfacedialog.Action {
+	if !picker.HasBack && !picker.HasClose && m.returnToCommands {
+		return surfacedialog.ActionOpenCommands{}
+	}
 	action := commandmenu.PickerCloseAction(picker)
-	if _, closes := action.(surfacedialog.ActionClose); closes && m.returnToCommands && !m.dialog.ContainsDialog(surfacedialog.CommandsID) {
+	if _, closes := action.(surfacedialog.ActionClose); closes && m.returnToCommands {
 		return surfacedialog.ActionOpenCommands{}
 	}
 	return action
@@ -229,12 +258,10 @@ func (m *appModel) showControlplaneDialog(dialog surfacedialog.Dialog) {
 		m.dialog.ReplaceFrontDialog(dialog)
 		return
 	case topID == surfacedialog.PickerID && (nextID == surfacedialog.FormCommandID || nextID == surfacedialog.TextEditCommandID):
-		if !m.dialog.ContainsDialog(nextID) {
-			m.dialog.OpenDialog(dialog)
-			return
-		}
 		m.dialog.CloseFrontDialog()
 		m.dialog.CloseDialog(nextID)
+		m.dialog.OpenDialog(dialog)
+		return
 	case topID == surfacedialog.PromptCommandID && nextID == surfacedialog.FormCommandID:
 		m.dialog.CloseFrontDialog()
 		m.dialog.CloseDialog(surfacedialog.FormCommandID)
@@ -244,17 +271,7 @@ func (m *appModel) showControlplaneDialog(dialog surfacedialog.Dialog) {
 	m.dialog.OpenDialog(dialog)
 }
 
-func (m *appModel) showControlplaneResultDialog(dialog surfacedialog.Dialog, result controlplane.Result) {
-	if m.returnToCommands && controlplaneResultLeavesCommandRoot(result) {
-		top := m.dialog.DialogLast()
-		if top != nil && top.ID() == surfacedialog.CommandsID {
-			m.err = ""
-			m.dialog.ReplaceFrontDialog(dialog)
-			m.returnToCommands = false
-			return
-		}
-		m.detachCommandsForControlplaneResult(result)
-	}
+func (m *appModel) showControlplaneResultDialog(dialog surfacedialog.Dialog) {
 	m.showControlplaneDialog(dialog)
 }
 

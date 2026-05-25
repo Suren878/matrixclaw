@@ -4,7 +4,7 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	terminaltextfield "github.com/Suren878/matrixclaw/clients/terminal/ui/textfield"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
@@ -67,7 +67,7 @@ const (
 	providerEntryContinue
 )
 
-type listItem = commandui.Row
+type listItem = components.Row
 
 type providerListEntry struct {
 	Kind     providerEntryKind
@@ -113,7 +113,6 @@ type model struct {
 
 	textEditorInput       terminaltextfield.Model
 	textAreaInput         textarea.Model
-	textEditState         commandui.TextEditState
 	textEditorTitle       string
 	textEditorTarget      textEditTarget
 	boolPickerTarget      boolEditTarget

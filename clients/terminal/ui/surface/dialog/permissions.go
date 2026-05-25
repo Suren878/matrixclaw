@@ -48,9 +48,8 @@ const (
 const horizontalScrollStep = 5
 
 type permissionOption struct {
-	label          string
-	action         PermissionAction
-	underlineIndex int
+	label  string
+	action PermissionAction
 }
 
 type Permissions struct {

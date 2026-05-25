@@ -6,7 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	setupcore "github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -115,17 +115,17 @@ func (m *model) currentProviderModelRowIndex(rows []listEntry) int {
 	return -1
 }
 
-func providerModelRowSelection(key string, cursor int, rows []listEntry, closeRole commandui.Role) (int, commandui.Event) {
-	state := commandui.ListState{Cursor: cursor, NoWrap: true}
+func providerModelRowSelection(key string, cursor int, rows []listEntry, closeRole components.Role) (int, components.Event) {
+	state := components.ListState{Cursor: cursor, NoWrap: true}
 	event := state.Update(key, listEntryItems(rows), closeRole)
 	state.Clamp(len(rows))
 	return state.Cursor, event
 }
 
-func listEntryItems(rows []listEntry) []commandui.Item {
-	items := make([]commandui.Item, 0, len(rows))
+func listEntryItems(rows []listEntry) []components.Item {
+	items := make([]components.Item, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, commandui.Item{
+		items = append(items, components.Item{
 			Title:    row.Text,
 			Status:   row.Status,
 			Disabled: row.Kind != listEntryRow,

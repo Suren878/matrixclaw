@@ -31,14 +31,6 @@ func storageCommandPrefix(parts ...string) string {
 	return storageCommand(parts...) + " "
 }
 
-func storageImportCommand() string {
-	return storageCommand("import")
-}
-
-func storageImportCommandPrefix() string {
-	return storageCommandPrefix("import")
-}
-
 func storageFilesCommand() string {
 	return storageCommand("files")
 }
@@ -94,6 +86,10 @@ func storageTempCleanupCommand() string {
 
 func storageTempCleanupConfirmCommand() string {
 	return storageCommand("temp-cleanup-confirm")
+}
+
+func storageTempCleanupSettingsCommand() string {
+	return storageCommand("temp-cleanup-settings")
 }
 
 func storageTempCleanupModeCommand() string {

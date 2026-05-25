@@ -1,4 +1,4 @@
-package commandui
+package components
 
 import (
 	"strings"

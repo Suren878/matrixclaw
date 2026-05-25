@@ -3,7 +3,7 @@ package setup
 import (
 	"strings"
 
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
@@ -84,10 +84,10 @@ func matchesProviderSearch(query string, values ...string) bool {
 	return strings.Contains(strings.ToLower(strings.Join(values, " ")), query)
 }
 
-func searchItems(rows []listEntry) []commandui.Item {
-	items := make([]commandui.Item, 0, len(rows))
+func searchItems(rows []listEntry) []components.Item {
+	items := make([]components.Item, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, commandui.Item{Title: row.Text, Status: row.Status})
+		items = append(items, components.Item{Title: row.Text, Status: row.Status})
 	}
 	return items
 }

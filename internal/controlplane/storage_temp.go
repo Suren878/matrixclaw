@@ -14,7 +14,7 @@ func (d *Dispatcher) storageTempPicker(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	items := make([]PickerItem, 0, len(result.Files)+5)
+	items := make([]PickerItem, 0, len(result.Files)+2)
 	for _, file := range result.Files {
 		items = append(items, PickerItem{
 			ID:    "temp:" + file.Path,
@@ -22,12 +22,20 @@ func (d *Dispatcher) storageTempPicker(ctx context.Context) (Result, error) {
 			Info:  storageTempInfo(file),
 		})
 	}
-	items = append(items,
-		PickerItem{ID: "toggle", Title: "Auto Cleanup", Info: formatEnabled(result.Settings.AutoCleanup)},
-		PickerItem{ID: "days", Title: "Retention", Info: formatTempRetention(result.Settings)},
-		PickerItem{ID: "max", Title: "Max Size", Info: formatStorageGB(result.Settings.MaxBytes)},
-		PickerItem{ID: "cleanup", Title: "Cleanup", Info: formatTempCleanupImpact(result.Settings), Role: PickerItemRoleAction},
-	)
+	if len(result.Files) == 0 {
+		items = append(items, PickerItem{
+			ID:       "empty",
+			Title:    "No temporary files",
+			Info:     formatFileCountSize(0, 0),
+			Disabled: true,
+		})
+	}
+	items = append(items, PickerItem{
+		ID:    "settings",
+		Title: "Cleanup Settings",
+		Info:  formatEnabled(result.Settings.AutoCleanup) + " · " + formatTempSettings(result.Settings),
+		Role:  PickerItemRoleAction,
+	})
 	return Result{
 		Handled: true,
 		Picker:  NewPickerData(PickerStorageTemp, "Temporary Files").Back(storageCommand()).Items(items...).Ptr(),
@@ -80,7 +88,7 @@ func (d *Dispatcher) storageTempDelete(ctx context.Context, tempPath string) (Re
 func (d *Dispatcher) storageTempCleanup(ctx context.Context) (Result, error) {
 	return Result{
 		Handled: true,
-		Confirm: deleteConfirmData("Delete all temporary files?", storageTempCleanupConfirmCommand(), storageTempCommand()),
+		Confirm: deleteConfirmData("Delete all temporary files?", storageTempCleanupConfirmCommand(), storageTempCleanupSettingsCommand()),
 	}, nil
 }
 
@@ -89,7 +97,32 @@ func (d *Dispatcher) storageTempCleanupConfirmed(ctx context.Context) (Result, e
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Handled: true, Text: fmt.Sprintf("Temporary cleanup: deleted %d files, freed %s.", result.DeletedFiles, formatStorageSize(result.FreedBytes))}, nil
+	next, err := d.storageTempCleanupSettings(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+	if next.Picker != nil {
+		next.Picker.Meta = fmt.Sprintf("Deleted %d files · freed %s", result.DeletedFiles, formatStorageSize(result.FreedBytes))
+	}
+	return next, nil
+}
+
+func (d *Dispatcher) storageTempCleanupSettings(ctx context.Context) (Result, error) {
+	result, err := d.storage.ListTemporaryStorageFiles(ctx, 1)
+	if err != nil {
+		return Result{}, err
+	}
+	settings := result.Settings
+	return Result{
+		Handled: true,
+		Picker: NewPickerData(PickerStorageCleanup, "Cleanup Settings").
+			Back(storageTempCommand()).
+			Row("toggle", "Auto Cleanup", formatEnabled(settings.AutoCleanup)).
+			Row("days", "Retention", formatTempRetention(settings)).
+			Row("max", "Max Size", formatStorageGB(settings.MaxBytes)).
+			Action("cleanup", "Cleanup Now", formatTempCleanupImpact(settings)).
+			Ptr(),
+	}, nil
 }
 
 func (d *Dispatcher) storageTempCleanupModePicker(ctx context.Context) (Result, error) {
@@ -101,7 +134,7 @@ func (d *Dispatcher) storageTempCleanupModePicker(ctx context.Context) (Result, 
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerStorageCleanup, "Auto Cleanup").
-			Back(storageTempCommand()).
+			Popup().
 			Item(PickerItem{ID: "on", Title: "On", Selected: current}).
 			Item(PickerItem{ID: "off", Title: "Off", Selected: !current}).
 			Ptr(),
@@ -126,7 +159,7 @@ func (d *Dispatcher) storageTempToggle(ctx context.Context, value string) (Resul
 	if _, err := d.storage.UpdateTemporaryStorageSettings(ctx, &next, 0, 0); err != nil {
 		return Result{}, err
 	}
-	return d.storageTempPicker(ctx)
+	return d.storageTempCleanupSettings(ctx)
 }
 
 func (d *Dispatcher) storageTempDays(ctx context.Context, raw string) (Result, error) {
@@ -136,7 +169,7 @@ func (d *Dispatcher) storageTempDays(ctx context.Context, raw string) (Result, e
 			Title:               "Delete Temporary Files After",
 			Placeholder:         "7",
 			SubmitCommandPrefix: storageTempDaysCommandPrefix(),
-			CancelCommand:       storageTempCommand(),
+			CancelCommand:       storageTempCleanupSettingsCommand(),
 		}}, nil
 	}
 	days, err := strconv.ParseInt(raw, 10, 64)
@@ -146,7 +179,7 @@ func (d *Dispatcher) storageTempDays(ctx context.Context, raw string) (Result, e
 	if _, err := d.storage.UpdateTemporaryStorageSettings(ctx, nil, days, 0); err != nil {
 		return Result{}, err
 	}
-	return d.storageTempPicker(ctx)
+	return d.storageTempCleanupSettings(ctx)
 }
 
 func (d *Dispatcher) storageTempMax(ctx context.Context, raw string) (Result, error) {
@@ -156,7 +189,7 @@ func (d *Dispatcher) storageTempMax(ctx context.Context, raw string) (Result, er
 			Title:               "Temporary Files Max Size",
 			Placeholder:         "0.1",
 			SubmitCommandPrefix: storageTempMaxCommandPrefix(),
-			CancelCommand:       storageTempCommand(),
+			CancelCommand:       storageTempCleanupSettingsCommand(),
 		}}, nil
 	}
 	gb, err := strconv.ParseFloat(raw, 64)
@@ -166,7 +199,7 @@ func (d *Dispatcher) storageTempMax(ctx context.Context, raw string) (Result, er
 	if _, err := d.storage.UpdateTemporaryStorageSettings(ctx, nil, 0, gb); err != nil {
 		return Result{}, err
 	}
-	return d.storageTempPicker(ctx)
+	return d.storageTempCleanupSettings(ctx)
 }
 
 func storageTempTitle(file localstorage.TempEntry) string {

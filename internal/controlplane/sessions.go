@@ -22,7 +22,7 @@ func (d *Dispatcher) handleSessions(ctx context.Context, externalKey string) (Re
 	if session != nil {
 		currentSessionID = session.ID
 	}
-	picker := NewPickerData(PickerSessions, "Sessions").HideBack(true)
+	picker := NewPickerData(PickerSessions, "Sessions")
 	picker.Item(PickerItem{
 		ID:    "new",
 		Title: "New Session",
@@ -40,7 +40,6 @@ func (d *Dispatcher) handleSessions(ctx context.Context, externalKey string) (Re
 			Selected: strings.TrimSpace(session.ID) == strings.TrimSpace(currentSessionID),
 		})
 	}
-	picker.CloseItem()
 	return Result{
 		Handled: true,
 		Picker:  picker.Ptr(),

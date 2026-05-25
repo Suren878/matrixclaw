@@ -1,10 +1,10 @@
 package dialog
 
 import (
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 )
 
-func (p *Picker) visibleWindow(limit int) ([]commandui.Item, int, []commandui.Item, int) {
+func (p *Picker) visibleWindow(limit int) ([]components.Item, int, []components.Item, int) {
 	mainOptions, footerOptions := splitFooterOptions(p.visible)
 	mainCursor, footerCursor := p.splitCursor(mainOptions, footerOptions)
 	if limit <= 0 || len(mainOptions) <= limit {
@@ -44,8 +44,8 @@ func viewportBounds(selected int, total int, visible int) (int, int) {
 	return start, end
 }
 
-func pickerItems(options []pickerOption) []commandui.Item {
-	items := make([]commandui.Item, 0, len(options))
+func pickerItems(options []pickerOption) []components.Item {
+	items := make([]components.Item, 0, len(options))
 	for _, option := range options {
 		items = append(items, option.item)
 	}

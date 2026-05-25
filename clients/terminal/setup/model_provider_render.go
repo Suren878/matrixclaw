@@ -1,7 +1,7 @@
 package setup
 
 import (
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -19,14 +19,14 @@ func (m *model) renderProviderList() string {
 		topSelected = -1
 		selected = selectedProviderItemIndex(rows[start:end], m.cursor, start > 0)
 	}
-	card := commandui.RenderSearchListCard(m.commandFrame(), commandui.SearchListData{
+	card := components.RenderSearchListCard(m.commandFrame(), components.SearchListData{
 		Title:             "Providers",
 		Meta:              "Step 2/5",
 		SearchValue:       m.filterInput.View(),
 		SearchPlaceholder: "Search providers",
 		SearchActive:      true,
 		EmptyText:         "No providers match the current filter.",
-		TopItems:          []commandui.Item{{Title: "Continue", Role: commandui.RoleSubmit}},
+		TopItems:          []components.Item{{Title: "Continue", Role: components.RoleSubmit}},
 		TopSelected:       topSelected,
 		Items:             pagedSearchItems(rows[start:end], start > 0, end < len(rows)),
 		Selected:          selected,
@@ -45,7 +45,7 @@ func (m *model) renderProviderTypeList() string {
 }
 
 func (m *model) renderProviderNoProviderConfirm() string {
-	card := commandui.RenderConfirmCard(m.commandFrame(), commandui.ConfirmData{
+	card := components.RenderConfirmCard(m.commandFrame(), components.ConfirmData{
 		Message:      "No provider is configured. You can finish setup now, but chat and runs will not work until a provider is added. Continue without a provider?",
 		ConfirmLabel: "Yes",
 		CancelLabel:  "No",
@@ -64,7 +64,7 @@ func (m *model) renderProviderBaseURLList() string {
 
 func (m *model) renderProviderModelList() string {
 	if m.providerModelsLoading {
-		card := commandui.RenderListCard(m.commandFrame(), commandui.ListData{
+		card := components.RenderListCard(m.commandFrame(), components.ListData{
 			Title:      "Models " + setupLoadingFrame(m.tickCount),
 			ExtraLines: []string{"Loading models"},
 			Help:       "esc cancel",
@@ -77,7 +77,7 @@ func (m *model) renderProviderModelList() string {
 		selectedRow = 0
 	}
 	start, end := viewportBounds(selectedRow, len(rows), m.providerModelViewportHeight())
-	card := commandui.RenderSearchListCard(m.commandFrame(), commandui.SearchListData{
+	card := components.RenderSearchListCard(m.commandFrame(), components.SearchListData{
 		Title:             "Models",
 		SearchValue:       m.filterInput.View(),
 		SearchPlaceholder: "Search models",
@@ -122,14 +122,14 @@ func (m *model) renderProviderToolUseList() string {
 	return m.renderPickerFrame("Tool Use", items, m.providerToolUseCursor)
 }
 
-func pagedSearchItems(rows []listEntry, hasPrevious bool, hasNext bool) []commandui.Item {
-	items := make([]commandui.Item, 0, len(rows)+2)
+func pagedSearchItems(rows []listEntry, hasPrevious bool, hasNext bool) []components.Item {
+	items := make([]components.Item, 0, len(rows)+2)
 	if hasPrevious {
-		items = append(items, commandui.Header("↑ more"))
+		items = append(items, components.Header("↑ more"))
 	}
 	items = append(items, searchItems(rows)...)
 	if hasNext {
-		items = append(items, commandui.Header("↓ more"))
+		items = append(items, components.Header("↓ more"))
 	}
 	return items
 }

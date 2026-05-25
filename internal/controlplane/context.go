@@ -61,7 +61,7 @@ func (d *Dispatcher) handleContext(ctx context.Context, externalKey string, args
 	}
 	return Result{
 		Handled: true,
-		Picker:  NewPickerData(PickerContext, "Context").Context(session.ID).HideBack(true).Items(contextItems(report)...).Ptr(),
+		Picker:  NewPickerData(PickerContext, "Context").Context(session.ID).Items(contextItems(report)...).Ptr(),
 	}, nil
 }
 
@@ -70,7 +70,6 @@ func contextItems(report core.ContextReport) []PickerItem {
 	items := []PickerItem{
 		{ID: "info", Title: "Usage", Info: info, Command: contextInfoCommand()},
 		{ID: "compact", Title: "Compact", Command: contextCompactCommand()},
-		CloseItem(),
 	}
 	return items
 }

@@ -12,17 +12,21 @@ import (
 )
 
 func (m *appModel) openCommandsDialogCmd() tea.Cmd {
+	dialog := surfacedialog.NewCommands(m.com, surfacedialog.CommandsData{
+		Title:   "Commands",
+		Legend:  "enter run · esc back",
+		Entries: commandmenu.Entries(m.commandMenuState()),
+	})
 	if m.dialog.ContainsDialog(surfacedialog.CommandsID) {
+		m.dialog.CloseDialog(surfacedialog.CommandsID)
+		m.dialog.OpenDialog(dialog)
 		m.dialog.BringToFront(surfacedialog.CommandsID)
+		m.returnToCommands = false
 		return nil
 	}
 	m.returnToCommands = false
 	m.closeControlplaneDialogs()
-	m.dialog.OpenDialog(surfacedialog.NewCommands(m.com, surfacedialog.CommandsData{
-		Title:   "Commands",
-		Legend:  "enter run · esc back",
-		Entries: commandmenu.Entries(m.commandMenuState()),
-	}))
+	m.dialog.OpenDialog(dialog)
 	return nil
 }
 

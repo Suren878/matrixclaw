@@ -60,7 +60,6 @@ func (d *Dispatcher) modulesPicker(ctx context.Context) (Result, error) {
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerModules, "Modules").
-			HideBack(true).
 			Row("agents", "External Agents", "Codex", externalAgentsCommand()).
 			Row("skills", "Skills", skillsInfo, skillsCommand()).
 			Row("mcp", "MCP", mcpInfo, mcpCommand()).
@@ -68,7 +67,6 @@ func (d *Dispatcher) modulesPicker(ctx context.Context) (Result, error) {
 			Row("stt", "Speech to Text", sttInfo, speechToTextCommand()).
 			Row("storage", "Storage", "Files", storageCommand()).
 			Row("web", "Web Search", webInfo, webSearchCommand()).
-			CloseItem().
 			Ptr(),
 	}, nil
 }

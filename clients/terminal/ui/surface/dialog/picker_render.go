@@ -5,16 +5,17 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 )
 
 func (p *Picker) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
-	frame := commandui.NewFrame(area.Dx(), area.Dy()).WithInnerWidth(0)
+	frame := components.NewFrame(area.Dx(), area.Dy()).WithInnerWidth(0)
 	items, selected, footer, footerSelected := p.visibleWindow(p.maxVisibleItems(area))
 	if p.data.Filter {
 		p.input.SetWidth(max(1, frame.InnerWidth()-2))
-		view := commandui.RenderSearchListCard(frame, commandui.SearchListData{
+		view := components.RenderSearchListCard(frame, components.SearchListData{
 			Title:          p.title(),
+			Meta:           p.meta(),
 			SearchValue:    p.input.View(),
 			SearchActive:   true,
 			EmptyText:      "No items match",
@@ -27,14 +28,14 @@ func (p *Picker) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 		DrawCenter(scr, area, view)
 		return nil
 	}
-	view := commandui.RenderPickerCard(frame, commandui.PickerData{
+	view := components.RenderPickerCard(frame, components.PickerData{
 		Title:           p.title(),
 		Meta:            p.meta(),
 		Items:           items,
 		Selected:        selected,
 		Footer:          footer,
 		FooterSelected:  footerSelected,
-		MinVisibleItems: p.maxVisibleItems(area),
+		MinVisibleItems: p.minVisibleItems(area),
 		Help:            p.legend(),
 	})
 	DrawCenter(scr, area, view)
@@ -49,14 +50,28 @@ func (p *Picker) title() string {
 }
 
 func (p *Picker) meta() string {
-	return strings.TrimSpace(p.data.Meta)
+	if meta := strings.TrimSpace(p.data.Meta); meta != "" {
+		return meta
+	}
+	for _, option := range p.options {
+		if !option.selected || !option.item.Selectable() {
+			continue
+		}
+		if title := strings.TrimSpace(option.item.Title); title != "" {
+			return title
+		}
+		if status := strings.TrimSpace(option.item.Status); status != "" {
+			return status
+		}
+	}
+	return ""
 }
 
 func (p *Picker) legend() string {
 	if legend := strings.TrimSpace(p.data.Legend); legend != "" {
 		return legend
 	}
-	return "enter select · esc cancel"
+	return "enter select · esc close"
 }
 
 func (p *Picker) maxVisibleItems(area uv.Rectangle) int {
@@ -69,4 +84,11 @@ func (p *Picker) maxVisibleItems(area uv.Rectangle) int {
 		fixedRows += 2 // search field plus gap below it
 	}
 	return max(3, height-fixedRows)
+}
+
+func (p *Picker) minVisibleItems(area uv.Rectangle) int {
+	if !p.data.ShowFooter {
+		return 0
+	}
+	return p.maxVisibleItems(area)
 }

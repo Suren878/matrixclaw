@@ -1,4 +1,4 @@
-package commandui
+package components
 
 type ListState struct {
 	Cursor int

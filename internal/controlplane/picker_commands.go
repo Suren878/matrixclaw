@@ -146,20 +146,6 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 		default:
 			return textToSpeechCommand()
 		}
-	case PickerTTSProvider:
-		if contextID == "" {
-			return textToSpeechCommand("provider")
-		}
-		switch itemID {
-		case "":
-			return voiceModuleCommand(contextID, "provider-select")
-		case "back":
-			return voiceModuleCommand(contextID)
-		case "cancel":
-			return ""
-		default:
-			return voiceModuleCommand(contextID, "set-provider", itemID)
-		}
 	case PickerSpeechToText:
 		switch itemID {
 		case "":
@@ -176,22 +162,6 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 			return ""
 		default:
 			return speechToTextCommand()
-		}
-	case PickerVoiceEnabled:
-		if contextID == "" {
-			return modulesCommand()
-		}
-		switch itemID {
-		case "yes":
-			return voiceModuleCommand(contextID, "set-enabled", "yes")
-		case "no":
-			return voiceModuleCommand(contextID, "set-enabled", "no")
-		case "back":
-			return voiceModuleCommand(contextID)
-		case "cancel":
-			return ""
-		default:
-			return voiceModuleCommand(contextID, "enabled")
 		}
 	case PickerVoiceProvider:
 		if contextID == "" {
@@ -240,28 +210,10 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 		default:
 			return externalAgentCommand(contextID)
 		}
-	case PickerExternalAgentOn:
-		if contextID == "" {
-			return externalAgentsCommand()
-		}
-		switch itemID {
-		case "yes", "enable":
-			return externalAgentSetEnabledCommand(contextID, "yes")
-		case "no", "disable":
-			return externalAgentSetEnabledCommand(contextID, "no")
-		case "back":
-			return externalAgentCommand(contextID)
-		case "cancel":
-			return ""
-		default:
-			return externalAgentEnabledCommand(contextID)
-		}
 	case PickerStorage:
 		switch itemID {
 		case "":
 			return storageCommand()
-		case "import":
-			return storageImportCommand()
 		case "temp":
 			return storageTempCommand()
 		case "files":
@@ -308,14 +260,8 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 		switch {
 		case itemID == "":
 			return storageTempCommand()
-		case itemID == "cleanup":
-			return storageTempCleanupCommand()
-		case itemID == "toggle":
-			return storageTempCleanupModeCommand()
-		case itemID == "days":
-			return storageTempDaysCommand()
-		case itemID == "max":
-			return storageTempMaxCommand()
+		case itemID == "settings":
+			return storageTempCleanupSettingsCommand()
 		case itemID == "back":
 			return storageCommand()
 		case itemID == "cancel":
@@ -327,6 +273,16 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 		}
 	case PickerStorageCleanup:
 		switch itemID {
+		case "":
+			return storageTempCleanupSettingsCommand()
+		case "toggle":
+			return storageTempCleanupModeCommand()
+		case "days":
+			return storageTempDaysCommand()
+		case "max":
+			return storageTempMaxCommand()
+		case "cleanup":
+			return storageTempCleanupCommand()
 		case "on":
 			return storageTempToggleCommand("on")
 		case "off":
@@ -334,7 +290,7 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 		case "back", "cancel":
 			return storageTempCommand()
 		default:
-			return storageTempCleanupModeCommand()
+			return storageTempCleanupSettingsCommand()
 		}
 	case PickerStorageTempFile:
 		if contextID == "" {
@@ -406,7 +362,7 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 		switch itemID {
 		case "view":
 			return skillsCommand(section, skillID, "view")
-		case "trust", "trust-enable", "quarantine", "archive", "restore", "remove", "enable", "disable", "pin", "unpin", "keep", "edit", "edit-metadata", "edit-body":
+		case "trust", "trust-enable", "quarantine", "archive", "restore", "remove", "enabled", "enable", "disable", "pin", "unpin", "keep", "edit", "edit-metadata", "edit-body":
 			return skillsCommand(section, skillID, itemID)
 		case "back":
 			return skillsCommand(section)
@@ -455,19 +411,6 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 		default:
 			return mcpServerCommand(itemID)
 		}
-	case PickerMCPEnabled:
-		switch itemID {
-		case "yes":
-			return mcpCommand("set-enabled", "yes")
-		case "no":
-			return mcpCommand("set-enabled", "no")
-		case "back":
-			return mcpCommand()
-		case "cancel":
-			return ""
-		default:
-			return mcpCommand("enabled")
-		}
 	case PickerMCPServer:
 		if contextID == "" {
 			return mcpCommand()
@@ -485,22 +428,6 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 			return ""
 		default:
 			return mcpServerCommand(contextID)
-		}
-	case PickerMCPServerOn:
-		if contextID == "" {
-			return mcpCommand()
-		}
-		switch itemID {
-		case "yes":
-			return mcpServerCommand(contextID, "set-enabled", "yes")
-		case "no":
-			return mcpServerCommand(contextID, "set-enabled", "no")
-		case "back":
-			return mcpServerCommand(contextID)
-		case "cancel":
-			return ""
-		default:
-			return mcpServerCommand(contextID, "enabled")
 		}
 	case PickerServer:
 		switch itemID {

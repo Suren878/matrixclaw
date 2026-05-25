@@ -5,12 +5,15 @@ import (
 
 	"github.com/sahilm/fuzzy"
 
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 )
 
 func (p *Picker) setItems() {
 	p.options = make([]pickerOption, 0, len(p.data.Entries))
 	for _, entry := range p.data.Entries {
+		if entry.Footer && !p.data.ShowFooter {
+			continue
+		}
 		p.options = append(p.options, pickerOption{
 			item:     pickerEntryItem(entry),
 			action:   entry.Action,
@@ -23,14 +26,14 @@ func (p *Picker) setItems() {
 	p.applyFilter()
 }
 
-func pickerEntryItem(entry PickerEntry) commandui.Item {
+func pickerEntryItem(entry PickerEntry) components.Item {
 	switch entry.Kind {
 	case ListEntryHeader:
-		return commandui.Header(entry.Title)
+		return components.Header(entry.Title)
 	case ListEntryDivider:
-		return commandui.Divider(entry.ID)
+		return components.Divider(entry.ID)
 	default:
-		return commandui.Item{
+		return components.Item{
 			ID:       entry.ID,
 			Title:    entry.Title,
 			Status:   entry.Status,

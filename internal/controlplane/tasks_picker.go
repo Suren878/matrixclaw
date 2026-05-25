@@ -27,13 +27,10 @@ func (d *Dispatcher) tasksPicker(ctx context.Context) (Result, error) {
 		archiveTitle = "Archive"
 		archiveInfo = fmt.Sprintf("%d completed", len(closed))
 	}
-	items = append(items,
-		PickerItem{ID: "archive", Title: archiveTitle, Info: archiveInfo},
-		CloseItem(),
-	)
+	items = append(items, PickerItem{ID: "archive", Title: archiveTitle, Info: archiveInfo})
 	return Result{
 		Handled: true,
-		Picker:  NewPickerData(PickerTasks, "Tasks").HideBack(true).Items(items...).Ptr(),
+		Picker:  NewPickerData(PickerTasks, "Tasks").Items(items...).Ptr(),
 	}, nil
 }
 

@@ -13,11 +13,9 @@ func (d *Dispatcher) handleServer() Result {
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerServer, "Server").
-			HideBack(true).
 			Row("status", "Status", "Uptime, CPU, memory", statusCommand()).
 			Row("restart", "Restart", "", restartCommand()).
 			Row("stop", "Stop", "", stopCommand()).
-			CloseItem().
 			Ptr(),
 	}
 }

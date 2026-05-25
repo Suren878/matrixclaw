@@ -141,7 +141,7 @@ func (d *Dispatcher) providerModelPicker(ctx context.Context, provider setup.Pro
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerProviderCustom, "Model").
-			Back("").
+			Popup().
 			Items(items...).
 			Ptr(),
 	}
@@ -215,7 +215,7 @@ func providerEditFormResult(provider setup.ProviderSetupItem, data setup.Provide
 		SubmitCommand: func(token string) string {
 			return providerEditSaveCommand(provider.ID, token)
 		},
-		CancelCommand: "",
+		CancelCommand: providerCommand(),
 		EditCommand: func(field string, token string) string {
 			return providerEditFieldCommand(field, provider.ID, token)
 		},
@@ -311,9 +311,13 @@ func (d *Dispatcher) saveProviderEdit(ctx context.Context, session *core.Session
 			configured.Model = updated.ModelID
 		}
 	}
+	providers, err := d.providers.ListSetupProviders(ctx)
+	if err != nil {
+		return Result{}, err
+	}
 	return Result{
 		Handled:        true,
-		Text:           "Provider `" + firstNonEmptyTrimmed(configured.Name, configured.ID) + "` saved.",
+		Picker:         NewPickerData(PickerProvider, "Provider").Items(ProviderPickerItems(providers, session)...).Ptr(),
 		ReloadSnapshot: true,
 	}, nil
 }

@@ -1,30 +1,26 @@
-package commandui
+package components
 
 import "strings"
 
 type TextViewData struct {
-	Title          string
-	Text           string
-	Buttons        []ButtonSpec
-	Button         int
-	ButtonsFocused bool
+	Title string
+	Text  string
+	Error string
 }
 
 func RenderTextViewCard(frame Frame, data TextViewData) string {
 	frame = frame.WithInnerWidth(0)
 	body := renderedTextBlock(frame, data.Text)
-	body = append(body, "")
-	body = append(body, renderFormButtons(frame.styles(), frame.InnerWidth(), formButtonsOrDefault(data.Buttons), data.Button, data.ButtonsFocused))
 	return frame.RenderCard(FrameData{
 		Title: data.Title,
 		Body:  body,
-		Help:  "tab buttons · ctrl+s save · esc cancel",
+		Error: data.Error,
 	})
 }
 
 func TextViewEditorHeight(frame Frame) int {
 	frame = frame.WithInnerWidth(0)
-	return max(3, textViewVisibleLines(frame, "tab buttons · ctrl+s save · esc cancel")-2)
+	return max(3, textViewVisibleLines(frame, ""))
 }
 
 func renderedTextBlock(frame Frame, text string) []string {

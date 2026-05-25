@@ -7,6 +7,7 @@ import (
 	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
 	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
@@ -195,26 +196,14 @@ func (p *Permissions) renderToolName(width int) string {
 
 func (p *Permissions) renderButtons(contentWidth int) string {
 	options := p.permissionOptions()
-	buttons := make([]surfacecommon.ButtonOpts, 0, len(options))
+	buttons := make([]components.Button, 0, len(options))
 	for i, option := range options {
-		buttons = append(buttons, surfacecommon.ButtonOpts{
-			Text:           option.label,
-			UnderlineIndex: -1,
-			Selected:       p.selectedOption == i,
+		buttons = append(buttons, components.Button{
+			Label:   option.label,
+			Danger:  option.action == PermissionDeny,
+			Focused: p.selectedOption == i,
 		})
 	}
 
-	content := surfacecommon.ButtonGroup(p.com.Styles, buttons, "  ")
-	if lipgloss.Width(content) > contentWidth {
-		content = surfacecommon.ButtonGroup(p.com.Styles, buttons, "\n")
-		return lipgloss.NewStyle().
-			Width(contentWidth).
-			Align(lipgloss.Center).
-			Render(content)
-	}
-
-	return lipgloss.NewStyle().
-		Width(contentWidth).
-		Align(lipgloss.Right).
-		Render(content)
+	return components.RenderButtons(components.DefaultStyles(), contentWidth, buttons...)
 }

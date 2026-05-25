@@ -57,10 +57,10 @@ func (d *Dispatcher) currentSessionID(ctx context.Context, externalKey string) (
 }
 
 func (d *Dispatcher) sessionSkillsPicker(ctx context.Context, sessionID string) (Result, error) {
-	return d.sessionSkillsPickerWithBack(ctx, sessionID, "Skills", "", true)
+	return d.sessionSkillsPickerWithBack(ctx, sessionID, "Skills", "")
 }
 
-func (d *Dispatcher) sessionSkillsPickerWithBack(ctx context.Context, sessionID string, title string, backCommand string, hideBack bool) (Result, error) {
+func (d *Dispatcher) sessionSkillsPickerWithBack(ctx context.Context, sessionID string, title string, backCommand string) (Result, error) {
 	available, err := d.skills.ListSkills(ctx, skills.SearchOptions{Limit: 200})
 	if err != nil {
 		return Result{}, err
@@ -71,8 +71,7 @@ func (d *Dispatcher) sessionSkillsPickerWithBack(ctx context.Context, sessionID 
 	}
 	activeSet := skillIDSet(active)
 	picker := NewPickerData(PickerSessionSkills, title).
-		Meta(sessionSkillsMeta(active)).
-		HideBack(hideBack)
+		Meta(sessionSkillsMeta(active))
 	if strings.TrimSpace(backCommand) != "" {
 		picker.Back(backCommand)
 	}
@@ -91,7 +90,6 @@ func (d *Dispatcher) sessionSkillsPickerWithBack(ctx context.Context, sessionID 
 	if len(picker.data.Items) == 0 {
 		picker.Item(PickerItem{ID: "empty", Title: "No available skills", Info: "Trust and enable skills in Modules."})
 	}
-	picker.CloseItem()
 	return Result{Handled: true, Picker: picker.Ptr()}, nil
 }
 
@@ -226,7 +224,7 @@ func (d *Dispatcher) skillsUsagePicker(ctx context.Context, externalKey string) 
 	if err != nil {
 		return Result{}, err
 	}
-	return d.sessionSkillsPickerWithBack(ctx, sessionID, "Usage Status", skillsCommand(), false)
+	return d.sessionSkillsPickerWithBack(ctx, sessionID, "Usage Status", skillsCommand())
 }
 
 func (d *Dispatcher) skillsSectionPicker(ctx context.Context, section string, query string) (Result, error) {
@@ -282,11 +280,7 @@ func (d *Dispatcher) skillPicker(ctx context.Context, section string, skillID st
 		Back(back).
 		Row("view", "Preview", skill.Description)
 	if skill.TrustState == skills.TrustTrusted {
-		if skill.Enabled {
-			picker.Row("disable", "Disable", "")
-		} else {
-			picker.Row("enable", "Enable", "")
-		}
+		picker.Row("enabled", "Enabled", formatEnabled(skill.Enabled))
 		picker.Row("quarantine", "Move to Quarantine", "")
 	} else {
 		picker.Row("trust-enable", "Trust & Enable", "")
@@ -315,10 +309,42 @@ func (d *Dispatcher) skillEditMenu(ctx context.Context, section string, skillID 
 	return Result{Handled: true, Picker: picker.Ptr()}, nil
 }
 
+func (d *Dispatcher) skillEnabledPicker(ctx context.Context, section string, skillID string) (Result, error) {
+	detail, err := d.skills.GetSkill(ctx, skillID)
+	if err != nil {
+		return Result{Handled: true, Text: err.Error()}, nil
+	}
+	return Result{
+		Handled: true,
+		Picker: NewPickerData(PickerSkill, "Enabled").
+			Context(section + ":" + skillID).
+			Meta(skillTitle(detail.Skill)).
+			Popup().
+			Item(PickerItem{ID: "on", Title: "On", Selected: detail.Skill.Enabled, Command: skillsCommand(section, skillID, "set-enabled", "on")}).
+			Item(PickerItem{ID: "off", Title: "Off", Selected: !detail.Skill.Enabled, Command: skillsCommand(section, skillID, "set-enabled", "off")}).
+			Ptr(),
+	}, nil
+}
+
+func (d *Dispatcher) skillSetEnabled(ctx context.Context, section string, skillID string, value string) (Result, error) {
+	enabled, ok := parseEnabledChoice(value)
+	if !ok {
+		return d.skillEnabledPicker(ctx, section, skillID)
+	}
+	if err := d.skills.SetSkillEnabled(ctx, skillID, enabled); err != nil {
+		return Result{Handled: true, Text: err.Error()}, nil
+	}
+	return d.skillPicker(ctx, section, skillID)
+}
+
 func (d *Dispatcher) handleLibrarySkillAction(ctx context.Context, section string, skillID string, action string, actionRest string) (Result, error) {
 	switch action {
 	case "view":
 		return d.skillView(ctx, skillID, skillsCommand(section, skillID))
+	case "enabled":
+		return d.skillEnabledPicker(ctx, section, skillID)
+	case "set-enabled":
+		return d.skillSetEnabled(ctx, section, skillID, actionRest)
 	case "trust-enable":
 		if err := d.skills.SkillAction(ctx, skillID, "trust"); err != nil {
 			return Result{Handled: true, Text: err.Error()}, nil
@@ -357,7 +383,7 @@ func (d *Dispatcher) handleLibrarySkillAction(ctx context.Context, section strin
 		if err := d.skills.UpdateSkillBody(ctx, skillID, actionRest); err != nil {
 			return Result{Handled: true, Text: err.Error()}, nil
 		}
-		return d.skillPicker(ctx, section, skillID)
+		return d.skillEditMenu(ctx, section, skillID)
 	case "remove":
 		if actionRest == "confirm" {
 			if err := d.skills.SkillAction(ctx, skillID, "remove"); err != nil {
@@ -381,7 +407,7 @@ func (d *Dispatcher) skillBodyEditor(ctx context.Context, section string, skillI
 		Placeholder:         "Skill instructions",
 		Value:               detail.Body,
 		SubmitCommandPrefix: skillsCommandPrefix(section, skillID, "save-body"),
-		CancelCommand:       skillsCommand(section, skillID),
+		CancelCommand:       skillsCommand(section, skillID, "edit"),
 	}}, nil
 }
 
@@ -492,7 +518,7 @@ func (d *Dispatcher) skillEditPrompt(ctx context.Context, section string, skillI
 		Placeholder:         "name | description | tag1,tag2 | category",
 		Value:               value,
 		SubmitCommandPrefix: skillsCommandPrefix(section, skillID, "edit"),
-		CancelCommand:       skillsCommand(section, skillID),
+		CancelCommand:       skillsCommand(section, skillID, "edit"),
 	}}, nil
 }
 
@@ -572,7 +598,7 @@ func (d *Dispatcher) skillEdit(ctx context.Context, section string, skillID stri
 	if _, err := d.skills.UpdateSkillMetadata(ctx, skillID, skills.MetadataUpdate{Name: name, Description: description, Tags: tags, Category: category}); err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
-	return d.skillPicker(ctx, section, skillID)
+	return d.skillEditMenu(ctx, section, skillID)
 }
 
 func (d *Dispatcher) skillRemoveConfirm(section string, skillID string) Result {

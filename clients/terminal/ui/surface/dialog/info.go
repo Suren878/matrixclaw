@@ -7,7 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 )
@@ -85,12 +85,12 @@ func (d *Info) HandleMsg(msg tea.Msg) Action {
 }
 
 func (d *Info) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
-	frame := commandui.NewFrame(area.Dx(), area.Dy()).WithInnerWidth(0)
+	frame := components.NewFrame(area.Dx(), area.Dy()).WithInnerWidth(0)
 	items := d.infoItems()
 	if len(items) == 0 {
-		items = []commandui.Item{{Title: "(empty)", Disabled: true}}
+		items = []components.Item{{Title: "(empty)", Disabled: true}}
 	}
-	view := commandui.RenderInfoCard(frame, commandui.InfoData{
+	view := components.RenderInfoCard(frame, components.InfoData{
 		Title:          loadingTitle(d.title(), d.loading, d.frame),
 		Items:          items,
 		Selected:       -1,
@@ -120,21 +120,21 @@ func (d *Info) title() string {
 	return "Info"
 }
 
-func (d *Info) footerItems() []commandui.Item {
-	return []commandui.Item{{ID: "back", Title: "Back", Role: commandui.RoleBack}}
+func (d *Info) footerItems() []components.Item {
+	return []components.Item{{ID: "back", Title: "Back", Role: components.RoleBack}}
 }
 
-func (d *Info) infoItems() []commandui.Item {
+func (d *Info) infoItems() []components.Item {
 	if len(d.data.Rows) > 0 {
 		return infoRowItems(d.data.Rows)
 	}
 	return infoTextItems(d.data.Text)
 }
 
-func infoRowItems(rows []InfoRow) []commandui.Item {
-	items := make([]commandui.Item, 0, len(rows))
+func infoRowItems(rows []InfoRow) []components.Item {
+	items := make([]components.Item, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, commandui.Item{
+		items = append(items, components.Item{
 			Title:  strings.TrimSpace(row.Label),
 			Status: strings.TrimSpace(row.Value),
 		})
@@ -142,24 +142,24 @@ func infoRowItems(rows []InfoRow) []commandui.Item {
 	return items
 }
 
-func infoTextItems(text string) []commandui.Item {
+func infoTextItems(text string) []components.Item {
 	lines := strings.Split(strings.TrimSpace(text), "\n")
-	items := make([]commandui.Item, 0, len(lines))
+	items := make([]components.Item, 0, len(lines))
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
-			items = append(items, commandui.Item{})
+			items = append(items, components.Item{})
 			continue
 		}
 		if label, value, ok := strings.Cut(line, "\t"); ok {
-			items = append(items, commandui.Item{Title: strings.TrimSpace(label), Status: strings.TrimSpace(value)})
+			items = append(items, components.Item{Title: strings.TrimSpace(label), Status: strings.TrimSpace(value)})
 			continue
 		}
 		if label, value, ok := strings.Cut(line, ": "); ok {
-			items = append(items, commandui.Item{Title: strings.TrimSpace(label), Status: strings.TrimSpace(value)})
+			items = append(items, components.Item{Title: strings.TrimSpace(label), Status: strings.TrimSpace(value)})
 			continue
 		}
-		items = append(items, commandui.Item{Title: line, Disabled: true})
+		items = append(items, components.Item{Title: line, Disabled: true})
 	}
 	return items
 }

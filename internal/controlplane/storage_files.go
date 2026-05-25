@@ -3,53 +3,10 @@ package controlplane
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
 )
-
-func (d *Dispatcher) storageImport(ctx context.Context, localPath string) (Result, error) {
-	localPath = strings.Trim(strings.TrimSpace(localPath), `"`)
-	if localPath == "" {
-		return Result{
-			Handled: true,
-			Prompt: &PromptData{
-				Title:               "Local File Path",
-				Placeholder:         "/absolute/path/to/file.txt",
-				SubmitCommandPrefix: storageImportCommandPrefix(),
-				CancelCommand:       storageCommand(),
-			},
-		}, nil
-	}
-	info, err := os.Stat(localPath)
-	if err != nil {
-		return Result{}, err
-	}
-	if info.IsDir() {
-		return Result{Handled: true, Text: "Cannot import a directory."}, nil
-	}
-	content, err := os.ReadFile(localPath)
-	if err != nil {
-		return Result{}, err
-	}
-	mimeType := http.DetectContentType(content)
-	name := filepath.Base(localPath)
-	entry, err := d.storage.SaveStorageFile(ctx, "imports/"+name, content, name, []string{"import"}, mimeType)
-	if err != nil {
-		return Result{}, err
-	}
-	result, err := d.storageFilesPicker(ctx)
-	if err != nil {
-		return Result{}, err
-	}
-	if result.Picker != nil {
-		result.Picker.Meta = "Imported " + entry.Path
-	}
-	return result, nil
-}
 
 func (d *Dispatcher) storageFilesPicker(ctx context.Context) (Result, error) {
 	list, err := d.storage.ListStorageFiles(ctx, localstorage.ListFilter{Limit: 50})
@@ -66,10 +23,10 @@ func (d *Dispatcher) storageFilesPicker(ctx context.Context) (Result, error) {
 	}
 	if len(items) == 0 {
 		items = append(items, PickerItem{
-			ID:      "empty",
-			Title:   "No stored files yet",
-			Info:    "Import a file or ask the assistant to save one.",
-			Command: storageImportCommand(),
+			ID:       "empty",
+			Title:    "No stored files yet",
+			Info:     "Ask the assistant to save one.",
+			Disabled: true,
 		})
 	} else {
 		items = append(items, PickerItem{

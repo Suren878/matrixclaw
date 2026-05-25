@@ -6,7 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 )
@@ -18,7 +18,7 @@ type FormCommandField = controlplane.FormField
 
 type FormCommand struct {
 	data    FormCommandData
-	state   commandui.FormState
+	state   components.FormState
 	loading bool
 	frame   int
 }
@@ -26,8 +26,8 @@ type FormCommand struct {
 func NewFormCommand(_ *surfacecommon.Common, data FormCommandData) *FormCommand {
 	return &FormCommand{
 		data: data,
-		state: commandui.FormState{
-			Focus: commandui.FormFocus{Kind: commandui.FormFocusField},
+		state: components.FormState{
+			Focus: components.FormFocus{Kind: components.FormFocusField},
 		},
 	}
 }
@@ -46,19 +46,19 @@ func (d *FormCommand) HandleMsg(msg tea.Msg) Action {
 	if !ok {
 		return nil
 	}
-	event := d.state.Update(keyMsg.String(), d.items(), d.buttons(), commandui.RoleBack)
+	event := d.state.Update(keyMsg.String(), d.items(), d.buttons(), components.RoleBack)
 	switch event.Kind {
-	case commandui.EventEdit:
+	case components.EventEdit:
 		for _, field := range d.data.Fields {
 			if field.ID == event.ID && strings.TrimSpace(field.EditCommand) != "" {
 				return ActionRunControlplaneCommand{Command: strings.TrimSpace(field.EditCommand)}
 			}
 		}
-	case commandui.EventSubmit:
+	case components.EventSubmit:
 		if strings.TrimSpace(d.data.SubmitCommand) != "" {
 			return ActionRunControlplaneCommand{Command: strings.TrimSpace(d.data.SubmitCommand), CloseSource: true}
 		}
-	case commandui.EventBack, commandui.EventCancel:
+	case components.EventBack, components.EventCancel:
 		return d.cancelAction()
 	}
 	return nil
@@ -72,7 +72,7 @@ func (d *FormCommand) cancelAction() Action {
 }
 
 func (d *FormCommand) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
-	view := commandui.RenderFormCard(commandui.NewFrame(area.Dx(), area.Dy()), commandui.FormData{
+	view := components.RenderFormCard(components.NewFrame(area.Dx(), area.Dy()), components.FormData{
 		Title:   loadingTitle(d.title(), d.loading, d.frame),
 		Fields:  d.items(),
 		Focus:   d.state.Focus,
@@ -103,14 +103,14 @@ func (d *FormCommand) title() string {
 	return "Form"
 }
 
-func (d *FormCommand) items() []commandui.Item {
-	items := make([]commandui.Item, 0, len(d.data.Fields))
+func (d *FormCommand) items() []components.Item {
+	items := make([]components.Item, 0, len(d.data.Fields))
 	for _, field := range d.data.Fields {
-		tone := commandui.RowToneNormal
+		tone := components.RowToneNormal
 		if strings.TrimSpace(field.ID) == "model" && strings.TrimSpace(field.Value) != "" && !field.Disabled {
-			tone = commandui.RowToneAccent
+			tone = components.RowToneAccent
 		}
-		items = append(items, commandui.Item{
+		items = append(items, components.Item{
 			ID:       strings.TrimSpace(field.ID),
 			Title:    strings.TrimSpace(field.Label),
 			Status:   strings.TrimSpace(field.Value),
@@ -121,9 +121,9 @@ func (d *FormCommand) items() []commandui.Item {
 	return items
 }
 
-func (d *FormCommand) buttons() []commandui.ButtonSpec {
-	return []commandui.ButtonSpec{
-		{Label: firstNonEmptyTrimmed(d.data.SubmitLabel, "Save"), Role: commandui.RoleSubmit},
-		{Label: firstNonEmptyTrimmed(d.data.CancelLabel, "Cancel"), Role: commandui.RoleBack},
+func (d *FormCommand) buttons() []components.ButtonSpec {
+	return []components.ButtonSpec{
+		{Label: firstNonEmptyTrimmed(d.data.SubmitLabel, "Save"), Role: components.RoleSubmit},
+		{Label: firstNonEmptyTrimmed(d.data.CancelLabel, "Cancel"), Role: components.RoleBack},
 	}
 }

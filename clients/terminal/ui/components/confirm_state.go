@@ -1,4 +1,4 @@
-package commandui
+package components
 
 type ConfirmState struct {
 	Selected int

@@ -32,21 +32,7 @@ func PickerItemCommand(picker PickerData, item PickerItem) string {
 	if command := strings.TrimSpace(item.Command); command != "" {
 		return command
 	}
-	if command, ok := pickerItemNavigationCommand(picker, item); ok {
-		return command
-	}
 	return PickerCommandFor(picker.Kind, picker.ContextID, item.ID)
-}
-
-func pickerItemNavigationCommand(picker PickerData, item PickerItem) (string, bool) {
-	switch {
-	case item.IsBack():
-		return pickerBackCommand(picker)
-	case item.IsCancel():
-		return pickerCloseCommand(picker)
-	default:
-		return "", false
-	}
 }
 
 func PickerCloseCommand(picker PickerData) string {
@@ -87,7 +73,7 @@ func PickerCommandLabel(picker PickerData) string {
 		return contextCommand()
 	case PickerSessionSkills, PickerSessionSkill:
 		return sessionSkillsCommand()
-	case PickerModules, PickerTextToSpeech, PickerTTSProvider, PickerSpeechToText, PickerVoiceEnabled, PickerVoiceProvider, PickerExternalAgents, PickerExternalAgent, PickerExternalAgentOn, PickerStorage, PickerStorageFiles, PickerStorageFile, PickerStorageTemp, PickerStorageCleanup, PickerStorageTempFile, PickerSkills, PickerSkillsSection, PickerSkill, PickerSkillEnabled, PickerMCP, PickerMCPServer, PickerMCPEnabled, PickerMCPServerOn:
+	case PickerModules, PickerTextToSpeech, PickerSpeechToText, PickerVoiceProvider, PickerExternalAgents, PickerExternalAgent, PickerStorage, PickerStorageFiles, PickerStorageFile, PickerStorageTemp, PickerStorageCleanup, PickerStorageTempFile, PickerSkills, PickerSkillsSection, PickerSkill, PickerMCP, PickerMCPServer:
 		return modulesCommand()
 	case PickerTasks, PickerTaskActions, PickerTaskArchive:
 		return tasksCommand()
@@ -114,15 +100,7 @@ func PaginatePicker(picker PickerData, page int, pageSize int) PickerPage {
 	if pageSize <= 0 {
 		return PickerPage{Items: append([]PickerItem(nil), picker.Items...), Page: 0, Pages: 1}
 	}
-	trailing := []PickerItem{}
-	items := make([]PickerItem, 0, len(picker.Items))
-	for _, item := range picker.Items {
-		if item.IsCancel() {
-			trailing = append(trailing, item)
-			continue
-		}
-		items = append(items, item)
-	}
+	items := append([]PickerItem(nil), picker.Items...)
 	if len(items) <= pageSize {
 		return PickerPage{Items: append([]PickerItem(nil), picker.Items...), Page: 0, Pages: 1}
 	}
@@ -139,10 +117,9 @@ func PaginatePicker(picker PickerData, page int, pageSize int) PickerPage {
 	start := page * pageSize
 	end := min(start+pageSize, len(items))
 	return PickerPage{
-		Items:    append([]PickerItem(nil), items[start:end]...),
-		Trailing: trailing,
-		Page:     page,
-		Pages:    pages,
+		Items: append([]PickerItem(nil), items[start:end]...),
+		Page:  page,
+		Pages: pages,
 	}
 }
 
@@ -155,9 +132,6 @@ func PickerItemDisplayTitle(item PickerItem) string {
 }
 
 func PickerItemDisplayInfo(kind PickerKind, item PickerItem) string {
-	if item.IsNavigation() {
-		return ""
-	}
 	info := strings.TrimSpace(item.Info)
 	if info == "" {
 		return ""

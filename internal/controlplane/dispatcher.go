@@ -83,7 +83,6 @@ type SearchRuntime interface {
 }
 
 type StorageRuntime interface {
-	SaveStorageFile(ctx context.Context, storagePath string, content []byte, title string, tags []string, mimeType string) (localstorage.Entry, error)
 	ListTemporaryStorageFiles(ctx context.Context, limit int) (localstorage.TempListResult, error)
 	PromoteTemporaryStorageFile(ctx context.Context, tempPath string, destPath string) (localstorage.Entry, error)
 	DeleteTemporaryStorageFile(ctx context.Context, tempPath string) (localstorage.TempEntry, error)

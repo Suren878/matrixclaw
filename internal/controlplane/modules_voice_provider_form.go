@@ -169,7 +169,8 @@ func (d *Dispatcher) voiceProviderModelPicker(ctx context.Context, moduleID stri
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerProviderCustom, "Model").
-			Back(voiceModuleCommand(moduleID, "provider-form", providerID, token)).
+			Popup().
+			Close(voiceModuleCommand(moduleID, "provider-form", providerID, token)).
 			Items(items...).
 			Ptr(),
 	}, nil

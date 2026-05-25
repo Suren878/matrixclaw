@@ -7,7 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 )
@@ -19,7 +19,6 @@ type TextEditCommandData = controlplane.TextEditData
 type TextEditCommand struct {
 	data      TextEditCommandData
 	input     textarea.Model
-	state     commandui.TextEditState
 	loading   bool
 	frame     int
 	lastWidth int
@@ -48,15 +47,14 @@ func (d *TextEditCommand) HandleMsg(msg tea.Msg) Action {
 	}
 	keyMsg, ok := msg.(tea.KeyPressMsg)
 	if ok {
-		event := d.state.Update(keyMsg.String(), d.buttons(), commandui.RoleCancel)
-		switch event.Kind {
-		case commandui.EventCancel, commandui.EventBack:
-			return controlplaneCommandOrClose(d.data.CancelCommand)
-		case commandui.EventSubmit:
+		switch keyMsg.String() {
+		case "esc", "alt+esc":
+			if command := strings.TrimSpace(d.data.CancelCommand); command != "" {
+				return ActionRunControlplaneCommand{Command: command, CloseSource: true}
+			}
+			return ActionClose{}
+		case "enter", "ctrl+s":
 			return ActionRunControlplaneCommand{Command: d.data.SubmitCommandPrefix + d.input.Value(), CloseSource: true}
-		}
-		if d.state.ButtonsFocused {
-			return nil
 		}
 	}
 	var cmd tea.Cmd
@@ -68,17 +66,14 @@ func (d *TextEditCommand) HandleMsg(msg tea.Msg) Action {
 }
 
 func (d *TextEditCommand) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
-	frame := commandui.NewFrame(area.Dx(), area.Dy()).WithInnerWidth(0)
+	frame := components.NewFrame(area.Dx(), area.Dy()).WithInnerWidth(0)
 	d.input.SetWidth(max(1, frame.InnerWidth()))
-	d.input.SetHeight(commandui.TextViewEditorHeight(frame))
+	d.input.SetHeight(components.TextViewEditorHeight(frame))
 	d.lastWidth = frame.InnerWidth()
 	d.lastY = 4
-	view := commandui.RenderTextViewCard(frame, commandui.TextViewData{
-		Title:          loadingTitle(d.data.Title, d.loading, d.frame),
-		Text:           d.input.View(),
-		Buttons:        d.buttons(),
-		Button:         d.state.Button,
-		ButtonsFocused: d.state.ButtonsFocused,
+	view := components.RenderTextViewCard(frame, components.TextViewData{
+		Title: loadingTitle(d.data.Title, d.loading, d.frame),
+		Text:  d.input.View(),
 	})
 	DrawCenter(scr, area, view)
 	return nil
@@ -93,11 +88,4 @@ func (d *TextEditCommand) StartLoading() tea.Cmd {
 func (d *TextEditCommand) StopLoading() {
 	d.loading = false
 	d.frame = 0
-}
-
-func (d *TextEditCommand) buttons() []commandui.ButtonSpec {
-	return []commandui.ButtonSpec{
-		{Label: "Save", Role: commandui.RoleSubmit},
-		{Label: "Cancel", Role: commandui.RoleCancel},
-	}
 }

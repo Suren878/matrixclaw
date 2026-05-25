@@ -3,11 +3,11 @@ package setup
 import (
 	"charm.land/lipgloss/v2"
 
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 )
 
-func (m *model) commandFrame() commandui.Frame {
-	return commandui.NewFrame(m.width, m.frameRows()).WithInnerWidth(0)
+func (m *model) commandFrame() components.Frame {
+	return components.NewFrame(m.width, m.frameRows()).WithInnerWidth(0)
 }
 
 func (m *model) renderCommandCard(card string) string {

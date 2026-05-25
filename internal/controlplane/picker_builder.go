@@ -35,8 +35,8 @@ func (b *PickerBuilder) Close(command string) *PickerBuilder {
 	return b
 }
 
-func (b *PickerBuilder) HideBack(hide bool) *PickerBuilder {
-	b.data.HideBackItem = hide
+func (b *PickerBuilder) Popup() *PickerBuilder {
+	b.data.Popup = true
 	return b
 }
 
@@ -67,10 +67,6 @@ func (b *PickerBuilder) Danger(id string, title string, info string, command ...
 	return b.item(item, !explicit)
 }
 
-func (b *PickerBuilder) CloseItem(label ...string) *PickerBuilder {
-	return b.Item(CloseItem(label...))
-}
-
 func (b *PickerBuilder) Build() PickerData {
 	data := b.data
 	if len(data.Items) > 0 {
@@ -81,13 +77,10 @@ func (b *PickerBuilder) Build() PickerData {
 			continue
 		}
 		item := &data.Items[index]
-		if strings.TrimSpace(item.Command) != "" || item.IsNavigation() {
+		if strings.TrimSpace(item.Command) != "" {
 			continue
 		}
 		item.Command = PickerCommandFor(data.Kind, data.ContextID, item.ID)
-	}
-	if shouldAppendBackItem(data) {
-		data.Items = append(data.Items, BackItem())
 	}
 	return data
 }
@@ -115,17 +108,4 @@ func applyPickerBuilderCommand(item *PickerItem, command []string) bool {
 	}
 	item.Command = command[0]
 	return true
-}
-
-func hasNavigationItem(items []PickerItem) bool {
-	for _, item := range items {
-		if item.IsNavigation() {
-			return true
-		}
-	}
-	return false
-}
-
-func shouldAppendBackItem(data PickerData) bool {
-	return !data.HideBackItem && strings.TrimSpace(data.BackCommand) != "" && !hasNavigationItem(data.Items)
 }

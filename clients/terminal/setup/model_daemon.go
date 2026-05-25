@@ -7,7 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -57,12 +57,12 @@ func (m *model) updateDaemonTimezoneList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	options := setup.TimezoneOptions(time.Now())
-	event := m.updateListSelection(keyMsg.String(), &m.timezoneCursor, len(options)+1, commandui.RoleBack)
+	event := m.updateListSelection(keyMsg.String(), &m.timezoneCursor, len(options)+1, components.RoleBack)
 	switch event.Kind {
-	case commandui.EventBack:
+	case components.EventBack:
 		m.screen = screenDaemonForm
 		return m, nil
-	case commandui.EventSelect:
+	case components.EventSelect:
 		if m.timezoneCursor >= 0 && m.timezoneCursor < len(options) {
 			m.draft.Timezone = options[m.timezoneCursor].ID
 			m.screen = screenDaemonForm

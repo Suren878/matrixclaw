@@ -9,18 +9,23 @@ type CommandEntry = PickerEntry
 
 // CommandsData is the minimal runtime state needed to render the commands popup.
 type CommandsData struct {
-	Title   string
-	Legend  string
-	Entries []CommandEntry
+	Title       string
+	Meta        string
+	Legend      string
+	Entries     []CommandEntry
+	CloseAction Action
 }
 
 // NewCommands creates the commands popup using the generic picker dialog.
 func NewCommands(com *surfacecommon.Common, data CommandsData) *Picker {
 	return NewPicker(com, PickerData{
-		ID:      CommandsID,
-		Title:   data.Title,
-		Legend:  data.Legend,
-		Filter:  false,
-		Entries: data.Entries,
+		ID:          CommandsID,
+		Title:       data.Title,
+		Meta:        data.Meta,
+		Legend:      data.Legend,
+		Filter:      false,
+		ShowFooter:  true,
+		Entries:     data.Entries,
+		CloseAction: data.CloseAction,
 	})
 }

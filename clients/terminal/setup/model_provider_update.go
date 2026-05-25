@@ -5,7 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
@@ -14,7 +14,7 @@ func (m *model) updateProviderList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		entries := m.providerEntries()
-		event := m.updateListSelection(msg.String(), &m.cursor, len(entries), commandui.RoleBack)
+		event := m.updateListSelection(msg.String(), &m.cursor, len(entries), components.RoleBack)
 		switch msg.String() {
 		case "ctrl+a":
 			m.providerTypeCursor = 0
@@ -22,10 +22,10 @@ func (m *model) updateProviderList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		switch event.Kind {
-		case commandui.EventBack:
+		case components.EventBack:
 			m.returnToList(screenDaemonList)
 			return m, nil
-		case commandui.EventSelect:
+		case components.EventSelect:
 			if len(entries) == 0 {
 				return m, nil
 			}
@@ -72,10 +72,10 @@ func (m *model) updateProviderNoProviderConfirm(msg tea.Msg) (tea.Model, tea.Cmd
 	}
 	event := updateConfirmSelection(keyMsg.String(), &m.providerNoProviderCursor)
 	switch event.Kind {
-	case commandui.EventCancel:
+	case components.EventCancel:
 		m.screen = screenProviderList
 		return m, nil
-	case commandui.EventSubmit:
+	case components.EventSubmit:
 		m.openDraftForm(screenAssistantForm)
 		return m, nil
 	}
@@ -87,12 +87,12 @@ func (m *model) updateProviderTypeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	event := m.updateListSelection(keyMsg.String(), &m.providerTypeCursor, 2, commandui.RoleBack)
+	event := m.updateListSelection(keyMsg.String(), &m.providerTypeCursor, 2, components.RoleBack)
 	switch event.Kind {
-	case commandui.EventBack:
+	case components.EventBack:
 		m.screen = screenProviderList
 		return m, nil
-	case commandui.EventSelect:
+	case components.EventSelect:
 		providerType := providers.TypeOpenAICompat
 		if m.providerTypeCursor == 1 {
 			providerType = providers.TypeAnthropic
@@ -157,12 +157,12 @@ func (m *model) updateProviderBaseURLList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	options := m.providerBaseURLOptions()
-	event := m.updateListSelection(keyMsg.String(), &m.providerBaseURLCursor, len(options), commandui.RoleBack)
+	event := m.updateListSelection(keyMsg.String(), &m.providerBaseURLCursor, len(options), components.RoleBack)
 	switch event.Kind {
-	case commandui.EventBack:
+	case components.EventBack:
 		m.screen = screenProviderForm
 		return m, nil
-	case commandui.EventSelect:
+	case components.EventSelect:
 		if len(options) > 0 {
 			m.editingProvider.BaseURL = options[m.providerBaseURLCursor]
 		}
@@ -176,9 +176,9 @@ func (m *model) updateProviderModelList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		if m.providerModelsLoading {
-			state := commandui.ListState{NoWrap: true}
-			event := state.Update(msg.String(), nil, commandui.RoleBack)
-			if event.Kind == commandui.EventBack {
+			state := components.ListState{NoWrap: true}
+			event := state.Update(msg.String(), nil, components.RoleBack)
+			if event.Kind == components.EventBack {
 				m.providerModelsLoading = false
 				m.providerModelLoadSeq++
 				m.screen = screenProviderForm
@@ -191,15 +191,15 @@ func (m *model) updateProviderModelList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if rowCursor < 0 {
 			rowCursor = 0
 		}
-		nextRowCursor, event := providerModelRowSelection(msg.String(), rowCursor, rows, commandui.RoleBack)
+		nextRowCursor, event := providerModelRowSelection(msg.String(), rowCursor, rows, components.RoleBack)
 		if len(rows) > 0 {
 			m.providerModelCursor = rows[nextRowCursor].EntryIndex
 		}
 		switch event.Kind {
-		case commandui.EventBack:
+		case components.EventBack:
 			m.screen = screenProviderForm
 			return m, nil
-		case commandui.EventSelect:
+		case components.EventSelect:
 			if len(rows) == 0 {
 				return m, nil
 			}
@@ -223,12 +223,12 @@ func (m *model) updateProviderEffortList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	efforts := m.providerReasoningEfforts()
-	event := m.updateListSelection(keyMsg.String(), &m.providerEffortCursor, len(efforts), commandui.RoleBack)
+	event := m.updateListSelection(keyMsg.String(), &m.providerEffortCursor, len(efforts), components.RoleBack)
 	switch event.Kind {
-	case commandui.EventBack:
+	case components.EventBack:
 		m.screen = screenProviderForm
 		return m, nil
-	case commandui.EventSelect:
+	case components.EventSelect:
 		if len(efforts) > 0 {
 			m.editingProvider.ReasoningEffort = efforts[m.providerEffortCursor]
 		}
@@ -244,12 +244,12 @@ func (m *model) updateProviderToolUseList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	modes := setup.ProviderFormToolUseModes()
-	event := m.updateListSelection(keyMsg.String(), &m.providerToolUseCursor, len(modes), commandui.RoleBack)
+	event := m.updateListSelection(keyMsg.String(), &m.providerToolUseCursor, len(modes), components.RoleBack)
 	switch event.Kind {
-	case commandui.EventBack:
+	case components.EventBack:
 		m.screen = screenProviderForm
 		return m, nil
-	case commandui.EventSelect:
+	case components.EventSelect:
 		if len(modes) > 0 {
 			m.editingProvider.ToolUseMode = modes[m.providerToolUseCursor]
 		}

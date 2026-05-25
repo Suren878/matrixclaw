@@ -72,11 +72,11 @@ func (d *Dispatcher) mcpEnabledPicker(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Handled: true, Picker: NewPickerData(PickerMCPEnabled, "Enable MCP module?").
+	return Result{Handled: true, Picker: NewPickerData(PickerMCP, "MCP").
 		Meta("Currently " + strings.ToLower(formatEnabled(resp.Config.Enabled))).
-		Back(mcpCommand()).
-		Item(PickerItem{ID: "yes", Title: "Yes", Selected: resp.Config.Enabled}).
-		Item(PickerItem{ID: "no", Title: "No", Selected: !resp.Config.Enabled}).
+		Popup().
+		Item(PickerItem{ID: "on", Title: "On", Selected: resp.Config.Enabled, Command: mcpCommand("set-enabled", "on")}).
+		Item(PickerItem{ID: "off", Title: "Off", Selected: !resp.Config.Enabled, Command: mcpCommand("set-enabled", "off")}).
 		Ptr()}, nil
 }
 
@@ -179,12 +179,12 @@ func (d *Dispatcher) mcpServerEnabledPicker(ctx context.Context, serverID string
 	if !ok {
 		return Result{Handled: true, Text: "MCP server not found: " + strings.TrimSpace(serverID)}, nil
 	}
-	return Result{Handled: true, Picker: NewPickerData(PickerMCPServerOn, "Enable "+mcpServerTitle(server)+"?").
+	return Result{Handled: true, Picker: NewPickerData(PickerMCPServer, mcpServerTitle(server)).
 		Context(server.ID).
 		Meta("Currently " + strings.ToLower(formatEnabled(server.Enabled))).
-		Back(mcpServerCommand(server.ID)).
-		Item(PickerItem{ID: "yes", Title: "Yes", Selected: server.Enabled}).
-		Item(PickerItem{ID: "no", Title: "No", Selected: !server.Enabled}).
+		Popup().
+		Item(PickerItem{ID: "on", Title: "On", Selected: server.Enabled, Command: mcpServerCommand(server.ID, "set-enabled", "on")}).
+		Item(PickerItem{ID: "off", Title: "Off", Selected: !server.Enabled, Command: mcpServerCommand(server.ID, "set-enabled", "off")}).
 		Ptr()}, nil
 }
 

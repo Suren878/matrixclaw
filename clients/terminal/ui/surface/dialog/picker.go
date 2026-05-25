@@ -6,7 +6,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
 	terminaltextfield "github.com/Suren878/matrixclaw/clients/terminal/ui/textfield"
 )
@@ -29,8 +29,8 @@ type PickerEntry struct {
 	Status   string
 	Search   string
 	Shortcut string
-	Role     commandui.Role
-	Tone     commandui.RowTone
+	Role     components.Role
+	Tone     components.RowTone
 	Selected bool
 	Disabled bool
 	Footer   bool
@@ -43,12 +43,13 @@ type PickerData struct {
 	Meta        string
 	Legend      string
 	Filter      bool
+	ShowFooter  bool
 	Entries     []PickerEntry
 	CloseAction Action
 }
 
 type pickerOption struct {
-	item     commandui.Item
+	item     components.Item
 	action   Action
 	search   string
 	selected bool
@@ -91,6 +92,7 @@ func NewPicker(com *surfacecommon.Common, data PickerData) *Picker {
 			Meta:        data.Meta,
 			Legend:      data.Legend,
 			Filter:      data.Filter,
+			ShowFooter:  data.ShowFooter,
 			Entries:     append([]PickerEntry(nil), data.Entries...),
 			CloseAction: data.CloseAction,
 		},
@@ -118,7 +120,7 @@ func NewPicker(com *surfacecommon.Common, data PickerData) *Picker {
 		key.WithHelp("↑", "previous item"),
 	)
 	closeKey := CloseKey
-	closeKey.SetHelp("esc", "back")
+	closeKey.SetHelp("esc", "close")
 	p.keyMap.Close = closeKey
 
 	p.setItems()

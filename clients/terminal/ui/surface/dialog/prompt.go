@@ -7,7 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
 	terminaltextfield "github.com/Suren878/matrixclaw/clients/terminal/ui/textfield"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
@@ -63,9 +63,12 @@ func (d *PromptCommand) HandleMsg(msg tea.Msg) Action {
 	if ok {
 		switch {
 		case key.Matches(keyMsg, d.keyMap.Close):
-			return controlplaneCommandOrClose(d.data.CancelCommand)
+			if command := strings.TrimSpace(d.data.CancelCommand); command != "" {
+				return ActionRunControlplaneCommand{Command: command, CloseSource: true}
+			}
+			return ActionClose{}
 		case key.Matches(keyMsg, d.keyMap.Submit):
-			return ActionRunControlplaneCommand{Command: d.data.SubmitCommandPrefix + strings.TrimSpace(d.input.Value())}
+			return ActionRunControlplaneCommand{Command: d.data.SubmitCommandPrefix + strings.TrimSpace(d.input.Value()), CloseSource: true}
 		}
 	}
 	var cmd tea.Cmd
@@ -87,10 +90,10 @@ func (d *PromptCommand) Cursor() *uv.Cursor {
 }
 
 func (d *PromptCommand) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
-	frame := commandui.NewFrame(area.Dx(), area.Dy())
+	frame := components.NewFrame(area.Dx(), area.Dy())
 	frame = frame.WithInnerWidth(0)
 	d.input.SetWidth(max(1, frame.InnerWidth()-2))
-	view := commandui.RenderPromptCard(frame, commandui.PromptData{
+	view := components.RenderPromptCard(frame, components.PromptData{
 		Title: loadingTitle(d.data.Title, d.loading, d.frame),
 		Value: d.input.View(),
 	})

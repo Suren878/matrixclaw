@@ -3,7 +3,7 @@ package setup
 import (
 	"strings"
 
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
@@ -33,7 +33,7 @@ func (m *model) providerFormItems() []providerFormItem {
 	for _, field := range fields {
 		row := listItem{Title: field.Label, Status: field.Status}
 		if field.Accent {
-			row.Tone = commandui.RowToneAccent
+			row.Tone = components.RowToneAccent
 		}
 		row.Disabled = field.Disabled
 		item := providerFormItem{

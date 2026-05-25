@@ -8,7 +8,7 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	terminaltextfield "github.com/Suren878/matrixclaw/clients/terminal/ui/textfield"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
@@ -16,16 +16,14 @@ import (
 func (m *model) renderTextEditor() string {
 	if m.textEditorTarget == textEditAssistantCustomPrompt {
 		m.syncTextAreaSize()
-		card := commandui.RenderTextViewCard(m.commandFrame(), commandui.TextViewData{
-			Title:          m.textEditorTitle,
-			Text:           m.textAreaInput.View(),
-			Buttons:        setupFormButtons(),
-			Button:         m.textEditState.Button,
-			ButtonsFocused: m.textEditState.ButtonsFocused,
+		card := components.RenderTextViewCard(m.commandFrame(), components.TextViewData{
+			Title: m.textEditorTitle,
+			Text:  m.textAreaInput.View(),
+			Error: m.formError,
 		})
 		return m.renderCommandCard(card)
 	}
-	card := commandui.RenderPromptCard(m.commandFrame(), commandui.PromptData{
+	card := components.RenderPromptCard(m.commandFrame(), components.PromptData{
 		Title:       m.textEditorTitle,
 		Value:       m.textEditorInput.View(),
 		Placeholder: m.textEditorInput.Placeholder(),
@@ -74,7 +72,6 @@ func (m *model) openTextEditor(target textEditTarget, title string, placeholder 
 	m.textEditorTarget = target
 	m.textEditorTitle = title
 	m.formError = ""
-	m.textEditState = commandui.TextEditState{}
 	if target == textEditAssistantCustomPrompt {
 		m.textAreaInput = newTextArea(placeholder, value)
 		m.syncTextAreaSize()
@@ -207,17 +204,13 @@ func newTextArea(placeholder string, value string) textarea.Model {
 func (m *model) updateLargeTextEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 	keyMsg, ok := msg.(tea.KeyPressMsg)
 	if ok {
-		event := m.textEditState.Update(keyMsg.String(), setupFormButtons(), commandui.RoleCancel)
-		switch event.Kind {
-		case commandui.EventCancel, commandui.EventBack:
+		switch keyMsg.String() {
+		case "esc", "alt+esc":
 			m.screen = m.textEditorReturnScreen()
 			m.formError = ""
 			return m, nil
-		case commandui.EventSubmit:
+		case "enter", "ctrl+s":
 			m.commitTextEditor()
-			return m, nil
-		}
-		if m.textEditState.ButtonsFocused {
 			return m, nil
 		}
 	}
@@ -230,7 +223,7 @@ func (m *model) updateLargeTextEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) syncTextAreaSize() {
 	frame := m.commandFrame()
 	m.textAreaInput.SetWidth(max(1, frame.InnerWidth()))
-	m.textAreaInput.SetHeight(commandui.TextViewEditorHeight(frame))
+	m.textAreaInput.SetHeight(components.TextViewEditorHeight(frame))
 }
 
 func (m *model) resetFilter(placeholder string) {

@@ -226,7 +226,7 @@ func customProviderToolModePicker(titlePrefix string, data setup.ProviderFormSta
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerProviderCustom, titlePrefix+": tool mode").
-			HideBack(true).
+			Popup().
 			Close(cancelCommand).
 			Items(customProviderChoiceItems(providerToolUseField(data), submitPrefix)...).
 			Ptr(),
@@ -259,7 +259,8 @@ func customProviderBaseURLPicker(titlePrefix string, data setup.ProviderFormStat
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerProviderCustom, titlePrefix+": endpoint").
-			Back(cancelCommand).
+			Popup().
+			Close(cancelCommand).
 			Items(customProviderChoiceItems(field, submitPrefix)...).
 			Ptr(),
 	}
@@ -270,7 +271,7 @@ func customProviderReasoningEffortPickerWithOptions(titlePrefix string, data set
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerProviderCustom, titlePrefix+": reasoning effort").
-			HideBack(true).
+			Popup().
 			Close(cancelCommand).
 			Items(customProviderChoiceItems(field, submitPrefix)...).
 			Ptr(),

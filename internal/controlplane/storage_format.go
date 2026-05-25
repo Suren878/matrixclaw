@@ -19,7 +19,26 @@ func formatTempCleanupImpact(settings localstorage.TempSettings) string {
 	if settings.TotalFiles == 0 {
 		return "0 files"
 	}
-	return fmt.Sprintf("%d files · %s", settings.TotalFiles, formatStorageSize(settings.TotalBytes))
+	return formatFileCountSize(settings.TotalFiles, settings.TotalBytes)
+}
+
+func formatStoredFilesInfo(files []localstorage.Entry) string {
+	var total int64
+	for _, file := range files {
+		total += file.Size
+	}
+	return formatFileCountSize(len(files), total)
+}
+
+func formatFileCountSize(count int, bytes int64) string {
+	if count == 0 {
+		return "0 files"
+	}
+	label := "files"
+	if count == 1 {
+		label = "file"
+	}
+	return fmt.Sprintf("%d %s · %s", count, label, formatStorageSize(bytes))
 }
 
 func formatEnabled(enabled bool) string {

@@ -3,7 +3,7 @@ package setup
 import (
 	"strings"
 
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 )
 
 func (m *model) renderEditableForm(title string, items []listItem, extras ...string) string {
@@ -13,7 +13,7 @@ func (m *model) renderEditableForm(title string, items []listItem, extras ...str
 			extraLines = append(extraLines, extra)
 		}
 	}
-	card := commandui.RenderFormCard(m.commandFrame(), commandui.FormData{
+	card := components.RenderFormCard(m.commandFrame(), components.FormData{
 		Title:      title,
 		Fields:     commandItems(items),
 		Focus:      formFocus(m.formFocus, len(items)),
@@ -26,7 +26,7 @@ func (m *model) renderEditableForm(title string, items []listItem, extras ...str
 }
 
 func (m *model) renderStepList(title string, meta string, itemTitle string, itemStatus string) string {
-	card := commandui.RenderListCard(m.commandFrame(), commandui.ListData{
+	card := components.RenderListCard(m.commandFrame(), components.ListData{
 		Title:    title,
 		Meta:     meta,
 		Items:    commandItems([]listItem{{Title: "Continue"}, {Title: itemTitle, Status: itemStatus}}),
@@ -37,7 +37,7 @@ func (m *model) renderStepList(title string, meta string, itemTitle string, item
 }
 
 func (m *model) renderPickerFrame(title string, items []listItem, cursor int) string {
-	card := commandui.RenderPickerCard(m.commandFrame(), commandui.PickerData{
+	card := components.RenderPickerCard(m.commandFrame(), components.PickerData{
 		Title:    title,
 		Items:    commandItems(items),
 		Selected: cursor,
@@ -45,10 +45,10 @@ func (m *model) renderPickerFrame(title string, items []listItem, cursor int) st
 	return m.renderCommandCard(card)
 }
 
-func commandItems(items []listItem) []commandui.Item {
-	out := make([]commandui.Item, 0, len(items))
+func commandItems(items []listItem) []components.Item {
+	out := make([]components.Item, 0, len(items))
 	for _, item := range items {
-		out = append(out, commandui.Item{
+		out = append(out, components.Item{
 			Title:    item.Title,
 			Status:   item.Status,
 			Disabled: item.Disabled,
@@ -58,16 +58,16 @@ func commandItems(items []listItem) []commandui.Item {
 	return out
 }
 
-func formFocus(focus int, fieldCount int) commandui.FormFocus {
+func formFocus(focus int, fieldCount int) components.FormFocus {
 	if focus >= fieldCount {
-		return commandui.FormFocus{Kind: commandui.FormFocusButton}
+		return components.FormFocus{Kind: components.FormFocusButton}
 	}
-	return commandui.FormFocus{Kind: commandui.FormFocusField, Index: focus}
+	return components.FormFocus{Kind: components.FormFocusField, Index: focus}
 }
 
-func setupFormButtons() []commandui.ButtonSpec {
-	return []commandui.ButtonSpec{
-		{Label: "Save", Role: commandui.RoleSubmit},
-		{Label: "Cancel", Role: commandui.RoleCancel},
+func setupFormButtons() []components.ButtonSpec {
+	return []components.ButtonSpec{
+		{Label: "Save", Role: components.RoleSubmit},
+		{Label: "Cancel", Role: components.RoleCancel},
 	}
 }

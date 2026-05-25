@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Suren878/matrixclaw/clients/terminal/chat/runtime/planview"
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -123,9 +123,9 @@ func (m *appModel) planActionDivider(width int) string {
 }
 
 func (m *appModel) planActionControlsLine(plan *core.SessionPlan, width int) string {
-	styles := commandui.DefaultStyles()
+	styles := components.DefaultStyles()
 	actionFocused := m.focus == appFocusPlan && m.planSelected == planActionRowIndex(plan)
-	buttons := []commandui.Button{
+	buttons := []components.Button{
 		{
 			Label:   "+ New Task",
 			Focused: actionFocused && m.planActionSelected == 0,
@@ -133,17 +133,17 @@ func (m *appModel) planActionControlsLine(plan *core.SessionPlan, width int) str
 	}
 	if planHasOpenWork(plan) {
 		buttons = append(buttons,
-			commandui.Button{
+			components.Button{
 				Label:   planActionLabel(plan, m.busy),
 				Focused: actionFocused && m.planActionSelected == 1,
 			},
-			commandui.Button{
+			components.Button{
 				Label:   "✕ Cancel Plan",
 				Focused: actionFocused && m.planActionSelected == 2,
 			},
 		)
 	}
-	return commandui.RenderButtons(styles, width, buttons...)
+	return components.RenderButtons(styles, width, buttons...)
 }
 
 func (m *appModel) planItemLines(index int, item core.PlanItem, width int, guide string) []string {

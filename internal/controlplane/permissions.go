@@ -29,7 +29,7 @@ func (d *Dispatcher) handlePermissions(ctx context.Context, externalKey string, 
 	if args == "" {
 		return Result{
 			Handled: true,
-			Picker:  NewPickerData(PickerPermissions, "Permission Mode").Context(session.ID).HideBack(true).Items(permissionModeItems(session.PermissionMode)...).Ptr(),
+			Picker:  NewPickerData(PickerPermissions, "Permission Mode").Context(session.ID).Popup().Items(permissionModeItems(session.PermissionMode)...).Ptr(),
 		}, nil
 	}
 

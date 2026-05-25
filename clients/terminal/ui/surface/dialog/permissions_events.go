@@ -163,12 +163,12 @@ func (p *Permissions) respond(action PermissionAction) tea.Msg {
 
 func (p *Permissions) permissionOptions() []permissionOption {
 	options := []permissionOption{
-		{label: "Allow", action: PermissionAllow, underlineIndex: 0},
+		{label: "Allow", action: PermissionAllow},
 	}
 	if p.canAllowSession() {
-		options = append(options, permissionOption{label: "Allow Session", action: PermissionAllowSession, underlineIndex: 6})
+		options = append(options, permissionOption{label: "Allow Session", action: PermissionAllowSession})
 	}
-	options = append(options, permissionOption{label: "Deny", action: PermissionDeny, underlineIndex: 0})
+	options = append(options, permissionOption{label: "Deny", action: PermissionDeny})
 	return options
 }
 

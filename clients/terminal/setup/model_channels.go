@@ -6,7 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	commandui "github.com/Suren878/matrixclaw/clients/terminal/commandmenu/ui"
+	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -46,11 +46,11 @@ func (m *model) updateBoolPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	event := m.updateListSelection(keyMsg.String(), &m.boolPickerCursor, 2, commandui.RoleBack)
+	event := m.updateListSelection(keyMsg.String(), &m.boolPickerCursor, 2, components.RoleBack)
 	switch event.Kind {
-	case commandui.EventBack:
+	case components.EventBack:
 		m.screen = m.boolPickerReturnScreen()
-	case commandui.EventSelect:
+	case components.EventSelect:
 		value := "no"
 		if m.boolPickerCursor == 0 {
 			value = "yes"
