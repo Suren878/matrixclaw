@@ -5,12 +5,12 @@
 ![Telegram](https://img.shields.io/badge/Telegram-client-26A5E4?logo=telegram&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
-**Open-source personal AI infrastructure that runs locally and follows you
-across clients.**
+**Local-first AI assistant runtime and personal AI operator for Terminal,
+Telegram, MCP tools, external agents, and subagents.**
 
-`matrixclaw` is a personal AI assistant runtime written in Go. It runs as a
-small local daemon, stores state in SQLite, and gives your AI sessions a home
-outside any single app or chat window.
+`matrixclaw` is an open-source personal AI assistant runtime written in Go. It
+runs as a small local daemon, stores state in SQLite, and gives your AI sessions
+a durable home outside any single app or chat window.
 
 The core owns the session: context, files, tool history, approvals, provider
 settings, model choice, usage records, goals/plans, persistent memory,
@@ -23,8 +23,13 @@ your machine, continue from Telegram, and later return to the same session
 without losing the thread.
 
 `matrixclaw` is built for personal work first: development, research, files,
-remote checks, reminders, provider switching, visible task plans, and future
-agent workflows where continuity and explicit control matter.
+remote checks, reminders, provider switching, visible task plans, memory,
+subagents, and agent workflows where continuity and explicit control matter.
+
+It is useful if you want a self-hosted or local-first AI assistant that can keep
+state across clients, run approved tools, switch between LLM providers, delegate
+focused tasks to MatrixClaw/Codex/Claude Code subagents, and expose the same
+runtime through Terminal, Telegram, or MCP.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/8a3bdb40-1891-4a95-9bce-941ed48f4b72" alt="matrixclaw terminal demo">
@@ -37,7 +42,7 @@ agent workflows where continuity and explicit control matter.
 - **One assistant, many clients:** begin a session in Terminal TUI and continue it in Telegram.
 - **Local-first state:** sessions, runs, approvals, files, plans, usage, and provider choices live in SQLite.
 - **Provider switching:** OpenAI-compatible APIs, OpenAI Codex subscription OAuth, Anthropic, Gemini, Chinese provider presets, and custom endpoints.
-- **External agents:** experimental Codex app-server sessions attach to the same session model.
+- **External agents:** Codex app-server and Claude Code sessions attach to the same session model.
 - **Subagents:** MatrixClaw sessions can delegate bounded tasks to hidden child
   runs through `delegate_task`, including MatrixClaw, Codex, or Claude Code runtimes.
 - **Tools with approvals:** file and shell tools pause before risky changes.
@@ -49,6 +54,21 @@ agent workflows where continuity and explicit control matter.
 - **Local voice modules:** Piper and Supertonic TTS plus Whisper.cpp STT run locally, either per task to save RAM or as managed warm processes.
 - **MCP module:** connect external MCP servers as assistant tools, or expose matrixclaw tools to MCP hosts.
 - **Automation-ready:** reminders, scheduled AI tasks, deliveries, and future agent workflows.
+
+## Common Use Cases
+
+- Run a local-first AI assistant with durable sessions, tool history, approvals,
+  memory, and searchable context.
+- Use a terminal AI TUI that can hand the same session to Telegram without
+  losing state.
+- Compare or switch between OpenAI-compatible APIs, Codex subscription OAuth,
+  Anthropic-compatible models, Gemini, and custom providers.
+- Delegate bounded work to native MatrixClaw subagents or external Codex and
+  Claude Code subagents.
+- Connect MCP servers as assistant tools, or expose MatrixClaw tools to other
+  MCP hosts.
+- Keep personal AI automation, scheduled tasks, voice, storage, and provider
+  usage in one local SQLite-backed runtime.
 
 ## Daemon-first Architecture
 
