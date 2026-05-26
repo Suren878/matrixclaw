@@ -52,6 +52,10 @@ type CapabilityProvider interface {
 	Capabilities() Capabilities
 }
 
+type ModelProvider interface {
+	Models(ctx context.Context) []string
+}
+
 type RuntimeAgent interface {
 	Agent
 	StartSession(ctx context.Context, req StartSessionRequest) (ExternalSession, error)

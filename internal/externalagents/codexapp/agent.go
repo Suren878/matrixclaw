@@ -36,6 +36,15 @@ func (a Agent) Capabilities() externalagents.Capabilities {
 	}
 }
 
+func (a Agent) Models(context.Context) []string {
+	return []string{
+		"gpt-5.4",
+		"gpt-5.4-mini",
+		"gpt-5.3-codex",
+		"gpt-5.3-codex-spark",
+	}
+}
+
 func (a Agent) Available(ctx context.Context) externalagents.Availability {
 	resolved, err := LookupPath(a.Path)
 	installed := err == nil

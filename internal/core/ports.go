@@ -16,6 +16,12 @@ type SessionStore interface {
 	DeleteSession(ctx context.Context, sessionID string) error
 }
 
+type SubagentTaskStore interface {
+	CreateSubagentTask(ctx context.Context, task SubagentTask) error
+	UpdateSubagentTask(ctx context.Context, task SubagentTask) error
+	GetSubagentTask(ctx context.Context, taskID string) (SubagentTask, error)
+}
+
 type BindingStore interface {
 	SaveBinding(ctx context.Context, binding ClientBinding) error
 	GetBinding(ctx context.Context, client string, externalKey string) (ClientBinding, error)
@@ -64,6 +70,14 @@ type SearchStore interface {
 	SearchMessages(ctx context.Context, filter SearchFilter) ([]SearchResult, error)
 }
 
+type MemoryStore interface {
+	CreateMemory(ctx context.Context, entry MemoryEntry) error
+	UpdateMemory(ctx context.Context, entry MemoryEntry) error
+	DeleteMemory(ctx context.Context, id string) error
+	GetMemory(ctx context.Context, id string) (MemoryEntry, error)
+	ListMemories(ctx context.Context, filter MemoryFilter) ([]MemoryEntry, error)
+}
+
 type ApprovalStore interface {
 	CreateApproval(ctx context.Context, approval Approval) error
 	GetApproval(ctx context.Context, approvalID string) (Approval, error)
@@ -78,6 +92,7 @@ type FileSnapshotStore interface {
 
 type Store interface {
 	SessionStore
+	SubagentTaskStore
 	BindingStore
 	DeliveryStore
 	MessageStore
@@ -85,6 +100,7 @@ type Store interface {
 	UsageStore
 	PlanStore
 	SearchStore
+	MemoryStore
 	ApprovalStore
 	FileSnapshotStore
 }

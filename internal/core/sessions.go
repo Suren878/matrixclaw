@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/externalagents"
 )
 
 func (c *Core) CreateSession(ctx context.Context, input CreateSessionInput) (Session, error) {
@@ -42,17 +44,19 @@ func (c *Core) CreateSession(ctx context.Context, input CreateSessionInput) (Ses
 
 	now := c.now().UTC()
 	session := Session{
-		ID:             c.newID("session"),
-		Title:          title,
-		Kind:           kind,
-		RuntimeID:      runtimeID,
-		WorkingDir:     workingDir,
-		ProviderID:     providerID,
-		ModelID:        modelID,
-		PermissionMode: permissionMode,
-		Status:         SessionStatusActive,
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		ID:              c.newID("session"),
+		Title:           title,
+		Kind:            kind,
+		RuntimeID:       runtimeID,
+		ParentSessionID: normalizeText(input.ParentSessionID),
+		Hidden:          input.Hidden,
+		WorkingDir:      workingDir,
+		ProviderID:      providerID,
+		ModelID:         modelID,
+		PermissionMode:  permissionMode,
+		Status:          SessionStatusActive,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 	if err := c.store.CreateSession(ctx, session); err != nil {
 		return Session{}, err
@@ -63,7 +67,7 @@ func (c *Core) CreateSession(ctx context.Context, input CreateSessionInput) (Ses
 			return Session{}, err
 		}
 	}
-	return session, nil
+	return c.decorateSession(ctx, session), nil
 }
 
 func (c *Core) ListSessions(ctx context.Context, filter SessionListFilter) ([]Session, error) {
@@ -72,7 +76,7 @@ func (c *Core) ListSessions(ctx context.Context, filter SessionListFilter) ([]Se
 		return nil, err
 	}
 	for i := range sessions {
-		sessions[i] = c.decorateSessionLLM(sessions[i])
+		sessions[i] = c.decorateSession(ctx, sessions[i])
 	}
 	return sessions, nil
 }
@@ -96,7 +100,7 @@ func (c *Core) RenameSession(ctx context.Context, input RenameSessionInput) (Ses
 	if err := c.store.UpdateSession(ctx, session); err != nil {
 		return Session{}, err
 	}
-	return c.decorateSessionLLM(session), nil
+	return c.decorateSession(ctx, session), nil
 }
 
 func (c *Core) UpdateSessionPermissionMode(ctx context.Context, input UpdateSessionPermissionModeInput) (Session, error) {
@@ -127,7 +131,7 @@ func (c *Core) UpdateSessionPermissionMode(ctx context.Context, input UpdateSess
 			return Session{}, err
 		}
 	}
-	return c.decorateSessionLLM(session), nil
+	return c.decorateSession(ctx, session), nil
 }
 
 func (c *Core) DeleteSession(ctx context.Context, sessionID string) error {
@@ -259,6 +263,23 @@ func (c *Core) UpdateSessionModel(ctx context.Context, sessionID string, modelID
 		return Session{}, err
 	}
 	session = c.decorateSessionLLM(session)
+	if CoreSessionIsExternalAgent(session) {
+		session.ModelID = modelID
+		session.UpdatedAt = c.now().UTC()
+		if err := c.store.UpdateSession(ctx, session); err != nil {
+			return Session{}, err
+		}
+		if c.externalStore != nil {
+			if attachment, err := c.externalStore.GetExternalAgentSession(ctx, session.ID); err == nil {
+				attachment.Model = modelID
+				attachment.UpdatedAt = session.UpdatedAt
+				if err := c.externalStore.SaveExternalAgentSession(ctx, attachment); err != nil {
+					return Session{}, err
+				}
+			}
+		}
+		return c.decorateSession(ctx, session), nil
+	}
 	llms := c.sessionLLMs()
 	if llms == nil {
 		return Session{}, fmt.Errorf("%w: provider registry unavailable", ErrExecutionUnavailable)
@@ -277,7 +298,7 @@ func (c *Core) UpdateSessionModel(ctx context.Context, sessionID string, modelID
 	if err := c.store.UpdateSession(ctx, session); err != nil {
 		return Session{}, err
 	}
-	return c.decorateSessionLLM(session), nil
+	return c.decorateSession(ctx, session), nil
 }
 
 func (c *Core) SessionProviderOptions() []SessionProviderOption {
@@ -298,6 +319,14 @@ func (c *Core) ModelsForSession(ctx context.Context, sessionID string) (string, 
 		return "", "", nil, err
 	}
 	session = c.decorateSessionLLM(session)
+	if CoreSessionIsExternalAgent(session) {
+		modelID := strings.TrimSpace(session.ModelID)
+		models := c.externalAgentModels(ctx, session)
+		if modelID == "" && len(models) > 0 {
+			modelID = models[0]
+		}
+		return "", modelID, models, nil
+	}
 	llms := c.sessionLLMs()
 	if llms == nil {
 		return session.ProviderID, session.ModelID, nil, fmt.Errorf("%w: provider registry unavailable", ErrExecutionUnavailable)
@@ -307,6 +336,77 @@ func (c *Core) ModelsForSession(ctx context.Context, sessionID string) (string, 
 		return session.ProviderID, session.ModelID, nil, err
 	}
 	return session.ProviderID, session.ModelID, models, nil
+}
+
+func CoreSessionIsExternalAgent(session Session) bool {
+	return NormalizeSessionRuntime(session.RuntimeID) == SessionRuntimeExternalAgent ||
+		NormalizeSessionKind(session.Kind) == SessionKindExternalAgent
+}
+
+func (c *Core) externalAgentModels(ctx context.Context, session Session) []string {
+	if c == nil || c.externalAgents == nil || c.externalStore == nil {
+		return nil
+	}
+	attachment, err := c.externalStore.GetExternalAgentSession(ctx, session.ID)
+	if err != nil {
+		return nil
+	}
+	return c.externalAgentModelList(ctx, attachment.AgentID)
+}
+
+func (c *Core) externalAgentModelList(ctx context.Context, agentID string) []string {
+	if c == nil || c.externalAgents == nil {
+		return nil
+	}
+	agent, ok := c.externalAgents.Get(agentID)
+	if !ok {
+		return nil
+	}
+	provider, ok := agent.(externalagents.ModelProvider)
+	if !ok {
+		return nil
+	}
+	return provider.Models(ctx)
+}
+
+func (c *Core) externalAgentDefaultModel(ctx context.Context, agentID string) string {
+	for _, model := range c.externalAgentModelList(ctx, agentID) {
+		if model = strings.TrimSpace(model); model != "" {
+			return model
+		}
+	}
+	return ""
+}
+
+func (c *Core) externalAgentDisplayName(agentID string) string {
+	if c == nil || c.externalAgents == nil {
+		return ""
+	}
+	agent, ok := c.externalAgents.Get(agentID)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(agent.DisplayName())
+}
+
+func (c *Core) decorateSession(ctx context.Context, session Session) Session {
+	session = c.decorateSessionLLM(session)
+	if !CoreSessionIsExternalAgent(session) || c.externalStore == nil {
+		return session
+	}
+	attachment, err := c.externalStore.GetExternalAgentSession(ctx, session.ID)
+	if err != nil {
+		return session
+	}
+	session.ExternalAgentID = strings.TrimSpace(attachment.AgentID)
+	session.ExternalAgentName = c.externalAgentDisplayName(attachment.AgentID)
+	if strings.TrimSpace(session.ModelID) == "" {
+		session.ModelID = strings.TrimSpace(attachment.Model)
+	}
+	if strings.TrimSpace(session.ModelID) == "" {
+		session.ModelID = c.externalAgentDefaultModel(ctx, attachment.AgentID)
+	}
+	return session
 }
 
 func (c *Core) decorateSessionLLM(session Session) Session {

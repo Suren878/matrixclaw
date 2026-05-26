@@ -13,9 +13,10 @@ small local daemon, stores state in SQLite, and gives your AI sessions a home
 outside any single app or chat window.
 
 The core owns the session: context, files, tool history, approvals, provider
-settings, model choice, usage records, goals/plans, searchable history, and
-optional external-agent attachments. The Terminal TUI, Telegram bot, and future
-mobile clients are only interfaces connected to the same local runtime.
+settings, model choice, usage records, goals/plans, persistent memory,
+searchable history, and optional external-agent attachments. The Terminal TUI,
+Telegram bot, and future mobile clients are only interfaces connected to the
+same local runtime.
 
 That means you can start a conversation in the terminal, approve a tool call on
 your machine, continue from Telegram, and later return to the same session
@@ -37,9 +38,12 @@ agent workflows where continuity and explicit control matter.
 - **Local-first state:** sessions, runs, approvals, files, plans, usage, and provider choices live in SQLite.
 - **Provider switching:** OpenAI-compatible APIs, OpenAI Codex subscription OAuth, Anthropic, Gemini, Chinese provider presets, and custom endpoints.
 - **External agents:** experimental Codex app-server sessions attach to the same session model.
+- **Subagents:** MatrixClaw sessions can delegate bounded tasks to hidden child
+  runs through `delegate_task`, including MatrixClaw, Codex, or Claude Code runtimes.
 - **Tools with approvals:** file and shell tools pause before risky changes.
 - **Planning Mode:** persistent goals, tasks, subtasks, resumable execution, and a core-owned runner.
-- **Search and usage:** session history is searchable, and provider token usage is recorded when available.
+- **Memory and search:** the assistant can save approved durable memories and search previous sessions with `memory` and `session_search`.
+- **Usage ledger:** provider token usage is recorded when available.
 - **Storage module:** Telegram uploads and generated files land in local storage, with temporary files promoted only when needed.
 - **Web search module:** `web_search` and `web_fetch` tools with four provider options — DuckDuckGo (free, no key), Tavily (1 000 req/mo free), Serper (2 500 req/mo free), SearXNG (self-hosted). Configure from `/modules` without restarting.
 - **Local voice modules:** Piper and Supertonic TTS plus Whisper.cpp STT run locally, either per task to save RAM or as managed warm processes.
@@ -183,7 +187,7 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
 - Service-owned tool execution with approval previews before writes and shell actions.
 - Planning Mode for multi-step work, with persistent tasks/subtasks, resumable execution, model-facing `plan_*` tools, and manual `/plan` commands.
 - Token usage ledger from provider finish metadata, surfaced in the TUI header and `/usage`.
-- SQLite-backed message search through `/search`.
+- SQLite-backed durable memory and message search through `/memory`, `/search`, and assistant-facing `memory` / `session_search` tools.
 - Local storage module for temporary uploads, stored files, imports, previews, promotion, deletion, and cleanup settings.
 - Telegram image/document uploads stored as temporary files, with explicit save/delete controls.
 - Telegram voice and audio messages transcribed through the configured STT provider and sent into the active session as text.
@@ -334,6 +338,7 @@ These are client commands, not model tools.
 /permissions                 change the current session permission mode
 /context                     inspect compacted context and token estimate
 /usage                       show recorded input/output/reasoning/cached tokens
+/memory                      show durable assistant memory
 /plan                        show Planning Mode
 /plan goal <text>            set the session goal
 /plan add <text>             add a plan item
@@ -354,6 +359,11 @@ These are client commands, not model tools.
 For multi-step user requests, the assistant also receives safe plan tools:
 `plan_get`, `plan_set_goal`, `plan_add_item`, `plan_update_item`, and
 `plan_clear`. These update the same session plan that manual commands display.
+
+The assistant also receives memory tools: `session_search` searches stored
+conversation history across sessions, while `memory` can list memories and save,
+replace, or remove them after explicit approval. Saved memories are injected into
+future provider prompts as a compact `Memory:` block.
 
 ## From Source
 
@@ -429,9 +439,10 @@ not normal LLM providers. matrixclaw still owns the session, local history,
 client handoff, and normalized event display; the external agent owns its own
 thread or process protocol.
 
-Current built-in runtime:
+Current built-in runtimes:
 
 - Codex app-server, detected from the `codex` binary.
+- Claude Code CLI, detected from the `claude` binary.
 
 Manage them from the TUI:
 
@@ -440,9 +451,43 @@ Manage them from the TUI:
 ```
 
 The screen shows installed/enabled state, mode, resolved binary path, and
-version when available. Enabling Codex adds it to the New Session picker.
-Codex options use the same shared controls as the rest of the TUI: `Path` opens
-the standard text prompt, and `Enabled` opens a small Enable/Disable picker.
+version when available. Enabling Codex or Claude Code adds it to the New
+Session picker and makes it available as an external subagent runtime.
+External-agent options use the same shared controls as the rest of the TUI:
+`Path` opens the standard text prompt, and `Enabled` opens a small
+Enable/Disable picker.
+
+## Subagents
+
+MatrixClaw assistant sessions receive a `delegate_task` tool for bounded child
+work. The parent model stays in charge of the user-facing session; the child
+session is hidden from the normal session list and the parent receives only the
+tool result summary.
+
+Subagents can run as native MatrixClaw child sessions or through enabled
+external agents. Built-in external subagent runtimes are Codex (`codex`) and
+Claude Code (`claude`). The main model sees the current subagent configuration in
+its system prompt, including which runtimes are available or disabled, so it can
+choose `matrixclaw` automatically when it is the only option or ask which
+runtime to use when multiple external subagents are enabled.
+
+The tool accepts:
+
+- `goal` required
+- `context` optional
+- `runtime`: `matrixclaw`, `codex`, `claude`, or `auto` (`matrixclaw` default)
+- `model` optional
+- `working_dir` optional
+
+Subagent runs start with an isolated prompt built from the delegated
+goal/context. They do not inherit the parent chat history, plan, skills prompt,
+or memory prompt. Child MatrixClaw runs use a restricted tool view: no recursive
+`delegate_task`, no `memory`, no `plan_*`, no TTS, and no automation/storage/
+skills category tools.
+
+If a child run reaches a permission approval, MatrixClaw does not open a
+separate user approval flow in this version. The delegated task finishes with a
+controlled error summary so the parent can decide what to do next.
 
 ## Local Voice
 

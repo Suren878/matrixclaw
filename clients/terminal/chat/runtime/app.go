@@ -109,6 +109,10 @@ type serverRestartAckMsg struct {
 	err error
 }
 
+type terminalRestartMsg struct {
+	err error
+}
+
 type updateCheckMsg struct {
 	update updater.Update
 	ok     bool
@@ -167,6 +171,7 @@ type appModel struct {
 	spinnerFrame        int
 	restartPending      bool
 	restartRequestedAt  time.Time
+	restartTUIPending   bool
 	returnToCommands    bool
 	updatePrompted      bool
 	updateInstalling    bool

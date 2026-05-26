@@ -134,6 +134,18 @@ func (d *Dispatcher) handleSession(ctx context.Context, externalKey string, args
 			return Result{Handled: true, Text: "Usage: /session rename <id> [title]"}, nil
 		}
 		return d.handleSessionRename(ctx, sessionID, title)
+	case "model":
+		sessionID, _ := firstCommandToken(rest)
+		if sessionID == "" {
+			return Result{Handled: true, Text: "Usage: /session model <id>"}, nil
+		}
+		return d.handleSessionModel(ctx, sessionID)
+	case "set-model":
+		sessionID, modelID := firstCommandToken(rest)
+		if sessionID == "" || strings.TrimSpace(modelID) == "" {
+			return Result{Handled: true, Text: "Usage: /session set-model <id> <model>"}, nil
+		}
+		return d.handleSessionSetModel(ctx, sessionID, modelID)
 	case "delete":
 		sessionID, _ := firstCommandToken(rest)
 		if sessionID == "" {
@@ -219,6 +231,10 @@ func (d *Dispatcher) handleSessionMenu(ctx context.Context, externalKey string, 
 	if err != nil {
 		return Result{}, err
 	}
+	return Result{Handled: true, Picker: d.sessionMenuPicker(session)}, nil
+}
+
+func (d *Dispatcher) sessionMenuPicker(session core.Session) *PickerData {
 	title := strings.TrimSpace(session.Title)
 	if title == "" {
 		title = session.ID
@@ -227,9 +243,19 @@ func (d *Dispatcher) handleSessionMenu(ctx context.Context, externalKey string, 
 		Context(session.ID).
 		Back(sessionsCommand()).
 		Row("use", "Use", "Make active")
+	if d.sessionModels != nil {
+		picker.Row("model", "Model", sessionModelInfo(session))
+	}
 	picker.Row("rename", "Rename", title).
 		Danger("delete", "Delete", "Permanent")
-	return Result{Handled: true, Picker: picker.Ptr()}, nil
+	return picker.Ptr()
+}
+
+func sessionModelInfo(session core.Session) string {
+	if model := strings.TrimSpace(session.ModelID); model != "" {
+		return model
+	}
+	return "Choose model"
 }
 
 func sessionListInfo(session core.Session) string {
@@ -246,6 +272,12 @@ func sessionListInfo(session core.Session) string {
 func sessionRuntimeLabel(session core.Session) string {
 	switch core.NormalizeSessionRuntime(session.RuntimeID) {
 	case core.SessionRuntimeExternalAgent:
+		if name := strings.TrimSpace(session.ExternalAgentName); name != "" {
+			return name
+		}
+		if id := strings.TrimSpace(session.ExternalAgentID); id != "" {
+			return id
+		}
 		return "External Agent"
 	default:
 		return "MatrixClaw"
@@ -289,6 +321,56 @@ func (d *Dispatcher) handleSessionRename(ctx context.Context, sessionID string, 
 		Handled:        true,
 		Text:           "Renamed session to " + formatSessionLabel(renamed, false),
 		ReloadSnapshot: true,
+	}, nil
+}
+
+func (d *Dispatcher) handleSessionModel(ctx context.Context, sessionID string) (Result, error) {
+	if d.sessionModels == nil {
+		return unsupportedRuntime("session models"), nil
+	}
+	session, err := d.findSession(ctx, sessionID)
+	if err != nil {
+		return Result{}, err
+	}
+	response, err := d.sessionModels.SessionModels(ctx, session.ID)
+	if err != nil {
+		return Result{}, err
+	}
+	current := strings.TrimSpace(response.ModelID)
+	picker := NewPickerData(PickerSessionModels, "Model").
+		Meta(current).
+		Context(session.ID).
+		Popup()
+	for _, modelID := range response.Models {
+		modelID = strings.TrimSpace(modelID)
+		if modelID == "" {
+			continue
+		}
+		picker.Item(PickerItem{
+			ID:       modelID,
+			Title:    modelID,
+			Selected: modelID == current,
+			Command:  sessionSetModelCommand(session.ID, modelID),
+		})
+	}
+	if len(picker.Ptr().Items) == 0 {
+		return Result{Handled: true, Text: "No models are available for this session."}, nil
+	}
+	return Result{Handled: true, Picker: picker.Ptr()}, nil
+}
+
+func (d *Dispatcher) handleSessionSetModel(ctx context.Context, sessionID string, modelID string) (Result, error) {
+	if d.sessionModels == nil {
+		return unsupportedRuntime("session models"), nil
+	}
+	session, err := d.sessionModels.UpdateSessionModel(ctx, sessionID, modelID)
+	if err != nil {
+		return Result{}, err
+	}
+	return Result{
+		Handled:        true,
+		ReloadSnapshot: true,
+		Picker:         d.sessionMenuPicker(session),
 	}, nil
 }
 

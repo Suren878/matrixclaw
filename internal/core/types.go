@@ -60,17 +60,21 @@ const (
 )
 
 type Session struct {
-	ID             string         `json:"id"`
-	Title          string         `json:"title"`
-	Kind           SessionKind    `json:"kind"`
-	RuntimeID      SessionRuntime `json:"runtime_id,omitempty"`
-	WorkingDir     string         `json:"working_dir,omitempty"`
-	ProviderID     string         `json:"provider_id,omitempty"`
-	ModelID        string         `json:"model_id,omitempty"`
-	PermissionMode PermissionMode `json:"permission_mode,omitempty"`
-	Status         SessionStatus  `json:"status"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
+	ID                string         `json:"id"`
+	Title             string         `json:"title"`
+	Kind              SessionKind    `json:"kind"`
+	RuntimeID         SessionRuntime `json:"runtime_id,omitempty"`
+	ParentSessionID   string         `json:"parent_session_id,omitempty"`
+	Hidden            bool           `json:"hidden,omitempty"`
+	WorkingDir        string         `json:"working_dir,omitempty"`
+	ProviderID        string         `json:"provider_id,omitempty"`
+	ModelID           string         `json:"model_id,omitempty"`
+	ExternalAgentID   string         `json:"external_agent_id,omitempty"`
+	ExternalAgentName string         `json:"external_agent_name,omitempty"`
+	PermissionMode    PermissionMode `json:"permission_mode,omitempty"`
+	Status            SessionStatus  `json:"status"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
 }
 
 type SessionCapabilities struct {
@@ -95,6 +99,7 @@ func CapabilitiesForSession(session Session) SessionCapabilities {
 
 type SessionListFilter struct {
 	IncludeArchived bool
+	IncludeHidden   bool
 }
 
 type ClientBinding struct {
@@ -251,6 +256,40 @@ type Run struct {
 	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
+type SubagentTaskStatus string
+
+const (
+	SubagentTaskStatusRunning   SubagentTaskStatus = "running"
+	SubagentTaskStatusCompleted SubagentTaskStatus = "completed"
+	SubagentTaskStatusFailed    SubagentTaskStatus = "failed"
+)
+
+type SubagentRuntime string
+
+const (
+	SubagentRuntimeMatrixClaw SubagentRuntime = "matrixclaw"
+	SubagentRuntimeCodex      SubagentRuntime = "codex"
+	SubagentRuntimeClaude     SubagentRuntime = "claude"
+	SubagentRuntimeAuto       SubagentRuntime = "auto"
+)
+
+type SubagentTask struct {
+	ID               string             `json:"id"`
+	ParentSessionID  string             `json:"parent_session_id"`
+	ParentRunID      string             `json:"parent_run_id,omitempty"`
+	ParentToolCallID string             `json:"parent_tool_call_id,omitempty"`
+	ChildSessionID   string             `json:"child_session_id,omitempty"`
+	ChildRunID       string             `json:"child_run_id,omitempty"`
+	Runtime          string             `json:"runtime"`
+	Goal             string             `json:"goal"`
+	Status           SubagentTaskStatus `json:"status"`
+	Summary          string             `json:"summary,omitempty"`
+	Error            string             `json:"error,omitempty"`
+	CreatedAt        time.Time          `json:"created_at"`
+	UpdatedAt        time.Time          `json:"updated_at"`
+	FinishedAt       *time.Time         `json:"finished_at,omitempty"`
+}
+
 type UsageRecord struct {
 	ID              string    `json:"id"`
 	SessionID       string    `json:"session_id"`
@@ -361,6 +400,40 @@ type SearchReport struct {
 	Results []SearchResult `json:"results"`
 }
 
+type SessionSearchResult struct {
+	Session Session        `json:"session"`
+	Matches []SearchResult `json:"matches"`
+}
+
+type SessionSearchReport struct {
+	Query    string                `json:"query"`
+	Sessions []SessionSearchResult `json:"sessions"`
+}
+
+type MemoryScope string
+
+const (
+	MemoryScopeGlobal  MemoryScope = "global"
+	MemoryScopeUser    MemoryScope = "user"
+	MemoryScopeProject MemoryScope = "project"
+)
+
+type MemoryEntry struct {
+	ID         string      `json:"id"`
+	Scope      MemoryScope `json:"scope"`
+	Key        string      `json:"key,omitempty"`
+	Content    string      `json:"content"`
+	WorkingDir string      `json:"working_dir,omitempty"`
+	CreatedAt  time.Time   `json:"created_at"`
+	UpdatedAt  time.Time   `json:"updated_at"`
+}
+
+type MemoryFilter struct {
+	Scope      MemoryScope
+	WorkingDir string
+	Limit      int
+}
+
 type ApprovalState string
 
 const (
@@ -437,6 +510,8 @@ type CreateSessionInput struct {
 	Title           string
 	Kind            SessionKind
 	RuntimeID       SessionRuntime
+	ParentSessionID string
+	Hidden          bool
 	WorkingDir      string
 	ProviderID      string
 	ModelID         string

@@ -86,6 +86,9 @@ func (m *appModel) workingStatusPhase() string {
 		update := snapshot.ToolUpdates[i]
 		switch update.State {
 		case core.ToolLifecycleRequested:
+			if strings.TrimSpace(update.ToolName) == "delegate_task" {
+				return "Subagent is working"
+			}
 			return "Running " + displayToolName(update.ToolName)
 		case core.ToolLifecycleWaitingApproval:
 			return "Waiting for permission"
@@ -152,6 +155,8 @@ func displayToolName(name string) string {
 		return "Glob"
 	case "ls":
 		return "List"
+	case "delegate_task":
+		return "Subagent"
 	case "":
 		return "tool"
 	default:

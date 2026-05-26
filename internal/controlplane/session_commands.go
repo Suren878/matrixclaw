@@ -34,6 +34,14 @@ func sessionRenameCommandPrefix(sessionID string) string {
 	return sessionRenameCommand(sessionID) + " "
 }
 
+func sessionModelCommand(sessionID string) string {
+	return sessionCommand("model", sessionID)
+}
+
+func sessionSetModelCommand(sessionID string, modelID string) string {
+	return sessionCommand("set-model", sessionID, modelID)
+}
+
 func sessionDeleteCommand(sessionID string) string {
 	return sessionCommand("delete", sessionID)
 }

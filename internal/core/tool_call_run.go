@@ -25,6 +25,7 @@ func (c *Core) executePreparedTool(ctx context.Context, prepared preparedToolCal
 	return c.tools.Execute(ctx, prepared.ToolName, tools.Call{
 		SessionID:  prepared.SessionID,
 		RunID:      prepared.RunID,
+		ToolCallID: prepared.ToolCallID,
 		WorkingDir: prepared.WorkingDir,
 		Approved:   approved,
 		Args:       args,

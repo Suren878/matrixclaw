@@ -151,6 +151,11 @@ func (m *appModel) handleServerRestartPoll(msg serverRestartPollMsg) tea.Cmd {
 	case core.ClientDeliveryStatusReady:
 		m.restartPending = false
 		m.setServerRestartDialogText(deliveryDisplayText(delivery, serverRestartCompleteText))
+		if m.restartTUIPending {
+			m.restartTUIPending = false
+			m.setServerRestartDialogText(deliveryDisplayText(delivery, serverRestartCompleteText) + "\n\nRestarting terminal...")
+			return tea.Sequence(m.acknowledgeRestartDeliveryCmd(delivery.ID), m.restartTerminalCmd())
+		}
 		return tea.Batch(m.acknowledgeRestartDeliveryCmd(delivery.ID), m.loadInitialCmd())
 	case core.ClientDeliveryStatusFailed:
 		m.restartPending = false
@@ -169,6 +174,15 @@ func (m *appModel) handleServerRestartAck(msg serverRestartAckMsg) tea.Cmd {
 		m.err = msg.err.Error()
 	}
 	return nil
+}
+
+func (m *appModel) handleTerminalRestart(msg terminalRestartMsg) tea.Cmd {
+	if msg.err == nil {
+		return nil
+	}
+	m.err = "Terminal restart failed: " + msg.err.Error()
+	m.setServerRestartDialogText(serverRestartCompleteText + "\n\nTerminal restart failed: " + msg.err.Error())
+	return m.loadInitialCmd()
 }
 
 func (m *appModel) setServerRestartDialogText(text string) {

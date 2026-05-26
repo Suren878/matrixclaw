@@ -48,6 +48,10 @@ type SearchResponse struct {
 	Search SearchReport `json:"search"`
 }
 
+type MemoryResponse struct {
+	Memories []MemoryEntry `json:"memories"`
+}
+
 type UpdateSessionPermissionModeRequest struct {
 	PermissionMode string `json:"permission_mode"`
 }

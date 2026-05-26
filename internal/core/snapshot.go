@@ -38,7 +38,7 @@ func (c *Core) ClientSnapshot(ctx context.Context, client string, externalKey st
 	if err != nil {
 		return ClientSnapshot{}, err
 	}
-	session = c.decorateSessionLLM(session)
+	session = c.decorateSession(ctx, session)
 	snapshot.Session = &session
 	capabilities := CapabilitiesForSession(session)
 	snapshot.Capabilities = &capabilities

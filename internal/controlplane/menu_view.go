@@ -65,6 +65,9 @@ func BuildCommandView(state MenuState) []CommandView {
 				status = "Matrixclaw only"
 				disabled = true
 			}
+		case CommandMemory:
+			title = "Memory"
+			group = MenuItemGroupSecondary
 		case CommandModules:
 			title = "Modules"
 			group = MenuItemGroupSecondary

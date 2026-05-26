@@ -3,6 +3,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     title TEXT NOT NULL,
     kind TEXT NOT NULL DEFAULT 'assistant',
     runtime_id TEXT NOT NULL DEFAULT 'matrixclaw',
+    parent_session_id TEXT NOT NULL DEFAULT '',
+    hidden INTEGER NOT NULL DEFAULT 0,
     working_dir TEXT NOT NULL DEFAULT '',
     provider_id TEXT NOT NULL DEFAULT '',
     model_id TEXT NOT NULL DEFAULT '',
@@ -10,6 +12,24 @@ CREATE TABLE IF NOT EXISTS sessions (
     status TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS subagent_tasks (
+    id TEXT PRIMARY KEY,
+    parent_session_id TEXT NOT NULL,
+    parent_run_id TEXT NOT NULL DEFAULT '',
+    parent_tool_call_id TEXT NOT NULL DEFAULT '',
+    child_session_id TEXT NOT NULL DEFAULT '',
+    child_run_id TEXT NOT NULL DEFAULT '',
+    runtime TEXT NOT NULL,
+    goal TEXT NOT NULL,
+    status TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    finished_at TEXT,
+    FOREIGN KEY (parent_session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS client_bindings (
@@ -43,6 +63,16 @@ CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
     provider,
     model,
     tokenize = 'unicode61'
+);
+
+CREATE TABLE IF NOT EXISTS memories (
+    id TEXT PRIMARY KEY,
+    scope TEXT NOT NULL,
+    key TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL,
+    working_dir TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS runs (
@@ -210,11 +240,17 @@ CREATE TABLE IF NOT EXISTS external_agent_sessions (
 CREATE INDEX IF NOT EXISTS idx_messages_session_created_at
     ON messages(session_id, created_at);
 
+CREATE INDEX IF NOT EXISTS idx_subagent_tasks_parent
+    ON subagent_tasks(parent_session_id, parent_run_id, parent_tool_call_id);
+
 CREATE INDEX IF NOT EXISTS idx_runs_session_started_at
     ON runs(session_id, started_at);
 
 CREATE INDEX IF NOT EXISTS idx_run_usage_session_created_at
     ON run_usage(session_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_memories_scope_workdir_updated
+    ON memories(scope, working_dir, updated_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_session_plan_items_session_position
     ON session_plan_items(session_id, position);

@@ -316,6 +316,22 @@ func (r ControlplaneRuntime) UpdateSessionProvider(ctx context.Context, sessionI
 	return client.UpdateSessionProvider(ctx, sessionID, providerID)
 }
 
+func (r ControlplaneRuntime) SessionModels(ctx context.Context, sessionID string) (core.SessionModelsResponse, error) {
+	client, err := r.client("")
+	if err != nil {
+		return core.SessionModelsResponse{}, err
+	}
+	return client.SessionModels(ctx, sessionID)
+}
+
+func (r ControlplaneRuntime) UpdateSessionModel(ctx context.Context, sessionID string, modelID string) (core.Session, error) {
+	client, err := r.client("")
+	if err != nil {
+		return core.Session{}, err
+	}
+	return client.UpdateSessionModel(ctx, sessionID, modelID)
+}
+
 func (r ControlplaneRuntime) UpdateSessionPermissionMode(ctx context.Context, sessionID string, mode core.PermissionMode) (core.Session, error) {
 	client, err := r.client("")
 	if err != nil {

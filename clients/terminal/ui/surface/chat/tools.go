@@ -137,6 +137,8 @@ func NewToolMessageItem(
 		item = NewGrepToolMessageItem(sty, toolCall, result, canceled)
 	case "ls":
 		item = NewLSToolMessageItem(sty, toolCall, result, canceled)
+	case "delegate_task":
+		item = NewDelegateTaskToolMessageItem(sty, toolCall, result, canceled)
 	default:
 		item = NewGenericToolMessageItem(sty, toolCall, result, canceled)
 	}

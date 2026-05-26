@@ -1,6 +1,8 @@
 package viewmodel
 
 import (
+	"strings"
+
 	surfacehistory "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/history"
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
@@ -57,7 +59,7 @@ func FromStateSnapshot(snapshot clientruntime.StateSnapshot) Snapshot {
 		Plan:         cloneSessionPlan(snapshot.Plan),
 		Run:          cloneRun(snapshot.Run),
 		Timing:       cloneTiming(snapshot.Timing),
-		Messages:     ToSurfaceMessages(snapshot.Messages),
+		Messages:     backfillAssistantMessageLLM(ToSurfaceMessages(snapshot.Messages), snapshot.Session),
 		ToolUpdates:  append([]core.ToolUpdate(nil), snapshot.ToolUpdates...),
 		Files:        ToSurfaceFiles(snapshot.Files),
 	}
@@ -68,6 +70,29 @@ func FromStateSnapshot(snapshot clientruntime.StateSnapshot) Snapshot {
 		out.ApprovalNotifications = append(out.ApprovalNotifications, ToSurfacePermissionNotification(notification))
 	}
 	return out
+}
+
+func backfillAssistantMessageLLM(messages []surfacemessage.Message, session *core.Session) []surfacemessage.Message {
+	if session == nil {
+		return messages
+	}
+	providerID := strings.TrimSpace(session.ProviderID)
+	modelID := strings.TrimSpace(session.ModelID)
+	if providerID == "" && modelID == "" {
+		return messages
+	}
+	for i := range messages {
+		if messages[i].Role != surfacemessage.Assistant {
+			continue
+		}
+		if strings.TrimSpace(messages[i].Provider) == "" {
+			messages[i].Provider = providerID
+		}
+		if strings.TrimSpace(messages[i].Model) == "" {
+			messages[i].Model = modelID
+		}
+	}
+	return messages
 }
 
 func cloneContextReport(report *core.ContextReport) *core.ContextReport {

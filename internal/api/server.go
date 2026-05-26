@@ -152,6 +152,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/v1/events", s.handleEvents)
 	s.mux.HandleFunc("/v1/snapshot", s.handleSnapshot)
 	s.mux.HandleFunc("/v1/search", s.handleSearch)
+	s.mux.HandleFunc("/v1/memory", s.handleMemory)
 	s.mux.HandleFunc("/v1/messages", s.handleMessages)
 	s.mux.HandleFunc("/v1/runs/", s.handleRunByID)
 }
