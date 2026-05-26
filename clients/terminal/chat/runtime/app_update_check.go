@@ -95,8 +95,9 @@ func (m *appModel) handleUpdateInstall(msg updateInstallMsg) tea.Cmd {
 		return nil
 	}
 	m.dialog.CloseDialog(updateInfoDialogID)
+	m.restartTUIPending = true
 	m.dialog.OpenDialog(surfacedialog.NewConfirmCommand(m.com, controlplane.ConfirmData{
-		Message:        "Updated to " + strings.TrimSpace(msg.version) + ".\n\nRestart daemon now?",
+		Message:        "Updated to " + strings.TrimSpace(msg.version) + ".\n\nRestart daemon now? Terminal will reopen after restart.",
 		ConfirmLabel:   "Yes",
 		CancelLabel:    "No",
 		ConfirmCommand: "/restart confirm",

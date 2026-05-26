@@ -29,6 +29,11 @@ type SessionRuntimeOptions interface {
 	CreateSessionWithOptions(ctx context.Context, externalKey string, input core.CreateSessionRequest) (core.Session, error)
 }
 
+type SessionModelRuntime interface {
+	SessionModels(ctx context.Context, sessionID string) (core.SessionModelsResponse, error)
+	UpdateSessionModel(ctx context.Context, sessionID string, modelID string) (core.Session, error)
+}
+
 type ExternalAgentRuntime interface {
 	ListExternalAgents(ctx context.Context) ([]core.ExternalAgentDescriptor, error)
 	UpdateExternalAgent(ctx context.Context, agentID string, update core.UpdateExternalAgentRequest) ([]core.ExternalAgentDescriptor, error)
@@ -76,6 +81,10 @@ type PlanRuntime interface {
 	ClearSessionPlan(ctx context.Context, sessionID string) (core.SessionPlan, error)
 	AddPlanItem(ctx context.Context, sessionID string, text string, parentID string) (core.SessionPlan, error)
 	UpdatePlanItem(ctx context.Context, sessionID string, itemID string, status core.PlanItemStatus, text string) (core.SessionPlan, error)
+}
+
+type MemoryRuntime interface {
+	ListMemories(ctx context.Context, filter core.MemoryFilter) ([]core.MemoryEntry, error)
 }
 
 type SearchRuntime interface {
@@ -151,6 +160,7 @@ type Result struct {
 type Dispatcher struct {
 	configured     bool
 	sessions       SessionRuntime
+	sessionModels  SessionModelRuntime
 	externalAgents ExternalAgentRuntime
 	voiceModules   VoiceModuleRuntime
 	providers      ProviderRuntime
@@ -160,6 +170,7 @@ type Dispatcher struct {
 	contextRuntime ContextRuntime
 	usage          UsageRuntime
 	plan           PlanRuntime
+	memory         MemoryRuntime
 	search         SearchRuntime
 	storage        StorageRuntime
 	automation     AutomationRuntime
@@ -179,6 +190,7 @@ func New(runtime any, workingDir string) *Dispatcher {
 	}
 	if runtime != nil {
 		d.sessions, _ = runtime.(SessionRuntime)
+		d.sessionModels, _ = runtime.(SessionModelRuntime)
 		d.externalAgents, _ = runtime.(ExternalAgentRuntime)
 		d.voiceModules, _ = runtime.(VoiceModuleRuntime)
 		d.providers, _ = runtime.(ProviderRuntime)
@@ -188,6 +200,7 @@ func New(runtime any, workingDir string) *Dispatcher {
 		d.contextRuntime, _ = runtime.(ContextRuntime)
 		d.usage, _ = runtime.(UsageRuntime)
 		d.plan, _ = runtime.(PlanRuntime)
+		d.memory, _ = runtime.(MemoryRuntime)
 		d.search, _ = runtime.(SearchRuntime)
 		d.storage, _ = runtime.(StorageRuntime)
 		d.automation, _ = runtime.(AutomationRuntime)
@@ -238,6 +251,8 @@ func (d *Dispatcher) Handle(ctx context.Context, externalKey string, text string
 		return d.handleUsage(ctx, externalKey)
 	case CommandPlan:
 		return d.handlePlan(ctx, externalKey, args)
+	case CommandMemory:
+		return d.handleMemory(ctx, args)
 	case CommandSearch:
 		return d.handleSearch(ctx, externalKey, args)
 	case CommandSkills:

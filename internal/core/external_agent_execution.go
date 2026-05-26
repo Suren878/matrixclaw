@@ -70,6 +70,10 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 		return c.failRunByID(ctx, run, err)
 	}
 	externalSession := attachment.ExternalSession()
+	if strings.TrimSpace(externalSession.Model) == "" {
+		externalSession.Model = c.externalAgentDefaultModel(ctx, attachment.AgentID)
+		attachment.Model = externalSession.Model
+	}
 	events, err := runtime.Send(runCtx, externalSession, externalagents.Input{Text: userMessage.Content})
 	if err != nil {
 		return c.failRunByID(ctx, run, err)

@@ -16,6 +16,7 @@ type turnExecution struct {
 	Client     string
 	WorkingDir string
 	Runtime    providers.Runtime
+	Subagent   bool
 }
 
 type turnStepOutcome int
@@ -42,6 +43,7 @@ func newTurnExecution(run Run, session Session, runtime providers.Runtime) turnE
 		Client:     run.Client,
 		WorkingDir: session.WorkingDir,
 		Runtime:    runtime,
+		Subagent:   isSubagentSession(session),
 	}
 }
 

@@ -104,6 +104,12 @@ func Run(ctx context.Context) error {
 	if err := toolRegistry.Register(core.PlanToolExecutors(app)...); err != nil {
 		return err
 	}
+	if err := toolRegistry.Register(core.MemoryToolExecutors(app)...); err != nil {
+		return err
+	}
+	if err := toolRegistry.Register(core.DelegateTaskToolExecutor(app)); err != nil {
+		return err
+	}
 	if err := toolRegistry.Err(); err != nil {
 		return err
 	}

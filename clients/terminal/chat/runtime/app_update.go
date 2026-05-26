@@ -127,6 +127,8 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.handleServerRestartPoll(msg)
 	case serverRestartAckMsg:
 		return m, m.handleServerRestartAck(msg)
+	case terminalRestartMsg:
+		return m, m.handleTerminalRestart(msg)
 	case updateCheckMsg:
 		return m, m.handleUpdateCheck(msg)
 	case updateInstallMsg:

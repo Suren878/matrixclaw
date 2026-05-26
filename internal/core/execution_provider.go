@@ -32,17 +32,30 @@ func (c *Core) buildProviderRequest(ctx context.Context, turn turnExecution) (pr
 	if err != nil {
 		return providers.Request{}, err
 	}
-	request.Tools = c.providerToolDefinitions(turn)
+	request.Tools = c.providerToolDefinitions(ctx, turn)
 	return request, nil
 }
 
 func (c *Core) providerSystemPrompt(ctx context.Context, turn turnExecution, assistant AssistantProfile, compactSummary string, history []Message) string {
 	sections := []string{AssistantSystemPrompt(assistant)}
+	if turn.Subagent {
+		sections = append(sections, subagentSystemPrompt())
+		if workingDir := strings.TrimSpace(turn.WorkingDir); workingDir != "" {
+			sections = append(sections, currentProjectRootPrompt(workingDir))
+		}
+		return joinPromptSections(sections...)
+	}
 	if runtimeToolUseAllowed(turn.Runtime) && clientSupportsVoiceDelivery(turn.Client) {
 		sections = append(sections, voiceOutputGuidancePrompt())
 	}
 	if workingDir := strings.TrimSpace(turn.WorkingDir); workingDir != "" {
 		sections = append(sections, currentProjectRootPrompt(workingDir))
+	}
+	if c.delegateTaskPromptAvailable() {
+		sections = append(sections, c.delegateTaskGuidancePrompt(ctx))
+	}
+	if memoryPrompt := c.MemoryPromptContext(ctx, turn.WorkingDir); memoryPrompt != "" {
+		sections = append(sections, memoryPrompt)
 	}
 	if compactSummary != "" {
 		sections = append(sections, "Session compact summary:\n"+compactSummary)
@@ -85,17 +98,24 @@ func joinPromptSections(sections ...string) string {
 	return strings.Join(values, "\n\n")
 }
 
-func (c *Core) providerToolDefinitions(turn turnExecution) []providers.ToolDefinition {
+func (c *Core) providerToolDefinitions(ctx context.Context, turn turnExecution) []providers.ToolDefinition {
 	if c.tools != nil {
 		specs := c.tools.List()
 		definitions := make([]providers.ToolDefinition, 0, len(specs))
 		for _, spec := range specs {
+			if turn.Subagent && !subagentToolAllowed(spec) {
+				continue
+			}
 			if spec.ID == "text_to_speech" && !clientSupportsVoiceDelivery(turn.Client) {
 				continue
 			}
+			description := spec.Description
+			if spec.ID == delegateTaskToolName {
+				description = c.delegateTaskToolDescription(ctx, description)
+			}
 			definitions = append(definitions, providers.ToolDefinition{
 				Name:        spec.ID,
-				Description: spec.Description,
+				Description: description,
 				InputSchema: spec.InputJSONSchema,
 			})
 		}
@@ -150,6 +170,172 @@ func responseLanguageGuidancePrompt() string {
 
 func voiceOutputGuidancePrompt() string {
 	return "Voice output:\n- When the user asks for spoken, audio, voice, or TTS output, call the text_to_speech tool with the text that should be spoken.\n- Do not use shell commands, Piper runtime inspection, or local audio files for client voice output.\n- After a successful text_to_speech tool call, keep any follow-up text minimal unless the user asks for an explanation."
+}
+
+func (c *Core) delegateTaskPromptAvailable() bool {
+	if c == nil || c.tools == nil {
+		return false
+	}
+	_, ok := c.tools.Spec(delegateTaskToolName)
+	return ok
+}
+
+func (c *Core) delegateTaskGuidancePrompt(ctx context.Context) string {
+	lines := []string{
+		"Subagents:",
+		"- You have a delegate_task tool for bounded child-agent work.",
+		"- When the user asks to use a subagent, delegate, parallel agent, or separate checker, call delegate_task instead of claiming no subagent tool exists.",
+		"- Use delegate_task for independent investigation, verification, review, or focused implementation tasks where a concise child summary is useful.",
+		"- Do not call delegate_task recursively from child subagent sessions.",
+		"- Available runtime configuration:",
+	}
+	runtimes := c.subagentRuntimeInfo(ctx)
+	available := 0
+	for _, runtime := range runtimes {
+		if runtime.Available {
+			available++
+		}
+		lines = append(lines, "- "+runtime.PromptLine())
+	}
+	if ids := availableSubagentRuntimeIDs(runtimes); len(ids) > 0 {
+		lines = append(lines,
+			"- Runtime IDs available for delegate_task: "+strings.Join(ids, ", ")+".",
+			"- When asked which subagent runtimes are available, answer from that Runtime IDs list and include the native matrixclaw runtime.",
+			"- Russian requests like \"какие субагенты доступны\" or \"какие субагенты подключены\" also refer to that delegate_task Runtime IDs list, not only to your base model/provider.",
+			"- For the current configuration, if asked which subagents or subagent runtimes are available or connected, answer exactly: "+strings.Join(ids, ", ")+".",
+		)
+	}
+	lines = append(lines,
+		"- Do not select unavailable runtimes.",
+		"- If the user names an unavailable runtime, say it is unavailable and offer the available alternatives.",
+	)
+	if available <= 1 {
+		lines = append(lines, "- If the user asks for a subagent without naming a runtime, use matrixclaw and do not ask which runtime.")
+	} else {
+		lines = append(lines, "- If the user asks for a subagent without naming a runtime, ask the user which runtime to use unless the request itself makes the runtime obvious.")
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (c *Core) delegateTaskToolDescription(ctx context.Context, base string) string {
+	runtimes := c.subagentRuntimeInfo(ctx)
+	if len(runtimes) == 0 {
+		return base
+	}
+	lines := []string{strings.TrimSpace(base), "Runtime choices:"}
+	for _, runtime := range runtimes {
+		lines = append(lines, "- "+runtime.PromptLine())
+	}
+	return strings.Join(lines, "\n")
+}
+
+type subagentRuntimeInfo struct {
+	Runtime   string
+	Label     string
+	Available bool
+	Detail    string
+	Models    []string
+}
+
+func (r subagentRuntimeInfo) PromptLine() string {
+	status := "unavailable"
+	if r.Available {
+		status = "available"
+	}
+	details := []string{}
+	if label := strings.TrimSpace(r.Label); label != "" && label != r.Runtime {
+		details = append(details, label)
+	}
+	if len(r.Models) > 0 {
+		details = append(details, "models: "+strings.Join(r.Models, ", "))
+	}
+	if detail := strings.TrimSpace(r.Detail); detail != "" {
+		details = append(details, detail)
+	}
+	if len(details) == 0 {
+		return fmt.Sprintf("%s: %s", r.Runtime, status)
+	}
+	return fmt.Sprintf("%s: %s (%s)", r.Runtime, status, strings.Join(details, "; "))
+}
+
+func (c *Core) subagentRuntimeInfo(ctx context.Context) []subagentRuntimeInfo {
+	out := []subagentRuntimeInfo{
+		{
+			Runtime:   string(SubagentRuntimeMatrixClaw),
+			Label:     "native MatrixClaw child session",
+			Available: true,
+		},
+	}
+	if c == nil || c.externalAgents == nil {
+		return out
+	}
+	for _, descriptor := range c.ExternalAgents(ctx) {
+		runtime := subagentRuntimeAlias(descriptor)
+		if runtime == "" {
+			continue
+		}
+		models := normalizeModelNames(c.externalAgentModelList(ctx, descriptor.ID))
+		out = append(out, subagentRuntimeInfo{
+			Runtime:   runtime,
+			Label:     strings.TrimSpace(descriptor.DisplayName),
+			Available: descriptor.Installed && descriptor.Enabled,
+			Detail:    subagentRuntimeDetail(descriptor),
+			Models:    models,
+		})
+	}
+	return out
+}
+
+func subagentRuntimeAlias(descriptor ExternalAgentDescriptor) string {
+	if len(descriptor.Aliases) > 0 {
+		return strings.TrimSpace(descriptor.Aliases[0])
+	}
+	return strings.TrimSpace(descriptor.ID)
+}
+
+func subagentRuntimeDetail(descriptor ExternalAgentDescriptor) string {
+	if detail := strings.TrimSpace(descriptor.Detail); detail != "" {
+		return detail
+	}
+	if !descriptor.Installed {
+		return "not installed"
+	}
+	if !descriptor.Enabled {
+		return "disabled"
+	}
+	return ""
+}
+
+func normalizeModelNames(models []string) []string {
+	out := make([]string, 0, len(models))
+	seen := map[string]struct{}{}
+	for _, model := range models {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		if _, ok := seen[model]; ok {
+			continue
+		}
+		seen[model] = struct{}{}
+		out = append(out, model)
+	}
+	return out
+}
+
+func availableSubagentRuntimeIDs(runtimes []subagentRuntimeInfo) []string {
+	out := make([]string, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		if !runtime.Available {
+			continue
+		}
+		id := strings.TrimSpace(runtime.Runtime)
+		if id == "" {
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
 }
 
 func currentProjectRootPrompt(workingDir string) string {

@@ -38,6 +38,12 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 	if err != nil {
 		return preparedToolCall{}, err
 	}
+	if toolName == delegateTaskToolName && CoreSessionIsExternalAgent(session) {
+		return preparedToolCall{}, fmt.Errorf("%w: delegate_task is available for Matrixclaw sessions only", ErrInvalidInput)
+	}
+	if isSubagentSession(session) && !subagentToolAllowed(spec) {
+		return preparedToolCall{}, fmt.Errorf("%w: tool %q is not available to child subagents", ErrInvalidInput, toolName)
+	}
 	workingDir := normalizeWorkingDir(input.WorkingDir)
 	if workingDir == "" {
 		workingDir = session.WorkingDir

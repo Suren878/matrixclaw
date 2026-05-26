@@ -39,6 +39,11 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 				return sessionsCommand()
 			}
 			return sessionUseCommand(contextID)
+		case "model":
+			if contextID == "" {
+				return sessionsCommand()
+			}
+			return sessionModelCommand(contextID)
 		case "rename":
 			if contextID == "" {
 				return sessionsCommand()
@@ -53,6 +58,16 @@ func PickerCommandFor(kind PickerKind, contextID string, itemID string) string {
 			return sessionsCommand()
 		default:
 			return sessionsCommand()
+		}
+	case PickerSessionModels:
+		if contextID == "" {
+			return sessionsCommand()
+		}
+		switch itemID {
+		case "", "back", "cancel":
+			return sessionMenuCommand(contextID)
+		default:
+			return sessionSetModelCommand(contextID, itemID)
 		}
 	case PickerProvider:
 		if itemID == "" {

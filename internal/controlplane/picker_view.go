@@ -63,7 +63,7 @@ func PickerCommandLabel(picker PickerData) string {
 	switch picker.Kind {
 	case PickerSessions:
 		return sessionsCommand()
-	case PickerSessionActions:
+	case PickerSessionActions, PickerSessionModels:
 		return sessionCommand()
 	case PickerProvider, PickerProviderCustom, PickerProviderActions:
 		return providerCommand()

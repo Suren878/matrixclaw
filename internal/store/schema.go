@@ -20,11 +20,32 @@ func applyCanonicalSchema(db *sql.DB) error {
 	if err := ensureColumn(db, "sessions", "runtime_id", `ALTER TABLE sessions ADD COLUMN runtime_id TEXT NOT NULL DEFAULT 'matrixclaw'`); err != nil {
 		return err
 	}
+	if err := ensureColumn(db, "sessions", "parent_session_id", `ALTER TABLE sessions ADD COLUMN parent_session_id TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "sessions", "hidden", `ALTER TABLE sessions ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
 	if err := ensureColumn(db, "external_agent_sessions", "approval_policy", `ALTER TABLE external_agent_sessions ADD COLUMN approval_policy TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
 	}
 	if err := ensureColumn(db, "external_agent_sessions", "sandbox", `ALTER TABLE external_agent_sessions ADD COLUMN sandbox TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
+	}
+	if _, err := db.Exec(`
+CREATE TABLE IF NOT EXISTS memories (
+    id TEXT PRIMARY KEY,
+    scope TEXT NOT NULL,
+    key TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL,
+    working_dir TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+)`); err != nil {
+		return fmt.Errorf("store: create memories table: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_memories_scope_workdir_updated ON memories(scope, working_dir, updated_at DESC)`); err != nil {
+		return fmt.Errorf("store: create memories index: %w", err)
 	}
 	if err := ensureColumn(db, "session_plan_items", "parent_id", `ALTER TABLE session_plan_items ADD COLUMN parent_id TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
@@ -46,6 +67,32 @@ CREATE TABLE IF NOT EXISTS plan_runs (
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 )`); err != nil {
 		return fmt.Errorf("store: create plan runs table: %w", err)
+	}
+	if _, err := db.Exec(`
+CREATE TABLE IF NOT EXISTS subagent_tasks (
+    id TEXT PRIMARY KEY,
+    parent_session_id TEXT NOT NULL,
+    parent_run_id TEXT NOT NULL DEFAULT '',
+    parent_tool_call_id TEXT NOT NULL DEFAULT '',
+    child_session_id TEXT NOT NULL DEFAULT '',
+    child_run_id TEXT NOT NULL DEFAULT '',
+    runtime TEXT NOT NULL,
+    goal TEXT NOT NULL,
+    status TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    finished_at TEXT,
+    FOREIGN KEY (parent_session_id) REFERENCES sessions(id) ON DELETE CASCADE
+)`); err != nil {
+		return fmt.Errorf("store: create subagent tasks table: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id, hidden)`); err != nil {
+		return fmt.Errorf("store: create sessions parent index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_subagent_tasks_parent ON subagent_tasks(parent_session_id, parent_run_id, parent_tool_call_id)`); err != nil {
+		return fmt.Errorf("store: create subagent tasks parent index: %w", err)
 	}
 	if _, err := db.Exec(`UPDATE sessions SET runtime_id = 'external_agent' WHERE kind = 'external_agent' AND runtime_id IN ('matrixclaw', 'codex', 'codex-app')`); err != nil {
 		return fmt.Errorf("store: backfill external session runtime: %w", err)

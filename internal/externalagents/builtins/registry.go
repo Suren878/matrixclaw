@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
+	"github.com/Suren878/matrixclaw/internal/externalagents/claudecode"
 	"github.com/Suren878/matrixclaw/internal/externalagents/codexapp"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
@@ -21,6 +22,16 @@ func Factories() []Factory {
 			Aliases: []string{"codex"},
 			New: func(cfg setup.ExternalAgentConfig) externalagents.RuntimeAgent {
 				return codexapp.NewRuntime(codexapp.RuntimeOptions{
+					Path:    cfg.Path,
+					Enabled: cfg.Enabled,
+				})
+			},
+		},
+		{
+			ID:      claudecode.AgentID,
+			Aliases: []string{"claude"},
+			New: func(cfg setup.ExternalAgentConfig) externalagents.RuntimeAgent {
+				return claudecode.NewRuntime(claudecode.RuntimeOptions{
 					Path:    cfg.Path,
 					Enabled: cfg.Enabled,
 				})

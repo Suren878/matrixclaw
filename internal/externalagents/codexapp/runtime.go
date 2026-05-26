@@ -117,11 +117,7 @@ func (r *Runtime) Send(ctx context.Context, session externalagents.ExternalSessi
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.StartTurn(ctx, TurnStartParams{
-		ThreadID:       session.ExternalThreadID,
-		Input:          []UserInput{TextInput(text)},
-		ApprovalPolicy: defaultString(session.ApprovalPolicy, defaultApprovalPolicy),
-	})
+	resp, err := client.StartTurn(ctx, turnStartParams(session, text))
 	if err != nil {
 		if !isThreadNotLoadedError(err) {
 			return nil, err
@@ -131,11 +127,7 @@ func (r *Runtime) Send(ctx context.Context, session externalagents.ExternalSessi
 			return nil, fmt.Errorf("codexapp: start turn failed: %w; resume failed: %v", err, resumeErr)
 		}
 		session = resumed
-		resp, err = client.StartTurn(ctx, TurnStartParams{
-			ThreadID:       session.ExternalThreadID,
-			Input:          []UserInput{TextInput(text)},
-			ApprovalPolicy: defaultString(session.ApprovalPolicy, defaultApprovalPolicy),
-		})
+		resp, err = client.StartTurn(ctx, turnStartParams(session, text))
 		if err != nil {
 			return nil, err
 		}
@@ -144,6 +136,15 @@ func (r *Runtime) Send(ctx context.Context, session externalagents.ExternalSessi
 	out := make(chan externalagents.Event, 64)
 	go r.forwardTurnEvents(ctx, out, session.ExternalThreadID, resp.Turn.ID)
 	return out, nil
+}
+
+func turnStartParams(session externalagents.ExternalSession, text string) TurnStartParams {
+	return TurnStartParams{
+		ThreadID:       session.ExternalThreadID,
+		Input:          []UserInput{TextInput(text)},
+		ApprovalPolicy: defaultString(session.ApprovalPolicy, defaultApprovalPolicy),
+		Model:          strings.TrimSpace(session.Model),
+	}
 }
 
 func (r *Runtime) Interrupt(context.Context, externalagents.ExternalSession) error {
