@@ -11,6 +11,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 const (
@@ -307,14 +309,14 @@ func (m *jobManager) start(params BashParams, workingDir string) (*jobState, err
 	m.jobs[jobID] = job
 	m.mu.Unlock()
 
-	go func() {
+	safego.Go("tools.shellJob.wait", func() {
 		err := cmd.Wait()
 		job.mu.Lock()
 		job.done = true
 		job.err = err
 		job.finishedAt = time.Now()
 		job.mu.Unlock()
-	}()
+	})
 
 	return job, nil
 }

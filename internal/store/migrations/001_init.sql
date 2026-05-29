@@ -16,6 +16,10 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE TABLE IF NOT EXISTS subagent_tasks (
     id TEXT PRIMARY KEY,
+    agent_name TEXT NOT NULL DEFAULT '',
+    display_name TEXT NOT NULL DEFAULT '',
+    mode TEXT NOT NULL DEFAULT 'blocking',
+    isolation TEXT NOT NULL DEFAULT 'shared',
     parent_session_id TEXT NOT NULL,
     parent_run_id TEXT NOT NULL DEFAULT '',
     parent_tool_call_id TEXT NOT NULL DEFAULT '',
@@ -26,6 +30,10 @@ CREATE TABLE IF NOT EXISTS subagent_tasks (
     status TEXT NOT NULL,
     summary TEXT NOT NULL DEFAULT '',
     error TEXT NOT NULL DEFAULT '',
+    result_message_id TEXT NOT NULL DEFAULT '',
+    completion_queued_at TEXT,
+    completion_delivered_at TEXT,
+    completion_auto_resume_run_id TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     finished_at TEXT,
@@ -86,6 +94,25 @@ CREATE TABLE IF NOT EXISTS runs (
     started_at TEXT NOT NULL,
     finished_at TEXT,
     updated_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS session_inputs (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    target_run_id TEXT NOT NULL DEFAULT '',
+    mode TEXT NOT NULL,
+    status TEXT NOT NULL,
+    text TEXT NOT NULL DEFAULT '',
+    parts_json TEXT NOT NULL DEFAULT '',
+    client TEXT NOT NULL DEFAULT '',
+    external_key TEXT NOT NULL DEFAULT '',
+    working_dir TEXT NOT NULL DEFAULT '',
+    consumed_run_id TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    consumed_at TEXT,
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
@@ -243,8 +270,17 @@ CREATE INDEX IF NOT EXISTS idx_messages_session_created_at
 CREATE INDEX IF NOT EXISTS idx_subagent_tasks_parent
     ON subagent_tasks(parent_session_id, parent_run_id, parent_tool_call_id);
 
+CREATE INDEX IF NOT EXISTS idx_subagent_tasks_child_run
+    ON subagent_tasks(child_run_id);
+
 CREATE INDEX IF NOT EXISTS idx_runs_session_started_at
     ON runs(session_id, started_at);
+
+CREATE INDEX IF NOT EXISTS idx_session_inputs_session_status_created
+    ON session_inputs(session_id, status, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_session_inputs_target_run
+    ON session_inputs(target_run_id, mode, status);
 
 CREATE INDEX IF NOT EXISTS idx_run_usage_session_created_at
     ON run_usage(session_id, created_at);

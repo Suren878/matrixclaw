@@ -256,12 +256,63 @@ type Run struct {
 	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
+type BusyInputMode string
+
+const (
+	BusyInputModeQueue     BusyInputMode = "queue"
+	BusyInputModeSteer     BusyInputMode = "steer"
+	BusyInputModeInterrupt BusyInputMode = "interrupt"
+)
+
+type SessionInputStatus string
+
+const (
+	SessionInputStatusPending  SessionInputStatus = "pending"
+	SessionInputStatusConsumed SessionInputStatus = "consumed"
+	SessionInputStatusError    SessionInputStatus = "error"
+)
+
+type SessionInput struct {
+	ID            string             `json:"id"`
+	SessionID     string             `json:"session_id"`
+	TargetRunID   string             `json:"target_run_id,omitempty"`
+	Mode          BusyInputMode      `json:"mode"`
+	Status        SessionInputStatus `json:"status"`
+	Text          string             `json:"text"`
+	Parts         []MessagePart      `json:"parts,omitempty"`
+	Client        string             `json:"client,omitempty"`
+	ExternalKey   string             `json:"external_key,omitempty"`
+	WorkingDir    string             `json:"working_dir,omitempty"`
+	ConsumedRunID string             `json:"consumed_run_id,omitempty"`
+	Error         string             `json:"error,omitempty"`
+	CreatedAt     time.Time          `json:"created_at"`
+	UpdatedAt     time.Time          `json:"updated_at"`
+	ConsumedAt    *time.Time         `json:"consumed_at,omitempty"`
+}
+
 type SubagentTaskStatus string
 
 const (
-	SubagentTaskStatusRunning   SubagentTaskStatus = "running"
-	SubagentTaskStatusCompleted SubagentTaskStatus = "completed"
-	SubagentTaskStatusFailed    SubagentTaskStatus = "failed"
+	SubagentTaskStatusPending         SubagentTaskStatus = "pending"
+	SubagentTaskStatusRunning         SubagentTaskStatus = "running"
+	SubagentTaskStatusWaitingApproval SubagentTaskStatus = "waiting_approval"
+	SubagentTaskStatusCompleted       SubagentTaskStatus = "completed"
+	SubagentTaskStatusFailed          SubagentTaskStatus = "failed"
+	SubagentTaskStatusCanceled        SubagentTaskStatus = "canceled"
+)
+
+type SubagentTaskMode string
+
+const (
+	SubagentTaskModeBlocking SubagentTaskMode = "blocking"
+	SubagentTaskModeAsync    SubagentTaskMode = "async"
+)
+
+type SubagentIsolation string
+
+const (
+	SubagentIsolationShared   SubagentIsolation = "shared"
+	SubagentIsolationWorktree SubagentIsolation = "worktree"
 )
 
 type SubagentRuntime string
@@ -274,20 +325,35 @@ const (
 )
 
 type SubagentTask struct {
-	ID               string             `json:"id"`
-	ParentSessionID  string             `json:"parent_session_id"`
-	ParentRunID      string             `json:"parent_run_id,omitempty"`
-	ParentToolCallID string             `json:"parent_tool_call_id,omitempty"`
-	ChildSessionID   string             `json:"child_session_id,omitempty"`
-	ChildRunID       string             `json:"child_run_id,omitempty"`
-	Runtime          string             `json:"runtime"`
-	Goal             string             `json:"goal"`
-	Status           SubagentTaskStatus `json:"status"`
-	Summary          string             `json:"summary,omitempty"`
-	Error            string             `json:"error,omitempty"`
-	CreatedAt        time.Time          `json:"created_at"`
-	UpdatedAt        time.Time          `json:"updated_at"`
-	FinishedAt       *time.Time         `json:"finished_at,omitempty"`
+	ID                        string             `json:"id"`
+	AgentName                 string             `json:"agent_name,omitempty"`
+	DisplayName               string             `json:"display_name,omitempty"`
+	Mode                      SubagentTaskMode   `json:"mode"`
+	Isolation                 SubagentIsolation  `json:"isolation"`
+	ParentSessionID           string             `json:"parent_session_id"`
+	ParentRunID               string             `json:"parent_run_id,omitempty"`
+	ParentToolCallID          string             `json:"parent_tool_call_id,omitempty"`
+	ChildSessionID            string             `json:"child_session_id,omitempty"`
+	ChildRunID                string             `json:"child_run_id,omitempty"`
+	Runtime                   string             `json:"runtime"`
+	Goal                      string             `json:"goal"`
+	Status                    SubagentTaskStatus `json:"status"`
+	Summary                   string             `json:"summary,omitempty"`
+	Error                     string             `json:"error,omitempty"`
+	ResultMessageID           string             `json:"result_message_id,omitempty"`
+	CompletionQueuedAt        *time.Time         `json:"completion_queued_at,omitempty"`
+	CompletionDeliveredAt     *time.Time         `json:"completion_delivered_at,omitempty"`
+	CompletionAutoResumeRunID string             `json:"completion_auto_resume_run_id,omitempty"`
+	CreatedAt                 time.Time          `json:"created_at"`
+	UpdatedAt                 time.Time          `json:"updated_at"`
+	FinishedAt                *time.Time         `json:"finished_at,omitempty"`
+}
+
+type SubagentTaskFilter struct {
+	ParentSessionID string
+	Mode            SubagentTaskMode
+	Statuses        []SubagentTaskStatus
+	Limit           int
 }
 
 type UsageRecord struct {
@@ -549,6 +615,7 @@ type HandleMessageInput struct {
 	SessionID        string        `json:"session_id"`
 	Text             string        `json:"text"`
 	Parts            []MessagePart `json:"parts,omitempty"`
+	BusyMode         BusyInputMode `json:"busy_mode,omitempty"`
 	WorkingDir       string        `json:"working_dir"`
 	AllowAutoBindOne bool          `json:"allow_auto_bind_one"`
 }
@@ -563,10 +630,21 @@ type HandleTriggeredRunInput struct {
 }
 
 type AcceptRunResult struct {
-	SessionID   string  `json:"session_id"`
-	UserMessage Message `json:"user_message"`
-	Run         Run     `json:"run"`
+	SessionID   string          `json:"session_id"`
+	Status      AcceptRunStatus `json:"status,omitempty"`
+	UserMessage Message         `json:"user_message"`
+	Run         Run             `json:"run"`
+	Input       *SessionInput   `json:"input,omitempty"`
 }
+
+type AcceptRunStatus string
+
+const (
+	AcceptRunStatusStarted      AcceptRunStatus = "started"
+	AcceptRunStatusQueued       AcceptRunStatus = "queued"
+	AcceptRunStatusSteered      AcceptRunStatus = "steered"
+	AcceptRunStatusInterrupting AcceptRunStatus = "interrupting"
+)
 
 type ExecuteToolInput struct {
 	SessionID  string          `json:"session_id"`

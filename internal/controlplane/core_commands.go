@@ -14,6 +14,14 @@ func contextInfoCommand() string {
 	return contextCommand("info")
 }
 
+func contextClearCommand() string {
+	return contextCommand("clear")
+}
+
+func contextClearConfirmCommand() string {
+	return contextCommand("clear", "confirm")
+}
+
 func contextCompactCommand() string {
 	return contextCommand("compact")
 }

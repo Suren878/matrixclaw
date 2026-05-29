@@ -36,7 +36,7 @@ func (r *Runtime) ensureSession(ctx context.Context) (string, error) {
 		return "", err
 	}
 	if len(sessions) == 0 {
-		session, err := client.CreateSession(ctx, "Session", r.config.WorkingDir)
+		session, err := client.CreateSession(ctx, defaultInitialSessionTitle(), r.config.WorkingDir)
 		if err != nil {
 			return "", err
 		}
@@ -70,4 +70,12 @@ func (r *Runtime) createAndLoadSession(ctx context.Context, title string) (core.
 		return core.ClientSnapshot{}, err
 	}
 	return client.LoadSnapshot(ctx)
+}
+
+func defaultInitialSessionTitle() string {
+	return "Main"
+}
+
+func defaultNewSessionTitle() string {
+	return "New chat"
 }

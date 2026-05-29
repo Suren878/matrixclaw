@@ -17,13 +17,6 @@ func (m *appModel) openCommandsDialogCmd() tea.Cmd {
 		Legend:  "enter run · esc back",
 		Entries: commandmenu.Entries(m.commandMenuState()),
 	})
-	if m.dialog.ContainsDialog(surfacedialog.CommandsID) {
-		m.dialog.CloseDialog(surfacedialog.CommandsID)
-		m.dialog.OpenDialog(dialog)
-		m.dialog.BringToFront(surfacedialog.CommandsID)
-		m.returnToCommands = false
-		return nil
-	}
 	m.returnToCommands = false
 	m.closeControlplaneDialogs()
 	m.dialog.OpenDialog(dialog)

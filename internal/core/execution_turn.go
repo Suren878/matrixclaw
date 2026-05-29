@@ -139,6 +139,11 @@ func (c *Core) resumeApprovedTools(ctx context.Context, turn turnExecution) (boo
 			return false, err
 		}
 		completedToolCalls[toolCallID] = struct{}{}
+		if result.ToolResultMessage != nil {
+			if _, steerErr := c.injectPendingSteersIntoToolResultMessage(ctx, *result.ToolResultMessage); steerErr != nil {
+				return false, steerErr
+			}
+		}
 		if result.Approval != nil {
 			waitingApproval = true
 		}
@@ -189,6 +194,7 @@ func (c *Core) generateAssistantTurn(ctx context.Context, turn turnExecution, re
 				RunID:     turn.RunID,
 				Payload:   assistant,
 			})
+			_ = c.touchAsyncSubagentTaskActivity(ctx, turn.RunID, now)
 			return nil
 		}
 
@@ -201,6 +207,7 @@ func (c *Core) generateAssistantTurn(ctx context.Context, turn turnExecution, re
 			RunID:     turn.RunID,
 			Payload:   assistant,
 		})
+		_ = c.touchAsyncSubagentTaskActivity(ctx, turn.RunID, now)
 		return nil
 	})
 
@@ -222,7 +229,18 @@ func (c *Core) executeRequestedTools(ctx context.Context, turn turnExecution, re
 			}
 		}
 		if err != nil {
+			if result.ToolResultMessage != nil {
+				if _, steerErr := c.injectPendingSteersIntoToolResultMessage(ctx, *result.ToolResultMessage); steerErr != nil {
+					return false, steerErr
+				}
+				continue
+			}
 			return false, err
+		}
+		if result.ToolResultMessage != nil {
+			if _, steerErr := c.injectPendingSteersIntoToolResultMessage(ctx, *result.ToolResultMessage); steerErr != nil {
+				return false, steerErr
+			}
 		}
 		if result.Approval != nil {
 			waitingApproval = true

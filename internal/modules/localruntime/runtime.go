@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -64,174 +63,11 @@ func (r *Runtime) DecorateVoiceProvider(moduleID string, provider setup.VoicePro
 	if !provider.Local {
 		return provider
 	}
-	if provider.ID == "piper" {
-		if models, ok := piperCatalogModels(); ok && len(models) > 0 {
-			provider.Models = models
-			provider.CatalogStatus = "online"
-			provider.CatalogDetail = fmt.Sprintf("%d voices", len(models))
-		} else {
-			provider.CatalogStatus = "fallback"
-			provider.CatalogDetail = "using bundled fallback voices"
-		}
-		provider = ensureConfiguredPiperVoiceModel(provider)
+	if driver, ok := driverForProvider(provider.ID); ok {
+		provider.ActionIDs = driver.actionIDs()
+		return driver.decorate(r, moduleID, provider)
 	}
-	if provider.ID == "supertonic" {
-		if models, ok := supertonicCatalogModels(); ok && len(models) > 0 {
-			provider.Models = models
-			provider.CatalogStatus = "online"
-			provider.CatalogDetail = fmt.Sprintf("%d voice styles · 31 languages", len(models))
-		} else {
-			provider.Models = models
-			provider.CatalogStatus = "fallback"
-			provider.CatalogDetail = "using default voice style"
-		}
-		provider = ensureConfiguredSupertonicVoiceModel(provider)
-	}
-	if provider.ID == "whispercpp" {
-		if models, ok := whisperCatalogModels(); ok && len(models) > 0 {
-			provider.Models = models
-			provider.CatalogStatus = "online"
-			provider.CatalogDetail = fmt.Sprintf("%d models", len(models))
-		} else {
-			provider.CatalogStatus = "fallback"
-			provider.CatalogDetail = "using bundled fallback models"
-		}
-	}
-	provider = r.decorateVoiceModels(moduleID, provider)
-	provider.RuntimeRSS = r.VoiceRuntimeRSSBytes(provider)
-	if path, err := r.ManagedVoiceBinaryPath(provider); err == nil {
-		provider.RuntimeInstalled = true
-		provider.RuntimePath = path
-	}
-	if provider.ID == "supertonic" && !r.supertonicRuntimeComplete() {
-		provider.RuntimeInstalled = false
-		provider.RuntimePath = ""
-	}
-	if provider.ID == "supertonic" {
-		provider.Downloaded = provider.RuntimeInstalled
-		provider.ModelPath = ""
-		if !provider.RuntimeInstalled {
-			provider.RuntimeState = RuntimeUnavailable
-			provider.RuntimeDetail = provider.Name + " runtime is not installed"
-			provider.Status = "Local · runtime missing"
-		} else if voiceProviderRunsPerTask(provider) {
-			provider.RuntimeState = RuntimeStopped
-			provider.RuntimeDetail = ""
-			provider.Status = "Local · run per task"
-		} else if r.supertonicServerProcessRunning(provider) {
-			provider.RuntimeState = RuntimeRunning
-			provider.RuntimeDetail = ""
-			provider.Status = "Local · running"
-		} else {
-			provider.RuntimeState = RuntimeStopped
-			provider.RuntimeDetail = ""
-			provider.Status = "Local · stopped"
-		}
-		return provider
-	}
-	installed, path := r.VoiceModelInstalled(moduleID, provider)
-	provider.Downloaded = installed
-	provider.ModelPath = path
-	provider.Endpoint = path
-	installedCount := installedVoiceModelCount(provider.Models)
-	if installed {
-		if provider.ID == "piper" {
-			if _, err := r.VoiceBinaryPath(provider); err != nil {
-				provider.RuntimeState = RuntimeUnavailable
-				provider.RuntimeDetail = "Piper runtime is not installed"
-				provider.Status = "Local · runtime missing"
-			} else if voiceProviderRunsPerTask(provider) {
-				provider.RuntimeState = RuntimeStopped
-				provider.RuntimeDetail = ""
-				provider.Status = "Local · run per task"
-			} else if r.voiceRuntimeRunning(provider) {
-				provider.RuntimeState = RuntimeRunning
-				provider.RuntimeDetail = ""
-				provider.Status = "Local · running"
-			} else {
-				provider.RuntimeState = RuntimeStopped
-				provider.RuntimeDetail = ""
-				provider.Status = "Local · stopped"
-			}
-		} else if provider.ID == "whispercpp" {
-			if voiceProviderRunsPerTask(provider) {
-				if _, err := r.WhisperCLIPath(provider); err != nil {
-					provider.RuntimeState = RuntimeUnavailable
-					provider.RuntimeDetail = "Whisper.cpp runtime is not installed"
-					provider.Status = "Local · runtime missing"
-				} else {
-					provider.RuntimeState = RuntimeStopped
-					provider.RuntimeDetail = ""
-					provider.Status = "Local · run per task"
-				}
-			} else if _, err := r.WhisperServerPath(provider); err != nil {
-				provider.RuntimeState = RuntimeUnavailable
-				provider.RuntimeDetail = "Whisper.cpp runtime is not installed"
-				provider.Status = "Local · runtime missing"
-			} else if r.voiceRuntimeRunning(provider) {
-				provider.RuntimeState = RuntimeRunning
-				provider.RuntimeDetail = ""
-				provider.Status = "Local · running"
-			} else {
-				provider.RuntimeState = RuntimeStopped
-				provider.RuntimeDetail = ""
-				provider.Status = "Local · stopped"
-			}
-		} else {
-			provider.RuntimeState = RuntimeNotImplemented
-			provider.RuntimeDetail = "Runtime process management is not implemented yet"
-			provider.Status = "Local · installed · runtime manager unavailable"
-		}
-	} else {
-		provider.RuntimeState = RuntimeUnavailable
-		provider.RuntimeDetail = "Download the selected local files before local voice can run"
-		if (provider.ID == "piper" || provider.ID == "supertonic") && installedCount > 0 {
-			provider.Status = fmt.Sprintf("Local · active voice not installed · %d installed", installedCount)
-		} else {
-			provider.Status = "Local · not installed"
-		}
-	}
-	return provider
-}
-
-func ensureConfiguredPiperVoiceModel(provider setup.VoiceProviderOption) setup.VoiceProviderOption {
-	voiceID := strings.TrimSpace(provider.Config.VoiceID)
-	if voiceID == "" {
-		return provider
-	}
-	for _, model := range provider.Models {
-		if strings.EqualFold(model.ID, voiceID) {
-			return provider
-		}
-	}
-	model := setup.VoiceModelOption{
-		ID:   voiceID,
-		Name: voiceID,
-	}
-	if language, voice, quality, ok := splitPiperVoiceID(voiceID); ok {
-		model.Name = strings.TrimSpace(strings.Join(nonEmptyLocal(titleWords(voice), qualityLabel(quality)), " "))
-		model.LanguageCode = language
-		model.Quality = quality
-		if model.Name == "" {
-			model.Name = voiceID
-		}
-	}
-	provider.Models = append(provider.Models, model)
-	return provider
-}
-
-func ensureConfiguredSupertonicVoiceModel(provider setup.VoiceProviderOption) setup.VoiceProviderOption {
-	voiceID := strings.ToUpper(strings.TrimSpace(provider.Config.VoiceID))
-	if voiceID == "" {
-		return provider
-	}
-	for _, model := range provider.Models {
-		if strings.EqualFold(model.ID, voiceID) {
-			return provider
-		}
-	}
-	provider.Models = append(provider.Models, supertonicVoiceModel(voiceID, 0))
-	return provider
+	return decorateGenericLocalVoiceProvider(r, moduleID, provider)
 }
 
 func (r *Runtime) decorateVoiceModels(moduleID string, provider setup.VoiceProviderOption) setup.VoiceProviderOption {
@@ -277,15 +113,11 @@ func (r *Runtime) VoiceModelInstalledForID(moduleID string, provider setup.Voice
 }
 
 func voiceModelPathInstalled(provider setup.VoiceProviderOption, path string) bool {
+	if driver, ok := driverForProvider(provider.ID); ok {
+		return driver.modelInstalled(path)
+	}
 	info, err := os.Stat(path)
-	if err != nil || info.IsDir() || info.Size() == 0 {
-		return false
-	}
-	if provider.ID == "piper" {
-		info, err = os.Stat(path + ".json")
-		return err == nil && !info.IsDir() && info.Size() > 0
-	}
-	return true
+	return err == nil && !info.IsDir() && info.Size() > 0
 }
 
 func (r *Runtime) VoiceModelPath(moduleID string, provider setup.VoiceProviderOption) string {
@@ -293,45 +125,18 @@ func (r *Runtime) VoiceModelPath(moduleID string, provider setup.VoiceProviderOp
 }
 
 func (r *Runtime) VoiceModelPathForID(moduleID string, provider setup.VoiceProviderOption, modelID string) string {
-	root := r.rootDir()
-	switch provider.ID {
-	case "piper":
-		voiceID := strings.TrimSpace(modelID)
-		if voiceID == "" {
-			voiceID = strings.TrimSpace(provider.Config.VoiceID)
-		}
-		if voiceID == "" {
-			voiceID = "en_US-lessac-medium"
-		}
-		return filepath.Join(root, "voice", "tts", "piper", voiceID, voiceID+".onnx")
-	case "supertonic":
-		return ""
-	case "whispercpp":
-		modelID := strings.TrimSpace(modelID)
-		if modelID == "" {
-			modelID = strings.TrimSpace(provider.Config.ModelID)
-		}
-		if modelID == "" {
-			modelID = "base"
-		}
-		return filepath.Join(root, "voice", "stt", "whispercpp", modelID, "ggml-"+modelID+".bin")
-	default:
-		return ""
+	if driver, ok := driverForProvider(provider.ID); ok {
+		return driver.modelPath(r, moduleID, provider, modelID)
 	}
+	return ""
 }
 
 func voiceRuntimeProcessNames(provider setup.VoiceProviderOption) []string {
 	names := []string{}
-	if binary := strings.TrimSpace(provider.Config.BinaryPath); binary != "" {
+	if driver, ok := driverForProvider(provider.ID); ok {
+		names = append(names, driver.processNames(provider)...)
+	} else if binary := strings.TrimSpace(provider.Config.BinaryPath); binary != "" {
 		names = append(names, filepath.Base(binary))
-	}
-	switch provider.ID {
-	case "piper":
-		names = append(names, "piper", "piper-tts")
-	case "supertonic":
-		names = append(names, "supertonic")
-	case "whispercpp":
-		names = append(names, "whisper-server", "whisper-cli", "main")
 	}
 	seen := map[string]struct{}{}
 	out := make([]string, 0, len(names))
@@ -378,59 +183,23 @@ func (r *Runtime) ApplyVoiceAction(ctx context.Context, moduleID string, provide
 }
 
 func (r *Runtime) installVoiceRuntime(ctx context.Context, moduleID string, provider setup.VoiceProviderOption) (setup.VoiceProviderOption, error) {
-	switch provider.ID {
-	case "piper":
-		if err := r.installPiperRuntime(ctx); err != nil {
-			return provider, err
-		}
-	case "supertonic":
-		if err := r.installSupertonicRuntime(ctx); err != nil {
-			return provider, err
-		}
-	case "whispercpp":
-		if err := r.installWhisperRuntime(ctx); err != nil {
-			return provider, err
-		}
-	default:
+	driver, ok := driverForProvider(provider.ID)
+	if !ok {
 		return provider, fmt.Errorf("%s runtime installation is not implemented yet", provider.Name)
+	}
+	if err := driver.installRuntime(ctx, r, moduleID, provider); err != nil {
+		return provider, err
 	}
 	return r.DecorateVoiceProvider(moduleID, provider), nil
 }
 
 func (r *Runtime) deleteVoiceRuntime(moduleID string, provider setup.VoiceProviderOption) (setup.VoiceProviderOption, error) {
-	switch provider.ID {
-	case "piper":
-		if err := r.stopPiperProcess(provider); err != nil {
-			return provider, err
-		}
-		if err := os.RemoveAll(filepath.Dir(filepath.Dir(r.managedPiperBinaryPath()))); err != nil {
-			return provider, err
-		}
-		if err := os.RemoveAll(filepath.Join(r.rootDir(), "voice", "tts", "piper")); err != nil {
-			return provider, err
-		}
-	case "supertonic":
-		if err := r.stopSupertonicServerProcess(provider); err != nil {
-			return provider, err
-		}
-		if err := os.RemoveAll(filepath.Dir(filepath.Dir(r.managedSupertonicBinaryPath()))); err != nil {
-			return provider, err
-		}
-		if err := os.RemoveAll(filepath.Join(r.runtimeDir(), "supertonic3")); err != nil {
-			return provider, err
-		}
-	case "whispercpp":
-		if err := r.stopWhisperServerProcess(provider); err != nil {
-			return provider, err
-		}
-		if err := os.RemoveAll(r.managedWhisperRuntimeDir()); err != nil {
-			return provider, err
-		}
-		if err := os.RemoveAll(filepath.Join(r.rootDir(), "voice", "stt", "whispercpp")); err != nil {
-			return provider, err
-		}
-	default:
+	driver, ok := driverForProvider(provider.ID)
+	if !ok {
 		return provider, fmt.Errorf("%s runtime deletion is not implemented yet", provider.Name)
+	}
+	if err := driver.deleteRuntime(r, moduleID, provider); err != nil {
+		return provider, err
 	}
 	return r.DecorateVoiceProvider(moduleID, provider), nil
 }
@@ -440,13 +209,8 @@ func voiceProviderForActionTarget(provider setup.VoiceProviderOption, modelID st
 	if modelID == "" {
 		return provider
 	}
-	switch provider.ID {
-	case "piper":
-		provider.Config.VoiceID = modelID
-	case "supertonic":
-		provider.Config.VoiceID = strings.ToUpper(modelID)
-	case "whispercpp":
-		provider.Config.ModelID = modelID
+	if driver, ok := driverForProvider(provider.ID); ok {
+		return driver.actionTarget(provider, modelID)
 	}
 	return provider
 }
@@ -493,16 +257,10 @@ func (r *Runtime) deleteVoiceModel(moduleID string, provider setup.VoiceProvider
 }
 
 func (r *Runtime) stopVoiceRuntimeForDelete(provider setup.VoiceProviderOption) error {
-	switch provider.ID {
-	case "piper":
-		return r.stopPiperProcess(provider)
-	case "supertonic":
-		return r.stopSupertonicServerProcess(provider)
-	case "whispercpp":
-		return r.stopWhisperServerProcess(provider)
-	default:
-		return nil
+	if driver, ok := driverForProvider(provider.ID); ok {
+		return driver.stopForDelete(r, provider)
 	}
+	return nil
 }
 
 func (r *Runtime) startVoiceRuntime(ctx context.Context, moduleID string, provider setup.VoiceProviderOption) (setup.VoiceProviderOption, error) {
@@ -522,27 +280,12 @@ func (r *Runtime) startVoiceRuntime(ctx context.Context, moduleID string, provid
 			return provider, errors.New("local voice model is not installed")
 		}
 	}
-	switch provider.ID {
-	case "piper":
-		if _, err := r.VoiceBinaryPath(provider); err != nil {
-			return provider, err
-		}
-		if err := r.startPiperProcess(moduleID, provider); err != nil {
-			return provider, err
-		}
-	case "whispercpp":
-		if _, err := r.WhisperServerPath(provider); err != nil {
-			return provider, err
-		}
-		if err := r.startWhisperServerProcess(ctx, moduleID, provider); err != nil {
-			return provider, err
-		}
-	case "supertonic":
-		if err := r.startSupertonicServerProcess(ctx, provider); err != nil {
-			return provider, err
-		}
-	default:
+	driver, ok := driverForProvider(provider.ID)
+	if !ok {
 		return provider, fmt.Errorf("local voice provider %q cannot be started yet", provider.ID)
+	}
+	if err := driver.startRuntime(ctx, r, moduleID, provider); err != nil {
+		return provider, err
 	}
 	return r.DecorateVoiceProvider(moduleID, provider), nil
 }
@@ -554,197 +297,35 @@ func (r *Runtime) stopVoiceRuntime(moduleID string, provider setup.VoiceProvider
 	if voiceProviderRunsPerTask(provider) {
 		return provider, fmt.Errorf("%s is configured to run per task", provider.Name)
 	}
-	switch provider.ID {
-	case "piper":
-		if err := r.stopPiperProcess(provider); err != nil {
-			return provider, err
-		}
-	case "whispercpp":
-		if err := r.stopWhisperServerProcess(provider); err != nil {
-			return provider, err
-		}
-	case "supertonic":
-		if err := r.stopSupertonicServerProcess(provider); err != nil {
-			return provider, err
-		}
-	default:
+	driver, ok := driverForProvider(provider.ID)
+	if !ok {
 		return provider, fmt.Errorf("local voice provider %q cannot be stopped yet", provider.ID)
+	}
+	if err := driver.stopRuntime(r, moduleID, provider); err != nil {
+		return provider, err
 	}
 	return r.DecorateVoiceProvider(moduleID, provider), nil
 }
 
 func (r *Runtime) voiceRuntimeRunning(provider setup.VoiceProviderOption) bool {
-	switch provider.ID {
-	case "piper":
-		return r.piperProcessRunning(provider)
-	case "whispercpp":
-		return r.whisperServerProcessRunning(provider)
-	case "supertonic":
-		return r.supertonicServerProcessRunning(provider)
+	if driver, ok := driverForProvider(provider.ID); ok {
+		return driver.runtimeRunning(r, provider)
 	}
 	return false
 }
 
 func (r *Runtime) VoiceBinaryPath(provider setup.VoiceProviderOption) (string, error) {
-	if provider.ID == "supertonic" && !r.supertonicModelCacheComplete() {
-		return "", fmt.Errorf("%s runtime is not installed", provider.Name)
-	}
-	if path, err := r.ManagedVoiceBinaryPath(provider); err == nil {
-		return path, nil
-	}
-	value := strings.TrimSpace(provider.Config.BinaryPath)
-	if value == "" {
-		value = provider.ID
-	}
-	if path, err := exec.LookPath(value); err == nil {
-		return path, nil
+	if driver, ok := driverForProvider(provider.ID); ok {
+		return driver.voiceBinaryPath(r, provider)
 	}
 	return "", fmt.Errorf("%s runtime is not installed", provider.Name)
 }
 
 func (r *Runtime) ManagedVoiceBinaryPath(provider setup.VoiceProviderOption) (string, error) {
-	value := strings.TrimSpace(provider.Config.BinaryPath)
-	if filepath.IsAbs(value) || strings.Contains(value, string(os.PathSeparator)) {
-		if info, err := os.Stat(value); err == nil && !info.IsDir() {
-			return value, nil
-		}
-	}
-	if provider.ID == "piper" {
-		path := r.managedPiperBinaryPath()
-		if info, err := os.Stat(path); err == nil && !info.IsDir() {
-			return path, nil
-		}
-	}
-	if provider.ID == "supertonic" {
-		path := r.managedSupertonicBinaryPath()
-		if info, err := os.Stat(path); err == nil && !info.IsDir() {
-			return path, nil
-		}
-	}
-	if provider.ID == "whispercpp" {
-		path := r.managedWhisperCLIPath()
-		if executableFileExists(path) && executableFileExists(r.managedWhisperServerPath()) {
-			return path, nil
-		}
+	if driver, ok := driverForProvider(provider.ID); ok {
+		return driver.managedBinaryPath(r, provider)
 	}
 	return "", fmt.Errorf("%s runtime is not installed", provider.Name)
-}
-
-func (r *Runtime) managedPiperBinaryPath() string {
-	return filepath.Join(r.runtimeDir(), "piper-venv", "bin", "piper")
-}
-
-func (r *Runtime) managedPiperPythonPath() string {
-	return filepath.Join(r.runtimeDir(), "piper-venv", "bin", "python")
-}
-
-func (r *Runtime) managedSupertonicBinaryPath() string {
-	return filepath.Join(r.runtimeDir(), "supertonic-venv", "bin", "supertonic")
-}
-
-func (r *Runtime) managedSupertonicPythonPath() string {
-	return filepath.Join(r.runtimeDir(), "supertonic-venv", "bin", "python")
-}
-
-func (r *Runtime) managedWhisperRuntimeDir() string {
-	return filepath.Join(r.runtimeDir(), "whisper.cpp")
-}
-
-func (r *Runtime) managedWhisperCLIPath() string {
-	return filepath.Join(r.managedWhisperRuntimeDir(), "build", "bin", "whisper-cli")
-}
-
-func (r *Runtime) managedWhisperServerPath() string {
-	return filepath.Join(r.managedWhisperRuntimeDir(), "build", "bin", "whisper-server")
-}
-
-func (r *Runtime) supertonicInstallMarkerPath() string {
-	return filepath.Join(r.runtimeDir(), "supertonic-venv", ".matrixclaw-installed")
-}
-
-func (r *Runtime) supertonicRuntimeComplete() bool {
-	return r.supertonicBinaryInstalled() && r.supertonicModelCacheComplete()
-}
-
-func (r *Runtime) supertonicBinaryInstalled() bool {
-	if info, err := os.Stat(r.managedSupertonicBinaryPath()); err != nil || info.IsDir() {
-		return false
-	}
-	return true
-}
-
-func (r *Runtime) supertonicModelCacheComplete() bool {
-	for _, dir := range r.supertonicModelCacheDirs() {
-		if supertonicModelCacheDirComplete(dir) {
-			return true
-		}
-	}
-	return false
-}
-
-func supertonicModelCacheDirComplete(dir string) bool {
-	for _, path := range []string{
-		filepath.Join(dir, "config.json"),
-		filepath.Join(dir, "voice_styles", "M1.json"),
-		filepath.Join(dir, "onnx", "tts.json"),
-		filepath.Join(dir, "onnx", "text_encoder.onnx"),
-		filepath.Join(dir, "onnx", "duration_predictor.onnx"),
-		filepath.Join(dir, "onnx", "vector_estimator.onnx"),
-		filepath.Join(dir, "onnx", "vocoder.onnx"),
-	} {
-		info, err := os.Stat(path)
-		if err != nil || info.IsDir() || info.Size() == 0 {
-			return false
-		}
-	}
-	return true
-}
-
-func (r *Runtime) supertonicModelCacheDirs() []string {
-	dirs := []string{r.supertonicModelCacheDir()}
-	if value := strings.TrimSpace(os.Getenv("SUPERTONIC_CACHE_DIR")); value == "" {
-		if cacheDir, err := os.UserCacheDir(); err == nil && strings.TrimSpace(cacheDir) != "" {
-			dirs = append(dirs, filepath.Join(cacheDir, "supertonic3"))
-		}
-		if home, err := os.UserHomeDir(); err == nil {
-			dirs = append(dirs, filepath.Join(home, ".cache", "supertonic3"))
-		}
-	}
-	return uniqueLocalStrings(dirs...)
-}
-
-func (r *Runtime) supertonicModelCacheDir() string {
-	if value := strings.TrimSpace(os.Getenv("SUPERTONIC_CACHE_DIR")); value != "" {
-		if strings.HasPrefix(value, "~"+string(os.PathSeparator)) {
-			if home, err := os.UserHomeDir(); err == nil {
-				return filepath.Join(home, strings.TrimPrefix(value, "~"+string(os.PathSeparator)))
-			}
-		}
-		return value
-	}
-	return filepath.Join(r.runtimeDir(), "supertonic3")
-}
-
-func (r *Runtime) supertonicActiveCacheDir() string {
-	for _, dir := range r.supertonicModelCacheDirs() {
-		if supertonicModelCacheDirComplete(dir) {
-			return dir
-		}
-	}
-	return r.supertonicModelCacheDir()
-}
-
-func (r *Runtime) supertonicEnv(provider setup.VoiceProviderOption) []string {
-	env := append([]string{}, os.Environ()...)
-	env = append(env, "SUPERTONIC_CACHE_DIR="+r.supertonicActiveCacheDir())
-	if provider.Config.Threads > 0 {
-		threadCount := strconv.Itoa(provider.Config.Threads)
-		env = append(env,
-			"SUPERTONIC_INTRA_OP_THREADS="+threadCount,
-			"SUPERTONIC_INTER_OP_THREADS="+threadCount,
-		)
-	}
-	return env
 }
 
 func uniqueLocalStrings(values ...string) []string {
@@ -762,170 +343,6 @@ func uniqueLocalStrings(values ...string) []string {
 		out = append(out, value)
 	}
 	return out
-}
-
-func (r *Runtime) installPiperRuntime(ctx context.Context) error {
-	if err := requireFFmpegForLocalTTS(); err != nil {
-		return err
-	}
-	if info, err := os.Stat(r.managedPiperBinaryPath()); err == nil && !info.IsDir() {
-		return nil
-	}
-	python, err := exec.LookPath("python3")
-	if err != nil {
-		python, err = exec.LookPath("python")
-	}
-	if err != nil {
-		return fmt.Errorf("Python 3 is required to install Piper runtime")
-	}
-	venvDir := filepath.Dir(filepath.Dir(r.managedPiperBinaryPath()))
-	if err := os.RemoveAll(venvDir); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(r.runtimeDir(), 0o755); err != nil {
-		return err
-	}
-	if err := runRuntimeCommand(ctx, python, "-m", "venv", venvDir); err != nil {
-		return err
-	}
-	venvPython := r.managedPiperPythonPath()
-	if err := runRuntimeCommand(ctx, venvPython, "-m", "pip", "install", "--upgrade", "pip"); err != nil {
-		return err
-	}
-	if err := runRuntimeCommand(ctx, venvPython, "-m", "pip", "install", "piper-tts"); err != nil {
-		return err
-	}
-	if info, err := os.Stat(r.managedPiperBinaryPath()); err != nil || info.IsDir() {
-		return fmt.Errorf("Piper runtime installation finished without piper binary")
-	}
-	return nil
-}
-
-func (r *Runtime) installSupertonicRuntime(ctx context.Context) error {
-	if err := requireFFmpegForLocalTTS(); err != nil {
-		return err
-	}
-	if r.supertonicRuntimeComplete() {
-		return nil
-	}
-	if !r.supertonicBinaryInstalled() {
-		python, err := exec.LookPath("python3")
-		if err != nil {
-			python, err = exec.LookPath("python")
-		}
-		if err != nil {
-			return fmt.Errorf("Python 3 is required to install Supertonic runtime")
-		}
-		venvDir := filepath.Dir(filepath.Dir(r.managedSupertonicBinaryPath()))
-		if err := os.RemoveAll(venvDir); err != nil {
-			return err
-		}
-		if err := os.MkdirAll(r.runtimeDir(), 0o755); err != nil {
-			return err
-		}
-		if err := runRuntimeCommand(ctx, python, "-m", "venv", venvDir); err != nil {
-			return err
-		}
-		venvPython := r.managedSupertonicPythonPath()
-		if err := runRuntimeCommand(ctx, venvPython, "-m", "pip", "install", "--upgrade", "pip"); err != nil {
-			return err
-		}
-		if err := runRuntimeCommand(ctx, venvPython, "-m", "pip", "install", "supertonic[serve]"); err != nil {
-			return err
-		}
-		if !r.supertonicBinaryInstalled() {
-			return fmt.Errorf("Supertonic runtime installation finished without supertonic binary")
-		}
-	}
-	if !r.supertonicModelCacheComplete() {
-		if err := runRuntimeCommandWithEnv(ctx, r.supertonicEnv(setup.VoiceProviderOption{}), r.managedSupertonicBinaryPath(), "download"); err != nil {
-			return err
-		}
-	}
-	if !r.supertonicModelCacheComplete() {
-		return fmt.Errorf("Supertonic runtime installation finished without downloaded model files")
-	}
-	if err := os.MkdirAll(filepath.Dir(r.supertonicInstallMarkerPath()), 0o755); err != nil {
-		return err
-	}
-	if err := os.WriteFile(r.supertonicInstallMarkerPath(), []byte("ok\n"), 0o644); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (r *Runtime) installWhisperRuntime(ctx context.Context) error {
-	if err := requireFFmpegForLocalSTT(); err != nil {
-		return err
-	}
-	cliPath := r.managedWhisperCLIPath()
-	serverPath := r.managedWhisperServerPath()
-	if executableFileExists(cliPath) && executableFileExists(serverPath) {
-		return nil
-	}
-	git, err := exec.LookPath("git")
-	if err != nil {
-		return fmt.Errorf("git is required to install Whisper.cpp runtime")
-	}
-	cmake, err := exec.LookPath("cmake")
-	if err != nil {
-		return fmt.Errorf("cmake is required to install Whisper.cpp runtime")
-	}
-	if _, err := cxxCompilerPath(); err != nil {
-		return err
-	}
-	sourceDir := r.managedWhisperRuntimeDir()
-	if err := os.MkdirAll(r.runtimeDir(), 0o755); err != nil {
-		return err
-	}
-	if _, err := os.Stat(filepath.Join(sourceDir, ".git")); err == nil {
-		if err := runRuntimeCommand(ctx, git, "-C", sourceDir, "fetch", "--depth", "1", "origin"); err != nil {
-			return err
-		}
-		if err := runRuntimeCommand(ctx, git, "-C", sourceDir, "reset", "--hard", "FETCH_HEAD"); err != nil {
-			return err
-		}
-	} else if _, err := os.Stat(sourceDir); err == nil {
-		return fmt.Errorf("%s exists but is not a git checkout", sourceDir)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	} else {
-		repo := strings.TrimSpace(os.Getenv("MATRIXCLAW_WHISPER_CPP_REPO"))
-		if repo == "" {
-			repo = "https://github.com/ggml-org/whisper.cpp.git"
-		}
-		if err := runRuntimeCommand(ctx, git, "clone", "--depth", "1", repo, sourceDir); err != nil {
-			return err
-		}
-	}
-	buildDir := filepath.Join(sourceDir, "build")
-	if err := runRuntimeCommand(ctx, cmake, "-S", sourceDir, "-B", buildDir, "-DWHISPER_BUILD_TESTS=OFF", "-DWHISPER_BUILD_EXAMPLES=ON", "-DCMAKE_BUILD_TYPE=Release"); err != nil {
-		return err
-	}
-	if err := runRuntimeCommand(ctx, cmake, "--build", buildDir, "-j", "4", "--config", "Release", "--target", "whisper-cli", "whisper-server"); err != nil {
-		return err
-	}
-	if !executableFileExists(cliPath) {
-		return fmt.Errorf("Whisper.cpp runtime installation finished without whisper-cli binary")
-	}
-	if !executableFileExists(serverPath) {
-		return fmt.Errorf("Whisper.cpp runtime installation finished without whisper-server binary")
-	}
-	return nil
-}
-
-func executableFileExists(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && !info.IsDir() && info.Mode()&0o111 != 0
-}
-
-func cxxCompilerPath() (string, error) {
-	for _, name := range []string{"c++", "g++", "clang++"} {
-		if path, err := exec.LookPath(name); err == nil {
-			return path, nil
-		}
-	}
-	return "", fmt.Errorf("C++ compiler is required to install Whisper.cpp runtime")
 }
 
 func requireFFmpegForLocalTTS() error {
@@ -1091,72 +508,8 @@ type downloadItem struct {
 }
 
 func voiceDownloads(_ string, provider setup.VoiceProviderOption, modelPath string) ([]downloadItem, error) {
-	switch provider.ID {
-	case "piper":
-		url, err := piperVoiceURL(provider.Config.VoiceID)
-		if err != nil {
-			return nil, err
-		}
-		return []downloadItem{
-			{URL: url + ".onnx", Path: modelPath},
-			{URL: url + ".onnx.json", Path: modelPath + ".json"},
-		}, nil
-	case "supertonic":
-		url, err := supertonicVoiceStyleURL(provider.Config.VoiceID)
-		if err != nil {
-			return nil, err
-		}
-		return []downloadItem{{URL: url, Path: modelPath}}, nil
-	case "whispercpp":
-		url, err := whisperModelURL(provider.Config.ModelID)
-		if err != nil {
-			return nil, err
-		}
-		return []downloadItem{{URL: url, Path: modelPath}}, nil
-	default:
-		return nil, fmt.Errorf("local voice provider %q cannot download models", provider.ID)
+	if driver, ok := driverForProvider(provider.ID); ok {
+		return driver.downloads(provider, modelPath)
 	}
-}
-
-func piperVoiceURL(voiceID string) (string, error) {
-	voiceID = strings.TrimSpace(voiceID)
-	if voiceID == "" {
-		voiceID = "en_US-lessac-medium"
-	}
-	language, voice, quality, ok := splitPiperVoiceID(voiceID)
-	if !ok {
-		return "", fmt.Errorf("piper voice %q does not have a recognized catalog id", voiceID)
-	}
-	family, _, _ := strings.Cut(language, "_")
-	if family == "" {
-		return "", fmt.Errorf("piper voice %q does not have a recognized language", voiceID)
-	}
-	return "https://huggingface.co/rhasspy/piper-voices/resolve/main/" + family + "/" + language + "/" + voice + "/" + quality + "/" + voiceID, nil
-}
-
-func splitPiperVoiceID(voiceID string) (language string, voice string, quality string, ok bool) {
-	voiceID = strings.TrimSpace(voiceID)
-	firstDash := strings.Index(voiceID, "-")
-	lastDash := strings.LastIndex(voiceID, "-")
-	if firstDash <= 0 || lastDash <= firstDash {
-		return "", "", "", false
-	}
-	language = voiceID[:firstDash]
-	voice = voiceID[firstDash+1 : lastDash]
-	quality = voiceID[lastDash+1:]
-	if language == "" || voice == "" || quality == "" {
-		return "", "", "", false
-	}
-	return language, voice, quality, true
-}
-
-func whisperModelURL(modelID string) (string, error) {
-	modelID = strings.TrimSpace(modelID)
-	if modelID == "" {
-		modelID = "base"
-	}
-	if strings.ContainsAny(modelID, `/\`) || strings.Contains(modelID, "..") {
-		return "", fmt.Errorf("whisper.cpp model %q does not have a download URL", modelID)
-	}
-	return "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-" + modelID + ".bin", nil
+	return nil, fmt.Errorf("local voice provider %q cannot download models", provider.ID)
 }

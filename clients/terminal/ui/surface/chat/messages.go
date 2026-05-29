@@ -278,6 +278,9 @@ func BuildToolResultMap(messages []surfacemessage.Message) map[string]surfacemes
 }
 
 func ExtractMessageItems(sty *surfacestyles.Styles, msg *surfacemessage.Message, toolResults map[string]surfacemessage.ToolResult) []MessageItem {
+	if IsContextClearedMessage(msg) {
+		return []MessageItem{NewContextClearedMessageItem(sty, msg)}
+	}
 	if IsCompactSummaryMessage(msg) {
 		return []MessageItem{NewCompactSummaryMessageItem(sty, msg)}
 	}

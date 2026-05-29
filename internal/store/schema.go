@@ -71,6 +71,10 @@ CREATE TABLE IF NOT EXISTS plan_runs (
 	if _, err := db.Exec(`
 CREATE TABLE IF NOT EXISTS subagent_tasks (
     id TEXT PRIMARY KEY,
+    agent_name TEXT NOT NULL DEFAULT '',
+    display_name TEXT NOT NULL DEFAULT '',
+    mode TEXT NOT NULL DEFAULT 'blocking',
+    isolation TEXT NOT NULL DEFAULT 'shared',
     parent_session_id TEXT NOT NULL,
     parent_run_id TEXT NOT NULL DEFAULT '',
     parent_tool_call_id TEXT NOT NULL DEFAULT '',
@@ -81,6 +85,10 @@ CREATE TABLE IF NOT EXISTS subagent_tasks (
     status TEXT NOT NULL,
     summary TEXT NOT NULL DEFAULT '',
     error TEXT NOT NULL DEFAULT '',
+    result_message_id TEXT NOT NULL DEFAULT '',
+    completion_queued_at TEXT,
+    completion_delivered_at TEXT,
+    completion_auto_resume_run_id TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     finished_at TEXT,
@@ -88,11 +96,65 @@ CREATE TABLE IF NOT EXISTS subagent_tasks (
 )`); err != nil {
 		return fmt.Errorf("store: create subagent tasks table: %w", err)
 	}
+	if err := ensureColumn(db, "subagent_tasks", "agent_name", `ALTER TABLE subagent_tasks ADD COLUMN agent_name TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`
+CREATE TABLE IF NOT EXISTS session_inputs (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    target_run_id TEXT NOT NULL DEFAULT '',
+    mode TEXT NOT NULL,
+    status TEXT NOT NULL,
+    text TEXT NOT NULL DEFAULT '',
+    parts_json TEXT NOT NULL DEFAULT '',
+    client TEXT NOT NULL DEFAULT '',
+    external_key TEXT NOT NULL DEFAULT '',
+    working_dir TEXT NOT NULL DEFAULT '',
+    consumed_run_id TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    consumed_at TEXT,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+)`); err != nil {
+		return fmt.Errorf("store: create session inputs table: %w", err)
+	}
+	if err := ensureColumn(db, "subagent_tasks", "display_name", `ALTER TABLE subagent_tasks ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "subagent_tasks", "mode", `ALTER TABLE subagent_tasks ADD COLUMN mode TEXT NOT NULL DEFAULT 'blocking'`); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "subagent_tasks", "isolation", `ALTER TABLE subagent_tasks ADD COLUMN isolation TEXT NOT NULL DEFAULT 'shared'`); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "subagent_tasks", "result_message_id", `ALTER TABLE subagent_tasks ADD COLUMN result_message_id TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "subagent_tasks", "completion_queued_at", `ALTER TABLE subagent_tasks ADD COLUMN completion_queued_at TEXT`); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "subagent_tasks", "completion_delivered_at", `ALTER TABLE subagent_tasks ADD COLUMN completion_delivered_at TEXT`); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "subagent_tasks", "completion_auto_resume_run_id", `ALTER TABLE subagent_tasks ADD COLUMN completion_auto_resume_run_id TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id, hidden)`); err != nil {
 		return fmt.Errorf("store: create sessions parent index: %w", err)
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_subagent_tasks_parent ON subagent_tasks(parent_session_id, parent_run_id, parent_tool_call_id)`); err != nil {
 		return fmt.Errorf("store: create subagent tasks parent index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_subagent_tasks_child_run ON subagent_tasks(child_run_id)`); err != nil {
+		return fmt.Errorf("store: create subagent tasks child run index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_session_inputs_session_status_created ON session_inputs(session_id, status, created_at)`); err != nil {
+		return fmt.Errorf("store: create session inputs status index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_session_inputs_target_run ON session_inputs(target_run_id, mode, status)`); err != nil {
+		return fmt.Errorf("store: create session inputs target index: %w", err)
 	}
 	if _, err := db.Exec(`UPDATE sessions SET runtime_id = 'external_agent' WHERE kind = 'external_agent' AND runtime_id IN ('matrixclaw', 'codex', 'codex-app')`); err != nil {
 		return fmt.Errorf("store: backfill external session runtime: %w", err)

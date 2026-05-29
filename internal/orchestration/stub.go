@@ -3,7 +3,10 @@ package orchestration
 import (
 	"context"
 	"errors"
+	"log"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 type Stub struct {
@@ -26,9 +29,11 @@ func (s *Stub) StartRun(ctx context.Context, runID string) error {
 		return err
 	}
 
-	go func() {
-		_ = s.executor.ExecuteRun(context.Background(), runID)
-	}()
+	safego.Go("orchestration.executeRun", func() {
+		if err := s.executor.ExecuteRun(context.Background(), runID); err != nil {
+			log.Printf("orchestration: run %s failed: %v", runID, err)
+		}
+	})
 
 	return nil
 }

@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 type Conn interface {
@@ -169,9 +171,13 @@ func (c *Client) Err() error {
 func (c *Client) write(ctx context.Context, req rpcRequest) error {
 	done := make(chan error, 1)
 	go func() {
-		c.writeMu.Lock()
-		defer c.writeMu.Unlock()
-		done <- c.enc.Encode(req)
+		if !safego.Run("codexapp.write", func() {
+			c.writeMu.Lock()
+			defer c.writeMu.Unlock()
+			done <- c.enc.Encode(req)
+		}) {
+			done <- fmt.Errorf("codex app-server write panicked")
+		}
 	}()
 	select {
 	case <-ctx.Done():

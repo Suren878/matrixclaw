@@ -22,9 +22,13 @@ func (m *appModel) contextUsageText() string {
 	if provider = strings.TrimSpace(provider); provider == "" && !sessionIsExternalAgent(snapshot.Session) {
 		provider = strings.TrimSpace(m.providerName)
 	}
-	tokens := estimateMessagesTokens(snapshot.Messages) + m.assistantPromptTokens()
-	if snapshot.Context != nil && snapshot.Context.TokenEstimate > tokens {
-		tokens = snapshot.Context.TokenEstimate
+	localTokens, visibleMarker := estimateVisibleContextTokens(snapshot.Messages)
+	localTokens += m.assistantPromptTokens()
+	tokens := localTokens
+	if snapshot.Context != nil {
+		if visibleMarker == headerContextMarkerNone || contextReportHasMarker(snapshot.Context, visibleMarker) {
+			tokens = max(tokens, snapshot.Context.TokenEstimate)
+		}
 	}
 
 	parts := []string{formatHeaderContextUsage(tokens, snapshot.Context)}
@@ -39,9 +43,6 @@ func (m *appModel) contextUsageText() string {
 
 func formatHeaderContextUsage(tokens int, report *core.ContextReport) string {
 	if report != nil {
-		if report.TokenEstimate > tokens {
-			tokens = report.TokenEstimate
-		}
 		if report.WindowTokens > 0 {
 			return "Context: ~" + formatTokenCount(tokens) + " / " + formatTokenCount(report.WindowTokens)
 		}
@@ -63,6 +64,86 @@ func (m *appModel) assistantPromptTokens() int {
 	}
 	assistant := m.rt.config.Assistant
 	return core.EstimateTextTokens(core.AssistantSystemPrompt(assistant)) + core.EstimateTextTokens(assistant.CustomInstructions)
+}
+
+type headerContextMarker int
+
+const (
+	headerContextMarkerNone headerContextMarker = iota
+	headerContextMarkerCompact
+	headerContextMarkerClear
+)
+
+const (
+	headerCompactSummaryPrefix = "🧠 Context compacted"
+	headerContextClearedPrefix = "🧹 Context cleared"
+)
+
+func estimateVisibleContextTokens(messages []surfacemessage.Message) (int, headerContextMarker) {
+	start := 0
+	markerTokens := 0
+	marker := headerContextMarkerNone
+	for i := len(messages) - 1; i >= 0; i-- {
+		message := messages[i]
+		if message.Role != surfacemessage.System {
+			continue
+		}
+		content := strings.TrimSpace(message.Content().Text)
+		if summary, ok := headerCompactSummary(content); ok {
+			start = i + 1
+			markerTokens = estimateTokens(summary)
+			marker = headerContextMarkerCompact
+			break
+		}
+		if summary, ok := headerClearSummary(content); ok {
+			start = i + 1
+			markerTokens = estimateTokens(summary)
+			marker = headerContextMarkerClear
+			break
+		}
+	}
+	return markerTokens + estimateMessagesTokens(messages[start:]), marker
+}
+
+func contextReportHasMarker(report *core.ContextReport, marker headerContextMarker) bool {
+	if report == nil {
+		return false
+	}
+	want := core.ContextBlockKind("")
+	switch marker {
+	case headerContextMarkerCompact:
+		want = core.ContextBlockCompactSummary
+	case headerContextMarkerClear:
+		want = core.ContextBlockClearMarker
+	default:
+		return true
+	}
+	for _, block := range report.Blocks {
+		if block.Kind == want {
+			return true
+		}
+	}
+	return false
+}
+
+func headerCompactSummary(content string) (string, bool) {
+	if !strings.HasPrefix(content, headerCompactSummaryPrefix) {
+		return "", false
+	}
+	summary := strings.TrimSpace(strings.TrimPrefix(content, headerCompactSummaryPrefix))
+	if strings.HasPrefix(summary, ":") {
+		if _, tail, ok := strings.Cut(summary, "\n\n"); ok {
+			summary = strings.TrimSpace(tail)
+		}
+	}
+	return summary, true
+}
+
+func headerClearSummary(content string) (string, bool) {
+	if !strings.HasPrefix(content, headerContextClearedPrefix) {
+		return "", false
+	}
+	return strings.TrimSpace(strings.TrimPrefix(content, headerContextClearedPrefix)), true
 }
 
 func estimateMessagesTokens(messages []surfacemessage.Message) int {

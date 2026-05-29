@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -95,10 +96,10 @@ func (r *Runtime) startPiperProcess(moduleID string, provider setup.VoiceProvide
 		outputDir: outputDir,
 	}
 	piperProcesses.processes[key] = process
-	go func() {
+	safego.Go("localruntime.piperWait", func() {
+		defer close(process.done)
 		_ = cmd.Wait()
-		close(process.done)
-	}()
+	})
 	return nil
 }
 

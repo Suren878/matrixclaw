@@ -21,6 +21,8 @@ type ClientSnapshot struct {
 	Approvals             []Approval               `json:"approvals,omitempty"`
 	ApprovalNotifications []PermissionNotification `json:"approval_notifications,omitempty"`
 	Files                 []FileSnapshot           `json:"files,omitempty"`
+	Subagents             []SubagentTask           `json:"subagents,omitempty"`
+	PendingInputs         []SessionInput           `json:"pending_inputs,omitempty"`
 }
 
 func (c *Core) ClientSnapshot(ctx context.Context, client string, externalKey string) (ClientSnapshot, error) {
@@ -56,6 +58,17 @@ func (c *Core) ClientSnapshot(ctx context.Context, client string, externalKey st
 	if err != nil {
 		return ClientSnapshot{}, err
 	}
+	subagents, err := c.store.ListSubagentTasks(ctx, SubagentTaskFilter{
+		ParentSessionID: binding.SessionID,
+		Limit:           20,
+	})
+	if err != nil {
+		return ClientSnapshot{}, err
+	}
+	pendingInputs, err := c.store.ListPendingSessionInputs(ctx, binding.SessionID)
+	if err != nil {
+		return ClientSnapshot{}, err
+	}
 	messages, err := c.store.ListMessages(ctx, binding.SessionID, c.clientSnapshotMessageLimit())
 	if err != nil {
 		return ClientSnapshot{}, err
@@ -70,6 +83,8 @@ func (c *Core) ClientSnapshot(ctx context.Context, client string, externalKey st
 	}
 
 	snapshot.Files = files
+	snapshot.Subagents = subagents
+	snapshot.PendingInputs = pendingInputs
 	snapshot.Messages = messages
 	context := c.contextReportForSession(session, contextMessages)
 	snapshot.Context = &context

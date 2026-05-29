@@ -52,17 +52,18 @@ func (d *Dispatcher) mcpPicker(ctx context.Context) (Result, error) {
 	}
 	picker := NewPickerData(PickerMCP, "MCP").
 		Back(modulesCommand()).
-		Row("enabled", "Enabled", formatEnabled(resp.Config.Enabled))
+		Row("enabled", "Enabled", formatEnabled(resp.Config.Enabled), mcpCommand("enabled"))
 	for _, server := range resp.Config.Servers {
 		picker.Item(PickerItem{
 			ID:       server.ID,
 			Title:    mcpServerTitle(server),
 			Info:     mcpServerInfoText(server),
 			Selected: resp.Config.Enabled && server.Enabled,
+			Command:  mcpServerCommand(server.ID),
 		})
 	}
 	if len(resp.Config.Servers) == 0 {
-		picker.Item(PickerItem{ID: "empty", Title: "No MCP servers", Info: "Configure MCP servers in setup or imported plugins."})
+		picker.Static("empty", "No MCP servers", "Configure MCP servers in setup or imported plugins.")
 	}
 	return Result{Handled: true, Picker: picker.Ptr()}, nil
 }
@@ -104,9 +105,9 @@ func (d *Dispatcher) mcpServerPicker(ctx context.Context, serverID string) (Resu
 		Context(server.ID).
 		Meta(mcpServerInfoText(server)).
 		Back(mcpCommand()).
-		Row("enabled", "Enabled", formatEnabled(server.Enabled)).
-		Row("info", "Details", mcpServerTarget(server)).
-		Action("edit", "Edit Config", "").
+		Row("enabled", "Enabled", formatEnabled(server.Enabled), mcpServerCommand(server.ID, "enabled")).
+		Row("info", "Details", mcpServerTarget(server), mcpServerCommand(server.ID, "info")).
+		Action("edit", "Edit Config", "", mcpServerCommand(server.ID, "edit")).
 		Ptr()}, nil
 }
 

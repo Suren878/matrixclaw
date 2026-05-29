@@ -1,10 +1,13 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/Suren878/matrixclaw/internal/core"
 	_ "modernc.org/sqlite"
 )
 
@@ -46,6 +49,56 @@ CREATE TABLE sessions (
 	}
 	if !sqliteColumnExists(t, sqliteStore.db, "sessions", "hidden") {
 		t.Fatal("sessions.hidden was not added")
+	}
+	if !sqliteColumnExists(t, sqliteStore.db, "subagent_tasks", "agent_name") {
+		t.Fatal("subagent_tasks.agent_name was not added")
+	}
+}
+
+func TestSubagentTaskPersistsAgentName(t *testing.T) {
+	ctx := context.Background()
+	sqliteStore, err := NewSQLite(filepath.Join(t.TempDir(), "matrixclaw.db"))
+	if err != nil {
+		t.Fatalf("NewSQLite: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+
+	now := time.Date(2026, 5, 29, 12, 0, 0, 0, time.UTC)
+	if err := sqliteStore.CreateSession(ctx, core.Session{
+		ID:             "session",
+		Title:          "Parent",
+		Kind:           core.SessionKindAssistant,
+		RuntimeID:      core.SessionRuntimeMatrixClaw,
+		PermissionMode: core.PermissionModeDefault,
+		Status:         core.SessionStatusActive,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	task := core.SubagentTask{
+		ID:              "subagent",
+		AgentName:       "Neo",
+		DisplayName:     "Repo scan",
+		Mode:            core.SubagentTaskModeAsync,
+		Isolation:       core.SubagentIsolationShared,
+		ParentSessionID: "session",
+		Runtime:         string(core.SubagentRuntimeMatrixClaw),
+		Goal:            "Inspect the repo",
+		Status:          core.SubagentTaskStatusRunning,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	if err := sqliteStore.CreateSubagentTask(ctx, task); err != nil {
+		t.Fatalf("CreateSubagentTask: %v", err)
+	}
+	loaded, err := sqliteStore.GetSubagentTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetSubagentTask: %v", err)
+	}
+	if loaded.AgentName != "Neo" {
+		t.Fatalf("loaded AgentName = %q, want Neo", loaded.AgentName)
 	}
 }
 

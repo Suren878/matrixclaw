@@ -24,6 +24,8 @@ type Snapshot struct {
 	Approvals             []surfacepermission.PermissionRequest
 	ApprovalNotifications []surfacepermission.PermissionNotification
 	Files                 []surfacehistory.File
+	Subagents             []core.SubagentTask
+	PendingInputs         []core.SessionInput
 }
 
 func cloneSession(session *core.Session) *core.Session {
@@ -52,16 +54,18 @@ func cloneRun(run *core.Run) *core.Run {
 
 func FromStateSnapshot(snapshot clientruntime.StateSnapshot) Snapshot {
 	out := Snapshot{
-		SessionID:    snapshot.SessionID,
-		Session:      cloneSession(snapshot.Session),
-		Capabilities: cloneSessionCapabilities(snapshot.Capabilities),
-		Context:      cloneContextReport(snapshot.Context),
-		Plan:         cloneSessionPlan(snapshot.Plan),
-		Run:          cloneRun(snapshot.Run),
-		Timing:       cloneTiming(snapshot.Timing),
-		Messages:     backfillAssistantMessageLLM(ToSurfaceMessages(snapshot.Messages), snapshot.Session),
-		ToolUpdates:  append([]core.ToolUpdate(nil), snapshot.ToolUpdates...),
-		Files:        ToSurfaceFiles(snapshot.Files),
+		SessionID:     snapshot.SessionID,
+		Session:       cloneSession(snapshot.Session),
+		Capabilities:  cloneSessionCapabilities(snapshot.Capabilities),
+		Context:       cloneContextReport(snapshot.Context),
+		Plan:          cloneSessionPlan(snapshot.Plan),
+		Run:           cloneRun(snapshot.Run),
+		Timing:        cloneTiming(snapshot.Timing),
+		Messages:      backfillAssistantMessageLLM(ToSurfaceMessages(snapshot.Messages), snapshot.Session),
+		ToolUpdates:   append([]core.ToolUpdate(nil), snapshot.ToolUpdates...),
+		Files:         ToSurfaceFiles(snapshot.Files),
+		Subagents:     append([]core.SubagentTask(nil), snapshot.Subagents...),
+		PendingInputs: append([]core.SessionInput(nil), snapshot.PendingInputs...),
 	}
 	for _, approval := range snapshot.Approvals {
 		out.Approvals = append(out.Approvals, ToSurfacePermissionRequest(approval))

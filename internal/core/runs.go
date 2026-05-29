@@ -19,55 +19,54 @@ func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptR
 		return AcceptRunResult{}, err
 	}
 
-	now := c.now().UTC()
-	runID := c.newID("run")
-	messageID := c.newID("msg")
-
-	message := Message{
-		ID:        messageID,
-		SessionID: session.ID,
-		RunID:     runID,
-		Role:      MessageRoleUser,
-		Content:   text,
-		Parts:     parts,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-	run := Run{
-		ID:            runID,
-		SessionID:     session.ID,
-		UserMessageID: messageID,
-		Client:        normalizeText(input.Client),
-		ExternalKey:   normalizeText(input.ExternalKey),
-		Status:        RunStatusAccepted,
-		StartedAt:     now,
-		UpdatedAt:     now,
-	}
-	if err := c.store.AcceptMessage(ctx, message, run); err != nil {
+	var result AcceptRunResult
+	var startRunID string
+	var interruptRunID string
+	gate := c.sessionGate(session.ID)
+	gate.Lock()
+	active, err := c.store.GetActiveRunBySession(ctx, session.ID)
+	switch {
+	case err == nil:
+		pending, createErr := c.createPendingSessionInput(ctx, session, active, input, text, parts)
+		if createErr != nil {
+			gate.Unlock()
+			return AcceptRunResult{}, createErr
+		}
+		result = AcceptRunResult{
+			SessionID: session.ID,
+			Status:    acceptRunStatusForInputMode(pending.Mode),
+			Input:     &pending,
+		}
+		if pending.Mode == BusyInputModeInterrupt {
+			interruptRunID = active.ID
+		}
+	case errors.Is(err, ErrNotFound):
+		result, err = c.createAcceptedRun(ctx, session, text, parts, input.Client, input.ExternalKey)
+		if err != nil {
+			gate.Unlock()
+			return AcceptRunResult{}, err
+		}
+		startRunID = result.Run.ID
+	default:
+		gate.Unlock()
 		return AcceptRunResult{}, err
 	}
-	c.publishEvent(Event{
-		Type:      EventMessageCreated,
-		SessionID: session.ID,
-		RunID:     run.ID,
-		Payload:   message,
-	})
-	c.publishEvent(Event{
-		Type:      EventRunUpdated,
-		SessionID: session.ID,
-		RunID:     run.ID,
-		Payload:   run,
-	})
+	gate.Unlock()
 
-	result := AcceptRunResult{
-		SessionID:   session.ID,
-		UserMessage: message,
-		Run:         run,
+	if interruptRunID != "" {
+		if _, err := c.CancelRun(ctx, interruptRunID); err != nil {
+			return result, err
+		}
+		if _, err := c.startNextPendingSessionInput(ctx, session.ID); err != nil {
+			return result, err
+		}
 	}
 
 	// The daemon hands execution off here; transport is already out of the picture.
-	if err := c.startRun(ctx, run.ID); err != nil {
-		return c.failAcceptedRun(ctx, result, err)
+	if startRunID != "" {
+		if err := c.startRun(ctx, startRunID); err != nil {
+			return c.failAcceptedRun(ctx, result, err)
+		}
 	}
 
 	return result, nil
@@ -101,6 +100,7 @@ func (c *Core) AcceptTriggeredRun(ctx context.Context, input HandleTriggeredRunI
 	if err != nil {
 		return AcceptRunResult{}, err
 	}
+	autoTitle := c.firstMessageAutoTitle(ctx, session, text)
 
 	runID := deterministicRunID(triggerID)
 	messageID := deterministicMessageID(triggerID)
@@ -114,7 +114,7 @@ func (c *Core) AcceptTriggeredRun(ctx context.Context, input HandleTriggeredRunI
 				}
 			}
 		}
-		return AcceptRunResult{SessionID: existing.SessionID, UserMessage: message, Run: existing}, nil
+		return AcceptRunResult{SessionID: existing.SessionID, Status: AcceptRunStatusStarted, UserMessage: message, Run: existing}, nil
 	} else if !errors.Is(err, ErrNotFound) {
 		return AcceptRunResult{}, err
 	}
@@ -142,13 +142,14 @@ func (c *Core) AcceptTriggeredRun(ctx context.Context, input HandleTriggeredRunI
 	}
 	if err := c.store.AcceptMessage(ctx, message, run); err != nil {
 		if existing, loadErr := c.store.GetRun(ctx, runID); loadErr == nil {
-			return AcceptRunResult{SessionID: existing.SessionID, UserMessage: message, Run: existing}, nil
+			return AcceptRunResult{SessionID: existing.SessionID, Status: AcceptRunStatusStarted, UserMessage: message, Run: existing}, nil
 		}
 		return AcceptRunResult{}, err
 	}
+	c.applyAutoSessionTitle(ctx, session, autoTitle)
 	c.publishEvent(Event{Type: EventMessageCreated, SessionID: session.ID, RunID: run.ID, Payload: message})
 	c.publishEvent(Event{Type: EventRunUpdated, SessionID: session.ID, RunID: run.ID, Payload: run})
-	result := AcceptRunResult{SessionID: session.ID, UserMessage: message, Run: run}
+	result := AcceptRunResult{SessionID: session.ID, Status: AcceptRunStatusStarted, UserMessage: message, Run: run}
 	if err := c.startRun(ctx, run.ID); err != nil {
 		return c.failAcceptedRun(ctx, result, err)
 	}

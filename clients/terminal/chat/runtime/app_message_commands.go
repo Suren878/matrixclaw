@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	surfaceeditor "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/editor"
+	"github.com/Suren878/matrixclaw/internal/core"
 )
 
 func (m *appModel) restoreEditorDraft(content string, attachments []surfaceeditor.Attachment) {
@@ -47,7 +48,7 @@ func (m *appModel) attachFilesFromEditorValue() error {
 	return fmt.Errorf("paste or type one or more valid file paths first")
 }
 
-func (m *appModel) sendMessageCmd(content string, attachments []surfaceeditor.Attachment) tea.Cmd {
+func (m *appModel) sendMessageCmd(content string, attachments []surfaceeditor.Attachment, busyMode core.BusyInputMode) tea.Cmd {
 	if m.rt == nil {
 		return func() tea.Msg {
 			return sendMessageResultMsg{
@@ -59,7 +60,7 @@ func (m *appModel) sendMessageCmd(content string, attachments []surfaceeditor.At
 	}
 	sessionID := strings.TrimSpace(m.session)
 	return func() tea.Msg {
-		result, err := m.rt.sendMessage(m.ctx, sessionID, content, attachments...)
+		result, err := m.rt.sendMessageMode(m.ctx, sessionID, content, busyMode, attachments...)
 		return sendMessageResultMsg{
 			content:     content,
 			attachments: attachments,
@@ -74,7 +75,7 @@ func (m *appModel) createSessionCmd() tea.Cmd {
 		return nil
 	}
 	return func() tea.Msg {
-		snapshot, err := m.rt.createAndLoadSession(m.ctx, "Session")
+		snapshot, err := m.rt.createAndLoadSession(m.ctx, defaultNewSessionTitle())
 		return loadInitialMsg{snapshot: snapshot, err: err}
 	}
 }

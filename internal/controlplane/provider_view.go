@@ -26,9 +26,10 @@ func ProviderPickerItems(items []setup.ProviderSetupItem, session *core.Session)
 			Title:    providerPickerTitle(provider),
 			Info:     info,
 			Selected: selected,
+			Command:  providerCommand(provider.ID),
 		})
 	}
-	out = append(out, PickerItem{ID: "custom", Title: "Custom Provider", Role: PickerItemRoleAction})
+	out = append(out, PickerItem{ID: "custom", Title: "Custom Provider", Command: customProviderCommand(), Role: PickerItemRoleAction})
 	return out
 }
 

@@ -16,9 +16,10 @@ func (d *Dispatcher) storageFilesPicker(ctx context.Context) (Result, error) {
 	items := make([]PickerItem, 0, len(list.Files)+2)
 	for _, file := range list.Files {
 		items = append(items, PickerItem{
-			ID:    "file:" + file.Path,
-			Title: storageFileTitle(file),
-			Info:  storageFileInfo(file),
+			ID:      "file:" + file.Path,
+			Title:   storageFileTitle(file),
+			Info:    storageFileInfo(file),
+			Command: storageFileCommand(file.Path),
 		})
 	}
 	if len(items) == 0 {
@@ -30,10 +31,11 @@ func (d *Dispatcher) storageFilesPicker(ctx context.Context) (Result, error) {
 		})
 	} else {
 		items = append(items, PickerItem{
-			ID:    "clear",
-			Title: "Clear All",
-			Info:  "Delete all files",
-			Role:  PickerItemRoleDanger,
+			ID:      "clear",
+			Title:   "Clear All",
+			Info:    "Delete all files",
+			Command: storageClearCommand(),
+			Role:    PickerItemRoleDanger,
 		})
 	}
 	return Result{
@@ -56,8 +58,8 @@ func (d *Dispatcher) storageFilePicker(ctx context.Context, storagePath string) 
 		Picker: NewPickerData(PickerStorageFile, "Storage File").
 			Context(read.File.Path).
 			Back(storageFilesCommand()).
-			Row("read", "Preview", storageFileTitle(read.File)).
-			Danger("delete", "Delete", "").
+			Row("read", "Preview", storageFileTitle(read.File), storageReadCommand(read.File.Path)).
+			Danger("delete", "Delete", "", storageDeleteCommand(read.File.Path)).
 			Ptr(),
 	}, nil
 }

@@ -61,6 +61,7 @@ func canonicalSchemaReady(db *sql.DB) (bool, error) {
 		"client_bindings",
 		"messages",
 		"runs",
+		"session_inputs",
 		"approvals",
 		"file_snapshots",
 		"client_deliveries",

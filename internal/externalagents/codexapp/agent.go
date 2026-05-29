@@ -2,6 +2,7 @@ package codexapp
 
 import (
 	"context"
+	"errors"
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 )
@@ -51,6 +52,9 @@ func (a Agent) Available(ctx context.Context) externalagents.Availability {
 	detail := ""
 	if !installed {
 		detail = "codex binary not found"
+		if errors.Is(err, errCodexAppBundlePath) {
+			detail = err.Error()
+		}
 	}
 	return externalagents.Availability{
 		Installed: installed,

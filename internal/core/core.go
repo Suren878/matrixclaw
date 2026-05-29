@@ -22,6 +22,7 @@ type Core struct {
 	externalAgents *externalagents.Registry
 	externalStore  externalagents.AttachmentStore
 	activeRuns     map[string]*activeRun
+	sessionGates   map[string]*sync.Mutex
 	tools          ToolExecutor
 	skillsContext  SkillsPromptContextProvider
 	events         *eventBus
@@ -67,6 +68,7 @@ func New(store Store) *Core {
 	return &Core{
 		store:        store,
 		activeRuns:   map[string]*activeRun{},
+		sessionGates: map[string]*sync.Mutex{},
 		events:       newEventBus(),
 		now:          time.Now,
 		newID:        defaultID,
@@ -74,6 +76,13 @@ func New(store Store) *Core {
 	}
 }
 
+// The With* builder methods below configure a Core during single-threaded
+// construction, before the daemon starts serving. Except for WithSessionLLMs,
+// they mutate Core fields without holding c.mu and therefore MUST NOT be called
+// after any run has started or after the Core is shared across goroutines —
+// doing so races with the agent loop reading those fields. Post-construction
+// mutation must go through the locked Set* methods (SetSessionLLMs,
+// SetAssistantProfile).
 func (c *Core) WithAttachmentReader(reader AttachmentReader) *Core {
 	if reader != nil {
 		c.attachments = reader

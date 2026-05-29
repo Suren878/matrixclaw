@@ -43,8 +43,8 @@ func customProviderTypePicker() Result {
 		Handled: true,
 		Picker: NewPickerData(PickerProviderCustom, "Custom Provider").
 			Back(providerCommand()).
-			Row("openai", "OpenAI Compatible", "").
-			Row("anthropic", "Anthropic Compatible", "").
+			Row("openai", "OpenAI Compatible", "", customProviderCommand("openai")).
+			Row("anthropic", "Anthropic Compatible", "", customProviderCommand("anthropic")).
 			Ptr(),
 	}
 }

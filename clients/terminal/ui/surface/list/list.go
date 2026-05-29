@@ -41,6 +41,12 @@ type renderedItem struct {
 	height  int
 }
 
+// ViewportSnapshot captures the current list viewport position.
+type ViewportSnapshot struct {
+	OffsetIdx  int
+	OffsetLine int
+}
+
 // NewList creates a new lazy-loaded list.
 func NewList(items ...Item) *List {
 	l := new(List)
@@ -63,6 +69,7 @@ func (l *List) RegisterRenderCallback(cb RenderCallback) {
 func (l *List) SetSize(width, height int) {
 	l.width = width
 	l.height = height
+	l.clampViewport()
 }
 
 // SetGap sets the gap between items.
@@ -141,6 +148,76 @@ func (l *List) lastOffsetItem() (int, int, int) {
 	idx = max(idx, 0)
 
 	return idx, lineOffset, totalHeight
+}
+
+// SnapshotViewport returns the current list viewport position.
+func (l *List) SnapshotViewport() ViewportSnapshot {
+	return ViewportSnapshot{
+		OffsetIdx:  l.offsetIdx,
+		OffsetLine: l.offsetLine,
+	}
+}
+
+// RestoreViewport restores a previously captured viewport position, clamped
+// to the current list contents and viewport size.
+func (l *List) RestoreViewport(snapshot ViewportSnapshot) {
+	l.offsetIdx = snapshot.OffsetIdx
+	l.offsetLine = snapshot.OffsetLine
+	l.clampViewport()
+}
+
+func (l *List) clampViewport() {
+	if len(l.items) == 0 {
+		l.offsetIdx = 0
+		l.offsetLine = 0
+		return
+	}
+
+	absoluteOffset := l.absoluteOffset(l.offsetIdx, l.offsetLine)
+	maxOffset := max(0, l.totalHeight()-max(0, l.height))
+	absoluteOffset = min(max(0, absoluteOffset), maxOffset)
+	l.offsetIdx, l.offsetLine = l.offsetFromAbsolute(absoluteOffset)
+}
+
+func (l *List) absoluteOffset(idx, line int) int {
+	idx = min(max(0, idx), len(l.items)-1)
+	line = max(0, line)
+
+	var offset int
+	for i := 0; i < idx; i++ {
+		offset += l.getItem(i).height
+		if l.gap > 0 && i < len(l.items)-1 {
+			offset += l.gap
+		}
+	}
+	return offset + line
+}
+
+func (l *List) offsetFromAbsolute(offset int) (int, int) {
+	offset = max(0, offset)
+	for i := range l.items {
+		itemHeight := l.getItem(i).height
+		segmentHeight := itemHeight
+		if l.gap > 0 && i < len(l.items)-1 {
+			segmentHeight += l.gap
+		}
+		if offset < segmentHeight || i == len(l.items)-1 {
+			return i, min(offset, segmentHeight)
+		}
+		offset -= segmentHeight
+	}
+	return max(0, len(l.items)-1), 0
+}
+
+func (l *List) totalHeight() int {
+	var height int
+	for i := range l.items {
+		height += l.getItem(i).height
+		if l.gap > 0 && i < len(l.items)-1 {
+			height += l.gap
+		}
+	}
+	return height
 }
 
 // getItem renders (if needed) and returns the item at the given index.
@@ -343,8 +420,7 @@ func (l *List) SetItems(items ...Item) {
 func (l *List) setItems(items ...Item) {
 	l.items = items
 	l.selectedIdx = min(l.selectedIdx, len(l.items)-1)
-	l.offsetIdx = min(l.offsetIdx, len(l.items)-1)
-	l.offsetLine = 0
+	l.clampViewport()
 }
 
 // AppendItems appends items to the list.
@@ -375,4 +451,5 @@ func (l *List) RemoveItem(idx int) {
 		l.offsetIdx = max(0, len(l.items)-1)
 		l.offsetLine = 0
 	}
+	l.clampViewport()
 }

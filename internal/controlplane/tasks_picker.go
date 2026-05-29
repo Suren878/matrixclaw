@@ -16,9 +16,10 @@ func (d *Dispatcher) tasksPicker(ctx context.Context) (Result, error) {
 	items := make([]PickerItem, 0, len(active)+3)
 	for _, job := range active {
 		items = append(items, PickerItem{
-			ID:    "open:" + job.ID,
-			Title: taskListTitle(job),
-			Info:  taskListInfo(job),
+			ID:      "open:" + job.ID,
+			Title:   taskListTitle(job),
+			Info:    taskListInfo(job),
+			Command: taskMenuCommand(job.ID),
 		})
 	}
 	archiveTitle := "Archive"
@@ -27,7 +28,7 @@ func (d *Dispatcher) tasksPicker(ctx context.Context) (Result, error) {
 		archiveTitle = "Archive"
 		archiveInfo = fmt.Sprintf("%d completed", len(closed))
 	}
-	items = append(items, PickerItem{ID: "archive", Title: archiveTitle, Info: archiveInfo})
+	items = append(items, PickerItem{ID: "archive", Title: archiveTitle, Info: archiveInfo, Command: tasksArchiveCommand()})
 	return Result{
 		Handled: true,
 		Picker:  NewPickerData(PickerTasks, "Tasks").Items(items...).Ptr(),
@@ -43,13 +44,14 @@ func (d *Dispatcher) tasksArchivePicker(ctx context.Context) (Result, error) {
 	items := make([]PickerItem, 0, len(closed)+3)
 	for _, job := range closed {
 		items = append(items, PickerItem{
-			ID:    "closed:" + job.ID,
-			Title: taskListTitle(job),
-			Info:  string(job.Status),
+			ID:      "closed:" + job.ID,
+			Title:   taskListTitle(job),
+			Info:    string(job.Status),
+			Command: taskMenuCommand(job.ID),
 		})
 	}
 	if len(closed) > 0 {
-		items = append(items, PickerItem{ID: "delete_closed", Title: "Delete Completed", Role: PickerItemRoleDanger})
+		items = append(items, PickerItem{ID: "delete_closed", Title: "Delete Completed", Command: tasksDeleteClosedCommand(), Role: PickerItemRoleDanger})
 	}
 	return Result{
 		Handled: true,
@@ -69,13 +71,13 @@ func (d *Dispatcher) taskActionsPicker(ctx context.Context, jobID string) (Resul
 	items := []PickerItem{}
 	if job.Status == automation.JobStatusActive {
 		items = append(items,
-			PickerItem{ID: "run", Title: "Run", Info: nextAutomationLabel(job)},
-			PickerItem{ID: "archive", Title: "Done"},
-			PickerItem{ID: "delete", Title: "Delete", Role: PickerItemRoleDanger},
+			PickerItem{ID: "run", Title: "Run", Info: nextAutomationLabel(job), Command: taskRunCommand(job.ID)},
+			PickerItem{ID: "archive", Title: "Done", Command: taskCompleteCommand(job.ID)},
+			PickerItem{ID: "delete", Title: "Delete", Command: taskDeleteCommand(job.ID), Role: PickerItemRoleDanger},
 		)
 	} else {
 		items = append(items,
-			PickerItem{ID: "delete", Title: "Delete", Info: string(job.Status), Role: PickerItemRoleDanger},
+			PickerItem{ID: "delete", Title: "Delete", Info: string(job.Status), Command: taskDeleteCommand(job.ID), Role: PickerItemRoleDanger},
 		)
 	}
 	return Result{

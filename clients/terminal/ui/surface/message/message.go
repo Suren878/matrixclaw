@@ -104,6 +104,7 @@ type Message struct {
 	ID               string
 	Role             MessageRole
 	SessionID        string
+	RunID            string
 	Parts            []ContentPart
 	Model            string
 	Provider         string

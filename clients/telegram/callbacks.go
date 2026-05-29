@@ -62,7 +62,7 @@ func (w *Worker) handlePickerPageCallback(ctx context.Context, target chatTarget
 	if !ok {
 		return nil
 	}
-	command := controlplane.PickerCommandFor(kind, contextID, "")
+	command := controlplane.PickerPageCommand(kind, contextID)
 	if strings.TrimSpace(command) == "" {
 		return nil
 	}

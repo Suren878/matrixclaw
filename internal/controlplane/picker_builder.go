@@ -3,8 +3,7 @@ package controlplane
 import "strings"
 
 type PickerBuilder struct {
-	data             PickerData
-	autoCommandItems map[int]struct{}
+	data PickerData
 }
 
 func NewPickerData(kind PickerKind, title string) *PickerBuilder {
@@ -41,7 +40,8 @@ func (b *PickerBuilder) Popup() *PickerBuilder {
 }
 
 func (b *PickerBuilder) Item(item PickerItem) *PickerBuilder {
-	return b.item(item, false)
+	b.data.Items = append(b.data.Items, item)
+	return b
 }
 
 func (b *PickerBuilder) Items(items ...PickerItem) *PickerBuilder {
@@ -49,22 +49,20 @@ func (b *PickerBuilder) Items(items ...PickerItem) *PickerBuilder {
 	return b
 }
 
-func (b *PickerBuilder) Row(id string, title string, info string, command ...string) *PickerBuilder {
-	item := PickerItem{ID: id, Title: title, Info: info}
-	explicit := applyPickerBuilderCommand(&item, command)
-	return b.item(item, !explicit)
+func (b *PickerBuilder) Row(id string, title string, info string, command string) *PickerBuilder {
+	return b.Item(PickerItem{ID: id, Title: title, Info: info, Command: command})
 }
 
-func (b *PickerBuilder) Action(id string, title string, info string, command ...string) *PickerBuilder {
-	item := PickerItem{ID: id, Title: title, Info: info, Role: PickerItemRoleAction}
-	explicit := applyPickerBuilderCommand(&item, command)
-	return b.item(item, !explicit)
+func (b *PickerBuilder) Action(id string, title string, info string, command string) *PickerBuilder {
+	return b.Item(PickerItem{ID: id, Title: title, Info: info, Command: command, Role: PickerItemRoleAction})
 }
 
-func (b *PickerBuilder) Danger(id string, title string, info string, command ...string) *PickerBuilder {
-	item := PickerItem{ID: id, Title: title, Info: info, Role: PickerItemRoleDanger}
-	explicit := applyPickerBuilderCommand(&item, command)
-	return b.item(item, !explicit)
+func (b *PickerBuilder) Danger(id string, title string, info string, command string) *PickerBuilder {
+	return b.Item(PickerItem{ID: id, Title: title, Info: info, Command: command, Role: PickerItemRoleDanger})
+}
+
+func (b *PickerBuilder) Static(id string, title string, info string) *PickerBuilder {
+	return b.Item(PickerItem{ID: id, Title: title, Info: info, Disabled: true})
 }
 
 func (b *PickerBuilder) Build() PickerData {
@@ -72,40 +70,10 @@ func (b *PickerBuilder) Build() PickerData {
 	if len(data.Items) > 0 {
 		data.Items = append([]PickerItem(nil), data.Items...)
 	}
-	for index := range b.autoCommandItems {
-		if index < 0 || index >= len(data.Items) {
-			continue
-		}
-		item := &data.Items[index]
-		if strings.TrimSpace(item.Command) != "" {
-			continue
-		}
-		item.Command = PickerCommandFor(data.Kind, data.ContextID, item.ID)
-	}
 	return data
 }
 
 func (b *PickerBuilder) Ptr() *PickerData {
 	data := b.Build()
 	return &data
-}
-
-func (b *PickerBuilder) item(item PickerItem, autoCommand bool) *PickerBuilder {
-	index := len(b.data.Items)
-	b.data.Items = append(b.data.Items, item)
-	if autoCommand {
-		if b.autoCommandItems == nil {
-			b.autoCommandItems = map[int]struct{}{}
-		}
-		b.autoCommandItems[index] = struct{}{}
-	}
-	return b
-}
-
-func applyPickerBuilderCommand(item *PickerItem, command []string) bool {
-	if len(command) == 0 {
-		return false
-	}
-	item.Command = command[0]
-	return true
 }

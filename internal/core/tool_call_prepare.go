@@ -88,6 +88,7 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 		RunID:      message.RunID,
 		SessionID:  sessionID,
 	})
+	_ = c.touchAsyncSubagentTaskActivity(ctx, message.RunID, message.UpdatedAt)
 	return prepared, nil
 }
 

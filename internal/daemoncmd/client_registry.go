@@ -11,6 +11,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/clients/telegram"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 type clientRegistry struct {
@@ -101,11 +102,11 @@ func (a *telegramClientAdapter) Apply(ctx context.Context, bootstrap bootstrapCo
 
 	workerCtx, cancel := context.WithCancel(ctx)
 	a.cancel = cancel
-	go func() {
+	safego.Go("telegram.worker", func() {
 		if err := worker.Run(workerCtx); err != nil && workerCtx.Err() == nil {
 			log.Printf("matrixclaw telegram worker stopped: %v", err)
 		}
-	}()
+	})
 	return nil
 }
 

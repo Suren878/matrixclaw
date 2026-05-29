@@ -137,7 +137,7 @@ func NewToolMessageItem(
 		item = NewGrepToolMessageItem(sty, toolCall, result, canceled)
 	case "ls":
 		item = NewLSToolMessageItem(sty, toolCall, result, canceled)
-	case "delegate_task":
+	case "delegate_task", "spawn_subagent":
 		item = NewDelegateTaskToolMessageItem(sty, toolCall, result, canceled)
 	default:
 		item = NewGenericToolMessageItem(sty, toolCall, result, canceled)
@@ -218,6 +218,11 @@ func (t *baseToolMessageItem) markerStyle() lipgloss.Style {
 
 func (t *baseToolMessageItem) computeStatus() ToolStatus {
 	if t.result != nil {
+		if isSubagentToolNameLocal(t.toolCall.Name) {
+			if status, ok := subagentToolStatusFromResult(t.result); ok {
+				return status
+			}
+		}
 		switch normalizedToolName(t.result.Status) {
 		case "error":
 			return ToolStatusError
@@ -238,6 +243,9 @@ func normalizedToolName(name string) string {
 }
 
 func (t *baseToolMessageItem) isSpinning() bool {
+	if isSubagentToolNameLocal(t.toolCall.Name) {
+		return t.computeStatus() == ToolStatusRunning
+	}
 	return !t.toolCall.Finished && t.status != ToolStatusCanceled
 }
 

@@ -27,6 +27,10 @@ func newRunExecution(run Run, session Session, runtime providers.Runtime) *runEx
 }
 
 func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
+	runID = normalizeText(runID)
+	defer func() {
+		_ = c.afterRunExecution(context.Background(), runID)
+	}()
 	if handled, err := c.tryExecuteExternalAgentRun(ctx, runID); handled || err != nil {
 		return err
 	}
@@ -103,6 +107,9 @@ func (c *Core) executeRunStep(ctx context.Context, runCtx context.Context, execu
 	}
 	if waitingApproval {
 		return turnStepResult{Outcome: turnStepWaitingApproval}, nil
+	}
+	if _, err := c.drainPendingSteersIntoLatestToolResult(ctx, turn.SessionID, turn.RunID); err != nil {
+		return turnStepResult{Outcome: turnStepCompleted, Err: err}, nil
 	}
 
 	compacted, err := c.autoCompactSessionIfNeeded(ctx, execution.Turn)

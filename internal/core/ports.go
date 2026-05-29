@@ -20,6 +20,11 @@ type SubagentTaskStore interface {
 	CreateSubagentTask(ctx context.Context, task SubagentTask) error
 	UpdateSubagentTask(ctx context.Context, task SubagentTask) error
 	GetSubagentTask(ctx context.Context, taskID string) (SubagentTask, error)
+	GetSubagentTaskByParentToolCall(ctx context.Context, parentSessionID string, parentRunID string, parentToolCallID string) (SubagentTask, error)
+	GetSubagentTaskByChildRun(ctx context.Context, childRunID string) (SubagentTask, error)
+	ListSubagentTasks(ctx context.Context, filter SubagentTaskFilter) ([]SubagentTask, error)
+	ListActiveSubagentTasksByParent(ctx context.Context, parentSessionID string) ([]SubagentTask, error)
+	ListPendingSubagentCompletionTasks(ctx context.Context, limit int) ([]SubagentTask, error)
 }
 
 type BindingStore interface {
@@ -42,10 +47,19 @@ type MessageStore interface {
 type RunStore interface {
 	CreateRun(ctx context.Context, run Run) error
 	GetRun(ctx context.Context, runID string) (Run, error)
+	GetActiveRunBySession(ctx context.Context, sessionID string) (Run, error)
 	UpdateRun(ctx context.Context, run Run) error
 	CompleteRun(ctx context.Context, assistantMessage Message, run Run) error
 
 	AcceptMessage(ctx context.Context, message Message, run Run) error
+}
+
+type SessionInputStore interface {
+	CreateSessionInput(ctx context.Context, input SessionInput) error
+	UpdateSessionInput(ctx context.Context, input SessionInput) error
+	ListPendingSessionInputs(ctx context.Context, sessionID string) ([]SessionInput, error)
+	NextPendingSessionInput(ctx context.Context, sessionID string) (SessionInput, error)
+	ListPendingSteerInputs(ctx context.Context, sessionID string, runID string) ([]SessionInput, error)
 }
 
 type UsageStore interface {
@@ -97,6 +111,7 @@ type Store interface {
 	DeliveryStore
 	MessageStore
 	RunStore
+	SessionInputStore
 	UsageStore
 	PlanStore
 	SearchStore

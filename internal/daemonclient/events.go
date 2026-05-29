@@ -71,6 +71,18 @@ func (e LiveEvent) DecodeToolUpdate() (core.ToolUpdate, error) {
 	return update, err
 }
 
+func (e LiveEvent) DecodeSubagentTask() (core.SubagentTask, error) {
+	var task core.SubagentTask
+	err := json.Unmarshal(e.Payload, &task)
+	return task, err
+}
+
+func (e LiveEvent) DecodeSessionInput() (core.SessionInput, error) {
+	var input core.SessionInput
+	err := json.Unmarshal(e.Payload, &input)
+	return input, err
+}
+
 func (c *Client) SubscribeEvents(ctx context.Context, sessionID string, afterID uint64) (<-chan LiveEvent, <-chan error, error) {
 	httpClient := c.EventHTTPClient
 	if httpClient == nil {

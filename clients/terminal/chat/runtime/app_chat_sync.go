@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	surfacelist "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/list"
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 )
 
@@ -13,9 +14,11 @@ func (m *appModel) rebuildChat() {
 	}
 	selectedID := ""
 	follow := true
+	var viewport surfacemodelViewportSnapshot
 	if m.chat != nil {
 		selectedID = m.chat.SelectedMessageID()
 		follow = m.chat.Follow()
+		viewport = surfacemodelViewportSnapshot{snapshot: m.chat.SnapshotViewport(), ok: true}
 	}
 	snapshot := m.currentSnapshot()
 	if len(m.transientMessages) > 0 {
@@ -32,17 +35,17 @@ func (m *appModel) rebuildChat() {
 	}
 	chatModel := buildChatModel(&m.styles, snapshot)
 	chatModel.Focus()
-	if follow || strings.TrimSpace(selectedID) == "" {
-		chatModel.SelectLast()
-		chatModel.ScrollToBottom()
-	} else if chatModel.SetSelectedByID(selectedID) {
-		chatModel.ScrollToSelected()
-	} else {
-		chatModel.SelectLast()
-		chatModel.ScrollToBottom()
-	}
 	m.chat = chatModel
 	m.resizeChat()
+	if follow || !viewport.ok {
+		m.chat.SelectLast()
+		m.chat.ScrollToBottom()
+	} else {
+		if strings.TrimSpace(selectedID) != "" {
+			_ = m.chat.SetSelectedByID(selectedID)
+		}
+		m.chat.RestoreViewport(viewport.snapshot)
+	}
 	m.syncPromptHistory()
 	if m.focus == appFocusEditor || m.focus == appFocusPlan {
 		m.chat.Blur()
@@ -50,4 +53,9 @@ func (m *appModel) rebuildChat() {
 		m.chat.Focus()
 	}
 	m.pruneSuppressedApprovals()
+}
+
+type surfacemodelViewportSnapshot struct {
+	snapshot surfacelist.ViewportSnapshot
+	ok       bool
 }

@@ -76,7 +76,7 @@ func (d *Dispatcher) sessionSkillsPickerWithBack(ctx context.Context, sessionID 
 		picker.Back(backCommand)
 	}
 	for _, item := range active {
-		picker.Item(PickerItem{ID: item.ID, Title: skillTitle(item), Info: "In this chat · " + item.Description, Selected: true})
+		picker.Item(PickerItem{ID: item.ID, Title: skillTitle(item), Info: "In this chat · " + item.Description, Selected: true, Command: sessionSkillCommand(item.ID)})
 	}
 	for _, item := range available {
 		if !skillAvailableInSession(item) {
@@ -85,10 +85,10 @@ func (d *Dispatcher) sessionSkillsPickerWithBack(ctx context.Context, sessionID 
 		if _, ok := activeSet[item.ID]; ok {
 			continue
 		}
-		picker.Item(PickerItem{ID: item.ID, Title: skillTitle(item), Info: item.Description})
+		picker.Item(PickerItem{ID: item.ID, Title: skillTitle(item), Info: item.Description, Command: sessionSkillCommand(item.ID)})
 	}
 	if len(picker.data.Items) == 0 {
-		picker.Item(PickerItem{ID: "empty", Title: "No available skills", Info: "Trust and enable skills in Modules."})
+		picker.Static("empty", "No available skills", "Trust and enable skills in Modules.")
 	}
 	return Result{Handled: true, Picker: picker.Ptr()}, nil
 }
@@ -107,11 +107,11 @@ func (d *Dispatcher) sessionSkillPicker(ctx context.Context, sessionID string, s
 		Context(detail.Skill.ID).
 		Meta(sessionSkillInfo(detail.Skill, isActive)).
 		Back(sessionSkillsCommand()).
-		Row("view", "Preview", detail.Skill.Description)
+		Row("view", "Preview", detail.Skill.Description, sessionSkillCommand(detail.Skill.ID, "view"))
 	if isActive {
-		picker.Action("unload", "Unload from This Chat", "")
+		picker.Action("unload", "Unload from This Chat", "", sessionSkillCommand(detail.Skill.ID, "unload"))
 	} else if skillAvailableInSession(detail.Skill) {
-		picker.Action("use", "Use in This Chat", "")
+		picker.Action("use", "Use in This Chat", "", sessionSkillCommand(detail.Skill.ID, "use"))
 	} else {
 		picker.Item(PickerItem{ID: "unavailable", Title: "Unavailable", Info: skillInfo(detail.Skill), Disabled: true})
 	}
@@ -259,7 +259,7 @@ func (d *Dispatcher) skillsSectionPicker(ctx context.Context, section string, qu
 		})
 	}
 	if len(items) == 0 {
-		picker.Item(PickerItem{ID: "empty", Title: "No skills", Info: skillsSectionEmptyInfo(section)})
+		picker.Static("empty", "No skills", skillsSectionEmptyInfo(section))
 	}
 	return Result{Handled: true, Picker: picker.Ptr()}, nil
 }
@@ -278,21 +278,21 @@ func (d *Dispatcher) skillPicker(ctx context.Context, section string, skillID st
 		Context(section+":"+skill.ID).
 		Meta(skillInfo(skill)).
 		Back(back).
-		Row("view", "Preview", skill.Description)
+		Row("view", "Preview", skill.Description, skillsCommand(section, skill.ID, "view"))
 	if skill.TrustState == skills.TrustTrusted {
-		picker.Row("enabled", "Enabled", formatEnabled(skill.Enabled))
-		picker.Row("quarantine", "Move to Quarantine", "")
+		picker.Row("enabled", "Enabled", formatEnabled(skill.Enabled), skillsCommand(section, skill.ID, "enabled"))
+		picker.Row("quarantine", "Move to Quarantine", "", skillsCommand(section, skill.ID, "quarantine"))
 	} else {
-		picker.Row("trust-enable", "Trust & Enable", "")
-		picker.Row("keep", "Keep Quarantined", "")
+		picker.Row("trust-enable", "Trust & Enable", "", skillsCommand(section, skill.ID, "trust-enable"))
+		picker.Row("keep", "Keep Quarantined", "", skillsCommand(section, skill.ID, "keep"))
 	}
-	picker.Row("edit", "Edit", "")
+	picker.Row("edit", "Edit", "", skillsCommand(section, skill.ID, "edit"))
 	if skill.State == skills.StateArchived {
-		picker.Row("restore", "Restore", "")
+		picker.Row("restore", "Restore", "", skillsCommand(section, skill.ID, "restore"))
 	} else {
-		picker.Row("archive", "Archive", "")
+		picker.Row("archive", "Archive", "", skillsCommand(section, skill.ID, "archive"))
 	}
-	picker.Danger("remove", "Remove", "")
+	picker.Danger("remove", "Remove", "", skillsCommand(section, skill.ID, "remove"))
 	return Result{Handled: true, Picker: picker.Ptr()}, nil
 }
 
