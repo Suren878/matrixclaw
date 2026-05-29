@@ -1,5 +1,54 @@
 # Changelog
 
+## v0.1.13
+
+- Added live Terminal subagent cards for `delegate_task` and `spawn_subagent`,
+  with Matrix-style codenames, running/completed/failed/canceled states,
+  expandable task text, and metadata previews.
+- Added async subagent state merging so spawned background agents keep updating
+  the original tool card after the spawn result is returned.
+- Added queued busy input behavior: Enter queues while the assistant is busy,
+  with `/queue`, `/steer`, `/interrupt`, and `/busy` commands for explicit
+  control.
+- Reworked the TUI status line to show the main model phase first and append
+  active subagent or queued-input details.
+- Added `/context clear`, clear markers, compact markers, context blocks, and
+  corrected header token estimates based on effective post-clear context.
+- Added persistent session input storage for queued/steered/interrupted user
+  messages.
+- Refined chat scrolling, viewport restoration, command pickers, permission
+  rendering, and subagent/tool previews.
+- Split local voice runtime management into Piper, Supertonic, and Whisper.cpp
+  drivers with install/status coverage.
+- Added README release highlights for the live-subagents/context release.
+
+## v0.1.12
+
+- Added MatrixClaw subagents through `delegate_task`, with native child-session
+  runs and external Codex/Claude Code runtime options.
+- Added model-facing subagent guidance so assistants know when to delegate
+  bounded work and which runtimes are available.
+- Added subagent task persistence, parent/child session links, result delivery,
+  and terminal rendering for delegated work.
+- Added durable memory and assistant-facing `memory` tools, plus API,
+  daemon-client, and controlplane support.
+- Added session model/title improvements and external-agent runtime discovery
+  updates.
+- Added TUI self-restart support after daemon updates.
+
+## v0.1.11
+
+- Refactored the Terminal UI stack by moving shared command-menu components into
+  reusable surface components.
+- Reworked command, picker, prompt, confirm, form, and info dialogs for more
+  consistent rendering and navigation.
+- Added dialog occlusion handling and simplified controlplane picker
+  presentation.
+- Tightened setup screen rendering, provider editing, storage/temp views, and
+  module picker behavior.
+- Updated CI lint configuration for Go 1.26 and limited golangci-lint to new
+  issues.
+
 ## v0.1.10
 
 - Added daemon-first local voice modules: Text to Speech now supports Piper and
@@ -29,6 +78,21 @@
   Matrixclaw storage with collision-safe names.
 - Documented daemon-first architecture, local voice run modes, storage/temp
   files, Telegram voice/file flow, and open-source voice runtime installation.
+
+## v0.1.9
+
+- Added OpenAI Codex subscription OAuth provider support and provider-login CLI
+  plumbing.
+- Added Telegram image/document upload handling backed by Matrixclaw storage,
+  including temporary files and explicit save/delete controls.
+- Added Telegram voice/audio transcription and text-to-speech delivery flows.
+- Added daemon API and controlplane support for local voice modules.
+- Added MCP, storage, automation, provider, and module command refinements.
+- Added daemon stop controls, Piper runtime management, and process status
+  helpers for local runtime processes.
+- Improved Ubuntu install/runtime discovery, automation delivery fan-out to
+  Telegram, and voice runtime activation guards.
+- Documented Storage and Voice modules.
 
 ## v0.1.8
 
