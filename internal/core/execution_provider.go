@@ -58,7 +58,7 @@ func (c *Core) providerSystemPrompt(ctx context.Context, turn turnExecution, ass
 		sections = append(sections, memoryPrompt)
 	}
 	if compactSummary != "" {
-		sections = append(sections, "Session compact summary:\n"+compactSummary)
+		sections = append(sections, "Session context summary:\n"+compactSummary)
 	}
 	if planPrompt := c.sessionPlanPrompt(ctx, turn.SessionID); planPrompt != "" {
 		sections = append(sections, planPrompt)
@@ -110,7 +110,7 @@ func (c *Core) providerToolDefinitions(ctx context.Context, turn turnExecution) 
 				continue
 			}
 			description := spec.Description
-			if spec.ID == delegateTaskToolName {
+			if spec.ID == delegateTaskToolName || spec.ID == spawnSubagentToolName {
 				description = c.delegateTaskToolDescription(ctx, description)
 			}
 			definitions = append(definitions, providers.ToolDefinition{
@@ -176,17 +176,25 @@ func (c *Core) delegateTaskPromptAvailable() bool {
 	if c == nil || c.tools == nil {
 		return false
 	}
-	_, ok := c.tools.Spec(delegateTaskToolName)
+	if _, ok := c.tools.Spec(delegateTaskToolName); ok {
+		return true
+	}
+	_, ok := c.tools.Spec(spawnSubagentToolName)
 	return ok
 }
 
 func (c *Core) delegateTaskGuidancePrompt(ctx context.Context) string {
 	lines := []string{
 		"Subagents:",
-		"- You have a delegate_task tool for bounded child-agent work.",
-		"- When the user asks to use a subagent, delegate, parallel agent, or separate checker, call delegate_task instead of claiming no subagent tool exists.",
-		"- Use delegate_task for independent investigation, verification, review, or focused implementation tasks where a concise child summary is useful.",
-		"- Do not call delegate_task recursively from child subagent sessions.",
+		"- You have delegate_task for blocking child-agent work and spawn_subagent for async background child-agent work.",
+		"- Use delegate_task when the child result is needed before your next response.",
+		"- Use spawn_subagent only for independent tasks where you can continue without the result; it returns a handle immediately and the result will be delivered back to this parent session later.",
+		"- Use list_subagents and read_subagent_result to inspect async subagents without pulling full child transcripts into context.",
+		"- Keep at most 4 active async subagents per parent session.",
+		"- Give every async subagent a short name, a bounded goal, expected output, and only the minimum context needed.",
+		"- Use isolation=shared for read-only/research tasks and isolation=worktree for independent write-heavy tasks. Do not run multiple writer subagents against the same files.",
+		"- Do not create agent teams, shared task lists, or direct communication between subagents. Results return to you, the parent agent.",
+		"- Do not call delegate_task or spawn_subagent recursively from child subagent sessions.",
 		"- Available runtime configuration:",
 	}
 	runtimes := c.subagentRuntimeInfo(ctx)
@@ -367,6 +375,12 @@ func (c *Core) sessionPlanPrompt(ctx context.Context, sessionID string) string {
 	return strings.Join(lines, "\n")
 }
 
+// buildProviderConversation is a convenience wrapper for callers that only need
+// the textual conversation shape (token/length estimation, previews). It passes
+// a nil AttachmentReader, so no attachment IO is performed and the returned
+// error is always nil — hence context.Background() is sufficient and discarding
+// the error is safe here. Request paths that load attachments must use the
+// ctx-aware (c *Core).buildProviderConversation instead.
 func buildProviderConversation(history []Message) []providers.Message {
 	conversation, _ := buildProviderConversationWithAttachments(context.Background(), history, nil)
 	return conversation

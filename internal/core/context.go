@@ -14,6 +14,8 @@ import (
 )
 
 const compactMessagePrefix = "🧠 Context compacted"
+const contextClearedMessagePrefix = "🧹 Context cleared"
+const contextClearedSummary = "Context cleared by user."
 const maxCompactPromptRunes = 80_000
 const EstimatedImageTokens = 1_500
 const compactBackoffMinimumSavingsPercent = 10
@@ -29,6 +31,7 @@ const (
 	ContextBlockSystemPrompt       ContextBlockKind = "system_prompt"
 	ContextBlockCustomInstructions ContextBlockKind = "custom_instructions"
 	ContextBlockCompactSummary     ContextBlockKind = "compact_summary"
+	ContextBlockClearMarker        ContextBlockKind = "clear_marker"
 	ContextBlockMessages           ContextBlockKind = "messages"
 	ContextBlockToolSchemas        ContextBlockKind = "tool_schemas"
 )
@@ -70,6 +73,10 @@ type ContextCompact struct {
 }
 
 var ErrSessionRequired = errors.New("session_id is required")
+
+func ContextClearedMessageContent() string {
+	return contextClearedMessagePrefix + "\n\n" + contextClearedSummary
+}
 
 func (c *Core) SessionContext(ctx context.Context, sessionID string) (ContextReport, error) {
 	sessionID = normalizeText(sessionID)
@@ -216,7 +223,8 @@ func (c *Core) contextReport(sessionID string, messages []Message) ContextReport
 	assistant := c.assistantProfile()
 	systemPrompt := AssistantSystemPrompt(assistant)
 	customInstructions := strings.TrimSpace(assistant.CustomInstructions)
-	compactSummary, effectiveMessages := latestCompactSummary(messages)
+	marker := latestContextMarker(messages)
+	effectiveMessages := marker.effectiveMessages
 
 	blocks := make([]ContextBlock, 0, 4)
 	if systemPrompt != "" {
@@ -239,12 +247,12 @@ func (c *Core) contextReport(sessionID string, messages []Message) ContextReport
 			CacheStability: "stable",
 		})
 	}
-	if compactSummary != "" {
+	if marker.summary != "" {
 		blocks = append(blocks, ContextBlock{
-			ID:             "compact_summary",
-			Kind:           ContextBlockCompactSummary,
-			Source:         "session_compact",
-			TokenEstimate:  EstimateTextTokens(compactSummary),
+			ID:             marker.blockID,
+			Kind:           marker.blockKind,
+			Source:         marker.source,
+			TokenEstimate:  EstimateTextTokens(marker.summary),
 			Included:       true,
 			CacheStability: "stable",
 		})
@@ -544,25 +552,48 @@ func trimRunesFromStart(value string, maxRunes int) string {
 	return "[older history truncated]\n" + string(runes[len(runes)-maxRunes:])
 }
 
-func latestCompactSummary(messages []Message) (string, []Message) {
+type contextMarker struct {
+	summary           string
+	effectiveMessages []Message
+	blockID           string
+	blockKind         ContextBlockKind
+	source            string
+	cleared           bool
+}
+
+func latestContextMarker(messages []Message) contextMarker {
 	for i := len(messages) - 1; i >= 0; i-- {
 		message := messages[i]
 		if message.Role != MessageRoleSystem {
 			continue
 		}
 		content := strings.TrimSpace(message.Content)
-		if !strings.HasPrefix(content, compactMessagePrefix) {
-			continue
-		}
-		summary := strings.TrimSpace(strings.TrimPrefix(content, compactMessagePrefix))
-		if strings.HasPrefix(summary, ":") {
-			if _, tail, ok := strings.Cut(summary, "\n\n"); ok {
-				summary = strings.TrimSpace(tail)
+		if summary, ok := compactMarkerSummary(content); ok {
+			return contextMarker{
+				summary:           summary,
+				effectiveMessages: messages[i+1:],
+				blockID:           "compact_summary",
+				blockKind:         ContextBlockCompactSummary,
+				source:            "session_compact",
 			}
 		}
-		return summary, messages[i+1:]
+		if summary, ok := clearMarkerSummary(content); ok {
+			return contextMarker{
+				summary:           summary,
+				effectiveMessages: messages[i+1:],
+				blockID:           "clear_marker",
+				blockKind:         ContextBlockClearMarker,
+				source:            "session_clear",
+				cleared:           true,
+			}
+		}
 	}
-	return "", messages
+	return contextMarker{effectiveMessages: messages}
+}
+
+func latestCompactSummary(messages []Message) (string, []Message) {
+	marker := latestContextMarker(messages)
+	return marker.summary, marker.effectiveMessages
 }
 
 func latestCompactSummaryForRun(messages []Message, currentRunID string) (string, []Message) {
@@ -576,25 +607,47 @@ func latestCompactSummaryForRun(messages []Message, currentRunID string) (string
 			continue
 		}
 		content := strings.TrimSpace(message.Content)
-		if !strings.HasPrefix(content, compactMessagePrefix) {
+		summary, ok := compactMarkerSummary(content)
+		cleared := false
+		if !ok {
+			summary, ok = clearMarkerSummary(content)
+			cleared = ok
+		}
+		if !ok {
 			continue
 		}
-		summary := strings.TrimSpace(strings.TrimPrefix(content, compactMessagePrefix))
-		if strings.HasPrefix(summary, ":") {
-			if _, tail, ok := strings.Cut(summary, "\n\n"); ok {
-				summary = strings.TrimSpace(tail)
-			}
-		}
 		effective := make([]Message, 0, len(messages)-i-1)
-		for _, prior := range messages[:i] {
-			if strings.TrimSpace(prior.RunID) == currentRunID {
-				effective = append(effective, prior)
+		if !cleared {
+			for _, prior := range messages[:i] {
+				if strings.TrimSpace(prior.RunID) == currentRunID {
+					effective = append(effective, prior)
+				}
 			}
 		}
 		effective = append(effective, messages[i+1:]...)
 		return summary, effective
 	}
 	return "", messages
+}
+
+func compactMarkerSummary(content string) (string, bool) {
+	if !strings.HasPrefix(content, compactMessagePrefix) {
+		return "", false
+	}
+	summary := strings.TrimSpace(strings.TrimPrefix(content, compactMessagePrefix))
+	if strings.HasPrefix(summary, ":") {
+		if _, tail, ok := strings.Cut(summary, "\n\n"); ok {
+			summary = strings.TrimSpace(tail)
+		}
+	}
+	return summary, true
+}
+
+func clearMarkerSummary(content string) (string, bool) {
+	if !strings.HasPrefix(content, contextClearedMessagePrefix) {
+		return "", false
+	}
+	return strings.TrimSpace(strings.TrimPrefix(content, contextClearedMessagePrefix)), true
 }
 
 var compactStatsPattern = regexp.MustCompile(`~([0-9]+(?:\.[0-9]+)?[kKmM]?)\s*->\s*~([0-9]+(?:\.[0-9]+)?[kKmM]?)\s+tokens`)

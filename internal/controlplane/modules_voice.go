@@ -694,10 +694,10 @@ func (d *Dispatcher) voiceLocalProviderPickerWithProvider(module setup.VoiceModu
 	}
 	picker.Item(PickerItem{ID: "files", Title: "Installation", Info: voiceDownloadState(provider), Command: voiceModuleCommand(module.ID, "provider-status", provider.ID), Role: PickerItemRoleAction})
 	if downloaded {
-		picker.Item(PickerItem{ID: "delete", Title: deleteTitle, Info: deleteActionInfo(provider), Command: voiceModuleCommand(module.ID, "provider-action", provider.ID, "delete"), Role: PickerItemRoleDanger})
+		picker.Item(PickerItem{ID: "delete", Title: deleteTitle, Info: deleteActionInfo(provider), Command: voiceModuleCommand(module.ID, "provider-action", provider.ID, provider.ActionIDs.DeleteModel), Role: PickerItemRoleDanger})
 		picker.Item(PickerItem{ID: "run-mode", Title: "Run Mode", Info: voiceRunModeLabel(provider), Command: voiceModuleCommand(module.ID, "provider-run-mode", provider.ID)})
 	} else {
-		picker.Item(PickerItem{ID: "download", Title: downloadTitle, Info: downloadActionInfo(provider), Command: voiceModuleCommand(module.ID, "provider-action", provider.ID, "download")})
+		picker.Item(PickerItem{ID: "download", Title: downloadTitle, Info: downloadActionInfo(provider), Command: voiceModuleCommand(module.ID, "provider-action", provider.ID, provider.ActionIDs.DownloadModel)})
 	}
 	picker.Item(PickerItem{ID: "provider", Title: "Provider", Info: provider.Name, Command: voiceModuleCommand(module.ID, "provider"), Role: PickerItemRoleAction})
 	picker.Row("module", module.Title, formatEnabled(module.Enabled), voiceModuleCommand(module.ID, "enabled"))

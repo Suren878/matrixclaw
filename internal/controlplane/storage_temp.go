@@ -17,9 +17,10 @@ func (d *Dispatcher) storageTempPicker(ctx context.Context) (Result, error) {
 	items := make([]PickerItem, 0, len(result.Files)+2)
 	for _, file := range result.Files {
 		items = append(items, PickerItem{
-			ID:    "temp:" + file.Path,
-			Title: storageTempTitle(file),
-			Info:  storageTempInfo(file),
+			ID:      "temp:" + file.Path,
+			Title:   storageTempTitle(file),
+			Info:    storageTempInfo(file),
+			Command: storageTempFileCommand(file.Path),
 		})
 	}
 	if len(result.Files) == 0 {
@@ -31,10 +32,11 @@ func (d *Dispatcher) storageTempPicker(ctx context.Context) (Result, error) {
 		})
 	}
 	items = append(items, PickerItem{
-		ID:    "settings",
-		Title: "Cleanup Settings",
-		Info:  formatEnabled(result.Settings.AutoCleanup) + " · " + formatTempSettings(result.Settings),
-		Role:  PickerItemRoleAction,
+		ID:      "settings",
+		Title:   "Cleanup Settings",
+		Info:    formatEnabled(result.Settings.AutoCleanup) + " · " + formatTempSettings(result.Settings),
+		Command: storageTempCleanupSettingsCommand(),
+		Role:    PickerItemRoleAction,
 	})
 	return Result{
 		Handled: true,
@@ -52,8 +54,8 @@ func (d *Dispatcher) storageTempFilePicker(ctx context.Context, tempPath string)
 		Picker: NewPickerData(PickerStorageTempFile, "Temporary File").
 			Context(tempPath).
 			Back(storageTempCommand()).
-			Row("promote", "Save", tempPath).
-			Danger("delete", "Delete", "").
+			Row("promote", "Save", tempPath, storageTempPromoteCommand(tempPath)).
+			Danger("delete", "Delete", "", storageTempDeleteCommand(tempPath)).
 			Ptr(),
 	}, nil
 }
@@ -117,10 +119,10 @@ func (d *Dispatcher) storageTempCleanupSettings(ctx context.Context) (Result, er
 		Handled: true,
 		Picker: NewPickerData(PickerStorageCleanup, "Cleanup Settings").
 			Back(storageTempCommand()).
-			Row("toggle", "Auto Cleanup", formatEnabled(settings.AutoCleanup)).
-			Row("days", "Retention", formatTempRetention(settings)).
-			Row("max", "Max Size", formatStorageGB(settings.MaxBytes)).
-			Action("cleanup", "Cleanup Now", formatTempCleanupImpact(settings)).
+			Row("toggle", "Auto Cleanup", formatEnabled(settings.AutoCleanup), storageTempCleanupModeCommand()).
+			Row("days", "Retention", formatTempRetention(settings), storageTempDaysCommand()).
+			Row("max", "Max Size", formatStorageGB(settings.MaxBytes), storageTempMaxCommand()).
+			Action("cleanup", "Cleanup Now", formatTempCleanupImpact(settings), storageTempCleanupCommand()).
 			Ptr(),
 	}, nil
 }
@@ -135,8 +137,8 @@ func (d *Dispatcher) storageTempCleanupModePicker(ctx context.Context) (Result, 
 		Handled: true,
 		Picker: NewPickerData(PickerStorageCleanup, "Auto Cleanup").
 			Popup().
-			Item(PickerItem{ID: "on", Title: "On", Selected: current}).
-			Item(PickerItem{ID: "off", Title: "Off", Selected: !current}).
+			Item(PickerItem{ID: "on", Title: "On", Selected: current, Command: storageTempToggleCommand("on")}).
+			Item(PickerItem{ID: "off", Title: "Off", Selected: !current, Command: storageTempToggleCommand("off")}).
 			Ptr(),
 	}, nil
 }

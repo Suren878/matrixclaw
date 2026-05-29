@@ -13,6 +13,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 const (
@@ -108,7 +109,7 @@ func (s *supervisor) RestartDaemon(ctx context.Context, req core.AdminRestartReq
 		return err
 	}
 
-	go func() {
+	safego.Go("supervisor.restartDaemon", func() {
 		defer func() {
 			s.restartMu.Lock()
 			s.restarting = false
@@ -124,7 +125,7 @@ func (s *supervisor) RestartDaemon(ctx context.Context, req core.AdminRestartReq
 				}
 			}
 		}
-	}()
+	})
 
 	return nil
 }
@@ -165,12 +166,12 @@ func (s *supervisor) restartSystemdService(ctx context.Context) error {
 }
 
 func (s *supervisor) StopDaemon(ctx context.Context) error {
-	go func() {
+	safego.Go("supervisor.stopDaemon", func() {
 		time.Sleep(300 * time.Millisecond)
 		if err := s.stopSystemdService(context.Background()); err != nil {
 			log.Printf("matrixclawd daemon stop failed: %v", err)
 		}
-	}()
+	})
 	return nil
 }
 

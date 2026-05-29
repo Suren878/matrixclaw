@@ -33,6 +33,26 @@ func (d *Dispatcher) handleContext(ctx context.Context, externalKey string, args
 		}
 		info := contextInfoData(report)
 		return Result{Handled: true, Info: &info}, nil
+	case "clear":
+		return Result{
+			Handled: true,
+			Confirm: &ConfirmData{
+				Message:        "Clear context now?",
+				ConfirmLabel:   "Clear",
+				CancelLabel:    "Cancel",
+				ConfirmCommand: contextClearConfirmCommand(),
+				CancelCommand:  contextCommand(),
+				ConfirmDanger:  true,
+			},
+		}, nil
+	case "clear confirm":
+		if d.messages == nil {
+			return unsupportedRuntime("context"), nil
+		}
+		if _, err := d.messages.CreateSystemMessage(ctx, session.ID, core.ContextClearedMessageContent()); err != nil {
+			return Result{}, err
+		}
+		return Result{Handled: true, Text: "Context cleared.", ReloadSnapshot: true}, nil
 	case "compact":
 		return Result{
 			Handled: true,
@@ -68,8 +88,9 @@ func (d *Dispatcher) handleContext(ctx context.Context, externalKey string, args
 func contextItems(report core.ContextReport) []PickerItem {
 	info := contextTokenLabel(report)
 	items := []PickerItem{
-		{ID: "info", Title: "Usage", Info: info, Command: contextInfoCommand()},
+		{ID: "clear", Title: "Clear context", Command: contextClearCommand(), Role: PickerItemRoleDanger},
 		{ID: "compact", Title: "Compact", Command: contextCompactCommand()},
+		{ID: "info", Title: "Usage", Info: info, Command: contextInfoCommand()},
 	}
 	return items
 }
@@ -126,6 +147,8 @@ func contextBlockTitle(kind core.ContextBlockKind) string {
 		return "User prompt"
 	case core.ContextBlockCompactSummary:
 		return "Compact summary"
+	case core.ContextBlockClearMarker:
+		return "Clear marker"
 	case core.ContextBlockMessages:
 		return "Messages"
 	case core.ContextBlockToolSchemas:

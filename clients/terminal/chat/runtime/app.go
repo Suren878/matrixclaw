@@ -165,6 +165,7 @@ type appModel struct {
 	autoEditSessions    map[string]struct{}
 	focus               appFocus
 	busy                bool
+	busyInputMode       core.BusyInputMode
 	streamID            uint64
 	lastEventID         uint64
 	now                 time.Time
@@ -221,6 +222,7 @@ func newApp(ctx context.Context, rt *Runtime) *appModel {
 		suppressedApprovals: map[string]struct{}{},
 		autoEditSessions:    map[string]struct{}{},
 		focus:               appFocusEditor,
+		busyInputMode:       core.BusyInputModeQueue,
 		now:                 time.Now(),
 	}
 }

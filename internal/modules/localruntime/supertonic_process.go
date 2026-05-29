@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -74,10 +75,10 @@ func (r *Runtime) startSupertonicServerProcess(ctx context.Context, provider set
 		endpoint: endpoint,
 	}
 	supertonicServerProcesses.processes[key] = process
-	go func() {
+	safego.Go("localruntime.supertonicWait", func() {
+		defer close(process.done)
 		_ = cmd.Wait()
-		close(process.done)
-	}()
+	})
 	if err := r.waitSupertonicServer(ctx, endpoint, process, 90*time.Second); err != nil {
 		delete(supertonicServerProcesses.processes, key)
 		_ = process.stop()

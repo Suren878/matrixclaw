@@ -60,15 +60,15 @@ func (d *Dispatcher) voiceLocalProviderModelPicker(ctx context.Context, moduleID
 			if model.Installed {
 				item.Command = voiceModuleCommand(module.ID, "provider-use", provider.ID, model.ID)
 			} else {
-				item.Command = voiceModuleCommand(module.ID, "provider-action", provider.ID, "download", model.ID)
+				item.Command = voiceModuleCommand(module.ID, "provider-action", provider.ID, provider.ActionIDs.DownloadModel, model.ID)
 			}
 		} else if module.ID == setup.VoiceModuleSTT && provider.ID == "whispercpp" {
 			if model.Installed {
 				item.Command = voiceModuleCommand(module.ID, "provider-use", provider.ID, model.ID)
 			} else if !provider.RuntimeInstalled {
-				item.Command = voiceModuleCommand(module.ID, "provider-action", provider.ID, "download-with-runtime", model.ID)
+				item.Command = voiceModuleCommand(module.ID, "provider-action", provider.ID, provider.ActionIDs.DownloadModelWithRuntime, model.ID)
 			} else {
-				item.Command = voiceModuleCommand(module.ID, "provider-action", provider.ID, "download", model.ID)
+				item.Command = voiceModuleCommand(module.ID, "provider-action", provider.ID, provider.ActionIDs.DownloadModel, model.ID)
 			}
 		}
 		picker.Item(item)
@@ -183,7 +183,7 @@ func (d *Dispatcher) voiceInstalledLocalActionPicker(ctx context.Context, module
 	picker.Item(PickerItem{
 		ID:      "delete",
 		Title:   deleteLocalModelTitle(module.ID),
-		Command: voiceModuleCommand(module.ID, "provider-action", provider.ID, "delete", model.ID),
+		Command: voiceModuleCommand(module.ID, "provider-action", provider.ID, provider.ActionIDs.DeleteModel, model.ID),
 		Role:    PickerItemRoleDanger,
 	})
 	return Result{Handled: true, Picker: picker.Ptr()}, nil
@@ -385,71 +385,27 @@ func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID stri
 	if err != nil || !ok {
 		return Result{}, err
 	}
-	switch action {
-	case "install-runtime":
+	switch {
+	case action == provider.ActionIDs.InstallRuntime:
 		return Result{Handled: true, Confirm: &ConfirmData{
 			Message:        voiceRuntimeInstallConfirmMessage(provider),
 			ConfirmLabel:   voiceRuntimeInstallConfirmLabel(provider),
 			CancelLabel:    "Cancel",
-			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, "install-runtime-confirm"),
+			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, voiceActionConfirmID(provider.ActionIDs.InstallRuntime)),
 			CancelCommand:  voiceProviderSettingsBackCommand(module.ID, provider.ID),
 		}}, nil
-	case "install-runtime-confirm":
-		updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "install-runtime"})
-		if err != nil {
-			return Result{}, err
-		}
-		provider = updated
-		if !provider.RuntimeInstalled {
-			if refreshed, ok, err := d.waitForVoiceProviderRuntimeInstalled(ctx, module.ID, provider.ID); err != nil {
-				return Result{}, err
-			} else if ok {
-				provider = refreshed
-			}
-		}
-		if module.ID == setup.VoiceModuleTTS && provider.ID == "supertonic" {
-			if err := d.ensureSupertonicDefaultVoice(ctx, module, provider); err != nil {
-				return Result{}, err
-			}
-			if refreshed, ok, err := d.waitForVoiceProviderRuntimeInstalled(ctx, module.ID, provider.ID); err != nil {
-				return Result{}, err
-			} else if ok {
-				provider = refreshed
-			}
-		}
-		if module.ID == setup.VoiceModuleTTS && provider.ID == "piper" {
-			if _, ok := activeInstalledVoice(provider); !ok {
-				return voiceProviderNeedsVoiceResult(module, provider, voiceProviderSettingsBackCommand(module.ID, provider.ID)), nil
-			}
-		}
-		if module.ID == setup.VoiceModuleTTS && provider.ID == "supertonic" && provider.RuntimeInstalled {
-			modules, err := d.activateVoiceModuleProviderState(ctx, module, provider, false)
-			if err != nil {
-				return Result{}, err
-			}
-			if activated, ok := voiceProviderFromModules(modules, module.ID, provider.ID); ok {
-				return d.voiceLocalProviderPickerWithProvider(module, activated)
-			}
-			return d.voiceLocalProviderPicker(ctx, module.ID, provider.ID)
-		}
-		if voicePersistentProvider(module.ID, provider.ID) && normalizeVoiceRunMode(provider.Config.RuntimeMode) == voiceRuntimeModeAlways && voiceLocalRuntimeStartReady(module.ID, provider, provider.Config) {
-			updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "start"})
-			if err != nil {
-				return Result{}, err
-			}
-			provider = updated
-		}
-		return d.voiceLocalProviderPickerWithProvider(module, provider)
-	case "delete-runtime":
+	case action == voiceActionConfirmID(provider.ActionIDs.InstallRuntime):
+		return d.voicePostRuntimeInstallAction(ctx, module, provider)
+	case action == provider.ActionIDs.DeleteRuntime:
 		return Result{Handled: true, Confirm: &ConfirmData{
 			Message:        voiceRuntimeDeleteConfirmMessage(module, provider),
 			ConfirmLabel:   "Delete",
 			CancelLabel:    "Cancel",
-			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, "delete-runtime-confirm"),
+			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, voiceActionConfirmID(provider.ActionIDs.DeleteRuntime)),
 			CancelCommand:  voiceProviderSettingsBackCommand(module.ID, provider.ID),
 			ConfirmDanger:  true,
 		}}, nil
-	case "delete-runtime-confirm":
+	case action == voiceActionConfirmID(provider.ActionIDs.DeleteRuntime):
 		updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "delete-runtime"})
 		if err != nil {
 			return Result{}, err
@@ -460,156 +416,55 @@ func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID stri
 			return d.voiceModulePicker(ctx, module.ID)
 		}
 		return d.voiceLocalProviderPickerWithProvider(module, updated)
-	case "download-with-runtime":
+	case action == provider.ActionIDs.DownloadModelWithRuntime:
 		return Result{Handled: true, Confirm: &ConfirmData{
 			Title:          "Install " + provider.Name,
 			Message:        voiceModelInstallWithRuntimeMessage(provider, modelID),
 			ConfirmLabel:   "Install",
 			CancelLabel:    "Cancel",
-			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, "download", modelID),
+			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, provider.ActionIDs.DownloadModel, modelID),
 			CancelCommand:  voiceModuleCommand(module.ID, "provider-model", provider.ID),
 		}}, nil
-	case "download":
-		if module.ID == setup.VoiceModuleSTT && provider.ID == "whispercpp" && !provider.RuntimeInstalled {
-			updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "install-runtime"})
-			if err != nil {
-				return Result{}, err
-			}
-			provider = updated
-			if !provider.RuntimeInstalled {
-				if refreshed, ok, err := d.waitForVoiceProviderRuntimeInstalled(ctx, module.ID, provider.ID); err != nil {
-					return Result{}, err
-				} else if ok {
-					provider = refreshed
-				}
-			}
-		}
-		updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "download", ModelID: modelID})
-		if err != nil {
-			return Result{}, err
-		}
-		provider = updated
-		if module.ID == setup.VoiceModuleTTS && strings.TrimSpace(modelID) != "" {
-			cfg := provider.Config
-			cfg.VoiceID = strings.TrimSpace(modelID)
-			if provider.ID == "piper" {
-				cfg.Language = voiceLanguageFromVoiceID(modelID)
-			}
-			modules, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg})
-			if err != nil {
-				return Result{}, err
-			}
-			if refreshed, ok := voiceProviderFromModules(modules, module.ID, provider.ID); ok {
-				provider = refreshed
-			}
-			if provider.ID == "piper" && provider.RuntimeInstalled {
-				modules, err := d.activateVoiceModuleProviderState(ctx, module, provider, false)
-				if err != nil {
-					return Result{}, err
-				}
-				if activated, ok := voiceProviderFromModules(modules, module.ID, provider.ID); ok {
-					return d.voiceLocalProviderPickerWithProvider(module, activated)
-				}
-				return d.voiceLocalProviderPicker(ctx, module.ID, provider.ID)
-			}
-		}
-		if module.ID == setup.VoiceModuleTTS {
-			return d.voiceInstalledLocalPicker(ctx, module.ID, provider.ID)
-		}
-		if module.ID == setup.VoiceModuleSTT && provider.ID == "whispercpp" {
-			cfg := provider.Config
-			if strings.TrimSpace(modelID) != "" {
-				cfg.ModelID = strings.TrimSpace(modelID)
-				if strings.TrimSpace(cfg.RuntimeMode) == "" {
-					cfg.RuntimeMode = voiceRuntimeModePerTask
-				}
-				enabled := true
-				modules, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{Enabled: &enabled, ProviderID: provider.ID, ProviderConfig: &cfg})
-				if err != nil {
-					return Result{}, err
-				}
-				if refreshed, ok := voiceProviderFromModules(modules, module.ID, provider.ID); ok {
-					provider = refreshed
-				}
-			}
-			if err := d.stopOtherVoiceModuleProviders(ctx, module, provider.ID); err != nil {
-				return Result{}, err
-			}
-			if normalizeVoiceRunMode(cfg.RuntimeMode) == voiceRuntimeModeAlways && voiceLocalRuntimeStartReady(module.ID, provider, cfg) {
-				if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "start"}); err != nil {
-					return Result{}, err
-				}
-			}
-			return d.voiceLocalProviderPicker(ctx, module.ID, provider.ID)
-		}
-		return Result{Handled: true, Confirm: &ConfirmData{
-			Title:          "Installed",
-			Message:        voiceDownloadedMessage(module, provider, modelID),
-			ConfirmLabel:   confirmLabelAfterDownload(module.ID),
-			CancelLabel:    "Close",
-			ConfirmCommand: voiceCommandAfterDownload(module.ID, provider.ID),
-			CancelCommand:  voiceProviderSettingsBackCommand(module.ID, provider.ID),
-		}}, nil
-	case "start", "stop":
+	case action == provider.ActionIDs.DownloadModel:
+		return d.voicePostDownloadAction(ctx, module, provider, modelID)
+	case action == provider.ActionIDs.Start, action == provider.ActionIDs.Stop:
 		if !voiceProviderDownloaded(provider) {
 			return Result{Handled: true, Text: "Choose an installed voice before using runtime action `" + action + "`."}, nil
 		}
 		return Result{Handled: true, Confirm: &ConfirmData{
 			Message:        voiceRuntimeConfirmMessage(provider, action),
-			ConfirmLabel:   voiceRuntimeConfirmLabel(action),
+			ConfirmLabel:   voiceRuntimeConfirmLabel(provider, action),
 			CancelLabel:    "Cancel",
-			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, action+"-confirm"),
+			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, voiceActionConfirmID(action)),
 			CancelCommand:  voiceProviderSettingsBackCommand(module.ID, provider.ID),
-			ConfirmDanger:  action == "stop",
+			ConfirmDanger:  action == provider.ActionIDs.Stop,
 		}}, nil
-	case "start-confirm", "stop-confirm", "restart":
-		action = strings.TrimSuffix(action, "-confirm")
-		updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: action})
-		if err != nil {
-			return Result{}, err
-		}
-		return d.voiceLocalProviderPickerWithProvider(module, updated)
-	case "delete":
+	case action == voiceActionConfirmID(provider.ActionIDs.Start):
+		return d.voicePostRuntimeAction(ctx, module, provider, "start")
+	case action == voiceActionConfirmID(provider.ActionIDs.Stop):
+		return d.voicePostRuntimeAction(ctx, module, provider, "stop")
+	case action == provider.ActionIDs.DeleteModel:
 		return Result{Handled: true, Confirm: &ConfirmData{
 			Message:        voiceDeleteConfirmMessage(module, provider, modelID),
 			ConfirmLabel:   "Delete",
 			CancelLabel:    "Cancel",
-			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, "delete-confirm", modelID),
+			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, voiceActionConfirmID(provider.ActionIDs.DeleteModel), modelID),
 			CancelCommand:  voiceCancelCommandAfterDelete(module.ID, provider.ID),
 			ConfirmDanger:  true,
 		}}, nil
-	case "delete-confirm":
-		updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "delete", ModelID: modelID})
-		if err != nil {
-			return Result{}, err
-		}
-		if module.ID == setup.VoiceModuleTTS {
-			if disabled, err := d.reselectTTSVoiceAfterDelete(ctx, module, updated, modelID); err != nil {
-				return Result{}, err
-			} else if disabled {
-				return d.voiceModulePicker(ctx, module.ID)
-			}
-			return d.voiceInstalledLocalPicker(ctx, module.ID, provider.ID)
-		}
-		if module.ID == setup.VoiceModuleSTT && provider.ID == "whispercpp" {
-			if disabled, err := d.reselectSTTModelAfterDelete(ctx, module, updated, modelID); err != nil {
-				return Result{}, err
-			} else if disabled {
-				return d.voiceModulePicker(ctx, module.ID)
-			}
-			return d.voiceInstalledLocalPicker(ctx, module.ID, provider.ID)
-		}
-		return Result{Handled: true, Confirm: &ConfirmData{
-			Title:          "Deleted",
-			Message:        voiceDeletedMessage(module, provider, modelID),
-			ConfirmLabel:   confirmLabelAfterDelete(module.ID),
-			CancelLabel:    "Close",
-			ConfirmCommand: voiceCommandAfterDelete(module.ID, provider.ID),
-			CancelCommand:  voiceProviderSettingsBackCommand(module.ID, provider.ID),
-		}}, nil
+	case action == voiceActionConfirmID(provider.ActionIDs.DeleteModel):
+		return d.voicePostDeleteAction(ctx, module, provider, modelID)
 	default:
 		return Result{Handled: true, Text: provider.Name + " local runtime action `" + action + "` is not implemented yet."}, nil
 	}
+}
+
+func voiceActionConfirmID(actionID string) string {
+	actionID = strings.TrimSpace(actionID)
+	if actionID == "" {
+		return ""
+	}
+	return actionID + "-confirm"
 }
 
 func (d *Dispatcher) disableVoiceModuleIfActiveProvider(ctx context.Context, module setup.VoiceModuleDescriptor, provider setup.VoiceProviderOption) (bool, error) {

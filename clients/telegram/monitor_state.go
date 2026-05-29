@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 func (w *Worker) isMonitoringRun(externalKey string, runID string) bool {
@@ -44,11 +46,11 @@ func (w *Worker) startMonitorWithDelivery(ctx context.Context, target chatTarget
 	w.runs[key] = cancel
 	w.mu.Unlock()
 
-	go func() {
+	safego.Go("telegram.monitorRun", func() {
 		if err := w.monitorRun(monitorCtx, target, sessionID, runID, state); err != nil && monitorCtx.Err() == nil {
 			log.Printf("telegram: run monitor %s failed: %v", runID, err)
 		}
-	}()
+	})
 }
 
 func (w *Worker) monitorRun(ctx context.Context, target chatTarget, sessionID string, runID string, state *runDeliveryState) error {

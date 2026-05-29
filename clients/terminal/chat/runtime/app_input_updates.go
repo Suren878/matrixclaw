@@ -6,16 +6,15 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	surfaceinput "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/input"
+	"github.com/Suren878/matrixclaw/internal/core"
 )
 
 func (m *appModel) handleSubmit(msg surfaceinput.SubmitMsg) tea.Cmd {
-	if handled, cmd := m.handleControlplaneSubmit(msg.Content, msg.Attachments); handled {
+	if handled, cmd := m.handleBusySubmitCommand(msg.Content); handled {
 		return cmd
 	}
-	if m.busy {
-		m.err = "agent is busy, please wait"
-		m.restoreEditorDraft(msg.Content, msg.Attachments)
-		return nil
+	if handled, cmd := m.handleControlplaneSubmit(msg.Content, msg.Attachments); handled {
+		return cmd
 	}
 	if strings.TrimSpace(m.session) == "" {
 		m.err = "no active session"
@@ -25,7 +24,14 @@ func (m *appModel) handleSubmit(msg surfaceinput.SubmitMsg) tea.Cmd {
 	}
 	m.err = ""
 	m.setBusy(true)
-	return m.sendMessageCmd(msg.Content, msg.Attachments)
+	if m.chat != nil {
+		m.chat.ScrollToBottom()
+	}
+	mode := core.BusyInputMode("")
+	if m.busy {
+		mode = normalizeLocalBusyInputMode(m.busyInputMode)
+	}
+	return m.sendMessageCmd(msg.Content, msg.Attachments, mode)
 }
 
 func (m *appModel) handleNewSession() tea.Cmd {

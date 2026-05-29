@@ -98,13 +98,13 @@ func providerActions(provider setup.ProviderSetupItem, selected bool) Result {
 	picker := NewPickerData(PickerProviderActions, title).
 		Context(strings.TrimSpace(provider.ID)).
 		Back(providerCommand()).
-		Item(PickerItem{ID: "use", Title: "Use", Selected: selected, Disabled: !provider.Configured}).
+		Item(PickerItem{ID: "use", Title: "Use", Selected: selected, Disabled: !provider.Configured, Command: providerUseCommand(provider.ID)}).
 		Row("edit", "Edit", "", providerEditCommand(provider.ID))
 	if isOpenAICodexProvider(provider) {
 		picker.Row("auth", "Authorization", openAICodexAuthInfo(), providerCommand("auth", providerEncodedID(provider.ID)))
 	}
 	if isCustomSetupProvider(provider) {
-		picker.Danger("delete", "Delete", "")
+		picker.Danger("delete", "Delete", "", customProviderCommand("delete", providerEncodedID(provider.ID)))
 	}
 	return Result{Handled: true, Picker: picker.Ptr()}
 }

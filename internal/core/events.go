@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 type EventType string
@@ -17,6 +19,8 @@ const (
 	EventApprovalRequest EventType = "approval.requested"
 	EventApprovalResult  EventType = "approval.resolved"
 	EventFileVersioned   EventType = "file.versioned"
+	EventSubagentUpdated EventType = "subagent.updated"
+	EventInputUpdated    EventType = "input.updated"
 )
 
 // Event is the daemon-owned envelope for live fan-out.
@@ -85,12 +89,12 @@ func (b *eventBus) SubscribeAfter(ctx context.Context, sessionID string, afterID
 	}
 	b.mu.Unlock()
 
-	go func() {
+	safego.Go("core.eventBus.cleanup", func() {
 		<-ctx.Done()
 		b.mu.Lock()
 		delete(b.subscribers, id)
 		b.mu.Unlock()
-	}()
+	})
 
 	return out
 }

@@ -222,10 +222,18 @@ func (c *Client) UseSession(ctx context.Context, sessionID string) (core.ClientB
 }
 
 func (c *Client) SendMessage(ctx context.Context, sessionID string, text string, workingDir string) (core.AcceptRunResult, error) {
-	return c.SendMessageParts(ctx, sessionID, text, nil, workingDir)
+	return c.SendMessagePartsMode(ctx, sessionID, text, nil, workingDir, "")
 }
 
 func (c *Client) SendMessageParts(ctx context.Context, sessionID string, text string, parts []core.MessagePart, workingDir string) (core.AcceptRunResult, error) {
+	return c.SendMessagePartsMode(ctx, sessionID, text, parts, workingDir, "")
+}
+
+func (c *Client) SendMessageMode(ctx context.Context, sessionID string, text string, workingDir string, busyMode core.BusyInputMode) (core.AcceptRunResult, error) {
+	return c.SendMessagePartsMode(ctx, sessionID, text, nil, workingDir, busyMode)
+}
+
+func (c *Client) SendMessagePartsMode(ctx context.Context, sessionID string, text string, parts []core.MessagePart, workingDir string, busyMode core.BusyInputMode) (core.AcceptRunResult, error) {
 	var response core.AcceptRunResult
 	request := core.HandleMessageInput{
 		Client:           c.ClientName,
@@ -233,6 +241,7 @@ func (c *Client) SendMessageParts(ctx context.Context, sessionID string, text st
 		SessionID:        strings.TrimSpace(sessionID),
 		Text:             text,
 		Parts:            parts,
+		BusyMode:         busyMode,
 		WorkingDir:       strings.TrimSpace(workingDir),
 		AllowAutoBindOne: true,
 	}

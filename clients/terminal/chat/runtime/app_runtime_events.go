@@ -106,6 +106,9 @@ func (m *appModel) handleLiveEvent(msg liveEventMsg) tea.Cmd {
 		if cmd := m.handleRunUpdatedEvent(msg); cmd != nil {
 			return cmd
 		}
+		if cmd := m.handleInputUpdatedEvent(msg); cmd != nil {
+			return cmd
+		}
 		m.rebuildChat()
 	}
 	return tea.Batch(m.syncPermissionDialogCmd(), m.waitEventCmd(msg.streamID, m.events, m.eventErr))
@@ -141,6 +144,18 @@ func (m *appModel) handleRunUpdatedEvent(msg liveEventMsg) tea.Cmd {
 	return nil
 }
 
+func (m *appModel) handleInputUpdatedEvent(msg liveEventMsg) tea.Cmd {
+	if msg.event.Type != core.EventInputUpdated {
+		return nil
+	}
+	input, err := msg.event.DecodeSessionInput()
+	if err != nil {
+		return nil
+	}
+	m.showConsumedInputStatus(input)
+	return nil
+}
+
 func (m *appModel) handleSendMessageResult(msg sendMessageResultMsg) tea.Cmd {
 	if msg.err != nil {
 		m.setBusy(false)
@@ -153,6 +168,12 @@ func (m *appModel) handleSendMessageResult(msg sendMessageResultMsg) tea.Cmd {
 		return nil
 	}
 	m.session = msg.result.SessionID
+	if msg.result.Status == core.AcceptRunStatusQueued ||
+		msg.result.Status == core.AcceptRunStatusSteered ||
+		msg.result.Status == core.AcceptRunStatusInterrupting {
+		m.showAcceptedInputStatus(msg.result.Status)
+		return m.loadInitialCmd()
+	}
 	if m.read == nil {
 		m.read = viewmodel.NewReadModel(core.ClientSnapshot{
 			SessionID: msg.result.SessionID,

@@ -33,6 +33,11 @@ func (c *Core) ExecuteTool(ctx context.Context, input ExecuteToolInput) (Execute
 	if err != nil {
 		return ExecuteToolResult{}, err
 	}
+	if resultMessage != nil {
+		if err := c.recordSubagentResultMessage(ctx, finalResult.Metadata, resultMessage.ID); err != nil {
+			return ExecuteToolResult{}, err
+		}
+	}
 
 	if execErr != nil {
 		return ExecuteToolResult{

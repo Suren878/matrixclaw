@@ -24,26 +24,43 @@ func (d *Dispatcher) handleSessions(ctx context.Context, externalKey string) (Re
 	}
 	picker := NewPickerData(PickerSessions, "Sessions")
 	picker.Item(PickerItem{
-		ID:    "new",
-		Title: "New Session",
-		Role:  PickerItemRoleAction,
+		ID:      "new",
+		Title:   "New Session",
+		Command: newSessionCommand(),
+		Role:    PickerItemRoleAction,
 	})
 	for _, session := range sessions {
 		title := strings.TrimSpace(session.Title)
 		if title == "" {
 			title = strings.TrimSpace(session.ID)
 		}
+		info := sessionListInfo(session)
+		selected := strings.TrimSpace(session.ID) == strings.TrimSpace(currentSessionID)
+		if selected {
+			info = joinSessionInfo("Active", info)
+		}
 		picker.Item(PickerItem{
 			ID:       session.ID,
 			Title:    title,
-			Info:     sessionListInfo(session),
-			Selected: strings.TrimSpace(session.ID) == strings.TrimSpace(currentSessionID),
+			Info:     info,
+			Selected: selected,
+			Command:  sessionMenuCommand(session.ID),
 		})
 	}
 	return Result{
 		Handled: true,
 		Picker:  picker.Ptr(),
 	}, nil
+}
+
+func joinSessionInfo(parts ...string) string {
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if value := strings.TrimSpace(part); value != "" {
+			values = append(values, value)
+		}
+	}
+	return strings.Join(values, " · ")
 }
 
 func (d *Dispatcher) handleNewSession(ctx context.Context, externalKey string, args string) (Result, error) {
@@ -60,7 +77,7 @@ func (d *Dispatcher) handleNewSession(ctx context.Context, externalKey string, a
 func (d *Dispatcher) sessionRuntimePicker(ctx context.Context) (Result, error) {
 	picker := NewPickerData(PickerSessionRuntime, "New Session").
 		Back(sessionsCommand()).
-		Row("matrixclaw", "Matrixclaw", "Built-in assistant · providers, tools, approvals")
+		Row("matrixclaw", "Matrixclaw", "Built-in", sessionNewCommand("matrixclaw"))
 	if d.externalAgents != nil {
 		agents, err := d.externalAgents.ListExternalAgents(ctx)
 		if err != nil {
@@ -70,7 +87,7 @@ func (d *Dispatcher) sessionRuntimePicker(ctx context.Context) (Result, error) {
 			if !agent.Installed || !agent.Enabled {
 				continue
 			}
-			picker.Row(agent.ID, externalAgentTitle(agent), externalAgentSessionRuntimeInfo(agent))
+			picker.Row(agent.ID, externalAgentTitle(agent), externalAgentSessionRuntimeInfo(agent), sessionNewCommand(agent.ID))
 		}
 	}
 	return Result{
@@ -80,10 +97,7 @@ func (d *Dispatcher) sessionRuntimePicker(ctx context.Context) (Result, error) {
 }
 
 func externalAgentSessionRuntimeInfo(agent core.ExternalAgentDescriptor) string {
-	if strings.EqualFold(strings.TrimSpace(agent.DisplayName), "Codex") || strings.EqualFold(strings.TrimSpace(agent.ID), "codex-app") {
-		return "External coding agent · native Codex sessions"
-	}
-	return "External agent"
+	return "External"
 }
 
 func (d *Dispatcher) handleSession(ctx context.Context, externalKey string, args string) (Result, error) {
@@ -242,12 +256,12 @@ func (d *Dispatcher) sessionMenuPicker(session core.Session) *PickerData {
 	picker := NewPickerData(PickerSessionActions, "Session: "+title).
 		Context(session.ID).
 		Back(sessionsCommand()).
-		Row("use", "Use", "Make active")
+		Row("use", "Use", "Make active", sessionUseCommand(session.ID))
 	if d.sessionModels != nil {
-		picker.Row("model", "Model", sessionModelInfo(session))
+		picker.Row("model", "Model", sessionModelInfo(session), sessionModelCommand(session.ID))
 	}
-	picker.Row("rename", "Rename", title).
-		Danger("delete", "Delete", "Permanent")
+	picker.Row("rename", "Rename", title, sessionRenameCommand(session.ID)).
+		Danger("delete", "Delete", "Permanent", sessionDeleteCommand(session.ID))
 	return picker.Ptr()
 }
 
@@ -487,19 +501,19 @@ func (d *Dispatcher) rebindAfterDelete(ctx context.Context, externalKey string) 
 		}
 		return "Current session: " + formatSessionLabel(sessions[0], true), nil
 	}
-	result, err := d.createSession(ctx, externalKey, sessionTarget{runtimeID: core.SessionRuntimeMatrixClaw}, d.defaultSessionTitle(externalKey))
+	result, err := d.createSession(ctx, externalKey, sessionTarget{runtimeID: core.SessionRuntimeMatrixClaw}, d.initialSessionTitle(externalKey))
 	if err != nil {
 		return "", err
 	}
 	return result.Text, nil
 }
 
-func (d *Dispatcher) defaultSessionTitle(externalKey string) string {
-	channel := "Local"
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(externalKey)), "telegram:") {
-		channel = "Telegram"
-	}
-	return channel + " chat " + d.now().Format("2006-01-02 15:04")
+func (d *Dispatcher) defaultSessionTitle(_ string) string {
+	return "New chat"
+}
+
+func (d *Dispatcher) initialSessionTitle(_ string) string {
+	return "Main"
 }
 
 func formatSessionLabel(session core.Session, current bool) string {

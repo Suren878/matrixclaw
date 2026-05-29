@@ -13,7 +13,17 @@ import (
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
 )
 
-const compactSummaryPrefix = "🧠 Context compacted"
+const (
+	compactSummaryPrefix = "🧠 Context compacted"
+	contextClearedPrefix = "🧹 Context cleared"
+)
+
+type contextMarkerKind string
+
+const (
+	contextMarkerCompact contextMarkerKind = "compact"
+	contextMarkerClear   contextMarkerKind = "clear"
+)
 
 type CompactSummaryMessageItem struct {
 	*highlightableMessageItem
@@ -21,16 +31,26 @@ type CompactSummaryMessageItem struct {
 	*focusableMessageItem
 
 	id      string
+	kind    contextMarkerKind
 	content string
 	sty     *surfacestyles.Styles
 }
 
 func NewCompactSummaryMessageItem(sty *surfacestyles.Styles, message *surfacemessage.Message) *CompactSummaryMessageItem {
+	return newContextMarkerMessageItem(sty, message, contextMarkerCompact)
+}
+
+func NewContextClearedMessageItem(sty *surfacestyles.Styles, message *surfacemessage.Message) *CompactSummaryMessageItem {
+	return newContextMarkerMessageItem(sty, message, contextMarkerClear)
+}
+
+func newContextMarkerMessageItem(sty *surfacestyles.Styles, message *surfacemessage.Message, kind contextMarkerKind) *CompactSummaryMessageItem {
 	return &CompactSummaryMessageItem{
 		highlightableMessageItem: defaultHighlighter(sty),
 		cachedMessageItem:        &cachedMessageItem{},
 		focusableMessageItem:     &focusableMessageItem{},
-		id:                       message.ID + ":compact-summary",
+		id:                       message.ID + ":" + kind.idSuffix(),
+		kind:                     kind,
 		content:                  strings.TrimSpace(message.Content().Text),
 		sty:                      sty,
 	}
@@ -41,6 +61,13 @@ func IsCompactSummaryMessage(message *surfacemessage.Message) bool {
 		return false
 	}
 	return strings.HasPrefix(strings.TrimSpace(message.Content().Text), compactSummaryPrefix)
+}
+
+func IsContextClearedMessage(message *surfacemessage.Message) bool {
+	if message == nil || message.Role != surfacemessage.System {
+		return false
+	}
+	return strings.HasPrefix(strings.TrimSpace(message.Content().Text), contextClearedPrefix)
 }
 
 func (c *CompactSummaryMessageItem) ID() string {
@@ -74,15 +101,18 @@ func (c *CompactSummaryMessageItem) HandleKeyEvent(key tea.KeyPressMsg) (bool, t
 	}
 	return true, func() tea.Msg {
 		return surfacedialog.ActionOpenFilePreview{Data: surfacedialog.FilePreviewData{
-			Title:   "Context Summary",
+			Title:   c.kind.previewTitle(),
 			Content: content,
 		}}
 	}
 }
 
 func (c *CompactSummaryMessageItem) renderContent(width int) string {
-	stats := compactSummaryStats(c.content)
-	name := toolNameStyle(c.sty, false).Render("Context compacted")
+	stats := ""
+	if c.kind == contextMarkerCompact {
+		stats = compactSummaryStats(c.content)
+	}
+	name := toolNameStyle(c.sty, false).Render(c.kind.label())
 	parts := []string{name}
 	if stats != "" {
 		parts = append(parts, c.sty.Tool.ParamMain.Render(stats))
@@ -104,4 +134,31 @@ func compactSummaryStats(content string) string {
 		return ""
 	}
 	return fmt.Sprintf("(%s)", firstLine)
+}
+
+func (k contextMarkerKind) idSuffix() string {
+	switch k {
+	case contextMarkerClear:
+		return "context-clear"
+	default:
+		return "compact-summary"
+	}
+}
+
+func (k contextMarkerKind) label() string {
+	switch k {
+	case contextMarkerClear:
+		return "Context cleared"
+	default:
+		return "Context compacted"
+	}
+}
+
+func (k contextMarkerKind) previewTitle() string {
+	switch k {
+	case contextMarkerClear:
+		return "Context Clear"
+	default:
+		return "Context Summary"
+	}
 }

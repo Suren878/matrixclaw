@@ -17,6 +17,7 @@ func ToSurfaceMessage(message core.Message) surfacemessage.Message {
 		ID:        message.ID,
 		Role:      surfaceRole(message.Role),
 		SessionID: message.SessionID,
+		RunID:     message.RunID,
 		Model:     message.Model,
 		Provider:  message.Provider,
 		CreatedAt: surfaceNowUnix(message.CreatedAt),

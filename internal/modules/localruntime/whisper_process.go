@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -89,10 +90,10 @@ func (r *Runtime) startWhisperServerProcess(ctx context.Context, moduleID string
 		endpoint:  endpoint,
 	}
 	whisperServerProcesses.processes[key] = process
-	go func() {
+	safego.Go("localruntime.whisperWait", func() {
+		defer close(process.done)
 		_ = cmd.Wait()
-		close(process.done)
-	}()
+	})
 	if err := r.waitWhisperServer(ctx, endpoint, process, 60*time.Second); err != nil {
 		delete(whisperServerProcesses.processes, key)
 		_ = process.stop()

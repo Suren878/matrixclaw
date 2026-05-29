@@ -74,10 +74,14 @@ func (m *Chat) Draw(scr uv.Screen, area uv.Rectangle) {
 
 // SetSize sets the size of the chat view port.
 func (m *Chat) SetSize(width, height int) {
+	wasFollowing := m.follow
+	viewport := m.SnapshotViewport()
 	m.list.SetSize(width, height)
-	if m.AtBottom() {
+	if wasFollowing {
 		m.ScrollToBottom()
+		return
 	}
+	m.RestoreViewport(viewport)
 }
 
 // Len returns the number of items in the chat list.
@@ -87,6 +91,10 @@ func (m *Chat) Len() int {
 
 // SetMessages sets the chat messages to the provided list of message items.
 func (m *Chat) SetMessages(msgs ...chat.MessageItem) {
+	wasEmpty := m.list.Len() == 0
+	wasFollowing := m.follow
+	viewport := m.SnapshotViewport()
+
 	m.idInxMap = make(map[string]int)
 	m.pausedAnimations = make(map[string]struct{})
 
@@ -96,7 +104,11 @@ func (m *Chat) SetMessages(msgs ...chat.MessageItem) {
 		items[i] = msg
 	}
 	m.list.SetItems(items...)
-	m.ScrollToBottom()
+	if wasEmpty || wasFollowing {
+		m.ScrollToBottom()
+		return
+	}
+	m.RestoreViewport(viewport)
 }
 
 func (m *Chat) indexMessage(msg chat.MessageItem, index int) {

@@ -19,8 +19,8 @@ func (d *Dispatcher) storagePicker(ctx context.Context) (Result, error) {
 		Handled: true,
 		Picker: NewPickerData(PickerStorage, "Storage").
 			Back(modulesCommand()).
-			Row("files", "Stored Files", storedInfo).
-			Row("temp", "Temporary Files", tempInfo).
+			Row("files", "Stored Files", storedInfo, storageFilesCommand()).
+			Row("temp", "Temporary Files", tempInfo, storageTempCommand()).
 			Ptr(),
 	}, nil
 }

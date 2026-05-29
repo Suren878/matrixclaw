@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -30,5 +31,28 @@ func TestAgentDescriptorUsesClaudeCodeDefaults(t *testing.T) {
 	}
 	if availability.Version != "2.1.146 (Claude Code)" {
 		t.Fatalf("version = %q", availability.Version)
+	}
+}
+
+func TestAgentAvailableRejectsMacOSAppBundlePathWithoutExecutingIt(t *testing.T) {
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "opened")
+	appBin := filepath.Join(dir, "Claude.app", "Contents", "MacOS", "Claude")
+	if err := os.MkdirAll(filepath.Dir(appBin), 0o755); err != nil {
+		t.Fatalf("mkdir app bundle: %v", err)
+	}
+	if err := os.WriteFile(appBin, []byte("#!/bin/sh\nprintf opened > "+shellQuote(marker)+"\n"), 0o755); err != nil {
+		t.Fatalf("write fake app binary: %v", err)
+	}
+
+	availability := Agent{Path: appBin, Enabled: true}.Available(context.Background())
+	if availability.Installed {
+		t.Fatalf("Installed = true for app bundle path: %#v", availability)
+	}
+	if !strings.Contains(strings.ToLower(availability.Detail), "cli") {
+		t.Fatalf("Detail = %q, want CLI guidance", availability.Detail)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("app bundle path was executed, marker err = %v", err)
 	}
 }

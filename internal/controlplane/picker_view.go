@@ -29,10 +29,7 @@ func PickerViewItems(picker PickerData) []PickerViewItem {
 }
 
 func PickerItemCommand(picker PickerData, item PickerItem) string {
-	if command := strings.TrimSpace(item.Command); command != "" {
-		return command
-	}
-	return PickerCommandFor(picker.Kind, picker.ContextID, item.ID)
+	return strings.TrimSpace(item.Command)
 }
 
 func PickerCloseCommand(picker PickerData) string {
@@ -42,7 +39,7 @@ func PickerCloseCommand(picker PickerData) string {
 	if command, ok := pickerCloseCommand(picker); ok {
 		return command
 	}
-	return PickerCommandFor(picker.Kind, picker.ContextID, "cancel")
+	return ""
 }
 
 func pickerBackCommand(picker PickerData) (string, bool) {

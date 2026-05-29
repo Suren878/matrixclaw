@@ -31,7 +31,7 @@ func Entries(state State) []surfacedialog.CommandEntry {
 		if !item.Menu {
 			continue
 		}
-		if item.ID == string(controlplane.CommandNewSession) {
+		if item.ID == string(controlplane.CommandNewSession) || item.ID == string(controlplane.CommandMemory) {
 			continue
 		}
 		views[item.ID] = item
@@ -50,10 +50,6 @@ func Entries(state State) []surfacedialog.CommandEntry {
 		item, ok := views[string(id)]
 		if !ok {
 			continue
-		}
-		if id == controlplane.CommandContext {
-			item.Title = "Compact"
-			item.Command = "/context compact"
 		}
 		if id == controlplane.CommandProvider {
 			item.Title = "Providers"
@@ -119,7 +115,7 @@ func pickerEntries(picker controlplane.PickerData, closeAction surfacedialog.Act
 			Status:   presented.Status,
 			Search:   presented.Search,
 			Role:     components.RoleNormal,
-			Tone:     components.RowToneNormal,
+			Tone:     pickerEntryTone(presented),
 			Selected: presented.Selected || presented.Item.Focused,
 			Disabled: presented.Disabled,
 			Action:   pickerItemAction(presented, closeOnSelect),
@@ -131,6 +127,13 @@ func pickerEntries(picker controlplane.PickerData, closeAction surfacedialog.Act
 		}
 	}
 	return entries
+}
+
+func pickerEntryTone(presented controlplane.PickerPresentationItem) components.RowTone {
+	if presented.Selected {
+		return components.RowToneAccent
+	}
+	return components.RowToneNormal
 }
 
 func pickerFooterEntry(picker controlplane.PickerData, closeAction surfacedialog.Action) *surfacedialog.PickerEntry {

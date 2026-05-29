@@ -27,6 +27,17 @@ func (m *Chat) Follow() bool {
 	return m.follow
 }
 
+// SnapshotViewport returns the current chat viewport position.
+func (m *Chat) SnapshotViewport() list.ViewportSnapshot {
+	return m.list.SnapshotViewport()
+}
+
+// RestoreViewport restores a previously captured chat viewport position.
+func (m *Chat) RestoreViewport(snapshot list.ViewportSnapshot) {
+	m.list.RestoreViewport(snapshot)
+	m.follow = m.AtBottom()
+}
+
 // ScrollToBottom scrolls the chat view to the bottom.
 func (m *Chat) ScrollToBottom() {
 	m.list.ScrollToBottom()

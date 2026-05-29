@@ -2,6 +2,7 @@ package claudecode
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,17 +11,35 @@ import (
 	"time"
 )
 
+var errClaudeAppBundlePath = errors.New("claude CLI binary required; macOS .app bundle paths are not supported")
+
 func LookupPath(path string) (string, error) {
 	if path == "" {
 		path = "claude"
 	}
+	if isMacOSAppBundlePath(path) {
+		return "", errClaudeAppBundlePath
+	}
 	if filepath.IsAbs(path) || strings.Contains(path, string(os.PathSeparator)) {
-		return exec.LookPath(path)
+		resolved, err := exec.LookPath(path)
+		if err != nil {
+			return "", err
+		}
+		if isMacOSAppBundlePath(resolved) {
+			return "", errClaudeAppBundlePath
+		}
+		return resolved, nil
 	}
 	if resolved, err := exec.LookPath(path); err == nil {
+		if isMacOSAppBundlePath(resolved) {
+			return "", errClaudeAppBundlePath
+		}
 		return resolved, nil
 	}
 	for _, candidate := range claudeBinaryCandidates(path) {
+		if isMacOSAppBundlePath(candidate) {
+			continue
+		}
 		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && info.Mode().Perm()&0o111 != 0 {
 			return candidate, nil
 		}
@@ -43,6 +62,25 @@ func Version(ctx context.Context, path string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(output))
+}
+
+func isMacOSAppBundlePath(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+	cleaned := filepath.Clean(path)
+	for {
+		base := filepath.Base(cleaned)
+		if strings.HasSuffix(strings.ToLower(base), ".app") {
+			return true
+		}
+		parent := filepath.Dir(cleaned)
+		if parent == cleaned || parent == "." || parent == string(os.PathSeparator) {
+			return false
+		}
+		cleaned = parent
+	}
 }
 
 func claudeBinaryCandidates(name string) []string {

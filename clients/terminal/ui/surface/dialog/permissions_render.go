@@ -111,8 +111,9 @@ func (p *Permissions) renderHeader(contentWidth int) string {
 
 	toolLine := p.renderToolName(contentWidth)
 	pathLine := p.renderKeyValue("Path", prettyPath(p.permission.Path), contentWidth)
+	sourceLine := p.renderKeyValue("Source", permissionSourceLabel(p.permission), contentWidth)
 
-	lines := []string{title, "", toolLine, pathLine}
+	lines := []string{title, "", sourceLine, toolLine, pathLine}
 
 	switch p.permission.ToolName {
 	case toolNameBash:
@@ -163,6 +164,30 @@ func (p *Permissions) renderHeader(contentWidth int) string {
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
+}
+
+func permissionSourceLabel(permission surfacepermission.PermissionRequest) string {
+	params, ok := permission.Params.(map[string]any)
+	if !ok || permissionParamString(params, "source") != "subagent_approval_bridge" {
+		return "Agent"
+	}
+	label := permissionParamString(params, "subagent_title")
+	if label == "" {
+		label = permissionParamString(params, "runtime")
+	}
+	label = strings.TrimSpace(strings.TrimPrefix(label, "Subagent:"))
+	if label == "" {
+		return "Subagent"
+	}
+	return "Subagent: " + label
+}
+
+func permissionParamString(params map[string]any, key string) string {
+	value, ok := params[key]
+	if !ok || value == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
 }
 
 func (p *Permissions) renderKeyValue(keyText, value string, width int) string {

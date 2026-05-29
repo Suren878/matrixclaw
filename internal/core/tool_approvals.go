@@ -26,6 +26,9 @@ func (c *Core) ResolveApproval(ctx context.Context, approvalID string, approved 
 			return Approval{}, fmt.Errorf("%w: approval already resolved", ErrInvalidInput)
 		}
 	}
+	if bridge, ok := decodeSubagentApprovalBridge(approval); ok {
+		return c.resolveSubagentApprovalBridge(ctx, approval, bridge, approved)
+	}
 	decidedAt := c.now().UTC()
 	if approved {
 		approval.State = ApprovalStateApproved
@@ -95,6 +98,167 @@ func (c *Core) ResolveApproval(ctx context.Context, approvalID string, approved 
 		}
 	}
 	return approval, nil
+}
+
+func (c *Core) resolveSubagentApprovalBridge(ctx context.Context, approval Approval, bridge subagentApprovalBridgeParams, approved bool) (Approval, error) {
+	decidedAt := c.now().UTC()
+	if approved {
+		approval.State = ApprovalStateApproved
+	} else {
+		approval.State = ApprovalStateRejected
+	}
+	approval.DecidedAt = &decidedAt
+	if err := c.store.UpdateApproval(ctx, approval); err != nil {
+		return Approval{}, err
+	}
+	c.publishEvent(Event{
+		Type:      EventApprovalResult,
+		SessionID: approval.SessionID,
+		RunID:     approval.RunID,
+		Payload: PermissionNotification{
+			ApprovalID: approval.ID,
+			ToolCallID: approval.ToolCallRef,
+			Granted:    approved,
+			Denied:     !approved,
+		},
+	})
+
+	task, err := c.store.GetSubagentTask(ctx, bridge.TaskID)
+	if err != nil {
+		task, err = c.store.GetSubagentTaskByChildRun(ctx, bridge.ChildRunID)
+	}
+	if err != nil {
+		return Approval{}, err
+	}
+
+	if _, err := c.ResolveApproval(ctx, bridge.ChildApprovalID, approved); err != nil {
+		terminal, terminalErr := c.subagentTaskTerminal(ctx, task)
+		if terminalErr != nil || !terminal {
+			return Approval{}, err
+		}
+	}
+
+	if approved {
+		if latest, err := c.store.GetSubagentTask(ctx, task.ID); err == nil {
+			task = latest
+		} else if !errors.Is(err, ErrNotFound) {
+			return Approval{}, err
+		}
+		if !subagentTaskTerminalStatus(task.Status) {
+			task.Status = SubagentTaskStatusRunning
+			task.UpdatedAt = c.now().UTC()
+			if err := c.store.UpdateSubagentTask(ctx, task); err != nil {
+				return Approval{}, err
+			}
+			c.publishSubagentTaskUpdated(task)
+		}
+		c.publishEvent(Event{
+			Type:      EventToolUpdated,
+			SessionID: approval.SessionID,
+			RunID:     approval.RunID,
+			Payload: ToolUpdate{
+				ToolCallID: approval.ToolCallRef,
+				ToolName:   approval.ToolName,
+				State:      ToolLifecycleRequested,
+				RunID:      approval.RunID,
+				SessionID:  approval.SessionID,
+				ApprovalID: approval.ID,
+			},
+		})
+		if task.Mode == SubagentTaskModeAsync {
+			return approval, nil
+		}
+		if err := c.resumeParentAfterSubagentTerminal(ctx, task); err != nil {
+			return Approval{}, err
+		}
+		return approval, nil
+	}
+
+	summary := "Subagent approval denied"
+	if bridge.ChildToolName != "" {
+		summary += " for " + bridge.ChildToolName
+	}
+	task.Summary = summary
+	task.Error = summary
+	task.Status = SubagentTaskStatusFailed
+	task.UpdatedAt = c.now().UTC()
+	finishedAt := task.UpdatedAt
+	task.FinishedAt = &finishedAt
+	if err := c.store.UpdateSubagentTask(ctx, task); err != nil {
+		return Approval{}, err
+	}
+	c.publishSubagentTaskUpdated(task)
+	if task.Mode == SubagentTaskModeAsync {
+		if err := c.updateSubagentResultMessage(ctx, task); err != nil {
+			return Approval{}, err
+		}
+		if task.CompletionQueuedAt == nil {
+			queuedAt := task.UpdatedAt
+			task.CompletionQueuedAt = &queuedAt
+			if err := c.store.UpdateSubagentTask(ctx, task); err != nil {
+				return Approval{}, err
+			}
+			c.publishSubagentTaskUpdated(task)
+		}
+		if err := c.deliverPendingSubagentCompletionsForParent(ctx, task.ParentSessionID); err != nil {
+			return Approval{}, err
+		}
+		return approval, nil
+	}
+	if err := c.finishRejectedSubagentDelegateTool(ctx, approval, task, summary); err != nil {
+		return Approval{}, err
+	}
+	if strings.TrimSpace(approval.RunID) != "" {
+		if err := c.startRun(ctx, approval.RunID); err != nil {
+			return Approval{}, err
+		}
+	}
+	return approval, nil
+}
+
+func (c *Core) finishRejectedSubagentDelegateTool(ctx context.Context, approval Approval, task SubagentTask, summary string) error {
+	messages, err := c.store.ListMessages(ctx, approval.SessionID, 0)
+	if err != nil {
+		return err
+	}
+	if _, done := toolResultCallIDs(messages)[strings.TrimSpace(approval.ToolCallRef)]; done {
+		return nil
+	}
+	var toolCall Message
+	var args json.RawMessage
+	for _, message := range messages {
+		if strings.TrimSpace(message.ID) != strings.TrimSpace(approval.ToolCallRef) {
+			continue
+		}
+		toolCall = message
+		for _, part := range message.Parts {
+			if part.ToolCall == nil {
+				continue
+			}
+			if strings.TrimSpace(part.ToolCall.ID) == strings.TrimSpace(approval.ToolCallRef) {
+				args = json.RawMessage(part.ToolCall.Input)
+				break
+			}
+		}
+		break
+	}
+	if strings.TrimSpace(toolCall.ID) == "" {
+		return fmt.Errorf("%w: parent delegate tool call %s", ErrNotFound, approval.ToolCallRef)
+	}
+	prepared := preparedToolCall{
+		SessionID:  approval.SessionID,
+		RunID:      approval.RunID,
+		ToolName:   approval.ToolName,
+		ToolCallID: approval.ToolCallRef,
+		Message:    toolCall,
+	}
+	_, _, err = c.finishToolCall(ctx, prepared, ExecuteToolInput{Args: args}, tools.Result{
+		Content:  summary,
+		Metadata: task,
+		Status:   tools.ResultStatusError,
+		IsError:  true,
+	})
+	return err
 }
 
 func (c *Core) ListApprovals(ctx context.Context, sessionID string, state ApprovalState) ([]Approval, error) {

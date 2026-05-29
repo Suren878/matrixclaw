@@ -312,13 +312,13 @@ func deleteActionInfo(provider setup.VoiceProviderOption) string {
 
 func voiceRuntimeInstallAction(provider setup.VoiceProviderOption) string {
 	if provider.RuntimeInstalled {
-		return "delete-runtime"
+		return provider.ActionIDs.DeleteRuntime
 	}
-	return "install-runtime"
+	return provider.ActionIDs.InstallRuntime
 }
 
-func piperRuntimeActionRole(action string) PickerItemRole {
-	if action == "delete-runtime" {
+func piperRuntimeActionRole(provider setup.VoiceProviderOption, action string) PickerItemRole {
+	if action == provider.ActionIDs.DeleteRuntime {
 		return PickerItemRoleDanger
 	}
 	return PickerItemRoleAction
@@ -404,12 +404,10 @@ func voiceRuntimeActionUnavailableMessage(provider setup.VoiceProviderOption, ac
 }
 
 func voiceRuntimeConfirmMessage(provider setup.VoiceProviderOption, action string) string {
-	switch strings.ToLower(strings.TrimSpace(action)) {
-	case "stop":
+	if strings.TrimSpace(action) == strings.TrimSpace(provider.ActionIDs.Stop) {
 		return "Stop " + provider.Name + " runtime?"
-	default:
-		return "Start " + provider.Name + " runtime?"
 	}
+	return "Start " + provider.Name + " runtime?"
 }
 
 func voiceRuntimeDeleteConfirmMessage(module setup.VoiceModuleDescriptor, provider setup.VoiceProviderOption) string {
@@ -419,13 +417,11 @@ func voiceRuntimeDeleteConfirmMessage(module setup.VoiceModuleDescriptor, provid
 	return "Delete " + provider.Name + " engine?"
 }
 
-func voiceRuntimeConfirmLabel(action string) string {
-	switch strings.ToLower(strings.TrimSpace(action)) {
-	case "stop":
+func voiceRuntimeConfirmLabel(provider setup.VoiceProviderOption, action string) string {
+	if strings.TrimSpace(action) == strings.TrimSpace(provider.ActionIDs.Stop) {
 		return "Stop"
-	default:
-		return "Start"
 	}
+	return "Start"
 }
 
 func voiceDownloadedMessage(module setup.VoiceModuleDescriptor, provider setup.VoiceProviderOption, modelID string) string {

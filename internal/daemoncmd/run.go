@@ -14,10 +14,16 @@ import (
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
 	"github.com/Suren878/matrixclaw/internal/modules"
 	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
+	"github.com/Suren878/matrixclaw/internal/safego"
+
 	mcpmodule "github.com/Suren878/matrixclaw/internal/modules/mcp"
+
 	skillsmodule "github.com/Suren878/matrixclaw/internal/modules/skills"
+
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
+
 	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
+
 	goworkflows "github.com/Suren878/matrixclaw/internal/orchestration/go_workflows"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/skills"
@@ -107,7 +113,7 @@ func Run(ctx context.Context) error {
 	if err := toolRegistry.Register(core.MemoryToolExecutors(app)...); err != nil {
 		return err
 	}
-	if err := toolRegistry.Register(core.DelegateTaskToolExecutor(app)); err != nil {
+	if err := toolRegistry.Register(core.SubagentToolExecutors(app)...); err != nil {
 		return err
 	}
 	if err := toolRegistry.Err(); err != nil {
@@ -135,20 +141,32 @@ func Run(ctx context.Context) error {
 	}
 
 	errCh := make(chan error, 2)
-	go func() {
+	safego.Go("daemon.httpServer", func() {
 		err := httpServer.ListenAndServe()
 		if err == http.ErrServerClosed {
 			err = nil
 		}
 		errCh <- err
-	}()
+	})
 
 	if err := supervisor.ApplyBootstrap(bootstrap); err != nil {
 		return err
 	}
 	startConfiguredVoiceRuntimes(ctx, bootstrap.SetupService)
-	go automationService.Run(ctx)
-	go supervisor.DeliverPendingStartupNotifications(bootstrap)
+	safego.Go("automation.Run", func() { automationService.Run(ctx) })
+	safego.Go("supervisor.deliverStartupNotifications", func() {
+		supervisor.DeliverPendingStartupNotifications(bootstrap)
+	})
+	safego.Go("core.recoverSessionInputs", func() {
+		if err := app.RecoverSessionInputs(context.Background()); err != nil {
+			log.Printf("matrixclawd session input recovery failed: %v", err)
+		}
+	})
+	safego.Go("core.recoverSubagentTasks", func() {
+		if err := app.RecoverSubagentTasks(context.Background()); err != nil {
+			log.Printf("matrixclawd subagent recovery failed: %v", err)
+		}
+	})
 
 	log.Printf("matrixclawd bootstrap: setup=%s", bootstrap.SetupPath)
 	log.Printf("matrixclawd listening on %s using %s", bootstrap.Addr, bootstrap.DBPath)

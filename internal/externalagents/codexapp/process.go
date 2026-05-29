@@ -2,6 +2,7 @@ package codexapp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"time"
 )
+
+var errCodexAppBundlePath = errors.New("codex CLI binary required; macOS .app bundle paths are not supported")
 
 type ProcessOptions struct {
 	Path   string
@@ -27,13 +30,29 @@ func LookupPath(path string) (string, error) {
 	if path == "" {
 		path = "codex"
 	}
+	if isMacOSAppBundlePath(path) {
+		return "", errCodexAppBundlePath
+	}
 	if filepath.IsAbs(path) || strings.Contains(path, string(os.PathSeparator)) {
-		return exec.LookPath(path)
+		resolved, err := exec.LookPath(path)
+		if err != nil {
+			return "", err
+		}
+		if isMacOSAppBundlePath(resolved) {
+			return "", errCodexAppBundlePath
+		}
+		return resolved, nil
 	}
 	if resolved, err := exec.LookPath(path); err == nil {
+		if isMacOSAppBundlePath(resolved) {
+			return "", errCodexAppBundlePath
+		}
 		return resolved, nil
 	}
 	for _, candidate := range codexBinaryCandidates(path) {
+		if isMacOSAppBundlePath(candidate) {
+			continue
+		}
 		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && info.Mode().Perm()&0o111 != 0 {
 			return candidate, nil
 		}
@@ -66,6 +85,8 @@ func Start(ctx context.Context, opts ProcessOptions) (*Client, error) {
 	resolved, err := LookupPath(path)
 	if err == nil {
 		path = resolved
+	} else {
+		return nil, fmt.Errorf("resolve codex binary: %w", err)
 	}
 	args := opts.Args
 	if len(args) == 0 {
@@ -96,6 +117,25 @@ func Start(ctx context.Context, opts ProcessOptions) (*Client, error) {
 		cmd:    cmd,
 	}
 	return NewClient(conn), nil
+}
+
+func isMacOSAppBundlePath(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+	cleaned := filepath.Clean(path)
+	for {
+		base := filepath.Base(cleaned)
+		if strings.HasSuffix(strings.ToLower(base), ".app") {
+			return true
+		}
+		parent := filepath.Dir(cleaned)
+		if parent == cleaned || parent == "." || parent == string(os.PathSeparator) {
+			return false
+		}
+		cleaned = parent
+	}
 }
 
 func codexBinaryCandidates(name string) []string {

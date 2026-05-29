@@ -134,6 +134,30 @@ The goal is not to replace your editor or host your work in the cloud. The goal
 is to give your own machine a small, durable AI operator that can be reached
 from more than one surface.
 
+## What's New
+
+Upcoming release highlights:
+
+- Live subagent cards in the Terminal chat for `delegate_task` and
+  `spawn_subagent`, with Matrix-style codenames, running/completed/failed
+  states, expandable task details, and metadata previews.
+- Async subagent state is now merged back into existing tool cards so background
+  work keeps animating after the spawn call returns.
+- The status bar separates the main model phase from active subagents and
+  queued input, including `Waiting for subagent: <name>` when the parent run is
+  blocked on child-agent work.
+- Busy input now queues by default while the assistant is running, with
+  `/queue`, `/steer`, `/interrupt`, and `/busy` commands for explicit control.
+- Context management now has `/context clear` plus compacting. Clear creates a
+  distinct `Context cleared` chat card and immediately fixes the header token
+  estimate to use only effective post-clear context.
+- The context engine tracks clear markers, compact summaries, message counts,
+  tool schemas, context window size, and provider usage in one `ContextReport`.
+- Command pickers and Terminal navigation were tightened for stable scrolling,
+  clearer previews, and safer destructive confirmations.
+- Local voice runtime management was split into Piper, Supertonic, and
+  Whisper.cpp drivers with install/status tests.
+
 ## Install
 
 Install the latest release:

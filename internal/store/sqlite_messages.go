@@ -106,6 +106,30 @@ WHERE id = ?`, runID)
 	return run, nil
 }
 
+func (s *SQLiteStore) GetActiveRunBySession(ctx context.Context, sessionID string) (core.Run, error) {
+	row := s.db.QueryRowContext(ctx, `
+SELECT id, session_id, user_message_id, client, external_key, status, error, started_at, finished_at, updated_at
+FROM runs
+WHERE session_id = ?
+  AND status IN (?, ?, ?)
+ORDER BY started_at DESC, updated_at DESC
+LIMIT 1`,
+		strings.TrimSpace(sessionID),
+		string(core.RunStatusAccepted),
+		string(core.RunStatusRunning),
+		string(core.RunStatusWaitingApproval),
+	)
+
+	run, err := scanRun(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return core.Run{}, core.ErrNotFound
+		}
+		return core.Run{}, fmt.Errorf("store: get active run by session: %w", err)
+	}
+	return run, nil
+}
+
 func (s *SQLiteStore) UpdateRun(ctx context.Context, run core.Run) error {
 	result, err := updateRun(ctx, s.db, run)
 	if err != nil {

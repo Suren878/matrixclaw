@@ -66,10 +66,11 @@ func (d *Dispatcher) externalAgentsPicker(ctx context.Context) (Result, error) {
 			Title:    externalAgentTitle(agent),
 			Info:     externalAgentInfo(agent),
 			Selected: agent.Enabled,
+			Command:  externalAgentCommand(agent.ID),
 		})
 	}
 	if len(agents) == 0 {
-		picker.Item(PickerItem{ID: "empty", Title: "No external agents", Info: "No runtimes registered"})
+		picker.Static("empty", "No external agents", "No runtimes registered")
 	}
 	return Result{Handled: true, Picker: picker.Ptr()}, nil
 }
@@ -89,7 +90,7 @@ func (d *Dispatcher) externalAgentPicker(ctx context.Context, agentID string) (R
 		Back(externalAgentsCommand())
 	addExternalAgentEditableItems(picker, agent)
 	if agent.Enabled {
-		picker.Action("new", "New Session", "Create session using "+agent.DisplayName)
+		picker.Action("new", "New Session", "Create session using "+agent.DisplayName, externalAgentNewSessionCommand(agent.ID))
 	}
 	return Result{Handled: true, Picker: picker.Ptr()}, nil
 }
@@ -195,14 +196,14 @@ func externalAgentPickerData(agent core.ExternalAgentDescriptor) *PickerData {
 		Back(externalAgentsCommand())
 	addExternalAgentEditableItems(picker, agent)
 	if agent.Enabled {
-		picker.Action("new", "New Session", "Create session using "+agent.DisplayName)
+		picker.Action("new", "New Session", "Create session using "+agent.DisplayName, externalAgentNewSessionCommand(agent.ID))
 	}
 	return picker.Ptr()
 }
 
 func addExternalAgentEditableItems(picker *PickerBuilder, agent core.ExternalAgentDescriptor) {
-	picker.Row("path", "Path", externalAgentPathInfo(agent))
-	picker.Row("enabled", "Enabled", formatEnabled(agent.Enabled))
+	picker.Row("path", "Path", externalAgentPathInfo(agent), externalAgentCommand(agent.ID, "path"))
+	picker.Row("enabled", "Enabled", formatEnabled(agent.Enabled), externalAgentEnabledCommand(agent.ID))
 }
 
 func externalAgentMeta(agent core.ExternalAgentDescriptor) string {

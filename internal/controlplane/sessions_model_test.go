@@ -76,6 +76,50 @@ func TestSessionListInfoNamesExternalAgent(t *testing.T) {
 	}
 }
 
+func TestSessionRuntimePickerUsesCompactInfo(t *testing.T) {
+	runtime := &sessionRuntimePickerTestRuntime{agents: []core.ExternalAgentDescriptor{
+		{ID: "codex-app", DisplayName: "Codex", Installed: true, Enabled: true},
+		{ID: "claude-code", DisplayName: "Claude Code", Installed: true, Enabled: true},
+	}}
+
+	result, err := New(runtime, "").sessionRuntimePicker(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Picker == nil {
+		t.Fatal("expected picker")
+	}
+
+	want := map[string]string{
+		"matrixclaw":  "Built-in",
+		"codex-app":   "External",
+		"claude-code": "External",
+	}
+	for _, item := range result.Picker.Items {
+		expected, ok := want[item.ID]
+		if !ok {
+			continue
+		}
+		if item.Info != expected {
+			t.Fatalf("item %q info = %q, want %q", item.ID, item.Info, expected)
+		}
+		delete(want, item.ID)
+	}
+	if len(want) > 0 {
+		t.Fatalf("missing picker items: %#v", want)
+	}
+}
+
+func TestDefaultSessionTitlesAreHumanPlaceholders(t *testing.T) {
+	dispatcher := New(nil, "")
+	if got := dispatcher.defaultSessionTitle("terminal:local"); got != "New chat" {
+		t.Fatalf("defaultSessionTitle = %q, want %q", got, "New chat")
+	}
+	if got := dispatcher.initialSessionTitle("terminal:local"); got != "Main" {
+		t.Fatalf("initialSessionTitle = %q, want %q", got, "Main")
+	}
+}
+
 func TestSessionModelPickerAndUpdate(t *testing.T) {
 	runtime := &sessionModelTestRuntime{sessions: []core.Session{{ID: "s1", RuntimeID: core.SessionRuntimeExternalAgent, ModelID: "sonnet"}}}
 	dispatcher := New(runtime, "")
@@ -128,4 +172,16 @@ func sessionModelPickerHasSelectedItem(picker *PickerData, id string) bool {
 		}
 	}
 	return false
+}
+
+type sessionRuntimePickerTestRuntime struct {
+	agents []core.ExternalAgentDescriptor
+}
+
+func (r *sessionRuntimePickerTestRuntime) ListExternalAgents(context.Context) ([]core.ExternalAgentDescriptor, error) {
+	return append([]core.ExternalAgentDescriptor(nil), r.agents...), nil
+}
+
+func (r *sessionRuntimePickerTestRuntime) UpdateExternalAgent(context.Context, string, core.UpdateExternalAgentRequest) ([]core.ExternalAgentDescriptor, error) {
+	return append([]core.ExternalAgentDescriptor(nil), r.agents...), nil
 }

@@ -182,22 +182,33 @@ type VoiceModelOption struct {
 }
 
 type VoiceProviderOption struct {
-	ID               string              `json:"id"`
-	Name             string              `json:"name"`
-	Local            bool                `json:"local"`
-	Status           string              `json:"status,omitempty"`
-	CatalogStatus    string              `json:"catalog_status,omitempty"`
-	CatalogDetail    string              `json:"catalog_detail,omitempty"`
-	Endpoint         string              `json:"endpoint,omitempty"`
-	Downloaded       bool                `json:"downloaded,omitempty"`
-	ModelPath        string              `json:"model_path,omitempty"`
-	RuntimeState     string              `json:"runtime_state,omitempty"`
-	RuntimeDetail    string              `json:"runtime_detail,omitempty"`
-	RuntimePath      string              `json:"runtime_path,omitempty"`
-	RuntimeInstalled bool                `json:"runtime_installed,omitempty"`
-	RuntimeRSS       uint64              `json:"runtime_rss_bytes,omitempty"`
-	Config           VoiceProviderConfig `json:"config,omitempty"`
-	Models           []VoiceModelOption  `json:"models,omitempty"`
+	ID               string                 `json:"id"`
+	Name             string                 `json:"name"`
+	Local            bool                   `json:"local"`
+	Status           string                 `json:"status,omitempty"`
+	CatalogStatus    string                 `json:"catalog_status,omitempty"`
+	CatalogDetail    string                 `json:"catalog_detail,omitempty"`
+	Endpoint         string                 `json:"endpoint,omitempty"`
+	Downloaded       bool                   `json:"downloaded,omitempty"`
+	ModelPath        string                 `json:"model_path,omitempty"`
+	RuntimeState     string                 `json:"runtime_state,omitempty"`
+	RuntimeDetail    string                 `json:"runtime_detail,omitempty"`
+	RuntimePath      string                 `json:"runtime_path,omitempty"`
+	RuntimeInstalled bool                   `json:"runtime_installed,omitempty"`
+	RuntimeRSS       uint64                 `json:"runtime_rss_bytes,omitempty"`
+	ActionIDs        VoiceProviderActionIDs `json:"action_ids,omitempty"`
+	Config           VoiceProviderConfig    `json:"config,omitempty"`
+	Models           []VoiceModelOption     `json:"models,omitempty"`
+}
+
+type VoiceProviderActionIDs struct {
+	InstallRuntime           string `json:"install_runtime,omitempty"`
+	DeleteRuntime            string `json:"delete_runtime,omitempty"`
+	DownloadModel            string `json:"download_model,omitempty"`
+	DownloadModelWithRuntime string `json:"download_model_with_runtime,omitempty"`
+	DeleteModel              string `json:"delete_model,omitempty"`
+	Start                    string `json:"start,omitempty"`
+	Stop                     string `json:"stop,omitempty"`
 }
 
 type VoiceModuleDescriptor struct {

@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -34,6 +35,8 @@ func buildChatItems(sty *surfacestyles.Styles, snapshot viewmodel.Snapshot) []su
 	messages := append([]surfacemessage.Message(nil), snapshot.Messages...)
 	toolUpdates := indexToolUpdates(snapshot.ToolUpdates)
 	toolResults := surfacechat.BuildToolResultMap(messages)
+	mergeSubagentToolResults(toolResults, snapshot.Subagents)
+	mergeSubagentToolUpdates(toolUpdates, snapshot.Subagents)
 	items := buildConversationItems(styles, messages, toolResults, toolUpdates)
 	applyToolStatuses(items, pendingApprovalToolCalls(snapshot.Approvals), indexApprovalNotifications(snapshot.ApprovalNotifications), toolUpdates)
 	return items
@@ -48,6 +51,111 @@ func indexToolUpdates(updates []core.ToolUpdate) map[string]core.ToolUpdate {
 		index[update.ToolCallID] = update
 	}
 	return index
+}
+
+func mergeSubagentToolResults(results map[string]surfacemessage.ToolResult, tasks []core.SubagentTask) {
+	for _, task := range tasks {
+		toolCallID := strings.TrimSpace(task.ParentToolCallID)
+		if toolCallID == "" {
+			continue
+		}
+		result := results[toolCallID]
+		result.ToolCallID = toolCallID
+		result.Name = subagentToolName(task)
+		if metadata, err := json.Marshal(task); err == nil {
+			result.Metadata = string(metadata)
+		}
+		result.Status = subagentSurfaceResultStatus(task)
+		result.IsError = task.Status == core.SubagentTaskStatusFailed || task.Status == core.SubagentTaskStatusCanceled || strings.TrimSpace(task.Error) != ""
+		if strings.TrimSpace(result.Content) == "" || subagentTaskTerminal(task) {
+			result.Content = subagentSurfaceResultContent(task)
+		}
+		results[toolCallID] = result
+	}
+}
+
+func mergeSubagentToolUpdates(updates map[string]core.ToolUpdate, tasks []core.SubagentTask) {
+	for _, task := range tasks {
+		toolCallID := strings.TrimSpace(task.ParentToolCallID)
+		if toolCallID == "" {
+			continue
+		}
+		update := updates[toolCallID]
+		update.ToolCallID = toolCallID
+		update.ToolName = subagentToolName(task)
+		update.State = subagentToolLifecycleState(task)
+		update.ResultStatus = subagentSurfaceResultStatus(task)
+		update.RunID = strings.TrimSpace(task.ParentRunID)
+		update.SessionID = strings.TrimSpace(task.ParentSessionID)
+		update.Error = strings.TrimSpace(task.Error)
+		updates[toolCallID] = update
+	}
+}
+
+func subagentToolName(task core.SubagentTask) string {
+	if task.Mode == core.SubagentTaskModeAsync {
+		return "spawn_subagent"
+	}
+	return "delegate_task"
+}
+
+func subagentSurfaceResultStatus(task core.SubagentTask) string {
+	if task.Status == core.SubagentTaskStatusFailed || task.Status == core.SubagentTaskStatusCanceled || strings.TrimSpace(task.Error) != "" {
+		return "error"
+	}
+	if task.Status == core.SubagentTaskStatusCompleted {
+		return "success"
+	}
+	return "neutral"
+}
+
+func subagentToolLifecycleState(task core.SubagentTask) core.ToolLifecycleState {
+	switch task.Status {
+	case core.SubagentTaskStatusWaitingApproval:
+		return core.ToolLifecycleWaitingApproval
+	case core.SubagentTaskStatusCompleted:
+		return core.ToolLifecycleCompleted
+	case core.SubagentTaskStatusFailed, core.SubagentTaskStatusCanceled:
+		return core.ToolLifecycleFailed
+	default:
+		return core.ToolLifecycleRequested
+	}
+}
+
+func subagentSurfaceResultContent(task core.SubagentTask) string {
+	name := strings.Join(strings.Fields(task.AgentName), " ")
+	if name == "" {
+		name = strings.Join(strings.Fields(task.DisplayName), " ")
+	}
+	if name == "" {
+		name = strings.TrimSpace(task.ID)
+	}
+	if name == "" {
+		name = "subagent"
+	}
+	switch task.Status {
+	case core.SubagentTaskStatusCompleted:
+		return strings.TrimSpace("Subagent " + name + " completed\n\n" + strings.TrimSpace(task.Summary))
+	case core.SubagentTaskStatusFailed:
+		return strings.TrimSpace("Subagent " + name + " failed\n\n" + strings.TrimSpace(firstNonEmptyRuntime(task.Error, task.Summary)))
+	case core.SubagentTaskStatusCanceled:
+		return strings.TrimSpace("Subagent " + name + " canceled\n\n" + strings.TrimSpace(firstNonEmptyRuntime(task.Error, task.Summary)))
+	default:
+		return "Subagent " + name + " is running."
+	}
+}
+
+func subagentTaskTerminal(task core.SubagentTask) bool {
+	return task.Status == core.SubagentTaskStatusCompleted || task.Status == core.SubagentTaskStatusFailed || task.Status == core.SubagentTaskStatusCanceled
+}
+
+func firstNonEmptyRuntime(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func pendingApprovalToolCalls(approvals []surfacepermission.PermissionRequest) map[string]struct{} {

@@ -17,6 +17,10 @@ func (r *Runtime) subscribeEvents(ctx context.Context, sessionID string, afterID
 }
 
 func (r *Runtime) sendMessage(ctx context.Context, sessionID string, text string, attachments ...surfaceeditor.Attachment) (core.AcceptRunResult, error) {
+	return r.sendMessageMode(ctx, sessionID, text, "", attachments...)
+}
+
+func (r *Runtime) sendMessageMode(ctx context.Context, sessionID string, text string, busyMode core.BusyInputMode, attachments ...surfaceeditor.Attachment) (core.AcceptRunResult, error) {
 	client, err := r.daemon()
 	if err != nil {
 		return core.AcceptRunResult{}, err
@@ -26,9 +30,9 @@ func (r *Runtime) sendMessage(ctx context.Context, sessionID string, text string
 		return core.AcceptRunResult{}, err
 	}
 	if len(payload.parts) > 0 {
-		return client.SendMessageParts(ctx, sessionID, payload.content, payload.parts, r.config.WorkingDir)
+		return client.SendMessagePartsMode(ctx, sessionID, payload.content, payload.parts, r.config.WorkingDir, busyMode)
 	}
-	return client.SendMessage(ctx, sessionID, payload.content, r.config.WorkingDir)
+	return client.SendMessageMode(ctx, sessionID, payload.content, r.config.WorkingDir, busyMode)
 }
 
 func (r *Runtime) cancelRun(ctx context.Context, runID string) (core.Run, error) {

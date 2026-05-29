@@ -21,6 +21,8 @@ type StateSnapshot struct {
 	Approvals             []core.PermissionRequest
 	ApprovalNotifications []core.PermissionNotification
 	Files                 []core.FileSnapshot
+	Subagents             []core.SubagentTask
+	PendingInputs         []core.SessionInput
 }
 
 type State struct {
@@ -37,6 +39,8 @@ type State struct {
 	approvals             map[string]core.PermissionRequest
 	approvalNotifications map[string]core.PermissionNotification
 	filesByPath           map[string][]core.FileSnapshot
+	subagents             map[string]core.SubagentTask
+	pendingInputs         map[string]core.SessionInput
 }
 
 func NewState(snapshot core.ClientSnapshot) *State {
@@ -53,6 +57,8 @@ func NewState(snapshot core.ClientSnapshot) *State {
 		approvals:             map[string]core.PermissionRequest{},
 		approvalNotifications: map[string]core.PermissionNotification{},
 		filesByPath:           map[string][]core.FileSnapshot{},
+		subagents:             map[string]core.SubagentTask{},
+		pendingInputs:         map[string]core.SessionInput{},
 	}
 	for _, update := range snapshot.ToolUpdates {
 		if update.ToolCallID != "" {
@@ -72,6 +78,16 @@ func NewState(snapshot core.ClientSnapshot) *State {
 	}
 	for _, file := range snapshot.Files {
 		model.filesByPath[file.Path] = append(model.filesByPath[file.Path], file)
+	}
+	for _, task := range snapshot.Subagents {
+		if task.ID != "" {
+			model.subagents[task.ID] = task
+		}
+	}
+	for _, input := range snapshot.PendingInputs {
+		if input.ID != "" {
+			model.pendingInputs[input.ID] = input
+		}
 	}
 	return model
 }
@@ -123,6 +139,18 @@ func (s *State) Snapshot() StateSnapshot {
 		})
 		out.Files = append(out.Files, versions...)
 	}
+	for _, task := range s.subagents {
+		out.Subagents = append(out.Subagents, task)
+	}
+	sort.SliceStable(out.Subagents, func(i, j int) bool {
+		return out.Subagents[i].CreatedAt.Before(out.Subagents[j].CreatedAt)
+	})
+	for _, input := range s.pendingInputs {
+		out.PendingInputs = append(out.PendingInputs, input)
+	}
+	sort.SliceStable(out.PendingInputs, func(i, j int) bool {
+		return out.PendingInputs[i].CreatedAt.Before(out.PendingInputs[j].CreatedAt)
+	})
 	return out
 }
 
@@ -222,6 +250,27 @@ func (s *State) Apply(event daemonclient.LiveEvent) error {
 			}
 		}
 		s.filesByPath[file.Path] = append(versions, file)
+	case core.EventSubagentUpdated:
+		task, err := event.DecodeSubagentTask()
+		if err != nil {
+			return err
+		}
+		if task.ID != "" {
+			s.subagents[task.ID] = task
+		}
+	case core.EventInputUpdated:
+		input, err := event.DecodeSessionInput()
+		if err != nil {
+			return err
+		}
+		if input.ID == "" {
+			return nil
+		}
+		if input.Status == core.SessionInputStatusPending {
+			s.pendingInputs[input.ID] = input
+		} else {
+			delete(s.pendingInputs, input.ID)
+		}
 	}
 	return nil
 }
