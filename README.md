@@ -1,26 +1,29 @@
-# matrixclaw
+# MatrixClaw
 
 ![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-local_state-003B57?logo=sqlite&logoColor=white)
 ![Telegram](https://img.shields.io/badge/Telegram-client-26A5E4?logo=telegram&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
-**Local-first AI assistant runtime and personal AI operator for Terminal,
-Telegram, MCP tools, external agents, and subagents.**
+**MatrixClaw is an always-on local AI assistant and AI coding agent runtime for
+Terminal and Telegram.**
 
-`matrixclaw` is an open-source personal AI assistant runtime written in Go. It
-runs as a small local daemon, stores state in SQLite, and gives your AI sessions
-a durable home outside any single app or chat window.
+MatrixClaw is an open-source, local-first OpenClaw alternative for users who
+want a self-hosted personal AI operator with durable sessions, SQLite memory,
+MCP tools, approvals, scheduled tasks, and Claude Code / Codex subagents.
+
+Start a task in the terminal, continue from Telegram, approve tool calls
+remotely, and return later without losing the session.
+
+`matrixclaw` is written in Go and runs as a small local daemon. It stores state
+in SQLite and gives your AI sessions a durable home outside any single app or
+chat window.
 
 The core owns the session: context, files, tool history, approvals, provider
 settings, model choice, usage records, goals/plans, persistent memory,
 searchable history, and optional external-agent attachments. The Terminal TUI,
 Telegram bot, and future mobile clients are only interfaces connected to the
 same local runtime.
-
-That means you can start a conversation in the terminal, approve a tool call on
-your machine, continue from Telegram, and later return to the same session
-without losing the thread.
 
 `matrixclaw` is built for personal work first: development, research, files,
 remote checks, reminders, provider switching, visible task plans, memory,
@@ -69,6 +72,26 @@ runtime through Terminal, Telegram, or MCP.
   MCP hosts.
 - Keep personal AI automation, scheduled tasks, voice, storage, and provider
   usage in one local SQLite-backed runtime.
+
+## OpenClaw, Claude Code, Codex, and OpenCode alternative
+
+MatrixClaw is not just another terminal AI coding agent.
+
+OpenClaw focuses on self-hosted personal AI assistance across chat apps. Claude
+Code, Codex, and OpenCode focus on coding-agent workflows in the terminal or
+developer environment.
+
+MatrixClaw sits between them: an always-on local AI operator with a daemon,
+Terminal TUI, Telegram client, durable SQLite sessions, MCP tools, approvals,
+scheduled tasks, memory, and Claude Code / Codex subagents.
+
+Use MatrixClaw if you want:
+
+- an OpenClaw alternative with Terminal and Telegram access
+- a Claude Code or Codex companion that can orchestrate subagents
+- an OpenCode alternative focused on persistent sessions and automation
+- a local-first AI agent with SQLite memory and approvals
+- a self-hosted personal AI assistant that stays running between sessions
 
 ## Daemon-first Architecture
 
@@ -136,7 +159,7 @@ from more than one surface.
 
 ## What's New
 
-Upcoming release highlights:
+Latest release highlights:
 
 - Live subagent cards in the Terminal chat for `delegate_task` and
   `spawn_subagent`, with Matrix-style codenames, running/completed/failed
@@ -668,6 +691,33 @@ non-loopback HTTP binds unless `MATRIXCLAW_ALLOW_REMOTE_HTTP=1` is explicitly
 set.
 
 See [SECURITY.md](SECURITY.md) for security reporting and local-secret notes.
+
+## FAQ
+
+### Is MatrixClaw an OpenClaw alternative?
+
+Yes. MatrixClaw is an open-source, local-first OpenClaw alternative for users
+who want an always-on AI assistant reachable from Terminal and Telegram, with
+local SQLite state, approvals, MCP tools, memory, scheduled tasks, and
+subagents.
+
+### Is MatrixClaw a Claude Code alternative?
+
+Partly. Claude Code is a terminal coding agent. MatrixClaw is a persistent local
+AI runtime that can use Claude Code as an external subagent while keeping the
+main session, memory, approvals, Telegram access, and automation in one daemon.
+
+### Is MatrixClaw a Codex alternative?
+
+Partly. Codex CLI is a command-line coding agent. MatrixClaw can use Codex as an
+external subagent, but its main goal is durable personal AI automation across
+Terminal, Telegram, MCP tools, memory, approvals, and scheduled tasks.
+
+### Is MatrixClaw an OpenCode alternative?
+
+MatrixClaw overlaps with OpenCode for terminal AI workflows, but focuses more on
+always-on personal automation, Telegram access, persistent sessions, approvals,
+and subagent orchestration.
 
 ## Status
 
