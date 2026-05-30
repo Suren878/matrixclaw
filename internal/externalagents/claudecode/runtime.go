@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 type Runtime struct {
@@ -85,7 +86,9 @@ func (r *Runtime) Send(ctx context.Context, session externalagents.ExternalSessi
 		return nil, err
 	}
 	out := make(chan externalagents.Event, 4)
-	go r.runPrompt(ctx, out, resolved, session, text)
+	safego.Go("claudecode.runPrompt", func() {
+		r.runPrompt(ctx, out, resolved, session, text)
+	})
 	return out, nil
 }
 
@@ -100,6 +103,21 @@ func (r *Runtime) Close() error {
 func (r *Runtime) runPrompt(ctx context.Context, out chan<- externalagents.Event, path string, session externalagents.ExternalSession, text string) {
 	defer close(out)
 	turnID := newClaudeThreadID()
+	if !safego.Run("claudecode.runPrompt", func() {
+		r.runPromptCommand(ctx, out, path, session, text, turnID)
+	}) {
+		out <- externalagents.Event{
+			Kind:             externalagents.EventTurnFailed,
+			AgentID:          AgentID,
+			ExternalThreadID: session.ExternalThreadID,
+			ExternalTurnID:   turnID,
+			Error:            "claudecode prompt worker panicked",
+			At:               time.Now().UTC(),
+		}
+	}
+}
+
+func (r *Runtime) runPromptCommand(ctx context.Context, out chan<- externalagents.Event, path string, session externalagents.ExternalSession, text string, turnID string) {
 	args := claudePromptArgs(session, text)
 	cmd := exec.CommandContext(ctx, path, args...)
 	if strings.TrimSpace(session.CWD) != "" {

@@ -5,14 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 const delegateTaskToolName = "delegate_task"
 const subagentApprovalBridgeSource = "subagent_approval_bridge"
+const subagentParentResumeWatcherMaxErrors = 20
 
 var subagentAgentNamePool = []string{"Neo", "Trinity", "Morpheus", "Niobe", "Seraph", "Oracle", "Link", "Switch", "Apoc", "Tank", "Dozer", "Mouse"}
 
@@ -322,35 +325,68 @@ func decodeSubagentApprovalBridge(approval Approval) (subagentApprovalBridgePara
 }
 
 func (c *Core) resumeParentAfterSubagentTerminal(ctx context.Context, task SubagentTask) error {
-	status, err := c.subagentTaskRunStatus(ctx, task)
+	done, err := c.resumeParentAfterSubagentStatus(ctx, task)
 	if err != nil {
 		return err
 	}
-	if subagentRunStatusTerminal(status) {
-		return c.startRun(ctx, task.ParentRunID)
+	if done {
+		return nil
 	}
-	if status == RunStatusWaitingApproval {
-		return c.mirrorPendingSubagentApproval(ctx, task)
-	}
-	go c.waitForSubagentTerminalAndResumeParent(task)
+	safego.Go("core.subagents.parentResumeWatcher", func() {
+		c.waitForSubagentTerminalAndResumeParent(task)
+	})
 	return nil
+}
+
+func (c *Core) resumeParentAfterSubagentStatus(ctx context.Context, task SubagentTask) (done bool, err error) {
+	parentRunID := strings.TrimSpace(task.ParentRunID)
+	if parentRunID == "" {
+		return true, nil
+	}
+	parentRun, err := c.store.GetRun(ctx, parentRunID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return true, nil
+		}
+		return false, err
+	}
+	if subagentRunStatusTerminal(parentRun.Status) {
+		return true, nil
+	}
+
+	childRun, err := c.store.GetRun(ctx, task.ChildRunID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return true, nil
+		}
+		return false, err
+	}
+	if subagentRunStatusTerminal(childRun.Status) {
+		return true, c.startRun(ctx, parentRunID)
+	}
+	if childRun.Status == RunStatusWaitingApproval {
+		return true, c.mirrorPendingSubagentApproval(ctx, task)
+	}
+	return false, nil
 }
 
 func (c *Core) waitForSubagentTerminalAndResumeParent(task SubagentTask) {
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 	ctx := context.Background()
+	consecutiveErrors := 0
 	for range ticker.C {
-		status, err := c.subagentTaskRunStatus(ctx, task)
+		done, err := c.resumeParentAfterSubagentStatus(ctx, task)
 		if err != nil {
+			consecutiveErrors++
+			log.Printf("core.subagents.parentResumeWatcher: task_id=%q parent_run_id=%q child_run_id=%q consecutive_errors=%d: %v", task.ID, task.ParentRunID, task.ChildRunID, consecutiveErrors, err)
+			if done || consecutiveErrors >= subagentParentResumeWatcherMaxErrors {
+				return
+			}
 			continue
 		}
-		if subagentRunStatusTerminal(status) {
-			_ = c.startRun(ctx, task.ParentRunID)
-			return
-		}
-		if status == RunStatusWaitingApproval {
-			_ = c.mirrorPendingSubagentApproval(ctx, task)
+		consecutiveErrors = 0
+		if done {
 			return
 		}
 	}

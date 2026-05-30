@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 type LiveEvent struct {
@@ -105,7 +107,9 @@ func (c *Client) SubscribeEvents(ctx context.Context, sessionID string, afterID 
 
 	events := make(chan LiveEvent, 16)
 	errs := make(chan error, 1)
-	go readSSE(ctx, resp.Body, events, errs)
+	safego.Go("daemonclient.readSSE", func() {
+		readSSE(ctx, resp.Body, events, errs)
+	})
 	return events, errs, nil
 }
 
@@ -114,6 +118,17 @@ func readSSE(ctx context.Context, body io.ReadCloser, events chan<- LiveEvent, e
 	defer close(errs)
 	defer func() { _ = body.Close() }()
 
+	if !safego.Run("daemonclient.readSSE", func() {
+		readSSELoop(ctx, body, events, errs)
+	}) {
+		select {
+		case errs <- errors.New("daemon event stream reader panicked"):
+		default:
+		}
+	}
+}
+
+func readSSELoop(ctx context.Context, body io.Reader, events chan<- LiveEvent, errs chan<- error) {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 64*1024*1024)
 

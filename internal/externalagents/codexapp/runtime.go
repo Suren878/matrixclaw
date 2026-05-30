@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 type Runtime struct {
@@ -134,7 +135,9 @@ func (r *Runtime) Send(ctx context.Context, session externalagents.ExternalSessi
 	}
 
 	out := make(chan externalagents.Event, 64)
-	go r.forwardTurnEvents(ctx, out, session.ExternalThreadID, resp.Turn.ID)
+	safego.Go("codexapp.forwardTurnEvents", func() {
+		r.forwardTurnEvents(ctx, out, session.ExternalThreadID, resp.Turn.ID)
+	})
 	return out, nil
 }
 
@@ -196,6 +199,23 @@ func (r *Runtime) ensureClient(ctx context.Context) (*Client, error) {
 
 func (r *Runtime) forwardTurnEvents(ctx context.Context, out chan<- externalagents.Event, threadID string, turnID string) {
 	defer close(out)
+	if !safego.Run("codexapp.forwardTurnEvents", func() {
+		r.forwardTurnEventsLoop(ctx, out, threadID, turnID)
+	}) {
+		out <- externalagents.Event{
+			Kind:             externalagents.EventTurnFailed,
+			AgentID:          AgentID,
+			ExternalThreadID: threadID,
+			ExternalTurnID:   turnID,
+			Error:            "codex app-server event worker panicked",
+			At:               time.Now().UTC(),
+		}
+	}
+}
+
+func (r *Runtime) forwardTurnEventsLoop(ctx context.Context, out chan<- externalagents.Event, threadID string, turnID string) {
+	events, unsubscribe := r.client.SubscribeTurn(ctx, threadID, turnID)
+	defer unsubscribe()
 	for {
 		select {
 		case <-ctx.Done():
@@ -208,7 +228,7 @@ func (r *Runtime) forwardTurnEvents(ctx context.Context, out chan<- externalagen
 				At:               time.Now().UTC(),
 			}
 			return
-		case event, ok := <-r.client.Events():
+		case event, ok := <-events:
 			if !ok {
 				if err := r.client.Err(); err != nil {
 					out <- externalagents.Event{

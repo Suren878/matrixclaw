@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAgentAvailableRejectsMacOSAppBundlePathWithoutExecutingIt(t *testing.T) {
@@ -53,6 +54,55 @@ func TestStartReturnsLookupErrorWithoutExecutingOriginalPath(t *testing.T) {
 	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
 		t.Fatalf("app bundle path was executed, marker err = %v", statErr)
 	}
+}
+
+func TestAppServerProcessExitSetsClientError(t *testing.T) {
+	script := writeExecutableScript(t, "exit-now", "#!/bin/sh\nexit 42\n")
+
+	client, err := Start(context.Background(), ProcessOptions{Path: script, Args: []string{"app-server"}})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer client.Close()
+
+	waitForClientDone(t, client)
+	err = client.Err()
+	if err == nil || !strings.Contains(err.Error(), "codex app-server exited") {
+		t.Fatalf("Client.Err() = %v, want app-server exit error", err)
+	}
+}
+
+func TestAppServerProcessCloseIsIdempotent(t *testing.T) {
+	script := writeExecutableScript(t, "sleep-now", "#!/bin/sh\nsleep 10\n")
+
+	client, err := Start(context.Background(), ProcessOptions{Path: script, Args: []string{"app-server"}})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	firstErr := client.Close()
+	secondErr := client.Close()
+
+	if secondErr != nil && strings.Contains(secondErr.Error(), "Wait was already called") {
+		t.Fatalf("second Close error = %v, want idempotent close without second Wait", secondErr)
+	}
+	if firstErr != nil && secondErr != nil && firstErr.Error() != secondErr.Error() {
+		t.Fatalf("Close errors differ: first %v, second %v", firstErr, secondErr)
+	}
+
+	select {
+	case <-client.done:
+	case <-time.After(time.Second):
+		t.Fatalf("client done did not close after process Close")
+	}
+}
+
+func writeExecutableScript(t *testing.T, name string, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+	return path
 }
 
 func shellQuote(value string) string {
