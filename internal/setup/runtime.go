@@ -83,7 +83,7 @@ func (m *systemdUserDaemonManager) Apply(ctx context.Context, setupPath string, 
 	summary := daemonConfiguredSummary(cfg)
 	warnings := []string{}
 
-	if _, _, err := writeDaemonEnvironmentFile(setupPath, cfg); err != nil {
+	if err := writeDaemonEnvironmentFile(setupPath, cfg); err != nil {
 		return summary, warnings, err
 	}
 

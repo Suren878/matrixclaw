@@ -87,7 +87,7 @@ func ResolveModelMetadata(providerID string, providerType string, modelID string
 
 	reasoningEfforts := cleanReasoningEfforts(liveMetadata.ReasoningEfforts)
 	if len(reasoningEfforts) == 0 {
-		reasoningEfforts = reasoningEffortsForProviderModel(providerID, policy.RuntimeProviderType, normalizedModelID, runtimeCapabilities)
+		reasoningEfforts = reasoningEffortsForProviderModel(providerID, normalizedModelID, runtimeCapabilities)
 	}
 	if runtimeCapabilities.ReasoningEffort && len(reasoningEfforts) == 0 {
 		runtimeCapabilities.ReasoningEffort = false

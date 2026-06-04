@@ -30,7 +30,7 @@ func (d *Dispatcher) handleStorage(ctx context.Context, args string) (Result, er
 	case "temp-delete-confirm":
 		return d.storageTempDelete(ctx, rest)
 	case "temp-cleanup":
-		return d.storageTempCleanup(ctx)
+		return d.storageTempCleanup()
 	case "temp-cleanup-confirm":
 		return d.storageTempCleanupConfirmed(ctx)
 	case "temp-cleanup-settings":

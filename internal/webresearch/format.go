@@ -40,7 +40,7 @@ func FormatResult(result ResearchResult) string {
 	}
 	if len(result.Warnings) > 0 {
 		b.WriteString("\nwarnings:\n")
-		for _, warning := range boundedStrings(result.Warnings, 8, 220) {
+		for _, warning := range boundedStrings(result.Warnings, 8) {
 			b.WriteString("- ")
 			b.WriteString(warning)
 			b.WriteByte('\n')
@@ -48,7 +48,7 @@ func FormatResult(result ResearchResult) string {
 	}
 	if len(result.NextActions) > 0 {
 		b.WriteString("\nnext_actions:\n")
-		for _, action := range boundedStrings(result.NextActions, 6, 220) {
+		for _, action := range boundedStrings(result.NextActions, 6) {
 			b.WriteString("- ")
 			b.WriteString(action)
 			b.WriteByte('\n')

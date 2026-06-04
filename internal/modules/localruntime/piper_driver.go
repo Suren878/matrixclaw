@@ -110,7 +110,7 @@ func (piperDriver) managedBinaryPath(r *Runtime, provider setup.VoiceProviderOpt
 }
 
 func (piperDriver) voiceBinaryPath(r *Runtime, provider setup.VoiceProviderOption) (string, error) {
-	return localVoiceBinaryPath(r, provider, nil, r.managedPiperBinaryPath)
+	return localVoiceBinaryPath(provider, nil, r.managedPiperBinaryPath)
 }
 
 func (piperDriver) processNames(provider setup.VoiceProviderOption) []string {

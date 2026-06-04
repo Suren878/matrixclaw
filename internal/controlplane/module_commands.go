@@ -59,9 +59,8 @@ func storageClearConfirmCommand() string {
 	return storageCommand("clear-confirm")
 }
 
-func storageTempCommand(parts ...string) string {
-	values := append([]string{"temp"}, parts...)
-	return storageCommand(values...)
+func storageTempCommand() string {
+	return storageCommand("temp")
 }
 
 func storageTempFileCommand(tempPath string) string {

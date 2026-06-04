@@ -117,7 +117,7 @@ func (d *Dispatcher) handleSession(ctx context.Context, externalKey string, args
 		if sessionID == "" {
 			return Result{Handled: true, Text: "Usage: /session menu <id>"}, nil
 		}
-		return d.handleSessionMenu(ctx, externalKey, sessionID)
+		return d.handleSessionMenu(ctx, sessionID)
 	case "use":
 		sessionID, _ := firstCommandToken(rest)
 		if sessionID == "" {
@@ -240,7 +240,7 @@ func parseSessionTarget(value string) sessionTarget {
 	}
 }
 
-func (d *Dispatcher) handleSessionMenu(ctx context.Context, externalKey string, sessionID string) (Result, error) {
+func (d *Dispatcher) handleSessionMenu(ctx context.Context, sessionID string) (Result, error) {
 	session, err := d.findSession(ctx, sessionID)
 	if err != nil {
 		return Result{}, err

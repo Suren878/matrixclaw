@@ -237,8 +237,8 @@ func (e *Engine) Status(ctx context.Context, request StatusRequest) (ResearchRes
 		Summary:     session.Summary,
 		Facts:       boundedFacts(facts),
 		Sources:     boundedSources(sources),
-		Warnings:    boundedStrings(warnings, 8, 220),
-		NextActions: boundedStrings(nextActions, 6, 220),
+		Warnings:    boundedStrings(warnings, 8),
+		NextActions: boundedStrings(nextActions, 6),
 	}, nil
 }
 
@@ -596,7 +596,7 @@ func (e *Engine) executeResearch(ctx context.Context, session ResearchSession, r
 		Summary:     boundText(summary.Summary, 900),
 		Facts:       boundedFacts(summary.Facts),
 		Sources:     boundedSources(sources),
-		Warnings:    boundedStrings(warnings, 8, 220),
+		Warnings:    boundedStrings(warnings, 8),
 		NextActions: nextActions,
 	}, nil
 }
@@ -895,13 +895,13 @@ func boundedSources(sources []Source) []Source {
 	return out
 }
 
-func boundedStrings(values []string, limit int, maxChars int) []string {
+func boundedStrings(values []string, limit int) []string {
 	if len(values) > limit {
 		values = values[:limit]
 	}
 	out := make([]string, 0, len(values))
 	for _, value := range values {
-		if value = boundText(value, maxChars); value != "" {
+		if value = boundText(value, 220); value != "" {
 			out = append(out, value)
 		}
 	}

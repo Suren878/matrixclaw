@@ -143,7 +143,7 @@ func markProviderRuntimeUnavailable(provider setup.VoiceProviderOption, detail s
 	return provider, true
 }
 
-func localVoiceBinaryPath(r *Runtime, provider setup.VoiceProviderOption, runtimeInstalled func() bool, managed func() string) (string, error) {
+func localVoiceBinaryPath(provider setup.VoiceProviderOption, runtimeInstalled func() bool, managed func() string) (string, error) {
 	if runtimeInstalled != nil && !runtimeInstalled() {
 		return "", fmt.Errorf("%s runtime is not installed", provider.Name)
 	}

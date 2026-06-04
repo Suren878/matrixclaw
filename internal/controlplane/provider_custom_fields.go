@@ -156,7 +156,7 @@ func customProviderFormFieldsForProvider(data setup.ProviderFormState, keyStatus
 			ReasoningEffort: includeReasoningEffort,
 			ToolCalling:     includeToolProfile,
 		}
-		return customProviderFormFieldsFromSpec(data, keyStatus, editCommand, setup.ProviderFormSpecFromInput(setup.ProviderFormSpecInput{
+		return customProviderFormFieldsFromSpec(keyStatus, editCommand, setup.ProviderFormSpecFromInput(setup.ProviderFormSpecInput{
 			ID:                providerID,
 			CatalogID:         catalogID,
 			Name:              data.Name,
@@ -187,10 +187,10 @@ func customProviderFormFieldsForProvider(data setup.ProviderFormState, keyStatus
 		Capabilities:      providers.Capabilities{ReasoningEffort: includeReasoningEffort, ToolCalling: includeToolProfile},
 		CapabilitiesKnown: true,
 	})
-	return customProviderFormFieldsFromSpec(data, keyStatus, editCommand, spec)
+	return customProviderFormFieldsFromSpec(keyStatus, editCommand, spec)
 }
 
-func customProviderFormFieldsFromSpec(data setup.ProviderFormState, keyStatus string, editCommand func(string) string, spec setup.ProviderFormSpec) []FormField {
+func customProviderFormFieldsFromSpec(keyStatus string, editCommand func(string) string, spec setup.ProviderFormSpec) []FormField {
 	viewFields := setup.ProviderFormViewFields(spec, setup.ProviderFormViewOptions{
 		APIKeyStatus:       keyStatus,
 		ShowRequiredStatus: true,

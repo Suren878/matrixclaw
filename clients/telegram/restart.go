@@ -8,7 +8,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/commandcatalog"
 )
 
-func (w *Worker) dispatchRestartCommandAndEdit(ctx context.Context, target chatTarget, messageID int64) error {
+func (w *Worker) dispatchRestartCommandAndEdit(target chatTarget, messageID int64) error {
 	log.Printf("telegram: daemon restart requested chat=%d message=%d", target.chatID, messageID)
 	telegramCtx, cancel := context.WithTimeout(context.Background(), defaultTelegramHTTPTimeout)
 	defer cancel()

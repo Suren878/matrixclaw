@@ -10,7 +10,7 @@ import (
 
 func (m *systemdUserDaemonManager) Restart(ctx context.Context, setupPath string, cfg Config) (DaemonSummary, error) {
 	summary := daemonConfiguredSummary(cfg)
-	if _, _, err := writeDaemonEnvironmentFile(setupPath, cfg); err != nil {
+	if err := writeDaemonEnvironmentFile(setupPath, cfg); err != nil {
 		return summary, err
 	}
 

@@ -77,7 +77,7 @@ func voiceModulePickerKind(moduleID string) PickerKind {
 	}
 }
 
-func voiceProviderPickerTitle(module setup.VoiceModuleDescriptor, provider setup.VoiceProviderOption) string {
+func voiceProviderPickerTitle(provider setup.VoiceProviderOption) string {
 	return provider.Name
 }
 

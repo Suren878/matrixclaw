@@ -47,24 +47,22 @@ func (w *Worker) startMonitorWithDelivery(ctx context.Context, target chatTarget
 	w.mu.Unlock()
 
 	safego.Go("telegram.monitorRun", func() {
-		if err := w.monitorRun(monitorCtx, target, sessionID, runID, state); err != nil && monitorCtx.Err() == nil {
-			log.Printf("telegram: run monitor %s failed: %v", runID, err)
-		}
+		w.monitorRun(monitorCtx, target, sessionID, runID, state)
 	})
 }
 
-func (w *Worker) monitorRun(ctx context.Context, target chatTarget, sessionID string, runID string, state *runDeliveryState) error {
+func (w *Worker) monitorRun(ctx context.Context, target chatTarget, sessionID string, runID string, state *runDeliveryState) {
 	var afterID uint64
 	for {
 		done, err := w.monitorRunEvents(ctx, target, sessionID, runID, state, &afterID)
 		if done || ctx.Err() != nil {
-			return nil
+			return
 		}
 		if err != nil {
 			log.Printf("telegram: live monitor %s failed: %v", runID, err)
 		}
 		if !sleepContext(ctx, w.config.PollRetryDelay) {
-			return nil
+			return
 		}
 	}
 }

@@ -91,16 +91,16 @@ func loadBootstrap() (bootstrapConfig, error) {
 		cfg.ExternalAgents = setupCfg.Modules
 	}
 
-	if addr := strings.TrimSpace(getenv("MATRIXCLAW_HTTP_ADDR", "")); addr != "" {
+	if addr := strings.TrimSpace(os.Getenv("MATRIXCLAW_HTTP_ADDR")); addr != "" {
 		cfg.Addr = addr
 	}
-	if dbPath := strings.TrimSpace(getenv("MATRIXCLAW_DB_PATH", "")); dbPath != "" {
+	if dbPath := strings.TrimSpace(os.Getenv("MATRIXCLAW_DB_PATH")); dbPath != "" {
 		cfg.DBPath = dbPath
 	}
-	if timezone := strings.TrimSpace(getenv("MATRIXCLAW_TIMEZONE", "")); timezone != "" {
+	if timezone := strings.TrimSpace(os.Getenv("MATRIXCLAW_TIMEZONE")); timezone != "" {
 		cfg.Timezone = timezone
 	}
-	if token := strings.TrimSpace(getenv("MATRIXCLAW_API_TOKEN", "")); token != "" {
+	if token := strings.TrimSpace(os.Getenv("MATRIXCLAW_API_TOKEN")); token != "" {
 		cfg.APIToken = token
 	}
 	if strings.TrimSpace(cfg.Timezone) == "" {
@@ -144,13 +144,6 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func getenv(key string, fallback string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return fallback
 }
 
 func allowRemoteHTTP() bool {

@@ -6,9 +6,12 @@ import (
 	"testing"
 )
 
-func writeTestSkill(t *testing.T, root string, name string, description string, body string) string {
+func writeTestSkill(t *testing.T, root string) string {
 	t.Helper()
+	name := "deploy-helper"
 	dir := filepath.Join(root, name)
+	description := "Guides safe deployments"
+	body := "Use rollout checks."
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +30,7 @@ func TestServiceInstallSearchAndTrustTransitions(t *testing.T) {
 	}
 	defer service.Close()
 
-	source := writeTestSkill(t, tmp, "deploy-helper", "Guides safe deployments", "Use rollout checks.")
+	source := writeTestSkill(t, tmp)
 	installed, err := service.InstallLocal(source, InstallOptions{Provenance: "local-test"})
 	if err != nil {
 		t.Fatalf("InstallLocal() error = %v", err)
@@ -82,7 +85,7 @@ func TestPromptContextLoadsExplicitTrustedSkillBody(t *testing.T) {
 	}
 	defer service.Close()
 
-	source := writeTestSkill(t, tmp, "deploy-helper", "Guides safe deployments", "Use rollout checks.")
+	source := writeTestSkill(t, tmp)
 	installed, err := service.InstallLocal(source, InstallOptions{})
 	if err != nil {
 		t.Fatalf("InstallLocal() error = %v", err)
@@ -111,7 +114,7 @@ func TestDisabledSkillExcludedFromSearchPromptAndUse(t *testing.T) {
 	}
 	defer service.Close()
 
-	source := writeTestSkill(t, tmp, "deploy-helper", "Guides safe deployments", "Use rollout checks.")
+	source := writeTestSkill(t, tmp)
 	installed, err := service.InstallLocal(source, InstallOptions{TrustState: TrustTrusted})
 	if err != nil {
 		t.Fatalf("InstallLocal() error = %v", err)
@@ -149,7 +152,7 @@ func TestSessionUseAndUnloadArePerSession(t *testing.T) {
 	}
 	defer service.Close()
 
-	source := writeTestSkill(t, tmp, "deploy-helper", "Guides safe deployments", "Use rollout checks.")
+	source := writeTestSkill(t, tmp)
 	installed, err := service.InstallLocal(source, InstallOptions{TrustState: TrustTrusted})
 	if err != nil {
 		t.Fatalf("InstallLocal() error = %v", err)
@@ -215,7 +218,7 @@ func TestUpdateBodyRewritesSkillAndSearchIndex(t *testing.T) {
 	}
 	defer service.Close()
 
-	source := writeTestSkill(t, tmp, "deploy-helper", "Guides safe deployments", "Use rollout checks.")
+	source := writeTestSkill(t, tmp)
 	installed, err := service.InstallLocal(source, InstallOptions{TrustState: TrustTrusted})
 	if err != nil {
 		t.Fatalf("InstallLocal() error = %v", err)

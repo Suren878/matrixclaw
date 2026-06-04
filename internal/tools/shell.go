@@ -218,7 +218,7 @@ func (e *jobOutputExecutor) Execute(ctx context.Context, call Call) (Result, err
 		ticker := time.NewTicker(50 * time.Millisecond)
 		defer ticker.Stop()
 		for {
-			_, done, _, _ := job.snapshot()
+			_, done, _ := job.snapshot()
 			if done {
 				break
 			}
@@ -229,7 +229,7 @@ func (e *jobOutputExecutor) Execute(ctx context.Context, call Call) (Result, err
 			}
 		}
 	}
-	output, done, _, jobErr := job.snapshot()
+	output, done, jobErr := job.snapshot()
 	content := trimOutput(output)
 	if content == "" {
 		content = "no output"
@@ -396,10 +396,10 @@ func IsProcessProbeCommand(command string) bool {
 	}
 }
 
-func (j *jobState) snapshot() (string, bool, time.Time, error) {
+func (j *jobState) snapshot() (string, bool, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	return j.output.String(), j.done, j.finishedAt, j.err
+	return j.output.String(), j.done, j.err
 }
 
 func trimOutput(value string) string {

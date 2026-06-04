@@ -53,12 +53,12 @@ func (w *Worker) handleTextMessage(ctx context.Context, message *Message) error 
 		return err
 	}
 	if isDaemonRestartCommand(text) {
-		return w.dispatchRestartCommandAndEdit(ctx, target, 0)
+		return w.dispatchRestartCommandAndEdit(target, 0)
 	}
 	if result, err := w.dispatcher().Handle(ctx, target.externalKey, text); err != nil {
 		return w.sendText(ctx, target, fmt.Sprintf("Command failed: %v", err))
 	} else if result.Handled {
-		return w.renderCommandResult(ctx, target, 0, result)
+		return w.renderCommandResult(ctx, target, result)
 	}
 	return w.sendUserMessage(ctx, target, text)
 }
@@ -439,9 +439,7 @@ func (w *Worker) sendUserMessageParts(ctx context.Context, target chatTarget, te
 	result, err := daemon.SendMessageParts(ctx, "", text, parts, w.config.WorkingDir)
 	if err != nil {
 		if daemonclient.IsAPIStatus(err, http.StatusConflict) {
-			if handled, handleErr := w.handleSessionSelectionRequired(ctx, target); handled || handleErr != nil {
-				return handleErr
-			}
+			return w.handleSessionSelectionRequired(ctx, target)
 		}
 		return w.sendText(ctx, target, fmt.Sprintf("Request failed: %v", err))
 	}
@@ -499,24 +497,24 @@ func splitTelegramCommand(text string) (string, string, bool) {
 	return strings.ToLower(strings.TrimSpace(command)), args, true
 }
 
-func (w *Worker) handleSessionSelectionRequired(ctx context.Context, target chatTarget) (bool, error) {
+func (w *Worker) handleSessionSelectionRequired(ctx context.Context, target chatTarget) error {
 	daemon := w.daemon(target.externalKey)
 	sessions, err := daemon.ListSessions(ctx)
 	if err != nil {
-		return true, w.sendText(ctx, target, fmt.Sprintf("Load sessions failed: %v", err))
+		return w.sendText(ctx, target, fmt.Sprintf("Load sessions failed: %v", err))
 	}
 	if len(sessions) == 0 {
 		result, err := w.dispatcher().Handle(ctx, target.externalKey, catalogCommand(commandcatalog.CommandNewSession, ""))
 		if err != nil {
-			return true, w.sendText(ctx, target, fmt.Sprintf("Create session failed: %v", err))
+			return w.sendText(ctx, target, fmt.Sprintf("Create session failed: %v", err))
 		}
-		return true, w.renderCommandResult(ctx, target, 0, withSessionSelectionPrompt(result))
+		return w.renderCommandResult(ctx, target, withSessionSelectionPrompt(result))
 	}
 	result, err := w.dispatcher().Handle(ctx, target.externalKey, catalogCommand(commandcatalog.CommandSessions, ""))
 	if err != nil {
-		return true, w.sendText(ctx, target, fmt.Sprintf("Load sessions failed: %v", err))
+		return w.sendText(ctx, target, fmt.Sprintf("Load sessions failed: %v", err))
 	}
-	return true, w.renderCommandResult(ctx, target, 0, withSessionSelectionPrompt(result))
+	return w.renderCommandResult(ctx, target, withSessionSelectionPrompt(result))
 }
 
 func withSessionSelectionPrompt(result controlplane.Result) controlplane.Result {

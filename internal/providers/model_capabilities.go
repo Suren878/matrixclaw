@@ -108,7 +108,7 @@ func providerCapabilitiesFromRuntime(providerCapabilities Capabilities, runtimeC
 	}
 }
 
-func reasoningEffortsForProviderModel(providerID string, providerType string, modelID string, capabilities ModelCapabilities) []string {
+func reasoningEffortsForProviderModel(providerID string, modelID string, capabilities ModelCapabilities) []string {
 	if !capabilities.ReasoningEffort {
 		return nil
 	}

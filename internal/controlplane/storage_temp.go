@@ -87,7 +87,7 @@ func (d *Dispatcher) storageTempDelete(ctx context.Context, tempPath string) (Re
 	return Result{Handled: true, Text: "Deleted temporary file: " + entry.Path}, nil
 }
 
-func (d *Dispatcher) storageTempCleanup(ctx context.Context) (Result, error) {
+func (d *Dispatcher) storageTempCleanup() (Result, error) {
 	return Result{
 		Handled: true,
 		Confirm: deleteConfirmData("Delete all temporary files?", storageTempCleanupConfirmCommand(), storageTempCleanupSettingsCommand()),

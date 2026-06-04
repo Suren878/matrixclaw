@@ -97,11 +97,11 @@ func (w *Worker) sendFormattedTelegramMessage(ctx context.Context, req SendMessa
 func (w *Worker) editFormattedMessage(ctx context.Context, req EditMessageTextRequest, formatted telegramFormattedText) error {
 	req.Text = formatted.Text
 	req.ParseMode = formatted.ParseMode
-	_, err := w.editTelegramMessage(ctx, req)
+	err := w.editTelegramMessage(ctx, req)
 	if isTelegramParseError(err) {
 		req.Text = formatted.Plain
 		req.ParseMode = ""
-		_, err = w.editTelegramMessage(ctx, req)
+		err = w.editTelegramMessage(ctx, req)
 	}
 	return err
 }

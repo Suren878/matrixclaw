@@ -205,7 +205,7 @@ func (d *Dispatcher) voiceModuleProviderPicker(ctx context.Context, moduleID str
 	for _, provider := range module.Providers {
 		picker.Item(PickerItem{
 			ID:       provider.ID,
-			Title:    voiceProviderPickerTitle(module, provider),
+			Title:    voiceProviderPickerTitle(provider),
 			Info:     voiceProviderPickerInfo(module, provider),
 			Selected: provider.ID == module.ProviderID,
 		})
@@ -239,7 +239,7 @@ func (d *Dispatcher) voiceModuleProviderSelectPicker(ctx context.Context, module
 		selected := module.Enabled && provider.ID == module.ProviderID
 		picker.Item(PickerItem{
 			ID:       provider.ID,
-			Title:    voiceProviderPickerTitle(module, provider),
+			Title:    voiceProviderPickerTitle(provider),
 			Info:     voiceProviderSelectionInfo(module.ID, provider, selected),
 			Selected: selected,
 			Command:  voiceModuleCommand(module.ID, "set-provider", provider.ID),
@@ -467,7 +467,7 @@ func (d *Dispatcher) voiceModuleProviderSetup(ctx context.Context, moduleID stri
 		for _, provider := range module.Providers {
 			picker.Item(PickerItem{
 				ID:      provider.ID,
-				Title:   voiceProviderPickerTitle(module, provider),
+				Title:   voiceProviderPickerTitle(provider),
 				Info:    voiceProviderSetupInfo(module.ID, provider),
 				Command: voiceModuleCommand(module.ID, "provider-setup", provider.ID),
 			})

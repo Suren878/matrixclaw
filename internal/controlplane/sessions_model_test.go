@@ -52,7 +52,7 @@ func TestSessionMenuIncludesModelAction(t *testing.T) {
 		RuntimeID: core.SessionRuntimeExternalAgent,
 		ModelID:   "sonnet",
 	}}}
-	result, err := New(runtime, "").handleSessionMenu(context.Background(), "terminal", "s1")
+	result, err := New(runtime, "").handleSessionMenu(context.Background(), "s1")
 	if err != nil {
 		t.Fatal(err)
 	}

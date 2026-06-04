@@ -78,7 +78,7 @@ func (s *LocalStore) SaveTemporary(rawPath string, content []byte, title string,
 		return TempEntry{}, err
 	}
 	if s.tempAuto {
-		if _, err := s.cleanupExpiredTemporaryLocked(index, now); err != nil {
+		if err := s.cleanupExpiredTemporaryLocked(index, now); err != nil {
 			return TempEntry{}, err
 		}
 	}
@@ -120,7 +120,7 @@ func (s *LocalStore) ListTemporary(limit int) (TempListResult, error) {
 		return TempListResult{}, err
 	}
 	if s.tempAuto {
-		if _, err := s.cleanupExpiredTemporaryLocked(index, time.Now().UTC()); err != nil {
+		if err := s.cleanupExpiredTemporaryLocked(index, time.Now().UTC()); err != nil {
 			return TempListResult{}, err
 		}
 	}
@@ -207,7 +207,7 @@ func (s *LocalStore) UpdateTemporarySettings(autoCleanup *bool, ttlDays int64, m
 		return TempSettings{}, err
 	}
 	if s.tempAuto && s.tempMaxBytes > 0 {
-		if _, err := s.cleanupExpiredTemporaryLocked(index, time.Now().UTC()); err != nil {
+		if err := s.cleanupExpiredTemporaryLocked(index, time.Now().UTC()); err != nil {
 			return TempSettings{}, err
 		}
 		if err := s.enforceTemporaryLimitLocked(index); err != nil {
@@ -339,19 +339,16 @@ func (s *LocalStore) saveTempIndexLocked(index map[string]TempEntry) error {
 	return saveJSON(s.tempIndex, index)
 }
 
-func (s *LocalStore) cleanupExpiredTemporaryLocked(index map[string]TempEntry, now time.Time) (CleanupResult, error) {
-	var result CleanupResult
+func (s *LocalStore) cleanupExpiredTemporaryLocked(index map[string]TempEntry, now time.Time) error {
 	for path, entry := range index {
 		if now.Before(entry.ExpiresAt) {
 			continue
 		}
-		result.DeletedFiles++
-		result.FreedBytes += entry.Size
 		if err := s.deleteTemporaryLocked(index, path); err != nil {
-			return result, err
+			return err
 		}
 	}
-	return result, nil
+	return nil
 }
 
 func (s *LocalStore) cleanupAllTemporaryLocked(index map[string]TempEntry) CleanupResult {

@@ -9,7 +9,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 )
 
-func (w *Worker) handleCallbackQuery(ctx context.Context, cq *CallbackQuery) error {
+func (w *Worker) handleCallbackQuery(cq *CallbackQuery) error {
 	if cq == nil || cq.Message == nil || !w.allowCallback(cq) {
 		return nil
 	}
@@ -71,7 +71,7 @@ func (w *Worker) handlePickerPageCallback(ctx context.Context, target chatTarget
 
 func (w *Worker) dispatchPickerCommand(ctx context.Context, target chatTarget, messageID int64, command string) error {
 	if isDaemonRestartCommand(command) {
-		return w.dispatchRestartCommandAndEdit(ctx, target, messageID)
+		return w.dispatchRestartCommandAndEdit(target, messageID)
 	}
 	if isContextCompactCommand(command) {
 		if err := w.editOrSend(ctx, target, messageID, compactProgressText, nil); err != nil {

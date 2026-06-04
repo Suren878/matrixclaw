@@ -36,7 +36,7 @@ func ResolveOpenAIChatOptions(profile ProviderProfile, baseURL string, model str
 	if options.MaxTokensField == OpenAIChatMaxTokensAuto {
 		options.MaxTokensField = resolveOpenAIChatMaxTokensField(profile, baseURL, model)
 	}
-	options.RequestQuirks = normalizeOpenAIChatRequestQuirks(options.RequestQuirks)
+	options.RequestQuirks = normalizeOpenAIChatRequestQuirks()
 	return options
 }
 
@@ -44,11 +44,11 @@ func cloneOpenAIChatOptions(options OpenAIChatOptions) OpenAIChatOptions {
 	return OpenAIChatOptions{
 		DefaultHeaders: copyStringMap(options.DefaultHeaders),
 		MaxTokensField: normalizeOpenAIChatMaxTokensField(options.MaxTokensField),
-		RequestQuirks:  normalizeOpenAIChatRequestQuirks(options.RequestQuirks),
+		RequestQuirks:  normalizeOpenAIChatRequestQuirks(),
 	}
 }
 
-func normalizeOpenAIChatRequestQuirks(quirks OpenAIChatRequestQuirks) OpenAIChatRequestQuirks {
+func normalizeOpenAIChatRequestQuirks() OpenAIChatRequestQuirks {
 	return OpenAIChatRequestQuirks{
 		RetryUnsupportedReasoningEffort: true,
 		RetryMaxTokensField:             true,

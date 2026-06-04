@@ -121,7 +121,7 @@ func (supertonicDriver) managedBinaryPath(r *Runtime, provider setup.VoiceProvid
 }
 
 func (supertonicDriver) voiceBinaryPath(r *Runtime, provider setup.VoiceProviderOption) (string, error) {
-	return localVoiceBinaryPath(r, provider, r.supertonicModelCacheComplete, r.managedSupertonicBinaryPath)
+	return localVoiceBinaryPath(provider, r.supertonicModelCacheComplete, r.managedSupertonicBinaryPath)
 }
 
 func (supertonicDriver) processNames(provider setup.VoiceProviderOption) []string {

@@ -45,7 +45,7 @@ func (w *Worker) handlePendingPrompt(ctx context.Context, target chatTarget, tex
 			if err != nil {
 				return true, w.sendText(ctx, target, fmt.Sprintf("Command failed: %v", err))
 			}
-			return true, w.renderCommandResult(ctx, target, 0, result)
+			return true, w.renderCommandResult(ctx, target, result)
 		}
 		return true, w.sendText(ctx, target, "Cancelled.")
 	}
@@ -58,5 +58,5 @@ func (w *Worker) handlePendingPrompt(ctx context.Context, target chatTarget, tex
 	if err != nil {
 		return true, w.sendText(ctx, target, fmt.Sprintf("Command failed: %v", err))
 	}
-	return true, w.renderCommandResult(ctx, target, 0, result)
+	return true, w.renderCommandResult(ctx, target, result)
 }

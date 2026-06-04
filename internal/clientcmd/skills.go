@@ -16,7 +16,7 @@ func runSkillsCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 	}
 	switch subcommand {
 	case "", "list":
-		return withSkillsService(stdout, stderr, binaryName, service, "skills list", func(svc *skills.Service) int {
+		return withSkillsService(stderr, binaryName, service, "skills list", func(svc *skills.Service) int {
 			items, err := svc.List(skills.SearchOptions{IncludeQuarantined: true, IncludeArchived: true, IncludeDisabled: true, Limit: 200})
 			if err != nil {
 				fmt.Fprintf(stderr, "%s: skills list: %v\n", binaryName, err)
@@ -27,7 +27,7 @@ func runSkillsCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 		})
 	case "search":
 		query := strings.Join(args[1:], " ")
-		return withSkillsService(stdout, stderr, binaryName, service, "skills search", func(svc *skills.Service) int {
+		return withSkillsService(stderr, binaryName, service, "skills search", func(svc *skills.Service) int {
 			items, err := svc.Search(query, skills.SearchOptions{Limit: 50})
 			if err != nil {
 				fmt.Fprintf(stderr, "%s: skills search: %v\n", binaryName, err)
@@ -41,7 +41,7 @@ func runSkillsCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 			fmt.Fprintf(stderr, "%s: skills show: ID is required\n", binaryName)
 			return 2
 		}
-		return withSkillsService(stdout, stderr, binaryName, service, "skills show", func(svc *skills.Service) int {
+		return withSkillsService(stderr, binaryName, service, "skills show", func(svc *skills.Service) int {
 			detail, err := svc.Get(args[1])
 			if err != nil {
 				fmt.Fprintf(stderr, "%s: skills show: %v\n", binaryName, err)
@@ -55,7 +55,7 @@ func runSkillsCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 			fmt.Fprintf(stderr, "%s: skills install: PATH is required\n", binaryName)
 			return 2
 		}
-		return withSkillsService(stdout, stderr, binaryName, service, "skills install", func(svc *skills.Service) int {
+		return withSkillsService(stderr, binaryName, service, "skills install", func(svc *skills.Service) int {
 			items, err := svc.InstallPath(args[1], skills.InstallOptions{Provenance: args[1]})
 			if err != nil {
 				fmt.Fprintf(stderr, "%s: skills install: %v\n", binaryName, err)
@@ -69,7 +69,7 @@ func runSkillsCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 			fmt.Fprintf(stderr, "%s: skills %s: ID is required\n", binaryName, subcommand)
 			return 2
 		}
-		return withSkillsService(stdout, stderr, binaryName, service, "skills "+subcommand, func(svc *skills.Service) int {
+		return withSkillsService(stderr, binaryName, service, "skills "+subcommand, func(svc *skills.Service) int {
 			if err := applySkillCLIAction(svc, subcommand, args[1]); err != nil {
 				fmt.Fprintf(stderr, "%s: skills %s: %v\n", binaryName, subcommand, err)
 				return 1
@@ -78,7 +78,7 @@ func runSkillsCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 			return 0
 		})
 	case "usage":
-		return withSkillsService(stdout, stderr, binaryName, service, "skills usage", func(svc *skills.Service) int {
+		return withSkillsService(stderr, binaryName, service, "skills usage", func(svc *skills.Service) int {
 			usage, err := svc.Usage()
 			if err != nil {
 				fmt.Fprintf(stderr, "%s: skills usage: %v\n", binaryName, err)
@@ -88,7 +88,7 @@ func runSkillsCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 			return 0
 		})
 	case "curator":
-		return withSkillsService(stdout, stderr, binaryName, service, "skills curator", func(svc *skills.Service) int {
+		return withSkillsService(stderr, binaryName, service, "skills curator", func(svc *skills.Service) int {
 			result, err := svc.Curator()
 			if err != nil {
 				fmt.Fprintf(stderr, "%s: skills curator: %v\n", binaryName, err)
@@ -106,7 +106,7 @@ func runSkillsCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 	}
 }
 
-func withSkillsService(stdout io.Writer, stderr io.Writer, binaryName string, service *appsetup.Service, contextLabel string, fn func(*skills.Service) int) int {
+func withSkillsService(stderr io.Writer, binaryName string, service *appsetup.Service, contextLabel string, fn func(*skills.Service) int) int {
 	cfg, err := service.Load()
 	if err != nil {
 		return handleSetupReadError(stderr, binaryName, service, contextLabel, err)

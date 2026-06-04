@@ -84,7 +84,7 @@ func voiceModuleDescriptor(id string, title string, cfg VoiceModuleConfig) Voice
 	providerConfig := voiceProviderConfigByID(id, cfg, provider.ID)
 	status := "Disabled"
 	if cfg.Enabled {
-		status = voiceProviderRuntimeStatus(provider, providerConfig)
+		status = voiceProviderRuntimeStatus(provider)
 	}
 	providers := voiceProviders(id)
 	for i := range providers {
@@ -123,7 +123,7 @@ func normalizeVoiceModuleConfig(moduleID string, cfg VoiceModuleConfig) VoiceMod
 	for _, provider := range voiceProviders(moduleID) {
 		if provider.Local {
 			if _, ok := normalized[provider.ID]; !ok {
-				normalized[provider.ID] = defaultVoiceProviderConfig(moduleID, provider.ID)
+				normalized[provider.ID] = defaultVoiceProviderConfig(provider.ID)
 			}
 		}
 	}
@@ -142,7 +142,7 @@ func voiceProviderConfigByID(moduleID string, module VoiceModuleConfig, provider
 			return normalizeVoiceProviderConfig(moduleID, providerID, cfg)
 		}
 	}
-	return defaultVoiceProviderConfig(moduleID, providerID)
+	return defaultVoiceProviderConfig(providerID)
 }
 
 func normalizeVoiceProviderConfig(moduleID string, providerID string, cfg VoiceProviderConfig) VoiceProviderConfig {
@@ -160,7 +160,7 @@ func normalizeVoiceProviderConfig(moduleID string, providerID string, cfg VoiceP
 	cfg.BinaryPath = strings.TrimSpace(cfg.BinaryPath)
 	cfg.Endpoint = strings.TrimSpace(cfg.Endpoint)
 	cfg.RuntimeMode = normalizeVoiceRuntimeMode(cfg.RuntimeMode)
-	defaults := defaultVoiceProviderConfig(moduleID, providerID)
+	defaults := defaultVoiceProviderConfig(providerID)
 	if cfg.ModelID == "" {
 		cfg.ModelID = defaults.ModelID
 	}
@@ -234,7 +234,7 @@ func normalizeSupertonicLanguageCode(language string) string {
 	}
 }
 
-func defaultVoiceProviderConfig(moduleID string, providerID string) VoiceProviderConfig {
+func defaultVoiceProviderConfig(providerID string) VoiceProviderConfig {
 	switch normalizeVoiceProviderID(providerID) {
 	case "piper":
 		return VoiceProviderConfig{
@@ -361,7 +361,7 @@ func voiceProviders(moduleID string) []VoiceProviderOption {
 	}
 }
 
-func voiceProviderRuntimeStatus(provider VoiceProviderOption, cfg VoiceProviderConfig) string {
+func voiceProviderRuntimeStatus(provider VoiceProviderOption) string {
 	if !provider.Local {
 		return provider.Status
 	}

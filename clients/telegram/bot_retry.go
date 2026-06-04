@@ -18,16 +18,17 @@ func (w *Worker) sendTelegramMessage(ctx context.Context, req SendMessageRequest
 	return w.api.SendMessage(ctx, req)
 }
 
-func (w *Worker) editTelegramMessage(ctx context.Context, req EditMessageTextRequest) (EditMessageTextResponse, error) {
+func (w *Worker) editTelegramMessage(ctx context.Context, req EditMessageTextRequest) error {
 	req.ReplyMarkup = w.compactInlineKeyboardMarkup(req.ReplyMarkup)
-	response, err := w.api.EditMessageText(ctx, req)
+	_, err := w.api.EditMessageText(ctx, req)
 	if !shouldRetryTelegramAfter(err) {
-		return response, err
+		return err
 	}
 	if !sleepContext(ctx, telegramRetryAfter(err)) {
-		return EditMessageTextResponse{}, ctx.Err()
+		return ctx.Err()
 	}
-	return w.api.EditMessageText(ctx, req)
+	_, err = w.api.EditMessageText(ctx, req)
+	return err
 }
 
 func shouldRetryTelegramAfter(err error) bool {

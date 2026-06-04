@@ -41,41 +41,41 @@ func ImportDaemonEnvironmentFile(setupPath string, cfg Config) error {
 	return nil
 }
 
-func writeDaemonEnvironmentFile(setupPath string, cfg Config) (string, bool, error) {
+func writeDaemonEnvironmentFile(setupPath string, cfg Config) error {
 	path := DaemonEnvironmentFilePath(setupPath)
 	names := daemonEnvironmentNames(cfg)
 	if len(names) == 0 {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return path, false, fmt.Errorf("remove daemon environment file: %w", err)
+			return fmt.Errorf("remove daemon environment file: %w", err)
 		}
-		return path, false, nil
+		return nil
 	}
 
 	existing, err := loadDaemonEnvironmentFile(path)
 	if err != nil {
-		return path, true, err
+		return err
 	}
 	values, missing := daemonEnvironmentValues(names, existing)
 	if len(missing) > 0 {
-		return path, true, fmt.Errorf("daemon provider environment variable %s is required; export it and re-run setup", strings.Join(missing, ", "))
+		return fmt.Errorf("daemon provider environment variable %s is required; export it and re-run setup", strings.Join(missing, ", "))
 	}
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return path, true, fmt.Errorf("create daemon environment dir: %w", err)
+		return fmt.Errorf("create daemon environment dir: %w", err)
 	}
 	data := renderDaemonEnvironmentFile(names, values)
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(data), 0o600); err != nil {
-		return path, true, fmt.Errorf("write daemon environment file: %w", err)
+		return fmt.Errorf("write daemon environment file: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
-		return path, true, fmt.Errorf("install daemon environment file: %w", err)
+		return fmt.Errorf("install daemon environment file: %w", err)
 	}
 	if err := os.Chmod(path, 0o600); err != nil {
-		return path, true, fmt.Errorf("secure daemon environment file: %w", err)
+		return fmt.Errorf("secure daemon environment file: %w", err)
 	}
-	return path, true, nil
+	return nil
 }
 
 func daemonEnvironmentNames(cfg Config) []string {

@@ -60,7 +60,7 @@ func (w *Worker) pollOnce(ctx context.Context) error {
 
 func (w *Worker) handleUpdate(ctx context.Context, update Update) error {
 	if update.CallbackQuery != nil {
-		return w.handleCallbackQuery(ctx, update.CallbackQuery)
+		return w.handleCallbackQuery(update.CallbackQuery)
 	}
 	return w.handleTextMessage(ctx, update.Message)
 }
