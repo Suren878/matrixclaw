@@ -103,13 +103,13 @@ func defaultHighlighter(sty *surfacestyles.Styles) *highlightableMessageItem {
 	}
 }
 
-func renderUnifiedMessageLines(sty *surfacestyles.Styles, rendered string, focused bool, marker string, markerStyle lipgloss.Style) string {
+func renderUnifiedMessageLines(sty *surfacestyles.Styles, rendered string, focused bool, markerStyle lipgloss.Style) string {
 	lines := strings.Split(rendered, "\n")
 	firstContentLine := true
 	for i, line := range lines {
 		lineMarker := " "
 		if strings.TrimSpace(line) != "" && firstContentLine {
-			lineMarker = marker
+			lineMarker = "●"
 			firstContentLine = false
 		}
 		markerCell := markerStyle.Inline(true).Width(1).Render(lineMarker)

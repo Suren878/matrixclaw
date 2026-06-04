@@ -99,10 +99,10 @@ func (m *appModel) acknowledgeRestartDeliveryCmd(deliveryID string) tea.Cmd {
 	}
 }
 
-func (m *appModel) handleServerStatusRefresh(msg serverStatusRefreshMsg) tea.Cmd {
+func (m *appModel) handleServerStatusRefresh(msg serverStatusRefreshMsg) {
 	if msg.err != nil {
 		m.err = msg.err.Error()
-		return nil
+		return
 	}
 	if dialog, ok := m.dialog.Dialog(surfacedialog.ServerStatusInfoID).(*surfacedialog.Info); ok {
 		if len(msg.rows) > 0 {
@@ -111,7 +111,6 @@ func (m *appModel) handleServerStatusRefresh(msg serverStatusRefreshMsg) tea.Cmd
 			dialog.SetText(msg.text)
 		}
 	}
-	return nil
 }
 
 func (m *appModel) handleServerStatusTick() tea.Cmd {
@@ -121,12 +120,11 @@ func (m *appModel) handleServerStatusTick() tea.Cmd {
 	return nil
 }
 
-func (m *appModel) handleServerRestartRequest(msg serverRestartRequestMsg) tea.Cmd {
+func (m *appModel) handleServerRestartRequest(msg serverRestartRequestMsg) {
 	if msg.err != nil {
 		m.restartPending = false
 		m.setServerRestartDialogText("Daemon restart failed: " + msg.err.Error())
 	}
-	return nil
 }
 
 func (m *appModel) handleServerRestartTick() tea.Cmd {
@@ -168,12 +166,11 @@ func (m *appModel) handleServerRestartPoll(msg serverRestartPollMsg) tea.Cmd {
 	return nil
 }
 
-func (m *appModel) handleServerRestartAck(msg serverRestartAckMsg) tea.Cmd {
+func (m *appModel) handleServerRestartAck(msg serverRestartAckMsg) {
 	m.autoEditSessions = map[string]struct{}{}
 	if msg.err != nil {
 		m.err = msg.err.Error()
 	}
-	return nil
 }
 
 func (m *appModel) handleTerminalRestart(msg terminalRestartMsg) tea.Cmd {

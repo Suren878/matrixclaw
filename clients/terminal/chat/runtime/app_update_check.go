@@ -29,9 +29,9 @@ func (m *appModel) checkUpdateCmd() tea.Cmd {
 	}
 }
 
-func (m *appModel) handleUpdateCheck(msg updateCheckMsg) tea.Cmd {
+func (m *appModel) handleUpdateCheck(msg updateCheckMsg) {
 	if msg.err != nil || !msg.ok || m.updatePrompted {
-		return nil
+		return
 	}
 	m.updatePrompted = true
 	m.dialog.OpenDialog(surfacedialog.NewConfirmCommand(m.com, controlplane.ConfirmData{
@@ -40,7 +40,6 @@ func (m *appModel) handleUpdateCheck(msg updateCheckMsg) tea.Cmd {
 		CancelLabel:    "No",
 		ConfirmCommand: "/update install " + msg.update.Latest,
 	}))
-	return nil
 }
 
 func (m *appModel) handleUpdateCommand(command string) tea.Cmd {
@@ -80,19 +79,19 @@ func (m *appModel) installUpdateCmd(version string) tea.Cmd {
 	}
 }
 
-func (m *appModel) handleUpdateInstall(msg updateInstallMsg) tea.Cmd {
+func (m *appModel) handleUpdateInstall(msg updateInstallMsg) {
 	m.updateInstalling = false
 	if msg.err != nil {
 		if info, ok := m.dialog.Dialog(updateInfoDialogID).(*surfacedialog.Info); ok {
 			info.SetText("Update failed: " + msg.err.Error() + updateOutputSuffix(msg.output))
-			return nil
+			return
 		}
 		m.dialog.OpenDialog(surfacedialog.NewInfo(m.com, surfacedialog.InfoData{
 			ID:    updateInfoDialogID,
 			Title: "Update",
 			Text:  "Update failed: " + msg.err.Error() + updateOutputSuffix(msg.output),
 		}))
-		return nil
+		return
 	}
 	m.dialog.CloseDialog(updateInfoDialogID)
 	m.restartTUIPending = true
@@ -102,7 +101,6 @@ func (m *appModel) handleUpdateInstall(msg updateInstallMsg) tea.Cmd {
 		CancelLabel:    "No",
 		ConfirmCommand: "/restart confirm",
 	}))
-	return nil
 }
 
 func updateOutputSuffix(output string) string {

@@ -86,7 +86,7 @@ func (c *CompactSummaryMessageItem) RawRender(width int) string {
 }
 
 func (c *CompactSummaryMessageItem) Render(width int) string {
-	return renderUnifiedMessageLines(c.sty, c.RawRender(width), c.focused, "●", c.sty.Chat.Message.ToolMarker)
+	return renderUnifiedMessageLines(c.sty, c.RawRender(width), c.focused, c.sty.Chat.Message.ToolMarker)
 }
 
 func (c *CompactSummaryMessageItem) HandleKeyEvent(key tea.KeyPressMsg) (bool, tea.Cmd) {

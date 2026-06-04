@@ -20,13 +20,13 @@ func (m *model) renderSplash() string {
 		subtitle = "press enter to reopen setup"
 	}
 	popup := splashPopupStyle.Render(strings.Join([]string{
-		centerBlock(60, logoWordmark(60)),
+		centerBlock(logoWordmark(60)),
 		"",
-		centerBlock(60, setupSubtitleStyle.Render("One daemon. Thin clients. Real provider profiles.")),
+		centerBlock(setupSubtitleStyle.Render("One daemon. Thin clients. Real provider profiles.")),
 		"",
-		centerBlock(60, setupFooterStyle.Render(subtitle)),
+		centerBlock(setupFooterStyle.Render(subtitle)),
 		"",
-		centerBlock(60, splashEnterStyle.Render("ENTER")),
+		centerBlock(splashEnterStyle.Render("ENTER")),
 	}, "\n"))
 	box := centerRect(width, height, lipgloss.Width(popup), lipgloss.Height(popup))
 	background := m.renderRain(width, height, box)

@@ -53,7 +53,7 @@ runtime through Terminal, Telegram, or MCP.
 - **Memory and search:** the assistant can save approved durable memories and search previous sessions with `memory` and `session_search`.
 - **Usage ledger:** provider token usage is recorded when available.
 - **Storage module:** Telegram uploads and generated files land in local storage, with temporary files promoted only when needed.
-- **Web research module:** `web_research`, `web_research_ask`, and compatibility `web_search` / `web_fetch` tools with SQLite-backed facts/sources and runtime artifacts. Providers: DuckDuckGo (free, no key), Tavily (1 000 req/mo free), Serper (2 500 req/mo free), SearXNG (self-hosted). Configure from `/modules` without restarting.
+- **Web research and browser tools:** `web_research`, `web_research_ask`, and compatibility `web_search` / `web_fetch` tools with SQLite-backed facts/sources and runtime artifacts. Search providers: DuckDuckGo (free, no key), Tavily (1 000 req/mo free), Serper (2 500 req/mo free), SearXNG (self-hosted). Configure from `/modules` without restarting. When an MCP browser server is connected, MatrixClaw can also expose interactive browser tools for opening pages, clicking, typing, waiting, and screenshots.
 - **Local voice modules:** Piper and Supertonic TTS plus Whisper.cpp STT run locally, either per task to save RAM or as managed warm processes.
 - **MCP module:** connect external MCP servers as assistant tools, or expose matrixclaw tools to MCP hosts.
 - **Automation-ready:** reminders, scheduled AI tasks, deliveries, and future agent workflows.
@@ -174,8 +174,9 @@ Latest release highlights for `v0.1.14`:
   research engine and returns compact results.
 - Kept `web_search` as a compatibility search tool while making source-backed
   Q&A prefer `web_research` by default.
-- Added MCP browser adapter support so configured browser MCP servers can be
-  used as the dynamic-page fallback for web research.
+- Added MCP browser adapter support. Configured browser MCP servers can be used
+  as the dynamic-page fallback for web research, and their interactive browser
+  actions are exposed as normal MatrixClaw tools.
 - Connected subagent lifecycle events to the shared work layer, so
   `read_subagent_result` can return compact job summaries and references
   instead of replaying full child transcripts.
@@ -335,7 +336,27 @@ expose their remote tools to the assistant as normal matrixclaw tools. The first
 supported transports are stdio command servers and streamable HTTP endpoints.
 Remote tools are registered with prefixed IDs such as `mcp_browser_navigate`.
 
+With a browser MCP server such as Playwright enabled, MatrixClaw is not limited
+to text search and content extraction. The remote browser actions are registered
+as normal tools and can be used by the assistant for interactive page work:
+
+```text
+open / navigate URL
+click elements
+type into fields
+wait for page state
+take screenshots
+read rendered text or DOM snapshots
+```
+
+The exact tool IDs depend on the MCP server's own tool names. A browser server
+with remote tools named `navigate`, `click`, `type`, `screenshot`, and `wait`
+would appear as `mcp_browser_navigate`, `mcp_browser_click`,
+`mcp_browser_type`, `mcp_browser_screenshot`, and `mcp_browser_wait`. If the
+remote server already prefixes tool names, that prefix is preserved in the final
+MatrixClaw tool ID.
 Example `setup.json` fragment:
+
 
 ```json
 {

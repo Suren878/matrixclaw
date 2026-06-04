@@ -12,7 +12,7 @@ func (l *List) ScrollToBottom() {
 		return
 	}
 
-	lastOffsetIdx, lastOffsetLine, _ := l.lastOffsetItem()
+	lastOffsetIdx, lastOffsetLine := l.lastOffsetItem()
 	l.offsetIdx = lastOffsetIdx
 	l.offsetLine = lastOffsetLine
 }

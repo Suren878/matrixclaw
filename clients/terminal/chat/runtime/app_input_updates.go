@@ -44,13 +44,12 @@ func (m *appModel) handleNewSession() tea.Cmd {
 	return m.createSessionCmd()
 }
 
-func (m *appModel) handleAttachFiles() tea.Cmd {
+func (m *appModel) handleAttachFiles() {
 	if err := m.attachFilesFromEditorValue(); err != nil {
 		m.err = err.Error()
-		return nil
+		return
 	}
 	m.err = ""
-	return nil
 }
 
 func (m *appModel) handleEditorHeightChanged() tea.Cmd {

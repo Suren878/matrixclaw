@@ -192,7 +192,7 @@ func (t *baseToolMessageItem) RawRender(width int) string {
 }
 
 func (t *baseToolMessageItem) Render(width int) string {
-	return renderUnifiedMessageLines(t.sty, t.RawRender(width), t.focused && !t.isCompact, "●", t.markerStyle())
+	return renderUnifiedMessageLines(t.sty, t.RawRender(width), t.focused && !t.isCompact, t.markerStyle())
 }
 
 func (t *baseToolMessageItem) ToolCall() surfacemessage.ToolCall { return t.toolCall }

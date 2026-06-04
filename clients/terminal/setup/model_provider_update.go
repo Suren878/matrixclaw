@@ -14,7 +14,7 @@ func (m *model) updateProviderList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		entries := m.providerEntries()
-		event := m.updateListSelection(msg.String(), &m.cursor, len(entries), components.RoleBack)
+		event := m.updateListSelection(msg.String(), &m.cursor, len(entries))
 		switch msg.String() {
 		case "ctrl+a":
 			m.providerTypeCursor = 0
@@ -87,7 +87,7 @@ func (m *model) updateProviderTypeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	event := m.updateListSelection(keyMsg.String(), &m.providerTypeCursor, 2, components.RoleBack)
+	event := m.updateListSelection(keyMsg.String(), &m.providerTypeCursor, 2)
 	switch event.Kind {
 	case components.EventBack:
 		m.screen = screenProviderList
@@ -157,7 +157,7 @@ func (m *model) updateProviderBaseURLList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	options := m.providerBaseURLOptions()
-	event := m.updateListSelection(keyMsg.String(), &m.providerBaseURLCursor, len(options), components.RoleBack)
+	event := m.updateListSelection(keyMsg.String(), &m.providerBaseURLCursor, len(options))
 	switch event.Kind {
 	case components.EventBack:
 		m.screen = screenProviderForm
@@ -223,7 +223,7 @@ func (m *model) updateProviderEffortList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	efforts := m.providerReasoningEfforts()
-	event := m.updateListSelection(keyMsg.String(), &m.providerEffortCursor, len(efforts), components.RoleBack)
+	event := m.updateListSelection(keyMsg.String(), &m.providerEffortCursor, len(efforts))
 	switch event.Kind {
 	case components.EventBack:
 		m.screen = screenProviderForm
@@ -244,7 +244,7 @@ func (m *model) updateProviderToolUseList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	modes := setup.ProviderFormToolUseModes()
-	event := m.updateListSelection(keyMsg.String(), &m.providerToolUseCursor, len(modes), components.RoleBack)
+	event := m.updateListSelection(keyMsg.String(), &m.providerToolUseCursor, len(modes))
 	switch event.Kind {
 	case components.EventBack:
 		m.screen = screenProviderForm

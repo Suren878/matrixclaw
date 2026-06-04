@@ -26,9 +26,11 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case surfaceinput.OpenPlanMsg:
 		return m, m.openPlanPanel()
 	case surfaceinput.OpenCommandsMsg:
-		return m, m.openCommandsDialogCmd()
+		m.openCommandsDialog()
+		return m, nil
 	case surfaceinput.AddImageMsg, surfaceinput.PasteImageMsg:
-		return m, m.handleAttachFiles()
+		m.handleAttachFiles()
+		return m, nil
 	case surfaceinput.QuitRequestMsg:
 		return m, tea.Quit
 	case surfaceeditor.OpenEditorMsg:
@@ -46,14 +48,17 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case surfacedialog.ActionConfirmRunCancel:
 		return m, m.handleConfirmRunCancel(msg)
 	case surfacedialog.ActionOpenDiffPreview:
-		return m, m.handleOpenDiffPreview(msg)
+		m.handleOpenDiffPreview(msg)
+		return m, nil
 	case surfacedialog.ActionOpenFilePreview:
-		return m, m.handleOpenFilePreview(msg)
+		m.handleOpenFilePreview(msg)
+		return m, nil
 	case surfacedialog.ActionExternalEditor:
 		return m, m.handleExternalEditorAction()
 	case surfacedialog.ActionOpenCommands:
 		m.invalidateControlplaneResults()
-		return m, m.openCommandsDialogCmd()
+		m.openCommandsDialog()
+		return m, nil
 	case surfacedialog.ActionRunControlplaneCommand:
 		return m, m.handleRunControlplaneCommand(msg)
 	case surfacedialog.ActionQuit:
@@ -116,23 +121,28 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.workingTickCmd()
 	case serverStatusRefreshMsg:
-		return m, m.handleServerStatusRefresh(msg)
+		m.handleServerStatusRefresh(msg)
+		return m, nil
 	case serverStatusTickMsg:
 		return m, m.handleServerStatusTick()
 	case serverRestartRequestMsg:
-		return m, m.handleServerRestartRequest(msg)
+		m.handleServerRestartRequest(msg)
+		return m, nil
 	case serverRestartTickMsg:
 		return m, m.handleServerRestartTick()
 	case serverRestartPollMsg:
 		return m, m.handleServerRestartPoll(msg)
 	case serverRestartAckMsg:
-		return m, m.handleServerRestartAck(msg)
+		m.handleServerRestartAck(msg)
+		return m, nil
 	case terminalRestartMsg:
 		return m, m.handleTerminalRestart(msg)
 	case updateCheckMsg:
-		return m, m.handleUpdateCheck(msg)
+		m.handleUpdateCheck(msg)
+		return m, nil
 	case updateInstallMsg:
-		return m, m.handleUpdateInstall(msg)
+		m.handleUpdateInstall(msg)
+		return m, nil
 	case loadInitialMsg:
 		return m, m.handleLoadInitial(msg)
 	case subscribeReadyMsg:

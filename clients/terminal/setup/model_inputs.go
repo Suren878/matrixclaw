@@ -53,10 +53,7 @@ func (m *model) updateTextEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) commitTextEditor() {
-	if err := m.applyTextEditorValue(); err != nil {
-		m.formError = err.Error()
-		return
-	}
+	m.applyTextEditorValue()
 	if moved, err := m.afterTextEditorApply(context.Background()); err != nil {
 		m.formError = err.Error()
 		return
@@ -81,7 +78,7 @@ func (m *model) openTextEditor(target textEditTarget, title string, placeholder 
 	m.screen = screenTextEditor
 }
 
-func (m *model) applyTextEditorValue() error {
+func (m *model) applyTextEditorValue() {
 	value := strings.TrimSpace(m.textEditorInput.Value())
 	if m.textEditorTarget == textEditAssistantCustomPrompt {
 		value = strings.TrimSpace(m.textAreaInput.Value())
@@ -119,7 +116,6 @@ func (m *model) applyTextEditorValue() error {
 	case textEditTelegramAllowedUID:
 		m.draft.TelegramAllowedUID = value
 	}
-	return nil
 }
 
 func (m *model) afterTextEditorApply(ctx context.Context) (bool, error) {

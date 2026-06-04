@@ -102,7 +102,7 @@ func (a *AssistantMessageItem) RawRender(width int) string {
 }
 
 func (a *AssistantMessageItem) Render(width int) string {
-	return renderUnifiedMessageLines(a.sty, a.RawRender(width), a.focused, "●", a.sty.Chat.Message.AssistantMarker)
+	return renderUnifiedMessageLines(a.sty, a.RawRender(width), a.focused, a.sty.Chat.Message.AssistantMarker)
 }
 
 func (a *AssistantMessageItem) renderMessageContent(width int) string {

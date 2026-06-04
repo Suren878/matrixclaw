@@ -100,11 +100,11 @@ func RenderRow(styles RowStyles, row Row, selected bool, width int) string {
 	} else if row.Disabled {
 		rowStyle = styles.RowDisabled
 	}
-	contentWidth := rowMax(0, width-rowStyle.GetHorizontalFrameSize())
+	contentWidth := max(0, width-rowStyle.GetHorizontalFrameSize())
 	rowStyle = rowStyle.Width(width)
 
 	right := strings.TrimSpace(row.Status)
-	right = ansi.Truncate(right, rowMax(0, contentWidth/2), "…")
+	right = ansi.Truncate(right, max(0, contentWidth/2), "…")
 
 	statusStyle := styles.Status
 	switch row.Tone {
@@ -129,15 +129,8 @@ func RenderRow(styles RowStyles, row Row, selected bool, width int) string {
 		infoWidth = 0
 	}
 
-	left := ansi.Truncate(row.Title, rowMax(0, contentWidth-infoWidth), "…")
+	left := ansi.Truncate(row.Title, max(0, contentWidth-infoWidth), "…")
 	leftWidth := lipgloss.Width(left)
-	gap := strings.Repeat(" ", rowMax(0, contentWidth-leftWidth-infoWidth))
+	gap := strings.Repeat(" ", max(0, contentWidth-leftWidth-infoWidth))
 	return rowStyle.Render(left + gap + infoText)
-}
-
-func rowMax(left int, right int) int {
-	if left > right {
-		return left
-	}
-	return right
 }

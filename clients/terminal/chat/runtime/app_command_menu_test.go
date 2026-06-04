@@ -10,7 +10,7 @@ import (
 
 func TestActionOpenCommandsClosesControlplaneResultDialogs(t *testing.T) {
 	m := newApp(context.Background(), nil)
-	m.openCommandsDialogCmd()
+	m.openCommandsDialog()
 	m.returnToCommands = true
 
 	if !m.showControlplaneTextResult(controlplane.Result{Text: "Memory:\n- project: note"}) {

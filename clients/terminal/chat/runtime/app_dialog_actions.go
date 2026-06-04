@@ -39,16 +39,14 @@ func (m *appModel) handleConfirmRunCancel(msg surfacedialog.ActionConfirmRunCanc
 	return m.cancelRunCmd(msg.RunID)
 }
 
-func (m *appModel) handleOpenDiffPreview(msg surfacedialog.ActionOpenDiffPreview) tea.Cmd {
+func (m *appModel) handleOpenDiffPreview(msg surfacedialog.ActionOpenDiffPreview) {
 	m.dialog.CloseDialog(surfacedialog.DiffPreviewID)
 	m.dialog.OpenDialog(surfacedialog.NewDiffPreview(m.com, msg.Data))
-	return nil
 }
 
-func (m *appModel) handleOpenFilePreview(msg surfacedialog.ActionOpenFilePreview) tea.Cmd {
+func (m *appModel) handleOpenFilePreview(msg surfacedialog.ActionOpenFilePreview) {
 	m.dialog.CloseDialog(surfacedialog.FilePreviewID)
 	m.dialog.OpenDialog(surfacedialog.NewFilePreview(m.com, msg.Data))
-	return nil
 }
 
 func (m *appModel) handleExternalEditorAction() tea.Cmd {

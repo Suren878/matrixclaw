@@ -35,7 +35,7 @@ func (m *model) updateAssistantForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	itemCount := 4
-	event := m.updateListSelection(keyMsg.String(), &m.formFocus, itemCount, components.RoleBack)
+	event := m.updateListSelection(keyMsg.String(), &m.formFocus, itemCount)
 	switch event.Kind {
 	case components.EventBack:
 		m.cancelDraftForm(screenProviderList)

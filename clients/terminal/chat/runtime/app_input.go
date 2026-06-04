@@ -24,7 +24,8 @@ func (m *appModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if key.Matches(msg, km.Commands) {
-		return m, m.openCommandsDialogCmd()
+		m.openCommandsDialog()
+		return m, nil
 	}
 
 	if m.focus == appFocusEditor {
@@ -127,13 +128,13 @@ func (m *appModel) handleDialogInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	next, cmd := m.Update(action)
-	if dialogActionClosesSource(action, sourceID) && sourceID != "" {
+	if dialogActionClosesSource(action) && sourceID != "" {
 		m.dialog.CloseDialog(sourceID)
 	}
 	return next, cmd
 }
 
-func dialogActionClosesSource(action tea.Msg, sourceID string) bool {
+func dialogActionClosesSource(action tea.Msg) bool {
 	switch action := action.(type) {
 	case surfacedialog.ActionRunControlplaneCommand:
 		return action.CloseSource

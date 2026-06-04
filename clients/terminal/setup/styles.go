@@ -77,9 +77,9 @@ var matrixClawLogoLines = []string{
 	"      ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝ ",
 }
 
-func centerBlock(width int, text string) string {
+func centerBlock(text string) string {
 	return lipgloss.NewStyle().
-		Width(width).
+		Width(60).
 		Align(lipgloss.Center).
 		Render(text)
 }

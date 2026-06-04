@@ -26,7 +26,7 @@ func (m *model) updateStepList(msg tea.Msg, back screen, next screen, edit scree
 	if !ok {
 		return m, nil
 	}
-	event := m.updateListSelection(keyMsg.String(), &m.cursor, 2, components.RoleBack)
+	event := m.updateListSelection(keyMsg.String(), &m.cursor, 2)
 	switch event.Kind {
 	case components.EventSelect:
 		if m.cursor == 0 {
@@ -65,9 +65,9 @@ func (m *model) updateForm(msg tea.Msg, fieldCount int, cancel func(), save func
 	return m, nil
 }
 
-func (m *model) updateListSelection(key string, cursor *int, count int, closeRole components.Role) components.Event {
+func (m *model) updateListSelection(key string, cursor *int, count int) components.Event {
 	state := components.ListState{Cursor: *cursor, NoWrap: true}
-	event := state.Update(key, stateItems(count), closeRole)
+	event := state.Update(key, stateItems(count), components.RoleBack)
 	state.Clamp(count)
 	*cursor = state.Cursor
 	return event

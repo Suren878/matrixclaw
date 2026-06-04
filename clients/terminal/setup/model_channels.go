@@ -46,7 +46,7 @@ func (m *model) updateBoolPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	event := m.updateListSelection(keyMsg.String(), &m.boolPickerCursor, 2, components.RoleBack)
+	event := m.updateListSelection(keyMsg.String(), &m.boolPickerCursor, 2)
 	switch event.Kind {
 	case components.EventBack:
 		m.screen = m.boolPickerReturnScreen()

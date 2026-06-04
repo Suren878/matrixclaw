@@ -53,7 +53,8 @@ func (m *appModel) handlePlanKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, m.handlePlanActionButton(plan)
 		}
 		if _, ok := planSelectedItem(plan, m.planSelected); ok {
-			return m, m.openPlanTaskMenu(plan, m.planSelected)
+			m.openPlanTaskMenu(plan, m.planSelected)
+			return m, nil
 		}
 		return m, nil
 	case "d":
@@ -144,10 +145,10 @@ func parsePlanPromptIndex(value string) (int, bool) {
 	return index, true
 }
 
-func (m *appModel) openPlanTaskMenu(plan *core.SessionPlan, selected int) tea.Cmd {
+func (m *appModel) openPlanTaskMenu(plan *core.SessionPlan, selected int) {
 	item, ok := planSelectedItem(plan, selected)
 	if !ok {
-		return nil
+		return
 	}
 	index := selected + 1
 	title := strings.TrimSpace(item.Text)
@@ -197,7 +198,6 @@ func (m *appModel) openPlanTaskMenu(plan *core.SessionPlan, selected int) tea.Cm
 		Legend:  "enter select · esc back",
 		Entries: entries,
 	}))
-	return nil
 }
 
 func planSelectedItem(plan *core.SessionPlan, selected int) (core.PlanItem, bool) {

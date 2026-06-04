@@ -56,6 +56,29 @@ For example, a remote `browser` server tool named `navigate` becomes:
 mcp_browser_navigate
 ```
 
+Browser MCP servers are useful for tasks that require a rendered page or real
+interaction, not just search snippets or HTTP fetches. Depending on the server,
+MatrixClaw can expose tools for:
+
+```text
+open / navigate URL
+click elements
+type into inputs
+wait for page state
+take screenshots
+read rendered text or DOM snapshots
+```
+
+With the example server ID `browser`, a remote tool named `click` is registered
+as `mcp_browser_click`. If the remote tool is already named `browser_click`, the
+registered MatrixClaw tool becomes `mcp_browser_browser_click`. MatrixClaw does
+not rename remote tool names beyond adding the configured prefix, so the exact
+IDs are visible in the tool registry.
+
+Web research can use a browser MCP server as a dynamic-page fallback, but full
+actions such as clicking, typing, screenshots, and waits remain regular MCP
+tools called by the assistant.
+
 The assistant sees these tools alongside built-in filesystem, shell, storage,
 voice, automation, and plan tools.
 

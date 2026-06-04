@@ -4,14 +4,12 @@ import (
 	"os"
 	"strings"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/Suren878/matrixclaw/clients/terminal/commandmenu"
 	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-func (m *appModel) openCommandsDialogCmd() tea.Cmd {
+func (m *appModel) openCommandsDialog() {
 	dialog := surfacedialog.NewCommands(m.com, surfacedialog.CommandsData{
 		Title:   "Commands",
 		Legend:  "enter run · esc back",
@@ -20,7 +18,6 @@ func (m *appModel) openCommandsDialogCmd() tea.Cmd {
 	m.returnToCommands = false
 	m.closeControlplaneDialogs()
 	m.dialog.OpenDialog(dialog)
-	return nil
 }
 
 func (m *appModel) commandMenuState() commandmenu.State {

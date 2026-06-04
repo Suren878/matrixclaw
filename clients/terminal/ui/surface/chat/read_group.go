@@ -85,7 +85,7 @@ func (m *ReadGroupMessageItem) RawRender(width int) string {
 }
 
 func (m *ReadGroupMessageItem) Render(width int) string {
-	return renderUnifiedMessageLines(m.sty, m.RawRender(width), m.focused, "●", m.sty.Chat.Message.ToolMarker)
+	return renderUnifiedMessageLines(m.sty, m.RawRender(width), m.focused, m.sty.Chat.Message.ToolMarker)
 }
 
 func (m *ReadGroupMessageItem) SetStatus(status ToolStatus) {

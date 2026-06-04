@@ -47,6 +47,31 @@ warnings:
 - Browser fallback setup hint, blocked fetch, or other caveat.
 ```
 
+
+### Browser fallback and browser tools
+
+`web_research` can use a configured browser fallback for pages where direct
+fetching is blocked, empty, or too dynamic. That fallback reads the rendered
+page, stores text/DOM/screenshot artifacts, and still returns only compact facts
+and sources to the main assistant context.
+
+MatrixClaw also supports full interactive browser automation through MCP browser
+servers. Those tools are separate from `web_research` and are registered as
+normal MatrixClaw tools with `mcp_<server>_<tool>` IDs. For a server configured
+with `id: "browser"`, browser actions may appear as tools such as:
+
+```text
+mcp_browser_navigate
+mcp_browser_click
+mcp_browser_type
+mcp_browser_screenshot
+mcp_browser_wait
+```
+
+Exact names depend on the MCP server. If the remote tool is named
+`browser_click`, the MatrixClaw tool ID keeps that name after the server prefix.
+Non-read-only browser tools require normal MatrixClaw approval.
+
 Raw page text, HTML, DOM snapshots, and screenshots are saved as runtime
 artifacts under the web research artifact directory and are not pasted into the
 main provider context. Default retention is 30 days.
@@ -79,6 +104,10 @@ without `task`, it fetches one URL, stores raw text/HTML as artifacts when the
 web research engine is available, and returns only diagnostic metadata plus
 artifact/research references. With `task`, it routes through the same extraction
 path as `web_research` and returns compact facts/results for that URL.
+
+For interactive browser tasks such as opening a page, clicking through a flow,
+typing into forms, waiting for dynamic content, or taking screenshots, configure
+an MCP browser server and use its `mcp_browser_*` tools.
 
 Both compatibility tools stay compact and bounded. Runtime guidance prefers
 `web_research` for source-backed answers, current information, ratings,

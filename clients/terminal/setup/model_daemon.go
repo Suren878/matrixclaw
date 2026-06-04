@@ -57,7 +57,7 @@ func (m *model) updateDaemonTimezoneList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	options := setup.TimezoneOptions(time.Now())
-	event := m.updateListSelection(keyMsg.String(), &m.timezoneCursor, len(options)+1, components.RoleBack)
+	event := m.updateListSelection(keyMsg.String(), &m.timezoneCursor, len(options)+1)
 	switch event.Kind {
 	case components.EventBack:
 		m.screen = screenDaemonForm
