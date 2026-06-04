@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"context"
 	"math/rand"
 	"os"
 	"strings"
@@ -254,7 +255,7 @@ func (m *Model) OpenExternalEditor() tea.Cmd {
 		return msgCmd(ExternalEditorErrorMsg{Err: err})
 	}
 
-	cmd, err := externalEditorCommand(nil, "matrixclaw", tmpPath, editorAtPosition(m.Line()+1, m.Column()+1))
+	cmd, err := externalEditorCommand(context.TODO(), "matrixclaw", tmpPath, editorAtPosition(m.Line()+1, m.Column()+1))
 	if err != nil {
 		return msgCmd(ExternalEditorErrorMsg{Err: err})
 	}

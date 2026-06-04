@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/setup"
@@ -78,16 +77,6 @@ func voiceModulePickerKind(moduleID string) PickerKind {
 	}
 }
 
-func voiceProviderInfo(provider setup.VoiceProviderOption) string {
-	info := provider.Status
-	if provider.Local && voiceProviderDownloaded(provider) && provider.ModelPath != "" {
-		info += " · " + provider.ModelPath
-	} else if provider.Endpoint != "" {
-		info += " · " + provider.Endpoint
-	}
-	return strings.TrimSpace(info)
-}
-
 func voiceProviderPickerTitle(module setup.VoiceModuleDescriptor, provider setup.VoiceProviderOption) string {
 	return provider.Name
 }
@@ -139,10 +128,6 @@ func voiceLocalFileActionTitles(moduleID string) (string, string) {
 		return "Install voice", "Remove voice"
 	}
 	return "Download model", "Delete model"
-}
-
-func voiceProviderInstalled(provider setup.VoiceProviderOption) bool {
-	return voiceProviderDownloaded(provider)
 }
 
 func voiceProviderDownloaded(provider setup.VoiceProviderOption) bool {
@@ -216,10 +201,6 @@ func voiceRuntimeManagerInfo(provider setup.VoiceProviderOption) string {
 		return "Not available"
 	}
 	return voiceRuntimeStateLabel(state)
-}
-
-func voiceRuntimeActionsAvailable(provider setup.VoiceProviderOption) bool {
-	return provider.Local && voicePersistentRuntimeAvailable(provider) && voiceProviderDownloaded(provider)
 }
 
 const (
@@ -363,46 +344,6 @@ func supertonicRuntimeInstallInfo(provider setup.VoiceProviderOption) string {
 	return "Not Installed"
 }
 
-func startActionInfo(provider setup.VoiceProviderOption) string {
-	if !voiceProviderDownloaded(provider) {
-		return "Install local files first"
-	}
-	if !voiceRuntimeActionsAvailable(provider) {
-		return "Runtime manager not available"
-	}
-	if voiceRuntimeState(provider) == "running" {
-		return "Already running"
-	}
-	return "Start local process"
-}
-
-func stopActionInfo(provider setup.VoiceProviderOption) string {
-	if !voiceRuntimeActionsAvailable(provider) {
-		return "Runtime manager not available"
-	}
-	if voiceRuntimeState(provider) != "running" {
-		return "Not running"
-	}
-	return "Stop local process"
-}
-
-func restartActionInfo(provider setup.VoiceProviderOption) string {
-	if !voiceRuntimeActionsAvailable(provider) {
-		return "Runtime manager not available"
-	}
-	if voiceRuntimeState(provider) != "running" {
-		return "Not running"
-	}
-	return "Restart local process"
-}
-
-func voiceRuntimeActionUnavailableMessage(provider setup.VoiceProviderOption, action string) string {
-	if !voiceProviderDownloaded(provider) {
-		return "Install local files before using runtime action `" + strings.TrimSpace(action) + "`."
-	}
-	return provider.Name + " runtime manager is not available yet. Start/stop/restart is not implemented."
-}
-
 func voiceRuntimeConfirmMessage(provider setup.VoiceProviderOption, action string) string {
 	if strings.TrimSpace(action) == strings.TrimSpace(provider.ActionIDs.Stop) {
 		return "Stop " + provider.Name + " runtime?"
@@ -494,17 +435,6 @@ func installedVoiceModels(provider setup.VoiceProviderOption) []setup.VoiceModel
 		}
 	}
 	return out
-}
-
-func installedVoicesSummary(models []setup.VoiceModelOption) string {
-	switch len(models) {
-	case 0:
-		return "no voices installed"
-	case 1:
-		return "1 voice installed"
-	default:
-		return strconv.Itoa(len(models)) + " voices installed"
-	}
 }
 
 func activeInstalledVoice(provider setup.VoiceProviderOption) (setup.VoiceModelOption, bool) {
@@ -775,19 +705,6 @@ func voiceModelName(provider setup.VoiceProviderOption, modelID string) string {
 		}
 	}
 	return firstNonEmptyTrimmed(modelID, provider.Name)
-}
-
-func voiceCatalogInfo(provider setup.VoiceProviderOption) string {
-	status := strings.ToLower(strings.TrimSpace(provider.CatalogStatus))
-	detail := strings.TrimSpace(provider.CatalogDetail)
-	switch status {
-	case "online":
-		return strings.TrimSpace(strings.Join(nonEmptyStrings("catalog online", detail), " · "))
-	case "fallback":
-		return strings.TrimSpace(strings.Join(nonEmptyStrings("catalog fallback", detail), " · "))
-	default:
-		return detail
-	}
 }
 
 func ttsLanguageCode(provider setup.VoiceProviderOption, cfg setup.VoiceProviderConfig) string {

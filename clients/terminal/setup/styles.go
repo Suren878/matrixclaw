@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/textarea"
-	"charm.land/bubbles/v2/textinput"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
@@ -92,17 +91,6 @@ func logoWordmark(width int) string {
 	return lipgloss.NewStyle().
 		PaddingLeft(6).
 		Render(logoStyle.Render(strings.Join(matrixClawLogoLines, "\n")))
-}
-
-func styleTextInput(in *textinput.Model) {
-	in.Prompt = ""
-	styles := textinput.DefaultDarkStyles()
-	styles.Focused.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color(colMuted))
-	styles.Focused.Text = lipgloss.NewStyle().Foreground(lipgloss.Color(colText))
-	styles.Focused.Placeholder = lipgloss.NewStyle().Foreground(lipgloss.Color(colMuted))
-	styles.Blurred = styles.Focused
-	styles.Cursor.Color = lipgloss.Color(colHead)
-	in.SetStyles(styles)
 }
 
 func styleTextArea(in *textarea.Model) {

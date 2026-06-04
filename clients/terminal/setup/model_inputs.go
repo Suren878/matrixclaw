@@ -48,8 +48,7 @@ func (m *model) updateTextEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
-	var cmd tea.Cmd
-	cmd = m.textEditorInput.Update(msg)
+	cmd := m.textEditorInput.Update(msg)
 	return m, cmd
 }
 

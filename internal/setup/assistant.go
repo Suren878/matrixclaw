@@ -163,7 +163,7 @@ func gitOutput(root string, args ...string) string {
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(fmt.Sprintf("%s", out))
+	return strings.TrimSpace(string(out))
 }
 
 func enabledLabel(enabled bool) string {

@@ -498,10 +498,6 @@ func messageIsToolResultFor(message Message, ids map[string]struct{}) bool {
 	return false
 }
 
-func compactMessagePartsText(parts []MessagePart) string {
-	return compactMessagePartsTextForSummary(parts, true)
-}
-
 func compactMessagePartsTextForSummary(parts []MessagePart, tail bool) string {
 	values := make([]string, 0, len(parts))
 	for _, part := range parts {

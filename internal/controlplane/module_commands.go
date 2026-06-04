@@ -138,13 +138,6 @@ func externalAgentSetEnabledCommand(agentID string, value string) string {
 	return externalAgentCommand(agentID, "set-enabled", value)
 }
 
-func externalAgentUpdateEnabledCommand(agentID string, enabled bool) string {
-	if enabled {
-		return externalAgentsCommand("enable", agentID)
-	}
-	return externalAgentsCommand("disable", agentID)
-}
-
 func externalAgentNewSessionCommand(agentID string) string {
 	return sessionNewCommand(agentID)
 }
@@ -163,21 +156,8 @@ func skillsCommandPrefix(parts ...string) string {
 	return skillsCommand(parts...) + " "
 }
 
-func skillCommand(skillID string, parts ...string) string {
-	values := append([]string{skillID}, parts...)
-	return skillsCommand(values...)
-}
-
-func skillInstallCommand() string {
-	return skillsCommand("install")
-}
-
 func skillInstallCommandPrefix() string {
 	return skillsCommandPrefix("install")
-}
-
-func skillSearchCommand() string {
-	return skillsCommand("search")
 }
 
 func skillSearchCommandPrefix() string {

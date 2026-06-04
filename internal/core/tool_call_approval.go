@@ -6,13 +6,13 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-func (c *Core) createPendingApproval(ctx context.Context, prepared preparedToolCall, input ExecuteToolInput, result tools.Result, execErr error) (tools.Result, error, *Approval, bool) {
+func (c *Core) createPendingApproval(ctx context.Context, prepared preparedToolCall, input ExecuteToolInput, result tools.Result, execErr error) (tools.Result, *Approval, bool, error) {
 	if result.Approval == nil || input.Approved {
-		return result, execErr, nil, false
+		return result, nil, false, execErr
 	}
 	paramsRaw, err := marshalJSONRaw(result.Approval.Params)
 	if err != nil {
-		return tools.Result{}, err, nil, false
+		return tools.Result{}, nil, false, err
 	}
 	approval := Approval{
 		ID:          c.newID("approval"),
@@ -28,7 +28,7 @@ func (c *Core) createPendingApproval(ctx context.Context, prepared preparedToolC
 		RequestedAt: c.now().UTC(),
 	}
 	if err := c.store.CreateApproval(ctx, approval); err != nil {
-		return tools.Result{}, err, nil, false
+		return tools.Result{}, nil, false, err
 	}
 	c.publishEvent(Event{
 		Type:      EventApprovalRequest,
@@ -53,5 +53,5 @@ func (c *Core) createPendingApproval(ctx context.Context, prepared preparedToolC
 		SessionID:  prepared.SessionID,
 		ApprovalID: approval.ID,
 	})
-	return result, execErr, &approval, true
+	return result, &approval, true, execErr
 }

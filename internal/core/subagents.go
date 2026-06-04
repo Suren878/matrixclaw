@@ -407,7 +407,7 @@ func (c *Core) mirrorPendingSubagentApproval(ctx context.Context, task SubagentT
 		ToolName:   subagentParentToolName(task),
 		ToolCallID: task.ParentToolCallID,
 	}
-	if _, createErr, _, created := c.createPendingApproval(ctx, prepared, ExecuteToolInput{}, tools.Result{Approval: request}, nil); createErr != nil {
+	if _, _, created, createErr := c.createPendingApproval(ctx, prepared, ExecuteToolInput{}, tools.Result{Approval: request}, nil); createErr != nil {
 		return createErr
 	} else if !created {
 		return nil

@@ -79,13 +79,6 @@ func planItemByID(plan core.SessionPlan, itemID string) (core.PlanItem, bool) {
 	return core.PlanItem{}, false
 }
 
-func nextPlanExecutableItem(plan *core.SessionPlan) (core.PlanItem, bool) {
-	if plan == nil {
-		return core.PlanItem{}, false
-	}
-	return core.NextExecutablePlanItem(*plan)
-}
-
 func renderPlanRunPrompt(plan *core.SessionPlan, item core.PlanItem) string {
 	return strings.TrimSpace(fmt.Sprintf(`Execute the next session plan item.
 

@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
@@ -61,47 +60,6 @@ func (m *appModel) drawContent(canvas uv.Screen, layout appLayout) {
 	if layout.inputHeight > 0 {
 		uv.NewStyledString(layout.inputView).Draw(canvas, uv.Rect(0, layout.editorTop, m.width, layout.editorBottom))
 	}
-}
-
-func (m *appModel) contentView(layout appLayout) string {
-	sections := make([]string, 0, 4)
-	if layout.headerHeight > 0 {
-		sections = append(sections, renderRegion(m.width, layout.headerHeight, layout.headerView))
-	}
-	if bodyHeight := layout.bodyHeight(); bodyHeight > 0 {
-		body := renderRegion(layout.chatWidth(m.width), bodyHeight, m.bodyView())
-		if layout.planWidth > 0 {
-			body = lipgloss.JoinHorizontal(lipgloss.Top, body, m.planPanelView(layout.planWidth, bodyHeight))
-		}
-		sections = append(sections, renderRegion(m.width, bodyHeight, body))
-	}
-	if layout.inputHeight > 0 {
-		sections = append(sections, renderRegion(m.width, layout.inputHeight, layout.inputView))
-	}
-	if layout.footerHeight > 0 {
-		sections = append(sections, renderRegion(m.width, layout.footerHeight, layout.footerView()))
-	}
-	return strings.Join(sections, "\n")
-}
-
-func (m *appModel) bodyView() string {
-	if m.chat != nil {
-		return m.chat.View()
-	}
-	if m.loading {
-		return m.styles.Base.Render("Loading terminal...")
-	}
-	if m.err != "" {
-		return m.styles.TagError.Render("Error: ") + m.styles.Base.Render(m.err)
-	}
-	return m.styles.Base.Render("No active session")
-}
-
-func renderRegion(width int, height int, content string) string {
-	if width <= 0 || height <= 0 {
-		return ""
-	}
-	return lipgloss.Place(width, height, lipgloss.Left, lipgloss.Top, content)
 }
 
 func normalizeScreenContent(content string) string {

@@ -61,7 +61,7 @@ func (s *Service) TextToSpeech(ctx context.Context, req TextToSpeechRequest) (Te
 func (s *Service) piperTextToSpeech(ctx context.Context, module setup.VoiceModuleDescriptor, text string) (TextToSpeechResponse, error) {
 	provider, ok := voiceProviderByID(module, "piper")
 	if !ok {
-		return TextToSpeechResponse{}, errors.New("Piper provider is not available")
+		return TextToSpeechResponse{}, errors.New("piper provider is not available")
 	}
 	content, err := localruntime.New("").PiperTextToSpeech(ctx, provider, text)
 	if err != nil {
@@ -77,7 +77,7 @@ func (s *Service) piperTextToSpeech(ctx context.Context, module setup.VoiceModul
 func (s *Service) supertonicTextToSpeech(ctx context.Context, module setup.VoiceModuleDescriptor, text string) (TextToSpeechResponse, error) {
 	provider, ok := voiceProviderByID(module, "supertonic")
 	if !ok {
-		return TextToSpeechResponse{}, errors.New("Supertonic provider is not available")
+		return TextToSpeechResponse{}, errors.New("supertonic provider is not available")
 	}
 	content, err := localruntime.New("").SupertonicTextToSpeech(ctx, provider, text)
 	if err != nil {
@@ -153,7 +153,7 @@ func (s *Service) SpeechToText(ctx context.Context, req SpeechToTextRequest) (Sp
 func (s *Service) whisperCppSpeechToText(ctx context.Context, module setup.VoiceModuleDescriptor, req SpeechToTextRequest, content []byte) (SpeechToTextResponse, error) {
 	provider, ok := voiceProviderByID(module, "whispercpp")
 	if !ok {
-		return SpeechToTextResponse{}, errors.New("Whisper.cpp provider is not available")
+		return SpeechToTextResponse{}, errors.New("whisper.cpp provider is not available")
 	}
 	text, err := localruntime.New("").WhisperSpeechToText(ctx, provider, localruntime.WhisperSpeechInput{
 		Content:  content,

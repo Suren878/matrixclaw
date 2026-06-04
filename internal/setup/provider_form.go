@@ -1,6 +1,8 @@
 package setup
 
 import (
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -306,7 +308,7 @@ func providerReasoningChoices(current string, fallback string, options []string)
 		}
 		choices = append(choices, ProviderFormChoice{
 			ID:       option,
-			Title:    strings.Title(option),
+			Title:    cases.Title(language.Und).String(option),
 			Value:    option,
 			Selected: option == current,
 		})

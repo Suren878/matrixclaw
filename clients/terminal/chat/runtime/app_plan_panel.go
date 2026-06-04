@@ -192,10 +192,6 @@ func (m *appModel) planItemMarkerStyle(status core.PlanItemStatus) lipgloss.Styl
 	}
 }
 
-func (m *appModel) placePlanPanel(width int, height int, lines []string) string {
-	return m.placePlanPanelWithFooter(width, height, lines, nil)
-}
-
 func (m *appModel) placePlanPanelWithFooter(width int, height int, lines []string, footer []string) string {
 	if width <= 0 || height <= 0 {
 		return ""

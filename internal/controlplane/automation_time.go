@@ -9,14 +9,14 @@ import (
 func parseReminderArgs(now time.Time, args string) (time.Time, string, error) {
 	whenPart, prompt, ok := strings.Cut(strings.TrimSpace(args), "--")
 	if !ok || strings.TrimSpace(prompt) == "" {
-		return time.Time{}, "", fmt.Errorf("Usage: /remind in 10m -- message")
+		return time.Time{}, "", fmt.Errorf("usage: /remind in 10m -- message")
 	}
 	whenPart = strings.TrimSpace(whenPart)
 	prompt = strings.TrimSpace(prompt)
 	if strings.HasPrefix(strings.ToLower(whenPart), "in ") {
 		duration, err := parseHumanDuration(strings.TrimSpace(whenPart[3:]))
 		if err != nil {
-			return time.Time{}, "", fmt.Errorf("Invalid duration. Use 10m, 2h, or 3d.")
+			return time.Time{}, "", fmt.Errorf("invalid duration: use 10m, 2h, or 3d")
 		}
 		return now.Add(duration).UTC(), prompt, nil
 	}
@@ -25,7 +25,7 @@ func parseReminderArgs(now time.Time, args string) (time.Time, string, error) {
 			return parsed.UTC(), prompt, nil
 		}
 	}
-	return time.Time{}, "", fmt.Errorf("Invalid time. Use YYYY-MM-DD HH:MM -- message")
+	return time.Time{}, "", fmt.Errorf("invalid time: use YYYY-MM-DD HH:MM -- message")
 }
 
 func parseHumanDuration(value string) (time.Duration, error) {

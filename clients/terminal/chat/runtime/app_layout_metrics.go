@@ -1,10 +1,6 @@
 package runtime
 
-import (
-	"strings"
-
-	"charm.land/lipgloss/v2"
-)
+import "charm.land/lipgloss/v2"
 
 type appLayout struct {
 	headerView     string
@@ -27,13 +23,6 @@ func (layout appLayout) bodyHeight() int {
 
 func (layout appLayout) chatWidth(totalWidth int) int {
 	return max(0, totalWidth-layout.planWidth)
-}
-
-func (layout appLayout) footerView() string {
-	if strings.TrimSpace(layout.statusInfoView) != "" {
-		return layout.statusInfoView
-	}
-	return layout.statusHelpView
 }
 
 func (m *appModel) layout() appLayout {

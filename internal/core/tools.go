@@ -13,7 +13,7 @@ func (c *Core) ExecuteTool(ctx context.Context, input ExecuteToolInput) (Execute
 	}
 
 	toolResult, execErr := c.executeToolWithGrant(ctx, prepared, input)
-	toolResult, execErr, approval, pending := c.createPendingApproval(ctx, prepared, input, toolResult, execErr)
+	toolResult, approval, pending, execErr := c.createPendingApproval(ctx, prepared, input, toolResult, execErr)
 	if pending {
 		return ExecuteToolResult{
 			ToolCallMessage: prepared.Message,

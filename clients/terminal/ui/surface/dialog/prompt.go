@@ -71,8 +71,7 @@ func (d *PromptCommand) HandleMsg(msg tea.Msg) Action {
 			return ActionRunControlplaneCommand{Command: d.data.SubmitCommandPrefix + strings.TrimSpace(d.input.Value()), CloseSource: true}
 		}
 	}
-	var cmd tea.Cmd
-	cmd = d.input.Update(msg)
+	cmd := d.input.Update(msg)
 	if cmd != nil {
 		return ActionCmd{Cmd: cmd}
 	}

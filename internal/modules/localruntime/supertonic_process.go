@@ -175,10 +175,10 @@ func (r *Runtime) supertonicServerTextToSpeech(ctx context.Context, provider set
 		if message == "" {
 			message = response.Status
 		}
-		return nil, fmt.Errorf("Supertonic server failed: %s", message)
+		return nil, fmt.Errorf("supertonic server failed: %s", message)
 	}
 	if len(content) == 0 {
-		return nil, fmt.Errorf("Supertonic server returned empty audio")
+		return nil, fmt.Errorf("supertonic server returned empty audio")
 	}
 	return content, nil
 }
@@ -193,7 +193,7 @@ func (r *Runtime) waitSupertonicServer(ctx context.Context, endpoint string, pro
 	defer ticker.Stop()
 	for {
 		if process != nil && !process.running() {
-			return fmt.Errorf("Supertonic server exited before it was ready")
+			return fmt.Errorf("supertonic server exited before it was ready")
 		}
 		request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/health", nil)
 		if err != nil {
@@ -208,7 +208,7 @@ func (r *Runtime) waitSupertonicServer(ctx context.Context, endpoint string, pro
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("Supertonic server did not start: %w", ctx.Err())
+			return fmt.Errorf("supertonic server did not start: %w", ctx.Err())
 		case <-ticker.C:
 		}
 	}

@@ -1,6 +1,8 @@
 package controlplane
 
 import (
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"net/url"
 	"strings"
 
@@ -78,10 +80,6 @@ func providerCommandPrefix(parts ...string) string {
 
 func providerEncodedID(providerID string) string {
 	return encodeCustomProviderField(providerID)
-}
-
-func providerUseCommand(providerID string) string {
-	return providerCommand("use", providerEncodedID(providerID))
 }
 
 func providerEditCommand(providerID string) string {
@@ -302,7 +300,7 @@ func providerReasoningField(data setup.ProviderFormState, efforts []string) setu
 			}
 			field.Choices = append(field.Choices, setup.ProviderFormChoice{
 				ID:       effort,
-				Title:    strings.Title(effort),
+				Title:    cases.Title(language.Und).String(effort),
 				Value:    effort,
 				Selected: current == effort,
 			})

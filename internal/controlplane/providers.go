@@ -90,25 +90,6 @@ func (d *Dispatcher) useProvider(ctx context.Context, session *core.Session, pro
 	return d.providerSelectedResult(ctx, updated)
 }
 
-func providerActions(provider setup.ProviderSetupItem, selected bool) Result {
-	title := strings.TrimSpace(provider.Name)
-	if title == "" {
-		title = strings.TrimSpace(provider.ID)
-	}
-	picker := NewPickerData(PickerProviderActions, title).
-		Context(strings.TrimSpace(provider.ID)).
-		Back(providerCommand()).
-		Item(PickerItem{ID: "use", Title: "Use", Selected: selected, Disabled: !provider.Configured, Command: providerUseCommand(provider.ID)}).
-		Row("edit", "Edit", "", providerEditCommand(provider.ID))
-	if isOpenAICodexProvider(provider) {
-		picker.Row("auth", "Authorization", openAICodexAuthInfo(), providerCommand("auth", providerEncodedID(provider.ID)))
-	}
-	if isCustomSetupProvider(provider) {
-		picker.Danger("delete", "Delete", "", customProviderCommand("delete", providerEncodedID(provider.ID)))
-	}
-	return Result{Handled: true, Picker: picker.Ptr()}
-}
-
 func isOpenAICodexProvider(provider setup.ProviderSetupItem) bool {
 	policy := providerPolicy(provider)
 	return policy.AuthMode == providers.ProviderAuthOAuth &&

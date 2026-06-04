@@ -40,11 +40,11 @@ func (r *Runtime) startWhisperServerProcess(ctx context.Context, moduleID string
 	}
 	installed, _ := r.VoiceModelInstalled(moduleID, provider)
 	if !installed {
-		return fmt.Errorf("Whisper.cpp model is not installed")
+		return fmt.Errorf("whisper.cpp model is not installed")
 	}
 	modelPath := r.VoiceModelPath(moduleID, provider)
 	if strings.TrimSpace(modelPath) == "" {
-		return fmt.Errorf("Whisper.cpp model is not selected")
+		return fmt.Errorf("whisper.cpp model is not selected")
 	}
 	binary, err := r.WhisperServerPath(provider)
 	if err != nil {
@@ -158,7 +158,7 @@ func (r *Runtime) waitWhisperServer(ctx context.Context, endpoint string, proces
 	defer ticker.Stop()
 	for {
 		if process != nil && !process.running() {
-			return fmt.Errorf("Whisper.cpp server exited before it was ready")
+			return fmt.Errorf("whisper.cpp server exited before it was ready")
 		}
 		request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/"), nil)
 		if err != nil {
@@ -171,7 +171,7 @@ func (r *Runtime) waitWhisperServer(ctx context.Context, endpoint string, proces
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("Whisper.cpp server did not start: %w", ctx.Err())
+			return fmt.Errorf("whisper.cpp server did not start: %w", ctx.Err())
 		case <-ticker.C:
 		}
 	}

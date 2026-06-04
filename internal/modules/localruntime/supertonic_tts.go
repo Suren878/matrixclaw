@@ -45,14 +45,14 @@ func (r *Runtime) supertonicOneShotTextToSpeech(ctx context.Context, provider se
 		if message == "" {
 			message = err.Error()
 		}
-		return nil, fmt.Errorf("Supertonic failed: %s", message)
+		return nil, fmt.Errorf("supertonic failed: %s", message)
 	}
 	content, err := os.ReadFile(outputPath)
 	if err != nil {
 		return nil, err
 	}
 	if len(content) == 0 {
-		return nil, fmt.Errorf("Supertonic returned empty audio")
+		return nil, fmt.Errorf("supertonic returned empty audio")
 	}
 	return content, nil
 }

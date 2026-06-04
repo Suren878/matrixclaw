@@ -123,41 +123,6 @@ func voiceModelsForLanguage(models []setup.VoiceModelOption, languageCode string
 	return out
 }
 
-func defaultVoiceIDForLanguage(provider setup.VoiceProviderOption, languageCode string, current string) string {
-	languageCode = normalizeVoiceLanguageCode(languageCode)
-	current = strings.TrimSpace(current)
-	if current != "" && normalizeVoiceLanguageCode(voiceLanguageFromVoiceID(current)) == languageCode {
-		return current
-	}
-	preferred := preferredPiperVoiceID(languageCode)
-	for _, model := range provider.Models {
-		if model.ID == preferred {
-			return model.ID
-		}
-	}
-	models := voiceModelsForLanguage(provider.Models, languageCode)
-	for _, quality := range []string{"medium", "high", "low", "x_low"} {
-		for _, model := range models {
-			if strings.EqualFold(model.Quality, quality) || strings.HasSuffix(strings.ToLower(model.ID), "-"+quality) {
-				return model.ID
-			}
-		}
-	}
-	if len(models) > 0 {
-		return models[0].ID
-	}
-	return firstNonEmptyTrimmed(current, "en_US-lessac-medium")
-}
-
-func preferredPiperVoiceID(languageCode string) string {
-	switch normalizeVoiceLanguageCode(languageCode) {
-	case "ru_RU":
-		return "ru_RU-ruslan-medium"
-	default:
-		return "en_US-lessac-medium"
-	}
-}
-
 func normalizeVoiceLanguageCode(languageCode string) string {
 	languageCode = strings.TrimSpace(languageCode)
 	switch strings.ToLower(languageCode) {
@@ -234,15 +199,6 @@ func supertonicLanguageOptions() []struct{ id, title string } {
 		{"uk", "Ukrainian"},
 		{"vi", "Vietnamese"},
 	}
-}
-
-func voiceInstallInfo(provider setup.VoiceProviderOption, voiceID string) string {
-	for _, model := range provider.Models {
-		if model.ID == voiceID {
-			return strings.TrimSpace(strings.Join(nonEmptyStrings(model.Name, model.Size), " · "))
-		}
-	}
-	return "Download voice files"
 }
 
 func voiceLocalModelStatus(provider setup.VoiceProviderOption, modelID string) string {

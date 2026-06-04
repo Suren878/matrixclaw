@@ -396,7 +396,7 @@ func (r *Runtime) PiperTextToSpeech(ctx context.Context, provider setup.VoicePro
 		return r.piperPersistentTextToSpeech(ctx, provider, text)
 	}
 	if !voiceProviderRuntimeRunnable(provider) {
-		return nil, errors.New("Piper is stopped")
+		return nil, errors.New("piper is stopped")
 	}
 	return r.piperOneShotTextToSpeech(ctx, provider, text)
 }
@@ -411,7 +411,7 @@ func (r *Runtime) SupertonicTextToSpeech(ctx context.Context, provider setup.Voi
 		return r.supertonicServerTextToSpeech(ctx, provider, text)
 	}
 	if !voiceProviderRuntimeRunnable(provider) {
-		return nil, errors.New("Supertonic is stopped")
+		return nil, errors.New("supertonic is stopped")
 	}
 	return r.supertonicOneShotTextToSpeech(ctx, provider, text)
 }

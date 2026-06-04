@@ -65,16 +65,6 @@ func (m *model) updateForm(msg tea.Msg, fieldCount int, cancel func(), save func
 	return m, nil
 }
 
-func (m *model) moveIndex(key string, index *int, maxIndex int) bool {
-	if maxIndex < 0 {
-		*index = 0
-		return false
-	}
-	before := *index
-	_ = m.updateListSelection(key, index, maxIndex+1, components.RoleBack)
-	return before != *index
-}
-
 func (m *model) updateListSelection(key string, cursor *int, count int, closeRole components.Role) components.Event {
 	state := components.ListState{Cursor: *cursor, NoWrap: true}
 	event := state.Update(key, stateItems(count), closeRole)

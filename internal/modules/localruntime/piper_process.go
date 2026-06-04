@@ -141,7 +141,7 @@ func (r *Runtime) piperPersistentTextToSpeech(ctx context.Context, provider setu
 		piperProcesses.mu.Unlock()
 	}
 	if process == nil || !process.running() || process.modelPath != modelPath {
-		return nil, fmt.Errorf("Piper runtime is not running with the selected voice")
+		return nil, fmt.Errorf("piper runtime is not running with the selected voice")
 	}
 	return process.synthesize(ctx, text)
 }
@@ -175,16 +175,16 @@ func (p *piperProcess) stop() error {
 
 func (p *piperProcess) synthesize(ctx context.Context, text string) ([]byte, error) {
 	if p == nil || p.stdin == nil {
-		return nil, fmt.Errorf("Piper runtime is not running")
+		return nil, fmt.Errorf("piper runtime is not running")
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if !p.running() {
-		return nil, fmt.Errorf("Piper runtime is not running")
+		return nil, fmt.Errorf("piper runtime is not running")
 	}
 	outputDir := strings.TrimSpace(p.outputDir)
 	if outputDir == "" {
-		return nil, fmt.Errorf("Piper output directory is empty")
+		return nil, fmt.Errorf("piper output directory is empty")
 	}
 	before := piperOutputFiles(outputDir)
 	if _, err := fmt.Fprintln(p.stdin, normalizeTTSInputText(text)); err != nil {
@@ -200,7 +200,7 @@ func (p *piperProcess) synthesize(ctx context.Context, text string) ([]byte, err
 		return nil, err
 	}
 	if len(content) == 0 {
-		return nil, fmt.Errorf("Piper returned empty audio")
+		return nil, fmt.Errorf("piper returned empty audio")
 	}
 	return content, nil
 }
@@ -233,7 +233,7 @@ func waitForPiperOutput(ctx context.Context, dir string, before map[string]struc
 		case <-ctx.Done():
 			return "", ctx.Err()
 		case <-deadline.C:
-			return "", fmt.Errorf("Piper did not produce audio")
+			return "", fmt.Errorf("piper did not produce audio")
 		case <-ticker.C:
 		}
 	}
@@ -319,14 +319,14 @@ func (r *Runtime) piperOneShotTextToSpeech(ctx context.Context, provider setup.V
 		if message == "" {
 			message = err.Error()
 		}
-		return nil, fmt.Errorf("Piper failed: %s", message)
+		return nil, fmt.Errorf("piper failed: %s", message)
 	}
 	content, err := os.ReadFile(outputPath)
 	if err != nil {
 		return nil, err
 	}
 	if len(content) == 0 {
-		return nil, fmt.Errorf("Piper returned empty audio")
+		return nil, fmt.Errorf("piper returned empty audio")
 	}
 	return content, nil
 }

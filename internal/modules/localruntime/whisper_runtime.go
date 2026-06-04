@@ -28,7 +28,7 @@ func (r *Runtime) WhisperSpeechToText(ctx context.Context, provider setup.VoiceP
 		return "", errors.New("audio content is required")
 	}
 	if installed, _ := r.VoiceModelInstalled(setup.VoiceModuleSTT, provider); !installed {
-		return "", errors.New("Whisper.cpp model is not installed")
+		return "", errors.New("whisper.cpp model is not installed")
 	}
 	if !voiceProviderRunsPerTask(provider) {
 		return r.whisperServerSpeechToText(ctx, provider, input)
@@ -61,7 +61,7 @@ func (r *Runtime) WhisperSpeechToText(ctx context.Context, provider setup.VoiceP
 		if message == "" {
 			message = err.Error()
 		}
-		return "", fmt.Errorf("Whisper.cpp failed: %s", message)
+		return "", fmt.Errorf("whisper.cpp failed: %s", message)
 	}
 	textPath := outputBase + ".txt"
 	defer os.Remove(textPath)
@@ -74,7 +74,7 @@ func (r *Runtime) WhisperSpeechToText(ctx context.Context, provider setup.VoiceP
 	}
 	text := strings.TrimSpace(string(content))
 	if text == "" {
-		return "", errors.New("Whisper.cpp returned empty text")
+		return "", errors.New("whisper.cpp returned empty text")
 	}
 	return text, nil
 }
@@ -191,11 +191,11 @@ func (r *Runtime) whisperServerSpeechToText(ctx context.Context, provider setup.
 		return "", err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return "", fmt.Errorf("Whisper.cpp server failed: status %s: %s", response.Status, strings.TrimSpace(string(responseBody)))
+		return "", fmt.Errorf("whisper.cpp server failed: status %s: %s", response.Status, strings.TrimSpace(string(responseBody)))
 	}
 	text := strings.TrimSpace(string(responseBody))
 	if text == "" {
-		return "", errors.New("Whisper.cpp server returned empty text")
+		return "", errors.New("whisper.cpp server returned empty text")
 	}
 	return text, nil
 }

@@ -65,7 +65,7 @@ func fetchSupertonicCatalogModels() ([]setup.VoiceModelOption, error) {
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("Supertonic voice style catalog: status %s", response.Status)
+		return nil, fmt.Errorf("supertonic voice style catalog: status %s", response.Status)
 	}
 	var entries []supertonicTreeEntry
 	if err := json.NewDecoder(response.Body).Decode(&entries); err != nil {
@@ -125,7 +125,7 @@ func supertonicVoiceStyleURL(voiceID string) (string, error) {
 		voiceID = "M1"
 	}
 	if strings.ContainsAny(voiceID, `/\`) || strings.Contains(voiceID, "..") {
-		return "", fmt.Errorf("Supertonic voice %q does not have a bundled style", voiceID)
+		return "", fmt.Errorf("supertonic voice %q does not have a bundled style", voiceID)
 	}
 	return "https://huggingface.co/Supertone/supertonic-3/resolve/main/voice_styles/" + voiceID + ".json", nil
 }

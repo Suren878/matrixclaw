@@ -13,14 +13,6 @@ func taskMenuCommand(jobID string) string {
 	return tasksCommand("menu", jobID)
 }
 
-func taskPauseCommand(jobID string) string {
-	return tasksCommand("pause", jobID)
-}
-
-func taskResumeCommand(jobID string) string {
-	return tasksCommand("resume", jobID)
-}
-
 func taskCompleteCommand(jobID string) string {
 	return tasksCommand("complete", jobID)
 }

@@ -394,23 +394,8 @@ func (c *Core) sessionPlanPrompt(ctx context.Context, sessionID string) string {
 	return strings.Join(lines, "\n")
 }
 
-// buildProviderConversation is a convenience wrapper for callers that only need
-// the textual conversation shape (token/length estimation, previews). It passes
-// a nil AttachmentReader, so no attachment IO is performed and the returned
-// error is always nil — hence context.Background() is sufficient and discarding
-// the error is safe here. Request paths that load attachments must use the
-// ctx-aware (c *Core).buildProviderConversation instead.
-func buildProviderConversation(history []Message) []providers.Message {
-	conversation, _ := buildProviderConversationWithAttachments(context.Background(), history, nil)
-	return conversation
-}
-
 func (c *Core) buildProviderConversation(ctx context.Context, history []Message, currentRunID string) ([]providers.Message, error) {
 	return buildProviderConversationWithAttachmentsForRun(ctx, history, c.attachments, currentRunID)
-}
-
-func buildProviderConversationWithAttachments(ctx context.Context, history []Message, reader AttachmentReader) ([]providers.Message, error) {
-	return buildProviderConversationWithAttachmentsForRun(ctx, history, reader, "")
 }
 
 func buildProviderConversationWithAttachmentsForRun(ctx context.Context, history []Message, reader AttachmentReader, currentRunID string) ([]providers.Message, error) {
@@ -530,10 +515,6 @@ func syntheticFailedToolResult(toolCallID string) providers.Message {
 		ToolCallID: toolCallID,
 		Content:    "Tool execution failed before completion.",
 	}
-}
-
-func buildTextOnlyProviderConversation(history []Message) []providers.Message {
-	return buildTextOnlyProviderConversationForRun(history, "")
 }
 
 func buildTextOnlyProviderConversationForRun(history []Message, currentRunID string) []providers.Message {

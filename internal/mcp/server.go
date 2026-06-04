@@ -3,7 +3,6 @@ package mcp
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -59,7 +58,7 @@ func mcpInputSchema(schema json.RawMessage) any {
 func toolResultToMCP(result tools.Result) *sdk.CallToolResult {
 	content := strings.TrimSpace(result.Content)
 	if content == "" {
-		content = fmt.Sprintf("%s", result.Status)
+		content = string(result.Status)
 	}
 	out := &sdk.CallToolResult{
 		Content: []sdk.Content{&sdk.TextContent{Text: content}},

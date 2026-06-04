@@ -65,7 +65,7 @@ func RowToneForStatus(status string) RowTone {
 
 func statusHasWord(status string, word string) bool {
 	for _, field := range strings.FieldsFunc(status, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
+		return (r < 'a' || r > 'z') && (r < '0' || r > '9')
 	}) {
 		if field == word {
 			return true

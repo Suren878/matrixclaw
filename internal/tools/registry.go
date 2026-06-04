@@ -207,10 +207,7 @@ func (p Policy) Allows(spec Spec) bool {
 			return true
 		}
 	}
-	if slices.Contains(p.Categories, normalizeCategory(spec.Category)) {
-		return true
-	}
-	return false
+	return slices.Contains(p.Categories, normalizeCategory(spec.Category))
 }
 
 func normalizeToolID(value string) string {

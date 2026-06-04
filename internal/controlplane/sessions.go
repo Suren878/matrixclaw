@@ -298,17 +298,6 @@ func sessionRuntimeLabel(session core.Session) string {
 	}
 }
 
-func sessionProviderStatus(session core.Session) string {
-	parts := []string{}
-	if provider := strings.TrimSpace(session.ProviderID); provider != "" {
-		parts = append(parts, provider)
-	}
-	if model := strings.TrimSpace(session.ModelID); model != "" {
-		parts = append(parts, model)
-	}
-	return strings.Join(parts, " · ")
-}
-
 func (d *Dispatcher) handleSessionRename(ctx context.Context, sessionID string, title string) (Result, error) {
 	session, err := d.findSession(ctx, sessionID)
 	if err != nil {

@@ -200,13 +200,6 @@ func (m *appModel) openPlanTaskMenu(plan *core.SessionPlan, selected int) tea.Cm
 	return nil
 }
 
-func planItems(plan *core.SessionPlan) []core.PlanItem {
-	if plan == nil {
-		return nil
-	}
-	return plan.Items
-}
-
 func planSelectedItem(plan *core.SessionPlan, selected int) (core.PlanItem, bool) {
 	if plan == nil || selected < 0 || selected >= len(plan.Items) {
 		return core.PlanItem{}, false
