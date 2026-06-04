@@ -236,7 +236,7 @@ var coreDefinitions = []Definition{
 		Spec: Spec{
 			ID:              webFetchToolName,
 			Name:            "WebFetch",
-			Description:     "Fetch a URL and return its text content as markdown",
+			Description:     "Fetch a URL through compact web research artifacts; task mode returns extracted facts/result",
 			Risk:            RiskSafe,
 			Effect:          EffectReadOnly,
 			ApprovalMode:    ApprovalNever,

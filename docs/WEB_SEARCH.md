@@ -1,51 +1,91 @@
 # Web Search
 
-matrixclaw exposes two tools to the assistant: `web_search` and `web_fetch`.
-Both are active whenever the assistant runs a coding session. No extra setup is
-required — DuckDuckGo works out of the box with no API key.
+matrixclaw exposes a unified web research toolset to the assistant. The primary
+tool is `web_research`; `web_research_ask` handles follow-up questions by
+reusing the saved research session before fetching again. Legacy `web_search`
+and `web_fetch` remain available for compatibility, but their outputs are
+compact and bounded.
+
+DuckDuckGo works out of the box with no API key. Tavily, Serper, and SearXNG can
+be configured from Modules -> Web Search.
 
 ## Tools
 
-### `web_search`
+### `web_research`
 
-Runs a search query and returns titles, URLs, and descriptions.
-
-```
-query  – the search string (required)
-limit  – max results to return, 1–20, default 8
-```
-
-Result format:
-```xml
-<web_search query="..." provider="tavily" count=5>
-
-[1] Page title
-    URL: https://example.com
-    Short description or excerpt.
-
-...
-</web_search>
-```
-
-### `web_fetch`
-
-Fetches a URL and returns the page content as readable text (HTML stripped,
-converted to plain markdown-like text).
+Runs a bounded research workflow: search, fetch selected sources, optionally use
+browser fallback, store raw artifacts, and return only compact results.
 
 ```
-url         – the URL to fetch (required)
-max_length  – character limit, 1 000–100 000, default 20 000
+task         - research task or question
+query        - optional search query; defaults to task
+urls         - optional URLs to read directly
+max_sources  - 1-12, default 5
+depth        - quick, standard, or deep
+browser      - auto, always, or never
+freshness    - auto, refresh, or cache
+async        - auto, true, or false
 ```
 
-Result format:
-```xml
-<web_page url="https://example.com" title="Page Title">
-...extracted text...
-</web_page>
+Result format is compact text plus structured metadata:
+
+```text
+research_id: wr_...
+status: completed
+
+answer:
+...bounded answer...
+
+facts:
+1. Fact text [source_id]
+
+sources:
+1. Page title
+   https://example.com
+
+warnings:
+- Browser fallback setup hint, blocked fetch, or other caveat.
 ```
+
+Raw page text, HTML, DOM snapshots, and screenshots are saved as runtime
+artifacts under the web research artifact directory and are not pasted into the
+main provider context. Default retention is 30 days.
+
+### `web_research_ask`
+
+Answers a follow-up against a saved `research_id`. It first searches stored
+facts/artifacts. If the answer is missing or the freshness policy requires an
+update, it performs a follow-up search/fetch/browser pass in the same research
+session.
+
+```
+research_id  - id returned by web_research
+question     - follow-up question
+freshness    - auto, refresh, or cache
+browser      - auto, always, or never
+```
+
+### `web_research_status`
+
+Checks a research session by `research_id`, including background jobs started
+with `async=true` or long `async=auto` runs.
+
+### Compatibility tools
+
+`web_search` runs only search and returns compact titles, URLs, and snippets.
+
+`web_fetch` remains active for older prompts, but it is now artifact-first:
+without `task`, it fetches one URL, stores raw text/HTML as artifacts when the
+web research engine is available, and returns only diagnostic metadata plus
+artifact/research references. With `task`, it routes through the same extraction
+path as `web_research` and returns compact facts/results for that URL.
+
+Both compatibility tools stay compact and bounded. Runtime guidance prefers
+`web_research` for source-backed answers, current information, ratings,
+reviews, comparisons, and follow-up research.
 
 Private/internal addresses (localhost, RFC 1918 ranges, link-local, cloud
-metadata endpoints) are blocked before any network request is made.
+metadata endpoints) are blocked before any direct fetch request is made.
 
 ## Providers
 

@@ -3,7 +3,7 @@ package version
 import "strings"
 
 var (
-	Version = "0.1.12"
+	Version = "0.1.14"
 	Commit  = ""
 	Date    = ""
 )

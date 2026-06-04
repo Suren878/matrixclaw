@@ -51,6 +51,9 @@ func (c *Core) providerSystemPrompt(ctx context.Context, turn turnExecution, ass
 	if workingDir := strings.TrimSpace(turn.WorkingDir); workingDir != "" {
 		sections = append(sections, currentProjectRootPrompt(workingDir))
 	}
+	if c.webResearchPromptAvailable() {
+		sections = append(sections, webResearchGuidancePrompt())
+	}
 	if c.delegateTaskPromptAvailable() {
 		sections = append(sections, c.delegateTaskGuidancePrompt(ctx))
 	}
@@ -166,6 +169,22 @@ func AssistantSystemPrompt(profile AssistantProfile) string {
 
 func responseLanguageGuidancePrompt() string {
 	return "Response language:\n- Reply in the same language the user uses for the current request.\n- If the user mixes languages, use the language that best matches the user's latest request.\n- Do not force English or Russian unless the user asks for that language."
+}
+
+func (c *Core) webResearchPromptAvailable() bool {
+	if c == nil || c.tools == nil {
+		return false
+	}
+	_, ok := c.tools.Spec("web_research")
+	return ok
+}
+
+func webResearchGuidancePrompt() string {
+	return strings.TrimSpace(`Web research:
+- For current or changing information, websites, ratings, reviews, prices, schedules, web search, or source-backed answers, prefer web_research over legacy web_search/web_fetch.
+- For follow-up questions about prior web research, use web_research_ask with the prior research_id before starting a new search.
+- web_research returns compact facts, sources, warnings, next actions, and a research_id; raw HTML, long page text, DOM snapshots, and screenshots are stored as artifacts and should not be pasted into chat.
+- Use browser=always only when the user explicitly asks to visit/look at a site, the task is visual, or fetch results are empty/dynamic/blocked. If browser fallback is unavailable, report the setup hint returned by the tool.`)
 }
 
 func voiceOutputGuidancePrompt() string {

@@ -14,21 +14,18 @@ import (
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
 	"github.com/Suren878/matrixclaw/internal/modules"
 	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
-	"github.com/Suren878/matrixclaw/internal/safego"
-
 	mcpmodule "github.com/Suren878/matrixclaw/internal/modules/mcp"
-
 	skillsmodule "github.com/Suren878/matrixclaw/internal/modules/skills"
-
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
-
 	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
-
 	goworkflows "github.com/Suren878/matrixclaw/internal/orchestration/go_workflows"
+	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/skills"
 	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/webresearch"
+	"github.com/Suren878/matrixclaw/internal/work"
 )
 
 func Run(ctx context.Context) error {
@@ -47,6 +44,12 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = automationStore.Close() }()
+	workStore, err := work.NewSQLiteStore(bootstrap.DBPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = workStore.Close() }()
+	webResearchStore := webresearch.NewStore(workStore)
 
 	storageModule, err := localstorage.New(localstorage.Config{
 		Root: defaultStorageRoot(bootstrap.DBPath),
@@ -70,6 +73,7 @@ func Run(ctx context.Context) error {
 
 	app := core.New(sqliteStore).
 		WithSessionLLMs(bootstrap.SessionLLMs).
+		WithWorkStore(workStore).
 		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()}).
 		WithSkillsContext(skillsModule)
 	app.SetAssistantProfile(assistant)
@@ -87,26 +91,17 @@ func Run(ctx context.Context) error {
 	app.WithRunStarter(runStarter)
 	automationService := automation.NewService(automationStore, app, bootstrap.Timezone).
 		WithDeliveryTargets(automationDeliveryTargets(bootstrap))
-	toolRegistry := tools.NewCoreCodingRegistry(
+	webSearchConfig := webSearchProviderConfig(bootstrap.SetupService)
+	webResearchEngine := newWebResearchEngine(bootstrap.DBPath, bootstrap.ExternalAgents.MCP, mcpModule, webResearchStore, webSearchConfig)
+	webTools := tools.NewWebService(webSearchConfig, webResearchEngine)
+	extraTools := []tools.Executor{
 		automation.NewReminderTool(automationService),
 		automation.NewScheduledAITaskTool(automationService),
 		voicemodule.NewTextToSpeechTool(bootstrap.SetupService),
-		tools.NewWebSearchExecutor(func() (tools.WebSearchProviderConfig, error) {
-			if bootstrap.SetupService == nil {
-				return tools.WebSearchProviderConfig{}, nil
-			}
-			cfg, err := bootstrap.SetupService.GetWebSearchConfig()
-			if err != nil {
-				return tools.WebSearchProviderConfig{}, err
-			}
-			return tools.WebSearchProviderConfig{
-				Provider:  cfg.Provider,
-				TavilyKey: cfg.TavilyKey,
-				SerperKey: cfg.SerperKey,
-				BaseURL:   cfg.BaseURL,
-			}, nil
-		}),
-	)
+		tools.NewWebSearchExecutorWithService(webTools),
+	}
+	extraTools = append(extraTools, tools.NewWebResearchExecutorsWithService(webTools)...)
+	toolRegistry := tools.NewCoreCodingRegistryWithOptions(tools.CoreRegistryOptions{Web: webTools}, extraTools...)
 	if err := toolRegistry.Register(core.PlanToolExecutors(app)...); err != nil {
 		return err
 	}
@@ -154,6 +149,7 @@ func Run(ctx context.Context) error {
 	}
 	startConfiguredVoiceRuntimes(ctx, bootstrap.SetupService)
 	safego.Go("automation.Run", func() { automationService.Run(ctx) })
+	safego.Go("webresearch.Run", func() { webResearchEngine.Start(ctx) })
 	safego.Go("supervisor.deliverStartupNotifications", func() {
 		supervisor.DeliverPendingStartupNotifications(bootstrap)
 	})

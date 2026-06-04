@@ -11,6 +11,8 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/Suren878/matrixclaw/internal/webresearch"
+
 	"golang.org/x/net/html"
 )
 
@@ -29,22 +31,124 @@ func (e *webFetchExecutor) Execute(ctx context.Context, call Call) (Result, erro
 	if err := json.Unmarshal(call.Args, &params); err != nil {
 		return Result{}, InvalidArgs(webFetchToolName, err)
 	}
-
 	params.URL = strings.TrimSpace(params.URL)
-	if params.MaxLength <= 0 {
-		params.MaxLength = defaultWebFetchMaxLength
+	params.Task = strings.TrimSpace(params.Task)
+
+	if params.Task != "" {
+		return e.executeWebFetchResearch(ctx, params, true)
 	}
-	if params.MaxLength > maxWebFetchMaxLength {
-		params.MaxLength = maxWebFetchMaxLength
+	if e.web != nil && e.web.ResearchConfigured() {
+		return e.executeWebFetchResearch(ctx, params, false)
 	}
 
-	if err := validateFetchURL(params.URL); err != nil {
-		return Result{Content: err.Error(), IsError: true}, nil
+	page, err := FetchWebPage(ctx, params.URL, params.MaxLength)
+	metadata := WebFetchResponseMetadata{
+		URL:         page.URL,
+		Title:       page.Title,
+		StatusCode:  page.StatusCode,
+		ContentType: page.ContentType,
+		Truncated:   page.Truncated,
+		CharCount:   len(page.Text),
 	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, params.URL, nil)
+	if strings.TrimSpace(metadata.URL) == "" {
+		metadata.URL = strings.TrimSpace(params.URL)
+	}
 	if err != nil {
-		return Result{Content: fmt.Sprintf("cannot build request: %v", err), IsError: true}, nil
+		return Result{
+			Content:  fmt.Sprintf("web_fetch failed for %s: %v", firstNonEmptyWeb(metadata.URL, params.URL), err),
+			Metadata: metadata,
+			Status:   ResultStatusError,
+			IsError:  true,
+		}, nil
+	}
+
+	return Result{
+		Content:  formatFetchedPageDiagnostics(metadata, "web research artifacts are unavailable because the research engine is not configured"),
+		Metadata: metadata,
+		Status:   ResultStatusSuccess,
+	}, nil
+}
+
+func (e *webFetchExecutor) executeWebFetchResearch(ctx context.Context, params WebFetchParams, taskMode bool) (Result, error) {
+	if e.web == nil || !e.web.ResearchConfigured() {
+		metadata := WebFetchResponseMetadata{URL: params.URL}
+		return Result{
+			Content:  "web_fetch task extraction requires the web research engine to be configured",
+			Metadata: metadata,
+			Status:   ResultStatusError,
+			IsError:  true,
+		}, nil
+	}
+	task := params.Task
+	if task == "" {
+		task = "Fetch this URL and store raw content as artifacts without returning raw page text."
+	}
+	result, err := e.web.Research(ctx, webresearch.ResearchRequest{
+		Task:       task,
+		URLs:       []string{params.URL},
+		MaxSources: 1,
+		Browser:    "auto",
+		Async:      "false",
+	})
+	metadata := metadataFromResearchFetch(params.URL, result)
+	if err != nil {
+		return Result{
+			Content:  fmt.Sprintf("web_fetch failed for %s: %v", firstNonEmptyWeb(metadata.URL, params.URL), err),
+			Metadata: metadata,
+			Status:   ResultStatusError,
+			IsError:  true,
+		}, nil
+	}
+	status := ResultStatusSuccess
+	isError := false
+	switch result.Status {
+	case webresearch.StatusFailed:
+		status = ResultStatusError
+		isError = true
+	case webresearch.StatusPending, webresearch.StatusRunning:
+		status = ResultStatusNeutral
+	}
+	if taskMode {
+		return Result{Content: webresearch.FormatResult(result), Metadata: result, Status: status, IsError: isError}, nil
+	}
+	return Result{
+		Content:  formatFetchedPageDiagnostics(metadata, "raw page text and HTML were stored as artifacts; call web_fetch with task or use web_research_ask for extraction"),
+		Metadata: metadata,
+		Status:   status,
+		IsError:  isError,
+	}, nil
+}
+
+func metadataFromResearchFetch(inputURL string, result webresearch.ResearchResult) WebFetchResponseMetadata {
+	metadata := WebFetchResponseMetadata{URL: strings.TrimSpace(inputURL), ResearchID: result.ResearchID}
+	if len(result.Sources) == 0 {
+		return metadata
+	}
+	source := result.Sources[0]
+	metadata.URL = firstNonEmptyWeb(source.URL, metadata.URL)
+	metadata.Title = source.Title
+	metadata.StatusCode = source.StatusCode
+	metadata.ContentType = source.ContentType
+	metadata.ArtifactIDs = append([]string(nil), source.ArtifactIDs...)
+	return metadata
+}
+
+func FetchWebPage(ctx context.Context, rawURL string, maxLength int) (WebFetchedPage, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if maxLength <= 0 {
+		maxLength = defaultWebFetchMaxLength
+	}
+	if maxLength > maxWebFetchMaxLength {
+		maxLength = maxWebFetchMaxLength
+	}
+
+	if err := validateFetchURL(rawURL); err != nil {
+		return WebFetchedPage{URL: rawURL}, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return WebFetchedPage{URL: rawURL}, fmt.Errorf("cannot build request: %w", err)
 	}
 	req.Header.Set("User-Agent", "matrixclaw/1.0 (+https://github.com/Suren878/matrixclaw)")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8")
@@ -52,54 +156,99 @@ func (e *webFetchExecutor) Execute(ctx context.Context, call Call) (Result, erro
 
 	resp, err := webFetchClient.Do(req)
 	if err != nil {
-		return Result{Content: fmt.Sprintf("fetch failed: %v", err), IsError: true}, nil
+		return WebFetchedPage{URL: rawURL}, fmt.Errorf("fetch failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return Result{
-			Content: fmt.Sprintf("server returned %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)),
-			Metadata: WebFetchResponseMetadata{URL: params.URL, StatusCode: resp.StatusCode},
-			IsError:  true,
-		}, nil
+	page := WebFetchedPage{
+		URL:         rawURL,
+		StatusCode:  resp.StatusCode,
+		ContentType: resp.Header.Get("Content-Type"),
+	}
+	if resp.Request != nil && resp.Request.URL != nil {
+		page.URL = resp.Request.URL.String()
 	}
 
-	contentType := resp.Header.Get("Content-Type")
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return page, fmt.Errorf("server returned %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+	}
+
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 5*1024*1024))
 	if err != nil {
-		return Result{Content: fmt.Sprintf("reading response: %v", err), IsError: true}, nil
+		return page, fmt.Errorf("reading response: %w", err)
 	}
 
-	var title, text string
-	if strings.Contains(contentType, "text/html") || strings.Contains(contentType, "application/xhtml") {
-		title, text = extractHTMLContent(body)
+	var text string
+	if strings.Contains(page.ContentType, "text/html") || strings.Contains(page.ContentType, "application/xhtml") {
+		page.Title, text = extractHTMLContent(body)
+		page.HTML = string(body)
 	} else {
 		text = string(body)
 	}
 
-	truncated := false
-	if len(text) > params.MaxLength {
-		text = text[:params.MaxLength]
-		truncated = true
+	if len(text) > maxLength {
+		text = text[:maxLength]
+		page.Truncated = true
 	}
+	page.Text = text
+	return page, nil
+}
 
-	content := fmt.Sprintf("<web_page url=%q", params.URL)
-	if title != "" {
-		content += fmt.Sprintf(" title=%q", title)
+func formatFetchedPageDiagnostics(metadata WebFetchResponseMetadata, note string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "web_fetch: %s\n", strings.TrimSpace(metadata.URL))
+	if metadata.ResearchID != "" {
+		fmt.Fprintf(&b, "research_id: %s\n", metadata.ResearchID)
 	}
-	content += ">\n" + text + "\n</web_page>"
+	if metadata.Title != "" {
+		fmt.Fprintf(&b, "title: %s\n", strings.Join(strings.Fields(metadata.Title), " "))
+	}
+	if metadata.StatusCode != 0 {
+		fmt.Fprintf(&b, "status: %d\n", metadata.StatusCode)
+	}
+	if metadata.ContentType != "" {
+		fmt.Fprintf(&b, "content_type: %s\n", metadata.ContentType)
+	}
+	if metadata.CharCount > 0 {
+		fmt.Fprintf(&b, "char_count: %d\n", metadata.CharCount)
+	}
+	if metadata.Truncated {
+		b.WriteString("truncated: true\n")
+	}
+	if len(metadata.ArtifactIDs) > 0 {
+		b.WriteString("artifact_ids:\n")
+		for _, artifactID := range metadata.ArtifactIDs {
+			b.WriteString("- ")
+			b.WriteString(artifactID)
+			b.WriteByte('\n')
+		}
+	}
+	if note = strings.TrimSpace(note); note != "" {
+		b.WriteString("\nnote: ")
+		b.WriteString(note)
+	}
+	return strings.TrimSpace(b.String())
+}
 
-	return Result{
-		Content: content,
-		Metadata: WebFetchResponseMetadata{
-			URL:         params.URL,
-			Title:       title,
-			StatusCode:  resp.StatusCode,
-			ContentType: contentType,
-			Truncated:   truncated,
-			CharCount:   len(text),
-		},
-	}, nil
+func boundWebToolText(value string, maxChars int) string {
+	value = strings.TrimSpace(value)
+	if value == "" || maxChars <= 0 || len(value) <= maxChars {
+		return value
+	}
+	cut := strings.LastIndex(value[:maxChars], " ")
+	if cut < maxChars/2 {
+		cut = maxChars
+	}
+	return strings.TrimSpace(value[:cut]) + "..."
+}
+
+func firstNonEmptyWeb(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // extractHTMLContent parses HTML and returns (title, readable text as markdown).

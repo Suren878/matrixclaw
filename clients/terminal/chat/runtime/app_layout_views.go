@@ -385,6 +385,12 @@ func workingToolPhase(name string) string {
 		return "Fetching web page"
 	case "web_search":
 		return "Searching web"
+	case "web_research":
+		return "Researching web"
+	case "web_research_ask":
+		return "Checking research"
+	case "web_research_status":
+		return "Checking research status"
 	case "":
 		return "Running tool"
 	default:

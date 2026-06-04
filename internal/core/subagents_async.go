@@ -302,6 +302,7 @@ func (c *Core) SpawnSubagent(ctx context.Context, input SpawnSubagentInput) (Spa
 	if err := c.store.CreateSubagentTask(ctx, task); err != nil {
 		return SpawnSubagentResult{}, err
 	}
+	c.createSubagentWorkJob(ctx, task)
 	c.publishSubagentTaskUpdated(task)
 
 	if err := c.startRun(ctx, run.ID); err != nil {
@@ -312,6 +313,7 @@ func (c *Core) SpawnSubagent(ctx context.Context, input SpawnSubagentInput) (Spa
 		finishedAt := task.UpdatedAt
 		task.FinishedAt = &finishedAt
 		_ = c.store.UpdateSubagentTask(ctx, task)
+		c.updateSubagentWorkJob(ctx, task)
 		c.publishSubagentTaskUpdated(task)
 		return SpawnSubagentResult{}, err
 	}
@@ -375,7 +377,7 @@ func (c *Core) ReadSubagentResult(ctx context.Context, parentSessionID string, t
 	if task.ParentSessionID != parentSessionID {
 		return SubagentTask{}, "", fmt.Errorf("%w: subagent task belongs to another parent session", ErrInvalidInput)
 	}
-	return task, c.subagentTaskDetail(ctx, task), nil
+	return task, c.subagentTaskDetail(task), nil
 }
 
 func (c *Core) recordSubagentResultMessage(ctx context.Context, metadata any, resultMessageID string) error {
@@ -405,6 +407,7 @@ func (c *Core) recordSubagentResultMessage(ctx context.Context, metadata any, re
 	if err := c.store.UpdateSubagentTask(ctx, current); err != nil {
 		return err
 	}
+	c.updateSubagentWorkJob(ctx, current)
 	c.publishSubagentTaskUpdated(current)
 	return nil
 }
@@ -431,6 +434,7 @@ func (c *Core) touchAsyncSubagentTaskActivity(ctx context.Context, childRunID st
 	if err := c.store.UpdateSubagentTask(ctx, task); err != nil {
 		return err
 	}
+	c.updateSubagentWorkJob(ctx, task)
 	c.publishSubagentTaskUpdated(task)
 	return nil
 }
@@ -505,6 +509,7 @@ func (c *Core) syncAsyncSubagentTaskAfterRun(ctx context.Context, task SubagentT
 	if err := c.store.UpdateSubagentTask(ctx, task); err != nil {
 		return err
 	}
+	c.updateSubagentWorkJob(ctx, task)
 	c.publishSubagentTaskUpdated(task)
 	if err := c.updateSubagentResultMessage(ctx, task); err != nil {
 		return err
@@ -601,6 +606,7 @@ func (c *Core) deliverPendingSubagentCompletionsForParent(ctx context.Context, p
 		if err := c.store.UpdateSubagentTask(ctx, task); err != nil {
 			return err
 		}
+		c.updateSubagentWorkJob(ctx, task)
 		c.publishSubagentTaskUpdated(task)
 	}
 	return nil
@@ -892,10 +898,11 @@ func formatSubagentTaskList(tasks []SubagentTask) string {
 	return strings.Join(lines, "\n")
 }
 
-func (c *Core) subagentTaskDetail(ctx context.Context, task SubagentTask) string {
+func (c *Core) subagentTaskDetail(task SubagentTask) string {
 	lines := []string{
 		fmt.Sprintf("Subagent: %s", subagentTaskAgentName(task)),
 		"Task ID: " + task.ID,
+		"Work job: " + task.ID,
 		"Status: " + string(task.Status),
 		"Runtime: " + task.Runtime,
 	}
@@ -908,16 +915,6 @@ func (c *Core) subagentTaskDetail(ctx context.Context, task SubagentTask) string
 	}
 	if task.Error != "" {
 		lines = append(lines, "", "Error:", task.Error)
-	}
-	if messages, err := c.store.ListMessages(ctx, task.ChildSessionID, 6); err == nil && len(messages) > 0 {
-		lines = append(lines, "", "Recent transcript:")
-		for _, message := range messages {
-			text := strings.Join(strings.Fields(message.Content), " ")
-			if text == "" {
-				continue
-			}
-			lines = append(lines, fmt.Sprintf("- %s: %s", message.Role, truncateForTitle(text, 180)))
-		}
 	}
 	return strings.Join(lines, "\n")
 }

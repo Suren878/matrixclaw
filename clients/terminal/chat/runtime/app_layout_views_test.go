@@ -26,6 +26,9 @@ func TestWorkingStatusPhaseToolLabels(t *testing.T) {
 		{name: "ls", tool: "ls", want: "Listing files"},
 		{name: "web_fetch", tool: "web_fetch", want: "Fetching web page"},
 		{name: "web_search", tool: "web_search", want: "Searching web"},
+		{name: "web_research", tool: "web_research", want: "Researching web"},
+		{name: "web_research_ask", tool: "web_research_ask", want: "Checking research"},
+		{name: "web_research_status", tool: "web_research_status", want: "Checking research status"},
 		{name: "unknown", tool: "custom_tool", want: "Running custom_tool"},
 	}
 

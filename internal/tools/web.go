@@ -1,9 +1,12 @@
 package tools
 
 const (
-	namespaceCoreWeb  = "core.web"
-	webFetchToolName  = "web_fetch"
-	webSearchToolName = "web_search"
+	namespaceCoreWeb          = "core.web"
+	webFetchToolName          = "web_fetch"
+	webSearchToolName         = "web_search"
+	webResearchToolName       = "web_research"
+	webResearchAskToolName    = "web_research_ask"
+	webResearchStatusToolName = "web_research_status"
 
 	defaultWebFetchMaxLength = 20000
 	maxWebFetchMaxLength     = 100000
@@ -16,16 +19,29 @@ const (
 
 type WebFetchParams struct {
 	URL       string `json:"url"`
+	Task      string `json:"task,omitempty"`
 	MaxLength int    `json:"max_length,omitempty"`
 }
 
 type WebFetchResponseMetadata struct {
+	URL         string   `json:"url"`
+	Title       string   `json:"title,omitempty"`
+	StatusCode  int      `json:"status_code,omitempty"`
+	ContentType string   `json:"content_type,omitempty"`
+	Truncated   bool     `json:"truncated,omitempty"`
+	CharCount   int      `json:"char_count,omitempty"`
+	ResearchID  string   `json:"research_id,omitempty"`
+	ArtifactIDs []string `json:"artifact_ids,omitempty"`
+}
+
+type WebFetchedPage struct {
 	URL         string `json:"url"`
 	Title       string `json:"title,omitempty"`
+	Text        string `json:"text,omitempty"`
+	HTML        string `json:"html,omitempty"`
 	StatusCode  int    `json:"status_code,omitempty"`
 	ContentType string `json:"content_type,omitempty"`
 	Truncated   bool   `json:"truncated,omitempty"`
-	CharCount   int    `json:"char_count,omitempty"`
 }
 
 type WebSearchParams struct {
@@ -46,10 +62,12 @@ type WebSearchResponseMetadata struct {
 	Results  []WebSearchResult `json:"results"`
 }
 
-type webFetchExecutor struct{}
+type webFetchExecutor struct {
+	web *WebService
+}
 
 type webSearchExecutor struct {
-	config func() (WebSearchProviderConfig, error)
+	web *WebService
 }
 
 // WebSearchProviderConfig holds the active provider credentials for web search.
@@ -60,10 +78,20 @@ type WebSearchProviderConfig struct {
 	BaseURL   string
 }
 
-func NewWebFetchExecutor() Executor { return &webFetchExecutor{} }
+func NewWebFetchExecutor() Executor {
+	return NewWebFetchExecutorWithService(nil)
+}
+
+func NewWebFetchExecutorWithService(web *WebService) Executor {
+	return &webFetchExecutor{web: web}
+}
 
 func NewWebSearchExecutor(config func() (WebSearchProviderConfig, error)) Executor {
-	return &webSearchExecutor{config: config}
+	return NewWebSearchExecutorWithService(NewWebService(config, nil))
+}
+
+func NewWebSearchExecutorWithService(web *WebService) Executor {
+	return &webSearchExecutor{web: web}
 }
 
 func (e *webFetchExecutor) Spec() Spec { return coreDefinitionSpec(webFetchToolName) }

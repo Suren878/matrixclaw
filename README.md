@@ -53,7 +53,7 @@ runtime through Terminal, Telegram, or MCP.
 - **Memory and search:** the assistant can save approved durable memories and search previous sessions with `memory` and `session_search`.
 - **Usage ledger:** provider token usage is recorded when available.
 - **Storage module:** Telegram uploads and generated files land in local storage, with temporary files promoted only when needed.
-- **Web search module:** `web_search` and `web_fetch` tools with four provider options — DuckDuckGo (free, no key), Tavily (1 000 req/mo free), Serper (2 500 req/mo free), SearXNG (self-hosted). Configure from `/modules` without restarting.
+- **Web research module:** `web_research`, `web_research_ask`, and compatibility `web_search` / `web_fetch` tools with SQLite-backed facts/sources and runtime artifacts. Providers: DuckDuckGo (free, no key), Tavily (1 000 req/mo free), Serper (2 500 req/mo free), SearXNG (self-hosted). Configure from `/modules` without restarting.
 - **Local voice modules:** Piper and Supertonic TTS plus Whisper.cpp STT run locally, either per task to save RAM or as managed warm processes.
 - **MCP module:** connect external MCP servers as assistant tools, or expose matrixclaw tools to MCP hosts.
 - **Automation-ready:** reminders, scheduled AI tasks, deliveries, and future agent workflows.
@@ -159,27 +159,29 @@ from more than one surface.
 
 ## What's New
 
-Latest release highlights:
+Latest release highlights for `v0.1.14`:
 
-- Live subagent cards in the Terminal chat for `delegate_task` and
-  `spawn_subagent`, with Matrix-style codenames, running/completed/failed
-  states, expandable task details, and metadata previews.
-- Async subagent state is now merged back into existing tool cards so background
-  work keeps animating after the spawn call returns.
-- The status bar separates the main model phase from active subagents and
-  queued input, including `Waiting for subagent: <name>` when the parent run is
-  blocked on child-agent work.
-- Busy input now queues by default while the assistant is running, with
-  `/queue`, `/steer`, `/interrupt`, and `/busy` commands for explicit control.
-- Context management now has `/context clear` plus compacting. Clear creates a
-  distinct `Context cleared` chat card and immediately fixes the header token
-  estimate to use only effective post-clear context.
-- The context engine tracks clear markers, compact summaries, message counts,
-  tool schemas, context window size, and provider usage in one `ContextReport`.
-- Command pickers and Terminal navigation were tightened for stable scrolling,
-  clearer previews, and safer destructive confirmations.
-- Local voice runtime management was split into Piper, Supertonic, and
-  Whisper.cpp drivers with install/status tests.
+- Added smart web research through `web_research`, `web_research_ask`, and
+  `web_research_status`: search, fetch, deterministic extraction, optional MCP
+  browser fallback, compact facts, source lists, warnings, and `research_id`
+  reuse for follow-up questions.
+- Added a shared `work` storage layer for heavy jobs. Web research sessions,
+  child jobs, artifacts, and extracted facts now land in `work_jobs`,
+  `work_artifacts`, and `work_facts` instead of passing raw pages back through
+  the main model context.
+- Made `web_fetch` artifact-first. Without a task it returns diagnostics and
+  artifact/research references; with a task it runs extraction through the same
+  research engine and returns compact results.
+- Kept `web_search` as a compatibility search tool while making source-backed
+  Q&A prefer `web_research` by default.
+- Added MCP browser adapter support so configured browser MCP servers can be
+  used as the dynamic-page fallback for web research.
+- Connected subagent lifecycle events to the shared work layer, so
+  `read_subagent_result` can return compact job summaries and references
+  instead of replaying full child transcripts.
+- Refactored the web tool wiring around a single injected web service adapter,
+  removing hidden global state between `web_fetch`, `web_search`, and
+  `web_research`.
 
 ## Install
 
@@ -259,7 +261,7 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
 - Telegram image/document uploads stored as temporary files, with explicit save/delete controls.
 - Telegram voice and audio messages transcribed through the configured STT provider and sent into the active session as text.
 - Telegram `/tts` and assistant `text_to_speech` tool results sent back as voice messages and archived in storage.
-- Web search and web fetch tools with provider selection and per-provider credential storage; provider switch takes effect immediately without a daemon restart.
+- Web research tools with compact provider-visible facts/sources, follow-up reuse by `research_id`, runtime artifact storage, provider selection, and per-provider credential storage; provider switch takes effect immediately without a daemon restart.
 - MCP client module for stdio and streamable HTTP MCP servers, registering remote tools as matrixclaw tools.
 - MCP stdio server mode for exposing matrixclaw daemon tools to external MCP hosts.
 - SQLite-backed local state with reconnectable clients and session handoff.

@@ -32,11 +32,7 @@ func (e *webSearchExecutor) Execute(ctx context.Context, call Call) (Result, err
 		params.Limit = maxWebSearchLimit
 	}
 
-	var cfg WebSearchProviderConfig
-	if e.config != nil {
-		cfg, _ = e.config()
-	}
-	results, provider, err := runWebSearch(ctx, params.Query, params.Limit, cfg)
+	results, provider, err := e.web.Search(ctx, params.Query, params.Limit)
 	if err != nil {
 		return Result{Content: fmt.Sprintf("web search failed: %v", err), IsError: true}, nil
 	}
@@ -52,7 +48,7 @@ func (e *webSearchExecutor) Execute(ctx context.Context, call Call) (Result, err
 	}, nil
 }
 
-func runWebSearch(ctx context.Context, query string, limit int, cfg WebSearchProviderConfig) ([]WebSearchResult, string, error) {
+func RunWebSearch(ctx context.Context, query string, limit int, cfg WebSearchProviderConfig) ([]WebSearchResult, string, error) {
 	switch cfg.Provider {
 	case "tavily":
 		if cfg.TavilyKey != "" {
@@ -383,18 +379,17 @@ func textContent(n *html.Node) string {
 
 func formatSearchResults(query, provider string, results []WebSearchResult) string {
 	if len(results) == 0 {
-		return fmt.Sprintf("No results found for %q (provider: %s)", query, provider)
+		return fmt.Sprintf("web_search: no results found for %q (provider: %s)", query, provider)
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "<web_search query=%q provider=%q count=%d>\n", query, provider, len(results))
+	fmt.Fprintf(&b, "web_search: %q\nprovider: %s\ncount: %d\n", query, provider, len(results))
 	for _, r := range results {
-		fmt.Fprintf(&b, "\n[%d] %s\n    URL: %s\n", r.Position, r.Title, r.URL)
+		fmt.Fprintf(&b, "\n%d. %s\n   %s\n", r.Position, strings.Join(strings.Fields(r.Title), " "), r.URL)
 		if r.Description != "" {
-			fmt.Fprintf(&b, "    %s\n", r.Description)
+			fmt.Fprintf(&b, "   %s\n", boundWebToolText(r.Description, 320))
 		}
 	}
-	b.WriteString("</web_search>")
-	return b.String()
+	return strings.TrimSpace(b.String())
 }
 
 func min(a, b int) int {

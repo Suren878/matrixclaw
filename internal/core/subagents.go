@@ -189,6 +189,7 @@ func (c *Core) DelegateTask(ctx context.Context, input DelegateTaskInput) (Deleg
 	if err := c.store.CreateSubagentTask(ctx, task); err != nil {
 		return DelegateTaskResult{}, err
 	}
+	c.createSubagentWorkJob(ctx, task)
 	c.publishSubagentTaskUpdated(task)
 
 	execErr := c.ExecuteRun(ctx, run.ID)
@@ -227,6 +228,7 @@ func (c *Core) finishOrBridgeSubagentTask(ctx context.Context, task SubagentTask
 		if err := c.store.UpdateSubagentTask(ctx, task); err != nil {
 			return DelegateTaskResult{}, err
 		}
+		c.updateSubagentWorkJob(ctx, task)
 		request, err := c.subagentApprovalRequest(ctx, task, approval)
 		if err != nil {
 			return DelegateTaskResult{}, err
@@ -255,6 +257,7 @@ func (c *Core) finishSubagentTask(ctx context.Context, task SubagentTask, summar
 	if err := c.store.UpdateSubagentTask(ctx, task); err != nil {
 		return DelegateTaskResult{}, err
 	}
+	c.updateSubagentWorkJob(ctx, task)
 	return DelegateTaskResult{Task: task, Summary: summary, IsError: failed}, nil
 }
 
@@ -393,6 +396,7 @@ func (c *Core) mirrorPendingSubagentApproval(ctx context.Context, task SubagentT
 	if err := c.store.UpdateSubagentTask(ctx, task); err != nil {
 		return err
 	}
+	c.updateSubagentWorkJob(ctx, task)
 	request, err := c.subagentApprovalRequest(ctx, task, childApproval)
 	if err != nil {
 		return err

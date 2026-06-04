@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.1.14
+
+- Added smart web research with `web_research`, `web_research_ask`, and
+  `web_research_status`, returning compact answers, facts, sources, warnings,
+  next actions, and reusable `research_id` values.
+- Added the shared `internal/work` storage layer with `work_jobs`,
+  `work_artifacts`, and `work_facts` for heavy assistant jobs and large runtime
+  artifacts.
+- Moved new web research persistence onto the shared work tables, leaving raw
+  page text, HTML, browser snapshots, and extraction artifacts out of the main
+  provider prompt by default.
+- Added deterministic web extraction for titles, snippets, page text chunks,
+  schema-style facts, ratings, and review counts, with browser fallback support
+  for dynamic or sparse pages.
+- Updated `web_fetch` compatibility behavior: task mode now routes through web
+  research extraction, while plain URL fetch returns compact diagnostics and
+  artifact references instead of long raw excerpts.
+- Kept `web_search` as a compact compatibility search tool and updated runtime
+  guidance to prefer `web_research` for current, source-backed answers.
+- Added MCP browser adapter wiring so web research can use a configured browser
+  MCP server as its fallback renderer.
+- Mirrored subagent lifecycle state into the shared work layer and made
+  `read_subagent_result` return compact job summaries and refs instead of child
+  transcript excerpts.
+- Refactored web tool wiring around a single injected web service adapter,
+  removing hidden global state between `web_fetch`, `web_search`, and
+  `web_research`.
+
 ## v0.1.13
 
 - Added live Terminal subagent cards for `delegate_task` and `spawn_subagent`,
