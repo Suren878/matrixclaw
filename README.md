@@ -159,30 +159,23 @@ from more than one surface.
 
 ## What's New
 
-Latest release highlights for `v0.1.14`:
+Latest release highlights for `v0.1.15`:
 
-- Added smart web research through `web_research`, `web_research_ask`, and
-  `web_research_status`: search, fetch, deterministic extraction, optional MCP
-  browser fallback, compact facts, source lists, warnings, and `research_id`
-  reuse for follow-up questions.
-- Added a shared `work` storage layer for heavy jobs. Web research sessions,
-  child jobs, artifacts, and extracted facts now land in `work_jobs`,
-  `work_artifacts`, and `work_facts` instead of passing raw pages back through
-  the main model context.
-- Made `web_fetch` artifact-first. Without a task it returns diagnostics and
-  artifact/research references; with a task it runs extraction through the same
-  research engine and returns compact results.
-- Kept `web_search` as a compatibility search tool while making source-backed
-  Q&A prefer `web_research` by default.
-- Added MCP browser adapter support. Configured browser MCP servers can be used
-  as the dynamic-page fallback for web research, and their interactive browser
-  actions are exposed as normal MatrixClaw tools.
-- Connected subagent lifecycle events to the shared work layer, so
-  `read_subagent_result` can return compact job summaries and references
-  instead of replaying full child transcripts.
-- Refactored the web tool wiring around a single injected web service adapter,
-  removing hidden global state between `web_fetch`, `web_search`, and
-  `web_research`.
+- Reworked Telegram sessions around the main private chat again. `/new`,
+  `/sessions`, session use, and session deletion no longer depend on Telegram
+  forum topics or thread bindings.
+- Added Telegram inline and guest delivery support. The bot can be invoked from
+  another chat, run against the active Telegram session, and replace the inline
+  placeholder with the assistant answer.
+- Improved Telegram live delivery with draft previews, compact thinking text,
+  persistent inline request recovery, and cleaner voice/TTS routing back to the
+  originating chat or inline message.
+- Passed Telegram inline geolocation into assistant requests, so location-based
+  prompts can use the coordinates Telegram supplies.
+- Added browser module plumbing and managed browser MCP configuration paths for
+  browser provider state in the daemon, API client, and control-plane UI.
+- Expanded storage byte-read APIs and moved storage, voice, and session-LLM
+  diagnostics away from phrase matching to typed errors.
 
 ## Install
 

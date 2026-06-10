@@ -108,8 +108,8 @@ WHERE id = ?`, runID)
 
 func (s *SQLiteStore) GetActiveRunBySession(ctx context.Context, sessionID string) (core.Run, error) {
 	row := s.db.QueryRowContext(ctx, `
-SELECT id, session_id, user_message_id, client, external_key, status, error, started_at, finished_at, updated_at
-FROM runs
+	SELECT id, session_id, user_message_id, client, external_key, status, error, started_at, finished_at, updated_at
+	FROM runs
 WHERE session_id = ?
   AND status IN (?, ?, ?)
 ORDER BY started_at DESC, updated_at DESC
@@ -128,6 +128,35 @@ LIMIT 1`,
 		return core.Run{}, fmt.Errorf("store: get active run by session: %w", err)
 	}
 	return run, nil
+}
+
+func (s *SQLiteStore) ListActiveRuns(ctx context.Context) ([]core.Run, error) {
+	rows, err := s.db.QueryContext(ctx, `
+	SELECT id, session_id, user_message_id, client, external_key, status, error, started_at, finished_at, updated_at
+	FROM runs
+	WHERE status IN (?, ?, ?)
+	ORDER BY started_at ASC, updated_at ASC`,
+		string(core.RunStatusAccepted),
+		string(core.RunStatusRunning),
+		string(core.RunStatusWaitingApproval),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("store: list active runs: %w", err)
+	}
+	defer rows.Close()
+
+	runs := []core.Run{}
+	for rows.Next() {
+		run, err := scanRun(rows)
+		if err != nil {
+			return nil, fmt.Errorf("store: scan active run: %w", err)
+		}
+		runs = append(runs, run)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: iterate active runs: %w", err)
+	}
+	return runs, nil
 }
 
 func (s *SQLiteStore) UpdateRun(ctx context.Context, run core.Run) error {
@@ -173,7 +202,7 @@ func (s *SQLiteStore) CompleteRun(ctx context.Context, assistantMessage core.Mes
 	return nil
 }
 
-func (s *SQLiteStore) AcceptMessage(ctx context.Context, message core.Message, run core.Run) error {
+func (s *SQLiteStore) AcceptMessage(ctx context.Context, message core.Message, run core.Run, deliveries ...core.ClientDelivery) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("store: begin accept message: %w", err)
@@ -187,6 +216,13 @@ func (s *SQLiteStore) AcceptMessage(ctx context.Context, message core.Message, r
 	if err := insertRun(ctx, tx, run); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("store: insert accepted run: %w", err)
+	}
+
+	for _, delivery := range deliveries {
+		if err := insertClientDelivery(ctx, tx, delivery); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("store: insert accepted delivery: %w", err)
+		}
 	}
 
 	if err := touchSession(ctx, tx, message.SessionID, message.CreatedAt); err != nil {

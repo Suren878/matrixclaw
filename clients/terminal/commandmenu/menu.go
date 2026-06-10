@@ -19,55 +19,17 @@ type State struct {
 }
 
 func Entries(state State) []surfacedialog.CommandEntry {
-	views := make(map[string]controlplane.CommandView)
-	order := make([]string, 0, 12)
-	for _, item := range controlplane.BuildCommandView(controlplane.MenuState{
+	menu := controlplane.CommandMenuView(controlplane.SurfaceTerminal, controlplane.MenuState{
 		SessionTitle:   state.SessionTitle,
 		ProviderID:     state.ProviderID,
 		ModelID:        state.ModelID,
 		PermissionMode: state.PermissionMode,
 		Capabilities:   state.Capabilities,
-	}) {
-		if !item.Menu {
-			continue
-		}
-		if item.ID == string(controlplane.CommandNewSession) || item.ID == string(controlplane.CommandMemory) {
-			continue
-		}
-		views[item.ID] = item
-		order = append(order, item.ID)
-	}
+	})
 
 	entries := make([]surfacedialog.CommandEntry, 0, 12)
-	primary := []controlplane.CommandID{
-		controlplane.CommandSessions,
-		controlplane.CommandContext,
-		controlplane.CommandProvider,
-		controlplane.CommandPermissions,
-	}
-	used := make(map[string]bool, len(primary))
-	for _, id := range primary {
-		item, ok := views[string(id)]
-		if !ok {
-			continue
-		}
-		if id == controlplane.CommandProvider {
-			item.Title = "Providers"
-		}
-		if id == controlplane.CommandPermissions {
-			item.Title = "Permissions"
-		}
+	for _, item := range menu.Items {
 		entries = append(entries, commandEntry(item))
-		used[item.ID] = true
-	}
-	if len(entries) > 0 {
-		entries = append(entries, surfacedialog.CommandEntry{Kind: surfacedialog.ListEntryDivider, ID: "divider_general"})
-	}
-	for _, id := range order {
-		if used[id] {
-			continue
-		}
-		entries = append(entries, commandEntry(views[id]))
 	}
 	if state.ExternalEditorAvailable {
 		entries = append(entries, surfacedialog.CommandEntry{ID: "open_external_editor", Title: "External Editor", Shortcut: "ctrl+o", Action: surfacedialog.ActionExternalEditor{}})
@@ -76,107 +38,96 @@ func Entries(state State) []surfacedialog.CommandEntry {
 	return entries
 }
 
-func commandEntry(item controlplane.CommandView) surfacedialog.CommandEntry {
+func commandEntry(item controlplane.ResultViewItem) surfacedialog.CommandEntry {
 	return surfacedialog.CommandEntry{
 		ID:       item.ID,
 		Title:    item.Title,
-		Status:   item.Status,
+		Status:   item.Info,
 		Tone:     components.RowToneNormal,
 		Disabled: item.Disabled,
 		Action:   surfacedialog.ActionRunControlplaneCommand{Command: item.Command},
 	}
 }
 
-func PickerTitle(picker controlplane.PickerData) string {
-	return controlplane.PickerPresentationTitle(picker)
+func PickerEntries(view controlplane.PickerViewData) []surfacedialog.PickerEntry {
+	return pickerEntries(view, true, false)
 }
 
-func PickerLegend(picker controlplane.PickerData) string {
-	return controlplane.PickerLegend(picker)
+func PickerRows(view controlplane.PickerViewData) []surfacedialog.PickerEntry {
+	return pickerEntries(view, false, true)
 }
 
-func PickerEntriesWithCloseAction(picker controlplane.PickerData, closeAction surfacedialog.Action) []surfacedialog.PickerEntry {
-	return pickerEntries(picker, closeAction, true, false)
-}
-
-func PickerRows(picker controlplane.PickerData) []surfacedialog.PickerEntry {
-	return pickerEntries(picker, nil, false, true)
-}
-
-func pickerEntries(picker controlplane.PickerData, closeAction surfacedialog.Action, includeFooter bool, closeOnSelect bool) []surfacedialog.PickerEntry {
-	entries := make([]surfacedialog.PickerEntry, 0, len(picker.Items)+2)
-	for _, presented := range controlplane.PresentPickerItems(picker) {
+func pickerEntries(view controlplane.PickerViewData, includeFooter bool, closeOnSelect bool) []surfacedialog.PickerEntry {
+	entries := make([]surfacedialog.PickerEntry, 0, len(view.Items)+1)
+	for _, presented := range view.Items {
 		if presented.SeparatorBefore && len(entries) > 0 && entries[len(entries)-1].Kind != surfacedialog.ListEntryDivider && entries[len(entries)-1].Kind != surfacedialog.ListEntryHeader {
-			entries = append(entries, surfacedialog.PickerEntry{Kind: surfacedialog.ListEntryDivider, ID: "divider_destructive"})
+			entries = append(entries, surfacedialog.PickerEntry{Kind: surfacedialog.ListEntryDivider, ID: "divider_" + presented.ID})
 		}
 		entries = append(entries, surfacedialog.PickerEntry{
-			ID:       presented.Item.ID,
+			ID:       presented.ID,
 			Title:    presented.Title,
-			Status:   presented.Status,
+			Status:   presented.Info,
 			Search:   presented.Search,
 			Role:     components.RoleNormal,
 			Tone:     pickerEntryTone(presented),
-			Selected: presented.Selected || presented.Item.Focused,
+			Selected: presented.Selected || presented.Focused,
 			Disabled: presented.Disabled,
 			Action:   pickerItemAction(presented, closeOnSelect),
 		})
 	}
 	if includeFooter {
-		if footer := pickerFooterEntry(picker, closeAction); footer != nil {
+		if footer := pickerFooterEntry(view.Footer); footer != nil {
 			entries = append(entries, *footer)
 		}
 	}
 	return entries
 }
 
-func pickerEntryTone(presented controlplane.PickerPresentationItem) components.RowTone {
+func pickerEntryTone(presented controlplane.ResultViewItem) components.RowTone {
 	if presented.Selected {
 		return components.RowToneAccent
 	}
 	return components.RowToneNormal
 }
 
-func pickerFooterEntry(picker controlplane.PickerData, closeAction surfacedialog.Action) *surfacedialog.PickerEntry {
-	action := closeAction
-	if action == nil {
-		action = PickerCloseAction(picker)
-	}
-	label := "Back"
-	if picker.HasClose && !picker.HasBack {
-		label = "Close"
-	}
-	if action == nil {
-		action = surfacedialog.ActionClose{}
-	}
-	if _, closes := action.(surfacedialog.ActionClose); closes && !picker.HasBack && !picker.HasClose {
+func pickerFooterEntry(footer *controlplane.ResultViewFooter) *surfacedialog.PickerEntry {
+	if footer == nil {
 		return nil
 	}
-	if _, opensCommands := action.(surfacedialog.ActionOpenCommands); opensCommands {
-		label = "Back"
+	label := strings.TrimSpace(footer.Label)
+	if label == "" {
+		label = "Close"
+	}
+	role := components.RoleCancel
+	if footer.Kind == controlplane.FooterBack {
+		role = components.RoleBack
 	}
 	return &surfacedialog.PickerEntry{
-		ID:     "footer_back",
+		ID:     "footer_" + string(footer.Kind),
 		Title:  label,
-		Role:   components.RoleBack,
+		Role:   role,
 		Footer: true,
-		Action: action,
+		Action: footerAction(footer),
 	}
 }
 
-func pickerItemAction(item controlplane.PickerPresentationItem, closeSource bool) surfacedialog.Action {
+func pickerItemAction(item controlplane.ResultViewItem, closeSource bool) surfacedialog.Action {
 	if strings.TrimSpace(item.Command) == "" {
 		return surfacedialog.ActionClose{}
 	}
 	return surfacedialog.ActionRunControlplaneCommand{Command: item.Command, CloseSource: closeSource}
 }
 
-func PickerCloseAction(picker controlplane.PickerData) surfacedialog.Action {
-	if !picker.HasBack && !picker.HasClose {
+func PickerCloseAction(view controlplane.PickerViewData) surfacedialog.Action {
+	return footerAction(view.Footer)
+}
+
+func footerAction(footer *controlplane.ResultViewFooter) surfacedialog.Action {
+	if footer == nil {
 		return surfacedialog.ActionClose{}
 	}
-	command := controlplane.PickerCloseCommand(picker)
-	if strings.TrimSpace(command) == "" {
-		return surfacedialog.ActionClose{}
+	if command := strings.TrimSpace(footer.Command); command != "" {
+		return surfacedialog.ActionRunControlplaneCommand{Command: command}
 	}
-	return surfacedialog.ActionRunControlplaneCommand{Command: command}
+	return surfacedialog.ActionClose{}
 }

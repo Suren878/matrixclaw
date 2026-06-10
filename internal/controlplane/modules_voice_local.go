@@ -255,6 +255,7 @@ func (d *Dispatcher) voiceLocalProviderRunModePicker(ctx context.Context, module
 			Context(module.ID).
 			Meta(voiceRunModeLabel(provider)).
 			Popup().
+			Close(voiceModuleCommand(module.ID)).
 			Item(PickerItem{ID: "per-task", Title: voiceRunPerTaskTitle(provider), Selected: voiceRunModePerTaskSelected(provider), Command: voiceModuleCommand(module.ID, "provider-set-local", provider.ID, "runtime-mode", voiceRuntimeModePerTask)}).
 			Item(PickerItem{ID: "always-running", Title: "Always Running", Selected: voiceRunModeAlways(provider), Disabled: !voicePersistentRuntimeAvailable(provider), Command: voiceModuleCommand(module.ID, "provider-set-local", provider.ID, "runtime-mode", voiceRuntimeModeAlways)}).
 			Ptr(),

@@ -150,25 +150,26 @@ func (m *appModel) controlplaneDialog(result controlplane.Result) surfacedialog.
 
 func (m *appModel) controlplanePickerDialog(data controlplane.PickerData) surfacedialog.Dialog {
 	picker := data
+	view := controlplane.PickerView(picker, controlplane.PickerViewOptions{Surface: controlplane.SurfaceTerminal})
 	if m.controlplanePickerIsPopup(picker) {
-		entries := commandmenu.PickerRows(picker)
+		entries := commandmenu.PickerRows(view)
 		return surfacedialog.NewPicker(m.com, surfacedialog.PickerData{
-			ID:      surfacedialog.PickerID,
-			Title:   commandmenu.PickerTitle(picker),
-			Meta:    strings.TrimSpace(picker.Meta),
-			Legend:  popupPickerLegend(picker),
-			Filter:  surfacedialog.PickerNeedsFilter(entries),
-			Entries: entries,
+			ID:          surfacedialog.PickerID,
+			Title:       view.Title,
+			Meta:        strings.TrimSpace(view.Meta),
+			Legend:      popupPickerLegend(picker),
+			Filter:      surfacedialog.PickerNeedsFilter(entries),
+			Entries:     entries,
+			CloseAction: commandmenu.PickerCloseAction(view),
 		})
 	}
-	closeAction := m.pickerCloseAction(picker)
-	entries := commandmenu.PickerEntriesWithCloseAction(picker, closeAction)
+	entries := commandmenu.PickerEntries(view)
 	return surfacedialog.NewCommands(m.com, surfacedialog.CommandsData{
-		Title:       commandmenu.PickerTitle(picker),
-		Meta:        strings.TrimSpace(picker.Meta),
-		Legend:      commandmenu.PickerLegend(picker),
+		Title:       view.Title,
+		Meta:        strings.TrimSpace(view.Meta),
+		Legend:      view.Legend,
 		Entries:     entries,
-		CloseAction: closeAction,
+		CloseAction: commandmenu.PickerCloseAction(view),
 	})
 }
 
@@ -208,17 +209,6 @@ func controlplaneCloseAction(command string) surfacedialog.Action {
 		return nil
 	}
 	return surfacedialog.ActionRunControlplaneCommand{Command: command, CloseSource: true}
-}
-
-func (m *appModel) pickerCloseAction(picker controlplane.PickerData) surfacedialog.Action {
-	if !picker.HasBack && !picker.HasClose && m.returnToCommands {
-		return surfacedialog.ActionOpenCommands{}
-	}
-	action := commandmenu.PickerCloseAction(picker)
-	if _, closes := action.(surfacedialog.ActionClose); closes && m.returnToCommands {
-		return surfacedialog.ActionOpenCommands{}
-	}
-	return action
 }
 
 func (m *appModel) closeControlplaneDialogs() {

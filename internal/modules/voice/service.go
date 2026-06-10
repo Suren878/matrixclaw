@@ -20,6 +20,8 @@ const (
 var (
 	ErrModuleDisabled      = errors.New("voice module is disabled")
 	ErrUnsupportedProvider = errors.New("voice provider is not supported yet")
+	ErrProviderUnavailable = errors.New("voice provider is unavailable")
+	ErrInvalidRequest      = errors.New("invalid voice request")
 )
 
 type setupLoader interface {
@@ -37,7 +39,7 @@ func NewService(setupService setupLoader) *Service {
 func (s *Service) TextToSpeech(ctx context.Context, req TextToSpeechRequest) (TextToSpeechResponse, error) {
 	text := strings.TrimSpace(req.Text)
 	if text == "" {
-		return TextToSpeechResponse{}, errors.New("text is required")
+		return TextToSpeechResponse{}, fmt.Errorf("%w: text is required", ErrInvalidRequest)
 	}
 	module, err := s.voiceModule(setup.VoiceModuleTTS)
 	if err != nil {
@@ -61,7 +63,10 @@ func (s *Service) TextToSpeech(ctx context.Context, req TextToSpeechRequest) (Te
 func (s *Service) piperTextToSpeech(ctx context.Context, module setup.VoiceModuleDescriptor, text string) (TextToSpeechResponse, error) {
 	provider, ok := voiceProviderByID(module, "piper")
 	if !ok {
-		return TextToSpeechResponse{}, errors.New("piper provider is not available")
+		return TextToSpeechResponse{}, fmt.Errorf("%w: piper", ErrProviderUnavailable)
+	}
+	if err := ensureVoiceProviderAvailable(provider); err != nil {
+		return TextToSpeechResponse{}, err
 	}
 	content, err := localruntime.New("").PiperTextToSpeech(ctx, provider, text)
 	if err != nil {
@@ -77,7 +82,10 @@ func (s *Service) piperTextToSpeech(ctx context.Context, module setup.VoiceModul
 func (s *Service) supertonicTextToSpeech(ctx context.Context, module setup.VoiceModuleDescriptor, text string) (TextToSpeechResponse, error) {
 	provider, ok := voiceProviderByID(module, "supertonic")
 	if !ok {
-		return TextToSpeechResponse{}, errors.New("supertonic provider is not available")
+		return TextToSpeechResponse{}, fmt.Errorf("%w: supertonic", ErrProviderUnavailable)
+	}
+	if err := ensureVoiceProviderAvailable(provider); err != nil {
+		return TextToSpeechResponse{}, err
 	}
 	content, err := localruntime.New("").SupertonicTextToSpeech(ctx, provider, text)
 	if err != nil {
@@ -129,10 +137,10 @@ func wavToMP3(ctx context.Context, content []byte) ([]byte, error) {
 func (s *Service) SpeechToText(ctx context.Context, req SpeechToTextRequest) (SpeechToTextResponse, error) {
 	content, err := req.ContentBytes()
 	if err != nil {
-		return SpeechToTextResponse{}, errors.New("content_base64 is invalid")
+		return SpeechToTextResponse{}, fmt.Errorf("%w: content_base64 is invalid", ErrInvalidRequest)
 	}
 	if len(content) == 0 {
-		return SpeechToTextResponse{}, errors.New("audio content is required")
+		return SpeechToTextResponse{}, fmt.Errorf("%w: audio content is required", ErrInvalidRequest)
 	}
 	module, err := s.voiceModule(setup.VoiceModuleSTT)
 	if err != nil {
@@ -153,7 +161,10 @@ func (s *Service) SpeechToText(ctx context.Context, req SpeechToTextRequest) (Sp
 func (s *Service) whisperCppSpeechToText(ctx context.Context, module setup.VoiceModuleDescriptor, req SpeechToTextRequest, content []byte) (SpeechToTextResponse, error) {
 	provider, ok := voiceProviderByID(module, "whispercpp")
 	if !ok {
-		return SpeechToTextResponse{}, errors.New("whisper.cpp provider is not available")
+		return SpeechToTextResponse{}, fmt.Errorf("%w: whisper.cpp", ErrProviderUnavailable)
+	}
+	if err := ensureVoiceProviderAvailable(provider); err != nil {
+		return SpeechToTextResponse{}, err
 	}
 	text, err := localruntime.New("").WhisperSpeechToText(ctx, provider, localruntime.WhisperSpeechInput{
 		Content:  content,
@@ -165,6 +176,17 @@ func (s *Service) whisperCppSpeechToText(ctx context.Context, module setup.Voice
 		return SpeechToTextResponse{}, err
 	}
 	return SpeechToTextResponse{Text: strings.TrimSpace(text)}, nil
+}
+
+func ensureVoiceProviderAvailable(provider setup.VoiceProviderOption) error {
+	if !provider.Downloaded {
+		return fmt.Errorf("%w: %s is not installed", ErrProviderUnavailable, firstNonEmpty(provider.Name, provider.ID))
+	}
+	if strings.EqualFold(strings.TrimSpace(provider.RuntimeState), localruntime.RuntimeUnavailable) {
+		detail := firstNonEmpty(provider.RuntimeDetail, firstNonEmpty(provider.Name, provider.ID)+" runtime is unavailable")
+		return fmt.Errorf("%w: %s", ErrProviderUnavailable, detail)
+	}
+	return nil
 }
 
 func (s *Service) voiceModule(moduleID string) (setup.VoiceModuleDescriptor, error) {

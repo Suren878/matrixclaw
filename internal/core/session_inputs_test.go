@@ -50,6 +50,164 @@ func TestBusyQueuePersistsPendingInputWithoutStartingRun(t *testing.T) {
 	}
 }
 
+func TestAcceptRunCreatesSessionRunDelivery(t *testing.T) {
+	ctx := context.Background()
+	app, sqliteStore, cleanup := newSubagentTestCore(t)
+	defer cleanup()
+	app.WithRunStarter(&recordingRunStarter{})
+
+	session := saveSubagentTestSession(t, sqliteStore, "session_delivery", "Delivery", t.TempDir())
+	result, err := app.AcceptRun(ctx, HandleMessageInput{
+		SessionID:        session.ID,
+		Client:           "telegram",
+		ExternalKey:      "460252218",
+		Text:             "hello",
+		DeliveryAddress:  json.RawMessage(`{"chat_id":460252218,"thread_id":7}`),
+		AllowAutoBindOne: true,
+	})
+	if err != nil {
+		t.Fatalf("AcceptRun: %v", err)
+	}
+
+	deliveries, err := app.ListClientDeliveries(ctx, ClientDeliveryFilter{
+		Type:  ClientDeliveryTypeRun,
+		RunID: result.Run.ID,
+	})
+	if err != nil {
+		t.Fatalf("ListClientDeliveries: %v", err)
+	}
+	if len(deliveries) != 1 {
+		t.Fatalf("deliveries = %#v, want one session run delivery", deliveries)
+	}
+	delivery := deliveries[0]
+	if delivery.Client != "telegram" || delivery.ExternalKey != "460252218" || delivery.SessionID != session.ID || delivery.RunID != result.Run.ID {
+		t.Fatalf("delivery identity = %#v", delivery)
+	}
+	if delivery.Status != ClientDeliveryStatusPending {
+		t.Fatalf("delivery status = %q, want pending", delivery.Status)
+	}
+	if delivery.Summary != "hello" {
+		t.Fatalf("delivery summary = %q, want user input summary", delivery.Summary)
+	}
+	if string(delivery.Address) != `{"chat_id":460252218,"thread_id":7}` {
+		t.Fatalf("delivery address = %s", delivery.Address)
+	}
+}
+
+func TestAcceptRunDoesNotCreateSessionRunDeliveryWithoutExternalKey(t *testing.T) {
+	ctx := context.Background()
+	app, sqliteStore, cleanup := newSubagentTestCore(t)
+	defer cleanup()
+	app.WithRunStarter(&recordingRunStarter{})
+
+	session := saveSubagentTestSession(t, sqliteStore, "session_delivery_without_key", "Delivery without key", t.TempDir())
+	result, err := app.AcceptRun(ctx, HandleMessageInput{
+		SessionID: session.ID,
+		Client:    "telegram",
+		Text:      "hello",
+	})
+	if err != nil {
+		t.Fatalf("AcceptRun: %v", err)
+	}
+
+	deliveries, err := app.ListClientDeliveries(ctx, ClientDeliveryFilter{
+		Type:  ClientDeliveryTypeRun,
+		RunID: result.Run.ID,
+	})
+	if err != nil {
+		t.Fatalf("ListClientDeliveries: %v", err)
+	}
+	if len(deliveries) != 0 {
+		t.Fatalf("deliveries = %#v, want none without external key", deliveries)
+	}
+}
+
+func TestQueuedInputCreatesSessionRunDeliveryWhenConsumed(t *testing.T) {
+	ctx := context.Background()
+	app, sqliteStore, cleanup := newSubagentTestCore(t)
+	defer cleanup()
+	starter := &recordingRunStarter{}
+	app.WithRunStarter(starter)
+	app.WithSessionLLMs(&subagentLLMs{runtime: &recordingRuntime{response: providers.Response{Text: "first done"}}})
+
+	session := saveSubagentTestSession(t, sqliteStore, "session_queued_delivery", "Queued delivery", t.TempDir())
+	started, err := app.AcceptRun(ctx, HandleMessageInput{SessionID: session.ID, Text: "start"})
+	if err != nil {
+		t.Fatalf("AcceptRun start: %v", err)
+	}
+	queued, err := app.AcceptRun(ctx, HandleMessageInput{
+		SessionID:       session.ID,
+		Client:          "telegram",
+		ExternalKey:     "460252218",
+		Text:            "queued",
+		BusyMode:        BusyInputModeQueue,
+		DeliveryAddress: json.RawMessage(`{"chat_id":460252218}`),
+	})
+	if err != nil {
+		t.Fatalf("AcceptRun queued: %v", err)
+	}
+	if queued.Status != AcceptRunStatusQueued {
+		t.Fatalf("queued status = %q, want queued", queued.Status)
+	}
+	if err := app.ExecuteRun(ctx, started.Run.ID); err != nil {
+		t.Fatalf("ExecuteRun initial: %v", err)
+	}
+
+	pending, err := sqliteStore.ListPendingSessionInputs(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("ListPendingSessionInputs: %v", err)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("pending inputs = %#v, want queue consumed", pending)
+	}
+	deliveries, err := app.ListClientDeliveries(ctx, ClientDeliveryFilter{
+		Type: ClientDeliveryTypeRun,
+	})
+	if err != nil {
+		t.Fatalf("ListClientDeliveries: %v", err)
+	}
+	if len(deliveries) != 1 {
+		t.Fatalf("deliveries = %#v, want one queued run delivery", deliveries)
+	}
+	if deliveries[0].RunID == started.Run.ID || deliveries[0].RunID == "" {
+		t.Fatalf("delivery RunID = %q, want consumed queued run", deliveries[0].RunID)
+	}
+	if deliveries[0].Summary != "queued" {
+		t.Fatalf("delivery summary = %q, want queued input summary", deliveries[0].Summary)
+	}
+	if string(deliveries[0].Address) != `{"chat_id":460252218}` {
+		t.Fatalf("delivery address = %s", deliveries[0].Address)
+	}
+}
+
+func TestRecoverActiveRunsRestartsAcceptedRun(t *testing.T) {
+	ctx := context.Background()
+	app, sqliteStore, cleanup := newSubagentTestCore(t)
+	defer cleanup()
+	initialStarter := &recordingRunStarter{}
+	app.WithRunStarter(initialStarter)
+
+	session := saveSubagentTestSession(t, sqliteStore, "session_recover_accepted", "Recover accepted", t.TempDir())
+	started, err := app.AcceptRun(ctx, HandleMessageInput{SessionID: session.ID, Text: "start"})
+	if err != nil {
+		t.Fatalf("AcceptRun: %v", err)
+	}
+	if len(initialStarter.calls) != 1 {
+		t.Fatalf("initial starter calls = %#v, want accepted run started once", initialStarter.calls)
+	}
+
+	recovered := New(sqliteStore)
+	recoveryStarter := &recordingRunStarter{}
+	recovered.WithRunStarter(recoveryStarter)
+
+	if err := recovered.RecoverActiveRuns(ctx); err != nil {
+		t.Fatalf("RecoverActiveRuns: %v", err)
+	}
+	if len(recoveryStarter.calls) != 1 || recoveryStarter.calls[0] != started.Run.ID {
+		t.Fatalf("recovery starter calls = %#v, want %q", recoveryStarter.calls, started.Run.ID)
+	}
+}
+
 func TestCompletedRunStartsNextQueuedInputFIFO(t *testing.T) {
 	ctx := context.Background()
 	app, sqliteStore, cleanup := newSubagentTestCore(t)

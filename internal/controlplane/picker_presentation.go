@@ -2,7 +2,7 @@ package controlplane
 
 import "strings"
 
-type PickerPresentationItem struct {
+type pickerPresentationItem struct {
 	Item            PickerItem
 	Command         string
 	Title           string
@@ -15,30 +15,14 @@ type PickerPresentationItem struct {
 	SeparatorBefore bool
 }
 
-func PresentPickerItems(picker PickerData) []PickerPresentationItem {
-	viewItems := PickerViewItems(picker)
-	out := make([]PickerPresentationItem, 0, len(viewItems))
-	for _, item := range viewItems {
-		presented := presentPickerItem(picker, item.Item)
-		presented.Command = item.Command
-		presented.SeparatorBefore = item.SeparatorBefore
-		out = append(out, presented)
-	}
-	return out
-}
-
-func PresentPickerItem(picker PickerData, item PickerItem) PickerPresentationItem {
-	return presentPickerItem(picker, item)
-}
-
-func PickerPresentationTitle(picker PickerData) string {
+func pickerPresentationTitle(picker PickerData) string {
 	if title := strings.TrimSpace(picker.Title); title != "" {
 		return title
 	}
 	return PickerCommandLabel(picker)
 }
 
-func PickerLegend(picker PickerData) string {
+func pickerLegend(picker PickerData) string {
 	closeLabel := "back"
 	switch picker.Kind {
 	case PickerSessions:
@@ -54,10 +38,10 @@ func PickerLegend(picker PickerData) string {
 	}
 }
 
-func presentPickerItem(picker PickerData, item PickerItem) PickerPresentationItem {
+func presentPickerItem(picker PickerData, item PickerItem) pickerPresentationItem {
 	title := PickerItemDisplayTitle(item)
 	info := PickerItemDisplayInfo(picker.Kind, item)
-	presented := PickerPresentationItem{
+	presented := pickerPresentationItem{
 		Item:     item,
 		Command:  PickerItemCommand(picker, item),
 		Title:    title,
@@ -71,14 +55,14 @@ func presentPickerItem(picker PickerData, item PickerItem) PickerPresentationIte
 	return presented
 }
 
-func pickerPresentationSearch(presented PickerPresentationItem) string {
+func pickerPresentationSearch(presented pickerPresentationItem) string {
 	if value := strings.TrimSpace(presented.Item.Search); value != "" {
 		return value
 	}
 	return strings.TrimSpace(presented.Title + " " + presented.Status)
 }
 
-func pickerCompactLabel(kind PickerKind, presented PickerPresentationItem) string {
+func pickerCompactLabel(kind PickerKind, presented pickerPresentationItem) string {
 	title := presented.Title
 	if presented.Info != "" {
 		title += " · " + presented.Info
@@ -133,6 +117,8 @@ func pickerCompactPrefix(kind PickerKind, item PickerItem) string {
 		}
 	case PickerSkills, PickerSkillsSection, PickerSkill, PickerSessionSkills, PickerSessionSkill:
 		return "📘 "
+	case PickerBrowser:
+		return "🌐 "
 	case PickerMCP, PickerMCPServer:
 		return "🔌 "
 	case PickerServer:

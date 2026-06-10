@@ -24,32 +24,42 @@ func approvalKeyboard(approval core.Approval) *InlineKeyboardMarkup {
 	}
 }
 
-func pickerKeyboard(picker controlplane.PickerData, page int) *InlineKeyboardMarkup {
-	paged := controlplane.PaginatePicker(picker, page, modelPickerPageSize)
-	rows := make([][]InlineKeyboardButton, 0, len(paged.Items)+len(paged.Trailing)+1)
-	for _, item := range paged.Items {
-		rows = append(rows, []InlineKeyboardButton{pickerButton(picker, item)})
+func pickerKeyboardView(picker controlplane.PickerData, view controlplane.ResultView) *InlineKeyboardMarkup {
+	rows := make([][]InlineKeyboardButton, 0, len(view.Items)+1)
+	for _, item := range view.Items {
+		rows = append(rows, []InlineKeyboardButton{pickerButton(item)})
 	}
-	if paged.Pages > 1 {
+	if view.Paging.Pages > 1 {
 		var nav []InlineKeyboardButton
-		if paged.Page > 0 {
-			nav = append(nav, InlineKeyboardButton{Text: "‹ Prev", CallbackData: pickerPageCallbackData(picker.Kind, picker.ContextID, paged.Page-1)})
+		if view.Paging.Page > 0 {
+			nav = append(nav, InlineKeyboardButton{Text: "‹ Prev", CallbackData: pickerPageCallbackData(picker.Kind, picker.ContextID, view.Paging.Page-1)})
 		}
-		nav = append(nav, InlineKeyboardButton{Text: fmt.Sprintf("%d/%d", paged.Page+1, paged.Pages), CallbackData: pickerPageCallbackData(picker.Kind, picker.ContextID, paged.Page)})
-		if paged.Page < paged.Pages-1 {
-			nav = append(nav, InlineKeyboardButton{Text: "Next ›", CallbackData: pickerPageCallbackData(picker.Kind, picker.ContextID, paged.Page+1)})
+		nav = append(nav, InlineKeyboardButton{Text: fmt.Sprintf("%d/%d", view.Paging.Page+1, view.Paging.Pages), CallbackData: pickerPageCallbackData(picker.Kind, picker.ContextID, view.Paging.Page)})
+		if view.Paging.Page < view.Paging.Pages-1 {
+			nav = append(nav, InlineKeyboardButton{Text: "Next ›", CallbackData: pickerPageCallbackData(picker.Kind, picker.ContextID, view.Paging.Page+1)})
 		}
 		rows = append(rows, nav)
 	}
-	for _, item := range paged.Trailing {
-		rows = append(rows, []InlineKeyboardButton{pickerButton(picker, item)})
+	if view.Footer != nil {
+		rows = append(rows, []InlineKeyboardButton{footerButton(*view.Footer)})
 	}
 	return &InlineKeyboardMarkup{InlineKeyboard: rows}
 }
 
-func pickerButton(picker controlplane.PickerData, item controlplane.PickerItem) InlineKeyboardButton {
-	presented := controlplane.PresentPickerItem(picker, item)
-	return clippedCommandButton(presented.CompactLabel, presented.Command)
+func pickerButton(item controlplane.ResultViewItem) InlineKeyboardButton {
+	return clippedCommandButton(item.Label, item.Command)
+}
+
+func footerButton(footer controlplane.ResultViewFooter) InlineKeyboardButton {
+	label := strings.TrimSpace(footer.Label)
+	if label == "" {
+		label = "Close"
+	}
+	command := footer.Command
+	if footer.Kind == controlplane.FooterDismiss {
+		command = ""
+	}
+	return commandButton("‹ "+label, command)
 }
 
 func formKeyboard(form controlplane.FormData) *InlineKeyboardMarkup {
@@ -80,14 +90,14 @@ func confirmKeyboard(confirm controlplane.ConfirmData) *InlineKeyboardMarkup {
 	}
 }
 
-func infoKeyboard(info controlplane.InfoData) *InlineKeyboardMarkup {
-	if strings.TrimSpace(info.CloseCommand) == "" {
+func infoKeyboard(footer *controlplane.ResultViewFooter) *InlineKeyboardMarkup {
+	if footer == nil {
 		return nil
 	}
 	return &InlineKeyboardMarkup{
 		InlineKeyboard: [][]InlineKeyboardButton{
 			{
-				commandButton("‹ Back", info.CloseCommand),
+				footerButton(*footer),
 			},
 		},
 	}
@@ -101,7 +111,10 @@ func commandButton(text string, command string) InlineKeyboardButton {
 }
 
 func clippedCommandButton(text string, command string) InlineKeyboardButton {
-	return commandButton(clipTelegramButtonText(telegramPersonaText(text)), command)
+	return InlineKeyboardButton{
+		Text:         clipTelegramButtonText(telegramPersonaText(text)),
+		CallbackData: commandCallbackData(command),
+	}
 }
 
 func clipTelegramButtonText(text string) string {

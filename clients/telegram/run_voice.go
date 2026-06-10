@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"log"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -12,8 +13,40 @@ import (
 )
 
 func (w *Worker) renderVoiceToolResultUpdates(ctx context.Context, target chatTarget, messages []core.Message, runID string, state *runDeliveryState) error {
+	_, err := w.renderVoiceToolResultUpdatesWithSender(messages, runID, state, func(response voicemodule.TextToSpeechResponse) (SentMessage, error) {
+		return w.sendGeneratedSpeech(ctx, target, response)
+	})
+	return err
+}
+
+func (w *Worker) renderInlineVoiceToolResultUpdates(ctx context.Context, target chatTarget, messages []core.Message, runID string, state *runDeliveryState, caption string) (bool, error) {
+	uploadTarget, ok := targetFromTelegramExternalKey(target.externalKey)
+	if !ok || uploadTarget.chatID == 0 || uploadTarget.isInline() || uploadTarget.isGuest() {
+		return false, nil
+	}
+	delivered := false
+	_, err := w.renderVoiceToolResultUpdatesWithSender(messages, runID, state, func(response voicemodule.TextToSpeechResponse) (SentMessage, error) {
+		sent, err := w.editInlineGeneratedSpeech(ctx, target, uploadTarget, response, caption)
+		if err == nil {
+			delivered = true
+		}
+		return sent, err
+	})
+	if err != nil {
+		if IsRetryable(err) {
+			return delivered, err
+		}
+		logInlineVoiceDeliveryFailure(target, runID, err)
+		return false, nil
+	}
+	return delivered, nil
+}
+
+type generatedSpeechSender func(response voicemodule.TextToSpeechResponse) (SentMessage, error)
+
+func (w *Worker) renderVoiceToolResultUpdatesWithSender(messages []core.Message, runID string, state *runDeliveryState, send generatedSpeechSender) (bool, error) {
 	if state == nil {
-		return nil
+		return false, nil
 	}
 	if state.voiceResults == nil {
 		state.voiceResults = map[string]int64{}
@@ -21,6 +54,7 @@ func (w *Worker) renderVoiceToolResultUpdates(ctx context.Context, target chatTa
 	if state.voiceFingerprints == nil {
 		state.voiceFingerprints = map[string]int64{}
 	}
+	delivered := false
 	for _, message := range messages {
 		if strings.TrimSpace(message.RunID) != strings.TrimSpace(runID) || message.Role != core.MessageRoleTool {
 			continue
@@ -48,24 +82,36 @@ func (w *Worker) renderVoiceToolResultUpdates(ctx context.Context, target chatTa
 					continue
 				}
 			}
-			sent, err := w.sendGeneratedSpeech(ctx, target, response)
+			sent, err := send(response)
 			if err != nil {
-				return err
+				return delivered, err
 			}
+			delivered = true
 			state.voiceResults[key] = sent.MessageID
 			if fingerprint != "" {
 				state.voiceFingerprints[fingerprint] = sent.MessageID
 			}
 		}
 	}
-	return nil
+	return delivered, nil
+}
+
+func logInlineVoiceDeliveryFailure(target chatTarget, runID string, err error) {
+	if err == nil {
+		return
+	}
+	log.Printf("telegram: inline voice delivery failed user=%s inline_message_id=%s run=%s: %v", target.externalKey, target.inlineMessageID, runID, err)
 }
 
 func isTextToSpeechToolResult(result *core.ToolResultPart) bool {
 	if result == nil {
 		return false
 	}
-	return strings.EqualFold(strings.TrimSpace(result.Name), voicemodule.TextToSpeechToolID)
+	return isTextToSpeechToolName(result.Name)
+}
+
+func isTextToSpeechToolName(name string) bool {
+	return strings.EqualFold(strings.TrimSpace(name), voicemodule.TextToSpeechToolID)
 }
 
 func textToSpeechToolResponse(result *core.ToolResultPart) (voicemodule.TextToSpeechResponse, bool) {

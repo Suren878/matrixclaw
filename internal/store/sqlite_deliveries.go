@@ -11,9 +11,16 @@ import (
 )
 
 func (s *SQLiteStore) CreateClientDelivery(ctx context.Context, delivery core.ClientDelivery) error {
-	_, err := s.db.ExecContext(ctx, `
-INSERT INTO client_deliveries(id, type, client, external_key, session_id, run_id, task_id, summary, address_json, status, error, created_at, updated_at, finished_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	if err := insertClientDelivery(ctx, s.db, delivery); err != nil {
+		return fmt.Errorf("store: create client delivery: %w", err)
+	}
+	return nil
+}
+
+func insertClientDelivery(ctx context.Context, execer sqlExecer, delivery core.ClientDelivery) error {
+	_, err := execer.ExecContext(ctx, `
+INSERT INTO client_deliveries(id, type, client, external_key, session_id, run_id, task_id, summary, address_json, payload_json, status, error, created_at, updated_at, finished_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		delivery.ID,
 		delivery.Type,
 		delivery.Client,
@@ -23,21 +30,19 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		delivery.TaskID,
 		delivery.Summary,
 		string(delivery.Address),
+		string(delivery.Payload),
 		string(delivery.Status),
 		delivery.Error,
 		formatTime(delivery.CreatedAt),
 		formatTime(delivery.UpdatedAt),
 		nullableTime(delivery.FinishedAt),
 	)
-	if err != nil {
-		return fmt.Errorf("store: create client delivery: %w", err)
-	}
-	return nil
+	return err
 }
 
 func (s *SQLiteStore) ListClientDeliveries(ctx context.Context, filter core.ClientDeliveryFilter) ([]core.ClientDelivery, error) {
 	query := `
-SELECT id, type, client, external_key, session_id, run_id, task_id, summary, address_json, status, error, created_at, updated_at, finished_at
+SELECT id, type, client, external_key, session_id, run_id, task_id, summary, address_json, payload_json, status, error, created_at, updated_at, finished_at
 FROM client_deliveries`
 	args := []any{}
 	clauses := []string{}
@@ -132,6 +137,7 @@ func scanClientDelivery(scanner clientDeliveryScanner) (core.ClientDelivery, err
 	var delivery core.ClientDelivery
 	var status string
 	var address string
+	var payload string
 	var createdAt string
 	var updatedAt string
 	var finishedAt sql.NullString
@@ -145,6 +151,7 @@ func scanClientDelivery(scanner clientDeliveryScanner) (core.ClientDelivery, err
 		&delivery.TaskID,
 		&delivery.Summary,
 		&address,
+		&payload,
 		&status,
 		&delivery.Error,
 		&createdAt,
@@ -156,6 +163,9 @@ func scanClientDelivery(scanner clientDeliveryScanner) (core.ClientDelivery, err
 	delivery.Status = core.ClientDeliveryStatus(status)
 	if address != "" {
 		delivery.Address = json.RawMessage(address)
+	}
+	if payload != "" {
+		delivery.Payload = json.RawMessage(payload)
 	}
 	delivery.CreatedAt = mustParseTime(createdAt)
 	delivery.UpdatedAt = mustParseTime(updatedAt)

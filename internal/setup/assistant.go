@@ -142,12 +142,6 @@ func resolveProjectRoot() string {
 			return filepath.Clean(root)
 		}
 	}
-	if home, err := os.UserHomeDir(); err == nil {
-		candidate := filepath.Join(home, "projects", "matrixclaw")
-		if hasGoModule(candidate) {
-			return filepath.Clean(candidate)
-		}
-	}
 	return root
 }
 

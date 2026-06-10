@@ -20,9 +20,8 @@ func (w *Worker) dispatchRestartCommandAndEdit(target chatTarget, messageID int6
 		messageID = updatedMessageID
 	} else {
 		sent, err := w.sendTelegramMessage(telegramCtx, SendMessageRequest{
-			ChatID:          target.chatID,
-			MessageThreadID: target.threadID,
-			Text:            restartProgressText,
+			ChatID: target.chatID,
+			Text:   restartProgressText,
 		})
 		if err != nil {
 			return err

@@ -29,6 +29,7 @@ const (
 type PickerKind string
 
 const (
+	PickerCommandMenu       PickerKind = "command_menu"
 	PickerSessions          PickerKind = "sessions"
 	PickerSessionRuntime    PickerKind = "session_runtime"
 	PickerSessionActions    PickerKind = "session_actions"
@@ -57,6 +58,7 @@ const (
 	PickerSkillsSection     PickerKind = "skills_section"
 	PickerSkill             PickerKind = "skill"
 	PickerMCP               PickerKind = "mcp"
+	PickerBrowser           PickerKind = "browser"
 	PickerMCPServer         PickerKind = "mcp_server"
 	PickerTasks             PickerKind = "tasks"
 	PickerTaskActions       PickerKind = "task_actions"

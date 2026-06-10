@@ -241,7 +241,7 @@ func (c *Core) UpdateSessionProvider(ctx context.Context, sessionID string, prov
 	}
 	_, modelID, err := llms.Normalize(providerID, "")
 	if err != nil {
-		return Session{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+		return Session{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 	}
 	session.ProviderID = providerID
 	session.ModelID = modelID
@@ -290,7 +290,7 @@ func (c *Core) UpdateSessionModel(ctx context.Context, sessionID string, modelID
 	}
 	_, resolvedModel, err := llms.Normalize(providerID, modelID)
 	if err != nil {
-		return Session{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+		return Session{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 	}
 	session.ProviderID = providerID
 	session.ModelID = resolvedModel

@@ -48,10 +48,11 @@ type RunStore interface {
 	CreateRun(ctx context.Context, run Run) error
 	GetRun(ctx context.Context, runID string) (Run, error)
 	GetActiveRunBySession(ctx context.Context, sessionID string) (Run, error)
+	ListActiveRuns(ctx context.Context) ([]Run, error)
 	UpdateRun(ctx context.Context, run Run) error
 	CompleteRun(ctx context.Context, assistantMessage Message, run Run) error
 
-	AcceptMessage(ctx context.Context, message Message, run Run) error
+	AcceptMessage(ctx context.Context, message Message, run Run, deliveries ...ClientDelivery) error
 }
 
 type SessionInputStore interface {

@@ -11,12 +11,13 @@ import (
 var errRunCanceled = errors.New("run canceled")
 
 type turnExecution struct {
-	RunID      string
-	SessionID  string
-	Client     string
-	WorkingDir string
-	Runtime    providers.Runtime
-	Subagent   bool
+	RunID       string
+	SessionID   string
+	Client      string
+	ExternalKey string
+	WorkingDir  string
+	Runtime     providers.Runtime
+	Subagent    bool
 }
 
 type turnStepOutcome int
@@ -38,12 +39,13 @@ type turnStepResult struct {
 
 func newTurnExecution(run Run, session Session, runtime providers.Runtime) turnExecution {
 	return turnExecution{
-		RunID:      run.ID,
-		SessionID:  session.ID,
-		Client:     run.Client,
-		WorkingDir: session.WorkingDir,
-		Runtime:    runtime,
-		Subagent:   isSubagentSession(session),
+		RunID:       run.ID,
+		SessionID:   session.ID,
+		Client:      run.Client,
+		ExternalKey: run.ExternalKey,
+		WorkingDir:  session.WorkingDir,
+		Runtime:     runtime,
+		Subagent:    isSubagentSession(session),
 	}
 }
 
@@ -57,12 +59,14 @@ func (t turnExecution) toolInput(toolCall providers.ToolCall) (ExecuteToolInput,
 		return ExecuteToolInput{}, errors.New("provider returned tool call without a name")
 	}
 	return ExecuteToolInput{
-		SessionID:  t.SessionID,
-		RunID:      t.RunID,
-		ToolName:   toolName,
-		ToolCallID: strings.TrimSpace(toolCall.ID),
-		WorkingDir: t.WorkingDir,
-		Args:       toolCall.Arguments,
+		SessionID:   t.SessionID,
+		RunID:       t.RunID,
+		ToolName:    toolName,
+		Client:      t.Client,
+		ExternalKey: t.ExternalKey,
+		ToolCallID:  strings.TrimSpace(toolCall.ID),
+		WorkingDir:  t.WorkingDir,
+		Args:        toolCall.Arguments,
 	}, nil
 }
 

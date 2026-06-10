@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -50,7 +51,7 @@ func (c *Core) sessionGate(sessionID string) *sync.Mutex {
 	return gate
 }
 
-func (c *Core) createAcceptedRun(ctx context.Context, session Session, text string, parts []MessagePart, client string, externalKey string) (AcceptRunResult, error) {
+func (c *Core) createAcceptedRun(ctx context.Context, session Session, text string, parts []MessagePart, client string, externalKey string, deliveryAddress json.RawMessage) (AcceptRunResult, error) {
 	autoTitle := c.firstMessageAutoTitle(ctx, session, text)
 	now := c.now().UTC()
 	runID := c.newID("run")
@@ -76,7 +77,15 @@ func (c *Core) createAcceptedRun(ctx context.Context, session Session, text stri
 		StartedAt:     now,
 		UpdatedAt:     now,
 	}
-	if err := c.store.AcceptMessage(ctx, message, run); err != nil {
+	delivery, hasDelivery, err := c.prepareSessionRunDelivery(run, text, parts, client, externalKey, deliveryAddress)
+	if err != nil {
+		return AcceptRunResult{}, err
+	}
+	var deliveries []ClientDelivery
+	if hasDelivery {
+		deliveries = append(deliveries, delivery)
+	}
+	if err := c.store.AcceptMessage(ctx, message, run, deliveries...); err != nil {
 		return AcceptRunResult{}, err
 	}
 	c.applyAutoSessionTitle(ctx, session, autoTitle)
@@ -97,18 +106,19 @@ func (c *Core) createPendingSessionInput(ctx context.Context, session Session, a
 	}
 	now := c.now().UTC()
 	pending := SessionInput{
-		ID:          c.newID("input"),
-		SessionID:   session.ID,
-		TargetRunID: active.ID,
-		Mode:        mode,
-		Status:      SessionInputStatusPending,
-		Text:        text,
-		Parts:       parts,
-		Client:      normalizeText(input.Client),
-		ExternalKey: normalizeText(input.ExternalKey),
-		WorkingDir:  normalizeText(input.WorkingDir),
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:              c.newID("input"),
+		SessionID:       session.ID,
+		TargetRunID:     active.ID,
+		Mode:            mode,
+		Status:          SessionInputStatusPending,
+		Text:            text,
+		Parts:           parts,
+		Client:          normalizeText(input.Client),
+		ExternalKey:     normalizeText(input.ExternalKey),
+		DeliveryAddress: cloneRawMessage(input.DeliveryAddress),
+		WorkingDir:      normalizeText(input.WorkingDir),
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 	if err := c.store.CreateSessionInput(ctx, pending); err != nil {
 		return SessionInput{}, err
@@ -187,7 +197,7 @@ func (c *Core) startNextPendingSessionInput(ctx context.Context, sessionID strin
 
 func (c *Core) consumeSessionInputAsRun(ctx context.Context, session Session, input SessionInput) (AcceptRunResult, error) {
 	parts := NormalizeMessageParts(input.Text, input.Parts)
-	result, err := c.createAcceptedRun(ctx, session, input.Text, parts, input.Client, input.ExternalKey)
+	result, err := c.createAcceptedRun(ctx, session, input.Text, parts, input.Client, input.ExternalKey, input.DeliveryAddress)
 	if err != nil {
 		return AcceptRunResult{}, err
 	}
@@ -202,6 +212,59 @@ func (c *Core) consumeSessionInputAsRun(ctx context.Context, session Session, in
 	result.Input = &input
 	c.publishSessionInputUpdated(input)
 	return result, nil
+}
+
+func (c *Core) prepareSessionRunDelivery(run Run, text string, parts []MessagePart, client string, externalKey string, address json.RawMessage) (ClientDelivery, bool, error) {
+	client = normalizeText(client)
+	externalKey = normalizeText(externalKey)
+	if client == "" || externalKey == "" {
+		return ClientDelivery{}, false, nil
+	}
+	delivery := ClientDelivery{
+		Type:        ClientDeliveryTypeRun,
+		Client:      client,
+		ExternalKey: externalKey,
+		SessionID:   normalizeText(run.SessionID),
+		RunID:       normalizeText(run.ID),
+		Summary:     sessionRunDeliverySummary(text, parts),
+		Address:     cloneRawMessage(address),
+		Status:      ClientDeliveryStatusPending,
+	}
+	prepared, err := c.prepareClientDelivery(delivery)
+	if err != nil {
+		return ClientDelivery{}, false, err
+	}
+	return prepared, true, nil
+}
+
+func sessionRunDeliverySummary(text string, parts []MessagePart) string {
+	summary := strings.Join(strings.Fields(text), " ")
+	if summary == "" {
+		for _, part := range parts {
+			if part.Text == nil {
+				continue
+			}
+			summary = strings.Join(strings.Fields(part.Text.Text), " ")
+			if summary != "" {
+				break
+			}
+		}
+	}
+	if summary == "" {
+		summary = "User message"
+	}
+	runes := []rune(summary)
+	if len(runes) > 240 {
+		return string(runes[:237]) + "..."
+	}
+	return summary
+}
+
+func cloneRawMessage(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return nil
+	}
+	return append(json.RawMessage(nil), raw...)
 }
 
 func (c *Core) queuePendingSteersForRun(ctx context.Context, sessionID string, runID string) error {
@@ -362,6 +425,25 @@ func (c *Core) RecoverSessionInputs(ctx context.Context) error {
 		seen[sessionID] = struct{}{}
 		if _, err := c.startNextPendingSessionInput(ctx, sessionID); err != nil {
 			return fmt.Errorf("recover session input %s: %w", sessionID, err)
+		}
+	}
+	return nil
+}
+
+func (c *Core) RecoverActiveRuns(ctx context.Context) error {
+	if c == nil || c.store == nil {
+		return nil
+	}
+	runs, err := c.store.ListActiveRuns(ctx)
+	if err != nil {
+		return err
+	}
+	for _, run := range runs {
+		if run.Status != RunStatusAccepted {
+			continue
+		}
+		if err := c.startRun(ctx, run.ID); err != nil {
+			return fmt.Errorf("recover accepted run %s: %w", run.ID, err)
 		}
 	}
 	return nil

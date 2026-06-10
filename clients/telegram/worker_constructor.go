@@ -1,7 +1,6 @@
 package telegram
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -50,13 +49,15 @@ func NewWorker(cfg Config) (*Worker, error) {
 	}
 
 	return &Worker{
-		api:       client,
-		config:    cfg,
-		offset:    offset,
-		runs:      map[string]context.CancelFunc{},
-		states:    map[string]*runDeliveryState{},
-		prompts:   map[string]controlplane.PromptData{},
-		callbacks: map[string]string{},
-		autoEdits: map[string]struct{}{},
+		api:        client,
+		config:     cfg,
+		offset:     offset,
+		states:     map[string]*runDeliveryState{},
+		prompts:    map[string]controlplane.PromptData{},
+		callbacks:  map[string]string{},
+		inline:     map[string]string{},
+		inlineRuns: map[string]struct{}{},
+		messages:   map[string]struct{}{},
+		autoEdits:  map[string]struct{}{},
 	}, nil
 }

@@ -8,13 +8,34 @@ import (
 
 const (
 	ClientDeliveryTypeDaemonRestart = "daemon_restart"
-	ClientDeliveryTypeAutomationRun = "automation_run"
+	ClientDeliveryTypeRun           = "run"
+	ClientDeliveryTypeDocument      = "document"
 )
+
+type DocumentDeliveryPayload struct {
+	StoragePath string `json:"storage_path"`
+	Temporary   bool   `json:"temporary,omitempty"`
+	FileName    string `json:"file_name,omitempty"`
+	Caption     string `json:"caption,omitempty"`
+	MIMEType    string `json:"mime_type,omitempty"`
+	Size        int64  `json:"size,omitempty"`
+}
 
 func (c *Core) CreateClientDelivery(ctx context.Context, delivery ClientDelivery) (ClientDelivery, error) {
 	if c == nil || c.store == nil {
 		return ClientDelivery{}, fmt.Errorf("%w: store not configured", ErrExecutionUnavailable)
 	}
+	delivery, err := c.prepareClientDelivery(delivery)
+	if err != nil {
+		return ClientDelivery{}, err
+	}
+	if err := c.store.CreateClientDelivery(ctx, delivery); err != nil {
+		return ClientDelivery{}, err
+	}
+	return delivery, nil
+}
+
+func (c *Core) prepareClientDelivery(delivery ClientDelivery) (ClientDelivery, error) {
 	delivery.Type = normalizeText(delivery.Type)
 	delivery.Client = normalizeText(delivery.Client)
 	delivery.ExternalKey = normalizeText(delivery.ExternalKey)
@@ -27,6 +48,9 @@ func (c *Core) CreateClientDelivery(ctx context.Context, delivery ClientDelivery
 	}
 	if delivery.Client == "" {
 		return ClientDelivery{}, fmt.Errorf("%w: delivery client is required", ErrInvalidInput)
+	}
+	if len(delivery.Payload) == 0 {
+		delivery.Payload = nil
 	}
 	if delivery.ID == "" {
 		delivery.ID = c.newID("delivery")
@@ -43,9 +67,6 @@ func (c *Core) CreateClientDelivery(ctx context.Context, delivery ClientDelivery
 	}
 	if delivery.UpdatedAt.IsZero() {
 		delivery.UpdatedAt = now
-	}
-	if err := c.store.CreateClientDelivery(ctx, delivery); err != nil {
-		return ClientDelivery{}, err
 	}
 	return delivery, nil
 }

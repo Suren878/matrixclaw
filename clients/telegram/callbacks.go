@@ -10,19 +10,31 @@ import (
 )
 
 func (w *Worker) handleCallbackQuery(cq *CallbackQuery) error {
-	if cq == nil || cq.Message == nil || !w.allowCallback(cq) {
+	if cq == nil {
 		return nil
 	}
 	telegramCtx, cancel := context.WithTimeout(context.Background(), defaultTelegramHTTPTimeout)
 	defer cancel()
+	if strings.HasPrefix(strings.TrimSpace(cq.Data), inlineCallbackPrefix) {
+		return w.handleInlineCallback(context.Background(), cq)
+	}
+	if cq.Message == nil || !w.allowCallback(cq) {
+		return nil
+	}
 	target := targetFromMessage(cq.Message)
-	_ = w.api.AnswerCallbackQuery(telegramCtx, AnswerCallbackQueryRequest{CallbackQueryID: cq.ID})
 
 	if resolved := w.resolveCallbackData(cq.Data); resolved != cq.Data {
 		copy := *cq
 		copy.Data = resolved
 		cq = &copy
 	}
+	if strings.HasPrefix(strings.TrimSpace(cq.Data), cbCallbackRef) {
+		return w.api.AnswerCallbackQuery(telegramCtx, AnswerCallbackQueryRequest{
+			CallbackQueryID: cq.ID,
+			Text:            "Menu expired. Send the command again.",
+		})
+	}
+	_ = w.api.AnswerCallbackQuery(telegramCtx, AnswerCallbackQueryRequest{CallbackQueryID: cq.ID})
 
 	switch {
 	case strings.HasPrefix(cq.Data, cbPicker):
@@ -112,9 +124,6 @@ func (w *Worker) resolveApprovalCallback(ctx context.Context, target chatTarget,
 	}
 	if err := w.editOrSend(ctx, target, cq.Message.MessageID, status+"\n\n"+renderApprovalText(approval), nil); err != nil {
 		return err
-	}
-	if strings.TrimSpace(approval.RunID) != "" {
-		w.startMonitor(ctx, target, approval.SessionID, approval.RunID)
 	}
 	return nil
 }

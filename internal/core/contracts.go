@@ -173,6 +173,10 @@ type ClientDeliveriesResponse struct {
 	Deliveries []ClientDelivery `json:"deliveries"`
 }
 
+type ClientDeliveryFailRequest struct {
+	Error string `json:"error,omitempty"`
+}
+
 type ServerStatusResponse struct {
 	Status ServerStatus `json:"status"`
 }

@@ -11,19 +11,24 @@ import (
 )
 
 type modulesTestRuntime struct {
-	skills         []skills.Skill
-	sessionSkills  []skills.Skill
-	usedSkill      string
-	unloadedSkill  string
-	updatedBody    string
-	createdName    string
-	createdDesc    string
-	createdTags    []string
-	createdBody    string
-	systemMessages []string
-	sentMessages   []string
-	mcpUpdate      setup.MCPServerUpdate
-	mcp            setup.MCPConfig
+	skills          []skills.Skill
+	sessionSkills   []skills.Skill
+	usedSkill       string
+	unloadedSkill   string
+	updatedBody     string
+	createdName     string
+	createdDesc     string
+	createdTags     []string
+	createdBody     string
+	systemMessages  []string
+	sentMessages    []string
+	mcpConfigUpdate setup.MCPConfigUpdate
+	mcpUpdate       setup.MCPServerUpdate
+	mcpCreated      setup.MCPServerConfig
+	mcpDeleted      string
+	mcp             setup.MCPConfig
+	browser         setup.BrowserModuleDescriptor
+	agents          []core.ExternalAgentDescriptor
 }
 
 func (r *modulesTestRuntime) ClientName() string {
@@ -127,11 +132,29 @@ func (r *modulesTestRuntime) SetSkillEnabled(context.Context, string, bool) erro
 	return nil
 }
 
+func (r *modulesTestRuntime) ListExternalAgents(context.Context) ([]core.ExternalAgentDescriptor, error) {
+	return append([]core.ExternalAgentDescriptor(nil), r.agents...), nil
+}
+
+func (r *modulesTestRuntime) UpdateExternalAgent(context.Context, string, core.UpdateExternalAgentRequest) ([]core.ExternalAgentDescriptor, error) {
+	return append([]core.ExternalAgentDescriptor(nil), r.agents...), nil
+}
+
 func (r *modulesTestRuntime) MCPConfig(context.Context) (setup.MCPConfigResponse, error) {
 	return setup.MCPConfigResponse{Config: r.mcp}, nil
 }
 
-func (r *modulesTestRuntime) UpdateMCPConfig(context.Context, setup.MCPConfigUpdate) (setup.MCPConfigResponse, error) {
+func (r *modulesTestRuntime) UpdateMCPConfig(_ context.Context, update setup.MCPConfigUpdate) (setup.MCPConfigResponse, error) {
+	r.mcpConfigUpdate = update
+	if update.Enabled != nil {
+		r.mcp.Enabled = *update.Enabled
+	}
+	return setup.MCPConfigResponse{Config: r.mcp}, nil
+}
+
+func (r *modulesTestRuntime) CreateMCPServer(_ context.Context, server setup.MCPServerConfig) (setup.MCPConfigResponse, error) {
+	r.mcpCreated = server
+	r.mcp.Servers = append(r.mcp.Servers, server)
 	return setup.MCPConfigResponse{Config: r.mcp}, nil
 }
 
@@ -140,13 +163,42 @@ func (r *modulesTestRuntime) UpdateMCPServer(_ context.Context, _ string, update
 	return setup.MCPConfigResponse{Config: r.mcp}, nil
 }
 
+func (r *modulesTestRuntime) DeleteMCPServer(_ context.Context, serverID string) (setup.MCPConfigResponse, error) {
+	r.mcpDeleted = serverID
+	servers := make([]setup.MCPServerConfig, 0, len(r.mcp.Servers))
+	for _, server := range r.mcp.Servers {
+		if strings.EqualFold(server.ID, serverID) {
+			continue
+		}
+		servers = append(servers, server)
+	}
+	r.mcp.Servers = servers
+	return setup.MCPConfigResponse{Config: r.mcp}, nil
+}
+
+func (r *modulesTestRuntime) BrowserModule(context.Context) (setup.BrowserModuleDescriptor, error) {
+	return r.browser, nil
+}
+
+func (r *modulesTestRuntime) UpdateBrowserModule(context.Context, setup.BrowserModuleUpdate) (setup.BrowserModuleDescriptor, error) {
+	return r.browser, nil
+}
+
+func (r *modulesTestRuntime) BrowserProviderAction(context.Context, string, setup.BrowserProviderActionRequest) (setup.BrowserProviderOption, error) {
+	if len(r.browser.Providers) == 0 {
+		return setup.BrowserProviderOption{}, nil
+	}
+	return r.browser.Providers[0], nil
+}
+
 type errTestNotFound struct{}
 
 func (errTestNotFound) Error() string { return "not found" }
 
 func TestModulesPickerIncludesSkillsAndMCP(t *testing.T) {
 	runtime := &modulesTestRuntime{
-		skills: []skills.Skill{{ID: "deploy", TrustState: skills.TrustTrusted, State: skills.StateActive}},
+		skills:  []skills.Skill{{ID: "deploy", TrustState: skills.TrustTrusted, State: skills.StateActive}},
+		browser: browserModuleForProvider(browserPickerProvider(true)),
 		mcp: setup.MCPConfig{
 			Enabled: true,
 			Servers: []setup.MCPServerConfig{
@@ -165,8 +217,31 @@ func TestModulesPickerIncludesSkillsAndMCP(t *testing.T) {
 	if !pickerHasItem(result.Picker, "skills", "Skills") {
 		t.Fatalf("modules picker missing Skills: %#v", result.Picker.Items)
 	}
-	if !pickerHasItem(result.Picker, "mcp", "MCP") {
-		t.Fatalf("modules picker missing MCP: %#v", result.Picker.Items)
+	if !pickerHasItem(result.Picker, "mcp", "External MCP") {
+		t.Fatalf("modules picker missing External MCP: %#v", result.Picker.Items)
+	}
+	if !pickerHasItem(result.Picker, "browser", "Browser") {
+		t.Fatalf("modules picker missing Browser: %#v", result.Picker.Items)
+	}
+}
+
+func TestModulesPickerExternalAgentsInfoUsesConfiguredAgents(t *testing.T) {
+	runtime := &modulesTestRuntime{
+		agents: []core.ExternalAgentDescriptor{
+			{ID: "codex-app", DisplayName: "Codex", Installed: true, Enabled: false},
+			{ID: "claude-code", DisplayName: "Claude", Installed: true, Enabled: true},
+		},
+	}
+	result, err := New(runtime, "").modulesPicker(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Picker == nil {
+		t.Fatal("modulesPicker() Picker = nil")
+	}
+	agents := requirePickerItem(t, result.Picker, "agents")
+	if agents.Info != "Claude" {
+		t.Fatalf("External Agents info = %q, want Claude", agents.Info)
 	}
 }
 
@@ -201,6 +276,63 @@ func TestMCPPickerBackReturnsToModules(t *testing.T) {
 	}
 	if result.Picker.CloseCommand != modulesCommand() {
 		t.Fatalf("CloseCommand = %q, want %q", result.Picker.CloseCommand, modulesCommand())
+	}
+}
+
+func TestMCPPickerCanAddDeleteAndHidesBrowser(t *testing.T) {
+	runtime := &modulesTestRuntime{mcp: setup.MCPConfig{Enabled: true, Servers: []setup.MCPServerConfig{
+		{ID: "docs", Name: "Docs", Enabled: true, Transport: "stdio", Command: "docs-mcp"},
+		{ID: "browser", Name: "Local Browser", Enabled: true, Transport: "stdio", Command: "playwright-mcp"},
+	}}}
+	result, err := New(runtime, "").handleMCP(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Picker == nil {
+		t.Fatal("handleMCP() Picker = nil")
+	}
+	if result.Picker.Title != "External MCP Servers" {
+		t.Fatalf("Picker title = %q", result.Picker.Title)
+	}
+	if !pickerHasItem(result.Picker, "add", "Add Server") {
+		t.Fatalf("MCP picker missing Add Server: %#v", result.Picker.Items)
+	}
+	if pickerHasID(result.Picker, "browser") {
+		t.Fatalf("MCP picker should hide managed browser server: %#v", result.Picker.Items)
+	}
+
+	result, err = New(runtime, "").handleMCP(context.Background(), "add")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Prompt == nil || result.Prompt.SubmitCommandPrefix != mcpCommand("create")+" " {
+		t.Fatalf("add prompt = %#v", result.Prompt)
+	}
+
+	result, err = New(runtime, "").handleMCP(context.Background(), "create Travel Docs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.mcpCreated.ID != "travel_docs" || runtime.mcpCreated.Command != "travel_docs" {
+		t.Fatalf("created MCP server = %#v", runtime.mcpCreated)
+	}
+	if result.Form == nil {
+		t.Fatalf("create should open edit form: %#v", result)
+	}
+
+	result, err = New(runtime, "").handleMCP(context.Background(), "docs delete")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Confirm == nil || result.Confirm.ConfirmCommand != mcpServerCommand("docs", "delete-confirm") {
+		t.Fatalf("delete confirm = %#v", result.Confirm)
+	}
+	_, err = New(runtime, "").handleMCP(context.Background(), "docs delete-confirm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.mcpDeleted != "docs" {
+		t.Fatalf("mcpDeleted = %q, want docs", runtime.mcpDeleted)
 	}
 }
 

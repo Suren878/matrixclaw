@@ -64,17 +64,7 @@ func voiceProviderActionIDsRuntimeOnly() setup.VoiceProviderActionIDs {
 }
 
 func decorateGenericLocalVoiceProvider(r *Runtime, moduleID string, provider setup.VoiceProviderOption) setup.VoiceProviderOption {
-	provider = r.decorateVoiceModels(moduleID, provider)
-	provider.RuntimeRSS = r.VoiceRuntimeRSSBytes(provider)
-	if path, err := r.ManagedVoiceBinaryPath(provider); err == nil {
-		provider.RuntimeInstalled = true
-		provider.RuntimePath = path
-	}
-	installed, path := r.VoiceModelInstalled(moduleID, provider)
-	provider.Downloaded = installed
-	provider.ModelPath = path
-	provider.Endpoint = path
-	installedCount := installedVoiceModelCount(provider.Models)
+	provider, installed, installedCount := r.decorateProviderModelFiles(moduleID, provider)
 	if installed {
 		provider.RuntimeState = RuntimeNotImplemented
 		provider.RuntimeDetail = "Runtime process management is not implemented yet"
@@ -92,17 +82,7 @@ func decorateGenericLocalVoiceProvider(r *Runtime, moduleID string, provider set
 }
 
 func decorateProviderModelRuntime(r *Runtime, moduleID string, provider setup.VoiceProviderOption, runtimeMissingDetail string) setup.VoiceProviderOption {
-	provider = r.decorateVoiceModels(moduleID, provider)
-	provider.RuntimeRSS = r.VoiceRuntimeRSSBytes(provider)
-	if path, err := r.ManagedVoiceBinaryPath(provider); err == nil {
-		provider.RuntimeInstalled = true
-		provider.RuntimePath = path
-	}
-	installed, path := r.VoiceModelInstalled(moduleID, provider)
-	provider.Downloaded = installed
-	provider.ModelPath = path
-	provider.Endpoint = path
-	installedCount := installedVoiceModelCount(provider.Models)
+	provider, installed, installedCount := r.decorateProviderModelFiles(moduleID, provider)
 	if !installed {
 		provider.RuntimeState = RuntimeUnavailable
 		provider.RuntimeDetail = "Download the selected local files before local voice can run"
@@ -131,6 +111,20 @@ func decorateProviderModelRuntime(r *Runtime, moduleID string, provider setup.Vo
 		provider.Status = "Local · stopped"
 	}
 	return provider
+}
+
+func (r *Runtime) decorateProviderModelFiles(moduleID string, provider setup.VoiceProviderOption) (setup.VoiceProviderOption, bool, int) {
+	provider = r.decorateVoiceModels(moduleID, provider)
+	provider.RuntimeRSS = r.VoiceRuntimeRSSBytes(provider)
+	if path, err := r.ManagedVoiceBinaryPath(provider); err == nil {
+		provider.RuntimeInstalled = true
+		provider.RuntimePath = path
+	}
+	installed, path := r.VoiceModelInstalled(moduleID, provider)
+	provider.Downloaded = installed
+	provider.ModelPath = path
+	provider.Endpoint = path
+	return provider, installed, installedVoiceModelCount(provider.Models)
 }
 
 func markProviderRuntimeUnavailable(provider setup.VoiceProviderOption, detail string) (setup.VoiceProviderOption, bool) {

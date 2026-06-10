@@ -44,6 +44,10 @@ func renderAssistantMessage(message core.Message) string {
 
 func renderRunStatus(run core.Run) string {
 	switch run.Status {
+	case core.RunStatusAccepted, core.RunStatusRunning:
+		return "Thinking..."
+	case core.RunStatusWaitingApproval:
+		return "Approval required."
 	case core.RunStatusCanceled:
 		return "Run canceled."
 	case core.RunStatusFailed:

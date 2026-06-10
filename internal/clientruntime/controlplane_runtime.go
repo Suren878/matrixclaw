@@ -629,6 +629,30 @@ func (r ControlplaneRuntime) SetSkillEnabled(ctx context.Context, id string, ena
 	return client.SetSkillEnabled(ctx, id, enabled)
 }
 
+func (r ControlplaneRuntime) BrowserModule(ctx context.Context) (setup.BrowserModuleDescriptor, error) {
+	client, err := r.client("")
+	if err != nil {
+		return setup.BrowserModuleDescriptor{}, err
+	}
+	return client.BrowserModule(ctx)
+}
+
+func (r ControlplaneRuntime) UpdateBrowserModule(ctx context.Context, update setup.BrowserModuleUpdate) (setup.BrowserModuleDescriptor, error) {
+	client, err := r.client("")
+	if err != nil {
+		return setup.BrowserModuleDescriptor{}, err
+	}
+	return client.UpdateBrowserModule(ctx, update)
+}
+
+func (r ControlplaneRuntime) BrowserProviderAction(ctx context.Context, providerID string, request setup.BrowserProviderActionRequest) (setup.BrowserProviderOption, error) {
+	client, err := r.client("")
+	if err != nil {
+		return setup.BrowserProviderOption{}, err
+	}
+	return client.BrowserProviderAction(ctx, providerID, request)
+}
+
 func (r ControlplaneRuntime) MCPConfig(ctx context.Context) (setup.MCPConfigResponse, error) {
 	client, err := r.client("")
 	if err != nil {
@@ -645,10 +669,26 @@ func (r ControlplaneRuntime) UpdateMCPConfig(ctx context.Context, update setup.M
 	return client.UpdateMCPConfig(ctx, update)
 }
 
+func (r ControlplaneRuntime) CreateMCPServer(ctx context.Context, server setup.MCPServerConfig) (setup.MCPConfigResponse, error) {
+	client, err := r.client("")
+	if err != nil {
+		return setup.MCPConfigResponse{}, err
+	}
+	return client.CreateMCPServer(ctx, server)
+}
+
 func (r ControlplaneRuntime) UpdateMCPServer(ctx context.Context, serverID string, update setup.MCPServerUpdate) (setup.MCPConfigResponse, error) {
 	client, err := r.client("")
 	if err != nil {
 		return setup.MCPConfigResponse{}, err
 	}
 	return client.UpdateMCPServer(ctx, serverID, update)
+}
+
+func (r ControlplaneRuntime) DeleteMCPServer(ctx context.Context, serverID string) (setup.MCPConfigResponse, error) {
+	client, err := r.client("")
+	if err != nil {
+		return setup.MCPConfigResponse{}, err
+	}
+	return client.DeleteMCPServer(ctx, serverID)
 }

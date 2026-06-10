@@ -3,6 +3,7 @@ package claudecode
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -23,6 +24,17 @@ type RuntimeOptions struct {
 	Enabled bool
 	Stderr  io.Writer
 }
+
+type promptJSONOutput struct {
+	Result    string `json:"result"`
+	SessionID string `json:"session_id"`
+	Error     string `json:"error"`
+}
+
+const (
+	defaultApprovalPolicy = "never"
+	defaultSandbox        = "danger-full-access"
+)
 
 func NewRuntime(opts RuntimeOptions) *Runtime {
 	return &Runtime{
@@ -46,25 +58,19 @@ func (r *Runtime) StartSession(_ context.Context, req externalagents.StartSessio
 		model = defaultModel()
 	}
 	return externalagents.ExternalSession{
-		AgentID:           AgentID,
-		ExternalThreadID:  newClaudeThreadID(),
-		ExternalSessionID: newClaudeThreadID(),
-		CWD:               cwd,
-		Model:             model,
-		ApprovalPolicy:    strings.TrimSpace(req.ApprovalPolicy),
-		Sandbox:           strings.TrimSpace(req.Sandbox),
-		Metadata:          map[string]any{"mode": "cli"},
+		AgentID:        AgentID,
+		CWD:            cwd,
+		Model:          model,
+		ApprovalPolicy: defaultString(req.ApprovalPolicy, defaultApprovalPolicy),
+		Sandbox:        defaultString(req.Sandbox, defaultSandbox),
+		Metadata:       map[string]any{"mode": "cli"},
 	}, nil
 }
 
 func (r *Runtime) ResumeSession(_ context.Context, session externalagents.ExternalSession) (externalagents.ExternalSession, error) {
-	if strings.TrimSpace(session.ExternalThreadID) == "" {
-		session.ExternalThreadID = newClaudeThreadID()
-	}
-	if strings.TrimSpace(session.ExternalSessionID) == "" {
-		session.ExternalSessionID = session.ExternalThreadID
-	}
 	session.AgentID = AgentID
+	session.ApprovalPolicy = defaultString(session.ApprovalPolicy, defaultApprovalPolicy)
+	session.Sandbox = defaultString(session.Sandbox, defaultSandbox)
 	if session.Metadata == nil {
 		session.Metadata = map[string]any{"mode": "cli"}
 	}
@@ -119,40 +125,125 @@ func (r *Runtime) runPrompt(ctx context.Context, out chan<- externalagents.Event
 			message = err.Error()
 		}
 		out <- externalagents.Event{
-			Kind:             externalagents.EventTurnFailed,
-			AgentID:          AgentID,
-			ExternalThreadID: session.ExternalThreadID,
-			ExternalTurnID:   turnID,
-			Error:            message,
-			At:               time.Now().UTC(),
+			Kind:              externalagents.EventTurnFailed,
+			AgentID:           AgentID,
+			ExternalThreadID:  claudeSessionID(session),
+			ExternalSessionID: claudeSessionID(session),
+			ExternalTurnID:    turnID,
+			Error:             message,
+			At:                time.Now().UTC(),
 		}
 		return
 	}
-	if value := stdout.String(); value != "" {
+	output, err := parseClaudePromptOutput(stdout.Bytes())
+	if err != nil {
 		out <- externalagents.Event{
-			Kind:             externalagents.EventMessageDelta,
-			AgentID:          AgentID,
-			ExternalThreadID: session.ExternalThreadID,
-			ExternalTurnID:   turnID,
-			Text:             value,
-			At:               time.Now().UTC(),
+			Kind:              externalagents.EventTurnFailed,
+			AgentID:           AgentID,
+			ExternalThreadID:  claudeSessionID(session),
+			ExternalSessionID: claudeSessionID(session),
+			ExternalTurnID:    turnID,
+			Error:             err.Error(),
+			At:                time.Now().UTC(),
+		}
+		return
+	}
+	sessionID := firstClaudeSessionID(output.SessionID, session)
+	if strings.TrimSpace(sessionID) != "" {
+		out <- externalagents.Event{
+			Kind:              externalagents.EventTurnStarted,
+			AgentID:           AgentID,
+			ExternalThreadID:  sessionID,
+			ExternalSessionID: sessionID,
+			ExternalTurnID:    turnID,
+			At:                time.Now().UTC(),
+		}
+	}
+	if value := strings.TrimSpace(output.Result); value != "" {
+		out <- externalagents.Event{
+			Kind:              externalagents.EventMessageDelta,
+			AgentID:           AgentID,
+			ExternalThreadID:  sessionID,
+			ExternalSessionID: sessionID,
+			ExternalTurnID:    turnID,
+			Text:              value,
+			At:                time.Now().UTC(),
 		}
 	}
 	out <- externalagents.Event{
-		Kind:             externalagents.EventTurnCompleted,
-		AgentID:          AgentID,
-		ExternalThreadID: session.ExternalThreadID,
-		ExternalTurnID:   turnID,
-		At:               time.Now().UTC(),
+		Kind:              externalagents.EventTurnCompleted,
+		AgentID:           AgentID,
+		ExternalThreadID:  sessionID,
+		ExternalSessionID: sessionID,
+		ExternalTurnID:    turnID,
+		At:                time.Now().UTC(),
 	}
 }
 
 func claudePromptArgs(session externalagents.ExternalSession, text string) []string {
-	args := []string{"-p", text}
+	args := []string{"-p", text, "--output-format", "json"}
+	if sessionID := claudeSessionID(session); sessionID != "" {
+		args = append(args, "--resume", sessionID)
+	}
 	if model := strings.TrimSpace(session.Model); model != "" {
 		args = append(args, "--model", model)
 	}
+	if mode := claudePermissionMode(session); mode != "" {
+		args = append(args, "--permission-mode", mode)
+	}
 	return args
+}
+
+func claudePermissionMode(session externalagents.ExternalSession) string {
+	approvalPolicy := strings.ToLower(strings.TrimSpace(session.ApprovalPolicy))
+	sandbox := strings.ToLower(strings.TrimSpace(session.Sandbox))
+	switch {
+	case approvalPolicy == "never" || sandbox == "danger-full-access":
+		return "bypassPermissions"
+	case approvalPolicy == "on-request" && sandbox == "workspace-write":
+		return "acceptEdits"
+	default:
+		return "default"
+	}
+}
+
+func defaultString(value string, fallback string) string {
+	if value = strings.TrimSpace(value); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func parseClaudePromptOutput(data []byte) (promptJSONOutput, error) {
+	var output promptJSONOutput
+	if err := json.Unmarshal(data, &output); err != nil {
+		text := strings.TrimSpace(string(data))
+		if text == "" {
+			return promptJSONOutput{}, fmt.Errorf("claudecode: empty prompt output")
+		}
+		return promptJSONOutput{Result: text}, nil
+	}
+	if strings.TrimSpace(output.Error) != "" {
+		return promptJSONOutput{}, fmt.Errorf("claudecode: %s", strings.TrimSpace(output.Error))
+	}
+	return output, nil
+}
+
+func claudeSessionID(session externalagents.ExternalSession) string {
+	for _, value := range []string{session.ExternalSessionID, session.ExternalThreadID} {
+		value = strings.TrimSpace(value)
+		if value != "" && !strings.HasPrefix(value, "claude-") {
+			return value
+		}
+	}
+	return ""
+}
+
+func firstClaudeSessionID(value string, session externalagents.ExternalSession) string {
+	if value = strings.TrimSpace(value); value != "" {
+		return value
+	}
+	return claudeSessionID(session)
 }
 
 func defaultModel() string {

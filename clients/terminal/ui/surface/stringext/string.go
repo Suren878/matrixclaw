@@ -8,7 +8,7 @@ import (
 )
 
 func Capitalize(text string) string {
-	return cases.Title(language.English, cases.Compact).String(text)
+	return cases.Title(language.Und, cases.Compact).String(text)
 }
 
 // NormalizeSpace normalizes whitespace in the given content string.

@@ -1,7 +1,6 @@
 package telegram
 
 import (
-	"context"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -18,6 +17,7 @@ type Config struct {
 	AllowedUserID           int64
 	ClientName              string
 	WorkingDir              string
+	InlineCachePath         string
 	PollTimeout             time.Duration
 	PollLimit               int
 	PollRetryDelay          time.Duration
@@ -29,24 +29,36 @@ type Config struct {
 }
 
 type Worker struct {
-	api       BotAPI
-	config    Config
-	offset    *atomic.Int64
-	mu        sync.Mutex
-	runs      map[string]context.CancelFunc
-	states    map[string]*runDeliveryState
-	prompts   map[string]controlplane.PromptData
-	callbacks map[string]string
-	autoEdits map[string]struct{}
+	api        BotAPI
+	config     Config
+	offset     *atomic.Int64
+	mu         sync.Mutex
+	delivery   sync.Mutex
+	states     map[string]*runDeliveryState
+	prompts    map[string]controlplane.PromptData
+	callbacks  map[string]string
+	inline     map[string]string
+	inlineRuns map[string]struct{}
+	messages   map[string]struct{}
+	messageLog []string
+	autoEdits  map[string]struct{}
 }
 
 type runDeliveryState struct {
 	assistant         map[string]sentAssistantMessage
+	drafts            map[string]sentAssistantDraft
 	approvals         map[string]int64
+	toolCalls         map[string]sentToolCallStatus
 	voiceResults      map[string]int64
 	voiceFingerprints map[string]int64
-	statusNotified    bool
-	deliveryID        string
+}
+
+type sentToolCallStatus struct {
+	messageID int64
+	text      string
+	name      string
+	input     string
+	done      bool
 }
 
 type sentAssistantMessage struct {
@@ -54,9 +66,16 @@ type sentAssistantMessage struct {
 	text      string
 }
 
+type sentAssistantDraft struct {
+	text   string
+	sentAt time.Time
+}
+
 type chatTarget struct {
-	chatID      int64
-	threadID    int64
-	messageID   int64
-	externalKey string
+	kind            string
+	chatID          int64
+	messageID       int64
+	guestQueryID    string
+	inlineMessageID string
+	externalKey     string
 }

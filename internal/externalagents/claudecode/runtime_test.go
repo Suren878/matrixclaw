@@ -51,7 +51,7 @@ func TestRuntimeSendsPromptThroughClaudeCLI(t *testing.T) {
 		t.Fatalf("read args: %v", err)
 	}
 	args := string(argsRaw)
-	if !strings.Contains(args, "-p\nhello") || !strings.Contains(args, "--model\nsonnet") {
+	if !strings.Contains(args, "-p\nhello") || !strings.Contains(args, "--model\nsonnet") || !strings.Contains(args, "--permission-mode\nbypassPermissions") {
 		t.Fatalf("claude args = %q", args)
 	}
 	cwdRaw, err := os.ReadFile(cwdPath)
@@ -71,6 +71,31 @@ func TestRuntimeStartSessionDefaultsModel(t *testing.T) {
 	}
 	if session.Model != "sonnet" {
 		t.Fatalf("model = %q, want sonnet", session.Model)
+	}
+	if session.ApprovalPolicy != "never" {
+		t.Fatalf("approval policy = %q, want never", session.ApprovalPolicy)
+	}
+	if session.Sandbox != "danger-full-access" {
+		t.Fatalf("sandbox = %q, want danger-full-access", session.Sandbox)
+	}
+}
+
+func TestClaudePermissionModeMapsSessionPolicy(t *testing.T) {
+	tests := []struct {
+		name    string
+		session externalagents.ExternalSession
+		want    string
+	}{
+		{name: "full auto", session: externalagents.ExternalSession{ApprovalPolicy: "never", Sandbox: "danger-full-access"}, want: "bypassPermissions"},
+		{name: "accept edits", session: externalagents.ExternalSession{ApprovalPolicy: "on-request", Sandbox: "workspace-write"}, want: "acceptEdits"},
+		{name: "default", session: externalagents.ExternalSession{ApprovalPolicy: "on-request", Sandbox: "read-only"}, want: "default"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := claudePermissionMode(tt.session); got != tt.want {
+				t.Fatalf("claudePermissionMode() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

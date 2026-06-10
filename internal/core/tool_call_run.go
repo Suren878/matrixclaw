@@ -7,7 +7,7 @@ import (
 )
 
 func (c *Core) executeToolWithGrant(ctx context.Context, prepared preparedToolCall, input ExecuteToolInput) (tools.Result, error) {
-	result, execErr := c.executePreparedTool(ctx, prepared, input.Approved, input.Args)
+	result, execErr := c.executePreparedTool(ctx, prepared, input.Approved, input.Args, input.Client, input.ExternalKey)
 	if result.Approval == nil || input.Approved {
 		return result, execErr
 	}
@@ -16,18 +16,20 @@ func (c *Core) executeToolWithGrant(ctx context.Context, prepared preparedToolCa
 		return tools.Result{}, err
 	}
 	if autoApproved {
-		return c.executePreparedTool(ctx, prepared, true, input.Args)
+		return c.executePreparedTool(ctx, prepared, true, input.Args, input.Client, input.ExternalKey)
 	}
 	return result, execErr
 }
 
-func (c *Core) executePreparedTool(ctx context.Context, prepared preparedToolCall, approved bool, args []byte) (tools.Result, error) {
+func (c *Core) executePreparedTool(ctx context.Context, prepared preparedToolCall, approved bool, args []byte, client string, externalKey string) (tools.Result, error) {
 	return c.tools.Execute(ctx, prepared.ToolName, tools.Call{
-		SessionID:  prepared.SessionID,
-		RunID:      prepared.RunID,
-		ToolCallID: prepared.ToolCallID,
-		WorkingDir: prepared.WorkingDir,
-		Approved:   approved,
-		Args:       args,
+		SessionID:   prepared.SessionID,
+		RunID:       prepared.RunID,
+		ToolCallID:  prepared.ToolCallID,
+		Client:      client,
+		ExternalKey: externalKey,
+		WorkingDir:  prepared.WorkingDir,
+		Approved:    approved,
+		Args:        args,
 	})
 }

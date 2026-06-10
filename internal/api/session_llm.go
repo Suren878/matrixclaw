@@ -2,10 +2,12 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/sessionllm"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -116,11 +118,7 @@ func (s *Server) reloadSessionLLMRegistry(ctx context.Context) error {
 }
 
 func shouldReloadSessionLLM(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "not configured") ||
-		strings.Contains(message, "no active provider configured") ||
-		strings.Contains(message, "provider registry unavailable")
+	return errors.Is(err, sessionllm.ErrProviderNotConfigured) ||
+		errors.Is(err, sessionllm.ErrNoActiveProvider) ||
+		errors.Is(err, core.ErrExecutionUnavailable)
 }

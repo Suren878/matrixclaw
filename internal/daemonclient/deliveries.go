@@ -53,3 +53,9 @@ func (c *Client) AcknowledgeClientDelivery(ctx context.Context, deliveryID strin
 	path := "/v1/client-deliveries/" + escapedPath(deliveryID) + "/ack"
 	return c.doJSON(ctx, http.MethodPost, path, nil, nil)
 }
+
+func (c *Client) FailClientDelivery(ctx context.Context, deliveryID string, errorText string) error {
+	path := "/v1/client-deliveries/" + escapedPath(deliveryID) + "/fail"
+	request := core.ClientDeliveryFailRequest{Error: strings.TrimSpace(errorText)}
+	return c.doJSON(ctx, http.MethodPost, path, request, nil)
+}

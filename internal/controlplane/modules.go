@@ -2,8 +2,10 @@ package controlplane
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -23,6 +25,8 @@ func (d *Dispatcher) handleModules(ctx context.Context, externalKey string, args
 		return d.handleVoiceModule(ctx, setup.VoiceModuleSTT, rest)
 	case "web":
 		return d.handleWebSearch(ctx, rest)
+	case "browser":
+		return d.handleBrowserModule(ctx, rest)
 	case "skills":
 		return d.handleSkillsForExternal(ctx, externalKey, rest)
 	case "mcp":
@@ -33,7 +37,12 @@ func (d *Dispatcher) handleModules(ctx context.Context, externalKey string, args
 }
 
 func (d *Dispatcher) modulesPicker(ctx context.Context) (Result, error) {
-	ttsInfo, sttInfo, webInfo, skillsInfo, mcpInfo := "", "", "", "", ""
+	externalAgentsInfo, ttsInfo, sttInfo, browserInfo, webInfo, skillsInfo, mcpInfo := "", "", "", "", "", "", ""
+	if d.externalAgents != nil {
+		if agents, err := d.externalAgents.ListExternalAgents(ctx); err == nil {
+			externalAgentsInfo = externalAgentsModuleInfo(agents)
+		}
+	}
 	if d.voiceModules != nil {
 		if module, err := d.voiceModule(ctx, setup.VoiceModuleTTS); err == nil {
 			ttsInfo = voiceModuleListInfo(module)
@@ -47,6 +56,11 @@ func (d *Dispatcher) modulesPicker(ctx context.Context) (Result, error) {
 			webInfo = setup.WebSearchConfigStatus(resp.Config)
 		}
 	}
+	if d.browserModules != nil {
+		if module, err := d.browserModules.BrowserModule(ctx); err == nil {
+			browserInfo = browserModuleListInfo(module)
+		}
+	}
 	if d.skills != nil {
 		if items, err := d.skills.ListSkills(ctx, skillsLibrarySearchOptions()); err == nil {
 			skillsInfo = skillsModuleInfo(items)
@@ -54,17 +68,18 @@ func (d *Dispatcher) modulesPicker(ctx context.Context) (Result, error) {
 	}
 	if d.mcp != nil {
 		if resp, err := d.mcp.MCPConfig(ctx); err == nil {
-			mcpInfo = resp.Status
+			mcpInfo = mcpExternalConfigStatus(resp.Config)
 		}
 	}
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerModules, "Modules").
-			Row("agents", "External Agents", "Codex", externalAgentsCommand()).
+			Row("agents", "External Agents", externalAgentsInfo, externalAgentsCommand()).
 			Row("skills", "Skills", skillsInfo, skillsCommand()).
-			Row("mcp", "MCP", mcpInfo, mcpCommand()).
+			Row("mcp", "External MCP", mcpInfo, mcpCommand()).
 			Row("tts", "Text to Speech", ttsInfo, textToSpeechCommand()).
 			Row("stt", "Speech to Text", sttInfo, speechToTextCommand()).
+			Row("browser", "Browser", browserInfo, browserCommand()).
 			Row("storage", "Storage", "Files", storageCommand()).
 			Row("web", "Web Search", webInfo, webSearchCommand()).
 			Ptr(),
@@ -87,4 +102,41 @@ func voiceModuleListInfo(module setup.VoiceModuleDescriptor) string {
 		}
 	}
 	return strings.TrimSpace(module.ProviderName)
+}
+
+func externalAgentsModuleInfo(agents []core.ExternalAgentDescriptor) string {
+	if len(agents) == 0 {
+		return ""
+	}
+	enabled := make([]string, 0, len(agents))
+	installed := make([]string, 0, len(agents))
+	for _, agent := range agents {
+		title := externalAgentTitle(agent)
+		if title == "" {
+			continue
+		}
+		if agent.Enabled {
+			enabled = append(enabled, title)
+		}
+		if agent.Installed {
+			installed = append(installed, title)
+		}
+	}
+	switch len(enabled) {
+	case 1:
+		return enabled[0]
+	case 2:
+		return strings.Join(enabled, ", ")
+	default:
+		if len(enabled) > 2 {
+			return strconv.Itoa(len(enabled)) + " enabled"
+		}
+	}
+	if len(installed) == 1 {
+		return "Disabled · " + installed[0]
+	}
+	if len(installed) > 1 {
+		return strconv.Itoa(len(installed)) + " installed · disabled"
+	}
+	return "Not installed"
 }

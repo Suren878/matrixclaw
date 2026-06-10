@@ -23,11 +23,16 @@ type BotAPI interface {
 	GetFile(ctx context.Context, fileID string) (File, error)
 	DownloadFile(ctx context.Context, filePath string) ([]byte, error)
 	SendMessage(ctx context.Context, req SendMessageRequest) (SentMessage, error)
+	SendMessageDraft(ctx context.Context, req SendMessageDraftRequest) error
 	SendChatAction(ctx context.Context, req SendChatActionRequest) error
 	SendVoice(ctx context.Context, req SendVoiceRequest) (SentMessage, error)
 	SendAudio(ctx context.Context, req SendAudioRequest) (SentMessage, error)
+	SendDocument(ctx context.Context, req SendDocumentRequest) (SentMessage, error)
 	EditMessageText(ctx context.Context, req EditMessageTextRequest) (EditMessageTextResponse, error)
+	EditMessageMedia(ctx context.Context, req EditMessageMediaRequest) (EditMessageMediaResponse, error)
 	AnswerCallbackQuery(ctx context.Context, req AnswerCallbackQueryRequest) error
+	AnswerGuestQuery(ctx context.Context, req AnswerGuestQueryRequest) (SentGuestMessage, error)
+	AnswerInlineQuery(ctx context.Context, req AnswerInlineQueryRequest) error
 	DeleteMessage(ctx context.Context, req DeleteMessageRequest) error
 	SetMyCommands(ctx context.Context, req SetMyCommandsRequest) error
 	DeleteMyCommands(ctx context.Context, req DeleteMyCommandsRequest) error
@@ -145,6 +150,11 @@ func (c *Client) SendMessage(ctx context.Context, req SendMessageRequest) (SentM
 	return callAPI[SentMessage](ctx, c, "sendMessage", req)
 }
 
+func (c *Client) SendMessageDraft(ctx context.Context, req SendMessageDraftRequest) error {
+	_, err := callAPI[bool](ctx, c, "sendMessageDraft", req)
+	return err
+}
+
 func (c *Client) SendChatAction(ctx context.Context, req SendChatActionRequest) error {
 	_, err := callAPI[bool](ctx, c, "sendChatAction", req)
 	return err
@@ -153,9 +163,6 @@ func (c *Client) SendChatAction(ctx context.Context, req SendChatActionRequest) 
 func (c *Client) SendVoice(ctx context.Context, req SendVoiceRequest) (SentMessage, error) {
 	fields := map[string]string{
 		"chat_id": strconv.FormatInt(req.ChatID, 10),
-	}
-	if req.MessageThreadID != 0 {
-		fields["message_thread_id"] = strconv.FormatInt(req.MessageThreadID, 10)
 	}
 	if caption := strings.TrimSpace(req.Caption); caption != "" {
 		fields["caption"] = caption
@@ -171,8 +178,8 @@ func (c *Client) SendAudio(ctx context.Context, req SendAudioRequest) (SentMessa
 	fields := map[string]string{
 		"chat_id": strconv.FormatInt(req.ChatID, 10),
 	}
-	if req.MessageThreadID != 0 {
-		fields["message_thread_id"] = strconv.FormatInt(req.MessageThreadID, 10)
+	if req.DisableNotification {
+		fields["disable_notification"] = "true"
 	}
 	if caption := strings.TrimSpace(req.Caption); caption != "" {
 		fields["caption"] = caption
@@ -184,12 +191,75 @@ func (c *Client) SendAudio(ctx context.Context, req SendAudioRequest) (SentMessa
 	return callMultipartAPI[SentMessage](ctx, c, "sendAudio", fields, "audio", fileName, req.MIMEType, req.Audio)
 }
 
+func (c *Client) SendDocument(ctx context.Context, req SendDocumentRequest) (SentMessage, error) {
+	fields := map[string]string{
+		"chat_id": strconv.FormatInt(req.ChatID, 10),
+	}
+	if caption := strings.TrimSpace(req.Caption); caption != "" {
+		fields["caption"] = caption
+	}
+	fileName := strings.TrimSpace(req.FileName)
+	if fileName == "" {
+		fileName = "document"
+	}
+	return callMultipartAPI[SentMessage](ctx, c, "sendDocument", fields, "document", fileName, req.MIMEType, req.Document)
+}
+
 func (c *Client) EditMessageText(ctx context.Context, req EditMessageTextRequest) (EditMessageTextResponse, error) {
-	return callAPI[EditMessageTextResponse](ctx, c, "editMessageText", req)
+	result, err := callAPI[editMessageTextResult](ctx, c, "editMessageText", req)
+	return result.EditMessageTextResponse, err
+}
+
+type editMessageTextResult struct {
+	EditMessageTextResponse
+}
+
+func (r *editMessageTextResult) UnmarshalJSON(data []byte) error {
+	if strings.TrimSpace(string(data)) == "true" {
+		*r = editMessageTextResult{}
+		return nil
+	}
+	var response EditMessageTextResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		return err
+	}
+	r.EditMessageTextResponse = response
+	return nil
+}
+
+func (c *Client) EditMessageMedia(ctx context.Context, req EditMessageMediaRequest) (EditMessageMediaResponse, error) {
+	result, err := callAPI[editMessageMediaResult](ctx, c, "editMessageMedia", req)
+	return result.EditMessageMediaResponse, err
+}
+
+type editMessageMediaResult struct {
+	EditMessageMediaResponse
+}
+
+func (r *editMessageMediaResult) UnmarshalJSON(data []byte) error {
+	if strings.TrimSpace(string(data)) == "true" {
+		*r = editMessageMediaResult{}
+		return nil
+	}
+	var response EditMessageMediaResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		return err
+	}
+	r.EditMessageMediaResponse = response
+	return nil
 }
 
 func (c *Client) AnswerCallbackQuery(ctx context.Context, req AnswerCallbackQueryRequest) error {
 	_, err := callAPI[bool](ctx, c, "answerCallbackQuery", req)
+	return err
+}
+
+func (c *Client) AnswerGuestQuery(ctx context.Context, req AnswerGuestQueryRequest) (SentGuestMessage, error) {
+	return callAPI[SentGuestMessage](ctx, c, "answerGuestQuery", req)
+}
+
+func (c *Client) AnswerInlineQuery(ctx context.Context, req AnswerInlineQueryRequest) error {
+	_, err := callAPI[bool](ctx, c, "answerInlineQuery", req)
 	return err
 }
 
@@ -221,6 +291,9 @@ func IsRetryable(err error) bool {
 
 	var apiErr *APIError
 	if errors.As(err, &apiErr) {
+		if strings.EqualFold(apiErr.Method, "getUpdates") && (apiErr.ErrorCode == http.StatusConflict || apiErr.StatusCode == http.StatusConflict) {
+			return true
+		}
 		return apiErr.ErrorCode == http.StatusTooManyRequests || apiErr.StatusCode == http.StatusTooManyRequests || apiErr.ErrorCode >= 500 || apiErr.StatusCode >= 500
 	}
 

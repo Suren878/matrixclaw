@@ -53,6 +53,38 @@ func TestWorkingStatusPhaseToolLabels(t *testing.T) {
 	}
 }
 
+func TestWorkingStatusPhaseWebSearchShowsQuery(t *testing.T) {
+	m := newWorkingStatusTestModel(core.ClientSnapshot{
+		SessionID: "session",
+		Run:       workingStatusTestRun(core.RunStatusRunning),
+		Messages: []core.Message{{
+			ID:        "assistant",
+			SessionID: "session",
+			RunID:     "run",
+			Role:      core.MessageRoleAssistant,
+			Parts: []core.MessagePart{{
+				Kind: core.MessagePartKindToolCall,
+				ToolCall: &core.ToolCallPart{
+					ID:    "search-call",
+					Name:  "web_search",
+					Input: `{"query":"amnezia vpn 2.0 release","limit":5}`,
+				},
+			}},
+		}},
+		ToolUpdates: []core.ToolUpdate{{
+			ToolCallID: "search-call",
+			ToolName:   "web_search",
+			State:      core.ToolLifecycleRequested,
+			RunID:      "run",
+			SessionID:  "session",
+		}},
+	})
+
+	if got := m.workingStatusPhase(); got != "Searching web: amnezia vpn 2.0 release" {
+		t.Fatalf("workingStatusPhase() = %q", got)
+	}
+}
+
 func TestWorkingStatusPhaseCurrentDelegateToolUsesToolText(t *testing.T) {
 	m := newWorkingStatusTestModel(core.ClientSnapshot{
 		SessionID: "session",

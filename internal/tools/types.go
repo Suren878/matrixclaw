@@ -80,12 +80,14 @@ type Spec struct {
 }
 
 type Call struct {
-	SessionID  string          `json:"session_id,omitempty"`
-	RunID      string          `json:"run_id,omitempty"`
-	ToolCallID string          `json:"tool_call_id,omitempty"`
-	WorkingDir string          `json:"working_dir,omitempty"`
-	Approved   bool            `json:"approved,omitempty"`
-	Args       json.RawMessage `json:"args,omitempty"`
+	SessionID   string          `json:"session_id,omitempty"`
+	RunID       string          `json:"run_id,omitempty"`
+	ToolCallID  string          `json:"tool_call_id,omitempty"`
+	Client      string          `json:"client,omitempty"`
+	ExternalKey string          `json:"external_key,omitempty"`
+	WorkingDir  string          `json:"working_dir,omitempty"`
+	Approved    bool            `json:"approved,omitempty"`
+	Args        json.RawMessage `json:"args,omitempty"`
 }
 
 type ApprovalRequest struct {

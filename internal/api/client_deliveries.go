@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -66,17 +67,34 @@ func (s *Server) handleClientDeliveryByID(w http.ResponseWriter, r *http.Request
 	}
 
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/client-deliveries/"), "/")
-	if !strings.HasSuffix(path, "/ack") {
+	deliveryID, action, ok := strings.Cut(path, "/")
+	deliveryID = strings.TrimSpace(deliveryID)
+	action = strings.TrimSpace(action)
+	if !ok || deliveryID == "" || strings.Contains(action, "/") {
 		writeErrorMessage(w, http.StatusNotFound, "client delivery endpoint not found")
 		return
 	}
-	deliveryID := strings.Trim(strings.TrimSuffix(path, "/ack"), "/")
-	if deliveryID == "" {
+	switch action {
+	case "ack":
+		if err := s.core.AcknowledgeClientDelivery(r.Context(), deliveryID); err != nil {
+			writeError(w, err)
+			return
+		}
+	case "fail":
+		var request core.ClientDeliveryFailRequest
+		if !decodeOptionalJSONBody(w, r, &request) {
+			return
+		}
+		var deliveryErr error
+		if errText := strings.TrimSpace(request.Error); errText != "" {
+			deliveryErr = errors.New(errText)
+		}
+		if err := s.core.MarkClientDeliveryFailed(r.Context(), core.ClientDelivery{ID: deliveryID}, deliveryErr); err != nil {
+			writeError(w, err)
+			return
+		}
+	default:
 		writeErrorMessage(w, http.StatusNotFound, "client delivery endpoint not found")
-		return
-	}
-	if err := s.core.AcknowledgeClientDelivery(r.Context(), deliveryID); err != nil {
-		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, core.OKResponse{OK: true})

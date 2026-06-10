@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -223,11 +224,11 @@ func writeVoiceError(w http.ResponseWriter, err error) {
 	}
 	message := err.Error()
 	switch {
-	case strings.Contains(message, "disabled"):
+	case errors.Is(err, voicemodule.ErrModuleDisabled),
+		errors.Is(err, voicemodule.ErrProviderUnavailable):
 		writeErrorMessage(w, http.StatusConflict, message)
-	case strings.Contains(message, "not installed"), strings.Contains(message, "not available"):
-		writeErrorMessage(w, http.StatusConflict, message)
-	case strings.Contains(message, "required"), strings.Contains(message, "invalid"), strings.Contains(message, "not supported"):
+	case errors.Is(err, voicemodule.ErrInvalidRequest),
+		errors.Is(err, voicemodule.ErrUnsupportedProvider):
 		writeErrorMessage(w, http.StatusBadRequest, message)
 	default:
 		writeErrorMessage(w, http.StatusBadGateway, message)

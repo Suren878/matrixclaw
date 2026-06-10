@@ -220,7 +220,7 @@ func (m *appModel) workingStatusPhase() string {
 				return phase
 			}
 		}
-		return workingToolPhase(update.ToolName)
+		return workingToolPhaseWithDetail(snapshot.Messages, update)
 	}
 	if snapshot.Run != nil && snapshot.Run.Status == core.RunStatusAccepted {
 		return "Waiting for model"
@@ -396,6 +396,88 @@ func workingToolPhase(name string) string {
 	default:
 		return "Running " + strings.TrimSpace(name)
 	}
+}
+
+func workingToolPhaseWithDetail(messages []surfacemessage.Message, update core.ToolUpdate) string {
+	phase := workingToolPhase(update.ToolName)
+	call, ok := activeToolCall(messages, update.ToolCallID)
+	if !ok {
+		return phase
+	}
+	if detail := workingToolDetail(update.ToolName, call.Input); detail != "" {
+		return phase + ": " + detail
+	}
+	return phase
+}
+
+func activeToolCall(messages []surfacemessage.Message, toolCallID string) (surfacemessage.ToolCall, bool) {
+	toolCallID = strings.TrimSpace(toolCallID)
+	if toolCallID == "" {
+		return surfacemessage.ToolCall{}, false
+	}
+	for i := len(messages) - 1; i >= 0; i-- {
+		for _, call := range messages[i].ToolCalls() {
+			if strings.TrimSpace(call.ID) == toolCallID {
+				return call, true
+			}
+		}
+	}
+	return surfacemessage.ToolCall{}, false
+}
+
+func workingToolDetail(toolName string, input string) string {
+	var params map[string]any
+	if err := json.Unmarshal([]byte(input), &params); err != nil {
+		return ""
+	}
+	name := strings.ToLower(strings.TrimSpace(toolName))
+	switch name {
+	case "web_search", "session_search", "skill_search":
+		return compactWorkingToolParam(params, "query")
+	case "web_fetch":
+		return compactWorkingToolParam(params, "url")
+	case "web_research":
+		return firstNonEmptyRuntime(compactWorkingToolParam(params, "query"), compactWorkingToolParam(params, "task"), compactWorkingToolParam(params, "urls"))
+	case "web_research_ask":
+		return compactWorkingToolParam(params, "question")
+	case "web_research_status":
+		return compactWorkingToolParam(params, "research_id")
+	}
+	if strings.HasPrefix(name, "mcp_browser_") {
+		return firstNonEmptyRuntime(compactWorkingToolParam(params, "url"), compactWorkingToolParam(params, "text"), compactWorkingToolParam(params, "selector"), compactWorkingToolParam(params, "element"), compactWorkingToolParam(params, "query"), compactWorkingToolParam(params, "ref"))
+	}
+	return ""
+}
+
+func compactWorkingToolParam(params map[string]any, key string) string {
+	value, ok := params[key]
+	if !ok {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return compactWorkingToolText(typed)
+	case []any:
+		if len(typed) == 0 {
+			return ""
+		}
+		first := compactWorkingToolText(fmt.Sprint(typed[0]))
+		if first != "" && len(typed) > 1 {
+			return fmt.Sprintf("%s (+%d)", first, len(typed)-1)
+		}
+		return first
+	default:
+		return compactWorkingToolText(fmt.Sprint(value))
+	}
+}
+
+func compactWorkingToolText(value string) string {
+	value = strings.Join(strings.Fields(value), " ")
+	runes := []rune(value)
+	if len(runes) <= 80 {
+		return value
+	}
+	return strings.TrimSpace(string(runes[:79])) + "…"
 }
 
 func isSubagentToolName(name string) bool {

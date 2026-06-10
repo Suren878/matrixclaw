@@ -512,7 +512,7 @@ func combinedSystemPrompt(systemPrompt string, customInstructions string) string
 	customInstructions = strings.TrimSpace(customInstructions)
 	switch {
 	case systemPrompt == "" && customInstructions == "":
-		return "You are a helpful assistant. Respond in the same language as the user."
+		return ""
 	case systemPrompt == "":
 		return customInstructions
 	case customInstructions == "":

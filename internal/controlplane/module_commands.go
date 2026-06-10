@@ -10,6 +10,11 @@ func storageCommand(parts ...string) string {
 	return modulesCommand(values...)
 }
 
+func browserCommand(parts ...string) string {
+	values := append([]string{"browser"}, parts...)
+	return modulesCommand(values...)
+}
+
 func voiceModuleCommand(moduleID string, parts ...string) string {
 	values := append([]string{moduleID}, parts...)
 	return modulesCommand(values...)

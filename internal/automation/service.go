@@ -428,7 +428,7 @@ func (s *Service) createRunDeliveries(ctx context.Context, job Job, result core.
 	var firstErr error
 	for _, target := range s.deliveryTargetsForJob(job) {
 		_, err := deliveryCreator.CreateClientDelivery(ctx, core.ClientDelivery{
-			Type:        core.ClientDeliveryTypeAutomationRun,
+			Type:        core.ClientDeliveryTypeRun,
 			Client:      target.Client,
 			ExternalKey: target.ExternalKey,
 			SessionID:   firstNonEmpty(result.SessionID, target.SessionID),
@@ -513,16 +513,14 @@ func deliveryAddressForJob(job Job) json.RawMessage {
 	if !strings.EqualFold(strings.TrimSpace(job.Client), telegramClientName) {
 		return nil
 	}
-	chatID, threadID, ok := telegramDeliveryAddressFromExternalKey(job.ExternalKey)
+	chatID, ok := telegramDeliveryAddressFromExternalKey(job.ExternalKey)
 	if !ok {
 		return nil
 	}
 	address := struct {
-		ChatID   int64 `json:"chat_id"`
-		ThreadID int64 `json:"thread_id,omitempty"`
+		ChatID int64 `json:"chat_id"`
 	}{
-		ChatID:   chatID,
-		ThreadID: threadID,
+		ChatID: chatID,
 	}
 	data, err := json.Marshal(address)
 	if err != nil {
@@ -531,23 +529,22 @@ func deliveryAddressForJob(job Job) json.RawMessage {
 	return data
 }
 
-func telegramDeliveryAddressFromExternalKey(value string) (int64, int64, bool) {
+func telegramDeliveryAddressFromExternalKey(value string) (int64, bool) {
 	parts := strings.Split(strings.TrimSpace(value), ":")
 	if len(parts) == 0 || len(parts) > 2 {
-		return 0, 0, false
+		return 0, false
 	}
 	chatID, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil || chatID == 0 {
-		return 0, 0, false
+		return 0, false
 	}
 	if len(parts) == 1 {
-		return chatID, 0, true
+		return chatID, true
 	}
-	threadID, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		return 0, 0, false
+	if _, err := strconv.ParseInt(parts[1], 10, 64); err != nil {
+		return 0, false
 	}
-	return chatID, threadID, true
+	return chatID, true
 }
 
 func randomID(prefix string) string {

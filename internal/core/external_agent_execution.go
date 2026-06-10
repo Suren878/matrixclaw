@@ -93,6 +93,10 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 			return cancelErr
 		}
 		switch event.Kind {
+		case externalagents.EventTurnStarted:
+			if err := c.updateExternalAgentSessionFromEvent(ctx, &attachment, &externalSession, event); err != nil {
+				return c.failRunByID(ctx, run, err)
+			}
 		case externalagents.EventMessageDelta:
 			if err := c.applyExternalMessageDelta(ctx, &assistant, &assistantSaved, event.Text); err != nil {
 				return c.failRunByID(ctx, run, err)
@@ -126,6 +130,44 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 		return cancelErr
 	}
 	return c.failRunByID(ctx, run, errors.New("external agent event stream ended before turn completed"))
+}
+
+func (c *Core) updateExternalAgentSessionFromEvent(ctx context.Context, attachment *externalagents.SessionAttachment, session *externalagents.ExternalSession, event externalagents.Event) error {
+	if c == nil || c.externalStore == nil || attachment == nil || session == nil {
+		return nil
+	}
+	threadID := strings.TrimSpace(event.ExternalThreadID)
+	sessionID := strings.TrimSpace(event.ExternalSessionID)
+	if threadID == "" && sessionID == "" {
+		return nil
+	}
+	if threadID == "" {
+		threadID = sessionID
+	}
+	if sessionID == "" {
+		sessionID = threadID
+	}
+	if attachment.ExternalThreadID == threadID && attachment.ExternalSessionID == sessionID {
+		return nil
+	}
+	attachment.ExternalThreadID = threadID
+	attachment.ExternalSessionID = sessionID
+	attachment.UpdatedAt = c.now().UTC()
+	if strings.TrimSpace(attachment.CWD) == "" {
+		attachment.CWD = session.CWD
+	}
+	if strings.TrimSpace(attachment.Model) == "" {
+		attachment.Model = session.Model
+	}
+	if strings.TrimSpace(attachment.ApprovalPolicy) == "" {
+		attachment.ApprovalPolicy = session.ApprovalPolicy
+	}
+	if strings.TrimSpace(attachment.Sandbox) == "" {
+		attachment.Sandbox = session.Sandbox
+	}
+	session.ExternalThreadID = threadID
+	session.ExternalSessionID = sessionID
+	return c.externalStore.SaveExternalAgentSession(ctx, *attachment)
 }
 
 func (c *Core) findRunUserMessage(ctx context.Context, run Run) (Message, error) {

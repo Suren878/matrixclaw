@@ -147,15 +147,8 @@ type remoteToolExecutor struct {
 
 func newRemoteToolExecutor(server ServerConfig, session *sdk.ClientSession, remoteTool *sdk.Tool) tools.Executor {
 	inputSchema := toolInputSchema(remoteTool.InputSchema)
-	effect := tools.EffectMutation
-	risk := tools.RiskApproval
-	approval := tools.ApprovalOnRequest
-	if server.ReadOnly {
-		effect = tools.EffectReadOnly
-		risk = tools.RiskSafe
-		approval = tools.ApprovalNever
-	}
 	name := strings.TrimSpace(remoteTool.Name)
+	effect, risk, approval := remoteToolPolicy(server, name)
 	return &remoteToolExecutor{
 		server:     server,
 		session:    session,
@@ -173,6 +166,29 @@ func newRemoteToolExecutor(server ServerConfig, session *sdk.ClientSession, remo
 			OutputKind:      tools.OutputText,
 			InputJSONSchema: inputSchema,
 		},
+	}
+}
+
+func remoteToolPolicy(server ServerConfig, remoteName string) (tools.Effect, tools.RiskLevel, tools.ApprovalMode) {
+	if isApprovalFreeBrowserTool(server, remoteName) {
+		return browserToolEffect(remoteName), tools.RiskSafe, tools.ApprovalNever
+	}
+	if server.ReadOnly {
+		return tools.EffectReadOnly, tools.RiskSafe, tools.ApprovalNever
+	}
+	return tools.EffectMutation, tools.RiskApproval, tools.ApprovalOnRequest
+}
+
+func isApprovalFreeBrowserTool(server ServerConfig, remoteName string) bool {
+	return strings.TrimSpace(server.ID) == "browser" && strings.TrimSpace(remoteName) != ""
+}
+
+func browserToolEffect(remoteName string) tools.Effect {
+	switch strings.TrimSpace(remoteName) {
+	case "browser_snapshot", "browser_console_messages", "browser_network_requests", "browser_network_request":
+		return tools.EffectReadOnly
+	default:
+		return tools.EffectMutation
 	}
 }
 
@@ -248,7 +264,46 @@ func toolInputSchema(schema any) json.RawMessage {
 	if err != nil || len(raw) == 0 || string(raw) == "null" {
 		return json.RawMessage(`{"type":"object","additionalProperties":true}`)
 	}
-	return raw
+	return compactToolInputSchema(raw)
+}
+
+func compactToolInputSchema(raw json.RawMessage) json.RawMessage {
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return raw
+	}
+	stripJSONSchemaAnnotations(value, false)
+	compact, err := json.Marshal(value)
+	if err != nil || len(compact) == 0 || string(compact) == "null" {
+		return raw
+	}
+	return compact
+}
+
+func stripJSONSchemaAnnotations(value any, inProperties bool) {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			if !inProperties && isJSONSchemaAnnotationKey(key) {
+				delete(typed, key)
+				continue
+			}
+			stripJSONSchemaAnnotations(child, key == "properties")
+		}
+	case []any:
+		for _, child := range typed {
+			stripJSONSchemaAnnotations(child, false)
+		}
+	}
+}
+
+func isJSONSchemaAnnotationKey(key string) bool {
+	switch key {
+	case "$schema", "description", "title", "markdownDescription", "examples":
+		return true
+	default:
+		return false
+	}
 }
 
 func remoteToolDescription(server ServerConfig, remoteTool *sdk.Tool) string {

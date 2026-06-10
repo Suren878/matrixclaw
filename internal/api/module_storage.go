@@ -15,9 +15,11 @@ type storageStore interface {
 	List(prefix string, query string, limit int) ([]localstorage.Entry, error)
 	SaveBytes(rawPath string, content []byte, title string, tags []string, mimeType string) (localstorage.Entry, error)
 	Read(rawPath string, maxBytes int64) (localstorage.Entry, string, error)
+	ReadBytes(rawPath string, maxBytes int64) (localstorage.Entry, []byte, error)
 	Delete(rawPath string) (localstorage.Entry, error)
 	ListTemporary(limit int) (localstorage.TempListResult, error)
 	SaveTemporary(rawPath string, content []byte, title string, tags []string, mimeType string) (localstorage.TempEntry, error)
+	ReadTemporaryBytes(rawPath string) (localstorage.TempEntry, []byte, error)
 	CleanupTemporary() (localstorage.CleanupResult, error)
 	UpdateTemporarySettings(autoCleanup *bool, ttlDays int64, maxGB float64) (localstorage.TempSettings, error)
 	PromoteTemporary(rawPath string, destPath string) (localstorage.Entry, error)
@@ -80,6 +82,15 @@ func (s *Server) handleStorageFileByPath(w http.ResponseWriter, r *http.Request)
 
 	switch r.Method {
 	case http.MethodGet:
+		if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("encoding")), "base64") {
+			entry, content, err := s.storage.ReadBytes(storagePath, storageReadLimitBytes)
+			if err != nil {
+				writeStorageError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, localstorage.NewReadBytesResponse(entry, content))
+			return
+		}
 		entry, content, err := s.storage.Read(storagePath, storageReadLimitBytes)
 		if err != nil {
 			writeStorageError(w, err)
@@ -193,6 +204,13 @@ func (s *Server) handleStorageTempByPath(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		writeJSON(w, http.StatusOK, localstorage.FileResponse{File: entry})
+	case !promote && r.Method == http.MethodGet:
+		entry, content, err := s.storage.ReadTemporaryBytes(tempPath)
+		if err != nil {
+			writeStorageError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, localstorage.NewTempReadBytesResponse(entry, content))
 	case !promote && r.Method == http.MethodDelete:
 		entry, err := s.storage.DeleteTemporary(tempPath)
 		if err != nil {
@@ -235,7 +253,7 @@ func writeStorageError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, localstorage.ErrInvalidPath):
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
-	case strings.Contains(err.Error(), "not found"):
+	case errors.Is(err, localstorage.ErrNotFound):
 		writeErrorMessage(w, http.StatusNotFound, err.Error())
 	default:
 		writeErrorMessage(w, http.StatusInternalServerError, err.Error())

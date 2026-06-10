@@ -577,11 +577,11 @@ func (d *Dispatcher) skillAICreate(ctx context.Context, externalKey string, desc
 		return Result{}, err
 	}
 	prompt := strings.Join([]string{
-		"Хочу создать Matrixclaw skill через AI.",
-		"Описание от пользователя: " + strings.TrimSpace(description),
-		"Сначала обсуди со мной skill и задай короткие уточняющие вопросы.",
-		"Потом покажи черновик SKILL.md. Я могу просить правки до сохранения.",
-		"Сохраняй skill только когда я явно скажу сохранить/создать. После этого вызови skill_manage create, чтобы появился approval с черновиком; если я откажу, продолжим правки в чате.",
+		"I want to create a Matrixclaw skill with AI assistance.",
+		"User description: " + strings.TrimSpace(description),
+		"First discuss the skill with me and ask short clarifying questions.",
+		"Then show a draft SKILL.md. I may ask for changes before saving.",
+		"Save the skill only when I explicitly say to save or create it. After that, call skill_manage create so an approval opens with the draft. If I reject it, continue revising in chat.",
 	}, "\n")
 	if _, err := d.sender.SendMessage(ctx, sessionID, prompt); err != nil {
 		return Result{}, err

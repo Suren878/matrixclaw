@@ -3,33 +3,21 @@ package localruntime
 import (
 	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
-var whisperServerProcesses = &whisperServerProcessManager{
+var whisperServerProcesses = &localProcessManager[*whisperServerProcess]{
 	processes: map[string]*whisperServerProcess{},
 }
 
-type whisperServerProcessManager struct {
-	mu        sync.Mutex
-	processes map[string]*whisperServerProcess
-}
-
 type whisperServerProcess struct {
-	cmd       *exec.Cmd
-	done      chan struct{}
+	*managedProcess
 	modelPath string
 	endpoint  string
 }
@@ -52,7 +40,7 @@ func (r *Runtime) startWhisperServerProcess(ctx context.Context, moduleID string
 	}
 	endpoint := r.whisperServerEndpoint(provider)
 	host, port := whisperServerHostPort(endpoint)
-	key := r.whisperServerProcessKey(provider)
+	key := r.localVoiceProcessKey(provider)
 
 	whisperServerProcesses.mu.Lock()
 	defer whisperServerProcesses.mu.Unlock()
@@ -60,7 +48,7 @@ func (r *Runtime) startWhisperServerProcess(ctx context.Context, moduleID string
 		return nil
 	}
 	if process := whisperServerProcesses.processes[key]; process != nil {
-		_ = process.stop()
+		_ = process.stop(managedProcessStopTimeout)
 		delete(whisperServerProcesses.processes, key)
 	}
 
@@ -72,38 +60,36 @@ func (r *Runtime) startWhisperServerProcess(ctx context.Context, moduleID string
 		args = append(args, "--threads", strconv.Itoa(provider.Config.Threads))
 	}
 	cmd := exec.Command(binary, args...)
-	cmd.Stdout = io.Discard
-	logFile, err := os.OpenFile(filepath.Join(r.runtimeDir(), "whisper-server.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err == nil {
-		defer logFile.Close()
-		cmd.Stderr = logFile
-	} else {
-		cmd.Stderr = io.Discard
-	}
-	if err := cmd.Start(); err != nil {
+	managed, err := r.startManagedProcess(managedProcessOptions{
+		cmd:      cmd,
+		logName:  "whisper-server.log",
+		waitName: "localruntime.whisperWait",
+	})
+	if err != nil {
 		return err
 	}
 	process := &whisperServerProcess{
-		cmd:       cmd,
-		done:      make(chan struct{}),
-		modelPath: modelPath,
-		endpoint:  endpoint,
+		managedProcess: managed,
+		modelPath:      modelPath,
+		endpoint:       endpoint,
 	}
 	whisperServerProcesses.processes[key] = process
-	safego.Go("localruntime.whisperWait", func() {
-		defer close(process.done)
-		_ = cmd.Wait()
-	})
-	if err := r.waitWhisperServer(ctx, endpoint, process, 60*time.Second); err != nil {
+	if err := r.waitHTTPReady(ctx, httpReadyOptions{
+		url:            strings.TrimRight(endpoint, "/"),
+		timeout:        60 * time.Second,
+		process:        managed,
+		exitedMessage:  "whisper.cpp server exited before it was ready",
+		timeoutMessage: "whisper.cpp server did not start",
+	}); err != nil {
 		delete(whisperServerProcesses.processes, key)
-		_ = process.stop()
+		_ = process.stop(managedProcessStopTimeout)
 		return err
 	}
 	return nil
 }
 
 func (r *Runtime) stopWhisperServerProcess(provider setup.VoiceProviderOption) error {
-	key := r.whisperServerProcessKey(provider)
+	key := r.localVoiceProcessKey(provider)
 	whisperServerProcesses.mu.Lock()
 	process := whisperServerProcesses.processes[key]
 	delete(whisperServerProcesses.processes, key)
@@ -111,74 +97,15 @@ func (r *Runtime) stopWhisperServerProcess(provider setup.VoiceProviderOption) e
 	if process == nil {
 		return nil
 	}
-	return process.stop()
+	return process.stop(managedProcessStopTimeout)
 }
 
 func (r *Runtime) whisperServerProcessRunning(provider setup.VoiceProviderOption) bool {
-	key := r.whisperServerProcessKey(provider)
+	key := r.localVoiceProcessKey(provider)
 	whisperServerProcesses.mu.Lock()
 	process := whisperServerProcesses.processes[key]
 	whisperServerProcesses.mu.Unlock()
 	return process != nil && process.running()
-}
-
-func (p *whisperServerProcess) running() bool {
-	if p == nil || p.cmd == nil || p.cmd.Process == nil {
-		return false
-	}
-	select {
-	case <-p.done:
-		return false
-	default:
-		return true
-	}
-}
-
-func (p *whisperServerProcess) stop() error {
-	if p == nil {
-		return nil
-	}
-	if p.cmd != nil && p.cmd.Process != nil {
-		_ = p.cmd.Process.Kill()
-	}
-	select {
-	case <-p.done:
-	case <-time.After(2 * time.Second):
-	}
-	return nil
-}
-
-func (r *Runtime) waitWhisperServer(ctx context.Context, endpoint string, process *whisperServerProcess, timeout time.Duration) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		if process != nil && !process.running() {
-			return fmt.Errorf("whisper.cpp server exited before it was ready")
-		}
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/"), nil)
-		if err != nil {
-			return err
-		}
-		response, err := r.httpClient().Do(request)
-		if err == nil {
-			_ = response.Body.Close()
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("whisper.cpp server did not start: %w", ctx.Err())
-		case <-ticker.C:
-		}
-	}
-}
-
-func (r *Runtime) whisperServerProcessKey(provider setup.VoiceProviderOption) string {
-	return filepath.Join(r.rootDir(), strings.TrimSpace(provider.ID))
 }
 
 func (r *Runtime) whisperServerEndpoint(provider setup.VoiceProviderOption) string {

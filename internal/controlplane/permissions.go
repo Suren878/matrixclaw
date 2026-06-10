@@ -83,7 +83,7 @@ func parsePermissionMode(value string) (core.PermissionMode, bool) {
 		return core.PermissionModeDefault, true
 	case "accept_edits", "accept", "edits", "auto_edit", "auto_edits":
 		return core.PermissionModeAcceptEdits, true
-	case "full_auto", "full_access", "full", "auto", "access", "yolo":
+	case "full_auto", "full_access", "full", "auto", "access":
 		return core.PermissionModeFullAuto, true
 	default:
 		return core.PermissionModeDefault, false

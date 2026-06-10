@@ -32,7 +32,7 @@ func (w *Worker) handlePendingPrompt(ctx context.Context, target chatTarget, tex
 	if !ok {
 		return false, nil
 	}
-	if prompt.Sensitive {
+	if prompt.Sensitive && target.isChat() {
 		_ = w.api.DeleteMessage(ctx, DeleteMessageRequest{
 			ChatID:    target.chatID,
 			MessageID: target.messageID,

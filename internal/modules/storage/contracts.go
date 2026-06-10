@@ -55,8 +55,34 @@ type FileResponse struct {
 	File Entry `json:"file"`
 }
 
+type ReadBytesResponse struct {
+	File          Entry  `json:"file"`
+	ContentBase64 string `json:"content_base64"`
+}
+
+func NewReadBytesResponse(file Entry, content []byte) ReadBytesResponse {
+	return ReadBytesResponse{File: file, ContentBase64: base64.StdEncoding.EncodeToString(content)}
+}
+
+func (r ReadBytesResponse) ContentBytes() ([]byte, error) {
+	return base64.StdEncoding.DecodeString(strings.TrimSpace(r.ContentBase64))
+}
+
 type TempFileResponse struct {
 	File TempEntry `json:"file"`
+}
+
+type TempReadBytesResponse struct {
+	File          TempEntry `json:"file"`
+	ContentBase64 string    `json:"content_base64"`
+}
+
+func NewTempReadBytesResponse(file TempEntry, content []byte) TempReadBytesResponse {
+	return TempReadBytesResponse{File: file, ContentBase64: base64.StdEncoding.EncodeToString(content)}
+}
+
+func (r TempReadBytesResponse) ContentBytes() ([]byte, error) {
+	return base64.StdEncoding.DecodeString(strings.TrimSpace(r.ContentBase64))
 }
 
 type TempPromoteRequest struct {

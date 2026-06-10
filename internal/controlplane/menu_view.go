@@ -109,15 +109,22 @@ func hasSessionCapabilities(capabilities core.SessionCapabilities) bool {
 		capabilities.ExternalAgent
 }
 
-func PublicCommandView() []CommandView {
-	views := BuildCommandView(MenuState{})
-	out := make([]CommandView, 0, len(views))
-	for _, view := range views {
-		if view.Public && (view.Menu || view.ID == string(CommandHelp)) {
-			out = append(out, view)
+func CommandMenuPicker(state MenuState) *PickerData {
+	picker := NewPickerData(PickerCommandMenu, "Menu")
+	for _, view := range CommandMenuView(SurfaceTelegram, state).Items {
+		item := PickerItem{
+			ID:       view.ID,
+			Title:    view.Title,
+			Info:     view.Info,
+			Command:  view.Command,
+			Disabled: view.Disabled,
 		}
+		if view.Disabled {
+			item.Command = ""
+		}
+		picker.Item(item)
 	}
-	return out
+	return picker.Ptr()
 }
 
 func permissionModeStatus(mode core.PermissionMode) string {

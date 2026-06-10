@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -92,6 +93,7 @@ func (a *telegramClientAdapter) Apply(ctx context.Context, bootstrap bootstrapCo
 		APIToken:                bootstrap.APIToken,
 		BotToken:                cfg.BotToken,
 		AllowedUserID:           cfg.AllowedUserID,
+		InlineCachePath:         telegramInlineCachePath(bootstrap.DBPath),
 		Offset:                  &a.offset,
 		SkipCommandRegistration: a.commandsSet,
 	})
@@ -143,6 +145,14 @@ func telegramBootstrap(bootstrap bootstrapConfig) telegramClientBootstrap {
 		AllowedUserID: client.Int64Values["allowed_user_id"],
 	}
 	return cfg
+}
+
+func telegramInlineCachePath(dbPath string) string {
+	dbPath = strings.TrimSpace(dbPath)
+	if dbPath == "" {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(dbPath), "telegram-inline-cache.json")
 }
 
 func automationDeliveryTargets(bootstrap bootstrapConfig) []core.ClientDeliveryTarget {

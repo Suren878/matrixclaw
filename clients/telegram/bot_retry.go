@@ -18,6 +18,17 @@ func (w *Worker) sendTelegramMessage(ctx context.Context, req SendMessageRequest
 	return w.api.SendMessage(ctx, req)
 }
 
+func (w *Worker) sendTelegramDraft(ctx context.Context, req SendMessageDraftRequest) error {
+	err := w.api.SendMessageDraft(ctx, req)
+	if !shouldRetryTelegramAfter(err) {
+		return err
+	}
+	if !sleepContext(ctx, telegramRetryAfter(err)) {
+		return ctx.Err()
+	}
+	return w.api.SendMessageDraft(ctx, req)
+}
+
 func (w *Worker) editTelegramMessage(ctx context.Context, req EditMessageTextRequest) error {
 	req.ReplyMarkup = w.compactInlineKeyboardMarkup(req.ReplyMarkup)
 	_, err := w.api.EditMessageText(ctx, req)
@@ -29,6 +40,31 @@ func (w *Worker) editTelegramMessage(ctx context.Context, req EditMessageTextReq
 	}
 	_, err = w.api.EditMessageText(ctx, req)
 	return err
+}
+
+func (w *Worker) editTelegramMessageMedia(ctx context.Context, req EditMessageMediaRequest) error {
+	req.ReplyMarkup = w.compactInlineKeyboardMarkup(req.ReplyMarkup)
+	_, err := w.api.EditMessageMedia(ctx, req)
+	if !shouldRetryTelegramAfter(err) {
+		return err
+	}
+	if !sleepContext(ctx, telegramRetryAfter(err)) {
+		return ctx.Err()
+	}
+	_, err = w.api.EditMessageMedia(ctx, req)
+	return err
+}
+
+func (w *Worker) answerGuestQuery(ctx context.Context, req AnswerGuestQueryRequest) (SentGuestMessage, error) {
+	req.Result.ReplyMarkup = w.compactInlineKeyboardMarkup(req.Result.ReplyMarkup)
+	reply, err := w.api.AnswerGuestQuery(ctx, req)
+	if !shouldRetryTelegramAfter(err) {
+		return reply, err
+	}
+	if !sleepContext(ctx, telegramRetryAfter(err)) {
+		return SentGuestMessage{}, ctx.Err()
+	}
+	return w.api.AnswerGuestQuery(ctx, req)
 }
 
 func shouldRetryTelegramAfter(err error) bool {

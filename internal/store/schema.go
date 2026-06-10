@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS session_inputs (
     parts_json TEXT NOT NULL DEFAULT '',
     client TEXT NOT NULL DEFAULT '',
     external_key TEXT NOT NULL DEFAULT '',
+    delivery_address_json TEXT NOT NULL DEFAULT '',
     working_dir TEXT NOT NULL DEFAULT '',
     consumed_run_id TEXT NOT NULL DEFAULT '',
     error TEXT NOT NULL DEFAULT '',
@@ -121,6 +122,12 @@ CREATE TABLE IF NOT EXISTS session_inputs (
 		return fmt.Errorf("store: create session inputs table: %w", err)
 	}
 	if err := ensureColumn(db, "subagent_tasks", "display_name", `ALTER TABLE subagent_tasks ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "session_inputs", "delivery_address_json", `ALTER TABLE session_inputs ADD COLUMN delivery_address_json TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "client_deliveries", "payload_json", `ALTER TABLE client_deliveries ADD COLUMN payload_json TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
 	}
 	if err := ensureColumn(db, "subagent_tasks", "mode", `ALTER TABLE subagent_tasks ADD COLUMN mode TEXT NOT NULL DEFAULT 'blocking'`); err != nil {

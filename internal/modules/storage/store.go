@@ -20,7 +20,10 @@ const (
 	defaultTempMax  = 5 * 1024 * 1024 * 1024
 )
 
-var ErrInvalidPath = errors.New("invalid storage path")
+var (
+	ErrInvalidPath = errors.New("invalid storage path")
+	ErrNotFound    = errors.New("storage file not found")
+)
 
 type Entry struct {
 	Path      string    `json:"path"`
@@ -151,7 +154,7 @@ func (s *LocalStore) UpdateMetadata(rawPath string, title string, tags []string,
 	file, err := s.fileForRead(cleanPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return Entry{}, fmt.Errorf("storage file not found: %s", cleanPath)
+			return Entry{}, fmt.Errorf("%w: %s", ErrNotFound, cleanPath)
 		}
 		return Entry{}, err
 	}
@@ -203,7 +206,7 @@ func (s *LocalStore) Delete(rawPath string) (Entry, error) {
 		file, statErr := s.fileForRead(cleanPath)
 		if statErr != nil {
 			if errors.Is(statErr, fs.ErrNotExist) {
-				return Entry{}, fmt.Errorf("storage file not found: %s", cleanPath)
+				return Entry{}, fmt.Errorf("%w: %s", ErrNotFound, cleanPath)
 			}
 			return Entry{}, statErr
 		}
@@ -221,13 +224,13 @@ func (s *LocalStore) Delete(rawPath string) (Entry, error) {
 	file, err := s.fileForDelete(cleanPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return Entry{}, fmt.Errorf("storage file not found: %s", cleanPath)
+			return Entry{}, fmt.Errorf("%w: %s", ErrNotFound, cleanPath)
 		}
 		return Entry{}, err
 	}
 	if err := removeCheckedFile(file, cleanPath); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return Entry{}, fmt.Errorf("storage file not found: %s", cleanPath)
+			return Entry{}, fmt.Errorf("%w: %s", ErrNotFound, cleanPath)
 		}
 		return Entry{}, err
 	}
@@ -258,7 +261,7 @@ func (s *LocalStore) readBytes(rawPath string, maxBytes int64) (Entry, []byte, e
 	file, err := s.fileForRead(cleanPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return Entry{}, nil, fmt.Errorf("storage file not found: %s", cleanPath)
+			return Entry{}, nil, fmt.Errorf("%w: %s", ErrNotFound, cleanPath)
 		}
 		return Entry{}, nil, err
 	}
@@ -272,6 +275,9 @@ func (s *LocalStore) readBytes(rawPath string, maxBytes int64) (Entry, []byte, e
 
 	data, err := os.ReadFile(file.abs)
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return Entry{}, nil, fmt.Errorf("%w: %s", ErrNotFound, cleanPath)
+		}
 		return Entry{}, nil, err
 	}
 

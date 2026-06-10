@@ -3,9 +3,23 @@ package daemonclient
 import (
 	"context"
 	"net/http"
+	"net/url"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 )
+
+func (c *Client) ListApprovals(ctx context.Context, sessionID string, state core.ApprovalState) ([]core.Approval, error) {
+	values := url.Values{}
+	values.Set("session_id", sessionID)
+	if state != "" {
+		values.Set("state", string(state))
+	}
+	var response core.ApprovalsResponse
+	if err := c.doJSON(ctx, http.MethodGet, "/v1/approvals?"+values.Encode(), nil, &response); err != nil {
+		return nil, err
+	}
+	return response.Approvals, nil
+}
 
 func (c *Client) ResolveApproval(ctx context.Context, approvalID string, approved bool) (core.Approval, error) {
 	var response core.ApprovalResponse

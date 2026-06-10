@@ -45,6 +45,12 @@ type VoiceModuleRuntime interface {
 	VoiceProviderAction(ctx context.Context, moduleID string, providerID string, request setup.VoiceProviderActionRequest) (setup.VoiceProviderOption, error)
 }
 
+type BrowserModuleRuntime interface {
+	BrowserModule(ctx context.Context) (setup.BrowserModuleDescriptor, error)
+	UpdateBrowserModule(ctx context.Context, update setup.BrowserModuleUpdate) (setup.BrowserModuleDescriptor, error)
+	BrowserProviderAction(ctx context.Context, providerID string, request setup.BrowserProviderActionRequest) (setup.BrowserProviderOption, error)
+}
+
 type ProviderRuntime interface {
 	ListSetupProviders(ctx context.Context) ([]setup.ProviderSetupItem, error)
 	ConfigureSetupProvider(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) (setup.ProviderSetupItem, error)
@@ -142,7 +148,9 @@ type SkillsRuntime interface {
 type MCPRuntime interface {
 	MCPConfig(ctx context.Context) (setup.MCPConfigResponse, error)
 	UpdateMCPConfig(ctx context.Context, update setup.MCPConfigUpdate) (setup.MCPConfigResponse, error)
+	CreateMCPServer(ctx context.Context, server setup.MCPServerConfig) (setup.MCPConfigResponse, error)
 	UpdateMCPServer(ctx context.Context, serverID string, update setup.MCPServerUpdate) (setup.MCPConfigResponse, error)
+	DeleteMCPServer(ctx context.Context, serverID string) (setup.MCPConfigResponse, error)
 }
 
 type Result struct {
@@ -163,6 +171,7 @@ type Dispatcher struct {
 	sessionModels  SessionModelRuntime
 	externalAgents ExternalAgentRuntime
 	voiceModules   VoiceModuleRuntime
+	browserModules BrowserModuleRuntime
 	providers      ProviderRuntime
 	permissions    PermissionRuntime
 	messages       SessionMessageRuntime
@@ -193,6 +202,7 @@ func New(runtime any, workingDir string) *Dispatcher {
 		d.sessionModels, _ = runtime.(SessionModelRuntime)
 		d.externalAgents, _ = runtime.(ExternalAgentRuntime)
 		d.voiceModules, _ = runtime.(VoiceModuleRuntime)
+		d.browserModules, _ = runtime.(BrowserModuleRuntime)
 		d.providers, _ = runtime.(ProviderRuntime)
 		d.permissions, _ = runtime.(PermissionRuntime)
 		d.messages, _ = runtime.(SessionMessageRuntime)
@@ -231,7 +241,7 @@ func (d *Dispatcher) Handle(ctx context.Context, externalKey string, text string
 
 	switch spec.ID {
 	case CommandHelp:
-		return Result{Handled: true, Text: HelpText()}, nil
+		return Result{Handled: true, Picker: CommandMenuPicker(MenuState{})}, nil
 	case CommandNewSession:
 		if d.sessions == nil {
 			return unsupportedRuntime("sessions"), nil

@@ -50,7 +50,7 @@ func TestProviderSystemPromptListsExternalSubagentConfiguration(t *testing.T) {
 		"gpt-5.4-mini",
 		"ask the user which runtime",
 		"Do not select unavailable runtimes",
-		"какие субагенты доступны",
+		"questions in any language about available or connected subagents",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("system prompt missing %q:\n%s", want, prompt)

@@ -2,7 +2,7 @@ package controlplane
 
 import "strings"
 
-func PickerPresentationText(picker PickerData) string {
+func pickerPresentationText(picker PickerData) string {
 	title := strings.TrimSpace(picker.Title)
 	if title == "" {
 		return "Choose:"
@@ -13,7 +13,7 @@ func PickerPresentationText(picker PickerData) string {
 	return title
 }
 
-func FormPresentationText(form FormData) string {
+func formPresentationText(form FormData) string {
 	title := strings.TrimSpace(form.Title)
 	if title == "" {
 		title = "Form"
@@ -33,7 +33,7 @@ func FormPresentationText(form FormData) string {
 	return strings.Join(lines, "\n")
 }
 
-func ConfirmPresentationText(confirm ConfirmData) string {
+func confirmPresentationText(confirm ConfirmData) string {
 	text := strings.TrimSpace(confirm.Message)
 	if title := strings.TrimSpace(confirm.Title); title != "" {
 		if text == "" {
@@ -44,7 +44,7 @@ func ConfirmPresentationText(confirm ConfirmData) string {
 	return text
 }
 
-func InfoPresentationText(info InfoData) string {
+func infoPresentationText(info InfoData) string {
 	title := strings.TrimSpace(info.Title)
 	lines := []string{}
 	if title != "" {

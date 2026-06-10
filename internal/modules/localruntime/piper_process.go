@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,24 +11,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
-var piperProcesses = &piperProcessManager{
+var piperProcesses = &localProcessManager[*piperProcess]{
 	processes: map[string]*piperProcess{},
 }
 
-type piperProcessManager struct {
-	mu        sync.Mutex
-	processes map[string]*piperProcess
-}
-
 type piperProcess struct {
-	mu        sync.Mutex
-	cmd       *exec.Cmd
-	stdin     io.WriteCloser
-	done      chan struct{}
+	mu sync.Mutex
+	*managedProcess
 	modelPath string
 	outputDir string
 }
@@ -50,7 +41,7 @@ func (r *Runtime) startPiperProcess(moduleID string, provider setup.VoiceProvide
 	if err != nil {
 		return err
 	}
-	key := r.piperProcessKey(provider)
+	key := r.localVoiceProcessKey(provider)
 	outputDir := r.piperOutputDir(provider)
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return err
@@ -62,7 +53,7 @@ func (r *Runtime) startPiperProcess(moduleID string, provider setup.VoiceProvide
 		return nil
 	}
 	if process := piperProcesses.processes[key]; process != nil {
-		_ = process.stop()
+		_ = process.stop(managedProcessStopTimeout)
 		delete(piperProcesses.processes, key)
 	}
 
@@ -72,39 +63,26 @@ func (r *Runtime) startPiperProcess(moduleID string, provider setup.VoiceProvide
 		"--output-dir", outputDir,
 		"--output-dir-naming", "timestamp",
 	)
-	stdin, err := cmd.StdinPipe()
+	managed, err := r.startManagedProcess(managedProcessOptions{
+		cmd:      cmd,
+		logName:  "piper.log",
+		waitName: "localruntime.piperWait",
+		stdin:    true,
+	})
 	if err != nil {
 		return err
 	}
-	cmd.Stdout = io.Discard
-	logFile, err := os.OpenFile(filepath.Join(r.runtimeDir(), "piper.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err == nil {
-		defer logFile.Close()
-		cmd.Stderr = logFile
-	} else {
-		cmd.Stderr = io.Discard
-	}
-	if err := cmd.Start(); err != nil {
-		_ = stdin.Close()
-		return err
-	}
 	process := &piperProcess{
-		cmd:       cmd,
-		stdin:     stdin,
-		done:      make(chan struct{}),
-		modelPath: modelPath,
-		outputDir: outputDir,
+		managedProcess: managed,
+		modelPath:      modelPath,
+		outputDir:      outputDir,
 	}
 	piperProcesses.processes[key] = process
-	safego.Go("localruntime.piperWait", func() {
-		defer close(process.done)
-		_ = cmd.Wait()
-	})
 	return nil
 }
 
 func (r *Runtime) stopPiperProcess(provider setup.VoiceProviderOption) error {
-	key := r.piperProcessKey(provider)
+	key := r.localVoiceProcessKey(provider)
 	piperProcesses.mu.Lock()
 	process := piperProcesses.processes[key]
 	delete(piperProcesses.processes, key)
@@ -112,11 +90,11 @@ func (r *Runtime) stopPiperProcess(provider setup.VoiceProviderOption) error {
 	if process == nil {
 		return nil
 	}
-	return process.stop()
+	return process.stop(managedProcessStopTimeout)
 }
 
 func (r *Runtime) piperProcessRunning(provider setup.VoiceProviderOption) bool {
-	key := r.piperProcessKey(provider)
+	key := r.localVoiceProcessKey(provider)
 	piperProcesses.mu.Lock()
 	process := piperProcesses.processes[key]
 	piperProcesses.mu.Unlock()
@@ -128,7 +106,7 @@ func (r *Runtime) piperPersistentTextToSpeech(ctx context.Context, provider setu
 	if strings.TrimSpace(modelPath) == "" {
 		return nil, fmt.Errorf("voice is not selected")
 	}
-	key := r.piperProcessKey(provider)
+	key := r.localVoiceProcessKey(provider)
 	piperProcesses.mu.Lock()
 	process := piperProcesses.processes[key]
 	piperProcesses.mu.Unlock()
@@ -144,33 +122,6 @@ func (r *Runtime) piperPersistentTextToSpeech(ctx context.Context, provider setu
 		return nil, fmt.Errorf("piper runtime is not running with the selected voice")
 	}
 	return process.synthesize(ctx, text)
-}
-
-func (p *piperProcess) running() bool {
-	if p == nil || p.cmd == nil || p.cmd.Process == nil {
-		return false
-	}
-	select {
-	case <-p.done:
-		return false
-	default:
-		return true
-	}
-}
-
-func (p *piperProcess) stop() error {
-	if p == nil {
-		return nil
-	}
-	_ = p.stdin.Close()
-	if p.cmd != nil && p.cmd.Process != nil {
-		_ = p.cmd.Process.Kill()
-	}
-	select {
-	case <-p.done:
-	case <-time.After(2 * time.Second):
-	}
-	return nil
 }
 
 func (p *piperProcess) synthesize(ctx context.Context, text string) ([]byte, error) {
@@ -276,10 +227,6 @@ func piperOutputReady(path string) bool {
 		return false
 	}
 	return first.Size() == second.Size() && first.ModTime().Equal(second.ModTime())
-}
-
-func (r *Runtime) piperProcessKey(provider setup.VoiceProviderOption) string {
-	return filepath.Join(r.rootDir(), strings.TrimSpace(provider.ID))
 }
 
 func (r *Runtime) piperOutputDir(provider setup.VoiceProviderOption) string {

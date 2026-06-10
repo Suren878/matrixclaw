@@ -13,6 +13,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
 	"github.com/Suren878/matrixclaw/internal/modules"
+	deliverymodule "github.com/Suren878/matrixclaw/internal/modules/delivery"
 	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
 	mcpmodule "github.com/Suren878/matrixclaw/internal/modules/mcp"
 	skillsmodule "github.com/Suren878/matrixclaw/internal/modules/skills"
@@ -57,9 +58,10 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	mcpModule, err := mcpmodule.New(ctx, bootstrap.ExternalAgents.MCP)
+	mcpModule, err := mcpmodule.New(ctx, mcpConfigWithBrowser(bootstrap.ExternalAgents))
 	if err != nil {
-		return err
+		log.Printf("matrixclawd mcp module disabled: %v", err)
+		mcpModule, _ = mcpmodule.New(ctx, setup.MCPConfig{})
 	}
 	defer func() { _ = mcpModule.Close() }()
 	skillsModule, err := skillsmodule.New(skillsConfigFromBootstrap(bootstrap))
@@ -75,7 +77,8 @@ func Run(ctx context.Context) error {
 		WithSessionLLMs(bootstrap.SessionLLMs).
 		WithWorkStore(workStore).
 		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()}).
-		WithSkillsContext(skillsModule)
+		WithSkillsContext(skillsModule).
+		WithRuntimeStatusContext(&setupRuntimeStatusContext{setup: bootstrap.SetupService, runtime: localruntime.New("")})
 	app.SetAssistantProfile(assistant)
 	externalRegistry, externalRuntimes, err := builtins.BuildRegistry(bootstrap.ExternalAgents)
 	if err != nil {
@@ -97,6 +100,7 @@ func Run(ctx context.Context) error {
 	extraTools := []tools.Executor{
 		automation.NewReminderTool(automationService),
 		automation.NewScheduledAITaskTool(automationService),
+		deliverymodule.NewSendFileTool(storageModule.Store(), app),
 		voicemodule.NewTextToSpeechTool(bootstrap.SetupService),
 		tools.NewWebSearchExecutorWithService(webTools),
 	}
@@ -153,6 +157,11 @@ func Run(ctx context.Context) error {
 	safego.Go("supervisor.deliverStartupNotifications", func() {
 		supervisor.DeliverPendingStartupNotifications(bootstrap)
 	})
+	safego.Go("core.recoverActiveRuns", func() {
+		if err := app.RecoverActiveRuns(context.Background()); err != nil {
+			log.Printf("matrixclawd active run recovery failed: %v", err)
+		}
+	})
 	safego.Go("core.recoverSessionInputs", func() {
 		if err := app.RecoverSessionInputs(context.Background()); err != nil {
 			log.Printf("matrixclawd session input recovery failed: %v", err)
@@ -185,6 +194,36 @@ func skillsConfigFromBootstrap(bootstrap bootstrapConfig) skills.Config {
 		TrustPolicy: cfg.TrustPolicy,
 		SelfImprove: cfg.SelfImprove,
 	}
+}
+
+func mcpConfigWithBrowser(modules setup.ModulesConfig) setup.MCPConfig {
+	cfg := modules.MCP
+	browserModule := setup.BrowserModuleFromConfig(modules)
+	if !browserModule.Enabled {
+		return cfg
+	}
+	for _, provider := range browserModule.Providers {
+		if provider.ID != browserModule.ProviderID {
+			continue
+		}
+		if server, ok := localruntime.New("").PlaywrightMCPServerConfig(provider); ok {
+			cfg.Enabled = true
+			cfg.Servers = appendOrReplaceMCPServer(cfg.Servers, server)
+		}
+		return cfg
+	}
+	return cfg
+}
+
+func appendOrReplaceMCPServer(servers []setup.MCPServerConfig, server setup.MCPServerConfig) []setup.MCPServerConfig {
+	out := append([]setup.MCPServerConfig(nil), servers...)
+	for i := range out {
+		if out[i].ID == server.ID {
+			out[i] = server
+			return out
+		}
+	}
+	return append(out, server)
 }
 
 func startConfiguredVoiceRuntimes(ctx context.Context, service *setup.Service) {

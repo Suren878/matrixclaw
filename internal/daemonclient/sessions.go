@@ -2,7 +2,10 @@ package daemonclient
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -24,6 +27,17 @@ func (c *Client) LoadSnapshot(ctx context.Context) (core.ClientSnapshot, error) 
 		return core.ClientSnapshot{}, err
 	}
 	return response.Snapshot, nil
+}
+
+func (c *Client) ListMessages(ctx context.Context, sessionID string, limit int) ([]core.Message, error) {
+	values := url.Values{}
+	values.Set("session_id", strings.TrimSpace(sessionID))
+	values.Set("limit", strconv.Itoa(limit))
+	var response core.MessagesResponse
+	if err := c.doJSON(ctx, http.MethodGet, "/v1/messages?"+values.Encode(), nil, &response); err != nil {
+		return nil, err
+	}
+	return response.Messages, nil
 }
 
 func (c *Client) ListSessions(ctx context.Context) ([]core.Session, error) {
@@ -234,6 +248,10 @@ func (c *Client) SendMessageMode(ctx context.Context, sessionID string, text str
 }
 
 func (c *Client) SendMessagePartsMode(ctx context.Context, sessionID string, text string, parts []core.MessagePart, workingDir string, busyMode core.BusyInputMode) (core.AcceptRunResult, error) {
+	return c.SendMessagePartsModeWithDelivery(ctx, sessionID, text, parts, workingDir, busyMode, nil)
+}
+
+func (c *Client) SendMessagePartsModeWithDelivery(ctx context.Context, sessionID string, text string, parts []core.MessagePart, workingDir string, busyMode core.BusyInputMode, deliveryAddress json.RawMessage) (core.AcceptRunResult, error) {
 	var response core.AcceptRunResult
 	request := core.HandleMessageInput{
 		Client:           c.ClientName,
@@ -243,6 +261,7 @@ func (c *Client) SendMessagePartsMode(ctx context.Context, sessionID string, tex
 		Parts:            parts,
 		BusyMode:         busyMode,
 		WorkingDir:       strings.TrimSpace(workingDir),
+		DeliveryAddress:  deliveryAddress,
 		AllowAutoBindOne: true,
 	}
 	if err := c.doJSON(ctx, http.MethodPost, "/v1/messages", request, &response); err != nil {

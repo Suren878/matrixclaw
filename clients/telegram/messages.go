@@ -22,6 +22,9 @@ func (w *Worker) handleTextMessage(ctx context.Context, message *Message) error 
 	if message == nil || !w.allowMessage(message) {
 		return nil
 	}
+	if w.markMessageSeen(message) {
+		return nil
+	}
 	if len(message.Photo) > 0 {
 		return w.handlePhotoMessage(ctx, message)
 	}
@@ -40,7 +43,13 @@ func (w *Worker) handleTextMessage(ctx context.Context, message *Message) error 
 	if message.Audio != nil {
 		return w.handleAudioMessage(ctx, message)
 	}
+	if message.Location != nil {
+		return w.handleLocationMessage(ctx, message)
+	}
 	if strings.TrimSpace(message.Text) == "" {
+		return nil
+	}
+	if isInlinePlaceholderMessage(message) {
 		return nil
 	}
 
@@ -61,6 +70,59 @@ func (w *Worker) handleTextMessage(ctx context.Context, message *Message) error 
 		return w.renderCommandResult(ctx, target, result)
 	}
 	return w.sendUserMessage(ctx, target, text)
+}
+
+func (w *Worker) markMessageSeen(message *Message) bool {
+	key := telegramMessageDedupKey(message)
+	if key == "" {
+		return false
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.messages == nil {
+		w.messages = map[string]struct{}{}
+	}
+	if _, ok := w.messages[key]; ok {
+		return true
+	}
+	w.messages[key] = struct{}{}
+	w.messageLog = append(w.messageLog, key)
+	const maxSeenTelegramMessages = 2048
+	if len(w.messageLog) > maxSeenTelegramMessages {
+		oldest := w.messageLog[0]
+		copy(w.messageLog, w.messageLog[1:])
+		w.messageLog = w.messageLog[:len(w.messageLog)-1]
+		delete(w.messages, oldest)
+	}
+	return false
+}
+
+func telegramMessageDedupKey(message *Message) string {
+	if message == nil || message.MessageID == 0 || message.Chat.ID == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d:%d", message.Chat.ID, message.MessageID)
+}
+
+func isInlinePlaceholderMessage(message *Message) bool {
+	if message == nil {
+		return false
+	}
+	return hasInlineCallbackMarkup(message.ReplyMarkup)
+}
+
+func hasInlineCallbackMarkup(markup *InlineKeyboardMarkup) bool {
+	if markup == nil {
+		return false
+	}
+	for _, row := range markup.InlineKeyboard {
+		for _, button := range row {
+			if strings.HasPrefix(strings.TrimSpace(button.CallbackData), inlineCallbackPrefix) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (w *Worker) handleTextToSpeechCommand(ctx context.Context, target chatTarget, text string) (bool, error) {
@@ -200,6 +262,14 @@ func (w *Worker) handleDocumentAudioMessage(ctx context.Context, message *Messag
 	return w.transcribeAndSendUserMessage(ctx, target, upload)
 }
 
+func (w *Worker) handleLocationMessage(ctx context.Context, message *Message) error {
+	if message == nil || message.Location == nil {
+		return nil
+	}
+	target := targetFromMessage(message)
+	return w.sendUserMessage(ctx, target, telegramLocationPrompt(*message.Location))
+}
+
 func (w *Worker) handleTelegramAudioUpload(ctx context.Context, message *Message, req telegramUploadRequest) error {
 	target := targetFromMessage(message)
 	upload, err := w.downloadTelegramUpload(ctx, target, req)
@@ -214,9 +284,8 @@ func (w *Worker) transcribeAndSendUserMessage(ctx context.Context, target chatTa
 		return nil
 	}
 	if err := w.api.SendChatAction(ctx, SendChatActionRequest{
-		ChatID:          target.chatID,
-		MessageThreadID: target.threadID,
-		Action:          "typing",
+		ChatID: target.chatID,
+		Action: "typing",
 	}); err != nil {
 		log.Printf("telegram: typing indicator failed: %v", err)
 	}
@@ -235,10 +304,12 @@ func (w *Worker) transcribeAndSendUserMessage(ctx context.Context, target chatTa
 }
 
 func (w *Worker) sendSpeech(ctx context.Context, target chatTarget, text string) error {
+	if target.isGuest() {
+		return w.sendText(ctx, target, "Guest mode supports text answers only.")
+	}
 	if err := w.api.SendChatAction(ctx, SendChatActionRequest{
-		ChatID:          target.chatID,
-		MessageThreadID: target.threadID,
-		Action:          "upload_voice",
+		ChatID: target.chatID,
+		Action: "upload_voice",
 	}); err != nil {
 		log.Printf("telegram: upload_voice indicator failed: %v", err)
 	}
@@ -253,45 +324,120 @@ func (w *Worker) sendSpeech(ctx context.Context, target chatTarget, text string)
 }
 
 func (w *Worker) sendGeneratedSpeech(ctx context.Context, target chatTarget, response voicemodule.TextToSpeechResponse) (SentMessage, error) {
-	content, err := response.ContentBytes()
+	payload, err := generatedSpeechPayload(response)
 	if err != nil {
-		return SentMessage{}, w.sendText(ctx, target, fmt.Sprintf("Text to speech returned invalid audio: %v", err))
+		return SentMessage{}, w.sendText(ctx, target, err.Error())
 	}
-	if len(content) == 0 {
-		return SentMessage{}, w.sendText(ctx, target, "Text to speech returned empty audio.")
-	}
-	if int64(len(content)) > maxTelegramAudioBytes {
-		return SentMessage{}, w.sendText(ctx, target, fmt.Sprintf("Generated audio is too large: %d bytes", len(content)))
-	}
-	fileName := firstNonEmpty(response.FileName, "matrixclaw-tts.mp3")
-	mimeType := firstNonEmpty(response.MIMEType, "audio/mpeg")
 	var sent SentMessage
-	if useTelegramVoiceUpload(fileName, mimeType) {
+	if useTelegramVoiceUpload(payload.fileName, payload.mimeType) {
 		req := SendVoiceRequest{
-			ChatID:          target.chatID,
-			MessageThreadID: target.threadID,
-			Voice:           content,
-			FileName:        fileName,
-			MIMEType:        mimeType,
+			ChatID:   target.chatID,
+			Voice:    payload.content,
+			FileName: payload.fileName,
+			MIMEType: payload.mimeType,
 		}
 		sent, err = w.api.SendVoice(ctx, req)
 	} else {
 		req := SendAudioRequest{
-			ChatID:          target.chatID,
-			MessageThreadID: target.threadID,
-			Audio:           content,
-			FileName:        fileName,
-			MIMEType:        mimeType,
+			ChatID:   target.chatID,
+			Audio:    payload.content,
+			FileName: payload.fileName,
+			MIMEType: payload.mimeType,
 		}
 		sent, err = w.api.SendAudio(ctx, req)
 	}
 	if err != nil {
-		log.Printf("telegram: send generated speech failed chat=%d thread=%d file=%s mime=%s bytes=%d: %v", target.chatID, target.threadID, fileName, mimeType, len(content), err)
+		log.Printf("telegram: send generated speech failed chat=%d file=%s mime=%s bytes=%d: %v", target.chatID, payload.fileName, payload.mimeType, len(payload.content), err)
 		return SentMessage{}, err
 	}
-	log.Printf("telegram: sent generated speech chat=%d thread=%d message=%d file=%s mime=%s bytes=%d", target.chatID, target.threadID, sent.MessageID, fileName, mimeType, len(content))
-	w.saveGeneratedSpeechToStorage(ctx, target, response, content)
+	log.Printf("telegram: sent generated speech chat=%d message=%d file=%s mime=%s bytes=%d", target.chatID, sent.MessageID, payload.fileName, payload.mimeType, len(payload.content))
+	w.saveGeneratedSpeechToStorage(ctx, target, response, payload.content)
 	return sent, nil
+}
+
+type telegramSpeechPayload struct {
+	content  []byte
+	fileName string
+	mimeType string
+}
+
+func generatedSpeechPayload(response voicemodule.TextToSpeechResponse) (telegramSpeechPayload, error) {
+	content, err := response.ContentBytes()
+	if err != nil {
+		return telegramSpeechPayload{}, fmt.Errorf("Text to speech returned invalid audio: %v", err)
+	}
+	if len(content) == 0 {
+		return telegramSpeechPayload{}, fmt.Errorf("Text to speech returned empty audio.")
+	}
+	if int64(len(content)) > maxTelegramAudioBytes {
+		return telegramSpeechPayload{}, fmt.Errorf("Generated audio is too large: %d bytes", len(content))
+	}
+	return telegramSpeechPayload{
+		content:  content,
+		fileName: firstNonEmpty(response.FileName, "matrixclaw-tts.mp3"),
+		mimeType: firstNonEmpty(response.MIMEType, "audio/mpeg"),
+	}, nil
+}
+
+func (w *Worker) editInlineGeneratedSpeech(ctx context.Context, target chatTarget, uploadTarget chatTarget, response voicemodule.TextToSpeechResponse, caption string) (SentMessage, error) {
+	inlineMessageID := strings.TrimSpace(target.inlineMessageID)
+	if inlineMessageID == "" {
+		return SentMessage{}, fmt.Errorf("inline text to speech delivery missing inline_message_id")
+	}
+	if uploadTarget.chatID == 0 {
+		return SentMessage{}, fmt.Errorf("inline text to speech delivery missing private upload chat")
+	}
+	payload, err := generatedSpeechPayload(response)
+	if err != nil {
+		return SentMessage{}, err
+	}
+	if useTelegramVoiceUpload(payload.fileName, payload.mimeType) {
+		return SentMessage{}, fmt.Errorf("inline text to speech delivery requires MP3/M4A audio, got %s", payload.mimeType)
+	}
+	sent, err := w.api.SendAudio(ctx, SendAudioRequest{
+		ChatID:              uploadTarget.chatID,
+		Audio:               payload.content,
+		FileName:            payload.fileName,
+		MIMEType:            payload.mimeType,
+		DisableNotification: true,
+	})
+	if err != nil {
+		log.Printf("telegram: inline speech upload failed chat=%d file=%s mime=%s bytes=%d: %v", uploadTarget.chatID, payload.fileName, payload.mimeType, len(payload.content), err)
+		return SentMessage{}, err
+	}
+	if sent.MessageID > 0 {
+		defer func() {
+			if err := w.api.DeleteMessage(ctx, DeleteMessageRequest{ChatID: uploadTarget.chatID, MessageID: sent.MessageID}); err != nil {
+				log.Printf("telegram: inline speech upload cleanup failed chat=%d message=%d: %v", uploadTarget.chatID, sent.MessageID, err)
+			}
+		}()
+	}
+	fileID := ""
+	if sent.Audio != nil {
+		fileID = strings.TrimSpace(sent.Audio.FileID)
+	}
+	if fileID == "" {
+		return SentMessage{}, fmt.Errorf("telegram sendAudio did not return audio file_id")
+	}
+	title := strings.TrimSpace(strings.TrimSuffix(filepath.Base(payload.fileName), filepath.Ext(payload.fileName)))
+	if title == "" || title == "." {
+		title = "Matrixclaw TTS"
+	}
+	if err := w.editTelegramMessageMedia(ctx, EditMessageMediaRequest{
+		InlineMessageID: inlineMessageID,
+		Media: InputMediaAudio{
+			Type:    "audio",
+			Media:   fileID,
+			Caption: telegramDocumentCaption(caption),
+			Title:   title,
+		},
+	}); err != nil {
+		log.Printf("telegram: inline speech media edit failed inline_message_id=%s file=%s mime=%s bytes=%d: %v", inlineMessageID, payload.fileName, payload.mimeType, len(payload.content), err)
+		return SentMessage{}, err
+	}
+	log.Printf("telegram: edited inline message with generated speech inline_message_id=%s file=%s mime=%s bytes=%d", inlineMessageID, payload.fileName, payload.mimeType, len(payload.content))
+	w.saveGeneratedSpeechToStorage(ctx, uploadTarget, response, payload.content)
+	return SentMessage{Audio: &Audio{FileID: fileID}}, nil
 }
 
 func useTelegramVoiceUpload(fileName string, mimeType string) bool {
@@ -428,23 +574,25 @@ func (w *Worker) saveTemporaryTelegramUpload(ctx context.Context, target chatTar
 
 func (w *Worker) sendUserMessageParts(ctx context.Context, target chatTarget, text string, parts []core.MessagePart) error {
 	daemon := w.daemon(target.externalKey)
-	if err := w.api.SendChatAction(ctx, SendChatActionRequest{
-		ChatID:          target.chatID,
-		MessageThreadID: target.threadID,
-		Action:          "typing",
-	}); err != nil {
-		log.Printf("telegram: typing indicator failed: %v", err)
+	if target.isChat() {
+		if err := w.api.SendChatAction(ctx, SendChatActionRequest{
+			ChatID: target.chatID,
+			Action: "typing",
+		}); err != nil {
+			log.Printf("telegram: typing indicator failed: %v", err)
+		}
 	}
 
-	result, err := daemon.SendMessageParts(ctx, "", text, parts, w.config.WorkingDir)
+	result, err := daemon.SendMessagePartsModeWithDelivery(ctx, "", text, parts, w.config.WorkingDir, "", encodeDeliveryAddress(deliveryAddressFromTarget(target, 0)))
 	if err != nil {
 		if daemonclient.IsAPIStatus(err, http.StatusConflict) {
 			return w.handleSessionSelectionRequired(ctx, target)
 		}
 		return w.sendText(ctx, target, fmt.Sprintf("Request failed: %v", err))
 	}
-
-	w.startMonitor(ctx, target, result.SessionID, result.Run.ID)
+	if err := w.deliverPendingRun(ctx, target, result.SessionID, result.Run.ID); err != nil && ctx.Err() == nil {
+		log.Printf("telegram: run delivery lookup failed: %v", err)
+	}
 	return nil
 }
 
@@ -474,6 +622,23 @@ func mimeTypeFromPath(path string, fallback string) string {
 	default:
 		return fallback
 	}
+}
+
+func telegramLocationPrompt(location Location) string {
+	text := fmt.Sprintf(
+		"User shared a Telegram location.\nLatitude: %.6f\nLongitude: %.6f\nMap: https://maps.google.com/?q=%.6f,%.6f",
+		location.Latitude,
+		location.Longitude,
+		location.Latitude,
+		location.Longitude,
+	)
+	if location.HorizontalAccuracy > 0 {
+		text += fmt.Sprintf("\nHorizontal accuracy: %.0f meters", location.HorizontalAccuracy)
+	}
+	if location.LivePeriod > 0 {
+		text += fmt.Sprintf("\nLive period: %d seconds", location.LivePeriod)
+	}
+	return text
 }
 
 func splitTelegramCommand(text string) (string, string, bool) {

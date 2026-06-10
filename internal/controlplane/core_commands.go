@@ -30,6 +30,10 @@ func contextCompactConfirmCommand() string {
 	return contextCommand("compact", "confirm")
 }
 
+func helpCommand() string {
+	return controlplaneCommand("help")
+}
+
 func serverCommand() string {
 	return controlplaneCommand("server")
 }

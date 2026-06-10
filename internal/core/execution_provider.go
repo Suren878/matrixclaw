@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
@@ -48,11 +49,20 @@ func (c *Core) providerSystemPrompt(ctx context.Context, turn turnExecution, ass
 	if runtimeToolUseAllowed(turn.Runtime) && clientSupportsVoiceDelivery(turn.Client) {
 		sections = append(sections, voiceOutputGuidancePrompt())
 	}
+	if runtimeToolUseAllowed(turn.Runtime) && clientSupportsDocumentDelivery(turn.Client) && c.fileDeliveryPromptAvailable() {
+		sections = append(sections, fileDeliveryGuidancePrompt())
+	}
+	if runtimeToolUseAllowed(turn.Runtime) {
+		sections = append(sections, toolUseDisciplinePrompt())
+	}
 	if workingDir := strings.TrimSpace(turn.WorkingDir); workingDir != "" {
 		sections = append(sections, currentProjectRootPrompt(workingDir))
 	}
 	if c.webResearchPromptAvailable() {
 		sections = append(sections, webResearchGuidancePrompt())
+	}
+	if statusPrompt := c.runtimeStatusPromptContext(ctx, turn); statusPrompt != "" {
+		sections = append(sections, statusPrompt)
 	}
 	if c.delegateTaskPromptAvailable() {
 		sections = append(sections, c.delegateTaskGuidancePrompt(ctx))
@@ -91,6 +101,39 @@ func (c *Core) skillsPromptContext(ctx context.Context, turn turnExecution, hist
 	})
 }
 
+func (c *Core) runtimeStatusPromptContext(ctx context.Context, turn turnExecution) string {
+	if c == nil || c.runtimeStatus == nil {
+		return ""
+	}
+	return c.runtimeStatus.RuntimeStatusPromptContext(ctx, RuntimeStatusContextRequest{
+		SessionID:  turn.SessionID,
+		RunID:      turn.RunID,
+		WorkingDir: turn.WorkingDir,
+		ToolIDs:    c.runtimeStatusToolIDs(turn),
+	})
+}
+
+func (c *Core) runtimeStatusToolIDs(turn turnExecution) []string {
+	if c == nil || c.tools == nil || !runtimeToolUseAllowed(turn.Runtime) {
+		return nil
+	}
+	specs := c.tools.List()
+	ids := make([]string, 0, len(specs))
+	for _, spec := range specs {
+		if turn.Subagent && !subagentToolAllowed(spec) {
+			continue
+		}
+		if spec.ID == "text_to_speech" && !clientSupportsVoiceDelivery(turn.Client) {
+			continue
+		}
+		if spec.ID == "send_file" && !clientSupportsDocumentDelivery(turn.Client) {
+			continue
+		}
+		ids = append(ids, spec.ID)
+	}
+	return ids
+}
+
 func joinPromptSections(sections ...string) string {
 	values := make([]string, 0, len(sections))
 	for _, section := range sections {
@@ -112,6 +155,9 @@ func (c *Core) providerToolDefinitions(ctx context.Context, turn turnExecution) 
 			if spec.ID == "text_to_speech" && !clientSupportsVoiceDelivery(turn.Client) {
 				continue
 			}
+			if spec.ID == "send_file" && !clientSupportsDocumentDelivery(turn.Client) {
+				continue
+			}
 			description := spec.Description
 			if spec.ID == delegateTaskToolName || spec.ID == spawnSubagentToolName {
 				description = c.delegateTaskToolDescription(ctx, description)
@@ -128,6 +174,10 @@ func (c *Core) providerToolDefinitions(ctx context.Context, turn turnExecution) 
 }
 
 func clientSupportsVoiceDelivery(client string) bool {
+	return strings.EqualFold(strings.TrimSpace(client), "telegram")
+}
+
+func clientSupportsDocumentDelivery(client string) bool {
 	return strings.EqualFold(strings.TrimSpace(client), "telegram")
 }
 
@@ -168,7 +218,16 @@ func AssistantSystemPrompt(profile AssistantProfile) string {
 }
 
 func responseLanguageGuidancePrompt() string {
-	return "Response language:\n- Reply in the same language the user uses for the current request.\n- If the user mixes languages, use the language that best matches the user's latest request.\n- Do not force English or Russian unless the user asks for that language."
+	return "Response language:\n- Reply in the same language the user uses for the current request.\n- If the user mixes languages, use the language that best matches the user's latest request.\n- Do not force any particular language unless the user asks for it."
+}
+
+func toolUseDisciplinePrompt() string {
+	return strings.TrimSpace(`Tool use discipline:
+- Use the fewest tool calls that can reliably answer the user's request.
+- Before calling another tool, check whether existing tool results already contain the requested answer; if they do, stop tool use and reply.
+- Do not run extra searches, browser snapshots, or verification calls just to improve confidence when the answer is already clear and source-backed.
+- If a result is partly useful but has minor uncertainty, answer with that uncertainty instead of repeatedly searching, unless the user asked for exhaustive verification or the sources conflict.
+- For simple lookups, prefer one direct path to the answer over parallel or repeated searches.`)
 }
 
 func (c *Core) webResearchPromptAvailable() bool {
@@ -181,14 +240,32 @@ func (c *Core) webResearchPromptAvailable() bool {
 
 func webResearchGuidancePrompt() string {
 	return strings.TrimSpace(`Web research:
-- For current or changing information, websites, ratings, reviews, prices, schedules, web search, or source-backed answers, prefer web_research over legacy web_search/web_fetch.
+- For current or changing information, ratings, reviews, prices, schedules, broad web search, or source-backed answers where no exact target site/page is specified, prefer web_research over legacy web_search/web_fetch.
+- When the user explicitly asks to visit, open, check, or look at a specific website/domain/page, use browser tools for the direct page instead of starting web_research.
+- If the exact URL is unknown for a specific-site lookup, prefer the site's own navigation/search in the browser. Use web_search only as a fallback when the direct site path is unavailable, blocked, ambiguous, or fails to find the page.
 - For follow-up questions about prior web research, use web_research_ask with the prior research_id before starting a new search.
 - web_research returns compact facts, sources, warnings, next actions, and a research_id; raw HTML, long page text, DOM snapshots, and screenshots are stored as artifacts and should not be pasted into chat.
-- Use browser=always only when the user explicitly asks to visit/look at a site, the task is visual, or fetch results are empty/dynamic/blocked. If browser fallback is unavailable, report the setup hint returned by the tool.`)
+- Do not combine web_research, web_search, and browser tools for a simple single-page lookup unless the direct page result is missing, ambiguous, blocked, or conflicts with another source. If fallback web_search is needed, keep it to one focused query.
+- Use browser=always for web_research only when the task is broad research and fetched pages are empty, dynamic, or blocked. If browser fallback is unavailable, report the setup hint returned by the tool.`)
 }
 
 func voiceOutputGuidancePrompt() string {
-	return "Voice output:\n- When the user asks for spoken, audio, voice, or TTS output, call the text_to_speech tool with the text that should be spoken.\n- Do not use shell commands, Piper runtime inspection, or local audio files for client voice output.\n- After a successful text_to_speech tool call, keep any follow-up text minimal unless the user asks for an explanation."
+	return "Voice output:\n- When the user asks for spoken, audio, voice, or TTS output, call the text_to_speech tool with the text that should be spoken.\n- Do not use shell commands, Piper runtime inspection, or local audio files for client voice output.\n- After a successful text_to_speech tool call, send follow-up text only when the user explicitly asked for a written answer or an explanation. Otherwise, do not send a confirmation message."
+}
+
+func (c *Core) fileDeliveryPromptAvailable() bool {
+	if c == nil || c.tools == nil {
+		return false
+	}
+	_, ok := c.tools.Spec("send_file")
+	return ok
+}
+
+func fileDeliveryGuidancePrompt() string {
+	return strings.TrimSpace(`File delivery:
+- When the user asks you to send, attach, share, or deliver a file/document in Telegram, call send_file with a MatrixClaw storage path.
+- Use storage_list to find saved files when the path is not known. Use storage_save for generated text/documents, or storage_save_temp for uploaded temporary files that should be sent back.
+- Do not claim that a file was sent until send_file has completed successfully.`)
 }
 
 func (c *Core) delegateTaskPromptAvailable() bool {
@@ -228,7 +305,7 @@ func (c *Core) delegateTaskGuidancePrompt(ctx context.Context) string {
 		lines = append(lines,
 			"- Runtime IDs available for delegate_task: "+strings.Join(ids, ", ")+".",
 			"- When asked which subagent runtimes are available, answer from that Runtime IDs list and include the native matrixclaw runtime.",
-			"- Russian requests like \"какие субагенты доступны\" or \"какие субагенты подключены\" also refer to that delegate_task Runtime IDs list, not only to your base model/provider.",
+			"- Treat user questions in any language about available or connected subagents as questions about that delegate_task Runtime IDs list, not only about your base model/provider.",
 			"- For the current configuration, if asked which subagents or subagent runtimes are available or connected, answer exactly: "+strings.Join(ids, ", ")+".",
 		)
 	}
@@ -638,7 +715,41 @@ func formatToolResultAsText(part ToolResultPart, fallbackContent string) string 
 	if content == "" {
 		content = "(empty result)"
 	}
+	content = providerVisibleToolResultContent(part.Name, content)
 	return "Previous tool result from " + name + ":\n" + content
+}
+
+const (
+	maxProviderToolResultRunes         = 12_000
+	maxProviderBrowserSnapshotRunes    = 5_000
+	providerToolResultTruncationNotice = "[provider context truncated; full tool result remains available in session history/UI. Use a narrower browser_snapshot or targeted browser_evaluate if more detail is needed.]"
+)
+
+func providerVisibleToolResultContent(toolName string, content string) string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return "(empty result)"
+	}
+	limit := maxProviderToolResultRunes
+	if isBrowserSnapshotToolName(toolName) {
+		limit = maxProviderBrowserSnapshotRunes
+	}
+	return trimProviderToolResult(content, limit)
+}
+
+func isBrowserSnapshotToolName(name string) bool {
+	name = strings.TrimSpace(name)
+	return name == "mcp_browser_browser_snapshot" || name == "browser_snapshot" || strings.HasSuffix(name, "_browser_snapshot")
+}
+
+func trimProviderToolResult(content string, maxRunes int) string {
+	if maxRunes <= 0 || utf8.RuneCountInString(content) <= maxRunes {
+		return content
+	}
+	runes := []rune(content)
+	head := maxRunes * 3 / 4
+	tail := maxRunes - head
+	return strings.TrimSpace(string(runes[:head])) + "\n[...truncated for provider context...]\n" + strings.TrimSpace(string(runes[len(runes)-tail:])) + "\n" + providerToolResultTruncationNotice
 }
 
 func toProviderMessages(ctx context.Context, message Message, reader AttachmentReader) ([]providers.Message, error) {
@@ -702,6 +813,7 @@ func toProviderMessages(ctx context.Context, message Message, reader AttachmentR
 		if strings.TrimSpace(content) == "" {
 			content = "(empty result)"
 		}
+		content = providerVisibleToolResultContent(part.ToolResult.Name, content)
 		return []providers.Message{{
 			Role:       string(message.Role),
 			Content:    content,

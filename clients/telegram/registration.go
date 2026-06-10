@@ -8,15 +8,14 @@ import (
 )
 
 func (w *Worker) registerCommands(ctx context.Context) {
-	views := controlplane.PublicCommandView()
-	commands := make([]BotCommand, 0, len(views))
-	for _, view := range views {
-		commands = append(commands, BotCommand{
-			Command:     controlplane.CommandName(view.Command),
-			Description: view.Title,
-		})
+	menu := controlplane.CommandMenuView(controlplane.SurfaceTelegramBotCommands, controlplane.MenuState{})
+	commands := make([]BotCommand, len(menu.Items))
+	for index, item := range menu.Items {
+		commands[index] = BotCommand{
+			Command:     controlplane.CommandName(item.Command),
+			Description: item.Title,
+		}
 	}
-	commands = append(commands, BotCommand{Command: "tts", Description: "Text to speech"})
 	if err := w.api.SetMyCommands(ctx, SetMyCommandsRequest{Commands: commands}); err != nil {
 		log.Printf("telegram: set bot commands failed: %v", err)
 	}

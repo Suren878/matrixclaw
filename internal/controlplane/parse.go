@@ -4,7 +4,7 @@ import "strings"
 
 func HelpText() string {
 	lines := []string{"Commands:"}
-	for _, view := range PublicCommandView() {
+	for _, view := range CommandMenuView(SurfaceTelegramBotCommands, MenuState{}).Items {
 		lines = append(lines, view.Command+" - "+view.Title)
 	}
 	return strings.Join(lines, "\n")

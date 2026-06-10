@@ -5,6 +5,8 @@ import "strings"
 func PickerPageCommand(kind PickerKind, contextID string) string {
 	contextID = strings.TrimSpace(contextID)
 	switch kind {
+	case PickerCommandMenu:
+		return helpCommand()
 	case PickerSessions:
 		return sessionsCommand()
 	case PickerSessionRuntime:
@@ -91,6 +93,8 @@ func PickerPageCommand(kind PickerKind, contextID string) string {
 		return sessionSkillCommand(contextID)
 	case PickerMCP:
 		return mcpCommand()
+	case PickerBrowser:
+		return browserCommand()
 	case PickerMCPServer:
 		if contextID == "" {
 			return mcpCommand()

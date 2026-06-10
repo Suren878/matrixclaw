@@ -143,6 +143,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/v1/modules/voice", s.handleVoiceModules)
 	s.mux.HandleFunc("/v1/modules/voice/", s.handleVoiceModuleByID)
 	s.mux.HandleFunc("/v1/modules/web-search", s.handleWebSearch)
+	s.mux.HandleFunc("/v1/modules/browser", s.handleBrowserModule)
+	s.mux.HandleFunc("/v1/modules/browser/providers/", s.handleBrowserProvider)
 	s.mux.HandleFunc("/v1/modules/mcp", s.handleMCP)
 	s.mux.HandleFunc("/v1/modules/mcp/", s.handleMCPByID)
 	s.mux.HandleFunc("/v1/modules/skills", s.handleSkills)

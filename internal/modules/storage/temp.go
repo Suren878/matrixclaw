@@ -155,7 +155,7 @@ func (s *LocalStore) DeleteTemporary(rawPath string) (TempEntry, error) {
 	}
 	entry, ok := index[cleanPath]
 	if !ok {
-		return TempEntry{}, fmt.Errorf("temporary file not found: %s", cleanPath)
+		return TempEntry{}, fmt.Errorf("%w: %s", ErrNotFound, cleanPath)
 	}
 	if err := s.deleteTemporaryLocked(index, cleanPath); err != nil {
 		return TempEntry{}, err
@@ -272,7 +272,7 @@ func (s *LocalStore) readTemporaryBytes(rawPath string) (TempEntry, []byte, erro
 	}
 	entry, ok := index[cleanPath]
 	if !ok {
-		return TempEntry{}, nil, fmt.Errorf("temporary file not found: %s", cleanPath)
+		return TempEntry{}, nil, fmt.Errorf("%w: %s", ErrNotFound, cleanPath)
 	}
 	if s.tempAuto && time.Now().UTC().After(entry.ExpiresAt) {
 		_ = s.deleteTemporaryLocked(index, cleanPath)
@@ -284,7 +284,7 @@ func (s *LocalStore) readTemporaryBytes(rawPath string) (TempEntry, []byte, erro
 		if errors.Is(err, fs.ErrNotExist) {
 			delete(index, cleanPath)
 			_ = s.saveTempIndexLocked(index)
-			return TempEntry{}, nil, fmt.Errorf("temporary file not found: %s", cleanPath)
+			return TempEntry{}, nil, fmt.Errorf("%w: %s", ErrNotFound, cleanPath)
 		}
 		return TempEntry{}, nil, err
 	}
@@ -296,7 +296,7 @@ func (s *LocalStore) readTemporaryBytes(rawPath string) (TempEntry, []byte, erro
 		if errors.Is(err, fs.ErrNotExist) {
 			delete(index, cleanPath)
 			_ = s.saveTempIndexLocked(index)
-			return TempEntry{}, nil, fmt.Errorf("temporary file not found: %s", cleanPath)
+			return TempEntry{}, nil, fmt.Errorf("%w: %s", ErrNotFound, cleanPath)
 		}
 		return TempEntry{}, nil, err
 	}

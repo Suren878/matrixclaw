@@ -68,6 +68,7 @@ type ModulesConfig struct {
 	ExternalAgents map[string]ExternalAgentConfig `json:"external_agents,omitempty"`
 	TextToSpeech   VoiceModuleConfig              `json:"tts,omitempty"`
 	SpeechToText   VoiceModuleConfig              `json:"stt,omitempty"`
+	Browser        BrowserConfig                  `json:"browser,omitempty"`
 	WebSearch      WebSearchConfig                `json:"web_search,omitempty"`
 	MCP            MCPConfig                      `json:"mcp,omitempty"`
 	Skills         SkillsConfig                   `json:"skills,omitempty"`
@@ -93,6 +94,10 @@ type MCPConfigResponse struct {
 
 type MCPConfigUpdate struct {
 	Enabled *bool `json:"enabled,omitempty"`
+}
+
+type MCPServerCreateRequest struct {
+	Server MCPServerConfig `json:"server"`
 }
 
 type MCPServerUpdate struct {
@@ -121,6 +126,73 @@ type MCPServerConfig struct {
 	ReadOnly        bool              `json:"read_only,omitempty"`
 	RequireApproval bool              `json:"require_approval,omitempty"`
 	TimeoutSeconds  int               `json:"timeout_seconds,omitempty"`
+}
+
+type BrowserConfig struct {
+	Enabled        bool                  `json:"enabled,omitempty"`
+	ProviderID     string                `json:"provider_id,omitempty"`
+	ProviderConfig BrowserProviderConfig `json:"provider_config,omitempty"`
+}
+
+type BrowserProviderConfig struct {
+	RuntimeMode string `json:"runtime_mode,omitempty"`
+	BinaryPath  string `json:"binary_path,omitempty"`
+	BrowserPath string `json:"browser_path,omitempty"`
+}
+
+type BrowserProviderActionIDs struct {
+	InstallRuntime string `json:"install_runtime,omitempty"`
+	DeleteRuntime  string `json:"delete_runtime,omitempty"`
+	Start          string `json:"start,omitempty"`
+	Stop           string `json:"stop,omitempty"`
+	Test           string `json:"test,omitempty"`
+}
+
+type BrowserProviderOption struct {
+	ID               string                   `json:"id"`
+	Name             string                   `json:"name"`
+	Local            bool                     `json:"local,omitempty"`
+	Status           string                   `json:"status"`
+	RuntimeState     string                   `json:"runtime_state,omitempty"`
+	RuntimeDetail    string                   `json:"runtime_detail,omitempty"`
+	RuntimePath      string                   `json:"runtime_path,omitempty"`
+	RuntimeInstalled bool                     `json:"runtime_installed,omitempty"`
+	BrowserInstalled bool                     `json:"browser_installed,omitempty"`
+	BrowserPath      string                   `json:"browser_path,omitempty"`
+	BrowserCachePath string                   `json:"browser_cache_path,omitempty"`
+	RuntimeRSS       uint64                   `json:"runtime_rss_bytes,omitempty"`
+	ActionIDs        BrowserProviderActionIDs `json:"action_ids,omitempty"`
+	Config           BrowserProviderConfig    `json:"config,omitempty"`
+}
+
+type BrowserModuleDescriptor struct {
+	ID           string                  `json:"id"`
+	Title        string                  `json:"title"`
+	Enabled      bool                    `json:"enabled"`
+	ProviderID   string                  `json:"provider_id"`
+	ProviderName string                  `json:"provider_name"`
+	Local        bool                    `json:"local"`
+	Status       string                  `json:"status"`
+	Config       BrowserProviderConfig   `json:"config,omitempty"`
+	Providers    []BrowserProviderOption `json:"providers,omitempty"`
+}
+
+type BrowserModuleResponse struct {
+	Module BrowserModuleDescriptor `json:"module"`
+}
+
+type BrowserModuleUpdate struct {
+	Enabled        *bool                  `json:"enabled,omitempty"`
+	ProviderID     string                 `json:"provider_id,omitempty"`
+	ProviderConfig *BrowserProviderConfig `json:"provider_config,omitempty"`
+}
+
+type BrowserProviderActionRequest struct {
+	Action string `json:"action"`
+}
+
+type BrowserProviderActionResponse struct {
+	Provider BrowserProviderOption `json:"provider"`
 }
 
 // WebSearchConfig stores the web search provider choice and credentials.

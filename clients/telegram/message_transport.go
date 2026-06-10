@@ -14,6 +14,33 @@ func (w *Worker) editOrSend(ctx context.Context, target chatTarget, messageID in
 
 func (w *Worker) editOrSendMessage(ctx context.Context, target chatTarget, messageID int64, text string, markup *InlineKeyboardMarkup) (int64, error) {
 	formatted := formatTelegramText(text)
+	if target.isInline() {
+		err := w.editFormattedMessage(ctx, EditMessageTextRequest{
+			InlineMessageID: target.inlineMessageID,
+			ReplyMarkup:     markup,
+		}, formatted)
+		if err == nil || isTelegramMessageNotModified(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	if target.isGuest() {
+		if strings.TrimSpace(target.inlineMessageID) != "" {
+			err := w.editFormattedMessage(ctx, EditMessageTextRequest{
+				InlineMessageID: target.inlineMessageID,
+				ReplyMarkup:     markup,
+			}, formatted)
+			return 0, err
+		}
+		sent, err := w.answerFormattedGuestQuery(ctx, target, formatted, markup)
+		if err != nil {
+			return 0, err
+		}
+		if strings.TrimSpace(sent.InlineMessageID) != "" {
+			target.inlineMessageID = sent.InlineMessageID
+		}
+		return 0, nil
+	}
 	if messageID > 0 {
 		err := w.editFormattedMessage(ctx, EditMessageTextRequest{
 			ChatID:      target.chatID,
@@ -28,9 +55,8 @@ func (w *Worker) editOrSendMessage(ctx context.Context, target chatTarget, messa
 		}
 	}
 	sent, err := w.sendFormattedTelegramMessage(ctx, SendMessageRequest{
-		ChatID:          target.chatID,
-		MessageThreadID: target.threadID,
-		ReplyMarkup:     markup,
+		ChatID:      target.chatID,
+		ReplyMarkup: markup,
 	}, formatted)
 	if err != nil {
 		return 0, err
@@ -70,10 +96,24 @@ func isTelegramParseError(err error) bool {
 }
 
 func (w *Worker) sendText(ctx context.Context, target chatTarget, text string) error {
+	if target.isInline() {
+		formatted := formatTelegramText(clipTelegramText(text))
+		err := w.editFormattedMessage(ctx, EditMessageTextRequest{
+			InlineMessageID: target.inlineMessageID,
+		}, formatted)
+		if err == nil || isTelegramMessageNotModified(err) {
+			return nil
+		}
+		return err
+	}
+	if target.isGuest() {
+		formatted := formatTelegramText(clipTelegramText(text))
+		_, err := w.answerFormattedGuestQuery(ctx, target, formatted, nil)
+		return err
+	}
 	formatted := formatTelegramText(text)
 	return w.sendFormattedMessage(ctx, SendMessageRequest{
-		ChatID:          target.chatID,
-		MessageThreadID: target.threadID,
+		ChatID: target.chatID,
 	}, formatted)
 }
 
@@ -94,6 +134,41 @@ func (w *Worker) sendFormattedTelegramMessage(ctx context.Context, req SendMessa
 	return reply, err
 }
 
+func (w *Worker) sendFormattedTelegramDraft(ctx context.Context, req SendMessageDraftRequest, formatted telegramFormattedText) error {
+	req.Text = formatted.Text
+	req.ParseMode = formatted.ParseMode
+	err := w.sendTelegramDraft(ctx, req)
+	if isTelegramParseError(err) {
+		req.Text = formatted.Plain
+		req.ParseMode = ""
+		err = w.sendTelegramDraft(ctx, req)
+	}
+	return err
+}
+
+func (w *Worker) answerFormattedGuestQuery(ctx context.Context, target chatTarget, formatted telegramFormattedText, markup *InlineKeyboardMarkup) (SentGuestMessage, error) {
+	req := AnswerGuestQueryRequest{
+		GuestQueryID: strings.TrimSpace(target.guestQueryID),
+		Result: InlineQueryResultArticle{
+			Type:  "article",
+			ID:    "matrixclaw",
+			Title: "Matrixclaw",
+			InputMessageContent: InputTextMessageContent{
+				MessageText: formatted.Text,
+				ParseMode:   formatted.ParseMode,
+			},
+			ReplyMarkup: markup,
+		},
+	}
+	reply, err := w.answerGuestQuery(ctx, req)
+	if isTelegramParseError(err) {
+		req.Result.InputMessageContent.MessageText = formatted.Plain
+		req.Result.InputMessageContent.ParseMode = ""
+		reply, err = w.answerGuestQuery(ctx, req)
+	}
+	return reply, err
+}
+
 func (w *Worker) editFormattedMessage(ctx context.Context, req EditMessageTextRequest, formatted telegramFormattedText) error {
 	req.Text = formatted.Text
 	req.ParseMode = formatted.ParseMode
@@ -109,6 +184,9 @@ func (w *Worker) editFormattedMessage(ctx context.Context, req EditMessageTextRe
 func (w *Worker) sendTextForUpdate(ctx context.Context, update Update, text string) error {
 	if update.Message != nil {
 		return w.sendText(ctx, targetFromMessage(update.Message), text)
+	}
+	if update.GuestMessage != nil {
+		return w.sendText(ctx, targetFromMessage(update.GuestMessage), text)
 	}
 	if update.CallbackQuery != nil && update.CallbackQuery.Message != nil {
 		return w.sendText(ctx, targetFromMessage(update.CallbackQuery.Message), text)

@@ -84,12 +84,9 @@ func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID st
 }
 
 func planRunLooksBlocked(content string) bool {
-	content = strings.ToLower(strings.TrimSpace(content))
-	if content == "" {
-		return false
-	}
-	for _, marker := range []string{"plan_blocked", "blocked", "cannot complete", "can't complete", "не могу выполнить", "не удалось", "заблокировано"} {
-		if strings.Contains(content, marker) {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.ToLower(strings.TrimSpace(line))
+		if line == "plan_blocked" || strings.HasPrefix(line, "plan_blocked:") {
 			return true
 		}
 	}

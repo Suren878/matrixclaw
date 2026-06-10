@@ -27,16 +27,7 @@ func (whisperDriver) decorate(r *Runtime, moduleID string, provider setup.VoiceP
 		provider.CatalogStatus = "fallback"
 		provider.CatalogDetail = "using bundled fallback models"
 	}
-	provider = r.decorateVoiceModels(moduleID, provider)
-	provider.RuntimeRSS = r.VoiceRuntimeRSSBytes(provider)
-	if path, err := r.ManagedVoiceBinaryPath(provider); err == nil {
-		provider.RuntimeInstalled = true
-		provider.RuntimePath = path
-	}
-	installed, path := r.VoiceModelInstalled(moduleID, provider)
-	provider.Downloaded = installed
-	provider.ModelPath = path
-	provider.Endpoint = path
+	provider, installed, _ := r.decorateProviderModelFiles(moduleID, provider)
 	if !installed {
 		provider.RuntimeState = RuntimeUnavailable
 		provider.RuntimeDetail = "Download the selected local files before local voice can run"

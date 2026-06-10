@@ -13,7 +13,10 @@ import (
 	providerfactory "github.com/Suren878/matrixclaw/internal/providers/factory"
 )
 
-var ErrNoActiveProvider = errors.New("no active provider configured; open setup providers to configure one")
+var (
+	ErrNoActiveProvider      = errors.New("no active provider configured; open setup providers to configure one")
+	ErrProviderNotConfigured = errors.New("provider is not configured")
+)
 
 type Registry struct {
 	mu        sync.Mutex
@@ -97,7 +100,7 @@ func (r *Registry) Normalize(providerID string, modelID string) (core.SessionPro
 			}
 			return core.SessionProviderOption{}, "", ErrNoActiveProvider
 		}
-		return core.SessionProviderOption{}, "", fmt.Errorf("provider %q is not configured", strings.TrimSpace(providerID))
+		return core.SessionProviderOption{}, "", fmt.Errorf("%w: %q", ErrProviderNotConfigured, strings.TrimSpace(providerID))
 	}
 	option := core.SessionProviderOption{
 		ID:           cfg.ID,
@@ -123,7 +126,7 @@ func (r *Registry) Models(ctx context.Context, providerID string) ([]string, err
 		if len(r.order) == 0 {
 			return nil, ErrNoActiveProvider
 		}
-		return nil, fmt.Errorf("provider %q is not configured", strings.TrimSpace(providerID))
+		return nil, fmt.Errorf("%w: %q", ErrProviderNotConfigured, strings.TrimSpace(providerID))
 	}
 	models, err := discovery.Models(ctx, discovery.ModelDiscoveryInput{
 		ID:        cfg.ID,

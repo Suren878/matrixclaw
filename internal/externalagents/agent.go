@@ -105,18 +105,19 @@ const (
 )
 
 type Event struct {
-	Kind             EventKind `json:"kind"`
-	AgentID          string    `json:"agent_id"`
-	ExternalThreadID string    `json:"external_thread_id,omitempty"`
-	ExternalTurnID   string    `json:"external_turn_id,omitempty"`
-	ItemID           string    `json:"item_id,omitempty"`
-	ToolName         string    `json:"tool_name,omitempty"`
-	ToolInput        string    `json:"tool_input,omitempty"`
-	Text             string    `json:"text,omitempty"`
-	Error            string    `json:"error,omitempty"`
-	RawMethod        string    `json:"raw_method,omitempty"`
-	Raw              []byte    `json:"raw,omitempty"`
-	At               time.Time `json:"at"`
+	Kind              EventKind `json:"kind"`
+	AgentID           string    `json:"agent_id"`
+	ExternalThreadID  string    `json:"external_thread_id,omitempty"`
+	ExternalSessionID string    `json:"external_session_id,omitempty"`
+	ExternalTurnID    string    `json:"external_turn_id,omitempty"`
+	ItemID            string    `json:"item_id,omitempty"`
+	ToolName          string    `json:"tool_name,omitempty"`
+	ToolInput         string    `json:"tool_input,omitempty"`
+	Text              string    `json:"text,omitempty"`
+	Error             string    `json:"error,omitempty"`
+	RawMethod         string    `json:"raw_method,omitempty"`
+	Raw               []byte    `json:"raw,omitempty"`
+	At                time.Time `json:"at"`
 }
 
 type SessionAttachment struct {

@@ -131,14 +131,7 @@ func voiceLocalFileActionTitles(moduleID string) (string, string) {
 }
 
 func voiceProviderDownloaded(provider setup.VoiceProviderOption) bool {
-	if provider.Downloaded {
-		return true
-	}
-	status := strings.ToLower(provider.Status)
-	if strings.Contains(status, "not downloaded") || strings.Contains(status, "not installed") {
-		return false
-	}
-	return strings.Contains(status, "downloaded") || (strings.Contains(status, "installed") && !strings.Contains(status, "not installed"))
+	return provider.Downloaded
 }
 
 func voiceRuntimeState(provider setup.VoiceProviderOption) string {
@@ -191,13 +184,6 @@ func voiceRuntimeManagerInfo(provider setup.VoiceProviderOption) string {
 		if voiceProviderDownloaded(provider) {
 			return "Not implemented yet"
 		}
-		return "Not available"
-	}
-	detail := strings.ToLower(strings.TrimSpace(provider.RuntimeDetail))
-	if strings.Contains(detail, "not implemented") || strings.Contains(detail, "not enabled") {
-		return "Not implemented yet"
-	}
-	if strings.Contains(detail, "not available") || strings.Contains(detail, "unavailable") {
 		return "Not available"
 	}
 	return voiceRuntimeStateLabel(state)

@@ -15,6 +15,11 @@ type PickerPage struct {
 	Pages    int
 }
 
+type PickerFooterAction struct {
+	Label   string
+	Command string
+}
+
 func PickerViewItems(picker PickerData) []PickerViewItem {
 	out := make([]PickerViewItem, 0, len(picker.Items))
 	for _, item := range picker.Items {
@@ -42,6 +47,64 @@ func PickerCloseCommand(picker PickerData) string {
 	return ""
 }
 
+func PickerFooter(picker PickerData) (PickerFooterAction, bool) {
+	if !picker.HasBack && !picker.HasClose {
+		return pickerImplicitFooter(picker)
+	}
+	label := "Back"
+	if picker.HasClose && !picker.HasBack {
+		label = "Close"
+	}
+	return PickerFooterAction{
+		Label:   label,
+		Command: PickerCloseCommand(picker),
+	}, true
+}
+
+func pickerImplicitFooter(picker PickerData) (PickerFooterAction, bool) {
+	if !picker.Popup {
+		return PickerFooterAction{}, false
+	}
+	command := strings.TrimSpace(pickerImplicitFooterCommand(picker))
+	if command == "" {
+		return PickerFooterAction{}, false
+	}
+	return PickerFooterAction{Label: "Back", Command: command}, true
+}
+
+func pickerImplicitFooterCommand(picker PickerData) string {
+	contextID := strings.TrimSpace(picker.ContextID)
+	switch picker.Kind {
+	case PickerSessionModels:
+		if contextID == "" {
+			return ""
+		}
+		return sessionMenuCommand(contextID)
+	case PickerExternalAgent:
+		if contextID == "" {
+			return ""
+		}
+		return externalAgentCommand(contextID)
+	case PickerStorageCleanup:
+		return storageTempCleanupSettingsCommand()
+	case PickerSkill:
+		section, skillID := splitSkillPickerContext(contextID)
+		if skillID == "" {
+			return ""
+		}
+		return skillsCommand(section, skillID)
+	case PickerMCP:
+		return mcpCommand()
+	case PickerMCPServer:
+		if contextID == "" {
+			return ""
+		}
+		return mcpServerCommand(contextID)
+	default:
+		return ""
+	}
+}
+
 func pickerBackCommand(picker PickerData) (string, bool) {
 	if !picker.HasBack {
 		return "", false
@@ -58,6 +121,8 @@ func pickerCloseCommand(picker PickerData) (string, bool) {
 
 func PickerCommandLabel(picker PickerData) string {
 	switch picker.Kind {
+	case PickerCommandMenu:
+		return helpCommand()
 	case PickerSessions:
 		return sessionsCommand()
 	case PickerSessionActions, PickerSessionModels:
@@ -70,7 +135,7 @@ func PickerCommandLabel(picker PickerData) string {
 		return contextCommand()
 	case PickerSessionSkills, PickerSessionSkill:
 		return sessionSkillsCommand()
-	case PickerModules, PickerTextToSpeech, PickerSpeechToText, PickerVoiceProvider, PickerExternalAgents, PickerExternalAgent, PickerStorage, PickerStorageFiles, PickerStorageFile, PickerStorageTemp, PickerStorageCleanup, PickerStorageTempFile, PickerSkills, PickerSkillsSection, PickerSkill, PickerMCP, PickerMCPServer:
+	case PickerModules, PickerTextToSpeech, PickerSpeechToText, PickerVoiceProvider, PickerExternalAgents, PickerExternalAgent, PickerStorage, PickerStorageFiles, PickerStorageFile, PickerStorageTemp, PickerStorageCleanup, PickerStorageTempFile, PickerSkills, PickerSkillsSection, PickerSkill, PickerBrowser, PickerMCP, PickerMCPServer:
 		return modulesCommand()
 	case PickerTasks, PickerTaskActions, PickerTaskArchive:
 		return tasksCommand()

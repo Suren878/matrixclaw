@@ -103,6 +103,24 @@ func (c *Client) ReadStorageFile(ctx context.Context, storagePath string) (local
 	return response, nil
 }
 
+func (c *Client) ReadStorageFileBytes(ctx context.Context, storagePath string) (localstorage.ReadBytesResponse, error) {
+	var response localstorage.ReadBytesResponse
+	path := "/v1/modules/storage/files/" + escapedPath(storagePath) + "?encoding=base64"
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return localstorage.ReadBytesResponse{}, err
+	}
+	return response, nil
+}
+
+func (c *Client) ReadTemporaryStorageFileBytes(ctx context.Context, storagePath string) (localstorage.TempReadBytesResponse, error) {
+	var response localstorage.TempReadBytesResponse
+	path := "/v1/modules/storage/temp/" + escapedPath(storagePath)
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return localstorage.TempReadBytesResponse{}, err
+	}
+	return response, nil
+}
+
 func (c *Client) DeleteStorageFile(ctx context.Context, storagePath string) (localstorage.Entry, error) {
 	path := "/v1/modules/storage/files/" + escapedPath(storagePath)
 	return c.storageFile(ctx, http.MethodDelete, path, nil)

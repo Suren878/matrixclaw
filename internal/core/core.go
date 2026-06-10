@@ -27,6 +27,7 @@ type Core struct {
 	sessionGates   map[string]*sync.Mutex
 	tools          ToolExecutor
 	skillsContext  SkillsPromptContextProvider
+	runtimeStatus  RuntimeStatusContextProvider
 	events         *eventBus
 	now            func() time.Time
 	newID          func(prefix string) string
@@ -47,6 +48,17 @@ type SkillsPromptMessage struct {
 
 type SkillsPromptContextProvider interface {
 	SkillsPromptContext(context.Context, SkillsPromptContextRequest) string
+}
+
+type RuntimeStatusContextRequest struct {
+	SessionID  string
+	RunID      string
+	WorkingDir string
+	ToolIDs    []string
+}
+
+type RuntimeStatusContextProvider interface {
+	RuntimeStatusPromptContext(context.Context, RuntimeStatusContextRequest) string
 }
 
 type AssistantProfile struct {
@@ -176,6 +188,13 @@ func (c *Core) WithTools(toolExecutor ToolExecutor) *Core {
 func (c *Core) WithSkillsContext(provider SkillsPromptContextProvider) *Core {
 	if provider != nil {
 		c.skillsContext = provider
+	}
+	return c
+}
+
+func (c *Core) WithRuntimeStatusContext(provider RuntimeStatusContextProvider) *Core {
+	if provider != nil {
+		c.runtimeStatus = provider
 	}
 	return c
 }

@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.1.15
+
+- Reworked Telegram around normal private-chat sessions again: `/new`,
+  `/sessions`, session use, and session deletion no longer depend on forum
+  topics or `message_thread_id` routing.
+- Added Telegram inline and guest delivery support so the bot can be invoked
+  from other chats, edit the inline placeholder with the assistant answer, and
+  answer guest-mode requests through the new Bot API flow.
+- Improved Telegram live delivery with draft previews, a compact thinking
+  placeholder, clearer running states, persistent inline request recovery, and
+  fewer duplicate or stale delivery updates.
+- Fixed Telegram voice/TTS routing so generated audio follows the originating
+  chat or inline message, while the model only sends extra written text when it
+  is actually useful.
+- Added Telegram inline location handling so geolocation attached by Telegram is
+  passed into the assistant request instead of being lost.
+- Added browser module plumbing and managed browser MCP configuration paths,
+  including daemon/client/control-plane APIs for browser provider state.
+- Expanded storage APIs with base64 byte reads for durable and temporary files,
+  and made storage not-found handling use typed errors instead of text matching.
+- Made voice and session-LLM error handling rely on typed errors, removing more
+  phrase-based diagnostics and locale-sensitive behavior.
+
 ## v0.1.14
 
 - Added smart web research with `web_research`, `web_research_ask`, and

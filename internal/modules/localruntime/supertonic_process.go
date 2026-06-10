@@ -8,29 +8,19 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
-var supertonicServerProcesses = &supertonicServerProcessManager{
+var supertonicServerProcesses = &localProcessManager[*supertonicServerProcess]{
 	processes: map[string]*supertonicServerProcess{},
 }
 
-type supertonicServerProcessManager struct {
-	mu        sync.Mutex
-	processes map[string]*supertonicServerProcess
-}
-
 type supertonicServerProcess struct {
-	cmd      *exec.Cmd
-	done     chan struct{}
+	*managedProcess
 	endpoint string
 }
 
@@ -44,7 +34,7 @@ func (r *Runtime) startSupertonicServerProcess(ctx context.Context, provider set
 	}
 	endpoint := r.supertonicServerEndpoint(provider)
 	host, port := supertonicServerHostPort(endpoint)
-	key := r.supertonicServerProcessKey(provider)
+	key := r.localVoiceProcessKey(provider)
 
 	supertonicServerProcesses.mu.Lock()
 	defer supertonicServerProcesses.mu.Unlock()
@@ -52,43 +42,44 @@ func (r *Runtime) startSupertonicServerProcess(ctx context.Context, provider set
 		return nil
 	}
 	if process := supertonicServerProcesses.processes[key]; process != nil {
-		_ = process.stop()
+		_ = process.stop(managedProcessStopTimeout)
 		delete(supertonicServerProcesses.processes, key)
 	}
 
 	cmd := exec.Command(binary, "serve", "--host", host, "--port", port, "--model", "supertonic-3", "--log-level", "warning")
 	cmd.Env = r.supertonicEnv(provider)
-	cmd.Stdout = io.Discard
-	logFile, err := os.OpenFile(filepath.Join(r.runtimeDir(), "supertonic-server.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err == nil {
-		defer logFile.Close()
-		cmd.Stderr = logFile
-	} else {
-		cmd.Stderr = io.Discard
-	}
-	if err := cmd.Start(); err != nil {
+	managed, err := r.startManagedProcess(managedProcessOptions{
+		cmd:      cmd,
+		logName:  "supertonic-server.log",
+		waitName: "localruntime.supertonicWait",
+	})
+	if err != nil {
 		return err
 	}
 	process := &supertonicServerProcess{
-		cmd:      cmd,
-		done:     make(chan struct{}),
-		endpoint: endpoint,
+		managedProcess: managed,
+		endpoint:       endpoint,
 	}
 	supertonicServerProcesses.processes[key] = process
-	safego.Go("localruntime.supertonicWait", func() {
-		defer close(process.done)
-		_ = cmd.Wait()
-	})
-	if err := r.waitSupertonicServer(ctx, endpoint, process, 90*time.Second); err != nil {
+	if err := r.waitHTTPReady(ctx, httpReadyOptions{
+		url:     strings.TrimRight(endpoint, "/") + "/health",
+		timeout: 90 * time.Second,
+		process: managed,
+		ready: func(response *http.Response) bool {
+			return response.StatusCode >= 200 && response.StatusCode < 500
+		},
+		exitedMessage:  "supertonic server exited before it was ready",
+		timeoutMessage: "supertonic server did not start",
+	}); err != nil {
 		delete(supertonicServerProcesses.processes, key)
-		_ = process.stop()
+		_ = process.stop(managedProcessStopTimeout)
 		return err
 	}
 	return nil
 }
 
 func (r *Runtime) stopSupertonicServerProcess(provider setup.VoiceProviderOption) error {
-	key := r.supertonicServerProcessKey(provider)
+	key := r.localVoiceProcessKey(provider)
 	supertonicServerProcesses.mu.Lock()
 	process := supertonicServerProcesses.processes[key]
 	delete(supertonicServerProcesses.processes, key)
@@ -96,41 +87,15 @@ func (r *Runtime) stopSupertonicServerProcess(provider setup.VoiceProviderOption
 	if process == nil {
 		return nil
 	}
-	return process.stop()
+	return process.stop(managedProcessStopTimeout)
 }
 
 func (r *Runtime) supertonicServerProcessRunning(provider setup.VoiceProviderOption) bool {
-	key := r.supertonicServerProcessKey(provider)
+	key := r.localVoiceProcessKey(provider)
 	supertonicServerProcesses.mu.Lock()
 	process := supertonicServerProcesses.processes[key]
 	supertonicServerProcesses.mu.Unlock()
 	return process != nil && process.running()
-}
-
-func (p *supertonicServerProcess) running() bool {
-	if p == nil || p.cmd == nil || p.cmd.Process == nil {
-		return false
-	}
-	select {
-	case <-p.done:
-		return false
-	default:
-		return true
-	}
-}
-
-func (p *supertonicServerProcess) stop() error {
-	if p == nil {
-		return nil
-	}
-	if p.cmd != nil && p.cmd.Process != nil {
-		_ = p.cmd.Process.Kill()
-	}
-	select {
-	case <-p.done:
-	case <-time.After(2 * time.Second):
-	}
-	return nil
 }
 
 func (r *Runtime) supertonicServerTextToSpeech(ctx context.Context, provider setup.VoiceProviderOption, text string) ([]byte, error) {
@@ -181,41 +146,6 @@ func (r *Runtime) supertonicServerTextToSpeech(ctx context.Context, provider set
 		return nil, fmt.Errorf("supertonic server returned empty audio")
 	}
 	return content, nil
-}
-
-func (r *Runtime) waitSupertonicServer(ctx context.Context, endpoint string, process *supertonicServerProcess, timeout time.Duration) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		if process != nil && !process.running() {
-			return fmt.Errorf("supertonic server exited before it was ready")
-		}
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/health", nil)
-		if err != nil {
-			return err
-		}
-		response, err := r.httpClient().Do(request)
-		if err == nil {
-			_ = response.Body.Close()
-			if response.StatusCode >= 200 && response.StatusCode < 500 {
-				return nil
-			}
-		}
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("supertonic server did not start: %w", ctx.Err())
-		case <-ticker.C:
-		}
-	}
-}
-
-func (r *Runtime) supertonicServerProcessKey(provider setup.VoiceProviderOption) string {
-	return filepath.Join(r.rootDir(), strings.TrimSpace(provider.ID))
 }
 
 func (r *Runtime) supertonicServerEndpoint(provider setup.VoiceProviderOption) string {
