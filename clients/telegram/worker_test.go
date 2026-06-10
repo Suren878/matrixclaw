@@ -638,6 +638,9 @@ func TestInlinePlaceholderMessageDoesNotCreateChatRun(t *testing.T) {
 			From:      &User{ID: 42},
 			Chat:      Chat{ID: 42, Type: "private"},
 			Text:      "Thinking about:\n\nhow are you",
+			ReplyMarkup: &InlineKeyboardMarkup{InlineKeyboard: [][]InlineKeyboardButton{{
+				{Text: "Get answer", CallbackData: inlineCallbackPrefix + "token"},
+			}}},
 		},
 	})
 	if err != nil {
