@@ -1,4 +1,8 @@
-package tools
+package webtools
+
+import (
+	"github.com/Suren878/matrixclaw/internal/tools"
+)
 
 const (
 	namespaceCoreWeb          = "core.web"
@@ -78,36 +82,50 @@ type WebSearchProviderConfig struct {
 	BaseURL   string
 }
 
-func NewWebFetchExecutor() Executor {
+func NewWebFetchExecutor() tools.Executor {
 	return NewWebFetchExecutorWithService(nil)
 }
 
-func NewWebFetchExecutorWithService(web *WebService) Executor {
+func NewWebFetchExecutorWithService(web *WebService) tools.Executor {
 	return &webFetchExecutor{web: web}
 }
 
-func NewWebSearchExecutor(config func() (WebSearchProviderConfig, error)) Executor {
+func NewWebSearchExecutor(config func() (WebSearchProviderConfig, error)) tools.Executor {
 	return NewWebSearchExecutorWithService(NewWebService(config, nil))
 }
 
-func NewWebSearchExecutorWithService(web *WebService) Executor {
+func NewWebSearchExecutorWithService(web *WebService) tools.Executor {
 	return &webSearchExecutor{web: web}
 }
 
-func (e *webFetchExecutor) Spec() Spec { return coreDefinitionSpec(webFetchToolName) }
+func (e *webFetchExecutor) Spec() tools.Spec {
+	return tools.Spec{
+		ID:              webFetchToolName,
+		Name:            "WebFetch",
+		Description:     "Fetch a URL through compact web research artifacts; task mode returns extracted facts/result",
+		Risk:            tools.RiskSafe,
+		Effect:          tools.EffectReadOnly,
+		ApprovalMode:    tools.ApprovalNever,
+		Namespace:       namespaceCoreWeb,
+		Category:        tools.CategoryWeb,
+		Profiles:        []tools.Profile{tools.ProfileCoding, tools.ProfileWeb},
+		OutputKind:      tools.OutputWebContent,
+		InputJSONSchema: webFetchInputSchema,
+	}
+}
 
-func (e *webSearchExecutor) Spec() Spec {
-	return Spec{
+func (e *webSearchExecutor) Spec() tools.Spec {
+	return tools.Spec{
 		ID:              webSearchToolName,
 		Name:            "WebSearch",
 		Description:     "Search the web and return titles, URLs, and descriptions",
-		Risk:            RiskSafe,
-		Effect:          EffectReadOnly,
-		ApprovalMode:    ApprovalNever,
+		Risk:            tools.RiskSafe,
+		Effect:          tools.EffectReadOnly,
+		ApprovalMode:    tools.ApprovalNever,
 		Namespace:       namespaceCoreWeb,
-		Category:        CategoryWeb,
-		Profiles:        []Profile{ProfileCoding, ProfileWeb},
-		OutputKind:      OutputSearchResults,
+		Category:        tools.CategoryWeb,
+		Profiles:        []tools.Profile{tools.ProfileCoding, tools.ProfileWeb},
+		OutputKind:      tools.OutputSearchResults,
 		InputJSONSchema: webSearchInputSchema,
 	}
 }

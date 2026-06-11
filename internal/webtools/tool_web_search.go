@@ -1,9 +1,10 @@
-package tools
+package webtools
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Suren878/matrixclaw/internal/tools"
 	"io"
 	"net/http"
 	"net/url"
@@ -15,15 +16,15 @@ import (
 
 var webSearchClient = &http.Client{Timeout: webSearchTimeout * time.Second}
 
-func (e *webSearchExecutor) Execute(ctx context.Context, call Call) (Result, error) {
+func (e *webSearchExecutor) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
 	var params WebSearchParams
 	if err := json.Unmarshal(call.Args, &params); err != nil {
-		return Result{}, InvalidArgs(webSearchToolName, err)
+		return tools.Result{}, tools.InvalidArgs(webSearchToolName, err)
 	}
 
 	params.Query = strings.TrimSpace(params.Query)
 	if params.Query == "" {
-		return Result{Content: "query is required", IsError: true}, nil
+		return tools.Result{Content: "query is required", IsError: true}, nil
 	}
 	if params.Limit <= 0 {
 		params.Limit = defaultWebSearchLimit
@@ -34,11 +35,11 @@ func (e *webSearchExecutor) Execute(ctx context.Context, call Call) (Result, err
 
 	results, provider, err := e.web.Search(ctx, params.Query, params.Limit)
 	if err != nil {
-		return Result{Content: fmt.Sprintf("web search failed: %v", err), IsError: true}, nil
+		return tools.Result{Content: fmt.Sprintf("web search failed: %v", err), IsError: true}, nil
 	}
 
 	content := formatSearchResults(params.Query, provider, results)
-	return Result{
+	return tools.Result{
 		Content: content,
 		Metadata: WebSearchResponseMetadata{
 			Query:    params.Query,

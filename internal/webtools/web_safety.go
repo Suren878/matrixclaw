@@ -1,4 +1,4 @@
-package tools
+package webtools
 
 import (
 	"fmt"
@@ -12,13 +12,13 @@ import (
 var blockedCIDRs = func() []*net.IPNet {
 	raw := []string{
 		"127.0.0.0/8",    // loopback
-		"::1/128",         // IPv6 loopback
+		"::1/128",        // IPv6 loopback
 		"10.0.0.0/8",     // RFC1918 private
 		"172.16.0.0/12",  // RFC1918 private
 		"192.168.0.0/16", // RFC1918 private
 		"169.254.0.0/16", // link-local / cloud metadata (AWS 169.254.169.254)
-		"fc00::/7",        // IPv6 unique local
-		"fe80::/10",       // IPv6 link-local
+		"fc00::/7",       // IPv6 unique local
+		"fe80::/10",      // IPv6 link-local
 		"100.64.0.0/10",  // CGNAT
 		"0.0.0.0/8",      // unspecified
 		"240.0.0.0/4",    // reserved
