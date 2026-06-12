@@ -18,6 +18,7 @@ func (m *appModel) openCommandsDialog() {
 	m.returnToCommands = false
 	m.closeControlplaneDialogs()
 	m.dialog.OpenDialog(dialog)
+	m.commandsDialogRoot = true
 }
 
 func (m *appModel) commandMenuState() commandmenu.State {

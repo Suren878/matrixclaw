@@ -251,11 +251,11 @@ func (d *Dispatcher) voiceLocalProviderRunModePicker(ctx context.Context, module
 	}
 	return Result{
 		Handled: true,
-			Picker: NewPickerData(PickerVoiceProvider, "Run Mode").
-				Context(module.ID).
-				Meta(voiceRunModeLabel(provider)).
-				Select(voiceProviderSettingsBackCommand(module.ID, provider.ID)).
-				Item(PickerItem{ID: "per-task", Title: voiceRunPerTaskTitle(provider), Selected: voiceRunModePerTaskSelected(provider), Command: voiceModuleCommand(module.ID, "provider-set-local", provider.ID, "runtime-mode", voiceRuntimeModePerTask)}).
+		Picker: NewPickerData(PickerVoiceProvider, "Run Mode").
+			Context(module.ID).
+			Meta(voiceRunModeLabel(provider)).
+			Select(voiceProviderSettingsBackCommand(module.ID, provider.ID)).
+			Item(PickerItem{ID: "per-task", Title: voiceRunPerTaskTitle(provider), Selected: voiceRunModePerTaskSelected(provider), Command: voiceModuleCommand(module.ID, "provider-set-local", provider.ID, "runtime-mode", voiceRuntimeModePerTask)}).
 			Item(PickerItem{ID: "always-running", Title: "Always Running", Selected: voiceRunModeAlways(provider), Disabled: !voicePersistentRuntimeAvailable(provider), Command: voiceModuleCommand(module.ID, "provider-set-local", provider.ID, "runtime-mode", voiceRuntimeModeAlways)}).
 			Ptr(),
 	}, nil
@@ -390,7 +390,7 @@ func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID stri
 		return Result{Handled: true, Confirm: &ConfirmData{
 			Message:        voiceRuntimeInstallConfirmMessage(provider),
 			ConfirmLabel:   voiceRuntimeInstallConfirmLabel(provider),
-			CancelLabel:    "Cancel",
+			CancelLabel:    "Close",
 			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, voiceActionConfirmID(provider.ActionIDs.InstallRuntime)),
 			CancelCommand:  voiceProviderSettingsBackCommand(module.ID, provider.ID),
 		}}, nil
@@ -400,7 +400,7 @@ func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID stri
 		return Result{Handled: true, Confirm: &ConfirmData{
 			Message:        voiceRuntimeDeleteConfirmMessage(module, provider),
 			ConfirmLabel:   "Delete",
-			CancelLabel:    "Cancel",
+			CancelLabel:    "Close",
 			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, voiceActionConfirmID(provider.ActionIDs.DeleteRuntime)),
 			CancelCommand:  voiceProviderSettingsBackCommand(module.ID, provider.ID),
 			ConfirmDanger:  true,
@@ -421,7 +421,7 @@ func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID stri
 			Title:          "Install " + provider.Name,
 			Message:        voiceModelInstallWithRuntimeMessage(provider, modelID),
 			ConfirmLabel:   "Install",
-			CancelLabel:    "Cancel",
+			CancelLabel:    "Close",
 			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, provider.ActionIDs.DownloadModel, modelID),
 			CancelCommand:  voiceModuleCommand(module.ID, "provider-model", provider.ID),
 		}}, nil
@@ -434,7 +434,7 @@ func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID stri
 		return Result{Handled: true, Confirm: &ConfirmData{
 			Message:        voiceRuntimeConfirmMessage(provider, action),
 			ConfirmLabel:   voiceRuntimeConfirmLabel(provider, action),
-			CancelLabel:    "Cancel",
+			CancelLabel:    "Close",
 			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, voiceActionConfirmID(action)),
 			CancelCommand:  voiceProviderSettingsBackCommand(module.ID, provider.ID),
 			ConfirmDanger:  action == provider.ActionIDs.Stop,
@@ -447,7 +447,7 @@ func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID stri
 		return Result{Handled: true, Confirm: &ConfirmData{
 			Message:        voiceDeleteConfirmMessage(module, provider, modelID),
 			ConfirmLabel:   "Delete",
-			CancelLabel:    "Cancel",
+			CancelLabel:    "Close",
 			ConfirmCommand: voiceModuleCommand(module.ID, "provider-action", provider.ID, voiceActionConfirmID(provider.ActionIDs.DeleteModel), modelID),
 			CancelCommand:  voiceCancelCommandAfterDelete(module.ID, provider.ID),
 			ConfirmDanger:  true,

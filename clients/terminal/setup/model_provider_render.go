@@ -67,7 +67,7 @@ func (m *model) renderProviderModelList() string {
 		card := components.RenderListCard(m.commandFrame(), components.ListData{
 			Title:      "Models " + setupLoadingFrame(m.tickCount),
 			ExtraLines: []string{"Loading models"},
-			Help:       "esc cancel",
+			Help:       "esc close",
 		})
 		return m.renderCommandCard(card)
 	}
@@ -85,7 +85,7 @@ func (m *model) renderProviderModelList() string {
 		EmptyText:         "No models match the current filter.",
 		Items:             pagedSearchItems(rows[start:end], start > 0, end < len(rows)),
 		Selected:          selectedProviderItemIndex(rows[start:end], m.providerModelCursor, start > 0),
-		Help:              "enter select · ↑/↓ move · esc cancel",
+		Help:              "enter select · ↑/↓ move · esc close",
 	})
 	return m.renderCommandCard(card)
 }

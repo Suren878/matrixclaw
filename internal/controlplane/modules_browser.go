@@ -75,8 +75,7 @@ func (d *Dispatcher) browserProviderSelectPicker(ctx context.Context) (Result, e
 	}
 	picker := NewPickerData(PickerBrowser, "Browser Provider").
 		Context(module.ID).
-		Popup().
-		Close(browserCommand()).
+		Select(browserCommand()).
 		Item(PickerItem{
 			ID:       "disabled",
 			Title:    "Disabled",
@@ -130,8 +129,7 @@ func (d *Dispatcher) browserRunModePicker(ctx context.Context) (Result, error) {
 		Picker: NewPickerData(PickerBrowser, "Browser Runtime Mode").
 			Context(module.ID).
 			Meta(browserRunModeLabel(provider)).
-			Popup().
-			Close(browserCommand()).
+			Select(browserCommand()).
 			Item(PickerItem{ID: "per-task", Title: "Run Per Task", Selected: normalizeBrowserRunMode(provider.Config.RuntimeMode) == browserRuntimeModePerTask, Command: browserCommand("set-runtime-mode", browserRuntimeModePerTask)}).
 			Item(PickerItem{ID: "always-running", Title: "Always Running", Selected: normalizeBrowserRunMode(provider.Config.RuntimeMode) == browserRuntimeModeAlways, Command: browserCommand("set-runtime-mode", browserRuntimeModeAlways)}).
 			Ptr(),
@@ -172,7 +170,7 @@ func (d *Dispatcher) browserProviderAction(ctx context.Context, args string) (Re
 			Title:          browserActionConfirmTitle(provider, action),
 			Message:        browserActionConfirmMessage(provider, action),
 			ConfirmLabel:   browserActionConfirmLabel(action),
-			CancelLabel:    "Cancel",
+			CancelLabel:    "Close",
 			ConfirmCommand: browserCommand("provider-action", provider.ID, action+"-confirm"),
 			CancelCommand:  browserCommand(),
 			ConfirmDanger:  action == provider.ActionIDs.DeleteRuntime,

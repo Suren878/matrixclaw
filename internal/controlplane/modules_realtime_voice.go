@@ -77,8 +77,7 @@ func (d *Dispatcher) realtimeVoiceEnabledPicker(ctx context.Context) (Result, er
 		Picker: NewPickerData(PickerRealtimeVoice, module.Title).
 			Context(module.ID).
 			Meta("Module is " + strings.ToLower(formatEnabled(module.Enabled))).
-			Popup().
-			Close(realtimeVoiceCommand()).
+			Select(realtimeVoiceCommand()).
 			Item(PickerItem{ID: "on", Title: "On", Info: realtimeVoiceEnableInfo(module), Selected: module.Enabled, Disabled: !realtimeVoiceModuleReady(module), Command: realtimeVoiceCommand("set-enabled", "on")}).
 			Item(PickerItem{ID: "off", Title: "Off", Info: module.Title, Selected: !module.Enabled, Command: realtimeVoiceCommand("set-enabled", "off")}).
 			Ptr(),
@@ -117,8 +116,7 @@ func (d *Dispatcher) realtimeVoiceProviderPicker(ctx context.Context) (Result, e
 	}
 	picker := NewPickerData(PickerVoiceProvider, "Realtime Voice Provider").
 		Context(module.ID).
-		Popup().
-		Close(realtimeVoiceCommand()).
+		Select(realtimeVoiceCommand()).
 		Item(PickerItem{
 			ID:       "disabled",
 			Title:    "Disabled",
@@ -174,11 +172,11 @@ func (d *Dispatcher) realtimeVoiceSetupPicker(ctx context.Context, providerID st
 	}
 	provider := realtimeVoiceProviderForSetup(module, providerID)
 	if strings.TrimSpace(provider.ID) == "" {
-		return d.realtimeVoiceProviderPicker(ctx)
+		return d.realtimeVoiceSetupProviderPicker(module), nil
 	}
 	picker := NewPickerData(PickerRealtimeVoice, provider.Name+" Setup").
 		Context(module.ID).
-		Back(realtimeVoiceCommand()).
+		Back(realtimeVoiceCommand("setup")).
 		Row("key", "API Key", realtimeVoiceAPIKeyStatus(provider), realtimeVoiceCommand("setup-field", "key", provider.ID)).
 		Row("model", "Model", realtimeVoiceModelStatus(provider), realtimeVoiceCommand("model", provider.ID)).
 		Row("voice", "Voice", realtimeVoiceVoiceStatus(provider), realtimeVoiceCommand("voice", provider.ID)).
@@ -215,14 +213,13 @@ func (d *Dispatcher) realtimeVoiceModelPicker(ctx context.Context, providerID st
 	}
 	provider := realtimeVoiceProviderForSetup(module, providerID)
 	if strings.TrimSpace(provider.ID) == "" {
-		return d.realtimeVoiceProviderPicker(ctx)
+		return d.realtimeVoiceSetupPicker(ctx, "")
 	}
 	current := strings.TrimSpace(provider.Config.ModelID)
 	models := realtimeVoiceModelCandidates(provider)
 	picker := NewPickerData(PickerVoiceProvider, provider.Name+" Model").
 		Context(module.ID).
-		Popup().
-		Close(realtimeVoiceCommand("setup", provider.ID))
+		Select(realtimeVoiceCommand("setup", provider.ID))
 	if message := realtimeVoiceModelUnavailableMessage(provider, models); message != "" {
 		picker.Item(PickerItem{
 			ID:       "unavailable",
@@ -256,8 +253,7 @@ func (d *Dispatcher) realtimeVoiceVoicePicker(ctx context.Context, providerID st
 	voices := realtimeVoiceVoiceCandidates(provider)
 	picker := NewPickerData(PickerVoiceProvider, provider.Name+" Voice").
 		Context(module.ID).
-		Popup().
-		Close(realtimeVoiceCommand("setup", provider.ID))
+		Select(realtimeVoiceCommand("setup", provider.ID))
 	if len(voices) == 0 {
 		picker.Item(PickerItem{
 			ID:       "unavailable",
@@ -305,7 +301,7 @@ func (d *Dispatcher) realtimeVoiceSetupField(ctx context.Context, args string) (
 	}
 	provider := realtimeVoiceProviderForSetup(module, providerID)
 	if strings.TrimSpace(provider.ID) == "" {
-		return d.realtimeVoiceProviderPicker(ctx)
+		return d.realtimeVoiceSetupPicker(ctx, "")
 	}
 	if strings.EqualFold(strings.TrimSpace(field), "model") || strings.EqualFold(strings.TrimSpace(field), "model-id") || strings.EqualFold(strings.TrimSpace(field), "model_id") {
 		return d.realtimeVoiceModelPicker(ctx, provider.ID)
@@ -337,7 +333,7 @@ func (d *Dispatcher) realtimeVoiceSetupSet(ctx context.Context, args string) (Re
 	}
 	provider := realtimeVoiceProviderForSetup(module, providerID)
 	if strings.TrimSpace(provider.ID) == "" {
-		return d.realtimeVoiceProviderPicker(ctx)
+		return d.realtimeVoiceSetupPicker(ctx, "")
 	}
 	cfg := setup.VoiceProviderConfig{
 		APIKeyEnv: provider.Config.APIKeyEnv,

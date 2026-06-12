@@ -48,7 +48,7 @@ func (d *Dispatcher) handleRestart(ctx context.Context, args string) (Result, er
 			Confirm: &ConfirmData{
 				Message:        "Restart server daemon?",
 				ConfirmLabel:   "Restart",
-				CancelLabel:    "Cancel",
+				CancelLabel:    "Close",
 				ConfirmCommand: restartConfirmCommand(),
 				CancelCommand:  serverCommand(),
 				ConfirmDanger:  true,
@@ -71,7 +71,7 @@ func (d *Dispatcher) handleStop(ctx context.Context, args string) (Result, error
 			Confirm: &ConfirmData{
 				Message:        "Stop server daemon?",
 				ConfirmLabel:   "Stop",
-				CancelLabel:    "Cancel",
+				CancelLabel:    "Close",
 				ConfirmCommand: stopConfirmCommand(),
 				CancelCommand:  serverCommand(),
 				ConfirmDanger:  true,

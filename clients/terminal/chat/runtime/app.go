@@ -173,6 +173,7 @@ type appModel struct {
 	restartPending      bool
 	restartRequestedAt  time.Time
 	restartTUIPending   bool
+	commandsDialogRoot  bool
 	returnToCommands    bool
 	updatePrompted      bool
 	updateInstalling    bool

@@ -45,7 +45,7 @@ func NewPromptCommand(com *surfacecommon.Common, data PromptCommandData) *Prompt
 		data: data,
 	}
 	d.keyMap.Submit = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "save"))
-	d.keyMap.Close = key.NewBinding(key.WithKeys("esc", "alt+esc"), key.WithHelp("esc", "cancel"))
+	d.keyMap.Close = key.NewBinding(key.WithKeys("esc", "alt+esc"), key.WithHelp("esc", "close"))
 	return d
 }
 
@@ -64,11 +64,11 @@ func (d *PromptCommand) HandleMsg(msg tea.Msg) Action {
 		switch {
 		case key.Matches(keyMsg, d.keyMap.Close):
 			if command := strings.TrimSpace(d.data.CancelCommand); command != "" {
-				return ActionRunControlplaneCommand{Command: command, CloseSource: true}
+				return ActionRunControlplaneCommand{Command: command}
 			}
 			return ActionClose{}
 		case key.Matches(keyMsg, d.keyMap.Submit):
-			return ActionRunControlplaneCommand{Command: d.data.SubmitCommandPrefix + strings.TrimSpace(d.input.Value()), CloseSource: true}
+			return ActionRunControlplaneCommand{Command: d.data.SubmitCommandPrefix + strings.TrimSpace(d.input.Value())}
 		}
 	}
 	cmd := d.input.Update(msg)

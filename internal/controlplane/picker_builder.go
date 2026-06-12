@@ -26,22 +26,17 @@ func (b *PickerBuilder) Back(command string) *PickerBuilder {
 	return b
 }
 
-func (b *PickerBuilder) Cancel(command string) *PickerBuilder {
-	b.data.CancelCommand = command
-	b.data.HasCancel = true
+func (b *PickerBuilder) Close(command string) *PickerBuilder {
+	b.data.CloseCommand = command
+	b.data.HasClose = true
 	return b
 }
 
-func (b *PickerBuilder) Select(cancelCommand string) *PickerBuilder {
+func (b *PickerBuilder) Select(closeCommand string) *PickerBuilder {
 	b.data.Popup = true
 	b.data.Select = true
-	b.data.CancelCommand = cancelCommand
-	b.data.HasCancel = true
-	return b
-}
-
-func (b *PickerBuilder) Popup() *PickerBuilder {
-	b.data.Popup = true
+	b.data.CloseCommand = closeCommand
+	b.data.HasClose = true
 	return b
 }
 

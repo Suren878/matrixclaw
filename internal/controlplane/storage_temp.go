@@ -136,7 +136,7 @@ func (d *Dispatcher) storageTempCleanupModePicker(ctx context.Context) (Result, 
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerStorageCleanup, "Auto Cleanup").
-			Popup().
+			Select(storageTempCleanupSettingsCommand()).
 			Item(PickerItem{ID: "on", Title: "On", Selected: current, Command: storageTempToggleCommand("on")}).
 			Item(PickerItem{ID: "off", Title: "Off", Selected: !current, Command: storageTempToggleCommand("off")}).
 			Ptr(),

@@ -39,7 +39,7 @@ func (d *Dispatcher) handleContext(ctx context.Context, externalKey string, args
 			Confirm: &ConfirmData{
 				Message:        "Clear context now?",
 				ConfirmLabel:   "Clear",
-				CancelLabel:    "Cancel",
+				CancelLabel:    "Close",
 				ConfirmCommand: contextClearConfirmCommand(),
 				CancelCommand:  contextCommand(),
 				ConfirmDanger:  true,
@@ -59,7 +59,7 @@ func (d *Dispatcher) handleContext(ctx context.Context, externalKey string, args
 			Confirm: &ConfirmData{
 				Message:        "Compact context now?",
 				ConfirmLabel:   "Compact",
-				CancelLabel:    "Cancel",
+				CancelLabel:    "Close",
 				ConfirmCommand: contextCompactConfirmCommand(),
 				CancelCommand:  contextCommand(),
 			},

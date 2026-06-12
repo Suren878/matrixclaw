@@ -28,7 +28,7 @@ func (m *appModel) shouldShowPlanPanel() bool {
 
 func (m *appModel) openPlanPanel() tea.Cmd {
 	if !m.currentSessionCapabilities().PlanningMode {
-		m.dialog.CloseAll()
+		m.closeAllDialogs()
 		m.dialog.OpenDialog(surfacedialog.NewInfo(m.com, surfacedialog.InfoData{
 			Title: "Planning Mode",
 			Text:  "Planning Mode is available for Matrixclaw sessions only.",

@@ -171,7 +171,7 @@ func customProviderSaveConfirm(kind string, data setup.ProviderFormState) Result
 		Confirm: &ConfirmData{
 			Message:        "Save custom provider `" + data.Name + "`?",
 			ConfirmLabel:   "Save",
-			CancelLabel:    "Cancel",
+			CancelLabel:    "Close",
 			ConfirmCommand: customProviderCommand(kind, "save-confirm", token),
 			CancelCommand:  customProviderCommand(kind, "form", token),
 		},

@@ -32,7 +32,7 @@ func TestPickerKeyboardAddsBackFooter(t *testing.T) {
 	}
 }
 
-func TestPickerKeyboardAddsDismissBackFooterForRootPicker(t *testing.T) {
+func TestPickerKeyboardAddsCloseFooterForRootPicker(t *testing.T) {
 	picker := controlplane.NewPickerData(controlplane.PickerModules, "Modules").
 		Row("mcp", "External MCP", "", "/modules mcp").
 		Build()
@@ -57,11 +57,11 @@ func TestPickerKeyboardAddsDismissBackFooterForRootPicker(t *testing.T) {
 	}
 }
 
-func TestFooterButtonUsesDismissKindWithEmptyCommand(t *testing.T) {
+func TestFooterButtonUsesEmptyCommandForDismiss(t *testing.T) {
 	button := footerButton(controlplane.ResultViewFooter{
 		Label:   "Close",
-		Command: "/modules",
-		Kind:    controlplane.FooterDismiss,
+		Command: "",
+		Kind:    controlplane.FooterClose,
 	})
 
 	if button.Text != "‹ Close" {
@@ -76,7 +76,7 @@ func TestFooterButtonUsesDismissKindWithEmptyCommand(t *testing.T) {
 	}
 }
 
-func TestPickerKeyboardAddsDismissBackFooterForCommandMenu(t *testing.T) {
+func TestPickerKeyboardAddsCloseFooterForCommandMenu(t *testing.T) {
 	picker := *controlplane.CommandMenuPicker(controlplane.MenuState{})
 	markup := pickerKeyboardForTest(picker)
 	if markup == nil || len(markup.InlineKeyboard) == 0 {
@@ -99,7 +99,7 @@ func TestPickerKeyboardAddsDismissBackFooterForCommandMenu(t *testing.T) {
 	}
 }
 
-func TestPickerKeyboardTreatsCommandFooterAsBack(t *testing.T) {
+func TestPickerKeyboardTreatsCloseFooterAsClose(t *testing.T) {
 	picker := controlplane.NewPickerData(controlplane.PickerBrowser, "Browser Provider").
 		Close("/modules browser").
 		Row("disabled", "Disabled", "", "/modules browser set-provider disabled").
@@ -110,25 +110,25 @@ func TestPickerKeyboardTreatsCommandFooterAsBack(t *testing.T) {
 	}
 	lastRow := markup.InlineKeyboard[len(markup.InlineKeyboard)-1]
 	if len(lastRow) != 1 {
-		t.Fatalf("last row = %#v, want one Back button", lastRow)
+		t.Fatalf("last row = %#v, want one Close button", lastRow)
 	}
 	button := lastRow[0]
-	if button.Text != "‹ Back" {
-		t.Fatalf("Back button text = %q", button.Text)
+	if button.Text != "‹ Close" {
+		t.Fatalf("Close button text = %q", button.Text)
 	}
 	_, command, ok := parsePickerCallbackData(button.CallbackData)
 	if !ok {
-		t.Fatalf("Back callback did not parse: %q", button.CallbackData)
+		t.Fatalf("Close callback did not parse: %q", button.CallbackData)
 	}
 	if command != "/modules browser" {
-		t.Fatalf("Back command = %q, want /modules browser", command)
+		t.Fatalf("Close command = %q, want /modules browser", command)
 	}
 }
 
-func TestPickerKeyboardAddsImplicitPopupBackFooter(t *testing.T) {
+func TestPickerKeyboardAddsSelectCloseFooter(t *testing.T) {
 	picker := controlplane.NewPickerData(controlplane.PickerMCPServer, "Enabled").
 		Context("docs").
-		Popup().
+		Select("/modules mcp docs").
 		Row("on", "On", "", "/modules mcp docs set-enabled on").
 		Build()
 	markup := pickerKeyboardForTest(picker)
@@ -137,18 +137,18 @@ func TestPickerKeyboardAddsImplicitPopupBackFooter(t *testing.T) {
 	}
 	lastRow := markup.InlineKeyboard[len(markup.InlineKeyboard)-1]
 	if len(lastRow) != 1 {
-		t.Fatalf("last row = %#v, want one Back button", lastRow)
+		t.Fatalf("last row = %#v, want one Close button", lastRow)
 	}
 	button := lastRow[0]
-	if button.Text != "‹ Back" {
-		t.Fatalf("Back button text = %q", button.Text)
+	if button.Text != "‹ Close" {
+		t.Fatalf("Close button text = %q", button.Text)
 	}
 	_, command, ok := parsePickerCallbackData(button.CallbackData)
 	if !ok {
-		t.Fatalf("Back callback did not parse: %q", button.CallbackData)
+		t.Fatalf("Close callback did not parse: %q", button.CallbackData)
 	}
 	if command != "/modules mcp docs" {
-		t.Fatalf("Back command = %q, want /modules mcp docs", command)
+		t.Fatalf("Close command = %q, want /modules mcp docs", command)
 	}
 }
 

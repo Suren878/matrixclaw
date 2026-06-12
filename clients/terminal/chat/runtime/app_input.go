@@ -123,26 +123,19 @@ func (m *appModel) handleDialogInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if top := m.dialog.DialogLast(); top != nil {
 		sourceID = top.ID()
 	}
+	fromCommands := m.commandsDialogRoot && m.dialog.ContainsDialog(surfacedialog.CommandsID)
 	action := m.dialog.Update(msg)
 	if action == nil {
 		return m, nil
 	}
-	if dialogActionClosesSource(action) && sourceID != "" {
-		m.dialog.CloseDialog(sourceID)
+	if command, ok := action.(surfacedialog.ActionRunControlplaneCommand); ok {
+		if sourceID != "" && sourceID != surfacedialog.CommandsID {
+			m.dialog.CloseDialog(sourceID)
+		}
+		return m, m.handleRunControlplaneCommand(command, fromCommands)
 	}
 	next, cmd := m.Update(action)
 	return next, cmd
-}
-
-func dialogActionClosesSource(action tea.Msg) bool {
-	switch action := action.(type) {
-	case surfacedialog.ActionRunControlplaneCommand:
-		return action.CloseSource
-	case surfacedialog.ActionOpenCommands:
-		return false
-	default:
-		return false
-	}
 }
 
 func (m *appModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {

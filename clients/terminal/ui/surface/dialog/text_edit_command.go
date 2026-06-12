@@ -50,11 +50,11 @@ func (d *TextEditCommand) HandleMsg(msg tea.Msg) Action {
 		switch keyMsg.String() {
 		case "esc", "alt+esc":
 			if command := strings.TrimSpace(d.data.CancelCommand); command != "" {
-				return ActionRunControlplaneCommand{Command: command, CloseSource: true}
+				return ActionRunControlplaneCommand{Command: command}
 			}
 			return ActionClose{}
 		case "enter", "ctrl+s":
-			return ActionRunControlplaneCommand{Command: d.data.SubmitCommandPrefix + d.input.Value(), CloseSource: true}
+			return ActionRunControlplaneCommand{Command: d.data.SubmitCommandPrefix + d.input.Value()}
 		}
 	}
 	var cmd tea.Cmd

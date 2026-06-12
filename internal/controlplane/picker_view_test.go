@@ -26,15 +26,21 @@ func TestPickerFooterUsesBackAndCloseState(t *testing.T) {
 		t.Fatalf("PickerFooter() = %#v, true; want false", footer)
 	}
 
-	popupPicker := NewPickerData(PickerMCPServer, "Enabled").
-		Context("docs").
-		Popup().
-		Build()
+	popupPicker := PickerData{Kind: PickerMCPServer, ContextID: "docs", Popup: true}
 	footer, ok = PickerFooter(popupPicker)
-	if !ok {
-		t.Fatal("PickerFooter() popup ok = false, want true")
+	if ok {
+		t.Fatalf("PickerFooter() popup = %#v, true; want false", footer)
 	}
-	if footer.Label != "Back" || footer.Command != mcpServerCommand("docs") {
-		t.Fatalf("PickerFooter() popup = %#v, want Back to %q", footer, mcpServerCommand("docs"))
+
+	selectPicker := NewPickerData(PickerMCPServer, "Enabled").
+		Context("docs").
+		Select(mcpServerCommand("docs")).
+		Build()
+	footer, ok = PickerFooter(selectPicker)
+	if !ok {
+		t.Fatal("PickerFooter() select ok = false, want true")
+	}
+	if footer.Label != "Close" || footer.Command != mcpServerCommand("docs") {
+		t.Fatalf("PickerFooter() select = %#v, want Close to %q", footer, mcpServerCommand("docs"))
 	}
 }

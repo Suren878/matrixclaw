@@ -12,7 +12,7 @@ type PickerData struct {
 }
 
 func RenderPickerCard(frame Frame, data PickerData) string {
-	help := helpWithShortcuts(firstNonEmpty(data.Help, "enter select · ↑/↓ move · esc cancel"), append(data.Items, data.Footer...))
+	help := helpWithShortcuts(firstNonEmpty(data.Help, "enter select · ↑/↓ move · esc close"), append(data.Items, data.Footer...))
 	frame = frame.WithInnerWidth(0)
 	return frame.RenderCard(FrameData{
 		Title: data.Title,

@@ -37,16 +37,6 @@ func PickerItemCommand(picker PickerData, item PickerItem) string {
 	return strings.TrimSpace(item.Command)
 }
 
-func PickerCloseCommand(picker PickerData) string {
-	if command, ok := pickerBackCommand(picker); ok {
-		return command
-	}
-	if command, ok := pickerCancelCommand(picker); ok {
-		return command
-	}
-	return ""
-}
-
 func PickerFooter(picker PickerData) (PickerFooterAction, bool) {
 	if picker.HasBack {
 		return PickerFooterAction{
@@ -54,10 +44,10 @@ func PickerFooter(picker PickerData) (PickerFooterAction, bool) {
 			Command: strings.TrimSpace(picker.BackCommand),
 		}, true
 	}
-	if picker.HasCancel {
+	if picker.HasClose {
 		return PickerFooterAction{
-			Label:   "Cancel",
-			Command: strings.TrimSpace(picker.CancelCommand),
+			Label:   "Close",
+			Command: strings.TrimSpace(picker.CloseCommand),
 		}, true
 	}
 	return PickerFooterAction{}, false
@@ -68,13 +58,6 @@ func pickerBackCommand(picker PickerData) (string, bool) {
 		return "", false
 	}
 	return strings.TrimSpace(picker.BackCommand), true
-}
-
-func pickerCancelCommand(picker PickerData) (string, bool) {
-	if !picker.HasCancel {
-		return "", false
-	}
-	return strings.TrimSpace(picker.CancelCommand), true
 }
 
 func PickerCommandLabel(picker PickerData) string {

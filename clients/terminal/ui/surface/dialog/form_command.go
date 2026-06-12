@@ -56,7 +56,7 @@ func (d *FormCommand) HandleMsg(msg tea.Msg) Action {
 		}
 	case components.EventSubmit:
 		if strings.TrimSpace(d.data.SubmitCommand) != "" {
-			return ActionRunControlplaneCommand{Command: strings.TrimSpace(d.data.SubmitCommand), CloseSource: true}
+			return ActionRunControlplaneCommand{Command: strings.TrimSpace(d.data.SubmitCommand)}
 		}
 	case components.EventBack, components.EventCancel:
 		return d.cancelAction()
@@ -66,7 +66,7 @@ func (d *FormCommand) HandleMsg(msg tea.Msg) Action {
 
 func (d *FormCommand) cancelAction() Action {
 	if command := strings.TrimSpace(d.data.CancelCommand); command != "" {
-		return ActionRunControlplaneCommand{Command: command, CloseSource: true}
+		return ActionRunControlplaneCommand{Command: command}
 	}
 	return ActionClose{}
 }
@@ -79,7 +79,7 @@ func (d *FormCommand) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 		Buttons: d.buttons(),
 		Button:  d.state.Button,
 		Error:   d.data.Error,
-		Help:    "enter edit · ↑/↓ move · ←/→ action · esc cancel",
+		Help:    "enter edit · ↑/↓ move · ←/→ action · esc close",
 	})
 	DrawCenter(scr, area, view)
 	return nil
@@ -124,6 +124,6 @@ func (d *FormCommand) items() []components.Item {
 func (d *FormCommand) buttons() []components.ButtonSpec {
 	return []components.ButtonSpec{
 		{Label: firstNonEmptyTrimmed(d.data.SubmitLabel, "Save"), Role: components.RoleSubmit},
-		{Label: firstNonEmptyTrimmed(d.data.CancelLabel, "Cancel"), Role: components.RoleBack},
+		{Label: firstNonEmptyTrimmed(d.data.CancelLabel, "Close"), Role: components.RoleBack},
 	}
 }

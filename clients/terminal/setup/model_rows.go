@@ -68,6 +68,6 @@ func formFocus(focus int, fieldCount int) components.FormFocus {
 func setupFormButtons() []components.ButtonSpec {
 	return []components.ButtonSpec{
 		{Label: "Save", Role: components.RoleSubmit},
-		{Label: "Cancel", Role: components.RoleCancel},
+		{Label: "Close", Role: components.RoleCancel},
 	}
 }

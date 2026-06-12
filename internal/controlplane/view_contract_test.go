@@ -78,8 +78,8 @@ func TestPresentResultReturnsPickerScreenAndFooterSemantics(t *testing.T) {
 	if rootView.Screen != ScreenPicker {
 		t.Fatalf("root screen = %q, want %q", rootView.Screen, ScreenPicker)
 	}
-	if rootView.Footer == nil || rootView.Footer.Kind != FooterDismiss {
-		t.Fatalf("root footer = %#v, want dismiss footer", rootView.Footer)
+	if rootView.Footer == nil || rootView.Footer.Kind != FooterClose || rootView.Footer.Label != "Close" || rootView.Footer.Command != "" {
+		t.Fatalf("root footer = %#v, want close footer", rootView.Footer)
 	}
 
 	nested := NewPickerData(PickerMCP, "External MCP").
@@ -141,7 +141,7 @@ func TestPickerViewCarriesSearchText(t *testing.T) {
 	}
 }
 
-func TestPickerViewTreatsCommandFooterAsBack(t *testing.T) {
+func TestPickerViewTreatsCloseFooterAsClose(t *testing.T) {
 	picker := NewPickerData(PickerServer, "Server").
 		Close(serverCommand()).
 		Row("status", "Status", "", "/server status").
@@ -150,10 +150,10 @@ func TestPickerViewTreatsCommandFooterAsBack(t *testing.T) {
 	view := PickerView(picker, PickerViewOptions{Surface: SurfaceTelegram})
 
 	if view.Footer == nil {
-		t.Fatal("footer = nil, want back footer")
+		t.Fatal("footer = nil, want close footer")
 	}
-	if view.Footer.Kind != FooterBack || view.Footer.Label != "Back" || view.Footer.Command != serverCommand() {
-		t.Fatalf("footer = %#v, want Back to %q", view.Footer, serverCommand())
+	if view.Footer.Kind != FooterClose || view.Footer.Label != "Close" || view.Footer.Command != serverCommand() {
+		t.Fatalf("footer = %#v, want Close to %q", view.Footer, serverCommand())
 	}
 }
 
@@ -177,8 +177,8 @@ func TestPresentResultReturnsTextEditScreen(t *testing.T) {
 	if view.Text != "body" {
 		t.Fatalf("text = %q, want body", view.Text)
 	}
-	if view.Footer == nil || view.Footer.Kind != FooterBack || view.Footer.Command != "/modules skills" {
-		t.Fatalf("footer = %#v, want back to /modules skills", view.Footer)
+	if view.Footer == nil || view.Footer.Kind != FooterClose || view.Footer.Command != "/modules skills" {
+		t.Fatalf("footer = %#v, want close to /modules skills", view.Footer)
 	}
 }
 

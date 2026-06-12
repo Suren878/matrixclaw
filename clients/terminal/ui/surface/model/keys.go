@@ -128,7 +128,7 @@ func DefaultKeyMap() KeyMap {
 	)
 	km.Editor.Escape = key.NewBinding(
 		key.WithKeys("esc", "alt+esc"),
-		key.WithHelp("esc", "cancel delete mode"),
+		key.WithHelp("esc", "exit delete mode"),
 	)
 	km.Editor.DeleteAllAttachments = key.NewBinding(
 		key.WithKeys("r"),
@@ -151,7 +151,7 @@ func DefaultKeyMap() KeyMap {
 	)
 	km.Chat.Cancel = key.NewBinding(
 		key.WithKeys("esc", "alt+esc"),
-		key.WithHelp("esc", "cancel"),
+		key.WithHelp("esc", "close"),
 	)
 	km.Chat.Tab = key.NewBinding(
 		key.WithKeys("tab"),

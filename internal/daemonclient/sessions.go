@@ -48,6 +48,15 @@ func (c *Client) ListSessions(ctx context.Context) ([]core.Session, error) {
 	return response.Sessions, nil
 }
 
+func (c *Client) GetSession(ctx context.Context, sessionID string) (core.Session, error) {
+	var response core.SessionResponse
+	path := "/v1/sessions/" + escapedPath(sessionID)
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return core.Session{}, err
+	}
+	return response.Session, nil
+}
+
 func (c *Client) CreateSession(ctx context.Context, title string, workingDir string) (core.Session, error) {
 	return c.CreateSessionWithRequest(ctx, core.CreateSessionRequest{
 		Title:      title,

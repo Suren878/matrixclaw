@@ -142,7 +142,7 @@ func customProviderFormResult(config customProviderFormResultData) Result {
 			Title:         config.Title,
 			Fields:        fields,
 			SubmitLabel:   "Save",
-			CancelLabel:   "Cancel",
+			CancelLabel:   "Close",
 			SubmitCommand: config.SubmitCommand(token),
 			CancelCommand: config.CancelCommand,
 			Error:         strings.TrimSpace(config.Error),
@@ -224,8 +224,7 @@ func customProviderToolModePicker(titlePrefix string, data setup.ProviderFormSta
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerProviderCustom, titlePrefix+": tool mode").
-			Popup().
-			Close(cancelCommand).
+			Select(cancelCommand).
 			Items(customProviderChoiceItems(providerToolUseField(data), submitPrefix)...).
 			Ptr(),
 	}
@@ -257,8 +256,7 @@ func customProviderBaseURLPicker(titlePrefix string, data setup.ProviderFormStat
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerProviderCustom, titlePrefix+": endpoint").
-			Popup().
-			Close(cancelCommand).
+			Select(cancelCommand).
 			Items(customProviderChoiceItems(field, submitPrefix)...).
 			Ptr(),
 	}
@@ -269,8 +267,7 @@ func customProviderReasoningEffortPickerWithOptions(titlePrefix string, data set
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerProviderCustom, titlePrefix+": reasoning effort").
-			Popup().
-			Close(cancelCommand).
+			Select(cancelCommand).
 			Items(customProviderChoiceItems(field, submitPrefix)...).
 			Ptr(),
 	}

@@ -176,12 +176,12 @@ func (d *Dispatcher) voiceModuleEnabledPicker(ctx context.Context, moduleID stri
 	}
 	return Result{
 		Handled: true,
-			Picker: NewPickerData(PickerVoiceProvider, module.Title).
-				Context(module.ID).
-				Meta("Module is " + strings.ToLower(formatEnabled(module.Enabled))).
-				Select(voiceModuleCommand(module.ID)).
-				Item(PickerItem{ID: "on", Title: "On", Info: module.Title, Selected: module.Enabled, Command: voiceModuleCommand(module.ID, "set-enabled", "on")}).
-				Item(PickerItem{ID: "off", Title: "Off", Info: module.Title, Selected: !module.Enabled, Command: voiceModuleCommand(module.ID, "set-enabled", "off")}).
+		Picker: NewPickerData(PickerVoiceProvider, module.Title).
+			Context(module.ID).
+			Meta("Module is " + strings.ToLower(formatEnabled(module.Enabled))).
+			Select(voiceModuleCommand(module.ID)).
+			Item(PickerItem{ID: "on", Title: "On", Info: module.Title, Selected: module.Enabled, Command: voiceModuleCommand(module.ID, "set-enabled", "on")}).
+			Item(PickerItem{ID: "off", Title: "Off", Info: module.Title, Selected: !module.Enabled, Command: voiceModuleCommand(module.ID, "set-enabled", "off")}).
 			Ptr(),
 	}, nil
 }
@@ -278,7 +278,7 @@ func (d *Dispatcher) setVoiceModuleProvider(ctx context.Context, moduleID string
 		return Result{Handled: true, Confirm: &ConfirmData{
 			Message:        "Download " + provider.Name + " engine?",
 			ConfirmLabel:   "Download",
-			CancelLabel:    "Cancel",
+			CancelLabel:    "Close",
 			ConfirmCommand: voiceModuleCommand(module.ID, "set-provider-install", provider.ID),
 			CancelCommand:  voiceModuleCommand(module.ID, "provider-select"),
 		}}, nil
@@ -346,7 +346,7 @@ func voiceProviderNeedsVoiceResult(module setup.VoiceModuleDescriptor, provider 
 		Title:          "Voice Required",
 		Message:        provider.Name + " needs at least one installed voice before it can be enabled.",
 		ConfirmLabel:   "Add Voice",
-		CancelLabel:    "Cancel",
+		CancelLabel:    "Close",
 		ConfirmCommand: addLocalModelCommand(module.ID, provider.ID),
 		CancelCommand:  cancelCommand,
 	}}

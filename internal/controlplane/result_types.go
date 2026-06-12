@@ -47,10 +47,10 @@ type ConfirmData struct {
 }
 
 type InfoData struct {
-	Title         string
-	Text          string
-	Rows          []InfoRow
-	CancelCommand string
+	Title        string
+	Text         string
+	Rows         []InfoRow
+	CloseCommand string
 }
 
 type InfoRow struct {
@@ -62,7 +62,7 @@ func deleteConfirmData(message string, confirmCommand string, cancelCommand stri
 	return &ConfirmData{
 		Message:        message,
 		ConfirmLabel:   "Delete",
-		CancelLabel:    "Cancel",
+		CancelLabel:    "Close",
 		ConfirmCommand: confirmCommand,
 		CancelCommand:  cancelCommand,
 		ConfirmDanger:  true,

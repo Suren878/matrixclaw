@@ -45,7 +45,7 @@ func (d *Dispatcher) handleProviderEditStep(ctx context.Context, session *core.S
 					data,
 					providerFormCatalogID(provider),
 					providerEditSetCommandPrefix("base", provider.ID, token),
-					"",
+					providerEditSetCommand("base", provider.ID, token, data.BaseURL),
 				), nil
 			}
 		case "model":
@@ -57,7 +57,12 @@ func (d *Dispatcher) handleProviderEditStep(ctx context.Context, session *core.S
 			}
 		case "tools":
 			token := encodeCustomProviderFormToken(data)
-			return customProviderToolModePicker(title, data, providerEditSetCommandPrefix("tools", provider.ID, token), ""), nil
+			return customProviderToolModePicker(
+				title,
+				data,
+				providerEditSetCommandPrefix("tools", provider.ID, token),
+				providerEditSetCommand("tools", provider.ID, token, string(data.ToolUseMode)),
+			), nil
 		case "reasoning":
 			token := encodeCustomProviderFormToken(data)
 			return customProviderReasoningEffortPickerWithOptions(
@@ -65,7 +70,7 @@ func (d *Dispatcher) handleProviderEditStep(ctx context.Context, session *core.S
 				data,
 				providers.ReasoningEffortsForProvider(providerFormCatalogID(provider), providerFormType(provider)),
 				providerEditSetCommandPrefix("reasoning", provider.ID, token),
-				"",
+				providerEditSetCommand("reasoning", provider.ID, token, data.ReasoningEffort),
 			), nil
 		}
 		token := encodeCustomProviderFormToken(data)
@@ -73,7 +78,14 @@ func (d *Dispatcher) handleProviderEditStep(ctx context.Context, session *core.S
 		if field == "key" {
 			placeholder = "leave empty to keep"
 		}
-		return customProviderFieldPrompt(title, field, data, placeholder, providerEditSetCommandPrefix(field, provider.ID, token), ""), nil
+		return customProviderFieldPrompt(
+			title,
+			field,
+			data,
+			placeholder,
+			providerEditSetCommandPrefix(field, provider.ID, token),
+			providerEditSetCommand(field, provider.ID, token, data.Field(field)),
+		), nil
 	case "set":
 		data = data.WithField(field, valueAfterFields(form, 3))
 		return providerEditFormResult(provider, data, ""), nil
@@ -141,7 +153,7 @@ func (d *Dispatcher) providerModelPicker(ctx context.Context, provider setup.Pro
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerProviderCustom, "Model").
-			Popup().
+			Select(providerEditSetCommand("model", provider.ID, token, data.Model)).
 			Items(items...).
 			Ptr(),
 	}
@@ -154,7 +166,7 @@ func providerEditManualModelPrompt(provider setup.ProviderSetupItem, data setup.
 		data,
 		message,
 		providerEditSetCommandPrefix("model", provider.ID, token),
-		"",
+		providerEditSetCommand("model", provider.ID, token, data.Model),
 	)
 }
 

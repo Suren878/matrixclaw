@@ -207,6 +207,10 @@ func (w *Worker) deliverChatRunDelivery(ctx context.Context, target chatTarget, 
 }
 
 func (w *Worker) deliverActiveRunProgress(ctx context.Context, target chatTarget, daemon *daemonclient.Client, sessionID string, runID string) error {
+	if session, err := daemon.GetSession(ctx, sessionID); err == nil && telegramSuppressDraftStreaming(session) {
+		w.sendTypingChatAction(ctx, target, "external agent progress")
+		return nil
+	}
 	messages, err := daemon.ListMessages(ctx, sessionID, 0)
 	if err != nil {
 		return err
@@ -219,6 +223,11 @@ func (w *Worker) deliverActiveRunProgress(ctx context.Context, target chatTarget
 		log.Printf("telegram: draft update failed chat=%d run=%s: %v", target.chatID, runID, err)
 	}
 	return nil
+}
+
+func telegramSuppressDraftStreaming(session core.Session) bool {
+	return core.NormalizeSessionKind(session.Kind) == core.SessionKindExternalAgent ||
+		core.NormalizeSessionRuntime(session.RuntimeID) == core.SessionRuntimeExternalAgent
 }
 
 func (w *Worker) deliverRunApprovals(ctx context.Context, target chatTarget, daemon *daemonclient.Client, sessionID string, runID string) error {

@@ -439,12 +439,37 @@ func (c *Core) RecoverActiveRuns(ctx context.Context) error {
 		return err
 	}
 	for _, run := range runs {
-		if run.Status != RunStatusAccepted {
-			continue
-		}
-		if err := c.startRun(ctx, run.ID); err != nil {
-			return fmt.Errorf("recover accepted run %s: %w", run.ID, err)
+		switch run.Status {
+		case RunStatusAccepted:
+			if err := c.startRun(ctx, run.ID); err != nil {
+				return fmt.Errorf("recover accepted run %s: %w", run.ID, err)
+			}
+		case RunStatusRunning:
+			if err := c.failInterruptedActiveRun(ctx, run); err != nil {
+				return fmt.Errorf("recover running run %s: %w", run.ID, err)
+			}
+			if err := c.afterRunExecution(ctx, run.ID); err != nil {
+				return fmt.Errorf("recover running run aftermath %s: %w", run.ID, err)
+			}
 		}
 	}
+	return nil
+}
+
+func (c *Core) failInterruptedActiveRun(ctx context.Context, run Run) error {
+	finishedAt := c.now().UTC()
+	run.Status = RunStatusFailed
+	run.Error = "run interrupted by daemon restart"
+	run.FinishedAt = &finishedAt
+	run.UpdatedAt = finishedAt
+	if err := c.store.UpdateRun(ctx, run); err != nil {
+		return err
+	}
+	c.publishEvent(Event{
+		Type:      EventRunUpdated,
+		SessionID: run.SessionID,
+		RunID:     run.ID,
+		Payload:   run,
+	})
 	return nil
 }

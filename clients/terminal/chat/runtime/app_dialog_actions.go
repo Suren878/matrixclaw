@@ -51,6 +51,7 @@ func (m *appModel) handleOpenFilePreview(msg surfacedialog.ActionOpenFilePreview
 
 func (m *appModel) handleExternalEditorAction() tea.Cmd {
 	m.dialog.CloseDialog(surfacedialog.CommandsID)
+	m.commandsDialogRoot = false
 	if m.busy {
 		m.err = "agent is working, please wait"
 		return nil
@@ -58,9 +59,9 @@ func (m *appModel) handleExternalEditorAction() tea.Cmd {
 	return m.input.Editor().OpenExternalEditor()
 }
 
-func (m *appModel) handleRunControlplaneCommand(msg surfacedialog.ActionRunControlplaneCommand) tea.Cmd {
-	fromCommands := m.dialog.ContainsDialog(surfacedialog.CommandsID)
+func (m *appModel) handleRunControlplaneCommand(msg surfacedialog.ActionRunControlplaneCommand, fromCommands bool) tea.Cmd {
 	command := strings.TrimSpace(msg.Command)
+	m.returnToCommands = m.controlplaneCommandReturnsToCommands(fromCommands)
 	if strings.HasPrefix(command, "/update ") {
 		return m.handleUpdateCommand(command)
 	}
@@ -69,14 +70,14 @@ func (m *appModel) handleRunControlplaneCommand(msg surfacedialog.ActionRunContr
 	}
 	switch command {
 	case "/plan":
-		m.dialog.CloseAll()
+		m.closeAllDialogs()
 		m.returnToCommands = false
 		return m.openPlanPanel()
 	case "/plan run":
-		m.dialog.CloseAll()
+		m.closeAllDialogs()
 		return m.startPlanRunCmd()
 	case "/plan cancel":
-		m.dialog.CloseAll()
+		m.closeAllDialogs()
 		m.planAutoRun = false
 		m.planPanelOpen = false
 		if m.focus == appFocusPlan {
@@ -85,7 +86,7 @@ func (m *appModel) handleRunControlplaneCommand(msg surfacedialog.ActionRunContr
 		return m.controlplaneCmd("/plan clear confirm")
 	}
 	if isContextCompactCommand(command) {
-		m.dialog.CloseAll()
+		m.closeAllDialogs()
 		m.startContextCompactProgress()
 		return m.controlplaneCmd(command)
 	}
@@ -98,10 +99,14 @@ func (m *appModel) handleRunControlplaneCommand(msg surfacedialog.ActionRunContr
 	if isDaemonRestartCommand(command) {
 		return m.openServerRestartDialog()
 	}
-	if fromCommands {
-		m.returnToCommands = true
-	}
 	return tea.Batch(m.dialog.StartLoading(), m.controlplaneCmd(command))
+}
+
+func (m *appModel) controlplaneCommandReturnsToCommands(fromCommands bool) bool {
+	if fromCommands {
+		return true
+	}
+	return m.returnToCommands && m.dialog.HasDialogs()
 }
 
 func (m *appModel) handleResolveApproval(msg resolveApprovalMsg) tea.Cmd {

@@ -257,9 +257,6 @@ func TestSkillsPickerBackReturnsToModules(t *testing.T) {
 	if result.Picker.BackCommand != modulesCommand() {
 		t.Fatalf("BackCommand = %q, want %q", result.Picker.BackCommand, modulesCommand())
 	}
-	if result.Picker.CloseCommand != modulesCommand() {
-		t.Fatalf("CloseCommand = %q, want %q", result.Picker.CloseCommand, modulesCommand())
-	}
 }
 
 func TestMCPPickerBackReturnsToModules(t *testing.T) {
@@ -273,9 +270,6 @@ func TestMCPPickerBackReturnsToModules(t *testing.T) {
 	}
 	if result.Picker.BackCommand != modulesCommand() {
 		t.Fatalf("BackCommand = %q, want %q", result.Picker.BackCommand, modulesCommand())
-	}
-	if result.Picker.CloseCommand != modulesCommand() {
-		t.Fatalf("CloseCommand = %q, want %q", result.Picker.CloseCommand, modulesCommand())
 	}
 }
 

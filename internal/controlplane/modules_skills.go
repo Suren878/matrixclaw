@@ -319,7 +319,7 @@ func (d *Dispatcher) skillEnabledPicker(ctx context.Context, section string, ski
 		Picker: NewPickerData(PickerSkill, "Enabled").
 			Context(section + ":" + skillID).
 			Meta(skillTitle(detail.Skill)).
-			Popup().
+			Select(skillsCommand(section, skillID)).
 			Item(PickerItem{ID: "on", Title: "On", Selected: detail.Skill.Enabled, Command: skillsCommand(section, skillID, "set-enabled", "on")}).
 			Item(PickerItem{ID: "off", Title: "Off", Selected: !detail.Skill.Enabled, Command: skillsCommand(section, skillID, "set-enabled", "off")}).
 			Ptr(),

@@ -66,7 +66,7 @@ func (d *Dispatcher) handlePlan(ctx context.Context, externalKey string, args st
 		return Result{Handled: true, Confirm: &ConfirmData{
 			Message:        "Clear Planning Mode?",
 			ConfirmLabel:   "Clear",
-			CancelLabel:    "Cancel",
+			CancelLabel:    "Close",
 			ConfirmCommand: "/plan clear confirm",
 			CancelCommand:  "/plan",
 		}}, nil

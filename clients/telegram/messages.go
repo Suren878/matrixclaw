@@ -284,6 +284,10 @@ func (w *Worker) handleLocationMessage(ctx context.Context, message *Message) er
 }
 
 func (w *Worker) sendLocationLookupChatAction(ctx context.Context, target chatTarget) {
+	w.sendTypingChatAction(ctx, target, "location lookup")
+}
+
+func (w *Worker) sendTypingChatAction(ctx context.Context, target chatTarget, label string) {
 	if target.chatID == 0 {
 		return
 	}
@@ -291,7 +295,11 @@ func (w *Worker) sendLocationLookupChatAction(ctx context.Context, target chatTa
 		ChatID: target.chatID,
 		Action: "typing",
 	}); err != nil {
-		log.Printf("telegram: location lookup typing indicator failed: %v", err)
+		label = strings.TrimSpace(label)
+		if label == "" {
+			label = "typing"
+		}
+		log.Printf("telegram: %s typing indicator failed: %v", label, err)
 	}
 }
 

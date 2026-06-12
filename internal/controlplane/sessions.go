@@ -343,7 +343,7 @@ func (d *Dispatcher) handleSessionModel(ctx context.Context, sessionID string) (
 	picker := NewPickerData(PickerSessionModels, "Model").
 		Meta(current).
 		Context(session.ID).
-		Popup()
+		Select(sessionMenuCommand(session.ID))
 	for _, modelID := range response.Models {
 		modelID = strings.TrimSpace(modelID)
 		if modelID == "" {

@@ -66,7 +66,7 @@ func (d *ConfirmCommand) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 	view := components.RenderConfirmCard(components.NewFrame(area.Dx(), area.Dy()), components.ConfirmData{
 		Message:       message,
 		ConfirmLabel:  firstNonEmptyTrimmed(d.data.ConfirmLabel, "Confirm"),
-		CancelLabel:   firstNonEmptyTrimmed(d.data.CancelLabel, "Cancel"),
+		CancelLabel:   firstNonEmptyTrimmed(d.data.CancelLabel, "Close"),
 		Selected:      d.state.Selected,
 		ConfirmDanger: d.data.ConfirmDanger,
 		CancelDanger:  d.data.CancelDanger,

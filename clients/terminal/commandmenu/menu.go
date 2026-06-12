@@ -50,14 +50,14 @@ func commandEntry(item controlplane.ResultViewItem) surfacedialog.CommandEntry {
 }
 
 func PickerEntries(view controlplane.PickerViewData) []surfacedialog.PickerEntry {
-	return pickerEntries(view, true, false)
+	return pickerEntries(view, true)
 }
 
 func PickerRows(view controlplane.PickerViewData) []surfacedialog.PickerEntry {
-	return pickerEntries(view, false, true)
+	return pickerEntries(view, false)
 }
 
-func pickerEntries(view controlplane.PickerViewData, includeFooter bool, closeOnSelect bool) []surfacedialog.PickerEntry {
+func pickerEntries(view controlplane.PickerViewData, includeFooter bool) []surfacedialog.PickerEntry {
 	entries := make([]surfacedialog.PickerEntry, 0, len(view.Items)+1)
 	for _, presented := range view.Items {
 		if presented.SeparatorBefore && len(entries) > 0 && entries[len(entries)-1].Kind != surfacedialog.ListEntryDivider && entries[len(entries)-1].Kind != surfacedialog.ListEntryHeader {
@@ -72,7 +72,7 @@ func pickerEntries(view controlplane.PickerViewData, includeFooter bool, closeOn
 			Tone:     pickerEntryTone(presented),
 			Selected: presented.Selected || presented.Focused,
 			Disabled: presented.Disabled,
-			Action:   pickerItemAction(presented, closeOnSelect),
+			Action:   pickerItemAction(presented),
 		})
 	}
 	if includeFooter {
@@ -99,7 +99,7 @@ func pickerFooterEntry(footer *controlplane.ResultViewFooter) *surfacedialog.Pic
 	}
 	label := strings.TrimSpace(footer.Label)
 	if label == "" {
-		label = "Cancel"
+		label = "Close"
 	}
 	role := components.RoleCancel
 	if footer.Kind == controlplane.FooterBack {
@@ -114,11 +114,11 @@ func pickerFooterEntry(footer *controlplane.ResultViewFooter) *surfacedialog.Pic
 	}
 }
 
-func pickerItemAction(item controlplane.ResultViewItem, closeSource bool) surfacedialog.Action {
+func pickerItemAction(item controlplane.ResultViewItem) surfacedialog.Action {
 	if strings.TrimSpace(item.Command) == "" {
 		return surfacedialog.ActionClose{}
 	}
-	return surfacedialog.ActionRunControlplaneCommand{Command: item.Command, CloseSource: closeSource}
+	return surfacedialog.ActionRunControlplaneCommand{Command: item.Command}
 }
 
 func PickerCloseAction(view controlplane.PickerViewData) surfacedialog.Action {
@@ -130,10 +130,7 @@ func footerAction(footer *controlplane.ResultViewFooter) surfacedialog.Action {
 		return surfacedialog.ActionClose{}
 	}
 	if command := strings.TrimSpace(footer.Command); command != "" {
-		return surfacedialog.ActionRunControlplaneCommand{
-			Command:     command,
-			CloseSource: footer.Kind == controlplane.FooterCancel,
-		}
+		return surfacedialog.ActionRunControlplaneCommand{Command: command}
 	}
 	return surfacedialog.ActionClose{}
 }

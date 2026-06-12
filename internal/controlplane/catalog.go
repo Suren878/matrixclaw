@@ -72,17 +72,17 @@ const (
 type CommandSpec = commandcatalog.CommandSpec
 
 type PickerData struct {
-	Kind          PickerKind
-	ContextID     string
-	Title         string
-	Meta          string
-	BackCommand   string
-	CancelCommand string
-	HasBack       bool
-	HasCancel     bool
-	Popup         bool
-	Select        bool
-	Items         []PickerItem
+	Kind         PickerKind
+	ContextID    string
+	Title        string
+	Meta         string
+	BackCommand  string
+	CloseCommand string
+	HasBack      bool
+	HasClose     bool
+	Popup        bool
+	Select       bool
+	Items        []PickerItem
 }
 
 type MenuItemGroup string

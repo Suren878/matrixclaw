@@ -185,7 +185,7 @@ func (d *Dispatcher) mcpServerEditForm(ctx context.Context, serverID string) (Re
 		Title:         "Edit " + mcpServerTitle(server),
 		Fields:        fields,
 		SubmitLabel:   "Done",
-		CancelLabel:   "Back",
+		CancelLabel:   "Close",
 		SubmitCommand: mcpServerCommand(server.ID),
 		CancelCommand: mcpServerCommand(server.ID),
 	}}, nil
@@ -263,7 +263,7 @@ func (d *Dispatcher) mcpServerDeleteConfirm(ctx context.Context, serverID string
 		Title:          "Delete MCP Server",
 		Message:        "Delete external MCP server " + mcpServerTitle(server) + "?",
 		ConfirmLabel:   "Delete",
-		CancelLabel:    "Cancel",
+		CancelLabel:    "Close",
 		ConfirmCommand: mcpServerCommand(server.ID, "delete-confirm"),
 		CancelCommand:  mcpServerCommand(server.ID),
 		ConfirmDanger:  true,

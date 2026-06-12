@@ -45,7 +45,7 @@ func (m *appModel) openServerStatusDialog() tea.Cmd {
 }
 
 func (m *appModel) openServerRestartDialog() tea.Cmd {
-	m.dialog.CloseAll()
+	m.closeAllDialogs()
 	m.dialog.OpenDialog(surfacedialog.NewInfo(m.com, surfacedialog.InfoData{
 		ID:    surfacedialog.ServerRestartInfoID,
 		Title: "Restart",

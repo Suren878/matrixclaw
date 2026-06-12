@@ -38,7 +38,7 @@ func (w *Worker) handlePendingPrompt(ctx context.Context, target chatTarget, tex
 			MessageID: target.messageID,
 		})
 	}
-	if strings.EqualFold(strings.TrimSpace(text), "/cancel") {
+	if isPromptCloseCommand(text) {
 		w.clearPrompt(target.externalKey)
 		if strings.TrimSpace(prompt.CancelCommand) != "" {
 			result, err := w.dispatcher().Handle(ctx, target.externalKey, strings.TrimSpace(prompt.CancelCommand))
@@ -47,7 +47,7 @@ func (w *Worker) handlePendingPrompt(ctx context.Context, target chatTarget, tex
 			}
 			return true, w.renderCommandResult(ctx, target, result)
 		}
-		return true, w.sendText(ctx, target, "Cancelled.")
+		return true, w.sendText(ctx, target, "Closed.")
 	}
 	if strings.HasPrefix(strings.TrimSpace(text), "/") {
 		w.clearPrompt(target.externalKey)
@@ -59,4 +59,9 @@ func (w *Worker) handlePendingPrompt(ctx context.Context, target chatTarget, tex
 		return true, w.sendText(ctx, target, fmt.Sprintf("Command failed: %v", err))
 	}
 	return true, w.renderCommandResult(ctx, target, result)
+}
+
+func isPromptCloseCommand(text string) bool {
+	text = strings.ToLower(strings.TrimSpace(text))
+	return text == "/close" || text == "/cancel"
 }

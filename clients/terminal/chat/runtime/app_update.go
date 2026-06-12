@@ -60,13 +60,16 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.openCommandsDialog()
 		return m, nil
 	case surfacedialog.ActionRunControlplaneCommand:
-		return m, m.handleRunControlplaneCommand(msg)
+		return m, m.handleRunControlplaneCommand(msg, m.commandsDialogRoot && m.dialog.ContainsDialog(surfacedialog.CommandsID))
 	case surfacedialog.ActionQuit:
 		return m, tea.Quit
 	case surfacedialog.ActionCmd:
 		return m, msg.Cmd
 	case surfacedialog.ActionClose:
 		m.invalidateControlplaneResults()
+		if top := m.dialog.DialogLast(); top != nil && top.ID() == surfacedialog.CommandsID {
+			m.commandsDialogRoot = false
+		}
 		m.dialog.CloseFrontDialog()
 		return m, nil
 	case controlplaneResultMsg:
