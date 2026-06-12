@@ -41,68 +41,26 @@ func PickerCloseCommand(picker PickerData) string {
 	if command, ok := pickerBackCommand(picker); ok {
 		return command
 	}
-	if command, ok := pickerCloseCommand(picker); ok {
+	if command, ok := pickerCancelCommand(picker); ok {
 		return command
 	}
 	return ""
 }
 
 func PickerFooter(picker PickerData) (PickerFooterAction, bool) {
-	if !picker.HasBack && !picker.HasClose {
-		return pickerImplicitFooter(picker)
+	if picker.HasBack {
+		return PickerFooterAction{
+			Label:   "Back",
+			Command: strings.TrimSpace(picker.BackCommand),
+		}, true
 	}
-	label := "Back"
-	if picker.HasClose && !picker.HasBack {
-		label = "Close"
+	if picker.HasCancel {
+		return PickerFooterAction{
+			Label:   "Cancel",
+			Command: strings.TrimSpace(picker.CancelCommand),
+		}, true
 	}
-	return PickerFooterAction{
-		Label:   label,
-		Command: PickerCloseCommand(picker),
-	}, true
-}
-
-func pickerImplicitFooter(picker PickerData) (PickerFooterAction, bool) {
-	if !picker.Popup {
-		return PickerFooterAction{}, false
-	}
-	command := strings.TrimSpace(pickerImplicitFooterCommand(picker))
-	if command == "" {
-		return PickerFooterAction{}, false
-	}
-	return PickerFooterAction{Label: "Back", Command: command}, true
-}
-
-func pickerImplicitFooterCommand(picker PickerData) string {
-	contextID := strings.TrimSpace(picker.ContextID)
-	switch picker.Kind {
-	case PickerSessionModels:
-		if contextID == "" {
-			return ""
-		}
-		return sessionMenuCommand(contextID)
-	case PickerExternalAgent:
-		if contextID == "" {
-			return ""
-		}
-		return externalAgentCommand(contextID)
-	case PickerStorageCleanup:
-		return storageTempCleanupSettingsCommand()
-	case PickerSkill:
-		section, skillID := splitSkillPickerContext(contextID)
-		if skillID == "" {
-			return ""
-		}
-		return skillsCommand(section, skillID)
-	case PickerMCP:
-		return mcpCommand()
-	case PickerMCPServer:
-		if contextID == "" {
-			return ""
-		}
-		return mcpServerCommand(contextID)
-	default:
-		return ""
-	}
+	return PickerFooterAction{}, false
 }
 
 func pickerBackCommand(picker PickerData) (string, bool) {
@@ -112,11 +70,11 @@ func pickerBackCommand(picker PickerData) (string, bool) {
 	return strings.TrimSpace(picker.BackCommand), true
 }
 
-func pickerCloseCommand(picker PickerData) (string, bool) {
-	if !picker.HasClose {
+func pickerCancelCommand(picker PickerData) (string, bool) {
+	if !picker.HasCancel {
 		return "", false
 	}
-	return strings.TrimSpace(picker.CloseCommand), true
+	return strings.TrimSpace(picker.CancelCommand), true
 }
 
 func PickerCommandLabel(picker PickerData) string {
@@ -135,7 +93,7 @@ func PickerCommandLabel(picker PickerData) string {
 		return contextCommand()
 	case PickerSessionSkills, PickerSessionSkill:
 		return sessionSkillsCommand()
-	case PickerModules, PickerTextToSpeech, PickerSpeechToText, PickerVoiceProvider, PickerExternalAgents, PickerExternalAgent, PickerStorage, PickerStorageFiles, PickerStorageFile, PickerStorageTemp, PickerStorageCleanup, PickerStorageTempFile, PickerSkills, PickerSkillsSection, PickerSkill, PickerBrowser, PickerMCP, PickerMCPServer:
+	case PickerModules, PickerTextToSpeech, PickerSpeechToText, PickerRealtimeVoice, PickerVoiceProvider, PickerExternalAgents, PickerExternalAgent, PickerStorage, PickerStorageFiles, PickerStorageFile, PickerStorageTemp, PickerStorageCleanup, PickerStorageTempFile, PickerSkills, PickerSkillsSection, PickerSkill, PickerBrowser, PickerMCP, PickerMCPServer:
 		return modulesCommand()
 	case PickerTasks, PickerTaskActions, PickerTaskArchive:
 		return tasksCommand()

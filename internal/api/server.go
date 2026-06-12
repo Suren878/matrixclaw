@@ -10,26 +10,28 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/automation"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/skills"
 )
 
 type Server struct {
-	core         *core.Core
-	automation   *automation.Service
-	storage      storageStore
-	skills       *skills.Service
-	mux          *http.ServeMux
-	setup        *setup.Service
-	adminReload  func(context.Context) error
-	adminRestart func(context.Context, core.AdminRestartRequest) error
-	adminStop    func(context.Context) error
-	apiToken     string
-	statusMu     sync.RWMutex
-	startedAt    time.Time
-	cpuMu        sync.Mutex
-	lastCPU      cpuSnapshot
-	hasLastCPU   bool
+	core          *core.Core
+	automation    *automation.Service
+	storage       storageStore
+	realtimeVoice *realtime.Manager
+	skills        *skills.Service
+	mux           *http.ServeMux
+	setup         *setup.Service
+	adminReload   func(context.Context) error
+	adminRestart  func(context.Context, core.AdminRestartRequest) error
+	adminStop     func(context.Context) error
+	apiToken      string
+	statusMu      sync.RWMutex
+	startedAt     time.Time
+	cpuMu         sync.Mutex
+	lastCPU       cpuSnapshot
+	hasLastCPU    bool
 }
 
 func New(coreService *core.Core) *Server {
@@ -64,6 +66,10 @@ func (s *Server) SetAutomationService(service *automation.Service) {
 
 func (s *Server) SetStorageStore(store storageStore) {
 	s.storage = store
+}
+
+func (s *Server) SetRealtimeVoiceService(service *realtime.Manager) {
+	s.realtimeVoice = service
 }
 
 func (s *Server) SetSkillsService(service *skills.Service) {
@@ -141,7 +147,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/v1/modules/storage/temp", s.handleStorageTemp)
 	s.mux.HandleFunc("/v1/modules/storage/temp/", s.handleStorageTempByPath)
 	s.mux.HandleFunc("/v1/modules/voice", s.handleVoiceModules)
+	s.mux.HandleFunc("/v1/modules/voice/realtime_voice", s.handleRealtimeVoiceModule)
 	s.mux.HandleFunc("/v1/modules/voice/", s.handleVoiceModuleByID)
+	s.mux.HandleFunc("/v1/realtime-voice/sessions", s.handleRealtimeVoiceSessions)
+	s.mux.HandleFunc("/v1/realtime-voice/sessions/", s.handleRealtimeVoiceSessionByID)
 	s.mux.HandleFunc("/v1/modules/web-search", s.handleWebSearch)
 	s.mux.HandleFunc("/v1/modules/browser", s.handleBrowserModule)
 	s.mux.HandleFunc("/v1/modules/browser/providers/", s.handleBrowserProvider)

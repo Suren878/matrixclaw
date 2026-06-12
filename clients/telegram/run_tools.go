@@ -100,6 +100,10 @@ func telegramToolAction(call core.ToolCallPart) (string, string) {
 		return "Checking research", telegramParam(params, "question")
 	case "web_research_status":
 		return "Checking research", telegramParam(params, "research_id")
+	case "reverse_geocode_osm":
+		return "Checking address", telegramCoordinatesDetail(params)
+	case "nearby_places_osm":
+		return "Checking nearby places", firstNonEmpty(telegramCoordinatesDetail(params), telegramParam(params, "radius_m"))
 	case "session_search":
 		return "Searching sessions", telegramParam(params, "query")
 	case "skill_search":
@@ -115,6 +119,15 @@ func telegramToolAction(call core.ToolCallPart) (string, string) {
 		return telegramBrowserToolAction(name), firstNonEmpty(telegramParam(params, "url"), telegramParam(params, "text"), telegramParam(params, "selector"), telegramParam(params, "element"), telegramParam(params, "query"), telegramParam(params, "ref"))
 	}
 	return "Using " + telegramPrettyToolName(call.Name), firstNonEmpty(telegramParam(params, "query"), telegramParam(params, "url"), telegramParam(params, "path"), telegramParam(params, "file_path"), telegramParam(params, "action"), telegramParam(params, "name"), telegramParam(params, "id"), telegramParam(params, "text"))
+}
+
+func telegramCoordinatesDetail(params map[string]any) string {
+	lat := telegramParam(params, "latitude")
+	lon := telegramParam(params, "longitude")
+	if lat == "" || lon == "" {
+		return ""
+	}
+	return lat + ", " + lon
 }
 
 func decodeTelegramToolParams(input string) map[string]any {
@@ -224,5 +237,14 @@ func isPlanToolName(name string) bool {
 }
 
 func isHiddenTelegramToolStatusName(name string) bool {
-	return isPlanToolName(name) || isTextToSpeechToolName(name)
+	return isPlanToolName(name) || isTextToSpeechToolName(name) || isWebToolName(name)
+}
+
+func isWebToolName(name string) bool {
+	switch strings.TrimSpace(name) {
+	case "web_search", "web_fetch", "web_research", "web_research_ask", "web_research_status":
+		return true
+	default:
+		return false
+	}
 }

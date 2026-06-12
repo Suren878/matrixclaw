@@ -928,6 +928,252 @@ func TestLocationMessageCreatesRunWithCoordinates(t *testing.T) {
 	}
 }
 
+func TestNearbyMessageAsksForLocationWhenMissing(t *testing.T) {
+	api := &deliveryFakeBotAPI{}
+	var messageRequests int
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/v1/messages" {
+			messageRequests++
+			t.Fatalf("unexpected daemon message request before Telegram location is shared")
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(daemon.Close)
+
+	worker := &Worker{
+		api: api,
+		config: Config{
+			BaseURL:          daemon.URL,
+			ClientName:       "telegram",
+			AllowedUserID:    42,
+			DaemonHTTPClient: daemon.Client(),
+		},
+	}
+	err := worker.handleUpdate(context.Background(), Update{
+		Message: &Message{
+			MessageID: 13,
+			From:      &User{ID: 42},
+			Chat:      Chat{ID: 777, Type: "private"},
+			Text:      "find restaurants nearby",
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleUpdate nearby message: %v", err)
+	}
+	if messageRequests != 0 {
+		t.Fatalf("message requests = %d, want none before location", messageRequests)
+	}
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if len(api.messages) != 1 {
+		t.Fatalf("messages = %#v, want one location request message", api.messages)
+	}
+	if !strings.Contains(strings.ToLower(api.messages[0].Text), "location") {
+		t.Fatalf("message text = %q, want location request", api.messages[0].Text)
+	}
+	payload, err := json.Marshal(api.messages[0])
+	if err != nil {
+		t.Fatalf("marshal send message request: %v", err)
+	}
+	if !strings.Contains(string(payload), `"request_location":true`) {
+		t.Fatalf("send message JSON = %s, want request_location button", payload)
+	}
+}
+
+func TestSharedLocationResumesPendingNearbyMessage(t *testing.T) {
+	api := &deliveryFakeBotAPI{}
+	var requests []core.HandleMessageInput
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/messages":
+			var request core.HandleMessageInput
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Fatalf("decode message request: %v", err)
+			}
+			requests = append(requests, request)
+			writeJSON(t, w, core.AcceptRunResult{
+				SessionID: "session_location",
+				Status:    core.AcceptRunStatusStarted,
+				Run: core.Run{
+					ID:        "run_location",
+					SessionID: "session_location",
+					Status:    core.RunStatusAccepted,
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/client-deliveries":
+			writeJSON(t, w, core.ClientDeliveriesResponse{})
+		default:
+			t.Errorf("unexpected daemon request %s %s", r.Method, r.URL.String())
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(daemon.Close)
+
+	worker := &Worker{
+		api: api,
+		config: Config{
+			BaseURL:          daemon.URL,
+			ClientName:       "telegram",
+			AllowedUserID:    42,
+			WorkingDir:       "/repo",
+			DaemonHTTPClient: daemon.Client(),
+		},
+	}
+	if err := worker.handleUpdate(context.Background(), Update{
+		Message: &Message{
+			MessageID: 14,
+			From:      &User{ID: 42},
+			Chat:      Chat{ID: 777, Type: "private"},
+			Text:      "find restaurants nearby",
+		},
+	}); err != nil {
+		t.Fatalf("handleUpdate nearby message: %v", err)
+	}
+	if err := worker.handleUpdate(context.Background(), Update{
+		Message: &Message{
+			MessageID: 15,
+			From:      &User{ID: 42},
+			Chat:      Chat{ID: 777, Type: "private"},
+			Location:  &Location{Latitude: 43.238949, Longitude: 76.889709},
+		},
+	}); err != nil {
+		t.Fatalf("handleUpdate shared location: %v", err)
+	}
+
+	if len(requests) != 1 {
+		t.Fatalf("message requests = %#v, want one request after location", requests)
+	}
+	if !strings.Contains(requests[0].Text, "find restaurants nearby") {
+		t.Fatalf("text = %q, want pending nearby request", requests[0].Text)
+	}
+	if !strings.Contains(requests[0].Text, "43.238949") || !strings.Contains(requests[0].Text, "76.889709") {
+		t.Fatalf("text = %q, want coordinates", requests[0].Text)
+	}
+}
+
+func TestNearbyMessageUsesFreshSharedLocation(t *testing.T) {
+	api := &deliveryFakeBotAPI{}
+	now := time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC)
+	var requests []core.HandleMessageInput
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/messages":
+			var request core.HandleMessageInput
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Fatalf("decode message request: %v", err)
+			}
+			requests = append(requests, request)
+			writeJSON(t, w, core.AcceptRunResult{
+				SessionID: "session_location",
+				Status:    core.AcceptRunStatusStarted,
+				Run:       core.Run{ID: "run_location", SessionID: "session_location", Status: core.RunStatusAccepted},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/client-deliveries":
+			writeJSON(t, w, core.ClientDeliveriesResponse{})
+		default:
+			t.Errorf("unexpected daemon request %s %s", r.Method, r.URL.String())
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(daemon.Close)
+
+	worker := &Worker{
+		api: api,
+		config: Config{
+			BaseURL:          daemon.URL,
+			ClientName:       "telegram",
+			AllowedUserID:    42,
+			WorkingDir:       "/repo",
+			DaemonHTTPClient: daemon.Client(),
+		},
+		locations: map[string]telegramLocationContext{
+			"777": {
+				Location: Location{Latitude: 43.238949, Longitude: 76.889709},
+				SharedAt: now.Add(-10 * time.Minute),
+			},
+		},
+		now: func() time.Time { return now },
+	}
+	err := worker.handleUpdate(context.Background(), Update{
+		Message: &Message{
+			MessageID: 16,
+			From:      &User{ID: 42},
+			Chat:      Chat{ID: 777, Type: "private"},
+			Text:      "find coffee nearby",
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleUpdate nearby message: %v", err)
+	}
+	if len(requests) != 1 {
+		t.Fatalf("message requests = %#v, want one request with fresh location", requests)
+	}
+	if !strings.Contains(requests[0].Text, "find coffee nearby") {
+		t.Fatalf("text = %q, want original request", requests[0].Text)
+	}
+	if !strings.Contains(requests[0].Text, "43.238949") || !strings.Contains(requests[0].Text, "76.889709") {
+		t.Fatalf("text = %q, want fresh location coordinates", requests[0].Text)
+	}
+	if len(api.messages) != 0 {
+		t.Fatalf("messages = %#v, want no location refresh request", api.messages)
+	}
+}
+
+func TestNearbyMessageRefreshesStaleSharedLocation(t *testing.T) {
+	api := &deliveryFakeBotAPI{}
+	now := time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC)
+	var messageRequests int
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/v1/messages" {
+			messageRequests++
+			t.Fatalf("unexpected daemon message request with stale Telegram location")
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(daemon.Close)
+
+	worker := &Worker{
+		api: api,
+		config: Config{
+			BaseURL:          daemon.URL,
+			ClientName:       "telegram",
+			AllowedUserID:    42,
+			DaemonHTTPClient: daemon.Client(),
+		},
+		locations: map[string]telegramLocationContext{
+			"777": {
+				Location: Location{Latitude: 43.238949, Longitude: 76.889709},
+				SharedAt: now.Add(-31 * time.Minute),
+			},
+		},
+		now: func() time.Time { return now },
+	}
+	err := worker.handleUpdate(context.Background(), Update{
+		Message: &Message{
+			MessageID: 17,
+			From:      &User{ID: 42},
+			Chat:      Chat{ID: 777, Type: "private"},
+			Text:      "find coffee nearby",
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleUpdate nearby message: %v", err)
+	}
+	if messageRequests != 0 {
+		t.Fatalf("message requests = %d, want none before refreshed location", messageRequests)
+	}
+	if len(api.messages) != 1 {
+		t.Fatalf("messages = %#v, want one location refresh request", api.messages)
+	}
+	payload, err := json.Marshal(api.messages[0])
+	if err != nil {
+		t.Fatalf("marshal send message request: %v", err)
+	}
+	if !strings.Contains(string(payload), `"request_location":true`) {
+		t.Fatalf("send message JSON = %s, want request_location button", payload)
+	}
+}
+
 func TestNewCommandCreatesMatrixclawSessionWithoutTelegramTopicAPI(t *testing.T) {
 	api := &deliveryFakeBotAPI{}
 	var createRequest core.CreateSessionRequest

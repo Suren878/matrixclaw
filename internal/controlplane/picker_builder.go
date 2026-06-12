@@ -22,15 +22,21 @@ func (b *PickerBuilder) Meta(meta string) *PickerBuilder {
 
 func (b *PickerBuilder) Back(command string) *PickerBuilder {
 	b.data.BackCommand = command
-	b.data.CloseCommand = command
 	b.data.HasBack = true
-	b.data.HasClose = true
 	return b
 }
 
-func (b *PickerBuilder) Close(command string) *PickerBuilder {
-	b.data.CloseCommand = command
-	b.data.HasClose = true
+func (b *PickerBuilder) Cancel(command string) *PickerBuilder {
+	b.data.CancelCommand = command
+	b.data.HasCancel = true
+	return b
+}
+
+func (b *PickerBuilder) Select(cancelCommand string) *PickerBuilder {
+	b.data.Popup = true
+	b.data.Select = true
+	b.data.CancelCommand = cancelCommand
+	b.data.HasCancel = true
 	return b
 }
 

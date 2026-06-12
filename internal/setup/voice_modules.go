@@ -6,14 +6,12 @@ import (
 )
 
 const (
-	VoiceModuleTTS = "tts"
-	VoiceModuleSTT = "stt"
+	VoiceModuleTTS      = "tts"
+	VoiceModuleSTT      = "stt"
+	VoiceModuleRealtime = "realtime_voice"
 )
 
-// Realtime voice is intentionally not exposed as a configurable module yet.
-// Keep the concept documented here so it can be added later when there is a
-// client/runtime capable of testing bidirectional audio.
-const FutureVoiceModuleRealtime = "realtime_voice"
+const FutureVoiceModuleRealtime = VoiceModuleRealtime
 
 func (s *Service) VoiceModules() ([]VoiceModuleDescriptor, error) {
 	cfg, err := s.Load()
@@ -56,7 +54,17 @@ func (s *Service) UpdateVoiceModule(id string, update VoiceModuleUpdate) ([]Voic
 		if current.Providers == nil {
 			current.Providers = map[string]VoiceProviderConfig{}
 		}
-		current.Providers[providerID] = normalizeVoiceProviderConfig(id, providerID, *update.ProviderConfig)
+		providerConfig := *update.ProviderConfig
+		if id == VoiceModuleRealtime && providerID == "gemini_live" {
+			existing := voiceProviderConfigByID(id, current, providerID)
+			if strings.TrimSpace(providerConfig.APIKey) == "" {
+				providerConfig.APIKey = existing.APIKey
+			}
+			if strings.TrimSpace(providerConfig.APIKeyEnv) == "" {
+				providerConfig.APIKeyEnv = existing.APIKeyEnv
+			}
+		}
+		current.Providers[providerID] = normalizeVoiceProviderConfig(id, providerID, providerConfig)
 	}
 	current = normalizeVoiceModuleConfig(id, current)
 	setVoiceModuleConfigByID(&cfg.Modules, id, current)
@@ -76,6 +84,11 @@ func VoiceModuleDescriptors(modules ModulesConfig) []VoiceModuleDescriptor {
 		voiceModuleDescriptor(VoiceModuleTTS, "Text to Speech", modules.TextToSpeech),
 		voiceModuleDescriptor(VoiceModuleSTT, "Speech to Text", modules.SpeechToText),
 	}
+}
+
+func RealtimeVoiceModuleDescriptor(modules ModulesConfig) VoiceModuleDescriptor {
+	modules = normalizeModulesConfig(modules)
+	return voiceModuleDescriptor(VoiceModuleRealtime, "Realtime Voice", modules.RealtimeVoice)
 }
 
 func voiceModuleDescriptor(id string, title string, cfg VoiceModuleConfig) VoiceModuleDescriptor {
@@ -146,10 +159,19 @@ func voiceProviderConfigByID(moduleID string, module VoiceModuleConfig, provider
 }
 
 func normalizeVoiceProviderConfig(moduleID string, providerID string, cfg VoiceProviderConfig) VoiceProviderConfig {
+	moduleID = normalizeVoiceModuleID(moduleID)
+	providerID = normalizeVoiceProviderID(providerID)
+	if moduleID == VoiceModuleRealtime && providerID == "gemini_live" {
+		cfg.APIKey = normalizeProviderAPIKey(cfg.APIKey)
+		cfg.APIKeyEnv = strings.TrimSpace(cfg.APIKeyEnv)
+	} else {
+		cfg.APIKey = ""
+		cfg.APIKeyEnv = ""
+	}
 	cfg.ModelID = strings.TrimSpace(cfg.ModelID)
 	cfg.VoiceID = strings.TrimSpace(cfg.VoiceID)
-	if normalizeVoiceModuleID(moduleID) == VoiceModuleTTS {
-		if normalizeVoiceProviderID(providerID) == "supertonic" {
+	if moduleID == VoiceModuleTTS {
+		if providerID == "supertonic" {
 			cfg.Language = normalizeSupertonicLanguageCode(cfg.Language)
 		} else {
 			cfg.Language = normalizeVoiceLanguageCode(cfg.Language)
@@ -257,6 +279,11 @@ func defaultVoiceProviderConfig(providerID string) VoiceProviderConfig {
 			RuntimeMode: "per_task",
 			BinaryPath:  "whisper-cli",
 		}
+	case "gemini_live":
+		return VoiceProviderConfig{
+			VoiceID:  "Puck",
+			Endpoint: "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent",
+		}
 	default:
 		return VoiceProviderConfig{}
 	}
@@ -268,6 +295,8 @@ func voiceModuleConfigByID(modules ModulesConfig, id string) VoiceModuleConfig {
 		return modules.TextToSpeech
 	case VoiceModuleSTT:
 		return modules.SpeechToText
+	case VoiceModuleRealtime:
+		return modules.RealtimeVoice
 	default:
 		return VoiceModuleConfig{}
 	}
@@ -279,6 +308,8 @@ func setVoiceModuleConfigByID(modules *ModulesConfig, id string, cfg VoiceModule
 		modules.TextToSpeech = cfg
 	case VoiceModuleSTT:
 		modules.SpeechToText = cfg
+	case VoiceModuleRealtime:
+		modules.RealtimeVoice = cfg
 	}
 }
 
@@ -288,6 +319,8 @@ func normalizeVoiceModuleID(id string) string {
 		return VoiceModuleTTS
 	case "stt", "speech-to-text", "speech_to_text":
 		return VoiceModuleSTT
+	case "realtime", "realtime-voice", "realtime_voice", "live", "live-voice", "live_voice":
+		return VoiceModuleRealtime
 	default:
 		return ""
 	}
@@ -303,6 +336,8 @@ func defaultVoiceProviderID(moduleID string) string {
 		return "piper"
 	case VoiceModuleSTT:
 		return "whispercpp"
+	case VoiceModuleRealtime:
+		return "gemini_live"
 	default:
 		return ""
 	}
@@ -355,6 +390,10 @@ func voiceProviders(moduleID string) []VoiceProviderOption {
 				{ID: "medium", Name: "Medium", Size: "~1.5 GB", RAM: "~2.6 GB", Description: "Heavy local model"},
 				{ID: "large-v3", Name: "Large v3", Size: "~3 GB", RAM: "~4 GB", Description: "Very heavy"},
 			}},
+		}
+	case VoiceModuleRealtime:
+		return []VoiceProviderOption{
+			{ID: "gemini_live", Name: "Gemini Live", Local: false, Status: "Cloud · API key required"},
 		}
 	default:
 		return nil

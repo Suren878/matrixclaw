@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/controlplane"
+	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 type Config struct {
@@ -24,24 +25,29 @@ type Config struct {
 	StreamFlushInterval     time.Duration
 	BotHTTPClient           HTTPDoer
 	DaemonHTTPClient        *http.Client
+	Geo                     *tools.OSMService
 	Offset                  *atomic.Int64
 	SkipCommandRegistration bool
 }
 
 type Worker struct {
-	api        BotAPI
-	config     Config
-	offset     *atomic.Int64
-	mu         sync.Mutex
-	delivery   sync.Mutex
-	states     map[string]*runDeliveryState
-	prompts    map[string]controlplane.PromptData
-	callbacks  map[string]string
-	inline     map[string]string
-	inlineRuns map[string]struct{}
-	messages   map[string]struct{}
-	messageLog []string
-	autoEdits  map[string]struct{}
+	api              BotAPI
+	config           Config
+	offset           *atomic.Int64
+	mu               sync.Mutex
+	delivery         sync.Mutex
+	states           map[string]*runDeliveryState
+	prompts          map[string]controlplane.PromptData
+	callbacks        map[string]string
+	inline           map[string]string
+	inlineRuns       map[string]struct{}
+	messages         map[string]struct{}
+	messageLog       []string
+	autoEdits        map[string]struct{}
+	locations        map[string]telegramLocationContext
+	pendingLocations map[string]pendingLocationRequest
+	geo              *tools.OSMService
+	now              func() time.Time
 }
 
 type runDeliveryState struct {
@@ -78,4 +84,13 @@ type chatTarget struct {
 	guestQueryID    string
 	inlineMessageID string
 	externalKey     string
+}
+
+type telegramLocationContext struct {
+	Location Location
+	SharedAt time.Time
+}
+
+type pendingLocationRequest struct {
+	Text string
 }

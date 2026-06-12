@@ -127,10 +127,10 @@ func (m *appModel) handleDialogInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if action == nil {
 		return m, nil
 	}
-	next, cmd := m.Update(action)
 	if dialogActionClosesSource(action) && sourceID != "" {
 		m.dialog.CloseDialog(sourceID)
 	}
+	next, cmd := m.Update(action)
 	return next, cmd
 }
 

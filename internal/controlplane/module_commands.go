@@ -32,6 +32,10 @@ func speechToTextCommand(parts ...string) string {
 	return voiceModuleCommand("stt", parts...)
 }
 
+func realtimeVoiceCommand(parts ...string) string {
+	return voiceModuleCommand("realtime_voice", parts...)
+}
+
 func storageCommandPrefix(parts ...string) string {
 	return storageCommand(parts...) + " "
 }

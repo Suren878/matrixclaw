@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -75,6 +76,30 @@ func TestSendDocumentUploadsMultipartFile(t *testing.T) {
 	}
 	if !strings.EqualFold(gotContent, "hello config\n") {
 		t.Fatalf("document content = %q, want hello config", gotContent)
+	}
+}
+
+func TestGetUpdatesTimeoutErrorRemainsRetryableAfterTokenRedaction(t *testing.T) {
+	client, err := NewClient(ClientConfig{
+		Token:   "test-token",
+		BaseURL: "https://api.telegram.org",
+		HTTPClient: httpDoerFunc(func(req *http.Request) (*http.Response, error) {
+			return nil, fmt.Errorf("Post %q: %w", req.URL.String(), context.DeadlineExceeded)
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.GetUpdates(context.Background(), GetUpdatesRequest{})
+	if err == nil {
+		t.Fatalf("GetUpdates() error = nil, want timeout")
+	}
+	if strings.Contains(err.Error(), "test-token") {
+		t.Fatalf("error = %q, want bot token redacted", err.Error())
+	}
+	if !IsRetryable(err) {
+		t.Fatalf("IsRetryable(%q) = false, want true", err.Error())
 	}
 }
 
@@ -305,4 +330,10 @@ func TestEditMessageTextAcceptsInlineBooleanResult(t *testing.T) {
 	if gotRequest.InlineMessageID != "inline_msg_1" || gotRequest.Text != "final inline answer" {
 		t.Fatalf("edit request = %#v, want inline edit request", gotRequest)
 	}
+}
+
+type httpDoerFunc func(*http.Request) (*http.Response, error)
+
+func (f httpDoerFunc) Do(req *http.Request) (*http.Response, error) {
+	return f(req)
 }

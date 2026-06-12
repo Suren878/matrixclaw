@@ -75,9 +75,8 @@ func (d *Dispatcher) handleOpenAICodexAuthComplete(ctx context.Context, args str
 	return Result{
 		Handled: true,
 		Info: &InfoData{
-			Title:        "OpenAI Codex Authorization",
-			Text:         "Login successful.",
-			CloseCommand: providerEditCommand(provider.ID),
+			Title: "OpenAI Codex Authorization",
+			Text:  "Login successful.",
 		},
 	}, nil
 }

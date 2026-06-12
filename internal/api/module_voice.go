@@ -36,6 +36,10 @@ func (s *Server) handleVoiceModuleByID(w http.ResponseWriter, r *http.Request) {
 		writeErrorMessage(w, http.StatusBadRequest, "voice module id is required")
 		return
 	}
+	if moduleID == setup.VoiceModuleRealtime && suffix == "" {
+		s.handleRealtimeVoiceModule(w, r)
+		return
+	}
 	if strings.HasPrefix(suffix, "providers/") {
 		s.handleVoiceProvider(w, r, moduleID, strings.TrimPrefix(suffix, "providers/"))
 		return

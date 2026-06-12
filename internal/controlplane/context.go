@@ -114,10 +114,9 @@ func contextInfoData(report core.ContextReport) InfoData {
 		rows = append(rows, InfoRow{Label: "Reason", Value: reason})
 	}
 	return InfoData{
-		Title:        "Context Usage",
-		Text:         contextInfoText(report),
-		Rows:         rows,
-		CloseCommand: contextCommand(),
+		Title: "Context Usage",
+		Text:  contextInfoText(report),
+		Rows:  rows,
 	}
 }
 

@@ -43,6 +43,7 @@ const (
 	PickerModules           PickerKind = "modules"
 	PickerTextToSpeech      PickerKind = "text_to_speech"
 	PickerSpeechToText      PickerKind = "speech_to_text"
+	PickerRealtimeVoice     PickerKind = "realtime_voice"
 	PickerVoiceProvider     PickerKind = "voice_provider"
 	PickerExternalAgents    PickerKind = "external_agents"
 	PickerExternalAgent     PickerKind = "external_agent"
@@ -71,16 +72,17 @@ const (
 type CommandSpec = commandcatalog.CommandSpec
 
 type PickerData struct {
-	Kind         PickerKind
-	ContextID    string
-	Title        string
-	Meta         string
-	BackCommand  string
-	CloseCommand string
-	HasBack      bool
-	HasClose     bool
-	Popup        bool
-	Items        []PickerItem
+	Kind          PickerKind
+	ContextID     string
+	Title         string
+	Meta          string
+	BackCommand   string
+	CancelCommand string
+	HasBack       bool
+	HasCancel     bool
+	Popup         bool
+	Select        bool
+	Items         []PickerItem
 }
 
 type MenuItemGroup string

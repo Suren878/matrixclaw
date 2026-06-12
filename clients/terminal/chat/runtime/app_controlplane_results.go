@@ -200,7 +200,7 @@ func infoData(info controlplane.InfoData) surfacedialog.InfoData {
 		Title:       info.Title,
 		Text:        info.Text,
 		Rows:        info.Rows,
-		CloseAction: controlplaneCloseAction(info.CloseCommand),
+		CloseAction: controlplaneCloseAction(info.CancelCommand),
 	}
 }
 
@@ -237,6 +237,11 @@ func (m *appModel) showControlplaneDialog(dialog surfacedialog.Dialog) {
 			m.dialog.CloseDialog(surfacedialog.ConfirmCommandID)
 		}
 	}
+	if nextID == surfacedialog.CommandsID && m.dialog.ContainsDialog(surfacedialog.CommandsID) {
+		if top := m.dialog.DialogLast(); top == nil || top.ID() != surfacedialog.CommandsID {
+			m.dialog.CloseDialog(surfacedialog.CommandsID)
+		}
+	}
 	top := m.dialog.DialogLast()
 	if top == nil {
 		m.dialog.OpenDialog(dialog)
@@ -246,6 +251,10 @@ func (m *appModel) showControlplaneDialog(dialog surfacedialog.Dialog) {
 	switch {
 	case topID == nextID:
 		m.dialog.ReplaceFrontDialog(dialog)
+		return
+	case topID == surfacedialog.PickerID && nextID == surfacedialog.CommandsID:
+		m.dialog.CloseFrontDialog()
+		m.dialog.OpenDialog(dialog)
 		return
 	case topID == surfacedialog.PickerID && (nextID == surfacedialog.FormCommandID || nextID == surfacedialog.TextEditCommandID):
 		m.dialog.CloseFrontDialog()

@@ -29,14 +29,6 @@ type subagentWorkResult struct {
 	CompletionAutoResumeRunID string `json:"completion_auto_resume_run_id,omitempty"`
 }
 
-func (c *Core) createSubagentWorkJob(ctx context.Context, task SubagentTask) {
-	c.saveSubagentWorkJob(ctx, task)
-}
-
-func (c *Core) updateSubagentWorkJob(ctx context.Context, task SubagentTask) {
-	c.saveSubagentWorkJob(ctx, task)
-}
-
 func (c *Core) saveSubagentWorkJob(ctx context.Context, task SubagentTask) {
 	if c == nil || c.workStore == nil {
 		return

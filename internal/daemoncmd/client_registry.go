@@ -13,16 +13,17 @@ import (
 	"github.com/Suren878/matrixclaw/clients/telegram"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/safego"
+	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 type clientRegistry struct {
 	clients []clientAdapter
 }
 
-func newClientRegistry() *clientRegistry {
+func newClientRegistry(geo *tools.OSMService) *clientRegistry {
 	return &clientRegistry{
 		clients: []clientAdapter{
-			&telegramClientAdapter{},
+			&telegramClientAdapter{geo: geo},
 		},
 	}
 }
@@ -70,6 +71,7 @@ type telegramClientAdapter struct {
 	cancel      context.CancelFunc
 	offset      atomic.Int64
 	commandsSet bool
+	geo         *tools.OSMService
 }
 
 func (a *telegramClientAdapter) Apply(ctx context.Context, bootstrap bootstrapConfig) error {
@@ -96,6 +98,7 @@ func (a *telegramClientAdapter) Apply(ctx context.Context, bootstrap bootstrapCo
 		InlineCachePath:         telegramInlineCachePath(bootstrap.DBPath),
 		Offset:                  &a.offset,
 		SkipCommandRegistration: a.commandsSet,
+		Geo:                     a.geo,
 	})
 	if err != nil {
 		return err

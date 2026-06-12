@@ -176,13 +176,12 @@ func (d *Dispatcher) voiceModuleEnabledPicker(ctx context.Context, moduleID stri
 	}
 	return Result{
 		Handled: true,
-		Picker: NewPickerData(PickerVoiceProvider, module.Title).
-			Context(module.ID).
-			Meta("Module is " + strings.ToLower(formatEnabled(module.Enabled))).
-			Popup().
-			Close(voiceModuleCommand(module.ID)).
-			Item(PickerItem{ID: "on", Title: "On", Info: module.Title, Selected: module.Enabled, Command: voiceModuleCommand(module.ID, "set-enabled", "on")}).
-			Item(PickerItem{ID: "off", Title: "Off", Info: module.Title, Selected: !module.Enabled, Command: voiceModuleCommand(module.ID, "set-enabled", "off")}).
+			Picker: NewPickerData(PickerVoiceProvider, module.Title).
+				Context(module.ID).
+				Meta("Module is " + strings.ToLower(formatEnabled(module.Enabled))).
+				Select(voiceModuleCommand(module.ID)).
+				Item(PickerItem{ID: "on", Title: "On", Info: module.Title, Selected: module.Enabled, Command: voiceModuleCommand(module.ID, "set-enabled", "on")}).
+				Item(PickerItem{ID: "off", Title: "Off", Info: module.Title, Selected: !module.Enabled, Command: voiceModuleCommand(module.ID, "set-enabled", "off")}).
 			Ptr(),
 	}, nil
 }
@@ -227,8 +226,7 @@ func (d *Dispatcher) voiceModuleProviderSelectPicker(ctx context.Context, module
 	}
 	picker := NewPickerData(PickerVoiceProvider, title).
 		Context(module.ID).
-		Popup().
-		Close(voiceModuleCommand(module.ID)).
+		Select(voiceModuleCommand(module.ID)).
 		Item(PickerItem{
 			ID:       "disabled",
 			Title:    "Disabled",
@@ -485,9 +483,7 @@ func (d *Dispatcher) voiceModuleProviderSetup(ctx context.Context, moduleID stri
 			}
 			if result.Picker != nil {
 				result.Picker.BackCommand = voiceModuleCommand(module.ID, "provider-setup")
-				result.Picker.CloseCommand = result.Picker.BackCommand
 				result.Picker.HasBack = true
-				result.Picker.HasClose = true
 			}
 			return result, nil
 		}

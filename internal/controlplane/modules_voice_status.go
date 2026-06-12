@@ -27,7 +27,6 @@ func (d *Dispatcher) voiceModuleInfo(ctx context.Context, moduleID string) (Resu
 				{Label: "Local", Value: formatYesNo(module.Local)},
 				{Label: "Status", Value: module.Status},
 			},
-			CloseCommand: voiceModuleCommand(module.ID),
 		},
 	}, nil
 }
@@ -50,7 +49,7 @@ func voiceModuleStatus(module setup.VoiceModuleDescriptor) Result {
 			rows[1].Value = "Unknown"
 		}
 	}
-	return Result{Handled: true, Info: &InfoData{Title: module.Title + " Status", Rows: rows, CloseCommand: voiceModuleCommand(module.ID)}}
+	return Result{Handled: true, Info: &InfoData{Title: module.Title + " Status", Rows: rows}}
 }
 
 func (d *Dispatcher) voiceModule(ctx context.Context, moduleID string) (setup.VoiceModuleDescriptor, error) {
@@ -574,7 +573,7 @@ func voiceLocalTTSStatus(provider setup.VoiceProviderOption) Result {
 			InfoRow{Label: "Used RAM", Value: "0 B"},
 		)
 	}
-	return Result{Handled: true, Info: &InfoData{Title: provider.Name + " Status", Rows: rows, CloseCommand: voiceProviderSettingsBackCommand(setup.VoiceModuleTTS, provider.ID)}}
+	return Result{Handled: true, Info: &InfoData{Title: provider.Name + " Status", Rows: rows}}
 }
 
 func voiceLocalSupertonicStatus(provider setup.VoiceProviderOption) Result {
@@ -588,7 +587,7 @@ func voiceLocalSupertonicStatus(provider setup.VoiceProviderOption) Result {
 	if detail := strings.TrimSpace(provider.RuntimeDetail); detail != "" {
 		rows = append(rows, InfoRow{Label: "Detail", Value: detail})
 	}
-	return Result{Handled: true, Info: &InfoData{Title: provider.Name + " Status", Rows: rows, CloseCommand: voiceProviderSettingsBackCommand(setup.VoiceModuleTTS, provider.ID)}}
+	return Result{Handled: true, Info: &InfoData{Title: provider.Name + " Status", Rows: rows}}
 }
 
 func supertonicStorageStatus(provider setup.VoiceProviderOption) string {
@@ -648,7 +647,7 @@ func voiceLocalSTTStatus(provider setup.VoiceProviderOption) Result {
 			InfoRow{Label: "Used RAM", Value: "0 B"},
 		)
 	}
-	return Result{Handled: true, Info: &InfoData{Title: "Whisper.cpp Status", Rows: rows, CloseCommand: voiceProviderSettingsBackCommand(setup.VoiceModuleSTT, provider.ID)}}
+	return Result{Handled: true, Info: &InfoData{Title: "Whisper.cpp Status", Rows: rows}}
 }
 
 func voiceModelStorageStatus(model setup.VoiceModelOption) string {

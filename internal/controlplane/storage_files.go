@@ -76,9 +76,8 @@ func (d *Dispatcher) storageRead(ctx context.Context, storagePath string) (Resul
 	return Result{
 		Handled: true,
 		Info: &InfoData{
-			Title:        storageFileTitle(read.File),
-			Text:         content,
-			CloseCommand: storageFileCommand(read.File.Path),
+			Title: storageFileTitle(read.File),
+			Text:  content,
 		},
 	}, nil
 }

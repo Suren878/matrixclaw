@@ -83,3 +83,52 @@ func TestRenderToolUpdatesSkipsTextToSpeechStatuses(t *testing.T) {
 		t.Fatalf("messages=%#v edits=%#v, want no visible TTS status text", api.messages, api.edits)
 	}
 }
+
+func TestRenderToolUpdatesSkipsWebStatuses(t *testing.T) {
+	api := &deliveryFakeBotAPI{}
+	worker := &Worker{api: api}
+	target := chatTarget{kind: telegramTargetChat, chatID: 123, externalKey: "123"}
+	state := newRunDeliveryState()
+	messages := []core.Message{
+		{
+			ID:    "assistant_tool_call",
+			RunID: "run_1",
+			Role:  core.MessageRoleAssistant,
+			Parts: []core.MessagePart{{
+				Kind: core.MessagePartKindToolCall,
+				ToolCall: &core.ToolCallPart{
+					ID:    "call_search",
+					Name:  "web_search",
+					Input: `{"query":"restaurants near 59.763111,30.310916"}`,
+				},
+			}},
+		},
+		{
+			ID:    "tool_result",
+			RunID: "run_1",
+			Role:  core.MessageRoleTool,
+			Parts: []core.MessagePart{{
+				Kind: core.MessagePartKindToolResult,
+				ToolResult: &core.ToolResultPart{
+					ToolCallID: "call_search",
+					Name:       "web_search",
+					Content:    "Search results.",
+					Status:     "success",
+				},
+			}},
+		},
+	}
+
+	if err := worker.renderToolCallUpdates(context.Background(), target, messages, "run_1", state); err != nil {
+		t.Fatalf("renderToolCallUpdates: %v", err)
+	}
+	if err := worker.renderToolResultUpdates(context.Background(), target, messages, "run_1", state); err != nil {
+		t.Fatalf("renderToolResultUpdates: %v", err)
+	}
+
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if len(api.messages) != 0 || len(api.edits) != 0 {
+		t.Fatalf("messages=%#v edits=%#v, want no visible web status text", api.messages, api.edits)
+	}
+}

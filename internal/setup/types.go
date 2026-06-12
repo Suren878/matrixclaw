@@ -68,6 +68,7 @@ type ModulesConfig struct {
 	ExternalAgents map[string]ExternalAgentConfig `json:"external_agents,omitempty"`
 	TextToSpeech   VoiceModuleConfig              `json:"tts,omitempty"`
 	SpeechToText   VoiceModuleConfig              `json:"stt,omitempty"`
+	RealtimeVoice  VoiceModuleConfig              `json:"realtime_voice,omitempty"`
 	Browser        BrowserConfig                  `json:"browser,omitempty"`
 	WebSearch      WebSearchConfig                `json:"web_search,omitempty"`
 	MCP            MCPConfig                      `json:"mcp,omitempty"`
@@ -229,6 +230,8 @@ type VoiceModuleConfig struct {
 }
 
 type VoiceProviderConfig struct {
+	APIKey      string `json:"api_key,omitempty"`
+	APIKeyEnv   string `json:"api_key_env,omitempty"`
 	ModelID     string `json:"model_id,omitempty"`
 	VoiceID     string `json:"voice_id,omitempty"`
 	Language    string `json:"language,omitempty"`

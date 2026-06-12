@@ -94,9 +94,12 @@ func pickerFooterEntry(footer *controlplane.ResultViewFooter) *surfacedialog.Pic
 	if footer == nil {
 		return nil
 	}
+	if footer.Hidden {
+		return nil
+	}
 	label := strings.TrimSpace(footer.Label)
 	if label == "" {
-		label = "Close"
+		label = "Cancel"
 	}
 	role := components.RoleCancel
 	if footer.Kind == controlplane.FooterBack {
@@ -127,7 +130,10 @@ func footerAction(footer *controlplane.ResultViewFooter) surfacedialog.Action {
 		return surfacedialog.ActionClose{}
 	}
 	if command := strings.TrimSpace(footer.Command); command != "" {
-		return surfacedialog.ActionRunControlplaneCommand{Command: command}
+		return surfacedialog.ActionRunControlplaneCommand{
+			Command:     command,
+			CloseSource: footer.Kind == controlplane.FooterCancel,
+		}
 	}
 	return surfacedialog.ActionClose{}
 }

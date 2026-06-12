@@ -54,7 +54,7 @@ runtime through Terminal, Telegram, or MCP.
 - **Usage ledger:** provider token usage is recorded when available.
 - **Storage module:** Telegram uploads and generated files land in local storage, with temporary files promoted only when needed.
 - **Web research and browser tools:** `web_research`, `web_research_ask`, and compatibility `web_search` / `web_fetch` tools with SQLite-backed facts/sources and runtime artifacts. Search providers: DuckDuckGo (free, no key), Tavily (1 000 req/mo free), Serper (2 500 req/mo free), SearXNG (self-hosted). Configure from `/modules` without restarting. When an MCP browser server is connected, MatrixClaw can also expose interactive browser tools for opening pages, clicking, typing, waiting, and screenshots.
-- **Local voice modules:** Piper and Supertonic TTS plus Whisper.cpp STT run locally, either per task to save RAM or as managed warm processes.
+- **Voice modules:** Piper and Supertonic TTS plus Whisper.cpp STT run locally, and realtime speech-to-speech is available through the daemon WebSocket gateway with Gemini Live as the first provider.
 - **MCP module:** connect external MCP servers as assistant tools, or expose matrixclaw tools to MCP hosts.
 - **Automation-ready:** reminders, scheduled AI tasks, deliveries, and future agent workflows.
 
@@ -172,6 +172,9 @@ Latest release highlights for `v0.1.15`:
   originating chat or inline message.
 - Passed Telegram inline geolocation into assistant requests, so location-based
   prompts can use the coordinates Telegram supplies.
+- Added daemon-level realtime speech-to-speech plumbing. Clients can create a
+  `realtime_voice` session, stream PCM audio over WebSocket, receive live audio
+  and transcripts, and route tool calls/approvals through the same core runtime.
 - Added browser module plumbing and managed browser MCP configuration paths for
   browser provider state in the daemon, API client, and control-plane UI.
 - Expanded storage byte-read APIs and moved storage, voice, and session-LLM
@@ -255,6 +258,10 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
 - Telegram image/document uploads stored as temporary files, with explicit save/delete controls.
 - Telegram voice and audio messages transcribed through the configured STT provider and sent into the active session as text.
 - Telegram `/tts` and assistant `text_to_speech` tool results sent back as voice messages and archived in storage.
+- Realtime speech-to-speech sessions over the daemon API. The first backend is
+  Gemini Live (`gemini_live`), while clients use MatrixClaw's provider-neutral
+  realtime protocol so iOS, web, or SIP gateways can attach later without
+  speaking provider-specific APIs.
 - Web research tools with compact provider-visible facts/sources, follow-up reuse by `research_id`, runtime artifact storage, provider selection, and per-provider credential storage; provider switch takes effect immediately without a daemon restart.
 - MCP client module for stdio and streamable HTTP MCP servers, registering remote tools as matrixclaw tools.
 - MCP stdio server mode for exposing matrixclaw daemon tools to external MCP hosts.
@@ -599,6 +606,7 @@ The TUI exposes voice as normal modules:
 ```text
 /modules -> Text to Speech
 /modules -> Speech to Text
+/modules -> Realtime Voice
 ```
 
 Each module has a provider picker, provider setup, and a status screen. The
@@ -660,6 +668,80 @@ and current process RAM.
 
 The STT API accepts voice JSON bodies up to 36 MB, which is roughly 25 MB of raw
 audio after base64 overhead.
+
+## Realtime Speech-to-Speech
+
+MatrixClaw also has a daemon-level realtime voice gateway for live
+speech-to-speech sessions. This is separate from the batch TTS/STT endpoints:
+clients create a realtime session, open a WebSocket, stream input audio frames,
+and receive assistant audio, transcripts, turn-final events, tool calls, and
+approval updates through the same connection.
+
+The client protocol is provider-neutral. Today the registered realtime provider
+is `gemini_live`, backed by Gemini Live / Gemini 2.5 Flash Native Audio, but the
+daemon owns the provider choice so future iOS, web, desktop, or SIP/IP telephony
+clients do not need to know Gemini's wire format.
+
+MVP audio format:
+
+- input: raw PCM S16LE, 16 kHz, mono, sent as base64 JSON frames
+- output: raw PCM S16LE, 24 kHz, mono, received as base64 JSON frames
+- persisted history: finalized user/assistant transcripts only; raw PCM frames
+  are not stored in chat history
+
+Relevant API endpoints:
+
+```text
+GET   /v1/modules/voice/realtime_voice
+PATCH /v1/modules/voice/realtime_voice
+POST  /v1/realtime-voice/sessions
+GET   /v1/realtime-voice/sessions/{id}
+GET   /v1/realtime-voice/sessions/{id}/stream
+DELETE /v1/realtime-voice/sessions/{id}
+```
+
+Configuration can live in `setup.json` under `modules.realtime_voice`, and can
+also be changed from the control plane:
+
+```text
+/modules realtime_voice
+/modules realtime_voice provider-select
+/modules realtime_voice setup
+/modules realtime_voice enabled
+```
+
+The UI stores the enabled flag and selected provider in setup. Model, voice,
+endpoint, and API key can be set in `setup.json` or by environment variables:
+
+```json
+{
+  "modules": {
+    "realtime_voice": {
+      "enabled": true,
+      "provider_id": "gemini_live",
+      "providers": {
+        "gemini_live": {
+          "api_key": "",
+          "api_key_env": "MATRIXCLAW_GEMINI_LIVE_API_KEY",
+          "model_id": "gemini-2.5-flash-native-audio-preview-12-2025",
+          "voice_id": "Puck",
+          "endpoint": "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
+        }
+      }
+    }
+  }
+}
+```
+
+Useful environment overrides:
+
+```bash
+MATRIXCLAW_REALTIME_VOICE_ENABLED=1
+MATRIXCLAW_REALTIME_VOICE_PROVIDER=gemini_live
+MATRIXCLAW_GEMINI_LIVE_API_KEY=...
+MATRIXCLAW_GEMINI_LIVE_MODEL=gemini-2.5-flash-native-audio-preview-12-2025
+MATRIXCLAW_GEMINI_LIVE_VOICE=Puck
+```
 
 See [Local Voice](docs/VOICE.md) and [Storage and Telegram Files](docs/STORAGE.md)
 for the local model paths, run modes, temporary-file lifecycle, and Telegram

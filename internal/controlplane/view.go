@@ -25,9 +25,8 @@ const (
 type FooterKind string
 
 const (
-	FooterBack    FooterKind = "back"
-	FooterClose   FooterKind = "close"
-	FooterDismiss FooterKind = "dismiss"
+	FooterBack   FooterKind = "back"
+	FooterCancel FooterKind = "cancel"
 )
 
 const SelectedMarker = "✅"
@@ -88,6 +87,7 @@ type ResultViewFooter struct {
 	Label   string
 	Command string
 	Kind    FooterKind
+	Hidden  bool
 }
 
 type ResultViewPaging struct {
@@ -144,7 +144,7 @@ func PresentResult(result Result, options ResultViewOptions) ResultView {
 			Screen: ScreenInfo,
 			Title:  strings.TrimSpace(result.Info.Title),
 			Text:   infoPresentationText(*result.Info),
-			Footer: infoViewFooter(*result.Info),
+			Footer: infoViewFooter(*result.Info, surface),
 		}
 	default:
 		return ResultView{
@@ -356,21 +356,21 @@ func pickerViewItemLabel(item pickerPresentationItem, surface Surface) string {
 func pickerResultViewFooter(picker PickerData, surface Surface) *ResultViewFooter {
 	if footer, ok := PickerFooter(picker); ok {
 		command := strings.TrimSpace(footer.Command)
-		kind := FooterBack
-		if command == "" && !strings.EqualFold(footer.Label, "Back") {
-			kind = FooterClose
+		kind := FooterCancel
+		if picker.HasBack {
+			kind = FooterBack
 		}
 		return &ResultViewFooter{
 			Label:   pickerFooterLabel(footer.Label, kind),
 			Command: command,
 			Kind:    kind,
+			Hidden:  picker.Select && surface == SurfaceTerminal && kind == FooterCancel,
 		}
 	}
-	kind := FooterClose
 	if surface == SurfaceTelegram {
-		kind = FooterDismiss
+		return &ResultViewFooter{Label: "Close", Kind: FooterCancel}
 	}
-	return &ResultViewFooter{Label: "Close", Kind: kind}
+	return nil
 }
 
 func pickerFooterLabel(label string, kind FooterKind) string {
@@ -381,15 +381,23 @@ func pickerFooterLabel(label string, kind FooterKind) string {
 	if label != "" {
 		return label
 	}
-	return "Close"
+	return "Cancel"
 }
 
-func infoViewFooter(info InfoData) *ResultViewFooter {
-	command := strings.TrimSpace(info.CloseCommand)
-	if command == "" {
-		return nil
+func infoViewFooter(info InfoData, surface Surface) *ResultViewFooter {
+	command := strings.TrimSpace(info.CancelCommand)
+	if command != "" {
+		return &ResultViewFooter{
+			Label:   "Close",
+			Command: command,
+			Kind:    FooterCancel,
+			Hidden:  surface == SurfaceTerminal,
+		}
 	}
-	return &ResultViewFooter{Label: "Back", Command: command, Kind: FooterBack}
+	if surface == SurfaceTelegram {
+		return &ResultViewFooter{Label: "Close", Kind: FooterCancel}
+	}
+	return nil
 }
 
 func textEditViewFooter(textEdit TextEditData) *ResultViewFooter {
@@ -397,7 +405,7 @@ func textEditViewFooter(textEdit TextEditData) *ResultViewFooter {
 	if command == "" {
 		return nil
 	}
-	return &ResultViewFooter{Label: "Back", Command: command, Kind: FooterBack}
+	return &ResultViewFooter{Label: "Cancel", Command: command, Kind: FooterCancel}
 }
 
 func normalizeSurface(surface Surface) Surface {

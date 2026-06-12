@@ -251,12 +251,11 @@ func (d *Dispatcher) voiceLocalProviderRunModePicker(ctx context.Context, module
 	}
 	return Result{
 		Handled: true,
-		Picker: NewPickerData(PickerVoiceProvider, "Run Mode").
-			Context(module.ID).
-			Meta(voiceRunModeLabel(provider)).
-			Popup().
-			Close(voiceModuleCommand(module.ID)).
-			Item(PickerItem{ID: "per-task", Title: voiceRunPerTaskTitle(provider), Selected: voiceRunModePerTaskSelected(provider), Command: voiceModuleCommand(module.ID, "provider-set-local", provider.ID, "runtime-mode", voiceRuntimeModePerTask)}).
+			Picker: NewPickerData(PickerVoiceProvider, "Run Mode").
+				Context(module.ID).
+				Meta(voiceRunModeLabel(provider)).
+				Select(voiceProviderSettingsBackCommand(module.ID, provider.ID)).
+				Item(PickerItem{ID: "per-task", Title: voiceRunPerTaskTitle(provider), Selected: voiceRunModePerTaskSelected(provider), Command: voiceModuleCommand(module.ID, "provider-set-local", provider.ID, "runtime-mode", voiceRuntimeModePerTask)}).
 			Item(PickerItem{ID: "always-running", Title: "Always Running", Selected: voiceRunModeAlways(provider), Disabled: !voicePersistentRuntimeAvailable(provider), Command: voiceModuleCommand(module.ID, "provider-set-local", provider.ID, "runtime-mode", voiceRuntimeModeAlways)}).
 			Ptr(),
 	}, nil
@@ -375,7 +374,7 @@ func (d *Dispatcher) voiceLocalProviderStatus(ctx context.Context, moduleID stri
 			InfoRow{Label: "ffmpeg", Value: "Not checked yet"},
 		)
 	}
-	return Result{Handled: true, Info: &InfoData{Title: voiceProviderTitle(module, provider), Rows: rows, CloseCommand: voiceProviderSettingsBackCommand(module.ID, provider.ID)}}, nil
+	return Result{Handled: true, Info: &InfoData{Title: voiceProviderTitle(module, provider), Rows: rows}}, nil
 }
 
 func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID string, args string) (Result, error) {

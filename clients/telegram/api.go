@@ -133,7 +133,7 @@ func (c *Client) DownloadFile(ctx context.Context, filePath string) ([]byte, err
 	}
 	response, err := c.http.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("telegram: execute file download request: %s", redactBotTokenInError(err, c.token))
+		return nil, fmt.Errorf("telegram: execute file download request: %w", redactBotTokenError(err, c.token))
 	}
 	defer response.Body.Close()
 	content, err := io.ReadAll(response.Body)
@@ -317,7 +317,7 @@ func callAPI[T any](ctx context.Context, c *Client, method string, payload any) 
 
 	response, err := c.http.Do(request)
 	if err != nil {
-		return zero, fmt.Errorf("telegram: execute %s request: %s", method, redactBotTokenInError(err, c.token))
+		return zero, fmt.Errorf("telegram: execute %s request: %w", method, redactBotTokenError(err, c.token))
 	}
 	defer response.Body.Close()
 
@@ -379,7 +379,7 @@ func callMultipartAPI[T any](ctx context.Context, c *Client, method string, fiel
 	}
 	response, err := c.http.Do(request)
 	if err != nil {
-		return zero, fmt.Errorf("telegram: execute %s request: %s", method, redactBotTokenInError(err, c.token))
+		return zero, fmt.Errorf("telegram: execute %s request: %w", method, redactBotTokenError(err, c.token))
 	}
 	defer response.Body.Close()
 	responseBody, err := io.ReadAll(response.Body)
@@ -415,6 +415,29 @@ func redactBotTokenInError(err error, token string) string {
 		return message
 	}
 	return strings.ReplaceAll(message, "/bot"+token+"/", "/bot<redacted>/")
+}
+
+func redactBotTokenError(err error, token string) error {
+	if err == nil {
+		return nil
+	}
+	return redactedBotTokenError{
+		message: redactBotTokenInError(err, token),
+		cause:   err,
+	}
+}
+
+type redactedBotTokenError struct {
+	message string
+	cause   error
+}
+
+func (e redactedBotTokenError) Error() string {
+	return e.message
+}
+
+func (e redactedBotTokenError) Unwrap() error {
+	return e.cause
 }
 
 func decodeAPIError(method string, statusCode int, content []byte) error {

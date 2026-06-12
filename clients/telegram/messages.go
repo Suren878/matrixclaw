@@ -69,6 +69,13 @@ func (w *Worker) handleTextMessage(ctx context.Context, message *Message) error 
 	} else if result.Handled {
 		return w.renderCommandResult(ctx, target, result)
 	}
+	if textNeedsTelegramLocation(text) {
+		if location, ok := w.freshTelegramLocation(target); ok {
+			w.sendLocationLookupChatAction(ctx, target)
+			return w.sendUserMessage(ctx, target, w.telegramTextWithLocationContext(ctx, text, location, true))
+		}
+		return w.requestTelegramLocation(ctx, target, text)
+	}
 	return w.sendUserMessage(ctx, target, text)
 }
 
@@ -267,7 +274,25 @@ func (w *Worker) handleLocationMessage(ctx context.Context, message *Message) er
 		return nil
 	}
 	target := targetFromMessage(message)
-	return w.sendUserMessage(ctx, target, telegramLocationPrompt(*message.Location))
+	w.rememberTelegramLocation(target, *message.Location)
+	if pending, ok := w.takePendingLocationRequest(target); ok {
+		w.sendLocationLookupChatAction(ctx, target)
+		return w.sendUserMessage(ctx, target, w.telegramTextWithLocationContext(ctx, pending.Text, *message.Location, textNeedsTelegramLocation(pending.Text)))
+	}
+	w.sendLocationLookupChatAction(ctx, target)
+	return w.sendUserMessage(ctx, target, w.telegramTextWithLocationContext(ctx, "", *message.Location, false))
+}
+
+func (w *Worker) sendLocationLookupChatAction(ctx context.Context, target chatTarget) {
+	if target.chatID == 0 {
+		return
+	}
+	if err := w.api.SendChatAction(ctx, SendChatActionRequest{
+		ChatID: target.chatID,
+		Action: "typing",
+	}); err != nil {
+		log.Printf("telegram: location lookup typing indicator failed: %v", err)
+	}
 }
 
 func (w *Worker) handleTelegramAudioUpload(ctx context.Context, message *Message, req telegramUploadRequest) error {
@@ -634,10 +659,13 @@ func telegramLocationPrompt(location Location) string {
 	)
 	if location.HorizontalAccuracy > 0 {
 		text += fmt.Sprintf("\nHorizontal accuracy: %.0f meters", location.HorizontalAccuracy)
+	} else {
+		text += "\nHorizontal accuracy: not provided by Telegram"
 	}
 	if location.LivePeriod > 0 {
 		text += fmt.Sprintf("\nLive period: %d seconds", location.LivePeriod)
 	}
+	text += "\nLocation guidance: Treat the latitude/longitude as authoritative. Do not substitute a different district, street, or city unless a reverse-geocoding or map source verifies it for these exact coordinates. If local search results are not clearly tied to these coordinates, say that reliable nearby results were not found instead of guessing."
 	return text
 }
 

@@ -44,7 +44,7 @@ func NewInfo(_ *surfacecommon.Common, data InfoData) *Info {
 		keyMap: struct {
 			Close key.Binding
 		}{
-			Close: key.NewBinding(key.WithKeys("esc", "enter", "alt+esc", "b", "backspace"), key.WithHelp("esc/enter/b", "back")),
+			Close: key.NewBinding(key.WithKeys("esc", "enter", "alt+esc"), key.WithHelp("esc/enter", "close")),
 		},
 	}
 }
@@ -96,7 +96,7 @@ func (d *Info) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 		Selected:       -1,
 		Footer:         d.footerItems(),
 		FooterSelected: 0,
-		Help:           "esc/enter/b back",
+		Help:           "esc/enter close",
 	})
 	DrawCenter(scr, area, view)
 	return nil
@@ -121,7 +121,7 @@ func (d *Info) title() string {
 }
 
 func (d *Info) footerItems() []components.Item {
-	return []components.Item{{ID: "back", Title: "Back", Role: components.RoleBack}}
+	return nil
 }
 
 func (d *Info) infoItems() []components.Item {

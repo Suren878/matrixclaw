@@ -104,6 +104,8 @@ func pickerCompactPrefix(kind PickerKind, item PickerItem) string {
 		return "TTS "
 	case PickerSpeechToText:
 		return "STT "
+	case PickerRealtimeVoice:
+		return "LIVE "
 	case PickerProviderActions:
 		switch itemID {
 		case "use":

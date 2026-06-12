@@ -97,6 +97,7 @@ func Run(ctx context.Context) error {
 	webSearchConfig := webSearchProviderConfig(bootstrap.SetupService)
 	webResearchEngine := newWebResearchEngine(bootstrap.DBPath, bootstrap.ExternalAgents.MCP, mcpModule, webResearchStore, webSearchConfig)
 	webTools := tools.NewWebService(webSearchConfig, webResearchEngine)
+	osmGeo := tools.NewOSMServiceFromEnv()
 	extraTools := []tools.Executor{
 		automation.NewReminderTool(automationService),
 		automation.NewScheduledAITaskTool(automationService),
@@ -118,6 +119,9 @@ func Run(ctx context.Context) error {
 	if err := toolRegistry.Err(); err != nil {
 		return err
 	}
+	if err := toolRegistry.Register(tools.NewOSMGeoExecutors(osmGeo)...); err != nil {
+		return err
+	}
 	if err := moduleRegistry.RegisterTools(toolRegistry); err != nil {
 		return err
 	}
@@ -128,7 +132,8 @@ func Run(ctx context.Context) error {
 	server.SetStorageStore(storageModule.Store())
 	server.SetSkillsService(skillsModule.Service())
 	server.SetSetupService(bootstrap.SetupService)
-	supervisor := newSupervisor(ctx, server, app)
+	server.SetRealtimeVoiceService(newRealtimeVoiceManager(bootstrap.SetupService, app))
+	supervisor := newSupervisor(ctx, server, app, osmGeo)
 	supervisor.SetExternalAgents(sqliteStore, externalRuntimes)
 	defer supervisor.CloseExternalAgents()
 	httpServer := &http.Server{

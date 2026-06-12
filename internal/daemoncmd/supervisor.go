@@ -14,6 +14,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
 	"github.com/Suren878/matrixclaw/internal/safego"
+	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 const (
@@ -34,12 +35,12 @@ type supervisor struct {
 	restarting bool
 }
 
-func newSupervisor(ctx context.Context, server *api.Server, app *core.Core) *supervisor {
+func newSupervisor(ctx context.Context, server *api.Server, app *core.Core, geo *tools.OSMService) *supervisor {
 	s := &supervisor{
 		ctx:     ctx,
 		server:  server,
 		app:     app,
-		clients: newClientRegistry(),
+		clients: newClientRegistry(geo),
 	}
 	if server != nil {
 		server.SetAdminReload(s.Reload)

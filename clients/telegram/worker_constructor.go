@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/Suren878/matrixclaw/internal/controlplane"
+	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 func NewWorker(cfg Config) (*Worker, error) {
@@ -34,6 +35,9 @@ func NewWorker(cfg Config) (*Worker, error) {
 	if cfg.DaemonHTTPClient == nil {
 		cfg.DaemonHTTPClient = &http.Client{Timeout: defaultDaemonHTTPTimeout}
 	}
+	if cfg.Geo == nil {
+		cfg.Geo = tools.NewOSMServiceFromEnv()
+	}
 	offset := cfg.Offset
 	if offset == nil {
 		offset = &atomic.Int64{}
@@ -49,15 +53,18 @@ func NewWorker(cfg Config) (*Worker, error) {
 	}
 
 	return &Worker{
-		api:        client,
-		config:     cfg,
-		offset:     offset,
-		states:     map[string]*runDeliveryState{},
-		prompts:    map[string]controlplane.PromptData{},
-		callbacks:  map[string]string{},
-		inline:     map[string]string{},
-		inlineRuns: map[string]struct{}{},
-		messages:   map[string]struct{}{},
-		autoEdits:  map[string]struct{}{},
+		api:              client,
+		config:           cfg,
+		offset:           offset,
+		states:           map[string]*runDeliveryState{},
+		prompts:          map[string]controlplane.PromptData{},
+		callbacks:        map[string]string{},
+		inline:           map[string]string{},
+		inlineRuns:       map[string]struct{}{},
+		messages:         map[string]struct{}{},
+		autoEdits:        map[string]struct{}{},
+		locations:        map[string]telegramLocationContext{},
+		pendingLocations: map[string]pendingLocationRequest{},
+		geo:              cfg.Geo,
 	}, nil
 }

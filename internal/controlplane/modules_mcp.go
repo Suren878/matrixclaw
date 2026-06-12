@@ -87,7 +87,7 @@ func (d *Dispatcher) mcpEnabledPicker(ctx context.Context) (Result, error) {
 	}
 	return Result{Handled: true, Picker: NewPickerData(PickerMCP, "External MCP").
 		Meta("Currently " + strings.ToLower(formatEnabled(resp.Config.Enabled))).
-		Popup().
+		Select(mcpCommand()).
 		Item(PickerItem{ID: "on", Title: "On", Selected: resp.Config.Enabled, Command: mcpCommand("set-enabled", "on")}).
 		Item(PickerItem{ID: "off", Title: "Off", Selected: !resp.Config.Enabled, Command: mcpCommand("set-enabled", "off")}).
 		Ptr()}, nil
@@ -233,7 +233,7 @@ func (d *Dispatcher) mcpServerEnabledPicker(ctx context.Context, serverID string
 	return Result{Handled: true, Picker: NewPickerData(PickerMCPServer, mcpServerTitle(server)).
 		Context(server.ID).
 		Meta("Currently " + strings.ToLower(formatEnabled(server.Enabled))).
-		Popup().
+		Select(mcpServerCommand(server.ID)).
 		Item(PickerItem{ID: "on", Title: "On", Selected: server.Enabled, Command: mcpServerCommand(server.ID, "set-enabled", "on")}).
 		Item(PickerItem{ID: "off", Title: "Off", Selected: !server.Enabled, Command: mcpServerCommand(server.ID, "set-enabled", "off")}).
 		Ptr()}, nil
@@ -295,7 +295,6 @@ func (d *Dispatcher) mcpServerInfo(ctx context.Context, serverID string) (Result
 			{Label: "Target", Value: mcpServerTarget(server)},
 			{Label: "Tool Prefix", Value: server.ToolPrefix},
 		},
-		CloseCommand: mcpServerCommand(server.ID),
 	}}, nil
 }
 

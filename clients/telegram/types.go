@@ -103,10 +103,10 @@ type GetFileRequest struct {
 }
 
 type SendMessageRequest struct {
-	ChatID      int64                 `json:"chat_id"`
-	Text        string                `json:"text"`
-	ParseMode   string                `json:"parse_mode,omitempty"`
-	ReplyMarkup *InlineKeyboardMarkup `json:"reply_markup,omitempty"`
+	ChatID      int64  `json:"chat_id"`
+	Text        string `json:"text"`
+	ParseMode   string `json:"parse_mode,omitempty"`
+	ReplyMarkup any    `json:"reply_markup,omitempty"`
 }
 
 type SendMessageDraftRequest struct {
@@ -215,6 +215,23 @@ type InlineKeyboardMarkup struct {
 type InlineKeyboardButton struct {
 	Text         string `json:"text"`
 	CallbackData string `json:"callback_data,omitempty"`
+}
+
+type ReplyKeyboardMarkup struct {
+	Keyboard        [][]KeyboardButton `json:"keyboard"`
+	ResizeKeyboard  bool               `json:"resize_keyboard,omitempty"`
+	OneTimeKeyboard bool               `json:"one_time_keyboard,omitempty"`
+	Selective       bool               `json:"selective,omitempty"`
+}
+
+type ReplyKeyboardRemove struct {
+	RemoveKeyboard bool `json:"remove_keyboard"`
+	Selective      bool `json:"selective,omitempty"`
+}
+
+type KeyboardButton struct {
+	Text            string `json:"text"`
+	RequestLocation bool   `json:"request_location,omitempty"`
 }
 
 type EditMessageTextRequest struct {

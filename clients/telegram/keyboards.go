@@ -40,7 +40,7 @@ func pickerKeyboardView(picker controlplane.PickerData, view controlplane.Result
 		}
 		rows = append(rows, nav)
 	}
-	if view.Footer != nil {
+	if view.Footer != nil && !view.Footer.Hidden {
 		rows = append(rows, []InlineKeyboardButton{footerButton(*view.Footer)})
 	}
 	return &InlineKeyboardMarkup{InlineKeyboard: rows}
@@ -53,13 +53,9 @@ func pickerButton(item controlplane.ResultViewItem) InlineKeyboardButton {
 func footerButton(footer controlplane.ResultViewFooter) InlineKeyboardButton {
 	label := strings.TrimSpace(footer.Label)
 	if label == "" {
-		label = "Close"
+		label = "Cancel"
 	}
-	command := footer.Command
-	if footer.Kind == controlplane.FooterDismiss {
-		command = ""
-	}
-	return commandButton("‹ "+label, command)
+	return commandButton("‹ "+label, footer.Command)
 }
 
 func formKeyboard(form controlplane.FormData) *InlineKeyboardMarkup {
@@ -91,7 +87,7 @@ func confirmKeyboard(confirm controlplane.ConfirmData) *InlineKeyboardMarkup {
 }
 
 func infoKeyboard(footer *controlplane.ResultViewFooter) *InlineKeyboardMarkup {
-	if footer == nil {
+	if footer == nil || footer.Hidden {
 		return nil
 	}
 	return &InlineKeyboardMarkup{

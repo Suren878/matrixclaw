@@ -47,10 +47,10 @@ type ConfirmData struct {
 }
 
 type InfoData struct {
-	Title        string
-	Text         string
-	Rows         []InfoRow
-	CloseCommand string
+	Title         string
+	Text          string
+	Rows          []InfoRow
+	CancelCommand string
 }
 
 type InfoRow struct {

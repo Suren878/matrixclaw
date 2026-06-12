@@ -145,12 +145,10 @@ func (c *Core) resolveSubagentApprovalBridge(ctx context.Context, approval Appro
 			return Approval{}, err
 		}
 		if !subagentTaskTerminalStatus(task.Status) {
-			task.Status = SubagentTaskStatusRunning
-			task.UpdatedAt = c.now().UTC()
-			if err := c.store.UpdateSubagentTask(ctx, task); err != nil {
+			task, err = c.markSubagentTaskRunning(ctx, task)
+			if err != nil {
 				return Approval{}, err
 			}
-			c.publishSubagentTaskUpdated(task)
 		}
 		c.publishEvent(Event{
 			Type:      EventToolUpdated,
@@ -178,27 +176,17 @@ func (c *Core) resolveSubagentApprovalBridge(ctx context.Context, approval Appro
 	if bridge.ChildToolName != "" {
 		summary += " for " + bridge.ChildToolName
 	}
-	task.Summary = summary
-	task.Error = summary
-	task.Status = SubagentTaskStatusFailed
-	task.UpdatedAt = c.now().UTC()
-	finishedAt := task.UpdatedAt
-	task.FinishedAt = &finishedAt
-	if err := c.store.UpdateSubagentTask(ctx, task); err != nil {
+	task, err = c.finishSubagentTaskRecord(ctx, task, SubagentTaskStatusFailed, summary, summary, false)
+	if err != nil {
 		return Approval{}, err
 	}
-	c.publishSubagentTaskUpdated(task)
 	if task.Mode == SubagentTaskModeAsync {
 		if err := c.updateSubagentResultMessage(ctx, task); err != nil {
 			return Approval{}, err
 		}
-		if task.CompletionQueuedAt == nil {
-			queuedAt := task.UpdatedAt
-			task.CompletionQueuedAt = &queuedAt
-			if err := c.store.UpdateSubagentTask(ctx, task); err != nil {
-				return Approval{}, err
-			}
-			c.publishSubagentTaskUpdated(task)
+		task, err = c.queueSubagentCompletionRecord(ctx, task)
+		if err != nil {
+			return Approval{}, err
 		}
 		if err := c.deliverPendingSubagentCompletionsForParent(ctx, task.ParentSessionID); err != nil {
 			return Approval{}, err

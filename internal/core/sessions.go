@@ -81,6 +81,18 @@ func (c *Core) ListSessions(ctx context.Context, filter SessionListFilter) ([]Se
 	return sessions, nil
 }
 
+func (c *Core) GetSession(ctx context.Context, sessionID string) (Session, error) {
+	sessionID = normalizeText(sessionID)
+	if sessionID == "" {
+		return Session{}, fmt.Errorf("%w: session id is required", ErrInvalidInput)
+	}
+	session, err := c.store.GetSession(ctx, sessionID)
+	if err != nil {
+		return Session{}, err
+	}
+	return c.decorateSession(ctx, session), nil
+}
+
 func (c *Core) RenameSession(ctx context.Context, input RenameSessionInput) (Session, error) {
 	sessionID := normalizeText(input.SessionID)
 	if sessionID == "" {

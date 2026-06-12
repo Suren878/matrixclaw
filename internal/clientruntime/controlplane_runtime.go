@@ -10,6 +10,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
+	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/skills"
 )
@@ -121,6 +122,22 @@ func (r ControlplaneRuntime) VoiceProviderAction(ctx context.Context, moduleID s
 		return setup.VoiceProviderOption{}, err
 	}
 	return client.VoiceProviderAction(ctx, moduleID, providerID, request)
+}
+
+func (r ControlplaneRuntime) RealtimeVoiceModule(ctx context.Context) (realtime.ModuleDescriptor, error) {
+	client, err := r.client("")
+	if err != nil {
+		return realtime.ModuleDescriptor{}, err
+	}
+	return client.RealtimeVoiceModule(ctx)
+}
+
+func (r ControlplaneRuntime) UpdateRealtimeVoiceModule(ctx context.Context, update setup.VoiceModuleUpdate) (realtime.ModuleDescriptor, error) {
+	client, err := r.client("")
+	if err != nil {
+		return realtime.ModuleDescriptor{}, err
+	}
+	return client.UpdateRealtimeVoiceModule(ctx, update)
 }
 
 func (r ControlplaneRuntime) UseSession(ctx context.Context, externalKey string, sessionID string) (core.ClientBinding, error) {

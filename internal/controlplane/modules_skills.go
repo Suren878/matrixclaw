@@ -411,7 +411,7 @@ func (d *Dispatcher) skillBodyEditor(ctx context.Context, section string, skillI
 	}}, nil
 }
 
-func (d *Dispatcher) skillView(ctx context.Context, skillID string, closeCommand string) (Result, error) {
+func (d *Dispatcher) skillView(ctx context.Context, skillID string, _ string) (Result, error) {
 	detail, err := d.skills.GetSkill(ctx, skillID)
 	if err != nil {
 		return Result{}, err
@@ -423,9 +423,8 @@ func (d *Dispatcher) skillView(ctx context.Context, skillID string, closeCommand
 	return Result{
 		Handled: true,
 		Info: &InfoData{
-			Title:        skillTitle(detail.Skill),
-			Text:         body,
-			CloseCommand: closeCommand,
+			Title: skillTitle(detail.Skill),
+			Text:  body,
 		},
 	}, nil
 }

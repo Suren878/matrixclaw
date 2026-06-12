@@ -8,6 +8,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/automation"
 	"github.com/Suren878/matrixclaw/internal/core"
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
+	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/skills"
 )
@@ -43,6 +44,11 @@ type VoiceModuleRuntime interface {
 	VoiceModules(ctx context.Context) ([]setup.VoiceModuleDescriptor, error)
 	UpdateVoiceModule(ctx context.Context, moduleID string, update setup.VoiceModuleUpdate) ([]setup.VoiceModuleDescriptor, error)
 	VoiceProviderAction(ctx context.Context, moduleID string, providerID string, request setup.VoiceProviderActionRequest) (setup.VoiceProviderOption, error)
+}
+
+type RealtimeVoiceRuntime interface {
+	RealtimeVoiceModule(ctx context.Context) (realtime.ModuleDescriptor, error)
+	UpdateRealtimeVoiceModule(ctx context.Context, update setup.VoiceModuleUpdate) (realtime.ModuleDescriptor, error)
 }
 
 type BrowserModuleRuntime interface {
@@ -171,6 +177,7 @@ type Dispatcher struct {
 	sessionModels  SessionModelRuntime
 	externalAgents ExternalAgentRuntime
 	voiceModules   VoiceModuleRuntime
+	realtimeVoice  RealtimeVoiceRuntime
 	browserModules BrowserModuleRuntime
 	providers      ProviderRuntime
 	permissions    PermissionRuntime
@@ -202,6 +209,7 @@ func New(runtime any, workingDir string) *Dispatcher {
 		d.sessionModels, _ = runtime.(SessionModelRuntime)
 		d.externalAgents, _ = runtime.(ExternalAgentRuntime)
 		d.voiceModules, _ = runtime.(VoiceModuleRuntime)
+		d.realtimeVoice, _ = runtime.(RealtimeVoiceRuntime)
 		d.browserModules, _ = runtime.(BrowserModuleRuntime)
 		d.providers, _ = runtime.(ProviderRuntime)
 		d.permissions, _ = runtime.(PermissionRuntime)
