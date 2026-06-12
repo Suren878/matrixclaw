@@ -1,9 +1,10 @@
-package tools
+package webtools
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Suren878/matrixclaw/internal/tools"
 	"io"
 	"net/http"
 	"regexp"
@@ -26,10 +27,10 @@ var webFetchClient = &http.Client{
 	},
 }
 
-func (e *webFetchExecutor) Execute(ctx context.Context, call Call) (Result, error) {
+func (e *webFetchExecutor) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
 	var params WebFetchParams
 	if err := json.Unmarshal(call.Args, &params); err != nil {
-		return Result{}, InvalidArgs(webFetchToolName, err)
+		return tools.Result{}, tools.InvalidArgs(webFetchToolName, err)
 	}
 	params.URL = strings.TrimSpace(params.URL)
 	params.Task = strings.TrimSpace(params.Task)
@@ -54,28 +55,28 @@ func (e *webFetchExecutor) Execute(ctx context.Context, call Call) (Result, erro
 		metadata.URL = strings.TrimSpace(params.URL)
 	}
 	if err != nil {
-		return Result{
+		return tools.Result{
 			Content:  fmt.Sprintf("web_fetch failed for %s: %v", firstNonEmptyWeb(metadata.URL, params.URL), err),
 			Metadata: metadata,
-			Status:   ResultStatusError,
+			Status:   tools.ResultStatusError,
 			IsError:  true,
 		}, nil
 	}
 
-	return Result{
+	return tools.Result{
 		Content:  formatFetchedPageDiagnostics(metadata, "web research artifacts are unavailable because the research engine is not configured"),
 		Metadata: metadata,
-		Status:   ResultStatusSuccess,
+		Status:   tools.ResultStatusSuccess,
 	}, nil
 }
 
-func (e *webFetchExecutor) executeWebFetchResearch(ctx context.Context, params WebFetchParams, taskMode bool) (Result, error) {
+func (e *webFetchExecutor) executeWebFetchResearch(ctx context.Context, params WebFetchParams, taskMode bool) (tools.Result, error) {
 	if e.web == nil || !e.web.ResearchConfigured() {
 		metadata := WebFetchResponseMetadata{URL: params.URL}
-		return Result{
+		return tools.Result{
 			Content:  "web_fetch task extraction requires the web research engine to be configured",
 			Metadata: metadata,
-			Status:   ResultStatusError,
+			Status:   tools.ResultStatusError,
 			IsError:  true,
 		}, nil
 	}
@@ -92,26 +93,26 @@ func (e *webFetchExecutor) executeWebFetchResearch(ctx context.Context, params W
 	})
 	metadata := metadataFromResearchFetch(params.URL, result)
 	if err != nil {
-		return Result{
+		return tools.Result{
 			Content:  fmt.Sprintf("web_fetch failed for %s: %v", firstNonEmptyWeb(metadata.URL, params.URL), err),
 			Metadata: metadata,
-			Status:   ResultStatusError,
+			Status:   tools.ResultStatusError,
 			IsError:  true,
 		}, nil
 	}
-	status := ResultStatusSuccess
+	status := tools.ResultStatusSuccess
 	isError := false
 	switch result.Status {
 	case webresearch.StatusFailed:
-		status = ResultStatusError
+		status = tools.ResultStatusError
 		isError = true
 	case webresearch.StatusPending, webresearch.StatusRunning:
-		status = ResultStatusNeutral
+		status = tools.ResultStatusNeutral
 	}
 	if taskMode {
-		return Result{Content: webresearch.FormatResult(result), Metadata: result, Status: status, IsError: isError}, nil
+		return tools.Result{Content: webresearch.FormatResult(result), Metadata: result, Status: status, IsError: isError}, nil
 	}
-	return Result{
+	return tools.Result{
 		Content:  formatFetchedPageDiagnostics(metadata, "raw page text and HTML were stored as artifacts; call web_fetch with task or use web_research_ask for extraction"),
 		Metadata: metadata,
 		Status:   status,

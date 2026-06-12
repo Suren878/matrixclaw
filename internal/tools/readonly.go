@@ -3,6 +3,7 @@ package tools
 const (
 	namespaceCoreFilesystem = "core.filesystem"
 	namespaceCoreShell      = "core.shell"
+	namespaceCoreWeb        = "core.web"
 	readToolName            = "read"
 	globToolName            = "glob"
 	grepToolName            = "grep"

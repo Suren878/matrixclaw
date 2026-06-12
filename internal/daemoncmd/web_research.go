@@ -8,20 +8,20 @@ import (
 
 	mcpmodule "github.com/Suren878/matrixclaw/internal/modules/mcp"
 	"github.com/Suren878/matrixclaw/internal/setup"
-	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/webresearch"
+	"github.com/Suren878/matrixclaw/internal/webtools"
 )
 
-func webSearchProviderConfig(service *setup.Service) func() (tools.WebSearchProviderConfig, error) {
-	return func() (tools.WebSearchProviderConfig, error) {
+func webSearchProviderConfig(service *setup.Service) func() (webtools.WebSearchProviderConfig, error) {
+	return func() (webtools.WebSearchProviderConfig, error) {
 		if service == nil {
-			return tools.WebSearchProviderConfig{}, nil
+			return webtools.WebSearchProviderConfig{}, nil
 		}
 		cfg, err := service.GetWebSearchConfig()
 		if err != nil {
-			return tools.WebSearchProviderConfig{}, err
+			return webtools.WebSearchProviderConfig{}, err
 		}
-		return tools.WebSearchProviderConfig{
+		return webtools.WebSearchProviderConfig{
 			Provider:  cfg.Provider,
 			TavilyKey: cfg.TavilyKey,
 			SerperKey: cfg.SerperKey,
@@ -30,7 +30,7 @@ func webSearchProviderConfig(service *setup.Service) func() (tools.WebSearchProv
 	}
 }
 
-func newWebResearchEngine(dbPath string, mcpCfg setup.MCPConfig, mcpModule *mcpmodule.Module, store *webresearch.WorkStore, webSearchConfig func() (tools.WebSearchProviderConfig, error)) *webresearch.Engine {
+func newWebResearchEngine(dbPath string, mcpCfg setup.MCPConfig, mcpModule *mcpmodule.Module, store *webresearch.WorkStore, webSearchConfig func() (webtools.WebSearchProviderConfig, error)) *webresearch.Engine {
 	browser := webResearchBrowserCapability(mcpCfg)
 	if mcpModule != nil {
 		if connected := mcpModule.Browser(); connected != nil {
@@ -46,13 +46,13 @@ func newWebResearchEngine(dbPath string, mcpCfg setup.MCPConfig, mcpModule *mcpm
 	})
 }
 
-func webResearchSearch(config func() (tools.WebSearchProviderConfig, error)) func(context.Context, string, int) (webresearch.SearchOutput, error) {
+func webResearchSearch(config func() (webtools.WebSearchProviderConfig, error)) func(context.Context, string, int) (webresearch.SearchOutput, error) {
 	return func(ctx context.Context, query string, limit int) (webresearch.SearchOutput, error) {
 		cfg, err := config()
 		if err != nil {
 			return webresearch.SearchOutput{}, err
 		}
-		results, provider, err := tools.RunWebSearch(ctx, query, limit, cfg)
+		results, provider, err := webtools.RunWebSearch(ctx, query, limit, cfg)
 		if err != nil {
 			return webresearch.SearchOutput{}, err
 		}
@@ -70,7 +70,7 @@ func webResearchSearch(config func() (tools.WebSearchProviderConfig, error)) fun
 }
 
 func webResearchFetch(ctx context.Context, rawURL string, maxChars int) (webresearch.FetchedPage, error) {
-	page, err := tools.FetchWebPage(ctx, rawURL, maxChars)
+	page, err := webtools.FetchWebPage(ctx, rawURL, maxChars)
 	return webresearch.FetchedPage{
 		URL:         page.URL,
 		Title:       page.Title,

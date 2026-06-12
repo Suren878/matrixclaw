@@ -26,6 +26,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/webresearch"
+	"github.com/Suren878/matrixclaw/internal/webtools"
 	"github.com/Suren878/matrixclaw/internal/work"
 )
 
@@ -96,17 +97,18 @@ func Run(ctx context.Context) error {
 		WithDeliveryTargets(automationDeliveryTargets(bootstrap))
 	webSearchConfig := webSearchProviderConfig(bootstrap.SetupService)
 	webResearchEngine := newWebResearchEngine(bootstrap.DBPath, bootstrap.ExternalAgents.MCP, mcpModule, webResearchStore, webSearchConfig)
-	webTools := tools.NewWebService(webSearchConfig, webResearchEngine)
+	webTools := webtools.NewWebService(webSearchConfig, webResearchEngine)
 	osmGeo := tools.NewOSMServiceFromEnv()
 	extraTools := []tools.Executor{
 		automation.NewReminderTool(automationService),
 		automation.NewScheduledAITaskTool(automationService),
 		deliverymodule.NewSendFileTool(storageModule.Store(), app),
 		voicemodule.NewTextToSpeechTool(bootstrap.SetupService),
-		tools.NewWebSearchExecutorWithService(webTools),
+		webtools.NewWebFetchExecutorWithService(webTools),
+		webtools.NewWebSearchExecutorWithService(webTools),
 	}
-	extraTools = append(extraTools, tools.NewWebResearchExecutorsWithService(webTools)...)
-	toolRegistry := tools.NewCoreCodingRegistryWithOptions(tools.CoreRegistryOptions{Web: webTools}, extraTools...)
+	extraTools = append(extraTools, webtools.NewWebResearchExecutorsWithService(webTools)...)
+	toolRegistry := tools.NewCoreCodingRegistry(extraTools...)
 	if err := toolRegistry.Register(core.PlanToolExecutors(app)...); err != nil {
 		return err
 	}
