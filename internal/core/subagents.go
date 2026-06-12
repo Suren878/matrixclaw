@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
@@ -335,7 +336,9 @@ func (c *Core) resumeParentAfterSubagentTerminal(ctx context.Context, task Subag
 	if status == RunStatusWaitingApproval {
 		return c.mirrorPendingSubagentApproval(ctx, task)
 	}
-	go c.waitForSubagentTerminalAndResumeParent(task)
+	safego.Go("core.waitSubagentTerminalAndResumeParent", func() {
+		c.waitForSubagentTerminalAndResumeParent(task)
+	})
 	return nil
 }
 
