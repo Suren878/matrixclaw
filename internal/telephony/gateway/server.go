@@ -497,7 +497,7 @@ func (s *Server) runConnectedCall(ctx context.Context, call *Call, req createCal
 	if err != nil {
 		return err
 	}
-	defer realtime.Close(context.Background())
+	defer func() { _ = realtime.Close(context.Background()) }()
 	call.RealtimeSessionID = realtime.Session.ID
 	call.CoreSessionID = realtime.Session.CoreSessionID
 	s.touchCall(call)

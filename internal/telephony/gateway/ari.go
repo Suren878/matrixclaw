@@ -339,7 +339,7 @@ func (c *ariClient) do(ctx context.Context, method string, path string, query ur
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	responseBody, _ := io.ReadAll(res.Body)
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return ariStatusError{StatusCode: res.StatusCode, Body: strings.TrimSpace(string(responseBody))}

@@ -130,7 +130,7 @@ func (t *callTool) Execute(ctx context.Context, call tools.Call) (tools.Result, 
 	if err != nil {
 		return tools.Result{Content: fmt.Sprintf("Telephony call failed: %s", err), IsError: true, Status: tools.ResultStatusError}, nil
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	var response callResponse
 	_ = json.NewDecoder(res.Body).Decode(&response)
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
@@ -145,7 +145,7 @@ func (t *callTool) Execute(ctx context.Context, call tools.Call) (tools.Result, 
 
 func (t *callTool) config() (setup.Config, error) {
 	if t == nil || t.setup == nil {
-		return setup.Config{}, fmt.Errorf("Telephony setup is not configured.")
+		return setup.Config{}, fmt.Errorf("telephony setup is not configured")
 	}
 	cfg, err := t.setup.Load()
 	if err != nil {
@@ -153,10 +153,10 @@ func (t *callTool) config() (setup.Config, error) {
 	}
 	module := setup.TelephonyModuleFromConfig(cfg.Modules)
 	if !module.Enabled {
-		return setup.Config{}, fmt.Errorf("Telephony module is disabled.")
+		return setup.Config{}, fmt.Errorf("telephony module is disabled")
 	}
 	if strings.TrimSpace(cfg.Modules.Telephony.GatewayURL) == "" {
-		return setup.Config{}, fmt.Errorf("Telephony gateway URL is not configured.")
+		return setup.Config{}, fmt.Errorf("telephony gateway URL is not configured")
 	}
 	return cfg, nil
 }

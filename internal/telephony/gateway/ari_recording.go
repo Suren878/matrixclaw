@@ -74,7 +74,7 @@ func (c *ariClient) downloadStoredRecording(ctx context.Context, recordingName s
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	data, readErr := io.ReadAll(res.Body)
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return nil, ariStatusError{StatusCode: res.StatusCode, Body: strings.TrimSpace(string(data))}

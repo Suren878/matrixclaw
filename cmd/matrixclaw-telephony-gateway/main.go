@@ -25,10 +25,10 @@ func runCLI(ctx context.Context, stdout io.Writer, binaryName string, args []str
 			printUsage(stdout, binaryName)
 			return 0
 		case "version", "--version":
-			fmt.Fprintf(stdout, "%s: %s\n", binaryName, version.String())
+			_, _ = fmt.Fprintf(stdout, "%s: %s\n", binaryName, version.String())
 			return 0
 		default:
-			fmt.Fprintf(stdout, "%s: unknown argument %q\n", binaryName, args[0])
+			_, _ = fmt.Fprintf(stdout, "%s: unknown argument %q\n", binaryName, args[0])
 			printUsage(stdout, binaryName)
 			return 2
 		}
@@ -46,8 +46,8 @@ func runCLI(ctx context.Context, stdout io.Writer, binaryName string, args []str
 }
 
 func printUsage(w io.Writer, binaryName string) {
-	fmt.Fprintf(w, "Usage:\n")
-	fmt.Fprintf(w, "  %s          Run the Matrixclaw telephony gateway\n", binaryName)
-	fmt.Fprintf(w, "  %s version  Print gateway version\n", binaryName)
-	fmt.Fprintf(w, "  %s --help   Print this help\n", binaryName)
+	_, _ = fmt.Fprintf(w, "Usage:\n")
+	_, _ = fmt.Fprintf(w, "  %s          Run the Matrixclaw telephony gateway\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s version  Print gateway version\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s --help   Print this help\n", binaryName)
 }
