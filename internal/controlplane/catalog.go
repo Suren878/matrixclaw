@@ -44,6 +44,7 @@ const (
 	PickerTextToSpeech      PickerKind = "text_to_speech"
 	PickerSpeechToText      PickerKind = "speech_to_text"
 	PickerRealtimeVoice     PickerKind = "realtime_voice"
+	PickerTelephony         PickerKind = "telephony"
 	PickerVoiceProvider     PickerKind = "voice_provider"
 	PickerExternalAgents    PickerKind = "external_agents"
 	PickerExternalAgent     PickerKind = "external_agent"

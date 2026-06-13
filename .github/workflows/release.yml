@@ -69,6 +69,7 @@ jobs:
           mkdir -p "dist/${package}"
           go build -trimpath -ldflags "$ldflags" -o "dist/${package}/matrixclaw" ./cmd/matrixclaw
           go build -trimpath -ldflags "$ldflags" -o "dist/${package}/matrixclawd" ./cmd/matrixclawd
+          go build -trimpath -ldflags "$ldflags" -o "dist/${package}/matrixclaw-telephony-gateway" ./cmd/matrixclaw-telephony-gateway
           cp LICENSE README.md "dist/${package}/"
           cp -R docs "dist/${package}/"
           mkdir -p "dist/${package}/scripts"

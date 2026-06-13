@@ -23,16 +23,17 @@ Scripts:
   Remove installed binaries and the user service. Keeps config and state unless
   `--purge` is explicitly passed.
 - `build_release.sh`
-  Build `matrixclaw` and `matrixclawd` with version, commit, and build date
-  stamped through Go ldflags. By default it writes local builds to `bin/`;
-  GitHub release packaging writes archives to `dist/`. Both directories are
-  ignored and should not be committed.
+  Build `matrixclaw`, `matrixclawd`, and `matrixclaw-telephony-gateway` with
+  version, commit, and build date stamped through Go ldflags. By default it
+  writes local builds to `bin/`; GitHub release packaging writes archives to
+  `dist/`. Both directories are ignored and should not be committed.
 
 Rule:
 - scripts install files and print the next setup step
 - scripts keep install/update/uninstall separate from runtime configuration
 - scripts do not become a second configuration model
-- scripts should build or invoke the canonical binaries `matrixclaw` and `matrixclawd`
+- scripts should build or invoke the canonical binaries `matrixclaw`,
+  `matrixclawd`, and `matrixclaw-telephony-gateway`
 
 Voice runtime notes:
 - `install.sh --voice-runtime` calls `install_voice_runtime.sh` after installing

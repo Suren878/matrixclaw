@@ -47,12 +47,22 @@ func (w *Worker) requestTelegramLocation(ctx context.Context, target chatTarget,
 	_, err := w.sendTelegramMessage(ctx, SendMessageRequest{
 		ChatID:      target.chatID,
 		Text:        telegramLocationRequestText,
-		ReplyMarkup: telegramReplyKeyboardRemove(),
+		ReplyMarkup: telegramLocationReplyKeyboard(),
 	})
 	if err == nil {
 		w.rememberPendingLocationRequest(target, text)
 	}
 	return err
+}
+
+func telegramLocationReplyKeyboard() *ReplyKeyboardMarkup {
+	return &ReplyKeyboardMarkup{
+		Keyboard: [][]KeyboardButton{{
+			{Text: "Share location", RequestLocation: true},
+		}},
+		ResizeKeyboard:  true,
+		OneTimeKeyboard: true,
+	}
 }
 
 func (w *Worker) nowUTC() time.Time {

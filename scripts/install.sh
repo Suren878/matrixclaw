@@ -210,15 +210,15 @@ install_from_source() {
   need_cmd go
   local root
   root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-  if [[ ! -d "$root/cmd/matrixclaw" || ! -d "$root/cmd/matrixclawd" ]]; then
+  if [[ ! -d "$root/cmd/matrixclaw" || ! -d "$root/cmd/matrixclawd" || ! -d "$root/cmd/matrixclaw-telephony-gateway" ]]; then
     echo "install.sh: --from-source requires a matrixclaw source checkout" >&2
     exit 1
   fi
-  echo "[1/4] Building matrixclaw from source"
+  echo "[1/4] Building matrixclaw binaries from source"
   mkdir -p "$install_dir"
   (cd "$root" && go build -o "$install_dir/matrixclaw" ./cmd/matrixclaw)
-  echo "[2/4] Building matrixclawd from source"
   (cd "$root" && go build -o "$install_dir/matrixclawd" ./cmd/matrixclawd)
+  (cd "$root" && go build -o "$install_dir/matrixclaw-telephony-gateway" ./cmd/matrixclaw-telephony-gateway)
 }
 
 install_from_release() {
@@ -279,6 +279,9 @@ install_from_release() {
   tar -xzf "$release_tmp/$archive" -C "$release_tmp"
   install -m 0755 "$release_tmp/matrixclaw" "$install_dir/matrixclaw"
   install -m 0755 "$release_tmp/matrixclawd" "$install_dir/matrixclawd"
+  if [[ -f "$release_tmp/matrixclaw-telephony-gateway" ]]; then
+    install -m 0755 "$release_tmp/matrixclaw-telephony-gateway" "$install_dir/matrixclaw-telephony-gateway"
+  fi
 }
 
 install_voice_runtime() {
@@ -326,6 +329,9 @@ else
 fi
 echo "  $install_dir/matrixclaw"
 echo "  $install_dir/matrixclawd"
+if [[ -x "$install_dir/matrixclaw-telephony-gateway" ]]; then
+  echo "  $install_dir/matrixclaw-telephony-gateway"
+fi
 
 case ":${PATH:-}:" in
   *":$install_dir:"*) ;;

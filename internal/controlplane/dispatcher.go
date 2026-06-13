@@ -51,6 +51,11 @@ type RealtimeVoiceRuntime interface {
 	UpdateRealtimeVoiceModule(ctx context.Context, update setup.VoiceModuleUpdate) (realtime.ModuleDescriptor, error)
 }
 
+type TelephonyRuntime interface {
+	TelephonyModule(ctx context.Context) (setup.TelephonyModuleDescriptor, error)
+	UpdateTelephonyModule(ctx context.Context, update setup.TelephonyModuleUpdate) (setup.TelephonyModuleDescriptor, error)
+}
+
 type BrowserModuleRuntime interface {
 	BrowserModule(ctx context.Context) (setup.BrowserModuleDescriptor, error)
 	UpdateBrowserModule(ctx context.Context, update setup.BrowserModuleUpdate) (setup.BrowserModuleDescriptor, error)
@@ -178,6 +183,7 @@ type Dispatcher struct {
 	externalAgents ExternalAgentRuntime
 	voiceModules   VoiceModuleRuntime
 	realtimeVoice  RealtimeVoiceRuntime
+	telephony      TelephonyRuntime
 	browserModules BrowserModuleRuntime
 	providers      ProviderRuntime
 	permissions    PermissionRuntime
@@ -210,6 +216,7 @@ func New(runtime any, workingDir string) *Dispatcher {
 		d.externalAgents, _ = runtime.(ExternalAgentRuntime)
 		d.voiceModules, _ = runtime.(VoiceModuleRuntime)
 		d.realtimeVoice, _ = runtime.(RealtimeVoiceRuntime)
+		d.telephony, _ = runtime.(TelephonyRuntime)
 		d.browserModules, _ = runtime.(BrowserModuleRuntime)
 		d.providers, _ = runtime.(ProviderRuntime)
 		d.permissions, _ = runtime.(PermissionRuntime)

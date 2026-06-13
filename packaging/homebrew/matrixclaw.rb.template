@@ -26,6 +26,7 @@ class Matrixclaw < Formula
   def install
     bin.install "matrixclaw"
     bin.install "matrixclawd"
+    bin.install "matrixclaw-telephony-gateway"
   end
 
   service do

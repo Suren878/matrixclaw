@@ -9,6 +9,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 	geminilive "github.com/Suren878/matrixclaw/internal/modules/voice/realtime/providers/gemini"
+	grokvoice "github.com/Suren878/matrixclaw/internal/modules/voice/realtime/providers/grok"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -17,6 +18,8 @@ func newRealtimeVoiceManager(setupService *setup.Service, app *core.Core) *realt
 		SetConfigSource(realtimeVoiceConfigSource(setupService))
 	manager.RegisterProvider(geminilive.New(geminilive.Config{}).
 		SetConfigSource(geminiLiveConfigSource(setupService)))
+	manager.RegisterProvider(grokvoice.New(grokvoice.Config{}).
+		SetConfigSource(grokVoiceConfigSource(setupService)))
 	return manager
 }
 
@@ -57,6 +60,7 @@ func geminiLiveConfigSource(setupService *setup.Service) geminilive.ConfigSource
 					cfg.APIKeyEnv = module.Config.APIKeyEnv
 					cfg.ModelID = module.Config.ModelID
 					cfg.VoiceID = module.Config.VoiceID
+					cfg.Language = module.Config.Language
 					cfg.WSURL = module.Config.Endpoint
 				}
 				cfg.SystemInstruction = realtimeVoiceSystemInstruction(setupCfg)
@@ -79,7 +83,56 @@ func geminiLiveConfigSource(setupService *setup.Service) geminilive.ConfigSource
 			cfg.ModelID,
 		)
 		cfg.VoiceID = firstNonEmpty(os.Getenv("MATRIXCLAW_GEMINI_LIVE_VOICE"), cfg.VoiceID)
+		cfg.Language = firstNonEmpty(
+			os.Getenv("MATRIXCLAW_GEMINI_LIVE_LANGUAGE"),
+			os.Getenv("MATRIXCLAW_REALTIME_VOICE_LANGUAGE"),
+			cfg.Language,
+		)
 		cfg.WSURL = firstNonEmpty(os.Getenv("MATRIXCLAW_GEMINI_LIVE_WS_URL"), cfg.WSURL)
+		return cfg
+	}
+}
+
+func grokVoiceConfigSource(setupService *setup.Service) grokvoice.ConfigSource {
+	return func(ctx context.Context) grokvoice.Config {
+		cfg := grokvoice.Config{}
+		if setupService != nil {
+			if setupCfg, err := setupService.Load(); err == nil {
+				module := setup.RealtimeVoiceModuleDescriptor(setupCfg.Modules)
+				if module.ProviderID == realtime.ProviderGrok {
+					cfg.APIKey = module.Config.APIKey
+					cfg.APIKeyEnv = module.Config.APIKeyEnv
+					cfg.ModelID = module.Config.ModelID
+					cfg.VoiceID = module.Config.VoiceID
+					cfg.Language = module.Config.Language
+					cfg.WSURL = module.Config.Endpoint
+				}
+				cfg.SystemInstruction = realtimeVoiceSystemInstruction(setupCfg)
+				cfg.APIKey = firstNonEmpty(
+					cfg.APIKey,
+					realtimeAPIKeyFromEnvName(cfg.APIKeyEnv),
+					configuredXAIAPIKey(setupCfg),
+				)
+			}
+		}
+		cfg.APIKey = firstNonEmpty(
+			os.Getenv("MATRIXCLAW_GROK_VOICE_API_KEY"),
+			cfg.APIKey,
+			os.Getenv("XAI_API_KEY"),
+			os.Getenv("GROK_API_KEY"),
+		)
+		cfg.ModelID = firstNonEmpty(
+			os.Getenv("MATRIXCLAW_GROK_VOICE_MODEL"),
+			os.Getenv("MATRIXCLAW_REALTIME_VOICE_MODEL"),
+			cfg.ModelID,
+		)
+		cfg.VoiceID = firstNonEmpty(os.Getenv("MATRIXCLAW_GROK_VOICE_VOICE"), cfg.VoiceID)
+		cfg.Language = firstNonEmpty(
+			os.Getenv("MATRIXCLAW_GROK_VOICE_LANGUAGE"),
+			os.Getenv("MATRIXCLAW_REALTIME_VOICE_LANGUAGE"),
+			cfg.Language,
+		)
+		cfg.WSURL = firstNonEmpty(os.Getenv("MATRIXCLAW_GROK_VOICE_WS_URL"), cfg.WSURL)
 		return cfg
 	}
 }
@@ -116,6 +169,18 @@ func configuredGeminiAPIKey(cfg setup.Config) string {
 	return ""
 }
 
+func configuredXAIAPIKey(cfg setup.Config) string {
+	for _, provider := range cfg.Providers {
+		if !isXAIProvider(provider) {
+			continue
+		}
+		if resolved, ok := setup.ProviderConfigWithResolvedAPIKey(provider); ok {
+			return strings.TrimSpace(resolved.APIKey)
+		}
+	}
+	return ""
+}
+
 func isGeminiProvider(provider setup.ProviderConfig) bool {
 	switch strings.ToLower(strings.TrimSpace(firstNonEmpty(provider.Type, provider.CatalogID, provider.ID))) {
 	case "gemini", "google-gemini":
@@ -123,6 +188,19 @@ func isGeminiProvider(provider setup.ProviderConfig) bool {
 	default:
 		return strings.EqualFold(strings.TrimSpace(provider.CatalogID), "gemini") ||
 			strings.EqualFold(strings.TrimSpace(provider.ID), "gemini")
+	}
+}
+
+func isXAIProvider(provider setup.ProviderConfig) bool {
+	id := strings.ToLower(strings.TrimSpace(firstNonEmpty(provider.Type, provider.CatalogID, provider.ID)))
+	baseURL := strings.ToLower(strings.TrimSpace(provider.BaseURL))
+	switch id {
+	case "xai", "grok", "x-ai":
+		return true
+	default:
+		return strings.EqualFold(strings.TrimSpace(provider.CatalogID), "xai") ||
+			strings.EqualFold(strings.TrimSpace(provider.ID), "xai") ||
+			strings.Contains(baseURL, "api.x.ai")
 	}
 }
 

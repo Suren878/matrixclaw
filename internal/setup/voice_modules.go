@@ -55,7 +55,7 @@ func (s *Service) UpdateVoiceModule(id string, update VoiceModuleUpdate) ([]Voic
 			current.Providers = map[string]VoiceProviderConfig{}
 		}
 		providerConfig := *update.ProviderConfig
-		if id == VoiceModuleRealtime && providerID == "gemini_live" {
+		if id == VoiceModuleRealtime && (providerID == "gemini_live" || providerID == "grok_voice") {
 			existing := voiceProviderConfigByID(id, current, providerID)
 			if strings.TrimSpace(providerConfig.APIKey) == "" {
 				providerConfig.APIKey = existing.APIKey
@@ -161,7 +161,7 @@ func voiceProviderConfigByID(moduleID string, module VoiceModuleConfig, provider
 func normalizeVoiceProviderConfig(moduleID string, providerID string, cfg VoiceProviderConfig) VoiceProviderConfig {
 	moduleID = normalizeVoiceModuleID(moduleID)
 	providerID = normalizeVoiceProviderID(providerID)
-	if moduleID == VoiceModuleRealtime && providerID == "gemini_live" {
+	if moduleID == VoiceModuleRealtime && (providerID == "gemini_live" || providerID == "grok_voice") {
 		cfg.APIKey = normalizeProviderAPIKey(cfg.APIKey)
 		cfg.APIKeyEnv = strings.TrimSpace(cfg.APIKeyEnv)
 	} else {
@@ -176,6 +176,10 @@ func normalizeVoiceProviderConfig(moduleID string, providerID string, cfg VoiceP
 		} else {
 			cfg.Language = normalizeVoiceLanguageCode(cfg.Language)
 		}
+	} else if moduleID == VoiceModuleRealtime && providerID == "gemini_live" {
+		cfg.Language = normalizeRealtimeVoiceLanguageCode(cfg.Language)
+	} else if moduleID == VoiceModuleRealtime && providerID == "grok_voice" {
+		cfg.Language = normalizeGrokVoiceLanguageCode(cfg.Language)
 	} else {
 		cfg.Language = strings.ToLower(strings.TrimSpace(cfg.Language))
 	}
@@ -256,6 +260,93 @@ func normalizeSupertonicLanguageCode(language string) string {
 	}
 }
 
+func normalizeRealtimeVoiceLanguageCode(language string) string {
+	language = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(language, "_", "-")))
+	switch language {
+	case "", "auto", "automatic", "detect", "default":
+		return "auto"
+	case "ar", "ar-eg":
+		return "ar-EG"
+	case "bn", "bn-bd":
+		return "bn-BD"
+	case "nl", "nl-nl":
+		return "nl-NL"
+	case "en", "en-us":
+		return "en-US"
+	case "en-in":
+		return "en-IN"
+	case "fr", "fr-fr":
+		return "fr-FR"
+	case "de", "de-de":
+		return "de-DE"
+	case "hi", "hi-in":
+		return "hi-IN"
+	case "id", "id-id":
+		return "id-ID"
+	case "it", "it-it":
+		return "it-IT"
+	case "ja", "ja-jp":
+		return "ja-JP"
+	case "ko", "ko-kr":
+		return "ko-KR"
+	case "mr", "mr-in":
+		return "mr-IN"
+	case "pl", "pl-pl":
+		return "pl-PL"
+	case "pt", "pt-br":
+		return "pt-BR"
+	case "ro", "ro-ro":
+		return "ro-RO"
+	case "ru", "ru-ru":
+		return "ru-RU"
+	case "es", "es-us":
+		return "es-US"
+	case "ta", "ta-in":
+		return "ta-IN"
+	case "te", "te-in":
+		return "te-IN"
+	case "th", "th-th":
+		return "th-TH"
+	case "tr", "tr-tr":
+		return "tr-TR"
+	case "uk", "uk-ua":
+		return "uk-UA"
+	case "vi", "vi-vn":
+		return "vi-VN"
+	default:
+		return strings.TrimSpace(language)
+	}
+}
+
+func normalizeGrokVoiceLanguageCode(language string) string {
+	language = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(language, "_", "-")))
+	switch language {
+	case "", "auto", "automatic", "detect", "default":
+		return "auto"
+	case "en", "en-us", "en-gb", "bn", "bn-bd", "zh", "zh-cn", "fr", "fr-fr", "de", "de-de", "hi", "hi-in", "id", "id-id", "it", "it-it", "ja", "ja-jp", "ko", "ko-kr", "ru", "ru-ru", "tr", "tr-tr", "vi", "vi-vn":
+		if before, _, ok := strings.Cut(language, "-"); ok {
+			return before
+		}
+		return language
+	case "ar", "ar-eg":
+		return "ar-EG"
+	case "ar-sa":
+		return "ar-SA"
+	case "ar-ae":
+		return "ar-AE"
+	case "pt", "pt-br":
+		return "pt-BR"
+	case "pt-pt":
+		return "pt-PT"
+	case "es", "es-mx":
+		return "es-MX"
+	case "es-es":
+		return "es-ES"
+	default:
+		return strings.TrimSpace(language)
+	}
+}
+
 func defaultVoiceProviderConfig(providerID string) VoiceProviderConfig {
 	switch normalizeVoiceProviderID(providerID) {
 	case "piper":
@@ -282,7 +373,16 @@ func defaultVoiceProviderConfig(providerID string) VoiceProviderConfig {
 	case "gemini_live":
 		return VoiceProviderConfig{
 			VoiceID:  "Puck",
+			Language: "auto",
 			Endpoint: "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent",
+		}
+	case "grok_voice":
+		return VoiceProviderConfig{
+			ModelID:   "grok-voice-latest",
+			VoiceID:   "eve",
+			Language:  "auto",
+			APIKeyEnv: "XAI_API_KEY",
+			Endpoint:  "wss://api.x.ai/v1/realtime",
 		}
 	default:
 		return VoiceProviderConfig{}
@@ -394,6 +494,7 @@ func voiceProviders(moduleID string) []VoiceProviderOption {
 	case VoiceModuleRealtime:
 		return []VoiceProviderOption{
 			{ID: "gemini_live", Name: "Gemini Live", Local: false, Status: "Cloud · API key required"},
+			{ID: "grok_voice", Name: "Grok Voice", Local: false, Status: "Cloud · API key required"},
 		}
 	default:
 		return nil

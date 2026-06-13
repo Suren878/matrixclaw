@@ -22,6 +22,7 @@ const (
 	defaultWSURL       = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
 	defaultVoice       = "Puck"
 	defaultDialTimeout = 20 * time.Second
+	maxWSMessageBytes  = 8 << 20
 	modelsCacheTTL     = 6 * time.Hour
 	modelsErrorTTL     = 30 * time.Second
 	modelsHTTPTimeout  = 2 * time.Second
@@ -72,6 +73,7 @@ type Config struct {
 	WSURL             string
 	ModelID           string
 	VoiceID           string
+	Language          string
 	SystemInstruction string
 	DialTimeout       time.Duration
 }
@@ -144,6 +146,7 @@ func (p *Provider) Descriptor(ctx context.Context) realtime.ProviderDescriptor {
 			APIKeyEnv:        cfg.APIKeyEnv,
 			ModelID:          cfg.ModelID,
 			VoiceID:          cfg.VoiceID,
+			Language:         cfg.Language,
 			Endpoint:         cfg.WSURL,
 		},
 		Models:        models,
@@ -163,6 +166,7 @@ func (p *Provider) Connect(ctx context.Context, req realtime.ProviderConnectRequ
 		return nil, errors.New("gemini live: model is required")
 	}
 	voiceID := firstNonEmpty(req.VoiceID, cfg.VoiceID, defaultVoice)
+	language := firstNonEmpty(req.Language, cfg.Language)
 	endpoint, err := liveURL(cfg.WSURL, cfg.APIKey)
 	if err != nil {
 		return nil, err
@@ -178,11 +182,14 @@ func (p *Provider) Connect(ctx context.Context, req realtime.ProviderConnectRequ
 	if err != nil {
 		return nil, fmt.Errorf("gemini live: websocket dial: %w", err)
 	}
+	conn.SetReadLimit(maxWSMessageBytes)
 	live := &connection{
-		conn:    conn,
-		outputs: make(chan realtime.ProviderOutput, 64),
+		conn:         conn,
+		realtimeText: usesRealtimeText(modelID),
+		outputs:      make(chan realtime.ProviderOutput, 64),
 	}
-	if err := live.writeJSON(setupCtx, setupMessage(modelID, voiceID, firstNonEmpty(req.SystemInstruction, cfg.SystemInstruction), req.Tools)); err != nil {
+	systemInstruction := combinedSystemInstruction(cfg.SystemInstruction, req.SystemInstruction, language)
+	if err := live.writeJSON(setupCtx, setupMessage(modelID, voiceID, language, systemInstruction, req.Tools)); err != nil {
 		_ = live.Close(err)
 		return nil, fmt.Errorf("gemini live: send setup: %w", err)
 	}
@@ -255,16 +262,29 @@ func (p *Provider) liveModels(ctx context.Context, cfg Config) liveModelsResult 
 }
 
 type connection struct {
-	conn        *websocket.Conn
-	writeMu     sync.Mutex
-	outputs     chan realtime.ProviderOutput
-	closeOnce   sync.Once
-	outputsOnce sync.Once
+	conn         *websocket.Conn
+	writeMu      sync.Mutex
+	audioMu      sync.Mutex
+	audioActive  bool
+	realtimeText bool
+	outputs      chan realtime.ProviderOutput
+	closeOnce    sync.Once
+	outputsOnce  sync.Once
 }
 
 func (c *connection) Send(ctx context.Context, input realtime.ProviderInput) error {
 	switch input.Type {
 	case realtime.ProviderInputAudioAppend:
+		c.audioMu.Lock()
+		defer c.audioMu.Unlock()
+		if !c.audioActive {
+			if err := c.writeJSON(ctx, map[string]any{
+				"realtimeInput": map[string]any{"activityStart": map[string]any{}},
+			}); err != nil {
+				return err
+			}
+			c.audioActive = true
+		}
 		return c.writeJSON(ctx, map[string]any{
 			"realtimeInput": map[string]any{
 				"audio": map[string]any{
@@ -274,13 +294,25 @@ func (c *connection) Send(ctx context.Context, input realtime.ProviderInput) err
 			},
 		})
 	case realtime.ProviderInputAudioEnd:
-		return c.writeJSON(ctx, map[string]any{
-			"realtimeInput": map[string]any{"audioStreamEnd": true},
-		})
+		c.audioMu.Lock()
+		defer c.audioMu.Unlock()
+		if !c.audioActive {
+			return nil
+		}
+		if err := c.writeJSON(ctx, map[string]any{
+			"realtimeInput": map[string]any{"activityEnd": map[string]any{}},
+		}); err != nil {
+			return err
+		}
+		c.audioActive = false
+		return nil
 	case realtime.ProviderInputTextAppend:
 		text := strings.TrimSpace(input.Text)
 		if text == "" {
 			return nil
+		}
+		if c.realtimeText {
+			return c.writeJSON(ctx, map[string]any{"realtimeInput": map[string]any{"text": text}})
 		}
 		if input.EndOfTurn {
 			return c.writeJSON(ctx, map[string]any{
@@ -346,8 +378,8 @@ func (c *connection) waitSetupComplete(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("gemini live: wait setup complete: %w", err)
 	}
-	if messageType != websocket.MessageText {
-		return errors.New("gemini live: setup response was not text")
+	if messageType != websocket.MessageText && messageType != websocket.MessageBinary {
+		return errors.New("gemini live: setup response was not JSON")
 	}
 	var msg serverMessage
 	if err := json.Unmarshal(data, &msg); err != nil {
@@ -370,7 +402,7 @@ func (c *connection) readLoop(ctx context.Context) {
 			c.emit(ctx, realtime.ProviderOutput{Type: realtime.ProviderOutputError, Error: err.Error()})
 			return
 		}
-		if messageType != websocket.MessageText {
+		if messageType != websocket.MessageText && messageType != websocket.MessageBinary {
 			continue
 		}
 		outputs := decodeServerOutputs(data)
@@ -403,21 +435,32 @@ func (c *connection) writeJSON(ctx context.Context, payload any) error {
 	return c.conn.Write(ctx, websocket.MessageText, body)
 }
 
-func setupMessage(modelID string, voiceID string, systemInstruction string, tools []realtime.ToolDeclaration) map[string]any {
+func setupMessage(modelID string, voiceID string, language string, systemInstruction string, tools []realtime.ToolDeclaration) map[string]any {
 	setup := map[string]any{
 		"model": "models/" + strings.TrimPrefix(strings.TrimSpace(modelID), "models/"),
 		"generationConfig": map[string]any{
 			"responseModalities": []string{"AUDIO"},
+			"thinkingConfig":     thinkingConfig(modelID),
 		},
 		"inputAudioTranscription":  map[string]any{},
 		"outputAudioTranscription": map[string]any{},
-	}
-	if voiceID != "" {
-		setup["generationConfig"].(map[string]any)["speechConfig"] = map[string]any{
-			"voiceConfig": map[string]any{
-				"prebuiltVoiceConfig": map[string]any{"voiceName": voiceID},
+		"realtimeInputConfig": map[string]any{
+			"automaticActivityDetection": map[string]any{
+				"disabled": true,
 			},
+		},
+	}
+	speechConfig := map[string]any{}
+	if voiceID != "" {
+		speechConfig["voiceConfig"] = map[string]any{
+			"prebuiltVoiceConfig": map[string]any{"voiceName": voiceID},
 		}
+	}
+	if languageCode := speechConfigLanguageCode(modelID, language); languageCode != "" {
+		speechConfig["languageCode"] = languageCode
+	}
+	if len(speechConfig) > 0 {
+		setup["generationConfig"].(map[string]any)["speechConfig"] = speechConfig
 	}
 	if strings.TrimSpace(systemInstruction) != "" {
 		setup["systemInstruction"] = map[string]any{
@@ -428,6 +471,174 @@ func setupMessage(modelID string, voiceID string, systemInstruction string, tool
 		setup["tools"] = []map[string]any{{"functionDeclarations": declarations}}
 	}
 	return map[string]any{"setup": setup}
+}
+
+func combinedSystemInstruction(base string, session string, language string) string {
+	parts := []string{}
+	if base = strings.TrimSpace(base); base != "" {
+		parts = append(parts, base)
+	}
+	if session = strings.TrimSpace(session); session != "" {
+		parts = append(parts, session)
+	}
+	if guard := languageSystemInstruction(language); guard != "" {
+		parts = append(parts, guard)
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+func languageSystemInstruction(language string) string {
+	code := normalizeLanguageCode(language)
+	if code == "" || strings.EqualFold(code, "auto") {
+		return ""
+	}
+	name := languageDisplayName(code)
+	return "Realtime voice language policy:\n" +
+		"- Speak only in " + name + " (" + code + ") unless the human explicitly asks to change language.\n" +
+		"- Keep pronunciation and accent natural for " + name + ".\n" +
+		"- If speech recognition is ambiguous, stay in " + name + " instead of switching to another language."
+}
+
+func speechConfigLanguageCode(modelID string, language string) string {
+	code := normalizeLanguageCode(language)
+	if code == "" || strings.EqualFold(code, "auto") {
+		return ""
+	}
+	if strings.Contains(strings.ToLower(strings.TrimSpace(modelID)), "native-audio") {
+		return ""
+	}
+	return code
+}
+
+func normalizeLanguageCode(language string) string {
+	value := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(language, "_", "-")))
+	switch value {
+	case "", "auto", "automatic", "detect", "default":
+		return "auto"
+	case "ar", "ar-eg":
+		return "ar-EG"
+	case "bn", "bn-bd":
+		return "bn-BD"
+	case "nl", "nl-nl":
+		return "nl-NL"
+	case "en", "en-us":
+		return "en-US"
+	case "en-in":
+		return "en-IN"
+	case "fr", "fr-fr":
+		return "fr-FR"
+	case "de", "de-de":
+		return "de-DE"
+	case "hi", "hi-in":
+		return "hi-IN"
+	case "id", "id-id":
+		return "id-ID"
+	case "it", "it-it":
+		return "it-IT"
+	case "ja", "ja-jp":
+		return "ja-JP"
+	case "ko", "ko-kr":
+		return "ko-KR"
+	case "mr", "mr-in":
+		return "mr-IN"
+	case "pl", "pl-pl":
+		return "pl-PL"
+	case "pt", "pt-br":
+		return "pt-BR"
+	case "ro", "ro-ro":
+		return "ro-RO"
+	case "ru", "ru-ru":
+		return "ru-RU"
+	case "es", "es-us":
+		return "es-US"
+	case "ta", "ta-in":
+		return "ta-IN"
+	case "te", "te-in":
+		return "te-IN"
+	case "th", "th-th":
+		return "th-TH"
+	case "tr", "tr-tr":
+		return "tr-TR"
+	case "uk", "uk-ua":
+		return "uk-UA"
+	case "vi", "vi-vn":
+		return "vi-VN"
+	}
+	parts := strings.Split(value, "-")
+	if len(parts) >= 2 && len(parts[0]) == 2 && len(parts[1]) == 2 {
+		return parts[0] + "-" + strings.ToUpper(parts[1])
+	}
+	return strings.TrimSpace(language)
+}
+
+func languageDisplayName(language string) string {
+	switch normalizeLanguageCode(language) {
+	case "ar-EG":
+		return "Arabic (Egyptian)"
+	case "bn-BD":
+		return "Bengali (Bangladesh)"
+	case "nl-NL":
+		return "Dutch (Netherlands)"
+	case "en-IN":
+		return "English (India)"
+	case "en-US":
+		return "English (US)"
+	case "fr-FR":
+		return "French (France)"
+	case "de-DE":
+		return "German (Germany)"
+	case "hi-IN":
+		return "Hindi (India)"
+	case "id-ID":
+		return "Indonesian (Indonesia)"
+	case "it-IT":
+		return "Italian (Italy)"
+	case "ja-JP":
+		return "Japanese (Japan)"
+	case "ko-KR":
+		return "Korean (Korea)"
+	case "mr-IN":
+		return "Marathi (India)"
+	case "pl-PL":
+		return "Polish (Poland)"
+	case "pt-BR":
+		return "Portuguese (Brazil)"
+	case "ro-RO":
+		return "Romanian (Romania)"
+	case "ru-RU":
+		return "Russian (Russia)"
+	case "es-US":
+		return "Spanish (US)"
+	case "ta-IN":
+		return "Tamil (India)"
+	case "te-IN":
+		return "Telugu (India)"
+	case "th-TH":
+		return "Thai (Thailand)"
+	case "tr-TR":
+		return "Turkish (Turkey)"
+	case "uk-UA":
+		return "Ukrainian (Ukraine)"
+	case "vi-VN":
+		return "Vietnamese (Vietnam)"
+	default:
+		if code := strings.TrimSpace(language); code != "" {
+			return code
+		}
+		return "the configured language"
+	}
+}
+
+func thinkingConfig(modelID string) map[string]any {
+	if usesRealtimeText(modelID) {
+		return map[string]any{"thinkingLevel": "low"}
+	}
+	return map[string]any{"thinkingBudget": 0}
+}
+
+func usesRealtimeText(modelID string) bool {
+	modelID = strings.ToLower(strings.TrimSpace(modelID))
+	return strings.Contains(modelID, "gemini-3") || strings.Contains(modelID, "3.1")
 }
 
 func functionDeclarations(tools []realtime.ToolDeclaration) []map[string]any {
@@ -444,13 +655,69 @@ func functionDeclarations(tools []realtime.ToolDeclaration) []map[string]any {
 		if len(tool.Parameters) > 0 {
 			var parameters any
 			if err := json.Unmarshal(tool.Parameters, &parameters); err == nil {
-				decl["parameters"] = parameters
+				decl["parameters"] = sanitizeFunctionSchema(parameters)
 			}
 		}
 		out = append(out, decl)
 		if len(out) >= 128 {
 			break
 		}
+	}
+	return out
+}
+
+func sanitizeFunctionSchema(value any) any {
+	switch item := value.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(item))
+		for key, child := range item {
+			switch strings.ToLower(strings.TrimSpace(key)) {
+			case "properties":
+				if props, ok := child.(map[string]any); ok {
+					cleanProps := make(map[string]any, len(props))
+					for propName, propSchema := range props {
+						propName = strings.TrimSpace(propName)
+						if propName != "" {
+							cleanProps[propName] = sanitizeFunctionSchema(propSchema)
+						}
+					}
+					out[key] = cleanProps
+				}
+			case "items":
+				out[key] = sanitizeFunctionSchema(child)
+			case "enum":
+				if enum := sanitizeFunctionEnum(child); len(enum) > 0 {
+					out[key] = enum
+				}
+			case "type", "format", "description", "nullable", "required", "minimum", "maximum", "minitems", "maxitems", "minlength", "maxlength":
+				out[key] = sanitizeFunctionSchema(child)
+			default:
+				continue
+			}
+		}
+		return out
+	case []any:
+		out := make([]any, 0, len(item))
+		for _, child := range item {
+			out = append(out, sanitizeFunctionSchema(child))
+		}
+		return out
+	default:
+		return value
+	}
+}
+
+func sanitizeFunctionEnum(value any) []any {
+	values, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]any, 0, len(values))
+	for _, item := range values {
+		if text, ok := item.(string); ok && strings.TrimSpace(text) == "" {
+			continue
+		}
+		out = append(out, item)
 	}
 	return out
 }
@@ -654,6 +921,7 @@ func normalizeConfig(cfg Config) Config {
 	if cfg.VoiceID == "" {
 		cfg.VoiceID = defaultVoice
 	}
+	cfg.Language = normalizeLanguageCode(cfg.Language)
 	cfg.SystemInstruction = strings.TrimSpace(cfg.SystemInstruction)
 	return cfg
 }

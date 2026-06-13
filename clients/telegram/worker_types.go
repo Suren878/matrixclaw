@@ -46,6 +46,7 @@ type Worker struct {
 	autoEdits        map[string]struct{}
 	locations        map[string]telegramLocationContext
 	pendingLocations map[string]pendingLocationRequest
+	externalSessions map[string]struct{}
 	geo              *tools.OSMService
 	now              func() time.Time
 }

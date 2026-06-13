@@ -81,6 +81,25 @@ func fileDeliveryGuidancePrompt() string {
 - Do not claim that a file was sent until send_file has completed successfully.`)
 }
 
+func (c *Core) telephonyCallPromptAvailable() bool {
+	if c == nil || c.tools == nil {
+		return false
+	}
+	_, ok := c.tools.Spec("telephony_call")
+	return ok
+}
+
+func telephonyCallGuidancePrompt() string {
+	return strings.TrimSpace(`Phone calls:
+- When the user asks you to call, dial, ring, phone, or "набрать/позвонить" a phone number, call telephony_call. Do not say that you cannot make calls while this tool is available.
+- telephony_call places a real outbound phone call and requires explicit approval before dialing.
+- Put the destination number in "to". Put the user's concrete phone-task in "objective"; include enough context for the phone assistant to complete the conversation.
+- Use "system_instruction" only for detailed behavior that matters during the call, such as tone, language, constraints, facts to mention, or what must not be promised.
+- Use "initial_message" only when the user explicitly tells you the first phrase to say; otherwise let the phone assistant greet naturally.
+- If a required detail is missing but the user clearly wants the call now, still call when the task can proceed reasonably; otherwise ask one concise clarification before calling.
+- After telephony_call succeeds, tell the user the call has started. A separate post-call report will summarize the result when the call ends.`)
+}
+
 func (c *Core) delegateTaskPromptAvailable() bool {
 	if c == nil || c.tools == nil {
 		return false

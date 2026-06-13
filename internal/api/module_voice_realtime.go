@@ -15,6 +15,8 @@ import (
 	"nhooyr.io/websocket"
 )
 
+const realtimeVoiceWebSocketReadLimit = 8 << 20
+
 func (s *Server) handleRealtimeVoiceModule(w http.ResponseWriter, r *http.Request) {
 	if s.realtimeVoice == nil {
 		writeErrorMessage(w, http.StatusNotImplemented, "realtime voice service is not configured")
@@ -117,6 +119,7 @@ func (s *Server) handleRealtimeVoiceStream(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		return
 	}
+	conn.SetReadLimit(realtimeVoiceWebSocketReadLimit)
 	stream := &realtimeWebSocketStream{conn: conn}
 	if err := s.realtimeVoice.ServeStream(r.Context(), sessionID, stream); err != nil {
 		_ = stream.Close(err)

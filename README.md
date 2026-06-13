@@ -54,7 +54,10 @@ runtime through Terminal, Telegram, or MCP.
 - **Usage ledger:** provider token usage is recorded when available.
 - **Storage module:** Telegram uploads and generated files land in local storage, with temporary files promoted only when needed.
 - **Web research and browser tools:** `web_research`, `web_research_ask`, and compatibility `web_search` / `web_fetch` tools with SQLite-backed facts/sources and runtime artifacts. Search providers: DuckDuckGo (free, no key), Tavily (1 000 req/mo free), Serper (2 500 req/mo free), SearXNG (self-hosted). Configure from `/modules` without restarting. When an MCP browser server is connected, MatrixClaw can also expose interactive browser tools for opening pages, clicking, typing, waiting, and screenshots.
-- **Voice modules:** Piper and Supertonic TTS plus Whisper.cpp STT run locally, and realtime speech-to-speech is available through the daemon WebSocket gateway with Gemini Live as the first provider.
+- **Voice modules:** Piper and Supertonic TTS plus Whisper.cpp STT run locally.
+  Realtime speech-to-speech is available through the daemon WebSocket gateway
+  with Gemini Live and Grok Voice providers, and an optional telephony gateway
+  can bridge Asterisk/SIP calls into the same realtime layer.
 - **MCP module:** connect external MCP servers as assistant tools, or expose matrixclaw tools to MCP hosts.
 - **Automation-ready:** reminders, scheduled AI tasks, deliveries, and future agent workflows.
 
@@ -70,8 +73,8 @@ runtime through Terminal, Telegram, or MCP.
   Claude Code subagents.
 - Connect MCP servers as assistant tools, or expose MatrixClaw tools to other
   MCP hosts.
-- Keep personal AI automation, scheduled tasks, voice, storage, and provider
-  usage in one local SQLite-backed runtime.
+- Keep personal AI automation, scheduled tasks, voice, telephony gateway
+  configuration, storage, and provider usage in one local SQLite-backed runtime.
 
 ## OpenClaw, Claude Code, Codex, and OpenCode alternative
 
@@ -159,26 +162,28 @@ from more than one surface.
 
 ## What's New
 
-Latest release highlights for `v0.1.15`:
+Latest release highlights for `v0.1.16`:
 
-- Reworked Telegram sessions around the main private chat again. `/new`,
-  `/sessions`, session use, and session deletion no longer depend on Telegram
-  forum topics or thread bindings.
-- Added Telegram inline and guest delivery support. The bot can be invoked from
-  another chat, run against the active Telegram session, and replace the inline
-  placeholder with the assistant answer.
-- Improved Telegram live delivery with draft previews, compact thinking text,
-  persistent inline request recovery, and cleaner voice/TTS routing back to the
-  originating chat or inline message.
-- Passed Telegram inline geolocation into assistant requests, so location-based
-  prompts can use the coordinates Telegram supplies.
-- Added daemon-level realtime speech-to-speech plumbing. Clients can create a
-  `realtime_voice` session, stream PCM audio over WebSocket, receive live audio
-  and transcripts, and route tool calls/approvals through the same core runtime.
-- Added browser module plumbing and managed browser MCP configuration paths for
-  browser provider state in the daemon, API client, and control-plane UI.
-- Expanded storage byte-read APIs and moved storage, voice, and session-LLM
-  diagnostics away from phrase matching to typed errors.
+- Added provider-neutral realtime voice setup for Gemini Live and Grok Voice,
+  with API key validation, real model/voice/language controls, and
+  provider-specific status in the control plane.
+- Added xAI Grok Voice Agent support for speech-to-speech sessions, including
+  language hints, manual audio turn commits, tool-call routing, and cleaner
+  transcript handling.
+- Refactored control-plane menu navigation so Back and Close return to the
+  parent surface consistently across menus, pickers, status views, and action
+  dialogs.
+- Added the optional `matrixclaw-telephony-gateway` binary for self-hosted
+  Asterisk/SIP deployments, bridging ARI `externalMedia` RTP audio into
+  MatrixClaw realtime voice sessions.
+- Added approval-gated `telephony_call` tooling, outbound call objectives,
+  inbound caller allowlists, phone-specific prompts, final call transcripts,
+  post-call reports, and temporary MP3 call recording plumbing.
+- Improved telephony runtime stability with faster inbound answering, a single
+  long-lived ARI app listener, hangup-extension filtering, safer RTP/VAD turn
+  handling, and realtime close-race fixes.
+- Updated release archives, installer, uninstall script, local release build,
+  and Homebrew template to include `matrixclaw-telephony-gateway`.
 
 ## Install
 
@@ -189,8 +194,9 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/in
 ```
 
 The installer downloads the matching GitHub Release archive, installs
-`matrixclaw` and `matrixclawd` into `~/.local/bin`, prepares local config/state
-directories, and starts `matrixclaw setup`.
+`matrixclaw`, `matrixclawd`, and `matrixclaw-telephony-gateway` into
+`~/.local/bin`, prepares local config/state directories, and starts
+`matrixclaw setup`.
 
 Local TTS/STT runtimes are optional because they install extra system packages
 and build native binaries. To prepare Piper, Supertonic, Whisper.cpp, and
@@ -258,10 +264,15 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
 - Telegram image/document uploads stored as temporary files, with explicit save/delete controls.
 - Telegram voice and audio messages transcribed through the configured STT provider and sent into the active session as text.
 - Telegram `/tts` and assistant `text_to_speech` tool results sent back as voice messages and archived in storage.
-- Realtime speech-to-speech sessions over the daemon API. The first backend is
-  Gemini Live (`gemini_live`), while clients use MatrixClaw's provider-neutral
-  realtime protocol so iOS, web, or SIP gateways can attach later without
-  speaking provider-specific APIs.
+- Realtime speech-to-speech sessions over the daemon API. Gemini Live
+  (`gemini_live`) and Grok Voice (`grok_voice`) are available through
+  MatrixClaw's provider-neutral realtime protocol, so iOS, web, or SIP gateways
+  can attach without speaking provider-specific APIs.
+- Experimental telephony gateway preparation for Asterisk/SIP deployments. A
+  separate `matrixclaw-telephony-gateway` process bridges Asterisk
+  ARI/externalMedia and SIP/PJSIP calls into realtime voice sessions, exposes an
+  approval-gated `telephony_call` tool, supports inbound caller allowlists, and
+  can save transcripts, post-call reports, and temporary MP3 call recordings.
 - Web research tools with compact provider-visible facts/sources, follow-up reuse by `research_id`, runtime artifact storage, provider selection, and per-provider credential storage; provider switch takes effect immediately without a daemon restart.
 - MCP client module for stdio and streamable HTTP MCP servers, registering remote tools as matrixclaw tools.
 - MCP stdio server mode for exposing matrixclaw daemon tools to external MCP hosts.
@@ -677,10 +688,16 @@ clients create a realtime session, open a WebSocket, stream input audio frames,
 and receive assistant audio, transcripts, turn-final events, tool calls, and
 approval updates through the same connection.
 
-The client protocol is provider-neutral. Today the registered realtime provider
-is `gemini_live`, backed by Gemini Live / Gemini 2.5 Flash Native Audio, but the
-daemon owns the provider choice so future iOS, web, desktop, or SIP/IP telephony
-clients do not need to know Gemini's wire format.
+The client protocol is provider-neutral. Registered realtime providers include
+`gemini_live`, backed by Gemini Live / Gemini 2.5 Flash Native Audio, and
+`grok_voice`, backed by xAI Grok Voice Agent API. The daemon owns the provider
+choice so iOS, web, desktop, or SIP/IP telephony clients do not need to know a
+provider's wire format.
+
+The same realtime layer is the integration point for phone calls. Telephony is
+kept in an optional gateway process so SIP, RTP, provider-specific trunks, and
+Asterisk configuration stay outside the main daemon, while MatrixClaw keeps the
+provider choice, prompts, approvals, transcripts, and session delivery.
 
 MVP audio format:
 
@@ -718,7 +735,7 @@ endpoint, and API key can be set in `setup.json` or by environment variables:
   "modules": {
     "realtime_voice": {
       "enabled": true,
-      "provider_id": "gemini_live",
+      "provider_id": "grok_voice",
       "providers": {
         "gemini_live": {
           "api_key": "",
@@ -726,6 +743,14 @@ endpoint, and API key can be set in `setup.json` or by environment variables:
           "model_id": "gemini-2.5-flash-native-audio-preview-12-2025",
           "voice_id": "Puck",
           "endpoint": "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
+        },
+        "grok_voice": {
+          "api_key": "",
+          "api_key_env": "XAI_API_KEY",
+          "model_id": "grok-voice-latest",
+          "voice_id": "eve",
+          "language": "ru",
+          "endpoint": "wss://api.x.ai/v1/realtime"
         }
       }
     }
@@ -737,11 +762,68 @@ Useful environment overrides:
 
 ```bash
 MATRIXCLAW_REALTIME_VOICE_ENABLED=1
+
+# Gemini Live
 MATRIXCLAW_REALTIME_VOICE_PROVIDER=gemini_live
 MATRIXCLAW_GEMINI_LIVE_API_KEY=...
 MATRIXCLAW_GEMINI_LIVE_MODEL=gemini-2.5-flash-native-audio-preview-12-2025
 MATRIXCLAW_GEMINI_LIVE_VOICE=Puck
+MATRIXCLAW_GEMINI_LIVE_LANGUAGE=ru-RU
+
+# Grok Voice
+MATRIXCLAW_REALTIME_VOICE_PROVIDER=grok_voice
+MATRIXCLAW_GROK_VOICE_API_KEY=...
+MATRIXCLAW_GROK_VOICE_MODEL=grok-voice-latest
+MATRIXCLAW_GROK_VOICE_VOICE=eve
+MATRIXCLAW_GROK_VOICE_LANGUAGE=ru
 ```
+
+### Telephony Gateway Preparation
+
+Telephony support is prepared as an optional self-hosted gateway:
+`matrixclaw-telephony-gateway`. It is intended for Asterisk/SIP deployments and
+provider-specific PBX or SIP trunks. MatrixClaw does not require telephony for
+normal voice use.
+
+Current shape:
+
+- Asterisk handles SIP/PJSIP registration, trunks, inbound routing, and real
+  phone calls.
+- The gateway uses Asterisk ARI and `externalMedia` to bridge RTP audio into
+  MatrixClaw realtime voice sessions.
+- MatrixClaw exposes `telephony_call` as an approval-gated assistant tool when
+  the telephony module is enabled and configured.
+- Outbound calls can carry a concrete phone objective and a phone-specific
+  prompt.
+- Inbound calls can be restricted by an allowed caller list.
+- Final transcripts, post-call reports, and MP3 recordings can be saved into
+  MatrixClaw temporary storage under `call-records`.
+
+Useful gateway environment variables:
+
+```bash
+MATRIXCLAW_TELEPHONY_ADDR=127.0.0.1:8090
+MATRIXCLAW_TELEPHONY_TOKEN=...
+MATRIXCLAW_API_URL=http://127.0.0.1:8080
+MATRIXCLAW_API_TOKEN=...
+MATRIXCLAW_TELEPHONY_ARI_URL=http://127.0.0.1:18088/ari
+MATRIXCLAW_TELEPHONY_ARI_USER=matrixclaw
+MATRIXCLAW_TELEPHONY_ARI_PASSWORD=...
+MATRIXCLAW_TELEPHONY_ARI_APP=matrixclaw
+MATRIXCLAW_TELEPHONY_SIP_PROFILE=main
+MATRIXCLAW_TELEPHONY_CALLER_ID=...
+MATRIXCLAW_TELEPHONY_INBOUND_ENABLED=1
+MATRIXCLAW_TELEPHONY_INBOUND_ALLOWED_CALLERS=+15551234567,+442012345678
+MATRIXCLAW_TELEPHONY_RECORD_CALLS=1
+MATRIXCLAW_TELEPHONY_RECORDING_FORMAT=mp3
+```
+
+`MATRIXCLAW_TELEPHONY_INBOUND_ALLOWED_CALLERS` accepts numbers separated by
+newlines, spaces, commas, or semicolons.
+
+Provider-specific SIP trunk services are deployment details. The intended
+boundary is Asterisk/SIP, so each user can bring their own telephony provider
+or skip telephony entirely.
 
 See [Local Voice](docs/VOICE.md) and [Storage and Telegram Files](docs/STORAGE.md)
 for the local model paths, run modes, temporary-file lifecycle, and Telegram
@@ -751,6 +833,7 @@ voice/file flow. See [MCP Module](docs/MCP.md) for MCP client/server setup.
 
 - [`cmd/matrixclaw`](cmd/matrixclaw): operator CLI and terminal entrypoint
 - [`cmd/matrixclawd`](cmd/matrixclawd): daemon composition root
+- [`cmd/matrixclaw-telephony-gateway`](cmd/matrixclaw-telephony-gateway): optional Asterisk/SIP to realtime voice bridge
 - [`clients/terminal`](clients/terminal): setup UI, terminal chat, widgets
 - [`clients/telegram`](clients/telegram): Telegram Bot API client
 - [`internal/core`](internal/core): sessions, runs, approvals, messages, events
@@ -761,6 +844,8 @@ voice/file flow. See [MCP Module](docs/MCP.md) for MCP client/server setup.
 - [`internal/externalagents`](internal/externalagents): external-agent registry and Codex app-server adapter
 - [`internal/mcp`](internal/mcp): MCP client/server bridge
 - [`internal/modules/mcp`](internal/modules/mcp): daemon MCP module
+- [`internal/modules/telephony`](internal/modules/telephony): telephony module and approval-gated call tool
+- [`internal/telephony`](internal/telephony): Asterisk ARI, RTP, realtime, and call recording gateway code
 - [`internal/tools`](internal/tools): builtin tools
 - [`docs`](docs): planning, MCP, local voice, and storage notes
 - [`scripts`](scripts): install, uninstall, and release-build scripts
@@ -779,6 +864,9 @@ Can leave your machine:
 
 - Prompts, selected context, tool results, and conversation history sent to the configured LLM provider.
 - External-agent prompts, working directories, and agent events sent through the configured external agent.
+- Realtime voice audio and transcripts sent to the configured realtime provider.
+- Telephony phone numbers, call audio, transcripts, and recordings sent through
+  the configured telephony gateway, SIP provider, and realtime voice provider.
 - Remote MCP tool arguments and results sent to configured MCP servers.
 - Telegram messages and buttons when the Telegram client is enabled.
 - Network traffic caused by tools you approve or run.

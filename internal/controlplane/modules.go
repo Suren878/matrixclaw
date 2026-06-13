@@ -25,6 +25,8 @@ func (d *Dispatcher) handleModules(ctx context.Context, externalKey string, args
 		return d.handleVoiceModule(ctx, setup.VoiceModuleSTT, rest)
 	case "realtime", "realtime_voice", "live-voice", "live_voice":
 		return d.handleRealtimeVoiceModule(ctx, rest)
+	case "telephony", "calls":
+		return d.handleTelephonyModule(ctx, rest)
 	case "web":
 		return d.handleWebSearch(ctx, rest)
 	case "browser":
@@ -39,7 +41,7 @@ func (d *Dispatcher) handleModules(ctx context.Context, externalKey string, args
 }
 
 func (d *Dispatcher) modulesPicker(ctx context.Context) (Result, error) {
-	externalAgentsInfo, ttsInfo, sttInfo, realtimeVoiceInfo, browserInfo, webInfo, skillsInfo, mcpInfo := "", "", "", "", "", "", "", ""
+	externalAgentsInfo, ttsInfo, sttInfo, realtimeVoiceInfo, telephonyInfo, browserInfo, webInfo, skillsInfo, mcpInfo := "", "", "", "", "", "", "", "", ""
 	if d.externalAgents != nil {
 		if agents, err := d.externalAgents.ListExternalAgents(ctx); err == nil {
 			externalAgentsInfo = externalAgentsModuleInfo(agents)
@@ -56,6 +58,11 @@ func (d *Dispatcher) modulesPicker(ctx context.Context) (Result, error) {
 	if d.realtimeVoice != nil {
 		if module, err := d.realtimeVoice.RealtimeVoiceModule(ctx); err == nil {
 			realtimeVoiceInfo = realtimeVoiceModuleListInfo(module)
+		}
+	}
+	if d.telephony != nil {
+		if module, err := d.telephony.TelephonyModule(ctx); err == nil {
+			telephonyInfo = telephonyModuleListInfo(module)
 		}
 	}
 	if d.webSearch != nil {
@@ -87,6 +94,7 @@ func (d *Dispatcher) modulesPicker(ctx context.Context) (Result, error) {
 			Row("tts", "Text to Speech", ttsInfo, textToSpeechCommand()).
 			Row("stt", "Speech to Text", sttInfo, speechToTextCommand()).
 			Row("realtime_voice", "Realtime Voice", realtimeVoiceInfo, realtimeVoiceCommand()).
+			Row("telephony", "Telephony", telephonyInfo, telephonyCommand()).
 			Row("browser", "Browser", browserInfo, browserCommand()).
 			Row("storage", "Storage", "Files", storageCommand()).
 			Row("web", "Web Search", webInfo, webSearchCommand()).

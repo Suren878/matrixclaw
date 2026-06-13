@@ -98,7 +98,7 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 echo "[3/4] Removing binaries"
-rm -f "$install_dir/matrixclaw" "$install_dir/matrixclawd"
+rm -f "$install_dir/matrixclaw" "$install_dir/matrixclawd" "$install_dir/matrixclaw-telephony-gateway"
 
 echo "[4/4] Handling config and state"
 if [[ "$purge" == "1" ]]; then

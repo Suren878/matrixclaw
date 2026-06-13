@@ -36,6 +36,15 @@ func realtimeVoiceCommand(parts ...string) string {
 	return voiceModuleCommand("realtime_voice", parts...)
 }
 
+func telephonyCommand(parts ...string) string {
+	values := append([]string{"telephony"}, parts...)
+	return modulesCommand(values...)
+}
+
+func telephonyCommandPrefix(parts ...string) string {
+	return telephonyCommand(parts...) + " "
+}
+
 func storageCommandPrefix(parts ...string) string {
 	return storageCommand(parts...) + " "
 }

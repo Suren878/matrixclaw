@@ -13,6 +13,7 @@ import (
 const (
 	ModuleID        = "realtime_voice"
 	ProviderGemini  = "gemini_live"
+	ProviderGrok    = "grok_voice"
 	ProtocolVersion = 1
 )
 
@@ -51,6 +52,7 @@ type SessionCreateRequest struct {
 	ProviderID        string      `json:"provider_id,omitempty"`
 	ModelID           string      `json:"model_id,omitempty"`
 	VoiceID           string      `json:"voice_id,omitempty"`
+	Language          string      `json:"language,omitempty"`
 	SystemInstruction string      `json:"system_instruction,omitempty"`
 	InputAudio        AudioFormat `json:"input_audio,omitempty"`
 	OutputAudio       AudioFormat `json:"output_audio,omitempty"`
@@ -91,6 +93,7 @@ type ProviderConfigSummary struct {
 	APIKeyEnv        string `json:"api_key_env,omitempty"`
 	ModelID          string `json:"model_id,omitempty"`
 	VoiceID          string `json:"voice_id,omitempty"`
+	Language         string `json:"language,omitempty"`
 	Endpoint         string `json:"endpoint,omitempty"`
 }
 
@@ -123,6 +126,7 @@ type SessionInfo struct {
 	ProviderName  string        `json:"provider_name,omitempty"`
 	ModelID       string        `json:"model_id,omitempty"`
 	VoiceID       string        `json:"voice_id,omitempty"`
+	Language      string        `json:"language,omitempty"`
 	CoreSessionID string        `json:"session_id"`
 	Client        string        `json:"client,omitempty"`
 	ExternalKey   string        `json:"external_key,omitempty"`
@@ -149,6 +153,7 @@ const (
 	EventAssistantTranscriptDelta EventType = "assistant_transcript.delta"
 	EventAssistantTranscriptFinal EventType = "assistant_transcript.final"
 	EventAssistantAudioDelta      EventType = "assistant_audio.delta"
+	EventInterrupted              EventType = "interrupted"
 	EventTurnFinal                EventType = "turn.final"
 	EventToolCall                 EventType = "tool.call"
 	EventToolResult               EventType = "tool.result"
@@ -258,6 +263,7 @@ type ProviderConnectRequest struct {
 	WorkingDir        string
 	ModelID           string
 	VoiceID           string
+	Language          string
 	SystemInstruction string
 	InputAudio        AudioFormat
 	OutputAudio       AudioFormat

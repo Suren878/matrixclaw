@@ -18,6 +18,7 @@ import (
 	mcpmodule "github.com/Suren878/matrixclaw/internal/modules/mcp"
 	skillsmodule "github.com/Suren878/matrixclaw/internal/modules/skills"
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
+	telephonymodule "github.com/Suren878/matrixclaw/internal/modules/telephony"
 	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
 	goworkflows "github.com/Suren878/matrixclaw/internal/orchestration/go_workflows"
 	"github.com/Suren878/matrixclaw/internal/safego"
@@ -103,6 +104,7 @@ func Run(ctx context.Context) error {
 		automation.NewReminderTool(automationService),
 		automation.NewScheduledAITaskTool(automationService),
 		deliverymodule.NewSendFileTool(storageModule.Store(), app),
+		telephonymodule.NewCallTool(bootstrap.SetupService),
 		voicemodule.NewTextToSpeechTool(bootstrap.SetupService),
 		webtools.NewWebFetchExecutorWithService(webTools),
 		webtools.NewWebSearchExecutorWithService(webTools),

@@ -142,6 +142,7 @@ func (m *Manager) CreateSession(ctx context.Context, req SessionCreateRequest) (
 		return SessionInfo{}, fmt.Errorf("%w: realtime voice model is required", ErrInvalidRequest)
 	}
 	voiceID := firstNonEmpty(req.VoiceID, descriptor.Config.VoiceID)
+	language := firstNonEmpty(req.Language, descriptor.Config.Language)
 	inputAudio := normalizeAudioFormat(req.InputAudio, DefaultInputAudioFormat())
 	outputAudio := normalizeAudioFormat(req.OutputAudio, DefaultOutputAudioFormat())
 	if err := validateAudioFormat(inputAudio, DefaultInputAudioFormat(), "input_audio"); err != nil {
@@ -165,6 +166,7 @@ func (m *Manager) CreateSession(ctx context.Context, req SessionCreateRequest) (
 			ProviderName:  descriptor.Name,
 			ModelID:       modelID,
 			VoiceID:       voiceID,
+			Language:      language,
 			CoreSessionID: coreSession.ID,
 			Client:        strings.TrimSpace(req.Client),
 			ExternalKey:   strings.TrimSpace(req.ExternalKey),
@@ -234,6 +236,7 @@ func (m *Manager) ServeStream(ctx context.Context, sessionID string, stream Stre
 		WorkingDir:        firstNonEmpty(session.workingDir, coreSession.WorkingDir),
 		ModelID:           info.ModelID,
 		VoiceID:           info.VoiceID,
+		Language:          info.Language,
 		SystemInstruction: m.systemInstruction(session),
 		InputAudio:        info.InputAudio,
 		OutputAudio:       info.OutputAudio,
@@ -391,7 +394,7 @@ func (s *streamState) handleProviderOutput(ctx context.Context, output ProviderO
 		return nil
 	case ProviderOutputInterrupted:
 		s.assistantTranscript.Reset()
-		return nil
+		return s.stream.Write(ctx, newEvent(s.info.ID, EventInterrupted, map[string]any{}))
 	case ProviderOutputError:
 		return s.stream.Write(ctx, newEvent(s.info.ID, EventError, ErrorPayload{Message: output.Error, Recoverable: true}))
 	default:

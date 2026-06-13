@@ -49,6 +49,9 @@ func (c *Core) providerSystemPrompt(ctx context.Context, turn turnExecution, ass
 	if runtimeToolUseAllowed(turn.Runtime) && clientSupportsDocumentDelivery(turn.Client) && c.fileDeliveryPromptAvailable() {
 		sections = append(sections, fileDeliveryGuidancePrompt())
 	}
+	if runtimeToolUseAllowed(turn.Runtime) && c.telephonyCallPromptAvailable() {
+		sections = append(sections, telephonyCallGuidancePrompt())
+	}
 	if runtimeToolUseAllowed(turn.Runtime) {
 		sections = append(sections, toolUseDisciplinePrompt())
 	}

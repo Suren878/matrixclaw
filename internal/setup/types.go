@@ -69,6 +69,7 @@ type ModulesConfig struct {
 	TextToSpeech   VoiceModuleConfig              `json:"tts,omitempty"`
 	SpeechToText   VoiceModuleConfig              `json:"stt,omitempty"`
 	RealtimeVoice  VoiceModuleConfig              `json:"realtime_voice,omitempty"`
+	Telephony      TelephonyConfig                `json:"telephony,omitempty"`
 	Browser        BrowserConfig                  `json:"browser,omitempty"`
 	WebSearch      WebSearchConfig                `json:"web_search,omitempty"`
 	MCP            MCPConfig                      `json:"mcp,omitempty"`
@@ -194,6 +195,42 @@ type BrowserProviderActionRequest struct {
 
 type BrowserProviderActionResponse struct {
 	Provider BrowserProviderOption `json:"provider"`
+}
+
+type TelephonyConfig struct {
+	Enabled        bool   `json:"enabled,omitempty"`
+	GatewayURL     string `json:"gateway_url,omitempty"`
+	GatewayToken   string `json:"gateway_token,omitempty"`
+	DefaultProfile string `json:"default_profile,omitempty"`
+	PhonePrompt    string `json:"phone_prompt,omitempty"`
+}
+
+type TelephonyModuleDescriptor struct {
+	ID               string          `json:"id"`
+	Title            string          `json:"title"`
+	Enabled          bool            `json:"enabled"`
+	Status           string          `json:"status"`
+	GatewayURL       string          `json:"gateway_url,omitempty"`
+	GatewayReachable bool            `json:"gateway_reachable,omitempty"`
+	GatewayError     string          `json:"gateway_error,omitempty"`
+	TokenConfigured  bool            `json:"token_configured"`
+	TokenPreview     string          `json:"token_preview,omitempty"`
+	DefaultProfile   string          `json:"default_profile,omitempty"`
+	RealtimeModuleID string          `json:"realtime_module_id,omitempty"`
+	Config           TelephonyConfig `json:"config,omitempty"`
+}
+
+type TelephonyModuleResponse struct {
+	Module TelephonyModuleDescriptor `json:"module"`
+}
+
+type TelephonyModuleUpdate struct {
+	Enabled        *bool  `json:"enabled,omitempty"`
+	GatewayURL     string `json:"gateway_url,omitempty"`
+	GatewayToken   string `json:"gateway_token,omitempty"`
+	DefaultProfile string `json:"default_profile,omitempty"`
+	PhonePrompt    string `json:"phone_prompt,omitempty"`
+	ClearToken     bool   `json:"clear_token,omitempty"`
 }
 
 // WebSearchConfig stores the web search provider choice and credentials.

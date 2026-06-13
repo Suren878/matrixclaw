@@ -151,6 +151,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/v1/modules/voice/", s.handleVoiceModuleByID)
 	s.mux.HandleFunc("/v1/realtime-voice/sessions", s.handleRealtimeVoiceSessions)
 	s.mux.HandleFunc("/v1/realtime-voice/sessions/", s.handleRealtimeVoiceSessionByID)
+	s.mux.HandleFunc("/v1/modules/telephony", s.handleTelephonyModule)
 	s.mux.HandleFunc("/v1/modules/web-search", s.handleWebSearch)
 	s.mux.HandleFunc("/v1/modules/browser", s.handleBrowserModule)
 	s.mux.HandleFunc("/v1/modules/browser/providers/", s.handleBrowserProvider)

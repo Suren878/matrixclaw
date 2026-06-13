@@ -704,6 +704,7 @@ func (w *Worker) handleSessionSelectionRequired(ctx context.Context, target chat
 	if err != nil {
 		return w.sendText(ctx, target, fmt.Sprintf("Load sessions failed: %v", err))
 	}
+	w.rememberTelegramSessions(sessions)
 	if len(sessions) == 0 {
 		result, err := w.dispatcher().Handle(ctx, target.externalKey, catalogCommand(commandcatalog.CommandNewSession, ""))
 		if err != nil {

@@ -18,5 +18,6 @@ ldflags="$ldflags -X ${module_path}/internal/version.Date=$date"
 echo "building matrixclaw $version ($commit) -> $out_dir"
 go build -trimpath -ldflags "$ldflags" -o "$out_dir/matrixclaw" "$repo_root/cmd/matrixclaw"
 go build -trimpath -ldflags "$ldflags" -o "$out_dir/matrixclawd" "$repo_root/cmd/matrixclawd"
+go build -trimpath -ldflags "$ldflags" -o "$out_dir/matrixclaw-telephony-gateway" "$repo_root/cmd/matrixclaw-telephony-gateway"
 
 "$out_dir/matrixclaw" version || true

@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.1.16
+
+- Added provider-neutral realtime voice setup for Gemini Live and Grok Voice,
+  including provider selection, API key validation, model/voice/language
+  controls, and provider-specific status in the control plane.
+- Added xAI Grok Voice Agent support for realtime speech-to-speech sessions,
+  including language hints, manual audio turn commits, tool-call routing, and
+  transcript handling tuned for cumulative Grok transcription events.
+- Refactored control-plane navigation around consistent Back/Close behavior so
+  menus, pickers, status views, and action dialogs return to their parent
+  surface instead of leaking stale pickers or collapsing the menu stack.
+- Added the optional `matrixclaw-telephony-gateway` binary for self-hosted
+  Asterisk/SIP deployments, bridging ARI `externalMedia` RTP audio into
+  MatrixClaw realtime voice sessions.
+- Added approval-gated `telephony_call` tooling, outbound call objectives,
+  inbound caller allowlists, phone-specific prompts, final call transcripts,
+  post-call reports, and temporary MP3 call recording plumbing.
+- Improved telephony runtime stability with faster inbound answering, a single
+  long-lived ARI app listener, hangup-extension filtering, safer RTP/VAD turn
+  handling, and cleanup for realtime close races.
+- Updated release packaging, installer, uninstall script, local release build,
+  and Homebrew template to include `matrixclaw-telephony-gateway`.
+- Documented realtime voice providers, telephony gateway boundaries, SIP/PBX
+  deployment assumptions, environment variables, and privacy considerations.
+
 ## v0.1.15
 
 - Reworked Telegram around normal private-chat sessions again: `/new`,

@@ -33,6 +33,8 @@ func (d *Dispatcher) handleRealtimeVoiceModule(ctx context.Context, args string)
 		return d.realtimeVoiceVoicePicker(ctx, rest)
 	case "model", "provider-model":
 		return d.realtimeVoiceModelPicker(ctx, rest)
+	case "language", "provider-language":
+		return d.realtimeVoiceLanguagePicker(ctx, rest)
 	case "setup-field", "provider-setup-field":
 		return d.realtimeVoiceSetupField(ctx, rest)
 	case "setup-set", "provider-setup-set":
@@ -180,6 +182,7 @@ func (d *Dispatcher) realtimeVoiceSetupPicker(ctx context.Context, providerID st
 		Row("key", "API Key", realtimeVoiceAPIKeyStatus(provider), realtimeVoiceCommand("setup-field", "key", provider.ID)).
 		Row("model", "Model", realtimeVoiceModelStatus(provider), realtimeVoiceCommand("model", provider.ID)).
 		Row("voice", "Voice", realtimeVoiceVoiceStatus(provider), realtimeVoiceCommand("voice", provider.ID)).
+		Row("language", "Language", realtimeVoiceLanguageStatus(provider, provider.Config.Language), realtimeVoiceCommand("language", provider.ID)).
 		Row("status", "Status", realtimeVoiceProviderReadyStatus(provider), realtimeVoiceCommand("info")).
 		Row("advanced", "Advanced", realtimeVoiceAdvancedStatus(provider), realtimeVoiceCommand("advanced", provider.ID))
 	return Result{Handled: true, Picker: picker.Ptr()}, nil
@@ -274,6 +277,30 @@ func (d *Dispatcher) realtimeVoiceVoicePicker(ctx context.Context, providerID st
 	return Result{Handled: true, Picker: picker.Ptr()}, nil
 }
 
+func (d *Dispatcher) realtimeVoiceLanguagePicker(ctx context.Context, providerID string) (Result, error) {
+	module, err := d.realtimeVoice.RealtimeVoiceModule(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+	provider := realtimeVoiceProviderForSetup(module, providerID)
+	if strings.TrimSpace(provider.ID) == "" {
+		return d.realtimeVoiceSetupPicker(ctx, "")
+	}
+	current := normalizeRealtimeVoiceLanguage(provider, provider.Config.Language)
+	picker := NewPickerData(PickerVoiceProvider, provider.Name+" Language").
+		Context(module.ID).
+		Select(realtimeVoiceCommand("setup", provider.ID))
+	for _, option := range realtimeVoiceLanguageOptions(provider) {
+		picker.Item(PickerItem{
+			ID:       option.id,
+			Title:    option.title,
+			Selected: option.id == current,
+			Command:  realtimeVoiceCommand("setup-set", "language", provider.ID, option.id),
+		})
+	}
+	return Result{Handled: true, Picker: picker.Ptr()}, nil
+}
+
 func (d *Dispatcher) realtimeVoiceAdvancedPicker(ctx context.Context, providerID string) (Result, error) {
 	module, err := d.realtimeVoice.RealtimeVoiceModule(ctx)
 	if err != nil {
@@ -309,6 +336,9 @@ func (d *Dispatcher) realtimeVoiceSetupField(ctx context.Context, args string) (
 	if strings.EqualFold(strings.TrimSpace(field), "voice") || strings.EqualFold(strings.TrimSpace(field), "voice-id") || strings.EqualFold(strings.TrimSpace(field), "voice_id") {
 		return d.realtimeVoiceVoicePicker(ctx, provider.ID)
 	}
+	if strings.EqualFold(strings.TrimSpace(field), "language") || strings.EqualFold(strings.TrimSpace(field), "language-code") || strings.EqualFold(strings.TrimSpace(field), "language_code") {
+		return d.realtimeVoiceLanguagePicker(ctx, provider.ID)
+	}
 	title, placeholder, value, sensitive := realtimeVoiceSetupPrompt(field, provider)
 	if title == "" {
 		return d.realtimeVoiceSetupPicker(ctx, provider.ID)
@@ -338,7 +368,8 @@ func (d *Dispatcher) realtimeVoiceSetupSet(ctx context.Context, args string) (Re
 	cfg := setup.VoiceProviderConfig{
 		APIKeyEnv: provider.Config.APIKeyEnv,
 		ModelID:   provider.Config.ModelID,
-		VoiceID:   firstNonEmptyTrimmed(provider.Config.VoiceID, "Puck"),
+		VoiceID:   provider.Config.VoiceID,
+		Language:  provider.Config.Language,
 		Endpoint:  provider.Config.Endpoint,
 	}
 	switch strings.ToLower(strings.TrimSpace(field)) {
@@ -356,6 +387,11 @@ func (d *Dispatcher) realtimeVoiceSetupSet(ctx context.Context, args string) (Re
 			return d.realtimeVoiceVoicePicker(ctx, provider.ID)
 		}
 		cfg.VoiceID = value
+	case "language", "language-code", "language_code":
+		if value != "" && !stringInSliceFold(value, realtimeVoiceLanguageCandidates(provider)) {
+			return d.realtimeVoiceLanguagePicker(ctx, provider.ID)
+		}
+		cfg.Language = value
 	case "endpoint", "url", "ws-url", "ws_url":
 		cfg.Endpoint = value
 	default:
@@ -384,6 +420,7 @@ func (d *Dispatcher) realtimeVoiceInfo(ctx context.Context) (Result, error) {
 				{Label: "API key", Value: realtimeVoiceAPIKeyStatus(provider)},
 				{Label: "Model", Value: firstNonEmptyTrimmed(module.ModelID, provider.Config.ModelID, "Not selected")},
 				{Label: "Voice", Value: firstNonEmptyTrimmed(module.Config.VoiceID, provider.Config.VoiceID)},
+				{Label: "Language", Value: realtimeVoiceLanguageStatus(provider, firstNonEmptyTrimmed(module.Config.Language, provider.Config.Language))},
 				{Label: "Endpoint", Value: realtimeVoiceEndpointStatus(firstNonEmptyTrimmed(module.Config.Endpoint, provider.Config.Endpoint))},
 				{Label: "Input", Value: realtimeVoiceAudioFormat(module.InputAudio)},
 				{Label: "Output", Value: realtimeVoiceAudioFormat(module.OutputAudio)},
@@ -534,6 +571,16 @@ func realtimeVoiceVoiceStatus(provider realtime.ProviderDescriptor) string {
 	return "No voices"
 }
 
+func realtimeVoiceLanguageStatus(provider realtime.ProviderDescriptor, language string) string {
+	code := normalizeRealtimeVoiceLanguage(provider, language)
+	for _, option := range realtimeVoiceLanguageOptions(provider) {
+		if option.id == code {
+			return option.title
+		}
+	}
+	return firstNonEmptyTrimmed(strings.TrimSpace(language), "Auto")
+}
+
 func realtimeVoiceAPIKeyEnvStatus(value string) string {
 	if value = strings.TrimSpace(value); value != "" {
 		return value
@@ -566,15 +613,17 @@ func realtimeVoiceSetupPrompt(field string, provider realtime.ProviderDescriptor
 	cfg := provider.Config
 	switch strings.ToLower(strings.TrimSpace(field)) {
 	case "key", "api-key", "api_key":
-		return provider.Name + " API Key", firstNonEmptyTrimmed(cfg.APIKeyPreview, "AIza..."), "", true
+		return provider.Name + " API Key", realtimeVoiceAPIKeyPlaceholder(provider), "", true
 	case "key-env", "api-key-env", "api_key_env":
-		return provider.Name + " API Key Env", "MATRIXCLAW_GEMINI_LIVE_API_KEY", cfg.APIKeyEnv, false
+		return provider.Name + " API Key Env", realtimeVoiceAPIKeyEnvPlaceholder(provider), cfg.APIKeyEnv, false
 	case "model", "model-id", "model_id":
 		return provider.Name + " Model", "select from provider catalog", cfg.ModelID, false
 	case "voice", "voice-id", "voice_id":
-		return provider.Name + " Voice", "Puck", cfg.VoiceID, false
+		return provider.Name + " Voice", realtimeVoiceVoicePlaceholder(provider), cfg.VoiceID, false
+	case "language", "language-code", "language_code":
+		return provider.Name + " Language", realtimeVoiceLanguagePlaceholder(provider), cfg.Language, false
 	case "endpoint", "url", "ws-url", "ws_url":
-		return provider.Name + " Endpoint", "wss://generativelanguage.googleapis.com/...", cfg.Endpoint, false
+		return provider.Name + " Endpoint", realtimeVoiceEndpointPlaceholder(provider), cfg.Endpoint, false
 	default:
 		return "", "", "", false
 	}
@@ -614,6 +663,205 @@ func realtimeVoiceVoiceCandidates(provider realtime.ProviderDescriptor) []string
 		out = append(out, value)
 	}
 	return out
+}
+
+func realtimeVoiceLanguageCandidates(provider realtime.ProviderDescriptor) []string {
+	options := realtimeVoiceLanguageOptions(provider)
+	out := make([]string, 0, len(options))
+	for _, option := range options {
+		out = append(out, option.id)
+	}
+	return out
+}
+
+func realtimeVoiceLanguageOptions(provider realtime.ProviderDescriptor) []struct{ id, title string } {
+	if provider.ID == realtime.ProviderGrok {
+		return []struct{ id, title string }{
+			{id: "auto", title: "Auto"},
+			{id: "en", title: "English"},
+			{id: "ar-EG", title: "Arabic (Egypt)"},
+			{id: "ar-SA", title: "Arabic (Saudi Arabia)"},
+			{id: "ar-AE", title: "Arabic (United Arab Emirates)"},
+			{id: "bn", title: "Bengali"},
+			{id: "zh", title: "Chinese"},
+			{id: "fr", title: "French"},
+			{id: "de", title: "German"},
+			{id: "hi", title: "Hindi"},
+			{id: "id", title: "Indonesian"},
+			{id: "it", title: "Italian"},
+			{id: "ja", title: "Japanese"},
+			{id: "ko", title: "Korean"},
+			{id: "pt-BR", title: "Portuguese (Brazil)"},
+			{id: "pt-PT", title: "Portuguese (Portugal)"},
+			{id: "ru", title: "Russian"},
+			{id: "es-MX", title: "Spanish (Mexico)"},
+			{id: "es-ES", title: "Spanish (Spain)"},
+			{id: "tr", title: "Turkish"},
+			{id: "vi", title: "Vietnamese"},
+		}
+	}
+	return []struct{ id, title string }{
+		{id: "auto", title: "Auto"},
+		{id: "ar-EG", title: "Arabic (Egyptian)"},
+		{id: "bn-BD", title: "Bengali (Bangladesh)"},
+		{id: "nl-NL", title: "Dutch (Netherlands)"},
+		{id: "en-IN", title: "English (India)"},
+		{id: "en-US", title: "English (US)"},
+		{id: "fr-FR", title: "French (France)"},
+		{id: "de-DE", title: "German (Germany)"},
+		{id: "hi-IN", title: "Hindi (India)"},
+		{id: "id-ID", title: "Indonesian (Indonesia)"},
+		{id: "it-IT", title: "Italian (Italy)"},
+		{id: "ja-JP", title: "Japanese (Japan)"},
+		{id: "ko-KR", title: "Korean (Korea)"},
+		{id: "mr-IN", title: "Marathi (India)"},
+		{id: "pl-PL", title: "Polish (Poland)"},
+		{id: "pt-BR", title: "Portuguese (Brazil)"},
+		{id: "ro-RO", title: "Romanian (Romania)"},
+		{id: "ru-RU", title: "Russian (Russia)"},
+		{id: "es-US", title: "Spanish (US)"},
+		{id: "ta-IN", title: "Tamil (India)"},
+		{id: "te-IN", title: "Telugu (India)"},
+		{id: "th-TH", title: "Thai (Thailand)"},
+		{id: "tr-TR", title: "Turkish (Turkey)"},
+		{id: "uk-UA", title: "Ukrainian (Ukraine)"},
+		{id: "vi-VN", title: "Vietnamese (Vietnam)"},
+	}
+}
+
+func normalizeRealtimeVoiceLanguage(provider realtime.ProviderDescriptor, language string) string {
+	if provider.ID == realtime.ProviderGrok {
+		return normalizeGrokVoiceLanguage(language)
+	}
+	value := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(language, "_", "-")))
+	switch value {
+	case "", "auto", "automatic", "detect", "default":
+		return "auto"
+	case "ar", "ar-eg":
+		return "ar-EG"
+	case "bn", "bn-bd":
+		return "bn-BD"
+	case "nl", "nl-nl":
+		return "nl-NL"
+	case "en", "en-us":
+		return "en-US"
+	case "en-in":
+		return "en-IN"
+	case "fr", "fr-fr":
+		return "fr-FR"
+	case "de", "de-de":
+		return "de-DE"
+	case "hi", "hi-in":
+		return "hi-IN"
+	case "id", "id-id":
+		return "id-ID"
+	case "it", "it-it":
+		return "it-IT"
+	case "ja", "ja-jp":
+		return "ja-JP"
+	case "ko", "ko-kr":
+		return "ko-KR"
+	case "mr", "mr-in":
+		return "mr-IN"
+	case "pl", "pl-pl":
+		return "pl-PL"
+	case "pt", "pt-br":
+		return "pt-BR"
+	case "ro", "ro-ro":
+		return "ro-RO"
+	case "ru", "ru-ru":
+		return "ru-RU"
+	case "es", "es-us":
+		return "es-US"
+	case "ta", "ta-in":
+		return "ta-IN"
+	case "te", "te-in":
+		return "te-IN"
+	case "th", "th-th":
+		return "th-TH"
+	case "tr", "tr-tr":
+		return "tr-TR"
+	case "uk", "uk-ua":
+		return "uk-UA"
+	case "vi", "vi-vn":
+		return "vi-VN"
+	default:
+		return strings.TrimSpace(language)
+	}
+}
+
+func normalizeGrokVoiceLanguage(language string) string {
+	value := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(language, "_", "-")))
+	switch value {
+	case "", "auto", "automatic", "detect", "default":
+		return "auto"
+	case "en", "en-us", "en-gb", "bn", "bn-bd", "zh", "zh-cn", "fr", "fr-fr", "de", "de-de", "hi", "hi-in", "id", "id-id", "it", "it-it", "ja", "ja-jp", "ko", "ko-kr", "ru", "ru-ru", "tr", "tr-tr", "vi", "vi-vn":
+		if before, _, ok := strings.Cut(value, "-"); ok {
+			return before
+		}
+		return value
+	case "ar", "ar-eg":
+		return "ar-EG"
+	case "ar-sa":
+		return "ar-SA"
+	case "ar-ae":
+		return "ar-AE"
+	case "pt", "pt-br":
+		return "pt-BR"
+	case "pt-pt":
+		return "pt-PT"
+	case "es", "es-mx":
+		return "es-MX"
+	case "es-es":
+		return "es-ES"
+	default:
+		return strings.TrimSpace(language)
+	}
+}
+
+func realtimeVoiceAPIKeyPlaceholder(provider realtime.ProviderDescriptor) string {
+	switch provider.ID {
+	case realtime.ProviderGrok:
+		return firstNonEmptyTrimmed(provider.Config.APIKeyPreview, "xai-...")
+	default:
+		return firstNonEmptyTrimmed(provider.Config.APIKeyPreview, "AIza...")
+	}
+}
+
+func realtimeVoiceAPIKeyEnvPlaceholder(provider realtime.ProviderDescriptor) string {
+	switch provider.ID {
+	case realtime.ProviderGrok:
+		return "XAI_API_KEY"
+	default:
+		return "MATRIXCLAW_GEMINI_LIVE_API_KEY"
+	}
+}
+
+func realtimeVoiceVoicePlaceholder(provider realtime.ProviderDescriptor) string {
+	switch provider.ID {
+	case realtime.ProviderGrok:
+		return "eve"
+	default:
+		return "Puck"
+	}
+}
+
+func realtimeVoiceLanguagePlaceholder(provider realtime.ProviderDescriptor) string {
+	switch provider.ID {
+	case realtime.ProviderGrok:
+		return "auto or ru"
+	default:
+		return "auto or ru-RU"
+	}
+}
+
+func realtimeVoiceEndpointPlaceholder(provider realtime.ProviderDescriptor) string {
+	switch provider.ID {
+	case realtime.ProviderGrok:
+		return "wss://api.x.ai/v1/realtime"
+	default:
+		return "wss://generativelanguage.googleapis.com/..."
+	}
 }
 
 func realtimeVoiceModelUnavailableMessage(provider realtime.ProviderDescriptor, models []string) string {

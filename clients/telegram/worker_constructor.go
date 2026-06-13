@@ -65,6 +65,7 @@ func NewWorker(cfg Config) (*Worker, error) {
 		autoEdits:        map[string]struct{}{},
 		locations:        map[string]telegramLocationContext{},
 		pendingLocations: map[string]pendingLocationRequest{},
+		externalSessions: map[string]struct{}{},
 		geo:              cfg.Geo,
 	}, nil
 }

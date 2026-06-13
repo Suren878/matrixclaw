@@ -140,6 +140,22 @@ func (r ControlplaneRuntime) UpdateRealtimeVoiceModule(ctx context.Context, upda
 	return client.UpdateRealtimeVoiceModule(ctx, update)
 }
 
+func (r ControlplaneRuntime) TelephonyModule(ctx context.Context) (setup.TelephonyModuleDescriptor, error) {
+	client, err := r.client("")
+	if err != nil {
+		return setup.TelephonyModuleDescriptor{}, err
+	}
+	return client.TelephonyModule(ctx)
+}
+
+func (r ControlplaneRuntime) UpdateTelephonyModule(ctx context.Context, update setup.TelephonyModuleUpdate) (setup.TelephonyModuleDescriptor, error) {
+	client, err := r.client("")
+	if err != nil {
+		return setup.TelephonyModuleDescriptor{}, err
+	}
+	return client.UpdateTelephonyModule(ctx, update)
+}
+
 func (r ControlplaneRuntime) UseSession(ctx context.Context, externalKey string, sessionID string) (core.ClientBinding, error) {
 	client, err := r.client(externalKey)
 	if err != nil {

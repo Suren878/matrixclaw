@@ -42,6 +42,8 @@ func PickerPageCommand(kind PickerKind, contextID string) string {
 		return speechToTextCommand()
 	case PickerRealtimeVoice:
 		return realtimeVoiceCommand()
+	case PickerTelephony:
+		return telephonyCommand()
 	case PickerVoiceProvider:
 		if contextID == "" {
 			return modulesCommand()
