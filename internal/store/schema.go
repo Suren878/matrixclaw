@@ -127,6 +127,12 @@ CREATE TABLE IF NOT EXISTS session_inputs (
 	if err := ensureColumn(db, "session_inputs", "delivery_address_json", `ALTER TABLE session_inputs ADD COLUMN delivery_address_json TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
 	}
+	if err := ensureColumn(db, "runs", "client_capabilities_json", `ALTER TABLE runs ADD COLUMN client_capabilities_json TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "session_inputs", "client_capabilities_json", `ALTER TABLE session_inputs ADD COLUMN client_capabilities_json TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
 	if err := ensureColumn(db, "client_deliveries", "payload_json", `ALTER TABLE client_deliveries ADD COLUMN payload_json TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
 	}

@@ -12,7 +12,10 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-const subagentApprovalBridgeSource = "subagent_approval_bridge"
+const (
+	subagentApprovalBridgeSource    = "subagent_approval_bridge"
+	subagentParentResumeWaitTimeout = 24 * time.Hour
+)
 
 type DelegateTaskInput struct {
 	ParentSessionID  string
@@ -248,15 +251,9 @@ func decodeSubagentApprovalBridge(approval Approval) (subagentApprovalBridgePara
 }
 
 func (c *Core) resumeParentAfterSubagentTerminal(ctx context.Context, task SubagentTask) error {
-	status, err := c.subagentTaskRunStatus(ctx, task)
-	if err != nil {
+	done, err := c.resumeParentForSubagentStatus(ctx, task)
+	if err != nil || done {
 		return err
-	}
-	if subagentRunStatusTerminal(status) {
-		return c.startRun(ctx, task.ParentRunID)
-	}
-	if status == RunStatusWaitingApproval {
-		return c.mirrorPendingSubagentApproval(ctx, task)
 	}
 	safego.Go("core.waitSubagentTerminalAndResumeParent", func() {
 		c.waitForSubagentTerminalAndResumeParent(task)
@@ -265,23 +262,41 @@ func (c *Core) resumeParentAfterSubagentTerminal(ctx context.Context, task Subag
 }
 
 func (c *Core) waitForSubagentTerminalAndResumeParent(task SubagentTask) {
-	ticker := time.NewTicker(250 * time.Millisecond)
-	defer ticker.Stop()
-	ctx := context.Background()
-	for range ticker.C {
-		status, err := c.subagentTaskRunStatus(ctx, task)
-		if err != nil {
-			continue
-		}
-		if subagentRunStatusTerminal(status) {
-			_ = c.startRun(ctx, task.ParentRunID)
+	ctx, cancel := context.WithTimeout(context.Background(), subagentParentResumeWaitTimeout)
+	defer cancel()
+
+	events := c.SubscribeEvents(ctx, task.ChildSessionID)
+	for {
+		done, err := c.resumeParentForSubagentStatus(ctx, task)
+		if err == nil && done {
 			return
 		}
-		if status == RunStatusWaitingApproval {
-			_ = c.mirrorPendingSubagentApproval(ctx, task)
+		select {
+		case <-ctx.Done():
 			return
+		case event := <-events:
+			if event.RunID != "" && event.RunID != task.ChildRunID {
+				continue
+			}
+			if event.Type != EventRunUpdated && event.Type != EventApprovalRequest {
+				continue
+			}
 		}
 	}
+}
+
+func (c *Core) resumeParentForSubagentStatus(ctx context.Context, task SubagentTask) (bool, error) {
+	status, err := c.subagentTaskRunStatus(ctx, task)
+	if err != nil {
+		return false, err
+	}
+	if subagentRunStatusTerminal(status) {
+		return true, c.startRun(ctx, task.ParentRunID)
+	}
+	if status == RunStatusWaitingApproval {
+		return true, c.mirrorPendingSubagentApproval(ctx, task)
+	}
+	return false, nil
 }
 
 func (c *Core) subagentTaskTerminal(ctx context.Context, task SubagentTask) (bool, error) {

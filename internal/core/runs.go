@@ -41,7 +41,7 @@ func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptR
 			interruptRunID = active.ID
 		}
 	case errors.Is(err, ErrNotFound):
-		result, err = c.createAcceptedRun(ctx, session, text, parts, input.Client, input.ExternalKey, input.DeliveryAddress)
+		result, err = c.createAcceptedRun(ctx, session, text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress)
 		if err != nil {
 			gate.Unlock()
 			return AcceptRunResult{}, err
@@ -131,14 +131,15 @@ func (c *Core) AcceptTriggeredRun(ctx context.Context, input HandleTriggeredRunI
 		UpdatedAt: now,
 	}
 	run := Run{
-		ID:            runID,
-		SessionID:     session.ID,
-		UserMessageID: messageID,
-		Client:        normalizeText(input.Client),
-		ExternalKey:   normalizeText(input.ExternalKey),
-		Status:        RunStatusAccepted,
-		StartedAt:     now,
-		UpdatedAt:     now,
+		ID:                 runID,
+		SessionID:          session.ID,
+		UserMessageID:      messageID,
+		Client:             normalizeText(input.Client),
+		ExternalKey:        normalizeText(input.ExternalKey),
+		ClientCapabilities: input.ClientCapabilities,
+		Status:             RunStatusAccepted,
+		StartedAt:          now,
+		UpdatedAt:          now,
 	}
 	if err := c.store.AcceptMessage(ctx, message, run); err != nil {
 		if existing, loadErr := c.store.GetRun(ctx, runID); loadErr == nil {

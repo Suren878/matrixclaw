@@ -11,13 +11,14 @@ import (
 var errRunCanceled = errors.New("run canceled")
 
 type turnExecution struct {
-	RunID       string
-	SessionID   string
-	Client      string
-	ExternalKey string
-	WorkingDir  string
-	Runtime     providers.Runtime
-	Subagent    bool
+	RunID              string
+	SessionID          string
+	Client             string
+	ExternalKey        string
+	ClientCapabilities ClientCapabilities
+	WorkingDir         string
+	Runtime            providers.Runtime
+	Subagent           bool
 }
 
 type turnStepOutcome int
@@ -39,13 +40,14 @@ type turnStepResult struct {
 
 func newTurnExecution(run Run, session Session, runtime providers.Runtime) turnExecution {
 	return turnExecution{
-		RunID:       run.ID,
-		SessionID:   session.ID,
-		Client:      run.Client,
-		ExternalKey: run.ExternalKey,
-		WorkingDir:  session.WorkingDir,
-		Runtime:     runtime,
-		Subagent:    isSubagentSession(session),
+		RunID:              run.ID,
+		SessionID:          session.ID,
+		Client:             run.Client,
+		ExternalKey:        run.ExternalKey,
+		ClientCapabilities: run.ClientCapabilities,
+		WorkingDir:         session.WorkingDir,
+		Runtime:            runtime,
+		Subagent:           isSubagentSession(session),
 	}
 }
 

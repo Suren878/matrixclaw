@@ -25,16 +25,17 @@ type RunTiming struct {
 }
 
 type Run struct {
-	ID            string     `json:"id"`
-	SessionID     string     `json:"session_id"`
-	UserMessageID string     `json:"user_message_id"`
-	Client        string     `json:"client,omitempty"`
-	ExternalKey   string     `json:"external_key,omitempty"`
-	Status        RunStatus  `json:"status"`
-	Error         string     `json:"error,omitempty"`
-	StartedAt     time.Time  `json:"started_at"`
-	FinishedAt    *time.Time `json:"finished_at,omitempty"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	ID                 string             `json:"id"`
+	SessionID          string             `json:"session_id"`
+	UserMessageID      string             `json:"user_message_id"`
+	Client             string             `json:"client,omitempty"`
+	ExternalKey        string             `json:"external_key,omitempty"`
+	ClientCapabilities ClientCapabilities `json:"client_capabilities,omitempty"`
+	Status             RunStatus          `json:"status"`
+	Error              string             `json:"error,omitempty"`
+	StartedAt          time.Time          `json:"started_at"`
+	FinishedAt         *time.Time         `json:"finished_at,omitempty"`
+	UpdatedAt          time.Time          `json:"updated_at"`
 }
 
 type BusyInputMode string
@@ -54,43 +55,51 @@ const (
 )
 
 type SessionInput struct {
-	ID              string             `json:"id"`
-	SessionID       string             `json:"session_id"`
-	TargetRunID     string             `json:"target_run_id,omitempty"`
-	Mode            BusyInputMode      `json:"mode"`
-	Status          SessionInputStatus `json:"status"`
-	Text            string             `json:"text"`
-	Parts           []MessagePart      `json:"parts,omitempty"`
-	Client          string             `json:"client,omitempty"`
-	ExternalKey     string             `json:"external_key,omitempty"`
-	DeliveryAddress json.RawMessage    `json:"delivery_address,omitempty"`
-	WorkingDir      string             `json:"working_dir,omitempty"`
-	ConsumedRunID   string             `json:"consumed_run_id,omitempty"`
-	Error           string             `json:"error,omitempty"`
-	CreatedAt       time.Time          `json:"created_at"`
-	UpdatedAt       time.Time          `json:"updated_at"`
-	ConsumedAt      *time.Time         `json:"consumed_at,omitempty"`
+	ID                 string             `json:"id"`
+	SessionID          string             `json:"session_id"`
+	TargetRunID        string             `json:"target_run_id,omitempty"`
+	Mode               BusyInputMode      `json:"mode"`
+	Status             SessionInputStatus `json:"status"`
+	Text               string             `json:"text"`
+	Parts              []MessagePart      `json:"parts,omitempty"`
+	Client             string             `json:"client,omitempty"`
+	ExternalKey        string             `json:"external_key,omitempty"`
+	ClientCapabilities ClientCapabilities `json:"client_capabilities,omitempty"`
+	DeliveryAddress    json.RawMessage    `json:"delivery_address,omitempty"`
+	WorkingDir         string             `json:"working_dir,omitempty"`
+	ConsumedRunID      string             `json:"consumed_run_id,omitempty"`
+	Error              string             `json:"error,omitempty"`
+	CreatedAt          time.Time          `json:"created_at"`
+	UpdatedAt          time.Time          `json:"updated_at"`
+	ConsumedAt         *time.Time         `json:"consumed_at,omitempty"`
 }
 
 type HandleMessageInput struct {
-	Client           string          `json:"client"`
-	ExternalKey      string          `json:"external_key"`
-	SessionID        string          `json:"session_id"`
-	Text             string          `json:"text"`
-	Parts            []MessagePart   `json:"parts,omitempty"`
-	BusyMode         BusyInputMode   `json:"busy_mode,omitempty"`
-	WorkingDir       string          `json:"working_dir"`
-	DeliveryAddress  json.RawMessage `json:"delivery_address,omitempty"`
-	AllowAutoBindOne bool            `json:"allow_auto_bind_one"`
+	Client             string             `json:"client"`
+	ExternalKey        string             `json:"external_key"`
+	ClientCapabilities ClientCapabilities `json:"client_capabilities,omitempty"`
+	SessionID          string             `json:"session_id"`
+	Text               string             `json:"text"`
+	Parts              []MessagePart      `json:"parts,omitempty"`
+	BusyMode           BusyInputMode      `json:"busy_mode,omitempty"`
+	WorkingDir         string             `json:"working_dir"`
+	DeliveryAddress    json.RawMessage    `json:"delivery_address,omitempty"`
+	AllowAutoBindOne   bool               `json:"allow_auto_bind_one"`
 }
 
 type HandleTriggeredRunInput struct {
-	TriggerID   string
-	Client      string
-	ExternalKey string
-	SessionID   string
-	Text        string
-	WorkingDir  string
+	TriggerID          string
+	Client             string
+	ExternalKey        string
+	ClientCapabilities ClientCapabilities
+	SessionID          string
+	Text               string
+	WorkingDir         string
+}
+
+type ClientCapabilities struct {
+	SupportsVoiceDelivery    bool `json:"supports_voice_delivery,omitempty"`
+	SupportsDocumentDelivery bool `json:"supports_document_delivery,omitempty"`
 }
 
 type AcceptRunResult struct {

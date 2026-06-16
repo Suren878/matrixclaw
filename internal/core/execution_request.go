@@ -43,10 +43,10 @@ func (c *Core) providerSystemPrompt(ctx context.Context, turn turnExecution, ass
 		}
 		return joinPromptSections(sections...)
 	}
-	if runtimeToolUseAllowed(turn.Runtime) && clientSupportsVoiceDelivery(turn.Client) {
+	if runtimeToolUseAllowed(turn.Runtime) && clientSupportsVoiceDelivery(turn.ClientCapabilities) {
 		sections = append(sections, voiceOutputGuidancePrompt())
 	}
-	if runtimeToolUseAllowed(turn.Runtime) && clientSupportsDocumentDelivery(turn.Client) && c.fileDeliveryPromptAvailable() {
+	if runtimeToolUseAllowed(turn.Runtime) && clientSupportsDocumentDelivery(turn.ClientCapabilities) && c.fileDeliveryPromptAvailable() {
 		sections = append(sections, fileDeliveryGuidancePrompt())
 	}
 	if runtimeToolUseAllowed(turn.Runtime) && c.telephonyCallPromptAvailable() {
@@ -123,10 +123,10 @@ func (c *Core) runtimeStatusToolIDs(turn turnExecution) []string {
 		if turn.Subagent && !subagentToolAllowed(spec) {
 			continue
 		}
-		if spec.ID == "text_to_speech" && !clientSupportsVoiceDelivery(turn.Client) {
+		if spec.ID == "text_to_speech" && !clientSupportsVoiceDelivery(turn.ClientCapabilities) {
 			continue
 		}
-		if spec.ID == "send_file" && !clientSupportsDocumentDelivery(turn.Client) {
+		if spec.ID == "send_file" && !clientSupportsDocumentDelivery(turn.ClientCapabilities) {
 			continue
 		}
 		ids = append(ids, spec.ID)
@@ -142,10 +142,10 @@ func (c *Core) providerToolDefinitions(ctx context.Context, turn turnExecution) 
 			if turn.Subagent && !subagentToolAllowed(spec) {
 				continue
 			}
-			if spec.ID == "text_to_speech" && !clientSupportsVoiceDelivery(turn.Client) {
+			if spec.ID == "text_to_speech" && !clientSupportsVoiceDelivery(turn.ClientCapabilities) {
 				continue
 			}
-			if spec.ID == "send_file" && !clientSupportsDocumentDelivery(turn.Client) {
+			if spec.ID == "send_file" && !clientSupportsDocumentDelivery(turn.ClientCapabilities) {
 				continue
 			}
 			description := spec.Description
@@ -163,12 +163,12 @@ func (c *Core) providerToolDefinitions(ctx context.Context, turn turnExecution) 
 	return nil
 }
 
-func clientSupportsVoiceDelivery(client string) bool {
-	return strings.EqualFold(strings.TrimSpace(client), "telegram")
+func clientSupportsVoiceDelivery(capabilities ClientCapabilities) bool {
+	return capabilities.SupportsVoiceDelivery
 }
 
-func clientSupportsDocumentDelivery(client string) bool {
-	return strings.EqualFold(strings.TrimSpace(client), "telegram")
+func clientSupportsDocumentDelivery(capabilities ClientCapabilities) bool {
+	return capabilities.SupportsDocumentDelivery
 }
 
 func runtimeToolUseMode(runtime providers.Runtime) (providers.ToolUseMode, bool) {

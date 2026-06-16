@@ -4,11 +4,13 @@ See also: [docs/refactoring/2026-06-10-modular-architecture-plan.md](refactoring
 (modularity roadmap) and [docs/refactoring/2026-06-10-core-refactoring-plan.md](refactoring/2026-06-10-core-refactoring-plan.md)
 (core decomposition, executed 2026-06-12).
 
-Status snapshot (audit date 2026-05-29, updated 2026-06-12):
+Status snapshot (audit date 2026-05-29, updated 2026-06-16):
 
-- `go build ./...` — clean
-- `go vet ./...` — clean
-- `go test ./...` — all packages pass (37 test files, coverage thin on IO boundaries)
+- `go build ./...` — required by CI
+- `go vet ./...` — required by CI
+- Legacy `*_test.go` files were removed on 2026-06-16. New tests should follow
+  `docs/TESTING.md`: acceptance/use-case coverage around daemon-visible
+  behavior, provider boundaries, client delivery, and persistence.
 - `gofmt -l .` — clean (web tool files formatted during the webtools extraction)
 
 The architecture is sound (daemon `matrixclawd` + HTTP API, thin clients via
@@ -17,16 +19,17 @@ behind an interface, pure-Go SQLite in `internal/store`). **No rewrite is
 needed.** The work is about runtime resilience and closing test gaps.
 
 This plan is ordered to fix stability first, then quality. Each phase is
-independent and verifiable (`go build ./...` + `go test ./...` between phases).
+independent and verifiable with `go build ./...` + `go vet ./...`; add
+acceptance/use-case tests from `docs/TESTING.md` when rebuilding coverage.
 
 ---
 
 ## Phase 0 — Safety net
 
 - [x] Format the 2 `internal/tools` files (done during the webtools extraction).
-- [ ] Wire `gofmt -l` + `go vet` into CI.
-- [ ] Add `go test -race ./...` to CI. Green baseline on `internal/core` and
-      `internal/store` established 2026-06-12 (`go test -race -count=2`).
+- [x] Wire `gofmt -l` into CI.
+- [x] CI now runs `go build ./...` + `go vet ./...` without the removed legacy
+      test suite.
 
 ## Phase 1 — Crash resistance (highest leverage) 🔴
 
@@ -66,6 +69,12 @@ independent and verifiable (`go build ./...` + `go test ./...` between phases).
 - [x] `internal/orchestration/stub.go` — fire-and-forget run now logs its error
       (done in Phase 1). `context.Background()` is intentional: the run must
       outlive the returning `StartRun` request, so it is not bound to that ctx.
+- [x] `internal/core/subagents.go` — parent auto-resume now waits on the core
+      event bus with a bounded context instead of polling child run status every
+      250 ms forever.
+- [x] `internal/core/execution_request.go` — voice/document delivery checks now
+      read explicit client capabilities from runs/session inputs instead of
+      hardcoding client names in core.
 - [ ] Audit the remaining `context.Background()` uses inside request paths.
 
 ## Phase 3 — Concurrency hardening 🟠
@@ -74,16 +83,23 @@ independent and verifiable (`go build ./...` + `go test ./...` between phases).
       (`internal/core/core.go`): except `WithSessionLLMs`, they mutate fields
       without `c.mu` and must not be called after a run starts / the Core is
       shared; post-construction mutation goes through the locked `Set*` methods.
-- [ ] Decide on `internal/store/sqlite.go` `SetMaxOpenConns(1)`: keep + document
-      the serialization contract, or split read/write pools if throughput matters.
+- [x] Keep and document `SetMaxOpenConns(1)` for the main, work, automation, and
+      skills SQLite stores as the intentional personal-daemon serialization
+      contract.
 
-## Phase 4 — Tests on IO boundaries 🟡
+## Phase 4 — Rebuild tests around user-visible behavior 🟡
 
-- [ ] Tests for `internal/providers/ai/*` (mock HTTP), the largest untested,
-      network-facing surface.
-- [ ] Tests for `internal/automation` (scheduler) and `internal/api` (handlers).
-- [ ] Remove silent error-swallowing in `internal/automation/service.go`
-      (`_ = s.Tick(...)`, `_ = s.advanceJob(...)`).
+- [ ] Add acceptance/use-case tests for session lifecycle, model turns,
+      approvals, client delivery, subagent flow, persistence, and provider
+      errors.
+- [ ] Add provider-boundary tests for `internal/providers/ai/*` with mock HTTP,
+      covering request shape, streaming, tool calls, auth headers, and error
+      mapping.
+- [ ] Add scenario tests for `internal/automation` and `internal/api` where they
+      participate in user-visible workflows.
+- [x] Remove silent error-swallowing in `internal/automation/service.go`
+      (`Tick`, failed-fire update/advance, and delivery creation errors are now
+      logged or returned).
 
 ## Phase 5 — Decompose god files 🟡
 

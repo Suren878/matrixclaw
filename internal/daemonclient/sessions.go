@@ -263,15 +263,16 @@ func (c *Client) SendMessagePartsMode(ctx context.Context, sessionID string, tex
 func (c *Client) SendMessagePartsModeWithDelivery(ctx context.Context, sessionID string, text string, parts []core.MessagePart, workingDir string, busyMode core.BusyInputMode, deliveryAddress json.RawMessage) (core.AcceptRunResult, error) {
 	var response core.AcceptRunResult
 	request := core.HandleMessageInput{
-		Client:           c.ClientName,
-		ExternalKey:      c.ExternalKey,
-		SessionID:        strings.TrimSpace(sessionID),
-		Text:             text,
-		Parts:            parts,
-		BusyMode:         busyMode,
-		WorkingDir:       strings.TrimSpace(workingDir),
-		DeliveryAddress:  deliveryAddress,
-		AllowAutoBindOne: true,
+		Client:             c.ClientName,
+		ExternalKey:        c.ExternalKey,
+		ClientCapabilities: c.Capabilities,
+		SessionID:          strings.TrimSpace(sessionID),
+		Text:               text,
+		Parts:              parts,
+		BusyMode:           busyMode,
+		WorkingDir:         strings.TrimSpace(workingDir),
+		DeliveryAddress:    deliveryAddress,
+		AllowAutoBindOne:   true,
 	}
 	if err := c.doJSON(ctx, http.MethodPost, "/v1/messages", request, &response); err != nil {
 		return core.AcceptRunResult{}, err

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -84,7 +85,7 @@ func (s *Service) Run(ctx context.Context) {
 	if s == nil {
 		return
 	}
-	_ = s.Tick(ctx)
+	s.tickAndLog(ctx)
 	ticker := time.NewTicker(s.tickInterval)
 	defer ticker.Stop()
 	for {
@@ -92,8 +93,14 @@ func (s *Service) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			_ = s.Tick(ctx)
+			s.tickAndLog(ctx)
 		}
+	}
+}
+
+func (s *Service) tickAndLog(ctx context.Context) {
+	if err := s.Tick(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		log.Printf("matrixclaw automation tick failed: %v", err)
 	}
 }
 
@@ -338,11 +345,12 @@ func (s *Service) handleDuplicateFire(ctx context.Context, job Job, scheduledFor
 func (s *Service) runFire(ctx context.Context, job Job, fire Fire, scheduledFor time.Time) (Fire, error) {
 	now := s.now().UTC()
 	result, err := s.runner.AcceptTriggeredRun(ctx, core.HandleTriggeredRunInput{
-		TriggerID:   fire.ID,
-		Client:      job.Client,
-		ExternalKey: job.ExternalKey,
-		SessionID:   job.SessionID,
-		Text:        renderPrompt(job, scheduledFor, now),
+		TriggerID:          fire.ID,
+		Client:             job.Client,
+		ExternalKey:        job.ExternalKey,
+		ClientCapabilities: automationClientCapabilities(job.Client),
+		SessionID:          job.SessionID,
+		Text:               renderPrompt(job, scheduledFor, now),
 	})
 	if err != nil {
 		fire.Status = FireStatusFailed
@@ -350,9 +358,14 @@ func (s *Service) runFire(ctx context.Context, job Job, fire Fire, scheduledFor 
 		finished := s.now().UTC()
 		fire.UpdatedAt = finished
 		fire.FinishedAt = &finished
-		_ = s.store.UpdateAutomationFire(ctx, fire)
-		_ = s.advanceJob(ctx, job, scheduledFor)
-		return fire, err
+		resultErr := err
+		if updateErr := s.store.UpdateAutomationFire(ctx, fire); updateErr != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("update failed automation fire: %w", updateErr))
+		}
+		if advanceErr := s.advanceJob(ctx, job, scheduledFor); advanceErr != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("advance failed automation job: %w", advanceErr))
+		}
+		return fire, resultErr
 	}
 
 	fire.RunID = result.Run.ID
@@ -364,12 +377,24 @@ func (s *Service) runFire(ctx context.Context, job Job, fire Fire, scheduledFor 
 		return fire, err
 	}
 	if len(s.deliveryTargetsForJob(job)) > 0 {
-		_ = s.createRunDeliveries(ctx, job, result)
+		if err := s.createRunDeliveries(ctx, job, result); err != nil {
+			return fire, err
+		}
 	}
 	if err := s.advanceJob(ctx, job, scheduledFor); err != nil {
 		return fire, err
 	}
 	return fire, nil
+}
+
+func automationClientCapabilities(client string) core.ClientCapabilities {
+	if strings.EqualFold(strings.TrimSpace(client), telegramClientName) {
+		return core.ClientCapabilities{
+			SupportsVoiceDelivery:    true,
+			SupportsDocumentDelivery: true,
+		}
+	}
+	return core.ClientCapabilities{}
 }
 
 func (s *Service) advanceJob(ctx context.Context, job Job, scheduledFor time.Time) error {

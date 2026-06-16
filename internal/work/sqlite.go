@@ -35,6 +35,8 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("work: open sqlite: %w", err)
 	}
+	// The work store follows the daemon's personal-process SQLite contract:
+	// serialize access instead of pretending this is a multi-user database.
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	store := &SQLiteStore{db: db}

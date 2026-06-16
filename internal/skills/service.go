@@ -38,6 +38,8 @@ func NewService(cfg Config) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Skill metadata is local daemon state. A single SQLite connection keeps
+	// writes serialized and matches the rest of MatrixClaw's personal-store model.
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	service := &Service{db: db, root: cfg.Root, cfg: cfg, now: time.Now, closer: true, enabled: cfg.Enabled}

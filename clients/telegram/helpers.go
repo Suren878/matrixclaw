@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 )
 
@@ -15,7 +16,12 @@ const (
 )
 
 func (w *Worker) daemon(externalKey string) *daemonclient.Client {
-	client := daemonclient.New(w.config.BaseURL, w.config.ClientName, externalKey).WithAPIToken(w.config.APIToken)
+	client := daemonclient.New(w.config.BaseURL, w.config.ClientName, externalKey).
+		WithAPIToken(w.config.APIToken).
+		WithCapabilities(core.ClientCapabilities{
+			SupportsVoiceDelivery:    true,
+			SupportsDocumentDelivery: true,
+		})
 	client.HTTPClient = w.config.DaemonHTTPClient
 	return client
 }

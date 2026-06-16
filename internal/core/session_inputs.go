@@ -51,7 +51,7 @@ func (c *Core) sessionGate(sessionID string) *sync.Mutex {
 	return gate
 }
 
-func (c *Core) createAcceptedRun(ctx context.Context, session Session, text string, parts []MessagePart, client string, externalKey string, deliveryAddress json.RawMessage) (AcceptRunResult, error) {
+func (c *Core) createAcceptedRun(ctx context.Context, session Session, text string, parts []MessagePart, client string, externalKey string, capabilities ClientCapabilities, deliveryAddress json.RawMessage) (AcceptRunResult, error) {
 	autoTitle := c.firstMessageAutoTitle(ctx, session, text)
 	now := c.now().UTC()
 	runID := c.newID("run")
@@ -68,14 +68,15 @@ func (c *Core) createAcceptedRun(ctx context.Context, session Session, text stri
 		UpdatedAt: now,
 	}
 	run := Run{
-		ID:            runID,
-		SessionID:     session.ID,
-		UserMessageID: messageID,
-		Client:        normalizeText(client),
-		ExternalKey:   normalizeText(externalKey),
-		Status:        RunStatusAccepted,
-		StartedAt:     now,
-		UpdatedAt:     now,
+		ID:                 runID,
+		SessionID:          session.ID,
+		UserMessageID:      messageID,
+		Client:             normalizeText(client),
+		ExternalKey:        normalizeText(externalKey),
+		ClientCapabilities: capabilities,
+		Status:             RunStatusAccepted,
+		StartedAt:          now,
+		UpdatedAt:          now,
 	}
 	delivery, hasDelivery, err := c.prepareSessionRunDelivery(run, text, parts, client, externalKey, deliveryAddress)
 	if err != nil {
@@ -106,19 +107,20 @@ func (c *Core) createPendingSessionInput(ctx context.Context, session Session, a
 	}
 	now := c.now().UTC()
 	pending := SessionInput{
-		ID:              c.newID("input"),
-		SessionID:       session.ID,
-		TargetRunID:     active.ID,
-		Mode:            mode,
-		Status:          SessionInputStatusPending,
-		Text:            text,
-		Parts:           parts,
-		Client:          normalizeText(input.Client),
-		ExternalKey:     normalizeText(input.ExternalKey),
-		DeliveryAddress: cloneRawMessage(input.DeliveryAddress),
-		WorkingDir:      normalizeText(input.WorkingDir),
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		ID:                 c.newID("input"),
+		SessionID:          session.ID,
+		TargetRunID:        active.ID,
+		Mode:               mode,
+		Status:             SessionInputStatusPending,
+		Text:               text,
+		Parts:              parts,
+		Client:             normalizeText(input.Client),
+		ExternalKey:        normalizeText(input.ExternalKey),
+		ClientCapabilities: input.ClientCapabilities,
+		DeliveryAddress:    cloneRawMessage(input.DeliveryAddress),
+		WorkingDir:         normalizeText(input.WorkingDir),
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 	if err := c.store.CreateSessionInput(ctx, pending); err != nil {
 		return SessionInput{}, err
@@ -197,7 +199,7 @@ func (c *Core) startNextPendingSessionInput(ctx context.Context, sessionID strin
 
 func (c *Core) consumeSessionInputAsRun(ctx context.Context, session Session, input SessionInput) (AcceptRunResult, error) {
 	parts := NormalizeMessageParts(input.Text, input.Parts)
-	result, err := c.createAcceptedRun(ctx, session, input.Text, parts, input.Client, input.ExternalKey, input.DeliveryAddress)
+	result, err := c.createAcceptedRun(ctx, session, input.Text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress)
 	if err != nil {
 		return AcceptRunResult{}, err
 	}

@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/core"
 )
 
 const defaultJSONTimeout = 10 * time.Second
@@ -37,11 +39,12 @@ func IsAPIStatus(err error, statusCode int) bool {
 }
 
 type Client struct {
-	BaseURL     string
-	ClientName  string
-	ExternalKey string
-	APIToken    string
-	HTTPClient  *http.Client
+	BaseURL      string
+	ClientName   string
+	ExternalKey  string
+	APIToken     string
+	Capabilities core.ClientCapabilities
+	HTTPClient   *http.Client
 	// EventHTTPClient is intentionally separate from HTTPClient because SSE
 	// subscriptions must not inherit the short JSON request timeout.
 	EventHTTPClient *http.Client
@@ -61,5 +64,13 @@ func (c *Client) WithAPIToken(token string) *Client {
 		return c
 	}
 	c.APIToken = strings.TrimSpace(token)
+	return c
+}
+
+func (c *Client) WithCapabilities(capabilities core.ClientCapabilities) *Client {
+	if c == nil {
+		return c
+	}
+	c.Capabilities = capabilities
 	return c
 }

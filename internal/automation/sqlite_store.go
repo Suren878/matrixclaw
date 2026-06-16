@@ -29,6 +29,8 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("automation store: open sqlite: %w", err)
 	}
+	// Automation runs inside one daemon process; keep SQLite access serialized
+	// so scheduled job state transitions remain simple and deterministic.
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	for _, stmt := range []string{

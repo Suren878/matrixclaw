@@ -13,8 +13,8 @@ import (
 
 func (s *SQLiteStore) CreateSessionInput(ctx context.Context, input core.SessionInput) error {
 	if _, err := s.db.ExecContext(ctx, `
-	INSERT INTO session_inputs(id, session_id, target_run_id, mode, status, text, parts_json, client, external_key, delivery_address_json, working_dir, consumed_run_id, error, created_at, updated_at, consumed_at)
-	VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	INSERT INTO session_inputs(id, session_id, target_run_id, mode, status, text, parts_json, client, external_key, client_capabilities_json, delivery_address_json, working_dir, consumed_run_id, error, created_at, updated_at, consumed_at)
+	VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		input.ID,
 		input.SessionID,
 		input.TargetRunID,
@@ -24,6 +24,7 @@ func (s *SQLiteStore) CreateSessionInput(ctx context.Context, input core.Session
 		marshalSessionInputParts(input.Parts),
 		input.Client,
 		input.ExternalKey,
+		marshalClientCapabilities(input.ClientCapabilities),
 		string(input.DeliveryAddress),
 		input.WorkingDir,
 		input.ConsumedRunID,
@@ -40,7 +41,7 @@ func (s *SQLiteStore) CreateSessionInput(ctx context.Context, input core.Session
 func (s *SQLiteStore) UpdateSessionInput(ctx context.Context, input core.SessionInput) error {
 	result, err := s.db.ExecContext(ctx, `
 	UPDATE session_inputs
-	SET target_run_id = ?, mode = ?, status = ?, text = ?, parts_json = ?, client = ?, external_key = ?, delivery_address_json = ?, working_dir = ?, consumed_run_id = ?, error = ?, updated_at = ?, consumed_at = ?
+	SET target_run_id = ?, mode = ?, status = ?, text = ?, parts_json = ?, client = ?, external_key = ?, client_capabilities_json = ?, delivery_address_json = ?, working_dir = ?, consumed_run_id = ?, error = ?, updated_at = ?, consumed_at = ?
 	WHERE id = ?`,
 		input.TargetRunID,
 		string(input.Mode),
@@ -49,6 +50,7 @@ func (s *SQLiteStore) UpdateSessionInput(ctx context.Context, input core.Session
 		marshalSessionInputParts(input.Parts),
 		input.Client,
 		input.ExternalKey,
+		marshalClientCapabilities(input.ClientCapabilities),
 		string(input.DeliveryAddress),
 		input.WorkingDir,
 		input.ConsumedRunID,
@@ -72,7 +74,7 @@ func (s *SQLiteStore) UpdateSessionInput(ctx context.Context, input core.Session
 
 func (s *SQLiteStore) ListPendingSessionInputs(ctx context.Context, sessionID string) ([]core.SessionInput, error) {
 	query := `
-	SELECT id, session_id, target_run_id, mode, status, text, parts_json, client, external_key, delivery_address_json, working_dir, consumed_run_id, error, created_at, updated_at, consumed_at
+	SELECT id, session_id, target_run_id, mode, status, text, parts_json, client, external_key, client_capabilities_json, delivery_address_json, working_dir, consumed_run_id, error, created_at, updated_at, consumed_at
 FROM session_inputs
 WHERE status = ?`
 	args := []any{string(core.SessionInputStatusPending)}
@@ -105,7 +107,7 @@ ORDER BY created_at ASC, id ASC`
 
 func (s *SQLiteStore) NextPendingSessionInput(ctx context.Context, sessionID string) (core.SessionInput, error) {
 	row := s.db.QueryRowContext(ctx, `
-	SELECT id, session_id, target_run_id, mode, status, text, parts_json, client, external_key, delivery_address_json, working_dir, consumed_run_id, error, created_at, updated_at, consumed_at
+	SELECT id, session_id, target_run_id, mode, status, text, parts_json, client, external_key, client_capabilities_json, delivery_address_json, working_dir, consumed_run_id, error, created_at, updated_at, consumed_at
 FROM session_inputs
 WHERE session_id = ?
   AND status = ?
@@ -129,7 +131,7 @@ LIMIT 1`,
 
 func (s *SQLiteStore) ListPendingSteerInputs(ctx context.Context, sessionID string, runID string) ([]core.SessionInput, error) {
 	rows, err := s.db.QueryContext(ctx, `
-	SELECT id, session_id, target_run_id, mode, status, text, parts_json, client, external_key, delivery_address_json, working_dir, consumed_run_id, error, created_at, updated_at, consumed_at
+	SELECT id, session_id, target_run_id, mode, status, text, parts_json, client, external_key, client_capabilities_json, delivery_address_json, working_dir, consumed_run_id, error, created_at, updated_at, consumed_at
 FROM session_inputs
 WHERE session_id = ?
   AND target_run_id = ?
@@ -169,6 +171,7 @@ func scanSessionInput(scanner sessionInputScanner) (core.SessionInput, error) {
 	var mode string
 	var status string
 	var partsJSON string
+	var capabilitiesJSON string
 	var deliveryAddressJSON string
 	var createdAt string
 	var updatedAt string
@@ -183,6 +186,7 @@ func scanSessionInput(scanner sessionInputScanner) (core.SessionInput, error) {
 		&partsJSON,
 		&input.Client,
 		&input.ExternalKey,
+		&capabilitiesJSON,
 		&deliveryAddressJSON,
 		&input.WorkingDir,
 		&input.ConsumedRunID,
@@ -196,6 +200,7 @@ func scanSessionInput(scanner sessionInputScanner) (core.SessionInput, error) {
 	input.Mode = core.BusyInputMode(mode)
 	input.Status = core.SessionInputStatus(status)
 	input.Parts = unmarshalMessageParts(partsJSON)
+	input.ClientCapabilities = unmarshalClientCapabilities(capabilitiesJSON)
 	if strings.TrimSpace(deliveryAddressJSON) != "" {
 		input.DeliveryAddress = json.RawMessage(deliveryAddressJSON)
 	}

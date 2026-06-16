@@ -31,6 +31,9 @@ func NewSQLite(path string) (*SQLiteStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: open sqlite: %w", err)
 	}
+	// MatrixClaw's main store is intentionally serialized. The daemon is a
+	// personal local process, and a single SQLite connection avoids modernc
+	// write-lock churn without hiding a multi-user throughput promise.
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 
