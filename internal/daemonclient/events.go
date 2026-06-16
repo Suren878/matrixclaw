@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -115,6 +116,17 @@ func readSSE(ctx context.Context, body io.ReadCloser, events chan<- LiveEvent, e
 	defer close(errs)
 	defer func() { _ = body.Close() }()
 
+	if !safego.Run("daemonclient.readSSE", func() {
+		readSSELoop(ctx, body, events, errs)
+	}) {
+		select {
+		case errs <- errors.New("daemon event stream reader panicked"):
+		default:
+		}
+	}
+}
+
+func readSSELoop(ctx context.Context, body io.Reader, events chan<- LiveEvent, errs chan<- error) {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 64*1024*1024)
 

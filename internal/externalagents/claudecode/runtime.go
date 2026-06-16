@@ -107,6 +107,23 @@ func (r *Runtime) Close() error {
 func (r *Runtime) runPrompt(ctx context.Context, out chan<- externalagents.Event, path string, session externalagents.ExternalSession, text string) {
 	defer close(out)
 	turnID := newClaudeThreadID()
+	if !safego.Run("claudecode.runPrompt", func() {
+		r.runPromptCommand(ctx, out, path, session, text, turnID)
+	}) {
+		sessionID := claudeSessionID(session)
+		out <- externalagents.Event{
+			Kind:              externalagents.EventTurnFailed,
+			AgentID:           AgentID,
+			ExternalThreadID:  sessionID,
+			ExternalSessionID: sessionID,
+			ExternalTurnID:    turnID,
+			Error:             "claudecode prompt worker panicked",
+			At:                time.Now().UTC(),
+		}
+	}
+}
+
+func (r *Runtime) runPromptCommand(ctx context.Context, out chan<- externalagents.Event, path string, session externalagents.ExternalSession, text string, turnID string) {
 	args := claudePromptArgs(session, text)
 	cmd := exec.CommandContext(ctx, path, args...)
 	if strings.TrimSpace(session.CWD) != "" {
