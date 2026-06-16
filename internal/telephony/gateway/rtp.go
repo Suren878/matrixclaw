@@ -35,11 +35,15 @@ type rtpSession struct {
 	speechFrames atomic.Uint64
 	outPackets   atomic.Uint64
 	outBytes     atomic.Uint64
+	debugCallID  string
+	debugSession string
+	debugLabel   string
 }
 
 type rtpStats struct {
 	InPackets    uint64 `json:"in_packets"`
 	InBytes      uint64 `json:"in_bytes"`
+	InAvg        uint64 `json:"in_avg,omitempty"`
 	InAvgAbs     uint64 `json:"in_avg_abs,omitempty"`
 	InPeak       uint64 `json:"in_peak,omitempty"`
 	SpeechFrames uint64 `json:"speech_frames,omitempty"`
@@ -69,6 +73,61 @@ func newRTPSession(bind string, externalAddress func(int) string) (*rtpSession, 
 	}, nil
 }
 
+func newRTPSessionPair(bind string, externalAddress func(int) string) (*rtpSession, *rtpSession, error) {
+	addr, err := net.ResolveUDPAddr("udp", bind)
+	if err != nil {
+		return nil, nil, err
+	}
+	if addr.Port == 0 {
+		first, err := newRTPSession(bind, externalAddress)
+		if err != nil {
+			return nil, nil, err
+		}
+		second, err := newRTPSession(bind, externalAddress)
+		if err != nil {
+			first.Close()
+			return nil, nil, err
+		}
+		return first, second, nil
+	}
+
+	var lastErr error
+	for offset := 0; offset < 200; offset += 2 {
+		firstPort := addr.Port + offset
+		secondPort := firstPort + 2
+		if secondPort > 65535 {
+			break
+		}
+		first, err := newRTPSession(udpBindWithPort(addr, firstPort), externalAddress)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		second, err := newRTPSession(udpBindWithPort(addr, secondPort), externalAddress)
+		if err != nil {
+			first.Close()
+			lastErr = err
+			continue
+		}
+		return first, second, nil
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no RTP port pair available near %s", bind)
+	}
+	return nil, nil, lastErr
+}
+
+func udpBindWithPort(addr *net.UDPAddr, port int) string {
+	host := ""
+	if addr != nil && addr.IP != nil {
+		host = addr.IP.String()
+	}
+	if host == "" || host == "<nil>" {
+		host = "0.0.0.0"
+	}
+	return net.JoinHostPort(host, strconv.Itoa(port))
+}
+
 func (s *rtpSession) ExternalHost() string {
 	if s == nil {
 		return ""
@@ -91,6 +150,17 @@ func (s *rtpSession) SetRemote(addr *net.UDPAddr) {
 	s.mu.Unlock()
 }
 
+func (s *rtpSession) SetDiagnostics(callID string, sessionID string, label string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.debugCallID = strings.TrimSpace(callID)
+	s.debugSession = strings.TrimSpace(sessionID)
+	s.debugLabel = strings.TrimSpace(label)
+	s.mu.Unlock()
+}
+
 func (s *rtpSession) Stats() rtpStats {
 	if s == nil {
 		return rtpStats{}
@@ -109,6 +179,7 @@ func (s *rtpSession) Stats() rtpStats {
 	return rtpStats{
 		InPackets:    s.inPackets.Load(),
 		InBytes:      s.inBytes.Load(),
+		InAvg:        avgAbs,
 		InAvgAbs:     avgAbs,
 		InPeak:       s.inPeak.Load(),
 		SpeechFrames: s.speechFrames.Load(),
@@ -221,8 +292,21 @@ func (s *rtpSession) writeRTP(ctx context.Context, payload []byte) error {
 	s.timestamp += rtpFrameSamples
 	_, err = s.conn.WriteToUDP(packet, remote)
 	if err == nil {
-		s.outPackets.Add(1)
+		outPackets := s.outPackets.Add(1)
 		s.outBytes.Add(uint64(len(payload)))
+		if outPackets == 1 {
+			s.mu.RLock()
+			callID := s.debugCallID
+			sessionID := s.debugSession
+			label := s.debugLabel
+			s.mu.RUnlock()
+			logTelephonyTimeline("rtp_out_first_packet", callID, sessionID,
+				"label", label,
+				"remote", remote.String(),
+				"bytes", len(payload),
+				"out_packets", outPackets,
+			)
+		}
 	}
 	return err
 }

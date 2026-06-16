@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -14,12 +15,18 @@ import (
 )
 
 const CallToolID = "telephony_call"
+const EndCallToolID = "telephony_end_call"
 
 type setupLoader interface {
 	Load() (setup.Config, error)
 }
 
 type callTool struct {
+	setup setupLoader
+	http  *http.Client
+}
+
+type endCallTool struct {
 	setup setupLoader
 	http  *http.Client
 }
@@ -36,10 +43,22 @@ type callResponse struct {
 	Call any `json:"call"`
 }
 
+type endCallInput struct {
+	CallID string `json:"call_id,omitempty"`
+	Reason string `json:"reason,omitempty"`
+}
+
 func NewCallTool(setupService setupLoader) tools.Executor {
 	return &callTool{
 		setup: setupService,
 		http:  &http.Client{Timeout: 20 * time.Second},
+	}
+}
+
+func NewEndCallTool(setupService setupLoader) tools.Executor {
+	return &endCallTool{
+		setup: setupService,
+		http:  &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
@@ -61,7 +80,7 @@ func (t *callTool) Spec() tools.Spec {
     "to": {"type": "string", "description": "Destination phone number in international or provider format."},
     "objective": {"type": "string", "description": "Short task for the phone conversation, for example book a table, ask opening hours, confirm an order, or leave a message."},
     "system_instruction": {"type": "string", "description": "Optional detailed prompt for how the AI should behave on this call. If omitted, objective is used."},
-    "initial_message": {"type": "string", "description": "Optional first phrase the AI should say after the call is answered. Keep it brief and natural."},
+    "initial_message": {"type": "string", "description": "Optional first phrase the AI should say after the other side speaks first. Keep it brief and natural."},
     "profile": {"type": "string", "description": "Optional telephony gateway profile, defaults to the configured profile."}
   },
   "required": ["to"],
@@ -112,6 +131,7 @@ func (t *callTool) Execute(ctx context.Context, call tools.Call) (tools.Result, 
 		"origin_external_key":           call.ExternalKey,
 		"origin_session_id":             call.SessionID,
 		"phone_prompt":                  telephonyCfg.PhonePrompt,
+		"assistant_name":                cfg.Assistant.Name,
 		"assistant_custom_instructions": cfg.Assistant.CustomInstructions,
 	}
 	payload, err := json.Marshal(requestBody)
@@ -143,11 +163,83 @@ func (t *callTool) Execute(ctx context.Context, call tools.Call) (tools.Result, 
 	}, nil
 }
 
+func (t *endCallTool) Spec() tools.Spec {
+	return tools.Spec{
+		ID:           EndCallToolID,
+		Name:         "Telephony End Call",
+		Description:  "End the current active MatrixClaw telephony call after saying goodbye. Use only from an active phone conversation when the call objective is complete, impossible, refused, or repeatedly taken off-topic.",
+		Risk:         tools.RiskSafe,
+		Effect:       tools.EffectMutation,
+		ApprovalMode: tools.ApprovalNever,
+		Namespace:    "module.telephony",
+		Category:     tools.CategoryAutomation,
+		Profiles:     []tools.Profile{tools.ProfileAutomation, tools.ProfileCoding},
+		OutputKind:   tools.OutputText,
+		InputJSONSchema: json.RawMessage(`{
+  "type": "object",
+  "properties": {
+    "call_id": {"type": "string", "description": "Current MatrixClaw telephony call id. Use the call_id provided in the phone instructions."},
+    "reason": {"type": "string", "description": "Short internal reason for ending the call."}
+  },
+  "additionalProperties": false
+}`),
+	}
+}
+
+func (t *endCallTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
+	var input endCallInput
+	if len(call.Args) > 0 {
+		_ = json.Unmarshal(call.Args, &input)
+	}
+	callID := strings.TrimSpace(input.CallID)
+	if callID == "" && strings.EqualFold(strings.TrimSpace(call.Client), "telephony") {
+		callID = strings.TrimSpace(call.ExternalKey)
+	}
+	if callID == "" {
+		return tools.Result{Content: "No active telephony call id was provided.", IsError: true, Status: tools.ResultStatusError}, nil
+	}
+	cfg, err := t.config()
+	if err != nil {
+		return tools.Result{Content: err.Error(), IsError: true, Status: tools.ResultStatusError}, nil
+	}
+	telephonyCfg := cfg.Modules.Telephony
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, strings.TrimRight(telephonyCfg.GatewayURL, "/")+"/v1/calls/"+url.PathEscape(callID), nil)
+	if err != nil {
+		return tools.Result{}, err
+	}
+	if strings.TrimSpace(telephonyCfg.GatewayToken) != "" {
+		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(telephonyCfg.GatewayToken))
+	}
+	res, err := t.http.Do(req)
+	if err != nil {
+		return tools.Result{Content: fmt.Sprintf("Telephony end call failed: %s", err), IsError: true, Status: tools.ResultStatusError}, nil
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return tools.Result{Content: fmt.Sprintf("Telephony gateway returned HTTP %d while ending the call.", res.StatusCode), IsError: true, Status: tools.ResultStatusError}, nil
+	}
+	return tools.Result{Content: "Phone call ended.", Status: tools.ResultStatusSuccess}, nil
+}
+
 func (t *callTool) config() (setup.Config, error) {
-	if t == nil || t.setup == nil {
+	if t == nil {
 		return setup.Config{}, fmt.Errorf("telephony setup is not configured")
 	}
-	cfg, err := t.setup.Load()
+	return telephonyConfig(t.setup)
+}
+
+func (t *endCallTool) config() (setup.Config, error) {
+	if t == nil {
+		return setup.Config{}, fmt.Errorf("telephony setup is not configured")
+	}
+	return telephonyConfig(t.setup)
+}
+
+func telephonyConfig(setupService setupLoader) (setup.Config, error) {
+	if setupService == nil {
+		return setup.Config{}, fmt.Errorf("telephony setup is not configured")
+	}
+	cfg, err := setupService.Load()
 	if err != nil {
 		return setup.Config{}, err
 	}

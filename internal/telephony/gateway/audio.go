@@ -19,16 +19,36 @@ func pcm16kBytesFromPCM8k(in []int16) []byte {
 	return out
 }
 
-type pcm24ToPCM8Resampler struct {
+type pcmToPCM8Resampler struct {
 	pending    []int16
 	nextCenter int
+	step       int
+	inputRate  int
+}
+
+type pcm24ToPCM8Resampler = pcmToPCM8Resampler
+
+func newPCMToPCM8Resampler(inputRate int) *pcmToPCM8Resampler {
+	if inputRate <= 0 {
+		inputRate = 24000
+	}
+	step := inputRate / 8000
+	if step <= 0 || inputRate%8000 != 0 {
+		inputRate = 24000
+		step = 3
+	}
+	return &pcmToPCM8Resampler{
+		nextCenter: step / 2,
+		step:       step,
+		inputRate:  inputRate,
+	}
 }
 
 func newPCM24ToPCM8Resampler() *pcm24ToPCM8Resampler {
-	return &pcm24ToPCM8Resampler{nextCenter: 1}
+	return newPCMToPCM8Resampler(24000)
 }
 
-func (r *pcm24ToPCM8Resampler) Convert(in []byte) []int16 {
+func (r *pcmToPCM8Resampler) Convert(in []byte) []int16 {
 	if r == nil {
 		return pcm24BytesToPCM8k(in)
 	}
@@ -39,30 +59,37 @@ func (r *pcm24ToPCM8Resampler) Convert(in []byte) []int16 {
 	for i := 0; i < samples; i++ {
 		r.pending = append(r.pending, int16(binary.LittleEndian.Uint16(in[i*2:])))
 	}
-	out := make([]int16, 0, len(r.pending)/3)
+	out := make([]int16, 0, len(r.pending)/r.step)
 	for r.nextCenter+4 < len(r.pending) {
 		out = append(out, lowpassSample(r.pending, r.nextCenter))
-		r.nextCenter += 3
+		r.nextCenter += r.step
 	}
 	r.compact()
 	return out
 }
 
-func (r *pcm24ToPCM8Resampler) Flush() []int16 {
+func (r *pcmToPCM8Resampler) Flush() []int16 {
 	if r == nil || len(r.pending) == 0 {
 		return nil
 	}
-	out := make([]int16, 0, len(r.pending)/3+1)
+	out := make([]int16, 0, len(r.pending)/r.step+1)
 	for r.nextCenter < len(r.pending) {
 		out = append(out, lowpassSample(r.pending, r.nextCenter))
-		r.nextCenter += 3
+		r.nextCenter += r.step
 	}
 	r.pending = r.pending[:0]
-	r.nextCenter = 1
+	r.nextCenter = r.step / 2
 	return out
 }
 
-func (r *pcm24ToPCM8Resampler) compact() {
+func (r *pcmToPCM8Resampler) InputRate() int {
+	if r == nil {
+		return 0
+	}
+	return r.inputRate
+}
+
+func (r *pcmToPCM8Resampler) compact() {
 	keepFrom := r.nextCenter - 4
 	if keepFrom <= 0 {
 		return

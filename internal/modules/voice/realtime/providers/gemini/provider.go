@@ -264,8 +264,6 @@ func (p *Provider) liveModels(ctx context.Context, cfg Config) liveModelsResult 
 type connection struct {
 	conn         *websocket.Conn
 	writeMu      sync.Mutex
-	audioMu      sync.Mutex
-	audioActive  bool
 	realtimeText bool
 	outputs      chan realtime.ProviderOutput
 	closeOnce    sync.Once
@@ -275,44 +273,13 @@ type connection struct {
 func (c *connection) Send(ctx context.Context, input realtime.ProviderInput) error {
 	switch input.Type {
 	case realtime.ProviderInputAudioAppend:
-		c.audioMu.Lock()
-		defer c.audioMu.Unlock()
-		if !c.audioActive {
-			if err := c.writeJSON(ctx, map[string]any{
-				"realtimeInput": map[string]any{"activityStart": map[string]any{}},
-			}); err != nil {
-				return err
-			}
-			c.audioActive = true
-		}
-		return c.writeJSON(ctx, map[string]any{
-			"realtimeInput": map[string]any{
-				"audio": map[string]any{
-					"data":     strings.TrimSpace(input.AudioBase64),
-					"mimeType": firstNonEmpty(input.AudioMIMEType, "audio/pcm;rate=16000"),
-				},
-			},
-		})
+		return c.writeJSON(ctx, inputAudioAppendMessage(input.AudioBase64, input.AudioMIMEType))
 	case realtime.ProviderInputAudioEnd:
-		c.audioMu.Lock()
-		defer c.audioMu.Unlock()
-		if !c.audioActive {
-			return nil
-		}
-		if err := c.writeJSON(ctx, map[string]any{
-			"realtimeInput": map[string]any{"activityEnd": map[string]any{}},
-		}); err != nil {
-			return err
-		}
-		c.audioActive = false
-		return nil
+		return c.writeJSON(ctx, inputAudioStreamEndMessage())
 	case realtime.ProviderInputTextAppend:
 		text := strings.TrimSpace(input.Text)
 		if text == "" {
 			return nil
-		}
-		if c.realtimeText {
-			return c.writeJSON(ctx, map[string]any{"realtimeInput": map[string]any{"text": text}})
 		}
 		if input.EndOfTurn {
 			return c.writeJSON(ctx, map[string]any{
@@ -435,6 +402,21 @@ func (c *connection) writeJSON(ctx context.Context, payload any) error {
 	return c.conn.Write(ctx, websocket.MessageText, body)
 }
 
+func inputAudioAppendMessage(audioBase64 string, mimeType string) map[string]any {
+	return map[string]any{
+		"realtimeInput": map[string]any{
+			"audio": map[string]any{
+				"data":     strings.TrimSpace(audioBase64),
+				"mimeType": firstNonEmpty(mimeType, "audio/pcm;rate=16000"),
+			},
+		},
+	}
+}
+
+func inputAudioStreamEndMessage() map[string]any {
+	return map[string]any{"realtimeInput": map[string]any{"audioStreamEnd": true}}
+}
+
 func setupMessage(modelID string, voiceID string, language string, systemInstruction string, tools []realtime.ToolDeclaration) map[string]any {
 	setup := map[string]any{
 		"model": "models/" + strings.TrimPrefix(strings.TrimSpace(modelID), "models/"),
@@ -445,8 +427,14 @@ func setupMessage(modelID string, voiceID string, language string, systemInstruc
 		"inputAudioTranscription":  map[string]any{},
 		"outputAudioTranscription": map[string]any{},
 		"realtimeInputConfig": map[string]any{
+			"activityHandling": "START_OF_ACTIVITY_INTERRUPTS",
+			"turnCoverage":     "TURN_INCLUDES_ONLY_ACTIVITY",
 			"automaticActivityDetection": map[string]any{
-				"disabled": true,
+				"disabled":                 false,
+				"startOfSpeechSensitivity": "START_SENSITIVITY_HIGH",
+				"prefixPaddingMs":          200,
+				"silenceDurationMs":        600,
+				"endOfSpeechSensitivity":   "END_SENSITIVITY_HIGH",
 			},
 		},
 	}
@@ -489,8 +477,14 @@ func combinedSystemInstruction(base string, session string, language string) str
 
 func languageSystemInstruction(language string) string {
 	code := normalizeLanguageCode(language)
-	if code == "" || strings.EqualFold(code, "auto") {
+	if code == "" {
 		return ""
+	}
+	if strings.EqualFold(code, "auto") {
+		return "Realtime voice language policy:\n" +
+			"- Detect the human's language from the first meaningful speech and keep speaking that language for the rest of the conversation unless the human explicitly asks to change language.\n" +
+			"- If the greeting or recent conversation is in a non-English language, continue in that non-English language instead of switching to English.\n" +
+			"- If speech recognition is ambiguous, stay with the previously established conversation language."
 	}
 	name := languageDisplayName(code)
 	return "Realtime voice language policy:\n" +

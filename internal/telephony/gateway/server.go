@@ -18,6 +18,7 @@ import (
 type Server struct {
 	cfg    Config
 	ari    *ariClient
+	events *ariEventHub
 	mu     sync.RWMutex
 	calls  map[string]*Call
 	client *http.Client
@@ -40,6 +41,12 @@ type Call struct {
 	BridgeID                   string     `json:"bridge_id,omitempty"`
 	ChannelID                  string     `json:"channel_id,omitempty"`
 	ExternalChannelID          string     `json:"external_channel_id,omitempty"`
+	CaptureBridgeID            string     `json:"capture_bridge_id,omitempty"`
+	PlaybackBridgeID           string     `json:"playback_bridge_id,omitempty"`
+	CaptureSnoopChannelID      string     `json:"capture_snoop_channel_id,omitempty"`
+	PlaybackSnoopChannelID     string     `json:"playback_snoop_channel_id,omitempty"`
+	CaptureExternalChannelID   string     `json:"capture_external_channel_id,omitempty"`
+	PlaybackExternalChannelID  string     `json:"playback_external_channel_id,omitempty"`
 	CreatedAt                  time.Time  `json:"created_at"`
 	UpdatedAt                  time.Time  `json:"updated_at"`
 	AnsweredAt                 *time.Time `json:"answered_at,omitempty"`
@@ -51,37 +58,49 @@ type Call struct {
 	Transcript                 []CallTranscriptTurn `json:"transcript,omitempty"`
 	Recording                  *CallRecording       `json:"recording,omitempty"`
 	RTP                        rtpStats             `json:"rtp,omitempty"`
+	RTPCapture                 rtpStats             `json:"rtp_capture,omitempty"`
+	RTPPlayback                rtpStats             `json:"rtp_playback,omitempty"`
 	rtp                        *rtpSession
+	rtpIn                      *rtpSession
+	rtpOut                     *rtpSession
 	currentInputTranscript     string
 	currentAssistantTranscript string
 }
 
 type CallSnapshot struct {
-	ID                  string               `json:"id"`
-	Direction           string               `json:"direction,omitempty"`
-	To                  string               `json:"to"`
-	From                string               `json:"from,omitempty"`
-	Profile             string               `json:"profile,omitempty"`
-	Objective           string               `json:"objective,omitempty"`
-	Status              string               `json:"status"`
-	Error               string               `json:"error,omitempty"`
-	RealtimeSessionID   string               `json:"realtime_session_id,omitempty"`
-	CoreSessionID       string               `json:"session_id,omitempty"`
-	OriginClient        string               `json:"origin_client,omitempty"`
-	OriginExternalKey   string               `json:"origin_external_key,omitempty"`
-	OriginSessionID     string               `json:"origin_session_id,omitempty"`
-	BridgeID            string               `json:"bridge_id,omitempty"`
-	ChannelID           string               `json:"channel_id,omitempty"`
-	ExternalChannelID   string               `json:"external_channel_id,omitempty"`
-	CreatedAt           time.Time            `json:"created_at"`
-	UpdatedAt           time.Time            `json:"updated_at"`
-	AnsweredAt          *time.Time           `json:"answered_at,omitempty"`
-	FinishedAt          *time.Time           `json:"finished_at,omitempty"`
-	InputTranscript     string               `json:"input_transcript,omitempty"`
-	AssistantTranscript string               `json:"assistant_transcript,omitempty"`
-	Transcript          []CallTranscriptTurn `json:"transcript,omitempty"`
-	Recording           *CallRecording       `json:"recording,omitempty"`
-	RTP                 rtpStats             `json:"rtp,omitempty"`
+	ID                        string               `json:"id"`
+	Direction                 string               `json:"direction,omitempty"`
+	To                        string               `json:"to"`
+	From                      string               `json:"from,omitempty"`
+	Profile                   string               `json:"profile,omitempty"`
+	Objective                 string               `json:"objective,omitempty"`
+	Status                    string               `json:"status"`
+	Error                     string               `json:"error,omitempty"`
+	RealtimeSessionID         string               `json:"realtime_session_id,omitempty"`
+	CoreSessionID             string               `json:"session_id,omitempty"`
+	OriginClient              string               `json:"origin_client,omitempty"`
+	OriginExternalKey         string               `json:"origin_external_key,omitempty"`
+	OriginSessionID           string               `json:"origin_session_id,omitempty"`
+	BridgeID                  string               `json:"bridge_id,omitempty"`
+	ChannelID                 string               `json:"channel_id,omitempty"`
+	ExternalChannelID         string               `json:"external_channel_id,omitempty"`
+	CaptureBridgeID           string               `json:"capture_bridge_id,omitempty"`
+	PlaybackBridgeID          string               `json:"playback_bridge_id,omitempty"`
+	CaptureSnoopChannelID     string               `json:"capture_snoop_channel_id,omitempty"`
+	PlaybackSnoopChannelID    string               `json:"playback_snoop_channel_id,omitempty"`
+	CaptureExternalChannelID  string               `json:"capture_external_channel_id,omitempty"`
+	PlaybackExternalChannelID string               `json:"playback_external_channel_id,omitempty"`
+	CreatedAt                 time.Time            `json:"created_at"`
+	UpdatedAt                 time.Time            `json:"updated_at"`
+	AnsweredAt                *time.Time           `json:"answered_at,omitempty"`
+	FinishedAt                *time.Time           `json:"finished_at,omitempty"`
+	InputTranscript           string               `json:"input_transcript,omitempty"`
+	AssistantTranscript       string               `json:"assistant_transcript,omitempty"`
+	Transcript                []CallTranscriptTurn `json:"transcript,omitempty"`
+	Recording                 *CallRecording       `json:"recording,omitempty"`
+	RTP                       rtpStats             `json:"rtp,omitempty"`
+	RTPCapture                rtpStats             `json:"rtp_capture,omitempty"`
+	RTPPlayback               rtpStats             `json:"rtp_playback,omitempty"`
 }
 
 type createCallRequest struct {
@@ -90,6 +109,7 @@ type createCallRequest struct {
 	Objective                   string `json:"objective,omitempty"`
 	SystemInstruction           string `json:"system_instruction,omitempty"`
 	InitialMessage              string `json:"initial_message,omitempty"`
+	AssistantName               string `json:"assistant_name,omitempty"`
 	ExternalKey                 string `json:"external_key,omitempty"`
 	SessionID                   string `json:"session_id,omitempty"`
 	OriginClient                string `json:"origin_client,omitempty"`
@@ -109,6 +129,10 @@ type CallTranscriptTurn struct {
 
 func Run(ctx context.Context, cfg Config) error {
 	s := NewServer(cfg)
+	if cfg.ARIPassword != "" {
+		s.events.Start(ctx)
+		go s.cleanupStaleARIOnReady(ctx)
+	}
 	if cfg.InboundEnabled {
 		go s.runInboundListener(ctx)
 	}
@@ -139,9 +163,11 @@ func Run(ctx context.Context, cfg Config) error {
 }
 
 func NewServer(cfg Config) *Server {
+	ari := newARIClient(cfg.ARIURL, cfg.ARIUser, cfg.ARIPassword)
 	return &Server{
 		cfg:    cfg,
-		ari:    newARIClient(cfg.ARIURL, cfg.ARIUser, cfg.ARIPassword),
+		ari:    ari,
+		events: newARIEventHub(ari, cfg.ARIApp),
 		calls:  map[string]*Call{},
 		client: &http.Client{Timeout: 5 * time.Second},
 	}
@@ -308,46 +334,22 @@ func (s *Server) runCall(ctx context.Context, call *Call, req createCallRequest)
 }
 
 func (s *Server) runInboundListener(ctx context.Context) {
+	if s.cfg.ARIPassword == "" || s.cfg.MatrixclawToken == "" {
+		log.Printf("telephony inbound listener disabled until ARI and MatrixClaw credentials are configured")
+		return
+	}
+	events, unsubscribe := s.events.Subscribe(256)
+	defer unsubscribe()
+	if err := s.events.WaitReady(ctx); err != nil {
+		return
+	}
+	log.Printf("telephony inbound listener ready for ARI app %s", s.cfg.ARIApp)
 	for {
-		if ctx.Err() != nil {
-			return
-		}
-		if s.cfg.ARIPassword == "" || s.cfg.MatrixclawToken == "" {
-			log.Printf("telephony inbound listener disabled until ARI and MatrixClaw credentials are configured")
-			select {
-			case <-time.After(10 * time.Second):
-			case <-ctx.Done():
-				return
-			}
-			continue
-		}
-		events, err := s.ari.events(ctx, s.cfg.ARIApp)
-		if err != nil {
-			log.Printf("telephony inbound listener connect failed: %v", err)
-			select {
-			case <-time.After(5 * time.Second):
-			case <-ctx.Done():
-				return
-			}
-			continue
-		}
-		log.Printf("telephony inbound listener registered ARI app %s", s.cfg.ARIApp)
-		for {
-			event, err := events.read(ctx)
-			if err != nil {
-				events.Close()
-				if ctx.Err() != nil {
-					return
-				}
-				log.Printf("telephony inbound listener disconnected: %v", err)
-				break
-			}
+		select {
+		case event := <-events:
 			if s.isInboundStart(event) {
 				s.startInboundCall(ctx, event)
 			}
-		}
-		select {
-		case <-time.After(2 * time.Second):
 		case <-ctx.Done():
 			return
 		}
@@ -416,6 +418,23 @@ func (s *Server) runInboundCallOnce(ctx context.Context, call *Call) error {
 	if channelID == "" {
 		return errors.New("inbound channel id is required")
 	}
+	req := createCallRequest{
+		SystemInstruction: inboundSystemInstruction(s.cfg.InboundPrompt),
+		InitialMessage:    firstNonEmpty(s.cfg.InboundGreeting, "Здравствуйте."),
+		ExternalKey:       inboundExternalKey(call),
+	}
+	s.updateCall(call, "preparing", "")
+	realtime, err := s.connectRealtime(ctx, call, req)
+	if err != nil {
+		return err
+	}
+	connected := false
+	defer func() {
+		if !connected {
+			_ = realtime.Close(context.Background())
+		}
+	}()
+
 	s.updateCall(call, "answering", "")
 	if err := s.ari.answer(ctx, channelID); err != nil {
 		return err
@@ -423,28 +442,24 @@ func (s *Server) runInboundCallOnce(ctx context.Context, call *Call) error {
 	now := time.Now().UTC()
 	call.AnsweredAt = &now
 	s.updateCall(call, "answered", "")
+	logCallTimeline(call, "", "answered", "direction", call.Direction, "channel", channelID)
 
-	req := createCallRequest{
-		SystemInstruction: inboundSystemInstruction(s.cfg.InboundPrompt),
-		InitialMessage:    firstNonEmpty(s.cfg.InboundGreeting, "Здравствуйте. Я слушаю вас."),
-		ExternalKey:       inboundExternalKey(call),
-	}
-	return s.runConnectedCall(ctx, call, req, channelID)
+	connected = true
+	return s.runConnectedCallWithRealtime(ctx, call, req, channelID, realtime)
 }
 
 func (s *Server) runCallOnce(ctx context.Context, call *Call, req createCallRequest) error {
-	events, err := s.ari.events(ctx, s.cfg.ARIApp)
-	if err != nil {
-		return err
-	}
-	defer events.Close()
-
 	callID := safeARIID(call.ID + "-call")
-	bridgeID := safeARIID(call.ID + "-bridge")
-	externalID := safeARIID(call.ID + "-media")
 	call.ChannelID = callID
-	call.BridgeID = bridgeID
-	call.ExternalChannelID = externalID
+
+	s.updateCall(call, "preparing", "")
+
+	events, unsubscribe := s.events.Subscribe(128)
+	defer unsubscribe()
+	if err := s.events.WaitReady(ctx); err != nil {
+		return fmt.Errorf("wait for ARI app: %w", err)
+	}
+
 	s.updateCall(call, "dialing", "")
 
 	endpoint := fmt.Sprintf("PJSIP/%s@%s", call.To, firstNonEmpty(call.Profile, s.cfg.SIPProfile))
@@ -460,7 +475,7 @@ func (s *Server) runCallOnce(ctx context.Context, call *Call, req createCallRequ
 		return err
 	}
 
-	if err := events.waitFor(ctx, s.cfg.CallTimeout, func(event ariEvent) bool {
+	if _, err := waitForARIEvent(ctx, events, s.cfg.CallTimeout, func(event ariEvent) bool {
 		return event.Type == "StasisStart" && event.Channel != nil && event.Channel.ID == callID
 	}); err != nil {
 		return fmt.Errorf("wait for call answer: %w", err)
@@ -471,69 +486,145 @@ func (s *Server) runCallOnce(ctx context.Context, call *Call, req createCallRequ
 	now := time.Now().UTC()
 	call.AnsweredAt = &now
 	s.updateCall(call, "answered", "")
+	logCallTimeline(call, "", "answered", "direction", call.Direction, "channel", callID)
 
-	return s.runConnectedCall(ctx, call, req, callID)
+	realtime, err := s.connectRealtime(ctx, call, req)
+	if err != nil {
+		_ = s.ari.hangup(context.Background(), callID)
+		return err
+	}
+	return s.runConnectedCallWithRealtime(ctx, call, req, callID, realtime)
 }
 
-func (s *Server) runConnectedCall(ctx context.Context, call *Call, req createCallRequest, channelID string) error {
-	rtp, err := newRTPSession(s.cfg.RTPBind, s.cfg.RTPExternalAddress)
-	if err != nil {
-		return err
-	}
-	defer rtp.Close()
-	call.rtp = rtp
-	defer func() {
-		s.syncCallStats(call)
-		call.rtp = nil
-	}()
-
+func (s *Server) connectRealtime(ctx context.Context, call *Call, req createCallRequest) (*realtimeConn, error) {
 	realtimeClient := newRealtimeClient(s.cfg.MatrixclawURL, s.cfg.MatrixclawToken)
 	realtime, err := realtimeClient.Connect(ctx, realtimeConnectRequest{
-		Client:            "telephony",
-		ExternalKey:       firstNonEmpty(req.ExternalKey, call.ID),
-		SessionID:         strings.TrimSpace(req.SessionID),
-		SystemInstruction: phoneSystemInstruction(firstNonEmpty(req.PhonePrompt, s.cfg.PhonePrompt), req.AssistantCustomInstructions, firstNonEmpty(req.SystemInstruction, req.Objective)),
+		Client:      "telephony",
+		ExternalKey: firstNonEmpty(req.ExternalKey, call.ID),
+		SessionID:   strings.TrimSpace(req.SessionID),
+		SystemInstruction: phoneSystemInstruction(phonePromptInput{
+			AssistantName:      firstNonEmpty(req.AssistantName, s.cfg.AssistantName),
+			CallID:             call.ID,
+			OpeningPhrase:      req.InitialMessage,
+			PhonePrompt:        firstNonEmpty(req.PhonePrompt, s.cfg.PhonePrompt),
+			CustomInstructions: req.AssistantCustomInstructions,
+			Objective:          firstNonEmpty(req.SystemInstruction, req.Objective),
+			Direction:          call.Direction,
+		}),
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer func() { _ = realtime.Close(context.Background()) }()
 	call.RealtimeSessionID = realtime.Session.ID
 	call.CoreSessionID = realtime.Session.CoreSessionID
 	s.touchCall(call)
+	return realtime, nil
+}
 
-	bridgeID := firstNonEmpty(call.BridgeID, safeARIID(call.ID+"-bridge"))
-	externalID := firstNonEmpty(call.ExternalChannelID, safeARIID(call.ID+"-media"))
+func (s *Server) runConnectedCallWithRealtime(ctx context.Context, call *Call, req createCallRequest, channelID string, realtime *realtimeConn) error {
+	if realtime == nil {
+		return errors.New("realtime connection is required")
+	}
+	defer func() { _ = realtime.Close(context.Background()) }()
+
+	captureRTP, playbackRTP, err := newRTPSessionPair(s.cfg.RTPBind, s.cfg.RTPExternalAddress)
+	if err != nil {
+		return err
+	}
+	defer captureRTP.Close()
+	defer playbackRTP.Close()
+	call.rtpIn = captureRTP
+	call.rtpOut = playbackRTP
+	captureRTP.SetDiagnostics(call.ID, realtime.Session.ID, "capture")
+	playbackRTP.SetDiagnostics(call.ID, realtime.Session.ID, "playback")
+	defer func() {
+		s.syncCallStats(call)
+		call.rtpIn = nil
+		call.rtpOut = nil
+	}()
+
+	captureBridgeID := safeARIID(call.ID + "-capture-bridge")
+	playbackBridgeID := safeARIID(call.ID + "-playback-bridge")
+	captureSnoopID := safeARIID(call.ID + "-capture-snoop")
+	captureExternalID := safeARIID(call.ID + "-capture-media")
+	playbackExternalID := safeARIID(call.ID + "-playback-media")
 	call.ChannelID = channelID
-	call.BridgeID = bridgeID
-	call.ExternalChannelID = externalID
+	call.BridgeID = playbackBridgeID
+	call.ExternalChannelID = playbackExternalID
+	call.CaptureBridgeID = captureBridgeID
+	call.PlaybackBridgeID = playbackBridgeID
+	call.CaptureSnoopChannelID = captureSnoopID
+	call.PlaybackSnoopChannelID = ""
+	call.CaptureExternalChannelID = captureExternalID
+	call.PlaybackExternalChannelID = playbackExternalID
 
-	if err := s.ari.createBridge(ctx, bridgeID); err != nil {
+	var cleanupOnce sync.Once
+	cleanup := func() {
+		cleanupOnce.Do(func() {
+			s.cleanupSplitARI(
+				context.Background(),
+				channelID,
+				[]string{captureExternalID, playbackExternalID, captureSnoopID},
+				[]string{captureBridgeID, playbackBridgeID},
+			)
+		})
+	}
+	defer cleanup()
+
+	if err := s.ari.createBridge(ctx, captureBridgeID); err != nil {
 		return err
 	}
-	if err := s.ari.addChannel(ctx, bridgeID, channelID); err != nil {
+	if err := s.ari.createBridge(ctx, playbackBridgeID); err != nil {
 		return err
 	}
-	if _, err := s.ari.externalMedia(ctx, externalMediaRequest{
-		ChannelID:    externalID,
-		App:          s.cfg.ARIApp,
-		ExternalHost: rtp.ExternalHost(),
-		Format:       "alaw",
-		Data:         call.ID,
+	if _, err := s.ari.snoop(ctx, snoopRequest{
+		ChannelID: channelID,
+		SnoopID:   captureSnoopID,
+		App:       s.cfg.ARIApp,
+		AppArgs:   call.ID + ",capture",
+		Spy:       "in",
+		Whisper:   "none",
 	}); err != nil {
 		return err
 	}
-	if err := s.ari.addChannel(ctx, bridgeID, externalID); err != nil {
-		time.Sleep(250 * time.Millisecond)
-		if retryErr := s.ari.addChannel(ctx, bridgeID, externalID); retryErr != nil {
-			return retryErr
-		}
+	if _, err := s.ari.externalMedia(ctx, externalMediaRequest{
+		ChannelID:    captureExternalID,
+		App:          s.cfg.ARIApp,
+		ExternalHost: captureRTP.ExternalHost(),
+		Format:       "alaw",
+		Data:         call.ID + ",capture",
+	}); err != nil {
+		return err
 	}
-	if addr, err := s.ari.rtpAddress(ctx, externalID); err == nil {
-		rtp.SetRemote(addr)
+	if _, err := s.ari.externalMedia(ctx, externalMediaRequest{
+		ChannelID:    playbackExternalID,
+		App:          s.cfg.ARIApp,
+		ExternalHost: playbackRTP.ExternalHost(),
+		Format:       "alaw",
+		Data:         call.ID + ",playback",
+	}); err != nil {
+		return err
+	}
+	if err := s.ari.addChannelWithRetry(ctx, captureBridgeID, captureSnoopID); err != nil {
+		return err
+	}
+	if err := s.ari.addChannelWithRetry(ctx, captureBridgeID, captureExternalID); err != nil {
+		return err
+	}
+	if err := s.ari.addChannelWithRetry(ctx, playbackBridgeID, channelID); err != nil {
+		return err
+	}
+	if err := s.ari.addChannelWithRetry(ctx, playbackBridgeID, playbackExternalID); err != nil {
+		return err
+	}
+	if err := s.setRTPRemoteWithRetry(ctx, call, "capture", captureExternalID, captureRTP, false); err != nil {
+		return err
+	}
+	if err := s.setRTPRemoteWithRetry(ctx, call, "playback", playbackExternalID, playbackRTP, true); err != nil {
+		return err
 	}
 
-	recording := s.startCallRecording(ctx, call, bridgeID)
+	recording := s.startChannelRecording(ctx, call, channelID)
 	var finishRecordingOnce sync.Once
 	finishRecording := func() {
 		finishRecordingOnce.Do(func() {
@@ -542,40 +633,264 @@ func (s *Server) runConnectedCall(ctx context.Context, call *Call, req createCal
 	}
 	defer finishRecording()
 
-	audioErr := make(chan error, 3)
-	gate := &mediaGate{}
-	go func() { audioErr <- rtpToRealtime(ctx, rtp, realtime, gate) }()
-	go func() { audioErr <- realtimeToRTP(ctx, realtime, rtp, call, gate) }()
-	go func() { audioErr <- s.ari.waitChannelEnd(ctx, channelID) }()
+	audioErr := make(chan callRuntimeResult, 3)
+	go func() {
+		audioErr <- callRuntimeResult{source: "rtp_input", err: rtpToRealtime(ctx, captureRTP, realtime, call)}
+	}()
+	go func() {
+		audioErr <- callRuntimeResult{source: "realtime_output", err: realtimeToRTP(ctx, realtime, playbackRTP, call)}
+	}()
+	go func() {
+		audioErr <- callRuntimeResult{source: "ari_channel", err: s.ari.waitChannelEnd(ctx, channelID)}
+	}()
 
 	s.updateCall(call, "bridged", "")
-	initial := strings.TrimSpace(req.InitialMessage)
-	if initial == "" {
-		initial = "Поздоровайся и начни телефонный разговор по задаче пользователя."
-	}
-	if err := realtime.SendText(ctx, initial); err != nil {
-		return err
+	logCallTimeline(call, realtime.Session.ID, "bridged",
+		"channel", channelID,
+		"capture_bridge", captureBridgeID,
+		"capture_channels", captureSnoopID+"+"+captureExternalID,
+		"playback_bridge", playbackBridgeID,
+		"playback_channels", channelID+"+"+playbackExternalID,
+	)
+	if prompt := initialPhoneStartPrompt(call, req); prompt != "" {
+		log.Printf("telephony sending initial realtime prompt call=%s session=%s direction=%s", call.ID, realtime.Session.ID, call.Direction)
+		if err := realtime.SendText(ctx, prompt); err != nil {
+			log.Printf("telephony initial realtime prompt failed call=%s session=%s: %v", call.ID, realtime.Session.ID, err)
+		} else {
+			logCallTimeline(call, realtime.Session.ID, "initial_prompt_sent", "direction", call.Direction, "bytes", len(prompt))
+		}
 	}
 
 	select {
 	case <-ctx.Done():
-	case err := <-audioErr:
-		if err != nil && !errors.Is(err, context.Canceled) {
+		logCallTimeline(call, realtime.Session.ID, "runtime_end", "source", "context", "error", ctx.Err())
+	case result := <-audioErr:
+		if result.err != nil && !errors.Is(result.err, context.Canceled) {
+			log.Printf("telephony call runtime failed call=%s source=%s: %v", call.ID, result.source, result.err)
+			logCallTimeline(call, realtime.Session.ID, "runtime_end", "source", result.source, "error", result.err)
 			finishRecording()
-			s.cleanupARI(context.Background(), channelID, externalID, bridgeID)
-			return err
+			cleanup()
+			return result.err
 		}
+		log.Printf("telephony call runtime ended call=%s source=%s", call.ID, result.source)
+		logCallTimeline(call, realtime.Session.ID, "runtime_end", "source", result.source)
 	}
 	finishRecording()
-	s.cleanupARI(context.Background(), channelID, externalID, bridgeID)
+	cleanup()
 	s.updateCall(call, "finished", "")
 	return nil
 }
 
-func (s *Server) cleanupARI(ctx context.Context, channelID string, externalID string, bridgeID string) {
+func (s *Server) setRTPRemoteWithRetry(ctx context.Context, call *Call, label string, channelID string, rtp *rtpSession, required bool) error {
+	var lastErr error
+	for attempt := 0; attempt < 12; attempt++ {
+		addr, err := s.ari.rtpAddress(ctx, channelID)
+		if err == nil {
+			rtp.SetRemote(addr)
+			callID := ""
+			if call != nil {
+				callID = call.ID
+			}
+			log.Printf("telephony RTP remote set call=%s label=%s remote=%s channel=%s", callID, label, addr.String(), channelID)
+			logCallTimeline(call, "", "rtp_remote_"+strings.TrimSpace(label), "channel", channelID, "remote", addr.String())
+			return nil
+		}
+		lastErr = err
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if !sleepContext(ctx, time.Duration(100+attempt*75)*time.Millisecond) {
+			return ctx.Err()
+		}
+	}
+	callID := ""
+	if call != nil {
+		callID = call.ID
+	}
+	if required {
+		return fmt.Errorf("telephony RTP remote not available call=%s label=%s channel=%s: %w", callID, label, channelID, lastErr)
+	}
+	log.Printf("telephony RTP remote unavailable call=%s label=%s channel=%s: %v", callID, label, channelID, lastErr)
+	return nil
+}
+
+type callRuntimeResult struct {
+	source string
+	err    error
+}
+
+func initialPhoneStartPrompt(call *Call, req createCallRequest) string {
+	phrase := strings.TrimSpace(req.InitialMessage)
+	if phrase == "" {
+		phrase = "Здравствуйте."
+	}
+	direction := ""
+	if call != nil {
+		direction = strings.TrimSpace(call.Direction)
+	}
+	objective := strings.TrimSpace(firstNonEmpty(req.SystemInstruction, req.Objective))
+	parts := []string{
+		"The phone call is connected. Begin speaking now.",
+		"Say a short natural opening using this phrase: " + phrase,
+	}
+	switch direction {
+	case "inbound":
+		parts = append(parts, "Then ask one short question about how you can help and wait.")
+	case "outbound":
+		if objective != "" {
+			parts = append(parts, "Then briefly state the practical reason for the call based on the call objective and wait.")
+		} else {
+			parts = append(parts, "Then wait for the other person to answer.")
+		}
+	default:
+		parts = append(parts, "Then wait for the other person to answer.")
+	}
+	if objective != "" {
+		parts = append(parts, "Call objective: "+objective)
+	}
+	return strings.Join(parts, "\n")
+}
+
+func (s *Server) cleanupSplitARI(ctx context.Context, channelID string, extraChannels []string, bridgeIDs []string) {
+	_ = s.ari.stopSilence(ctx, channelID)
 	_ = s.ari.hangup(ctx, channelID)
-	_ = s.ari.hangup(ctx, externalID)
-	_ = s.ari.destroyBridge(ctx, bridgeID)
+	for _, id := range extraChannels {
+		_ = s.ari.hangup(ctx, id)
+	}
+	for _, id := range bridgeIDs {
+		_ = s.ari.destroyBridge(ctx, id)
+	}
+}
+
+func (s *Server) cleanupStaleARIOnReady(parent context.Context) {
+	ctx, cancel := context.WithTimeout(parent, 20*time.Second)
+	defer cancel()
+	if err := s.events.WaitReady(ctx); err != nil {
+		if parent.Err() == nil {
+			log.Printf("telephony stale ARI cleanup skipped: %v", err)
+		}
+		return
+	}
+
+	cleanupCtx, cleanupCancel := context.WithTimeout(parent, 15*time.Second)
+	defer cleanupCancel()
+	if err := s.cleanupStaleARI(cleanupCtx); err != nil && cleanupCtx.Err() == nil {
+		log.Printf("telephony stale ARI cleanup failed: %v", err)
+	}
+}
+
+func (s *Server) cleanupStaleARI(ctx context.Context) error {
+	if s == nil || s.ari == nil {
+		return nil
+	}
+	channels, err := s.ari.channels(ctx)
+	if err != nil {
+		return err
+	}
+	removedChannels := 0
+	for _, channel := range channels {
+		if !s.ownsARIChannel(channel) {
+			continue
+		}
+		if s.activeARIChannel(channel.ID) {
+			continue
+		}
+		if err := s.ari.hangup(ctx, channel.ID); err != nil {
+			log.Printf("telephony stale ARI channel cleanup failed channel=%s: %v", strings.TrimSpace(channel.ID), err)
+			continue
+		}
+		removedChannels++
+	}
+
+	bridges, err := s.ari.bridges(ctx)
+	if err != nil {
+		return err
+	}
+	removedBridges := 0
+	for _, bridge := range bridges {
+		if !s.ownsARIBridge(bridge) {
+			continue
+		}
+		if s.activeARIBridge(bridge.ID) {
+			continue
+		}
+		if err := s.ari.destroyBridge(ctx, bridge.ID); err != nil {
+			log.Printf("telephony stale ARI bridge cleanup failed bridge=%s: %v", strings.TrimSpace(bridge.ID), err)
+			continue
+		}
+		removedBridges++
+	}
+	if removedChannels > 0 || removedBridges > 0 {
+		log.Printf("telephony stale ARI cleanup removed channels=%d bridges=%d", removedChannels, removedBridges)
+	}
+	return nil
+}
+
+func (s *Server) ownsARIChannel(channel ariChannel) bool {
+	app := strings.TrimSpace(s.cfg.ARIApp)
+	id := strings.TrimSpace(channel.ID)
+	name := strings.TrimSpace(channel.Name)
+	appName := strings.TrimSpace(channel.Dialplan.AppName)
+	appData := strings.TrimSpace(channel.Dialplan.AppData)
+	if app != "" && strings.EqualFold(appName, "Stasis") && (appData == app || strings.HasPrefix(appData, app+",")) {
+		return true
+	}
+	ownedID := strings.HasPrefix(id, "call_") && (strings.HasSuffix(id, "-call") ||
+		strings.HasSuffix(id, "-media") ||
+		strings.HasSuffix(id, "-capture-media") ||
+		strings.HasSuffix(id, "-playback-media") ||
+		strings.HasSuffix(id, "-capture-snoop") ||
+		strings.HasSuffix(id, "-playback-snoop"))
+	ownedExternalMedia := strings.HasPrefix(name, "UnicastRTP/") && app != "" && strings.Contains(appData, app)
+	return ownedID || ownedExternalMedia
+}
+
+func (s *Server) ownsARIBridge(bridge ariBridge) bool {
+	id := strings.TrimSpace(bridge.ID)
+	name := strings.TrimSpace(bridge.Name)
+	ownedID := strings.HasPrefix(id, "call_") && strings.HasSuffix(id, "-bridge")
+	ownedName := strings.HasPrefix(name, "call_") && strings.HasSuffix(name, "-bridge")
+	return ownedID || ownedName
+}
+
+func (s *Server) activeARIChannel(channelID string) bool {
+	channelID = strings.TrimSpace(channelID)
+	if channelID == "" {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, call := range s.calls {
+		if call == nil {
+			continue
+		}
+		if channelID == strings.TrimSpace(call.ChannelID) ||
+			channelID == strings.TrimSpace(call.ExternalChannelID) ||
+			channelID == strings.TrimSpace(call.CaptureExternalChannelID) ||
+			channelID == strings.TrimSpace(call.PlaybackExternalChannelID) ||
+			channelID == strings.TrimSpace(call.CaptureSnoopChannelID) ||
+			channelID == strings.TrimSpace(call.PlaybackSnoopChannelID) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) activeARIBridge(bridgeID string) bool {
+	bridgeID = strings.TrimSpace(bridgeID)
+	if bridgeID == "" {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, call := range s.calls {
+		if call != nil && (bridgeID == strings.TrimSpace(call.BridgeID) ||
+			bridgeID == strings.TrimSpace(call.CaptureBridgeID) ||
+			bridgeID == strings.TrimSpace(call.PlaybackBridgeID)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) postCallReport(parent context.Context, call *Call, req createCallRequest) {
@@ -697,31 +1012,39 @@ func callSnapshot(call *Call) CallSnapshot {
 	call.transcriptMu.Unlock()
 
 	return CallSnapshot{
-		ID:                  call.ID,
-		Direction:           call.Direction,
-		To:                  call.To,
-		From:                call.From,
-		Profile:             call.Profile,
-		Objective:           call.Objective,
-		Status:              call.Status,
-		Error:               call.Error,
-		RealtimeSessionID:   call.RealtimeSessionID,
-		CoreSessionID:       call.CoreSessionID,
-		OriginClient:        call.OriginClient,
-		OriginExternalKey:   call.OriginExternalKey,
-		OriginSessionID:     call.OriginSessionID,
-		BridgeID:            call.BridgeID,
-		ChannelID:           call.ChannelID,
-		ExternalChannelID:   call.ExternalChannelID,
-		CreatedAt:           call.CreatedAt,
-		UpdatedAt:           call.UpdatedAt,
-		AnsweredAt:          call.AnsweredAt,
-		FinishedAt:          call.FinishedAt,
-		InputTranscript:     inputTranscript,
-		AssistantTranscript: assistantTranscript,
-		Transcript:          transcript,
-		Recording:           callRecordingSnapshot(call),
-		RTP:                 call.RTP,
+		ID:                        call.ID,
+		Direction:                 call.Direction,
+		To:                        call.To,
+		From:                      call.From,
+		Profile:                   call.Profile,
+		Objective:                 call.Objective,
+		Status:                    call.Status,
+		Error:                     call.Error,
+		RealtimeSessionID:         call.RealtimeSessionID,
+		CoreSessionID:             call.CoreSessionID,
+		OriginClient:              call.OriginClient,
+		OriginExternalKey:         call.OriginExternalKey,
+		OriginSessionID:           call.OriginSessionID,
+		BridgeID:                  call.BridgeID,
+		ChannelID:                 call.ChannelID,
+		ExternalChannelID:         call.ExternalChannelID,
+		CaptureBridgeID:           call.CaptureBridgeID,
+		PlaybackBridgeID:          call.PlaybackBridgeID,
+		CaptureSnoopChannelID:     call.CaptureSnoopChannelID,
+		PlaybackSnoopChannelID:    call.PlaybackSnoopChannelID,
+		CaptureExternalChannelID:  call.CaptureExternalChannelID,
+		PlaybackExternalChannelID: call.PlaybackExternalChannelID,
+		CreatedAt:                 call.CreatedAt,
+		UpdatedAt:                 call.UpdatedAt,
+		AnsweredAt:                call.AnsweredAt,
+		FinishedAt:                call.FinishedAt,
+		InputTranscript:           inputTranscript,
+		AssistantTranscript:       assistantTranscript,
+		Transcript:                transcript,
+		Recording:                 callRecordingSnapshot(call),
+		RTP:                       call.RTP,
+		RTPCapture:                call.RTPCapture,
+		RTPPlayback:               call.RTPPlayback,
 	}
 }
 
@@ -806,9 +1129,56 @@ func (s *Server) touchCall(call *Call) {
 }
 
 func (s *Server) syncCallStats(call *Call) {
-	if call != nil && call.rtp != nil {
-		call.RTP = call.rtp.Stats()
+	if call == nil {
+		return
 	}
+	if call.rtp != nil {
+		call.RTP = call.rtp.Stats()
+		call.RTPCapture = call.RTP
+		return
+	}
+	if call.rtpIn != nil || call.rtpOut != nil {
+		call.RTP = combineRTPStats(call.rtpIn, call.rtpOut)
+		if call.rtpIn != nil {
+			call.RTPCapture = call.rtpIn.Stats()
+		}
+		if call.rtpOut != nil {
+			call.RTPPlayback = call.rtpOut.Stats()
+		}
+	}
+}
+
+func combineRTPStats(in *rtpSession, out *rtpSession) rtpStats {
+	stats := rtpStats{}
+	inRemote := ""
+	if in != nil {
+		stats = in.Stats()
+		inRemote = stats.Remote
+	}
+	outRemote := ""
+	if out != nil {
+		outStats := out.Stats()
+		stats.OutPackets = outStats.OutPackets
+		stats.OutBytes = outStats.OutBytes
+		outRemote = outStats.Remote
+		if in == nil {
+			stats.InPackets = outStats.InPackets
+			stats.InBytes = outStats.InBytes
+			stats.InAvgAbs = outStats.InAvgAbs
+			stats.InAvg = outStats.InAvg
+			stats.InPeak = outStats.InPeak
+			stats.SpeechFrames = outStats.SpeechFrames
+		}
+	}
+	switch {
+	case inRemote != "" && outRemote != "":
+		stats.Remote = "in=" + inRemote + " out=" + outRemote
+	case inRemote != "":
+		stats.Remote = "in=" + inRemote
+	case outRemote != "":
+		stats.Remote = "out=" + outRemote
+	}
+	return stats
 }
 
 func (s *Server) call(id string) (*Call, bool) {
@@ -850,22 +1220,86 @@ func (s *Server) probeMatrixclaw(ctx context.Context) error {
 	return nil
 }
 
-func phoneSystemInstruction(phonePrompt string, customInstructions string, objective string) string {
-	sections := []string{strings.TrimSpace(`You are speaking on a live phone call through MatrixClaw telephony. Keep replies short, natural, and suitable for a real-time voice conversation. Do not mention internal systems, realtime audio, Gemini, Asterisk, SIP, RTP, or MatrixClaw unless the human asks. If you need information from the human, ask one short question and wait.`)}
-	if phonePrompt = strings.TrimSpace(phonePrompt); phonePrompt != "" {
+type phonePromptInput struct {
+	AssistantName      string
+	CallID             string
+	OpeningPhrase      string
+	PhonePrompt        string
+	CustomInstructions string
+	Objective          string
+	Direction          string
+}
+
+func phoneSystemInstruction(input phonePromptInput) string {
+	sections := []string{strings.TrimSpace(`You are speaking on a live phone call through MatrixClaw telephony.
+
+Identity:
+- Your configured assistant name is provided below. If asked who you are, use exactly that name and do not invent another identity.
+- If a user, owner, or client name is provided in the call objective, phone instructions, or user custom instructions, you may identify yourself as that person's assistant. Never invent this person name.
+- Do not mention internal systems, realtime audio, Gemini, Grok, Asterisk, SIP, RTP, call IDs, tools, or MatrixClaw unless the human explicitly asks about the technical system.
+
+Opening behavior:
+- If the gateway sends an explicit instruction that the phone call is connected and asks you to begin speaking, follow that instruction immediately with one short natural opening, then wait.
+- Otherwise, do not start speaking just because the phone call was answered. Stay silent until the other side says the first meaningful human words, such as a greeting or a clear question.
+- If the first sound is silence, ringing tone, queue music, beeps, voicemail, an automated IVR, or a call center robot, do not introduce yourself over it. Wait for a human when possible.
+- If an automated menu asks for a simple input that is necessary for the call objective, answer only that menu step briefly, then keep waiting for a human.
+- After the first meaningful human utterance, greet once and introduce yourself naturally using the configured assistant name. If an owner/client name is known from context, a Russian introduction may sound like: "Здравствуйте, я ассистент <owner>, меня зовут <assistant name>." If no owner/client name is known, do not invent one.
+- If the call is inbound, after the caller speaks first, greet briefly and ask how you can help within the configured phone objective.
+- Do not repeat the full introduction later unless the human asks who you are.
+
+Conversation style:
+- Speak like a calm human on the phone, not like a chatbot or a scripted IVR.
+- Use short, natural spoken phrases. Usually answer in one or two sentences, then stop.
+- Do not over-explain, list options, narrate your reasoning, or repeat the user's words unless confirming an important detail.
+- If you need information, ask one clear question and wait.
+- If you did not understand speech, say so briefly and ask the person to repeat it naturally.
+- Do not repeatedly ask the person to speak, continue, or say something. If you have already greeted them or asked one question, stop speaking and wait.
+- Do not invent personal facts. If the caller asks for a name, number, address, time, booking, or other fact that is not known from the conversation/context, say that you do not know yet and ask for the missing detail.
+- For outbound calls, introduce yourself briefly, state the practical reason for the call, and move directly toward the objective.
+- Confirm critical details such as names, phone numbers, dates, times, addresses, prices, and bookings before treating them as final.
+- Keep speaking the established phone conversation language. Do not switch to English because of uncertain speech recognition unless the human explicitly asks to use English.
+- When speaking Russian, use natural conversational Russian and avoid English or Spanish filler words.
+- Do not flirt, joke at length, or continue casual off-topic chat unless it directly helps complete the call objective.
+
+Scope and privacy:
+- Stay within the call objective and the practical details needed to complete it.
+- Do not provide unrelated facts, advice, explanations, personal data, credentials, internal project information, or anything not necessary for the call objective.
+- If the human asks an unrelated question, briefly redirect once to the call objective.
+- If the human repeatedly tries to move the call to unrelated topics after a redirect, say a short goodbye and end the call.
+- If the objective is complete, impossible, refused, or the other person clearly has nothing else relevant to add, summarize the practical result in one short sentence, say goodbye, and end the call.
+
+Ending the call:
+- To end the call, first say one short natural goodbye phrase, then call the telephony_end_call tool with the current call_id.
+- Do not say that you are calling a tool. Do not read out or mention the call_id.
+- Do not use telephony_call during an active phone conversation.`)}
+	if name := strings.TrimSpace(input.AssistantName); name != "" {
+		sections = append(sections, "Assistant name:\n"+name)
+	}
+	if callID := strings.TrimSpace(input.CallID); callID != "" {
+		sections = append(sections, "Current call_id for telephony_end_call:\n"+callID)
+	}
+	if direction := strings.TrimSpace(input.Direction); direction != "" {
+		sections = append(sections, "Call direction:\n"+direction)
+	}
+	if opening := strings.TrimSpace(input.OpeningPhrase); opening != "" {
+		sections = append(sections, "Preferred first assistant phrase after the first meaningful human utterance:\n"+opening)
+	}
+	if phonePrompt := strings.TrimSpace(input.PhonePrompt); phonePrompt != "" {
 		sections = append(sections, "Phone assistant instructions:\n"+phonePrompt)
 	}
-	if customInstructions = strings.TrimSpace(customInstructions); customInstructions != "" {
+	if customInstructions := strings.TrimSpace(input.CustomInstructions); customInstructions != "" {
 		sections = append(sections, "User custom instructions:\n"+customInstructions)
 	}
-	if objective = strings.TrimSpace(objective); objective != "" {
+	if objective := strings.TrimSpace(input.Objective); objective != "" {
 		sections = append(sections, "Call objective:\n"+objective)
+	} else {
+		sections = append(sections, "Call objective:\nHandle the caller's immediate phone request. Do not expand beyond what the caller asks for in this phone call.")
 	}
 	return strings.Join(sections, "\n\n")
 }
 
 func inboundSystemInstruction(custom string) string {
-	base := strings.TrimSpace(`You are answering an inbound phone call. Greet the caller briefly, ask how you can help, and then follow the caller's request within the current phone conversation. If the caller asks who you are, say you are an AI phone assistant. Keep answers short and wait after each question.`)
+	base := strings.TrimSpace(`You are answering an inbound phone call. If the gateway sends an explicit instruction that the call is connected and asks you to begin speaking, follow it once with a short natural greeting. Otherwise, wait for the caller's first meaningful words, then greet briefly and handle the caller's request within the configured phone objective. Do not repeatedly say that you are listening or ask the caller to continue. Speak in short natural phone phrases, not as a scripted chatbot. If the caller asks who you are, use the configured assistant identity. If you do not know a personal fact, do not guess; ask for it. Keep answers short and wait after each question.`)
 	custom = strings.TrimSpace(custom)
 	if custom == "" {
 		return base

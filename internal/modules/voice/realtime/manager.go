@@ -233,6 +233,7 @@ func (m *Manager) ServeStream(ctx context.Context, sessionID string, stream Stre
 	conn, err := provider.Connect(streamCtx, ProviderConnectRequest{
 		VoiceSessionID:    info.ID,
 		SessionID:         info.CoreSessionID,
+		Client:            info.Client,
 		WorkingDir:        firstNonEmpty(session.workingDir, coreSession.WorkingDir),
 		ModelID:           info.ModelID,
 		VoiceID:           info.VoiceID,
@@ -240,7 +241,7 @@ func (m *Manager) ServeStream(ctx context.Context, sessionID string, stream Stre
 		SystemInstruction: m.systemInstruction(session),
 		InputAudio:        info.InputAudio,
 		OutputAudio:       info.OutputAudio,
-		Tools:             m.toolDeclarations(),
+		Tools:             m.toolDeclarations(info.Client),
 	})
 	if err != nil {
 		m.markSessionClosed(session, err.Error(), SessionStatusFailed)
@@ -678,15 +679,19 @@ func (m *Manager) systemInstruction(session *voiceSession) string {
 	return strings.TrimSpace(session.systemInstruction)
 }
 
-func (m *Manager) toolDeclarations() []ToolDeclaration {
+func (m *Manager) toolDeclarations(client string) []ToolDeclaration {
 	if m == nil || m.core == nil {
 		return nil
 	}
+	telephony := strings.EqualFold(strings.TrimSpace(client), "telephony")
 	specs := m.core.ListToolSpecs()
 	out := make([]ToolDeclaration, 0, len(specs))
 	for _, spec := range specs {
 		name := strings.TrimSpace(spec.ID)
 		if name == "" {
+			continue
+		}
+		if telephony && name != "telephony_end_call" {
 			continue
 		}
 		out = append(out, ToolDeclaration{

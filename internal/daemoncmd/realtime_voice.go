@@ -55,14 +55,13 @@ func geminiLiveConfigSource(setupService *setup.Service) geminilive.ConfigSource
 		if setupService != nil {
 			if setupCfg, err := setupService.Load(); err == nil {
 				module := setup.RealtimeVoiceModuleDescriptor(setupCfg.Modules)
-				if module.ProviderID == realtime.ProviderGemini {
-					cfg.APIKey = module.Config.APIKey
-					cfg.APIKeyEnv = module.Config.APIKeyEnv
-					cfg.ModelID = module.Config.ModelID
-					cfg.VoiceID = module.Config.VoiceID
-					cfg.Language = module.Config.Language
-					cfg.WSURL = module.Config.Endpoint
-				}
+				providerCfg := realtimeVoiceProviderConfig(module, realtime.ProviderGemini)
+				cfg.APIKey = providerCfg.APIKey
+				cfg.APIKeyEnv = providerCfg.APIKeyEnv
+				cfg.ModelID = providerCfg.ModelID
+				cfg.VoiceID = providerCfg.VoiceID
+				cfg.Language = providerCfg.Language
+				cfg.WSURL = providerCfg.Endpoint
 				cfg.SystemInstruction = realtimeVoiceSystemInstruction(setupCfg)
 				cfg.APIKey = firstNonEmpty(
 					cfg.APIKey,
@@ -99,14 +98,13 @@ func grokVoiceConfigSource(setupService *setup.Service) grokvoice.ConfigSource {
 		if setupService != nil {
 			if setupCfg, err := setupService.Load(); err == nil {
 				module := setup.RealtimeVoiceModuleDescriptor(setupCfg.Modules)
-				if module.ProviderID == realtime.ProviderGrok {
-					cfg.APIKey = module.Config.APIKey
-					cfg.APIKeyEnv = module.Config.APIKeyEnv
-					cfg.ModelID = module.Config.ModelID
-					cfg.VoiceID = module.Config.VoiceID
-					cfg.Language = module.Config.Language
-					cfg.WSURL = module.Config.Endpoint
-				}
+				providerCfg := realtimeVoiceProviderConfig(module, realtime.ProviderGrok)
+				cfg.APIKey = providerCfg.APIKey
+				cfg.APIKeyEnv = providerCfg.APIKeyEnv
+				cfg.ModelID = providerCfg.ModelID
+				cfg.VoiceID = providerCfg.VoiceID
+				cfg.Language = providerCfg.Language
+				cfg.WSURL = providerCfg.Endpoint
 				cfg.SystemInstruction = realtimeVoiceSystemInstruction(setupCfg)
 				cfg.APIKey = firstNonEmpty(
 					cfg.APIKey,
@@ -137,6 +135,19 @@ func grokVoiceConfigSource(setupService *setup.Service) grokvoice.ConfigSource {
 	}
 }
 
+func realtimeVoiceProviderConfig(module setup.VoiceModuleDescriptor, providerID string) setup.VoiceProviderConfig {
+	providerID = strings.TrimSpace(providerID)
+	for _, provider := range module.Providers {
+		if strings.EqualFold(strings.TrimSpace(provider.ID), providerID) {
+			return provider.Config
+		}
+	}
+	if strings.EqualFold(strings.TrimSpace(module.ProviderID), providerID) {
+		return module.Config
+	}
+	return setup.VoiceProviderConfig{}
+}
+
 func realtimeAPIKeyFromEnvName(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -146,15 +157,11 @@ func realtimeAPIKeyFromEnvName(name string) string {
 }
 
 func realtimeVoiceSystemInstruction(cfg setup.Config) string {
-	system := strings.TrimSpace(setup.InitializeAssistantSystemPromptForConfig(cfg.Assistant.SystemPrompt, cfg))
-	custom := strings.TrimSpace(cfg.Assistant.CustomInstructions)
-	if system == "" {
-		return custom
+	name := strings.Join(strings.Fields(cfg.Assistant.Name), " ")
+	if name == "" {
+		return ""
 	}
-	if custom == "" {
-		return system
-	}
-	return system + "\n\n" + custom
+	return "Assistant identity:\n- Your configured assistant name is " + strconv.Quote(name) + ". Use this exact name when asked who you are."
 }
 
 func configuredGeminiAPIKey(cfg setup.Config) string {

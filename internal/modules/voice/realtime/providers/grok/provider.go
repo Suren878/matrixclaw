@@ -255,10 +255,7 @@ func (c *connection) Send(ctx context.Context, input realtime.ProviderInput) err
 		}
 		return c.writeJSON(ctx, map[string]any{"type": "input_audio_buffer.append", "audio": audio})
 	case realtime.ProviderInputAudioEnd:
-		if err := c.writeJSON(ctx, map[string]any{"type": "input_audio_buffer.commit"}); err != nil {
-			return err
-		}
-		return c.writeJSON(ctx, map[string]any{"type": "response.create"})
+		return nil
 	case realtime.ProviderInputTextAppend:
 		text := strings.TrimSpace(input.Text)
 		if text == "" {
@@ -402,9 +399,14 @@ func (c *connection) writeJSON(ctx context.Context, payload any) error {
 
 func sessionUpdateMessage(voiceID string, language string, instructions string, tools []realtime.ToolDeclaration) map[string]any {
 	session := map[string]any{
-		"voice":          firstNonEmpty(voiceID, defaultVoice),
-		"instructions":   strings.TrimSpace(instructions),
-		"turn_detection": map[string]any{"type": nil},
+		"voice":        firstNonEmpty(voiceID, defaultVoice),
+		"instructions": strings.TrimSpace(instructions),
+		"turn_detection": map[string]any{
+			"type":                "server_vad",
+			"threshold":           0.5,
+			"prefix_padding_ms":   500,
+			"silence_duration_ms": 750,
+		},
 		"audio": map[string]any{
 			"input": map[string]any{
 				"format": map[string]any{"type": "audio/pcm", "rate": realtime.DefaultInputAudioFormat().SampleRateHz},
@@ -524,8 +526,14 @@ func combinedSystemInstruction(base string, session string, language string) str
 
 func languageSystemInstruction(language string) string {
 	code := normalizeLanguageCode(language)
-	if code == "" || code == "auto" {
+	if code == "" {
 		return ""
+	}
+	if code == "auto" {
+		return "Realtime voice language policy:\n" +
+			"- Detect the human's language from the first meaningful speech and keep speaking that language for the rest of the conversation unless the human explicitly asks to change language.\n" +
+			"- If the greeting or recent conversation is in a non-English language, continue in that non-English language instead of switching to English.\n" +
+			"- If speech recognition is ambiguous, stay with the previously established conversation language."
 	}
 	name := languageDisplayName(code)
 	return "Realtime voice language policy:\n" +

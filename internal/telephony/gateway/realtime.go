@@ -9,9 +9,9 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
@@ -35,11 +35,6 @@ type realtimeConnectRequest struct {
 	ExternalKey       string
 	SessionID         string
 	SystemInstruction string
-}
-
-type mediaGate struct {
-	suppressUntilUnixNano atomic.Int64
-	modelActive           atomic.Bool
 }
 
 func newRealtimeClient(baseURL string, token string) *realtimeClient {
@@ -213,38 +208,26 @@ func (c *realtimeConn) writeEvent(ctx context.Context, eventType realtime.EventT
 	return c.conn.Write(ctx, websocket.MessageText, data)
 }
 
-func rtpToRealtime(ctx context.Context, rtp *rtpSession, realtime *realtimeConn, gate *mediaGate) error {
-	const (
-		speechAvgThreshold  = 220
-		speechPeakThreshold = 1500
-		speechPeakMinAvg    = 120
-		startSpeechFrames   = 5
-		prebufferFrames     = 20
-		trailingInputFrames = 12
-		endSilenceFrames    = 22
-	)
+func rtpToRealtime(ctx context.Context, rtp *rtpSession, realtime *realtimeConn, call *Call) error {
 	var active bool
-	silenceFrames := 0
-	speechStartFrames := 0
-	turnSpeechFrames := 0
-	turnInputFrames := 0
-	prebuffer := make([][]byte, 0, prebufferFrames)
-	resetTurn := func() {
+	var startFrames int
+	var silenceFrames int
+	var sentFrames int
+	var activityFrames int
+	prebuffer := make([][]byte, 0, inputPrebufferFrames)
+	reset := func() {
 		active = false
+		startFrames = 0
 		silenceFrames = 0
-		speechStartFrames = 0
-		turnSpeechFrames = 0
-		turnInputFrames = 0
+		sentFrames = 0
+		activityFrames = 0
 		prebuffer = prebuffer[:0]
 	}
-	endTurn := func(ctx context.Context) error {
-		if active {
-			if err := realtime.SendAudioEnd(ctx); err != nil {
-				return err
-			}
-			log.Printf("telephony realtime input turn committed session=%s frames=%d speech_frames=%d duration_ms=%d", realtime.Session.ID, turnInputFrames, turnSpeechFrames, turnInputFrames*20)
+	send := func(ctx context.Context, pcm []byte) error {
+		if err := realtime.SendAudioPCM(ctx, pcm, 16000); err != nil {
+			return err
 		}
-		resetTurn()
+		sentFrames++
 		return nil
 	}
 	for {
@@ -252,66 +235,68 @@ func rtpToRealtime(ctx context.Context, rtp *rtpSession, realtime *realtimeConn,
 		if err != nil {
 			return err
 		}
-		if gate.Suppressing() {
-			resetTurn()
-			continue
-		}
 		pcmInput := pcm16kBytesFromPCM8k(pcm8k)
-		speech := audioLooksLikeSpeech(pcm8k, speechAvgThreshold, speechPeakThreshold, speechPeakMinAvg)
+		level := audioFrameLevel(pcm8k)
+		activity := inputLevelHasActivity(level)
 		if !active {
-			if len(prebuffer) >= prebufferFrames {
+			if len(prebuffer) >= inputPrebufferFrames {
 				copy(prebuffer, prebuffer[1:])
-				prebuffer = prebuffer[:prebufferFrames-1]
+				prebuffer = prebuffer[:inputPrebufferFrames-1]
 			}
 			prebuffer = append(prebuffer, pcmInput)
-			if speech {
-				speechStartFrames++
+			if activity {
+				startFrames++
 			} else {
-				speechStartFrames = 0
+				startFrames = 0
 			}
-			if speechStartFrames < startSpeechFrames {
+			if startFrames < inputStartActivityFrames {
 				continue
 			}
 			active = true
+			silenceFrames = 0
+			activityFrames = startFrames
+			sentFrames = 0
+			log.Printf("telephony realtime input activity started call=%s session=%s avg=%d peak=%d prebuffer_frames=%d", callID(call), realtime.Session.ID, level.avg, level.peak, len(prebuffer))
+			logCallTimeline(call, realtime.Session.ID, "input_activity_start", "avg", level.avg, "peak", level.peak, "prebuffer_frames", len(prebuffer))
 			for _, frame := range prebuffer {
-				if err := realtime.SendAudioPCM(ctx, frame, 16000); err != nil {
+				if err := send(ctx, frame); err != nil {
 					return err
 				}
-				turnInputFrames++
 			}
 			prebuffer = prebuffer[:0]
-			turnSpeechFrames = speechStartFrames
-			silenceFrames = 0
 			continue
 		}
-		if speech {
-			if err := realtime.SendAudioPCM(ctx, pcmInput, 16000); err != nil {
-				return err
-			}
-			turnInputFrames++
-			turnSpeechFrames++
+		if err := send(ctx, pcmInput); err != nil {
+			return err
+		}
+		if activity {
+			activityFrames++
 			silenceFrames = 0
 			continue
 		}
 		silenceFrames++
-		if silenceFrames <= trailingInputFrames {
-			if err := realtime.SendAudioPCM(ctx, pcmInput, 16000); err != nil {
+		if silenceFrames >= inputEndSilenceFrames {
+			if err := realtime.SendAudioEnd(ctx); err != nil {
 				return err
 			}
-			turnInputFrames++
-		}
-		if silenceFrames >= endSilenceFrames {
-			if err := endTurn(ctx); err != nil {
-				return err
-			}
+			log.Printf("telephony realtime input stream ended call=%s session=%s frames=%d activity_frames=%d duration_ms=%d", callID(call), realtime.Session.ID, sentFrames, activityFrames, sentFrames*20)
+			logCallTimeline(call, realtime.Session.ID, "input_stream_end", "frames", sentFrames, "activity_frames", activityFrames, "duration_ms", sentFrames*20)
+			reset()
 		}
 	}
 }
 
-func realtimeToRTP(ctx context.Context, realtimeConn *realtimeConn, rtp *rtpSession, call *Call, gate *mediaGate) error {
-	outbound := newOutboundAudioFilter(rtp, gate)
-	resampler := newPCM24ToPCM8Resampler()
-	defer gate.SetModelActive(false)
+func realtimeToRTP(ctx context.Context, realtimeConn *realtimeConn, rtp *rtpSession, call *Call) error {
+	playback := newRTPPlayback(ctx, rtp)
+	defer func() {
+		_ = playback.Close(context.Background())
+	}()
+	outputRate := realtime.DefaultOutputAudioFormat().SampleRateHz
+	if realtimeConn != nil && realtimeConn.Session.OutputAudio.SampleRateHz > 0 {
+		outputRate = realtimeConn.Session.OutputAudio.SampleRateHz
+	}
+	resampler := newPCMToPCM8Resampler(outputRate)
+	assistantAudioActive := false
 	for {
 		event, err := realtimeConn.Read(ctx)
 		if err != nil {
@@ -319,7 +304,6 @@ func realtimeToRTP(ctx context.Context, realtimeConn *realtimeConn, rtp *rtpSess
 		}
 		switch event.Type {
 		case realtime.EventAssistantAudioDelta:
-			gate.SetModelActive(true)
 			var payload realtime.AssistantAudioPayload
 			if err := json.Unmarshal(event.Payload, &payload); err != nil {
 				return err
@@ -328,8 +312,19 @@ func realtimeToRTP(ctx context.Context, realtimeConn *realtimeConn, rtp *rtpSess
 			if err != nil {
 				return err
 			}
+			if !assistantAudioActive {
+				assistantAudioActive = true
+				log.Printf("telephony realtime assistant audio started call=%s session=%s mime=%q bytes=%d", callID(call), realtimeConn.Session.ID, payload.MIMEType, len(audio))
+				logCallTimeline(call, realtimeConn.Session.ID, "assistant_audio_delta", "mime", payload.MIMEType, "bytes", len(audio))
+			}
+			if rate := audioSampleRateFromMIME(payload.MIMEType); rate > 0 && rate != resampler.InputRate() {
+				if err := playback.Write(ctx, resampler.Flush()); err != nil {
+					return err
+				}
+				resampler = newPCMToPCM8Resampler(rate)
+			}
 			pcm8k := resampler.Convert(audio)
-			if err := outbound.Write(ctx, pcm8k); err != nil {
+			if err := playback.Write(ctx, pcm8k); err != nil {
 				return err
 			}
 		case realtime.EventInputTranscriptDelta:
@@ -337,26 +332,28 @@ func realtimeToRTP(ctx context.Context, realtimeConn *realtimeConn, rtp *rtpSess
 		case realtime.EventInputTranscriptFinal:
 			appendTranscript(call, event.Payload, true, true)
 		case realtime.EventAssistantTranscriptDelta:
-			gate.SetModelActive(true)
 			appendTranscript(call, event.Payload, false, false)
 		case realtime.EventAssistantTranscriptFinal:
 			appendTranscript(call, event.Payload, false, true)
 		case realtime.EventTurnFinal:
 			appendTranscriptTurn(call, event.Payload, event.At)
-			if err := outbound.Write(ctx, resampler.Flush()); err != nil {
+			assistantAudioActive = false
+			if err := playback.Write(ctx, resampler.Flush()); err != nil {
 				return err
 			}
-			if err := outbound.EndTurn(ctx); err != nil {
+			if err := playback.EndTurn(ctx); err != nil {
 				return err
 			}
-			gate.SetModelActive(false)
-			gate.SuppressFor(postPlaybackSuppress)
 		case realtime.EventInterrupted:
-			outbound.Interrupt()
+			playback.Interrupt()
 			resampler.Flush()
-			gate.SetModelActive(false)
-			gate.SuppressFor(postPlaybackSuppress)
+			assistantAudioActive = false
+			clearCurrentAssistantTranscript(call)
 		case realtime.EventError:
+			if recoverableRealtimeError(event.Payload) {
+				log.Printf("telephony recoverable realtime error session=%s: %s", realtimeConn.Session.ID, strings.TrimSpace(string(event.Payload)))
+				continue
+			}
 			return fmt.Errorf("realtime error: %s", string(event.Payload))
 		case realtime.EventSessionClosed:
 			return nil
@@ -364,18 +361,228 @@ func realtimeToRTP(ctx context.Context, realtimeConn *realtimeConn, rtp *rtpSess
 	}
 }
 
+func recoverableRealtimeError(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var payload realtime.ErrorPayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return false
+	}
+	return payload.Recoverable
+}
+
+type rtpPlaybackCommandType int
+
+const (
+	rtpPlaybackAudio rtpPlaybackCommandType = iota
+	rtpPlaybackEndTurn
+	rtpPlaybackInterrupt
+)
+
+type rtpPlaybackCommand struct {
+	kind rtpPlaybackCommandType
+	pcm  []int16
+}
+
+type rtpPlayback struct {
+	outbound *outboundAudioFilter
+	commands chan rtpPlaybackCommand
+	stop     context.CancelFunc
+	done     chan error
+
+	currentMu     sync.Mutex
+	currentCancel context.CancelFunc
+	currentSeq    uint64
+}
+
+func newRTPPlayback(parent context.Context, rtp *rtpSession) *rtpPlayback {
+	ctx, cancel := context.WithCancel(parent)
+	playback := &rtpPlayback{
+		outbound: newOutboundAudioFilter(rtp),
+		commands: make(chan rtpPlaybackCommand, 32),
+		stop:     cancel,
+		done:     make(chan error, 1),
+	}
+	go playback.run(ctx)
+	return playback
+}
+
+func (p *rtpPlayback) Write(ctx context.Context, pcm []int16) error {
+	if p == nil || len(pcm) == 0 {
+		return nil
+	}
+	return p.enqueue(ctx, rtpPlaybackCommand{kind: rtpPlaybackAudio, pcm: append([]int16(nil), pcm...)})
+}
+
+func (p *rtpPlayback) EndTurn(ctx context.Context) error {
+	if p == nil {
+		return nil
+	}
+	return p.enqueue(ctx, rtpPlaybackCommand{kind: rtpPlaybackEndTurn})
+}
+
+func (p *rtpPlayback) Interrupt() {
+	if p == nil {
+		return
+	}
+	p.cancelCurrent()
+	for {
+		select {
+		case <-p.commands:
+			continue
+		default:
+		}
+		break
+	}
+	select {
+	case p.commands <- rtpPlaybackCommand{kind: rtpPlaybackInterrupt}:
+	default:
+	}
+}
+
+func (p *rtpPlayback) Close(ctx context.Context) error {
+	if p == nil {
+		return nil
+	}
+	p.stop()
+	p.cancelCurrent()
+	select {
+	case err, ok := <-p.done:
+		if ok {
+			return err
+		}
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (p *rtpPlayback) enqueue(ctx context.Context, command rtpPlaybackCommand) error {
+	if err := p.doneErr(); err != nil {
+		return err
+	}
+	for attempts := 0; attempts < 2; attempts++ {
+		select {
+		case p.commands <- command:
+			return nil
+		default:
+			p.dropOldest()
+		}
+	}
+	select {
+	case p.commands <- command:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		return nil
+	}
+}
+
+func (p *rtpPlayback) dropOldest() {
+	select {
+	case <-p.commands:
+	default:
+	}
+}
+
+func (p *rtpPlayback) doneErr() error {
+	select {
+	case err, ok := <-p.done:
+		if ok {
+			return err
+		}
+		return nil
+	default:
+		return nil
+	}
+}
+
+func (p *rtpPlayback) run(ctx context.Context) {
+	var runErr error
+	defer func() {
+		if runErr != nil {
+			p.done <- runErr
+		}
+		close(p.done)
+	}()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case command := <-p.commands:
+			switch command.kind {
+			case rtpPlaybackAudio:
+				if err := p.runCancelable(ctx, func(commandCtx context.Context) error {
+					return p.outbound.Write(commandCtx, command.pcm)
+				}); err != nil {
+					if ctx.Err() != nil {
+						return
+					}
+					if err == context.Canceled || err == context.DeadlineExceeded {
+						p.outbound.Interrupt()
+						continue
+					}
+					runErr = err
+					return
+				}
+			case rtpPlaybackEndTurn:
+				if err := p.runCancelable(ctx, p.outbound.EndTurn); err != nil {
+					if ctx.Err() != nil {
+						return
+					}
+					if err == context.Canceled || err == context.DeadlineExceeded {
+						p.outbound.Interrupt()
+						continue
+					}
+					runErr = err
+					return
+				}
+			case rtpPlaybackInterrupt:
+				p.outbound.Interrupt()
+			}
+		}
+	}
+}
+
+func (p *rtpPlayback) runCancelable(parent context.Context, run func(context.Context) error) error {
+	ctx, cancel := context.WithCancel(parent)
+	p.currentMu.Lock()
+	p.currentSeq++
+	seq := p.currentSeq
+	p.currentCancel = cancel
+	p.currentMu.Unlock()
+	defer func() {
+		cancel()
+		p.currentMu.Lock()
+		if p.currentSeq == seq {
+			p.currentCancel = nil
+		}
+		p.currentMu.Unlock()
+	}()
+	return run(ctx)
+}
+
+func (p *rtpPlayback) cancelCurrent() {
+	p.currentMu.Lock()
+	cancel := p.currentCancel
+	p.currentMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
 type outboundAudioFilter struct {
 	rtp     *rtpSession
-	gate    *mediaGate
 	pending []int16
 	quiet   [][]int16
 	active  bool
 }
 
-func newOutboundAudioFilter(rtp *rtpSession, gate *mediaGate) *outboundAudioFilter {
+func newOutboundAudioFilter(rtp *rtpSession) *outboundAudioFilter {
 	return &outboundAudioFilter{
 		rtp:   rtp,
-		gate:  gate,
 		quiet: make([][]int16, 0, outboundTailFrames),
 	}
 }
@@ -448,22 +655,45 @@ func (f *outboundAudioFilter) writeFrame(ctx context.Context, frame []int16) err
 }
 
 func (f *outboundAudioFilter) sendFrame(ctx context.Context, frame []int16) error {
-	if f.gate != nil {
-		f.gate.SuppressFor(samplesDuration(len(frame), 8000) + postPlaybackSuppress)
-	}
 	return f.rtp.SendPCM8k(ctx, frame)
 }
 
 const (
+	inputActivityAvgThreshold  = 90
+	inputActivityPeakThreshold = 700
+	inputActivityPeakMinAvg    = 45
+	inputPrebufferFrames       = 15
+	inputStartActivityFrames   = 2
+	inputEndSilenceFrames      = 35
+
 	outboundQuietAvgThreshold  = 180
 	outboundQuietPeakThreshold = 1800
 	outboundTailFrames         = 8
-	postPlaybackSuppress       = 250 * time.Millisecond
 )
 
+func inputFrameHasActivity(samples []int16) bool {
+	return inputLevelHasActivity(audioFrameLevel(samples))
+}
+
+func inputLevelHasActivity(level audioLevel) bool {
+	return level.avg >= inputActivityAvgThreshold ||
+		(level.avg >= inputActivityPeakMinAvg && level.peak >= inputActivityPeakThreshold)
+}
+
 func audioFrameQuiet(samples []int16) bool {
+	level := audioFrameLevel(samples)
+	return level.avg < outboundQuietAvgThreshold ||
+		(level.avg < outboundQuietAvgThreshold+80 && level.peak < outboundQuietPeakThreshold)
+}
+
+type audioLevel struct {
+	avg  int
+	peak int
+}
+
+func audioFrameLevel(samples []int16) audioLevel {
 	if len(samples) == 0 {
-		return true
+		return audioLevel{}
 	}
 	sum := 0
 	peak := 0
@@ -477,64 +707,21 @@ func audioFrameQuiet(samples []int16) bool {
 			peak = value
 		}
 	}
-	avg := sum / len(samples)
-	return avg < outboundQuietAvgThreshold || (avg < outboundQuietAvgThreshold+80 && peak < outboundQuietPeakThreshold)
+	return audioLevel{avg: sum / len(samples), peak: peak}
 }
 
-func (g *mediaGate) SuppressFor(duration time.Duration) {
-	if g == nil || duration <= 0 {
-		return
-	}
-	until := time.Now().Add(duration).UnixNano()
-	for {
-		current := g.suppressUntilUnixNano.Load()
-		if current >= until || g.suppressUntilUnixNano.CompareAndSwap(current, until) {
-			return
+func audioSampleRateFromMIME(value string) int {
+	for _, part := range strings.Split(value, ";") {
+		key, raw, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if !ok || !strings.EqualFold(strings.TrimSpace(key), "rate") {
+			continue
+		}
+		rate, err := strconv.Atoi(strings.Trim(strings.TrimSpace(raw), `"`))
+		if err == nil && rate > 0 {
+			return rate
 		}
 	}
-}
-
-func (g *mediaGate) SetModelActive(active bool) {
-	if g != nil {
-		g.modelActive.Store(active)
-	}
-}
-
-func (g *mediaGate) Suppressing() bool {
-	if g == nil {
-		return false
-	}
-	if g.modelActive.Load() {
-		return true
-	}
-	return time.Now().UnixNano() < g.suppressUntilUnixNano.Load()
-}
-
-func audioLooksLikeSpeech(samples []int16, avgThreshold int, peakThreshold int, peakMinAvg int) bool {
-	if len(samples) == 0 {
-		return false
-	}
-	sum := 0
-	peak := 0
-	for _, sample := range samples {
-		value := int(sample)
-		if value < 0 {
-			value = -value
-		}
-		sum += value
-		if value > peak {
-			peak = value
-		}
-	}
-	avg := sum / len(samples)
-	return avg >= avgThreshold || (avg >= peakMinAvg && peak >= peakThreshold)
-}
-
-func samplesDuration(samples int, sampleRate int) time.Duration {
-	if samples <= 0 || sampleRate <= 0 {
-		return 0
-	}
-	return time.Duration(samples) * time.Second / time.Duration(sampleRate)
+	return 0
 }
 
 func appendTranscript(call *Call, raw json.RawMessage, input bool, final bool) {
@@ -564,6 +751,16 @@ func appendTranscript(call *Call, raw json.RawMessage, input bool, final bool) {
 		call.currentAssistantTranscript += payload.Text
 		call.AssistantTranscript = call.currentAssistantTranscript
 	}
+}
+
+func clearCurrentAssistantTranscript(call *Call) {
+	if call == nil {
+		return
+	}
+	call.transcriptMu.Lock()
+	defer call.transcriptMu.Unlock()
+	call.currentAssistantTranscript = ""
+	call.AssistantTranscript = joinTranscript(call.Transcript, "assistant")
 }
 
 func appendTranscriptTurn(call *Call, raw json.RawMessage, at time.Time) {

@@ -105,6 +105,7 @@ func Run(ctx context.Context) error {
 		automation.NewScheduledAITaskTool(automationService),
 		deliverymodule.NewSendFileTool(storageModule.Store(), app),
 		telephonymodule.NewCallTool(bootstrap.SetupService),
+		telephonymodule.NewEndCallTool(bootstrap.SetupService),
 		voicemodule.NewTextToSpeechTool(bootstrap.SetupService),
 		webtools.NewWebFetchExecutorWithService(webTools),
 		webtools.NewWebSearchExecutorWithService(webTools),

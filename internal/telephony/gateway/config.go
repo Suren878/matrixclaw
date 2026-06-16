@@ -43,6 +43,7 @@ type Config struct {
 	InboundPrompt    string
 	InboundAllowed   map[string]struct{}
 	PhonePrompt      string
+	AssistantName    string
 	RecordCalls      bool
 	RecordingDir     string
 	RecordingFormat  string
@@ -67,10 +68,11 @@ func ConfigFromEnv() Config {
 		CallTimeout:      durationEnv("MATRIXCLAW_TELEPHONY_CALL_TIMEOUT", defaultCallTimeout),
 		MaxCallDuration:  durationEnv("MATRIXCLAW_TELEPHONY_MAX_CALL_DURATION", defaultMaxCallDuration),
 		InboundEnabled:   boolEnv("MATRIXCLAW_TELEPHONY_INBOUND_ENABLED", false),
-		InboundGreeting:  env("MATRIXCLAW_TELEPHONY_INBOUND_GREETING", "Здравствуйте. Я слушаю вас."),
+		InboundGreeting:  env("MATRIXCLAW_TELEPHONY_INBOUND_GREETING", "Здравствуйте."),
 		InboundPrompt:    strings.TrimSpace(os.Getenv("MATRIXCLAW_TELEPHONY_INBOUND_PROMPT")),
 		InboundAllowed:   allowedPhoneSet(os.Getenv("MATRIXCLAW_TELEPHONY_INBOUND_ALLOWED_CALLERS")),
 		PhonePrompt:      strings.TrimSpace(os.Getenv("MATRIXCLAW_TELEPHONY_PHONE_PROMPT")),
+		AssistantName:    strings.TrimSpace(os.Getenv("MATRIXCLAW_TELEPHONY_ASSISTANT_NAME")),
 		RecordCalls:      boolEnv("MATRIXCLAW_TELEPHONY_RECORD_CALLS", true),
 		RecordingDir:     env("MATRIXCLAW_TELEPHONY_RECORDING_DIR", defaultRecordingDir()),
 		RecordingFormat:  normalizeRecordingFormat(env("MATRIXCLAW_TELEPHONY_RECORDING_FORMAT", defaultRecordingFormat)),

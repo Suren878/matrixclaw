@@ -260,6 +260,7 @@ type Provider interface {
 type ProviderConnectRequest struct {
 	VoiceSessionID    string
 	SessionID         string
+	Client            string
 	WorkingDir        string
 	ModelID           string
 	VoiceID           string
