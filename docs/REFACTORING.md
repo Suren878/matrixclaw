@@ -131,7 +131,7 @@ acceptance/use-case tests from `docs/TESTING.md` when rebuilding coverage.
 - [x] Extract web tools into `internal/webtools`; `internal/tools` is now a
       leaf package (only depends on `internal/safego`), and `internal/core`
       no longer depends on `internal/webresearch` (2026-06-12).
-- [ ] Split `internal/controlplane` voice handlers (~2,100 LOC across
+- [x] Split `internal/controlplane` voice handlers (~2,100 LOC across
       `modules_voice*.go`) by feature.
   - [x] Split realtime voice controlplane handlers into entry/provider,
         setup/pickers, status/provider helpers, and option normalization files
@@ -141,4 +141,6 @@ acceptance/use-case tests from `docs/TESTING.md` when rebuilding coverage.
   - [x] Split the main voice module router into entry/module picker,
         provider selection/activation, and provider setup picker files
         (2026-06-16).
+  - [x] Split local voice provider controls into picker/use flow,
+        settings/config helpers, and status/action handlers (2026-06-16).
 - [x] Remove the stray `tmpverify/` scratch dir from the tree (already gitignored).
