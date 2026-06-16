@@ -7,6 +7,7 @@ const (
 	defaultPollLimit           = 100
 	defaultPollRetryDelay      = 2 * time.Second
 	defaultStreamFlushInterval = 800 * time.Millisecond
+	defaultChatActionInterval  = 4 * time.Second
 	defaultDraftRefresh        = 20 * time.Second
 	defaultDaemonHTTPTimeout   = 15 * time.Second
 	defaultTelegramHTTPTimeout = 45 * time.Second

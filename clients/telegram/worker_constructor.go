@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -28,6 +29,9 @@ func NewWorker(cfg Config) (*Worker, error) {
 	}
 	if cfg.StreamFlushInterval <= 0 {
 		cfg.StreamFlushInterval = defaultStreamFlushInterval
+	}
+	if cfg.ChatActionInterval <= 0 {
+		cfg.ChatActionInterval = defaultChatActionInterval
 	}
 	if cfg.BotHTTPClient == nil {
 		cfg.BotHTTPClient = &http.Client{Timeout: defaultTelegramHTTPTimeout}
@@ -66,6 +70,7 @@ func NewWorker(cfg Config) (*Worker, error) {
 		locations:        map[string]telegramLocationContext{},
 		pendingLocations: map[string]pendingLocationRequest{},
 		externalSessions: map[string]struct{}{},
+		chatActions:      map[string]time.Time{},
 		geo:              cfg.Geo,
 	}, nil
 }

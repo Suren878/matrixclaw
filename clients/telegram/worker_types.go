@@ -23,6 +23,7 @@ type Config struct {
 	PollLimit               int
 	PollRetryDelay          time.Duration
 	StreamFlushInterval     time.Duration
+	ChatActionInterval      time.Duration
 	BotHTTPClient           HTTPDoer
 	DaemonHTTPClient        *http.Client
 	Geo                     *tools.OSMService
@@ -47,6 +48,7 @@ type Worker struct {
 	locations        map[string]telegramLocationContext
 	pendingLocations map[string]pendingLocationRequest
 	externalSessions map[string]struct{}
+	chatActions      map[string]time.Time
 	geo              *tools.OSMService
 	now              func() time.Time
 }
