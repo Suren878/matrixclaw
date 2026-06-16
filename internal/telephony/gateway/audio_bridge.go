@@ -12,80 +12,14 @@ import (
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 )
 
-func rtpToRealtime(ctx context.Context, rtp *rtpSession, realtime *realtimeConn, call *Call) error {
-	var active bool
-	var startFrames int
-	var silenceFrames int
-	var sentFrames int
-	var activityFrames int
-	prebuffer := make([][]byte, 0, inputPrebufferFrames)
-	reset := func() {
-		active = false
-		startFrames = 0
-		silenceFrames = 0
-		sentFrames = 0
-		activityFrames = 0
-		prebuffer = prebuffer[:0]
-	}
-	send := func(ctx context.Context, pcm []byte) error {
-		if err := realtime.SendAudioPCM(ctx, pcm, 16000); err != nil {
-			return err
-		}
-		sentFrames++
-		return nil
-	}
+func rtpToRealtime(ctx context.Context, rtp *rtpSession, realtime *realtimeConn, _ *Call) error {
 	for {
 		pcm8k, err := rtp.ReadPCM8k(ctx)
 		if err != nil {
 			return err
 		}
-		pcmInput := pcm16kBytesFromPCM8k(pcm8k)
-		level := audioFrameLevel(pcm8k)
-		activity := inputLevelHasActivity(level)
-		if !active {
-			if len(prebuffer) >= inputPrebufferFrames {
-				copy(prebuffer, prebuffer[1:])
-				prebuffer = prebuffer[:inputPrebufferFrames-1]
-			}
-			prebuffer = append(prebuffer, pcmInput)
-			if activity {
-				startFrames++
-			} else {
-				startFrames = 0
-			}
-			if startFrames < inputStartActivityFrames {
-				continue
-			}
-			active = true
-			silenceFrames = 0
-			activityFrames = startFrames
-			sentFrames = 0
-			log.Printf("telephony realtime input activity started call=%s session=%s avg=%d peak=%d prebuffer_frames=%d", callID(call), realtime.Session.ID, level.avg, level.peak, len(prebuffer))
-			logCallTimeline(call, realtime.Session.ID, "input_activity_start", "avg", level.avg, "peak", level.peak, "prebuffer_frames", len(prebuffer))
-			for _, frame := range prebuffer {
-				if err := send(ctx, frame); err != nil {
-					return err
-				}
-			}
-			prebuffer = prebuffer[:0]
-			continue
-		}
-		if err := send(ctx, pcmInput); err != nil {
+		if err := realtime.SendAudioPCM(ctx, pcm16kBytesFromPCM8k(pcm8k), 16000); err != nil {
 			return err
-		}
-		if activity {
-			activityFrames++
-			silenceFrames = 0
-			continue
-		}
-		silenceFrames++
-		if silenceFrames >= inputEndSilenceFrames {
-			if err := realtime.SendAudioEnd(ctx); err != nil {
-				return err
-			}
-			log.Printf("telephony realtime input stream ended call=%s session=%s frames=%d activity_frames=%d duration_ms=%d", callID(call), realtime.Session.ID, sentFrames, activityFrames, sentFrames*20)
-			logCallTimeline(call, realtime.Session.ID, "input_stream_end", "frames", sentFrames, "activity_frames", activityFrames, "duration_ms", sentFrames*20)
-			reset()
 		}
 	}
 }
@@ -177,22 +111,10 @@ func recoverableRealtimeError(raw json.RawMessage) bool {
 }
 
 const (
-	inputActivityAvgThreshold  = 90
-	inputActivityPeakThreshold = 700
-	inputActivityPeakMinAvg    = 45
-	inputPrebufferFrames       = 15
-	inputStartActivityFrames   = 2
-	inputEndSilenceFrames      = 35
-
 	outboundQuietAvgThreshold  = 180
 	outboundQuietPeakThreshold = 1800
 	outboundTailFrames         = 8
 )
-
-func inputLevelHasActivity(level audioLevel) bool {
-	return level.avg >= inputActivityAvgThreshold ||
-		(level.avg >= inputActivityPeakMinAvg && level.peak >= inputActivityPeakThreshold)
-}
 
 func audioFrameQuiet(samples []int16) bool {
 	level := audioFrameLevel(samples)

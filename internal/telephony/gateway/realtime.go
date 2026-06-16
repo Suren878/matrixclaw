@@ -165,10 +165,6 @@ func (c *realtimeConn) SendAudioPCM(ctx context.Context, pcm []byte, sampleRateH
 	})
 }
 
-func (c *realtimeConn) SendAudioEnd(ctx context.Context) error {
-	return c.writeEvent(ctx, realtime.EventInputAudioEnd, map[string]any{})
-}
-
 func (c *realtimeConn) SendText(ctx context.Context, text string) error {
 	text = strings.TrimSpace(text)
 	if text == "" {

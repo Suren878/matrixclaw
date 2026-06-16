@@ -145,11 +145,12 @@ refactoring there today is blind.
 
 ### Problem 8 — Working-tree and process hygiene
 
-- 4 stale worktrees in `.worktrees/` (`browser-module`, `subagents-v2`,
-  `refactor-terminal-ui-stack`, `stabilize-runtime-stability`) with diverged
-  full copies of the tree.
-- Uncommitted changes in `clients/telegram` (incl. deleted `live_monitor.go`)
-  and 3 unpushed commits on `main`.
+- Stale worktrees in `.worktrees/` with diverged full copies of the tree. The
+  2026-06-17 triage is tracked in
+  `docs/refactoring/2026-06-17-worktree-triage.md`.
+- Historical dirty `clients/telegram` state has been resolved on `main`; future
+  worktree cleanup should preserve or deliberately discard only the dirty diffs
+  called out in the triage document.
 - No `.golangci.yml` (CI runs golangci-lint with `only-new-issues` and default
   config — weak baseline). CI has no `-race`, no coverage tracking, no
   `gofmt -l` gate.
@@ -198,7 +199,7 @@ Definition of done for the whole plan — **the modularity test**: a new module
 
 1. **Strangler fig, not big bang.** Old and new paths coexist; the old path is
    deleted only after the new one carries all traffic. Never branch the whole
-   repo for a months-long rewrite — the 4 stale worktrees show how that ends.
+   repo for a months-long rewrite — the stale worktrees show how that ends.
 2. **Characterization tests before moving code.** When code lacks tests
    (providers, tools, setup), first pin current behavior with golden/httptest
    fixtures, then refactor. The test must pass before *and* after.
@@ -234,10 +235,9 @@ Definition of done for the whole plan — **the modularity test**: a new module
 - Resolve the dirty working tree: review uncommitted `clients/telegram`
   changes (commit or discard deliberately — `live_monitor.go` deletion looks
   intentional but verify), push the 3 local commits.
-- Triage the 4 worktrees: extract anything worth keeping into small PRs
-  (`refactor-terminal-ui-stack` and `subagents-v2` likely overlap with this
-  plan — mine them for ideas, then delete), prune `.worktrees/` and stale
-  branches. Remove `tmpverify/` from the tree, gitignore it.
+- Triage the stale worktrees: extract anything worth keeping into small PRs,
+  mine abandoned UI/browser experiments for ideas only, then prune `.worktrees/`
+  and stale branches. Remove `tmpverify/` from the tree, gitignore it.
 - Add a real `.golangci.yml` (enable: `govet`, `errcheck`, `staticcheck`,
   `revive`, `gocyclo` warn-only, `misspell`); fix or `nolint`-annotate the
   existing findings so CI can drop `only-new-issues`.

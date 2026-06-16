@@ -1,10 +1,10 @@
 # MatrixClaw — Stability & Refactoring Plan
 
 See also: [docs/refactoring/2026-06-10-modular-architecture-plan.md](refactoring/2026-06-10-modular-architecture-plan.md)
-(modularity roadmap) and [docs/refactoring/2026-06-10-core-refactoring-plan.md](refactoring/2026-06-10-core-refactoring-plan.md)
-(core decomposition, executed 2026-06-12).
+(modularity roadmap). The core decomposition plan was executed on 2026-06-12
+and is summarized in Phase 5 below.
 
-Status snapshot (audit date 2026-05-29, updated 2026-06-16):
+Status snapshot (audit date 2026-05-29, updated 2026-06-17):
 
 - `go build ./...` — required by CI
 - `go vet ./...` — required by CI
@@ -79,12 +79,11 @@ acceptance/use-case tests from `docs/TESTING.md` when rebuilding coverage.
 - [x] `internal/core/execution_request.go` — voice/document delivery checks now
       read explicit client capabilities from runs/session inputs instead of
       hardcoding client names in core.
-- [ ] Audit `internal/telephony/gateway/realtime.go` local input activity/silence
+- [x] Audit `internal/telephony/gateway/realtime.go` local input activity/silence
       segmentation. Grok Voice and Gemini Live both configure server-side
-      activity detection; the gateway still sends manual `input_audio.end` after
-      local silence detection. Decide in a separate behavior-focused change
-      whether to remove that local end-of-turn signal or keep it as transport
-      shaping.
+      activity detection; the gateway now streams RTP input directly and no
+      longer sends manual `input_audio.end` from local silence detection
+      (2026-06-17).
 - [x] Audit the remaining `context.Background()` uses inside request paths.
       2026-06-16 follow-up changes: Telegram inline callbacks now inherit the
       callback timeout context, webresearch heartbeats use their cancelable job
