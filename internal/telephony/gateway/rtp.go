@@ -354,15 +354,3 @@ func rtpPayload(packet []byte) ([]byte, bool) {
 	}
 	return packet[offset:], true
 }
-
-func parseUDPHostPort(host string, port string) (*net.UDPAddr, error) {
-	host = strings.TrimSpace(host)
-	port = strings.TrimSpace(port)
-	if host == "" || port == "" {
-		return nil, fmt.Errorf("invalid UDP address %q:%q", host, port)
-	}
-	if _, err := strconv.Atoi(port); err != nil {
-		return nil, err
-	}
-	return net.ResolveUDPAddr("udp", net.JoinHostPort(host, port))
-}

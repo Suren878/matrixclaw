@@ -238,17 +238,6 @@ func (c *ariClient) answer(ctx context.Context, channelID string) error {
 	return err
 }
 
-func (c *ariClient) startSilence(ctx context.Context, channelID string) error {
-	if strings.TrimSpace(channelID) == "" {
-		return nil
-	}
-	err := c.do(ctx, http.MethodPost, "/channels/"+url.PathEscape(channelID)+"/silence", nil, nil, nil)
-	if isARIStatus(err, http.StatusNotFound) || isARIStatus(err, http.StatusConflict) {
-		return nil
-	}
-	return err
-}
-
 func (c *ariClient) stopSilence(ctx context.Context, channelID string) error {
 	if strings.TrimSpace(channelID) == "" {
 		return nil

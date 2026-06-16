@@ -29,51 +29,6 @@ type CallRecording struct {
 	FinishedAt      *time.Time `json:"finished_at,omitempty"`
 }
 
-func (s *Server) startCallRecording(ctx context.Context, call *Call, bridgeID string) *CallRecording {
-	if s == nil || s.ari == nil || call == nil || !s.cfg.RecordCalls || strings.TrimSpace(bridgeID) == "" {
-		return nil
-	}
-	format := normalizeRecordingFormat(s.cfg.RecordingFormat)
-	captureFormat := recordingCaptureFormat(format)
-	name := newRecordingName(call)
-	recording := &CallRecording{
-		Name:       name,
-		Format:     format,
-		MIMEType:   recordingMIMEType(format),
-		Status:     "starting",
-		Path:       recordingLocalPath(s.cfg.RecordingDir, name, format),
-		Temporary:  false,
-		StartedAt:  nil,
-		FinishedAt: nil,
-	}
-	call.Recording = recording
-	s.touchCall(call)
-
-	live, err := s.ari.recordBridge(ctx, bridgeID, ariRecordRequest{
-		Name:        name,
-		Format:      captureFormat,
-		IfExists:    "overwrite",
-		TerminateOn: "none",
-	})
-	if err != nil {
-		recording.Status = "failed"
-		recording.Error = err.Error()
-		s.touchCall(call)
-		log.Printf("telephony call %s recording start failed: %v", callID(call), err)
-		return recording
-	}
-	if live.Name != "" && live.Name != name {
-		recording.Name = live.Name
-		recording.Path = recordingLocalPath(s.cfg.RecordingDir, live.Name, format)
-	}
-	now := time.Now().UTC()
-	recording.StartedAt = &now
-	recording.Status = firstNonEmpty(live.State, "recording")
-	s.touchCall(call)
-	log.Printf("telephony call %s recording started: %s", callID(call), recording.Name)
-	return recording
-}
-
 func (s *Server) startChannelRecording(ctx context.Context, call *Call, channelID string) *CallRecording {
 	if s == nil || s.ari == nil || call == nil || !s.cfg.RecordCalls || strings.TrimSpace(channelID) == "" {
 		return nil
@@ -240,7 +195,7 @@ func (s *Server) saveRecordingTemporary(ctx context.Context, call *Call, recordi
 	if err != nil {
 		return "", err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	var response struct {
 		File struct {
 			Path string `json:"path"`
