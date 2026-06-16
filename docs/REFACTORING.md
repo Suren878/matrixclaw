@@ -138,4 +138,7 @@ acceptance/use-case tests from `docs/TESTING.md` when rebuilding coverage.
         (2026-06-16).
   - [x] Split voice status helpers into module/provider status, runtime mode,
         action text, and local model/storage status files (2026-06-16).
+  - [x] Split the main voice module router into entry/module picker,
+        provider selection/activation, and provider setup picker files
+        (2026-06-16).
 - [x] Remove the stray `tmpverify/` scratch dir from the tree (already gitignored).
