@@ -65,7 +65,10 @@ func (c *Core) afterRunExecution(ctx context.Context, runID string) error {
 	}
 	run, err := c.store.GetRun(ctx, runID)
 	if err != nil {
-		return nil
+		if ignoreMissing(err) {
+			return nil
+		}
+		return err
 	}
 	if task, err := c.store.GetSubagentTaskByChildRun(ctx, runID); err == nil {
 		switch task.Mode {
@@ -78,10 +81,15 @@ func (c *Core) afterRunExecution(ctx context.Context, runID string) error {
 				return syncErr
 			}
 		}
+	} else if !ignoreMissing(err) {
+		return err
 	}
 	session, err := c.store.GetSession(ctx, run.SessionID)
 	if err != nil {
-		return nil
+		if ignoreMissing(err) {
+			return nil
+		}
+		return err
 	}
 	if subagentRunStatusTerminal(run.Status) {
 		if err := c.queuePendingSteersForRun(ctx, session.ID, run.ID); err != nil {
@@ -96,6 +104,10 @@ func (c *Core) afterRunExecution(ctx context.Context, runID string) error {
 		return c.deliverPendingSubagentCompletionsForParent(ctx, session.ID)
 	}
 	return nil
+}
+
+func ignoreMissing(err error) bool {
+	return errors.Is(err, ErrNotFound)
 }
 
 func (c *Core) syncAsyncSubagentTaskAfterRun(ctx context.Context, task SubagentTask, run Run) error {

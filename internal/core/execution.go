@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -29,7 +30,9 @@ func newRunExecution(run Run, session Session, runtime providers.Runtime) *runEx
 func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
 	runID = normalizeText(runID)
 	defer func() {
-		_ = c.afterRunExecution(context.Background(), runID)
+		if err := c.afterRunExecution(context.Background(), runID); err != nil {
+			log.Printf("core: after run execution for %q failed: %v", runID, err)
+		}
 	}()
 	if handled, err := c.tryExecuteExternalAgentRun(ctx, runID); handled || err != nil {
 		return err
