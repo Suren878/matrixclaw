@@ -136,4 +136,6 @@ acceptance/use-case tests from `docs/TESTING.md` when rebuilding coverage.
   - [x] Split realtime voice controlplane handlers into entry/provider,
         setup/pickers, status/provider helpers, and option normalization files
         (2026-06-16).
+  - [x] Split voice status helpers into module/provider status, runtime mode,
+        action text, and local model/storage status files (2026-06-16).
 - [x] Remove the stray `tmpverify/` scratch dir from the tree (already gitignored).
