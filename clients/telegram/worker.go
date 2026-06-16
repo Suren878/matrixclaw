@@ -6,6 +6,8 @@ import (
 	"log"
 	"strings"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 func (w *Worker) Run(ctx context.Context) error {
@@ -18,18 +20,26 @@ func (w *Worker) Run(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	errc := make(chan error, 2)
-	go func() {
-		errc <- w.runUpdateLoop(runCtx)
-	}()
-	go func() {
-		errc <- w.runDeliveryLoop(runCtx)
-	}()
+	w.runLoopSafely("telegram.updateLoop", errc, func() error { return w.runUpdateLoop(runCtx) })
+	w.runLoopSafely("telegram.deliveryLoop", errc, func() error { return w.runDeliveryLoop(runCtx) })
 	err := <-errc
 	cancel()
 	if err == nil || ctx.Err() != nil {
 		return nil
 	}
 	return err
+}
+
+func (w *Worker) runLoopSafely(name string, errc chan<- error, run func() error) {
+	safego.Go(name, func() {
+		var err error
+		if !safego.Run(name+".body", func() {
+			err = run()
+		}) {
+			err = errors.New(name + " panicked")
+		}
+		errc <- err
+	})
 }
 
 func (w *Worker) runUpdateLoop(ctx context.Context) error {

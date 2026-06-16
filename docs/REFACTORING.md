@@ -35,7 +35,7 @@ acceptance/use-case tests from `docs/TESTING.md` when rebuilding coverage.
 
 - [x] Add `internal/safego` — `Go`/`Run` helpers that recover panics in
       background goroutines and log a stack trace instead of crashing the daemon.
-- [ ] Wrap all 12 background goroutines with `safego.Go`:
+- [x] Wrap raw background goroutines with `safego.Go` / `safego.Run`:
   - `internal/daemoncmd/supervisor.go:111,168`
   - `internal/daemoncmd/run.go:138`
   - `internal/daemoncmd/client_registry.go:104`
@@ -45,6 +45,8 @@ acceptance/use-case tests from `docs/TESTING.md` when rebuilding coverage.
   - `internal/externalagents/codexapp/client.go:171`
   - `internal/modules/localruntime/{piper,whisper,supertonic}_process.go`
   - `clients/telegram/monitor_state.go:47`
+  - 2026-06-16 follow-up: no raw `go func(` remains in `internal/` or
+    `clients/` outside the `safego` package comment.
 - [x] `internal/core` audit (2026-06-12): every core background goroutine runs
       under `safego.Go`, including the subagent terminal-wait resume path
       (`internal/core/subagents.go`), and none captures a request-scoped ctx

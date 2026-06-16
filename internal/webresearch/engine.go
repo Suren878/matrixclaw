@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 type Config struct {
@@ -331,13 +333,13 @@ func (e *Engine) startJobWithDone(ctx context.Context, jobID string, done chan<-
 		}
 		return
 	}
-	go func() {
+	safego.Go("webresearch.job", func() {
 		defer e.clearActive(jobID)
 		if done != nil {
 			defer close(done)
 		}
 		_ = e.runJob(ctx, jobID)
-	}()
+	})
 }
 
 func (e *Engine) markActive(jobID string) bool {

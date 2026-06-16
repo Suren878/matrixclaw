@@ -170,7 +170,7 @@ func (c *Client) Err() error {
 
 func (c *Client) write(ctx context.Context, req rpcRequest) error {
 	done := make(chan error, 1)
-	go func() {
+	safego.Go("codexapp.write.async", func() {
 		if !safego.Run("codexapp.write", func() {
 			c.writeMu.Lock()
 			defer c.writeMu.Unlock()
@@ -178,7 +178,7 @@ func (c *Client) write(ctx context.Context, req rpcRequest) error {
 		}) {
 			done <- fmt.Errorf("codex app-server write panicked")
 		}
-	}()
+	})
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 type Server struct {
@@ -131,10 +133,10 @@ func Run(ctx context.Context, cfg Config) error {
 	s := NewServer(cfg)
 	if cfg.ARIPassword != "" {
 		s.events.Start(ctx)
-		go s.cleanupStaleARIOnReady(ctx)
+		safego.Go("telephony.cleanupStaleARIOnReady", func() { s.cleanupStaleARIOnReady(ctx) })
 	}
 	if cfg.InboundEnabled {
-		go s.runInboundListener(ctx)
+		safego.Go("telephony.inboundListener", func() { s.runInboundListener(ctx) })
 	}
 	httpServer := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -144,14 +146,19 @@ func Run(ctx context.Context, cfg Config) error {
 		IdleTimeout:       2 * time.Minute,
 	}
 	errCh := make(chan error, 1)
-	go func() {
-		log.Printf("matrixclaw telephony gateway listening on %s", cfg.HTTPAddr)
-		err := httpServer.ListenAndServe()
-		if err == http.ErrServerClosed {
-			err = nil
+	safego.Go("telephony.httpServer", func() {
+		var err error
+		if !safego.Run("telephony.httpServer.listen", func() {
+			log.Printf("matrixclaw telephony gateway listening on %s", cfg.HTTPAddr)
+			err = httpServer.ListenAndServe()
+			if err == http.ErrServerClosed {
+				err = nil
+			}
+		}) {
+			err = fmt.Errorf("telephony http server panicked")
 		}
 		errCh <- err
-	}()
+	})
 	select {
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -634,15 +641,15 @@ func (s *Server) runConnectedCallWithRealtime(ctx context.Context, call *Call, r
 	defer finishRecording()
 
 	audioErr := make(chan callRuntimeResult, 3)
-	go func() {
-		audioErr <- callRuntimeResult{source: "rtp_input", err: rtpToRealtime(ctx, captureRTP, realtime, call)}
-	}()
-	go func() {
-		audioErr <- callRuntimeResult{source: "realtime_output", err: realtimeToRTP(ctx, realtime, playbackRTP, call)}
-	}()
-	go func() {
-		audioErr <- callRuntimeResult{source: "ari_channel", err: s.ari.waitChannelEnd(ctx, channelID)}
-	}()
+	runCallRuntimeWorker("telephony.rtpInput", audioErr, "rtp_input", func() error {
+		return rtpToRealtime(ctx, captureRTP, realtime, call)
+	})
+	runCallRuntimeWorker("telephony.realtimeOutput", audioErr, "realtime_output", func() error {
+		return realtimeToRTP(ctx, realtime, playbackRTP, call)
+	})
+	runCallRuntimeWorker("telephony.ariChannel", audioErr, "ari_channel", func() error {
+		return s.ari.waitChannelEnd(ctx, channelID)
+	})
 
 	s.updateCall(call, "bridged", "")
 	logCallTimeline(call, realtime.Session.ID, "bridged",
@@ -717,6 +724,18 @@ func (s *Server) setRTPRemoteWithRetry(ctx context.Context, call *Call, label st
 type callRuntimeResult struct {
 	source string
 	err    error
+}
+
+func runCallRuntimeWorker(name string, out chan<- callRuntimeResult, source string, run func() error) {
+	safego.Go(name, func() {
+		result := callRuntimeResult{source: source}
+		if !safego.Run(name+".body", func() {
+			result.err = run()
+		}) {
+			result.err = fmt.Errorf("%s panicked", source)
+		}
+		out <- result
+	})
 }
 
 func initialPhoneStartPrompt(call *Call, req createCallRequest) string {
