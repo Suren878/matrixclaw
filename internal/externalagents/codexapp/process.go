@@ -10,7 +10,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 var errCodexAppBundlePath = errors.New("codex CLI binary required; macOS .app bundle paths are not supported")
@@ -112,10 +115,12 @@ func Start(ctx context.Context, opts ProcessOptions) (*Client, error) {
 	}
 
 	conn := &processConn{
-		reader: stdout,
-		writer: stdin,
-		cmd:    cmd,
+		reader:   stdout,
+		writer:   stdin,
+		cmd:      cmd,
+		waitDone: make(chan struct{}),
 	}
+	safego.Go("codexapp.processWait", conn.wait)
 	return NewClient(conn), nil
 }
 
@@ -187,9 +192,16 @@ func codexBinaryCandidates(name string) []string {
 }
 
 type processConn struct {
-	reader io.ReadCloser
-	writer io.WriteCloser
-	cmd    *exec.Cmd
+	reader   io.ReadCloser
+	writer   io.WriteCloser
+	cmd      *exec.Cmd
+	waitDone chan struct{}
+
+	closeOnce sync.Once
+	mu        sync.Mutex
+	waitErr   error
+	closeErr  error
+	closing   bool
 }
 
 func (c *processConn) Read(p []byte) (int, error) {
@@ -201,10 +213,108 @@ func (c *processConn) Write(p []byte) (int, error) {
 }
 
 func (c *processConn) Close() error {
-	_ = c.writer.Close()
-	_ = c.reader.Close()
-	if c.cmd.Process != nil {
-		_ = c.cmd.Process.Kill()
+	c.closeOnce.Do(func() {
+		c.mu.Lock()
+		c.closing = true
+		c.mu.Unlock()
+		_ = c.writer.Close()
+		_ = c.reader.Close()
+		if c.cmd.Process != nil {
+			if err := c.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				c.mu.Lock()
+				c.closeErr = err
+				c.mu.Unlock()
+			}
+		}
+		waitErr := c.waitError()
+		c.mu.Lock()
+		if c.closeErr == nil {
+			c.closeErr = waitErr
+		}
+		c.mu.Unlock()
+	})
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closeErr
+}
+
+func (c *processConn) ProcessError() error {
+	err, ready := c.waitErrorReady()
+	if !ready {
+		return nil
 	}
-	return c.cmd.Wait()
+	if c.isClosing() {
+		return nil
+	}
+	return processExitError(err)
+}
+
+func (c *processConn) StdoutClosedError() error {
+	if c.isClosing() {
+		return nil
+	}
+	if c.waitDone != nil {
+		timer := time.NewTimer(25 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-c.waitDone:
+			if c.isClosing() {
+				return nil
+			}
+			c.mu.Lock()
+			err := c.waitErr
+			c.mu.Unlock()
+			return processExitError(err)
+		case <-timer.C:
+		}
+	}
+	if c.isClosing() {
+		return nil
+	}
+	return fmt.Errorf("codex app-server stdout closed")
+}
+
+func processExitError(err error) error {
+	if err == nil {
+		return fmt.Errorf("codex app-server exited")
+	}
+	return fmt.Errorf("codex app-server exited: %w", err)
+}
+
+func (c *processConn) isClosing() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closing
+}
+
+func (c *processConn) wait() {
+	err := c.cmd.Wait()
+	c.mu.Lock()
+	c.waitErr = err
+	c.mu.Unlock()
+	close(c.waitDone)
+}
+
+func (c *processConn) waitError() error {
+	if c.waitDone == nil {
+		return nil
+	}
+	<-c.waitDone
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.waitErr
+}
+
+func (c *processConn) waitErrorReady() (error, bool) {
+	if c.waitDone == nil {
+		return nil, false
+	}
+	select {
+	case <-c.waitDone:
+	default:
+		return nil, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.waitErr, true
 }
