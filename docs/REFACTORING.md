@@ -79,6 +79,12 @@ acceptance/use-case tests from `docs/TESTING.md` when rebuilding coverage.
 - [x] `internal/core/execution_request.go` — voice/document delivery checks now
       read explicit client capabilities from runs/session inputs instead of
       hardcoding client names in core.
+- [ ] Audit `internal/telephony/gateway/realtime.go` local input activity/silence
+      segmentation. Grok Voice and Gemini Live both configure server-side
+      activity detection; the gateway still sends manual `input_audio.end` after
+      local silence detection. Decide in a separate behavior-focused change
+      whether to remove that local end-of-turn signal or keep it as transport
+      shaping.
 - [x] Audit the remaining `context.Background()` uses inside request paths.
       2026-06-16 follow-up changes: Telegram inline callbacks now inherit the
       callback timeout context, webresearch heartbeats use their cancelable job
@@ -127,4 +133,7 @@ acceptance/use-case tests from `docs/TESTING.md` when rebuilding coverage.
       no longer depends on `internal/webresearch` (2026-06-12).
 - [ ] Split `internal/controlplane` voice handlers (~2,100 LOC across
       `modules_voice*.go`) by feature.
+  - [x] Split realtime voice controlplane handlers into entry/provider,
+        setup/pickers, status/provider helpers, and option normalization files
+        (2026-06-16).
 - [x] Remove the stray `tmpverify/` scratch dir from the tree (already gitignored).
