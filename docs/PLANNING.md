@@ -75,9 +75,11 @@ The Terminal TUI renders the plan as a side panel:
 The TUI is not the source of truth. It only renders plan state and asks the
 daemon to advance the runner.
 
-## Tests
+## Acceptance Coverage
 
-Important cases covered by tests:
+The old narrow unit tests were removed during the 2026-06-16 test reset. When
+planning coverage is rebuilt, it should be expressed as acceptance/use-case
+tests around these user-visible behaviors:
 
 - current plan-run prompt reaches the provider, old prompts do not
 - blocked output leaves the checkpointed item open
