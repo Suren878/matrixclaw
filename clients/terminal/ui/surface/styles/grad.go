@@ -38,7 +38,7 @@ func ApplyForegroundGrad(t *Styles, input string, color1, color2 color.Color) st
 	var o strings.Builder
 	clusters := foregroundGrad(t, input, color1, color2)
 	for _, c := range clusters {
-		fmt.Fprint(&o, c)
+		_, _ = fmt.Fprint(&o, c)
 	}
 	return o.String()
 }

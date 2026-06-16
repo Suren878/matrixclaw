@@ -198,7 +198,7 @@ func ensureColumn(db *sql.DB, table string, column string, alterSQL string) erro
 	if err != nil {
 		return fmt.Errorf("store: inspect %s schema: %w", table, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var cid int
 		var name string

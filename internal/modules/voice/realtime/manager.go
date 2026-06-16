@@ -415,7 +415,7 @@ func (s *streamState) handleToolCalls(ctx context.Context, calls []ProviderToolC
 		if len(call.Args) == 0 {
 			call.Args = json.RawMessage(`{}`)
 		}
-		if err := s.stream.Write(ctx, newEvent(s.info.ID, EventToolCall, ToolCallPayload{ID: call.ID, Name: call.Name, Args: call.Args})); err != nil {
+		if err := s.stream.Write(ctx, newEvent(s.info.ID, EventToolCall, ToolCallPayload(call))); err != nil {
 			return err
 		}
 		result, err := s.manager.core.ExecuteTool(ctx, core.ExecuteToolInput{

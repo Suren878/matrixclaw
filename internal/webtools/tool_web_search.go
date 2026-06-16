@@ -99,7 +99,7 @@ func searchTavily(ctx context.Context, query string, limit int, apiKey string) (
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("tavily returned %d", resp.StatusCode)
@@ -150,7 +150,7 @@ func searchSerper(ctx context.Context, query string, limit int, apiKey string) (
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("serper returned %d", resp.StatusCode)
@@ -197,7 +197,7 @@ func searchSearXNG(ctx context.Context, query string, limit int, baseURL string)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("searxng returned %d", resp.StatusCode)
@@ -250,7 +250,7 @@ func searchDDG(ctx context.Context, query string, limit int) ([]WebSearchResult,
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
 	if err != nil {
@@ -383,11 +383,11 @@ func formatSearchResults(query, provider string, results []WebSearchResult) stri
 		return fmt.Sprintf("web_search: no results found for %q (provider: %s)", query, provider)
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "web_search: %q\nprovider: %s\ncount: %d\n", query, provider, len(results))
+	_, _ = fmt.Fprintf(&b, "web_search: %q\nprovider: %s\ncount: %d\n", query, provider, len(results))
 	for _, r := range results {
-		fmt.Fprintf(&b, "\n%d. %s\n   %s\n", r.Position, strings.Join(strings.Fields(r.Title), " "), r.URL)
+		_, _ = fmt.Fprintf(&b, "\n%d. %s\n   %s\n", r.Position, strings.Join(strings.Fields(r.Title), " "), r.URL)
 		if r.Description != "" {
-			fmt.Fprintf(&b, "   %s\n", boundWebToolText(r.Description, 320))
+			_, _ = fmt.Fprintf(&b, "   %s\n", boundWebToolText(r.Description, 320))
 		}
 	}
 	return strings.TrimSpace(b.String())

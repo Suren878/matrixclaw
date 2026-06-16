@@ -64,7 +64,7 @@ func readTextFile(path string, offset int, limit int) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -97,7 +97,7 @@ func addLineNumbers(content string, start int) string {
 	}
 	var out strings.Builder
 	for i, line := range lines {
-		fmt.Fprintf(&out, "%6d\t%s", start+i, line)
+		_, _ = fmt.Fprintf(&out, "%6d\t%s", start+i, line)
 		if i != len(lines)-1 {
 			out.WriteByte('\n')
 		}

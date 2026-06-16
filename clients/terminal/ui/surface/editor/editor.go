@@ -250,7 +250,7 @@ func (m *Model) OpenExternalEditor() tea.Cmd {
 	}
 
 	tmpPath := tmpfile.Name()
-	defer tmpfile.Close() //nolint:errcheck
+	defer func() { _ = tmpfile.Close() }() //nolint:errcheck
 	if _, err := tmpfile.WriteString(m.Value()); err != nil {
 		return msgCmd(ExternalEditorErrorMsg{Err: err})
 	}

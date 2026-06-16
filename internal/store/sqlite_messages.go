@@ -66,7 +66,7 @@ LIMIT ?`, sessionID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("store: list messages: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var messages []core.Message
 	for rows.Next() {
@@ -143,7 +143,7 @@ func (s *SQLiteStore) ListActiveRuns(ctx context.Context) ([]core.Run, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: list active runs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	runs := []core.Run{}
 	for rows.Next() {

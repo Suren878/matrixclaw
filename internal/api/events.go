@@ -66,10 +66,10 @@ func writeSSE(w http.ResponseWriter, eventType string, payload any) {
 		body, _ = json.Marshal(core.Event{Type: core.EventMessageUpdated, Payload: core.ErrorResponse{Error: err.Error()}})
 	}
 	if event, ok := payload.(core.Event); ok && event.ID > 0 {
-		fmt.Fprintf(w, "id: %d\n", event.ID)
+		_, _ = fmt.Fprintf(w, "id: %d\n", event.ID)
 	}
-	fmt.Fprintf(w, "event: %s\n", eventType)
-	fmt.Fprintf(w, "data: %s\n\n", body)
+	_, _ = fmt.Fprintf(w, "event: %s\n", eventType)
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", body)
 }
 
 func parseSSEAfterID(r *http.Request) (uint64, error) {

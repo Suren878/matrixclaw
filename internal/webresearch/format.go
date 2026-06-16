@@ -7,8 +7,8 @@ import (
 
 func FormatResult(result ResearchResult) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "research_id: %s\n", result.ResearchID)
-	fmt.Fprintf(&b, "status: %s\n", firstNonEmpty(result.Status, StatusPending))
+	_, _ = fmt.Fprintf(&b, "research_id: %s\n", result.ResearchID)
+	_, _ = fmt.Fprintf(&b, "status: %s\n", firstNonEmpty(result.Status, StatusPending))
 	if result.Answer != "" {
 		b.WriteString("\nanswer:\n")
 		b.WriteString(boundText(result.Answer, 2200))
@@ -22,7 +22,7 @@ func FormatResult(result ResearchResult) string {
 	if len(result.Facts) > 0 {
 		b.WriteString("\nfacts:\n")
 		for i, fact := range boundedFacts(result.Facts) {
-			fmt.Fprintf(&b, "%d. %s", i+1, fact.Claim)
+			_, _ = fmt.Fprintf(&b, "%d. %s", i+1, fact.Claim)
 			if len(fact.SourceIDs) > 0 {
 				b.WriteString(" [")
 				b.WriteString(strings.Join(fact.SourceIDs, ", "))
@@ -35,7 +35,7 @@ func FormatResult(result ResearchResult) string {
 		b.WriteString("\nsources:\n")
 		for i, source := range boundedSources(result.Sources) {
 			title := firstNonEmpty(source.Title, source.URL)
-			fmt.Fprintf(&b, "%d. %s\n   %s\n", i+1, title, source.URL)
+			_, _ = fmt.Fprintf(&b, "%d. %s\n   %s\n", i+1, title, source.URL)
 		}
 	}
 	if len(result.Warnings) > 0 {

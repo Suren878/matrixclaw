@@ -228,14 +228,14 @@ func (t *listTool) Execute(_ context.Context, call tools.Call) (tools.Result, er
 	}
 	var out strings.Builder
 	for _, entry := range entries {
-		fmt.Fprintf(&out, "- %s", entry.Path)
+		_, _ = fmt.Fprintf(&out, "- %s", entry.Path)
 		if entry.Title != "" {
-			fmt.Fprintf(&out, " — %s", entry.Title)
+			_, _ = fmt.Fprintf(&out, " — %s", entry.Title)
 		}
 		if len(entry.Tags) > 0 {
-			fmt.Fprintf(&out, " [%s]", strings.Join(entry.Tags, ", "))
+			_, _ = fmt.Fprintf(&out, " [%s]", strings.Join(entry.Tags, ", "))
 		}
-		fmt.Fprintf(&out, " (%d bytes)\n", entry.Size)
+		_, _ = fmt.Fprintf(&out, " (%d bytes)\n", entry.Size)
 	}
 	return tools.Result{
 		Content:  strings.TrimRight(out.String(), "\n"),

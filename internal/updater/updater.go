@@ -81,7 +81,7 @@ func (c Checker) LatestRelease(ctx context.Context) (Release, error) {
 	if err != nil {
 		return Release{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return Release{}, fmt.Errorf("latest release request failed: %s", resp.Status)
 	}
@@ -114,7 +114,7 @@ func (i Installer) Install(ctx context.Context, tag string) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(script)
+	defer func() { _ = os.Remove(script) }()
 
 	installDir, err := i.installDir()
 	if err != nil {
@@ -148,7 +148,7 @@ func (i Installer) downloadInstallScript(ctx context.Context, repo string, tag s
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", fmt.Errorf("download install script failed: %s", resp.Status)
 	}

@@ -53,13 +53,6 @@ func PickerFooter(picker PickerData) (PickerFooterAction, bool) {
 	return PickerFooterAction{}, false
 }
 
-func pickerBackCommand(picker PickerData) (string, bool) {
-	if !picker.HasBack {
-		return "", false
-	}
-	return strings.TrimSpace(picker.BackCommand), true
-}
-
 func PickerCommandLabel(picker PickerData) string {
 	switch picker.Kind {
 	case PickerCommandMenu:

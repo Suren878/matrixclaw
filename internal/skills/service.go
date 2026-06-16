@@ -148,7 +148,7 @@ func (s *Service) ensureSkillSchema() error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var cid int
 		var name, typ string
@@ -700,7 +700,7 @@ func (s *Service) querySkills(query string, args ...any) ([]Skill, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var skills []Skill
 	for rows.Next() {
 		skill, err := scanSkill(rows)

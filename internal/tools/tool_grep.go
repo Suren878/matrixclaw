@@ -57,7 +57,7 @@ func (e *grepExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 	}
 
 	var out strings.Builder
-	fmt.Fprintf(&out, "Found %d matches\n", len(matches))
+	_, _ = fmt.Fprintf(&out, "Found %d matches\n", len(matches))
 	currentFile := ""
 	for _, match := range matches {
 		if currentFile != match.path {
@@ -65,16 +65,16 @@ func (e *grepExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 				out.WriteString("\n")
 			}
 			currentFile = match.path
-			fmt.Fprintf(&out, "%s:\n", filepath.ToSlash(match.path))
+			_, _ = fmt.Fprintf(&out, "%s:\n", filepath.ToSlash(match.path))
 		}
 		lineText := match.lineText
 		if len(lineText) > maxRenderedLineWidth {
 			lineText = lineText[:maxRenderedLineWidth] + "..."
 		}
 		if match.charNum > 0 {
-			fmt.Fprintf(&out, "  Line %d, Char %d: %s\n", match.lineNum, match.charNum, lineText)
+			_, _ = fmt.Fprintf(&out, "  Line %d, Char %d: %s\n", match.lineNum, match.charNum, lineText)
 		} else {
-			fmt.Fprintf(&out, "  Line %d: %s\n", match.lineNum, lineText)
+			_, _ = fmt.Fprintf(&out, "  Line %d: %s\n", match.lineNum, lineText)
 		}
 	}
 	if truncated {

@@ -116,7 +116,7 @@ func StartDeviceLogin(ctx context.Context, client *http.Client) (LoginDevice, er
 	if err != nil {
 		return LoginDevice{}, fmt.Errorf("openai-codex: request device code: %w", err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	raw, err := io.ReadAll(res.Body)
 	if err != nil {
 		return LoginDevice{}, fmt.Errorf("openai-codex: read device code: %w", err)
@@ -310,7 +310,7 @@ func refreshCredentials(ctx context.Context, client *http.Client, creds Credenti
 	if err != nil {
 		return Credentials{}, fmt.Errorf("openai-codex: refresh token: %w", err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	raw, err := io.ReadAll(res.Body)
 	if err != nil {
 		return Credentials{}, fmt.Errorf("openai-codex: read refresh response: %w", err)
@@ -356,7 +356,7 @@ func exchangeCode(ctx context.Context, client *http.Client, code string, verifie
 	if err != nil {
 		return Credentials{}, fmt.Errorf("openai-codex: exchange device code: %w", err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	raw, err := io.ReadAll(res.Body)
 	if err != nil {
 		return Credentials{}, fmt.Errorf("openai-codex: read token exchange: %w", err)

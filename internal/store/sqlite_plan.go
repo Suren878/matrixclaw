@@ -35,7 +35,7 @@ ORDER BY parent_id, position, created_at`, sessionID)
 	if err != nil {
 		return core.SessionPlan{}, fmt.Errorf("store: list plan items: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		item, err := scanPlanItem(rows)
 		if err != nil {

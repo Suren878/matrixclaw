@@ -86,7 +86,7 @@ FROM sessions`
 	if err != nil {
 		return nil, fmt.Errorf("store: list sessions: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var sessions []core.Session
 	for rows.Next() {

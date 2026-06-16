@@ -88,7 +88,7 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("anthropic: models request failed: %w", err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
@@ -176,7 +176,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 	if err != nil {
 		return providers.Response{}, fmt.Errorf("anthropic: request failed: %w", err)
 	}
-	defer httpRes.Body.Close()
+	defer func() { _ = httpRes.Body.Close() }()
 
 	if httpRes.StatusCode < 200 || httpRes.StatusCode >= 300 {
 		resBody, err := io.ReadAll(httpRes.Body)

@@ -123,7 +123,7 @@ FROM automation_jobs`
 	if err != nil {
 		return nil, fmt.Errorf("automation store: list jobs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	jobs := []Job{}
 	for rows.Next() {
 		job, err := scanSQLiteAutomationJob(rows)

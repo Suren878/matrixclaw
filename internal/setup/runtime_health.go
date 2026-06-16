@@ -78,7 +78,7 @@ func (m *systemdUserDaemonManager) healthCheck(ctx context.Context, addr string)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("health status %d", resp.StatusCode)
 	}
@@ -110,7 +110,7 @@ func (m *systemdUserDaemonManager) reloadLiveDaemon(ctx context.Context, cfg Con
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("reload status %d", resp.StatusCode)
 	}

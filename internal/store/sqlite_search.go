@@ -36,7 +36,7 @@ WHERE message_fts MATCH ?`
 	if err != nil {
 		return nil, fmt.Errorf("store: search messages: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []core.SearchResult
 	for rows.Next() {

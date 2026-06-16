@@ -31,7 +31,7 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("openai-codex: models request failed: %w", err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	raw, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, fmt.Errorf("openai-codex: read models response: %w", err)

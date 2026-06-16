@@ -44,7 +44,7 @@ func (p *setupRuntimeStatusContext) RuntimeStatusPromptContext(_ context.Context
 func browserStatusLine(module setup.BrowserModuleDescriptor, tools map[string]struct{}) string {
 	provider := selectedBrowserStatusProvider(module)
 	toolAvailable := toolPrefixAvailable(tools, "mcp_browser_")
-	toolState := "unavailable"
+	var toolState string
 	switch {
 	case !module.Enabled:
 		toolState = "unavailable"

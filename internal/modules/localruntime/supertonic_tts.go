@@ -25,7 +25,7 @@ func (r *Runtime) supertonicOneShotTextToSpeech(ctx context.Context, provider se
 		_ = os.Remove(outputPath)
 		return nil, err
 	}
-	defer os.Remove(outputPath)
+	defer func() { _ = os.Remove(outputPath) }()
 
 	voiceID := strings.ToUpper(strings.TrimSpace(provider.Config.VoiceID))
 	if voiceID == "" {

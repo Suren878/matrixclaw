@@ -72,7 +72,7 @@ func fetchPiperCatalogModels() ([]setup.VoiceModelOption, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, fmt.Errorf("piper voices catalog: status %s", response.Status)
 	}

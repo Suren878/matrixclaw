@@ -45,7 +45,7 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("openaicompat: models request failed: %w", err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {

@@ -145,7 +145,7 @@ func (p *piperProcess) synthesize(ctx context.Context, text string) ([]byte, err
 	if err != nil {
 		return nil, err
 	}
-	defer os.Remove(path)
+	defer func() { _ = os.Remove(path) }()
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -254,7 +254,7 @@ func (r *Runtime) piperOneShotTextToSpeech(ctx context.Context, provider setup.V
 		_ = os.Remove(outputPath)
 		return nil, err
 	}
-	defer os.Remove(outputPath)
+	defer func() { _ = os.Remove(outputPath) }()
 
 	args := []string{"--model", modelPath, "--config", modelPath + ".json", "--output-file", outputPath}
 	cmd := exec.CommandContext(ctx, binaryPath, args...)

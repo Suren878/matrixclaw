@@ -64,7 +64,7 @@ func (r *Runtime) WhisperSpeechToText(ctx context.Context, provider setup.VoiceP
 		return "", fmt.Errorf("whisper.cpp failed: %s", message)
 	}
 	textPath := outputBase + ".txt"
-	defer os.Remove(textPath)
+	defer func() { _ = os.Remove(textPath) }()
 	content, err := os.ReadFile(textPath)
 	if err != nil {
 		if text := whisperTextFromStdout(stdout.String()); text != "" {
@@ -185,7 +185,7 @@ func (r *Runtime) whisperServerSpeechToText(ctx context.Context, provider setup.
 	if err != nil {
 		return "", err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	responseBody, err := io.ReadAll(io.LimitReader(response.Body, 4<<20))
 	if err != nil {
 		return "", err

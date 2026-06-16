@@ -108,7 +108,7 @@ func promptWithTextAttachments(prompt string, attachments []surfaceeditor.Attach
 			addedAttachments = true
 		}
 		if strings.TrimSpace(attachment.FilePath) != "" {
-			fmt.Fprintf(&sb, "<file path='%s'>\n", attachment.FilePath)
+			_, _ = fmt.Fprintf(&sb, "<file path='%s'>\n", attachment.FilePath)
 		} else {
 			sb.WriteString("<file>\n")
 		}

@@ -35,7 +35,7 @@ func CheckSQLite(path string) (Diagnostics, error) {
 	if err != nil {
 		return Diagnostics{Path: cleanPath, Exists: true}, err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if err := db.Ping(); err != nil {
 		return Diagnostics{Path: cleanPath, Exists: true}, err
 	}

@@ -135,7 +135,7 @@ func (c *Client) DownloadFile(ctx context.Context, filePath string) ([]byte, err
 	if err != nil {
 		return nil, fmt.Errorf("telegram: execute file download request: %w", redactBotTokenError(err, c.token))
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	content, err := io.ReadAll(response.Body)
 	if err != nil {
 		return nil, fmt.Errorf("telegram: read file download response: %w", err)
@@ -319,7 +319,7 @@ func callAPI[T any](ctx context.Context, c *Client, method string, payload any) 
 	if err != nil {
 		return zero, fmt.Errorf("telegram: execute %s request: %w", method, redactBotTokenError(err, c.token))
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	content, err := io.ReadAll(response.Body)
 	if err != nil {
@@ -381,7 +381,7 @@ func callMultipartAPI[T any](ctx context.Context, c *Client, method string, fiel
 	if err != nil {
 		return zero, fmt.Errorf("telegram: execute %s request: %w", method, redactBotTokenError(err, c.token))
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
 		return zero, fmt.Errorf("telegram: read %s response: %w", method, err)

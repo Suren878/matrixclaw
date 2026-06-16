@@ -118,10 +118,6 @@ func (d *Dispatcher) sessionSkillPicker(ctx context.Context, sessionID string, s
 	return Result{Handled: true, Picker: picker.Ptr()}, nil
 }
 
-func (d *Dispatcher) handleSkills(ctx context.Context, args string) (Result, error) {
-	return d.handleSkillsForExternal(ctx, "", args)
-}
-
 func (d *Dispatcher) handleSkillsForExternal(ctx context.Context, externalKey string, args string) (Result, error) {
 	if d.skills == nil {
 		return unsupportedRuntime("skills"), nil

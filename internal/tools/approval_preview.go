@@ -20,7 +20,7 @@ func readApprovalContentPreview(path string) (approvalContentPreview, error) {
 	if err != nil {
 		return approvalContentPreview{}, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	info, statErr := file.Stat()
 
 	content, err := io.ReadAll(io.LimitReader(file, int64(approvalPreviewMaxBytes)+1))

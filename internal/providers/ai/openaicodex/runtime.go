@@ -106,7 +106,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 	if err != nil {
 		return providers.Response{}, fmt.Errorf("openai-codex: request failed: %w", err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		raw, err := io.ReadAll(res.Body)
 		if err != nil {

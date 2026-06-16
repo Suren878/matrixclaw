@@ -130,7 +130,7 @@ func (r *Runtime) supertonicServerTextToSpeech(ctx context.Context, provider set
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	content, err := io.ReadAll(io.LimitReader(response.Body, 64<<20))
 	if err != nil {
 		return nil, err

@@ -56,9 +56,9 @@ func (t *baseToolMessageItem) errorPreviewData() (surfacedialog.FilePreviewData,
 	}
 
 	var out strings.Builder
-	fmt.Fprintf(&out, "Tool: %s\n", strings.TrimSpace(t.toolCall.Name))
+	_, _ = fmt.Fprintf(&out, "Tool: %s\n", strings.TrimSpace(t.toolCall.Name))
 	if status := strings.TrimSpace(t.result.Status); status != "" {
-		fmt.Fprintf(&out, "Status: %s\n", status)
+		_, _ = fmt.Fprintf(&out, "Status: %s\n", status)
 	}
 
 	if content := strings.TrimSpace(t.result.Content); content != "" {
@@ -91,19 +91,19 @@ func (t *baseToolMessageItem) subagentPreviewData() (surfacedialog.FilePreviewDa
 	metadata := parseSubagentTaskMetadata(t.result)
 	var out strings.Builder
 	if name := firstNonEmptyLocal(metadata.AgentName, metadata.DisplayName, params.Name); name != "" {
-		fmt.Fprintf(&out, "Name: %s\n", name)
+		_, _ = fmt.Fprintf(&out, "Name: %s\n", name)
 	}
 	if task := firstNonEmptyLocal(metadata.DisplayName, params.Name); task != "" {
-		fmt.Fprintf(&out, "Task: %s\n", task)
+		_, _ = fmt.Fprintf(&out, "Task: %s\n", task)
 	}
 	if goal := firstNonEmptyLocal(metadata.Goal, params.Goal); goal != "" {
-		fmt.Fprintf(&out, "Goal: %s\n", goal)
+		_, _ = fmt.Fprintf(&out, "Goal: %s\n", goal)
 	}
 	if runtime := firstNonEmptyLocal(metadata.Runtime, params.Runtime); runtime != "" {
-		fmt.Fprintf(&out, "Runtime: %s\n", runtime)
+		_, _ = fmt.Fprintf(&out, "Runtime: %s\n", runtime)
 	}
 	if status := firstNonEmptyLocal(metadata.Status, subagentPreviewResultStatus(t.result)); status != "" {
-		fmt.Fprintf(&out, "Status: %s\n", status)
+		_, _ = fmt.Fprintf(&out, "Status: %s\n", status)
 	}
 	if summary := strings.TrimSpace(metadata.Summary); summary != "" {
 		out.WriteString("\nSummary:\n")
@@ -263,7 +263,7 @@ func addReadPreviewLineNumbers(content string, startLine int) string {
 	lines := strings.Split(content, "\n")
 	var out strings.Builder
 	for i, line := range lines {
-		fmt.Fprintf(&out, "%6d\t%s", startLine+i, line)
+		_, _ = fmt.Fprintf(&out, "%6d\t%s", startLine+i, line)
 		if i != len(lines)-1 {
 			out.WriteByte('\n')
 		}

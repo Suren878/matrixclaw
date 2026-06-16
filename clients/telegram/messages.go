@@ -397,13 +397,13 @@ type telegramSpeechPayload struct {
 func generatedSpeechPayload(response voicemodule.TextToSpeechResponse) (telegramSpeechPayload, error) {
 	content, err := response.ContentBytes()
 	if err != nil {
-		return telegramSpeechPayload{}, fmt.Errorf("Text to speech returned invalid audio: %v", err)
+		return telegramSpeechPayload{}, fmt.Errorf("text to speech returned invalid audio: %v", err)
 	}
 	if len(content) == 0 {
-		return telegramSpeechPayload{}, fmt.Errorf("Text to speech returned empty audio.")
+		return telegramSpeechPayload{}, fmt.Errorf("text to speech returned empty audio")
 	}
 	if int64(len(content)) > maxTelegramAudioBytes {
-		return telegramSpeechPayload{}, fmt.Errorf("Generated audio is too large: %d bytes", len(content))
+		return telegramSpeechPayload{}, fmt.Errorf("generated audio is too large: %d bytes", len(content))
 	}
 	return telegramSpeechPayload{
 		content:  content,

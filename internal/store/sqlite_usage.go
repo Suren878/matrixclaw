@@ -83,7 +83,7 @@ FROM run_usage`
 	if err != nil {
 		return nil, fmt.Errorf("store: list usage records: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var records []core.UsageRecord
 	for rows.Next() {

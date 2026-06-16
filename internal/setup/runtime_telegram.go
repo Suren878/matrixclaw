@@ -30,7 +30,7 @@ func (v *telegramHTTPValidator) Validate(ctx context.Context, token string) (Tel
 	if err != nil {
 		return TelegramSummary{}, fmt.Errorf("validate telegram bot token: %s", redactTelegramBotToken(err, token))
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var payload struct {
 		OK     bool `json:"ok"`

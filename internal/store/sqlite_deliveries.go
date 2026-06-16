@@ -91,7 +91,7 @@ FROM client_deliveries`
 	if err != nil {
 		return nil, fmt.Errorf("store: list client deliveries: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	deliveries := []core.ClientDelivery{}
 	for rows.Next() {

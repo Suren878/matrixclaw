@@ -30,11 +30,11 @@ func runAgentsCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 	}
 	agents, err := configuredDaemonClient(cfg).ListExternalAgents(context.Background())
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: agents: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stderr, "%s: agents: %v\n", binaryName, err)
 		return 1
 	}
 	if len(agents) == 0 {
-		fmt.Fprintf(stdout, "%s: agents: none\n", binaryName)
+		_, _ = fmt.Fprintf(stdout, "%s: agents: none\n", binaryName)
 		return 0
 	}
 	for _, agent := range agents {
@@ -46,10 +46,10 @@ func runAgentsCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 			state = "enabled"
 		}
 		if agent.Mode != "" {
-			fmt.Fprintf(stdout, "%s: %s [%s] %s\n", binaryName, agent.DisplayName, state, agent.Mode)
+			_, _ = fmt.Fprintf(stdout, "%s: %s [%s] %s\n", binaryName, agent.DisplayName, state, agent.Mode)
 			continue
 		}
-		fmt.Fprintf(stdout, "%s: %s [%s]\n", binaryName, agent.DisplayName, state)
+		_, _ = fmt.Fprintf(stdout, "%s: %s [%s]\n", binaryName, agent.DisplayName, state)
 	}
 	return 0
 }
@@ -66,7 +66,7 @@ func runAgentStartCommand(stdout io.Writer, stderr io.Writer, binaryName string,
 	agentID := normalizeAgentID(args[0])
 	workingDir, err := resolveAgentWorkingDir(args[1:])
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: agents start: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stderr, "%s: agents start: %v\n", binaryName, err)
 		return 2
 	}
 
@@ -77,11 +77,11 @@ func runAgentStartCommand(stdout io.Writer, stderr io.Writer, binaryName string,
 	client := configuredDaemonClient(cfg)
 	agents, err := client.ListExternalAgents(context.Background())
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: agents start: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stderr, "%s: agents start: %v\n", binaryName, err)
 		return 1
 	}
 	if !externalAgentReady(agents, agentID) {
-		fmt.Fprintf(stderr, "%s: agents start: external agent %q is not enabled\n", binaryName, agentID)
+		_, _ = fmt.Fprintf(stderr, "%s: agents start: external agent %q is not enabled\n", binaryName, agentID)
 		return 1
 	}
 
@@ -94,10 +94,10 @@ func runAgentStartCommand(stdout io.Writer, stderr io.Writer, binaryName string,
 		ExternalAgentID: agentID,
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: agents start: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stderr, "%s: agents start: %v\n", binaryName, err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "%s: external session: %s (%s)\n", binaryName, session.ID, session.Title)
+	_, _ = fmt.Fprintf(stdout, "%s: external session: %s (%s)\n", binaryName, session.ID, session.Title)
 	return 0
 }
 
@@ -163,9 +163,9 @@ func externalAgentMatches(agent core.ExternalAgentDescriptor, agentID string) bo
 }
 
 func printAgentsUsage(w io.Writer, binaryName string) {
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintf(w, "  %s agents                    List external agent runtimes\n", binaryName)
-	fmt.Fprintf(w, "  %s agents start AGENT [DIR]  Create an external-agent session\n", binaryName)
+	_, _ = fmt.Fprintln(w, "Usage:")
+	_, _ = fmt.Fprintf(w, "  %s agents                    List external agent runtimes\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s agents start AGENT [DIR]  Create an external-agent session\n", binaryName)
 }
 
 func isHelpArg(value string) bool {

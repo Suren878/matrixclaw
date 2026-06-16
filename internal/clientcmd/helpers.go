@@ -11,16 +11,16 @@ import (
 
 func handleSetupReadError(stderr io.Writer, binaryName string, service *appsetup.Service, command string, err error) int {
 	if errors.Is(err, appsetup.ErrConfigNotFound) {
-		fmt.Fprintf(stderr, "%s: setup not found at %s\n", binaryName, service.Path())
-		fmt.Fprintf(stderr, "%s: run `%s setup` first\n", binaryName, binaryName)
+		_, _ = fmt.Fprintf(stderr, "%s: setup not found at %s\n", binaryName, service.Path())
+		_, _ = fmt.Fprintf(stderr, "%s: run `%s setup` first\n", binaryName, binaryName)
 		return 1
 	}
 	if errors.Is(err, appsetup.ErrUnsupportedConfigVersion) {
-		fmt.Fprintf(stderr, "%s: setup at %s uses an unsupported version\n", binaryName, service.Path())
-		fmt.Fprintf(stderr, "%s: reopen `%s setup` to recreate the setup file\n", binaryName, binaryName)
+		_, _ = fmt.Fprintf(stderr, "%s: setup at %s uses an unsupported version\n", binaryName, service.Path())
+		_, _ = fmt.Fprintf(stderr, "%s: reopen `%s setup` to recreate the setup file\n", binaryName, binaryName)
 		return 1
 	}
-	fmt.Fprintf(stderr, "%s: %s: %v\n", binaryName, command, err)
+	_, _ = fmt.Fprintf(stderr, "%s: %s: %v\n", binaryName, command, err)
 	return 1
 }
 

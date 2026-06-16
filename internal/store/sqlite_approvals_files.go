@@ -98,7 +98,7 @@ WHERE session_id = ?`
 	if err != nil {
 		return nil, fmt.Errorf("store: list approvals: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var approvals []core.Approval
 	for rows.Next() {
@@ -174,7 +174,7 @@ ORDER BY path ASC, version ASC, created_at ASC`, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("store: list file snapshots: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var snapshots []core.FileSnapshot
 	for rows.Next() {

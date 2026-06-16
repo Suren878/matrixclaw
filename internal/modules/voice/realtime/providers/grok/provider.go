@@ -224,7 +224,7 @@ func (p *Provider) verifyAPIKey(ctx context.Context, cfg Config) verifyResult {
 	if err != nil {
 		message = err.Error()
 	} else {
-		defer res.Body.Close()
+		defer func() { _ = res.Body.Close() }()
 		if res.StatusCode < 200 || res.StatusCode >= 300 {
 			message = fmt.Sprintf("xAI models returned HTTP %d", res.StatusCode)
 			auth = res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden

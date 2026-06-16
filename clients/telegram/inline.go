@@ -121,11 +121,6 @@ func (w *Worker) handleInlineCallback(ctx context.Context, cq *CallbackQuery) er
 	return err
 }
 
-func (w *Worker) sendInlineUserMessage(ctx context.Context, target chatTarget, text string) error {
-	_, err := w.startInlineUserMessage(ctx, target, text)
-	return err
-}
-
 func (w *Worker) startInlineUserMessage(ctx context.Context, target chatTarget, text string) (bool, error) {
 	err := w.sendInlineUserMessageInSession(ctx, target, text, "")
 	if err == nil {

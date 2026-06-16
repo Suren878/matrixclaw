@@ -32,10 +32,10 @@ func runProvidersCommand(stdout io.Writer, stderr io.Writer, binaryName string, 
 			model = strings.TrimSpace(item.DefaultModel)
 		}
 		if model != "" {
-			fmt.Fprintf(stdout, "%s: %s [%s] %s\n", binaryName, item.Name, state, model)
+			_, _ = fmt.Fprintf(stdout, "%s: %s [%s] %s\n", binaryName, item.Name, state, model)
 			continue
 		}
-		fmt.Fprintf(stdout, "%s: %s [%s]\n", binaryName, item.Name, state)
+		_, _ = fmt.Fprintf(stdout, "%s: %s [%s]\n", binaryName, item.Name, state)
 	}
 	return 0
 }
@@ -66,7 +66,7 @@ func runProviderVerifyCommand(stdout io.Writer, stderr io.Writer, binaryName str
 		}
 	}
 	if len(items) == 0 {
-		fmt.Fprintf(stdout, "%s: providers verify: no configured providers\n", binaryName)
+		_, _ = fmt.Fprintf(stdout, "%s: providers verify: no configured providers\n", binaryName)
 		return 1
 	}
 	cfg, _ := service.Load()
@@ -84,17 +84,17 @@ func runProviderVerifyCommand(stdout io.Writer, stderr io.Writer, binaryName str
 			ProviderType: provider.Type,
 			ModelID:      provider.Model,
 		}).ProviderCapabilities.ModelDiscovery {
-			fmt.Fprintf(stdout, "%s: provider %s: skipped (model discovery unsupported)\n", binaryName, name)
+			_, _ = fmt.Fprintf(stdout, "%s: provider %s: skipped (model discovery unsupported)\n", binaryName, name)
 			continue
 		}
 		result, err := service.ProviderModelCatalogContext(context.Background(), provider.ID, appsetup.ProviderSetupUpdate{})
 		if err != nil {
-			fmt.Fprintf(stdout, "%s: provider %s: ERROR %s\n", binaryName, name, redactSecrets(err.Error(), providerSecret(cfg, provider.ID)))
+			_, _ = fmt.Fprintf(stdout, "%s: provider %s: ERROR %s\n", binaryName, name, redactSecrets(err.Error(), providerSecret(cfg, provider.ID)))
 			failures++
 			continue
 		}
 		if result.Status != appsetup.ProviderModelStatusOK {
-			fmt.Fprintf(stdout, "%s: provider %s: %s %s\n", binaryName, name, strings.ToUpper(result.Status), redactSecrets(result.Message, providerSecret(cfg, provider.ID)))
+			_, _ = fmt.Fprintf(stdout, "%s: provider %s: %s %s\n", binaryName, name, strings.ToUpper(result.Status), redactSecrets(result.Message, providerSecret(cfg, provider.ID)))
 			if provider.Configured && result.Status != appsetup.ProviderModelStatusRequiresKey && result.Status != appsetup.ProviderModelStatusUnsupported {
 				failures++
 			}
@@ -104,16 +104,16 @@ func runProviderVerifyCommand(stdout io.Writer, stderr io.Writer, binaryName str
 			continue
 		}
 		if metadata := providerCatalogMetadataSummary(result.Metadata); metadata != "" {
-			fmt.Fprintf(stdout, "%s: provider %s: ok (%d models, %s; %s)\n", binaryName, name, len(result.Models), result.Source, metadata)
+			_, _ = fmt.Fprintf(stdout, "%s: provider %s: ok (%d models, %s; %s)\n", binaryName, name, len(result.Models), result.Source, metadata)
 			continue
 		}
-		fmt.Fprintf(stdout, "%s: provider %s: ok (%d models, %s)\n", binaryName, name, len(result.Models), result.Source)
+		_, _ = fmt.Fprintf(stdout, "%s: provider %s: ok (%d models, %s)\n", binaryName, name, len(result.Models), result.Source)
 	}
 	if failures > 0 {
-		fmt.Fprintf(stdout, "%s: providers verify: failed (%d issue(s))\n", binaryName, failures)
+		_, _ = fmt.Fprintf(stdout, "%s: providers verify: failed (%d issue(s))\n", binaryName, failures)
 		return 1
 	}
-	fmt.Fprintf(stdout, "%s: providers verify: ok\n", binaryName)
+	_, _ = fmt.Fprintf(stdout, "%s: providers verify: ok\n", binaryName)
 	return 0
 }
 

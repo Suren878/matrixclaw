@@ -97,7 +97,7 @@ func renderPlanForPrompt(plan *core.SessionPlan) string {
 	}
 	var b strings.Builder
 	if goal := strings.TrimSpace(plan.Goal); goal != "" {
-		fmt.Fprintf(&b, "Goal: %s\n", goal)
+		_, _ = fmt.Fprintf(&b, "Goal: %s\n", goal)
 	}
 	childCounts := planChildCounts(plan.Items)
 	for i, item := range plan.Items {
@@ -105,7 +105,7 @@ func renderPlanForPrompt(plan *core.SessionPlan) string {
 		if childCounts[item.ID] > 0 {
 			note = " (parent section; execute subtasks)"
 		}
-		fmt.Fprintf(&b, "%d. [%s] %s%s\n", i+1, item.Status, strings.TrimSpace(item.Text), note)
+		_, _ = fmt.Fprintf(&b, "%d. [%s] %s%s\n", i+1, item.Status, strings.TrimSpace(item.Text), note)
 	}
 	return strings.TrimSpace(b.String())
 }

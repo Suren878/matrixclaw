@@ -66,7 +66,7 @@ func registerOllamaContextWindow(ctx context.Context, cfg Config, client *http.C
 	if err != nil {
 		return
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return
 	}
@@ -94,7 +94,7 @@ func registerLMStudioContextWindows(ctx context.Context, cfg Config, client *htt
 	if err != nil {
 		return
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return
 	}
@@ -149,7 +149,7 @@ func registerOpenAIModelContextWindow(ctx context.Context, cfg Config, client *h
 	if err != nil {
 		return
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return
 	}

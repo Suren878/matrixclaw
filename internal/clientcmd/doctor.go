@@ -23,52 +23,52 @@ func runDoctorCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 	}
 
 	issues := 0
-	fmt.Fprintf(stdout, "%s: doctor: matrixclaw %s\n", binaryName, version.String())
-	fmt.Fprintf(stdout, "%s: setup: %s\n", binaryName, service.Path())
-	fmt.Fprintf(stdout, "%s: setup config version: ok (%d)\n", binaryName, appsetup.CurrentVersion)
-	fmt.Fprintf(stdout, "%s: api: %s\n", binaryName, daemonBaseURL(cfg.Daemon.HTTPAddr))
+	_, _ = fmt.Fprintf(stdout, "%s: doctor: matrixclaw %s\n", binaryName, version.String())
+	_, _ = fmt.Fprintf(stdout, "%s: setup: %s\n", binaryName, service.Path())
+	_, _ = fmt.Fprintf(stdout, "%s: setup config version: ok (%d)\n", binaryName, appsetup.CurrentVersion)
+	_, _ = fmt.Fprintf(stdout, "%s: api: %s\n", binaryName, daemonBaseURL(cfg.Daemon.HTTPAddr))
 	if strings.TrimSpace(cfg.Daemon.APIToken) == "" {
-		fmt.Fprintf(stdout, "%s: ERROR api auth: missing setup daemon api_token\n", binaryName)
+		_, _ = fmt.Fprintf(stdout, "%s: ERROR api auth: missing setup daemon api_token\n", binaryName)
 		issues++
 	} else {
-		fmt.Fprintf(stdout, "%s: api auth: ok\n", binaryName)
+		_, _ = fmt.Fprintf(stdout, "%s: api auth: ok\n", binaryName)
 	}
-	fmt.Fprintf(stdout, "%s: database: %s\n", binaryName, cfg.Daemon.DBPath)
+	_, _ = fmt.Fprintf(stdout, "%s: database: %s\n", binaryName, cfg.Daemon.DBPath)
 	if _, err := store.CheckSQLite(cfg.Daemon.DBPath); err != nil {
-		fmt.Fprintf(stdout, "%s: ERROR database: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stdout, "%s: ERROR database: %v\n", binaryName, err)
 		issues++
 	} else {
-		fmt.Fprintf(stdout, "%s: database schema: ok\n", binaryName)
+		_, _ = fmt.Fprintf(stdout, "%s: database schema: ok\n", binaryName)
 	}
 	if err := printDaemonBinaryDiagnostic(stdout, binaryName); err != nil {
-		fmt.Fprintf(stdout, "%s: WARN daemon binary: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stdout, "%s: WARN daemon binary: %v\n", binaryName, err)
 	}
 	if cfg.Clients.Telegram.Enabled {
-		fmt.Fprintf(stdout, "%s: telegram: enabled\n", binaryName)
+		_, _ = fmt.Fprintf(stdout, "%s: telegram: enabled\n", binaryName)
 	} else {
-		fmt.Fprintf(stdout, "%s: telegram: disabled\n", binaryName)
+		_, _ = fmt.Fprintf(stdout, "%s: telegram: disabled\n", binaryName)
 	}
 
 	client := configuredDaemonClient(cfg)
 	health, err := client.Health(context.Background())
 	if err != nil {
-		fmt.Fprintf(stdout, "%s: ERROR daemon health: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stdout, "%s: ERROR daemon health: %v\n", binaryName, err)
 		return 1
 	}
 	if !health.OK {
-		fmt.Fprintf(stdout, "%s: ERROR daemon health: not ok\n", binaryName)
+		_, _ = fmt.Fprintf(stdout, "%s: ERROR daemon health: not ok\n", binaryName)
 		return 1
 	}
-	fmt.Fprintf(stdout, "%s: daemon: ok", binaryName)
+	_, _ = fmt.Fprintf(stdout, "%s: daemon: ok", binaryName)
 	if daemonVersion := strings.TrimSpace(health.Version.Version); daemonVersion != "" {
-		fmt.Fprintf(stdout, " %s", daemonVersion)
+		_, _ = fmt.Fprintf(stdout, " %s", daemonVersion)
 	}
-	fmt.Fprintln(stdout)
+	_, _ = fmt.Fprintln(stdout)
 
 	setupProviders := appsetup.ProviderSetupItemsFromConfig(cfg, service.ProviderOptions())
 	runtimeProviders, err := client.ListSessionProviders(context.Background())
 	if err != nil {
-		fmt.Fprintf(stdout, "%s: ERROR runtime providers: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stdout, "%s: ERROR runtime providers: %v\n", binaryName, err)
 		return 1
 	}
 
@@ -77,31 +77,31 @@ func runDoctorCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 	for id, setupProvider := range configured {
 		runtimeProvider, ok := runtime[id]
 		if !ok {
-			fmt.Fprintf(stdout, "%s: ERROR provider %s is configured but missing from daemon runtime\n", binaryName, id)
+			_, _ = fmt.Fprintf(stdout, "%s: ERROR provider %s is configured but missing from daemon runtime\n", binaryName, id)
 			issues++
 			continue
 		}
 		if strings.TrimSpace(setupProvider.Model) != "" && strings.TrimSpace(runtimeProvider.DefaultModel) != "" && strings.TrimSpace(setupProvider.Model) != strings.TrimSpace(runtimeProvider.DefaultModel) {
-			fmt.Fprintf(stdout, "%s: ERROR provider %s model mismatch: setup=%s runtime=%s\n", binaryName, id, setupProvider.Model, runtimeProvider.DefaultModel)
+			_, _ = fmt.Fprintf(stdout, "%s: ERROR provider %s model mismatch: setup=%s runtime=%s\n", binaryName, id, setupProvider.Model, runtimeProvider.DefaultModel)
 			issues++
 		}
 	}
 	for id := range runtime {
 		if _, ok := configured[id]; !ok {
-			fmt.Fprintf(stdout, "%s: WARN runtime provider %s is not present in setup provider list\n", binaryName, id)
+			_, _ = fmt.Fprintf(stdout, "%s: WARN runtime provider %s is not present in setup provider list\n", binaryName, id)
 		}
 	}
 	if _, ok := runtime[strings.TrimSpace(cfg.ActiveProviderID)]; cfg.ActiveProviderID != "" && !ok {
-		fmt.Fprintf(stdout, "%s: ERROR active provider %s is not loaded by daemon runtime\n", binaryName, cfg.ActiveProviderID)
+		_, _ = fmt.Fprintf(stdout, "%s: ERROR active provider %s is not loaded by daemon runtime\n", binaryName, cfg.ActiveProviderID)
 		issues++
 	}
 
 	if issues > 0 {
-		fmt.Fprintf(stdout, "%s: doctor: failed (%d issue(s))\n", binaryName, issues)
+		_, _ = fmt.Fprintf(stdout, "%s: doctor: failed (%d issue(s))\n", binaryName, issues)
 		return 1
 	}
-	fmt.Fprintf(stdout, "%s: provider registry: ok (%d configured, %d runtime)\n", binaryName, len(configured), len(runtime))
-	fmt.Fprintf(stdout, "%s: doctor: ok\n", binaryName)
+	_, _ = fmt.Fprintf(stdout, "%s: provider registry: ok (%d configured, %d runtime)\n", binaryName, len(configured), len(runtime))
+	_, _ = fmt.Fprintf(stdout, "%s: doctor: ok\n", binaryName)
 	return 0
 }
 
@@ -109,10 +109,10 @@ func printDaemonBinaryDiagnostic(stdout io.Writer, binaryName string) error {
 	expected, expectedErr := expectedDaemonBinary()
 	systemdExec, systemdErr := systemdDaemonExecStart(context.Background())
 	if expectedErr == nil {
-		fmt.Fprintf(stdout, "%s: daemon binary: %s\n", binaryName, expected)
+		_, _ = fmt.Fprintf(stdout, "%s: daemon binary: %s\n", binaryName, expected)
 	}
 	if systemdErr == nil {
-		fmt.Fprintf(stdout, "%s: systemd ExecStart: %s\n", binaryName, systemdExec)
+		_, _ = fmt.Fprintf(stdout, "%s: systemd ExecStart: %s\n", binaryName, systemdExec)
 	}
 	if expectedErr != nil && systemdErr != nil {
 		return expectedErr

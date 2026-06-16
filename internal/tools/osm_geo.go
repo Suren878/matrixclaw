@@ -349,7 +349,7 @@ func (s *OSMService) ReverseGeocode(ctx context.Context, params OSMReverseGeocod
 	if err != nil {
 		return OSMReverseGeocodeResult{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return OSMReverseGeocodeResult{}, fmt.Errorf("nominatim returned %d", resp.StatusCode)
 	}
@@ -438,7 +438,7 @@ func (s *OSMService) NearbyPlaces(ctx context.Context, params OSMNearbyPlacesPar
 	if err != nil {
 		return OSMNearbyPlacesResult{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return OSMNearbyPlacesResult{}, fmt.Errorf("overpass returned %d", resp.StatusCode)
 	}
@@ -709,56 +709,56 @@ func osmAddressFromTags(tags map[string]string) OSMAddress {
 
 func formatOSMReverseGeocode(result OSMReverseGeocodeResult) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "reverse_geocode_osm: %.6f, %.6f\n", result.Latitude, result.Longitude)
+	_, _ = fmt.Fprintf(&b, "reverse_geocode_osm: %.6f, %.6f\n", result.Latitude, result.Longitude)
 	if result.DisplayName != "" {
-		fmt.Fprintf(&b, "display_name: %s\n", result.DisplayName)
+		_, _ = fmt.Fprintf(&b, "display_name: %s\n", result.DisplayName)
 	}
 	if address := formatOSMAddress(result.Address); address != "" {
-		fmt.Fprintf(&b, "address: %s\n", address)
+		_, _ = fmt.Fprintf(&b, "address: %s\n", address)
 	}
 	if result.Address.CountryCode != "" {
-		fmt.Fprintf(&b, "country_code: %s\n", result.Address.CountryCode)
+		_, _ = fmt.Fprintf(&b, "country_code: %s\n", result.Address.CountryCode)
 	}
 	if result.OSMType != "" && result.OSMID != 0 {
-		fmt.Fprintf(&b, "osm: %s/%d\n", result.OSMType, result.OSMID)
+		_, _ = fmt.Fprintf(&b, "osm: %s/%d\n", result.OSMType, result.OSMID)
 	}
-	fmt.Fprintf(&b, "source: %s\nattribution: %s", result.Source, result.Attribution)
+	_, _ = fmt.Fprintf(&b, "source: %s\nattribution: %s", result.Source, result.Attribution)
 	return strings.TrimSpace(b.String())
 }
 
 func formatOSMNearbyPlaces(result OSMNearbyPlacesResult) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "nearby_places_osm: %d places within %dm of %.6f, %.6f\n", len(result.Places), result.RadiusMeters, result.Latitude, result.Longitude)
-	fmt.Fprintf(&b, "categories: %s\n", strings.Join(result.Categories, ", "))
+	_, _ = fmt.Fprintf(&b, "nearby_places_osm: %d places within %dm of %.6f, %.6f\n", len(result.Places), result.RadiusMeters, result.Latitude, result.Longitude)
+	_, _ = fmt.Fprintf(&b, "categories: %s\n", strings.Join(result.Categories, ", "))
 	if len(result.Places) == 0 {
-		fmt.Fprintf(&b, "No matching OpenStreetMap places were found. Do not invent nearby places from unrelated text search results.\n")
+		_, _ = fmt.Fprintf(&b, "No matching OpenStreetMap places were found. Do not invent nearby places from unrelated text search results.\n")
 	}
 	for i, place := range result.Places {
-		fmt.Fprintf(&b, "\n%d. %s\n", i+1, place.Name)
-		fmt.Fprintf(&b, "   distance: %dm\n", place.DistanceMeters)
+		_, _ = fmt.Fprintf(&b, "\n%d. %s\n", i+1, place.Name)
+		_, _ = fmt.Fprintf(&b, "   distance: %dm\n", place.DistanceMeters)
 		if place.Amenity != "" {
-			fmt.Fprintf(&b, "   amenity: %s\n", place.Amenity)
+			_, _ = fmt.Fprintf(&b, "   amenity: %s\n", place.Amenity)
 		}
 		if place.Cuisine != "" {
-			fmt.Fprintf(&b, "   cuisine: %s\n", place.Cuisine)
+			_, _ = fmt.Fprintf(&b, "   cuisine: %s\n", place.Cuisine)
 		}
 		if place.Address != "" {
-			fmt.Fprintf(&b, "   address: %s\n", place.Address)
+			_, _ = fmt.Fprintf(&b, "   address: %s\n", place.Address)
 		}
 		if place.OpeningHours != "" {
-			fmt.Fprintf(&b, "   opening_hours: %s\n", place.OpeningHours)
+			_, _ = fmt.Fprintf(&b, "   opening_hours: %s\n", place.OpeningHours)
 		}
 		if place.Phone != "" {
-			fmt.Fprintf(&b, "   phone: %s\n", place.Phone)
+			_, _ = fmt.Fprintf(&b, "   phone: %s\n", place.Phone)
 		}
 		if place.Website != "" {
-			fmt.Fprintf(&b, "   website: %s\n", place.Website)
+			_, _ = fmt.Fprintf(&b, "   website: %s\n", place.Website)
 		}
 		if place.OSMURL != "" {
-			fmt.Fprintf(&b, "   osm: %s\n", place.OSMURL)
+			_, _ = fmt.Fprintf(&b, "   osm: %s\n", place.OSMURL)
 		}
 	}
-	fmt.Fprintf(&b, "\nsource: %s\nattribution: %s", result.Source, result.Attribution)
+	_, _ = fmt.Fprintf(&b, "\nsource: %s\nattribution: %s", result.Source, result.Attribution)
 	return strings.TrimSpace(b.String())
 }
 

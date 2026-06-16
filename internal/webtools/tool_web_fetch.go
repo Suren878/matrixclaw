@@ -159,7 +159,7 @@ func FetchWebPage(ctx context.Context, rawURL string, maxLength int) (WebFetched
 	if err != nil {
 		return WebFetchedPage{URL: rawURL}, fmt.Errorf("fetch failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	page := WebFetchedPage{
 		URL:         rawURL,
@@ -197,21 +197,21 @@ func FetchWebPage(ctx context.Context, rawURL string, maxLength int) (WebFetched
 
 func formatFetchedPageDiagnostics(metadata WebFetchResponseMetadata, note string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "web_fetch: %s\n", strings.TrimSpace(metadata.URL))
+	_, _ = fmt.Fprintf(&b, "web_fetch: %s\n", strings.TrimSpace(metadata.URL))
 	if metadata.ResearchID != "" {
-		fmt.Fprintf(&b, "research_id: %s\n", metadata.ResearchID)
+		_, _ = fmt.Fprintf(&b, "research_id: %s\n", metadata.ResearchID)
 	}
 	if metadata.Title != "" {
-		fmt.Fprintf(&b, "title: %s\n", strings.Join(strings.Fields(metadata.Title), " "))
+		_, _ = fmt.Fprintf(&b, "title: %s\n", strings.Join(strings.Fields(metadata.Title), " "))
 	}
 	if metadata.StatusCode != 0 {
-		fmt.Fprintf(&b, "status: %d\n", metadata.StatusCode)
+		_, _ = fmt.Fprintf(&b, "status: %d\n", metadata.StatusCode)
 	}
 	if metadata.ContentType != "" {
-		fmt.Fprintf(&b, "content_type: %s\n", metadata.ContentType)
+		_, _ = fmt.Fprintf(&b, "content_type: %s\n", metadata.ContentType)
 	}
 	if metadata.CharCount > 0 {
-		fmt.Fprintf(&b, "char_count: %d\n", metadata.CharCount)
+		_, _ = fmt.Fprintf(&b, "char_count: %d\n", metadata.CharCount)
 	}
 	if metadata.Truncated {
 		b.WriteString("truncated: true\n")

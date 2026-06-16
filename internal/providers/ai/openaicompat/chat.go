@@ -100,7 +100,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 			}
 			return providers.Response{}, fmt.Errorf("openaicompat: %s", decodeOpenAIError(httpRes.StatusCode, resBody))
 		}
-		defer httpRes.Body.Close()
+		defer func() { _ = httpRes.Body.Close() }()
 		if payload.Stream {
 			return r.decodeStream(ctx, httpRes.Body)
 		}

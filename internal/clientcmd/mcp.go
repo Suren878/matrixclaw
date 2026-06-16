@@ -31,29 +31,29 @@ func runMCPCommand(stdout io.Writer, stderr io.Writer, binaryName string, servic
 }
 
 func printMCPUsage(w io.Writer, binaryName string) {
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintf(w, "  %s mcp serve --session SESSION_ID [--workdir DIR]\n", binaryName)
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Runs a stdio MCP server that proxies the matrixclaw daemon tool registry.")
+	_, _ = fmt.Fprintln(w, "Usage:")
+	_, _ = fmt.Fprintf(w, "  %s mcp serve --session SESSION_ID [--workdir DIR]\n", binaryName)
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Runs a stdio MCP server that proxies the matrixclaw daemon tool registry.")
 }
 
 func runMCPServeCommand(stderr io.Writer, binaryName string, service *setup.Service, args []string) int {
 	sessionID, workingDir, err := parseMCPServeArgs(args)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: mcp serve: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stderr, "%s: mcp serve: %v\n", binaryName, err)
 		return 2
 	}
 	if strings.TrimSpace(sessionID) == "" {
 		sessionID = strings.TrimSpace(os.Getenv("MATRIXCLAW_MCP_SESSION_ID"))
 	}
 	if strings.TrimSpace(sessionID) == "" {
-		fmt.Fprintf(stderr, "%s: mcp serve: --session or MATRIXCLAW_MCP_SESSION_ID is required\n", binaryName)
+		_, _ = fmt.Fprintf(stderr, "%s: mcp serve: --session or MATRIXCLAW_MCP_SESSION_ID is required\n", binaryName)
 		return 2
 	}
 
 	ctx := context.Background()
 	if _, err := ensureDaemon(ctx, service); err != nil {
-		fmt.Fprintf(stderr, "%s: mcp serve: ensure daemon: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stderr, "%s: mcp serve: ensure daemon: %v\n", binaryName, err)
 		return 1
 	}
 	cfg, err := service.Load()
@@ -67,7 +67,7 @@ func runMCPServeCommand(stderr io.Writer, binaryName string, service *setup.Serv
 		workingDir: workingDir,
 	}
 	if err := mcp.RunStdioServer(ctx, runtime); err != nil {
-		fmt.Fprintf(stderr, "%s: mcp serve: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stderr, "%s: mcp serve: %v\n", binaryName, err)
 		return 1
 	}
 	return 0

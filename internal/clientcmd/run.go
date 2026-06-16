@@ -51,7 +51,7 @@ func Run(io IO, binaryName string, args []string) int {
 
 	service, err := newSetupService()
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: setup service: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stderr, "%s: setup service: %v\n", binaryName, err)
 		return 1
 	}
 
@@ -97,7 +97,7 @@ func Run(io IO, binaryName string, args []string) int {
 func runDefaultCommand(stdout io.Writer, stderr io.Writer, binaryName string, service *appsetup.Service) int {
 	configured, err := service.IsConfigured()
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: setup: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stderr, "%s: setup: %v\n", binaryName, err)
 		return 1
 	}
 	if !configured {
@@ -112,33 +112,33 @@ func runSetupCommand(stdout io.Writer, stderr io.Writer, binaryName string, serv
 		return 130
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: setup: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stderr, "%s: setup: %v\n", binaryName, err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "%s: wrote setup to %s\n", binaryName, result.Path)
+	_, _ = fmt.Fprintf(stdout, "%s: wrote setup to %s\n", binaryName, result.Path)
 	return 0
 }
 
 func printUsage(w io.Writer, binaryName string) {
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintf(w, "  %s                  Open TUI when configured, otherwise setup\n", binaryName)
-	fmt.Fprintf(w, "  %s setup            Open the setup UI\n", binaryName)
-	fmt.Fprintf(w, "  %s status           Print setup and matrixclaw service state\n", binaryName)
-	fmt.Fprintf(w, "  %s doctor           Diagnose setup, daemon, and provider registry\n", binaryName)
-	fmt.Fprintf(w, "  %s version          Print client and daemon version\n", binaryName)
-	fmt.Fprintf(w, "  %s update           Check for and install newer releases\n", binaryName)
-	fmt.Fprintf(w, "  %s service status   Print matrixclaw service state\n", binaryName)
-	fmt.Fprintf(w, "  %s service restart  Restart matrixclaw service\n", binaryName)
-	fmt.Fprintf(w, "  %s service stop     Stop matrixclaw service\n", binaryName)
-	fmt.Fprintf(w, "  %s service logs     Print recent matrixclaw service logs\n", binaryName)
-	fmt.Fprintf(w, "  %s providers        List setup provider catalog\n", binaryName)
-	fmt.Fprintf(w, "  %s providers login openai-codex\n", binaryName)
-	fmt.Fprintf(w, "  %s providers verify Verify configured provider model access\n", binaryName)
-	fmt.Fprintf(w, "  %s agents           List external agent runtimes\n", binaryName)
-	fmt.Fprintf(w, "  %s agents start     Create an external agent session\n", binaryName)
-	fmt.Fprintf(w, "  %s mcp serve        Run a stdio MCP server proxying matrixclaw tools\n", binaryName)
-	fmt.Fprintf(w, "  %s skills           Manage Matrixclaw skills\n", binaryName)
-	fmt.Fprintf(w, "  %s tui [WORKDIR]    Open terminal chat for the current or given directory\n", binaryName)
+	_, _ = fmt.Fprintln(w, "Usage:")
+	_, _ = fmt.Fprintf(w, "  %s                  Open TUI when configured, otherwise setup\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s setup            Open the setup UI\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s status           Print setup and matrixclaw service state\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s doctor           Diagnose setup, daemon, and provider registry\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s version          Print client and daemon version\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s update           Check for and install newer releases\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s service status   Print matrixclaw service state\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s service restart  Restart matrixclaw service\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s service stop     Stop matrixclaw service\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s service logs     Print recent matrixclaw service logs\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s providers        List setup provider catalog\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s providers login openai-codex\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s providers verify Verify configured provider model access\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s agents           List external agent runtimes\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s agents start     Create an external agent session\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s mcp serve        Run a stdio MCP server proxying matrixclaw tools\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s skills           Manage Matrixclaw skills\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s tui [WORKDIR]    Open terminal chat for the current or given directory\n", binaryName)
 }
 
 func resolveTUIWorkingDir(args []string) (string, error) {

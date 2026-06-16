@@ -40,7 +40,7 @@ func (c *Client) doJSONWithClient(ctx context.Context, method string, path strin
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return decodeAPIError(resp)
 	}

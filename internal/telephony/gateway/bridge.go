@@ -47,8 +47,8 @@ func (s *Server) runConnectedCallWithRealtime(ctx context.Context, call *Call, r
 	if err != nil {
 		return err
 	}
-	defer captureRTP.Close()
-	defer playbackRTP.Close()
+	defer func() { captureRTP.Close() }()
+	defer func() { playbackRTP.Close() }()
 	call.rtpIn = captureRTP
 	call.rtpOut = playbackRTP
 	captureRTP.SetDiagnostics(call.ID, realtime.Session.ID, "capture")

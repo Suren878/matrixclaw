@@ -15,20 +15,20 @@ func runTUICommand(stderr io.Writer, binaryName string, service *appsetup.Servic
 	cfg, err := service.Load()
 	if err != nil {
 		if errors.Is(err, appsetup.ErrConfigNotFound) {
-			fmt.Fprintf(stderr, "%s: setup not found at %s\n", binaryName, service.Path())
-			fmt.Fprintf(stderr, "%s: run `%s setup` first\n", binaryName, binaryName)
+			_, _ = fmt.Fprintf(stderr, "%s: setup not found at %s\n", binaryName, service.Path())
+			_, _ = fmt.Fprintf(stderr, "%s: run `%s setup` first\n", binaryName, binaryName)
 			return 1
 		}
 		if errors.Is(err, appsetup.ErrUnsupportedConfigVersion) {
-			fmt.Fprintf(stderr, "%s: setup at %s uses an unsupported version\n", binaryName, service.Path())
-			fmt.Fprintf(stderr, "%s: reopen `%s setup` to recreate the setup file\n", binaryName, binaryName)
+			_, _ = fmt.Fprintf(stderr, "%s: setup at %s uses an unsupported version\n", binaryName, service.Path())
+			_, _ = fmt.Fprintf(stderr, "%s: reopen `%s setup` to recreate the setup file\n", binaryName, binaryName)
 			return 1
 		}
-		fmt.Fprintf(stderr, "%s: tui: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stderr, "%s: tui: %v\n", binaryName, err)
 		return 1
 	}
 	if _, err := ensureDaemon(context.Background(), service); err != nil {
-		fmt.Fprintf(stderr, "%s: tui: ensure daemon: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stderr, "%s: tui: ensure daemon: %v\n", binaryName, err)
 		return 1
 	}
 	if refreshed, err := service.Load(); err == nil {
@@ -36,7 +36,7 @@ func runTUICommand(stderr io.Writer, binaryName string, service *appsetup.Servic
 	}
 	workingDir, err := resolveTUIWorkingDir(args)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: tui: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stderr, "%s: tui: %v\n", binaryName, err)
 		return 2
 	}
 	providerName, providerModel := activeProviderInfo(cfg)
@@ -54,7 +54,7 @@ func runTUICommand(stderr io.Writer, binaryName string, service *appsetup.Servic
 			CustomInstructions: cfg.Assistant.CustomInstructions,
 		},
 	}); err != nil {
-		fmt.Fprintf(stderr, "%s: tui: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stderr, "%s: tui: %v\n", binaryName, err)
 		return 1
 	}
 	return 0

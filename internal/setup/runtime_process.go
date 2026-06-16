@@ -16,7 +16,7 @@ func (m *systemdUserDaemonManager) startDirect(ctx context.Context, daemonBin st
 	if err != nil {
 		return err
 	}
-	defer devNull.Close()
+	defer func() { _ = devNull.Close() }()
 
 	cmd := exec.CommandContext(ctx, daemonBin)
 	cmd.Env = daemonProcessEnvironment(setupPath, cfg)

@@ -16,16 +16,16 @@ func runStatusCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 	if err != nil {
 		return handleSetupReadError(stderr, binaryName, service, "status", err)
 	}
-	fmt.Fprintf(stdout, "%s: setup path: %s\n", binaryName, service.Path())
-	fmt.Fprintf(stdout, "%s: provider: %s (%s) [%s]\n", binaryName, summary.Provider.Name, summary.Provider.Model, summary.Provider.Status)
-	fmt.Fprintf(stdout, "%s: api key: %s\n", binaryName, nonEmpty(summary.Provider.APIKeyPreview, "Not configured"))
+	_, _ = fmt.Fprintf(stdout, "%s: setup path: %s\n", binaryName, service.Path())
+	_, _ = fmt.Fprintf(stdout, "%s: provider: %s (%s) [%s]\n", binaryName, summary.Provider.Name, summary.Provider.Model, summary.Provider.Status)
+	_, _ = fmt.Fprintf(stdout, "%s: api key: %s\n", binaryName, nonEmpty(summary.Provider.APIKeyPreview, "Not configured"))
 	printServiceSummary(stdout, binaryName, summary.Daemon)
-	fmt.Fprintf(stdout, "%s: telegram: %s\n", binaryName, summary.Telegram.Status)
+	_, _ = fmt.Fprintf(stdout, "%s: telegram: %s\n", binaryName, summary.Telegram.Status)
 	if summary.Telegram.Username != "" {
-		fmt.Fprintf(stdout, "%s: telegram bot: @%s\n", binaryName, summary.Telegram.Username)
+		_, _ = fmt.Fprintf(stdout, "%s: telegram bot: @%s\n", binaryName, summary.Telegram.Username)
 	}
 	if summary.Telegram.Warning != "" {
-		fmt.Fprintf(stdout, "%s: telegram warning: %s\n", binaryName, summary.Telegram.Warning)
+		_, _ = fmt.Fprintf(stdout, "%s: telegram warning: %s\n", binaryName, summary.Telegram.Warning)
 	}
 	return 0
 }
@@ -44,21 +44,21 @@ func runServiceCommand(stdout io.Writer, stderr io.Writer, binaryName string, se
 		printServiceSummary(stdout, binaryName, summary.Daemon)
 		return 0
 	case "restart":
-		fmt.Fprintf(stdout, "%s: restarting matrixclaw service...\n", binaryName)
+		_, _ = fmt.Fprintf(stdout, "%s: restarting matrixclaw service...\n", binaryName)
 		summary, err := restartService(context.Background(), service)
 		if err != nil {
 			return handleSetupReadError(stderr, binaryName, service, "service restart", err)
 		}
-		fmt.Fprintf(stdout, "%s: matrixclaw service restarted\n", binaryName)
+		_, _ = fmt.Fprintf(stdout, "%s: matrixclaw service restarted\n", binaryName)
 		printServiceSummary(stdout, binaryName, summary)
 		return 0
 	case "stop":
-		fmt.Fprintf(stdout, "%s: stopping matrixclaw service...\n", binaryName)
+		_, _ = fmt.Fprintf(stdout, "%s: stopping matrixclaw service...\n", binaryName)
 		summary, err := stopService(context.Background(), service)
 		if err != nil {
 			return handleSetupReadError(stderr, binaryName, service, "service stop", err)
 		}
-		fmt.Fprintf(stdout, "%s: matrixclaw service stopped\n", binaryName)
+		_, _ = fmt.Fprintf(stdout, "%s: matrixclaw service stopped\n", binaryName)
 		printServiceSummary(stdout, binaryName, summary)
 		return 0
 	case "logs":
@@ -77,38 +77,38 @@ func runServiceLogsCommand(stdout io.Writer, stderr io.Writer, binaryName string
 	if len(args) > 0 {
 		parsed, err := strconv.Atoi(strings.TrimSpace(args[0]))
 		if err != nil || parsed <= 0 {
-			fmt.Fprintf(stderr, "%s: service logs: line count must be a positive number\n", binaryName)
+			_, _ = fmt.Fprintf(stderr, "%s: service logs: line count must be a positive number\n", binaryName)
 			return 2
 		}
 		lines = parsed
 	}
 	logs, err := readServiceLogs(context.Background(), lines)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: service logs: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stderr, "%s: service logs: %v\n", binaryName, err)
 		return 1
 	}
-	fmt.Fprint(stdout, logs)
+	_, _ = fmt.Fprint(stdout, logs)
 	if !strings.HasSuffix(logs, "\n") {
-		fmt.Fprintln(stdout)
+		_, _ = fmt.Fprintln(stdout)
 	}
 	return 0
 }
 
 func printServiceUsage(w io.Writer, binaryName string) {
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintf(w, "  %s service status   Print matrixclaw service state\n", binaryName)
-	fmt.Fprintf(w, "  %s service restart  Restart matrixclaw service\n", binaryName)
-	fmt.Fprintf(w, "  %s service stop     Stop matrixclaw service\n", binaryName)
-	fmt.Fprintf(w, "  %s service logs     Print recent matrixclaw service logs\n", binaryName)
+	_, _ = fmt.Fprintln(w, "Usage:")
+	_, _ = fmt.Fprintf(w, "  %s service status   Print matrixclaw service state\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s service restart  Restart matrixclaw service\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s service stop     Stop matrixclaw service\n", binaryName)
+	_, _ = fmt.Fprintf(w, "  %s service logs     Print recent matrixclaw service logs\n", binaryName)
 }
 
 func printServiceSummary(w io.Writer, binaryName string, summary appsetup.DaemonSummary) {
-	fmt.Fprintf(w, "%s: service: %s\n", binaryName, summary.RuntimeStatus)
-	fmt.Fprintf(w, "%s: api: %s\n", binaryName, summary.HTTPAddr)
-	fmt.Fprintf(w, "%s: database: %s\n", binaryName, summary.DBPath)
-	fmt.Fprintf(w, "%s: autostart: %s\n", binaryName, yesNo(summary.Autostart))
+	_, _ = fmt.Fprintf(w, "%s: service: %s\n", binaryName, summary.RuntimeStatus)
+	_, _ = fmt.Fprintf(w, "%s: api: %s\n", binaryName, summary.HTTPAddr)
+	_, _ = fmt.Fprintf(w, "%s: database: %s\n", binaryName, summary.DBPath)
+	_, _ = fmt.Fprintf(w, "%s: autostart: %s\n", binaryName, yesNo(summary.Autostart))
 	if summary.Warning != "" {
-		fmt.Fprintf(w, "%s: service warning: %s\n", binaryName, summary.Warning)
+		_, _ = fmt.Fprintf(w, "%s: service warning: %s\n", binaryName, summary.Warning)
 	}
 }
 

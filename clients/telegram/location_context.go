@@ -130,15 +130,6 @@ func (w *Worker) takePendingLocationRequest(target chatTarget) (pendingLocationR
 	return request, ok
 }
 
-func telegramTextWithLocation(text string, location Location) string {
-	text = strings.TrimSpace(text)
-	locationText := telegramLocationPrompt(location)
-	if text == "" {
-		return locationText
-	}
-	return text + "\n\n" + locationText
-}
-
 func (w *Worker) telegramTextWithLocationContext(ctx context.Context, text string, location Location, includeNearby bool) string {
 	text = strings.TrimSpace(text)
 	locationText := telegramLocationPrompt(location)
