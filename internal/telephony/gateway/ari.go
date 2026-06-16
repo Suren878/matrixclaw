@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 )
 
 type ariClient struct {

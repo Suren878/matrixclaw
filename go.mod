@@ -16,16 +16,19 @@ require (
 	github.com/charmbracelet/x/exp/charmtone v0.0.0-20260420102150-fe550f2efce5
 	github.com/clipperhouse/displaywidth v0.11.0
 	github.com/clipperhouse/uax29/v2 v2.7.0
+	github.com/coder/websocket v1.8.15
 	github.com/cschleiden/go-workflows v1.4.1
 	github.com/lucasb-eyer/go-colorful v1.4.0
+	github.com/modelcontextprotocol/go-sdk v1.4.1
 	github.com/rivo/uniseg v0.4.7
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sahilm/fuzzy v0.1.1
 	github.com/zeebo/xxh3 v1.1.0
 	golang.org/x/net v0.44.0
+	golang.org/x/sys v0.43.0
 	golang.org/x/text v0.30.0
+	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.39.1
-	nhooyr.io/websocket v1.8.17
 )
 
 require (
@@ -64,7 +67,6 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.23 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
-	github.com/modelcontextprotocol/go-sdk v1.4.1 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
@@ -86,9 +88,7 @@ require (
 	golang.org/x/image v0.0.0-20191206065243-da761ea9ff43 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.43.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.66.10 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect

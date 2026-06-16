@@ -12,7 +12,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 	"github.com/Suren878/matrixclaw/internal/setup"
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 )
 
 const realtimeVoiceWebSocketReadLimit = 8 << 20

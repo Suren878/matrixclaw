@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 )
 
 type realtimeClient struct {

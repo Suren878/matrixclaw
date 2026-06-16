@@ -16,7 +16,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 	"github.com/Suren878/matrixclaw/internal/safego"
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 )
 
 const (
