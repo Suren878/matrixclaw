@@ -12,6 +12,8 @@ Status snapshot (audit date 2026-05-29, updated 2026-06-16):
   `docs/TESTING.md`: acceptance/use-case coverage around daemon-visible
   behavior, provider boundaries, client delivery, and persistence.
 - `gofmt -l .` — clean (web tool files formatted during the webtools extraction)
+- Raw background goroutines are routed through `internal/safego`; the only
+  direct `go` statement under `internal/` and `clients/` is inside `safego.Go`.
 
 The architecture is sound (daemon `matrixclawd` + HTTP API, thin clients via
 `internal/daemonclient`, agent loop in `internal/core`, pluggable LLM providers
@@ -45,8 +47,8 @@ acceptance/use-case tests from `docs/TESTING.md` when rebuilding coverage.
   - `internal/externalagents/codexapp/client.go:171`
   - `internal/modules/localruntime/{piper,whisper,supertonic}_process.go`
   - `clients/telegram/monitor_state.go:47`
-  - 2026-06-16 follow-up: no raw `go func(` remains in `internal/` or
-    `clients/` outside the `safego` package comment.
+  - 2026-06-16 follow-up: no raw `go` launch remains in `internal/` or
+    `clients/` outside the `safego` package implementation.
 - [x] `internal/core` audit (2026-06-12): every core background goroutine runs
       under `safego.Go`, including the subagent terminal-wait resume path
       (`internal/core/subagents.go`), and none captures a request-scoped ctx
@@ -77,7 +79,14 @@ acceptance/use-case tests from `docs/TESTING.md` when rebuilding coverage.
 - [x] `internal/core/execution_request.go` — voice/document delivery checks now
       read explicit client capabilities from runs/session inputs instead of
       hardcoding client names in core.
-- [ ] Audit the remaining `context.Background()` uses inside request paths.
+- [x] Audit the remaining `context.Background()` uses inside request paths.
+      2026-06-16 follow-up changes: Telegram inline callbacks now inherit the
+      callback timeout context, webresearch heartbeats use their cancelable job
+      context for store IO, and realtime voice stream error writes use the
+      active stream context. Remaining `context.Background()` sites are CLI
+      command roots, daemon startup/recovery/shutdown roots, or intentionally
+      detached job/call/cleanup lifecycles that must outlive the originating
+      request.
 
 ## Phase 3 — Concurrency hardening 🟠
 

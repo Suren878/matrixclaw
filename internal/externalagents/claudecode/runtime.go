@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 type Runtime struct {
@@ -91,7 +92,7 @@ func (r *Runtime) Send(ctx context.Context, session externalagents.ExternalSessi
 		return nil, err
 	}
 	out := make(chan externalagents.Event, 4)
-	go r.runPrompt(ctx, out, resolved, session, text)
+	safego.Go("claudecode.runPrompt", func() { r.runPrompt(ctx, out, resolved, session, text) })
 	return out, nil
 }
 

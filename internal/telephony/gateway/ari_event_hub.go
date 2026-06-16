@@ -6,6 +6,8 @@ import (
 	"log"
 	"sync"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 type ariEventHub struct {
@@ -36,7 +38,7 @@ func (h *ariEventHub) Start(ctx context.Context) {
 		return
 	}
 	h.once.Do(func() {
-		go h.run(ctx)
+		safego.Go("telephony.ariEventHub.run", func() { h.run(ctx) })
 	})
 }
 
@@ -101,7 +103,7 @@ func (h *ariEventHub) run(ctx context.Context) {
 		h.setReady(true)
 		log.Printf("telephony ARI event hub registered app %s", h.app)
 		pingCtx, stopPing := context.WithCancel(ctx)
-		go h.keepAlive(pingCtx, events)
+		safego.Go("telephony.ariEventHub.keepAlive", func() { h.keepAlive(pingCtx, events) })
 		for {
 			event, err := events.read(ctx)
 			if err != nil {

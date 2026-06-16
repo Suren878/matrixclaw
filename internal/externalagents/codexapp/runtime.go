@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 type Runtime struct {
@@ -134,7 +135,7 @@ func (r *Runtime) Send(ctx context.Context, session externalagents.ExternalSessi
 	}
 
 	out := make(chan externalagents.Event, 64)
-	go r.forwardTurnEvents(ctx, out, session.ExternalThreadID, resp.Turn.ID)
+	safego.Go("codexapp.forwardTurnEvents", func() { r.forwardTurnEvents(ctx, out, session.ExternalThreadID, resp.Turn.ID) })
 	return out, nil
 }
 

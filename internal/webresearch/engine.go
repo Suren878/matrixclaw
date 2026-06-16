@@ -426,9 +426,9 @@ func (e *Engine) runJob(ctx context.Context, jobID string) error {
 	if err := e.store.UpdateSession(ctx, session); err != nil {
 		return e.failJob(ctx, job, err)
 	}
-	heartbeatCtx, cancelHeartbeat := context.WithCancel(context.Background())
+	heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
 	defer cancelHeartbeat()
-	go e.heartbeat(heartbeatCtx, job.ID)
+	safego.Go("webresearch.heartbeat", func() { e.heartbeat(heartbeatCtx, job.ID) })
 
 	result, err := e.executeResearch(ctx, session, request)
 	if err != nil {
@@ -461,14 +461,14 @@ func (e *Engine) heartbeat(ctx context.Context, jobID string) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			job, err := e.store.GetJob(context.Background(), jobID)
+			job, err := e.store.GetJob(ctx, jobID)
 			if err != nil || job.Status != StatusRunning {
 				return
 			}
 			now := e.now().UTC()
 			job.HeartbeatAt = &now
 			job.UpdatedAt = now
-			_ = e.store.UpdateJob(context.Background(), job)
+			_ = e.store.UpdateJob(ctx, job)
 		}
 	}
 }

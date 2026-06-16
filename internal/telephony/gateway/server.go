@@ -327,7 +327,7 @@ func (s *Server) startCall(parent context.Context, req createCallRequest) (CallS
 	s.mu.Lock()
 	s.calls[id] = call
 	s.mu.Unlock()
-	go s.runCall(ctx, call, req)
+	safego.Go("telephony.runCall", func() { s.runCall(ctx, call, req) })
 	return callSnapshot(call), nil
 }
 
@@ -409,7 +409,7 @@ func (s *Server) startInboundCall(parent context.Context, event ariEvent) {
 	s.mu.Lock()
 	s.calls[id] = call
 	s.mu.Unlock()
-	go s.runInboundCall(ctx, call)
+	safego.Go("telephony.runInboundCall", func() { s.runInboundCall(ctx, call) })
 }
 
 func (s *Server) runInboundCall(ctx context.Context, call *Call) {

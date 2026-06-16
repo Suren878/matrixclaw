@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 type LiveEvent struct {
@@ -105,7 +106,7 @@ func (c *Client) SubscribeEvents(ctx context.Context, sessionID string, afterID 
 
 	events := make(chan LiveEvent, 16)
 	errs := make(chan error, 1)
-	go readSSE(ctx, resp.Body, events, errs)
+	safego.Go("daemonclient.readSSE", func() { readSSE(ctx, resp.Body, events, errs) })
 	return events, errs, nil
 }
 

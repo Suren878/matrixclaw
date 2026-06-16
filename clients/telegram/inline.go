@@ -92,7 +92,7 @@ func (w *Worker) handleInlineCallback(ctx context.Context, cq *CallbackQuery) er
 	if cq == nil || !w.allowInlineUser(cq.From) {
 		return nil
 	}
-	telegramCtx, cancel := context.WithTimeout(context.Background(), defaultTelegramHTTPTimeout)
+	telegramCtx, cancel := context.WithTimeout(ctx, defaultTelegramHTTPTimeout)
 	defer cancel()
 
 	inlineMessageID := strings.TrimSpace(cq.InlineMessageID)

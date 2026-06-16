@@ -69,7 +69,7 @@ func NewClient(conn Conn) *Client {
 		events:  make(chan Notification, 128),
 		done:    make(chan struct{}),
 	}
-	go c.readLoop()
+	safego.Go("codexapp.readLoop", func() { c.readLoop() })
 	return c
 }
 

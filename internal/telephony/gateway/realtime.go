@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
+	"github.com/Suren878/matrixclaw/internal/safego"
 	"nhooyr.io/websocket"
 )
 
@@ -404,7 +405,7 @@ func newRTPPlayback(parent context.Context, rtp *rtpSession) *rtpPlayback {
 		stop:     cancel,
 		done:     make(chan error, 1),
 	}
-	go playback.run(ctx)
+	safego.Go("telephony.rtpPlayback.run", func() { playback.run(ctx) })
 	return playback
 }
 

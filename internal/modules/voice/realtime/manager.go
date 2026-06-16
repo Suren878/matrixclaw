@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 type ConfigSource func(context.Context) Config
@@ -245,7 +246,7 @@ func (m *Manager) ServeStream(ctx context.Context, sessionID string, stream Stre
 	})
 	if err != nil {
 		m.markSessionClosed(session, err.Error(), SessionStatusFailed)
-		_ = stream.Write(context.Background(), newEvent(info.ID, EventError, ErrorPayload{Message: err.Error(), Recoverable: false}))
+		_ = stream.Write(streamCtx, newEvent(info.ID, EventError, ErrorPayload{Message: err.Error(), Recoverable: false}))
 		return err
 	}
 	defer func() { _ = conn.Close(nil) }()
@@ -258,8 +259,8 @@ func (m *Manager) ServeStream(ctx context.Context, sessionID string, stream Stre
 	clientCh := make(chan streamReadResult, 16)
 	providerCh := make(chan providerReadResult, 16)
 	coreCh := m.core.SubscribeEvents(streamCtx, info.CoreSessionID)
-	go readClientEvents(streamCtx, stream, clientCh)
-	go readProviderEvents(streamCtx, conn, providerCh)
+	safego.Go("realtime.readClientEvents", func() { readClientEvents(streamCtx, stream, clientCh) })
+	safego.Go("realtime.readProviderEvents", func() { readProviderEvents(streamCtx, conn, providerCh) })
 
 	state := streamState{
 		manager:     m,
@@ -293,7 +294,7 @@ func (m *Manager) ServeStream(ctx context.Context, sessionID string, stream Stre
 					return nil
 				}
 				m.markSessionClosed(session, item.err.Error(), SessionStatusFailed)
-				_ = stream.Write(context.Background(), newEvent(info.ID, EventError, ErrorPayload{Message: item.err.Error(), Recoverable: false}))
+				_ = stream.Write(streamCtx, newEvent(info.ID, EventError, ErrorPayload{Message: item.err.Error(), Recoverable: false}))
 				return item.err
 			}
 			if err := state.handleProviderOutput(streamCtx, item.output); err != nil {

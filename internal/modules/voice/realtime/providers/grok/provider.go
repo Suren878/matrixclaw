@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
+	"github.com/Suren878/matrixclaw/internal/safego"
 	"nhooyr.io/websocket"
 )
 
@@ -169,7 +170,7 @@ func (p *Provider) Connect(ctx context.Context, req realtime.ProviderConnectRequ
 		_ = live.Close(err)
 		return nil, err
 	}
-	go live.readLoop(ctx)
+	safego.Go("grok.live.readLoop", func() { live.readLoop(ctx) })
 	return live, nil
 }
 

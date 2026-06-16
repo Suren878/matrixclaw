@@ -16,7 +16,7 @@ func (w *Worker) handleCallbackQuery(cq *CallbackQuery) error {
 	telegramCtx, cancel := context.WithTimeout(context.Background(), defaultTelegramHTTPTimeout)
 	defer cancel()
 	if strings.HasPrefix(strings.TrimSpace(cq.Data), inlineCallbackPrefix) {
-		return w.handleInlineCallback(context.Background(), cq)
+		return w.handleInlineCallback(telegramCtx, cq)
 	}
 	if cq.Message == nil || !w.allowCallback(cq) {
 		return nil
