@@ -191,10 +191,6 @@ func (c *Client) Notify(ctx context.Context, method string, params any) error {
 	return c.write(ctx, rpcRequest{Method: method, Params: params})
 }
 
-func (c *Client) Events() <-chan Notification {
-	return c.events
-}
-
 func (c *Client) SubscribeTurn(ctx context.Context, threadID, turnID string) (<-chan Notification, func()) {
 	key := turnKey{threadID: threadID, turnID: turnID}
 	sub := &turnSubscription{
