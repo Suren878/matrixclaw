@@ -134,6 +134,9 @@ func (e *bashExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 	if strings.TrimSpace(params.Command) == "" {
 		return Result{Content: "command is required", IsError: true}, nil
 	}
+	if blockedManagedBrowserInstallCommand(params.Command) {
+		return Result{Content: managedBrowserSetupMessage, Status: ResultStatusError, IsError: true}, nil
+	}
 	workingDir := resolvePath(call.WorkingDir, params.WorkingDir)
 	if !call.Approved {
 		return approvalResult(bashToolName, "execute", workingDir, "Execute command: "+params.Command, BashPermissionsParams{
