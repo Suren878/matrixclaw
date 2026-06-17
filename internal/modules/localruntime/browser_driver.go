@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/setup"
@@ -52,9 +53,9 @@ func (r *Runtime) DecorateBrowserProvider(provider setup.BrowserProviderOption) 
 		provider.RuntimeInstalled = true
 		provider.RuntimePath = r.managedPlaywrightMCPBinaryPath()
 	}
-	if r.playwrightMCPBrowserInstalled() {
+	if browserPath := r.playwrightMCPBrowserExecutablePath(); browserPath != "" {
 		provider.BrowserInstalled = true
-		provider.BrowserPath = r.playwrightBrowsersDir()
+		provider.BrowserPath = browserPath
 	}
 	switch {
 	case !provider.RuntimeInstalled:
@@ -63,8 +64,11 @@ func (r *Runtime) DecorateBrowserProvider(provider setup.BrowserProviderOption) 
 		provider.Status = "Local · not installed"
 	case !provider.BrowserInstalled:
 		provider.RuntimeState = RuntimeUnavailable
-		provider.RuntimeDetail = "Playwright Chromium is not installed"
+		provider.RuntimeDetail = r.playwrightMCPBrowserMissingDetail()
 		provider.Status = "Local · browser missing"
+		if strings.Contains(provider.RuntimeDetail, "revision mismatch") {
+			provider.Status = "Local · browser repair required"
+		}
 	case browserProviderRunsPerTask(provider):
 		provider.RuntimeState = RuntimeStopped
 		provider.RuntimeDetail = ""
@@ -139,6 +143,9 @@ func (r *Runtime) installPlaywrightBrowserRuntime(ctx context.Context) error {
 	if !executableFileExists(playwrightMCP) {
 		return fmt.Errorf("playwright MCP installation finished without playwright-mcp binary")
 	}
+	if err := r.repairPlaywrightBrowserCache(); err != nil {
+		return err
+	}
 	env := append(os.Environ(), "PLAYWRIGHT_BROWSERS_PATH="+r.playwrightBrowsersDir())
 	if err := runRuntimeCommandWithEnv(ctx, env, playwrightMCP, "install-browser", playwrightMCPBrowserInstallTarget); err != nil {
 		return err
@@ -187,12 +194,143 @@ func platformScriptName(name string) string {
 }
 
 func (r *Runtime) playwrightMCPBrowserInstalled() bool {
+	return r.playwrightMCPBrowserExecutablePath() != ""
+}
+
+func (r *Runtime) playwrightMCPBrowserExecutablePath() string {
 	revision := r.playwrightMCPChromiumRevision()
 	if revision == "" {
+		return ""
+	}
+	return r.playwrightMCPBrowserExecutablePathForRevision(revision)
+}
+
+func (r *Runtime) playwrightMCPBrowserExecutablePathForRevision(revision string) string {
+	revision = strings.TrimSpace(revision)
+	if revision == "" {
+		return ""
+	}
+	revisionDir := filepath.Join(r.playwrightBrowsersDir(), playwrightMCPChromiumBrowserName+"-"+revision)
+	for _, candidate := range chromiumExecutableCandidates(revisionDir) {
+		if executableFileExists(candidate) {
+			return candidate
+		}
+	}
+	matches := []string{}
+	_ = filepath.WalkDir(revisionDir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return nil
+		}
+		if !looksLikeChromiumExecutable(entry.Name()) || !executableFileExists(path) {
+			return nil
+		}
+		matches = append(matches, path)
+		return nil
+	})
+	sort.Strings(matches)
+	if len(matches) == 0 {
+		return ""
+	}
+	return matches[0]
+}
+
+func chromiumExecutableCandidates(revisionDir string) []string {
+	return []string{
+		filepath.Join(revisionDir, "chrome-linux64", "chrome"),
+		filepath.Join(revisionDir, "chrome-linux", "chrome"),
+		filepath.Join(revisionDir, "chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium"),
+		filepath.Join(revisionDir, "chrome-mac-arm64", "Chromium.app", "Contents", "MacOS", "Chromium"),
+		filepath.Join(revisionDir, "chrome-mac", "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing"),
+		filepath.Join(revisionDir, "chrome-mac-arm64", "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing"),
+		filepath.Join(revisionDir, "chrome-win", "chrome.exe"),
+		filepath.Join(revisionDir, "chrome-win64", "chrome.exe"),
+	}
+}
+
+func looksLikeChromiumExecutable(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "chrome", "chromium", "chrome.exe", "chromium.exe", "google chrome for testing":
+		return true
+	default:
 		return false
 	}
-	info, err := os.Stat(filepath.Join(r.playwrightBrowsersDir(), playwrightMCPChromiumBrowserName+"-"+revision))
-	return err == nil && info.IsDir()
+}
+
+func (r *Runtime) playwrightMCPBrowserMissingDetail() string {
+	required := r.playwrightMCPChromiumRevision()
+	if required == "" {
+		return "Playwright Chromium is not installed; runtime browser catalog is missing"
+	}
+	requiredDir := filepath.Join(r.playwrightBrowsersDir(), playwrightMCPChromiumBrowserName+"-"+required)
+	if info, err := os.Stat(requiredDir); err == nil && info.IsDir() {
+		return "Playwright Chromium executable is missing in chromium-" + required + ". Use Modules → Browser → Install/Repair."
+	}
+	found := r.installedPlaywrightChromiumRevisions()
+	if len(found) == 0 {
+		return "Playwright Chromium is not installed; requires chromium-" + required + ". Use Modules → Browser → Install/Repair."
+	}
+	return fmt.Sprintf("Playwright browser revision mismatch: requires chromium-%s, found %s. Use Modules → Browser → Install/Repair.", required, strings.Join(found, ","))
+}
+
+func (r *Runtime) installedPlaywrightChromiumRevisions() []string {
+	entries, err := os.ReadDir(r.playwrightBrowsersDir())
+	if err != nil {
+		return nil
+	}
+	revisions := []string{}
+	seen := map[string]struct{}{}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		revision := ""
+		switch {
+		case strings.HasPrefix(name, playwrightMCPChromiumBrowserName+"-"):
+			revision = name
+		case strings.HasPrefix(name, "chromium_headless_shell-"):
+			revision = name
+		}
+		if revision == "" {
+			continue
+		}
+		if _, ok := seen[revision]; ok {
+			continue
+		}
+		seen[revision] = struct{}{}
+		revisions = append(revisions, revision)
+	}
+	sort.Strings(revisions)
+	return revisions
+}
+
+func (r *Runtime) repairPlaywrightBrowserCache() error {
+	required := r.playwrightMCPChromiumRevision()
+	if required == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(r.playwrightBrowsersDir())
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		staleChromium := strings.HasPrefix(name, playwrightMCPChromiumBrowserName+"-") && name != playwrightMCPChromiumBrowserName+"-"+required
+		staleHeadless := strings.HasPrefix(name, "chromium_headless_shell-") && name != "chromium_headless_shell-"+required
+		if !staleChromium && !staleHeadless {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(r.playwrightBrowsersDir(), name)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *Runtime) playwrightMCPChromiumRevision() string {
@@ -226,6 +364,9 @@ func (r *Runtime) PlaywrightMCPServerConfig(provider setup.BrowserProviderOption
 	if provider.ID != setup.BrowserProviderPlaywright || !provider.Local || !provider.RuntimeInstalled || !provider.BrowserInstalled {
 		return setup.MCPServerConfig{}, false
 	}
+	if strings.TrimSpace(provider.BrowserPath) == "" || !executableFileExists(provider.BrowserPath) {
+		return setup.MCPServerConfig{}, false
+	}
 	args := r.playwrightMCPServerArgs(provider)
 	return setup.MCPServerConfig{
 		ID:              "browser",
@@ -247,7 +388,7 @@ func (r *Runtime) playwrightMCPServerArgs(provider setup.BrowserProviderOption) 
 }
 
 func (r *Runtime) playwrightMCPServerArgsForPlatform(provider setup.BrowserProviderOption, goos string, euid int) []string {
-	args := []string{"--headless", "--browser=" + playwrightMCPBrowserArg, "--viewport-size=1280x720"}
+	args := []string{"--headless", "--browser=" + playwrightMCPBrowserArg, "--executable-path", provider.BrowserPath, "--viewport-size=1280x720"}
 	if goos == "linux" && euid == 0 {
 		args = append(args, "--no-sandbox")
 	}

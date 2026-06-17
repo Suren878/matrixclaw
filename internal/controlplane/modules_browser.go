@@ -230,6 +230,9 @@ func browserRuntimeInstallInfo(provider setup.BrowserProviderOption) string {
 	if provider.RuntimeInstalled && provider.BrowserInstalled {
 		return "Installed"
 	}
+	if strings.Contains(strings.ToLower(provider.Status), "repair required") {
+		return "Repair Required"
+	}
 	if provider.RuntimeInstalled {
 		return "Browser Missing"
 	}
