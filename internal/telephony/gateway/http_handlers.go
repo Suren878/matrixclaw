@@ -73,13 +73,13 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCalls(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		s.mu.RLock()
-		calls := make([]CallSnapshot, 0, len(s.calls))
-		for _, call := range s.calls {
+		s.pruneFinishedCalls(time.Now().UTC())
+		activeCalls := s.callList()
+		calls := make([]CallSnapshot, 0, len(activeCalls))
+		for _, call := range activeCalls {
 			s.syncCallStats(call)
 			calls = append(calls, callSnapshot(call))
 		}
-		s.mu.RUnlock()
 		writeJSON(w, http.StatusOK, map[string]any{"calls": calls})
 	case http.MethodPost:
 		var req createCallRequest
@@ -114,7 +114,7 @@ func (s *Server) handleCallByID(w http.ResponseWriter, r *http.Request) {
 		s.syncCallStats(call)
 		writeJSON(w, http.StatusOK, map[string]any{"call": callSnapshot(call)})
 	case http.MethodDelete:
-		call.cancel()
+		cancelCall(call)
 		writeJSON(w, http.StatusOK, map[string]any{"call": callSnapshot(call)})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})

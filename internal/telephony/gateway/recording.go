@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -44,8 +43,7 @@ func (s *Server) startChannelRecording(ctx context.Context, call *Call, channelI
 		Path:      recordingLocalPath(s.cfg.RecordingDir, name, format),
 		Temporary: false,
 	}
-	call.Recording = recording
-	s.touchCall(call)
+	s.setCallRecording(call, recording)
 
 	live, err := s.ari.recordChannel(ctx, channelID, ariRecordRequest{
 		Name:        name,
@@ -54,95 +52,121 @@ func (s *Server) startChannelRecording(ctx context.Context, call *Call, channelI
 		TerminateOn: "none",
 	})
 	if err != nil {
-		recording.Status = "failed"
-		recording.Error = err.Error()
-		s.touchCall(call)
+		s.updateCallRecording(call, recording, func(r *CallRecording) {
+			r.Status = "failed"
+			r.Error = err.Error()
+		})
 		log.Printf("telephony call %s channel recording start failed: %v", callID(call), err)
 		return recording
 	}
 	if live.Name != "" && live.Name != name {
-		recording.Name = live.Name
-		recording.Path = recordingLocalPath(s.cfg.RecordingDir, live.Name, format)
+		s.updateCallRecording(call, recording, func(r *CallRecording) {
+			r.Name = live.Name
+			r.Path = recordingLocalPath(s.cfg.RecordingDir, live.Name, format)
+		})
 	}
 	now := time.Now().UTC()
-	recording.StartedAt = &now
-	recording.Status = firstNonEmpty(live.State, "recording")
-	s.touchCall(call)
-	log.Printf("telephony call %s channel recording started: %s", callID(call), recording.Name)
+	s.updateCallRecording(call, recording, func(r *CallRecording) {
+		r.StartedAt = &now
+		r.Status = firstNonEmpty(live.State, "recording")
+	})
+	recordingSnapshot, _ := callRecordingRefSnapshot(call, recording)
+	log.Printf("telephony call %s channel recording started: %s", callID(call), recordingSnapshot.Name)
 	return recording
 }
 
 func (s *Server) finishCallRecording(parent context.Context, call *Call, recording *CallRecording) {
-	if s == nil || s.ari == nil || call == nil || recording == nil || strings.TrimSpace(recording.Name) == "" {
+	recordingSnapshot, ok := callRecordingRefSnapshot(call, recording)
+	if s == nil || s.ari == nil || call == nil || recording == nil || !ok || strings.TrimSpace(recordingSnapshot.Name) == "" {
 		return
 	}
-	if strings.EqualFold(recording.Status, "failed") {
+	if strings.EqualFold(recordingSnapshot.Status, "failed") {
 		return
 	}
 	ctx, cancel := context.WithTimeout(parent, 45*time.Second)
 	defer cancel()
 
-	recording.Status = "stopping"
-	s.touchCall(call)
-	if err := s.ari.stopLiveRecording(ctx, recording.Name); err != nil {
-		recordingAddError(recording, "stop: "+err.Error())
+	s.updateCallRecording(call, recording, func(r *CallRecording) {
+		r.Status = "stopping"
+	})
+	if err := s.ari.stopLiveRecording(ctx, recordingSnapshot.Name); err != nil {
+		s.updateCallRecording(call, recording, func(r *CallRecording) {
+			recordingAddError(r, "stop: "+err.Error())
+		})
 		log.Printf("telephony call %s recording stop failed: %v", callID(call), err)
 	}
 
-	data, err := s.downloadRecordingWithRetry(ctx, recording.Name)
+	data, err := s.downloadRecordingWithRetry(ctx, recordingSnapshot.Name)
 	if err != nil {
-		recording.Status = "failed"
-		recordingAddError(recording, "download: "+err.Error())
 		finished := time.Now().UTC()
-		recording.FinishedAt = &finished
-		s.touchCall(call)
+		s.updateCallRecording(call, recording, func(r *CallRecording) {
+			r.Status = "failed"
+			recordingAddError(r, "download: "+err.Error())
+			r.FinishedAt = &finished
+		})
 		log.Printf("telephony call %s recording download failed: %v", callID(call), err)
 		return
 	}
 	if len(data) == 0 {
-		recording.Status = "failed"
-		recordingAddError(recording, "download: empty recording")
 		finished := time.Now().UTC()
-		recording.FinishedAt = &finished
-		s.touchCall(call)
+		s.updateCallRecording(call, recording, func(r *CallRecording) {
+			r.Status = "failed"
+			recordingAddError(r, "download: empty recording")
+			r.FinishedAt = &finished
+		})
 		return
 	}
-	recording.Status = "converting"
-	s.touchCall(call)
-	data, err = convertRecordingData(ctx, data, recordingCaptureFormat(recording.Format), recording.Format)
+	s.updateCallRecording(call, recording, func(r *CallRecording) {
+		r.Status = "converting"
+	})
+	recordingSnapshot, _ = callRecordingRefSnapshot(call, recording)
+	data, err = convertRecordingData(ctx, data, recordingCaptureFormat(recordingSnapshot.Format), recordingSnapshot.Format)
 	if err != nil {
-		recording.Status = "failed"
-		recordingAddError(recording, "convert: "+err.Error())
 		finished := time.Now().UTC()
-		recording.FinishedAt = &finished
-		s.touchCall(call)
+		s.updateCallRecording(call, recording, func(r *CallRecording) {
+			r.Status = "failed"
+			recordingAddError(r, "convert: "+err.Error())
+			r.FinishedAt = &finished
+		})
 		log.Printf("telephony call %s recording convert failed: %v", callID(call), err)
 		return
 	}
-	recording.Size = int64(len(data))
-	if err := writeRecordingFile(recording.Path, data); err != nil {
-		recording.Status = "failed"
-		recordingAddError(recording, "local save: "+err.Error())
+	s.updateCallRecording(call, recording, func(r *CallRecording) {
+		r.Size = int64(len(data))
+	})
+	recordingSnapshot, _ = callRecordingRefSnapshot(call, recording)
+	if err := writeRecordingFile(recordingSnapshot.Path, data); err != nil {
 		finished := time.Now().UTC()
-		recording.FinishedAt = &finished
-		s.touchCall(call)
+		s.updateCallRecording(call, recording, func(r *CallRecording) {
+			r.Status = "failed"
+			recordingAddError(r, "local save: "+err.Error())
+			r.FinishedAt = &finished
+		})
 		log.Printf("telephony call %s recording save failed: %v", callID(call), err)
 		return
 	}
-	recording.Status = "saved"
+	s.updateCallRecording(call, recording, func(r *CallRecording) {
+		r.Status = "saved"
+	})
 	if s.cfg.RecordingStorage {
 		if tempPath, err := s.saveRecordingTemporary(ctx, call, recording, data); err != nil {
-			recordingAddError(recording, "temp storage: "+err.Error())
+			s.updateCallRecording(call, recording, func(r *CallRecording) {
+				recordingAddError(r, "temp storage: "+err.Error())
+			})
 			log.Printf("telephony call %s recording temp storage save failed: %v", callID(call), err)
 		} else {
-			recording.Temporary = true
-			recording.TempStoragePath = tempPath
+			s.updateCallRecording(call, recording, func(r *CallRecording) {
+				r.Temporary = true
+				r.TempStoragePath = tempPath
+			})
 		}
 	}
 	finished := time.Now().UTC()
-	recording.FinishedAt = &finished
-	s.touchCall(call)
-	log.Printf("telephony call %s recording saved: %s", callID(call), recording.Path)
+	s.updateCallRecording(call, recording, func(r *CallRecording) {
+		r.FinishedAt = &finished
+	})
+	recordingSnapshot, _ = callRecordingRefSnapshot(call, recording)
+	log.Printf("telephony call %s recording saved: %s", callID(call), recordingSnapshot.Path)
 }
 
 func (s *Server) downloadRecordingWithRetry(ctx context.Context, name string) ([]byte, error) {
@@ -172,52 +196,34 @@ func (s *Server) saveRecordingTemporary(ctx context.Context, call *Call, recordi
 	if s == nil || strings.TrimSpace(s.cfg.MatrixclawURL) == "" || strings.TrimSpace(s.cfg.MatrixclawToken) == "" {
 		return "", fmt.Errorf("matrixclaw API is not configured")
 	}
-	tempPath := recordingStoragePath(s.cfg.RecordingPrefix, recording.Name, recording.Format)
+	recordingSnapshot, ok := callRecordingRefSnapshot(call, recording)
+	if !ok {
+		return "", fmt.Errorf("recording is not attached to call")
+	}
+	snapshot := callSnapshot(call)
+	tempPath := recordingStoragePath(s.cfg.RecordingPrefix, recordingSnapshot.Name, recordingSnapshot.Format)
 	payload := map[string]any{
 		"path":           tempPath,
 		"content_base64": base64.StdEncoding.EncodeToString(data),
-		"title":          recordingFileName(recording.Name, recording.Format),
-		"tags":           []string{"telephony", "call-recording", strings.TrimSpace(call.Direction)},
-		"mime_type":      recording.MIMEType,
+		"title":          recordingFileName(recordingSnapshot.Name, recordingSnapshot.Format),
+		"tags":           []string{"telephony", "call-recording", strings.TrimSpace(snapshot.Direction)},
+		"mime_type":      recordingSnapshot.MIMEType,
 	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.MatrixclawURL+"/v1/modules/storage/temp", bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+s.cfg.MatrixclawToken)
-	client := &http.Client{Timeout: 45 * time.Second}
-	res, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = res.Body.Close() }()
 	var response struct {
 		File struct {
 			Path string `json:"path"`
 			Size int64  `json:"size"`
 		} `json:"file"`
 	}
-	_ = json.NewDecoder(res.Body).Decode(&response)
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return "", fmt.Errorf("HTTP %d", res.StatusCode)
+	if err := s.api.postJSON(ctx, "/v1/modules/storage/temp", payload, &response); err != nil {
+		return "", err
 	}
 	if response.File.Size > 0 {
-		recording.Size = response.File.Size
+		s.updateCallRecording(call, recording, func(r *CallRecording) {
+			r.Size = response.File.Size
+		})
 	}
 	return firstNonEmpty(response.File.Path, tempPath), nil
-}
-
-func callRecordingSnapshot(call *Call) *CallRecording {
-	if call == nil || call.Recording == nil {
-		return nil
-	}
-	copy := *call.Recording
-	return &copy
 }
 
 func formatCallRecording(recording CallRecording) string {
@@ -246,8 +252,8 @@ func formatCallRecording(recording CallRecording) string {
 
 func newRecordingName(call *Call) string {
 	base := "call"
-	if call != nil && strings.TrimSpace(call.ID) != "" {
-		base = safeARIID(call.ID)
+	if id := callID(call); id != "" {
+		base = safeARIID(id)
 	}
 	return "matrixclaw_" + base + "_" + time.Now().UTC().Format("20060102T150405Z")
 }
@@ -280,7 +286,7 @@ func recordingFileExtension(format string) string {
 	case "mp3", "wav", "gsm", "ulaw", "alaw", "sln":
 		return format
 	default:
-		return format
+		return defaultRecordingFormat
 	}
 }
 

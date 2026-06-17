@@ -12,6 +12,8 @@ import (
 )
 
 func (s *Server) startCall(parent context.Context, req createCallRequest) (CallSnapshot, error) {
+	_ = parent
+	s.pruneFinishedCalls(time.Now().UTC())
 	to := normalizePhone(req.To)
 	if to == "" {
 		return CallSnapshot{}, errors.New("to is required")
@@ -23,10 +25,7 @@ func (s *Server) startCall(parent context.Context, req createCallRequest) (CallS
 		return CallSnapshot{}, errors.New("MatrixClaw API token is required")
 	}
 	id := newID("call")
-	ctx, cancel := context.WithCancel(context.Background())
-	if s.cfg.MaxCallDuration > 0 {
-		ctx, cancel = context.WithTimeout(ctx, s.cfg.MaxCallDuration)
-	}
+	ctx, cancel := s.callContext()
 	now := time.Now().UTC()
 	call := &Call{
 		ID:                id,
@@ -50,17 +49,18 @@ func (s *Server) startCall(parent context.Context, req createCallRequest) (CallS
 }
 
 func (s *Server) runCall(ctx context.Context, call *Call, req createCallRequest) {
-	defer call.cancel()
+	defer cancelCall(call)
 	defer s.postCallReport(context.Background(), call, req)
 	if err := s.runCallOnce(ctx, call, req); err != nil {
 		s.updateCall(call, "failed", err.Error())
-		log.Printf("telephony call %s failed: %v", call.ID, err)
+		log.Printf("telephony call %s failed: %v", callID(call), err)
 	}
 }
 
 func (s *Server) runCallOnce(ctx context.Context, call *Call, req createCallRequest) error {
-	callID := safeARIID(call.ID + "-call")
-	call.ChannelID = callID
+	id := callID(call)
+	callID := safeARIID(id + "-call")
+	s.setCallChannelID(call, callID)
 
 	s.updateCall(call, "preparing", "")
 
@@ -72,12 +72,13 @@ func (s *Server) runCallOnce(ctx context.Context, call *Call, req createCallRequ
 
 	s.updateCall(call, "dialing", "")
 
-	endpoint := fmt.Sprintf("PJSIP/%s@%s", call.To, firstNonEmpty(call.Profile, s.cfg.SIPProfile))
+	snapshot := callSnapshot(call)
+	endpoint := fmt.Sprintf("PJSIP/%s@%s", snapshot.To, firstNonEmpty(snapshot.Profile, s.cfg.SIPProfile))
 	if err := s.ari.originate(ctx, originateRequest{
 		ChannelID: callID,
 		Endpoint:  endpoint,
 		App:       s.cfg.ARIApp,
-		AppArgs:   call.ID,
+		AppArgs:   id,
 		CallerID:  s.cfg.CallerID,
 		Timeout:   int(s.cfg.CallTimeout / time.Second),
 		Formats:   "alaw",
@@ -93,10 +94,9 @@ func (s *Server) runCallOnce(ctx context.Context, call *Call, req createCallRequ
 	if err := s.ari.answer(ctx, callID); err != nil {
 		return err
 	}
-	now := time.Now().UTC()
-	call.AnsweredAt = &now
+	s.setCallAnswered(call, time.Now().UTC())
 	s.updateCall(call, "answered", "")
-	logCallTimeline(call, "", "answered", "direction", call.Direction, "channel", callID)
+	logCallTimeline(call, "", "answered", "direction", callDirection(call), "channel", callID)
 
 	realtime, err := s.connectRealtime(ctx, call, req)
 	if err != nil {

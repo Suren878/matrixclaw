@@ -13,27 +13,26 @@ import (
 )
 
 func (s *Server) connectRealtime(ctx context.Context, call *Call, req createCallRequest) (*realtimeConn, error) {
-	realtimeClient := newRealtimeClient(s.cfg.MatrixclawURL, s.cfg.MatrixclawToken)
+	snapshot := callSnapshot(call)
+	realtimeClient := newRealtimeClient(s.api)
 	realtime, err := realtimeClient.Connect(ctx, realtimeConnectRequest{
 		Client:      "telephony",
-		ExternalKey: firstNonEmpty(req.ExternalKey, call.ID),
+		ExternalKey: firstNonEmpty(req.ExternalKey, snapshot.ID),
 		SessionID:   strings.TrimSpace(req.SessionID),
 		SystemInstruction: phoneSystemInstruction(phonePromptInput{
 			AssistantName:      firstNonEmpty(req.AssistantName, s.cfg.AssistantName),
-			CallID:             call.ID,
+			CallID:             snapshot.ID,
 			OpeningPhrase:      req.InitialMessage,
 			PhonePrompt:        firstNonEmpty(req.PhonePrompt, s.cfg.PhonePrompt),
 			CustomInstructions: req.AssistantCustomInstructions,
 			Objective:          firstNonEmpty(req.SystemInstruction, req.Objective),
-			Direction:          call.Direction,
+			Direction:          snapshot.Direction,
 		}),
 	})
 	if err != nil {
 		return nil, err
 	}
-	call.RealtimeSessionID = realtime.Session.ID
-	call.CoreSessionID = realtime.Session.CoreSessionID
-	s.touchCall(call)
+	s.setCallRealtimeSession(call, realtime.Session.ID, realtime.Session.CoreSessionID)
 	return realtime, nil
 }
 
@@ -49,30 +48,30 @@ func (s *Server) runConnectedCallWithRealtime(ctx context.Context, call *Call, r
 	}
 	defer func() { captureRTP.Close() }()
 	defer func() { playbackRTP.Close() }()
-	call.rtpIn = captureRTP
-	call.rtpOut = playbackRTP
-	captureRTP.SetDiagnostics(call.ID, realtime.Session.ID, "capture")
-	playbackRTP.SetDiagnostics(call.ID, realtime.Session.ID, "playback")
+	id := callID(call)
+	s.setCallRTPSessions(call, captureRTP, playbackRTP)
+	captureRTP.SetDiagnostics(id, realtime.Session.ID, "capture")
+	playbackRTP.SetDiagnostics(id, realtime.Session.ID, "playback")
 	defer func() {
-		s.syncCallStats(call)
-		call.rtpIn = nil
-		call.rtpOut = nil
+		s.clearCallRTPSessions(call)
 	}()
 
-	captureBridgeID := safeARIID(call.ID + "-capture-bridge")
-	playbackBridgeID := safeARIID(call.ID + "-playback-bridge")
-	captureSnoopID := safeARIID(call.ID + "-capture-snoop")
-	captureExternalID := safeARIID(call.ID + "-capture-media")
-	playbackExternalID := safeARIID(call.ID + "-playback-media")
-	call.ChannelID = channelID
-	call.BridgeID = playbackBridgeID
-	call.ExternalChannelID = playbackExternalID
-	call.CaptureBridgeID = captureBridgeID
-	call.PlaybackBridgeID = playbackBridgeID
-	call.CaptureSnoopChannelID = captureSnoopID
-	call.PlaybackSnoopChannelID = ""
-	call.CaptureExternalChannelID = captureExternalID
-	call.PlaybackExternalChannelID = playbackExternalID
+	captureBridgeID := safeARIID(id + "-capture-bridge")
+	playbackBridgeID := safeARIID(id + "-playback-bridge")
+	captureSnoopID := safeARIID(id + "-capture-snoop")
+	captureExternalID := safeARIID(id + "-capture-media")
+	playbackExternalID := safeARIID(id + "-playback-media")
+	s.setCallBridgeIDs(call, callBridgeIDs{
+		ChannelID:                 channelID,
+		BridgeID:                  playbackBridgeID,
+		ExternalChannelID:         playbackExternalID,
+		CaptureBridgeID:           captureBridgeID,
+		PlaybackBridgeID:          playbackBridgeID,
+		CaptureSnoopChannelID:     captureSnoopID,
+		PlaybackSnoopChannelID:    "",
+		CaptureExternalChannelID:  captureExternalID,
+		PlaybackExternalChannelID: playbackExternalID,
+	})
 
 	var cleanupOnce sync.Once
 	cleanup := func() {
@@ -97,7 +96,7 @@ func (s *Server) runConnectedCallWithRealtime(ctx context.Context, call *Call, r
 		ChannelID: channelID,
 		SnoopID:   captureSnoopID,
 		App:       s.cfg.ARIApp,
-		AppArgs:   call.ID + ",capture",
+		AppArgs:   id + ",capture",
 		Spy:       "in",
 		Whisper:   "none",
 	}); err != nil {
@@ -108,7 +107,7 @@ func (s *Server) runConnectedCallWithRealtime(ctx context.Context, call *Call, r
 		App:          s.cfg.ARIApp,
 		ExternalHost: captureRTP.ExternalHost(),
 		Format:       "alaw",
-		Data:         call.ID + ",capture",
+		Data:         id + ",capture",
 	}); err != nil {
 		return err
 	}
@@ -117,7 +116,7 @@ func (s *Server) runConnectedCallWithRealtime(ctx context.Context, call *Call, r
 		App:          s.cfg.ARIApp,
 		ExternalHost: playbackRTP.ExternalHost(),
 		Format:       "alaw",
-		Data:         call.ID + ",playback",
+		Data:         id + ",playback",
 	}); err != nil {
 		return err
 	}
@@ -169,11 +168,11 @@ func (s *Server) runConnectedCallWithRealtime(ctx context.Context, call *Call, r
 		"playback_channels", channelID+"+"+playbackExternalID,
 	)
 	if prompt := initialPhoneStartPrompt(call, req); prompt != "" {
-		log.Printf("telephony sending initial realtime prompt call=%s session=%s direction=%s", call.ID, realtime.Session.ID, call.Direction)
+		log.Printf("telephony sending initial realtime prompt call=%s session=%s direction=%s", id, realtime.Session.ID, callDirection(call))
 		if err := realtime.SendText(ctx, prompt); err != nil {
-			log.Printf("telephony initial realtime prompt failed call=%s session=%s: %v", call.ID, realtime.Session.ID, err)
+			log.Printf("telephony initial realtime prompt failed call=%s session=%s: %v", id, realtime.Session.ID, err)
 		} else {
-			logCallTimeline(call, realtime.Session.ID, "initial_prompt_sent", "direction", call.Direction, "bytes", len(prompt))
+			logCallTimeline(call, realtime.Session.ID, "initial_prompt_sent", "direction", callDirection(call), "bytes", len(prompt))
 		}
 	}
 
@@ -182,13 +181,13 @@ func (s *Server) runConnectedCallWithRealtime(ctx context.Context, call *Call, r
 		logCallTimeline(call, realtime.Session.ID, "runtime_end", "source", "context", "error", ctx.Err())
 	case result := <-audioErr:
 		if result.err != nil && !errors.Is(result.err, context.Canceled) {
-			log.Printf("telephony call runtime failed call=%s source=%s: %v", call.ID, result.source, result.err)
+			log.Printf("telephony call runtime failed call=%s source=%s: %v", id, result.source, result.err)
 			logCallTimeline(call, realtime.Session.ID, "runtime_end", "source", result.source, "error", result.err)
 			finishRecording()
 			cleanup()
 			return result.err
 		}
-		log.Printf("telephony call runtime ended call=%s source=%s", call.ID, result.source)
+		log.Printf("telephony call runtime ended call=%s source=%s", id, result.source)
 		logCallTimeline(call, realtime.Session.ID, "runtime_end", "source", result.source)
 	}
 	finishRecording()
@@ -203,11 +202,8 @@ func (s *Server) setRTPRemoteWithRetry(ctx context.Context, call *Call, label st
 		addr, err := s.ari.rtpAddress(ctx, channelID)
 		if err == nil {
 			rtp.SetRemote(addr)
-			callID := ""
-			if call != nil {
-				callID = call.ID
-			}
-			log.Printf("telephony RTP remote set call=%s label=%s remote=%s channel=%s", callID, label, addr.String(), channelID)
+			id := callID(call)
+			log.Printf("telephony RTP remote set call=%s label=%s remote=%s channel=%s", id, label, addr.String(), channelID)
 			logCallTimeline(call, "", "rtp_remote_"+strings.TrimSpace(label), "channel", channelID, "remote", addr.String())
 			return nil
 		}
@@ -219,14 +215,11 @@ func (s *Server) setRTPRemoteWithRetry(ctx context.Context, call *Call, label st
 			return ctx.Err()
 		}
 	}
-	callID := ""
-	if call != nil {
-		callID = call.ID
-	}
+	id := callID(call)
 	if required {
-		return fmt.Errorf("telephony RTP remote not available call=%s label=%s channel=%s: %w", callID, label, channelID, lastErr)
+		return fmt.Errorf("telephony RTP remote not available call=%s label=%s channel=%s: %w", id, label, channelID, lastErr)
 	}
-	log.Printf("telephony RTP remote unavailable call=%s label=%s channel=%s: %v", callID, label, channelID, lastErr)
+	log.Printf("telephony RTP remote unavailable call=%s label=%s channel=%s: %v", id, label, channelID, lastErr)
 	return nil
 }
 
@@ -254,7 +247,7 @@ func initialPhoneStartPrompt(call *Call, req createCallRequest) string {
 	}
 	direction := ""
 	if call != nil {
-		direction = strings.TrimSpace(call.Direction)
+		direction = callDirection(call)
 	}
 	objective := strings.TrimSpace(firstNonEmpty(req.SystemInstruction, req.Objective))
 	parts := []string{

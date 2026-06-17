@@ -16,8 +16,8 @@ func appendTranscript(call *Call, raw json.RawMessage, input bool, final bool) {
 	if err := json.Unmarshal(raw, &payload); err != nil || strings.TrimSpace(payload.Text) == "" {
 		return
 	}
-	call.transcriptMu.Lock()
-	defer call.transcriptMu.Unlock()
+	call.mu.Lock()
+	defer call.mu.Unlock()
 	if input {
 		if final {
 			call.currentInputTranscript = payload.Text
@@ -41,8 +41,8 @@ func clearCurrentAssistantTranscript(call *Call) {
 	if call == nil {
 		return
 	}
-	call.transcriptMu.Lock()
-	defer call.transcriptMu.Unlock()
+	call.mu.Lock()
+	defer call.mu.Unlock()
 	call.currentAssistantTranscript = ""
 	call.AssistantTranscript = joinTranscript(call.Transcript, "assistant")
 }
@@ -63,8 +63,8 @@ func appendTranscriptTurn(call *Call, raw json.RawMessage, at time.Time) {
 	if at.IsZero() {
 		at = time.Now().UTC()
 	}
-	call.transcriptMu.Lock()
-	defer call.transcriptMu.Unlock()
+	call.mu.Lock()
+	defer call.mu.Unlock()
 	index := nextTranscriptTurnIndex(call.Transcript)
 	if input != "" {
 		call.Transcript = append(call.Transcript, CallTranscriptTurn{

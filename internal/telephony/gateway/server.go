@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -15,16 +14,21 @@ import (
 )
 
 type Server struct {
-	cfg    Config
-	ari    *ariClient
-	events *ariEventHub
-	mu     sync.RWMutex
-	calls  map[string]*Call
-	client *http.Client
+	cfg     Config
+	ari     *ariClient
+	events  *ariEventHub
+	rootMu  sync.RWMutex
+	rootCtx context.Context
+	cancel  context.CancelFunc
+	mu      sync.RWMutex
+	calls   map[string]*Call
+	api     *matrixclawClient
 }
 
 func Run(ctx context.Context, cfg Config) error {
 	s := NewServer(cfg)
+	s.bindRootContext(ctx)
+	defer s.shutdownActiveCalls()
 	if cfg.ARIPassword != "" {
 		s.events.Start(ctx)
 		safego.Go("telephony.cleanupStaleARIOnReady", func() { s.cleanupStaleARIOnReady(ctx) })
@@ -55,6 +59,7 @@ func Run(ctx context.Context, cfg Config) error {
 	})
 	select {
 	case <-ctx.Done():
+		s.shutdownActiveCalls()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		return httpServer.Shutdown(shutdownCtx)
@@ -65,36 +70,72 @@ func Run(ctx context.Context, cfg Config) error {
 
 func NewServer(cfg Config) *Server {
 	ari := newARIClient(cfg.ARIURL, cfg.ARIUser, cfg.ARIPassword)
+	rootCtx, cancel := context.WithCancel(context.Background())
 	return &Server{
-		cfg:    cfg,
-		ari:    ari,
-		events: newARIEventHub(ari, cfg.ARIApp),
-		calls:  map[string]*Call{},
-		client: &http.Client{Timeout: 5 * time.Second},
+		cfg:     cfg,
+		ari:     ari,
+		events:  newARIEventHub(ari, cfg.ARIApp),
+		rootCtx: rootCtx,
+		cancel:  cancel,
+		calls:   map[string]*Call{},
+		api:     newMatrixclawClient(cfg.MatrixclawURL, cfg.MatrixclawToken, &http.Client{Timeout: 45 * time.Second}),
+	}
+}
+
+func (s *Server) bindRootContext(parent context.Context) {
+	if s == nil || parent == nil {
+		return
+	}
+	rootCtx, cancel := context.WithCancel(parent)
+	s.rootMu.Lock()
+	previousCancel := s.cancel
+	s.rootCtx = rootCtx
+	s.cancel = cancel
+	s.rootMu.Unlock()
+	if previousCancel != nil {
+		previousCancel()
+	}
+}
+
+func (s *Server) callContext() (context.Context, context.CancelFunc) {
+	if s == nil {
+		return context.WithCancel(context.Background())
+	}
+	s.rootMu.RLock()
+	root := s.rootCtx
+	s.rootMu.RUnlock()
+	if root == nil {
+		root = context.Background()
+	}
+	if s.cfg.MaxCallDuration > 0 {
+		return context.WithTimeout(root, s.cfg.MaxCallDuration)
+	}
+	return context.WithCancel(root)
+}
+
+func (s *Server) shutdownActiveCalls() {
+	if s == nil {
+		return
+	}
+	s.rootMu.RLock()
+	cancel := s.cancel
+	s.rootMu.RUnlock()
+	if cancel != nil {
+		cancel()
+	}
+	for _, call := range s.callList() {
+		cancelCall(call)
 	}
 }
 
 func (s *Server) probeMatrixclaw(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.cfg.MatrixclawURL+"/v1/modules/voice/realtime_voice", nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+s.cfg.MatrixclawToken)
-	res, err := s.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = res.Body.Close() }()
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return fmt.Errorf("HTTP %d", res.StatusCode)
-	}
 	var payload struct {
 		Module struct {
 			Enabled bool   `json:"enabled"`
 			Status  string `json:"status"`
 		} `json:"module"`
 	}
-	if err := json.NewDecoder(res.Body).Decode(&payload); err != nil {
+	if err := s.api.getJSON(ctx, "/v1/modules/voice/realtime_voice", &payload); err != nil {
 		return err
 	}
 	if !payload.Module.Enabled {

@@ -7,14 +7,14 @@ import (
 )
 
 func logCallTimeline(call *Call, sessionID string, event string, fields ...any) {
-	callID := ""
+	id := ""
 	if call != nil {
-		callID = strings.TrimSpace(call.ID)
+		id = callID(call)
 		if sessionID == "" {
-			sessionID = strings.TrimSpace(call.RealtimeSessionID)
+			sessionID = callRealtimeSessionID(call)
 		}
 	}
-	logTelephonyTimeline(event, callID, sessionID, fields...)
+	logTelephonyTimeline(event, id, sessionID, fields...)
 }
 
 func logTelephonyTimeline(event string, callID string, sessionID string, fields ...any) {

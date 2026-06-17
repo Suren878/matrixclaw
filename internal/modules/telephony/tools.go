@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/setup"
+	"github.com/Suren878/matrixclaw/internal/telephony/phone"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
@@ -94,7 +95,7 @@ func (t *callTool) Execute(ctx context.Context, call tools.Call) (tools.Result, 
 	if err := json.Unmarshal(call.Args, &input); err != nil {
 		return tools.Result{Content: "Invalid telephony_call arguments.", IsError: true, Status: tools.ResultStatusError}, nil
 	}
-	input.To = normalizePhone(input.To)
+	input.To = phone.Normalize(input.To)
 	input.Objective = strings.TrimSpace(input.Objective)
 	input.InitialMessage = strings.TrimSpace(input.InitialMessage)
 	input.Profile = strings.TrimSpace(input.Profile)
@@ -259,17 +260,6 @@ func approvalDescription(input callInput) string {
 		return "Place a real outbound phone call to " + input.To + "."
 	}
 	return "Place a real outbound phone call to " + input.To + ": " + objective
-}
-
-func normalizePhone(value string) string {
-	value = strings.TrimSpace(value)
-	var b strings.Builder
-	for _, r := range value {
-		if r >= '0' && r <= '9' {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
 }
 
 func firstNonEmpty(values ...string) string {

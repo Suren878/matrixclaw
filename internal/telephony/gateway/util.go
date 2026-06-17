@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/telephony/phone"
 )
 
 func newID(prefix string) string {
@@ -17,19 +19,7 @@ func newID(prefix string) string {
 }
 
 func normalizePhone(value string) string {
-	value = strings.TrimSpace(value)
-	value = strings.TrimPrefix(value, "+")
-	var b strings.Builder
-	for _, r := range value {
-		if r >= '0' && r <= '9' {
-			b.WriteRune(r)
-		}
-	}
-	phone := b.String()
-	if len(phone) == 11 && phone[0] == '8' {
-		return "7" + phone[1:]
-	}
-	return phone
+	return phone.Normalize(value)
 }
 
 func safeARIID(value string) string {

@@ -130,7 +130,7 @@ func Run(ctx context.Context) error {
 	if err := moduleRegistry.RegisterTools(toolRegistry); err != nil {
 		return err
 	}
-	app.WithTools(toolRegistry)
+	app.WithTools(newSetupAwareToolExecutor(toolRegistry, bootstrap.SetupService))
 	server := api.New(app)
 	server.SetAPIToken(bootstrap.APIToken)
 	server.SetAutomationService(automationService)

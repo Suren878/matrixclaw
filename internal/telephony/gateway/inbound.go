@@ -47,6 +47,8 @@ func (s *Server) isInboundStart(event ariEvent) bool {
 }
 
 func (s *Server) startInboundCall(parent context.Context, event ariEvent) {
+	_ = parent
+	s.pruneFinishedCalls(time.Now().UTC())
 	channel := event.Channel
 	if channel == nil {
 		return
@@ -59,10 +61,7 @@ func (s *Server) startInboundCall(parent context.Context, event ariEvent) {
 	}
 	log.Printf("telephony inbound call accepted from %q (%s)", strings.TrimSpace(from), ariChannelSummary(channel))
 	id := newID("call")
-	ctx, cancel := context.WithCancel(context.Background())
-	if s.cfg.MaxCallDuration > 0 {
-		ctx, cancel = context.WithTimeout(ctx, s.cfg.MaxCallDuration)
-	}
+	ctx, cancel := s.callContext()
 	now := time.Now().UTC()
 	call := &Call{
 		ID:        id,
@@ -83,15 +82,15 @@ func (s *Server) startInboundCall(parent context.Context, event ariEvent) {
 }
 
 func (s *Server) runInboundCall(ctx context.Context, call *Call) {
-	defer call.cancel()
+	defer cancelCall(call)
 	if err := s.runInboundCallOnce(ctx, call); err != nil {
 		s.updateCall(call, "failed", err.Error())
-		log.Printf("telephony inbound call %s failed: %v", call.ID, err)
+		log.Printf("telephony inbound call %s failed: %v", callID(call), err)
 	}
 }
 
 func (s *Server) runInboundCallOnce(ctx context.Context, call *Call) error {
-	channelID := strings.TrimSpace(call.ChannelID)
+	channelID := callChannelID(call)
 	if channelID == "" {
 		return errors.New("inbound channel id is required")
 	}
@@ -116,21 +115,21 @@ func (s *Server) runInboundCallOnce(ctx context.Context, call *Call) error {
 	if err := s.ari.answer(ctx, channelID); err != nil {
 		return err
 	}
-	now := time.Now().UTC()
-	call.AnsweredAt = &now
+	s.setCallAnswered(call, time.Now().UTC())
 	s.updateCall(call, "answered", "")
-	logCallTimeline(call, "", "answered", "direction", call.Direction, "channel", channelID)
+	logCallTimeline(call, "", "answered", "direction", callDirection(call), "channel", channelID)
 
 	connected = true
 	return s.runConnectedCallWithRealtime(ctx, call, req, channelID, realtime)
 }
 
 func inboundExternalKey(call *Call) string {
-	if call != nil && strings.TrimSpace(call.From) != "" {
-		return "inbound:" + strings.TrimSpace(call.From)
+	snapshot := callSnapshot(call)
+	if strings.TrimSpace(snapshot.From) != "" {
+		return "inbound:" + strings.TrimSpace(snapshot.From)
 	}
-	if call != nil {
-		return call.ID
+	if strings.TrimSpace(snapshot.ID) != "" {
+		return snapshot.ID
 	}
 	return ""
 }

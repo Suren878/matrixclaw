@@ -382,6 +382,17 @@ func (e *ariEvents) read(ctx context.Context) (ariEvent, error) {
 }
 
 func (c *ariClient) do(ctx context.Context, method string, path string, query url.Values, body any, out any) error {
+	responseBody, err := c.doRaw(ctx, method, path, query, body)
+	if err != nil {
+		return err
+	}
+	if out == nil || len(responseBody) == 0 {
+		return nil
+	}
+	return json.Unmarshal(responseBody, out)
+}
+
+func (c *ariClient) doRaw(ctx context.Context, method string, path string, query url.Values, body any) ([]byte, error) {
 	endpoint := c.baseURL + path
 	if len(query) > 0 {
 		endpoint += "?" + query.Encode()
@@ -390,13 +401,13 @@ func (c *ariClient) do(ctx context.Context, method string, path string, query ur
 	if body != nil {
 		payload, err := json.Marshal(body)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		reader = bytes.NewReader(payload)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, reader)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -406,17 +417,17 @@ func (c *ariClient) do(ctx context.Context, method string, path string, query ur
 	}
 	res, err := c.http.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = res.Body.Close() }()
-	responseBody, _ := io.ReadAll(res.Body)
+	responseBody, readErr := io.ReadAll(res.Body)
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return ariStatusError{StatusCode: res.StatusCode, Body: strings.TrimSpace(string(responseBody))}
+		return nil, ariStatusError{StatusCode: res.StatusCode, Body: strings.TrimSpace(string(responseBody))}
 	}
-	if out == nil || len(responseBody) == 0 {
-		return nil
+	if readErr != nil {
+		return nil, readErr
 	}
-	return json.Unmarshal(responseBody, out)
+	return responseBody, nil
 }
 
 type ariStatusError struct {

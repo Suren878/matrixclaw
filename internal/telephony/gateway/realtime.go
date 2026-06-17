@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -17,9 +16,7 @@ import (
 )
 
 type realtimeClient struct {
-	baseURL string
-	token   string
-	http    *http.Client
+	api *matrixclawClient
 }
 
 type realtimeConn struct {
@@ -35,12 +32,11 @@ type realtimeConnectRequest struct {
 	SystemInstruction string
 }
 
-func newRealtimeClient(baseURL string, token string) *realtimeClient {
-	return &realtimeClient{
-		baseURL: trimRightSlash(firstNonEmpty(baseURL, defaultMatrixclawURL)),
-		token:   strings.TrimSpace(token),
-		http:    &http.Client{Timeout: 20 * time.Second},
+func newRealtimeClient(api *matrixclawClient) *realtimeClient {
+	if api == nil {
+		api = newMatrixclawClient(defaultMatrixclawURL, "", &http.Client{Timeout: 20 * time.Second})
 	}
+	return &realtimeClient{api: api}
 }
 
 func (c *realtimeClient) Connect(ctx context.Context, input realtimeConnectRequest) (*realtimeConn, error) {
@@ -53,26 +49,8 @@ func (c *realtimeClient) Connect(ctx context.Context, input realtimeConnectReque
 		OutputAudio:       realtime.DefaultOutputAudioFormat(),
 		PersistMode:       realtime.PersistModeTurnsAndSummary,
 	}
-	payload, err := json.Marshal(create)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/realtime-voice/sessions", bytes.NewReader(payload))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	c.authorize(req)
-	res, err := c.http.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = res.Body.Close() }()
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return nil, fmt.Errorf("create realtime session returned HTTP %d", res.StatusCode)
-	}
 	var created realtime.SessionCreateResponse
-	if err := json.NewDecoder(res.Body).Decode(&created); err != nil {
+	if err := c.api.postJSON(ctx, "/v1/realtime-voice/sessions", create, &created); err != nil {
 		return nil, err
 	}
 	wsURL, err := c.streamURL(created.Session.ID)
@@ -80,8 +58,8 @@ func (c *realtimeClient) Connect(ctx context.Context, input realtimeConnectReque
 		return nil, err
 	}
 	headers := http.Header{}
-	if c.token != "" {
-		headers.Set("Authorization", "Bearer "+c.token)
+	if c.api.token != "" {
+		headers.Set("Authorization", "Bearer "+c.api.token)
 	}
 	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{HTTPHeader: headers})
 	if err != nil {
@@ -96,14 +74,8 @@ func (c *realtimeClient) Connect(ctx context.Context, input realtimeConnectReque
 	return out, nil
 }
 
-func (c *realtimeClient) authorize(req *http.Request) {
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
-	}
-}
-
 func (c *realtimeClient) streamURL(sessionID string) (string, error) {
-	parsed, err := url.Parse(c.baseURL)
+	parsed, err := url.Parse(c.api.baseURL)
 	if err != nil {
 		return "", err
 	}

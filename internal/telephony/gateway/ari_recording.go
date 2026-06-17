@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -62,22 +61,5 @@ func (c *ariClient) downloadStoredRecording(ctx context.Context, recordingName s
 	if recordingName == "" {
 		return nil, nil
 	}
-	endpoint := c.baseURL + "/recordings/stored/" + url.PathEscape(recordingName) + "/file"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, err
-	}
-	if c.user != "" || c.password != "" {
-		req.SetBasicAuth(c.user, c.password)
-	}
-	res, err := c.http.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = res.Body.Close() }()
-	data, readErr := io.ReadAll(res.Body)
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return nil, ariStatusError{StatusCode: res.StatusCode, Body: strings.TrimSpace(string(data))}
-	}
-	return data, readErr
+	return c.doRaw(ctx, http.MethodGet, "/recordings/stored/"+url.PathEscape(recordingName)+"/file", nil, nil)
 }

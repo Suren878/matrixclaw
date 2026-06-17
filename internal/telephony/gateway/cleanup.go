@@ -117,16 +117,10 @@ func (s *Server) activeARIChannel(channelID string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, call := range s.calls {
-		if call == nil {
-			continue
-		}
-		if channelID == strings.TrimSpace(call.ChannelID) ||
-			channelID == strings.TrimSpace(call.ExternalChannelID) ||
-			channelID == strings.TrimSpace(call.CaptureExternalChannelID) ||
-			channelID == strings.TrimSpace(call.PlaybackExternalChannelID) ||
-			channelID == strings.TrimSpace(call.CaptureSnoopChannelID) ||
-			channelID == strings.TrimSpace(call.PlaybackSnoopChannelID) {
-			return true
+		for _, activeID := range callARIChannelIDs(call) {
+			if channelID == activeID {
+				return true
+			}
 		}
 	}
 	return false
@@ -140,10 +134,10 @@ func (s *Server) activeARIBridge(bridgeID string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, call := range s.calls {
-		if call != nil && (bridgeID == strings.TrimSpace(call.BridgeID) ||
-			bridgeID == strings.TrimSpace(call.CaptureBridgeID) ||
-			bridgeID == strings.TrimSpace(call.PlaybackBridgeID)) {
-			return true
+		for _, activeID := range callARIBridgeIDs(call) {
+			if bridgeID == activeID {
+				return true
+			}
 		}
 	}
 	return false

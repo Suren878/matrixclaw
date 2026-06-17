@@ -179,7 +179,20 @@ func normalizeRecordingFormat(value string) string {
 	if b.Len() == 0 {
 		return defaultRecordingFormat
 	}
-	return b.String()
+	format := b.String()
+	if supportedRecordingFormat(format) {
+		return format
+	}
+	return defaultRecordingFormat
+}
+
+func supportedRecordingFormat(format string) bool {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "mp3", "wav", "gsm", "ulaw", "alaw", "sln":
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeRecordingPrefix(value string) string {

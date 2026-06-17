@@ -35,6 +35,7 @@ func (p *setupRuntimeStatusContext) RuntimeStatusPromptContext(_ context.Context
 	for _, module := range runtime.DecorateVoiceModules(setup.VoiceModuleDescriptors(cfg.Modules)) {
 		lines = append(lines, voiceStatusLine(module, toolSet))
 	}
+	lines = append(lines, telephonyStatusLine(setup.TelephonyModuleFromConfig(cfg.Modules), toolSet))
 	lines = append(lines, mcpStatusLine(cfg.Modules.MCP, toolSet))
 	lines = append(lines, skillsStatusLine(cfg.Modules.Skills, toolSet))
 	lines = append(lines, externalAgentsStatusLine(cfg.Modules.ExternalAgents))
@@ -123,6 +124,20 @@ func installedVoiceModelCount(models []setup.VoiceModelOption) int {
 		}
 	}
 	return count
+}
+
+func telephonyStatusLine(module setup.TelephonyModuleDescriptor, tools map[string]struct{}) string {
+	toolState := "unavailable"
+	if _, ok := tools["telephony_call"]; ok {
+		toolState = "available"
+	}
+	return fmt.Sprintf("telephony: enabled=%t; status=%s; gateway_configured=%t; token_configured=%t; tool=%s",
+		module.Enabled,
+		firstNonEmpty(module.Status, "unknown"),
+		strings.TrimSpace(module.GatewayURL) != "",
+		module.TokenConfigured,
+		toolState,
+	)
 }
 
 func mcpStatusLine(cfg setup.MCPConfig, tools map[string]struct{}) string {
