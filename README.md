@@ -825,9 +825,10 @@ Provider-specific SIP trunk services are deployment details. The intended
 boundary is Asterisk/SIP, so each user can bring their own telephony provider
 or skip telephony entirely.
 
-See [Local Voice](docs/VOICE.md) and [Storage and Telegram Files](docs/STORAGE.md)
-for the local model paths, run modes, temporary-file lifecycle, and Telegram
-voice/file flow. See [MCP Module](docs/MCP.md) for MCP client/server setup.
+See [Local Voice](docs/VOICE.md), [Browser Module](docs/BROWSER.md), and
+[Storage and Telegram Files](docs/STORAGE.md) for local model/runtime paths, run
+modes, temporary-file lifecycle, and Telegram voice/file flow. See
+[MCP Module](docs/MCP.md) for MCP client/server setup.
 
 ## Repository Map
 

@@ -79,6 +79,9 @@ Web research can use a browser MCP server as a dynamic-page fallback, but full
 actions such as clicking, typing, screenshots, and waits remain regular MCP
 tools called by the assistant.
 
+See [Browser Module](BROWSER.md) for managed Local Playwright setup, browser
+runtime modes, and the reserved managed MCP server ID.
+
 The assistant sees these tools alongside built-in filesystem, shell, storage,
 voice, automation, and plan tools.
 
@@ -162,4 +165,3 @@ The first MCP module layer focuses on tool interoperability:
 
 This is enough to unlock existing MCP tool ecosystems while keeping the core
 session, approvals, and tool history model intact.
-

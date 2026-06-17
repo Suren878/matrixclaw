@@ -109,6 +109,9 @@ For interactive browser tasks such as opening a page, clicking through a flow,
 typing into forms, waiting for dynamic content, or taking screenshots, configure
 an MCP browser server and use its `mcp_browser_*` tools.
 
+See [Browser Module](BROWSER.md) for managed Playwright setup, install/repair,
+runtime modes, and MCP tool registration.
+
 Both compatibility tools stay compact and bounded. Runtime guidance prefers
 `web_research` for source-backed answers, current information, ratings,
 reviews, comparisons, and follow-up research.
