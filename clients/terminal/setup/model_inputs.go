@@ -204,7 +204,7 @@ func (m *model) updateLargeTextEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen = m.textEditorReturnScreen()
 			m.formError = ""
 			return m, nil
-		case "enter", "ctrl+s":
+		case "ctrl+s":
 			m.commitTextEditor()
 			return m, nil
 		}
