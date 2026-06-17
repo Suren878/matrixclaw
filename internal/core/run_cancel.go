@@ -31,6 +31,17 @@ func (c *Core) activeRunContext(parent context.Context, runID string) (context.C
 	}
 }
 
+func (c *Core) runIsActive(runID string) bool {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return false
+	}
+	c.mu.RLock()
+	active := c.activeRuns[runID]
+	c.mu.RUnlock()
+	return active != nil
+}
+
 func (c *Core) cancelActiveRun(runID string) {
 	runID = strings.TrimSpace(runID)
 	if runID == "" {

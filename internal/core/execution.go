@@ -15,6 +15,8 @@ import (
 // alternate between plan updates and project tools.
 const maxRunToolSteps = 32
 
+const orphanedRunError = "run was left running without an active executor; daemon restarted or the worker event stream was lost. Retry the task to start a fresh run"
+
 type runExecution struct {
 	Run  Run
 	Turn turnExecution
@@ -59,6 +61,9 @@ func (c *Core) prepareRunExecution(ctx context.Context, runID string) (*runExecu
 	case RunStatusCompleted, RunStatusFailed, RunStatusCanceled:
 		return nil, false, nil
 	case RunStatusRunning:
+		if !c.runIsActive(run.ID) {
+			return nil, false, c.failOrphanedRun(ctx, run)
+		}
 		return nil, false, nil
 	}
 
@@ -78,6 +83,10 @@ func (c *Core) prepareRunExecution(ctx context.Context, runID string) (*runExecu
 	}
 
 	return newRunExecution(run, session, runtime), true, nil
+}
+
+func (c *Core) failOrphanedRun(ctx context.Context, run Run) error {
+	return c.failRunByID(ctx, run, errors.New(orphanedRunError))
 }
 
 func (c *Core) executeRunLoop(ctx context.Context, runCtx context.Context, execution *runExecution) error {
