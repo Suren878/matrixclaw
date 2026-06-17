@@ -825,6 +825,8 @@ Provider-specific SIP trunk services are deployment details. The intended
 boundary is Asterisk/SIP, so each user can bring their own telephony provider
 or skip telephony entirely.
 
+See [Architecture](docs/ARCHITECTURE.md), [Telegram](docs/TELEGRAM.md), and
+[External Agents](docs/EXTERNAL_AGENTS.md) for client/runtime boundaries.
 See [Local Voice](docs/VOICE.md), [Browser Module](docs/BROWSER.md), and
 [Storage and Telegram Files](docs/STORAGE.md) for local model/runtime paths, run
 modes, temporary-file lifecycle, and Telegram voice/file flow. See
