@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.1.17
+
+- Hardened the telephony gateway runtime by splitting call lifecycle,
+  ARI/event-hub, RTP bridging, playback, recording, inbound/outbound, cleanup,
+  reporting, and MatrixClaw API code into smaller focused modules.
+- Fixed telephony realtime playback and made call shutdown safer with root
+  context cancellation, active-call pruning, setup-aware tool visibility, shared
+  phone-number normalization, and stronger recording format validation.
+- Improved call recording finalization by retrying stored-recording downloads
+  with backoff, preserving ARI stop/download diagnostics, and logging nearby
+  stored-recording candidates when Asterisk does not expose the expected file.
+- Guarded managed browser setup from unsafe shell execution and made browser
+  runtime startup use the managed Chromium executable consistently.
+- Improved long-running session reliability by failing orphaned running runs,
+  routing background workers through `safego`, recovering remaining background
+  panics, refreshing Telegram typing indicators during active runs, and
+  surfacing external runtime and subagent aftermath store errors.
+- Split realtime voice and local voice control-plane flows into smaller option,
+  setup, status, provider-selection, runtime, and action modules.
+- Added architecture, browser, Telegram, testing, and refactoring documentation
+  that records the current module boundaries and cleanup decisions.
+- Reset the legacy broad test suite and added focused coverage for run
+  recovery, subagent lifecycle, Telegram typing, managed browser guards,
+  realtime/voice setup inputs, telephony phone normalization, and recording
+  retry behavior.
+
 ## v0.1.16
 
 - Added provider-neutral realtime voice setup for Gemini Live and Grok Voice,

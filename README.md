@@ -162,28 +162,25 @@ from more than one surface.
 
 ## What's New
 
-Latest release highlights for `v0.1.16`:
+Latest release highlights for `v0.1.17`:
 
-- Added provider-neutral realtime voice setup for Gemini Live and Grok Voice,
-  with API key validation, real model/voice/language controls, and
-  provider-specific status in the control plane.
-- Added xAI Grok Voice Agent support for speech-to-speech sessions, including
-  language hints, manual audio turn commits, tool-call routing, and cleaner
-  transcript handling.
-- Refactored control-plane menu navigation so Back and Close return to the
-  parent surface consistently across menus, pickers, status views, and action
-  dialogs.
-- Added the optional `matrixclaw-telephony-gateway` binary for self-hosted
-  Asterisk/SIP deployments, bridging ARI `externalMedia` RTP audio into
-  MatrixClaw realtime voice sessions.
-- Added approval-gated `telephony_call` tooling, outbound call objectives,
-  inbound caller allowlists, phone-specific prompts, final call transcripts,
-  post-call reports, and temporary MP3 call recording plumbing.
-- Improved telephony runtime stability with faster inbound answering, a single
-  long-lived ARI app listener, hangup-extension filtering, safer RTP/VAD turn
-  handling, and realtime close-race fixes.
-- Updated release archives, installer, uninstall script, local release build,
-  and Homebrew template to include `matrixclaw-telephony-gateway`.
+- Hardened the telephony gateway internals around call lifecycle, ARI event
+  handling, RTP bridging, playback, recording, cleanup, and post-call reports.
+- Improved call recording finalization with longer stored-recording retries,
+  clearer ARI diagnostics, and candidate logging when Asterisk does not expose
+  the expected recording file.
+- Made telephony shutdown and tool exposure safer with root context
+  cancellation, active-call pruning, setup-aware visibility, shared phone-number
+  normalization, and stricter recording format validation.
+- Guarded managed browser setup from unsafe shell execution and made browser
+  runtime startup use the managed Chromium executable consistently.
+- Improved long-running reliability by failing orphaned running runs, routing
+  background workers through `safego`, recovering background panics, refreshing
+  Telegram typing indicators, and surfacing external runtime/subagent errors.
+- Split realtime voice and local voice control-plane flows into smaller setup,
+  status, provider-selection, runtime, and action modules.
+- Added architecture, browser, Telegram, testing, and refactoring docs that
+  capture the current module boundaries and cleanup decisions.
 
 ## Install
 
