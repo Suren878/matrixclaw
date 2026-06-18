@@ -26,6 +26,11 @@ type ariLiveRecording struct {
 	TargetURI string `json:"target_uri,omitempty"`
 }
 
+type ariStoredRecording struct {
+	Name   string `json:"name,omitempty"`
+	Format string `json:"format,omitempty"`
+}
+
 func (c *ariClient) recordChannel(ctx context.Context, channelID string, req ariRecordRequest) (ariLiveRecording, error) {
 	query := url.Values{}
 	query.Set("name", strings.TrimSpace(req.Name))
@@ -49,11 +54,7 @@ func (c *ariClient) stopLiveRecording(ctx context.Context, recordingName string)
 	if recordingName == "" {
 		return nil
 	}
-	err := c.do(ctx, http.MethodPost, "/recordings/live/"+url.PathEscape(recordingName)+"/stop", nil, nil, nil)
-	if isARIStatus(err, http.StatusNotFound) || isARIStatus(err, http.StatusConflict) {
-		return nil
-	}
-	return err
+	return c.do(ctx, http.MethodPost, "/recordings/live/"+url.PathEscape(recordingName)+"/stop", nil, nil, nil)
 }
 
 func (c *ariClient) downloadStoredRecording(ctx context.Context, recordingName string) ([]byte, error) {
@@ -62,4 +63,10 @@ func (c *ariClient) downloadStoredRecording(ctx context.Context, recordingName s
 		return nil, nil
 	}
 	return c.doRaw(ctx, http.MethodGet, "/recordings/stored/"+url.PathEscape(recordingName)+"/file", nil, nil)
+}
+
+func (c *ariClient) listStoredRecordings(ctx context.Context) ([]ariStoredRecording, error) {
+	var out []ariStoredRecording
+	err := c.do(ctx, http.MethodGet, "/recordings/stored", nil, nil, &out)
+	return out, err
 }

@@ -28,6 +28,14 @@ type CallRecording struct {
 	FinishedAt      *time.Time `json:"finished_at,omitempty"`
 }
 
+const (
+	recordingFinishTimeout          = 45 * time.Second
+	recordingDownloadMaxAttempts    = 14
+	recordingDownloadInitialBackoff = 250 * time.Millisecond
+	recordingDownloadMaxBackoff     = 2 * time.Second
+	recordingStoredListTimeout      = 3 * time.Second
+)
+
 func (s *Server) startChannelRecording(ctx context.Context, call *Call, channelID string) *CallRecording {
 	if s == nil || s.ari == nil || call == nil || !s.cfg.RecordCalls || strings.TrimSpace(channelID) == "" {
 		return nil
@@ -71,7 +79,15 @@ func (s *Server) startChannelRecording(ctx context.Context, call *Call, channelI
 		r.Status = firstNonEmpty(live.State, "recording")
 	})
 	recordingSnapshot, _ := callRecordingRefSnapshot(call, recording)
-	log.Printf("telephony call %s channel recording started: %s", callID(call), recordingSnapshot.Name)
+	log.Printf(
+		"telephony call %s channel recording started: name=%s state=%s capture_format=%s output_format=%s target=%s",
+		callID(call),
+		recordingSnapshot.Name,
+		firstNonEmpty(live.State, "recording"),
+		firstNonEmpty(live.Format, captureFormat),
+		recordingSnapshot.Format,
+		strings.TrimSpace(live.TargetURI),
+	)
 	return recording
 }
 
@@ -83,17 +99,21 @@ func (s *Server) finishCallRecording(parent context.Context, call *Call, recordi
 	if strings.EqualFold(recordingSnapshot.Status, "failed") {
 		return
 	}
-	ctx, cancel := context.WithTimeout(parent, 45*time.Second)
+	ctx, cancel := context.WithTimeout(parent, recordingFinishTimeout)
 	defer cancel()
 
 	s.updateCallRecording(call, recording, func(r *CallRecording) {
 		r.Status = "stopping"
 	})
+	var stopErr error
 	if err := s.ari.stopLiveRecording(ctx, recordingSnapshot.Name); err != nil {
-		s.updateCallRecording(call, recording, func(r *CallRecording) {
-			recordingAddError(r, "stop: "+err.Error())
-		})
+		stopErr = err
 		log.Printf("telephony call %s recording stop failed: %v", callID(call), err)
+	}
+	addStopError := func(r *CallRecording) {
+		if stopErr != nil {
+			recordingAddError(r, "stop: "+stopErr.Error())
+		}
 	}
 
 	data, err := s.downloadRecordingWithRetry(ctx, recordingSnapshot.Name)
@@ -101,6 +121,7 @@ func (s *Server) finishCallRecording(parent context.Context, call *Call, recordi
 		finished := time.Now().UTC()
 		s.updateCallRecording(call, recording, func(r *CallRecording) {
 			r.Status = "failed"
+			addStopError(r)
 			recordingAddError(r, "download: "+err.Error())
 			r.FinishedAt = &finished
 		})
@@ -111,6 +132,7 @@ func (s *Server) finishCallRecording(parent context.Context, call *Call, recordi
 		finished := time.Now().UTC()
 		s.updateCallRecording(call, recording, func(r *CallRecording) {
 			r.Status = "failed"
+			addStopError(r)
 			recordingAddError(r, "download: empty recording")
 			r.FinishedAt = &finished
 		})
@@ -125,6 +147,7 @@ func (s *Server) finishCallRecording(parent context.Context, call *Call, recordi
 		finished := time.Now().UTC()
 		s.updateCallRecording(call, recording, func(r *CallRecording) {
 			r.Status = "failed"
+			addStopError(r)
 			recordingAddError(r, "convert: "+err.Error())
 			r.FinishedAt = &finished
 		})
@@ -139,6 +162,7 @@ func (s *Server) finishCallRecording(parent context.Context, call *Call, recordi
 		finished := time.Now().UTC()
 		s.updateCallRecording(call, recording, func(r *CallRecording) {
 			r.Status = "failed"
+			addStopError(r)
 			recordingAddError(r, "local save: "+err.Error())
 			r.FinishedAt = &finished
 		})
@@ -170,9 +194,34 @@ func (s *Server) finishCallRecording(parent context.Context, call *Call, recordi
 }
 
 func (s *Server) downloadRecordingWithRetry(ctx context.Context, name string) ([]byte, error) {
+	if s == nil || s.ari == nil {
+		return nil, fmt.Errorf("ARI client is not configured")
+	}
+	data, err := downloadRecordingWithBackoff(ctx, name, s.ari.downloadStoredRecording, sleepContext)
+	if err != nil && isRecordingDownloadRetryable(err) {
+		s.logStoredRecordingCandidates(ctx, name)
+	}
+	return data, err
+}
+
+type recordingDownloadFunc func(context.Context, string) ([]byte, error)
+type recordingSleepFunc func(context.Context, time.Duration) bool
+
+func downloadRecordingWithBackoff(ctx context.Context, name string, download recordingDownloadFunc, sleep recordingSleepFunc) ([]byte, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, fmt.Errorf("recording name is empty")
+	}
+	if download == nil {
+		return nil, fmt.Errorf("recording downloader is not configured")
+	}
+	if sleep == nil {
+		sleep = sleepContext
+	}
 	var lastErr error
-	for attempt := 0; attempt < 12; attempt++ {
-		data, err := s.ari.downloadStoredRecording(ctx, name)
+	delay := recordingDownloadInitialBackoff
+	for attempt := 0; attempt < recordingDownloadMaxAttempts; attempt++ {
+		data, err := download(ctx, name)
 		if err == nil {
 			return data, nil
 		}
@@ -180,16 +229,80 @@ func (s *Server) downloadRecordingWithRetry(ctx context.Context, name string) ([
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		if !isARIStatus(err, http.StatusNotFound) && !isARIStatus(err, http.StatusConflict) {
+		if !isRecordingDownloadRetryable(err) {
 			return nil, err
 		}
-		select {
-		case <-time.After(250 * time.Millisecond):
-		case <-ctx.Done():
-			return nil, ctx.Err()
+		if attempt == recordingDownloadMaxAttempts-1 {
+			break
+		}
+		if !sleep(ctx, delay) {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			return nil, lastErr
+		}
+		delay = nextRecordingDownloadBackoff(delay)
+	}
+	return nil, fmt.Errorf("recording %q was not available after %d attempts: %w", name, recordingDownloadMaxAttempts, lastErr)
+}
+
+func nextRecordingDownloadBackoff(delay time.Duration) time.Duration {
+	if delay <= 0 {
+		return recordingDownloadInitialBackoff
+	}
+	next := delay * 2
+	if next > recordingDownloadMaxBackoff {
+		return recordingDownloadMaxBackoff
+	}
+	return next
+}
+
+func isRecordingDownloadRetryable(err error) bool {
+	return isARIStatus(err, http.StatusNotFound) || isARIStatus(err, http.StatusConflict)
+}
+
+func (s *Server) logStoredRecordingCandidates(parent context.Context, name string) {
+	if s == nil || s.ari == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(parent, recordingStoredListTimeout)
+	defer cancel()
+	recordings, err := s.ari.listStoredRecordings(ctx)
+	if err != nil {
+		log.Printf("telephony recording stored list failed for %s: %v", strings.TrimSpace(name), err)
+		return
+	}
+	matches := matchingStoredRecordingNames(recordings, name, 5)
+	if len(matches) == 0 {
+		log.Printf("telephony recording stored list has no candidates for %s", strings.TrimSpace(name))
+		return
+	}
+	log.Printf("telephony recording stored candidates for %s: %s", strings.TrimSpace(name), strings.Join(matches, ","))
+}
+
+func matchingStoredRecordingNames(recordings []ariStoredRecording, name string, limit int) []string {
+	name = strings.TrimSpace(name)
+	if name == "" || limit <= 0 {
+		return nil
+	}
+	prefix := name
+	if idx := strings.LastIndex(name, "_"); idx > 0 {
+		prefix = name[:idx]
+	}
+	var matches []string
+	for _, recording := range recordings {
+		candidate := strings.TrimSpace(recording.Name)
+		if candidate == "" {
+			continue
+		}
+		if candidate == name || strings.HasPrefix(candidate, prefix) {
+			matches = append(matches, candidate)
+			if len(matches) >= limit {
+				return matches
+			}
 		}
 	}
-	return nil, lastErr
+	return matches
 }
 
 func (s *Server) saveRecordingTemporary(ctx context.Context, call *Call, recording *CallRecording, data []byte) (string, error) {
