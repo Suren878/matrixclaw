@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.1.18
+
+- Added OpenAI Realtime speech-to-speech support with `gpt-realtime-2.1`,
+  streaming audio, server VAD and interruption handling, transcripts, tool
+  calls, provider setup, and transparent 16 kHz to 24 kHz input resampling.
+- Made Telegram attachments resilient: unsupported image formats are preserved
+  as temporary files with a clear supported-format notice, oversized downloads
+  are bounded, and missing or expired images no longer abort later conversation
+  runs.
+- Improved telephony audio startup and diagnostics with an outbound caller-audio
+  gate, playback preroll, optional bounded debug WAV capture, safer debug-file
+  permissions, and persistent playback-worker error reporting.
+- Hardened web fetching against DNS rebinding and redirects to private targets,
+  expanded blocked IPv4 and IPv6 ranges, and bounded fetched response bodies.
+- Fixed terminal selection across multiple chat items and isolated subagent
+  worktrees for repositories that share the same directory name.
+- Split daemon execution, realtime voice, telephony tools, and Skills control
+  plane code into smaller focused modules, while cleaning up obsolete helpers
+  and normalizing wrapped-error handling.
+- Updated the Go baseline to 1.26.5 and refreshed networking, rendering,
+  telemetry, image, and supporting dependencies.
+
 ## v0.1.17
 
 - Hardened the telephony gateway runtime by splitting call lifecycle,

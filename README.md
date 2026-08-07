@@ -56,8 +56,8 @@ runtime through Terminal, Telegram, or MCP.
 - **Web research and browser tools:** `web_research`, `web_research_ask`, and compatibility `web_search` / `web_fetch` tools with SQLite-backed facts/sources and runtime artifacts. Search providers: DuckDuckGo (free, no key), Tavily (1 000 req/mo free), Serper (2 500 req/mo free), SearXNG (self-hosted). Configure from `/modules` without restarting. When an MCP browser server is connected, MatrixClaw can also expose interactive browser tools for opening pages, clicking, typing, waiting, and screenshots.
 - **Voice modules:** Piper and Supertonic TTS plus Whisper.cpp STT run locally.
   Realtime speech-to-speech is available through the daemon WebSocket gateway
-  with Gemini Live and Grok Voice providers, and an optional telephony gateway
-  can bridge Asterisk/SIP calls into the same realtime layer.
+  with Gemini Live, Grok Voice, and OpenAI Realtime providers, and an optional
+  telephony gateway can bridge Asterisk/SIP calls into the same realtime layer.
 - **MCP module:** connect external MCP servers as assistant tools, or expose matrixclaw tools to MCP hosts.
 - **Automation-ready:** reminders, scheduled AI tasks, deliveries, and future agent workflows.
 
@@ -162,25 +162,20 @@ from more than one surface.
 
 ## What's New
 
-Latest release highlights for `v0.1.17`:
+Latest release highlights for `v0.1.18`:
 
-- Hardened the telephony gateway internals around call lifecycle, ARI event
-  handling, RTP bridging, playback, recording, cleanup, and post-call reports.
-- Improved call recording finalization with longer stored-recording retries,
-  clearer ARI diagnostics, and candidate logging when Asterisk does not expose
-  the expected recording file.
-- Made telephony shutdown and tool exposure safer with root context
-  cancellation, active-call pruning, setup-aware visibility, shared phone-number
-  normalization, and stricter recording format validation.
-- Guarded managed browser setup from unsafe shell execution and made browser
-  runtime startup use the managed Chromium executable consistently.
-- Improved long-running reliability by failing orphaned running runs, routing
-  background workers through `safego`, recovering background panics, refreshing
-  Telegram typing indicators, and surfacing external runtime/subagent errors.
-- Split realtime voice and local voice control-plane flows into smaller setup,
-  status, provider-selection, runtime, and action modules.
-- Added architecture, browser, Telegram, testing, and refactoring docs that
-  capture the current module boundaries and cleanup decisions.
+- Added OpenAI Realtime speech-to-speech with streaming audio, server VAD,
+  transcripts, tool calls, setup controls, and 16 kHz to 24 kHz resampling.
+- Preserved unsupported Telegram images as temporary files and prevented missing,
+  expired, or oversized attachments from stopping later conversation runs.
+- Improved telephony startup audio, playback error handling, caller gating, and
+  optional secure debug WAV capture.
+- Hardened web fetching against DNS rebinding, unsafe redirects, special IPv4
+  and IPv6 ranges, and oversized response bodies.
+- Fixed terminal selection across chat items and subagent worktree collisions
+  between repositories with the same directory name.
+- Split daemon, realtime voice, telephony, and Skills runtime code into smaller
+  focused modules and refreshed the Go toolchain and dependencies.
 
 ## Install
 
@@ -262,9 +257,10 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
 - Telegram voice and audio messages transcribed through the configured STT provider and sent into the active session as text.
 - Telegram `/tts` and assistant `text_to_speech` tool results sent back as voice messages and archived in storage.
 - Realtime speech-to-speech sessions over the daemon API. Gemini Live
-  (`gemini_live`) and Grok Voice (`grok_voice`) are available through
-  MatrixClaw's provider-neutral realtime protocol, so iOS, web, or SIP gateways
-  can attach without speaking provider-specific APIs.
+  (`gemini_live`), Grok Voice (`grok_voice`), and OpenAI Realtime
+  (`openai_realtime`) are available through MatrixClaw's provider-neutral
+  realtime protocol, so iOS, web, or SIP gateways can attach without speaking
+  provider-specific APIs.
 - Experimental telephony gateway preparation for Asterisk/SIP deployments. A
   separate `matrixclaw-telephony-gateway` process bridges Asterisk
   ARI/externalMedia and SIP/PJSIP calls into realtime voice sessions, exposes an
@@ -686,10 +682,10 @@ and receive assistant audio, transcripts, turn-final events, tool calls, and
 approval updates through the same connection.
 
 The client protocol is provider-neutral. Registered realtime providers include
-`gemini_live`, backed by Gemini Live / Gemini 2.5 Flash Native Audio, and
-`grok_voice`, backed by xAI Grok Voice Agent API. The daemon owns the provider
-choice so iOS, web, desktop, or SIP/IP telephony clients do not need to know a
-provider's wire format.
+`gemini_live`, backed by Gemini Live / Gemini Native Audio; `grok_voice`, backed
+by xAI Grok Voice Agent API; and `openai_realtime`, backed by OpenAI Realtime
+API. The daemon owns the provider choice so iOS, web, desktop, or SIP/IP
+telephony clients do not need to know a provider's wire format.
 
 The same realtime layer is the integration point for phone calls. Telephony is
 kept in an optional gateway process so SIP, RTP, provider-specific trunks, and
@@ -748,6 +744,14 @@ endpoint, and API key can be set in `setup.json` or by environment variables:
           "voice_id": "eve",
           "language": "ru",
           "endpoint": "wss://api.x.ai/v1/realtime"
+        },
+        "openai_realtime": {
+          "api_key": "",
+          "api_key_env": "OPENAI_API_KEY",
+          "model_id": "gpt-realtime-2.1",
+          "voice_id": "marin",
+          "language": "ru-RU",
+          "endpoint": "wss://api.openai.com/v1/realtime"
         }
       }
     }
@@ -773,7 +777,19 @@ MATRIXCLAW_GROK_VOICE_API_KEY=...
 MATRIXCLAW_GROK_VOICE_MODEL=grok-voice-latest
 MATRIXCLAW_GROK_VOICE_VOICE=eve
 MATRIXCLAW_GROK_VOICE_LANGUAGE=ru
+
+# OpenAI Realtime
+MATRIXCLAW_REALTIME_VOICE_PROVIDER=openai_realtime
+MATRIXCLAW_OPENAI_REALTIME_API_KEY=...
+MATRIXCLAW_OPENAI_REALTIME_MODEL=gpt-realtime-2.1
+MATRIXCLAW_OPENAI_REALTIME_VOICE=marin
+MATRIXCLAW_OPENAI_REALTIME_LANGUAGE=ru-RU
 ```
+
+OpenAI Realtime receives 24 kHz PCM. MatrixClaw keeps its provider-neutral
+16 kHz input contract and resamples client or telephony audio inside the
+provider adapter. OpenAI input transcription is enabled with
+`gpt-live-transcribe` so finalized conversation turns can be persisted.
 
 ### Telephony Gateway Preparation
 
