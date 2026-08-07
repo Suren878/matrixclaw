@@ -55,7 +55,7 @@ func (s *Service) UpdateVoiceModule(id string, update VoiceModuleUpdate) ([]Voic
 			current.Providers = map[string]VoiceProviderConfig{}
 		}
 		providerConfig := *update.ProviderConfig
-		if id == VoiceModuleRealtime && (providerID == "gemini_live" || providerID == "grok_voice") {
+		if id == VoiceModuleRealtime && isCloudRealtimeVoiceProvider(providerID) {
 			existing := voiceProviderConfigByID(id, current, providerID)
 			if strings.TrimSpace(providerConfig.APIKey) == "" {
 				providerConfig.APIKey = existing.APIKey
@@ -161,7 +161,7 @@ func voiceProviderConfigByID(moduleID string, module VoiceModuleConfig, provider
 func normalizeVoiceProviderConfig(moduleID string, providerID string, cfg VoiceProviderConfig) VoiceProviderConfig {
 	moduleID = normalizeVoiceModuleID(moduleID)
 	providerID = normalizeVoiceProviderID(providerID)
-	if moduleID == VoiceModuleRealtime && (providerID == "gemini_live" || providerID == "grok_voice") {
+	if moduleID == VoiceModuleRealtime && isCloudRealtimeVoiceProvider(providerID) {
 		cfg.APIKey = normalizeProviderAPIKey(cfg.APIKey)
 		cfg.APIKeyEnv = strings.TrimSpace(cfg.APIKeyEnv)
 	} else {
@@ -176,7 +176,7 @@ func normalizeVoiceProviderConfig(moduleID string, providerID string, cfg VoiceP
 		} else {
 			cfg.Language = normalizeVoiceLanguageCode(cfg.Language)
 		}
-	} else if moduleID == VoiceModuleRealtime && providerID == "gemini_live" {
+	} else if moduleID == VoiceModuleRealtime && (providerID == "gemini_live" || providerID == "openai_realtime") {
 		cfg.Language = normalizeRealtimeVoiceLanguageCode(cfg.Language)
 	} else if moduleID == VoiceModuleRealtime && providerID == "grok_voice" {
 		cfg.Language = normalizeGrokVoiceLanguageCode(cfg.Language)
@@ -384,6 +384,14 @@ func defaultVoiceProviderConfig(providerID string) VoiceProviderConfig {
 			APIKeyEnv: "XAI_API_KEY",
 			Endpoint:  "wss://api.x.ai/v1/realtime",
 		}
+	case "openai_realtime":
+		return VoiceProviderConfig{
+			ModelID:   "gpt-realtime-2.1",
+			VoiceID:   "marin",
+			Language:  "auto",
+			APIKeyEnv: "OPENAI_API_KEY",
+			Endpoint:  "wss://api.openai.com/v1/realtime",
+		}
 	default:
 		return VoiceProviderConfig{}
 	}
@@ -495,9 +503,19 @@ func voiceProviders(moduleID string) []VoiceProviderOption {
 		return []VoiceProviderOption{
 			{ID: "gemini_live", Name: "Gemini Live", Local: false, Status: "Cloud · API key required"},
 			{ID: "grok_voice", Name: "Grok Voice", Local: false, Status: "Cloud · API key required"},
+			{ID: "openai_realtime", Name: "OpenAI Realtime", Local: false, Status: "Cloud · API key required"},
 		}
 	default:
 		return nil
+	}
+}
+
+func isCloudRealtimeVoiceProvider(providerID string) bool {
+	switch normalizeVoiceProviderID(providerID) {
+	case "gemini_live", "grok_voice", "openai_realtime":
+		return true
+	default:
+		return false
 	}
 }
 

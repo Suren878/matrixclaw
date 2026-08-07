@@ -31,7 +31,7 @@ func (c *Core) CreateSession(ctx context.Context, input CreateSessionInput) (Ses
 			var err error
 			_, modelID, err = llms.Normalize(providerID, modelID)
 			if err != nil {
-				return Session{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+				return Session{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 			}
 			if providerID == "" {
 				providerID, _ = llms.ActiveSelection()

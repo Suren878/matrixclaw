@@ -109,7 +109,7 @@ func contextReportHasMarker(report *core.ContextReport, marker headerContextMark
 	if report == nil {
 		return false
 	}
-	want := core.ContextBlockKind("")
+	var want core.ContextBlockKind
 	switch marker {
 	case headerContextMarkerCompact:
 		want = core.ContextBlockCompactSummary

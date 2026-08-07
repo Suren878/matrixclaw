@@ -210,13 +210,13 @@ func (m *Chat) HandleMouseDrag(x, y int) bool {
 // HasHighlight returns whether there is currently highlighted content.
 func (m *Chat) HasHighlight() bool {
 	startItemIdx, startLine, startCol, endItemIdx, endLine, endCol := m.getHighlightRange()
-	return startItemIdx >= 0 && endItemIdx >= 0 && (startLine != endLine || startCol != endCol)
+	return nonEmptyHighlightRange(startItemIdx, startLine, startCol, endItemIdx, endLine, endCol)
 }
 
 // HighlightContent returns the currently highlighted content.
 func (m *Chat) HighlightContent() string {
 	startItemIdx, startLine, startCol, endItemIdx, endLine, endCol := m.getHighlightRange()
-	if startItemIdx < 0 || endItemIdx < 0 || startLine == endLine && startCol == endCol {
+	if !nonEmptyHighlightRange(startItemIdx, startLine, startCol, endItemIdx, endLine, endCol) {
 		return ""
 	}
 
@@ -240,6 +240,11 @@ func (m *Chat) HighlightContent() string {
 	}
 
 	return strings.TrimSpace(sb.String())
+}
+
+func nonEmptyHighlightRange(startItemIdx, startLine, startCol, endItemIdx, endLine, endCol int) bool {
+	return startItemIdx >= 0 && endItemIdx >= 0 &&
+		(startItemIdx != endItemIdx || startLine != endLine || startCol != endCol)
 }
 
 // CopyContent returns the active chat selection, falling back to the selected

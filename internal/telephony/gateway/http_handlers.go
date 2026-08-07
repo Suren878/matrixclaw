@@ -67,6 +67,8 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"record_calls":           s.cfg.RecordCalls,
 		"recording_format":       s.cfg.RecordingFormat,
 		"recording_temp_storage": s.cfg.RecordingStorage,
+		"debug_audio":            s.cfg.DebugAudio,
+		"debug_audio_dir":        s.cfg.DebugAudioDir,
 	})
 }
 
@@ -114,6 +116,7 @@ func (s *Server) handleCallByID(w http.ResponseWriter, r *http.Request) {
 		s.syncCallStats(call)
 		writeJSON(w, http.StatusOK, map[string]any{"call": callSnapshot(call)})
 	case http.MethodDelete:
+		logCallTimeline(call, "", "call_cancel_requested", "source", "http_delete")
 		cancelCall(call)
 		writeJSON(w, http.StatusOK, map[string]any{"call": callSnapshot(call)})
 	default:

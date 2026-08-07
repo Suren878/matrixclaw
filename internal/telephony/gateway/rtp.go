@@ -35,9 +35,12 @@ type rtpSession struct {
 	speechFrames atomic.Uint64
 	outPackets   atomic.Uint64
 	outBytes     atomic.Uint64
+	inAudible    atomic.Bool
+	outAudible   atomic.Bool
 	debugCallID  string
 	debugSession string
 	debugLabel   string
+	debugAudio   *rtpDebugAudio
 }
 
 type rtpStats struct {
@@ -139,6 +142,15 @@ func (s *rtpSession) Close() {
 	if s != nil && s.conn != nil {
 		_ = s.conn.Close()
 	}
+	if s != nil {
+		s.mu.Lock()
+		debugAudio := s.debugAudio
+		s.debugAudio = nil
+		s.mu.Unlock()
+		if debugAudio != nil {
+			_ = debugAudio.Close()
+		}
+	}
 }
 
 func (s *rtpSession) SetRemote(addr *net.UDPAddr) {
@@ -159,6 +171,19 @@ func (s *rtpSession) SetDiagnostics(callID string, sessionID string, label strin
 	s.debugSession = strings.TrimSpace(sessionID)
 	s.debugLabel = strings.TrimSpace(label)
 	s.mu.Unlock()
+}
+
+func (s *rtpSession) SetDebugAudio(debugAudio *rtpDebugAudio) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	previous := s.debugAudio
+	s.debugAudio = debugAudio
+	s.mu.Unlock()
+	if previous != nil && previous != debugAudio {
+		_ = previous.Close()
+	}
 }
 
 func (s *rtpSession) Stats() rtpStats {
@@ -231,8 +256,11 @@ func (s *rtpSession) ReadPCM8k(ctx context.Context) ([]int16, error) {
 		s.inSamples.Add(uint64(len(pcm)))
 		s.inAbsSum.Add(sumAbs)
 		s.updateInPeak(peak)
-		if len(pcm) > 0 && (sumAbs/uint64(len(pcm)) >= 260 || peak >= 1100) {
+		level := audioFrameLevel(pcm)
+		s.writeDebugPCM(pcm)
+		if rtpAudioLevelAudible(level) {
 			s.speechFrames.Add(1)
+			s.logFirstAudible("in", level)
 		}
 		return pcm, nil
 	}
@@ -264,6 +292,13 @@ func (s *rtpSession) SendPCM8k(ctx context.Context, pcm []int16) error {
 				payload[i] = alawEncode(0)
 			}
 		}
+		frame := make([]int16, rtpFrameSamples)
+		copy(frame, pcm[offset:end])
+		level := audioFrameLevel(frame)
+		s.writeDebugPCM(frame)
+		if rtpAudioLevelAudible(level) {
+			s.logFirstAudible("out", level)
+		}
 		if err := s.writeRTP(ctx, payload); err != nil {
 			return err
 		}
@@ -274,6 +309,50 @@ func (s *rtpSession) SendPCM8k(ctx context.Context, pcm []int16) error {
 		}
 	}
 	return nil
+}
+
+func (s *rtpSession) writeDebugPCM(samples []int16) {
+	if s == nil || len(samples) == 0 {
+		return
+	}
+	s.mu.RLock()
+	debugAudio := s.debugAudio
+	s.mu.RUnlock()
+	if debugAudio != nil {
+		debugAudio.WritePCM(samples)
+	}
+}
+
+func (s *rtpSession) logFirstAudible(direction string, level audioLevel) {
+	if s == nil {
+		return
+	}
+	switch direction {
+	case "in":
+		if !s.inAudible.CompareAndSwap(false, true) {
+			return
+		}
+	case "out":
+		if !s.outAudible.CompareAndSwap(false, true) {
+			return
+		}
+	default:
+		return
+	}
+	s.mu.RLock()
+	callID := s.debugCallID
+	sessionID := s.debugSession
+	label := s.debugLabel
+	s.mu.RUnlock()
+	logTelephonyTimeline("rtp_"+direction+"_first_audible", callID, sessionID,
+		"label", label,
+		"avg", level.avg,
+		"peak", level.peak,
+	)
+}
+
+func rtpAudioLevelAudible(level audioLevel) bool {
+	return level.avg >= 260 || level.peak >= 1100
 }
 
 func (s *rtpSession) writeRTP(ctx context.Context, payload []byte) error {

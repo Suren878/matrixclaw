@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -19,7 +20,7 @@ func (s *SQLiteStore) GetSessionPlan(ctx context.Context, sessionID string) (cor
 SELECT goal, updated_at
 FROM session_goals
 WHERE session_id = ?`, sessionID).Scan(&goal, &updatedAt)
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return core.SessionPlan{}, fmt.Errorf("store: get session goal: %w", err)
 	}
 	if err == nil {
@@ -146,7 +147,7 @@ FROM session_plan_items
 WHERE id = ?`, itemID)
 	item, err := scanPlanItem(row)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return core.PlanItem{}, core.ErrNotFound
 		}
 		return core.PlanItem{}, err
@@ -175,7 +176,7 @@ FROM plan_runs
 WHERE session_id = ?`, strings.TrimSpace(sessionID))
 	run, err := scanPlanRun(row)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return core.PlanRun{SessionID: strings.TrimSpace(sessionID), Status: core.PlanRunIdle}, nil
 		}
 		return core.PlanRun{}, fmt.Errorf("store: get plan run: %w", err)

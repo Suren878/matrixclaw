@@ -22,13 +22,6 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func max(left int, right int) int {
-	if left > right {
-		return left
-	}
-	return right
-}
-
 func cloneDraft(d setup.Draft) setup.Draft {
 	out := d
 	if d.Providers != nil {

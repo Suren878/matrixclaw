@@ -75,10 +75,14 @@ matrixclaw gives them a local storage path first.
 
 Images:
 
-- Telegram photos and image documents are downloaded by the Telegram client.
+- Telegram photos and supported image documents (JPEG, PNG, GIF, and WebP) are
+  downloaded by the Telegram client.
 - The file is saved as a temporary storage file under `telegram/images/`.
 - The active session receives an image message part that references that
   temporary storage path.
+- Other image formats, including SVG, are saved under `telegram/files/` instead.
+  Telegram reports that the format cannot be opened as an image and does not
+  start a model run for that file.
 
 Documents:
 

@@ -32,7 +32,7 @@ func (m *model) renderSummary() string {
 func (m *model) renderSuccess() string {
 	summary := m.result.Summary
 	items := []components.Item{
-		components.Item{Title: "Setup complete.", Disabled: true},
+		{Title: "Setup complete.", Disabled: true},
 		components.Divider(""),
 		summaryItem("Config path", m.result.Path),
 		summaryItem("Active provider", fmt.Sprintf("%s (%s)", nonEmpty(summary.Provider.Name, "Not configured"), nonEmpty(summary.Provider.Model, "no model"))),

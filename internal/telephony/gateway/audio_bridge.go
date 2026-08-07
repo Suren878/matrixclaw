@@ -12,11 +12,14 @@ import (
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 )
 
-func rtpToRealtime(ctx context.Context, rtp *rtpSession, realtime *realtimeConn, _ *Call) error {
+func rtpToRealtime(ctx context.Context, rtp *rtpSession, realtime *realtimeConn, gate *callerAudioGate, _ *Call) error {
 	for {
 		pcm8k, err := rtp.ReadPCM8k(ctx)
 		if err != nil {
 			return err
+		}
+		if gate != nil && !gate.Allow() {
+			continue
 		}
 		if err := realtime.SendAudioPCM(ctx, pcm16kBytesFromPCM8k(pcm8k), 16000); err != nil {
 			return err
@@ -24,7 +27,7 @@ func rtpToRealtime(ctx context.Context, rtp *rtpSession, realtime *realtimeConn,
 	}
 }
 
-func realtimeToRTP(ctx context.Context, realtimeConn *realtimeConn, rtp *rtpSession, call *Call) error {
+func realtimeToRTP(ctx context.Context, realtimeConn *realtimeConn, rtp *rtpSession, call *Call, gate *callerAudioGate) error {
 	playback := newRTPPlayback(ctx, rtp)
 	defer func() {
 		_ = playback.Close(context.Background())
@@ -35,6 +38,7 @@ func realtimeToRTP(ctx context.Context, realtimeConn *realtimeConn, rtp *rtpSess
 	}
 	resampler := newPCMToPCM8Resampler(outputRate)
 	assistantAudioActive := false
+	turnPlaybackSamples := 0
 	for {
 		event, err := realtimeConn.Read(ctx)
 		if err != nil {
@@ -62,6 +66,7 @@ func realtimeToRTP(ctx context.Context, realtimeConn *realtimeConn, rtp *rtpSess
 				resampler = newPCMToPCM8Resampler(rate)
 			}
 			pcm8k := resampler.Convert(audio)
+			turnPlaybackSamples += len(pcm8k)
 			if err := playback.Write(ctx, pcm8k); err != nil {
 				return err
 			}
@@ -76,16 +81,28 @@ func realtimeToRTP(ctx context.Context, realtimeConn *realtimeConn, rtp *rtpSess
 		case realtime.EventTurnFinal:
 			appendTranscriptTurn(call, event.Payload, event.At)
 			assistantAudioActive = false
-			if err := playback.Write(ctx, resampler.Flush()); err != nil {
+			flushed := resampler.Flush()
+			turnPlaybackSamples += len(flushed)
+			if err := playback.Write(ctx, flushed); err != nil {
 				return err
 			}
 			if err := playback.EndTurn(ctx); err != nil {
 				return err
 			}
+			if delay := callerAudioGatePlaybackDelay(turnPlaybackSamples); delay > 0 && gate != nil && !gate.Allow() {
+				logCallTimeline(call, realtimeConn.Session.ID, "caller_audio_gate_wait", "reason", "first_assistant_playback", "delay_ms", delay.Milliseconds(), "samples", turnPlaybackSamples)
+				if !sleepContext(ctx, delay) {
+					return ctx.Err()
+				}
+			}
+			openCallerAudioGate(gate, "first_assistant_playback_done")
+			turnPlaybackSamples = 0
 		case realtime.EventInterrupted:
+			openCallerAudioGate(gate, "interrupted")
 			playback.Interrupt()
 			resampler.Flush()
 			assistantAudioActive = false
+			turnPlaybackSamples = 0
 			clearCurrentAssistantTranscript(call)
 		case realtime.EventError:
 			if recoverableRealtimeError(event.Payload) {
@@ -108,6 +125,12 @@ func recoverableRealtimeError(raw json.RawMessage) bool {
 		return false
 	}
 	return payload.Recoverable
+}
+
+func openCallerAudioGate(gate *callerAudioGate, reason string) {
+	if gate != nil {
+		gate.Open(reason)
+	}
 }
 
 const (

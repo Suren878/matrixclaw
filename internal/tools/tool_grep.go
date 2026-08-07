@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -154,7 +155,7 @@ func grepFiles(ctx context.Context, pattern string, root string, include string,
 		}
 		return nil
 	})
-	if err != nil && err != errStopWalk {
+	if err != nil && !errors.Is(err, errStopWalk) {
 		return nil, false, err
 	}
 	sort.Slice(matches, func(i, j int) bool {

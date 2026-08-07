@@ -139,20 +139,6 @@ func (f Frame) targetInnerWidth() int {
 	return f.clampInnerWidth(preferredFrameWidth - styles.Card.GetHorizontalFrameSize())
 }
 
-func max(left int, right int) int {
-	if left > right {
-		return left
-	}
-	return right
-}
-
-func min(left int, right int) int {
-	if left < right {
-		return left
-	}
-	return right
-}
-
 func renderTruncated(style lipgloss.Style, value string, width int) string {
 	value = strings.TrimSpace(value)
 	return renderStyledLine(style, value, width)

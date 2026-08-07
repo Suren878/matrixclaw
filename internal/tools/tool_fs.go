@@ -58,7 +58,7 @@ func ResolveFilesystemPath(workingDir string, value string) (FilesystemPathPolic
 	realWD, wdKnown := evalExistingPathPrefix(absWD)
 	realPath, pathKnown := evalExistingPathPrefix(path)
 	boundaryKnown := wdKnown && pathKnown
-	within := false
+	var within bool
 	if boundaryKnown {
 		within = pathWithin(realWD, realPath)
 	} else {

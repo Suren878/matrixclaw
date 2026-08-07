@@ -277,7 +277,7 @@ func (s *LocalStore) readTemporaryBytes(rawPath string) (TempEntry, []byte, erro
 	if s.tempAuto && time.Now().UTC().After(entry.ExpiresAt) {
 		_ = s.deleteTemporaryLocked(index, cleanPath)
 		_ = s.saveTempIndexLocked(index)
-		return TempEntry{}, nil, fmt.Errorf("temporary file expired: %s", cleanPath)
+		return TempEntry{}, nil, fmt.Errorf("%w: temporary file expired: %s", ErrNotFound, cleanPath)
 	}
 	file, err := s.tempFileForRead(cleanPath)
 	if err != nil {

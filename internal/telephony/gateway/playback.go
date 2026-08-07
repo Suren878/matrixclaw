@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/Suren878/matrixclaw/internal/safego"
@@ -24,7 +25,9 @@ type rtpPlayback struct {
 	outbound *outboundAudioFilter
 	commands chan rtpPlaybackCommand
 	stop     context.CancelFunc
-	done     chan error
+	done     chan struct{}
+	errMu    sync.RWMutex
+	runErr   error
 
 	currentMu     sync.Mutex
 	currentCancel context.CancelFunc
@@ -37,7 +40,7 @@ func newRTPPlayback(parent context.Context, rtp *rtpSession) *rtpPlayback {
 		outbound: newOutboundAudioFilter(rtp),
 		commands: make(chan rtpPlaybackCommand, 32),
 		stop:     cancel,
-		done:     make(chan error, 1),
+		done:     make(chan struct{}),
 	}
 	safego.Go("telephony.rtpPlayback.run", func() { playback.run(ctx) })
 	return playback
@@ -83,11 +86,8 @@ func (p *rtpPlayback) Close(ctx context.Context) error {
 	p.stop()
 	p.cancelCurrent()
 	select {
-	case err, ok := <-p.done:
-		if ok {
-			return err
-		}
-		return nil
+	case <-p.done:
+		return p.doneErr()
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -124,11 +124,10 @@ func (p *rtpPlayback) dropOldest() {
 
 func (p *rtpPlayback) doneErr() error {
 	select {
-	case err, ok := <-p.done:
-		if ok {
-			return err
-		}
-		return nil
+	case <-p.done:
+		p.errMu.RLock()
+		defer p.errMu.RUnlock()
+		return p.runErr
 	default:
 		return nil
 	}
@@ -137,9 +136,9 @@ func (p *rtpPlayback) doneErr() error {
 func (p *rtpPlayback) run(ctx context.Context) {
 	var runErr error
 	defer func() {
-		if runErr != nil {
-			p.done <- runErr
-		}
+		p.errMu.Lock()
+		p.runErr = runErr
+		p.errMu.Unlock()
 		close(p.done)
 	}()
 	for {
@@ -155,7 +154,7 @@ func (p *rtpPlayback) run(ctx context.Context) {
 					if ctx.Err() != nil {
 						return
 					}
-					if err == context.Canceled || err == context.DeadlineExceeded {
+					if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 						p.outbound.Interrupt()
 						continue
 					}
@@ -167,7 +166,7 @@ func (p *rtpPlayback) run(ctx context.Context) {
 					if ctx.Err() != nil {
 						return
 					}
-					if err == context.Canceled || err == context.DeadlineExceeded {
+					if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 						p.outbound.Interrupt()
 						continue
 					}
@@ -213,7 +212,10 @@ type outboundAudioFilter struct {
 	pending []int16
 	quiet   [][]int16
 	active  bool
+	started bool
 }
+
+const outboundInitialPrerollFrames = 10
 
 func newOutboundAudioFilter(rtp *rtpSession) *outboundAudioFilter {
 	return &outboundAudioFilter{
@@ -269,13 +271,16 @@ func (f *outboundAudioFilter) Interrupt() {
 
 func (f *outboundAudioFilter) writeFrame(ctx context.Context, frame []int16) error {
 	if audioFrameQuiet(frame) {
-		if !f.active {
-			return nil
-		}
-		if len(f.quiet) < outboundTailFrames {
-			f.quiet = append(f.quiet, frame)
-		}
+		f.queueQuietFrame(frame)
 		return nil
+	}
+	if !f.started {
+		f.started = true
+		for range outboundInitialPrerollFrames {
+			if err := f.sendFrame(ctx, make([]int16, rtpFrameSamples)); err != nil {
+				return err
+			}
+		}
 	}
 	if len(f.quiet) > 0 {
 		for _, quietFrame := range f.quiet {
@@ -287,6 +292,18 @@ func (f *outboundAudioFilter) writeFrame(ctx context.Context, frame []int16) err
 	}
 	f.active = true
 	return f.sendFrame(ctx, frame)
+}
+
+func (f *outboundAudioFilter) queueQuietFrame(frame []int16) {
+	if outboundTailFrames <= 0 {
+		return
+	}
+	if len(f.quiet) >= outboundTailFrames {
+		copy(f.quiet, f.quiet[1:])
+		f.quiet[len(f.quiet)-1] = frame
+		return
+	}
+	f.quiet = append(f.quiet, frame)
 }
 
 func (f *outboundAudioFilter) sendFrame(ctx context.Context, frame []int16) error {

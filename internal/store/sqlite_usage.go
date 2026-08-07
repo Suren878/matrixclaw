@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -120,7 +121,7 @@ func scanUsageRecord(scanner interface{ Scan(dest ...any) error }) (core.UsageRe
 		&record.ProviderRaw,
 		&createdAt,
 	); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return core.UsageRecord{}, core.ErrNotFound
 		}
 		return core.UsageRecord{}, fmt.Errorf("store: scan usage record: %w", err)

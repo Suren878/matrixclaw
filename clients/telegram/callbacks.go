@@ -9,11 +9,11 @@ import (
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 )
 
-func (w *Worker) handleCallbackQuery(cq *CallbackQuery) error {
+func (w *Worker) handleCallbackQuery(ctx context.Context, cq *CallbackQuery) error {
 	if cq == nil {
 		return nil
 	}
-	telegramCtx, cancel := context.WithTimeout(context.Background(), defaultTelegramHTTPTimeout)
+	telegramCtx, cancel := context.WithTimeout(ctx, defaultTelegramHTTPTimeout)
 	defer cancel()
 	if strings.HasPrefix(strings.TrimSpace(cq.Data), inlineCallbackPrefix) {
 		return w.handleInlineCallback(telegramCtx, cq)

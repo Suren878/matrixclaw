@@ -120,7 +120,7 @@ func (s *Server) runInboundCallOnce(ctx context.Context, call *Call) error {
 	logCallTimeline(call, "", "answered", "direction", callDirection(call), "channel", channelID)
 
 	connected = true
-	return s.runConnectedCallWithRealtime(ctx, call, req, channelID, realtime)
+	return s.runConnectedCallWithRealtime(ctx, call, req, channelID, realtime, true)
 }
 
 func inboundExternalKey(call *Call) string {

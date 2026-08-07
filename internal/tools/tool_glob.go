@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"path/filepath"
@@ -78,7 +79,7 @@ func globFiles(ctx context.Context, pattern string, root string, limit int) ([]s
 		}
 		return nil
 	})
-	if err != nil && err != errStopWalk {
+	if err != nil && !errors.Is(err, errStopWalk) {
 		return nil, false, err
 	}
 	sort.Strings(matches)

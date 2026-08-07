@@ -168,6 +168,9 @@ func (w *Worker) handleDocumentImageMessage(ctx context.Context, message *Messag
 	if doc == nil {
 		return nil
 	}
+	if !core.IsProviderSupportedImageMIMEType(doc.MIMEType) {
+		return w.handleStoredDocumentMessage(ctx, message, true)
+	}
 	upload, err := w.downloadTelegramUpload(ctx, target, telegramUploadRequest{
 		fileID:               doc.FileID,
 		fileSize:             doc.FileSize,
@@ -185,6 +188,10 @@ func (w *Worker) handleDocumentImageMessage(ctx context.Context, message *Messag
 }
 
 func (w *Worker) handleDocumentMessage(ctx context.Context, message *Message) error {
+	return w.handleStoredDocumentMessage(ctx, message, false)
+}
+
+func (w *Worker) handleStoredDocumentMessage(ctx context.Context, message *Message, unsupportedImage bool) error {
 	target := targetFromMessage(message)
 	doc := message.Document
 	if doc == nil {
@@ -208,7 +215,19 @@ func (w *Worker) handleDocumentMessage(ctx context.Context, message *Message) er
 	if err != nil {
 		return err
 	}
-	return w.sendText(ctx, target, fmt.Sprintf("Temporary file saved: %s\nUse /modules -> Storage -> Temporary Files to save it permanently or delete it.", entry.Path))
+	notice := fmt.Sprintf("Temporary file saved: %s\nUse /modules -> Storage -> Temporary Files to save it permanently or delete it.", entry.Path)
+	if unsupportedImage {
+		name := strings.TrimSpace(doc.FileName)
+		if name == "" {
+			name = "this file"
+		}
+		mimeType := strings.TrimSpace(doc.MIMEType)
+		if mimeType == "" {
+			mimeType = "unknown image format"
+		}
+		notice = fmt.Sprintf("I can't open %s as an image (%s). Supported image formats: JPEG, PNG, GIF, and WebP.\n%s", name, mimeType, notice)
+	}
+	return w.sendText(ctx, target, notice)
 }
 
 func (w *Worker) handleVoiceMessage(ctx context.Context, message *Message) error {
@@ -397,7 +416,7 @@ type telegramSpeechPayload struct {
 func generatedSpeechPayload(response voicemodule.TextToSpeechResponse) (telegramSpeechPayload, error) {
 	content, err := response.ContentBytes()
 	if err != nil {
-		return telegramSpeechPayload{}, fmt.Errorf("text to speech returned invalid audio: %v", err)
+		return telegramSpeechPayload{}, fmt.Errorf("text to speech returned invalid audio: %w", err)
 	}
 	if len(content) == 0 {
 		return telegramSpeechPayload{}, fmt.Errorf("text to speech returned empty audio")
@@ -569,6 +588,9 @@ func (w *Worker) downloadTelegramUpload(ctx context.Context, target chatTarget, 
 	file, err := w.api.GetFile(ctx, req.fileID)
 	if err != nil {
 		return nil, w.sendText(ctx, target, fmt.Sprintf(req.lookupFailedFormat, err))
+	}
+	if req.maxBytes > 0 && file.FileSize > req.maxBytes {
+		return nil, w.sendText(ctx, target, fmt.Sprintf(req.tooLargeFormat, file.FileSize))
 	}
 	content, err := w.api.DownloadFile(ctx, file.FilePath)
 	if err != nil {

@@ -2,6 +2,8 @@ package daemoncmd
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -21,7 +23,7 @@ func (r storageAttachmentReader) ReadAttachment(ctx context.Context, storagePath
 	if temporary {
 		entry, data, err := r.store.ReadTemporaryBytes(storagePath)
 		if err != nil {
-			return core.AttachmentData{}, err
+			return core.AttachmentData{}, normalizeAttachmentReadError(err)
 		}
 		return core.AttachmentData{
 			Data:     data,
@@ -32,7 +34,7 @@ func (r storageAttachmentReader) ReadAttachment(ctx context.Context, storagePath
 	}
 	entry, data, err := r.store.ReadBytes(storagePath, maxBytes)
 	if err != nil {
-		return core.AttachmentData{}, err
+		return core.AttachmentData{}, normalizeAttachmentReadError(err)
 	}
 	return core.AttachmentData{
 		Data:     data,
@@ -40,6 +42,13 @@ func (r storageAttachmentReader) ReadAttachment(ctx context.Context, storagePath
 		Name:     entry.Title,
 		Size:     entry.Size,
 	}, nil
+}
+
+func normalizeAttachmentReadError(err error) error {
+	if errors.Is(err, localstorage.ErrNotFound) {
+		return fmt.Errorf("%w: %w", core.ErrAttachmentUnavailable, err)
+	}
+	return err
 }
 
 func defaultStorageRoot(dbPath string) string {

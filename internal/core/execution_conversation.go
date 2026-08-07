@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -310,16 +311,27 @@ func toProviderMessages(ctx context.Context, message Message, reader AttachmentR
 	var toolCalls []providers.ToolCall
 	var imageParts []ImagePart
 	var images []providers.ImageContent
+	var attachmentWarnings []string
 	reasoningContent := messageReasoningContent(message.Parts)
 	for _, part := range message.Parts {
 		if part.Image != nil {
 			imagePart := *part.Image
 			imageParts = append(imageParts, imagePart)
+			// Do not try to read formats that cannot be sent to a provider in the
+			// first place. In particular, an expired temporary SVG attachment in
+			// conversation history must not make every later run fail.
+			if strings.TrimSpace(imagePart.MIMEType) != "" && !IsProviderSupportedImageMIMEType(imagePart.MIMEType) {
+				continue
+			}
 			image, err := providerImageContent(ctx, imagePart, reader)
 			if err != nil {
+				if errors.Is(err, ErrAttachmentUnavailable) {
+					attachmentWarnings = append(attachmentWarnings, unavailableImageWarning(imagePart))
+					continue
+				}
 				return nil, err
 			}
-			if strings.TrimSpace(image.DataBase64) != "" {
+			if strings.TrimSpace(image.DataBase64) != "" && IsProviderSupportedImageMIMEType(image.MIMEType) {
 				images = append(images, image)
 			}
 		}
@@ -333,10 +345,12 @@ func toProviderMessages(ctx context.Context, message Message, reader AttachmentR
 			})
 		}
 	}
+	providerContent := messageContentWithAttachmentRefs(message.Content, imageParts)
+	providerContent = messageContentWithAttachmentWarnings(providerContent, attachmentWarnings)
 	if len(toolCalls) > 0 {
 		return []providers.Message{{
 			Role:             string(message.Role),
-			Content:          messageContentWithAttachmentRefs(message.Content, imageParts),
+			Content:          providerContent,
 			ReasoningContent: reasoningContent,
 			Images:           images,
 			ToolCalls:        toolCalls,
@@ -362,15 +376,32 @@ func toProviderMessages(ctx context.Context, message Message, reader AttachmentR
 		}}, nil
 	}
 
-	if strings.TrimSpace(message.Content) == "" && len(images) == 0 {
+	if strings.TrimSpace(providerContent) == "" && len(images) == 0 {
 		return nil, nil
 	}
 	return []providers.Message{{
 		Role:             string(message.Role),
-		Content:          messageContentWithAttachmentRefs(message.Content, imageParts),
+		Content:          providerContent,
 		ReasoningContent: reasoningContent,
 		Images:           images,
 	}}, nil
+}
+
+// IsProviderSupportedImageMIMEType reports whether image data can be sent inline
+// by every image-capable provider supported by Matrixclaw. Other image/* files,
+// such as SVG, remain represented by their attachment reference but must not be
+// sent as visual input.
+func IsProviderSupportedImageMIMEType(mimeType string) bool {
+	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
+	if index := strings.IndexByte(mimeType, ';'); index >= 0 {
+		mimeType = strings.TrimSpace(mimeType[:index])
+	}
+	switch mimeType {
+	case "image/jpeg", "image/png", "image/gif", "image/webp":
+		return true
+	default:
+		return false
+	}
 }
 
 func messageReasoningContent(parts []MessagePart) *string {
@@ -488,6 +519,21 @@ func messageContentWithAttachmentRefs(content string, images []ImagePart) string
 	}
 	block := "Attached files:\n" + strings.Join(refs, "\n")
 	if content == "" {
+		return block
+	}
+	return content + "\n\n" + block
+}
+
+func unavailableImageWarning(image ImagePart) string {
+	return "- " + imagePartLabel(image) + ": file is no longer available in storage"
+}
+
+func messageContentWithAttachmentWarnings(content string, warnings []string) string {
+	if len(warnings) == 0 {
+		return strings.TrimSpace(content)
+	}
+	block := "Unavailable attachments:\n" + strings.Join(warnings, "\n")
+	if content = strings.TrimSpace(content); content == "" {
 		return block
 	}
 	return content + "\n\n" + block

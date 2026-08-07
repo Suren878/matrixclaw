@@ -125,7 +125,7 @@ func (r *Runtime) Send(ctx context.Context, session externalagents.ExternalSessi
 		}
 		resumed, resumeErr := r.ResumeSession(ctx, session)
 		if resumeErr != nil {
-			return nil, fmt.Errorf("codexapp: start turn failed: %w; resume failed: %v", err, resumeErr)
+			return nil, fmt.Errorf("codexapp: start turn failed: %w; resume failed: %w", err, resumeErr)
 		}
 		session = resumed
 		resp, err = client.StartTurn(ctx, turnStartParams(session, text))

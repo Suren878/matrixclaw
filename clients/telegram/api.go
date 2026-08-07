@@ -136,7 +136,9 @@ func (c *Client) DownloadFile(ctx context.Context, filePath string) ([]byte, err
 		return nil, fmt.Errorf("telegram: execute file download request: %w", redactBotTokenError(err, c.token))
 	}
 	defer func() { _ = response.Body.Close() }()
-	content, err := io.ReadAll(response.Body)
+	// Telegram's metadata can be absent or stale, so enforce the storage limit
+	// while reading as a final guard against an unexpectedly large response.
+	content, err := io.ReadAll(io.LimitReader(response.Body, maxTelegramStorageUploadBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("telegram: read file download response: %w", err)
 	}

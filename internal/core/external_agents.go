@@ -186,7 +186,7 @@ func externalAgentMetadataJSON(metadata map[string]any) (string, error) {
 	}
 	data, err := json.Marshal(metadata)
 	if err != nil {
-		return "", fmt.Errorf("%w: external agent metadata: %v", ErrInvalidInput, err)
+		return "", fmt.Errorf("%w: external agent metadata: %w", ErrInvalidInput, err)
 	}
 	return string(data), nil
 }

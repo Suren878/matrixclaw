@@ -19,6 +19,7 @@ var unsupportedGeminiSchemaKeys = map[string]struct{}{
 	"oneOf":                 {},
 	"pattern":               {},
 	"patternProperties":     {},
+	"propertyNames":         {},
 	"unevaluatedProperties": {},
 }
 

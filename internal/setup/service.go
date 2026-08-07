@@ -302,7 +302,7 @@ func (s *Service) EnsureDaemonContext(ctx context.Context) (DaemonSummary, error
 	applied, _, applyErr := s.daemonManager.Apply(ctx, s.store.Path(), cfg)
 	if applyErr != nil {
 		if inspectErr != nil {
-			return applied, fmt.Errorf("%v; %w", inspectErr, applyErr)
+			return applied, fmt.Errorf("%w; %w", inspectErr, applyErr)
 		}
 		return applied, applyErr
 	}

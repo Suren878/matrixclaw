@@ -100,7 +100,7 @@ func ResolveModelMetadata(providerID string, providerType string, modelID string
 	}
 
 	contextWindow := liveMetadata.ContextWindow
-	contextSource := ModelMetadataSource("")
+	var contextSource ModelMetadataSource
 	if contextWindow > 0 {
 		contextSource = ModelMetadataSourceLiveCatalog
 	} else {

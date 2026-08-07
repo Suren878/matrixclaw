@@ -70,6 +70,17 @@ func (s *Server) runCallOnce(ctx context.Context, call *Call, req createCallRequ
 		return fmt.Errorf("wait for ARI app: %w", err)
 	}
 
+	realtime, err := s.connectRealtime(ctx, call, req)
+	if err != nil {
+		return err
+	}
+	connected := false
+	defer func() {
+		if !connected {
+			_ = realtime.Close(context.Background())
+		}
+	}()
+
 	s.updateCall(call, "dialing", "")
 
 	snapshot := callSnapshot(call)
@@ -98,10 +109,6 @@ func (s *Server) runCallOnce(ctx context.Context, call *Call, req createCallRequ
 	s.updateCall(call, "answered", "")
 	logCallTimeline(call, "", "answered", "direction", callDirection(call), "channel", callID)
 
-	realtime, err := s.connectRealtime(ctx, call, req)
-	if err != nil {
-		_ = s.ari.hangup(context.Background(), callID)
-		return err
-	}
-	return s.runConnectedCallWithRealtime(ctx, call, req, callID, realtime)
+	connected = true
+	return s.runConnectedCallWithRealtime(ctx, call, req, callID, realtime, true)
 }

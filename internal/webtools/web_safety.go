@@ -1,6 +1,7 @@
 package webtools
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/url"
@@ -13,6 +14,7 @@ var blockedCIDRs = func() []*net.IPNet {
 	raw := []string{
 		"127.0.0.0/8",    // loopback
 		"::1/128",        // IPv6 loopback
+		"::/128",         // IPv6 unspecified; may resolve to the local host when dialed
 		"10.0.0.0/8",     // RFC1918 private
 		"172.16.0.0/12",  // RFC1918 private
 		"192.168.0.0/16", // RFC1918 private
@@ -23,6 +25,8 @@ var blockedCIDRs = func() []*net.IPNet {
 		"0.0.0.0/8",      // unspecified
 		"240.0.0.0/4",    // reserved
 		"224.0.0.0/4",    // multicast
+		"ff00::/8",       // IPv6 multicast
+		"198.18.0.0/15",  // benchmarking; commonly routed only inside private networks
 	}
 	nets := make([]*net.IPNet, 0, len(raw))
 	for _, cidr := range raw {
@@ -41,7 +45,7 @@ var blockedHosts = []string{
 	"100.100.100.200", // Alibaba cloud metadata
 }
 
-func validateFetchURL(rawURL string) error {
+func validateFetchURL(ctx context.Context, rawURL string) error {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return fmt.Errorf("url is required")
@@ -63,20 +67,65 @@ func validateFetchURL(rawURL string) error {
 			return fmt.Errorf("url host %q is not allowed", host)
 		}
 	}
-	addrs, err := net.LookupHost(host)
+	return validatePublicHost(ctx, host)
+}
+
+func validatePublicHost(ctx context.Context, host string) error {
+	if ip := net.ParseIP(host); ip != nil {
+		return validatePublicIPs(host, []net.IPAddr{{IP: ip}})
+	}
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 	if err != nil {
 		return fmt.Errorf("cannot resolve host %q: %w", host, err)
 	}
+	return validatePublicIPs(host, addrs)
+}
+
+func validatePublicIPs(host string, addrs []net.IPAddr) error {
+	if len(addrs) == 0 {
+		return fmt.Errorf("host %q resolved without any addresses", host)
+	}
 	for _, addr := range addrs {
-		ip := net.ParseIP(addr)
+		ip := addr.IP
 		if ip == nil {
 			continue
 		}
 		for _, blocked := range blockedCIDRs {
 			if blocked.Contains(ip) {
-				return fmt.Errorf("url resolves to a private or reserved address (%s)", addr)
+				return fmt.Errorf("host %q resolves to a private or reserved address (%s)", host, ip)
 			}
 		}
 	}
 	return nil
+}
+
+func dialPublicAddress(ctx context.Context, network string, address string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, fmt.Errorf("invalid network address %q: %w", address, err)
+	}
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("cannot resolve host %q: %w", host, err)
+	}
+	if err := validatePublicIPs(host, addrs); err != nil {
+		return nil, err
+	}
+
+	var dialer net.Dialer
+	var lastErr error
+	for _, addr := range addrs {
+		if addr.IP == nil {
+			continue
+		}
+		conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(addr.IP.String(), port))
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("host %q resolved without a usable address", host)
+	}
+	return nil, lastErr
 }

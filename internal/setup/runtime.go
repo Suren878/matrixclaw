@@ -122,7 +122,7 @@ func (m *systemdUserDaemonManager) Apply(ctx context.Context, setupPath string, 
 				return summary, warnings, err
 			}
 			if directErr := m.startDirect(ctx, daemonBin, setupPath, cfg); directErr != nil {
-				return summary, warnings, fmt.Errorf("%v; direct launch fallback failed: %w", err, directErr)
+				return summary, warnings, fmt.Errorf("%w; direct launch fallback failed: %w", err, directErr)
 			}
 			warnings = append(warnings, "systemd unavailable; using direct daemon launch")
 		}

@@ -309,19 +309,6 @@ func (s *Server) updateCall(call *Call, status string, errText string) {
 	}
 }
 
-func (s *Server) touchCall(call *Call) {
-	if call == nil {
-		return
-	}
-	stats, ok := collectCallRTPStats(call)
-	call.mu.Lock()
-	defer call.mu.Unlock()
-	if ok {
-		applyCallRTPStatsLocked(call, stats)
-	}
-	call.UpdatedAt = time.Now().UTC()
-}
-
 func (s *Server) syncCallStats(call *Call) {
 	if call == nil {
 		return

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/Suren878/matrixclaw/internal/tools"
 	"io"
 	"net/http"
 	"regexp"
@@ -12,16 +11,28 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/webresearch"
 
 	"golang.org/x/net/html"
 )
 
+var webFetchTransport = func() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	transport.DialContext = dialPublicAddress
+	return transport
+}()
+
 var webFetchClient = &http.Client{
-	Timeout: webFetchTimeout * time.Second,
+	Transport: webFetchTransport,
+	Timeout:   webFetchTimeout * time.Second,
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 5 {
 			return fmt.Errorf("too many redirects")
+		}
+		if err := validateFetchURL(req.Context(), req.URL.String()); err != nil {
+			return fmt.Errorf("unsafe redirect: %w", err)
 		}
 		return nil
 	},
@@ -143,7 +154,7 @@ func FetchWebPage(ctx context.Context, rawURL string, maxLength int) (WebFetched
 		maxLength = maxWebFetchMaxLength
 	}
 
-	if err := validateFetchURL(rawURL); err != nil {
+	if err := validateFetchURL(ctx, rawURL); err != nil {
 		return WebFetchedPage{URL: rawURL}, err
 	}
 

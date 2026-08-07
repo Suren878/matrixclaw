@@ -51,8 +51,8 @@ func approvalPreviewString(content string) approvalContentPreview {
 
 func truncateApprovalPreview(content string, fullBytes int) string {
 	shownBytes := approvalPreviewMaxBytes
-	notice := ""
-	maxContentBytes := 0
+	var notice string
+	var maxContentBytes int
 	for {
 		notice = fmt.Sprintf("\n\n[approval preview truncated: showing first %d of %d bytes]", shownBytes, fullBytes)
 		maxContentBytes = approvalPreviewMaxBytes - len(notice)

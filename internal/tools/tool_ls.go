@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -93,7 +94,7 @@ func listDirectoryTree(root string, params LSParams) (string, LSResponseMetadata
 		}
 		return nil
 	})
-	if err != nil && err != errStopWalk {
+	if err != nil && !errors.Is(err, errStopWalk) {
 		return "", LSResponseMetadata{}, err
 	}
 

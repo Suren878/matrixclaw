@@ -7,13 +7,6 @@ type rect struct {
 	h int
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func centerRect(areaW, areaH, innerW, innerH int) rect {
 	if areaW < 0 {
 		areaW = 0

@@ -49,7 +49,7 @@ func Run(ctx context.Context, cfg Config) error {
 		if !safego.Run("telephony.httpServer.listen", func() {
 			log.Printf("matrixclaw telephony gateway listening on %s", cfg.HTTPAddr)
 			err = httpServer.ListenAndServe()
-			if err == http.ErrServerClosed {
+			if errors.Is(err, http.ErrServerClosed) {
 				err = nil
 			}
 		}) {

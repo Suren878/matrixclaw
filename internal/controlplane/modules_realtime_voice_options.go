@@ -200,6 +200,8 @@ func realtimeVoiceAPIKeyPlaceholder(provider realtime.ProviderDescriptor) string
 	switch provider.ID {
 	case realtime.ProviderGrok:
 		return firstNonEmptyTrimmed(provider.Config.APIKeyPreview, "xai-...")
+	case realtime.ProviderOpenAI:
+		return firstNonEmptyTrimmed(provider.Config.APIKeyPreview, "sk-...")
 	default:
 		return firstNonEmptyTrimmed(provider.Config.APIKeyPreview, "AIza...")
 	}
@@ -209,6 +211,8 @@ func realtimeVoiceAPIKeyEnvPlaceholder(provider realtime.ProviderDescriptor) str
 	switch provider.ID {
 	case realtime.ProviderGrok:
 		return "XAI_API_KEY"
+	case realtime.ProviderOpenAI:
+		return "OPENAI_API_KEY"
 	default:
 		return "MATRIXCLAW_GEMINI_LIVE_API_KEY"
 	}
@@ -218,6 +222,8 @@ func realtimeVoiceVoicePlaceholder(provider realtime.ProviderDescriptor) string 
 	switch provider.ID {
 	case realtime.ProviderGrok:
 		return "eve"
+	case realtime.ProviderOpenAI:
+		return "marin"
 	default:
 		return "Puck"
 	}
@@ -227,6 +233,8 @@ func realtimeVoiceLanguagePlaceholder(provider realtime.ProviderDescriptor) stri
 	switch provider.ID {
 	case realtime.ProviderGrok:
 		return "auto or ru"
+	case realtime.ProviderOpenAI:
+		return "auto or ru-RU"
 	default:
 		return "auto or ru-RU"
 	}
@@ -236,6 +244,8 @@ func realtimeVoiceEndpointPlaceholder(provider realtime.ProviderDescriptor) stri
 	switch provider.ID {
 	case realtime.ProviderGrok:
 		return "wss://api.x.ai/v1/realtime"
+	case realtime.ProviderOpenAI:
+		return "wss://api.openai.com/v1/realtime"
 	default:
 		return "wss://generativelanguage.googleapis.com/..."
 	}

@@ -41,7 +41,7 @@ func (s *Service) nextDue(job Job, after time.Time) (*time.Time, error) {
 		}
 		schedule, err := cron.ParseStandard(expr)
 		if err != nil {
-			return nil, fmt.Errorf("%w: invalid cron expression: %v", core.ErrInvalidInput, err)
+			return nil, fmt.Errorf("%w: invalid cron expression: %w", core.ErrInvalidInput, err)
 		}
 		next := schedule.Next(after.In(loc)).UTC()
 		return &next, nil

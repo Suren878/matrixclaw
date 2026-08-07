@@ -49,6 +49,9 @@ type Config struct {
 	RecordingFormat  string
 	RecordingPrefix  string
 	RecordingStorage bool
+	DebugAudio       bool
+	DebugAudioDir    string
+	DebugAudioWindow time.Duration
 }
 
 func ConfigFromEnv() Config {
@@ -78,6 +81,9 @@ func ConfigFromEnv() Config {
 		RecordingFormat:  normalizeRecordingFormat(env("MATRIXCLAW_TELEPHONY_RECORDING_FORMAT", defaultRecordingFormat)),
 		RecordingPrefix:  normalizeRecordingPrefix(env("MATRIXCLAW_TELEPHONY_RECORDING_PREFIX", defaultRecordingPrefix)),
 		RecordingStorage: boolEnv("MATRIXCLAW_TELEPHONY_RECORDING_TEMP_STORAGE", true),
+		DebugAudio:       boolEnv("MATRIXCLAW_TELEPHONY_DEBUG_AUDIO", false),
+		DebugAudioDir:    env("MATRIXCLAW_TELEPHONY_DEBUG_AUDIO_DIR", defaultDebugAudioDir()),
+		DebugAudioWindow: durationEnv("MATRIXCLAW_TELEPHONY_DEBUG_AUDIO_SECONDS", 20*time.Second),
 	}
 }
 
@@ -163,6 +169,19 @@ func defaultRecordingDir() string {
 		stateRoot = os.TempDir()
 	}
 	return filepath.Join(stateRoot, "matrixclaw", "storage", "temporary", defaultRecordingPrefix)
+}
+
+func defaultDebugAudioDir() string {
+	stateRoot := strings.TrimSpace(os.Getenv("XDG_STATE_HOME"))
+	if stateRoot == "" {
+		if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+			stateRoot = filepath.Join(home, ".local", "state")
+		}
+	}
+	if stateRoot == "" {
+		stateRoot = os.TempDir()
+	}
+	return filepath.Join(stateRoot, "matrixclaw", "telephony-debug")
 }
 
 func normalizeRecordingFormat(value string) string {

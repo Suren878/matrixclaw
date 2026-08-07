@@ -176,11 +176,9 @@ func (d *Dispatcher) browserProviderAction(ctx context.Context, args string) (Re
 			ConfirmDanger:  action == provider.ActionIDs.DeleteRuntime,
 		}}, nil
 	}
-	updated, err := d.browserModules.BrowserProviderAction(ctx, provider.ID, setup.BrowserProviderActionRequest{Action: action})
-	if err != nil {
+	if _, err := d.browserModules.BrowserProviderAction(ctx, provider.ID, setup.BrowserProviderActionRequest{Action: action}); err != nil {
 		return Result{}, err
 	}
-	provider = updated
 	return d.browserModulePicker(ctx)
 }
 

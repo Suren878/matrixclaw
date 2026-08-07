@@ -115,7 +115,7 @@ func decodePlanToolArgs(args json.RawMessage, dest any) error {
 		args = []byte(`{}`)
 	}
 	if err := json.Unmarshal(args, dest); err != nil {
-		return fmt.Errorf("%w: %v", tools.ErrInvalidArgs, err)
+		return fmt.Errorf("%w: %w", tools.ErrInvalidArgs, err)
 	}
 	return nil
 }

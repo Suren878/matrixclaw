@@ -14,6 +14,7 @@ const (
 	ModuleID        = "realtime_voice"
 	ProviderGemini  = "gemini_live"
 	ProviderGrok    = "grok_voice"
+	ProviderOpenAI  = "openai_realtime"
 	ProtocolVersion = 1
 )
 

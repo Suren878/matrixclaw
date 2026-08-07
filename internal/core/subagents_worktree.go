@@ -2,6 +2,8 @@ package core
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -32,13 +34,13 @@ func prepareSubagentWorktree(ctx context.Context, workingDir string, taskID stri
 	}
 	repoRoot, err := gitCommandOutput(ctx, workingDir, "rev-parse", "--show-toplevel")
 	if err != nil {
-		return "", fmt.Errorf("%w: worktree isolation requires a git working tree: %v", ErrInvalidInput, err)
+		return "", fmt.Errorf("%w: worktree isolation requires a git working tree: %w", ErrInvalidInput, err)
 	}
 	repoRoot = strings.TrimSpace(repoRoot)
 	if repoRoot == "" {
 		return "", fmt.Errorf("%w: git root is empty for worktree isolation", ErrInvalidInput)
 	}
-	target := filepath.Join(os.TempDir(), "matrixclaw-subagents", stableIDPart(filepath.Base(repoRoot)), taskID)
+	target := filepath.Join(os.TempDir(), "matrixclaw-subagents", subagentWorktreeRepoID(repoRoot), taskID)
 	if target == "" || target == string(filepath.Separator) {
 		return "", fmt.Errorf("%w: invalid worktree target", ErrInvalidInput)
 	}
@@ -56,9 +58,15 @@ func prepareSubagentWorktree(ctx context.Context, workingDir string, taskID stri
 		return "", err
 	}
 	if _, err := gitCommandOutput(ctx, repoRoot, "worktree", "add", "--detach", target, "HEAD"); err != nil {
-		return "", fmt.Errorf("%w: create subagent worktree: %v", ErrExecutionUnavailable, err)
+		return "", fmt.Errorf("%w: create subagent worktree: %w", ErrExecutionUnavailable, err)
 	}
 	return target, nil
+}
+
+func subagentWorktreeRepoID(repoRoot string) string {
+	repoRoot = filepath.Clean(strings.TrimSpace(repoRoot))
+	sum := sha256.Sum256([]byte(repoRoot))
+	return stableIDPart(filepath.Base(repoRoot)) + "-" + hex.EncodeToString(sum[:6])
 }
 
 func gitCommandOutput(ctx context.Context, dir string, args ...string) (string, error) {

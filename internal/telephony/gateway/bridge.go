@@ -36,7 +36,40 @@ func (s *Server) connectRealtime(ctx context.Context, call *Call, req createCall
 	return realtime, nil
 }
 
-func (s *Server) runConnectedCallWithRealtime(ctx context.Context, call *Call, req createCallRequest, channelID string, realtime *realtimeConn) error {
+func (s *Server) attachRTPDebugAudio(call *Call, realtime *realtimeConn, rtp *rtpSession, label string) {
+	if s == nil || !s.cfg.DebugAudio || rtp == nil {
+		return
+	}
+	sessionID := ""
+	if realtime != nil {
+		sessionID = realtime.Session.ID
+	}
+	debugAudio, err := newRTPDebugAudio(s.cfg.DebugAudioDir, callID(call), sessionID, label, debugAudioSampleRateHz, s.cfg.DebugAudioWindow)
+	if err != nil {
+		log.Printf("telephony debug audio setup failed call=%s session=%s label=%s: %v", callID(call), sessionID, label, err)
+		return
+	}
+	rtp.SetDebugAudio(debugAudio)
+	logCallTimeline(call, sessionID, "debug_audio_enabled", "label", label, "path", debugAudio.Path())
+}
+
+func (s *Server) newCallerAudioGateForCall(call *Call, realtime *realtimeConn) *callerAudioGate {
+	enabled := strings.EqualFold(callDirection(call), "outbound")
+	gate := newCallerAudioGate(enabled, 7*time.Second)
+	if enabled {
+		sessionID := ""
+		if realtime != nil {
+			sessionID = realtime.Session.ID
+		}
+		gate.SetOnOpen(func(reason string) {
+			logCallTimeline(call, sessionID, "caller_audio_gate_open", "reason", reason)
+		})
+		logCallTimeline(call, sessionID, "caller_audio_gate_closed", "reason", "initial_outbound_greeting")
+	}
+	return gate
+}
+
+func (s *Server) runConnectedCallWithRealtime(ctx context.Context, call *Call, req createCallRequest, channelID string, realtime *realtimeConn, sendInitialPrompt bool) error {
 	if realtime == nil {
 		return errors.New("realtime connection is required")
 	}
@@ -52,6 +85,8 @@ func (s *Server) runConnectedCallWithRealtime(ctx context.Context, call *Call, r
 	s.setCallRTPSessions(call, captureRTP, playbackRTP)
 	captureRTP.SetDiagnostics(id, realtime.Session.ID, "capture")
 	playbackRTP.SetDiagnostics(id, realtime.Session.ID, "playback")
+	s.attachRTPDebugAudio(call, realtime, captureRTP, "capture_in")
+	s.attachRTPDebugAudio(call, realtime, playbackRTP, "playback_out")
 	defer func() {
 		s.clearCallRTPSessions(call)
 	}()
@@ -148,12 +183,15 @@ func (s *Server) runConnectedCallWithRealtime(ctx context.Context, call *Call, r
 	}
 	defer finishRecording()
 
+	callerGate := s.newCallerAudioGateForCall(call, realtime)
+	defer callerGate.Stop()
+
 	audioErr := make(chan callRuntimeResult, 3)
 	runCallRuntimeWorker("telephony.rtpInput", audioErr, "rtp_input", func() error {
-		return rtpToRealtime(ctx, captureRTP, realtime, call)
+		return rtpToRealtime(ctx, captureRTP, realtime, callerGate, call)
 	})
 	runCallRuntimeWorker("telephony.realtimeOutput", audioErr, "realtime_output", func() error {
-		return realtimeToRTP(ctx, realtime, playbackRTP, call)
+		return realtimeToRTP(ctx, realtime, playbackRTP, call, callerGate)
 	})
 	runCallRuntimeWorker("telephony.ariChannel", audioErr, "ari_channel", func() error {
 		return s.ari.waitChannelEnd(ctx, channelID)
@@ -167,12 +205,9 @@ func (s *Server) runConnectedCallWithRealtime(ctx context.Context, call *Call, r
 		"playback_bridge", playbackBridgeID,
 		"playback_channels", channelID+"+"+playbackExternalID,
 	)
-	if prompt := initialPhoneStartPrompt(call, req); prompt != "" {
-		log.Printf("telephony sending initial realtime prompt call=%s session=%s direction=%s", id, realtime.Session.ID, callDirection(call))
-		if err := realtime.SendText(ctx, prompt); err != nil {
+	if sendInitialPrompt {
+		if err := sendInitialRealtimePrompt(ctx, call, req, realtime); err != nil {
 			log.Printf("telephony initial realtime prompt failed call=%s session=%s: %v", id, realtime.Session.ID, err)
-		} else {
-			logCallTimeline(call, realtime.Session.ID, "initial_prompt_sent", "direction", callDirection(call), "bytes", len(prompt))
 		}
 	}
 
@@ -238,6 +273,24 @@ func runCallRuntimeWorker(name string, out chan<- callRuntimeResult, source stri
 		}
 		out <- result
 	})
+}
+
+func sendInitialRealtimePrompt(ctx context.Context, call *Call, req createCallRequest, realtime *realtimeConn) error {
+	if realtime == nil {
+		return errors.New("realtime connection is required")
+	}
+	prompt := initialPhoneStartPrompt(call, req)
+	if prompt == "" {
+		return nil
+	}
+	id := callID(call)
+	log.Printf("telephony sending initial realtime prompt call=%s session=%s direction=%s", id, realtime.Session.ID, callDirection(call))
+	if err := realtime.SendText(ctx, prompt); err != nil {
+		log.Printf("telephony initial realtime prompt failed call=%s session=%s: %v", id, realtime.Session.ID, err)
+		return err
+	}
+	logCallTimeline(call, realtime.Session.ID, "initial_prompt_sent", "direction", callDirection(call), "bytes", len(prompt))
+	return nil
 }
 
 func initialPhoneStartPrompt(call *Call, req createCallRequest) string {

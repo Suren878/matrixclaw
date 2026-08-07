@@ -392,10 +392,3 @@ func formatSearchResults(query, provider string, results []WebSearchResult) stri
 	}
 	return strings.TrimSpace(b.String())
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

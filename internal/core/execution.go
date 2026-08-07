@@ -259,11 +259,11 @@ func (c *Core) checkAndHandleCanceled(ctx context.Context, run Run, assistant *M
 func (c *Core) persistAssistantError(ctx context.Context, run Run, assistant *Message, assistantSaved bool, cause error) error {
 	if assistantSaved {
 		if updateErr := c.markAssistantErrored(ctx, assistant, cause); updateErr != nil {
-			return c.failRunByID(ctx, run, fmt.Errorf("%v (assistant update failed: %w)", cause, updateErr))
+			return c.failRunByID(ctx, run, fmt.Errorf("%w (assistant update failed: %w)", cause, updateErr))
 		}
 	} else {
 		if saveErr := c.saveAssistantErrored(ctx, assistant, cause); saveErr != nil {
-			return c.failRunByID(ctx, run, fmt.Errorf("%v (assistant save failed: %w)", cause, saveErr))
+			return c.failRunByID(ctx, run, fmt.Errorf("%w (assistant save failed: %w)", cause, saveErr))
 		}
 	}
 	return c.failRunByID(ctx, run, cause)
