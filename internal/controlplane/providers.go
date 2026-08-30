@@ -176,6 +176,20 @@ func (d *Dispatcher) providerSelectedResult(ctx context.Context, session core.Se
 			return Result{}, err
 		}
 	}
+	if d.sessionModels != nil {
+		response, err := d.sessionModels.SessionModels(ctx, session.ID)
+		if err == nil {
+			picker := sessionModelPicker(session.ID, response)
+			if len(picker.Items) > 1 {
+				picker.Meta = text + "\nChoose a model."
+				return Result{
+					Handled:        true,
+					Picker:         picker,
+					ReloadSnapshot: true,
+				}, nil
+			}
+		}
+	}
 	return Result{
 		Handled:        true,
 		Text:           text,

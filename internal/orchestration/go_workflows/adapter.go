@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 
@@ -23,6 +25,32 @@ type Adapter struct {
 	sequence uint64
 }
 
+// IsolatedStatePath returns a sidecar SQLite path for workflow-engine state.
+// The workflow backend uses immediate transactions and active pollers, so it
+// must not share MatrixClaw's primary database with messages and runs.
+func IsolatedStatePath(mainStorePath string) (string, error) {
+	mainStorePath = strings.TrimSpace(mainStorePath)
+	if mainStorePath == "" {
+		return "", errors.New("go-workflows: main sqlite path is required")
+	}
+	cleanPath := filepath.Clean(mainStorePath)
+	ext := filepath.Ext(cleanPath)
+	if ext == "" {
+		return cleanPath + "-workflows.db", nil
+	}
+	return strings.TrimSuffix(cleanPath, ext) + "-workflows" + ext, nil
+}
+
+// NewForStore creates a workflow adapter whose SQLite state is isolated from
+// the application's primary store.
+func NewForStore(mainStorePath string, executor orchestration.RunExecutor) (*Adapter, error) {
+	path, err := IsolatedStatePath(mainStorePath)
+	if err != nil {
+		return nil, err
+	}
+	return New(path, executor)
+}
+
 func New(path string, executor orchestration.RunExecutor) (*Adapter, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, errors.New("go-workflows: sqlite path is required")
@@ -32,6 +60,10 @@ func New(path string, executor orchestration.RunExecutor) (*Adapter, error) {
 	}
 
 	backend := workflowsqlite.NewSqliteBackend(path, workflowsqlite.WithApplyMigrations(true))
+	if err := secureSQLiteFiles(path); err != nil {
+		_ = backend.Close()
+		return nil, err
+	}
 	worker := workflowworker.NewWorkflowOrchestrator(backend, nil)
 
 	if err := worker.RegisterWorkflow(runWorkflow); err != nil {
@@ -57,6 +89,15 @@ func New(path string, executor orchestration.RunExecutor) (*Adapter, error) {
 		worker:  worker,
 		cancel:  cancel,
 	}, nil
+}
+
+func secureSQLiteFiles(path string) error {
+	for _, candidate := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Chmod(candidate, 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("go-workflows: secure sqlite file %s: %w", candidate, err)
+		}
+	}
+	return nil
 }
 
 func (a *Adapter) StartRun(ctx context.Context, runID string) error {

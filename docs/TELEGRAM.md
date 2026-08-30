@@ -21,6 +21,10 @@ key. Private chat runs deliver drafts, tool updates, approval buttons,
 assistant messages, generated speech, and document deliveries back to the same
 chat.
 
+Selecting a configured provider switches the current session immediately. When
+that provider exposes more than one model, Telegram opens the model picker next
+so the default can be kept or another model can be selected.
+
 ## Inline Mode
 
 Inline mode lets a user type the bot mention from another Telegram chat and

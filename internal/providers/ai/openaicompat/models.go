@@ -78,6 +78,12 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 			SupportedParameters       []string `json:"supported_parameters"`
 			SupportedReasoningEfforts []string `json:"supported_reasoning_efforts"`
 			ReasoningEfforts          []string `json:"reasoning_efforts"`
+			InputModalities           []string `json:"input_modalities"`
+			SupportedInputModalities  []string `json:"supported_input_modalities"`
+			Modalities                []string `json:"modalities"`
+			Architecture              struct {
+				InputModalities []string `json:"input_modalities"`
+			} `json:"architecture"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -106,6 +112,12 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 				ContextWindow:       contextWindow,
 				SupportedParameters: item.SupportedParameters,
 				ReasoningEfforts:    firstStringSlice(item.SupportedReasoningEfforts, item.ReasoningEfforts),
+				ImageInput: modelModalitiesImageInput(firstStringSlice(
+					item.InputModalities,
+					item.SupportedInputModalities,
+					item.Architecture.InputModalities,
+					item.Modalities,
+				)),
 			}
 			if len(item.SupportedParameters) > 0 {
 				toolCalling := modelParametersSupportTools(item.SupportedParameters)
@@ -125,6 +137,20 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 		registerLocalContextWindows(ctx, cfg, client, baseURL, apiKey, models)
 	}
 	return models, nil
+}
+
+func modelModalitiesImageInput(values []string) *bool {
+	if len(values) == 0 {
+		return nil
+	}
+	supported := false
+	for _, value := range values {
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "image", "images", "vision":
+			supported = true
+		}
+	}
+	return &supported
 }
 
 func modelParametersSupportTools(values []string) bool {

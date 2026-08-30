@@ -339,11 +339,19 @@ func (d *Dispatcher) handleSessionModel(ctx context.Context, sessionID string) (
 	if err != nil {
 		return Result{}, err
 	}
+	picker := sessionModelPicker(session.ID, response)
+	if len(picker.Items) == 0 {
+		return Result{Handled: true, Text: "No models are available for this session."}, nil
+	}
+	return Result{Handled: true, Picker: picker}, nil
+}
+
+func sessionModelPicker(sessionID string, response core.SessionModelsResponse) *PickerData {
 	current := strings.TrimSpace(response.ModelID)
 	picker := NewPickerData(PickerSessionModels, "Model").
 		Meta(current).
-		Context(session.ID).
-		Select(sessionMenuCommand(session.ID))
+		Context(sessionID).
+		Select(sessionMenuCommand(sessionID))
 	for _, modelID := range response.Models {
 		modelID = strings.TrimSpace(modelID)
 		if modelID == "" {
@@ -353,13 +361,10 @@ func (d *Dispatcher) handleSessionModel(ctx context.Context, sessionID string) (
 			ID:       modelID,
 			Title:    modelID,
 			Selected: modelID == current,
-			Command:  sessionSetModelCommand(session.ID, modelID),
+			Command:  sessionSetModelCommand(sessionID, modelID),
 		})
 	}
-	if len(picker.Ptr().Items) == 0 {
-		return Result{Handled: true, Text: "No models are available for this session."}, nil
-	}
-	return Result{Handled: true, Picker: picker.Ptr()}, nil
+	return picker.Ptr()
 }
 
 func (d *Dispatcher) handleSessionSetModel(ctx context.Context, sessionID string, modelID string) (Result, error) {

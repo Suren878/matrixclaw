@@ -13,6 +13,7 @@ func init() {
 				ModelDiscovery: true,
 				NormalizeModel: true,
 				ToolCalling:    true,
+				ImageInput:     true,
 			},
 			DefaultBaseURL: "https://generativelanguage.googleapis.com/v1beta",
 			DefaultModel:   DefaultGeminiModel,

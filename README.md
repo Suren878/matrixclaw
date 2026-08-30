@@ -162,20 +162,18 @@ from more than one surface.
 
 ## What's New
 
-Latest release highlights for `v0.1.18`:
+Latest release highlights for `v0.1.19`:
 
-- Added OpenAI Realtime speech-to-speech with streaming audio, server VAD,
-  transcripts, tool calls, setup controls, and 16 kHz to 24 kHz resampling.
-- Preserved unsupported Telegram images as temporary files and prevented missing,
-  expired, or oversized attachments from stopping later conversation runs.
-- Improved telephony startup audio, playback error handling, caller gating, and
-  optional secure debug WAV capture.
-- Hardened web fetching against DNS rebinding, unsafe redirects, special IPv4
-  and IPv6 ranges, and oversized response bodies.
-- Fixed terminal selection across chat items and subagent worktree collisions
-  between repositories with the same directory name.
-- Split daemon, realtime voice, telephony, and Skills runtime code into smaller
-  focused modules and refreshed the Go toolchain and dependencies.
+- Provider selection now opens the available model picker when a provider has
+  multiple models, including custom OpenAI-compatible endpoints.
+- Text-only models no longer receive unsupported image payloads; MatrixClaw
+  detects model image capability and leaves a readable attachment notice.
+- Slow OpenAI-compatible inference has a longer request window, and workflow
+  state is isolated from the primary SQLite database to avoid write contention.
+- MatrixClaw credential configs and backups are protected from model file tools
+  and excluded from accidental Git commits.
+- CI and release jobs now run the complete Go test suite, with regression tests
+  covering provider selection, images, timeouts, workflows, and credentials.
 
 ## Install
 

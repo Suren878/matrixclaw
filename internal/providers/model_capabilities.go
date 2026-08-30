@@ -14,6 +14,7 @@ type ModelCapabilities struct {
 	ToolCalling        bool
 	ToolSchemaDialect  ToolSchemaDialect
 	ParallelToolCalls  bool
+	ImageInput         bool
 	ReasoningEffort    bool
 	ReasoningMode      ReasoningMode
 	ReasoningWithTools bool
@@ -45,6 +46,7 @@ func ResolveModelCapabilities(input ModelCapabilityInput) ModelCapabilitySet {
 		ToolCalling:        metadata.ToolCalling,
 		ToolSchemaDialect:  runtimeCapabilitiesFromProvider(providerCapabilities, policy.RuntimeProviderType).ToolSchemaDialect,
 		ParallelToolCalls:  metadata.ParallelToolCalls,
+		ImageInput:         metadata.ImageInput,
 		ReasoningEffort:    metadata.ReasoningEffort,
 		ReasoningMode:      metadata.ReasoningMode,
 		ReasoningWithTools: metadata.ReasoningWithTools,
@@ -76,6 +78,7 @@ func runtimeCapabilitiesFromProvider(providerCapabilities Capabilities, provider
 		ToolCalling:       providerCapabilities.ToolCalling,
 		ToolSchemaDialect: ToolSchemaJSONSchema,
 		ParallelToolCalls: providerCapabilities.ToolCalling,
+		ImageInput:        providerCapabilities.ImageInput,
 		ReasoningEffort:   providerCapabilities.ReasoningEffort,
 		NormalizeModel:    providerCapabilities.NormalizeModel,
 	}
@@ -104,6 +107,7 @@ func providerCapabilitiesFromRuntime(providerCapabilities Capabilities, runtimeC
 		ModelDiscovery:  providerCapabilities.ModelDiscovery,
 		ReasoningEffort: runtimeCapabilities.ReasoningEffort,
 		ToolCalling:     runtimeCapabilities.ToolCalling,
+		ImageInput:      runtimeCapabilities.ImageInput,
 		NormalizeModel:  providerCapabilities.NormalizeModel,
 	}
 }

@@ -23,6 +23,13 @@ func (e *readExecutor) Execute(_ context.Context, call Call) (Result, error) {
 		return *pathErr, nil
 	}
 	path := policy.Path
+	if isProtectedCredentialPath(policy.RealPath) || isProtectedCredentialPath(path) {
+		return Result{
+			Content:  "Reading MatrixClaw credential files is blocked. Use provider or module status controls; secret values are never returned to model tools.",
+			Metadata: filesystemPathMetadata(policy),
+			IsError:  true,
+		}, nil
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return Result{Content: fmt.Sprintf("File not found: %s", path), Metadata: filesystemPathMetadata(policy), IsError: true}, nil

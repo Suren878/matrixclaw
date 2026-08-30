@@ -316,12 +316,15 @@ func (d *Dispatcher) saveProviderEdit(ctx context.Context, session *core.Session
 	if err != nil {
 		return Result{}, err
 	}
+	selectedSession := session
 	if session != nil {
 		updated, updateErr := d.providers.UpdateSessionProvider(ctx, session.ID, configured.ID)
-		if updateErr == nil {
-			configured.Active = true
-			configured.Model = updated.ModelID
+		if updateErr != nil {
+			return Result{}, fmt.Errorf("select provider: %w", updateErr)
 		}
+		configured.Active = true
+		configured.Model = updated.ModelID
+		selectedSession = &updated
 	}
 	providers, err := d.providers.ListSetupProviders(ctx)
 	if err != nil {
@@ -329,7 +332,7 @@ func (d *Dispatcher) saveProviderEdit(ctx context.Context, session *core.Session
 	}
 	return Result{
 		Handled:        true,
-		Picker:         NewPickerData(PickerProvider, "Provider").Items(ProviderPickerItems(providers, session)...).Ptr(),
+		Picker:         NewPickerData(PickerProvider, "Provider").Items(ProviderPickerItems(providers, selectedSession)...).Ptr(),
 		ReloadSnapshot: true,
 	}, nil
 }

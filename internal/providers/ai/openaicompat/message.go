@@ -24,10 +24,12 @@ func (r *Runtime) chatMessage(message providers.Message) chatCompletionMessage {
 		Role:    normalizeOpenAIRole(message.Role),
 		Content: "",
 	}
-	if len(message.Images) > 0 {
+	if len(message.Images) > 0 && r.capabilities.ImageInput {
 		chatMessage.Content = openAIContentParts(message)
 	} else if content := strings.TrimSpace(message.Content); content != "" {
 		chatMessage.Content = content
+	} else if len(message.Images) > 0 {
+		chatMessage.Content = "[Image attachment was not sent because the selected model does not support image input.]"
 	}
 	if strings.TrimSpace(message.ToolCallID) != "" {
 		chatMessage.ToolCallID = strings.TrimSpace(message.ToolCallID)

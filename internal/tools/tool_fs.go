@@ -116,6 +116,70 @@ func resolveReadablePath(workingDir string, value string) (FilesystemPathPolicy,
 	return policy, nil
 }
 
+func isProtectedCredentialPath(path string) bool {
+	path = comparableFilesystemPath(path)
+	if path == "" {
+		return false
+	}
+	for _, credentialPath := range matrixclawCredentialPaths() {
+		credentialPath = comparableFilesystemPath(credentialPath)
+		if credentialPath == "" {
+			continue
+		}
+		if path == credentialPath || credentialBackupPath(path, credentialPath) {
+			return true
+		}
+	}
+	return false
+}
+
+func matrixclawCredentialPaths() []string {
+	paths := []string{}
+	if configured := strings.TrimSpace(os.Getenv("MATRIXCLAW_SETUP_PATH")); configured != "" {
+		paths = append(paths, configured, filepath.Join(filepath.Dir(configured), "daemon.env"))
+	}
+	if configDir, err := os.UserConfigDir(); err == nil && strings.TrimSpace(configDir) != "" {
+		root := filepath.Join(configDir, "matrixclaw")
+		paths = append(paths, filepath.Join(root, "setup.json"), filepath.Join(root, "daemon.env"))
+	}
+	if dataDir := matrixclawUserDataDir(); dataDir != "" {
+		root := filepath.Join(dataDir, "matrixclaw")
+		paths = append(paths, filepath.Join(root, "matrixclaw.json"), filepath.Join(root, "providers.json"))
+	}
+	return paths
+}
+
+func matrixclawUserDataDir() string {
+	if configured := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); configured != "" {
+		return configured
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return ""
+	}
+	return filepath.Join(home, ".local", "share")
+}
+
+func credentialBackupPath(path string, credentialPath string) bool {
+	return filepath.Dir(path) == filepath.Dir(credentialPath) &&
+		strings.HasPrefix(filepath.Base(path), filepath.Base(credentialPath)+".")
+}
+
+func comparableFilesystemPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	absPath, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return ""
+	}
+	if realPath, known := evalExistingPathPrefix(absPath); known {
+		return filepath.Clean(realPath)
+	}
+	return absPath
+}
+
 func resolveMutationPath(workingDir string, value string) (FilesystemPathPolicy, *Result) {
 	policy, err := ResolveFilesystemPath(workingDir, value)
 	if err != nil {

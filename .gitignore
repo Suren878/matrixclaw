@@ -37,6 +37,17 @@ go.work.sum
 *.pem
 *.key
 
+# Personal MatrixClaw setup (may contain custom providers and credentials)
+/setup.json
+/setup.json.*
+/daemon.env
+/daemon.env.*
+/matrixclaw.json
+/matrixclaw.json.*
+/providers.json
+/providers.json.*
+/.matrixclaw/
+
 # Local agent orchestration notes
 .agents/*.local.md
 .codex/

@@ -9,7 +9,7 @@ func init() {
 			Type:            TypeAnthropic,
 			Implemented:     true,
 			RequiresBaseURL: true,
-			Capabilities:    Capabilities{ModelDiscovery: true},
+			Capabilities:    Capabilities{ModelDiscovery: true, ImageInput: true},
 			DefaultBaseURL:  "https://api.anthropic.com/v1",
 			DefaultModel:    DefaultAnthropicModel,
 			APIKeyEnv:       "ANTHROPIC_API_KEY",

@@ -59,6 +59,7 @@ type Capabilities struct {
 	ModelDiscovery  bool `json:"model_discovery,omitempty"`
 	ReasoningEffort bool `json:"reasoning_effort,omitempty"`
 	ToolCalling     bool `json:"tool_calling,omitempty"`
+	ImageInput      bool `json:"image_input,omitempty"`
 	NormalizeModel  bool `json:"normalize_model,omitempty"`
 }
 

@@ -13,12 +13,12 @@ import (
 
 const maxProviderImageBytes int64 = 8 * 1024 * 1024
 
-func (c *Core) buildProviderConversation(ctx context.Context, history []Message, currentRunID string) ([]providers.Message, error) {
-	return buildProviderConversationWithAttachmentsForRun(ctx, history, c.attachments, currentRunID)
+func (c *Core) buildProviderConversation(ctx context.Context, history []Message, currentRunID string, allowImageInput bool) ([]providers.Message, error) {
+	return buildProviderConversationWithAttachmentsForRun(ctx, history, c.attachments, currentRunID, allowImageInput)
 }
 
-func buildProviderConversationWithAttachmentsForRun(ctx context.Context, history []Message, reader AttachmentReader, currentRunID string) ([]providers.Message, error) {
-	entries, err := convertProviderConversationHistory(ctx, history, reader, currentRunID)
+func buildProviderConversationWithAttachmentsForRun(ctx context.Context, history []Message, reader AttachmentReader, currentRunID string, allowImageInput bool) ([]providers.Message, error) {
+	entries, err := convertProviderConversationHistory(ctx, history, reader, currentRunID, allowImageInput)
 	if err != nil {
 		return nil, err
 	}
@@ -53,13 +53,13 @@ type providerConversationEntry struct {
 	messages []providers.Message
 }
 
-func convertProviderConversationHistory(ctx context.Context, history []Message, reader AttachmentReader, currentRunID string) ([]providerConversationEntry, error) {
+func convertProviderConversationHistory(ctx context.Context, history []Message, reader AttachmentReader, currentRunID string, allowImageInput bool) ([]providerConversationEntry, error) {
 	entries := make([]providerConversationEntry, 0, len(history))
 	for _, message := range history {
 		if skipInternalPlanPromptForProvider(message, currentRunID) {
 			continue
 		}
-		providerMessages, err := toProviderMessages(ctx, message, reader)
+		providerMessages, err := toProviderMessages(ctx, message, reader, allowImageInput)
 		if err != nil {
 			return nil, err
 		}
@@ -294,7 +294,7 @@ func trimProviderToolResult(content string, maxRunes int) string {
 	return strings.TrimSpace(string(runes[:head])) + "\n[...truncated for provider context...]\n" + strings.TrimSpace(string(runes[len(runes)-tail:])) + "\n" + providerToolResultTruncationNotice
 }
 
-func toProviderMessages(ctx context.Context, message Message, reader AttachmentReader) ([]providers.Message, error) {
+func toProviderMessages(ctx context.Context, message Message, reader AttachmentReader, allowImageInput bool) ([]providers.Message, error) {
 	if message.Role == MessageRoleSystem {
 		return nil, nil
 	}
@@ -321,6 +321,10 @@ func toProviderMessages(ctx context.Context, message Message, reader AttachmentR
 			// first place. In particular, an expired temporary SVG attachment in
 			// conversation history must not make every later run fail.
 			if strings.TrimSpace(imagePart.MIMEType) != "" && !IsProviderSupportedImageMIMEType(imagePart.MIMEType) {
+				continue
+			}
+			if !allowImageInput {
+				attachmentWarnings = append(attachmentWarnings, unsupportedModelImageWarning(imagePart))
 				continue
 			}
 			image, err := providerImageContent(ctx, imagePart, reader)
@@ -385,6 +389,10 @@ func toProviderMessages(ctx context.Context, message Message, reader AttachmentR
 		ReasoningContent: reasoningContent,
 		Images:           images,
 	}}, nil
+}
+
+func unsupportedModelImageWarning(part ImagePart) string {
+	return "Image attachment " + imagePartLabel(part) + " was not sent because the selected model does not support image input."
 }
 
 // IsProviderSupportedImageMIMEType reports whether image data can be sent inline

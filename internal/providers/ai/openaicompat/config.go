@@ -10,7 +10,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
-const defaultTimeout = 90 * time.Second
+const defaultTimeout = 5 * time.Minute
 
 type Config struct {
 	ProviderID      string

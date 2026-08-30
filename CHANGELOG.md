@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.1.19
+
+- Improved provider selection in Telegram and the shared control plane: choosing
+  a configured provider now immediately offers its model catalog when multiple
+  models are available, and provider edits keep the updated session selection.
+- Made image delivery model-aware so text-only OpenAI-compatible models no
+  longer receive unsupported `image_url` message parts. Live model modalities
+  and conservative static rules now determine image support, while unavailable
+  images remain visible as attachment notices instead of aborting later runs.
+- Increased the OpenAI-compatible request timeout for slower inference servers
+  and isolated workflow-engine SQLite state from the main message database to
+  prevent workflow pollers from blocking normal session writes.
+- Blocked model file tools from reading MatrixClaw setup files, daemon
+  environment files, legacy provider/client credential files, and their backup
+  copies; local runtime/config files are also excluded from Git.
+- Added regression coverage for provider/model switching, text-only image
+  payloads, long-running requests, workflow database isolation, and credential
+  file protection. CI and release verification now run the complete Go test
+  suite before building artifacts.
+
 ## v0.1.18
 
 - Added OpenAI Realtime speech-to-speech support with `gpt-realtime-2.1`,

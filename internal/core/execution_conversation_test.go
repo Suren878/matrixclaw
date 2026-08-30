@@ -23,7 +23,7 @@ func TestToProviderMessagesKeepsSVGAsAttachmentReference(t *testing.T) {
 		}},
 	}, staticAttachmentReader{
 		err: errors.New("storage file not found"),
-	})
+	}, true)
 	if err != nil {
 		t.Fatalf("toProviderMessages: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestToProviderMessagesKeepsRasterImageInline(t *testing.T) {
 		}},
 	}, staticAttachmentReader{
 		data: AttachmentData{MIMEType: "image/png", Data: []byte("png")},
-	})
+	}, true)
 	if err != nil {
 		t.Fatalf("toProviderMessages: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestToProviderMessagesDoesNotFailForExpiredRasterImage(t *testing.T) {
 				Temporary:   true,
 			},
 		}},
-	}, staticAttachmentReader{err: fmt.Errorf("%w: storage file not found", ErrAttachmentUnavailable)})
+	}, staticAttachmentReader{err: fmt.Errorf("%w: storage file not found", ErrAttachmentUnavailable)}, true)
 	if err != nil {
 		t.Fatalf("toProviderMessages: %v", err)
 	}
@@ -86,6 +86,33 @@ func TestToProviderMessagesDoesNotFailForExpiredRasterImage(t *testing.T) {
 		if !strings.Contains(messages[0].Content, want) {
 			t.Errorf("content = %q, want %q", messages[0].Content, want)
 		}
+	}
+}
+
+func TestToProviderMessagesDoesNotReadImageForTextOnlyModel(t *testing.T) {
+	messages, err := toProviderMessages(context.Background(), Message{
+		Role:    MessageRoleUser,
+		Content: "Describe this image.",
+		Parts: []MessagePart{{
+			Kind: MessagePartKindImage,
+			Image: &ImagePart{
+				MIMEType:    "image/png",
+				Name:        "photo.png",
+				StoragePath: "telegram/images/photo.png",
+			},
+		}},
+	}, staticAttachmentReader{err: errors.New("reader must not be called")}, false)
+	if err != nil {
+		t.Fatalf("toProviderMessages: %v", err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("message count = %d, want 1", len(messages))
+	}
+	if len(messages[0].Images) != 0 {
+		t.Fatalf("inline images = %d, want 0", len(messages[0].Images))
+	}
+	if want := "selected model does not support image input"; !strings.Contains(messages[0].Content, want) {
+		t.Fatalf("content = %q, want %q", messages[0].Content, want)
 	}
 }
 

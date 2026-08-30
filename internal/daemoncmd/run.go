@@ -86,7 +86,7 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	app.WithExternalAgents(externalRegistry, sqliteStore)
-	runStarter, err := goworkflows.New(bootstrap.DBPath, app)
+	runStarter, err := goworkflows.NewForStore(bootstrap.DBPath, app)
 	if err != nil {
 		return err
 	}

@@ -21,12 +21,16 @@ func ProviderPickerItems(items []setup.ProviderSetupItem, session *core.Session)
 		if selected && sessionModelID != "" {
 			info = sessionModelID
 		}
+		command := providerCommand(provider.ID)
+		if provider.Configured && !selected {
+			command = providerCommand("use", provider.ID)
+		}
 		out = append(out, PickerItem{
 			ID:       provider.ID,
 			Title:    providerPickerTitle(provider),
 			Info:     info,
 			Selected: selected,
-			Command:  providerCommand(provider.ID),
+			Command:  command,
 		})
 	}
 	out = append(out, PickerItem{ID: "custom", Title: "Custom Provider", Command: customProviderCommand(), Role: PickerItemRoleAction})

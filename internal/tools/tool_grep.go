@@ -36,6 +36,13 @@ func (e *grepExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 		return *pathErr, nil
 	}
 	root := policy.Path
+	if isProtectedCredentialPath(policy.RealPath) || isProtectedCredentialPath(root) {
+		return Result{
+			Content:  "Searching MatrixClaw credential files is blocked. Use provider or module status controls; secret values are never returned to model tools.",
+			Metadata: filesystemPathMetadata(policy),
+			IsError:  true,
+		}, nil
+	}
 	pattern := params.Pattern
 	if params.LiteralText {
 		pattern = regexp.QuoteMeta(pattern)
@@ -120,6 +127,9 @@ func grepFiles(ctx context.Context, pattern string, root string, include string,
 			return nil
 		}
 		if d.IsDir() {
+			return nil
+		}
+		if isProtectedCredentialPath(path) {
 			return nil
 		}
 		rel, err := filepath.Rel(root, path)

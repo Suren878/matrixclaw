@@ -19,6 +19,7 @@ type ModelMetadata struct {
 	ContextWindow          int                 `json:"context_window,omitempty"`
 	ToolCalling            bool                `json:"tool_calling,omitempty"`
 	ParallelToolCalls      bool                `json:"parallel_tool_calls,omitempty"`
+	ImageInput             bool                `json:"image_input,omitempty"`
 	ReasoningEffort        bool                `json:"reasoning_effort,omitempty"`
 	ReasoningMode          ReasoningMode       `json:"reasoning_mode,omitempty"`
 	ReasoningWithTools     bool                `json:"reasoning_with_tools,omitempty"`
@@ -33,6 +34,7 @@ type ModelMetadata struct {
 type ModelMetadataRegistration struct {
 	ContextWindow       int
 	ToolCalling         *bool
+	ImageInput          *bool
 	ReasoningEffort     *bool
 	ReasoningEfforts    []string
 	SupportedParameters []string
@@ -41,6 +43,7 @@ type ModelMetadataRegistration struct {
 type cachedModelMetadata struct {
 	ContextWindow       int      `json:"context_window,omitempty"`
 	ToolCalling         *bool    `json:"tool_calling,omitempty"`
+	ImageInput          *bool    `json:"image_input,omitempty"`
 	ReasoningEffort     *bool    `json:"reasoning_effort,omitempty"`
 	ReasoningEfforts    []string `json:"reasoning_efforts,omitempty"`
 	SupportedParameters []string `json:"supported_parameters,omitempty"`
@@ -53,7 +56,7 @@ var modelMetadataOverrides = struct {
 
 func RegisterModelMetadata(providerID string, providerType string, modelID string, metadata ModelMetadataRegistration) {
 	metadata = normalizeModelMetadataRegistration(metadata)
-	if metadata.ContextWindow <= 0 && metadata.ToolCalling == nil && metadata.ReasoningEffort == nil && len(metadata.ReasoningEfforts) == 0 && len(metadata.SupportedParameters) == 0 {
+	if metadata.ContextWindow <= 0 && metadata.ToolCalling == nil && metadata.ImageInput == nil && metadata.ReasoningEffort == nil && len(metadata.ReasoningEfforts) == 0 && len(metadata.SupportedParameters) == 0 {
 		return
 	}
 	contextWindowCacheOnce.Do(loadContextWindowCache)
@@ -79,6 +82,7 @@ func ResolveModelMetadata(providerID string, providerType string, modelID string
 	policy := PolicyForProvider(providerID, providerType)
 	providerCapabilities := policy.Capabilities
 	runtimeCapabilities := runtimeCapabilitiesFromProvider(providerCapabilities, policy.RuntimeProviderType)
+	runtimeCapabilities.ImageInput = resolveStaticImageInput(providerID, policy.RuntimeProviderType, normalizedModelID, providerCapabilities.ImageInput)
 
 	liveMetadata, liveOK := lookupCachedModelMetadata(providerID, providerType, normalizedModelID)
 	if liveOK {
@@ -108,7 +112,7 @@ func ResolveModelMetadata(providerID string, providerType string, modelID string
 	}
 
 	capabilitySource := ModelMetadataSourceStaticRule
-	if liveOK && (liveMetadata.ToolCalling != nil || liveMetadata.ReasoningEffort != nil || len(liveMetadata.ReasoningEfforts) > 0 || len(liveMetadata.SupportedParameters) > 0) {
+	if liveOK && (liveMetadata.ToolCalling != nil || liveMetadata.ImageInput != nil || liveMetadata.ReasoningEffort != nil || len(liveMetadata.ReasoningEfforts) > 0 || len(liveMetadata.SupportedParameters) > 0) {
 		capabilitySource = ModelMetadataSourceLiveCatalog
 	}
 	source := metadataSource(contextSource, capabilitySource, liveOK)
@@ -118,6 +122,7 @@ func ResolveModelMetadata(providerID string, providerType string, modelID string
 		ContextWindow:          contextWindow,
 		ToolCalling:            runtimeCapabilities.ToolCalling,
 		ParallelToolCalls:      runtimeCapabilities.ParallelToolCalls,
+		ImageInput:             runtimeCapabilities.ImageInput,
 		ReasoningEffort:        runtimeCapabilities.ReasoningEffort,
 		ReasoningMode:          runtimeCapabilities.ReasoningMode,
 		ReasoningWithTools:     runtimeCapabilities.ReasoningWithTools,
@@ -146,6 +151,10 @@ func mergeCachedModelMetadata(existing cachedModelMetadata, next ModelMetadataRe
 	if next.ToolCalling != nil {
 		value := *next.ToolCalling
 		existing.ToolCalling = &value
+	}
+	if next.ImageInput != nil {
+		value := *next.ImageInput
+		existing.ImageInput = &value
 	}
 	if next.ReasoningEffort != nil {
 		value := *next.ReasoningEffort
@@ -190,6 +199,10 @@ func mergeCachedMetadata(existing cachedModelMetadata, next cachedModelMetadata)
 		value := *next.ToolCalling
 		existing.ToolCalling = &value
 	}
+	if next.ImageInput != nil {
+		value := *next.ImageInput
+		existing.ImageInput = &value
+	}
 	if next.ReasoningEffort != nil {
 		value := *next.ReasoningEffort
 		existing.ReasoningEffort = &value
@@ -206,6 +219,7 @@ func mergeCachedMetadata(existing cachedModelMetadata, next cachedModelMetadata)
 func cachedModelMetadataNonZero(metadata cachedModelMetadata) bool {
 	return metadata.ContextWindow > 0 ||
 		metadata.ToolCalling != nil ||
+		metadata.ImageInput != nil ||
 		metadata.ReasoningEffort != nil ||
 		len(metadata.ReasoningEfforts) > 0 ||
 		len(metadata.SupportedParameters) > 0
@@ -215,6 +229,9 @@ func applyCachedCapabilities(capabilities ModelCapabilities, metadata cachedMode
 	if metadata.ToolCalling != nil {
 		capabilities.ToolCalling = *metadata.ToolCalling
 		capabilities.ParallelToolCalls = *metadata.ToolCalling
+	}
+	if metadata.ImageInput != nil {
+		capabilities.ImageInput = *metadata.ImageInput
 	}
 	if metadata.ReasoningEffort != nil {
 		capabilities.ReasoningEffort = *metadata.ReasoningEffort
