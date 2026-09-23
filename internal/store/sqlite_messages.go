@@ -85,7 +85,7 @@ SELECT EXISTS (
     WHERE m.session_id = ?
       AND m.role = 'tool'
       AND json_extract(p.value, '$.tool_result.tool_call_id') = ?
-)`, strings.TrimSpace(sessionID), strings.TrimSpace(toolCallID)).Scan(&found)
+)`, sessionID, strings.TrimSpace(toolCallID)).Scan(&found)
 	if err != nil {
 		return false, fmt.Errorf("store: has tool result: %w", err)
 	}
@@ -117,7 +117,7 @@ func (s *SQLiteStore) ListMessagesAfter(ctx context.Context, sessionID string, a
 FROM messages
 WHERE session_id = ? AND seq > ?
 ORDER BY seq ASC`
-	args := []any{strings.TrimSpace(sessionID), afterSeq}
+	args := []any{sessionID, afterSeq}
 	if limit > 0 {
 		query += "\nLIMIT ?"
 		args = append(args, limit)

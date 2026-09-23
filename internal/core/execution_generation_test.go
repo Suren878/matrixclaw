@@ -166,6 +166,30 @@ func TestUnknownToolIsReturnedToModelForCorrection(t *testing.T) {
 	}
 }
 
+func TestToolCallIDCollisionAcrossSessionsFailsRunClearly(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	tool := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
+	app.WithTools(tools.NewRegistry(tool))
+
+	_, otherRun := saveCrashRecoveryRun(t, db, "other", core.RunStatusAccepted, false)
+	saveInterruptedToolCall(t, db, otherRun, "shared-call", "inspect_state")
+
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+		return providers.Response{ToolCalls: []providers.ToolCall{{ID: "shared-call", Name: "inspect_state", Arguments: []byte(`{}`)}}}, nil
+	})})
+	_, run := saveCrashRecoveryRun(t, db, "main", core.RunStatusAccepted, false)
+
+	err := app.ExecuteRun(context.Background(), run.ID)
+	if err == nil || !strings.Contains(err.Error(), `tool call id "shared-call" already belongs to another session`) {
+		t.Fatalf("ExecuteRun error = %v, want clear collision message", err)
+	}
+	if tool.callCount() != 0 {
+		t.Fatalf("tool executions=%d, want 0", tool.callCount())
+	}
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusFailed)
+}
+
 type failingApprovedTool struct{ recoveryTool }
 
 func (t *failingApprovedTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {

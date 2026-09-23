@@ -130,7 +130,7 @@ func (c *Core) isNewToolCallMessage(ctx context.Context, sessionID string, toolC
 		return false, err
 	}
 	if message.SessionID != sessionID {
-		return false, fmt.Errorf("%w: tool call id %q already belongs to another session", ErrInvalidInput, toolCallID)
+		return false, fmt.Errorf("tool call id %q already belongs to another session", toolCallID)
 	}
 	return false, nil
 }

@@ -158,6 +158,14 @@ func toolResultMessage(id string, sessionID string, toolCallID string) transcrip
 	}}}
 }
 
+// assistantToolResultMessage carries a tool_result part on a non-tool role, to pin
+// that HasToolResult only counts role='tool' messages.
+func assistantToolResultMessage(id string, sessionID string, toolCallID string) transcript.Message {
+	return transcript.Message{ID: id, SessionID: sessionID, Role: transcript.MessageRoleAssistant, CreatedAt: testEpoch, Parts: []transcript.MessagePart{{
+		Kind: transcript.MessagePartKindToolResult, ToolResult: &transcript.ToolResultPart{ToolCallID: toolCallID, Name: "read", Content: "ok"},
+	}}}
+}
+
 func TestMessagePointLookups(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
@@ -169,6 +177,7 @@ func TestMessagePointLookups(t *testing.T) {
 	saveTestMessage(t, st, toolResultMessage("result-1", "s1", "call-1"))
 	saveTestMessage(t, st, toolResultMessage("result-2", "s2", "call-2"))
 	saveTestMessage(t, st, transcript.Message{ID: "answer", SessionID: "s1", Role: transcript.MessageRoleAssistant, CreatedAt: testEpoch})
+	saveTestMessage(t, st, assistantToolResultMessage("misfiled-result", "s2", "call-3"))
 
 	t.Run("GetMessage", func(t *testing.T) {
 		got, err := st.GetMessage(ctx, "call-1")
@@ -192,6 +201,7 @@ func TestMessagePointLookups(t *testing.T) {
 			{"s1", "call-2", false},
 			{"s2", "call-2", true},
 			{"s1", "missing", false},
+			{"s2", "call-3", false},
 		} {
 			got, err := st.HasToolResult(ctx, tc.sessionID, tc.toolCallID)
 			if err != nil {
