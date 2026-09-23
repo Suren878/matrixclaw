@@ -29,6 +29,9 @@ func applyCanonicalSchema(db *sql.DB) error {
 	if err := migrateMessageSeq(db); err != nil {
 		return err
 	}
+	if err := migrateRunUsage(db); err != nil {
+		return err
+	}
 	if err := ensureColumn(db, "external_agent_sessions", "approval_policy", `ALTER TABLE external_agent_sessions ADD COLUMN approval_policy TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
 	}

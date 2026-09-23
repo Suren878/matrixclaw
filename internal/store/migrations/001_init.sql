@@ -131,22 +131,21 @@ CREATE TABLE IF NOT EXISTS session_inputs (
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS run_usage (
-    id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    run_id TEXT NOT NULL UNIQUE,
-    message_id TEXT NOT NULL DEFAULT '',
-    provider TEXT NOT NULL DEFAULT '',
+CREATE TABLE IF NOT EXISTS run_steps (
+    run_id TEXT NOT NULL,
+    step INTEGER NOT NULL,
     model TEXT NOT NULL DEFAULT '',
-    input_tokens INTEGER NOT NULL DEFAULT 0,
+    provider TEXT NOT NULL DEFAULT '',
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
     output_tokens INTEGER NOT NULL DEFAULT 0,
-    total_tokens INTEGER NOT NULL DEFAULT 0,
-    cached_tokens INTEGER NOT NULL DEFAULT 0,
     reasoning_tokens INTEGER NOT NULL DEFAULT 0,
-    estimated INTEGER NOT NULL DEFAULT 0,
-    provider_raw TEXT NOT NULL DEFAULT '',
+    stop_reason TEXT NOT NULL DEFAULT '',
+    latency_ms INTEGER NOT NULL DEFAULT 0,
+    tool_calls INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    PRIMARY KEY (run_id, step),
     FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
 );
 
@@ -294,9 +293,6 @@ CREATE INDEX IF NOT EXISTS idx_session_inputs_session_status_created
 
 CREATE INDEX IF NOT EXISTS idx_session_inputs_target_run
     ON session_inputs(target_run_id, mode, status);
-
-CREATE INDEX IF NOT EXISTS idx_run_usage_session_created_at
-    ON run_usage(session_id, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_memories_scope_workdir_updated
     ON memories(scope, working_dir, updated_at DESC);

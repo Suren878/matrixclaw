@@ -31,31 +31,32 @@ func (d *Dispatcher) handleUsage(ctx context.Context, externalKey string) (Resul
 }
 
 func usageInfoData(report core.UsageReport) InfoData {
-	rows := []InfoRow{
-		{Label: "Runs", Value: fmt.Sprintf("%d", report.Summary.Runs)},
-		{Label: "Input", Value: usageTokenLabel(report.Summary.InputTokens)},
-		{Label: "Output", Value: usageTokenLabel(report.Summary.OutputTokens)},
-		{Label: "Reasoning", Value: usageTokenLabel(report.Summary.ReasoningTokens)},
-		{Label: "Cached", Value: usageTokenLabel(report.Summary.CachedTokens)},
-		{Label: "Total", Value: usageTokenLabel(report.Summary.TotalTokens)},
-	}
 	return InfoData{
 		Title: "Token Usage",
 		Text:  usageInfoText(report),
-		Rows:  rows,
+		Rows:  usageInfoRows(report.Summary),
 	}
 }
 
 func usageInfoText(report core.UsageReport) string {
-	lines := []string{
-		fmt.Sprintf("Runs: %d", report.Summary.Runs),
-		"Input: " + usageTokenLabel(report.Summary.InputTokens),
-		"Output: " + usageTokenLabel(report.Summary.OutputTokens),
-		"Reasoning: " + usageTokenLabel(report.Summary.ReasoningTokens),
-		"Cached: " + usageTokenLabel(report.Summary.CachedTokens),
-		"Total: " + usageTokenLabel(report.Summary.TotalTokens),
+	rows := usageInfoRows(report.Summary)
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		lines = append(lines, row.Label+": "+row.Value)
 	}
 	return strings.Join(lines, "\n")
+}
+
+func usageInfoRows(summary core.UsageSummary) []InfoRow {
+	return []InfoRow{
+		{Label: "Runs", Value: fmt.Sprintf("%d", summary.Runs)},
+		{Label: "Steps", Value: fmt.Sprintf("%d", summary.Steps)},
+		{Label: "Prompt", Value: usageTokenLabel(summary.PromptTokens)},
+		{Label: "Cache read", Value: usageTokenLabel(summary.CacheReadTokens)},
+		{Label: "Cache write", Value: usageTokenLabel(summary.CacheWriteTokens)},
+		{Label: "Output", Value: usageTokenLabel(summary.OutputTokens)},
+		{Label: "Reasoning", Value: usageTokenLabel(summary.ReasoningTokens)},
+	}
 }
 
 func usageTokenLabel(value int64) string {

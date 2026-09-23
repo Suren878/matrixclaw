@@ -2,21 +2,19 @@ package core
 
 import "time"
 
+// UsageRecord sums the run_steps of one run; Provider and Model are the last step's.
 type UsageRecord struct {
-	ID              string    `json:"id"`
-	SessionID       string    `json:"session_id"`
-	RunID           string    `json:"run_id"`
-	MessageID       string    `json:"message_id,omitempty"`
-	Provider        string    `json:"provider,omitempty"`
-	Model           string    `json:"model,omitempty"`
-	InputTokens     int64     `json:"input_tokens,omitempty"`
-	OutputTokens    int64     `json:"output_tokens,omitempty"`
-	TotalTokens     int64     `json:"total_tokens,omitempty"`
-	CachedTokens    int64     `json:"cached_tokens,omitempty"`
-	ReasoningTokens int64     `json:"reasoning_tokens,omitempty"`
-	Estimated       bool      `json:"estimated,omitempty"`
-	ProviderRaw     string    `json:"provider_raw,omitempty"`
-	CreatedAt       time.Time `json:"created_at"`
+	SessionID        string    `json:"session_id"`
+	RunID            string    `json:"run_id"`
+	Provider         string    `json:"provider,omitempty"`
+	Model            string    `json:"model,omitempty"`
+	Steps            int       `json:"steps"`
+	PromptTokens     int64     `json:"prompt_tokens,omitempty"`
+	CacheReadTokens  int64     `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens int64     `json:"cache_write_tokens,omitempty"`
+	OutputTokens     int64     `json:"output_tokens,omitempty"`
+	ReasoningTokens  int64     `json:"reasoning_tokens,omitempty"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 type UsageFilter struct {
@@ -26,13 +24,14 @@ type UsageFilter struct {
 }
 
 type UsageSummary struct {
-	SessionID       string `json:"session_id,omitempty"`
-	Runs            int    `json:"runs"`
-	InputTokens     int64  `json:"input_tokens,omitempty"`
-	OutputTokens    int64  `json:"output_tokens,omitempty"`
-	TotalTokens     int64  `json:"total_tokens,omitempty"`
-	CachedTokens    int64  `json:"cached_tokens,omitempty"`
-	ReasoningTokens int64  `json:"reasoning_tokens,omitempty"`
+	SessionID        string `json:"session_id,omitempty"`
+	Runs             int    `json:"runs"`
+	Steps            int    `json:"steps"`
+	PromptTokens     int64  `json:"prompt_tokens,omitempty"`
+	CacheReadTokens  int64  `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens int64  `json:"cache_write_tokens,omitempty"`
+	OutputTokens     int64  `json:"output_tokens,omitempty"`
+	ReasoningTokens  int64  `json:"reasoning_tokens,omitempty"`
 }
 
 type UsageReport struct {

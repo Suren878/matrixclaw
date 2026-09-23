@@ -60,7 +60,6 @@ func (c *Core) saveAssistantToolTurn(ctx context.Context, turn turnExecution, as
 		}
 		eventType = EventMessageCreated
 	}
-	c.saveRunUsage(ctx, Run{ID: turn.RunID, SessionID: turn.SessionID}, *assistant, response.Usage)
 	c.publishEvent(Event{Type: eventType, SessionID: turn.SessionID, RunID: turn.RunID, Payload: *assistant})
 	return nil
 }

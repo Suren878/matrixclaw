@@ -40,6 +40,23 @@ type Run struct {
 	UpdatedAt          time.Time          `json:"updated_at"`
 }
 
+// RunStep is one model generation of a run; SaveRunStep assigns Step.
+type RunStep struct {
+	RunID            string    `json:"run_id"`
+	Step             int       `json:"step"`
+	Model            string    `json:"model,omitempty"`
+	Provider         string    `json:"provider,omitempty"`
+	PromptTokens     int64     `json:"prompt_tokens,omitempty"`
+	CacheReadTokens  int64     `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens int64     `json:"cache_write_tokens,omitempty"`
+	OutputTokens     int64     `json:"output_tokens,omitempty"`
+	ReasoningTokens  int64     `json:"reasoning_tokens,omitempty"`
+	StopReason       string    `json:"stop_reason,omitempty"`
+	LatencyMillis    int64     `json:"latency_ms,omitempty"`
+	ToolCalls        int       `json:"tool_calls,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
 type BusyInputMode string
 
 const (

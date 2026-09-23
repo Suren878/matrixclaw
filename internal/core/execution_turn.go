@@ -246,7 +246,11 @@ func (c *Core) generateAssistantTurn(ctx context.Context, turn turnExecution, re
 		return flushProgress(false)
 	})
 
+	started := time.Now()
 	response, err := turn.Runtime.Generate(streamCtx, request)
+	if err == nil {
+		c.recordRunStep(ctx, turn.RunID, response, generationStopReason(response), time.Since(started))
+	}
 	if flushErr := flushProgress(true); flushErr != nil {
 		err = errors.Join(err, flushErr)
 	}

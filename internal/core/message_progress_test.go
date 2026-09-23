@@ -34,6 +34,10 @@ func (s *progressCountingStore) GetRun(context.Context, string) (Run, error) {
 	return s.run, nil
 }
 
+func (s *progressCountingStore) SaveRunStep(context.Context, RunStep) error {
+	return nil
+}
+
 func (s *progressCountingStore) GetSubagentTaskByChildRun(context.Context, string) (SubagentTask, error) {
 	return SubagentTask{}, ErrNotFound
 }

@@ -41,7 +41,6 @@ func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID st
 			return fmt.Errorf("complete run: %w", err)
 		}
 		c.clearRunCheckpoint(ctx, run.ID)
-		c.saveRunUsage(ctx, *run, *assistant, response.Usage)
 		c.publishEvent(Event{
 			Type:      EventMessageCreated,
 			SessionID: sessionID,
@@ -70,7 +69,6 @@ func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID st
 		return err
 	}
 	c.clearRunCheckpoint(ctx, run.ID)
-	c.saveRunUsage(ctx, *run, *assistant, response.Usage)
 	c.publishEvent(Event{
 		Type:      EventMessageUpdated,
 		SessionID: sessionID,

@@ -94,6 +94,11 @@ func (c *Core) SessionContext(ctx context.Context, sessionID string) (ContextRep
 }
 
 func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSessionResult, error) {
+	return c.compactSession(ctx, sessionID, "")
+}
+
+// compactSession records the summary generation as a step of runID when set.
+func (c *Core) compactSession(ctx context.Context, sessionID string, runID string) (CompactSessionResult, error) {
 	sessionID = normalizeText(sessionID)
 	if sessionID == "" {
 		return CompactSessionResult{}, ErrSessionRequired
@@ -113,7 +118,7 @@ func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSes
 		return CompactSessionResult{}, ErrInvalidInput
 	}
 
-	summary, err := c.generateCompactSummary(ctx, session, effectiveMessages)
+	summary, err := c.generateCompactSummary(ctx, session, effectiveMessages, runID)
 	if err != nil {
 		return CompactSessionResult{}, err
 	}
@@ -149,7 +154,7 @@ func (c *Core) autoCompactSessionIfNeeded(ctx context.Context, turn turnExecutio
 	if !report.Compact.Recommended || compactBackoffActive(messages) {
 		return false, nil
 	}
-	return c.compactSessionWithLoadedMessages(ctx, session, messages)
+	return c.compactSessionWithLoadedMessages(ctx, session, messages, turn.RunID)
 }
 
 func (c *Core) forceCompactSessionForRetry(ctx context.Context, turn turnExecution) (bool, error) {
@@ -157,7 +162,7 @@ func (c *Core) forceCompactSessionForRetry(ctx context.Context, turn turnExecuti
 	if err != nil {
 		return false, err
 	}
-	return c.compactSessionWithLoadedMessages(ctx, session, messages)
+	return c.compactSessionWithLoadedMessages(ctx, session, messages, turn.RunID)
 }
 
 func (c *Core) providerRequestNeedsCompact(ctx context.Context, turn turnExecution, request providers.Request) bool {
@@ -198,12 +203,12 @@ func (c *Core) sessionContextSnapshot(ctx context.Context, sessionID string) (Se
 	return session, messages, c.contextReportForSession(session, messages), nil
 }
 
-func (c *Core) compactSessionWithLoadedMessages(ctx context.Context, session Session, messages []transcript.Message) (bool, error) {
+func (c *Core) compactSessionWithLoadedMessages(ctx context.Context, session Session, messages []transcript.Message, runID string) (bool, error) {
 	_, effectiveMessages := latestCompactSummary(messages)
 	if len(effectiveMessages) == 0 {
 		return false, nil
 	}
-	_, err := c.CompactSession(ctx, session.ID)
+	_, err := c.compactSession(ctx, session.ID, runID)
 	if err != nil {
 		return false, fmt.Errorf("auto compact session: %w", err)
 	}

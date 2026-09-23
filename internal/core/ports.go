@@ -68,7 +68,8 @@ type SessionInputStore interface {
 }
 
 type UsageStore interface {
-	SaveUsageRecord(ctx context.Context, record UsageRecord) error
+	SaveRunStep(ctx context.Context, step RunStep) error
+	ListRunSteps(ctx context.Context, runID string) ([]RunStep, error)
 	ListUsageRecords(ctx context.Context, filter UsageFilter) ([]UsageRecord, error)
 }
 

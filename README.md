@@ -248,7 +248,7 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
 - Experimental external-agent sessions through Codex app-server.
 - Service-owned tool execution with approval previews before writes and shell actions.
 - Planning Mode for multi-step work, with persistent tasks/subtasks, resumable execution, model-facing `plan_*` tools, and manual `/plan` commands.
-- Token usage ledger from provider finish metadata, surfaced in the TUI header and `/usage`.
+- Token usage recorded per model generation (prompt, cache read/write, output, reasoning), surfaced in `/usage` and `/context`.
 - SQLite-backed durable memory and message search through `/memory`, `/search`, and assistant-facing `memory` / `session_search` tools.
 - Local storage module for temporary uploads, stored files, imports, previews, promotion, deletion, and cleanup settings.
 - Telegram image/document uploads stored as temporary files, with explicit save/delete controls.
@@ -429,7 +429,7 @@ These are client commands, not model tools.
 /provider                    select provider/model for the current session
 /permissions                 change the current session permission mode
 /context                     inspect compacted context and token estimate
-/usage                       show recorded input/output/reasoning/cached tokens
+/usage                       show runs, steps, prompt/cache/output/reasoning tokens
 /memory                      show durable assistant memory
 /plan                        show Planning Mode
 /plan goal <text>            set the session goal

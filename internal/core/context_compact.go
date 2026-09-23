@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func (c *Core) generateCompactSummary(ctx context.Context, session Session, messages []transcript.Message) (string, error) {
+func (c *Core) generateCompactSummary(ctx context.Context, session Session, messages []transcript.Message, runID string) (string, error) {
 	runtime, err := c.resolveSessionRuntime(ctx, session)
 	if err != nil {
 		return "", err
@@ -20,6 +21,7 @@ func (c *Core) generateCompactSummary(ctx context.Context, session Session, mess
 		content = "Current session plan:\n" + planSnapshot + "\n\n" + content
 	}
 
+	started := time.Now()
 	response, err := runtime.Generate(ctx, providers.Request{
 		SessionID:    session.ID,
 		SystemPrompt: compactSummarySystemPrompt(),
@@ -31,6 +33,7 @@ func (c *Core) generateCompactSummary(ctx context.Context, session Session, mess
 	if err != nil {
 		return "", err
 	}
+	c.recordRunStep(ctx, runID, response, "compact", time.Since(started))
 	text := strings.TrimSpace(response.Text)
 	if text == "" {
 		return "", errors.New("compact summary is empty")

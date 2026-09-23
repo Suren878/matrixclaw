@@ -74,8 +74,17 @@ func TestToolTurnPersistsFinalCommentaryAndUsage(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(usage.Records) != 1 || usage.Summary.InputTokens != 30 || usage.Summary.OutputTokens != 5 || usage.Summary.TotalTokens != 35 {
+			if len(usage.Records) != 1 || usage.Summary.Runs != 1 || usage.Summary.Steps != 2 || usage.Summary.PromptTokens != 30 || usage.Summary.OutputTokens != 5 {
 				t.Fatalf("usage did not include tool turn: %#v", usage)
+			}
+			steps, err := db.ListRunSteps(context.Background(), run.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(steps) != 2 ||
+				steps[0].StopReason != "tool_use" || steps[0].ToolCalls != 1 || steps[0].PromptTokens != 10 || steps[0].Model != "test-model" ||
+				steps[1].StopReason != "end_turn" || steps[1].ToolCalls != 0 || steps[1].OutputTokens != 3 || steps[1].Provider != "recovery-test" {
+				t.Fatalf("steps=%+v", steps)
 			}
 		})
 	}
@@ -288,5 +297,36 @@ func TestModelFailuresAreBoundedAndDoNotReplayPartialOutput(t *testing.T) {
 				t.Fatalf("assistant messages=%d, want one failure", assistantCount)
 			}
 		})
+	}
+}
+
+func TestRunStepsCountCompactionGeneration(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		if strings.HasPrefix(request.SystemPrompt, "You compact matrixclaw chat histories") {
+			return providers.Response{Text: "Earlier history summarized.", Model: "test-model", Provider: "recovery-test", Usage: providers.Usage{InputTokens: 100, OutputTokens: 7}}, nil
+		}
+		return providers.Response{Text: "Done.", Model: "test-model", Provider: "recovery-test", Usage: providers.Usage{InputTokens: 20, OutputTokens: 3}}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "compaction-step", core.RunStatusAccepted, false)
+	history := transcript.Message{
+		ID: "msg_large_history", SessionID: session.ID, Role: transcript.MessageRoleAssistant,
+		Content:   strings.Repeat("old context ", 60_000),
+		CreatedAt: run.StartedAt, UpdatedAt: run.StartedAt,
+	}
+	if err := db.SaveMessage(context.Background(), history); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
+	steps, err := db.ListRunSteps(context.Background(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(steps) != 2 || steps[0].StopReason != "compact" || steps[0].PromptTokens != 100 || steps[1].StopReason != "end_turn" {
+		t.Fatalf("steps=%+v, want compaction then final turn", steps)
 	}
 }
