@@ -34,6 +34,9 @@ func (c *Core) generateCompactSummary(ctx context.Context, session Session, mess
 		return "", err
 	}
 	c.recordRunStep(ctx, runID, response, "compact", time.Since(started))
+	if err := stopReasonError(response); err != nil {
+		return "", err
+	}
 	text := strings.TrimSpace(response.Text)
 	if text == "" {
 		return "", errors.New("compact summary is empty")

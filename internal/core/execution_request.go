@@ -21,6 +21,7 @@ func (c *Core) buildProviderRequest(ctx context.Context, turn turnExecution) (pr
 		SessionID:          turn.SessionID,
 		SystemPrompt:       c.providerSystemPrompt(ctx, turn, assistant, compactSummary, effectiveHistory),
 		CustomInstructions: assistant.CustomInstructions,
+		CacheKey:           turn.SessionID,
 	}
 	if !runtimeToolUseAllowed(turn.Runtime) {
 		request.Messages = buildTextOnlyProviderConversationForRun(effectiveHistory, turn.RunID)

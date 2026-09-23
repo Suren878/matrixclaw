@@ -71,8 +71,5 @@ func (c *Core) recordRunStep(ctx context.Context, runID string, response provide
 }
 
 func generationStopReason(response providers.Response) string {
-	if len(response.ToolCalls) > 0 {
-		return "tool_use"
-	}
-	return "end_turn"
+	return string(providers.ResolveStopReason(response.StopReason, len(response.ToolCalls)))
 }
