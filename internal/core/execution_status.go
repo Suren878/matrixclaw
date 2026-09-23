@@ -182,20 +182,12 @@ func providerResponseMessageParts(content string, reasoningContent *string) []tr
 }
 
 func providerUsageFinishPart(usage providers.Usage) *transcript.MessagePart {
-	if providerUsageIsZero(usage) {
+	if usage.IsZero() {
 		return nil
 	}
-	coreUsage := ProviderUsage{
-		InputTokens:     usage.InputTokens,
-		OutputTokens:    usage.OutputTokens,
-		TotalTokens:     usage.TotalTokens,
-		CachedTokens:    usage.CachedTokens,
-		ReasoningTokens: usage.ReasoningTokens,
-		ProviderRaw:     append([]byte(nil), usage.ProviderRaw...),
-	}
 	payload, err := json.Marshal(struct {
-		Usage ProviderUsage `json:"usage"`
-	}{Usage: coreUsage})
+		Usage providers.Usage `json:"usage"`
+	}{Usage: usage})
 	if err != nil {
 		return nil
 	}
@@ -206,15 +198,6 @@ func providerUsageFinishPart(usage providers.Usage) *transcript.MessagePart {
 			Details: payload,
 		},
 	}
-}
-
-func providerUsageIsZero(usage providers.Usage) bool {
-	return usage.InputTokens == 0 &&
-		usage.OutputTokens == 0 &&
-		usage.TotalTokens == 0 &&
-		usage.CachedTokens == 0 &&
-		usage.ReasoningTokens == 0 &&
-		len(usage.ProviderRaw) == 0
 }
 
 func (c *Core) setRunStatus(ctx context.Context, run *Run, status RunStatus, errText string) error {

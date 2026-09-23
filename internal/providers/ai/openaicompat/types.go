@@ -85,11 +85,13 @@ type chatCompletionChunk struct {
 }
 
 type chatCompletionUsage struct {
-	PromptTokens        int64 `json:"prompt_tokens,omitempty"`
-	CompletionTokens    int64 `json:"completion_tokens,omitempty"`
-	TotalTokens         int64 `json:"total_tokens,omitempty"`
-	PromptTokensDetails struct {
-		CachedTokens int64 `json:"cached_tokens,omitempty"`
+	PromptTokens         int64 `json:"prompt_tokens,omitempty"`
+	CompletionTokens     int64 `json:"completion_tokens,omitempty"`
+	TotalTokens          int64 `json:"total_tokens,omitempty"`
+	PromptCacheHitTokens int64 `json:"prompt_cache_hit_tokens,omitempty"`
+	PromptTokensDetails  struct {
+		CachedTokens     int64 `json:"cached_tokens,omitempty"`
+		CacheWriteTokens int64 `json:"cache_write_tokens,omitempty"`
 	} `json:"prompt_tokens_details,omitempty"`
 	CompletionTokensDetails struct {
 		ReasoningTokens int64 `json:"reasoning_tokens,omitempty"`

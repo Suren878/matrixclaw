@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
 func (d *Dispatcher) handleContext(ctx context.Context, externalKey string, args string) (Result, error) {
@@ -176,14 +177,15 @@ func contextTokenLabel(report core.ContextReport) string {
 	return used + " / " + contextWindowLabel(report.WindowTokens) + " tokens"
 }
 
-func providerUsageLabel(usage core.ProviderUsage) string {
-	if usage.TotalTokens > 0 {
-		return fmt.Sprintf("%s total", formatShortNumber(int(usage.TotalTokens)))
+func providerUsageLabel(usage providers.Usage) string {
+	if usage.PromptTokens == 0 && usage.OutputTokens == 0 {
+		return "reported"
 	}
-	if usage.InputTokens > 0 || usage.OutputTokens > 0 {
-		return fmt.Sprintf("%s in / %s out", formatShortNumber(int(usage.InputTokens)), formatShortNumber(int(usage.OutputTokens)))
+	prompt := formatShortNumber(int(usage.PromptTokens)) + " in"
+	if usage.CacheReadTokens > 0 || usage.CacheWriteTokens > 0 {
+		prompt += fmt.Sprintf(" (%s cached, %s written)", formatShortNumber(int(usage.CacheReadTokens)), formatShortNumber(int(usage.CacheWriteTokens)))
 	}
-	return "reported"
+	return prompt + " / " + formatShortNumber(int(usage.OutputTokens)) + " out"
 }
 
 func formatShortNumber(value int) string {

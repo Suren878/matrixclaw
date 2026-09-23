@@ -450,10 +450,9 @@ func geminiUsage(usage geminiUsageMetadata) providers.Usage {
 	}
 	raw, _ := json.Marshal(usage)
 	return providers.Usage{
-		InputTokens:     usage.PromptTokenCount,
-		OutputTokens:    usage.CandidatesTokenCount,
-		TotalTokens:     usage.TotalTokenCount,
-		CachedTokens:    usage.CachedContentTokenCount,
+		PromptTokens:    usage.PromptTokenCount,
+		OutputTokens:    usage.CandidatesTokenCount + usage.ThoughtsTokenCount,
+		CacheReadTokens: usage.CachedContentTokenCount,
 		ReasoningTokens: usage.ThoughtsTokenCount,
 		ProviderRaw:     raw,
 	}

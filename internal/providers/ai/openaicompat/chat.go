@@ -369,12 +369,16 @@ func openAIUsage(usage chatCompletionUsage) providers.Usage {
 		return providers.Usage{}
 	}
 	raw, _ := json.Marshal(usage)
+	cacheRead := usage.PromptTokensDetails.CachedTokens
+	if cacheRead == 0 {
+		cacheRead = usage.PromptCacheHitTokens
+	}
 	return providers.Usage{
-		InputTokens:     usage.PromptTokens,
-		OutputTokens:    usage.CompletionTokens,
-		TotalTokens:     usage.TotalTokens,
-		CachedTokens:    usage.PromptTokensDetails.CachedTokens,
-		ReasoningTokens: usage.CompletionTokensDetails.ReasoningTokens,
-		ProviderRaw:     raw,
+		PromptTokens:     usage.PromptTokens,
+		OutputTokens:     usage.CompletionTokens,
+		CacheReadTokens:  cacheRead,
+		CacheWriteTokens: usage.PromptTokensDetails.CacheWriteTokens,
+		ReasoningTokens:  usage.CompletionTokensDetails.ReasoningTokens,
+		ProviderRaw:      raw,
 	}
 }

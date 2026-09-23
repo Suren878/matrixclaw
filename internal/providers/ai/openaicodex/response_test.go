@@ -34,7 +34,7 @@ data: {"type":"response.completed","response":{"status":"completed","output":[{"
 	if len(response.ToolCalls) != 2 || response.ToolCalls[0].ID != "a" || response.ToolCalls[1].ID != "b" {
 		t.Fatalf("ordered calls=%+v", response.ToolCalls)
 	}
-	if string(response.ToolCalls[0].Arguments) != `{"id":9007199254740993}` || response.Usage.TotalTokens != 15 {
+	if string(response.ToolCalls[0].Arguments) != `{"id":9007199254740993}` || response.Usage.PromptTokens != 10 || response.Usage.OutputTokens != 5 {
 		t.Fatalf("response=%+v", response)
 	}
 }

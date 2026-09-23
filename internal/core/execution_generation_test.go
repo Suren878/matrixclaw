@@ -34,7 +34,7 @@ func TestToolTurnPersistsFinalCommentaryAndUsage(t *testing.T) {
 							return providers.Response{}, err
 						}
 					}
-					return providers.Response{Text: "Inspecting the actual state.", Model: "test-model", Provider: "recovery-test", ToolCalls: []providers.ToolCall{{ID: "call-inspect", Name: "inspect_state", Arguments: []byte(`{}`)}}, Usage: providers.Usage{InputTokens: 10, OutputTokens: 2}}, nil
+					return providers.Response{Text: "Inspecting the actual state.", Model: "test-model", Provider: "recovery-test", ToolCalls: []providers.ToolCall{{ID: "call-inspect", Name: "inspect_state", Arguments: []byte(`{}`)}}, Usage: providers.Usage{PromptTokens: 10, OutputTokens: 2}}, nil
 				}
 				var commentary, result bool
 				for _, message := range request.Messages {
@@ -44,7 +44,7 @@ func TestToolTurnPersistsFinalCommentaryAndUsage(t *testing.T) {
 				if !commentary || !result {
 					t.Fatalf("next request lost commentary or result: %#v", request.Messages)
 				}
-				return providers.Response{Text: "Verified.", Model: "test-model", Provider: "recovery-test", Usage: providers.Usage{InputTokens: 20, OutputTokens: 3}}, nil
+				return providers.Response{Text: "Verified.", Model: "test-model", Provider: "recovery-test", Usage: providers.Usage{PromptTokens: 20, OutputTokens: 3}}, nil
 			})})
 			session, run := saveCrashRecoveryRun(t, db, "tool-commentary", core.RunStatusAccepted, false)
 			if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
@@ -76,6 +76,13 @@ func TestToolTurnPersistsFinalCommentaryAndUsage(t *testing.T) {
 			}
 			if len(usage.Records) != 1 || usage.Summary.Runs != 1 || usage.Summary.Steps != 2 || usage.Summary.PromptTokens != 30 || usage.Summary.OutputTokens != 5 {
 				t.Fatalf("usage did not include tool turn: %#v", usage)
+			}
+			report, err := app.SessionContext(context.Background(), session.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if report.LastProviderUsage == nil || report.LastProviderUsage.PromptTokens != 20 || report.LastProviderUsage.OutputTokens != 3 {
+				t.Fatalf("last provider usage=%+v", report.LastProviderUsage)
 			}
 			steps, err := db.ListRunSteps(context.Background(), run.ID)
 			if err != nil {
@@ -305,9 +312,9 @@ func TestRunStepsCountCompactionGeneration(t *testing.T) {
 	defer cleanup()
 	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if strings.HasPrefix(request.SystemPrompt, "You compact matrixclaw chat histories") {
-			return providers.Response{Text: "Earlier history summarized.", Model: "test-model", Provider: "recovery-test", Usage: providers.Usage{InputTokens: 100, OutputTokens: 7}}, nil
+			return providers.Response{Text: "Earlier history summarized.", Model: "test-model", Provider: "recovery-test", Usage: providers.Usage{PromptTokens: 100, OutputTokens: 7}}, nil
 		}
-		return providers.Response{Text: "Done.", Model: "test-model", Provider: "recovery-test", Usage: providers.Usage{InputTokens: 20, OutputTokens: 3}}, nil
+		return providers.Response{Text: "Done.", Model: "test-model", Provider: "recovery-test", Usage: providers.Usage{PromptTokens: 20, OutputTokens: 3}}, nil
 	})})
 	session, run := saveCrashRecoveryRun(t, db, "compaction-step", core.RunStatusAccepted, false)
 	history := transcript.Message{

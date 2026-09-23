@@ -65,11 +65,18 @@ type RuntimeCapabilityProvider interface {
 	ModelCapabilities() ModelCapabilities
 }
 
+// Usage is normalised by every adapter: PromptTokens is the whole input,
+// cache reads and writes included; OutputTokens includes ReasoningTokens.
 type Usage struct {
-	InputTokens     int64
-	OutputTokens    int64
-	TotalTokens     int64
-	CachedTokens    int64
-	ReasoningTokens int64
-	ProviderRaw     json.RawMessage
+	PromptTokens     int64           `json:"prompt_tokens,omitempty"`
+	OutputTokens     int64           `json:"output_tokens,omitempty"`
+	CacheReadTokens  int64           `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens int64           `json:"cache_write_tokens,omitempty"`
+	ReasoningTokens  int64           `json:"reasoning_tokens,omitempty"`
+	ProviderRaw      json.RawMessage `json:"provider_raw,omitempty"`
+}
+
+func (u Usage) IsZero() bool {
+	return u.PromptTokens == 0 && u.OutputTokens == 0 && u.CacheReadTokens == 0 &&
+		u.CacheWriteTokens == 0 && u.ReasoningTokens == 0 && len(u.ProviderRaw) == 0
 }

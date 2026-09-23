@@ -359,10 +359,9 @@ func (usage responsesUsage) toProviderUsage() providers.Usage {
 	}
 	raw, _ := json.Marshal(usage)
 	return providers.Usage{
-		InputTokens:     usage.InputTokens,
+		PromptTokens:    usage.InputTokens,
 		OutputTokens:    usage.OutputTokens,
-		TotalTokens:     usage.TotalTokens,
-		CachedTokens:    usage.InputTokensDetails.CachedTokens,
+		CacheReadTokens: usage.InputTokensDetails.CachedTokens,
 		ReasoningTokens: usage.OutputTokensDetails.ReasoningTokens,
 		ProviderRaw:     raw,
 	}

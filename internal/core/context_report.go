@@ -242,7 +242,7 @@ func FormatShortNumber(value int) string {
 	}
 }
 
-func latestProviderUsage(messages []transcript.Message) *ProviderUsage {
+func latestProviderUsage(messages []transcript.Message) *providers.Usage {
 	for i := len(messages) - 1; i >= 0; i-- {
 		for j := len(messages[i].Parts) - 1; j >= 0; j-- {
 			part := messages[i].Parts[j]
@@ -250,22 +250,13 @@ func latestProviderUsage(messages []transcript.Message) *ProviderUsage {
 				continue
 			}
 			var payload struct {
-				Usage ProviderUsage `json:"usage"`
+				Usage providers.Usage `json:"usage"`
 			}
-			if err := json.Unmarshal(part.Finish.Details, &payload); err == nil && !providerUsageEmpty(payload.Usage) {
+			if err := json.Unmarshal(part.Finish.Details, &payload); err == nil && !payload.Usage.IsZero() {
 				usage := payload.Usage
 				return &usage
 			}
 		}
 	}
 	return nil
-}
-
-func providerUsageEmpty(usage ProviderUsage) bool {
-	return usage.InputTokens == 0 &&
-		usage.OutputTokens == 0 &&
-		usage.TotalTokens == 0 &&
-		usage.CachedTokens == 0 &&
-		usage.ReasoningTokens == 0 &&
-		len(usage.ProviderRaw) == 0
 }

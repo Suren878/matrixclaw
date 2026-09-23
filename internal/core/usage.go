@@ -52,17 +52,18 @@ func (c *Core) recordRunStep(ctx context.Context, runID string, response provide
 		return
 	}
 	step := RunStep{
-		RunID:           runID,
-		Model:           response.Model,
-		Provider:        response.Provider,
-		PromptTokens:    response.Usage.InputTokens,
-		CacheReadTokens: response.Usage.CachedTokens,
-		OutputTokens:    response.Usage.OutputTokens,
-		ReasoningTokens: response.Usage.ReasoningTokens,
-		StopReason:      stopReason,
-		LatencyMillis:   latency.Milliseconds(),
-		ToolCalls:       len(response.ToolCalls),
-		CreatedAt:       c.now().UTC(),
+		RunID:            runID,
+		Model:            response.Model,
+		Provider:         response.Provider,
+		PromptTokens:     response.Usage.PromptTokens,
+		CacheReadTokens:  response.Usage.CacheReadTokens,
+		CacheWriteTokens: response.Usage.CacheWriteTokens,
+		OutputTokens:     response.Usage.OutputTokens,
+		ReasoningTokens:  response.Usage.ReasoningTokens,
+		StopReason:       stopReason,
+		LatencyMillis:    latency.Milliseconds(),
+		ToolCalls:        len(response.ToolCalls),
+		CreatedAt:        c.now().UTC(),
 	}
 	if err := c.store.SaveRunStep(context.WithoutCancel(ctx), step); err != nil {
 		log.Printf("core: record step of run %q: %v", runID, err)

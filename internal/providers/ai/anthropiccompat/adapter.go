@@ -285,12 +285,29 @@ func anthropicUsage(usage anthropicUsagePayload) providers.Usage {
 	}
 	raw, _ := json.Marshal(usage)
 	return providers.Usage{
-		InputTokens:  usage.InputTokens,
-		OutputTokens: usage.OutputTokens,
-		TotalTokens:  usage.InputTokens + usage.OutputTokens,
-		CachedTokens: usage.CacheCreationInputTokens + usage.CacheReadInputTokens,
-		ProviderRaw:  raw,
+		PromptTokens:     usage.InputTokens + usage.CacheCreationInputTokens + usage.CacheReadInputTokens,
+		OutputTokens:     usage.OutputTokens,
+		CacheReadTokens:  usage.CacheReadInputTokens,
+		CacheWriteTokens: usage.CacheCreationInputTokens,
+		ProviderRaw:      raw,
 	}
+}
+
+// mergeAnthropicUsage applies message_delta usage, whose counts are cumulative.
+func mergeAnthropicUsage(current anthropicUsagePayload, delta anthropicUsagePayload) anthropicUsagePayload {
+	if delta.InputTokens > 0 {
+		current.InputTokens = delta.InputTokens
+	}
+	if delta.CacheCreationInputTokens > 0 {
+		current.CacheCreationInputTokens = delta.CacheCreationInputTokens
+	}
+	if delta.CacheReadInputTokens > 0 {
+		current.CacheReadInputTokens = delta.CacheReadInputTokens
+	}
+	if delta.OutputTokens > 0 {
+		current.OutputTokens = delta.OutputTokens
+	}
+	return current
 }
 
 type anthropicStreamDelta struct {
@@ -303,6 +320,10 @@ type anthropicStreamDelta struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	} `json:"content_block"`
+	Message struct {
+		Usage anthropicUsagePayload `json:"usage"`
+	} `json:"message"`
+	Usage anthropicUsagePayload `json:"usage"`
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error,omitempty"`
@@ -367,6 +388,7 @@ func normalizeAnthropicRole(role string) string {
 
 func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.Response, error) {
 	var text strings.Builder
+	var usage anthropicUsagePayload
 	completed := false
 	if err := providers.ScanSSE(ctx, body, func(event providers.SSEEvent) error {
 		if event.Data == "" {
@@ -383,6 +405,12 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 		if event.Type == "message_stop" {
 			completed = true
 			return providers.ErrSSEComplete
+		}
+		switch event.Type {
+		case "message_start":
+			usage = chunk.Message.Usage
+		case "message_delta":
+			usage = mergeAnthropicUsage(usage, chunk.Usage)
 		}
 
 		delta := ""
@@ -413,5 +441,6 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 		Text:     reply,
 		Model:    r.model,
 		Provider: providers.TypeAnthropic,
+		Usage:    anthropicUsage(usage),
 	}, nil
 }

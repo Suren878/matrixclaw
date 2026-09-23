@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -45,24 +44,14 @@ type ContextBlock struct {
 }
 
 type ContextReport struct {
-	SessionID         string         `json:"session_id"`
-	Estimated         bool           `json:"estimated"`
-	TokenEstimate     int            `json:"token_estimate"`
-	WindowTokens      int            `json:"window_tokens,omitempty"`
-	MessageCount      int            `json:"message_count"`
-	Blocks            []ContextBlock `json:"blocks"`
-	LastProviderUsage *ProviderUsage `json:"last_provider_usage,omitempty"`
-	Compact           ContextCompact `json:"compact"`
-}
-
-type ProviderUsage struct {
-	InputTokens     int64           `json:"input_tokens,omitempty"`
-	OutputTokens    int64           `json:"output_tokens,omitempty"`
-	TotalTokens     int64           `json:"total_tokens,omitempty"`
-	CachedTokens    int64           `json:"cached_tokens,omitempty"`
-	ReasoningTokens int64           `json:"reasoning_tokens,omitempty"`
-	Estimated       bool            `json:"estimated,omitempty"`
-	ProviderRaw     json.RawMessage `json:"provider_raw,omitempty"`
+	SessionID         string           `json:"session_id"`
+	Estimated         bool             `json:"estimated"`
+	TokenEstimate     int              `json:"token_estimate"`
+	WindowTokens      int              `json:"window_tokens,omitempty"`
+	MessageCount      int              `json:"message_count"`
+	Blocks            []ContextBlock   `json:"blocks"`
+	LastProviderUsage *providers.Usage `json:"last_provider_usage,omitempty"`
+	Compact           ContextCompact   `json:"compact"`
 }
 
 type ContextCompact struct {
