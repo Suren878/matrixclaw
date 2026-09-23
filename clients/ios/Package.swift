@@ -17,6 +17,10 @@ let package = Package(
     targets: [
         .target(
             name: "MatrixclawClient"
+        ),
+        .testTarget(
+            name: "MatrixclawClientTests",
+            dependencies: ["MatrixclawClient"]
         )
     ]
 )

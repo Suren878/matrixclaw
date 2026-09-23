@@ -61,6 +61,7 @@ public enum MessageRole: String, Codable, Sendable {
 
 public struct Message: Codable, Identifiable, Equatable, Sendable {
     public var id: String
+    public var seq: Int64?
     public var sessionId: String
     public var runId: String
     public var role: MessageRole
@@ -208,13 +209,48 @@ public struct FinishPart: Codable, Equatable, Sendable {
     public var details: JSONValue?
 }
 
-public enum RunStatus: String, Codable, Sendable {
+/// Statuses added by newer daemons decode as `.unknown` instead of failing.
+public enum RunStatus: RawRepresentable, Codable, Equatable, Hashable, Sendable {
     case accepted
     case running
-    case waitingApproval = "waiting_approval"
+    case waitingApproval
     case completed
     case canceled
     case failed
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "accepted": self = .accepted
+        case "running": self = .running
+        case "waiting_approval": self = .waitingApproval
+        case "completed": self = .completed
+        case "canceled": self = .canceled
+        case "failed": self = .failed
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .accepted: return "accepted"
+        case .running: return "running"
+        case .waitingApproval: return "waiting_approval"
+        case .completed: return "completed"
+        case .canceled: return "canceled"
+        case .failed: return "failed"
+        case .unknown(let value): return value
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        self.init(rawValue: try decoder.singleValueContainer().decode(String.self))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 public struct Run: Codable, Identifiable, Equatable, Sendable {
@@ -330,12 +366,11 @@ public struct ContextBlock: Codable, Identifiable, Equatable, Sendable {
 }
 
 public struct ProviderUsage: Codable, Equatable, Sendable {
-    public var inputTokens: Int64?
+    public var promptTokens: Int64?
     public var outputTokens: Int64?
-    public var totalTokens: Int64?
-    public var cachedTokens: Int64?
+    public var cacheReadTokens: Int64?
+    public var cacheWriteTokens: Int64?
     public var reasoningTokens: Int64?
-    public var estimated: Bool?
     public var providerRaw: JSONValue?
 }
 
