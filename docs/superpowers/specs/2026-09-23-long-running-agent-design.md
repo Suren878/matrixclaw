@@ -1,10 +1,11 @@
 # Long-running native agent — design
 
-Status: approved in brainstorming on 2026-09-23. Sub-project 1 of 2.
+Status: approved in brainstorming on 2026-09-23, revised after an architecture
+review the same day. Sub-project 1 of 2.
 
 Sub-project 2 (daemon-owned goals that wake themselves on timers/events and
 work across many runs, Hermes-style) gets its own spec later and builds on the
-`await` / `waiting_events` mechanism defined here.
+`await` / `waiting_events` / `run_wakeups` mechanism defined here.
 
 ## Goal
 
@@ -14,7 +15,7 @@ verified, survives context growth, restarts and denied approvals, runs
 independent work in parallel and in the background, and stops on an explicit
 budget with a usable summary instead of failing.
 
-## Problems in the current loop
+## Problems in the current code
 
 Baseline: commit `2445681` (generation retry, checkpoints, crash recovery,
 terminal stream events).
@@ -22,15 +23,35 @@ terminal stream events).
 - `maxRunToolSteps = 32` fails the run when reached (`internal/core/execution.go`).
 - The first text-only reply ends the run; there is no completion check.
 - Compaction keeps every message of the current run
-  (`latestCompactSummaryForRun`), so a long run overflows and fails.
-- A denied approval fails the whole run; the model never sees the denial.
+  (`latestCompactSummaryForRun`), so a long run overflows and fails. The
+  compaction marker is found by an emoji text prefix and appended *after* the
+  messages it covers.
+- A denied approval fails the run in three places: `ResolveApproval`
+  (`tool_approvals.go`), the subagent approval bridge, and crash recovery
+  (`run_recovery.go`). The model never sees the denial.
 - The plan is advanced only by the terminal client (`plan_run.go`).
+- The native Anthropic adapter has tool use disabled
+  (`providers/request_normalize.go`, `anthropiccompat/adapter.go`).
 - 4096 default output tokens; `finish_reason=length` is an error;
-  `providers.Response` has no stop reason.
-- Tools run strictly sequentially; background bash jobs live in memory only.
+  `providers.Response` has no stop reason; Gemini `finishReason` is not decoded.
+  HTTP client timeouts (90–120 s for anthropic/gemini/codex) cap the whole
+  response.
+- `Usage.CachedTokens` means different things per adapter (included in
+  `InputTokens` for openaicompat/codex/gemini; cache read + write and excluded
+  for Anthropic).
+- Tools run strictly sequentially; background bash jobs live in memory only;
+  foreground bash has no timeout.
+- Messages are ordered by text `created_at` (RFC3339Nano, not lexically safe);
+  the full session is re-read from SQLite several times per step and per tool
+  call; per-run usage is rebuilt by a full scan and only counts tool turns.
+- Several writers mutate history outside the loop: `core.ExecuteTool` from the
+  API, voice and the MCP server; steer text injected into a tool result;
+  `updateSubagentResultMessage` rewriting an old result.
 - The system prompt changes every turn (plan, memory, status), defeating prompt
-  caching; the full session is re-read from SQLite several times per step.
-- The prompt tells the model to minimise tool calls.
+  caching. The prompt tells the model to minimise tool calls.
+- Telegram sends one message per tool call and loads the whole session per
+  delivery; the iOS `RunStatus` enum is strict, so any new status breaks
+  shipped apps.
 
 ## Decisions
 
@@ -38,25 +59,33 @@ terminal stream events).
 |---|---|
 | Uncommitted 2026-09-17 work | Committed as the baseline (`2445681`). |
 | Scope | Long single task first; goals/wake-ups are sub-project 2. |
-| Stop condition | Configurable budget (steps, wall-clock, tokens, cost) with a tool-less final turn; the run is continuable. |
-| Approvals | Allow/deny/ask rules; a denial is returned to the model; pending approval parks the run. |
-| Planning Mode | Replaced by a run-loop `todo_write` tool; plan tables, tools and the terminal runner are deleted. |
 | Architecture | New `internal/agent` engine behind narrow ports; `core` serves it. |
+| Stop condition | Budget (steps, active wall-clock, tokens) with a tool-less final turn; the run ends `completed` with `stop_reason=budget_exhausted` and is continuable. No cost limit until a price source exists. |
+| Approvals | Allow/deny/ask rules evaluated for every tool entry point; a denial is returned to the model; a pending approval parks the run. |
+| Planning Mode | Replaced by `todo_write`; plan tables, tools and the terminal runner are deleted. |
+| Native Anthropic | Gains real tool use, prompt caching and stop reasons (stage 1b). |
+| Background processes | Not kept across daemon restarts: on start the daemon kills leftover process groups and marks their tasks `lost`. |
+| User input during a run | Steer everywhere by default (TUI and Telegram); queue/interrupt only by explicit command. A message wakes a parked run. |
 
 ## 1. Boundaries
 
 ```
+internal/transcript/       leaf: Message, parts, finish metadata, Origin (moved out of core)
+internal/permission/       leaf: rules, subjects, bash command parsing, mode presets
 internal/agent/            loop: Engine.Run(ctx, Task) -> Outcome
-  budget.go                steps, tokens/cost, wall-clock; final turn
-  loopguard.go             repeated-call detector (hash of name+args)
-  transcript.go            in-memory run transcript, append-only writes
-  context/                 window, tool-result elision, summary, token accounting
-  toolsched/               batches: shared calls in parallel, exclusive alone
-  permission/              allow/deny/ask rules, mode presets
+  budget.go                steps, active wall-clock, tokens; final turn
+  loopguard.go             no-progress detector
+  journal.go               in-memory transcript over the Journal port
+  context/                 window, elision, summary, token accounting
+  toolsched/               batches, concurrency keys, approval barrier
   todo/                    todo_write tool and state
-  prompt/                  stable system prompt, per-step context block
+  prompt/                  stable system prompt, engine context messages
   agenttest/               ScriptedModel and fakes for the ports
 ```
+
+`core.Message` and its part types move to `internal/transcript`; `core`,
+`store`, `api` and `agent` import it directly (no aliases). This avoids a
+`core` ↔ `agent` import cycle.
 
 Ports implemented by `core`:
 
@@ -66,230 +95,395 @@ type Model interface {
 }
 
 type Journal interface {
-	Load(ctx context.Context, sessionID string) (Window, error) // once: everything after the last compaction boundary
-	Append(ctx context.Context, msg Message) error
-	Update(ctx context.Context, msg Message) error
-	Checkpoint(ctx context.Context, state State) error // budget counters, phase, loop-guard hashes
+	Load(ctx context.Context, sessionID string) (Window, error) // latest boundary + messages with seq > covers_through_seq
+	Append(ctx context.Context, msg transcript.Message) (seq int64, err error)
+	FinishStreaming(ctx context.Context, msg transcript.Message) error // the only permitted update: an in-flight assistant message
+	Checkpoint(ctx context.Context, state State) error
+	RecordStep(ctx context.Context, step Step) error // run_steps row
 }
 
 type Tools interface {
 	Specs(task Task) []tools.Spec
+	Authorize(ctx context.Context, call tools.Call) (Decision, error) // rules + dry-run; shared with core.ExecuteTool
 	Execute(ctx context.Context, call tools.Call) (tools.Result, error)
 }
 
 type Approvals interface { Request(ctx context.Context, p Pending) error }
-type Inbox interface { Drain(ctx context.Context, runID string) ([]Event, error) } // steer, task_finished, subagent results
-type Sink interface { Emit(Event) } // streaming to TUI/Telegram/iOS
+type Inbox interface { Drain(ctx context.Context, runID string) ([]Event, error) }
+type Sink interface { Emit(Event) }
 ```
 
-`Outcome.Status` is one of `completed`, `budget_exhausted`, `waiting_approval`,
-`waiting_events`, `canceled`, `failed`. `budget_exhausted` is not a failure.
+**Single writer.** While a native run is active the engine is the only writer
+of that session's transcript. Everything else (steer input, background task
+completions, subagent results, approval decisions) arrives through `Inbox` as
+new events. Persisted messages are immutable; an async subagent result is a new
+message, never a rewrite of the original tool result. `core.ExecuteTool`
+remains for run-less calls (API, voice, MCP server) and persists those itself.
+Manual `/compact`, `/clear` and model changes are rejected while a run is
+active; the model/runtime is fixed at run start.
 
-`core` keeps message acceptance, queue/steer/interrupt inputs, run status,
-approvals, checkpoint-based crash recovery and external agents (Claude Code,
-Codex — unchanged). `ExecuteRun` becomes: load → `engine.Run` → apply `Outcome`.
+**Ordering.** Messages get an integer `seq` (per database, monotonic), added
+with `ensureColumn` and backfilled from `created_at, rowid`. All ordering and
+`Load` use `seq`. The store gains point methods (`GetMessage`,
+`HasToolResult`, `ListMessagesAfter(seq)`) so no step rescans the session.
+
+**Outcome.** `Outcome.Status` is `completed` (with `stop_reason` `done`,
+`budget_exhausted` or `loop_detected`), `waiting_approval`,
+`waiting_events`, `interrupted`, `canceled`, or `failed`. `interrupted` means
+the context was cancelled while the daemon keeps running (for example a failed
+workflow heartbeat); `core` reschedules it through `startRun` instead of
+leaving it `running` until restart.
+
+`core` keeps message acceptance, session inputs, run status, approvals,
+checkpoint-based crash recovery, and external agents (Claude Code, Codex —
+unchanged). `ExecuteRun` becomes: load → `engine.Run` → apply `Outcome`.
 
 Deleted without replacement shims: `execution.go`, `execution_turn.go`,
 `execution_request.go`, `execution_conversation.go`, `execution_generation.go`,
 `execution_tools.go`, `execution_prompts.go`, `context*.go`, `plan*.go`,
-`types_plan.go`, `PlanStore`, `maxRunToolSteps`,
-`clients/terminal/chat/runtime/plan_run.go`. Their logic moves into
-`internal/agent`; nothing is duplicated.
+`types_plan.go`, `PlanStore`, `maxRunToolSteps`, the emoji-prefix marker
+parsing, `IsPlanRunPromptMessage`, `clients/terminal/chat/runtime/plan_run.go`,
+`clients/telegram/auto_approval.go`.
 
 ## 2. Loop
 
 Each step of `Engine.Run`:
 
-1. **Inbox.** Drain steer input and background/subagent completions; each
-   becomes a journal message.
-2. **Context.** Build the window; compact if over threshold (section 3).
-3. **Model.** `Generate` with the existing bounded retry. Branch on `StopReason`:
-   - `tool_use` → run the tool batch (section 4), next step.
-   - `max_tokens` → keep the partial answer, append "your reply was cut by the
-     output limit; continue exactly where you stopped". At most 3 consecutive
-     continuations, then `failed`.
-   - `end_turn` → completion check (below).
-   - `refusal` / `content_filter` → `completed`; the refusal text is shown as is.
-4. **Checkpoint.** Persist budget counters, phase and loop-guard hashes.
+1. **Inbox.** Drain steer input and completions; each becomes a journal message.
+2. **Context.** Build the window; elide or summarise if over threshold (§3).
+3. **Model.** `Generate` with the existing bounded retry, under a daemon-wide
+   provider semaphore. Branch on the response:
+   - tool calls present (regardless of `StopReason`; gateways often send
+     `stop` with tool calls) → tool batch (§4), next step;
+   - `max_tokens` with truncated tool-call JSON, or with empty text because
+     reasoning used the budget → drop the partial call, raise
+     `MaxOutputTokens` once (×2, capped by the model), retry;
+   - `max_tokens` with text → keep the partial answer, append an engine
+     message "your reply was cut by the output limit; continue exactly where
+     you stopped"; at most 3 consecutive continuations, then `failed`;
+   - `end_turn` → completion check (below);
+   - `refusal` / `content_filter` → `completed`, refusal shown as is.
+4. **Record.** `run_steps` row and checkpoint (budget counters, phase,
+   loop-guard state).
 
-**Completion check.** If the todo list has `pending`/`in_progress` items and
-budget remains, inject once: "Your todo list has N open items: […]. Continue,
-or mark them and explain why you are stopping." A second text-only reply
-completes the run; the user sees the open items. No repeated nudges.
+**Completion check.** If the todo list of the current run chain has
+`pending`/`in_progress` items and budget remains, inject once: "Your todo list
+has N open items: […]. Continue, or mark them and explain why you are
+stopping." A second text-only reply completes the run; the user sees the open
+items. A run chain is a run plus its `/continue` successors
+(`continues_run_id`); todo from an unrelated earlier chain never triggers the
+check.
 
-**Budget.** Per-session settings with daemon-config defaults:
+**Budget.** Per-session settings over daemon-config defaults:
 
-| Limit | Main run | Subagent |
-|---|---|---|
-| steps | 300 | 100 |
-| wall-clock | 4 h | 1 h |
-| tokens | 0 = unlimited | 0 = unlimited |
-| cost | counted when the model catalog has prices | same |
+| Trigger | steps | active wall-clock | tokens |
+|---|---|---|---|
+| User message | 300 | 4 h | 0 = unlimited |
+| Subagent | 100 | 1 h | 0 = unlimited |
+| Automation / auto-wake | 50 | 30 min | 0 = unlimited |
 
-At 80% of any limit the context block says "about X left, wrap up". At 100% a
-**final turn** runs with tools disabled ("briefly: what is done, what remains,
-how to continue") and the run ends `budget_exhausted`. `/continue` (TUI) or the
-"Continue" button (Telegram) starts a new run with a fresh budget over the same
-journal and todo. Counters live in the checkpoint and are not reset by an
-approval resume.
+- Active wall-clock excludes time parked in `waiting_approval` and
+  `waiting_events`.
+- Tokens are prompt + output from normalised usage; children's usage counts
+  toward their own budget and is reported (not charged) to the parent.
+- Auto-woken runs (task/subagent completions, timers) form a chain limited to
+  20 consecutive runs without a user message; beyond that the session only
+  notifies the user.
+- At 80% of any limit an engine message says "about X left, wrap up".
+- At 100% a **final turn** runs with `tool_choice: none` (tools stay defined so
+  the request prefix and cache survive): "briefly: what is done, what remains,
+  how to continue". The run ends `completed` with
+  `stop_reason=budget_exhausted`.
+- `/continue` (TUI, Telegram button shown by `stop_reason`) creates a user
+  message "Continue" and a run with `continues_run_id` and a fresh budget over
+  the same journal and todo.
+- Counters live in the checkpoint; an approval resume does not reset them.
 
-**Loop guard.** Hash of `(name, args)`: 3 identical consecutive calls (or 3
-identical consecutive errors) → context-block warning "you are repeating X,
-change approach"; 5 → final turn, `failed` with reason `loop_detected`.
+**Loop guard.** Hash of `(name, args, result)` — it detects *no progress*, not
+repetition, so polling tools (`task_output`, `git status`) that return new
+output are not flagged. 3 identical consecutive triples → engine message "you
+are repeating X with the same result, change approach"; 5 → final turn and
+`completed` with `stop_reason=loop_detected`.
 
-**Cancel/interrupt** behave as today: partial answer kept, unfinished calls get
-a "canceled" result. User input during a run defaults to steer (delivered at
-the next step without stopping the run); queue/interrupt unchanged.
+**Engine messages** (nudges, continuations, warnings, recovery notices, the
+context message of §3) carry `origin: engine` in `transcript.Message`. Clients
+render them as system notes; they replace the old text-prefix hacks.
+
+**Cancel** cascades: running children and the run's background tasks are
+cancelled; completed results of a parallel batch are kept, the rest get a
+"canceled" result. **User input** during a run is steer by default in every
+client and is delivered at the next step; it also wakes a run parked in
+`waiting_events`. Queue/interrupt remain as explicit commands.
 
 ## 3. Context
 
-**Token accounting.** Authority is the last response's
-`InputTokens + CachedTokens` plus an estimate (runes/4, 1500 per image) for
-everything appended since. Without provider usage, fall back to the estimate.
-Window size from the model catalog; unknown models use 128k.
+**Normalised usage.** `providers.Usage` becomes `PromptTokens` (entire input,
+cached or not), `CacheReadTokens`, `CacheWriteTokens`, `OutputTokens`,
+`ReasoningTokens`. Every adapter maps into it.
 
-**Level 1 — elision** at 60% of the window, no model call. Tool results older
-than the last 5 tool rounds and larger than ~1k tokens are replaced in the
-request by `[output of read(path=…) hidden, ~12k tokens; call again if needed]`;
-images older than 3 steps likewise. The database keeps everything. Elision is
-applied to all eligible results at once, not as a sliding window, so the
+**Token accounting.** Authority is the last response's `PromptTokens` plus an
+estimate for messages appended since. After elision, a summary, or a model
+change the estimate is authoritative until the next response. The estimate is
+runes/4 for Latin text and runes/2.5 for other scripts (Cyrillic), 1500 per
+image. **Effective window** = model window − `MaxOutputTokens` − 5% reserve;
+unknown models use 128k. The old 80k floor is removed.
+
+**Large tool outputs.** A result over ~8k tokens is stored in full in a file
+under the session data directory; the model gets the path plus head and tail.
+This replaces the 12k-rune truncation in the provider view.
+
+**Level 1 — elision** at 60% of the effective window, no model call. Tool
+results older than the last 5 tool rounds and larger than ~1k tokens are
+replaced in the request by `[output of read(path=…) hidden, ~12k tokens; call
+again or read <file> if needed]`; images older than 3 steps likewise. The
+database keeps everything. All eligible results are elided at once, so the
 request prefix changes rarely.
 
-**Level 2 — summary** at 80%, or when elision was not enough. Summarise
-everything except the tail (the last ~25% of the window, whole turns, never
-splitting a call from its result). The run's original assignment and all steer
-messages are kept verbatim. Summary structure: goal, decisions, files changed,
-errors and fixes, current state, next step. Todo is not summarised — it is
-re-injected by the context block. If the part to summarise does not fit the
-model window it is summarised in chunks and merged. The summary is stored as a
-compaction boundary with `run_id`; `Journal.Load` starts at the last boundary.
-The current-run exception is removed.
+**Level 2 — summary** at 80%, or when elision was not enough. The summary
+request reuses the main request prefix (same system prompt, tools and
+messages) with a trailing instruction and `tool_choice: none`, so it hits the
+cache; an optional `compact_model` setting may name a cheaper model instead.
+Everything except the tail is summarised; the tail is the last ~25% of the
+window in whole turns, never splitting a call from its result. The run's
+assignment and all steer messages are kept verbatim. Summary structure: goal,
+decisions, files changed, errors and fixes, current state, next step. Todo is
+not summarised; it is re-sent by the context message. Parts that do not fit are
+summarised in chunks and merged.
 
-**Context-length error from the provider.** Force a summary with half the tail
-and retry once; a second overflow is `failed` with a clear reason. If automatic
-compaction is disabled after two low-yield attempts (<10% saved) and the window
-is still over the threshold, run the final turn and end `failed` with reason
+The boundary is a structured part `{summary, covers_through_seq, run_id,
+tokens_before, tokens_after}`. `Journal.Load` returns the latest boundary plus
+messages with `seq > covers_through_seq`, so the tail written before the
+boundary is kept. The low-yield backoff (two summaries saving <10%) reads
+`tokens_before/after` instead of parsing text; when it trips and the window is
+still over threshold, the final turn runs and the run ends `failed` with reason
 `context_exhausted`.
 
+**Context-length error from the provider.** Force a summary with half the tail
+and retry once; a second overflow is `failed` with `context_exhausted`.
+
 **Stable prompt and caching.**
-- The system prompt changes only between runs: identity, rules, tools, project
-  root, skills, memory as of run start.
-- The per-step **context block** is rebuilt every step, never journaled, and
-  appended as tagged text to the last message: todo, remaining budget, time,
-  module status, loop-guard warnings, recovery notice, memory changes made
-  during the run.
-- Anthropic: `cache_control` on system+tools and on the second-to-last message
-  (rolling breakpoint). OpenAI-compatible: `prompt_cache_key = sessionID` where
-  accepted. Gemini: implicit caching.
-- Cache hit rate from `CachedTokens` is shown in `/status`.
+- The system prompt changes only between runs: identity, rules, tool guidance,
+  project root, skills, memory as of run start.
+- Changing state (todo, budget warnings, loop warnings, recovery notice,
+  memory changes during the run, module status changes) is journaled as an
+  `origin: engine` **context message**, only when it changed. It becomes part
+  of the immutable history, so earlier prefix bytes never change.
+- Anthropic: `cache_control` on system + tools and on the latest message
+  (rolling breakpoint, max 4). OpenAI-compatible: `prompt_cache_key =
+  sessionID` where accepted; Claude models through OpenRouter get
+  `cache_control` in content parts. Gemini: implicit caching.
+- Cache read/write per step is stored in `run_steps` and shown in `/status`.
 
 ## 4. Tools, permissions, background work, subagents
 
-**Scheduler.** `tools.Spec` gains `Concurrency: shared | exclusive`, defaulting
-from `Effect` (`readonly` → shared, `mutation` → exclusive). Consecutive shared
-calls run in parallel (max 8); each exclusive call runs alone. Results are
-journaled in the model's original order, with a checkpoint per call. Unknown or
-invalid calls keep becoming error results. `agent` is shared.
+**Scheduler.** `tools.Spec` gains `ConcurrencyKey(args) string`: empty means
+freely parallel (read-only tools); otherwise calls with the same key are
+serialised by a daemon-level keyed mutex, which also serialises different runs
+and sessions. Defaults: mutating filesystem/shell tools → the working
+directory; MCP tools → `mcp.<server>` (so one shared browser is never driven
+twice at once). Up to 8 calls run concurrently. Results are journaled in the
+model's original order. Unknown or invalid calls keep becoming error results.
 
-**Permissions.** Rule `{tool, pattern, effect: allow|deny|ask, scope:
-session|global}` in table `permission_rules`. The matched subject comes from
-the tool's `PermissionParams`: bash → command (`go test:*` prefix syntax),
-write/edit → path glob, web_fetch → domain, MCP → `server__tool`. Order: deny →
-ask → allow → mode preset → tool default. `default` / `accept_edits` /
-`full_auto` stay as named rule presets. Compound bash commands (`&&`, `;`, `|`,
-`$(...)`) are parsed with `mvdan.cc/sh/v3` (new pure-Go dependency); allowed
-only if every sub-command is allowed, otherwise ask.
+**Approval barrier.** Calls are authorised in order. A mutating call that needs
+approval is a barrier: calls after it in the batch are journaled as `deferred`
+and executed after the decision; calls before it and independent read-only
+calls run. The run parks in `waiting_approval` once the runnable part of the
+batch is done and resumes when every pending approval is resolved. Crash
+recovery treats `deferred` calls as not started (no "retry after restart"
+approval).
 
-Approval prompt offers "Allow", "Always allow" (with a suggested rule such as
-`bash: go test:*` or `edit: internal/**` and a session/global choice) and "Deny
-with reason". A denial becomes an error result `User denied: <reason>` and the
-loop continues; a deny rule yields `Blocked by rule <…>` immediately. Calls in
-the batch that need no approval still execute; the run parks in
-`waiting_approval` at the end of the batch and resumes when every pending
-approval is resolved.
+**Checkpoints.** Only the engine goroutine writes the checkpoint; the phase is
+`tool_batch{call_ids, deferred_ids}`. Tool goroutines never touch it. The
+per-call checkpoint writes in `tool_call_prepare.go` / `tool_call_finish.go`
+are removed from the engine path.
 
-**Background tasks.** Table `background_tasks`: `id, session_id, run_id, kind
-(shell|subagent), status, command/goal, pid, output_path, exit_code,
-started_at, finished_at`.
-- `bash(run_in_background)` starts the process with `setsid`, output to a file
-  in the data directory; the process survives a daemon restart. On restart the
-  daemon re-attaches by pid and process start time, otherwise marks it `lost`.
-- `task_output(id, wait_seconds?, filter?)` and `task_kill(id)` replace
+**Permissions** (`internal/permission`, evaluated by `Tools.Authorize` and by
+`core.ExecuteTool`, so API, voice, MCP server and runs all obey the same
+rules):
+- Every executor provides `PermissionSubject(args) (string, error)`: bash →
+  the command; read/write/edit/glob/grep → absolute path; web_fetch → domain;
+  MCP → `server__tool`. Read-only tools are subject to `deny` rules too
+  (`deny read ~/.ssh/**`).
+- Rule `{tool, pattern, effect: allow|deny|ask, scope: session|global}` in
+  `permission_rules`. Globs are resolved to absolute paths when the rule is
+  saved. Order: deny → ask → allow → mode preset → tool default.
+  `default` / `accept_edits` / `full_auto` stay as named presets.
+- Bash commands are parsed with `mvdan.cc/sh/v3` (new pure-Go dependency).
+  Allowed only if every simple command is allowed; output redirection to files,
+  leading `VAR=…` assignments, command/process substitution, and
+  `-exec`/`-toolexec`-style flags always fall back to ask.
+- Approval prompt: "Allow", "Always allow" (suggested rule such as
+  `bash: go test:*` or `edit: /abs/internal/**`, with session/global choice)
+  and "Deny with reason". Global rules can be created only by the owner (TUI,
+  or the Telegram owner chat), never by Telegram guests.
+- Children inherit the parent session's rules; "Always allow" on a bridged
+  child approval writes the rule to the parent session.
+- **Denial** becomes an error result `User denied: <reason>` and the loop
+  continues. This replaces the fail paths in `ResolveApproval`, the subagent
+  bridge (the child continues with the denial; the parent keeps waiting) and
+  crash recovery. A deny rule yields `Blocked by rule <…>` immediately.
+
+**Bash.** Foreground commands get a default timeout of 10 minutes (argument up
+to 60). A foreground command still running after 2 minutes is moved to the
+background automatically (`AutoBackgroundAfter`, already declared and unused)
+and the model receives its task id.
+
+**Background tasks.** One table `tasks` replaces `subagent_tasks` (rows copied
+with `INSERT OR IGNORE … SELECT`, then the old table is dropped):
+`id, session_id, run_id, parent_tool_call_id, kind (shell|subagent), status,
+command_or_goal, runtime, model, isolation, pid, pgid, output_path, exit_code,
+output_cursor, child_session_id, child_run_id, started_at, finished_at`.
+- `bash(run_in_background)` starts the command in its own process group;
+  stdout/stderr go to a file (mode 0600) capped at 20 MB, keeping the first
+  1 MB and a rolling tail. Files are removed with the session.
+- `task_output(id, wait_seconds?, filter?)` returns output since the last read
+  (cursor) plus status; `task_kill(id)` kills the group. They replace
   `job_output` / `job_kill`.
+- On daemon start, leftover `running` shell tasks have their process group
+  killed and are marked `lost`; the model sees that in the next context message.
 - Completion emits `task_finished` into the session inbox.
-- `await(ids?, timeout)` parks the run in `waiting_events` without holding a
-  goroutine; the timer is persisted; the run wakes on the first matching event
-  or the timeout. Sub-project 2 reuses this wake-up path.
+
+**`await` and `waiting_events`.**
+- `await(ids?, timeout)` ends the step; the engine parks the run in
+  `waiting_events` under the session gate after re-checking the inbox, so an
+  event that arrived meanwhile is not lost.
+- `waiting_events` counts as active in `GetActiveRunBySession` /
+  `ListActiveRuns`, is handled by `prepareClaimedRun` and by the subagent
+  terminal-status check.
+- Timers live in `run_wakeups(run_id, wake_at)`; a ticker in `core` wakes due
+  runs through the normal `startRun`; timers are re-armed at daemon start.
+- A matching event, the timeout, or any user message (as steer) wakes the run.
+- A `task_finished` in an idle session starts an auto-wake run (like subagent
+  completions today), subject to the chain limit in §2, and is delivered to
+  Telegram.
 
 **Subagents.** `delegate_task` and `spawn_subagent` merge into
-`agent{description, prompt, background, isolation: shared|worktree}`.
-`background:false` runs the child on the same `Engine` inside the call (several
-in parallel); `background:true` makes it a `subagent` background task whose
-result arrives as an event. Limit: 4 active background subagents per parent,
-configurable. Children get todo and background bash; `agent` and `await` are
-forbidden. Child approvals are still bridged to the parent.
+`agent{description, prompt, background, isolation: shared|worktree, readonly,
+runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
+- `readonly:true` children get only read-only tools and run in parallel freely.
+- Mutating children with `isolation: shared` use the working-directory
+  concurrency key, so they run one at a time; with `worktree` they are parallel.
+- `background:false` runs the child on the same `Engine` inside the call; the
+  parent resumes only when every child call of the batch is finished and no
+  approval is pending. A repeated call for a child that is still running parks
+  again instead of finishing it with a partial summary.
+- `background:true` makes it a `subagent` task whose result arrives as an event.
+- The 24-hour in-memory resume watcher is replaced by the inbox/wake path.
+- Limit: 4 active background subagents per parent, configurable. Children get
+  todo and background bash; `agent` and `await` are forbidden.
 
-## 5. Providers, todo, prompt, clients, data
+## 5. Providers
 
-**Providers.** `providers.Request` gains `MaxOutputTokens` (from the model
-catalog, default 16k), `CacheHints`, `ToolsEnabled`. `providers.Response`
-gains `StopReason` (`end_turn | tool_use | max_tokens | refusal |
-content_filter`). All four adapters (openaicompat, anthropiccompat, gemini,
-openaicodex) map their native reasons; `finish_reason=length` is no longer an
-error. A stream without a terminal event stays an error.
+- `providers.Request` gains `MaxOutputTokens` (priority: provider config →
+  model catalog → 16k), `CacheHints`, and `ToolChoice` (`auto | none`).
+- `providers.Response` gains `StopReason` (`end_turn | tool_use | max_tokens |
+  refusal | content_filter`); usage is normalised as in §3.
+- All adapters use idle (between-chunk) stream timeouts instead of whole-request
+  timeouts.
+- openaicompat: `length` maps to `max_tokens`; `tool_choice: none`.
+- anthropiccompat (stage 1b): real `tool_use` / `tool_result` blocks, parallel
+  tool results in one user message, `cache_control`, `stop_reason` mapping,
+  `tool_choice: {type: none}`, thinking blocks passed back unchanged.
+- gemini: decode `finishReason` (`MAX_TOKENS`, `SAFETY`,
+  `MALFORMED_FUNCTION_CALL` → retry once, …); send all function responses of a
+  batch in one content; pass thought signatures back; `mode: NONE` for the
+  final turn.
+- openaicodex: `incomplete` with `max_output_tokens` maps to `max_tokens`
+  instead of an error; request `reasoning.encrypted_content` and send it back
+  so reasoning survives between steps with `store:false`.
+- Until stage 2a lands, the old loop keeps treating `max_tokens` as an error.
+
+## 6. Todo, prompt, clients, observability, data
 
 **Todo.** `todo_write{items: [{content, active_form, status}]}` replaces the
 whole list; at most one `in_progress`. Stored in `session_todos` (one row per
-session: JSON items, `updated_run_id`); survives compaction and `/continue`.
-Event `todo_updated`; TUI plan panel becomes a todo panel
-(`app_plan_panel.go` → `app_todo_panel.go`); Telegram shows it in the run
-status; API `GET/DELETE /sessions/{id}/todo` replaces `/plan`.
-Deleted: `internal/core/plan*.go`, `types_plan.go`, `internal/store/sqlite_plan.go`,
+session: JSON items, `chain_run_id`, `updated_run_id`). Event `todo_updated`;
+the TUI plan panel becomes a todo panel; Telegram shows it in the run status
+message; API `GET/DELETE /sessions/{id}/todo` replaces `/plan`. Deleted:
+`internal/core/plan*.go`, `types_plan.go`, `internal/store/sqlite_plan.go`,
 `internal/controlplane/plan.go`, `internal/api/plan.go`, TUI `plan_run.go`,
-`app_plan_keys.go` and plan events, `/plan` in `commandcatalog`, `PLAN_BLOCKED`.
+`app_plan_keys.go`, plan events, `/plan` in `commandcatalog`, `PLAN_BLOCKED`.
 
-**Prompt.** "Tool use discipline" is rewritten: track multi-step work in todo
-and update it as you go; issue independent reads/searches as parallel calls in
-one reply; finish with a verified result (tests, build, real output); report
-failures honestly; do not stop at an intermediate step; run long commands in
-the background and wait with `await`. "Minimise tool calls" is removed.
+**Prompt.** Guidance is added together with the feature it describes (todo in
+stage 5, parallel calls in 4c, background and `await` in 6a/6b). The final
+text: track multi-step work in todo and update it as you go; issue independent
+reads/searches as parallel calls in one reply; finish with a verified result
+(tests, build, real output); report failures honestly; do not stop at an
+intermediate step; run long commands in the background and wait with `await`.
+"Minimise tool calls" is removed in stage 2b.
 
-**Clients.** `/continue`, `/budget`, `/permissions` (list/delete rules) in
-controlplane for TUI and Telegram; "Continue" button for `budget_exhausted`
-runs; new approval buttons; run status shows steps/budget, background tasks and
-todo. iOS Swift package: new event and status fields only.
+**Clients.**
+- Each stage ships the client handling for what it introduces.
+- iOS Swift package: `RunStatus` gets tolerant decoding (unknown values map to
+  `.unknown(String)`) in stage 0, before any new status exists.
+- Telegram: one editable run-status message per run (step n/limit, todo,
+  current tool, background tasks) instead of one message per tool call;
+  deliveries load messages with `ListMessagesAfter(seq)`; "Continue" button by
+  `stop_reason`; approval buttons "Allow / Always allow / Deny with reason".
+- controlplane (TUI + Telegram): `/continue`, `/budget`, `/permissions`
+  (list/delete rules), `/tasks` (background tasks).
 
-**Data.** Schema stays idempotent: new tables via `CREATE TABLE IF NOT EXISTS`;
-`DROP TABLE IF EXISTS session_plan_items, plan_runs` (the session goal goes with
-them). Existing plans are not migrated; noted in CHANGELOG. Runs in
-`waiting_approval` at upgrade time are picked up by the new recovery; old
-checkpoints without budget counters start from zero.
+**Observability.** `run_steps(run_id, step, model, prompt_tokens,
+cache_read_tokens, cache_write_tokens, output_tokens, stop_reason,
+latency_ms, tool_calls, created_at)` replaces the full-scan `saveRunUsage`
+rebuild; per-run usage and budget are sums over it, so continuations, final
+turns, nudges and summaries are counted. Each step emits a `run_step` event
+and one structured log line.
+
+**Data.** Schema stays idempotent: `ensureColumn` for `messages.seq` (with
+backfill), `runs.stop_reason`, `runs.continues_run_id`; `CREATE TABLE IF NOT
+EXISTS` for `run_steps`, `run_wakeups`, `permission_rules`, `session_todos`,
+`tasks`; `subagent_tasks` copied into `tasks` and dropped; `DROP TABLE IF
+EXISTS session_plan_items, plan_runs`. Existing plans are not migrated (noted
+in CHANGELOG). Runs in `waiting_approval` at upgrade time are picked up by the
+new recovery; checkpoints without budget counters start from zero.
 
 ## Testing
 
-- `internal/agent` with `agenttest.ScriptedModel`: a 300-step run; budget final
-  turn; `max_tokens` continuation; open-todo completion check; loop guard;
-  mid-run summary preserving assignment, tail and call/result pairs; elision;
-  parallel batch result order; denial with reason; deny rule; compound bash
-  command; `await` woken by event and by timer; daemon restart with a live
-  background process; recovery with budget counters.
+- `internal/agent` with `agenttest.ScriptedModel`: a 300-step run; budget
+  final turn with `tool_choice: none`; `max_tokens` continuation and truncated
+  tool JSON; open-todo completion check scoped to the chain; no-progress loop
+  guard ignoring polling with new output; mid-run summary preserving
+  assignment, tail and call/result pairs across `Load`; elision; parallel batch
+  result order; concurrency keys across two runs; approval barrier with
+  `deferred` calls; denial with reason (direct, bridged, after restart); deny
+  rule on a read-only tool; compound bash commands; `await` woken by event, by
+  timer, by user message, and the park/event race; `interrupted` rescheduling;
+  cancel cascade; recovery with budget counters.
+- `internal/permission`: table tests for subjects, rule order and bash parsing.
 - Existing core integration tests (SQLite, crash recovery) move to the new
   engine; duplicates are deleted.
-- Per provider: `StopReason` and `max_tokens` against a local HTTP server.
+- Per provider, against a local HTTP server: stop reasons, `max_tokens`,
+  normalised usage, `tool_choice: none`, idle timeout; Anthropic tool round
+  trip; Gemini batched function responses.
+- iOS package: decoding of an unknown run status.
 - Each stage: `go vet ./...`, `go test ./...`, and a manual long task through
   the TUI on the test stand.
 
 ## Stages
 
-Each stage builds, passes tests and is committed to `main` on its own; a
-release happens on the owner's command.
+Each stage builds, passes tests, keeps the app working, and is committed to
+`main` on its own; a release happens on the owner's command.
 
-1. Provider contract: `StopReason`, `MaxOutputTokens`, cache hints.
-2. Engine, transcript, budget, final turn, loop guard; `ExecuteRun` switched
-   over; old `execution_*` deleted. The completion check is wired but inert
-   until stage 5 provides todo.
-3. Context: in-run summary, elision, usage-based accounting, stable prompt.
-4. Tools: scheduler, permission rules, denial feedback.
-5. Todo replaces Planning Mode.
-6. Background tasks, `await`, unified `agent` tool.
-7. Prompt, clients, docs (`ARCHITECTURE.md`, `PLANNING.md` → todo, `TELEGRAM.md`).
+| Stage | Content |
+|---|---|
+| 0 | Preparation: `internal/transcript` move, `messages.seq` + point store methods, normalised `Usage`, idle stream timeouts, tolerant iOS `RunStatus`, `run_steps`. |
+| 1 | Provider contract: `StopReason`, `MaxOutputTokens`, `ToolChoice`, Gemini `finishReason`, Codex incomplete/encrypted reasoning. Old loop still treats `max_tokens` as an error. |
+| 1b | Native Anthropic tool use, `cache_control`, stop reasons. |
+| 2a | Engine extraction with unchanged behaviour (32 steps), single-writer journal, `ExecuteRun` switched over, old `execution_*`/`context*` deleted, `interrupted` rescheduling. |
+| 2b | Budget, final turn, loop guard, `stop_reason`, `/continue` + Telegram button, engine messages. Default step limit stays 32. |
+| 3 | Context: `seq` boundary, large outputs to files, elision, cache-friendly summary, stable prompt and context messages, caching hints. Defaults raised to 300 steps / 4 h. |
+| 4a | Denial returned to the model in all three places; approval barrier and `deferred`. |
+| 4b | `internal/permission`, rules in `core.ExecuteTool`, approval UI, `/permissions`; delete Telegram in-memory auto-approval. |
+| 4c | Scheduler: concurrency keys, parallel batches, engine-only checkpoints, provider semaphore. |
+| 5 | Todo replaces Planning Mode (can follow 2b directly). |
+| 6a | `tasks` table, durable shell tasks, bash timeout and auto-background, `/tasks`. |
+| 6b | `await`, `waiting_events`, `run_wakeups`, auto-wake chains, steer wakes. |
+| 6c | Unified `agent` tool (readonly, runtime, model), parent resume on whole batch, cancel cascade. |
+| 7 | Docs: `ARCHITECTURE.md`, `PLANNING.md` → todo, `TELEGRAM.md`, CHANGELOG. |
+
+## Deferred
+
+File checkpoints/rollback, fallback model on overload, deferred MCP tool
+loading (tool search), user hooks, re-attaching background processes after a
+restart, cost budgets (needs a price source).
