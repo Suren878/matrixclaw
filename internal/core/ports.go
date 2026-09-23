@@ -6,6 +6,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 type SessionStore interface {
@@ -39,9 +40,9 @@ type DeliveryStore interface {
 }
 
 type MessageStore interface {
-	SaveMessage(ctx context.Context, message Message) error
-	UpdateMessage(ctx context.Context, message Message) error
-	ListMessages(ctx context.Context, sessionID string, limit int) ([]Message, error)
+	SaveMessage(ctx context.Context, message transcript.Message) error
+	UpdateMessage(ctx context.Context, message transcript.Message) error
+	ListMessages(ctx context.Context, sessionID string, limit int) ([]transcript.Message, error)
 }
 
 type RunStore interface {
@@ -50,9 +51,9 @@ type RunStore interface {
 	GetActiveRunBySession(ctx context.Context, sessionID string) (Run, error)
 	ListActiveRuns(ctx context.Context) ([]Run, error)
 	UpdateRun(ctx context.Context, run Run) error
-	CompleteRun(ctx context.Context, assistantMessage Message, run Run) error
+	CompleteRun(ctx context.Context, assistantMessage transcript.Message, run Run) error
 
-	AcceptMessage(ctx context.Context, message Message, run Run, deliveries ...ClientDelivery) error
+	AcceptMessage(ctx context.Context, message transcript.Message, run Run, deliveries ...ClientDelivery) error
 }
 
 type SessionInputStore interface {

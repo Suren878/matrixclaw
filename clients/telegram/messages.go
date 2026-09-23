@@ -14,6 +14,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 const maxTelegramAudioBytes int64 = 25 << 20
@@ -538,9 +539,9 @@ func (w *Worker) sendImageMessage(ctx context.Context, target chatTarget, captio
 	if text == "" {
 		text = "Describe this image."
 	}
-	parts := []core.MessagePart{
-		{Kind: core.MessagePartKindText, Text: &core.TextPart{Text: text}},
-		{Kind: core.MessagePartKindImage, Image: &core.ImagePart{
+	parts := []transcript.MessagePart{
+		{Kind: transcript.MessagePartKindText, Text: &transcript.TextPart{Text: text}},
+		{Kind: transcript.MessagePartKindImage, Image: &transcript.ImagePart{
 			MIMEType:    entry.MIMEType,
 			Name:        entry.Title,
 			StoragePath: entry.Path,
@@ -627,7 +628,7 @@ func (w *Worker) saveTemporaryTelegramUpload(ctx context.Context, target chatTar
 	}, nil
 }
 
-func (w *Worker) sendUserMessageParts(ctx context.Context, target chatTarget, text string, parts []core.MessagePart) error {
+func (w *Worker) sendUserMessageParts(ctx context.Context, target chatTarget, text string, parts []transcript.MessagePart) error {
 	daemon := w.daemon(target.externalKey)
 	if target.isChat() {
 		if err := w.api.SendChatAction(ctx, SendChatActionRequest{

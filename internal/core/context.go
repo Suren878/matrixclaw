@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 const compactMessagePrefix = "🧠 Context compacted"
@@ -18,8 +19,8 @@ const EstimatedImageTokens = 1_500
 const compactBackoffMinimumSavingsPercent = 10
 
 type CompactSessionResult struct {
-	Message Message       `json:"message"`
-	Context ContextReport `json:"context"`
+	Message transcript.Message `json:"message"`
+	Context ContextReport      `json:"context"`
 }
 
 type ContextBlockKind string
@@ -118,15 +119,15 @@ func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSes
 	}
 	summary = strings.TrimSpace(summary)
 	previewContent := compactMessagePrefix + "\n\n" + summary
-	preview := Message{
-		Role:    MessageRoleSystem,
+	preview := transcript.Message{
+		Role:    transcript.MessageRoleSystem,
 		Content: previewContent,
-		Parts: []MessagePart{{
-			Kind: MessagePartKindText,
-			Text: &TextPart{Text: previewContent},
+		Parts: []transcript.MessagePart{{
+			Kind: transcript.MessagePartKindText,
+			Text: &transcript.TextPart{Text: previewContent},
 		}},
 	}
-	after := c.contextReportForSession(session, append(append([]Message(nil), messages...), preview))
+	after := c.contextReportForSession(session, append(append([]transcript.Message(nil), messages...), preview))
 	content := fmt.Sprintf("%s: ~%s -> ~%s tokens\n\n%s", compactMessagePrefix, FormatShortNumber(before.TokenEstimate), FormatShortNumber(after.TokenEstimate), summary)
 	message, err := c.CreateSystemMessage(ctx, session.ID, content)
 	if err != nil {
@@ -180,7 +181,7 @@ func (c *Core) providerRequestNeedsCompact(ctx context.Context, turn turnExecuti
 	return EstimateProviderRequestTokens(request) >= threshold
 }
 
-func (c *Core) sessionContextSnapshot(ctx context.Context, sessionID string) (Session, []Message, ContextReport, error) {
+func (c *Core) sessionContextSnapshot(ctx context.Context, sessionID string) (Session, []transcript.Message, ContextReport, error) {
 	sessionID = normalizeText(sessionID)
 	if sessionID == "" {
 		return Session{}, nil, ContextReport{}, ErrSessionRequired
@@ -197,7 +198,7 @@ func (c *Core) sessionContextSnapshot(ctx context.Context, sessionID string) (Se
 	return session, messages, c.contextReportForSession(session, messages), nil
 }
 
-func (c *Core) compactSessionWithLoadedMessages(ctx context.Context, session Session, messages []Message) (bool, error) {
+func (c *Core) compactSessionWithLoadedMessages(ctx context.Context, session Session, messages []transcript.Message) (bool, error) {
 	_, effectiveMessages := latestCompactSummary(messages)
 	if len(effectiveMessages) == 0 {
 		return false, nil

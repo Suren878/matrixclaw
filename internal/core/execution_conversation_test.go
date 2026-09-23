@@ -6,15 +6,17 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func TestToProviderMessagesKeepsSVGAsAttachmentReference(t *testing.T) {
-	messages, err := toProviderMessages(context.Background(), Message{
-		Role:    MessageRoleUser,
+	messages, err := toProviderMessages(context.Background(), transcript.Message{
+		Role:    transcript.MessageRoleUser,
 		Content: "Move this file.",
-		Parts: []MessagePart{{
-			Kind: MessagePartKindImage,
-			Image: &ImagePart{
+		Parts: []transcript.MessagePart{{
+			Kind: transcript.MessagePartKindImage,
+			Image: &transcript.ImagePart{
 				MIMEType:    "image/svg+xml",
 				Name:        "logo.svg",
 				StoragePath: "telegram/images/logo.svg",
@@ -39,12 +41,12 @@ func TestToProviderMessagesKeepsSVGAsAttachmentReference(t *testing.T) {
 }
 
 func TestToProviderMessagesKeepsRasterImageInline(t *testing.T) {
-	messages, err := toProviderMessages(context.Background(), Message{
-		Role:    MessageRoleUser,
+	messages, err := toProviderMessages(context.Background(), transcript.Message{
+		Role:    transcript.MessageRoleUser,
 		Content: "Describe this image.",
-		Parts: []MessagePart{{
-			Kind: MessagePartKindImage,
-			Image: &ImagePart{
+		Parts: []transcript.MessagePart{{
+			Kind: transcript.MessagePartKindImage,
+			Image: &transcript.ImagePart{
 				MIMEType:    "image/png; charset=binary",
 				StoragePath: "telegram/images/photo.png",
 			},
@@ -61,11 +63,11 @@ func TestToProviderMessagesKeepsRasterImageInline(t *testing.T) {
 }
 
 func TestToProviderMessagesDoesNotFailForExpiredRasterImage(t *testing.T) {
-	messages, err := toProviderMessages(context.Background(), Message{
-		Role: MessageRoleUser,
-		Parts: []MessagePart{{
-			Kind: MessagePartKindImage,
-			Image: &ImagePart{
+	messages, err := toProviderMessages(context.Background(), transcript.Message{
+		Role: transcript.MessageRoleUser,
+		Parts: []transcript.MessagePart{{
+			Kind: transcript.MessagePartKindImage,
+			Image: &transcript.ImagePart{
 				MIMEType:    "image/png",
 				Name:        "expired.png",
 				StoragePath: "telegram/images/expired.png",
@@ -90,12 +92,12 @@ func TestToProviderMessagesDoesNotFailForExpiredRasterImage(t *testing.T) {
 }
 
 func TestToProviderMessagesDoesNotReadImageForTextOnlyModel(t *testing.T) {
-	messages, err := toProviderMessages(context.Background(), Message{
-		Role:    MessageRoleUser,
+	messages, err := toProviderMessages(context.Background(), transcript.Message{
+		Role:    transcript.MessageRoleUser,
 		Content: "Describe this image.",
-		Parts: []MessagePart{{
-			Kind: MessagePartKindImage,
-			Image: &ImagePart{
+		Parts: []transcript.MessagePart{{
+			Kind: transcript.MessagePartKindImage,
+			Image: &transcript.ImagePart{
 				MIMEType:    "image/png",
 				Name:        "photo.png",
 				StoragePath: "telegram/images/photo.png",
@@ -139,11 +141,11 @@ type staticAttachmentReader struct {
 }
 
 func TestProviderConversationPairsResultsWithMixedTextAndToolCalls(t *testing.T) {
-	history := []Message{
-		{Role: MessageRoleUser, Content: "Inspect it"},
-		{Role: MessageRoleAssistant, Content: "Checking now", Parts: []MessagePart{{Kind: MessagePartKindToolCall, ToolCall: &ToolCallPart{ID: "call-1", Name: "inspect", Input: `{}`}}}},
-		{Role: MessageRoleTool, Parts: []MessagePart{{Kind: MessagePartKindToolResult, ToolResult: &ToolResultPart{ToolCallID: "call-1", Name: "inspect", Content: "Actual result"}}}},
-		{Role: MessageRoleAssistant, Content: "Done"},
+	history := []transcript.Message{
+		{Role: transcript.MessageRoleUser, Content: "Inspect it"},
+		{Role: transcript.MessageRoleAssistant, Content: "Checking now", Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindToolCall, ToolCall: &transcript.ToolCallPart{ID: "call-1", Name: "inspect", Input: `{}`}}}},
+		{Role: transcript.MessageRoleTool, Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindToolResult, ToolResult: &transcript.ToolResultPart{ToolCallID: "call-1", Name: "inspect", Content: "Actual result"}}}},
+		{Role: transcript.MessageRoleAssistant, Content: "Done"},
 	}
 	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false)
 	if err != nil {

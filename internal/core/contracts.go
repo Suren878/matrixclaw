@@ -2,6 +2,7 @@ package core
 
 import (
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 	"github.com/Suren878/matrixclaw/internal/version"
 )
 
@@ -82,10 +83,10 @@ type ErrorResponse struct {
 }
 
 type AcceptRunErrorResponse struct {
-	Error       string  `json:"error"`
-	SessionID   string  `json:"session_id"`
-	UserMessage Message `json:"user_message"`
-	Run         Run     `json:"run"`
+	Error       string             `json:"error"`
+	SessionID   string             `json:"session_id"`
+	UserMessage transcript.Message `json:"user_message"`
+	Run         Run                `json:"run"`
 }
 
 type HealthResponse struct {
@@ -111,11 +112,11 @@ type UpdateExternalAgentRequest struct {
 }
 
 type MessagesResponse struct {
-	Messages []Message `json:"messages"`
+	Messages []transcript.Message `json:"messages"`
 }
 
 type MessageResponse struct {
-	Message Message `json:"message"`
+	Message transcript.Message `json:"message"`
 }
 
 type RunResponse struct {

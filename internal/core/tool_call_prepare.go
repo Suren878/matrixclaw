@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 type preparedToolCall struct {
@@ -15,7 +16,7 @@ type preparedToolCall struct {
 	Spec       tools.Spec
 	ToolCallID string
 	WorkingDir string
-	Message    Message
+	Message    transcript.Message
 }
 
 func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (preparedToolCall, error) {
@@ -98,16 +99,16 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 	return prepared, nil
 }
 
-func newToolCallMessage(id string, sessionID string, runID string, toolName string, args []byte, finished bool, createdAt time.Time) Message {
-	return Message{
+func newToolCallMessage(id string, sessionID string, runID string, toolName string, args []byte, finished bool, createdAt time.Time) transcript.Message {
+	return transcript.Message{
 		ID:        id,
 		SessionID: sessionID,
 		RunID:     runID,
-		Role:      MessageRoleAssistant,
+		Role:      transcript.MessageRoleAssistant,
 		Content:   "",
-		Parts: []MessagePart{{
-			Kind: MessagePartKindToolCall,
-			ToolCall: &ToolCallPart{
+		Parts: []transcript.MessagePart{{
+			Kind: transcript.MessagePartKindToolCall,
+			ToolCall: &transcript.ToolCallPart{
 				ID:       id,
 				Name:     toolName,
 				Input:    string(args),

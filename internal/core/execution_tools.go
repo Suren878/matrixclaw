@@ -11,6 +11,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func (c *Core) executeRequestedTools(ctx context.Context, turn turnExecution, response providers.Response) (bool, error) {
@@ -19,7 +20,7 @@ func (c *Core) executeRequestedTools(ctx context.Context, turn turnExecution, re
 		return false, err
 	}
 	completed := toolResultCallIDs(history)
-	known := make(map[string]Message)
+	known := make(map[string]transcript.Message)
 	for _, message := range history {
 		for _, part := range message.Parts {
 			if part.ToolCall != nil {
@@ -127,7 +128,7 @@ func (c *Core) recordRejectedToolRequest(ctx context.Context, input ExecuteToolI
 	return ExecuteToolResult{ToolCallMessage: message, ToolResultMessage: result}, nil
 }
 
-func (c *Core) attachReasoningToToolCallMessage(ctx context.Context, message Message, reasoningContent *string) error {
+func (c *Core) attachReasoningToToolCallMessage(ctx context.Context, message transcript.Message, reasoningContent *string) error {
 	if reasoningContent == nil || strings.TrimSpace(message.ID) == "" {
 		return nil
 	}
@@ -136,9 +137,9 @@ func (c *Core) attachReasoningToToolCallMessage(ctx context.Context, message Mes
 			return nil
 		}
 	}
-	message.Parts = append([]MessagePart{{
-		Kind: MessagePartKindReasoning,
-		Reasoning: &ReasoningPart{
+	message.Parts = append([]transcript.MessagePart{{
+		Kind: transcript.MessagePartKindReasoning,
+		Reasoning: &transcript.ReasoningPart{
 			Text: *reasoningContent,
 		},
 	}}, message.Parts...)

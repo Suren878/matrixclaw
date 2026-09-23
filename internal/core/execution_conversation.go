@@ -9,15 +9,16 @@ import (
 	"unicode/utf8"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 const maxProviderImageBytes int64 = 8 * 1024 * 1024
 
-func (c *Core) buildProviderConversation(ctx context.Context, history []Message, currentRunID string, allowImageInput bool) ([]providers.Message, error) {
+func (c *Core) buildProviderConversation(ctx context.Context, history []transcript.Message, currentRunID string, allowImageInput bool) ([]providers.Message, error) {
 	return buildProviderConversationWithAttachmentsForRun(ctx, history, c.attachments, currentRunID, allowImageInput)
 }
 
-func buildProviderConversationWithAttachmentsForRun(ctx context.Context, history []Message, reader AttachmentReader, currentRunID string, allowImageInput bool) ([]providers.Message, error) {
+func buildProviderConversationWithAttachmentsForRun(ctx context.Context, history []transcript.Message, reader AttachmentReader, currentRunID string, allowImageInput bool) ([]providers.Message, error) {
 	entries, err := convertProviderConversationHistory(ctx, history, reader, currentRunID, allowImageInput)
 	if err != nil {
 		return nil, err
@@ -55,7 +56,7 @@ type providerConversationEntry struct {
 	messages []providers.Message
 }
 
-func convertProviderConversationHistory(ctx context.Context, history []Message, reader AttachmentReader, currentRunID string, allowImageInput bool) ([]providerConversationEntry, error) {
+func convertProviderConversationHistory(ctx context.Context, history []transcript.Message, reader AttachmentReader, currentRunID string, allowImageInput bool) ([]providerConversationEntry, error) {
 	entries := make([]providerConversationEntry, 0, len(history))
 	for _, message := range history {
 		if skipInternalPlanPromptForProvider(message, currentRunID) || messageInterruptedByDaemonRestart(message) {
@@ -88,7 +89,7 @@ func collectProviderToolResults(entries []providerConversationEntry) map[string]
 }
 
 func isPairedToolResultMessage(message providers.Message) bool {
-	return strings.TrimSpace(message.Role) == string(MessageRoleTool) && strings.TrimSpace(message.ToolCallID) != ""
+	return strings.TrimSpace(message.Role) == string(transcript.MessageRoleTool) && strings.TrimSpace(message.ToolCallID) != ""
 }
 
 func isToolCallOnlyProviderMessage(message providers.Message) bool {
@@ -111,7 +112,7 @@ func batchAdjacentToolCallMessages(entries []providerConversationEntry, start in
 }
 
 func isAdditionalBatchableToolCallMessage(message providers.Message) bool {
-	return strings.TrimSpace(message.Role) == string(MessageRoleAssistant) && isToolCallOnlyProviderMessage(message)
+	return strings.TrimSpace(message.Role) == string(transcript.MessageRoleAssistant) && isToolCallOnlyProviderMessage(message)
 }
 
 func appendProviderToolResults(conversation []providers.Message, toolCalls []providers.ToolCall, toolResults map[string]providers.Message) []providers.Message {
@@ -132,16 +133,16 @@ func appendProviderToolResults(conversation []providers.Message, toolCalls []pro
 
 func syntheticFailedToolResult(toolCallID string) providers.Message {
 	return providers.Message{
-		Role:       string(MessageRoleTool),
+		Role:       string(transcript.MessageRoleTool),
 		ToolCallID: toolCallID,
 		Content:    "Tool execution failed before completion.",
 	}
 }
 
-func buildTextOnlyProviderConversationForRun(history []Message, currentRunID string) []providers.Message {
+func buildTextOnlyProviderConversationForRun(history []transcript.Message, currentRunID string) []providers.Message {
 	conversation := make([]providers.Message, 0, len(history))
 	for _, message := range history {
-		if message.Role == MessageRoleSystem || skipInternalPlanPromptForProvider(message, currentRunID) || messageInterruptedByDaemonRestart(message) {
+		if message.Role == transcript.MessageRoleSystem || skipInternalPlanPromptForProvider(message, currentRunID) || messageInterruptedByDaemonRestart(message) {
 			continue
 		}
 		role := string(message.Role)
@@ -149,8 +150,8 @@ func buildTextOnlyProviderConversationForRun(history []Message, currentRunID str
 		if strings.TrimSpace(content) == "" {
 			continue
 		}
-		if message.Role == MessageRoleTool {
-			role = string(MessageRoleUser)
+		if message.Role == transcript.MessageRoleTool {
+			role = string(transcript.MessageRoleUser)
 		}
 		conversation = append(conversation, providers.Message{
 			Role:    role,
@@ -160,7 +161,7 @@ func buildTextOnlyProviderConversationForRun(history []Message, currentRunID str
 	return conversation
 }
 
-func skipInternalPlanPromptForProvider(message Message, currentRunID string) bool {
+func skipInternalPlanPromptForProvider(message transcript.Message, currentRunID string) bool {
 	if !IsPlanRunPromptMessage(message) {
 		return false
 	}
@@ -174,8 +175,8 @@ func skipInternalPlanPromptForProvider(message Message, currentRunID string) boo
 // IsPlanRunPromptMessage reports whether message is an internal plan runner prompt.
 // These prompts are stored so clients can audit local actions, but provider context
 // already receives the current plan through sessionPlanPrompt.
-func IsPlanRunPromptMessage(message Message) bool {
-	if message.Role != MessageRoleUser {
+func IsPlanRunPromptMessage(message transcript.Message) bool {
+	if message.Role != transcript.MessageRoleUser {
 		return false
 	}
 	content := strings.TrimSpace(message.Content)
@@ -184,7 +185,7 @@ func IsPlanRunPromptMessage(message Message) bool {
 		strings.HasPrefix(content, "The session plan was updated.")
 }
 
-func textOnlyProviderContent(message Message) string {
+func textOnlyProviderContent(message transcript.Message) string {
 	var values []string
 	add := func(value string) {
 		value = strings.TrimSpace(value)
@@ -201,7 +202,7 @@ func textOnlyProviderContent(message Message) string {
 		}
 	}
 	if !hasToolPart {
-		if message.Role == MessageRoleTool {
+		if message.Role == transcript.MessageRoleTool {
 			if content := strings.TrimSpace(message.Content); content != "" {
 				add("Previous tool result:\n" + content)
 			}
@@ -221,7 +222,7 @@ func textOnlyProviderContent(message Message) string {
 		return strings.Join(values, "\n\n")
 	}
 
-	if message.Role != MessageRoleTool {
+	if message.Role != transcript.MessageRoleTool {
 		add(message.Content)
 	}
 	for _, part := range message.Parts {
@@ -235,7 +236,7 @@ func textOnlyProviderContent(message Message) string {
 	return strings.Join(values, "\n\n")
 }
 
-func formatToolCallAsText(part ToolCallPart) string {
+func formatToolCallAsText(part transcript.ToolCallPart) string {
 	name := strings.TrimSpace(part.Name)
 	if name == "" {
 		name = "unknown"
@@ -247,7 +248,7 @@ func formatToolCallAsText(part ToolCallPart) string {
 	return "Previous tool call: " + name + "\nInput:\n" + input
 }
 
-func formatToolResultAsText(part ToolResultPart, fallbackContent string) string {
+func formatToolResultAsText(part transcript.ToolResultPart, fallbackContent string) string {
 	name := strings.TrimSpace(part.Name)
 	if name == "" {
 		name = "unknown"
@@ -296,8 +297,8 @@ func trimProviderToolResult(content string, maxRunes int) string {
 	return strings.TrimSpace(string(runes[:head])) + "\n[...truncated for provider context...]\n" + strings.TrimSpace(string(runes[len(runes)-tail:])) + "\n" + providerToolResultTruncationNotice
 }
 
-func toProviderMessages(ctx context.Context, message Message, reader AttachmentReader, allowImageInput bool) ([]providers.Message, error) {
-	if message.Role == MessageRoleSystem {
+func toProviderMessages(ctx context.Context, message transcript.Message, reader AttachmentReader, allowImageInput bool) ([]providers.Message, error) {
+	if message.Role == transcript.MessageRoleSystem {
 		return nil, nil
 	}
 	if len(message.Parts) == 0 {
@@ -311,7 +312,7 @@ func toProviderMessages(ctx context.Context, message Message, reader AttachmentR
 	}
 
 	var toolCalls []providers.ToolCall
-	var imageParts []ImagePart
+	var imageParts []transcript.ImagePart
 	var images []providers.ImageContent
 	var attachmentWarnings []string
 	reasoningContent := messageReasoningContent(message.Parts)
@@ -393,7 +394,7 @@ func toProviderMessages(ctx context.Context, message Message, reader AttachmentR
 	}}, nil
 }
 
-func unsupportedModelImageWarning(part ImagePart) string {
+func unsupportedModelImageWarning(part transcript.ImagePart) string {
 	return "Image attachment " + imagePartLabel(part) + " was not sent because the selected model does not support image input."
 }
 
@@ -414,7 +415,7 @@ func IsProviderSupportedImageMIMEType(mimeType string) bool {
 	}
 }
 
-func messageReasoningContent(parts []MessagePart) *string {
+func messageReasoningContent(parts []transcript.MessagePart) *string {
 	var values []string
 	for _, part := range parts {
 		if part.Reasoning == nil {
@@ -429,7 +430,7 @@ func messageReasoningContent(parts []MessagePart) *string {
 	return &value
 }
 
-func imagePartLabel(part ImagePart) string {
+func imagePartLabel(part transcript.ImagePart) string {
 	name := strings.TrimSpace(part.Name)
 	mimeType := strings.TrimSpace(part.MIMEType)
 	storagePath := strings.TrimSpace(part.StoragePath)
@@ -461,7 +462,7 @@ func imagePartLabel(part ImagePart) string {
 	}
 }
 
-func providerImageContent(ctx context.Context, part ImagePart, reader AttachmentReader) (providers.ImageContent, error) {
+func providerImageContent(ctx context.Context, part transcript.ImagePart, reader AttachmentReader) (providers.ImageContent, error) {
 	image := providers.ImageContent{
 		MIMEType:    strings.TrimSpace(part.MIMEType),
 		DataBase64:  strings.TrimSpace(part.DataBase64),
@@ -499,7 +500,7 @@ func providerImageContent(ctx context.Context, part ImagePart, reader Attachment
 	return image, nil
 }
 
-func messageContentWithAttachmentRefs(content string, images []ImagePart) string {
+func messageContentWithAttachmentRefs(content string, images []transcript.ImagePart) string {
 	content = strings.TrimSpace(content)
 	var refs []string
 	for _, image := range images {
@@ -534,7 +535,7 @@ func messageContentWithAttachmentRefs(content string, images []ImagePart) string
 	return content + "\n\n" + block
 }
 
-func unavailableImageWarning(image ImagePart) string {
+func unavailableImageWarning(image transcript.ImagePart) string {
 	return "- " + imagePartLabel(image) + ": file is no longer available in storage"
 }
 

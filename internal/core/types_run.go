@@ -3,6 +3,8 @@ package core
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 type RunStatus string
@@ -55,36 +57,36 @@ const (
 )
 
 type SessionInput struct {
-	ID                 string             `json:"id"`
-	SessionID          string             `json:"session_id"`
-	TargetRunID        string             `json:"target_run_id,omitempty"`
-	Mode               BusyInputMode      `json:"mode"`
-	Status             SessionInputStatus `json:"status"`
-	Text               string             `json:"text"`
-	Parts              []MessagePart      `json:"parts,omitempty"`
-	Client             string             `json:"client,omitempty"`
-	ExternalKey        string             `json:"external_key,omitempty"`
-	ClientCapabilities ClientCapabilities `json:"client_capabilities,omitempty"`
-	DeliveryAddress    json.RawMessage    `json:"delivery_address,omitempty"`
-	WorkingDir         string             `json:"working_dir,omitempty"`
-	ConsumedRunID      string             `json:"consumed_run_id,omitempty"`
-	Error              string             `json:"error,omitempty"`
-	CreatedAt          time.Time          `json:"created_at"`
-	UpdatedAt          time.Time          `json:"updated_at"`
-	ConsumedAt         *time.Time         `json:"consumed_at,omitempty"`
+	ID                 string                   `json:"id"`
+	SessionID          string                   `json:"session_id"`
+	TargetRunID        string                   `json:"target_run_id,omitempty"`
+	Mode               BusyInputMode            `json:"mode"`
+	Status             SessionInputStatus       `json:"status"`
+	Text               string                   `json:"text"`
+	Parts              []transcript.MessagePart `json:"parts,omitempty"`
+	Client             string                   `json:"client,omitempty"`
+	ExternalKey        string                   `json:"external_key,omitempty"`
+	ClientCapabilities ClientCapabilities       `json:"client_capabilities,omitempty"`
+	DeliveryAddress    json.RawMessage          `json:"delivery_address,omitempty"`
+	WorkingDir         string                   `json:"working_dir,omitempty"`
+	ConsumedRunID      string                   `json:"consumed_run_id,omitempty"`
+	Error              string                   `json:"error,omitempty"`
+	CreatedAt          time.Time                `json:"created_at"`
+	UpdatedAt          time.Time                `json:"updated_at"`
+	ConsumedAt         *time.Time               `json:"consumed_at,omitempty"`
 }
 
 type HandleMessageInput struct {
-	Client             string             `json:"client"`
-	ExternalKey        string             `json:"external_key"`
-	ClientCapabilities ClientCapabilities `json:"client_capabilities,omitempty"`
-	SessionID          string             `json:"session_id"`
-	Text               string             `json:"text"`
-	Parts              []MessagePart      `json:"parts,omitempty"`
-	BusyMode           BusyInputMode      `json:"busy_mode,omitempty"`
-	WorkingDir         string             `json:"working_dir"`
-	DeliveryAddress    json.RawMessage    `json:"delivery_address,omitempty"`
-	AllowAutoBindOne   bool               `json:"allow_auto_bind_one"`
+	Client             string                   `json:"client"`
+	ExternalKey        string                   `json:"external_key"`
+	ClientCapabilities ClientCapabilities       `json:"client_capabilities,omitempty"`
+	SessionID          string                   `json:"session_id"`
+	Text               string                   `json:"text"`
+	Parts              []transcript.MessagePart `json:"parts,omitempty"`
+	BusyMode           BusyInputMode            `json:"busy_mode,omitempty"`
+	WorkingDir         string                   `json:"working_dir"`
+	DeliveryAddress    json.RawMessage          `json:"delivery_address,omitempty"`
+	AllowAutoBindOne   bool                     `json:"allow_auto_bind_one"`
 }
 
 type HandleTriggeredRunInput struct {
@@ -103,11 +105,11 @@ type ClientCapabilities struct {
 }
 
 type AcceptRunResult struct {
-	SessionID   string          `json:"session_id"`
-	Status      AcceptRunStatus `json:"status,omitempty"`
-	UserMessage Message         `json:"user_message"`
-	Run         Run             `json:"run"`
-	Input       *SessionInput   `json:"input,omitempty"`
+	SessionID   string             `json:"session_id"`
+	Status      AcceptRunStatus    `json:"status,omitempty"`
+	UserMessage transcript.Message `json:"user_message"`
+	Run         Run                `json:"run"`
+	Input       *SessionInput      `json:"input,omitempty"`
 }
 
 type AcceptRunStatus string

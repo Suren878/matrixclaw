@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func (c *Core) ResolveApproval(ctx context.Context, approvalID string, approved bool) (Approval, error) {
@@ -212,7 +213,7 @@ func (c *Core) finishRejectedSubagentDelegateTool(ctx context.Context, approval 
 	if _, done := toolResultCallIDs(messages)[strings.TrimSpace(approval.ToolCallRef)]; done {
 		return nil
 	}
-	var toolCall Message
+	var toolCall transcript.Message
 	var args json.RawMessage
 	for _, message := range messages {
 		if strings.TrimSpace(message.ID) != strings.TrimSpace(approval.ToolCallRef) {
@@ -307,7 +308,7 @@ func (c *Core) replayApprovedTool(ctx context.Context, approval Approval) (Execu
 	})
 }
 
-func toolCallArgs(messages []Message, toolCallID string) (json.RawMessage, error) {
+func toolCallArgs(messages []transcript.Message, toolCallID string) (json.RawMessage, error) {
 	toolCallID = strings.TrimSpace(toolCallID)
 	if toolCallID == "" {
 		return nil, fmt.Errorf("%w: tool call id is required", ErrInvalidInput)

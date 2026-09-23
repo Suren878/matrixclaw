@@ -11,6 +11,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/skills"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 type ClientRuntime interface {
@@ -76,7 +77,7 @@ type PermissionRuntime interface {
 }
 
 type SessionMessageRuntime interface {
-	CreateSystemMessage(ctx context.Context, sessionID string, content string) (core.Message, error)
+	CreateSystemMessage(ctx context.Context, sessionID string, content string) (transcript.Message, error)
 }
 
 type SessionSendRuntime interface {

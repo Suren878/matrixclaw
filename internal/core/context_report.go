@@ -7,16 +7,17 @@ import (
 	"unicode/utf8"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func (c *Core) contextReportForSession(session Session, messages []Message) ContextReport {
+func (c *Core) contextReportForSession(session Session, messages []transcript.Message) ContextReport {
 	report := c.contextReport(session.ID, messages)
 	report.WindowTokens = c.sessionContextWindowTokens(session)
 	report.Compact = compactRecommendationForWindow(report.TokenEstimate, report.WindowTokens)
 	return report
 }
 
-func (c *Core) contextReport(sessionID string, messages []Message) ContextReport {
+func (c *Core) contextReport(sessionID string, messages []transcript.Message) ContextReport {
 	assistant := c.assistantProfile()
 	systemPrompt := AssistantSystemPrompt(assistant)
 	customInstructions := strings.TrimSpace(assistant.CustomInstructions)
@@ -126,26 +127,26 @@ func (c *Core) estimateToolSchemaTokens() int {
 	return total
 }
 
-func EstimateMessageTokens(messages []Message) int {
+func EstimateMessageTokens(messages []transcript.Message) int {
 	total := 0
 	for _, message := range messages {
 		messageTotal := 0
 		for _, part := range message.Parts {
 			switch part.Kind {
-			case MessagePartKindText:
+			case transcript.MessagePartKindText:
 				if part.Text != nil {
 					messageTotal += EstimateTextTokens(part.Text.Text)
 				}
-			case MessagePartKindImage:
+			case transcript.MessagePartKindImage:
 				if part.Image != nil {
 					messageTotal += EstimatedImageTokens
 				}
-			case MessagePartKindToolCall:
+			case transcript.MessagePartKindToolCall:
 				if part.ToolCall != nil {
 					messageTotal += EstimateTextTokens(part.ToolCall.Name)
 					messageTotal += EstimateTextTokens(part.ToolCall.Input)
 				}
-			case MessagePartKindToolResult:
+			case transcript.MessagePartKindToolResult:
 				if part.ToolResult != nil {
 					messageTotal += EstimateTextTokens(part.ToolResult.Name)
 					messageTotal += EstimateTextTokens(providerVisibleToolResultContent(part.ToolResult.Name, part.ToolResult.Content))
@@ -241,11 +242,11 @@ func FormatShortNumber(value int) string {
 	}
 }
 
-func latestProviderUsage(messages []Message) *ProviderUsage {
+func latestProviderUsage(messages []transcript.Message) *ProviderUsage {
 	for i := len(messages) - 1; i >= 0; i-- {
 		for j := len(messages[i].Parts) - 1; j >= 0; j-- {
 			part := messages[i].Parts[j]
-			if part.Kind != MessagePartKindFinish || part.Finish == nil || len(part.Finish.Details) == 0 {
+			if part.Kind != transcript.MessagePartKindFinish || part.Finish == nil || len(part.Finish.Details) == 0 {
 				continue
 			}
 			var payload struct {

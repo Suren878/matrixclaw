@@ -4,6 +4,8 @@ import (
 	"context"
 	"sort"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 const defaultClientSnapshotMessageLimit = 50
@@ -14,7 +16,7 @@ type ClientSnapshot struct {
 	Capabilities          *SessionCapabilities     `json:"capabilities,omitempty"`
 	Context               *ContextReport           `json:"context,omitempty"`
 	Plan                  *SessionPlan             `json:"plan,omitempty"`
-	Messages              []Message                `json:"messages"`
+	Messages              []transcript.Message     `json:"messages"`
 	Run                   *Run                     `json:"run,omitempty"`
 	Timing                *RunTiming               `json:"timing,omitempty"`
 	ToolUpdates           []ToolUpdate             `json:"tool_updates,omitempty"`
@@ -114,7 +116,7 @@ func (c *Core) clientSnapshotMessageLimit() int {
 	return c.historyLimit
 }
 
-func deriveClientSnapshotToolState(approvals []Approval, messages []Message) ([]Approval, []ToolUpdate, []PermissionNotification) {
+func deriveClientSnapshotToolState(approvals []Approval, messages []transcript.Message) ([]Approval, []ToolUpdate, []PermissionNotification) {
 	updates := make(map[string]ToolUpdate)
 	pendingApprovals := make([]Approval, 0, len(approvals))
 	notifications := make([]PermissionNotification, 0, len(approvals))

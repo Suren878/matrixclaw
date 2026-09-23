@@ -10,6 +10,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/store"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 type burstExternalRuntime struct {
@@ -82,9 +83,9 @@ func TestExternalAgentBurstPersistsCoalescedProgress(t *testing.T) {
 		ID: "run-burst", SessionID: session.ID, UserMessageID: "msg-user-burst",
 		Status: core.RunStatusAccepted, StartedAt: now, UpdatedAt: now,
 	}
-	userMessage := core.Message{
+	userMessage := transcript.Message{
 		ID: run.UserMessageID, SessionID: session.ID, RunID: run.ID,
-		Role: core.MessageRoleUser, Content: "work", CreatedAt: now, UpdatedAt: now,
+		Role: transcript.MessageRoleUser, Content: "work", CreatedAt: now, UpdatedAt: now,
 	}
 	if err := sqliteStore.AcceptMessage(ctx, userMessage, run); err != nil {
 		t.Fatalf("accept message: %v", err)
@@ -124,9 +125,9 @@ func TestExternalAgentBurstPersistsCoalescedProgress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list messages: %v", err)
 	}
-	var assistant core.Message
+	var assistant transcript.Message
 	for _, message := range messages {
-		if message.RunID == run.ID && message.Role == core.MessageRoleAssistant {
+		if message.RunID == run.ID && message.Role == transcript.MessageRoleAssistant {
 			assistant = message
 		}
 	}

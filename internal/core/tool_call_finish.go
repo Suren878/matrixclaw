@@ -6,13 +6,14 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func (c *Core) finishToolCall(ctx context.Context, prepared preparedToolCall, input ExecuteToolInput, result tools.Result) (Message, *Message, error) {
+func (c *Core) finishToolCall(ctx context.Context, prepared preparedToolCall, input ExecuteToolInput, result tools.Result) (transcript.Message, *transcript.Message, error) {
 	toolCallMessage := newToolCallMessage(prepared.ToolCallID, prepared.SessionID, prepared.RunID, prepared.ToolName, input.Args, true, prepared.Message.CreatedAt)
 	toolCallMessage.UpdatedAt = c.now().UTC()
 	if err := c.store.UpdateMessage(ctx, toolCallMessage); err != nil {
-		return Message{}, nil, err
+		return transcript.Message{}, nil, err
 	}
 	c.publishEvent(Event{
 		Type:      EventMessageUpdated,
@@ -23,35 +24,35 @@ func (c *Core) finishToolCall(ctx context.Context, prepared preparedToolCall, in
 
 	resultMessage, err := c.saveToolResultMessage(ctx, prepared, result)
 	if err != nil {
-		return Message{}, nil, err
+		return transcript.Message{}, nil, err
 	}
 	c.publishFinishedToolUpdate(prepared, resultMessage.ID, result)
 	_ = c.touchSubagentTaskActivity(ctx, prepared.RunID, resultMessage.UpdatedAt)
 	if err := c.saveFileVersionSnapshot(ctx, prepared, result, resultMessage.CreatedAt); err != nil {
-		return Message{}, nil, err
+		return transcript.Message{}, nil, err
 	}
 	if err := c.saveRunCheckpoint(ctx, prepared.RunID, RunCheckpointPhaseModel, "", ""); err != nil {
-		return Message{}, nil, err
+		return transcript.Message{}, nil, err
 	}
 	return toolCallMessage, resultMessage, nil
 }
 
-func (c *Core) saveToolResultMessage(ctx context.Context, prepared preparedToolCall, result tools.Result) (*Message, error) {
+func (c *Core) saveToolResultMessage(ctx context.Context, prepared preparedToolCall, result tools.Result) (*transcript.Message, error) {
 	metadataRaw, err := marshalJSONRaw(result.Metadata)
 	if err != nil {
 		return nil, err
 	}
 	content := strings.TrimSpace(result.Content)
 	now := c.now().UTC()
-	message := Message{
+	message := transcript.Message{
 		ID:        c.newID("tool_result"),
 		SessionID: prepared.SessionID,
 		RunID:     prepared.RunID,
-		Role:      MessageRoleTool,
+		Role:      transcript.MessageRoleTool,
 		Content:   normalizeToolContent(content),
-		Parts: []MessagePart{{
-			Kind: MessagePartKindToolResult,
-			ToolResult: &ToolResultPart{
+		Parts: []transcript.MessagePart{{
+			Kind: transcript.MessagePartKindToolResult,
+			ToolResult: &transcript.ToolResultPart{
 				ToolCallID: prepared.ToolCallID,
 				Name:       prepared.ToolName,
 				Content:    content,

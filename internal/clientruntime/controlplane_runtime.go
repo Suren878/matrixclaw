@@ -13,6 +13,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/skills"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 type DaemonClientFunc func(externalKey string) (*daemonclient.Client, error)
@@ -462,10 +463,10 @@ func (r ControlplaneRuntime) CompactSession(ctx context.Context, sessionID strin
 	return client.CompactSession(ctx, sessionID)
 }
 
-func (r ControlplaneRuntime) CreateSystemMessage(ctx context.Context, sessionID string, content string) (core.Message, error) {
+func (r ControlplaneRuntime) CreateSystemMessage(ctx context.Context, sessionID string, content string) (transcript.Message, error) {
 	client, err := r.client("")
 	if err != nil {
-		return core.Message{}, err
+		return transcript.Message{}, err
 	}
 	return client.CreateSystemMessage(ctx, sessionID, content)
 }

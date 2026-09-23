@@ -7,23 +7,24 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 type progressCountingStore struct {
 	Store
 	run             Run
-	message         Message
+	message         transcript.Message
 	progressSaves   int
 	progressUpdates int
 }
 
-func (s *progressCountingStore) SaveMessageProgress(_ context.Context, message Message) error {
+func (s *progressCountingStore) SaveMessageProgress(_ context.Context, message transcript.Message) error {
 	s.progressSaves++
 	s.message = message
 	return nil
 }
 
-func (s *progressCountingStore) UpdateMessageProgress(_ context.Context, message Message) error {
+func (s *progressCountingStore) UpdateMessageProgress(_ context.Context, message transcript.Message) error {
 	s.progressUpdates++
 	s.message = message
 	return nil

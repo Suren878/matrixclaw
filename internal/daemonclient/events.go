@@ -14,6 +14,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/safego"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 type LiveEvent struct {
@@ -25,8 +26,8 @@ type LiveEvent struct {
 	At        time.Time       `json:"at,omitempty"`
 }
 
-func (e LiveEvent) DecodeMessage() (core.Message, error) {
-	var message core.Message
+func (e LiveEvent) DecodeMessage() (transcript.Message, error) {
+	var message transcript.Message
 	err := json.Unmarshal(e.Payload, &message)
 	return message, err
 }

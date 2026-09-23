@@ -16,6 +16,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 type recoveryRuntime struct {
@@ -151,10 +152,10 @@ func TestRecoverRunningGenerationSkipsPartialAndCompletes(t *testing.T) {
 	app.WithRunStarter(orchestration.NewStub(app))
 
 	session, run := saveCrashRecoveryRun(t, sqliteStore, "generation", core.RunStatusRunning, false)
-	partial := core.Message{
+	partial := transcript.Message{
 		ID: "msg_partial_generation", SessionID: session.ID, RunID: run.ID,
-		Role: core.MessageRoleAssistant, Content: "partial answer that must not enter retry context",
-		Parts:     core.NormalizeMessageParts("partial answer that must not enter retry context", nil),
+		Role: transcript.MessageRoleAssistant, Content: "partial answer that must not enter retry context",
+		Parts:     transcript.NormalizeMessageParts("partial answer that must not enter retry context", nil),
 		CreatedAt: run.StartedAt.Add(time.Second), UpdatedAt: run.StartedAt.Add(time.Second),
 	}
 	saveRunRecoveryTestMessage(t, sqliteStore, partial)
@@ -504,10 +505,10 @@ func TestRecoverExternalAgentContinuesExistingSession(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	partial := core.Message{
+	partial := transcript.Message{
 		ID: "msg_external_partial", SessionID: session.ID, RunID: run.ID,
-		Role: core.MessageRoleAssistant, Content: "external partial",
-		Parts:     core.NormalizeMessageParts("external partial", nil),
+		Role: transcript.MessageRoleAssistant, Content: "external partial",
+		Parts:     transcript.NormalizeMessageParts("external partial", nil),
 		CreatedAt: run.StartedAt.Add(time.Second), UpdatedAt: run.StartedAt.Add(time.Second),
 	}
 	saveRunRecoveryTestMessage(t, sqliteStore, partial)
@@ -603,10 +604,10 @@ func saveCrashRecoveryRun(t *testing.T, sqliteStore *store.SQLiteStore, suffix s
 		ID: "run_" + suffix, SessionID: session.ID, UserMessageID: "msg_user_" + suffix,
 		Status: status, StartedAt: now, UpdatedAt: now,
 	}
-	user := core.Message{
+	user := transcript.Message{
 		ID: run.UserMessageID, SessionID: session.ID, RunID: run.ID,
-		Role: core.MessageRoleUser, Content: "original task " + suffix,
-		Parts:     core.NormalizeMessageParts("original task "+suffix, nil),
+		Role: transcript.MessageRoleUser, Content: "original task " + suffix,
+		Parts:     transcript.NormalizeMessageParts("original task "+suffix, nil),
 		CreatedAt: now, UpdatedAt: now,
 	}
 	if err := sqliteStore.AcceptMessage(context.Background(), user, run); err != nil {
@@ -622,9 +623,9 @@ func saveInterruptedToolCall(t *testing.T, sqliteStore *store.SQLiteStore, run c
 
 func saveInterruptedToolCallWithInput(t *testing.T, sqliteStore *store.SQLiteStore, run core.Run, id string, name string, input string) {
 	t.Helper()
-	message := core.Message{
-		ID: id, SessionID: run.SessionID, RunID: run.ID, Role: core.MessageRoleAssistant,
-		Parts:     []core.MessagePart{{Kind: core.MessagePartKindToolCall, ToolCall: &core.ToolCallPart{ID: id, Name: name, Input: input}}},
+	message := transcript.Message{
+		ID: id, SessionID: run.SessionID, RunID: run.ID, Role: transcript.MessageRoleAssistant,
+		Parts:     []transcript.MessagePart{{Kind: transcript.MessagePartKindToolCall, ToolCall: &transcript.ToolCallPart{ID: id, Name: name, Input: input}}},
 		CreatedAt: run.StartedAt.Add(time.Second), UpdatedAt: run.StartedAt.Add(time.Second),
 	}
 	saveRunRecoveryTestMessage(t, sqliteStore, message)
@@ -690,7 +691,7 @@ func assertToolResultCount(t *testing.T, sqliteStore *store.SQLiteStore, session
 	}
 }
 
-func messageHasRecoveryFinish(messages []core.Message, messageID string) bool {
+func messageHasRecoveryFinish(messages []transcript.Message, messageID string) bool {
 	for _, message := range messages {
 		if message.ID != messageID {
 			continue
@@ -704,7 +705,7 @@ func messageHasRecoveryFinish(messages []core.Message, messageID string) bool {
 	return false
 }
 
-func messageHasFinishPart(message core.Message, reason string) bool {
+func messageHasFinishPart(message transcript.Message, reason string) bool {
 	for _, part := range message.Parts {
 		if part.Finish != nil && part.Finish.Reason == reason {
 			return true
@@ -713,18 +714,18 @@ func messageHasFinishPart(message core.Message, reason string) bool {
 	return false
 }
 
-func hasAssistantContent(messages []core.Message, runID string, content string) bool {
+func hasAssistantContent(messages []transcript.Message, runID string, content string) bool {
 	for _, message := range messages {
-		if message.RunID == runID && message.Role == core.MessageRoleAssistant && message.Content == content {
+		if message.RunID == runID && message.Role == transcript.MessageRoleAssistant && message.Content == content {
 			return true
 		}
 	}
 	return false
 }
 
-func hasRecoveryFinishedAssistant(messages []core.Message, runID string, content string) bool {
+func hasRecoveryFinishedAssistant(messages []transcript.Message, runID string, content string) bool {
 	for _, message := range messages {
-		if message.RunID != runID || message.Role != core.MessageRoleAssistant || message.Content == "" || !strings.HasPrefix(content, message.Content) {
+		if message.RunID != runID || message.Role != transcript.MessageRoleAssistant || message.Content == "" || !strings.HasPrefix(content, message.Content) {
 			continue
 		}
 		for _, part := range message.Parts {

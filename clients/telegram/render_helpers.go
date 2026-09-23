@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func renderApprovalText(approval core.Approval) string {
@@ -24,7 +25,7 @@ func renderApprovalText(approval core.Approval) string {
 	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
-func renderAssistantMessage(message core.Message) string {
+func renderAssistantMessage(message transcript.Message) string {
 	if content := strings.TrimSpace(message.Content); content != "" {
 		return content
 	}

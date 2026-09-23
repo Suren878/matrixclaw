@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 type CommitRealtimeVoiceTurnInput struct {
@@ -16,8 +18,8 @@ type CommitRealtimeVoiceTurnInput struct {
 }
 
 type CommitRealtimeVoiceTurnResult struct {
-	UserMessage      *Message `json:"user_message,omitempty"`
-	AssistantMessage *Message `json:"assistant_message,omitempty"`
+	UserMessage      *transcript.Message `json:"user_message,omitempty"`
+	AssistantMessage *transcript.Message `json:"assistant_message,omitempty"`
 }
 
 func (c *Core) CommitRealtimeVoiceTurn(ctx context.Context, input CommitRealtimeVoiceTurnInput) (CommitRealtimeVoiceTurnResult, error) {
@@ -39,7 +41,7 @@ func (c *Core) CommitRealtimeVoiceTurn(ctx context.Context, input CommitRealtime
 	now := c.now().UTC()
 	result := CommitRealtimeVoiceTurnResult{}
 	if userTranscript != "" {
-		message := realtimeVoiceTextMessage(c.newID("msg"), sessionID, MessageRoleUser, userTranscript, "", "", now)
+		message := realtimeVoiceTextMessage(c.newID("msg"), sessionID, transcript.MessageRoleUser, userTranscript, "", "", now)
 		if err := c.store.SaveMessage(ctx, message); err != nil {
 			return CommitRealtimeVoiceTurnResult{}, err
 		}
@@ -51,7 +53,7 @@ func (c *Core) CommitRealtimeVoiceTurn(ctx context.Context, input CommitRealtime
 		if result.UserMessage != nil {
 			createdAt = now.Add(time.Nanosecond)
 		}
-		message := realtimeVoiceTextMessage(c.newID("msg"), sessionID, MessageRoleAssistant, assistantTranscript, normalizeText(input.ProviderID), normalizeText(input.ModelID), createdAt)
+		message := realtimeVoiceTextMessage(c.newID("msg"), sessionID, transcript.MessageRoleAssistant, assistantTranscript, normalizeText(input.ProviderID), normalizeText(input.ModelID), createdAt)
 		if err := c.store.SaveMessage(ctx, message); err != nil {
 			return CommitRealtimeVoiceTurnResult{}, err
 		}
@@ -72,13 +74,13 @@ func (c *Core) CommitRealtimeVoiceTurn(ctx context.Context, input CommitRealtime
 	return result, nil
 }
 
-func realtimeVoiceTextMessage(id string, sessionID string, role MessageRole, content string, providerID string, modelID string, createdAt time.Time) Message {
-	return Message{
+func realtimeVoiceTextMessage(id string, sessionID string, role transcript.MessageRole, content string, providerID string, modelID string, createdAt time.Time) transcript.Message {
+	return transcript.Message{
 		ID:        id,
 		SessionID: sessionID,
 		Role:      role,
 		Content:   content,
-		Parts:     NormalizeMessageParts(content, nil),
+		Parts:     transcript.NormalizeMessageParts(content, nil),
 		Model:     modelID,
 		Provider:  providerID,
 		CreatedAt: createdAt,

@@ -10,9 +10,10 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func (s *SQLiteStore) SaveMessage(ctx context.Context, message core.Message) error {
+func (s *SQLiteStore) SaveMessage(ctx context.Context, message transcript.Message) error {
 	if err := insertMessage(ctx, s.db, message); err != nil {
 		return fmt.Errorf("store: save message: %w", err)
 	}
@@ -20,14 +21,14 @@ func (s *SQLiteStore) SaveMessage(ctx context.Context, message core.Message) err
 	return nil
 }
 
-func (s *SQLiteStore) SaveMessageProgress(ctx context.Context, message core.Message) error {
+func (s *SQLiteStore) SaveMessageProgress(ctx context.Context, message transcript.Message) error {
 	if err := insertMessage(ctx, s.db, message); err != nil {
 		return fmt.Errorf("store: save message progress: %w", err)
 	}
 	return nil
 }
 
-func (s *SQLiteStore) UpdateMessage(ctx context.Context, message core.Message) error {
+func (s *SQLiteStore) UpdateMessage(ctx context.Context, message transcript.Message) error {
 	if err := s.updateMessageRow(ctx, message); err != nil {
 		return err
 	}
@@ -35,11 +36,11 @@ func (s *SQLiteStore) UpdateMessage(ctx context.Context, message core.Message) e
 	return nil
 }
 
-func (s *SQLiteStore) UpdateMessageProgress(ctx context.Context, message core.Message) error {
+func (s *SQLiteStore) UpdateMessageProgress(ctx context.Context, message transcript.Message) error {
 	return s.updateMessageRow(ctx, message)
 }
 
-func (s *SQLiteStore) updateMessageRow(ctx context.Context, message core.Message) error {
+func (s *SQLiteStore) updateMessageRow(ctx context.Context, message transcript.Message) error {
 	result, err := s.db.ExecContext(ctx, `
 UPDATE messages
 SET role = ?, content = ?, parts_json = ?, model = ?, provider = ?, updated_at = ?
@@ -65,7 +66,7 @@ WHERE id = ?`,
 	return nil
 }
 
-func (s *SQLiteStore) ListMessages(ctx context.Context, sessionID string, limit int) ([]core.Message, error) {
+func (s *SQLiteStore) ListMessages(ctx context.Context, sessionID string, limit int) ([]transcript.Message, error) {
 	query := `
 SELECT id, session_id, run_id, role, content, parts_json, model, provider, created_at, updated_at
 FROM messages
@@ -86,7 +87,7 @@ LIMIT ?`, sessionID, limit)
 	}
 	defer func() { _ = rows.Close() }()
 
-	var messages []core.Message
+	var messages []transcript.Message
 	for rows.Next() {
 		message, err := scanMessage(rows)
 		if err != nil {
@@ -192,7 +193,7 @@ func (s *SQLiteStore) UpdateRun(ctx context.Context, run core.Run) error {
 	return nil
 }
 
-func (s *SQLiteStore) CompleteRun(ctx context.Context, assistantMessage core.Message, run core.Run) error {
+func (s *SQLiteStore) CompleteRun(ctx context.Context, assistantMessage transcript.Message, run core.Run) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("store: begin complete run: %w", err)
@@ -220,7 +221,7 @@ func (s *SQLiteStore) CompleteRun(ctx context.Context, assistantMessage core.Mes
 	return nil
 }
 
-func (s *SQLiteStore) AcceptMessage(ctx context.Context, message core.Message, run core.Run, deliveries ...core.ClientDelivery) error {
+func (s *SQLiteStore) AcceptMessage(ctx context.Context, message transcript.Message, run core.Run, deliveries ...core.ClientDelivery) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("store: begin accept message: %w", err)
@@ -267,7 +268,7 @@ type runScanner interface {
 	Scan(dest ...any) error
 }
 
-func insertMessage(ctx context.Context, execer sqlExecer, message core.Message) error {
+func insertMessage(ctx context.Context, execer sqlExecer, message transcript.Message) error {
 	_, err := execer.ExecContext(ctx, `
 INSERT INTO messages(id, session_id, run_id, role, content, parts_json, model, provider, created_at, updated_at)
 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -285,8 +286,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	return err
 }
 
-func scanMessage(scanner messageScanner) (core.Message, error) {
-	var message core.Message
+func scanMessage(scanner messageScanner) (transcript.Message, error) {
+	var message transcript.Message
 	var role string
 	var partsJSON string
 	var model string
@@ -294,9 +295,9 @@ func scanMessage(scanner messageScanner) (core.Message, error) {
 	var createdAt string
 	var updatedAt string
 	if err := scanner.Scan(&message.ID, &message.SessionID, &message.RunID, &role, &message.Content, &partsJSON, &model, &provider, &createdAt, &updatedAt); err != nil {
-		return core.Message{}, fmt.Errorf("store: scan message: %w", err)
+		return transcript.Message{}, fmt.Errorf("store: scan message: %w", err)
 	}
-	message.Role = core.MessageRole(role)
+	message.Role = transcript.MessageRole(role)
 	message.Parts = unmarshalMessageParts(partsJSON)
 	message.Model = model
 	message.Provider = provider
@@ -373,21 +374,21 @@ WHERE id = ?`,
 	return err
 }
 
-func messageUpdatedAt(message core.Message) time.Time {
+func messageUpdatedAt(message transcript.Message) time.Time {
 	if !message.UpdatedAt.IsZero() {
 		return message.UpdatedAt
 	}
 	return message.CreatedAt
 }
 
-func reverseMessages(messages []core.Message) {
+func reverseMessages(messages []transcript.Message) {
 	for left, right := 0, len(messages)-1; left < right; left, right = left+1, right-1 {
 		messages[left], messages[right] = messages[right], messages[left]
 	}
 }
 
-func marshalMessageParts(message core.Message) string {
-	parts := core.NormalizeMessageParts(message.Content, message.Parts)
+func marshalMessageParts(message transcript.Message) string {
+	parts := transcript.NormalizeMessageParts(message.Content, message.Parts)
 	if len(parts) == 0 {
 		return ""
 	}
@@ -398,12 +399,12 @@ func marshalMessageParts(message core.Message) string {
 	return string(body)
 }
 
-func unmarshalMessageParts(raw string) []core.MessagePart {
+func unmarshalMessageParts(raw string) []transcript.MessagePart {
 	if raw == "" {
 		return nil
 	}
 
-	var parts []core.MessagePart
+	var parts []transcript.MessagePart
 	if err := json.Unmarshal([]byte(raw), &parts); err != nil {
 		return nil
 	}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 type deliveryTestAPI struct {
@@ -82,10 +83,10 @@ func (d *deliveryTestDaemon) serve(w http.ResponseWriter, r *http.Request) {
 		write(core.RunResponse{Run: core.Run{ID: id, Status: core.RunStatusCompleted}})
 	case r.URL.Path == "/v1/messages":
 		id := r.URL.Query().Get("session_id")
-		write(core.MessagesResponse{Messages: []core.Message{
-			{ID: "commentary-" + id, RunID: id, Role: core.MessageRoleAssistant, Content: "Let me check."},
-			{ID: "final-" + id, RunID: id, Role: core.MessageRoleAssistant, Content: "Final answer."},
-			{ID: "different-run", RunID: "unrelated", Role: core.MessageRoleAssistant, Content: "Ignore this."},
+		write(core.MessagesResponse{Messages: []transcript.Message{
+			{ID: "commentary-" + id, RunID: id, Role: transcript.MessageRoleAssistant, Content: "Let me check."},
+			{ID: "final-" + id, RunID: id, Role: transcript.MessageRoleAssistant, Content: "Final answer."},
+			{ID: "different-run", RunID: "unrelated", Role: transcript.MessageRoleAssistant, Content: "Ignore this."},
 		}})
 	case strings.HasSuffix(r.URL.Path, "/ack"):
 		d.ackAttempts++

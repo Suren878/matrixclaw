@@ -8,9 +8,10 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID string, assistant *Message, assistantSaved bool, response providers.Response) error {
+func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID string, assistant *transcript.Message, assistantSaved bool, response providers.Response) error {
 	if run == nil || assistant == nil {
 		return errors.New("core: complete assistant turn requires run and assistant")
 	}
@@ -168,21 +169,21 @@ func (c *Core) completeActivePlanItemsIfRunFinished(ctx context.Context, session
 	return nil
 }
 
-func providerResponseMessageParts(content string, reasoningContent *string) []MessagePart {
-	parts := NormalizeMessageParts(content, nil)
+func providerResponseMessageParts(content string, reasoningContent *string) []transcript.MessagePart {
+	parts := transcript.NormalizeMessageParts(content, nil)
 	if reasoningContent == nil {
 		return parts
 	}
 	text := *reasoningContent
-	return append(parts, MessagePart{
-		Kind: MessagePartKindReasoning,
-		Reasoning: &ReasoningPart{
+	return append(parts, transcript.MessagePart{
+		Kind: transcript.MessagePartKindReasoning,
+		Reasoning: &transcript.ReasoningPart{
 			Text: text,
 		},
 	})
 }
 
-func providerUsageFinishPart(usage providers.Usage) *MessagePart {
+func providerUsageFinishPart(usage providers.Usage) *transcript.MessagePart {
 	if providerUsageIsZero(usage) {
 		return nil
 	}
@@ -200,9 +201,9 @@ func providerUsageFinishPart(usage providers.Usage) *MessagePart {
 	if err != nil {
 		return nil
 	}
-	return &MessagePart{
-		Kind: MessagePartKindFinish,
-		Finish: &FinishPart{
+	return &transcript.MessagePart{
+		Kind: transcript.MessagePartKindFinish,
+		Finish: &transcript.FinishPart{
 			Reason:  "end_turn",
 			Details: payload,
 		},
@@ -247,7 +248,7 @@ func (c *Core) setRunStatus(ctx context.Context, run *Run, status RunStatus, err
 	return nil
 }
 
-func (c *Core) markAssistantErrored(ctx context.Context, assistant *Message, cause error) error {
+func (c *Core) markAssistantErrored(ctx context.Context, assistant *transcript.Message, cause error) error {
 	if assistant == nil {
 		return nil
 	}
@@ -265,7 +266,7 @@ func (c *Core) markAssistantErrored(ctx context.Context, assistant *Message, cau
 	return nil
 }
 
-func (c *Core) saveAssistantErrored(ctx context.Context, assistant *Message, cause error) error {
+func (c *Core) saveAssistantErrored(ctx context.Context, assistant *transcript.Message, cause error) error {
 	if assistant == nil {
 		return nil
 	}
@@ -287,11 +288,11 @@ func (c *Core) saveAssistantErrored(ctx context.Context, assistant *Message, cau
 	return nil
 }
 
-func appendErrorFinishPart(content string, message string) []MessagePart {
-	parts := NormalizeMessageParts(content, nil)
-	parts = append(parts, MessagePart{
-		Kind: MessagePartKindFinish,
-		Finish: &FinishPart{
+func appendErrorFinishPart(content string, message string) []transcript.MessagePart {
+	parts := transcript.NormalizeMessageParts(content, nil)
+	parts = append(parts, transcript.MessagePart{
+		Kind: transcript.MessagePartKindFinish,
+		Finish: &transcript.FinishPart{
 			Reason:  "error",
 			Message: message,
 		},
@@ -299,11 +300,11 @@ func appendErrorFinishPart(content string, message string) []MessagePart {
 	return parts
 }
 
-func appendCanceledFinishPart(content string, message string) []MessagePart {
-	parts := NormalizeMessageParts(content, nil)
-	parts = append(parts, MessagePart{
-		Kind: MessagePartKindFinish,
-		Finish: &FinishPart{
+func appendCanceledFinishPart(content string, message string) []transcript.MessagePart {
+	parts := transcript.NormalizeMessageParts(content, nil)
+	parts = append(parts, transcript.MessagePart{
+		Kind: transcript.MessagePartKindFinish,
+		Finish: &transcript.FinishPart{
 			Reason:  "canceled",
 			Message: message,
 		},
@@ -323,7 +324,7 @@ func (c *Core) isRunCanceled(ctx context.Context, runID string) (bool, error) {
 	return run.Status == RunStatusCanceled, nil
 }
 
-func (c *Core) finishCanceledAssistant(ctx context.Context, assistant *Message, assistantSaved bool) error {
+func (c *Core) finishCanceledAssistant(ctx context.Context, assistant *transcript.Message, assistantSaved bool) error {
 	if assistant == nil {
 		return nil
 	}

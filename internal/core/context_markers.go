@@ -4,21 +4,23 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 type contextMarker struct {
 	summary           string
-	effectiveMessages []Message
+	effectiveMessages []transcript.Message
 	blockID           string
 	blockKind         ContextBlockKind
 	source            string
 	cleared           bool
 }
 
-func latestContextMarker(messages []Message) contextMarker {
+func latestContextMarker(messages []transcript.Message) contextMarker {
 	for i := len(messages) - 1; i >= 0; i-- {
 		message := messages[i]
-		if message.Role != MessageRoleSystem {
+		if message.Role != transcript.MessageRoleSystem {
 			continue
 		}
 		content := strings.TrimSpace(message.Content)
@@ -45,19 +47,19 @@ func latestContextMarker(messages []Message) contextMarker {
 	return contextMarker{effectiveMessages: messages}
 }
 
-func latestCompactSummary(messages []Message) (string, []Message) {
+func latestCompactSummary(messages []transcript.Message) (string, []transcript.Message) {
 	marker := latestContextMarker(messages)
 	return marker.summary, marker.effectiveMessages
 }
 
-func latestCompactSummaryForRun(messages []Message, currentRunID string) (string, []Message) {
+func latestCompactSummaryForRun(messages []transcript.Message, currentRunID string) (string, []transcript.Message) {
 	currentRunID = strings.TrimSpace(currentRunID)
 	if currentRunID == "" {
 		return latestCompactSummary(messages)
 	}
 	for i := len(messages) - 1; i >= 0; i-- {
 		message := messages[i]
-		if message.Role != MessageRoleSystem {
+		if message.Role != transcript.MessageRoleSystem {
 			continue
 		}
 		content := strings.TrimSpace(message.Content)
@@ -70,7 +72,7 @@ func latestCompactSummaryForRun(messages []Message, currentRunID string) (string
 		if !ok {
 			continue
 		}
-		effective := make([]Message, 0, len(messages)-i-1)
+		effective := make([]transcript.Message, 0, len(messages)-i-1)
 		if !cleared {
 			for _, prior := range messages[:i] {
 				if strings.TrimSpace(prior.RunID) == currentRunID {
@@ -106,7 +108,7 @@ func clearMarkerSummary(content string) (string, bool) {
 
 var compactStatsPattern = regexp.MustCompile(`~([0-9]+(?:\.[0-9]+)?[kKmM]?)\s*->\s*~([0-9]+(?:\.[0-9]+)?[kKmM]?)\s+tokens`)
 
-func compactBackoffActive(messages []Message) bool {
+func compactBackoffActive(messages []transcript.Message) bool {
 	checked := 0
 	for i := len(messages) - 1; i >= 0 && checked < 2; i-- {
 		content := strings.TrimSpace(messages[i].Content)

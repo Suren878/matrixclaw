@@ -6,13 +6,15 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 const runScheduleLease = 30 * time.Second
 
 func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptRunResult, error) {
 	text := normalizeText(input.Text)
-	parts := NormalizeMessageParts(text, input.Parts)
+	parts := transcript.NormalizeMessageParts(text, input.Parts)
 	if text == "" && !messagePartsHaveUserContent(parts) {
 		return AcceptRunResult{}, fmt.Errorf("%w: message text is required", ErrInvalidInput)
 	}
@@ -75,7 +77,7 @@ func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptR
 	return result, nil
 }
 
-func messagePartsHaveUserContent(parts []MessagePart) bool {
+func messagePartsHaveUserContent(parts []transcript.MessagePart) bool {
 	for _, part := range parts {
 		if part.Text != nil && strings.TrimSpace(part.Text.Text) != "" {
 			return true
@@ -108,7 +110,7 @@ func (c *Core) AcceptTriggeredRun(ctx context.Context, input HandleTriggeredRunI
 	runID := deterministicRunID(triggerID)
 	messageID := deterministicMessageID(triggerID)
 	if existing, err := c.store.GetRun(ctx, runID); err == nil {
-		message := Message{ID: existing.UserMessageID, SessionID: existing.SessionID, RunID: existing.ID, Role: MessageRoleUser, Content: text}
+		message := transcript.Message{ID: existing.UserMessageID, SessionID: existing.SessionID, RunID: existing.ID, Role: transcript.MessageRoleUser, Content: text}
 		if messages, listErr := c.store.ListMessages(ctx, existing.SessionID, 0); listErr == nil {
 			for _, candidate := range messages {
 				if candidate.ID == existing.UserMessageID {
@@ -123,13 +125,13 @@ func (c *Core) AcceptTriggeredRun(ctx context.Context, input HandleTriggeredRunI
 	}
 
 	now := c.now().UTC()
-	message := Message{
+	message := transcript.Message{
 		ID:        messageID,
 		SessionID: session.ID,
 		RunID:     runID,
-		Role:      MessageRoleUser,
+		Role:      transcript.MessageRoleUser,
 		Content:   text,
-		Parts:     NormalizeMessageParts(text, nil),
+		Parts:     transcript.NormalizeMessageParts(text, nil),
 		CreatedAt: now,
 		UpdatedAt: now,
 	}

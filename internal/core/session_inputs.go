@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func normalizeBusyInputMode(mode BusyInputMode) BusyInputMode {
@@ -51,17 +53,17 @@ func (c *Core) sessionGate(sessionID string) *sync.Mutex {
 	return gate
 }
 
-func (c *Core) createAcceptedRun(ctx context.Context, session Session, text string, parts []MessagePart, client string, externalKey string, capabilities ClientCapabilities, deliveryAddress json.RawMessage) (AcceptRunResult, error) {
+func (c *Core) createAcceptedRun(ctx context.Context, session Session, text string, parts []transcript.MessagePart, client string, externalKey string, capabilities ClientCapabilities, deliveryAddress json.RawMessage) (AcceptRunResult, error) {
 	autoTitle := c.firstMessageAutoTitle(ctx, session, text)
 	now := c.now().UTC()
 	runID := c.newID("run")
 	messageID := c.newID("msg")
 
-	message := Message{
+	message := transcript.Message{
 		ID:        messageID,
 		SessionID: session.ID,
 		RunID:     runID,
-		Role:      MessageRoleUser,
+		Role:      transcript.MessageRoleUser,
 		Content:   text,
 		Parts:     parts,
 		CreatedAt: now,
@@ -100,7 +102,7 @@ func (c *Core) createAcceptedRun(ctx context.Context, session Session, text stri
 	}, nil
 }
 
-func (c *Core) createPendingSessionInput(ctx context.Context, session Session, active Run, input HandleMessageInput, text string, parts []MessagePart) (SessionInput, error) {
+func (c *Core) createPendingSessionInput(ctx context.Context, session Session, active Run, input HandleMessageInput, text string, parts []transcript.MessagePart) (SessionInput, error) {
 	mode := normalizeBusyInputMode(input.BusyMode)
 	if mode == BusyInputModeSteer && !sessionAcceptsNativeSteer(session) {
 		mode = BusyInputModeQueue
@@ -198,7 +200,7 @@ func (c *Core) startNextPendingSessionInput(ctx context.Context, sessionID strin
 }
 
 func (c *Core) consumeSessionInputAsRun(ctx context.Context, session Session, input SessionInput) (AcceptRunResult, error) {
-	parts := NormalizeMessageParts(input.Text, input.Parts)
+	parts := transcript.NormalizeMessageParts(input.Text, input.Parts)
 	result, err := c.createAcceptedRun(ctx, session, input.Text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress)
 	if err != nil {
 		return AcceptRunResult{}, err
@@ -216,7 +218,7 @@ func (c *Core) consumeSessionInputAsRun(ctx context.Context, session Session, in
 	return result, nil
 }
 
-func (c *Core) prepareSessionRunDelivery(run Run, text string, parts []MessagePart, client string, externalKey string, address json.RawMessage) (ClientDelivery, bool, error) {
+func (c *Core) prepareSessionRunDelivery(run Run, text string, parts []transcript.MessagePart, client string, externalKey string, address json.RawMessage) (ClientDelivery, bool, error) {
 	client = normalizeText(client)
 	externalKey = normalizeText(externalKey)
 	if client == "" || externalKey == "" {
@@ -239,7 +241,7 @@ func (c *Core) prepareSessionRunDelivery(run Run, text string, parts []MessagePa
 	return prepared, true, nil
 }
 
-func sessionRunDeliverySummary(text string, parts []MessagePart) string {
+func sessionRunDeliverySummary(text string, parts []transcript.MessagePart) string {
 	summary := strings.Join(strings.Fields(text), " ")
 	if summary == "" {
 		for _, part := range parts {
@@ -313,7 +315,7 @@ func (c *Core) drainPendingSteersIntoLatestToolResult(ctx context.Context, sessi
 	}
 	for i := len(messages) - 1; i >= 0; i-- {
 		message := messages[i]
-		if normalizeText(message.RunID) != normalizeText(runID) || message.Role != MessageRoleTool {
+		if normalizeText(message.RunID) != normalizeText(runID) || message.Role != transcript.MessageRoleTool {
 			continue
 		}
 		if !messageHasToolResult(message) {
@@ -324,7 +326,7 @@ func (c *Core) drainPendingSteersIntoLatestToolResult(ctx context.Context, sessi
 	return false, nil
 }
 
-func (c *Core) injectPendingSteersIntoToolResultMessage(ctx context.Context, message Message) (bool, error) {
+func (c *Core) injectPendingSteersIntoToolResultMessage(ctx context.Context, message transcript.Message) (bool, error) {
 	sessionID := normalizeText(message.SessionID)
 	runID := normalizeText(message.RunID)
 	if sessionID == "" || runID == "" {
@@ -367,7 +369,7 @@ func (c *Core) injectPendingSteersIntoToolResultMessage(ctx context.Context, mes
 	return true, nil
 }
 
-func messageHasToolResult(message Message) bool {
+func messageHasToolResult(message transcript.Message) bool {
 	for _, part := range message.Parts {
 		if part.ToolResult != nil {
 			return true
@@ -376,7 +378,7 @@ func messageHasToolResult(message Message) bool {
 	return false
 }
 
-func appendUserGuidanceToToolResult(message *Message, text string) {
+func appendUserGuidanceToToolResult(message *transcript.Message, text string) {
 	if message == nil {
 		return
 	}

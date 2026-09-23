@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 var subagentAgentNamePool = []string{"Neo", "Trinity", "Morpheus", "Niobe", "Seraph", "Oracle", "Link", "Switch", "Apoc", "Tank", "Dozer", "Mouse"}
@@ -92,13 +94,13 @@ func (c *Core) createSubagentRun(ctx context.Context, session Session, prompt st
 		StartedAt:     now,
 		UpdatedAt:     now,
 	}
-	message := Message{
+	message := transcript.Message{
 		ID:        run.UserMessageID,
 		SessionID: session.ID,
 		RunID:     run.ID,
-		Role:      MessageRoleUser,
+		Role:      transcript.MessageRoleUser,
 		Content:   prompt,
-		Parts:     NormalizeMessageParts(prompt, nil),
+		Parts:     transcript.NormalizeMessageParts(prompt, nil),
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -135,7 +137,7 @@ func (c *Core) subagentRunSummary(ctx context.Context, sessionID string, runID s
 		return "Subagent failed: " + err.Error(), true
 	}
 	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].RunID != runID || messages[i].Role != MessageRoleAssistant {
+		if messages[i].RunID != runID || messages[i].Role != transcript.MessageRoleAssistant {
 			continue
 		}
 		if summary := strings.TrimSpace(messages[i].Content); summary != "" {

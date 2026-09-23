@@ -7,10 +7,11 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func TestDelegateTaskStatusExplainsThatSubagentIsWorking(t *testing.T) {
-	action, detail := telegramToolAction(core.ToolCallPart{
+	action, detail := telegramToolAction(transcript.ToolCallPart{
 		Name:  "delegate_task",
 		Input: `{"goal":"inspect the supervisor","runtime":"codex"}`,
 	})
@@ -30,10 +31,10 @@ func TestAssistantStreamEditsOnePersistentMessageAcrossApproval(t *testing.T) {
 	state.assistant["assistant-before"] = sentAssistantMessage{firstSeenAt: time.Now().Add(-2 * time.Second)}
 	state.assistant["assistant-after"] = sentAssistantMessage{firstSeenAt: time.Now().Add(-2 * time.Second)}
 	runID := "run-1"
-	messages := []core.Message{{
+	messages := []transcript.Message{{
 		ID:      "assistant-before",
 		RunID:   runID,
-		Role:    core.MessageRoleAssistant,
+		Role:    transcript.MessageRoleAssistant,
 		Content: "Before",
 	}}
 
@@ -69,13 +70,13 @@ func TestAssistantStreamEditsOnePersistentMessageAcrossApproval(t *testing.T) {
 
 	// A following tool call makes the streamed assistant text a completed
 	// segment. Persisting it must reuse the same Telegram message.
-	messages = append(messages, core.Message{
+	messages = append(messages, transcript.Message{
 		ID:    "tool-call",
 		RunID: runID,
-		Role:  core.MessageRoleAssistant,
-		Parts: []core.MessagePart{{
-			Kind: core.MessagePartKindToolCall,
-			ToolCall: &core.ToolCallPart{
+		Role:  transcript.MessageRoleAssistant,
+		Parts: []transcript.MessagePart{{
+			Kind: transcript.MessagePartKindToolCall,
+			ToolCall: &transcript.ToolCallPart{
 				ID:       "call-1",
 				Name:     "bash",
 				Finished: true,
@@ -105,10 +106,10 @@ func TestAssistantStreamEditsOnePersistentMessageAcrossApproval(t *testing.T) {
 		t.Fatalf("messages while waiting approval = %d, want text and approval only", got)
 	}
 
-	messages = append(messages, core.Message{
+	messages = append(messages, transcript.Message{
 		ID:      "assistant-after",
 		RunID:   runID,
-		Role:    core.MessageRoleAssistant,
+		Role:    transcript.MessageRoleAssistant,
 		Content: "After approval",
 	})
 	if err := worker.renderAssistantProgressUpdates(context.Background(), target, messages, runID, state); err != nil {
@@ -143,14 +144,14 @@ func TestAssistantStreamSplitsLongTextWithoutLosingContent(t *testing.T) {
 	worker := &Worker{api: api, config: Config{StreamFlushInterval: time.Nanosecond}}
 	target := chatTarget{chatID: -42, externalKey: "telegram:-42"}
 	state := newRunDeliveryState()
-	message := core.Message{
+	message := transcript.Message{
 		ID:      "assistant-long",
 		RunID:   "run-long",
-		Role:    core.MessageRoleAssistant,
+		Role:    transcript.MessageRoleAssistant,
 		Content: strings.Repeat("слово ", 900),
 	}
 
-	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []core.Message{message}, message.RunID, state); err != nil {
+	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []transcript.Message{message}, message.RunID, state); err != nil {
 		t.Fatalf("render long assistant stream: %v", err)
 	}
 	if got := api.sendCount(); got != 2 {
@@ -158,7 +159,7 @@ func TestAssistantStreamSplitsLongTextWithoutLosingContent(t *testing.T) {
 	}
 	firstChunk := api.messageText(1)
 	message.Content += strings.Repeat("ещё ", 100)
-	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []core.Message{message}, message.RunID, state); err != nil {
+	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []transcript.Message{message}, message.RunID, state); err != nil {
 		t.Fatalf("extend long assistant stream: %v", err)
 	}
 	if got := api.sendCount(); got != 2 {

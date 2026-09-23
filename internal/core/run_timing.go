@@ -3,9 +3,11 @@ package core
 import (
 	"strings"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func deriveRunTiming(run Run, approvals []Approval, messages []Message, now time.Time) RunTiming {
+func deriveRunTiming(run Run, approvals []Approval, messages []transcript.Message, now time.Time) RunTiming {
 	runID := strings.TrimSpace(run.ID)
 	if runID == "" {
 		return RunTiming{}

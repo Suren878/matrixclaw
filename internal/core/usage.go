@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func (c *Core) Usage(ctx context.Context, filter UsageFilter) (UsageReport, error) {
@@ -42,7 +43,7 @@ func summarizeUsage(records []UsageRecord, sessionID string) UsageSummary {
 	return summary
 }
 
-func (c *Core) saveRunUsage(ctx context.Context, run Run, message Message, usage providers.Usage) {
+func (c *Core) saveRunUsage(ctx context.Context, run Run, message transcript.Message, usage providers.Usage) {
 	if providerUsageIsZero(usage) || c == nil || c.store == nil {
 		return
 	}
@@ -54,7 +55,7 @@ func (c *Core) saveRunUsage(ctx context.Context, run Run, message Message, usage
 	}
 	if history, err := c.store.ListMessages(ctx, run.SessionID, 0); err == nil {
 		for _, previous := range history {
-			if previous.RunID != run.ID || previous.ID == message.ID || previous.Role != MessageRoleAssistant {
+			if previous.RunID != run.ID || previous.ID == message.ID || previous.Role != transcript.MessageRoleAssistant {
 				continue
 			}
 			for _, part := range previous.Parts {

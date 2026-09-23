@@ -3,36 +3,38 @@ package core
 import (
 	"context"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func (c *Core) CreateSystemMessage(ctx context.Context, sessionID string, content string) (Message, error) {
+func (c *Core) CreateSystemMessage(ctx context.Context, sessionID string, content string) (transcript.Message, error) {
 	sessionID = normalizeText(sessionID)
 	content = strings.TrimSpace(content)
 	if sessionID == "" {
-		return Message{}, ErrSessionRequired
+		return transcript.Message{}, ErrSessionRequired
 	}
 	if content == "" {
-		return Message{}, ErrInvalidInput
+		return transcript.Message{}, ErrInvalidInput
 	}
 	if _, err := c.store.GetSession(ctx, sessionID); err != nil {
-		return Message{}, err
+		return transcript.Message{}, err
 	}
 
 	now := c.now().UTC()
-	message := Message{
+	message := transcript.Message{
 		ID:        c.newID("msg"),
 		SessionID: sessionID,
-		Role:      MessageRoleSystem,
+		Role:      transcript.MessageRoleSystem,
 		Content:   content,
-		Parts: []MessagePart{{
-			Kind: MessagePartKindText,
-			Text: &TextPart{Text: content},
+		Parts: []transcript.MessagePart{{
+			Kind: transcript.MessagePartKindText,
+			Text: &transcript.TextPart{Text: content},
 		}},
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
 	if err := c.store.SaveMessage(ctx, message); err != nil {
-		return Message{}, err
+		return transcript.Message{}, err
 	}
 	c.publishEvent(Event{Type: EventMessageCreated, SessionID: sessionID, Payload: message})
 	return message, nil

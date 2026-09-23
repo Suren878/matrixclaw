@@ -6,6 +6,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 type StateSnapshot struct {
@@ -16,7 +17,7 @@ type StateSnapshot struct {
 	Plan                  *core.SessionPlan
 	Run                   *core.Run
 	Timing                *core.RunTiming
-	Messages              []core.Message
+	Messages              []transcript.Message
 	ToolUpdates           []core.ToolUpdate
 	Approvals             []core.PermissionRequest
 	ApprovalNotifications []core.PermissionNotification
@@ -34,7 +35,7 @@ type State struct {
 	plan                  *core.SessionPlan
 	run                   *core.Run
 	timing                *core.RunTiming
-	messages              []core.Message
+	messages              []transcript.Message
 	toolUpdates           map[string]core.ToolUpdate
 	approvals             map[string]core.PermissionRequest
 	approvalNotifications map[string]core.PermissionNotification
@@ -52,7 +53,7 @@ func NewState(snapshot core.ClientSnapshot) *State {
 		plan:                  cloneSessionPlan(snapshot.Plan),
 		run:                   cloneRun(snapshot.Run),
 		timing:                cloneTiming(snapshot.Timing),
-		messages:              append([]core.Message(nil), snapshot.Messages...),
+		messages:              append([]transcript.Message(nil), snapshot.Messages...),
 		toolUpdates:           map[string]core.ToolUpdate{},
 		approvals:             map[string]core.PermissionRequest{},
 		approvalNotifications: map[string]core.PermissionNotification{},
@@ -104,7 +105,7 @@ func (s *State) Snapshot() StateSnapshot {
 		Plan:         cloneSessionPlan(s.plan),
 		Run:          cloneRun(s.run),
 		Timing:       cloneTiming(s.timing),
-		Messages:     append([]core.Message(nil), s.messages...),
+		Messages:     append([]transcript.Message(nil), s.messages...),
 	}
 	for _, update := range s.toolUpdates {
 		out.ToolUpdates = append(out.ToolUpdates, update)
@@ -288,7 +289,7 @@ func PermissionRequestFromApproval(approval core.Approval) core.PermissionReques
 	}
 }
 
-func (s *State) upsertMessage(message core.Message) {
+func (s *State) upsertMessage(message transcript.Message) {
 	for i := range s.messages {
 		if s.messages[i].ID == message.ID {
 			s.messages[i] = message

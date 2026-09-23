@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 // maxRunToolSteps caps the tool-call loop per run to prevent unbounded execution.
@@ -258,7 +259,7 @@ func (c *Core) resolveSessionRuntime(ctx context.Context, session Session) (prov
 	return runtime, nil
 }
 
-func (c *Core) checkAndHandleCanceled(ctx context.Context, run Run, assistant *Message, assistantSaved bool) (bool, error) {
+func (c *Core) checkAndHandleCanceled(ctx context.Context, run Run, assistant *transcript.Message, assistantSaved bool) (bool, error) {
 	canceled, err := c.isRunCanceled(ctx, run.ID)
 	if err != nil || !canceled {
 		return false, nil
@@ -266,7 +267,7 @@ func (c *Core) checkAndHandleCanceled(ctx context.Context, run Run, assistant *M
 	return true, c.finishCanceledAssistant(ctx, assistant, assistantSaved)
 }
 
-func (c *Core) persistAssistantError(ctx context.Context, run Run, assistant *Message, assistantSaved bool, cause error) error {
+func (c *Core) persistAssistantError(ctx context.Context, run Run, assistant *transcript.Message, assistantSaved bool, cause error) error {
 	if assistantSaved {
 		if updateErr := c.markAssistantErrored(ctx, assistant, cause); updateErr != nil {
 			return c.failRunByID(ctx, run, fmt.Errorf("%w (assistant update failed: %w)", cause, updateErr))

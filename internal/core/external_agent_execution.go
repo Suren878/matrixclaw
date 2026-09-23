@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 const (
@@ -104,11 +105,11 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 		return c.failRunByID(ctx, run, err)
 	}
 
-	assistant := Message{
+	assistant := transcript.Message{
 		ID:        c.newID("msg"),
 		SessionID: run.SessionID,
 		RunID:     run.ID,
-		Role:      MessageRoleAssistant,
+		Role:      transcript.MessageRoleAssistant,
 		Model:     attachment.Model,
 		Provider:  attachment.AgentID,
 	}
@@ -242,20 +243,20 @@ func (c *Core) updateExternalAgentSessionFromEvent(ctx context.Context, attachme
 	return c.externalStore.SaveExternalAgentSession(ctx, *attachment)
 }
 
-func (c *Core) findRunUserMessage(ctx context.Context, run Run) (Message, error) {
+func (c *Core) findRunUserMessage(ctx context.Context, run Run) (transcript.Message, error) {
 	messages, err := c.store.ListMessages(ctx, run.SessionID, 0)
 	if err != nil {
-		return Message{}, err
+		return transcript.Message{}, err
 	}
 	for _, message := range messages {
 		if message.ID == run.UserMessageID {
 			return message, nil
 		}
 	}
-	return Message{}, ErrNotFound
+	return transcript.Message{}, ErrNotFound
 }
 
-func applyExternalMessageDelta(assistant *Message, delta string) bool {
+func applyExternalMessageDelta(assistant *transcript.Message, delta string) bool {
 	if assistant == nil || delta == "" {
 		return false
 	}
@@ -264,7 +265,7 @@ func applyExternalMessageDelta(assistant *Message, delta string) bool {
 	return true
 }
 
-func applyExternalReasoningDelta(assistant *Message, delta string) bool {
+func applyExternalReasoningDelta(assistant *transcript.Message, delta string) bool {
 	if assistant == nil || delta == "" {
 		return false
 	}
@@ -272,7 +273,7 @@ func applyExternalReasoningDelta(assistant *Message, delta string) bool {
 	return true
 }
 
-func applyExternalToolStarted(assistant *Message, event externalagents.Event) bool {
+func applyExternalToolStarted(assistant *transcript.Message, event externalagents.Event) bool {
 	if assistant == nil || strings.TrimSpace(event.ItemID) == "" {
 		return false
 	}
@@ -280,7 +281,7 @@ func applyExternalToolStarted(assistant *Message, event externalagents.Event) bo
 	return true
 }
 
-func applyExternalToolOutputDelta(assistant *Message, event externalagents.Event) bool {
+func applyExternalToolOutputDelta(assistant *transcript.Message, event externalagents.Event) bool {
 	if assistant == nil || strings.TrimSpace(event.ItemID) == "" || event.Text == "" {
 		return false
 	}
@@ -288,7 +289,7 @@ func applyExternalToolOutputDelta(assistant *Message, event externalagents.Event
 	return true
 }
 
-func applyExternalToolCompleted(assistant *Message, event externalagents.Event) bool {
+func applyExternalToolCompleted(assistant *transcript.Message, event externalagents.Event) bool {
 	if assistant == nil || strings.TrimSpace(event.ItemID) == "" {
 		return false
 	}
@@ -300,7 +301,7 @@ func applyExternalToolCompleted(assistant *Message, event externalagents.Event) 
 	return true
 }
 
-func (c *Core) saveExternalAssistantProgress(ctx context.Context, assistant *Message, saved *bool) error {
+func (c *Core) saveExternalAssistantProgress(ctx context.Context, assistant *transcript.Message, saved *bool) error {
 	now := c.now().UTC()
 	if !*saved {
 		assistant.CreatedAt = now
@@ -343,40 +344,40 @@ func (c *Core) touchExternalRunActivity(ctx context.Context, run *Run, at time.T
 	return nil
 }
 
-func appendExternalTextDelta(assistant *Message, delta string) {
+func appendExternalTextDelta(assistant *transcript.Message, delta string) {
 	if delta == "" {
 		return
 	}
 	if len(assistant.Parts) > 0 {
 		last := &assistant.Parts[len(assistant.Parts)-1]
-		if last.Kind == MessagePartKindText && last.Text != nil {
+		if last.Kind == transcript.MessagePartKindText && last.Text != nil {
 			last.Text.Text += delta
 			return
 		}
 	}
-	assistant.Parts = append(assistant.Parts, MessagePart{
-		Kind: MessagePartKindText,
-		Text: &TextPart{Text: delta},
+	assistant.Parts = append(assistant.Parts, transcript.MessagePart{
+		Kind: transcript.MessagePartKindText,
+		Text: &transcript.TextPart{Text: delta},
 	})
 }
 
-func appendExternalReasoningDelta(assistant *Message, delta string) {
+func appendExternalReasoningDelta(assistant *transcript.Message, delta string) {
 	if len(assistant.Parts) > 0 {
 		last := &assistant.Parts[len(assistant.Parts)-1]
-		if last.Kind == MessagePartKindReasoning && last.Reasoning != nil {
+		if last.Kind == transcript.MessagePartKindReasoning && last.Reasoning != nil {
 			last.Reasoning.Text = clipExternalPayload(last.Reasoning.Text+delta, externalReasoningPartLimit)
 			return
 		}
 	}
-	assistant.Parts = append(assistant.Parts, MessagePart{
-		Kind:      MessagePartKindReasoning,
-		Reasoning: &ReasoningPart{Text: clipExternalPayload(delta, externalReasoningPartLimit)},
+	assistant.Parts = append(assistant.Parts, transcript.MessagePart{
+		Kind:      transcript.MessagePartKindReasoning,
+		Reasoning: &transcript.ReasoningPart{Text: clipExternalPayload(delta, externalReasoningPartLimit)},
 	})
 }
 
-func upsertExternalToolCall(assistant *Message, id string, name string, input string, finished bool) {
+func upsertExternalToolCall(assistant *transcript.Message, id string, name string, input string, finished bool) {
 	for i := range assistant.Parts {
-		if assistant.Parts[i].Kind != MessagePartKindToolCall || assistant.Parts[i].ToolCall == nil {
+		if assistant.Parts[i].Kind != transcript.MessagePartKindToolCall || assistant.Parts[i].ToolCall == nil {
 			continue
 		}
 		if assistant.Parts[i].ToolCall.ID != id {
@@ -393,9 +394,9 @@ func upsertExternalToolCall(assistant *Message, id string, name string, input st
 		}
 		return
 	}
-	assistant.Parts = append(assistant.Parts, MessagePart{
-		Kind: MessagePartKindToolCall,
-		ToolCall: &ToolCallPart{
+	assistant.Parts = append(assistant.Parts, transcript.MessagePart{
+		Kind: transcript.MessagePartKindToolCall,
+		ToolCall: &transcript.ToolCallPart{
 			ID:       id,
 			Name:     name,
 			Input:    clipExternalPayload(input, externalToolInputLimit),
@@ -404,11 +405,11 @@ func upsertExternalToolCall(assistant *Message, id string, name string, input st
 	})
 }
 
-func upsertExternalToolResult(assistant *Message, id string, name string, content string, isError bool, appendContent bool) {
+func upsertExternalToolResult(assistant *transcript.Message, id string, name string, content string, isError bool, appendContent bool) {
 	name = externalToolResultName(assistant, id, name)
 	contentLimit := externalToolResultContentLimit(assistant, id)
 	for i := range assistant.Parts {
-		if assistant.Parts[i].Kind != MessagePartKindToolResult || assistant.Parts[i].ToolResult == nil {
+		if assistant.Parts[i].Kind != transcript.MessagePartKindToolResult || assistant.Parts[i].ToolResult == nil {
 			continue
 		}
 		if assistant.Parts[i].ToolResult.ToolCallID != id {
@@ -434,9 +435,9 @@ func upsertExternalToolResult(assistant *Message, id string, name string, conten
 	if isError {
 		status = "error"
 	}
-	assistant.Parts = append(assistant.Parts, MessagePart{
-		Kind: MessagePartKindToolResult,
-		ToolResult: &ToolResultPart{
+	assistant.Parts = append(assistant.Parts, transcript.MessagePart{
+		Kind: transcript.MessagePartKindToolResult,
+		ToolResult: &transcript.ToolResultPart{
 			ToolCallID: id,
 			Name:       name,
 			Content:    clipExternalPayload(content, contentLimit),
@@ -446,7 +447,7 @@ func upsertExternalToolResult(assistant *Message, id string, name string, conten
 	})
 }
 
-func externalToolResultContentLimit(assistant *Message, targetID string) int {
+func externalToolResultContentLimit(assistant *transcript.Message, targetID string) int {
 	remaining := externalToolOutputTotalLimit
 	if assistant != nil {
 		for _, part := range assistant.Parts {
@@ -510,10 +511,10 @@ func truncateUTF8Suffix(value string, limit int) string {
 	return value[start:]
 }
 
-func externalToolResultName(assistant *Message, id string, fallback string) string {
+func externalToolResultName(assistant *transcript.Message, id string, fallback string) string {
 	fallback = defaultExternalToolName(fallback)
 	for _, part := range assistant.Parts {
-		if part.Kind != MessagePartKindToolCall || part.ToolCall == nil {
+		if part.Kind != transcript.MessagePartKindToolCall || part.ToolCall == nil {
 			continue
 		}
 		if part.ToolCall.ID == id && strings.TrimSpace(part.ToolCall.Name) != "" {
@@ -531,17 +532,17 @@ func defaultExternalToolName(name string) string {
 	return name
 }
 
-func (c *Core) completeExternalAgentRun(ctx context.Context, run *Run, assistant *Message, assistantSaved bool) error {
+func (c *Core) completeExternalAgentRun(ctx context.Context, run *Run, assistant *transcript.Message, assistantSaved bool) error {
 	if assistant == nil || run == nil {
 		return nil
 	}
 	finishedAt := c.now().UTC()
 	if assistant.Parts == nil {
-		assistant.Parts = NormalizeMessageParts(assistant.Content, nil)
+		assistant.Parts = transcript.NormalizeMessageParts(assistant.Content, nil)
 	}
-	assistant.Parts = append(assistant.Parts, MessagePart{
-		Kind:   MessagePartKindFinish,
-		Finish: &FinishPart{Reason: "end_turn"},
+	assistant.Parts = append(assistant.Parts, transcript.MessagePart{
+		Kind:   transcript.MessagePartKindFinish,
+		Finish: &transcript.FinishPart{Reason: "end_turn"},
 	})
 	run.Status = RunStatusCompleted
 	run.Error = ""
@@ -571,7 +572,7 @@ func (c *Core) completeExternalAgentRun(ctx context.Context, run *Run, assistant
 	return nil
 }
 
-func (c *Core) checkExternalRunCanceled(ctx context.Context, run Run, assistant *Message, assistantSaved bool, runtime externalagents.RuntimeAgent, session externalagents.ExternalSession) (bool, error) {
+func (c *Core) checkExternalRunCanceled(ctx context.Context, run Run, assistant *transcript.Message, assistantSaved bool, runtime externalagents.RuntimeAgent, session externalagents.ExternalSession) (bool, error) {
 	canceled, err := c.isRunCanceled(ctx, run.ID)
 	if err != nil || !canceled {
 		return false, nil
@@ -582,7 +583,7 @@ func (c *Core) checkExternalRunCanceled(ctx context.Context, run Run, assistant 
 	return true, c.finishCanceledAssistant(ctx, assistant, assistantSaved)
 }
 
-func (c *Core) finishExternalRunAfterContextStopped(run Run, assistant *Message, assistantSaved bool, runtime externalagents.RuntimeAgent, session externalagents.ExternalSession) error {
+func (c *Core) finishExternalRunAfterContextStopped(run Run, assistant *transcript.Message, assistantSaved bool, runtime externalagents.RuntimeAgent, session externalagents.ExternalSession) error {
 	ctx, cancel := context.WithTimeout(context.Background(), runInterruptionPersistenceTimeout)
 	defer cancel()
 

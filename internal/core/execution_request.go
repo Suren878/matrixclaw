@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func (c *Core) buildProviderRequest(ctx context.Context, turn turnExecution) (providers.Request, error) {
@@ -34,7 +35,7 @@ func (c *Core) buildProviderRequest(ctx context.Context, turn turnExecution) (pr
 	return request, nil
 }
 
-func (c *Core) providerSystemPrompt(ctx context.Context, turn turnExecution, assistant AssistantProfile, compactSummary string, history []Message) string {
+func (c *Core) providerSystemPrompt(ctx context.Context, turn turnExecution, assistant AssistantProfile, compactSummary string, history []transcript.Message) string {
 	sections := []string{AssistantSystemPrompt(assistant)}
 	if checkpoint, ok, err := c.runCheckpoint(ctx, turn.RunID); err == nil && ok {
 		if recoveryPrompt := runCheckpointRecoveryPrompt(checkpoint); recoveryPrompt != "" {
@@ -87,7 +88,7 @@ func (c *Core) providerSystemPrompt(ctx context.Context, turn turnExecution, ass
 	return joinPromptSections(sections...)
 }
 
-func (c *Core) skillsPromptContext(ctx context.Context, turn turnExecution, history []Message) string {
+func (c *Core) skillsPromptContext(ctx context.Context, turn turnExecution, history []transcript.Message) string {
 	if c == nil || c.skillsContext == nil {
 		return ""
 	}

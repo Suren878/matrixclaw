@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func (c *Client) CurrentBinding(ctx context.Context) (core.ClientBinding, error) {
@@ -29,7 +30,7 @@ func (c *Client) LoadSnapshot(ctx context.Context) (core.ClientSnapshot, error) 
 	return response.Snapshot, nil
 }
 
-func (c *Client) ListMessages(ctx context.Context, sessionID string, limit int) ([]core.Message, error) {
+func (c *Client) ListMessages(ctx context.Context, sessionID string, limit int) ([]transcript.Message, error) {
 	values := url.Values{}
 	values.Set("session_id", strings.TrimSpace(sessionID))
 	values.Set("limit", strconv.Itoa(limit))
@@ -221,12 +222,12 @@ func (c *Client) CompactSession(ctx context.Context, sessionID string) (core.Com
 	return response.Compact, nil
 }
 
-func (c *Client) CreateSystemMessage(ctx context.Context, sessionID string, content string) (core.Message, error) {
+func (c *Client) CreateSystemMessage(ctx context.Context, sessionID string, content string) (transcript.Message, error) {
 	var response core.MessageResponse
 	path := "/v1/sessions/" + escapedPath(sessionID) + "/system-message"
 	request := core.CreateSystemMessageRequest{Content: strings.TrimSpace(content)}
 	if err := c.doJSON(ctx, http.MethodPost, path, request, &response); err != nil {
-		return core.Message{}, err
+		return transcript.Message{}, err
 	}
 	return response.Message, nil
 }
@@ -248,7 +249,7 @@ func (c *Client) SendMessage(ctx context.Context, sessionID string, text string,
 	return c.SendMessagePartsMode(ctx, sessionID, text, nil, workingDir, "")
 }
 
-func (c *Client) SendMessageParts(ctx context.Context, sessionID string, text string, parts []core.MessagePart, workingDir string) (core.AcceptRunResult, error) {
+func (c *Client) SendMessageParts(ctx context.Context, sessionID string, text string, parts []transcript.MessagePart, workingDir string) (core.AcceptRunResult, error) {
 	return c.SendMessagePartsMode(ctx, sessionID, text, parts, workingDir, "")
 }
 
@@ -256,11 +257,11 @@ func (c *Client) SendMessageMode(ctx context.Context, sessionID string, text str
 	return c.SendMessagePartsMode(ctx, sessionID, text, nil, workingDir, busyMode)
 }
 
-func (c *Client) SendMessagePartsMode(ctx context.Context, sessionID string, text string, parts []core.MessagePart, workingDir string, busyMode core.BusyInputMode) (core.AcceptRunResult, error) {
+func (c *Client) SendMessagePartsMode(ctx context.Context, sessionID string, text string, parts []transcript.MessagePart, workingDir string, busyMode core.BusyInputMode) (core.AcceptRunResult, error) {
 	return c.SendMessagePartsModeWithDelivery(ctx, sessionID, text, parts, workingDir, busyMode, nil)
 }
 
-func (c *Client) SendMessagePartsModeWithDelivery(ctx context.Context, sessionID string, text string, parts []core.MessagePart, workingDir string, busyMode core.BusyInputMode, deliveryAddress json.RawMessage) (core.AcceptRunResult, error) {
+func (c *Client) SendMessagePartsModeWithDelivery(ctx context.Context, sessionID string, text string, parts []transcript.MessagePart, workingDir string, busyMode core.BusyInputMode, deliveryAddress json.RawMessage) (core.AcceptRunResult, error) {
 	var response core.AcceptRunResult
 	request := core.HandleMessageInput{
 		Client:             c.ClientName,

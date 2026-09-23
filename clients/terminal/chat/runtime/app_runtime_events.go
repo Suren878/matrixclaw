@@ -10,6 +10,7 @@ import (
 	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func (m *appModel) handleLoadInitial(msg loadInitialMsg) tea.Cmd {
@@ -177,7 +178,7 @@ func (m *appModel) handleSendMessageResult(msg sendMessageResultMsg) tea.Cmd {
 	if m.read == nil {
 		m.read = viewmodel.NewReadModel(core.ClientSnapshot{
 			SessionID: msg.result.SessionID,
-			Messages:  []core.Message{msg.result.UserMessage},
+			Messages:  []transcript.Message{msg.result.UserMessage},
 			Run:       &msg.result.Run,
 		})
 	} else {

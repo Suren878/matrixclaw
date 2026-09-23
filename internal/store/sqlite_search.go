@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func (s *SQLiteStore) SearchMessages(ctx context.Context, filter core.SearchFilter) ([]core.SearchResult, error) {
@@ -54,7 +55,7 @@ WHERE message_fts MATCH ?`
 	return results, nil
 }
 
-func upsertMessageSearch(ctx context.Context, execer sqlExecer, message core.Message) error {
+func upsertMessageSearch(ctx context.Context, execer sqlExecer, message transcript.Message) error {
 	if strings.TrimSpace(message.ID) == "" {
 		return nil
 	}
@@ -76,27 +77,27 @@ VALUES(?, ?, ?, ?, ?, ?)`,
 	return nil
 }
 
-func messageSearchContent(message core.Message) string {
+func messageSearchContent(message transcript.Message) string {
 	parts := []string{message.Content}
 	for _, part := range message.Parts {
 		switch part.Kind {
-		case core.MessagePartKindText:
+		case transcript.MessagePartKindText:
 			if part.Text != nil {
 				parts = append(parts, part.Text.Text)
 			}
-		case core.MessagePartKindReasoning:
+		case transcript.MessagePartKindReasoning:
 			if part.Reasoning != nil {
 				parts = append(parts, part.Reasoning.Text)
 			}
-		case core.MessagePartKindToolCall:
+		case transcript.MessagePartKindToolCall:
 			if part.ToolCall != nil {
 				parts = append(parts, part.ToolCall.Name, part.ToolCall.Input)
 			}
-		case core.MessagePartKindToolResult:
+		case transcript.MessagePartKindToolResult:
 			if part.ToolResult != nil {
 				parts = append(parts, part.ToolResult.Name, part.ToolResult.Content)
 			}
-		case core.MessagePartKindFinish:
+		case transcript.MessagePartKindFinish:
 			if part.Finish != nil {
 				parts = append(parts, part.Finish.Message)
 			}

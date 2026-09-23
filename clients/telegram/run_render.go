@@ -5,27 +5,28 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func (w *Worker) renderAssistantUpdates(ctx context.Context, target chatTarget, messages []core.Message, runID string, state *runDeliveryState) error {
+func (w *Worker) renderAssistantUpdates(ctx context.Context, target chatTarget, messages []transcript.Message, runID string, state *runDeliveryState) error {
 	return w.renderAssistantUpdatesExcept(ctx, target, messages, runID, state, "")
 }
 
-func (w *Worker) renderAssistantProgressUpdates(ctx context.Context, target chatTarget, messages []core.Message, runID string, state *runDeliveryState) error {
+func (w *Worker) renderAssistantProgressUpdates(ctx context.Context, target chatTarget, messages []transcript.Message, runID string, state *runDeliveryState) error {
 	stream, _ := activeAssistantStreamMessage(messages, runID)
 	return w.renderAssistantUpdatesExcept(silentTelegramDelivery(ctx), target, messages, runID, state, stream.ID)
 }
 
-func (w *Worker) renderAssistantUpdatesExcept(ctx context.Context, target chatTarget, messages []core.Message, runID string, state *runDeliveryState, streamMessageID string) error {
+func (w *Worker) renderAssistantUpdatesExcept(ctx context.Context, target chatTarget, messages []transcript.Message, runID string, state *runDeliveryState, streamMessageID string) error {
 	streamMessageID = strings.TrimSpace(streamMessageID)
 	lastAssistantID := ""
 	for _, message := range messages {
-		if strings.TrimSpace(message.RunID) == strings.TrimSpace(runID) && message.Role == core.MessageRoleAssistant && renderAssistantMessage(message) != "" {
+		if strings.TrimSpace(message.RunID) == strings.TrimSpace(runID) && message.Role == transcript.MessageRoleAssistant && renderAssistantMessage(message) != "" {
 			lastAssistantID = message.ID
 		}
 	}
 	for _, message := range messages {
-		if strings.TrimSpace(message.RunID) != strings.TrimSpace(runID) || message.Role != core.MessageRoleAssistant {
+		if strings.TrimSpace(message.RunID) != strings.TrimSpace(runID) || message.Role != transcript.MessageRoleAssistant {
 			continue
 		}
 		if streamMessageID != "" && strings.TrimSpace(message.ID) == streamMessageID {
@@ -56,7 +57,7 @@ func (w *Worker) renderAssistantUpdatesExcept(ctx context.Context, target chatTa
 	return nil
 }
 
-func (w *Worker) renderAssistantStreamUpdate(ctx context.Context, target chatTarget, messages []core.Message, runID string, state *runDeliveryState) error {
+func (w *Worker) renderAssistantStreamUpdate(ctx context.Context, target chatTarget, messages []transcript.Message, runID string, state *runDeliveryState) error {
 	if !target.isChat() || target.chatID == 0 || state == nil {
 		return nil
 	}
@@ -74,7 +75,7 @@ func (w *Worker) renderAssistantStreamUpdate(ctx context.Context, target chatTar
 // activeAssistantStreamMessage returns text only while it is the newest message
 // in the run. Once a tool call/result or another message follows it, that text
 // is a completed assistant segment and the next turn starts a new message.
-func activeAssistantStreamMessage(messages []core.Message, runID string) (core.Message, bool) {
+func activeAssistantStreamMessage(messages []transcript.Message, runID string) (transcript.Message, bool) {
 	runID = strings.TrimSpace(runID)
 	for i := len(messages) - 1; i >= 0; i-- {
 		message := messages[i]
@@ -82,17 +83,17 @@ func activeAssistantStreamMessage(messages []core.Message, runID string) (core.M
 			continue
 		}
 		if assistantToolSegment(message) {
-			return core.Message{}, false
+			return transcript.Message{}, false
 		}
-		if message.Role == core.MessageRoleAssistant && renderAssistantMessage(message) != "" {
+		if message.Role == transcript.MessageRoleAssistant && renderAssistantMessage(message) != "" {
 			return message, true
 		}
-		return core.Message{}, false
+		return transcript.Message{}, false
 	}
-	return core.Message{}, false
+	return transcript.Message{}, false
 }
 
-func assistantToolSegment(message core.Message) bool {
+func assistantToolSegment(message transcript.Message) bool {
 	for _, part := range message.Parts {
 		if part.ToolCall != nil || (part.Finish != nil && part.Finish.Reason == "tool_calls") {
 			return true
@@ -101,11 +102,11 @@ func assistantToolSegment(message core.Message) bool {
 	return false
 }
 
-func latestAssistantText(messages []core.Message, runID string) string {
+func latestAssistantText(messages []transcript.Message, runID string) string {
 	runID = strings.TrimSpace(runID)
 	for i := len(messages) - 1; i >= 0; i-- {
 		message := messages[i]
-		if strings.TrimSpace(message.RunID) != runID || message.Role != core.MessageRoleAssistant {
+		if strings.TrimSpace(message.RunID) != runID || message.Role != transcript.MessageRoleAssistant {
 			continue
 		}
 		if text := renderAssistantMessage(message); text != "" {

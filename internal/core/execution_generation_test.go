@@ -9,6 +9,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 type generationRuntimeFunc func(context.Context, providers.Request) (providers.Response, error)
@@ -252,7 +253,7 @@ func TestModelFailuresAreBoundedAndDoNotReplayPartialOutput(t *testing.T) {
 			}
 			assistantCount := 0
 			for _, message := range messages {
-				if message.Role == core.MessageRoleAssistant {
+				if message.Role == transcript.MessageRoleAssistant {
 					assistantCount++
 					if tc.partial != "" && !strings.Contains(message.Content, tc.partial) {
 						t.Fatal("partial output was lost")

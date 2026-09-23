@@ -3,6 +3,8 @@ package core
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 type ApprovalState string
@@ -90,7 +92,7 @@ type ExecuteToolInput struct {
 }
 
 type ExecuteToolResult struct {
-	ToolCallMessage   Message   `json:"tool_call_message"`
-	ToolResultMessage *Message  `json:"tool_result_message,omitempty"`
-	Approval          *Approval `json:"approval,omitempty"`
+	ToolCallMessage   transcript.Message  `json:"tool_call_message"`
+	ToolResultMessage *transcript.Message `json:"tool_result_message,omitempty"`
+	Approval          *Approval           `json:"approval,omitempty"`
 }

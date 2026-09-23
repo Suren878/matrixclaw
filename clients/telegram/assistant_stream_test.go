@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func streamTestMessage(text string) core.Message {
-	return core.Message{ID: "answer", RunID: "run", Role: core.MessageRoleAssistant, Content: text}
+func streamTestMessage(text string) transcript.Message {
+	return transcript.Message{ID: "answer", RunID: "run", Role: transcript.MessageRoleAssistant, Content: text}
 }
 
 func TestPrivateAssistantDraftNotifiesOnlyOnFinalAnswer(t *testing.T) {
@@ -20,7 +20,7 @@ func TestPrivateAssistantDraftNotifiesOnlyOnFinalAnswer(t *testing.T) {
 	state := newRunDeliveryState()
 	target := chatTarget{chatID: 42}
 	message := streamTestMessage("П")
-	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []core.Message{message}, "run", state); err != nil {
+	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []transcript.Message{message}, "run", state); err != nil {
 		t.Fatal(err)
 	}
 	if api.sendCount() != 0 || api.draftCount() != 1 {
@@ -28,7 +28,7 @@ func TestPrivateAssistantDraftNotifiesOnlyOnFinalAnswer(t *testing.T) {
 	}
 	message.Content = "Полный ответ"
 	now = now.Add(time.Second)
-	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []core.Message{message}, "run", state); err != nil {
+	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []transcript.Message{message}, "run", state); err != nil {
 		t.Fatal(err)
 	}
 	if api.sendCount() != 0 || api.draftCount() != 2 {
@@ -39,7 +39,7 @@ func TestPrivateAssistantDraftNotifiesOnlyOnFinalAnswer(t *testing.T) {
 	}
 	message.Content = "Полный окончательный ответ."
 	for i := 0; i < 2; i++ {
-		if err := worker.renderAssistantUpdates(context.Background(), target, []core.Message{message}, "run", state); err != nil {
+		if err := worker.renderAssistantUpdates(context.Background(), target, []transcript.Message{message}, "run", state); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -60,7 +60,7 @@ func TestGroupPreviewBuffersFirstCharacterAndThrottlesEdits(t *testing.T) {
 	message := streamTestMessage("Я")
 	update := func() {
 		t.Helper()
-		if err := worker.renderAssistantStreamUpdate(context.Background(), target, []core.Message{message}, "run", state); err != nil {
+		if err := worker.renderAssistantStreamUpdate(context.Background(), target, []transcript.Message{message}, "run", state); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -97,10 +97,10 @@ func TestShortAnswerIsFlushedAtCompletionAndSlowPreviewIsBounded(t *testing.T) {
 	state := newRunDeliveryState()
 	target := chatTarget{chatID: -42}
 	message := streamTestMessage("Да")
-	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []core.Message{message}, "run", state); err != nil {
+	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []transcript.Message{message}, "run", state); err != nil {
 		t.Fatal(err)
 	}
-	if err := worker.renderAssistantUpdates(context.Background(), target, []core.Message{message}, "run", state); err != nil {
+	if err := worker.renderAssistantUpdates(context.Background(), target, []transcript.Message{message}, "run", state); err != nil {
 		t.Fatal(err)
 	}
 	if api.sendCount() != 1 || api.messageText(1) != "Да" {
@@ -108,11 +108,11 @@ func TestShortAnswerIsFlushedAtCompletionAndSlowPreviewIsBounded(t *testing.T) {
 	}
 	state = newRunDeliveryState()
 	message.ID = "slow"
-	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []core.Message{message}, "run", state); err != nil {
+	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []transcript.Message{message}, "run", state); err != nil {
 		t.Fatal(err)
 	}
 	now = now.Add(2 * time.Second)
-	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []core.Message{message}, "run", state); err != nil {
+	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []transcript.Message{message}, "run", state); err != nil {
 		t.Fatal(err)
 	}
 	if api.sendCount() != 2 {
@@ -128,7 +128,7 @@ func TestDraftUnavailableFallsBackToOneBufferedMessage(t *testing.T) {
 	message := streamTestMessage("Содержательная первая фраза.")
 	for i := 0; i < 2; i++ {
 		message.Content += " Продолжение."
-		if err := worker.renderAssistantStreamUpdate(context.Background(), target, []core.Message{message}, "run", state); err != nil {
+		if err := worker.renderAssistantStreamUpdate(context.Background(), target, []transcript.Message{message}, "run", state); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -145,21 +145,21 @@ func TestDraftFloodWaitDoesNotBlockDeliveryAndFinalTextStillArrives(t *testing.T
 	target := chatTarget{chatID: 42}
 	message := streamTestMessage("Partial")
 	started := time.Now()
-	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []core.Message{message}, "run", state); err == nil {
+	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []transcript.Message{message}, "run", state); err == nil {
 		t.Fatal("expected flood response")
 	}
 	if time.Since(started) > 500*time.Millisecond {
 		t.Fatal("preview blocked on flood wait")
 	}
 	now = now.Add(time.Second)
-	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []core.Message{message}, "run", state); err != nil {
+	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []transcript.Message{message}, "run", state); err != nil {
 		t.Fatal(err)
 	}
 	if api.draftCount() != 1 {
 		t.Fatal("preview ignored retry_after")
 	}
 	message.Content = "Complete final response."
-	if err := worker.renderAssistantUpdates(context.Background(), target, []core.Message{message}, "run", state); err != nil {
+	if err := worker.renderAssistantUpdates(context.Background(), target, []transcript.Message{message}, "run", state); err != nil {
 		t.Fatal(err)
 	}
 	if api.messageText(1) != message.Content {
@@ -173,13 +173,13 @@ func TestAssistantDeliveryRetainsSuccessfulChunksAfterFailure(t *testing.T) {
 	state := newRunDeliveryState()
 	target := chatTarget{chatID: 42}
 	message := streamTestMessage(strings.Repeat("слово ", 900))
-	if err := worker.renderAssistantUpdates(context.Background(), target, []core.Message{message}, "run", state); err == nil {
+	if err := worker.renderAssistantUpdates(context.Background(), target, []transcript.Message{message}, "run", state); err == nil {
 		t.Fatal("expected second chunk failure")
 	}
 	if len(state.assistant[message.ID].chunks) != 1 {
 		t.Fatal("successful first chunk was forgotten")
 	}
-	if err := worker.renderAssistantUpdates(context.Background(), target, []core.Message{message}, "run", state); err != nil {
+	if err := worker.renderAssistantUpdates(context.Background(), target, []transcript.Message{message}, "run", state); err != nil {
 		t.Fatal(err)
 	}
 	if api.sendCount() != 2 || api.sendAttempts != 3 {

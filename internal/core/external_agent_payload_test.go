@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func TestBlockingSubagentWorkJobCarriesHeartbeat(t *testing.T) {
@@ -33,7 +34,7 @@ func TestRunTimingUsesStreamingMessageUpdateAsLastEvent(t *testing.T) {
 		ID:        "run-1",
 		StartedAt: startedAt,
 		UpdatedAt: startedAt,
-	}, nil, []Message{{
+	}, nil, []transcript.Message{{
 		RunID:     "run-1",
 		CreatedAt: startedAt.Add(time.Second),
 		UpdatedAt: updatedAt,
@@ -44,7 +45,7 @@ func TestRunTimingUsesStreamingMessageUpdateAsLastEvent(t *testing.T) {
 }
 
 func TestExternalToolOutputIsBounded(t *testing.T) {
-	assistant := &Message{}
+	assistant := &transcript.Message{}
 	delta := strings.Repeat("д", externalToolOutputPerItemLimit)
 	for i := 0; i < 8; i++ {
 		itemID := string(rune('a' + i))

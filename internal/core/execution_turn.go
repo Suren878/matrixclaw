@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 var errRunCanceled = errors.New("run canceled")
@@ -32,7 +33,7 @@ const (
 
 type turnStepResult struct {
 	Outcome              turnStepOutcome
-	Assistant            *Message
+	Assistant            *transcript.Message
 	AssistantSaved       bool
 	Response             providers.Response
 	Err                  error
@@ -73,7 +74,7 @@ func (t turnExecution) toolInput(toolCall providers.ToolCall) (ExecuteToolInput,
 	}, nil
 }
 
-func (c *Core) handleAssistantTurnResponse(runCtx context.Context, turn turnExecution, assistant *Message, assistantSaved bool, response providers.Response) turnStepResult {
+func (c *Core) handleAssistantTurnResponse(runCtx context.Context, turn turnExecution, assistant *transcript.Message, assistantSaved bool, response providers.Response) turnStepResult {
 	response.Text = sanitizeAssistantOutput(response.Text)
 	if len(response.ToolCalls) > 0 {
 		if err := c.saveAssistantToolTurn(runCtx, turn, assistant, assistantSaved, response); err != nil {
@@ -166,12 +167,12 @@ func (c *Core) resumeApprovedTools(ctx context.Context, turn turnExecution) (boo
 	return waitingApproval, nil
 }
 
-func (c *Core) generateAssistantTurn(ctx context.Context, turn turnExecution, request providers.Request) (Message, bool, providers.Response, error) {
-	assistant := Message{
+func (c *Core) generateAssistantTurn(ctx context.Context, turn turnExecution, request providers.Request) (transcript.Message, bool, providers.Response, error) {
+	assistant := transcript.Message{
 		ID:        c.newID("msg"),
 		SessionID: turn.SessionID,
 		RunID:     turn.RunID,
-		Role:      MessageRoleAssistant,
+		Role:      transcript.MessageRoleAssistant,
 	}
 	assistantSaved := false
 	progressDirty := false
@@ -185,7 +186,7 @@ func (c *Core) generateAssistantTurn(ctx context.Context, turn turnExecution, re
 		if !force && assistantSaved && !lastProgressFlush.IsZero() && now.Sub(lastProgressFlush) < assistantProgressFlushInterval {
 			return nil
 		}
-		assistant.Parts = NormalizeMessageParts(assistant.Content, nil)
+		assistant.Parts = transcript.NormalizeMessageParts(assistant.Content, nil)
 		assistant.UpdatedAt = now
 		if !assistantSaved {
 			assistant.CreatedAt = now

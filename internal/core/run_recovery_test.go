@@ -8,6 +8,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/store"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func TestPersistedWorkflowCanRecoverOrphanedRunningRunInline(t *testing.T) {
@@ -16,11 +17,11 @@ func TestPersistedWorkflowCanRecoverOrphanedRunningRunInline(t *testing.T) {
 	app.WithSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "continued inline"}})
 	ctx := context.Background()
 	session := saveRunRecoveryTestSession(t, sqliteStore, "session_execute_orphan", "Orphan", "/tmp")
-	user := core.Message{
+	user := transcript.Message{
 		ID:        "msg_user_execute_orphan",
 		SessionID: session.ID,
 		RunID:     "run_execute_orphan",
-		Role:      core.MessageRoleUser,
+		Role:      transcript.MessageRoleUser,
 		Content:   "work",
 		CreatedAt: runRecoveryTestTime(),
 		UpdatedAt: runRecoveryTestTime(),
@@ -86,7 +87,7 @@ func saveRunRecoveryTestSession(t *testing.T, sqliteStore *store.SQLiteStore, id
 	return session
 }
 
-func saveRunRecoveryTestMessage(t *testing.T, sqliteStore *store.SQLiteStore, message core.Message) {
+func saveRunRecoveryTestMessage(t *testing.T, sqliteStore *store.SQLiteStore, message transcript.Message) {
 	t.Helper()
 	if err := sqliteStore.SaveMessage(context.Background(), message); err != nil {
 		t.Fatalf("save message: %v", err)

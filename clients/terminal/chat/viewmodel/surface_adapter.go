@@ -10,9 +10,10 @@ import (
 	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func ToSurfaceMessage(message core.Message) surfacemessage.Message {
+func ToSurfaceMessage(message transcript.Message) surfacemessage.Message {
 	out := surfacemessage.Message{
 		ID:        message.ID,
 		Role:      surfaceRole(message.Role),
@@ -25,11 +26,11 @@ func ToSurfaceMessage(message core.Message) surfacemessage.Message {
 	}
 	for _, part := range message.Parts {
 		switch part.Kind {
-		case core.MessagePartKindText:
+		case transcript.MessagePartKindText:
 			if part.Text != nil {
 				out.Parts = append(out.Parts, surfacemessage.TextContent{Text: part.Text.Text})
 			}
-		case core.MessagePartKindReasoning:
+		case transcript.MessagePartKindReasoning:
 			if part.Reasoning != nil {
 				out.Parts = append(out.Parts, surfacemessage.ReasoningContent{
 					Thinking:         part.Reasoning.Text,
@@ -41,7 +42,7 @@ func ToSurfaceMessage(message core.Message) surfacemessage.Message {
 					FinishedAt:       surfaceNowUnix(message.UpdatedAt),
 				})
 			}
-		case core.MessagePartKindToolCall:
+		case transcript.MessagePartKindToolCall:
 			if part.ToolCall != nil {
 				if isPlanToolName(part.ToolCall.Name) {
 					continue
@@ -53,7 +54,7 @@ func ToSurfaceMessage(message core.Message) surfacemessage.Message {
 					Finished: part.ToolCall.Finished,
 				})
 			}
-		case core.MessagePartKindToolResult:
+		case transcript.MessagePartKindToolResult:
 			if part.ToolResult != nil {
 				if isPlanToolName(part.ToolResult.Name) {
 					continue
@@ -68,7 +69,7 @@ func ToSurfaceMessage(message core.Message) surfacemessage.Message {
 					IsError:    part.ToolResult.IsError,
 				})
 			}
-		case core.MessagePartKindFinish:
+		case transcript.MessagePartKindFinish:
 			if part.Finish != nil {
 				out.Parts = append(out.Parts, surfacemessage.Finish{
 					Reason:  surfaceFinishReason(part.Finish.Reason),
@@ -85,7 +86,7 @@ func ToSurfaceMessage(message core.Message) surfacemessage.Message {
 	return out
 }
 
-func ToSurfaceMessages(messages []core.Message) []surfacemessage.Message {
+func ToSurfaceMessages(messages []transcript.Message) []surfacemessage.Message {
 	out := make([]surfacemessage.Message, 0, len(messages))
 	for _, message := range messages {
 		if core.IsPlanRunPromptMessage(message) {
@@ -165,13 +166,13 @@ func ToSurfaceFiles(files []core.FileSnapshot) []surfacehistory.File {
 	return out
 }
 
-func surfaceRole(role core.MessageRole) surfacemessage.MessageRole {
+func surfaceRole(role transcript.MessageRole) surfacemessage.MessageRole {
 	switch role {
-	case core.MessageRoleAssistant:
+	case transcript.MessageRoleAssistant:
 		return surfacemessage.Assistant
-	case core.MessageRoleSystem:
+	case transcript.MessageRoleSystem:
 		return surfacemessage.System
-	case core.MessageRoleTool:
+	case transcript.MessageRoleTool:
 		return surfacemessage.Tool
 	default:
 		return surfacemessage.User

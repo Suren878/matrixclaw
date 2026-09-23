@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func (s *SQLiteStore) CreateSessionInput(ctx context.Context, input core.SessionInput) error {
@@ -213,7 +214,7 @@ func scanSessionInput(scanner sessionInputScanner) (core.SessionInput, error) {
 	return input, nil
 }
 
-func marshalSessionInputParts(parts []core.MessagePart) string {
+func marshalSessionInputParts(parts []transcript.MessagePart) string {
 	if len(parts) == 0 {
 		return ""
 	}

@@ -11,8 +11,8 @@ import (
 	"time"
 
 	surfaceeditor "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/editor"
-	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 const maxAttachmentSize = 5 << 20
@@ -21,7 +21,7 @@ var errUnsupportedAttachment = errors.New("only text and image attachments are s
 
 type sendPayload struct {
 	content string
-	parts   []core.MessagePart
+	parts   []transcript.MessagePart
 }
 
 func prepareSendPayload(ctx context.Context, client *daemonclient.Client, prompt string, attachments []surfaceeditor.Attachment) (sendPayload, error) {
@@ -53,13 +53,13 @@ func prepareSendContent(prompt string, attachments []surfaceeditor.Attachment) (
 	return promptWithTextAttachments(strings.TrimSpace(prompt), attachments), nil
 }
 
-func uploadImageMessageParts(ctx context.Context, client *daemonclient.Client, content string, attachments []surfaceeditor.Attachment) ([]core.MessagePart, error) {
+func uploadImageMessageParts(ctx context.Context, client *daemonclient.Client, content string, attachments []surfaceeditor.Attachment) ([]transcript.MessagePart, error) {
 	if client == nil {
 		return nil, fmt.Errorf("terminal runtime is not configured")
 	}
-	var parts []core.MessagePart
+	var parts []transcript.MessagePart
 	if strings.TrimSpace(content) != "" {
-		parts = append(parts, core.MessagePart{Kind: core.MessagePartKindText, Text: &core.TextPart{Text: content}})
+		parts = append(parts, transcript.MessagePart{Kind: transcript.MessagePartKindText, Text: &transcript.TextPart{Text: content}})
 	}
 	for _, attachment := range attachments {
 		if !attachment.IsImage() {
@@ -75,7 +75,7 @@ func uploadImageMessageParts(ctx context.Context, client *daemonclient.Client, c
 		if err != nil {
 			return nil, err
 		}
-		parts = append(parts, core.MessagePart{Kind: core.MessagePartKindImage, Image: &core.ImagePart{
+		parts = append(parts, transcript.MessagePart{Kind: transcript.MessagePartKindImage, Image: &transcript.ImagePart{
 			MIMEType:    entry.MIMEType,
 			Name:        entry.Title,
 			StoragePath: entry.Path,

@@ -7,16 +7,16 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func (w *Worker) renderToolCallUpdates(ctx context.Context, target chatTarget, messages []core.Message, runID string, state *runDeliveryState) error {
+func (w *Worker) renderToolCallUpdates(ctx context.Context, target chatTarget, messages []transcript.Message, runID string, state *runDeliveryState) error {
 	ctx = silentTelegramDelivery(ctx)
 	if state.toolCalls == nil {
 		state.toolCalls = map[string]sentToolCallStatus{}
 	}
 	for _, message := range messages {
-		if strings.TrimSpace(message.RunID) != strings.TrimSpace(runID) || message.Role != core.MessageRoleAssistant {
+		if strings.TrimSpace(message.RunID) != strings.TrimSpace(runID) || message.Role != transcript.MessageRoleAssistant {
 			continue
 		}
 		for _, part := range message.Parts {
@@ -42,13 +42,13 @@ func (w *Worker) renderToolCallUpdates(ctx context.Context, target chatTarget, m
 	return nil
 }
 
-func (w *Worker) renderToolResultUpdates(ctx context.Context, target chatTarget, messages []core.Message, runID string, state *runDeliveryState) error {
+func (w *Worker) renderToolResultUpdates(ctx context.Context, target chatTarget, messages []transcript.Message, runID string, state *runDeliveryState) error {
 	ctx = silentTelegramDelivery(ctx)
 	if state.toolCalls == nil {
 		state.toolCalls = map[string]sentToolCallStatus{}
 	}
 	for _, message := range messages {
-		if strings.TrimSpace(message.RunID) != strings.TrimSpace(runID) || message.Role != core.MessageRoleTool {
+		if strings.TrimSpace(message.RunID) != strings.TrimSpace(runID) || message.Role != transcript.MessageRoleTool {
 			continue
 		}
 		for _, part := range message.Parts {
@@ -60,7 +60,7 @@ func (w *Worker) renderToolResultUpdates(ctx context.Context, target chatTarget,
 			if status.done {
 				continue
 			}
-			call := core.ToolCallPart{ID: result.ToolCallID, Name: firstNonEmpty(status.name, result.Name), Input: status.input, Finished: true}
+			call := transcript.ToolCallPart{ID: result.ToolCallID, Name: firstNonEmpty(status.name, result.Name), Input: status.input, Finished: true}
 			text := renderTelegramToolCallStatus(call, true, result.IsError || strings.EqualFold(result.Status, "error"), result.Content)
 			messageID, err := w.editOrSendMessage(ctx, target, status.messageID, text, nil)
 			if err != nil {
@@ -77,7 +77,7 @@ func (w *Worker) renderToolResultUpdates(ctx context.Context, target chatTarget,
 	return nil
 }
 
-func renderTelegramToolCallStatus(call core.ToolCallPart, done bool, failed bool, resultText string) string {
+func renderTelegramToolCallStatus(call transcript.ToolCallPart, done bool, failed bool, resultText string) string {
 	action, detail := telegramToolAction(call)
 	if done {
 		if failed {
@@ -88,7 +88,7 @@ func renderTelegramToolCallStatus(call core.ToolCallPart, done bool, failed bool
 	return clipTelegramText(strings.TrimSpace(action + telegramToolDetailSuffix(detail)))
 }
 
-func telegramToolAction(call core.ToolCallPart) (string, string) {
+func telegramToolAction(call transcript.ToolCallPart) (string, string) {
 	params := decodeTelegramToolParams(call.Input)
 	name := strings.ToLower(strings.TrimSpace(call.Name))
 	switch name {

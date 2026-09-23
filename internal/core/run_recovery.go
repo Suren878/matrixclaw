@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 const (
@@ -18,8 +19,8 @@ const (
 )
 
 type interruptedToolCall struct {
-	Message Message
-	Call    ToolCallPart
+	Message transcript.Message
+	Call    transcript.ToolCallPart
 }
 
 type runRecoveryApprovalParams struct {
@@ -368,7 +369,7 @@ func latestApprovalForToolCall(approvals []Approval, runID string, toolCallID st
 	return latest, found
 }
 
-func incompleteToolCallsForRun(messages []Message, runID string) []interruptedToolCall {
+func incompleteToolCallsForRun(messages []transcript.Message, runID string) []interruptedToolCall {
 	runID = normalizeText(runID)
 	completed := toolResultCallIDs(messages)
 	seen := map[string]struct{}{}
@@ -398,18 +399,18 @@ func incompleteToolCallsForRun(messages []Message, runID string) []interruptedTo
 	return calls
 }
 
-func (c *Core) markLatestPartialAssistantInterrupted(ctx context.Context, runID string, messages []Message) error {
+func (c *Core) markLatestPartialAssistantInterrupted(ctx context.Context, runID string, messages []transcript.Message) error {
 	return c.markLatestAssistantInterrupted(ctx, runID, messages, false)
 }
 
-func (c *Core) markLatestAssistantInterrupted(ctx context.Context, runID string, messages []Message, allowToolParts bool) error {
+func (c *Core) markLatestAssistantInterrupted(ctx context.Context, runID string, messages []transcript.Message, allowToolParts bool) error {
 	runID = normalizeText(runID)
 	for index := len(messages) - 1; index >= 0; index-- {
 		message := messages[index]
 		if normalizeText(message.RunID) != runID {
 			continue
 		}
-		if message.Role != MessageRoleAssistant {
+		if message.Role != transcript.MessageRoleAssistant {
 			return nil
 		}
 		if (!allowToolParts && messageHasToolPart(message)) || messageHasFinishReason(message, "") {
@@ -429,14 +430,14 @@ func (c *Core) markLatestAssistantInterrupted(ctx context.Context, runID string,
 	return nil
 }
 
-func appendDaemonRestartFinish(message *Message) {
+func appendDaemonRestartFinish(message *transcript.Message) {
 	if message == nil || messageHasFinishReason(*message, runRecoveryReasonDaemonRestart) {
 		return
 	}
-	message.Parts = NormalizeMessageParts(message.Content, message.Parts)
-	message.Parts = append(message.Parts, MessagePart{
-		Kind: MessagePartKindFinish,
-		Finish: &FinishPart{
+	message.Parts = transcript.NormalizeMessageParts(message.Content, message.Parts)
+	message.Parts = append(message.Parts, transcript.MessagePart{
+		Kind: transcript.MessagePartKindFinish,
+		Finish: &transcript.FinishPart{
 			Reason:  runRecoveryReasonDaemonRestart,
 			Message: "Generation was interrupted by a daemon restart; a recovered continuation follows.",
 		},
@@ -478,7 +479,7 @@ func (c *Core) applyRunTurnResultAfterContextStopped(execution *runExecution, re
 	return true, c.preserveRunForRecovery(ctx, run, result.Assistant, result.AssistantSaved)
 }
 
-func (c *Core) preserveRunForRecovery(ctx context.Context, run Run, assistant *Message, assistantSaved bool) error {
+func (c *Core) preserveRunForRecovery(ctx context.Context, run Run, assistant *transcript.Message, assistantSaved bool) error {
 	if assistant != nil && (assistantSaved || strings.TrimSpace(assistant.Content) != "" || len(assistant.Parts) > 0) {
 		appendDaemonRestartFinish(assistant)
 		now := c.now().UTC()
@@ -510,7 +511,7 @@ func (c *Core) preserveRunForRecovery(ctx context.Context, run Run, assistant *M
 	return c.saveRunCheckpoint(ctx, run.ID, RunCheckpointPhaseRecovering, "", "")
 }
 
-func messageHasToolPart(message Message) bool {
+func messageHasToolPart(message transcript.Message) bool {
 	for _, part := range message.Parts {
 		if part.ToolCall != nil || part.ToolResult != nil {
 			return true
@@ -519,7 +520,7 @@ func messageHasToolPart(message Message) bool {
 	return false
 }
 
-func messageHasFinishReason(message Message, reason string) bool {
+func messageHasFinishReason(message transcript.Message, reason string) bool {
 	reason = strings.TrimSpace(reason)
 	for _, part := range message.Parts {
 		if part.Finish == nil {
@@ -532,7 +533,7 @@ func messageHasFinishReason(message Message, reason string) bool {
 	return false
 }
 
-func messageInterruptedByDaemonRestart(message Message) bool {
+func messageInterruptedByDaemonRestart(message transcript.Message) bool {
 	return messageHasFinishReason(message, runRecoveryReasonDaemonRestart)
 }
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/safego"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 type pendingTool struct {
@@ -297,8 +298,8 @@ func (s *streamState) handleCoreEvent(ctx context.Context, event core.Event) err
 			}
 		}
 	case core.EventMessageCreated:
-		var message core.Message
-		if !payloadAs(event.Payload, &message) || message.Role != core.MessageRoleTool {
+		var message transcript.Message
+		if !payloadAs(event.Payload, &message) || message.Role != transcript.MessageRoleTool {
 			return nil
 		}
 		for _, part := range message.Parts {

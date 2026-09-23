@@ -7,9 +7,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func (c *Core) generateCompactSummary(ctx context.Context, session Session, messages []Message) (string, error) {
+func (c *Core) generateCompactSummary(ctx context.Context, session Session, messages []transcript.Message) (string, error) {
 	runtime, err := c.resolveSessionRuntime(ctx, session)
 	if err != nil {
 		return "", err
@@ -60,7 +61,7 @@ If a tool call/result pair matters, summarize the action and outcome together.
 Reply in English. Use compact bullet points only when they add clarity.`)
 }
 
-func compactHistoryPrompt(messages []Message) string {
+func compactHistoryPrompt(messages []transcript.Message) string {
 	if len(messages) == 0 {
 		return ""
 	}
@@ -82,13 +83,13 @@ func compactHistoryPrompt(messages []Message) string {
 }
 
 type compactMessageGroup struct {
-	messages []Message
+	messages []transcript.Message
 }
 
-func compactMessageGroups(messages []Message) []compactMessageGroup {
-	filtered := make([]Message, 0, len(messages))
+func compactMessageGroups(messages []transcript.Message) []compactMessageGroup {
+	filtered := make([]transcript.Message, 0, len(messages))
 	for _, message := range messages {
-		if message.Role == MessageRoleSystem || IsPlanRunPromptMessage(message) {
+		if message.Role == transcript.MessageRoleSystem || IsPlanRunPromptMessage(message) {
 			continue
 		}
 		filtered = append(filtered, message)
@@ -96,7 +97,7 @@ func compactMessageGroups(messages []Message) []compactMessageGroup {
 	groups := make([]compactMessageGroup, 0, len(filtered))
 	for i := 0; i < len(filtered); i++ {
 		message := filtered[i]
-		group := compactMessageGroup{messages: []Message{message}}
+		group := compactMessageGroup{messages: []transcript.Message{message}}
 		toolCallIDs := messageToolCallIDs(message)
 		for len(toolCallIDs) > 0 && i+1 < len(filtered) && messageIsToolResultFor(filtered[i+1], toolCallIDs) {
 			i++
@@ -129,7 +130,7 @@ func compactTailGroupStart(groups []compactMessageGroup, tailRuneBudget int) int
 
 func compactGroupHasUserMessage(group compactMessageGroup) bool {
 	for _, message := range group.messages {
-		if message.Role == MessageRoleUser {
+		if message.Role == transcript.MessageRoleUser {
 			return true
 		}
 	}
@@ -149,7 +150,7 @@ func compactGroupTextForSummary(group compactMessageGroup, tail bool) string {
 	return strings.TrimSpace(strings.Join(parts, "\n"))
 }
 
-func compactMessageTextForSummary(message Message, tail bool) string {
+func compactMessageTextForSummary(message transcript.Message, tail bool) string {
 	text := strings.TrimSpace(message.Content)
 	if len(message.Parts) > 0 {
 		text = compactMessagePartsTextForSummary(message.Parts, tail)
@@ -160,7 +161,7 @@ func compactMessageTextForSummary(message Message, tail bool) string {
 	return trimRunesEnd(text, 1_500)
 }
 
-func messageToolCallIDs(message Message) map[string]struct{} {
+func messageToolCallIDs(message transcript.Message) map[string]struct{} {
 	ids := map[string]struct{}{}
 	for _, part := range message.Parts {
 		if part.ToolCall == nil {
@@ -176,8 +177,8 @@ func messageToolCallIDs(message Message) map[string]struct{} {
 	return ids
 }
 
-func messageIsToolResultFor(message Message, ids map[string]struct{}) bool {
-	if len(ids) == 0 || message.Role != MessageRoleTool {
+func messageIsToolResultFor(message transcript.Message, ids map[string]struct{}) bool {
+	if len(ids) == 0 || message.Role != transcript.MessageRoleTool {
 		return false
 	}
 	for _, part := range message.Parts {
@@ -191,7 +192,7 @@ func messageIsToolResultFor(message Message, ids map[string]struct{}) bool {
 	return false
 }
 
-func compactMessagePartsTextForSummary(parts []MessagePart, tail bool) string {
+func compactMessagePartsTextForSummary(parts []transcript.MessagePart, tail bool) string {
 	values := make([]string, 0, len(parts))
 	for _, part := range parts {
 		switch {
