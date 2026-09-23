@@ -222,7 +222,7 @@ func (r *Runtime) generatePayload(request providers.Request) generateContentRequ
 	for _, message := range request.Messages {
 		content := encodeMessage(message, toolNames)
 		if len(content.Parts) > 0 {
-			payload.Contents = append(payload.Contents, content)
+			payload.Contents = appendGeminiContent(payload.Contents, content)
 		}
 	}
 
@@ -238,7 +238,11 @@ func (r *Runtime) generatePayload(request providers.Request) generateContentRequ
 
 func encodeMessage(message providers.Message, toolNames map[string]string) geminiContent {
 	if len(message.ToolCalls) > 0 {
-		parts := make([]geminiPart, 0, len(message.ToolCalls))
+		parts := make([]geminiPart, 0, len(message.ToolCalls)+1)
+		if content := strings.TrimSpace(message.Content); content != "" {
+			parts = append(parts, geminiPart{Text: content})
+		}
+		signature := thoughtSignature(message.Reasoning)
 		for _, toolCall := range message.ToolCalls {
 			name := strings.TrimSpace(toolCall.Name)
 			if name == "" {
@@ -248,12 +252,15 @@ func encodeMessage(message providers.Message, toolNames map[string]string) gemin
 			if id != "" {
 				toolNames[id] = name
 			}
+			// Gemini signs the first function call of a step.
 			parts = append(parts, geminiPart{
 				FunctionCall: &geminiFunctionCall{
 					Name: name,
 					Args: rawObject(toolCall.Arguments),
 				},
+				ThoughtSignature: signature,
 			})
+			signature = ""
 		}
 		return geminiContent{Role: "model", Parts: parts}
 	}
@@ -266,12 +273,16 @@ func encodeMessage(message providers.Message, toolNames map[string]string) gemin
 		if name == "" {
 			name = "tool_result"
 		}
+		key := "content"
+		if message.IsError {
+			key = "error"
+		}
 		return geminiContent{
 			Role: "user",
 			Parts: []geminiPart{{
 				FunctionResponse: &geminiFunctionResponse{
 					Name:     name,
-					Response: map[string]any{"content": strings.TrimSpace(message.Content)},
+					Response: map[string]any{key: strings.TrimSpace(message.Content)},
 				},
 			}},
 		}
@@ -308,6 +319,33 @@ func encodeMessage(message providers.Message, toolNames map[string]string) gemin
 	}
 }
 
+// appendGeminiContent sends all function responses of one step in one content.
+func appendGeminiContent(contents []geminiContent, next geminiContent) []geminiContent {
+	if n := len(contents); n > 0 && functionResponsesOnly(contents[n-1]) && functionResponsesOnly(next) {
+		contents[n-1].Parts = append(contents[n-1].Parts, next.Parts...)
+		return contents
+	}
+	return append(contents, next)
+}
+
+func functionResponsesOnly(content geminiContent) bool {
+	for _, part := range content.Parts {
+		if part.FunctionResponse == nil {
+			return false
+		}
+	}
+	return len(content.Parts) > 0
+}
+
+func thoughtSignature(blocks []providers.ReasoningBlock) string {
+	for _, block := range blocks {
+		if block.Signature != "" {
+			return block.Signature
+		}
+	}
+	return ""
+}
+
 func encodeTools(tools []providers.ToolDefinition) []geminiFunctionDeclaration {
 	out := make([]geminiFunctionDeclaration, 0, len(tools))
 	for _, tool := range tools {
@@ -341,6 +379,7 @@ func (r *Runtime) decodeGenerateResponse(_ providers.Request, body []byte) (prov
 
 	var text strings.Builder
 	var toolCalls []providers.ToolCall
+	var reasoning []providers.ReasoningBlock
 	// Gemini function calls have no protocol call ID. A run may invoke the
 	// same function in the same output slot on several turns; give each
 	// response its own namespace so later calls cannot overwrite old results.
@@ -350,6 +389,9 @@ func (r *Runtime) decodeGenerateResponse(_ providers.Request, body []byte) (prov
 			text.WriteString(part.Text)
 		}
 		if part.FunctionCall != nil && strings.TrimSpace(part.FunctionCall.Name) != "" {
+			if part.ThoughtSignature != "" && len(reasoning) == 0 {
+				reasoning = []providers.ReasoningBlock{{Signature: part.ThoughtSignature}}
+			}
 			toolCalls = append(toolCalls, providers.ToolCall{
 				ID:        fmt.Sprintf("gemini_%s_%d", responseID, i),
 				Name:      strings.TrimSpace(part.FunctionCall.Name),
@@ -368,6 +410,7 @@ func (r *Runtime) decodeGenerateResponse(_ providers.Request, body []byte) (prov
 		Model:      r.model,
 		Provider:   providers.TypeGemini,
 		ToolCalls:  toolCalls,
+		Reasoning:  reasoning,
 		StopReason: stop,
 		Usage:      geminiUsage(payload.UsageMetadata),
 	}, nil
