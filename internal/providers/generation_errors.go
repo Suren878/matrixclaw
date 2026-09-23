@@ -10,6 +10,7 @@ import (
 var (
 	ErrEmptyResponse      = errors.New("empty assistant reply")
 	ErrIncompleteResponse = errors.New("provider stream ended before completion")
+	ErrMalformedToolCall  = errors.New("model produced a malformed tool call")
 )
 
 // IsRetryableGenerationError is for failures before any output or tool effects.
@@ -18,8 +19,8 @@ func IsRetryableGenerationError(err error) bool {
 	if errors.Is(err, context.Canceled) {
 		return false
 	}
-	if errors.Is(err, ErrEmptyResponse) || errors.Is(err, ErrIncompleteResponse) || errors.Is(err, ErrStreamIdle) ||
-		errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
+	if errors.Is(err, ErrEmptyResponse) || errors.Is(err, ErrIncompleteResponse) || errors.Is(err, ErrMalformedToolCall) ||
+		errors.Is(err, ErrStreamIdle) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
 		return true
 	}
 	var networkError net.Error

@@ -53,7 +53,8 @@ type geminiFunctionDeclaration struct {
 
 type generateContentResponse struct {
 	Candidates []struct {
-		Content geminiContent `json:"content"`
+		Content      geminiContent `json:"content"`
+		FinishReason string        `json:"finishReason,omitempty"`
 	} `json:"candidates"`
 	UsageMetadata geminiUsageMetadata `json:"usageMetadata,omitempty"`
 }

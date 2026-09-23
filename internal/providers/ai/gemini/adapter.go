@@ -329,13 +329,19 @@ func (r *Runtime) decodeGenerateResponse(_ providers.Request, body []byte) (prov
 		return providers.Response{}, fmt.Errorf("gemini: empty candidates: %w", providers.ErrEmptyResponse)
 	}
 
+	candidate := payload.Candidates[0]
+	stop, err := geminiStopReason(candidate.FinishReason)
+	if err != nil {
+		return providers.Response{}, err
+	}
+
 	var text strings.Builder
 	var toolCalls []providers.ToolCall
 	// Gemini function calls have no protocol call ID. A run may invoke the
 	// same function in the same output slot on several turns; give each
 	// response its own namespace so later calls cannot overwrite old results.
 	responseID := rand.Text()
-	for i, part := range payload.Candidates[0].Content.Parts {
+	for i, part := range candidate.Content.Parts {
 		if !part.Thought && strings.TrimSpace(part.Text) != "" {
 			text.WriteString(part.Text)
 		}
@@ -349,16 +355,33 @@ func (r *Runtime) decodeGenerateResponse(_ providers.Request, body []byte) (prov
 	}
 
 	reply := strings.TrimSpace(text.String())
-	if reply == "" && len(toolCalls) == 0 {
+	stop = providers.ResolveStopReason(stop, len(toolCalls))
+	if reply == "" && len(toolCalls) == 0 && !stop.AllowsEmptyReply() {
 		return providers.Response{}, fmt.Errorf("gemini: %w", providers.ErrEmptyResponse)
 	}
 	return providers.Response{
-		Text:      reply,
-		Model:     r.model,
-		Provider:  providers.TypeGemini,
-		ToolCalls: toolCalls,
-		Usage:     geminiUsage(payload.UsageMetadata),
+		Text:       reply,
+		Model:      r.model,
+		Provider:   providers.TypeGemini,
+		ToolCalls:  toolCalls,
+		StopReason: stop,
+		Usage:      geminiUsage(payload.UsageMetadata),
 	}, nil
+}
+
+// geminiStopReason maps finishReason; a malformed or unexpected function call is
+// a retryable generation failure, not a reply.
+func geminiStopReason(reason string) (providers.StopReason, error) {
+	switch reason {
+	case "MAX_TOKENS":
+		return providers.StopMaxTokens, nil
+	case "SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY":
+		return providers.StopContentFilter, nil
+	case "MALFORMED_FUNCTION_CALL", "UNEXPECTED_TOOL_CALL":
+		return "", fmt.Errorf("gemini: %s: %w", strings.ToLower(reason), providers.ErrMalformedToolCall)
+	default:
+		return providers.StopEndTurn, nil
+	}
 }
 
 func normalizeConfig(cfg Config) (*http.Client, string, string, string, int64, error) {
