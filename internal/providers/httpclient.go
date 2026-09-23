@@ -14,6 +14,7 @@ const (
 	defaultResponseHeaderTimeout = 10 * time.Minute
 )
 
+// ErrStreamIdle marks a response body that stayed silent past the idle timeout.
 var ErrStreamIdle = errors.New("provider stream idle timeout")
 
 // NewHTTPClient returns the client for model requests: no whole-request
@@ -60,11 +61,12 @@ type idleTimeoutBody struct {
 }
 
 func (b *idleTimeoutBody) Read(p []byte) (int, error) {
+	b.timer.Reset(b.idle)
 	n, err := b.body.Read(p)
+	b.timer.Stop()
 	if err != nil && errors.Is(context.Cause(b.ctx), ErrStreamIdle) {
 		return n, ErrStreamIdle
 	}
-	b.timer.Reset(b.idle)
 	return n, err
 }
 

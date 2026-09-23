@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 	anthropic "github.com/Suren878/matrixclaw/internal/providers/ai/anthropiccompat"
@@ -13,6 +14,9 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers/ai/openaicodex"
 	"github.com/Suren878/matrixclaw/internal/providers/ai/openaicompat"
 )
+
+// modelsDiscoveryTimeout caps how long a remote model listing call may take.
+var modelsDiscoveryTimeout = 30 * time.Second
 
 type ModelDiscoveryInput struct {
 	ID        string
@@ -24,6 +28,9 @@ type ModelDiscoveryInput struct {
 }
 
 func Models(ctx context.Context, input ModelDiscoveryInput) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, modelsDiscoveryTimeout)
+	defer cancel()
+
 	providerID := firstNonEmpty(input.CatalogID, input.ID)
 	policy := providers.PolicyForProvider(providerID, input.Type)
 	if strings.TrimSpace(input.APIKey) == "" && policy.RequiresAPIKey && !policy.PublicModelCatalog {
