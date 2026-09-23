@@ -16,6 +16,7 @@ const (
 
 type Message struct {
 	ID        string        `json:"id"`
+	Seq       int64         `json:"seq,omitempty"`
 	SessionID string        `json:"session_id"`
 	RunID     string        `json:"run_id"`
 	Role      MessageRole   `json:"role"`

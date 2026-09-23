@@ -68,10 +68,10 @@ WHERE id = ?`,
 
 func (s *SQLiteStore) ListMessages(ctx context.Context, sessionID string, limit int) ([]transcript.Message, error) {
 	query := `
-SELECT id, session_id, run_id, role, content, parts_json, model, provider, created_at, updated_at
+SELECT ` + messageColumns + `
 FROM messages
 WHERE session_id = ?
-ORDER BY created_at DESC`
+ORDER BY seq DESC`
 	var (
 		rows *sql.Rows
 		err  error
@@ -268,10 +268,13 @@ type runScanner interface {
 	Scan(dest ...any) error
 }
 
+const messageColumns = `id, session_id, run_id, role, content, parts_json, model, provider, created_at, updated_at, seq`
+
+// insertMessage assigns the next database-wide seq in the same statement.
 func insertMessage(ctx context.Context, execer sqlExecer, message transcript.Message) error {
 	_, err := execer.ExecContext(ctx, `
-INSERT INTO messages(id, session_id, run_id, role, content, parts_json, model, provider, created_at, updated_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+INSERT INTO messages(id, session_id, run_id, role, content, parts_json, model, provider, created_at, updated_at, seq)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM messages))`,
 		message.ID,
 		message.SessionID,
 		message.RunID,
@@ -294,7 +297,7 @@ func scanMessage(scanner messageScanner) (transcript.Message, error) {
 	var provider string
 	var createdAt string
 	var updatedAt string
-	if err := scanner.Scan(&message.ID, &message.SessionID, &message.RunID, &role, &message.Content, &partsJSON, &model, &provider, &createdAt, &updatedAt); err != nil {
+	if err := scanner.Scan(&message.ID, &message.SessionID, &message.RunID, &role, &message.Content, &partsJSON, &model, &provider, &createdAt, &updatedAt, &message.Seq); err != nil {
 		return transcript.Message{}, fmt.Errorf("store: scan message: %w", err)
 	}
 	message.Role = transcript.MessageRole(role)

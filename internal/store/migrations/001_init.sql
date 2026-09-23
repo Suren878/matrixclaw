@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS messages (
     provider TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT '',
+    seq INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
@@ -278,9 +279,6 @@ CREATE TABLE IF NOT EXISTS external_agent_sessions (
     updated_at TEXT NOT NULL,
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
-
-CREATE INDEX IF NOT EXISTS idx_messages_session_created_at
-    ON messages(session_id, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_subagent_tasks_parent
     ON subagent_tasks(parent_session_id, parent_run_id, parent_tool_call_id);
