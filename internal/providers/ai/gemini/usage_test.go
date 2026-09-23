@@ -1,15 +1,17 @@
 package gemini
 
 import (
+	"context"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
 func TestUsageCountsThoughtsAsOutput(t *testing.T) {
-	body := []byte(`{"candidates":[{"content":{"parts":[{"text":"ok"}]}}],"usageMetadata":{"promptTokenCount":1000,"cachedContentTokenCount":600,"candidatesTokenCount":100,"thoughtsTokenCount":40,"totalTokenCount":1140}}`)
-	response, err := (&Runtime{}).decodeGenerateResponse(providers.Request{}, body)
+	stream := `data: {"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1000,"cachedContentTokenCount":600,"candidatesTokenCount":100,"thoughtsTokenCount":40,"totalTokenCount":1140}}` + "\n\n"
+	response, err := (&Runtime{}).decodeStream(context.Background(), strings.NewReader(stream))
 	if err != nil {
 		t.Fatal(err)
 	}

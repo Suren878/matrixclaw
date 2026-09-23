@@ -1,7 +1,9 @@
 package gemini
 
 import (
+	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -41,8 +43,8 @@ func TestOneToolStepIsSentBackAsOneModelAndOneUserContent(t *testing.T) {
 }
 
 func TestThoughtSignatureIsReturnedAsReasoning(t *testing.T) {
-	body := []byte(`{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"read","args":{"path":"a"}},"thoughtSignature":"sig-a"},{"functionCall":{"name":"read","args":{"path":"b"}}}]},"finishReason":"STOP"}]}`)
-	response, err := (&Runtime{}).decodeGenerateResponse(providers.Request{}, body)
+	stream := `data: {"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"read","args":{"path":"a"}},"thoughtSignature":"sig-a"},{"functionCall":{"name":"read","args":{"path":"b"}}}]},"finishReason":"STOP"}]}` + "\n\n"
+	response, err := (&Runtime{}).decodeStream(context.Background(), strings.NewReader(stream))
 	if err != nil {
 		t.Fatal(err)
 	}

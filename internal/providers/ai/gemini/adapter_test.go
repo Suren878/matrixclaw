@@ -1,20 +1,19 @@
 package gemini
 
 import (
+	"context"
+	"strings"
 	"testing"
-
-	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
 func TestRepeatedGeminiToolInLaterTurnGetsDistinctCallID(t *testing.T) {
 	runtime := &Runtime{}
-	request := providers.Request{RunID: "same-run"}
-	body := []byte(`{"candidates":[{"content":{"parts":[{"functionCall":{"name":"inspect","args":{"path":"a"}}}]}}]}`)
-	first, err := runtime.decodeGenerateResponse(request, body)
+	stream := `data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"inspect","args":{"path":"a"}}}]},"finishReason":"STOP"}]}` + "\n\n"
+	first, err := runtime.decodeStream(context.Background(), strings.NewReader(stream))
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := runtime.decodeGenerateResponse(request, body)
+	second, err := runtime.decodeStream(context.Background(), strings.NewReader(stream))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -67,6 +67,9 @@ type generateContentResponse struct {
 		FinishReason string        `json:"finishReason,omitempty"`
 	} `json:"candidates"`
 	UsageMetadata geminiUsageMetadata `json:"usageMetadata,omitempty"`
+	Error         *struct {
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
 }
 
 type geminiUsageMetadata struct {

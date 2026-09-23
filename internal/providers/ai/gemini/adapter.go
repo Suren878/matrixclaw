@@ -55,7 +55,7 @@ func New(_ context.Context, cfg Config) (providers.Runtime, error) {
 
 	return &Runtime{
 		client:          client,
-		endpoint:        strings.TrimRight(baseURL, "/") + "/" + modelResource(model) + ":generateContent",
+		endpoint:        strings.TrimRight(baseURL, "/") + "/" + modelResource(model) + ":streamGenerateContent?alt=sse",
 		apiKey:          apiKey,
 		model:           model,
 		providerID:      metadataProviderID(cfg),
@@ -154,18 +154,18 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 		}
 		httpReq.Header.Set("x-goog-api-key", r.apiKey)
 		httpReq.Header.Set("Content-Type", "application/json")
-		httpReq.Header.Set("Accept", "application/json")
+		httpReq.Header.Set("Accept", "text/event-stream")
 
 		httpRes, err := r.client.Do(httpReq)
 		if err != nil {
 			return providers.Response{}, fmt.Errorf("gemini: request failed: %w", err)
 		}
-		resBody, err := io.ReadAll(httpRes.Body)
-		_ = httpRes.Body.Close()
-		if err != nil {
-			return providers.Response{}, fmt.Errorf("gemini: read response: %w", err)
-		}
 		if httpRes.StatusCode < 200 || httpRes.StatusCode >= 300 {
+			resBody, err := io.ReadAll(httpRes.Body)
+			_ = httpRes.Body.Close()
+			if err != nil {
+				return providers.Response{}, fmt.Errorf("gemini: read response: %w", err)
+			}
 			if shouldRetryStatus(httpRes.StatusCode) && attempt < len(transientRetryBackoffs) {
 				if err := waitForRetry(ctx, transientRetryBackoffs[attempt]); err != nil {
 					return providers.Response{}, err
@@ -174,16 +174,9 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 			}
 			return providers.Response{}, fmt.Errorf("gemini: %s", decodeGeminiError(httpRes.StatusCode, resBody))
 		}
-		response, err := r.decodeGenerateResponse(request, resBody)
-		if err != nil {
-			return providers.Response{}, err
-		}
-		if response.Text != "" {
-			if err := providers.StreamText(ctx, response.Text); err != nil {
-				return providers.Response{}, err
-			}
-		}
-		return response, nil
+		response, err := r.decodeStream(ctx, httpRes.Body)
+		_ = httpRes.Body.Close()
+		return response, err
 	}
 }
 
@@ -362,17 +355,51 @@ func encodeTools(tools []providers.ToolDefinition) []geminiFunctionDeclaration {
 	return out
 }
 
-func (r *Runtime) decodeGenerateResponse(_ providers.Request, body []byte) (providers.Response, error) {
-	var payload generateContentResponse
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return providers.Response{}, fmt.Errorf("gemini: decode response: %w", err)
+// decodeStream reads streamGenerateContent SSE. The stream has no terminal event,
+// so a reply is complete only once a chunk carries finishReason.
+func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.Response, error) {
+	var parts []geminiPart
+	var usage geminiUsageMetadata
+	finishReason := ""
+	err := providers.ScanSSE(ctx, body, func(event providers.SSEEvent) error {
+		var chunk generateContentResponse
+		if err := json.Unmarshal([]byte(event.Data), &chunk); err != nil {
+			return fmt.Errorf("gemini: decode stream chunk: %w", err)
+		}
+		if chunk.Error != nil {
+			return fmt.Errorf("gemini: %s", strings.TrimSpace(chunk.Error.Message))
+		}
+		if chunk.UsageMetadata != (geminiUsageMetadata{}) {
+			usage = chunk.UsageMetadata
+		}
+		if len(chunk.Candidates) == 0 {
+			return nil
+		}
+		candidate := chunk.Candidates[0]
+		for _, part := range candidate.Content.Parts {
+			parts = append(parts, part)
+			if !part.Thought {
+				if err := providers.StreamText(ctx, part.Text); err != nil {
+					return err
+				}
+			}
+		}
+		if candidate.FinishReason != "" {
+			finishReason = candidate.FinishReason
+		}
+		return nil
+	})
+	if err != nil {
+		return providers.Response{}, err
 	}
-	if len(payload.Candidates) == 0 {
-		return providers.Response{}, fmt.Errorf("gemini: empty candidates: %w", providers.ErrEmptyResponse)
+	if finishReason == "" {
+		return providers.Response{}, fmt.Errorf("gemini: %w", providers.ErrIncompleteResponse)
 	}
+	return r.reply(parts, finishReason, usage)
+}
 
-	candidate := payload.Candidates[0]
-	stop, err := geminiStopReason(candidate.FinishReason)
+func (r *Runtime) reply(parts []geminiPart, finishReason string, usage geminiUsageMetadata) (providers.Response, error) {
+	stop, err := geminiStopReason(finishReason)
 	if err != nil {
 		return providers.Response{}, err
 	}
@@ -384,8 +411,8 @@ func (r *Runtime) decodeGenerateResponse(_ providers.Request, body []byte) (prov
 	// same function in the same output slot on several turns; give each
 	// response its own namespace so later calls cannot overwrite old results.
 	responseID := rand.Text()
-	for i, part := range candidate.Content.Parts {
-		if !part.Thought && strings.TrimSpace(part.Text) != "" {
+	for i, part := range parts {
+		if !part.Thought {
 			text.WriteString(part.Text)
 		}
 		if part.FunctionCall != nil && strings.TrimSpace(part.FunctionCall.Name) != "" {
@@ -412,7 +439,7 @@ func (r *Runtime) decodeGenerateResponse(_ providers.Request, body []byte) (prov
 		ToolCalls:  toolCalls,
 		Reasoning:  reasoning,
 		StopReason: stop,
-		Usage:      geminiUsage(payload.UsageMetadata),
+		Usage:      geminiUsage(usage),
 	}, nil
 }
 
