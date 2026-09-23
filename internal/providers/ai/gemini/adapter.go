@@ -15,10 +15,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
-const (
-	defaultTimeout         = 90 * time.Second
-	defaultMaxOutputTokens = 4096
-)
+const defaultMaxOutputTokens = 4096
 
 var transientRetryBackoffs = []time.Duration{
 	200 * time.Millisecond,
@@ -383,7 +380,7 @@ func normalizeConfig(cfg Config) (*http.Client, string, string, string, int64, e
 	}
 	client := cfg.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: defaultTimeout}
+		client = providers.NewHTTPClient()
 	}
 	return client, apiKey, baseURL, model, maxOutputTokens, nil
 }

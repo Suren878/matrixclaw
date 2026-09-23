@@ -14,7 +14,7 @@ import (
 func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 	client := cfg.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: defaultTimeout}
+		client = providers.NewHTTPClient()
 	}
 	baseURL := strings.TrimRight(firstNonEmpty(cfg.BaseURL, DefaultBaseURL), "/")
 	creds, err := ResolveCredentials(ctx, client, baseURL)

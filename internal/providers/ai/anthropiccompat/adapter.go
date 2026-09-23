@@ -9,13 +9,11 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
 const (
-	defaultTimeout          = 90 * time.Second
 	defaultAnthropicVersion = "2023-06-01"
 	defaultMaxTokens        = 4096
 )
@@ -371,7 +369,7 @@ func normalizeConfig(cfg Config) (*http.Client, string, string, string, int64, e
 
 	client := cfg.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: defaultTimeout}
+		client = providers.NewHTTPClient()
 	}
 
 	return client, apiKey, baseURL, model, maxTokens, nil

@@ -9,12 +9,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
-
-const defaultTimeout = 120 * time.Second
 
 type Config struct {
 	ProviderID      string
@@ -41,7 +38,7 @@ type Runtime struct {
 func New(_ context.Context, cfg Config) (providers.Runtime, error) {
 	client := cfg.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: defaultTimeout}
+		client = providers.NewHTTPClient()
 	}
 	baseURL := strings.TrimRight(firstNonEmpty(cfg.BaseURL, DefaultBaseURL), "/")
 	model := strings.TrimSpace(cfg.Model)

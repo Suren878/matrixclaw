@@ -15,7 +15,7 @@ import (
 func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 	client := cfg.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: defaultTimeout}
+		client = providers.NewHTTPClient()
 	}
 	apiKey := strings.TrimSpace(cfg.APIKey)
 	baseURL := strings.TrimSpace(cfg.BaseURL)

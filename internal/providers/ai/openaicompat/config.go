@@ -5,12 +5,9 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
-
-const defaultTimeout = 5 * time.Minute
 
 type Config struct {
 	ProviderID      string
@@ -107,7 +104,7 @@ func normalizeConfig(cfg Config) (*http.Client, string, string, string, error) {
 
 	client := cfg.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: defaultTimeout}
+		client = providers.NewHTTPClient()
 	}
 	return client, apiKey, baseURL, model, nil
 }
