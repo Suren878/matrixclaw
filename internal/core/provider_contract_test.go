@@ -7,6 +7,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -78,5 +79,49 @@ func TestRunStepRecordsTheProviderStopReason(t *testing.T) {
 	}
 	if len(steps) != 1 || steps[0].StopReason != "max_tokens" {
 		t.Fatalf("run steps=%+v, want one step with stop_reason max_tokens", steps)
+	}
+}
+
+func TestToolStepReasoningIsSentBackWithItsCalls(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	tool := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
+	app.WithTools(tools.NewRegistry(tool))
+	calls := 0
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		calls++
+		if calls == 1 {
+			return providers.Response{
+				Text:      "Inspecting both.",
+				Reasoning: []providers.ReasoningBlock{{RedactedData: "enc-1"}},
+				ToolCalls: []providers.ToolCall{
+					{ID: "call-a", Name: "inspect_state", Arguments: []byte(`{}`)},
+					{ID: "call-b", Name: "inspect_state", Arguments: []byte(`{}`)},
+				},
+				StopReason: providers.StopToolUse,
+			}, nil
+		}
+		for i, message := range request.Messages {
+			if len(message.ToolCalls) == 0 {
+				continue
+			}
+			if message.Content != "Inspecting both." || len(message.ToolCalls) != 2 || len(message.Reasoning) != 1 || message.Reasoning[0].RedactedData != "enc-1" || message.ReasoningContent != nil {
+				t.Fatalf("tool step=%+v", message)
+			}
+			if i+2 >= len(request.Messages) || request.Messages[i+1].ToolCallID != "call-a" || request.Messages[i+2].ToolCallID != "call-b" {
+				t.Fatalf("results must follow the step in call order: %+v", request.Messages)
+			}
+			return providers.Response{Text: "Both inspected.", StopReason: providers.StopEndTurn}, nil
+		}
+		t.Fatalf("no tool step in %+v", request.Messages)
+		return providers.Response{}, nil
+	})})
+	_, run := saveCrashRecoveryRun(t, db, "reasoning-replay", core.RunStatusAccepted, false)
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
+	if calls != 2 || tool.callCount() != 2 {
+		t.Fatalf("model calls=%d tool calls=%d", calls, tool.callCount())
 	}
 }

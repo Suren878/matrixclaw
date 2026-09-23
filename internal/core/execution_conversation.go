@@ -27,33 +27,75 @@ func buildProviderConversationWithAttachmentsForRun(ctx context.Context, history
 
 	conversation := make([]providers.Message, 0, len(entries))
 	for i := 0; i < len(entries); i++ {
-		providerMessages := entries[i].messages
-		if len(providerMessages) == 0 {
-			continue
+		if isToolStepStart(entries[i]) {
+			step, next := collectToolStep(entries, i)
+			if len(step.ToolCalls) > 0 {
+				conversation = append(conversation, step)
+				conversation = appendProviderToolResults(conversation, step.ToolCalls, toolResults)
+				i = next - 1
+				continue
+			}
 		}
-
-		providerMessage := providerMessages[0]
-		if isPairedToolResultMessage(providerMessage) {
-			continue
+		for _, providerMessage := range entries[i].messages {
+			if !isPairedToolResultMessage(providerMessage) {
+				conversation = append(conversation, providerMessage)
+			}
 		}
-
-		if len(providerMessage.ToolCalls) == 0 {
-			conversation = append(conversation, providerMessages...)
-			continue
-		}
-
-		batched := providerMessage
-		if isToolCallOnlyProviderMessage(providerMessage) {
-			batched, i = batchAdjacentToolCallMessages(entries, i)
-		}
-		conversation = append(conversation, batched)
-		conversation = appendProviderToolResults(conversation, batched.ToolCalls, toolResults)
 	}
 	return conversation, nil
 }
 
 type providerConversationEntry struct {
+	source   transcript.Message
 	messages []providers.Message
+}
+
+// isToolStepStart: a model response that called tools starts with its saved
+// reply (finish reason tool_calls) or, in older histories, with its first call.
+func isToolStepStart(entry providerConversationEntry) bool {
+	return isToolStepReply(entry.source) || (len(entry.messages) == 1 && len(entry.messages[0].ToolCalls) > 0)
+}
+
+func isToolStepReply(message transcript.Message) bool {
+	if message.Role != transcript.MessageRoleAssistant {
+		return false
+	}
+	for _, part := range message.Parts {
+		if part.Finish != nil && part.Finish.Reason == "tool_calls" {
+			return true
+		}
+	}
+	return false
+}
+
+// collectToolStep merges one model response (its reply, reasoning and every call
+// it made) into one assistant message; results are paired after it in call order.
+func collectToolStep(entries []providerConversationEntry, start int) (providers.Message, int) {
+	step := providers.Message{Role: string(transcript.MessageRoleAssistant)}
+	var parts []transcript.MessagePart
+	i := start
+collect:
+	for ; i < len(entries); i++ {
+		entry := entries[i]
+		switch {
+		case i == start:
+			if len(entry.messages) == 1 {
+				step.Content = entry.messages[0].Content
+				step.Images = entry.messages[0].Images
+				step.ToolCalls = append(step.ToolCalls, entry.messages[0].ToolCalls...)
+			}
+		case len(entry.messages) == 1 && isPairedToolResultMessage(entry.messages[0]):
+			continue
+		case !isToolStepReply(entry.source) && len(entry.messages) == 1 && isAdditionalBatchableToolCallMessage(entry.messages[0]):
+			step.ToolCalls = append(step.ToolCalls, entry.messages[0].ToolCalls...)
+		default:
+			break collect
+		}
+		parts = append(parts, entry.source.Parts...)
+	}
+	step.ReasoningContent = messageReasoningContent(parts)
+	step.Reasoning = messageReasoningBlocks(parts)
+	return step, i
 }
 
 func convertProviderConversationHistory(ctx context.Context, history []transcript.Message, reader AttachmentReader, currentRunID string, allowImageInput bool) ([]providerConversationEntry, error) {
@@ -66,7 +108,7 @@ func convertProviderConversationHistory(ctx context.Context, history []transcrip
 		if err != nil {
 			return nil, err
 		}
-		entries = append(entries, providerConversationEntry{messages: providerMessages})
+		entries = append(entries, providerConversationEntry{source: message, messages: providerMessages})
 	}
 	return entries, nil
 }
@@ -96,21 +138,6 @@ func isToolCallOnlyProviderMessage(message providers.Message) bool {
 	return len(message.ToolCalls) > 0 && strings.TrimSpace(message.Content) == ""
 }
 
-func batchAdjacentToolCallMessages(entries []providerConversationEntry, start int) (providers.Message, int) {
-	batched := entries[start].messages[0]
-	for i := start + 1; i < len(entries); i++ {
-		if len(entries[i].messages) != 1 {
-			return batched, i - 1
-		}
-		next := entries[i].messages[0]
-		if !isAdditionalBatchableToolCallMessage(next) {
-			return batched, i - 1
-		}
-		batched.ToolCalls = append(batched.ToolCalls, next.ToolCalls...)
-	}
-	return batched, len(entries) - 1
-}
-
 func isAdditionalBatchableToolCallMessage(message providers.Message) bool {
 	return strings.TrimSpace(message.Role) == string(transcript.MessageRoleAssistant) && isToolCallOnlyProviderMessage(message)
 }
@@ -136,6 +163,7 @@ func syntheticFailedToolResult(toolCallID string) providers.Message {
 		Role:       string(transcript.MessageRoleTool),
 		ToolCallID: toolCallID,
 		Content:    "Tool execution failed before completion.",
+		IsError:    true,
 	}
 }
 
@@ -359,6 +387,7 @@ func toProviderMessages(ctx context.Context, message transcript.Message, reader 
 			Role:             string(message.Role),
 			Content:          providerContent,
 			ReasoningContent: reasoningContent,
+			Reasoning:        messageReasoningBlocks(message.Parts),
 			Images:           images,
 			ToolCalls:        toolCalls,
 		}}, nil
@@ -380,6 +409,7 @@ func toProviderMessages(ctx context.Context, message transcript.Message, reader 
 			Role:       string(message.Role),
 			Content:    content,
 			ToolCallID: strings.TrimSpace(part.ToolResult.ToolCallID),
+			IsError:    part.ToolResult.IsError,
 		}}, nil
 	}
 
@@ -390,6 +420,7 @@ func toProviderMessages(ctx context.Context, message transcript.Message, reader 
 		Role:             string(message.Role),
 		Content:          providerContent,
 		ReasoningContent: reasoningContent,
+		Reasoning:        messageReasoningBlocks(message.Parts),
 		Images:           images,
 	}}, nil
 }
@@ -418,7 +449,7 @@ func IsProviderSupportedImageMIMEType(mimeType string) bool {
 func messageReasoningContent(parts []transcript.MessagePart) *string {
 	var values []string
 	for _, part := range parts {
-		if part.Reasoning == nil {
+		if part.Reasoning == nil || isSignedReasoning(*part.Reasoning) {
 			continue
 		}
 		values = append(values, part.Reasoning.Text)
@@ -428,6 +459,22 @@ func messageReasoningContent(parts []transcript.MessagePart) *string {
 	}
 	value := strings.Join(values, "\n")
 	return &value
+}
+
+// messageReasoningBlocks returns reasoning the provider signed or encrypted; it
+// goes back unchanged, unlike plain reasoning_content text.
+func messageReasoningBlocks(parts []transcript.MessagePart) []providers.ReasoningBlock {
+	var blocks []providers.ReasoningBlock
+	for _, part := range parts {
+		if part.Reasoning != nil && isSignedReasoning(*part.Reasoning) {
+			blocks = append(blocks, providers.ReasoningBlock{Text: part.Reasoning.Text, Signature: part.Reasoning.Signature, RedactedData: part.Reasoning.RedactedData})
+		}
+	}
+	return blocks
+}
+
+func isSignedReasoning(part transcript.ReasoningPart) bool {
+	return part.Signature != "" || part.RedactedData != ""
 }
 
 func imagePartLabel(part transcript.ImagePart) string {

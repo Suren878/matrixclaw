@@ -1,0 +1,69 @@
+package core
+
+import (
+	"context"
+	"testing"
+
+	"github.com/Suren878/matrixclaw/internal/transcript"
+)
+
+func stepCallMessage(id string) transcript.Message {
+	return transcript.Message{Role: transcript.MessageRoleAssistant, Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindToolCall, ToolCall: &transcript.ToolCallPart{ID: id, Name: "read", Input: `{}`}}}}
+}
+
+func stepResultMessage(id string, content string, failed bool) transcript.Message {
+	return transcript.Message{Role: transcript.MessageRoleTool, Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindToolResult, ToolResult: &transcript.ToolResultPart{ToolCallID: id, Name: "read", Content: content, IsError: failed}}}}
+}
+
+func TestToolStepIsReplayedAsOneAssistantMessage(t *testing.T) {
+	stepEnd := transcript.MessagePart{Kind: transcript.MessagePartKindFinish, Finish: &transcript.FinishPart{Reason: "tool_calls"}}
+	history := []transcript.Message{
+		{Role: transcript.MessageRoleUser, Content: "Compare a and b"},
+		{Role: transcript.MessageRoleAssistant, Content: "Reading both.", Parts: []transcript.MessagePart{
+			{Kind: transcript.MessagePartKindReasoning, Reasoning: &transcript.ReasoningPart{RedactedData: "enc-1"}},
+			{Kind: transcript.MessagePartKindText, Text: &transcript.TextPart{Text: "Reading both."}},
+			stepEnd,
+		}},
+		stepCallMessage("a"), stepResultMessage("a", "A", false),
+		stepCallMessage("b"), stepResultMessage("b", "missing", true),
+		{Role: transcript.MessageRoleAssistant, Parts: []transcript.MessagePart{stepEnd}},
+		stepCallMessage("c"), stepResultMessage("c", "C", false),
+		{Role: transcript.MessageRoleAssistant, Content: "Done"},
+	}
+	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(conversation) != 7 {
+		t.Fatalf("conversation=%+v, want user, step, 2 results, step, result, reply", conversation)
+	}
+	first := conversation[1]
+	if first.Content != "Reading both." || len(first.ToolCalls) != 2 || first.ToolCalls[1].ID != "b" || len(first.Reasoning) != 1 || first.Reasoning[0].RedactedData != "enc-1" || first.ReasoningContent != nil {
+		t.Fatalf("first step=%+v", first)
+	}
+	if conversation[2].ToolCallID != "a" || conversation[2].IsError || conversation[3].ToolCallID != "b" || !conversation[3].IsError {
+		t.Fatalf("results=%+v %+v", conversation[2], conversation[3])
+	}
+	if second := conversation[4]; len(second.ToolCalls) != 1 || second.ToolCalls[0].ID != "c" || conversation[5].ToolCallID != "c" || conversation[6].Content != "Done" {
+		t.Fatalf("second step and reply=%+v", conversation[4:])
+	}
+}
+
+func TestPlainReasoningOnOlderToolCallsStaysReasoningContent(t *testing.T) {
+	history := []transcript.Message{
+		{Role: transcript.MessageRoleUser, Content: "Inspect"},
+		{Role: transcript.MessageRoleAssistant, Parts: []transcript.MessagePart{
+			{Kind: transcript.MessagePartKindReasoning, Reasoning: &transcript.ReasoningPart{Text: "thinking"}},
+			{Kind: transcript.MessagePartKindToolCall, ToolCall: &transcript.ToolCallPart{ID: "a", Name: "read", Input: `{}`}},
+		}},
+		stepResultMessage("a", "A", false),
+	}
+	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	step := conversation[1]
+	if step.ReasoningContent == nil || *step.ReasoningContent != "thinking" || len(step.Reasoning) != 0 {
+		t.Fatalf("step=%+v", step)
+	}
+}

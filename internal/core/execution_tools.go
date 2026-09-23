@@ -30,7 +30,7 @@ func (c *Core) executeRequestedTools(ctx context.Context, turn turnExecution, re
 	}
 	seen := make(map[string]providers.ToolCall)
 	waitingApproval := false
-	for index, toolCall := range response.ToolCalls {
+	for _, toolCall := range response.ToolCalls {
 		if err := ctx.Err(); err != nil {
 			return false, err
 		}
@@ -64,11 +64,6 @@ func (c *Core) executeRequestedTools(ctx context.Context, turn turnExecution, re
 		result, err := c.ExecuteTool(ctx, input)
 		if errors.Is(err, ErrInvalidInput) && result.ToolResultMessage == nil && result.ToolCallMessage.ID == "" {
 			result, err = c.recordRejectedToolRequest(ctx, input, err)
-		}
-		if index == 0 {
-			if attachErr := c.attachReasoningToToolCallMessage(ctx, result.ToolCallMessage, response.ReasoningContent); attachErr != nil {
-				return false, attachErr
-			}
 		}
 		if err != nil && result.ToolResultMessage == nil {
 			return false, err
@@ -126,32 +121,4 @@ func (c *Core) recordRejectedToolRequest(ctx context.Context, input ExecuteToolI
 		return ExecuteToolResult{}, err
 	}
 	return ExecuteToolResult{ToolCallMessage: message, ToolResultMessage: result}, nil
-}
-
-func (c *Core) attachReasoningToToolCallMessage(ctx context.Context, message transcript.Message, reasoningContent *string) error {
-	if reasoningContent == nil || strings.TrimSpace(message.ID) == "" {
-		return nil
-	}
-	for _, part := range message.Parts {
-		if part.Reasoning != nil {
-			return nil
-		}
-	}
-	message.Parts = append([]transcript.MessagePart{{
-		Kind: transcript.MessagePartKindReasoning,
-		Reasoning: &transcript.ReasoningPart{
-			Text: *reasoningContent,
-		},
-	}}, message.Parts...)
-	message.UpdatedAt = c.now().UTC()
-	if err := c.store.UpdateMessage(ctx, message); err != nil {
-		return err
-	}
-	c.publishEvent(Event{
-		Type:      EventMessageUpdated,
-		SessionID: message.SessionID,
-		RunID:     message.RunID,
-		Payload:   message,
-	})
-	return nil
 }

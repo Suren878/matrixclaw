@@ -55,7 +55,7 @@ func (c *Core) saveAssistantToolTurn(ctx context.Context, turn turnExecution, as
 	assistant.Content = response.Text
 	assistant.Model = response.Model
 	assistant.Provider = response.Provider
-	assistant.Parts = transcript.NormalizeMessageParts(assistant.Content, nil)
+	assistant.Parts = append(responseReasoningParts(response), transcript.NormalizeMessageParts(assistant.Content, nil)...)
 	finish := providerUsageFinishPart(response.Usage)
 	if finish == nil {
 		finish = &transcript.MessagePart{Kind: transcript.MessagePartKindFinish, Finish: &transcript.FinishPart{}}
@@ -77,4 +77,17 @@ func (c *Core) saveAssistantToolTurn(ctx context.Context, turn turnExecution, as
 	}
 	c.publishEvent(Event{Type: eventType, SessionID: turn.SessionID, RunID: turn.RunID, Payload: *assistant})
 	return nil
+}
+
+// responseReasoningParts keeps the reasoning a provider needs back with this
+// tool step: plain reasoning_content text and signed or encrypted blocks.
+func responseReasoningParts(response providers.Response) []transcript.MessagePart {
+	var parts []transcript.MessagePart
+	if response.ReasoningContent != nil {
+		parts = append(parts, transcript.MessagePart{Kind: transcript.MessagePartKindReasoning, Reasoning: &transcript.ReasoningPart{Text: *response.ReasoningContent}})
+	}
+	for _, block := range response.Reasoning {
+		parts = append(parts, transcript.MessagePart{Kind: transcript.MessagePartKindReasoning, Reasoning: &transcript.ReasoningPart{Text: block.Text, Signature: block.Signature, RedactedData: block.RedactedData}})
+	}
+	return parts
 }
