@@ -15,8 +15,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
-const defaultMaxOutputTokens = 4096
-
 var transientRetryBackoffs = []time.Duration{
 	200 * time.Millisecond,
 	750 * time.Millisecond,
@@ -39,6 +37,7 @@ type Runtime struct {
 	endpoint        string
 	apiKey          string
 	model           string
+	providerID      string
 	maxOutputTokens int64
 	profile         providers.RuntimeProfile
 	capabilities    providers.ModelCapabilities
@@ -59,6 +58,7 @@ func New(_ context.Context, cfg Config) (providers.Runtime, error) {
 		endpoint:        strings.TrimRight(baseURL, "/") + "/" + modelResource(model) + ":generateContent",
 		apiKey:          apiKey,
 		model:           model,
+		providerID:      metadataProviderID(cfg),
 		maxOutputTokens: maxOutputTokens,
 		profile: providerProfile.RuntimeProfileWithOverrides(providers.RuntimeProfile{
 			ToolUseMode: cfg.ToolUseMode,
@@ -118,8 +118,9 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 		for _, item := range payload.Models {
 			if supportsGenerateContent(item.SupportedGenerationMethods) {
 				if name := strings.TrimSpace(item.Name); name != "" {
-					providers.RegisterContextWindowTokens(cfg.ProviderID, providers.TypeGemini, name, item.InputTokenLimit)
-					providers.RegisterContextWindowTokens(cfg.CatalogID, providers.TypeGemini, name, item.InputTokenLimit)
+					metadata := providers.ModelMetadataRegistration{ContextWindow: item.InputTokenLimit, MaxOutputTokens: item.OutputTokenLimit}
+					providers.RegisterModelMetadata(cfg.ProviderID, providers.TypeGemini, name, metadata)
+					providers.RegisterModelMetadata(cfg.CatalogID, providers.TypeGemini, name, metadata)
 					models = append(models, name)
 				}
 			}
@@ -208,7 +209,7 @@ func (r *Runtime) generatePayload(request providers.Request) generateContentRequ
 	payload := generateContentRequest{
 		Contents: make([]geminiContent, 0, len(request.Messages)),
 		GenerationConfig: &generationConfig{
-			MaxOutputTokens: r.maxOutputTokens,
+			MaxOutputTokens: providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.maxOutputTokens, r.providerID, providers.TypeGemini, r.model),
 		},
 	}
 	if systemPrompt := combinedSystemPrompt(request.SystemPrompt, request.CustomInstructions); systemPrompt != "" {
@@ -228,6 +229,9 @@ func (r *Runtime) generatePayload(request providers.Request) generateContentRequ
 	functions := encodeTools(request.Tools)
 	if len(functions) > 0 {
 		payload.Tools = []geminiTool{{FunctionDeclarations: functions}}
+		if request.ToolChoice == providers.ToolChoiceNone {
+			payload.ToolConfig = &geminiToolConfig{FunctionCallingConfig: geminiFunctionCallingConfig{Mode: "NONE"}}
+		}
 	}
 	return payload
 }
@@ -398,14 +402,18 @@ func normalizeConfig(cfg Config) (*http.Client, string, string, string, int64, e
 		model = providers.DefaultGeminiModel
 	}
 	maxOutputTokens := cfg.MaxOutputTokens
-	if maxOutputTokens <= 0 {
-		maxOutputTokens = defaultMaxOutputTokens
-	}
 	client := cfg.HTTPClient
 	if client == nil {
 		client = providers.NewHTTPClient()
 	}
 	return client, apiKey, baseURL, model, maxOutputTokens, nil
+}
+
+func metadataProviderID(cfg Config) string {
+	if id := strings.TrimSpace(cfg.ProviderID); id != "" {
+		return id
+	}
+	return strings.TrimSpace(cfg.CatalogID)
 }
 
 func modelResource(model string) string {

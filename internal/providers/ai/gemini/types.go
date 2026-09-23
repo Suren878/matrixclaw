@@ -6,7 +6,16 @@ type generateContentRequest struct {
 	SystemInstruction *geminiContent    `json:"systemInstruction,omitempty"`
 	Contents          []geminiContent   `json:"contents"`
 	Tools             []geminiTool      `json:"tools,omitempty"`
+	ToolConfig        *geminiToolConfig `json:"toolConfig,omitempty"`
 	GenerationConfig  *generationConfig `json:"generationConfig,omitempty"`
+}
+
+type geminiToolConfig struct {
+	FunctionCallingConfig geminiFunctionCallingConfig `json:"functionCallingConfig"`
+}
+
+type geminiFunctionCallingConfig struct {
+	Mode string `json:"mode"`
 }
 
 type generationConfig struct {
@@ -72,6 +81,7 @@ type geminiModelsResponse struct {
 		Name                       string   `json:"name"`
 		SupportedGenerationMethods []string `json:"supportedGenerationMethods,omitempty"`
 		InputTokenLimit            int      `json:"inputTokenLimit,omitempty"`
+		OutputTokenLimit           int      `json:"outputTokenLimit,omitempty"`
 	} `json:"models"`
 	NextPageToken string `json:"nextPageToken,omitempty"`
 }
