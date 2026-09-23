@@ -70,9 +70,11 @@ func isToolStepReply(message transcript.Message) bool {
 
 // collectToolStep merges one model response (its reply, reasoning and every call
 // it made) into one assistant message; results are paired after it in call order.
+// Without a reply, a step ends at its first result, so older responses stay apart.
 func collectToolStep(entries []providerConversationEntry, start int) (providers.Message, int) {
 	step := providers.Message{Role: string(transcript.MessageRoleAssistant)}
 	var parts []transcript.MessagePart
+	hasReply := isToolStepReply(entries[start].source)
 	i := start
 collect:
 	for ; i < len(entries); i++ {
@@ -84,9 +86,9 @@ collect:
 				step.Images = entry.messages[0].Images
 				step.ToolCalls = append(step.ToolCalls, entry.messages[0].ToolCalls...)
 			}
-		case len(entry.messages) == 1 && isPairedToolResultMessage(entry.messages[0]):
+		case hasReply && len(entry.messages) == 1 && isPairedToolResultMessage(entry.messages[0]):
 			continue
-		case !isToolStepReply(entry.source) && len(entry.messages) == 1 && isAdditionalBatchableToolCallMessage(entry.messages[0]):
+		case len(entry.messages) == 1 && isAdditionalBatchableToolCallMessage(entry.messages[0]):
 			step.ToolCalls = append(step.ToolCalls, entry.messages[0].ToolCalls...)
 		default:
 			break collect

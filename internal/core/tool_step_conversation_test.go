@@ -67,3 +67,42 @@ func TestPlainReasoningOnOlderToolCallsStaysReasoningContent(t *testing.T) {
 		t.Fatalf("step=%+v", step)
 	}
 }
+
+func TestOlderToolStepsWithoutReplyStaySeparatePerResponse(t *testing.T) {
+	history := []transcript.Message{
+		{Role: transcript.MessageRoleUser, Content: "Inspect"},
+		stepCallMessage("a"), stepResultMessage("a", "A", false),
+		stepCallMessage("b"), stepResultMessage("b", "B", false),
+	}
+	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(conversation) != 5 {
+		t.Fatalf("conversation=%+v, want user, call a, result a, call b, result b", conversation)
+	}
+	if len(conversation[1].ToolCalls) != 1 || conversation[1].ToolCalls[0].ID != "a" || conversation[2].ToolCallID != "a" ||
+		len(conversation[3].ToolCalls) != 1 || conversation[3].ToolCalls[0].ID != "b" || conversation[4].ToolCallID != "b" {
+		t.Fatalf("conversation=%+v", conversation)
+	}
+}
+
+func TestLateResultAfterSteerStaysWithItsToolStep(t *testing.T) {
+	history := []transcript.Message{
+		{Role: transcript.MessageRoleUser, Content: "Inspect"},
+		{Role: transcript.MessageRoleAssistant, Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindFinish, Finish: &transcript.FinishPart{Reason: "tool_calls"}}}},
+		stepCallMessage("a"), stepCallMessage("b"), stepResultMessage("a", "A", false),
+		{Role: transcript.MessageRoleUser, Content: "Also check c"},
+		stepResultMessage("b", "B", false),
+	}
+	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(conversation) != 5 {
+		t.Fatalf("conversation=%+v, want user, step, result a, result b, steer", conversation)
+	}
+	if len(conversation[1].ToolCalls) != 2 || conversation[2].ToolCallID != "a" || conversation[3].ToolCallID != "b" || conversation[4].Content != "Also check c" {
+		t.Fatalf("conversation=%+v", conversation)
+	}
+}
