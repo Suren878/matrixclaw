@@ -324,35 +324,32 @@ func (r *Runtime) decodeChatResponse(body []byte) (providers.Response, error) {
 	}
 
 	choice := response.Choices[0]
-	if err := validateFinishReason(choice.FinishReason); err != nil {
-		return providers.Response{}, err
-	}
-	toolCalls := decodeToolCalls(choice.Message.ToolCalls)
-	if err := validateToolCalls(toolCalls); err != nil {
-		return providers.Response{}, err
-	}
-	text := strings.TrimSpace(choice.Message.Content)
-	if len(toolCalls) == 0 && text == "" {
-		return providers.Response{}, fmt.Errorf("openaicompat: %w", providers.ErrEmptyResponse)
-	}
-
-	return providers.Response{
-		Text:             text,
-		ReasoningContent: cloneStringPtr(choice.Message.ReasoningContent),
-		Model:            r.model,
-		Provider:         providers.TypeOpenAICompat,
-		ToolCalls:        toolCalls,
-		Usage:            openAIUsage(response.Usage),
-	}, nil
+	return r.finishResponse(choice.Message.Content, cloneStringPtr(choice.Message.ReasoningContent), decodeToolCalls(choice.Message.ToolCalls), choice.FinishReason, openAIUsage(response.Usage))
 }
 
-func validateFinishReason(reason string) error {
-	switch reason {
-	case "length", "content_filter":
-		return fmt.Errorf("openaicompat: generation stopped before completion (%s)", reason)
-	default:
-		return nil
+// finishResponse applies the finish reason: a reply cut by the output limit keeps
+// its text and drops tool calls whose arguments were cut off.
+func (r *Runtime) finishResponse(text string, reasoning *string, calls []providers.ToolCall, finishReason string, usage providers.Usage) (providers.Response, error) {
+	stop := openAIStopReason(finishReason)
+	if stop == providers.StopMaxTokens {
+		calls = completeToolCalls(calls)
+	} else if err := validateToolCalls(calls); err != nil {
+		return providers.Response{}, err
 	}
+	text = strings.TrimSpace(text)
+	stop = providers.ResolveStopReason(stop, len(calls))
+	if text == "" && len(calls) == 0 && !stop.AllowsEmptyReply() {
+		return providers.Response{}, fmt.Errorf("openaicompat: %w", providers.ErrEmptyResponse)
+	}
+	return providers.Response{
+		Text:             text,
+		ReasoningContent: reasoning,
+		Model:            r.model,
+		Provider:         providers.TypeOpenAICompat,
+		ToolCalls:        calls,
+		StopReason:       stop,
+		Usage:            usage,
+	}, nil
 }
 
 func cloneStringPtr(value *string) *string {

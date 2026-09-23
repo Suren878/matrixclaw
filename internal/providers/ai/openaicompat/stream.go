@@ -18,6 +18,7 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 	toolCalls := map[int]*streamToolCall{}
 	var usage providers.Usage
 	completed := false
+	finishReason := ""
 	if err := providers.ScanSSE(ctx, body, func(event providers.SSEEvent) error {
 		if event.Data == "[DONE]" {
 			completed = true
@@ -38,9 +39,7 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 			return nil
 		}
 		if reason := chunk.Choices[0].FinishReason; reason != "" {
-			if err := validateFinishReason(reason); err != nil {
-				return err
-			}
+			finishReason = reason
 			completed = true
 		}
 
@@ -74,27 +73,12 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 		return providers.Response{}, fmt.Errorf("openaicompat: %w", providers.ErrIncompleteResponse)
 	}
 
-	reply := strings.TrimSpace(text.String())
-	calls := streamToolCalls(toolCalls)
-	if err := validateToolCalls(calls); err != nil {
-		return providers.Response{}, err
-	}
-	if reply == "" && len(calls) == 0 {
-		return providers.Response{}, fmt.Errorf("openaicompat: %w", providers.ErrEmptyResponse)
-	}
 	var responseReasoningContent *string
 	if reasoningContentSeen {
 		value := reasoningContent.String()
 		responseReasoningContent = &value
 	}
-	return providers.Response{
-		Text:             reply,
-		ReasoningContent: responseReasoningContent,
-		Model:            r.model,
-		Provider:         providers.TypeOpenAICompat,
-		ToolCalls:        calls,
-		Usage:            usage,
-	}, nil
+	return r.finishResponse(text.String(), responseReasoningContent, streamToolCalls(toolCalls), finishReason, usage)
 }
 
 type streamToolCall struct {

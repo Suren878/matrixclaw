@@ -36,7 +36,6 @@ func TestDecodeStreamRequiresCompletion(t *testing.T) {
 func TestDecodeStreamRejectsErrorAndIncompleteToolArguments(t *testing.T) {
 	for _, frames := range []string{
 		`data: {"error":{"message":"upstream failed"}}` + "\n\ndata: [DONE]\n\n",
-		`data: {"choices":[{"delta":{"content":"Partial"},"finish_reason":"length"}]}` + "\n\ndata: [DONE]\n\n",
 		`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","function":{"name":"mutate","arguments":"{\"path\":"}}]}}]}` + "\n\ndata: [DONE]\n\n",
 		`data: {"choices":[{"delta":{"content":"Commentary","tool_calls":[{"index":0,"id":"call-1","function":{"arguments":"{}"}}]}}]}` + "\n\ndata: [DONE]\n\n",
 	} {

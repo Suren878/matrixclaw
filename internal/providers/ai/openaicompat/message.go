@@ -95,6 +95,30 @@ func validateToolCalls(calls []providers.ToolCall) error {
 	return nil
 }
 
+func openAIStopReason(reason string) providers.StopReason {
+	switch strings.ToLower(strings.TrimSpace(reason)) {
+	case "length", "max_tokens":
+		return providers.StopMaxTokens
+	case "content_filter":
+		return providers.StopContentFilter
+	case "tool_calls", "function_call":
+		return providers.StopToolUse
+	default:
+		return providers.StopEndTurn
+	}
+}
+
+// completeToolCalls keeps the calls a truncated reply finished before the limit.
+func completeToolCalls(calls []providers.ToolCall) []providers.ToolCall {
+	var out []providers.ToolCall
+	for _, call := range calls {
+		if strings.TrimSpace(call.Name) != "" && json.Valid(call.Arguments) {
+			out = append(out, call)
+		}
+	}
+	return out
+}
+
 func normalizeOpenAIRole(role string) string {
 	switch strings.ToLower(strings.TrimSpace(role)) {
 	case "developer":
