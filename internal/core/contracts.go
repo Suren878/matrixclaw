@@ -123,6 +123,10 @@ type RunResponse struct {
 	Run Run `json:"run"`
 }
 
+type RunStepsResponse struct {
+	Steps []RunStep `json:"steps"`
+}
+
 type ClientBindingResponse struct {
 	Binding ClientBinding `json:"binding"`
 }

@@ -10,6 +10,13 @@ import (
 func (s *Server) handleRunByID(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/runs/")
 	switch {
+	case r.Method == http.MethodGet && strings.HasSuffix(path, "/steps"):
+		steps, err := s.core.RunSteps(r.Context(), strings.TrimSuffix(path, "/steps"))
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, core.RunStepsResponse{Steps: steps})
 	case r.Method == http.MethodGet:
 		runID := path
 		run, err := s.core.GetRun(r.Context(), runID)

@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -33,6 +34,14 @@ func summarizeUsage(records []UsageRecord, sessionID string) UsageSummary {
 		summary.ReasoningTokens += record.ReasoningTokens
 	}
 	return summary
+}
+
+func (c *Core) RunSteps(ctx context.Context, runID string) ([]RunStep, error) {
+	runID = normalizeText(runID)
+	if runID == "" {
+		return nil, fmt.Errorf("%w: run id is required", ErrInvalidInput)
+	}
+	return c.store.ListRunSteps(ctx, runID)
 }
 
 // recordRunStep stores one generation of a run. A failed write is logged and
