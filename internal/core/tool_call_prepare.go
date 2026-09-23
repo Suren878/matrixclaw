@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -121,14 +122,15 @@ func newToolCallMessage(id string, sessionID string, runID string, toolName stri
 }
 
 func (c *Core) isNewToolCallMessage(ctx context.Context, sessionID string, toolCallID string) (bool, error) {
-	messages, err := c.store.ListMessages(ctx, sessionID, 0)
+	message, err := c.store.GetMessage(ctx, toolCallID)
+	if errors.Is(err, ErrNotFound) {
+		return true, nil
+	}
 	if err != nil {
 		return false, err
 	}
-	for _, message := range messages {
-		if message.ID == toolCallID {
-			return false, nil
-		}
+	if message.SessionID != sessionID {
+		return false, fmt.Errorf("%w: tool call id %q already belongs to another session", ErrInvalidInput, toolCallID)
 	}
-	return true, nil
+	return false, nil
 }

@@ -66,22 +66,67 @@ WHERE id = ?`,
 	return nil
 }
 
+func (s *SQLiteStore) GetMessage(ctx context.Context, messageID string) (transcript.Message, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT `+messageColumns+` FROM messages WHERE id = ?`, strings.TrimSpace(messageID))
+	message, err := scanMessage(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return transcript.Message{}, core.ErrNotFound
+	}
+	return message, err
+}
+
+// HasToolResult reports whether a tool message of the session answers toolCallID.
+func (s *SQLiteStore) HasToolResult(ctx context.Context, sessionID string, toolCallID string) (bool, error) {
+	var found bool
+	err := s.db.QueryRowContext(ctx, `
+SELECT EXISTS (
+    SELECT 1
+    FROM messages m, json_each(CASE WHEN json_valid(m.parts_json) THEN m.parts_json ELSE '[]' END) p
+    WHERE m.session_id = ?
+      AND m.role = 'tool'
+      AND json_extract(p.value, '$.tool_result.tool_call_id') = ?
+)`, strings.TrimSpace(sessionID), strings.TrimSpace(toolCallID)).Scan(&found)
+	if err != nil {
+		return false, fmt.Errorf("store: has tool result: %w", err)
+	}
+	return found, nil
+}
+
+// ListMessages returns the latest limit messages (all when limit is 0) in seq order.
 func (s *SQLiteStore) ListMessages(ctx context.Context, sessionID string, limit int) ([]transcript.Message, error) {
-	query := `
-SELECT ` + messageColumns + `
+	query := `SELECT ` + messageColumns + `
 FROM messages
 WHERE session_id = ?
 ORDER BY seq DESC`
-	var (
-		rows *sql.Rows
-		err  error
-	)
+	args := []any{sessionID}
 	if limit > 0 {
-		rows, err = s.db.QueryContext(ctx, query+`
-LIMIT ?`, sessionID, limit)
-	} else {
-		rows, err = s.db.QueryContext(ctx, query, sessionID)
+		query += "\nLIMIT ?"
+		args = append(args, limit)
 	}
+	messages, err := s.queryMessages(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	reverseMessages(messages)
+	return messages, nil
+}
+
+// ListMessagesAfter returns up to limit messages (all when limit is 0) with seq > afterSeq, ascending.
+func (s *SQLiteStore) ListMessagesAfter(ctx context.Context, sessionID string, afterSeq int64, limit int) ([]transcript.Message, error) {
+	query := `SELECT ` + messageColumns + `
+FROM messages
+WHERE session_id = ? AND seq > ?
+ORDER BY seq ASC`
+	args := []any{strings.TrimSpace(sessionID), afterSeq}
+	if limit > 0 {
+		query += "\nLIMIT ?"
+		args = append(args, limit)
+	}
+	return s.queryMessages(ctx, query, args...)
+}
+
+func (s *SQLiteStore) queryMessages(ctx context.Context, query string, args ...any) ([]transcript.Message, error) {
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("store: list messages: %w", err)
 	}
@@ -98,7 +143,6 @@ LIMIT ?`, sessionID, limit)
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("store: iterate messages: %w", err)
 	}
-	reverseMessages(messages)
 	return messages, nil
 }
 

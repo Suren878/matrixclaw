@@ -130,19 +130,21 @@ func (c *Core) resumeApprovedTools(ctx context.Context, turn turnExecution) (boo
 		return false, err
 	}
 
-	messages, err := c.store.ListMessages(ctx, turn.SessionID, 0)
-	if err != nil {
-		return false, err
-	}
-	completedToolCalls := toolResultCallIDs(messages)
-
+	replayed := map[string]struct{}{}
 	waitingApproval := false
 	for _, approval := range approvalsForRun(approvedApprovals, turn.RunID) {
 		toolCallID := strings.TrimSpace(approval.ToolCallRef)
 		if toolCallID == "" {
 			continue
 		}
-		if _, exists := completedToolCalls[toolCallID]; exists {
+		if _, exists := replayed[toolCallID]; exists {
+			continue
+		}
+		done, err := c.store.HasToolResult(ctx, turn.SessionID, toolCallID)
+		if err != nil {
+			return false, err
+		}
+		if done {
 			continue
 		}
 
@@ -150,7 +152,7 @@ func (c *Core) resumeApprovedTools(ctx context.Context, turn turnExecution) (boo
 		if err != nil && result.ToolResultMessage == nil {
 			return false, err
 		}
-		completedToolCalls[toolCallID] = struct{}{}
+		replayed[toolCallID] = struct{}{}
 		if result.ToolResultMessage != nil {
 			if _, steerErr := c.injectPendingSteersIntoToolResultMessage(ctx, *result.ToolResultMessage); steerErr != nil {
 				return false, steerErr

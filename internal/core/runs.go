@@ -111,13 +111,8 @@ func (c *Core) AcceptTriggeredRun(ctx context.Context, input HandleTriggeredRunI
 	messageID := deterministicMessageID(triggerID)
 	if existing, err := c.store.GetRun(ctx, runID); err == nil {
 		message := transcript.Message{ID: existing.UserMessageID, SessionID: existing.SessionID, RunID: existing.ID, Role: transcript.MessageRoleUser, Content: text}
-		if messages, listErr := c.store.ListMessages(ctx, existing.SessionID, 0); listErr == nil {
-			for _, candidate := range messages {
-				if candidate.ID == existing.UserMessageID {
-					message = candidate
-					break
-				}
-			}
+		if stored, getErr := c.store.GetMessage(ctx, existing.UserMessageID); getErr == nil {
+			message = stored
 		}
 		return AcceptRunResult{SessionID: existing.SessionID, Status: AcceptRunStatusStarted, UserMessage: message, Run: existing}, nil
 	} else if !errors.Is(err, ErrNotFound) {

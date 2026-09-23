@@ -206,34 +206,16 @@ func (c *Core) resolveSubagentApprovalBridge(ctx context.Context, approval Appro
 }
 
 func (c *Core) finishRejectedSubagentDelegateTool(ctx context.Context, approval Approval, task SubagentTask, summary string) error {
-	messages, err := c.store.ListMessages(ctx, approval.SessionID, 0)
-	if err != nil {
+	toolCallID := strings.TrimSpace(approval.ToolCallRef)
+	done, err := c.store.HasToolResult(ctx, approval.SessionID, toolCallID)
+	if err != nil || done {
 		return err
 	}
-	if _, done := toolResultCallIDs(messages)[strings.TrimSpace(approval.ToolCallRef)]; done {
-		return nil
+	toolCall, err := c.sessionToolCallMessage(ctx, approval.SessionID, toolCallID)
+	if err != nil {
+		return fmt.Errorf("parent delegate tool call: %w", err)
 	}
-	var toolCall transcript.Message
-	var args json.RawMessage
-	for _, message := range messages {
-		if strings.TrimSpace(message.ID) != strings.TrimSpace(approval.ToolCallRef) {
-			continue
-		}
-		toolCall = message
-		for _, part := range message.Parts {
-			if part.ToolCall == nil {
-				continue
-			}
-			if strings.TrimSpace(part.ToolCall.ID) == strings.TrimSpace(approval.ToolCallRef) {
-				args = json.RawMessage(part.ToolCall.Input)
-				break
-			}
-		}
-		break
-	}
-	if strings.TrimSpace(toolCall.ID) == "" {
-		return fmt.Errorf("%w: parent delegate tool call %s", ErrNotFound, approval.ToolCallRef)
-	}
+	args, _ := toolCallArgs(toolCall)
 	prepared := preparedToolCall{
 		SessionID:  approval.SessionID,
 		RunID:      approval.RunID,
@@ -272,14 +254,13 @@ func (c *Core) replayApprovedTool(ctx context.Context, approval Approval) (Execu
 		return ExecuteToolResult{}, err
 	}
 
-	messages, err := c.store.ListMessages(ctx, approval.SessionID, 0)
+	toolCall, err := c.sessionToolCallMessage(ctx, approval.SessionID, approval.ToolCallRef)
 	if err != nil {
 		return ExecuteToolResult{}, err
 	}
-
-	args, err := toolCallArgs(messages, approval.ToolCallRef)
-	if err != nil {
-		return ExecuteToolResult{}, err
+	args, found := toolCallArgs(toolCall)
+	if !found {
+		return ExecuteToolResult{}, fmt.Errorf("%w: tool call %s", ErrNotFound, toolCall.ID)
 	}
 
 	var spec tools.Spec
@@ -308,29 +289,34 @@ func (c *Core) replayApprovedTool(ctx context.Context, approval Approval) (Execu
 	})
 }
 
-func toolCallArgs(messages []transcript.Message, toolCallID string) (json.RawMessage, error) {
+// sessionToolCallMessage loads the assistant message that carries toolCallID.
+func (c *Core) sessionToolCallMessage(ctx context.Context, sessionID string, toolCallID string) (transcript.Message, error) {
 	toolCallID = strings.TrimSpace(toolCallID)
 	if toolCallID == "" {
-		return nil, fmt.Errorf("%w: tool call id is required", ErrInvalidInput)
+		return transcript.Message{}, fmt.Errorf("%w: tool call id is required", ErrInvalidInput)
 	}
+	message, err := c.store.GetMessage(ctx, toolCallID)
+	if err == nil && message.SessionID != sessionID {
+		err = ErrNotFound
+	}
+	if errors.Is(err, ErrNotFound) {
+		return transcript.Message{}, fmt.Errorf("%w: tool call %s", ErrNotFound, toolCallID)
+	}
+	return message, err
+}
 
-	for i := range messages {
-		if messages[i].ID != toolCallID {
+// toolCallArgs returns the input of the tool call part whose id is the message id.
+func toolCallArgs(message transcript.Message) (json.RawMessage, bool) {
+	for _, part := range message.Parts {
+		if part.ToolCall == nil || strings.TrimSpace(part.ToolCall.ID) != message.ID {
 			continue
 		}
-		for _, part := range messages[i].Parts {
-			if part.ToolCall == nil || strings.TrimSpace(part.ToolCall.ID) != toolCallID {
-				continue
-			}
-			if strings.TrimSpace(part.ToolCall.Input) == "" {
-				return nil, nil
-			}
-			return json.RawMessage(part.ToolCall.Input), nil
+		if strings.TrimSpace(part.ToolCall.Input) == "" {
+			return nil, true
 		}
-		break
+		return json.RawMessage(part.ToolCall.Input), true
 	}
-
-	return nil, fmt.Errorf("%w: tool call %s", ErrNotFound, toolCallID)
+	return nil, false
 }
 
 func approvalsForRun(approvals []Approval, runID string) []Approval {

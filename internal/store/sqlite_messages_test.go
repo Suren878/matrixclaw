@@ -3,7 +3,9 @@ package store_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -142,4 +144,84 @@ func TestLegacyMessagesGetSeqInCreatedAtOrder(t *testing.T) {
 	if len(messages) != 1 || messages[0].ID != "new" || messages[0].Seq != 5 {
 		t.Fatalf("new message=%+v, want id new seq 5", messages)
 	}
+}
+
+func toolCallMessage(id string, sessionID string) transcript.Message {
+	return transcript.Message{ID: id, SessionID: sessionID, Role: transcript.MessageRoleAssistant, CreatedAt: testEpoch, Parts: []transcript.MessagePart{{
+		Kind: transcript.MessagePartKindToolCall, ToolCall: &transcript.ToolCallPart{ID: id, Name: "read", Input: `{"path":"a"}`},
+	}}}
+}
+
+func toolResultMessage(id string, sessionID string, toolCallID string) transcript.Message {
+	return transcript.Message{ID: id, SessionID: sessionID, Role: transcript.MessageRoleTool, CreatedAt: testEpoch, Parts: []transcript.MessagePart{{
+		Kind: transcript.MessagePartKindToolResult, ToolResult: &transcript.ToolResultPart{ToolCallID: toolCallID, Name: "read", Content: "ok"},
+	}}}
+}
+
+func TestMessagePointLookups(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	createTestSession(t, st, "s1")
+	createTestSession(t, st, "s2")
+	// Saved in this order, so seq is 1..5.
+	saveTestMessage(t, st, transcript.Message{ID: "user", SessionID: "s1", CreatedAt: testEpoch})
+	saveTestMessage(t, st, toolCallMessage("call-1", "s1"))
+	saveTestMessage(t, st, toolResultMessage("result-1", "s1", "call-1"))
+	saveTestMessage(t, st, toolResultMessage("result-2", "s2", "call-2"))
+	saveTestMessage(t, st, transcript.Message{ID: "answer", SessionID: "s1", Role: transcript.MessageRoleAssistant, CreatedAt: testEpoch})
+
+	t.Run("GetMessage", func(t *testing.T) {
+		got, err := st.GetMessage(ctx, "call-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.SessionID != "s1" || got.Seq != 2 || len(got.Parts) != 1 || got.Parts[0].ToolCall == nil || got.Parts[0].ToolCall.Input != `{"path":"a"}` {
+			t.Fatalf("GetMessage(call-1)=%+v", got)
+		}
+		if _, err := st.GetMessage(ctx, "missing"); !errors.Is(err, core.ErrNotFound) {
+			t.Fatalf("GetMessage(missing) error=%v, want ErrNotFound", err)
+		}
+	})
+
+	t.Run("HasToolResult", func(t *testing.T) {
+		for _, tc := range []struct {
+			sessionID, toolCallID string
+			want                  bool
+		}{
+			{"s1", "call-1", true},
+			{"s1", "call-2", false},
+			{"s2", "call-2", true},
+			{"s1", "missing", false},
+		} {
+			got, err := st.HasToolResult(ctx, tc.sessionID, tc.toolCallID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Errorf("HasToolResult(%s, %s)=%v, want %v", tc.sessionID, tc.toolCallID, got, tc.want)
+			}
+		}
+	})
+
+	t.Run("ListMessagesAfter", func(t *testing.T) {
+		for _, tc := range []struct {
+			afterSeq int64
+			limit    int
+			want     []string
+		}{
+			{0, 0, []string{"user", "call-1", "result-1", "answer"}},
+			{2, 0, []string{"result-1", "answer"}},
+			{1, 2, []string{"call-1", "result-1"}},
+			{5, 0, nil},
+		} {
+			messages, err := st.ListMessagesAfter(ctx, "s1", tc.afterSeq, tc.limit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ids, _ := messageIDsAndSeqs(messages)
+			if strings.Join(ids, ",") != strings.Join(tc.want, ",") {
+				t.Errorf("ListMessagesAfter(s1, %d, %d)=%v, want %v", tc.afterSeq, tc.limit, ids, tc.want)
+			}
+		}
+	})
 }

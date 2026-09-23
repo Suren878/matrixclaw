@@ -42,7 +42,10 @@ type DeliveryStore interface {
 type MessageStore interface {
 	SaveMessage(ctx context.Context, message transcript.Message) error
 	UpdateMessage(ctx context.Context, message transcript.Message) error
+	GetMessage(ctx context.Context, messageID string) (transcript.Message, error)
+	HasToolResult(ctx context.Context, sessionID string, toolCallID string) (bool, error)
 	ListMessages(ctx context.Context, sessionID string, limit int) ([]transcript.Message, error)
+	ListMessagesAfter(ctx context.Context, sessionID string, afterSeq int64, limit int) ([]transcript.Message, error)
 }
 
 type RunStore interface {
