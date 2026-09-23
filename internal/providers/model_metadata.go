@@ -17,6 +17,7 @@ const (
 type ModelMetadata struct {
 	ID                     string              `json:"id,omitempty"`
 	ContextWindow          int                 `json:"context_window,omitempty"`
+	MaxOutputTokens        int                 `json:"max_output_tokens,omitempty"`
 	ToolCalling            bool                `json:"tool_calling,omitempty"`
 	ParallelToolCalls      bool                `json:"parallel_tool_calls,omitempty"`
 	ImageInput             bool                `json:"image_input,omitempty"`
@@ -33,6 +34,7 @@ type ModelMetadata struct {
 
 type ModelMetadataRegistration struct {
 	ContextWindow       int
+	MaxOutputTokens     int
 	ToolCalling         *bool
 	ImageInput          *bool
 	ReasoningEffort     *bool
@@ -42,6 +44,7 @@ type ModelMetadataRegistration struct {
 
 type cachedModelMetadata struct {
 	ContextWindow       int      `json:"context_window,omitempty"`
+	MaxOutputTokens     int      `json:"max_output_tokens,omitempty"`
 	ToolCalling         *bool    `json:"tool_calling,omitempty"`
 	ImageInput          *bool    `json:"image_input,omitempty"`
 	ReasoningEffort     *bool    `json:"reasoning_effort,omitempty"`
@@ -56,7 +59,7 @@ var modelMetadataOverrides = struct {
 
 func RegisterModelMetadata(providerID string, providerType string, modelID string, metadata ModelMetadataRegistration) {
 	metadata = normalizeModelMetadataRegistration(metadata)
-	if metadata.ContextWindow <= 0 && metadata.ToolCalling == nil && metadata.ImageInput == nil && metadata.ReasoningEffort == nil && len(metadata.ReasoningEfforts) == 0 && len(metadata.SupportedParameters) == 0 {
+	if metadata.ContextWindow <= 0 && metadata.MaxOutputTokens <= 0 && metadata.ToolCalling == nil && metadata.ImageInput == nil && metadata.ReasoningEffort == nil && len(metadata.ReasoningEfforts) == 0 && len(metadata.SupportedParameters) == 0 {
 		return
 	}
 	contextWindowCacheOnce.Do(loadContextWindowCache)
@@ -120,6 +123,7 @@ func ResolveModelMetadata(providerID string, providerType string, modelID string
 	return ModelMetadata{
 		ID:                     normalizedModelID,
 		ContextWindow:          contextWindow,
+		MaxOutputTokens:        liveMetadata.MaxOutputTokens,
 		ToolCalling:            runtimeCapabilities.ToolCalling,
 		ParallelToolCalls:      runtimeCapabilities.ParallelToolCalls,
 		ImageInput:             runtimeCapabilities.ImageInput,
@@ -139,6 +143,9 @@ func normalizeModelMetadataRegistration(metadata ModelMetadataRegistration) Mode
 	if metadata.ContextWindow < 0 {
 		metadata.ContextWindow = 0
 	}
+	if metadata.MaxOutputTokens < 0 {
+		metadata.MaxOutputTokens = 0
+	}
 	metadata.ReasoningEfforts = cleanReasoningEfforts(metadata.ReasoningEfforts)
 	metadata.SupportedParameters = cleanModelParameters(metadata.SupportedParameters)
 	return metadata
@@ -147,6 +154,9 @@ func normalizeModelMetadataRegistration(metadata ModelMetadataRegistration) Mode
 func mergeCachedModelMetadata(existing cachedModelMetadata, next ModelMetadataRegistration) cachedModelMetadata {
 	if next.ContextWindow > 0 {
 		existing.ContextWindow = next.ContextWindow
+	}
+	if next.MaxOutputTokens > 0 {
+		existing.MaxOutputTokens = next.MaxOutputTokens
 	}
 	if next.ToolCalling != nil {
 		value := *next.ToolCalling
@@ -195,6 +205,9 @@ func mergeCachedMetadata(existing cachedModelMetadata, next cachedModelMetadata)
 	if next.ContextWindow > 0 {
 		existing.ContextWindow = next.ContextWindow
 	}
+	if next.MaxOutputTokens > 0 {
+		existing.MaxOutputTokens = next.MaxOutputTokens
+	}
 	if next.ToolCalling != nil {
 		value := *next.ToolCalling
 		existing.ToolCalling = &value
@@ -218,6 +231,7 @@ func mergeCachedMetadata(existing cachedModelMetadata, next cachedModelMetadata)
 
 func cachedModelMetadataNonZero(metadata cachedModelMetadata) bool {
 	return metadata.ContextWindow > 0 ||
+		metadata.MaxOutputTokens > 0 ||
 		metadata.ToolCalling != nil ||
 		metadata.ImageInput != nil ||
 		metadata.ReasoningEffort != nil ||
