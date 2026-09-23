@@ -30,9 +30,20 @@ type Message struct {
 	Role             string
 	Content          string
 	ReasoningContent *string
+	Reasoning        []ReasoningBlock // signed or encrypted reasoning, sent back unchanged
 	Images           []ImageContent
 	ToolCallID       string
 	ToolCalls        []ToolCall
+	IsError          bool // a failed tool result
+}
+
+// ReasoningBlock is provider reasoning that must be sent back as received.
+// Signature: Anthropic thinking signature or Gemini thought signature.
+// RedactedData: Anthropic redacted thinking or Responses API encrypted reasoning.
+type ReasoningBlock struct {
+	Text         string
+	Signature    string
+	RedactedData string
 }
 
 type Request struct {
@@ -42,6 +53,9 @@ type Request struct {
 	CustomInstructions string
 	Messages           []Message
 	Tools              []ToolDefinition
+	MaxOutputTokens    int        // 0 = provider config, then model catalog, then DefaultMaxOutputTokens
+	ToolChoice         ToolChoice // tools stay defined with ToolChoiceNone so the cached prefix survives
+	CacheKey           string     // session id; adapters use it for prompt_cache_key or cache breakpoints
 }
 
 type Response struct {
@@ -49,9 +63,30 @@ type Response struct {
 	ReasoningContent *string
 	Model            string
 	Provider         string
+	Reasoning        []ReasoningBlock
 	ToolCalls        []ToolCall
+	StopReason       StopReason
 	Usage            Usage
 }
+
+// StopReason says why generation ended, normalised across providers.
+type StopReason string
+
+const (
+	StopEndTurn       StopReason = "end_turn"
+	StopToolUse       StopReason = "tool_use"
+	StopMaxTokens     StopReason = "max_tokens"
+	StopRefusal       StopReason = "refusal"
+	StopContentFilter StopReason = "content_filter"
+)
+
+// ToolChoice limits tool use for one request.
+type ToolChoice string
+
+const (
+	ToolChoiceAuto ToolChoice = ""
+	ToolChoiceNone ToolChoice = "none"
+)
 
 type Runtime interface {
 	Generate(ctx context.Context, request Request) (Response, error)
