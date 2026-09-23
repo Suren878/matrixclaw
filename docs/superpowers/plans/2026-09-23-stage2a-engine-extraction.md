@@ -3999,7 +3999,7 @@ func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) 
 	// Stage 0's isNewToolCallMessage check: a call ID owned by another session fails the run
 	// with a clear error instead of a primary-key conflict on the first journal write.
 	if existing, err := t.c.store.GetMessage(ctx, call.ToolCallID); err == nil && existing.SessionID != call.SessionID {
-		return agent.Decision{}, fmt.Errorf("%w: tool call id %q already belongs to another session", ErrInvalidInput, call.ToolCallID)
+		return agent.Decision{}, fmt.Errorf("tool call id %q already belongs to another session", call.ToolCallID)
 	} else if err != nil && !errors.Is(err, ErrNotFound) {
 		return agent.Decision{}, err
 	}
