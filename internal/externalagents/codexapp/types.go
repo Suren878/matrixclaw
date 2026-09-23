@@ -104,6 +104,13 @@ type TurnSteerParams struct {
 
 type TurnSteerResponse struct{}
 
+type TurnInterruptParams struct {
+	ThreadID string `json:"threadId"`
+	TurnID   string `json:"turnId"`
+}
+
+type TurnInterruptResponse struct{}
+
 type UserInput struct {
 	Type         string        `json:"type"`
 	Text         string        `json:"text,omitempty"`
@@ -120,10 +127,25 @@ func TextInput(text string) UserInput {
 }
 
 type Turn struct {
-	ID        string `json:"id"`
-	ThreadID  string `json:"threadId,omitempty"`
-	Status    any    `json:"status"`
-	StartedAt int64  `json:"startedAt,omitempty"`
+	ID        string     `json:"id"`
+	ThreadID  string     `json:"threadId,omitempty"`
+	Status    TurnStatus `json:"status"`
+	Error     *TurnError `json:"error,omitempty"`
+	StartedAt int64      `json:"startedAt,omitempty"`
+}
+
+type TurnStatus string
+
+const (
+	TurnStatusCompleted   TurnStatus = "completed"
+	TurnStatusInterrupted TurnStatus = "interrupted"
+	TurnStatusFailed      TurnStatus = "failed"
+	TurnStatusInProgress  TurnStatus = "inProgress"
+)
+
+type TurnError struct {
+	Message           string  `json:"message"`
+	AdditionalDetails *string `json:"additionalDetails,omitempty"`
 }
 
 type Notification struct {
@@ -175,4 +197,21 @@ type FileUpdateChange struct {
 type TurnCompleted struct {
 	ThreadID string `json:"threadId"`
 	Turn     Turn   `json:"turn"`
+}
+
+type TurnStarted struct {
+	ThreadID string `json:"threadId"`
+	Turn     Turn   `json:"turn"`
+}
+
+type ErrorNotification struct {
+	ThreadID  string    `json:"threadId"`
+	TurnID    string    `json:"turnId"`
+	Error     TurnError `json:"error"`
+	WillRetry bool      `json:"willRetry"`
+}
+
+type ContextCompactedNotification struct {
+	ThreadID string `json:"threadId"`
+	TurnID   string `json:"turnId"`
 }

@@ -15,7 +15,7 @@ import (
 const maxTelegramDocumentBytes int64 = 50 << 20
 
 func (w *Worker) deliverPendingRuns(ctx context.Context) error {
-	return w.deliverPendingRunDeliveries(ctx, core.ClientDeliveryTypeRun, core.ClientDeliveryFilter{})
+	return w.deliverPendingDeliveries(ctx, core.ClientDeliveryTypeRun, core.ClientDeliveryFilter{})
 }
 
 func (w *Worker) deliverPendingRun(ctx context.Context, target chatTarget, sessionID string, runID string) error {
@@ -24,43 +24,12 @@ func (w *Worker) deliverPendingRun(ctx context.Context, target chatTarget, sessi
 	if sessionID == "" || runID == "" {
 		return nil
 	}
-	return w.deliverPendingRunDeliveries(ctx, core.ClientDeliveryTypeRun, core.ClientDeliveryFilter{
+	return w.deliverPendingDeliveries(ctx, core.ClientDeliveryTypeRun, core.ClientDeliveryFilter{
 		ExternalKey: target.externalKey,
 		SessionID:   sessionID,
 		RunID:       runID,
 		Limit:       1,
 	})
-}
-
-func (w *Worker) deliverPendingRunDeliveries(ctx context.Context, deliveryType string, filter core.ClientDeliveryFilter) error {
-	w.delivery.Lock()
-	defer w.delivery.Unlock()
-
-	deliveryType = strings.TrimSpace(deliveryType)
-	if deliveryType == "" {
-		return nil
-	}
-	daemon := w.daemon("")
-	filter.Client = w.config.ClientName
-	filter.Type = deliveryType
-	filter.Status = core.ClientDeliveryStatusPending
-	if filter.Limit <= 0 {
-		filter.Limit = 20
-	}
-	deliveries, err := daemon.ListClientDeliveries(ctx, filter)
-	if err != nil {
-		return err
-	}
-	for _, delivery := range deliveries {
-		if err := w.deliverPendingRunDelivery(ctx, daemon, delivery); err != nil {
-			if IsRetryable(err) {
-				return err
-			}
-			log.Printf("telegram: run delivery %s failed: %v", delivery.ID, err)
-			_ = daemon.FailClientDelivery(ctx, delivery.ID, err.Error())
-		}
-	}
-	return nil
 }
 
 func (w *Worker) deliverPendingRunDelivery(ctx context.Context, daemon *daemonclient.Client, delivery core.ClientDelivery) error {
@@ -93,7 +62,7 @@ func (w *Worker) deliverInlineRunDelivery(ctx context.Context, target chatTarget
 		if err != nil {
 			return err
 		}
-		text := latestAssistantDraftText(messages, runID)
+		text := latestAssistantText(messages, runID)
 		if strings.TrimSpace(text) == "" {
 			text = renderRunStatus(run)
 		}
@@ -113,7 +82,7 @@ func (w *Worker) deliverInlineRunDelivery(ctx context.Context, target chatTarget
 	}
 	if run.Status == core.RunStatusCompleted {
 		caption := ""
-		if assistant := lastAssistantMessageText(messages, runID); assistant != "" {
+		if assistant := latestAssistantText(messages, runID); assistant != "" {
 			text = assistant
 			caption = assistant
 		}
@@ -127,7 +96,7 @@ func (w *Worker) deliverInlineRunDelivery(ctx context.Context, target chatTarget
 			return err
 		}
 	}
-	if err := daemon.AcknowledgeClientDelivery(ctx, deliveryID); err != nil {
+	if err := w.acknowledgeSentDelivery(ctx, daemon, deliveryID); err != nil {
 		return err
 	}
 	w.clearRunRenderState(target.externalKey, runID)
@@ -151,14 +120,14 @@ func (w *Worker) deliverGuestRunDelivery(ctx context.Context, target chatTarget,
 		if err != nil {
 			return err
 		}
-		if assistant := lastAssistantMessageText(messages, runID); assistant != "" {
+		if assistant := latestAssistantText(messages, runID); assistant != "" {
 			text = assistant
 		}
 	}
 	if err := w.sendText(ctx, target, text); err != nil {
 		return err
 	}
-	return daemon.AcknowledgeClientDelivery(ctx, deliveryID)
+	return w.acknowledgeSentDelivery(ctx, daemon, deliveryID)
 }
 
 func (w *Worker) deliverChatRunDelivery(ctx context.Context, target chatTarget, sessionID string, runID string, deliveryID string) error {
@@ -192,15 +161,20 @@ func (w *Worker) deliverChatRunDelivery(ctx context.Context, target chatTarget, 
 	if err := w.renderToolResultUpdates(ctx, target, messages, runID, state); err != nil {
 		return err
 	}
-	if err := w.renderAssistantUpdates(ctx, target, messages, runID, state); err != nil {
+	assistantCtx := ctx
+	if run.Status != core.RunStatusCompleted {
+		assistantCtx = silentTelegramDelivery(ctx)
+	}
+	if err := w.renderAssistantUpdates(assistantCtx, target, messages, runID, state); err != nil {
 		return err
 	}
-	if run.Status != core.RunStatusCompleted && len(state.assistant) == 0 {
+	if run.Status != core.RunStatusCompleted && !state.statusSent {
 		if err := w.sendText(ctx, target, renderRunStatus(run)); err != nil {
 			return err
 		}
+		state.statusSent = true
 	}
-	if err := daemon.AcknowledgeClientDelivery(ctx, deliveryID); err != nil {
+	if err := w.acknowledgeSentDelivery(ctx, daemon, deliveryID); err != nil {
 		return err
 	}
 	w.clearRunRenderState(target.externalKey, runID)
@@ -208,61 +182,43 @@ func (w *Worker) deliverChatRunDelivery(ctx context.Context, target chatTarget, 
 }
 
 func (w *Worker) deliverActiveRunProgress(ctx context.Context, target chatTarget, daemon *daemonclient.Client, sessionID string, runID string) error {
-	if w.telegramSuppressDraftStreaming(sessionID) {
-		return nil
-	}
 	messages, err := daemon.ListMessages(ctx, sessionID, 0)
 	if err != nil {
 		return err
 	}
 	state := w.runRenderState(target.externalKey, runID)
-	if err := w.renderAssistantDraftUpdate(ctx, target, messages, runID, state); err != nil {
+	if err := w.renderAssistantProgressUpdates(ctx, target, messages, runID, state); err != nil {
+		return err
+	}
+	if err := w.renderToolCallUpdates(ctx, target, messages, runID, state); err != nil {
+		return err
+	}
+	if err := w.renderVoiceToolResultUpdates(ctx, target, messages, runID, state); err != nil {
+		return err
+	}
+	if err := w.renderToolResultUpdates(ctx, target, messages, runID, state); err != nil {
+		return err
+	}
+	if err := w.renderAssistantStreamUpdate(ctx, target, messages, runID, state); err != nil {
 		if IsRetryable(err) {
 			return err
 		}
-		log.Printf("telegram: draft update failed chat=%d run=%s: %v", target.chatID, runID, err)
+		log.Printf("telegram: assistant stream update failed chat=%d run=%s: %v", target.chatID, runID, err)
 	}
 	return nil
 }
 
-func telegramSuppressDraftStreaming(session core.Session) bool {
-	return core.NormalizeSessionKind(session.Kind) == core.SessionKindExternalAgent ||
-		core.NormalizeSessionRuntime(session.RuntimeID) == core.SessionRuntimeExternalAgent
-}
-
-func (w *Worker) rememberTelegramSessions(sessions []core.Session) {
-	if w == nil {
-		return
-	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.externalSessions == nil {
-		w.externalSessions = map[string]struct{}{}
-	}
-	for _, session := range sessions {
-		id := strings.TrimSpace(session.ID)
-		if id == "" {
-			continue
-		}
-		if telegramSuppressDraftStreaming(session) {
-			w.externalSessions[id] = struct{}{}
-			continue
-		}
-		delete(w.externalSessions, id)
-	}
-}
-
-func (w *Worker) telegramSuppressDraftStreaming(sessionID string) bool {
-	if w == nil {
-		return false
-	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	_, ok := w.externalSessions[strings.TrimSpace(sessionID)]
-	return ok
-}
-
 func (w *Worker) deliverRunApprovals(ctx context.Context, target chatTarget, daemon *daemonclient.Client, sessionID string, runID string) error {
+	state := w.runRenderState(target.externalKey, runID)
+	messages, err := daemon.ListMessages(ctx, sessionID, 0)
+	if err != nil {
+		return err
+	}
+	// Finish the current editable assistant segment before placing an approval
+	// below it. Resumed model output will start a new message after the approval.
+	if err := w.renderAssistantUpdates(silentTelegramDelivery(ctx), target, messages, runID, state); err != nil {
+		return err
+	}
 	approvals, err := daemon.ListApprovals(ctx, sessionID, core.ApprovalStatePending)
 	if err != nil {
 		return err
@@ -270,38 +226,11 @@ func (w *Worker) deliverRunApprovals(ctx context.Context, target chatTarget, dae
 	if len(approvals) == 0 {
 		return nil
 	}
-	return w.renderApprovalUpdates(ctx, target, approvals, runID, w.runRenderState(target.externalKey, runID))
-}
-
-func lastAssistantMessageText(messages []core.Message, runID string) string {
-	for _, message := range messages {
-		if strings.TrimSpace(message.RunID) != strings.TrimSpace(runID) || message.Role != core.MessageRoleAssistant {
-			continue
-		}
-		if text := renderAssistantMessage(message); text != "" {
-			return text
-		}
-	}
-	return ""
+	return w.renderApprovalUpdates(ctx, target, approvals, runID, state)
 }
 
 func (w *Worker) deliverPendingDocuments(ctx context.Context) error {
-	daemon := w.daemon("")
-	deliveries, err := daemon.ListClientDeliveries(ctx, core.ClientDeliveryFilter{
-		Client: w.config.ClientName,
-		Type:   core.ClientDeliveryTypeDocument,
-		Status: core.ClientDeliveryStatusPending,
-		Limit:  20,
-	})
-	if err != nil {
-		return err
-	}
-	for _, delivery := range deliveries {
-		if err := w.deliverDocument(ctx, delivery); err != nil {
-			log.Printf("telegram: document delivery %s failed: %v", delivery.ID, err)
-		}
-	}
-	return nil
+	return w.deliverPendingDeliveries(ctx, core.ClientDeliveryTypeDocument, core.ClientDeliveryFilter{})
 }
 
 func (w *Worker) deliverDocument(ctx context.Context, delivery core.ClientDelivery) error {
@@ -323,7 +252,7 @@ func (w *Worker) deliverDocument(ctx context.Context, delivery core.ClientDelive
 
 	content, fileName, mimeType, err := w.readDeliveryDocument(ctx, target, payload)
 	if err != nil {
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || retryableDeliveryError(err) {
 			return err
 		}
 		return w.failDocumentDelivery(ctx, target, delivery, err.Error())
@@ -357,7 +286,7 @@ func (w *Worker) deliverDocument(ctx context.Context, delivery core.ClientDelive
 		return w.failDocumentDelivery(ctx, target, delivery, err.Error())
 	}
 	log.Printf("telegram: sent document delivery=%s chat=%d message=%d file=%s mime=%s bytes=%d", delivery.ID, target.chatID, sent.MessageID, fileName, mimeType, len(content))
-	return w.daemon(target.externalKey).AcknowledgeClientDelivery(ctx, delivery.ID)
+	return w.acknowledgeSentDelivery(ctx, w.daemon(target.externalKey), delivery.ID)
 }
 
 func (w *Worker) failDocumentDelivery(ctx context.Context, target chatTarget, delivery core.ClientDelivery, message string) error {
@@ -409,7 +338,6 @@ func runDeliveryRun(delivery core.ClientDelivery) (string, string) {
 func newRunDeliveryState() *runDeliveryState {
 	return &runDeliveryState{
 		assistant:         map[string]sentAssistantMessage{},
-		drafts:            map[string]sentAssistantDraft{},
 		approvals:         map[string]int64{},
 		toolCalls:         map[string]sentToolCallStatus{},
 		voiceResults:      map[string]int64{},
@@ -421,6 +349,9 @@ func (w *Worker) runRenderState(externalKey string, runID string) *runDeliverySt
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	key := runRenderStateKey(externalKey, runID)
+	if w.states == nil {
+		w.states = make(map[string]*runDeliveryState)
+	}
 	state := w.states[key]
 	if state == nil {
 		state = newRunDeliveryState()

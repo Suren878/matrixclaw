@@ -25,6 +25,35 @@ Selecting a configured provider switches the current session immediately. When
 that provider exposes more than one model, Telegram opens the model picker next
 so the default can be kept or another model can be selected.
 
+## Streaming Replies
+
+In private chats, generated text is shown with `sendMessageDraft`. The draft
+does not create a persistent first-character message. Once an assistant segment
+is complete, MatrixClaw sends the full formatted text with `sendMessage`.
+Intermediate assistant segments and tool status messages are sent silently;
+the final answer's first chunk uses normal notifications. Telegram's silent
+messages may still appear in the notification tray, depending on the client.
+Approvals retain their normal notifications.
+
+Draft updates are throttled to the configured stream flush interval (800 ms
+by default), and an unchanged draft is refreshed every 15 seconds. A long draft
+shows a bounded preview; final delivery splits the entire answer into messages.
+Sending the final message dismisses the draft. An empty draft is not used as a
+cleanup operation because current Telegram clients show it as “Thinking…”.
+
+Groups and Bot API servers without draft support use an editable message.
+The first preview waits for 40 characters, a sentence boundary after at least
+12 characters, or 1.5 seconds. Subsequent updates edit that message. A short
+finished answer bypasses the buffer. This fallback sends its notification with
+the first buffered preview; message edits do not send a new notification.
+
+Preview flood-control responses defer the next preview without sleeping in the
+shared delivery loop. Preview failure does not suppress final delivery. Each
+successfully delivered chunk is recorded before returning an error, so retrying
+a later chunk does not resend the already confirmed prefix. These delivery IDs
+are in memory; exactly-once delivery across a worker restart or an ambiguous
+network failure is not guaranteed.
+
 ## Inline Mode
 
 Inline mode lets a user type the bot mention from another Telegram chat and

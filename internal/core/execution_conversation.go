@@ -36,13 +36,15 @@ func buildProviderConversationWithAttachmentsForRun(ctx context.Context, history
 			continue
 		}
 
-		if !isToolCallOnlyProviderMessage(providerMessage) {
+		if len(providerMessage.ToolCalls) == 0 {
 			conversation = append(conversation, providerMessages...)
 			continue
 		}
 
-		var batched providers.Message
-		batched, i = batchAdjacentToolCallMessages(entries, i)
+		batched := providerMessage
+		if isToolCallOnlyProviderMessage(providerMessage) {
+			batched, i = batchAdjacentToolCallMessages(entries, i)
+		}
 		conversation = append(conversation, batched)
 		conversation = appendProviderToolResults(conversation, batched.ToolCalls, toolResults)
 	}
@@ -56,7 +58,7 @@ type providerConversationEntry struct {
 func convertProviderConversationHistory(ctx context.Context, history []Message, reader AttachmentReader, currentRunID string, allowImageInput bool) ([]providerConversationEntry, error) {
 	entries := make([]providerConversationEntry, 0, len(history))
 	for _, message := range history {
-		if skipInternalPlanPromptForProvider(message, currentRunID) {
+		if skipInternalPlanPromptForProvider(message, currentRunID) || messageInterruptedByDaemonRestart(message) {
 			continue
 		}
 		providerMessages, err := toProviderMessages(ctx, message, reader, allowImageInput)
@@ -139,7 +141,7 @@ func syntheticFailedToolResult(toolCallID string) providers.Message {
 func buildTextOnlyProviderConversationForRun(history []Message, currentRunID string) []providers.Message {
 	conversation := make([]providers.Message, 0, len(history))
 	for _, message := range history {
-		if message.Role == MessageRoleSystem || skipInternalPlanPromptForProvider(message, currentRunID) {
+		if message.Role == MessageRoleSystem || skipInternalPlanPromptForProvider(message, currentRunID) || messageInterruptedByDaemonRestart(message) {
 			continue
 		}
 		role := string(message.Role)

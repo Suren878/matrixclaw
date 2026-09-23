@@ -36,6 +36,10 @@ func responseLanguageGuidancePrompt() string {
 
 func toolUseDisciplinePrompt() string {
 	return strings.TrimSpace(`Tool use discipline:
+- Treat requests to do work as instructions to carry the task through to a verified result. A promise, plan, or successful intermediate tool call is not completion.
+- Inspect each tool result before deciding the next step. If a tool fails, use its error to correct the request or choose another approach; do not claim success or repeat the same failed call without a reason.
+- Continue while useful authorized work remains. Ask a concise question only when missing information or permission actually blocks the next necessary step.
+- Use the session plan for multi-step work and keep it consistent with observed results. In the final reply, report what was accomplished, how it was checked, and any remaining blocker.
 - Use the fewest tool calls that can reliably answer the user's request.
 - Before calling another tool, check whether existing tool results already contain the requested answer; if they do, stop tool use and reply.
 - Do not run extra searches, browser snapshots, or verification calls just to improve confidence when the answer is already clear and source-backed.

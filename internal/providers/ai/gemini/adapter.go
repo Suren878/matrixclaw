@@ -3,6 +3,7 @@ package gemini
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -322,24 +323,28 @@ func encodeTools(tools []providers.ToolDefinition) []geminiFunctionDeclaration {
 	return out
 }
 
-func (r *Runtime) decodeGenerateResponse(request providers.Request, body []byte) (providers.Response, error) {
+func (r *Runtime) decodeGenerateResponse(_ providers.Request, body []byte) (providers.Response, error) {
 	var payload generateContentResponse
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return providers.Response{}, fmt.Errorf("gemini: decode response: %w", err)
 	}
 	if len(payload.Candidates) == 0 {
-		return providers.Response{}, errors.New("gemini: empty candidates")
+		return providers.Response{}, fmt.Errorf("gemini: empty candidates: %w", providers.ErrEmptyResponse)
 	}
 
 	var text strings.Builder
 	var toolCalls []providers.ToolCall
+	// Gemini function calls have no protocol call ID. A run may invoke the
+	// same function in the same output slot on several turns; give each
+	// response its own namespace so later calls cannot overwrite old results.
+	responseID := rand.Text()
 	for i, part := range payload.Candidates[0].Content.Parts {
 		if !part.Thought && strings.TrimSpace(part.Text) != "" {
 			text.WriteString(part.Text)
 		}
 		if part.FunctionCall != nil && strings.TrimSpace(part.FunctionCall.Name) != "" {
 			toolCalls = append(toolCalls, providers.ToolCall{
-				ID:        toolCallID(request.RunID, i, part.FunctionCall.Name),
+				ID:        fmt.Sprintf("gemini_%s_%d", responseID, i),
 				Name:      strings.TrimSpace(part.FunctionCall.Name),
 				Arguments: part.FunctionCall.Args,
 			})
@@ -348,7 +353,7 @@ func (r *Runtime) decodeGenerateResponse(request providers.Request, body []byte)
 
 	reply := strings.TrimSpace(text.String())
 	if reply == "" && len(toolCalls) == 0 {
-		return providers.Response{}, errors.New("gemini: empty assistant reply")
+		return providers.Response{}, fmt.Errorf("gemini: %w", providers.ErrEmptyResponse)
 	}
 	return providers.Response{
 		Text:      reply,
@@ -424,18 +429,6 @@ func rawObject(value json.RawMessage) json.RawMessage {
 		return json.RawMessage(`{}`)
 	}
 	return raw
-}
-
-func toolCallID(runID string, index int, name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		name = "call"
-	}
-	runID = strings.TrimSpace(runID)
-	if runID == "" {
-		return fmt.Sprintf("gemini_%d_%s", index, name)
-	}
-	return fmt.Sprintf("gemini_%s_%d_%s", runID, index, name)
 }
 
 func supportsGenerateContent(methods []string) bool {

@@ -3,6 +3,7 @@ package codexapp
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -41,22 +42,116 @@ func TestClientSubscribeTurnReplaysBacklogBeyondSubscriptionBuffer(t *testing.T)
 	for i := range backlogCount {
 		client.events <- turnDeltaNotification(key, fmt.Sprintf("early-%03d", i))
 	}
-	waitForBacklog(t, client, key, backlogCount)
+	client.events <- Notification{
+		Method: "turn/completed",
+		Params: TurnCompleted{
+			ThreadID: key.threadID,
+			Turn:     Turn{ID: key.turnID, Status: TurnStatusCompleted},
+		},
+	}
+	waitForBacklogAtMost(t, client, key, 2)
 
 	turn, unsubscribe := client.SubscribeTurn(context.Background(), key.threadID, key.turnID)
 	defer unsubscribe()
 
-	for i := range backlogCount {
+	var gotText strings.Builder
+	for {
 		got := receiveNotification(t, turn)
-		params, ok := got.Params.(AgentMessageDelta)
-		if !ok {
-			t.Fatalf("notification %d params = %#v, want AgentMessageDelta", i, got.Params)
-		}
-		if want := fmt.Sprintf("early-%03d", i); params.Delta != want {
-			t.Fatalf("notification %d delta = %q, want %q", i, params.Delta, want)
+		switch params := got.Params.(type) {
+		case AgentMessageDelta:
+			gotText.WriteString(params.Delta)
+		case TurnCompleted:
+			var want strings.Builder
+			for i := range backlogCount {
+				_, _ = fmt.Fprintf(&want, "early-%03d", i)
+			}
+			if gotText.String() != want.String() {
+				t.Fatalf("combined backlog delta = %q, want %q", gotText.String(), want.String())
+			}
+			assertNoNotification(t, turn)
+			return
 		}
 	}
-	assertNoNotification(t, turn)
+}
+
+func TestClientSlowTurnSubscriberKeepsAllTextAndTerminalEvent(t *testing.T) {
+	client := newRoutingClientForTest(t)
+	key := turnKey{threadID: "thread-1", turnID: "turn-1"}
+	turn, unsubscribe := client.SubscribeTurn(context.Background(), key.threadID, key.turnID)
+	defer unsubscribe()
+	waitForSubscriptions(t, client, key)
+
+	const deltaCount = 2048
+	for i := 0; i < deltaCount; i++ {
+		client.events <- turnDeltaNotification(key, "x")
+	}
+	client.events <- Notification{
+		Method: "turn/completed",
+		Params: TurnCompleted{
+			ThreadID: key.threadID,
+			Turn:     Turn{ID: key.turnID, Status: TurnStatusCompleted},
+		},
+	}
+
+	var text strings.Builder
+	terminal := false
+	deadline := time.After(2 * time.Second)
+	for !terminal {
+		select {
+		case notification, ok := <-turn:
+			if !ok {
+				t.Fatalf("subscription closed before terminal event; text bytes = %d", text.Len())
+			}
+			switch params := notification.Params.(type) {
+			case AgentMessageDelta:
+				text.WriteString(params.Delta)
+			case TurnCompleted:
+				terminal = true
+			}
+		case <-deadline:
+			t.Fatalf("timed out waiting for terminal event; text bytes = %d", text.Len())
+		}
+	}
+	if got := text.Len(); got != deltaCount {
+		t.Fatalf("combined delta bytes = %d, want %d", got, deltaCount)
+	}
+	if err := client.Err(); err != nil {
+		t.Fatalf("client error after burst = %v", err)
+	}
+}
+
+func TestClientBacklogCoalescesBurstWithoutLosingTerminalEvent(t *testing.T) {
+	client := newRoutingClientForTest(t)
+	key := turnKey{threadID: "thread-1", turnID: "turn-1"}
+
+	const deltaCount = 2048
+	for i := 0; i < deltaCount; i++ {
+		client.events <- turnDeltaNotification(key, "x")
+	}
+	client.events <- Notification{
+		Method: "turn/completed",
+		Params: TurnCompleted{
+			ThreadID: key.threadID,
+			Turn:     Turn{ID: key.turnID, Status: TurnStatusCompleted},
+		},
+	}
+	waitForBacklogAtMost(t, client, key, turnBacklogLimit+1)
+
+	turn, unsubscribe := client.SubscribeTurn(context.Background(), key.threadID, key.turnID)
+	defer unsubscribe()
+	var text strings.Builder
+	for {
+		notification := receiveNotification(t, turn)
+		switch params := notification.Params.(type) {
+		case AgentMessageDelta:
+			text.WriteString(params.Delta)
+		case TurnCompleted:
+			if got := text.Len(); got != deltaCount {
+				t.Fatalf("combined backlog delta bytes = %d, want %d", got, deltaCount)
+			}
+			return
+		}
+	}
 }
 
 func newRoutingClientForTest(t *testing.T) *Client {
@@ -143,21 +238,26 @@ func hasSubscriptions(client *Client, keys ...turnKey) bool {
 	return true
 }
 
-func waitForBacklog(t *testing.T, client *Client, key turnKey, want int) {
+func waitForBacklogAtMost(t *testing.T, client *Client, key turnKey, max int) {
 	t.Helper()
-	deadline := time.After(time.Second)
+	deadline := time.After(2 * time.Second)
 	ticker := time.NewTicker(time.Millisecond)
 	defer ticker.Stop()
 	for {
 		client.routeMu.Lock()
-		got := len(client.turnBacklog[key])
+		backlog := client.turnBacklog[key]
+		got := len(backlog)
+		terminal := got > 0 && backlog[got-1].Method == "turn/completed"
 		client.routeMu.Unlock()
-		if got >= want {
+		if terminal {
+			if got > max {
+				t.Fatalf("backlog size = %d, want at most %d", got, max)
+			}
 			return
 		}
 		select {
 		case <-deadline:
-			t.Fatalf("backlog size = %d, want %d", got, want)
+			t.Fatalf("backlog did not receive terminal event; size = %d", got)
 		case <-ticker.C:
 		}
 	}

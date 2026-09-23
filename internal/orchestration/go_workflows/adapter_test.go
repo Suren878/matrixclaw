@@ -115,3 +115,50 @@ func TestNewForStoreDoesNotBlockPrimaryWrites(t *testing.T) {
 		t.Fatalf("primary write count = %d, want 250", count)
 	}
 }
+
+func TestRecoveredRunCanBeScheduledAfterAdapterRestart(t *testing.T) {
+	mainStorePath := filepath.Join(t.TempDir(), "matrixclaw.db")
+	runID := "run_recovered_after_restart"
+
+	firstExecuted := make(chan string, 1)
+	first, err := NewForStore(mainStorePath, orchestration.RunExecutorFunc(func(_ context.Context, got string) error {
+		firstExecuted <- got
+		return nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.StartRun(context.Background(), runID); err != nil {
+		t.Fatal(err)
+	}
+	waitForWorkflowRun(t, firstExecuted, runID)
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	secondExecuted := make(chan string, 1)
+	second, err := NewForStore(mainStorePath, orchestration.RunExecutorFunc(func(_ context.Context, got string) error {
+		secondExecuted <- got
+		return nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = second.Close() }()
+	if err := second.StartRun(context.Background(), runID); err != nil {
+		t.Fatal(err)
+	}
+	waitForWorkflowRun(t, secondExecuted, runID)
+}
+
+func waitForWorkflowRun(t *testing.T, executed <-chan string, want string) {
+	t.Helper()
+	select {
+	case got := <-executed:
+		if got != want {
+			t.Fatalf("executed run = %q, want %q", got, want)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("timed out waiting for workflow run %q", want)
+	}
+}

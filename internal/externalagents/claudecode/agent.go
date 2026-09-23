@@ -30,7 +30,7 @@ func (a Agent) Capabilities() externalagents.Capabilities {
 	return externalagents.Capabilities{
 		StartSession:     true,
 		ResumeSession:    true,
-		StreamingEvents:  false,
+		StreamingEvents:  true,
 		ToolEvents:       false,
 		Interrupt:        false,
 		ConfigurablePath: true,

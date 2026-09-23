@@ -39,6 +39,7 @@ func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID st
 		if err := c.store.CompleteRun(ctx, *assistant, *run); err != nil {
 			return fmt.Errorf("complete run: %w", err)
 		}
+		c.clearRunCheckpoint(ctx, run.ID)
 		c.saveRunUsage(ctx, *run, *assistant, response.Usage)
 		c.publishEvent(Event{
 			Type:      EventMessageCreated,
@@ -67,6 +68,7 @@ func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID st
 	if err := c.store.UpdateRun(ctx, *run); err != nil {
 		return err
 	}
+	c.clearRunCheckpoint(ctx, run.ID)
 	c.saveRunUsage(ctx, *run, *assistant, response.Usage)
 	c.publishEvent(Event{
 		Type:      EventMessageUpdated,
@@ -232,13 +234,16 @@ func (c *Core) setRunStatus(ctx context.Context, run *Run, status RunStatus, err
 	if err := c.store.UpdateRun(ctx, *run); err != nil {
 		return err
 	}
+	if subagentRunStatusTerminal(status) {
+		c.clearRunCheckpoint(ctx, run.ID)
+	}
 	c.publishEvent(Event{
 		Type:      EventRunUpdated,
 		SessionID: run.SessionID,
 		RunID:     run.ID,
 		Payload:   *run,
 	})
-	_ = c.touchAsyncSubagentTaskActivity(ctx, run.ID, run.UpdatedAt)
+	_ = c.touchSubagentTaskActivity(ctx, run.ID, run.UpdatedAt)
 	return nil
 }
 
@@ -378,6 +383,7 @@ func (c *Core) failRunByID(ctx context.Context, run Run, cause error) error {
 	if err := c.store.UpdateRun(ctx, run); err != nil {
 		return err
 	}
+	c.clearRunCheckpoint(ctx, run.ID)
 	c.publishEvent(Event{
 		Type:      EventRunUpdated,
 		SessionID: run.SessionID,

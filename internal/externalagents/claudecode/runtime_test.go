@@ -1,11 +1,51 @@
 package claudecode
 
 import (
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 )
+
+func TestRunPromptStreamsPartialClaudeOutput(t *testing.T) {
+	scriptPath := filepath.Join(t.TempDir(), "fake-claude")
+	script := `#!/bin/sh
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"session-1"}'
+printf '%s\n' '{"type":"stream_event","session_id":"session-1","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"hello"}}}'
+printf '%s\n' '{"type":"result","subtype":"success","session_id":"session-1","is_error":false,"result":"hello"}'
+`
+	if err := os.WriteFile(scriptPath, []byte(script), 0o700); err != nil {
+		t.Fatalf("write fake Claude executable: %v", err)
+	}
+	runtime := NewRuntime(RuntimeOptions{Enabled: true})
+	out := make(chan externalagents.Event, 8)
+	runtime.runPrompt(context.Background(), out, scriptPath, externalagents.ExternalSession{}, "hello")
+	events := collectEvents(out)
+
+	messageDeltas := 0
+	completed := false
+	for _, event := range events {
+		if event.Kind == externalagents.EventMessageDelta {
+			messageDeltas++
+			if event.Text != "hello" {
+				t.Fatalf("message delta = %q, want hello", event.Text)
+			}
+		}
+		if event.Kind == externalagents.EventTurnCompleted {
+			completed = true
+		}
+	}
+	if messageDeltas != 1 {
+		t.Fatalf("message delta count = %d, want exactly one (no final duplication)", messageDeltas)
+	}
+	if !completed {
+		t.Fatalf("events = %#v, want completed turn", events)
+	}
+}
 
 func TestRunPromptPanicEmitsTurnFailedAndCloses(t *testing.T) {
 	runtime := NewRuntime(RuntimeOptions{Enabled: true})
@@ -27,6 +67,54 @@ func TestRunPromptPanicEmitsTurnFailedAndCloses(t *testing.T) {
 	}
 	if !strings.Contains(event.Error, "claudecode prompt worker panicked") {
 		t.Fatalf("event error = %q, want panic failure", event.Error)
+	}
+}
+
+func TestClaudePromptArgsUsesStreamingAndRootCompatibleAutoMode(t *testing.T) {
+	session := externalagents.ExternalSession{
+		Model:          "sonnet",
+		ApprovalPolicy: "never",
+		Sandbox:        "danger-full-access",
+	}
+	args := claudePromptArgs(session, "hello")
+	joined := strings.Join(args, " ")
+	for _, want := range []string{"--output-format stream-json", "--include-partial-messages", "--permission-mode auto"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("args = %q, want %q", joined, want)
+		}
+	}
+	if strings.Contains(joined, "bypassPermissions") || strings.Contains(joined, "dangerously-skip-permissions") {
+		t.Fatalf("args = %q, must not use root-forbidden bypass mode", joined)
+	}
+}
+
+func TestClaudeStreamDeltaParsesTextAndThinking(t *testing.T) {
+	textEvent := json.RawMessage(`{"type":"content_block_delta","delta":{"type":"text_delta","text":"hello"}}`)
+	kind, delta := claudeStreamDelta(textEvent)
+	if kind != externalagents.EventMessageDelta || delta != "hello" {
+		t.Fatalf("text delta = (%q, %q)", kind, delta)
+	}
+	thinkingEvent := json.RawMessage(`{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"work"}}`)
+	kind, delta = claudeStreamDelta(thinkingEvent)
+	if kind != externalagents.EventReasoningDelta || delta != "work" {
+		t.Fatalf("thinking delta = (%q, %q)", kind, delta)
+	}
+}
+
+func TestClaudeAgentAdvertisesStreaming(t *testing.T) {
+	if !((Agent{}).Capabilities().StreamingEvents) {
+		t.Fatal("Claude Code agent must advertise streaming events")
+	}
+}
+
+func TestCappedBufferBoundsClaudeStderr(t *testing.T) {
+	buffer := &cappedBuffer{limit: 16}
+	input := strings.Repeat("x", 128)
+	if written, err := buffer.Write([]byte(input)); err != nil || written != len(input) {
+		t.Fatalf("Write() = (%d, %v), want (%d, nil)", written, err, len(input))
+	}
+	if !strings.HasPrefix(buffer.String(), strings.Repeat("x", 16)) || !strings.Contains(buffer.String(), "stderr truncated") {
+		t.Fatalf("buffer = %q, want bounded content and truncation marker", buffer.String())
 	}
 }
 

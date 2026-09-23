@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	workflowbackend "github.com/cschleiden/go-workflows/backend"
 	workflowsqlite "github.com/cschleiden/go-workflows/backend/sqlite"
@@ -106,7 +107,10 @@ func (a *Adapter) StartRun(ctx context.Context, runID string) error {
 		return errors.New("go-workflows: run id is required")
 	}
 
-	instanceID := fmt.Sprintf("%s_%d", runID, atomic.AddUint64(&a.sequence, 1))
+	// The sequence resets after every daemon restart. Include wall-clock time so
+	// a recovered run cannot collide with an old persisted workflow instance
+	// such as run_1 and silently remain unscheduled.
+	instanceID := fmt.Sprintf("%s_%d_%d", runID, time.Now().UTC().UnixNano(), atomic.AddUint64(&a.sequence, 1))
 	_, err := a.worker.CreateWorkflowInstance(ctx, workflowclient.WorkflowInstanceOptions{
 		InstanceID: instanceID,
 	}, runWorkflow, runID)

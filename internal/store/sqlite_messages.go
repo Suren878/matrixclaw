@@ -20,7 +20,26 @@ func (s *SQLiteStore) SaveMessage(ctx context.Context, message core.Message) err
 	return nil
 }
 
+func (s *SQLiteStore) SaveMessageProgress(ctx context.Context, message core.Message) error {
+	if err := insertMessage(ctx, s.db, message); err != nil {
+		return fmt.Errorf("store: save message progress: %w", err)
+	}
+	return nil
+}
+
 func (s *SQLiteStore) UpdateMessage(ctx context.Context, message core.Message) error {
+	if err := s.updateMessageRow(ctx, message); err != nil {
+		return err
+	}
+	_ = upsertMessageSearch(ctx, s.db, message)
+	return nil
+}
+
+func (s *SQLiteStore) UpdateMessageProgress(ctx context.Context, message core.Message) error {
+	return s.updateMessageRow(ctx, message)
+}
+
+func (s *SQLiteStore) updateMessageRow(ctx context.Context, message core.Message) error {
 	result, err := s.db.ExecContext(ctx, `
 UPDATE messages
 SET role = ?, content = ?, parts_json = ?, model = ?, provider = ?, updated_at = ?
@@ -43,7 +62,6 @@ WHERE id = ?`,
 	if count == 0 {
 		return core.ErrNotFound
 	}
-	_ = upsertMessageSearch(ctx, s.db, message)
 	return nil
 }
 

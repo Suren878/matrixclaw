@@ -3,7 +3,6 @@ package core_test
 import (
 	"context"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -11,9 +10,10 @@ import (
 	"github.com/Suren878/matrixclaw/internal/store"
 )
 
-func TestExecuteRunFailsOrphanedRunningRunInsteadOfIgnoringIt(t *testing.T) {
+func TestPersistedWorkflowCanRecoverOrphanedRunningRunInline(t *testing.T) {
 	app, sqliteStore, cleanup := newRunRecoveryTestCore(t)
 	defer cleanup()
+	app.WithSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "continued inline"}})
 	ctx := context.Background()
 	session := saveRunRecoveryTestSession(t, sqliteStore, "session_execute_orphan", "Orphan", "/tmp")
 	user := core.Message{
@@ -38,22 +38,21 @@ func TestExecuteRunFailsOrphanedRunningRunInsteadOfIgnoringIt(t *testing.T) {
 		t.Fatalf("create run: %v", err)
 	}
 
-	err := app.ExecuteRun(ctx, run.ID)
-	if err == nil || !strings.Contains(err.Error(), "left running without an active executor") {
-		t.Fatalf("ExecuteRun error = %v, want orphaned executor failure", err)
+	if err := app.ExecuteRun(ctx, run.ID); err != nil {
+		t.Fatalf("ExecuteRun: %v", err)
 	}
 	got, err := sqliteStore.GetRun(ctx, run.ID)
 	if err != nil {
 		t.Fatalf("GetRun: %v", err)
 	}
-	if got.Status != core.RunStatusFailed {
-		t.Fatalf("run status = %q, want failed", got.Status)
+	if got.Status != core.RunStatusCompleted {
+		t.Fatalf("run status = %q (%s), want completed", got.Status, got.Error)
 	}
-	if !strings.Contains(got.Error, "left running without an active executor") {
-		t.Fatalf("run error = %q, want orphaned executor detail", got.Error)
+	if got.Error != "" {
+		t.Fatalf("run error = %q, want empty", got.Error)
 	}
 	if got.FinishedAt == nil {
-		t.Fatal("FinishedAt = nil, want failed run finished timestamp")
+		t.Fatal("FinishedAt = nil, want completed run finished timestamp")
 	}
 }
 

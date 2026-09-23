@@ -31,12 +31,21 @@ func newRunExecution(run Run, session Session, runtime providers.Runtime) *runEx
 
 func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
 	runID = normalizeText(runID)
+	runCtx, unregisterRun, claimed := c.activeRunContext(ctx, runID)
+	if !claimed {
+		return nil
+	}
+	defer unregisterRun()
 	defer func() {
 		if err := c.afterRunExecution(context.Background(), runID); err != nil {
 			log.Printf("core: after run execution for %q failed: %v", runID, err)
 		}
 	}()
-	if handled, err := c.tryExecuteExternalAgentRun(ctx, runID); handled || err != nil {
+	ready, err := c.prepareClaimedRun(ctx, runID)
+	if err != nil || !ready {
+		return err
+	}
+	if handled, err := c.tryExecuteExternalAgentRun(ctx, runCtx, runID); handled || err != nil {
 		return err
 	}
 
@@ -44,9 +53,6 @@ func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
 	if err != nil || !ok {
 		return err
 	}
-
-	runCtx, unregisterRun := c.activeRunContext(ctx, execution.Run.ID)
-	defer unregisterRun()
 
 	return c.executeRunLoop(ctx, runCtx, execution)
 }
@@ -61,10 +67,7 @@ func (c *Core) prepareRunExecution(ctx context.Context, runID string) (*runExecu
 	case RunStatusCompleted, RunStatusFailed, RunStatusCanceled:
 		return nil, false, nil
 	case RunStatusRunning:
-		if !c.runIsActive(run.ID) {
-			return nil, false, c.failOrphanedRun(ctx, run)
-		}
-		return nil, false, nil
+		return nil, false, c.failOrphanedRun(ctx, run)
 	}
 
 	session, err := c.store.GetSession(ctx, run.SessionID)
@@ -95,6 +98,10 @@ func (c *Core) executeRunLoop(ctx context.Context, runCtx context.Context, execu
 		if err != nil {
 			return err
 		}
+		if runCtx.Err() != nil {
+			_, stopErr := c.applyRunTurnResultAfterContextStopped(execution, result)
+			return stopErr
+		}
 		done, err := c.applyRunTurnResult(ctx, execution, result)
 		if err != nil {
 			return err
@@ -113,7 +120,7 @@ func (c *Core) executeRunStep(ctx context.Context, runCtx context.Context, execu
 		return turnStepResult{Outcome: turnStepCompleted}, errors.New("core: run execution is required")
 	}
 	turn := execution.Turn
-	waitingApproval, err := c.resumeApprovedTools(ctx, turn)
+	waitingApproval, err := c.resumeApprovedTools(runCtx, turn)
 	if err != nil {
 		return turnStepResult{Outcome: turnStepCompleted, Err: err}, nil
 	}
@@ -121,6 +128,9 @@ func (c *Core) executeRunStep(ctx context.Context, runCtx context.Context, execu
 		return turnStepResult{Outcome: turnStepWaitingApproval}, nil
 	}
 	if _, err := c.drainPendingSteersIntoLatestToolResult(ctx, turn.SessionID, turn.RunID); err != nil {
+		return turnStepResult{Outcome: turnStepCompleted, Err: err}, nil
+	}
+	if err := c.saveRunCheckpoint(ctx, turn.RunID, RunCheckpointPhaseModel, "", ""); err != nil {
 		return turnStepResult{Outcome: turnStepCompleted, Err: err}, nil
 	}
 
@@ -146,7 +156,7 @@ func (c *Core) executeRunStep(ctx context.Context, runCtx context.Context, execu
 		}
 	}
 
-	assistant, assistantSaved, response, err := c.generateAssistantTurn(runCtx, turn, request)
+	assistant, assistantSaved, response, err := c.generateAssistantTurnWithRetry(runCtx, turn, request)
 	if err != nil {
 		if isContextLengthExceededError(err) {
 			compacted, compactErr := c.forceCompactSessionForRetry(ctx, turn)
@@ -158,7 +168,7 @@ func (c *Core) executeRunStep(ctx context.Context, runCtx context.Context, execu
 				if buildErr != nil {
 					return turnStepResult{Outcome: turnStepCompleted, Err: buildErr}, nil
 				}
-				assistant, assistantSaved, response, err = c.generateAssistantTurn(runCtx, turn, retryRequest)
+				assistant, assistantSaved, response, err = c.generateAssistantTurnWithRetry(runCtx, turn, retryRequest)
 				if err == nil {
 					if handled, cancelErr := c.checkAndHandleCanceled(ctx, execution.Run, &assistant, assistantSaved); handled {
 						return turnStepResult{Outcome: turnStepCompleted}, cancelErr

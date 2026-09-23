@@ -138,6 +138,22 @@ type staticAttachmentReader struct {
 	err  error
 }
 
+func TestProviderConversationPairsResultsWithMixedTextAndToolCalls(t *testing.T) {
+	history := []Message{
+		{Role: MessageRoleUser, Content: "Inspect it"},
+		{Role: MessageRoleAssistant, Content: "Checking now", Parts: []MessagePart{{Kind: MessagePartKindToolCall, ToolCall: &ToolCallPart{ID: "call-1", Name: "inspect", Input: `{}`}}}},
+		{Role: MessageRoleTool, Parts: []MessagePart{{Kind: MessagePartKindToolResult, ToolResult: &ToolResultPart{ToolCallID: "call-1", Name: "inspect", Content: "Actual result"}}}},
+		{Role: MessageRoleAssistant, Content: "Done"},
+	}
+	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(conversation) != 4 || conversation[1].Content != "Checking now" || conversation[2].ToolCallID != "call-1" || conversation[2].Content != "Actual result" {
+		t.Fatalf("conversation lost or reordered tool result: %#v", conversation)
+	}
+}
+
 func (r staticAttachmentReader) ReadAttachment(context.Context, string, bool, int64) (AttachmentData, error) {
 	return r.data, r.err
 }

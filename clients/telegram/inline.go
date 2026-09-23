@@ -169,7 +169,6 @@ func (w *Worker) inlineFallbackSessionID(ctx context.Context, externalKey string
 		log.Printf("telegram: inline fallback session lookup failed: %v", err)
 		return ""
 	}
-	w.rememberTelegramSessions(sessions)
 	for _, session := range sessions {
 		if session.Hidden {
 			continue

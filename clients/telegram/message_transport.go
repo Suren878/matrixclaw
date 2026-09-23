@@ -69,6 +69,13 @@ func isTelegramMessageNotModified(err error) bool {
 	return errors.As(err, &apiErr) && strings.Contains(strings.ToLower(apiErr.Description), "message is not modified")
 }
 
+func isTelegramMessageAlreadyDeleted(err error) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) &&
+		(apiErr.ErrorCode == http.StatusBadRequest || apiErr.StatusCode == http.StatusBadRequest) &&
+		strings.Contains(strings.ToLower(apiErr.Description), "message to delete not found")
+}
+
 func shouldFallbackTelegramEdit(err error) bool {
 	var apiErr *APIError
 	if !errors.As(err, &apiErr) {
@@ -132,18 +139,6 @@ func (w *Worker) sendFormattedTelegramMessage(ctx context.Context, req SendMessa
 		reply, err = w.sendTelegramMessage(ctx, req)
 	}
 	return reply, err
-}
-
-func (w *Worker) sendFormattedTelegramDraft(ctx context.Context, req SendMessageDraftRequest, formatted telegramFormattedText) error {
-	req.Text = formatted.Text
-	req.ParseMode = formatted.ParseMode
-	err := w.sendTelegramDraft(ctx, req)
-	if isTelegramParseError(err) {
-		req.Text = formatted.Plain
-		req.ParseMode = ""
-		err = w.sendTelegramDraft(ctx, req)
-	}
-	return err
 }
 
 func (w *Worker) answerFormattedGuestQuery(ctx context.Context, target chatTarget, formatted telegramFormattedText, markup *InlineKeyboardMarkup) (SentGuestMessage, error) {

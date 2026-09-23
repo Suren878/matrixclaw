@@ -70,6 +70,9 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 		return preparedToolCall{}, err
 	}
 	if !isNewCall {
+		if err := c.saveRunCheckpoint(ctx, runID, RunCheckpointPhaseTool, toolCallID, toolName); err != nil {
+			return preparedToolCall{}, err
+		}
 		return prepared, nil
 	}
 	if err := c.store.SaveMessage(ctx, message); err != nil {
@@ -88,7 +91,10 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 		RunID:      message.RunID,
 		SessionID:  sessionID,
 	})
-	_ = c.touchAsyncSubagentTaskActivity(ctx, message.RunID, message.UpdatedAt)
+	_ = c.touchSubagentTaskActivity(ctx, message.RunID, message.UpdatedAt)
+	if err := c.saveRunCheckpoint(ctx, runID, RunCheckpointPhaseTool, toolCallID, toolName); err != nil {
+		return preparedToolCall{}, err
+	}
 	return prepared, nil
 }
 

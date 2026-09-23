@@ -36,6 +36,11 @@ func (c *Core) buildProviderRequest(ctx context.Context, turn turnExecution) (pr
 
 func (c *Core) providerSystemPrompt(ctx context.Context, turn turnExecution, assistant AssistantProfile, compactSummary string, history []Message) string {
 	sections := []string{AssistantSystemPrompt(assistant)}
+	if checkpoint, ok, err := c.runCheckpoint(ctx, turn.RunID); err == nil && ok {
+		if recoveryPrompt := runCheckpointRecoveryPrompt(checkpoint); recoveryPrompt != "" {
+			sections = append(sections, recoveryPrompt)
+		}
+	}
 	if turn.Subagent {
 		sections = append(sections, subagentSystemPrompt())
 		if workingDir := strings.TrimSpace(turn.WorkingDir); workingDir != "" {

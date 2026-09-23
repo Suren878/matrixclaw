@@ -3,9 +3,9 @@ package openaicompat
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -17,20 +17,31 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 	reasoningContentSeen := false
 	toolCalls := map[int]*streamToolCall{}
 	var usage providers.Usage
+	completed := false
 	if err := providers.ScanSSE(ctx, body, func(event providers.SSEEvent) error {
 		if event.Data == "[DONE]" {
-			return nil
+			completed = true
+			return providers.ErrSSEComplete
 		}
 
 		var chunk chatCompletionChunk
 		if err := json.Unmarshal([]byte(event.Data), &chunk); err != nil {
 			return fmt.Errorf("openaicompat: decode stream chunk: %w", err)
 		}
+		if chunk.Error != nil {
+			return fmt.Errorf("openaicompat: stream error: %s", chunk.Error.Message)
+		}
 		if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 {
 			usage = openAIUsage(chunk.Usage)
 		}
 		if len(chunk.Choices) == 0 {
 			return nil
+		}
+		if reason := chunk.Choices[0].FinishReason; reason != "" {
+			if err := validateFinishReason(reason); err != nil {
+				return err
+			}
+			completed = true
 		}
 
 		deltaChunk := chunk.Choices[0].Delta
@@ -59,11 +70,17 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 	}); err != nil {
 		return providers.Response{}, err
 	}
+	if !completed {
+		return providers.Response{}, fmt.Errorf("openaicompat: %w", providers.ErrIncompleteResponse)
+	}
 
 	reply := strings.TrimSpace(text.String())
 	calls := streamToolCalls(toolCalls)
+	if err := validateToolCalls(calls); err != nil {
+		return providers.Response{}, err
+	}
 	if reply == "" && len(calls) == 0 {
-		return providers.Response{}, errors.New("openaicompat: empty assistant reply")
+		return providers.Response{}, fmt.Errorf("openaicompat: %w", providers.ErrEmptyResponse)
 	}
 	var responseReasoningContent *string
 	if reasoningContentSeen {
@@ -108,9 +125,14 @@ func streamToolCalls(calls map[int]*streamToolCall) []providers.ToolCall {
 		return nil
 	}
 	out := make([]providers.ToolCall, 0, len(calls))
-	for i := 0; i < len(calls); i++ {
+	indices := make([]int, 0, len(calls))
+	for index := range calls {
+		indices = append(indices, index)
+	}
+	sort.Ints(indices)
+	for _, i := range indices {
 		call := calls[i]
-		if call == nil || strings.TrimSpace(call.name) == "" {
+		if call == nil {
 			continue
 		}
 		out = append(out, providers.ToolCall{

@@ -55,7 +55,8 @@ type chatCompletionToolFunctionCall struct {
 
 type chatCompletionResponse struct {
 	Choices []struct {
-		Message struct {
+		FinishReason string `json:"finish_reason"`
+		Message      struct {
 			Content          string                   `json:"content"`
 			ReasoningContent *string                  `json:"reasoning_content,omitempty"`
 			ToolCalls        []chatCompletionToolCall `json:"tool_calls,omitempty"`
@@ -65,8 +66,12 @@ type chatCompletionResponse struct {
 }
 
 type chatCompletionChunk struct {
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
 	Choices []struct {
-		Delta struct {
+		FinishReason string `json:"finish_reason"`
+		Delta        struct {
 			Content          string                        `json:"content"`
 			ReasoningContent *string                       `json:"reasoning_content,omitempty"`
 			ToolCalls        []chatCompletionToolCallDelta `json:"tool_calls,omitempty"`

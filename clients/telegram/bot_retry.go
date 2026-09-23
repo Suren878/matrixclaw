@@ -7,18 +7,14 @@ import (
 )
 
 func (w *Worker) sendTelegramMessage(ctx context.Context, req SendMessageRequest) (SentMessage, error) {
+	if silent, _ := ctx.Value(telegramSilentKey{}).(bool); silent {
+		req.DisableNotification = true
+	}
 	req.ReplyMarkup = w.compactReplyMarkup(req.ReplyMarkup)
-	if req.ChatID != 0 && req.ReplyMarkup == nil {
+	if req.ChatID != 0 && req.ReplyMarkup == nil && !req.SkipReplyKeyboardRemove {
 		req.ReplyMarkup = telegramReplyKeyboardRemove()
 	}
-	reply, err := w.api.SendMessage(ctx, req)
-	if !shouldRetryTelegramAfter(err) {
-		return reply, err
-	}
-	if !sleepContext(ctx, telegramRetryAfter(err)) {
-		return SentMessage{}, ctx.Err()
-	}
-	return w.api.SendMessage(ctx, req)
+	return retryTelegramCall(ctx, func() (SentMessage, error) { return w.api.SendMessage(ctx, req) })
 }
 
 func telegramReplyKeyboardRemove() *ReplyKeyboardRemove {
@@ -26,52 +22,32 @@ func telegramReplyKeyboardRemove() *ReplyKeyboardRemove {
 }
 
 func (w *Worker) sendTelegramDraft(ctx context.Context, req SendMessageDraftRequest) error {
-	err := w.api.SendMessageDraft(ctx, req)
-	if !shouldRetryTelegramAfter(err) {
-		return err
-	}
-	if !sleepContext(ctx, telegramRetryAfter(err)) {
-		return ctx.Err()
-	}
-	return w.api.SendMessageDraft(ctx, req)
+	_, err := retryTelegramCall(ctx, func() (struct{}, error) {
+		return struct{}{}, w.api.SendMessageDraft(ctx, req)
+	})
+	return err
 }
 
 func (w *Worker) editTelegramMessage(ctx context.Context, req EditMessageTextRequest) error {
 	req.ReplyMarkup = w.compactInlineKeyboardMarkup(req.ReplyMarkup)
-	_, err := w.api.EditMessageText(ctx, req)
-	if !shouldRetryTelegramAfter(err) {
-		return err
-	}
-	if !sleepContext(ctx, telegramRetryAfter(err)) {
-		return ctx.Err()
-	}
-	_, err = w.api.EditMessageText(ctx, req)
+	_, err := retryTelegramCall(ctx, func() (EditMessageTextResponse, error) { return w.api.EditMessageText(ctx, req) })
 	return err
+}
+
+func isTelegramPreview(ctx context.Context) bool {
+	preview, _ := ctx.Value(telegramPreviewKey{}).(bool)
+	return preview
 }
 
 func (w *Worker) editTelegramMessageMedia(ctx context.Context, req EditMessageMediaRequest) error {
 	req.ReplyMarkup = w.compactInlineKeyboardMarkup(req.ReplyMarkup)
-	_, err := w.api.EditMessageMedia(ctx, req)
-	if !shouldRetryTelegramAfter(err) {
-		return err
-	}
-	if !sleepContext(ctx, telegramRetryAfter(err)) {
-		return ctx.Err()
-	}
-	_, err = w.api.EditMessageMedia(ctx, req)
+	_, err := retryTelegramCall(ctx, func() (EditMessageMediaResponse, error) { return w.api.EditMessageMedia(ctx, req) })
 	return err
 }
 
 func (w *Worker) answerGuestQuery(ctx context.Context, req AnswerGuestQueryRequest) (SentGuestMessage, error) {
 	req.Result.ReplyMarkup = w.compactInlineKeyboardMarkup(req.Result.ReplyMarkup)
-	reply, err := w.api.AnswerGuestQuery(ctx, req)
-	if !shouldRetryTelegramAfter(err) {
-		return reply, err
-	}
-	if !sleepContext(ctx, telegramRetryAfter(err)) {
-		return SentGuestMessage{}, ctx.Err()
-	}
-	return w.api.AnswerGuestQuery(ctx, req)
+	return retryTelegramCall(ctx, func() (SentGuestMessage, error) { return w.api.AnswerGuestQuery(ctx, req) })
 }
 
 func (w *Worker) compactReplyMarkup(markup any) any {
@@ -94,8 +70,25 @@ func (w *Worker) compactReplyMarkup(markup any) any {
 	return w.compactInlineKeyboardMarkup(inline)
 }
 
-func shouldRetryTelegramAfter(err error) bool {
-	return telegramRetryAfter(err) > 0
+// Delivery polling and previews schedule their own retries. Sleeping inside
+// their API calls would hold the delivery lock and stall unrelated chats.
+type telegramDeferredRetryKey struct{}
+
+func retryTelegramCall[T any](ctx context.Context, call func() (T, error)) (T, error) {
+	var zero T
+	if err := ctx.Err(); err != nil {
+		return zero, err
+	}
+	result, err := call()
+	delay := telegramRetryAfter(err)
+	deferred, _ := ctx.Value(telegramDeferredRetryKey{}).(bool)
+	if delay <= 0 || deferred || isTelegramPreview(ctx) {
+		return result, err
+	}
+	if !sleepContext(ctx, delay) {
+		return zero, ctx.Err()
+	}
+	return call()
 }
 
 func telegramRetryAfter(err error) time.Duration {

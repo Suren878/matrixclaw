@@ -30,6 +30,9 @@ func (c *Core) createPendingApproval(ctx context.Context, prepared preparedToolC
 	if err := c.store.CreateApproval(ctx, approval); err != nil {
 		return tools.Result{}, nil, false, err
 	}
+	if err := c.saveRunCheckpoint(ctx, prepared.RunID, RunCheckpointPhaseWaitingApproval, prepared.ToolCallID, prepared.ToolName); err != nil {
+		return tools.Result{}, nil, false, err
+	}
 	c.publishEvent(Event{
 		Type:      EventApprovalRequest,
 		SessionID: prepared.SessionID,

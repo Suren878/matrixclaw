@@ -59,7 +59,11 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 				return providers.Response{}, fmt.Errorf("openaicompat: read response: %w", err)
 			}
 			if shouldRetryStatus(httpRes.StatusCode) && attempt < len(transientRetryBackoffs) {
-				if err := waitForRetry(ctx, transientRetryBackoffs[attempt]); err != nil {
+				delay := providers.RetryAfterDelay(httpRes.Header.Get("Retry-After"), time.Now(), transientRetryBackoffs[attempt])
+				if delay > 30*time.Second {
+					return providers.Response{}, fmt.Errorf("openaicompat: %s (retry after %s)", decodeOpenAIError(httpRes.StatusCode, resBody), delay)
+				}
+				if err := waitForRetry(ctx, delay); err != nil {
 					return providers.Response{}, err
 				}
 				continue
@@ -101,7 +105,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 			return providers.Response{}, fmt.Errorf("openaicompat: %s", decodeOpenAIError(httpRes.StatusCode, resBody))
 		}
 		defer func() { _ = httpRes.Body.Close() }()
-		if payload.Stream {
+		if payload.Stream && !strings.Contains(strings.ToLower(httpRes.Header.Get("Content-Type")), "application/json") {
 			return r.decodeStream(ctx, httpRes.Body)
 		}
 
@@ -209,7 +213,7 @@ func shouldRetryWithMaxCompletionTokens(payload chatCompletionRequest, statusCod
 }
 
 func shouldRetryStatus(statusCode int) bool {
-	return statusCode >= 500 && statusCode <= 599
+	return statusCode == http.StatusTooManyRequests || statusCode == http.StatusRequestTimeout || (statusCode >= 500 && statusCode <= 599)
 }
 
 func waitForRetry(ctx context.Context, delay time.Duration) error {
@@ -316,14 +320,20 @@ func (r *Runtime) decodeChatResponse(body []byte) (providers.Response, error) {
 		return providers.Response{}, fmt.Errorf("openaicompat: decode response: %w", err)
 	}
 	if len(response.Choices) == 0 {
-		return providers.Response{}, errors.New("openaicompat: empty choices")
+		return providers.Response{}, fmt.Errorf("openaicompat: empty choices: %w", providers.ErrEmptyResponse)
 	}
 
 	choice := response.Choices[0]
+	if err := validateFinishReason(choice.FinishReason); err != nil {
+		return providers.Response{}, err
+	}
 	toolCalls := decodeToolCalls(choice.Message.ToolCalls)
+	if err := validateToolCalls(toolCalls); err != nil {
+		return providers.Response{}, err
+	}
 	text := strings.TrimSpace(choice.Message.Content)
 	if len(toolCalls) == 0 && text == "" {
-		return providers.Response{}, errors.New("openaicompat: empty assistant reply")
+		return providers.Response{}, fmt.Errorf("openaicompat: %w", providers.ErrEmptyResponse)
 	}
 
 	return providers.Response{
@@ -334,6 +344,15 @@ func (r *Runtime) decodeChatResponse(body []byte) (providers.Response, error) {
 		ToolCalls:        toolCalls,
 		Usage:            openAIUsage(response.Usage),
 	}, nil
+}
+
+func validateFinishReason(reason string) error {
+	switch reason {
+	case "length", "content_filter":
+		return fmt.Errorf("openaicompat: generation stopped before completion (%s)", reason)
+	default:
+		return nil
+	}
 }
 
 func cloneStringPtr(value *string) *string {

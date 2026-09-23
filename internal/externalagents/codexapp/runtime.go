@@ -20,6 +20,7 @@ type Runtime struct {
 	ownsClient  bool
 	initialized bool
 	stderr      io.Writer
+	activeTurns map[string]string
 }
 
 type RuntimeOptions struct {
@@ -40,9 +41,10 @@ func NewRuntime(opts RuntimeOptions) *Runtime {
 			Path:    opts.Path,
 			Enabled: opts.Enabled,
 		},
-		client:     opts.Client,
-		ownsClient: opts.Client == nil,
-		stderr:     opts.Stderr,
+		client:      opts.Client,
+		ownsClient:  opts.Client == nil,
+		stderr:      opts.Stderr,
+		activeTurns: map[string]string{},
 	}
 }
 
@@ -134,8 +136,11 @@ func (r *Runtime) Send(ctx context.Context, session externalagents.ExternalSessi
 		}
 	}
 
+	r.setActiveTurn(session.ExternalThreadID, resp.Turn.ID)
 	out := make(chan externalagents.Event, 64)
-	safego.Go("codexapp.forwardTurnEvents", func() { r.forwardTurnEvents(ctx, out, session.ExternalThreadID, resp.Turn.ID) })
+	safego.Go("codexapp.forwardTurnEvents", func() {
+		r.forwardTurnEvents(ctx, out, client, session.ExternalThreadID, resp.Turn.ID)
+	})
 	return out, nil
 }
 
@@ -148,8 +153,19 @@ func turnStartParams(session externalagents.ExternalSession, text string) TurnSt
 	}
 }
 
-func (r *Runtime) Interrupt(context.Context, externalagents.ExternalSession) error {
-	return fmt.Errorf("codexapp: interrupt is not implemented")
+func (r *Runtime) Interrupt(ctx context.Context, session externalagents.ExternalSession) error {
+	threadID := strings.TrimSpace(session.ExternalThreadID)
+	if threadID == "" {
+		return fmt.Errorf("codexapp: external thread id is required")
+	}
+	r.mu.Lock()
+	client := r.client
+	turnID := r.activeTurns[threadID]
+	r.mu.Unlock()
+	if client == nil || strings.TrimSpace(turnID) == "" {
+		return nil
+	}
+	return interruptActiveTurn(ctx, client, threadID, turnID)
 }
 
 func (r *Runtime) Close() error {
@@ -161,14 +177,46 @@ func (r *Runtime) Close() error {
 	err := r.client.Close()
 	r.client = nil
 	r.initialized = false
+	r.activeTurns = map[string]string{}
 	return err
+}
+
+func (r *Runtime) setActiveTurn(threadID string, turnID string) {
+	threadID = strings.TrimSpace(threadID)
+	turnID = strings.TrimSpace(turnID)
+	if threadID == "" || turnID == "" {
+		return
+	}
+	r.mu.Lock()
+	if r.activeTurns == nil {
+		r.activeTurns = map[string]string{}
+	}
+	r.activeTurns[threadID] = turnID
+	r.mu.Unlock()
+}
+
+func (r *Runtime) clearActiveTurn(threadID string, turnID string) {
+	r.mu.Lock()
+	if r.activeTurns[threadID] == turnID {
+		delete(r.activeTurns, threadID)
+	}
+	r.mu.Unlock()
 }
 
 func (r *Runtime) ensureClient(ctx context.Context) (*Client, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.client != nil && r.ownsClient && clientIsDone(r.client) {
+		_ = r.client.Close()
+		r.client = nil
+		r.initialized = false
+		r.activeTurns = map[string]string{}
+	}
 	if r.client == nil {
-		client, err := Start(ctx, ProcessOptions{
+		// The app-server belongs to the runtime, not to an individual run. Using
+		// the run context here kills the shared process as soon as that run
+		// finishes and makes the following session inherit a dead client.
+		client, err := Start(context.Background(), ProcessOptions{
 			Path:   r.Path,
 			Stderr: r.stderr,
 		})
@@ -195,54 +243,98 @@ func (r *Runtime) ensureClient(ctx context.Context) (*Client, error) {
 	return r.client, nil
 }
 
-func (r *Runtime) forwardTurnEvents(ctx context.Context, out chan<- externalagents.Event, threadID string, turnID string) {
+func clientIsDone(client *Client) bool {
+	if client == nil {
+		return true
+	}
+	select {
+	case <-client.done:
+		return true
+	default:
+		return false
+	}
+}
+
+func interruptActiveTurn(ctx context.Context, client *Client, threadID string, turnID string) error {
+	if client == nil || strings.TrimSpace(threadID) == "" || strings.TrimSpace(turnID) == "" {
+		return nil
+	}
+	_, err := client.InterruptTurn(ctx, TurnInterruptParams{ThreadID: threadID, TurnID: turnID})
+	return err
+}
+
+func (r *Runtime) forwardTurnEvents(ctx context.Context, out chan<- externalagents.Event, client *Client, threadID string, turnID string) {
 	defer close(out)
+	defer func() {
+		if ctx.Err() != nil {
+			interruptCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = interruptActiveTurn(interruptCtx, client, threadID, turnID)
+			cancel()
+		}
+		r.clearActiveTurn(threadID, turnID)
+	}()
 	if !safego.Run("codexapp.forwardTurnEvents", func() {
-		r.forwardTurnEventsLoop(ctx, out, threadID, turnID)
+		select {
+		case out <- externalagents.Event{
+			Kind:             externalagents.EventTurnStarted,
+			AgentID:          AgentID,
+			ExternalThreadID: threadID,
+			ExternalTurnID:   turnID,
+			At:               time.Now().UTC(),
+		}:
+		case <-ctx.Done():
+			return
+		}
+		r.forwardTurnEventsLoop(ctx, out, client, threadID, turnID)
 	}) {
-		out <- externalagents.Event{
+		sendRuntimeEvent(ctx, out, externalagents.Event{
 			Kind:             externalagents.EventTurnFailed,
 			AgentID:          AgentID,
 			ExternalThreadID: threadID,
 			ExternalTurnID:   turnID,
 			Error:            "codex app-server event worker panicked",
 			At:               time.Now().UTC(),
-		}
+		})
 	}
 }
 
-func (r *Runtime) forwardTurnEventsLoop(ctx context.Context, out chan<- externalagents.Event, threadID string, turnID string) {
-	events, unsubscribe := r.client.SubscribeTurn(ctx, threadID, turnID)
+func (r *Runtime) forwardTurnEventsLoop(ctx context.Context, out chan<- externalagents.Event, client *Client, threadID string, turnID string) {
+	if client == nil {
+		sendRuntimeEvent(ctx, out, externalagents.Event{
+			Kind:             externalagents.EventTurnFailed,
+			AgentID:          AgentID,
+			ExternalThreadID: threadID,
+			ExternalTurnID:   turnID,
+			Error:            "codex app-server client is unavailable",
+			At:               time.Now().UTC(),
+		})
+		return
+	}
+	events, unsubscribe := client.SubscribeTurn(ctx, threadID, turnID)
 	defer unsubscribe()
 	for {
 		select {
 		case <-ctx.Done():
-			out <- externalagents.Event{
-				Kind:             externalagents.EventTurnFailed,
-				AgentID:          AgentID,
-				ExternalThreadID: threadID,
-				ExternalTurnID:   turnID,
-				Error:            ctx.Err().Error(),
-				At:               time.Now().UTC(),
-			}
 			return
 		case event, ok := <-events:
 			if !ok {
-				if err := r.client.Err(); err != nil {
-					out <- externalagents.Event{
+				if err := client.Err(); err != nil {
+					sendRuntimeEvent(ctx, out, externalagents.Event{
 						Kind:             externalagents.EventTurnFailed,
 						AgentID:          AgentID,
 						ExternalThreadID: threadID,
 						ExternalTurnID:   turnID,
 						Error:            err.Error(),
 						At:               time.Now().UTC(),
-					}
+					})
 				}
 				return
 			}
 			normalized, done := normalizeNotification(event, threadID, turnID)
 			for _, item := range normalized {
-				out <- item
+				if !sendRuntimeEvent(ctx, out, item) {
+					return
+				}
 			}
 			if done {
 				return
@@ -251,9 +343,78 @@ func (r *Runtime) forwardTurnEventsLoop(ctx context.Context, out chan<- external
 	}
 }
 
+func sendRuntimeEvent(ctx context.Context, out chan<- externalagents.Event, event externalagents.Event) bool {
+	select {
+	case out <- event:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
 func normalizeNotification(event Notification, threadID string, turnID string) ([]externalagents.Event, bool) {
 	now := time.Now().UTC()
 	switch params := event.Params.(type) {
+	case TurnStarted:
+		if params.ThreadID != threadID || params.Turn.ID != turnID {
+			return nil, false
+		}
+		return []externalagents.Event{{
+			Kind:             externalagents.EventHeartbeat,
+			AgentID:          AgentID,
+			ExternalThreadID: params.ThreadID,
+			ExternalTurnID:   params.Turn.ID,
+			RawMethod:        event.Method,
+			Raw:              event.Raw,
+			At:               now,
+		}}, false
+	case ErrorNotification:
+		if params.ThreadID != threadID || params.TurnID != turnID {
+			return nil, false
+		}
+		errText := strings.TrimSpace(params.Error.Message)
+		if params.Error.AdditionalDetails != nil && strings.TrimSpace(*params.Error.AdditionalDetails) != "" {
+			errText = strings.TrimSpace(errText + ": " + strings.TrimSpace(*params.Error.AdditionalDetails))
+		}
+		if params.WillRetry {
+			return []externalagents.Event{{
+				Kind:             externalagents.EventHeartbeat,
+				AgentID:          AgentID,
+				ExternalThreadID: params.ThreadID,
+				ExternalTurnID:   params.TurnID,
+				Text:             errText,
+				RawMethod:        event.Method,
+				Raw:              event.Raw,
+				At:               now,
+			}}, false
+		}
+		if errText == "" {
+			errText = "codex turn failed"
+		}
+		return []externalagents.Event{{
+			Kind:             externalagents.EventTurnFailed,
+			AgentID:          AgentID,
+			ExternalThreadID: params.ThreadID,
+			ExternalTurnID:   params.TurnID,
+			Error:            errText,
+			RawMethod:        event.Method,
+			Raw:              event.Raw,
+			At:               now,
+		}}, true
+	case ContextCompactedNotification:
+		if params.ThreadID != threadID || params.TurnID != turnID {
+			return nil, false
+		}
+		return []externalagents.Event{{
+			Kind:             externalagents.EventHeartbeat,
+			AgentID:          AgentID,
+			ExternalThreadID: params.ThreadID,
+			ExternalTurnID:   params.TurnID,
+			Text:             "context compacted",
+			RawMethod:        event.Method,
+			Raw:              event.Raw,
+			At:               now,
+		}}, false
 	case ItemNotification:
 		if params.ThreadID != threadID || params.TurnID != turnID {
 			return nil, false
@@ -347,17 +508,47 @@ func normalizeNotification(event Notification, threadID string, turnID string) (
 		if params.ThreadID != threadID || params.Turn.ID != turnID {
 			return nil, false
 		}
+		kind, errText := completedTurnOutcome(params.Turn)
 		return []externalagents.Event{{
-			Kind:             externalagents.EventTurnCompleted,
+			Kind:             kind,
 			AgentID:          AgentID,
 			ExternalThreadID: params.ThreadID,
 			ExternalTurnID:   params.Turn.ID,
+			Error:            errText,
 			RawMethod:        event.Method,
 			Raw:              event.Raw,
 			At:               now,
 		}}, true
 	default:
 		return nil, false
+	}
+}
+
+func completedTurnOutcome(turn Turn) (externalagents.EventKind, string) {
+	switch turn.Status {
+	case "", TurnStatusCompleted:
+		return externalagents.EventTurnCompleted, ""
+	case TurnStatusInterrupted:
+		return externalagents.EventTurnFailed, "codex turn interrupted"
+	case TurnStatusFailed:
+		if turn.Error != nil {
+			message := strings.TrimSpace(turn.Error.Message)
+			if turn.Error.AdditionalDetails != nil {
+				details := strings.TrimSpace(*turn.Error.AdditionalDetails)
+				if details != "" && details != message {
+					if message != "" {
+						message += ": "
+					}
+					message += details
+				}
+			}
+			if message != "" {
+				return externalagents.EventTurnFailed, message
+			}
+		}
+		return externalagents.EventTurnFailed, "codex turn failed"
+	default:
+		return externalagents.EventTurnFailed, fmt.Sprintf("codex turn completed with unexpected status %q", turn.Status)
 	}
 }
 

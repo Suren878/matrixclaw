@@ -74,7 +74,7 @@ func subagentWorkJob(task SubagentTask) work.Job {
 	if updatedAt.IsZero() {
 		updatedAt = createdAt
 	}
-	return work.Job{
+	job := work.Job{
 		ID:         task.ID,
 		Kind:       work.KindSubagent,
 		Status:     workStatusForSubagent(task.Status),
@@ -87,6 +87,14 @@ func subagentWorkJob(task SubagentTask) work.Job {
 		UpdatedAt:  updatedAt,
 		FinishedAt: task.FinishedAt,
 	}
+	if task.Status == SubagentTaskStatusRunning || task.Status == SubagentTaskStatusWaitingApproval {
+		heartbeatAt := updatedAt
+		job.HeartbeatAt = &heartbeatAt
+		startedAt := createdAt
+		job.StartedAt = &startedAt
+		job.Attempts = 1
+	}
+	return job
 }
 
 func workStatusForSubagent(status SubagentTaskStatus) string {

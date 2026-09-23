@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
+
+const runScheduleLease = 30 * time.Second
 
 func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptRunResult, error) {
 	text := normalizeText(input.Text)
@@ -165,7 +168,31 @@ func (c *Core) startRun(ctx context.Context, runID string) error {
 	if c.runStarter == nil {
 		return fmt.Errorf("%w: run starter not configured", ErrExecutionUnavailable)
 	}
-	return c.runStarter.StartRun(ctx, runID)
+	now := c.now().UTC()
+	c.mu.Lock()
+	if c.activeRuns[runID] != nil {
+		c.mu.Unlock()
+		return nil
+	}
+	if scheduledAt, ok := c.scheduledRuns[runID]; ok {
+		age := now.Sub(scheduledAt)
+		if age >= 0 && age < runScheduleLease {
+			c.mu.Unlock()
+			return nil
+		}
+	}
+	if c.scheduledRuns == nil {
+		c.scheduledRuns = map[string]time.Time{}
+	}
+	c.scheduledRuns[runID] = now
+	c.mu.Unlock()
+	if err := c.runStarter.StartRun(ctx, runID); err != nil {
+		c.mu.Lock()
+		delete(c.scheduledRuns, runID)
+		c.mu.Unlock()
+		return err
+	}
+	return nil
 }
 
 func deterministicRunID(triggerID string) string {

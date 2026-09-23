@@ -3,6 +3,7 @@ package providers
 import (
 	"bufio"
 	"context"
+	"errors"
 	"io"
 	"strings"
 )
@@ -11,6 +12,10 @@ type SSEEvent struct {
 	Type string
 	Data string
 }
+
+// ErrSSEComplete lets a protocol decoder stop at its terminal event even if
+// the upstream keeps the HTTP connection open after that event.
+var ErrSSEComplete = errors.New("SSE complete")
 
 // ScanSSE reads SSE frames from body and invokes handle for each event payload.
 func ScanSSE(ctx context.Context, body io.Reader, handle func(SSEEvent) error) error {
@@ -41,6 +46,9 @@ func ScanSSE(ctx context.Context, body io.Reader, handle func(SSEEvent) error) e
 		line := scanner.Text()
 		if line == "" {
 			if err := flush(); err != nil {
+				if errors.Is(err, ErrSSEComplete) {
+					return nil
+				}
 				return err
 			}
 			continue
@@ -58,5 +66,12 @@ func ScanSSE(ctx context.Context, body io.Reader, handle func(SSEEvent) error) e
 	if err := scanner.Err(); err != nil {
 		return err
 	}
-	return flush()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	err := flush()
+	if errors.Is(err, ErrSSEComplete) {
+		return nil
+	}
+	return err
 }

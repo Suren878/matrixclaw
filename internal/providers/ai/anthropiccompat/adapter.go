@@ -208,7 +208,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 
 	reply := strings.TrimSpace(text.String())
 	if reply == "" {
-		return providers.Response{}, errors.New("anthropic: empty assistant reply")
+		return providers.Response{}, fmt.Errorf("anthropic: %w", providers.ErrEmptyResponse)
 	}
 
 	return providers.Response{
@@ -367,6 +367,7 @@ func normalizeAnthropicRole(role string) string {
 
 func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.Response, error) {
 	var text strings.Builder
+	completed := false
 	if err := providers.ScanSSE(ctx, body, func(event providers.SSEEvent) error {
 		if event.Data == "" {
 			return nil
@@ -378,6 +379,10 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 		}
 		if chunk.Error != nil && strings.TrimSpace(chunk.Error.Message) != "" {
 			return errors.New(strings.TrimSpace(chunk.Error.Message))
+		}
+		if event.Type == "message_stop" {
+			completed = true
+			return providers.ErrSSEComplete
 		}
 
 		delta := ""
@@ -396,10 +401,13 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 	}); err != nil {
 		return providers.Response{}, err
 	}
+	if !completed {
+		return providers.Response{}, fmt.Errorf("anthropic: %w", providers.ErrIncompleteResponse)
+	}
 
 	reply := strings.TrimSpace(text.String())
 	if reply == "" {
-		return providers.Response{}, errors.New("anthropic: empty assistant reply")
+		return providers.Response{}, fmt.Errorf("anthropic: %w", providers.ErrEmptyResponse)
 	}
 	return providers.Response{
 		Text:     reply,

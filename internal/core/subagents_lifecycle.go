@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+const subagentActivityHeartbeatInterval = 5 * time.Second
+
 func (c *Core) recordSubagentResultMessage(ctx context.Context, metadata any, resultMessageID string) error {
 	resultMessageID = normalizeText(resultMessageID)
 	if resultMessageID == "" {
@@ -36,7 +38,7 @@ func (c *Core) recordSubagentResultMessage(ctx context.Context, metadata any, re
 	return err
 }
 
-func (c *Core) touchAsyncSubagentTaskActivity(ctx context.Context, childRunID string, at time.Time) error {
+func (c *Core) touchSubagentTaskActivity(ctx context.Context, childRunID string, at time.Time) error {
 	childRunID = normalizeText(childRunID)
 	if childRunID == "" || c == nil || c.store == nil {
 		return nil
@@ -45,13 +47,13 @@ func (c *Core) touchAsyncSubagentTaskActivity(ctx context.Context, childRunID st
 	if err != nil {
 		return nil
 	}
-	if task.Mode != SubagentTaskModeAsync || subagentTaskTerminalStatus(task.Status) {
+	if subagentTaskTerminalStatus(task.Status) {
 		return nil
 	}
 	if at.IsZero() {
 		at = c.now().UTC()
 	}
-	if !task.UpdatedAt.IsZero() && at.Sub(task.UpdatedAt) < time.Second {
+	if !task.UpdatedAt.IsZero() && at.Sub(task.UpdatedAt) < subagentActivityHeartbeatInterval {
 		return nil
 	}
 	_, err = c.touchSubagentTaskRecord(ctx, task, at)
@@ -152,7 +154,7 @@ func (c *Core) syncBlockingSubagentTaskAfterRun(ctx context.Context, task Subage
 		if err != nil {
 			return err
 		}
-		if parentRun.Status == RunStatusRunning {
+		if parentRun.Status == RunStatusRunning && c.runIsActive(parentRun.ID) {
 			return nil
 		}
 		return c.mirrorPendingSubagentApproval(ctx, task)
@@ -173,6 +175,30 @@ func (c *Core) syncBlockingSubagentTaskAfterRun(ctx context.Context, task Subage
 	}
 	if subagentRunStatusTerminal(parentRun.Status) {
 		return nil
+	}
+	if c.runIsActive(parentRun.ID) {
+		// The live blocking delegate call will consume the child result when
+		// ExecuteRun returns to it.
+		return nil
+	}
+	if _, err := c.finishOrBridgeSubagentTask(ctx, task, nil); err != nil {
+		return err
+	}
+	messages, err := c.store.ListMessages(ctx, parentRun.SessionID, 0)
+	if err != nil {
+		return err
+	}
+	for _, interrupted := range incompleteToolCallsForRun(messages, parentRun.ID) {
+		if normalizeText(interrupted.Call.ID) != normalizeText(task.ParentToolCallID) {
+			continue
+		}
+		if err := c.replayInterruptedTool(ctx, parentRun, interrupted); err != nil {
+			return err
+		}
+		break
+	}
+	if err := c.setRunStatus(ctx, &parentRun, RunStatusAccepted, ""); err != nil {
+		return err
 	}
 	return c.startRun(ctx, parentRunID)
 }

@@ -37,6 +37,8 @@ type Worker struct {
 	offset           *atomic.Int64
 	mu               sync.Mutex
 	delivery         sync.Mutex
+	deliveryRetryAt  map[string]time.Time // guarded by delivery
+	deliveryReceipts map[string]time.Time // confirmed sends awaiting daemon acknowledgement
 	states           map[string]*runDeliveryState
 	prompts          map[string]controlplane.PromptData
 	callbacks        map[string]string
@@ -47,15 +49,14 @@ type Worker struct {
 	autoEdits        map[string]struct{}
 	locations        map[string]telegramLocationContext
 	pendingLocations map[string]pendingLocationRequest
-	externalSessions map[string]struct{}
 	chatActions      map[string]time.Time
 	geo              *tools.OSMService
 	now              func() time.Time
 }
 
 type runDeliveryState struct {
+	statusSent        bool
 	assistant         map[string]sentAssistantMessage
-	drafts            map[string]sentAssistantDraft
 	approvals         map[string]int64
 	toolCalls         map[string]sentToolCallStatus
 	voiceResults      map[string]int64
@@ -71,13 +72,19 @@ type sentToolCallStatus struct {
 }
 
 type sentAssistantMessage struct {
-	messageID int64
-	text      string
+	chunks         []sentAssistantChunk
+	firstSeenAt    time.Time
+	nextUpdateAt   time.Time
+	draftID        int64
+	draftText      string
+	draftUpdatedAt time.Time
+	draftActive    bool
+	draftDisabled  bool
 }
 
-type sentAssistantDraft struct {
-	text   string
-	sentAt time.Time
+type sentAssistantChunk struct {
+	messageID int64
+	text      string
 }
 
 type chatTarget struct {

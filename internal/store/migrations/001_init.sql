@@ -98,6 +98,17 @@ CREATE TABLE IF NOT EXISTS runs (
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS run_checkpoints (
+    run_id TEXT PRIMARY KEY,
+    phase TEXT NOT NULL DEFAULT '',
+    tool_call_id TEXT NOT NULL DEFAULT '',
+    tool_name TEXT NOT NULL DEFAULT '',
+    recovery_count INTEGER NOT NULL DEFAULT 0,
+    recovery_reason TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS session_inputs (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,

@@ -166,17 +166,13 @@ func Run(ctx context.Context) error {
 	safego.Go("supervisor.deliverStartupNotifications", func() {
 		supervisor.DeliverPendingStartupNotifications(bootstrap)
 	})
-	safego.Go("core.recoverActiveRuns", func() {
+	safego.Go("core.recoverState", func() {
 		if err := app.RecoverActiveRuns(context.Background()); err != nil {
 			log.Printf("matrixclawd active run recovery failed: %v", err)
 		}
-	})
-	safego.Go("core.recoverSessionInputs", func() {
 		if err := app.RecoverSessionInputs(context.Background()); err != nil {
 			log.Printf("matrixclawd session input recovery failed: %v", err)
 		}
-	})
-	safego.Go("core.recoverSubagentTasks", func() {
 		if err := app.RecoverSubagentTasks(context.Background()); err != nil {
 			log.Printf("matrixclawd subagent recovery failed: %v", err)
 		}

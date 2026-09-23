@@ -94,6 +94,7 @@ type EventKind string
 
 const (
 	EventTurnStarted     EventKind = "turn.started"
+	EventHeartbeat       EventKind = "turn.heartbeat"
 	EventMessageDelta    EventKind = "message.delta"
 	EventReasoningDelta  EventKind = "reasoning.delta"
 	EventToolStarted     EventKind = "tool.started"

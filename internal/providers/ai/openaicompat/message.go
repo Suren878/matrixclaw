@@ -1,6 +1,8 @@
 package openaicompat
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -72,9 +74,6 @@ func decodeToolCalls(value []chatCompletionToolCall) []providers.ToolCall {
 	result := make([]providers.ToolCall, 0, len(value))
 	for _, item := range value {
 		name := strings.TrimSpace(item.Function.Name)
-		if name == "" {
-			continue
-		}
 		result = append(result, providers.ToolCall{
 			ID:        strings.TrimSpace(item.ID),
 			Name:      name,
@@ -82,6 +81,18 @@ func decodeToolCalls(value []chatCompletionToolCall) []providers.ToolCall {
 		})
 	}
 	return result
+}
+
+func validateToolCalls(calls []providers.ToolCall) error {
+	for _, call := range calls {
+		if strings.TrimSpace(call.Name) == "" {
+			return fmt.Errorf("openaicompat: function call is missing a name")
+		}
+		if !json.Valid(call.Arguments) {
+			return fmt.Errorf("openaicompat: invalid arguments for tool %q", call.Name)
+		}
+	}
+	return nil
 }
 
 func normalizeOpenAIRole(role string) string {

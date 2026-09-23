@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
@@ -75,6 +76,10 @@ func (t turnExecution) toolInput(toolCall providers.ToolCall) (ExecuteToolInput,
 func (c *Core) handleAssistantTurnResponse(runCtx context.Context, turn turnExecution, assistant *Message, assistantSaved bool, response providers.Response) turnStepResult {
 	response.Text = sanitizeAssistantOutput(response.Text)
 	if len(response.ToolCalls) > 0 {
+		if err := c.saveAssistantToolTurn(runCtx, turn, assistant, assistantSaved, response); err != nil {
+			return turnStepResult{Outcome: turnStepCompleted, Err: err}
+		}
+		assistantSaved = true
 		waitingApproval, execErr := c.executeRequestedTools(runCtx, turn, response)
 		if execErr != nil {
 			return turnStepResult{
@@ -98,7 +103,7 @@ func (c *Core) handleAssistantTurnResponse(runCtx context.Context, turn turnExec
 			Assistant:            assistant,
 			AssistantSaved:       assistantSaved,
 			Response:             response,
-			Err:                  errors.New("empty assistant reply"),
+			Err:                  providers.ErrEmptyResponse,
 			MarkAssistantErrored: true,
 		}
 	}
@@ -141,7 +146,7 @@ func (c *Core) resumeApprovedTools(ctx context.Context, turn turnExecution) (boo
 		}
 
 		result, err := c.replayApprovedTool(ctx, approval)
-		if err != nil {
+		if err != nil && result.ToolResultMessage == nil {
 			return false, err
 		}
 		completedToolCalls[toolCallID] = struct{}{}
@@ -169,28 +174,22 @@ func (c *Core) generateAssistantTurn(ctx context.Context, turn turnExecution, re
 		Role:      MessageRoleAssistant,
 	}
 	assistantSaved := false
-	streamSanitizer := newAssistantStreamSanitizer()
-	streamCtx := providers.WithTextStream(ctx, func(delta string) error {
-		canceled, err := c.isRunCanceled(ctx, turn.RunID)
-		if err == nil && canceled {
-			return errRunCanceled
-		}
-		if !assistantSaved && assistant.Content == "" {
-			delta = strings.TrimPrefix(delta, "\n")
-		}
-		delta = streamSanitizer.Push(delta)
-		if delta == "" {
+	progressDirty := false
+	lastProgressFlush := time.Time{}
+	lastCancellationCheck := time.Time{}
+	flushProgress := func(force bool) error {
+		if !progressDirty {
 			return nil
 		}
-
 		now := c.now().UTC()
-		assistant.Content += delta
+		if !force && assistantSaved && !lastProgressFlush.IsZero() && now.Sub(lastProgressFlush) < assistantProgressFlushInterval {
+			return nil
+		}
 		assistant.Parts = NormalizeMessageParts(assistant.Content, nil)
 		assistant.UpdatedAt = now
-
 		if !assistantSaved {
 			assistant.CreatedAt = now
-			if err := c.store.SaveMessage(ctx, assistant); err != nil {
+			if err := c.saveMessageProgress(ctx, assistant); err != nil {
 				return err
 			}
 			assistantSaved = true
@@ -200,85 +199,53 @@ func (c *Core) generateAssistantTurn(ctx context.Context, turn turnExecution, re
 				RunID:     turn.RunID,
 				Payload:   assistant,
 			})
-			_ = c.touchAsyncSubagentTaskActivity(ctx, turn.RunID, now)
+		} else {
+			if err := c.updateMessageProgress(ctx, assistant); err != nil {
+				return err
+			}
+			c.publishEvent(Event{
+				Type:      EventMessageUpdated,
+				SessionID: turn.SessionID,
+				RunID:     turn.RunID,
+				Payload:   assistant,
+			})
+		}
+		progressDirty = false
+		lastProgressFlush = now
+		_ = c.touchSubagentTaskActivity(ctx, turn.RunID, now)
+		return nil
+	}
+	streamSanitizer := newAssistantStreamSanitizer()
+	streamCtx := providers.WithTextStream(ctx, func(delta string) error {
+		select {
+		case <-ctx.Done():
+			return errRunCanceled
+		default:
+		}
+		now := c.now().UTC()
+		if lastCancellationCheck.IsZero() || now.Sub(lastCancellationCheck) >= assistantProgressFlushInterval {
+			canceled, err := c.isRunCanceled(ctx, turn.RunID)
+			lastCancellationCheck = now
+			if err == nil && canceled {
+				return errRunCanceled
+			}
+		}
+		if !assistantSaved && assistant.Content == "" {
+			delta = strings.TrimPrefix(delta, "\n")
+		}
+		delta = streamSanitizer.Push(delta)
+		if delta == "" {
 			return nil
 		}
 
-		if err := c.store.UpdateMessage(ctx, assistant); err != nil {
-			return err
-		}
-		c.publishEvent(Event{
-			Type:      EventMessageUpdated,
-			SessionID: turn.SessionID,
-			RunID:     turn.RunID,
-			Payload:   assistant,
-		})
-		_ = c.touchAsyncSubagentTaskActivity(ctx, turn.RunID, now)
-		return nil
+		assistant.Content += delta
+		progressDirty = true
+		return flushProgress(false)
 	})
 
 	response, err := turn.Runtime.Generate(streamCtx, request)
+	if flushErr := flushProgress(true); flushErr != nil {
+		err = errors.Join(err, flushErr)
+	}
 	return assistant, assistantSaved, response, err
-}
-
-func (c *Core) executeRequestedTools(ctx context.Context, turn turnExecution, response providers.Response) (bool, error) {
-	waitingApproval := false
-	for index, toolCall := range response.ToolCalls {
-		input, err := turn.toolInput(toolCall)
-		if err != nil {
-			return false, err
-		}
-		result, err := c.ExecuteTool(ctx, input)
-		if index == 0 {
-			if attachErr := c.attachReasoningToToolCallMessage(ctx, result.ToolCallMessage, response.ReasoningContent); attachErr != nil {
-				return false, attachErr
-			}
-		}
-		if err != nil {
-			if result.ToolResultMessage != nil {
-				if _, steerErr := c.injectPendingSteersIntoToolResultMessage(ctx, *result.ToolResultMessage); steerErr != nil {
-					return false, steerErr
-				}
-				continue
-			}
-			return false, err
-		}
-		if result.ToolResultMessage != nil {
-			if _, steerErr := c.injectPendingSteersIntoToolResultMessage(ctx, *result.ToolResultMessage); steerErr != nil {
-				return false, steerErr
-			}
-		}
-		if result.Approval != nil {
-			waitingApproval = true
-		}
-	}
-	return waitingApproval, nil
-}
-
-func (c *Core) attachReasoningToToolCallMessage(ctx context.Context, message Message, reasoningContent *string) error {
-	if reasoningContent == nil || strings.TrimSpace(message.ID) == "" {
-		return nil
-	}
-	for _, part := range message.Parts {
-		if part.Reasoning != nil {
-			return nil
-		}
-	}
-	message.Parts = append([]MessagePart{{
-		Kind: MessagePartKindReasoning,
-		Reasoning: &ReasoningPart{
-			Text: *reasoningContent,
-		},
-	}}, message.Parts...)
-	message.UpdatedAt = c.now().UTC()
-	if err := c.store.UpdateMessage(ctx, message); err != nil {
-		return err
-	}
-	c.publishEvent(Event{
-		Type:      EventMessageUpdated,
-		SessionID: message.SessionID,
-		RunID:     message.RunID,
-		Payload:   message,
-	})
-	return nil
 }

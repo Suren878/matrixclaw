@@ -25,8 +25,12 @@ func deriveRunTiming(run Run, approvals []Approval, messages []Message, now time
 		if strings.TrimSpace(message.RunID) != runID {
 			continue
 		}
-		if message.CreatedAt.After(timing.LastEventAt) {
-			timing.LastEventAt = message.CreatedAt
+		messageEventAt := message.UpdatedAt
+		if messageEventAt.IsZero() {
+			messageEventAt = message.CreatedAt
+		}
+		if messageEventAt.After(timing.LastEventAt) {
+			timing.LastEventAt = messageEventAt
 		}
 		for _, part := range message.Parts {
 			if part.ToolCall != nil {

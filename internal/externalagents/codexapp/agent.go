@@ -32,7 +32,7 @@ func (a Agent) Capabilities() externalagents.Capabilities {
 		ResumeSession:    true,
 		StreamingEvents:  true,
 		ToolEvents:       true,
-		Interrupt:        false,
+		Interrupt:        true,
 		ConfigurablePath: true,
 	}
 }

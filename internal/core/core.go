@@ -25,6 +25,7 @@ type Core struct {
 	externalAgents *externalagents.Registry
 	externalStore  externalagents.AttachmentStore
 	activeRuns     map[string]*activeRun
+	scheduledRuns  map[string]time.Time
 	sessionGates   map[string]*sync.Mutex
 	tools          ToolExecutor
 	skillsContext  SkillsPromptContextProvider
@@ -86,13 +87,14 @@ type AttachmentReader interface {
 
 func New(store Store) *Core {
 	return &Core{
-		store:        store,
-		activeRuns:   map[string]*activeRun{},
-		sessionGates: map[string]*sync.Mutex{},
-		events:       newEventBus(),
-		now:          time.Now,
-		newID:        defaultID,
-		historyLimit: 50,
+		store:         store,
+		activeRuns:    map[string]*activeRun{},
+		scheduledRuns: map[string]time.Time{},
+		sessionGates:  map[string]*sync.Mutex{},
+		events:        newEventBus(),
+		now:           time.Now,
+		newID:         defaultID,
+		historyLimit:  50,
 	}
 }
 

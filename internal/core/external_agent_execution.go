@@ -5,11 +5,23 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 )
 
-func (c *Core) tryExecuteExternalAgentRun(ctx context.Context, runID string) (bool, error) {
+const (
+	assistantProgressFlushInterval = 750 * time.Millisecond
+	externalRunHeartbeatInterval   = 5 * time.Second
+	externalToolInputLimit         = 64 * 1024
+	externalToolOutputPerItemLimit = 64 * 1024
+	externalToolOutputTotalLimit   = 256 * 1024
+	externalReasoningPartLimit     = 128 * 1024
+	externalTruncationMarker       = "\n\n[MatrixClaw: output truncated; the external agent retains the full result]"
+)
+
+func (c *Core) tryExecuteExternalAgentRun(ctx context.Context, runCtx context.Context, runID string) (bool, error) {
 	if c.externalStore == nil {
 		return false, nil
 	}
@@ -19,8 +31,10 @@ func (c *Core) tryExecuteExternalAgentRun(ctx context.Context, runID string) (bo
 		return false, err
 	}
 	switch run.Status {
-	case RunStatusCompleted, RunStatusFailed, RunStatusCanceled, RunStatusRunning:
+	case RunStatusCompleted, RunStatusFailed, RunStatusCanceled:
 		return true, nil
+	case RunStatusRunning:
+		return true, c.failOrphanedRun(ctx, run)
 	}
 
 	session, err := c.store.GetSession(ctx, run.SessionID)
@@ -42,9 +56,6 @@ func (c *Core) tryExecuteExternalAgentRun(ctx context.Context, runID string) (bo
 	if err := c.setRunStatus(ctx, &run, RunStatusRunning, ""); err != nil {
 		return true, err
 	}
-
-	runCtx, unregisterRun := c.activeRunContext(ctx, run.ID)
-	defer unregisterRun()
 
 	return true, c.executeExternalAgentRun(ctx, runCtx, run, runtime, attachment)
 }
@@ -69,13 +80,27 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 	if err != nil {
 		return c.failRunByID(ctx, run, err)
 	}
+	inputText := userMessage.Content
+	if checkpoint, ok, checkpointErr := c.runCheckpoint(ctx, run.ID); checkpointErr != nil {
+		return c.failRunByID(ctx, run, checkpointErr)
+	} else if ok {
+		if recoveryPrompt := runCheckpointRecoveryPrompt(checkpoint); recoveryPrompt != "" {
+			inputText = recoveryPrompt + "\n\nContinue the existing task from where it stopped. Inspect the workspace before making further changes. Original task for reference:\n" + userMessage.Content
+		}
+	}
+	if err := c.saveRunCheckpoint(ctx, run.ID, RunCheckpointPhaseExternalAgent, "", ""); err != nil {
+		return c.failRunByID(ctx, run, err)
+	}
 	externalSession := attachment.ExternalSession()
 	if strings.TrimSpace(externalSession.Model) == "" {
 		externalSession.Model = c.externalAgentDefaultModel(ctx, attachment.AgentID)
 		attachment.Model = externalSession.Model
 	}
-	events, err := runtime.Send(runCtx, externalSession, externalagents.Input{Text: userMessage.Content})
+	events, err := runtime.Send(runCtx, externalSession, externalagents.Input{Text: inputText})
 	if err != nil {
+		if runCtx.Err() != nil {
+			return c.finishExternalRunAfterContextStopped(run, nil, false, runtime, externalSession)
+		}
 		return c.failRunByID(ctx, run, err)
 	}
 
@@ -88,48 +113,95 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 		Provider:  attachment.AgentID,
 	}
 	assistantSaved := false
-	for event := range events {
-		if handled, cancelErr := c.checkExternalRunCanceled(ctx, run, &assistant, assistantSaved, runtime, externalSession); handled {
-			return cancelErr
+	progressDirty := false
+	lastProgressFlush := time.Time{}
+	flushProgress := func(force bool) error {
+		if !progressDirty {
+			return nil
 		}
-		switch event.Kind {
-		case externalagents.EventTurnStarted:
-			if err := c.updateExternalAgentSessionFromEvent(ctx, &attachment, &externalSession, event); err != nil {
-				return c.failRunByID(ctx, run, err)
-			}
-		case externalagents.EventMessageDelta:
-			if err := c.applyExternalMessageDelta(ctx, &assistant, &assistantSaved, event.Text); err != nil {
-				return c.failRunByID(ctx, run, err)
-			}
-		case externalagents.EventReasoningDelta:
-			if err := c.applyExternalReasoningDelta(ctx, &assistant, &assistantSaved, event.Text); err != nil {
-				return c.failRunByID(ctx, run, err)
-			}
-		case externalagents.EventToolStarted:
-			if err := c.applyExternalToolStarted(ctx, &assistant, &assistantSaved, event); err != nil {
-				return c.failRunByID(ctx, run, err)
-			}
-		case externalagents.EventToolOutputDelta, externalagents.EventDiffUpdated:
-			if err := c.applyExternalToolOutputDelta(ctx, &assistant, &assistantSaved, event); err != nil {
-				return c.failRunByID(ctx, run, err)
-			}
-		case externalagents.EventToolCompleted:
-			if err := c.applyExternalToolCompleted(ctx, &assistant, &assistantSaved, event); err != nil {
-				return c.failRunByID(ctx, run, err)
-			}
-		case externalagents.EventTurnCompleted:
-			return c.completeExternalAgentRun(ctx, &run, &assistant, assistantSaved)
-		case externalagents.EventTurnFailed:
+		now := c.now().UTC()
+		if !force && assistantSaved && !lastProgressFlush.IsZero() && now.Sub(lastProgressFlush) < assistantProgressFlushInterval {
+			return nil
+		}
+		if err := c.saveExternalAssistantProgress(ctx, &assistant, &assistantSaved); err != nil {
+			return err
+		}
+		progressDirty = false
+		lastProgressFlush = now
+		return c.touchExternalRunActivity(ctx, &run, now)
+	}
+
+	ticker := time.NewTicker(assistantProgressFlushInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-runCtx.Done():
+			return c.finishExternalRunAfterContextStopped(run, &assistant, assistantSaved, runtime, externalSession)
+		case <-ticker.C:
 			if handled, cancelErr := c.checkExternalRunCanceled(ctx, run, &assistant, assistantSaved, runtime, externalSession); handled {
 				return cancelErr
 			}
-			return c.persistAssistantError(ctx, run, &assistant, assistantSaved, errors.New(event.Error))
+			if err := flushProgress(false); err != nil {
+				return c.failRunByID(ctx, run, err)
+			}
+			if err := c.touchExternalRunActivity(ctx, &run, c.now().UTC()); err != nil {
+				return c.failRunByID(ctx, run, err)
+			}
+			continue
+		case event, ok := <-events:
+			if runCtx.Err() != nil {
+				return c.finishExternalRunAfterContextStopped(run, &assistant, assistantSaved, runtime, externalSession)
+			}
+			if !ok {
+				if handled, cancelErr := c.checkExternalRunCanceled(ctx, run, &assistant, assistantSaved, runtime, externalSession); handled {
+					return cancelErr
+				}
+				return c.persistAssistantError(ctx, run, &assistant, assistantSaved, errors.New("external agent event stream ended before turn completed"))
+			}
+			if handled, cancelErr := c.checkExternalRunCanceled(ctx, run, &assistant, assistantSaved, runtime, externalSession); handled {
+				return cancelErr
+			}
+			switch event.Kind {
+			case externalagents.EventTurnStarted:
+				if err := c.updateExternalAgentSessionFromEvent(ctx, &attachment, &externalSession, event); err != nil {
+					return c.failRunByID(ctx, run, err)
+				}
+				if err := c.touchExternalRunActivity(ctx, &run, event.At); err != nil {
+					return c.failRunByID(ctx, run, err)
+				}
+			case externalagents.EventHeartbeat:
+				if err := c.touchExternalRunActivity(ctx, &run, event.At); err != nil {
+					return c.failRunByID(ctx, run, err)
+				}
+			case externalagents.EventMessageDelta:
+				progressDirty = applyExternalMessageDelta(&assistant, event.Text) || progressDirty
+			case externalagents.EventReasoningDelta:
+				progressDirty = applyExternalReasoningDelta(&assistant, event.Text) || progressDirty
+			case externalagents.EventToolStarted:
+				progressDirty = applyExternalToolStarted(&assistant, event) || progressDirty
+			case externalagents.EventToolOutputDelta, externalagents.EventDiffUpdated:
+				progressDirty = applyExternalToolOutputDelta(&assistant, event) || progressDirty
+			case externalagents.EventToolCompleted:
+				progressDirty = applyExternalToolCompleted(&assistant, event) || progressDirty
+			case externalagents.EventTurnCompleted:
+				return c.completeExternalAgentRun(ctx, &run, &assistant, assistantSaved)
+			case externalagents.EventTurnFailed:
+				if handled, cancelErr := c.checkExternalRunCanceled(ctx, run, &assistant, assistantSaved, runtime, externalSession); handled {
+					return cancelErr
+				}
+				errText := strings.TrimSpace(event.Error)
+				if errText == "" {
+					errText = "external agent turn failed"
+				}
+				return c.persistAssistantError(ctx, run, &assistant, assistantSaved, errors.New(errText))
+			}
+			if progressDirty && !assistantSaved {
+				if err := flushProgress(true); err != nil {
+					return c.failRunByID(ctx, run, err)
+				}
+			}
 		}
 	}
-	if handled, cancelErr := c.checkExternalRunCanceled(ctx, run, &assistant, assistantSaved, runtime, externalSession); handled {
-		return cancelErr
-	}
-	return c.failRunByID(ctx, run, errors.New("external agent event stream ended before turn completed"))
 }
 
 func (c *Core) updateExternalAgentSessionFromEvent(ctx context.Context, attachment *externalagents.SessionAttachment, session *externalagents.ExternalSession, event externalagents.Event) error {
@@ -183,55 +255,49 @@ func (c *Core) findRunUserMessage(ctx context.Context, run Run) (Message, error)
 	return Message{}, ErrNotFound
 }
 
-func (c *Core) applyExternalMessageDelta(ctx context.Context, assistant *Message, saved *bool, delta string) error {
-	if assistant == nil || saved == nil {
-		return nil
-	}
-	if delta == "" {
-		return nil
+func applyExternalMessageDelta(assistant *Message, delta string) bool {
+	if assistant == nil || delta == "" {
+		return false
 	}
 	assistant.Content += delta
 	appendExternalTextDelta(assistant, delta)
-	return c.saveExternalAssistantProgress(ctx, assistant, saved)
+	return true
 }
 
-func (c *Core) applyExternalReasoningDelta(ctx context.Context, assistant *Message, saved *bool, delta string) error {
-	if strings.TrimSpace(delta) == "" {
-		return nil
-	}
-	if assistant == nil || saved == nil {
-		return nil
+func applyExternalReasoningDelta(assistant *Message, delta string) bool {
+	if assistant == nil || delta == "" {
+		return false
 	}
 	appendExternalReasoningDelta(assistant, delta)
-	return c.saveExternalAssistantProgress(ctx, assistant, saved)
+	return true
 }
 
-func (c *Core) applyExternalToolStarted(ctx context.Context, assistant *Message, saved *bool, event externalagents.Event) error {
-	if assistant == nil || saved == nil || strings.TrimSpace(event.ItemID) == "" {
-		return nil
+func applyExternalToolStarted(assistant *Message, event externalagents.Event) bool {
+	if assistant == nil || strings.TrimSpace(event.ItemID) == "" {
+		return false
 	}
 	upsertExternalToolCall(assistant, event.ItemID, defaultExternalToolName(event.ToolName), event.ToolInput, false)
-	return c.saveExternalAssistantProgress(ctx, assistant, saved)
+	return true
 }
 
-func (c *Core) applyExternalToolOutputDelta(ctx context.Context, assistant *Message, saved *bool, event externalagents.Event) error {
-	if assistant == nil || saved == nil || strings.TrimSpace(event.ItemID) == "" || event.Text == "" {
-		return nil
+func applyExternalToolOutputDelta(assistant *Message, event externalagents.Event) bool {
+	if assistant == nil || strings.TrimSpace(event.ItemID) == "" || event.Text == "" {
+		return false
 	}
 	upsertExternalToolResult(assistant, event.ItemID, defaultExternalToolName(event.ToolName), event.Text, false, true)
-	return c.saveExternalAssistantProgress(ctx, assistant, saved)
+	return true
 }
 
-func (c *Core) applyExternalToolCompleted(ctx context.Context, assistant *Message, saved *bool, event externalagents.Event) error {
-	if assistant == nil || saved == nil || strings.TrimSpace(event.ItemID) == "" {
-		return nil
+func applyExternalToolCompleted(assistant *Message, event externalagents.Event) bool {
+	if assistant == nil || strings.TrimSpace(event.ItemID) == "" {
+		return false
 	}
 	name := defaultExternalToolName(event.ToolName)
 	upsertExternalToolCall(assistant, event.ItemID, name, event.ToolInput, true)
 	if strings.TrimSpace(event.Text) != "" || strings.TrimSpace(event.Error) != "" {
 		upsertExternalToolResult(assistant, event.ItemID, name, event.Text, strings.TrimSpace(event.Error) != "", false)
 	}
-	return c.saveExternalAssistantProgress(ctx, assistant, saved)
+	return true
 }
 
 func (c *Core) saveExternalAssistantProgress(ctx context.Context, assistant *Message, saved *bool) error {
@@ -239,18 +305,41 @@ func (c *Core) saveExternalAssistantProgress(ctx context.Context, assistant *Mes
 	if !*saved {
 		assistant.CreatedAt = now
 		assistant.UpdatedAt = now
-		if err := c.store.SaveMessage(ctx, *assistant); err != nil {
+		if err := c.saveMessageProgress(ctx, *assistant); err != nil {
 			return err
 		}
 		*saved = true
 		c.publishEvent(Event{Type: EventMessageCreated, SessionID: assistant.SessionID, RunID: assistant.RunID, Payload: *assistant})
+		_ = c.touchSubagentTaskActivity(ctx, assistant.RunID, now)
 		return nil
 	}
 	assistant.UpdatedAt = now
-	if err := c.store.UpdateMessage(ctx, *assistant); err != nil {
+	if err := c.updateMessageProgress(ctx, *assistant); err != nil {
 		return err
 	}
 	c.publishEvent(Event{Type: EventMessageUpdated, SessionID: assistant.SessionID, RunID: assistant.RunID, Payload: *assistant})
+	_ = c.touchSubagentTaskActivity(ctx, assistant.RunID, now)
+	return nil
+}
+
+func (c *Core) touchExternalRunActivity(ctx context.Context, run *Run, at time.Time) error {
+	if run == nil {
+		return nil
+	}
+	if at.IsZero() {
+		at = c.now().UTC()
+	} else {
+		at = at.UTC()
+	}
+	if !run.UpdatedAt.IsZero() && at.Sub(run.UpdatedAt) < externalRunHeartbeatInterval {
+		return nil
+	}
+	run.UpdatedAt = at
+	if err := c.store.UpdateRun(ctx, *run); err != nil {
+		return err
+	}
+	c.publishEvent(Event{Type: EventRunUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: *run})
+	_ = c.touchSubagentTaskActivity(ctx, run.ID, at)
 	return nil
 }
 
@@ -275,13 +364,13 @@ func appendExternalReasoningDelta(assistant *Message, delta string) {
 	if len(assistant.Parts) > 0 {
 		last := &assistant.Parts[len(assistant.Parts)-1]
 		if last.Kind == MessagePartKindReasoning && last.Reasoning != nil {
-			last.Reasoning.Text += delta
+			last.Reasoning.Text = clipExternalPayload(last.Reasoning.Text+delta, externalReasoningPartLimit)
 			return
 		}
 	}
 	assistant.Parts = append(assistant.Parts, MessagePart{
 		Kind:      MessagePartKindReasoning,
-		Reasoning: &ReasoningPart{Text: delta},
+		Reasoning: &ReasoningPart{Text: clipExternalPayload(delta, externalReasoningPartLimit)},
 	})
 }
 
@@ -297,7 +386,7 @@ func upsertExternalToolCall(assistant *Message, id string, name string, input st
 			assistant.Parts[i].ToolCall.Name = name
 		}
 		if strings.TrimSpace(input) != "" {
-			assistant.Parts[i].ToolCall.Input = input
+			assistant.Parts[i].ToolCall.Input = clipExternalPayload(input, externalToolInputLimit)
 		}
 		if finished {
 			assistant.Parts[i].ToolCall.Finished = true
@@ -309,7 +398,7 @@ func upsertExternalToolCall(assistant *Message, id string, name string, input st
 		ToolCall: &ToolCallPart{
 			ID:       id,
 			Name:     name,
-			Input:    input,
+			Input:    clipExternalPayload(input, externalToolInputLimit),
 			Finished: finished,
 		},
 	})
@@ -317,6 +406,7 @@ func upsertExternalToolCall(assistant *Message, id string, name string, input st
 
 func upsertExternalToolResult(assistant *Message, id string, name string, content string, isError bool, appendContent bool) {
 	name = externalToolResultName(assistant, id, name)
+	contentLimit := externalToolResultContentLimit(assistant, id)
 	for i := range assistant.Parts {
 		if assistant.Parts[i].Kind != MessagePartKindToolResult || assistant.Parts[i].ToolResult == nil {
 			continue
@@ -325,9 +415,9 @@ func upsertExternalToolResult(assistant *Message, id string, name string, conten
 			continue
 		}
 		if appendContent {
-			assistant.Parts[i].ToolResult.Content += content
+			assistant.Parts[i].ToolResult.Content = clipExternalPayload(assistant.Parts[i].ToolResult.Content+content, contentLimit)
 		} else if strings.TrimSpace(content) != "" {
-			assistant.Parts[i].ToolResult.Content = content
+			assistant.Parts[i].ToolResult.Content = clipExternalPayload(content, contentLimit)
 		}
 		if name != "" {
 			assistant.Parts[i].ToolResult.Name = name
@@ -349,11 +439,75 @@ func upsertExternalToolResult(assistant *Message, id string, name string, conten
 		ToolResult: &ToolResultPart{
 			ToolCallID: id,
 			Name:       name,
-			Content:    content,
+			Content:    clipExternalPayload(content, contentLimit),
 			Status:     status,
 			IsError:    isError,
 		},
 	})
+}
+
+func externalToolResultContentLimit(assistant *Message, targetID string) int {
+	remaining := externalToolOutputTotalLimit
+	if assistant != nil {
+		for _, part := range assistant.Parts {
+			if part.ToolResult == nil || part.ToolResult.ToolCallID == targetID {
+				continue
+			}
+			remaining -= len(part.ToolResult.Content)
+			if remaining <= 0 {
+				return 0
+			}
+		}
+	}
+	if remaining > externalToolOutputPerItemLimit {
+		return externalToolOutputPerItemLimit
+	}
+	return remaining
+}
+
+func clipExternalPayload(value string, limit int) string {
+	if limit <= 0 {
+		return strings.TrimSpace(externalTruncationMarker)
+	}
+	if len(value) <= limit {
+		return value
+	}
+	marker := externalTruncationMarker
+	if limit <= len(marker) {
+		return truncateUTF8Prefix(marker, limit)
+	}
+	available := limit - len(marker)
+	prefixLimit := available * 3 / 4
+	suffixLimit := available - prefixLimit
+	return truncateUTF8Prefix(value, prefixLimit) + marker + truncateUTF8Suffix(value, suffixLimit)
+}
+
+func truncateUTF8Prefix(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	if len(value) <= limit {
+		return value
+	}
+	end := limit
+	for end > 0 && !utf8.RuneStart(value[end]) {
+		end--
+	}
+	return value[:end]
+}
+
+func truncateUTF8Suffix(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	if len(value) <= limit {
+		return value
+	}
+	start := len(value) - limit
+	for start < len(value) && !utf8.RuneStart(value[start]) {
+		start++
+	}
+	return value[start:]
 }
 
 func externalToolResultName(assistant *Message, id string, fallback string) string {
@@ -399,6 +553,7 @@ func (c *Core) completeExternalAgentRun(ctx context.Context, run *Run, assistant
 		if err := c.store.CompleteRun(ctx, *assistant, *run); err != nil {
 			return err
 		}
+		c.clearRunCheckpoint(ctx, run.ID)
 		c.publishEvent(Event{Type: EventMessageCreated, SessionID: run.SessionID, RunID: run.ID, Payload: *assistant})
 		c.publishEvent(Event{Type: EventRunUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: *run})
 		return nil
@@ -410,6 +565,7 @@ func (c *Core) completeExternalAgentRun(ctx context.Context, run *Run, assistant
 	if err := c.store.UpdateRun(ctx, *run); err != nil {
 		return err
 	}
+	c.clearRunCheckpoint(ctx, run.ID)
 	c.publishEvent(Event{Type: EventMessageUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: *assistant})
 	c.publishEvent(Event{Type: EventRunUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: *run})
 	return nil
@@ -424,4 +580,24 @@ func (c *Core) checkExternalRunCanceled(ctx context.Context, run Run, assistant 
 		_ = runtime.Interrupt(ctx, session)
 	}
 	return true, c.finishCanceledAssistant(ctx, assistant, assistantSaved)
+}
+
+func (c *Core) finishExternalRunAfterContextStopped(run Run, assistant *Message, assistantSaved bool, runtime externalagents.RuntimeAgent, session externalagents.ExternalSession) error {
+	ctx, cancel := context.WithTimeout(context.Background(), runInterruptionPersistenceTimeout)
+	defer cancel()
+
+	current, err := c.store.GetRun(ctx, run.ID)
+	if err != nil {
+		return err
+	}
+	if runtime != nil {
+		_ = runtime.Interrupt(ctx, session)
+	}
+	if current.Status == RunStatusCanceled {
+		return c.finishCanceledAssistant(ctx, assistant, assistantSaved)
+	}
+	if subagentRunStatusTerminal(current.Status) {
+		return nil
+	}
+	return c.preserveRunForRecovery(ctx, current, assistant, assistantSaved)
 }
