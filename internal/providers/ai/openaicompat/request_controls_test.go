@@ -3,6 +3,7 @@ package openaicompat
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -153,6 +154,33 @@ func TestGenerateRemembersALearnedOutputLimit(t *testing.T) {
 	}
 	if got := bodies[len(bodies)-1]["max_tokens"]; got != float64(8192) {
 		t.Fatalf("second call max_tokens=%v, want 8192", got)
+	}
+}
+
+func TestMaxTokensRejectionLearnsACapBelowTheSentValue(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		message   string
+		sent      int64
+		wantRetry bool
+		wantCap   int64
+		wantOmit  bool
+	}{
+		{"range brackets", "the valid range of max_tokens is [1, 8192]", 16384, true, 8192, false},
+		{"must be less than or equal to", "max_tokens must be <= 8192", 16384, true, 8192, false},
+		{"sent value repeated alongside the range", "max_tokens 16384 exceeds the limit [1, 8192]", 16384, true, 8192, false},
+		{"vllm context length, not an output cap", "'max_tokens' is too large: 16384. This model's maximum context length is 32768 tokens and your request has 20000 input tokens", 16384, true, 0, false},
+		{"unsupported field", "Unsupported parameter: 'max_tokens' is not supported with this model.", 16384, true, 0, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sent := tc.sent
+			payload := chatCompletionRequest{MaxTokens: &sent}
+			body := []byte(fmt.Sprintf(`{"error":{"message":%q}}`, tc.message))
+			retry, capTokens, omit := maxTokensRejection(payload, http.StatusBadRequest, body)
+			if retry != tc.wantRetry || capTokens != tc.wantCap || omit != tc.wantOmit {
+				t.Fatalf("maxTokensRejection=(%v,%v,%v), want (%v,%v,%v)", retry, capTokens, omit, tc.wantRetry, tc.wantCap, tc.wantOmit)
+			}
+		})
 	}
 }
 

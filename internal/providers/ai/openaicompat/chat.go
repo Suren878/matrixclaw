@@ -252,7 +252,8 @@ func shouldRetryWithoutStreamOptions(payload chatCompletionRequest, statusCode i
 // a named upper bound to remember and retry under, or the field itself being
 // unsupported, which is remembered and omitted from now on.
 func maxTokensRejection(payload chatCompletionRequest, statusCode int, body []byte) (retry bool, capTokens int64, omit bool) {
-	if (payload.MaxTokens == nil && payload.MaxCompletionTokens == nil) || statusCode < 400 || statusCode >= 500 {
+	sent := sentMaxTokens(payload)
+	if sent == 0 || statusCode < 400 || statusCode >= 500 {
 		return false, 0, false
 	}
 	message := decodeOpenAIError(statusCode, body)
@@ -267,20 +268,36 @@ func maxTokensRejection(payload chatCompletionRequest, statusCode int, body []by
 	}
 	for _, marker := range []string{"range", "exceed", "too large", "less than or equal", "at most", "maximum", "<="} {
 		if strings.Contains(text, marker) {
-			return true, greatestInt(stripStatusPrefix(message)), false
+			return true, largestIntBelow(stripStatusPrefix(message), sent), false
 		}
 	}
 	return false, 0, false
 }
 
+func sentMaxTokens(payload chatCompletionRequest) int64 {
+	if payload.MaxTokens != nil {
+		return *payload.MaxTokens
+	}
+	if payload.MaxCompletionTokens != nil {
+		return *payload.MaxCompletionTokens
+	}
+	return 0
+}
+
 var integerPattern = regexp.MustCompile(`\d+`)
 
-// greatestInt returns the largest integer literal in text: the upper bound
-// named by a "valid range is [1, 8192]" or "must be <= 8192" message.
-func greatestInt(text string) int64 {
+// largestIntBelow returns the largest integer literal in text that is
+// strictly less than ceiling (the value that was sent). A message may also
+// name unrelated larger numbers, such as a context-length limit, which are
+// not an output cap and must not be learned as one.
+func largestIntBelow(text string, ceiling int64) int64 {
 	var best int64
 	for _, match := range integerPattern.FindAllString(text, -1) {
-		if value, err := strconv.ParseInt(match, 10, 64); err == nil && value > best {
+		value, err := strconv.ParseInt(match, 10, 64)
+		if err != nil || value <= 0 || value >= ceiling {
+			continue
+		}
+		if value > best {
 			best = value
 		}
 	}
