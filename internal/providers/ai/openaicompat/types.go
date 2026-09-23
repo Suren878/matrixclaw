@@ -12,6 +12,11 @@ type chatCompletionRequest struct {
 	ReasoningEffort     string                  `json:"reasoning_effort,omitempty"`
 	PromptCacheKey      string                  `json:"prompt_cache_key,omitempty"`
 	Stream              bool                    `json:"stream,omitempty"`
+	StreamOptions       *chatStreamOptions      `json:"stream_options,omitempty"`
+}
+
+type chatStreamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
 }
 
 type chatCompletionMessage struct {

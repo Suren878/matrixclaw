@@ -25,6 +25,7 @@ type OpenAIChatRequestQuirks struct {
 	RetryMaxTokensField             bool
 	RetryAssistantReasoningContent  bool
 	RetryWithoutMaxTokens           bool
+	RetryWithoutStreamOptions       bool
 }
 
 func ResolveOpenAIChatOptions(profile ProviderProfile, baseURL string, model string) OpenAIChatOptions {
@@ -57,6 +58,7 @@ func normalizeOpenAIChatRequestQuirks() OpenAIChatRequestQuirks {
 		RetryMaxTokensField:             true,
 		RetryAssistantReasoningContent:  true,
 		RetryWithoutMaxTokens:           true,
+		RetryWithoutStreamOptions:       true,
 	}
 }
 

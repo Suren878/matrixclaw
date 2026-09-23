@@ -35,6 +35,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 	retriedWithMaxCompletionTokens := false
 	retriedWithReasoningContent := false
 	retriedWithoutMaxTokens := false
+	retriedWithoutStreamOptions := false
 	for attempt := 0; ; attempt++ {
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, r.endpoint, bytes.NewReader(body))
 		if err != nil {
@@ -87,6 +88,16 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 					return providers.Response{}, fmt.Errorf("openaicompat: marshal request: %w", err)
 				}
 				retriedWithMaxCompletionTokens = true
+				attempt = -1
+				continue
+			}
+			if r.quirks.RetryWithoutStreamOptions && !retriedWithoutStreamOptions && shouldRetryWithoutStreamOptions(payload, httpRes.StatusCode, resBody) {
+				payload.StreamOptions = nil
+				body, err = json.Marshal(payload)
+				if err != nil {
+					return providers.Response{}, fmt.Errorf("openaicompat: marshal request: %w", err)
+				}
+				retriedWithoutStreamOptions = true
 				attempt = -1
 				continue
 			}
@@ -224,6 +235,14 @@ func shouldRetryWithMaxCompletionTokens(payload chatCompletionRequest, statusCod
 	return false
 }
 
+func shouldRetryWithoutStreamOptions(payload chatCompletionRequest, statusCode int, body []byte) bool {
+	if payload.StreamOptions == nil || statusCode < 400 || statusCode >= 500 {
+		return false
+	}
+	text := strings.ToLower(decodeOpenAIError(statusCode, body) + "\n" + string(body))
+	return strings.Contains(text, "stream_options") || strings.Contains(text, "include_usage")
+}
+
 // shouldRetryWithoutMaxTokens: a gateway that rejects the limit's value, not the
 // field, still serves the request with its own default limit.
 func shouldRetryWithoutMaxTokens(payload chatCompletionRequest, statusCode int, body []byte) bool {
@@ -300,6 +319,8 @@ func (r *Runtime) chatPayload(ctx context.Context, request providers.Request) ch
 	}
 	if providers.TextStreamFromContext(ctx) != nil {
 		payload.Stream = true
+		// Streamed chat completions report usage only when asked to.
+		payload.StreamOptions = &chatStreamOptions{IncludeUsage: true}
 	}
 	return payload
 }
