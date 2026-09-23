@@ -269,7 +269,9 @@ and retry once; a second overflow is `failed` with `context_exhausted`.
   `origin: engine` **context message**, only when it changed. It becomes part
   of the immutable history, so earlier prefix bytes never change.
 - Anthropic: `cache_control` on system + tools and on the latest message
-  (rolling breakpoint, max 4). OpenAI-compatible: `prompt_cache_key =
+  (rolling breakpoint, max 4). Stage 1b marks only the tools breakpoint; the
+  system and message breakpoints arrive in stage 3 together with the stable
+  prompt, since before that the cache writes would not be read back. OpenAI-compatible: `prompt_cache_key =
   sessionID` where accepted; Claude models through OpenRouter get
   `cache_control` in content parts. Gemini: implicit caching.
 - Cache read/write per step is stored in `run_steps` and shown in `/status`.
@@ -382,7 +384,8 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   timeouts.
 - openaicompat: `length` maps to `max_tokens`; `tool_choice: none`.
 - anthropiccompat (stage 1b): real `tool_use` / `tool_result` blocks, parallel
-  tool results in one user message, `cache_control`, `stop_reason` mapping,
+  tool results in one user message, `cache_control` on tools (more in stage 3),
+  `stop_reason` mapping,
   `tool_choice: {type: none}`, thinking blocks passed back unchanged.
 - gemini: decode `finishReason` (`MAX_TOKENS`, `SAFETY`,
   `MALFORMED_FUNCTION_CALL` → retry once, …); send all function responses of a
