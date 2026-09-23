@@ -10,6 +10,7 @@ type chatCompletionRequest struct {
 	MaxTokens           *int64                  `json:"max_tokens,omitempty"`
 	MaxCompletionTokens *int64                  `json:"max_completion_tokens,omitempty"`
 	ReasoningEffort     string                  `json:"reasoning_effort,omitempty"`
+	PromptCacheKey      string                  `json:"prompt_cache_key,omitempty"`
 	Stream              bool                    `json:"stream,omitempty"`
 }
 

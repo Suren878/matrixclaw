@@ -84,6 +84,9 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 			Architecture              struct {
 				InputModalities []string `json:"input_modalities"`
 			} `json:"architecture"`
+			TopProvider struct {
+				MaxCompletionTokens int `json:"max_completion_tokens"`
+			} `json:"top_provider"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -110,6 +113,7 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 			)
 			metadata := providers.ModelMetadataRegistration{
 				ContextWindow:       contextWindow,
+				MaxOutputTokens:     item.TopProvider.MaxCompletionTokens,
 				SupportedParameters: item.SupportedParameters,
 				ReasoningEfforts:    firstStringSlice(item.SupportedReasoningEfforts, item.ReasoningEfforts),
 				ImageInput: modelModalitiesImageInput(firstStringSlice(

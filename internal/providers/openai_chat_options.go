@@ -17,12 +17,14 @@ type OpenAIChatOptions struct {
 	DefaultHeaders map[string]string
 	MaxTokensField OpenAIChatMaxTokensField
 	RequestQuirks  OpenAIChatRequestQuirks
+	PromptCacheKey bool // send prompt_cache_key; only OpenAI's own endpoint is known to accept it
 }
 
 type OpenAIChatRequestQuirks struct {
 	RetryUnsupportedReasoningEffort bool
 	RetryMaxTokensField             bool
 	RetryAssistantReasoningContent  bool
+	RetryWithoutMaxTokens           bool
 }
 
 func ResolveOpenAIChatOptions(profile ProviderProfile, baseURL string, model string) OpenAIChatOptions {
@@ -37,6 +39,7 @@ func ResolveOpenAIChatOptions(profile ProviderProfile, baseURL string, model str
 		options.MaxTokensField = resolveOpenAIChatMaxTokensField(profile, baseURL, model)
 	}
 	options.RequestQuirks = normalizeOpenAIChatRequestQuirks()
+	options.PromptCacheKey = openAICompatibleHost(baseURL, "api.openai.com")
 	return options
 }
 
@@ -53,6 +56,7 @@ func normalizeOpenAIChatRequestQuirks() OpenAIChatRequestQuirks {
 		RetryUnsupportedReasoningEffort: true,
 		RetryMaxTokensField:             true,
 		RetryAssistantReasoningContent:  true,
+		RetryWithoutMaxTokens:           true,
 	}
 }
 

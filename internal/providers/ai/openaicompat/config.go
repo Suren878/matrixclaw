@@ -29,9 +29,11 @@ type Runtime struct {
 	endpoint         string
 	apiKey           string
 	model            string
+	metadataID       string
 	maxOutputTokens  int64
 	reasoningEffort  string
 	useCompletionMax bool
+	promptCacheKey   bool
 	headers          map[string]string
 	quirks           providers.OpenAIChatRequestQuirks
 	profile          providers.RuntimeProfile
@@ -60,9 +62,11 @@ func New(_ context.Context, cfg Config) (providers.Runtime, error) {
 		endpoint:         strings.TrimRight(baseURL, "/") + "/chat/completions",
 		apiKey:           apiKey,
 		model:            model,
+		metadataID:       firstNonEmptyString(cfg.ProviderID, cfg.CatalogID),
 		maxOutputTokens:  cfg.MaxOutputTokens,
 		reasoningEffort:  reasoningEffort,
 		useCompletionMax: chatOptions.MaxTokensField == providers.OpenAIChatMaxCompletionTokens,
+		promptCacheKey:   chatOptions.PromptCacheKey,
 		headers:          chatOptions.DefaultHeaders,
 		quirks:           chatOptions.RequestQuirks,
 		profile:          profile,

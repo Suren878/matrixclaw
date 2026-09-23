@@ -34,6 +34,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 	retriedWithoutReasoning := false
 	retriedWithMaxCompletionTokens := false
 	retriedWithReasoningContent := false
+	retriedWithoutMaxTokens := false
 	for attempt := 0; ; attempt++ {
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, r.endpoint, bytes.NewReader(body))
 		if err != nil {
@@ -86,6 +87,17 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 					return providers.Response{}, fmt.Errorf("openaicompat: marshal request: %w", err)
 				}
 				retriedWithMaxCompletionTokens = true
+				attempt = -1
+				continue
+			}
+			if r.quirks.RetryWithoutMaxTokens && !retriedWithoutMaxTokens && shouldRetryWithoutMaxTokens(payload, httpRes.StatusCode, resBody) {
+				payload.MaxTokens = nil
+				payload.MaxCompletionTokens = nil
+				body, err = json.Marshal(payload)
+				if err != nil {
+					return providers.Response{}, fmt.Errorf("openaicompat: marshal request: %w", err)
+				}
+				retriedWithoutMaxTokens = true
 				attempt = -1
 				continue
 			}
@@ -212,6 +224,24 @@ func shouldRetryWithMaxCompletionTokens(payload chatCompletionRequest, statusCod
 	return false
 }
 
+// shouldRetryWithoutMaxTokens: a gateway that rejects the limit's value, not the
+// field, still serves the request with its own default limit.
+func shouldRetryWithoutMaxTokens(payload chatCompletionRequest, statusCode int, body []byte) bool {
+	if (payload.MaxTokens == nil && payload.MaxCompletionTokens == nil) || statusCode < 400 || statusCode >= 500 {
+		return false
+	}
+	text := strings.ToLower(decodeOpenAIError(statusCode, body) + "\n" + string(body))
+	if !strings.Contains(text, "max_tokens") && !strings.Contains(text, "max_completion_tokens") {
+		return false
+	}
+	for _, marker := range []string{"range", "exceed", "too large", "less than or equal", "at most", "maximum"} {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 func shouldRetryStatus(statusCode int) bool {
 	return statusCode == http.StatusTooManyRequests || statusCode == http.StatusRequestTimeout || (statusCode >= 500 && statusCode <= 599)
 }
@@ -252,14 +282,19 @@ func (r *Runtime) chatPayload(ctx context.Context, request providers.Request) ch
 		}
 	}
 
-	if r.maxOutputTokens > 0 {
-		if r.useCompletionMax {
-			payload.MaxCompletionTokens = &r.maxOutputTokens
-		} else {
-			payload.MaxTokens = &r.maxOutputTokens
-		}
+	maxTokens := providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.maxOutputTokens, r.metadataID, providers.TypeOpenAICompat, r.model)
+	if r.useCompletionMax {
+		payload.MaxCompletionTokens = &maxTokens
+	} else {
+		payload.MaxTokens = &maxTokens
 	}
 	payload.Tools = encodeTools(request.Tools)
+	if request.ToolChoice == providers.ToolChoiceNone && len(payload.Tools) > 0 {
+		payload.ToolChoice = string(providers.ToolChoiceNone)
+	}
+	if r.promptCacheKey {
+		payload.PromptCacheKey = strings.TrimSpace(request.CacheKey)
+	}
 	if r.reasoningEffort != "" && (len(payload.Tools) == 0 || r.capabilities.ReasoningWithTools) {
 		payload.ReasoningEffort = r.reasoningEffort
 	}
