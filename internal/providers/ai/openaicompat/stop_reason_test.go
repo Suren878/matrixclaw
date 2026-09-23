@@ -2,6 +2,8 @@ package openaicompat
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -52,5 +54,47 @@ func TestJSONFinishReasonLengthIsNotAnError(t *testing.T) {
 	response, err := (&Runtime{model: "test"}).decodeChatResponse([]byte(`{"choices":[{"message":{"content":"Partial"},"finish_reason":"length"}]}`))
 	if err != nil || response.StopReason != providers.StopMaxTokens || response.Text != "Partial" {
 		t.Fatalf("response=%+v err=%v", response, err)
+	}
+}
+
+func TestFinishReasonMapping(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		finishReason string
+		toolCalls    string
+		wantStop     providers.StopReason
+		wantErr      error
+	}{
+		{"stop", "stop", "", providers.StopEndTurn, nil},
+		{"tool_calls", "tool_calls", `[{"id":"c1","function":{"name":"read","arguments":"{}"}}]`, providers.StopToolUse, nil},
+		{"tool_calls with zero calls", "tool_calls", "", providers.StopEndTurn, nil},
+		{"function_call", "function_call", `[{"id":"c1","function":{"name":"read","arguments":"{}"}}]`, providers.StopToolUse, nil},
+		{"max_tokens", "max_tokens", "", providers.StopMaxTokens, nil},
+		{"length", "length", "", providers.StopMaxTokens, nil},
+		{"content_filter", "content_filter", "", providers.StopContentFilter, nil},
+		{"null/empty", "", "", providers.StopEndTurn, nil},
+		{"openrouter error", "error", "", "", providers.ErrIncompleteResponse},
+		{"deepseek insufficient resource", "insufficient_system_resource", "", "", providers.ErrIncompleteResponse},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			toolCallsJSON := tc.toolCalls
+			if toolCallsJSON == "" {
+				toolCallsJSON = "null"
+			}
+			body := fmt.Sprintf(`{"choices":[{"message":{"content":"hi","tool_calls":%s},"finish_reason":%q}]}`, toolCallsJSON, tc.finishReason)
+			response, err := (&Runtime{model: "test"}).decodeChatResponse([]byte(body))
+			if tc.wantErr != nil {
+				if !errors.Is(err, tc.wantErr) {
+					t.Fatalf("err=%v, want %v", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected err=%v", err)
+			}
+			if response.StopReason != tc.wantStop {
+				t.Fatalf("stop=%q, want %q", response.StopReason, tc.wantStop)
+			}
+		})
 	}
 }

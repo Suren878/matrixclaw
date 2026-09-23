@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
@@ -38,6 +39,43 @@ type Runtime struct {
 	quirks           providers.OpenAIChatRequestQuirks
 	profile          providers.RuntimeProfile
 	capabilities     providers.ModelCapabilities
+	maxTokensLimit   maxTokensLimitState
+}
+
+// maxTokensLimitState remembers a gateway's rejection of the output-limit
+// field across calls, so later requests skip the 400-and-retry: a cap on its
+// value, or that the field itself is unsupported and must be omitted.
+type maxTokensLimitState struct {
+	mu   sync.Mutex
+	cap  int64
+	omit bool
+}
+
+// learnedMaxTokensLimit reports a remembered cap and whether the field should
+// be omitted entirely.
+func (r *Runtime) learnedMaxTokensLimit() (capTokens int64, omit bool) {
+	r.maxTokensLimit.mu.Lock()
+	defer r.maxTokensLimit.mu.Unlock()
+	return r.maxTokensLimit.cap, r.maxTokensLimit.omit
+}
+
+// rememberMaxTokensRejection records a gateway's rejection of the output-limit
+// field so future requests apply it upfront. An unsupported field wins over
+// any previously learned cap.
+func (r *Runtime) rememberMaxTokensRejection(capTokens int64, omit bool) {
+	r.maxTokensLimit.mu.Lock()
+	defer r.maxTokensLimit.mu.Unlock()
+	if omit {
+		r.maxTokensLimit.omit = true
+		r.maxTokensLimit.cap = 0
+		return
+	}
+	if r.maxTokensLimit.omit {
+		return
+	}
+	if capTokens > 0 {
+		r.maxTokensLimit.cap = capTokens
+	}
 }
 
 func New(_ context.Context, cfg Config) (providers.Runtime, error) {

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -101,16 +103,19 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 				attempt = -1
 				continue
 			}
-			if r.quirks.RetryWithoutMaxTokens && !retriedWithoutMaxTokens && shouldRetryWithoutMaxTokens(payload, httpRes.StatusCode, resBody) {
-				payload.MaxTokens = nil
-				payload.MaxCompletionTokens = nil
-				body, err = json.Marshal(payload)
-				if err != nil {
-					return providers.Response{}, fmt.Errorf("openaicompat: marshal request: %w", err)
+			if r.quirks.RetryWithoutMaxTokens && !retriedWithoutMaxTokens {
+				if retry, capTokens, omit := maxTokensRejection(payload, httpRes.StatusCode, resBody); retry {
+					r.rememberMaxTokensRejection(capTokens, omit)
+					payload.MaxTokens = nil
+					payload.MaxCompletionTokens = nil
+					body, err = json.Marshal(payload)
+					if err != nil {
+						return providers.Response{}, fmt.Errorf("openaicompat: marshal request: %w", err)
+					}
+					retriedWithoutMaxTokens = true
+					attempt = -1
+					continue
 				}
-				retriedWithoutMaxTokens = true
-				attempt = -1
-				continue
 			}
 			if r.quirks.RetryAssistantReasoningContent && !retriedWithReasoningContent && shouldRetryWithReasoningContent(payload, httpRes.StatusCode, resBody) {
 				var changed bool
@@ -243,22 +248,51 @@ func shouldRetryWithoutStreamOptions(payload chatCompletionRequest, statusCode i
 	return strings.Contains(text, "stream_options") || strings.Contains(text, "include_usage")
 }
 
-// shouldRetryWithoutMaxTokens: a gateway that rejects the limit's value, not the
-// field, still serves the request with its own default limit.
-func shouldRetryWithoutMaxTokens(payload chatCompletionRequest, statusCode int, body []byte) bool {
+// maxTokensRejection classifies a max_tokens/max_completion_tokens rejection:
+// a named upper bound to remember and retry under, or the field itself being
+// unsupported, which is remembered and omitted from now on.
+func maxTokensRejection(payload chatCompletionRequest, statusCode int, body []byte) (retry bool, capTokens int64, omit bool) {
 	if (payload.MaxTokens == nil && payload.MaxCompletionTokens == nil) || statusCode < 400 || statusCode >= 500 {
-		return false
+		return false, 0, false
 	}
-	text := strings.ToLower(decodeOpenAIError(statusCode, body) + "\n" + string(body))
+	message := decodeOpenAIError(statusCode, body)
+	text := strings.ToLower(message + "\n" + string(body))
 	if !strings.Contains(text, "max_tokens") && !strings.Contains(text, "max_completion_tokens") {
-		return false
+		return false, 0, false
 	}
-	for _, marker := range []string{"range", "exceed", "too large", "less than or equal", "at most", "maximum"} {
+	for _, marker := range []string{"unsupported", "not supported", "unrecognized", "unknown parameter", "does not support"} {
 		if strings.Contains(text, marker) {
-			return true
+			return true, 0, true
 		}
 	}
-	return false
+	for _, marker := range []string{"range", "exceed", "too large", "less than or equal", "at most", "maximum", "<="} {
+		if strings.Contains(text, marker) {
+			return true, greatestInt(stripStatusPrefix(message)), false
+		}
+	}
+	return false, 0, false
+}
+
+var integerPattern = regexp.MustCompile(`\d+`)
+
+// greatestInt returns the largest integer literal in text: the upper bound
+// named by a "valid range is [1, 8192]" or "must be <= 8192" message.
+func greatestInt(text string) int64 {
+	var best int64
+	for _, match := range integerPattern.FindAllString(text, -1) {
+		if value, err := strconv.ParseInt(match, 10, 64); err == nil && value > best {
+			best = value
+		}
+	}
+	return best
+}
+
+// stripStatusPrefix removes decodeOpenAIError's leading "status <code>: ".
+func stripStatusPrefix(message string) string {
+	if idx := strings.Index(message, ": "); idx != -1 {
+		return message[idx+2:]
+	}
+	return message
 }
 
 func shouldRetryStatus(statusCode int) bool {
@@ -302,10 +336,15 @@ func (r *Runtime) chatPayload(ctx context.Context, request providers.Request) ch
 	}
 
 	maxTokens := providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.maxOutputTokens, r.metadataID, providers.TypeOpenAICompat, r.model)
-	if r.useCompletionMax {
-		payload.MaxCompletionTokens = &maxTokens
-	} else {
-		payload.MaxTokens = &maxTokens
+	if capTokens, omit := r.learnedMaxTokensLimit(); !omit {
+		if capTokens > 0 && capTokens < maxTokens {
+			maxTokens = capTokens
+		}
+		if r.useCompletionMax {
+			payload.MaxCompletionTokens = &maxTokens
+		} else {
+			payload.MaxTokens = &maxTokens
+		}
 	}
 	payload.Tools = encodeTools(request.Tools)
 	if request.ToolChoice == providers.ToolChoiceNone && len(payload.Tools) > 0 {
@@ -386,6 +425,9 @@ func (r *Runtime) decodeChatResponse(body []byte) (providers.Response, error) {
 // finishResponse applies the finish reason: a reply cut by the output limit keeps
 // its text and drops tool calls whose arguments were cut off.
 func (r *Runtime) finishResponse(text string, reasoning *string, calls []providers.ToolCall, finishReason string, usage providers.Usage) (providers.Response, error) {
+	if openAIIncompleteFinishReason(finishReason) {
+		return providers.Response{}, fmt.Errorf("openaicompat: finish_reason %q: %w", finishReason, providers.ErrIncompleteResponse)
+	}
 	stop := openAIStopReason(finishReason)
 	if stop == providers.StopMaxTokens {
 		calls = completeToolCalls(calls)

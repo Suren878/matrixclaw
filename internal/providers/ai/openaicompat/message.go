@@ -108,6 +108,18 @@ func openAIStopReason(reason string) providers.StopReason {
 	}
 }
 
+// openAIIncompleteFinishReason reports a mid-generation failure — OpenRouter's
+// "error" or DeepSeek's "insufficient_system_resource" — that should be
+// retried rather than treated as a normal stop.
+func openAIIncompleteFinishReason(reason string) bool {
+	switch strings.ToLower(strings.TrimSpace(reason)) {
+	case "error", "insufficient_system_resource":
+		return true
+	default:
+		return false
+	}
+}
+
 // completeToolCalls keeps the calls a truncated reply finished before the limit.
 func completeToolCalls(calls []providers.ToolCall) []providers.ToolCall {
 	var out []providers.ToolCall

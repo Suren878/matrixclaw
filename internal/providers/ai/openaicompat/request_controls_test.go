@@ -84,6 +84,78 @@ func TestGenerateDropsARejectedOutputLimit(t *testing.T) {
 	}
 }
 
+func TestGenerateDropsAnUnsupportedOutputLimitField(t *testing.T) {
+	var bodies []map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		bodies = append(bodies, body)
+		w.Header().Set("Content-Type", "application/json")
+		if _, has := body["max_tokens"]; has {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"Unsupported parameter: 'max_tokens' is not supported with this model."}}`))
+			return
+		}
+		if _, has := body["max_completion_tokens"]; has {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"Unsupported parameter: 'max_completion_tokens' is not supported with this model."}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+	runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: server.URL, Model: "unsupported-field-model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := runtime.Generate(context.Background(), providers.Request{Messages: []providers.Message{{Role: "user", Content: "hello"}}})
+	if err != nil || response.Text != "ok" {
+		t.Fatalf("response=%+v err=%v", response, err)
+	}
+	final := bodies[len(bodies)-1]
+	if _, ok := final["max_tokens"]; ok {
+		t.Fatalf("final request still sent max_tokens: %v", final)
+	}
+	if _, ok := final["max_completion_tokens"]; ok {
+		t.Fatalf("final request still sent max_completion_tokens: %v", final)
+	}
+}
+
+func TestGenerateRemembersALearnedOutputLimit(t *testing.T) {
+	var bodies []map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		bodies = append(bodies, body)
+		w.Header().Set("Content-Type", "application/json")
+		if maxTokens, ok := body["max_tokens"].(float64); ok && maxTokens > 8192 {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"max_tokens must be <= 8192"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+	runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: server.URL, Model: "learned-limit-model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := providers.Request{Messages: []providers.Message{{Role: "user", Content: "hello"}}}
+	if _, err := runtime.Generate(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	requestsAfterFirstCall := len(bodies)
+	if _, err := runtime.Generate(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(bodies) - requestsAfterFirstCall; got != 1 {
+		t.Fatalf("second call made %d requests, want 1", got)
+	}
+	if got := bodies[len(bodies)-1]["max_tokens"]; got != float64(8192) {
+		t.Fatalf("second call max_tokens=%v, want 8192", got)
+	}
+}
+
 func TestListModelsRegistersOutputLimit(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasSuffix(r.URL.Path, "/models") {
