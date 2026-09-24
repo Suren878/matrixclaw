@@ -2,15 +2,15 @@ package core
 
 import (
 	"context"
-	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func (c *Core) finishToolCall(ctx context.Context, prepared preparedToolCall, input ExecuteToolInput, result tools.Result) (transcript.Message, *transcript.Message, error) {
-	toolCallMessage := newToolCallMessage(prepared.ToolCallID, prepared.SessionID, prepared.RunID, prepared.ToolName, input.Args, true, prepared.Message.CreatedAt)
+	toolCallMessage := agent.ToolCallMessage(prepared.ToolCallID, prepared.SessionID, prepared.RunID, prepared.ToolName, input.Args, true, prepared.Message.CreatedAt)
 	toolCallMessage.UpdatedAt = c.now().UTC()
 	if err := c.store.UpdateMessage(ctx, toolCallMessage); err != nil {
 		return transcript.Message{}, nil, err
@@ -38,42 +38,14 @@ func (c *Core) finishToolCall(ctx context.Context, prepared preparedToolCall, in
 }
 
 func (c *Core) saveToolResultMessage(ctx context.Context, prepared preparedToolCall, result tools.Result) (*transcript.Message, error) {
-	metadataRaw, err := marshalJSONRaw(result.Metadata)
+	message, err := agent.ToolResultMessage(c.newID("tool_result"), prepared.SessionID, prepared.RunID, prepared.ToolCallID, prepared.ToolName, result, c.now().UTC())
 	if err != nil {
 		return nil, err
-	}
-	content := strings.TrimSpace(result.Content)
-	now := c.now().UTC()
-	message := transcript.Message{
-		ID:        c.newID("tool_result"),
-		SessionID: prepared.SessionID,
-		RunID:     prepared.RunID,
-		Role:      transcript.MessageRoleTool,
-		Content:   normalizeToolContent(content),
-		Parts: []transcript.MessagePart{{
-			Kind: transcript.MessagePartKindToolResult,
-			ToolResult: &transcript.ToolResultPart{
-				ToolCallID: prepared.ToolCallID,
-				Name:       prepared.ToolName,
-				Content:    content,
-				MIMEType:   result.MIMEType,
-				Metadata:   metadataRaw,
-				Status:     string(toolResultStatus(result)),
-				IsError:    result.IsError,
-			},
-		}},
-		CreatedAt: now,
-		UpdatedAt: now,
 	}
 	if err := c.store.SaveMessage(ctx, message); err != nil {
 		return nil, err
 	}
-	c.publishEvent(Event{
-		Type:      EventMessageCreated,
-		SessionID: prepared.SessionID,
-		RunID:     message.RunID,
-		Payload:   message,
-	})
+	c.publishEvent(Event{Type: EventMessageCreated, SessionID: prepared.SessionID, RunID: message.RunID, Payload: message})
 	return &message, nil
 }
 
@@ -86,7 +58,7 @@ func (c *Core) publishFinishedToolUpdate(prepared preparedToolCall, resultMessag
 		ToolCallID:      prepared.ToolCallID,
 		ToolName:        prepared.ToolName,
 		State:           toolState,
-		ResultStatus:    string(toolResultStatus(result)),
+		ResultStatus:    string(agent.ToolResultStatus(result)),
 		RunID:           prepared.RunID,
 		SessionID:       prepared.SessionID,
 		ResultMessageID: resultMessageID,

@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
-	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
 func (c *Core) Usage(ctx context.Context, filter UsageFilter) (UsageReport, error) {
@@ -68,8 +67,4 @@ func (c *Core) recordRunStep(ctx context.Context, step agent.Step) {
 	if err := c.store.SaveRunStep(context.WithoutCancel(ctx), row); err != nil {
 		log.Printf("core: record step of run %q: %v", runID, err)
 	}
-}
-
-func generationStopReason(response providers.Response) string {
-	return string(providers.ResolveStopReason(response.StopReason, len(response.ToolCalls)))
 }

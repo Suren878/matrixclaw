@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -98,4 +99,19 @@ func (c *Core) nativeEngine(run Run, session Session, runtime providers.Runtime)
 		Model:       runtime,
 	}
 	return task, engine
+}
+
+func (c *Core) resolveSessionRuntime(ctx context.Context, session Session) (providers.Runtime, error) {
+	llms := c.sessionLLMs()
+	if llms == nil {
+		return nil, fmt.Errorf("%w: provider registry unavailable", ErrExecutionUnavailable)
+	}
+	runtime, _, _, err := llms.Resolve(ctx, session.ProviderID, session.ModelID)
+	if err != nil {
+		return nil, err
+	}
+	if runtime == nil {
+		return nil, fmt.Errorf("%w: provider not configured", ErrExecutionUnavailable)
+	}
+	return runtime, nil
 }

@@ -2,9 +2,11 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 // applyOutcome persists how the engine left a native run.
@@ -59,4 +61,70 @@ func (c *Core) applyInterruptedOutcome(run Run, outcome agent.Outcome) error {
 		}
 	}
 	return c.preserveRunForRecovery(ctx, latest, outcome.Assistant, outcome.AssistantSaved)
+}
+
+func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID string, assistant *transcript.Message, assistantSaved bool) error {
+	if run == nil || assistant == nil {
+		return errors.New("core: complete assistant turn requires run and assistant")
+	}
+	finishedAt := c.now().UTC()
+	if err := c.CompleteSessionPlanRunStep(ctx, *run, assistant.Content); err != nil {
+		return fmt.Errorf("complete plan run step: %w", err)
+	}
+	if err := c.completeActivePlanItemsIfRunFinished(ctx, sessionID); err != nil {
+		return fmt.Errorf("complete active plan items: %w", err)
+	}
+	if !assistantSaved {
+		assistant.CreatedAt = finishedAt
+		assistant.UpdatedAt = finishedAt
+		run.Status = RunStatusCompleted
+		run.Error = ""
+		run.FinishedAt = &finishedAt
+		run.UpdatedAt = finishedAt
+
+		if err := c.store.CompleteRun(ctx, *assistant, *run); err != nil {
+			return fmt.Errorf("complete run: %w", err)
+		}
+		c.clearRunCheckpoint(ctx, run.ID)
+		c.publishEvent(Event{
+			Type:      EventMessageCreated,
+			SessionID: sessionID,
+			RunID:     run.ID,
+			Payload:   *assistant,
+		})
+		c.publishEvent(Event{
+			Type:      EventRunUpdated,
+			SessionID: sessionID,
+			RunID:     run.ID,
+			Payload:   *run,
+		})
+		return nil
+	}
+
+	assistant.UpdatedAt = finishedAt
+	run.Status = RunStatusCompleted
+	run.Error = ""
+	run.FinishedAt = &finishedAt
+	run.UpdatedAt = finishedAt
+
+	if err := c.store.UpdateMessage(ctx, *assistant); err != nil {
+		return fmt.Errorf("update assistant message: %w", err)
+	}
+	if err := c.store.UpdateRun(ctx, *run); err != nil {
+		return err
+	}
+	c.clearRunCheckpoint(ctx, run.ID)
+	c.publishEvent(Event{
+		Type:      EventMessageUpdated,
+		SessionID: sessionID,
+		RunID:     run.ID,
+		Payload:   *assistant,
+	})
+	c.publishEvent(Event{
+		Type:      EventRunUpdated,
+		SessionID: sessionID,
+		RunID:     run.ID,
+		Payload:   *run,
+	})
+	return nil
 }

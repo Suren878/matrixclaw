@@ -2,195 +2,29 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
-	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID string, assistant *transcript.Message, assistantSaved bool) error {
-	if run == nil || assistant == nil {
-		return errors.New("core: complete assistant turn requires run and assistant")
-	}
-	finishedAt := c.now().UTC()
-	if err := c.CompleteSessionPlanRunStep(ctx, *run, assistant.Content); err != nil {
-		return fmt.Errorf("complete plan run step: %w", err)
-	}
-	if err := c.completeActivePlanItemsIfRunFinished(ctx, sessionID); err != nil {
-		return fmt.Errorf("complete active plan items: %w", err)
-	}
-	if !assistantSaved {
-		assistant.CreatedAt = finishedAt
-		assistant.UpdatedAt = finishedAt
-		run.Status = RunStatusCompleted
-		run.Error = ""
-		run.FinishedAt = &finishedAt
-		run.UpdatedAt = finishedAt
+const orphanedRunError = "run was left running without an active executor; daemon restarted or the worker event stream was lost. Retry the task to start a fresh run"
 
-		if err := c.store.CompleteRun(ctx, *assistant, *run); err != nil {
-			return fmt.Errorf("complete run: %w", err)
-		}
-		c.clearRunCheckpoint(ctx, run.ID)
-		c.publishEvent(Event{
-			Type:      EventMessageCreated,
-			SessionID: sessionID,
-			RunID:     run.ID,
-			Payload:   *assistant,
-		})
-		c.publishEvent(Event{
-			Type:      EventRunUpdated,
-			SessionID: sessionID,
-			RunID:     run.ID,
-			Payload:   *run,
-		})
-		return nil
-	}
-
-	assistant.UpdatedAt = finishedAt
-	run.Status = RunStatusCompleted
-	run.Error = ""
-	run.FinishedAt = &finishedAt
-	run.UpdatedAt = finishedAt
-
-	if err := c.store.UpdateMessage(ctx, *assistant); err != nil {
-		return fmt.Errorf("update assistant message: %w", err)
-	}
-	if err := c.store.UpdateRun(ctx, *run); err != nil {
-		return err
-	}
-	c.clearRunCheckpoint(ctx, run.ID)
-	c.publishEvent(Event{
-		Type:      EventMessageUpdated,
-		SessionID: sessionID,
-		RunID:     run.ID,
-		Payload:   *assistant,
-	})
-	c.publishEvent(Event{
-		Type:      EventRunUpdated,
-		SessionID: sessionID,
-		RunID:     run.ID,
-		Payload:   *run,
-	})
-	return nil
+func (c *Core) failOrphanedRun(ctx context.Context, run Run) error {
+	return c.failRunByID(ctx, run, errors.New(orphanedRunError))
 }
 
-func planRunLooksBlocked(content string) bool {
-	for _, line := range strings.Split(content, "\n") {
-		line = strings.ToLower(strings.TrimSpace(line))
-		if line == "plan_blocked" || strings.HasPrefix(line, "plan_blocked:") {
-			return true
+func (c *Core) persistAssistantError(ctx context.Context, run Run, assistant *transcript.Message, assistantSaved bool, cause error) error {
+	if assistantSaved {
+		if updateErr := c.markAssistantErrored(ctx, assistant, cause); updateErr != nil {
+			return c.failRunByID(ctx, run, fmt.Errorf("%w (assistant update failed: %w)", cause, updateErr))
+		}
+	} else {
+		if saveErr := c.saveAssistantErrored(ctx, assistant, cause); saveErr != nil {
+			return c.failRunByID(ctx, run, fmt.Errorf("%w (assistant save failed: %w)", cause, saveErr))
 		}
 	}
-	return false
-}
-
-func (c *Core) completeDonePlanParents(ctx context.Context, sessionID string) error {
-	for {
-		plan, err := c.store.GetSessionPlan(ctx, sessionID)
-		if err != nil {
-			return nil
-		}
-		children := make(map[string][]PlanItem, len(plan.Items))
-		for _, item := range plan.Items {
-			parentID := strings.TrimSpace(item.ParentID)
-			if parentID != "" {
-				children[parentID] = append(children[parentID], item)
-			}
-		}
-		changed := false
-		for _, item := range plan.Items {
-			if item.Status == PlanItemDone || item.Status == PlanItemSkipped || len(children[item.ID]) == 0 {
-				continue
-			}
-			if !allPlanChildrenTerminal(children[item.ID]) {
-				continue
-			}
-			if _, err := c.UpdatePlanItem(ctx, sessionID, item.ID, PlanItemDone, ""); err != nil {
-				return err
-			}
-			changed = true
-			break
-		}
-		if !changed {
-			return nil
-		}
-	}
-}
-
-func allPlanChildrenTerminal(items []PlanItem) bool {
-	if len(items) == 0 {
-		return false
-	}
-	for _, item := range items {
-		switch item.Status {
-		case PlanItemDone, PlanItemSkipped:
-			continue
-		default:
-			return false
-		}
-	}
-	return true
-}
-
-func (c *Core) completeActivePlanItemsIfRunFinished(ctx context.Context, sessionID string) error {
-	if planRun, err := c.store.GetPlanRun(ctx, sessionID); err == nil && planRun.Status == PlanRunBlocked {
-		return nil
-	}
-	plan, err := c.store.GetSessionPlan(ctx, sessionID)
-	if err != nil {
-		return err
-	}
-	var active []PlanItem
-	for _, item := range plan.Items {
-		switch item.Status {
-		case PlanItemPending:
-			return nil
-		case PlanItemActive:
-			active = append(active, item)
-		}
-	}
-	for _, item := range active {
-		if _, err := c.UpdatePlanItem(ctx, sessionID, item.ID, PlanItemDone, ""); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func providerResponseMessageParts(content string, reasoningContent *string) []transcript.MessagePart {
-	parts := transcript.NormalizeMessageParts(content, nil)
-	if reasoningContent == nil {
-		return parts
-	}
-	text := *reasoningContent
-	return append(parts, transcript.MessagePart{
-		Kind: transcript.MessagePartKindReasoning,
-		Reasoning: &transcript.ReasoningPart{
-			Text: text,
-		},
-	})
-}
-
-func providerUsageFinishPart(usage providers.Usage) *transcript.MessagePart {
-	if usage.IsZero() {
-		return nil
-	}
-	payload, err := json.Marshal(struct {
-		Usage providers.Usage `json:"usage"`
-	}{Usage: usage})
-	if err != nil {
-		return nil
-	}
-	return &transcript.MessagePart{
-		Kind: transcript.MessagePartKindFinish,
-		Finish: &transcript.FinishPart{
-			Reason:  "end_turn",
-			Details: payload,
-		},
-	}
+	return c.failRunByID(ctx, run, cause)
 }
 
 func (c *Core) setRunStatus(ctx context.Context, run *Run, status RunStatus, errText string) error {

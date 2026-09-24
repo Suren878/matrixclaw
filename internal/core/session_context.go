@@ -75,11 +75,6 @@ func (c *Core) SessionContext(ctx context.Context, sessionID string) (ContextRep
 
 // CompactSession summarises the session history into a compaction marker.
 func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSessionResult, error) {
-	return c.compactSession(ctx, sessionID, "")
-}
-
-// compactSession records the summary generation as a step of runID when set.
-func (c *Core) compactSession(ctx context.Context, sessionID string, runID string) (CompactSessionResult, error) {
 	sessionID = normalizeText(sessionID)
 	if sessionID == "" {
 		return CompactSessionResult{}, ErrSessionRequired
@@ -100,11 +95,7 @@ func (c *Core) compactSession(ctx context.Context, sessionID string, runID strin
 	if err != nil {
 		return CompactSessionResult{}, err
 	}
-	var generator agentcontext.Generator = runtime
-	if runID != "" {
-		generator = runStepGenerator{c: c, runtime: runtime, runID: runID}
-	}
-	content, err := agentcontext.Compact(ctx, generator, agentcontext.CompactInput{
+	content, err := agentcontext.Compact(ctx, runtime, agentcontext.CompactInput{
 		SessionID:    session.ID,
 		History:      messages,
 		BaseTokens:   c.contextBaseTokens(),

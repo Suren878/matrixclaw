@@ -26,16 +26,6 @@ func errorText(result tools.Result) string {
 	return ""
 }
 
-func toolResultStatus(result tools.Result) tools.ResultStatus {
-	if result.Status != "" {
-		return result.Status
-	}
-	if result.IsError {
-		return tools.ResultStatusError
-	}
-	return tools.ResultStatusSuccess
-}
-
 func normalizeToolContent(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {

@@ -101,3 +101,11 @@ func (c *Core) nativeToolSpecs(turn nativeTurn) []tools.Spec {
 	}
 	return out
 }
+
+func clientSupportsVoiceDelivery(capabilities ClientCapabilities) bool {
+	return capabilities.SupportsVoiceDelivery
+}
+
+func clientSupportsDocumentDelivery(capabilities ClientCapabilities) bool {
+	return capabilities.SupportsDocumentDelivery
+}

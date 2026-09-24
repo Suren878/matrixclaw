@@ -444,41 +444,6 @@ func appendDaemonRestartFinish(message *transcript.Message) {
 	})
 }
 
-func (c *Core) applyRunTurnResultAfterContextStopped(execution *runExecution, result turnStepResult) (bool, error) {
-	if execution == nil {
-		return true, errors.New("core: run execution is required")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), runInterruptionPersistenceTimeout)
-	defer cancel()
-
-	run, err := c.store.GetRun(ctx, execution.Run.ID)
-	if err != nil {
-		return true, err
-	}
-	if run.Status == RunStatusCanceled {
-		return true, c.finishCanceledAssistant(ctx, result.Assistant, result.AssistantSaved)
-	}
-	if subagentRunStatusTerminal(run.Status) {
-		return true, nil
-	}
-
-	// A complete provider reply is safe to commit even when shutdown arrived
-	// between Generate returning and the durable completion write.
-	if result.Err == nil && result.Outcome == turnStepCompleted && result.Assistant != nil {
-		return true, c.completeAssistantTurn(ctx, &run, execution.Turn.SessionID, result.Assistant, result.AssistantSaved)
-	}
-	if result.Err == nil && result.Outcome == turnStepWaitingApproval {
-		pending, pendingErr := c.runHasPendingApprovals(ctx, run.SessionID, run.ID)
-		if pendingErr != nil {
-			return true, pendingErr
-		}
-		if pending {
-			return true, c.setRunStatus(ctx, &run, RunStatusWaitingApproval, "")
-		}
-	}
-	return true, c.preserveRunForRecovery(ctx, run, result.Assistant, result.AssistantSaved)
-}
-
 func (c *Core) preserveRunForRecovery(ctx context.Context, run Run, assistant *transcript.Message, assistantSaved bool) error {
 	if assistant != nil && (assistantSaved || strings.TrimSpace(assistant.Content) != "" || len(assistant.Parts) > 0) {
 		appendDaemonRestartFinish(assistant)

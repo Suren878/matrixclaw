@@ -333,3 +333,16 @@ func approvalsForRun(approvals []Approval, runID string) []Approval {
 	}
 	return matched
 }
+
+func (c *Core) runHasPendingApprovals(ctx context.Context, sessionID string, runID string) (bool, error) {
+	approvals, err := c.store.ListApprovals(ctx, sessionID, ApprovalStatePending)
+	if err != nil {
+		return false, err
+	}
+	for _, approval := range approvals {
+		if strings.TrimSpace(approval.RunID) == strings.TrimSpace(runID) {
+			return true, nil
+		}
+	}
+	return false, nil
+}

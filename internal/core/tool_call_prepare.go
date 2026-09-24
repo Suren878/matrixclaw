@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
+	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -68,7 +68,7 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 		toolCallID = c.newID("tool")
 	}
 	runID := normalizeText(input.RunID)
-	message := newToolCallMessage(toolCallID, sessionID, runID, toolName, input.Args, false, c.now().UTC())
+	message := agent.ToolCallMessage(toolCallID, sessionID, runID, toolName, input.Args, false, c.now().UTC())
 	prepared := preparedToolCall{
 		SessionID:  sessionID,
 		RunID:      runID,
@@ -110,27 +110,6 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 		return preparedToolCall{}, err
 	}
 	return prepared, nil
-}
-
-func newToolCallMessage(id string, sessionID string, runID string, toolName string, args []byte, finished bool, createdAt time.Time) transcript.Message {
-	return transcript.Message{
-		ID:        id,
-		SessionID: sessionID,
-		RunID:     runID,
-		Role:      transcript.MessageRoleAssistant,
-		Content:   "",
-		Parts: []transcript.MessagePart{{
-			Kind: transcript.MessagePartKindToolCall,
-			ToolCall: &transcript.ToolCallPart{
-				ID:       id,
-				Name:     toolName,
-				Input:    string(args),
-				Finished: finished,
-			},
-		}},
-		CreatedAt: createdAt,
-		UpdatedAt: createdAt,
-	}
 }
 
 func (c *Core) isNewToolCallMessage(ctx context.Context, sessionID string, toolCallID string) (bool, error) {
