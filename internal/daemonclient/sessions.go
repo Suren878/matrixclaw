@@ -131,6 +131,24 @@ func (c *Client) SessionUsage(ctx context.Context, sessionID string) (core.Usage
 	return response.Usage, nil
 }
 
+func (c *Client) SessionBudget(ctx context.Context, sessionID string) (core.SessionBudgetReport, error) {
+	var response core.SessionBudgetResponse
+	path := "/v1/sessions/" + escapedPath(sessionID) + "/budget"
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return core.SessionBudgetReport{}, err
+	}
+	return response.Budget, nil
+}
+
+func (c *Client) UpdateSessionBudget(ctx context.Context, sessionID string, budget core.SessionBudget) (core.SessionBudgetReport, error) {
+	var response core.SessionBudgetResponse
+	path := "/v1/sessions/" + escapedPath(sessionID) + "/budget"
+	if err := c.doJSON(ctx, http.MethodPut, path, budget, &response); err != nil {
+		return core.SessionBudgetReport{}, err
+	}
+	return response.Budget, nil
+}
+
 func (c *Client) SessionPlan(ctx context.Context, sessionID string) (core.SessionPlan, error) {
 	var response core.SessionPlanResponse
 	path := "/v1/sessions/" + escapedPath(sessionID) + "/plan"

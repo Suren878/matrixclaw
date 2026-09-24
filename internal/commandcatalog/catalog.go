@@ -13,6 +13,7 @@ const (
 	CommandContext     CommandID = "context"
 	CommandUsage       CommandID = "usage"
 	CommandContinue    CommandID = "continue"
+	CommandBudget      CommandID = "budget"
 	CommandPlan        CommandID = "plan"
 	CommandMemory      CommandID = "memory"
 	CommandSearch      CommandID = "search"
@@ -46,6 +47,7 @@ func Catalog() []CommandSpec {
 		{ID: CommandContext, Command: "/context", Description: "Context", Menu: true, Public: true},
 		{ID: CommandUsage, Command: "/usage", Description: "Token usage", Menu: false, Public: true},
 		{ID: CommandContinue, Command: "/continue", Description: "Continue the last run", Menu: false, Public: true},
+		{ID: CommandBudget, Command: "/budget", Description: "Run budget", Menu: false, Public: true},
 		{ID: CommandPlan, Command: "/plan", Description: "Planning Mode", Menu: true, Public: true},
 		{ID: CommandMemory, Command: "/memory", Description: "Memory", Menu: true, Public: true},
 		{ID: CommandSearch, Command: "/search", Description: "Search history", Menu: false, Public: true},

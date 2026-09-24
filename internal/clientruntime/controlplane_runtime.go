@@ -390,6 +390,22 @@ func (r ControlplaneRuntime) SessionUsage(ctx context.Context, sessionID string)
 	return client.SessionUsage(ctx, sessionID)
 }
 
+func (r ControlplaneRuntime) SessionBudget(ctx context.Context, sessionID string) (core.SessionBudgetReport, error) {
+	client, err := r.client("")
+	if err != nil {
+		return core.SessionBudgetReport{}, err
+	}
+	return client.SessionBudget(ctx, sessionID)
+}
+
+func (r ControlplaneRuntime) UpdateSessionBudget(ctx context.Context, sessionID string, budget core.SessionBudget) (core.SessionBudgetReport, error) {
+	client, err := r.client("")
+	if err != nil {
+		return core.SessionBudgetReport{}, err
+	}
+	return client.UpdateSessionBudget(ctx, sessionID, budget)
+}
+
 func (r ControlplaneRuntime) SessionPlan(ctx context.Context, sessionID string) (core.SessionPlan, error) {
 	client, err := r.client("")
 	if err != nil {

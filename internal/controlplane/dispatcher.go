@@ -97,6 +97,11 @@ type UsageRuntime interface {
 	SessionUsage(ctx context.Context, sessionID string) (core.UsageReport, error)
 }
 
+type BudgetRuntime interface {
+	SessionBudget(ctx context.Context, sessionID string) (core.SessionBudgetReport, error)
+	UpdateSessionBudget(ctx context.Context, sessionID string, budget core.SessionBudget) (core.SessionBudgetReport, error)
+}
+
 type PlanRuntime interface {
 	SessionPlan(ctx context.Context, sessionID string) (core.SessionPlan, error)
 	SetSessionGoal(ctx context.Context, sessionID string, goal string) (core.SessionPlan, error)
@@ -197,6 +202,7 @@ type Dispatcher struct {
 	continuer      ContinueRuntime
 	contextRuntime ContextRuntime
 	usage          UsageRuntime
+	budget         BudgetRuntime
 	plan           PlanRuntime
 	memory         MemoryRuntime
 	search         SearchRuntime
@@ -231,6 +237,7 @@ func New(runtime any, workingDir string) *Dispatcher {
 		d.continuer, _ = runtime.(ContinueRuntime)
 		d.contextRuntime, _ = runtime.(ContextRuntime)
 		d.usage, _ = runtime.(UsageRuntime)
+		d.budget, _ = runtime.(BudgetRuntime)
 		d.plan, _ = runtime.(PlanRuntime)
 		d.memory, _ = runtime.(MemoryRuntime)
 		d.search, _ = runtime.(SearchRuntime)
@@ -283,6 +290,8 @@ func (d *Dispatcher) Handle(ctx context.Context, externalKey string, text string
 		return d.handleUsage(ctx, externalKey)
 	case CommandContinue:
 		return d.handleContinue(ctx, externalKey)
+	case CommandBudget:
+		return d.handleBudget(ctx, externalKey, args)
 	case CommandPlan:
 		return d.handlePlan(ctx, externalKey, args)
 	case CommandMemory:

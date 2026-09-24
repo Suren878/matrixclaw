@@ -13,6 +13,7 @@ const (
 	CommandContext     = commandcatalog.CommandContext
 	CommandUsage       = commandcatalog.CommandUsage
 	CommandContinue    = commandcatalog.CommandContinue
+	CommandBudget      = commandcatalog.CommandBudget
 	CommandPlan        = commandcatalog.CommandPlan
 	CommandMemory      = commandcatalog.CommandMemory
 	CommandSearch      = commandcatalog.CommandSearch
