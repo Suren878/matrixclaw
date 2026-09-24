@@ -77,33 +77,27 @@ func toolDefinitions(specs []tools.Spec) []providers.ToolDefinition {
 	return definitions
 }
 
-func (r *run) autoCompact(ctx context.Context) (bool, error) {
-	messages := r.history.all()
+// contextBudget is the context budget of one step: the fixed prompt cost and the model window.
+type contextBudget struct {
+	base, window int
+}
+
+func (r *run) budget(ctx context.Context) (contextBudget, error) {
 	base, window, err := r.Prompts.Budget(ctx)
-	if err != nil {
-		return false, err
-	}
-	recommended, _ := agentcontext.Recommendation(agentcontext.SessionTokens(base, messages), window)
+	return contextBudget{base: base, window: window}, err
+}
+
+func (r *run) autoCompact(ctx context.Context, b contextBudget) (bool, error) {
+	messages := r.history.all()
+	recommended, _ := agentcontext.Recommendation(agentcontext.SessionTokens(b.base, messages), b.window)
 	if !recommended || agentcontext.CompactBackoffActive(messages) {
 		return false, nil
 	}
-	return r.compactHistory(ctx, messages, base)
+	return r.compactHistory(ctx, messages, b.base)
 }
 
-func (r *run) compact(ctx context.Context) (bool, error) {
-	base, _, err := r.Prompts.Budget(ctx)
-	if err != nil {
-		return false, err
-	}
-	return r.compactHistory(ctx, r.history.all(), base)
-}
-
-func (r *run) requestNeedsCompact(ctx context.Context, request providers.Request) bool {
-	_, window, err := r.Prompts.Budget(ctx)
-	if err != nil {
-		return false
-	}
-	threshold := agentcontext.Threshold(window)
+func requestNeedsCompact(request providers.Request, b contextBudget) bool {
+	threshold := agentcontext.Threshold(b.window)
 	return threshold > 0 && agentcontext.EstimateRequestTokens(request) >= threshold
 }
 

@@ -106,7 +106,11 @@ func (r *run) step(ctx context.Context) stepResult {
 	if err := r.checkpoint(ctx, PhaseModel, "", ""); err != nil {
 		return failedStep(err)
 	}
-	compacted, err := r.autoCompact(ctx)
+	budget, err := r.budget(ctx)
+	if err != nil {
+		return failedStep(err)
+	}
+	compacted, err := r.autoCompact(ctx, budget)
 	if err != nil {
 		return failedStep(err)
 	}
@@ -114,8 +118,8 @@ func (r *run) step(ctx context.Context) stepResult {
 	if err != nil {
 		return failedStep(err)
 	}
-	if !compacted && r.requestNeedsCompact(ctx, request) {
-		if compacted, err = r.compact(ctx); err != nil {
+	if !compacted && requestNeedsCompact(request, budget) {
+		if compacted, err = r.compactHistory(ctx, r.history.all(), budget.base); err != nil {
 			return failedStep(err)
 		}
 		if compacted {
@@ -126,7 +130,7 @@ func (r *run) step(ctx context.Context) stepResult {
 	}
 	gen, err := r.generateWithRetry(ctx, request)
 	if err != nil && agentcontext.IsContextLengthExceeded(err) {
-		compacted, compactErr := r.compact(ctx)
+		compacted, compactErr := r.compactHistory(ctx, r.history.all(), budget.base)
 		if compactErr != nil {
 			return failedStep(compactErr)
 		}

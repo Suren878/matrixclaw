@@ -350,6 +350,7 @@ type Prompts struct {
 	Text         string
 	BaseTokens   int
 	WindowTokens int
+	BudgetReads  int
 }
 
 func (p *Prompts) System(_ context.Context, summary string, _ []transcript.Message) (string, string) {
@@ -364,6 +365,7 @@ func (p *Prompts) PlanSnapshot(context.Context) string {
 }
 
 func (p *Prompts) Budget(context.Context) (int, int, error) {
+	p.BudgetReads++
 	return p.BaseTokens, p.WindowTokens, nil
 }
 
