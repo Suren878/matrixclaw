@@ -144,7 +144,17 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 	if providers.TextStreamFromContext(ctx) != nil {
 		payload.Stream = true
 	}
+	response, err := r.send(ctx, payload)
+	var rejected *apiError
+	if errors.As(err, &rejected) && rejected.rejectsThinking() && stripThinking(payload.Messages) {
+		// Until the prompt prefix is stable, a replayed signature can fail
+		// verification; the request is still valid without thinking.
+		return r.send(ctx, payload)
+	}
+	return response, err
+}
 
+func (r *Runtime) send(ctx context.Context, payload anthropicRequest) (providers.Response, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return providers.Response{}, fmt.Errorf("anthropic: marshal request: %w", err)
@@ -259,33 +269,39 @@ func (d anthropicErrorDetail) String() string {
 	return kind + ": " + message
 }
 
-func (d anthropicErrorDetail) retryable() bool {
-	return d.Type == "overloaded_error" || d.Type == "api_error"
-}
-
 type anthropicErrorEnvelope struct {
 	Error anthropicErrorDetail `json:"error"`
 }
 
-// retryableError reads as its message and matches ErrIncompleteResponse, so core
-// retries overload and server errors that arrive before any output.
-type retryableError string
+// apiError is an error reported by the API, in a response or a stream event.
+// Overload and server errors match ErrIncompleteResponse, so core retries them
+// while nothing has been output yet.
+type apiError struct {
+	message string
+	status  int
+	detail  anthropicErrorDetail
+}
 
-func (e retryableError) Error() string { return string(e) }
+func (e *apiError) Error() string { return e.message }
 
-func (e retryableError) Unwrap() error { return providers.ErrIncompleteResponse }
-
-func anthropicFailure(message string, retryable bool) error {
-	if retryable {
-		return retryableError(message)
+func (e *apiError) Unwrap() error {
+	if e.status == 529 || e.detail.Type == "overloaded_error" || e.detail.Type == "api_error" {
+		return providers.ErrIncompleteResponse
 	}
-	return errors.New(message)
+	return nil
+}
+
+// rejectsThinking reports a bad request about replayed thinking or its signature.
+func (e *apiError) rejectsThinking() bool {
+	message := strings.ToLower(e.detail.Message)
+	return e.status == http.StatusBadRequest && e.detail.Type == "invalid_request_error" &&
+		(strings.Contains(message, "thinking") || strings.Contains(message, "signature"))
 }
 
 func anthropicResponseError(statusCode int, body []byte) error {
 	var envelope anthropicErrorEnvelope
 	_ = json.Unmarshal(body, &envelope)
-	return anthropicFailure("anthropic: "+decodeAnthropicError(statusCode, body), statusCode == 529 || envelope.Error.retryable())
+	return &apiError{message: "anthropic: " + decodeAnthropicError(statusCode, body), status: statusCode, detail: envelope.Error}
 }
 
 func decodeAnthropicError(statusCode int, body []byte) string {

@@ -439,3 +439,58 @@ func TestDisabledToolUseModeStripsToolsAndToolTurns(t *testing.T) {
 		}
 	}
 }
+
+// rejectingServer answers 400 with message while the request matches reject,
+// and textReply otherwise; it returns the recorded request bodies.
+func rejectingServer(t *testing.T, reject func(body string) bool, message string) (providers.Runtime, *[]string) {
+	t.Helper()
+	var mu sync.Mutex
+	var bodies []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		bodies = append(bodies, string(body))
+		mu.Unlock()
+		if reject(string(body)) {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"type":"error","error":{"type":"invalid_request_error","message":"`+message+`"}}`)
+			return
+		}
+		_, _ = io.WriteString(w, textReply("ok"))
+	}))
+	t.Cleanup(server.Close)
+	runtime, err := New(context.Background(), Config{APIKey: "k", BaseURL: server.URL, Model: "claude-test", HTTPClient: server.Client(), ToolUseMode: providers.ToolUseNative})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return runtime, &bodies
+}
+
+var loopWithThinking = providers.Request{Tools: testTools, Messages: []providers.Message{
+	{Role: "user", Content: "List"},
+	{Role: "assistant", Reasoning: []providers.ReasoningBlock{{Text: "t", Signature: "sig"}, {RedactedData: "r"}}, ToolCalls: []providers.ToolCall{{ID: "toolu_1", Name: "ls"}}},
+	{Role: "tool", ToolCallID: "toolu_1", Content: "a.go"},
+}}
+
+func TestRejectedThinkingIsRetriedOnceWithoutIt(t *testing.T) {
+	hasThinking := func(body string) bool { return strings.Contains(body, "thinking") }
+	runtime, bodies := rejectingServer(t, hasThinking, "messages.1.content.0: Invalid `signature` in `thinking` block")
+	response, err := runtime.Generate(context.Background(), loopWithThinking)
+	if err != nil || response.Text != "ok" {
+		t.Fatalf("response = %#v err = %v", response, err)
+	}
+	if len(*bodies) != 2 || hasThinking((*bodies)[1]) || !strings.Contains((*bodies)[1], `"tool_use"`) {
+		t.Fatalf("requests = %q", *bodies)
+	}
+}
+
+func TestOtherBadRequestsAreNotRetried(t *testing.T) {
+	always := func(string) bool { return true }
+	runtime, bodies := rejectingServer(t, always, "max_tokens: 999999 > 64000")
+	if _, err := runtime.Generate(context.Background(), loopWithThinking); err == nil || !strings.Contains(err.Error(), "max_tokens") {
+		t.Fatalf("error = %v", err)
+	}
+	if len(*bodies) != 1 {
+		t.Fatalf("requests = %d, want 1", len(*bodies))
+	}
+}

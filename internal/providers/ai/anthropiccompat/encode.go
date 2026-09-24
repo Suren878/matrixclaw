@@ -219,6 +219,19 @@ func replayableThinking(blocks []anthropicBlock, inLoop bool) []anthropicBlock {
 	return kept
 }
 
+// stripThinking removes every thinking block and reports whether there was any.
+func stripThinking(turns []anthropicMessage) bool {
+	stripped := false
+	for i := range turns {
+		turns[i].Content = slices.DeleteFunc(turns[i].Content, func(block anthropicBlock) bool {
+			thinking := block.Type == "thinking" || block.Type == "redacted_thinking"
+			stripped = stripped || thinking
+			return thinking
+		})
+	}
+	return stripped
+}
+
 // toolUseInput returns the call arguments as a JSON object; anything else is
 // sent as {} because the Messages API rejects non-object input.
 func toolUseInput(arguments json.RawMessage) json.RawMessage {
