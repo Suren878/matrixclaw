@@ -124,6 +124,7 @@ func (m *appModel) handleRunUpdatedEvent(msg liveEventMsg) tea.Cmd {
 		return nil
 	}
 	m.setBusy(runIsActive(&run))
+	m.showRunStopNotice(run)
 	if run.Status == core.RunStatusFailed && strings.TrimSpace(run.Error) != "" {
 		m.err = run.Error
 		m.planAutoRun = false

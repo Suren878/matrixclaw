@@ -16,14 +16,15 @@ import (
 
 func ToSurfaceMessage(message transcript.Message) surfacemessage.Message {
 	out := surfacemessage.Message{
-		ID:        message.ID,
-		Role:      surfaceRole(message.Role),
-		SessionID: message.SessionID,
-		RunID:     message.RunID,
-		Model:     message.Model,
-		Provider:  message.Provider,
-		CreatedAt: surfaceNowUnix(message.CreatedAt),
-		UpdatedAt: surfaceNowUnix(message.UpdatedAt),
+		ID:               message.ID,
+		Role:             surfaceRole(message.Role),
+		SessionID:        message.SessionID,
+		RunID:            message.RunID,
+		Model:            message.Model,
+		Provider:         message.Provider,
+		CreatedAt:        surfaceNowUnix(message.CreatedAt),
+		UpdatedAt:        surfaceNowUnix(message.UpdatedAt),
+		IsSummaryMessage: message.Origin == transcript.OriginEngine,
 	}
 	for _, part := range message.Parts {
 		switch part.Kind {
