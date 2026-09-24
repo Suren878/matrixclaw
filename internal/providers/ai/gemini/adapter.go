@@ -359,7 +359,7 @@ func encodeTools(tools []providers.ToolDefinition) []geminiFunctionDeclaration {
 		out = append(out, geminiFunctionDeclaration{
 			Name:        name,
 			Description: strings.TrimSpace(tool.Description),
-			Parameters:  tool.InputSchema,
+			Parameters:  geminiParameters(tool.InputSchema),
 		})
 	}
 	return out

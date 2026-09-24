@@ -34,10 +34,7 @@ func ProfileForModel(providerID string, providerType string, modelID string) Pro
 		ModelID:      modelID,
 	})
 	capabilities := capabilitySet.RuntimeCapabilities
-	runtimeProfile := runtimeProfileDefaults(policy.RuntimeProviderType)
-	if capabilities.ToolSchemaDialect != "" {
-		runtimeProfile.ToolSchemaDialect = capabilities.ToolSchemaDialect
-	}
+	runtimeProfile := RuntimeProfile{ToolUseMode: ToolUseNative}
 	if !capabilities.ToolCalling {
 		runtimeProfile.ToolUseMode = ToolUseDisabled
 	}
@@ -59,16 +56,8 @@ func ProfileForModel(providerID string, providerType string, modelID string) Pro
 }
 
 func (p ProviderProfile) RuntimeProfileWithOverrides(profile RuntimeProfile) RuntimeProfile {
-	if profile.ToolUseMode == "" && profile.ToolSchemaDialect == "" {
+	if profile.ToolUseMode == "" {
 		return p.RuntimeProfile
-	}
-	if p.ProviderType == TypeGemini {
-		if profile.ToolUseMode == "" {
-			profile.ToolUseMode = p.RuntimeProfile.ToolUseMode
-		}
-		if profile.ToolSchemaDialect == "" {
-			profile.ToolSchemaDialect = p.RuntimeProfile.ToolSchemaDialect
-		}
 	}
 	return NormalizeRuntimeProfile(profile)
 }

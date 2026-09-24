@@ -12,7 +12,6 @@ const (
 
 type ModelCapabilities struct {
 	ToolCalling        bool
-	ToolSchemaDialect  ToolSchemaDialect
 	ParallelToolCalls  bool
 	ImageInput         bool
 	ReasoningEffort    bool
@@ -43,7 +42,6 @@ func ResolveModelCapabilities(input ModelCapabilityInput) ModelCapabilitySet {
 	providerCapabilities := policy.Capabilities
 	runtimeCapabilities := ModelCapabilities{
 		ToolCalling:        metadata.ToolCalling,
-		ToolSchemaDialect:  runtimeCapabilitiesFromProvider(providerCapabilities, policy.RuntimeProviderType).ToolSchemaDialect,
 		ParallelToolCalls:  metadata.ParallelToolCalls,
 		ImageInput:         metadata.ImageInput,
 		ReasoningEffort:    metadata.ReasoningEffort,
@@ -75,7 +73,6 @@ func ModelRuntimeCapabilities(providerID string, providerType string, modelID st
 func runtimeCapabilitiesFromProvider(providerCapabilities Capabilities, providerType string) ModelCapabilities {
 	capabilities := ModelCapabilities{
 		ToolCalling:       providerCapabilities.ToolCalling,
-		ToolSchemaDialect: ToolSchemaJSONSchema,
 		ParallelToolCalls: providerCapabilities.ToolCalling,
 		ImageInput:        providerCapabilities.ImageInput,
 		ReasoningEffort:   providerCapabilities.ReasoningEffort,
@@ -84,7 +81,6 @@ func runtimeCapabilitiesFromProvider(providerCapabilities Capabilities, provider
 
 	switch providerType {
 	case TypeGemini:
-		capabilities.ToolSchemaDialect = ToolSchemaGemini
 		capabilities.ReasoningMode = ReasoningModeGeminiThinking
 	case TypeOpenAICompat, TypeOpenAICodex:
 		if providerCapabilities.ReasoningEffort {
