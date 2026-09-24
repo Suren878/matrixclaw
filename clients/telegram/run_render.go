@@ -102,20 +102,6 @@ func assistantToolSegment(message transcript.Message) bool {
 	return false
 }
 
-func latestAssistantText(messages []transcript.Message, runID string) string {
-	runID = strings.TrimSpace(runID)
-	for i := len(messages) - 1; i >= 0; i-- {
-		message := messages[i]
-		if strings.TrimSpace(message.RunID) != runID || message.Role != transcript.MessageRoleAssistant {
-			continue
-		}
-		if text := renderAssistantMessage(message); text != "" {
-			return text
-		}
-	}
-	return ""
-}
-
 func (w *Worker) sendAssistantMessage(ctx context.Context, target chatTarget, sent sentAssistantMessage, text string) (sentAssistantMessage, error) {
 	formattedChunks := formatAssistantTelegramChunks(text)
 	for index, formatted := range formattedChunks {

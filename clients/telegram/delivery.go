@@ -10,6 +10,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 const maxTelegramDocumentBytes int64 = 50 << 20
@@ -62,7 +63,7 @@ func (w *Worker) deliverInlineRunDelivery(ctx context.Context, target chatTarget
 		if err != nil {
 			return err
 		}
-		text := latestAssistantText(messages, runID)
+		text := transcript.RunReply(messages, runID)
 		if strings.TrimSpace(text) == "" {
 			text = renderRunStatus(run)
 		}
@@ -82,7 +83,7 @@ func (w *Worker) deliverInlineRunDelivery(ctx context.Context, target chatTarget
 	}
 	if run.Status == core.RunStatusCompleted {
 		caption := ""
-		if assistant := latestAssistantText(messages, runID); assistant != "" {
+		if assistant := transcript.RunReply(messages, runID); assistant != "" {
 			text = assistant
 			caption = assistant
 		}
@@ -120,7 +121,7 @@ func (w *Worker) deliverGuestRunDelivery(ctx context.Context, target chatTarget,
 		if err != nil {
 			return err
 		}
-		if assistant := latestAssistantText(messages, runID); assistant != "" {
+		if assistant := transcript.RunReply(messages, runID); assistant != "" {
 			text = assistant
 		}
 	}

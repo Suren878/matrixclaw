@@ -3,7 +3,10 @@ package core
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func (c *Core) SessionPlan(ctx context.Context, sessionID string) (SessionPlan, error) {
@@ -249,7 +252,9 @@ func (c *Core) StartSessionPlanRun(ctx context.Context, sessionID string, reset 
 	return run, plan, nil
 }
 
-func (c *Core) CompleteSessionPlanRunStep(ctx context.Context, run Run, assistantContent string) error {
+// CompleteSessionPlanRunStep advances the running plan after the run's final reply
+// assistant, which may not be stored yet.
+func (c *Core) CompleteSessionPlanRunStep(ctx context.Context, run Run, assistant transcript.Message) error {
 	planRun, err := c.store.GetPlanRun(ctx, run.SessionID)
 	if err != nil || planRun.Status != PlanRunRunning {
 		return nil
@@ -263,6 +268,10 @@ func (c *Core) CompleteSessionPlanRunStep(ctx context.Context, run Run, assistan
 			return nil
 		}
 		planRun.LastRunID = run.ID
+	}
+	assistantContent, err := c.runReply(ctx, run, assistant)
+	if err != nil {
+		return err
 	}
 	now := c.now().UTC()
 	if planRunLooksBlocked(assistantContent) {
@@ -471,4 +480,20 @@ func (c *Core) completeActivePlanItemsIfRunFinished(ctx context.Context, session
 		}
 	}
 	return nil
+}
+
+// runReply is the text of the run's last reply ending with assistant, joined with
+// the replies the output limit cut before it.
+func (c *Core) runReply(ctx context.Context, run Run, assistant transcript.Message) (string, error) {
+	messages, err := c.store.ListMessages(ctx, run.SessionID, 0)
+	if err != nil {
+		return "", err
+	}
+	assistant.RunID = run.ID
+	if i := slices.IndexFunc(messages, func(message transcript.Message) bool { return message.ID == assistant.ID }); i >= 0 {
+		messages[i] = assistant
+	} else {
+		messages = append(messages, assistant)
+	}
+	return transcript.RunReply(messages, run.ID), nil
 }

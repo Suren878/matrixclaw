@@ -78,7 +78,7 @@ func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID st
 		return errors.New("core: complete assistant turn requires run and assistant")
 	}
 	finishedAt := c.now().UTC()
-	if err := c.CompleteSessionPlanRunStep(ctx, *run, assistant.Content); err != nil {
+	if err := c.CompleteSessionPlanRunStep(ctx, *run, *assistant); err != nil {
 		return fmt.Errorf("complete plan run step: %w", err)
 	}
 	if err := c.completeActivePlanItemsIfRunFinished(ctx, sessionID); err != nil {

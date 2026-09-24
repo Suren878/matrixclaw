@@ -597,6 +597,40 @@ func TestBlockingSubagentReturnsChildSummaryToParent(t *testing.T) {
 	assertRecoveryRunStatus(t, db, task.ChildRunID, core.RunStatusCompleted)
 }
 
+func TestSubagentSummaryJoinsAReplyCutByTheOutputLimit(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithTools(tools.NewRegistry(core.SubagentToolExecutors(app)...))
+	parentCalls, childCalls := 0, 0
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
+			childCalls++
+			if childCalls == 1 {
+				return providers.Response{Text: "child found", StopReason: providers.StopMaxTokens}, nil
+			}
+			return providers.Response{Text: "3 files"}, nil
+		}
+		parentCalls++
+		if parentCalls == 1 {
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-delegate", Name: "delegate_task", Arguments: []byte(`{"goal":"count files","runtime":"matrixclaw"}`)}}}, nil
+		}
+		return providers.Response{Text: "Parent done."}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "delegate-cut", core.RunStatusAccepted, false)
+
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	task, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-delegate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Status != core.SubagentTaskStatusCompleted || task.Summary != "child found 3 files" {
+		t.Fatalf("task = %s %q, want the cut reply joined with its continuation", task.Status, task.Summary)
+	}
+}
+
 type asyncSubagentScenario struct {
 	db      *store.SQLiteStore
 	session core.Session
