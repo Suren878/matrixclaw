@@ -76,7 +76,7 @@ func (r *run) resumeApproved(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	approved, err := r.Inbox.Drain(ctx, r.task.RunID, InputApproved)
+	approved, err := r.Inbox.Peek(ctx, r.task.RunID, InputApproved)
 	if err != nil {
 		return false, err
 	}
@@ -168,19 +168,28 @@ func (r *run) finishCall(ctx context.Context, req callRequest, call tools.Call, 
 }
 
 // appendResult writes a tool result with any pending steer guidance merged into it.
+// The steers are consumed only once the result is written, even if ctx stops then.
 func (r *run) appendResult(ctx context.Context, req callRequest, result tools.Result) (transcript.Message, error) {
 	message, err := ToolResultMessage(r.NewID("tool_result"), r.task.SessionID, r.task.RunID, req.id, req.name, result, r.Now())
 	if err != nil {
 		return transcript.Message{}, err
 	}
-	steers, err := r.Inbox.Drain(ctx, r.task.RunID, InputSteer)
+	steers, err := r.Inbox.Peek(ctx, r.task.RunID, InputSteer)
 	if err != nil {
 		return transcript.Message{}, err
 	}
+	ids := make([]string, 0, len(steers))
 	for _, steer := range steers {
 		appendUserGuidanceToToolResult(&message, steer.Text)
+		ids = append(ids, steer.ID)
 	}
-	return message, r.history.append(ctx, message)
+	if err := r.history.append(ctx, message); err != nil {
+		return transcript.Message{}, err
+	}
+	if len(ids) == 0 {
+		return message, nil
+	}
+	return message, r.Inbox.Consume(context.WithoutCancel(ctx), r.task.RunID, ids)
 }
 
 func (r *run) callMessage(req callRequest, finished bool) transcript.Message {

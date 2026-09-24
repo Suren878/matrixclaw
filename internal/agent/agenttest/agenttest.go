@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -285,15 +286,15 @@ func (a *Approvals) Pending(ctx context.Context, _ string) (bool, error) {
 	return a.Open, nil
 }
 
-// Inbox hands out steers once and granted approvals on every drain. Like the store,
-// it fails on a stopped context.
+// Inbox hands out pending steers, whose IDs are their text, until they are consumed,
+// and granted approvals on every peek. Like the store, it fails on a stopped context.
 type Inbox struct {
 	Steers   []string
 	Approved []agent.Input
 	Cancel   bool
 }
 
-func (in *Inbox) Drain(ctx context.Context, _ string, kind agent.InputKind) ([]agent.Input, error) {
+func (in *Inbox) Peek(ctx context.Context, _ string, kind agent.InputKind) ([]agent.Input, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -301,15 +302,22 @@ func (in *Inbox) Drain(ctx context.Context, _ string, kind agent.InputKind) ([]a
 	case agent.InputSteer:
 		out := make([]agent.Input, 0, len(in.Steers))
 		for _, text := range in.Steers {
-			out = append(out, agent.Input{Kind: agent.InputSteer, Text: text})
+			out = append(out, agent.Input{Kind: agent.InputSteer, ID: text, Text: text})
 		}
-		in.Steers = nil
 		return out, nil
 	case agent.InputApproved:
 		return in.Approved, nil
 	default:
 		return nil, fmt.Errorf("agenttest: unknown input kind %q", kind)
 	}
+}
+
+func (in *Inbox) Consume(ctx context.Context, _ string, ids []string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	in.Steers = slices.DeleteFunc(in.Steers, func(text string) bool { return slices.Contains(ids, text) })
+	return nil
 }
 
 func (in *Inbox) Canceled(ctx context.Context, _ string) (bool, error) {

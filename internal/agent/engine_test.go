@@ -265,6 +265,27 @@ func TestSteerIsAppendedToTheNextToolResult(t *testing.T) {
 	}
 }
 
+func TestSteerStaysPendingWhenItsToolResultIsNotWritten(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["read"] = readTool
+	f.Inbox.Steers = []string{"check the logs"}
+	f.Journal.OnAppend = func(msg transcript.Message) error {
+		if msg.Role == transcript.MessageRoleTool {
+			return errors.New("disk full")
+		}
+		return nil
+	}
+
+	outcome := run(t, f, agenttest.NewScriptedModel(calls(call("r1", "read"))))
+
+	if outcome.Status != agent.StatusFailed {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+	if len(f.Inbox.Steers) != 1 || f.Inbox.Steers[0] != "check the logs" {
+		t.Fatalf("steers left = %v, want the unwritten steer still pending", f.Inbox.Steers)
+	}
+}
+
 func TestEmptyRepliesAreRetriedTwiceAndRecorded(t *testing.T) {
 	f := agenttest.NewFixture()
 	model := agenttest.NewScriptedModel(agenttest.Turn{}, agenttest.Turn{}, text("ok"))

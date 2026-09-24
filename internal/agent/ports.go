@@ -93,7 +93,7 @@ type Approvals interface {
 	Pending(ctx context.Context, runID string) (bool, error)
 }
 
-// InputKind selects what Inbox.Drain returns.
+// InputKind selects what Inbox.Peek returns.
 type InputKind string
 
 const (
@@ -104,6 +104,7 @@ const (
 // Input arrives from outside the engine: steer Text, or a granted approval.
 type Input struct {
 	Kind       InputKind
+	ID         string
 	Text       string
 	ToolCallID string
 	ToolName   string
@@ -111,10 +112,12 @@ type Input struct {
 	Args       json.RawMessage
 }
 
-// Inbox delivers outside input. Draining InputSteer consumes it; InputApproved returns
-// granted approvals whose call has no result yet on every call.
+// Inbox delivers outside input. Peek never consumes: steers stay pending until the
+// engine consumes their IDs, and InputApproved returns granted approvals whose call
+// has no result yet.
 type Inbox interface {
-	Drain(ctx context.Context, runID string, kind InputKind) ([]Input, error)
+	Peek(ctx context.Context, runID string, kind InputKind) ([]Input, error)
+	Consume(ctx context.Context, runID string, ids []string) error
 	Canceled(ctx context.Context, runID string) (bool, error)
 }
 

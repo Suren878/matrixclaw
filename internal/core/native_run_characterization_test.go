@@ -365,6 +365,72 @@ func TestSteerDuringToolIsAppendedToThatToolResult(t *testing.T) {
 	}
 }
 
+// cancelOnToolResultStore runs onToolResult and fails the write of a tool result.
+type cancelOnToolResultStore struct {
+	*store.SQLiteStore
+	onToolResult func()
+}
+
+func (s cancelOnToolResultStore) AppendMessage(ctx context.Context, message transcript.Message) (int64, error) {
+	if message.Role == transcript.MessageRoleTool {
+		s.onToolResult()
+		return 0, context.Canceled
+	}
+	return s.SQLiteStore.AppendMessage(ctx, message)
+}
+
+func TestSteerIsRequeuedWhenCancelStopsItsToolResultWrite(t *testing.T) {
+	_, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	session, run := saveCrashRecoveryRun(t, db, "steer_cancel", core.RunStatusAccepted, false)
+	var app *core.Core
+	app = core.New(cancelOnToolResultStore{SQLiteStore: db, onToolResult: func() {
+		if _, err := app.CancelRun(context.Background(), run.ID); err != nil {
+			t.Error(err)
+		}
+	}})
+	starter := &recordingRunStarter{}
+	app.WithRunStarter(starter)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
+		close(started)
+		<-release
+		return tools.Result{Content: "inspected"}, nil
+	}}))
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+		return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-1", Name: "inspect_state", Arguments: []byte(`{}`)}}}, nil
+	})})
+	done := make(chan error, 1)
+	go func() { done <- app.ExecuteRun(context.Background(), run.ID) }()
+	waitRecoverySignal(t, started, "tool start")
+
+	result, err := app.AcceptRun(context.Background(), core.HandleMessageInput{SessionID: session.ID, Text: "focus on logs", BusyMode: core.BusyInputModeSteer})
+	if err != nil || result.Status != core.AcceptRunStatusSteered {
+		t.Fatalf("AcceptRun = %#v, %v", result, err)
+	}
+	close(release)
+	_ = waitRecoveryError(t, done, "canceled run")
+
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCanceled)
+	starter.mu.Lock()
+	scheduled := append([]string(nil), starter.ids...)
+	starter.mu.Unlock()
+	if len(scheduled) != 1 || scheduled[0] == run.ID {
+		t.Fatalf("scheduled runs = %v, want one new run for the steer", scheduled)
+	}
+	next, err := db.GetRun(context.Background(), scheduled[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range sessionMessages(t, db, session.ID) {
+		if message.ID == next.UserMessageID && message.Content == "focus on logs" {
+			return
+		}
+	}
+	t.Fatal("the new run does not carry the steer text")
+}
+
 func TestCancelDuringToolStopsRunWithoutAnotherModelCall(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()

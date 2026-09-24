@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
@@ -15,7 +16,7 @@ type coreInbox struct {
 	session Session
 }
 
-func (in coreInbox) Drain(ctx context.Context, runID string, kind agent.InputKind) ([]agent.Input, error) {
+func (in coreInbox) Peek(ctx context.Context, runID string, kind agent.InputKind) ([]agent.Input, error) {
 	switch kind {
 	case agent.InputSteer:
 		return in.steers(ctx, runID)
@@ -30,7 +31,7 @@ func (in coreInbox) Canceled(ctx context.Context, runID string) (bool, error) {
 	return in.c.isRunCanceled(ctx, runID)
 }
 
-// steers consumes the run's pending steer input in arrival order.
+// steers lists the run's pending steer input in arrival order.
 func (in coreInbox) steers(ctx context.Context, runID string) ([]agent.Input, error) {
 	inputs, err := in.c.store.ListPendingSteerInputs(ctx, in.session.ID, runID)
 	if err != nil {
@@ -38,8 +39,21 @@ func (in coreInbox) steers(ctx context.Context, runID string) ([]agent.Input, er
 	}
 	var out []agent.Input
 	for _, input := range inputs {
-		text := normalizeText(input.Text)
-		if text == "" {
+		if text := normalizeText(input.Text); text != "" {
+			out = append(out, agent.Input{Kind: agent.InputSteer, ID: input.ID, Text: text})
+		}
+	}
+	return out, nil
+}
+
+// Consume marks the run's pending steers with the given IDs consumed by it.
+func (in coreInbox) Consume(ctx context.Context, runID string, ids []string) error {
+	inputs, err := in.c.store.ListPendingSteerInputs(ctx, in.session.ID, runID)
+	if err != nil {
+		return err
+	}
+	for _, input := range inputs {
+		if !slices.Contains(ids, input.ID) {
 			continue
 		}
 		consumedAt := in.c.now().UTC()
@@ -48,12 +62,11 @@ func (in coreInbox) steers(ctx context.Context, runID string) ([]agent.Input, er
 		input.ConsumedAt = &consumedAt
 		input.UpdatedAt = consumedAt
 		if err := in.c.store.UpdateSessionInput(ctx, input); err != nil {
-			return nil, err
+			return err
 		}
 		in.c.publishSessionInputUpdated(input)
-		out = append(out, agent.Input{Kind: agent.InputSteer, Text: text})
 	}
-	return out, nil
+	return nil
 }
 
 // approved returns granted approvals of the run whose tool call has no result yet.
