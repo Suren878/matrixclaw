@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -24,7 +25,7 @@ const continueText = "Your reply was cut by the output limit. Continue exactly w
 // truncated tool call, so a cut may hide one. A cut before any text is retried
 // only when the limit can still be raised.
 func (r *run) continueCutReply(ctx context.Context, gen generation, response providers.Response) stepResult {
-	if response.Text == "" {
+	if strings.TrimSpace(response.Text) == "" {
 		if !r.raiseOutputLimit() {
 			return failedStep(errors.New("reply cut by the output limit before any text"))
 		}

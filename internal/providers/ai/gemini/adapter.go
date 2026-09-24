@@ -457,9 +457,9 @@ func (r *Runtime) reply(parts []geminiPart, stop providers.StopReason, usage gem
 		}
 	}
 
-	reply := strings.TrimSpace(text.String())
+	reply := text.String()
 	stop = providers.ResolveStopReason(stop, len(toolCalls))
-	if reply == "" && len(toolCalls) == 0 && !stop.AllowsEmptyReply() {
+	if strings.TrimSpace(reply) == "" && len(toolCalls) == 0 && !stop.AllowsEmptyReply() {
 		return providers.Response{}, fmt.Errorf("gemini: %w", providers.ErrEmptyResponse)
 	}
 	return providers.Response{

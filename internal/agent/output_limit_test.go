@@ -46,6 +46,29 @@ func TestCutReplyIsKeptAndContinued(t *testing.T) {
 	}
 }
 
+func TestCutReplyKeepsTheWhitespaceAtTheCut(t *testing.T) {
+	f := agenttest.NewFixture()
+	model := agenttest.NewScriptedModel(cut("  Counted two "), cut(" files and"), text(" one folder.\n"))
+
+	outcome := run(t, f, model)
+
+	var cuts []string
+	for _, message := range f.Journal.Messages {
+		if hasFinish(message, "max_tokens") {
+			cuts = append(cuts, message.Content)
+		}
+	}
+	if len(cuts) != 2 || cuts[0] != "Counted two " || cuts[1] != " files and" {
+		t.Fatalf("cut replies = %q, want the start of the first trimmed and the rest kept", cuts)
+	}
+	if outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != " one folder." {
+		t.Fatalf("final reply = %q, want its leading space kept after a cut", outcome.Assistant.Content)
+	}
+	if got := transcript.RunReply(append(f.Journal.Messages, *outcome.Assistant), agenttest.RunID); got != "Counted two  files and one folder." {
+		t.Fatalf("RunReply = %q", got)
+	}
+}
+
 func TestFourthCutInARowFailsTheRun(t *testing.T) {
 	f := agenttest.NewFixture()
 	model := agenttest.NewScriptedModel(cut("part 1"), cut("part 2"), cut("part 3"), cut("part 4"))

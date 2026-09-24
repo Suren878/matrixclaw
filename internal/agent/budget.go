@@ -101,7 +101,8 @@ func (r *run) remaining() string {
 func finalTurn(gen generation, reason StopReason) stepResult {
 	response := gen.response
 	response.ToolCalls = nil
-	if sanitizeAssistantOutput(response.Text) == "" {
+	response.Text = sanitizeAssistantOutput(response.Text)
+	if response.Text == "" {
 		response.Text = finalFallback(reason)
 	}
 	return stepResult{kind: stepDone, assistant: &gen.assistant, saved: gen.saved, response: response, stop: reason}

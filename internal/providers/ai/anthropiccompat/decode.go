@@ -48,8 +48,8 @@ func (r *Runtime) assembleResponse(blocks []anthropicBlock, rawStopReason string
 		}
 	}
 	stop = providers.ResolveStopReason(stop, len(calls))
-	reply := strings.TrimSpace(text.String())
-	if reply == "" && len(calls) == 0 && !stop.AllowsEmptyReply() {
+	reply := text.String()
+	if strings.TrimSpace(reply) == "" && len(calls) == 0 && !stop.AllowsEmptyReply() {
 		return providers.Response{}, fmt.Errorf("anthropic: %w", providers.ErrEmptyResponse)
 	}
 	return providers.Response{

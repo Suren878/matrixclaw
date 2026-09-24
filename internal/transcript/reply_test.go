@@ -22,15 +22,15 @@ func TestRunReplyJoinsRepliesCutByTheOutputLimit(t *testing.T) {
 	messages := []transcript.Message{
 		{RunID: "run-1", Role: transcript.MessageRoleUser, Content: "Write the report."},
 		reply("run-1", "Checked the logs.", "tool_calls"),
-		reply("run-1", "The report: part one", "max_tokens"),
+		reply("run-1", "The report: part o", "max_tokens"),
 		engineNote("run-1"),
-		reply("run-1", "part two", "max_tokens"),
+		reply("run-1", "ne, part two ", "max_tokens"),
 		engineNote("run-1"),
-		reply("run-1", "part three.", ""),
+		reply("run-1", "and part three.\n", ""),
 		{RunID: "run-2", Role: transcript.MessageRoleUser, Content: "Thanks."},
 	}
 
-	if got := transcript.RunReply(messages, "run-1"); got != "The report: part one part two part three." {
+	if got := transcript.RunReply(messages, "run-1"); got != "The report: part one, part two and part three." {
 		t.Fatalf("RunReply = %q", got)
 	}
 }

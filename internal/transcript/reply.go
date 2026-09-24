@@ -7,7 +7,7 @@ import (
 
 // RunReply is the text of the run's last reply: its latest assistant text with the
 // replies the output limit cut before it prepended, engine notes between them
-// skipped. Stored replies are trimmed, so the parts are joined by a space.
+// skipped. Replies keep the whitespace at a cut, so the parts join as they are.
 func RunReply(messages []Message, runID string) string {
 	runID = strings.TrimSpace(runID)
 	last := -1
@@ -20,7 +20,7 @@ func RunReply(messages []Message, runID string) string {
 	if last < 0 {
 		return ""
 	}
-	parts := []string{strings.TrimSpace(messages[last].Content)}
+	parts := []string{messages[last].Content}
 	for i := last - 1; i >= 0; i-- {
 		message := messages[i]
 		if strings.TrimSpace(message.RunID) == runID && message.Origin.IsEngine() {
@@ -29,10 +29,10 @@ func RunReply(messages []Message, runID string) string {
 		if !isRunReply(message, runID) || !HasFinishReason(message, "max_tokens") {
 			break
 		}
-		parts = append(parts, strings.TrimSpace(message.Content))
+		parts = append(parts, message.Content)
 	}
 	slices.Reverse(parts)
-	return strings.Join(parts, " ")
+	return strings.TrimSpace(strings.Join(parts, ""))
 }
 
 func isRunReply(message Message, runID string) bool {

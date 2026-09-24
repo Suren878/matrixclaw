@@ -606,9 +606,9 @@ func TestSubagentSummaryJoinsAReplyCutByTheOutputLimit(t *testing.T) {
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
 			childCalls++
 			if childCalls == 1 {
-				return providers.Response{Text: "child found", StopReason: providers.StopMaxTokens}, nil
+				return providers.Response{Text: "child fo", StopReason: providers.StopMaxTokens}, nil
 			}
-			return providers.Response{Text: "3 files"}, nil
+			return providers.Response{Text: "und 3 files"}, nil
 		}
 		parentCalls++
 		if parentCalls == 1 {

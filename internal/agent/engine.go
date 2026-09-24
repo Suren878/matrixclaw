@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -187,7 +188,7 @@ func (r *run) step(ctx context.Context) stepResult {
 
 func (r *run) handleResponse(ctx context.Context, gen generation) stepResult {
 	response := gen.response
-	response.Text = sanitizeAssistantOutput(response.Text)
+	response.Text = r.replyText(response)
 	assistant := gen.assistant
 	if len(response.ToolCalls) > 0 {
 		r.counters.Continuations = 0
@@ -207,7 +208,7 @@ func (r *run) handleResponse(ctx context.Context, gen generation) stepResult {
 	case providers.StopMaxTokens:
 		return r.continueCutReply(ctx, gen, response)
 	case providers.StopRefusal, providers.StopContentFilter:
-		if response.Text == "" {
+		if strings.TrimSpace(response.Text) == "" {
 			response.Text = fmt.Sprintf("The provider stopped this reply (%s).", response.StopReason)
 		}
 		return stepResult{kind: stepDone, assistant: &assistant, saved: gen.saved, response: response}
@@ -216,6 +217,20 @@ func (r *run) handleResponse(ctx context.Context, gen generation) stepResult {
 		return stepResult{kind: stepDone, assistant: &assistant, saved: gen.saved, response: response, err: providers.ErrEmptyResponse, markErrored: true}
 	}
 	return stepResult{kind: stepDone, assistant: &assistant, saved: gen.saved, response: response}
+}
+
+// replyText cleans a reply's text, keeping the whitespace at an output-limit cut
+// on both sides so a cut reply and its continuation join exactly.
+func (r *run) replyText(response providers.Response) string {
+	text := cleanAssistantOutput(response.Text)
+	toolStep := len(response.ToolCalls) > 0
+	if toolStep || response.StopReason != providers.StopMaxTokens {
+		text = strings.TrimRightFunc(text, unicode.IsSpace)
+	}
+	if toolStep || r.counters.Continuations == 0 {
+		text = strings.TrimLeftFunc(text, unicode.IsSpace)
+	}
+	return text
 }
 
 // finishTurn writes a reply the run goes on after (a tool step, or a reply cut by

@@ -19,7 +19,7 @@ func TestTerminalStatusBecomesStopReason(t *testing.T) {
 	}{
 		{"completed text", `{"type":"response.completed","response":{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"Done"}]}]}}`, providers.StopEndTurn, "Done", 0},
 		{"completed tools", `{"type":"response.completed","response":{"status":"completed","output":[{"type":"function_call","call_id":"a","name":"read","arguments":"{}"}]}}`, providers.StopToolUse, "", 1},
-		{"output limit keeps text", `{"type":"response.incomplete","response":{"incomplete_details":{"reason":"max_output_tokens"},"output":[{"type":"message","content":[{"type":"output_text","text":"Partial"}]}]}}`, providers.StopMaxTokens, "Partial", 0},
+		{"output limit keeps text", `{"type":"response.incomplete","response":{"incomplete_details":{"reason":"max_output_tokens"},"output":[{"type":"message","content":[{"type":"output_text","text":" Partial "}]}]}}`, providers.StopMaxTokens, " Partial ", 0},
 		{"output limit drops cut call", `{"type":"response.incomplete","response":{"incomplete_details":{"reason":"max_output_tokens"},"output":[{"type":"function_call","call_id":"a","name":"read","arguments":"{}"},{"type":"function_call","call_id":"b","name":"read","arguments":"{\"pa"}]}}`, providers.StopMaxTokens, "", 1},
 		{"output limit spent on reasoning", `{"type":"response.incomplete","response":{"incomplete_details":{"reason":"max_output_tokens"}}}`, providers.StopMaxTokens, "", 0},
 		{"content filter", `{"type":"response.incomplete","response":{"incomplete_details":{"reason":"content_filter"}}}`, providers.StopContentFilter, "", 0},

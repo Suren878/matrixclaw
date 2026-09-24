@@ -451,9 +451,8 @@ func (r *Runtime) finishResponse(text string, reasoning *string, calls []provide
 	} else if err := validateToolCalls(calls); err != nil {
 		return providers.Response{}, err
 	}
-	text = strings.TrimSpace(text)
 	stop = providers.ResolveStopReason(stop, len(calls))
-	if text == "" && len(calls) == 0 && !stop.AllowsEmptyReply() {
+	if strings.TrimSpace(text) == "" && len(calls) == 0 && !stop.AllowsEmptyReply() {
 		return providers.Response{}, fmt.Errorf("openaicompat: %w", providers.ErrEmptyResponse)
 	}
 	return providers.Response{

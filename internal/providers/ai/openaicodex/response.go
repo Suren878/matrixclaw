@@ -50,7 +50,7 @@ func (r *Runtime) completedResponse(response responsesResponse) (providers.Respo
 					text.WriteString(part.Refusal)
 				}
 			}
-			if value := strings.TrimSpace(text.String()); value != "" {
+			if value := text.String(); strings.TrimSpace(value) != "" {
 				texts = append(texts, value)
 			}
 		case "function_call":

@@ -82,7 +82,7 @@ func normalizeToolContent(value string) string {
 // finalReply is the persisted form of a completed text reply: text, plain
 // reasoning_content and usage (signed reasoning is kept only on tool steps).
 func finalReply(assistant transcript.Message, response providers.Response) transcript.Message {
-	assistant.Content = sanitizeAssistantOutput(response.Text)
+	assistant.Content = response.Text
 	assistant.Parts = transcript.NormalizeMessageParts(assistant.Content, nil)
 	if response.ReasoningContent != nil {
 		assistant.Parts = append(assistant.Parts, transcript.MessagePart{Kind: transcript.MessagePartKindReasoning, Reasoning: &transcript.ReasoningPart{Text: *response.ReasoningContent}})

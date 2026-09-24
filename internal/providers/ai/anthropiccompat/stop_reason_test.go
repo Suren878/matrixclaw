@@ -14,7 +14,7 @@ import (
 func TestTextReplyCarriesStopReasonAndOutputLimit(t *testing.T) {
 	var limits []float64
 	replies := []string{
-		`{"content":[{"type":"text","text":"Partial"}],"stop_reason":"max_tokens"}`,
+		`{"content":[{"type":"text","text":" Partial "}],"stop_reason":"max_tokens"}`,
 		`{"content":[{"type":"text","text":"Done"}],"stop_reason":"end_turn"}`,
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -33,7 +33,7 @@ func TestTextReplyCarriesStopReasonAndOutputLimit(t *testing.T) {
 	}
 	messages := []providers.Message{{Role: "user", Content: "hello"}}
 	cut, err := runtime.Generate(context.Background(), providers.Request{Messages: messages})
-	if err != nil || cut.StopReason != providers.StopMaxTokens || cut.Text != "Partial" {
+	if err != nil || cut.StopReason != providers.StopMaxTokens || cut.Text != " Partial " {
 		t.Fatalf("response=%+v err=%v", cut, err)
 	}
 	done, err := runtime.Generate(context.Background(), providers.Request{Messages: messages, MaxOutputTokens: 2000})

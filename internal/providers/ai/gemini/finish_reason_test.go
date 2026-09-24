@@ -33,7 +33,7 @@ func TestFinishReasonBecomesStopReason(t *testing.T) {
 	}{
 		{"stop", `{"candidates":[{"content":{"role":"model","parts":[{"text":"Done"}]},"finishReason":"STOP"}]}`, providers.StopEndTurn, "Done"},
 		{"stop with call", `{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"read","args":{}}}]},"finishReason":"STOP"}]}`, providers.StopToolUse, ""},
-		{"max tokens keeps text", `{"candidates":[{"content":{"role":"model","parts":[{"text":"Partial"}]},"finishReason":"MAX_TOKENS"}]}`, providers.StopMaxTokens, "Partial"},
+		{"max tokens keeps text", `{"candidates":[{"content":{"role":"model","parts":[{"text":" Partial "}]},"finishReason":"MAX_TOKENS"}]}`, providers.StopMaxTokens, " Partial "},
 		{"max tokens spent on thinking", `{"candidates":[{"content":{"role":"model"},"finishReason":"MAX_TOKENS"}]}`, providers.StopMaxTokens, ""},
 		{"safety", `{"candidates":[{"content":{"role":"model"},"finishReason":"SAFETY"}]}`, providers.StopContentFilter, ""},
 		{"prohibited", `{"candidates":[{"content":{"role":"model"},"finishReason":"PROHIBITED_CONTENT"}]}`, providers.StopContentFilter, ""},

@@ -28,7 +28,7 @@ func TestStreamFinishReasonBecomesStopReason(t *testing.T) {
 	}{
 		{"stop", sseStream(`{"choices":[{"delta":{"content":"Done"},"finish_reason":"stop"}]}`), providers.StopEndTurn, "Done", nil},
 		{"stop with tool calls", sseStream(`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"read","arguments":"{}"}}]},"finish_reason":"stop"}]}`), providers.StopToolUse, "", []string{"c1"}},
-		{"length keeps text", sseStream(`{"choices":[{"delta":{"content":"Partial"},"finish_reason":"length"}]}`), providers.StopMaxTokens, "Partial", nil},
+		{"length keeps text", sseStream(`{"choices":[{"delta":{"content":" Partial "},"finish_reason":"length"}]}`), providers.StopMaxTokens, " Partial ", nil},
 		{"length drops truncated call", sseStream(`{"choices":[{"delta":{"content":"Reading","tool_calls":[{"index":0,"id":"c1","function":{"name":"read","arguments":"{}"}},{"index":1,"id":"c2","function":{"name":"read","arguments":"{\"pa"}}]},"finish_reason":"length"}]}`), providers.StopMaxTokens, "Reading", []string{"c1"}},
 		{"length with nothing", sseStream(`{"choices":[{"delta":{},"finish_reason":"length"}]}`), providers.StopMaxTokens, "", nil},
 		{"content filter", sseStream(`{"choices":[{"delta":{},"finish_reason":"content_filter"}]}`), providers.StopContentFilter, "", nil},

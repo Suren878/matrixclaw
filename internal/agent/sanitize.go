@@ -22,12 +22,17 @@ var (
 )
 
 func sanitizeAssistantOutput(text string) string {
+	return strings.TrimSpace(cleanAssistantOutput(text))
+}
+
+// cleanAssistantOutput strips reasoning blocks and extra blank lines but keeps the
+// whitespace at both ends.
+func cleanAssistantOutput(text string) string {
 	text = stripAssistantXMLReasoningBlocks(text)
 	text = assistantThinkingBlockPattern.ReplaceAllString(text, "\n")
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
-	text = assistantBlankLinesPattern.ReplaceAllString(text, "\n\n")
-	return strings.TrimSpace(text)
+	return assistantBlankLinesPattern.ReplaceAllString(text, "\n\n")
 }
 
 func stripAssistantXMLReasoningBlocks(text string) string {
