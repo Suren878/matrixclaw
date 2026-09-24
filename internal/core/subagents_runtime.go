@@ -136,7 +136,14 @@ func (c *Core) subagentRunSummary(ctx context.Context, sessionID string, runID s
 	if err != nil {
 		return "Subagent failed: " + err.Error(), true
 	}
-	if summary := transcript.RunReply(messages, runID); summary != "" {
+	summary := transcript.RunReply(messages, runID)
+	if run.StopReason.Continuable() {
+		if summary == "" {
+			summary = "none"
+		}
+		return "Subagent stopped early (" + strings.ReplaceAll(string(run.StopReason), "_", " ") + "); partial result: " + summary, false
+	}
+	if summary != "" {
 		return summary, false
 	}
 	return "Subagent completed without a text summary.", false

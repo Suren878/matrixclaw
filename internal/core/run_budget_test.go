@@ -252,3 +252,40 @@ func TestSessionBudgetOverridesTheDefault(t *testing.T) {
 		t.Fatalf("zero steps error = %v, want ErrInvalidInput", err)
 	}
 }
+
+func TestSubagentStoppedAtItsBudgetReportsAPartialResult(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithRunBudgets(core.RunBudgets{User: agent.Budget{Steps: 5}, Subagent: agent.Budget{Steps: 1}})
+	app.WithTools(tools.NewRegistry(append(core.SubagentToolExecutors(app), changingTool("inspect_state"))...))
+	parentCalls := 0
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
+			if request.ToolChoice == providers.ToolChoiceNone {
+				return providers.Response{Text: "found 2 of 3 files"}, nil
+			}
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "child-inspect", Name: "inspect_state", Arguments: []byte(`{}`)}}}, nil
+		}
+		parentCalls++
+		if parentCalls == 1 {
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-delegate", Name: "delegate_task", Arguments: []byte(`{"goal":"count files","runtime":"matrixclaw"}`)}}}, nil
+		}
+		return providers.Response{Text: "Parent done."}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "delegate-budget", core.RunStatusAccepted, false)
+
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	task, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-delegate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(task.Summary, "Subagent stopped early (") || !strings.HasSuffix(task.Summary, "; partial result: found 2 of 3 files") {
+		t.Fatalf("task summary = %q, want it marked as an early stop", task.Summary)
+	}
+	if strings.Contains(task.Summary, "/continue") {
+		t.Fatalf("task summary = %q, want no user-facing /continue hint", task.Summary)
+	}
+}
