@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -106,10 +108,35 @@ func TestStreamDoesNotCompleteBeforeMessageStop(t *testing.T) {
 	}
 }
 
-func TestStreamErrorEventFails(t *testing.T) {
-	stream := frame("message_start", `{"type":"message_start","message":{"usage":{"input_tokens":5}}}`) +
-		frame("error", `{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`)
-	if _, err := (&Runtime{}).decodeStream(context.Background(), strings.NewReader(stream)); err == nil || !strings.Contains(err.Error(), "Overloaded") {
+func TestStreamErrorEventsCarryTypeAndRetryability(t *testing.T) {
+	for _, tc := range []struct {
+		kind      string
+		retryable bool
+	}{{"overloaded_error", true}, {"api_error", true}, {"invalid_request_error", false}} {
+		stream := frame("message_start", `{"type":"message_start","message":{"usage":{"input_tokens":5}}}`) +
+			frame("error", `{"type":"error","error":{"type":"`+tc.kind+`","message":"Went wrong"}}`)
+		_, err := (&Runtime{}).decodeStream(context.Background(), strings.NewReader(stream))
+		if err == nil || !strings.Contains(err.Error(), tc.kind) || !strings.Contains(err.Error(), "Went wrong") {
+			t.Fatalf("%s: error = %v", tc.kind, err)
+		}
+		if providers.IsRetryableGenerationError(err) != tc.retryable {
+			t.Fatalf("%s: retryable = %v, want %v", tc.kind, !tc.retryable, tc.retryable)
+		}
+	}
+}
+
+func TestOverloadedStatusIsRetryable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(529)
+		_, _ = io.WriteString(w, `{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`)
+	}))
+	t.Cleanup(server.Close)
+	runtime, err := New(context.Background(), Config{APIKey: "k", BaseURL: server.URL, Model: "claude-test", HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = runtime.Generate(context.Background(), providers.Request{Messages: []providers.Message{{Role: "user", Content: "Hi"}}})
+	if !providers.IsRetryableGenerationError(err) || !strings.Contains(err.Error(), "Overloaded") {
 		t.Fatalf("error = %v", err)
 	}
 }

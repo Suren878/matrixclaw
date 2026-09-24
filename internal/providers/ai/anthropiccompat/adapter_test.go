@@ -1,9 +1,13 @@
 package anthropic
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -259,21 +263,120 @@ func TestCacheBreakpointMarksOnlyTheTools(t *testing.T) {
 	}
 }
 
+func pngBase64(t *testing.T, width, height int) string {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewGray(image.Rect(0, 0, width, height))); err != nil {
+		t.Fatal(err)
+	}
+	return base64.StdEncoding.EncodeToString(buf.Bytes())
+}
+
 func TestUserImagesBecomeBase64Blocks(t *testing.T) {
 	runtime, sent := newTestRuntime(t, textReply("A cat."))
+	data := pngBase64(t, 2, 2)
 	_, err := runtime.Generate(context.Background(), providers.Request{Messages: []providers.Message{{
 		Role: "user", Content: "What is this?",
-		Images: []providers.ImageContent{{MIMEType: "image/png; charset=binary", DataBase64: "iVBORw0KGgo="}},
+		Images: []providers.ImageContent{{MIMEType: "image/png; charset=binary", DataBase64: data}, {MIMEType: "image/jpeg", DataBase64: data}},
 	}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	content := decodeSent(t, sent(0)).Messages[0].Content
-	if blockTypes(content) != "image,text" {
+	if blockTypes(content) != "image,image,text" {
 		t.Fatalf("content = %s", sent(0))
 	}
-	if source := content[0].Source; source == nil || source.Type != "base64" || source.MediaType != "image/png" || source.Data != "iVBORw0KGgo=" {
-		t.Fatalf("image source = %#v", content[0].Source)
+	for _, block := range content[:2] {
+		if source := block.Source; source == nil || source.Type != "base64" || source.MediaType != "image/png" || source.Data != data {
+			t.Fatalf("image source = %#v", block.Source)
+		}
+	}
+}
+
+func TestImagesAnthropicWouldRejectAreReplacedByANote(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		image providers.ImageContent
+		note  string
+	}{
+		{"over 5 MB", providers.ImageContent{MIMEType: "image/webp", DataBase64: strings.Repeat("A", 5*1024*1024+4)}, "larger than 5 MB"},
+		{"unsupported type", providers.ImageContent{MIMEType: "image/bmp", DataBase64: "Qk0="}, "unsupported media type image/bmp"},
+		{"missing type", providers.ImageContent{DataBase64: pngBase64(t, 1, 1)}, "missing media type"},
+		{"too wide", providers.ImageContent{MIMEType: "image/png", DataBase64: pngBase64(t, 8001, 1)}, "8001x1 px exceeds 8000 px"},
+		{"unreadable", providers.ImageContent{MIMEType: "image/png", DataBase64: "iVBORw0KGgo="}, "unreadable image data"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runtime, sent := newTestRuntime(t, textReply("ok"))
+			_, err := runtime.Generate(context.Background(), providers.Request{Messages: []providers.Message{{Role: "user", Content: "Look", Images: []providers.ImageContent{tc.image}}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			content := decodeSent(t, sent(0)).Messages[0].Content
+			if blockTypes(content) != "text,text" || content[0].Text != "[image omitted: "+tc.note+"]" || content[1].Text != "Look" {
+				t.Fatalf("content = %#v", content)
+			}
+		})
+	}
+}
+
+func TestThinkingIsReplayedOnlyInTheCurrentToolLoop(t *testing.T) {
+	runtime, sent := newTestRuntime(t, textReply("ok"))
+	_, err := runtime.Generate(context.Background(), providers.Request{Tools: testTools, Messages: []providers.Message{
+		{Role: "user", Content: "First task"},
+		{Role: "assistant", Content: "Old step.", Reasoning: []providers.ReasoningBlock{{Text: "old", Signature: "sig-old"}}, ToolCalls: []providers.ToolCall{{ID: "toolu_1", Name: "ls"}}},
+		{Role: "tool", ToolCallID: "toolu_1", Content: "a.go"},
+		{Role: "assistant", Content: "Old answer.", Reasoning: []providers.ReasoningBlock{{RedactedData: "old-redacted"}}},
+		{Role: "user", Content: "Second task"},
+		{Role: "assistant", Content: "  Checking.\n", Reasoning: []providers.ReasoningBlock{{Text: "new", Signature: "sig-new"}}, ToolCalls: []providers.ToolCall{{ID: "toolu_2", Name: "ls"}}},
+		{Role: "tool", ToolCallID: "toolu_2", Content: "b.go"},
+		{Role: "user", Content: "Also look at c.go"},
+		{Role: "assistant", Reasoning: []providers.ReasoningBlock{{RedactedData: "new-redacted"}}, ToolCalls: []providers.ToolCall{{ID: "toolu_3", Name: "read"}}},
+		{Role: "tool", ToolCallID: "toolu_3", Content: "package c"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(sent(0))
+	if strings.Contains(body, "sig-old") || strings.Contains(body, "old-redacted") {
+		t.Fatalf("thinking before the last user message was replayed: %s", body)
+	}
+	turns := decodeSent(t, sent(0)).Messages
+	if len(turns) != 9 {
+		t.Fatalf("turns = %s", body)
+	}
+	if got := blockTypes(turns[1].Content) + "|" + blockTypes(turns[3].Content); got != "text,tool_use|text" {
+		t.Fatalf("old assistant turns = %s", got)
+	}
+	current := turns[5].Content
+	if blockTypes(current) != "thinking,text,tool_use" || current[0].Signature != "sig-new" || current[1].Text != "  Checking.\n" {
+		t.Fatalf("current loop turn = %#v", current)
+	}
+	if blockTypes(turns[6].Content) != "tool_result,text" || blockTypes(turns[7].Content) != "redacted_thinking,tool_use" {
+		t.Fatalf("steered loop turns = %s", body)
+	}
+}
+
+func TestSanitizedToolIDsStayDistinctAndPaired(t *testing.T) {
+	runtime, sent := newTestRuntime(t, textReply("ok"))
+	_, err := runtime.Generate(context.Background(), providers.Request{Tools: testTools, Messages: []providers.Message{
+		{Role: "user", Content: "List"},
+		{Role: "assistant", ToolCalls: []providers.ToolCall{{ID: "functions.ls:0", Name: "ls"}, {ID: "functions_ls_0", Name: "ls"}, {ID: "", Name: "read"}}},
+		{Role: "tool", ToolCallID: "functions_ls_0", Content: "b"},
+		{Role: "tool", ToolCallID: "functions.ls:0", Content: "a"},
+		{Role: "tool", ToolCallID: "", Content: "c"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turns := decodeSent(t, sent(0)).Messages
+	uses, results := turns[1].Content, turns[2].Content
+	if blockTypes(results) != "tool_result,tool_result,tool_result" {
+		t.Fatalf("results = %s", sent(0))
+	}
+	got := []string{uses[0].ID, uses[1].ID, uses[2].ID, results[0].ToolUseID, results[1].ToolUseID, results[2].ToolUseID}
+	want := []string{"functions_ls_0", "functions_ls_0-2", "toolu_missing", "functions_ls_0-2", "functions_ls_0", "toolu_missing"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("ids = %v, want %v", got, want)
 	}
 }
 

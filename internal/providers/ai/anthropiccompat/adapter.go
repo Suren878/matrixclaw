@@ -173,7 +173,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 		if err != nil {
 			return providers.Response{}, fmt.Errorf("anthropic: read response: %w", err)
 		}
-		return providers.Response{}, fmt.Errorf("anthropic: %s", decodeAnthropicError(httpRes.StatusCode, resBody))
+		return providers.Response{}, anthropicResponseError(httpRes.StatusCode, resBody)
 	}
 	if payload.Stream {
 		return r.decodeStream(ctx, httpRes.Body)
@@ -246,16 +246,52 @@ func mergeAnthropicUsage(current anthropicUsagePayload, delta anthropicUsagePayl
 	return current
 }
 
+type anthropicErrorDetail struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
+}
+
+func (d anthropicErrorDetail) String() string {
+	kind, message := strings.TrimSpace(d.Type), strings.TrimSpace(d.Message)
+	if kind == "" || message == "" {
+		return kind + message
+	}
+	return kind + ": " + message
+}
+
+func (d anthropicErrorDetail) retryable() bool {
+	return d.Type == "overloaded_error" || d.Type == "api_error"
+}
+
 type anthropicErrorEnvelope struct {
-	Error struct {
-		Message string `json:"message"`
-	} `json:"error"`
+	Error anthropicErrorDetail `json:"error"`
+}
+
+// retryableError reads as its message and matches ErrIncompleteResponse, so core
+// retries overload and server errors that arrive before any output.
+type retryableError string
+
+func (e retryableError) Error() string { return string(e) }
+
+func (e retryableError) Unwrap() error { return providers.ErrIncompleteResponse }
+
+func anthropicFailure(message string, retryable bool) error {
+	if retryable {
+		return retryableError(message)
+	}
+	return errors.New(message)
+}
+
+func anthropicResponseError(statusCode int, body []byte) error {
+	var envelope anthropicErrorEnvelope
+	_ = json.Unmarshal(body, &envelope)
+	return anthropicFailure("anthropic: "+decodeAnthropicError(statusCode, body), statusCode == 529 || envelope.Error.retryable())
 }
 
 func decodeAnthropicError(statusCode int, body []byte) string {
 	var envelope anthropicErrorEnvelope
 	if err := json.Unmarshal(body, &envelope); err == nil && strings.TrimSpace(envelope.Error.Message) != "" {
-		return fmt.Sprintf("status %d: %s", statusCode, strings.TrimSpace(envelope.Error.Message))
+		return fmt.Sprintf("status %d: %s", statusCode, envelope.Error)
 	}
 
 	text := strings.TrimSpace(string(body))

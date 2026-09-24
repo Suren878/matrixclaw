@@ -27,9 +27,7 @@ type anthropicStreamEvent struct {
 		StopReason  string `json:"stop_reason"`
 	} `json:"delta"`
 	Usage anthropicUsagePayload `json:"usage"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error,omitempty"`
+	Error *anthropicErrorDetail `json:"error,omitempty"`
 }
 
 // streamBlock accumulates one content block across its deltas.
@@ -84,7 +82,7 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 			return fmt.Errorf("anthropic: decode stream chunk: %w", err)
 		}
 		if chunk.Error != nil {
-			return fmt.Errorf("anthropic: stream error: %s", strings.TrimSpace(chunk.Error.Message))
+			return anthropicFailure("anthropic: stream error: "+chunk.Error.String(), chunk.Error.retryable())
 		}
 		eventType := event.Type
 		if eventType == "" {
