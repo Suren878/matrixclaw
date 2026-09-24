@@ -25,18 +25,13 @@ func (r *Runtime) completedResponse(response responsesResponse) (providers.Respo
 	if response.Error != nil {
 		return providers.Response{}, fmt.Errorf("openai-codex: %s", firstNonEmpty(response.Error.Message, response.Error.Code, "response failed"))
 	}
-	if response.Status != "" && response.Status != "completed" {
-		reason := response.Status
-		if response.IncompleteDetails != nil {
-			reason += ": " + response.IncompleteDetails.Reason
-		}
-		return providers.Response{}, fmt.Errorf("openai-codex: response %s", reason)
-	}
-	if response.IncompleteDetails != nil {
-		return providers.Response{}, fmt.Errorf("openai-codex: incomplete response: %s", response.IncompleteDetails.Reason)
+	stop, err := responsesStopReason(response)
+	if err != nil {
+		return providers.Response{}, err
 	}
 	var texts []string
 	var calls []providers.ToolCall
+	refused := false
 	for _, item := range response.Output {
 		switch item.Type {
 		case "message":
@@ -46,6 +41,7 @@ func (r *Runtime) completedResponse(response responsesResponse) (providers.Respo
 				case "output_text", "text":
 					text.WriteString(part.Text)
 				case "refusal":
+					refused = true
 					text.WriteString(part.Refusal)
 				}
 			}
@@ -55,21 +51,52 @@ func (r *Runtime) completedResponse(response responsesResponse) (providers.Respo
 		case "function_call":
 			name := strings.TrimSpace(item.Name)
 			id := strings.TrimSpace(item.CallID)
+			arguments := responsesToolArguments(item.Arguments)
+			if stop == providers.StopMaxTokens && (name == "" || id == "" || !json.Valid(arguments)) {
+				continue // cut off by the output limit
+			}
 			if name == "" || id == "" {
 				return providers.Response{}, fmt.Errorf("openai-codex: function call is missing name or call_id")
 			}
-			arguments := responsesToolArguments(item.Arguments)
 			if !json.Valid(arguments) {
 				return providers.Response{}, fmt.Errorf("openai-codex: invalid arguments for tool %q", name)
 			}
 			calls = append(calls, providers.ToolCall{ID: id, Name: name, Arguments: arguments})
 		}
 	}
+	if refused && stop == providers.StopEndTurn && len(calls) == 0 {
+		stop = providers.StopRefusal
+	}
+	stop = providers.ResolveStopReason(stop, len(calls))
 	text := strings.Join(texts, "\n\n")
-	if text == "" && len(calls) == 0 {
+	if text == "" && len(calls) == 0 && !stop.AllowsEmptyReply() {
 		return providers.Response{}, fmt.Errorf("openai-codex: %w", providers.ErrEmptyResponse)
 	}
-	return providers.Response{Text: text, ToolCalls: calls, Model: r.model, Provider: providers.TypeOpenAICodex, Usage: response.Usage.toProviderUsage()}, nil
+	return providers.Response{Text: text, ToolCalls: calls, Model: r.model, Provider: providers.TypeOpenAICodex, StopReason: stop, Usage: response.Usage.toProviderUsage()}, nil
+}
+
+// responsesStopReason maps the terminal status; an incomplete response stays
+// usable only when the output limit or a content filter ended it.
+func responsesStopReason(response responsesResponse) (providers.StopReason, error) {
+	reason := ""
+	if response.IncompleteDetails != nil {
+		reason = response.IncompleteDetails.Reason
+	}
+	switch {
+	case response.Status != "" && response.Status != "completed" && response.Status != "incomplete":
+		if reason != "" {
+			return "", fmt.Errorf("openai-codex: response %s: %s", response.Status, reason)
+		}
+		return "", fmt.Errorf("openai-codex: response %s", response.Status)
+	case response.Status != "incomplete" && response.IncompleteDetails == nil:
+		return providers.StopEndTurn, nil
+	case reason == "max_output_tokens":
+		return providers.StopMaxTokens, nil
+	case reason == "content_filter":
+		return providers.StopContentFilter, nil
+	default:
+		return "", fmt.Errorf("openai-codex: incomplete response: %s", firstNonEmpty(reason, "no reason given"))
+	}
 }
 
 func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.Response, error) {
@@ -91,11 +118,16 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 			return providers.StreamText(ctx, chunk.Delta)
 		case "error":
 			return fmt.Errorf("openai-codex: %s", firstNonEmpty(chunk.Message, chunk.Code, "stream error"))
-		case "response.failed", "response.incomplete", "response.cancelled":
+		case "response.failed", "response.cancelled":
 			// Some gateways omit response.status on terminal failure events.
 			chunk.Response.Status = strings.TrimPrefix(firstNonEmpty(chunk.Type, event.Type), "response.")
 			_, err := r.completedResponse(chunk.Response)
 			return err
+		case "response.incomplete":
+			final = chunk.Response
+			final.Status = "incomplete"
+			completed = true
+			return providers.ErrSSEComplete
 		case "response.completed":
 			final = chunk.Response
 			completed = true

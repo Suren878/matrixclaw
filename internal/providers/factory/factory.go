@@ -72,7 +72,6 @@ func NewRuntime(ctx context.Context, cfg Config) (providers.Runtime, error) {
 			CatalogID:       strings.TrimSpace(cfg.CatalogID),
 			BaseURL:         baseURL,
 			Model:           model,
-			MaxOutputTokens: cfg.MaxOutputTokens,
 			ReasoningEffort: strings.TrimSpace(cfg.ReasoningEffort),
 			ToolUseMode:     cfg.ToolUseMode,
 			Profile:         profile,

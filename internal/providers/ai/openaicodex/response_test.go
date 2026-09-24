@@ -59,7 +59,7 @@ func TestStreamRejectsMissingCompletionAndTerminalFailures(t *testing.T) {
 		{"flat error", `{"type":"error","message":"stream failed","code":"server_error"}`, "stream failed", false},
 		{"nested error", `{"type":"error","error":{"message":"nested failure"}}`, "nested failure", false},
 		{"failed", `{"type":"response.failed","response":{"error":{"message":"upstream failed"}}}`, "upstream failed", false},
-		{"truncated", `{"type":"response.incomplete","response":{"incomplete_details":{"reason":"max_output_tokens"}}}`, "max_output_tokens", false},
+		{"incomplete for another reason", `{"type":"response.incomplete","response":{"incomplete_details":{"reason":"interrupted"}}}`, "interrupted", false},
 		{"cancelled", `{"type":"response.cancelled","response":{}}`, "cancelled", false},
 		{"completed with error", `{"type":"response.completed","response":{"status":"failed","error":{"message":"hidden failure"}}}`, "hidden failure", false},
 		{"invalid tool arguments", `{"type":"response.completed","response":{"output":[{"type":"function_call","call_id":"c","name":"write","arguments":"{"}]}}`, "invalid arguments", false},
@@ -96,7 +96,7 @@ func TestResponseDecodingHandlesRefusalAndEmptyOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if jsonResponse.Text != "Cannot help with that." || streamResponse.Text != jsonResponse.Text {
+	if jsonResponse.Text != "Cannot help with that." || streamResponse.Text != jsonResponse.Text || jsonResponse.StopReason != providers.StopRefusal {
 		t.Fatalf("json=%q stream=%q", jsonResponse.Text, streamResponse.Text)
 	}
 	if _, err := runtime.decodeResponse([]byte(`{"status":"completed","output":[]}`)); !errors.Is(err, providers.ErrEmptyResponse) {

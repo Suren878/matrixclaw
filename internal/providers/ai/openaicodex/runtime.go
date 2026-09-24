@@ -18,7 +18,6 @@ type Config struct {
 	CatalogID       string
 	BaseURL         string
 	Model           string
-	MaxOutputTokens int64
 	ReasoningEffort string
 	ToolUseMode     providers.ToolUseMode
 	Profile         providers.ProviderProfile
@@ -29,7 +28,6 @@ type Runtime struct {
 	client          *http.Client
 	baseURL         string
 	model           string
-	maxOutputTokens int64
 	reasoningEffort string
 	profile         providers.RuntimeProfile
 	capabilities    providers.ModelCapabilities
@@ -63,7 +61,6 @@ func New(_ context.Context, cfg Config) (providers.Runtime, error) {
 		client:          client,
 		baseURL:         baseURL,
 		model:           model,
-		maxOutputTokens: cfg.MaxOutputTokens,
 		reasoningEffort: reasoningEffort,
 		profile:         profile,
 		capabilities:    providerProfile.Capabilities,
@@ -126,11 +123,12 @@ type responsesRequest struct {
 	Instructions      string              `json:"instructions,omitempty"`
 	Input             []responsesItem     `json:"input"`
 	Tools             []responsesTool     `json:"tools,omitempty"`
-	MaxOutputTokens   *int64              `json:"max_output_tokens,omitempty"`
+	ToolChoice        string              `json:"tool_choice,omitempty"`
 	Reasoning         *responsesReasoning `json:"reasoning,omitempty"`
 	ParallelToolCalls bool                `json:"parallel_tool_calls,omitempty"`
 	Store             bool                `json:"store"`
 	Include           []string            `json:"include,omitempty"`
+	PromptCacheKey    string              `json:"prompt_cache_key,omitempty"`
 	Stream            bool                `json:"stream"`
 }
 
@@ -210,6 +208,8 @@ type responsesUsage struct {
 	} `json:"input_tokens_details,omitempty"`
 }
 
+// responsesPayload never sends max_output_tokens: the ChatGPT Codex backend
+// rejects the parameter, so the model's own limit applies.
 func (r *Runtime) responsesPayload(request providers.Request) responsesRequest {
 	payload := responsesRequest{
 		Model:             r.model,
@@ -217,11 +217,12 @@ func (r *Runtime) responsesPayload(request providers.Request) responsesRequest {
 		Tools:             encodeResponsesTools(request.Tools),
 		ParallelToolCalls: r.capabilities.ParallelToolCalls,
 		Store:             false,
+		PromptCacheKey:    strings.TrimSpace(request.CacheKey),
 		Stream:            true,
 	}
 	payload.Instructions = combinedSystemPrompt(request.SystemPrompt, request.CustomInstructions)
-	if r.maxOutputTokens > 0 {
-		payload.MaxOutputTokens = &r.maxOutputTokens
+	if request.ToolChoice == providers.ToolChoiceNone && len(payload.Tools) > 0 {
+		payload.ToolChoice = string(providers.ToolChoiceNone)
 	}
 	if r.reasoningEffort != "" && (len(payload.Tools) == 0 || r.capabilities.ReasoningWithTools) {
 		payload.Reasoning = &responsesReasoning{Effort: r.reasoningEffort}
