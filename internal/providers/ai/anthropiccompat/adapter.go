@@ -24,6 +24,7 @@ type Config struct {
 	BaseURL         string
 	Model           string
 	MaxOutputTokens int64
+	ToolUseMode     providers.ToolUseMode
 	Profile         providers.ProviderProfile
 	HTTPClient      *http.Client
 }
@@ -56,7 +57,7 @@ func New(_ context.Context, cfg Config) (providers.Runtime, error) {
 		model:        model,
 		providerID:   metadataProviderID(cfg),
 		maxTokens:    maxTokens,
-		profile:      providerProfile.RuntimeProfile,
+		profile:      providerProfile.RuntimeProfileWithOverrides(providers.RuntimeProfile{ToolUseMode: cfg.ToolUseMode}),
 		capabilities: providerProfile.Capabilities,
 	}, nil
 }
@@ -132,29 +133,13 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 }
 
 func (r *Runtime) Generate(ctx context.Context, request providers.Request) (providers.Response, error) {
-	if unsupported := unsupportedToolUse(request); unsupported != "" {
-		return providers.Response{}, fmt.Errorf("anthropic: tool use disabled by runtime profile; unsupported %s present", unsupported)
-	}
-
 	request = providers.NormalizeRequest(request, r.profile)
 	payload := anthropicRequest{
 		Model:     r.model,
 		MaxTokens: providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.maxTokens, r.providerID, providers.TypeAnthropic, r.model),
-		System:    combinedSystemPrompt(request.SystemPrompt, request.CustomInstructions),
-		Messages:  make([]anthropicMessage, 0, len(request.Messages)),
 	}
-
-	for _, message := range request.Messages {
-		if content := strings.TrimSpace(message.Content); content != "" {
-			payload.Messages = append(payload.Messages, anthropicMessage{
-				Role:    normalizeAnthropicRole(message.Role),
-				Content: content,
-			})
-		}
-	}
-
-	if len(payload.Messages) == 0 {
-		return providers.Response{}, errors.New("anthropic: no messages")
+	if err := encodeRequest(&payload, request); err != nil {
+		return providers.Response{}, err
 	}
 	if providers.TextStreamFromContext(ctx) != nil {
 		payload.Stream = true
@@ -199,31 +184,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 		return providers.Response{}, fmt.Errorf("anthropic: read response: %w", err)
 	}
 
-	var response anthropicResponse
-	if err := json.Unmarshal(resBody, &response); err != nil {
-		return providers.Response{}, fmt.Errorf("anthropic: decode response: %w", err)
-	}
-
-	var text strings.Builder
-	for _, block := range response.Content {
-		if block.Type == "text" && strings.TrimSpace(block.Text) != "" {
-			text.WriteString(block.Text)
-		}
-	}
-
-	reply := strings.TrimSpace(text.String())
-	stop := providers.ResolveStopReason(anthropicStopReason(response.StopReason), 0)
-	if reply == "" && !stop.AllowsEmptyReply() {
-		return providers.Response{}, fmt.Errorf("anthropic: %w", providers.ErrEmptyResponse)
-	}
-
-	return providers.Response{
-		Text:       reply,
-		Model:      r.model,
-		Provider:   providers.TypeAnthropic,
-		StopReason: stop,
-		Usage:      anthropicUsage(response.Usage),
-	}, nil
+	return r.decodeResponse(resBody)
 }
 
 func anthropicStopReason(reason string) providers.StopReason {
@@ -244,59 +205,6 @@ func metadataProviderID(cfg Config) string {
 		return id
 	}
 	return strings.TrimSpace(cfg.CatalogID)
-}
-
-func unsupportedToolUse(request providers.Request) string {
-	if len(request.Tools) > 0 {
-		return "tool definitions"
-	}
-	for _, message := range request.Messages {
-		if len(message.Images) > 0 {
-			return "image inputs"
-		}
-		if len(message.ToolCalls) > 0 {
-			return "assistant tool-call messages"
-		}
-		if strings.TrimSpace(message.Role) == "tool" || strings.TrimSpace(message.ToolCallID) != "" {
-			return "tool-result messages"
-		}
-	}
-	return ""
-}
-
-func combinedSystemPrompt(systemPrompt string, customInstructions string) string {
-	systemPrompt = strings.TrimSpace(systemPrompt)
-	customInstructions = strings.TrimSpace(customInstructions)
-	if customInstructions == "" {
-		return systemPrompt
-	}
-	block := "User custom instructions:\n" + customInstructions
-	if systemPrompt == "" {
-		return block
-	}
-	return systemPrompt + "\n\n" + block
-}
-
-type anthropicRequest struct {
-	Model     string             `json:"model"`
-	MaxTokens int64              `json:"max_tokens"`
-	System    string             `json:"system,omitempty"`
-	Messages  []anthropicMessage `json:"messages"`
-	Stream    bool               `json:"stream,omitempty"`
-}
-
-type anthropicMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type anthropicResponse struct {
-	Content []struct {
-		Type string `json:"type"`
-		Text string `json:"text,omitempty"`
-	} `json:"content"`
-	StopReason string                `json:"stop_reason,omitempty"`
-	Usage      anthropicUsagePayload `json:"usage,omitempty"`
 }
 
 type anthropicUsagePayload struct {
@@ -401,15 +309,6 @@ func normalizeConfig(cfg Config) (*http.Client, string, string, string, int64, e
 	}
 
 	return client, apiKey, baseURL, model, maxTokens, nil
-}
-
-func normalizeAnthropicRole(role string) string {
-	switch strings.ToLower(strings.TrimSpace(role)) {
-	case "assistant":
-		return "assistant"
-	default:
-		return "user"
-	}
 }
 
 func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.Response, error) {

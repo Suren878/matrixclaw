@@ -84,6 +84,7 @@ func NewRuntime(ctx context.Context, cfg Config) (providers.Runtime, error) {
 			BaseURL:         baseURL,
 			Model:           model,
 			MaxOutputTokens: cfg.MaxOutputTokens,
+			ToolUseMode:     cfg.ToolUseMode,
 			Profile:         profile,
 		})
 	case providers.TypeGemini:
