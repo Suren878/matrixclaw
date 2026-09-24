@@ -8,12 +8,21 @@
 
 **Tech Stack:** Go 1.26, SQLite store (`internal/store`), `internal/providers` runtimes, go-workflows orchestration (unchanged).
 
+> **Reconciled against `fffe701` (2026-09-24).** Task 0 was run on `main` at `fffe701` (Stages 0, 1, 1b as built; build, vet and tests green). Changes to this plan:
+> - **Signed-reasoning identity (9a7ee09).** The conversation builder takes a target identity. Task 6 exports `providerIdentity{provider, model}` as `agentcontext.Identity{Provider, Model}` and `Conversation` gets a 6th parameter `target Identity`. The core bridge in Task 6 passes `runtimeProviderIdentity(turn.Runtime)`, and the engine's `run.buildRequest` (Task 8) passes `modelIdentity(r.task.Model)`, which is the moved `runtimeProviderIdentity`. The function mapping, the file list and the Task 0 table now include both.
+> - **Tool-step grouping (4b6d854, 11299f7).** `isToolStepStart`, `isToolStepReply`, `collectToolStep`, `messageReasoningContent`, `messageReasoningBlocks`, `isSignedReasoning` and `withoutForeignSignedReasoning` are now named in the verbatim move. `tool_step_conversation_test.go` has 5 tests at HEAD, not 2, and all of them pass `providerIdentity`; the Task 6 test edits cover that.
+> - **Cross-session call-ID collision (6734bb5).** `coreTools.Authorize` (Task 9) now calls HEAD's `isNewToolCallMessage` instead of retyping it. The retyped version used `fmt` without importing it. B7 records that this check now runs before tool validation.
+> - **Verbatim over retyped.** `StopReasonError` (Task 6), `reasoningParts` (Task 7) and `stepStopReason` (Task 8) are now move/copy instructions from their HEAD functions, since their bodies are unchanged.
+> - **Tests that exist at HEAD.** Task 3's `TestMaxOutputStopFailsTheRun` is dropped because it duplicates `TestTruncatedOrFilteredReplyFailsTheTurnWithoutRetry` in `provider_contract_test.go`. `provider_contract_test.go` stays in `internal/core` unchanged and is part of the "must pass unchanged" set in Task 9. The rename in Task 10 keeps `TestToolCallIDCollisionAcrossSessionsFailsRunClearly`, `TestRunStepsCountCompactionGeneration` and `generationRuntimeFunc`.
+> - **Task 0 table** now shows the real values: `MaxOutputTokens` and `ToolChoice` are never set by core, `CacheKey` is set only on the main request, and the other values are as found at HEAD.
+> - **Runtime reuse.** The engine uses the one runtime that `prepareNativeRun` resolves for every step and summary. The session LLM registry also caches runtimes per provider and model, so openaicompat's learned `max_tokens` caps (d83bcbc, 69d07b7) survive. No change needed.
+
 ---
 
 ## 0. Conventions used by this plan
 
 - Repo: `/root/projects/matrixclaw`, module `github.com/Suren878/matrixclaw`, work directly on `main`. Another session may touch the repo: stage only the paths listed in each commit step, never `git add -A`.
-- Stages 0, 1 and 1b are merged (see the cross-stage contracts, including "Contract amendments", and `docs/superpowers/plans/2026-09-23-stage0-foundations.md` for exact Stage 0 names). All code in this plan uses their names: `transcript.Message` and part types, `Message.Seq`, `store.GetMessage/HasToolResult/ListMessagesAfter`, normalised `providers.Usage{PromptTokens, OutputTokens, CacheReadTokens, CacheWriteTokens, ReasoningTokens, ProviderRaw}` with `Usage.IsZero()` (Stage 0 deleted `core.ProviderUsage`; finish-part usage and `ContextReport.LastProviderUsage` use `providers.Usage`), `RunStep` + `SaveRunStep/ListRunSteps/ListUsageRecords` (the store numbers steps itself), `c.recordRunStep(ctx, runID, response, stopReason, latency)` and `generationStopReason` in `internal/core/usage.go`, Stage 0's `c.compactSession(ctx, sessionID, runID)` / `compactSessionWithLoadedMessages(ctx, session, messages, runID)` / `generateCompactSummary(ctx, session, messages, runID)` (in-run summaries are recorded as `compact` steps), `c.sessionToolCallMessage(ctx, sessionID, toolCallID)` and `toolCallArgs(message) (json.RawMessage, bool)`, `providers.StopReason` / `Response.StopReason`, `Request.CacheKey`, `providers.ReasoningBlock` / `Response.Reasoning`, `transcript.ReasoningPart.RedactedData`, `providers.Message.IsError`, and core's "one assistant message per response's parallel calls" conversation builder.
+- Stages 0, 1 and 1b are merged (see the cross-stage contracts, including "Contract amendments", and `docs/superpowers/plans/2026-09-23-stage0-foundations.md` for exact Stage 0 names). All code in this plan uses their names: `transcript.Message` and part types, `Message.Seq`, `store.GetMessage/HasToolResult/ListMessagesAfter`, normalised `providers.Usage{PromptTokens, OutputTokens, CacheReadTokens, CacheWriteTokens, ReasoningTokens, ProviderRaw}` with `Usage.IsZero()` (Stage 0 deleted `core.ProviderUsage`; finish-part usage and `ContextReport.LastProviderUsage` use `providers.Usage`), `RunStep` + `SaveRunStep/ListRunSteps/ListUsageRecords` (the store numbers steps itself), `c.recordRunStep(ctx, runID, response, stopReason, latency)` and `generationStopReason` in `internal/core/usage.go`, Stage 0's `c.compactSession(ctx, sessionID, runID)` / `compactSessionWithLoadedMessages(ctx, session, messages, runID)` / `generateCompactSummary(ctx, session, messages, runID)` (in-run summaries are recorded as `compact` steps), `c.sessionToolCallMessage(ctx, sessionID, toolCallID)` and `toolCallArgs(message) (json.RawMessage, bool)`, `providers.StopReason` / `Response.StopReason`, `Request.CacheKey`, `providers.ReasoningBlock` / `Response.Reasoning`, `transcript.ReasoningPart.RedactedData`, `providers.Message.IsError`, `providers.RuntimeIdentifier` (its `Identity()` is the target that filters signed reasoning in the conversation builder), and core's "one assistant message per response's parallel calls" conversation builder (`isToolStepStart`/`collectToolStep`).
 - Line numbers quoted as `file:NN-MM` refer to commit `6176876` (before Stages 0–1b). Stages 0–1b shift them; always locate code by the function name given next to the range.
 - "Move verbatim" means: cut the function body exactly as it is on `main` now (post Stage 0/1/1b), paste it into the destination, apply only the listed identifier changes. Any logic change is shown in full in this plan.
 - Owner rules: delete replaced code (no shims, aliases or dead code at the end of the stage), doc comments ≤ 4 lines without history, tests only on observable behaviour.
@@ -43,7 +52,7 @@
 - **B4 `/compact` and `/clear` while a run executes** return `ErrRunActive` (HTTP 409) when a run of that session is executing in this daemon. Other system notices are unaffected.
 - **B5 Foreign messages during a run.** Messages written into the session by others while a native run executes (run-less `ExecuteTool` from API/voice/MCP, system notices) are not visible to that run's later steps; the next run sees them.
 - **B6 Interrupted runs are rescheduled.** When a native run's context stops (not a user cancel) and the daemon lifetime is alive, core keeps the run `running` with a `recovering` checkpoint exactly as today and then calls `startRun`; the new execution goes through the existing crash-recovery path (`RecoveryCount`+1, max 8, recovery notice in the prompt).
-- **B7 Race-window details.** One run context is used for all engine work: a cancel during compaction or between steps aborts the in-flight store/model call instead of letting it finish (final run state unchanged); a run cancelled in the instant its reply completed is sealed with the final reply text rather than the streamed preview; summary generation uses the model resolved at run start (today re-resolved per compaction).
+- **B7 Race-window details.** One run context is used for all engine work: a cancel during compaction or between steps aborts the in-flight store/model call instead of letting it finish (final run state unchanged); a run cancelled in the instant its reply completed is sealed with the final reply text rather than the streamed preview; summary generation uses the model resolved at run start (today re-resolved per compaction, which returns the same cached runtime). A tool call whose ID another session already owns fails the run with Stage 0's clear `tool call id … already belongs to another session` error even when the tool is also unknown (today that combination fails with a UNIQUE-constraint error from the rejected-call write), because `coreTools.Authorize` checks the ID before validating the tool.
 
 ## 3. Function mapping (every function of the deleted files)
 
@@ -67,6 +76,7 @@
 | `execution_request.go` `providerToolDefinitions` | `core/agent_tools.go` `nativeToolSpecs` + `coreTools.Specs`; `agent/request.go` `toolDefinitions` | 8, 9 |
 | `execution_request.go` `clientSupportsVoiceDelivery`, `clientSupportsDocumentDelivery` | `core/agent_tools.go` (verbatim) | 10 |
 | `execution_request.go` `runtimeToolUseMode`, `runtimeToolUseAllowed`, `runtimeImageInputAllowed` | `agent/request.go` `ToolUseAllowed`, `ImageInputAllowed` | 8 |
+| `execution_request.go` `runtimeProviderIdentity` (9a7ee09) | returns `agentcontext.Identity` from Task 6; `agent/request.go` `modelIdentity` (verbatim, `Runtime` → `Model`) | 6, 8, 10 |
 | `execution_prompts.go` `joinPromptSections`, `AssistantSystemPrompt`, `responseLanguageGuidancePrompt`, `currentProjectRootPrompt` | `agent/prompt/prompt.go` `JoinSections`, `AssistantSystemPrompt(name, systemPrompt)`, `languageGuidance`, `ProjectRoot` | 5 |
 | `execution_prompts.go` `toolUseDisciplinePrompt`, `webResearchGuidancePrompt`, `voiceOutputGuidancePrompt`, `fileDeliveryGuidancePrompt`, `telephonyCallGuidancePrompt` | `agent/prompt/guidance.go` `ToolUseDiscipline`, `WebResearchGuidance`, `VoiceOutputGuidance`, `FileDeliveryGuidance`, `TelephonyCallGuidance` | 5 |
 | `execution_prompts.go` `webResearchPromptAvailable`, `fileDeliveryPromptAvailable`, `telephonyCallPromptAvailable`, `delegateTaskPromptAvailable` | `core/agent_prompts.go` (verbatim) | 5 |
@@ -82,7 +92,11 @@
 | `execution_status.go` `providerResponseMessageParts`, `providerUsageFinishPart` | `agent/messages.go` `finalReply`, `usageFinishPart` | 7, 10 |
 | `execution_status.go` `setRunStatus`, `markAssistantErrored`, `saveAssistantErrored`, `appendErrorFinishPart`, `appendCanceledFinishPart`, `isRunCanceled`, `finishCanceledAssistant`, `failAcceptedRun`, `failRunByID` | `core/run_status.go` (verbatim) | 10 |
 | `execution_tools.go` `executeRequestedTools`, `sameRequestedTool`, `recordRejectedToolRequest` (`attachReasoningToToolCallMessage` was already deleted by Stage 1 Task 4) | `agent/tools.go` `run.executeBatch`, `sameRequestedTool`, `run.rejectCall` | 8 |
-| `execution_conversation.go` (all) | `agent/context/conversation.go`; entry points `Conversation`, `TextOnlyConversation`; `IsProviderSupportedImageMIMEType` → providers (Task 4); `IsPlanRunPromptMessage` → prompt (Task 5) | 4, 5, 6 |
+| `execution_conversation.go` (all, including Stage 1's `isToolStepStart`, `isToolStepReply`, `collectToolStep`, `messageReasoningContent`, `messageReasoningBlocks`, `isSignedReasoning`, `withoutForeignSignedReasoning`) | `agent/context/conversation.go`; entry points `Conversation`, `TextOnlyConversation`; type `providerIdentity{provider, model}` → `Identity{Provider, Model}`; `IsProviderSupportedImageMIMEType` → providers (Task 4); `IsPlanRunPromptMessage` → prompt (Task 5) | 4, 5, 6 |
+| `tool_call_prepare.go` `isNewToolCallMessage` (plain error since 6734bb5) | stays; also called by `coreTools.Authorize` | 9 |
+| tests `execution_conversation_test.go`, `tool_step_conversation_test.go` (5 tests) | `agent/context/` (package `agentcontext`) | 6 |
+| tests `execution_tools_test.go`; `execution_generation_test.go` (incl. `TestToolCallIDCollisionAcrossSessionsFailsRunClearly`, `TestRunStepsCountCompactionGeneration`, `generationRuntimeFunc`) | `agent/tools_internal_test.go`; `core/native_run_test.go` (content unchanged) | 10 |
+| tests `provider_contract_test.go` (Stage 1: stop reasons, cache key, run-step stop reason, reasoning replay, model switch) | stays in `core`, unchanged; must pass through the engine | 9 |
 | `context.go` consts `compactMessagePrefix`, `contextClearedMessagePrefix`, `contextClearedSummary`, `compactBackoffMinimumSavingsPercent` | `agent/context/markers.go` | 6 |
 | `context.go` `maxCompactPromptRunes` | `agent/context/compact.go` | 6 |
 | `context.go` `EstimatedImageTokens` | `agent/context/estimate.go` | 6 |
@@ -138,6 +152,7 @@ internal/agent/context/compact.go       summary request + Compact
 internal/agent/context/estimate.go      token estimates, thresholds, recommendation
 internal/agent/context/errors.go        IsContextLengthExceeded
 internal/agent/context/conversation_test.go (moved)
+internal/agent/context/tool_step_conversation_test.go (moved, Stage 1)
 internal/core/run_execute.go            ExecuteRun, prepareNativeRun, nativeEngine, resolveSessionRuntime, reschedule
 internal/core/run_outcome.go            applyOutcome, applyInterruptedOutcome, completeAssistantTurn
 internal/core/run_status.go             run status helpers shared with external agents
@@ -150,6 +165,7 @@ internal/core/session_context.go        context API types, SessionContext, Compa
 internal/core/subagents_prompt.go       subagent runtime guidance texts
 internal/core/native_run_characterization_test.go
 internal/core/native_run_test.go        (renamed execution_generation_test.go)
+internal/core/provider_contract_test.go (Stage 1, unchanged)
 deleted: internal/core/execution*.go, context*.go, assistant_sanitize.go, message_progress_test.go
 ```
 
@@ -159,14 +175,14 @@ deleted: internal/core/execution*.go, context*.go, assistant_sanitize.go, messag
 
 **Files:** none modified.
 
-- [ ] **Step 1: Confirm a green baseline with Stages 0–1b**
+- [x] **Step 1: Confirm a green baseline with Stages 0–1b**
 
 Run: `cd /root/projects/matrixclaw && git status --short && go build ./... && go vet ./... && go test ./... 2>&1 | tail -20`
-Expected: clean tree (other sessions' files aside), all packages `ok`.
+Expected: clean tree (other sessions' files aside), all packages `ok`. (Done at `fffe701` on 2026-09-24: clean, all `ok`. Re-run it if `main` has moved since.)
 
-- [ ] **Step 2: Record the Stage 0/1 coupling points this plan relies on**
+- [x] **Step 2: Record the Stage 0/1 coupling points this plan relies on**
 
-Run each and keep the output next to you while executing Tasks 8–10:
+Run each and keep the output next to you while executing Tasks 6–10:
 
 ```bash
 grep -n "type RunStep struct" -A16 internal/core/types_run.go
@@ -177,22 +193,30 @@ grep -n "StopMaxTokens" internal/core/*.go
 grep -n "Reasoning\b\|\.Reasoning\|RedactedData\|ReasoningBlock" internal/core/execution_*.go
 grep -n "CacheKey\|MaxOutputTokens\|ToolChoice" internal/core/execution_*.go internal/core/context*.go
 grep -n "ToolUseDisabled" internal/providers/*.go
+grep -n "RuntimeIdentifier\|providerIdentity\|runtimeProviderIdentity" internal/core/*.go internal/providers/contract.go
+grep -n "^func isToolStepStart\|^func isToolStepReply\|^func collectToolStep\|^func withoutForeignSignedReasoning" internal/core/execution_conversation.go
+grep -n "already belongs to another session" internal/core/*.go
+ls internal/core/*_test.go
 git diff 6176876 -- internal/core/execution*.go internal/core/context*.go internal/core/usage.go | head -400
 ```
 
-Expected (as the Stage 0, 1 and 1b plans leave the tree) and where each is used. If the output differs, stop and reconcile the earlier stage first; this plan does not carry alternatives.
+Expected values (as found at `fffe701`) and where each is used. If the output differs from this table, stop and reconcile first. This plan does not carry alternatives.
 
-| Coupling | State after Stages 0–1b | Used in this plan |
+| Coupling | State at `fffe701` | Used in this plan |
 |---|---|---|
-| `RunStep` fields | `RunID string, Step int, Model, Provider string, PromptTokens, CacheReadTokens, CacheWriteTokens, OutputTokens, ReasoningTokens int64, StopReason string, LatencyMillis int64, ToolCalls int, CreatedAt time.Time` (Stage 0 Task 5) | `recordRunStep(ctx, agent.Step)` (Task 9) fills exactly these. |
-| step writes | `recordRunStep(ctx, runID, response, stopReason, latency)` (Stage 0 Tasks 5 and 7) called in `generateAssistantTurn` after every successful `Generate`, and in `generateCompactSummary` with `"compact"` (a no-op without a run ID); usage records are a `GROUP BY` over `run_steps` | Same call points in the engine: `run.generate`, `summaryModel` (Task 8). |
-| `generationStopReason` | `return string(providers.ResolveStopReason(response.StopReason, len(response.ToolCalls)))` (Stage 1 Task 3) | Becomes `stepStopReason` (Task 8, Step 5). |
-| `insertMessage` | `insertMessage(ctx, execer sqlExecer, message transcript.Message) error` with the `MAX(seq)+1` subquery and Stage 0's column list (Stage 0 Task 2) | Task 4 turns it into `RETURNING seq`. |
-| max-tokens / content-filter conversion | `stopReasonError(response)` in `execution_generation.go`, called in `generateAssistantTurnWithRetry` right after `generateAssistantTurn` (`if err == nil { err = stopReasonError(response) }`) and in `generateCompactSummary` right after its `recordRunStep` (Stage 1 Task 3) | Moves to `agentcontext.StopReasonError` (Task 6); called at the same two positions in `run.generateWithRetry` (Task 8) and `agentcontext.summarize` (Task 6). |
-| reasoning parts | `responseReasoningParts(response)` in `execution_generation.go`: a `ReasoningContent` part (if any) followed by one part per `Response.Reasoning` block, prepended to the tool-step reply's parts in `saveAssistantToolTurn`; `attachReasoningToToolCallMessage` is deleted; final replies keep only `ReasoningContent` via the unchanged `providerResponseMessageParts` (Stage 1 Task 4) | `reasoningParts` and `finalReply` in `agent/messages.go` (Task 7), used by `run.finishToolTurn` (Task 8). |
-| request fields | `buildProviderRequest` sets `CacheKey: turn.SessionID` (Stage 1 Task 3); `generateCompactSummary` sets no new field | `run.buildRequest` sets `CacheKey`; `agentcontext.summarize` sets `SessionID`, `SystemPrompt`, `Messages` as today. |
-| `providers.ToolUseDisabled` | still exists; Stage 1b only removes it as the Anthropic default | `ToolUseAllowed` and the text-only branch keep it. |
-| Stage 1 conversation tests | `internal/core/tool_step_conversation_test.go` (package `core`, calls `buildProviderConversationWithAttachmentsForRun`) | Moved with the conversation builder in Task 6. |
+| `RunStep` fields | `RunID string, Step int, Model, Provider string, PromptTokens, CacheReadTokens, CacheWriteTokens, OutputTokens, ReasoningTokens int64, StopReason string, LatencyMillis int64, ToolCalls int, CreatedAt time.Time` | `recordRunStep(ctx, agent.Step)` (Task 9) fills exactly these. |
+| step writes | `func (c *Core) recordRunStep(ctx context.Context, runID string, response providers.Response, stopReason string, latency time.Duration)` (`usage.go`, saves with `context.WithoutCancel`, logs failures). Called in `generateAssistantTurn` right after a successful `turn.Runtime.Generate` and **before** the final progress flush (`recordRunStep(ctx, turn.RunID, response, generationStopReason(response), time.Since(started))`). Also called in `generateCompactSummary` right after a successful summary `Generate` with `"compact"` (a no-op without a run ID). Usage records are a `GROUP BY` over `run_steps`. | Same call points in the engine: `run.generate` (before `flush(true)`), `summaryModel` (Task 8). |
+| `generationStopReason` | `return string(providers.ResolveStopReason(response.StopReason, len(response.ToolCalls)))` (`usage.go`) | Moved verbatim as `stepStopReason` (Task 8, Step 5). |
+| `insertMessage` | `insertMessage(ctx context.Context, execer sqlExecer, message transcript.Message) error` with the `(SELECT COALESCE(MAX(seq), 0) + 1 FROM messages)` subquery. Callers: `SaveMessage`, `SaveMessageProgress`, `CompleteRun`, `AcceptMessage`. | Task 4 turns it into `RETURNING seq`. |
+| max-tokens / content-filter conversion | `stopReasonError(response)` in `execution_generation.go` fails `StopMaxTokens` and `StopContentFilter` with `"%s: generation stopped before completion (%s)"`. Called in `generateAssistantTurnWithRetry` right after `generateAssistantTurn` and before the empty-reply check (`if err == nil { err = stopReasonError(response) }`), and in `generateCompactSummary` right after its `recordRunStep` | Moves to `agentcontext.StopReasonError` (Task 6). Called at the same two positions in `run.generateWithRetry` (Task 8) and `agentcontext.summarize` (Task 6). |
+| reasoning parts | `responseReasoningParts(response)` in `execution_generation.go` returns a `ReasoningContent` part (if any), then one part per `Response.Reasoning` block (`Text`, `Signature`, `RedactedData`). `saveAssistantToolTurn` puts them before the reply's text parts, then appends the usage finish part (or an empty one) with reason `tool_calls`. `attachReasoningToToolCallMessage` no longer exists. Final replies keep only `ReasoningContent`, through `providerResponseMessageParts`. | `reasoningParts` and `finalReply` in `agent/messages.go` (Task 7), used by `run.finishToolTurn` (Task 8). |
+| reasoning replay identity (9a7ee09) | `providers.RuntimeIdentifier{ Identity() (provider, model string) }` is implemented by all 4 adapters. `buildProviderRequest` passes `runtimeProviderIdentity(turn.Runtime)` (a zero `providerIdentity` when the runtime does not implement it) to `c.buildProviderConversation(ctx, history, runID, allowImageInput, target)`. There, `convertProviderConversationHistory` applies `withoutForeignSignedReasoning(message, target)` before `toProviderMessages`, which drops signed/encrypted reasoning parts unless the message's `Provider`/`Model` equal the target's. | `agentcontext.Identity` and the 6th `Conversation` parameter (Task 6). Core bridge `runtimeProviderIdentity` (Task 6); engine `modelIdentity(r.task.Model)` in `run.buildRequest` (Task 8). `task.Model` must be the unwrapped runtime. |
+| tool-step grouping (11299f7, 4b6d854) | `isToolStepStart` / `isToolStepReply` / `collectToolStep` merge one response (its reply with finish `tool_calls`, reasoning and every call message) into one assistant message. Without a saved reply, a step ends at its first result. | Travels verbatim in `conversation.go` (Task 6). The engine writes reply → call → result in today's order (Task 8). |
+| request fields | `buildProviderRequest` sets `RunID`, `SessionID`, `SystemPrompt`, `CustomInstructions`, `CacheKey: turn.SessionID`, `Messages`, `Tools`. Core **never** sets `MaxOutputTokens` or `ToolChoice` (adapters resolve the output limit themselves). `generateCompactSummary` sets only `SessionID`, `SystemPrompt`, `Messages` (no `CacheKey`). | `run.buildRequest` sets the same fields and leaves `MaxOutputTokens`/`ToolChoice` zero. `agentcontext.summarize` sets `SessionID`, `SystemPrompt`, `Messages` as today. |
+| `providers.ToolUseDisabled` | Still exists. Stage 1b (`fffe701`) only removed it as the Anthropic default and gave Anthropic `ToolCalling`. `providers.NormalizeMessages(messages, ToolUseDisabled)` still exists. | `ToolUseAllowed` and the text-only branch keep it. |
+| cross-session call-ID collision (6734bb5) | `isNewToolCallMessage(ctx, sessionID, toolCallID)` in `tool_call_prepare.go` returns the plain (not `ErrInvalidInput`) error `tool call id %q already belongs to another session`. It is called by `prepareToolCall` after tool validation. | `coreTools.Authorize` calls it first (Task 9). |
+| test files | `provider_contract_test.go` (`core_test`: truncated/filtered reply, cache key, run-step stop reason, reasoning replay, model switch), `tool_step_conversation_test.go` (`core`, 5 tests, calls `buildProviderConversationWithAttachmentsForRun(ctx, history, nil, "", false, providerIdentity{…})`), `execution_conversation_test.go` (same call once), `execution_generation_test.go` (`core_test`, incl. `TestToolCallIDCollisionAcrossSessionsFailsRunClearly`, `TestRunStepsCountCompactionGeneration`, and `generationRuntimeFunc`, which `provider_contract_test.go` also uses), `execution_tools_test.go`, `message_progress_test.go` | Conversation tests move in Task 6. `provider_contract_test.go` stays unchanged and must pass through the engine (Task 9). The other three are handled in Task 10. |
+| runtime lifetime | `sessionllm.Registry.Resolve` caches one runtime per provider+model, so openaicompat's learned `max_tokens` caps live as long as the registry | Nothing to do. The engine uses the runtime `prepareNativeRun` resolves for all steps and summaries. |
 
 Every other Stage 0/1 hunk in `execution*.go`/`context*.go` travels with the verbatim moves.
 
@@ -655,7 +679,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 3: Characterization tests — compaction, context overflow, max tokens, subagents
+### Task 3: Characterization tests — compaction, context overflow, subagents
 
 **Files:**
 - Modify: `internal/core/native_run_characterization_test.go` (append; add `"regexp"`, `"sync"` and `"github.com/Suren878/matrixclaw/internal/orchestration"` to imports)
@@ -773,20 +797,6 @@ func TestContextLengthErrorForcesCompactionAndRetriesOnce(t *testing.T) {
 	if got := countCompactMarkers(t, db, session.ID); got != 1 {
 		t.Fatalf("compact markers = %d, want 1", got)
 	}
-}
-
-func TestMaxOutputStopFailsTheRun(t *testing.T) {
-	app, db, cleanup := newCrashRecoveryCore(t)
-	defer cleanup()
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
-		return providers.Response{Text: "cut", StopReason: providers.StopMaxTokens}, nil
-	})})
-	_, run := saveCrashRecoveryRun(t, db, "max-tokens", core.RunStatusAccepted, false)
-
-	if err := app.ExecuteRun(context.Background(), run.ID); err == nil {
-		t.Fatal("ExecuteRun error = nil, want the max-output error")
-	}
-	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusFailed)
 }
 
 func TestBlockingSubagentReturnsChildSummaryToParent(t *testing.T) {
@@ -908,8 +918,8 @@ func TestAsyncSubagentCompletionStartsParentFollowUpRun(t *testing.T) {
 
 - [ ] **Step 2: Run against the current loop**
 
-Run: `go test ./internal/core/ -run 'Compact|ContextLength|MaxOutput|Subagent' -count=1 -v`
-Expected: PASS. `TestMaxOutputStopFailsTheRun` relies on Stage 1's conversion of `StopMaxTokens` into today's error.
+Run: `go test ./internal/core/ -run 'Compact|ContextLength|Subagent' -count=1 -v`
+Expected: PASS. Max-tokens and content-filter failures are already covered by Stage 1's `TestTruncatedOrFilteredReplyFailsTheTurnWithoutRetry` and `TestRunStepRecordsTheProviderStopReason` in `internal/core/provider_contract_test.go`. They are not repeated here and stay unchanged through the switch.
 
 - [ ] **Step 3: Run the whole core suite three times to catch flakiness**
 
@@ -920,7 +930,7 @@ Expected: `ok`.
 
 ```bash
 git add internal/core/native_run_characterization_test.go
-git commit -m "test(core): pin compaction, overflow retry, max tokens and subagents
+git commit -m "test(core): pin compaction, overflow retry and subagents
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 ```
@@ -1326,9 +1336,9 @@ git mv internal/core/execution_conversation_test.go internal/agent/context/conve
 git mv internal/core/tool_step_conversation_test.go internal/agent/context/tool_step_conversation_test.go
 ```
 
-Edit `conversation_test.go`: `package agentcontext`; import `transcript`; `Message` → `transcript.Message`, `MessageRole*` → `transcript.MessageRole*`, `MessagePart`/`MessagePartKind*`/`ImagePart`/`ToolCallPart`/`ToolResultPart` → `transcript.` equivalents (Stage 0 Task 1 may already have qualified them); `buildProviderConversationWithAttachmentsForRun(` → `Conversation(`.
+Edit `conversation_test.go`: `package core` → `package agentcontext` (it already uses `transcript.` types at HEAD); `buildProviderConversationWithAttachmentsForRun(` → `Conversation(` and its last argument `providerIdentity{}` → `Identity{}`.
 
-Edit `tool_step_conversation_test.go` (Stage 1's `TestToolStepIsReplayedAsOneAssistantMessage` and `TestPlainReasoningOnOlderToolCallsStaysReasoningContent`, already written with `transcript.` types): `package core` → `package agentcontext`; both `buildProviderConversationWithAttachmentsForRun(` → `Conversation(`. Its helpers `stepCallMessage`/`stepResultMessage` do not collide with `conversation_test.go`.
+Edit `tool_step_conversation_test.go`. At HEAD it has 5 tests, all written with `transcript.` types: `TestToolStepIsReplayedAsOneAssistantMessage`, `TestPlainReasoningOnOlderToolCallsStaysReasoningContent`, `TestOlderToolStepsWithoutReplyStaySeparatePerResponse` (4b6d854), `TestLateResultAfterSteerStaysWithItsToolStep` and `TestSignedReasoningIsReplayedOnlyToTheModelThatProducedIt` (9a7ee09). Changes: `package core` → `package agentcontext`; every `buildProviderConversationWithAttachmentsForRun(` → `Conversation(`; `providerIdentity{}` → `Identity{}`; in the table of the signed-reasoning test, the field type `providerIdentity` → `Identity` and `providerIdentity{provider: X, model: Y}` → `Identity{Provider: X, Model: Y}`. Its helpers `stepCallMessage`/`stepResultMessage` do not collide with `conversation_test.go`.
 
 Run: `go test ./internal/agent/context/`
 Expected: FAIL (`undefined: toProviderMessages`, `Conversation`, …).
@@ -1345,15 +1355,29 @@ then move verbatim from `internal/core/core.go`: `AttachmentData`, `ErrAttachmen
 
 - [ ] **Step 3: `conversation.go`**
 
-Move the whole of `internal/core/execution_conversation.go` verbatim, then:
-- `package agentcontext`; `Message`/part types/roles → `transcript.` equivalents.
+Move the whole of `internal/core/execution_conversation.go` verbatim as it is at HEAD. That includes Stage 1's `isToolStepStart`, `isToolStepReply`, `collectToolStep` (4b6d854 version: a step without a saved reply ends at its first result), `messageReasoningContent`, `messageReasoningBlocks`, `isSignedReasoning` and `withoutForeignSignedReasoning` (9a7ee09). Then:
+- `package agentcontext` (the file already uses `transcript.` types at HEAD).
 - delete the method `(c *Core) buildProviderConversation`;
-- `buildProviderConversationWithAttachmentsForRun` → `Conversation`, doc: `// Conversation converts history into provider messages, pairing every tool call with its result.`
+- export the target identity, since the engine (package `agent`) and the core bridge pass it:
+
+  ```go
+  // Identity is the Provider and Model a runtime stamps on its replies; signed or
+  // encrypted reasoning is replayed only to the same pair.
+  type Identity struct {
+  	Provider string
+  	Model    string
+  }
+  ```
+
+  Replace `providerIdentity` with `Identity` in `buildProviderConversationWithAttachmentsForRun`, `convertProviderConversationHistory` and `withoutForeignSignedReasoning`. In the latter, `target.provider`/`target.model` become `target.Provider`/`target.Model`. The comparison logic is unchanged.
+- `buildProviderConversationWithAttachmentsForRun` → `Conversation(ctx context.Context, history []transcript.Message, reader AttachmentReader, currentRunID string, allowImageInput bool, target Identity)`, doc: `// Conversation converts history into provider messages, pairing every tool call with its result; signed reasoning is kept only for target.`
 - `buildTextOnlyProviderConversationForRun` → `TextOnlyConversation`, doc: `// TextOnlyConversation renders history as plain text for models without tool calling.`
 - `messageInterruptedByDaemonRestart(message)` → `transcript.HasFinishReason(message, restartFinishReason)` and add `const restartFinishReason = "daemon_restart"`;
 - `prompt.IsPlanRunPrompt` and `providers.IsSupportedImageMIMEType` stay as set in Tasks 4–5.
 
-Delete `messageInterruptedByDaemonRestart` from `internal/core/run_recovery.go`. In `internal/core/execution_request.go` `buildProviderRequest`: `buildTextOnlyProviderConversationForRun(` → `agentcontext.TextOnlyConversation(`, and `c.buildProviderConversation(ctx, effectiveHistory, turn.RunID, runtimeImageInputAllowed(turn.Runtime))` → `agentcontext.Conversation(ctx, effectiveHistory, c.attachments, turn.RunID, runtimeImageInputAllowed(turn.Runtime))`.
+Delete `messageInterruptedByDaemonRestart` from `internal/core/run_recovery.go`. In `internal/core/execution_request.go`:
+- `buildProviderRequest`: `buildTextOnlyProviderConversationForRun(` → `agentcontext.TextOnlyConversation(`, and `c.buildProviderConversation(ctx, effectiveHistory, turn.RunID, runtimeImageInputAllowed(turn.Runtime), runtimeProviderIdentity(turn.Runtime))` → `agentcontext.Conversation(ctx, effectiveHistory, c.attachments, turn.RunID, runtimeImageInputAllowed(turn.Runtime), runtimeProviderIdentity(turn.Runtime))`.
+- `runtimeProviderIdentity` returns `agentcontext.Identity` (`return agentcontext.Identity{}` / `return agentcontext.Identity{Provider: provider, Model: model}`). Nothing else changes. It is deleted with the file in Task 10, and the engine keeps it as `modelIdentity` (Task 8).
 
 - [ ] **Step 4: `markers.go`**
 
@@ -1455,22 +1479,9 @@ then move verbatim `EstimateMessageTokens`, `EstimateTextTokens`, `FormatShortNu
 
 `errors.go`: move `isContextLengthExceededError` verbatim as `IsContextLengthExceeded` (doc: `// IsContextLengthExceeded recognises provider errors for requests over the model window.`). In `internal/core/execution.go` replace `isContextLengthExceededError(` with `agentcontext.IsContextLengthExceeded(`.
 
-Also move Stage 1's `stopReasonError` from `internal/core/execution_generation.go` into `errors.go` as `StopReasonError`, body unchanged (it is needed by `summarize` below and by the engine in Task 8; `agent` imports `agentcontext`, not the reverse):
+Also move Stage 1's `stopReasonError` verbatim from `internal/core/execution_generation.go` (HEAD) into `errors.go`, renamed `StopReasonError` (imports `fmt`, `providers`). The body is unchanged: `StopMaxTokens` and `StopContentFilter` → `fmt.Errorf("%s: generation stopped before completion (%s)", response.Provider, response.StopReason)`, otherwise nil. The error text is pinned by `TestTruncatedOrFilteredReplyFailsTheTurnWithoutRetry`. Doc comment: `// StopReasonError fails a reply cut by the output limit or a content filter: the loop has no continuation path for either.` It is needed by `summarize` below and by the engine in Task 8 (`agent` imports `agentcontext`, not the reverse).
 
-```go
-// StopReasonError fails a reply cut by the output limit or a content filter:
-// the loop has no continuation path for either.
-func StopReasonError(response providers.Response) error {
-	switch response.StopReason {
-	case providers.StopMaxTokens, providers.StopContentFilter:
-		return fmt.Errorf("%s: generation stopped before completion (%s)", response.Provider, response.StopReason)
-	default:
-		return nil
-	}
-}
-```
-
-In `generateAssistantTurnWithRetry` (`internal/core/execution_generation.go`) change `err = stopReasonError(response)` to `err = agentcontext.StopReasonError(response)` and delete `stopReasonError` there; run `goimports -w` on that file (it may drop `fmt`).
+In `generateAssistantTurnWithRetry` (`internal/core/execution_generation.go`) change `err = stopReasonError(response)` to `err = agentcontext.StopReasonError(response)` and delete `stopReasonError` there. `generateCompactSummary`, its other caller, is deleted in this task (its logic becomes `summarize`). Run `goimports -w` on `execution_generation.go`, which then no longer needs `fmt`.
 
 `compact.go`: move `maxCompactPromptRunes` (from `context.go`) and, verbatim, `compactSummarySystemPrompt` … `trimRunesFromStart` from `context_compact.go` (types → `transcript.`). Add:
 
@@ -1533,7 +1544,7 @@ func summarize(ctx context.Context, generator Generator, sessionID string, messa
 }
 ```
 
-`summarize` is `generateCompactSummary` minus runtime resolution, plan lookup and Stage 0's step recording (the caller's `Generator` records the step inside `Generate`, so, as in Stage 1, the `compact` step is written before `StopReasonError` can fail the summary). Stage 1 adds no request field to the summary request. Move `compactSessionPlanSnapshot` verbatim to `internal/core/plan_tools.go`.
+`summarize` is `generateCompactSummary` (HEAD) minus runtime resolution, plan lookup and Stage 0's step recording. The caller's `Generator` records the step inside `Generate`, so, as at HEAD, the `compact` step is written before `StopReasonError` can fail the summary. At HEAD the summary request has only `SessionID`, `SystemPrompt` and `Messages` (no `CacheKey`, `MaxOutputTokens` or `ToolChoice`), and `summarize` keeps exactly that. Move `compactSessionPlanSnapshot` verbatim to `internal/core/plan_tools.go`.
 
 - [ ] **Step 7: `internal/core/session_context.go`**
 
@@ -2079,19 +2090,6 @@ func normalizeToolContent(value string) string {
 	return value
 }
 
-// reasoningParts keeps the reasoning a provider needs back with this
-// tool step: plain reasoning_content text and signed or encrypted blocks.
-func reasoningParts(response providers.Response) []transcript.MessagePart {
-	var parts []transcript.MessagePart
-	if response.ReasoningContent != nil {
-		parts = append(parts, transcript.MessagePart{Kind: transcript.MessagePartKindReasoning, Reasoning: &transcript.ReasoningPart{Text: *response.ReasoningContent}})
-	}
-	for _, block := range response.Reasoning {
-		parts = append(parts, transcript.MessagePart{Kind: transcript.MessagePartKindReasoning, Reasoning: &transcript.ReasoningPart{Text: block.Text, Signature: block.Signature, RedactedData: block.RedactedData}})
-	}
-	return parts
-}
-
 // finalReply is the persisted form of a completed text reply: text, plain
 // reasoning_content and usage (signed reasoning is kept only on tool steps).
 func finalReply(assistant transcript.Message, response providers.Response) transcript.Message {
@@ -2109,7 +2107,7 @@ func finalReply(assistant transcript.Message, response providers.Response) trans
 }
 ```
 
-`reasoningParts` is Stage 1's `responseReasoningParts` (`internal/core/execution_generation.go`, Stage 1 Task 4) copied under the engine's name; the core original is deleted with that file in Task 10. `finalReply` is the part-building half of `completeAssistantTurn` (6176876 `execution_status.go:18-24`) with `providerResponseMessageParts(content, response.ReasoningContent)` inlined: Stage 1 left final replies storing only `ReasoningContent`, and this keeps that. Then copy `providerUsageFinishPart` (Stage 0 version: `providers.Usage` payload, `usage.IsZero()`) from `internal/core/execution_status.go` into this file as `usageFinishPart`, unchanged apart from the name. The core copy is deleted in Task 10.
+Then copy `responseReasoningParts` verbatim (doc comment included) from `internal/core/execution_generation.go` at HEAD into this file, renamed `reasoningParts`. It returns a `ReasoningContent` part if one is set, then one reasoning part per `Response.Reasoning` block carrying `Text`, `Signature` and `RedactedData`. The core original is deleted with that file in Task 10. `finalReply` is the part-building half of `completeAssistantTurn` (6176876 `execution_status.go:18-24`) with `providerResponseMessageParts(content, response.ReasoningContent)` inlined: Stage 1 left final replies storing only `ReasoningContent`, and this keeps that. Then copy `providerUsageFinishPart` (Stage 0 version: `providers.Usage` payload, `usage.IsZero()`) from `internal/core/execution_status.go` into this file as `usageFinishPart`, unchanged apart from the name. The core copy is deleted in Task 10.
 
 - [ ] **Step 4: Copy the sanitizer**
 
@@ -3270,6 +3268,8 @@ func (r *run) checkpoint(ctx context.Context, phase Phase, toolCallID string, to
 }
 ```
 
+`finishToolTurn` is HEAD's `saveAssistantToolTurn` (Stage 1 Task 4) with the part building unchanged: reasoning parts, then text parts, then the usage finish part (or an empty one) with reason `tool_calls`. `Model`/`Provider` are stamped from the response, which the identity filter needs. `UpdateMessage`/`SaveMessage` plus the event become `history.finish`/`history.append`.
+
 - [ ] **Step 5: `internal/agent/generate.go`**
 
 ```go
@@ -3422,14 +3422,11 @@ func (r *run) generate(ctx context.Context, request providers.Request) (generati
 	gen.response = response
 	return gen, err
 }
-
-// stepStopReason is the run_steps stop reason of a model generation.
-func stepStopReason(response providers.Response) string {
-	return string(providers.ResolveStopReason(response.StopReason, len(response.ToolCalls)))
-}
 ```
 
-`stepStopReason` is `generationStopReason` from `internal/core/usage.go` as Stage 1 Task 3 left it; the core copy is deleted in Task 10. Like Stage 0, a step is recorded for every successful `Generate`, including empty replies that are then retried. The `agentcontext.StopReasonError` check sits where Stage 1 put `stopReasonError` in `generateAssistantTurnWithRetry`: after the step is recorded and before the empty-reply check, so a truncated reply is recorded as `max_tokens` and then fails without a retry.
+Then copy `generationStopReason` verbatim from `internal/core/usage.go` (HEAD) to the end of this file, renamed `stepStopReason`, with doc comment `// stepStopReason is the run_steps stop reason of a model generation.` Its HEAD body is `return string(providers.ResolveStopReason(response.StopReason, len(response.ToolCalls)))`. The core copy is deleted in Task 10.
+
+`generateWithRetry` is `generateAssistantTurnWithRetry` (HEAD) and `generate` is `generateAssistantTurn` (HEAD), with the same order of operations. Only the persistence goes through `history` and `generation` replaces the 4-value return. As at HEAD, a step is recorded for every successful `Generate` (including empty replies that are then retried), right after `Generate` and before the final `flush(true)`. The `agentcontext.StopReasonError` check sits where HEAD calls `stopReasonError`: after the step is recorded and before the empty-reply check. So a truncated reply is recorded as `max_tokens` and then fails without a retry (`TestRunStepRecordsTheProviderStopReason`, `TestTruncatedOrFilteredReplyFailsTheTurnWithoutRetry`).
 - [ ] **Step 6: `internal/agent/request.go`**
 
 ```go
@@ -3466,6 +3463,17 @@ func ImageInputAllowed(model Model) bool {
 	return ok && capabilities.ModelCapabilities().ImageInput
 }
 
+// modelIdentity is the Provider and Model the model stamps on its replies; signed
+// reasoning from any other pair is not replayed to it.
+func modelIdentity(model Model) agentcontext.Identity {
+	identifier, ok := model.(providers.RuntimeIdentifier)
+	if !ok {
+		return agentcontext.Identity{}
+	}
+	provider, name := identifier.Identity()
+	return agentcontext.Identity{Provider: provider, Model: name}
+}
+
 func (r *run) buildRequest(ctx context.Context) (providers.Request, error) {
 	summary, effective := agentcontext.LatestSummaryForRun(r.history.all(), r.task.RunID)
 	system, custom := r.Prompts.System(ctx, summary, effective)
@@ -3481,7 +3489,7 @@ func (r *run) buildRequest(ctx context.Context) (providers.Request, error) {
 		request.Messages = providers.NormalizeMessages(request.Messages, providers.ToolUseDisabled)
 		return request, nil
 	}
-	messages, err := agentcontext.Conversation(ctx, effective, r.Attachments, r.task.RunID, ImageInputAllowed(r.task.Model))
+	messages, err := agentcontext.Conversation(ctx, effective, r.Attachments, r.task.RunID, ImageInputAllowed(r.task.Model), modelIdentity(r.task.Model))
 	if err != nil {
 		return providers.Request{}, err
 	}
@@ -3562,7 +3570,7 @@ func (r *run) compactHistory(ctx context.Context, messages []transcript.Message,
 }
 ```
 
-`buildRequest` carries Stage 1's only request field, `CacheKey`; `providers.ToolUseDisabled` still exists after Stage 1b, so `ToolUseAllowed` and the text-only branch keep it.
+`buildRequest` is HEAD's `buildProviderRequest` over the in-memory history. It sets the same fields: `CacheKey` is the only Stage 1 request field core sets, and `MaxOutputTokens`/`ToolChoice` stay zero as at HEAD. It passes the same identity as HEAD's `runtimeProviderIdentity(turn.Runtime)`. `modelIdentity` is that function moved, with `providerIdentity` → `agentcontext.Identity`. `task.Model` is the unwrapped runtime (Task 9 passes the resolved `providers.Runtime`), so the `RuntimeIdentifier` assertion sees the adapter. Only `summaryModel` wraps it, and summary requests carry no reasoning. `TestSignedReasoningIsDroppedAfterAModelSwitch` and `TestToolStepReasoningIsSentBackWithItsCalls` pin this through core in Task 9. `providers.ToolUseDisabled` still exists after Stage 1b, so `ToolUseAllowed` and the text-only branch keep it.
 
 - [ ] **Step 7: `internal/agent/tools.go`**
 
@@ -3757,7 +3765,9 @@ func (r *run) callMessage(req callRequest, finished bool) transcript.Message {
 }
 ```
 
-Then move-copy verbatim into the end of this file: `sameRequestedTool` from `internal/core/execution_tools.go` (uses `bytes`, `json`, `reflect`, `providers`), and `appendUserGuidanceToToolResult` + `appendGuidanceBlock` from `internal/core/session_inputs.go` (types → `transcript.`). The core originals are deleted in Task 10.
+Then move-copy verbatim into the end of this file: `sameRequestedTool` from `internal/core/execution_tools.go` (uses `bytes`, `json`, `reflect`, `providers`), and `appendUserGuidanceToToolResult` + `appendGuidanceBlock` from `internal/core/session_inputs.go` (already `transcript.` types at HEAD; `normalizeToolContent` resolves to the copy in `messages.go`). The core originals are deleted in Task 10.
+
+`executeBatch` keeps HEAD's `executeRequestedTools` checks in the same order: a repeat within the response, then a known call ID of another run or with different arguments, then a call that already has a result. HEAD looks these up in `ListMessages` of the session, and the engine uses the in-memory history of the same session. A call ID owned by **another session** is not in that history. HEAD catches it in `prepareToolCall` → `isNewToolCallMessage`, and the engine catches it in `Tools.Authorize` (core: Task 9, Step 4), which fails the run before the call message is appended.
 
 - [ ] **Step 8: Run the engine tests**
 
@@ -3787,7 +3797,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 - Create: `internal/core/run_execute.go`, `internal/core/run_outcome.go`, `internal/core/agent_journal.go`, `internal/core/agent_tools.go`, `internal/core/agent_inbox.go`, `internal/core/agent_sink.go`
 - Modify: `internal/core/agent_prompts.go`, `internal/core/usage.go`, `internal/core/tool_call_prepare.go`, `internal/core/execution.go`, `internal/core/execution_status.go`, `internal/core/execution_turn.go`, `internal/core/execution_compaction.go`, `internal/core/run_recovery.go`
 
-The characterization tests (Tasks 1–3), `native` generation tests and crash-recovery suite are the tests: they must pass **unchanged**.
+The tests for this task are the characterization tests (Tasks 1–3), `execution_generation_test.go` (incl. `TestToolCallIDCollisionAcrossSessionsFailsRunClearly` and `TestRunStepsCountCompactionGeneration`), Stage 1's `provider_contract_test.go` (stop reasons, cache key, run-step stop reason, one-message tool-step replay with encrypted reasoning, signed reasoning dropped after a model switch) and the crash-recovery suite. They must all pass **unchanged**.
 
 - [ ] **Step 1: `internal/core/agent_journal.go`**
 
@@ -3996,11 +4006,9 @@ func (t coreTools) Specs(ctx context.Context) []tools.Spec {
 }
 
 func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) (agent.Decision, error) {
-	// Stage 0's isNewToolCallMessage check: a call ID owned by another session fails the run
-	// with a clear error instead of a primary-key conflict on the first journal write.
-	if existing, err := t.c.store.GetMessage(ctx, call.ToolCallID); err == nil && existing.SessionID != call.SessionID {
-		return agent.Decision{}, fmt.Errorf("tool call id %q already belongs to another session", call.ToolCallID)
-	} else if err != nil && !errors.Is(err, ErrNotFound) {
+	// A call ID owned by another session fails the run with a clear error instead of
+	// a primary-key conflict on the first journal write.
+	if _, err := t.c.isNewToolCallMessage(ctx, call.SessionID, call.ToolCallID); err != nil {
 		return agent.Decision{}, err
 	}
 	_, _, err := t.c.checkToolCall(ctx, call.SessionID, name)
@@ -4064,6 +4072,8 @@ func (c *Core) nativeToolSpecs(turn nativeTurn) []tools.Spec {
 	return out
 }
 ```
+
+`Authorize` reuses HEAD's `isNewToolCallMessage` (`tool_call_prepare.go`, unchanged; `prepareToolCall` keeps calling it for run-less `ExecuteTool`). Since 6734bb5 it returns the plain error `tool call id %q already belongs to another session`, not `ErrInvalidInput`. So the error is fatal here, as at HEAD, and is not turned into a rejected-call result. `TestToolCallIDCollisionAcrossSessionsFailsRunClearly` pins the message, zero tool executions and the failed run status. The check runs before `checkToolCall` (see B7). `(false, nil)` for an ID already journaled in this session (a resumed approval or a repeated call) is allowed, as at HEAD.
 
 - [ ] **Step 5: `internal/core/agent_inbox.go`**
 
@@ -4569,7 +4579,7 @@ Delete `ExecuteRun` and `prepareRunExecution` from `internal/core/execution.go` 
 
 - [ ] **Step 11: Run the characterization and recovery tests unchanged**
 
-Run: `go test ./internal/core/ -count=1 -run 'Native|Approval|Steer|Cancel|Compact|ContextLength|MaxOutput|Subagent|Recover|Graceful|Startup|Tool|Empty|Repeated|Unknown|ModelFailures|Persisted'`
+Run: `go test ./internal/core/ -count=1 -run 'Native|Approval|Steer|Cancel|Compact|ContextLength|Subagent|Recover|Graceful|Startup|Tool|Empty|Repeated|Unknown|ModelFailures|Persisted|Truncated|CacheKey|RunStep|SignedReasoning'`, then the whole package: `go test ./internal/core/ -count=1`
 Expected: PASS without editing any test.
 
 - [ ] **Step 12: Full suite and commit**
@@ -4686,7 +4696,7 @@ git mv internal/core/execution_generation_test.go internal/core/native_run_test.
 git rm -q internal/core/message_progress_test.go
 ```
 
-(`message_progress_test.go` tested the old `generateAssistantTurn`; `TestStreamingProgressIsBatched` in `internal/agent/engine_test.go` covers the same behaviour. `native_run_test.go` content is unchanged.)
+(`message_progress_test.go` tested the old `generateAssistantTurn`; `TestStreamingProgressIsBatched` in `internal/agent/engine_test.go` covers the same behaviour. `native_run_test.go` content is unchanged. It keeps Stage 0's `TestToolCallIDCollisionAcrossSessionsFailsRunClearly` and `TestRunStepsCountCompactionGeneration`, and the `generationRuntimeFunc` type that `provider_contract_test.go` also uses. `provider_contract_test.go` stays where it is, unchanged.)
 
 - [ ] **Step 4: Delete the old loop**
 
@@ -4701,7 +4711,7 @@ git rm -q internal/core/execution.go internal/core/execution_turn.go internal/co
 Run:
 ```bash
 ls internal/core | grep -E '^(execution|context)' ; \
-grep -rn "maxRunToolSteps\|turnExecution\|IsPlanRunPromptMessage\|latestCompactSummary\|generationStopReason\|runStepGenerator\|compactSession(\|ContextClearedMessageContent\|IsProviderSupportedImageMIMEType" --include=*.go internal clients
+grep -rn "maxRunToolSteps\|turnExecution\|IsPlanRunPromptMessage\|latestCompactSummary\|generationStopReason\|runStepGenerator\|compactSession(\|ContextClearedMessageContent\|IsProviderSupportedImageMIMEType\|providerIdentity\|runtimeProviderIdentity\|responseReasoningParts\|stopReasonError" --include=*.go internal clients
 ```
 Expected: no output.
 
@@ -5138,13 +5148,13 @@ Build and run the daemon + TUI as usual for the stand, then in one session: ask 
 
 **Spec coverage (Stage 2a row + contract):** `internal/agent` with `Engine.Run(ctx, Task) (Outcome, error)` — Task 8. Ports Model/Journal/Tools/Approvals/Inbox/Sink (+ Prompts) — Task 7, deviations §1. `agenttest.ScriptedModel` + fakes — Tasks 7/8. In-memory single-writer journal — Task 8 (`history`). Core adapters — Task 9. `ExecuteRun` switched — Task 9. `execution*.go` and `context*.go` deleted after the move — Tasks 5, 6, 10 (context API kept in `session_context.go`, deviation 9). Moved code under `internal/agent`, `internal/agent/context`, `internal/agent/prompt` — Tasks 5–8. `interrupted` + rescheduling via `startRun` — Tasks 8, 11. 32-step failure, retry, compaction thresholds/markers, approval park/resume, crash recovery, streaming, blocking/async subagents, external agents — pinned by Tasks 1–3 and existing suites, unchanged through Tasks 9–10. Writers that mutated history: steer injection (B1, Tasks 8–10), `updateSubagentResultMessage` (B3, Task 12), steer-merged tool result rewrite (B2, Task 8; `attachReasoningToToolCallMessage` was already removed by Stage 1 Task 4), streaming flush (`BeginStreaming/Stream/FinishStreaming`, Task 8), auto-compaction marker (engine-appended, Task 8), `/compact`/`/clear` (B4, Task 13). Not in 2a by design: budget/final turn/loop guard/`stop_reason` (2b), seq boundary and stable prompt (3), denial returned to the model (4a), permissions and `Authorize` dry-run (4b), scheduler and engine-only checkpoints (4c), todo (5), tasks/await (6), cancel cascade (6c).
 
-**Placeholder scan:** The only deferred content is explicitly verbatim-moved code (exact source function → destination, identifier changes listed). Stage 0/1/1b names and bodies (`generationStopReason` → `stepStopReason`, `stopReasonError` → `agentcontext.StopReasonError`, `responseReasoningParts` → `reasoningParts`, `CacheKey`, `ToolUseDisabled`) are written out from their plans. No TBD/TODO.
+**Placeholder scan:** The only deferred content is explicitly verbatim-moved code (exact source function → destination, identifier changes listed). Stage 0/1/1b functions whose bodies do not change (`generationStopReason` → `stepStopReason`, `stopReasonError` → `agentcontext.StopReasonError`, `responseReasoningParts` → `reasoningParts`, `runtimeProviderIdentity` → `modelIdentity`, `isNewToolCallMessage`) are moved or called verbatim from HEAD (`fffe701`). Their exact current behaviour is quoted in the Task 0 table. No TBD/TODO.
 
-**Type consistency:** `agent.Step` has no step number (the store assigns it) and a string `StopReason`; `recordRunStep(ctx, agent.Step)` is used by `coreJournal.RecordStep` and the two old-loop callers patched in Task 9. `Journal.Append`/`BeginStreaming` return the seq from `AppendMessage`/`SaveMessageProgress` (Task 4). `agent.Outcome` has no `Response` field; `completeAssistantTurn(ctx, run, sessionID, assistant, saved)` is used with 5 arguments in Tasks 9–11. `Tools.Finish(ctx, name, call, result, message)` matches `coreTools.Finish`, `agenttest.Tools.Finish` and `run.finishCall`. `Inbox.Drain(ctx, runID, kind)` matches `coreInbox` and `agenttest.Inbox`. `Prompts.Budget` returns `(int, int, error)` everywhere. `applyOutcome`/`applyInterruptedOutcome` return `error` in Task 9 and `(bool, error)` from Task 11 on. `agentcontext.Threshold`, `Recommendation`, `SessionTokens`, `EstimateRequestTokens`, `LatestMarker`, `LatestSummary`, `LatestSummaryForRun`, `CompactBackoffActive`, `Compact`, `StopReasonError`, `ClearedMarkerContent`, `IsMarker` are defined in Tasks 6/13 before use. `agent.ToolCallMessage`, `ToolResultMessage`, `ToolResultStatus`, `ToolUseAllowed` are defined in Tasks 7/8 before core uses them in Tasks 9/10.
+**Type consistency:** `agent.Step` has no step number (the store assigns it) and a string `StopReason`; `recordRunStep(ctx, agent.Step)` is used by `coreJournal.RecordStep` and the two old-loop callers patched in Task 9. `Journal.Append`/`BeginStreaming` return the seq from `AppendMessage`/`SaveMessageProgress` (Task 4). `agent.Outcome` has no `Response` field; `completeAssistantTurn(ctx, run, sessionID, assistant, saved)` is used with 5 arguments in Tasks 9–11. `Tools.Finish(ctx, name, call, result, message)` matches `coreTools.Finish`, `agenttest.Tools.Finish` and `run.finishCall`. `Inbox.Drain(ctx, runID, kind)` matches `coreInbox` and `agenttest.Inbox`. `Prompts.Budget` returns `(int, int, error)` everywhere. `applyOutcome`/`applyInterruptedOutcome` return `error` in Task 9 and `(bool, error)` from Task 11 on. `agentcontext.Threshold`, `Recommendation`, `SessionTokens`, `EstimateRequestTokens`, `LatestMarker`, `LatestSummary`, `LatestSummaryForRun`, `CompactBackoffActive`, `Compact`, `StopReasonError`, `ClearedMarkerContent`, `IsMarker`, `Identity` are defined in Tasks 6/13 before use; `Conversation` takes `(ctx, history, reader, runID, allowImageInput, target Identity)` in Task 6 (core bridge) and Task 8 (engine). `agent.ToolCallMessage`, `ToolResultMessage`, `ToolResultStatus`, `ToolUseAllowed` are defined in Tasks 7/8 before core uses them in Tasks 9/10.
 
 ## Risks
 
-1. **Stage 0/1 coupling** (`recordRunStep`/`generationStopReason` bodies after Stage 1, `insertMessage` callers, `stopReasonError` sites, `responseReasoningParts`, request fields, Stage 1's `tool_step_conversation_test.go`). Mitigation: the Task 0 table states each one as the earlier plans leave it, and every coupling point is a single, named place in this plan; a mismatch means the earlier stage deviated and must be reconciled first.
+1. **Stage 0/1 coupling** (`recordRunStep`/`generationStopReason` bodies after Stage 1, `insertMessage` callers, `stopReasonError` sites, `responseReasoningParts`, request fields, reasoning-replay identity, tool-step grouping, the collision error, Stage 1's tests). Mitigation: the Task 0 table was reconciled against `fffe701` and states each one as built, and every coupling point is a single, named place in this plan. If `main` moves again before execution, re-run Task 0 and reconcile any mismatch first.
 2. **Hidden ordering dependencies of the conversation builder** (Stage 1 groups parallel calls by persisted order). The engine writes call/result messages in exactly today's order; `TestToolRoundTripIsJournaledInOrder` and the event-trace characterization pin it.
 3. **B1 steer timing**: guidance arriving during the model's final text generation is re-queued as a new run instead of being injected into an old tool result. Visible only in that window.
 4. **B5 foreign writes during a run** are invisible to that run (run-less tools, notices). Rare; next run sees them.
@@ -5152,4 +5162,4 @@ Build and run the daemon + TUI as usual for the stand, then in one session: ask 
 6. **go-workflows activity cancellation semantics** (when it cancels an activity while the worker lives) are not documented here; the reschedule path is exercised only by tests with direct `ExecuteRun`.
 7. **`INSERT … RETURNING`** needs SQLite ≥ 3.35 (the bundled `modernc.org/sqlite` is newer); every `insertMessage` caller in `internal/store` must switch to the two-value form in the same commit or the build breaks.
 8. **Timing-based tests** (retry backoff ≈1 s, async subagent polling ≤10 s, fixed-clock event trace) may flake on a loaded CI; Task 14 runs them five times.
-9. **Temporary duplication** between Tasks 7–8 and Task 10 (sanitizer, `sameRequestedTool`, guidance helpers, usage finish part, `reasoningParts` = Stage 1's `responseReasoningParts`) is intentional and removed in Task 10; do not stop between those tasks for long.
+9. **Temporary duplication** between Tasks 7–8 and Task 10 (sanitizer, `sameRequestedTool`, guidance helpers, usage finish part, `reasoningParts` = Stage 1's `responseReasoningParts`, `stepStopReason` = `generationStopReason`, `modelIdentity` = `runtimeProviderIdentity`) is intentional and removed in Task 10; do not stop between those tasks for long.
