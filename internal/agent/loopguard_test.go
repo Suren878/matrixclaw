@@ -70,3 +70,27 @@ func TestLoopStreakIsCheckpointed(t *testing.T) {
 		t.Fatalf("last checkpoint counters = %+v", last)
 	}
 }
+
+func TestRejectedCallsExtendTheStreak(t *testing.T) {
+	f := agenttest.NewFixture()
+	model := agenttest.NewScriptedModel(append(toolSteps(3, "ghost"), text("That tool does not exist."))...)
+
+	run(t, f, model)
+
+	if note := lastMessage(model.Requests()[3]); !strings.Contains(note.Content, "You are repeating ghost") {
+		t.Fatalf("request 4 ends with %+v, want the loop warning", note)
+	}
+}
+
+func TestRejectedCallStreakSurvivesAnApprovalPark(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["write"] = writeTool
+	model := agenttest.NewScriptedModel(calls(call("w1", "write"), call("g1", "ghost")))
+
+	outcome := run(t, f, model)
+
+	last := f.Journal.States[len(f.Journal.States)-1].Counters
+	if outcome.Status != agent.StatusWaitingApproval || last.LoopTool != "ghost" || last.LoopRepeats != 1 {
+		t.Fatalf("outcome = %+v last checkpoint counters = %+v", outcome, last)
+	}
+}

@@ -149,6 +149,29 @@ func TestRecoveredRunKeepsItsBudgetCounters(t *testing.T) {
 	}
 }
 
+func TestRecoveredRunKeepsItsRaisedOutputLimit(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	runtime := &recoveryRuntime{text: "Finished after the restart."}
+	app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
+	app.WithRunStarter(orchestration.NewStub(app))
+	_, run := saveCrashRecoveryRun(t, db, "output-limit-recovery", core.RunStatusRunning, false)
+	if err := db.SaveRunCheckpoint(context.Background(), core.RunCheckpoint{
+		RunID: run.ID, Phase: core.RunCheckpointPhaseModel, EngineState: json.RawMessage(`{"output_limit":8000}`), UpdatedAt: run.UpdatedAt,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.RecoverActiveRuns(context.Background()); err != nil {
+		t.Fatalf("RecoverActiveRuns: %v", err)
+	}
+	waitForRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
+
+	if limit := runtime.lastRequest().MaxOutputTokens; limit != 8000 {
+		t.Fatalf("output limit after recovery = %d, want the raised 8000", limit)
+	}
+}
+
 func TestRunBudgetFollowsTheTrigger(t *testing.T) {
 	budgets := core.RunBudgets{User: agent.Budget{Steps: 3}, Subagent: agent.Budget{Steps: 2}, Automation: agent.Budget{Steps: 1}}
 	for _, tc := range []struct {

@@ -149,7 +149,7 @@ func (r *run) rejectCall(ctx context.Context, req callRequest, reason string) er
 		return err
 	}
 	r.counters.observeCall(req.name, req.args, result)
-	return nil
+	return r.checkpoint(ctx, PhaseModel, "", "")
 }
 
 func (r *run) finishCall(ctx context.Context, req callRequest, call tools.Call, result tools.Result) error {
