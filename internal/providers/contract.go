@@ -106,6 +106,13 @@ type RuntimeIdentifier interface {
 	Identity() (provider string, model string)
 }
 
+// OutputLimiter reports the output limit a runtime sends when a request names
+// none and the most its model accepts (0 = unknown). A runtime without it sends
+// no limit the engine could raise.
+type OutputLimiter interface {
+	OutputLimits() (current int64, ceiling int64)
+}
+
 // Usage is normalised by every adapter: PromptTokens is the whole input,
 // cache reads and writes included; OutputTokens includes ReasoningTokens.
 type Usage struct {

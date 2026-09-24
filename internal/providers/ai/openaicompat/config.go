@@ -132,6 +132,22 @@ func (r *Runtime) ModelCapabilities() providers.ModelCapabilities {
 	return r.capabilities
 }
 
+func (r *Runtime) OutputLimits() (int64, int64) {
+	capTokens, omit := r.learnedMaxTokensLimit()
+	if omit {
+		return 0, 0
+	}
+	current := providers.ResolveMaxOutputTokens(0, r.maxOutputTokens, r.metadataID, providers.TypeOpenAICompat, r.model)
+	ceiling := int64(providers.ResolveModelMetadata(r.metadataID, providers.TypeOpenAICompat, r.model).MaxOutputTokens)
+	if capTokens > 0 && (ceiling == 0 || capTokens < ceiling) {
+		ceiling = capTokens
+	}
+	if ceiling > 0 && current > ceiling {
+		current = ceiling
+	}
+	return current, ceiling
+}
+
 func normalizeConfig(cfg Config) (*http.Client, string, string, string, error) {
 	apiKey := strings.TrimSpace(cfg.APIKey)
 	if apiKey == "" {

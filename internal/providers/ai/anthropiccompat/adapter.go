@@ -70,6 +70,11 @@ func (r *Runtime) Identity() (string, string) {
 	return providers.TypeAnthropic, r.model
 }
 
+func (r *Runtime) OutputLimits() (int64, int64) {
+	current := providers.ResolveMaxOutputTokens(0, r.maxTokens, r.providerID, providers.TypeAnthropic, r.model)
+	return current, int64(providers.ResolveModelMetadata(r.providerID, providers.TypeAnthropic, r.model).MaxOutputTokens)
+}
+
 func (r *Runtime) ModelCapabilities() providers.ModelCapabilities {
 	return r.capabilities
 }
