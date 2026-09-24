@@ -34,6 +34,7 @@ type Core struct {
 	now            func() time.Time
 	newID          func(prefix string) string
 	historyLimit   int
+	lifetime       context.Context
 }
 
 type SkillsPromptContextRequest struct {
@@ -79,6 +80,7 @@ func New(store Store) *Core {
 		now:           time.Now,
 		newID:         defaultID,
 		historyLimit:  50,
+		lifetime:      context.Background(),
 	}
 }
 
@@ -106,6 +108,14 @@ func (c *Core) WithClock(now func() time.Time) *Core {
 func (c *Core) WithIDGenerator(newID func(prefix string) string) *Core {
 	if newID != nil {
 		c.newID = newID
+	}
+	return c
+}
+
+// WithLifetime sets the daemon lifetime; interrupted runs are rescheduled only while it is alive.
+func (c *Core) WithLifetime(ctx context.Context) *Core {
+	if ctx != nil {
+		c.lifetime = ctx
 	}
 	return c
 }

@@ -9,58 +9,66 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-// applyOutcome persists how the engine left a native run.
-func (c *Core) applyOutcome(ctx context.Context, run Run, outcome agent.Outcome) error {
+// applyOutcome persists how the engine left a native run and reports whether
+// the run was kept for recovery.
+func (c *Core) applyOutcome(ctx context.Context, run Run, outcome agent.Outcome) (bool, error) {
 	switch outcome.Status {
 	case agent.StatusCompleted:
 		if outcome.Assistant == nil {
-			return nil
+			return false, nil
 		}
-		return c.completeAssistantTurn(ctx, &run, run.SessionID, outcome.Assistant, outcome.AssistantSaved)
+		return false, c.completeAssistantTurn(ctx, &run, run.SessionID, outcome.Assistant, outcome.AssistantSaved)
 	case agent.StatusWaitingApproval:
-		return c.setRunStatus(ctx, &run, RunStatusWaitingApproval, "")
+		return false, c.setRunStatus(ctx, &run, RunStatusWaitingApproval, "")
 	case agent.StatusCanceled:
-		return c.finishCanceledAssistant(ctx, outcome.Assistant, outcome.AssistantSaved)
+		return false, c.finishCanceledAssistant(ctx, outcome.Assistant, outcome.AssistantSaved)
 	case agent.StatusFailed:
 		if outcome.MarkErrored && outcome.Assistant != nil {
-			return c.persistAssistantError(ctx, run, outcome.Assistant, outcome.AssistantSaved, outcome.Err)
+			return false, c.persistAssistantError(ctx, run, outcome.Assistant, outcome.AssistantSaved, outcome.Err)
 		}
-		return c.failRunByID(ctx, run, outcome.Err)
+		return false, c.failRunByID(ctx, run, outcome.Err)
 	case agent.StatusInterrupted:
 		return c.applyInterruptedOutcome(run, outcome)
 	default:
-		return fmt.Errorf("core: unknown run outcome %q", outcome.Status)
+		return false, fmt.Errorf("core: unknown run outcome %q", outcome.Status)
 	}
 }
 
 // applyInterruptedOutcome commits what the run reached before its context stopped,
-// or keeps it running with a recovery checkpoint.
-func (c *Core) applyInterruptedOutcome(run Run, outcome agent.Outcome) error {
+// or keeps it running with a recovery checkpoint (reported as true).
+func (c *Core) applyInterruptedOutcome(run Run, outcome agent.Outcome) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), runInterruptionPersistenceTimeout)
 	defer cancel()
 	latest, err := c.store.GetRun(ctx, run.ID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if latest.Status == RunStatusCanceled {
-		return c.finishCanceledAssistant(ctx, outcome.Assistant, outcome.AssistantSaved)
+		return false, c.finishCanceledAssistant(ctx, outcome.Assistant, outcome.AssistantSaved)
 	}
 	if subagentRunStatusTerminal(latest.Status) {
-		return nil
+		return false, nil
 	}
 	switch outcome.Reached {
 	case agent.StatusCompleted:
-		return c.completeAssistantTurn(ctx, &latest, latest.SessionID, outcome.Assistant, outcome.AssistantSaved)
+		return false, c.completeAssistantTurn(ctx, &latest, latest.SessionID, outcome.Assistant, outcome.AssistantSaved)
 	case agent.StatusWaitingApproval:
 		pending, err := c.runHasPendingApprovals(ctx, latest.SessionID, latest.ID)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if pending {
-			return c.setRunStatus(ctx, &latest, RunStatusWaitingApproval, "")
+			return false, c.setRunStatus(ctx, &latest, RunStatusWaitingApproval, "")
 		}
 	}
-	return c.preserveRunForRecovery(ctx, latest, outcome.Assistant, outcome.AssistantSaved)
+	if err := c.preserveRunForRecovery(ctx, latest, outcome.Assistant, outcome.AssistantSaved); err != nil {
+		return false, err
+	}
+	current, err := c.store.GetRun(ctx, latest.ID)
+	if err != nil {
+		return false, err
+	}
+	return !subagentRunStatusTerminal(current.Status), nil
 }
 
 func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID string, assistant *transcript.Message, assistantSaved bool) error {

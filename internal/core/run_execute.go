@@ -13,6 +13,12 @@ import (
 // ExecuteRun claims a run and executes it with its external agent or the native engine.
 func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
 	runID = normalizeText(runID)
+	reschedule := false
+	defer func() {
+		if reschedule {
+			c.rescheduleInterruptedRun(runID)
+		}
+	}()
 	runCtx, unregisterRun, claimed := c.activeRunContext(ctx, runID)
 	if !claimed {
 		return nil
@@ -39,7 +45,19 @@ func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
 	if err != nil {
 		return err
 	}
-	return c.applyOutcome(ctx, run, outcome)
+	reschedule, err = c.applyOutcome(ctx, run, outcome)
+	return err
+}
+
+// rescheduleInterruptedRun hands a run kept for recovery back to the run starter
+// while the daemon keeps running.
+func (c *Core) rescheduleInterruptedRun(runID string) {
+	if c.lifetime.Err() != nil {
+		return
+	}
+	if err := c.startRun(context.Background(), runID); err != nil {
+		log.Printf("core: reschedule interrupted run %q failed: %v", runID, err)
+	}
 }
 
 // prepareNativeRun marks an accepted native run as running and resolves its model.

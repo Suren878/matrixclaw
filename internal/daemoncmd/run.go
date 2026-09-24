@@ -91,6 +91,9 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = runStarter.Close() }()
+	lifetime, stopLifetime := context.WithCancel(ctx)
+	defer stopLifetime()
+	app.WithLifetime(lifetime)
 
 	app.WithRunStarter(runStarter)
 	automationService := automation.NewService(automationStore, app, bootstrap.Timezone).
