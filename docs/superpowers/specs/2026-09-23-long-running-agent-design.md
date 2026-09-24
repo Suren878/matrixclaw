@@ -109,7 +109,7 @@ type Tools interface {
 }
 
 type Approvals interface { Request(ctx context.Context, p Pending) error }
-type Inbox interface { Drain(ctx context.Context, runID string) ([]Event, error) }
+type Inbox interface { Peek(ctx context.Context, runID string, kind InputKind) ([]Input, error); Consume(ctx context.Context, runID string, ids []string) error } // steer is consumed only after the tool result carrying it is written
 type Sink interface { Emit(Event) }
 ```
 
