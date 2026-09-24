@@ -246,26 +246,6 @@ func mergeAnthropicUsage(current anthropicUsagePayload, delta anthropicUsagePayl
 	return current
 }
 
-type anthropicStreamDelta struct {
-	Type  string `json:"type"`
-	Delta struct {
-		Type       string `json:"type"`
-		Text       string `json:"text"`
-		StopReason string `json:"stop_reason"`
-	} `json:"delta"`
-	ContentBlock struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	} `json:"content_block"`
-	Message struct {
-		Usage anthropicUsagePayload `json:"usage"`
-	} `json:"message"`
-	Usage anthropicUsagePayload `json:"usage"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error,omitempty"`
-}
-
 type anthropicErrorEnvelope struct {
 	Error struct {
 		Message string `json:"message"`
@@ -309,69 +289,4 @@ func normalizeConfig(cfg Config) (*http.Client, string, string, string, int64, e
 	}
 
 	return client, apiKey, baseURL, model, maxTokens, nil
-}
-
-func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.Response, error) {
-	var text strings.Builder
-	var usage anthropicUsagePayload
-	stopReason := ""
-	completed := false
-	if err := providers.ScanSSE(ctx, body, func(event providers.SSEEvent) error {
-		if event.Data == "" {
-			return nil
-		}
-
-		var chunk anthropicStreamDelta
-		if err := json.Unmarshal([]byte(event.Data), &chunk); err != nil {
-			return fmt.Errorf("anthropic: decode stream chunk: %w", err)
-		}
-		if chunk.Error != nil && strings.TrimSpace(chunk.Error.Message) != "" {
-			return errors.New(strings.TrimSpace(chunk.Error.Message))
-		}
-		if event.Type == "message_stop" {
-			completed = true
-			return providers.ErrSSEComplete
-		}
-		switch event.Type {
-		case "message_start":
-			usage = chunk.Message.Usage
-		case "message_delta":
-			usage = mergeAnthropicUsage(usage, chunk.Usage)
-			if chunk.Delta.StopReason != "" {
-				stopReason = chunk.Delta.StopReason
-			}
-		}
-
-		delta := ""
-		switch event.Type {
-		case "content_block_delta":
-			delta = chunk.Delta.Text
-		case "content_block_start":
-			delta = chunk.ContentBlock.Text
-		}
-		if delta == "" {
-			return nil
-		}
-
-		text.WriteString(delta)
-		return providers.StreamText(ctx, delta)
-	}); err != nil {
-		return providers.Response{}, err
-	}
-	if !completed {
-		return providers.Response{}, fmt.Errorf("anthropic: %w", providers.ErrIncompleteResponse)
-	}
-
-	reply := strings.TrimSpace(text.String())
-	stop := providers.ResolveStopReason(anthropicStopReason(stopReason), 0)
-	if reply == "" && !stop.AllowsEmptyReply() {
-		return providers.Response{}, fmt.Errorf("anthropic: %w", providers.ErrEmptyResponse)
-	}
-	return providers.Response{
-		Text:       reply,
-		Model:      r.model,
-		Provider:   providers.TypeAnthropic,
-		StopReason: stop,
-		Usage:      anthropicUsage(usage),
-	}, nil
 }
