@@ -11,9 +11,9 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/commandcatalog"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
-	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
+	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -169,7 +169,7 @@ func (w *Worker) handleDocumentImageMessage(ctx context.Context, message *Messag
 	if doc == nil {
 		return nil
 	}
-	if !core.IsProviderSupportedImageMIMEType(doc.MIMEType) {
+	if !providers.IsSupportedImageMIMEType(doc.MIMEType) {
 		return w.handleStoredDocumentMessage(ctx, message, true)
 	}
 	upload, err := w.downloadTelegramUpload(ctx, target, telegramUploadRequest{

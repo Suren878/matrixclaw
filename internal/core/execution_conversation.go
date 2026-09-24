@@ -360,7 +360,7 @@ func toProviderMessages(ctx context.Context, message transcript.Message, reader 
 			// Do not try to read formats that cannot be sent to a provider in the
 			// first place. In particular, an expired temporary SVG attachment in
 			// conversation history must not make every later run fail.
-			if strings.TrimSpace(imagePart.MIMEType) != "" && !IsProviderSupportedImageMIMEType(imagePart.MIMEType) {
+			if strings.TrimSpace(imagePart.MIMEType) != "" && !providers.IsSupportedImageMIMEType(imagePart.MIMEType) {
 				continue
 			}
 			if !allowImageInput {
@@ -375,7 +375,7 @@ func toProviderMessages(ctx context.Context, message transcript.Message, reader 
 				}
 				return nil, err
 			}
-			if strings.TrimSpace(image.DataBase64) != "" && IsProviderSupportedImageMIMEType(image.MIMEType) {
+			if strings.TrimSpace(image.DataBase64) != "" && providers.IsSupportedImageMIMEType(image.MIMEType) {
 				images = append(images, image)
 			}
 		}
@@ -436,23 +436,6 @@ func toProviderMessages(ctx context.Context, message transcript.Message, reader 
 
 func unsupportedModelImageWarning(part transcript.ImagePart) string {
 	return "Image attachment " + imagePartLabel(part) + " was not sent because the selected model does not support image input."
-}
-
-// IsProviderSupportedImageMIMEType reports whether image data can be sent inline
-// by every image-capable provider supported by Matrixclaw. Other image/* files,
-// such as SVG, remain represented by their attachment reference but must not be
-// sent as visual input.
-func IsProviderSupportedImageMIMEType(mimeType string) bool {
-	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
-	if index := strings.IndexByte(mimeType, ';'); index >= 0 {
-		mimeType = strings.TrimSpace(mimeType[:index])
-	}
-	switch mimeType {
-	case "image/jpeg", "image/png", "image/gif", "image/webp":
-		return true
-	default:
-		return false
-	}
 }
 
 func messageReasoningContent(parts []transcript.MessagePart) *string {

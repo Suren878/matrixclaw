@@ -118,23 +118,6 @@ func TestToProviderMessagesDoesNotReadImageForTextOnlyModel(t *testing.T) {
 	}
 }
 
-func TestIsProviderSupportedImageMIMEType(t *testing.T) {
-	tests := map[string]bool{
-		"image/jpeg":                true,
-		"image/png; charset=binary": true,
-		"image/gif":                 true,
-		"image/webp":                true,
-		"image/svg+xml":             false,
-		"image/tiff":                false,
-		"":                          false,
-	}
-	for mimeType, want := range tests {
-		if got := IsProviderSupportedImageMIMEType(mimeType); got != want {
-			t.Errorf("IsProviderSupportedImageMIMEType(%q) = %t, want %t", mimeType, got, want)
-		}
-	}
-}
-
 type staticAttachmentReader struct {
 	data AttachmentData
 	err  error

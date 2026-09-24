@@ -413,7 +413,7 @@ func (c *Core) markLatestAssistantInterrupted(ctx context.Context, runID string,
 		if message.Role != transcript.MessageRoleAssistant {
 			return nil
 		}
-		if (!allowToolParts && messageHasToolPart(message)) || messageHasFinishReason(message, "") {
+		if (!allowToolParts && messageHasToolPart(message)) || transcript.HasFinishReason(message, "") {
 			return nil
 		}
 		if strings.TrimSpace(message.Content) == "" && len(message.Parts) == 0 {
@@ -431,7 +431,7 @@ func (c *Core) markLatestAssistantInterrupted(ctx context.Context, runID string,
 }
 
 func appendDaemonRestartFinish(message *transcript.Message) {
-	if message == nil || messageHasFinishReason(*message, runRecoveryReasonDaemonRestart) {
+	if message == nil || transcript.HasFinishReason(*message, runRecoveryReasonDaemonRestart) {
 		return
 	}
 	message.Parts = transcript.NormalizeMessageParts(message.Content, message.Parts)
@@ -520,21 +520,8 @@ func messageHasToolPart(message transcript.Message) bool {
 	return false
 }
 
-func messageHasFinishReason(message transcript.Message, reason string) bool {
-	reason = strings.TrimSpace(reason)
-	for _, part := range message.Parts {
-		if part.Finish == nil {
-			continue
-		}
-		if reason == "" || strings.TrimSpace(part.Finish.Reason) == reason {
-			return true
-		}
-	}
-	return false
-}
-
 func messageInterruptedByDaemonRestart(message transcript.Message) bool {
-	return messageHasFinishReason(message, runRecoveryReasonDaemonRestart)
+	return transcript.HasFinishReason(message, runRecoveryReasonDaemonRestart)
 }
 
 func (c *Core) failRecoveredRun(ctx context.Context, run *Run, message string) error {
