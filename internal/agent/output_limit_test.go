@@ -1,6 +1,7 @@
 package agent_test
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -211,5 +212,23 @@ func TestCutOrFilteredFinalTurnCompletesWithItsStopReason(t *testing.T) {
 				t.Fatalf("requests = %d, want the final turn taken once", requests)
 			}
 		})
+	}
+}
+
+func TestCancelAfterACutReplyKeepsTheStreamedPreview(t *testing.T) {
+	f := agenttest.NewFixture()
+	ctx, cancel := context.WithCancel(context.Background())
+	model := agenttest.ModelFunc(func(ctx context.Context, _ providers.Request) (providers.Response, error) {
+		if err := providers.StreamText(ctx, "Writing"); err != nil {
+			return providers.Response{}, err
+		}
+		cancel()
+		return providers.Response{Text: "Writing the", StopReason: providers.StopMaxTokens}, nil
+	})
+
+	outcome, err := f.Engine().Run(ctx, f.Task(model))
+
+	if err != nil || outcome.Status != agent.StatusInterrupted || outcome.Assistant == nil || !outcome.AssistantSaved || outcome.Assistant.Content != "Writing" {
+		t.Fatalf("outcome = %+v err = %v, want the streamed preview to seal", outcome, err)
 	}
 }

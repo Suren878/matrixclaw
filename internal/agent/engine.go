@@ -192,11 +192,7 @@ func (r *run) handleResponse(ctx context.Context, gen generation) stepResult {
 	if len(response.ToolCalls) > 0 {
 		r.counters.Continuations = 0
 		if err := r.finishTurn(ctx, &assistant, gen.saved, response, "tool_calls"); err != nil {
-			if ctx.Err() != nil {
-				// Stopped before the tool turn was written: core seals the streamed preview.
-				return stepResult{kind: stepDone, assistant: &gen.assistant, saved: gen.saved, err: err}
-			}
-			return failedStep(err)
+			return unfinishedTurn(ctx, gen, err)
 		}
 		waiting, err := r.executeBatch(ctx, response)
 		if err != nil {
@@ -241,6 +237,15 @@ func (r *run) finishTurn(ctx context.Context, assistant *transcript.Message, sav
 	}
 	assistant.CreatedAt = assistant.UpdatedAt
 	return r.history.append(ctx, *assistant)
+}
+
+// unfinishedTurn fails a step whose turn could not be written; when the run was
+// stopped, core seals the streamed preview instead.
+func unfinishedTurn(ctx context.Context, gen generation, err error) stepResult {
+	if ctx.Err() != nil {
+		return stepResult{kind: stepDone, assistant: &gen.assistant, saved: gen.saved, err: err}
+	}
+	return failedStep(err)
 }
 
 func (r *run) settle(ctx context.Context, result stepResult) (Outcome, bool, error) {

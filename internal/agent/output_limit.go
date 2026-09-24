@@ -33,7 +33,7 @@ func (r *run) continueCutReply(ctx context.Context, gen generation, response pro
 	r.counters.Continuations++
 	assistant := gen.assistant
 	if err := r.finishTurn(ctx, &assistant, gen.saved, response, string(providers.StopMaxTokens)); err != nil {
-		return failedStep(err)
+		return unfinishedTurn(ctx, gen, err)
 	}
 	if err := r.appendEngineMessage(ctx, continueText); err != nil {
 		return failedStep(err)
