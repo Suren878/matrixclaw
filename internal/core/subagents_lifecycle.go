@@ -113,6 +113,9 @@ func ignoreMissing(err error) bool {
 }
 
 func (c *Core) syncAsyncSubagentTaskAfterRun(ctx context.Context, task SubagentTask, run Run) error {
+	if subagentTaskTerminalStatus(task.Status) {
+		return nil
+	}
 	switch run.Status {
 	case RunStatusWaitingApproval:
 		return c.mirrorPendingSubagentApproval(ctx, task)

@@ -236,58 +236,113 @@ func (c *Core) CancelRun(ctx context.Context, runID string) (Run, error) {
 	if err != nil {
 		return Run{}, err
 	}
-
-	switch run.Status {
-	case RunStatusCompleted, RunStatusFailed, RunStatusCanceled:
+	if subagentRunStatusTerminal(run.Status) {
 		return run, nil
 	}
-
-	if run.SessionID != "" {
-		approvals, err := c.store.ListApprovals(ctx, run.SessionID, ApprovalStatePending)
-		if err != nil && !errors.Is(err, ErrNotFound) {
-			return Run{}, err
-		}
-		for _, approval := range approvals {
-			if approval.RunID != run.ID {
-				continue
-			}
-			approval.State = ApprovalStateRejected
-			decidedAt := c.now().UTC()
-			approval.DecidedAt = &decidedAt
-			if err := c.store.UpdateApproval(ctx, approval); err != nil {
-				return Run{}, err
-			}
-			c.publishEvent(Event{
-				Type:      EventApprovalResult,
-				SessionID: approval.SessionID,
-				RunID:     approval.RunID,
-				Payload: PermissionNotification{
-					ApprovalID: approval.ID,
-					ToolCallID: approval.ToolCallRef,
-					Granted:    false,
-					Denied:     true,
-				},
-			})
-			c.publishEvent(Event{
-				Type:      EventToolUpdated,
-				SessionID: approval.SessionID,
-				RunID:     approval.RunID,
-				Payload: ToolUpdate{
-					ToolCallID: approval.ToolCallRef,
-					ToolName:   approval.ToolName,
-					State:      ToolLifecycleFailed,
-					RunID:      approval.RunID,
-					SessionID:  approval.SessionID,
-					ApprovalID: approval.ID,
-					Error:      "canceled by user",
-				},
-			})
-		}
-	}
-
-	if err := c.setRunStatus(ctx, &run, RunStatusCanceled, "canceled by user"); err != nil {
+	stopped, err := c.cancelRunRecords(ctx, &run)
+	if err != nil {
 		return Run{}, err
 	}
-	c.cancelActiveRun(run.ID)
+	for _, id := range stopped {
+		c.cancelActiveRun(id)
+	}
 	return run, nil
+}
+
+// cancelRunRecords marks the run and its active subagent children canceled before
+// any of them is stopped, so a stopped child is not kept for recovery. It returns
+// the ids of the runs to stop.
+func (c *Core) cancelRunRecords(ctx context.Context, run *Run) ([]string, error) {
+	children, err := c.cancelSubagentChildren(ctx, *run)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.rejectRunApprovals(ctx, *run); err != nil {
+		return nil, err
+	}
+	if err := c.setRunStatus(ctx, run, RunStatusCanceled, "canceled by user"); err != nil {
+		return nil, err
+	}
+	return append([]string{run.ID}, children...), nil
+}
+
+// cancelSubagentChildren cancels the active subagent tasks the run started and
+// returns the ids of their runs to stop.
+func (c *Core) cancelSubagentChildren(ctx context.Context, run Run) ([]string, error) {
+	tasks, err := c.store.ListSubagentTasks(ctx, SubagentTaskFilter{
+		ParentSessionID: run.SessionID,
+		Statuses:        activeSubagentTaskStatuses(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	var stopped []string
+	for _, task := range tasks {
+		if task.ParentRunID != run.ID {
+			continue
+		}
+		child, err := c.store.GetRun(ctx, task.ChildRunID)
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return nil, err
+		}
+		if err == nil && !subagentRunStatusTerminal(child.Status) {
+			ids, err := c.cancelRunRecords(ctx, &child)
+			if err != nil {
+				return nil, err
+			}
+			stopped = append(stopped, ids...)
+		}
+		const summary = "Subagent canceled with its parent run."
+		if _, err := c.finishSubagentTaskRecord(ctx, task, SubagentTaskStatusCanceled, summary, summary, false); err != nil {
+			return nil, err
+		}
+	}
+	return stopped, nil
+}
+
+func (c *Core) rejectRunApprovals(ctx context.Context, run Run) error {
+	if run.SessionID == "" {
+		return nil
+	}
+	approvals, err := c.store.ListApprovals(ctx, run.SessionID, ApprovalStatePending)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return err
+	}
+	for _, approval := range approvals {
+		if approval.RunID != run.ID {
+			continue
+		}
+		approval.State = ApprovalStateRejected
+		decidedAt := c.now().UTC()
+		approval.DecidedAt = &decidedAt
+		if err := c.store.UpdateApproval(ctx, approval); err != nil {
+			return err
+		}
+		c.publishEvent(Event{
+			Type:      EventApprovalResult,
+			SessionID: approval.SessionID,
+			RunID:     approval.RunID,
+			Payload: PermissionNotification{
+				ApprovalID: approval.ID,
+				ToolCallID: approval.ToolCallRef,
+				Granted:    false,
+				Denied:     true,
+			},
+		})
+		c.publishEvent(Event{
+			Type:      EventToolUpdated,
+			SessionID: approval.SessionID,
+			RunID:     approval.RunID,
+			Payload: ToolUpdate{
+				ToolCallID: approval.ToolCallRef,
+				ToolName:   approval.ToolName,
+				State:      ToolLifecycleFailed,
+				RunID:      approval.RunID,
+				SessionID:  approval.SessionID,
+				ApprovalID: approval.ID,
+				Error:      "canceled by user",
+			},
+		})
+	}
+	return nil
 }
