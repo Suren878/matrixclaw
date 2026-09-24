@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -210,7 +211,7 @@ func TestFinalTurnDropsToolCallsAndFallsBackToAStopNote(t *testing.T) {
 func TestEmptyFinalTurnEndsWithTheStopNote(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["read"] = counterTool()
-	model := agenttest.NewScriptedModel(calls(call("r1", "read")), text(""), text(""), text(""))
+	model := agenttest.NewScriptedModel(calls(call("r1", "read")), text(""))
 	task := f.Task(model)
 	task.Budget = agent.Budget{Steps: 1}
 
@@ -218,6 +219,28 @@ func TestEmptyFinalTurnEndsWithTheStopNote(t *testing.T) {
 
 	if outcome.Status != agent.StatusCompleted || outcome.StopReason != agent.StopBudgetExhausted || !strings.HasPrefix(outcome.Assistant.Content, "Stopped: the run reached its budget.") {
 		t.Fatalf("outcome = %+v", outcome)
+	}
+	if requests := len(model.Requests()); requests != 2 || len(f.Slept) != 0 {
+		t.Fatalf("requests = %d slept = %v, want the empty final turn taken without a retry", requests, f.Slept)
+	}
+}
+
+func TestRestartedFinalTurnDoesNotRepeatTheStopNote(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["read"] = counterTool()
+	first := agenttest.NewScriptedModel(calls(call("r1", "read")), agenttest.Turn{Err: errors.New("provider down")})
+	task := f.Task(first)
+	task.Budget = agent.Budget{Steps: 1}
+	if outcome := runTask(t, f, task); outcome.Status != agent.StatusFailed {
+		t.Fatalf("first run = %+v, want the final turn to fail", outcome)
+	}
+
+	task.Model = agenttest.NewScriptedModel(text("Read one file."))
+	task.Resume = f.Journal.States[len(f.Journal.States)-1].Counters
+	outcome := runTask(t, f, task)
+
+	if outcome.StopReason != agent.StopBudgetExhausted || len(engineNotes(f.Journal.Messages)) != 1 {
+		t.Fatalf("outcome = %+v engine notes = %d, want one stop note", outcome, len(engineNotes(f.Journal.Messages)))
 	}
 }
 

@@ -55,7 +55,8 @@ func (m summaryModel) Generate(ctx context.Context, request providers.Request) (
 }
 
 // generateWithRetry retries only failures that happened before any output was shown;
-// a partial answer stays visible as failed instead of being replayed.
+// a partial answer stays visible as failed instead of being replayed. An empty
+// final turn is not retried: it falls back to the stop note.
 func (r *run) generateWithRetry(ctx context.Context, request providers.Request) (generation, error) {
 	backoffs := [...]time.Duration{200 * time.Millisecond, 750 * time.Millisecond}
 	for attempt := 0; ; attempt++ {
@@ -64,6 +65,9 @@ func (r *run) generateWithRetry(ctx context.Context, request providers.Request) 
 			err = agentcontext.StopReasonError(gen.response)
 		}
 		if err == nil && sanitizeAssistantOutput(gen.response.Text) == "" && len(gen.response.ToolCalls) == 0 {
+			if request.ToolChoice == providers.ToolChoiceNone {
+				return gen, providers.ErrEmptyResponse
+			}
 			err = providers.ErrEmptyResponse
 		}
 		if err == nil || gen.saved || gen.assistant.Content != "" || ctx.Err() != nil || attempt >= len(backoffs) || !providers.IsRetryableGenerationError(err) {
