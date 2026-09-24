@@ -8,4 +8,5 @@ var (
 	ErrSessionSelectionRequired = errors.New("session selection required")
 	ErrInvalidInput             = errors.New("invalid input")
 	ErrExecutionUnavailable     = errors.New("execution unavailable")
+	ErrRunActive                = errors.New("run is active")
 )

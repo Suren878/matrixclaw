@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
@@ -79,6 +80,11 @@ func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSes
 	if sessionID == "" {
 		return CompactSessionResult{}, ErrSessionRequired
 	}
+	if executing, err := c.sessionRunExecuting(ctx, sessionID); err != nil {
+		return CompactSessionResult{}, err
+	} else if executing {
+		return CompactSessionResult{}, fmt.Errorf("%w: wait for the current run to finish before compacting", ErrRunActive)
+	}
 	session, err := c.store.GetSession(ctx, sessionID)
 	if err != nil {
 		return CompactSessionResult{}, err
@@ -113,6 +119,18 @@ func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSes
 		return CompactSessionResult{}, err
 	}
 	return CompactSessionResult{Message: message, Context: c.contextReportForSession(session, nextMessages)}, nil
+}
+
+// sessionRunExecuting reports whether a run of the session is executing in this daemon.
+func (c *Core) sessionRunExecuting(ctx context.Context, sessionID string) (bool, error) {
+	run, err := c.store.GetActiveRunBySession(ctx, sessionID)
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return c.runIsActive(run.ID), nil
 }
 
 // contextBaseTokens estimates the parts of every request that are not history.

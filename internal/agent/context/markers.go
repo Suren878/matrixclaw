@@ -49,6 +49,12 @@ func ClearedMarkerContent() string {
 	return contextClearedMessagePrefix + "\n\n" + contextClearedSummary
 }
 
+// IsMarker reports whether system message content is a compaction or clear marker.
+func IsMarker(content string) bool {
+	content = strings.TrimSpace(content)
+	return strings.HasPrefix(content, compactMessagePrefix) || strings.HasPrefix(content, contextClearedMessagePrefix)
+}
+
 // LatestSummaryForRun is LatestSummary but keeps the run's own messages written before a compaction marker.
 func LatestSummaryForRun(messages []transcript.Message, currentRunID string) (string, []transcript.Message) {
 	currentRunID = strings.TrimSpace(currentRunID)

@@ -144,6 +144,8 @@ func statusForCoreError(err error) int {
 		return http.StatusNotFound
 	case errors.Is(err, core.ErrSessionSelectionRequired):
 		return http.StatusConflict
+	case errors.Is(err, core.ErrRunActive):
+		return http.StatusConflict
 	default:
 		return http.StatusInternalServerError
 	}
