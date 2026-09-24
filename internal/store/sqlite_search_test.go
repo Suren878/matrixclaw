@@ -177,6 +177,29 @@ func TestReopenDoesNotRescanSearchIndex(t *testing.T) {
 	}
 }
 
+func TestDeleteSessionDropsSearchRows(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "matrixclaw.db")
+	st := openTestStore(t, path)
+	createTestSession(t, st, "s1")
+	createTestSession(t, st, "s2")
+	saveTestMessage(t, st, transcript.Message{ID: "keep", SessionID: "s1", Content: "shared", CreatedAt: testEpoch})
+	saveTestMessage(t, st, transcript.Message{ID: "drop-1", SessionID: "s2", Content: "shared", CreatedAt: testEpoch})
+	saveTestMessage(t, st, toolResultMessage("drop-2", "s2", "call-1"))
+	if err := st.DeleteSession(context.Background(), "s2"); err != nil {
+		t.Fatal(err)
+	}
+	got := searchIDs(t, st, core.SearchFilter{Query: "shared"})
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got != "keep" {
+		t.Fatalf("shared matches %q, want keep", got)
+	}
+	if rows := countSearchRows(t, path); rows != 1 {
+		t.Fatalf("%d search rows after deleting s2, want 1", rows)
+	}
+}
+
 func countSearchRows(t *testing.T, path string) int {
 	t.Helper()
 	check, err := sql.Open("sqlite", path)

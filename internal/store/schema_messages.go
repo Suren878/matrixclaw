@@ -79,7 +79,8 @@ func backfillMessageSeq(db *sql.DB) error {
 }
 
 // migrateMessageSearch keys message_fts rows by messages.seq, rebuilding an
-// index still keyed by message_id, then indexes messages that have no row.
+// index still keyed by message_id, drops the row of every deleted message
+// (FTS5 tables do not cascade) and indexes messages that have no row.
 func migrateMessageSearch(db *sql.DB) error {
 	legacy, err := hasColumn(db, "message_fts", "message_id")
 	if err != nil {
@@ -92,6 +93,12 @@ func migrateMessageSearch(db *sql.DB) error {
 	}
 	if _, err := db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(role, content, provider, model, tokenize = 'unicode61')`); err != nil {
 		return fmt.Errorf("store: create message search: %w", err)
+	}
+	if _, err := db.Exec(`
+CREATE TRIGGER IF NOT EXISTS messages_search_delete AFTER DELETE ON messages BEGIN
+    DELETE FROM message_fts WHERE rowid = old.seq;
+END`); err != nil {
+		return fmt.Errorf("store: create message search delete trigger: %w", err)
 	}
 	return indexUnsearchedMessages(db)
 }
