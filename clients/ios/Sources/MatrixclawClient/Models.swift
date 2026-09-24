@@ -65,6 +65,7 @@ public struct Message: Codable, Identifiable, Equatable, Sendable {
     public var sessionId: String
     public var runId: String
     public var role: MessageRole
+    public var origin: String?
     public var content: String
     public var parts: [MessagePart]?
     public var model: String?
@@ -259,7 +260,10 @@ public struct Run: Codable, Identifiable, Equatable, Sendable {
     public var userMessageId: String
     public var client: String?
     public var externalKey: String?
+    public var trigger: String?
+    public var continuesRunId: String?
     public var status: RunStatus
+    public var stopReason: String?
     public var error: String?
     public var startedAt: Date
     public var finishedAt: Date?

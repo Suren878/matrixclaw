@@ -35,4 +35,13 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(usage.cacheWriteTokens, 20)
         XCTAssertEqual(usage.outputTokens, 50)
     }
+
+    func testRunStopReasonAndEngineOriginDecode() throws {
+        let run = try decode(Run.self, #"{"id":"r2","session_id":"s1","user_message_id":"m2","status":"completed","stop_reason":"budget_exhausted","continues_run_id":"r1","trigger":"automation","started_at":"2026-09-24T10:00:00Z","updated_at":"2026-09-24T10:05:00Z"}"#)
+        XCTAssertEqual(run.stopReason, "budget_exhausted")
+        XCTAssertEqual(run.continuesRunId, "r1")
+        XCTAssertEqual(run.trigger, "automation")
+        let note = try decode(Message.self, #"{"id":"n1","session_id":"s1","run_id":"r2","role":"system","origin":"engine","content":"Budget note","created_at":"2026-09-24T10:00:00Z","updated_at":"2026-09-24T10:00:00Z"}"#)
+        XCTAssertEqual(note.origin, "engine")
+    }
 }
