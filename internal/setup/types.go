@@ -41,11 +41,27 @@ type ProviderConfig struct {
 }
 
 type DaemonConfig struct {
-	HTTPAddr        string `json:"http_addr"`
-	DBPath          string `json:"db_path"`
-	Timezone        string `json:"timezone,omitempty"`
-	APIToken        string `json:"api_token,omitempty"`
-	AutostartOnBoot bool   `json:"autostart_on_boot"`
+	HTTPAddr        string           `json:"http_addr"`
+	DBPath          string           `json:"db_path"`
+	Timezone        string           `json:"timezone,omitempty"`
+	APIToken        string           `json:"api_token,omitempty"`
+	AutostartOnBoot bool             `json:"autostart_on_boot"`
+	Budgets         RunBudgetsConfig `json:"budgets,omitzero"`
+}
+
+// RunBudgetsConfig overrides the built-in run budget per trigger.
+type RunBudgetsConfig struct {
+	User       RunBudgetConfig `json:"user,omitzero"`
+	Subagent   RunBudgetConfig `json:"subagent,omitzero"`
+	Automation RunBudgetConfig `json:"automation,omitzero"`
+}
+
+// RunBudgetConfig: zero fields keep the default; ActiveTime is a Go duration such
+// as "4h". Tokens 0 means unlimited.
+type RunBudgetConfig struct {
+	Steps      int    `json:"steps,omitempty"`
+	ActiveTime string `json:"active_time,omitempty"`
+	Tokens     int64  `json:"tokens,omitempty"`
 }
 
 type ClientsConfig struct {

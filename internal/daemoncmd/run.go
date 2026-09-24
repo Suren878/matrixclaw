@@ -74,6 +74,7 @@ func Run(ctx context.Context) error {
 
 	app := core.New(sqliteStore).
 		WithSessionLLMs(bootstrap.SessionLLMs).
+		WithRunBudgets(bootstrap.Budgets).
 		WithWorkStore(workStore).
 		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()}).
 		WithSkillsContext(skillsModule).

@@ -30,12 +30,14 @@ type bootstrapConfig struct {
 	APIToken       string
 	Clients        map[string]setup.ClientBootstrap
 	ExternalAgents setup.ModulesConfig
+	Budgets        core.RunBudgets
 }
 
 func loadBootstrap() (bootstrapConfig, error) {
 	cfg := bootstrapConfig{
-		Addr:   defaultDaemonAddr,
-		DBPath: setup.DefaultDBPath(),
+		Addr:    defaultDaemonAddr,
+		DBPath:  setup.DefaultDBPath(),
+		Budgets: core.DefaultRunBudgets(),
 	}
 
 	service, err := setup.NewDefaultService()
@@ -66,6 +68,12 @@ func loadBootstrap() (bootstrapConfig, error) {
 		}
 		cfg.Timezone = strings.TrimSpace(setupCfg.Daemon.Timezone)
 		cfg.APIToken = strings.TrimSpace(setupCfg.Daemon.APIToken)
+
+		budgets, err := runBudgetsFromConfig(setupCfg.Daemon.Budgets)
+		if err != nil {
+			return bootstrapConfig{}, fmt.Errorf("load setup config %s: %w", service.Path(), err)
+		}
+		cfg.Budgets = budgets
 
 		if err := setup.ImportDaemonEnvironmentFile(service.Path(), setupCfg); err != nil {
 			return bootstrapConfig{}, fmt.Errorf("load setup daemon environment %s: %w", setup.DaemonEnvironmentFilePath(service.Path()), err)
