@@ -225,6 +225,24 @@ func TestEmptyFinalTurnEndsWithTheStopNote(t *testing.T) {
 	}
 }
 
+func TestEmptyFinalTurnReportedByTheProviderIsNotRetried(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["read"] = counterTool()
+	empty := agenttest.Turn{Err: fmt.Errorf("openaicompat: %w", providers.ErrEmptyResponse)}
+	model := agenttest.NewScriptedModel(calls(call("r1", "read")), empty, text("retried reply"))
+	task := f.Task(model)
+	task.Budget = agent.Budget{Steps: 1}
+
+	outcome := runTask(t, f, task)
+
+	if outcome.Status != agent.StatusCompleted || outcome.StopReason != agent.StopBudgetExhausted || outcome.Assistant.Content == "retried reply" {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+	if requests := len(model.Requests()); requests != 2 || len(f.Slept) != 0 {
+		t.Fatalf("requests = %d slept = %v, want the empty final turn taken without a retry", requests, f.Slept)
+	}
+}
+
 func TestRestartedFinalTurnDoesNotRepeatTheStopNote(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["read"] = counterTool()

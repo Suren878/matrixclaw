@@ -61,10 +61,10 @@ func (r *run) generateWithRetry(ctx context.Context, request providers.Request) 
 	for attempt := 0; ; attempt++ {
 		gen, err := r.generate(ctx, request)
 		if err == nil && sanitizeAssistantOutput(gen.response.Text) == "" && len(gen.response.ToolCalls) == 0 && !gen.response.StopReason.AllowsEmptyReply() {
-			if request.ToolChoice == providers.ToolChoiceNone {
-				return gen, providers.ErrEmptyResponse
-			}
 			err = providers.ErrEmptyResponse
+		}
+		if request.ToolChoice == providers.ToolChoiceNone && errors.Is(err, providers.ErrEmptyResponse) {
+			return gen, err
 		}
 		if err == nil || gen.saved || gen.assistant.Content != "" || ctx.Err() != nil || attempt >= len(backoffs) || !providers.IsRetryableGenerationError(err) {
 			return gen, err
