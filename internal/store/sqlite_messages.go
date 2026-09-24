@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -163,10 +164,7 @@ func (s *SQLiteStore) CreateRun(ctx context.Context, run core.Run) error {
 }
 
 func (s *SQLiteStore) GetRun(ctx context.Context, runID string) (core.Run, error) {
-	row := s.db.QueryRowContext(ctx, `
-SELECT id, session_id, user_message_id, client, external_key, client_capabilities_json, status, error, started_at, finished_at, updated_at
-FROM runs
-WHERE id = ?`, runID)
+	row := s.db.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE id = ?`, runID)
 
 	run, err := scanRun(row)
 	if err != nil {
@@ -180,8 +178,8 @@ WHERE id = ?`, runID)
 
 func (s *SQLiteStore) GetActiveRunBySession(ctx context.Context, sessionID string) (core.Run, error) {
 	row := s.db.QueryRowContext(ctx, `
-	SELECT id, session_id, user_message_id, client, external_key, client_capabilities_json, status, error, started_at, finished_at, updated_at
-	FROM runs
+SELECT `+runColumns+`
+FROM runs
 WHERE session_id = ?
   AND status IN (?, ?, ?)
 ORDER BY started_at DESC, updated_at DESC
@@ -204,10 +202,10 @@ LIMIT 1`,
 
 func (s *SQLiteStore) ListActiveRuns(ctx context.Context) ([]core.Run, error) {
 	rows, err := s.db.QueryContext(ctx, `
-	SELECT id, session_id, user_message_id, client, external_key, client_capabilities_json, status, error, started_at, finished_at, updated_at
-	FROM runs
-	WHERE status IN (?, ?, ?)
-	ORDER BY started_at ASC, updated_at ASC`,
+SELECT `+runColumns+`
+FROM runs
+WHERE status IN (?, ?, ?)
+ORDER BY started_at ASC, updated_at ASC`,
 		string(core.RunStatusAccepted),
 		string(core.RunStatusRunning),
 		string(core.RunStatusWaitingApproval),
@@ -323,6 +321,8 @@ type runScanner interface {
 
 const messageColumns = `id, session_id, run_id, role, origin, content, parts_json, model, provider, created_at, updated_at, seq`
 
+const runColumns = `id, session_id, user_message_id, client, external_key, client_capabilities_json, status, error, stop_reason, continues_run_id, trigger_kind, started_at, finished_at, updated_at`
+
 // sqlRowQueryer is satisfied by *sql.DB and *sql.Tx.
 type sqlRowQueryer interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
@@ -377,8 +377,8 @@ func scanMessage(scanner messageScanner) (transcript.Message, error) {
 
 func insertRun(ctx context.Context, execer sqlExecer, run core.Run) error {
 	_, err := execer.ExecContext(ctx, `
-INSERT INTO runs(id, session_id, user_message_id, client, external_key, client_capabilities_json, status, error, started_at, finished_at, updated_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+INSERT INTO runs(`+runColumns+`)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		run.ID,
 		run.SessionID,
 		run.UserMessageID,
@@ -387,6 +387,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		marshalClientCapabilities(run.ClientCapabilities),
 		string(run.Status),
 		run.Error,
+		string(run.StopReason),
+		run.ContinuesRunID,
+		string(run.Trigger),
 		formatTime(run.StartedAt),
 		nullableTime(run.FinishedAt),
 		formatTime(run.UpdatedAt),
@@ -397,15 +400,19 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 func scanRun(scanner runScanner) (core.Run, error) {
 	var run core.Run
 	var status string
+	var stopReason string
+	var trigger string
 	var capabilitiesJSON string
 	var startedAt string
 	var finishedAt sql.NullString
 	var updatedAt string
-	if err := scanner.Scan(&run.ID, &run.SessionID, &run.UserMessageID, &run.Client, &run.ExternalKey, &capabilitiesJSON, &status, &run.Error, &startedAt, &finishedAt, &updatedAt); err != nil {
+	if err := scanner.Scan(&run.ID, &run.SessionID, &run.UserMessageID, &run.Client, &run.ExternalKey, &capabilitiesJSON, &status, &run.Error, &stopReason, &run.ContinuesRunID, &trigger, &startedAt, &finishedAt, &updatedAt); err != nil {
 		return core.Run{}, err
 	}
 	run.ClientCapabilities = unmarshalClientCapabilities(capabilitiesJSON)
 	run.Status = core.RunStatus(status)
+	run.StopReason = agent.StopReason(stopReason)
+	run.Trigger = core.RunTrigger(trigger)
 	run.StartedAt = mustParseTime(startedAt)
 	if finishedAt.Valid {
 		parsed := mustParseTime(finishedAt.String)
@@ -418,11 +425,12 @@ func scanRun(scanner runScanner) (core.Run, error) {
 func updateRun(ctx context.Context, execer sqlExecer, run core.Run) (sql.Result, error) {
 	return execer.ExecContext(ctx, `
 UPDATE runs
-SET client_capabilities_json = ?, status = ?, error = ?, finished_at = ?, updated_at = ?
+SET client_capabilities_json = ?, status = ?, error = ?, stop_reason = ?, finished_at = ?, updated_at = ?
 WHERE id = ?`,
 		marshalClientCapabilities(run.ClientCapabilities),
 		string(run.Status),
 		run.Error,
+		string(run.StopReason),
 		nullableTime(run.FinishedAt),
 		formatTime(run.UpdatedAt),
 		run.ID,

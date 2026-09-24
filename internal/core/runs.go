@@ -137,6 +137,7 @@ func (c *Core) AcceptTriggeredRun(ctx context.Context, input HandleTriggeredRunI
 		Client:             normalizeText(input.Client),
 		ExternalKey:        normalizeText(input.ExternalKey),
 		ClientCapabilities: input.ClientCapabilities,
+		Trigger:            RunTriggerAutomation,
 		Status:             RunStatusAccepted,
 		StartedAt:          now,
 		UpdatedAt:          now,

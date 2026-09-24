@@ -34,3 +34,17 @@ type Outcome struct {
 	MarkErrored    bool
 	Reached        Status
 }
+
+// StopReason says why a completed run stopped.
+type StopReason string
+
+const (
+	StopDone            StopReason = "done"
+	StopBudgetExhausted StopReason = "budget_exhausted"
+	StopLoopDetected    StopReason = "loop_detected"
+)
+
+// Continuable reports whether a run stopped before its work was done.
+func (r StopReason) Continuable() bool {
+	return r == StopBudgetExhausted || r == StopLoopDetected
+}

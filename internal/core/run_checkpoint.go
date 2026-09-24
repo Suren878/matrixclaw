@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -26,6 +27,7 @@ type RunCheckpoint struct {
 	ToolName       string             `json:"tool_name,omitempty"`
 	RecoveryCount  int                `json:"recovery_count,omitempty"`
 	RecoveryReason string             `json:"recovery_reason,omitempty"`
+	EngineState    json.RawMessage    `json:"engine_state,omitempty"`
 	UpdatedAt      time.Time          `json:"updated_at"`
 }
 

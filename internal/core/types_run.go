@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -26,6 +27,13 @@ type RunTiming struct {
 	LastEventAt    time.Time `json:"last_event_at,omitempty"`
 }
 
+// RunTrigger is what started a run and selects its default budget; empty means a
+// user message.
+type RunTrigger string
+
+// RunTriggerAutomation covers scheduled jobs and runs woken by finished background work.
+const RunTriggerAutomation RunTrigger = "automation"
+
 type Run struct {
 	ID                 string             `json:"id"`
 	SessionID          string             `json:"session_id"`
@@ -33,7 +41,10 @@ type Run struct {
 	Client             string             `json:"client,omitempty"`
 	ExternalKey        string             `json:"external_key,omitempty"`
 	ClientCapabilities ClientCapabilities `json:"client_capabilities,omitempty"`
+	Trigger            RunTrigger         `json:"trigger,omitempty"`
+	ContinuesRunID     string             `json:"continues_run_id,omitempty"`
 	Status             RunStatus          `json:"status"`
+	StopReason         agent.StopReason   `json:"stop_reason,omitempty"`
 	Error              string             `json:"error,omitempty"`
 	StartedAt          time.Time          `json:"started_at"`
 	FinishedAt         *time.Time         `json:"finished_at,omitempty"`
