@@ -12,6 +12,7 @@ const (
 	CommandPermissions = commandcatalog.CommandPermissions
 	CommandContext     = commandcatalog.CommandContext
 	CommandUsage       = commandcatalog.CommandUsage
+	CommandContinue    = commandcatalog.CommandContinue
 	CommandPlan        = commandcatalog.CommandPlan
 	CommandMemory      = commandcatalog.CommandMemory
 	CommandSearch      = commandcatalog.CommandSearch

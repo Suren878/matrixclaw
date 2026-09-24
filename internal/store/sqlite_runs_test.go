@@ -3,10 +3,12 @@ package store_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func TestRunStopContinuationAndTriggerAreStored(t *testing.T) {
@@ -45,5 +47,26 @@ func TestRunCheckpointKeepsEngineState(t *testing.T) {
 	stored, err := st.GetRunCheckpoint(ctx, "r1")
 	if err != nil || string(stored.EngineState) != `{"steps":3}` {
 		t.Fatalf("stored checkpoint = %+v err = %v", stored, err)
+	}
+}
+
+func TestLatestRunFollowsTheUserMessageOrder(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	createTestSession(t, st, "s1")
+	if _, err := st.GetLatestRunBySession(ctx, "s1"); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("empty session error = %v, want ErrNotFound", err)
+	}
+	for _, id := range []string{"r1", "r2"} {
+		message := transcript.Message{ID: "m_" + id, SessionID: "s1", RunID: id, Role: transcript.MessageRoleUser, Content: id, CreatedAt: testEpoch}
+		run := core.Run{ID: id, SessionID: "s1", UserMessageID: message.ID, Status: core.RunStatusCompleted, StartedAt: testEpoch, UpdatedAt: testEpoch}
+		if err := st.AcceptMessage(ctx, message, run); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	latest, err := st.GetLatestRunBySession(ctx, "s1")
+	if err != nil || latest.ID != "r2" {
+		t.Fatalf("latest = %+v err = %v", latest, err)
 	}
 }

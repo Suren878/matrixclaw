@@ -53,6 +53,7 @@ type RunStore interface {
 	CreateRun(ctx context.Context, run Run) error
 	GetRun(ctx context.Context, runID string) (Run, error)
 	GetActiveRunBySession(ctx context.Context, sessionID string) (Run, error)
+	GetLatestRunBySession(ctx context.Context, sessionID string) (Run, error)
 	ListActiveRuns(ctx context.Context) ([]Run, error)
 	UpdateRun(ctx context.Context, run Run) error
 	CompleteRun(ctx context.Context, assistantMessage transcript.Message, run Run) error

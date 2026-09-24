@@ -479,6 +479,16 @@ func (r ControlplaneRuntime) SendMessage(ctx context.Context, sessionID string, 
 	return client.SendMessage(ctx, sessionID, content, r.WorkingDir)
 }
 
+// ContinueSession continues the session's latest run for the client behind
+// externalKey, so its results are delivered there.
+func (r ControlplaneRuntime) ContinueSession(ctx context.Context, externalKey string, sessionID string) (core.AcceptRunResult, error) {
+	client, err := r.client(externalKey)
+	if err != nil {
+		return core.AcceptRunResult{}, err
+	}
+	return client.ContinueSession(ctx, sessionID, r.WorkingDir)
+}
+
 func (r ControlplaneRuntime) SaveStorageFile(ctx context.Context, storagePath string, content []byte, title string, tags []string, mimeType string) (localstorage.Entry, error) {
 	client, err := r.client("")
 	if err != nil {

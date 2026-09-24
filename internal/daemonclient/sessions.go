@@ -281,6 +281,25 @@ func (c *Client) SendMessagePartsModeWithDelivery(ctx context.Context, sessionID
 	return response, nil
 }
 
+// ContinueSession starts a run that continues the session's latest run with a
+// fresh budget.
+func (c *Client) ContinueSession(ctx context.Context, sessionID string, workingDir string) (core.AcceptRunResult, error) {
+	var response core.AcceptRunResult
+	request := core.HandleMessageInput{
+		Client:             c.ClientName,
+		ExternalKey:        c.ExternalKey,
+		ClientCapabilities: c.Capabilities,
+		SessionID:          strings.TrimSpace(sessionID),
+		WorkingDir:         strings.TrimSpace(workingDir),
+		AllowAutoBindOne:   true,
+		Continue:           true,
+	}
+	if err := c.doJSON(ctx, http.MethodPost, "/v1/messages", request, &response); err != nil {
+		return core.AcceptRunResult{}, err
+	}
+	return response, nil
+}
+
 func (c *Client) ListSessionProviders(ctx context.Context) ([]core.SessionProviderOption, error) {
 	var response core.SessionProvidersResponse
 	if err := c.doJSON(ctx, http.MethodGet, "/v1/session-providers", nil, &response); err != nil {

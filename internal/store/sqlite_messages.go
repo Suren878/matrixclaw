@@ -200,6 +200,25 @@ LIMIT 1`,
 	return run, nil
 }
 
+// GetLatestRunBySession returns the session's newest run, ordered by its user message.
+func (s *SQLiteStore) GetLatestRunBySession(ctx context.Context, sessionID string) (core.Run, error) {
+	row := s.db.QueryRowContext(ctx, `
+SELECT `+runColumns+`
+FROM runs
+WHERE session_id = ?
+ORDER BY (SELECT seq FROM messages WHERE messages.id = runs.user_message_id) DESC
+LIMIT 1`, strings.TrimSpace(sessionID))
+
+	run, err := scanRun(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return core.Run{}, core.ErrNotFound
+		}
+		return core.Run{}, fmt.Errorf("store: get latest run by session: %w", err)
+	}
+	return run, nil
+}
+
 func (s *SQLiteStore) ListActiveRuns(ctx context.Context) ([]core.Run, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT `+runColumns+`

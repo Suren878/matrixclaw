@@ -13,6 +13,9 @@ import (
 const runScheduleLease = 30 * time.Second
 
 func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptRunResult, error) {
+	if input.Continue {
+		return c.acceptContinueRun(ctx, input)
+	}
 	text := normalizeText(input.Text)
 	parts := transcript.NormalizeMessageParts(text, input.Parts)
 	if text == "" && !messagePartsHaveUserContent(parts) {
@@ -46,7 +49,7 @@ func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptR
 			interruptRunID = active.ID
 		}
 	case errors.Is(err, ErrNotFound):
-		result, err = c.createAcceptedRun(ctx, session, text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress)
+		result, err = c.createAcceptedRun(ctx, session, text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress, "")
 		if err != nil {
 			gate.Unlock()
 			return AcceptRunResult{}, err

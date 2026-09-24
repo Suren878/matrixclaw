@@ -84,6 +84,10 @@ type SessionSendRuntime interface {
 	SendMessage(ctx context.Context, sessionID string, content string) (core.AcceptRunResult, error)
 }
 
+type ContinueRuntime interface {
+	ContinueSession(ctx context.Context, externalKey string, sessionID string) (core.AcceptRunResult, error)
+}
+
 type ContextRuntime interface {
 	SessionContext(ctx context.Context, sessionID string) (core.ContextReport, error)
 	CompactSession(ctx context.Context, sessionID string) (core.CompactSessionResult, error)
@@ -190,6 +194,7 @@ type Dispatcher struct {
 	permissions    PermissionRuntime
 	messages       SessionMessageRuntime
 	sender         SessionSendRuntime
+	continuer      ContinueRuntime
 	contextRuntime ContextRuntime
 	usage          UsageRuntime
 	plan           PlanRuntime
@@ -223,6 +228,7 @@ func New(runtime any, workingDir string) *Dispatcher {
 		d.permissions, _ = runtime.(PermissionRuntime)
 		d.messages, _ = runtime.(SessionMessageRuntime)
 		d.sender, _ = runtime.(SessionSendRuntime)
+		d.continuer, _ = runtime.(ContinueRuntime)
 		d.contextRuntime, _ = runtime.(ContextRuntime)
 		d.usage, _ = runtime.(UsageRuntime)
 		d.plan, _ = runtime.(PlanRuntime)
@@ -275,6 +281,8 @@ func (d *Dispatcher) Handle(ctx context.Context, externalKey string, text string
 		return d.handleContext(ctx, externalKey, args)
 	case CommandUsage:
 		return d.handleUsage(ctx, externalKey)
+	case CommandContinue:
+		return d.handleContinue(ctx, externalKey)
 	case CommandPlan:
 		return d.handlePlan(ctx, externalKey, args)
 	case CommandMemory:
