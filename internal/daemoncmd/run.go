@@ -86,14 +86,18 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	app.WithExternalAgents(externalRegistry, sqliteStore)
+	lifetime, stopLifetime := context.WithCancel(ctx)
+	defer stopLifetime()
+	app.WithLifetime(lifetime)
 	runStarter, err := goworkflows.NewForStore(bootstrap.DBPath, app)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = runStarter.Close() }()
-	lifetime, stopLifetime := context.WithCancel(ctx)
-	defer stopLifetime()
-	app.WithLifetime(lifetime)
+	defer func() {
+		// End the lifetime first so runs interrupted by closing the worker are not rescheduled.
+		stopLifetime()
+		_ = runStarter.Close()
+	}()
 
 	app.WithRunStarter(runStarter)
 	automationService := automation.NewService(automationStore, app, bootstrap.Timezone).
