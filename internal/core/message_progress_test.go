@@ -18,10 +18,10 @@ type progressCountingStore struct {
 	progressUpdates int
 }
 
-func (s *progressCountingStore) SaveMessageProgress(_ context.Context, message transcript.Message) error {
+func (s *progressCountingStore) SaveMessageProgress(_ context.Context, message transcript.Message) (int64, error) {
 	s.progressSaves++
 	s.message = message
-	return nil
+	return int64(s.progressSaves), nil
 }
 
 func (s *progressCountingStore) UpdateMessageProgress(_ context.Context, message transcript.Message) error {

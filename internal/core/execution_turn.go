@@ -192,7 +192,7 @@ func (c *Core) generateAssistantTurn(ctx context.Context, turn turnExecution, re
 		assistant.UpdatedAt = now
 		if !assistantSaved {
 			assistant.CreatedAt = now
-			if err := c.saveMessageProgress(ctx, assistant); err != nil {
+			if _, err := c.saveMessageProgress(ctx, assistant); err != nil {
 				return err
 			}
 			assistantSaved = true

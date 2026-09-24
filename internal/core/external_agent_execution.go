@@ -306,7 +306,7 @@ func (c *Core) saveExternalAssistantProgress(ctx context.Context, assistant *tra
 	if !*saved {
 		assistant.CreatedAt = now
 		assistant.UpdatedAt = now
-		if err := c.saveMessageProgress(ctx, *assistant); err != nil {
+		if _, err := c.saveMessageProgress(ctx, *assistant); err != nil {
 			return err
 		}
 		*saved = true

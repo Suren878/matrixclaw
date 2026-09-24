@@ -14,18 +14,27 @@ import (
 )
 
 func (s *SQLiteStore) SaveMessage(ctx context.Context, message transcript.Message) error {
-	if err := insertMessage(ctx, s.db, message); err != nil {
-		return fmt.Errorf("store: save message: %w", err)
-	}
-	_ = upsertMessageSearch(ctx, s.db, message)
-	return nil
+	_, err := s.AppendMessage(ctx, message)
+	return err
 }
 
-func (s *SQLiteStore) SaveMessageProgress(ctx context.Context, message transcript.Message) error {
-	if err := insertMessage(ctx, s.db, message); err != nil {
-		return fmt.Errorf("store: save message progress: %w", err)
+// AppendMessage stores a message, indexes it for search and returns its seq.
+func (s *SQLiteStore) AppendMessage(ctx context.Context, message transcript.Message) (int64, error) {
+	seq, err := insertMessage(ctx, s.db, message)
+	if err != nil {
+		return 0, fmt.Errorf("store: save message: %w", err)
 	}
-	return nil
+	_ = upsertMessageSearch(ctx, s.db, message)
+	return seq, nil
+}
+
+// SaveMessageProgress stores a streaming snapshot without search indexing and returns its seq.
+func (s *SQLiteStore) SaveMessageProgress(ctx context.Context, message transcript.Message) (int64, error) {
+	seq, err := insertMessage(ctx, s.db, message)
+	if err != nil {
+		return 0, fmt.Errorf("store: save message progress: %w", err)
+	}
+	return seq, nil
 }
 
 func (s *SQLiteStore) UpdateMessage(ctx context.Context, message transcript.Message) error {
@@ -243,7 +252,7 @@ func (s *SQLiteStore) CompleteRun(ctx context.Context, assistantMessage transcri
 		return fmt.Errorf("store: begin complete run: %w", err)
 	}
 
-	if err := insertMessage(ctx, tx, assistantMessage); err != nil {
+	if _, err := insertMessage(ctx, tx, assistantMessage); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("store: insert assistant message: %w", err)
 	}
@@ -271,7 +280,7 @@ func (s *SQLiteStore) AcceptMessage(ctx context.Context, message transcript.Mess
 		return fmt.Errorf("store: begin accept message: %w", err)
 	}
 
-	if err := insertMessage(ctx, tx, message); err != nil {
+	if _, err := insertMessage(ctx, tx, message); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("store: insert accepted message: %w", err)
 	}
@@ -314,11 +323,18 @@ type runScanner interface {
 
 const messageColumns = `id, session_id, run_id, role, content, parts_json, model, provider, created_at, updated_at, seq`
 
-// insertMessage assigns the next database-wide seq in the same statement.
-func insertMessage(ctx context.Context, execer sqlExecer, message transcript.Message) error {
-	_, err := execer.ExecContext(ctx, `
+// sqlRowQueryer is satisfied by *sql.DB and *sql.Tx.
+type sqlRowQueryer interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// insertMessage assigns the next database-wide seq in the same statement and returns it.
+func insertMessage(ctx context.Context, queryer sqlRowQueryer, message transcript.Message) (int64, error) {
+	var seq int64
+	err := queryer.QueryRowContext(ctx, `
 INSERT INTO messages(id, session_id, run_id, role, content, parts_json, model, provider, created_at, updated_at, seq)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM messages))`,
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM messages))
+RETURNING seq`,
 		message.ID,
 		message.SessionID,
 		message.RunID,
@@ -329,8 +345,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM mess
 		message.Provider,
 		formatTime(message.CreatedAt),
 		formatTime(messageUpdatedAt(message)),
-	)
-	return err
+	).Scan(&seq)
+	return seq, err
 }
 
 func scanMessage(scanner messageScanner) (transcript.Message, error) {

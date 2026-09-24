@@ -41,6 +41,7 @@ type DeliveryStore interface {
 
 type MessageStore interface {
 	SaveMessage(ctx context.Context, message transcript.Message) error
+	AppendMessage(ctx context.Context, message transcript.Message) (int64, error)
 	UpdateMessage(ctx context.Context, message transcript.Message) error
 	GetMessage(ctx context.Context, messageID string) (transcript.Message, error)
 	HasToolResult(ctx context.Context, sessionID string, toolCallID string) (bool, error)
