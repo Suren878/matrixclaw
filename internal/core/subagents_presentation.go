@@ -172,28 +172,6 @@ func (c *Core) subagentTaskDetail(task SubagentTask) string {
 	return strings.Join(lines, "\n")
 }
 
-func subagentFinishedResultContent(task SubagentTask) string {
-	verb := "finished"
-	if subagentTaskFailed(task) {
-		verb = "failed"
-	}
-	lines := []string{
-		fmt.Sprintf("Subagent %s %s", subagentTaskAgentName(task), verb),
-		"Task ID: " + task.ID,
-		"Status: " + string(task.Status),
-	}
-	if taskLabel := strings.TrimSpace(task.DisplayName); taskLabel != "" {
-		lines = append(lines, "Task: "+taskLabel)
-	}
-	if summary := strings.TrimSpace(task.Summary); summary != "" {
-		lines = append(lines, "", summary)
-	}
-	if task.Error != "" && !strings.Contains(strings.TrimSpace(task.Summary), strings.TrimSpace(task.Error)) {
-		lines = append(lines, "", "Error: "+task.Error)
-	}
-	return strings.Join(lines, "\n")
-}
-
 func subagentCompletionPrompt(tasks []SubagentTask) string {
 	if len(tasks) == 1 {
 		task := tasks[0]

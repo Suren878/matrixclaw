@@ -134,9 +134,7 @@ func (c *Core) syncAsyncSubagentTaskAfterRun(ctx context.Context, task SubagentT
 	if err != nil {
 		return err
 	}
-	if err := c.updateSubagentResultMessage(ctx, task); err != nil {
-		return err
-	}
+	c.publishSubagentToolUpdate(task)
 	return c.deliverPendingSubagentCompletionsForParent(ctx, task.ParentSessionID)
 }
 
@@ -286,57 +284,23 @@ func (c *Core) parentReadyForSubagentAutoResume(ctx context.Context, parentSessi
 	return true, nil
 }
 
-func (c *Core) updateSubagentResultMessage(ctx context.Context, task SubagentTask) error {
+// publishSubagentToolUpdate tells clients the parent's spawn_subagent call finished;
+// the result itself reaches the parent through the completion run.
+func (c *Core) publishSubagentToolUpdate(task SubagentTask) {
 	resultMessageID := normalizeText(task.ResultMessageID)
 	if resultMessageID == "" {
-		return nil
+		return
 	}
-	messages, err := c.store.ListMessages(ctx, task.ParentSessionID, 0)
-	if err != nil {
-		return err
-	}
-	for _, message := range messages {
-		if message.ID != resultMessageID {
-			continue
-		}
-		content := subagentFinishedResultContent(task)
-		metadataRaw, err := marshalJSONRaw(task)
-		if err != nil {
-			return err
-		}
-		message.Content = normalizeToolContent(content)
-		message.UpdatedAt = c.now().UTC()
-		for i := range message.Parts {
-			if message.Parts[i].ToolResult == nil {
-				continue
-			}
-			message.Parts[i].ToolResult.Content = content
-			message.Parts[i].ToolResult.Metadata = metadataRaw
-			message.Parts[i].ToolResult.Status = string(subagentTaskToolResultStatus(task))
-			message.Parts[i].ToolResult.IsError = subagentTaskFailed(task)
-		}
-		if err := c.store.UpdateMessage(ctx, message); err != nil {
-			return err
-		}
-		c.publishEvent(Event{
-			Type:      EventMessageUpdated,
-			SessionID: message.SessionID,
-			RunID:     message.RunID,
-			Payload:   message,
-		})
-		c.publishToolUpdate(task.ParentSessionID, task.ParentRunID, ToolUpdate{
-			ToolCallID:      task.ParentToolCallID,
-			ToolName:        spawnSubagentToolName,
-			State:           subagentTaskToolLifecycleState(task),
-			ResultStatus:    string(subagentTaskToolResultStatus(task)),
-			RunID:           task.ParentRunID,
-			SessionID:       task.ParentSessionID,
-			ResultMessageID: resultMessageID,
-			Error:           task.Error,
-		})
-		return nil
-	}
-	return nil
+	c.publishToolUpdate(task.ParentSessionID, task.ParentRunID, ToolUpdate{
+		ToolCallID:      task.ParentToolCallID,
+		ToolName:        spawnSubagentToolName,
+		State:           subagentTaskToolLifecycleState(task),
+		ResultStatus:    string(subagentTaskToolResultStatus(task)),
+		RunID:           task.ParentRunID,
+		SessionID:       task.ParentSessionID,
+		ResultMessageID: resultMessageID,
+		Error:           task.Error,
+	})
 }
 
 func (c *Core) RecoverSubagentTasks(ctx context.Context) error {

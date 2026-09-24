@@ -26,14 +26,6 @@ func errorText(result tools.Result) string {
 	return ""
 }
 
-func normalizeToolContent(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "Tool completed"
-	}
-	return value
-}
-
 func toolResultCallIDs(messages []transcript.Message) map[string]struct{} {
 	resultIDs := make(map[string]struct{})
 	for _, message := range messages {

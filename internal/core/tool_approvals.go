@@ -182,9 +182,7 @@ func (c *Core) resolveSubagentApprovalBridge(ctx context.Context, approval Appro
 		return Approval{}, err
 	}
 	if task.Mode == SubagentTaskModeAsync {
-		if err := c.updateSubagentResultMessage(ctx, task); err != nil {
-			return Approval{}, err
-		}
+		c.publishSubagentToolUpdate(task)
 		task, err = c.queueSubagentCompletionRecord(ctx, task)
 		if err != nil {
 			return Approval{}, err
