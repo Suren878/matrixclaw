@@ -66,8 +66,13 @@ type generateContentResponse struct {
 		Content      geminiContent `json:"content"`
 		FinishReason string        `json:"finishReason,omitempty"`
 	} `json:"candidates"`
+	PromptFeedback struct {
+		BlockReason string `json:"blockReason,omitempty"`
+	} `json:"promptFeedback,omitempty"`
 	UsageMetadata geminiUsageMetadata `json:"usageMetadata,omitempty"`
 	Error         *struct {
+		Code    int    `json:"code"`
+		Status  string `json:"status"`
 		Message string `json:"message"`
 	} `json:"error,omitempty"`
 }

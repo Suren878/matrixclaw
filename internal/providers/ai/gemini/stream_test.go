@@ -55,3 +55,57 @@ func TestStreamIsIncompleteWithoutFinishReasonAndFailsOnErrorChunk(t *testing.T)
 		t.Fatalf("error chunk=%v", err)
 	}
 }
+
+func TestBlockedPromptStopsAsContentFilter(t *testing.T) {
+	stream := `data: {"promptFeedback":{"blockReason":"PROHIBITED_CONTENT"},"usageMetadata":{"promptTokenCount":7}}` + "\n\n"
+	response, err := (&Runtime{}).decodeStream(context.Background(), strings.NewReader(stream))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StopReason != providers.StopContentFilter || response.Text != "" || response.Usage.PromptTokens != 7 {
+		t.Fatalf("response=%+v", response)
+	}
+}
+
+func TestStreamErrorChunkNamesItsStatusAndRetriesOnlyUnavailable(t *testing.T) {
+	for _, tc := range []struct {
+		chunk     string
+		want      []string
+		retryable bool
+	}{
+		{`{"error":{"code":503,"status":"UNAVAILABLE","message":"The model is overloaded."}}`, []string{"503", "UNAVAILABLE", "overloaded"}, true},
+		{`{"error":{"code":500,"status":"INTERNAL"}}`, []string{"500", "INTERNAL"}, true},
+		{`{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"quota exceeded"}}`, []string{"429", "RESOURCE_EXHAUSTED", "quota exceeded"}, false},
+	} {
+		_, err := (&Runtime{}).decodeStream(context.Background(), strings.NewReader("data: "+tc.chunk+"\n\n"))
+		if err == nil || providers.IsRetryableGenerationError(err) != tc.retryable {
+			t.Fatalf("%s: error=%v, want retryable=%v", tc.chunk, err, tc.retryable)
+		}
+		for _, want := range tc.want {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("%s: error %q lacks %q", tc.chunk, err, want)
+			}
+		}
+	}
+}
+
+func TestStreamAssemblesTextAndSignedCallFromSeparateChunks(t *testing.T) {
+	stream := strings.Join([]string{
+		`data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Reading a."}]}}]}`,
+		`data: {"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"read","args":{"path":"a"}},"thoughtSignature":"sig-a"}]}}]}`,
+		`data: {"candidates":[{"content":{"role":"model","parts":[{"text":""}]},"finishReason":"STOP"}]}`,
+	}, "\n\n") + "\n\n"
+	response, err := (&Runtime{}).decodeStream(context.Background(), strings.NewReader(stream))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Text != "Reading a." || response.StopReason != providers.StopToolUse {
+		t.Fatalf("response=%+v", response)
+	}
+	if len(response.ToolCalls) != 1 || response.ToolCalls[0].Name != "read" || string(response.ToolCalls[0].Arguments) != `{"path":"a"}` {
+		t.Fatalf("tool calls=%+v", response.ToolCalls)
+	}
+	if len(response.Reasoning) != 1 || response.Reasoning[0].Signature != "sig-a" {
+		t.Fatalf("reasoning=%+v", response.Reasoning)
+	}
+}

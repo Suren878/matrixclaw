@@ -52,3 +52,19 @@ func TestThoughtSignatureIsReturnedAsReasoning(t *testing.T) {
 		t.Fatalf("response=%+v", response)
 	}
 }
+
+func TestUnsignedToolStepGetsTheDocumentedDummySignature(t *testing.T) {
+	payloads := capturePayloads(t, providers.Request{Messages: []providers.Message{
+		{Role: "user", Content: "Compare a and b."},
+		{Role: "assistant", ToolCalls: []providers.ToolCall{
+			{ID: "g1", Name: "read", Arguments: json.RawMessage(`{"path":"a"}`)},
+			{ID: "g2", Name: "read", Arguments: json.RawMessage(`{"path":"b"}`)},
+		}},
+		{Role: "tool", ToolCallID: "g1", Content: "A"},
+		{Role: "tool", ToolCallID: "g2", Content: "B"},
+	}})
+	parts := payloads[0].Contents[1].Parts
+	if len(parts) != 2 || parts[0].ThoughtSignature != "skip_thought_signature_validator" || parts[1].ThoughtSignature != "" {
+		t.Fatalf("model parts=%+v, want the dummy signature on the first call only", parts)
+	}
+}

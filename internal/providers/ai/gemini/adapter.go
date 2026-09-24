@@ -15,6 +15,8 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
+const skipThoughtSignatureValidator = "skip_thought_signature_validator"
+
 var transientRetryBackoffs = []time.Duration{
 	200 * time.Millisecond,
 	750 * time.Millisecond,
@@ -236,6 +238,10 @@ func encodeMessage(message providers.Message, toolNames map[string]string) gemin
 			parts = append(parts, geminiPart{Text: content})
 		}
 		signature := thoughtSignature(message.Reasoning)
+		if signature == "" {
+			// Steps saved without a signature; Gemini documents this value for them.
+			signature = skipThoughtSignatureValidator
+		}
 		for _, toolCall := range message.ToolCalls {
 			name := strings.TrimSpace(toolCall.Name)
 			if name == "" {
@@ -356,21 +362,24 @@ func encodeTools(tools []providers.ToolDefinition) []geminiFunctionDeclaration {
 }
 
 // decodeStream reads streamGenerateContent SSE. The stream has no terminal event,
-// so a reply is complete only once a chunk carries finishReason.
+// so a reply is complete only once a chunk carries finishReason or blocks the prompt.
 func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.Response, error) {
 	var parts []geminiPart
 	var usage geminiUsageMetadata
-	finishReason := ""
+	finishReason, blockReason := "", ""
 	err := providers.ScanSSE(ctx, body, func(event providers.SSEEvent) error {
 		var chunk generateContentResponse
 		if err := json.Unmarshal([]byte(event.Data), &chunk); err != nil {
 			return fmt.Errorf("gemini: decode stream chunk: %w", err)
 		}
 		if chunk.Error != nil {
-			return fmt.Errorf("gemini: %s", strings.TrimSpace(chunk.Error.Message))
+			return streamError(chunk.Error.Code, chunk.Error.Status, chunk.Error.Message)
 		}
 		if chunk.UsageMetadata != (geminiUsageMetadata{}) {
 			usage = chunk.UsageMetadata
+		}
+		if chunk.PromptFeedback.BlockReason != "" {
+			blockReason = chunk.PromptFeedback.BlockReason
 		}
 		if len(chunk.Candidates) == 0 {
 			return nil
@@ -392,18 +401,30 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 	if err != nil {
 		return providers.Response{}, err
 	}
+	if blockReason != "" {
+		return r.reply(nil, providers.StopContentFilter, usage)
+	}
 	if finishReason == "" {
 		return providers.Response{}, fmt.Errorf("gemini: %w", providers.ErrIncompleteResponse)
 	}
-	return r.reply(parts, finishReason, usage)
-}
-
-func (r *Runtime) reply(parts []geminiPart, finishReason string, usage geminiUsageMetadata) (providers.Response, error) {
 	stop, err := geminiStopReason(finishReason)
 	if err != nil {
 		return providers.Response{}, err
 	}
+	return r.reply(parts, stop, usage)
+}
 
+// streamError reports a mid-stream error chunk; like an HTTP 5xx, a server-side
+// failure is retryable while nothing has been generated.
+func streamError(code int, status string, message string) error {
+	detail := strings.Join(strings.Fields(fmt.Sprintf("stream error %d %s %s", code, status, message)), " ")
+	if shouldRetryStatus(code) || status == "UNAVAILABLE" || status == "INTERNAL" {
+		return fmt.Errorf("gemini: %s: %w", detail, providers.ErrIncompleteResponse)
+	}
+	return fmt.Errorf("gemini: %s", detail)
+}
+
+func (r *Runtime) reply(parts []geminiPart, stop providers.StopReason, usage geminiUsageMetadata) (providers.Response, error) {
 	var text strings.Builder
 	var toolCalls []providers.ToolCall
 	var reasoning []providers.ReasoningBlock
