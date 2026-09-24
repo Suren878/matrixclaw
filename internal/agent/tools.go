@@ -144,8 +144,12 @@ func (r *run) rejectCall(ctx context.Context, req callRequest, reason string) er
 	if err := r.history.append(ctx, r.callMessage(req, true)); err != nil {
 		return err
 	}
-	_, err := r.appendResult(ctx, req, tools.Result{Content: reason, IsError: true})
-	return err
+	result := tools.Result{Content: reason, IsError: true}
+	if _, err := r.appendResult(ctx, req, result); err != nil {
+		return err
+	}
+	r.counters.observeCall(req.name, req.args, result)
+	return nil
 }
 
 func (r *run) finishCall(ctx context.Context, req callRequest, call tools.Call, result tools.Result) error {
@@ -160,6 +164,7 @@ func (r *run) finishCall(ctx context.Context, req callRequest, call tools.Call, 
 	if err != nil {
 		return err
 	}
+	r.counters.observeCall(req.name, req.args, result)
 	r.Sink.Emit(Event{Kind: EventToolFinished, SessionID: r.task.SessionID, RunID: r.task.RunID, ToolCallID: req.id, ToolName: req.name, ResultMessageID: message.ID, Result: result})
 	if err := r.Tools.Finish(ctx, req.name, call, result, message); err != nil {
 		return err

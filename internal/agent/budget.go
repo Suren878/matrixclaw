@@ -9,13 +9,17 @@ import (
 // wrapUpShare is the used share of a limit at which the run is told to wrap up.
 const wrapUpShare = 0.8
 
-// Counters is what a run has used of its budget; it is checkpointed so a parked
-// or restarted run continues from it.
+// Counters is what a run has used of its budget and its no-progress streak; it is
+// checkpointed so a parked or restarted run continues from it.
 type Counters struct {
-	Steps      int           `json:"steps,omitempty"`
-	Tokens     int64         `json:"tokens,omitempty"`
-	Active     time.Duration `json:"active,omitempty"`
-	WrapUpSent bool          `json:"wrap_up_sent,omitempty"`
+	Steps       int           `json:"steps,omitempty"`
+	Tokens      int64         `json:"tokens,omitempty"`
+	Active      time.Duration `json:"active,omitempty"`
+	WrapUpSent  bool          `json:"wrap_up_sent,omitempty"`
+	LoopHash    string        `json:"loop_hash,omitempty"`
+	LoopTool    string        `json:"loop_tool,omitempty"`
+	LoopRepeats int           `json:"loop_repeats,omitempty"`
+	LoopWarned  bool          `json:"loop_warned,omitempty"`
 }
 
 // active is the run's working time: what it had used before plus this Run call.
@@ -26,8 +30,17 @@ func (r *run) active() time.Duration {
 // prepareStep journals the engine notes due before this step's model call and
 // returns the stop reason when this step is the tool-less final turn.
 func (r *run) prepareStep(ctx context.Context) (StopReason, error) {
+	if r.counters.LoopRepeats >= loopStopRepeats {
+		return StopLoopDetected, r.appendEngineMessage(ctx, loopStopText(r.counters.LoopTool))
+	}
 	if reached := r.exhausted(); reached != "" {
 		return StopBudgetExhausted, r.appendEngineMessage(ctx, budgetStopText(reached))
+	}
+	if r.counters.LoopRepeats >= loopWarnRepeats && !r.counters.LoopWarned {
+		if err := r.appendEngineMessage(ctx, loopWarningText(r.counters.LoopTool)); err != nil {
+			return "", err
+		}
+		r.counters.LoopWarned = true
 	}
 	if !r.counters.WrapUpSent {
 		if left := r.remaining(); left != "" {
