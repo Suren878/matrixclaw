@@ -140,6 +140,29 @@ func TestToolRoundTripIsJournaledInOrder(t *testing.T) {
 	}
 }
 
+func TestUpdatedMessageEventsCarryTheStoredSeq(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["read"] = readTool
+	model := agenttest.NewScriptedModel(calls(call("c1", "read")), text("Done."))
+
+	run(t, f, model)
+
+	updates := 0
+	for _, event := range f.Sink.Events {
+		if event.Kind != agent.EventMessageUpdated {
+			continue
+		}
+		updates++
+		stored, ok := f.Journal.Message(event.Message.ID)
+		if !ok || event.Message.Seq == 0 || event.Message.Seq != stored.Seq {
+			t.Fatalf("updated %s seq = %d, stored %d", event.Message.ID, event.Message.Seq, stored.Seq)
+		}
+	}
+	if updates == 0 {
+		t.Fatal("no message.updated events")
+	}
+}
+
 func TestThirtyTwoToolStepsFailTheRun(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["read"] = readTool

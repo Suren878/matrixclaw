@@ -78,8 +78,7 @@ func (h *history) stream(ctx context.Context, message transcript.Message) error 
 	if err := h.port.Stream(ctx, message); err != nil {
 		return err
 	}
-	h.replace(message)
-	h.emit(EventMessageUpdated, message)
+	h.emit(EventMessageUpdated, h.replace(message))
 	return nil
 }
 
@@ -87,8 +86,7 @@ func (h *history) finish(ctx context.Context, message transcript.Message) error 
 	if err := h.port.FinishStreaming(ctx, message); err != nil {
 		return err
 	}
-	h.replace(message)
-	h.emit(EventMessageUpdated, message)
+	h.emit(EventMessageUpdated, h.replace(message))
 	return nil
 }
 
@@ -98,15 +96,17 @@ func (h *history) add(message transcript.Message) {
 	h.indexParts(len(h.messages) - 1)
 }
 
-func (h *history) replace(message transcript.Message) {
+// replace stores the new version of a message under its known seq and returns it.
+func (h *history) replace(message transcript.Message) transcript.Message {
 	i, ok := h.index[message.ID]
 	if !ok {
 		h.add(message)
-		return
+		return message
 	}
 	message.Seq = h.messages[i].Seq
 	h.messages[i] = message
 	h.indexParts(i)
+	return message
 }
 
 func (h *history) indexParts(i int) {
