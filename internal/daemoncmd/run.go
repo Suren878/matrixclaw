@@ -71,8 +71,6 @@ func Run(ctx context.Context) error {
 	}
 	defer func() { _ = skillsModule.Close() }()
 	moduleRegistry := modules.NewRegistry(storageModule, mcpModule, skillsModule)
-	assistant := bootstrap.Assistant
-	assistant.SystemPrompt = appendModuleContext(assistant.SystemPrompt, moduleRegistry.Context())
 
 	app := core.New(sqliteStore).
 		WithSessionLLMs(bootstrap.SessionLLMs).
@@ -80,7 +78,10 @@ func Run(ctx context.Context) error {
 		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()}).
 		WithSkillsContext(skillsModule).
 		WithRuntimeStatusContext(&setupRuntimeStatusContext{setup: bootstrap.SetupService, runtime: localruntime.New("")})
-	app.SetAssistantProfile(assistant)
+	// The workflow worker (below) may start executing persisted runs before
+	// supervisor.ApplyBootstrap runs, so the profile is set here too, via the
+	// same helper, ensuring module context is never missing.
+	applyAssistantProfile(app, bootstrap.Assistant, moduleRegistry.Context)
 	externalRegistry, externalRuntimes, err := builtins.BuildRegistry(bootstrap.ExternalAgents)
 	if err != nil {
 		return err
@@ -146,6 +147,7 @@ func Run(ctx context.Context) error {
 	server.SetSetupService(bootstrap.SetupService)
 	server.SetRealtimeVoiceService(newRealtimeVoiceManager(bootstrap.SetupService, app))
 	supervisor := newSupervisor(ctx, server, app, osmGeo)
+	supervisor.SetModuleContext(moduleRegistry.Context)
 	supervisor.SetExternalAgents(sqliteStore, externalRuntimes)
 	defer supervisor.CloseExternalAgents()
 	httpServer := &http.Server{

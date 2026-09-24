@@ -30,9 +30,28 @@ type supervisor struct {
 	clients          *clientRegistry
 	externalStore    externalagents.AttachmentStore
 	externalRuntimes []externalagents.RuntimeAgent
+	moduleContext    func() []string
 
 	restartMu  sync.Mutex
 	restarting bool
+}
+
+// assistantProfileSetter is the minimal seam applyAssistantProfile needs;
+// *core.Core satisfies it. Lets tests substitute a fake profile sink.
+type assistantProfileSetter interface {
+	SetAssistantProfile(core.AssistantProfile)
+}
+
+// applyAssistantProfile appends the current module context (storage/MCP/skills)
+// to base.SystemPrompt and sets the resulting profile on app.
+func applyAssistantProfile(app assistantProfileSetter, base core.AssistantProfile, moduleContext func() []string) {
+	if app == nil {
+		return
+	}
+	if moduleContext != nil {
+		base.SystemPrompt = appendModuleContext(base.SystemPrompt, moduleContext())
+	}
+	app.SetAssistantProfile(base)
 }
 
 func newSupervisor(ctx context.Context, server *api.Server, app *core.Core, geo *tools.OSMService) *supervisor {
@@ -53,9 +72,15 @@ func newSupervisor(ctx context.Context, server *api.Server, app *core.Core, geo 
 func (s *supervisor) ApplyBootstrap(bootstrap bootstrapConfig) error {
 	if s.app != nil {
 		s.app.SetSessionLLMs(bootstrap.SessionLLMs)
-		s.app.SetAssistantProfile(bootstrap.Assistant)
+		applyAssistantProfile(s.app, bootstrap.Assistant, s.moduleContext)
 	}
 	return s.clients.Apply(s.ctx, bootstrap)
+}
+
+// SetModuleContext sets the module-context source (storage/MCP/skills) that
+// ApplyBootstrap appends to the assistant profile's system prompt.
+func (s *supervisor) SetModuleContext(moduleContext func() []string) {
+	s.moduleContext = moduleContext
 }
 
 func (s *supervisor) Reload(ctx context.Context) error {
