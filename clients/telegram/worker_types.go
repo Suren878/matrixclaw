@@ -56,11 +56,13 @@ type Worker struct {
 
 type runDeliveryState struct {
 	statusSent        bool
+	continueOffered   bool
 	assistant         map[string]sentAssistantMessage
 	approvals         map[string]int64
 	toolCalls         map[string]sentToolCallStatus
 	voiceResults      map[string]int64
 	voiceFingerprints map[string]int64
+	notes             map[string]struct{}
 }
 
 type sentToolCallStatus struct {

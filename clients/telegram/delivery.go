@@ -162,12 +162,20 @@ func (w *Worker) deliverChatRunDelivery(ctx context.Context, target chatTarget, 
 	if err := w.renderToolResultUpdates(ctx, target, messages, runID, state); err != nil {
 		return err
 	}
+	if err := w.renderEngineNotes(ctx, target, messages, runID, state); err != nil {
+		return err
+	}
 	assistantCtx := ctx
 	if run.Status != core.RunStatusCompleted {
 		assistantCtx = silentTelegramDelivery(ctx)
 	}
 	if err := w.renderAssistantUpdates(assistantCtx, target, messages, runID, state); err != nil {
 		return err
+	}
+	if run.Status == core.RunStatusCompleted {
+		if err := w.offerContinue(ctx, target, run, state); err != nil {
+			return err
+		}
 	}
 	if run.Status != core.RunStatusCompleted && !state.statusSent {
 		if err := w.sendText(ctx, target, renderRunStatus(run)); err != nil {
@@ -198,6 +206,9 @@ func (w *Worker) deliverActiveRunProgress(ctx context.Context, target chatTarget
 		return err
 	}
 	if err := w.renderToolResultUpdates(ctx, target, messages, runID, state); err != nil {
+		return err
+	}
+	if err := w.renderEngineNotes(ctx, target, messages, runID, state); err != nil {
 		return err
 	}
 	if err := w.renderAssistantStreamUpdate(ctx, target, messages, runID, state); err != nil {
@@ -343,6 +354,7 @@ func newRunDeliveryState() *runDeliveryState {
 		toolCalls:         map[string]sentToolCallStatus{},
 		voiceResults:      map[string]int64{},
 		voiceFingerprints: map[string]int64{},
+		notes:             map[string]struct{}{},
 	}
 }
 
