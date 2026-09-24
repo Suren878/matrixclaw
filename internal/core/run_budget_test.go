@@ -3,6 +3,7 @@ package core_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -195,5 +196,36 @@ func TestRunBudgetFollowsTheTrigger(t *testing.T) {
 				t.Fatalf("model calls with tools = %d, want %d", withTools, tc.want)
 			}
 		})
+	}
+}
+
+func TestSessionBudgetOverridesTheDefault(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithTools(tools.NewRegistry(changingTool("inspect_state")))
+	withTools := 0
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		if request.ToolChoice == providers.ToolChoiceNone {
+			return providers.Response{Text: "Out of budget."}, nil
+		}
+		withTools++
+		return providers.Response{ToolCalls: []providers.ToolCall{{ID: fmt.Sprintf("call-%d", withTools), Name: "inspect_state", Arguments: []byte(`{}`)}}}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "session-budget", core.RunStatusAccepted, false)
+	steps := 1
+
+	report, err := app.UpdateSessionBudget(context.Background(), session.ID, core.SessionBudget{Steps: &steps})
+	if err != nil || report.Steps != 1 || report.ActiveSeconds != 4*3600 || report.Tokens != 0 {
+		t.Fatalf("report = %+v err = %v", report, err)
+	}
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	if withTools != 1 {
+		t.Fatalf("model calls with tools = %d, want the session's 1 step", withTools)
+	}
+	zero := 0
+	if _, err := app.UpdateSessionBudget(context.Background(), session.ID, core.SessionBudget{Steps: &zero}); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("zero steps error = %v, want ErrInvalidInput", err)
 	}
 }

@@ -97,6 +97,10 @@ func (c *Core) nativeEngine(ctx context.Context, run Run, session Session, runti
 	if err != nil {
 		return agent.Task{}, nil, err
 	}
+	budget, err := c.runBudget(ctx, run, session)
+	if err != nil {
+		return agent.Task{}, nil, err
+	}
 	turn := nativeTurn{
 		RunID:              run.ID,
 		SessionID:          session.ID,
@@ -123,7 +127,7 @@ func (c *Core) nativeEngine(ctx context.Context, run Run, session Session, runti
 		ExternalKey: run.ExternalKey,
 		WorkingDir:  session.WorkingDir,
 		Model:       runtime,
-		Budget:      c.defaultRunBudget(run, session),
+		Budget:      budget,
 		Resume:      resume,
 	}
 	return task, engine, nil

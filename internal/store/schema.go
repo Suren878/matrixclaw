@@ -202,6 +202,17 @@ CREATE TABLE IF NOT EXISTS session_inputs (
 	if _, err := db.Exec(`UPDATE external_agent_sessions SET sandbox = 'danger-full-access' WHERE sandbox = ''`); err != nil {
 		return fmt.Errorf("store: backfill external session sandbox: %w", err)
 	}
+	if _, err := db.Exec(`
+CREATE TABLE IF NOT EXISTS session_budgets (
+    session_id TEXT PRIMARY KEY,
+    steps INTEGER,
+    active_seconds INTEGER,
+    tokens INTEGER,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+)`); err != nil {
+		return fmt.Errorf("store: create session budgets table: %w", err)
+	}
 	return migrateMessageSearch(db)
 }
 

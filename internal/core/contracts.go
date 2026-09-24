@@ -143,6 +143,10 @@ type UsageResponse struct {
 	Usage UsageReport `json:"usage"`
 }
 
+type SessionBudgetResponse struct {
+	Budget SessionBudgetReport `json:"budget"`
+}
+
 type SessionPlanResponse struct {
 	Plan SessionPlan `json:"plan"`
 }

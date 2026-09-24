@@ -74,6 +74,11 @@ type UsageStore interface {
 	ListUsageRecords(ctx context.Context, filter UsageFilter) ([]UsageRecord, error)
 }
 
+type SessionBudgetStore interface {
+	GetSessionBudget(ctx context.Context, sessionID string) (SessionBudget, error)
+	SaveSessionBudget(ctx context.Context, sessionID string, budget SessionBudget, updatedAt time.Time) error
+}
+
 type PlanStore interface {
 	GetSessionPlan(ctx context.Context, sessionID string) (SessionPlan, error)
 	SetSessionGoal(ctx context.Context, sessionID string, goal string, updatedAt time.Time) error
@@ -120,6 +125,7 @@ type Store interface {
 	RunStore
 	SessionInputStore
 	UsageStore
+	SessionBudgetStore
 	PlanStore
 	SearchStore
 	MemoryStore
