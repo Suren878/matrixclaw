@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"time"
 
+	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
@@ -46,26 +46,26 @@ func (c *Core) RunSteps(ctx context.Context, runID string) ([]RunStep, error) {
 
 // recordRunStep stores one generation of a run. A failed write is logged and
 // never fails the run.
-func (c *Core) recordRunStep(ctx context.Context, runID string, response providers.Response, stopReason string, latency time.Duration) {
-	runID = normalizeText(runID)
+func (c *Core) recordRunStep(ctx context.Context, step agent.Step) {
+	runID := normalizeText(step.RunID)
 	if runID == "" || c.store == nil {
 		return
 	}
-	step := RunStep{
+	row := RunStep{
 		RunID:            runID,
-		Model:            response.Model,
-		Provider:         response.Provider,
-		PromptTokens:     response.Usage.PromptTokens,
-		CacheReadTokens:  response.Usage.CacheReadTokens,
-		CacheWriteTokens: response.Usage.CacheWriteTokens,
-		OutputTokens:     response.Usage.OutputTokens,
-		ReasoningTokens:  response.Usage.ReasoningTokens,
-		StopReason:       stopReason,
-		LatencyMillis:    latency.Milliseconds(),
-		ToolCalls:        len(response.ToolCalls),
+		Model:            step.Model,
+		Provider:         step.Provider,
+		PromptTokens:     step.Usage.PromptTokens,
+		CacheReadTokens:  step.Usage.CacheReadTokens,
+		CacheWriteTokens: step.Usage.CacheWriteTokens,
+		OutputTokens:     step.Usage.OutputTokens,
+		ReasoningTokens:  step.Usage.ReasoningTokens,
+		StopReason:       step.StopReason,
+		LatencyMillis:    step.Latency.Milliseconds(),
+		ToolCalls:        step.ToolCalls,
 		CreatedAt:        c.now().UTC(),
 	}
-	if err := c.store.SaveRunStep(context.WithoutCancel(ctx), step); err != nil {
+	if err := c.store.SaveRunStep(context.WithoutCancel(ctx), row); err != nil {
 		log.Printf("core: record step of run %q: %v", runID, err)
 	}
 }

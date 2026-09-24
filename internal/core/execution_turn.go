@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -249,7 +250,7 @@ func (c *Core) generateAssistantTurn(ctx context.Context, turn turnExecution, re
 	started := time.Now()
 	response, err := turn.Runtime.Generate(streamCtx, request)
 	if err == nil {
-		c.recordRunStep(ctx, turn.RunID, response, generationStopReason(response), time.Since(started))
+		c.recordRunStep(ctx, agent.Step{RunID: turn.RunID, Model: response.Model, Provider: response.Provider, Usage: response.Usage, StopReason: generationStopReason(response), Latency: time.Since(started), ToolCalls: len(response.ToolCalls)})
 	}
 	if flushErr := flushProgress(true); flushErr != nil {
 		err = errors.Join(err, flushErr)

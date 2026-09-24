@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
@@ -29,65 +28,6 @@ func newRunExecution(run Run, session Session, runtime providers.Runtime) *runEx
 		Run:  run,
 		Turn: newTurnExecution(run, session, runtime),
 	}
-}
-
-func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
-	runID = normalizeText(runID)
-	runCtx, unregisterRun, claimed := c.activeRunContext(ctx, runID)
-	if !claimed {
-		return nil
-	}
-	defer unregisterRun()
-	defer func() {
-		if err := c.afterRunExecution(context.Background(), runID); err != nil {
-			log.Printf("core: after run execution for %q failed: %v", runID, err)
-		}
-	}()
-	ready, err := c.prepareClaimedRun(ctx, runID)
-	if err != nil || !ready {
-		return err
-	}
-	if handled, err := c.tryExecuteExternalAgentRun(ctx, runCtx, runID); handled || err != nil {
-		return err
-	}
-
-	execution, ok, err := c.prepareRunExecution(ctx, runID)
-	if err != nil || !ok {
-		return err
-	}
-
-	return c.executeRunLoop(ctx, runCtx, execution)
-}
-
-func (c *Core) prepareRunExecution(ctx context.Context, runID string) (*runExecution, bool, error) {
-	run, err := c.store.GetRun(ctx, normalizeText(runID))
-	if err != nil {
-		return nil, false, err
-	}
-
-	switch run.Status {
-	case RunStatusCompleted, RunStatusFailed, RunStatusCanceled:
-		return nil, false, nil
-	case RunStatusRunning:
-		return nil, false, c.failOrphanedRun(ctx, run)
-	}
-
-	session, err := c.store.GetSession(ctx, run.SessionID)
-	if err != nil {
-		return nil, false, c.failRunByID(ctx, run, err)
-	}
-	session = c.decorateSessionLLM(session)
-
-	runtime, err := c.resolveSessionRuntime(ctx, session)
-	if err != nil {
-		return nil, false, c.failRunByID(ctx, run, err)
-	}
-
-	if err := c.setRunStatus(ctx, &run, RunStatusRunning, ""); err != nil {
-		return nil, false, err
-	}
-
-	return newRunExecution(run, session, runtime), true, nil
 }
 
 func (c *Core) failOrphanedRun(ctx context.Context, run Run) error {
@@ -226,7 +166,7 @@ func (c *Core) applyRunTurnResult(ctx context.Context, execution *runExecution, 
 		if result.Assistant == nil {
 			return true, nil
 		}
-		return true, c.completeAssistantTurn(ctx, &execution.Run, execution.Turn.SessionID, result.Assistant, result.AssistantSaved, result.Response)
+		return true, c.completeAssistantTurn(ctx, &execution.Run, execution.Turn.SessionID, result.Assistant, result.AssistantSaved)
 	default:
 		return true, fmt.Errorf("unknown turn step outcome %d", result.Outcome)
 	}

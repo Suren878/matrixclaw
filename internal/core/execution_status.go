@@ -11,18 +11,11 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID string, assistant *transcript.Message, assistantSaved bool, response providers.Response) error {
+func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID string, assistant *transcript.Message, assistantSaved bool) error {
 	if run == nil || assistant == nil {
 		return errors.New("core: complete assistant turn requires run and assistant")
 	}
 	finishedAt := c.now().UTC()
-	assistant.Content = sanitizeAssistantOutput(response.Text)
-	assistant.Parts = providerResponseMessageParts(assistant.Content, response.ReasoningContent)
-	if finish := providerUsageFinishPart(response.Usage); finish != nil {
-		assistant.Parts = append(assistant.Parts, *finish)
-	}
-	assistant.Model = response.Model
-	assistant.Provider = response.Provider
 	if err := c.CompleteSessionPlanRunStep(ctx, *run, assistant.Content); err != nil {
 		return fmt.Errorf("complete plan run step: %w", err)
 	}

@@ -1,0 +1,121 @@
+package core
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/agent"
+	"github.com/Suren878/matrixclaw/internal/tools"
+)
+
+// coreInbox is the Inbox port of one native run.
+type coreInbox struct {
+	c       *Core
+	session Session
+}
+
+func (in coreInbox) Drain(ctx context.Context, runID string, kind agent.InputKind) ([]agent.Input, error) {
+	switch kind {
+	case agent.InputSteer:
+		return in.steers(ctx, runID)
+	case agent.InputApproved:
+		return in.approved(ctx, runID)
+	default:
+		return nil, fmt.Errorf("core: unknown inbox input %q", kind)
+	}
+}
+
+func (in coreInbox) Canceled(ctx context.Context, runID string) (bool, error) {
+	return in.c.isRunCanceled(ctx, runID)
+}
+
+// steers consumes the run's pending steer input in arrival order.
+func (in coreInbox) steers(ctx context.Context, runID string) ([]agent.Input, error) {
+	inputs, err := in.c.store.ListPendingSteerInputs(ctx, in.session.ID, runID)
+	if err != nil {
+		return nil, err
+	}
+	var out []agent.Input
+	for _, input := range inputs {
+		text := normalizeText(input.Text)
+		if text == "" {
+			continue
+		}
+		consumedAt := in.c.now().UTC()
+		input.Status = SessionInputStatusConsumed
+		input.ConsumedRunID = runID
+		input.ConsumedAt = &consumedAt
+		input.UpdatedAt = consumedAt
+		if err := in.c.store.UpdateSessionInput(ctx, input); err != nil {
+			return nil, err
+		}
+		in.c.publishSessionInputUpdated(input)
+		out = append(out, agent.Input{Kind: agent.InputSteer, Text: text})
+	}
+	return out, nil
+}
+
+// approved returns granted approvals of the run whose tool call has no result yet.
+func (in coreInbox) approved(ctx context.Context, runID string) ([]agent.Input, error) {
+	approvals, err := in.c.store.ListApprovals(ctx, in.session.ID, ApprovalStateApproved)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]struct{}{}
+	var out []agent.Input
+	for _, approval := range approvalsForRun(approvals, runID) {
+		callID := strings.TrimSpace(approval.ToolCallRef)
+		if callID == "" {
+			continue
+		}
+		if _, ok := seen[callID]; ok {
+			continue
+		}
+		seen[callID] = struct{}{}
+		done, err := in.c.store.HasToolResult(ctx, in.session.ID, callID)
+		if err != nil {
+			return nil, err
+		}
+		if done {
+			continue
+		}
+		toolCall, err := in.c.sessionToolCallMessage(ctx, in.session.ID, callID)
+		if err != nil {
+			return nil, err
+		}
+		args, found := toolCallArgs(toolCall)
+		if !found {
+			return nil, fmt.Errorf("%w: tool call %s", ErrNotFound, toolCall.ID)
+		}
+		var spec tools.Spec
+		if in.c.tools != nil {
+			spec, _ = in.c.tools.Spec(approval.ToolName)
+		}
+		out = append(out, agent.Input{
+			Kind:       agent.InputApproved,
+			ToolCallID: callID,
+			ToolName:   approval.ToolName,
+			WorkingDir: workingDirForApprovalResume(in.session.WorkingDir, spec, approval.Path),
+			Args:       args,
+		})
+	}
+	return out, nil
+}
+
+// coreApprovals is the Approvals port of one native run.
+type coreApprovals struct {
+	c         *Core
+	sessionID string
+}
+
+func (a coreApprovals) Request(ctx context.Context, p agent.Pending) error {
+	request := p.Request
+	prepared := preparedToolCall{SessionID: p.SessionID, RunID: p.RunID, ToolName: p.ToolName, ToolCallID: p.ToolCallID}
+	_, _, _, err := a.c.createPendingApproval(ctx, prepared, ExecuteToolInput{}, tools.Result{Approval: &request}, nil)
+	return err
+}
+
+func (a coreApprovals) Pending(ctx context.Context, runID string) (bool, error) {
+	return a.c.runHasPendingApprovals(ctx, a.sessionID, runID)
+}

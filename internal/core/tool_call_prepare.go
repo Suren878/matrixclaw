@@ -20,32 +20,44 @@ type preparedToolCall struct {
 	Message    transcript.Message
 }
 
-func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (preparedToolCall, error) {
+// checkToolCall validates a tool call against its session before anything is written;
+// ErrInvalidInput errors are returned to the model, others fail the run.
+func (c *Core) checkToolCall(ctx context.Context, sessionID string, toolName string) (Session, tools.Spec, error) {
 	if c.tools == nil {
-		return preparedToolCall{}, fmt.Errorf("%w: tools are not configured", ErrExecutionUnavailable)
+		return Session{}, tools.Spec{}, fmt.Errorf("%w: tools are not configured", ErrExecutionUnavailable)
 	}
-	sessionID := normalizeText(input.SessionID)
-	toolName := normalizeText(input.ToolName)
+	sessionID = normalizeText(sessionID)
+	toolName = normalizeText(toolName)
 	if sessionID == "" {
-		return preparedToolCall{}, fmt.Errorf("%w: session_id is required", ErrInvalidInput)
+		return Session{}, tools.Spec{}, fmt.Errorf("%w: session_id is required", ErrInvalidInput)
 	}
 	if toolName == "" {
-		return preparedToolCall{}, fmt.Errorf("%w: tool_name is required", ErrInvalidInput)
+		return Session{}, tools.Spec{}, fmt.Errorf("%w: tool_name is required", ErrInvalidInput)
 	}
 	spec, ok := c.tools.Spec(toolName)
 	if !ok {
-		return preparedToolCall{}, fmt.Errorf("%w: unknown tool %q", ErrInvalidInput, toolName)
+		return Session{}, tools.Spec{}, fmt.Errorf("%w: unknown tool %q", ErrInvalidInput, toolName)
 	}
 	session, err := c.store.GetSession(ctx, sessionID)
 	if err != nil {
-		return preparedToolCall{}, err
+		return Session{}, tools.Spec{}, err
 	}
 	if toolName == delegateTaskToolName && CoreSessionIsExternalAgent(session) {
-		return preparedToolCall{}, fmt.Errorf("%w: delegate_task is available for Matrixclaw sessions only", ErrInvalidInput)
+		return Session{}, tools.Spec{}, fmt.Errorf("%w: delegate_task is available for Matrixclaw sessions only", ErrInvalidInput)
 	}
 	if isSubagentSession(session) && !subagentToolAllowed(spec) {
-		return preparedToolCall{}, fmt.Errorf("%w: tool %q is not available to child subagents", ErrInvalidInput, toolName)
+		return Session{}, tools.Spec{}, fmt.Errorf("%w: tool %q is not available to child subagents", ErrInvalidInput, toolName)
 	}
+	return session, spec, nil
+}
+
+func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (preparedToolCall, error) {
+	session, spec, err := c.checkToolCall(ctx, input.SessionID, input.ToolName)
+	if err != nil {
+		return preparedToolCall{}, err
+	}
+	sessionID := normalizeText(input.SessionID)
+	toolName := normalizeText(input.ToolName)
 	workingDir := normalizeWorkingDir(input.WorkingDir)
 	if workingDir == "" {
 		workingDir = session.WorkingDir

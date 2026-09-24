@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/agent"
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -21,7 +22,7 @@ func (g runStepGenerator) Generate(ctx context.Context, request providers.Reques
 	started := time.Now()
 	response, err := g.runtime.Generate(ctx, request)
 	if err == nil {
-		g.c.recordRunStep(ctx, g.runID, response, "compact", time.Since(started))
+		g.c.recordRunStep(ctx, agent.Step{RunID: g.runID, Model: response.Model, Provider: response.Provider, Usage: response.Usage, StopReason: "compact", Latency: time.Since(started), ToolCalls: len(response.ToolCalls)})
 	}
 	return response, err
 }

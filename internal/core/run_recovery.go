@@ -465,7 +465,7 @@ func (c *Core) applyRunTurnResultAfterContextStopped(execution *runExecution, re
 	// A complete provider reply is safe to commit even when shutdown arrived
 	// between Generate returning and the durable completion write.
 	if result.Err == nil && result.Outcome == turnStepCompleted && result.Assistant != nil {
-		return true, c.completeAssistantTurn(ctx, &run, execution.Turn.SessionID, result.Assistant, result.AssistantSaved, result.Response)
+		return true, c.completeAssistantTurn(ctx, &run, execution.Turn.SessionID, result.Assistant, result.AssistantSaved)
 	}
 	if result.Err == nil && result.Outcome == turnStepWaitingApproval {
 		pending, pendingErr := c.runHasPendingApprovals(ctx, run.SessionID, run.ID)
