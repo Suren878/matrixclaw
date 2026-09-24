@@ -15,7 +15,6 @@ import (
 
 const (
 	defaultAnthropicVersion = "2023-06-01"
-	defaultMaxTokens        = 4096
 )
 
 type Config struct {
@@ -34,6 +33,7 @@ type Runtime struct {
 	endpoint     string
 	apiKey       string
 	model        string
+	providerID   string
 	maxTokens    int64
 	profile      providers.RuntimeProfile
 	capabilities providers.ModelCapabilities
@@ -54,6 +54,7 @@ func New(_ context.Context, cfg Config) (providers.Runtime, error) {
 		endpoint:     strings.TrimRight(baseURL, "/") + "/messages",
 		apiKey:       apiKey,
 		model:        model,
+		providerID:   metadataProviderID(cfg),
 		maxTokens:    maxTokens,
 		profile:      providerProfile.RuntimeProfile,
 		capabilities: providerProfile.Capabilities,
@@ -108,6 +109,7 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 		Data []struct {
 			ID             string `json:"id"`
 			MaxInputTokens int    `json:"max_input_tokens"`
+			MaxTokens      int    `json:"max_tokens"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -117,8 +119,9 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 	models := make([]string, 0, len(payload.Data))
 	for _, item := range payload.Data {
 		if id := strings.TrimSpace(item.ID); id != "" {
-			providers.RegisterContextWindowTokens(cfg.ProviderID, providers.TypeAnthropic, id, item.MaxInputTokens)
-			providers.RegisterContextWindowTokens(cfg.CatalogID, providers.TypeAnthropic, id, item.MaxInputTokens)
+			metadata := providers.ModelMetadataRegistration{ContextWindow: item.MaxInputTokens, MaxOutputTokens: item.MaxTokens}
+			providers.RegisterModelMetadata(cfg.ProviderID, providers.TypeAnthropic, id, metadata)
+			providers.RegisterModelMetadata(cfg.CatalogID, providers.TypeAnthropic, id, metadata)
 			models = append(models, id)
 		}
 	}
@@ -136,7 +139,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 	request = providers.NormalizeRequest(request, r.profile)
 	payload := anthropicRequest{
 		Model:     r.model,
-		MaxTokens: r.maxTokens,
+		MaxTokens: providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.maxTokens, r.providerID, providers.TypeAnthropic, r.model),
 		System:    combinedSystemPrompt(request.SystemPrompt, request.CustomInstructions),
 		Messages:  make([]anthropicMessage, 0, len(request.Messages)),
 	}
@@ -209,16 +212,38 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 	}
 
 	reply := strings.TrimSpace(text.String())
-	if reply == "" {
+	stop := providers.ResolveStopReason(anthropicStopReason(response.StopReason), 0)
+	if reply == "" && !stop.AllowsEmptyReply() {
 		return providers.Response{}, fmt.Errorf("anthropic: %w", providers.ErrEmptyResponse)
 	}
 
 	return providers.Response{
-		Text:     reply,
-		Model:    r.model,
-		Provider: providers.TypeAnthropic,
-		Usage:    anthropicUsage(response.Usage),
+		Text:       reply,
+		Model:      r.model,
+		Provider:   providers.TypeAnthropic,
+		StopReason: stop,
+		Usage:      anthropicUsage(response.Usage),
 	}, nil
+}
+
+func anthropicStopReason(reason string) providers.StopReason {
+	switch reason {
+	case "max_tokens", "model_context_window_exceeded":
+		return providers.StopMaxTokens
+	case "refusal":
+		return providers.StopRefusal
+	case "tool_use":
+		return providers.StopToolUse
+	default:
+		return providers.StopEndTurn
+	}
+}
+
+func metadataProviderID(cfg Config) string {
+	if id := strings.TrimSpace(cfg.ProviderID); id != "" {
+		return id
+	}
+	return strings.TrimSpace(cfg.CatalogID)
 }
 
 func unsupportedToolUse(request providers.Request) string {
@@ -270,7 +295,8 @@ type anthropicResponse struct {
 		Type string `json:"type"`
 		Text string `json:"text,omitempty"`
 	} `json:"content"`
-	Usage anthropicUsagePayload `json:"usage,omitempty"`
+	StopReason string                `json:"stop_reason,omitempty"`
+	Usage      anthropicUsagePayload `json:"usage,omitempty"`
 }
 
 type anthropicUsagePayload struct {
@@ -315,8 +341,9 @@ func mergeAnthropicUsage(current anthropicUsagePayload, delta anthropicUsagePayl
 type anthropicStreamDelta struct {
 	Type  string `json:"type"`
 	Delta struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
+		Type       string `json:"type"`
+		Text       string `json:"text"`
+		StopReason string `json:"stop_reason"`
 	} `json:"delta"`
 	ContentBlock struct {
 		Type string `json:"type"`
@@ -367,9 +394,6 @@ func normalizeConfig(cfg Config) (*http.Client, string, string, string, int64, e
 	}
 
 	maxTokens := cfg.MaxOutputTokens
-	if maxTokens <= 0 {
-		maxTokens = defaultMaxTokens
-	}
 
 	client := cfg.HTTPClient
 	if client == nil {
@@ -391,6 +415,7 @@ func normalizeAnthropicRole(role string) string {
 func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.Response, error) {
 	var text strings.Builder
 	var usage anthropicUsagePayload
+	stopReason := ""
 	completed := false
 	if err := providers.ScanSSE(ctx, body, func(event providers.SSEEvent) error {
 		if event.Data == "" {
@@ -413,6 +438,9 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 			usage = chunk.Message.Usage
 		case "message_delta":
 			usage = mergeAnthropicUsage(usage, chunk.Usage)
+			if chunk.Delta.StopReason != "" {
+				stopReason = chunk.Delta.StopReason
+			}
 		}
 
 		delta := ""
@@ -436,13 +464,15 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 	}
 
 	reply := strings.TrimSpace(text.String())
-	if reply == "" {
+	stop := providers.ResolveStopReason(anthropicStopReason(stopReason), 0)
+	if reply == "" && !stop.AllowsEmptyReply() {
 		return providers.Response{}, fmt.Errorf("anthropic: %w", providers.ErrEmptyResponse)
 	}
 	return providers.Response{
-		Text:     reply,
-		Model:    r.model,
-		Provider: providers.TypeAnthropic,
-		Usage:    anthropicUsage(usage),
+		Text:       reply,
+		Model:      r.model,
+		Provider:   providers.TypeAnthropic,
+		StopReason: stop,
+		Usage:      anthropicUsage(usage),
 	}, nil
 }
