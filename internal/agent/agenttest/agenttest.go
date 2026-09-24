@@ -64,22 +64,29 @@ func (f ModelFunc) Generate(ctx context.Context, req providers.Request) (provide
 	return f(ctx, req)
 }
 
-// Journal keeps the transcript in memory and counts streaming writes.
+// Journal keeps the transcript in memory and counts streaming writes. Like the store
+// it rejects duplicate message IDs and fails writes on a stopped context; RecordStep
+// never fails, as core only logs a failed step write. OnAppend and OnCheckpoint run
+// before each write and fail it with their error.
 type Journal struct {
-	Messages []transcript.Message
-	States   []agent.State
-	Steps    []agent.Step
-	Begins   int
-	Streams  int
-	Finishes int
-	LoadErr  error
-	seq      int64
+	Messages     []transcript.Message
+	States       []agent.State
+	Steps        []agent.Step
+	Begins       int
+	Streams      int
+	Finishes     int
+	LoadErr      error
+	OnAppend     func(transcript.Message) error
+	OnCheckpoint func(agent.State) error
+	seq          int64
 }
 
 // Seed stores messages as if they were written before the run.
 func (j *Journal) Seed(messages ...transcript.Message) {
 	for _, message := range messages {
-		j.insert(message)
+		if _, err := j.insert(message); err != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -105,33 +112,61 @@ func (j *Journal) Result(callID string) (transcript.Message, bool) {
 	return transcript.Message{}, false
 }
 
-func (j *Journal) Load(context.Context, string) (agent.Window, error) {
+func (j *Journal) Load(ctx context.Context, _ string) (agent.Window, error) {
+	if err := ctx.Err(); err != nil {
+		return agent.Window{}, err
+	}
 	if j.LoadErr != nil {
 		return agent.Window{}, j.LoadErr
 	}
 	return agent.Window{Messages: append([]transcript.Message(nil), j.Messages...)}, nil
 }
 
-func (j *Journal) Append(_ context.Context, msg transcript.Message) (int64, error) {
-	return j.insert(msg), nil
+func (j *Journal) Append(ctx context.Context, msg transcript.Message) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	if j.OnAppend != nil {
+		if err := j.OnAppend(msg); err != nil {
+			return 0, err
+		}
+	}
+	return j.insert(msg)
 }
 
-func (j *Journal) BeginStreaming(_ context.Context, msg transcript.Message) (int64, error) {
+func (j *Journal) BeginStreaming(ctx context.Context, msg transcript.Message) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	j.Begins++
-	return j.insert(msg), nil
+	return j.insert(msg)
 }
 
-func (j *Journal) Stream(_ context.Context, msg transcript.Message) error {
+func (j *Journal) Stream(ctx context.Context, msg transcript.Message) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	j.Streams++
 	return j.replace(msg)
 }
 
-func (j *Journal) FinishStreaming(_ context.Context, msg transcript.Message) error {
+func (j *Journal) FinishStreaming(ctx context.Context, msg transcript.Message) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	j.Finishes++
 	return j.replace(msg)
 }
 
-func (j *Journal) Checkpoint(_ context.Context, state agent.State) error {
+func (j *Journal) Checkpoint(ctx context.Context, state agent.State) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if j.OnCheckpoint != nil {
+		if err := j.OnCheckpoint(state); err != nil {
+			return err
+		}
+	}
 	j.States = append(j.States, state)
 	return nil
 }
@@ -141,11 +176,14 @@ func (j *Journal) RecordStep(_ context.Context, step agent.Step) error {
 	return nil
 }
 
-func (j *Journal) insert(msg transcript.Message) int64 {
+func (j *Journal) insert(msg transcript.Message) (int64, error) {
+	if _, exists := j.Message(msg.ID); exists {
+		return 0, fmt.Errorf("agenttest: message %q already exists", msg.ID)
+	}
 	j.seq++
 	msg.Seq = j.seq
 	j.Messages = append(j.Messages, msg)
-	return j.seq
+	return j.seq, nil
 }
 
 func (j *Journal) replace(msg transcript.Message) error {
@@ -163,10 +201,13 @@ func (j *Journal) replace(msg transcript.Message) error {
 type ToolFunc func(call tools.Call) tools.Result
 
 // Tools authorizes registered names only and records executed and finished calls.
+// OnExecute and OnFinish run first and fail the call with their error.
 type Tools struct {
-	Funcs    map[string]ToolFunc
-	Calls    []tools.Call
-	Finished []string
+	Funcs     map[string]ToolFunc
+	Calls     []tools.Call
+	Finished  []string
+	OnExecute func(name string, call tools.Call) error
+	OnFinish  func(name string, call tools.Call) error
 }
 
 func (t *Tools) Specs(context.Context) []tools.Spec {
@@ -190,23 +231,44 @@ func (t *Tools) Authorize(_ context.Context, name string, _ tools.Call) (agent.D
 }
 
 func (t *Tools) Execute(_ context.Context, name string, call tools.Call) (tools.Result, error) {
+	if t.OnExecute != nil {
+		if err := t.OnExecute(name, call); err != nil {
+			return tools.Result{}, err
+		}
+	}
 	t.Calls = append(t.Calls, call)
 	return t.Funcs[name](call), nil
 }
 
-func (t *Tools) Finish(_ context.Context, _ string, call tools.Call, _ tools.Result, _ transcript.Message) error {
+func (t *Tools) Finish(_ context.Context, name string, call tools.Call, _ tools.Result, _ transcript.Message) error {
+	if t.OnFinish != nil {
+		if err := t.OnFinish(name, call); err != nil {
+			return err
+		}
+	}
 	t.Finished = append(t.Finished, call.ToolCallID)
 	return nil
 }
 
 // Approvals records requests; Grant, when set, resolves each request at once.
+// OnRequest runs first and fails the request with its error. Like the store, both
+// methods fail on a stopped context.
 type Approvals struct {
-	Requests []agent.Pending
-	Open     bool
-	Grant    func(agent.Pending)
+	Requests  []agent.Pending
+	Open      bool
+	Grant     func(agent.Pending)
+	OnRequest func(agent.Pending) error
 }
 
-func (a *Approvals) Request(_ context.Context, p agent.Pending) error {
+func (a *Approvals) Request(ctx context.Context, p agent.Pending) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if a.OnRequest != nil {
+		if err := a.OnRequest(p); err != nil {
+			return err
+		}
+	}
 	a.Requests = append(a.Requests, p)
 	if a.Grant != nil {
 		a.Grant(p)
@@ -216,18 +278,25 @@ func (a *Approvals) Request(_ context.Context, p agent.Pending) error {
 	return nil
 }
 
-func (a *Approvals) Pending(context.Context, string) (bool, error) {
+func (a *Approvals) Pending(ctx context.Context, _ string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	return a.Open, nil
 }
 
-// Inbox hands out steers once and granted approvals on every drain.
+// Inbox hands out steers once and granted approvals on every drain. Like the store,
+// it fails on a stopped context.
 type Inbox struct {
 	Steers   []string
 	Approved []agent.Input
 	Cancel   bool
 }
 
-func (in *Inbox) Drain(_ context.Context, _ string, kind agent.InputKind) ([]agent.Input, error) {
+func (in *Inbox) Drain(ctx context.Context, _ string, kind agent.InputKind) ([]agent.Input, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	switch kind {
 	case agent.InputSteer:
 		out := make([]agent.Input, 0, len(in.Steers))
@@ -243,7 +312,10 @@ func (in *Inbox) Drain(_ context.Context, _ string, kind agent.InputKind) ([]age
 	}
 }
 
-func (in *Inbox) Canceled(context.Context, string) (bool, error) {
+func (in *Inbox) Canceled(ctx context.Context, _ string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	return in.Cancel, nil
 }
 

@@ -153,6 +153,10 @@ func (r *run) handleResponse(ctx context.Context, gen generation) stepResult {
 	assistant := gen.assistant
 	if len(response.ToolCalls) > 0 {
 		if err := r.finishToolTurn(ctx, &assistant, gen.saved, response); err != nil {
+			if ctx.Err() != nil {
+				// Stopped before the tool turn was written: core seals the streamed preview.
+				return stepResult{kind: stepDone, assistant: &gen.assistant, saved: gen.saved, err: err}
+			}
 			return failedStep(err)
 		}
 		waiting, err := r.executeBatch(ctx, response)

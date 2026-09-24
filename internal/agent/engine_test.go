@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/agent/agenttest"
@@ -381,5 +382,179 @@ func TestLoadFailureFailsTheRun(t *testing.T) {
 
 	if outcome.Status != agent.StatusFailed || outcome.Err == nil || outcome.Err.Error() != "disk gone" {
 		t.Fatalf("outcome = %+v", outcome)
+	}
+}
+
+func TestCancelAfterToolCallsGenerationKeepsTheStreamedPreview(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["read"] = readTool
+	ctx, cancel := context.WithCancel(context.Background())
+	model := agenttest.ModelFunc(func(ctx context.Context, _ providers.Request) (providers.Response, error) {
+		if err := providers.StreamText(ctx, "Checking"); err != nil {
+			return providers.Response{}, err
+		}
+		cancel()
+		return providers.Response{Text: "Checking the file.", ToolCalls: []providers.ToolCall{call("c1", "read")}}, nil
+	})
+
+	outcome, err := f.Engine().Run(ctx, f.Task(model))
+
+	if err != nil || outcome.Status != agent.StatusInterrupted || outcome.Assistant == nil || !outcome.AssistantSaved || outcome.Assistant.Content != "Checking" {
+		t.Fatalf("outcome = %+v err = %v, want the streamed preview to seal", outcome, err)
+	}
+	if len(f.Tools.Calls) != 0 {
+		t.Fatalf("tools ran after the stop: %+v", f.Tools.Calls)
+	}
+}
+
+func TestReusedToolCallIDsFailTheRun(t *testing.T) {
+	cases := []struct {
+		name  string
+		seed  []transcript.Message
+		calls []providers.ToolCall
+		want  string
+	}{
+		{
+			name:  "same response",
+			calls: []providers.ToolCall{call("c1", "read"), {ID: "c1", Name: "read", Arguments: []byte(`{"path":"b"}`)}},
+			want:  `tool call ID "c1" reused with different arguments`,
+		},
+		{
+			name:  "earlier step",
+			seed:  []transcript.Message{agent.ToolCallMessage("c1", agenttest.SessionID, agenttest.RunID, "read", []byte(`{"path":"a"}`), true, time.Time{})},
+			calls: []providers.ToolCall{call("c1", "read")},
+			want:  `tool call ID "c1" reused with different arguments`,
+		},
+		{
+			name:  "another run",
+			seed:  []transcript.Message{agent.ToolCallMessage("c1", agenttest.SessionID, "run_0", "read", []byte(`{}`), true, time.Time{})},
+			calls: []providers.ToolCall{call("c1", "read")},
+			want:  `tool call ID "c1" belongs to another run`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := agenttest.NewFixture()
+			f.Tools.Funcs["read"] = readTool
+			f.Journal.Seed(tc.seed...)
+
+			outcome := run(t, f, agenttest.NewScriptedModel(calls(tc.calls...)))
+
+			if outcome.Status != agent.StatusFailed || outcome.Err == nil || outcome.Err.Error() != tc.want {
+				t.Fatalf("outcome = %+v, want error %q", outcome, tc.want)
+			}
+		})
+	}
+}
+
+func TestRetryableErrorBeforeOutputIsRetried(t *testing.T) {
+	f := agenttest.NewFixture()
+	model := agenttest.NewScriptedModel(agenttest.Turn{Err: providers.ErrIncompleteResponse}, text("ok"))
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != "ok" || len(model.Requests()) != 2 {
+		t.Fatalf("outcome = %+v requests = %d", outcome, len(model.Requests()))
+	}
+	if len(f.Journal.Steps) != 1 {
+		t.Fatalf("recorded steps = %d, want only the successful generation", len(f.Journal.Steps))
+	}
+}
+
+func TestStopDuringRetryBackoffEndsTheWait(t *testing.T) {
+	f := agenttest.NewFixture()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	attempts := 0
+	model := agenttest.ModelFunc(func(context.Context, providers.Request) (providers.Response, error) {
+		attempts++
+		time.AfterFunc(20*time.Millisecond, cancel)
+		return providers.Response{}, providers.ErrIncompleteResponse
+	})
+
+	started := time.Now()
+	outcome, err := f.Engine().Run(ctx, f.Task(model))
+
+	if err != nil || outcome.Status != agent.StatusInterrupted || attempts != 1 {
+		t.Fatalf("outcome = %+v err = %v attempts = %d", outcome, err, attempts)
+	}
+	if elapsed := time.Since(started); elapsed >= 200*time.Millisecond {
+		t.Fatalf("waited %v, want the backoff cut short", elapsed)
+	}
+}
+
+func TestOversizedRequestIsCompactedBeforeSending(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Prompts.Text = strings.Repeat("a", 330_000)
+	f.Prompts.WindowTokens = 100_000
+	model := agenttest.NewScriptedModel(text("SUMMARY"), text("Done."))
+
+	outcome := run(t, f, model)
+
+	requests := model.Requests()
+	if outcome.Status != agent.StatusCompleted || len(requests) != 2 {
+		t.Fatalf("outcome = %+v requests = %d", outcome, len(requests))
+	}
+	if !strings.Contains(requests[0].SystemPrompt, "You compact matrixclaw chat histories") || !strings.Contains(requests[1].SystemPrompt, "Session context summary:\nSUMMARY") {
+		t.Fatal("want a summary generation before the main request, which carries the summary")
+	}
+	if !markerPattern.MatchString(f.Journal.Messages[1].Content) || f.Journal.Steps[0].StopReason != "compact" {
+		t.Fatalf("marker = %+v steps = %+v", f.Journal.Messages[1], f.Journal.Steps)
+	}
+}
+
+func TestCancelWhileStreamingSealsThePartialReply(t *testing.T) {
+	f := agenttest.NewFixture()
+	var streamErr error
+	attempts := 0
+	model := agenttest.ModelFunc(func(ctx context.Context, _ providers.Request) (providers.Response, error) {
+		attempts++
+		if err := providers.StreamText(ctx, "Partial"); err != nil {
+			return providers.Response{}, err
+		}
+		f.Inbox.Cancel = true
+		f.Clock = f.Clock.Add(time.Second)
+		streamErr = providers.StreamText(ctx, " more")
+		return providers.Response{}, streamErr
+	})
+
+	outcome := run(t, f, model)
+
+	if streamErr == nil || streamErr.Error() != "run canceled" || attempts != 1 {
+		t.Fatalf("stream error = %v attempts = %d", streamErr, attempts)
+	}
+	if outcome.Status != agent.StatusCanceled || !outcome.AssistantSaved || outcome.Assistant.Content != "Partial" {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+}
+
+func TestStoppedContextWithOpenApprovalReportsTheParkedState(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["write"] = writeTool
+	ctx, cancel := context.WithCancel(context.Background())
+	f.Approvals.OnRequest = func(agent.Pending) error {
+		cancel()
+		return nil
+	}
+
+	outcome, err := f.Engine().Run(ctx, f.Task(agenttest.NewScriptedModel(calls(call("w1", "write")))))
+
+	if err != nil || outcome.Status != agent.StatusInterrupted || outcome.Reached != agent.StatusWaitingApproval || len(f.Approvals.Requests) != 1 {
+		t.Fatalf("outcome = %+v err = %v requests = %+v", outcome, err, f.Approvals.Requests)
+	}
+}
+
+func TestApprovalRequestFailureFailsTheRun(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["write"] = writeTool
+	f.Approvals.OnRequest = func(agent.Pending) error { return errors.New("approvals unavailable") }
+
+	outcome := run(t, f, agenttest.NewScriptedModel(calls(call("w1", "write"))))
+
+	if outcome.Status != agent.StatusFailed || outcome.Err == nil || outcome.Err.Error() != "approvals unavailable" {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+	if _, ok := f.Journal.Result("w1"); ok {
+		t.Fatal("failed approval request left a tool result")
 	}
 }
