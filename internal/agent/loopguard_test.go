@@ -9,6 +9,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/agent/agenttest"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func statusTool(tools.Call) tools.Result {
@@ -41,8 +42,8 @@ func TestRepeatingACallWithoutProgressWarnsThenStops(t *testing.T) {
 	if final.ToolChoice != providers.ToolChoiceNone || !strings.Contains(lastMessage(final).Content, "5 times in a row") {
 		t.Fatalf("final turn = %q / %+v", final.ToolChoice, lastMessage(final))
 	}
-	if notes := engineNotes(f.Journal.Messages); len(notes) != 2 {
-		t.Fatalf("engine notes = %d, want the warning and the final-turn note", len(notes))
+	if notes := engineNotes(f.Journal.Messages); len(notes) != 2 || notes[0].Origin != transcript.OriginEngine || notes[1].Origin != transcript.OriginEngineModel {
+		t.Fatalf("engine notes = %+v, want the shown warning and the model-only final-turn note", notes)
 	}
 }
 

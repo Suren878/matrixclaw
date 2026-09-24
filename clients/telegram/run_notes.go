@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/commandcatalog"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -22,7 +21,7 @@ func (w *Worker) renderEngineNotes(ctx context.Context, target chatTarget, messa
 			continue
 		}
 		text := strings.TrimSpace(message.Content)
-		if text == "" || agent.IsContinuationNote(text) {
+		if text == "" {
 			continue
 		}
 		if _, err := w.sendTelegramMessage(silentTelegramDelivery(ctx), SendMessageRequest{ChatID: target.chatID, Text: clipTelegramText("Note: " + text)}); err != nil {

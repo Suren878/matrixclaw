@@ -181,7 +181,7 @@ func syntheticFailedToolResult(toolCallID string) providers.Message {
 // system rows never reach the model.
 func engineNoteMessage(message transcript.Message) (providers.Message, bool) {
 	content := strings.TrimSpace(message.Content)
-	if message.Origin != transcript.OriginEngine || content == "" {
+	if !message.Origin.IsEngine() || content == "" {
 		return providers.Message{}, false
 	}
 	return providers.Message{Role: string(transcript.MessageRoleUser), Content: content}, true

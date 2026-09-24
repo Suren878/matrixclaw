@@ -36,7 +36,7 @@ func TestCutReplyIsKeptAndContinued(t *testing.T) {
 	if partial.Role != transcript.MessageRoleAssistant || partial.Content != "First half" || !hasFinish(partial, "max_tokens") {
 		t.Fatalf("partial reply = %+v", partial)
 	}
-	if notes := engineNotes(f.Journal.Messages); len(notes) != 1 || !strings.Contains(notes[0].Content, "cut by the output limit") {
+	if notes := engineNotes(f.Journal.Messages); len(notes) != 1 || !strings.Contains(notes[0].Content, "cut by the output limit") || notes[0].Origin != transcript.OriginEngineModel {
 		t.Fatalf("engine notes = %+v", notes)
 	}
 	second := model.Requests()[1]

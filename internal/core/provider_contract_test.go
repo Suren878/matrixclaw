@@ -41,7 +41,7 @@ func TestReplyCutFourTimesInARowFailsTheRun(t *testing.T) {
 		if message.Role == transcript.MessageRoleAssistant && strings.HasPrefix(message.Content, "Part ") {
 			parts++
 		}
-		if message.Origin == transcript.OriginEngine {
+		if message.Origin == transcript.OriginEngineModel {
 			notes++
 		}
 	}

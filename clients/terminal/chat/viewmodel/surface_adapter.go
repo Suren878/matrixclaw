@@ -8,7 +8,6 @@ import (
 	surfacehistory "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/history"
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
-	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/agent/prompt"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -92,7 +91,7 @@ func ToSurfaceMessages(messages []transcript.Message) []surfacemessage.Message {
 		if prompt.IsPlanRunPrompt(message) {
 			continue
 		}
-		if message.Origin == transcript.OriginEngine && agent.IsContinuationNote(strings.TrimSpace(message.Content)) {
+		if message.Origin == transcript.OriginEngineModel {
 			continue
 		}
 		surface := ToSurfaceMessage(message)

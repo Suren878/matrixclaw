@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 // maxContinuations is how many replies in a row the output limit may cut before
@@ -17,13 +18,6 @@ const maxContinuations = 3
 const unknownCeilingLimit = 32768
 
 const continueText = "Your reply was cut by the output limit. Continue exactly where you stopped, without repeating what you already wrote."
-
-// IsContinuationNote reports whether text is the engine note asking the model to
-// continue a reply the output limit cut. It is meant for the model, not the user,
-// so clients skip it when showing engine notes.
-func IsContinuationNote(text string) bool {
-	return text == continueText
-}
 
 // continueCutReply keeps a reply cut by the output limit and asks the model to go
 // on, with the limit raised once where the model allows it: adapters drop a
@@ -46,7 +40,7 @@ func (r *run) continueCutReply(ctx context.Context, gen generation, response pro
 	if err := r.finishTurn(ctx, &assistant, gen.saved, response, string(providers.StopMaxTokens)); err != nil {
 		return unfinishedTurn(ctx, gen, err)
 	}
-	if err := r.appendEngineMessage(ctx, continueText); err != nil {
+	if err := r.appendEngineMessage(ctx, transcript.OriginEngineModel, continueText); err != nil {
 		return failedStep(err)
 	}
 	return stepResult{kind: stepContinue}

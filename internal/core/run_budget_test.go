@@ -57,14 +57,18 @@ func TestNativeRunEndsWithAFinalTurnAtTheDefaultStepBudget(t *testing.T) {
 	if len(choices) != 33 || choices[31] != providers.ToolChoiceAuto || choices[32] != providers.ToolChoiceNone {
 		t.Fatalf("model calls = %d, want 32 with tools and a final one without", len(choices))
 	}
-	notes := 0
+	shown, modelOnly := 0, 0
 	for _, message := range sessionMessages(t, db, session.ID) {
-		if message.Origin == transcript.OriginEngine && message.Role == transcript.MessageRoleSystem {
-			notes++
+		switch {
+		case message.Role != transcript.MessageRoleSystem:
+		case message.Origin == transcript.OriginEngine:
+			shown++
+		case message.Origin == transcript.OriginEngineModel:
+			modelOnly++
 		}
 	}
-	if notes != 2 {
-		t.Fatalf("engine notes = %d, want the wrap-up and the final-turn note", notes)
+	if shown != 1 || modelOnly != 1 {
+		t.Fatalf("engine notes shown = %d model-only = %d, want the wrap-up shown and the final-turn note model-only", shown, modelOnly)
 	}
 }
 

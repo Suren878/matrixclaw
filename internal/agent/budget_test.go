@@ -44,7 +44,7 @@ func toolSteps(n int, name string) []agenttest.Turn {
 func engineNotes(messages []transcript.Message) []transcript.Message {
 	var notes []transcript.Message
 	for _, message := range messages {
-		if message.Origin == transcript.OriginEngine {
+		if message.Origin.IsEngine() {
 			notes = append(notes, message)
 		}
 	}
@@ -87,7 +87,7 @@ func TestStepBudgetEndsWithAToolLessFinalTurn(t *testing.T) {
 		t.Fatalf("final turn instruction = %+v", note)
 	}
 	notes := engineNotes(f.Journal.Messages)
-	if len(notes) != 1 || notes[0].Role != transcript.MessageRoleSystem || notes[0].RunID != agenttest.RunID {
+	if len(notes) != 1 || notes[0].Role != transcript.MessageRoleSystem || notes[0].RunID != agenttest.RunID || notes[0].Origin != transcript.OriginEngineModel {
 		t.Fatalf("engine notes = %+v", notes)
 	}
 }
@@ -113,7 +113,7 @@ func TestWrapUpNoteArrivesOnceAtEightyPercent(t *testing.T) {
 	}
 	wrapUps := 0
 	for _, note := range engineNotes(f.Journal.Messages) {
-		if strings.Contains(note.Content, "Budget note") {
+		if strings.Contains(note.Content, "Budget note") && note.Origin == transcript.OriginEngine {
 			wrapUps++
 		}
 	}

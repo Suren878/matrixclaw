@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 // wrapUpShare is the used share of a limit at which the run is told to wrap up.
@@ -34,20 +36,20 @@ func (r *run) active() time.Duration {
 // returns the stop reason when this step is the tool-less final turn.
 func (r *run) prepareStep(ctx context.Context) (StopReason, error) {
 	if r.counters.LoopRepeats >= loopStopRepeats {
-		return StopLoopDetected, r.appendEngineMessage(ctx, loopStopText(r.counters.LoopTool))
+		return StopLoopDetected, r.appendEngineMessage(ctx, transcript.OriginEngineModel, loopStopText(r.counters.LoopTool))
 	}
 	if reached := r.exhausted(); reached != "" {
-		return StopBudgetExhausted, r.appendEngineMessage(ctx, budgetStopText(reached))
+		return StopBudgetExhausted, r.appendEngineMessage(ctx, transcript.OriginEngineModel, budgetStopText(reached))
 	}
 	if r.counters.LoopRepeats >= loopWarnRepeats && !r.counters.LoopWarned {
-		if err := r.appendEngineMessage(ctx, loopWarningText(r.counters.LoopTool)); err != nil {
+		if err := r.appendEngineMessage(ctx, transcript.OriginEngine, loopWarningText(r.counters.LoopTool)); err != nil {
 			return "", err
 		}
 		r.counters.LoopWarned = true
 	}
 	if !r.counters.WrapUpSent {
 		if left := r.remaining(); left != "" {
-			if err := r.appendEngineMessage(ctx, wrapUpText(left)); err != nil {
+			if err := r.appendEngineMessage(ctx, transcript.OriginEngine, wrapUpText(left)); err != nil {
 				return "", err
 			}
 			r.counters.WrapUpSent = true

@@ -19,10 +19,10 @@ func TestEngineNotesRenderAsPlainSystemNotes(t *testing.T) {
 	}
 }
 
-func TestSurfaceMessagesHideTheContinuationNote(t *testing.T) {
-	continuation := "Your reply was cut by the output limit. Continue exactly where you stopped, without repeating what you already wrote."
+func TestSurfaceMessagesHideModelOnlyEngineNotes(t *testing.T) {
+	modelOnly := "Do not call tools. Reply briefly."
 	messages := []transcript.Message{
-		{ID: "n1", Role: transcript.MessageRoleSystem, Origin: transcript.OriginEngine, Content: continuation, Parts: transcript.NormalizeMessageParts(continuation, nil)},
+		{ID: "n1", Role: transcript.MessageRoleSystem, Origin: transcript.OriginEngineModel, Content: modelOnly, Parts: transcript.NormalizeMessageParts(modelOnly, nil)},
 		{ID: "n2", Role: transcript.MessageRoleSystem, Origin: transcript.OriginEngine, Content: "Budget note: about 2 steps left.", Parts: transcript.NormalizeMessageParts("Budget note: about 2 steps left.", nil)},
 	}
 	out := ToSurfaceMessages(messages)

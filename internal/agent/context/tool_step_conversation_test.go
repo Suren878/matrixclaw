@@ -142,27 +142,30 @@ func TestSignedReasoningIsReplayedOnlyToTheModelThatProducedIt(t *testing.T) {
 func TestEngineNotesReachTheModelAsUserText(t *testing.T) {
 	stepEnd := transcript.MessagePart{Kind: transcript.MessagePartKindFinish, Finish: &transcript.FinishPart{Reason: "tool_calls"}}
 	note := transcript.Message{Role: transcript.MessageRoleSystem, Origin: transcript.OriginEngine, Content: "Budget note: about 2 steps left."}
+	modelNote := transcript.Message{Role: transcript.MessageRoleSystem, Origin: transcript.OriginEngineModel, Content: "Do not call tools."}
 	history := []transcript.Message{
 		{Role: transcript.MessageRoleUser, Content: "Inspect a"},
 		{Role: transcript.MessageRoleSystem, Content: "a plain system row stays hidden"},
 		{Role: transcript.MessageRoleAssistant, Content: "Reading.", Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindText, Text: &transcript.TextPart{Text: "Reading."}}, stepEnd}},
 		stepCallMessage("a"), stepResultMessage("a", "A", false),
-		note,
+		note, modelNote,
 	}
 
 	conversation, err := Conversation(context.Background(), history, nil, "", false, Identity{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(conversation) != 4 || len(conversation[1].ToolCalls) != 1 || conversation[2].ToolCallID != "a" {
-		t.Fatalf("conversation = %+v, want user, step, result, note", conversation)
+	if len(conversation) != 5 || len(conversation[1].ToolCalls) != 1 || conversation[2].ToolCallID != "a" {
+		t.Fatalf("conversation = %+v, want user, step, result and both notes", conversation)
 	}
-	if last := conversation[3]; last.Role != "user" || last.Content != note.Content {
-		t.Fatalf("note = %+v", last)
+	for i, want := range []transcript.Message{note, modelNote} {
+		if got := conversation[3+i]; got.Role != "user" || got.Content != want.Content {
+			t.Fatalf("note %d = %+v", i, got)
+		}
 	}
 
 	text := TextOnlyConversation(history, "")
-	if last := text[len(text)-1]; last.Role != "user" || last.Content != note.Content {
+	if n := len(text); n < 2 || text[n-2].Content != note.Content || text[n-1].Role != "user" || text[n-1].Content != modelNote.Content {
 		t.Fatalf("text-only conversation = %+v", text)
 	}
 }

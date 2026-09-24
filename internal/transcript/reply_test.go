@@ -15,7 +15,7 @@ func reply(runID, content, finish string) transcript.Message {
 }
 
 func engineNote(runID string) transcript.Message {
-	return transcript.Message{RunID: runID, Role: transcript.MessageRoleSystem, Origin: transcript.OriginEngine, Content: "Continue exactly where you stopped."}
+	return transcript.Message{RunID: runID, Role: transcript.MessageRoleSystem, Origin: transcript.OriginEngineModel, Content: "Continue exactly where you stopped."}
 }
 
 func TestRunReplyJoinsRepliesCutByTheOutputLimit(t *testing.T) {

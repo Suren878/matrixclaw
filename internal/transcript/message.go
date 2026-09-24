@@ -32,9 +32,17 @@ type Message struct {
 // Origin says who wrote a message when its role alone does not.
 type Origin string
 
-// OriginEngine marks notes the agent engine writes for the model; clients show
-// them as system notes.
-const OriginEngine Origin = "engine"
+// Engine notes reach the model as user text. Clients show OriginEngine notes as
+// system notes and hide OriginEngineModel ones, which only the model needs.
+const (
+	OriginEngine      Origin = "engine"
+	OriginEngineModel Origin = "engine_model"
+)
+
+// IsEngine reports whether the message is an engine note of either kind.
+func (o Origin) IsEngine() bool {
+	return o == OriginEngine || o == OriginEngineModel
+}
 
 type MessagePartKind string
 

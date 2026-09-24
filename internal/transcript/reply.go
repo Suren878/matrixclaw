@@ -23,7 +23,7 @@ func RunReply(messages []Message, runID string) string {
 	parts := []string{strings.TrimSpace(messages[last].Content)}
 	for i := last - 1; i >= 0; i-- {
 		message := messages[i]
-		if strings.TrimSpace(message.RunID) == runID && message.Origin == OriginEngine {
+		if strings.TrimSpace(message.RunID) == runID && message.Origin.IsEngine() {
 			continue
 		}
 		if !isRunReply(message, runID) || !HasFinishReason(message, "max_tokens") {
