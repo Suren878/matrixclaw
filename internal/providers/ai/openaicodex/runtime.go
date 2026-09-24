@@ -144,6 +144,14 @@ type responsesItem struct {
 	Name      string                 `json:"name,omitempty"`
 	Arguments string                 `json:"arguments,omitempty"`
 	Output    string                 `json:"output,omitempty"`
+	// A replayed reasoning item must carry summary, even when it is empty.
+	Summary          *[]responsesSummaryPart `json:"summary,omitempty"`
+	EncryptedContent string                  `json:"encrypted_content,omitempty"`
+}
+
+type responsesSummaryPart struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
 }
 
 type responsesContentPart struct {
@@ -187,13 +195,15 @@ type responsesError struct {
 }
 
 type responsesOutputItem struct {
-	ID        string                 `json:"id,omitempty"`
-	Type      string                 `json:"type,omitempty"`
-	Role      string                 `json:"role,omitempty"`
-	Content   []responsesContentPart `json:"content,omitempty"`
-	CallID    string                 `json:"call_id,omitempty"`
-	Name      string                 `json:"name,omitempty"`
-	Arguments string                 `json:"arguments,omitempty"`
+	ID               string                 `json:"id,omitempty"`
+	Type             string                 `json:"type,omitempty"`
+	Role             string                 `json:"role,omitempty"`
+	Content          []responsesContentPart `json:"content,omitempty"`
+	CallID           string                 `json:"call_id,omitempty"`
+	Name             string                 `json:"name,omitempty"`
+	Arguments        string                 `json:"arguments,omitempty"`
+	Summary          []responsesSummaryPart `json:"summary,omitempty"`
+	EncryptedContent string                 `json:"encrypted_content,omitempty"`
 }
 
 type responsesUsage struct {
@@ -226,6 +236,7 @@ func (r *Runtime) responsesPayload(request providers.Request) responsesRequest {
 	}
 	if r.reasoningEffort != "" && (len(payload.Tools) == 0 || r.capabilities.ReasoningWithTools) {
 		payload.Reasoning = &responsesReasoning{Effort: r.reasoningEffort}
+		payload.Include = []string{"reasoning.encrypted_content"}
 	}
 	for _, message := range request.Messages {
 		payload.Input = append(payload.Input, responsesItemsFromMessage(message)...)
@@ -251,7 +262,7 @@ func responsesItemsFromMessage(message providers.Message) []responsesItem {
 			Output: output,
 		}}
 	case "assistant":
-		items := []responsesItem(nil)
+		items := responsesReasoningItems(message.Reasoning)
 		if strings.TrimSpace(message.Content) != "" {
 			items = append(items, responsesItem{
 				Type: "message",
@@ -290,6 +301,23 @@ func responsesItemsFromMessage(message providers.Message) []responsesItem {
 			Content: parts,
 		}}
 	}
+}
+
+// responsesReasoningItems replays encrypted reasoning; with store=false the server
+// kept nothing, so the item is rebuilt without an id.
+func responsesReasoningItems(blocks []providers.ReasoningBlock) []responsesItem {
+	var items []responsesItem
+	for _, block := range blocks {
+		if block.RedactedData == "" {
+			continue
+		}
+		summary := []responsesSummaryPart{}
+		if block.Text != "" {
+			summary = append(summary, responsesSummaryPart{Type: "summary_text", Text: block.Text})
+		}
+		items = append(items, responsesItem{Type: "reasoning", Summary: &summary, EncryptedContent: block.RedactedData})
+	}
+	return items
 }
 
 func responsesContentParts(message providers.Message, textType string) []responsesContentPart {

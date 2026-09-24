@@ -31,9 +31,14 @@ func (r *Runtime) completedResponse(response responsesResponse) (providers.Respo
 	}
 	var texts []string
 	var calls []providers.ToolCall
+	var reasoning []providers.ReasoningBlock
 	refused := false
 	for _, item := range response.Output {
 		switch item.Type {
+		case "reasoning":
+			if item.EncryptedContent != "" {
+				reasoning = append(reasoning, providers.ReasoningBlock{Text: reasoningSummary(item.Summary), RedactedData: item.EncryptedContent})
+			}
 		case "message":
 			var text strings.Builder
 			for _, part := range item.Content {
@@ -72,7 +77,17 @@ func (r *Runtime) completedResponse(response responsesResponse) (providers.Respo
 	if text == "" && len(calls) == 0 && !stop.AllowsEmptyReply() {
 		return providers.Response{}, fmt.Errorf("openai-codex: %w", providers.ErrEmptyResponse)
 	}
-	return providers.Response{Text: text, ToolCalls: calls, Model: r.model, Provider: providers.TypeOpenAICodex, StopReason: stop, Usage: response.Usage.toProviderUsage()}, nil
+	return providers.Response{Text: text, ToolCalls: calls, Model: r.model, Provider: providers.TypeOpenAICodex, StopReason: stop, Reasoning: reasoning, Usage: response.Usage.toProviderUsage()}, nil
+}
+
+func reasoningSummary(parts []responsesSummaryPart) string {
+	texts := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if text := strings.TrimSpace(part.Text); text != "" {
+			texts = append(texts, text)
+		}
+	}
+	return strings.Join(texts, "\n\n")
 }
 
 // responsesStopReason maps the terminal status; an incomplete response stays
