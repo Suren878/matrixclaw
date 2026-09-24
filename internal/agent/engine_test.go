@@ -1,0 +1,385 @@
+package agent_test
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"regexp"
+	"strings"
+	"testing"
+
+	"github.com/Suren878/matrixclaw/internal/agent"
+	"github.com/Suren878/matrixclaw/internal/agent/agenttest"
+	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/transcript"
+)
+
+var markerPattern = regexp.MustCompile("^🧠 Context compacted: ~[0-9.]+[kM]? -> ~[0-9.]+[kM]? tokens\n\nSUMMARY$")
+
+func text(value string) agenttest.Turn {
+	return agenttest.Turn{Response: providers.Response{Text: value}}
+}
+
+func calls(toolCalls ...providers.ToolCall) agenttest.Turn {
+	return agenttest.Turn{Response: providers.Response{ToolCalls: toolCalls}}
+}
+
+func call(id, name string) providers.ToolCall {
+	return providers.ToolCall{ID: id, Name: name, Arguments: []byte(`{}`)}
+}
+
+func run(t *testing.T, f *agenttest.Fixture, model agent.Model) agent.Outcome {
+	t.Helper()
+	outcome, err := f.Engine().Run(context.Background(), f.Task(model))
+	if err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+	return outcome
+}
+
+func phases(states []agent.State) string {
+	out := make([]string, 0, len(states))
+	for _, state := range states {
+		if state.ToolCallID == "" {
+			out = append(out, string(state.Phase))
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s:%s", state.Phase, state.ToolCallID))
+	}
+	return strings.Join(out, ",")
+}
+
+func hasFinish(message transcript.Message, reason string) bool {
+	return transcript.HasFinishReason(message, reason)
+}
+
+func toolContent(request providers.Request, callID string) string {
+	for _, message := range request.Messages {
+		if message.ToolCallID == callID {
+			return message.Content
+		}
+	}
+	return ""
+}
+
+func writeTool(call tools.Call) tools.Result {
+	if !call.Approved {
+		return tools.Result{Approval: &tools.ApprovalRequest{ToolID: "write", ToolCallID: call.ToolCallID, Action: "write"}}
+	}
+	return tools.Result{Content: "written"}
+}
+
+func readTool(tools.Call) tools.Result {
+	return tools.Result{Content: "file body"}
+}
+
+func TestTextReplyCompletesWithFinalMessage(t *testing.T) {
+	f := agenttest.NewFixture()
+	model := agenttest.NewScriptedModel(agenttest.Turn{Response: providers.Response{
+		Text: "Hello.", Model: "m1", Provider: "p1", Usage: providers.Usage{PromptTokens: 5, OutputTokens: 1},
+	}})
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted || outcome.Assistant == nil || outcome.AssistantSaved {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+	reply := *outcome.Assistant
+	if reply.Content != "Hello." || reply.Model != "m1" || reply.Provider != "p1" || !hasFinish(reply, "end_turn") {
+		t.Fatalf("reply = %+v", reply)
+	}
+	if len(f.Journal.Steps) != 1 || f.Journal.Steps[0].Usage.PromptTokens != 5 || f.Journal.Steps[0].Model != "m1" || f.Journal.Steps[0].RunID != agenttest.RunID {
+		t.Fatalf("steps = %+v", f.Journal.Steps)
+	}
+	if got := phases(f.Journal.States); got != "model" {
+		t.Fatalf("checkpoints = %s", got)
+	}
+}
+
+func TestToolRoundTripIsJournaledInOrder(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["read"] = readTool
+	model := agenttest.NewScriptedModel(
+		agenttest.Turn{Response: providers.Response{Text: "Reading.", ToolCalls: []providers.ToolCall{{ID: "c1", Name: "read", Arguments: []byte(`{"path":"a"}`)}}}},
+		text("Done."),
+	)
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != "Done." {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+	messages := f.Journal.Messages
+	if len(messages) != 4 || messages[1].Content != "Reading." || !hasFinish(messages[1], "tool_calls") {
+		t.Fatalf("messages = %+v", messages)
+	}
+	if part := messages[2].Parts[0].ToolCall; messages[2].ID != "c1" || part == nil || !part.Finished || part.Input != `{"path":"a"}` {
+		t.Fatalf("call message = %+v", messages[2])
+	}
+	if messages[3].Content != "file body" || messages[3].Parts[0].ToolResult.ToolCallID != "c1" {
+		t.Fatalf("result message = %+v", messages[3])
+	}
+	wantKinds := []agent.EventKind{agent.EventMessageCreated, agent.EventMessageCreated, agent.EventToolRequested, agent.EventMessageUpdated, agent.EventMessageCreated, agent.EventToolFinished}
+	if fmt.Sprint(f.Sink.Kinds()) != fmt.Sprint(wantKinds) {
+		t.Fatalf("events = %v, want %v", f.Sink.Kinds(), wantKinds)
+	}
+	if got := phases(f.Journal.States); got != "model,tool:c1,model,model" {
+		t.Fatalf("checkpoints = %s", got)
+	}
+	executed := f.Tools.Calls[0]
+	if executed.ToolCallID != "c1" || executed.WorkingDir != "/work" || executed.Approved || executed.RunID != agenttest.RunID {
+		t.Fatalf("executed call = %+v", executed)
+	}
+	if got := toolContent(model.Requests()[1], "c1"); got != "file body" {
+		t.Fatalf("second request tool content = %q", got)
+	}
+	if fmt.Sprint(f.Tools.Finished) != "[c1]" {
+		t.Fatalf("finished = %v", f.Tools.Finished)
+	}
+}
+
+func TestThirtyTwoToolStepsFailTheRun(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["read"] = readTool
+	turns := make([]agenttest.Turn, 0, 40)
+	for i := 0; i < 40; i++ {
+		turns = append(turns, calls(call(fmt.Sprintf("c%d", i), "read")))
+	}
+	model := agenttest.NewScriptedModel(turns...)
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusFailed || outcome.Err == nil || outcome.Err.Error() != "tool loop exceeded 32 steps" {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+	if len(model.Requests()) != 32 || len(f.Tools.Calls) != 32 {
+		t.Fatalf("requests=%d tool calls=%d", len(model.Requests()), len(f.Tools.Calls))
+	}
+}
+
+func TestApprovalRequestParksAfterTheRestOfTheBatch(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["write"] = writeTool
+	f.Tools.Funcs["read"] = readTool
+	model := agenttest.NewScriptedModel(calls(call("w1", "write"), call("r1", "read")))
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusWaitingApproval {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+	if len(f.Approvals.Requests) != 1 || f.Approvals.Requests[0].ToolCallID != "w1" || f.Approvals.Requests[0].Request.Action != "write" {
+		t.Fatalf("approval requests = %+v", f.Approvals.Requests)
+	}
+	if _, ok := f.Journal.Result("r1"); !ok {
+		t.Fatal("read after the approval barrier did not run")
+	}
+	if _, ok := f.Journal.Result("w1"); ok {
+		t.Fatal("unapproved write has a result")
+	}
+	if message, _ := f.Journal.Message("w1"); message.Parts[0].ToolCall.Finished {
+		t.Fatal("pending call marked finished")
+	}
+}
+
+func TestResolvedApprovalContinuesTheSameRun(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["write"] = writeTool
+	f.Approvals.Grant = func(p agent.Pending) {
+		f.Inbox.Approved = append(f.Inbox.Approved, agent.Input{Kind: agent.InputApproved, ToolCallID: p.ToolCallID, ToolName: p.ToolName, WorkingDir: "/work", Args: []byte(`{}`)})
+	}
+	model := agenttest.NewScriptedModel(calls(call("w1", "write")), text("Done."))
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted || len(model.Requests()) != 2 {
+		t.Fatalf("outcome = %+v requests = %d", outcome, len(model.Requests()))
+	}
+	if len(f.Tools.Calls) != 2 || f.Tools.Calls[0].Approved || !f.Tools.Calls[1].Approved {
+		t.Fatalf("calls = %+v", f.Tools.Calls)
+	}
+	if result, ok := f.Journal.Result("w1"); !ok || result.Content != "written" {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestGrantedApprovalIsExecutedBeforeTheNextModelCall(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["write"] = writeTool
+	f.Journal.Seed(agent.ToolCallMessage("w1", agenttest.SessionID, agenttest.RunID, "write", []byte(`{}`), false, f.Clock))
+	f.Inbox.Approved = []agent.Input{{Kind: agent.InputApproved, ToolCallID: "w1", ToolName: "write", WorkingDir: "/work", Args: []byte(`{}`)}}
+	model := agenttest.NewScriptedModel(text("Done."))
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted || len(f.Tools.Calls) != 1 || !f.Tools.Calls[0].Approved {
+		t.Fatalf("outcome = %+v calls = %+v", outcome, f.Tools.Calls)
+	}
+	if message, _ := f.Journal.Message("w1"); !message.Parts[len(message.Parts)-1].ToolCall.Finished {
+		t.Fatal("approved call not marked finished")
+	}
+	if got := toolContent(model.Requests()[0], "w1"); got != "written" {
+		t.Fatalf("request tool content = %q", got)
+	}
+}
+
+func TestUnknownToolIsReturnedAsErrorResult(t *testing.T) {
+	f := agenttest.NewFixture()
+	model := agenttest.NewScriptedModel(calls(call("x1", "missing")), text("Fixed."))
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted || len(f.Tools.Calls) != 0 {
+		t.Fatalf("outcome = %+v calls = %+v", outcome, f.Tools.Calls)
+	}
+	if message, _ := f.Journal.Message("x1"); !message.Parts[0].ToolCall.Finished {
+		t.Fatal("rejected call not marked finished")
+	}
+	result, ok := f.Journal.Result("x1")
+	if !ok || !result.Parts[0].ToolResult.IsError || !strings.Contains(result.Content, `unknown tool "missing"`) {
+		t.Fatalf("result = %+v", result)
+	}
+	for _, kind := range f.Sink.Kinds() {
+		if kind == agent.EventToolRequested {
+			t.Fatal("rejected call emitted tool.requested")
+		}
+	}
+}
+
+func TestSteerIsAppendedToTheNextToolResult(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["read"] = readTool
+	f.Inbox.Steers = []string{"check the logs"}
+	model := agenttest.NewScriptedModel(calls(call("r1", "read")), text("Done."))
+
+	run(t, f, model)
+
+	result, _ := f.Journal.Result("r1")
+	if result.Content != "file body\n\nUser guidance: check the logs" || len(f.Inbox.Steers) != 0 {
+		t.Fatalf("result = %q steers left = %v", result.Content, f.Inbox.Steers)
+	}
+	if got := toolContent(model.Requests()[1], "r1"); !strings.Contains(got, "User guidance: check the logs") {
+		t.Fatalf("request tool content = %q", got)
+	}
+}
+
+func TestEmptyRepliesAreRetriedTwiceAndRecorded(t *testing.T) {
+	f := agenttest.NewFixture()
+	model := agenttest.NewScriptedModel(agenttest.Turn{}, agenttest.Turn{}, text("ok"))
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted || len(model.Requests()) != 3 {
+		t.Fatalf("outcome = %+v requests = %d", outcome, len(model.Requests()))
+	}
+	if len(f.Journal.Steps) != 3 {
+		t.Fatalf("recorded steps = %d, want every generation (3)", len(f.Journal.Steps))
+	}
+}
+
+func TestPartialOutputIsNotRetried(t *testing.T) {
+	f := agenttest.NewFixture()
+	model := agenttest.NewScriptedModel(agenttest.Turn{Stream: []string{"Unfinished"}, Err: providers.ErrIncompleteResponse})
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusFailed || !outcome.MarkErrored || !outcome.AssistantSaved || outcome.Assistant.Content != "Unfinished" || !errors.Is(outcome.Err, providers.ErrIncompleteResponse) {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+	if len(model.Requests()) != 1 {
+		t.Fatalf("requests = %d", len(model.Requests()))
+	}
+}
+
+func TestStreamingProgressIsBatched(t *testing.T) {
+	f := agenttest.NewFixture()
+	deltas := make([]string, 4096)
+	for i := range deltas {
+		deltas[i] = "x"
+	}
+	model := agenttest.NewScriptedModel(agenttest.Turn{Stream: deltas, Response: providers.Response{Text: strings.Repeat("x", 4096)}})
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted || !outcome.AssistantSaved {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+	if f.Journal.Begins != 1 || f.Journal.Streams != 1 {
+		t.Fatalf("progress writes = %d begins + %d streams, want 1 + 1", f.Journal.Begins, f.Journal.Streams)
+	}
+}
+
+func TestCancellationSeenAfterGenerationSealsTheReply(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Inbox.Cancel = true
+
+	outcome := run(t, f, agenttest.NewScriptedModel(text("Hi")))
+
+	if outcome.Status != agent.StatusCanceled || outcome.Assistant == nil {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+}
+
+func TestStoppedContextReturnsInterruptedWithTheReachedReply(t *testing.T) {
+	f := agenttest.NewFixture()
+	ctx, cancel := context.WithCancel(context.Background())
+	model := agenttest.ModelFunc(func(context.Context, providers.Request) (providers.Response, error) {
+		cancel()
+		return providers.Response{Text: "late answer"}, nil
+	})
+
+	outcome, err := f.Engine().Run(ctx, f.Task(model))
+
+	if err != nil || outcome.Status != agent.StatusInterrupted || outcome.Reached != agent.StatusCompleted || outcome.Assistant.Content != "late answer" {
+		t.Fatalf("outcome = %+v err = %v", outcome, err)
+	}
+}
+
+func TestAutoCompactionAddsMarkerBeforeTheModelCall(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Prompts.BaseTokens = 90_000
+	model := agenttest.NewScriptedModel(text("SUMMARY"), text("Done."))
+
+	outcome := run(t, f, model)
+
+	requests := model.Requests()
+	if outcome.Status != agent.StatusCompleted || len(requests) != 2 {
+		t.Fatalf("outcome = %+v requests = %d", outcome, len(requests))
+	}
+	if !strings.Contains(requests[0].SystemPrompt, "You compact matrixclaw chat histories") || !strings.Contains(requests[1].SystemPrompt, "Session context summary:\nSUMMARY") {
+		t.Fatalf("summary prompt = %q main prompt = %q", requests[0].SystemPrompt, requests[1].SystemPrompt)
+	}
+	marker := f.Journal.Messages[1]
+	if marker.Role != transcript.MessageRoleSystem || marker.RunID != "" || !markerPattern.MatchString(marker.Content) {
+		t.Fatalf("marker = %+v", marker)
+	}
+	if len(f.Journal.Steps) != 2 || f.Journal.Steps[0].StopReason != "compact" {
+		t.Fatalf("steps = %+v, want the summary recorded as compact first", f.Journal.Steps)
+	}
+}
+
+func TestContextLengthErrorCompactsAndRetriesOnce(t *testing.T) {
+	f := agenttest.NewFixture()
+	model := agenttest.NewScriptedModel(agenttest.Turn{Err: errors.New("context_length_exceeded")}, text("SUMMARY"), text("Recovered."))
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != "Recovered." || len(model.Requests()) != 3 {
+		t.Fatalf("outcome = %+v requests = %d", outcome, len(model.Requests()))
+	}
+	if !markerPattern.MatchString(f.Journal.Messages[1].Content) {
+		t.Fatalf("marker = %+v", f.Journal.Messages[1])
+	}
+}
+
+func TestLoadFailureFailsTheRun(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Journal.LoadErr = errors.New("disk gone")
+
+	outcome := run(t, f, agenttest.NewScriptedModel())
+
+	if outcome.Status != agent.StatusFailed || outcome.Err == nil || outcome.Err.Error() != "disk gone" {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+}
