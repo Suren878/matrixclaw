@@ -17,6 +17,7 @@ func (c *Core) applyOutcome(ctx context.Context, run Run, outcome agent.Outcome)
 		if outcome.Assistant == nil {
 			return false, nil
 		}
+		run.StopReason = outcome.StopReason
 		return false, c.completeAssistantTurn(ctx, &run, run.SessionID, outcome.Assistant, outcome.AssistantSaved)
 	case agent.StatusWaitingApproval:
 		return false, c.setRunStatus(ctx, &run, RunStatusWaitingApproval, "")
@@ -51,6 +52,7 @@ func (c *Core) applyInterruptedOutcome(run Run, outcome agent.Outcome) (bool, er
 	}
 	switch outcome.Reached {
 	case agent.StatusCompleted:
+		latest.StopReason = outcome.StopReason
 		return false, c.completeAssistantTurn(ctx, &latest, latest.SessionID, outcome.Assistant, outcome.AssistantSaved)
 	case agent.StatusWaitingApproval:
 		pending, err := c.runHasPendingApprovals(ctx, latest.SessionID, latest.ID)

@@ -55,7 +55,7 @@ func (j coreJournal) FinishStreaming(ctx context.Context, message transcript.Mes
 }
 
 func (j coreJournal) Checkpoint(ctx context.Context, state agent.State) error {
-	return j.c.saveRunCheckpoint(ctx, state.RunID, RunCheckpointPhase(state.Phase), state.ToolCallID, state.ToolName)
+	return j.c.saveEngineCheckpoint(ctx, state)
 }
 
 func (j coreJournal) RecordStep(ctx context.Context, step agent.Step) error {

@@ -42,7 +42,9 @@ func modelIdentity(model Model) agentcontext.Identity {
 	return agentcontext.Identity{Provider: provider, Model: name}
 }
 
-func (r *run) buildRequest(ctx context.Context) (providers.Request, error) {
+// buildRequest assembles the step's request; the final turn keeps the tools
+// defined but forbids calling them, so the cached prefix survives.
+func (r *run) buildRequest(ctx context.Context, final StopReason) (providers.Request, error) {
 	summary, effective := agentcontext.LatestSummaryForRun(r.history.all(), r.task.RunID)
 	system, custom := r.Prompts.System(ctx, summary, effective)
 	request := providers.Request{
@@ -51,6 +53,9 @@ func (r *run) buildRequest(ctx context.Context) (providers.Request, error) {
 		SystemPrompt:       system,
 		CustomInstructions: custom,
 		CacheKey:           r.task.SessionID,
+	}
+	if final != "" {
+		request.ToolChoice = providers.ToolChoiceNone
 	}
 	if !ToolUseAllowed(r.task.Model) {
 		request.Messages = agentcontext.TextOnlyConversation(effective, r.task.RunID)

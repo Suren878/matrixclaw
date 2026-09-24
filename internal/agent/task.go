@@ -1,8 +1,13 @@
 package agent
 
-import "github.com/Suren878/matrixclaw/internal/transcript"
+import (
+	"time"
 
-// Task is one native run to execute.
+	"github.com/Suren878/matrixclaw/internal/transcript"
+)
+
+// Task is one native run to execute. Resume holds the counters the run had
+// reached before it was parked or interrupted; a new run starts from zero.
 type Task struct {
 	RunID       string
 	SessionID   string
@@ -10,6 +15,15 @@ type Task struct {
 	ExternalKey string
 	WorkingDir  string
 	Model       Model
+	Budget      Budget
+	Resume      Counters
+}
+
+// Budget limits one run; a zero field is unlimited.
+type Budget struct {
+	Steps      int
+	ActiveTime time.Duration
+	Tokens     int64
 }
 
 // Status is how a Run call ended.
@@ -25,9 +39,11 @@ const (
 
 // Outcome is applied by core. Assistant is the final reply (completed), the reply to
 // seal (canceled, interrupted) or the errored reply (failed with MarkErrored).
-// Reached is what the last step produced before an interruption.
+// Reached is what the last step produced before an interruption; StopReason is set
+// whenever the run completed or reached completion.
 type Outcome struct {
 	Status         Status
+	StopReason     StopReason
 	Assistant      *transcript.Message
 	AssistantSaved bool
 	Err            error

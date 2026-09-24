@@ -40,7 +40,10 @@ func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
 	if err != nil || !ok {
 		return err
 	}
-	task, engine := c.nativeEngine(run, session, runtime)
+	task, engine, err := c.nativeEngine(ctx, run, session, runtime)
+	if err != nil {
+		return c.failRunByID(ctx, run, err)
+	}
 	outcome, err := engine.Run(runCtx, task)
 	if err != nil {
 		return err
@@ -87,8 +90,13 @@ func (c *Core) prepareNativeRun(ctx context.Context, runID string) (Run, Session
 	return run, session, runtime, true, nil
 }
 
-// nativeEngine builds the engine and task of one native run.
-func (c *Core) nativeEngine(run Run, session Session, runtime providers.Runtime) (agent.Task, *agent.Engine) {
+// nativeEngine builds the engine and task of one native run; the task resumes the
+// counters of the run's checkpoint.
+func (c *Core) nativeEngine(ctx context.Context, run Run, session Session, runtime providers.Runtime) (agent.Task, *agent.Engine, error) {
+	resume, err := c.resumeCounters(ctx, run.ID)
+	if err != nil {
+		return agent.Task{}, nil, err
+	}
 	turn := nativeTurn{
 		RunID:              run.ID,
 		SessionID:          session.ID,
@@ -115,8 +123,10 @@ func (c *Core) nativeEngine(run Run, session Session, runtime providers.Runtime)
 		ExternalKey: run.ExternalKey,
 		WorkingDir:  session.WorkingDir,
 		Model:       runtime,
+		Budget:      c.defaultRunBudget(run, session),
+		Resume:      resume,
 	}
-	return task, engine
+	return task, engine, nil
 }
 
 func (c *Core) resolveSessionRuntime(ctx context.Context, session Session) (providers.Runtime, error) {

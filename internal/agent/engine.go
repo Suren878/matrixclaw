@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -11,8 +10,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
-
-const maxSteps = 32
 
 // Config wires the ports of one run.
 type Config struct {
@@ -66,8 +63,8 @@ func (e *Engine) Run(ctx context.Context, task Task) (Outcome, error) {
 		}
 		return Outcome{Status: StatusFailed, Err: err}, nil
 	}
-	r := &run{Config: e.cfg, task: task, history: newHistory(e.cfg.Journal, e.cfg.Sink, window)}
-	for step := 0; step < maxSteps; step++ {
+	r := &run{Config: e.cfg, task: task, history: newHistory(e.cfg.Journal, e.cfg.Sink, window), counters: task.Resume, started: e.cfg.Now()}
+	for {
 		result := r.step(ctx)
 		if result.canceled {
 			return Outcome{Status: StatusCanceled, Assistant: result.assistant, AssistantSaved: result.saved}, nil
@@ -80,13 +77,14 @@ func (e *Engine) Run(ctx context.Context, task Task) (Outcome, error) {
 			return outcome, err
 		}
 	}
-	return Outcome{Status: StatusFailed, Err: fmt.Errorf("tool loop exceeded %d steps", maxSteps)}, nil
 }
 
 type run struct {
 	Config
-	task    Task
-	history *history
+	task     Task
+	history  *history
+	counters Counters
+	started  time.Time
 }
 
 type stepKind int
@@ -105,6 +103,14 @@ type stepResult struct {
 	response    providers.Response
 	err         error
 	markErrored bool
+	stop        StopReason
+}
+
+func (s stepResult) stopReason() StopReason {
+	if s.stop == "" {
+		return StopDone
+	}
+	return s.stop
 }
 
 func failedStep(err error) stepResult {
@@ -119,6 +125,10 @@ func (r *run) step(ctx context.Context) stepResult {
 	if waiting {
 		return stepResult{kind: stepWaitingApproval}
 	}
+	final, err := r.prepareStep(ctx)
+	if err != nil {
+		return failedStep(err)
+	}
 	if err := r.checkpoint(ctx, PhaseModel, "", ""); err != nil {
 		return failedStep(err)
 	}
@@ -130,7 +140,7 @@ func (r *run) step(ctx context.Context) stepResult {
 	if err != nil {
 		return failedStep(err)
 	}
-	request, err := r.buildRequest(ctx)
+	request, err := r.buildRequest(ctx, final)
 	if err != nil {
 		return failedStep(err)
 	}
@@ -139,11 +149,12 @@ func (r *run) step(ctx context.Context) stepResult {
 			return failedStep(err)
 		}
 		if compacted {
-			if request, err = r.buildRequest(ctx); err != nil {
+			if request, err = r.buildRequest(ctx, final); err != nil {
 				return failedStep(err)
 			}
 		}
 	}
+	r.counters.Steps++
 	gen, err := r.generateWithRetry(ctx, request)
 	if err != nil && agentcontext.IsContextLengthExceeded(err) {
 		compacted, compactErr := r.compactHistory(ctx, r.history.all(), budget.base)
@@ -151,18 +162,24 @@ func (r *run) step(ctx context.Context) stepResult {
 			return failedStep(compactErr)
 		}
 		if compacted {
-			retry, buildErr := r.buildRequest(ctx)
+			retry, buildErr := r.buildRequest(ctx, final)
 			if buildErr != nil {
 				return failedStep(buildErr)
 			}
 			gen, err = r.generateWithRetry(ctx, retry)
 		}
 	}
+	if final != "" && errors.Is(err, providers.ErrEmptyResponse) {
+		return finalTurn(gen, final)
+	}
 	if err != nil {
 		return stepResult{kind: stepDone, assistant: &gen.assistant, saved: gen.saved, response: gen.response, err: err, markErrored: true}
 	}
 	if r.canceled(ctx) {
 		return stepResult{kind: stepDone, canceled: true, assistant: &gen.assistant, saved: gen.saved}
+	}
+	if final != "" {
+		return finalTurn(gen, final)
 	}
 	return r.handleResponse(ctx, gen)
 }
@@ -237,7 +254,7 @@ func (r *run) settle(ctx context.Context, result stepResult) (Outcome, bool, err
 		return Outcome{Status: StatusWaitingApproval}, true, nil
 	case stepDone:
 		reply := finalReply(*result.assistant, result.response)
-		return Outcome{Status: StatusCompleted, Assistant: &reply, AssistantSaved: result.saved}, true, nil
+		return Outcome{Status: StatusCompleted, StopReason: result.stopReason(), Assistant: &reply, AssistantSaved: result.saved}, true, nil
 	default:
 		return Outcome{}, false, nil
 	}
@@ -251,7 +268,7 @@ func (r *run) interrupted(result stepResult) Outcome {
 	switch result.kind {
 	case stepDone:
 		reply := finalReply(*result.assistant, result.response)
-		outcome.Assistant, outcome.Reached = &reply, StatusCompleted
+		outcome.Assistant, outcome.Reached, outcome.StopReason = &reply, StatusCompleted, result.stopReason()
 	case stepWaitingApproval:
 		outcome.Reached = StatusWaitingApproval
 	}
@@ -263,6 +280,8 @@ func (r *run) canceled(ctx context.Context) bool {
 	return err == nil && canceled
 }
 
+// checkpoint records the durable phase together with the run's counters.
 func (r *run) checkpoint(ctx context.Context, phase Phase, toolCallID string, toolName string) error {
-	return r.Journal.Checkpoint(ctx, State{RunID: r.task.RunID, Phase: phase, ToolCallID: toolCallID, ToolName: toolName})
+	r.counters.Active = r.active()
+	return r.Journal.Checkpoint(ctx, State{RunID: r.task.RunID, Phase: phase, ToolCallID: toolCallID, ToolName: toolName, Counters: r.counters})
 }

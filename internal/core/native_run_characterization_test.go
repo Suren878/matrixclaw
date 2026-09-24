@@ -171,35 +171,6 @@ func TestNativeRunCheckpointsModelAndToolPhases(t *testing.T) {
 	waitForRecoveryCheckpointGone(t, db, run.ID)
 }
 
-func TestNativeRunFailsAfterThirtyTwoToolSteps(t *testing.T) {
-	app, db, cleanup := newCrashRecoveryCore(t)
-	defer cleanup()
-	tool := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
-	app.WithTools(tools.NewRegistry(tool))
-	calls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
-		calls++
-		return providers.Response{ToolCalls: []providers.ToolCall{{ID: fmt.Sprintf("step-%d", calls), Name: "inspect_state", Arguments: []byte(`{}`)}}}, nil
-	})})
-	_, run := saveCrashRecoveryRun(t, db, "step-cap", core.RunStatusAccepted, false)
-
-	err := app.ExecuteRun(context.Background(), run.ID)
-
-	if err == nil || err.Error() != "tool loop exceeded 32 steps" {
-		t.Fatalf("ExecuteRun error = %v", err)
-	}
-	got, getErr := db.GetRun(context.Background(), run.ID)
-	if getErr != nil {
-		t.Fatal(getErr)
-	}
-	if got.Status != core.RunStatusFailed || got.Error != "tool loop exceeded 32 steps" {
-		t.Fatalf("run = %s (%s)", got.Status, got.Error)
-	}
-	if calls != 32 || tool.callCount() != 32 {
-		t.Fatalf("model calls=%d tool calls=%d, want 32/32", calls, tool.callCount())
-	}
-}
-
 func approvalTools(mutations *int) (funcTool, *recoveryTool) {
 	mutate := funcTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation), fn: func(_ context.Context, call tools.Call) (tools.Result, error) {
 		if !call.Approved {

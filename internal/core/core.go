@@ -35,6 +35,7 @@ type Core struct {
 	newID          func(prefix string) string
 	historyLimit   int
 	lifetime       context.Context
+	budgets        RunBudgets
 }
 
 type SkillsPromptContextRequest struct {
@@ -81,6 +82,7 @@ func New(store Store) *Core {
 		newID:         defaultID,
 		historyLimit:  50,
 		lifetime:      context.Background(),
+		budgets:       DefaultRunBudgets(),
 	}
 }
 

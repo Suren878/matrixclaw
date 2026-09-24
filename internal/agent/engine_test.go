@@ -83,7 +83,7 @@ func TestTextReplyCompletesWithFinalMessage(t *testing.T) {
 
 	outcome := run(t, f, model)
 
-	if outcome.Status != agent.StatusCompleted || outcome.Assistant == nil || outcome.AssistantSaved {
+	if outcome.Status != agent.StatusCompleted || outcome.StopReason != agent.StopDone || outcome.Assistant == nil || outcome.AssistantSaved {
 		t.Fatalf("outcome = %+v", outcome)
 	}
 	reply := *outcome.Assistant
@@ -172,25 +172,6 @@ func TestContextBudgetIsReadOncePerStep(t *testing.T) {
 
 	if f.Prompts.BudgetReads != 2 {
 		t.Fatalf("budget reads = %d over 2 steps, want 2", f.Prompts.BudgetReads)
-	}
-}
-
-func TestThirtyTwoToolStepsFailTheRun(t *testing.T) {
-	f := agenttest.NewFixture()
-	f.Tools.Funcs["read"] = readTool
-	turns := make([]agenttest.Turn, 0, 40)
-	for i := 0; i < 40; i++ {
-		turns = append(turns, calls(call(fmt.Sprintf("c%d", i), "read")))
-	}
-	model := agenttest.NewScriptedModel(turns...)
-
-	outcome := run(t, f, model)
-
-	if outcome.Status != agent.StatusFailed || outcome.Err == nil || outcome.Err.Error() != "tool loop exceeded 32 steps" {
-		t.Fatalf("outcome = %+v", outcome)
-	}
-	if len(model.Requests()) != 32 || len(f.Tools.Calls) != 32 {
-		t.Fatalf("requests=%d tool calls=%d", len(model.Requests()), len(f.Tools.Calls))
 	}
 }
 

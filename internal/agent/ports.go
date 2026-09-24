@@ -42,12 +42,14 @@ const (
 	PhaseTool  Phase = "tool"
 )
 
-// State is the checkpoint written before each model call and tool execution.
+// State is the checkpoint written before each model call and tool execution; its
+// Counters let a parked or restarted run keep its budget.
 type State struct {
 	RunID      string
 	Phase      Phase
 	ToolCallID string
 	ToolName   string
+	Counters   Counters
 }
 
 // Step is one successful model generation (a run_steps row). StopReason is a

@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"strings"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/agent"
 )
 
 type RunCheckpointPhase string
@@ -41,6 +44,30 @@ type RunCheckpointStore interface {
 }
 
 func (c *Core) saveRunCheckpoint(ctx context.Context, runID string, phase RunCheckpointPhase, toolCallID string, toolName string) error {
+	return c.updateRunCheckpoint(ctx, runID, func(checkpoint *RunCheckpoint) {
+		checkpoint.Phase = phase
+		checkpoint.ToolCallID = normalizeText(toolCallID)
+		checkpoint.ToolName = normalizeText(toolName)
+	})
+}
+
+// saveEngineCheckpoint stores the engine's phase together with its run counters.
+func (c *Core) saveEngineCheckpoint(ctx context.Context, state agent.State) error {
+	counters, err := json.Marshal(state.Counters)
+	if err != nil {
+		return err
+	}
+	return c.updateRunCheckpoint(ctx, state.RunID, func(checkpoint *RunCheckpoint) {
+		checkpoint.Phase = RunCheckpointPhase(state.Phase)
+		checkpoint.ToolCallID = normalizeText(state.ToolCallID)
+		checkpoint.ToolName = normalizeText(state.ToolName)
+		checkpoint.EngineState = counters
+	})
+}
+
+// updateRunCheckpoint applies update to the run's checkpoint and keeps every field
+// update leaves alone, such as the recovery count or the engine counters.
+func (c *Core) updateRunCheckpoint(ctx context.Context, runID string, update func(*RunCheckpoint)) error {
 	store, ok := c.store.(RunCheckpointStore)
 	if !ok {
 		return nil
@@ -54,11 +81,24 @@ func (c *Core) saveRunCheckpoint(ctx context.Context, runID string, phase RunChe
 		return err
 	}
 	checkpoint.RunID = runID
-	checkpoint.Phase = phase
-	checkpoint.ToolCallID = normalizeText(toolCallID)
-	checkpoint.ToolName = normalizeText(toolName)
+	update(&checkpoint)
 	checkpoint.UpdatedAt = c.now().UTC()
 	return store.SaveRunCheckpoint(ctx, checkpoint)
+}
+
+// resumeCounters reads the engine counters of the run's checkpoint; a checkpoint
+// without readable counters starts the budget from zero.
+func (c *Core) resumeCounters(ctx context.Context, runID string) (agent.Counters, error) {
+	checkpoint, ok, err := c.runCheckpoint(ctx, runID)
+	if err != nil || !ok || len(checkpoint.EngineState) == 0 {
+		return agent.Counters{}, err
+	}
+	var counters agent.Counters
+	if err := json.Unmarshal(checkpoint.EngineState, &counters); err != nil {
+		log.Printf("core: run %q has unreadable budget counters, starting from zero: %v", runID, err)
+		return agent.Counters{}, nil
+	}
+	return counters, nil
 }
 
 func (c *Core) markRunRecovery(ctx context.Context, runID string) (RunCheckpoint, error) {
