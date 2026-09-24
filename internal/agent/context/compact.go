@@ -61,7 +61,7 @@ func summarize(ctx context.Context, generator Generator, sessionID string, messa
 	if err != nil {
 		return "", err
 	}
-	if err := StopReasonError(response); err != nil {
+	if err := stopReasonError(response); err != nil {
 		return "", err
 	}
 	text := strings.TrimSpace(response.Text)

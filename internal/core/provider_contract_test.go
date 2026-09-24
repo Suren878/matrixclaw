@@ -2,49 +2,72 @@ package core_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func TestTruncatedOrFilteredReplyFailsTheTurnWithoutRetry(t *testing.T) {
-	for _, reason := range []providers.StopReason{providers.StopMaxTokens, providers.StopContentFilter} {
-		t.Run(string(reason), func(t *testing.T) {
-			app, db, cleanup := newCrashRecoveryCore(t)
-			defer cleanup()
-			calls := 0
-			app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, _ providers.Request) (providers.Response, error) {
-				calls++
-				if err := providers.StreamText(ctx, "Cut off"); err != nil {
-					return providers.Response{}, err
-				}
-				return providers.Response{Text: "Cut off", Provider: "recovery-test", StopReason: reason}, nil
-			})})
-			session, run := saveCrashRecoveryRun(t, db, "stop-"+string(reason), core.RunStatusAccepted, false)
-			err := app.ExecuteRun(context.Background(), run.ID)
-			if want := "generation stopped before completion (" + string(reason) + ")"; err == nil || !strings.Contains(err.Error(), want) {
-				t.Fatalf("error=%v, want %q", err, want)
-			}
-			assertRecoveryRunStatus(t, db, run.ID, core.RunStatusFailed)
-			if calls != 1 {
-				t.Fatalf("model calls=%d, want 1 (not retryable)", calls)
-			}
-			messages, err := db.ListMessages(context.Background(), session.ID, 0)
-			if err != nil {
-				t.Fatal(err)
-			}
-			kept := false
-			for _, message := range messages {
-				kept = kept || (message.Role == transcript.MessageRoleAssistant && strings.Contains(message.Content, "Cut off"))
-			}
-			if !kept {
-				t.Fatal("partial reply was lost")
-			}
-		})
+func TestReplyCutFourTimesInARowFailsTheRun(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	calls := 0
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, _ providers.Request) (providers.Response, error) {
+		calls++
+		text := fmt.Sprintf("Part %d", calls)
+		if err := providers.StreamText(ctx, text); err != nil {
+			return providers.Response{}, err
+		}
+		return providers.Response{Text: text, Provider: "recovery-test", StopReason: providers.StopMaxTokens}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "cut-four", core.RunStatusAccepted, false)
+
+	err := app.ExecuteRun(context.Background(), run.ID)
+
+	if err == nil || err.Error() != "reply cut by the output limit 4 times in a row" {
+		t.Fatalf("error = %v", err)
+	}
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusFailed)
+	if calls != 4 {
+		t.Fatalf("model calls = %d, want 4", calls)
+	}
+	parts, notes := 0, 0
+	for _, message := range sessionMessages(t, db, session.ID) {
+		if message.Role == transcript.MessageRoleAssistant && strings.HasPrefix(message.Content, "Part ") {
+			parts++
+		}
+		if message.Origin == transcript.OriginEngine {
+			notes++
+		}
+	}
+	if parts != 4 || notes != 3 {
+		t.Fatalf("kept parts = %d continuation notes = %d, want 4 and 3", parts, notes)
+	}
+}
+
+func TestFilteredReplyCompletesTheRun(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+		return providers.Response{Provider: "recovery-test", StopReason: providers.StopContentFilter}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "filtered", core.RunStatusAccepted, false)
+
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	stored, err := db.GetRun(context.Background(), run.ID)
+	if err != nil || stored.Status != core.RunStatusCompleted || stored.StopReason != agent.StopDone {
+		t.Fatalf("run = %+v err = %v", stored, err)
+	}
+	if !hasAssistantContent(sessionMessages(t, db, session.ID), run.ID, "The provider stopped this reply (content_filter).") {
+		t.Fatal("filtered reply has no visible note")
 	}
 }
 
@@ -68,17 +91,24 @@ func TestProviderRequestCarriesTheSessionCacheKey(t *testing.T) {
 func TestRunStepRecordsTheProviderStopReason(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
+	calls := 0
 	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
-		return providers.Response{Text: "Cut off", Provider: "recovery-test", StopReason: providers.StopMaxTokens}, nil
+		calls++
+		if calls == 1 {
+			return providers.Response{Text: "Cut off", Provider: "recovery-test", StopReason: providers.StopMaxTokens}, nil
+		}
+		return providers.Response{Text: "and finished.", Provider: "recovery-test", StopReason: providers.StopEndTurn}, nil
 	})})
 	_, run := saveCrashRecoveryRun(t, db, "run-step-stop", core.RunStatusAccepted, false)
-	_ = app.ExecuteRun(context.Background(), run.ID)
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
 	steps, err := db.ListRunSteps(context.Background(), run.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(steps) != 1 || steps[0].StopReason != "max_tokens" {
-		t.Fatalf("run steps=%+v, want one step with stop_reason max_tokens", steps)
+	if len(steps) != 2 || steps[0].StopReason != "max_tokens" || steps[1].StopReason != "end_turn" {
+		t.Fatalf("run steps=%+v, want max_tokens then end_turn", steps)
 	}
 }
 

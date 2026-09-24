@@ -9,17 +9,20 @@ import (
 // wrapUpShare is the used share of a limit at which the run is told to wrap up.
 const wrapUpShare = 0.8
 
-// Counters is what a run has used of its budget and its no-progress streak; it is
-// checkpointed so a parked or restarted run continues from it.
+// Counters is what a run has used of its budget, its no-progress streak and its
+// output-limit state; it is checkpointed so a parked or restarted run continues
+// from it.
 type Counters struct {
-	Steps       int           `json:"steps,omitempty"`
-	Tokens      int64         `json:"tokens,omitempty"`
-	Active      time.Duration `json:"active,omitempty"`
-	WrapUpSent  bool          `json:"wrap_up_sent,omitempty"`
-	LoopHash    string        `json:"loop_hash,omitempty"`
-	LoopTool    string        `json:"loop_tool,omitempty"`
-	LoopRepeats int           `json:"loop_repeats,omitempty"`
-	LoopWarned  bool          `json:"loop_warned,omitempty"`
+	Steps         int           `json:"steps,omitempty"`
+	Tokens        int64         `json:"tokens,omitempty"`
+	Active        time.Duration `json:"active,omitempty"`
+	WrapUpSent    bool          `json:"wrap_up_sent,omitempty"`
+	LoopHash      string        `json:"loop_hash,omitempty"`
+	LoopTool      string        `json:"loop_tool,omitempty"`
+	LoopRepeats   int           `json:"loop_repeats,omitempty"`
+	LoopWarned    bool          `json:"loop_warned,omitempty"`
+	Continuations int           `json:"continuations,omitempty"`
+	OutputLimit   int           `json:"output_limit,omitempty"`
 }
 
 // active is the run's working time: what it had used before plus this Run call.

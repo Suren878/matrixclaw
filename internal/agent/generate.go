@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -61,10 +60,7 @@ func (r *run) generateWithRetry(ctx context.Context, request providers.Request) 
 	backoffs := [...]time.Duration{200 * time.Millisecond, 750 * time.Millisecond}
 	for attempt := 0; ; attempt++ {
 		gen, err := r.generate(ctx, request)
-		if err == nil {
-			err = agentcontext.StopReasonError(gen.response)
-		}
-		if err == nil && sanitizeAssistantOutput(gen.response.Text) == "" && len(gen.response.ToolCalls) == 0 {
+		if err == nil && sanitizeAssistantOutput(gen.response.Text) == "" && len(gen.response.ToolCalls) == 0 && !gen.response.StopReason.AllowsEmptyReply() {
 			if request.ToolChoice == providers.ToolChoiceNone {
 				return gen, providers.ErrEmptyResponse
 			}

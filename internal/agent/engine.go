@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -189,7 +190,8 @@ func (r *run) handleResponse(ctx context.Context, gen generation) stepResult {
 	response.Text = sanitizeAssistantOutput(response.Text)
 	assistant := gen.assistant
 	if len(response.ToolCalls) > 0 {
-		if err := r.finishToolTurn(ctx, &assistant, gen.saved, response); err != nil {
+		r.counters.Continuations = 0
+		if err := r.finishTurn(ctx, &assistant, gen.saved, response, "tool_calls"); err != nil {
 			if ctx.Err() != nil {
 				// Stopped before the tool turn was written: core seals the streamed preview.
 				return stepResult{kind: stepDone, assistant: &gen.assistant, saved: gen.saved, err: err}
@@ -205,14 +207,24 @@ func (r *run) handleResponse(ctx context.Context, gen generation) stepResult {
 		}
 		return stepResult{kind: stepContinue}
 	}
+	switch response.StopReason {
+	case providers.StopMaxTokens:
+		return r.continueCutReply(ctx, gen, response)
+	case providers.StopRefusal, providers.StopContentFilter:
+		if response.Text == "" {
+			response.Text = fmt.Sprintf("The provider stopped this reply (%s).", response.StopReason)
+		}
+		return stepResult{kind: stepDone, assistant: &assistant, saved: gen.saved, response: response}
+	}
 	if strings.TrimSpace(response.Text) == "" {
 		return stepResult{kind: stepDone, assistant: &assistant, saved: gen.saved, response: response, err: providers.ErrEmptyResponse, markErrored: true}
 	}
 	return stepResult{kind: stepDone, assistant: &assistant, saved: gen.saved, response: response}
 }
 
-// finishToolTurn writes the model's commentary, reasoning and usage before its tools run.
-func (r *run) finishToolTurn(ctx context.Context, assistant *transcript.Message, saved bool, response providers.Response) error {
+// finishTurn writes a reply the run goes on after (a tool step, or a reply cut by
+// the output limit) with its reasoning, usage and finish reason.
+func (r *run) finishTurn(ctx context.Context, assistant *transcript.Message, saved bool, response providers.Response, reason string) error {
 	assistant.Content = response.Text
 	assistant.Model = response.Model
 	assistant.Provider = response.Provider
@@ -221,7 +233,7 @@ func (r *run) finishToolTurn(ctx context.Context, assistant *transcript.Message,
 	if finish == nil {
 		finish = &transcript.MessagePart{Kind: transcript.MessagePartKindFinish, Finish: &transcript.FinishPart{}}
 	}
-	finish.Finish.Reason = "tool_calls"
+	finish.Finish.Reason = reason
 	assistant.Parts = append(assistant.Parts, *finish)
 	assistant.UpdatedAt = r.Now()
 	if saved {

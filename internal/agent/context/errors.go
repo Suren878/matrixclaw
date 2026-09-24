@@ -31,8 +31,8 @@ func IsContextLengthExceeded(err error) bool {
 	return strings.Contains(text, "token") && strings.Contains(text, "limit") && strings.Contains(text, "exceed")
 }
 
-// StopReasonError fails a reply cut by the output limit or a content filter: the loop has no continuation path for either.
-func StopReasonError(response providers.Response) error {
+// stopReasonError fails a summary cut by the output limit or a content filter.
+func stopReasonError(response providers.Response) error {
 	switch response.StopReason {
 	case providers.StopMaxTokens, providers.StopContentFilter:
 		return fmt.Errorf("%s: generation stopped before completion (%s)", response.Provider, response.StopReason)

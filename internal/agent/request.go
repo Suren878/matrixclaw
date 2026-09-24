@@ -53,6 +53,7 @@ func (r *run) buildRequest(ctx context.Context, final StopReason) (providers.Req
 		SystemPrompt:       system,
 		CustomInstructions: custom,
 		CacheKey:           r.task.SessionID,
+		MaxOutputTokens:    r.counters.OutputLimit,
 	}
 	if final != "" {
 		request.ToolChoice = providers.ToolChoiceNone
