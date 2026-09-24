@@ -64,7 +64,6 @@ func newTestRuntime(t *testing.T, replies ...string) (providers.Runtime, func(in
 	server, body := startServer(t, replies...)
 	runtime, err := New(context.Background(), Config{
 		APIKey: "test-key", BaseURL: server.URL, Model: "claude-test", HTTPClient: server.Client(),
-		ToolUseMode: providers.ToolUseNative,
 	})
 	if err != nil {
 		t.Fatal(err)

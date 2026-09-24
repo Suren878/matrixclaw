@@ -46,12 +46,6 @@ func runtimeProfileDefaults(providerType string) RuntimeProfile {
 			ToolSchemaDialect: ToolSchemaGemini,
 		}
 	}
-	if providerType == TypeAnthropic {
-		return RuntimeProfile{
-			ToolUseMode:       ToolUseDisabled,
-			ToolSchemaDialect: ToolSchemaJSONSchema,
-		}
-	}
 	return NormalizeRuntimeProfile(RuntimeProfile{})
 }
 

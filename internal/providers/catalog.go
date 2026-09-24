@@ -191,7 +191,7 @@ func defaultCapabilitiesForCustomProviderType(providerType string) Capabilities 
 	case TypeOpenAICompat, TypeOpenAICodex:
 		return Capabilities{ModelDiscovery: true, ReasoningEffort: providerType == TypeOpenAICodex, ToolCalling: true}
 	case TypeAnthropic:
-		return Capabilities{ModelDiscovery: true}
+		return Capabilities{ModelDiscovery: true, ToolCalling: true}
 	case TypeGemini:
 		return Capabilities{ModelDiscovery: true, NormalizeModel: true, ToolCalling: true}
 	default:
