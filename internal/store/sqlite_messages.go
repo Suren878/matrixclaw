@@ -321,7 +321,7 @@ type runScanner interface {
 	Scan(dest ...any) error
 }
 
-const messageColumns = `id, session_id, run_id, role, content, parts_json, model, provider, created_at, updated_at, seq`
+const messageColumns = `id, session_id, run_id, role, origin, content, parts_json, model, provider, created_at, updated_at, seq`
 
 // sqlRowQueryer is satisfied by *sql.DB and *sql.Tx.
 type sqlRowQueryer interface {
@@ -332,13 +332,14 @@ type sqlRowQueryer interface {
 func insertMessage(ctx context.Context, queryer sqlRowQueryer, message transcript.Message) (int64, error) {
 	var seq int64
 	err := queryer.QueryRowContext(ctx, `
-INSERT INTO messages(id, session_id, run_id, role, content, parts_json, model, provider, created_at, updated_at, seq)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM messages))
+INSERT INTO messages(id, session_id, run_id, role, origin, content, parts_json, model, provider, created_at, updated_at, seq)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM messages))
 RETURNING seq`,
 		message.ID,
 		message.SessionID,
 		message.RunID,
 		string(message.Role),
+		string(message.Origin),
 		message.Content,
 		marshalMessageParts(message),
 		message.Model,
@@ -352,15 +353,17 @@ RETURNING seq`,
 func scanMessage(scanner messageScanner) (transcript.Message, error) {
 	var message transcript.Message
 	var role string
+	var origin string
 	var partsJSON string
 	var model string
 	var provider string
 	var createdAt string
 	var updatedAt string
-	if err := scanner.Scan(&message.ID, &message.SessionID, &message.RunID, &role, &message.Content, &partsJSON, &model, &provider, &createdAt, &updatedAt, &message.Seq); err != nil {
+	if err := scanner.Scan(&message.ID, &message.SessionID, &message.RunID, &role, &origin, &message.Content, &partsJSON, &model, &provider, &createdAt, &updatedAt, &message.Seq); err != nil {
 		return transcript.Message{}, fmt.Errorf("store: scan message: %w", err)
 	}
 	message.Role = transcript.MessageRole(role)
+	message.Origin = transcript.Origin(origin)
 	message.Parts = unmarshalMessageParts(partsJSON)
 	message.Model = model
 	message.Provider = provider

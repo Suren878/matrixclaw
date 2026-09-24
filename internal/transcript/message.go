@@ -20,6 +20,7 @@ type Message struct {
 	SessionID string        `json:"session_id"`
 	RunID     string        `json:"run_id"`
 	Role      MessageRole   `json:"role"`
+	Origin    Origin        `json:"origin,omitempty"`
 	Content   string        `json:"content"`
 	Parts     []MessagePart `json:"parts,omitempty"`
 	Model     string        `json:"model,omitempty"`
@@ -27,6 +28,13 @@ type Message struct {
 	CreatedAt time.Time     `json:"created_at"`
 	UpdatedAt time.Time     `json:"updated_at"`
 }
+
+// Origin says who wrote a message when its role alone does not.
+type Origin string
+
+// OriginEngine marks notes the agent engine writes for the model; clients show
+// them as system notes.
+const OriginEngine Origin = "engine"
 
 type MessagePartKind string
 

@@ -29,6 +29,9 @@ func applyCanonicalSchema(db *sql.DB) error {
 	if err := migrateMessageSeq(db); err != nil {
 		return err
 	}
+	if err := ensureColumn(db, "messages", "origin", `ALTER TABLE messages ADD COLUMN origin TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
 	if err := migrateRunUsage(db); err != nil {
 		return err
 	}

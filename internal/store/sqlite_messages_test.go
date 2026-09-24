@@ -235,3 +235,20 @@ func TestMessagePointLookups(t *testing.T) {
 		}
 	})
 }
+
+func TestMessageOriginIsStored(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	createTestSession(t, st, "s1")
+	saveTestMessage(t, st, transcript.Message{ID: "note", SessionID: "s1", RunID: "r1", Role: transcript.MessageRoleSystem, Origin: transcript.OriginEngine, Content: "Budget note", CreatedAt: testEpoch})
+	saveTestMessage(t, st, transcript.Message{ID: "plain", SessionID: "s1", CreatedAt: testEpoch})
+
+	stored, err := st.GetMessage(ctx, "note")
+	if err != nil || stored.Origin != transcript.OriginEngine {
+		t.Fatalf("stored note = %+v err = %v", stored, err)
+	}
+	listed, err := st.ListMessages(ctx, "s1", 0)
+	if err != nil || len(listed) != 2 || listed[0].Origin != transcript.OriginEngine || listed[1].Origin != "" {
+		t.Fatalf("listed = %+v err = %v", listed, err)
+	}
+}
