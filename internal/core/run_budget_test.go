@@ -33,11 +33,12 @@ func TestNativeRunEndsWithAFinalTurnAtTheDefaultStepBudget(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithTools(tools.NewRegistry(changingTool("inspect_state")))
+	steps := core.DefaultRunBudgets().User.Steps
 	var choices []providers.ToolChoice
 	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		choices = append(choices, request.ToolChoice)
 		if request.ToolChoice == providers.ToolChoiceNone {
-			return providers.Response{Text: "Inspected 32 times; /continue finishes the job."}, nil
+			return providers.Response{Text: fmt.Sprintf("Inspected %d times; more remains.", steps)}, nil
 		}
 		return providers.Response{ToolCalls: []providers.ToolCall{{ID: fmt.Sprintf("step-%d", len(choices)), Name: "inspect_state", Arguments: []byte(`{}`)}}}, nil
 	})})
@@ -54,8 +55,8 @@ func TestNativeRunEndsWithAFinalTurnAtTheDefaultStepBudget(t *testing.T) {
 	if stored.Status != core.RunStatusCompleted || stored.StopReason != agent.StopBudgetExhausted {
 		t.Fatalf("run = %s (%s) stop reason %q", stored.Status, stored.Error, stored.StopReason)
 	}
-	if len(choices) != 33 || choices[31] != providers.ToolChoiceAuto || choices[32] != providers.ToolChoiceNone {
-		t.Fatalf("model calls = %d, want 32 with tools and a final one without", len(choices))
+	if len(choices) != steps+1 || choices[steps-1] != providers.ToolChoiceAuto || choices[steps] != providers.ToolChoiceNone {
+		t.Fatalf("model calls = %d, want %d with tools and a final one without", len(choices), steps)
 	}
 	shown, modelOnly := 0, 0
 	for _, message := range sessionMessages(t, db, session.ID) {
