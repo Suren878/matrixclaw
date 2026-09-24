@@ -46,8 +46,9 @@ func (b SessionBudget) validate() error {
 	}
 }
 
-// SessionBudgetReport is a session's overrides and the budget its next run started
-// by a user message gets.
+// SessionBudgetReport is a session's overrides and the effective budget: the
+// default for the session's kind (a subagent session gets the subagent default,
+// others the user default) with the overrides applied.
 type SessionBudgetReport struct {
 	SessionID     string        `json:"session_id"`
 	Override      SessionBudget `json:"override"`
