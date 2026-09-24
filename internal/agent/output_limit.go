@@ -12,6 +12,10 @@ import (
 // the run fails.
 const maxContinuations = 3
 
+// unknownCeilingLimit caps a raised output limit when the model's ceiling is
+// unknown, so the raise stays within what current models commonly accept.
+const unknownCeilingLimit = 32768
+
 const continueText = "Your reply was cut by the output limit. Continue exactly where you stopped, without repeating what you already wrote."
 
 // continueCutReply keeps a reply cut by the output limit and asks the model to go
@@ -42,7 +46,7 @@ func (r *run) continueCutReply(ctx context.Context, gen generation, response pro
 }
 
 // raiseOutputLimit doubles the model's output limit once, capped by its ceiling;
-// false when the limit is unknown, already raised or at the ceiling.
+// false when the limit is unknown, already raised or at the cap.
 func (r *run) raiseOutputLimit() bool {
 	if r.counters.OutputLimit > 0 {
 		return false
@@ -52,10 +56,10 @@ func (r *run) raiseOutputLimit() bool {
 		return false
 	}
 	current, ceiling := limiter.OutputLimits()
-	raised := current * 2
-	if ceiling > 0 && raised > ceiling {
-		raised = ceiling
+	if ceiling <= 0 {
+		ceiling = unknownCeilingLimit
 	}
+	raised := min(current*2, ceiling)
 	if raised <= current {
 		return false
 	}

@@ -92,15 +92,16 @@ func TestToolCallsCutByTheLimitStillRun(t *testing.T) {
 
 func TestEmptyCutRaisesTheOutputLimitOnce(t *testing.T) {
 	for _, tc := range []struct {
-		name          string
-		ceiling, want int64
+		name                   string
+		current, ceiling, want int64
 	}{
-		{"capped by the model", 6000, 6000},
-		{"doubled", 0, 8000},
+		{"capped by the model", 4000, 6000, 6000},
+		{"doubled", 4000, 0, 8000},
+		{"capped when the model's ceiling is unknown", 20000, 0, 32768},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := agenttest.NewFixture()
-			model := limitedModel{ScriptedModel: agenttest.NewScriptedModel(cut(""), text("Done.")), current: 4000, ceiling: tc.ceiling}
+			model := limitedModel{ScriptedModel: agenttest.NewScriptedModel(cut(""), text("Done.")), current: tc.current, ceiling: tc.ceiling}
 
 			outcome := run(t, f, model)
 
@@ -146,6 +147,9 @@ func TestEmptyCutFailsWhenTheLimitCannotBeRaised(t *testing.T) {
 			return limitedModel{ScriptedModel: agenttest.NewScriptedModel(cut(""), cut("")), current: 4000}
 		}, 2},
 		{"no output limit", func() agent.Model { return agenttest.NewScriptedModel(cut("")) }, 1},
+		{"unknown ceiling already reached", func() agent.Model {
+			return limitedModel{ScriptedModel: agenttest.NewScriptedModel(cut("")), current: 32768}
+		}, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := agenttest.NewFixture()
