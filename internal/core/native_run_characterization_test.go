@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -193,5 +194,212 @@ func TestNativeRunFailsAfterThirtyTwoToolSteps(t *testing.T) {
 	}
 	if calls != 32 || tool.callCount() != 32 {
 		t.Fatalf("model calls=%d tool calls=%d, want 32/32", calls, tool.callCount())
+	}
+}
+
+func approvalTools(mutations *int) (funcTool, *recoveryTool) {
+	mutate := funcTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation), fn: func(_ context.Context, call tools.Call) (tools.Result, error) {
+		if !call.Approved {
+			return tools.Result{Approval: &tools.ApprovalRequest{ToolID: "mutate_state", ToolCallID: call.ToolCallID, Action: "write_state", Description: "write the state"}}, nil
+		}
+		*mutations++
+		return tools.Result{Content: "mutated"}, nil
+	}}
+	return mutate, &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
+}
+
+func TestNativeRunParksForApprovalAndResumesAfterGrant(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	mutations := 0
+	mutate, inspect := approvalTools(&mutations)
+	app.WithTools(tools.NewRegistry(mutate, inspect))
+	starter := &recordingRunStarter{}
+	app.WithRunStarter(starter)
+	calls := 0
+	var resumedWithBothResults bool
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		calls++
+		if calls == 1 {
+			return providers.Response{ToolCalls: []providers.ToolCall{
+				{ID: "call-mutate", Name: "mutate_state", Arguments: []byte(`{}`)},
+				{ID: "call-inspect", Name: "inspect_state", Arguments: []byte(`{}`)},
+			}}, nil
+		}
+		results := map[string]string{}
+		for _, message := range request.Messages {
+			if message.Role == "tool" {
+				results[message.ToolCallID] = message.Content
+			}
+		}
+		resumedWithBothResults = results["call-mutate"] == "mutated" && results["call-inspect"] == "recovered tool result"
+		return providers.Response{Text: "Done."}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "approval", core.RunStatusAccepted, false)
+
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusWaitingApproval)
+	assertToolResultCount(t, db, session.ID, "call-inspect", 1)
+	assertToolResultCount(t, db, session.ID, "call-mutate", 0)
+	approvals, err := db.ListApprovals(context.Background(), session.ID, core.ApprovalStatePending)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(approvals) != 1 || approvals[0].ToolCallRef != "call-mutate" || approvals[0].Action != "write_state" {
+		t.Fatalf("pending approvals = %#v", approvals)
+	}
+	if calls != 1 || mutations != 0 || inspect.callCount() != 1 {
+		t.Fatalf("before grant: model=%d mutations=%d inspect=%d", calls, mutations, inspect.callCount())
+	}
+
+	if _, err := app.ResolveApproval(context.Background(), approvals[0].ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := starter.count(run.ID); got != 1 {
+		t.Fatalf("resume schedules = %d, want 1", got)
+	}
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
+	assertToolResultCount(t, db, session.ID, "call-mutate", 1)
+	if calls != 2 || mutations != 1 || !resumedWithBothResults {
+		t.Fatalf("after grant: model=%d mutations=%d both results=%v", calls, mutations, resumedWithBothResults)
+	}
+}
+
+func TestNativeRunFailsWhenApprovalIsDenied(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	mutations := 0
+	mutate, inspect := approvalTools(&mutations)
+	app.WithTools(tools.NewRegistry(mutate, inspect))
+	app.WithRunStarter(&recordingRunStarter{})
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+		return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-mutate", Name: "mutate_state", Arguments: []byte(`{}`)}}}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "denied", core.RunStatusAccepted, false)
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	approvals, err := db.ListApprovals(context.Background(), session.ID, core.ApprovalStatePending)
+	if err != nil || len(approvals) != 1 {
+		t.Fatalf("pending approvals = %#v, err = %v", approvals, err)
+	}
+
+	if _, err := app.ResolveApproval(context.Background(), approvals[0].ID, false); err == nil || err.Error() != "approval denied" {
+		t.Fatalf("ResolveApproval(deny) error = %v, want approval denied", err)
+	}
+
+	got, err := db.GetRun(context.Background(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != core.RunStatusFailed || got.Error != "approval denied" || mutations != 0 {
+		t.Fatalf("run = %s (%s), mutations = %d", got.Status, got.Error, mutations)
+	}
+}
+
+func TestSteerDuringToolIsAppendedToThatToolResult(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(ctx context.Context, _ tools.Call) (tools.Result, error) {
+		close(started)
+		select {
+		case <-release:
+			return tools.Result{Content: "inspected"}, nil
+		case <-ctx.Done():
+			return tools.Result{}, ctx.Err()
+		}
+	}}))
+	calls := 0
+	var sawGuidance bool
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		calls++
+		if calls == 1 {
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-1", Name: "inspect_state", Arguments: []byte(`{}`)}}}, nil
+		}
+		for _, message := range request.Messages {
+			sawGuidance = sawGuidance || (message.ToolCallID == "call-1" && strings.Contains(message.Content, "User guidance: focus on logs"))
+		}
+		return providers.Response{Text: "Done."}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "steer", core.RunStatusAccepted, false)
+	done := make(chan error, 1)
+	go func() { done <- app.ExecuteRun(context.Background(), run.ID) }()
+	waitRecoverySignal(t, started, "tool start")
+
+	result, err := app.AcceptRun(context.Background(), core.HandleMessageInput{SessionID: session.ID, Text: "focus on logs", BusyMode: core.BusyInputModeSteer})
+	if err != nil || result.Status != core.AcceptRunStatusSteered {
+		t.Fatalf("AcceptRun = %#v, %v", result, err)
+	}
+	close(release)
+	if err := waitRecoveryError(t, done, "steered run"); err != nil {
+		t.Fatal(err)
+	}
+
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
+	if !sawGuidance {
+		t.Fatal("next model request lacks the steer guidance in the tool result")
+	}
+	found := false
+	for _, message := range sessionMessages(t, db, session.ID) {
+		if message.Role == transcript.MessageRoleTool && message.Content == "inspected\n\nUser guidance: focus on logs" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("stored tool result does not carry the steer guidance")
+	}
+	pending, err := db.ListPendingSessionInputs(context.Background(), session.ID)
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("pending inputs = %#v, err = %v", pending, err)
+	}
+}
+
+func TestCancelDuringToolStopsRunWithoutAnotherModelCall(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	started := make(chan struct{})
+	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(ctx context.Context, _ tools.Call) (tools.Result, error) {
+		close(started)
+		<-ctx.Done()
+		return tools.Result{}, ctx.Err()
+	}}))
+	calls := 0
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+		calls++
+		return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-1", Name: "inspect_state", Arguments: []byte(`{}`)}}}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "cancel-tool", core.RunStatusAccepted, false)
+	done := make(chan error, 1)
+	go func() { done <- app.ExecuteRun(context.Background(), run.ID) }()
+	waitRecoverySignal(t, started, "tool start")
+
+	if _, err := app.CancelRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitRecoveryError(t, done, "canceled run"); err != nil {
+		t.Fatalf("ExecuteRun after cancel: %v", err)
+	}
+
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCanceled)
+	if calls != 1 {
+		t.Fatalf("model calls = %d, want 1", calls)
+	}
+	sealed := false
+	for _, message := range sessionMessages(t, db, session.ID) {
+		sealed = sealed || (message.RunID == run.ID && message.Role == transcript.MessageRoleAssistant && messageHasFinishPart(message, "canceled"))
+	}
+	if !sealed {
+		t.Fatal("tool-turn assistant message was not sealed as canceled")
+	}
+	if _, err := db.GetRunCheckpoint(context.Background(), run.ID); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("canceled run checkpoint error = %v, want ErrNotFound", err)
 	}
 }
