@@ -431,14 +431,14 @@ func (c *Core) markLatestAssistantInterrupted(ctx context.Context, runID string,
 }
 
 func appendDaemonRestartFinish(message *transcript.Message) {
-	if message == nil || transcript.HasFinishReason(*message, runRecoveryReasonDaemonRestart) {
+	if message == nil || transcript.HasFinishReason(*message, transcript.FinishReasonDaemonRestart) {
 		return
 	}
 	message.Parts = transcript.NormalizeMessageParts(message.Content, message.Parts)
 	message.Parts = append(message.Parts, transcript.MessagePart{
 		Kind: transcript.MessagePartKindFinish,
 		Finish: &transcript.FinishPart{
-			Reason:  runRecoveryReasonDaemonRestart,
+			Reason:  transcript.FinishReasonDaemonRestart,
 			Message: "Generation was interrupted by a daemon restart; a recovered continuation follows.",
 		},
 	})

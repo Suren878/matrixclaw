@@ -15,8 +15,6 @@ import (
 
 const maxProviderImageBytes int64 = 8 * 1024 * 1024
 
-const restartFinishReason = "daemon_restart"
-
 // Identity is the Provider and Model a runtime stamps on its replies; signed or
 // encrypted reasoning is replayed only to the same pair.
 type Identity struct {
@@ -110,7 +108,7 @@ collect:
 func convertProviderConversationHistory(ctx context.Context, history []transcript.Message, reader AttachmentReader, currentRunID string, allowImageInput bool, target Identity) ([]providerConversationEntry, error) {
 	entries := make([]providerConversationEntry, 0, len(history))
 	for _, message := range history {
-		if skipInternalPlanPromptForProvider(message, currentRunID) || transcript.HasFinishReason(message, restartFinishReason) {
+		if skipInternalPlanPromptForProvider(message, currentRunID) || transcript.HasFinishReason(message, transcript.FinishReasonDaemonRestart) {
 			continue
 		}
 		message = withoutForeignSignedReasoning(message, target)
@@ -191,7 +189,7 @@ func engineNoteMessage(message transcript.Message) (providers.Message, bool) {
 func TextOnlyConversation(history []transcript.Message, currentRunID string) []providers.Message {
 	conversation := make([]providers.Message, 0, len(history))
 	for _, message := range history {
-		if skipInternalPlanPromptForProvider(message, currentRunID) || transcript.HasFinishReason(message, restartFinishReason) {
+		if skipInternalPlanPromptForProvider(message, currentRunID) || transcript.HasFinishReason(message, transcript.FinishReasonDaemonRestart) {
 			continue
 		}
 		if message.Role == transcript.MessageRoleSystem {

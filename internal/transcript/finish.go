@@ -2,6 +2,9 @@ package transcript
 
 import "strings"
 
+// FinishReasonDaemonRestart seals a message a daemon restart interrupted.
+const FinishReasonDaemonRestart = "daemon_restart"
+
 // HasFinishReason reports whether the message has a finish part with the reason;
 // an empty reason matches any finish part.
 func HasFinishReason(message Message, reason string) bool {

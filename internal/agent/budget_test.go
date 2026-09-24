@@ -262,6 +262,29 @@ func TestRestartedFinalTurnDoesNotRepeatTheStopNote(t *testing.T) {
 	}
 }
 
+func TestFinalTurnCutByARestartDoesNotRepeatTheStopNote(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["read"] = counterTool()
+	first := agenttest.NewScriptedModel(calls(call("r1", "read")), agenttest.Turn{Err: errors.New("provider down")})
+	task := f.Task(first)
+	task.Budget = agent.Budget{Steps: 1}
+	if outcome := runTask(t, f, task); outcome.Status != agent.StatusFailed {
+		t.Fatalf("first run = %+v, want the final turn to fail", outcome)
+	}
+	f.Journal.Seed(transcript.Message{
+		ID: "sealed", SessionID: agenttest.SessionID, RunID: agenttest.RunID, Role: transcript.MessageRoleAssistant, Content: "Read one",
+		Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindFinish, Finish: &transcript.FinishPart{Reason: transcript.FinishReasonDaemonRestart}}},
+	})
+
+	task.Model = agenttest.NewScriptedModel(text("Read one file."))
+	task.Resume = f.Journal.States[len(f.Journal.States)-1].Counters
+	outcome := runTask(t, f, task)
+
+	if outcome.StopReason != agent.StopBudgetExhausted || len(engineNotes(f.Journal.Messages)) != 1 {
+		t.Fatalf("outcome = %+v engine notes = %d, want one stop note", outcome, len(engineNotes(f.Journal.Messages)))
+	}
+}
+
 func TestCheckpointsCarryTheRunCounters(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["read"] = readTool
