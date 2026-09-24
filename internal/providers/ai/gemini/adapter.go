@@ -73,6 +73,10 @@ func (r *Runtime) RuntimeProfile() providers.RuntimeProfile {
 	return r.profile
 }
 
+func (r *Runtime) Identity() (string, string) {
+	return providers.TypeGemini, r.model
+}
+
 func (r *Runtime) ModelCapabilities() providers.ModelCapabilities {
 	return r.capabilities
 }

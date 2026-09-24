@@ -30,7 +30,7 @@ func TestToolStepIsReplayedAsOneAssistantMessage(t *testing.T) {
 		stepCallMessage("c"), stepResultMessage("c", "C", false),
 		{Role: transcript.MessageRoleAssistant, Content: "Done"},
 	}
-	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false)
+	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false, providerIdentity{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestPlainReasoningOnOlderToolCallsStaysReasoningContent(t *testing.T) {
 		}},
 		stepResultMessage("a", "A", false),
 	}
-	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false)
+	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false, providerIdentity{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestOlderToolStepsWithoutReplyStaySeparatePerResponse(t *testing.T) {
 		stepCallMessage("a"), stepResultMessage("a", "A", false),
 		stepCallMessage("b"), stepResultMessage("b", "B", false),
 	}
-	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false)
+	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false, providerIdentity{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestLateResultAfterSteerStaysWithItsToolStep(t *testing.T) {
 		{Role: transcript.MessageRoleUser, Content: "Also check c"},
 		stepResultMessage("b", "B", false),
 	}
-	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false)
+	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false, providerIdentity{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,5 +104,37 @@ func TestLateResultAfterSteerStaysWithItsToolStep(t *testing.T) {
 	}
 	if len(conversation[1].ToolCalls) != 2 || conversation[2].ToolCallID != "a" || conversation[3].ToolCallID != "b" || conversation[4].Content != "Also check c" {
 		t.Fatalf("conversation=%+v", conversation)
+	}
+}
+
+func TestSignedReasoningIsReplayedOnlyToTheModelThatProducedIt(t *testing.T) {
+	history := []transcript.Message{
+		{Role: transcript.MessageRoleUser, Content: "Inspect"},
+		{Role: transcript.MessageRoleAssistant, Provider: "anthropic-compatible", Model: "claude-a", Parts: []transcript.MessagePart{
+			{Kind: transcript.MessagePartKindReasoning, Reasoning: &transcript.ReasoningPart{Text: "plain"}},
+			{Kind: transcript.MessagePartKindReasoning, Reasoning: &transcript.ReasoningPart{Text: "signed", Signature: "sig-a"}},
+			{Kind: transcript.MessagePartKindFinish, Finish: &transcript.FinishPart{Reason: "tool_calls"}},
+		}},
+		stepCallMessage("a"), stepResultMessage("a", "A", false),
+	}
+	for _, tc := range []struct {
+		name       string
+		identity   providerIdentity
+		wantSigned int
+	}{
+		{name: "same model", identity: providerIdentity{provider: "anthropic-compatible", model: "claude-a"}, wantSigned: 1},
+		{name: "other model", identity: providerIdentity{provider: "anthropic-compatible", model: "claude-b"}, wantSigned: 0},
+		{name: "other provider", identity: providerIdentity{provider: "gemini", model: "claude-a"}, wantSigned: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false, tc.identity)
+			if err != nil {
+				t.Fatal(err)
+			}
+			step := conversation[1]
+			if len(step.ToolCalls) != 1 || len(step.Reasoning) != tc.wantSigned || step.ReasoningContent == nil || *step.ReasoningContent != "plain" {
+				t.Fatalf("step=%+v", step)
+			}
+		})
 	}
 }

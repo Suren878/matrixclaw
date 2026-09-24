@@ -28,7 +28,7 @@ func (c *Core) buildProviderRequest(ctx context.Context, turn turnExecution) (pr
 		request.Messages = providers.NormalizeMessages(request.Messages, providers.ToolUseDisabled)
 		return request, nil
 	}
-	request.Messages, err = c.buildProviderConversation(ctx, effectiveHistory, turn.RunID, runtimeImageInputAllowed(turn.Runtime))
+	request.Messages, err = c.buildProviderConversation(ctx, effectiveHistory, turn.RunID, runtimeImageInputAllowed(turn.Runtime), runtimeProviderIdentity(turn.Runtime))
 	if err != nil {
 		return providers.Request{}, err
 	}
@@ -196,6 +196,15 @@ func runtimeToolUseAllowed(runtime providers.Runtime) bool {
 		return true
 	}
 	return capabilityProvider.ModelCapabilities().ToolCalling
+}
+
+func runtimeProviderIdentity(runtime providers.Runtime) providerIdentity {
+	identifier, ok := runtime.(providers.RuntimeIdentifier)
+	if !ok {
+		return providerIdentity{}
+	}
+	provider, model := identifier.Identity()
+	return providerIdentity{provider: provider, model: model}
 }
 
 func runtimeImageInputAllowed(runtime providers.Runtime) bool {

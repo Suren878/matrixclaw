@@ -14,12 +14,18 @@ import (
 
 const maxProviderImageBytes int64 = 8 * 1024 * 1024
 
-func (c *Core) buildProviderConversation(ctx context.Context, history []transcript.Message, currentRunID string, allowImageInput bool) ([]providers.Message, error) {
-	return buildProviderConversationWithAttachmentsForRun(ctx, history, c.attachments, currentRunID, allowImageInput)
+// providerIdentity is the Provider and Model a runtime stamps on its replies.
+type providerIdentity struct {
+	provider string
+	model    string
 }
 
-func buildProviderConversationWithAttachmentsForRun(ctx context.Context, history []transcript.Message, reader AttachmentReader, currentRunID string, allowImageInput bool) ([]providers.Message, error) {
-	entries, err := convertProviderConversationHistory(ctx, history, reader, currentRunID, allowImageInput)
+func (c *Core) buildProviderConversation(ctx context.Context, history []transcript.Message, currentRunID string, allowImageInput bool, target providerIdentity) ([]providers.Message, error) {
+	return buildProviderConversationWithAttachmentsForRun(ctx, history, c.attachments, currentRunID, allowImageInput, target)
+}
+
+func buildProviderConversationWithAttachmentsForRun(ctx context.Context, history []transcript.Message, reader AttachmentReader, currentRunID string, allowImageInput bool, target providerIdentity) ([]providers.Message, error) {
+	entries, err := convertProviderConversationHistory(ctx, history, reader, currentRunID, allowImageInput, target)
 	if err != nil {
 		return nil, err
 	}
@@ -100,12 +106,13 @@ collect:
 	return step, i
 }
 
-func convertProviderConversationHistory(ctx context.Context, history []transcript.Message, reader AttachmentReader, currentRunID string, allowImageInput bool) ([]providerConversationEntry, error) {
+func convertProviderConversationHistory(ctx context.Context, history []transcript.Message, reader AttachmentReader, currentRunID string, allowImageInput bool, target providerIdentity) ([]providerConversationEntry, error) {
 	entries := make([]providerConversationEntry, 0, len(history))
 	for _, message := range history {
 		if skipInternalPlanPromptForProvider(message, currentRunID) || messageInterruptedByDaemonRestart(message) {
 			continue
 		}
+		message = withoutForeignSignedReasoning(message, target)
 		providerMessages, err := toProviderMessages(ctx, message, reader, allowImageInput)
 		if err != nil {
 			return nil, err
@@ -477,6 +484,22 @@ func messageReasoningBlocks(parts []transcript.MessagePart) []providers.Reasonin
 
 func isSignedReasoning(part transcript.ReasoningPart) bool {
 	return part.Signature != "" || part.RedactedData != ""
+}
+
+// withoutForeignSignedReasoning drops signed or encrypted reasoning another
+// provider or model produced; the target would reject it. Plain text stays.
+func withoutForeignSignedReasoning(message transcript.Message, target providerIdentity) transcript.Message {
+	if strings.TrimSpace(message.Provider) == strings.TrimSpace(target.provider) && strings.TrimSpace(message.Model) == strings.TrimSpace(target.model) {
+		return message
+	}
+	parts := make([]transcript.MessagePart, 0, len(message.Parts))
+	for _, part := range message.Parts {
+		if part.Reasoning == nil || !isSignedReasoning(*part.Reasoning) {
+			parts = append(parts, part)
+		}
+	}
+	message.Parts = parts
+	return message
 }
 
 func imagePartLabel(part transcript.ImagePart) string {

@@ -125,3 +125,56 @@ func TestToolStepReasoningIsSentBackWithItsCalls(t *testing.T) {
 		t.Fatalf("model calls=%d tool calls=%d", calls, tool.callCount())
 	}
 }
+
+type identifiedRuntime struct {
+	generationRuntimeFunc
+	provider, model string
+}
+
+func (r identifiedRuntime) Identity() (string, string) { return r.provider, r.model }
+
+func TestSignedReasoningIsDroppedAfterAModelSwitch(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		model      string
+		wantSigned int
+	}{
+		{name: "same model", model: "claude-a", wantSigned: 1},
+		{name: "switched model", model: "gemini-b", wantSigned: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app, db, cleanup := newCrashRecoveryCore(t)
+			defer cleanup()
+			app.WithTools(tools.NewRegistry(&recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}))
+			calls := 0
+			runtime := identifiedRuntime{provider: providers.TypeAnthropic, model: tc.model}
+			runtime.generationRuntimeFunc = func(_ context.Context, request providers.Request) (providers.Response, error) {
+				calls++
+				if calls == 1 {
+					return providers.Response{
+						Provider:   providers.TypeAnthropic,
+						Model:      "claude-a",
+						Reasoning:  []providers.ReasoningBlock{{Text: "thinking", Signature: "sig-a"}},
+						ToolCalls:  []providers.ToolCall{{ID: "call-a", Name: "inspect_state", Arguments: []byte(`{}`)}},
+						StopReason: providers.StopToolUse,
+					}, nil
+				}
+				for _, message := range request.Messages {
+					if len(message.ToolCalls) > 0 && len(message.Reasoning) != tc.wantSigned {
+						t.Fatalf("tool step=%+v, want %d signed blocks", message, tc.wantSigned)
+					}
+				}
+				return providers.Response{Text: "Done.", StopReason: providers.StopEndTurn}, nil
+			}
+			app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
+			_, run := saveCrashRecoveryRun(t, db, "model-switch-"+tc.model, core.RunStatusAccepted, false)
+			if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+				t.Fatal(err)
+			}
+			assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
+			if calls != 2 {
+				t.Fatalf("model calls=%d", calls)
+			}
+		})
+	}
+}

@@ -147,7 +147,7 @@ func TestProviderConversationPairsResultsWithMixedTextAndToolCalls(t *testing.T)
 		{Role: transcript.MessageRoleTool, Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindToolResult, ToolResult: &transcript.ToolResultPart{ToolCallID: "call-1", Name: "inspect", Content: "Actual result"}}}},
 		{Role: transcript.MessageRoleAssistant, Content: "Done"},
 	}
-	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false)
+	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false, providerIdentity{})
 	if err != nil {
 		t.Fatal(err)
 	}

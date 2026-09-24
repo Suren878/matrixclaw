@@ -100,6 +100,12 @@ type RuntimeCapabilityProvider interface {
 	ModelCapabilities() ModelCapabilities
 }
 
+// RuntimeIdentifier reports the Provider and Model a runtime puts on its
+// responses, so signed reasoning is replayed only to the model that made it.
+type RuntimeIdentifier interface {
+	Identity() (provider string, model string)
+}
+
 // Usage is normalised by every adapter: PromptTokens is the whole input,
 // cache reads and writes included; OutputTokens includes ReasoningTokens.
 type Usage struct {
