@@ -364,3 +364,28 @@ func hasOpenPlanChildren(itemID string, children map[string][]PlanItem) bool {
 	}
 	return false
 }
+
+func (c *Core) sessionPlanPrompt(ctx context.Context, sessionID string) string {
+	if c == nil || c.store == nil {
+		return ""
+	}
+	plan, err := c.store.GetSessionPlan(ctx, sessionID)
+	if err != nil {
+		return ""
+	}
+	lines := []string{
+		"Session goal and plan:",
+		"- Use plan tools for multi-step work: plan_get, plan_set_goal, plan_add_item, plan_update_item, plan_clear.",
+		"- Skip plans for simple one-step requests; for larger tasks, keep top-level items current and mark completed work done before claiming completion.",
+		"- Use subtasks only for genuinely large items; finish subtasks before marking the parent done.",
+	}
+	if strings.TrimSpace(plan.Goal) != "" {
+		lines = append(lines, "- Current goal: "+strings.TrimSpace(plan.Goal))
+	}
+	depths := PlanItemDepths(plan.Items)
+	for i, item := range plan.Items {
+		indent := strings.Repeat("  ", min(depths[item.ID], 4))
+		lines = append(lines, fmt.Sprintf("- %s%d. [%s] %s (id: %s)", indent, i+1, item.Status, item.Text, item.ID))
+	}
+	return strings.Join(lines, "\n")
+}

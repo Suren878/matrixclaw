@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
+	"github.com/Suren878/matrixclaw/internal/agent/prompt"
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
@@ -63,7 +64,7 @@ func (m *appModel) assistantPromptTokens() int {
 		return 0
 	}
 	assistant := m.rt.config.Assistant
-	return core.EstimateTextTokens(core.AssistantSystemPrompt(assistant)) + core.EstimateTextTokens(assistant.CustomInstructions)
+	return core.EstimateTextTokens(prompt.AssistantSystemPrompt(assistant.Name, assistant.SystemPrompt)) + core.EstimateTextTokens(assistant.CustomInstructions)
 }
 
 type headerContextMarker int

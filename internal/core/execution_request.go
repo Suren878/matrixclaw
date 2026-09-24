@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/agent/prompt"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -37,7 +38,7 @@ func (c *Core) buildProviderRequest(ctx context.Context, turn turnExecution) (pr
 }
 
 func (c *Core) providerSystemPrompt(ctx context.Context, turn turnExecution, assistant AssistantProfile, compactSummary string, history []transcript.Message) string {
-	sections := []string{AssistantSystemPrompt(assistant)}
+	sections := []string{prompt.AssistantSystemPrompt(assistant.Name, assistant.SystemPrompt)}
 	if checkpoint, ok, err := c.runCheckpoint(ctx, turn.RunID); err == nil && ok {
 		if recoveryPrompt := runCheckpointRecoveryPrompt(checkpoint); recoveryPrompt != "" {
 			sections = append(sections, recoveryPrompt)
@@ -46,27 +47,27 @@ func (c *Core) providerSystemPrompt(ctx context.Context, turn turnExecution, ass
 	if turn.Subagent {
 		sections = append(sections, subagentSystemPrompt())
 		if workingDir := strings.TrimSpace(turn.WorkingDir); workingDir != "" {
-			sections = append(sections, currentProjectRootPrompt(workingDir))
+			sections = append(sections, prompt.ProjectRoot(workingDir))
 		}
-		return joinPromptSections(sections...)
+		return prompt.JoinSections(sections...)
 	}
 	if runtimeToolUseAllowed(turn.Runtime) && clientSupportsVoiceDelivery(turn.ClientCapabilities) {
-		sections = append(sections, voiceOutputGuidancePrompt())
+		sections = append(sections, prompt.VoiceOutputGuidance())
 	}
 	if runtimeToolUseAllowed(turn.Runtime) && clientSupportsDocumentDelivery(turn.ClientCapabilities) && c.fileDeliveryPromptAvailable() {
-		sections = append(sections, fileDeliveryGuidancePrompt())
+		sections = append(sections, prompt.FileDeliveryGuidance())
 	}
 	if runtimeToolUseAllowed(turn.Runtime) && c.telephonyCallPromptAvailable() {
-		sections = append(sections, telephonyCallGuidancePrompt())
+		sections = append(sections, prompt.TelephonyCallGuidance())
 	}
 	if runtimeToolUseAllowed(turn.Runtime) {
-		sections = append(sections, toolUseDisciplinePrompt())
+		sections = append(sections, prompt.ToolUseDiscipline())
 	}
 	if workingDir := strings.TrimSpace(turn.WorkingDir); workingDir != "" {
-		sections = append(sections, currentProjectRootPrompt(workingDir))
+		sections = append(sections, prompt.ProjectRoot(workingDir))
 	}
 	if c.webResearchPromptAvailable() {
-		sections = append(sections, webResearchGuidancePrompt())
+		sections = append(sections, prompt.WebResearchGuidance())
 	}
 	if statusPrompt := c.runtimeStatusPromptContext(ctx, turn); statusPrompt != "" {
 		sections = append(sections, statusPrompt)
@@ -86,7 +87,7 @@ func (c *Core) providerSystemPrompt(ctx context.Context, turn turnExecution, ass
 	if skillsPrompt := c.skillsPromptContext(ctx, turn, history); skillsPrompt != "" {
 		sections = append(sections, skillsPrompt)
 	}
-	return joinPromptSections(sections...)
+	return prompt.JoinSections(sections...)
 }
 
 func (c *Core) skillsPromptContext(ctx context.Context, turn turnExecution, history []transcript.Message) string {

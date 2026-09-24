@@ -7,6 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Suren878/matrixclaw/internal/agent/prompt"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -95,7 +96,7 @@ type compactMessageGroup struct {
 func compactMessageGroups(messages []transcript.Message) []compactMessageGroup {
 	filtered := make([]transcript.Message, 0, len(messages))
 	for _, message := range messages {
-		if message.Role == transcript.MessageRoleSystem || IsPlanRunPromptMessage(message) {
+		if message.Role == transcript.MessageRoleSystem || prompt.IsPlanRunPrompt(message) {
 			continue
 		}
 		filtered = append(filtered, message)

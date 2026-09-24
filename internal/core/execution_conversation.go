@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Suren878/matrixclaw/internal/agent/prompt"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -199,7 +200,7 @@ func buildTextOnlyProviderConversationForRun(history []transcript.Message, curre
 }
 
 func skipInternalPlanPromptForProvider(message transcript.Message, currentRunID string) bool {
-	if !IsPlanRunPromptMessage(message) {
+	if !prompt.IsPlanRunPrompt(message) {
 		return false
 	}
 	currentRunID = strings.TrimSpace(currentRunID)
@@ -207,19 +208,6 @@ func skipInternalPlanPromptForProvider(message transcript.Message, currentRunID 
 		return true
 	}
 	return strings.TrimSpace(message.RunID) != currentRunID
-}
-
-// IsPlanRunPromptMessage reports whether message is an internal plan runner prompt.
-// These prompts are stored so clients can audit local actions, but provider context
-// already receives the current plan through sessionPlanPrompt.
-func IsPlanRunPromptMessage(message transcript.Message) bool {
-	if message.Role != transcript.MessageRoleUser {
-		return false
-	}
-	content := strings.TrimSpace(message.Content)
-	return strings.HasPrefix(content, "Execute the current session plan.") ||
-		strings.HasPrefix(content, "Execute the next session plan item.") ||
-		strings.HasPrefix(content, "The session plan was updated.")
 }
 
 func textOnlyProviderContent(message transcript.Message) string {

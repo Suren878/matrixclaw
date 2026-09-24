@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Suren878/matrixclaw/internal/agent/prompt"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -19,7 +20,7 @@ func (c *Core) contextReportForSession(session Session, messages []transcript.Me
 
 func (c *Core) contextReport(sessionID string, messages []transcript.Message) ContextReport {
 	assistant := c.assistantProfile()
-	systemPrompt := AssistantSystemPrompt(assistant)
+	systemPrompt := prompt.AssistantSystemPrompt(assistant.Name, assistant.SystemPrompt)
 	customInstructions := strings.TrimSpace(assistant.CustomInstructions)
 	marker := latestContextMarker(messages)
 	effectiveMessages := marker.effectiveMessages
