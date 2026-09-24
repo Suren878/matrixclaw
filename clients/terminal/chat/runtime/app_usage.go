@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
+	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/agent/prompt"
 	"github.com/Suren878/matrixclaw/internal/core"
 )
@@ -64,7 +65,7 @@ func (m *appModel) assistantPromptTokens() int {
 		return 0
 	}
 	assistant := m.rt.config.Assistant
-	return core.EstimateTextTokens(prompt.AssistantSystemPrompt(assistant.Name, assistant.SystemPrompt)) + core.EstimateTextTokens(assistant.CustomInstructions)
+	return agentcontext.EstimateTextTokens(prompt.AssistantSystemPrompt(assistant.Name, assistant.SystemPrompt)) + agentcontext.EstimateTextTokens(assistant.CustomInstructions)
 }
 
 type headerContextMarker int
@@ -155,9 +156,9 @@ func estimateMessagesTokens(messages []surfacemessage.Message) int {
 			case surfacemessage.TextContent:
 				total += estimateTokens(part.Text)
 			case surfacemessage.ImageURLContent:
-				total += core.EstimatedImageTokens
+				total += agentcontext.EstimatedImageTokens
 			case surfacemessage.BinaryContent:
-				total += core.EstimatedImageTokens
+				total += agentcontext.EstimatedImageTokens
 			case surfacemessage.ToolResult:
 				total += estimateTokens(part.Content)
 			case surfacemessage.ToolCall:

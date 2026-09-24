@@ -520,10 +520,6 @@ func messageHasToolPart(message transcript.Message) bool {
 	return false
 }
 
-func messageInterruptedByDaemonRestart(message transcript.Message) bool {
-	return transcript.HasFinishReason(message, runRecoveryReasonDaemonRestart)
-}
-
 func (c *Core) failRecoveredRun(ctx context.Context, run *Run, message string) error {
 	if run == nil {
 		return nil

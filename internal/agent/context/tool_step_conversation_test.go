@@ -1,4 +1,4 @@
-package core
+package agentcontext
 
 import (
 	"context"
@@ -30,7 +30,7 @@ func TestToolStepIsReplayedAsOneAssistantMessage(t *testing.T) {
 		stepCallMessage("c"), stepResultMessage("c", "C", false),
 		{Role: transcript.MessageRoleAssistant, Content: "Done"},
 	}
-	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false, providerIdentity{})
+	conversation, err := Conversation(context.Background(), history, nil, "", false, Identity{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestPlainReasoningOnOlderToolCallsStaysReasoningContent(t *testing.T) {
 		}},
 		stepResultMessage("a", "A", false),
 	}
-	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false, providerIdentity{})
+	conversation, err := Conversation(context.Background(), history, nil, "", false, Identity{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestOlderToolStepsWithoutReplyStaySeparatePerResponse(t *testing.T) {
 		stepCallMessage("a"), stepResultMessage("a", "A", false),
 		stepCallMessage("b"), stepResultMessage("b", "B", false),
 	}
-	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false, providerIdentity{})
+	conversation, err := Conversation(context.Background(), history, nil, "", false, Identity{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestLateResultAfterSteerStaysWithItsToolStep(t *testing.T) {
 		{Role: transcript.MessageRoleUser, Content: "Also check c"},
 		stepResultMessage("b", "B", false),
 	}
-	conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false, providerIdentity{})
+	conversation, err := Conversation(context.Background(), history, nil, "", false, Identity{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,15 +119,15 @@ func TestSignedReasoningIsReplayedOnlyToTheModelThatProducedIt(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		name       string
-		identity   providerIdentity
+		identity   Identity
 		wantSigned int
 	}{
-		{name: "same model", identity: providerIdentity{provider: "anthropic-compatible", model: "claude-a"}, wantSigned: 1},
-		{name: "other model", identity: providerIdentity{provider: "anthropic-compatible", model: "claude-b"}, wantSigned: 0},
-		{name: "other provider", identity: providerIdentity{provider: "gemini", model: "claude-a"}, wantSigned: 0},
+		{name: "same model", identity: Identity{Provider: "anthropic-compatible", Model: "claude-a"}, wantSigned: 1},
+		{name: "other model", identity: Identity{Provider: "anthropic-compatible", Model: "claude-b"}, wantSigned: 0},
+		{name: "other provider", identity: Identity{Provider: "gemini", Model: "claude-a"}, wantSigned: 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			conversation, err := buildProviderConversationWithAttachmentsForRun(context.Background(), history, nil, "", false, tc.identity)
+			conversation, err := Conversation(context.Background(), history, nil, "", false, tc.identity)
 			if err != nil {
 				t.Fatal(err)
 			}

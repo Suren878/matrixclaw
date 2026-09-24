@@ -4,12 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
+	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/work"
 )
@@ -21,7 +21,7 @@ type Core struct {
 	runStarter     RunStarter
 	llms           SessionLLMRegistry
 	assistant      AssistantProfile
-	attachments    AttachmentReader
+	attachments    agentcontext.AttachmentReader
 	externalAgents *externalagents.Registry
 	externalStore  externalagents.AttachmentStore
 	activeRuns     map[string]*activeRun
@@ -69,22 +69,6 @@ type AssistantProfile struct {
 	CustomInstructions string
 }
 
-type AttachmentData struct {
-	Data     []byte
-	MIMEType string
-	Name     string
-	Size     int64
-}
-
-// ErrAttachmentUnavailable identifies an attachment that used to exist but can
-// no longer be read, for example because a temporary upload expired. Provider
-// conversation building can omit the binary data without failing the whole run.
-var ErrAttachmentUnavailable = errors.New("attachment is no longer available")
-
-type AttachmentReader interface {
-	ReadAttachment(ctx context.Context, path string, temporary bool, maxBytes int64) (AttachmentData, error)
-}
-
 func New(store Store) *Core {
 	return &Core{
 		store:         store,
@@ -105,7 +89,7 @@ func New(store Store) *Core {
 // doing so races with the agent loop reading those fields. Post-construction
 // mutation must go through the locked Set* methods (SetSessionLLMs,
 // SetAssistantProfile).
-func (c *Core) WithAttachmentReader(reader AttachmentReader) *Core {
+func (c *Core) WithAttachmentReader(reader agentcontext.AttachmentReader) *Core {
 	if reader != nil {
 		c.attachments = reader
 	}

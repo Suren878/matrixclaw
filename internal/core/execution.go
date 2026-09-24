@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 
+	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -159,7 +160,7 @@ func (c *Core) executeRunStep(ctx context.Context, runCtx context.Context, execu
 
 	assistant, assistantSaved, response, err := c.generateAssistantTurnWithRetry(runCtx, turn, request)
 	if err != nil {
-		if isContextLengthExceededError(err) {
+		if agentcontext.IsContextLengthExceeded(err) {
 			compacted, compactErr := c.forceCompactSessionForRetry(ctx, turn)
 			if compactErr != nil {
 				return turnStepResult{Outcome: turnStepCompleted, Err: compactErr}, nil

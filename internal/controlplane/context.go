@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
@@ -50,7 +51,7 @@ func (d *Dispatcher) handleContext(ctx context.Context, externalKey string, args
 		if d.messages == nil {
 			return unsupportedRuntime("context"), nil
 		}
-		if _, err := d.messages.CreateSystemMessage(ctx, session.ID, core.ContextClearedMessageContent()); err != nil {
+		if _, err := d.messages.CreateSystemMessage(ctx, session.ID, agentcontext.ClearedMarkerContent()); err != nil {
 			return Result{}, err
 		}
 		return Result{Handled: true, Text: "Context cleared.", ReloadSnapshot: true}, nil
@@ -189,5 +190,5 @@ func providerUsageLabel(usage providers.Usage) string {
 }
 
 func formatShortNumber(value int) string {
-	return core.FormatShortNumber(value)
+	return agentcontext.FormatShortNumber(value)
 }

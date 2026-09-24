@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Suren878/matrixclaw/internal/core"
+	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
@@ -16,16 +16,16 @@ type storageAttachmentReader struct {
 	store *localstorage.LocalStore
 }
 
-func (r storageAttachmentReader) ReadAttachment(ctx context.Context, storagePath string, temporary bool, maxBytes int64) (core.AttachmentData, error) {
+func (r storageAttachmentReader) ReadAttachment(ctx context.Context, storagePath string, temporary bool, maxBytes int64) (agentcontext.AttachmentData, error) {
 	if r.store == nil {
-		return core.AttachmentData{}, localstorage.ErrInvalidPath
+		return agentcontext.AttachmentData{}, localstorage.ErrInvalidPath
 	}
 	if temporary {
 		entry, data, err := r.store.ReadTemporaryBytes(storagePath)
 		if err != nil {
-			return core.AttachmentData{}, normalizeAttachmentReadError(err)
+			return agentcontext.AttachmentData{}, normalizeAttachmentReadError(err)
 		}
-		return core.AttachmentData{
+		return agentcontext.AttachmentData{
 			Data:     data,
 			MIMEType: entry.MIMEType,
 			Name:     entry.Title,
@@ -34,9 +34,9 @@ func (r storageAttachmentReader) ReadAttachment(ctx context.Context, storagePath
 	}
 	entry, data, err := r.store.ReadBytes(storagePath, maxBytes)
 	if err != nil {
-		return core.AttachmentData{}, normalizeAttachmentReadError(err)
+		return agentcontext.AttachmentData{}, normalizeAttachmentReadError(err)
 	}
-	return core.AttachmentData{
+	return agentcontext.AttachmentData{
 		Data:     data,
 		MIMEType: entry.MIMEType,
 		Name:     entry.Title,
@@ -46,7 +46,7 @@ func (r storageAttachmentReader) ReadAttachment(ctx context.Context, storagePath
 
 func normalizeAttachmentReadError(err error) error {
 	if errors.Is(err, localstorage.ErrNotFound) {
-		return fmt.Errorf("%w: %w", core.ErrAttachmentUnavailable, err)
+		return fmt.Errorf("%w: %w", agentcontext.ErrAttachmentUnavailable, err)
 	}
 	return err
 }

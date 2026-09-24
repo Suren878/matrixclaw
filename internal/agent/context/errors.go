@@ -1,11 +1,15 @@
-package core
+package agentcontext
 
 import (
 	"errors"
+	"fmt"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
-func isContextLengthExceededError(err error) bool {
+// IsContextLengthExceeded recognises provider errors for requests over the model window.
+func IsContextLengthExceeded(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -25,4 +29,14 @@ func isContextLengthExceededError(err error) bool {
 		return true
 	}
 	return strings.Contains(text, "token") && strings.Contains(text, "limit") && strings.Contains(text, "exceed")
+}
+
+// StopReasonError fails a reply cut by the output limit or a content filter: the loop has no continuation path for either.
+func StopReasonError(response providers.Response) error {
+	switch response.StopReason {
+	case providers.StopMaxTokens, providers.StopContentFilter:
+		return fmt.Errorf("%s: generation stopped before completion (%s)", response.Provider, response.StopReason)
+	default:
+		return nil
+	}
 }

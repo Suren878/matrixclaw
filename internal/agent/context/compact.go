@@ -1,10 +1,10 @@
-package core
+package agentcontext
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"github.com/Suren878/matrixclaw/internal/agent/prompt"
@@ -12,30 +12,56 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func (c *Core) generateCompactSummary(ctx context.Context, session Session, messages []transcript.Message, runID string) (string, error) {
-	runtime, err := c.resolveSessionRuntime(ctx, session)
+const maxCompactPromptRunes = 80_000
+
+// Generator produces one model reply; agent.Model and providers.Runtime satisfy it.
+type Generator interface {
+	Generate(ctx context.Context, req providers.Request) (providers.Response, error)
+}
+
+// CompactInput is what a compaction summarises; History must have messages after
+// its newest marker.
+type CompactInput struct {
+	SessionID    string
+	History      []transcript.Message
+	BaseTokens   int
+	PlanSnapshot string
+}
+
+// Compact summarises the history after the newest marker and returns the content of
+// the new compaction marker, including the before/after token estimate.
+func Compact(ctx context.Context, generator Generator, in CompactInput) (string, error) {
+	_, effective := LatestSummary(in.History)
+	before := SessionTokens(in.BaseTokens, in.History)
+	summary, err := summarize(ctx, generator, in.SessionID, effective, in.PlanSnapshot)
 	if err != nil {
 		return "", err
 	}
+	summary = strings.TrimSpace(summary)
+	previewContent := compactMessagePrefix + "\n\n" + summary
+	preview := transcript.Message{
+		Role:    transcript.MessageRoleSystem,
+		Content: previewContent,
+		Parts:   []transcript.MessagePart{{Kind: transcript.MessagePartKindText, Text: &transcript.TextPart{Text: previewContent}}},
+	}
+	after := SessionTokens(in.BaseTokens, append(append([]transcript.Message(nil), in.History...), preview))
+	return fmt.Sprintf("%s: ~%s -> ~%s tokens\n\n%s", compactMessagePrefix, FormatShortNumber(before), FormatShortNumber(after), summary), nil
+}
+
+func summarize(ctx context.Context, generator Generator, sessionID string, messages []transcript.Message, planSnapshot string) (string, error) {
 	content := "Compact this session history:\n\n" + compactHistoryPrompt(messages)
-	if planSnapshot := c.compactSessionPlanSnapshot(ctx, session.ID); planSnapshot != "" {
+	if planSnapshot != "" {
 		content = "Current session plan:\n" + planSnapshot + "\n\n" + content
 	}
-
-	started := time.Now()
-	response, err := runtime.Generate(ctx, providers.Request{
-		SessionID:    session.ID,
+	response, err := generator.Generate(ctx, providers.Request{
+		SessionID:    sessionID,
 		SystemPrompt: compactSummarySystemPrompt(),
-		Messages: []providers.Message{{
-			Role:    "user",
-			Content: content,
-		}},
+		Messages:     []providers.Message{{Role: "user", Content: content}},
 	})
 	if err != nil {
 		return "", err
 	}
-	c.recordRunStep(ctx, runID, response, "compact", time.Since(started))
-	if err := stopReasonError(response); err != nil {
+	if err := StopReasonError(response); err != nil {
 		return "", err
 	}
 	text := strings.TrimSpace(response.Text)
@@ -43,14 +69,6 @@ func (c *Core) generateCompactSummary(ctx context.Context, session Session, mess
 		return "", errors.New("compact summary is empty")
 	}
 	return text, nil
-}
-
-func (c *Core) compactSessionPlanSnapshot(ctx context.Context, sessionID string) string {
-	plan, err := c.store.GetSessionPlan(ctx, sessionID)
-	if err != nil {
-		return ""
-	}
-	return planToolSummary(plan)
 }
 
 func compactSummarySystemPrompt() string {

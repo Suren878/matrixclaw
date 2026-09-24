@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/agent/prompt"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -16,7 +17,7 @@ func (c *Core) buildProviderRequest(ctx context.Context, turn turnExecution) (pr
 	}
 
 	assistant := c.assistantProfile()
-	compactSummary, effectiveHistory := latestCompactSummaryForRun(history, turn.RunID)
+	compactSummary, effectiveHistory := agentcontext.LatestSummaryForRun(history, turn.RunID)
 	request := providers.Request{
 		RunID:              turn.RunID,
 		SessionID:          turn.SessionID,
@@ -25,11 +26,11 @@ func (c *Core) buildProviderRequest(ctx context.Context, turn turnExecution) (pr
 		CacheKey:           turn.SessionID,
 	}
 	if !runtimeToolUseAllowed(turn.Runtime) {
-		request.Messages = buildTextOnlyProviderConversationForRun(effectiveHistory, turn.RunID)
+		request.Messages = agentcontext.TextOnlyConversation(effectiveHistory, turn.RunID)
 		request.Messages = providers.NormalizeMessages(request.Messages, providers.ToolUseDisabled)
 		return request, nil
 	}
-	request.Messages, err = c.buildProviderConversation(ctx, effectiveHistory, turn.RunID, runtimeImageInputAllowed(turn.Runtime), runtimeProviderIdentity(turn.Runtime))
+	request.Messages, err = agentcontext.Conversation(ctx, effectiveHistory, c.attachments, turn.RunID, runtimeImageInputAllowed(turn.Runtime), runtimeProviderIdentity(turn.Runtime))
 	if err != nil {
 		return providers.Request{}, err
 	}
@@ -199,13 +200,13 @@ func runtimeToolUseAllowed(runtime providers.Runtime) bool {
 	return capabilityProvider.ModelCapabilities().ToolCalling
 }
 
-func runtimeProviderIdentity(runtime providers.Runtime) providerIdentity {
+func runtimeProviderIdentity(runtime providers.Runtime) agentcontext.Identity {
 	identifier, ok := runtime.(providers.RuntimeIdentifier)
 	if !ok {
-		return providerIdentity{}
+		return agentcontext.Identity{}
 	}
 	provider, model := identifier.Identity()
-	return providerIdentity{provider: provider, model: model}
+	return agentcontext.Identity{Provider: provider, Model: model}
 }
 
 func runtimeImageInputAllowed(runtime providers.Runtime) bool {

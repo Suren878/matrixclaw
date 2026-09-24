@@ -1,4 +1,4 @@
-package core
+package agentcontext
 
 import (
 	"regexp"
@@ -8,16 +8,20 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-type contextMarker struct {
-	summary           string
-	effectiveMessages []transcript.Message
-	blockID           string
-	blockKind         ContextBlockKind
-	source            string
-	cleared           bool
+const compactMessagePrefix = "🧠 Context compacted"
+const contextClearedMessagePrefix = "🧹 Context cleared"
+const contextClearedSummary = "Context cleared by user."
+const compactBackoffMinimumSavingsPercent = 10
+
+// Marker is the newest compaction or clear marker and the history after it.
+type Marker struct {
+	Summary   string
+	Effective []transcript.Message
+	Cleared   bool
 }
 
-func latestContextMarker(messages []transcript.Message) contextMarker {
+// LatestMarker finds the newest marker; without one Effective is the whole history.
+func LatestMarker(messages []transcript.Message) Marker {
 	for i := len(messages) - 1; i >= 0; i-- {
 		message := messages[i]
 		if message.Role != transcript.MessageRoleSystem {
@@ -25,37 +29,31 @@ func latestContextMarker(messages []transcript.Message) contextMarker {
 		}
 		content := strings.TrimSpace(message.Content)
 		if summary, ok := compactMarkerSummary(content); ok {
-			return contextMarker{
-				summary:           summary,
-				effectiveMessages: messages[i+1:],
-				blockID:           "compact_summary",
-				blockKind:         ContextBlockCompactSummary,
-				source:            "session_compact",
-			}
+			return Marker{Summary: summary, Effective: messages[i+1:]}
 		}
 		if summary, ok := clearMarkerSummary(content); ok {
-			return contextMarker{
-				summary:           summary,
-				effectiveMessages: messages[i+1:],
-				blockID:           "clear_marker",
-				blockKind:         ContextBlockClearMarker,
-				source:            "session_clear",
-				cleared:           true,
-			}
+			return Marker{Summary: summary, Effective: messages[i+1:], Cleared: true}
 		}
 	}
-	return contextMarker{effectiveMessages: messages}
+	return Marker{Effective: messages}
 }
 
-func latestCompactSummary(messages []transcript.Message) (string, []transcript.Message) {
-	marker := latestContextMarker(messages)
-	return marker.summary, marker.effectiveMessages
+// LatestSummary returns the newest marker's summary and the history after it.
+func LatestSummary(messages []transcript.Message) (string, []transcript.Message) {
+	marker := LatestMarker(messages)
+	return marker.Summary, marker.Effective
 }
 
-func latestCompactSummaryForRun(messages []transcript.Message, currentRunID string) (string, []transcript.Message) {
+// ClearedMarkerContent is the system message content written by /clear.
+func ClearedMarkerContent() string {
+	return contextClearedMessagePrefix + "\n\n" + contextClearedSummary
+}
+
+// LatestSummaryForRun is LatestSummary but keeps the run's own messages written before a compaction marker.
+func LatestSummaryForRun(messages []transcript.Message, currentRunID string) (string, []transcript.Message) {
 	currentRunID = strings.TrimSpace(currentRunID)
 	if currentRunID == "" {
-		return latestCompactSummary(messages)
+		return LatestSummary(messages)
 	}
 	for i := len(messages) - 1; i >= 0; i-- {
 		message := messages[i]
@@ -108,7 +106,8 @@ func clearMarkerSummary(content string) (string, bool) {
 
 var compactStatsPattern = regexp.MustCompile(`~([0-9]+(?:\.[0-9]+)?[kKmM]?)\s*->\s*~([0-9]+(?:\.[0-9]+)?[kKmM]?)\s+tokens`)
 
-func compactBackoffActive(messages []transcript.Message) bool {
+// CompactBackoffActive reports whether the last two compactions each saved under 10%.
+func CompactBackoffActive(messages []transcript.Message) bool {
 	checked := 0
 	for i := len(messages) - 1; i >= 0 && checked < 2; i-- {
 		content := strings.TrimSpace(messages[i].Content)

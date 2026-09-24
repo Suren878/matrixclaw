@@ -1,4 +1,4 @@
-package core
+package agentcontext
 
 import (
 	"context"
@@ -15,17 +15,17 @@ import (
 
 const maxProviderImageBytes int64 = 8 * 1024 * 1024
 
-// providerIdentity is the Provider and Model a runtime stamps on its replies.
-type providerIdentity struct {
-	provider string
-	model    string
+const restartFinishReason = "daemon_restart"
+
+// Identity is the Provider and Model a runtime stamps on its replies; signed or
+// encrypted reasoning is replayed only to the same pair.
+type Identity struct {
+	Provider string
+	Model    string
 }
 
-func (c *Core) buildProviderConversation(ctx context.Context, history []transcript.Message, currentRunID string, allowImageInput bool, target providerIdentity) ([]providers.Message, error) {
-	return buildProviderConversationWithAttachmentsForRun(ctx, history, c.attachments, currentRunID, allowImageInput, target)
-}
-
-func buildProviderConversationWithAttachmentsForRun(ctx context.Context, history []transcript.Message, reader AttachmentReader, currentRunID string, allowImageInput bool, target providerIdentity) ([]providers.Message, error) {
+// Conversation converts history into provider messages, pairing every tool call with its result; signed reasoning is kept only for target.
+func Conversation(ctx context.Context, history []transcript.Message, reader AttachmentReader, currentRunID string, allowImageInput bool, target Identity) ([]providers.Message, error) {
 	entries, err := convertProviderConversationHistory(ctx, history, reader, currentRunID, allowImageInput, target)
 	if err != nil {
 		return nil, err
@@ -107,10 +107,10 @@ collect:
 	return step, i
 }
 
-func convertProviderConversationHistory(ctx context.Context, history []transcript.Message, reader AttachmentReader, currentRunID string, allowImageInput bool, target providerIdentity) ([]providerConversationEntry, error) {
+func convertProviderConversationHistory(ctx context.Context, history []transcript.Message, reader AttachmentReader, currentRunID string, allowImageInput bool, target Identity) ([]providerConversationEntry, error) {
 	entries := make([]providerConversationEntry, 0, len(history))
 	for _, message := range history {
-		if skipInternalPlanPromptForProvider(message, currentRunID) || messageInterruptedByDaemonRestart(message) {
+		if skipInternalPlanPromptForProvider(message, currentRunID) || transcript.HasFinishReason(message, restartFinishReason) {
 			continue
 		}
 		message = withoutForeignSignedReasoning(message, target)
@@ -177,10 +177,11 @@ func syntheticFailedToolResult(toolCallID string) providers.Message {
 	}
 }
 
-func buildTextOnlyProviderConversationForRun(history []transcript.Message, currentRunID string) []providers.Message {
+// TextOnlyConversation renders history as plain text for models without tool calling.
+func TextOnlyConversation(history []transcript.Message, currentRunID string) []providers.Message {
 	conversation := make([]providers.Message, 0, len(history))
 	for _, message := range history {
-		if message.Role == transcript.MessageRoleSystem || skipInternalPlanPromptForProvider(message, currentRunID) || messageInterruptedByDaemonRestart(message) {
+		if message.Role == transcript.MessageRoleSystem || skipInternalPlanPromptForProvider(message, currentRunID) || transcript.HasFinishReason(message, restartFinishReason) {
 			continue
 		}
 		role := string(message.Role)
@@ -459,8 +460,8 @@ func isSignedReasoning(part transcript.ReasoningPart) bool {
 
 // withoutForeignSignedReasoning drops signed or encrypted reasoning another
 // provider or model produced; the target would reject it. Plain text stays.
-func withoutForeignSignedReasoning(message transcript.Message, target providerIdentity) transcript.Message {
-	if strings.TrimSpace(message.Provider) == strings.TrimSpace(target.provider) && strings.TrimSpace(message.Model) == strings.TrimSpace(target.model) {
+func withoutForeignSignedReasoning(message transcript.Message, target Identity) transcript.Message {
+	if strings.TrimSpace(message.Provider) == strings.TrimSpace(target.Provider) && strings.TrimSpace(message.Model) == strings.TrimSpace(target.Model) {
 		return message
 	}
 	parts := make([]transcript.MessagePart, 0, len(message.Parts))

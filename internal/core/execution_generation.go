@@ -2,9 +2,9 @@ package core
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -17,7 +17,7 @@ func (c *Core) generateAssistantTurnWithRetry(ctx context.Context, turn turnExec
 	for attempt := 0; ; attempt++ {
 		assistant, saved, response, err := c.generateAssistantTurn(ctx, turn, request)
 		if err == nil {
-			err = stopReasonError(response)
+			err = agentcontext.StopReasonError(response)
 		}
 		if err == nil && sanitizeAssistantOutput(response.Text) == "" && len(response.ToolCalls) == 0 {
 			err = providers.ErrEmptyResponse
@@ -32,17 +32,6 @@ func (c *Core) generateAssistantTurnWithRetry(ctx context.Context, turn turnExec
 			return assistant, saved, response, ctx.Err()
 		case <-timer.C:
 		}
-	}
-}
-
-// stopReasonError fails a reply cut by the output limit or a content filter:
-// the current loop has no continuation path for either.
-func stopReasonError(response providers.Response) error {
-	switch response.StopReason {
-	case providers.StopMaxTokens, providers.StopContentFilter:
-		return fmt.Errorf("%s: generation stopped before completion (%s)", response.Provider, response.StopReason)
-	default:
-		return nil
 	}
 }
 
