@@ -177,11 +177,27 @@ func syntheticFailedToolResult(toolCallID string) providers.Message {
 	}
 }
 
+// engineNoteMessage is the user text the model reads for an engine note; other
+// system rows never reach the model.
+func engineNoteMessage(message transcript.Message) (providers.Message, bool) {
+	content := strings.TrimSpace(message.Content)
+	if message.Origin != transcript.OriginEngine || content == "" {
+		return providers.Message{}, false
+	}
+	return providers.Message{Role: string(transcript.MessageRoleUser), Content: content}, true
+}
+
 // TextOnlyConversation renders history as plain text for models without tool calling.
 func TextOnlyConversation(history []transcript.Message, currentRunID string) []providers.Message {
 	conversation := make([]providers.Message, 0, len(history))
 	for _, message := range history {
-		if message.Role == transcript.MessageRoleSystem || skipInternalPlanPromptForProvider(message, currentRunID) || transcript.HasFinishReason(message, restartFinishReason) {
+		if skipInternalPlanPromptForProvider(message, currentRunID) || transcript.HasFinishReason(message, restartFinishReason) {
+			continue
+		}
+		if message.Role == transcript.MessageRoleSystem {
+			if note, ok := engineNoteMessage(message); ok {
+				conversation = append(conversation, note)
+			}
 			continue
 		}
 		role := string(message.Role)
@@ -325,6 +341,9 @@ func trimProviderToolResult(content string, maxRunes int) string {
 
 func toProviderMessages(ctx context.Context, message transcript.Message, reader AttachmentReader, allowImageInput bool) ([]providers.Message, error) {
 	if message.Role == transcript.MessageRoleSystem {
+		if note, ok := engineNoteMessage(message); ok {
+			return []providers.Message{note}, nil
+		}
 		return nil, nil
 	}
 	if len(message.Parts) == 0 {
