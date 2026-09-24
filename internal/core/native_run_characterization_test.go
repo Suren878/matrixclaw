@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/orchestration"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -401,5 +404,233 @@ func TestCancelDuringToolStopsRunWithoutAnotherModelCall(t *testing.T) {
 	}
 	if _, err := db.GetRunCheckpoint(context.Background(), run.ID); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("canceled run checkpoint error = %v, want ErrNotFound", err)
+	}
+}
+
+var compactMarkerPattern = regexp.MustCompile("^🧠 Context compacted: ~[0-9.]+[kM]? -> ~[0-9.]+[kM]? tokens\n\nSUMMARY$")
+
+func saveNativeRunWithHistory(t *testing.T, db *store.SQLiteStore, suffix string, history ...transcript.Message) (core.Session, core.Run) {
+	t.Helper()
+	ctx := context.Background()
+	now := runRecoveryTestTime()
+	session := core.Session{
+		ID: "session_" + suffix, Title: suffix, Kind: core.SessionKindAssistant, RuntimeID: core.SessionRuntimeMatrixClaw,
+		ProviderID: "recovery-test", ModelID: "test-model", PermissionMode: core.PermissionModeDefault,
+		Status: core.SessionStatusActive, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := db.CreateSession(ctx, session); err != nil {
+		t.Fatal(err)
+	}
+	for i, message := range history {
+		message.SessionID = session.ID
+		message.CreatedAt = now.Add(time.Duration(i-len(history)) * time.Minute)
+		message.UpdatedAt = message.CreatedAt
+		saveRunRecoveryTestMessage(t, db, message)
+	}
+	run := core.Run{ID: "run_" + suffix, SessionID: session.ID, UserMessageID: "msg_user_" + suffix, Status: core.RunStatusAccepted, StartedAt: now, UpdatedAt: now}
+	user := transcript.Message{
+		ID: run.UserMessageID, SessionID: session.ID, RunID: run.ID, Role: transcript.MessageRoleUser,
+		Content: "original task " + suffix, Parts: transcript.NormalizeMessageParts("original task "+suffix, nil),
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := db.AcceptMessage(ctx, user, run); err != nil {
+		t.Fatal(err)
+	}
+	return session, run
+}
+
+func countCompactMarkers(t *testing.T, db *store.SQLiteStore, sessionID string) int {
+	t.Helper()
+	count := 0
+	for _, message := range sessionMessages(t, db, sessionID) {
+		if message.Role == transcript.MessageRoleSystem && message.RunID == "" && compactMarkerPattern.MatchString(message.Content) {
+			count++
+		}
+	}
+	return count
+}
+
+func TestNativeRunCompactsLargeHistoryBeforeTheModelCall(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	big := strings.Repeat("x", 330_000)
+	var summaryRequests, mainRequests int
+	var mainPrompt string
+	var leaked bool
+	app.WithSessionLLMs(windowLLMs{window: 100_000, recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		if strings.Contains(request.SystemPrompt, "You compact matrixclaw chat histories") {
+			summaryRequests++
+			return providers.Response{Text: "SUMMARY"}, nil
+		}
+		mainRequests++
+		mainPrompt = request.SystemPrompt
+		for _, message := range request.Messages {
+			leaked = leaked || strings.Contains(message.Content, big[:1000])
+		}
+		return providers.Response{Text: "Done."}, nil
+	})}})
+	session, run := saveNativeRunWithHistory(t, db, "compact", transcript.Message{
+		ID: "msg_old_user", Role: transcript.MessageRoleUser, Content: big, Parts: transcript.NormalizeMessageParts(big, nil),
+	})
+
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
+	if summaryRequests != 1 || mainRequests != 1 {
+		t.Fatalf("summary=%d main=%d, want 1/1", summaryRequests, mainRequests)
+	}
+	if !strings.Contains(mainPrompt, "Session context summary:\nSUMMARY") || leaked {
+		t.Fatalf("main request: summary in prompt=%v, old history leaked=%v", strings.Contains(mainPrompt, "SUMMARY"), leaked)
+	}
+	if got := countCompactMarkers(t, db, session.ID); got != 1 {
+		t.Fatalf("compact markers = %d, want 1", got)
+	}
+}
+
+func TestContextLengthErrorForcesCompactionAndRetriesOnce(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	var summaryRequests, mainRequests int
+	app.WithSessionLLMs(windowLLMs{window: 100_000, recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		if strings.Contains(request.SystemPrompt, "You compact matrixclaw chat histories") {
+			summaryRequests++
+			return providers.Response{Text: "SUMMARY"}, nil
+		}
+		mainRequests++
+		if mainRequests == 1 {
+			return providers.Response{}, errors.New("provider: context_length_exceeded")
+		}
+		return providers.Response{Text: "Recovered."}, nil
+	})}})
+	session, run := saveNativeRunWithHistory(t, db, "overflow")
+
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
+	if summaryRequests != 1 || mainRequests != 2 {
+		t.Fatalf("summary=%d main=%d, want 1/2", summaryRequests, mainRequests)
+	}
+	if got := countCompactMarkers(t, db, session.ID); got != 1 {
+		t.Fatalf("compact markers = %d, want 1", got)
+	}
+}
+
+func TestBlockingSubagentReturnsChildSummaryToParent(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithTools(tools.NewRegistry(core.SubagentToolExecutors(app)...))
+	parentCalls := 0
+	var delegateResult string
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
+			return providers.Response{Text: "child found 3 files"}, nil
+		}
+		parentCalls++
+		if parentCalls == 1 {
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-delegate", Name: "delegate_task", Arguments: []byte(`{"goal":"count files","runtime":"matrixclaw"}`)}}}, nil
+		}
+		for _, message := range request.Messages {
+			if message.ToolCallID == "call-delegate" {
+				delegateResult = message.Content
+			}
+		}
+		return providers.Response{Text: "Parent done."}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "delegate", core.RunStatusAccepted, false)
+
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
+	if delegateResult != "child found 3 files" {
+		t.Fatalf("delegate result = %q", delegateResult)
+	}
+	task, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-delegate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Status != core.SubagentTaskStatusCompleted || task.Summary != "child found 3 files" {
+		t.Fatalf("task = %s %q", task.Status, task.Summary)
+	}
+	assertRecoveryRunStatus(t, db, task.ChildRunID, core.RunStatusCompleted)
+}
+
+type asyncSubagentScenario struct {
+	db      *store.SQLiteStore
+	session core.Session
+	run     core.Run
+	events  []core.Event
+}
+
+func runAsyncSubagentScenario(t *testing.T) asyncSubagentScenario {
+	t.Helper()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	t.Cleanup(cleanup)
+	app.WithTools(tools.NewRegistry(core.SubagentToolExecutors(app)...))
+	app.WithRunStarter(orchestration.NewStub(app))
+	var mu sync.Mutex
+	spawned := false
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
+			return providers.Response{Text: "child async result"}, nil
+		}
+		for _, message := range request.Messages {
+			if message.Role == "user" && strings.HasPrefix(message.Content, "Subagent ") && strings.Contains(message.Content, "completed.") {
+				return providers.Response{Text: "Synthesized."}, nil
+			}
+		}
+		if !spawned {
+			spawned = true
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-spawn", Name: "spawn_subagent", Arguments: []byte(`{"name":"Scanner","goal":"scan the tree","runtime":"matrixclaw"}`)}}}, nil
+		}
+		return providers.Response{Text: "Spawned."}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "async", core.RunStatusAccepted, false)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	events := app.SubscribeEvents(ctx, session.ID)
+
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		followUp := ""
+		for _, message := range sessionMessages(t, db, session.ID) {
+			if message.Role == transcript.MessageRoleUser && strings.HasPrefix(message.Content, "Subagent ") && strings.Contains(message.Content, "completed.") {
+				followUp = message.RunID
+			}
+		}
+		if followUp != "" {
+			if got, err := db.GetRun(context.Background(), followUp); err == nil && got.Status == core.RunStatusCompleted {
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("subagent completion follow-up run did not complete")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return asyncSubagentScenario{db: db, session: session, run: run, events: drainEvents(events)}
+}
+
+func TestAsyncSubagentCompletionStartsParentFollowUpRun(t *testing.T) {
+	scenario := runAsyncSubagentScenario(t)
+
+	task, err := scenario.db.GetSubagentTaskByParentToolCall(context.Background(), scenario.session.ID, scenario.run.ID, "call-spawn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Status != core.SubagentTaskStatusCompleted || task.CompletionDeliveredAt == nil {
+		t.Fatalf("task = %s delivered=%v", task.Status, task.CompletionDeliveredAt)
 	}
 }
