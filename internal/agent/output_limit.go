@@ -15,8 +15,9 @@ const maxContinuations = 3
 const continueText = "Your reply was cut by the output limit. Continue exactly where you stopped, without repeating what you already wrote."
 
 // continueCutReply keeps a reply cut by the output limit and asks the model to go
-// on. A cut before any text (the adapter dropped a truncated tool call, or
-// reasoning used the limit) is retried once with a raised limit.
+// on, with the limit raised once where the model allows it: adapters drop a
+// truncated tool call, so a cut may hide one. A cut before any text is retried
+// only when the limit can still be raised.
 func (r *run) continueCutReply(ctx context.Context, gen generation, response providers.Response) stepResult {
 	if response.Text == "" {
 		if !r.raiseOutputLimit() {
@@ -28,6 +29,7 @@ func (r *run) continueCutReply(ctx context.Context, gen generation, response pro
 		reply := finalReply(gen.assistant, response)
 		return stepResult{kind: stepDone, assistant: &reply, saved: gen.saved, response: response, err: fmt.Errorf("reply cut by the output limit %d times in a row", maxContinuations+1), markErrored: true}
 	}
+	r.raiseOutputLimit()
 	r.counters.Continuations++
 	assistant := gen.assistant
 	if err := r.finishTurn(ctx, &assistant, gen.saved, response, string(providers.StopMaxTokens)); err != nil {

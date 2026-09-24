@@ -117,6 +117,24 @@ func TestEmptyCutRaisesTheOutputLimitOnce(t *testing.T) {
 	}
 }
 
+func TestCutReplyWithTextRaisesTheLimitBeforeContinuing(t *testing.T) {
+	f := agenttest.NewFixture()
+	model := limitedModel{ScriptedModel: agenttest.NewScriptedModel(cut("I'll write the file"), cut("and here it"), text("is.")), current: 4000}
+
+	outcome := run(t, f, model)
+
+	requests := model.Requests()
+	if outcome.Status != agent.StatusCompleted || len(requests) != 3 {
+		t.Fatalf("outcome = %+v requests = %d", outcome, len(requests))
+	}
+	if requests[1].MaxOutputTokens != 8000 || requests[2].MaxOutputTokens != 8000 {
+		t.Fatalf("output limits = %d then %d, want the raised 8000 kept", requests[1].MaxOutputTokens, requests[2].MaxOutputTokens)
+	}
+	if !strings.Contains(lastMessage(requests[1]).Content, "Continue exactly where you stopped") {
+		t.Fatalf("second request ends with %+v, want the continuation note", lastMessage(requests[1]))
+	}
+}
+
 func TestEmptyCutFailsWhenTheLimitCannotBeRaised(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
