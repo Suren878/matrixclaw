@@ -25,6 +25,8 @@ type Config struct {
 	Attachments agentcontext.AttachmentReader
 	Now         func() time.Time
 	NewID       func(prefix string) string
+	// Sleep waits d or until ctx stops; nil uses a real timer.
+	Sleep func(ctx context.Context, d time.Duration) error
 }
 
 // Engine runs the native agent loop over its ports.
@@ -34,7 +36,21 @@ type Engine struct {
 
 // New returns an engine over the given ports.
 func New(cfg Config) *Engine {
+	if cfg.Sleep == nil {
+		cfg.Sleep = sleep
+	}
 	return &Engine{cfg: cfg}
+}
+
+func sleep(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // Run executes steps until the run completes, parks, fails or ctx stops. The error

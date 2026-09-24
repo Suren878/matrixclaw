@@ -67,12 +67,8 @@ func (r *run) generateWithRetry(ctx context.Context, request providers.Request) 
 		if err == nil || gen.saved || gen.assistant.Content != "" || ctx.Err() != nil || attempt >= len(backoffs) || !providers.IsRetryableGenerationError(err) {
 			return gen, err
 		}
-		timer := time.NewTimer(backoffs[attempt])
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return gen, ctx.Err()
-		case <-timer.C:
+		if err := r.Sleep(ctx, backoffs[attempt]); err != nil {
+			return gen, err
 		}
 	}
 }

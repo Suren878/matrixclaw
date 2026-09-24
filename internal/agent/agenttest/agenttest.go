@@ -378,6 +378,9 @@ type Fixture struct {
 	Sink      *Sink
 	Prompts   *Prompts
 	Clock     time.Time
+	// Slept records the engine's waits, which return at once unless RealSleep is set.
+	Slept     []time.Duration
+	RealSleep bool
 	ids       int
 }
 
@@ -403,6 +406,13 @@ func NewFixture() *Fixture {
 
 // Engine returns an engine over the fixture's fakes with a fixed clock and sequential IDs.
 func (f *Fixture) Engine() *agent.Engine {
+	sleep := func(ctx context.Context, d time.Duration) error {
+		f.Slept = append(f.Slept, d)
+		return ctx.Err()
+	}
+	if f.RealSleep {
+		sleep = nil
+	}
 	return agent.New(agent.Config{
 		Journal:   f.Journal,
 		Tools:     f.Tools,
@@ -411,6 +421,7 @@ func (f *Fixture) Engine() *agent.Engine {
 		Sink:      f.Sink,
 		Prompts:   f.Prompts,
 		Now:       func() time.Time { return f.Clock },
+		Sleep:     sleep,
 		NewID: func(prefix string) string {
 			f.ids++
 			return fmt.Sprintf("%s_%d", prefix, f.ids)

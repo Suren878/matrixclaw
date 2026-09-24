@@ -333,6 +333,9 @@ func TestEmptyRepliesAreRetriedTwiceAndRecorded(t *testing.T) {
 	if len(f.Journal.Steps) != 3 {
 		t.Fatalf("recorded steps = %d, want every generation (3)", len(f.Journal.Steps))
 	}
+	if fmt.Sprint(f.Slept) != "[200ms 750ms]" {
+		t.Fatalf("backoffs = %v", f.Slept)
+	}
 }
 
 func TestPartialOutputIsNotRetried(t *testing.T) {
@@ -519,6 +522,7 @@ func TestRetryableErrorBeforeOutputIsRetried(t *testing.T) {
 
 func TestStopDuringRetryBackoffEndsTheWait(t *testing.T) {
 	f := agenttest.NewFixture()
+	f.RealSleep = true
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	attempts := 0
