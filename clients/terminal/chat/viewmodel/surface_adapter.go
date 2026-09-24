@@ -33,13 +33,10 @@ func ToSurfaceMessage(message transcript.Message) surfacemessage.Message {
 		case transcript.MessagePartKindReasoning:
 			if part.Reasoning != nil {
 				out.Parts = append(out.Parts, surfacemessage.ReasoningContent{
-					Thinking:         part.Reasoning.Text,
-					Signature:        part.Reasoning.Signature,
-					ThoughtSignature: part.Reasoning.ThoughtSignature,
-					ToolID:           part.Reasoning.ToolID,
-					ResponsesData:    append(json.RawMessage(nil), part.Reasoning.ResponsesData...),
-					StartedAt:        surfaceNowUnix(message.CreatedAt),
-					FinishedAt:       surfaceNowUnix(message.UpdatedAt),
+					Thinking:   part.Reasoning.Text,
+					Signature:  part.Reasoning.Signature,
+					StartedAt:  surfaceNowUnix(message.CreatedAt),
+					FinishedAt: surfaceNowUnix(message.UpdatedAt),
 				})
 			}
 		case transcript.MessagePartKindToolCall:

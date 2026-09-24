@@ -260,7 +260,6 @@ func applyCachedCapabilities(capabilities ModelCapabilities, metadata cachedMode
 	if !capabilities.ToolCalling {
 		capabilities.ParallelToolCalls = false
 		capabilities.ReasoningWithTools = false
-		capabilities.ThoughtSignatures = false
 	}
 	return capabilities
 }

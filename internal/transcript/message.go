@@ -63,12 +63,9 @@ type ImagePart struct {
 }
 
 type ReasoningPart struct {
-	Text             string          `json:"text"`
-	Signature        string          `json:"signature,omitempty"`
-	ThoughtSignature string          `json:"thought_signature,omitempty"`
-	ToolID           string          `json:"tool_id,omitempty"`
-	ResponsesData    json.RawMessage `json:"responses_data,omitempty"`
-	RedactedData     string          `json:"redacted_data,omitempty"`
+	Text         string `json:"text"`
+	Signature    string `json:"signature,omitempty"`
+	RedactedData string `json:"redacted_data,omitempty"`
 }
 
 type ToolCallPart struct {

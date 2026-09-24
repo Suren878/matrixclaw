@@ -2,7 +2,6 @@ package message
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"slices"
 	"strings"
 	"time"
@@ -34,13 +33,10 @@ type ContentPart interface {
 }
 
 type ReasoningContent struct {
-	Thinking         string          `json:"thinking"`
-	Signature        string          `json:"signature"`
-	ThoughtSignature string          `json:"thought_signature"`
-	ToolID           string          `json:"tool_id"`
-	ResponsesData    json.RawMessage `json:"responses_data,omitempty"`
-	StartedAt        int64           `json:"started_at,omitempty"`
-	FinishedAt       int64           `json:"finished_at,omitempty"`
+	Thinking   string `json:"thinking"`
+	Signature  string `json:"signature"`
+	StartedAt  int64  `json:"started_at,omitempty"`
+	FinishedAt int64  `json:"finished_at,omitempty"`
 }
 
 func (ReasoningContent) isPart() {}
@@ -203,76 +199,6 @@ func (m *Message) AppendContent(delta string) {
 		}
 	}
 	m.Parts = append(m.Parts, TextContent{Text: delta})
-}
-
-func (m *Message) AppendReasoningContent(delta string) {
-	for i, part := range m.Parts {
-		if c, ok := part.(ReasoningContent); ok {
-			m.Parts[i] = ReasoningContent{
-				Thinking:         c.Thinking + delta,
-				Signature:        c.Signature,
-				ThoughtSignature: c.ThoughtSignature,
-				ToolID:           c.ToolID,
-				ResponsesData:    append(json.RawMessage(nil), c.ResponsesData...),
-				StartedAt:        c.StartedAt,
-				FinishedAt:       c.FinishedAt,
-			}
-			return
-		}
-	}
-	m.Parts = append(m.Parts, ReasoningContent{
-		Thinking:  delta,
-		StartedAt: time.Now().Unix(),
-	})
-}
-
-func (m *Message) AppendThoughtSignature(signature string, toolCallID string) {
-	for i, part := range m.Parts {
-		if c, ok := part.(ReasoningContent); ok {
-			m.Parts[i] = ReasoningContent{
-				Thinking:         c.Thinking,
-				Signature:        c.Signature,
-				ThoughtSignature: c.ThoughtSignature + signature,
-				ToolID:           toolCallID,
-				ResponsesData:    append(json.RawMessage(nil), c.ResponsesData...),
-				StartedAt:        c.StartedAt,
-				FinishedAt:       c.FinishedAt,
-			}
-			return
-		}
-	}
-	m.Parts = append(m.Parts, ReasoningContent{ThoughtSignature: signature, ToolID: toolCallID})
-}
-
-func (m *Message) AppendReasoningSignature(signature string) {
-	for i, part := range m.Parts {
-		if c, ok := part.(ReasoningContent); ok {
-			m.Parts[i] = ReasoningContent{
-				Thinking:         c.Thinking,
-				Signature:        c.Signature + signature,
-				ThoughtSignature: c.ThoughtSignature,
-				ToolID:           c.ToolID,
-				ResponsesData:    append(json.RawMessage(nil), c.ResponsesData...),
-				StartedAt:        c.StartedAt,
-				FinishedAt:       c.FinishedAt,
-			}
-			return
-		}
-	}
-	m.Parts = append(m.Parts, ReasoningContent{Signature: signature})
-}
-
-func (m *Message) SetReasoningResponsesData(data json.RawMessage) {
-	for i, part := range m.Parts {
-		if c, ok := part.(ReasoningContent); ok {
-			c.ResponsesData = append(json.RawMessage(nil), data...)
-			m.Parts[i] = c
-			return
-		}
-	}
-	if len(data) > 0 {
-		m.Parts = append(m.Parts, ReasoningContent{ResponsesData: append(json.RawMessage(nil), data...)})
-	}
 }
 
 func (m *Message) FinishThinking() {

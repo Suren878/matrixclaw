@@ -18,7 +18,6 @@ type ModelCapabilities struct {
 	ReasoningEffort    bool
 	ReasoningMode      ReasoningMode
 	ReasoningWithTools bool
-	ThoughtSignatures  bool
 	NormalizeModel     bool
 }
 
@@ -97,7 +96,6 @@ func runtimeCapabilitiesFromProvider(providerCapabilities Capabilities, provider
 	if !capabilities.ToolCalling {
 		capabilities.ParallelToolCalls = false
 		capabilities.ReasoningWithTools = false
-		capabilities.ThoughtSignatures = false
 	}
 	return capabilities
 }
