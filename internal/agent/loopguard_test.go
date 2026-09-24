@@ -47,6 +47,22 @@ func TestRepeatingACallWithoutProgressWarnsThenStops(t *testing.T) {
 	}
 }
 
+func TestEmptyFinalTurnAfterALoopFallsBackToANeutralStopNote(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["status"] = statusTool
+	turns := make([]agenttest.Turn, 0, 6)
+	for i := 1; i <= 5; i++ {
+		turns = append(turns, calls(providers.ToolCall{ID: fmt.Sprintf("s%d", i), Name: "status", Arguments: []byte(`{}`)}))
+	}
+	model := agenttest.NewScriptedModel(append(turns, text(""))...)
+
+	outcome := run(t, f, model)
+
+	if outcome.StopReason != agent.StopLoopDetected || outcome.Assistant.Content != "This run stopped: it repeated the same action without progress." {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+}
+
 func TestPollingThatReturnsNewOutputIsNotALoop(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["task_output"] = counterTool()

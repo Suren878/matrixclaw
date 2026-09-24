@@ -220,8 +220,8 @@ func TestCutOrFilteredFinalTurnCompletesWithItsStopReason(t *testing.T) {
 		want  string
 	}{
 		{"cut with text", providers.Response{Text: "Read one file; the rest", StopReason: providers.StopMaxTokens}, "Read one file; the rest"},
-		{"cut before any text", providers.Response{StopReason: providers.StopMaxTokens}, "Stopped: the run reached its budget. Send /continue to go on."},
-		{"filtered", providers.Response{StopReason: providers.StopContentFilter}, "Stopped: the run reached its budget. Send /continue to go on."},
+		{"cut before any text", providers.Response{StopReason: providers.StopMaxTokens}, "This run stopped: it reached its budget."},
+		{"filtered", providers.Response{StopReason: providers.StopContentFilter}, "This run stopped: it reached its budget."},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := agenttest.NewFixture()

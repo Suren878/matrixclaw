@@ -203,7 +203,7 @@ func TestFinalTurnDropsToolCallsAndFallsBackToAStopNote(t *testing.T) {
 	if outcome.Status != agent.StatusCompleted || outcome.StopReason != agent.StopBudgetExhausted || len(f.Tools.Calls) != 1 {
 		t.Fatalf("outcome = %+v tool calls = %d", outcome, len(f.Tools.Calls))
 	}
-	if !strings.HasPrefix(outcome.Assistant.Content, "Stopped: the run reached its budget.") {
+	if outcome.Assistant.Content != "This run stopped: it reached its budget." {
 		t.Fatalf("final reply = %q", outcome.Assistant.Content)
 	}
 }
@@ -217,7 +217,7 @@ func TestEmptyFinalTurnEndsWithTheStopNote(t *testing.T) {
 
 	outcome := runTask(t, f, task)
 
-	if outcome.Status != agent.StatusCompleted || outcome.StopReason != agent.StopBudgetExhausted || !strings.HasPrefix(outcome.Assistant.Content, "Stopped: the run reached its budget.") {
+	if outcome.Status != agent.StatusCompleted || outcome.StopReason != agent.StopBudgetExhausted || outcome.Assistant.Content != "This run stopped: it reached its budget." {
 		t.Fatalf("outcome = %+v", outcome)
 	}
 	if requests := len(model.Requests()); requests != 2 || len(f.Slept) != 0 {

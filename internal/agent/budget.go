@@ -111,9 +111,9 @@ func finalTurn(gen generation, reason StopReason) stepResult {
 // finalFallback is the reply of a final turn that produced no text.
 func finalFallback(reason StopReason) string {
 	if reason == StopLoopDetected {
-		return "Stopped: the run kept repeating the same step. Send /continue to go on."
+		return "This run stopped: it repeated the same action without progress."
 	}
-	return "Stopped: the run reached its budget. Send /continue to go on."
+	return "This run stopped: it reached its budget."
 }
 
 func budgetStopText(reached string) string {
