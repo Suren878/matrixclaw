@@ -63,8 +63,9 @@ func TestExternalAgentBurstPersistsCoalescedProgress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new registry: %v", err)
 	}
-	app := core.New(sqliteStore).WithExternalAgents(registry, sqliteStore)
+	// A frozen clock keeps the whole burst inside one progress flush interval.
 	now := time.Now().UTC()
+	app := core.New(sqliteStore).WithExternalAgents(registry, sqliteStore).WithClock(func() time.Time { return now })
 	session := core.Session{
 		ID: "session-burst", Title: "Burst", Kind: core.SessionKindExternalAgent,
 		RuntimeID: core.SessionRuntimeExternalAgent, Status: core.SessionStatusActive,
@@ -110,8 +111,8 @@ func TestExternalAgentBurstPersistsCoalescedProgress(t *testing.T) {
 			drain = false
 		}
 	}
-	if updatedEvents > 4 {
-		t.Fatalf("message.updated events = %d, want batched progress rather than one write per delta", updatedEvents)
+	if updatedEvents != 1 {
+		t.Fatalf("message.updated events = %d, want the burst coalesced into the final write", updatedEvents)
 	}
 
 	gotRun, err := sqliteStore.GetRun(ctx, run.ID)
