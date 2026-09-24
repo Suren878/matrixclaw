@@ -64,16 +64,6 @@ CREATE TABLE IF NOT EXISTS messages (
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
-CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
-    message_id UNINDEXED,
-    session_id UNINDEXED,
-    role,
-    content,
-    provider,
-    model,
-    tokenize = 'unicode61'
-);
-
 CREATE TABLE IF NOT EXISTS memories (
     id TEXT PRIMARY KEY,
     scope TEXT NOT NULL,

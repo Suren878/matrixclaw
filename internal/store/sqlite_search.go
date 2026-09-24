@@ -19,15 +19,15 @@ func (s *SQLiteStore) SearchMessages(ctx context.Context, filter core.SearchFilt
 		limit = 20
 	}
 	sqlQuery := `
-SELECT f.message_id, f.session_id, f.role,
-       snippet(message_fts, 3, '[', ']', '...', 12) AS snippet,
+SELECT m.id, m.session_id, f.role,
+       snippet(message_fts, 1, '[', ']', '...', 12) AS snippet,
        f.provider, f.model, bm25(message_fts) AS rank, m.created_at
 FROM message_fts f
-JOIN messages m ON m.id = f.message_id
+JOIN messages m ON m.seq = f.rowid
 WHERE message_fts MATCH ?`
 	args := []any{query}
 	if strings.TrimSpace(filter.SessionID) != "" {
-		sqlQuery += " AND f.session_id = ?"
+		sqlQuery += " AND m.session_id = ?"
 		args = append(args, strings.TrimSpace(filter.SessionID))
 	}
 	sqlQuery += "\nORDER BY rank\nLIMIT ?"
@@ -55,22 +55,23 @@ WHERE message_fts MATCH ?`
 	return results, nil
 }
 
+// upsertMessageSearch replaces the search row of a stored message; rows are
+// keyed by messages.seq.
 func upsertMessageSearch(ctx context.Context, execer sqlExecer, message transcript.Message) error {
 	if strings.TrimSpace(message.ID) == "" {
 		return nil
 	}
-	if _, err := execer.ExecContext(ctx, `DELETE FROM message_fts WHERE message_id = ?`, message.ID); err != nil {
+	if _, err := execer.ExecContext(ctx, `DELETE FROM message_fts WHERE rowid = (SELECT seq FROM messages WHERE id = ?)`, message.ID); err != nil {
 		return fmt.Errorf("store: clear message search row: %w", err)
 	}
 	if _, err := execer.ExecContext(ctx, `
-INSERT INTO message_fts(message_id, session_id, role, content, provider, model)
-VALUES(?, ?, ?, ?, ?, ?)`,
-		message.ID,
-		message.SessionID,
+INSERT INTO message_fts(rowid, role, content, provider, model)
+SELECT seq, ?, ?, ?, ? FROM messages WHERE id = ?`,
 		string(message.Role),
 		messageSearchContent(message),
 		message.Provider,
 		message.Model,
+		message.ID,
 	); err != nil {
 		return fmt.Errorf("store: upsert message search row: %w", err)
 	}

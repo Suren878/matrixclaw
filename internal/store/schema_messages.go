@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"sort"
@@ -73,6 +74,68 @@ func backfillMessageSeq(db *sql.DB) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("store: commit message seq backfill: %w", err)
+	}
+	return nil
+}
+
+// migrateMessageSearch keys message_fts rows by messages.seq, rebuilding an
+// index still keyed by message_id, then indexes messages that have no row.
+func migrateMessageSearch(db *sql.DB) error {
+	legacy, err := hasColumn(db, "message_fts", "message_id")
+	if err != nil {
+		return err
+	}
+	if legacy {
+		if _, err := db.Exec(`DROP TABLE message_fts`); err != nil {
+			return fmt.Errorf("store: drop legacy message search: %w", err)
+		}
+	}
+	if _, err := db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(role, content, provider, model, tokenize = 'unicode61')`); err != nil {
+		return fmt.Errorf("store: create message search: %w", err)
+	}
+	return indexUnsearchedMessages(db)
+}
+
+// indexUnsearchedMessages indexes messages without a search row, such as
+// streamed snapshots whose final update never arrived.
+func indexUnsearchedMessages(db *sql.DB) error {
+	rows, err := db.Query(`SELECT seq FROM messages WHERE seq NOT IN (SELECT rowid FROM message_fts) ORDER BY seq`)
+	if err != nil {
+		return fmt.Errorf("store: list unsearched messages: %w", err)
+	}
+	var pending []int64
+	for rows.Next() {
+		var seq int64
+		if err := rows.Scan(&seq); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("store: scan unsearched message: %w", err)
+		}
+		pending = append(pending, seq)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("store: iterate unsearched messages: %w", err)
+	}
+	if len(pending) == 0 {
+		return nil
+	}
+
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store: begin message search backfill: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, seq := range pending {
+		message, err := scanMessage(tx.QueryRowContext(ctx, `SELECT `+messageColumns+` FROM messages WHERE seq = ?`, seq))
+		if err != nil {
+			return err
+		}
+		if err := upsertMessageSearch(ctx, tx, message); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: commit message search backfill: %w", err)
 	}
 	return nil
 }

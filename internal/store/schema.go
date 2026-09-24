@@ -187,22 +187,24 @@ CREATE TABLE IF NOT EXISTS session_inputs (
 	if _, err := db.Exec(`UPDATE external_agent_sessions SET sandbox = 'danger-full-access' WHERE sandbox = ''`); err != nil {
 		return fmt.Errorf("store: backfill external session sandbox: %w", err)
 	}
-	if _, err := db.Exec(`
-INSERT INTO message_fts(message_id, session_id, role, content, provider, model)
-SELECT m.id, m.session_id, m.role, m.content, m.provider, m.model
-FROM messages m
-WHERE NOT EXISTS (
-    SELECT 1 FROM message_fts f WHERE f.message_id = m.id
-)`); err != nil {
-		return fmt.Errorf("store: backfill message search: %w", err)
+	return migrateMessageSearch(db)
+}
+
+func ensureColumn(db *sql.DB, table string, column string, alterSQL string) error {
+	exists, err := hasColumn(db, table, column)
+	if err != nil || exists {
+		return err
+	}
+	if _, err := db.Exec(alterSQL); err != nil {
+		return fmt.Errorf("store: add %s.%s: %w", table, column, err)
 	}
 	return nil
 }
 
-func ensureColumn(db *sql.DB, table string, column string, alterSQL string) error {
+func hasColumn(db *sql.DB, table string, column string) (bool, error) {
 	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
 	if err != nil {
-		return fmt.Errorf("store: inspect %s schema: %w", table, err)
+		return false, fmt.Errorf("store: inspect %s schema: %w", table, err)
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
@@ -213,17 +215,14 @@ func ensureColumn(db *sql.DB, table string, column string, alterSQL string) erro
 		var defaultValue any
 		var primaryKey int
 		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-			return fmt.Errorf("store: scan %s schema: %w", table, err)
+			return false, fmt.Errorf("store: scan %s schema: %w", table, err)
 		}
 		if name == column {
-			return nil
+			return true, nil
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("store: iterate %s schema: %w", table, err)
+		return false, fmt.Errorf("store: iterate %s schema: %w", table, err)
 	}
-	if _, err := db.Exec(alterSQL); err != nil {
-		return fmt.Errorf("store: add %s.%s: %w", table, column, err)
-	}
-	return nil
+	return false, nil
 }
