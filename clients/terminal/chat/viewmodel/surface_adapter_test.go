@@ -18,3 +18,15 @@ func TestEngineNotesRenderAsPlainSystemNotes(t *testing.T) {
 		t.Fatalf("plain system message = %+v", plain)
 	}
 }
+
+func TestSurfaceMessagesHideTheContinuationNote(t *testing.T) {
+	continuation := "Your reply was cut by the output limit. Continue exactly where you stopped, without repeating what you already wrote."
+	messages := []transcript.Message{
+		{ID: "n1", Role: transcript.MessageRoleSystem, Origin: transcript.OriginEngine, Content: continuation, Parts: transcript.NormalizeMessageParts(continuation, nil)},
+		{ID: "n2", Role: transcript.MessageRoleSystem, Origin: transcript.OriginEngine, Content: "Budget note: about 2 steps left.", Parts: transcript.NormalizeMessageParts("Budget note: about 2 steps left.", nil)},
+	}
+	out := ToSurfaceMessages(messages)
+	if len(out) != 1 || out[0].ID != "n2" {
+		t.Fatalf("surface messages = %+v", out)
+	}
+}

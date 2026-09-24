@@ -31,6 +31,25 @@ func TestEngineNotesAreSentOnceAndSilently(t *testing.T) {
 	}
 }
 
+func TestContinuationNoteIsNotSentWhileAnotherEngineNoteIs(t *testing.T) {
+	api := &runRenderBotAPI{}
+	worker := &Worker{api: api}
+	target := chatTarget{chatID: 7, externalKey: "7"}
+	state := newRunDeliveryState()
+	messages := []transcript.Message{
+		{ID: "n1", RunID: "run-1", Role: transcript.MessageRoleSystem, Origin: transcript.OriginEngine, Content: "Your reply was cut by the output limit. Continue exactly where you stopped, without repeating what you already wrote."},
+		{ID: "n2", RunID: "run-1", Role: transcript.MessageRoleSystem, Origin: transcript.OriginEngine, Content: "Budget note: about 2 steps left."},
+	}
+
+	if err := worker.renderEngineNotes(context.Background(), target, messages, "run-1", state); err != nil {
+		t.Fatal(err)
+	}
+
+	if api.sendCount() != 1 || api.messages[0].Text != "Note: Budget note: about 2 steps left." {
+		t.Fatalf("sent = %+v", api.messages)
+	}
+}
+
 func TestRunStoppedEarlyOffersAContinueButtonOnce(t *testing.T) {
 	api := &runRenderBotAPI{}
 	worker := &Worker{api: api}

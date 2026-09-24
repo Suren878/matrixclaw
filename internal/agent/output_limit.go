@@ -18,6 +18,13 @@ const unknownCeilingLimit = 32768
 
 const continueText = "Your reply was cut by the output limit. Continue exactly where you stopped, without repeating what you already wrote."
 
+// IsContinuationNote reports whether text is the engine note asking the model to
+// continue a reply the output limit cut. It is meant for the model, not the user,
+// so clients skip it when showing engine notes.
+func IsContinuationNote(text string) bool {
+	return text == continueText
+}
+
 // continueCutReply keeps a reply cut by the output limit and asks the model to go
 // on, with the limit raised once where the model allows it: adapters drop a
 // truncated tool call, so a cut may hide one. A cut before any text is retried
