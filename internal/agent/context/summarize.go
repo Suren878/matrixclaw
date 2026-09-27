@@ -32,24 +32,37 @@ type SummaryInput struct {
 }
 
 // Summarize summarises the input in chunks of about ChunkTokens and merges the
-// partial summaries into one.
+// partial summaries, a chunk at a time, until one is left.
 func Summarize(ctx context.Context, generator Generator, in SummaryInput) (string, error) {
-	chunks := summaryChunks(in.Previous, in.Messages, max(in.ChunkTokens, minSummaryChunkTokens))
+	chunkTokens := max(in.ChunkTokens, minSummaryChunkTokens)
+	chunks := summaryChunks(in.Previous, in.Messages, chunkTokens)
 	if len(chunks) == 0 {
 		return "", errors.New("nothing to summarise")
 	}
-	partials := make([]string, 0, len(chunks))
-	for _, chunk := range chunks {
-		summary, err := generateSummary(ctx, generator, in.SessionID, "Summarise this part of a conversation:\n\n"+chunk)
-		if err != nil {
-			return "", err
+	partials, err := generateSummaries(ctx, generator, in.SessionID, "Summarise this part of a conversation:\n\n", chunks)
+	for err == nil && len(partials) > 1 {
+		chunks = packChunks(partials, chunkTokens, "\n\n---\n\n")
+		if len(chunks) >= len(partials) {
+			return "", errors.New("partial summaries are too long to merge")
 		}
-		partials = append(partials, summary)
+		partials, err = generateSummaries(ctx, generator, in.SessionID, "Merge these partial summaries of one conversation, oldest first, into a single summary:\n\n", chunks)
 	}
-	if len(partials) == 1 {
-		return partials[0], nil
+	if err != nil {
+		return "", err
 	}
-	return generateSummary(ctx, generator, in.SessionID, "Merge these partial summaries of one conversation, oldest first, into a single summary:\n\n"+strings.Join(partials, "\n\n---\n\n"))
+	return partials[0], nil
+}
+
+func generateSummaries(ctx context.Context, generator Generator, sessionID string, instruction string, chunks []string) ([]string, error) {
+	summaries := make([]string, 0, len(chunks))
+	for _, chunk := range chunks {
+		summary, err := generateSummary(ctx, generator, sessionID, instruction+chunk)
+		if err != nil {
+			return nil, err
+		}
+		summaries = append(summaries, summary)
+	}
+	return summaries, nil
 }
 
 func generateSummary(ctx context.Context, generator Generator, sessionID string, content string) (string, error) {
@@ -102,6 +115,12 @@ func summaryChunks(previous string, messages []transcript.Message, chunkTokens i
 			pieces = append(pieces, text)
 		}
 	}
+	return packChunks(pieces, chunkTokens, "\n\n")
+}
+
+// packChunks joins pieces in order into chunks of about chunkTokens; a piece
+// longer than a chunk is cut to one.
+func packChunks(pieces []string, chunkTokens int, separator string) []string {
 	var chunks []string
 	var current strings.Builder
 	used := 0
@@ -114,7 +133,7 @@ func summaryChunks(previous string, messages []transcript.Message, chunkTokens i
 			used = 0
 		}
 		if used > 0 {
-			current.WriteString("\n\n")
+			current.WriteString(separator)
 		}
 		current.WriteString(piece)
 		used += tokens

@@ -44,3 +44,48 @@ func TestSummarizeChunksLongHistoryAndMergesThePartials(t *testing.T) {
 		t.Fatalf("merge request = %.200q", merge)
 	}
 }
+
+// wordyGenerator answers every request with a summary of about runes runes.
+type wordyGenerator struct {
+	runes    int
+	requests []providers.Request
+}
+
+func (g *wordyGenerator) Generate(_ context.Context, request providers.Request) (providers.Response, error) {
+	g.requests = append(g.requests, request)
+	return providers.Response{Text: fmt.Sprintf("summary %d %s", len(g.requests), strings.Repeat("s", g.runes))}, nil
+}
+
+func TestSummarizeMergesLongPartialsInBoundedRounds(t *testing.T) {
+	var messages []transcript.Message
+	for i := 1; i <= 6; i++ {
+		messages = append(messages, textMessage(int64(i), transcript.MessageRoleUser, "r1", strings.Repeat("w", 12_000)))
+	}
+	generator := &wordyGenerator{runes: 6_000}
+
+	summary, err := Summarize(context.Background(), generator, SummaryInput{SessionID: "s1", Messages: messages, ChunkTokens: 4_000})
+
+	if err != nil || len(generator.requests) != 12 || !strings.HasPrefix(summary, "summary 12 ") {
+		t.Fatalf("summary = %.20q err = %v requests = %d, want 6 chunks, then 3, 2 and 1 merges", summary, err, len(generator.requests))
+	}
+	for i, request := range generator.requests {
+		if tokens := EstimateTextTokens(request.Messages[0].Content); tokens > 4_100 {
+			t.Fatalf("request %d carries ~%d tokens, want at most one chunk", i, tokens)
+		}
+	}
+}
+
+func TestSummarizeFailsWhenMergingDoesNotShrink(t *testing.T) {
+	var messages []transcript.Message
+	for i := 1; i <= 3; i++ {
+		messages = append(messages, textMessage(int64(i), transcript.MessageRoleUser, "r1", strings.Repeat("w", 12_000)))
+	}
+	generator := &wordyGenerator{runes: 10_000}
+
+	if _, err := Summarize(context.Background(), generator, SummaryInput{SessionID: "s1", Messages: messages, ChunkTokens: 4_000}); err == nil {
+		t.Fatal("want an error when partial summaries are too long to merge")
+	}
+	if len(generator.requests) != 3 {
+		t.Fatalf("requests = %d, want only the three chunk summaries", len(generator.requests))
+	}
+}
