@@ -28,9 +28,14 @@ type chatCompletionMessage struct {
 }
 
 type chatCompletionContentPart struct {
-	Type     string                         `json:"type"`
-	Text     string                         `json:"text,omitempty"`
-	ImageURL *chatCompletionContentImageURL `json:"image_url,omitempty"`
+	Type         string                         `json:"type"`
+	Text         string                         `json:"text,omitempty"`
+	ImageURL     *chatCompletionContentImageURL `json:"image_url,omitempty"`
+	CacheControl *chatCacheControl              `json:"cache_control,omitempty"`
+}
+
+type chatCacheControl struct {
+	Type string `json:"type"`
 }
 
 type chatCompletionContentImageURL struct {

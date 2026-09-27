@@ -26,20 +26,21 @@ type Config struct {
 }
 
 type Runtime struct {
-	client           *http.Client
-	endpoint         string
-	apiKey           string
-	model            string
-	metadataID       string
-	maxOutputTokens  int64
-	reasoningEffort  string
-	useCompletionMax bool
-	promptCacheKey   bool
-	headers          map[string]string
-	quirks           providers.OpenAIChatRequestQuirks
-	profile          providers.RuntimeProfile
-	capabilities     providers.ModelCapabilities
-	maxTokensLimit   maxTokensLimitState
+	client              *http.Client
+	endpoint            string
+	apiKey              string
+	model               string
+	metadataID          string
+	maxOutputTokens     int64
+	reasoningEffort     string
+	useCompletionMax    bool
+	promptCacheKey      bool
+	contentCacheControl bool
+	headers             map[string]string
+	quirks              providers.OpenAIChatRequestQuirks
+	profile             providers.RuntimeProfile
+	capabilities        providers.ModelCapabilities
+	maxTokensLimit      maxTokensLimitState
 }
 
 // maxTokensLimitState remembers a gateway's rejection of the output-limit
@@ -96,19 +97,20 @@ func New(_ context.Context, cfg Config) (providers.Runtime, error) {
 	}
 	chatOptions := providers.ResolveOpenAIChatOptions(providerProfile, baseURL, model)
 	return &Runtime{
-		client:           client,
-		endpoint:         strings.TrimRight(baseURL, "/") + "/chat/completions",
-		apiKey:           apiKey,
-		model:            model,
-		metadataID:       firstNonEmptyString(cfg.ProviderID, cfg.CatalogID),
-		maxOutputTokens:  cfg.MaxOutputTokens,
-		reasoningEffort:  reasoningEffort,
-		useCompletionMax: chatOptions.MaxTokensField == providers.OpenAIChatMaxCompletionTokens,
-		promptCacheKey:   chatOptions.PromptCacheKey,
-		headers:          chatOptions.DefaultHeaders,
-		quirks:           chatOptions.RequestQuirks,
-		profile:          profile,
-		capabilities:     providerProfile.Capabilities,
+		client:              client,
+		endpoint:            strings.TrimRight(baseURL, "/") + "/chat/completions",
+		apiKey:              apiKey,
+		model:               model,
+		metadataID:          firstNonEmptyString(cfg.ProviderID, cfg.CatalogID),
+		maxOutputTokens:     cfg.MaxOutputTokens,
+		reasoningEffort:     reasoningEffort,
+		useCompletionMax:    chatOptions.MaxTokensField == providers.OpenAIChatMaxCompletionTokens,
+		promptCacheKey:      chatOptions.PromptCacheKey,
+		contentCacheControl: chatOptions.ContentCacheControl,
+		headers:             chatOptions.DefaultHeaders,
+		quirks:              chatOptions.RequestQuirks,
+		profile:             profile,
+		capabilities:        providerProfile.Capabilities,
 	}, nil
 }
 

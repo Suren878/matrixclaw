@@ -201,3 +201,58 @@ func TestListModelsRegistersOutputLimit(t *testing.T) {
 		t.Fatalf("catalog max output=%d, want 8000", got)
 	}
 }
+
+func TestClaudeOnOpenRouterGetsContentCacheBreakpoints(t *testing.T) {
+	request := providers.Request{
+		CacheKey:     "session-1",
+		SystemPrompt: "rules",
+		Messages: []providers.Message{
+			{Role: "user", Content: "start"},
+			{Role: "assistant", ToolCalls: []providers.ToolCall{{ID: "c1", Name: "ls", Arguments: json.RawMessage(`{}`)}}},
+			{Role: "tool", ToolCallID: "c1", Content: "a.go"},
+			{Role: "assistant", ToolCalls: []providers.ToolCall{{ID: "c2", Name: "read", Arguments: json.RawMessage(`{}`)}}},
+			{Role: "tool", ToolCallID: "c2", Content: "package a"},
+		},
+	}
+	payload := func(baseURL, model string) string {
+		t.Helper()
+		runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: baseURL, Model: model})
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := json.Marshal(runtime.(*Runtime).chatPayload(context.Background(), request))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(body)
+	}
+	router := "https://openrouter.ai/api/v1"
+	body := payload(router, "anthropic/claude-sonnet-4.6")
+	if got := strings.Count(body, `"cache_control"`); got != 3 {
+		t.Fatalf("cache_control count = %d, want system + two newest tool results: %s", got, body)
+	}
+	for _, want := range []string{
+		`{"role":"system","content":[{"type":"text","text":"rules","cache_control":{"type":"ephemeral"}}]}`,
+		`{"role":"user","content":"start"}`,
+		`{"role":"tool","content":[{"type":"text","text":"package a","cache_control":{"type":"ephemeral"}}],"tool_call_id":"c2"}`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("payload lacks %s: %s", want, body)
+		}
+	}
+	request.CacheKey = ""
+	if body := payload(router, "anthropic/claude-sonnet-4.6"); strings.Contains(body, "cache_control") {
+		t.Fatalf("request without cache key has breakpoints: %s", body)
+	}
+	request.CacheKey = "session-1"
+	plain := `"messages":[{"role":"system","content":"rules"},{"role":"user","content":"start"},` +
+		`{"role":"assistant","content":"","tool_calls":[{"id":"c1","type":"function","function":{"name":"ls","arguments":"{}"}}]},` +
+		`{"role":"tool","content":"a.go","tool_call_id":"c1"},` +
+		`{"role":"assistant","content":"","tool_calls":[{"id":"c2","type":"function","function":{"name":"read","arguments":"{}"}}]},` +
+		`{"role":"tool","content":"package a","tool_call_id":"c2"}]`
+	for _, target := range [][2]string{{router, "openai/gpt-5.4"}, {"https://api.example.com/v1", "claude-sonnet-4.6"}} {
+		if body := payload(target[0], target[1]); !strings.Contains(body, plain) {
+			t.Fatalf("%s %s: messages changed: %s", target[0], target[1], body)
+		}
+	}
+}

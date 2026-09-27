@@ -67,6 +67,42 @@ func openAIContentParts(message providers.Message) []chatCompletionContentPart {
 	return parts
 }
 
+// markContentCacheBreakpoints marks the system prompt and the two newest user or
+// tool messages as cache breakpoints, turning their content into parts.
+func markContentCacheBreakpoints(messages []chatCompletionMessage) {
+	marked := 0
+	for i := len(messages) - 1; i >= 0; i-- {
+		switch role := messages[i].Role; {
+		case role == "system":
+			withCacheBreakpoint(&messages[i])
+		case marked < 2 && (role == "user" || role == "tool"):
+			if withCacheBreakpoint(&messages[i]) {
+				marked++
+			}
+		}
+	}
+}
+
+// withCacheBreakpoint puts a cache breakpoint on the last text part of message.
+func withCacheBreakpoint(message *chatCompletionMessage) bool {
+	switch content := message.Content.(type) {
+	case string:
+		if strings.TrimSpace(content) == "" {
+			return false
+		}
+		message.Content = []chatCompletionContentPart{{Type: "text", Text: content, CacheControl: &chatCacheControl{Type: "ephemeral"}}}
+		return true
+	case []chatCompletionContentPart:
+		for j := len(content) - 1; j >= 0; j-- {
+			if content[j].Type == "text" {
+				content[j].CacheControl = &chatCacheControl{Type: "ephemeral"}
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func decodeToolCalls(value []chatCompletionToolCall) []providers.ToolCall {
 	if len(value) == 0 {
 		return nil

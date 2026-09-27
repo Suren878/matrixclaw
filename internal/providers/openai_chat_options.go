@@ -14,10 +14,11 @@ const (
 )
 
 type OpenAIChatOptions struct {
-	DefaultHeaders map[string]string
-	MaxTokensField OpenAIChatMaxTokensField
-	RequestQuirks  OpenAIChatRequestQuirks
-	PromptCacheKey bool // send prompt_cache_key; only OpenAI's own endpoint is known to accept it
+	DefaultHeaders      map[string]string
+	MaxTokensField      OpenAIChatMaxTokensField
+	RequestQuirks       OpenAIChatRequestQuirks
+	PromptCacheKey      bool // send prompt_cache_key; only OpenAI's own endpoint is known to accept it
+	ContentCacheControl bool // mark cache breakpoints in content parts; OpenRouter passes them to Claude models
 }
 
 type OpenAIChatRequestQuirks struct {
@@ -41,7 +42,14 @@ func ResolveOpenAIChatOptions(profile ProviderProfile, baseURL string, model str
 	}
 	options.RequestQuirks = normalizeOpenAIChatRequestQuirks()
 	options.PromptCacheKey = openAICompatibleHost(baseURL, "api.openai.com")
+	options.ContentCacheControl = openAICompatibleHost(baseURL, "openrouter.ai") && claudeModel(model)
 	return options
+}
+
+// claudeModel reports whether a gateway model ID names an Anthropic Claude model.
+func claudeModel(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	return strings.HasPrefix(model, "anthropic/") || strings.Contains(model, "claude")
 }
 
 func cloneOpenAIChatOptions(options OpenAIChatOptions) OpenAIChatOptions {

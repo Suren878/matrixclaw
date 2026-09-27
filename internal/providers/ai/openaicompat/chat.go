@@ -351,6 +351,9 @@ func (r *Runtime) chatPayload(ctx context.Context, request providers.Request) ch
 			payload.Messages = append(payload.Messages, chatMessage)
 		}
 	}
+	if r.contentCacheControl && strings.TrimSpace(request.CacheKey) != "" {
+		markContentCacheBreakpoints(payload.Messages)
+	}
 
 	maxTokens := providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.maxOutputTokens, r.metadataID, providers.TypeOpenAICompat, r.model)
 	if capTokens, omit := r.learnedMaxTokensLimit(); !omit {
