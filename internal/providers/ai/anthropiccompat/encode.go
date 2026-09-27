@@ -26,7 +26,7 @@ const (
 )
 
 // encodeRequest fills system, tools, tool choice and messages of payload.
-// The tools cache breakpoint is set only for session requests (non-empty CacheKey).
+// Cache breakpoints are set only for session requests (non-empty CacheKey).
 func encodeRequest(payload *anthropicRequest, request providers.Request) error {
 	if system := combinedSystemPrompt(request.SystemPrompt, request.CustomInstructions); system != "" {
 		payload.System = []anthropicBlock{{Type: "text", Text: system}}
@@ -40,7 +40,7 @@ func encodeRequest(payload *anthropicRequest, request providers.Request) error {
 		return errors.New("anthropic: no messages")
 	}
 	if strings.TrimSpace(request.CacheKey) != "" {
-		markToolsCacheBreakpoint(payload.Tools)
+		markCacheBreakpoints(payload)
 	}
 	return nil
 }
@@ -337,10 +337,23 @@ func imageMediaType(mimeType string) string {
 	return mimeType
 }
 
-// markToolsCacheBreakpoint caches the tool definitions: they open the cached
-// prefix and stay the same across the turns of a session.
-func markToolsCacheBreakpoint(tools []anthropicTool) {
-	if last := len(tools) - 1; last >= 0 {
-		tools[last].CacheControl = &anthropicCacheControl{Type: "ephemeral"}
+// markCacheBreakpoints caches the stable prefix and the conversation so far:
+// the tools, the system prompt, the newest user turn and the one the previous
+// request ended with; four breakpoints, the most the API allows.
+func markCacheBreakpoints(payload *anthropicRequest) {
+	if last := len(payload.Tools) - 1; last >= 0 {
+		payload.Tools[last].CacheControl = &anthropicCacheControl{Type: "ephemeral"}
+	}
+	if last := len(payload.System) - 1; last >= 0 {
+		payload.System[last].CacheControl = &anthropicCacheControl{Type: "ephemeral"}
+	}
+	marked := 0
+	for i := len(payload.Messages) - 1; i >= 0 && marked < 2; i-- {
+		content := payload.Messages[i].Content
+		if payload.Messages[i].Role != "user" || len(content) == 0 {
+			continue
+		}
+		content[len(content)-1].CacheControl = &anthropicCacheControl{Type: "ephemeral"}
+		marked++
 	}
 }

@@ -231,7 +231,7 @@ func TestToolChoiceNoneKeepsToolsDefined(t *testing.T) {
 	}
 }
 
-func TestCacheBreakpointMarksOnlyTheTools(t *testing.T) {
+func TestCacheBreakpointsMarkToolsSystemAndTheLatestTurns(t *testing.T) {
 	runtime, sent := newTestRuntime(t, textReply("ok"), textReply("ok"))
 	request := providers.Request{
 		CacheKey:     "session-1",
@@ -241,17 +241,26 @@ func TestCacheBreakpointMarksOnlyTheTools(t *testing.T) {
 			{Role: "user", Content: "Start"},
 			{Role: "assistant", ToolCalls: []providers.ToolCall{{ID: "toolu_1", Name: "ls", Arguments: json.RawMessage(`{}`)}}},
 			{Role: "tool", ToolCallID: "toolu_1", Content: "a.go"},
+			{Role: "assistant", ToolCalls: []providers.ToolCall{{ID: "toolu_2", Name: "read", Arguments: json.RawMessage(`{"path":"a.go"}`)}}},
+			{Role: "tool", ToolCallID: "toolu_2", Content: "package a"},
 		},
 	}
 	if _, err := runtime.Generate(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Count(string(sent(0)), `"cache_control"`); got != 1 {
-		t.Fatalf("cache_control count = %d, want 1 (tools only): %s", got, sent(0))
+	if got := strings.Count(string(sent(0)), `"cache_control"`); got != 4 {
+		t.Fatalf("cache_control count = %d, want 4: %s", got, sent(0))
 	}
 	body := decodeSent(t, sent(0))
-	if control := body.Tools[1].CacheControl; control == nil || control.Type != "ephemeral" || body.Tools[0].CacheControl != nil {
-		t.Fatalf("tools breakpoint wrong: %s", sent(0))
+	marked := func(block anthropicBlock) bool {
+		return block.CacheControl != nil && block.CacheControl.Type == "ephemeral"
+	}
+	if body.Tools[1].CacheControl == nil || body.Tools[0].CacheControl != nil || !marked(body.System[0]) {
+		t.Fatalf("tools/system breakpoints wrong: %s", sent(0))
+	}
+	turns := body.Messages
+	if len(turns) != 5 || !marked(turns[4].Content[len(turns[4].Content)-1]) || !marked(turns[2].Content[len(turns[2].Content)-1]) || marked(turns[0].Content[0]) {
+		t.Fatalf("message breakpoints wrong: %s", sent(0))
 	}
 	request.CacheKey = ""
 	if _, err := runtime.Generate(context.Background(), request); err != nil {

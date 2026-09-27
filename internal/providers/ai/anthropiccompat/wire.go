@@ -20,18 +20,19 @@ type anthropicMessage struct {
 // anthropicBlock is any Messages API content block, sent or received.
 // Thinking is a pointer so a thinking block always carries the key, even empty.
 type anthropicBlock struct {
-	Type      string                `json:"type"`
-	Text      string                `json:"text,omitempty"`
-	Thinking  *string               `json:"thinking,omitempty"`
-	Signature string                `json:"signature,omitempty"`
-	Data      string                `json:"data,omitempty"`
-	ID        string                `json:"id,omitempty"`
-	Name      string                `json:"name,omitempty"`
-	Input     json.RawMessage       `json:"input,omitempty"`
-	ToolUseID string                `json:"tool_use_id,omitempty"`
-	Content   string                `json:"content,omitempty"`
-	IsError   bool                  `json:"is_error,omitempty"`
-	Source    *anthropicImageSource `json:"source,omitempty"`
+	Type         string                 `json:"type"`
+	Text         string                 `json:"text,omitempty"`
+	Thinking     *string                `json:"thinking,omitempty"`
+	Signature    string                 `json:"signature,omitempty"`
+	Data         string                 `json:"data,omitempty"`
+	ID           string                 `json:"id,omitempty"`
+	Name         string                 `json:"name,omitempty"`
+	Input        json.RawMessage        `json:"input,omitempty"`
+	ToolUseID    string                 `json:"tool_use_id,omitempty"`
+	Content      string                 `json:"content,omitempty"`
+	IsError      bool                   `json:"is_error,omitempty"`
+	Source       *anthropicImageSource  `json:"source,omitempty"`
+	CacheControl *anthropicCacheControl `json:"cache_control,omitempty"`
 }
 
 type anthropicImageSource struct {
