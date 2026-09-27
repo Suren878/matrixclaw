@@ -310,21 +310,20 @@ func TestModelFailuresAreBoundedAndDoNotReplayPartialOutput(t *testing.T) {
 func TestRunStepsCountCompactionGeneration(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
+	leaked := false
 	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if strings.HasPrefix(request.SystemPrompt, "You compact matrixclaw chat histories") {
 			return providers.Response{Text: "Earlier history summarized.", Model: "test-model", Provider: "recovery-test", Usage: providers.Usage{PromptTokens: 100, OutputTokens: 7}}, nil
 		}
+		for _, message := range request.Messages {
+			leaked = leaked || strings.Contains(message.Content, "old context")
+		}
 		return providers.Response{Text: "Done.", Model: "test-model", Provider: "recovery-test", Usage: providers.Usage{PromptTokens: 20, OutputTokens: 3}}, nil
 	})})
-	session, run := saveCrashRecoveryRun(t, db, "compaction-step", core.RunStatusAccepted, false)
-	history := transcript.Message{
-		ID: "msg_large_history", SessionID: session.ID, Role: transcript.MessageRoleAssistant,
-		Content:   strings.Repeat("old context ", 60_000),
-		CreatedAt: run.StartedAt, UpdatedAt: run.StartedAt,
-	}
-	if err := db.SaveMessage(context.Background(), history); err != nil {
-		t.Fatal(err)
-	}
+	big := strings.Repeat("old context ", 60_000)
+	session, run := saveNativeRunWithHistory(t, db, "compaction-step", transcript.Message{
+		ID: "msg_large_history", Role: transcript.MessageRoleAssistant, Content: big, Parts: transcript.NormalizeMessageParts(big, nil),
+	})
 	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -335,5 +334,13 @@ func TestRunStepsCountCompactionGeneration(t *testing.T) {
 	}
 	if len(steps) != 2 || steps[0].StopReason != "compact" || steps[0].PromptTokens != 100 || steps[1].StopReason != "end_turn" {
 		t.Fatalf("steps=%+v, want compaction then final turn", steps)
+	}
+	history, err := db.GetMessage(context.Background(), "msg_large_history")
+	if err != nil {
+		t.Fatal(err)
+	}
+	boundary, err := db.LatestCompaction(context.Background(), session.ID)
+	if err != nil || countBoundaries(t, db, session.ID) != 1 || boundary.Compaction.CoversThroughSeq < history.Seq || leaked {
+		t.Fatalf("boundary = %+v err = %v, old history in the main request = %v", boundary.Compaction, err, leaked)
 	}
 }
