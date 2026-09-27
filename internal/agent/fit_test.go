@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -77,5 +78,41 @@ func TestOldBulkyResultsAreElidedAtSixtyPercentAndStayElided(t *testing.T) {
 	}
 	if last := f.Journal.States[len(f.Journal.States)-1].Counters; last.ElidedResults == 0 {
 		t.Fatalf("counters = %+v, want the elision checkpointed", last)
+	}
+}
+
+func TestElisionAdvancesOncePerFiveNewRoundsBelowTheSummaryThreshold(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Window = 100_000
+	f.Tools.Funcs["read"] = func(call tools.Call) tools.Result {
+		return tools.Result{Content: call.ToolCallID + " " + strings.Repeat("x", 5_000)}
+	}
+	var turns []agenttest.Turn
+	for i := 1; i <= 14; i++ {
+		turns = append(turns, agenttest.Turn{Response: providers.Response{ToolCalls: []providers.ToolCall{call(fmt.Sprintf("read%d", i), "read")}, Usage: providers.Usage{PromptTokens: 51_000}}})
+	}
+	model := agenttest.NewScriptedModel(append(turns, text("Done."))...)
+
+	outcome := run(t, f, model)
+
+	requests := model.Requests()
+	if outcome.Status != agent.StatusCompleted || len(requests) != 15 {
+		t.Fatalf("outcome = %+v requests = %d, want no summary", outcome, len(requests))
+	}
+	var advanced []int
+	for i := 1; i < len(requests); i++ {
+		previous := requests[i-1].Messages
+		if !reflect.DeepEqual(requests[i].Messages[:len(previous)], previous) {
+			advanced = append(advanced, i+1)
+		}
+	}
+	if !reflect.DeepEqual(advanced, []int{7, 12}) {
+		t.Fatalf("the request prefix changed at steps %v, want 7 and 12 only", advanced)
+	}
+	if got := toolContent(requests[10], "read2"); !strings.HasPrefix(got, "read2 x") {
+		t.Fatalf("read2 at step 11 = %.40q, want it in full until five more rounds are eligible", got)
+	}
+	if got := toolContent(requests[11], "read6"); !strings.HasPrefix(got, "[output of read() hidden") {
+		t.Fatalf("read6 at step 12 = %.40q, want it hidden", got)
 	}
 }

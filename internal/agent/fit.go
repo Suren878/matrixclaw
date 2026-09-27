@@ -63,14 +63,13 @@ func (r *run) elision() agentcontext.Elision {
 
 // advanceElision moves the elision up to the history's current rounds and
 // reports whether it moved; the request prefix changes only then.
-func (r *run) advanceElision() bool {
+func (r *run) advanceElision(force bool) bool {
 	_, messages := r.history.window()
-	next := agentcontext.NextElision(messages)
-	if next.ResultsThroughSeq <= r.counters.ElidedResults && next.ImagesThroughSeq <= r.counters.ElidedImages {
+	next, moved := agentcontext.AdvanceElision(messages, r.elision(), force)
+	if !moved {
 		return false
 	}
-	r.counters.ElidedResults = max(r.counters.ElidedResults, next.ResultsThroughSeq)
-	r.counters.ElidedImages = max(r.counters.ElidedImages, next.ImagesThroughSeq)
+	r.counters.ElidedResults, r.counters.ElidedImages = next.ResultsThroughSeq, next.ImagesThroughSeq
 	r.anchor = nil
 	return true
 }
@@ -84,7 +83,7 @@ func (r *run) fitRequest(ctx context.Context, final StopReason) (providers.Reque
 	}
 	limit := r.contextLimit()
 	tokens := r.promptTokens(request)
-	if agentcontext.ElisionDue(tokens, limit) && r.advanceElision() {
+	if agentcontext.ElisionDue(tokens, limit) && r.advanceElision(agentcontext.SummaryDue(tokens, limit)) {
 		if request, err = r.buildRequest(ctx, final); err != nil {
 			return providers.Request{}, err
 		}

@@ -53,3 +53,28 @@ func TestElideHidesOldBulkyResultsAndImagesOnly(t *testing.T) {
 		t.Fatal("Elide changed the history it was given")
 	}
 }
+
+func TestAdvanceElisionWaitsForFiveNewRoundsUnlessForced(t *testing.T) {
+	messages := []transcript.Message{textMessage(1, transcript.MessageRoleUser, "r1", "task")}
+	var rounds []int64
+	for i, seq := 0, int64(2); i < 10; i, seq = i+1, seq+3 {
+		rounds = append(rounds, seq)
+		messages = append(messages, toolStep(seq, fmt.Sprintf("c%d", i), "out")...)
+	}
+	next := NextElision(messages)
+
+	if got, moved := AdvanceElision(messages, Elision{}, false); !moved || got != next {
+		t.Fatalf("first elision = %+v %v, want %+v", got, moved, next)
+	}
+	current := Elision{ResultsThroughSeq: rounds[1] - 1, ImagesThroughSeq: rounds[3] - 1}
+	if got, moved := AdvanceElision(messages, current, false); moved || got != current {
+		t.Fatalf("four new rounds moved the elision to %+v", got)
+	}
+	if got, moved := AdvanceElision(messages, current, true); !moved || got != next {
+		t.Fatalf("forced elision = %+v %v, want %+v", got, moved, next)
+	}
+	current = Elision{ResultsThroughSeq: rounds[0] - 1, ImagesThroughSeq: rounds[2] - 1}
+	if got, moved := AdvanceElision(messages, current, false); !moved || got != next {
+		t.Fatalf("five new rounds = %+v %v, want %+v", got, moved, next)
+	}
+}

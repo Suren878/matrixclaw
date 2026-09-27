@@ -56,6 +56,43 @@ func NextElision(messages []transcript.Message) Elision {
 	return elision
 }
 
+// AdvanceElision moves current up to NextElision of messages and reports
+// whether it moved. Once results (or images) are elided, they move on only when
+// five more tool rounds (or replies) became eligible, or when forced, so the
+// request prefix stays stable.
+func AdvanceElision(messages []transcript.Message, current Elision, force bool) (Elision, bool) {
+	next := NextElision(messages)
+	next.ResultsThroughSeq = max(next.ResultsThroughSeq, current.ResultsThroughSeq)
+	next.ImagesThroughSeq = max(next.ImagesThroughSeq, current.ImagesThroughSeq)
+	if next == current {
+		return current, false
+	}
+	rounds, replies := newlyEligible(messages, current, next)
+	results := next.ResultsThroughSeq > current.ResultsThroughSeq && (current.ResultsThroughSeq == 0 || rounds >= elideKeepRounds)
+	images := next.ImagesThroughSeq > current.ImagesThroughSeq && (current.ImagesThroughSeq == 0 || replies >= elideKeepRounds)
+	if !force && !results && !images {
+		return current, false
+	}
+	return next, true
+}
+
+// newlyEligible counts the tool rounds whose results and the replies whose
+// images next covers beyond current.
+func newlyEligible(messages []transcript.Message, current, next Elision) (rounds, replies int) {
+	for _, message := range messages {
+		if message.Role != transcript.MessageRoleAssistant || len(messageToolCallIDs(message)) > 0 {
+			continue
+		}
+		if message.Seq > current.ImagesThroughSeq && message.Seq <= next.ImagesThroughSeq {
+			replies++
+		}
+		if isToolStepReply(message) && message.Seq > current.ResultsThroughSeq && message.Seq <= next.ResultsThroughSeq {
+			rounds++
+		}
+	}
+	return rounds, replies
+}
+
 // Elide returns messages with the covered results over ~1k tokens and the
 // covered images replaced by short notes; messages itself is not changed.
 func Elide(messages []transcript.Message, elision Elision) []transcript.Message {
