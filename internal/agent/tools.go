@@ -226,20 +226,18 @@ func sameRequestedTool(name string, arguments []byte, call providers.ToolCall) b
 }
 
 func appendUserGuidanceToToolResult(message *transcript.Message, text string) {
-	if message == nil {
-		return
-	}
-	guidance := "User guidance: " + strings.TrimSpace(text)
-	if strings.TrimSpace(guidance) == "User guidance:" {
+	text = strings.TrimSpace(text)
+	if message == nil || text == "" {
 		return
 	}
 	for i := range message.Parts {
-		if message.Parts[i].ToolResult == nil {
+		result := message.Parts[i].ToolResult
+		if result == nil {
 			continue
 		}
-		content := appendGuidanceBlock(message.Parts[i].ToolResult.Content, guidance)
-		message.Parts[i].ToolResult.Content = content
-		message.Content = normalizeToolContent(content)
+		result.Content = appendGuidanceBlock(result.Content, "User guidance: "+text)
+		result.Guidance = append(result.Guidance, text)
+		message.Content = normalizeToolContent(result.Content)
 		return
 	}
 }

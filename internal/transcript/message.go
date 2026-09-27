@@ -99,6 +99,8 @@ type ToolResultPart struct {
 	Metadata   json.RawMessage `json:"metadata,omitempty"`
 	Status     string          `json:"status,omitempty"`
 	IsError    bool            `json:"is_error,omitempty"`
+	// Guidance is user steering delivered with this result; Content carries it too.
+	Guidance []string `json:"guidance,omitempty"`
 }
 
 type FinishPart struct {

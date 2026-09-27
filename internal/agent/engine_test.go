@@ -276,6 +276,9 @@ func TestSteerIsAppendedToTheNextToolResult(t *testing.T) {
 	if result.Content != "file body\n\nUser guidance: check the logs" || len(f.Inbox.Steers) != 0 {
 		t.Fatalf("result = %q steers left = %v", result.Content, f.Inbox.Steers)
 	}
+	if guidance := result.Parts[0].ToolResult.Guidance; len(guidance) != 1 || guidance[0] != "check the logs" {
+		t.Fatalf("recorded guidance = %q", guidance)
+	}
 	if got := toolContent(model.Requests()[1], "r1"); !strings.Contains(got, "User guidance: check the logs") {
 		t.Fatalf("request tool content = %q", got)
 	}
