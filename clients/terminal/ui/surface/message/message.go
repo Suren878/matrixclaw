@@ -107,6 +107,16 @@ type Message struct {
 	CreatedAt        int64
 	UpdatedAt        int64
 	IsSummaryMessage bool
+	Boundary         *ContextBoundary
+}
+
+// ContextBoundary marks a message the model's context starts after: a
+// compaction with its summary, or a /clear.
+type ContextBoundary struct {
+	Summary      string
+	Cleared      bool
+	TokensBefore int
+	TokensAfter  int
 }
 
 func (m *Message) Content() TextContent {

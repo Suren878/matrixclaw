@@ -75,35 +75,19 @@ const (
 	headerContextMarkerClear
 )
 
-const (
-	headerCompactSummaryPrefix = "🧠 Context compacted"
-	headerContextClearedPrefix = "🧹 Context cleared"
-)
-
 func estimateVisibleContextTokens(messages []surfacemessage.Message) (int, headerContextMarker) {
-	start := 0
-	markerTokens := 0
-	marker := headerContextMarkerNone
 	for i := len(messages) - 1; i >= 0; i-- {
-		message := messages[i]
-		if message.Role != surfacemessage.System {
+		boundary := messages[i].Boundary
+		if boundary == nil {
 			continue
 		}
-		content := strings.TrimSpace(message.Content().Text)
-		if summary, ok := headerCompactSummary(content); ok {
-			start = i + 1
-			markerTokens = agentcontext.EstimateTextTokens(summary)
-			marker = headerContextMarkerCompact
-			break
-		}
-		if summary, ok := headerClearSummary(content); ok {
-			start = i + 1
-			markerTokens = agentcontext.EstimateTextTokens(summary)
+		marker := headerContextMarkerCompact
+		if boundary.Cleared {
 			marker = headerContextMarkerClear
-			break
 		}
+		return agentcontext.EstimateTextTokens(boundary.Summary) + estimateMessagesTokens(messages[i+1:]), marker
 	}
-	return markerTokens + estimateMessagesTokens(messages[start:]), marker
+	return estimateMessagesTokens(messages), headerContextMarkerNone
 }
 
 func contextReportHasMarker(report *core.ContextReport, marker headerContextMarker) bool {
@@ -125,26 +109,6 @@ func contextReportHasMarker(report *core.ContextReport, marker headerContextMark
 		}
 	}
 	return false
-}
-
-func headerCompactSummary(content string) (string, bool) {
-	if !strings.HasPrefix(content, headerCompactSummaryPrefix) {
-		return "", false
-	}
-	summary := strings.TrimSpace(strings.TrimPrefix(content, headerCompactSummaryPrefix))
-	if strings.HasPrefix(summary, ":") {
-		if _, tail, ok := strings.Cut(summary, "\n\n"); ok {
-			summary = strings.TrimSpace(tail)
-		}
-	}
-	return summary, true
-}
-
-func headerClearSummary(content string) (string, bool) {
-	if !strings.HasPrefix(content, headerContextClearedPrefix) {
-		return "", false
-	}
-	return strings.TrimSpace(strings.TrimPrefix(content, headerContextClearedPrefix)), true
 }
 
 func estimateMessagesTokens(messages []surfacemessage.Message) int {

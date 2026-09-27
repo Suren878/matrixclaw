@@ -82,6 +82,9 @@ func ToSurfaceMessage(message transcript.Message) surfacemessage.Message {
 	if strings.TrimSpace(out.Content().Text) == "" && strings.TrimSpace(message.Content) != "" {
 		out.Parts = append([]surfacemessage.ContentPart{surfacemessage.TextContent{Text: message.Content}}, out.Parts...)
 	}
+	if compaction := message.Compaction; compaction != nil {
+		out.Boundary = &surfacemessage.ContextBoundary{Summary: compaction.Summary, Cleared: compaction.Cleared, TokensBefore: compaction.TokensBefore, TokensAfter: compaction.TokensAfter}
+	}
 	return out
 }
 

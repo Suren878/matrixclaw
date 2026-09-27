@@ -30,3 +30,14 @@ func TestSurfaceMessagesHideModelOnlyEngineNotes(t *testing.T) {
 		t.Fatalf("surface messages = %+v", out)
 	}
 }
+
+func TestBoundaryMessagesCarryTheirCompaction(t *testing.T) {
+	message := transcript.Message{ID: "b1", Role: transcript.MessageRoleSystem, Content: "Context compacted: ~12k -> ~3.0k tokens.", Compaction: &transcript.Compaction{Summary: "Goal: ship.", TokensBefore: 12_000, TokensAfter: 3_000}}
+	surface := ToSurfaceMessage(message)
+	if surface.Boundary == nil || surface.Boundary.Summary != "Goal: ship." || surface.Boundary.Cleared || surface.Boundary.TokensBefore != 12_000 {
+		t.Fatalf("surface boundary = %+v", surface.Boundary)
+	}
+	if plain := ToSurfaceMessage(transcript.Message{ID: "s1", Role: transcript.MessageRoleSystem, Content: "🧠 Context compacted: looks like a marker"}); plain.Boundary != nil {
+		t.Fatalf("text alone made a boundary: %+v", plain.Boundary)
+	}
+}

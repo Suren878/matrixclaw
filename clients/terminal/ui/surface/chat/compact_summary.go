@@ -11,11 +11,7 @@ import (
 	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
-)
-
-const (
-	compactSummaryPrefix = "🧠 Context compacted"
-	contextClearedPrefix = "🧹 Context cleared"
+	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 )
 
 type contextMarkerKind string
@@ -33,6 +29,7 @@ type CompactSummaryMessageItem struct {
 	id      string
 	kind    contextMarkerKind
 	content string
+	stats   string
 	sty     *surfacestyles.Styles
 }
 
@@ -45,29 +42,28 @@ func NewContextClearedMessageItem(sty *surfacestyles.Styles, message *surfacemes
 }
 
 func newContextMarkerMessageItem(sty *surfacestyles.Styles, message *surfacemessage.Message, kind contextMarkerKind) *CompactSummaryMessageItem {
+	var boundary surfacemessage.ContextBoundary
+	if message.Boundary != nil {
+		boundary = *message.Boundary
+	}
 	return &CompactSummaryMessageItem{
 		highlightableMessageItem: defaultHighlighter(sty),
 		cachedMessageItem:        &cachedMessageItem{},
 		focusableMessageItem:     &focusableMessageItem{},
 		id:                       message.ID + ":" + kind.idSuffix(),
 		kind:                     kind,
-		content:                  strings.TrimSpace(message.Content().Text),
+		content:                  strings.TrimSpace(boundary.Summary),
+		stats:                    compactSummaryStats(boundary),
 		sty:                      sty,
 	}
 }
 
 func IsCompactSummaryMessage(message *surfacemessage.Message) bool {
-	if message == nil || message.Role != surfacemessage.System {
-		return false
-	}
-	return strings.HasPrefix(strings.TrimSpace(message.Content().Text), compactSummaryPrefix)
+	return message != nil && message.Boundary != nil && !message.Boundary.Cleared
 }
 
 func IsContextClearedMessage(message *surfacemessage.Message) bool {
-	if message == nil || message.Role != surfacemessage.System {
-		return false
-	}
-	return strings.HasPrefix(strings.TrimSpace(message.Content().Text), contextClearedPrefix)
+	return message != nil && message.Boundary != nil && message.Boundary.Cleared
 }
 
 func (c *CompactSummaryMessageItem) ID() string {
@@ -95,29 +91,25 @@ func (c *CompactSummaryMessageItem) HandleKeyEvent(key tea.KeyPressMsg) (bool, t
 	default:
 		return false, nil
 	}
-	content := strings.TrimSpace(c.content)
-	if content == "" {
+	if c.content == "" {
 		return false, nil
 	}
 	return true, func() tea.Msg {
 		return surfacedialog.ActionOpenFilePreview{Data: surfacedialog.FilePreviewData{
 			Title:   c.kind.previewTitle(),
-			Content: content,
+			Content: c.content,
 		}}
 	}
 }
 
 func (c *CompactSummaryMessageItem) renderContent(width int) string {
-	stats := ""
-	if c.kind == contextMarkerCompact {
-		stats = compactSummaryStats(c.content)
+	parts := []string{toolNameStyle(c.sty, false).Render(c.kind.label())}
+	if c.stats != "" {
+		parts = append(parts, c.sty.Tool.ParamMain.Render(c.stats))
 	}
-	name := toolNameStyle(c.sty, false).Render(c.kind.label())
-	parts := []string{name}
-	if stats != "" {
-		parts = append(parts, c.sty.Tool.ParamMain.Render(stats))
+	if c.content != "" {
+		parts = append(parts, c.sty.Muted.Render("press enter to view"))
 	}
-	parts = append(parts, c.sty.Muted.Render("press enter to view"))
 	line := strings.Join(parts, " ")
 	if width >= 0 {
 		line = ansi.Truncate(line, width, "…")
@@ -125,15 +117,12 @@ func (c *CompactSummaryMessageItem) renderContent(width int) string {
 	return line
 }
 
-func compactSummaryStats(content string) string {
-	firstLine, _, _ := strings.Cut(strings.TrimSpace(content), "\n")
-	firstLine = strings.TrimSpace(strings.TrimPrefix(firstLine, compactSummaryPrefix))
-	firstLine = strings.TrimPrefix(firstLine, ":")
-	firstLine = strings.TrimSpace(firstLine)
-	if firstLine == "" {
+// compactSummaryStats shows how far a compaction shrank the context.
+func compactSummaryStats(boundary surfacemessage.ContextBoundary) string {
+	if boundary.Cleared || boundary.TokensBefore <= 0 {
 		return ""
 	}
-	return fmt.Sprintf("(%s)", firstLine)
+	return fmt.Sprintf("(~%s -> ~%s tokens)", agentcontext.FormatShortNumber(boundary.TokensBefore), agentcontext.FormatShortNumber(boundary.TokensAfter))
 }
 
 func (k contextMarkerKind) idSuffix() string {
