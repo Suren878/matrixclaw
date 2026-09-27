@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"log"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -18,9 +19,16 @@ func (j coreJournal) Load(ctx context.Context, sessionID string) (agent.Window, 
 }
 
 // contextWindow is what the model sees of a session: its newest context boundary
-// and the messages after what the boundary covers.
+// and the messages after what the boundary covers. An unreadable boundary is
+// logged once and ignored.
 func (c *Core) contextWindow(ctx context.Context, sessionID string) (agent.Window, error) {
 	boundary, err := c.store.LatestCompaction(ctx, sessionID)
+	if err == nil && boundary.Compaction == nil {
+		if _, logged := c.badBoundaries.LoadOrStore(boundary.ID, true); !logged {
+			log.Printf("core: context boundary %q of session %q is unreadable; using the whole history", boundary.ID, sessionID)
+		}
+		err = ErrNotFound
+	}
 	if errors.Is(err, ErrNotFound) {
 		messages, err := c.store.ListMessages(ctx, sessionID, 0)
 		return agent.Window{Messages: messages}, err

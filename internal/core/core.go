@@ -36,6 +36,9 @@ type Core struct {
 	historyLimit   int
 	lifetime       context.Context
 	budgets        RunBudgets
+
+	// badBoundaries holds the IDs of unreadable boundaries already logged.
+	badBoundaries sync.Map
 }
 
 type SkillsPromptContextRequest struct {
