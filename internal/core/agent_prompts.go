@@ -54,14 +54,6 @@ func (p corePrompts) System(ctx context.Context, history []transcript.Message) (
 	return p.c.nativeSystemPrompt(ctx, p.turn, assistant, history), assistant.CustomInstructions
 }
 
-func (p corePrompts) Budget(ctx context.Context) (int, int, error) {
-	session, err := p.c.store.GetSession(ctx, p.turn.SessionID)
-	if err != nil {
-		return 0, 0, err
-	}
-	return p.c.contextBaseTokens(), p.c.sessionContextWindowTokens(session), nil
-}
-
 func (c *Core) nativeSystemPrompt(ctx context.Context, turn nativeTurn, assistant AssistantProfile, history []transcript.Message) string {
 	sections := []string{prompt.AssistantSystemPrompt(assistant.Name, assistant.SystemPrompt)}
 	if checkpoint, ok, err := c.runCheckpoint(ctx, turn.RunID); err == nil && ok {

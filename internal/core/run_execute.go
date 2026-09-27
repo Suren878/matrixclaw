@@ -125,15 +125,16 @@ func (c *Core) nativeEngine(ctx context.Context, run Run, session Session, runti
 		NewID:       c.newID,
 	})
 	task := agent.Task{
-		RunID:       run.ID,
-		SessionID:   session.ID,
-		Client:      run.Client,
-		ExternalKey: run.ExternalKey,
-		WorkingDir:  session.WorkingDir,
-		Model:       runtime,
-		Budget:      budget,
-		Resume:      resume,
-		Continues:   continues,
+		RunID:        run.ID,
+		SessionID:    session.ID,
+		Client:       run.Client,
+		ExternalKey:  run.ExternalKey,
+		WorkingDir:   session.WorkingDir,
+		Model:        runtime,
+		WindowTokens: c.sessionContextWindowTokens(session),
+		Budget:       budget,
+		Resume:       resume,
+		Continues:    continues,
 	}
 	return task, engine, nil
 }

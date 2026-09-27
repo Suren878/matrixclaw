@@ -158,8 +158,10 @@ func (c *Core) contextBaseTokens() int {
 func (c *Core) contextReportForSession(session Session, window agent.Window) ContextReport {
 	report := c.contextReport(session.ID, window)
 	report.WindowTokens = c.sessionContextWindowTokens(session)
-	recommended, reason := agentcontext.Recommendation(report.TokenEstimate, report.WindowTokens)
-	report.Compact = ContextCompact{Recommended: recommended, Reason: reason}
+	limit := agentcontext.EffectiveWindow(report.WindowTokens, int(providers.DefaultMaxOutputTokens))
+	if agentcontext.SummaryDue(report.TokenEstimate, limit) {
+		report.Compact = ContextCompact{Recommended: true, Reason: fmt.Sprintf("estimated context has reached %d%% of the model's usable window; compact before continuing", agentcontext.SummaryPercent)}
+	}
 	return report
 }
 

@@ -160,9 +160,8 @@ type Sink interface {
 	Emit(event Event)
 }
 
-// Prompts supplies the core-owned parts of every request: the system prompt and
-// custom instructions, and the context budget.
+// Prompts supplies the core-owned system prompt and custom instructions of
+// every request.
 type Prompts interface {
 	System(ctx context.Context, history []transcript.Message) (system, custom string)
-	Budget(ctx context.Context) (baseTokens, windowTokens int, err error)
 }

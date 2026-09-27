@@ -83,10 +83,12 @@ func (e *Engine) Run(ctx context.Context, task Task) (Outcome, error) {
 
 type run struct {
 	Config
-	task     Task
-	history  *history
-	counters Counters
-	started  time.Time
+	task       Task
+	history    *history
+	counters   Counters
+	started    time.Time
+	anchor     *promptAnchor
+	requestSeq int64
 }
 
 type stepKind int
@@ -134,32 +136,14 @@ func (r *run) step(ctx context.Context) stepResult {
 	if err := r.checkpoint(ctx, PhaseModel, "", ""); err != nil {
 		return failedStep(err)
 	}
-	budget, err := r.budget(ctx)
+	request, err := r.fitRequest(ctx, final)
 	if err != nil {
 		return failedStep(err)
-	}
-	compacted, err := r.autoCompact(ctx, budget)
-	if err != nil {
-		return failedStep(err)
-	}
-	request, err := r.buildRequest(ctx, final)
-	if err != nil {
-		return failedStep(err)
-	}
-	if !compacted && r.counters.LowYield < lowYieldLimit && requestNeedsCompact(request, budget) {
-		if compacted, err = r.compactHistory(ctx, budget, agentcontext.EstimateRequestTokens(request), agentcontext.TailPercent); err != nil {
-			return failedStep(err)
-		}
-		if compacted {
-			if request, err = r.buildRequest(ctx, final); err != nil {
-				return failedStep(err)
-			}
-		}
 	}
 	r.counters.Steps++
 	gen, err := r.generateWithRetry(ctx, request)
 	if err != nil && agentcontext.IsContextLengthExceeded(err) {
-		compacted, compactErr := r.compactHistory(ctx, budget, agentcontext.EstimateRequestTokens(request), agentcontext.TailPercent/2)
+		compacted, compactErr := r.compactHistory(ctx, r.promptTokens(request), agentcontext.TailPercent/2)
 		if compactErr != nil {
 			return failedStep(compactErr)
 		}
@@ -170,6 +154,9 @@ func (r *run) step(ctx context.Context) stepResult {
 			}
 			gen, err = r.generateWithRetry(ctx, retry)
 		}
+	}
+	if err == nil {
+		r.anchorUsage(gen.response)
 	}
 	if final != "" && errors.Is(err, providers.ErrEmptyResponse) {
 		return finalTurn(gen, final)

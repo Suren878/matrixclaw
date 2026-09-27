@@ -11,29 +11,13 @@ import (
 // EstimatedImageTokens is the flat estimate for one image.
 const EstimatedImageTokens = 1_500
 
-const minimumCompactThreshold = 80_000
+// SummaryPercent of the usable window is where older history gets summarised.
+const SummaryPercent = 80
 
-// Threshold is the token count at which a model window needs compaction.
-func Threshold(windowTokens int) int {
-	if windowTokens <= 0 {
-		return 0
-	}
-	return max(windowTokens/2, minimumCompactThreshold)
-}
-
-// Recommendation reports whether a context of tokens should be compacted and why;
-// windowTokens 0 means the window is unknown.
-func Recommendation(tokens int, windowTokens int) (bool, string) {
-	if windowTokens <= 0 {
-		if tokens < minimumCompactThreshold {
-			return false, ""
-		}
-		return true, "estimated context is high; compact session history before continuing"
-	}
-	if tokens < Threshold(windowTokens) {
-		return false, ""
-	}
-	return true, "estimated context is high for the selected model; compact session history before continuing"
+// SummaryDue reports whether a prompt of tokens has reached the summary
+// threshold of a usable window of limit tokens.
+func SummaryDue(tokens, limit int) bool {
+	return tokens >= limit*SummaryPercent/100
 }
 
 // SessionTokens estimates a session's context: fixed parts, the boundary's

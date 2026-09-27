@@ -44,6 +44,9 @@ func modelIdentity(model Model) agentcontext.Identity {
 // calling them, so the cached prefix survives.
 func (r *run) buildRequest(ctx context.Context, final StopReason) (providers.Request, error) {
 	compaction, messages := r.history.window()
+	if len(messages) > 0 {
+		r.requestSeq = messages[len(messages)-1].Seq
+	}
 	system, custom := r.Prompts.System(ctx, messages)
 	request := providers.Request{
 		RunID:              r.task.RunID,
@@ -80,29 +83,4 @@ func toolDefinitions(specs []tools.Spec) []providers.ToolDefinition {
 		definitions = append(definitions, providers.ToolDefinition{Name: spec.ID, Description: spec.Description, InputSchema: spec.InputJSONSchema})
 	}
 	return definitions
-}
-
-// contextBudget is the context budget of one step: the fixed prompt cost and the model window.
-type contextBudget struct {
-	base, window int
-}
-
-func (r *run) budget(ctx context.Context) (contextBudget, error) {
-	base, window, err := r.Prompts.Budget(ctx)
-	return contextBudget{base: base, window: window}, err
-}
-
-func (r *run) autoCompact(ctx context.Context, b contextBudget) (bool, error) {
-	compaction, messages := r.history.window()
-	tokens := agentcontext.SessionTokens(b.base, compaction, messages)
-	recommended, _ := agentcontext.Recommendation(tokens, b.window)
-	if !recommended || r.counters.LowYield >= lowYieldLimit {
-		return false, nil
-	}
-	return r.compactHistory(ctx, b, tokens, agentcontext.TailPercent)
-}
-
-func requestNeedsCompact(request providers.Request, b contextBudget) bool {
-	threshold := agentcontext.Threshold(b.window)
-	return threshold > 0 && agentcontext.EstimateRequestTokens(request) >= threshold
 }

@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
-	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -17,9 +16,9 @@ const lowYieldLimit = 2
 // compactHistory summarises the history before the newest turns that fit in
 // tailPercent of the window into a boundary; false means nothing worth
 // summarising: no history before the tail, or under a tenth of the prompt.
-func (r *run) compactHistory(ctx context.Context, b contextBudget, before int, tailPercent int) (bool, error) {
+func (r *run) compactHistory(ctx context.Context, before int, tailPercent int) (bool, error) {
 	previous, messages := r.history.window()
-	limit := agentcontext.EffectiveWindow(b.window, int(providers.DefaultMaxOutputTokens))
+	limit := r.contextLimit()
 	cut := agentcontext.TailStart(messages, limit*tailPercent/100)
 	if cut == 0 {
 		return false, nil
@@ -52,6 +51,7 @@ func (r *run) writeBoundary(ctx context.Context, previous *transcript.Compaction
 	}
 	compaction.TokensAfter = max(0, before-agentcontext.EstimateMessageTokens(covered)-agentcontext.EstimateTextTokens(agentcontext.SummaryText(previous))+agentcontext.EstimateTextTokens(agentcontext.SummaryText(&compaction)))
 	r.counters.observeSummary(compaction.TokensBefore, compaction.TokensAfter)
+	r.anchor = nil
 	content := agentcontext.BoundaryLabel(compaction)
 	now := r.Now()
 	err := r.history.append(ctx, transcript.Message{

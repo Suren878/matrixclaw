@@ -160,18 +160,6 @@ func TestUpdatedMessageEventsCarryTheStoredSeq(t *testing.T) {
 	}
 }
 
-func TestContextBudgetIsReadOncePerStep(t *testing.T) {
-	f := agenttest.NewFixture()
-	f.Tools.Funcs["read"] = readTool
-	model := agenttest.NewScriptedModel(calls(call("c1", "read")), text("Done."))
-
-	run(t, f, model)
-
-	if f.Prompts.BudgetReads != 2 {
-		t.Fatalf("budget reads = %d over 2 steps, want 2", f.Prompts.BudgetReads)
-	}
-}
-
 func TestApprovalRequestParksAfterTheRestOfTheBatch(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["write"] = writeTool

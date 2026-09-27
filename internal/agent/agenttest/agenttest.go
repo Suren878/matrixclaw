@@ -362,21 +362,13 @@ func (s *Sink) Kinds() []agent.EventKind {
 	return kinds
 }
 
-// Prompts returns Text as the system prompt and fixed context budget numbers.
+// Prompts returns Text as the system prompt.
 type Prompts struct {
-	Text         string
-	BaseTokens   int
-	WindowTokens int
-	BudgetReads  int
+	Text string
 }
 
 func (p *Prompts) System(context.Context, []transcript.Message) (string, string) {
 	return p.Text, ""
-}
-
-func (p *Prompts) Budget(context.Context) (int, int, error) {
-	p.BudgetReads++
-	return p.BaseTokens, p.WindowTokens, nil
 }
 
 // Fixture wires an engine to fresh fakes around one seeded user message.
@@ -388,6 +380,8 @@ type Fixture struct {
 	Sink      *Sink
 	Prompts   *Prompts
 	Clock     time.Time
+	// Window is the model window of the fixture's task; 0 means unknown.
+	Window int
 	// Slept records the engine's waits, which return at once unless RealSleep is set.
 	Slept     []time.Duration
 	RealSleep bool
@@ -449,5 +443,5 @@ func (f *Fixture) Engine() *agent.Engine {
 
 // Task returns the fixture's run for model.
 func (f *Fixture) Task(model agent.Model) agent.Task {
-	return agent.Task{RunID: RunID, SessionID: SessionID, WorkingDir: "/work", Model: model}
+	return agent.Task{RunID: RunID, SessionID: SessionID, WorkingDir: "/work", Model: model, WindowTokens: f.Window}
 }

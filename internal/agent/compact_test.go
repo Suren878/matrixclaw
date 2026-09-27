@@ -49,7 +49,7 @@ func summaryCount(requests []providers.Request) int {
 func TestSummaryReplacesOlderHistoryBeforeTheModelCall(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.WithHistory(pastTurn(400_000)...)
-	f.Prompts.WindowTokens = 100_000
+	f.Window = 100_000
 	model := agenttest.NewScriptedModel(text("SUMMARY"), text("Done."))
 
 	outcome := run(t, f, model)
@@ -79,7 +79,7 @@ func TestRequestOverTheThresholdIsSummarisedBeforeSending(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.WithHistory(pastTurn(100_000)...)
 	f.Prompts.Text = strings.Repeat("s", 240_000)
-	f.Prompts.WindowTokens = 100_000
+	f.Window = 100_000
 	model := agenttest.NewScriptedModel(text("SUMMARY"), text("Done."))
 
 	outcome := run(t, f, model)
@@ -119,14 +119,15 @@ func talkingCall(replyRunes int, toolCall providers.ToolCall) agenttest.Turn {
 
 func TestSummaryKeepsTheAssignmentStepsAndWholeToolSteps(t *testing.T) {
 	f := agenttest.NewFixture()
-	// A 40k window keeps only the newest ~10k step as the tail; the base puts
-	// the fourth step, after three such steps, over the 80k threshold.
-	f.Prompts.WindowTokens = 40_000
-	f.Prompts.BaseTokens = 55_000
+	// A 20k window keeps a tail of ~2.5k tokens, the newest step; the usage
+	// reported for the third step puts the fourth over the summary threshold.
+	f.Window = 20_000
 	big := strings.Repeat("b", 10_000)
 	f.Tools.Funcs["read"] = func(call tools.Call) tools.Result { return tools.Result{Content: call.ToolCallID + big} }
 	f.Inbox.Steers = []string{"focus on the parser"}
-	model := agenttest.NewScriptedModel(talkingCall(30_000, call("r1", "read")), talkingCall(30_000, call("r2", "read")), talkingCall(30_000, call("r3", "read")), text("SUMMARY"), text("Done."))
+	third := talkingCall(400, call("r3", "read"))
+	third.Response.Usage.PromptTokens = 7_000
+	model := agenttest.NewScriptedModel(talkingCall(400, call("r1", "read")), talkingCall(400, call("r2", "read")), third, text("SUMMARY"), text("Done."))
 
 	outcome := run(t, f, model)
 
@@ -164,18 +165,23 @@ func assertBoundaryAndLastToolStep(t *testing.T, request providers.Request) {
 
 func TestTwoLowYieldSummariesStopSummarising(t *testing.T) {
 	f := agenttest.NewFixture()
-	// Each step says ~10k tokens; the summaries come back as long as what they
-	// replace, so neither saves a tenth of the prompt.
-	f.Prompts.BaseTokens = 40_000
+	// Each step says ~10k tokens and reports a prompt near the 63k threshold;
+	// the summaries come back as long as what they replace, so neither saves a
+	// tenth of the prompt.
+	f.Window = 100_000
 	f.Tools.Funcs["read"] = counterTool()
-	step := func(id string) agenttest.Turn { return talkingCall(40_000, call(id, "read")) }
-	sum1, sum2 := text("SUM1 "+strings.Repeat("s", 60_000)), text("SUM2 "+strings.Repeat("s", 100_000))
-	model := agenttest.NewScriptedModel(step("c1"), step("c2"), step("c3"), step("c4"), sum1, step("c5"), sum2, step("c6"), text("Done."))
+	step := func(id string, prompt int64) agenttest.Turn {
+		turn := talkingCall(40_000, call(id, "read"))
+		turn.Response.Usage.PromptTokens = prompt
+		return turn
+	}
+	sum1, sum2 := text("SUM1 "+strings.Repeat("s", 40_000)), text("SUM2 "+strings.Repeat("s", 100_000))
+	model := agenttest.NewScriptedModel(step("c1", 50_000), step("c2", 60_000), sum1, step("c3", 70_000), sum2, step("c4", 90_000), text("Done."))
 
 	outcome := run(t, f, model)
 
 	requests := model.Requests()
-	if outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != "Done." || len(requests) != 9 || summaryCount(requests) != 2 {
+	if outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != "Done." || len(requests) != 7 || summaryCount(requests) != 2 {
 		t.Fatalf("outcome = %+v requests = %d summaries = %d", outcome, len(requests), summaryCount(requests))
 	}
 	marks := boundaries(f.Journal.Messages)
@@ -189,9 +195,10 @@ func TestTwoLowYieldSummariesStopSummarising(t *testing.T) {
 
 func TestSummaryIsSkippedWhenItWouldReplaceLittle(t *testing.T) {
 	f := agenttest.NewFixture()
-	f.Prompts.BaseTokens = 90_000
 	f.Tools.Funcs["read"] = counterTool()
-	model := agenttest.NewScriptedModel(calls(call("c1", "read")), text("Done."))
+	first := calls(call("c1", "read"))
+	first.Response.Usage.PromptTokens = 90_000
+	model := agenttest.NewScriptedModel(first, text("Done."))
 
 	outcome := run(t, f, model)
 
@@ -212,7 +219,7 @@ func TestContinuationCarriesTheEarlierRunsKeptTexts(t *testing.T) {
 		Compaction: &transcript.Compaction{Summary: "EARLIER", Kept: []string{"User: first ask"}, RunID: "run_0", CoversThroughSeq: 1},
 	}
 	f.WithHistory(history[0], earlier, history[1])
-	f.Prompts.WindowTokens = 100_000
+	f.Window = 100_000
 	model := agenttest.NewScriptedModel(text("SUMMARY"), text("Done."))
 	task := f.Task(model)
 	task.Continues = []string{"run_0"}

@@ -15,8 +15,10 @@ type Task struct {
 	ExternalKey string
 	WorkingDir  string
 	Model       Model
-	Budget      Budget
-	Resume      Counters
+	// WindowTokens is the model's context window; 0 means unknown.
+	WindowTokens int
+	Budget       Budget
+	Resume       Counters
 	// Continues lists the runs this one continues, nearest first; what they keep
 	// verbatim past a summary stays kept.
 	Continues []string
