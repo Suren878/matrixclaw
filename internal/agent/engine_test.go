@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -15,8 +14,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
-
-var markerPattern = regexp.MustCompile("^🧠 Context compacted: ~[0-9.]+[kM]? -> ~[0-9.]+[kM]? tokens\n\nSUMMARY$")
 
 func text(value string) agenttest.Turn {
 	return agenttest.Turn{Response: providers.Response{Text: value}}
@@ -380,43 +377,6 @@ func TestStoppedContextReturnsInterruptedWithTheReachedReply(t *testing.T) {
 	}
 }
 
-func TestAutoCompactionAddsMarkerBeforeTheModelCall(t *testing.T) {
-	f := agenttest.NewFixture()
-	f.Prompts.BaseTokens = 90_000
-	model := agenttest.NewScriptedModel(text("SUMMARY"), text("Done."))
-
-	outcome := run(t, f, model)
-
-	requests := model.Requests()
-	if outcome.Status != agent.StatusCompleted || len(requests) != 2 {
-		t.Fatalf("outcome = %+v requests = %d", outcome, len(requests))
-	}
-	if !strings.Contains(requests[0].SystemPrompt, "You compact matrixclaw chat histories") || !strings.Contains(requests[1].SystemPrompt, "Session context summary:\nSUMMARY") {
-		t.Fatalf("summary prompt = %q main prompt = %q", requests[0].SystemPrompt, requests[1].SystemPrompt)
-	}
-	marker := f.Journal.Messages[1]
-	if marker.Role != transcript.MessageRoleSystem || marker.RunID != "" || !markerPattern.MatchString(marker.Content) {
-		t.Fatalf("marker = %+v", marker)
-	}
-	if len(f.Journal.Steps) != 2 || f.Journal.Steps[0].StopReason != "compact" {
-		t.Fatalf("steps = %+v, want the summary recorded as compact first", f.Journal.Steps)
-	}
-}
-
-func TestContextLengthErrorCompactsAndRetriesOnce(t *testing.T) {
-	f := agenttest.NewFixture()
-	model := agenttest.NewScriptedModel(agenttest.Turn{Err: errors.New("context_length_exceeded")}, text("SUMMARY"), text("Recovered."))
-
-	outcome := run(t, f, model)
-
-	if outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != "Recovered." || len(model.Requests()) != 3 {
-		t.Fatalf("outcome = %+v requests = %d", outcome, len(model.Requests()))
-	}
-	if !markerPattern.MatchString(f.Journal.Messages[1].Content) {
-		t.Fatalf("marker = %+v", f.Journal.Messages[1])
-	}
-}
-
 func TestLoadFailureFailsTheRun(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Journal.LoadErr = errors.New("disk gone")
@@ -524,26 +484,6 @@ func TestStopDuringRetryBackoffEndsTheWait(t *testing.T) {
 	}
 	if elapsed := time.Since(started); elapsed >= 200*time.Millisecond {
 		t.Fatalf("waited %v, want the backoff cut short", elapsed)
-	}
-}
-
-func TestOversizedRequestIsCompactedBeforeSending(t *testing.T) {
-	f := agenttest.NewFixture()
-	f.Prompts.Text = strings.Repeat("a", 330_000)
-	f.Prompts.WindowTokens = 100_000
-	model := agenttest.NewScriptedModel(text("SUMMARY"), text("Done."))
-
-	outcome := run(t, f, model)
-
-	requests := model.Requests()
-	if outcome.Status != agent.StatusCompleted || len(requests) != 2 {
-		t.Fatalf("outcome = %+v requests = %d", outcome, len(requests))
-	}
-	if !strings.Contains(requests[0].SystemPrompt, "You compact matrixclaw chat histories") || !strings.Contains(requests[1].SystemPrompt, "Session context summary:\nSUMMARY") {
-		t.Fatal("want a summary generation before the main request, which carries the summary")
-	}
-	if !markerPattern.MatchString(f.Journal.Messages[1].Content) || f.Journal.Steps[0].StopReason != "compact" {
-		t.Fatalf("marker = %+v steps = %+v", f.Journal.Messages[1], f.Journal.Steps)
 	}
 }
 

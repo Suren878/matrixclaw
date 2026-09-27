@@ -31,7 +31,7 @@ func (c *Core) ClearContext(ctx context.Context, sessionID string) (transcript.M
 	if len(latest) > 0 {
 		compaction.CoversThroughSeq = latest[0].Seq
 	}
-	return c.appendBoundary(ctx, sessionID, agentcontext.ClearedMarkerContent(), compaction)
+	return c.appendBoundary(ctx, sessionID, agentcontext.BoundaryLabel(compaction), compaction)
 }
 
 // appendBoundary journals a context boundary of the session and announces it.

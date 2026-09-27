@@ -16,9 +16,19 @@ type Model interface {
 	Generate(ctx context.Context, req providers.Request) (providers.Response, error)
 }
 
-// Window is the transcript a run starts from, ordered by seq.
+// Window is the transcript a run starts from: the session's newest context
+// boundary, if any, and the messages after what it covers, ordered by seq.
 type Window struct {
+	Boundary *transcript.Message
 	Messages []transcript.Message
+}
+
+// Compaction is the boundary's compaction; nil without a boundary.
+func (w Window) Compaction() *transcript.Compaction {
+	if w.Boundary == nil {
+		return nil
+	}
+	return w.Boundary.Compaction
 }
 
 // Journal persists one session's transcript; during a run the engine is its only writer.
@@ -151,9 +161,8 @@ type Sink interface {
 }
 
 // Prompts supplies the core-owned parts of every request: the system prompt and
-// custom instructions, the plan snapshot for summaries, and the context budget.
+// custom instructions, and the context budget.
 type Prompts interface {
-	System(ctx context.Context, summary string, history []transcript.Message) (system, custom string)
-	PlanSnapshot(ctx context.Context) string
+	System(ctx context.Context, history []transcript.Message) (system, custom string)
 	Budget(ctx context.Context) (baseTokens, windowTokens int, err error)
 }

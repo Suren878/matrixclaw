@@ -65,10 +65,10 @@ func (f ModelFunc) Generate(ctx context.Context, req providers.Request) (provide
 	return f(ctx, req)
 }
 
-// Journal keeps the transcript in memory and counts streaming writes. Like the store
-// it rejects duplicate message IDs and fails writes on a stopped context; RecordStep
-// never fails, as core only logs a failed step write. OnAppend and OnCheckpoint run
-// before each write and fail it with their error.
+// Journal keeps the transcript in memory, loads it like core — the newest boundary
+// and the messages after it — and counts streaming writes. Like the store it rejects
+// duplicate IDs and fails writes on a stopped context; RecordStep never fails, as core
+// only logs a failed step write. OnAppend and OnCheckpoint run first and can fail a write.
 type Journal struct {
 	Messages     []transcript.Message
 	States       []agent.State
@@ -120,7 +120,24 @@ func (j *Journal) Load(ctx context.Context, _ string) (agent.Window, error) {
 	if j.LoadErr != nil {
 		return agent.Window{}, j.LoadErr
 	}
-	return agent.Window{Messages: append([]transcript.Message(nil), j.Messages...)}, nil
+	var window agent.Window
+	for i := len(j.Messages) - 1; i >= 0; i-- {
+		if j.Messages[i].Compaction != nil {
+			boundary := j.Messages[i]
+			window.Boundary = &boundary
+			break
+		}
+	}
+	var covers int64
+	if compaction := window.Compaction(); compaction != nil {
+		covers = compaction.CoversThroughSeq
+	}
+	for _, message := range j.Messages {
+		if message.Compaction == nil && message.Seq > covers {
+			window.Messages = append(window.Messages, message)
+		}
+	}
+	return window, nil
 }
 
 func (j *Journal) Append(ctx context.Context, msg transcript.Message) (int64, error) {
@@ -345,7 +362,7 @@ func (s *Sink) Kinds() []agent.EventKind {
 	return kinds
 }
 
-// Prompts returns Text as system prompt, extended by the compact summary it is given.
+// Prompts returns Text as the system prompt and fixed context budget numbers.
 type Prompts struct {
 	Text         string
 	BaseTokens   int
@@ -353,15 +370,8 @@ type Prompts struct {
 	BudgetReads  int
 }
 
-func (p *Prompts) System(_ context.Context, summary string, _ []transcript.Message) (string, string) {
-	if summary == "" {
-		return p.Text, ""
-	}
-	return p.Text + "\n\nSession context summary:\n" + summary, ""
-}
-
-func (p *Prompts) PlanSnapshot(context.Context) string {
-	return ""
+func (p *Prompts) System(context.Context, []transcript.Message) (string, string) {
+	return p.Text, ""
 }
 
 func (p *Prompts) Budget(context.Context) (int, int, error) {
@@ -402,6 +412,14 @@ func NewFixture() *Fixture {
 		CreatedAt: clock, UpdatedAt: clock,
 	})
 	return f
+}
+
+// WithHistory puts messages before the run's user message, as an earlier part
+// of the session.
+func (f *Fixture) WithHistory(messages ...transcript.Message) {
+	user := f.Journal.Messages[len(f.Journal.Messages)-1]
+	f.Journal.Messages, f.Journal.seq = nil, 0
+	f.Journal.Seed(append(messages, user)...)
 }
 
 // Engine returns an engine over the fixture's fakes with a fixed clock and sequential IDs.

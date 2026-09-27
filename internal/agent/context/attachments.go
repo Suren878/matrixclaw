@@ -1,5 +1,4 @@
-// Package agentcontext builds the model's view of a session: provider conversation,
-// compaction markers and summaries, and token estimates.
+// Package agentcontext builds the model's view of a session: provider conversation, context boundaries and summaries, and token estimates.
 package agentcontext
 
 import (

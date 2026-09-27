@@ -144,14 +144,6 @@ func planToolSummary(plan SessionPlan) string {
 	return strings.Join(lines, "\n")
 }
 
-func (c *Core) compactSessionPlanSnapshot(ctx context.Context, sessionID string) string {
-	plan, err := c.store.GetSessionPlan(ctx, sessionID)
-	if err != nil {
-		return ""
-	}
-	return planToolSummary(plan)
-}
-
 var (
 	planEmptySchema  = json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)
 	planGoalSchema   = json.RawMessage(`{"type":"object","properties":{"goal":{"type":"string"}},"required":["goal"],"additionalProperties":false}`)

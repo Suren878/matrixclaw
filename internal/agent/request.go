@@ -2,13 +2,10 @@ package agent
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
-	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 // ToolUseAllowed reports whether the model can receive tool definitions.
@@ -42,11 +39,12 @@ func modelIdentity(model Model) agentcontext.Identity {
 	return agentcontext.Identity{Provider: provider, Model: name}
 }
 
-// buildRequest assembles the step's request; the final turn keeps the tools
-// defined but forbids calling them, so the cached prefix survives.
+// buildRequest assembles the step's request: the boundary's summary first, then
+// the history after it; the final turn keeps the tools defined but forbids
+// calling them, so the cached prefix survives.
 func (r *run) buildRequest(ctx context.Context, final StopReason) (providers.Request, error) {
-	summary, effective := agentcontext.LatestSummaryForRun(r.history.all(), r.task.RunID)
-	system, custom := r.Prompts.System(ctx, summary, effective)
+	compaction, messages := r.history.window()
+	system, custom := r.Prompts.System(ctx, messages)
 	request := providers.Request{
 		RunID:              r.task.RunID,
 		SessionID:          r.task.SessionID,
@@ -58,16 +56,17 @@ func (r *run) buildRequest(ctx context.Context, final StopReason) (providers.Req
 	if final != "" {
 		request.ToolChoice = providers.ToolChoiceNone
 	}
+	summary := agentcontext.SummaryMessages(compaction)
 	if !ToolUseAllowed(r.task.Model) {
-		request.Messages = agentcontext.TextOnlyConversation(effective, r.task.RunID)
+		request.Messages = append(summary, agentcontext.TextOnlyConversation(messages, r.task.RunID)...)
 		request.Messages = providers.NormalizeMessages(request.Messages, providers.ToolUseDisabled)
 		return request, nil
 	}
-	messages, err := agentcontext.Conversation(ctx, effective, r.Attachments, r.task.RunID, ImageInputAllowed(r.task.Model), modelIdentity(r.task.Model))
+	conversation, err := agentcontext.Conversation(ctx, messages, r.Attachments, r.task.RunID, ImageInputAllowed(r.task.Model), modelIdentity(r.task.Model))
 	if err != nil {
 		return providers.Request{}, err
 	}
-	request.Messages = messages
+	request.Messages = append(summary, conversation...)
 	request.Tools = toolDefinitions(r.Tools.Specs(ctx))
 	return request, nil
 }
@@ -94,45 +93,16 @@ func (r *run) budget(ctx context.Context) (contextBudget, error) {
 }
 
 func (r *run) autoCompact(ctx context.Context, b contextBudget) (bool, error) {
-	messages := r.history.all()
-	recommended, _ := agentcontext.Recommendation(agentcontext.SessionTokens(b.base, messages), b.window)
-	if !recommended || agentcontext.CompactBackoffActive(messages) {
+	compaction, messages := r.history.window()
+	tokens := agentcontext.SessionTokens(b.base, compaction, messages)
+	recommended, _ := agentcontext.Recommendation(tokens, b.window)
+	if !recommended || r.counters.LowYield >= lowYieldLimit {
 		return false, nil
 	}
-	return r.compactHistory(ctx, messages, b.base)
+	return r.compactHistory(ctx, b, tokens, agentcontext.TailPercent)
 }
 
 func requestNeedsCompact(request providers.Request, b contextBudget) bool {
 	threshold := agentcontext.Threshold(b.window)
 	return threshold > 0 && agentcontext.EstimateRequestTokens(request) >= threshold
-}
-
-func (r *run) compactHistory(ctx context.Context, messages []transcript.Message, base int) (bool, error) {
-	if _, effective := agentcontext.LatestSummary(messages); len(effective) == 0 {
-		return false, nil
-	}
-	content, err := agentcontext.Compact(ctx, summaryModel{r: r}, agentcontext.CompactInput{
-		SessionID:    r.task.SessionID,
-		History:      messages,
-		BaseTokens:   base,
-		PlanSnapshot: r.Prompts.PlanSnapshot(ctx),
-	})
-	if err != nil {
-		return false, fmt.Errorf("auto compact session: %w", err)
-	}
-	content = strings.TrimSpace(content)
-	now := r.Now()
-	marker := transcript.Message{
-		ID:        r.NewID("msg"),
-		SessionID: r.task.SessionID,
-		Role:      transcript.MessageRoleSystem,
-		Content:   content,
-		Parts:     []transcript.MessagePart{{Kind: transcript.MessagePartKindText, Text: &transcript.TextPart{Text: content}}},
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-	if err := r.history.append(ctx, marker); err != nil {
-		return false, fmt.Errorf("auto compact session: %w", err)
-	}
-	return true, nil
 }

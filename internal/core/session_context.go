@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/agent"
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/agent/prompt"
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -67,14 +68,15 @@ func (c *Core) SessionContext(ctx context.Context, sessionID string) (ContextRep
 		return ContextReport{}, err
 	}
 	session = c.decorateSessionLLM(session)
-	messages, err := c.store.ListMessages(ctx, sessionID, 0)
+	window, err := c.contextWindow(ctx, sessionID)
 	if err != nil {
 		return ContextReport{}, err
 	}
-	return c.contextReportForSession(session, messages), nil
+	return c.contextReportForSession(session, window), nil
 }
 
-// CompactSession summarises the session history into a compaction marker.
+// CompactSession summarises what the model sees of the session into a boundary
+// that covers all of it.
 func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSessionResult, error) {
 	sessionID = normalizeText(sessionID)
 	if sessionID == "" {
@@ -90,35 +92,44 @@ func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSes
 		return CompactSessionResult{}, err
 	}
 	session = c.decorateSessionLLM(session)
-	messages, err := c.store.ListMessages(ctx, sessionID, 0)
+	window, err := c.contextWindow(ctx, sessionID)
 	if err != nil {
 		return CompactSessionResult{}, err
 	}
-	if _, effective := agentcontext.LatestSummary(messages); len(effective) == 0 {
+	if len(window.Messages) == 0 {
 		return CompactSessionResult{}, ErrInvalidInput
 	}
 	runtime, err := c.resolveSessionRuntime(ctx, session)
 	if err != nil {
 		return CompactSessionResult{}, err
 	}
-	content, err := agentcontext.Compact(ctx, runtime, agentcontext.CompactInput{
-		SessionID:    session.ID,
-		History:      messages,
-		BaseTokens:   c.contextBaseTokens(),
-		PlanSnapshot: c.compactSessionPlanSnapshot(ctx, session.ID),
+	previous := window.Compaction()
+	base := c.contextBaseTokens()
+	limit := agentcontext.EffectiveWindow(c.sessionContextWindowTokens(session), int(providers.DefaultMaxOutputTokens))
+	summary, err := agentcontext.Summarize(ctx, runtime, agentcontext.SummaryInput{
+		SessionID:   session.ID,
+		Previous:    agentcontext.SummaryText(previous),
+		Messages:    window.Messages,
+		ChunkTokens: limit / 2,
 	})
 	if err != nil {
 		return CompactSessionResult{}, err
 	}
-	message, err := c.CreateSystemMessage(ctx, session.ID, content)
+	compaction := transcript.Compaction{
+		Summary:          summary,
+		CoversThroughSeq: window.Messages[len(window.Messages)-1].Seq,
+		TokensBefore:     agentcontext.SessionTokens(base, previous, window.Messages),
+	}
+	compaction.TokensAfter = agentcontext.SessionTokens(base, &compaction, nil)
+	message, err := c.appendBoundary(ctx, session.ID, agentcontext.BoundaryLabel(compaction), compaction)
 	if err != nil {
 		return CompactSessionResult{}, err
 	}
-	nextMessages, err := c.store.ListMessages(ctx, session.ID, 0)
+	next, err := c.contextWindow(ctx, session.ID)
 	if err != nil {
 		return CompactSessionResult{}, err
 	}
-	return CompactSessionResult{Message: message, Context: c.contextReportForSession(session, nextMessages)}, nil
+	return CompactSessionResult{Message: message, Context: c.contextReportForSession(session, next)}, nil
 }
 
 // sessionRunExecuting reports whether a run of the session is executing in this daemon.
@@ -141,35 +152,34 @@ func (c *Core) contextBaseTokens() int {
 		c.estimateToolSchemaTokens()
 }
 
-func (c *Core) contextReportForSession(session Session, messages []transcript.Message) ContextReport {
-	report := c.contextReport(session.ID, messages)
+func (c *Core) contextReportForSession(session Session, window agent.Window) ContextReport {
+	report := c.contextReport(session.ID, window)
 	report.WindowTokens = c.sessionContextWindowTokens(session)
 	recommended, reason := agentcontext.Recommendation(report.TokenEstimate, report.WindowTokens)
 	report.Compact = ContextCompact{Recommended: recommended, Reason: reason}
 	return report
 }
 
-func (c *Core) contextReport(sessionID string, messages []transcript.Message) ContextReport {
+func (c *Core) contextReport(sessionID string, window agent.Window) ContextReport {
 	assistant := c.assistantProfile()
 	systemPrompt := prompt.AssistantSystemPrompt(assistant.Name, assistant.SystemPrompt)
 	customInstructions := strings.TrimSpace(assistant.CustomInstructions)
-	marker := agentcontext.LatestMarker(messages)
-	blocks := make([]ContextBlock, 0, 4)
+	blocks := make([]ContextBlock, 0, 5)
 	if systemPrompt != "" {
 		blocks = append(blocks, ContextBlock{ID: "system", Kind: ContextBlockSystemPrompt, Source: "assistant_profile", TokenEstimate: agentcontext.EstimateTextTokens(systemPrompt), Included: true, CacheStability: "stable"})
 	}
 	if customInstructions != "" {
 		blocks = append(blocks, ContextBlock{ID: "custom_instructions", Kind: ContextBlockCustomInstructions, Source: "assistant_profile", TokenEstimate: agentcontext.EstimateTextTokens(customInstructions), Included: true, CacheStability: "stable"})
 	}
-	if marker.Summary != "" {
-		block := ContextBlock{ID: "compact_summary", Kind: ContextBlockCompactSummary, Source: "session_compact", TokenEstimate: agentcontext.EstimateTextTokens(marker.Summary), Included: true, CacheStability: "stable"}
-		if marker.Cleared {
+	if compaction := window.Compaction(); compaction != nil {
+		block := ContextBlock{ID: "compact_summary", Kind: ContextBlockCompactSummary, Source: "session_compact", TokenEstimate: agentcontext.EstimateTextTokens(agentcontext.SummaryText(compaction)), Included: true, CacheStability: "stable"}
+		if compaction.Cleared {
 			block.ID, block.Kind, block.Source = "clear_marker", ContextBlockClearMarker, "session_clear"
 		}
 		blocks = append(blocks, block)
 	}
-	if len(marker.Effective) > 0 {
-		blocks = append(blocks, ContextBlock{ID: "messages", Kind: ContextBlockMessages, Source: "session_history", TokenEstimate: agentcontext.EstimateMessageTokens(marker.Effective), Included: true, CacheStability: "dynamic"})
+	if len(window.Messages) > 0 {
+		blocks = append(blocks, ContextBlock{ID: "messages", Kind: ContextBlockMessages, Source: "session_history", TokenEstimate: agentcontext.EstimateMessageTokens(window.Messages), Included: true, CacheStability: "dynamic"})
 	}
 	if estimate := c.estimateToolSchemaTokens(); estimate > 0 {
 		blocks = append(blocks, ContextBlock{ID: "tools", Kind: ContextBlockToolSchemas, Source: "tool_registry", TokenEstimate: estimate, Included: true, CacheStability: "stable"})
@@ -180,15 +190,13 @@ func (c *Core) contextReport(sessionID string, messages []transcript.Message) Co
 			total += block.TokenEstimate
 		}
 	}
-	recommended, reason := agentcontext.Recommendation(total, 0)
 	return ContextReport{
 		SessionID:         sessionID,
 		Estimated:         true,
 		TokenEstimate:     total,
-		MessageCount:      len(marker.Effective),
+		MessageCount:      len(window.Messages),
 		Blocks:            blocks,
-		LastProviderUsage: latestProviderUsage(marker.Effective),
-		Compact:           ContextCompact{Recommended: recommended, Reason: reason},
+		LastProviderUsage: latestProviderUsage(window.Messages),
 	}
 }
 

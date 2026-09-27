@@ -47,6 +47,7 @@ type MessageStore interface {
 	HasToolResult(ctx context.Context, sessionID string, toolCallID string) (bool, error)
 	ListMessages(ctx context.Context, sessionID string, limit int) ([]transcript.Message, error)
 	ListMessagesAfter(ctx context.Context, sessionID string, afterSeq int64, limit int) ([]transcript.Message, error)
+	LatestCompaction(ctx context.Context, sessionID string) (transcript.Message, error)
 }
 
 type RunStore interface {

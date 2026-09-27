@@ -146,8 +146,8 @@ func (r *run) step(ctx context.Context) stepResult {
 	if err != nil {
 		return failedStep(err)
 	}
-	if !compacted && requestNeedsCompact(request, budget) {
-		if compacted, err = r.compactHistory(ctx, r.history.all(), budget.base); err != nil {
+	if !compacted && r.counters.LowYield < lowYieldLimit && requestNeedsCompact(request, budget) {
+		if compacted, err = r.compactHistory(ctx, budget, agentcontext.EstimateRequestTokens(request), agentcontext.TailPercent); err != nil {
 			return failedStep(err)
 		}
 		if compacted {
@@ -159,7 +159,7 @@ func (r *run) step(ctx context.Context) stepResult {
 	r.counters.Steps++
 	gen, err := r.generateWithRetry(ctx, request)
 	if err != nil && agentcontext.IsContextLengthExceeded(err) {
-		compacted, compactErr := r.compactHistory(ctx, r.history.all(), budget.base)
+		compacted, compactErr := r.compactHistory(ctx, budget, agentcontext.EstimateRequestTokens(request), agentcontext.TailPercent/2)
 		if compactErr != nil {
 			return failedStep(compactErr)
 		}

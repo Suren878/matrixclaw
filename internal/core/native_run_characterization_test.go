@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -444,8 +443,6 @@ func TestCancelDuringToolStopsRunWithoutAnotherModelCall(t *testing.T) {
 	}
 }
 
-var compactMarkerPattern = regexp.MustCompile("^🧠 Context compacted: ~[0-9.]+[kM]? -> ~[0-9.]+[kM]? tokens\n\nSUMMARY$")
-
 func saveNativeRunWithHistory(t *testing.T, db *store.SQLiteStore, suffix string, history ...transcript.Message) (core.Session, core.Run) {
 	t.Helper()
 	ctx := context.Background()
@@ -476,11 +473,11 @@ func saveNativeRunWithHistory(t *testing.T, db *store.SQLiteStore, suffix string
 	return session, run
 }
 
-func countCompactMarkers(t *testing.T, db *store.SQLiteStore, sessionID string) int {
+func countBoundaries(t *testing.T, db *store.SQLiteStore, sessionID string) int {
 	t.Helper()
 	count := 0
 	for _, message := range sessionMessages(t, db, sessionID) {
-		if message.Role == transcript.MessageRoleSystem && message.RunID == "" && compactMarkerPattern.MatchString(message.Content) {
+		if message.Compaction != nil && !message.Compaction.Cleared {
 			count++
 		}
 	}
@@ -492,15 +489,15 @@ func TestNativeRunCompactsLargeHistoryBeforeTheModelCall(t *testing.T) {
 	defer cleanup()
 	big := strings.Repeat("x", 330_000)
 	var summaryRequests, mainRequests int
-	var mainPrompt string
+	var mainPrompt, mainFirst string
 	var leaked bool
 	app.WithSessionLLMs(windowLLMs{window: 100_000, recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
-		if strings.Contains(request.SystemPrompt, "You compact matrixclaw chat histories") {
+		if strings.HasPrefix(request.SystemPrompt, "You compact matrixclaw chat histories") {
 			summaryRequests++
 			return providers.Response{Text: "SUMMARY"}, nil
 		}
 		mainRequests++
-		mainPrompt = request.SystemPrompt
+		mainPrompt, mainFirst = request.SystemPrompt, request.Messages[0].Content
 		for _, message := range request.Messages {
 			leaked = leaked || strings.Contains(message.Content, big[:1000])
 		}
@@ -518,11 +515,11 @@ func TestNativeRunCompactsLargeHistoryBeforeTheModelCall(t *testing.T) {
 	if summaryRequests != 1 || mainRequests != 1 {
 		t.Fatalf("summary=%d main=%d, want 1/1", summaryRequests, mainRequests)
 	}
-	if !strings.Contains(mainPrompt, "Session context summary:\nSUMMARY") || leaked {
-		t.Fatalf("main request: summary in prompt=%v, old history leaked=%v", strings.Contains(mainPrompt, "SUMMARY"), leaked)
+	if !strings.Contains(mainFirst, "SUMMARY") || strings.Contains(mainPrompt, "SUMMARY") || leaked {
+		t.Fatalf("main request: first message %.80q, summary in system prompt=%v, old history leaked=%v", mainFirst, strings.Contains(mainPrompt, "SUMMARY"), leaked)
 	}
-	if got := countCompactMarkers(t, db, session.ID); got != 1 {
-		t.Fatalf("compact markers = %d, want 1", got)
+	if got := countBoundaries(t, db, session.ID); got != 1 {
+		t.Fatalf("boundaries = %d, want 1", got)
 	}
 }
 
@@ -531,7 +528,7 @@ func TestContextLengthErrorForcesCompactionAndRetriesOnce(t *testing.T) {
 	defer cleanup()
 	var summaryRequests, mainRequests int
 	app.WithSessionLLMs(windowLLMs{window: 100_000, recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
-		if strings.Contains(request.SystemPrompt, "You compact matrixclaw chat histories") {
+		if strings.HasPrefix(request.SystemPrompt, "You compact matrixclaw chat histories") {
 			summaryRequests++
 			return providers.Response{Text: "SUMMARY"}, nil
 		}
@@ -541,7 +538,10 @@ func TestContextLengthErrorForcesCompactionAndRetriesOnce(t *testing.T) {
 		}
 		return providers.Response{Text: "Recovered."}, nil
 	})}})
-	session, run := saveNativeRunWithHistory(t, db, "overflow")
+	old := strings.Repeat("y", 200_000)
+	session, run := saveNativeRunWithHistory(t, db, "overflow", transcript.Message{
+		ID: "msg_old_user", Role: transcript.MessageRoleUser, Content: old, Parts: transcript.NormalizeMessageParts(old, nil),
+	})
 
 	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
 		t.Fatal(err)
@@ -551,8 +551,38 @@ func TestContextLengthErrorForcesCompactionAndRetriesOnce(t *testing.T) {
 	if summaryRequests != 1 || mainRequests != 2 {
 		t.Fatalf("summary=%d main=%d, want 1/2", summaryRequests, mainRequests)
 	}
-	if got := countCompactMarkers(t, db, session.ID); got != 1 {
-		t.Fatalf("compact markers = %d, want 1", got)
+	if got := countBoundaries(t, db, session.ID); got != 1 {
+		t.Fatalf("boundaries = %d, want 1", got)
+	}
+}
+
+func TestNativeRunSeesOnlyTheNewestBoundaryAndLaterMessages(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	var seen providers.Request
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		seen = request
+		return providers.Response{Text: "Done."}, nil
+	})})
+	session, run := saveNativeRunWithHistory(t, db, "window", transcript.Message{
+		ID: "msg_forgotten", Role: transcript.MessageRoleUser, Content: "forgotten detail", Parts: transcript.NormalizeMessageParts("forgotten detail", nil),
+	})
+	forgotten, err := db.GetMessage(context.Background(), "msg_forgotten")
+	if err != nil {
+		t.Fatal(err)
+	}
+	saveRunRecoveryTestMessage(t, db, transcript.Message{
+		ID: "msg_boundary", SessionID: session.ID, Role: transcript.MessageRoleSystem, Content: "Context compacted.",
+		Compaction: &transcript.Compaction{Summary: "EARLIER WORK", CoversThroughSeq: forgotten.Seq},
+		CreatedAt:  runRecoveryTestTime(), UpdatedAt: runRecoveryTestTime(),
+	})
+
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(seen.Messages) != 2 || !strings.Contains(seen.Messages[0].Content, "EARLIER WORK") || seen.Messages[1].Content != "original task window" {
+		t.Fatalf("request messages = %+v", seen.Messages)
 	}
 }
 

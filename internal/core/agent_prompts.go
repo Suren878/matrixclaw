@@ -49,13 +49,9 @@ type corePrompts struct {
 	turn nativeTurn
 }
 
-func (p corePrompts) System(ctx context.Context, summary string, history []transcript.Message) (string, string) {
+func (p corePrompts) System(ctx context.Context, history []transcript.Message) (string, string) {
 	assistant := p.c.assistantProfile()
-	return p.c.nativeSystemPrompt(ctx, p.turn, assistant, summary, history), assistant.CustomInstructions
-}
-
-func (p corePrompts) PlanSnapshot(ctx context.Context) string {
-	return p.c.compactSessionPlanSnapshot(ctx, p.turn.SessionID)
+	return p.c.nativeSystemPrompt(ctx, p.turn, assistant, history), assistant.CustomInstructions
 }
 
 func (p corePrompts) Budget(ctx context.Context) (int, int, error) {
@@ -66,7 +62,7 @@ func (p corePrompts) Budget(ctx context.Context) (int, int, error) {
 	return p.c.contextBaseTokens(), p.c.sessionContextWindowTokens(session), nil
 }
 
-func (c *Core) nativeSystemPrompt(ctx context.Context, turn nativeTurn, assistant AssistantProfile, compactSummary string, history []transcript.Message) string {
+func (c *Core) nativeSystemPrompt(ctx context.Context, turn nativeTurn, assistant AssistantProfile, history []transcript.Message) string {
 	sections := []string{prompt.AssistantSystemPrompt(assistant.Name, assistant.SystemPrompt)}
 	if checkpoint, ok, err := c.runCheckpoint(ctx, turn.RunID); err == nil && ok {
 		if recoveryPrompt := runCheckpointRecoveryPrompt(checkpoint); recoveryPrompt != "" {
@@ -107,9 +103,6 @@ func (c *Core) nativeSystemPrompt(ctx context.Context, turn nativeTurn, assistan
 	}
 	if memoryPrompt := c.MemoryPromptContext(ctx, turn.WorkingDir); memoryPrompt != "" {
 		sections = append(sections, memoryPrompt)
-	}
-	if compactSummary != "" {
-		sections = append(sections, "Session context summary:\n"+compactSummary)
 	}
 	if planPrompt := c.sessionPlanPrompt(ctx, turn.SessionID); planPrompt != "" {
 		sections = append(sections, planPrompt)

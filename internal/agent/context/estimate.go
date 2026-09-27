@@ -36,11 +36,10 @@ func Recommendation(tokens int, windowTokens int) (bool, string) {
 	return true, "estimated context is high for the selected model; compact session history before continuing"
 }
 
-// SessionTokens estimates a session's context: fixed parts plus the newest marker
-// summary and the history after it.
-func SessionTokens(baseTokens int, messages []transcript.Message) int {
-	marker := LatestMarker(messages)
-	return baseTokens + EstimateTextTokens(marker.Summary) + EstimateMessageTokens(marker.Effective)
+// SessionTokens estimates a session's context: fixed parts, the boundary's
+// summary and the messages after it.
+func SessionTokens(baseTokens int, compaction *transcript.Compaction, messages []transcript.Message) int {
+	return baseTokens + EstimateTextTokens(SummaryText(compaction)) + EstimateMessageTokens(messages)
 }
 
 func EstimateMessageTokens(messages []transcript.Message) int {

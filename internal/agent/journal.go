@@ -13,17 +13,35 @@ type history struct {
 	port     Journal
 	sink     Sink
 	messages []transcript.Message
+	boundary *transcript.Message
 	index    map[string]int
 	calls    map[string]int
 	results  map[string]struct{}
 }
 
 func newHistory(port Journal, sink Sink, window Window) *history {
-	h := &history{port: port, sink: sink, index: map[string]int{}, calls: map[string]int{}, results: map[string]struct{}{}}
+	h := &history{port: port, sink: sink, boundary: window.Boundary, index: map[string]int{}, calls: map[string]int{}, results: map[string]struct{}{}}
 	for _, message := range window.Messages {
 		h.add(message)
 	}
 	return h
+}
+
+// window is what the model sees: the newest boundary and the messages after
+// what it covers.
+func (h *history) window() (*transcript.Compaction, []transcript.Message) {
+	var compaction *transcript.Compaction
+	if h.boundary != nil {
+		compaction = h.boundary.Compaction
+	}
+	messages := make([]transcript.Message, 0, len(h.messages))
+	for _, message := range h.messages {
+		if message.Compaction != nil || compaction != nil && message.Seq <= compaction.CoversThroughSeq {
+			continue
+		}
+		messages = append(messages, message)
+	}
+	return compaction, messages
 }
 
 func (h *history) all() []transcript.Message {
@@ -91,6 +109,10 @@ func (h *history) finish(ctx context.Context, message transcript.Message) error 
 }
 
 func (h *history) add(message transcript.Message) {
+	if message.Compaction != nil {
+		boundary := message
+		h.boundary = &boundary
+	}
 	h.index[message.ID] = len(h.messages)
 	h.messages = append(h.messages, message)
 	h.indexParts(len(h.messages) - 1)
