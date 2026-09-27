@@ -76,6 +76,7 @@ func Run(ctx context.Context) error {
 		WithSessionLLMs(bootstrap.SessionLLMs).
 		WithRunBudgets(bootstrap.Budgets).
 		WithSessionFiles(sessionFilesRoot(bootstrap.DBPath)).
+		WithCompactModel(bootstrap.CompactModel.Provider, bootstrap.CompactModel.Model).
 		WithWorkStore(workStore).
 		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()}).
 		WithSkillsContext(skillsModule).

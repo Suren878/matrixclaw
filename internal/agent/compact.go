@@ -38,16 +38,20 @@ func (r *run) compactHistory(ctx context.Context, reuse *providers.Request, befo
 }
 
 // summary asks for the summary with the step's own request, so the provider
-// reuses its cached prefix; without one, or when that request is too long, the
-// covered history is summarised on its own, in chunks.
+// reuses its cached prefix; without one, when that request is too long, or with
+// a compact model set, the covered history is summarised on its own, in chunks.
 func (r *run) summary(ctx context.Context, reuse *providers.Request, previous *transcript.Compaction, covered []transcript.Message, limit int) (string, error) {
-	if reuse != nil {
+	if reuse != nil && r.task.CompactModel == nil {
 		text, err := r.prefixSummary(ctx, *reuse)
 		if err == nil || !agentcontext.IsContextLengthExceeded(err) {
 			return text, err
 		}
 	}
-	return agentcontext.Summarize(ctx, summaryModel{r: r}, agentcontext.SummaryInput{
+	model := r.task.Model
+	if r.task.CompactModel != nil {
+		model = r.task.CompactModel
+	}
+	return agentcontext.Summarize(ctx, summaryModel{r: r, model: model}, agentcontext.SummaryInput{
 		SessionID:   r.task.SessionID,
 		Previous:    agentcontext.SummaryText(previous),
 		Messages:    covered,
@@ -60,7 +64,7 @@ func (r *run) summary(ctx context.Context, reuse *providers.Request, previous *t
 func (r *run) prefixSummary(ctx context.Context, request providers.Request) (string, error) {
 	request.Messages = append(slices.Clone(request.Messages), providers.Message{Role: string(transcript.MessageRoleUser), Content: agentcontext.SummaryInstruction})
 	request.ToolChoice = providers.ToolChoiceNone
-	response, err := summaryModel{r: r}.Generate(ctx, request)
+	response, err := (summaryModel{r: r, model: r.task.Model}).Generate(ctx, request)
 	if err != nil {
 		return "", err
 	}

@@ -229,6 +229,35 @@ func TestSummaryIsSkippedWhenItWouldReplaceLittle(t *testing.T) {
 	}
 }
 
+func TestSummariesUseTheCompactModel(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.WithHistory(pastTurn(100_000)...)
+	f.Window = 100_000
+	f.Tools.Funcs["read"] = readTool
+	main := agenttest.NewScriptedModel(
+		agenttest.Turn{Response: providers.Response{ToolCalls: []providers.ToolCall{call("c1", "read")}, Usage: providers.Usage{PromptTokens: 70_000}}},
+		text("Done."),
+	)
+	cheap := agenttest.NewScriptedModel(agenttest.Turn{Response: providers.Response{Text: "SUMMARY", Model: "cheap-model"}})
+	task := f.Task(main)
+	task.CompactModel = cheap
+
+	outcome := runTask(t, f, task)
+
+	if outcome.Status != agent.StatusCompleted || len(main.Requests()) != 2 || len(cheap.Requests()) != 1 {
+		t.Fatalf("outcome = %+v main = %d cheap = %d", outcome, len(main.Requests()), len(cheap.Requests()))
+	}
+	if summary := cheap.Requests()[0]; !strings.HasPrefix(summary.SystemPrompt, "You compact matrixclaw chat histories") || len(summary.Tools) != 0 {
+		t.Fatalf("compact model got %q with %d tools, want a standalone summary", summary.SystemPrompt, len(summary.Tools))
+	}
+	if !strings.Contains(main.Requests()[1].Messages[0].Content, "SUMMARY") {
+		t.Fatalf("main request starts with %+v", main.Requests()[1].Messages[0])
+	}
+	if steps := f.Journal.Steps; len(steps) != 3 || steps[1].StopReason != "compact" || steps[1].Model != "cheap-model" {
+		t.Fatalf("steps = %+v", steps)
+	}
+}
+
 func TestContinuationCarriesTheEarlierRunsKeptTexts(t *testing.T) {
 	f := agenttest.NewFixture()
 	history := pastTurn(400_000)

@@ -15,28 +15,30 @@ import (
 )
 
 type Core struct {
-	mu             sync.RWMutex
-	store          Store
-	workStore      work.Store
-	runStarter     RunStarter
-	llms           SessionLLMRegistry
-	assistant      AssistantProfile
-	attachments    agentcontext.AttachmentReader
-	externalAgents *externalagents.Registry
-	externalStore  externalagents.AttachmentStore
-	activeRuns     map[string]*activeRun
-	scheduledRuns  map[string]time.Time
-	sessionGates   map[string]*sync.Mutex
-	tools          ToolExecutor
-	skillsContext  SkillsPromptContextProvider
-	runtimeStatus  RuntimeStatusContextProvider
-	events         *eventBus
-	now            func() time.Time
-	newID          func(prefix string) string
-	historyLimit   int
-	lifetime       context.Context
-	budgets        RunBudgets
-	sessionFiles   string
+	mu              sync.RWMutex
+	store           Store
+	workStore       work.Store
+	runStarter      RunStarter
+	llms            SessionLLMRegistry
+	assistant       AssistantProfile
+	attachments     agentcontext.AttachmentReader
+	externalAgents  *externalagents.Registry
+	externalStore   externalagents.AttachmentStore
+	activeRuns      map[string]*activeRun
+	scheduledRuns   map[string]time.Time
+	sessionGates    map[string]*sync.Mutex
+	tools           ToolExecutor
+	skillsContext   SkillsPromptContextProvider
+	runtimeStatus   RuntimeStatusContextProvider
+	events          *eventBus
+	now             func() time.Time
+	newID           func(prefix string) string
+	historyLimit    int
+	lifetime        context.Context
+	budgets         RunBudgets
+	sessionFiles    string
+	compactProvider string
+	compactModel    string
 
 	// badBoundaries holds the IDs of unreadable boundaries already logged.
 	badBoundaries sync.Map

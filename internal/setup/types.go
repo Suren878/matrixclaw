@@ -41,12 +41,13 @@ type ProviderConfig struct {
 }
 
 type DaemonConfig struct {
-	HTTPAddr        string           `json:"http_addr"`
-	DBPath          string           `json:"db_path"`
-	Timezone        string           `json:"timezone,omitempty"`
-	APIToken        string           `json:"api_token,omitempty"`
-	AutostartOnBoot bool             `json:"autostart_on_boot"`
-	Budgets         RunBudgetsConfig `json:"budgets,omitzero"`
+	HTTPAddr        string             `json:"http_addr"`
+	DBPath          string             `json:"db_path"`
+	Timezone        string             `json:"timezone,omitempty"`
+	APIToken        string             `json:"api_token,omitempty"`
+	AutostartOnBoot bool               `json:"autostart_on_boot"`
+	Budgets         RunBudgetsConfig   `json:"budgets,omitzero"`
+	CompactModel    CompactModelConfig `json:"compact_model,omitzero"`
 }
 
 // RunBudgetsConfig overrides the built-in run budget per trigger.
@@ -62,6 +63,13 @@ type RunBudgetConfig struct {
 	Steps      int    `json:"steps,omitempty"`
 	ActiveTime string `json:"active_time,omitempty"`
 	Tokens     int64  `json:"tokens,omitempty"`
+}
+
+// CompactModelConfig names the provider and model that write context summaries
+// instead of each run's own model; empty keeps the run's model.
+type CompactModelConfig struct {
+	Provider string `json:"provider,omitempty"`
+	Model    string `json:"model,omitempty"`
 }
 
 type ClientsConfig struct {

@@ -18,6 +18,8 @@ type Task struct {
 	Model       Model
 	// WindowTokens is the model's context window; 0 means unknown.
 	WindowTokens int
+	// CompactModel writes the run's summaries instead of Model when set.
+	CompactModel Model
 	Budget       Budget
 	Resume       Counters
 	// Continues lists the runs this one continues, nearest first; what they keep

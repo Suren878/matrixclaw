@@ -31,6 +31,7 @@ type bootstrapConfig struct {
 	Clients        map[string]setup.ClientBootstrap
 	ExternalAgents setup.ModulesConfig
 	Budgets        core.RunBudgets
+	CompactModel   setup.CompactModelConfig
 }
 
 func loadBootstrap() (bootstrapConfig, error) {
@@ -74,6 +75,7 @@ func loadBootstrap() (bootstrapConfig, error) {
 			return bootstrapConfig{}, fmt.Errorf("load setup config %s: %w", service.Path(), err)
 		}
 		cfg.Budgets = budgets
+		cfg.CompactModel = setupCfg.Daemon.CompactModel
 
 		if err := setup.ImportDaemonEnvironmentFile(service.Path(), setupCfg); err != nil {
 			return bootstrapConfig{}, fmt.Errorf("load setup daemon environment %s: %w", setup.DaemonEnvironmentFilePath(service.Path()), err)

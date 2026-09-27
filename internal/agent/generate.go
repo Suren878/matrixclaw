@@ -42,16 +42,18 @@ func (r *run) recordStep(ctx context.Context, response providers.Response, stopR
 // retryBackoffs are the waits before each retry of a failed generation.
 var retryBackoffs = [...]time.Duration{200 * time.Millisecond, 750 * time.Millisecond}
 
-// summaryModel is the run's model with every successful summary recorded as a
-// compact step; a transient failure is retried like a main generation.
+// summaryModel generates summaries with model and records every successful one
+// as a compact step of the run; a transient failure is retried like a main
+// generation.
 type summaryModel struct {
-	r *run
+	r     *run
+	model Model
 }
 
 func (m summaryModel) Generate(ctx context.Context, request providers.Request) (providers.Response, error) {
 	for attempt := 0; ; attempt++ {
 		started := time.Now()
-		response, err := m.r.task.Model.Generate(ctx, request)
+		response, err := m.model.Generate(ctx, request)
 		if err == nil {
 			return response, m.r.recordStep(ctx, response, compactStopReason, time.Since(started))
 		}
