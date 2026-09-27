@@ -3,7 +3,6 @@ package agentcontext
 import (
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -78,13 +77,26 @@ func EstimateMessageTokens(messages []transcript.Message) int {
 	return total
 }
 
+// EstimateTextTokens estimates runes/4 for Latin script and runes/2.5 for other
+// scripts such as Cyrillic, which tokenizers split more finely.
 func EstimateTextTokens(text string) int {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return 0
 	}
-	return max(1, (utf8.RuneCountInString(text)+3)/4)
+	latin, other := 0, 0
+	for _, r := range text {
+		if r < latinScriptEnd {
+			latin++
+		} else {
+			other++
+		}
+	}
+	return max(1, (latin*10+other*16+39)/40)
 }
+
+// latinScriptEnd is the first rune after Latin Extended-B.
+const latinScriptEnd = 0x0250
 
 func EstimateRequestTokens(request providers.Request) int {
 	total := EstimateTextTokens(request.SystemPrompt) + EstimateTextTokens(request.CustomInstructions)

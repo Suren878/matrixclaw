@@ -3,7 +3,6 @@ package runtime
 import (
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
@@ -93,13 +92,13 @@ func estimateVisibleContextTokens(messages []surfacemessage.Message) (int, heade
 		content := strings.TrimSpace(message.Content().Text)
 		if summary, ok := headerCompactSummary(content); ok {
 			start = i + 1
-			markerTokens = estimateTokens(summary)
+			markerTokens = agentcontext.EstimateTextTokens(summary)
 			marker = headerContextMarkerCompact
 			break
 		}
 		if summary, ok := headerClearSummary(content); ok {
 			start = i + 1
-			markerTokens = estimateTokens(summary)
+			markerTokens = agentcontext.EstimateTextTokens(summary)
 			marker = headerContextMarkerClear
 			break
 		}
@@ -154,28 +153,19 @@ func estimateMessagesTokens(messages []surfacemessage.Message) int {
 		for _, part := range message.Parts {
 			switch part := part.(type) {
 			case surfacemessage.TextContent:
-				total += estimateTokens(part.Text)
+				total += agentcontext.EstimateTextTokens(part.Text)
 			case surfacemessage.ImageURLContent:
 				total += agentcontext.EstimatedImageTokens
 			case surfacemessage.BinaryContent:
 				total += agentcontext.EstimatedImageTokens
 			case surfacemessage.ToolResult:
-				total += estimateTokens(part.Content)
+				total += agentcontext.EstimateTextTokens(part.Content)
 			case surfacemessage.ToolCall:
-				total += estimateTokens(part.Input)
+				total += agentcontext.EstimateTextTokens(part.Input)
 			}
 		}
 	}
 	return total
-}
-
-func estimateTokens(text string) int {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return 0
-	}
-	// Fast provider-neutral estimate. Exact tokenization is provider/model-specific.
-	return max(1, (utf8.RuneCountInString(text)+3)/4)
 }
 
 func formatTokenCount(tokens int) string {

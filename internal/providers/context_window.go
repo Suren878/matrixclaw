@@ -5,7 +5,8 @@ import (
 	"sync"
 )
 
-const DefaultFallbackContextWindowTokens = 256_000
+// DefaultFallbackContextWindowTokens is assumed for a model whose window is unknown.
+const DefaultFallbackContextWindowTokens = 128_000
 
 var codexSubscriptionContextWindows = []contextWindowPattern{
 	{Pattern: "gpt-5.3-codex-spark", Tokens: 128_000},
