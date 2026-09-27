@@ -58,6 +58,8 @@ type ContextCompact struct {
 
 var ErrSessionRequired = errors.New("session_id is required")
 
+var errNothingToCompact = fmt.Errorf("%w: nothing to compact", ErrInvalidInput)
+
 func (c *Core) SessionContext(ctx context.Context, sessionID string) (ContextReport, error) {
 	sessionID = normalizeText(sessionID)
 	if sessionID == "" {
@@ -97,7 +99,7 @@ func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSes
 		return CompactSessionResult{}, err
 	}
 	if len(window.Messages) == 0 {
-		return CompactSessionResult{}, ErrInvalidInput
+		return CompactSessionResult{}, errNothingToCompact
 	}
 	runtime, err := c.resolveSessionRuntime(ctx, session)
 	if err != nil {
@@ -112,6 +114,9 @@ func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSes
 		Messages:    window.Messages,
 		ChunkTokens: limit / 2,
 	})
+	if errors.Is(err, agentcontext.ErrNothingToSummarise) {
+		return CompactSessionResult{}, errNothingToCompact
+	}
 	if err != nil {
 		return CompactSessionResult{}, err
 	}

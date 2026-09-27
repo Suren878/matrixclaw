@@ -3,6 +3,7 @@ package core_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -72,5 +73,29 @@ func TestUnreadableBoundaryIsIgnored(t *testing.T) {
 	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
 	if len(seen.Messages) == 0 || seen.Messages[0].Content != "earlier detail" {
 		t.Fatalf("request messages = %+v, want the whole history", seen.Messages)
+	}
+}
+
+func TestCompactWithNothingToSummariseIsInvalidInput(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+		return providers.Response{Text: "SUMMARY"}, nil
+	})})
+	now := runRecoveryTestTime()
+	session := core.Session{
+		ID: "session_notes", Title: "notes", Kind: core.SessionKindAssistant, RuntimeID: core.SessionRuntimeMatrixClaw,
+		ProviderID: "recovery-test", ModelID: "test-model", PermissionMode: core.PermissionModeDefault,
+		Status: core.SessionStatusActive, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := db.CreateSession(context.Background(), session); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.CreateSystemMessage(context.Background(), session.ID, "Model changed."); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := app.CompactSession(context.Background(), session.ID); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("CompactSession error = %v, want ErrInvalidInput", err)
 	}
 }

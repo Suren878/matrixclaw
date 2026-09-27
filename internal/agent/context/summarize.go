@@ -17,6 +17,9 @@ const (
 	summaryToolRunes      = 4_000
 )
 
+// ErrNothingToSummarise means the input holds no text a summary could keep.
+var ErrNothingToSummarise = errors.New("nothing to summarise")
+
 // Generator produces one model reply; agent.Model and providers.Runtime satisfy it.
 type Generator interface {
 	Generate(ctx context.Context, req providers.Request) (providers.Response, error)
@@ -37,7 +40,7 @@ func Summarize(ctx context.Context, generator Generator, in SummaryInput) (strin
 	chunkTokens := max(in.ChunkTokens, minSummaryChunkTokens)
 	chunks := summaryChunks(in.Previous, in.Messages, chunkTokens)
 	if len(chunks) == 0 {
-		return "", errors.New("nothing to summarise")
+		return "", ErrNothingToSummarise
 	}
 	partials, err := generateSummaries(ctx, generator, in.SessionID, "Summarise this part of a conversation:\n\n", chunks)
 	for err == nil && len(partials) > 1 {
