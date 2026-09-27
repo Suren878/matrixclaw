@@ -171,13 +171,15 @@ func TestRecoverRunningGenerationSkipsPartialAndCompletes(t *testing.T) {
 	waitForRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusCompleted)
 
 	request := runtime.lastRequest()
-	if !strings.Contains(request.SystemPrompt, "daemon restarted") {
-		t.Fatalf("system prompt lacks recovery notice: %q", request.SystemPrompt)
-	}
+	notice := false
 	for _, message := range request.Messages {
+		notice = notice || strings.Contains(message.Content, "daemon restarted")
 		if strings.Contains(message.Content, "partial answer") {
 			t.Fatalf("interrupted partial assistant leaked into provider retry: %#v", request.Messages)
 		}
+	}
+	if !notice || strings.Contains(request.SystemPrompt, "daemon restarted") {
+		t.Fatalf("recovery notice is not a context message: system prompt %q", request.SystemPrompt)
 	}
 	messages, err := sqliteStore.ListMessages(context.Background(), session.ID, 0)
 	if err != nil {

@@ -66,6 +66,10 @@ func (e *Engine) Run(ctx context.Context, task Task) (Outcome, error) {
 		return Outcome{Status: StatusFailed, Err: err}, nil
 	}
 	r := &run{Config: e.cfg, task: task, history: newHistory(e.cfg.Journal, e.cfg.Sink, window), counters: task.Resume, started: e.cfg.Now()}
+	r.system, r.custom = e.cfg.Prompts.System(ctx, window.Messages)
+	if ToolUseAllowed(task.Model) {
+		r.tools = toolDefinitions(e.cfg.Tools.Specs(ctx))
+	}
 	for {
 		result := r.step(ctx)
 		if result.canceled {
@@ -89,6 +93,10 @@ type run struct {
 	started    time.Time
 	anchor     *promptAnchor
 	requestSeq int64
+	// system, custom and tools are built once, so every request of the run
+	// shares one prefix.
+	system, custom string
+	tools          []providers.ToolDefinition
 }
 
 type stepKind int
@@ -128,6 +136,9 @@ func (r *run) step(ctx context.Context) stepResult {
 	}
 	if waiting {
 		return stepResult{kind: stepWaitingApproval}
+	}
+	if err := r.syncContext(ctx); err != nil {
+		return failedStep(err)
 	}
 	final, err := r.prepareStep(ctx)
 	if err != nil {

@@ -226,9 +226,12 @@ type Tools struct {
 	Finished  []string
 	OnExecute func(name string, call tools.Call) error
 	OnFinish  func(name string, call tools.Call) error
+	// SpecReads counts tool listings.
+	SpecReads int
 }
 
 func (t *Tools) Specs(context.Context) []tools.Spec {
+	t.SpecReads++
 	names := make([]string, 0, len(t.Funcs))
 	for name := range t.Funcs {
 		names = append(names, name)
@@ -362,13 +365,21 @@ func (s *Sink) Kinds() []agent.EventKind {
 	return kinds
 }
 
-// Prompts returns Text as the system prompt.
+// Prompts returns Text as the system prompt and ContextText as the changing
+// context; SystemCalls counts system prompt builds.
 type Prompts struct {
-	Text string
+	Text        string
+	ContextText string
+	SystemCalls int
 }
 
 func (p *Prompts) System(context.Context, []transcript.Message) (string, string) {
+	p.SystemCalls++
 	return p.Text, ""
+}
+
+func (p *Prompts) Context(context.Context) string {
+	return p.ContextText
 }
 
 // Fixture wires an engine to fresh fakes around one seeded user message.

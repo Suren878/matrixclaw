@@ -43,24 +43,50 @@ func (c *Core) delegateTaskPromptAvailable() bool {
 	return ok
 }
 
-// corePrompts is the Prompts port of one native run.
+// corePrompts is the Prompts port of one native run; memory is the memory text
+// the run's system prompt was built with.
 type corePrompts struct {
-	c    *Core
-	turn nativeTurn
+	c      *Core
+	turn   nativeTurn
+	memory string
 }
 
-func (p corePrompts) System(ctx context.Context, history []transcript.Message) (string, string) {
+func (p *corePrompts) System(ctx context.Context, history []transcript.Message) (string, string) {
 	assistant := p.c.assistantProfile()
-	return p.c.nativeSystemPrompt(ctx, p.turn, assistant, history), assistant.CustomInstructions
+	if !p.turn.Subagent {
+		p.memory = p.c.MemoryPromptContext(ctx, p.turn.WorkingDir)
+	}
+	return p.c.nativeSystemPrompt(ctx, p.turn, assistant, p.memory, history), assistant.CustomInstructions
 }
 
-func (c *Core) nativeSystemPrompt(ctx context.Context, turn nativeTurn, assistant AssistantProfile, history []transcript.Message) string {
-	sections := []string{prompt.AssistantSystemPrompt(assistant.Name, assistant.SystemPrompt)}
-	if checkpoint, ok, err := c.runCheckpoint(ctx, turn.RunID); err == nil && ok {
-		if recoveryPrompt := runCheckpointRecoveryPrompt(checkpoint); recoveryPrompt != "" {
-			sections = append(sections, recoveryPrompt)
-		}
+// Context is what changes during a run: the recovery notice, runtime status,
+// memory written since the run started and the session plan.
+func (p *corePrompts) Context(ctx context.Context) string {
+	var sections []string
+	if checkpoint, ok, err := p.c.runCheckpoint(ctx, p.turn.RunID); err == nil && ok {
+		sections = append(sections, runCheckpointRecoveryPrompt(checkpoint))
 	}
+	if p.turn.Subagent {
+		return prompt.JoinSections(sections...)
+	}
+	sections = append(sections, p.c.nativeStatusPrompt(ctx, p.turn))
+	if memory := p.c.MemoryPromptContext(ctx, p.turn.WorkingDir); memory != p.memory {
+		sections = append(sections, memoryChangedPrompt(memory))
+	}
+	sections = append(sections, p.c.sessionPlanPrompt(ctx, p.turn.SessionID))
+	return prompt.JoinSections(sections...)
+}
+
+func memoryChangedPrompt(memory string) string {
+	if memory == "" {
+		return "Memory changed during this run: every entry was removed."
+	}
+	return "Memory changed during this run; it now is:\n" + memory
+}
+
+// nativeSystemPrompt is the part of the prompt that stays fixed for a run.
+func (c *Core) nativeSystemPrompt(ctx context.Context, turn nativeTurn, assistant AssistantProfile, memory string, history []transcript.Message) string {
+	sections := []string{prompt.AssistantSystemPrompt(assistant.Name, assistant.SystemPrompt)}
 	workingDir := strings.TrimSpace(turn.WorkingDir)
 	if turn.Subagent {
 		sections = append(sections, subagentSystemPrompt())
@@ -87,18 +113,10 @@ func (c *Core) nativeSystemPrompt(ctx context.Context, turn nativeTurn, assistan
 	if c.webResearchPromptAvailable() {
 		sections = append(sections, prompt.WebResearchGuidance())
 	}
-	if statusPrompt := c.nativeStatusPrompt(ctx, turn); statusPrompt != "" {
-		sections = append(sections, statusPrompt)
-	}
 	if c.delegateTaskPromptAvailable() {
 		sections = append(sections, c.delegateTaskGuidancePrompt(ctx))
 	}
-	if memoryPrompt := c.MemoryPromptContext(ctx, turn.WorkingDir); memoryPrompt != "" {
-		sections = append(sections, memoryPrompt)
-	}
-	if planPrompt := c.sessionPlanPrompt(ctx, turn.SessionID); planPrompt != "" {
-		sections = append(sections, planPrompt)
-	}
+	sections = append(sections, memory)
 	if skillsPrompt := c.nativeSkillsPrompt(ctx, turn, history); skillsPrompt != "" {
 		sections = append(sections, skillsPrompt)
 	}

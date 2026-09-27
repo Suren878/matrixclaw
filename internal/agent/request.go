@@ -39,20 +39,19 @@ func modelIdentity(model Model) agentcontext.Identity {
 	return agentcontext.Identity{Provider: provider, Model: name}
 }
 
-// buildRequest assembles the step's request: the boundary's summary first, then
-// the history after it; the final turn keeps the tools defined but forbids
-// calling them, so the cached prefix survives.
+// buildRequest assembles the step's request from the run's fixed prompt and tools:
+// the boundary's summary first, then the history after it; the final turn keeps
+// the tools defined but forbids calling them, so the cached prefix survives.
 func (r *run) buildRequest(ctx context.Context, final StopReason) (providers.Request, error) {
 	compaction, messages := r.history.window()
 	if len(messages) > 0 {
 		r.requestSeq = messages[len(messages)-1].Seq
 	}
-	system, custom := r.Prompts.System(ctx, messages)
 	request := providers.Request{
 		RunID:              r.task.RunID,
 		SessionID:          r.task.SessionID,
-		SystemPrompt:       system,
-		CustomInstructions: custom,
+		SystemPrompt:       r.system,
+		CustomInstructions: r.custom,
 		CacheKey:           r.task.SessionID,
 		MaxOutputTokens:    r.counters.OutputLimit,
 	}
@@ -70,7 +69,7 @@ func (r *run) buildRequest(ctx context.Context, final StopReason) (providers.Req
 		return providers.Request{}, err
 	}
 	request.Messages = append(summary, conversation...)
-	request.Tools = toolDefinitions(r.Tools.Specs(ctx))
+	request.Tools = r.tools
 	return request, nil
 }
 

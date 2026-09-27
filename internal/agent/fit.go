@@ -71,5 +71,10 @@ func (r *run) fitRequest(ctx context.Context, final StopReason) (providers.Reque
 	if err != nil || !compacted {
 		return request, err
 	}
+	if final == "" {
+		if err := r.syncContext(ctx); err != nil {
+			return providers.Request{}, err
+		}
+	}
 	return r.buildRequest(ctx, final)
 }

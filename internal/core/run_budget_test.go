@@ -64,7 +64,7 @@ func TestNativeRunEndsWithAFinalTurnAtTheDefaultStepBudget(t *testing.T) {
 		case message.Role != transcript.MessageRoleSystem:
 		case message.Origin == transcript.OriginEngine:
 			shown++
-		case message.Origin == transcript.OriginEngineModel:
+		case message.Origin == transcript.OriginEngineModel && !strings.HasPrefix(message.Content, "Context update"):
 			modelOnly++
 		}
 	}
