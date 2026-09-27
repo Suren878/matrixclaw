@@ -135,6 +135,20 @@ ORDER BY seq ASC`
 	return s.queryMessages(ctx, query, args...)
 }
 
+// LatestCompaction returns the session's newest context boundary.
+func (s *SQLiteStore) LatestCompaction(ctx context.Context, sessionID string) (transcript.Message, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT `+messageColumns+`
+FROM messages
+WHERE session_id = ? AND compaction_json <> ''
+ORDER BY seq DESC
+LIMIT 1`, sessionID)
+	message, err := scanMessage(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return transcript.Message{}, core.ErrNotFound
+	}
+	return message, err
+}
+
 func (s *SQLiteStore) queryMessages(ctx context.Context, query string, args ...any) ([]transcript.Message, error) {
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -338,7 +352,7 @@ type runScanner interface {
 	Scan(dest ...any) error
 }
 
-const messageColumns = `id, session_id, run_id, role, origin, content, parts_json, model, provider, created_at, updated_at, seq`
+const messageColumns = `id, session_id, run_id, role, origin, content, parts_json, model, provider, created_at, updated_at, seq, compaction_json`
 
 const runColumns = `id, session_id, user_message_id, client, external_key, client_capabilities_json, status, error, stop_reason, continues_run_id, trigger_kind, started_at, finished_at, updated_at`
 
@@ -351,8 +365,8 @@ type sqlRowQueryer interface {
 func insertMessage(ctx context.Context, queryer sqlRowQueryer, message transcript.Message) (int64, error) {
 	var seq int64
 	err := queryer.QueryRowContext(ctx, `
-INSERT INTO messages(id, session_id, run_id, role, origin, content, parts_json, model, provider, created_at, updated_at, seq)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM messages))
+INSERT INTO messages(id, session_id, run_id, role, origin, content, parts_json, model, provider, created_at, updated_at, compaction_json, seq)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM messages))
 RETURNING seq`,
 		message.ID,
 		message.SessionID,
@@ -365,6 +379,7 @@ RETURNING seq`,
 		message.Provider,
 		formatTime(message.CreatedAt),
 		formatTime(messageUpdatedAt(message)),
+		marshalCompaction(message.Compaction),
 	).Scan(&seq)
 	return seq, err
 }
@@ -378,12 +393,14 @@ func scanMessage(scanner messageScanner) (transcript.Message, error) {
 	var provider string
 	var createdAt string
 	var updatedAt string
-	if err := scanner.Scan(&message.ID, &message.SessionID, &message.RunID, &role, &origin, &message.Content, &partsJSON, &model, &provider, &createdAt, &updatedAt, &message.Seq); err != nil {
+	var compactionJSON string
+	if err := scanner.Scan(&message.ID, &message.SessionID, &message.RunID, &role, &origin, &message.Content, &partsJSON, &model, &provider, &createdAt, &updatedAt, &message.Seq, &compactionJSON); err != nil {
 		return transcript.Message{}, fmt.Errorf("store: scan message: %w", err)
 	}
 	message.Role = transcript.MessageRole(role)
 	message.Origin = transcript.Origin(origin)
 	message.Parts = unmarshalMessageParts(partsJSON)
+	message.Compaction = unmarshalCompaction(compactionJSON)
 	message.Model = model
 	message.Provider = provider
 	message.CreatedAt = mustParseTime(createdAt)
@@ -478,6 +495,28 @@ func reverseMessages(messages []transcript.Message) {
 	for left, right := 0, len(messages)-1; left < right; left, right = left+1, right-1 {
 		messages[left], messages[right] = messages[right], messages[left]
 	}
+}
+
+func marshalCompaction(compaction *transcript.Compaction) string {
+	if compaction == nil {
+		return ""
+	}
+	body, err := json.Marshal(compaction)
+	if err != nil {
+		return ""
+	}
+	return string(body)
+}
+
+func unmarshalCompaction(raw string) *transcript.Compaction {
+	if raw == "" {
+		return nil
+	}
+	var compaction transcript.Compaction
+	if err := json.Unmarshal([]byte(raw), &compaction); err != nil {
+		return nil
+	}
+	return &compaction
 }
 
 func marshalMessageParts(message transcript.Message) string {

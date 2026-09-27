@@ -15,18 +15,32 @@ const (
 )
 
 type Message struct {
-	ID        string        `json:"id"`
-	Seq       int64         `json:"seq,omitempty"`
-	SessionID string        `json:"session_id"`
-	RunID     string        `json:"run_id"`
-	Role      MessageRole   `json:"role"`
-	Origin    Origin        `json:"origin,omitempty"`
-	Content   string        `json:"content"`
-	Parts     []MessagePart `json:"parts,omitempty"`
-	Model     string        `json:"model,omitempty"`
-	Provider  string        `json:"provider,omitempty"`
-	CreatedAt time.Time     `json:"created_at"`
-	UpdatedAt time.Time     `json:"updated_at"`
+	ID         string        `json:"id"`
+	Seq        int64         `json:"seq,omitempty"`
+	SessionID  string        `json:"session_id"`
+	RunID      string        `json:"run_id"`
+	Role       MessageRole   `json:"role"`
+	Origin     Origin        `json:"origin,omitempty"`
+	Content    string        `json:"content"`
+	Parts      []MessagePart `json:"parts,omitempty"`
+	Compaction *Compaction   `json:"compaction,omitempty"`
+	Model      string        `json:"model,omitempty"`
+	Provider   string        `json:"provider,omitempty"`
+	CreatedAt  time.Time     `json:"created_at"`
+	UpdatedAt  time.Time     `json:"updated_at"`
+}
+
+// Compaction makes a message a context boundary: the model sees Summary and Kept
+// instead of the session's messages up to CoversThroughSeq. Cleared marks a
+// /clear, which keeps nothing. Tokens are estimates of the prompt around it.
+type Compaction struct {
+	Summary          string   `json:"summary,omitempty"`
+	Kept             []string `json:"kept,omitempty"`
+	CoversThroughSeq int64    `json:"covers_through_seq"`
+	RunID            string   `json:"run_id,omitempty"`
+	TokensBefore     int      `json:"tokens_before,omitempty"`
+	TokensAfter      int      `json:"tokens_after,omitempty"`
+	Cleared          bool     `json:"cleared,omitempty"`
 }
 
 // Origin says who wrote a message when its role alone does not.

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -250,5 +251,31 @@ func TestMessageOriginIsStored(t *testing.T) {
 	listed, err := st.ListMessages(ctx, "s1", 0)
 	if err != nil || len(listed) != 2 || listed[0].Origin != transcript.OriginEngine || listed[1].Origin != "" {
 		t.Fatalf("listed = %+v err = %v", listed, err)
+	}
+}
+
+func TestLatestCompactionIsTheNewestBoundaryOfTheSession(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	createTestSession(t, st, "s1")
+	createTestSession(t, st, "s2")
+	if _, err := st.LatestCompaction(ctx, "s1"); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("LatestCompaction without a boundary: err = %v, want ErrNotFound", err)
+	}
+	system := transcript.MessageRoleSystem
+	saveTestMessage(t, st, transcript.Message{ID: "m1", SessionID: "s1", CreatedAt: testEpoch})
+	saveTestMessage(t, st, transcript.Message{ID: "b1", SessionID: "s1", Role: system, Content: "Context compacted.", Compaction: &transcript.Compaction{Summary: "first", CoversThroughSeq: 1}, CreatedAt: testEpoch})
+	saveTestMessage(t, st, transcript.Message{ID: "m2", SessionID: "s1", CreatedAt: testEpoch})
+	want := transcript.Compaction{Summary: "second", Kept: []string{"User: task"}, CoversThroughSeq: 3, RunID: "r1", TokensBefore: 900, TokensAfter: 300}
+	saveTestMessage(t, st, transcript.Message{ID: "b2", SessionID: "s1", Role: system, Content: "Context compacted.", Compaction: &want, CreatedAt: testEpoch})
+	saveTestMessage(t, st, transcript.Message{ID: "other", SessionID: "s2", Role: system, Content: "Context cleared.", Compaction: &transcript.Compaction{Cleared: true}, CreatedAt: testEpoch})
+
+	latest, err := st.LatestCompaction(ctx, "s1")
+	if err != nil || latest.ID != "b2" || latest.Compaction == nil || !reflect.DeepEqual(*latest.Compaction, want) {
+		t.Fatalf("latest = %+v err = %v", latest, err)
+	}
+	plain, err := st.GetMessage(ctx, "m2")
+	if err != nil || plain.Compaction != nil {
+		t.Fatalf("plain message = %+v err = %v", plain, err)
 	}
 }
