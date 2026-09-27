@@ -58,8 +58,8 @@ func TestUsageCommandShowsStepsAndCacheTokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "Runs: 2\nSteps: 5\nPrompt: 12k tokens\nCache read: 9.0k tokens\nCache write: 1.5k tokens\nOutput: 800 tokens\nReasoning: 200 tokens"
-	if result.Info == nil || result.Info.Text != want || len(result.Info.Rows) != 7 {
+	want := "Runs: 2\nSteps: 5\nPrompt: 12k tokens\nCache read: 9.0k tokens\nCache write: 1.5k tokens\nCache hit: 75%\nOutput: 800 tokens\nReasoning: 200 tokens"
+	if result.Info == nil || result.Info.Text != want || len(result.Info.Rows) != 8 {
 		t.Fatalf("usage result=%+v, want text:\n%s", result.Info, want)
 	}
 }

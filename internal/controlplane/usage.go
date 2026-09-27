@@ -54,9 +54,18 @@ func usageInfoRows(summary core.UsageSummary) []InfoRow {
 		{Label: "Prompt", Value: usageTokenLabel(summary.PromptTokens)},
 		{Label: "Cache read", Value: usageTokenLabel(summary.CacheReadTokens)},
 		{Label: "Cache write", Value: usageTokenLabel(summary.CacheWriteTokens)},
+		{Label: "Cache hit", Value: cacheHitLabel(summary)},
 		{Label: "Output", Value: usageTokenLabel(summary.OutputTokens)},
 		{Label: "Reasoning", Value: usageTokenLabel(summary.ReasoningTokens)},
 	}
+}
+
+// cacheHitLabel is the share of prompt tokens the provider read from its cache.
+func cacheHitLabel(summary core.UsageSummary) string {
+	if summary.PromptTokens <= 0 {
+		return "n/a"
+	}
+	return fmt.Sprintf("%d%%", summary.CacheReadTokens*100/summary.PromptTokens)
 }
 
 func usageTokenLabel(value int64) string {
