@@ -479,6 +479,14 @@ func (r ControlplaneRuntime) CompactSession(ctx context.Context, sessionID strin
 	return client.CompactSession(ctx, sessionID)
 }
 
+func (r ControlplaneRuntime) ClearContext(ctx context.Context, sessionID string) (transcript.Message, error) {
+	client, err := r.client("")
+	if err != nil {
+		return transcript.Message{}, err
+	}
+	return client.ClearContext(ctx, sessionID)
+}
+
 func (r ControlplaneRuntime) CreateSystemMessage(ctx context.Context, sessionID string, content string) (transcript.Message, error) {
 	client, err := r.client("")
 	if err != nil {

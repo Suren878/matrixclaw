@@ -240,6 +240,15 @@ func (c *Client) CompactSession(ctx context.Context, sessionID string) (core.Com
 	return response.Compact, nil
 }
 
+func (c *Client) ClearContext(ctx context.Context, sessionID string) (transcript.Message, error) {
+	var response core.MessageResponse
+	path := "/v1/sessions/" + escapedPath(sessionID) + "/clear"
+	if err := c.doJSON(ctx, http.MethodPost, path, nil, &response); err != nil {
+		return transcript.Message{}, err
+	}
+	return response.Message, nil
+}
+
 func (c *Client) CreateSystemMessage(ctx context.Context, sessionID string, content string) (transcript.Message, error) {
 	var response core.MessageResponse
 	path := "/v1/sessions/" + escapedPath(sessionID) + "/system-message"

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
@@ -23,8 +22,8 @@ func TestContextMarkersAreRejectedWhileANativeRunExecutes(t *testing.T) {
 	if _, err := app.CompactSession(ctx, session.ID); !errors.Is(err, core.ErrRunActive) {
 		t.Fatalf("CompactSession error = %v, want ErrRunActive", err)
 	}
-	if _, err := app.CreateSystemMessage(ctx, session.ID, agentcontext.ClearedMarkerContent()); !errors.Is(err, core.ErrRunActive) {
-		t.Fatalf("clear marker error = %v, want ErrRunActive", err)
+	if _, err := app.ClearContext(ctx, session.ID); !errors.Is(err, core.ErrRunActive) {
+		t.Fatalf("ClearContext error = %v, want ErrRunActive", err)
 	}
 	if _, err := app.CreateSystemMessage(ctx, session.ID, "Model changed."); err != nil {
 		t.Fatalf("plain system notice: %v", err)

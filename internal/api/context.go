@@ -44,3 +44,16 @@ func (s *Server) handleSessionCompact(w http.ResponseWriter, r *http.Request, se
 	}
 	writeJSON(w, http.StatusOK, core.SessionCompactResponse{Compact: result})
 }
+
+func (s *Server) handleSessionClear(w http.ResponseWriter, r *http.Request, sessionID string) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+	message, err := s.core.ClearContext(r.Context(), sessionID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, core.MessageResponse{Message: message})
+}

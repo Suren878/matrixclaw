@@ -91,6 +91,7 @@ type ContinueRuntime interface {
 type ContextRuntime interface {
 	SessionContext(ctx context.Context, sessionID string) (core.ContextReport, error)
 	CompactSession(ctx context.Context, sessionID string) (core.CompactSessionResult, error)
+	ClearContext(ctx context.Context, sessionID string) (transcript.Message, error)
 }
 
 type UsageRuntime interface {

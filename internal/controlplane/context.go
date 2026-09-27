@@ -48,10 +48,7 @@ func (d *Dispatcher) handleContext(ctx context.Context, externalKey string, args
 			},
 		}, nil
 	case "clear confirm":
-		if d.messages == nil {
-			return unsupportedRuntime("context"), nil
-		}
-		if _, err := d.messages.CreateSystemMessage(ctx, session.ID, agentcontext.ClearedMarkerContent()); err != nil {
+		if _, err := d.contextRuntime.ClearContext(ctx, session.ID); err != nil {
 			return Result{}, err
 		}
 		return Result{Handled: true, Text: "Context cleared.", ReloadSnapshot: true}, nil

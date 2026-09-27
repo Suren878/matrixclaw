@@ -63,6 +63,7 @@ func (s *Server) handleSessionByID(w http.ResponseWriter, r *http.Request) {
 		{suffix: "/plan/run", handle: s.handleSessionPlanRun},
 		{suffix: "/plan", handle: s.handleSessionPlan},
 		{suffix: "/compact", handle: s.handleSessionCompact},
+		{suffix: "/clear", handle: s.handleSessionClear},
 		{suffix: "/system-message", handle: s.handleSessionSystemMessage},
 	}
 	for _, route := range childRoutes {
