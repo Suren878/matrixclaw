@@ -102,3 +102,15 @@ func TestSummaryTextCarriesTheSummaryAndTheKeptTexts(t *testing.T) {
 		t.Fatal("a cleared or missing boundary has no summary text")
 	}
 }
+
+func TestKeptCutsTheMiddleOfALongText(t *testing.T) {
+	long := "HEAD" + strings.Repeat("m", 40_000) + "TAIL"
+	kept := Kept(nil, []transcript.Message{textMessage(1, transcript.MessageRoleUser, "r1", long)}, "r1")
+
+	if len(kept) != 1 || !strings.HasPrefix(kept[0], "User: HEAD") || !strings.HasSuffix(kept[0], "TAIL") || !strings.Contains(kept[0], "[... cut ...]") {
+		t.Fatalf("kept = %.60q ... %.60q", kept[0], kept[0][len(kept[0])-60:])
+	}
+	if tokens := EstimateTextTokens(kept[0]); tokens > 2_050 {
+		t.Fatalf("kept text is ~%d tokens, want about 2k", tokens)
+	}
+}

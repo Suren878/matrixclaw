@@ -74,6 +74,9 @@ func cutPoints(messages []transcript.Message) []bool {
 	return cuts
 }
 
+// keptTextTokens bounds one kept text; a longer one loses its middle.
+const keptTextTokens = 2_000
+
 // Kept is what a new boundary keeps verbatim: the run's user messages and the
 // guidance steered into its tool results, after what the boundary it replaces
 // kept for the same run.
@@ -89,7 +92,7 @@ func Kept(previous *transcript.Compaction, covered []transcript.Message, runID s
 		}
 		if message.Role == transcript.MessageRoleUser {
 			if text := strings.TrimSpace(message.Content); text != "" {
-				kept = append(kept, "User: "+text)
+				kept = append(kept, "User: "+cutMiddle(text, keptTextTokens))
 			}
 			continue
 		}
@@ -98,11 +101,22 @@ func Kept(previous *transcript.Compaction, covered []transcript.Message, runID s
 				continue
 			}
 			for _, guidance := range part.ToolResult.Guidance {
-				kept = append(kept, "User guidance: "+guidance)
+				kept = append(kept, "User guidance: "+cutMiddle(guidance, keptTextTokens))
 			}
 		}
 	}
 	return kept
+}
+
+// cutMiddle keeps the head and tail of text within about maxTokens.
+func cutMiddle(text string, maxTokens int) string {
+	tokens := EstimateTextTokens(text)
+	if tokens <= maxTokens {
+		return text
+	}
+	runes := []rune(text)
+	half := len(runes) * maxTokens / tokens / 2
+	return string(runes[:half]) + "\n\n[... cut ...]\n\n" + string(runes[len(runes)-half:])
 }
 
 // SummaryText is the user text that stands for the history a boundary covers;
