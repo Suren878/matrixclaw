@@ -82,10 +82,10 @@ func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSes
 	if sessionID == "" {
 		return CompactSessionResult{}, ErrSessionRequired
 	}
-	if executing, err := c.sessionRunExecuting(ctx, sessionID); err != nil {
+	if active, err := c.sessionRunActive(ctx, sessionID); err != nil {
 		return CompactSessionResult{}, err
-	} else if executing {
-		return CompactSessionResult{}, fmt.Errorf("%w: wait for the current run to finish before compacting", ErrRunActive)
+	} else if active {
+		return CompactSessionResult{}, fmt.Errorf("%w: finish or cancel the current run before compacting", ErrRunActive)
 	}
 	session, err := c.store.GetSession(ctx, sessionID)
 	if err != nil {
@@ -132,16 +132,14 @@ func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSes
 	return CompactSessionResult{Message: message, Context: c.contextReportForSession(session, next)}, nil
 }
 
-// sessionRunExecuting reports whether a run of the session is executing in this daemon.
-func (c *Core) sessionRunExecuting(ctx context.Context, sessionID string) (bool, error) {
-	run, err := c.store.GetActiveRunBySession(ctx, sessionID)
+// sessionRunActive reports whether the session has an unfinished run, including
+// one parked for approval: a boundary would hide the calls it resumes from.
+func (c *Core) sessionRunActive(ctx context.Context, sessionID string) (bool, error) {
+	_, err := c.store.GetActiveRunBySession(ctx, sessionID)
 	if errors.Is(err, ErrNotFound) {
 		return false, nil
 	}
-	if err != nil {
-		return false, err
-	}
-	return c.runIsActive(run.ID), nil
+	return err == nil, err
 }
 
 // contextBaseTokens estimates the parts of every request that are not history.

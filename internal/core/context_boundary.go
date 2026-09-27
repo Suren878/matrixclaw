@@ -18,10 +18,10 @@ func (c *Core) ClearContext(ctx context.Context, sessionID string) (transcript.M
 	if _, err := c.store.GetSession(ctx, sessionID); err != nil {
 		return transcript.Message{}, err
 	}
-	if executing, err := c.sessionRunExecuting(ctx, sessionID); err != nil {
+	if active, err := c.sessionRunActive(ctx, sessionID); err != nil {
 		return transcript.Message{}, err
-	} else if executing {
-		return transcript.Message{}, fmt.Errorf("%w: wait for the current run to finish before clearing context", ErrRunActive)
+	} else if active {
+		return transcript.Message{}, fmt.Errorf("%w: finish or cancel the current run before clearing context", ErrRunActive)
 	}
 	latest, err := c.store.ListMessages(ctx, sessionID, 1)
 	if err != nil {
