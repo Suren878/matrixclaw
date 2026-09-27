@@ -1,6 +1,7 @@
 package agent_test
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -200,5 +201,29 @@ func TestSummaryIsSkippedWhenItWouldReplaceLittle(t *testing.T) {
 	}
 	if len(boundaries(f.Journal.Messages)) != 0 || f.Journal.States[len(f.Journal.States)-1].Counters.LowYield != 0 {
 		t.Fatalf("boundaries = %+v states = %+v", boundaries(f.Journal.Messages), f.Journal.States)
+	}
+}
+
+func TestContinuationCarriesTheEarlierRunsKeptTexts(t *testing.T) {
+	f := agenttest.NewFixture()
+	history := pastTurn(400_000)
+	earlier := transcript.Message{
+		ID: "earlier_boundary", SessionID: agenttest.SessionID, Role: transcript.MessageRoleSystem, Content: "Context compacted.",
+		Compaction: &transcript.Compaction{Summary: "EARLIER", Kept: []string{"User: first ask"}, RunID: "run_0", CoversThroughSeq: 1},
+	}
+	f.WithHistory(history[0], earlier, history[1])
+	f.Prompts.WindowTokens = 100_000
+	model := agenttest.NewScriptedModel(text("SUMMARY"), text("Done."))
+	task := f.Task(model)
+	task.Continues = []string{"run_0"}
+
+	outcome, err := f.Engine().Run(context.Background(), task)
+
+	if err != nil || outcome.Status != agent.StatusCompleted {
+		t.Fatalf("outcome = %+v err = %v", outcome, err)
+	}
+	marks := boundaries(f.Journal.Messages)
+	if len(marks) != 2 || len(marks[1].Compaction.Kept) != 1 || marks[1].Compaction.Kept[0] != "User: first ask" {
+		t.Fatalf("boundaries = %+v", marks)
 	}
 }

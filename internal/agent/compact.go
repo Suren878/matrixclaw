@@ -45,7 +45,7 @@ func (r *run) compactHistory(ctx context.Context, b contextBudget, before int, t
 func (r *run) writeBoundary(ctx context.Context, previous *transcript.Compaction, covered []transcript.Message, summary string, before int) error {
 	compaction := transcript.Compaction{
 		Summary:          strings.TrimSpace(summary),
-		Kept:             agentcontext.Kept(previous, covered, r.task.RunID),
+		Kept:             agentcontext.Kept(previous, covered, append([]string{r.task.RunID}, r.task.Continues...)),
 		CoversThroughSeq: covered[len(covered)-1].Seq,
 		RunID:            r.task.RunID,
 		TokensBefore:     before,

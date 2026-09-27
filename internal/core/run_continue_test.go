@@ -3,9 +3,11 @@ package core_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -60,5 +62,42 @@ func TestContinueNeedsAnEarlierRun(t *testing.T) {
 
 	if !errors.Is(err, core.ErrInvalidInput) {
 		t.Fatalf("error = %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestContinueKeepsTheOriginalAssignmentVerbatim(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithRunStarter(&recordingRunStarter{})
+	app.WithSessionLLMs(windowLLMs{window: 100_000, recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		if strings.HasPrefix(request.SystemPrompt, "You compact matrixclaw chat histories") {
+			return providers.Response{Text: "SUMMARY"}, nil
+		}
+		return providers.Response{Text: "Done."}, nil
+	})}})
+	ctx := context.Background()
+	session, first := saveNativeRunWithHistory(t, db, "assignment")
+	answer := strings.Repeat("x", 330_000)
+	saveRunRecoveryTestMessage(t, db, transcript.Message{
+		ID: "msg_long_answer", SessionID: session.ID, RunID: first.ID, Role: transcript.MessageRoleAssistant, Content: answer,
+		Parts: transcript.NormalizeMessageParts(answer, nil), CreatedAt: runRecoveryTestTime(), UpdatedAt: runRecoveryTestTime(),
+	})
+	first.Status = core.RunStatusCompleted
+	if err := db.UpdateRun(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	continued, err := app.AcceptRun(ctx, core.HandleMessageInput{SessionID: session.ID, Continue: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.ExecuteRun(ctx, continued.Run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	assertRecoveryRunStatus(t, db, continued.Run.ID, core.RunStatusCompleted)
+	boundary, err := db.LatestCompaction(ctx, session.ID)
+	if err != nil || len(boundary.Compaction.Kept) != 1 || boundary.Compaction.Kept[0] != "User: original task assignment" {
+		t.Fatalf("boundary = %+v err = %v", boundary.Compaction, err)
 	}
 }

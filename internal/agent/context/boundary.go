@@ -2,6 +2,7 @@ package agentcontext
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -77,17 +78,16 @@ func cutPoints(messages []transcript.Message) []bool {
 // keptTextTokens bounds one kept text; a longer one loses its middle.
 const keptTextTokens = 2_000
 
-// Kept is what a new boundary keeps verbatim: the run's user messages and the
-// guidance steered into its tool results, after what the boundary it replaces
-// kept for the same run.
-func Kept(previous *transcript.Compaction, covered []transcript.Message, runID string) []string {
-	runID = strings.TrimSpace(runID)
+// Kept is what a new boundary keeps verbatim: the user messages and steered
+// guidance of runIDs (the run and the runs it continues), after what the
+// boundary it replaces kept for one of them.
+func Kept(previous *transcript.Compaction, covered []transcript.Message, runIDs []string) []string {
 	var kept []string
-	if previous != nil && previous.RunID == runID {
+	if previous != nil && slices.Contains(runIDs, previous.RunID) {
 		kept = append(kept, previous.Kept...)
 	}
 	for _, message := range covered {
-		if strings.TrimSpace(message.RunID) != runID {
+		if !slices.Contains(runIDs, strings.TrimSpace(message.RunID)) {
 			continue
 		}
 		if message.Role == transcript.MessageRoleUser {

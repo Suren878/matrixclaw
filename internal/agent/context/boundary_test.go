@@ -71,13 +71,17 @@ func TestKeptHoldsTheRunsUserTextAndSteersVerbatim(t *testing.T) {
 		result,
 	}
 
-	got := Kept(&transcript.Compaction{RunID: "r1", Kept: []string{"User: first ask"}}, covered, "r1")
+	got := Kept(&transcript.Compaction{RunID: "r1", Kept: []string{"User: first ask"}}, covered, []string{"r1"})
 	want := []string{"User: first ask", "User: second ask", "User guidance: look at the logs"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Kept = %q, want %q", got, want)
 	}
-	if got := Kept(&transcript.Compaction{RunID: "r0", Kept: []string{"User: old"}}, covered[:1], "r1"); !reflect.DeepEqual(got, []string{"User: second ask"}) {
+	if got := Kept(&transcript.Compaction{RunID: "r0", Kept: []string{"User: old"}}, covered[:1], []string{"r1"}); !reflect.DeepEqual(got, []string{"User: second ask"}) {
 		t.Fatalf("Kept across runs = %q", got)
+	}
+	continued := Kept(&transcript.Compaction{RunID: "r0", Kept: []string{"User: old"}}, covered[:2], []string{"r1", "r0"})
+	if !reflect.DeepEqual(continued, []string{"User: old", "User: second ask", "User: another run"}) {
+		t.Fatalf("Kept of a continuation = %q", continued)
 	}
 }
 
@@ -105,7 +109,7 @@ func TestSummaryTextCarriesTheSummaryAndTheKeptTexts(t *testing.T) {
 
 func TestKeptCutsTheMiddleOfALongText(t *testing.T) {
 	long := "HEAD" + strings.Repeat("m", 40_000) + "TAIL"
-	kept := Kept(nil, []transcript.Message{textMessage(1, transcript.MessageRoleUser, "r1", long)}, "r1")
+	kept := Kept(nil, []transcript.Message{textMessage(1, transcript.MessageRoleUser, "r1", long)}, []string{"r1"})
 
 	if len(kept) != 1 || !strings.HasPrefix(kept[0], "User: HEAD") || !strings.HasSuffix(kept[0], "TAIL") || !strings.Contains(kept[0], "[... cut ...]") {
 		t.Fatalf("kept = %.60q ... %.60q", kept[0], kept[0][len(kept[0])-60:])

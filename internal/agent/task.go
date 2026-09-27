@@ -17,6 +17,9 @@ type Task struct {
 	Model       Model
 	Budget      Budget
 	Resume      Counters
+	// Continues lists the runs this one continues, nearest first; what they keep
+	// verbatim past a summary stays kept.
+	Continues []string
 }
 
 // Budget limits one run; a zero field is unlimited.
