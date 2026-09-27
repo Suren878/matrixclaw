@@ -29,7 +29,7 @@ func (p *setupRuntimeStatusContext) RuntimeStatusPromptContext(_ context.Context
 		runtime = localruntime.New("")
 	}
 	toolSet := toolIDSet(req.ToolIDs)
-	lines := []string{"Current runtime status (fresh for this request):"}
+	lines := []string{"Current runtime status (as of this note; a newer note replaces it):"}
 	lines = append(lines, browserStatusLine(runtime.DecorateBrowserModule(setup.BrowserModuleFromConfig(cfg.Modules)), toolSet))
 	lines = append(lines, webSearchStatusLine(cfg.Modules.WebSearch, toolSet))
 	for _, module := range runtime.DecorateVoiceModules(setup.VoiceModuleDescriptors(cfg.Modules)) {
