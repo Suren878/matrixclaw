@@ -111,16 +111,21 @@ func TestContextLengthErrorSummarisesAndRetriesOnce(t *testing.T) {
 	}
 }
 
+// talkingCall is a tool step whose reply also says replyRunes of text.
+func talkingCall(replyRunes int, toolCall providers.ToolCall) agenttest.Turn {
+	return agenttest.Turn{Response: providers.Response{Text: strings.Repeat("t", replyRunes), ToolCalls: []providers.ToolCall{toolCall}}}
+}
+
 func TestSummaryKeepsTheAssignmentStepsAndWholeToolSteps(t *testing.T) {
 	f := agenttest.NewFixture()
-	// A 20k window keeps a tail of ~2.5k tokens; the base puts the fourth step,
-	// with three ~2.5k results, over the 80k threshold.
-	f.Prompts.WindowTokens = 20_000
-	f.Prompts.BaseTokens = 74_000
+	// A 40k window keeps only the newest ~10k step as the tail; the base puts
+	// the fourth step, after three such steps, over the 80k threshold.
+	f.Prompts.WindowTokens = 40_000
+	f.Prompts.BaseTokens = 55_000
 	big := strings.Repeat("b", 10_000)
 	f.Tools.Funcs["read"] = func(call tools.Call) tools.Result { return tools.Result{Content: call.ToolCallID + big} }
 	f.Inbox.Steers = []string{"focus on the parser"}
-	model := agenttest.NewScriptedModel(calls(call("r1", "read")), calls(call("r2", "read")), calls(call("r3", "read")), text("SUMMARY"), text("Done."))
+	model := agenttest.NewScriptedModel(talkingCall(30_000, call("r1", "read")), talkingCall(30_000, call("r2", "read")), talkingCall(30_000, call("r3", "read")), text("SUMMARY"), text("Done."))
 
 	outcome := run(t, f, model)
 
@@ -158,18 +163,42 @@ func assertBoundaryAndLastToolStep(t *testing.T, request providers.Request) {
 
 func TestTwoLowYieldSummariesStopSummarising(t *testing.T) {
 	f := agenttest.NewFixture()
-	f.Prompts.BaseTokens = 90_000
+	// Each step says ~10k tokens; the summaries come back as long as what they
+	// replace, so neither saves a tenth of the prompt.
+	f.Prompts.BaseTokens = 40_000
 	f.Tools.Funcs["read"] = counterTool()
-	model := agenttest.NewScriptedModel(calls(call("c1", "read")), text("SUM1"), calls(call("c2", "read")), text("SUM2"), calls(call("c3", "read")), text("Done."))
+	step := func(id string) agenttest.Turn { return talkingCall(40_000, call(id, "read")) }
+	sum1, sum2 := text("SUM1 "+strings.Repeat("s", 60_000)), text("SUM2 "+strings.Repeat("s", 100_000))
+	model := agenttest.NewScriptedModel(step("c1"), step("c2"), step("c3"), step("c4"), sum1, step("c5"), sum2, step("c6"), text("Done."))
 
 	outcome := run(t, f, model)
 
 	requests := model.Requests()
-	if outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != "Done." || len(requests) != 6 || summaryCount(requests) != 2 {
+	if outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != "Done." || len(requests) != 9 || summaryCount(requests) != 2 {
 		t.Fatalf("outcome = %+v requests = %d summaries = %d", outcome, len(requests), summaryCount(requests))
 	}
 	marks := boundaries(f.Journal.Messages)
 	if len(marks) != 2 || len(marks[1].Compaction.Kept) != 1 || marks[1].Compaction.Kept[0] != "User: do the task" {
 		t.Fatalf("boundaries = %+v", marks)
+	}
+	if last := f.Journal.States[len(f.Journal.States)-1]; last.Counters.LowYield != 2 {
+		t.Fatalf("low-yield summaries = %d, want 2", last.Counters.LowYield)
+	}
+}
+
+func TestSummaryIsSkippedWhenItWouldReplaceLittle(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Prompts.BaseTokens = 90_000
+	f.Tools.Funcs["read"] = counterTool()
+	model := agenttest.NewScriptedModel(calls(call("c1", "read")), text("Done."))
+
+	outcome := run(t, f, model)
+
+	requests := model.Requests()
+	if outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != "Done." || len(requests) != 2 || summaryCount(requests) != 0 {
+		t.Fatalf("outcome = %+v requests = %d summaries = %d", outcome, len(requests), summaryCount(requests))
+	}
+	if len(boundaries(f.Journal.Messages)) != 0 || f.Journal.States[len(f.Journal.States)-1].Counters.LowYield != 0 {
+		t.Fatalf("boundaries = %+v states = %+v", boundaries(f.Journal.Messages), f.Journal.States)
 	}
 }

@@ -15,8 +15,8 @@ import (
 const lowYieldLimit = 2
 
 // compactHistory summarises the history before the newest turns that fit in
-// tailPercent of the window into a boundary; false means nothing could be
-// summarised.
+// tailPercent of the window into a boundary; false means nothing worth
+// summarising: no history before the tail, or under a tenth of the prompt.
 func (r *run) compactHistory(ctx context.Context, b contextBudget, before int, tailPercent int) (bool, error) {
 	previous, messages := r.history.window()
 	limit := agentcontext.EffectiveWindow(b.window, int(providers.DefaultMaxOutputTokens))
@@ -25,6 +25,9 @@ func (r *run) compactHistory(ctx context.Context, b contextBudget, before int, t
 		return false, nil
 	}
 	covered := messages[:cut]
+	if agentcontext.EstimateMessageTokens(covered)*10 < before {
+		return false, nil
+	}
 	summary, err := agentcontext.Summarize(ctx, summaryModel{r: r}, agentcontext.SummaryInput{
 		SessionID:   r.task.SessionID,
 		Previous:    agentcontext.SummaryText(previous),
