@@ -56,15 +56,41 @@ func (r *run) anchorUsage(response providers.Response) {
 	}
 }
 
-// fitRequest builds the step's request and first summarises older history when
-// the prompt has reached the summary threshold.
+// elision is what the run currently hides from its requests.
+func (r *run) elision() agentcontext.Elision {
+	return agentcontext.Elision{ResultsThroughSeq: r.counters.ElidedResults, ImagesThroughSeq: r.counters.ElidedImages}
+}
+
+// advanceElision moves the elision up to the history's current rounds and
+// reports whether it moved; the request prefix changes only then.
+func (r *run) advanceElision() bool {
+	_, messages := r.history.window()
+	next := agentcontext.NextElision(messages)
+	if next.ResultsThroughSeq <= r.counters.ElidedResults && next.ImagesThroughSeq <= r.counters.ElidedImages {
+		return false
+	}
+	r.counters.ElidedResults = max(r.counters.ElidedResults, next.ResultsThroughSeq)
+	r.counters.ElidedImages = max(r.counters.ElidedImages, next.ImagesThroughSeq)
+	r.anchor = nil
+	return true
+}
+
+// fitRequest builds the step's request within the model's window: old bulky
+// results are elided at 60% of it, older history is summarised at 80%.
 func (r *run) fitRequest(ctx context.Context, final StopReason) (providers.Request, error) {
 	request, err := r.buildRequest(ctx, final)
 	if err != nil {
 		return providers.Request{}, err
 	}
+	limit := r.contextLimit()
 	tokens := r.promptTokens(request)
-	if !agentcontext.SummaryDue(tokens, r.contextLimit()) || r.counters.LowYield >= lowYieldLimit {
+	if agentcontext.ElisionDue(tokens, limit) && r.advanceElision() {
+		if request, err = r.buildRequest(ctx, final); err != nil {
+			return providers.Request{}, err
+		}
+		tokens = agentcontext.EstimateRequestTokens(request)
+	}
+	if !agentcontext.SummaryDue(tokens, limit) || r.counters.LowYield >= lowYieldLimit {
 		return request, nil
 	}
 	compacted, err := r.compactHistory(ctx, tokens, agentcontext.TailPercent)
