@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"errors"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -45,7 +46,7 @@ const (
 // Outcome is applied by core. Assistant is the final reply (completed), the reply to
 // seal (canceled, interrupted) or the errored reply (failed with MarkErrored).
 // Reached is what the last step produced before an interruption; StopReason is set
-// whenever the run completed or reached completion.
+// whenever the run completed or reached completion, and for a context-exhausted failure.
 type Outcome struct {
 	Status         Status
 	StopReason     StopReason
@@ -60,10 +61,15 @@ type Outcome struct {
 type StopReason string
 
 const (
-	StopDone            StopReason = "done"
-	StopBudgetExhausted StopReason = "budget_exhausted"
-	StopLoopDetected    StopReason = "loop_detected"
+	StopDone             StopReason = "done"
+	StopBudgetExhausted  StopReason = "budget_exhausted"
+	StopLoopDetected     StopReason = "loop_detected"
+	StopContextExhausted StopReason = "context_exhausted"
 )
+
+// ErrContextExhausted fails a run whose conversation no longer fits the model's
+// window even after summarising it.
+var ErrContextExhausted = errors.New("context_exhausted: the conversation no longer fits the model's context window")
 
 // Continuable reports whether a run stopped before its work was done.
 func (r StopReason) Continuable() bool {

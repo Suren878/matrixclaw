@@ -1,6 +1,7 @@
 package agent_test
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/agent/agenttest"
+	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
@@ -114,5 +116,68 @@ func TestElisionAdvancesOncePerFiveNewRoundsBelowTheSummaryThreshold(t *testing.
 	}
 	if got := toolContent(requests[11], "read6"); !strings.HasPrefix(got, "[output of read() hidden") {
 		t.Fatalf("read6 at step 12 = %.40q, want it hidden", got)
+	}
+}
+
+func TestSummaryReusesTheStepsRequestWithToolsDisabled(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.WithHistory(pastTurn(100_000)...)
+	f.Window = 100_000
+	f.Tools.Funcs["read"] = readTool
+	model := agenttest.NewScriptedModel(
+		agenttest.Turn{Response: providers.Response{ToolCalls: []providers.ToolCall{call("c1", "read")}, Usage: providers.Usage{PromptTokens: 70_000}}},
+		text("SUMMARY"),
+		text("Done."),
+	)
+
+	run(t, f, model)
+
+	requests := model.Requests()
+	summary := requests[1]
+	if summary.SystemPrompt != requests[0].SystemPrompt || len(summary.Tools) == 0 || len(summary.Tools) != len(requests[0].Tools) || summary.ToolChoice != providers.ToolChoiceNone || summary.CacheKey != agenttest.SessionID {
+		t.Fatalf("summary request does not reuse the step's prefix: %+v", summary)
+	}
+	if !reflect.DeepEqual(summary.Messages[:len(requests[0].Messages)], requests[0].Messages) || lastMessage(summary).Content != agentcontext.SummaryInstruction {
+		t.Fatalf("summary messages = %+v", summary.Messages)
+	}
+	if first := requests[2].Messages[0]; !strings.Contains(first.Content, "SUMMARY") {
+		t.Fatalf("next request starts with %+v", first)
+	}
+}
+
+func TestRequestOverTheWindowIsSummarisedOnItsOwn(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.WithHistory(pastTurn(400_000)...)
+	f.Window = 100_000
+	model := agenttest.NewScriptedModel(text("SUMMARY"), text("Done."))
+
+	run(t, f, model)
+
+	if summary := model.Requests()[0]; !strings.HasPrefix(summary.SystemPrompt, "You compact matrixclaw chat histories") || len(summary.Tools) != 0 {
+		t.Fatalf("summary request = %q with %d tools, want a standalone summary", summary.SystemPrompt, len(summary.Tools))
+	}
+}
+
+func TestSecondOverflowExhaustsTheContext(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.WithHistory(pastTurn(80_000)...)
+	overflow := agenttest.Turn{Err: errors.New("context_length_exceeded")}
+	model := agenttest.NewScriptedModel(overflow, text("SUMMARY"), overflow)
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusFailed || outcome.StopReason != agent.StopContextExhausted || !errors.Is(outcome.Err, agent.ErrContextExhausted) || len(model.Requests()) != 3 {
+		t.Fatalf("outcome = %+v requests = %d", outcome, len(model.Requests()))
+	}
+}
+
+func TestOverflowWithNothingToSummariseExhaustsTheContext(t *testing.T) {
+	f := agenttest.NewFixture()
+	model := agenttest.NewScriptedModel(agenttest.Turn{Err: errors.New("context_length_exceeded")})
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusFailed || outcome.StopReason != agent.StopContextExhausted || len(model.Requests()) != 1 {
+		t.Fatalf("outcome = %+v requests = %d", outcome, len(model.Requests()))
 	}
 }

@@ -100,7 +100,8 @@ func (r *run) remaining() string {
 }
 
 // finalTurn completes the run with the final turn's text; tool calls a provider
-// sent despite tool_choice none are dropped.
+// sent despite tool_choice none are dropped. A context-exhausted final turn
+// fails the run with its reply kept.
 func finalTurn(gen generation, reason StopReason) stepResult {
 	response := gen.response
 	response.ToolCalls = nil
@@ -108,15 +109,24 @@ func finalTurn(gen generation, reason StopReason) stepResult {
 	if response.Text == "" {
 		response.Text = finalFallback(reason)
 	}
-	return stepResult{kind: stepDone, assistant: &gen.assistant, saved: gen.saved, response: response, stop: reason}
+	result := stepResult{kind: stepDone, assistant: &gen.assistant, saved: gen.saved, response: response, stop: reason}
+	if reason == StopContextExhausted {
+		reply := finalReply(gen.assistant, response)
+		result.assistant, result.err, result.markErrored = &reply, ErrContextExhausted, true
+	}
+	return result
 }
 
 // finalFallback is the reply of a final turn that produced no text.
 func finalFallback(reason StopReason) string {
-	if reason == StopLoopDetected {
+	switch reason {
+	case StopLoopDetected:
 		return "This run stopped: it repeated the same action without progress."
+	case StopContextExhausted:
+		return "This run stopped: its conversation no longer fits the model's context window."
+	default:
+		return "This run stopped: it reached its budget."
 	}
-	return "This run stopped: it reached its budget."
 }
 
 func budgetStopText(reached string) string {

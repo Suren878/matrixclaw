@@ -147,23 +147,27 @@ func (r *run) step(ctx context.Context) stepResult {
 	if err := r.checkpoint(ctx, PhaseModel, "", ""); err != nil {
 		return failedStep(err)
 	}
-	request, err := r.fitRequest(ctx, final)
+	request, final, err := r.fitRequest(ctx, final)
 	if err != nil {
 		return failedStep(err)
 	}
 	r.counters.Steps++
 	gen, err := r.generateWithRetry(ctx, request)
 	if err != nil && agentcontext.IsContextLengthExceeded(err) {
-		compacted, compactErr := r.compactHistory(ctx, r.promptTokens(request), agentcontext.TailPercent/2)
+		compacted, compactErr := r.compactHistory(ctx, nil, r.promptTokens(request), agentcontext.TailPercent/2)
 		if compactErr != nil {
 			return failedStep(compactErr)
 		}
-		if compacted {
-			retry, buildErr := r.buildRequest(ctx, final)
+		if !compacted {
+			err = fmt.Errorf("%w: %w", ErrContextExhausted, err)
+		} else {
+			retry, buildErr := r.afterSummary(ctx, final)
 			if buildErr != nil {
 				return failedStep(buildErr)
 			}
-			gen, err = r.generateWithRetry(ctx, retry)
+			if gen, err = r.generateWithRetry(ctx, retry); err != nil && agentcontext.IsContextLengthExceeded(err) {
+				err = fmt.Errorf("%w: %w", ErrContextExhausted, err)
+			}
 		}
 	}
 	if err == nil {
@@ -173,7 +177,11 @@ func (r *run) step(ctx context.Context) stepResult {
 		return finalTurn(gen, final)
 	}
 	if err != nil {
-		return stepResult{kind: stepDone, assistant: &gen.assistant, saved: gen.saved, response: gen.response, err: err, markErrored: true}
+		result := stepResult{kind: stepDone, assistant: &gen.assistant, saved: gen.saved, response: gen.response, err: err, markErrored: true}
+		if errors.Is(err, ErrContextExhausted) {
+			result.stop = StopContextExhausted
+		}
+		return result
 	}
 	if r.canceled(ctx) {
 		return stepResult{kind: stepDone, canceled: true, assistant: &gen.assistant, saved: gen.saved}
@@ -266,7 +274,7 @@ func (r *run) settle(ctx context.Context, result stepResult) (Outcome, bool, err
 		return Outcome{Status: StatusCanceled, Assistant: result.assistant, AssistantSaved: result.saved}, true, nil
 	}
 	if result.err != nil {
-		outcome := Outcome{Status: StatusFailed, Err: result.err}
+		outcome := Outcome{Status: StatusFailed, Err: result.err, StopReason: result.stop}
 		if result.markErrored && result.assistant != nil {
 			outcome.Assistant, outcome.AssistantSaved, outcome.MarkErrored = result.assistant, result.saved, true
 		}

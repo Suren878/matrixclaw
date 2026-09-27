@@ -3,11 +3,13 @@ package agent_test
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/agent/agenttest"
+	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -33,7 +35,11 @@ func boundaries(messages []transcript.Message) []transcript.Message {
 }
 
 func isSummaryRequest(request providers.Request) bool {
-	return strings.HasPrefix(request.SystemPrompt, "You compact matrixclaw chat histories")
+	if strings.HasPrefix(request.SystemPrompt, "You compact matrixclaw chat histories") {
+		return true
+	}
+	last := lastMessage(request)
+	return last.Role == "user" && last.Content == agentcontext.SummaryInstruction
 }
 
 func summaryCount(requests []providers.Request) int {
@@ -112,6 +118,18 @@ func TestContextLengthErrorSummarisesAndRetriesOnce(t *testing.T) {
 	}
 }
 
+func TestSummaryRetriesATransientFailure(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.WithHistory(pastTurn(80_000)...)
+	model := agenttest.NewScriptedModel(agenttest.Turn{Err: errors.New("context_length_exceeded")}, agenttest.Turn{Err: io.ErrUnexpectedEOF}, text("SUMMARY"), text("Recovered."))
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != "Recovered." || len(model.Requests()) != 4 || len(f.Slept) != 1 {
+		t.Fatalf("outcome = %+v requests = %d slept = %v", outcome, len(model.Requests()), f.Slept)
+	}
+}
+
 // talkingCall is a tool step whose reply also says replyRunes of text.
 func talkingCall(replyRunes int, toolCall providers.ToolCall) agenttest.Turn {
 	return agenttest.Turn{Response: providers.Response{Text: strings.Repeat("t", replyRunes), ToolCalls: []providers.ToolCall{toolCall}}}
@@ -163,7 +181,7 @@ func assertBoundaryAndLastToolStep(t *testing.T, request providers.Request) {
 	}
 }
 
-func TestTwoLowYieldSummariesStopSummarising(t *testing.T) {
+func TestLowYieldSummariesEndTheRunAsContextExhausted(t *testing.T) {
 	f := agenttest.NewFixture()
 	// Each step says ~10k tokens and reports a prompt near the 63k threshold;
 	// the summaries come back as long as what they replace, so neither saves a
@@ -176,20 +194,20 @@ func TestTwoLowYieldSummariesStopSummarising(t *testing.T) {
 		return turn
 	}
 	sum1, sum2 := text("SUM1 "+strings.Repeat("s", 40_000)), text("SUM2 "+strings.Repeat("s", 100_000))
-	model := agenttest.NewScriptedModel(step("c1", 50_000), step("c2", 60_000), sum1, step("c3", 70_000), sum2, step("c4", 90_000), text("Done."))
+	reply := "Stopped: the context is full; the parser is half done."
+	model := agenttest.NewScriptedModel(step("c1", 50_000), step("c2", 60_000), sum1, step("c3", 70_000), sum2, step("c4", 90_000), text(reply))
 
 	outcome := run(t, f, model)
 
+	if outcome.Status != agent.StatusFailed || outcome.StopReason != agent.StopContextExhausted || !errors.Is(outcome.Err, agent.ErrContextExhausted) || !outcome.MarkErrored {
+		t.Fatalf("outcome = %+v", outcome)
+	}
 	requests := model.Requests()
-	if outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != "Done." || len(requests) != 7 || summaryCount(requests) != 2 {
-		t.Fatalf("outcome = %+v requests = %d summaries = %d", outcome, len(requests), summaryCount(requests))
+	if outcome.Assistant == nil || outcome.Assistant.Content != reply || len(requests) != 7 || summaryCount(requests) != 2 {
+		t.Fatalf("assistant = %+v requests = %d summaries = %d", outcome.Assistant, len(requests), summaryCount(requests))
 	}
-	marks := boundaries(f.Journal.Messages)
-	if len(marks) != 2 || len(marks[1].Compaction.Kept) != 1 || marks[1].Compaction.Kept[0] != "User: do the task" {
-		t.Fatalf("boundaries = %+v", marks)
-	}
-	if last := f.Journal.States[len(f.Journal.States)-1]; last.Counters.LowYield != 2 {
-		t.Fatalf("low-yield summaries = %d, want 2", last.Counters.LowYield)
+	if final := requests[6]; final.ToolChoice != providers.ToolChoiceNone || !strings.Contains(lastMessage(final).Content, "no longer fits") {
+		t.Fatalf("final turn = %q / %+v", final.ToolChoice, lastMessage(final))
 	}
 }
 

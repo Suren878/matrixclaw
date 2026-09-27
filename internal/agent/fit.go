@@ -74,32 +74,62 @@ func (r *run) advanceElision(force bool) bool {
 	return true
 }
 
+const contextExhaustedText = "This run's conversation no longer fits the model's context window, even after summarising it, so the run stops here. Do not call tools. Reply briefly: what is done, what remains, and how to continue."
+
 // fitRequest builds the step's request within the model's window: old bulky
-// results are elided at 60% of it, older history is summarised at 80%.
-func (r *run) fitRequest(ctx context.Context, final StopReason) (providers.Request, error) {
+// results are elided at 60% of it and older history is summarised at 80%; once
+// summaries stop paying off, the step becomes a context-exhausted final turn.
+func (r *run) fitRequest(ctx context.Context, final StopReason) (providers.Request, StopReason, error) {
 	request, err := r.buildRequest(ctx, final)
 	if err != nil {
-		return providers.Request{}, err
+		return providers.Request{}, final, err
 	}
 	limit := r.contextLimit()
 	tokens := r.promptTokens(request)
 	if agentcontext.ElisionDue(tokens, limit) && r.advanceElision(agentcontext.SummaryDue(tokens, limit)) {
 		if request, err = r.buildRequest(ctx, final); err != nil {
-			return providers.Request{}, err
+			return providers.Request{}, final, err
 		}
 		tokens = agentcontext.EstimateRequestTokens(request)
 	}
-	if !agentcontext.SummaryDue(tokens, limit) || r.counters.LowYield >= lowYieldLimit {
-		return request, nil
+	if !agentcontext.SummaryDue(tokens, limit) {
+		return request, final, nil
 	}
-	compacted, err := r.compactHistory(ctx, tokens, agentcontext.TailPercent)
+	if r.counters.LowYield >= lowYieldLimit {
+		return r.exhaustedTurn(ctx, request, final)
+	}
+	var reuse *providers.Request
+	if tokens <= limit {
+		reuse = &request
+	}
+	compacted, err := r.compactHistory(ctx, reuse, tokens, agentcontext.TailPercent)
 	if err != nil || !compacted {
-		return request, err
+		return request, final, err
 	}
+	request, err = r.afterSummary(ctx, final)
+	return request, final, err
+}
+
+// afterSummary rebuilds the step's request over the new boundary; a step that is
+// not a final turn first re-sends the context note the summary may have covered.
+func (r *run) afterSummary(ctx context.Context, final StopReason) (providers.Request, error) {
 	if final == "" {
 		if err := r.syncContext(ctx); err != nil {
 			return providers.Request{}, err
 		}
 	}
 	return r.buildRequest(ctx, final)
+}
+
+// exhaustedTurn turns the step into a tool-less final turn that explains the
+// context is exhausted; a final turn already under way stays as it is.
+func (r *run) exhaustedTurn(ctx context.Context, request providers.Request, final StopReason) (providers.Request, StopReason, error) {
+	if final != "" {
+		return request, final, nil
+	}
+	if err := r.appendEngineMessage(ctx, transcript.OriginEngineModel, contextExhaustedText); err != nil {
+		return providers.Request{}, final, err
+	}
+	request, err := r.buildRequest(ctx, StopContextExhausted)
+	return request, StopContextExhausted, err
 }

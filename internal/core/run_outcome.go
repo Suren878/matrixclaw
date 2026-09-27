@@ -24,6 +24,7 @@ func (c *Core) applyOutcome(ctx context.Context, run Run, outcome agent.Outcome)
 	case agent.StatusCanceled:
 		return false, c.finishCanceledAssistant(ctx, outcome.Assistant, outcome.AssistantSaved)
 	case agent.StatusFailed:
+		run.StopReason = outcome.StopReason
 		if outcome.MarkErrored && outcome.Assistant != nil {
 			return false, c.persistAssistantError(ctx, run, outcome.Assistant, outcome.AssistantSaved, outcome.Err)
 		}

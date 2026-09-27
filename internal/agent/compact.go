@@ -3,9 +3,11 @@ package agent
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
+	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -14,9 +16,10 @@ import (
 const lowYieldLimit = 2
 
 // compactHistory summarises the history before the newest turns that fit in
-// tailPercent of the window into a boundary; false means nothing worth
-// summarising: no history before the tail, or under a tenth of the prompt.
-func (r *run) compactHistory(ctx context.Context, before int, tailPercent int) (bool, error) {
+// tailPercent of the window into a boundary; reuse, when set, is the step's
+// request to ask for the summary with. False means nothing worth summarising:
+// no history before the tail, or under a tenth of the prompt.
+func (r *run) compactHistory(ctx context.Context, reuse *providers.Request, before int, tailPercent int) (bool, error) {
 	previous, messages := r.history.window()
 	limit := r.contextLimit()
 	cut := agentcontext.TailStart(messages, limit*tailPercent/100)
@@ -27,16 +30,41 @@ func (r *run) compactHistory(ctx context.Context, before int, tailPercent int) (
 	if agentcontext.EstimateMessageTokens(covered)*10 < before {
 		return false, nil
 	}
-	summary, err := agentcontext.Summarize(ctx, summaryModel{r: r}, agentcontext.SummaryInput{
+	summary, err := r.summary(ctx, reuse, previous, covered, limit)
+	if err != nil {
+		return false, fmt.Errorf("auto compact session: %w", err)
+	}
+	return true, r.writeBoundary(ctx, previous, covered, summary, before)
+}
+
+// summary asks for the summary with the step's own request, so the provider
+// reuses its cached prefix; without one, or when that request is too long, the
+// covered history is summarised on its own, in chunks.
+func (r *run) summary(ctx context.Context, reuse *providers.Request, previous *transcript.Compaction, covered []transcript.Message, limit int) (string, error) {
+	if reuse != nil {
+		text, err := r.prefixSummary(ctx, *reuse)
+		if err == nil || !agentcontext.IsContextLengthExceeded(err) {
+			return text, err
+		}
+	}
+	return agentcontext.Summarize(ctx, summaryModel{r: r}, agentcontext.SummaryInput{
 		SessionID:   r.task.SessionID,
 		Previous:    agentcontext.SummaryText(previous),
 		Messages:    covered,
 		ChunkTokens: limit / 2,
 	})
+}
+
+// prefixSummary sends request with the summary instruction appended and tool
+// calls forbidden.
+func (r *run) prefixSummary(ctx context.Context, request providers.Request) (string, error) {
+	request.Messages = append(slices.Clone(request.Messages), providers.Message{Role: string(transcript.MessageRoleUser), Content: agentcontext.SummaryInstruction})
+	request.ToolChoice = providers.ToolChoiceNone
+	response, err := summaryModel{r: r}.Generate(ctx, request)
 	if err != nil {
-		return false, fmt.Errorf("auto compact session: %w", err)
+		return "", err
 	}
-	return true, r.writeBoundary(ctx, previous, covered, summary, before)
+	return agentcontext.SummaryReply(response)
 }
 
 // writeBoundary journals the boundary whose summary replaces covered and the

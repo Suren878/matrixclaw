@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/orchestration"
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -734,5 +735,21 @@ func TestAsyncSubagentCompletionStartsParentFollowUpRun(t *testing.T) {
 	}
 	if task.Status != core.SubagentTaskStatusCompleted || task.CompletionDeliveredAt == nil {
 		t.Fatalf("task = %s delivered=%v", task.Status, task.CompletionDeliveredAt)
+	}
+}
+
+func TestContextOverflowWithNothingToSummariseFailsAsContextExhausted(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+		return providers.Response{}, errors.New("provider: context_length_exceeded")
+	})})
+	_, run := saveCrashRecoveryRun(t, db, "exhausted", core.RunStatusAccepted, false)
+
+	err := app.ExecuteRun(context.Background(), run.ID)
+
+	stored, getErr := db.GetRun(context.Background(), run.ID)
+	if !errors.Is(err, agent.ErrContextExhausted) || getErr != nil || stored.Status != core.RunStatusFailed || stored.StopReason != agent.StopContextExhausted {
+		t.Fatalf("ExecuteRun err = %v, run = %+v (%v)", err, stored, getErr)
 	}
 }

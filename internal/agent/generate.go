@@ -39,25 +39,35 @@ func (r *run) recordStep(ctx context.Context, response providers.Response, stopR
 	})
 }
 
-// summaryModel is the run's model with every successful summary recorded as a compact step.
+// retryBackoffs are the waits before each retry of a failed generation.
+var retryBackoffs = [...]time.Duration{200 * time.Millisecond, 750 * time.Millisecond}
+
+// summaryModel is the run's model with every successful summary recorded as a
+// compact step; a transient failure is retried like a main generation.
 type summaryModel struct {
 	r *run
 }
 
 func (m summaryModel) Generate(ctx context.Context, request providers.Request) (providers.Response, error) {
-	started := time.Now()
-	response, err := m.r.task.Model.Generate(ctx, request)
-	if err != nil {
-		return response, err
+	for attempt := 0; ; attempt++ {
+		started := time.Now()
+		response, err := m.r.task.Model.Generate(ctx, request)
+		if err == nil {
+			return response, m.r.recordStep(ctx, response, compactStopReason, time.Since(started))
+		}
+		if ctx.Err() != nil || attempt >= len(retryBackoffs) || !providers.IsRetryableGenerationError(err) {
+			return response, err
+		}
+		if err := m.r.Sleep(ctx, retryBackoffs[attempt]); err != nil {
+			return response, err
+		}
 	}
-	return response, m.r.recordStep(ctx, response, compactStopReason, time.Since(started))
 }
 
 // generateWithRetry retries only failures that happened before any output was shown;
 // a partial answer stays visible as failed instead of being replayed. An empty
 // final turn is not retried: it falls back to the stop note.
 func (r *run) generateWithRetry(ctx context.Context, request providers.Request) (generation, error) {
-	backoffs := [...]time.Duration{200 * time.Millisecond, 750 * time.Millisecond}
 	for attempt := 0; ; attempt++ {
 		gen, err := r.generate(ctx, request)
 		if err == nil && sanitizeAssistantOutput(gen.response.Text) == "" && len(gen.response.ToolCalls) == 0 && !gen.response.StopReason.AllowsEmptyReply() {
@@ -66,10 +76,10 @@ func (r *run) generateWithRetry(ctx context.Context, request providers.Request) 
 		if request.ToolChoice == providers.ToolChoiceNone && errors.Is(err, providers.ErrEmptyResponse) {
 			return gen, err
 		}
-		if err == nil || gen.saved || gen.assistant.Content != "" || ctx.Err() != nil || attempt >= len(backoffs) || !providers.IsRetryableGenerationError(err) {
+		if err == nil || gen.saved || gen.assistant.Content != "" || ctx.Err() != nil || attempt >= len(retryBackoffs) || !providers.IsRetryableGenerationError(err) {
 			return gen, err
 		}
-		if err := r.Sleep(ctx, backoffs[attempt]); err != nil {
+		if err := r.Sleep(ctx, retryBackoffs[attempt]); err != nil {
 			return gen, err
 		}
 	}

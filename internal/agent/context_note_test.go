@@ -1,6 +1,7 @@
 package agent_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -156,5 +157,25 @@ func TestContextNoteIsSentAgainWhenASummaryCoversIt(t *testing.T) {
 	last := requests[5]
 	if notes := contextNotes(f.Journal.Messages); len(notes) != 2 || mentions(last, "Plan: parser") != 1 || !strings.Contains(lastMessage(last).Content, "Plan: parser") {
 		t.Fatalf("notes = %d, last request = %+v", len(notes), last.Messages)
+	}
+}
+
+func TestContextNoteIsSentAgainWhenAnOverflowSummaryCoversIt(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Prompts.ContextText = "Plan: parser"
+	big := strings.Repeat("b", 40_000)
+	f.Tools.Funcs["read"] = func(call tools.Call) tools.Result { return tools.Result{Content: call.ToolCallID + big} }
+	turns := append(toolSteps(4, "read"), agenttest.Turn{Err: errors.New("context_length_exceeded")}, text("SUMMARY"), text("Done."))
+	model := agenttest.NewScriptedModel(turns...)
+
+	run(t, f, model)
+
+	requests := model.Requests()
+	if len(requests) != 7 || !isSummaryRequest(requests[5]) {
+		t.Fatalf("requests = %d", len(requests))
+	}
+	retry := requests[6]
+	if notes := contextNotes(f.Journal.Messages); len(notes) != 2 || mentions(retry, "Plan: parser") != 1 || !strings.Contains(lastMessage(retry).Content, "Plan: parser") {
+		t.Fatalf("notes = %d, retry = %+v", len(notes), retry.Messages)
 	}
 }

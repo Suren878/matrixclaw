@@ -77,11 +77,15 @@ func generateSummary(ctx context.Context, generator Generator, sessionID string,
 	if err != nil {
 		return "", err
 	}
-	return summaryReply(response)
+	return SummaryReply(response)
 }
 
-// summaryReply is the text of a summary reply; a cut, filtered or empty one fails.
-func summaryReply(response providers.Response) (string, error) {
+// SummaryInstruction ends the run's own request when it asks for the summary
+// that replaces the older part of the conversation.
+const SummaryInstruction = "Summarise the conversation so far for yourself: the older messages will be replaced by this summary, the most recent ones stay visible. Do not call tools. Use these sections: Goal, Decisions, Files changed, Errors and fixes, Current state, Next step. Be concise and factual; leave out raw tool output, secrets and long code blocks."
+
+// SummaryReply is the text of a summary reply; a cut, filtered or empty one fails.
+func SummaryReply(response providers.Response) (string, error) {
 	if err := stopReasonError(response); err != nil {
 		return "", err
 	}
