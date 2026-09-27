@@ -3,6 +3,7 @@ package agentcontext
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -10,6 +11,10 @@ import (
 
 // EstimatedImageTokens is the flat estimate for one image.
 const EstimatedImageTokens = 1_500
+
+// LargeOutputTokens is the size above which a tool result is kept in a file and
+// the model gets its head and tail.
+const LargeOutputTokens = 8_000
 
 // SummaryPercent of the usable window is where older history gets summarised.
 const SummaryPercent = 80
@@ -48,7 +53,7 @@ func EstimateMessageTokens(messages []transcript.Message) int {
 			case transcript.MessagePartKindToolResult:
 				if part.ToolResult != nil {
 					messageTotal += EstimateTextTokens(part.ToolResult.Name)
-					messageTotal += EstimateTextTokens(providerVisibleToolResultContent(part.ToolResult.Name, part.ToolResult.Content))
+					messageTotal += EstimateTextTokens(providerVisibleToolResultContent(part.ToolResult.Content))
 				}
 			}
 		}
@@ -115,4 +120,23 @@ func FormatShortNumber(value int) string {
 	default:
 		return fmt.Sprintf("%d", value)
 	}
+}
+
+// headTailNoticeTokens is room left for the omission notice.
+const headTailNoticeTokens = 20
+
+// HeadTail keeps the head and the tail of text within about maxTokens and says
+// how much was left out between them.
+func HeadTail(text string, maxTokens int) string {
+	if EstimateTextTokens(text) <= maxTokens {
+		return text
+	}
+	runes := []rune(text)
+	keep := max(0, maxTokens-headTailNoticeTokens) * 5 / 2
+	head := keep * 2 / 3
+	tail := keep - head
+	omitted := EstimateTextTokens(string(runes[head : len(runes)-tail]))
+	return strings.TrimRightFunc(string(runes[:head]), unicode.IsSpace) +
+		fmt.Sprintf("\n\n[... ~%s tokens omitted ...]\n\n", FormatShortNumber(omitted)) +
+		strings.TrimLeftFunc(string(runes[len(runes)-tail:]), unicode.IsSpace)
 }

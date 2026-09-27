@@ -115,6 +115,8 @@ type ToolResultPart struct {
 	IsError    bool            `json:"is_error,omitempty"`
 	// Guidance is user steering delivered with this result; Content carries it too.
 	Guidance []string `json:"guidance,omitempty"`
+	// OutputPath is the file holding the full output when Content was cut.
+	OutputPath string `json:"output_path,omitempty"`
 }
 
 type FinishPart struct {

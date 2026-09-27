@@ -53,6 +53,7 @@ func ToolResultMessage(id, sessionID, runID, callID, name string, result tools.R
 				Metadata:   metadata,
 				Status:     string(ToolResultStatus(result)),
 				IsError:    result.IsError,
+				OutputPath: result.OutputPath,
 			},
 		}},
 		CreatedAt: at,

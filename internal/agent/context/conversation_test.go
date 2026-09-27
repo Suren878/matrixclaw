@@ -142,3 +142,19 @@ func TestProviderConversationPairsResultsWithMixedTextAndToolCalls(t *testing.T)
 func (r staticAttachmentReader) ReadAttachment(context.Context, string, bool, int64) (AttachmentData, error) {
 	return r.data, r.err
 }
+
+func TestOversizedResultReachesTheModelAsHeadAndTail(t *testing.T) {
+	big := strings.Repeat("r", 200_000)
+	history := []transcript.Message{
+		{ID: "c1", Role: transcript.MessageRoleAssistant, Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindToolCall, ToolCall: &transcript.ToolCallPart{ID: "c1", Name: "browser_snapshot", Input: "{}"}}}},
+		{ID: "c1_result", Role: transcript.MessageRoleTool, Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindToolResult, ToolResult: &transcript.ToolResultPart{ToolCallID: "c1", Name: "browser_snapshot", Content: big}}}},
+	}
+	messages, err := Conversation(context.Background(), history, nil, "run", false, Identity{})
+	if err != nil || len(messages) != 2 {
+		t.Fatalf("messages = %d err = %v", len(messages), err)
+	}
+	content := messages[1].Content
+	if EstimateTextTokens(content) > LargeOutputTokens || !strings.Contains(content, "tokens omitted") || EstimateTextTokens(content) < 4_000 {
+		t.Fatalf("tool content = %d tokens", EstimateTextTokens(content))
+	}
+}

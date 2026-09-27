@@ -51,7 +51,8 @@ func normalizeAttachmentReadError(err error) error {
 	return err
 }
 
-func defaultStorageRoot(dbPath string) string {
+// dataDir is the directory of the database, which holds the daemon's files.
+func dataDir(dbPath string) string {
 	dbPath = strings.TrimSpace(dbPath)
 	if dbPath == "" {
 		dbPath = setup.DefaultDBPath()
@@ -59,7 +60,16 @@ func defaultStorageRoot(dbPath string) string {
 	if abs, err := filepath.Abs(dbPath); err == nil {
 		dbPath = abs
 	}
-	return filepath.Join(filepath.Dir(dbPath), "storage")
+	return filepath.Dir(dbPath)
+}
+
+func defaultStorageRoot(dbPath string) string {
+	return filepath.Join(dataDir(dbPath), "storage")
+}
+
+// sessionFilesRoot holds per-session files such as full tool outputs.
+func sessionFilesRoot(dbPath string) string {
+	return filepath.Join(dataDir(dbPath), "sessions")
 }
 
 func appendModuleContext(systemPrompt string, contexts []string) string {

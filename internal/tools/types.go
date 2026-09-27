@@ -143,6 +143,8 @@ type Result struct {
 	Approval    *ApprovalRequest `json:"approval,omitempty"`
 	FileVersion *FileVersion     `json:"file_version,omitempty"`
 	Background  *BackgroundJob   `json:"background,omitempty"`
+	// OutputPath is the file holding the full output when Content was cut.
+	OutputPath string `json:"output_path,omitempty"`
 }
 
 type Executor interface {

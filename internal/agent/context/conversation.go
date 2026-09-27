@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/Suren878/matrixclaw/internal/agent/prompt"
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -300,41 +299,18 @@ func formatToolResultAsText(part transcript.ToolResultPart, fallbackContent stri
 	if content == "" {
 		content = "(empty result)"
 	}
-	content = providerVisibleToolResultContent(part.Name, content)
+	content = providerVisibleToolResultContent(content)
 	return "Previous tool result from " + name + ":\n" + content
 }
 
-const (
-	maxProviderToolResultRunes         = 12_000
-	maxProviderBrowserSnapshotRunes    = 5_000
-	providerToolResultTruncationNotice = "[provider context truncated; full tool result remains available in session history/UI. Use a narrower browser_snapshot or targeted browser_evaluate if more detail is needed.]"
-)
-
-func providerVisibleToolResultContent(toolName string, content string) string {
+// providerVisibleToolResultContent is a result as the model sees it; results
+// written before large outputs went to files are cut to their head and tail.
+func providerVisibleToolResultContent(content string) string {
 	content = strings.TrimSpace(content)
 	if content == "" {
 		return "(empty result)"
 	}
-	limit := maxProviderToolResultRunes
-	if isBrowserSnapshotToolName(toolName) {
-		limit = maxProviderBrowserSnapshotRunes
-	}
-	return trimProviderToolResult(content, limit)
-}
-
-func isBrowserSnapshotToolName(name string) bool {
-	name = strings.TrimSpace(name)
-	return name == "mcp_browser_browser_snapshot" || name == "browser_snapshot" || strings.HasSuffix(name, "_browser_snapshot")
-}
-
-func trimProviderToolResult(content string, maxRunes int) string {
-	if maxRunes <= 0 || utf8.RuneCountInString(content) <= maxRunes {
-		return content
-	}
-	runes := []rune(content)
-	head := maxRunes * 3 / 4
-	tail := maxRunes - head
-	return strings.TrimSpace(string(runes[:head])) + "\n[...truncated for provider context...]\n" + strings.TrimSpace(string(runes[len(runes)-tail:])) + "\n" + providerToolResultTruncationNotice
+	return HeadTail(content, LargeOutputTokens)
 }
 
 func toProviderMessages(ctx context.Context, message transcript.Message, reader AttachmentReader, allowImageInput bool) ([]providers.Message, error) {
@@ -419,7 +395,7 @@ func toProviderMessages(ctx context.Context, message transcript.Message, reader 
 		if strings.TrimSpace(content) == "" {
 			content = "(empty result)"
 		}
-		content = providerVisibleToolResultContent(part.ToolResult.Name, content)
+		content = providerVisibleToolResultContent(content)
 		return []providers.Message{{
 			Role:       string(message.Role),
 			Content:    content,

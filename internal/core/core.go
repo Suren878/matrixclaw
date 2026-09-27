@@ -36,6 +36,7 @@ type Core struct {
 	historyLimit   int
 	lifetime       context.Context
 	budgets        RunBudgets
+	sessionFiles   string
 
 	// badBoundaries holds the IDs of unreadable boundaries already logged.
 	badBoundaries sync.Map

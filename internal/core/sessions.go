@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"path/filepath"
 	"strings"
 
@@ -151,7 +152,13 @@ func (c *Core) DeleteSession(ctx context.Context, sessionID string) error {
 	if sessionID == "" {
 		return fmt.Errorf("%w: session id is required", ErrInvalidInput)
 	}
-	return c.store.DeleteSession(ctx, sessionID)
+	if err := c.store.DeleteSession(ctx, sessionID); err != nil {
+		return err
+	}
+	if err := c.removeSessionFiles(sessionID); err != nil {
+		log.Printf("core: remove files of deleted session %q: %v", sessionID, err)
+	}
+	return nil
 }
 
 func (c *Core) resolveSession(ctx context.Context, input HandleMessageInput) (Session, error) {
