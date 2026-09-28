@@ -17,22 +17,24 @@ func (s *SQLiteStore) CreateSubagentTask(ctx context.Context, task core.Subagent
 	task = normalizeSubagentTaskForStore(task)
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO tasks(
-    id, kind, agent_name, description, background, isolation, session_id, run_id, parent_tool_call_id,
-    child_session_id, child_run_id, runtime, command_or_goal, status, summary, error, result_message_id,
+    id, kind, agent_name, description, background, isolation, readonly, session_id, run_id, parent_tool_call_id,
+    child_session_id, child_run_id, runtime, model, command_or_goal, status, summary, error, result_message_id,
     started_at, updated_at, finished_at
 )
-VALUES(?, 'subagent', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+VALUES(?, 'subagent', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		task.ID,
 		task.AgentName,
 		task.DisplayName,
 		task.Mode == core.SubagentTaskModeAsync,
 		string(task.Isolation),
+		task.Readonly,
 		task.ParentSessionID,
 		task.ParentRunID,
 		task.ParentToolCallID,
 		task.ChildSessionID,
 		task.ChildRunID,
 		task.Runtime,
+		task.Model,
 		task.Goal,
 		string(task.Status),
 		task.Summary,
@@ -48,26 +50,26 @@ VALUES(?, 'subagent', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	return nil
 }
 
-// UpdateSubagentTask saves the task; whether and when it was delivered is kept
-// by MarkTasksDelivered alone.
 func (s *SQLiteStore) UpdateSubagentTask(ctx context.Context, task core.SubagentTask) error {
 	task = normalizeSubagentTaskForStore(task)
 	result, err := s.db.ExecContext(ctx, `
 UPDATE tasks
-SET agent_name = ?, description = ?, background = ?, isolation = ?, session_id = ?, run_id = ?, parent_tool_call_id = ?,
-    child_session_id = ?, child_run_id = ?, runtime = ?, command_or_goal = ?, status = ?, summary = ?, error = ?,
+SET agent_name = ?, description = ?, background = ?, isolation = ?, readonly = ?, session_id = ?, run_id = ?, parent_tool_call_id = ?,
+    child_session_id = ?, child_run_id = ?, runtime = ?, model = ?, command_or_goal = ?, status = ?, summary = ?, error = ?,
     result_message_id = ?, updated_at = ?, finished_at = ?
 WHERE id = ? AND kind = 'subagent'`,
 		task.AgentName,
 		task.DisplayName,
 		task.Mode == core.SubagentTaskModeAsync,
 		string(task.Isolation),
+		task.Readonly,
 		task.ParentSessionID,
 		task.ParentRunID,
 		task.ParentToolCallID,
 		task.ChildSessionID,
 		task.ChildRunID,
 		task.Runtime,
+		task.Model,
 		task.Goal,
 		string(task.Status),
 		task.Summary,
@@ -113,6 +115,16 @@ FROM tasks
 WHERE kind = 'subagent' AND child_run_id = ?
 ORDER BY started_at ASC
 LIMIT 1`, childRunID)
+	return scanOneSubagentTask(row)
+}
+
+func (s *SQLiteStore) GetSubagentTaskByChildSession(ctx context.Context, childSessionID string) (core.SubagentTask, error) {
+	row := s.db.QueryRowContext(ctx, `
+SELECT `+subagentTaskColumns+`
+FROM tasks
+WHERE kind = 'subagent' AND child_session_id = ?
+ORDER BY started_at ASC
+LIMIT 1`, childSessionID)
 	return scanOneSubagentTask(row)
 }
 
@@ -179,8 +191,8 @@ type subagentTaskScanner interface {
 	Scan(dest ...any) error
 }
 
-const subagentTaskColumns = `id, agent_name, description, background, isolation, session_id, run_id, parent_tool_call_id,
-child_session_id, child_run_id, runtime, command_or_goal, status, summary, error, result_message_id,
+const subagentTaskColumns = `id, agent_name, description, background, isolation, readonly, session_id, run_id, parent_tool_call_id,
+child_session_id, child_run_id, runtime, model, command_or_goal, status, summary, error, result_message_id,
 delivered_at, delivered_run_id, started_at, updated_at, finished_at`
 
 func scanOneSubagentTask(row *sql.Row) (core.SubagentTask, error) {
@@ -206,12 +218,14 @@ func scanSubagentTask(scanner subagentTaskScanner) (core.SubagentTask, error) {
 		&task.DisplayName,
 		&background,
 		&isolation,
+		&task.Readonly,
 		&task.ParentSessionID,
 		&task.ParentRunID,
 		&task.ParentToolCallID,
 		&task.ChildSessionID,
 		&task.ChildRunID,
 		&task.Runtime,
+		&task.Model,
 		&task.Goal,
 		&status,
 		&task.Summary,

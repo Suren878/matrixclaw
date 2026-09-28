@@ -175,3 +175,27 @@ func TestShellTasksFinishOnceAndBecomeEventsUntilDelivered(t *testing.T) {
 		t.Fatalf("missing task err = %v", err)
 	}
 }
+
+func TestSubagentTaskKeepsReadonlyModelAndChildSession(t *testing.T) {
+	ctx := context.Background()
+	st := openTestStore(t, filepath.Join(t.TempDir(), "tasks.db"))
+	createTestSession(t, st, "s1")
+	task := core.SubagentTask{ID: "task_1", Mode: core.SubagentTaskModeAsync, Readonly: true, Model: "gpt-x", ParentSessionID: "s1", ChildSessionID: "child_1", Runtime: "matrixclaw", Goal: "Review", Status: core.TaskStatusRunning, CreatedAt: testEpoch, UpdatedAt: testEpoch}
+	if err := st.CreateSubagentTask(ctx, task); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetSubagentTaskByChildSession(ctx, "child_1")
+	if err != nil || !got.Readonly || got.Model != "gpt-x" || got.ID != "task_1" {
+		t.Fatalf("task = %+v, %v", got, err)
+	}
+	task.Readonly = false
+	if err := st.UpdateSubagentTask(ctx, task); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := st.GetSubagentTask(ctx, "task_1"); err != nil || got.Readonly {
+		t.Fatalf("updated task = %+v, %v", got, err)
+	}
+	if _, err := st.GetSubagentTaskByChildSession(ctx, "nobody"); err != core.ErrNotFound {
+		t.Fatalf("missing child session err = %v", err)
+	}
+}

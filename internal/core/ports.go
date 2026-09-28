@@ -26,6 +26,7 @@ type SubagentTaskStore interface {
 	GetSubagentTask(ctx context.Context, taskID string) (SubagentTask, error)
 	GetSubagentTaskByParentToolCall(ctx context.Context, parentSessionID string, parentRunID string, parentToolCallID string) (SubagentTask, error)
 	GetSubagentTaskByChildRun(ctx context.Context, childRunID string) (SubagentTask, error)
+	GetSubagentTaskByChildSession(ctx context.Context, childSessionID string) (SubagentTask, error)
 	ListSubagentTasks(ctx context.Context, filter SubagentTaskFilter) ([]SubagentTask, error)
 	ListActiveSubagentTasksByParent(ctx context.Context, parentSessionID string) ([]SubagentTask, error)
 }
