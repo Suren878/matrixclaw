@@ -88,8 +88,20 @@ func (c *Core) recordApprovalDecision(ctx context.Context, approval Approval, de
 	return approval, nil
 }
 
-// resumeDecidedRun starts a run once none of its approvals is pending.
+// resumeDecidedRun starts a parked run once none of its approvals is pending. A run
+// still finishing its step is left to its own check after parking; the session
+// gate makes that check and a decision start the run once.
 func (c *Core) resumeDecidedRun(ctx context.Context, sessionID string, runID string) error {
+	gate := c.sessionGate(sessionID)
+	gate.Lock()
+	defer gate.Unlock()
+	run, err := c.store.GetRun(ctx, runID)
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	}
+	if err != nil || run.Status != RunStatusWaitingApproval {
+		return err
+	}
 	pending, err := c.runHasPendingApprovals(ctx, sessionID, runID)
 	if err != nil || pending {
 		return err

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -345,6 +346,68 @@ func TestRunResumesOnceEveryApprovalIsDecided(t *testing.T) {
 	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
 	if strings.Join(results, "|") != "secret read_a|User denied: not that one" {
 		t.Fatalf("model read %q", results)
+	}
+}
+
+// parkingStore calls beforePark once, right before a run's waiting_approval
+// status is stored: the engine has decided to park, the run is still active.
+type parkingStore struct {
+	*store.SQLiteStore
+	beforePark func()
+}
+
+func (s *parkingStore) UpdateRun(ctx context.Context, run core.Run) error {
+	if hook := s.beforePark; hook != nil && run.Status == core.RunStatusWaitingApproval {
+		s.beforePark = nil
+		hook()
+	}
+	return s.SQLiteStore.UpdateRun(ctx, run)
+}
+
+func TestApprovalDecidedWhileTheRunParksResumesIt(t *testing.T) {
+	db, err := store.NewSQLite(filepath.Join(t.TempDir(), "matrixclaw.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	parking := &parkingStore{SQLiteStore: db}
+	app := core.New(parking)
+	app.WithTools(tools.NewRegistry(askingReadTool("read_a")))
+	starter := &recordingRunStarter{}
+	app.WithRunStarter(starter)
+	var result string
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		if result = toolResultContent(request, "call-a"); result == "" {
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-a", Name: "read_a", Arguments: []byte(`{}`)}}}, nil
+		}
+		return providers.Response{Text: "Done."}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "decided-while-parking", core.RunStatusAccepted, false)
+	parking.beforePark = func() {
+		approvals, err := db.ListApprovals(context.Background(), session.ID, core.ApprovalStatePending)
+		if err != nil || len(approvals) != 1 {
+			t.Errorf("pending approvals = %+v err = %v", approvals, err)
+			return
+		}
+		if _, err := app.ResolveApproval(context.Background(), approvals[0].ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
+			t.Errorf("ResolveApproval: %v", err)
+		}
+	}
+
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusWaitingApproval)
+	if got := starter.count(run.ID); got != 1 {
+		t.Fatalf("resume schedules = %d, want 1", got)
+	}
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
+	if result != "secret read_a" || starter.count(run.ID) != 1 {
+		t.Fatalf("model read %q, schedules = %d", result, starter.count(run.ID))
 	}
 }
 

@@ -23,6 +23,7 @@ func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
 	if !claimed {
 		return nil
 	}
+	defer c.resumeParkedRun(runID)
 	defer unregisterRun()
 	defer func() {
 		if err := c.afterRunExecution(context.Background(), runID); err != nil {
@@ -61,6 +62,22 @@ func (c *Core) rescheduleInterruptedRun(runID string) {
 	}
 	if err := c.startRun(context.Background(), runID); err != nil {
 		log.Printf("core: reschedule interrupted run %q failed: %v", runID, err)
+	}
+}
+
+// resumeParkedRun starts a run whose approvals were all decided while it was
+// still parking: ResolveApproval found it active and left the start to this check.
+func (c *Core) resumeParkedRun(runID string) {
+	if c.lifetime.Err() != nil {
+		return
+	}
+	ctx := context.Background()
+	run, err := c.store.GetRun(ctx, runID)
+	if err == nil {
+		err = c.resumeDecidedRun(ctx, run.SessionID, runID)
+	}
+	if err != nil && !ignoreMissing(err) {
+		log.Printf("core: resume parked run %q failed: %v", runID, err)
 	}
 }
 
