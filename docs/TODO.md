@@ -11,7 +11,9 @@ steps. The model owns the list; clients show it.
   `in_progress`.
 - `content` names the step in the imperative ("Run the tests");
   `active_form` names it while it is in progress ("Running the tests").
-- An empty `items` array clears the list. A list may hold 50 items.
+- An empty `items` array clears the list. A list may hold 50 items; an
+  item's `content` and `active_form` up to 300 characters each, with runs of
+  whitespace (newlines too) collapsed to one space.
 - An invalid list is not saved; the model gets an error result that says what
   to correct ("2 items are in_progress; only one may be in progress at a
   time").

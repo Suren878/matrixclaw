@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // ToolName is the tool that replaces a session's todo list.
@@ -16,6 +17,9 @@ const ToolName = "todo_write"
 
 // MaxItems bounds a list so it stays a plan of the work, not a log of it.
 const MaxItems = 50
+
+// MaxItemLength bounds an item's content and active form, in characters.
+const MaxItemLength = 300
 
 // Status is where an item stands.
 type Status string
@@ -101,11 +105,14 @@ func Parse(args json.RawMessage) ([]Item, error) {
 	out := make([]Item, 0, len(items))
 	inProgress := 0
 	for i, item := range items {
-		item.Content = strings.TrimSpace(item.Content)
-		item.ActiveForm = strings.TrimSpace(item.ActiveForm)
+		item.Content = strings.Join(strings.Fields(item.Content), " ")
+		item.ActiveForm = strings.Join(strings.Fields(item.ActiveForm), " ")
 		item.Status = Status(strings.ToLower(strings.TrimSpace(string(item.Status))))
 		if item.Content == "" {
 			return nil, fmt.Errorf("item %d has no content", i+1)
+		}
+		if n := max(utf8.RuneCountInString(item.Content), utf8.RuneCountInString(item.ActiveForm)); n > MaxItemLength {
+			return nil, fmt.Errorf("item %d is %d characters; keep each under %d", i+1, n, MaxItemLength)
 		}
 		switch item.Status {
 		case Pending, Completed:
