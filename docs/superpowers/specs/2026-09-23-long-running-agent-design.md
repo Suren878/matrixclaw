@@ -448,14 +448,20 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   over 16 KB (not parsed). A whole-tool allow (`bash`, `full_auto`) allows a
   risky line only while no deny or ask rule names bash; otherwise it asks.
   Deny and ask rules match a command by its base name (`/bin/rm` is `rm`).
+- **Interpreters**: deny rules see commands, not the code an interpreter runs
+  (`python -c`, `node -e`, `awk`, `sed e`, make and npm scripts, test
+  runners). Allowing such a command is allowing arbitrary code, and under
+  accept_edits the agent can write that code first.
 - **Paths**: a search (grep, glob, ls) meets the deny and ask rules whose
-  pattern may match below the searched directory; read rules cover searches.
+  pattern may match below the searched directory; read rules cover searches,
+  and grep does not read through links below the searched path.
   Domains are compared lower case, without a trailing dot, in punycode.
 - **One check**: `core.checkPermission`, asked by `Tools.Authorize` (deny),
   whose verdict `Execute` reuses, and by `executeToolWithGrant` in every other
   pipeline. Every ask verdict becomes an `ask_rule` approval. A tool applies
   the rules to subjects it reaches later through `tools.Call.Recheck`
-  (web_fetch redirects).
+  (web_fetch redirects); `tools.Call.Guarded` marks a call whose tool a deny
+  or ask rule names, and a guarded web_fetch skips the browser fallback.
 - **Suggestions** are stored with the approval (`approvals.suggestion_json`),
   recovery approvals included; "Always allow" is `{"approved": true, "always":
   "session"|"global"}`. Only commands with a known subcommand get a prefix
@@ -465,8 +471,9 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   `GET/POST /v1/sessions/{id}/permission-rules`, `DELETE
   /v1/permission-rules/{id}`; `/permissions add|delete`. Path patterns (also of
   `*` rules) become absolute when saved; a rule for one MCP tool stores
-  `server__tool`. Global rules are changed only by the TUI and the Telegram
-  owner chat, and Telegram guests change no rules (client-side checks).
+  `server__tool`. Global rules and permission modes are changed only by the
+  TUI and the Telegram owner chat, and Telegram guests change no rules
+  (client-side checks).
 - **Delegated agents**: Codex and Claude Code children run their own tools;
   matrixclaw rules govern only the delegate call, not what the child does.
 

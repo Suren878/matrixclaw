@@ -9,7 +9,8 @@ import (
 )
 
 const permissionsUsage = "Usage: /permissions default|accept_edits|full_auto, /permissions add allow|ask|deny <tool> [pattern] [global], /permissions delete <rule id>. " +
-	"Allowing a test runner or build (bash: go test:*, npm test:*, make:*) runs code, and under accept_edits the agent can edit that code first."
+	"Deny rules match commands, not the code an interpreter runs (python -c, node -e, awk, sed e, make and npm scripts, test runners): " +
+	"allowing such a command allows any code, and a test runner or build (bash: go test:*, npm test:*, make:*) runs code the agent may edit first under accept_edits."
 
 func (d *Dispatcher) handlePermissions(ctx context.Context, externalKey string, args string) (Result, error) {
 	if d.permissions == nil {
