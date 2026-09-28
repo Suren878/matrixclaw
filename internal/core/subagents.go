@@ -98,15 +98,6 @@ func (c *Core) RunAgent(ctx context.Context, input AgentInput) (AgentResult, err
 			return AgentResult{}, err
 		}
 	}
-	if input.Background {
-		active, err := c.store.ListActiveSubagentTasksByParent(ctx, parent.ID)
-		if err != nil {
-			return AgentResult{}, err
-		}
-		if len(active) >= c.backgroundAgents {
-			return AgentResult{}, fmt.Errorf("%w: at most %d background subagents run at once in a session; await one of them first", ErrInvalidInput, c.backgroundAgents)
-		}
-	}
 	task, run, err := c.startSubagent(ctx, parent, input, prompt, parentRunID, parentToolCallID)
 	if err != nil {
 		return AgentResult{}, err
@@ -140,10 +131,20 @@ func (c *Core) startSubagent(ctx context.Context, parent Session, input AgentInp
 		}
 		workingDir = dir
 	}
-	// Children started at once by one reply get different names.
+	// Children started at once by one reply get different names and count
+	// toward the background limit one after another.
 	gate := c.sessionGate(parent.ID)
 	gate.Lock()
 	defer gate.Unlock()
+	if input.Background {
+		active, err := c.store.ListActiveSubagentTasksByParent(ctx, parent.ID)
+		if err != nil {
+			return SubagentTask{}, Run{}, err
+		}
+		if len(active) >= c.backgroundAgents {
+			return SubagentTask{}, Run{}, fmt.Errorf("%w: at most %d background subagents run at once in a session; await one of them first", ErrInvalidInput, c.backgroundAgents)
+		}
+	}
 	agentName, err := c.assignSubagentAgentName(ctx, parent.ID)
 	if err != nil {
 		return SubagentTask{}, Run{}, err

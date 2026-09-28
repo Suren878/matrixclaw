@@ -159,6 +159,44 @@ func TestBackgroundChildrenAreLimitedPerSession(t *testing.T) {
 	}
 }
 
+func TestBackgroundChildrenStartedTogetherKeepTheLimit(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithBackgroundAgents(2).WithRunStarter(&recordingRunStarter{})
+	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+	var results []string
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		if results = toolResults(request); len(results) > 0 {
+			return providers.Response{Text: "Started."}, nil
+		}
+		var spawn []providers.ToolCall
+		for _, id := range []string{"call-1", "call-2", "call-3", "call-4", "call-5"} {
+			spawn = append(spawn, providers.ToolCall{ID: id, Name: "agent", Arguments: json.RawMessage(`{"description":"Scan","prompt":"scan the tree","background":true}`)})
+		}
+		return providers.Response{ToolCalls: spawn}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "limit_together", core.RunStatusAccepted, false)
+
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	tasks, err := db.ListSubagentTasks(context.Background(), core.SubagentTaskFilter{ParentSessionID: session.ID})
+	if err != nil || len(tasks) != 2 {
+		t.Fatalf("started %d children, want 2 (%v)", len(tasks), err)
+	}
+	refused := 0
+	for _, result := range results {
+		if strings.Contains(result, "at most 2 background subagents run at once") {
+			refused++
+		}
+	}
+	if refused != 3 {
+		t.Fatalf("results = %q", results)
+	}
+}
+
 func TestCancelingARunStopsTheCommandsItStarted(t *testing.T) {
 	t.Parallel()
 	app, db, session, _ := newTaskCore(t)
