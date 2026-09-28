@@ -232,3 +232,27 @@ func TestAFinishedChildsBackgroundCommandsStop(t *testing.T) {
 	}
 	waitProcessGone(t, tasks[0].PID)
 }
+
+func TestParentPromptExplainsTheAgentTool(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithBackgroundAgents(2)
+	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+	var system string
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		system = request.SystemPrompt
+		return providers.Response{Text: "Hi."}, nil
+	})})
+	_, run := saveCrashRecoveryRun(t, db, "guidance", core.RunStatusAccepted, false)
+
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{"The agent tool runs a child agent", "readonly:true", "isolation worktree", "At most 2 background children", "Runtime IDs available for the agent tool: matrixclaw."} {
+		if !strings.Contains(system, want) {
+			t.Fatalf("system prompt lacks %q:\n%s", want, system)
+		}
+	}
+}

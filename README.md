@@ -46,8 +46,9 @@ runtime through Terminal, Telegram, or MCP.
 - **Local-first state:** sessions, runs, approvals, files, todo lists, usage, and provider choices live in SQLite.
 - **Provider switching:** OpenAI-compatible APIs, OpenAI Codex subscription OAuth, Anthropic, Gemini, Chinese provider presets, and custom endpoints.
 - **External agents:** Codex app-server and Claude Code sessions attach to the same session model.
-- **Subagents:** MatrixClaw sessions can delegate bounded tasks to hidden child
-  runs through `delegate_task`, including MatrixClaw, Codex, or Claude Code runtimes.
+- **Subagents:** MatrixClaw sessions can hand bounded tasks to hidden child
+  runs through the `agent` tool, in the foreground or the background, including
+  MatrixClaw, Codex, or Claude Code runtimes.
 - **Tools with approvals:** file and shell tools pause before risky changes.
 - **Todo list:** the assistant tracks multi-step work with `todo_write`; a run that stops with open items is asked once to finish them or say why.
 - **Memory and search:** the assistant can save approved durable memories and search previous sessions with `memory` and `session_search`.
@@ -532,10 +533,10 @@ Enable/Disable picker.
 
 ## Subagents
 
-MatrixClaw assistant sessions receive a `delegate_task` tool for bounded child
-work. The parent model stays in charge of the user-facing session; the child
-session is hidden from the normal session list and the parent receives only the
-tool result summary.
+MatrixClaw assistant sessions receive an `agent` tool for bounded child work.
+The parent model stays in charge of the user-facing session; the child session
+is hidden from the normal session list and the parent receives only the child's
+result.
 
 Subagents can run as native MatrixClaw child sessions or through enabled
 external agents. Built-in external subagent runtimes are Codex (`codex`) and
@@ -546,21 +547,27 @@ runtime to use when multiple external subagents are enabled.
 
 The tool accepts:
 
-- `goal` required
-- `context` optional
+- `description` required: a short label
+- `prompt` required: everything the child needs
+- `background`: start the child as a background task; its result reaches the
+  parent as a message when it finishes (at most `daemon.background_agents`,
+  default 4, per session)
+- `isolation`: `shared` (the parent's directory, one writing child at a time)
+  or `worktree` (a git worktree of its own, so several run at once)
+- `readonly`: read-only tools only; read-only children run in parallel
 - `runtime`: `matrixclaw`, `codex`, `claude`, or `auto` (`matrixclaw` default)
 - `model` optional
-- `working_dir` optional
 
-Subagent runs start with an isolated prompt built from the delegated
-goal/context. They do not inherit the parent chat history, todo list, skills
-prompt, or memory prompt. Child MatrixClaw runs use a restricted tool view: no
-recursive `delegate_task`, no `memory`, no TTS, and no automation/storage/skills
-category tools; they keep their own todo list with `todo_write`.
+Subagent runs start with an isolated prompt built from the call's prompt. They
+do not inherit the parent chat history, todo list, skills prompt, or memory
+prompt. Child MatrixClaw runs use a restricted tool view: no `agent` or
+`await`, no `memory`, no TTS, and no other automation/storage/skills category
+tools; they keep their own todo list with `todo_write` and may run background
+commands, which stop when the child finishes. A blocking child's time does not
+count against the parent's budget.
 
-If a child run reaches a permission approval, MatrixClaw does not open a
-separate user approval flow in this version. The delegated task finishes with a
-controlled error summary so the parent can decide what to do next.
+If a child run asks for a permission, the parent session shows the request; the
+child goes on with the decision, and the parent resumes once the child ends.
 
 ## Local Voice
 

@@ -655,6 +655,42 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   tasks"); Telegram shows progress, no typing, and "Waiting for background
   tasks..."; the iOS package decodes it as `.unknown`.
 
+### Implementation notes (as built, stage 6c)
+
+- **agent** `{description, prompt, background, isolation, readonly, runtime,
+  model}` replaces `delegate_task`, `spawn_subagent`, `list_subagents` and
+  `read_subagent_result` (task_output reads a subagent task's result, the
+  context note lists running ones, `/tasks` shows them). `working_dir` and
+  `context` are gone: children work in the parent's directory or a worktree,
+  and the prompt carries the context. Task IDs are `task_…`.
+- **Keys and barriers**: a blocking child that may change the parent's
+  directory (`isolation shared`, not readonly) takes `subagents:<dir>` and is a
+  barrier; readonly, worktree and background children take no key and are no
+  barriers, so several run at once. Children started together get different
+  names (the parent's session gate covers naming).
+- **Readonly**: `tasks.readonly`; the child sees no mutating tool and core
+  refuses one (`… this subagent is read-only`); a readonly Codex or Claude Code
+  child runs in `default` mode, its read-only sandbox. A readonly child is
+  always `shared`.
+- **Background**: a `subagent` task (`background` 1) started at once; its
+  completion is a 6a/6b event (note, await, idle wake). The limit is
+  `daemon.background_agents` (default 4) per session; a repeated call returns
+  the task it started.
+- **Budget**: `Decision.Delegated` marks blocking agent calls; the time in
+  which only delegated calls of a batch run is left out of the parent's active
+  time. The child's time is its own run's.
+- **Resume**: the 24-hour watcher is gone. After a bridged decision the parent
+  is started if the child already ended; otherwise the child's run end
+  (`syncBlockingSubagentTaskAfterRun`) answers the parent's call and starts it,
+  and a new child approval is mirrored to the parent.
+- **Commands of a child**: when a child's run ends, the shell tasks of its
+  session are marked delivered and stopped (`its subagent finished`); canceling
+  a run already stops the commands it started (stage 6b notes).
+- **Prompt**: the parent's subagent guidance and the child's system prompt
+  (todo, background commands stop, read-only note) are rewritten for the tool.
+  Clients render `agent` calls as subagent cards; Telegram says "Starting
+  subagent" for background calls.
+
 ## 5. Providers
 
 - `providers.Request` gains `MaxOutputTokens` (priority: provider config →

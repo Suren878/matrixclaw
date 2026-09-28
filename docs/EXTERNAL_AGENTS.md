@@ -18,7 +18,7 @@ matrixclaw agents
 ```
 
 Enabled adapters appear in the new-session picker and can also be used as
-external subagent runtimes by `delegate_task`.
+external subagent runtimes by the `agent` tool.
 
 ## Session Model
 
@@ -122,10 +122,11 @@ default       -> approvalPolicy: on-request, sandbox: read-only
 
 ## Subagents
 
-MatrixClaw assistant sessions receive a `delegate_task` tool for bounded child
-work. Child sessions are hidden from the normal session list, receive an
-isolated prompt built from the delegated goal/context, and return a compact
-summary to the parent run.
+MatrixClaw assistant sessions receive an `agent` tool for bounded child work.
+Child sessions are hidden from the normal session list, receive an isolated
+prompt built from the call's prompt, and return a compact summary to the parent
+run. A `readonly` external child runs in the runtime's read-only sandbox
+(`default` mode) instead of full access.
 
 Allowed runtimes are:
 
@@ -137,8 +138,8 @@ auto
 ```
 
 `auto` defaults to the native MatrixClaw child runtime unless enabled external
-runtimes make another choice explicit. External-agent sessions cannot delegate
-again.
+runtimes make another choice explicit. External-agent sessions cannot start
+subagents.
 
 For implementation details and removal boundaries, see
 `internal/externalagents/docs/`.
