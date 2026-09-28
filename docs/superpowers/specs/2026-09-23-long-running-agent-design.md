@@ -575,8 +575,9 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   subagent task. The shell tools are registered with the core as their
   `tools.ShellTasks`.
 - **Restart**: `RecoverTasks` runs before the workflow worker starts; a
-  leftover leader whose start time (`ps -o lstart=`, no `/proc`) differs from
-  the task's is another process and is not killed. Lost tasks do not start a
+  leftover leader whose start (recorded at spawn: `/proc/<pid>/stat` starttime
+  on Linux, `kern.proc.pid` on macOS) differs from the task's, or cannot be
+  read, is not killed. Lost tasks do not start a
   run; the next run reads them. Deleting a session kills its tasks.
 - **`/tasks`** lists the bound session's background tasks above the scheduled
   tasks (`/tasks bg <id>` shows the output tail, `stop` asks first); API

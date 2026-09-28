@@ -2,21 +2,19 @@ package shelltask
 
 import (
 	"errors"
-	"os"
 	"os/exec"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 )
 
 // Process is a running shell command; its process group has the ID of its PID.
 type Process struct {
-	cmd       *exec.Cmd
-	out       *Output
-	done      chan struct{}
-	exitCode  int
-	startedAt time.Time
+	cmd         *exec.Cmd
+	out         *Output
+	done        chan struct{}
+	exitCode    int
+	startedAt   time.Time
+	leaderStart string
 }
 
 // Start runs command with bash -lc in dir, in a process group of its own, its
@@ -32,6 +30,8 @@ func Start(command, dir string, out *Output, waitDelay time.Duration) (*Process,
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
+	// Until Wait reaps the shell its PID cannot go to another process.
+	p.leaderStart, _ = processStart(p.PID())
 	go p.wait()
 	return p, nil
 }
@@ -53,6 +53,12 @@ func (p *Process) PID() int {
 // StartedAt is when the process was started.
 func (p *Process) StartedAt() time.Time {
 	return p.startedAt
+}
+
+// LeaderStart tells the shell apart from a later process with its PID; ""
+// when it could not be read.
+func (p *Process) LeaderStart() string {
+	return p.leaderStart
 }
 
 // Output is where the process writes.
@@ -87,45 +93,26 @@ func KillGroup(pgid int) error {
 	return nil
 }
 
-// KillLeftover kills the process group a daemon that is gone started at
-// startedAt with leader pid. A leader that is alive but started at another time
-// is some other process that got the ID, and is left alone.
-func KillLeftover(pid, pgid int, startedAt time.Time) error {
-	started, alive, err := processStart(pid)
+// KillLeftover kills the process group a daemon that is gone started with
+// leader pid, whose LeaderStart was start. A leader that started at another
+// time is some other process that got the ID and is left alone, as is any
+// group whose leader cannot be checked.
+func KillLeftover(pid, pgid int, start string) error {
+	if start == "" {
+		return errors.New("shelltask: the leader's start is unknown")
+	}
+	if pid <= 0 {
+		return nil
+	}
+	if err := syscall.Kill(pid, 0); errors.Is(err, syscall.ESRCH) {
+		return KillGroup(pgid)
+	}
+	current, err := processStart(pid)
 	if err != nil {
 		return err
 	}
-	if alive && !sameSecond(started, startedAt) {
+	if current != start {
 		return nil
 	}
 	return KillGroup(pgid)
-}
-
-// processStart reads when process pid started, from ps so that it works
-// without /proc; alive is false when there is no such process.
-func processStart(pid int) (started time.Time, alive bool, err error) {
-	if pid <= 0 {
-		return time.Time{}, false, nil
-	}
-	if err := syscall.Kill(pid, 0); errors.Is(err, syscall.ESRCH) {
-		return time.Time{}, false, nil
-	}
-	cmd := exec.Command("ps", "-o", "lstart=", "-p", strconv.Itoa(pid))
-	cmd.Env = append(os.Environ(), "LC_ALL=C", "TZ=UTC")
-	out, err := cmd.Output()
-	text := strings.Join(strings.Fields(string(out)), " ")
-	if text == "" {
-		return time.Time{}, false, nil
-	}
-	if err != nil {
-		return time.Time{}, false, err
-	}
-	started, err = time.Parse("Mon Jan 2 15:04:05 2006", text)
-	return started, true, err
-}
-
-// sameSecond reports whether ps's second-precision start time matches t.
-func sameSecond(ps time.Time, t time.Time) bool {
-	diff := ps.Sub(t.UTC().Truncate(time.Second))
-	return diff >= -2*time.Second && diff <= 2*time.Second
 }

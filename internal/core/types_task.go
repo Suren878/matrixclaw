@@ -45,6 +45,7 @@ type Task struct {
 	AgentName        string     `json:"agent_name,omitempty"`
 	PID              int        `json:"pid,omitempty"`
 	PGID             int        `json:"pgid,omitempty"`
+	LeaderStart      string     `json:"-"`
 	OutputPath       string     `json:"output_path,omitempty"`
 	ExitCode         *int       `json:"exit_code,omitempty"`
 	OutputCursor     int64      `json:"output_cursor,omitempty"`

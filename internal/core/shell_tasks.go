@@ -109,6 +109,7 @@ func (c *Core) adoptCommand(ctx context.Context, call tools.Call, command tools.
 		Background:       true,
 		PID:              process.PID(),
 		PGID:             process.PID(),
+		LeaderStart:      process.LeaderStart(),
 		OutputPath:       process.Output().Path(),
 		StartedAt:        process.StartedAt().UTC(),
 		UpdatedAt:        now,
@@ -310,7 +311,7 @@ func (c *Core) RecoverTasks(ctx context.Context) error {
 		if _, live := c.liveTask(task.ID); live {
 			continue
 		}
-		if err := shelltask.KillLeftover(task.PID, task.PGID, task.StartedAt); err != nil {
+		if err := shelltask.KillLeftover(task.PID, task.PGID, task.LeaderStart); err != nil {
 			log.Printf("core: kill leftover task %q: %v", task.ID, err)
 		}
 		if err := c.finishTask(ctx, task.ID, TaskStatusLost, nil, "the daemon restarted while it ran and stopped it"); err != nil {

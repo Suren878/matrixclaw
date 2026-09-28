@@ -112,33 +112,36 @@ func TestKillEndsTheWholeGroup(t *testing.T) {
 	}
 }
 
-func TestKillLeftoverChecksTheLeaderStartTime(t *testing.T) {
+func TestKillLeftoverChecksTheLeaderStartWithoutPS(t *testing.T) {
 	out := newOutput(t)
 	p, err := shelltask.Start("sleep 60", t.TempDir(), out, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = p.Kill() })
-
-	if err := shelltask.KillLeftover(p.PID(), p.PID(), p.StartedAt().Add(-time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-p.Done():
-		t.Fatal("a process started at another time was killed")
-	case <-time.After(200 * time.Millisecond):
+	t.Setenv("PATH", "/nonexistent")
+	if p.LeaderStart() == "" {
+		t.Fatal("no leader start recorded")
 	}
 
-	if err := shelltask.KillLeftover(p.PID(), p.PID(), p.StartedAt()); err != nil {
+	for _, start := range []string{"", "1"} {
+		if err := shelltask.KillLeftover(p.PID(), p.PID(), start); start == "" && err == nil {
+			t.Fatal("an unknown start was no error")
+		}
+		select {
+		case <-p.Done():
+			t.Fatalf("the group was killed for start %q", start)
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+
+	if err := shelltask.KillLeftover(p.PID(), p.PID(), p.LeaderStart()); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case <-p.Done():
 	case <-time.After(10 * time.Second):
 		t.Fatal("the leftover group was not killed")
-	}
-	if err := shelltask.KillLeftover(p.PID(), p.PID(), p.StartedAt()); err != nil {
-		t.Fatalf("a gone group: %v", err)
 	}
 }
 

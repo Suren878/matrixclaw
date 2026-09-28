@@ -191,7 +191,7 @@ func TestRecoverTasksKillsLeftoversAndMarksThemLost(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = process.Kill() })
 	left := core.Task{ID: "task_left", SessionID: session.ID, Kind: core.TaskKindShell, Status: core.TaskStatusRunning, Command: "sleep 60", Background: true,
-		PID: process.PID(), PGID: process.PID(), OutputPath: out.Path(), StartedAt: process.StartedAt(), UpdatedAt: process.StartedAt()}
+		PID: process.PID(), PGID: process.PID(), LeaderStart: process.LeaderStart(), OutputPath: out.Path(), StartedAt: process.StartedAt(), UpdatedAt: process.StartedAt()}
 	if err := db.CreateTask(context.Background(), left); err != nil {
 		t.Fatal(err)
 	}

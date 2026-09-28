@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     isolation TEXT NOT NULL DEFAULT '',
     pid INTEGER NOT NULL DEFAULT 0,
     pgid INTEGER NOT NULL DEFAULT 0,
+    leader_start TEXT NOT NULL DEFAULT '',
     output_path TEXT NOT NULL DEFAULT '',
     exit_code INTEGER,
     output_cursor INTEGER NOT NULL DEFAULT 0,
