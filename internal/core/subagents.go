@@ -411,16 +411,17 @@ func decodeSubagentApprovalBridge(approval Approval) (subagentApprovalBridgePara
 	return params, true
 }
 
-// resumeParentForSubagentStatus starts the parent of a finished child and asks
-// it for a child's pending approval; a child still running resumes its parent
-// when its run ends (syncBlockingSubagentTaskAfterRun).
+// resumeParentForSubagentStatus starts the parent of a finished child once none
+// of its approvals is pending, and asks it for a child's pending approval; a
+// child still running resumes its parent when its run ends
+// (syncBlockingSubagentTaskAfterRun).
 func (c *Core) resumeParentForSubagentStatus(ctx context.Context, task SubagentTask) error {
 	status, err := c.subagentTaskRunStatus(ctx, task)
 	if err != nil {
 		return err
 	}
 	if subagentRunStatusTerminal(status) {
-		return c.startRun(ctx, task.ParentRunID)
+		return c.resumeDecidedRun(ctx, task.ParentSessionID, task.ParentRunID)
 	}
 	if status == RunStatusWaitingApproval {
 		_, err = c.mirrorPendingSubagentApproval(ctx, task)

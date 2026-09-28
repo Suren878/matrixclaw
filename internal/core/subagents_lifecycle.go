@@ -210,6 +210,10 @@ func (c *Core) syncBlockingSubagentTaskAfterRun(ctx context.Context, task Subage
 		}
 		break
 	}
+	// A parent parked on approvals starts once none of them is pending.
+	if parentRun.Status == RunStatusWaitingApproval {
+		return c.resumeDecidedRun(ctx, parentRun.SessionID, parentRun.ID)
+	}
 	if err := c.setRunStatus(ctx, &parentRun, RunStatusAccepted, ""); err != nil {
 		return err
 	}
