@@ -140,6 +140,7 @@ func ToSurfacePermissionRequest(request core.PermissionRequest) surfacepermissio
 		Action:      request.Action,
 		Params:      decodePermissionParams(request.ToolName, request.Params),
 		Path:        request.Path,
+		Suggestion:  request.Suggestion,
 	}
 }
 

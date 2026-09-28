@@ -22,13 +22,6 @@ func (m *appModel) syncPermissionDialogCmd() tea.Cmd {
 		m.dialog.CloseDialog(surfacedialog.PermissionsID)
 		return nil
 	}
-	for _, approval := range pending {
-		if m.autoApprovesEditApproval(approval) {
-			m.suppressedApprovals[approval.ID] = struct{}{}
-			return m.resolveApprovalCmd(approval, true)
-		}
-	}
-
 	current, ok := m.dialog.Dialog(surfacedialog.PermissionsID).(*surfacedialog.Permissions)
 	if ok {
 		for _, approval := range pending {
@@ -64,17 +57,6 @@ func (m *appModel) pendingApprovals() []surfacepermission.PermissionRequest {
 	return pending
 }
 
-func (m *appModel) autoApprovesEditApproval(approval surfacepermission.PermissionRequest) bool {
-	sessionID := strings.TrimSpace(approval.SessionID)
-	if sessionID == "" {
-		sessionID = strings.TrimSpace(m.session)
-	}
-	if _, ok := m.autoEditSessions[sessionID]; !ok {
-		return false
-	}
-	return surfacepermission.CanAllowSessionApproval(approval)
-}
-
 func (m *appModel) pruneSuppressedApprovals() {
 	if len(m.suppressedApprovals) == 0 || m.read == nil {
 		return
@@ -90,15 +72,15 @@ func (m *appModel) pruneSuppressedApprovals() {
 	}
 }
 
-func (m *appModel) resolveApprovalCmd(permission surfacepermission.PermissionRequest, approved bool) tea.Cmd {
+func (m *appModel) resolveApprovalCmd(permission surfacepermission.PermissionRequest, request core.ApprovalResolveRequest) tea.Cmd {
 	if m.rt == nil {
 		return nil
 	}
 	return func() tea.Msg {
-		approval, err := m.rt.ResolveApproval(m.ctx, permission.ID, core.ApprovalResolveRequest{Approved: approved})
+		approval, err := m.rt.ResolveApproval(m.ctx, permission.ID, request)
 		return resolveApprovalMsg{
 			approval:   approval,
-			approved:   approved,
+			approved:   request.Approved,
 			approvalID: permission.ID,
 			err:        err,
 		}

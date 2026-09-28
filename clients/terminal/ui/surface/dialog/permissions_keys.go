@@ -8,7 +8,8 @@ type permissionsKeyMap struct {
 	Tab              key.Binding
 	Select           key.Binding
 	Allow            key.Binding
-	AllowSession     key.Binding
+	AlwaysSession    key.Binding
+	AlwaysGlobal     key.Binding
 	Deny             key.Binding
 	DenyWithReason   key.Binding
 	Close            key.Binding
@@ -44,9 +45,13 @@ func defaultPermissionsKeyMap() permissionsKeyMap {
 			key.WithKeys("a", "A", "ctrl+a"),
 			key.WithHelp("a", "allow"),
 		),
-		AllowSession: key.NewBinding(
+		AlwaysSession: key.NewBinding(
 			key.WithKeys("s", "S", "ctrl+s"),
-			key.WithHelp("s", "session"),
+			key.WithHelp("s", "always in session"),
+		),
+		AlwaysGlobal: key.NewBinding(
+			key.WithKeys("g", "G"),
+			key.WithHelp("g", "always everywhere"),
 		),
 		Deny: key.NewBinding(
 			key.WithKeys("d", "D"),

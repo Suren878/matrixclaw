@@ -167,7 +167,6 @@ func (m *appModel) handleServerRestartPoll(msg serverRestartPollMsg) tea.Cmd {
 }
 
 func (m *appModel) handleServerRestartAck(msg serverRestartAckMsg) {
-	m.autoEditSessions = map[string]struct{}{}
 	if msg.err != nil {
 		m.err = msg.err.Error()
 	}

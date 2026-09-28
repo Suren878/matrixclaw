@@ -6,8 +6,6 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-
-	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
 )
 
 func (p *Permissions) HandleMsg(msg tea.Msg) Action {
@@ -24,9 +22,13 @@ func (p *Permissions) HandleMsg(msg tea.Msg) Action {
 			return p.selectCurrentOption()
 		case key.Matches(msg, p.keyMap.Allow):
 			return p.respond(PermissionAllow)
-		case key.Matches(msg, p.keyMap.AllowSession):
-			if p.canAllowSession() {
-				return p.respond(PermissionAllowSession)
+		case key.Matches(msg, p.keyMap.AlwaysSession):
+			if p.permission.Suggestion != nil {
+				return p.respond(PermissionAlwaysSession)
+			}
+		case key.Matches(msg, p.keyMap.AlwaysGlobal):
+			if p.permission.Suggestion != nil {
+				return p.respond(PermissionAlwaysGlobal)
 			}
 		case key.Matches(msg, p.keyMap.Deny):
 			return p.respond(PermissionDeny)
@@ -167,18 +169,17 @@ func (p *Permissions) permissionOptions() []permissionOption {
 	options := []permissionOption{
 		{label: "Allow", action: PermissionAllow},
 	}
-	if p.canAllowSession() {
-		options = append(options, permissionOption{label: "Allow Session", action: PermissionAllowSession})
+	if p.permission.Suggestion != nil {
+		options = append(options,
+			permissionOption{label: "Always (session)", action: PermissionAlwaysSession},
+			permissionOption{label: "Always (global)", action: PermissionAlwaysGlobal},
+		)
 	}
 	options = append(options,
 		permissionOption{label: "Deny", action: PermissionDeny},
 		permissionOption{label: "Deny with reason", action: PermissionDenyWithReason},
 	)
 	return options
-}
-
-func (p *Permissions) canAllowSession() bool {
-	return surfacepermission.CanAllowSessionApproval(p.permission)
 }
 
 func (p *Permissions) hasDiffView() bool {

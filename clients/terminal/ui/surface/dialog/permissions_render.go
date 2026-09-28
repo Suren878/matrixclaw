@@ -114,6 +114,9 @@ func (p *Permissions) renderHeader(contentWidth int) string {
 	sourceLine := p.renderKeyValue("Source", permissionSourceLabel(p.permission), contentWidth)
 
 	lines := []string{title, "", sourceLine, toolLine, pathLine}
+	if suggestion := p.permission.Suggestion; suggestion != nil {
+		lines = append(lines, p.renderKeyValue("Always", suggestion.String(), contentWidth))
+	}
 
 	switch p.permission.ToolName {
 	case toolNameBash:

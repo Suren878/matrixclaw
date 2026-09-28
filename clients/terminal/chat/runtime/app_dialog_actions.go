@@ -6,35 +6,28 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
-	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/permission"
 )
 
 func (m *appModel) handlePermissionResponse(msg surfacedialog.ActionPermissionResponse) tea.Cmd {
 	m.dialog.CloseDialog(surfacedialog.PermissionsID)
 	m.suppressedApprovals[msg.Permission.ID] = struct{}{}
-	if msg.Action == surfacedialog.PermissionDenyWithReason {
+	request := core.ApprovalResolveRequest{}
+	switch msg.Action {
+	case surfacedialog.PermissionDenyWithReason:
 		m.denyingApproval = msg.Permission.ID
 		m.dialog.OpenDialog(surfacedialog.NewPromptCommand(m.com, controlplane.DenyWithReasonPrompt(msg.Permission.ID)))
 		return nil
+	case surfacedialog.PermissionAllow:
+		request.Approved = true
+	case surfacedialog.PermissionAlwaysSession:
+		request.Approved, request.Always = true, permission.ScopeSession
+	case surfacedialog.PermissionAlwaysGlobal:
+		request.Approved, request.Always = true, permission.ScopeGlobal
 	}
-	if msg.Action == surfacedialog.PermissionAllowSession && surfacepermission.CanAllowSessionApproval(msg.Permission) {
-		sessionID := strings.TrimSpace(msg.Permission.SessionID)
-		if sessionID == "" {
-			sessionID = strings.TrimSpace(m.session)
-		}
-		if sessionID != "" {
-			m.autoEditSessions[sessionID] = struct{}{}
-		}
-	}
-	return tea.Batch(
-		m.resolveApprovalCmd(
-			msg.Permission,
-			msg.Action != surfacedialog.PermissionDeny,
-		),
-		m.syncPermissionDialogCmd(),
-	)
+	return tea.Batch(m.resolveApprovalCmd(msg.Permission, request), m.syncPermissionDialogCmd())
 }
 
 func (m *appModel) handleConfirmRunCancel(msg surfacedialog.ActionConfirmRunCancel) tea.Cmd {

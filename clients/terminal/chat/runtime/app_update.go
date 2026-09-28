@@ -167,7 +167,6 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.handleCancelRunResult(msg)
 	case reconnectMsg:
 		m.loading = true
-		m.autoEditSessions = map[string]struct{}{}
 		return m, m.loadInitialCmd()
 	}
 	if m.dialog.HasDialogs() {

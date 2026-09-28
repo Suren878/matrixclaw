@@ -164,7 +164,6 @@ type appModel struct {
 	suppressedApprovals map[string]struct{}
 	// denyingApproval is the approval whose denial reason is being typed.
 	denyingApproval     string
-	autoEditSessions    map[string]struct{}
 	focus               appFocus
 	busy                bool
 	busyInputMode       core.BusyInputMode
@@ -223,7 +222,6 @@ func newApp(ctx context.Context, rt *Runtime) *appModel {
 		providerName:        providerName,
 		providerModel:       providerModel,
 		suppressedApprovals: map[string]struct{}{},
-		autoEditSessions:    map[string]struct{}{},
 		focus:               appFocusEditor,
 		busyInputMode:       core.BusyInputModeQueue,
 		now:                 time.Now(),
