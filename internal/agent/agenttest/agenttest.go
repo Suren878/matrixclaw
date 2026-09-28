@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
+	"github.com/Suren878/matrixclaw/internal/agent/toolsched"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -398,7 +399,9 @@ type Fixture struct {
 	// Slept records the engine's waits, which return at once unless RealSleep is set.
 	Slept     []time.Duration
 	RealSleep bool
-	ids       int
+	// ModelSlots is shared by the engines of fixtures that should compete for model requests.
+	ModelSlots *toolsched.Semaphore
+	ids        int
 }
 
 // NewFixture returns fakes with the run's user message already journaled.
@@ -439,14 +442,15 @@ func (f *Fixture) Engine() *agent.Engine {
 		sleep = nil
 	}
 	return agent.New(agent.Config{
-		Journal:   f.Journal,
-		Tools:     f.Tools,
-		Approvals: f.Approvals,
-		Inbox:     f.Inbox,
-		Sink:      f.Sink,
-		Prompts:   f.Prompts,
-		Now:       func() time.Time { return f.Clock },
-		Sleep:     sleep,
+		Journal:    f.Journal,
+		Tools:      f.Tools,
+		Approvals:  f.Approvals,
+		Inbox:      f.Inbox,
+		Sink:       f.Sink,
+		Prompts:    f.Prompts,
+		Now:        func() time.Time { return f.Clock },
+		Sleep:      sleep,
+		ModelSlots: f.ModelSlots,
 		NewID: func(prefix string) string {
 			f.ids++
 			return fmt.Sprintf("%s_%d", prefix, f.ids)

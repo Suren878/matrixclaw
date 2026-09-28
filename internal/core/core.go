@@ -11,6 +11,7 @@ import (
 	"time"
 
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
+	"github.com/Suren878/matrixclaw/internal/agent/toolsched"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/work"
 )
@@ -41,6 +42,8 @@ type Core struct {
 	compactProvider string
 	compactModel    string
 	windowCap       int
+	// modelSlots bounds the model requests of all native runs at once.
+	modelSlots *toolsched.Semaphore
 	// compactUnavailable is set while the compact model cannot be resolved,
 	// so the failure is logged once.
 	compactUnavailable atomic.Bool
@@ -97,6 +100,7 @@ func New(store Store) *Core {
 		historyLimit:  50,
 		lifetime:      context.Background(),
 		budgets:       DefaultRunBudgets(),
+		modelSlots:    toolsched.NewSemaphore(DefaultModelConcurrency),
 	}
 }
 

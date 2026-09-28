@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
+	"github.com/Suren878/matrixclaw/internal/agent/toolsched"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -26,6 +27,8 @@ type Config struct {
 	NewID       func(prefix string) string
 	// Sleep waits d or until ctx stops; nil uses a real timer.
 	Sleep func(ctx context.Context, d time.Duration) error
+	// ModelSlots bounds the model requests of every run sharing it; nil is unbounded.
+	ModelSlots *toolsched.Semaphore
 }
 
 // Engine runs the native agent loop over its ports.

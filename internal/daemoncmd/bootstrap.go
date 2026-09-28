@@ -33,6 +33,8 @@ type bootstrapConfig struct {
 	Budgets        core.RunBudgets
 	CompactModel   setup.CompactModelConfig
 	WindowCap      int
+	// ModelConcurrency bounds concurrent model requests; 0 keeps core's default.
+	ModelConcurrency int
 }
 
 func loadBootstrap() (bootstrapConfig, error) {
@@ -78,6 +80,7 @@ func loadBootstrap() (bootstrapConfig, error) {
 		cfg.Budgets = budgets
 		cfg.CompactModel = setupCfg.Daemon.CompactModel
 		cfg.WindowCap = setupCfg.Daemon.ContextWindowCap
+		cfg.ModelConcurrency = setupCfg.Daemon.ModelConcurrency
 
 		if err := setup.ImportDaemonEnvironmentFile(service.Path(), setupCfg); err != nil {
 			return bootstrapConfig{}, fmt.Errorf("load setup daemon environment %s: %w", setup.DaemonEnvironmentFilePath(service.Path()), err)

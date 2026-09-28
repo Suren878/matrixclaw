@@ -51,6 +51,9 @@ type DaemonConfig struct {
 	// ContextWindowCap bounds every model's context window in tokens; 0 keeps
 	// the default of 200000. Set it to the model's window to disable the cap.
 	ContextWindowCap int `json:"context_window_cap,omitempty"`
+	// ModelConcurrency bounds the model requests all runs make at once; 0
+	// keeps the default of 4.
+	ModelConcurrency int `json:"model_concurrency,omitempty"`
 }
 
 // RunBudgetsConfig overrides the built-in run budget per trigger.

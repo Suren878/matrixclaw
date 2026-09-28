@@ -52,8 +52,13 @@ type summaryModel struct {
 
 func (m summaryModel) Generate(ctx context.Context, request providers.Request) (providers.Response, error) {
 	for attempt := 0; ; attempt++ {
+		release, err := m.r.ModelSlots.Acquire(ctx)
+		if err != nil {
+			return providers.Response{}, err
+		}
 		started := time.Now()
 		response, err := m.model.Generate(ctx, request)
+		release()
 		if err == nil {
 			return response, m.r.recordStep(ctx, response, compactStopReason, time.Since(started))
 		}
@@ -146,8 +151,13 @@ func (r *run) generate(ctx context.Context, request providers.Request) (generati
 		dirty = true
 		return flush(false)
 	})
+	release, err := r.ModelSlots.Acquire(ctx)
+	if err != nil {
+		return gen, err
+	}
 	started := time.Now()
 	response, err := r.task.Model.Generate(streamCtx, request)
+	release()
 	if err == nil {
 		err = r.recordStep(ctx, response, stepStopReason(response), time.Since(started))
 	}
