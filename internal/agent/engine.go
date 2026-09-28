@@ -154,7 +154,9 @@ func (r *run) step(ctx context.Context) stepResult {
 	r.counters.Steps++
 	gen, err := r.generateWithRetry(ctx, request)
 	if err != nil && agentcontext.IsContextLengthExceeded(err) {
-		compacted, compactErr := r.compactHistory(ctx, nil, r.promptTokens(request), agentcontext.TailPercent/2)
+		tokens := r.promptTokens(request)
+		r.learnLimit(tokens)
+		compacted, compactErr := r.compactHistory(ctx, nil, tokens, agentcontext.TailPercent/2)
 		if compactErr != nil {
 			return failedStep(compactErr)
 		}

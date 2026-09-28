@@ -12,9 +12,10 @@ import (
 const wrapUpShare = 0.8
 
 // Counters is what a run has used of its budget, its no-progress streak, its
-// output-limit state, its run of low-yield summaries, what its requests elide
-// and the newest seq of its last history edit; it is checkpointed so a parked
-// or restarted run continues from it.
+// output-limit state, its run of low-yield summaries, what its requests elide,
+// the newest seq of its last history edit and the prompt room a provider
+// overflow taught it; it is checkpointed so a parked or restarted run continues
+// from it.
 type Counters struct {
 	Steps         int           `json:"steps,omitempty"`
 	Tokens        int64         `json:"tokens,omitempty"`
@@ -30,6 +31,7 @@ type Counters struct {
 	ElidedResults int64         `json:"elided_results,omitempty"`
 	ElidedImages  int64         `json:"elided_images,omitempty"`
 	HistoryEdit   int64         `json:"history_edit,omitempty"`
+	LearnedLimit  int           `json:"learned_limit,omitempty"`
 }
 
 // active is the run's working time: what it had used before plus this Run call.

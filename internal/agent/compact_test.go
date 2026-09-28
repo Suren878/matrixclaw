@@ -423,17 +423,18 @@ func TestElisionThenSummaryKeepsTheRequestOrderAndPrefix(t *testing.T) {
 		return tools.Result{Content: call.ToolCallID + " " + strings.Repeat("x", 8_000)}
 	}
 	// Six steps of ~2k tokens each; the sixth reports a prompt over the
-	// elision threshold, so the seventh request hides read1. That request
-	// overflows, and the retry starts from a summary of read1 and read2.
+	// elision threshold, so the seventh request hides read1. That request of
+	// ~10k tokens overflows, which shows the window is that small: the retry
+	// keeps only the newest step after a summary written in chunks.
 	turns := toolSteps(6, "read")
 	turns[5].Response.Usage.PromptTokens = 50_000
 	overflow := agenttest.Turn{Err: errors.New("anthropic: status 400: invalid_request_error: prompt is too long: 210000 tokens > 200000 maximum")}
-	model := agenttest.NewScriptedModel(append(turns, overflow, text("SUMMARY"), calls(call("read7", "read")), text("Done."))...)
+	model := agenttest.NewScriptedModel(append(turns, overflow, text("PART"), text("PART"), text("SUMMARY"), calls(call("read7", "read")), text("Done."))...)
 
 	outcome := run(t, f, model)
 
 	requests := model.Requests()
-	if outcome.Status != agent.StatusCompleted || len(requests) != 10 || !isStandaloneSummary(requests[7]) {
+	if outcome.Status != agent.StatusCompleted || len(requests) != 12 || !isStandaloneSummary(requests[7]) || !isStandaloneSummary(requests[9]) {
 		t.Fatalf("outcome = %+v requests = %d", outcome, len(requests))
 	}
 	for i := 1; i < 6; i++ {
@@ -446,26 +447,23 @@ func TestElisionThenSummaryKeepsTheRequestOrderAndPrefix(t *testing.T) {
 		t.Fatalf("elided request read1 = %q", toolContent(elided, "read1"))
 	}
 
-	retry := requests[8].Messages
-	if len(retry) != 10 {
-		t.Fatalf("retry messages = %d, want summary, four steps and the context note", len(retry))
+	retry := requests[10].Messages
+	if len(retry) != 4 {
+		t.Fatalf("retry messages = %d, want summary, the newest step and the context note", len(retry))
 	}
 	if summary := retry[0].Content; retry[0].Role != "user" || !strings.Contains(summary, "SUMMARY\n\nKept verbatim from that part:\n\nUser: do the task\n\nUser guidance: focus on the parser") {
 		t.Fatalf("retry starts with %q", summary)
 	}
-	for i, id := range []string{"read3", "read4", "read5", "read6"} {
-		step, result := retry[1+2*i], retry[2+2*i]
-		if len(step.ToolCalls) != 1 || step.ToolCalls[0].ID != id || result.ToolCallID != id || !strings.HasPrefix(result.Content, id+" x") {
-			t.Fatalf("retry step %d = %+v / %.40q", i+1, step.ToolCalls, result.Content)
-		}
+	if step, result := retry[1], retry[2]; len(step.ToolCalls) != 1 || step.ToolCalls[0].ID != "read6" || result.ToolCallID != "read6" || !strings.HasPrefix(result.Content, "read6 x") {
+		t.Fatalf("retry step = %+v / %.40q", step.ToolCalls, result.Content)
 	}
-	if note := retry[9]; note.Role != "user" || !strings.HasPrefix(note.Content, "Context update") || !strings.Contains(note.Content, "plan: write the parser") {
+	if note := retry[3]; note.Role != "user" || !strings.HasPrefix(note.Content, "Context update") || !strings.Contains(note.Content, "plan: write the parser") {
 		t.Fatalf("retry ends with %+v", note)
 	}
-	if !extendsPrefix(requests[8], requests[9]) || len(requests[9].Messages) != 12 || requests[9].Messages[10].ToolCalls[0].ID != "read7" {
-		t.Fatalf("the request after the retry does not extend it: %d messages", len(requests[9].Messages))
+	if !extendsPrefix(requests[10], requests[11]) || len(requests[11].Messages) != 6 || requests[11].Messages[4].ToolCalls[0].ID != "read7" {
+		t.Fatalf("the request after the retry does not extend it: %d messages", len(requests[11].Messages))
 	}
-	for _, request := range []providers.Request{requests[6], requests[8], requests[9]} {
+	for _, request := range []providers.Request{requests[6], requests[10], requests[11]} {
 		if request.SystemPrompt != requests[0].SystemPrompt || !reflect.DeepEqual(request.Tools, requests[0].Tools) {
 			t.Fatal("the system prompt or tools changed during the run")
 		}

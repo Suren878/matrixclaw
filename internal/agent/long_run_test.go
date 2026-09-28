@@ -3,6 +3,7 @@ package agent_test
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -82,5 +83,56 @@ func TestTwoHundredStepRunWithGrowingOutputsStaysWithinTheWindow(t *testing.T) {
 			t.Fatalf("boundary %d = %+v after one covering through %d", i, c, covered)
 		}
 		covered = c.CoversThroughSeq
+	}
+}
+
+func TestProviderOverflowTeachesTheRunTheRealWindow(t *testing.T) {
+	// The window is unknown, so ~105k tokens of prompt room are assumed, but the
+	// provider rejects prompts over 30k.
+	const real = 30_000
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["read"] = func(call tools.Call) tools.Result {
+		return tools.Result{Content: fmt.Sprintf("output %s\n%s", call.ToolCallID, strings.Repeat("x", 6_000))}
+	}
+	var mainRequests, overflows, largestAfter int
+	var chunkLimits []int
+	model := agenttest.ModelFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		tokens := agentcontext.EstimateRequestTokens(request)
+		if overflows > 0 {
+			largestAfter = max(largestAfter, tokens)
+		}
+		if tokens > real {
+			overflows++
+			return providers.Response{}, fmt.Errorf("provider: context_length_exceeded (%d tokens)", tokens)
+		}
+		usage := providers.Usage{PromptTokens: int64(tokens), OutputTokens: 20}
+		if strings.HasPrefix(request.SystemPrompt, "You compact matrixclaw chat histories") {
+			chunkLimits = append(chunkLimits, request.MaxOutputTokens)
+		}
+		if isSummaryRequest(request) {
+			return providers.Response{Text: "SUMMARY: reading outputs", Usage: usage}, nil
+		}
+		mainRequests++
+		if mainRequests > 60 {
+			return providers.Response{Text: "All outputs read.", Usage: usage}, nil
+		}
+		arguments := []byte(fmt.Sprintf(`{"n":%d}`, mainRequests))
+		return providers.Response{ToolCalls: []providers.ToolCall{{ID: fmt.Sprintf("c%d", mainRequests), Name: "read", Arguments: arguments}}, Usage: usage}, nil
+	})
+
+	outcome := runTask(t, f, f.Task(model))
+
+	if outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != "All outputs read." {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+	if overflows != 1 || largestAfter > real*9/10 {
+		t.Fatalf("overflows = %d, largest request after the first = %d", overflows, largestAfter)
+	}
+	if len(chunkLimits) == 0 || slices.Contains(chunkLimits, 0) {
+		t.Fatalf("chunked summary output limits = %v", chunkLimits)
+	}
+	learned := f.Journal.States[len(f.Journal.States)-1].Counters.LearnedLimit
+	if learned <= 0 || learned >= real {
+		t.Fatalf("checkpointed learned limit = %d", learned)
 	}
 }

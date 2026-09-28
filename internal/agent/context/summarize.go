@@ -17,6 +17,10 @@ const (
 	summaryToolRunes      = 4_000
 )
 
+// summaryOutputTokens bounds a summary reply; a chunk smaller than it bounds
+// the reply to its own size, so both fit the summarising window.
+const summaryOutputTokens = 8_192
+
 // ErrNothingToSummarise means the input holds no text a summary could keep.
 var ErrNothingToSummarise = errors.New("nothing to summarise")
 
@@ -42,13 +46,14 @@ func Summarize(ctx context.Context, generator Generator, in SummaryInput) (strin
 	if len(chunks) == 0 {
 		return "", ErrNothingToSummarise
 	}
-	partials, err := generateSummaries(ctx, generator, in.SessionID, "Summarise this part of a conversation:\n\n", chunks)
+	outputTokens := min(summaryOutputTokens, chunkTokens)
+	partials, err := generateSummaries(ctx, generator, in.SessionID, outputTokens, "Summarise this part of a conversation:\n\n", chunks)
 	for err == nil && len(partials) > 1 {
 		chunks = packChunks(partials, chunkTokens, "\n\n---\n\n")
 		if len(chunks) >= len(partials) {
 			return "", errors.New("partial summaries are too long to merge")
 		}
-		partials, err = generateSummaries(ctx, generator, in.SessionID, "Merge these partial summaries of one conversation, oldest first, into a single summary:\n\n", chunks)
+		partials, err = generateSummaries(ctx, generator, in.SessionID, outputTokens, "Merge these partial summaries of one conversation, oldest first, into a single summary:\n\n", chunks)
 	}
 	if err != nil {
 		return "", err
@@ -56,10 +61,10 @@ func Summarize(ctx context.Context, generator Generator, in SummaryInput) (strin
 	return partials[0], nil
 }
 
-func generateSummaries(ctx context.Context, generator Generator, sessionID string, instruction string, chunks []string) ([]string, error) {
+func generateSummaries(ctx context.Context, generator Generator, sessionID string, outputTokens int, instruction string, chunks []string) ([]string, error) {
 	summaries := make([]string, 0, len(chunks))
 	for _, chunk := range chunks {
-		summary, err := generateSummary(ctx, generator, sessionID, instruction+chunk)
+		summary, err := generateSummary(ctx, generator, sessionID, outputTokens, instruction+chunk)
 		if err != nil {
 			return nil, err
 		}
@@ -68,11 +73,12 @@ func generateSummaries(ctx context.Context, generator Generator, sessionID strin
 	return summaries, nil
 }
 
-func generateSummary(ctx context.Context, generator Generator, sessionID string, content string) (string, error) {
+func generateSummary(ctx context.Context, generator Generator, sessionID string, outputTokens int, content string) (string, error) {
 	response, err := generator.Generate(ctx, providers.Request{
-		SessionID:    sessionID,
-		SystemPrompt: summarySystemPrompt(),
-		Messages:     []providers.Message{{Role: string(transcript.MessageRoleUser), Content: content}},
+		SessionID:       sessionID,
+		SystemPrompt:    summarySystemPrompt(),
+		Messages:        []providers.Message{{Role: string(transcript.MessageRoleUser), Content: content}},
+		MaxOutputTokens: outputTokens,
 	})
 	if err != nil {
 		return "", err

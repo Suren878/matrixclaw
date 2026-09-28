@@ -16,9 +16,20 @@ type promptAnchor struct {
 }
 
 // contextLimit is the prompt room of the run's model: its window without the
-// output limit the next request sends and a reserve.
+// output limit the next request sends and a reserve, or less once a provider
+// overflow showed the window is smaller.
 func (r *run) contextLimit() int {
-	return agentcontext.EffectiveWindow(r.task.WindowTokens, outputTokens(r.task.Model, r.counters.OutputLimit))
+	limit := agentcontext.EffectiveWindow(r.task.WindowTokens, outputTokens(r.task.Model, r.counters.OutputLimit))
+	if r.counters.LearnedLimit > 0 {
+		return min(limit, r.counters.LearnedLimit)
+	}
+	return limit
+}
+
+// learnLimit keeps the run's prompt room below a prompt of tokens the provider
+// rejected as over the model's window.
+func (r *run) learnLimit(tokens int) {
+	r.counters.LearnedLimit = min(r.contextLimit(), tokens*9/10)
 }
 
 // outputTokens is the output limit a request to model sends: limit when set,
