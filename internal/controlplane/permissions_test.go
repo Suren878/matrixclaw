@@ -13,12 +13,14 @@ type rulesRuntime struct {
 	tokenReportRuntime
 	owner   bool
 	guest   bool
+	modes   []core.PermissionMode
 	rules   []permission.Rule
 	added   []core.PermissionRuleRequest
 	deleted []string
 }
 
 func (r *rulesRuntime) UpdateSessionPermissionMode(_ context.Context, sessionID string, mode core.PermissionMode) (core.Session, error) {
+	r.modes = append(r.modes, mode)
 	return core.Session{ID: sessionID, PermissionMode: mode}, nil
 }
 
@@ -39,6 +41,8 @@ func (r *rulesRuntime) DeletePermissionRule(_ context.Context, ruleID string) er
 	r.deleted = append(r.deleted, ruleID)
 	return nil
 }
+
+func (r *rulesRuntime) ManagesPermissionMode() bool { return r.owner }
 
 func (r *rulesRuntime) ManagesRules(scope permission.Scope) bool {
 	return !r.guest && (scope == permission.ScopeSession || r.owner)
@@ -118,6 +122,21 @@ func TestOnlyTheOwnerChangesGlobalRules(t *testing.T) {
 		}
 		if owner && runtime.added[0] != (core.PermissionRuleRequest{Tool: "read", Pattern: "~/.ssh/**", Effect: permission.Deny, Scope: permission.ScopeGlobal}) {
 			t.Fatalf("added = %+v", runtime.added[0])
+		}
+	}
+}
+
+func TestOnlyTheOwnerSwitchesThePermissionMode(t *testing.T) {
+	for _, owner := range []bool{false, true} {
+		runtime := &rulesRuntime{owner: owner}
+
+		result, err := New(runtime, "").Handle(context.Background(), "key", "/permissions full_auto")
+
+		if err != nil || owner != (len(runtime.modes) == 1) {
+			t.Fatalf("owner=%v: modes = %v result = %q err = %v", owner, runtime.modes, result.Text, err)
+		}
+		if !owner && result.Text != "Only the owner can switch the permission mode." {
+			t.Fatalf("non-owner reply = %q", result.Text)
 		}
 	}
 }

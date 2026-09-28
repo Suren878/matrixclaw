@@ -24,8 +24,8 @@ type ControlplaneRuntime struct {
 	ExternalKey string
 	WorkingDir  string
 	Daemon      DaemonClientFunc
-	// Owner lets the commands create and delete global permission rules; Guest
-	// keeps them from changing any rule.
+	// Owner lets the commands switch permission modes and create and delete
+	// global permission rules; Guest keeps them from changing any rule.
 	Owner bool
 	Guest bool
 }
@@ -409,6 +409,11 @@ func (r ControlplaneRuntime) DeletePermissionRule(ctx context.Context, ruleID st
 		return err
 	}
 	return client.DeletePermissionRule(ctx, ruleID)
+}
+
+// ManagesPermissionMode reports whether this client may switch a session's mode.
+func (r ControlplaneRuntime) ManagesPermissionMode() bool {
+	return r.Owner
 }
 
 // ManagesRules reports whether this client may add and delete rules of scope.

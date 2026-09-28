@@ -12,7 +12,7 @@ Normal Telegram usage is centered on the user's private bot chat.
 /new [title]     create a MatrixClaw session
 /sessions        list, select, rename, or delete sessions
 /provider        select provider and model
-/permissions     approval mode and permission rules
+/permissions     approval mode (owner chat only) and permission rules
 /modules         manage modules
 ```
 

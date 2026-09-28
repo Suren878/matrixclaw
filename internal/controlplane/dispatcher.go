@@ -75,6 +75,8 @@ type ProviderRuntime interface {
 
 type PermissionRuntime interface {
 	UpdateSessionPermissionMode(ctx context.Context, sessionID string, mode core.PermissionMode) (core.Session, error)
+	// ManagesPermissionMode reports whether this client may switch a session's mode.
+	ManagesPermissionMode() bool
 }
 
 type PermissionRuleRuntime interface {

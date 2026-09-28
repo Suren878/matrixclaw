@@ -42,6 +42,9 @@ func (d *Dispatcher) handlePermissions(ctx context.Context, externalKey string, 
 	if !ok {
 		return Result{Handled: true, Text: permissionsUsage}, nil
 	}
+	if !d.permissions.ManagesPermissionMode() {
+		return Result{Handled: true, Text: "Only the owner can switch the permission mode."}, nil
+	}
 	updated, err := d.permissions.UpdateSessionPermissionMode(ctx, session.ID, mode)
 	if err != nil {
 		return Result{}, err
