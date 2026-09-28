@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -197,5 +198,25 @@ func TestSubagentTaskKeepsReadonlyModelAndChildSession(t *testing.T) {
 	}
 	if _, err := st.GetSubagentTaskByChildSession(ctx, "nobody"); err != core.ErrNotFound {
 		t.Fatalf("missing child session err = %v", err)
+	}
+}
+
+func TestSubagentLookupByChildSessionUsesAnIndex(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "matrixclaw.db")
+	if err := openTestStore(t, path).Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	var id, parent, unused int
+	var detail string
+	if err := db.QueryRow(`EXPLAIN QUERY PLAN SELECT id FROM tasks WHERE kind = 'subagent' AND child_session_id = ?`, "s1").Scan(&id, &parent, &unused, &detail); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(detail, "idx_tasks_child_session") {
+		t.Fatalf("query plan = %q", detail)
 	}
 }

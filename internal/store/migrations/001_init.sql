@@ -264,6 +264,9 @@ CREATE INDEX IF NOT EXISTS idx_tasks_parent_call
 CREATE INDEX IF NOT EXISTS idx_tasks_child_run
     ON tasks(child_run_id);
 
+CREATE INDEX IF NOT EXISTS idx_tasks_child_session
+    ON tasks(child_session_id);
+
 CREATE INDEX IF NOT EXISTS idx_run_wakeups_wake_at
     ON run_wakeups(wake_at);
 
