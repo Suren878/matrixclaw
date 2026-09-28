@@ -21,6 +21,7 @@ const (
 	cbCallbackRef     = "rf:"
 	cbApprovalOnce    = "ao:"
 	cbApprovalSession = "as:"
+	cbApprovalGlobal  = "ag:"
 	cbApprovalDeny    = "ad:"
 	cbApprovalReason  = "ar:"
 

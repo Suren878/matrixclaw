@@ -46,7 +46,6 @@ type Worker struct {
 	inlineRuns       map[string]struct{}
 	messages         map[string]struct{}
 	messageLog       []string
-	autoEdits        map[string]struct{}
 	locations        map[string]telegramLocationContext
 	pendingLocations map[string]pendingLocationRequest
 	chatActions      map[string]time.Time

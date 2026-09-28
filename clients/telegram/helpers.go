@@ -65,6 +65,12 @@ func (w *Worker) allowInlineUser(user *User) bool {
 	return user.ID == w.config.AllowedUserID
 }
 
+// ownerChat reports whether target is the owner's private chat, the only
+// Telegram chat that may change global permission rules.
+func (w *Worker) ownerChat(target chatTarget) bool {
+	return w.config.AllowedUserID != 0 && target.isChat() && target.chatID == w.config.AllowedUserID
+}
+
 func targetFromMessage(message *Message) chatTarget {
 	if guestQueryID := strings.TrimSpace(message.GuestQueryID); guestQueryID != "" {
 		return chatTarget{

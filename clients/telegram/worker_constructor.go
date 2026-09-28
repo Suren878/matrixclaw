@@ -66,7 +66,6 @@ func NewWorker(cfg Config) (*Worker, error) {
 		inline:           map[string]string{},
 		inlineRuns:       map[string]struct{}{},
 		messages:         map[string]struct{}{},
-		autoEdits:        map[string]struct{}{},
 		locations:        map[string]telegramLocationContext{},
 		pendingLocations: map[string]pendingLocationRequest{},
 		chatActions:      map[string]time.Time{},

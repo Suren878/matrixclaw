@@ -18,6 +18,9 @@ func renderApprovalText(approval core.Approval) string {
 	if approval.Path != "" {
 		lines = append(lines, "Path: "+approval.Path)
 	}
+	if approval.Suggestion != nil {
+		lines = append(lines, "Always: "+approval.Suggestion.String())
+	}
 	if approval.Description != "" {
 		lines = append(lines, "")
 		lines = append(lines, approval.Description)

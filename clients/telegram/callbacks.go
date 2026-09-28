@@ -8,6 +8,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/commandcatalog"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/permission"
 )
 
 func (w *Worker) handleCallbackQuery(ctx context.Context, cq *CallbackQuery) error {
@@ -43,11 +44,16 @@ func (w *Worker) handleCallbackQuery(ctx context.Context, cq *CallbackQuery) err
 	case strings.HasPrefix(cq.Data, cbPickerPage):
 		return w.handlePickerPageCallback(telegramCtx, target, cq)
 	case strings.HasPrefix(cq.Data, cbApprovalOnce):
-		return w.resolveApprovalCallback(telegramCtx, target, cq, strings.TrimPrefix(cq.Data, cbApprovalOnce), true, false)
+		return w.resolveApprovalCallback(telegramCtx, target, cq, strings.TrimPrefix(cq.Data, cbApprovalOnce), core.ApprovalResolveRequest{Approved: true})
 	case strings.HasPrefix(cq.Data, cbApprovalSession):
-		return w.resolveApprovalCallback(telegramCtx, target, cq, strings.TrimPrefix(cq.Data, cbApprovalSession), true, true)
+		return w.resolveApprovalCallback(telegramCtx, target, cq, strings.TrimPrefix(cq.Data, cbApprovalSession), core.ApprovalResolveRequest{Approved: true, Always: permission.ScopeSession})
+	case strings.HasPrefix(cq.Data, cbApprovalGlobal):
+		if !w.ownerChat(target) {
+			return w.sendText(telegramCtx, target, "Only the owner can keep a rule for every session.")
+		}
+		return w.resolveApprovalCallback(telegramCtx, target, cq, strings.TrimPrefix(cq.Data, cbApprovalGlobal), core.ApprovalResolveRequest{Approved: true, Always: permission.ScopeGlobal})
 	case strings.HasPrefix(cq.Data, cbApprovalDeny):
-		return w.resolveApprovalCallback(telegramCtx, target, cq, strings.TrimPrefix(cq.Data, cbApprovalDeny), false, false)
+		return w.resolveApprovalCallback(telegramCtx, target, cq, strings.TrimPrefix(cq.Data, cbApprovalDeny), core.ApprovalResolveRequest{})
 	case strings.HasPrefix(cq.Data, cbApprovalReason):
 		return w.askDenialReason(telegramCtx, target, strings.TrimPrefix(cq.Data, cbApprovalReason))
 	default:
@@ -118,24 +124,26 @@ func (w *Worker) askDenialReason(ctx context.Context, target chatTarget, approva
 	return w.sendText(ctx, target, "Send the reason for denying, or /cancel.")
 }
 
-func (w *Worker) resolveApprovalCallback(ctx context.Context, target chatTarget, cq *CallbackQuery, approvalID string, approved bool, allowSession bool) error {
+func (w *Worker) resolveApprovalCallback(ctx context.Context, target chatTarget, cq *CallbackQuery, approvalID string, request core.ApprovalResolveRequest) error {
 	if prompt, ok := w.prompt(target.externalKey); ok && prompt.SubmitCommandPrefix == controlplane.DenyWithReasonPrompt(approvalID).SubmitCommandPrefix {
 		w.clearPrompt(target.externalKey)
 	}
-	approval, err := w.daemon(target.externalKey).ResolveApproval(ctx, approvalID, core.ApprovalResolveRequest{Approved: approved})
+	approval, err := w.daemon(target.externalKey).ResolveApproval(ctx, approvalID, request)
 	if err != nil {
 		return w.editOrSend(ctx, target, cq.Message.MessageID, fmt.Sprintf("Resolve approval failed: %v", err), nil)
 	}
-	status := "Denied"
-	if approved {
-		status = "Approved"
+	return w.editOrSend(ctx, target, cq.Message.MessageID, approvalStatus(approval, request)+"\n\n"+renderApprovalText(approval), nil)
+}
+
+func approvalStatus(approval core.Approval, request core.ApprovalResolveRequest) string {
+	switch {
+	case !request.Approved:
+		return "Denied"
+	case request.Always == permission.ScopeSession && approval.Suggestion != nil:
+		return "Always allowed in this session: " + approval.Suggestion.String()
+	case request.Always == permission.ScopeGlobal && approval.Suggestion != nil:
+		return "Always allowed everywhere: " + approval.Suggestion.String()
+	default:
+		return "Approved"
 	}
-	if approved && allowSession && canAllowSessionApproval(approval) {
-		w.rememberAutoEditSession(target, approval.SessionID)
-		status = "Approved for session"
-	}
-	if err := w.editOrSend(ctx, target, cq.Message.MessageID, status+"\n\n"+renderApprovalText(approval), nil); err != nil {
-		return err
-	}
-	return nil
 }

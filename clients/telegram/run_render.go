@@ -207,17 +207,10 @@ func (w *Worker) renderApprovalUpdates(ctx context.Context, target chatTarget, a
 		if _, ok := state.approvals[approval.ID]; ok {
 			continue
 		}
-		if w.autoApprovesEditApproval(target, approval) {
-			if _, err := w.daemon(target.externalKey).ResolveApproval(ctx, approval.ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
-				return err
-			}
-			state.approvals[approval.ID] = 0
-			continue
-		}
 		reply, err := w.sendTelegramMessage(ctx, SendMessageRequest{
 			ChatID:      target.chatID,
 			Text:        clipTelegramText("Approval required\n\n" + renderApprovalText(approval)),
-			ReplyMarkup: approvalKeyboard(approval),
+			ReplyMarkup: approvalKeyboard(approval, w.ownerChat(target)),
 		})
 		if err != nil {
 			return err

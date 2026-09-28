@@ -8,21 +8,23 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-func approvalKeyboard(approval core.Approval) *InlineKeyboardMarkup {
+// approvalKeyboard answers one approval; "Always" keeps the suggested rule, and
+// only the owner's chat may keep it for every session.
+func approvalKeyboard(approval core.Approval, owner bool) *InlineKeyboardMarkup {
 	approvalID := approval.ID
-	firstRow := []InlineKeyboardButton{{Text: "✅ Allow", CallbackData: cbApprovalOnce + approvalID}}
-	if canAllowSessionApproval(approval) {
-		firstRow = append(firstRow, InlineKeyboardButton{Text: "🟢 Session", CallbackData: cbApprovalSession + approvalID})
+	rows := [][]InlineKeyboardButton{{{Text: "✅ Allow", CallbackData: cbApprovalOnce + approvalID}}}
+	if approval.Suggestion != nil {
+		always := []InlineKeyboardButton{{Text: "♾ Always: session", CallbackData: cbApprovalSession + approvalID}}
+		if owner {
+			always = append(always, InlineKeyboardButton{Text: "🌐 Always: global", CallbackData: cbApprovalGlobal + approvalID})
+		}
+		rows = append(rows, always)
 	}
-	return &InlineKeyboardMarkup{
-		InlineKeyboard: [][]InlineKeyboardButton{
-			firstRow,
-			{
-				{Text: "❌ Deny", CallbackData: cbApprovalDeny + approvalID},
-				{Text: "✍️ Deny with reason", CallbackData: cbApprovalReason + approvalID},
-			},
-		},
-	}
+	rows = append(rows, []InlineKeyboardButton{
+		{Text: "❌ Deny", CallbackData: cbApprovalDeny + approvalID},
+		{Text: "✍️ Deny with reason", CallbackData: cbApprovalReason + approvalID},
+	})
+	return &InlineKeyboardMarkup{InlineKeyboard: rows}
 }
 
 func pickerKeyboardView(picker controlplane.PickerData, view controlplane.ResultView) *InlineKeyboardMarkup {

@@ -41,7 +41,7 @@ func (w *Worker) handlePendingPrompt(ctx context.Context, target chatTarget, tex
 	if isPromptCloseCommand(text) {
 		w.clearPrompt(target.externalKey)
 		if strings.TrimSpace(prompt.CancelCommand) != "" {
-			result, err := w.dispatcher().Handle(ctx, target.externalKey, strings.TrimSpace(prompt.CancelCommand))
+			result, err := w.dispatcher(target).Handle(ctx, target.externalKey, strings.TrimSpace(prompt.CancelCommand))
 			if err != nil {
 				return true, w.sendText(ctx, target, fmt.Sprintf("Command failed: %v", err))
 			}
@@ -54,7 +54,7 @@ func (w *Worker) handlePendingPrompt(ctx context.Context, target chatTarget, tex
 		return false, nil
 	}
 	w.clearPrompt(target.externalKey)
-	result, err := w.dispatcher().Handle(ctx, target.externalKey, prompt.SubmitCommandPrefix+strings.TrimSpace(text))
+	result, err := w.dispatcher(target).Handle(ctx, target.externalKey, prompt.SubmitCommandPrefix+strings.TrimSpace(text))
 	if err != nil {
 		return true, w.sendText(ctx, target, fmt.Sprintf("Command failed: %v", err))
 	}
