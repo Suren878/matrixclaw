@@ -26,6 +26,7 @@ const (
 	CommandRestart     = commandcatalog.CommandRestart
 	CommandStop        = commandcatalog.CommandStop
 	CommandHelp        = commandcatalog.CommandHelp
+	CommandApproval    = commandcatalog.CommandApproval
 )
 
 type PickerKind string

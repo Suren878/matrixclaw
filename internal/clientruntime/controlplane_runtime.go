@@ -374,6 +374,14 @@ func (r ControlplaneRuntime) UpdateSessionPermissionMode(ctx context.Context, se
 	return client.UpdateSessionPermissionMode(ctx, sessionID, mode)
 }
 
+func (r ControlplaneRuntime) ResolveApproval(ctx context.Context, approvalID string, request core.ApprovalResolveRequest) (core.Approval, error) {
+	client, err := r.client("")
+	if err != nil {
+		return core.Approval{}, err
+	}
+	return client.ResolveApproval(ctx, approvalID, request)
+}
+
 func (r ControlplaneRuntime) SessionContext(ctx context.Context, sessionID string) (core.ContextReport, error) {
 	client, err := r.client("")
 	if err != nil {

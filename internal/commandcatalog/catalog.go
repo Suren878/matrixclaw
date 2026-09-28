@@ -26,6 +26,7 @@ const (
 	CommandRestart     CommandID = "restart"
 	CommandStop        CommandID = "stop"
 	CommandHelp        CommandID = "help"
+	CommandApproval    CommandID = "approval"
 )
 
 type CommandSpec struct {
@@ -60,6 +61,7 @@ func Catalog() []CommandSpec {
 		{ID: CommandRestart, Command: "/restart", Description: "Restart daemon", Menu: false, Public: true},
 		{ID: CommandStop, Command: "/stop", Description: "Stop daemon", Menu: false, Public: true},
 		{ID: CommandHelp, Command: "/help", Aliases: []string{"commands", "start"}, Description: "Help", Menu: false, Public: true},
+		{ID: CommandApproval, Command: "/approval", Description: "Answer an approval", Menu: false, Public: false},
 	}
 }
 

@@ -76,6 +76,10 @@ type PermissionRuntime interface {
 	UpdateSessionPermissionMode(ctx context.Context, sessionID string, mode core.PermissionMode) (core.Session, error)
 }
 
+type ApprovalRuntime interface {
+	ResolveApproval(ctx context.Context, approvalID string, request core.ApprovalResolveRequest) (core.Approval, error)
+}
+
 type SessionMessageRuntime interface {
 	CreateSystemMessage(ctx context.Context, sessionID string, content string) (transcript.Message, error)
 }
@@ -198,6 +202,7 @@ type Dispatcher struct {
 	browserModules BrowserModuleRuntime
 	providers      ProviderRuntime
 	permissions    PermissionRuntime
+	approvals      ApprovalRuntime
 	messages       SessionMessageRuntime
 	sender         SessionSendRuntime
 	continuer      ContinueRuntime
@@ -233,6 +238,7 @@ func New(runtime any, workingDir string) *Dispatcher {
 		d.browserModules, _ = runtime.(BrowserModuleRuntime)
 		d.providers, _ = runtime.(ProviderRuntime)
 		d.permissions, _ = runtime.(PermissionRuntime)
+		d.approvals, _ = runtime.(ApprovalRuntime)
 		d.messages, _ = runtime.(SessionMessageRuntime)
 		d.sender, _ = runtime.(SessionSendRuntime)
 		d.continuer, _ = runtime.(ContinueRuntime)
@@ -285,6 +291,8 @@ func (d *Dispatcher) Handle(ctx context.Context, externalKey string, text string
 		return d.handleProvider(ctx, externalKey, args)
 	case CommandPermissions:
 		return d.handlePermissions(ctx, externalKey, args)
+	case CommandApproval:
+		return d.handleApproval(ctx, args)
 	case CommandContext:
 		return d.handleContext(ctx, externalKey, args)
 	case CommandUsage:
