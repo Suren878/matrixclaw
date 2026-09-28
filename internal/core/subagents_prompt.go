@@ -11,7 +11,7 @@ func (c *Core) agentGuidancePrompt(ctx context.Context) string {
 		"Subagents:",
 		"- The agent tool runs a child agent on a bounded task. Give it a short description and a prompt with everything it needs: the goal, the context and what to report back. It sees nothing of this conversation.",
 		"- Use readonly:true for research, reviews and questions: the child gets read-only tools, and read-only children in one reply run in parallel.",
-		"- A child that changes files works in your directory (isolation shared, one at a time) or in its own git worktree (isolation worktree, several at once; you merge their work).",
+		"- A child that changes files works in your directory (isolation shared: children you wait for run one at a time, background ones alongside you and each other with only single edits taking turns) or in its own git worktree (isolation worktree, several at once; you merge their work).",
 		"- Without background the call returns the child's result, and several such calls in one reply run together; their time does not count against your budget.",
 		fmt.Sprintf("- With background:true the call returns a task id at once and the result arrives as a message when the child finishes; wait for it with await. At most %d background children run at once.", c.backgroundAgents),
 		"- Children cannot start agents or await; they may use todo_write and background commands. Results return to you, the parent agent.",

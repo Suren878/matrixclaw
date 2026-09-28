@@ -666,7 +666,12 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
 - **Keys and barriers**: a blocking child that may change the parent's
   directory (`isolation shared`, not readonly) takes `subagents:<dir>` and is a
   barrier; readonly, worktree and background children take no key and are no
-  barriers, so several run at once. Children started together get different
+  barriers, so several run at once. Deviation from §4: background shared
+  writers are not serialised as a whole. Their agent call ends once the child
+  starts, so a key on it would be held only while starting, and a key cannot
+  span a child's parked runs; each of their mutating calls still takes the
+  directory's key, so single edits take turns. Use `isolation worktree` for
+  background writers that must not interleave. Children started together get different
   names and keep the background limit: both are reserved under the parent's
   session gate, while the child's session (an external runtime's start
   included) is created outside it.

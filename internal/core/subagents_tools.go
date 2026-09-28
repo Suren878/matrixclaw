@@ -46,9 +46,9 @@ func (t *agentTool) Spec() tools.Spec {
 	}
 }
 
-// ConcurrencyKey lets one child at a time change the parent's directory; it is
-// not the directory's own key, which the child's calls take while this call
-// holds its key. Read-only, worktree and background children need none.
+// ConcurrencyKey lets one blocking child at a time change the parent's
+// directory; it is not the directory's own key, which the child's calls take.
+// A background call ends once its child starts, so a key would not hold it.
 func (t *agentTool) ConcurrencyKey(call tools.Call) string {
 	input := parseAgentInput(call.Args)
 	if !agentCallWritesSharedDir(input) {
