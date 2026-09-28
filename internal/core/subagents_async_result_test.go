@@ -8,6 +8,7 @@ import (
 )
 
 func TestAsyncSubagentCompletionKeepsTheSpawnResult(t *testing.T) {
+	t.Parallel()
 	scenario := runAsyncSubagentScenario(t)
 
 	var spawnResult string

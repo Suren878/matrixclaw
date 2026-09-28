@@ -146,6 +146,7 @@ func recoveryToolSpec(id string, effect tools.Effect) tools.Spec {
 }
 
 func TestRecoverRunningGenerationSkipsPartialAndCompletes(t *testing.T) {
+	t.Parallel()
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	runtime := &recoveryRuntime{text: "recovered answer"}
@@ -196,6 +197,7 @@ func TestRecoverRunningGenerationSkipsPartialAndCompletes(t *testing.T) {
 }
 
 func TestGracefulExecutorStopPreservesAndRecoversNativeGeneration(t *testing.T) {
+	t.Parallel()
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	interruptedRuntime := &interruptibleRecoveryRuntime{started: make(chan struct{})}
@@ -244,6 +246,7 @@ func TestGracefulExecutorStopPreservesAndRecoversNativeGeneration(t *testing.T) 
 }
 
 func TestUserCancellationIsNotConvertedIntoRestartRecovery(t *testing.T) {
+	t.Parallel()
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	interruptedRuntime := &interruptibleRecoveryRuntime{started: make(chan struct{})}
@@ -275,6 +278,7 @@ func TestUserCancellationIsNotConvertedIntoRestartRecovery(t *testing.T) {
 }
 
 func TestStartupRecoveryAndPersistedWorkflowRaceExecutesRunOnce(t *testing.T) {
+	t.Parallel()
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	runtime := &recoveryRuntime{text: "single recovered answer"}
@@ -310,6 +314,7 @@ func TestStartupRecoveryAndPersistedWorkflowRaceExecutesRunOnce(t *testing.T) {
 }
 
 func TestRecoverReadOnlyToolReplaysAutomaticallyOnce(t *testing.T) {
+	t.Parallel()
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	starter := &recordingRunStarter{}
@@ -333,6 +338,7 @@ func TestRecoverReadOnlyToolReplaysAutomaticallyOnce(t *testing.T) {
 }
 
 func TestRecoverMutatingToolRequiresFreshApprovalBeforeSingleReplay(t *testing.T) {
+	t.Parallel()
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	runtime := &recoveryRuntime{text: "finished after approved recovery"}
@@ -372,6 +378,7 @@ func TestRecoverMutatingToolRequiresFreshApprovalBeforeSingleReplay(t *testing.T
 }
 
 func TestRecoverDeniedToolReturnsTheDenialToTheModel(t *testing.T) {
+	t.Parallel()
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	starter := &recordingRunStarter{}
@@ -411,6 +418,7 @@ func TestRecoverDeniedToolReturnsTheDenialToTheModel(t *testing.T) {
 }
 
 func TestRecoveryLeavesDeferredCallsToTheResumedRun(t *testing.T) {
+	t.Parallel()
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	starter := &recordingRunStarter{}
@@ -456,6 +464,7 @@ func TestRecoveryLeavesDeferredCallsToTheResumedRun(t *testing.T) {
 }
 
 func TestRecoveryAnswersEveryCallOfABatchInFlight(t *testing.T) {
+	t.Parallel()
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	starter := &recordingRunStarter{}
@@ -525,6 +534,7 @@ func TestRecoveryAnswersEveryCallOfABatchInFlight(t *testing.T) {
 }
 
 func TestRecoveryDefersAgainTheCallsTheBatchCheckpointNamesNotStarted(t *testing.T) {
+	t.Parallel()
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	mutation := &recoveryTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation)}
@@ -573,6 +583,7 @@ func TestRecoveryDefersAgainTheCallsTheBatchCheckpointNamesNotStarted(t *testing
 }
 
 func TestRecoverBlockingSubagentCompletesChildThenParentWithoutDuplicate(t *testing.T) {
+	t.Parallel()
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	runtime := &recoveryRuntime{text: "recovered completion"}
@@ -686,6 +697,7 @@ func (r *recoveryExternalRuntime) receivedInput() string {
 }
 
 func TestRecoverExternalAgentContinuesExistingSession(t *testing.T) {
+	t.Parallel()
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	runtime := &recoveryExternalRuntime{}
@@ -728,6 +740,7 @@ func TestRecoverExternalAgentContinuesExistingSession(t *testing.T) {
 }
 
 func TestGracefulExecutorStopRecoversExternalSessionWithoutNativeToolReplay(t *testing.T) {
+	t.Parallel()
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	interruptedRuntime := &interruptibleExternalRuntime{started: make(chan struct{})}

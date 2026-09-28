@@ -62,6 +62,7 @@ func assertSubagentTaskStatus(t *testing.T, task core.SubagentTask, want core.Su
 }
 
 func TestCancelParentCancelsItsBlockingSubagent(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	starter := &executingRunStarter{app: app}
@@ -109,6 +110,7 @@ func TestCancelParentCancelsItsBlockingSubagent(t *testing.T) {
 }
 
 func TestCancelParentCancelsItsAsyncSubagentWithoutFollowUp(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	starter := &executingRunStarter{app: app}

@@ -15,6 +15,7 @@ import (
 )
 
 func TestNextRunInASessionKeepsWhatTheLastRunElided(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("probe", tools.EffectReadOnly), fn: func(_ context.Context, call tools.Call) (tools.Result, error) {

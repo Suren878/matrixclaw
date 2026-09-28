@@ -30,6 +30,7 @@ func changingTool(id string) funcTool {
 }
 
 func TestNativeRunEndsWithAFinalTurnAtTheDefaultStepBudget(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithTools(tools.NewRegistry(changingTool("inspect_state")))
@@ -74,6 +75,7 @@ func TestNativeRunEndsWithAFinalTurnAtTheDefaultStepBudget(t *testing.T) {
 }
 
 func TestBudgetCountersSurviveAnApprovalPark(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithRunBudgets(core.RunBudgets{User: agent.Budget{Steps: 2}})
@@ -127,6 +129,7 @@ func TestBudgetCountersSurviveAnApprovalPark(t *testing.T) {
 }
 
 func TestRecoveredRunKeepsItsBudgetCounters(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithRunBudgets(core.RunBudgets{User: agent.Budget{Steps: 2}})
@@ -155,6 +158,7 @@ func TestRecoveredRunKeepsItsBudgetCounters(t *testing.T) {
 }
 
 func TestRecoveredRunKeepsItsRaisedOutputLimit(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	runtime := &recoveryRuntime{text: "Finished after the restart."}
@@ -178,6 +182,7 @@ func TestRecoveredRunKeepsItsRaisedOutputLimit(t *testing.T) {
 }
 
 func TestRunBudgetFollowsTheTrigger(t *testing.T) {
+	t.Parallel()
 	budgets := core.RunBudgets{User: agent.Budget{Steps: 3}, Subagent: agent.Budget{Steps: 2}, Automation: agent.Budget{Steps: 1}}
 	for _, tc := range []struct {
 		name string
@@ -228,6 +233,7 @@ func TestRunBudgetFollowsTheTrigger(t *testing.T) {
 }
 
 func TestSessionBudgetOverridesTheDefault(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithTools(tools.NewRegistry(changingTool("inspect_state")))
@@ -259,6 +265,7 @@ func TestSessionBudgetOverridesTheDefault(t *testing.T) {
 }
 
 func TestSubagentStoppedAtItsBudgetReportsAPartialResult(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithRunBudgets(core.RunBudgets{User: agent.Budget{Steps: 5}, Subagent: agent.Budget{Steps: 1}})

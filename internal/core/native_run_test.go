@@ -19,6 +19,7 @@ func (f generationRuntimeFunc) Generate(ctx context.Context, request providers.R
 }
 
 func TestToolTurnPersistsFinalCommentaryAndUsage(t *testing.T) {
+	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "non-streaming", true: "streaming"}[stream], func(t *testing.T) {
 			app, db, cleanup := newCrashRecoveryCore(t)
@@ -98,6 +99,7 @@ func TestToolTurnPersistsFinalCommentaryAndUsage(t *testing.T) {
 }
 
 func TestEmptyModelReplyRetriesWithoutReexecutingTool(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	tool := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
@@ -125,6 +127,7 @@ func TestEmptyModelReplyRetriesWithoutReexecutingTool(t *testing.T) {
 }
 
 func TestRepeatedToolCallIDExecutesOnlyOnce(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	tool := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
@@ -148,6 +151,7 @@ func TestRepeatedToolCallIDExecutesOnlyOnce(t *testing.T) {
 }
 
 func TestUnknownToolIsReturnedToModelForCorrection(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	tool := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
@@ -183,6 +187,7 @@ func TestUnknownToolIsReturnedToModelForCorrection(t *testing.T) {
 }
 
 func TestToolCallIDCollisionAcrossSessionsFailsRunClearly(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	tool := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
@@ -214,6 +219,7 @@ func (t *failingApprovedTool) Execute(ctx context.Context, call tools.Call) (too
 }
 
 func TestApprovedToolFailureIsReturnedToModelWithoutReplay(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	tool := &failingApprovedTool{recoveryTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation)}}
@@ -256,6 +262,7 @@ func TestApprovedToolFailureIsReturnedToModelWithoutReplay(t *testing.T) {
 }
 
 func TestModelFailuresAreBoundedAndDoNotReplayPartialOutput(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name      string
 		partial   string
@@ -308,6 +315,7 @@ func TestModelFailuresAreBoundedAndDoNotReplayPartialOutput(t *testing.T) {
 }
 
 func TestRunStepsCountCompactionGeneration(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	leaked := false

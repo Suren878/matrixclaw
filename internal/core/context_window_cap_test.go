@@ -11,6 +11,7 @@ import (
 )
 
 func TestContextWindowCapBoundsRunsAndTheContextReport(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name      string
 		cap       int
@@ -64,6 +65,7 @@ type outputLimitedRuntime struct {
 func (r outputLimitedRuntime) OutputLimits() (int64, int64) { return r.output, r.output }
 
 func TestContextReportRecommendsCompactingWhereRunsWouldSummarise(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	// A 64k output limit leaves 50k of a 100k window, so ~45k tokens of

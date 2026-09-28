@@ -12,6 +12,7 @@ import (
 )
 
 func TestContinueStartsARunThatContinuesTheLatestOne(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	starter := &recordingRunStarter{}
@@ -36,6 +37,7 @@ func TestContinueStartsARunThatContinuesTheLatestOne(t *testing.T) {
 }
 
 func TestContinueIsRejectedWhileARunIsActive(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithRunStarter(&recordingRunStarter{})
@@ -49,6 +51,7 @@ func TestContinueIsRejectedWhileARunIsActive(t *testing.T) {
 }
 
 func TestContinueNeedsAnEarlierRun(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithRunStarter(&recordingRunStarter{})
@@ -66,6 +69,7 @@ func TestContinueNeedsAnEarlierRun(t *testing.T) {
 }
 
 func TestContinueKeepsTheOriginalAssignmentVerbatim(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithRunStarter(&recordingRunStarter{})

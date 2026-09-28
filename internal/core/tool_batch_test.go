@@ -34,6 +34,7 @@ func toolResults(request providers.Request) []string {
 }
 
 func TestReadsOfOneReplyRunAtOnceInANativeRun(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	started, release := make(chan struct{}, 2), make(chan struct{})
@@ -70,6 +71,7 @@ func TestReadsOfOneReplyRunAtOnceInANativeRun(t *testing.T) {
 }
 
 func TestAllowedMutationsOfTwoSessionsInOneDirectoryTakeTurns(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	dir := t.TempDir()
@@ -128,6 +130,7 @@ func TestAllowedMutationsOfTwoSessionsInOneDirectoryTakeTurns(t *testing.T) {
 }
 
 func TestDelegatedChildChangesTheParentsDirectoryWithoutDeadlock(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	edit := recoveryToolSpec("mutate_state", tools.EffectMutation)

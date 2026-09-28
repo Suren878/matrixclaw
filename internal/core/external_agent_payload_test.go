@@ -11,6 +11,7 @@ import (
 )
 
 func TestBlockingSubagentWorkJobCarriesHeartbeat(t *testing.T) {
+	t.Parallel()
 	now := time.Now().UTC()
 	job := subagentWorkJob(SubagentTask{
 		ID:        "subagent-1",
@@ -28,6 +29,7 @@ func TestBlockingSubagentWorkJobCarriesHeartbeat(t *testing.T) {
 }
 
 func TestRunTimingUsesStreamingMessageUpdateAsLastEvent(t *testing.T) {
+	t.Parallel()
 	startedAt := time.Now().UTC().Add(-time.Minute)
 	updatedAt := startedAt.Add(45 * time.Second)
 	timing := deriveRunTiming(Run{
@@ -45,6 +47,7 @@ func TestRunTimingUsesStreamingMessageUpdateAsLastEvent(t *testing.T) {
 }
 
 func TestExternalToolOutputIsBounded(t *testing.T) {
+	t.Parallel()
 	assistant := &transcript.Message{}
 	delta := strings.Repeat("д", externalToolOutputPerItemLimit)
 	for i := 0; i < 8; i++ {
@@ -80,6 +83,7 @@ func TestExternalToolOutputIsBounded(t *testing.T) {
 }
 
 func TestClipExternalPayloadKeepsHeadTailAndValidUTF8(t *testing.T) {
+	t.Parallel()
 	value := "HEAD-" + strings.Repeat("я", 100) + "-TAIL"
 	clipped := clipExternalPayload(value, 120)
 	if len(clipped) > 120 {

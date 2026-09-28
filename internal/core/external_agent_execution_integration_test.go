@@ -51,6 +51,7 @@ func (r *burstExternalRuntime) Interrupt(context.Context, externalagents.Externa
 func (r *burstExternalRuntime) Close() error { return nil }
 
 func TestExternalAgentBurstPersistsCoalescedProgress(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	sqliteStore, err := store.NewSQLite(filepath.Join(t.TempDir(), "matrixclaw.db"))
 	if err != nil {

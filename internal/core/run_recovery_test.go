@@ -12,6 +12,7 @@ import (
 )
 
 func TestPersistedWorkflowCanRecoverOrphanedRunningRunInline(t *testing.T) {
+	t.Parallel()
 	app, sqliteStore, cleanup := newRunRecoveryTestCore(t)
 	defer cleanup()
 	app.WithSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "continued inline"}})

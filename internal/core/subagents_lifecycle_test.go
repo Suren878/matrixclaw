@@ -7,6 +7,7 @@ import (
 )
 
 func TestAfterRunExecutionReturnsGetRunStoreError(t *testing.T) {
+	t.Parallel()
 	want := errors.New("get run failed")
 	app := New(&afterRunExecutionStore{getRunErr: want})
 
@@ -17,6 +18,7 @@ func TestAfterRunExecutionReturnsGetRunStoreError(t *testing.T) {
 }
 
 func TestAfterRunExecutionReturnsSubagentTaskLookupStoreError(t *testing.T) {
+	t.Parallel()
 	want := errors.New("get task failed")
 	app := New(&afterRunExecutionStore{
 		run:     Run{ID: "run_child", SessionID: "session_child", Status: RunStatusRunning},
@@ -30,6 +32,7 @@ func TestAfterRunExecutionReturnsSubagentTaskLookupStoreError(t *testing.T) {
 }
 
 func TestAfterRunExecutionReturnsGetSessionStoreError(t *testing.T) {
+	t.Parallel()
 	want := errors.New("get session failed")
 	app := New(&afterRunExecutionStore{
 		run:        Run{ID: "run_child", SessionID: "session_child", Status: RunStatusRunning},
@@ -44,6 +47,7 @@ func TestAfterRunExecutionReturnsGetSessionStoreError(t *testing.T) {
 }
 
 func TestAfterRunExecutionIgnoresExpectedMissingRecords(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		store *afterRunExecutionStore

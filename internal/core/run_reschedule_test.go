@@ -25,6 +25,7 @@ func interruptNativeRun(t *testing.T, app *core.Core, runID string, runtime *int
 }
 
 func TestInterruptedNativeRunIsRescheduledWhileTheDaemonRuns(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	starter := &recordingRunStarter{}
@@ -42,6 +43,7 @@ func TestInterruptedNativeRunIsRescheduledWhileTheDaemonRuns(t *testing.T) {
 }
 
 func TestInterruptedNativeRunWaitsForStartupRecoveryAfterShutdown(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	lifetime, stop := context.WithCancel(context.Background())
@@ -62,6 +64,7 @@ func TestInterruptedNativeRunWaitsForStartupRecoveryAfterShutdown(t *testing.T) 
 }
 
 func TestRunInterruptedDuringToolReplaysItAndCompletes(t *testing.T) {
+	t.Parallel()
 	for _, restart := range []bool{false, true} {
 		name := map[bool]string{false: "rescheduled", true: "after restart"}[restart]
 		t.Run(name, func(t *testing.T) {
@@ -136,6 +139,7 @@ func TestRunInterruptedDuringToolReplaysItAndCompletes(t *testing.T) {
 }
 
 func TestInterruptedParentAndBlockingChildAreBothRescheduledAndComplete(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	starter := &executingRunStarter{app: app}

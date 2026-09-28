@@ -11,6 +11,7 @@ import (
 )
 
 func TestContextMarkersAreRejectedWhileANativeRunExecutes(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	runtime := &interruptibleRecoveryRuntime{started: make(chan struct{})}
@@ -40,6 +41,7 @@ func TestContextMarkersAreRejectedWhileANativeRunExecutes(t *testing.T) {
 }
 
 func TestContextBoundariesAreRejectedWhileARunWaitsForApproval(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	mutations := 0

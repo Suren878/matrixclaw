@@ -59,6 +59,7 @@ func assertKeptOutput(t *testing.T, root string, part *transcript.ToolResultPart
 }
 
 func TestLargeToolOutputIsKeptInASessionFile(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	root := t.TempDir()
@@ -83,6 +84,7 @@ func TestLargeToolOutputIsKeptInASessionFile(t *testing.T) {
 }
 
 func TestLargeToolOutputOfANativeRunIsKeptInASessionFile(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	root := t.TempDir()
@@ -130,6 +132,7 @@ func TestLargeToolOutputOfANativeRunIsKeptInASessionFile(t *testing.T) {
 }
 
 func TestToolOutputOfAnUnsafeSessionIDStaysOutOfTheFileSystem(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	parent := t.TempDir()
@@ -163,6 +166,7 @@ func TestToolOutputOfAnUnsafeSessionIDStaysOutOfTheFileSystem(t *testing.T) {
 }
 
 func TestSmallToolOutputStaysInline(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithSessionFiles(t.TempDir())
@@ -177,6 +181,7 @@ func TestSmallToolOutputStaysInline(t *testing.T) {
 }
 
 func TestOutputTooLargeForReadPointsToGrep(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	root := t.TempDir()
@@ -198,6 +203,7 @@ func TestOutputTooLargeForReadPointsToGrep(t *testing.T) {
 }
 
 func TestLargeToolErrorIsKeptInASessionFile(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	root := t.TempDir()

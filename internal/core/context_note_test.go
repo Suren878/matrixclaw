@@ -53,6 +53,7 @@ func twoStepRun(t *testing.T, app *core.Core, db *store.SQLiteStore, suffix stri
 }
 
 func TestMemoryWrittenDuringARunReachesTheModelAsAContextNote(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	if _, err := app.CreateMemory(context.Background(), core.MemoryEntry{Scope: core.MemoryScopeGlobal, Content: "prefers tabs"}); err != nil {
@@ -74,6 +75,7 @@ func TestMemoryWrittenDuringARunReachesTheModelAsAContextNote(t *testing.T) {
 }
 
 func TestTodoAndRuntimeStatusChangesLeaveTheSystemPromptIntact(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	status := "Current runtime status: browser=off"
@@ -97,6 +99,7 @@ func TestTodoAndRuntimeStatusChangesLeaveTheSystemPromptIntact(t *testing.T) {
 }
 
 func TestRuntimeStatusDescribesTheToolsTheRunWasGiven(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	var seen [][]string
@@ -128,6 +131,7 @@ func (f runtimeStatusRecorder) RuntimeStatusPromptContext(_ context.Context, req
 }
 
 func TestSubagentContextNoteCarriesItsOwnTodo(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithTools(tools.NewRegistry(core.TodoToolExecutors(app)...))

@@ -14,6 +14,7 @@ import (
 )
 
 func TestReplyCutFourTimesInARowFailsTheRun(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	calls := 0
@@ -51,6 +52,7 @@ func TestReplyCutFourTimesInARowFailsTheRun(t *testing.T) {
 }
 
 func TestFilteredReplyCompletesTheRun(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
@@ -72,6 +74,7 @@ func TestFilteredReplyCompletesTheRun(t *testing.T) {
 }
 
 func TestProviderRequestCarriesTheSessionCacheKey(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	var cacheKey string
@@ -89,6 +92,7 @@ func TestProviderRequestCarriesTheSessionCacheKey(t *testing.T) {
 }
 
 func TestRunStepRecordsTheProviderStopReason(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	calls := 0
@@ -113,6 +117,7 @@ func TestRunStepRecordsTheProviderStopReason(t *testing.T) {
 }
 
 func TestToolStepReasoningIsSentBackWithItsCalls(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	tool := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
@@ -164,6 +169,7 @@ type identifiedRuntime struct {
 func (r identifiedRuntime) Identity() (string, string) { return r.provider, r.model }
 
 func TestSignedReasoningIsDroppedAfterAModelSwitch(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name       string
 		model      string

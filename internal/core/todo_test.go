@@ -32,6 +32,7 @@ func todoWriteCall(id string, items string) providers.Response {
 }
 
 func TestTodoWriteKeepsTheListOfTheRunChain(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -69,6 +70,7 @@ func TestTodoWriteKeepsTheListOfTheRunChain(t *testing.T) {
 }
 
 func TestTodoWriteReturnsWhatToCorrectToTheModel(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -99,6 +101,7 @@ func TestTodoWriteReturnsWhatToCorrectToTheModel(t *testing.T) {
 }
 
 func TestSubagentsGetTheirOwnTodoList(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -127,6 +130,7 @@ func TestSubagentsGetTheirOwnTodoList(t *testing.T) {
 }
 
 func TestClearingTheTodoListTellsClients(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -153,6 +157,7 @@ func TestClearingTheTodoListTellsClients(t *testing.T) {
 	}
 }
 func TestTodoWritesOfOneSessionShareAConcurrencyKey(t *testing.T) {
+	t.Parallel()
 	registry := tools.NewRegistry(core.TodoToolExecutors(core.New(nil))...)
 	first := registry.ConcurrencyKey(todo.ToolName, tools.Call{SessionID: "s1"})
 	if first == "" || first != registry.ConcurrencyKey(todo.ToolName, tools.Call{SessionID: "s1"}) || first == registry.ConcurrencyKey(todo.ToolName, tools.Call{SessionID: "s2"}) {
@@ -161,6 +166,7 @@ func TestTodoWritesOfOneSessionShareAConcurrencyKey(t *testing.T) {
 }
 
 func TestOpenTodoHoldsBackOnlyRunsOfTheChainThatWroteIt(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	ctx := context.Background()

@@ -8,6 +8,7 @@ import (
 )
 
 func TestTriggeredRunsAreMarkedAsAutomation(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithRunStarter(&recordingRunStarter{})

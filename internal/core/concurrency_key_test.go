@@ -8,6 +8,7 @@ import (
 )
 
 func TestDelegatedChildrenHoldTheirOwnKeyPerDirectory(t *testing.T) {
+	t.Parallel()
 	app, _, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	registry := tools.NewRegistry(core.SubagentToolExecutors(app)...)

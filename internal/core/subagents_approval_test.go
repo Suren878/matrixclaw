@@ -114,6 +114,7 @@ func storedToolResult(t *testing.T, db *store.SQLiteStore, sessionID string, cal
 }
 
 func TestGrantingABridgedApprovalBeforeTheChildResumes(t *testing.T) {
+	t.Parallel()
 	starter := &recordingRunStarter{}
 	b := newBridgedChild(t, func(*core.Core) core.RunStarter { return starter })
 	parent, bridge, childRunID := b.park(t)
@@ -138,6 +139,7 @@ func TestGrantingABridgedApprovalBeforeTheChildResumes(t *testing.T) {
 }
 
 func TestDeniedBridgedApprovalLetsTheChildGoOn(t *testing.T) {
+	t.Parallel()
 	var starter *executingRunStarter
 	b := newBridgedChild(t, func(app *core.Core) core.RunStarter {
 		starter = &executingRunStarter{app: app}
@@ -170,6 +172,7 @@ func TestDeniedBridgedApprovalLetsTheChildGoOn(t *testing.T) {
 }
 
 func TestAlwaysAllowOnABridgedApprovalKeepsTheRuleForTheParent(t *testing.T) {
+	t.Parallel()
 	var starter *executingRunStarter
 	b := newBridgedChild(t, func(app *core.Core) core.RunStarter {
 		starter = &executingRunStarter{app: app}
@@ -204,6 +207,7 @@ func TestAlwaysAllowOnABridgedApprovalKeepsTheRuleForTheParent(t *testing.T) {
 }
 
 func TestParentWaitsForItsChildAfterEveryApprovalIsDecided(t *testing.T) {
+	t.Parallel()
 	for _, bridgedFirst := range []bool{true, false} {
 		t.Run(map[bool]string{true: "bridged first", false: "read first"}[bridgedFirst], func(t *testing.T) {
 			starter := &recordingRunStarter{}
@@ -250,6 +254,7 @@ func TestParentWaitsForItsChildAfterEveryApprovalIsDecided(t *testing.T) {
 }
 
 func TestChildApprovalDecidedWhileTheChildParksKeepsTheParentWaiting(t *testing.T) {
+	t.Parallel()
 	var starter *executingRunStarter
 	b := newBridgedChild(t, func(app *core.Core) core.RunStarter {
 		starter = &executingRunStarter{app: app}

@@ -6,6 +6,7 @@ import (
 )
 
 func TestSubagentWorktreeRepoIDDistinguishesSameBasename(t *testing.T) {
+	t.Parallel()
 	first := subagentWorktreeRepoID(filepath.Join(string(filepath.Separator), "srv", "one", "project"))
 	second := subagentWorktreeRepoID(filepath.Join(string(filepath.Separator), "srv", "two", "project"))
 	if first == second {

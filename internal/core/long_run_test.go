@@ -21,6 +21,7 @@ import (
 )
 
 func TestLongNativeRunCompactsKeepsLargeOutputsAndCompletes(t *testing.T) {
+	t.Parallel()
 	const steps = 120
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()

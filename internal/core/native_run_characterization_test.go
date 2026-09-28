@@ -79,6 +79,7 @@ func sessionMessages(t *testing.T, db *store.SQLiteStore, sessionID string) []tr
 }
 
 func TestNativeToolRoundPublishesEventsInOrder(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	now := runRecoveryTestTime()
@@ -134,6 +135,7 @@ func TestNativeToolRoundPublishesEventsInOrder(t *testing.T) {
 }
 
 func TestNativeRunCheckpointsModelAndToolBatchPhases(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	var run core.Run
@@ -177,6 +179,7 @@ func TestNativeRunCheckpointsModelAndToolBatchPhases(t *testing.T) {
 }
 
 func TestParkedRunKeepsTheEngineCheckpoint(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	mutations := 0
@@ -213,6 +216,7 @@ func approvalTools(mutations *int) (funcTool, *recoveryTool) {
 }
 
 func TestNativeRunHoldsLaterCallsBehindAnApprovalBarrier(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	mutations := 0
@@ -270,6 +274,7 @@ func TestNativeRunHoldsLaterCallsBehindAnApprovalBarrier(t *testing.T) {
 }
 
 func TestDeniedApprovalReturnsTheReasonToTheModel(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	mutations := 0
@@ -326,6 +331,7 @@ func askingReadTool(id string) funcTool {
 }
 
 func TestRunResumesOnceEveryApprovalIsDecided(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithTools(tools.NewRegistry(askingReadTool("read_a"), askingReadTool("read_b")))
@@ -393,6 +399,7 @@ func (s *parkingStore) UpdateRun(ctx context.Context, run core.Run) error {
 }
 
 func TestApprovalDecidedWhileTheRunParksResumesIt(t *testing.T) {
+	t.Parallel()
 	db, err := store.NewSQLite(filepath.Join(t.TempDir(), "matrixclaw.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -440,6 +447,7 @@ func TestApprovalDecidedWhileTheRunParksResumesIt(t *testing.T) {
 }
 
 func TestDeniedCallOutsideARunGetsTheDenialAsItsResult(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	mutations := 0
@@ -467,6 +475,7 @@ func TestDeniedCallOutsideARunGetsTheDenialAsItsResult(t *testing.T) {
 }
 
 func TestDenialReasonIsCappedAt2000Characters(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	mutations := 0
@@ -498,6 +507,7 @@ func toolResultContent(request providers.Request, callID string) string {
 }
 
 func TestSteerDuringToolIsAppendedToThatToolResult(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	started := make(chan struct{})
@@ -571,6 +581,7 @@ func (s cancelOnToolResultStore) AppendMessage(ctx context.Context, message tran
 }
 
 func TestSteerIsRequeuedWhenCancelStopsItsToolResultWrite(t *testing.T) {
+	t.Parallel()
 	_, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	session, run := saveCrashRecoveryRun(t, db, "steer_cancel", core.RunStatusAccepted, false)
@@ -623,6 +634,7 @@ func TestSteerIsRequeuedWhenCancelStopsItsToolResultWrite(t *testing.T) {
 }
 
 func TestCancelDuringToolStopsRunWithoutAnotherModelCall(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	started := make(chan struct{})
@@ -713,6 +725,7 @@ func countBoundaries(t *testing.T, db *store.SQLiteStore, sessionID string) int 
 }
 
 func TestNativeRunCompactsLargeHistoryBeforeTheModelCall(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	big := strings.Repeat("x", 330_000)
@@ -752,6 +765,7 @@ func TestNativeRunCompactsLargeHistoryBeforeTheModelCall(t *testing.T) {
 }
 
 func TestContextLengthErrorForcesCompactionAndRetriesOnce(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	var summaryRequests, mainRequests int
@@ -785,6 +799,7 @@ func TestContextLengthErrorForcesCompactionAndRetriesOnce(t *testing.T) {
 }
 
 func TestNativeRunSeesOnlyTheNewestBoundaryAndLaterMessages(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	var seen providers.Request
@@ -815,6 +830,7 @@ func TestNativeRunSeesOnlyTheNewestBoundaryAndLaterMessages(t *testing.T) {
 }
 
 func TestBlockingSubagentReturnsChildSummaryToParent(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithTools(tools.NewRegistry(core.SubagentToolExecutors(app)...))
@@ -856,6 +872,7 @@ func TestBlockingSubagentReturnsChildSummaryToParent(t *testing.T) {
 }
 
 func TestSubagentSummaryJoinsAReplyCutByTheOutputLimit(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithTools(tools.NewRegistry(core.SubagentToolExecutors(app)...))
@@ -953,6 +970,7 @@ func runAsyncSubagentScenario(t *testing.T) asyncSubagentScenario {
 }
 
 func TestAsyncSubagentCompletionStartsParentFollowUpRun(t *testing.T) {
+	t.Parallel()
 	scenario := runAsyncSubagentScenario(t)
 
 	task, err := scenario.db.GetSubagentTaskByParentToolCall(context.Background(), scenario.session.ID, scenario.run.ID, "call-spawn")
@@ -965,6 +983,7 @@ func TestAsyncSubagentCompletionStartsParentFollowUpRun(t *testing.T) {
 }
 
 func TestContextOverflowWithNothingToSummariseFailsAsContextExhausted(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {

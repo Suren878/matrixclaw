@@ -11,6 +11,7 @@ import (
 )
 
 func TestBlockingSubagentRunsUnderASingleModelSlot(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithModelConcurrency(1)

@@ -26,6 +26,7 @@ func (l twoModelLLMs) Resolve(ctx context.Context, providerID string, modelID st
 }
 
 func TestManualCompactUsesTheCompactModel(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	var mainCalls, cheapCalls int

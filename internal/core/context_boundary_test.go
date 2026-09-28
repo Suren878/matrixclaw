@@ -17,6 +17,7 @@ import (
 )
 
 func TestClearContextCoversEveryMessageSoFar(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	session, _ := saveCrashRecoveryRun(t, db, "clear", core.RunStatusCompleted, false)
@@ -37,6 +38,7 @@ func TestClearContextCoversEveryMessageSoFar(t *testing.T) {
 }
 
 func TestUnreadableBoundaryIsIgnored(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "matrixclaw.db")
 	db, err := store.NewSQLite(path)
 	if err != nil {
@@ -80,6 +82,7 @@ func TestUnreadableBoundaryIsIgnored(t *testing.T) {
 }
 
 func TestCompactWithNothingToSummariseIsInvalidInput(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
@@ -104,6 +107,7 @@ func TestCompactWithNothingToSummariseIsInvalidInput(t *testing.T) {
 }
 
 func TestClearContextRemovesTheToolOutputsItCovers(t *testing.T) {
+	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	files := t.TempDir()
