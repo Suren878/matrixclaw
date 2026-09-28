@@ -31,6 +31,8 @@ func TestLongNativeRunCompactsKeepsLargeOutputsAndCompletes(t *testing.T) {
 	files := t.TempDir()
 	app.WithSessionFiles(files)
 	// Outputs grow to ~6k tokens; every 40th is ~15k tokens and goes to a file.
+	// Each step also says ~300 tokens, which elision cannot hide, so the history
+	// still needs summaries.
 	outputs := map[int]string{}
 	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("probe", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
 		n := len(outputs) + 1
@@ -63,7 +65,7 @@ func TestLongNativeRunCompactsKeepsLargeOutputsAndCompletes(t *testing.T) {
 			return providers.Response{Text: "Probed everything.", Usage: usage}, nil
 		}
 		arguments := json.RawMessage(fmt.Sprintf(`{"n":%d}`, mainRequests))
-		return providers.Response{Text: fmt.Sprintf("Probing %d. %s", mainRequests, strings.Repeat("p", 400)), ToolCalls: []providers.ToolCall{{ID: fmt.Sprintf("probe_%d", mainRequests), Name: "probe", Arguments: arguments}}, Usage: usage}, nil
+		return providers.Response{Text: fmt.Sprintf("Probing %d. %s", mainRequests, strings.Repeat("p", 1200)), ToolCalls: []providers.ToolCall{{ID: fmt.Sprintf("probe_%d", mainRequests), Name: "probe", Arguments: arguments}}, Usage: usage}, nil
 	})}})
 	session, run := saveCrashRecoveryRun(t, db, "long", core.RunStatusAccepted, false)
 

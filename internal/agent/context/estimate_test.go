@@ -34,10 +34,12 @@ func firstRune(text string) string {
 }
 
 func TestHeadTailKeepsBothEndsWithinTheLimit(t *testing.T) {
-	text := "HEAD" + strings.Repeat("x", 100_000) + "TAIL"
-	got := HeadTail(text, 1_000)
-	if !strings.HasPrefix(got, "HEAD") || !strings.HasSuffix(got, "TAIL") || !strings.Contains(got, "tokens omitted") || EstimateTextTokens(got) > 1_000 {
-		t.Fatalf("HeadTail = %d tokens: %.60q ... %.60q", EstimateTextTokens(got), got, got[len(got)-60:])
+	for _, filler := range []string{"x", "ж"} {
+		text := "HEAD" + strings.Repeat(filler, 100_000) + "TAIL"
+		got := HeadTail(text, 8_000)
+		if tokens := EstimateTextTokens(got); !strings.HasPrefix(got, "HEAD") || !strings.HasSuffix(got, "TAIL") || !strings.Contains(got, "tokens omitted") || tokens > 8_000 || tokens < 7_900 {
+			t.Fatalf("HeadTail of %q = %d tokens, want 7.9k to 8k: %.60q", filler, tokens, got)
+		}
 	}
 	if got := HeadTail("short", 1_000); got != "short" {
 		t.Fatalf("HeadTail of a short text = %q", got)

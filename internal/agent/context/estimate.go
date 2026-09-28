@@ -76,19 +76,24 @@ func EstimateTextTokens(text string) int {
 	if text == "" {
 		return 0
 	}
-	latin, other := 0, 0
+	cost := 0
 	for _, r := range text {
-		if r < latinScriptEnd {
-			latin++
-		} else {
-			other++
-		}
+		cost += runeCost(r)
 	}
-	return max(1, (latin*10+other*16+39)/40)
+	return max(1, (cost+tokenCost-1)/tokenCost)
 }
 
-// latinScriptEnd is the first rune after Latin Extended-B.
-const latinScriptEnd = 0x0250
+// tokenCost is one token in runeCost units: 4 Latin runes or 2.5 others.
+const tokenCost = 40
+
+// runeCost is a rune's share of a token; Latin script ends after Latin
+// Extended-B.
+func runeCost(r rune) int {
+	if r < 0x0250 {
+		return 10
+	}
+	return 16
+}
 
 func EstimateRequestTokens(request providers.Request) int {
 	total := EstimateTextTokens(request.SystemPrompt) + EstimateTextTokens(request.CustomInstructions)
@@ -139,11 +144,28 @@ func HeadTail(text string, maxTokens int) string {
 		return text
 	}
 	runes := []rune(text)
-	keep := max(0, maxTokens-headTailNoticeTokens) * 5 / 2
-	head := keep * 2 / 3
-	tail := keep - head
+	keep := max(0, maxTokens-headTailNoticeTokens)
+	head := runesWithin(runes, keep*2/3, false)
+	tail := runesWithin(runes[head:], keep-keep*2/3, true)
 	omitted := EstimateTextTokens(string(runes[head : len(runes)-tail]))
 	return strings.TrimRightFunc(string(runes[:head]), unicode.IsSpace) +
 		fmt.Sprintf("\n\n[... ~%s tokens omitted ...]\n\n", FormatShortNumber(omitted)) +
 		strings.TrimLeftFunc(string(runes[len(runes)-tail:]), unicode.IsSpace)
+}
+
+// runesWithin is how many runes from the start of runes, or from its end, fit
+// in tokens by the script-aware estimate.
+func runesWithin(runes []rune, tokens int, fromEnd bool) int {
+	budget, n := tokens*tokenCost, 0
+	for ; n < len(runes); n++ {
+		r := runes[n]
+		if fromEnd {
+			r = runes[len(runes)-1-n]
+		}
+		if budget < runeCost(r) {
+			break
+		}
+		budget -= runeCost(r)
+	}
+	return n
 }
