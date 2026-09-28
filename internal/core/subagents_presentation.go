@@ -132,13 +132,14 @@ func agentResultStatus(result AgentResult) tools.ResultStatus {
 	return tools.ResultStatusSuccess
 }
 
-// subagentDisplayName is the child's label: the call's description, or the
-// start of its prompt.
+// subagentDisplayName is the child's one-line label: the call's description,
+// or else the first line of its prompt, whitespace collapsed.
 func subagentDisplayName(description string, prompt string) string {
-	if description = strings.Join(strings.Fields(description), " "); description != "" {
-		return truncateForTitle(description, 48)
+	label := description
+	if strings.TrimSpace(label) == "" {
+		label, _, _ = strings.Cut(strings.TrimSpace(prompt), "\n")
 	}
-	return truncateForTitle(prompt, 48)
+	return truncateForTitle(label, 48)
 }
 
 // backgroundAgentContent tells the model the background task a child runs as.

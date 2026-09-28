@@ -348,3 +348,20 @@ func TestReadonlyChildsApprovalIsRefusedWithoutAskingTheParent(t *testing.T) {
 		})
 	}
 }
+
+func TestAChildsLabelIsOneLine(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithRunStarter(&recordingRunStarter{})
+	session, run := saveCrashRecoveryRun(t, db, "labels", core.RunStatusRunning, false)
+	for _, tc := range []struct{ description, prompt, want string }{
+		{"  Scan\n\tthe   tree ", "scan it", "Scan the tree"},
+		{"", "\n  Count the files.\nThen report the biggest one.", "Count the files."},
+	} {
+		result, err := app.RunAgent(context.Background(), core.AgentInput{ParentSessionID: session.ID, ParentRunID: run.ID, ParentToolCallID: "call-" + tc.want, Description: tc.description, Prompt: tc.prompt, Background: true})
+		if err != nil || result.Task.DisplayName != tc.want {
+			t.Fatalf("label = %q, %v; want %q", result.Task.DisplayName, err, tc.want)
+		}
+	}
+}
