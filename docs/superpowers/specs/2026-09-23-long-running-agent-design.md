@@ -412,6 +412,27 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
 - Limit: 4 active background subagents per parent, configurable. Children get
   todo and background bash; `agent` and `await` are forbidden.
 
+### Implementation notes (as built, stage 4a)
+
+- **Denial** reaches the engine as a decided approval (`InputDecided` with
+  `Denied` and `Reason`); the engine writes `User denied: <reason>` (or
+  `User denied.`) as an error result. Calls made outside a run get the same
+  result from `ResolveApproval`. The reason is kept in `approvals.reason`.
+- **Resume**: `ResolveApproval` starts a run only when it is parked
+  (`waiting_approval`) and none of its approvals is pending. A run still
+  finishing its step when the last decision arrives re-checks after parking;
+  both checks run under the session gate, so exactly one of them starts it.
+- **Barrier**: `Tools.Authorize` marks mutating tools (`Decision.Barrier`); a
+  barrier waiting for approval defers every later call of the batch, read-only
+  ones included (`ToolCallPart.Deferred`, no `tool.requested` until it starts).
+  A read-only call waiting for approval does not hold the batch back.
+- **Bridged approvals**: either decision goes to the child's approval with its
+  reason; the parent's delegate call resumes when the child finishes. A missing
+  pending child approval while the child is still `waiting_approval` means its
+  decision is on the way (fixes the `not found` race of granting a bridge).
+- **Clients** deny with a reason through the hidden `/approval deny <id>
+  [reason]` command behind a prompt (TUI key `r`, Telegram button).
+
 ## 5. Providers
 
 - `providers.Request` gains `MaxOutputTokens` (priority: provider config →
