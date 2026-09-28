@@ -286,6 +286,7 @@ func PermissionRequestFromApproval(approval core.Approval) core.PermissionReques
 		Action:      approval.Action,
 		Params:      approval.Params,
 		Path:        approval.Path,
+		Suggestion:  approval.Suggestion,
 	}
 }
 

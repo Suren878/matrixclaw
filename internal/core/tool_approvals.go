@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
+	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -27,6 +28,11 @@ func (c *Core) ResolveApproval(ctx context.Context, approvalID string, decision 
 		}
 		return Approval{}, fmt.Errorf("%w: approval already resolved", ErrInvalidInput)
 	}
+	if decision.Approved && decision.Always != "" {
+		if err := c.keepSuggestedRule(ctx, approval, decision.Always); err != nil {
+			return Approval{}, err
+		}
+	}
 	bridge, bridged := decodeSubagentApprovalBridge(approval)
 	approval, err = c.recordApprovalDecision(ctx, approval, decision, bridged)
 	if err != nil {
@@ -34,12 +40,36 @@ func (c *Core) ResolveApproval(ctx context.Context, approvalID string, decision 
 	}
 	switch {
 	case bridged:
+		decision.Always = ""
 		return approval, c.passDecisionToSubagent(ctx, bridge, decision)
 	case strings.TrimSpace(approval.RunID) == "":
 		return approval, c.finishRunlessApproval(ctx, approval)
 	default:
 		return approval, c.resumeDecidedRun(ctx, approval.SessionID, approval.RunID)
 	}
+}
+
+// keepSuggestedRule saves the approval's suggested rule as an allow rule; a
+// session rule belongs to the approval's session, the parent's for a bridged one.
+func (c *Core) keepSuggestedRule(ctx context.Context, approval Approval, scope permission.Scope) error {
+	if !scope.Valid() {
+		return fmt.Errorf("%w: unknown rule scope %q", ErrInvalidInput, scope)
+	}
+	if approval.Suggestion == nil {
+		return fmt.Errorf("%w: approval %s suggests no rule", ErrInvalidInput, approval.ID)
+	}
+	rule := permission.Rule{
+		ID:        c.newID("rule"),
+		Tool:      approval.Suggestion.Tool,
+		Pattern:   approval.Suggestion.Pattern,
+		Effect:    permission.Allow,
+		Scope:     scope,
+		CreatedAt: c.now().UTC(),
+	}
+	if scope == permission.ScopeSession {
+		rule.SessionID = approval.SessionID
+	}
+	return c.store.CreatePermissionRule(ctx, rule)
 }
 
 func approvalState(approved bool) ApprovalState {

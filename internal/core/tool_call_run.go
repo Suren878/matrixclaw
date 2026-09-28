@@ -28,6 +28,11 @@ func (c *Core) executeToolWithGrant(ctx context.Context, prepared preparedToolCa
 	default:
 		result, execErr = c.tools.Execute(ctx, prepared.ToolName, prepared.call(input, false))
 	}
+	if result.Approval != nil && result.Approval.Suggestion == nil && verdict.Effect != permission.Ask {
+		if suggestion, ok := permission.Suggest(check.request); ok {
+			result.Approval.Suggestion = &suggestion
+		}
+	}
 	if execErr != nil || result.Approval != nil {
 		return result, execErr
 	}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -27,20 +28,23 @@ type Approval struct {
 	Path        string          `json:"path,omitempty"`
 	State       ApprovalState   `json:"state"`
 	// Reason is why the user denied the call; the model reads it.
-	Reason      string     `json:"reason,omitempty"`
-	RequestedAt time.Time  `json:"requested_at"`
-	DecidedAt   *time.Time `json:"decided_at,omitempty"`
+	Reason string `json:"reason,omitempty"`
+	// Suggestion is the rule an "Always allow" answer keeps.
+	Suggestion  *permission.Suggestion `json:"suggestion,omitempty"`
+	RequestedAt time.Time              `json:"requested_at"`
+	DecidedAt   *time.Time             `json:"decided_at,omitempty"`
 }
 
 type PermissionRequest struct {
-	ID          string          `json:"id"`
-	SessionID   string          `json:"session_id"`
-	ToolCallID  string          `json:"tool_call_id"`
-	ToolName    string          `json:"tool_name"`
-	Description string          `json:"description"`
-	Action      string          `json:"action"`
-	Params      json.RawMessage `json:"params,omitempty"`
-	Path        string          `json:"path"`
+	ID          string                 `json:"id"`
+	SessionID   string                 `json:"session_id"`
+	ToolCallID  string                 `json:"tool_call_id"`
+	ToolName    string                 `json:"tool_name"`
+	Description string                 `json:"description"`
+	Action      string                 `json:"action"`
+	Params      json.RawMessage        `json:"params,omitempty"`
+	Path        string                 `json:"path"`
+	Suggestion  *permission.Suggestion `json:"suggestion,omitempty"`
 }
 
 type PermissionNotification struct {

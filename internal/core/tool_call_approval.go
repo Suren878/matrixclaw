@@ -24,6 +24,7 @@ func (c *Core) createPendingApproval(ctx context.Context, prepared preparedToolC
 		Action:      result.Approval.Action,
 		Params:      paramsRaw,
 		Path:        result.Approval.Path,
+		Suggestion:  result.Approval.Suggestion,
 		State:       ApprovalStatePending,
 		RequestedAt: c.now().UTC(),
 	}
@@ -46,6 +47,7 @@ func (c *Core) createPendingApproval(ctx context.Context, prepared preparedToolC
 			Action:      approval.Action,
 			Params:      approval.Params,
 			Path:        approval.Path,
+			Suggestion:  approval.Suggestion,
 		},
 	})
 	c.publishToolUpdate(prepared.SessionID, approval.RunID, ToolUpdate{

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/permission"
 )
 
 func TestApprovalKeepsTheDenialReason(t *testing.T) {
@@ -28,5 +29,32 @@ func TestApprovalKeepsTheDenialReason(t *testing.T) {
 	listed, err := st.ListApprovals(ctx, "s1", core.ApprovalStateRejected)
 	if err != nil || len(listed) != 1 || listed[0].Reason != "use the staging database" {
 		t.Fatalf("listed = %+v err = %v", listed, err)
+	}
+}
+
+func TestApprovalKeepsItsSuggestedRule(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	createTestSession(t, st, "s1")
+	suggestion := &permission.Suggestion{Tool: "bash", Pattern: "go test:*"}
+	if err := st.CreateApproval(ctx, core.Approval{ID: "a1", SessionID: "s1", ToolName: "bash", State: core.ApprovalStatePending, Suggestion: suggestion, RequestedAt: testEpoch}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateApproval(ctx, core.Approval{ID: "a2", SessionID: "s1", ToolName: "bash", State: core.ApprovalStatePending, RequestedAt: testEpoch}); err != nil {
+		t.Fatal(err)
+	}
+
+	stored, err := st.GetApproval(ctx, "a1")
+	if err != nil || stored.Suggestion == nil || *stored.Suggestion != *suggestion {
+		t.Fatalf("stored = %+v err = %v", stored, err)
+	}
+	listed, err := st.ListApprovals(ctx, "s1", core.ApprovalStatePending)
+	if err != nil || len(listed) != 2 {
+		t.Fatalf("listed = %+v err = %v", listed, err)
+	}
+	for _, approval := range listed {
+		if (approval.ID == "a1") != (approval.Suggestion != nil) {
+			t.Fatalf("listed %s suggestion = %+v", approval.ID, approval.Suggestion)
+		}
 	}
 }

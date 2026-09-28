@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/permission"
 )
 
 type RiskLevel string
@@ -98,6 +100,8 @@ type ApprovalRequest struct {
 	Path        string `json:"path,omitempty"`
 	Description string `json:"description,omitempty"`
 	Params      any    `json:"params,omitempty"`
+	// Suggestion is the rule an "Always allow" answer keeps.
+	Suggestion *permission.Suggestion `json:"suggestion,omitempty"`
 }
 
 type SkillManagePermissionsParams struct {

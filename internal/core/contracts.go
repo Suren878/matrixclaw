@@ -1,6 +1,7 @@
 package core
 
 import (
+	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 	"github.com/Suren878/matrixclaw/internal/version"
@@ -67,10 +68,11 @@ type CreateSystemMessageRequest struct {
 }
 
 // ApprovalResolveRequest is a user's decision on an approval; Reason explains a
-// denial to the model.
+// denial to the model, and Always keeps the approval's suggested rule in that scope.
 type ApprovalResolveRequest struct {
-	Approved bool   `json:"approved"`
-	Reason   string `json:"reason,omitempty"`
+	Approved bool             `json:"approved"`
+	Reason   string           `json:"reason,omitempty"`
+	Always   permission.Scope `json:"always,omitempty"`
 }
 
 type AdminRestartRequest struct {

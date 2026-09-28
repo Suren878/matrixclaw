@@ -233,6 +233,7 @@ func (c *Core) subagentApprovalRequest(ctx context.Context, task SubagentTask, c
 		Path:        childApproval.Path,
 		Description: description,
 		Params:      params,
+		Suggestion:  childApproval.Suggestion,
 	}, nil
 }
 

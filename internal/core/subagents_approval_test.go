@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -131,5 +132,39 @@ func TestDeniedBridgedApprovalLetsTheChildGoOn(t *testing.T) {
 				t.Fatalf("delegate result = %q", part.ToolResult.Content)
 			}
 		}
+	}
+}
+
+func TestAlwaysAllowOnABridgedApprovalKeepsTheRuleForTheParent(t *testing.T) {
+	var starter *executingRunStarter
+	b := newBridgedChild(t, func(app *core.Core) core.RunStarter {
+		starter = &executingRunStarter{app: app}
+		return starter
+	})
+	parent, bridge, childRunID := b.park(t)
+	if bridge.Suggestion == nil || bridge.Suggestion.String() != "mutate_state" {
+		t.Fatalf("bridged suggestion = %+v", bridge.Suggestion)
+	}
+
+	if _, err := b.app.ResolveApproval(context.Background(), bridge.ID, core.ApprovalResolveRequest{Approved: true, Always: permission.ScopeSession}); err != nil {
+		t.Fatal(err)
+	}
+	waitForRecoveryRunStatus(t, b.db, parent.ID, core.RunStatusCompleted)
+	starter.wait(t)
+
+	child, err := b.db.GetRun(context.Background(), childRunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules, err := b.db.ListPermissionRules(context.Background(), []string{child.SessionID})
+	if err != nil || len(rules) != 0 {
+		t.Fatalf("child rules = %+v err = %v", rules, err)
+	}
+	rules, err = b.db.ListPermissionRules(context.Background(), []string{parent.SessionID})
+	if err != nil || len(rules) != 1 || rules[0].String() != "mutate_state" || rules[0].SessionID != parent.SessionID {
+		t.Fatalf("parent rules = %+v err = %v", rules, err)
+	}
+	if b.mutations != 1 {
+		t.Fatalf("mutations = %d", b.mutations)
 	}
 }

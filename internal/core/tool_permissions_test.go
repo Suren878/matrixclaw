@@ -3,6 +3,7 @@ package core_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -226,5 +227,49 @@ func TestModePresetsAllowEditsInsideTheWorkingDirectoryOrEverything(t *testing.T
 	}
 	if result := executeTool(t, app, auto.ID, "bash", `{"command":"go test ./..."}`, false); result.Approval != nil || len(bash.ran) != 1 {
 		t.Fatalf("full_auto asked: %+v ran = %v", result.Approval, bash.ran)
+	}
+}
+
+func TestAlwaysAllowKeepsTheSuggestedRule(t *testing.T) {
+	for _, scope := range []permission.Scope{permission.ScopeSession, permission.ScopeGlobal} {
+		app, db, bash, dir := permissionCore(t)
+		session := permissionSession(t, db, "session_always", dir, core.PermissionModeDefault, "")
+		other := permissionSession(t, db, "session_other", dir, core.PermissionModeDefault, "")
+
+		pending := executeTool(t, app, session.ID, "bash", `{"command":"go test ./..."}`, false)
+		if pending.Approval == nil || pending.Approval.Suggestion == nil || pending.Approval.Suggestion.String() != "bash: go test:*" {
+			t.Fatalf("%s: approval = %+v", scope, pending.Approval)
+		}
+		if _, err := app.ResolveApproval(context.Background(), pending.Approval.ID, core.ApprovalResolveRequest{Approved: true, Always: scope}); err != nil {
+			t.Fatal(err)
+		}
+
+		if result := executeTool(t, app, session.ID, "bash", `{"command":"go test ./internal/..."}`, false); result.Approval != nil {
+			t.Fatalf("%s: the kept rule did not allow the next test run", scope)
+		}
+		if result := executeTool(t, app, other.ID, "bash", `{"command":"go test ./..."}`, false); (result.Approval == nil) != (scope == permission.ScopeGlobal) {
+			t.Fatalf("%s: other session approval = %+v", scope, result.Approval)
+		}
+		if len(bash.ran) < 2 {
+			t.Fatalf("%s: ran = %v", scope, bash.ran)
+		}
+	}
+}
+
+func TestAlwaysAllowNeedsASuggestedRule(t *testing.T) {
+	app, db, _, dir := permissionCore(t)
+	session := permissionSession(t, db, "session_risky", dir, core.PermissionModeDefault, "")
+	pending := executeTool(t, app, session.ID, "bash", `{"command":"go test ./... > out.txt"}`, false)
+	if pending.Approval == nil || pending.Approval.Suggestion != nil {
+		t.Fatalf("approval = %+v", pending.Approval)
+	}
+
+	_, err := app.ResolveApproval(context.Background(), pending.Approval.ID, core.ApprovalResolveRequest{Approved: true, Always: permission.ScopeSession})
+
+	if !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("error = %v, want ErrInvalidInput", err)
+	}
+	if stored, _ := db.GetApproval(context.Background(), pending.Approval.ID); stored.State != core.ApprovalStatePending {
+		t.Fatalf("approval state = %s, want still pending", stored.State)
 	}
 }

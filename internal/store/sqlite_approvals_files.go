@@ -8,12 +8,21 @@ import (
 	"fmt"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/permission"
 )
 
 func (s *SQLiteStore) CreateApproval(ctx context.Context, approval core.Approval) error {
+	suggestion := ""
+	if approval.Suggestion != nil {
+		body, err := json.Marshal(approval.Suggestion)
+		if err != nil {
+			return fmt.Errorf("store: encode approval suggestion: %w", err)
+		}
+		suggestion = string(body)
+	}
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO approvals(id, session_id, run_id, tool_call_ref, tool_name, description, action, params_json, path, state, reason, requested_at, decided_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+INSERT INTO approvals(id, session_id, run_id, tool_call_ref, tool_name, description, action, params_json, path, state, reason, suggestion_json, requested_at, decided_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		approval.ID,
 		approval.SessionID,
 		approval.RunID,
@@ -25,6 +34,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		approval.Path,
 		string(approval.State),
 		approval.Reason,
+		suggestion,
 		formatTime(approval.RequestedAt),
 		nullableTime(approval.DecidedAt),
 	)
@@ -36,16 +46,17 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 
 func (s *SQLiteStore) GetApproval(ctx context.Context, approvalID string) (core.Approval, error) {
 	row := s.db.QueryRowContext(ctx, `
-SELECT id, session_id, run_id, tool_call_ref, tool_name, description, action, params_json, path, state, reason, requested_at, decided_at
+SELECT id, session_id, run_id, tool_call_ref, tool_name, description, action, params_json, path, state, reason, suggestion_json, requested_at, decided_at
 FROM approvals
 WHERE id = ?`, approvalID)
 
 	var approval core.Approval
 	var state string
 	var paramsJSON string
+	var suggestionJSON string
 	var requestedAt string
 	var decidedAt sql.NullString
-	if err := row.Scan(&approval.ID, &approval.SessionID, &approval.RunID, &approval.ToolCallRef, &approval.ToolName, &approval.Description, &approval.Action, &paramsJSON, &approval.Path, &state, &approval.Reason, &requestedAt, &decidedAt); err != nil {
+	if err := row.Scan(&approval.ID, &approval.SessionID, &approval.RunID, &approval.ToolCallRef, &approval.ToolName, &approval.Description, &approval.Action, &paramsJSON, &approval.Path, &state, &approval.Reason, &suggestionJSON, &requestedAt, &decidedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return core.Approval{}, core.ErrNotFound
 		}
@@ -53,6 +64,7 @@ WHERE id = ?`, approvalID)
 	}
 	approval.State = core.ApprovalState(state)
 	approval.Params = json.RawMessage(paramsJSON)
+	approval.Suggestion = decodeSuggestion(suggestionJSON)
 	approval.RequestedAt = mustParseTime(requestedAt)
 	if decidedAt.Valid {
 		parsed := mustParseTime(decidedAt.String)
@@ -86,7 +98,7 @@ WHERE id = ?`,
 
 func (s *SQLiteStore) ListApprovals(ctx context.Context, sessionID string, state core.ApprovalState) ([]core.Approval, error) {
 	query := `
-SELECT id, session_id, run_id, tool_call_ref, tool_name, description, action, params_json, path, state, reason, requested_at, decided_at
+SELECT id, session_id, run_id, tool_call_ref, tool_name, description, action, params_json, path, state, reason, suggestion_json, requested_at, decided_at
 FROM approvals
 WHERE session_id = ?`
 	args := []any{sessionID}
@@ -107,13 +119,15 @@ WHERE session_id = ?`
 		var approval core.Approval
 		var rawState string
 		var paramsJSON string
+		var suggestionJSON string
 		var requestedAt string
 		var decidedAt sql.NullString
-		if err := rows.Scan(&approval.ID, &approval.SessionID, &approval.RunID, &approval.ToolCallRef, &approval.ToolName, &approval.Description, &approval.Action, &paramsJSON, &approval.Path, &rawState, &approval.Reason, &requestedAt, &decidedAt); err != nil {
+		if err := rows.Scan(&approval.ID, &approval.SessionID, &approval.RunID, &approval.ToolCallRef, &approval.ToolName, &approval.Description, &approval.Action, &paramsJSON, &approval.Path, &rawState, &approval.Reason, &suggestionJSON, &requestedAt, &decidedAt); err != nil {
 			return nil, fmt.Errorf("store: scan approval: %w", err)
 		}
 		approval.State = core.ApprovalState(rawState)
 		approval.Params = json.RawMessage(paramsJSON)
+		approval.Suggestion = decodeSuggestion(suggestionJSON)
 		approval.RequestedAt = mustParseTime(requestedAt)
 		if decidedAt.Valid {
 			parsed := mustParseTime(decidedAt.String)
@@ -125,6 +139,18 @@ WHERE session_id = ?`
 		return nil, fmt.Errorf("store: iterate approvals: %w", err)
 	}
 	return approvals, nil
+}
+
+// decodeSuggestion reads a stored suggestion; an unreadable one offers none.
+func decodeSuggestion(raw string) *permission.Suggestion {
+	if raw == "" {
+		return nil
+	}
+	var suggestion permission.Suggestion
+	if json.Unmarshal([]byte(raw), &suggestion) != nil {
+		return nil
+	}
+	return &suggestion
 }
 
 func (s *SQLiteStore) CreateFileSnapshot(ctx context.Context, snapshot core.FileSnapshot) (core.FileSnapshot, error) {
