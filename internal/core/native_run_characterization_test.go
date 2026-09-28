@@ -833,7 +833,7 @@ func TestBlockingSubagentReturnsChildSummaryToParent(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithTools(tools.NewRegistry(core.SubagentToolExecutors(app)...))
+	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	parentCalls := 0
 	var delegateResult string
 	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
@@ -842,7 +842,7 @@ func TestBlockingSubagentReturnsChildSummaryToParent(t *testing.T) {
 		}
 		parentCalls++
 		if parentCalls == 1 {
-			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-delegate", Name: "delegate_task", Arguments: []byte(`{"goal":"count files","runtime":"matrixclaw"}`)}}}, nil
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-delegate", Name: "agent", Arguments: []byte(`{"description":"Count files","prompt":"count files","runtime":"matrixclaw"}`)}}}, nil
 		}
 		for _, message := range request.Messages {
 			if message.ToolCallID == "call-delegate" {
@@ -875,7 +875,7 @@ func TestSubagentSummaryJoinsAReplyCutByTheOutputLimit(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithTools(tools.NewRegistry(core.SubagentToolExecutors(app)...))
+	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	parentCalls, childCalls := 0, 0
 	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
@@ -887,7 +887,7 @@ func TestSubagentSummaryJoinsAReplyCutByTheOutputLimit(t *testing.T) {
 		}
 		parentCalls++
 		if parentCalls == 1 {
-			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-delegate", Name: "delegate_task", Arguments: []byte(`{"goal":"count files","runtime":"matrixclaw"}`)}}}, nil
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-delegate", Name: "agent", Arguments: []byte(`{"description":"Count files","prompt":"count files","runtime":"matrixclaw"}`)}}}, nil
 		}
 		return providers.Response{Text: "Parent done."}, nil
 	})})
@@ -917,7 +917,7 @@ func runAsyncSubagentScenario(t *testing.T) asyncSubagentScenario {
 	t.Helper()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	t.Cleanup(cleanup)
-	app.WithTools(tools.NewRegistry(core.SubagentToolExecutors(app)...))
+	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	app.WithRunStarter(orchestration.NewStub(app))
 	var mu sync.Mutex
 	spawned := false
@@ -934,7 +934,7 @@ func runAsyncSubagentScenario(t *testing.T) asyncSubagentScenario {
 		}
 		if !spawned {
 			spawned = true
-			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-spawn", Name: "spawn_subagent", Arguments: []byte(`{"name":"Scanner","goal":"scan the tree","runtime":"matrixclaw"}`)}}}, nil
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-spawn", Name: "agent", Arguments: []byte(`{"description":"Scanner","prompt":"scan the tree","background":true,"runtime":"matrixclaw"}`)}}}, nil
 		}
 		return providers.Response{Text: "Spawned."}, nil
 	})})

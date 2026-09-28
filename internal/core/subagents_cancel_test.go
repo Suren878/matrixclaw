@@ -67,7 +67,7 @@ func TestCancelParentCancelsItsBlockingSubagent(t *testing.T) {
 	defer cleanup()
 	starter := &executingRunStarter{app: app}
 	app.WithRunStarter(starter)
-	app.WithTools(tools.NewRegistry(core.SubagentToolExecutors(app)...))
+	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	childStarted := newStartSignal()
 	var mu sync.Mutex
 	parentCalls := 0
@@ -80,7 +80,7 @@ func TestCancelParentCancelsItsBlockingSubagent(t *testing.T) {
 		first := parentCalls == 1
 		mu.Unlock()
 		if first {
-			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-delegate", Name: "delegate_task", Arguments: []byte(`{"goal":"count files","runtime":"matrixclaw"}`)}}}, nil
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-delegate", Name: "agent", Arguments: []byte(`{"description":"Count files","prompt":"count files","runtime":"matrixclaw"}`)}}}, nil
 		}
 		return providers.Response{Text: "Parent done."}, nil
 	})})
@@ -115,7 +115,7 @@ func TestCancelParentCancelsItsAsyncSubagentWithoutFollowUp(t *testing.T) {
 	defer cleanup()
 	starter := &executingRunStarter{app: app}
 	app.WithRunStarter(starter)
-	app.WithTools(tools.NewRegistry(core.SubagentToolExecutors(app)...))
+	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	childStarted := newStartSignal()
 	parentWaiting := newStartSignal()
 	var mu sync.Mutex
@@ -129,7 +129,7 @@ func TestCancelParentCancelsItsAsyncSubagentWithoutFollowUp(t *testing.T) {
 		first := parentCalls == 1
 		mu.Unlock()
 		if first {
-			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-spawn", Name: "spawn_subagent", Arguments: []byte(`{"name":"Scanner","goal":"scan the tree","runtime":"matrixclaw"}`)}}}, nil
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-spawn", Name: "agent", Arguments: []byte(`{"description":"Scanner","prompt":"scan the tree","background":true,"runtime":"matrixclaw"}`)}}}, nil
 		}
 		return blockUntilCanceled(ctx, parentWaiting)
 	})})

@@ -9,87 +9,32 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-const (
-	delegateTaskToolName       = "delegate_task"
-	spawnSubagentToolName      = "spawn_subagent"
-	listSubagentsToolName      = "list_subagents"
-	readSubagentResultToolName = "read_subagent_result"
-)
+const agentToolName = "agent"
 
-type delegateTaskInput struct {
-	Goal       string `json:"goal"`
-	Context    string `json:"context,omitempty"`
-	Runtime    string `json:"runtime,omitempty"`
-	Model      string `json:"model,omitempty"`
-	WorkingDir string `json:"working_dir,omitempty"`
+type agentToolInput struct {
+	Description string `json:"description"`
+	Prompt      string `json:"prompt"`
+	Background  bool   `json:"background,omitempty"`
+	Isolation   string `json:"isolation,omitempty"`
+	Readonly    bool   `json:"readonly,omitempty"`
+	Runtime     string `json:"runtime,omitempty"`
+	Model       string `json:"model,omitempty"`
 }
 
-type spawnSubagentInput struct {
-	Name       string `json:"name,omitempty"`
-	Goal       string `json:"goal"`
-	Context    string `json:"context,omitempty"`
-	Runtime    string `json:"runtime,omitempty"`
-	Model      string `json:"model,omitempty"`
-	WorkingDir string `json:"working_dir,omitempty"`
-	Isolation  string `json:"isolation,omitempty"`
-}
-
-type listSubagentsInput struct {
-	IncludeRecent bool `json:"include_recent,omitempty"`
-	Limit         int  `json:"limit,omitempty"`
-}
-
-type readSubagentResultInput struct {
-	TaskID string `json:"task_id,omitempty"`
-	Name   string `json:"name,omitempty"`
-}
-
-type delegateTaskTool struct {
+type agentTool struct {
 	app *Core
 }
 
-type spawnSubagentTool struct {
-	app *Core
+// AgentToolExecutors returns the agent tool.
+func AgentToolExecutors(app *Core) []tools.Executor {
+	return []tools.Executor{&agentTool{app: app}}
 }
 
-type listSubagentsTool struct {
-	app *Core
-}
-
-type readSubagentResultTool struct {
-	app *Core
-}
-
-func SubagentToolExecutors(app *Core) []tools.Executor {
-	return []tools.Executor{
-		DelegateTaskToolExecutor(app),
-		SpawnSubagentToolExecutor(app),
-		ListSubagentsToolExecutor(app),
-		ReadSubagentResultToolExecutor(app),
-	}
-}
-
-func DelegateTaskToolExecutor(app *Core) tools.Executor {
-	return &delegateTaskTool{app: app}
-}
-
-func SpawnSubagentToolExecutor(app *Core) tools.Executor {
-	return &spawnSubagentTool{app: app}
-}
-
-func ListSubagentsToolExecutor(app *Core) tools.Executor {
-	return &listSubagentsTool{app: app}
-}
-
-func ReadSubagentResultToolExecutor(app *Core) tools.Executor {
-	return &readSubagentResultTool{app: app}
-}
-
-func (t *delegateTaskTool) Spec() tools.Spec {
+func (t *agentTool) Spec() tools.Spec {
 	return tools.Spec{
-		ID:              delegateTaskToolName,
-		Name:            "DelegateTask",
-		Description:     "Delegate a bounded task to a hidden child subagent and return only its summary.",
+		ID:              agentToolName,
+		Name:            "Agent",
+		Description:     "Run a child agent on a bounded task and get its result, or start it in the background.",
 		Risk:            tools.RiskSafe,
 		Effect:          tools.EffectMutation,
 		ApprovalMode:    tools.ApprovalNever,
@@ -97,212 +42,77 @@ func (t *delegateTaskTool) Spec() tools.Spec {
 		Category:        tools.CategoryAutomation,
 		Profiles:        []tools.Profile{tools.ProfileCoding},
 		OutputKind:      tools.OutputText,
-		InputJSONSchema: delegateTaskToolSchema,
+		InputJSONSchema: agentToolSchema,
 	}
 }
 
-// ConcurrencyKey lets one delegated child at a time work in a directory. It is
+// ConcurrencyKey lets one child at a time change the parent's directory; it is
 // not the directory's own key, which the child's calls take while this call
-// holds its key.
-func (t *delegateTaskTool) ConcurrencyKey(call tools.Call) string {
-	var input delegateTaskInput
-	_ = json.Unmarshal(call.Args, &input)
-	return "subagents:" + filepath.Clean(firstNonEmpty(normalizeWorkingDir(input.WorkingDir), call.WorkingDir))
+// holds its key. Read-only, worktree and background children need none.
+func (t *agentTool) ConcurrencyKey(call tools.Call) string {
+	input := parseAgentInput(call.Args)
+	if !agentCallWritesSharedDir(input) {
+		return ""
+	}
+	return "subagents:" + filepath.Clean(call.WorkingDir)
 }
 
-func (t *delegateTaskTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
+// agentCallWritesSharedDir reports whether the call's child runs inside the
+// call and may change the parent's working directory.
+func agentCallWritesSharedDir(input agentToolInput) bool {
+	return !input.Background && !input.Readonly && normalizeSubagentIsolation(input.Isolation) == SubagentIsolationShared
+}
+
+func parseAgentInput(args json.RawMessage) agentToolInput {
+	var input agentToolInput
+	_ = json.Unmarshal(args, &input)
+	return input
+}
+
+func (t *agentTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
 	if t == nil || t.app == nil {
-		return tools.Result{}, fmt.Errorf("%w: delegate task core unavailable", ErrExecutionUnavailable)
+		return tools.Result{}, fmt.Errorf("%w: agent core unavailable", ErrExecutionUnavailable)
 	}
-	var input delegateTaskInput
+	var input agentToolInput
 	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{}, tools.InvalidArgs(delegateTaskToolName, err)
+		return tools.Result{}, tools.InvalidArgs(agentToolName, err)
 	}
-	result, err := t.app.DelegateTask(ctx, DelegateTaskInput{
+	result, err := t.app.RunAgent(ctx, AgentInput{
 		ParentSessionID:  call.SessionID,
 		ParentRunID:      call.RunID,
 		ParentToolCallID: call.ToolCallID,
-		Goal:             input.Goal,
-		Context:          input.Context,
+		Description:      input.Description,
+		Prompt:           input.Prompt,
+		Background:       input.Background,
+		Isolation:        input.Isolation,
+		Readonly:         input.Readonly,
 		Runtime:          input.Runtime,
 		Model:            input.Model,
-		WorkingDir:       input.WorkingDir,
 	})
 	if err != nil {
 		return tools.Result{}, err
 	}
-	out := tools.Result{
-		Content:  delegateTaskResultContent(result),
-		Metadata: result.Task,
-		IsError:  result.IsError,
-		Status:   delegateTaskResultStatus(result),
+	if result.Task.Mode == SubagentTaskModeAsync {
+		return tools.Result{Content: backgroundAgentContent(result), Metadata: result.Task, Status: tools.ResultStatusNeutral}, nil
 	}
+	out := tools.Result{Content: agentResultContent(result), Metadata: result.Task, IsError: result.IsError, Status: agentResultStatus(result)}
 	if result.Approval != nil {
 		out.Approval = result.Approval
 	}
 	return out, nil
 }
 
-func (t *spawnSubagentTool) Spec() tools.Spec {
-	return tools.Spec{
-		ID:              spawnSubagentToolName,
-		Name:            "SpawnSubagent",
-		Description:     "Start an independent hidden child subagent in the background and return a task handle immediately.",
-		Risk:            tools.RiskSafe,
-		Effect:          tools.EffectMutation,
-		ApprovalMode:    tools.ApprovalNever,
-		Namespace:       "core.subagents",
-		Category:        tools.CategoryAutomation,
-		Profiles:        []tools.Profile{tools.ProfileCoding},
-		OutputKind:      tools.OutputText,
-		InputJSONSchema: spawnSubagentToolSchema,
-	}
-}
-
-func (t *spawnSubagentTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
-	if t == nil || t.app == nil {
-		return tools.Result{}, fmt.Errorf("%w: spawn subagent core unavailable", ErrExecutionUnavailable)
-	}
-	var input spawnSubagentInput
-	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{}, tools.InvalidArgs(spawnSubagentToolName, err)
-	}
-	result, err := t.app.SpawnSubagent(ctx, SpawnSubagentInput{
-		ParentSessionID:  call.SessionID,
-		ParentRunID:      call.RunID,
-		ParentToolCallID: call.ToolCallID,
-		Name:             input.Name,
-		Goal:             input.Goal,
-		Context:          input.Context,
-		Runtime:          input.Runtime,
-		Model:            input.Model,
-		WorkingDir:       input.WorkingDir,
-		Isolation:        input.Isolation,
-	})
-	if err != nil {
-		return tools.Result{}, err
-	}
-	return tools.Result{
-		Content:  spawnSubagentResultContent(result),
-		Metadata: result.Task,
-		Status:   tools.ResultStatusNeutral,
-	}, nil
-}
-
-func (t *listSubagentsTool) Spec() tools.Spec {
-	return tools.Spec{
-		ID:              listSubagentsToolName,
-		Name:            "ListSubagents",
-		Description:     "List active and optionally recent async subagents for the current parent session.",
-		Risk:            tools.RiskSafe,
-		Effect:          tools.EffectReadOnly,
-		ApprovalMode:    tools.ApprovalNever,
-		Namespace:       "core.subagents",
-		Category:        tools.CategoryAutomation,
-		Profiles:        []tools.Profile{tools.ProfileCoding, tools.ProfileReadOnly},
-		OutputKind:      tools.OutputText,
-		InputJSONSchema: listSubagentsToolSchema,
-	}
-}
-
-func (t *listSubagentsTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
-	if t == nil || t.app == nil {
-		return tools.Result{}, fmt.Errorf("%w: list subagents core unavailable", ErrExecutionUnavailable)
-	}
-	var input listSubagentsInput
-	if len(call.Args) > 0 {
-		if err := json.Unmarshal(call.Args, &input); err != nil {
-			return tools.Result{}, tools.InvalidArgs(listSubagentsToolName, err)
-		}
-	}
-	tasks, err := t.app.ListSubagents(ctx, call.SessionID, input.IncludeRecent, input.Limit)
-	if err != nil {
-		return tools.Result{}, err
-	}
-	return tools.Result{
-		Content:  formatSubagentTaskList(tasks),
-		Metadata: tasks,
-		Status:   tools.ResultStatusSuccess,
-	}, nil
-}
-
-func (t *readSubagentResultTool) Spec() tools.Spec {
-	return tools.Spec{
-		ID:              readSubagentResultToolName,
-		Name:            "ReadSubagentResult",
-		Description:     "Read status, summary, and recent transcript details for one async subagent task.",
-		Risk:            tools.RiskSafe,
-		Effect:          tools.EffectReadOnly,
-		ApprovalMode:    tools.ApprovalNever,
-		Namespace:       "core.subagents",
-		Category:        tools.CategoryAutomation,
-		Profiles:        []tools.Profile{tools.ProfileCoding, tools.ProfileReadOnly},
-		OutputKind:      tools.OutputText,
-		InputJSONSchema: readSubagentResultToolSchema,
-	}
-}
-
-func (t *readSubagentResultTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
-	if t == nil || t.app == nil {
-		return tools.Result{}, fmt.Errorf("%w: read subagent core unavailable", ErrExecutionUnavailable)
-	}
-	var input readSubagentResultInput
-	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{}, tools.InvalidArgs(readSubagentResultToolName, err)
-	}
-	task, detail, err := t.app.ReadSubagentResult(ctx, call.SessionID, input.TaskID, input.Name)
-	if err != nil {
-		return tools.Result{}, err
-	}
-	return tools.Result{
-		Content:  detail,
-		Metadata: task,
-		Status:   tools.ResultStatusSuccess,
-	}, nil
-}
-
-var delegateTaskToolSchema = json.RawMessage(`{
+var agentToolSchema = json.RawMessage(`{
   "type": "object",
   "properties": {
-    "goal": {"type": "string", "description": "The concrete task for the child subagent."},
-    "context": {"type": "string", "description": "Optional context to include in the child prompt."},
-    "runtime": {"type": "string", "enum": ["matrixclaw", "codex", "claude", "auto"], "description": "Subagent runtime. Defaults to matrixclaw."},
-    "model": {"type": "string", "description": "Optional model override for the child runtime."},
-    "working_dir": {"type": "string", "description": "Optional working directory for the child session."}
+    "description": {"type": "string", "description": "A short label for the task, 3-5 words."},
+    "prompt": {"type": "string", "description": "Everything the child needs: the goal, the context and what to report back."},
+    "background": {"type": "boolean", "description": "Start the child as a background task and go on; its result arrives as a message when it finishes."},
+    "isolation": {"type": "string", "enum": ["shared", "worktree"], "description": "shared works in your directory, one writing child at a time; worktree gives the child its own git worktree, so several run at once."},
+    "readonly": {"type": "boolean", "description": "Give the child read-only tools; read-only children run in parallel."},
+    "runtime": {"type": "string", "enum": ["matrixclaw", "codex", "claude", "auto"], "description": "Child runtime. Defaults to matrixclaw."},
+    "model": {"type": "string", "description": "Optional model for the child runtime."}
   },
-  "required": ["goal"],
-  "additionalProperties": false
-}`)
-
-var spawnSubagentToolSchema = json.RawMessage(`{
-  "type": "object",
-  "properties": {
-    "name": {"type": "string", "description": "Short display name for the subagent in the UI."},
-    "goal": {"type": "string", "description": "The bounded task for the child subagent."},
-    "context": {"type": "string", "description": "Optional minimal context to include in the child prompt."},
-    "runtime": {"type": "string", "enum": ["matrixclaw", "codex", "claude", "auto"], "description": "Subagent runtime. Defaults to matrixclaw."},
-    "model": {"type": "string", "description": "Optional model override for the child runtime."},
-    "working_dir": {"type": "string", "description": "Optional working directory for the child session."},
-    "isolation": {"type": "string", "enum": ["shared", "worktree"], "description": "Use shared for read-only/research tasks; use worktree for independent write-heavy tasks."}
-  },
-  "required": ["goal"],
-  "additionalProperties": false
-}`)
-
-var listSubagentsToolSchema = json.RawMessage(`{
-  "type": "object",
-  "properties": {
-    "include_recent": {"type": "boolean", "description": "Include recently completed or failed subagents as well as active ones."},
-    "limit": {"type": "integer", "minimum": 1, "maximum": 50, "description": "Maximum number of subagents to return."}
-  },
-  "additionalProperties": false
-}`)
-
-var readSubagentResultToolSchema = json.RawMessage(`{
-  "type": "object",
-  "properties": {
-    "task_id": {"type": "string", "description": "Subagent task id returned by spawn_subagent or list_subagents."},
-    "name": {"type": "string", "description": "Display name to resolve within the current parent session when task_id is unknown."}
-  },
+  "required": ["description", "prompt"],
   "additionalProperties": false
 }`)

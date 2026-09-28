@@ -37,6 +37,8 @@ type bootstrapConfig struct {
 	ModelConcurrency int
 	// BackgroundTasks bounds a session's background commands; 0 keeps core's default.
 	BackgroundTasks int
+	// BackgroundAgents bounds a session's background subagents; 0 keeps core's default.
+	BackgroundAgents int
 }
 
 func loadBootstrap() (bootstrapConfig, error) {
@@ -84,6 +86,7 @@ func loadBootstrap() (bootstrapConfig, error) {
 		cfg.WindowCap = setupCfg.Daemon.ContextWindowCap
 		cfg.ModelConcurrency = setupCfg.Daemon.ModelConcurrency
 		cfg.BackgroundTasks = setupCfg.Daemon.BackgroundTasks
+		cfg.BackgroundAgents = setupCfg.Daemon.BackgroundAgents
 
 		if err := setup.ImportDaemonEnvironmentFile(service.Path(), setupCfg); err != nil {
 			return bootstrapConfig{}, fmt.Errorf("load setup daemon environment %s: %w", setup.DaemonEnvironmentFilePath(service.Path()), err)

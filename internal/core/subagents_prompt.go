@@ -6,18 +6,15 @@ import (
 	"strings"
 )
 
-func (c *Core) delegateTaskGuidancePrompt(ctx context.Context) string {
+func (c *Core) agentGuidancePrompt(ctx context.Context) string {
 	lines := []string{
 		"Subagents:",
-		"- You have delegate_task for blocking child-agent work and spawn_subagent for async background child-agent work.",
-		"- Use delegate_task when the child result is needed before your next response.",
-		"- Use spawn_subagent only for independent tasks where you can continue without the result; it returns a handle immediately and the result will be delivered back to this parent session later.",
-		"- Use list_subagents and read_subagent_result to inspect async subagents without pulling full child transcripts into context.",
-		"- Keep at most 4 active async subagents per parent session.",
-		"- Give every async subagent a short name, a bounded goal, expected output, and only the minimum context needed.",
-		"- Use isolation=shared for read-only/research tasks and isolation=worktree for independent write-heavy tasks. Do not run multiple writer subagents against the same files.",
-		"- Do not create agent teams, shared task lists, or direct communication between subagents. Results return to you, the parent agent.",
-		"- Do not call delegate_task or spawn_subagent recursively from child subagent sessions.",
+		"- The agent tool runs a child agent on a bounded task. Give it a short description and a prompt with everything it needs: the goal, the context and what to report back. It sees nothing of this conversation.",
+		"- Use readonly:true for research, reviews and questions: the child gets read-only tools, and read-only children in one reply run in parallel.",
+		"- A child that changes files works in your directory (isolation shared, one at a time) or in its own git worktree (isolation worktree, several at once; you merge their work).",
+		"- Without background the call returns the child's result, and several such calls in one reply run together; their time does not count against your budget.",
+		fmt.Sprintf("- With background:true the call returns a task id at once and the result arrives as a message when the child finishes; wait for it with await. At most %d background children run at once.", c.backgroundAgents),
+		"- Children cannot start agents or await; they may use todo_write and background commands. Results return to you, the parent agent.",
 		"- Available runtime configuration:",
 	}
 	runtimes := c.subagentRuntimeInfo(ctx)
@@ -30,9 +27,9 @@ func (c *Core) delegateTaskGuidancePrompt(ctx context.Context) string {
 	}
 	if ids := availableSubagentRuntimeIDs(runtimes); len(ids) > 0 {
 		lines = append(lines,
-			"- Runtime IDs available for delegate_task: "+strings.Join(ids, ", ")+".",
+			"- Runtime IDs available for the agent tool: "+strings.Join(ids, ", ")+".",
 			"- When asked which subagent runtimes are available, answer from that Runtime IDs list and include the native matrixclaw runtime.",
-			"- Treat user questions in any language about available or connected subagents as questions about that delegate_task Runtime IDs list, not only about your base model/provider.",
+			"- Treat user questions in any language about available or connected subagents as questions about that Runtime IDs list, not only about your base model/provider.",
 			"- For the current configuration, if asked which subagents or subagent runtimes are available or connected, answer exactly: "+strings.Join(ids, ", ")+".",
 		)
 	}
@@ -48,7 +45,7 @@ func (c *Core) delegateTaskGuidancePrompt(ctx context.Context) string {
 	return strings.Join(lines, "\n")
 }
 
-func (c *Core) delegateTaskToolDescription(ctx context.Context, base string) string {
+func (c *Core) agentToolDescription(ctx context.Context, base string) string {
 	runtimes := c.subagentRuntimeInfo(ctx)
 	if len(runtimes) == 0 {
 		return base

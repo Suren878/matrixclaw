@@ -7,18 +7,21 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-func TestDelegatedChildrenHoldTheirOwnKeyPerDirectory(t *testing.T) {
+func TestOnlyChildrenWritingTheParentsDirectoryHoldItsKey(t *testing.T) {
 	t.Parallel()
 	app, _, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	registry := tools.NewRegistry(core.SubagentToolExecutors(app)...)
+	registry := tools.NewRegistry(core.AgentToolExecutors(app)...)
 	for _, tc := range []struct {
 		args, want string
 	}{
-		{`{"goal":"count files"}`, "subagents:/work"},
-		{`{"goal":"count files","working_dir":"/other/"}`, "subagents:/other"},
+		{`{"description":"Count","prompt":"count files"}`, "subagents:/work"},
+		{`{"description":"Count","prompt":"count files","isolation":"shared"}`, "subagents:/work"},
+		{`{"description":"Review","prompt":"review the diff","readonly":true}`, ""},
+		{`{"description":"Fix","prompt":"fix the bug","isolation":"worktree"}`, ""},
+		{`{"description":"Build","prompt":"build it","background":true}`, ""},
 	} {
-		if got := registry.ConcurrencyKey("delegate_task", tools.Call{WorkingDir: "/work", Args: []byte(tc.args)}); got != tc.want {
+		if got := registry.ConcurrencyKey("agent", tools.Call{WorkingDir: "/work/", Args: []byte(tc.args)}); got != tc.want {
 			t.Errorf("key for %s = %q, want %q", tc.args, got, tc.want)
 		}
 	}

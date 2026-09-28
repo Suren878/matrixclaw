@@ -42,11 +42,23 @@ func (c *Core) checkToolCall(ctx context.Context, sessionID string, toolName str
 	if err != nil {
 		return Session{}, tools.Spec{}, err
 	}
-	if toolName == delegateTaskToolName && CoreSessionIsExternalAgent(session) {
-		return Session{}, tools.Spec{}, fmt.Errorf("%w: delegate_task is available for Matrixclaw sessions only", ErrInvalidInput)
+	if toolName == agentToolName && CoreSessionIsExternalAgent(session) {
+		return Session{}, tools.Spec{}, fmt.Errorf("%w: the agent tool is available for Matrixclaw sessions only", ErrInvalidInput)
 	}
-	if isSubagentSession(session) && !subagentToolAllowed(spec) {
+	if !isSubagentSession(session) {
+		return session, spec, nil
+	}
+	if !subagentToolAllowed(spec) {
 		return Session{}, tools.Spec{}, fmt.Errorf("%w: tool %q is not available to child subagents", ErrInvalidInput, toolName)
+	}
+	if spec.Mutates() {
+		readonly, err := c.readonlySubagent(ctx, session.ID)
+		if err != nil {
+			return Session{}, tools.Spec{}, err
+		}
+		if readonly {
+			return Session{}, tools.Spec{}, fmt.Errorf("%w: tool %q changes things, and this subagent is read-only", ErrInvalidInput, toolName)
+		}
 	}
 	return session, spec, nil
 }

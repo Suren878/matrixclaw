@@ -154,12 +154,17 @@ func (c *Core) nativeEngine(ctx context.Context, run Run, session Session, runti
 	if err != nil {
 		return agent.Task{}, nil, err
 	}
+	readonly, err := c.readonlySubagent(ctx, session.ID)
+	if err != nil {
+		return agent.Task{}, nil, err
+	}
 	turn := nativeTurn{
 		RunID:              run.ID,
 		Continues:          continues,
 		SessionID:          session.ID,
 		WorkingDir:         session.WorkingDir,
 		Subagent:           isSubagentSession(session),
+		Readonly:           readonly,
 		ClientCapabilities: run.ClientCapabilities,
 		ToolUse:            agent.ToolUseAllowed(runtime),
 	}

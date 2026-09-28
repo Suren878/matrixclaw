@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -10,7 +11,9 @@ import (
 
 var subagentAgentNamePool = []string{"Neo", "Trinity", "Morpheus", "Niobe", "Seraph", "Oracle", "Link", "Switch", "Apoc", "Tank", "Dozer", "Mouse"}
 
-func (c *Core) createSubagentSession(ctx context.Context, parent Session, runtime SubagentRuntime, model string, workingDir string, displayName string) (Session, error) {
+// createSubagentSession creates a child's hidden session; a read-only external
+// child runs in the default mode, its runtime's read-only sandbox.
+func (c *Core) createSubagentSession(ctx context.Context, parent Session, runtime SubagentRuntime, model string, workingDir string, displayName string, readonly bool) (Session, error) {
 	title := "Subagent: " + truncateForTitle(firstNonEmpty(displayName, "Task"), 64)
 	switch runtime {
 	case SubagentRuntimeCodex, SubagentRuntimeClaude:
@@ -18,6 +21,10 @@ func (c *Core) createSubagentSession(ctx context.Context, parent Session, runtim
 		canonical, ok := c.ResolveExternalAgentID(agentID)
 		if !ok {
 			return Session{}, fmt.Errorf("%w: external agent %q is not configured", ErrExecutionUnavailable, agentID)
+		}
+		mode := PermissionModeFullAuto
+		if readonly {
+			mode = PermissionModeDefault
 		}
 		return c.CreateSession(ctx, CreateSessionInput{
 			Title:           title,
@@ -27,7 +34,7 @@ func (c *Core) createSubagentSession(ctx context.Context, parent Session, runtim
 			Hidden:          true,
 			WorkingDir:      workingDir,
 			ModelID:         normalizeText(model),
-			PermissionMode:  PermissionModeFullAuto,
+			PermissionMode:  mode,
 			ExternalAgentID: canonical,
 		})
 	default:
@@ -151,4 +158,13 @@ func (c *Core) subagentRunSummary(ctx context.Context, sessionID string, runID s
 
 func isSubagentSession(session Session) bool {
 	return strings.TrimSpace(session.ParentSessionID) != "" || session.Hidden
+}
+
+// readonlySubagent reports whether the child session was started read-only.
+func (c *Core) readonlySubagent(ctx context.Context, sessionID string) (bool, error) {
+	task, err := c.store.GetSubagentTaskByChildSession(ctx, sessionID)
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
+	return task.Readonly, err
 }

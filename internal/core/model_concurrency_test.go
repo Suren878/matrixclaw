@@ -15,7 +15,7 @@ func TestBlockingSubagentRunsUnderASingleModelSlot(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithModelConcurrency(1)
-	app.WithTools(tools.NewRegistry(core.SubagentToolExecutors(app)...))
+	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	parentCalls := 0
 	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
@@ -23,7 +23,7 @@ func TestBlockingSubagentRunsUnderASingleModelSlot(t *testing.T) {
 		}
 		parentCalls++
 		if parentCalls == 1 {
-			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-delegate", Name: "delegate_task", Arguments: []byte(`{"goal":"count files","runtime":"matrixclaw"}`)}}}, nil
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-delegate", Name: "agent", Arguments: []byte(`{"description":"Count files","prompt":"count files","runtime":"matrixclaw"}`)}}}, nil
 		}
 		return providers.Response{Text: "Parent done."}, nil
 	})})

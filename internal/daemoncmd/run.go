@@ -87,6 +87,7 @@ func Run(ctx context.Context) error {
 		WithContextWindowCap(bootstrap.WindowCap).
 		WithModelConcurrency(bootstrap.ModelConcurrency).
 		WithBackgroundTaskLimit(bootstrap.BackgroundTasks).
+		WithBackgroundAgents(bootstrap.BackgroundAgents).
 		WithWorkStore(workStore).
 		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()}).
 		WithSkillsContext(skillsModule).
@@ -130,7 +131,7 @@ func Run(ctx context.Context) error {
 	if err := toolRegistry.Register(core.MemoryToolExecutors(app)...); err != nil {
 		return err
 	}
-	if err := toolRegistry.Register(core.SubagentToolExecutors(app)...); err != nil {
+	if err := toolRegistry.Register(core.AgentToolExecutors(app)...); err != nil {
 		return err
 	}
 	if err := toolRegistry.Err(); err != nil {

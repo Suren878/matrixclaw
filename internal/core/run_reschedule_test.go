@@ -144,7 +144,7 @@ func TestInterruptedParentAndBlockingChildAreBothRescheduledAndComplete(t *testi
 	defer cleanup()
 	starter := &executingRunStarter{app: app}
 	app.WithRunStarter(starter)
-	app.WithTools(tools.NewRegistry(core.SubagentToolExecutors(app)...))
+	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	childStarted := newStartSignal()
 	var mu sync.Mutex
 	childCalls := 0
@@ -167,7 +167,7 @@ func TestInterruptedParentAndBlockingChildAreBothRescheduledAndComplete(t *testi
 				return providers.Response{Text: "Parent done."}, nil
 			}
 		}
-		return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-delegate", Name: "delegate_task", Arguments: []byte(`{"goal":"count files","runtime":"matrixclaw"}`)}}}, nil
+		return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-delegate", Name: "agent", Arguments: []byte(`{"description":"Count files","prompt":"count files","runtime":"matrixclaw"}`)}}}, nil
 	})})
 	session, run := saveCrashRecoveryRun(t, db, "interrupt-delegate", core.RunStatusAccepted, false)
 

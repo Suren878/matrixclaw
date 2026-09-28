@@ -28,42 +28,47 @@ func subagentTaskRuntimeLabel(runtime SubagentRuntime, child Session) string {
 	return string(runtime)
 }
 
-func subagentUserPrompt(goal string, contextText string, workingDir string) string {
-	lines := []string{
-		"Delegated task:",
-		strings.TrimSpace(goal),
-	}
-	if contextText = strings.TrimSpace(contextText); contextText != "" {
-		lines = append(lines, "", "Context:", contextText)
-	}
+// subagentUserPrompt is a child's assignment: the parent's prompt, where it
+// works and what it may change.
+func subagentUserPrompt(prompt string, workingDir string, isolation SubagentIsolation, readonly bool) string {
+	lines := []string{"Delegated task:", strings.TrimSpace(prompt)}
 	if workingDir = strings.TrimSpace(workingDir); workingDir != "" {
 		lines = append(lines, "", "Working directory:", workingDir)
+	}
+	switch {
+	case readonly:
+		lines = append(lines, "", "Read-only: inspect and report; do not change files.")
+	case isolation == SubagentIsolationWorktree:
+		lines = append(lines, "", "This is your own git worktree; keep your changes inside it. The parent merges them.")
 	}
 	lines = append(lines, "", "Return a concise result for the parent agent. Include important files, findings, errors, and verification output. Do not ask the user questions.")
 	return strings.Join(lines, "\n")
 }
 
-func asyncSubagentUserPrompt(goal string, contextText string, workingDir string, isolation SubagentIsolation) string {
-	prompt := subagentUserPrompt(goal, contextText, workingDir)
-	switch isolation {
-	case SubagentIsolationWorktree:
-		prompt += "\nIsolation: worktree requested. Keep edits scoped to the isolated worktree assigned by the parent runtime. Do not edit files outside the working directory."
-	default:
-		prompt += "\nIsolation: shared working copy. Prefer read-only investigation unless the parent explicitly requested edits."
+func subagentSystemPrompt(readonly bool) string {
+	lines := []string{
+		"Subagent mode:",
+		"- You are a child agent working for a parent Matrixclaw agent.",
+		"- Complete only the delegated task from the user message.",
+		"- Track multi-step work with todo_write.",
+		"- Commands you start in the background are stopped when you finish.",
+		"- Do not ask the user for input or approval.",
+		"- Return a concise summary for the parent agent, listing important files, findings, errors, and verification output.",
 	}
-	return prompt
+	if readonly {
+		lines = append(lines, "- You have read-only tools: inspect, do not change anything.")
+	}
+	return strings.Join(lines, "\n")
 }
 
-func subagentSystemPrompt() string {
-	return "Subagent mode:\n- You are a child agent working for a parent Matrixclaw agent.\n- Complete only the delegated task from the user message.\n- Track multi-step work with todo_write.\n- Do not ask the user for input or approval.\n- Return a concise summary for the parent agent, listing important files, findings, errors, and verification output."
-}
-
+// subagentToolAllowed says whether children get a tool: not the agent tool,
+// await, memory, voice or other automation, storage and skill tools.
 func subagentToolAllowed(spec tools.Spec) bool {
 	id := strings.ToLower(strings.TrimSpace(spec.ID))
 	if id == todo.ToolName {
 		return true
 	}
-	if id == delegateTaskToolName || id == "memory" || id == "text_to_speech" {
+	if id == "memory" || id == "text_to_speech" {
 		return false
 	}
 	if strings.ToLower(strings.TrimSpace(spec.Namespace)) == "core.memory" {
@@ -74,105 +79,6 @@ func subagentToolAllowed(spec tools.Spec) bool {
 		return false
 	}
 	return true
-}
-
-func delegateTaskResultContent(result DelegateTaskResult) string {
-	summary := strings.TrimSpace(result.Summary)
-	if summary == "" {
-		summary = "Subagent completed without a text summary."
-	}
-	return summary
-}
-
-func delegateTaskResultStatus(result DelegateTaskResult) tools.ResultStatus {
-	if result.IsError {
-		return tools.ResultStatusError
-	}
-	return tools.ResultStatusSuccess
-}
-
-func generatedSubagentDisplayName(goal string) string {
-	goal = strings.Join(strings.Fields(goal), " ")
-	if goal == "" {
-		return "Subagent"
-	}
-	return truncateForTitle(goal, 48)
-}
-
-func normalizeSubagentDisplayName(name string, goal string) string {
-	if name = strings.Join(strings.Fields(name), " "); name != "" {
-		return truncateForTitle(name, 48)
-	}
-	return generatedSubagentDisplayName(goal)
-}
-
-func subagentParentToolName(task SubagentTask) string {
-	if task.Mode == SubagentTaskModeAsync {
-		return spawnSubagentToolName
-	}
-	return delegateTaskToolName
-}
-
-func spawnSubagentResultContent(result SpawnSubagentResult) string {
-	task := result.Task
-	prefix := "started"
-	if result.Replayed {
-		prefix = "already running"
-		if taskStatusTerminal(task.Status) {
-			prefix = "already finished"
-		}
-	}
-	lines := []string{
-		fmt.Sprintf("Subagent %s %s", subagentTaskAgentName(task), prefix),
-		"Task ID: " + task.ID,
-		"Status: " + string(task.Status),
-	}
-	if taskLabel := strings.TrimSpace(task.DisplayName); taskLabel != "" {
-		lines = append(lines, "Task: "+taskLabel)
-	}
-	if goal := strings.TrimSpace(task.Goal); goal != "" {
-		lines = append(lines, "Goal: "+goal)
-	}
-	return strings.Join(lines, "\n")
-}
-
-func formatSubagentTaskList(tasks []SubagentTask) string {
-	if len(tasks) == 0 {
-		return "No subagents."
-	}
-	var lines []string
-	for _, task := range tasks {
-		line := fmt.Sprintf("- %s [%s] %s", subagentTaskAgentName(task), task.Status, task.ID)
-		if taskLabel := strings.TrimSpace(task.DisplayName); taskLabel != "" {
-			line += " - " + taskLabel
-		}
-		if task.Summary != "" && taskStatusTerminal(task.Status) {
-			line += ": " + strings.TrimSpace(task.Summary)
-		}
-		lines = append(lines, line)
-	}
-	return strings.Join(lines, "\n")
-}
-
-func (c *Core) subagentTaskDetail(task SubagentTask) string {
-	lines := []string{
-		fmt.Sprintf("Subagent: %s", subagentTaskAgentName(task)),
-		"Task ID: " + task.ID,
-		"Work job: " + task.ID,
-		"Status: " + string(task.Status),
-		"Runtime: " + task.Runtime,
-	}
-	if taskLabel := strings.TrimSpace(task.DisplayName); taskLabel != "" {
-		lines = append(lines, "Task: "+taskLabel)
-	}
-	lines = append(lines, "Goal: "+task.Goal)
-	if task.Summary != "" {
-		lines = append(lines, "", "Summary:", task.Summary)
-	}
-	if task.Error != "" {
-		lines = append(lines, "", "Error:", task.Error)
-	}
-	return strings.Join(lines, "\n")
 }
 
 func subagentTaskFailed(task SubagentTask) bool {
@@ -209,4 +115,41 @@ func truncateForTitle(value string, maxRunes int) string {
 		return value
 	}
 	return string(runes[:maxRunes])
+}
+
+func agentResultContent(result AgentResult) string {
+	summary := strings.TrimSpace(result.Summary)
+	if summary == "" {
+		summary = "Subagent completed without a text summary."
+	}
+	return summary
+}
+
+func agentResultStatus(result AgentResult) tools.ResultStatus {
+	if result.IsError {
+		return tools.ResultStatusError
+	}
+	return tools.ResultStatusSuccess
+}
+
+// subagentDisplayName is the child's label: the call's description, or the
+// start of its prompt.
+func subagentDisplayName(description string, prompt string) string {
+	if description = strings.Join(strings.Fields(description), " "); description != "" {
+		return truncateForTitle(description, 48)
+	}
+	return truncateForTitle(prompt, 48)
+}
+
+// backgroundAgentContent tells the model the background task a child runs as.
+func backgroundAgentContent(result AgentResult) string {
+	task := result.Task
+	state := "started"
+	switch {
+	case result.Replayed && taskStatusTerminal(task.Status):
+		state = "already finished"
+	case result.Replayed:
+		state = "already running"
+	}
+	return fmt.Sprintf("Subagent %s %s as background task %s. Its result arrives as a message when it finishes; wait for it with await, or go on with other work.", subagentTaskAgentName(task), state, task.ID)
 }

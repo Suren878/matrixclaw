@@ -589,7 +589,7 @@ func TestRecoverBlockingSubagentCompletesChildThenParentWithoutDuplicate(t *test
 	runtime := &recoveryRuntime{text: "recovered completion"}
 	app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
 	app.WithRunStarter(orchestration.NewStub(app))
-	app.WithTools(tools.NewRegistry(core.SubagentToolExecutors(app)...))
+	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 
 	parentSession, parentRun := saveCrashRecoveryRun(t, sqliteStore, "parent", core.RunStatusRunning, false)
 	childSession, childRun := saveCrashRecoveryRun(t, sqliteStore, "child", core.RunStatusRunning, true)
@@ -598,8 +598,8 @@ func TestRecoverBlockingSubagentCompletesChildThenParentWithoutDuplicate(t *test
 	if err := sqliteStore.UpdateRun(context.Background(), parentRun); err != nil {
 		t.Fatal(err)
 	}
-	delegateArgs := `{"goal":"finish child work","runtime":"matrixclaw"}`
-	saveInterruptedToolCallWithInput(t, sqliteStore, parentRun, "tool_delegate", "delegate_task", delegateArgs)
+	delegateArgs := `{"description":"Finish","prompt":"finish child work","runtime":"matrixclaw"}`
+	saveInterruptedToolCallWithInput(t, sqliteStore, parentRun, "tool_delegate", "agent", delegateArgs)
 	now := runRecoveryTestTime().Add(3 * time.Second)
 	if err := sqliteStore.CreateSubagentTask(context.Background(), core.SubagentTask{
 		ID: "subagent_recovery", AgentName: "Neo", DisplayName: "Recovery child",

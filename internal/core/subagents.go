@@ -17,24 +17,6 @@ const (
 	subagentParentResumeWaitTimeout = 24 * time.Hour
 )
 
-type DelegateTaskInput struct {
-	ParentSessionID  string
-	ParentRunID      string
-	ParentToolCallID string
-	Goal             string
-	Context          string
-	Runtime          string
-	Model            string
-	WorkingDir       string
-}
-
-type DelegateTaskResult struct {
-	Task     SubagentTask
-	Summary  string
-	IsError  bool
-	Approval *tools.ApprovalRequest
-}
-
 type subagentApprovalBridgeParams struct {
 	Source              string          `json:"source"`
 	TaskID              string          `json:"task_id"`
@@ -50,105 +32,186 @@ type subagentApprovalBridgeParams struct {
 	OriginalParams      json.RawMessage `json:"original_params,omitempty"`
 }
 
-func (c *Core) DelegateTask(ctx context.Context, input DelegateTaskInput) (DelegateTaskResult, error) {
-	parentSessionID := normalizeText(input.ParentSessionID)
-	if parentSessionID == "" {
-		return DelegateTaskResult{}, fmt.Errorf("%w: parent session id is required", ErrInvalidInput)
+// DefaultBackgroundAgents is how many background subagents one session may run
+// at once unless the daemon configures another limit.
+const DefaultBackgroundAgents = 4
+
+// WithBackgroundAgents bounds the background subagents one session runs at
+// once; 0 or less keeps the default.
+func (c *Core) WithBackgroundAgents(n int) *Core {
+	if n <= 0 {
+		n = DefaultBackgroundAgents
 	}
-	goal := normalizeText(input.Goal)
-	if goal == "" {
-		return DelegateTaskResult{}, fmt.Errorf("%w: goal is required", ErrInvalidInput)
+	c.backgroundAgents = n
+	return c
+}
+
+// AgentInput is one agent tool call: a child agent on a bounded task.
+type AgentInput struct {
+	ParentSessionID  string
+	ParentRunID      string
+	ParentToolCallID string
+	Description      string
+	Prompt           string
+	Background       bool
+	Isolation        string
+	Readonly         bool
+	Runtime          string
+	Model            string
+}
+
+// AgentResult is how a blocking child ended, or the task a background child
+// runs as; Approval asks the parent for a child's pending approval.
+type AgentResult struct {
+	Task     SubagentTask
+	Summary  string
+	IsError  bool
+	Approval *tools.ApprovalRequest
+	Replayed bool
+}
+
+// RunAgent runs a child agent for a parent's agent call. A blocking child runs
+// inside the call and its result is the call's; a background child becomes a
+// task whose result reaches the parent as an event. A repeated call resumes
+// the child it started.
+func (c *Core) RunAgent(ctx context.Context, input AgentInput) (AgentResult, error) {
+	prompt := normalizeText(input.Prompt)
+	if prompt == "" {
+		return AgentResult{}, fmt.Errorf("%w: prompt is required", ErrInvalidInput)
 	}
-	parent, err := c.store.GetSession(ctx, parentSessionID)
+	parent, err := c.store.GetSession(ctx, normalizeText(input.ParentSessionID))
 	if err != nil {
-		return DelegateTaskResult{}, err
+		return AgentResult{}, err
 	}
 	parent = c.decorateSessionLLM(parent)
 	if CoreSessionIsExternalAgent(parent) {
-		return DelegateTaskResult{}, fmt.Errorf("%w: delegate_task is available for Matrixclaw sessions only", ErrInvalidInput)
+		return AgentResult{}, fmt.Errorf("%w: the agent tool is available for Matrixclaw sessions only", ErrInvalidInput)
 	}
 	if isSubagentSession(parent) {
-		return DelegateTaskResult{}, fmt.Errorf("%w: child subagents cannot delegate tasks", ErrInvalidInput)
+		return AgentResult{}, fmt.Errorf("%w: child subagents cannot start agents", ErrInvalidInput)
 	}
-
 	parentRunID := normalizeText(input.ParentRunID)
 	parentToolCallID := normalizeText(input.ParentToolCallID)
 	if parentRunID != "" && parentToolCallID != "" {
 		existing, err := c.store.GetSubagentTaskByParentToolCall(ctx, parent.ID, parentRunID, parentToolCallID)
-		if err == nil {
+		switch {
+		case err == nil && existing.Mode == SubagentTaskModeAsync:
+			return AgentResult{Task: existing, Replayed: true}, nil
+		case err == nil:
 			return c.resumeSubagentTask(ctx, existing)
-		}
-		if !errors.Is(err, ErrNotFound) {
-			return DelegateTaskResult{}, err
+		case !errors.Is(err, ErrNotFound):
+			return AgentResult{}, err
 		}
 	}
+	if input.Background {
+		active, err := c.store.ListActiveSubagentTasksByParent(ctx, parent.ID)
+		if err != nil {
+			return AgentResult{}, err
+		}
+		if len(active) >= c.backgroundAgents {
+			return AgentResult{}, fmt.Errorf("%w: at most %d background subagents run at once in a session; await one of them first", ErrInvalidInput, c.backgroundAgents)
+		}
+	}
+	task, run, err := c.startSubagent(ctx, parent, input, prompt, parentRunID, parentToolCallID)
+	if err != nil {
+		return AgentResult{}, err
+	}
+	if input.Background {
+		if err := c.startRun(ctx, run.ID); err != nil {
+			summary := "Subagent failed to start: " + err.Error()
+			_, _ = c.finishSubagentTaskRecord(ctx, task, TaskStatusFailed, summary, summary, false)
+			return AgentResult{}, err
+		}
+		return AgentResult{Task: task}, nil
+	}
+	execErr := c.ExecuteRun(ctx, run.ID)
+	return c.finishOrBridgeSubagentTask(ctx, task, execErr)
+}
 
+// startSubagent creates the child session, its run and the task that links
+// them to the parent's call; a worktree child gets its own git worktree.
+func (c *Core) startSubagent(ctx context.Context, parent Session, input AgentInput, prompt string, parentRunID string, parentToolCallID string) (SubagentTask, Run, error) {
 	runtime := normalizeSubagentRuntime(input.Runtime)
-	workingDir := normalizeWorkingDir(input.WorkingDir)
-	if workingDir == "" {
-		workingDir = parent.WorkingDir
+	isolation := normalizeSubagentIsolation(input.Isolation)
+	if input.Readonly {
+		isolation = SubagentIsolationShared
 	}
-	displayName := generatedSubagentDisplayName(goal)
+	taskID := c.newID("task")
+	workingDir := parent.WorkingDir
+	if isolation == SubagentIsolationWorktree {
+		dir, err := prepareSubagentWorktree(ctx, workingDir, taskID)
+		if err != nil {
+			return SubagentTask{}, Run{}, err
+		}
+		workingDir = dir
+	}
+	// Children started at once by one reply get different names.
+	gate := c.sessionGate(parent.ID)
+	gate.Lock()
+	defer gate.Unlock()
 	agentName, err := c.assignSubagentAgentName(ctx, parent.ID)
 	if err != nil {
-		return DelegateTaskResult{}, err
+		return SubagentTask{}, Run{}, err
 	}
-
-	child, err := c.createSubagentSession(ctx, parent, runtime, input.Model, workingDir, agentName)
+	child, err := c.createSubagentSession(ctx, parent, runtime, input.Model, workingDir, agentName, input.Readonly)
 	if err != nil {
-		return DelegateTaskResult{}, err
+		return SubagentTask{}, Run{}, err
 	}
-	run, err := c.createSubagentRun(ctx, child, subagentUserPrompt(goal, input.Context, workingDir))
+	run, err := c.createSubagentRun(ctx, child, subagentUserPrompt(prompt, workingDir, isolation, input.Readonly))
 	if err != nil {
-		return DelegateTaskResult{}, err
+		return SubagentTask{}, Run{}, err
 	}
-
+	mode := SubagentTaskModeBlocking
+	if input.Background {
+		mode = SubagentTaskModeAsync
+	}
+	now := c.now().UTC()
 	task := SubagentTask{
-		ID:               c.newID("subagent"),
+		ID:               taskID,
 		AgentName:        agentName,
-		DisplayName:      displayName,
-		Mode:             SubagentTaskModeBlocking,
-		Isolation:        SubagentIsolationShared,
+		DisplayName:      subagentDisplayName(input.Description, prompt),
+		Mode:             mode,
+		Isolation:        isolation,
+		Readonly:         input.Readonly,
 		ParentSessionID:  parent.ID,
 		ParentRunID:      parentRunID,
 		ParentToolCallID: parentToolCallID,
 		ChildSessionID:   child.ID,
 		ChildRunID:       run.ID,
 		Runtime:          subagentTaskRuntimeLabel(runtime, child),
-		Goal:             goal,
+		Model:            normalizeText(input.Model),
+		Goal:             prompt,
 		Status:           TaskStatusRunning,
-		CreatedAt:        c.now().UTC(),
-		UpdatedAt:        c.now().UTC(),
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
 	if err := c.createSubagentTaskRecord(ctx, task); err != nil {
-		return DelegateTaskResult{}, err
+		return SubagentTask{}, Run{}, err
 	}
-
-	execErr := c.ExecuteRun(ctx, run.ID)
-	return c.finishOrBridgeSubagentTask(ctx, task, execErr)
+	return task, run, nil
 }
 
-func (c *Core) resumeSubagentTask(ctx context.Context, task SubagentTask) (DelegateTaskResult, error) {
+func (c *Core) resumeSubagentTask(ctx context.Context, task SubagentTask) (AgentResult, error) {
 	if task.Status == TaskStatusCompleted {
-		return DelegateTaskResult{Task: task, Summary: task.Summary}, nil
+		return AgentResult{Task: task, Summary: task.Summary}, nil
 	}
 	if task.Status == TaskStatusFailed && task.FinishedAt != nil {
 		summary := strings.TrimSpace(task.Summary)
 		if summary == "" {
 			summary = strings.TrimSpace(task.Error)
 		}
-		return DelegateTaskResult{Task: task, Summary: summary, IsError: true}, nil
+		return AgentResult{Task: task, Summary: summary, IsError: true}, nil
 	}
 	return c.finishOrBridgeSubagentTask(ctx, task, nil)
 }
 
-func (c *Core) finishOrBridgeSubagentTask(ctx context.Context, task SubagentTask, execErr error) (DelegateTaskResult, error) {
+func (c *Core) finishOrBridgeSubagentTask(ctx context.Context, task SubagentTask, execErr error) (AgentResult, error) {
 	run, err := c.store.GetRun(ctx, task.ChildRunID)
 	if err != nil {
 		if execErr != nil {
 			return c.finishSubagentTask(ctx, task, "Subagent failed: "+execErr.Error(), true)
 		}
-		return DelegateTaskResult{}, err
+		return AgentResult{}, err
 	}
 	if execErr == nil && run.Status == RunStatusWaitingApproval {
 		approval, err := c.pendingApprovalForRun(ctx, task.ChildSessionID, task.ChildRunID)
@@ -156,12 +219,12 @@ func (c *Core) finishOrBridgeSubagentTask(ctx context.Context, task SubagentTask
 			return c.bridgeSubagentApproval(ctx, task, approval)
 		}
 		if !errors.Is(err, ErrNotFound) {
-			return DelegateTaskResult{}, err
+			return AgentResult{}, err
 		}
 	}
 	if execErr == nil && !subagentRunStatusTerminal(run.Status) {
 		if err := c.waitForSubagentStep(ctx, task); err != nil {
-			return DelegateTaskResult{}, err
+			return AgentResult{}, err
 		}
 		return c.finishOrBridgeSubagentTask(ctx, task, nil)
 	}
@@ -169,16 +232,16 @@ func (c *Core) finishOrBridgeSubagentTask(ctx context.Context, task SubagentTask
 	return c.finishSubagentTask(ctx, task, summary, failed)
 }
 
-func (c *Core) bridgeSubagentApproval(ctx context.Context, task SubagentTask, approval Approval) (DelegateTaskResult, error) {
+func (c *Core) bridgeSubagentApproval(ctx context.Context, task SubagentTask, approval Approval) (AgentResult, error) {
 	task, err := c.markSubagentTaskWaitingApproval(ctx, task)
 	if err != nil {
-		return DelegateTaskResult{}, err
+		return AgentResult{}, err
 	}
 	request, err := c.subagentApprovalRequest(ctx, task, approval)
 	if err != nil {
-		return DelegateTaskResult{}, err
+		return AgentResult{}, err
 	}
-	return DelegateTaskResult{
+	return AgentResult{
 		Task:     task,
 		Summary:  "Subagent is waiting for permission.",
 		Approval: request,
@@ -213,7 +276,7 @@ func (c *Core) waitForSubagentStep(ctx context.Context, task SubagentTask) error
 	}
 }
 
-func (c *Core) finishSubagentTask(ctx context.Context, task SubagentTask, summary string, failed bool) (DelegateTaskResult, error) {
+func (c *Core) finishSubagentTask(ctx context.Context, task SubagentTask, summary string, failed bool) (AgentResult, error) {
 	status := TaskStatusCompleted
 	errText := ""
 	if failed {
@@ -222,9 +285,9 @@ func (c *Core) finishSubagentTask(ctx context.Context, task SubagentTask, summar
 	}
 	task, err := c.finishSubagentTaskRecord(ctx, task, status, summary, errText, false)
 	if err != nil {
-		return DelegateTaskResult{}, err
+		return AgentResult{}, err
 	}
-	return DelegateTaskResult{Task: task, Summary: summary, IsError: failed}, nil
+	return AgentResult{Task: task, Summary: summary, IsError: failed}, nil
 }
 
 func (c *Core) pendingApprovalForRun(ctx context.Context, sessionID string, runID string) (Approval, error) {
@@ -264,7 +327,7 @@ func (c *Core) subagentApprovalRequest(ctx context.Context, task SubagentTask, c
 		description += ": " + detail
 	}
 	return &tools.ApprovalRequest{
-		ToolID:      subagentParentToolName(task),
+		ToolID:      agentToolName,
 		ToolCallID:  task.ParentToolCallID,
 		Action:      childApproval.Action,
 		Path:        childApproval.Path,
@@ -389,7 +452,7 @@ func (c *Core) mirrorPendingSubagentApproval(ctx context.Context, task SubagentT
 	prepared := preparedToolCall{
 		SessionID:  task.ParentSessionID,
 		RunID:      task.ParentRunID,
-		ToolName:   subagentParentToolName(task),
+		ToolName:   agentToolName,
 		ToolCallID: task.ParentToolCallID,
 	}
 	if _, err := c.requestApproval(ctx, prepared, *request); err != nil {

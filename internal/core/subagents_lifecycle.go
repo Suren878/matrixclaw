@@ -210,7 +210,7 @@ func (c *Core) syncBlockingSubagentTaskAfterRun(ctx context.Context, task Subage
 	return c.startRun(ctx, parentRunID)
 }
 
-// publishSubagentToolUpdate tells clients the parent's spawn_subagent call finished;
+// publishSubagentToolUpdate tells clients the parent's agent call finished;
 // the result itself reaches the parent through the completion run.
 func (c *Core) publishSubagentToolUpdate(task SubagentTask) {
 	resultMessageID := normalizeText(task.ResultMessageID)
@@ -219,7 +219,7 @@ func (c *Core) publishSubagentToolUpdate(task SubagentTask) {
 	}
 	c.publishToolUpdate(task.ParentSessionID, task.ParentRunID, ToolUpdate{
 		ToolCallID:      task.ParentToolCallID,
-		ToolName:        spawnSubagentToolName,
+		ToolName:        agentToolName,
 		State:           subagentTaskToolLifecycleState(task),
 		ResultStatus:    string(subagentTaskToolResultStatus(task)),
 		RunID:           task.ParentRunID,

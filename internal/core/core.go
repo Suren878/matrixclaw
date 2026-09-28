@@ -57,6 +57,8 @@ type Core struct {
 	liveTasks map[string]*liveTask
 	// backgroundTasks bounds the background commands one session runs.
 	backgroundTasks int
+	// backgroundAgents bounds the background subagents of one session.
+	backgroundAgents int
 }
 
 type SkillsPromptContextRequest struct {
@@ -94,20 +96,21 @@ type AssistantProfile struct {
 
 func New(store Store) *Core {
 	return &Core{
-		store:           store,
-		activeRuns:      map[string]*activeRun{},
-		scheduledRuns:   map[string]time.Time{},
-		sessionGates:    map[string]*sync.Mutex{},
-		liveTasks:       map[string]*liveTask{},
-		backgroundTasks: DefaultBackgroundTasks,
-		events:          newEventBus(),
-		now:             time.Now,
-		newID:           defaultID,
-		historyLimit:    50,
-		lifetime:        context.Background(),
-		budgets:         DefaultRunBudgets(),
-		modelSlots:      toolsched.NewSemaphore(DefaultModelConcurrency),
-		toolLocks:       toolsched.NewLocks(),
+		store:            store,
+		activeRuns:       map[string]*activeRun{},
+		scheduledRuns:    map[string]time.Time{},
+		sessionGates:     map[string]*sync.Mutex{},
+		liveTasks:        map[string]*liveTask{},
+		backgroundTasks:  DefaultBackgroundTasks,
+		backgroundAgents: DefaultBackgroundAgents,
+		events:           newEventBus(),
+		now:              time.Now,
+		newID:            defaultID,
+		historyLimit:     50,
+		lifetime:         context.Background(),
+		budgets:          DefaultRunBudgets(),
+		modelSlots:       toolsched.NewSemaphore(DefaultModelConcurrency),
+		toolLocks:        toolsched.NewLocks(),
 	}
 }
 

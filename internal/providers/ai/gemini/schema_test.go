@@ -92,7 +92,7 @@ func registeredToolDefinitions(t *testing.T) []providers.ToolDefinition {
 		core.TodoToolExecutors(app),
 		core.AwaitToolExecutors(app),
 		core.MemoryToolExecutors(app),
-		core.SubagentToolExecutors(app),
+		core.AgentToolExecutors(app),
 		tools.NewOSMGeoExecutors(tools.NewOSMService(tools.OSMConfig{})),
 		skills.ToolExecutors(nil),
 	} {

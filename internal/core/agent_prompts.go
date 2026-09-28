@@ -32,14 +32,11 @@ func (c *Core) telephonyCallPromptAvailable() bool {
 	return ok
 }
 
-func (c *Core) delegateTaskPromptAvailable() bool {
+func (c *Core) agentPromptAvailable() bool {
 	if c == nil || c.tools == nil {
 		return false
 	}
-	if _, ok := c.tools.Spec(delegateTaskToolName); ok {
-		return true
-	}
-	_, ok := c.tools.Spec(spawnSubagentToolName)
+	_, ok := c.tools.Spec(agentToolName)
 	return ok
 }
 
@@ -93,7 +90,7 @@ func (c *Core) nativeSystemPrompt(ctx context.Context, turn nativeTurn, assistan
 	sections := []string{prompt.AssistantSystemPrompt(assistant.Name, assistant.SystemPrompt)}
 	workingDir := strings.TrimSpace(turn.WorkingDir)
 	if turn.Subagent {
-		sections = append(sections, subagentSystemPrompt())
+		sections = append(sections, subagentSystemPrompt(turn.Readonly))
 		if workingDir != "" {
 			sections = append(sections, prompt.ProjectRoot(workingDir))
 		}
@@ -117,8 +114,8 @@ func (c *Core) nativeSystemPrompt(ctx context.Context, turn nativeTurn, assistan
 	if c.webResearchPromptAvailable() {
 		sections = append(sections, prompt.WebResearchGuidance())
 	}
-	if c.delegateTaskPromptAvailable() {
-		sections = append(sections, c.delegateTaskGuidancePrompt(ctx))
+	if c.agentPromptAvailable() {
+		sections = append(sections, c.agentGuidancePrompt(ctx))
 	}
 	sections = append(sections, memory)
 	if skillsPrompt := c.nativeSkillsPrompt(ctx, turn, history); skillsPrompt != "" {

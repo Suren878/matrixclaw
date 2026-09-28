@@ -136,7 +136,7 @@ func TestDelegatedChildChangesTheParentsDirectoryWithoutDeadlock(t *testing.T) {
 	edit := recoveryToolSpec("mutate_state", tools.EffectMutation)
 	edit.Risk, edit.ApprovalMode = tools.RiskSafe, tools.ApprovalNever
 	edits := 0
-	app.WithTools(tools.NewRegistry(append(core.SubagentToolExecutors(app), funcTool{spec: edit, fn: func(context.Context, tools.Call) (tools.Result, error) {
+	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), funcTool{spec: edit, fn: func(context.Context, tools.Call) (tools.Result, error) {
 		edits++
 		return tools.Result{Content: "mutated"}, nil
 	}})...))
@@ -148,8 +148,8 @@ func TestDelegatedChildChangesTheParentsDirectoryWithoutDeadlock(t *testing.T) {
 		case strings.Contains(request.SystemPrompt, "Subagent mode:"):
 			return providers.Response{Text: "child done"}, nil
 		case !answered:
-			args, _ := json.Marshal(map[string]string{"goal": "edit the file", "runtime": "matrixclaw"})
-			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-delegate", Name: "delegate_task", Arguments: args}}}, nil
+			args, _ := json.Marshal(map[string]string{"description": "Edit the file", "prompt": "edit the file", "runtime": "matrixclaw"})
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-delegate", Name: "agent", Arguments: args}}}, nil
 		default:
 			return providers.Response{Text: "Parent done."}, nil
 		}

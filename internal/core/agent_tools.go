@@ -19,6 +19,7 @@ type nativeTurn struct {
 	SessionID          string
 	WorkingDir         string
 	Subagent           bool
+	Readonly           bool
 	ClientCapabilities ClientCapabilities
 	ToolUse            bool
 }
@@ -34,8 +35,8 @@ type coreTools struct {
 func (t coreTools) Specs(ctx context.Context) []tools.Spec {
 	specs := t.c.nativeToolSpecs(t.turn)
 	for i := range specs {
-		if specs[i].ID == delegateTaskToolName || specs[i].ID == spawnSubagentToolName {
-			specs[i].Description = t.c.delegateTaskToolDescription(ctx, specs[i].Description)
+		if specs[i].ID == agentToolName {
+			specs[i].Description = t.c.agentToolDescription(ctx, specs[i].Description)
 		}
 	}
 	return specs
@@ -43,7 +44,8 @@ func (t coreTools) Specs(ctx context.Context) []tools.Spec {
 
 // Authorize rejects invalid calls and those a deny rule blocks; Execute acts on
 // the verdict it kept for the call. A mutating call is a barrier unless a rule or
-// the mode allows it, as it then cannot ask; a delegation still can, for its child.
+// the mode allows it, as it then cannot ask; a child writing the parent's
+// directory still can. A blocking child's time is its own.
 func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) (agent.Decision, error) {
 	// A call ID owned by another session fails the run with a clear error instead of
 	// a primary-key conflict on the first journal write.
@@ -71,8 +73,13 @@ func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) 
 	if call.ToolCallID != "" {
 		t.authorized.Store(call.ToolCallID, check)
 	}
-	barrier := spec.Mutates() && (check.verdict.Effect != permission.Allow || spec.ID == delegateTaskToolName)
-	return agent.Decision{Allowed: true, Barrier: barrier, Key: t.c.tools.ConcurrencyKey(spec.ID, call)}, nil
+	decision := agent.Decision{Allowed: true, Barrier: spec.Mutates() && check.verdict.Effect != permission.Allow, Key: t.c.tools.ConcurrencyKey(spec.ID, call)}
+	if spec.ID == agentToolName {
+		input := parseAgentInput(call.Args)
+		decision.Barrier = agentCallWritesSharedDir(input)
+		decision.Delegated = !input.Background
+	}
+	return decision, nil
 }
 
 func (t coreTools) Execute(ctx context.Context, name string, call tools.Call) (tools.Result, error) {
@@ -117,7 +124,7 @@ func (c *Core) nativeToolSpecs(turn nativeTurn) []tools.Spec {
 	specs := c.tools.List()
 	out := make([]tools.Spec, 0, len(specs))
 	for _, spec := range specs {
-		if turn.Subagent && !subagentToolAllowed(spec) {
+		if turn.Subagent && !subagentToolAllowed(spec) || turn.Readonly && spec.Mutates() {
 			continue
 		}
 		if spec.ID == "text_to_speech" && !clientSupportsVoiceDelivery(turn.ClientCapabilities) {

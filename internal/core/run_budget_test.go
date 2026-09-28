@@ -269,7 +269,7 @@ func TestSubagentStoppedAtItsBudgetReportsAPartialResult(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.WithRunBudgets(core.RunBudgets{User: agent.Budget{Steps: 5}, Subagent: agent.Budget{Steps: 1}})
-	app.WithTools(tools.NewRegistry(append(core.SubagentToolExecutors(app), changingTool("inspect_state"))...))
+	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), changingTool("inspect_state"))...))
 	parentCalls := 0
 	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
@@ -280,7 +280,7 @@ func TestSubagentStoppedAtItsBudgetReportsAPartialResult(t *testing.T) {
 		}
 		parentCalls++
 		if parentCalls == 1 {
-			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-delegate", Name: "delegate_task", Arguments: []byte(`{"goal":"count files","runtime":"matrixclaw"}`)}}}, nil
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-delegate", Name: "agent", Arguments: []byte(`{"description":"Count files","prompt":"count files","runtime":"matrixclaw"}`)}}}, nil
 		}
 		return providers.Response{Text: "Parent done."}, nil
 	})})

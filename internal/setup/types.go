@@ -57,6 +57,9 @@ type DaemonConfig struct {
 	// BackgroundTasks bounds the background commands one session runs at
 	// once; 0 keeps the default of 8.
 	BackgroundTasks int `json:"background_tasks,omitempty"`
+	// BackgroundAgents bounds the background subagents one session runs at
+	// once; 0 keeps the default of 4.
+	BackgroundAgents int `json:"background_agents,omitempty"`
 }
 
 // RunBudgetsConfig overrides the built-in run budget per trigger.

@@ -39,7 +39,7 @@ func newBridgedChild(t *testing.T, starter func(*core.Core) core.RunStarter, lea
 	b := &bridgedChild{app: app, db: db, parking: parking}
 	app.WithRunStarter(starter(app))
 	mutate, _ := approvalTools(&b.mutations)
-	app.WithTools(tools.NewRegistry(append(core.SubagentToolExecutors(app), mutate, askingReadTool("ask_read"))...))
+	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), mutate, askingReadTool("ask_read"))...))
 	childCalls, parentCalls := 0, 0
 	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		b.mu.Lock()
@@ -54,7 +54,7 @@ func newBridgedChild(t *testing.T, starter func(*core.Core) core.RunStarter, lea
 		}
 		parentCalls++
 		if parentCalls == 1 {
-			delegate := providers.ToolCall{ID: "call-delegate", Name: "delegate_task", Arguments: []byte(`{"goal":"change the state","runtime":"matrixclaw"}`)}
+			delegate := providers.ToolCall{ID: "call-delegate", Name: "agent", Arguments: []byte(`{"description":"Change the state","prompt":"change the state","runtime":"matrixclaw"}`)}
 			return providers.Response{ToolCalls: append(slices.Clone(lead), delegate)}, nil
 		}
 		return providers.Response{Text: "Parent done."}, nil
@@ -310,7 +310,7 @@ func TestParentAwaitingABackgroundChildWakesAfterTheChildsApproval(t *testing.T)
 	app.WithSessionFiles(t.TempDir()).WithRunStarter(starter)
 	mutations := 0
 	mutate, _ := approvalTools(&mutations)
-	app.WithTools(tools.NewRegistry(append(append(core.SubagentToolExecutors(app), core.AwaitToolExecutors(app)...), mutate)...))
+	app.WithTools(tools.NewRegistry(append(append(core.AgentToolExecutors(app), core.AwaitToolExecutors(app)...), mutate)...))
 	var mu sync.Mutex
 	parked := make(chan struct{})
 	childCalls, parentCalls := 0, 0
@@ -330,7 +330,7 @@ func TestParentAwaitingABackgroundChildWakesAfterTheChildsApproval(t *testing.T)
 		parentCalls++
 		switch parentCalls {
 		case 1:
-			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-spawn", Name: "spawn_subagent", Arguments: []byte(`{"name":"Writer","goal":"change the state","runtime":"matrixclaw"}`)}}}, nil
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-spawn", Name: "agent", Arguments: []byte(`{"description":"Writer","prompt":"change the state","background":true,"runtime":"matrixclaw"}`)}}}, nil
 		case 2:
 			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-await", Name: "await", Arguments: []byte(`{}`)}}}, nil
 		}
