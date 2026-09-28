@@ -274,7 +274,7 @@ and retry once; a second overflow is `failed` with `context_exhausted`.
   prompt, since before that the cache writes would not be read back. OpenAI-compatible: `prompt_cache_key =
   sessionID` where accepted; Claude models through OpenRouter get
   `cache_control` in content parts. Gemini: implicit caching.
-- Cache read/write per step is stored in `run_steps` and shown in `/status`.
+- Cache read/write per step is stored in `run_steps` and shown in `/usage`.
 
 ### Implementation notes (as built, stage 3)
 
@@ -783,7 +783,8 @@ new recovery; checkpoints without budget counters start from zero.
   chain (followed back up to 32 runs); a run's chain holds the list when it
   contains `chain_run_id` or `updated_run_id`.
 - **Context note**: the list is a section of the note whenever it has items,
-  whichever chain wrote it, in subagents too. Without the plan section a run
+  in subagents too; a list of another chain whose items are all completed is
+  left out. Without the plan section a run
   with no status, memory change, recovery notice or todo sends no note.
 - **Completion check**: the reply before the nudge is kept (finish
   `end_turn`); the nudge is an `engine_model` note, sent once per run
@@ -799,6 +800,16 @@ new recovery; checkpoints without budget counters start from zero.
   requests, so old ones in a history reach the model as user messages;
   `Conversation` and `TextOnlyConversation` lost their run ID parameter.
   `session_goals`, `session_plan_items` and `plan_runs` are dropped on open.
+
+### Implementation notes (as built, Telegram)
+
+- There is no single run-status message with step n/limit: each tool call
+  keeps its own silent status message (edited when it finishes), the todo list
+  has its own edited message (stage 5), engine notes are silent `Note:`
+  messages, and a waiting run shows "Waiting for background tasks...".
+- Deliveries still load the whole session with `ListMessages`;
+  `ListMessagesAfter(seq)` is available (`GET /v1/messages?after_seq=`) but
+  not used by the Telegram client yet.
 
 ## Testing
 
