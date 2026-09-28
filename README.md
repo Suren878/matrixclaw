@@ -49,7 +49,13 @@ runtime through Terminal, Telegram, or MCP.
 - **Subagents:** MatrixClaw sessions can hand bounded tasks to hidden child
   runs through the `agent` tool, in the foreground or the background, including
   MatrixClaw, Codex, or Claude Code runtimes.
-- **Tools with approvals:** file and shell tools pause before risky changes.
+- **Tools with approvals:** file and shell tools pause before risky changes;
+  allow, ask, and deny rules per session or globally decide which calls ask.
+  A denial with a reason goes back to the model instead of failing the run.
+- **Long runs:** a native run keeps working through hundreds of tool calls
+  within a step, time, and token budget, summarises its own context, runs
+  independent tool calls in parallel, and runs long commands in the background.
+  A run that stops early can be resumed with `/continue`.
 - **Todo list:** the assistant tracks multi-step work with `todo_write`; a run that stops with open items is asked once to finish them or say why.
 - **Memory and search:** the assistant can save approved durable memories and search previous sessions with `memory` and `session_search`.
 - **Usage ledger:** provider token usage is recorded when available.
@@ -246,8 +252,9 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
 - Telegram client for remote sessions, files, images, provider/model commands, and approvals.
 - Durable sessions, messages, runs, approvals, file snapshots, deliveries, and tool results.
 - OpenAI-compatible, OpenAI Codex subscription OAuth, Anthropic-compatible, Gemini, and custom provider adapters, including presets such as DeepSeek, Qwen / DashScope, Z.AI / GLM, Kimi, MiniMax, OpenRouter, Vercel AI Gateway, NVIDIA NIM, Hugging Face, NovitaAI, GMI Cloud, StepFun, Ollama Cloud, and Kilo Code.
-- Experimental external-agent sessions through Codex app-server.
-- Service-owned tool execution with approval previews before writes and shell actions.
+- Experimental external-agent sessions through Codex app-server and Claude Code.
+- Service-owned tool execution with approval previews before writes and shell actions, and permission rules for commands, paths, domains, and MCP tools.
+- Long native runs with run budgets, context summaries, parallel tool calls, background shell commands (`task_output`, `task_kill`, `await`), and `/continue`.
 - Todo lists for multi-step work: the model-facing `todo_write` tool, a TUI side panel, a Telegram status message, and `/todo`.
 - Token usage recorded per model generation (prompt, cache read/write, output, reasoning), surfaced in `/usage` and `/context`.
 - SQLite-backed durable memory and message search through `/memory`, `/search`, and assistant-facing `memory` / `session_search` tools.
@@ -415,9 +422,11 @@ These are client commands, not model tools.
 /new                         create a session
 /sessions                    list, select, rename, or delete sessions
 /provider                    select provider/model for the current session
-/permissions                 change the current session permission mode
-/context                     inspect compacted context and token estimate
-/usage                       show runs, steps, prompt/cache/output/reasoning tokens
+/permissions                 permission mode and allow/ask/deny rules
+/context                     inspect, compact, or clear the session context
+/usage                       show runs, steps, prompt/cache/output/reasoning tokens, cache hit rate
+/continue                    continue the latest run with a fresh budget
+/budget                      show or override the session's run budget
 /memory                      show durable assistant memory
 /todo                        show the todo list
 /todo clear                  empty the todo list after confirmation
@@ -427,12 +436,16 @@ These are client commands, not model tools.
 /modules stt                 manage Speech to Text providers and models
 /modules agents              enable or disable external agent runtimes
 /remind                      create a one-time reminder
-/tasks                       list and manage scheduled AI tasks
+/tasks                       background tasks of the session and scheduled AI tasks
 /server, /status, /restart, /stop   inspect, restart, or stop the local service
 ```
 
 For multi-step work the assistant keeps the session's todo list with
 `todo_write`; `/todo` shows the same list.
+
+A message sent while a run is working steers that run at its next step; in the
+TUI `/queue` or `/busy` picks another mode. Canceling a run also stops the
+background commands and subagents it started.
 
 The assistant also receives memory tools: `session_search` searches stored
 conversation history across sessions, while `memory` can list memories and save,
@@ -480,11 +493,11 @@ flowchart LR
     TG[Telegram client] --> API
     API --> CORE[Core runtime]
     CORE --> STORE[(SQLite)]
-    CORE --> ORCH[Orchestration]
-    ORCH --> PROVIDERS[LLM providers]
-    ORCH --> AGENTS[External agents]
-    ORCH --> TOOLS[Tools]
-    TOOLS --> APPROVALS[Durable approvals]
+    CORE --> ENGINE[Agent engine]
+    CORE --> AGENTS[External agents]
+    ENGINE --> PROVIDERS[LLM providers]
+    ENGINE --> TOOLS[Tools / background tasks]
+    TOOLS --> APPROVALS[Permission rules / durable approvals]
     APPROVALS --> STORE
     CORE --> TODO[Todo lists]
     CORE --> SEARCH[Search / Usage]
@@ -504,7 +517,9 @@ Core rules:
 - todo lists are session data
 - search and token usage are read-only views over local SQLite state
 - storage, voice, MCP, and external agents are daemon modules behind the same local API
-- orchestration, providers, and tools are replaceable adapter families
+- the native agent engine (`internal/agent`) reaches storage, tools, and
+  approvals only through ports that the core implements
+- providers and tools are replaceable adapter families
 
 ## External Agents
 
@@ -838,18 +853,21 @@ modes, temporary-file lifecycle, and Telegram voice/file flow. See
 - [`cmd/matrixclaw-telephony-gateway`](cmd/matrixclaw-telephony-gateway): optional Asterisk/SIP to realtime voice bridge
 - [`clients/terminal`](clients/terminal): setup UI, terminal chat, widgets
 - [`clients/telegram`](clients/telegram): Telegram Bot API client
-- [`internal/core`](internal/core): sessions, runs, approvals, messages, events
+- [`internal/core`](internal/core): sessions, runs, approvals, messages, events, background tasks
+- [`internal/agent`](internal/agent): native agent engine (budget, context, parallel tools, todo)
+- [`internal/permission`](internal/permission): permission rules and bash command parsing
+- [`internal/shelltask`](internal/shelltask): background shell processes and output files
 - [`internal/api`](internal/api): local HTTP API
 - [`internal/controlplane`](internal/controlplane): shared command surface
 - [`internal/store`](internal/store): SQLite persistence
 - [`internal/providers`](internal/providers): provider adapters and catalog
-- [`internal/externalagents`](internal/externalagents): external-agent registry and Codex app-server adapter
+- [`internal/externalagents`](internal/externalagents): external-agent registry, Codex app-server and Claude Code adapters
 - [`internal/mcp`](internal/mcp): MCP client/server bridge
 - [`internal/modules/mcp`](internal/modules/mcp): daemon MCP module
 - [`internal/modules/telephony`](internal/modules/telephony): telephony module and approval-gated call tool
 - [`internal/telephony`](internal/telephony): Asterisk ARI, RTP, realtime, and call recording gateway code
 - [`internal/tools`](internal/tools): builtin tools
-- [`docs`](docs): todo list, MCP, local voice, and storage notes
+- [`docs`](docs): architecture, todo list, Telegram, MCP, local voice, and storage notes
 - [`scripts`](scripts): install, uninstall, and release-build scripts
 - [`packaging`](packaging): release and Homebrew packaging notes
 
