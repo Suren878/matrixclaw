@@ -34,7 +34,7 @@ func (c *Core) defaultRunBudget(run Run, session Session) agent.Budget {
 	switch {
 	case isSubagentSession(session):
 		return c.budgets.Subagent
-	case run.Trigger == RunTriggerAutomation:
+	case run.Trigger == RunTriggerAutomation || run.Trigger == RunTriggerWake:
 		return c.budgets.Automation
 	default:
 		return c.budgets.User

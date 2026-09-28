@@ -58,11 +58,21 @@ type RunStore interface {
 	GetRun(ctx context.Context, runID string) (Run, error)
 	GetActiveRunBySession(ctx context.Context, sessionID string) (Run, error)
 	GetLatestRunBySession(ctx context.Context, sessionID string) (Run, error)
+	// ListSessionRuns lists the session's newest runs first, ordered by their user message.
+	ListSessionRuns(ctx context.Context, sessionID string, limit int) ([]Run, error)
 	ListActiveRuns(ctx context.Context) ([]Run, error)
 	UpdateRun(ctx context.Context, run Run) error
 	CompleteRun(ctx context.Context, assistantMessage transcript.Message, run Run) error
 
 	AcceptMessage(ctx context.Context, message transcript.Message, run Run, deliveries ...ClientDelivery) error
+}
+
+// RunWakeupStore keeps the timers of runs parked in waiting_events.
+type RunWakeupStore interface {
+	SaveRunWakeup(ctx context.Context, wakeup RunWakeup) error
+	GetRunWakeup(ctx context.Context, runID string) (RunWakeup, error)
+	DeleteRunWakeup(ctx context.Context, runID string) error
+	ListDueRunWakeups(ctx context.Context, at time.Time) ([]RunWakeup, error)
 }
 
 type SessionInputStore interface {
@@ -135,6 +145,7 @@ type Store interface {
 	DeliveryStore
 	MessageStore
 	RunStore
+	RunWakeupStore
 	SessionInputStore
 	UsageStore
 	SessionBudgetStore

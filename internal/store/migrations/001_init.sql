@@ -108,6 +108,14 @@ CREATE TABLE IF NOT EXISTS run_checkpoints (
     FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS run_wakeups (
+    run_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    wake_at INTEGER NOT NULL,
+    task_ids_json TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS session_inputs (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
@@ -253,6 +261,9 @@ CREATE INDEX IF NOT EXISTS idx_tasks_parent_call
 
 CREATE INDEX IF NOT EXISTS idx_tasks_child_run
     ON tasks(child_run_id);
+
+CREATE INDEX IF NOT EXISTS idx_run_wakeups_wake_at
+    ON run_wakeups(wake_at);
 
 CREATE INDEX IF NOT EXISTS idx_runs_session_started_at
     ON runs(session_id, started_at);

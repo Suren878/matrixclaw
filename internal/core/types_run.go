@@ -14,9 +14,12 @@ const (
 	RunStatusAccepted        RunStatus = "accepted"
 	RunStatusRunning         RunStatus = "running"
 	RunStatusWaitingApproval RunStatus = "waiting_approval"
-	RunStatusCompleted       RunStatus = "completed"
-	RunStatusCanceled        RunStatus = "canceled"
-	RunStatusFailed          RunStatus = "failed"
+	// RunStatusWaitingEvents is a run parked by await until a task it waits for
+	// finishes, the user writes or its timer runs out.
+	RunStatusWaitingEvents RunStatus = "waiting_events"
+	RunStatusCompleted     RunStatus = "completed"
+	RunStatusCanceled      RunStatus = "canceled"
+	RunStatusFailed        RunStatus = "failed"
 )
 
 type RunTiming struct {
@@ -31,8 +34,21 @@ type RunTiming struct {
 // user message.
 type RunTrigger string
 
-// RunTriggerAutomation covers scheduled jobs and runs woken by finished background work.
-const RunTriggerAutomation RunTrigger = "automation"
+const (
+	// RunTriggerAutomation covers scheduled jobs.
+	RunTriggerAutomation RunTrigger = "automation"
+	// RunTriggerWake is a run an idle session started for background work that finished.
+	RunTriggerWake RunTrigger = "wake"
+)
+
+// RunWakeup is when a run parked in waiting_events wakes at the latest, and the
+// tasks it waits for; none means any background task of its session.
+type RunWakeup struct {
+	RunID     string
+	SessionID string
+	WakeAt    time.Time
+	TaskIDs   []string
+}
 
 type Run struct {
 	ID                 string             `json:"id"`

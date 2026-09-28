@@ -195,13 +195,14 @@ func (s *SQLiteStore) GetActiveRunBySession(ctx context.Context, sessionID strin
 SELECT `+runColumns+`
 FROM runs
 WHERE session_id = ?
-  AND status IN (?, ?, ?)
+  AND status IN (?, ?, ?, ?)
 ORDER BY started_at DESC, updated_at DESC
 LIMIT 1`,
 		strings.TrimSpace(sessionID),
 		string(core.RunStatusAccepted),
 		string(core.RunStatusRunning),
 		string(core.RunStatusWaitingApproval),
+		string(core.RunStatusWaitingEvents),
 	)
 
 	run, err := scanRun(row)
@@ -233,15 +234,43 @@ LIMIT 1`, strings.TrimSpace(sessionID))
 	return run, nil
 }
 
+func (s *SQLiteStore) ListSessionRuns(ctx context.Context, sessionID string, limit int) ([]core.Run, error) {
+	query := `
+SELECT ` + runColumns + `
+FROM runs
+WHERE session_id = ?
+ORDER BY (SELECT seq FROM messages WHERE messages.id = runs.user_message_id) DESC`
+	args := []any{strings.TrimSpace(sessionID)}
+	if limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("store: list session runs: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var runs []core.Run
+	for rows.Next() {
+		run, err := scanRun(rows)
+		if err != nil {
+			return nil, fmt.Errorf("store: scan session run: %w", err)
+		}
+		runs = append(runs, run)
+	}
+	return runs, rows.Err()
+}
+
 func (s *SQLiteStore) ListActiveRuns(ctx context.Context) ([]core.Run, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT `+runColumns+`
 FROM runs
-WHERE status IN (?, ?, ?)
+WHERE status IN (?, ?, ?, ?)
 ORDER BY started_at ASC, updated_at ASC`,
 		string(core.RunStatusAccepted),
 		string(core.RunStatusRunning),
 		string(core.RunStatusWaitingApproval),
+		string(core.RunStatusWaitingEvents),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: list active runs: %w", err)
