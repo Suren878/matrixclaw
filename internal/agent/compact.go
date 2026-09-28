@@ -21,20 +21,21 @@ const lowYieldLimit = 2
 // no history before the tail, or under a tenth of the prompt.
 func (r *run) compactHistory(ctx context.Context, reuse *providers.Request, before int, tailPercent int) (bool, error) {
 	previous, messages := r.history.window()
+	sent := r.sent(messages)
 	limit := r.contextLimit()
-	cut := agentcontext.TailStart(messages, limit*tailPercent/100)
+	cut := agentcontext.TailStart(sent, limit*tailPercent/100)
 	if cut == 0 {
 		return false, nil
 	}
-	covered := messages[:cut]
-	if agentcontext.EstimateMessageTokens(covered)*10 < before {
+	covered, coveredTokens := messages[:cut], agentcontext.EstimateMessageTokens(sent[:cut])
+	if coveredTokens*10 < before {
 		return false, nil
 	}
 	summary, err := r.summary(ctx, reuse, previous, covered)
 	if err != nil {
 		return false, fmt.Errorf("auto compact session: %w", err)
 	}
-	return true, r.writeBoundary(ctx, previous, covered, summary, before)
+	return true, r.writeBoundary(ctx, previous, covered, summary, before, before-coveredTokens)
 }
 
 // summary asks the compact model, when set, or else the step's own request, so
@@ -82,8 +83,8 @@ func (r *run) prefixSummary(ctx context.Context, request providers.Request) (str
 }
 
 // writeBoundary journals the boundary whose summary replaces covered and the
-// boundary before it.
-func (r *run) writeBoundary(ctx context.Context, previous *transcript.Compaction, covered []transcript.Message, summary string, before int) error {
+// boundary before it; before is the prompt size, rest the part of it that stays.
+func (r *run) writeBoundary(ctx context.Context, previous *transcript.Compaction, covered []transcript.Message, summary string, before int, rest int) error {
 	compaction := transcript.Compaction{
 		Summary:          strings.TrimSpace(summary),
 		Kept:             agentcontext.Kept(previous, covered, append([]string{r.task.RunID}, r.task.Continues...)),
@@ -91,7 +92,7 @@ func (r *run) writeBoundary(ctx context.Context, previous *transcript.Compaction
 		RunID:            r.task.RunID,
 		TokensBefore:     before,
 	}
-	compaction.TokensAfter = max(0, before-agentcontext.EstimateMessageTokens(covered)-agentcontext.EstimateTextTokens(agentcontext.SummaryText(previous))+agentcontext.EstimateTextTokens(agentcontext.SummaryText(&compaction)))
+	compaction.TokensAfter = max(0, rest-agentcontext.EstimateTextTokens(agentcontext.SummaryText(previous))+agentcontext.EstimateTextTokens(agentcontext.SummaryText(&compaction)))
 	r.counters.observeSummary(compaction.TokensBefore, compaction.TokensAfter)
 	content := agentcontext.BoundaryLabel(compaction)
 	now := r.Now()

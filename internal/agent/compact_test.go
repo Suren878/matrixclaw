@@ -370,3 +370,39 @@ func TestCompactModelChunksBySizeOfItsOwnWindow(t *testing.T) {
 		}
 	}
 }
+
+// seededRounds journals n tool rounds of the run, each result resultRunes long,
+// and returns the seq of each round's reply.
+func seededRounds(f *agenttest.Fixture, n int, resultRunes int) []int64 {
+	var replies []int64
+	for i := 1; i <= n; i++ {
+		id := fmt.Sprintf("seeded%d", i)
+		reply := transcript.Message{ID: id + "_reply", SessionID: agenttest.SessionID, RunID: agenttest.RunID, Role: transcript.MessageRoleAssistant, Content: "step",
+			Parts: append(transcript.NormalizeMessageParts("step", nil), transcript.MessagePart{Kind: transcript.MessagePartKindFinish, Finish: &transcript.FinishPart{Reason: "tool_calls"}})}
+		result, _ := agent.ToolResultMessage(id+"_result", agenttest.SessionID, agenttest.RunID, id, "read", tools.Result{Content: strings.Repeat("r", resultRunes)}, f.Clock)
+		f.Journal.Seed(reply, agent.ToolCallMessage(id, agenttest.SessionID, agenttest.RunID, "read", []byte(`{}`), true, f.Clock), result)
+		replies = append(replies, f.Journal.Messages[len(f.Journal.Messages)-3].Seq)
+	}
+	return replies
+}
+
+func TestSummarySavingsCountOnlyWhatTheElidedRequestHeld(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Window = 100_000
+	f.Tools.Funcs["read"] = readTool
+	replies := seededRounds(f, 8, 20_000)
+	model := agenttest.NewScriptedModel(agenttest.Turn{Err: errors.New("context_length_exceeded")}, text("SUMMARY"), text("Done."))
+	task := f.Task(model)
+	task.Resume = agent.Counters{ElidedResults: replies[3] - 1}
+
+	outcome := runTask(t, f, task)
+
+	marks := boundaries(f.Journal.Messages)
+	if outcome.Status != agent.StatusCompleted || len(marks) != 1 {
+		t.Fatalf("outcome = %+v boundaries = %d", outcome, len(marks))
+	}
+	// The newest round, ~5k tokens, stays after the summary.
+	if c := marks[0].Compaction; c.TokensAfter < 5_000 || c.TokensAfter >= c.TokensBefore {
+		t.Fatalf("tokens %d -> %d, want the kept round counted", c.TokensBefore, c.TokensAfter)
+	}
+}

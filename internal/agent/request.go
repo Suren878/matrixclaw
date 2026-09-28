@@ -6,6 +6,7 @@ import (
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 // ToolUseAllowed reports whether the model can receive tool definitions.
@@ -47,7 +48,7 @@ func (r *run) buildRequest(ctx context.Context, final StopReason) (providers.Req
 	if len(messages) > 0 {
 		r.requestSeq = messages[len(messages)-1].Seq
 	}
-	messages = agentcontext.WithoutSignedReasoning(agentcontext.Elide(messages, r.elision()), r.counters.HistoryEdit)
+	messages = r.sent(messages)
 	request := providers.Request{
 		RunID:              r.task.RunID,
 		SessionID:          r.task.SessionID,
@@ -72,6 +73,12 @@ func (r *run) buildRequest(ctx context.Context, final StopReason) (providers.Req
 	request.Messages = append(summary, conversation...)
 	request.Tools = r.tools
 	return request, nil
+}
+
+// sent is messages as the run's requests carry them: elided, and without the
+// reasoning signed before the last history edit.
+func (r *run) sent(messages []transcript.Message) []transcript.Message {
+	return agentcontext.WithoutSignedReasoning(agentcontext.Elide(messages, r.elision()), r.counters.HistoryEdit)
 }
 
 func toolDefinitions(specs []tools.Spec) []providers.ToolDefinition {
