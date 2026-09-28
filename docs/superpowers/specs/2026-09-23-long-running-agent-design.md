@@ -489,6 +489,46 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
 - **Delegated agents**: Codex and Claude Code children run their own tools;
   matrixclaw rules govern only the delegate call, not what the child does.
 
+### Implementation notes (as built, stage 4c)
+
+- **Keys** come from `tools.Spec.ConcurrencyKey(call)` (the call carries the
+  working directory): none for read-only tools, `mcp.<server>` for every MCP
+  tool, `dir:<working dir>` for mutating filesystem and shell tools and
+  `tool:<namespace>` for other mutating tools. An executor may name its own key
+  (`tools.ConcurrencyKeyProvider`): `delegate_task` takes `subagents:<dir>`, so
+  delegations into one directory run one at a time while the child's own calls
+  take `dir:<dir>`; one shared key would deadlock parent and child. The engine
+  gets the key in `Decision.Key`.
+- **Batch**: calls are authorized and journaled in call order, then up to 8 run
+  at once (`internal/agent/toolsched`); calls sharing a key run one at a time in
+  call order and hold the daemon-wide lock of the key, so other runs and
+  sessions wait too. Results, loop-guard counting, `Tools.Finish` and
+  `tool.finished` follow call order (a finished call waits for the calls before
+  it); `tool.requested` follows call order as calls start; the two streams
+  interleave. Calls of one reply are independent: a read next to an edit of the
+  same file may see it before or after the edit.
+- **Barrier**: a mutating call is a barrier unless a rule or the mode allows it
+  (it then cannot ask); `delegate_task` always is, as its child may ask. The
+  calls after a barrier are journaled `deferred` at once and start when it
+  returns without asking; if it asks they stay deferred as in stage 4a.
+- **Checkpoints** are written by the engine goroutine only: `model` before each
+  generation, `tool_batch{call_ids, deferred_ids}` (column
+  `run_checkpoints.tool_batch`) whenever calls of a batch start, after they are
+  journaled, and `model` when the run parks. Approval requests of engine runs
+  and delegations no longer touch the run's checkpoint; run-less `ExecuteTool`
+  and crash recovery keep their writes.
+- **Recovery**: a call is completed (result), in flight (journaled without a
+  result: read-only calls replay, mutating ones ask again, every call of the
+  batch and not only the first) or not started (`deferred`: it runs when the
+  run resumes). A call still waiting for its key or a slot counts as in flight.
+- **Stop**: results of calls finished before the run's context stopped are
+  journaled; what a call returns afterwards is dropped. A canceled run answers
+  every other call of the batch `Canceled by user.`; an interrupted run leaves
+  them to recovery. A panicking tool becomes an error result.
+- **Model slots**: `daemon.model_concurrency` (default 4) bounds the model
+  requests of all native runs, subagents and summaries included. A run holds a
+  slot only inside `Generate`, so a parent blocked in `delegate_task` holds none.
+
 ## 5. Providers
 
 - `providers.Request` gains `MaxOutputTokens` (priority: provider config →
