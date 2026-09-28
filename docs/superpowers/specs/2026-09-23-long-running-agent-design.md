@@ -584,6 +584,46 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   `POST /v1/tasks/{id}/cancel`. A task the user stops is an event for the
   session.
 
+### Implementation notes (as built, stage 6b)
+
+- **await** is a core tool (`await{ids?, timeout_seconds ≤ 3600, default
+  600}`, category automation, so children lack it). Its result is written at
+  once ("Waiting up to … for …"); `tools.Result.Await` puts `{task_ids, until}`
+  into `Counters.Await`, so the park survives an approval or a restart. Named
+  tasks that already finished are reported instead of waited for; with no
+  running background task it says so. It needs a run.
+- **Park**: each step starts with `resumeAwait`: it clears `Counters.Await`
+  when a steer is pending (written as a user message, since no tool result can
+  carry it), an event for an awaited task (any task without ids) is pending,
+  or `until` passed (an engine note says the await timed out); otherwise the
+  step checkpoints and the run ends `waiting_events`. Events for other tasks
+  stay pending. Core stores `run_wakeups(run_id, session_id, wake_at ms,
+  task_ids_json)` and the status; a woken run that finds nothing parks again
+  without a model call.
+- **Wake**: `wakeWaitingRun` runs under the session gate and starts the run
+  when its timer ran out, a steer for it is pending or an awaited task
+  finished unseen; it deletes the wakeup. It is called when a task finishes,
+  when a message arrives, by `WakeDueRuns` (a one-second ticker; overdue
+  timers fire on its first tick after a restart), at startup for every
+  waiting run, and after the parking run is no longer active
+  (`resumeParkedRun`), which closes the race with an event that arrived while
+  it parked. `prepareClaimedRun` accepts a waiting run.
+- **Input**: a message without a busy mode steers (TUI and Telegram send
+  none); a queued message for a waiting run steers it too.
+- **Idle sessions**: a finished background task (a command that exited by
+  itself, or any subagent) in an idle top-level session starts a run with
+  trigger `wake` (automation budget) whose user message says background work
+  finished; the events follow as notes and are delivered to it. It gets the
+  client, capabilities and delivery address of the newest run before the wake
+  chain, so Telegram receives its reply. Twenty wake runs in a row without a
+  user run stop the chain: the session shows a system message and the chat
+  gets a `notice` delivery per finished task. Stopped and lost commands wait
+  for the next run. Subagent completion runs are wake runs now; their prompt,
+  trigger IDs and `ListPendingSubagentCompletionTasks` are gone.
+- **Clients**: the TUI counts `waiting_events` as busy ("Waiting for background
+  tasks"); Telegram shows progress, no typing, and "Waiting for background
+  tasks..."; the iOS package decodes it as `.unknown`.
+
 ## 5. Providers
 
 - `providers.Request` gains `MaxOutputTokens` (priority: provider config →

@@ -29,7 +29,7 @@ func TestToolUseDisciplineTracksWorkWithTodo(t *testing.T) {
 
 func TestToolUseDisciplineRunsLongCommandsInTheBackground(t *testing.T) {
 	text := ToolUseDiscipline()
-	for _, want := range []string{"run_in_background", "task_output", "task_kill", "after 2 minutes"} {
+	for _, want := range []string{"run_in_background", "task_output", "task_kill", "after 2 minutes", "await instead of polling"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("tool-use discipline lacks %q:\n%s", want, text)
 		}
