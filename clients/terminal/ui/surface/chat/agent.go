@@ -47,7 +47,7 @@ type subagentTaskMetadata struct {
 
 func renderSubagentTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts, params agentRenderParams) string {
 	metadata := parseSubagentTaskMetadata(opts.Result)
-	agentName := strings.Join(strings.Fields(firstNonEmptyLocal(metadata.AgentName, metadata.DisplayName, params.Description, delegateRuntimeLabel(params.Runtime))), " ")
+	agentName := strings.Join(strings.Fields(firstNonEmptyLocal(metadata.AgentName, metadata.DisplayName, params.Description, agentRuntimeLabel(params.Runtime))), " ")
 	taskLabel := strings.Join(strings.Fields(firstNonEmptyLocal(metadata.DisplayName, params.Description)), " ")
 	goal := strings.Join(strings.Fields(firstNonEmptyLocal(metadata.Goal, params.Prompt)), " ")
 	status := subagentRenderStatus(metadata.Status, opts)
@@ -191,7 +191,7 @@ func firstNonEmptyLocal(values ...string) string {
 	return ""
 }
 
-func delegateRuntimeLabel(runtime string) string {
+func agentRuntimeLabel(runtime string) string {
 	switch strings.ToLower(strings.TrimSpace(runtime)) {
 	case "", "matrixclaw", "auto":
 		return "MatrixClaw"

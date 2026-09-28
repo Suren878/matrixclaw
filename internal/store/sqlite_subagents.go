@@ -50,6 +50,8 @@ VALUES(?, 'subagent', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 	return nil
 }
 
+// UpdateSubagentTask saves the task; whether and when it was delivered is kept
+// by MarkTasksDelivered alone.
 func (s *SQLiteStore) UpdateSubagentTask(ctx context.Context, task core.SubagentTask) error {
 	task = normalizeSubagentTaskForStore(task)
 	result, err := s.db.ExecContext(ctx, `
