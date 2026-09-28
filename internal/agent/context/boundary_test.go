@@ -36,18 +36,70 @@ func TestTailStartKeepsWholeTurnsWithinTheBudget(t *testing.T) {
 	}
 }
 
-func TestTailStartNeverSplitsACallFromItsResult(t *testing.T) {
-	output := strings.Repeat("a", 4_000)
-	reply := toolStep(2, "a", output)[0]
-	callA, resultA := toolStep(2, "a", output)[1], toolStep(2, "a", output)[2]
-	callB, resultB := toolStep(5, "b", output)[1], toolStep(5, "b", output)[2]
-	messages := []transcript.Message{textMessage(1, transcript.MessageRoleUser, "r1", "task"), reply, callA, callB, resultA, resultB, textMessage(9, transcript.MessageRoleUser, "r1", "next")}
-
-	if got := TailStart(messages, 1_500); got != 6 {
-		t.Fatalf("TailStart = %d, want 6: no cut between parallel calls and their results", got)
+// badCut describes why a tail starting at cut would split a reply from its
+// calls or a call from its result; "" for a valid cut.
+func badCut(messages []transcript.Message, cut int) string {
+	if cut == 0 {
+		return ""
 	}
-	if got := TailStart(messages, 1_000_000); got != 1 {
-		t.Fatalf("TailStart with room for all = %d, want 1", got)
+	if first := messages[cut]; first.Role == transcript.MessageRoleTool || len(messageToolCallIDs(first)) > 0 {
+		return fmt.Sprintf("the tail starts at %s message %q", first.Role, first.ID)
+	}
+	calls, results := map[string]int{}, map[string]int{}
+	for i, message := range messages {
+		for _, part := range message.Parts {
+			if part.ToolCall != nil {
+				calls[part.ToolCall.ID] = i
+			}
+			if part.ToolResult != nil {
+				results[part.ToolResult.ToolCallID] = i
+			}
+		}
+	}
+	for id, call := range calls {
+		if result, ok := results[id]; ok && (call < cut) != (result < cut) {
+			return fmt.Sprintf("call %q at %d and its result at %d", id, call, result)
+		}
+	}
+	return ""
+}
+
+func TestTailStartNeverCutsBetweenACallAndItsResult(t *testing.T) {
+	output := strings.Repeat("a", 4_000)
+	step := func(seq int64, id string) (transcript.Message, transcript.Message, transcript.Message) {
+		messages := toolStep(seq, id, output)
+		messages[0].Content = "Checking " + id + "."
+		return messages[0], messages[1], messages[2]
+	}
+	task := textMessage(1, transcript.MessageRoleUser, "r1", "task")
+	reply, callA, resultA := step(2, "a")
+	_, callB, resultB := step(5, "b")
+	_, callC, resultC := step(8, "c")
+	later, callD, resultD := step(20, "d")
+	steer := textMessage(11, transcript.MessageRoleUser, "r1", "look at the parser too")
+	note := transcript.Message{ID: "note", Seq: 12, Role: transcript.MessageRoleSystem, Origin: transcript.OriginEngineModel, Content: "Context update: plan changed"}
+	answer := textMessage(30, transcript.MessageRoleAssistant, "r1", strings.Repeat("b", 2_000))
+	next := textMessage(31, transcript.MessageRoleUser, "r1", "next")
+	_, unanswered, _ := step(40, "lost")
+	_, _, orphan := step(50, "gone")
+	layouts := map[string][]transcript.Message{
+		"parallel results around a steer":  {task, reply, callA, callB, callC, resultA, steer, resultB, note, resultC, later, callD, resultD, answer},
+		"call without a result, then more": {task, reply, callA, resultA, answer, next, later, unanswered, callD, resultD, answer},
+		"result without a call":            {task, orphan, answer, next, answer},
+	}
+	for name, messages := range layouts {
+		// The tail changes only where the budget crosses what a suffix needs.
+		for i := range messages {
+			for _, budget := range []int{EstimateMessageTokens(messages[i:]) - 1, EstimateMessageTokens(messages[i:])} {
+				if bad := badCut(messages, TailStart(messages, budget)); bad != "" {
+					t.Fatalf("%s, budget %d: %s", name, budget, bad)
+				}
+			}
+		}
+	}
+	messages := layouts["call without a result, then more"]
+	if got := TailStart(messages, EstimateMessageTokens(messages[10:])); got != 10 {
+		t.Fatalf("TailStart = %d, want 10: a call whose result never came holds no cut back", got)
 	}
 }
 
