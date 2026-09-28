@@ -276,6 +276,44 @@ and retry once; a second overflow is `failed` with `context_exhausted`.
   `cache_control` in content parts. Gemini: implicit caching.
 - Cache read/write per step is stored in `run_steps` and shown in `/status`.
 
+### Implementation notes (as built, stage 3)
+
+Where the build differs from the text above:
+
+- **Boundary** is a message field `compaction` (`summary`, `kept`,
+  `covers_through_seq`, `run_id`, `tokens_before/after`, `cleared`), not a
+  part. `kept` holds the assignment and steer texts verbatim (head and tail
+  past ~2k tokens); `/clear` writes a boundary with `cleared` and removes the
+  session's kept tool-output files, except ones a later message refers to.
+  Messages are indexed by `(session_id, seq)` where `compaction_json <> ''`.
+- **Summary request** reuses the step's request unchanged, `tool_choice`
+  included, since changing it would cost the cached prefix; tool calls in the
+  reply are dropped. When that (or the compact model) fails for any reason, the
+  run's model summarises in chunks; chunk requests cap their output at 8k
+  tokens or the chunk size.
+- **Elision** hides results before the last 5 tool rounds, or fewer when they
+  outgrow 30% of the effective window (the newest round stays), and images
+  before the last 3 replies. Hysteresis: once moved, it moves again only when 5
+  more rounds or replies become eligible, or when a summary is due. The
+  watermark is checkpointed, and a session's next run starts from the last
+  run's watermark (`session_engine_state`), so its first request looks like
+  the previous run's last one.
+- **Effective window** is floored at half the model window. The model window
+  is capped by `daemon.context_window_cap` (default 200k; set it to the
+  model's window to disable), for runs, summaries and `/context` alike, which
+  shares the engine's computation. A provider overflow teaches the run its
+  real prompt room (90% of the rejected prompt), checkpointed so tails,
+  elision and summary chunks shrink for the rest of the run. Rate-limit errors
+  (tokens per minute) are not overflows.
+- **Signed reasoning** written before a history edit (elision move or
+  boundary) is not replayed; plain reasoning is. The newest boundary counts as
+  an edit even when no checkpoint recorded it.
+- **Context note** is found by reading the newest note in the history, not
+  tracked in counters, so restarts and summaries stay consistent.
+- **Large outputs**: error results spill to files too.
+- **Usage**: `/usage` shows the cache hit share.
+- **Deferred to stage 5**: todo in the context note.
+
 ## 4. Tools, permissions, background work, subagents
 
 **Scheduler.** `tools.Spec` gains `ConcurrencyKey(args) string`: empty means
