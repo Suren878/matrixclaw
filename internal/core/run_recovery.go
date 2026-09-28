@@ -120,11 +120,8 @@ func (c *Core) runNeedsCrashRecovery(ctx context.Context, run Run) (bool, error)
 	case RunStatusRunning:
 		return true, nil
 	case RunStatusWaitingApproval:
-		approvals, err := c.store.ListApprovals(ctx, run.SessionID, ApprovalStatePending)
-		if err != nil {
-			return false, err
-		}
-		return len(approvalsForRun(approvals, run.ID)) == 0, nil
+		pending, err := c.runHasPendingApprovals(ctx, run.SessionID, run.ID)
+		return !pending, err
 	case RunStatusAccepted:
 		if _, ok, err := c.runCheckpoint(ctx, run.ID); err != nil || ok {
 			return ok, err

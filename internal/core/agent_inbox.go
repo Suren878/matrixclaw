@@ -70,8 +70,8 @@ func (in coreInbox) Consume(ctx context.Context, runID string, ids []string) err
 }
 
 // decided returns the run's decided approvals whose call has no result yet, oldest
-// first; a call's newest approval decides it. A bridged child approval resumes the
-// parent's call whichever way the child's approval was decided.
+// first; a call's newest approval decides it. A bridged call resumes, whichever way
+// its child's approval was decided, only once the subagent is done.
 func (in coreInbox) decided(ctx context.Context, runID string) ([]agent.Input, error) {
 	approvals, err := in.c.store.ListApprovals(ctx, in.session.ID, "")
 	if err != nil {
@@ -96,6 +96,13 @@ func (in coreInbox) decided(ctx context.Context, runID string) ([]agent.Input, e
 			return nil, err
 		}
 		if done {
+			continue
+		}
+		waiting, err := in.c.bridgedCallWaitsForSubagent(ctx, approval)
+		if err != nil {
+			return nil, err
+		}
+		if waiting {
 			continue
 		}
 		toolCall, err := in.c.sessionToolCallMessage(ctx, in.session.ID, callID)

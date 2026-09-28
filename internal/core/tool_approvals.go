@@ -307,15 +307,49 @@ func approvalsForRun(approvals []Approval, runID string) []Approval {
 	return matched
 }
 
+// runHasPendingApprovals reports whether the run still waits on a decision: one
+// of its approvals is pending or a decided bridged call waits for its subagent.
 func (c *Core) runHasPendingApprovals(ctx context.Context, sessionID string, runID string) (bool, error) {
-	approvals, err := c.store.ListApprovals(ctx, sessionID, ApprovalStatePending)
+	approvals, err := c.store.ListApprovals(ctx, sessionID, "")
 	if err != nil {
 		return false, err
 	}
-	for _, approval := range approvals {
-		if strings.TrimSpace(approval.RunID) == strings.TrimSpace(runID) {
+	for _, approval := range approvalsForRun(approvals, runID) {
+		if approval.State == ApprovalStatePending {
 			return true, nil
+		}
+		waiting, err := c.bridgedCallWaitsForSubagent(ctx, approval)
+		if err != nil || waiting {
+			return waiting, err
 		}
 	}
 	return false, nil
+}
+
+// bridgedCallWaitsForSubagent reports whether a decided bridged approval's call
+// has no result yet while its subagent is still working on it.
+func (c *Core) bridgedCallWaitsForSubagent(ctx context.Context, approval Approval) (bool, error) {
+	bridge, bridged := decodeSubagentApprovalBridge(approval)
+	if !bridged || approval.State == ApprovalStatePending {
+		return false, nil
+	}
+	done, err := c.store.HasToolResult(ctx, approval.SessionID, strings.TrimSpace(approval.ToolCallRef))
+	if err != nil || done {
+		return false, err
+	}
+	task, err := c.store.GetSubagentTask(ctx, bridge.TaskID)
+	if err == nil && subagentTaskTerminalStatus(task.Status) {
+		return false, nil
+	}
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return false, err
+	}
+	run, err := c.store.GetRun(ctx, bridge.ChildRunID)
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return !subagentRunStatusTerminal(run.Status), nil
 }
