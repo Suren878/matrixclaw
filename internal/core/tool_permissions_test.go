@@ -312,3 +312,30 @@ func TestAddedRulesNameAbsolutePathsAndKnownTools(t *testing.T) {
 		t.Fatalf("rules = %+v err = %v", rules, err)
 	}
 }
+
+// mcpTool is a remote MCP tool, named "server__tool" to rules.
+type mcpTool struct{}
+
+func (mcpTool) Spec() tools.Spec {
+	spec := recoveryToolSpec("mcp_github_create_issue", tools.EffectMutation)
+	spec.Namespace, spec.Category = "mcp.github", tools.CategoryWeb
+	return spec
+}
+
+func (mcpTool) Execute(context.Context, tools.Call) (tools.Result, error) {
+	return tools.Result{Content: "created"}, nil
+}
+
+func (mcpTool) PermissionSubject(tools.Call) permission.Subject {
+	return permission.Subject{Kind: permission.KindName, Value: "github__create_issue"}
+}
+
+func TestAddedRuleForAnMCPToolNamesThatTool(t *testing.T) {
+	app, db, _, dir := permissionCore(t)
+	app.WithTools(tools.NewCoreReadOnlyRegistry(mcpTool{}))
+	session := permissionSession(t, db, "session_mcp", dir, core.PermissionModeDefault, "")
+	rule, err := app.AddPermissionRule(context.Background(), session.ID, core.PermissionRuleRequest{Tool: "mcp_github_create_issue", Effect: permission.Allow, Scope: permission.ScopeSession})
+	if err != nil || rule.String() != "mcp: github__create_issue" {
+		t.Fatalf("rule = %s err = %v, want mcp: github__create_issue", rule.String(), err)
+	}
+}

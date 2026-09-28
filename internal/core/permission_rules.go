@@ -23,7 +23,7 @@ func (c *Core) SessionPermissionRules(ctx context.Context, sessionID string) ([]
 
 // AddPermissionRule saves a rule for the session, or for every session when its
 // scope is global. File tool patterns become absolute against the session's
-// working directory.
+// working directory; a rule for one MCP tool names it as "server__tool".
 func (c *Core) AddPermissionRule(ctx context.Context, sessionID string, request PermissionRuleRequest) (permission.Rule, error) {
 	session, err := c.store.GetSession(ctx, normalizeText(sessionID))
 	if err != nil {
@@ -46,7 +46,12 @@ func (c *Core) AddPermissionRule(ctx context.Context, sessionID string, request 
 			return permission.Rule{}, fmt.Errorf("%w: unknown tool %q", ErrInvalidInput, rule.Tool)
 		}
 		rule.Tool = permissionTool(spec)
-		if spec.Category == tools.CategoryFilesystem {
+		switch {
+		case rule.Tool == "mcp":
+			if rule.Pattern = c.tools.Subject(spec.ID, tools.Call{}).Value; rule.Pattern == "" {
+				return permission.Rule{}, fmt.Errorf("%w: MCP tool %q names no server tool", ErrInvalidInput, spec.ID)
+			}
+		case spec.Category == tools.CategoryFilesystem:
 			rule.Pattern = absolutePattern(rule.Pattern, session.WorkingDir)
 		}
 	}
