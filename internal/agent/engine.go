@@ -29,6 +29,9 @@ type Config struct {
 	Sleep func(ctx context.Context, d time.Duration) error
 	// ModelSlots bounds the model requests of every run sharing it; nil is unbounded.
 	ModelSlots *toolsched.Semaphore
+	// Locks serialises tool calls sharing a concurrency key across every run
+	// using it; nil gives the engine locks of its own.
+	Locks *toolsched.Locks
 }
 
 // Engine runs the native agent loop over its ports.
@@ -40,6 +43,9 @@ type Engine struct {
 func New(cfg Config) *Engine {
 	if cfg.Sleep == nil {
 		cfg.Sleep = sleep
+	}
+	if cfg.Locks == nil {
+		cfg.Locks = toolsched.NewLocks()
 	}
 	return &Engine{cfg: cfg}
 }

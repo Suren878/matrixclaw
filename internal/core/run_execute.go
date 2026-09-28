@@ -160,6 +160,7 @@ func (c *Core) nativeEngine(ctx context.Context, run Run, session Session, runti
 		Now:         func() time.Time { return c.now().UTC() },
 		NewID:       c.newID,
 		ModelSlots:  c.modelSlots,
+		Locks:       c.toolLocks,
 	})
 	task := agent.Task{
 		RunID:        run.ID,

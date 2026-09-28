@@ -44,6 +44,8 @@ type Core struct {
 	windowCap       int
 	// modelSlots bounds the model requests of all native runs at once.
 	modelSlots *toolsched.Semaphore
+	// toolLocks serialises tool calls sharing a concurrency key across runs.
+	toolLocks *toolsched.Locks
 	// compactUnavailable is set while the compact model cannot be resolved,
 	// so the failure is logged once.
 	compactUnavailable atomic.Bool
@@ -101,6 +103,7 @@ func New(store Store) *Core {
 		lifetime:      context.Background(),
 		budgets:       DefaultRunBudgets(),
 		modelSlots:    toolsched.NewSemaphore(DefaultModelConcurrency),
+		toolLocks:     toolsched.NewLocks(),
 	}
 }
 

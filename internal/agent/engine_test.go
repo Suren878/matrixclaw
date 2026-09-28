@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -171,11 +172,13 @@ func lookupTool(call tools.Call) tools.Result {
 	return tools.Result{Content: "looked up"}
 }
 
+// executedIDs lists the executed calls sorted, as calls of a batch run in any order.
 func executedIDs(f *agenttest.Fixture) string {
 	ids := make([]string, 0, len(f.Tools.Calls))
 	for _, call := range f.Tools.Calls {
 		ids = append(ids, call.ToolCallID)
 	}
+	slices.Sort(ids)
 	return strings.Join(ids, ",")
 }
 
@@ -240,8 +243,8 @@ func TestMutatingApprovalDefersTheRestOfTheBatch(t *testing.T) {
 	if outcome.Status != agent.StatusWaitingApproval || len(f.Approvals.Requests) != 2 || f.Approvals.Requests[1].ToolCallID != "w2" {
 		t.Fatalf("after the grant: outcome = %+v requests = %+v", outcome, f.Approvals.Requests)
 	}
-	if got := executedIDs(f); got != "r1,w1,w1,r2,w2" {
-		t.Fatalf("executed = %s, want r1,w1,w1,r2,w2", got)
+	if got := executedIDs(f); got != "r1,r2,w1,w1,w2" {
+		t.Fatalf("executed = %s, want r1,r2,w1,w1,w2", got)
 	}
 	if message, _ := f.Journal.Message("w2"); message.Parts[0].ToolCall.Deferred {
 		t.Fatal("the new barrier is still marked deferred")
@@ -277,7 +280,7 @@ func TestBatchCheckpointsNameTheCallsAndTheDeferredOnes(t *testing.T) {
 
 	run(t, f, model)
 
-	if got := phases(f.Journal.States); got != "model,tool_batch:r1+w1+r2,tool_batch:r1+w1+r2/r2,model" {
+	if got := phases(f.Journal.States); got != "model,tool_batch:r1+w1+r2/r2,model" {
 		t.Fatalf("checkpoints = %s", got)
 	}
 
@@ -285,7 +288,7 @@ func TestBatchCheckpointsNameTheCallsAndTheDeferredOnes(t *testing.T) {
 	f.Inbox.Decided = []agent.Input{{Kind: agent.InputDecided, ToolCallID: "w1", ToolName: "write", WorkingDir: "/work", Args: []byte(`{}`)}}
 	run(t, f, model)
 
-	if got := phases(f.Journal.States[4:]); got != "tool_batch:w1,tool_batch:r2,model" {
+	if got := phases(f.Journal.States[3:]); got != "tool_batch:w1,tool_batch:r2,model" {
 		t.Fatalf("checkpoints after the grant = %s", got)
 	}
 }

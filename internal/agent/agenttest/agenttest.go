@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
@@ -219,18 +220,21 @@ func (j *Journal) replace(msg transcript.Message) error {
 // ToolFunc executes one fake tool call.
 type ToolFunc func(call tools.Call) tools.Result
 
-// Tools authorizes registered names only, making the Mutating ones approval
-// barriers, and records executed and finished calls. OnExecute and OnFinish run
-// first and fail the call with their error.
+// Tools authorizes registered names only, making the Mutating ones barriers
+// with their key from Keys, and records executed calls in start order (read
+// Calls after Run returns) and finished ones. OnExecute runs first, on the
+// call's goroutine, and fails the call with its error; OnFinish likewise.
 type Tools struct {
 	Funcs     map[string]ToolFunc
 	Mutating  map[string]bool
+	Keys      map[string]string
 	Calls     []tools.Call
 	Finished  []string
-	OnExecute func(name string, call tools.Call) error
+	OnExecute func(ctx context.Context, name string, call tools.Call) error
 	OnFinish  func(name string, call tools.Call) error
 	// SpecReads counts tool listings.
 	SpecReads int
+	mu        sync.Mutex
 }
 
 func (t *Tools) Specs(context.Context) []tools.Spec {
@@ -251,16 +255,18 @@ func (t *Tools) Authorize(_ context.Context, name string, _ tools.Call) (agent.D
 	if _, ok := t.Funcs[name]; !ok {
 		return agent.Decision{Reason: fmt.Sprintf("invalid input: unknown tool %q", name)}, nil
 	}
-	return agent.Decision{Allowed: true, Barrier: t.Mutating[name]}, nil
+	return agent.Decision{Allowed: true, Barrier: t.Mutating[name], Key: t.Keys[name]}, nil
 }
 
-func (t *Tools) Execute(_ context.Context, name string, call tools.Call) (tools.Result, error) {
+func (t *Tools) Execute(ctx context.Context, name string, call tools.Call) (tools.Result, error) {
 	if t.OnExecute != nil {
-		if err := t.OnExecute(name, call); err != nil {
+		if err := t.OnExecute(ctx, name, call); err != nil {
 			return tools.Result{}, err
 		}
 	}
+	t.mu.Lock()
 	t.Calls = append(t.Calls, call)
+	t.mu.Unlock()
 	return t.Funcs[name](call), nil
 }
 
@@ -399,8 +405,10 @@ type Fixture struct {
 	// Slept records the engine's waits, which return at once unless RealSleep is set.
 	Slept     []time.Duration
 	RealSleep bool
-	// ModelSlots is shared by the engines of fixtures that should compete for model requests.
+	// ModelSlots and Locks are shared by the engines of fixtures that should
+	// compete for model requests and concurrency keys.
 	ModelSlots *toolsched.Semaphore
+	Locks      *toolsched.Locks
 	ids        int
 }
 
@@ -451,6 +459,7 @@ func (f *Fixture) Engine() *agent.Engine {
 		Now:        func() time.Time { return f.Clock },
 		Sleep:      sleep,
 		ModelSlots: f.ModelSlots,
+		Locks:      f.Locks,
 		NewID: func(prefix string) string {
 			f.ids++
 			return fmt.Sprintf("%s_%d", prefix, f.ids)

@@ -37,7 +37,8 @@ func (t coreTools) Specs(ctx context.Context) []tools.Spec {
 }
 
 // Authorize rejects invalid calls and those a deny rule blocks; Execute acts on
-// the verdict it kept for the call.
+// the verdict it kept for the call. A mutating call is a barrier unless a rule or
+// the mode allows it, as it then cannot ask; a delegation still can, for its child.
 func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) (agent.Decision, error) {
 	// A call ID owned by another session fails the run with a clear error instead of
 	// a primary-key conflict on the first journal write.
@@ -66,7 +67,8 @@ func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) 
 	if call.ToolCallID != "" {
 		t.c.authorized.Store(key, check)
 	}
-	return agent.Decision{Allowed: true, Barrier: spec.Mutates(), Key: t.c.tools.ConcurrencyKey(spec.ID, call)}, nil
+	barrier := spec.Mutates() && (check.verdict.Effect != permission.Allow || spec.ID == delegateTaskToolName)
+	return agent.Decision{Allowed: true, Barrier: barrier, Key: t.c.tools.ConcurrencyKey(spec.ID, call)}, nil
 }
 
 func (t coreTools) Execute(ctx context.Context, name string, call tools.Call) (tools.Result, error) {
