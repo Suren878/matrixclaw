@@ -10,19 +10,21 @@ flowchart LR
     IOS[iOS client package] --> API
     API --> CORE[Core runtime]
     CORE --> STORE[(SQLite)]
-    CORE --> ORCH[Orchestration]
-    ORCH --> PROVIDERS[LLM providers]
-    ORCH --> AGENTS[External agents]
-    ORCH --> TOOLS[Tools]
-    TOOLS --> APPROVALS[Approvals]
+    CORE --> WF[Workflow worker]
+    WF --> CORE
+    CORE --> ENGINE[Agent engine]
+    CORE --> AGENTS[External agents]
+    ENGINE --> PROVIDERS[LLM providers]
+    ENGINE --> PORTS[Core adapters]
+    PORTS --> PERM[Permission rules]
+    PORTS --> TOOLS[Tools]
+    PORTS --> TASKS[Background tasks]
+    PORTS --> STORE
     CORE --> MODULES[Modules]
-    CORE --> TODO[Todo lists]
     MODULES --> STORAGE[Storage]
     MODULES --> VOICE[Voice]
     MODULES --> MCP[MCP]
     MODULES --> WEB[Web Search / Browser]
-    APPROVALS --> STORE
-    TODO --> STORE
     MODULES --> STORE
 ```
 
@@ -30,10 +32,11 @@ flowchart LR
 
 The daemon owns:
 
-- sessions, messages, runs, run events, and provider usage.
-- approval requests and approval decisions.
-- provider and model selection.
+- sessions, messages, runs, run steps, run events, and provider usage.
+- approval requests, approval decisions, and permission rules.
+- provider and model selection, and per-session run budgets.
 - each session's todo list.
+- background tasks (shell commands and subagents) and their output files.
 - storage metadata and temporary-file lifecycle.
 - module configuration for voice, web search, browser, MCP, skills, and
   external agents.
@@ -45,12 +48,71 @@ restarting Telegram does not lose runs or approvals.
 ## Runtime Rules
 
 - All assistant work becomes a persisted run.
-- Tool approvals are durable and restart-safe.
+- Tool approvals are durable and restart-safe; every tool entry point (runs,
+  the tools API, voice, the MCP server) obeys the same permission rules.
 - Provider/model choices are session data, not client process data.
 - Todo lists are session data; the model writes them, clients show them.
 - Storage, voice, browser, MCP, skills, web search, and external agents are
   daemon modules behind the same local API.
 - Optional heavy local runtimes run only when selected by module config.
+- One daemon per data directory: `matrixclawd` holds `matrixclawd.lock` next to
+  the database for its lifetime.
+
+## Native Runs
+
+A run is accepted by `internal/core` and executed by the workflow worker
+(`internal/orchestration/go_workflows`), which calls `Core.ExecuteRun`. External
+agent sessions go to their adapter; native sessions build an
+`agent.Engine` and call `Engine.Run(ctx, Task)`, then apply its `Outcome`
+(`completed` with a stop reason, `waiting_approval`, `waiting_events`,
+`interrupted`, `canceled` or `failed`).
+
+`internal/agent` is the loop. It knows nothing of SQLite, HTTP, or clients and
+talks to them through ports (`internal/agent/ports.go`):
+
+| Port | Core adapter | Purpose |
+|---|---|---|
+| `Journal` | `coreJournal` | load the context window from the latest boundary, append messages, checkpoint, record `run_steps` |
+| `Tools` | `coreTools` | tool specs, authorisation (permission rules, concurrency key, barrier), execution |
+| `Approvals` | `coreApprovals` | park a call for a user decision |
+| `Inbox` | `coreInbox` | steer input, decided approvals, finished background tasks |
+| `Sink` | `coreSink` | stream events to clients |
+| `Prompts` | `corePrompts` | stable system prompt, changing state as a context note |
+| `Todos` | `coreTodos` | open todo items of the run's `/continue` chain |
+
+While a native run is active the engine is the only writer of its session's
+transcript; everything else reaches it through the inbox. Messages are ordered
+by an integer `seq`, and persisted messages are never rewritten.
+
+Engine packages:
+
+- `internal/agent`: steps, budget and final turn, loop guard, output-limit
+  continuation, completion check, context note, summaries.
+- `internal/agent/context`: token estimates, conversation building, elision,
+  summary boundaries.
+- `internal/agent/toolsched`: parallel tool batches, daemon-wide keyed locks,
+  the model-request semaphore (`daemon.model_concurrency`).
+- `internal/agent/prompt`: fixed prompt texts and tool guidance.
+- `internal/agent/todo`: todo items, validation, rendering.
+- `internal/agent/agenttest`: scripted model and fakes for engine tests.
+
+Around the engine:
+
+- `internal/transcript`: message, part, finish and origin types shared by
+  `core`, `store`, `api`, and `agent`.
+- `internal/permission`: rules, subjects, bash parsing, and mode presets;
+  `core.checkPermission` applies them for every tool call.
+- `internal/shelltask`: background shell commands in their own process groups
+  with size-capped output files; `core` tracks them in the `tasks` table with
+  background subagents.
+- `await` parks a run in `waiting_events`; `run_wakeups` timers, finished
+  tasks, and user messages wake it. Finished work in an idle session starts a
+  `wake` run.
+- On start the daemon marks leftover shell tasks `lost`, recovers active runs
+  from their checkpoints, and re-arms wake timers.
+
+See the [design spec](superpowers/specs/2026-09-23-long-running-agent-design.md)
+for the details and the as-built notes of each stage.
 
 ## Repository Map
 
@@ -63,8 +125,15 @@ restarting Telegram does not lose runs or approvals.
   uploads, inline mode, guest mode, and voice/file routing.
 - `clients/ios`: Swift package for the daemon HTTP/SSE API.
 - `internal/api`: local HTTP API.
-- `internal/core`: sessions, runs, approvals, messages, todo lists, deliveries,
-  memory, subagents, and external-agent execution.
+- `internal/core`: sessions, runs, approvals, messages, todo lists, background
+  tasks, deliveries, memory, subagents, external-agent execution, and the
+  engine's port adapters.
+- `internal/agent`: the native agent engine (see above).
+- `internal/permission`: permission rules and bash command parsing.
+- `internal/shelltask`: background shell processes and their output files.
+- `internal/transcript`: message types.
+- `internal/orchestration`: run starter contract and the durable workflow
+  worker.
 - `internal/controlplane`: shared command semantics for terminal and Telegram.
 - `internal/store`: SQLite persistence.
 - `internal/providers`: provider adapters, provider catalog, model catalogs, and
