@@ -41,13 +41,15 @@ Todo list (keep it current with todo_write):
 ```
 
 Summaries do not rewrite the list; the context note after a summary carries it
-again.
+again. A list left by another run chain is left out once every item is
+completed.
 
 ## Completion check
 
 When a run replies without calling tools while the list still has open items,
 budget remains, and the list was written by this run or a run it continues
-(`/continue`), the reply is kept and the engine asks once:
+(`/continue`) and the model can call tools, the reply is kept and the engine
+asks once:
 
 ```text
 Your todo list has 2 items open:
@@ -62,14 +64,18 @@ earlier run never holds a run back; neither does a list that cannot be read.
 ## Clients
 
 - **TUI:** a side panel shows the list while it has open items; `ctrl+n` shows
-  or hides it. Too small a terminal shows the list in a dialog instead.
+  or hides it; a short panel scrolls to keep the item in progress in view.
+  Too small a terminal shows the list in a dialog instead.
 - **Telegram:** one silent message per run shows the list the run saved last
-  and is edited as the list changes.
+  and is edited as the list changes. The message follows the run's
+  `todo_write` calls only: a list emptied by `/todo clear`, `/clear` or the API
+  while the run is going stays on it until the run writes the list again.
 - **Commands:** `/todo` shows the list, `/todo clear` empties it after a
   confirmation (TUI and Telegram, Matrixclaw sessions only). `/clear` empties
   the list along with the context.
 - **API:** `GET /v1/sessions/{id}/todo` returns `{"todo": {...}}`;
-  `DELETE /v1/sessions/{id}/todo` empties the list and returns it. The
+  `DELETE /v1/sessions/{id}/todo` empties the list and returns it; an empty
+  list has `"items": []`. The
   `todo.updated` event carries the new list; the client snapshot has `todo`.
 
 ## Subagents

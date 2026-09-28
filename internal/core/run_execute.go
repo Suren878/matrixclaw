@@ -144,6 +144,7 @@ func (c *Core) nativeEngine(ctx context.Context, run Run, session Session, runti
 	}
 	turn := nativeTurn{
 		RunID:              run.ID,
+		Continues:          continues,
 		SessionID:          session.ID,
 		WorkingDir:         session.WorkingDir,
 		Subagent:           isSubagentSession(session),

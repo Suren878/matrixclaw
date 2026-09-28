@@ -11,9 +11,11 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-// nativeTurn is what the per-step prompt and tool list of a native run depend on.
+// nativeTurn is what the per-step prompt and tool list of a native run depend
+// on; Continues lists the runs this one continues, latest first.
 type nativeTurn struct {
 	RunID              string
+	Continues          []string
 	SessionID          string
 	WorkingDir         string
 	Subagent           bool

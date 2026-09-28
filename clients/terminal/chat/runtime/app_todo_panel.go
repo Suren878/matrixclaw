@@ -59,11 +59,31 @@ func (m *appModel) todoPanelView(width int, height int) string {
 	} else {
 		done := len(list.Items) - len(todo.Open(list.Items))
 		lines = append(lines, m.styles.Muted.Render(fmt.Sprintf("%d/%d done", done, len(list.Items))))
+		var items []string
+		focus := -1
 		for _, item := range list.Items {
-			lines = append(lines, m.todoItemLines(item, innerWidth)...)
+			if focus < 0 && item.Status != todo.Completed {
+				focus = len(items)
+			}
+			if item.Status == todo.InProgress {
+				focus = len(items)
+			}
+			items = append(items, m.todoItemLines(item, innerWidth)...)
 		}
+		lines = append(lines, todoWindow(items, focus, height-len(lines))...)
 	}
 	return m.placeTodoPanel(width, height, lines, m.styles.HalfMuted.Render("ctrl+n todo"))
+}
+
+// todoWindow is the part of the item lines that fits in height, scrolled so the
+// line at focus (the item in progress, else the first open one) stays in view.
+func todoWindow(lines []string, focus int, height int) []string {
+	if len(lines) <= height || focus < 0 {
+		return lines
+	}
+	height = max(1, height)
+	start := min(max(0, focus-1), len(lines)-height)
+	return lines[start : start+height]
 }
 
 func (m *appModel) todoPanelTitle(width int) string {

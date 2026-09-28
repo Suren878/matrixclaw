@@ -53,16 +53,21 @@ func (c *Core) writeSessionTodo(ctx context.Context, sessionID string, runID str
 	return c.saveSessionTodo(ctx, list)
 }
 
-// sessionTodoPrompt is the todo list as the context note shows it.
-func (c *Core) sessionTodoPrompt(ctx context.Context, sessionID string) string {
+// sessionTodoPrompt is the todo list as the context note of chain (a run and
+// the runs it continues) shows it; a finished list of another chain is left out.
+func (c *Core) sessionTodoPrompt(ctx context.Context, sessionID string, chain []string) string {
 	list, err := c.store.GetSessionTodo(ctx, sessionID)
-	if err != nil || len(list.Items) == 0 {
+	if err != nil || len(list.Items) == 0 || (!list.InChain(chain) && len(todo.Open(list.Items)) == 0) {
 		return ""
 	}
 	return "Todo list (keep it current with todo_write):\n" + todo.Text(list.Items)
 }
 
+// saveSessionTodo stores the list and announces it; an empty list has items [].
 func (c *Core) saveSessionTodo(ctx context.Context, list todo.List) (todo.List, error) {
+	if list.Items == nil {
+		list.Items = []todo.Item{}
+	}
 	list.UpdatedAt = c.now().UTC()
 	if err := c.store.SaveSessionTodo(ctx, list); err != nil {
 		return todo.List{}, err

@@ -143,7 +143,7 @@ func TestClearingTheTodoListTellsClients(t *testing.T) {
 
 	list, err := app.ClearSessionTodo(ctx, session.ID)
 
-	if err != nil || len(list.Items) != 0 {
+	if err != nil || list.Items == nil || len(list.Items) != 0 {
 		t.Fatalf("cleared = %+v err = %v", list, err)
 	}
 	select {

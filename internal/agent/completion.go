@@ -10,11 +10,11 @@ import (
 )
 
 // nudgeOpenTodo keeps the run going, once, when it replies without tools while
-// its chain's todo list has open items and budget remains; the reply is kept
-// and the next reply without tools completes the run. A list that cannot be
-// read holds nothing back. It reports whether it took over the step.
+// its chain's todo list has open items, budget remains and the model can use
+// tools; the reply is kept and the next reply without tools completes the run.
+// A list that cannot be read holds nothing back. It reports whether it took over the step.
 func (r *run) nudgeOpenTodo(ctx context.Context, gen generation, response providers.Response) (stepResult, bool) {
-	if r.counters.TodoNudged || r.exhausted() != "" {
+	if r.counters.TodoNudged || r.exhausted() != "" || !ToolUseAllowed(r.task.Model) {
 		return stepResult{}, false
 	}
 	open, err := r.Todos.Open(ctx, r.task.SessionID, append([]string{r.task.RunID}, r.task.Continues...))

@@ -154,3 +154,35 @@ func TestSubagentContextNoteCarriesItsOwnTodo(t *testing.T) {
 		t.Fatalf("second request ends with %+v", last)
 	}
 }
+
+func TestContextNoteLeavesOutAFinishedListOfAnEarlierChain(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	ctx := context.Background()
+	noted := func(suffix string, items []todo.Item) bool {
+		t.Helper()
+		var requests []providers.Request
+		app.WithSessionLLMs(scriptedLLMs(&requests, providers.Response{Text: "Paris."}))
+		session, run := saveCrashRecoveryRun(t, db, suffix, core.RunStatusAccepted, false)
+		if err := db.SaveSessionTodo(ctx, todo.List{SessionID: session.ID, Items: items, ChainRunID: "run_earlier", UpdatedRunID: "run_earlier"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := app.ExecuteRun(ctx, run.ID); err != nil {
+			t.Fatal(err)
+		}
+		for _, message := range requests[0].Messages {
+			if strings.Contains(message.Content, "Todo list") {
+				return true
+			}
+		}
+		return false
+	}
+
+	if noted("finished_list", []todo.Item{{Content: "Fix the bug", Status: todo.Completed}}) {
+		t.Fatal("an earlier chain's finished list reached the context note")
+	}
+	if !noted("open_list", []todo.Item{{Content: "Fix the bug", Status: todo.Pending}}) {
+		t.Fatal("an earlier chain's open list is missing from the context note")
+	}
+}

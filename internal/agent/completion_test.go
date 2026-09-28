@@ -8,6 +8,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/agent/agenttest"
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
+	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -87,5 +88,26 @@ func TestOpenTodoItemsDoNotHoldARunWithoutBudgetOrAfterTheNudge(t *testing.T) {
 				t.Fatalf("outcome = %+v, requests = %d", outcome, len(model.Requests()))
 			}
 		})
+	}
+}
+
+// toollessModel is a scripted model that cannot call tools.
+type toollessModel struct {
+	*agenttest.ScriptedModel
+}
+
+func (toollessModel) ModelCapabilities() providers.ModelCapabilities {
+	return providers.ModelCapabilities{}
+}
+
+func TestOpenTodoItemsDoNotHoldARunWhoseModelCannotUseTools(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Todos.Items = openTodo()
+	model := agenttest.NewScriptedModel(text("Stopping here."))
+
+	outcome := runTask(t, f, f.Task(toollessModel{model}))
+
+	if outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != "Stopping here." || len(model.Requests()) != 1 {
+		t.Fatalf("outcome = %+v, requests = %d", outcome, len(model.Requests()))
 	}
 }

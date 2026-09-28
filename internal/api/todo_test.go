@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
@@ -13,6 +14,11 @@ import (
 
 func TestSessionTodoEndpointReadsAndClearsTheList(t *testing.T) {
 	server, st := newAPITestServer(t)
+	unwritten := httptest.NewRecorder()
+	server.Handler().ServeHTTP(unwritten, httptest.NewRequest(http.MethodGet, "/v1/sessions/s1/todo", nil))
+	if !strings.Contains(unwritten.Body.String(), `"items":[]`) {
+		t.Fatalf("GET an unwritten todo: %s", unwritten.Body.String())
+	}
 	if err := st.SaveSessionTodo(context.Background(), todo.List{SessionID: "s1", Items: []todo.Item{{Content: "Run the tests", Status: todo.Pending}}, UpdatedRunID: "run_1", UpdatedAt: apiTestEpoch}); err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +39,7 @@ func TestSessionTodoEndpointReadsAndClearsTheList(t *testing.T) {
 
 	del := httptest.NewRecorder()
 	server.Handler().ServeHTTP(del, httptest.NewRequest(http.MethodDelete, "/v1/sessions/s1/todo", nil))
-	if list := decode(del); len(list.Items) != 0 {
+	if list := decode(del); len(list.Items) != 0 || !strings.Contains(del.Body.String(), `"items":[]`) {
 		t.Fatalf("DELETE todo = %+v", list)
 	}
 	if stored, err := st.GetSessionTodo(context.Background(), "s1"); err != nil || len(stored.Items) != 0 {

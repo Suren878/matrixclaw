@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -67,5 +68,25 @@ func TestCtrlNShowsAndHidesTheTodoPanel(t *testing.T) {
 	narrow := newTodoApp(t, 100, nil)
 	if cmd := narrow.toggleTodoPanel(); cmd == nil || narrow.todoPanel != todoPanelAuto {
 		t.Fatal("a narrow terminal should show the list in a dialog instead of the panel")
+	}
+}
+
+func TestShortTodoPanelKeepsTheItemInProgressInView(t *testing.T) {
+	list := &todo.List{SessionID: "session_1"}
+	for i := 1; i <= 12; i++ {
+		status := todo.Completed
+		if i == 9 {
+			status = todo.InProgress
+		} else if i > 9 {
+			status = todo.Pending
+		}
+		list.Items = append(list.Items, todo.Item{Content: fmt.Sprintf("Step %d", i), ActiveForm: fmt.Sprintf("Doing step %d", i), Status: status})
+	}
+	m := newTodoApp(t, 160, list)
+
+	text := ansi.Strip(m.todoPanelView(m.layout().todoWidth, 8))
+
+	if !strings.Contains(text, "[•] Doing step 9") || !strings.Contains(text, "8/12 done") {
+		t.Fatalf("short panel lost the item in progress:\n%s", text)
 	}
 }

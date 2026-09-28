@@ -42,7 +42,6 @@ const (
 	PickerProviderActions   PickerKind = "provider_actions"
 	PickerPermissions       PickerKind = "permissions"
 	PickerContext           PickerKind = "context"
-	PickerPlan              PickerKind = "plan"
 	PickerModules           PickerKind = "modules"
 	PickerTextToSpeech      PickerKind = "text_to_speech"
 	PickerSpeechToText      PickerKind = "speech_to_text"
