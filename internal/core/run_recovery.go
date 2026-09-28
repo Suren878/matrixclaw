@@ -186,6 +186,10 @@ func (c *Core) prepareRunAfterCrash(ctx context.Context, run *Run) (bool, error)
 		}
 	}
 
+	// Every call of a batch in flight is answered: read-only ones replay, mutating
+	// ones ask again; a child still running keeps the parent waiting for it.
+	waitApproval := false
+	var waitSubagent *interruptedToolCall
 	for _, interrupted := range incompleteToolCallsForRun(messages, run.ID) {
 		disposition, err := c.recoverInterruptedTool(ctx, *run, interrupted, approvals)
 		if err != nil {
@@ -193,16 +197,18 @@ func (c *Core) prepareRunAfterCrash(ctx context.Context, run *Run) (bool, error)
 		}
 		switch disposition {
 		case recoveryToolWaitApproval:
-			if err := c.setRunStatus(ctx, run, RunStatusWaitingApproval, ""); err != nil {
-				return false, err
-			}
-			return false, nil
+			waitApproval = true
 		case recoveryToolWaitSubagent:
-			if err := c.saveRunCheckpoint(ctx, run.ID, RunCheckpointPhaseWaitingSubagent, interrupted.Call.ID, interrupted.Call.Name); err != nil {
-				return false, err
+			if waitSubagent == nil {
+				waitSubagent = &interrupted
 			}
-			return false, nil
 		}
+	}
+	if waitSubagent != nil {
+		return false, c.saveRunCheckpoint(ctx, run.ID, RunCheckpointPhaseWaitingSubagent, waitSubagent.Call.ID, waitSubagent.Call.Name)
+	}
+	if waitApproval {
+		return false, c.setRunStatus(ctx, run, RunStatusWaitingApproval, "")
 	}
 
 	if err := c.markLatestPartialAssistantInterrupted(ctx, run.ID, messages); err != nil {
