@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -33,6 +34,7 @@ func gitRepo(t *testing.T) string {
 		for _, line := range strings.Split(git("worktree", "list", "--porcelain"), "\n") {
 			if path, ok := strings.CutPrefix(line, "worktree "); ok && path != dir {
 				_ = os.RemoveAll(path)
+				_ = os.Remove(filepath.Dir(path))
 			}
 		}
 	})
