@@ -43,6 +43,7 @@ type Status string
 const (
 	StatusCompleted       Status = "completed"
 	StatusWaitingApproval Status = "waiting_approval"
+	StatusWaitingEvents   Status = "waiting_events"
 	StatusInterrupted     Status = "interrupted"
 	StatusCanceled        Status = "canceled"
 	StatusFailed          Status = "failed"

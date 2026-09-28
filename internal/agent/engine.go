@@ -119,6 +119,7 @@ type stepKind int
 const (
 	stepContinue stepKind = iota
 	stepWaitingApproval
+	stepWaitingEvents
 	stepDone
 )
 
@@ -151,6 +152,12 @@ func (r *run) step(ctx context.Context) stepResult {
 	}
 	if waiting {
 		return stepResult{kind: stepWaitingApproval}
+	}
+	if waiting, err = r.resumeAwait(ctx); err != nil {
+		return failedStep(err)
+	}
+	if waiting {
+		return stepResult{kind: stepWaitingEvents}
 	}
 	if err := r.drainEvents(ctx); err != nil {
 		return failedStep(err)
@@ -316,6 +323,11 @@ func (r *run) settle(ctx context.Context, result stepResult) (Outcome, bool, err
 			return Outcome{}, true, err
 		}
 		return Outcome{Status: StatusWaitingApproval}, true, nil
+	case stepWaitingEvents:
+		if err := r.checkpoint(ctx, PhaseModel, nil); err != nil {
+			return Outcome{}, true, err
+		}
+		return Outcome{Status: StatusWaitingEvents}, true, nil
 	case stepDone:
 		reply := finalReply(*result.assistant, result.response)
 		return Outcome{Status: StatusCompleted, StopReason: result.stopReason(), Assistant: &reply, AssistantSaved: result.saved}, true, nil
@@ -335,6 +347,8 @@ func (r *run) interrupted(result stepResult) Outcome {
 		outcome.Assistant, outcome.Reached, outcome.StopReason = &reply, StatusCompleted, result.stopReason()
 	case stepWaitingApproval:
 		outcome.Reached = StatusWaitingApproval
+	case stepWaitingEvents:
+		outcome.Reached = StatusWaitingEvents
 	}
 	return outcome
 }

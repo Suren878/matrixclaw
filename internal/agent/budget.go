@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -12,8 +13,9 @@ import (
 const wrapUpShare = 0.8
 
 // steps: no-progress streak, output limit, low-yield summaries, elision, last
-// history edit, learned prompt room and whether open todo items were pointed
-// out. It is checkpointed so a parked or restarted run continues from it.
+// history edit, learned prompt room, whether open todo items were pointed out
+// and what the run awaits. It is checkpointed so a parked or restarted run
+// continues from it.
 type Counters struct {
 	Steps         int           `json:"steps,omitempty"`
 	Tokens        int64         `json:"tokens,omitempty"`
@@ -31,6 +33,8 @@ type Counters struct {
 	HistoryEdit   int64         `json:"history_edit,omitempty"`
 	LearnedLimit  int           `json:"learned_limit,omitempty"`
 	TodoNudged    bool          `json:"todo_nudged,omitempty"`
+	// Await is set while the run waits for what an await call asked for.
+	Await *tools.Await `json:"await,omitempty"`
 }
 
 // Carried is what the session's next run starts from: what the requests elide

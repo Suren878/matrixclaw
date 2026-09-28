@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent/toolsched"
@@ -222,6 +223,9 @@ func (b *batch) record(done toolsched.Done[callOutcome]) (bool, error) {
 		return true, nil
 	default:
 		c.state, c.result = callFinished, done.Value.result
+		if await := c.result.Await; await != nil {
+			b.r.counters.Await = &tools.Await{TaskIDs: slices.Clone(await.TaskIDs), Until: await.Until}
+		}
 	}
 	return false, nil
 }

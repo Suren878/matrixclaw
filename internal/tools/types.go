@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/permission"
 )
@@ -145,6 +146,16 @@ type Result struct {
 	FileVersion *FileVersion     `json:"file_version,omitempty"`
 	// OutputPath is the file holding the full output when Content was cut.
 	OutputPath string `json:"output_path,omitempty"`
+	// Await parks the run once its batch is done, until one of the tasks
+	// finishes, the user writes or Until passes.
+	Await *Await `json:"await,omitempty"`
+}
+
+// Await is what a run waits for: any of TaskIDs, or any background task of its
+// session when there are none, until Until.
+type Await struct {
+	TaskIDs []string  `json:"task_ids,omitempty"`
+	Until   time.Time `json:"until"`
 }
 
 type Executor interface {
