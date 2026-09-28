@@ -57,9 +57,10 @@ func (w *Worker) deliverInlineRunDelivery(ctx context.Context, target chatTarget
 	if err != nil {
 		return err
 	}
+	state := w.runRenderState(target.externalKey, runID)
 	switch run.Status {
 	case core.RunStatusAccepted, core.RunStatusRunning, core.RunStatusWaitingEvents:
-		messages, err := daemon.ListMessages(ctx, sessionID, 0)
+		messages, err := w.runMessages(ctx, daemon, sessionID, runID, state)
 		if err != nil {
 			return err
 		}
@@ -77,7 +78,7 @@ func (w *Worker) deliverInlineRunDelivery(ctx context.Context, target chatTarget
 
 	text := renderRunStatus(run)
 	inlineVoiceDelivered := false
-	messages, err := daemon.ListMessages(ctx, sessionID, 0)
+	messages, err := w.runMessages(ctx, daemon, sessionID, runID, state)
 	if err != nil {
 		return err
 	}
@@ -87,7 +88,7 @@ func (w *Worker) deliverInlineRunDelivery(ctx context.Context, target chatTarget
 			text = assistant
 			caption = assistant
 		}
-		inlineVoiceDelivered, err = w.renderInlineVoiceToolResultUpdates(ctx, target, messages, runID, w.runRenderState(target.externalKey, runID), caption)
+		inlineVoiceDelivered, err = w.renderInlineVoiceToolResultUpdates(ctx, target, messages, runID, state, caption)
 		if err != nil {
 			return err
 		}
@@ -117,7 +118,7 @@ func (w *Worker) deliverGuestRunDelivery(ctx context.Context, target chatTarget,
 	}
 	text := renderRunStatus(run)
 	if run.Status == core.RunStatusCompleted {
-		messages, err := daemon.ListMessages(ctx, sessionID, 0)
+		messages, err := w.runMessages(ctx, daemon, sessionID, runID, w.runRenderState(target.externalKey, runID))
 		if err != nil {
 			return err
 		}
@@ -128,7 +129,11 @@ func (w *Worker) deliverGuestRunDelivery(ctx context.Context, target chatTarget,
 	if err := w.sendText(ctx, target, text); err != nil {
 		return err
 	}
-	return w.acknowledgeSentDelivery(ctx, daemon, deliveryID)
+	if err := w.acknowledgeSentDelivery(ctx, daemon, deliveryID); err != nil {
+		return err
+	}
+	w.clearRunRenderState(target.externalKey, runID)
+	return nil
 }
 
 func (w *Worker) deliverChatRunDelivery(ctx context.Context, target chatTarget, sessionID string, runID string, deliveryID string) error {
@@ -158,11 +163,11 @@ func (w *Worker) deliverChatRunDelivery(ctx context.Context, target chatTarget, 
 		return nil
 	}
 
-	messages, err := daemon.ListMessages(ctx, sessionID, 0)
+	state := w.runRenderState(target.externalKey, runID)
+	messages, err := w.runMessages(ctx, daemon, sessionID, runID, state)
 	if err != nil {
 		return err
 	}
-	state := w.runRenderState(target.externalKey, runID)
 	if err := w.renderToolCallUpdates(ctx, target, messages, runID, state); err != nil {
 		return err
 	}
@@ -204,11 +209,11 @@ func (w *Worker) deliverChatRunDelivery(ctx context.Context, target chatTarget, 
 }
 
 func (w *Worker) deliverActiveRunProgress(ctx context.Context, target chatTarget, daemon *daemonclient.Client, sessionID string, runID string) error {
-	messages, err := daemon.ListMessages(ctx, sessionID, 0)
+	state := w.runRenderState(target.externalKey, runID)
+	messages, err := w.runMessages(ctx, daemon, sessionID, runID, state)
 	if err != nil {
 		return err
 	}
-	state := w.runRenderState(target.externalKey, runID)
 	if err := w.renderAssistantProgressUpdates(ctx, target, messages, runID, state); err != nil {
 		return err
 	}
@@ -238,7 +243,7 @@ func (w *Worker) deliverActiveRunProgress(ctx context.Context, target chatTarget
 
 func (w *Worker) deliverRunApprovals(ctx context.Context, target chatTarget, daemon *daemonclient.Client, sessionID string, runID string) error {
 	state := w.runRenderState(target.externalKey, runID)
-	messages, err := daemon.ListMessages(ctx, sessionID, 0)
+	messages, err := w.runMessages(ctx, daemon, sessionID, runID, state)
 	if err != nil {
 		return err
 	}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 type Config struct {
@@ -54,6 +55,10 @@ type Worker struct {
 }
 
 type runDeliveryState struct {
+	messages          []transcript.Message // the run's messages loaded so far, by seq
+	messageIndex      map[string]int
+	messagesLoaded    bool
+	afterSeq          int64 // the next load asks for messages above this seq
 	statusSent        bool
 	continueOffered   bool
 	assistant         map[string]sentAssistantMessage
