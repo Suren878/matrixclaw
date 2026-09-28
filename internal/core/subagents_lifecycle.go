@@ -214,10 +214,42 @@ func (c *Core) syncBlockingSubagentTaskAfterRun(ctx context.Context, task Subage
 	if parentRun.Status == RunStatusWaitingApproval {
 		return c.resumeDecidedRun(ctx, parentRun.SessionID, parentRun.ID)
 	}
+	if waiting, err := c.runWaitsForBlockingChild(ctx, parentRun.SessionID, parentRun.ID); err != nil || waiting {
+		return err
+	}
 	if err := c.setRunStatus(ctx, &parentRun, RunStatusAccepted, ""); err != nil {
 		return err
 	}
 	return c.startRun(ctx, parentRunID)
+}
+
+// runWaitsForBlockingChild reports whether a call of the run has no result yet
+// while its blocking subagent still works on it.
+func (c *Core) runWaitsForBlockingChild(ctx context.Context, sessionID string, runID string) (bool, error) {
+	messages, err := c.store.ListMessages(ctx, sessionID, 0)
+	if err != nil {
+		return false, err
+	}
+	for _, interrupted := range incompleteToolCallsForRun(messages, runID) {
+		task, err := c.store.GetSubagentTaskByParentToolCall(ctx, sessionID, runID, interrupted.Call.ID)
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		if task.Mode != SubagentTaskModeBlocking || taskStatusTerminal(task.Status) {
+			continue
+		}
+		terminal, err := c.subagentTaskTerminal(ctx, task)
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil || !terminal {
+			return err == nil, err
+		}
+	}
+	return false, nil
 }
 
 // publishSubagentToolUpdate tells clients the parent's agent call finished;

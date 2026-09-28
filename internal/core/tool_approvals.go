@@ -325,31 +325,27 @@ func approvalsForRun(approvals []Approval, runID string) []Approval {
 	return matched
 }
 
-// runHasPendingApprovals reports whether the run still waits on a decision: one
-// of its approvals is pending or a decided bridged call waits for its subagent.
-// A background subagent's approval never holds its parent's run.
+// runHasPendingApprovals reports whether the run still waits: one of its
+// approvals is pending or one of its calls waits for its blocking subagent. A
+// background subagent's approval never holds its parent's run.
 func (c *Core) runHasPendingApprovals(ctx context.Context, sessionID string, runID string) (bool, error) {
 	approvals, err := c.store.ListApprovals(ctx, sessionID, "")
 	if err != nil {
 		return false, err
 	}
 	for _, approval := range approvalsForRun(approvals, runID) {
-		if approval.State == ApprovalStatePending {
-			background, err := c.backgroundSubagentApproval(ctx, approval)
-			if err != nil {
-				return false, err
-			}
-			if !background {
-				return true, nil
-			}
+		if approval.State != ApprovalStatePending {
 			continue
 		}
-		waiting, err := c.bridgedCallWaitsForSubagent(ctx, approval)
-		if err != nil || waiting {
-			return waiting, err
+		background, err := c.backgroundSubagentApproval(ctx, approval)
+		if err != nil {
+			return false, err
+		}
+		if !background {
+			return true, nil
 		}
 	}
-	return false, nil
+	return c.runWaitsForBlockingChild(ctx, sessionID, runID)
 }
 
 // bridgedCallWaitsForSubagent reports whether a decided bridged approval's call

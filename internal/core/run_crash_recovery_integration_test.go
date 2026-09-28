@@ -627,6 +627,52 @@ func TestRecoverBlockingSubagentCompletesChildThenParentWithoutDuplicate(t *test
 	}
 }
 
+func TestRestartedParentWaitsForAllItsBlockingChildren(t *testing.T) {
+	for _, status := range []core.RunStatus{core.RunStatusRunning, core.RunStatusWaitingApproval} {
+		t.Run(string(status), func(t *testing.T) {
+			t.Parallel()
+			app, sqliteStore, cleanup := newCrashRecoveryCore(t)
+			defer cleanup()
+			app.WithSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "child done"}})
+			starter := &recordingRunStarter{}
+			app.WithRunStarter(starter)
+			app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+			parentSession, parentRun := saveCrashRecoveryRun(t, sqliteStore, "parent", status, false)
+			var childRuns []core.Run
+			for _, name := range []string{"a", "b"} {
+				childSession, childRun := saveCrashRecoveryRun(t, sqliteStore, "child_"+name, core.RunStatusAccepted, true)
+				saveInterruptedToolCallWithInput(t, sqliteStore, parentRun, "tool_"+name, "agent", `{"description":"Part `+name+`","prompt":"do `+name+`","runtime":"matrixclaw"}`)
+				now := runRecoveryTestTime().Add(3 * time.Second)
+				if err := sqliteStore.CreateSubagentTask(context.Background(), core.SubagentTask{
+					ID: "subagent_" + name, AgentName: "Neo", DisplayName: "Child " + name,
+					Mode: core.SubagentTaskModeBlocking, Isolation: core.SubagentIsolationShared,
+					ParentSessionID: parentSession.ID, ParentRunID: parentRun.ID, ParentToolCallID: "tool_" + name,
+					ChildSessionID: childSession.ID, ChildRunID: childRun.ID, Runtime: "matrixclaw",
+					Goal: "do " + name, Status: core.TaskStatusRunning, CreatedAt: now, UpdatedAt: now,
+				}); err != nil {
+					t.Fatal(err)
+				}
+				childRuns = append(childRuns, childRun)
+			}
+
+			if err := app.ExecuteRun(context.Background(), childRuns[0].ID); err != nil {
+				t.Fatal(err)
+			}
+			assertToolResultCount(t, sqliteStore, parentSession.ID, "tool_a", 1)
+			if starter.count(parentRun.ID) != 0 {
+				t.Fatal("the parent started while its other blocking child still ran")
+			}
+			if err := app.ExecuteRun(context.Background(), childRuns[1].ID); err != nil {
+				t.Fatal(err)
+			}
+			assertToolResultCount(t, sqliteStore, parentSession.ID, "tool_b", 1)
+			if starter.count(parentRun.ID) != 1 {
+				t.Fatalf("parent starts = %d, want 1 once both children finished", starter.count(parentRun.ID))
+			}
+		})
+	}
+}
+
 type recoveryExternalRuntime struct {
 	mu    sync.Mutex
 	input string
