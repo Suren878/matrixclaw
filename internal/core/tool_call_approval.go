@@ -6,13 +6,28 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
+// createPendingApproval records the approval a call outside an active engine
+// asked for and marks its run's checkpoint as waiting for it.
 func (c *Core) createPendingApproval(ctx context.Context, prepared preparedToolCall, input ExecuteToolInput, result tools.Result, execErr error) (tools.Result, *Approval, bool, error) {
 	if result.Approval == nil || input.Approved {
 		return result, nil, false, execErr
 	}
-	paramsRaw, err := marshalJSONRaw(result.Approval.Params)
+	approval, err := c.requestApproval(ctx, prepared, *result.Approval)
 	if err != nil {
 		return tools.Result{}, nil, false, err
+	}
+	if err := c.saveRunCheckpoint(ctx, prepared.RunID, RunCheckpointPhaseWaitingApproval, prepared.ToolCallID, prepared.ToolName); err != nil {
+		return tools.Result{}, nil, false, err
+	}
+	return result, &approval, true, execErr
+}
+
+// requestApproval stores a pending approval for the call and announces it; it
+// leaves the run's checkpoint to the engine.
+func (c *Core) requestApproval(ctx context.Context, prepared preparedToolCall, request tools.ApprovalRequest) (Approval, error) {
+	paramsRaw, err := marshalJSONRaw(request.Params)
+	if err != nil {
+		return Approval{}, err
 	}
 	approval := Approval{
 		ID:          c.newID("approval"),
@@ -20,19 +35,16 @@ func (c *Core) createPendingApproval(ctx context.Context, prepared preparedToolC
 		RunID:       prepared.RunID,
 		ToolCallRef: prepared.ToolCallID,
 		ToolName:    prepared.ToolName,
-		Description: result.Approval.Description,
-		Action:      result.Approval.Action,
+		Description: request.Description,
+		Action:      request.Action,
 		Params:      paramsRaw,
-		Path:        result.Approval.Path,
-		Suggestion:  result.Approval.Suggestion,
+		Path:        request.Path,
+		Suggestion:  request.Suggestion,
 		State:       ApprovalStatePending,
 		RequestedAt: c.now().UTC(),
 	}
 	if err := c.store.CreateApproval(ctx, approval); err != nil {
-		return tools.Result{}, nil, false, err
-	}
-	if err := c.saveRunCheckpoint(ctx, prepared.RunID, RunCheckpointPhaseWaitingApproval, prepared.ToolCallID, prepared.ToolName); err != nil {
-		return tools.Result{}, nil, false, err
+		return Approval{}, err
 	}
 	c.publishEvent(Event{
 		Type:      EventApprovalRequest,
@@ -58,5 +70,5 @@ func (c *Core) createPendingApproval(ctx context.Context, prepared preparedToolC
 		SessionID:  prepared.SessionID,
 		ApprovalID: approval.ID,
 	})
-	return result, &approval, true, execErr
+	return approval, nil
 }

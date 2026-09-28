@@ -139,9 +139,8 @@ type coreApprovals struct {
 }
 
 func (a coreApprovals) Request(ctx context.Context, p agent.Pending) error {
-	request := p.Request
 	prepared := preparedToolCall{SessionID: p.SessionID, RunID: p.RunID, ToolName: p.ToolName, ToolCallID: p.ToolCallID}
-	_, _, _, err := a.c.createPendingApproval(ctx, prepared, ExecuteToolInput{}, tools.Result{Approval: &request}, nil)
+	_, err := a.c.requestApproval(ctx, prepared, p.Request)
 	return err
 }
 

@@ -24,14 +24,16 @@ const (
 )
 
 type RunCheckpoint struct {
-	RunID          string             `json:"run_id"`
-	Phase          RunCheckpointPhase `json:"phase"`
-	ToolCallID     string             `json:"tool_call_id,omitempty"`
-	ToolName       string             `json:"tool_name,omitempty"`
-	RecoveryCount  int                `json:"recovery_count,omitempty"`
-	RecoveryReason string             `json:"recovery_reason,omitempty"`
-	EngineState    json.RawMessage    `json:"engine_state,omitempty"`
-	UpdatedAt      time.Time          `json:"updated_at"`
+	RunID      string             `json:"run_id"`
+	Phase      RunCheckpointPhase `json:"phase"`
+	ToolCallID string             `json:"tool_call_id,omitempty"`
+	ToolName   string             `json:"tool_name,omitempty"`
+	// Batch is set in the engine's tool_batch phase.
+	Batch          *agent.ToolBatch `json:"tool_batch,omitempty"`
+	RecoveryCount  int              `json:"recovery_count,omitempty"`
+	RecoveryReason string           `json:"recovery_reason,omitempty"`
+	EngineState    json.RawMessage  `json:"engine_state,omitempty"`
+	UpdatedAt      time.Time        `json:"updated_at"`
 }
 
 // RunCheckpointStore is optional so lightweight in-memory Store
@@ -48,10 +50,12 @@ func (c *Core) saveRunCheckpoint(ctx context.Context, runID string, phase RunChe
 		checkpoint.Phase = phase
 		checkpoint.ToolCallID = normalizeText(toolCallID)
 		checkpoint.ToolName = normalizeText(toolName)
+		checkpoint.Batch = nil
 	})
 }
 
-// saveEngineCheckpoint stores the engine's phase together with its run counters.
+// saveEngineCheckpoint stores the engine's phase and batch together with its
+// run counters; while a native run is active only its engine calls it.
 func (c *Core) saveEngineCheckpoint(ctx context.Context, state agent.State) error {
 	counters, err := json.Marshal(state.Counters)
 	if err != nil {
@@ -59,8 +63,9 @@ func (c *Core) saveEngineCheckpoint(ctx context.Context, state agent.State) erro
 	}
 	return c.updateRunCheckpoint(ctx, state.RunID, func(checkpoint *RunCheckpoint) {
 		checkpoint.Phase = RunCheckpointPhase(state.Phase)
-		checkpoint.ToolCallID = normalizeText(state.ToolCallID)
-		checkpoint.ToolName = normalizeText(state.ToolName)
+		checkpoint.ToolCallID = ""
+		checkpoint.ToolName = ""
+		checkpoint.Batch = state.Batch
 		checkpoint.EngineState = counters
 	})
 }
@@ -145,6 +150,7 @@ func (c *Core) markRunRecovery(ctx context.Context, runID string) (RunCheckpoint
 	checkpoint.Phase = RunCheckpointPhaseRecovering
 	checkpoint.ToolCallID = ""
 	checkpoint.ToolName = ""
+	checkpoint.Batch = nil
 	checkpoint.RecoveryCount++
 	checkpoint.RecoveryReason = runRecoveryReasonDaemonRestart
 	checkpoint.UpdatedAt = c.now().UTC()

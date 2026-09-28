@@ -44,22 +44,29 @@ type Journal interface {
 	RecordStep(ctx context.Context, step Step) error
 }
 
-// Phase is the durable execution boundary crash recovery resumes from.
+// Phase is the durable execution boundary a run last reached.
 type Phase string
 
 const (
-	PhaseModel Phase = "model"
-	PhaseTool  Phase = "tool"
+	PhaseModel     Phase = "model"
+	PhaseToolBatch Phase = "tool_batch"
 )
 
-// State is the checkpoint written before each model call and tool execution; its
-// Counters let a parked or restarted run keep its budget.
+// State is the checkpoint the engine writes before each model call, when it
+// starts calls of a tool batch and when the run parks; its Counters let a parked
+// or restarted run keep its budget.
 type State struct {
-	RunID      string
-	Phase      Phase
-	ToolCallID string
-	ToolName   string
-	Counters   Counters
+	RunID    string
+	Phase    Phase
+	Batch    *ToolBatch
+	Counters Counters
+}
+
+// ToolBatch names the calls of the batch being run, in call order, and those
+// of them held back (deferred) when the checkpoint was written.
+type ToolBatch struct {
+	CallIDs     []string `json:"call_ids"`
+	DeferredIDs []string `json:"deferred_ids,omitempty"`
 }
 
 // Step is one successful model generation (a run_steps row). StopReason is a

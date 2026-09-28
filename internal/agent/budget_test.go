@@ -295,7 +295,7 @@ func TestCheckpointsCarryTheRunCounters(t *testing.T) {
 
 	run(t, f, model)
 
-	if got := phases(f.Journal.States); got != "model,tool:c1,model,model" {
+	if got := phases(f.Journal.States); got != "model,tool_batch:c1,model" {
 		t.Fatalf("checkpoints = %s", got)
 	}
 	if tool := f.Journal.States[1].Counters; tool.Steps != 1 || tool.Tokens != 15 {

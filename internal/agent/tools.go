@@ -34,31 +34,36 @@ const (
 	callBarrier
 )
 
-// executeBatch runs the response's tool calls in order. A call waiting for approval
-// parks while the rest of the batch runs, unless it is a barrier: every later call
-// is then journaled deferred and runs once the run's approvals are decided.
+// executeBatch runs the response's tool calls.
 func (r *run) executeBatch(ctx context.Context, response providers.Response) (bool, error) {
+	requests, err := r.batchRequests(response)
+	if err != nil {
+		return false, err
+	}
+	return r.runCalls(ctx, requests)
+}
+
+// batchRequests turns the response's tool calls into requests, skipping repeats
+// of a call already answered; a call ID reused for another call fails the run.
+func (r *run) batchRequests(response providers.Response) ([]callRequest, error) {
 	seen := make(map[string]providers.ToolCall)
-	waiting, barrier := false, false
+	var requests []callRequest
 	for _, toolCall := range response.ToolCalls {
-		if err := ctx.Err(); err != nil {
-			return false, err
-		}
 		id := strings.TrimSpace(toolCall.ID)
 		if id != "" {
 			if prior, ok := seen[id]; ok {
 				if !sameRequestedTool(prior.Name, prior.Arguments, toolCall) {
-					return false, fmt.Errorf("tool call ID %q reused with different arguments", id)
+					return nil, fmt.Errorf("tool call ID %q reused with different arguments", id)
 				}
 				continue
 			}
 			if prior, ok := r.history.callMessage(id); ok {
 				if prior.RunID != r.task.RunID {
-					return false, fmt.Errorf("tool call ID %q belongs to another run", id)
+					return nil, fmt.Errorf("tool call ID %q belongs to another run", id)
 				}
 				for _, part := range prior.Parts {
 					if part.ToolCall != nil && part.ToolCall.ID == id && !sameRequestedTool(part.ToolCall.Name, []byte(part.ToolCall.Input), toolCall) {
-						return false, fmt.Errorf("tool call ID %q reused with different arguments", id)
+						return nil, fmt.Errorf("tool call ID %q reused with different arguments", id)
 					}
 				}
 				if r.history.hasResult(id) {
@@ -69,73 +74,95 @@ func (r *run) executeBatch(ctx context.Context, response providers.Response) (bo
 		}
 		name := strings.TrimSpace(toolCall.Name)
 		if name == "" {
-			return false, errors.New("provider returned tool call without a name")
+			return nil, errors.New("provider returned tool call without a name")
 		}
 		if id == "" {
 			id = r.NewID("tool")
 		}
-		request := callRequest{id: id, name: name, args: toolCall.Arguments, workingDir: r.task.WorkingDir}
-		if barrier {
-			if err := r.deferCall(ctx, request); err != nil {
-				return false, err
-			}
-			continue
+		requests = append(requests, callRequest{id: id, name: name, args: toolCall.Arguments, workingDir: r.task.WorkingDir})
+	}
+	return requests, nil
+}
+
+// runCalls runs calls of one batch in call order. A call waiting for approval
+// parks while the rest runs, unless it is a barrier: every later call is then
+// journaled deferred and runs once the run's approvals are decided.
+func (r *run) runCalls(ctx context.Context, requests []callRequest) (bool, error) {
+	if len(requests) == 0 {
+		return false, nil
+	}
+	if err := r.checkpoint(ctx, PhaseToolBatch, batchOf(requests, nil)); err != nil {
+		return false, err
+	}
+	waiting := false
+	for i, request := range requests {
+		if err := ctx.Err(); err != nil {
+			return false, err
 		}
 		state, err := r.runCall(ctx, request)
 		if err != nil {
 			return false, err
 		}
-		waiting = waiting || state != callDone
-		barrier = state == callBarrier
+		if state == callBarrier {
+			held := requests[i+1:]
+			for _, call := range held {
+				if err := r.deferCall(ctx, call); err != nil {
+					return false, err
+				}
+			}
+			if len(held) > 0 {
+				return true, r.checkpoint(ctx, PhaseToolBatch, batchOf(requests, held))
+			}
+			return true, nil
+		}
+		waiting = waiting || state == callPending
 	}
 	return waiting, nil
 }
 
+// batchOf is the checkpoint of a batch whose held calls are deferred.
+func batchOf(requests, held []callRequest) *ToolBatch {
+	batch := &ToolBatch{CallIDs: make([]string, 0, len(requests))}
+	for _, request := range requests {
+		batch.CallIDs = append(batch.CallIDs, request.id)
+	}
+	for _, request := range held {
+		batch.DeferredIDs = append(batch.DeferredIDs, request.id)
+	}
+	return batch
+}
+
 // resumeDecided answers the run's decided approvals that have no result yet: a
-// granted call runs, a denied one gets the denial as its result and the calls it
-// held back are not run. Once none is pending, the calls deferred behind a
+// denied call gets the denial as its result and the calls it held back are not
+// run, the granted ones run. Once none is pending, the calls deferred behind a
 // barrier run. It reports whether the run still waits for approval.
 func (r *run) resumeDecided(ctx context.Context) (bool, error) {
 	decided, err := r.Inbox.Peek(ctx, r.task.RunID, InputDecided)
 	if err != nil {
 		return false, err
 	}
+	var granted []callRequest
 	for _, input := range decided {
 		if r.history.hasResult(input.ToolCallID) {
 			continue
 		}
 		request := callRequest{id: input.ToolCallID, name: input.ToolName, args: input.Args, workingDir: input.WorkingDir, approved: true}
-		if input.Denied {
-			err = r.denyCall(ctx, request, input.Reason)
-		} else {
-			_, err = r.runCall(ctx, request)
+		if !input.Denied {
+			granted = append(granted, request)
+			continue
 		}
-		if err != nil {
+		if err := r.denyCall(ctx, request, input.Reason); err != nil {
 			return false, err
 		}
+	}
+	if _, err := r.runCalls(ctx, granted); err != nil {
+		return false, err
 	}
 	pending, err := r.Approvals.Pending(ctx, r.task.RunID)
 	if err != nil || pending {
 		return pending, err
 	}
-	return r.runDeferred(ctx)
-}
-
-// runDeferred runs the calls held back by a barrier in call order, until one of
-// them is a barrier again.
-func (r *run) runDeferred(ctx context.Context) (bool, error) {
-	waiting := false
-	for _, request := range r.deferredCalls("") {
-		state, err := r.runCall(ctx, request)
-		if err != nil {
-			return false, err
-		}
-		if state == callBarrier {
-			return true, nil
-		}
-		waiting = waiting || state == callPending
-	}
-	return waiting, nil
+	return r.runCalls(ctx, r.deferredCalls(""))
 }
 
 // denyCall answers a denied call with the denial and every call its barrier held
@@ -186,9 +213,6 @@ func (r *run) runCall(ctx context.Context, req callRequest) (callState, error) {
 		return callDone, r.rejectCall(ctx, req, decision.Reason)
 	}
 	if err := r.startCall(ctx, req); err != nil {
-		return callDone, err
-	}
-	if err := r.checkpoint(ctx, PhaseTool, req.id, req.name); err != nil {
 		return callDone, err
 	}
 	result, err := r.Tools.Execute(ctx, req.name, call)
@@ -274,7 +298,7 @@ func (r *run) rejectCall(ctx context.Context, req callRequest, reason string) er
 		return err
 	}
 	r.counters.observeCall(req.name, req.args, result)
-	return r.checkpoint(ctx, PhaseModel, "", "")
+	return nil
 }
 
 func (r *run) finishCall(ctx context.Context, req callRequest, call tools.Call, result tools.Result) error {
@@ -287,10 +311,7 @@ func (r *run) finishCall(ctx context.Context, req callRequest, call tools.Call, 
 	}
 	r.counters.observeCall(req.name, req.args, result)
 	r.Sink.Emit(Event{Kind: EventToolFinished, SessionID: r.task.SessionID, RunID: r.task.RunID, ToolCallID: req.id, ToolName: req.name, ResultMessageID: message.ID, Result: result})
-	if err := r.Tools.Finish(ctx, req.name, call, result, message); err != nil {
-		return err
-	}
-	return r.checkpoint(ctx, PhaseModel, "", "")
+	return r.Tools.Finish(ctx, req.name, call, result, message)
 }
 
 // appendResult writes a tool result with any pending steer guidance merged into it.

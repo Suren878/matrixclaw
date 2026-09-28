@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
@@ -47,6 +48,28 @@ func TestRunCheckpointKeepsEngineState(t *testing.T) {
 	stored, err := st.GetRunCheckpoint(ctx, "r1")
 	if err != nil || string(stored.EngineState) != `{"steps":3}` {
 		t.Fatalf("stored checkpoint = %+v err = %v", stored, err)
+	}
+}
+
+func TestRunCheckpointKeepsTheToolBatch(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	createTestSession(t, st, "s1")
+	createTestRun(t, st, "s1", "r1")
+	batch := &agent.ToolBatch{CallIDs: []string{"c1", "c2", "c3"}, DeferredIDs: []string{"c3"}}
+	if err := st.SaveRunCheckpoint(ctx, core.RunCheckpoint{RunID: "r1", Phase: core.RunCheckpointPhase(agent.PhaseToolBatch), Batch: batch, UpdatedAt: testEpoch}); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := st.GetRunCheckpoint(ctx, "r1")
+	if err != nil || !reflect.DeepEqual(stored.Batch, batch) {
+		t.Fatalf("stored checkpoint = %+v err = %v", stored, err)
+	}
+
+	if err := st.SaveRunCheckpoint(ctx, core.RunCheckpoint{RunID: "r1", Phase: core.RunCheckpointPhaseModel, UpdatedAt: testEpoch}); err != nil {
+		t.Fatal(err)
+	}
+	if stored, err := st.GetRunCheckpoint(ctx, "r1"); err != nil || stored.Batch != nil {
+		t.Fatalf("checkpoint after the batch = %+v err = %v", stored, err)
 	}
 }
 

@@ -36,14 +36,18 @@ func run(t *testing.T, f *agenttest.Fixture, model agent.Model) agent.Outcome {
 	return outcome
 }
 
+// phases renders checkpoints as phase[:call+call[/deferred+deferred]].
 func phases(states []agent.State) string {
 	out := make([]string, 0, len(states))
 	for _, state := range states {
-		if state.ToolCallID == "" {
-			out = append(out, string(state.Phase))
-			continue
+		phase := string(state.Phase)
+		if state.Batch != nil {
+			phase += ":" + strings.Join(state.Batch.CallIDs, "+")
+			if len(state.Batch.DeferredIDs) > 0 {
+				phase += "/" + strings.Join(state.Batch.DeferredIDs, "+")
+			}
 		}
-		out = append(out, fmt.Sprintf("%s:%s", state.Phase, state.ToolCallID))
+		out = append(out, phase)
 	}
 	return strings.Join(out, ",")
 }
@@ -122,7 +126,7 @@ func TestToolRoundTripIsJournaledInOrder(t *testing.T) {
 	if fmt.Sprint(f.Sink.Kinds()) != fmt.Sprint(wantKinds) {
 		t.Fatalf("events = %v, want %v", f.Sink.Kinds(), wantKinds)
 	}
-	if got := phases(f.Journal.States); got != "model,tool:c1,model,model" {
+	if got := phases(f.Journal.States); got != "model,tool_batch:c1,model" {
 		t.Fatalf("checkpoints = %s", got)
 	}
 	executed := f.Tools.Calls[0]
@@ -261,6 +265,28 @@ func TestMutatingApprovalDefersTheRestOfTheBatch(t *testing.T) {
 	}
 	if split := agenttest.SplitToolPair(request); split != "" {
 		t.Fatal(split)
+	}
+}
+
+func TestBatchCheckpointsNameTheCallsAndTheDeferredOnes(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["write"] = writeTool
+	f.Tools.Funcs["read"] = readTool
+	f.Tools.Mutating = map[string]bool{"write": true}
+	model := agenttest.NewScriptedModel(calls(call("r1", "read"), call("w1", "write"), call("r2", "read")), text("Done."))
+
+	run(t, f, model)
+
+	if got := phases(f.Journal.States); got != "model,tool_batch:r1+w1+r2,tool_batch:r1+w1+r2/r2,model" {
+		t.Fatalf("checkpoints = %s", got)
+	}
+
+	f.Approvals.Open = false
+	f.Inbox.Decided = []agent.Input{{Kind: agent.InputDecided, ToolCallID: "w1", ToolName: "write", WorkingDir: "/work", Args: []byte(`{}`)}}
+	run(t, f, model)
+
+	if got := phases(f.Journal.States[4:]); got != "tool_batch:w1,tool_batch:r2,model" {
+		t.Fatalf("checkpoints after the grant = %s", got)
 	}
 }
 

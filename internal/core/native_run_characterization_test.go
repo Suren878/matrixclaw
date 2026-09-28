@@ -134,7 +134,7 @@ func TestNativeToolRoundPublishesEventsInOrder(t *testing.T) {
 	}
 }
 
-func TestNativeRunCheckpointsModelAndToolPhases(t *testing.T) {
+func TestNativeRunCheckpointsModelAndToolBatchPhases(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	var run core.Run
@@ -145,7 +145,11 @@ func TestNativeRunCheckpointsModelAndToolPhases(t *testing.T) {
 			seen = append(seen, label+":none")
 			return
 		}
-		seen = append(seen, fmt.Sprintf("%s:%s:%s:%s", label, checkpoint.Phase, checkpoint.ToolCallID, checkpoint.ToolName))
+		calls := ""
+		if checkpoint.Batch != nil {
+			calls = strings.Join(checkpoint.Batch.CallIDs, "+")
+		}
+		seen = append(seen, fmt.Sprintf("%s:%s:%s", label, checkpoint.Phase, calls))
 	}
 	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
 		record("tool")
@@ -166,11 +170,36 @@ func TestNativeRunCheckpointsModelAndToolPhases(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := []string{"model1:model::", "tool:tool:call-1:inspect_state", "model2:model::"}
+	want := []string{"model1:model:", "tool:tool_batch:call-1", "model2:model:"}
 	if strings.Join(seen, "|") != strings.Join(want, "|") {
 		t.Fatalf("checkpoints = %v, want %v", seen, want)
 	}
 	waitForRecoveryCheckpointGone(t, db, run.ID)
+}
+
+func TestParkedRunKeepsTheEngineCheckpoint(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	mutations := 0
+	mutate, _ := approvalTools(&mutations)
+	app.WithTools(tools.NewRegistry(mutate))
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+		return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-1", Name: "mutate_state", Arguments: []byte(`{}`)}}}, nil
+	})})
+	_, run := saveCrashRecoveryRun(t, db, "parked_checkpoint", core.RunStatusAccepted, false)
+
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusWaitingApproval)
+	checkpoint, err := db.GetRunCheckpoint(context.Background(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if checkpoint.Phase != core.RunCheckpointPhaseModel || checkpoint.ToolCallID != "" || !strings.Contains(string(checkpoint.EngineState), `"steps":1`) {
+		t.Fatalf("parked checkpoint = %+v (%s)", checkpoint, checkpoint.EngineState)
+	}
 }
 
 func approvalTools(mutations *int) (funcTool, *recoveryTool) {

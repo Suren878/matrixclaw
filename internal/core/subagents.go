@@ -123,9 +123,6 @@ func (c *Core) DelegateTask(ctx context.Context, input DelegateTaskInput) (Deleg
 	if err := c.createSubagentTaskRecord(ctx, task); err != nil {
 		return DelegateTaskResult{}, err
 	}
-	if err := c.saveRunCheckpoint(ctx, parentRunID, RunCheckpointPhaseWaitingSubagent, parentToolCallID, delegateTaskToolName); err != nil {
-		return DelegateTaskResult{}, err
-	}
 
 	execErr := c.ExecuteRun(ctx, run.ID)
 	return c.finishOrBridgeSubagentTask(ctx, task, execErr)
@@ -395,8 +392,8 @@ func (c *Core) mirrorPendingSubagentApproval(ctx context.Context, task SubagentT
 		ToolName:   subagentParentToolName(task),
 		ToolCallID: task.ParentToolCallID,
 	}
-	if _, _, created, createErr := c.createPendingApproval(ctx, prepared, ExecuteToolInput{}, tools.Result{Approval: request}, nil); createErr != nil || !created {
-		return true, createErr
+	if _, err := c.requestApproval(ctx, prepared, *request); err != nil {
+		return true, err
 	}
 	if strings.TrimSpace(task.ParentRunID) == "" {
 		return true, nil

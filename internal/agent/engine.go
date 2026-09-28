@@ -156,7 +156,7 @@ func (r *run) step(ctx context.Context) stepResult {
 	if err != nil {
 		return failedStep(err)
 	}
-	if err := r.checkpoint(ctx, PhaseModel, "", ""); err != nil {
+	if err := r.checkpoint(ctx, PhaseModel, nil); err != nil {
 		return failedStep(err)
 	}
 	r.counters.Steps++
@@ -299,6 +299,9 @@ func (r *run) settle(ctx context.Context, result stepResult) (Outcome, bool, err
 		if !pending {
 			return Outcome{}, false, nil
 		}
+		if err := r.checkpoint(ctx, PhaseModel, nil); err != nil {
+			return Outcome{}, true, err
+		}
 		return Outcome{Status: StatusWaitingApproval}, true, nil
 	case stepDone:
 		reply := finalReply(*result.assistant, result.response)
@@ -328,8 +331,9 @@ func (r *run) canceled(ctx context.Context) bool {
 	return err == nil && canceled
 }
 
-// checkpoint records the durable phase together with the run's counters.
-func (r *run) checkpoint(ctx context.Context, phase Phase, toolCallID string, toolName string) error {
+// checkpoint records the durable phase together with the run's counters; only
+// the engine goroutine writes it.
+func (r *run) checkpoint(ctx context.Context, phase Phase, batch *ToolBatch) error {
 	r.counters.Active = r.active()
-	return r.Journal.Checkpoint(ctx, State{RunID: r.task.RunID, Phase: phase, ToolCallID: toolCallID, ToolName: toolName, Counters: r.counters})
+	return r.Journal.Checkpoint(ctx, State{RunID: r.task.RunID, Phase: phase, Batch: batch, Counters: r.counters})
 }
