@@ -234,6 +234,17 @@ CREATE TABLE IF NOT EXISTS session_engine_state (
 )`); err != nil {
 		return fmt.Errorf("store: create session engine state table: %w", err)
 	}
+	if _, err := db.Exec(`
+CREATE TABLE IF NOT EXISTS session_todos (
+    session_id TEXT PRIMARY KEY,
+    items_json TEXT NOT NULL,
+    chain_run_id TEXT NOT NULL DEFAULT '',
+    updated_run_id TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+)`); err != nil {
+		return fmt.Errorf("store: create session todos table: %w", err)
+	}
 	if err := migratePermissionRules(db); err != nil {
 		return err
 	}

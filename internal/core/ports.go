@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -89,6 +90,12 @@ type EngineStateStore interface {
 	SaveSessionEngineState(ctx context.Context, sessionID string, state json.RawMessage, updatedAt time.Time) error
 }
 
+// TodoStore keeps each session's todo list.
+type TodoStore interface {
+	GetSessionTodo(ctx context.Context, sessionID string) (todo.List, error)
+	SaveSessionTodo(ctx context.Context, list todo.List) error
+}
+
 type PlanStore interface {
 	GetSessionPlan(ctx context.Context, sessionID string) (SessionPlan, error)
 	SetSessionGoal(ctx context.Context, sessionID string, goal string, updatedAt time.Time) error
@@ -144,6 +151,7 @@ type Store interface {
 	UsageStore
 	SessionBudgetStore
 	EngineStateStore
+	TodoStore
 	PlanStore
 	SearchStore
 	MemoryStore
