@@ -221,14 +221,15 @@ func (j *Journal) replace(msg transcript.Message) error {
 // ToolFunc executes one fake tool call.
 type ToolFunc func(call tools.Call) tools.Result
 
-// Tools authorizes registered names only, making the Mutating ones barriers
-// with their key from Keys, and records executed calls in start order (read
-// Calls after Run returns) and finished ones. OnExecute runs first, on the
-// call's goroutine, and fails the call with its error; OnFinish likewise.
+// Tools authorizes registered names only (Mutating ones are barriers, Keys
+// and Delegated fill the decision) and records executed calls in start order
+// (read Calls after Run returns) and finished ones. OnExecute runs first, on
+// the call's goroutine, and fails the call with its error; OnFinish likewise.
 type Tools struct {
 	Funcs     map[string]ToolFunc
 	Mutating  map[string]bool
 	Keys      map[string]string
+	Delegated map[string]bool
 	Calls     []tools.Call
 	Finished  []string
 	OnExecute func(ctx context.Context, name string, call tools.Call) error
@@ -256,7 +257,7 @@ func (t *Tools) Authorize(_ context.Context, name string, _ tools.Call) (agent.D
 	if _, ok := t.Funcs[name]; !ok {
 		return agent.Decision{Reason: fmt.Sprintf("invalid input: unknown tool %q", name)}, nil
 	}
-	return agent.Decision{Allowed: true, Barrier: t.Mutating[name], Key: t.Keys[name]}, nil
+	return agent.Decision{Allowed: true, Barrier: t.Mutating[name], Key: t.Keys[name], Delegated: t.Delegated[name]}, nil
 }
 
 func (t *Tools) Execute(ctx context.Context, name string, call tools.Call) (tools.Result, error) {

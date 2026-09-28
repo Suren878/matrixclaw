@@ -102,10 +102,12 @@ func (e *Engine) Run(ctx context.Context, task Task) (outcome Outcome, err error
 
 type run struct {
 	Config
-	task       Task
-	history    *history
-	counters   Counters
-	started    time.Time
+	task     Task
+	history  *history
+	counters Counters
+	started  time.Time
+	// delegated is the time this Run call only waited for delegated calls.
+	delegated  time.Duration
 	anchor     *promptAnchor
 	requestSeq int64
 	// system, custom and tools are built once, so every request of the run

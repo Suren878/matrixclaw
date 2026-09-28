@@ -43,9 +43,10 @@ func (c Counters) Carried() Counters {
 	return Counters{ElidedResults: c.ElidedResults, ElidedImages: c.ElidedImages, HistoryEdit: c.HistoryEdit}
 }
 
-// active is the run's working time: what it had used before plus this Run call.
+// active is the run's working time: what it had used before plus this Run
+// call, without the time it only waited for delegated calls.
 func (r *run) active() time.Duration {
-	return r.task.Resume.Active + r.Now().Sub(r.started)
+	return r.task.Resume.Active + r.Now().Sub(r.started) - r.delegated
 }
 
 // prepareStep journals the engine notes due before this step's model call and

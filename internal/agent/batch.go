@@ -39,11 +39,12 @@ const (
 )
 
 type batchCall struct {
-	req    callRequest
-	call   tools.Call
-	key    string
-	state  callState
-	result tools.Result
+	req       callRequest
+	call      tools.Call
+	key       string
+	delegated bool
+	state     callState
+	result    tools.Result
 }
 
 type callOutcome struct {
@@ -64,6 +65,10 @@ type batch struct {
 	// journaled is the first admitted call whose result is not journaled.
 	journaled int
 	waiting   bool
+	// delegating and working count the running delegated and other calls;
+	// since is when only delegated calls began to run.
+	delegating, working int
+	since               time.Time
 }
 
 // runCalls runs the calls of one batch: admitted in call order, run at once
@@ -137,7 +142,7 @@ func (b *batch) admit(ctx context.Context) error {
 		if err := b.r.startCall(ctx, c.req); err != nil {
 			return err
 		}
-		c.state, c.key = callRunning, decision.Key
+		c.state, c.key, c.delegated = callRunning, decision.Key, decision.Delegated
 		if decision.Barrier && !c.req.approved {
 			b.barrier = b.next
 		}
@@ -172,6 +177,7 @@ func (b *batch) checkpoint() *ToolBatch {
 // launch runs call i on its own goroutine, which only executes the tool.
 func (b *batch) launch(i int) {
 	c := b.calls[i]
+	b.track(c, 1)
 	name, call := c.req.name, c.call
 	b.sched.Go(i, c.key, func(ctx context.Context) callOutcome {
 		result, err := b.r.Tools.Execute(ctx, name, call)
@@ -184,6 +190,7 @@ func (b *batch) launch(i int) {
 // that returns after the run's context stopped counts as stopped.
 func (b *batch) settle(ctx context.Context, done toolsched.Done[callOutcome]) error {
 	c := b.calls[done.Index]
+	b.track(c, -1)
 	if err := ctx.Err(); err != nil {
 		c.state = callStopped
 		return err
@@ -257,7 +264,9 @@ func (b *batch) journal(ctx context.Context) error {
 // what they return: they were stopped too.
 func (b *batch) drain() {
 	for b.sched.Running() > 0 {
-		b.calls[b.sched.Next().Index].state = callStopped
+		c := b.calls[b.sched.Next().Index]
+		b.track(c, -1)
+		c.state = callStopped
 	}
 }
 
@@ -307,4 +316,22 @@ func (b *batch) keep(ctx context.Context, rest *tools.Result) error {
 		}
 	}
 	return nil
+}
+
+// track counts a call that starts (+1) or ends (-1); the time in which only
+// delegated calls run belongs to the agents they run, not to this run.
+func (b *batch) track(c *batchCall, delta int) {
+	now := b.r.Now()
+	if !b.since.IsZero() {
+		b.r.delegated += now.Sub(b.since)
+		b.since = time.Time{}
+	}
+	if c.delegated {
+		b.delegating += delta
+	} else {
+		b.working += delta
+	}
+	if b.delegating > 0 && b.working == 0 {
+		b.since = now
+	}
 }

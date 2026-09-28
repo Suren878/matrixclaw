@@ -85,12 +85,14 @@ type Step struct {
 
 // Decision says whether a requested tool call may run; Reason goes back to the model.
 // A Barrier call that waits for approval holds back the calls after it in its batch.
-// Calls sharing a non-empty Key run one at a time, across runs too.
+// Calls sharing a non-empty Key run one at a time, across runs too. A Delegated
+// call runs another agent, whose time is not this run's.
 type Decision struct {
-	Allowed bool
-	Reason  string
-	Barrier bool
-	Key     string
+	Allowed   bool
+	Reason    string
+	Barrier   bool
+	Key       string
+	Delegated bool
 }
 
 // Tools lists, authorizes, executes and finalizes the tools of one run. Execute
