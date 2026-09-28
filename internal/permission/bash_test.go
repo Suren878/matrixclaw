@@ -108,3 +108,26 @@ func TestParseLineMarksFlagsThatRunProgramsRisky(t *testing.T) {
 		}
 	}
 }
+
+func TestParseLineMarksWordsBashExpandsRisky(t *testing.T) {
+	for line, risky := range map[string]bool{
+		`go test {-exec,'sh -c id'} ./...`: true,
+		`go test ./... -{exec,x}=y`:        true,
+		`{rm,-rf,x}`:                       true,
+		`echo {1..3}`:                      true,
+		`go test ./... *`:                  true,
+		`go test ./... -e*`:                true,
+		`go test ./... [-]exec`:            true,
+		`go test ./... ''*`:                true,
+		`r? -rf x`:                         true,
+		`/bin/r[m] x`:                      true,
+		`ls ./*.go src/*.go`:               false,
+		`git reset HEAD@{1}`:               false,
+		`echo '{a,b}' "*" \*`:              false,
+		`[ -f go.mod ]`:                    false,
+	} {
+		if got := ParseLine(line); got.Risky != risky {
+			t.Errorf("ParseLine(%q) risky = %v, want %v", line, got.Risky, risky)
+		}
+	}
+}

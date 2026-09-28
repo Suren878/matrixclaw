@@ -10,8 +10,8 @@ import (
 
 // Line is a parsed bash command line: the words of every simple command (those in
 // substitutions too; a word that is not plain text is ""), and Risky when no
-// pattern rule may allow it: it writes files, assigns, substitutes, runs a wrapper
-// or a flag that runs a program, or does not parse.
+// pattern rule may allow it: it writes files, assigns, substitutes, expands
+// braces or globs, runs a wrapper or a flag that runs a program, or does not parse.
 type Line struct {
 	Commands [][]string
 	Risky    bool
@@ -93,9 +93,9 @@ func (l *Line) addCall(call *syntax.CallExpr) {
 		return
 	}
 	words := make([]string, 0, len(call.Args))
-	for _, arg := range call.Args {
+	for i, arg := range call.Args {
 		word, ok := literal(arg)
-		if !ok {
+		if !ok || expands(arg, word, i == 0) {
 			l.Risky = true
 		}
 		words = append(words, word)
@@ -132,6 +132,51 @@ func runsProgram(words []string) bool {
 		}
 	}
 	return false
+}
+
+// expands reports whether bash may turn a word into other words: a brace
+// expansion, a glob in a command name, or a glob whose matches may start with "-".
+func expands(word *syntax.Word, text string, command bool) bool {
+	probe := *word
+	if syntax.SplitBraces(&probe) && slices.ContainsFunc(probe.Parts, func(part syntax.WordPart) bool {
+		_, brace := part.(*syntax.BraceExp)
+		return brace
+	}) {
+		return true
+	}
+	for i, part := range word.Parts {
+		lit, ok := part.(*syntax.Lit)
+		if !ok {
+			continue
+		}
+		at := globAt(lit.Value)
+		if at < 0 {
+			continue
+		}
+		before, _ := literal(&syntax.Word{Parts: word.Parts[:i]})
+		if command || strings.HasPrefix(text, "-") || before == "" && at == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// globAt is the offset of the first unescaped glob character in unquoted text,
+// or -1; "[" counts only with a "]" after it.
+func globAt(value string) int {
+	for i := 0; i < len(value); i++ {
+		switch value[i] {
+		case '\\':
+			i++
+		case '*', '?':
+			return i
+		case '[':
+			if strings.Contains(value[i+1:], "]") {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 // writesFile reports whether a redirection writes a file; /dev/null and
