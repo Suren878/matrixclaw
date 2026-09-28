@@ -162,6 +162,9 @@ func (w *Worker) deliverChatRunDelivery(ctx context.Context, target chatTarget, 
 	if err := w.renderToolResultUpdates(ctx, target, messages, runID, state); err != nil {
 		return err
 	}
+	if err := w.renderTodoUpdates(ctx, target, messages, runID, state); err != nil {
+		return err
+	}
 	if err := w.renderEngineNotes(ctx, target, messages, runID, state); err != nil {
 		return err
 	}
@@ -206,6 +209,9 @@ func (w *Worker) deliverActiveRunProgress(ctx context.Context, target chatTarget
 		return err
 	}
 	if err := w.renderToolResultUpdates(ctx, target, messages, runID, state); err != nil {
+		return err
+	}
+	if err := w.renderTodoUpdates(ctx, target, messages, runID, state); err != nil {
 		return err
 	}
 	if err := w.renderEngineNotes(ctx, target, messages, runID, state); err != nil {

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -243,7 +244,7 @@ func isPlanToolName(name string) bool {
 }
 
 func isHiddenTelegramToolStatusName(name string) bool {
-	return isPlanToolName(name) || isTextToSpeechToolName(name) || isWebToolName(name)
+	return isPlanToolName(name) || name == todo.ToolName || isTextToSpeechToolName(name) || isWebToolName(name)
 }
 
 func isWebToolName(name string) bool {

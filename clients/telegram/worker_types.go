@@ -62,6 +62,12 @@ type runDeliveryState struct {
 	voiceResults      map[string]int64
 	voiceFingerprints map[string]int64
 	notes             map[string]struct{}
+	todo              sentTodoStatus
+}
+
+type sentTodoStatus struct {
+	messageID int64
+	text      string
 }
 
 type sentToolCallStatus struct {
