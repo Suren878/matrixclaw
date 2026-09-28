@@ -502,3 +502,43 @@ func TestOtherBadRequestsAreNotRetried(t *testing.T) {
 		t.Fatalf("requests = %d, want 1", len(*bodies))
 	}
 }
+
+func TestCacheBreakpointsSkipThinkingBlocks(t *testing.T) {
+	runtime, sent := newTestRuntime(t, textReply("ok"))
+	_, err := runtime.Generate(context.Background(), providers.Request{
+		CacheKey:     "session-1",
+		SystemPrompt: "System rules.",
+		Tools:        testTools,
+		Messages: []providers.Message{
+			{Role: "user", Content: "Start"},
+			{Role: "assistant", Content: "Earlier answer.", Reasoning: []providers.ReasoningBlock{{Text: "old", Signature: "sig0"}}},
+			{Role: "user", Content: "List and read"},
+			{Role: "assistant", Reasoning: []providers.ReasoningBlock{{Text: "t1", Signature: "sig1"}, {RedactedData: "r1"}}, ToolCalls: []providers.ToolCall{{ID: "toolu_1", Name: "ls", Arguments: json.RawMessage(`{}`)}}},
+			{Role: "tool", ToolCallID: "toolu_1", Content: "a.go"},
+			{Role: "assistant", Reasoning: []providers.ReasoningBlock{{Text: "t2", Signature: "sig2"}}, ToolCalls: []providers.ToolCall{{ID: "toolu_2", Name: "read", Arguments: json.RawMessage(`{"path":"a.go"}`)}}},
+			{Role: "tool", ToolCallID: "toolu_2", Content: "package a"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(string(sent(0)), `"cache_control"`); got != 4 {
+		t.Fatalf("cache_control count = %d, want 4: %s", got, sent(0))
+	}
+	turns := decodeSent(t, sent(0)).Messages
+	want := []string{"text", "text", "text", "thinking,redacted_thinking,tool_use", "tool_result", "thinking,tool_use", "tool_result"}
+	if len(turns) != len(want) {
+		t.Fatalf("turns = %s", sent(0))
+	}
+	for i, turn := range turns {
+		if blockTypes(turn.Content) != want[i] {
+			t.Fatalf("turn %d = %s, want %s: %s", i, blockTypes(turn.Content), want[i], sent(0))
+		}
+		for j, block := range turn.Content {
+			marked := block.CacheControl != nil
+			if wantMarked := (i == 4 || i == 6) && j == len(turn.Content)-1; marked != wantMarked {
+				t.Fatalf("turn %d block %d (%s) marked = %t: %s", i, j, block.Type, marked, sent(0))
+			}
+		}
+	}
+}
