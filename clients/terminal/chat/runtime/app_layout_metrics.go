@@ -7,7 +7,7 @@ type appLayout struct {
 	statusHelpView string
 	statusInfoView string
 	inputView      string
-	planWidth      int
+	todoWidth      int
 	headerHeight   int
 	footerHeight   int
 	inputHeight    int
@@ -22,7 +22,7 @@ func (layout appLayout) bodyHeight() int {
 }
 
 func (layout appLayout) chatWidth(totalWidth int) int {
-	return max(0, totalWidth-layout.planWidth)
+	return max(0, totalWidth-layout.todoWidth)
 }
 
 func (m *appModel) layout() appLayout {
@@ -54,7 +54,7 @@ func (m *appModel) layout() appLayout {
 		statusHelpView: statusHelpView,
 		statusInfoView: statusInfoView,
 		inputView:      inputView,
-		planWidth:      m.visiblePlanPanelWidth(),
+		todoWidth:      m.visibleTodoPanelWidth(),
 		headerHeight:   headerHeight,
 		footerHeight:   footerHeight,
 		inputHeight:    inputHeight,
@@ -117,14 +117,14 @@ func (m *appModel) editorWidth() int {
 	return m.width
 }
 
-func (m *appModel) visiblePlanPanelWidth() int {
-	if !m.shouldShowPlanPanel() {
+func (m *appModel) visibleTodoPanelWidth() int {
+	if !m.shouldShowTodoPanel() {
 		return 0
 	}
-	return m.availablePlanPanelWidth()
+	return m.availableTodoPanelWidth()
 }
 
-func (m *appModel) availablePlanPanelWidth() int {
+func (m *appModel) availableTodoPanelWidth() int {
 	if m.width < 132 || m.height < compactModeHeightBreakpoint {
 		return 0
 	}

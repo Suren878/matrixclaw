@@ -6,6 +6,7 @@ import (
 	surfacehistory "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/history"
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
+	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/clientruntime"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
@@ -17,6 +18,7 @@ type Snapshot struct {
 	Capabilities          *core.SessionCapabilities
 	Context               *core.ContextReport
 	Plan                  *core.SessionPlan
+	Todo                  *todo.List
 	Run                   *core.Run
 	Timing                *core.RunTiming
 	Messages              []surfacemessage.Message
@@ -59,6 +61,7 @@ func FromStateSnapshot(snapshot clientruntime.StateSnapshot) Snapshot {
 		Capabilities:  cloneSessionCapabilities(snapshot.Capabilities),
 		Context:       cloneContextReport(snapshot.Context),
 		Plan:          cloneSessionPlan(snapshot.Plan),
+		Todo:          snapshot.Todo,
 		Run:           cloneRun(snapshot.Run),
 		Timing:        cloneTiming(snapshot.Timing),
 		Messages:      backfillAssistantMessageLLM(ToSurfaceMessages(snapshot.Messages), snapshot.Session),

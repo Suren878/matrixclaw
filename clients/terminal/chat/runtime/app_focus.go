@@ -15,11 +15,6 @@ func (m *appModel) setFocus(focus appFocus) tea.Cmd {
 		if m.chat != nil {
 			m.chat.Focus()
 		}
-	case appFocusPlan:
-		m.input.Blur()
-		if m.chat != nil {
-			m.chat.Blur()
-		}
 	}
 	return nil
 }

@@ -70,9 +70,7 @@ func (m *appModel) applySnapshot(snapshot core.ClientSnapshot, restartStream boo
 	sessionChanged := previousSessionID != "" && nextSessionID != "" && previousSessionID != nextSessionID
 	if sessionChanged {
 		m.transientMessages = nil
-		m.planPanelOpen = false
-		m.planAutoRun = false
-		m.planResumePrompted = false
+		m.todoPanel = todoPanelAuto
 	}
 	if restartStream {
 		m.streamID++

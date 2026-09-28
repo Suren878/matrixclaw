@@ -47,7 +47,7 @@ func (m *appModel) rebuildChat() {
 		m.chat.RestoreViewport(viewport.snapshot)
 	}
 	m.syncPromptHistory()
-	if m.focus == appFocusEditor || m.focus == appFocusPlan {
+	if m.focus == appFocusEditor {
 		m.chat.Blur()
 	} else {
 		m.chat.Focus()

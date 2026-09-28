@@ -22,7 +22,7 @@ type NewSessionMsg struct{}
 
 type OpenCommandsMsg struct{}
 
-type OpenPlanMsg struct{}
+type OpenTodoMsg struct{}
 
 type AddImageMsg struct{}
 
@@ -113,7 +113,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 			return m.handleSendMessage()
 
 		case key.Matches(msg, m.keyMap.Chat.NewSession):
-			return msgCmd(OpenPlanMsg{})
+			return msgCmd(OpenTodoMsg{})
 
 		case key.Matches(msg, m.keyMap.Tab):
 			m.editor.Blur()

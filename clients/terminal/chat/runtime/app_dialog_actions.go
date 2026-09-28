@@ -63,26 +63,6 @@ func (m *appModel) handleRunControlplaneCommand(msg surfacedialog.ActionRunContr
 	if strings.HasPrefix(command, "/update ") {
 		return m.handleUpdateCommand(command)
 	}
-	if cmd, handled := m.handlePlanPromptCommand(command); handled {
-		return cmd
-	}
-	switch command {
-	case "/plan":
-		m.closeAllDialogs()
-		m.returnToCommands = false
-		return m.openPlanPanel()
-	case "/plan run":
-		m.closeAllDialogs()
-		return m.startPlanRunCmd()
-	case "/plan cancel":
-		m.closeAllDialogs()
-		m.planAutoRun = false
-		m.planPanelOpen = false
-		if m.focus == appFocusPlan {
-			_ = m.setFocus(appFocusEditor)
-		}
-		return m.controlplaneCmd("/plan clear confirm")
-	}
 	if isContextCompactCommand(command) {
 		m.closeAllDialogs()
 		m.startContextCompactProgress()

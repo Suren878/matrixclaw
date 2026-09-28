@@ -20,7 +20,7 @@ func (m *appModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+s":
 		return m, m.controlplaneCmd("/sessions")
 	case "ctrl+n":
-		return m, m.openPlanPanel()
+		return m, m.toggleTodoPanel()
 	}
 
 	if key.Matches(msg, km.Commands) {
@@ -45,18 +45,11 @@ func (m *appModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, m.openCancelRunDialog()
 		}
 	case "tab":
-		if m.focus == appFocusChat && m.planPanelVisible() {
-			return m, m.setFocus(appFocusPlan)
-		}
 		return m, m.setFocus(appFocusEditor)
 	case "r":
 		m.loading = true
 		m.err = ""
 		return m, m.loadInitialCmd()
-	}
-
-	if m.focus == appFocusPlan {
-		return m.handlePlanKey(msg)
 	}
 
 	if m.chat == nil {

@@ -54,8 +54,8 @@ func (m *appModel) drawContent(canvas uv.Screen, layout appLayout) {
 	} else {
 		uv.NewStyledString(m.styles.Base.Render("No active session")).Draw(canvas, uv.Rect(0, layout.bodyTop, chatWidth, layout.bodyBottom))
 	}
-	if layout.planWidth > 0 && layout.bodyBottom > layout.bodyTop {
-		uv.NewStyledString(m.planPanelView(layout.planWidth, layout.bodyHeight())).Draw(canvas, uv.Rect(chatWidth, layout.bodyTop, m.width, layout.bodyBottom))
+	if layout.todoWidth > 0 && layout.bodyBottom > layout.bodyTop {
+		uv.NewStyledString(m.todoPanelView(layout.todoWidth, layout.bodyHeight())).Draw(canvas, uv.Rect(chatWidth, layout.bodyTop, m.width, layout.bodyBottom))
 	}
 	if layout.inputHeight > 0 {
 		uv.NewStyledString(layout.inputView).Draw(canvas, uv.Rect(0, layout.editorTop, m.width, layout.editorBottom))

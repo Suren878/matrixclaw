@@ -9,6 +9,7 @@ import (
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
 	"github.com/Suren878/matrixclaw/internal/agent/prompt"
+	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -43,7 +44,7 @@ func ToSurfaceMessage(message transcript.Message) surfacemessage.Message {
 			}
 		case transcript.MessagePartKindToolCall:
 			if part.ToolCall != nil {
-				if isPlanToolName(part.ToolCall.Name) {
+				if isPlanToolName(part.ToolCall.Name) || part.ToolCall.Name == todo.ToolName {
 					continue
 				}
 				out.Parts = append(out.Parts, surfacemessage.ToolCall{
@@ -55,7 +56,7 @@ func ToSurfaceMessage(message transcript.Message) surfacemessage.Message {
 			}
 		case transcript.MessagePartKindToolResult:
 			if part.ToolResult != nil {
-				if isPlanToolName(part.ToolResult.Name) {
+				if isPlanToolName(part.ToolResult.Name) || part.ToolResult.Name == todo.ToolName {
 					continue
 				}
 				out.Parts = append(out.Parts, surfacemessage.ToolResult{

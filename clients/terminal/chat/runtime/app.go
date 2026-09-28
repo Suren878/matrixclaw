@@ -66,7 +66,6 @@ type sendMessageResultMsg struct {
 	content     string
 	attachments []surfaceeditor.Attachment
 	result      core.AcceptRunResult
-	planRun     bool
 	err         error
 }
 
@@ -130,7 +129,6 @@ type appFocus int
 const (
 	appFocusChat appFocus = iota
 	appFocusEditor
-	appFocusPlan
 )
 
 type appModel struct {
@@ -177,13 +175,7 @@ type appModel struct {
 	updatePrompted      bool
 	updateInstalling    bool
 	controlplaneSeq     uint64
-	planPanelOpen       bool
-	planAutoRun         bool
-	planResumePrompted  bool
-	skipPlanResumeOnce  bool
-	initialLoadComplete bool
-	planSelected        int
-	planActionSelected  int
+	todoPanel           todoPanelChoice
 }
 
 func newApp(ctx context.Context, rt *Runtime) *appModel {

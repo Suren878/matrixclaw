@@ -143,7 +143,7 @@ func DefaultKeyMap() KeyMap {
 
 	km.Chat.NewSession = key.NewBinding(
 		key.WithKeys("ctrl+n"),
-		key.WithHelp("ctrl+n", "plan"),
+		key.WithHelp("ctrl+n", "todo"),
 	)
 	km.Chat.AddAttachment = key.NewBinding(
 		key.WithKeys("ctrl+f"),

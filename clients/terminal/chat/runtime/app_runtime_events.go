@@ -7,7 +7,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Suren878/matrixclaw/clients/terminal/chat/viewmodel"
-	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -25,46 +24,11 @@ func (m *appModel) handleLoadInitial(msg loadInitialMsg) tea.Cmd {
 		}
 		return nil
 	}
-	firstLoad := !m.initialLoadComplete
-	m.initialLoadComplete = true
 	m.applySnapshot(msg.snapshot, true)
-	if shouldShowStoredPlanSummary(msg.snapshot) {
-		m.upsertTransientMessage(newPlanSummaryTransientMessageAt(renderPlanSummaryText("✅ Plan Finished", msg.snapshot.Plan), core.RunStatusCompleted, msg.snapshot.Plan.UpdatedAt))
-		m.rebuildChat()
-	}
-	if m.planAutoRun && !runIsActive(msg.snapshot.Run) {
-		if planHasOpenWork(msg.snapshot.Plan) {
-			m.planPanelOpen = true
-			return tea.Batch(
-				m.syncPermissionDialogCmd(),
-				m.subscribeCmd(msg.snapshot.SessionID, m.streamID, m.lastEventID),
-				m.input.SetWidth(m.editorWidth()),
-				m.startPlanRunCmd(),
-			)
-		}
-		m.planAutoRun = false
-	}
-	shouldPromptPlanResume := firstLoad && !m.skipPlanResumeOnce && m.shouldPromptPlanResume(msg.snapshot)
-	m.skipPlanResumeOnce = false
-	if shouldPromptPlanResume {
-		m.planResumePrompted = true
-		m.dialog.OpenDialog(surfacedialog.NewConfirmCommand(m.com, surfacedialog.ConfirmCommandData{
-			Message:        "Continue unfinished plan?",
-			ConfirmLabel:   "Continue",
-			CancelLabel:    "Cancel plan",
-			ConfirmCommand: "/plan run",
-			CancelCommand:  "/plan cancel",
-			CancelDanger:   true,
-		}))
-	}
-	focusCmd := m.setFocus(appFocusEditor)
-	if m.planPanelOpen && m.availablePlanPanelWidth() > 0 {
-		focusCmd = m.setFocus(appFocusPlan)
-	}
 	return tea.Batch(
 		m.syncPermissionDialogCmd(),
 		m.subscribeCmd(msg.snapshot.SessionID, m.streamID, m.lastEventID),
-		focusCmd,
+		m.setFocus(appFocusEditor),
 		m.input.SetWidth(m.editorWidth()),
 	)
 }
@@ -127,21 +91,9 @@ func (m *appModel) handleRunUpdatedEvent(msg liveEventMsg) tea.Cmd {
 	m.showRunStopNotice(run)
 	if run.Status == core.RunStatusFailed && strings.TrimSpace(run.Error) != "" {
 		m.err = run.Error
-		m.planAutoRun = false
 	}
 	if !runIsActive(&run) {
-		if run.Status == core.RunStatusFailed {
-			return tea.Batch(m.loadInitialCmd(), m.waitEventCmd(msg.streamID, m.events, m.eventErr))
-		}
-		var focusCmd tea.Cmd
-		if !m.planAutoRun {
-			m.planPanelOpen = false
-		}
-		if m.focus == appFocusPlan {
-			focusCmd = m.setFocus(appFocusEditor)
-		}
-		m.showPlanFinishedSummary(run)
-		return tea.Batch(focusCmd, m.loadInitialCmd(), m.waitEventCmd(msg.streamID, m.events, m.eventErr))
+		return tea.Batch(m.loadInitialCmd(), m.waitEventCmd(msg.streamID, m.events, m.eventErr))
 	}
 	return nil
 }
@@ -162,10 +114,6 @@ func (m *appModel) handleSendMessageResult(msg sendMessageResultMsg) tea.Cmd {
 	if msg.err != nil {
 		m.setBusy(false)
 		m.err = msg.err.Error()
-		if msg.planRun {
-			m.planAutoRun = false
-			return nil
-		}
 		m.restoreEditorDraft(msg.content, msg.attachments)
 		return nil
 	}
