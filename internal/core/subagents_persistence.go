@@ -71,18 +71,6 @@ func (c *Core) finishSubagentTaskRecord(ctx context.Context, task SubagentTask, 
 	})
 }
 
-func (c *Core) queueSubagentCompletionRecord(ctx context.Context, task SubagentTask) (SubagentTask, error) {
-	if task.CompletionQueuedAt != nil {
-		return task, nil
-	}
-	return c.updateSubagentTaskRecordWith(ctx, task, func(task *SubagentTask) {
-		now := c.now().UTC()
-		task.UpdatedAt = now
-		queuedAt := now
-		task.CompletionQueuedAt = &queuedAt
-	})
-}
-
 func (c *Core) markSubagentCompletionDelivered(ctx context.Context, task SubagentTask, at time.Time, runID string) (SubagentTask, error) {
 	if at.IsZero() {
 		at = c.now().UTC()

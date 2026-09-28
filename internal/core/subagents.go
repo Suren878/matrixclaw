@@ -297,7 +297,7 @@ func (c *Core) resumeParentForSubagentStatus(ctx context.Context, task SubagentT
 		return true, c.startRun(ctx, task.ParentRunID)
 	}
 	if status == RunStatusWaitingApproval {
-		return true, c.mirrorPendingSubagentApproval(ctx, task)
+		return c.mirrorPendingSubagentApproval(ctx, task)
 	}
 	return false, nil
 }
@@ -322,25 +322,31 @@ func subagentRunStatusTerminal(status RunStatus) bool {
 	return status == RunStatusCompleted || status == RunStatusFailed || status == RunStatusCanceled
 }
 
-func (c *Core) mirrorPendingSubagentApproval(ctx context.Context, task SubagentTask) error {
+// mirrorPendingSubagentApproval asks the parent for the child's pending approval.
+// It reports false when the child has none: its approval was just decided and
+// the child has not resumed yet.
+func (c *Core) mirrorPendingSubagentApproval(ctx context.Context, task SubagentTask) (bool, error) {
 	childApproval, err := c.pendingApprovalForRun(ctx, task.ChildSessionID, task.ChildRunID)
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
 	if err != nil {
-		return err
+		return false, err
 	}
 	existing, err := c.subagentBridgeApprovalForChild(ctx, task, childApproval.ID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if strings.TrimSpace(existing.ID) != "" {
-		return nil
+		return true, nil
 	}
 	task, err = c.markSubagentTaskWaitingApproval(ctx, task)
 	if err != nil {
-		return err
+		return false, err
 	}
 	request, err := c.subagentApprovalRequest(ctx, task, childApproval)
 	if err != nil {
-		return err
+		return false, err
 	}
 	prepared := preparedToolCall{
 		SessionID:  task.ParentSessionID,
@@ -348,25 +354,23 @@ func (c *Core) mirrorPendingSubagentApproval(ctx context.Context, task SubagentT
 		ToolName:   subagentParentToolName(task),
 		ToolCallID: task.ParentToolCallID,
 	}
-	if _, _, created, createErr := c.createPendingApproval(ctx, prepared, ExecuteToolInput{}, tools.Result{Approval: request}, nil); createErr != nil {
-		return createErr
-	} else if !created {
-		return nil
+	if _, _, created, createErr := c.createPendingApproval(ctx, prepared, ExecuteToolInput{}, tools.Result{Approval: request}, nil); createErr != nil || !created {
+		return true, createErr
 	}
 	if strings.TrimSpace(task.ParentRunID) == "" {
-		return nil
+		return true, nil
 	}
 	run, err := c.store.GetRun(ctx, task.ParentRunID)
+	if errors.Is(err, ErrNotFound) {
+		return true, nil
+	}
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil
-		}
-		return err
+		return true, err
 	}
 	if subagentRunStatusTerminal(run.Status) {
-		return nil
+		return true, nil
 	}
-	return c.setRunStatus(ctx, &run, RunStatusWaitingApproval, "")
+	return true, c.setRunStatus(ctx, &run, RunStatusWaitingApproval, "")
 }
 
 func (c *Core) subagentBridgeApprovalForChild(ctx context.Context, task SubagentTask, childApprovalID string) (Approval, error) {

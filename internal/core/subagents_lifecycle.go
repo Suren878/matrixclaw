@@ -118,7 +118,8 @@ func (c *Core) syncAsyncSubagentTaskAfterRun(ctx context.Context, task SubagentT
 	}
 	switch run.Status {
 	case RunStatusWaitingApproval:
-		return c.mirrorPendingSubagentApproval(ctx, task)
+		_, err := c.mirrorPendingSubagentApproval(ctx, task)
+		return err
 	case RunStatusCompleted, RunStatusFailed, RunStatusCanceled:
 	default:
 		return nil
@@ -158,7 +159,8 @@ func (c *Core) syncBlockingSubagentTaskAfterRun(ctx context.Context, task Subage
 		if parentRun.Status == RunStatusRunning && c.runIsActive(parentRun.ID) {
 			return nil
 		}
-		return c.mirrorPendingSubagentApproval(ctx, task)
+		_, err = c.mirrorPendingSubagentApproval(ctx, task)
+		return err
 	case RunStatusCompleted, RunStatusFailed, RunStatusCanceled:
 	default:
 		return nil

@@ -34,7 +34,7 @@ func (c *Core) ResolveApproval(ctx context.Context, approvalID string, decision 
 	}
 	switch {
 	case bridged:
-		return approval, c.resolveSubagentApprovalBridge(ctx, approval, bridge, decision)
+		return approval, c.passDecisionToSubagent(ctx, bridge, decision)
 	case strings.TrimSpace(approval.RunID) == "":
 		return approval, c.finishRunlessApproval(ctx, approval)
 	default:
@@ -107,7 +107,10 @@ func (c *Core) finishRunlessApproval(ctx context.Context, approval Approval) err
 	return c.finishApprovalCall(ctx, approval, agent.DenialResult(approval.Reason))
 }
 
-func (c *Core) resolveSubagentApprovalBridge(ctx context.Context, approval Approval, bridge subagentApprovalBridgeParams, decision ApprovalResolveRequest) error {
+// passDecisionToSubagent hands the decision to the child's own approval: the
+// child runs its call or reads the denial and goes on, while the parent keeps
+// waiting for the child.
+func (c *Core) passDecisionToSubagent(ctx context.Context, bridge subagentApprovalBridgeParams, decision ApprovalResolveRequest) error {
 	task, err := c.store.GetSubagentTask(ctx, bridge.TaskID)
 	if err != nil {
 		task, err = c.store.GetSubagentTaskByChildRun(ctx, bridge.ChildRunID)
@@ -115,55 +118,26 @@ func (c *Core) resolveSubagentApprovalBridge(ctx context.Context, approval Appro
 	if err != nil {
 		return err
 	}
-
 	if _, err := c.ResolveApproval(ctx, bridge.ChildApprovalID, decision); err != nil {
 		terminal, terminalErr := c.subagentTaskTerminal(ctx, task)
 		if terminalErr != nil || !terminal {
 			return err
 		}
 	}
-
-	if decision.Approved {
-		if latest, err := c.store.GetSubagentTask(ctx, task.ID); err == nil {
-			task = latest
-		} else if !errors.Is(err, ErrNotFound) {
+	if latest, err := c.store.GetSubagentTask(ctx, task.ID); err == nil {
+		task = latest
+	} else if !errors.Is(err, ErrNotFound) {
+		return err
+	}
+	if !subagentTaskTerminalStatus(task.Status) {
+		if task, err = c.markSubagentTaskRunning(ctx, task); err != nil {
 			return err
 		}
-		if !subagentTaskTerminalStatus(task.Status) {
-			task, err = c.markSubagentTaskRunning(ctx, task)
-			if err != nil {
-				return err
-			}
-		}
-		if task.Mode == SubagentTaskModeAsync {
-			return nil
-		}
-		return c.resumeParentAfterSubagentTerminal(ctx, task)
-	}
-
-	summary := "Subagent approval denied"
-	if bridge.ChildToolName != "" {
-		summary += " for " + bridge.ChildToolName
-	}
-	task, err = c.finishSubagentTaskRecord(ctx, task, SubagentTaskStatusFailed, summary, summary, false)
-	if err != nil {
-		return err
 	}
 	if task.Mode == SubagentTaskModeAsync {
-		c.publishSubagentToolUpdate(task)
-		task, err = c.queueSubagentCompletionRecord(ctx, task)
-		if err != nil {
-			return err
-		}
-		return c.deliverPendingSubagentCompletionsForParent(ctx, task.ParentSessionID)
+		return nil
 	}
-	if err := c.finishApprovalCall(ctx, approval, tools.Result{Content: summary, Metadata: task, Status: tools.ResultStatusError, IsError: true}); err != nil {
-		return err
-	}
-	if strings.TrimSpace(approval.RunID) != "" {
-		return c.startRun(ctx, approval.RunID)
-	}
-	return nil
+	return c.resumeParentAfterSubagentTerminal(ctx, task)
 }
 
 // finishApprovalCall writes result for the approval's call unless it has one.

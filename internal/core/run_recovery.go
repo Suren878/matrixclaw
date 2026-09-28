@@ -252,10 +252,14 @@ func (c *Core) recoverInterruptedTool(ctx context.Context, run Run, interrupted 
 				return recoveryToolContinue, childErr
 			}
 			if childErr == nil && childRun.Status == RunStatusWaitingApproval {
-				if err := c.mirrorPendingSubagentApproval(ctx, task); err != nil {
+				mirrored, err := c.mirrorPendingSubagentApproval(ctx, task)
+				switch {
+				case err != nil:
 					return recoveryToolContinue, err
+				case mirrored:
+					return recoveryToolWaitApproval, nil
 				}
-				return recoveryToolWaitApproval, nil
+				return recoveryToolWaitSubagent, nil
 			}
 			if childErr == nil && !subagentRunStatusTerminal(childRun.Status) {
 				return recoveryToolWaitSubagent, nil
