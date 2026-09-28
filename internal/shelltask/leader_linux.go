@@ -23,3 +23,9 @@ func processStart(pid int) (string, error) {
 	}
 	return fields[19], nil
 }
+
+// bootID names the running boot of the system.
+func bootID() (string, error) {
+	data, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	return strings.TrimSpace(string(data)), err
+}

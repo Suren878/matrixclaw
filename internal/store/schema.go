@@ -120,6 +120,9 @@ CREATE TABLE IF NOT EXISTS session_inputs (
 	if err := ensureColumn(db, "tasks", "leader_start", `ALTER TABLE tasks ADD COLUMN leader_start TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
 	}
+	if err := ensureColumn(db, "tasks", "boot_id", `ALTER TABLE tasks ADD COLUMN boot_id TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
 	if err := ensureColumn(db, "approvals", "suggestion_json", `ALTER TABLE approvals ADD COLUMN suggestion_json TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
 	}

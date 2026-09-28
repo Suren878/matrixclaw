@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -112,7 +113,7 @@ func TestKillEndsTheWholeGroup(t *testing.T) {
 	}
 }
 
-func TestKillLeftoverChecksTheLeaderStartWithoutPS(t *testing.T) {
+func TestKillLeftoverChecksTheLeaderWithoutPS(t *testing.T) {
 	out := newOutput(t)
 	p, err := shelltask.Start("sleep 60", t.TempDir(), out, 0)
 	if err != nil {
@@ -120,28 +121,53 @@ func TestKillLeftoverChecksTheLeaderStartWithoutPS(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = p.Kill() })
 	t.Setenv("PATH", "/nonexistent")
-	if p.LeaderStart() == "" {
-		t.Fatal("no leader start recorded")
+	leader := p.Leader()
+	if leader.PID != p.PID() || leader.BootID == "" || leader.Start == "" {
+		t.Fatalf("leader = %+v", leader)
 	}
 
-	for _, start := range []string{"", "1"} {
-		if err := shelltask.KillLeftover(p.PID(), p.PID(), start); start == "" && err == nil {
-			t.Fatal("an unknown start was no error")
-		}
-		select {
-		case <-p.Done():
-			t.Fatalf("the group was killed for start %q", start)
-		case <-time.After(200 * time.Millisecond):
-		}
+	unknown, otherStart, otherBoot := leader, leader, leader
+	unknown.Start, otherStart.Start, otherBoot.BootID = "", "1", "another boot"
+	if err := shelltask.KillLeftover(unknown); err == nil {
+		t.Fatal("an unknown leader was no error")
+	}
+	for _, other := range []shelltask.Leader{otherStart, otherBoot} {
+		_ = shelltask.KillLeftover(other)
+	}
+	select {
+	case <-p.Done():
+		t.Fatal("a group that is not the leftover was killed")
+	case <-time.After(200 * time.Millisecond):
 	}
 
-	if err := shelltask.KillLeftover(p.PID(), p.PID(), p.LeaderStart()); err != nil {
+	if err := shelltask.KillLeftover(leader); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case <-p.Done():
 	case <-time.After(10 * time.Second):
 		t.Fatal("the leftover group was not killed")
+	}
+}
+
+func TestKillLeftoverLeavesALeaderlessGroupAlone(t *testing.T) {
+	out := newOutput(t)
+	p, err := shelltask.Start("sleep 60 & exit 0", t.TempDir(), out, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.Kill() })
+	for deadline := time.Now().Add(10 * time.Second); syscall.Kill(p.PID(), 0) == nil; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the shell did not exit")
+		}
+	}
+
+	if err := shelltask.KillLeftover(p.Leader()); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Kill(-p.PID(), 0); err != nil {
+		t.Fatalf("the group without its leader was killed: %v", err)
 	}
 }
 

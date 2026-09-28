@@ -32,17 +32,17 @@ WHERE delivered_at IS NULL AND id IN (`+strings.Join(placeholders, ", ")+`)`, ar
 }
 
 const taskColumns = `id, session_id, run_id, parent_tool_call_id, kind, status, command_or_goal, description, working_dir,
-background, agent_name, pid, pgid, leader_start, output_path, exit_code, output_cursor, child_session_id, child_run_id, summary, error,
+background, agent_name, pid, pgid, leader_start, boot_id, output_path, exit_code, output_cursor, child_session_id, child_run_id, summary, error,
 delivered_at, delivered_run_id, started_at, updated_at, finished_at`
 
 func (s *SQLiteStore) CreateTask(ctx context.Context, task core.Task) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO tasks(id, session_id, run_id, parent_tool_call_id, kind, status, command_or_goal, description, working_dir,
-    background, agent_name, pid, pgid, leader_start, output_path, exit_code, output_cursor, child_session_id, child_run_id,
+    background, agent_name, pid, pgid, leader_start, boot_id, output_path, exit_code, output_cursor, child_session_id, child_run_id,
     summary, error, started_at, updated_at, finished_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		task.ID, task.SessionID, task.RunID, task.ParentToolCallID, string(task.Kind), string(task.Status), task.Command,
-		task.Description, task.WorkingDir, task.Background, task.AgentName, task.PID, task.PGID, task.LeaderStart, task.OutputPath,
+		task.Description, task.WorkingDir, task.Background, task.AgentName, task.PID, task.PGID, task.LeaderStart, task.BootID, task.OutputPath,
 		task.ExitCode, task.OutputCursor, task.ChildSessionID, task.ChildRunID, task.Summary, task.Error,
 		formatTime(task.StartedAt), formatTime(task.UpdatedAt), nullableTime(task.FinishedAt),
 	)
@@ -138,7 +138,7 @@ func scanTask(scanner taskScanner) (core.Task, error) {
 	var exitCode sql.NullInt64
 	var deliveredAt, finishedAt sql.NullString
 	if err := scanner.Scan(&task.ID, &task.SessionID, &task.RunID, &task.ParentToolCallID, &kind, &status, &task.Command,
-		&task.Description, &task.WorkingDir, &task.Background, &task.AgentName, &task.PID, &task.PGID, &task.LeaderStart, &task.OutputPath,
+		&task.Description, &task.WorkingDir, &task.Background, &task.AgentName, &task.PID, &task.PGID, &task.LeaderStart, &task.BootID, &task.OutputPath,
 		&exitCode, &task.OutputCursor, &task.ChildSessionID, &task.ChildRunID, &task.Summary, &task.Error,
 		&deliveredAt, &task.DeliveredRunID, &startedAt, &updatedAt, &finishedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

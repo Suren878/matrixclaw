@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     pid INTEGER NOT NULL DEFAULT 0,
     pgid INTEGER NOT NULL DEFAULT 0,
     leader_start TEXT NOT NULL DEFAULT '',
+    boot_id TEXT NOT NULL DEFAULT '',
     output_path TEXT NOT NULL DEFAULT '',
     exit_code INTEGER,
     output_cursor INTEGER NOT NULL DEFAULT 0,

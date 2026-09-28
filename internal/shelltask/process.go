@@ -9,12 +9,21 @@ import (
 
 // Process is a running shell command; its process group has the ID of its PID.
 type Process struct {
-	cmd         *exec.Cmd
-	out         *Output
-	done        chan struct{}
-	exitCode    int
-	startedAt   time.Time
-	leaderStart string
+	cmd       *exec.Cmd
+	out       *Output
+	done      chan struct{}
+	exitCode  int
+	startedAt time.Time
+	leader    Leader
+}
+
+// Leader identifies a process group's leader across daemon restarts: the boot
+// it ran in and its start within it tell it apart from a later process with
+// its PID. Empty fields could not be read.
+type Leader struct {
+	PID    int
+	BootID string
+	Start  string
 }
 
 // Start runs command with bash -lc in dir, in a process group of its own, its
@@ -31,7 +40,9 @@ func Start(command, dir string, out *Output, waitDelay time.Duration) (*Process,
 		return nil, err
 	}
 	// Until Wait reaps the shell its PID cannot go to another process.
-	p.leaderStart, _ = processStart(p.PID())
+	p.leader = Leader{PID: p.PID()}
+	p.leader.BootID, _ = bootID()
+	p.leader.Start, _ = processStart(p.PID())
 	go p.wait()
 	return p, nil
 }
@@ -55,10 +66,9 @@ func (p *Process) StartedAt() time.Time {
 	return p.startedAt
 }
 
-// LeaderStart tells the shell apart from a later process with its PID; ""
-// when it could not be read.
-func (p *Process) LeaderStart() string {
-	return p.leaderStart
+// Leader identifies the shell, the leader of the process group.
+func (p *Process) Leader() Leader {
+	return p.leader
 }
 
 // Output is where the process writes.
@@ -93,26 +103,32 @@ func KillGroup(pgid int) error {
 	return nil
 }
 
-// KillLeftover kills the process group a daemon that is gone started with
-// leader pid, whose LeaderStart was start. A leader that started at another
-// time is some other process that got the ID and is left alone, as is any
-// group whose leader cannot be checked.
-func KillLeftover(pid, pgid int, start string) error {
-	if start == "" {
-		return errors.New("shelltask: the leader's start is unknown")
+// KillLeftover kills the process group a daemon that is gone started. The
+// group is left alone when its leader is gone, is another process that got its
+// PID, or cannot be checked; its processes then outlive the task.
+func KillLeftover(leader Leader) error {
+	if leader.PID <= 0 || leader.BootID == "" || leader.Start == "" {
+		return errors.New("shelltask: the leader is unknown")
 	}
-	if pid <= 0 {
-		return nil
-	}
-	if err := syscall.Kill(pid, 0); errors.Is(err, syscall.ESRCH) {
-		return KillGroup(pgid)
-	}
-	current, err := processStart(pid)
+	boot, err := bootID()
 	if err != nil {
 		return err
 	}
-	if current != start {
+	if boot != leader.BootID {
 		return nil
 	}
-	return KillGroup(pgid)
+	if err := syscall.Kill(leader.PID, 0); errors.Is(err, syscall.ESRCH) {
+		return nil
+	}
+	start, err := processStart(leader.PID)
+	if err != nil {
+		return err
+	}
+	if start != leader.Start {
+		return nil
+	}
+	if pgid, err := syscall.Getpgid(leader.PID); err != nil || pgid != leader.PID {
+		return err
+	}
+	return KillGroup(leader.PID)
 }

@@ -18,3 +18,12 @@ func processStart(pid int) (string, error) {
 	start := info.Proc.P_starttime
 	return fmt.Sprintf("%d.%06d", start.Sec, start.Usec), nil
 }
+
+// bootID names the running boot of the system by when it booted.
+func bootID() (string, error) {
+	booted, err := unix.SysctlTimeval("kern.boottime")
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%d.%06d", booted.Sec, booted.Usec), nil
+}

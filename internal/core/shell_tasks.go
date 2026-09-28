@@ -96,6 +96,7 @@ func (c *Core) finishedCommand(process *shelltask.Process, command tools.Command
 // until it ends or, with a deadline, is killed then.
 func (c *Core) adoptCommand(ctx context.Context, call tools.Call, command tools.Command, id string, process *shelltask.Process, deadline time.Time) (tools.CommandResult, error) {
 	now := c.now().UTC()
+	leader := process.Leader()
 	task := Task{
 		ID:               id,
 		SessionID:        call.SessionID,
@@ -107,9 +108,10 @@ func (c *Core) adoptCommand(ctx context.Context, call tools.Call, command tools.
 		Description:      command.Description,
 		WorkingDir:       command.WorkingDir,
 		Background:       true,
-		PID:              process.PID(),
-		PGID:             process.PID(),
-		LeaderStart:      process.LeaderStart(),
+		PID:              leader.PID,
+		PGID:             leader.PID,
+		LeaderStart:      leader.Start,
+		BootID:           leader.BootID,
 		OutputPath:       process.Output().Path(),
 		StartedAt:        process.StartedAt().UTC(),
 		UpdatedAt:        now,
@@ -301,7 +303,8 @@ func (c *Core) sessionTask(ctx context.Context, sessionID string, taskID string)
 }
 
 // RecoverTasks runs at daemon start: shell tasks left running by the previous
-// daemon have their process group killed and are marked lost.
+// daemon are marked lost, and their process group is killed when its leader is
+// surely still theirs.
 func (c *Core) RecoverTasks(ctx context.Context) error {
 	tasks, err := c.store.ListTasks(ctx, TaskFilter{Kind: TaskKindShell, Statuses: []TaskStatus{TaskStatusRunning}})
 	if err != nil {
@@ -311,7 +314,7 @@ func (c *Core) RecoverTasks(ctx context.Context) error {
 		if _, live := c.liveTask(task.ID); live {
 			continue
 		}
-		if err := shelltask.KillLeftover(task.PID, task.PGID, task.LeaderStart); err != nil {
+		if err := shelltask.KillLeftover(shelltask.Leader{PID: task.PID, BootID: task.BootID, Start: task.LeaderStart}); err != nil {
 			log.Printf("core: kill leftover task %q: %v", task.ID, err)
 		}
 		if err := c.finishTask(ctx, task.ID, TaskStatusLost, nil, "the daemon restarted while it ran and stopped it"); err != nil {
