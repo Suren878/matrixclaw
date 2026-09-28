@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/shelltask"
 	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -230,5 +231,60 @@ func TestDeletingASessionStopsItsTasks(t *testing.T) {
 	waitProcessGone(t, task.PID)
 	if _, err := os.Stat(task.OutputPath); !os.IsNotExist(err) {
 		t.Fatalf("output file after delete: %v", err)
+	}
+}
+
+func TestNativeRunSeesFinishedAndRunningTasks(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	ctx := context.Background()
+	files := t.TempDir()
+	app.WithSessionFiles(files)
+	session, run := saveCrashRecoveryRun(t, db, "notes", core.RunStatusAccepted, false)
+	out, err := shelltask.CreateOutput(filepath.Join(files, session.ID, "tasks", "task_done.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := out.Write([]byte("--- FAIL: TestParse\n")); err != nil {
+		t.Fatal(err)
+	}
+	_ = out.Close()
+	now := runRecoveryTestTime()
+	for _, task := range []core.Task{
+		{ID: "task_done", SessionID: session.ID, Kind: core.TaskKindShell, Status: core.TaskStatusRunning, Command: "go test ./...", Background: true, OutputPath: out.Path(), StartedAt: now, UpdatedAt: now},
+		{ID: "task_live", SessionID: session.ID, Kind: core.TaskKindShell, Status: core.TaskStatusRunning, Command: "npm run dev", Background: true, StartedAt: now, UpdatedAt: now},
+	} {
+		if err := db.CreateTask(ctx, task); err != nil {
+			t.Fatal(err)
+		}
+	}
+	code := 1
+	if _, err := db.FinishTask(ctx, "task_done", core.TaskStatusFailed, &code, "", now); err != nil {
+		t.Fatal(err)
+	}
+
+	var requests []providers.Request
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		requests = append(requests, request)
+		return providers.Response{Text: "Noted."}, nil
+	})})
+	if err := app.ExecuteRun(ctx, run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	var sent []string
+	for _, message := range requests[0].Messages {
+		sent = append(sent, message.Content)
+	}
+	transcript := strings.Join(sent, "\n")
+	for _, want := range []string{"Background task task_done finished with exit code 1.", "--- FAIL: TestParse", "- task_live: npm run dev"} {
+		if !strings.Contains(transcript, want) {
+			t.Fatalf("first request lacks %q:\n%s", want, transcript)
+		}
+	}
+	done, err := db.GetTask(ctx, "task_done")
+	if err != nil || done.DeliveredAt == nil || done.DeliveredRunID != run.ID {
+		t.Fatalf("task_done = %+v, %v", done, err)
 	}
 }

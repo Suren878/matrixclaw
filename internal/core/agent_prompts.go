@@ -63,13 +63,14 @@ func (p *corePrompts) System(ctx context.Context, history []transcript.Message) 
 }
 
 // Context is what changes during a run: the recovery notice, the todo list,
-// runtime status and memory written since the run started.
+// the background tasks still running, runtime status and memory written since
+// the run started.
 func (p *corePrompts) Context(ctx context.Context) string {
 	var sections []string
 	if checkpoint, ok, err := p.c.runCheckpoint(ctx, p.turn.RunID); err == nil && ok {
 		sections = append(sections, runCheckpointRecoveryPrompt(checkpoint))
 	}
-	sections = append(sections, p.c.sessionTodoPrompt(ctx, p.turn.SessionID, append([]string{p.turn.RunID}, p.turn.Continues...)))
+	sections = append(sections, p.c.sessionTodoPrompt(ctx, p.turn.SessionID, append([]string{p.turn.RunID}, p.turn.Continues...)), p.c.runningTasksPrompt(ctx, p.turn.SessionID))
 	if p.turn.Subagent {
 		return prompt.JoinSections(sections...)
 	}

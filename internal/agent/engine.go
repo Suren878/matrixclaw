@@ -152,6 +152,9 @@ func (r *run) step(ctx context.Context) stepResult {
 	if waiting {
 		return stepResult{kind: stepWaitingApproval}
 	}
+	if err := r.drainEvents(ctx); err != nil {
+		return failedStep(err)
+	}
 	if err := r.syncContext(ctx); err != nil {
 		return failedStep(err)
 	}

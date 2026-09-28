@@ -316,11 +316,13 @@ func (a *Approvals) Pending(ctx context.Context, _ string) (bool, error) {
 	return a.Open, nil
 }
 
-// Inbox hands out pending steers, whose IDs are their text, until they are consumed,
-// and decided approvals on every peek. Like the store, it fails on a stopped context.
+// Inbox hands out pending steers, whose IDs are their text, and events until
+// they are consumed, and decided approvals on every peek. Like the store, it
+// fails on a stopped context.
 type Inbox struct {
 	Steers  []string
 	Decided []agent.Input
+	Events  []agent.Input
 	Cancel  bool
 }
 
@@ -337,6 +339,8 @@ func (in *Inbox) Peek(ctx context.Context, _ string, kind agent.InputKind) ([]ag
 		return out, nil
 	case agent.InputDecided:
 		return in.Decided, nil
+	case agent.InputEvent:
+		return slices.Clone(in.Events), nil
 	default:
 		return nil, fmt.Errorf("agenttest: unknown input kind %q", kind)
 	}
@@ -347,6 +351,7 @@ func (in *Inbox) Consume(ctx context.Context, _ string, ids []string) error {
 		return err
 	}
 	in.Steers = slices.DeleteFunc(in.Steers, func(text string) bool { return slices.Contains(ids, text) })
+	in.Events = slices.DeleteFunc(in.Events, func(event agent.Input) bool { return slices.Contains(ids, event.ID) })
 	return nil
 }
 

@@ -125,9 +125,11 @@ type InputKind string
 const (
 	InputSteer   InputKind = "steer"
 	InputDecided InputKind = "decided"
+	InputEvent   InputKind = "event"
 )
 
-// Input arrives from outside the engine: steer Text, or a decided approval;
+// Input arrives from outside the engine: steer Text, a decided approval, or an
+// event such as a finished background task, whose Text the model reads.
 // Denied approvals carry the user's Reason.
 type Input struct {
 	Kind       InputKind
@@ -141,9 +143,9 @@ type Input struct {
 	Reason     string
 }
 
-// Inbox delivers outside input. Peek never consumes: steers stay pending until the
-// engine consumes their IDs, and InputDecided returns decided approvals whose call
-// has no result yet.
+// Inbox delivers outside input. Peek never consumes: steers and events stay
+// pending until the engine consumes their IDs, and InputDecided returns decided
+// approvals whose call has no result yet.
 type Inbox interface {
 	Peek(ctx context.Context, runID string, kind InputKind) ([]Input, error)
 	Consume(ctx context.Context, runID string, ids []string) error

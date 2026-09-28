@@ -214,6 +214,12 @@ func (c *Core) ReadTaskOutput(ctx context.Context, call tools.Call, read tools.T
 			return tools.TaskOutput{}, err
 		}
 	}
+	if task.FinishedAt != nil {
+		// The model reads how the task ended here and needs no event about it.
+		if err := c.store.MarkTasksDelivered(ctx, []string{task.ID}, call.RunID, c.now().UTC()); err != nil {
+			return tools.TaskOutput{}, err
+		}
+	}
 	out := tools.TaskOutput{TaskInfo: taskInfo(task)}
 	if task.Kind != TaskKindShell {
 		out.Text = firstNonEmpty(task.Summary, task.Error)
