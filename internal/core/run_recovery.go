@@ -205,8 +205,6 @@ func (c *Core) prepareRunAfterCrash(ctx context.Context, run *Run) (bool, error)
 				return false, err
 			}
 			return false, nil
-		case recoveryToolRunFailed:
-			return false, nil
 		}
 	}
 
@@ -228,20 +226,18 @@ const (
 	recoveryToolContinue recoveryToolDisposition = iota
 	recoveryToolWaitApproval
 	recoveryToolWaitSubagent
-	recoveryToolRunFailed
 )
 
 func (c *Core) recoverInterruptedTool(ctx context.Context, run Run, interrupted interruptedToolCall, approvals []Approval) (recoveryToolDisposition, error) {
 	call := interrupted.Call
 	if latest, ok := latestApprovalForToolCall(approvals, run.ID, call.ID); ok {
-		switch latest.State {
-		case ApprovalStatePending:
+		_, bridged := decodeSubagentApprovalBridge(latest)
+		switch {
+		case latest.State == ApprovalStatePending:
 			return recoveryToolWaitApproval, nil
-		case ApprovalStateRejected:
-			if err := c.failRecoveredRun(ctx, &run, "tool approval was denied before the daemon restart"); err != nil {
-				return recoveryToolRunFailed, err
-			}
-			return recoveryToolRunFailed, nil
+		case latest.State == ApprovalStateRejected && !bridged:
+			// The resumed run reads the denial as the call's result.
+			return recoveryToolContinue, nil
 		}
 	}
 

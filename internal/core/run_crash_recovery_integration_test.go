@@ -370,6 +370,45 @@ func TestRecoverMutatingToolRequiresFreshApprovalBeforeSingleReplay(t *testing.T
 	assertToolResultCount(t, sqliteStore, run.SessionID, "tool_mutation", 1)
 }
 
+func TestRecoverDeniedToolReturnsTheDenialToTheModel(t *testing.T) {
+	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	starter := &recordingRunStarter{}
+	mutation := &recoveryTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation)}
+	var saw string
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		saw = toolResultContent(request, "tool_mutation")
+		return providers.Response{Text: "Kept the old config."}, nil
+	})})
+	app.WithRunStarter(starter)
+	app.WithTools(tools.NewRegistry(mutation))
+	_, run := saveCrashRecoveryRun(t, sqliteStore, "denied_before_restart", core.RunStatusRunning, false)
+	saveInterruptedToolCall(t, sqliteStore, run, "tool_mutation", mutation.spec.ID)
+	decided := runRecoveryTestTime()
+	if err := sqliteStore.CreateApproval(context.Background(), core.Approval{
+		ID: "approval_denied", SessionID: run.SessionID, RunID: run.ID, ToolCallRef: "tool_mutation", ToolName: mutation.spec.ID,
+		State: core.ApprovalStateRejected, Reason: "keep the old config", RequestedAt: decided, DecidedAt: &decided,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.RecoverActiveRuns(context.Background()); err != nil {
+		t.Fatalf("RecoverActiveRuns: %v", err)
+	}
+	if got := starter.count(run.ID); got != 1 {
+		t.Fatalf("recovered run schedules = %d, want 1", got)
+	}
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	assertRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusCompleted)
+	assertToolResultCount(t, sqliteStore, run.SessionID, "tool_mutation", 1)
+	if saw != "User denied: keep the old config" || mutation.callCount() != 0 {
+		t.Fatalf("model read %q, mutations = %d", saw, mutation.callCount())
+	}
+}
+
 func TestRecoverBlockingSubagentCompletesChildThenParentWithoutDuplicate(t *testing.T) {
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
