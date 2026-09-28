@@ -1,5 +1,8 @@
 package tools
 
+// MaxReadBytes is the largest file the read tool opens.
+const MaxReadBytes = 5 * 1024 * 1024
+
 const (
 	namespaceCoreFilesystem = "core.filesystem"
 	namespaceCoreShell      = "core.shell"
@@ -9,7 +12,6 @@ const (
 	grepToolName            = "grep"
 	lsToolName              = "ls"
 	defaultReadLimit        = 2000
-	maxReadBytes            = 5 * 1024 * 1024
 	defaultSearchLimit      = 100
 	defaultListDepth        = 3
 	maxListEntries          = 1000

@@ -37,7 +37,7 @@ func (e *readExecutor) Execute(_ context.Context, call Call) (Result, error) {
 	if info.IsDir() {
 		return Result{Content: fmt.Sprintf("Path is a directory, not a file: %s", path), Metadata: filesystemPathMetadata(policy), IsError: true}, nil
 	}
-	if info.Size() > maxReadBytes {
+	if info.Size() > MaxReadBytes {
 		return Result{Content: fmt.Sprintf("File is too large (%d bytes)", info.Size()), Metadata: filesystemPathMetadata(policy), IsError: true}, nil
 	}
 

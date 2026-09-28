@@ -96,12 +96,11 @@ func voiceStatusLine(module setup.VoiceModuleDescriptor, tools map[string]struct
 			toolState = "available"
 		}
 	}
-	return fmt.Sprintf("%s: enabled=%t; provider=%s; mode=%s; runtime_state=%s; installed_models=%d; tool=%s",
+	return fmt.Sprintf("%s: enabled=%t; provider=%s; mode=%s; installed_models=%d; tool=%s",
 		module.ID,
 		module.Enabled,
 		firstNonEmpty(module.ProviderName, provider.Name, module.ProviderID),
 		firstNonEmpty(provider.Config.RuntimeMode, module.Config.RuntimeMode, "per_task"),
-		firstNonEmpty(provider.RuntimeState, "unknown"),
 		installedVoiceModelCount(provider.Models),
 		toolState,
 	)

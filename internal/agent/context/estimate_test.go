@@ -3,6 +3,9 @@ package agentcontext
 import (
 	"strings"
 	"testing"
+
+	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func TestEstimateCountsOtherScriptsDenserThanLatin(t *testing.T) {
@@ -38,5 +41,20 @@ func TestHeadTailKeepsBothEndsWithinTheLimit(t *testing.T) {
 	}
 	if got := HeadTail("short", 1_000); got != "short" {
 		t.Fatalf("HeadTail of a short text = %q", got)
+	}
+}
+
+func TestEstimatesCountReasoning(t *testing.T) {
+	thinking := strings.Repeat("t", 4_000)
+	message := transcript.Message{Role: transcript.MessageRoleAssistant, Content: "ok", Parts: append(transcript.NormalizeMessageParts("ok", nil),
+		transcript.MessagePart{Kind: transcript.MessagePartKindReasoning, Reasoning: &transcript.ReasoningPart{Text: thinking}},
+		transcript.MessagePart{Kind: transcript.MessagePartKindReasoning, Reasoning: &transcript.ReasoningPart{Text: thinking, Signature: "sig"}},
+	)}
+	if got := EstimateMessageTokens([]transcript.Message{message}); got < 2_000 {
+		t.Fatalf("EstimateMessageTokens = %d, want both reasoning texts counted", got)
+	}
+	request := providers.Request{Messages: []providers.Message{{Role: "assistant", Content: "ok", Reasoning: []providers.ReasoningBlock{{Text: thinking, Signature: "sig"}}}}}
+	if got := EstimateRequestTokens(request); got < 1_000 {
+		t.Fatalf("EstimateRequestTokens = %d, want the signed reasoning counted", got)
 	}
 }

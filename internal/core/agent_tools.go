@@ -67,7 +67,7 @@ func (t coreTools) Execute(ctx context.Context, name string, call tools.Call) (t
 		return result, nil
 	}
 	if execErr != nil {
-		result = tools.Result{Content: execErr.Error(), IsError: true}
+		result = t.c.toolFailure(call.SessionID, execErr)
 	}
 	return result, nil
 }

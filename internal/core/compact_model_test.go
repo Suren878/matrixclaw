@@ -1,7 +1,11 @@
 package core_test
 
 import (
+	"bytes"
 	"context"
+	"log"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -42,5 +46,28 @@ func TestManualCompactUsesTheCompactModel(t *testing.T) {
 
 	if err != nil || mainCalls != 0 || cheapCalls != 1 || result.Message.Compaction == nil || result.Message.Compaction.Summary != "CHEAP SUMMARY" {
 		t.Fatalf("result = %+v err = %v main = %d cheap = %d", result.Message, err, mainCalls, cheapCalls)
+	}
+}
+
+func TestUnavailableCompactModelIsLoggedOnce(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithSessionLLMs(twoModelLLMs{recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+		return providers.Response{Text: "main summary"}, nil
+	})}})
+	app.WithCompactModel("cheap", "small")
+	var logs bytes.Buffer
+	log.SetOutput(&logs)
+	defer log.SetOutput(os.Stderr)
+
+	for _, suffix := range []string{"first", "second"} {
+		session, _ := saveCrashRecoveryRun(t, db, suffix, core.RunStatusCompleted, false)
+		if _, err := app.CompactSession(context.Background(), session.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if count := strings.Count(logs.String(), "compact model cheap/small is unavailable"); count != 1 {
+		t.Fatalf("logged %d times:\n%s", count, logs.String())
 	}
 }

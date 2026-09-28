@@ -95,3 +95,34 @@ func TestPlanAndRuntimeStatusChangesLeaveTheSystemPromptIntact(t *testing.T) {
 		t.Fatalf("context notes: first %q, last %q", first.Content, last.Content)
 	}
 }
+
+func TestRuntimeStatusDescribesTheToolsTheRunWasGiven(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	var seen [][]string
+	app.WithRuntimeStatusContext(runtimeStatusRecorder(func(req core.RuntimeStatusContextRequest) { seen = append(seen, req.ToolIDs) }))
+
+	twoStepRun(t, app, db, "frozen_tools", func(context.Context, string) error {
+		app.WithTools(tools.NewRegistry(
+			funcTool{spec: recoveryToolSpec("change", tools.EffectReadOnly)},
+			funcTool{spec: recoveryToolSpec("added", tools.EffectReadOnly)},
+		))
+		return nil
+	})
+
+	if len(seen) < 2 {
+		t.Fatalf("runtime status built %d times", len(seen))
+	}
+	for _, ids := range seen {
+		if strings.Join(ids, ",") != "change" {
+			t.Fatalf("runtime status tool lists = %v, want the run's own tools each time", seen)
+		}
+	}
+}
+
+type runtimeStatusRecorder func(core.RuntimeStatusContextRequest)
+
+func (f runtimeStatusRecorder) RuntimeStatusPromptContext(_ context.Context, req core.RuntimeStatusContextRequest) string {
+	f(req)
+	return "status"
+}

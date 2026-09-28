@@ -16,6 +16,10 @@ const ElisionPercent = 60
 const (
 	elideKeepRounds  = 5
 	elideKeepReplies = 3
+	// elideRoundStep and elideReplyStep are how many more rounds or replies
+	// must become eligible before an elision moves on.
+	elideRoundStep   = 5
+	elideReplyStep   = 5
 	elideMinTokens   = 1_000
 	argsSummaryRunes = 80
 )
@@ -68,8 +72,8 @@ func AdvanceElision(messages []transcript.Message, current Elision, force bool) 
 		return current, false
 	}
 	rounds, replies := newlyEligible(messages, current, next)
-	results := next.ResultsThroughSeq > current.ResultsThroughSeq && (current.ResultsThroughSeq == 0 || rounds >= elideKeepRounds)
-	images := next.ImagesThroughSeq > current.ImagesThroughSeq && (current.ImagesThroughSeq == 0 || replies >= elideKeepRounds)
+	results := next.ResultsThroughSeq > current.ResultsThroughSeq && (current.ResultsThroughSeq == 0 || rounds >= elideRoundStep)
+	images := next.ImagesThroughSeq > current.ImagesThroughSeq && (current.ImagesThroughSeq == 0 || replies >= elideReplyStep)
 	if !force && !results && !images {
 		return current, false
 	}

@@ -3,6 +3,7 @@ package core_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -173,4 +174,48 @@ func TestSmallToolOutputStaysInline(t *testing.T) {
 	if err != nil || result.ToolResultMessage == nil || result.ToolResultMessage.Parts[0].ToolResult.Content != "small" || result.ToolResultMessage.Parts[0].ToolResult.OutputPath != "" {
 		t.Fatalf("result = %+v err = %v", result.ToolResultMessage, err)
 	}
+}
+
+func TestOutputTooLargeForReadPointsToGrep(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	root := t.TempDir()
+	huge := strings.Repeat("output line\n", 500_000)
+	app.WithSessionFiles(root)
+	app.WithTools(tools.NewRegistry(outputTool{spec: recoveryToolSpec("dump", tools.EffectReadOnly), content: huge}))
+	session, _ := saveCrashRecoveryRun(t, db, "huge_output", core.RunStatusCompleted, false)
+
+	result, err := app.ExecuteTool(context.Background(), core.ExecuteToolInput{SessionID: session.ID, ToolName: "dump", Args: json.RawMessage(`{}`)})
+
+	if err != nil || result.ToolResultMessage == nil {
+		t.Fatalf("ExecuteTool = %+v err = %v", result, err)
+	}
+	part := result.ToolResultMessage.Parts[0].ToolResult
+	pointer, _, _ := strings.Cut(part.Content, "\n")
+	if part.OutputPath == "" || !strings.Contains(pointer, "grep") || strings.Contains(pointer, "read it") {
+		t.Fatalf("pointer = %q", pointer)
+	}
+}
+
+func TestLargeToolErrorIsKeptInASessionFile(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	root := t.TempDir()
+	big := bigToolOutput()
+	app.WithSessionFiles(root)
+	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("fail", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
+		return tools.Result{}, errors.New(big)
+	}}))
+	session, _ := saveCrashRecoveryRun(t, db, "error_output", core.RunStatusCompleted, false)
+
+	result, _ := app.ExecuteTool(context.Background(), core.ExecuteToolInput{SessionID: session.ID, ToolName: "fail", Args: json.RawMessage(`{}`)})
+
+	if result.ToolResultMessage == nil {
+		t.Fatalf("ExecuteTool = %+v", result)
+	}
+	part := result.ToolResultMessage.Parts[0].ToolResult
+	if !part.IsError {
+		t.Fatalf("result = %+v, want an error", part)
+	}
+	assertKeptOutput(t, root, part, big)
 }

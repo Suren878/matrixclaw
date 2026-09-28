@@ -27,8 +27,11 @@ func (c *Core) compactRuntime(ctx context.Context) (providers.Runtime, int) {
 	}
 	runtime, _, modelID, err := llms.Resolve(ctx, c.compactProvider, c.compactModel)
 	if err != nil || runtime == nil {
-		log.Printf("core: compact model %s/%s is unavailable, summaries use the run's model: %v", c.compactProvider, c.compactModel, err)
+		if !c.compactUnavailable.Swap(true) {
+			log.Printf("core: compact model %s/%s is unavailable, summaries use the run's model: %v", c.compactProvider, c.compactModel, err)
+		}
 		return nil, 0
 	}
+	c.compactUnavailable.Store(false)
 	return runtime, c.modelContextWindowTokens(c.compactProvider, modelID)
 }

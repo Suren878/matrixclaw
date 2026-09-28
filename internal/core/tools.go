@@ -1,10 +1,6 @@
 package core
 
-import (
-	"context"
-
-	"github.com/Suren878/matrixclaw/internal/tools"
-)
+import "context"
 
 func (c *Core) ExecuteTool(ctx context.Context, input ExecuteToolInput) (ExecuteToolResult, error) {
 	prepared, err := c.prepareToolCall(ctx, input)
@@ -23,10 +19,7 @@ func (c *Core) ExecuteTool(ctx context.Context, input ExecuteToolInput) (Execute
 
 	finalResult := toolResult
 	if execErr != nil {
-		finalResult = tools.Result{
-			Content: execErr.Error(),
-			IsError: true,
-		}
+		finalResult = c.toolFailure(prepared.SessionID, execErr)
 	}
 
 	toolCallMessage, resultMessage, err := c.finishToolCall(ctx, prepared, input, finalResult)

@@ -44,11 +44,13 @@ func (c *Core) delegateTaskPromptAvailable() bool {
 }
 
 // corePrompts is the Prompts port of one native run; memory is the memory text
-// the run's system prompt was built with.
+// the run's system prompt was built with and toolIDs the tools listed with it,
+// which the engine keeps for the whole run.
 type corePrompts struct {
-	c      *Core
-	turn   nativeTurn
-	memory string
+	c       *Core
+	turn    nativeTurn
+	memory  string
+	toolIDs []string
 }
 
 func (p *corePrompts) System(ctx context.Context, history []transcript.Message) (string, string) {
@@ -56,6 +58,7 @@ func (p *corePrompts) System(ctx context.Context, history []transcript.Message) 
 	if !p.turn.Subagent {
 		p.memory = p.c.MemoryPromptContext(ctx, p.turn.WorkingDir)
 	}
+	p.toolIDs = p.c.nativeStatusToolIDs(p.turn)
 	return p.c.nativeSystemPrompt(ctx, p.turn, assistant, p.memory, history), assistant.CustomInstructions
 }
 
@@ -69,7 +72,7 @@ func (p *corePrompts) Context(ctx context.Context) string {
 	if p.turn.Subagent {
 		return prompt.JoinSections(sections...)
 	}
-	sections = append(sections, p.c.nativeStatusPrompt(ctx, p.turn))
+	sections = append(sections, p.c.nativeStatusPrompt(ctx, p.turn, p.toolIDs))
 	if memory := p.c.MemoryPromptContext(ctx, p.turn.WorkingDir); memory != p.memory {
 		sections = append(sections, memoryChangedPrompt(memory))
 	}
@@ -134,11 +137,11 @@ func (c *Core) nativeSkillsPrompt(ctx context.Context, turn nativeTurn, history 
 	return c.skillsContext.SkillsPromptContext(ctx, SkillsPromptContextRequest{SessionID: turn.SessionID, RunID: turn.RunID, WorkingDir: turn.WorkingDir, Messages: messages})
 }
 
-func (c *Core) nativeStatusPrompt(ctx context.Context, turn nativeTurn) string {
+func (c *Core) nativeStatusPrompt(ctx context.Context, turn nativeTurn, toolIDs []string) string {
 	if c == nil || c.runtimeStatus == nil {
 		return ""
 	}
-	return c.runtimeStatus.RuntimeStatusPromptContext(ctx, RuntimeStatusContextRequest{SessionID: turn.SessionID, RunID: turn.RunID, WorkingDir: turn.WorkingDir, ToolIDs: c.nativeStatusToolIDs(turn)})
+	return c.runtimeStatus.RuntimeStatusPromptContext(ctx, RuntimeStatusContextRequest{SessionID: turn.SessionID, RunID: turn.RunID, WorkingDir: turn.WorkingDir, ToolIDs: toolIDs})
 }
 
 func (c *Core) nativeStatusToolIDs(turn nativeTurn) []string {

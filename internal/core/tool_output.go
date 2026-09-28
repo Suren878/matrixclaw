@@ -36,8 +36,17 @@ func (c *Core) keepLargeOutput(sessionID string, result tools.Result) tools.Resu
 		return result
 	}
 	result.OutputPath = path
-	result.Content = fmt.Sprintf("Output is ~%s tokens; the full output is in %s (read it with offset and limit, or grep it).\n\n%s", agentcontext.FormatShortNumber(tokens), path, excerpt)
+	how := "read it with offset and limit, or grep it"
+	if len(result.Content) > tools.MaxReadBytes {
+		how = "too large for read; grep it, or view parts with head and tail"
+	}
+	result.Content = fmt.Sprintf("Output is ~%s tokens; the full output is in %s (%s).\n\n%s", agentcontext.FormatShortNumber(tokens), path, how, excerpt)
 	return result
+}
+
+// toolFailure is the error result of a tool call that failed with err.
+func (c *Core) toolFailure(sessionID string, err error) tools.Result {
+	return c.keepLargeOutput(sessionID, tools.Result{Content: err.Error(), IsError: true})
 }
 
 // writeToolOutput stores content under the session, named by its hash so a

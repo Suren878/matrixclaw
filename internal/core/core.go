@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
@@ -39,6 +40,9 @@ type Core struct {
 	sessionFiles    string
 	compactProvider string
 	compactModel    string
+	// compactUnavailable is set while the compact model cannot be resolved,
+	// so the failure is logged once.
+	compactUnavailable atomic.Bool
 
 	// badBoundaries holds the IDs of unreadable boundaries already logged.
 	badBoundaries sync.Map

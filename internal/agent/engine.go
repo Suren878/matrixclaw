@@ -144,11 +144,11 @@ func (r *run) step(ctx context.Context) stepResult {
 	if err != nil {
 		return failedStep(err)
 	}
-	if err := r.checkpoint(ctx, PhaseModel, "", ""); err != nil {
-		return failedStep(err)
-	}
 	request, final, err := r.fitRequest(ctx, final)
 	if err != nil {
+		return failedStep(err)
+	}
+	if err := r.checkpoint(ctx, PhaseModel, "", ""); err != nil {
 		return failedStep(err)
 	}
 	r.counters.Steps++

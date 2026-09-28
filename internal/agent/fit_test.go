@@ -1,6 +1,7 @@
 package agent_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -277,5 +278,27 @@ func TestSignedReasoningBeforeAHistoryEditIsNotReplayed(t *testing.T) {
 	}
 	if signed, _ := signatures(requests[edited+1]); !reflect.DeepEqual(signed, []string{fmt.Sprintf("sig%d", edited+1)}) {
 		t.Fatalf("after the edit: signed = %v, want only the newer step's", signed)
+	}
+}
+
+func TestTheElisionIsCheckpointedBeforeTheModelCall(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Window = 100_000
+	f.Tools.Funcs["read"] = func(call tools.Call) tools.Result {
+		return tools.Result{Content: call.ToolCallID + " " + strings.Repeat("x", 20_000)}
+	}
+	scripted := agenttest.NewScriptedModel(append(toolSteps(11, "read"), text("Done."))...)
+	var elided []int64
+	model := agenttest.ModelFunc(func(ctx context.Context, request providers.Request) (providers.Response, error) {
+		if strings.HasPrefix(toolContent(request, "read1"), "[output of read() hidden") {
+			elided = append(elided, f.Journal.States[len(f.Journal.States)-1].Counters.ElidedResults)
+		}
+		return scripted.Generate(ctx, request)
+	})
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted || len(elided) == 0 || elided[0] == 0 {
+		t.Fatalf("outcome = %+v checkpointed elision at the elided requests = %v", outcome, elided)
 	}
 }

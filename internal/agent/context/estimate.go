@@ -45,6 +45,10 @@ func EstimateMessageTokens(messages []transcript.Message) int {
 				if part.Image != nil {
 					messageTotal += EstimatedImageTokens
 				}
+			case transcript.MessagePartKindReasoning:
+				if part.Reasoning != nil {
+					messageTotal += EstimateTextTokens(part.Reasoning.Text)
+				}
 			case transcript.MessagePartKindToolCall:
 				if part.ToolCall != nil {
 					messageTotal += EstimateTextTokens(part.ToolCall.Name)
@@ -93,6 +97,9 @@ func EstimateRequestTokens(request providers.Request) int {
 		total += EstimateTextTokens(message.Content)
 		if message.ReasoningContent != nil {
 			total += EstimateTextTokens(*message.ReasoningContent)
+		}
+		for _, block := range message.Reasoning {
+			total += EstimateTextTokens(block.Text)
 		}
 		total += len(message.Images) * EstimatedImageTokens
 		total += EstimateTextTokens(message.ToolCallID)
