@@ -55,7 +55,7 @@ func asyncSubagentUserPrompt(goal string, contextText string, workingDir string,
 }
 
 func subagentSystemPrompt() string {
-	return "Subagent mode:\n- You are a child agent working for a parent Matrixclaw agent.\n- Complete only the delegated task from the user message.\n- Do not ask the user for input or approval.\n- Return a concise summary for the parent agent, listing important files, findings, errors, and verification output."
+	return "Subagent mode:\n- You are a child agent working for a parent Matrixclaw agent.\n- Complete only the delegated task from the user message.\n- Track multi-step work with todo_write.\n- Do not ask the user for input or approval.\n- Return a concise summary for the parent agent, listing important files, findings, errors, and verification output."
 }
 
 func subagentToolAllowed(spec tools.Spec) bool {

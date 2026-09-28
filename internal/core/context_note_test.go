@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/store"
@@ -72,16 +73,15 @@ func TestMemoryWrittenDuringARunReachesTheModelAsAContextNote(t *testing.T) {
 	}
 }
 
-func TestPlanAndRuntimeStatusChangesLeaveTheSystemPromptIntact(t *testing.T) {
+func TestTodoAndRuntimeStatusChangesLeaveTheSystemPromptIntact(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	status := "Current runtime status: browser=off"
 	app.WithRuntimeStatusContext(runtimeStatusFunc(func() string { return status }))
 
-	requests := twoStepRun(t, app, db, "plan", func(ctx context.Context, sessionID string) error {
+	requests := twoStepRun(t, app, db, "todo", func(ctx context.Context, sessionID string) error {
 		status = "Current runtime status: browser=on"
-		_, err := app.AddPlanItem(ctx, sessionID, "write the parser", "")
-		return err
+		return db.SaveSessionTodo(ctx, todo.List{SessionID: sessionID, Items: []todo.Item{{Content: "write the parser", Status: todo.InProgress}}})
 	})
 
 	for _, text := range []string{"browser=", "write the parser"} {
@@ -125,4 +125,28 @@ type runtimeStatusRecorder func(core.RuntimeStatusContextRequest)
 func (f runtimeStatusRecorder) RuntimeStatusPromptContext(_ context.Context, req core.RuntimeStatusContextRequest) string {
 	f(req)
 	return "status"
+}
+
+func TestSubagentContextNoteCarriesItsOwnTodo(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithTools(tools.NewRegistry(core.TodoToolExecutors(app)...))
+	var requests []providers.Request
+	app.WithSessionLLMs(scriptedLLMs(&requests,
+		todoWriteCall("call_child", `[{"content":"Scan the repo","status":"completed"}]`),
+		providers.Response{Text: "Scanned."},
+	))
+	_, run := saveCrashRecoveryRun(t, db, "todo_child_note", core.RunStatusAccepted, true)
+
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(requests[0].SystemPrompt, "todo_write") {
+		t.Fatalf("subagent system prompt = %q", requests[0].SystemPrompt)
+	}
+	last := requests[1].Messages[len(requests[1].Messages)-1]
+	if last.Role != "user" || !strings.Contains(last.Content, "Todo list") || !strings.Contains(last.Content, "1. [completed] Scan the repo") {
+		t.Fatalf("second request ends with %+v", last)
+	}
 }

@@ -53,6 +53,15 @@ func (c *Core) writeSessionTodo(ctx context.Context, sessionID string, runID str
 	return c.saveSessionTodo(ctx, list)
 }
 
+// sessionTodoPrompt is the todo list as the context note shows it.
+func (c *Core) sessionTodoPrompt(ctx context.Context, sessionID string) string {
+	list, err := c.store.GetSessionTodo(ctx, sessionID)
+	if err != nil || len(list.Items) == 0 {
+		return ""
+	}
+	return "Todo list (keep it current with todo_write):\n" + todo.Text(list.Items)
+}
+
 func (c *Core) saveSessionTodo(ctx context.Context, list todo.List) (todo.List, error) {
 	list.UpdatedAt = c.now().UTC()
 	if err := c.store.SaveSessionTodo(ctx, list); err != nil {

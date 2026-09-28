@@ -19,3 +19,10 @@ func TestToolUseDisciplineAsksForIndependentCallsInOneReply(t *testing.T) {
 		}
 	}
 }
+
+func TestToolUseDisciplineTracksWorkWithTodo(t *testing.T) {
+	text := ToolUseDiscipline()
+	if !strings.Contains(text, "todo_write") || strings.Contains(text, "session plan") {
+		t.Fatalf("tool-use discipline does not ask for todo_write:\n%s", text)
+	}
+}
