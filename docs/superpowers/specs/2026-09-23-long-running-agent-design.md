@@ -433,6 +433,26 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
 - **Clients** deny with a reason through the hidden `/approval deny <id>
   [reason]` command behind a prompt (TUI key `r`, Telegram button).
 
+### Implementation notes (as built, stage 4b)
+
+- **Subjects** come from the optional `tools.SubjectProvider`
+  (`PermissionSubject(call) permission.Subject` with a kind: file, directory,
+  command, domain, name); tools without one match only whole-tool rules. Rules
+  name MCP tools as `mcp` and multiedit as `edit`.
+- **Bash** lines that write files, assign or declare variables, substitute,
+  expand `$VAR`, run a wrapper (`sudo`, `env`, `xargs`, `sh -c`, …) or an
+  `-exec`-style flag are never allowed by a pattern rule; a whole-tool allow
+  (`bash`, `full_auto`) still allows them. Deny rules beat presets, also
+  `full_auto`.
+- **One check**: `core.checkPermission`, asked by `Tools.Authorize` (deny) and
+  by `executeToolWithGrant` (every pipeline, granted replays included).
+- **Suggestions** are stored with the approval (`approvals.suggestion_json`);
+  "Always allow" is `{"approved": true, "always": "session"|"global"}`.
+- **Rules** live in `permission_rules` (global: `session_id NULL`); API
+  `GET/POST /v1/sessions/{id}/permission-rules`, `DELETE
+  /v1/permission-rules/{id}`; `/permissions add|delete`. Global rules are
+  changed only by the TUI and the Telegram owner chat (a client-side check).
+
 ## 5. Providers
 
 - `providers.Request` gains `MaxOutputTokens` (priority: provider config →
