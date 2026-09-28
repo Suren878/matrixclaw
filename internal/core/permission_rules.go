@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -23,7 +24,8 @@ func (c *Core) SessionPermissionRules(ctx context.Context, sessionID string) ([]
 
 // AddPermissionRule saves a rule for the session, or for every session when its
 // scope is global. File tool patterns become absolute against the session's
-// working directory; a rule for one MCP tool names it as "server__tool".
+// working directory (so do path patterns of rules for every tool), domains are
+// normalised, and a rule for one MCP tool names it as "server__tool".
 func (c *Core) AddPermissionRule(ctx context.Context, sessionID string, request PermissionRuleRequest) (permission.Rule, error) {
 	session, err := c.store.GetSession(ctx, normalizeText(sessionID))
 	if err != nil {
@@ -40,6 +42,9 @@ func (c *Core) AddPermissionRule(ctx context.Context, sessionID string, request 
 	if !rule.Effect.Valid() || !rule.Scope.Valid() || rule.Tool == "" {
 		return permission.Rule{}, fmt.Errorf("%w: a rule needs a tool, an effect (allow, ask, deny) and a scope (session, global)", ErrInvalidInput)
 	}
+	if rule.Tool == "*" && pathPattern(rule.Pattern) {
+		rule.Pattern = absolutePattern(rule.Pattern, session.WorkingDir)
+	}
 	if rule.Tool != "*" && rule.Tool != "mcp" {
 		spec, ok := c.toolSpec(rule.Tool)
 		if !ok {
@@ -53,6 +58,8 @@ func (c *Core) AddPermissionRule(ctx context.Context, sessionID string, request 
 			}
 		case spec.Category == tools.CategoryFilesystem:
 			rule.Pattern = absolutePattern(rule.Pattern, session.WorkingDir)
+		case spec.Category == tools.CategoryWeb:
+			rule.Pattern = permission.NormalizeDomain(rule.Pattern)
 		}
 	}
 	if rule.Scope == permission.ScopeSession {
@@ -74,6 +81,12 @@ func (c *Core) toolSpec(toolID string) (tools.Spec, bool) {
 		return tools.Spec{}, false
 	}
 	return c.tools.Spec(toolID)
+}
+
+// pathPattern reports whether a rule pattern for every tool names a path rather
+// than a command, domain or MCP tool.
+func pathPattern(pattern string) bool {
+	return strings.Contains(pattern, "/") && !strings.HasSuffix(pattern, ":*") && !strings.ContainsFunc(pattern, unicode.IsSpace)
 }
 
 // absolutePattern resolves a path pattern against the working directory: "~/"

@@ -46,9 +46,12 @@ func (w *Worker) handleCallbackQuery(ctx context.Context, cq *CallbackQuery) err
 	case strings.HasPrefix(cq.Data, cbApprovalOnce):
 		return w.resolveApprovalCallback(telegramCtx, target, cq, strings.TrimPrefix(cq.Data, cbApprovalOnce), core.ApprovalResolveRequest{Approved: true})
 	case strings.HasPrefix(cq.Data, cbApprovalSession):
+		if !w.keepsRules(target, permission.ScopeSession) {
+			return w.sendText(telegramCtx, target, "Guests cannot keep permission rules.")
+		}
 		return w.resolveApprovalCallback(telegramCtx, target, cq, strings.TrimPrefix(cq.Data, cbApprovalSession), core.ApprovalResolveRequest{Approved: true, Always: permission.ScopeSession})
 	case strings.HasPrefix(cq.Data, cbApprovalGlobal):
-		if !w.ownerChat(target) {
+		if !w.keepsRules(target, permission.ScopeGlobal) {
 			return w.sendText(telegramCtx, target, "Only the owner can keep a rule for every session.")
 		}
 		return w.resolveApprovalCallback(telegramCtx, target, cq, strings.TrimPrefix(cq.Data, cbApprovalGlobal), core.ApprovalResolveRequest{Approved: true, Always: permission.ScopeGlobal})

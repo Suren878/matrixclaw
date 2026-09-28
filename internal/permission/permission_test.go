@@ -113,6 +113,22 @@ func TestSearchesMeetTheRulesOfWhatTheyReach(t *testing.T) {
 	}
 }
 
+func TestDomainsCompareNormalised(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"Docs.Example.COM.", "docs.example.com"},
+		{"Bücher.example", "xn--bcher-kva.example"},
+		{"*.BÜCHER.example.", "*.xn--bcher-kva.example"},
+	} {
+		if got := NormalizeDomain(tc.in); got != tc.want {
+			t.Errorf("NormalizeDomain(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+	req := Request{Tool: "web_fetch", Subject: Subject{Kind: KindDomain, Value: "WWW.XN--BCHER-KVA.EXAMPLE."}}
+	if got := Evaluate(req, []Rule{rule(Deny, "web_fetch", "*.bücher.example")}, nil); got.Effect != Deny {
+		t.Errorf("verdict = %q, want deny", got.Effect)
+	}
+}
+
 func TestPathGlobs(t *testing.T) {
 	for _, tc := range []struct {
 		pattern, path string

@@ -14,6 +14,7 @@ func (w *Worker) dispatcher(target chatTarget) *controlplane.Dispatcher {
 			return w.daemon(externalKey), nil
 		},
 		Owner: w.ownerChat(target),
+		Guest: !target.isChat(),
 	}
 	return controlplane.New(runtime, w.config.WorkingDir)
 }

@@ -90,6 +90,9 @@ type Call struct {
 	WorkingDir  string          `json:"working_dir,omitempty"`
 	Approved    bool            `json:"approved,omitempty"`
 	Args        json.RawMessage `json:"args,omitempty"`
+	// Recheck applies the permission rules to another subject the call reaches,
+	// such as a redirect's host; nil when no rules apply.
+	Recheck func(context.Context, permission.Subject) error `json:"-"`
 }
 
 type ApprovalRequest struct {

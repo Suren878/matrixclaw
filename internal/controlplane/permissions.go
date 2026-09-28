@@ -8,7 +8,8 @@ import (
 	"github.com/Suren878/matrixclaw/internal/permission"
 )
 
-const permissionsUsage = "Usage: /permissions default|accept_edits|full_auto, /permissions add allow|ask|deny <tool> [pattern] [global], /permissions delete <rule id>"
+const permissionsUsage = "Usage: /permissions default|accept_edits|full_auto, /permissions add allow|ask|deny <tool> [pattern] [global], /permissions delete <rule id>. " +
+	"Allowing a test runner or build (bash: go test:*, npm test:*, make:*) runs code, and under accept_edits the agent can edit that code first."
 
 func (d *Dispatcher) handlePermissions(ctx context.Context, externalKey string, args string) (Result, error) {
 	if d.permissions == nil {
@@ -100,14 +101,21 @@ func (d *Dispatcher) addPermissionRule(ctx context.Context, session core.Session
 		request.Scope, pattern = permission.ScopeGlobal, pattern[:last]
 	}
 	request.Pattern = strings.Join(pattern, " ")
-	if request.Scope == permission.ScopeGlobal && !d.rules.ManagesGlobalRules() {
-		return Result{Handled: true, Text: "Only the owner can change global rules."}, nil
+	if !d.rules.ManagesRules(request.Scope) {
+		return Result{Handled: true, Text: rulesRefusal(request.Scope)}, nil
 	}
 	rule, err := d.rules.AddPermissionRule(ctx, session.ID, request)
 	if err != nil {
 		return Result{}, err
 	}
 	return Result{Handled: true, Text: "✅ Rule added: " + string(rule.Effect) + " " + rule.String() + " (" + ruleScopeLabel(rule, session.ID) + ")"}, nil
+}
+
+func rulesRefusal(scope permission.Scope) string {
+	if scope == permission.ScopeGlobal {
+		return "Only the owner can change global rules."
+	}
+	return "Guests cannot change permission rules."
 }
 
 // deletePermissionRule asks first, then deletes one of the session's rules.
@@ -129,8 +137,8 @@ func (d *Dispatcher) deletePermissionRule(ctx context.Context, session core.Sess
 	if rule.ID == "" {
 		return Result{Handled: true, Text: "No such rule for this session."}, nil
 	}
-	if rule.Scope == permission.ScopeGlobal && !d.rules.ManagesGlobalRules() {
-		return Result{Handled: true, Text: "Only the owner can change global rules."}, nil
+	if !d.rules.ManagesRules(rule.Scope) {
+		return Result{Handled: true, Text: rulesRefusal(rule.Scope)}, nil
 	}
 	label := string(rule.Effect) + " " + rule.String()
 	if confirm != "confirm" {

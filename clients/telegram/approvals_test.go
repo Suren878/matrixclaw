@@ -93,7 +93,7 @@ func TestApprovalButtonsOfferGlobalRulesOnlyInTheOwnerChat(t *testing.T) {
 		want     string
 	}{
 		{owner, suggested, "ao:a1 as:a1 ag:a1 ad:a1 ar:a1"},
-		{guest, suggested, "ao:a1 as:a1 ad:a1 ar:a1"},
+		{guest, suggested, "ao:a1 ad:a1 ar:a1"},
 		{owner, plain, "ao:a2 ad:a2 ar:a2"},
 	} {
 		api := &approvalBotAPI{}
@@ -134,6 +134,28 @@ func TestAlwaysGlobalNeedsTheOwnerChat(t *testing.T) {
 		if allowed == 42 && (len(resolved) != 1 || resolved[0] != (core.ApprovalResolveRequest{Approved: true, Always: permission.ScopeGlobal})) {
 			t.Fatalf("owner chat: resolved = %+v", resolved)
 		}
+	}
+}
+
+func TestGuestsKeepNoRules(t *testing.T) {
+	var resolved int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resolved++
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(core.ApprovalResponse{Approval: core.Approval{ID: "a1", State: core.ApprovalStateApproved}})
+	}))
+	defer server.Close()
+	api := &approvalBotAPI{}
+	worker := &Worker{api: api, config: Config{AllowedUserID: 42, BaseURL: server.URL, ClientName: "telegram-test", DaemonHTTPClient: server.Client()}, prompts: map[string]controlplane.PromptData{}}
+
+	for _, data := range []string{cbApprovalSession + "a1", cbApprovalGlobal + "a1"} {
+		message := &Message{MessageID: 7, Chat: Chat{ID: 42, Type: "private"}, GuestQueryID: "q"}
+		if err := worker.handleCallbackQuery(context.Background(), &CallbackQuery{ID: "cq", From: &User{ID: 42}, Message: message, Data: data}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if resolved != 0 {
+		t.Fatalf("a guest kept %d rules", resolved)
 	}
 }
 

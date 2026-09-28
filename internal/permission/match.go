@@ -4,10 +4,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+
+	"golang.org/x/net/idna"
 )
 
 // matchSubject matches a pattern against a path, domain or name subject; domains
-// compare without case.
+// compare normalised.
 func matchSubject(pattern string, subject Subject) bool {
 	if subject.Value == "" {
 		return false
@@ -19,7 +22,7 @@ func matchSubject(pattern string, subject Subject) bool {
 		}
 		return globMatch(pattern, subject.Value)
 	case KindDomain:
-		return globMatch(strings.ToLower(pattern), strings.ToLower(subject.Value))
+		return globMatch(NormalizeDomain(pattern), NormalizeDomain(subject.Value))
 	default:
 		return globMatch(pattern, subject.Value)
 	}
@@ -64,9 +67,36 @@ func matchCommand(pattern string, words []string, byName bool) bool {
 	return true
 }
 
+// NormalizeDomain is a host name or domain pattern as rules compare it: lower
+// case, without a trailing dot, and with international labels in punycode.
+func NormalizeDomain(domain string) string {
+	labels := strings.Split(strings.TrimSuffix(strings.ToLower(strings.TrimSpace(domain)), "."), ".")
+	for i, label := range labels {
+		if ascii, err := idna.Lookup.ToASCII(label); err == nil && !strings.Contains(label, "*") {
+			labels[i] = ascii
+		}
+	}
+	return strings.Join(labels, ".")
+}
+
+// globs caches compiled patterns; they come from rules, so the set stays small.
+var globs sync.Map
+
 // globMatch matches a glob where "*" and "?" stay within one path element and
 // "**" crosses elements ("**/" also matches no element at all).
 func globMatch(pattern string, value string) bool {
+	if re, ok := globs.Load(pattern); ok {
+		return re.(*regexp.Regexp).MatchString(value)
+	}
+	re, err := compileGlob(pattern)
+	if err != nil {
+		return false
+	}
+	globs.Store(pattern, re)
+	return re.MatchString(value)
+}
+
+func compileGlob(pattern string) (*regexp.Regexp, error) {
 	var expr strings.Builder
 	expr.WriteString("^")
 	runes := []rune(pattern)
@@ -89,6 +119,5 @@ func globMatch(pattern string, value string) bool {
 		}
 	}
 	expr.WriteString("$")
-	re, err := regexp.Compile(expr.String())
-	return err == nil && re.MatchString(value)
+	return regexp.Compile(expr.String())
 }

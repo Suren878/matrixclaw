@@ -2,6 +2,7 @@ package controlplane
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -11,6 +12,7 @@ import (
 type rulesRuntime struct {
 	tokenReportRuntime
 	owner   bool
+	guest   bool
 	rules   []permission.Rule
 	added   []core.PermissionRuleRequest
 	deleted []string
@@ -38,7 +40,9 @@ func (r *rulesRuntime) DeletePermissionRule(_ context.Context, ruleID string) er
 	return nil
 }
 
-func (r *rulesRuntime) ManagesGlobalRules() bool { return r.owner }
+func (r *rulesRuntime) ManagesRules(scope permission.Scope) bool {
+	return !r.guest && (scope == permission.ScopeSession || r.owner)
+}
 
 func testRules() []permission.Rule {
 	return []permission.Rule{
@@ -115,6 +119,31 @@ func TestOnlyTheOwnerChangesGlobalRules(t *testing.T) {
 		if owner && runtime.added[0] != (core.PermissionRuleRequest{Tool: "read", Pattern: "~/.ssh/**", Effect: permission.Deny, Scope: permission.ScopeGlobal}) {
 			t.Fatalf("added = %+v", runtime.added[0])
 		}
+	}
+}
+
+func TestGuestsChangeNoRules(t *testing.T) {
+	runtime := &rulesRuntime{guest: true, rules: testRules()}
+	dispatcher := New(runtime, "")
+
+	deleted, err := dispatcher.Handle(context.Background(), "key", "/permissions delete rule_own confirm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	added, err := dispatcher.Handle(context.Background(), "key", "/permissions add allow bash go test:*")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(runtime.deleted) != 0 || len(runtime.added) != 0 || deleted.Text != "Guests cannot change permission rules." || added.Text != deleted.Text {
+		t.Fatalf("deleted = %v added = %+v (%q, %q)", runtime.deleted, runtime.added, deleted.Text, added.Text)
+	}
+}
+
+func TestPermissionsUsageWarnsThatTestRunnersRunCode(t *testing.T) {
+	result, err := New(&rulesRuntime{}, "").Handle(context.Background(), "key", "/permissions nonsense")
+	if err != nil || !strings.Contains(result.Text, "accept_edits") || !strings.Contains(result.Text, "runs code") {
+		t.Fatalf("usage = %q err = %v", result.Text, err)
 	}
 }
 

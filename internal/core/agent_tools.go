@@ -36,8 +36,8 @@ func (t coreTools) Specs(ctx context.Context) []tools.Spec {
 	return specs
 }
 
-// Authorize rejects invalid calls and those a deny rule blocks; the rest of the
-// permission check runs with the call in Execute.
+// Authorize rejects invalid calls and those a deny rule blocks; Execute acts on
+// the verdict it kept for the call.
 func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) (agent.Decision, error) {
 	// A call ID owned by another session fails the run with a clear error instead of
 	// a primary-key conflict on the first journal write.
@@ -54,12 +54,17 @@ func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) 
 	if call.WorkingDir = normalizeWorkingDir(call.WorkingDir); call.WorkingDir == "" {
 		call.WorkingDir = session.WorkingDir
 	}
+	key := authorizedKey(call)
+	t.c.authorized.Delete(key)
 	check, err := t.c.checkPermission(ctx, call.SessionID, spec, call)
 	if err != nil {
 		return agent.Decision{}, err
 	}
 	if check.verdict.Effect == permission.Deny {
 		return agent.Decision{Reason: blockedResult(check.verdict.Rule).Content}, nil
+	}
+	if call.ToolCallID != "" {
+		t.c.authorized.Store(key, check)
 	}
 	return agent.Decision{Allowed: true, Barrier: spec.Mutates()}, nil
 }
@@ -75,7 +80,12 @@ func (t coreTools) Execute(ctx context.Context, name string, call tools.Call) (t
 	}
 	prepared := preparedToolCall{SessionID: call.SessionID, RunID: call.RunID, ToolName: name, Spec: spec, ToolCallID: call.ToolCallID, WorkingDir: workingDir}
 	input := ExecuteToolInput{Client: call.Client, ExternalKey: call.ExternalKey, Approved: call.Approved, Args: call.Args}
-	result, execErr := t.c.executeToolWithGrant(ctx, prepared, input)
+	var check *callPermission
+	if kept, ok := t.c.authorized.LoadAndDelete(authorizedKey(call)); ok {
+		authorized := kept.(callPermission)
+		check = &authorized
+	}
+	result, execErr := t.c.executeToolWithGrant(ctx, prepared, input, check)
 	if result.Approval != nil && !call.Approved {
 		return result, nil
 	}
@@ -83,6 +93,11 @@ func (t coreTools) Execute(ctx context.Context, name string, call tools.Call) (t
 		result = t.c.toolFailure(call.SessionID, execErr)
 	}
 	return result, nil
+}
+
+// authorizedKey names a call's verdict between Authorize and Execute.
+func authorizedKey(call tools.Call) string {
+	return call.SessionID + "\x00" + call.ToolCallID
 }
 
 func (t coreTools) Finish(ctx context.Context, name string, call tools.Call, result tools.Result, message transcript.Message) error {

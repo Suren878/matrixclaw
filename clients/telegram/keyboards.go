@@ -10,12 +10,12 @@ import (
 
 // approvalKeyboard answers one approval; "Always" keeps the suggested rule, and
 // only the owner's chat may keep it for every session.
-func approvalKeyboard(approval core.Approval, owner bool) *InlineKeyboardMarkup {
+func approvalKeyboard(approval core.Approval, session bool, global bool) *InlineKeyboardMarkup {
 	approvalID := approval.ID
 	rows := [][]InlineKeyboardButton{{{Text: "✅ Allow", CallbackData: cbApprovalOnce + approvalID}}}
-	if approval.Suggestion != nil {
+	if approval.Suggestion != nil && session {
 		always := []InlineKeyboardButton{{Text: "♾ Always: session", CallbackData: cbApprovalSession + approvalID}}
-		if owner {
+		if global {
 			always = append(always, InlineKeyboardButton{Text: "🌐 Always: global", CallbackData: cbApprovalGlobal + approvalID})
 		}
 		rows = append(rows, always)

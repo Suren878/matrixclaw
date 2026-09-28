@@ -331,6 +331,7 @@ func (c *Core) ensureRunRecoveryApproval(ctx context.Context, run Run, interrupt
 		Action:      "retry_after_daemon_restart",
 		Description: fmt.Sprintf("The daemon restarted while %s may have been executing. Retry this mutating tool? MatrixClaw will not replay it without confirmation.", firstNonEmpty(interrupted.Call.Name, "a tool")),
 		Params:      params,
+		Suggestion:  c.suggestRule(ctx, run.SessionID, interrupted.Call.Name, json.RawMessage(interrupted.Call.Input)),
 	}
 	prepared := preparedToolCall{
 		SessionID:  run.SessionID,

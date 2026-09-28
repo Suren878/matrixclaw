@@ -81,7 +81,8 @@ type PermissionRuleRuntime interface {
 	SessionPermissionRules(ctx context.Context, sessionID string) ([]permission.Rule, error)
 	AddPermissionRule(ctx context.Context, sessionID string, request core.PermissionRuleRequest) (permission.Rule, error)
 	DeletePermissionRule(ctx context.Context, ruleID string) error
-	ManagesGlobalRules() bool
+	// ManagesRules reports whether this client may add and delete rules of scope.
+	ManagesRules(scope permission.Scope) bool
 }
 
 type ApprovalRuntime interface {

@@ -49,6 +49,29 @@ func commandOf(call tools.Call) string {
 	return params.Command
 }
 
+// webTool fetches from one host and is redirected to evil.example.
+type webTool struct{}
+
+func (webTool) Spec() tools.Spec {
+	spec := recoveryToolSpec("web_fetch", tools.EffectReadOnly)
+	spec.Category = tools.CategoryWeb
+	return spec
+}
+
+func (webTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
+	if call.Recheck == nil {
+		return tools.Result{Content: "no recheck"}, nil
+	}
+	if err := call.Recheck(ctx, permission.Subject{Kind: permission.KindDomain, Value: "Evil.Example."}); err != nil {
+		return tools.Result{Content: err.Error(), IsError: true}, nil
+	}
+	return tools.Result{Content: "fetched"}, nil
+}
+
+func (webTool) PermissionSubject(tools.Call) permission.Subject {
+	return permission.Subject{Kind: permission.KindDomain, Value: "docs.example"}
+}
+
 // permissionCore has the real file tools and a fake bash over a temp working directory.
 func permissionCore(t *testing.T) (*core.Core, *store.SQLiteStore, *commandTool, string) {
 	t.Helper()
@@ -67,7 +90,7 @@ func permissionCore(t *testing.T) (*core.Core, *store.SQLiteStore, *commandTool,
 		}
 	}
 	bash := &commandTool{}
-	registry := tools.NewCoreReadOnlyRegistry(tools.NewWriteExecutor(), bash)
+	registry := tools.NewCoreReadOnlyRegistry(tools.NewWriteExecutor(), bash, webTool{})
 	app.WithTools(registry)
 	return app, db, bash, dir
 }
@@ -292,6 +315,9 @@ func TestAddedRulesNameAbsolutePathsAndKnownTools(t *testing.T) {
 		{core.PermissionRuleRequest{Tool: "write", Pattern: "~/notes/*.md", Effect: permission.Ask, Scope: permission.ScopeGlobal}, "write: " + home + "/notes/*.md"},
 		{core.PermissionRuleRequest{Tool: "bash", Pattern: "go test:*", Effect: permission.Allow, Scope: permission.ScopeSession}, "bash: go test:*"},
 		{core.PermissionRuleRequest{Tool: "*", Effect: permission.Deny, Scope: permission.ScopeSession}, "*"},
+		{core.PermissionRuleRequest{Tool: "*", Pattern: "~/secrets/**", Effect: permission.Deny, Scope: permission.ScopeSession}, "*: " + home + "/secrets/**"},
+		{core.PermissionRuleRequest{Tool: "*", Pattern: "go test:*", Effect: permission.Ask, Scope: permission.ScopeSession}, "*: go test:*"},
+		{core.PermissionRuleRequest{Tool: "web_fetch", Pattern: "*.Bücher.Example.", Effect: permission.Deny, Scope: permission.ScopeSession}, "web_fetch: *.xn--bcher-kva.example"},
 	} {
 		rule, err := app.AddPermissionRule(context.Background(), session.ID, tc.request)
 		if err != nil || rule.String() != tc.want || (rule.Scope == permission.ScopeSession) != (rule.SessionID == session.ID) {
@@ -308,7 +334,7 @@ func TestAddedRulesNameAbsolutePathsAndKnownTools(t *testing.T) {
 		}
 	}
 	rules, err := app.SessionPermissionRules(context.Background(), session.ID)
-	if err != nil || len(rules) != 4 {
+	if err != nil || len(rules) != 7 {
 		t.Fatalf("rules = %+v err = %v", rules, err)
 	}
 }
@@ -337,5 +363,28 @@ func TestAddedRuleForAnMCPToolNamesThatTool(t *testing.T) {
 	rule, err := app.AddPermissionRule(context.Background(), session.ID, core.PermissionRuleRequest{Tool: "mcp_github_create_issue", Effect: permission.Allow, Scope: permission.ScopeSession})
 	if err != nil || rule.String() != "mcp: github__create_issue" {
 		t.Fatalf("rule = %s err = %v, want mcp: github__create_issue", rule.String(), err)
+	}
+}
+
+func TestRedirectsMeetTheRulesOfTheCall(t *testing.T) {
+	app, db, _, dir := permissionCore(t)
+	session := permissionSession(t, db, "session_redirect", dir, core.PermissionModeFullAuto, "")
+	if got := resultText(executeTool(t, app, session.ID, "web_fetch", `{}`, false)); got != "fetched" {
+		t.Fatalf("unruled redirect = %q", got)
+	}
+	saveRule(t, db, "rule_evil", permission.Rule{Tool: "web_fetch", Pattern: "evil.example", Effect: permission.Deny, SessionID: session.ID})
+	if got := resultText(executeTool(t, app, session.ID, "web_fetch", `{}`, false)); !strings.Contains(got, "web_fetch: evil.example") {
+		t.Fatalf("denied redirect = %q", got)
+	}
+}
+
+func TestAskRuleAsksBeforeAToolThatAsksOnItsOwn(t *testing.T) {
+	app, db, bash, dir := permissionCore(t)
+	session := permissionSession(t, db, "session_ask_bash", dir, core.PermissionModeFullAuto, "")
+	saveRule(t, db, "rule_ask", permission.Rule{Tool: "bash", Pattern: "git push:*", Effect: permission.Ask, SessionID: session.ID})
+
+	pending := executeTool(t, app, session.ID, "bash", `{"command":"git push"}`, false)
+	if pending.Approval == nil || pending.Approval.Action != "ask_rule" || len(bash.ran) != 0 {
+		t.Fatalf("result = %+v ran = %v", pending, bash.ran)
 	}
 }

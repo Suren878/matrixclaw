@@ -8,7 +8,7 @@ func (c *Core) ExecuteTool(ctx context.Context, input ExecuteToolInput) (Execute
 		return ExecuteToolResult{}, err
 	}
 
-	toolResult, execErr := c.executeToolWithGrant(ctx, prepared, input)
+	toolResult, execErr := c.executeToolWithGrant(ctx, prepared, input, nil)
 	toolResult, approval, pending, execErr := c.createPendingApproval(ctx, prepared, input, toolResult, execErr)
 	if pending {
 		return ExecuteToolResult{

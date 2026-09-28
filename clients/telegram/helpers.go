@@ -7,6 +7,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
+	"github.com/Suren878/matrixclaw/internal/permission"
 )
 
 const (
@@ -69,6 +70,12 @@ func (w *Worker) allowInlineUser(user *User) bool {
 // Telegram chat that may change global permission rules.
 func (w *Worker) ownerChat(target chatTarget) bool {
 	return w.config.AllowedUserID != 0 && target.isChat() && target.chatID == w.config.AllowedUserID
+}
+
+// keepsRules reports whether target may keep permission rules of scope: session
+// rules from any chat with the bot, global ones from the owner chat only.
+func (w *Worker) keepsRules(target chatTarget, scope permission.Scope) bool {
+	return target.isChat() && (scope == permission.ScopeSession || w.ownerChat(target))
 }
 
 func targetFromMessage(message *Message) chatTarget {

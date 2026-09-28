@@ -24,8 +24,10 @@ type ControlplaneRuntime struct {
 	ExternalKey string
 	WorkingDir  string
 	Daemon      DaemonClientFunc
-	// Owner lets the commands create and delete global permission rules.
+	// Owner lets the commands create and delete global permission rules; Guest
+	// keeps them from changing any rule.
 	Owner bool
+	Guest bool
 }
 
 func (r ControlplaneRuntime) ClientName() string {
@@ -409,9 +411,9 @@ func (r ControlplaneRuntime) DeletePermissionRule(ctx context.Context, ruleID st
 	return client.DeletePermissionRule(ctx, ruleID)
 }
 
-// ManagesGlobalRules reports whether this client may change global rules.
-func (r ControlplaneRuntime) ManagesGlobalRules() bool {
-	return r.Owner
+// ManagesRules reports whether this client may add and delete rules of scope.
+func (r ControlplaneRuntime) ManagesRules(scope permission.Scope) bool {
+	return !r.Guest && (scope == permission.ScopeSession || r.Owner)
 }
 
 func (r ControlplaneRuntime) SessionContext(ctx context.Context, sessionID string) (core.ContextReport, error) {
