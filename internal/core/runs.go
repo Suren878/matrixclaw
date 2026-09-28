@@ -30,6 +30,7 @@ func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptR
 	var result AcceptRunResult
 	var startRunID string
 	var interruptRunID string
+	var wakeRunID string
 	gate := c.sessionGate(session.ID)
 	gate.Lock()
 	active, err := c.store.GetActiveRunBySession(ctx, session.ID)
@@ -45,8 +46,11 @@ func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptR
 			Status:    acceptRunStatusForInputMode(pending.Mode),
 			Input:     &pending,
 		}
-		if pending.Mode == BusyInputModeInterrupt {
+		switch {
+		case pending.Mode == BusyInputModeInterrupt:
 			interruptRunID = active.ID
+		case pending.Mode == BusyInputModeSteer && active.Status == RunStatusWaitingEvents:
+			wakeRunID = active.ID
 		}
 	case errors.Is(err, ErrNotFound):
 		result, err = c.createAcceptedRun(ctx, session, text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress, "")
@@ -61,6 +65,11 @@ func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptR
 	}
 	gate.Unlock()
 
+	if wakeRunID != "" {
+		if err := c.wakeWaitingRun(ctx, session.ID, wakeRunID); err != nil {
+			return result, err
+		}
+	}
 	if interruptRunID != "" {
 		if _, err := c.CancelRun(ctx, interruptRunID); err != nil {
 			return result, err

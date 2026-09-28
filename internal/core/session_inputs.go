@@ -11,16 +11,16 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
+// normalizeBusyInputMode reads how a message for a busy session is taken; one
+// that names no mode steers the run.
 func normalizeBusyInputMode(mode BusyInputMode) BusyInputMode {
 	switch BusyInputMode(strings.ToLower(strings.TrimSpace(string(mode)))) {
-	case BusyInputModeSteer:
-		return BusyInputModeSteer
+	case BusyInputModeQueue:
+		return BusyInputModeQueue
 	case BusyInputModeInterrupt:
 		return BusyInputModeInterrupt
-	case BusyInputModeQueue, "":
-		return BusyInputModeQueue
 	default:
-		return BusyInputModeQueue
+		return BusyInputModeSteer
 	}
 }
 
@@ -105,6 +105,10 @@ func (c *Core) createAcceptedRun(ctx context.Context, session Session, text stri
 
 func (c *Core) createPendingSessionInput(ctx context.Context, session Session, active Run, input HandleMessageInput, text string, parts []transcript.MessagePart) (SessionInput, error) {
 	mode := normalizeBusyInputMode(input.BusyMode)
+	if mode == BusyInputModeQueue && active.Status == RunStatusWaitingEvents {
+		// A run waiting for events takes any message at once.
+		mode = BusyInputModeSteer
+	}
 	if mode == BusyInputModeSteer && !sessionAcceptsNativeSteer(session) {
 		mode = BusyInputModeQueue
 	}

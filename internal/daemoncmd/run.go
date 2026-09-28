@@ -116,6 +116,9 @@ func Run(ctx context.Context) error {
 	if err := toolRegistry.Register(core.TodoToolExecutors(app)...); err != nil {
 		return err
 	}
+	if err := toolRegistry.Register(core.AwaitToolExecutors(app)...); err != nil {
+		return err
+	}
 	if err := toolRegistry.Register(core.MemoryToolExecutors(app)...); err != nil {
 		return err
 	}
@@ -151,6 +154,7 @@ func Run(ctx context.Context) error {
 		_ = runStarter.Close()
 	}()
 	app.WithRunStarter(runStarter)
+	safego.Go("core.runWakeups", func() { app.RunWakeups(lifetime) })
 	server := api.New(app)
 	server.SetAPIToken(bootstrap.APIToken)
 	server.SetAutomationService(automationService)

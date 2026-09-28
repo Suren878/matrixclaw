@@ -81,8 +81,9 @@ func (c *Core) rescheduleInterruptedRun(runID string) {
 	}
 }
 
-// resumeParkedRun starts a run whose approvals were all decided while it was
-// still parking: ResolveApproval found it active and left the start to this check.
+// resumeParkedRun starts a run that parked while what it waits for arrived:
+// ResolveApproval or an event found it still active and left the start to
+// this check, which runs once the run is no longer active.
 func (c *Core) resumeParkedRun(runID string) {
 	if c.lifetime.Err() != nil {
 		return
@@ -90,7 +91,12 @@ func (c *Core) resumeParkedRun(runID string) {
 	ctx := context.Background()
 	run, err := c.store.GetRun(ctx, runID)
 	if err == nil {
-		err = c.resumeDecidedRun(ctx, run.SessionID, runID)
+		switch run.Status {
+		case RunStatusWaitingApproval:
+			err = c.resumeDecidedRun(ctx, run.SessionID, runID)
+		case RunStatusWaitingEvents:
+			err = c.wakeWaitingRun(ctx, run.SessionID, runID)
+		}
 	}
 	if err != nil && !ignoreMissing(err) {
 		log.Printf("core: resume parked run %q failed: %v", runID, err)

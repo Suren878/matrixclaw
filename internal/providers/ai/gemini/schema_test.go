@@ -90,6 +90,7 @@ func registeredToolDefinitions(t *testing.T) []providers.ToolDefinition {
 		webtools.NewWebResearchExecutorsWithService(web),
 		tools.NewShellExecutors(app),
 		core.TodoToolExecutors(app),
+		core.AwaitToolExecutors(app),
 		core.MemoryToolExecutors(app),
 		core.SubagentToolExecutors(app),
 		tools.NewOSMGeoExecutors(tools.NewOSMService(tools.OSMConfig{})),

@@ -170,6 +170,7 @@ func (c *Core) finishTask(ctx context.Context, taskID string, status TaskStatus,
 		return err
 	}
 	c.publishTaskUpdated(task)
+	c.taskFinished(ctx, task)
 	return nil
 }
 
@@ -354,5 +355,16 @@ func taskInfo(task Task) tools.TaskInfo {
 		Status:      string(task.Status),
 		ExitCode:    task.ExitCode,
 		OutputPath:  task.OutputPath,
+	}
+}
+
+// taskFinished wakes the session's run if it waits for events; a running run
+// reads the event at its next step.
+func (c *Core) taskFinished(ctx context.Context, task Task) {
+	if !task.Background || task.DeliveredAt != nil {
+		return
+	}
+	if err := c.wakeSessionRun(ctx, task.SessionID); err != nil {
+		log.Printf("core: wake session %q for task %q: %v", task.SessionID, task.ID, err)
 	}
 }

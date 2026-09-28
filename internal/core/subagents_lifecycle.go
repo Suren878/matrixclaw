@@ -139,6 +139,9 @@ func (c *Core) syncAsyncSubagentTaskAfterRun(ctx context.Context, task SubagentT
 		return err
 	}
 	c.publishSubagentToolUpdate(task)
+	if finished, err := c.store.GetTask(ctx, task.ID); err == nil {
+		c.taskFinished(ctx, finished)
+	}
 	return c.deliverPendingSubagentCompletionsForParent(ctx, task.ParentSessionID)
 }
 

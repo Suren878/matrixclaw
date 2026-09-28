@@ -21,6 +21,8 @@ func (c *Core) applyOutcome(ctx context.Context, run Run, outcome agent.Outcome)
 		return false, c.completeAssistantTurn(ctx, &run, run.SessionID, outcome.Assistant, outcome.AssistantSaved)
 	case agent.StatusWaitingApproval:
 		return false, c.setRunStatus(ctx, &run, RunStatusWaitingApproval, "")
+	case agent.StatusWaitingEvents:
+		return false, c.parkRun(ctx, run, outcome.Counters.Await)
 	case agent.StatusCanceled:
 		return false, c.finishCanceledAssistant(ctx, outcome.Assistant, outcome.AssistantSaved)
 	case agent.StatusFailed:
@@ -63,6 +65,8 @@ func (c *Core) applyInterruptedOutcome(run Run, outcome agent.Outcome) (bool, er
 		if pending {
 			return false, c.setRunStatus(ctx, &latest, RunStatusWaitingApproval, "")
 		}
+	case agent.StatusWaitingEvents:
+		return false, c.parkRun(ctx, latest, outcome.Counters.Await)
 	}
 	if err := c.preserveRunForRecovery(ctx, latest, outcome.Assistant, outcome.AssistantSaved); err != nil {
 		return false, err

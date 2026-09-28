@@ -39,6 +39,12 @@ func (c *Core) RecoverActiveRuns(ctx context.Context) error {
 		return err
 	}
 	for _, run := range runs {
+		if run.Status == RunStatusWaitingEvents {
+			if err := c.wakeWaitingRun(ctx, run.SessionID, run.ID); err != nil {
+				return fmt.Errorf("wake waiting run %s: %w", run.ID, err)
+			}
+			continue
+		}
 		start, err := c.prepareInactiveRunForRecovery(ctx, run.ID)
 		if err != nil {
 			return fmt.Errorf("recover interrupted run %s: %w", run.ID, err)
@@ -109,6 +115,9 @@ func (c *Core) prepareClaimedRun(ctx context.Context, runID string) (bool, error
 			return false, err
 		}
 		return !pending, nil
+	case RunStatusWaitingEvents:
+		// A woken run parks again at once when nothing it waits for arrived.
+		return true, nil
 	case RunStatusCompleted, RunStatusFailed, RunStatusCanceled:
 		return false, nil
 	default:
