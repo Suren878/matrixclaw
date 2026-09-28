@@ -229,7 +229,7 @@ func (c *Core) deliverPendingSubagentCompletionsForParent(ctx context.Context, p
 	}
 	pending := make([]SubagentTask, 0, len(tasks))
 	for _, task := range tasks {
-		if task.CompletionQueuedAt != nil && task.CompletionDeliveredAt == nil {
+		if task.DeliveredAt == nil {
 			pending = append(pending, task)
 		}
 	}

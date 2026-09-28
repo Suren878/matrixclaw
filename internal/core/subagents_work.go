@@ -10,23 +10,22 @@ import (
 )
 
 type subagentWorkResult struct {
-	TaskID                    string `json:"task_id"`
-	AgentName                 string `json:"agent_name,omitempty"`
-	DisplayName               string `json:"display_name,omitempty"`
-	Mode                      string `json:"mode,omitempty"`
-	Isolation                 string `json:"isolation,omitempty"`
-	ParentSessionID           string `json:"parent_session_id,omitempty"`
-	ParentRunID               string `json:"parent_run_id,omitempty"`
-	ParentToolCallID          string `json:"parent_tool_call_id,omitempty"`
-	ChildSessionID            string `json:"child_session_id,omitempty"`
-	ChildRunID                string `json:"child_run_id,omitempty"`
-	Runtime                   string `json:"runtime,omitempty"`
-	Status                    string `json:"status,omitempty"`
-	Error                     string `json:"error,omitempty"`
-	ResultMessageID           string `json:"result_message_id,omitempty"`
-	CompletionQueuedAt        string `json:"completion_queued_at,omitempty"`
-	CompletionDeliveredAt     string `json:"completion_delivered_at,omitempty"`
-	CompletionAutoResumeRunID string `json:"completion_auto_resume_run_id,omitempty"`
+	TaskID           string `json:"task_id"`
+	AgentName        string `json:"agent_name,omitempty"`
+	DisplayName      string `json:"display_name,omitempty"`
+	Mode             string `json:"mode,omitempty"`
+	Isolation        string `json:"isolation,omitempty"`
+	ParentSessionID  string `json:"parent_session_id,omitempty"`
+	ParentRunID      string `json:"parent_run_id,omitempty"`
+	ParentToolCallID string `json:"parent_tool_call_id,omitempty"`
+	ChildSessionID   string `json:"child_session_id,omitempty"`
+	ChildRunID       string `json:"child_run_id,omitempty"`
+	Runtime          string `json:"runtime,omitempty"`
+	Status           string `json:"status,omitempty"`
+	Error            string `json:"error,omitempty"`
+	ResultMessageID  string `json:"result_message_id,omitempty"`
+	DeliveredAt      string `json:"delivered_at,omitempty"`
+	DeliveredRunID   string `json:"delivered_run_id,omitempty"`
 }
 
 func (c *Core) saveSubagentWorkJob(ctx context.Context, task SubagentTask) {
@@ -48,23 +47,22 @@ func (c *Core) saveSubagentWorkJob(ctx context.Context, task SubagentTask) {
 
 func subagentWorkJob(task SubagentTask) work.Job {
 	resultRaw, _ := json.Marshal(subagentWorkResult{
-		TaskID:                    task.ID,
-		AgentName:                 task.AgentName,
-		DisplayName:               task.DisplayName,
-		Mode:                      string(task.Mode),
-		Isolation:                 string(task.Isolation),
-		ParentSessionID:           task.ParentSessionID,
-		ParentRunID:               task.ParentRunID,
-		ParentToolCallID:          task.ParentToolCallID,
-		ChildSessionID:            task.ChildSessionID,
-		ChildRunID:                task.ChildRunID,
-		Runtime:                   task.Runtime,
-		Status:                    string(task.Status),
-		Error:                     task.Error,
-		ResultMessageID:           task.ResultMessageID,
-		CompletionQueuedAt:        optionalTime(task.CompletionQueuedAt),
-		CompletionDeliveredAt:     optionalTime(task.CompletionDeliveredAt),
-		CompletionAutoResumeRunID: task.CompletionAutoResumeRunID,
+		TaskID:           task.ID,
+		AgentName:        task.AgentName,
+		DisplayName:      task.DisplayName,
+		Mode:             string(task.Mode),
+		Isolation:        string(task.Isolation),
+		ParentSessionID:  task.ParentSessionID,
+		ParentRunID:      task.ParentRunID,
+		ParentToolCallID: task.ParentToolCallID,
+		ChildSessionID:   task.ChildSessionID,
+		ChildRunID:       task.ChildRunID,
+		Runtime:          task.Runtime,
+		Status:           string(task.Status),
+		Error:            task.Error,
+		ResultMessageID:  task.ResultMessageID,
+		DeliveredAt:      optionalTime(task.DeliveredAt),
+		DeliveredRunID:   task.DeliveredRunID,
 	})
 	createdAt := task.CreatedAt
 	if createdAt.IsZero() {

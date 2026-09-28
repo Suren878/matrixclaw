@@ -130,6 +130,7 @@ type FileSnapshotStore interface {
 type Store interface {
 	SessionStore
 	SubagentTaskStore
+	TaskStore
 	BindingStore
 	DeliveryStore
 	MessageStore
@@ -170,4 +171,9 @@ type SessionLLMRegistry interface {
 
 type SessionLLMContextWindowRegistry interface {
 	ContextWindowTokens(providerID string, modelID string) (int, bool)
+}
+
+// TaskStore keeps the background tasks of sessions.
+type TaskStore interface {
+	MarkTasksDelivered(ctx context.Context, taskIDs []string, runID string, at time.Time) error
 }

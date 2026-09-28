@@ -977,8 +977,8 @@ func TestAsyncSubagentCompletionStartsParentFollowUpRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if task.Status != core.TaskStatusCompleted || task.CompletionDeliveredAt == nil {
-		t.Fatalf("task = %s delivered=%v", task.Status, task.CompletionDeliveredAt)
+	if task.Status != core.TaskStatusCompleted || task.DeliveredAt == nil || task.DeliveredRunID == "" {
+		t.Fatalf("task = %s delivered=%v by %q", task.Status, task.DeliveredAt, task.DeliveredRunID)
 	}
 }
 

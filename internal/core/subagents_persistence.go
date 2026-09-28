@@ -55,19 +55,23 @@ func (c *Core) touchSubagentTaskRecord(ctx context.Context, task SubagentTask, a
 	})
 }
 
+// finishSubagentTaskRecord ends the task; without queueCompletion its parent
+// is not told it finished, as it already knows.
 func (c *Core) finishSubagentTaskRecord(ctx context.Context, task SubagentTask, status TaskStatus, summary string, errText string, queueCompletion bool) (SubagentTask, error) {
+	now := c.now().UTC()
+	if !queueCompletion {
+		if err := c.store.MarkTasksDelivered(ctx, []string{task.ID}, "", now); err != nil {
+			return SubagentTask{}, err
+		}
+		task.DeliveredAt = &now
+	}
 	return c.updateSubagentTaskRecordWith(ctx, task, func(task *SubagentTask) {
-		now := c.now().UTC()
 		task.Status = status
 		task.Summary = summary
 		task.Error = errText
 		task.UpdatedAt = now
 		finishedAt := now
 		task.FinishedAt = &finishedAt
-		if queueCompletion && task.CompletionQueuedAt == nil {
-			queuedAt := now
-			task.CompletionQueuedAt = &queuedAt
-		}
 	})
 }
 
@@ -75,12 +79,16 @@ func (c *Core) markSubagentCompletionDelivered(ctx context.Context, task Subagen
 	if at.IsZero() {
 		at = c.now().UTC()
 	}
-	return c.updateSubagentTaskRecordWith(ctx, task, func(task *SubagentTask) {
-		deliveredAt := at.UTC()
-		task.CompletionDeliveredAt = &deliveredAt
-		task.CompletionAutoResumeRunID = runID
-		task.UpdatedAt = deliveredAt
-	})
+	at = at.UTC()
+	if err := c.store.MarkTasksDelivered(ctx, []string{task.ID}, runID, at); err != nil {
+		return SubagentTask{}, err
+	}
+	task.DeliveredAt = &at
+	task.DeliveredRunID = runID
+	task.UpdatedAt = at
+	c.saveSubagentWorkJob(ctx, task)
+	c.publishSubagentTaskUpdated(task)
+	return task, nil
 }
 
 func (c *Core) publishSubagentTaskUpdated(task SubagentTask) {

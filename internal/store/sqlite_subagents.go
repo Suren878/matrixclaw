@@ -6,24 +6,26 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
+// Subagent tasks are the rows of tasks of kind subagent.
+
 func (s *SQLiteStore) CreateSubagentTask(ctx context.Context, task core.SubagentTask) error {
 	task = normalizeSubagentTaskForStore(task)
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO subagent_tasks(
-    id, agent_name, display_name, mode, isolation, parent_session_id, parent_run_id, parent_tool_call_id,
-    child_session_id, child_run_id, runtime, goal, status, summary, error, result_message_id,
-    completion_queued_at, completion_delivered_at, completion_auto_resume_run_id,
-    created_at, updated_at, finished_at
+INSERT INTO tasks(
+    id, kind, agent_name, description, background, isolation, session_id, run_id, parent_tool_call_id,
+    child_session_id, child_run_id, runtime, command_or_goal, status, summary, error, result_message_id,
+    started_at, updated_at, finished_at
 )
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+VALUES(?, 'subagent', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		task.ID,
 		task.AgentName,
 		task.DisplayName,
-		string(task.Mode),
+		task.Mode == core.SubagentTaskModeAsync,
 		string(task.Isolation),
 		task.ParentSessionID,
 		task.ParentRunID,
@@ -36,9 +38,6 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		task.Summary,
 		task.Error,
 		task.ResultMessageID,
-		nullableTime(task.CompletionQueuedAt),
-		nullableTime(task.CompletionDeliveredAt),
-		task.CompletionAutoResumeRunID,
 		formatTime(task.CreatedAt),
 		formatTime(task.UpdatedAt),
 		nullableTime(task.FinishedAt),
@@ -49,18 +48,19 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	return nil
 }
 
+// UpdateSubagentTask saves the task; whether and when it was delivered is kept
+// by MarkTasksDelivered alone.
 func (s *SQLiteStore) UpdateSubagentTask(ctx context.Context, task core.SubagentTask) error {
 	task = normalizeSubagentTaskForStore(task)
 	result, err := s.db.ExecContext(ctx, `
-UPDATE subagent_tasks
-SET agent_name = ?, display_name = ?, mode = ?, isolation = ?, parent_session_id = ?, parent_run_id = ?, parent_tool_call_id = ?,
-    child_session_id = ?, child_run_id = ?, runtime = ?, goal = ?, status = ?, summary = ?, error = ?,
-    result_message_id = ?, completion_queued_at = ?, completion_delivered_at = ?, completion_auto_resume_run_id = ?,
-    updated_at = ?, finished_at = ?
-WHERE id = ?`,
+UPDATE tasks
+SET agent_name = ?, description = ?, background = ?, isolation = ?, session_id = ?, run_id = ?, parent_tool_call_id = ?,
+    child_session_id = ?, child_run_id = ?, runtime = ?, command_or_goal = ?, status = ?, summary = ?, error = ?,
+    result_message_id = ?, updated_at = ?, finished_at = ?
+WHERE id = ? AND kind = 'subagent'`,
 		task.AgentName,
 		task.DisplayName,
-		string(task.Mode),
+		task.Mode == core.SubagentTaskModeAsync,
 		string(task.Isolation),
 		task.ParentSessionID,
 		task.ParentRunID,
@@ -73,9 +73,6 @@ WHERE id = ?`,
 		task.Summary,
 		task.Error,
 		task.ResultMessageID,
-		nullableTime(task.CompletionQueuedAt),
-		nullableTime(task.CompletionDeliveredAt),
-		task.CompletionAutoResumeRunID,
 		formatTime(task.UpdatedAt),
 		nullableTime(task.FinishedAt),
 		task.ID,
@@ -94,62 +91,41 @@ WHERE id = ?`,
 func (s *SQLiteStore) GetSubagentTask(ctx context.Context, taskID string) (core.SubagentTask, error) {
 	row := s.db.QueryRowContext(ctx, `
 SELECT `+subagentTaskColumns+`
-FROM subagent_tasks
-WHERE id = ?`, taskID)
-	task, err := scanSubagentTask(row)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return core.SubagentTask{}, core.ErrNotFound
-		}
-		return core.SubagentTask{}, err
-	}
-	return task, nil
+FROM tasks
+WHERE id = ? AND kind = 'subagent'`, taskID)
+	return scanOneSubagentTask(row)
 }
 
 func (s *SQLiteStore) GetSubagentTaskByParentToolCall(ctx context.Context, parentSessionID string, parentRunID string, parentToolCallID string) (core.SubagentTask, error) {
 	row := s.db.QueryRowContext(ctx, `
 SELECT `+subagentTaskColumns+`
-FROM subagent_tasks
-WHERE parent_session_id = ? AND parent_run_id = ? AND parent_tool_call_id = ?
-ORDER BY created_at ASC
+FROM tasks
+WHERE kind = 'subagent' AND session_id = ? AND run_id = ? AND parent_tool_call_id = ?
+ORDER BY started_at ASC
 LIMIT 1`, parentSessionID, parentRunID, parentToolCallID)
-	task, err := scanSubagentTask(row)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return core.SubagentTask{}, core.ErrNotFound
-		}
-		return core.SubagentTask{}, err
-	}
-	return task, nil
+	return scanOneSubagentTask(row)
 }
 
 func (s *SQLiteStore) GetSubagentTaskByChildRun(ctx context.Context, childRunID string) (core.SubagentTask, error) {
 	row := s.db.QueryRowContext(ctx, `
 SELECT `+subagentTaskColumns+`
-FROM subagent_tasks
-WHERE child_run_id = ?
-ORDER BY created_at ASC
+FROM tasks
+WHERE kind = 'subagent' AND child_run_id = ?
+ORDER BY started_at ASC
 LIMIT 1`, childRunID)
-	task, err := scanSubagentTask(row)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return core.SubagentTask{}, core.ErrNotFound
-		}
-		return core.SubagentTask{}, err
-	}
-	return task, nil
+	return scanOneSubagentTask(row)
 }
 
 func (s *SQLiteStore) ListSubagentTasks(ctx context.Context, filter core.SubagentTaskFilter) ([]core.SubagentTask, error) {
-	var where []string
+	where := []string{"kind = 'subagent'"}
 	var args []any
 	if strings.TrimSpace(filter.ParentSessionID) != "" {
-		where = append(where, "parent_session_id = ?")
+		where = append(where, "session_id = ?")
 		args = append(args, strings.TrimSpace(filter.ParentSessionID))
 	}
 	if filter.Mode != "" {
-		where = append(where, "mode = ?")
-		args = append(args, string(filter.Mode))
+		where = append(where, "background = ?")
+		args = append(args, filter.Mode == core.SubagentTaskModeAsync)
 	}
 	if len(filter.Statuses) > 0 {
 		placeholders := make([]string, 0, len(filter.Statuses))
@@ -159,11 +135,7 @@ func (s *SQLiteStore) ListSubagentTasks(ctx context.Context, filter core.Subagen
 		}
 		where = append(where, "status IN ("+strings.Join(placeholders, ", ")+")")
 	}
-	query := "SELECT " + subagentTaskColumns + " FROM subagent_tasks"
-	if len(where) > 0 {
-		query += " WHERE " + strings.Join(where, " AND ")
-	}
-	query += " ORDER BY created_at DESC, id DESC"
+	query := "SELECT " + subagentTaskColumns + " FROM tasks WHERE " + strings.Join(where, " AND ") + " ORDER BY started_at DESC, id DESC"
 	if filter.Limit > 0 {
 		query += " LIMIT ?"
 		args = append(args, filter.Limit)
@@ -183,12 +155,13 @@ func (s *SQLiteStore) ListActiveSubagentTasksByParent(ctx context.Context, paren
 	})
 }
 
+// ListPendingSubagentCompletionTasks lists finished async subagents whose parent
+// was not told yet, oldest first.
 func (s *SQLiteStore) ListPendingSubagentCompletionTasks(ctx context.Context, limit int) ([]core.SubagentTask, error) {
-	query := "SELECT " + subagentTaskColumns + ` FROM subagent_tasks
-WHERE mode = ? AND completion_queued_at IS NOT NULL AND completion_delivered_at IS NULL
-ORDER BY completion_queued_at ASC, id ASC`
+	query := "SELECT " + subagentTaskColumns + ` FROM tasks
+WHERE kind = 'subagent' AND background = 1 AND finished_at IS NOT NULL AND delivered_at IS NULL
+ORDER BY finished_at ASC, id ASC`
 	var args []any
-	args = append(args, string(core.SubagentTaskModeAsync))
 	if limit > 0 {
 		query += " LIMIT ?"
 		args = append(args, limit)
@@ -220,25 +193,32 @@ type subagentTaskScanner interface {
 	Scan(dest ...any) error
 }
 
-const subagentTaskColumns = `id, agent_name, display_name, mode, isolation, parent_session_id, parent_run_id, parent_tool_call_id,
-child_session_id, child_run_id, runtime, goal, status, summary, error, result_message_id,
-completion_queued_at, completion_delivered_at, completion_auto_resume_run_id, created_at, updated_at, finished_at`
+const subagentTaskColumns = `id, agent_name, description, background, isolation, session_id, run_id, parent_tool_call_id,
+child_session_id, child_run_id, runtime, command_or_goal, status, summary, error, result_message_id,
+delivered_at, delivered_run_id, started_at, updated_at, finished_at`
+
+func scanOneSubagentTask(row *sql.Row) (core.SubagentTask, error) {
+	task, err := scanSubagentTask(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return core.SubagentTask{}, core.ErrNotFound
+	}
+	return task, err
+}
 
 func scanSubagentTask(scanner subagentTaskScanner) (core.SubagentTask, error) {
 	var task core.SubagentTask
 	var status string
-	var mode string
+	var background bool
 	var isolation string
 	var createdAt string
 	var updatedAt string
 	var finishedAt sql.NullString
-	var completionQueuedAt sql.NullString
-	var completionDeliveredAt sql.NullString
+	var deliveredAt sql.NullString
 	if err := scanner.Scan(
 		&task.ID,
 		&task.AgentName,
 		&task.DisplayName,
-		&mode,
+		&background,
 		&isolation,
 		&task.ParentSessionID,
 		&task.ParentRunID,
@@ -251,18 +231,20 @@ func scanSubagentTask(scanner subagentTaskScanner) (core.SubagentTask, error) {
 		&task.Summary,
 		&task.Error,
 		&task.ResultMessageID,
-		&completionQueuedAt,
-		&completionDeliveredAt,
-		&task.CompletionAutoResumeRunID,
+		&deliveredAt,
+		&task.DeliveredRunID,
 		&createdAt,
 		&updatedAt,
 		&finishedAt,
 	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return core.SubagentTask{}, err
+		}
 		return core.SubagentTask{}, fmt.Errorf("store: scan subagent task: %w", err)
 	}
-	task.Mode = core.SubagentTaskMode(mode)
-	if task.Mode == "" {
-		task.Mode = core.SubagentTaskModeBlocking
+	task.Mode = core.SubagentTaskModeBlocking
+	if background {
+		task.Mode = core.SubagentTaskModeAsync
 	}
 	task.Isolation = core.SubagentIsolation(isolation)
 	if task.Isolation == "" {
@@ -271,19 +253,17 @@ func scanSubagentTask(scanner subagentTaskScanner) (core.SubagentTask, error) {
 	task.Status = core.TaskStatus(status)
 	task.CreatedAt = mustParseTime(createdAt)
 	task.UpdatedAt = mustParseTime(updatedAt)
-	if completionQueuedAt.Valid && completionQueuedAt.String != "" {
-		parsed := mustParseTime(completionQueuedAt.String)
-		task.CompletionQueuedAt = &parsed
-	}
-	if completionDeliveredAt.Valid && completionDeliveredAt.String != "" {
-		parsed := mustParseTime(completionDeliveredAt.String)
-		task.CompletionDeliveredAt = &parsed
-	}
-	if finishedAt.Valid && finishedAt.String != "" {
-		parsed := mustParseTime(finishedAt.String)
-		task.FinishedAt = &parsed
-	}
+	task.DeliveredAt = parseNullableTime(deliveredAt)
+	task.FinishedAt = parseNullableTime(finishedAt)
 	return task, nil
+}
+
+func parseNullableTime(value sql.NullString) *time.Time {
+	if !value.Valid || value.String == "" {
+		return nil
+	}
+	parsed := mustParseTime(value.String)
+	return &parsed
 }
 
 func normalizeSubagentTaskForStore(task core.SubagentTask) core.SubagentTask {

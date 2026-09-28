@@ -154,8 +154,8 @@ func TestCancelParentCancelsItsAsyncSubagentWithoutFollowUp(t *testing.T) {
 	}
 	assertRecoveryRunStatus(t, db, task.ChildRunID, core.RunStatusCanceled)
 	assertTaskStatus(t, task, core.TaskStatusCanceled)
-	if task.CompletionQueuedAt != nil {
-		t.Fatal("a canceled async subagent queued a completion for its canceled parent")
+	if task.DeliveredAt == nil || task.DeliveredRunID != "" {
+		t.Fatal("a canceled async subagent left a completion for its canceled parent")
 	}
 	if got := starter.count(task.ChildRunID); got != 1 {
 		t.Fatalf("child starts = %d, want 1", got)

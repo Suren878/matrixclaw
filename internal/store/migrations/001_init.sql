@@ -14,30 +14,38 @@ CREATE TABLE IF NOT EXISTS sessions (
     updated_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS subagent_tasks (
+CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
-    agent_name TEXT NOT NULL DEFAULT '',
-    display_name TEXT NOT NULL DEFAULT '',
-    mode TEXT NOT NULL DEFAULT 'blocking',
-    isolation TEXT NOT NULL DEFAULT 'shared',
-    parent_session_id TEXT NOT NULL,
-    parent_run_id TEXT NOT NULL DEFAULT '',
+    session_id TEXT NOT NULL,
+    run_id TEXT NOT NULL DEFAULT '',
     parent_tool_call_id TEXT NOT NULL DEFAULT '',
+    kind TEXT NOT NULL,
+    status TEXT NOT NULL,
+    command_or_goal TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    working_dir TEXT NOT NULL DEFAULT '',
+    background INTEGER NOT NULL DEFAULT 1,
+    readonly INTEGER NOT NULL DEFAULT 0,
+    agent_name TEXT NOT NULL DEFAULT '',
+    runtime TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    isolation TEXT NOT NULL DEFAULT '',
+    pid INTEGER NOT NULL DEFAULT 0,
+    pgid INTEGER NOT NULL DEFAULT 0,
+    output_path TEXT NOT NULL DEFAULT '',
+    exit_code INTEGER,
+    output_cursor INTEGER NOT NULL DEFAULT 0,
     child_session_id TEXT NOT NULL DEFAULT '',
     child_run_id TEXT NOT NULL DEFAULT '',
-    runtime TEXT NOT NULL,
-    goal TEXT NOT NULL,
-    status TEXT NOT NULL,
     summary TEXT NOT NULL DEFAULT '',
     error TEXT NOT NULL DEFAULT '',
     result_message_id TEXT NOT NULL DEFAULT '',
-    completion_queued_at TEXT,
-    completion_delivered_at TEXT,
-    completion_auto_resume_run_id TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL,
+    delivered_at TEXT,
+    delivered_run_id TEXT NOT NULL DEFAULT '',
+    started_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     finished_at TEXT,
-    FOREIGN KEY (parent_session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS client_bindings (
@@ -237,11 +245,14 @@ CREATE TABLE IF NOT EXISTS external_agent_sessions (
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_subagent_tasks_parent
-    ON subagent_tasks(parent_session_id, parent_run_id, parent_tool_call_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_session_status
+    ON tasks(session_id, status);
 
-CREATE INDEX IF NOT EXISTS idx_subagent_tasks_child_run
-    ON subagent_tasks(child_run_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_parent_call
+    ON tasks(session_id, run_id, parent_tool_call_id);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_child_run
+    ON tasks(child_run_id);
 
 CREATE INDEX IF NOT EXISTS idx_runs_session_started_at
     ON runs(session_id, started_at);
