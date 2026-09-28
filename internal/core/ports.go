@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -120,6 +121,13 @@ type ApprovalStore interface {
 	ListApprovals(ctx context.Context, sessionID string, state ApprovalState) ([]Approval, error)
 }
 
+// PermissionRuleStore keeps permission rules; global rules belong to no session.
+type PermissionRuleStore interface {
+	CreatePermissionRule(ctx context.Context, rule permission.Rule) error
+	DeletePermissionRule(ctx context.Context, ruleID string) error
+	ListPermissionRules(ctx context.Context, sessionIDs []string) ([]permission.Rule, error)
+}
+
 type FileSnapshotStore interface {
 	CreateFileSnapshot(ctx context.Context, snapshot FileSnapshot) (FileSnapshot, error)
 	ListFileSnapshots(ctx context.Context, sessionID string) ([]FileSnapshot, error)
@@ -140,6 +148,7 @@ type Store interface {
 	SearchStore
 	MemoryStore
 	ApprovalStore
+	PermissionRuleStore
 	FileSnapshotStore
 }
 

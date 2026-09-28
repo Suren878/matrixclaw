@@ -228,6 +228,9 @@ CREATE TABLE IF NOT EXISTS session_engine_state (
 )`); err != nil {
 		return fmt.Errorf("store: create session engine state table: %w", err)
 	}
+	if err := migratePermissionRules(db); err != nil {
+		return err
+	}
 	return migrateMessageSearch(db)
 }
 
