@@ -75,6 +75,23 @@ type ApprovalResolveRequest struct {
 	Always   permission.Scope `json:"always,omitempty"`
 }
 
+// PermissionRuleRequest adds a rule. Pattern is a path glob, a command prefix
+// such as "go test:*", a domain or an MCP "server__tool" name; empty is the whole tool.
+type PermissionRuleRequest struct {
+	Tool    string            `json:"tool"`
+	Pattern string            `json:"pattern,omitempty"`
+	Effect  permission.Effect `json:"effect"`
+	Scope   permission.Scope  `json:"scope"`
+}
+
+type PermissionRulesResponse struct {
+	Rules []permission.Rule `json:"rules"`
+}
+
+type PermissionRuleResponse struct {
+	Rule permission.Rule `json:"rule"`
+}
+
 type AdminRestartRequest struct {
 	Notification *ClientDeliveryTarget `json:"notification,omitempty"`
 }

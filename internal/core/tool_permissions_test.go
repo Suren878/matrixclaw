@@ -273,3 +273,42 @@ func TestAlwaysAllowNeedsASuggestedRule(t *testing.T) {
 		t.Fatalf("approval state = %s, want still pending", stored.State)
 	}
 }
+
+func TestAddedRulesNameAbsolutePathsAndKnownTools(t *testing.T) {
+	app, db, _, dir := permissionCore(t)
+	session := permissionSession(t, db, "session_rules", dir, core.PermissionModeDefault, "")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if home, err = filepath.EvalSymlinks(home); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		request core.PermissionRuleRequest
+		want    string
+	}{
+		{core.PermissionRuleRequest{Tool: "read", Pattern: "secret/**", Effect: permission.Deny, Scope: permission.ScopeSession}, "read: " + dir + "/secret/**"},
+		{core.PermissionRuleRequest{Tool: "write", Pattern: "~/notes/*.md", Effect: permission.Ask, Scope: permission.ScopeGlobal}, "write: " + home + "/notes/*.md"},
+		{core.PermissionRuleRequest{Tool: "bash", Pattern: "go test:*", Effect: permission.Allow, Scope: permission.ScopeSession}, "bash: go test:*"},
+		{core.PermissionRuleRequest{Tool: "*", Effect: permission.Deny, Scope: permission.ScopeSession}, "*"},
+	} {
+		rule, err := app.AddPermissionRule(context.Background(), session.ID, tc.request)
+		if err != nil || rule.String() != tc.want || (rule.Scope == permission.ScopeSession) != (rule.SessionID == session.ID) {
+			t.Errorf("%+v: rule = %+v (%s) err = %v, want %s", tc.request, rule, rule.String(), err, tc.want)
+		}
+	}
+	for _, request := range []core.PermissionRuleRequest{
+		{Tool: "rm_everything", Effect: permission.Deny, Scope: permission.ScopeSession},
+		{Tool: "bash", Effect: "sometimes", Scope: permission.ScopeSession},
+		{Tool: "bash", Effect: permission.Allow, Scope: "forever"},
+	} {
+		if _, err := app.AddPermissionRule(context.Background(), session.ID, request); !errors.Is(err, core.ErrInvalidInput) {
+			t.Errorf("%+v: error = %v, want ErrInvalidInput", request, err)
+		}
+	}
+	rules, err := app.SessionPermissionRules(context.Background(), session.ID)
+	if err != nil || len(rules) != 4 {
+		t.Fatalf("rules = %+v err = %v", rules, err)
+	}
+}

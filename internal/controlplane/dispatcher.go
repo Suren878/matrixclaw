@@ -9,6 +9,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
+	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/skills"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -74,6 +75,13 @@ type ProviderRuntime interface {
 
 type PermissionRuntime interface {
 	UpdateSessionPermissionMode(ctx context.Context, sessionID string, mode core.PermissionMode) (core.Session, error)
+}
+
+type PermissionRuleRuntime interface {
+	SessionPermissionRules(ctx context.Context, sessionID string) ([]permission.Rule, error)
+	AddPermissionRule(ctx context.Context, sessionID string, request core.PermissionRuleRequest) (permission.Rule, error)
+	DeletePermissionRule(ctx context.Context, ruleID string) error
+	ManagesGlobalRules() bool
 }
 
 type ApprovalRuntime interface {
@@ -202,6 +210,7 @@ type Dispatcher struct {
 	browserModules BrowserModuleRuntime
 	providers      ProviderRuntime
 	permissions    PermissionRuntime
+	rules          PermissionRuleRuntime
 	approvals      ApprovalRuntime
 	messages       SessionMessageRuntime
 	sender         SessionSendRuntime
@@ -238,6 +247,7 @@ func New(runtime any, workingDir string) *Dispatcher {
 		d.browserModules, _ = runtime.(BrowserModuleRuntime)
 		d.providers, _ = runtime.(ProviderRuntime)
 		d.permissions, _ = runtime.(PermissionRuntime)
+		d.rules, _ = runtime.(PermissionRuleRuntime)
 		d.approvals, _ = runtime.(ApprovalRuntime)
 		d.messages, _ = runtime.(SessionMessageRuntime)
 		d.sender, _ = runtime.(SessionSendRuntime)

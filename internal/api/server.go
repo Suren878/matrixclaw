@@ -161,6 +161,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/v1/modules/skills/", s.handleSkillByID)
 	s.mux.HandleFunc("/v1/approvals", s.handleApprovals)
 	s.mux.HandleFunc("/v1/approvals/", s.handleApprovalByID)
+	s.mux.HandleFunc("/v1/permission-rules/", s.handlePermissionRuleByID)
 	s.mux.HandleFunc("/v1/events", s.handleEvents)
 	s.mux.HandleFunc("/v1/snapshot", s.handleSnapshot)
 	s.mux.HandleFunc("/v1/search", s.handleSearch)

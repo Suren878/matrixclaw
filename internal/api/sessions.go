@@ -54,6 +54,7 @@ func (s *Server) handleSessionByID(w http.ResponseWriter, r *http.Request) {
 	}{
 		{suffix: "/llm", handle: s.handleSessionLLMUpdate},
 		{suffix: "/permissions", handle: s.handleSessionPermissionsUpdate},
+		{suffix: "/permission-rules", handle: s.handleSessionPermissionRules},
 		{suffix: "/models", handle: s.handleSessionLLMModels},
 		{suffix: "/context", handle: s.handleSessionContext},
 		{suffix: "/usage", handle: s.handleSessionUsage},

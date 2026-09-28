@@ -11,6 +11,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
+	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/skills"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -23,6 +24,8 @@ type ControlplaneRuntime struct {
 	ExternalKey string
 	WorkingDir  string
 	Daemon      DaemonClientFunc
+	// Owner lets the commands create and delete global permission rules.
+	Owner bool
 }
 
 func (r ControlplaneRuntime) ClientName() string {
@@ -380,6 +383,35 @@ func (r ControlplaneRuntime) ResolveApproval(ctx context.Context, approvalID str
 		return core.Approval{}, err
 	}
 	return client.ResolveApproval(ctx, approvalID, request)
+}
+
+func (r ControlplaneRuntime) SessionPermissionRules(ctx context.Context, sessionID string) ([]permission.Rule, error) {
+	client, err := r.client("")
+	if err != nil {
+		return nil, err
+	}
+	return client.SessionPermissionRules(ctx, sessionID)
+}
+
+func (r ControlplaneRuntime) AddPermissionRule(ctx context.Context, sessionID string, request core.PermissionRuleRequest) (permission.Rule, error) {
+	client, err := r.client("")
+	if err != nil {
+		return permission.Rule{}, err
+	}
+	return client.AddPermissionRule(ctx, sessionID, request)
+}
+
+func (r ControlplaneRuntime) DeletePermissionRule(ctx context.Context, ruleID string) error {
+	client, err := r.client("")
+	if err != nil {
+		return err
+	}
+	return client.DeletePermissionRule(ctx, ruleID)
+}
+
+// ManagesGlobalRules reports whether this client may change global rules.
+func (r ControlplaneRuntime) ManagesGlobalRules() bool {
+	return r.Owner
 }
 
 func (r ControlplaneRuntime) SessionContext(ctx context.Context, sessionID string) (core.ContextReport, error) {

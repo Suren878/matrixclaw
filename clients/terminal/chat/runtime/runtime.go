@@ -69,6 +69,7 @@ func New(config Config) *Runtime {
 		Daemon: func(string) (*daemonclient.Client, error) {
 			return rt.daemon()
 		},
+		Owner: true,
 	}
 	return rt
 }
