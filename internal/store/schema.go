@@ -178,6 +178,9 @@ CREATE TABLE IF NOT EXISTS session_inputs (
 	if err := ensureColumn(db, "subagent_tasks", "completion_auto_resume_run_id", `ALTER TABLE subagent_tasks ADD COLUMN completion_auto_resume_run_id TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
 	}
+	if err := ensureColumn(db, "approvals", "reason", `ALTER TABLE approvals ADD COLUMN reason TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id, hidden)`); err != nil {
 		return fmt.Errorf("store: create sessions parent index: %w", err)
 	}

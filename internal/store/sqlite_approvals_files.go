@@ -12,8 +12,8 @@ import (
 
 func (s *SQLiteStore) CreateApproval(ctx context.Context, approval core.Approval) error {
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO approvals(id, session_id, run_id, tool_call_ref, tool_name, description, action, params_json, path, state, requested_at, decided_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+INSERT INTO approvals(id, session_id, run_id, tool_call_ref, tool_name, description, action, params_json, path, state, reason, requested_at, decided_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		approval.ID,
 		approval.SessionID,
 		approval.RunID,
@@ -24,6 +24,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		string(approval.Params),
 		approval.Path,
 		string(approval.State),
+		approval.Reason,
 		formatTime(approval.RequestedAt),
 		nullableTime(approval.DecidedAt),
 	)
@@ -35,7 +36,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 
 func (s *SQLiteStore) GetApproval(ctx context.Context, approvalID string) (core.Approval, error) {
 	row := s.db.QueryRowContext(ctx, `
-SELECT id, session_id, run_id, tool_call_ref, tool_name, description, action, params_json, path, state, requested_at, decided_at
+SELECT id, session_id, run_id, tool_call_ref, tool_name, description, action, params_json, path, state, reason, requested_at, decided_at
 FROM approvals
 WHERE id = ?`, approvalID)
 
@@ -44,7 +45,7 @@ WHERE id = ?`, approvalID)
 	var paramsJSON string
 	var requestedAt string
 	var decidedAt sql.NullString
-	if err := row.Scan(&approval.ID, &approval.SessionID, &approval.RunID, &approval.ToolCallRef, &approval.ToolName, &approval.Description, &approval.Action, &paramsJSON, &approval.Path, &state, &requestedAt, &decidedAt); err != nil {
+	if err := row.Scan(&approval.ID, &approval.SessionID, &approval.RunID, &approval.ToolCallRef, &approval.ToolName, &approval.Description, &approval.Action, &paramsJSON, &approval.Path, &state, &approval.Reason, &requestedAt, &decidedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return core.Approval{}, core.ErrNotFound
 		}
@@ -63,9 +64,10 @@ WHERE id = ?`, approvalID)
 func (s *SQLiteStore) UpdateApproval(ctx context.Context, approval core.Approval) error {
 	result, err := s.db.ExecContext(ctx, `
 UPDATE approvals
-SET state = ?, decided_at = ?
+SET state = ?, reason = ?, decided_at = ?
 WHERE id = ?`,
 		string(approval.State),
+		approval.Reason,
 		nullableTime(approval.DecidedAt),
 		approval.ID,
 	)
@@ -84,7 +86,7 @@ WHERE id = ?`,
 
 func (s *SQLiteStore) ListApprovals(ctx context.Context, sessionID string, state core.ApprovalState) ([]core.Approval, error) {
 	query := `
-SELECT id, session_id, run_id, tool_call_ref, tool_name, description, action, params_json, path, state, requested_at, decided_at
+SELECT id, session_id, run_id, tool_call_ref, tool_name, description, action, params_json, path, state, reason, requested_at, decided_at
 FROM approvals
 WHERE session_id = ?`
 	args := []any{sessionID}
@@ -107,7 +109,7 @@ WHERE session_id = ?`
 		var paramsJSON string
 		var requestedAt string
 		var decidedAt sql.NullString
-		if err := rows.Scan(&approval.ID, &approval.SessionID, &approval.RunID, &approval.ToolCallRef, &approval.ToolName, &approval.Description, &approval.Action, &paramsJSON, &approval.Path, &rawState, &requestedAt, &decidedAt); err != nil {
+		if err := rows.Scan(&approval.ID, &approval.SessionID, &approval.RunID, &approval.ToolCallRef, &approval.ToolName, &approval.Description, &approval.Action, &paramsJSON, &approval.Path, &rawState, &approval.Reason, &requestedAt, &decidedAt); err != nil {
 			return nil, fmt.Errorf("store: scan approval: %w", err)
 		}
 		approval.State = core.ApprovalState(rawState)

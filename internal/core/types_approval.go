@@ -26,8 +26,10 @@ type Approval struct {
 	Params      json.RawMessage `json:"params,omitempty"`
 	Path        string          `json:"path,omitempty"`
 	State       ApprovalState   `json:"state"`
-	RequestedAt time.Time       `json:"requested_at"`
-	DecidedAt   *time.Time      `json:"decided_at,omitempty"`
+	// Reason is why the user denied the call; the model reads it.
+	Reason      string     `json:"reason,omitempty"`
+	RequestedAt time.Time  `json:"requested_at"`
+	DecidedAt   *time.Time `json:"decided_at,omitempty"`
 }
 
 type PermissionRequest struct {
