@@ -11,10 +11,12 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-// callPermission is how the permission rules see one call and treat it.
+// callPermission is how the permission rules see one call and treat it; root
+// is the working directory suggestions stay inside.
 type callPermission struct {
 	request permission.Request
 	verdict permission.Verdict
+	root    string
 }
 
 // checkPermission evaluates a call against the global rules, the rules of its
@@ -30,9 +32,9 @@ func (c *Core) checkPermission(ctx context.Context, sessionID string, spec tools
 		return callPermission{}, err
 	}
 	request := permission.Request{Tool: permissionTool(spec), Subject: c.tools.Subject(spec.ID, call)}
-	root := firstNonEmpty(normalizeWorkingDir(session.WorkingDir), normalizeWorkingDir(call.WorkingDir))
-	preset := permission.Preset(string(NormalizePermissionMode(string(session.PermissionMode))), realPath(root))
-	return callPermission{request: request, verdict: permission.Evaluate(request, rules, preset)}, nil
+	root := realPath(firstNonEmpty(normalizeWorkingDir(session.WorkingDir), normalizeWorkingDir(call.WorkingDir)))
+	preset := permission.Preset(string(NormalizePermissionMode(string(session.PermissionMode))), root)
+	return callPermission{request: request, verdict: permission.Evaluate(request, rules, preset), root: root}, nil
 }
 
 // permissionRules are the global rules and the rules of the session and its parents.

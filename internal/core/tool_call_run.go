@@ -29,7 +29,7 @@ func (c *Core) executeToolWithGrant(ctx context.Context, prepared preparedToolCa
 		result, execErr = c.tools.Execute(ctx, prepared.ToolName, prepared.call(input, false))
 	}
 	if result.Approval != nil && result.Approval.Suggestion == nil && verdict.Effect != permission.Ask {
-		if suggestion, ok := permission.Suggest(check.request); ok {
+		if suggestion, ok := permission.Suggest(check.request, check.root); ok {
 			result.Approval.Suggestion = &suggestion
 		}
 	}

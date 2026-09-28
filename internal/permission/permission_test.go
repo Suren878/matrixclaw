@@ -136,26 +136,46 @@ func TestPathGlobs(t *testing.T) {
 }
 
 func TestSuggestNamesTheNarrowRule(t *testing.T) {
+	t.Setenv("HOME", "/home/u")
+	dir := func(tool, path string) Request {
+		return Request{Tool: tool, Subject: Subject{Kind: KindDirectory, Value: path}}
+	}
 	for _, tc := range []struct {
 		req  Request
+		root string
 		want string
 		ok   bool
 	}{
-		{command("go test ./internal/..."), "bash: go test:*", true},
-		{command("git status"), "bash: git status:*", true},
-		{command("ls -la"), "bash: ls:*", true},
-		{command("cat notes.txt"), "bash: cat:*", true},
-		{command("go test ./... && rm x"), "", false},
-		{command("echo x > out.txt"), "", false},
-		{file("edit", "/work/internal/a.go"), "edit: /work/internal/**", true},
-		{Request{Tool: "grep", Subject: Subject{Kind: KindDirectory, Value: "/work"}}, "grep: /work/**", true},
-		{Request{Tool: "web_fetch", Subject: Subject{Kind: KindDomain, Value: "go.dev"}}, "web_fetch: go.dev", true},
-		{Request{Tool: "mcp", Subject: Subject{Kind: KindName, Value: "github__create_issue"}}, "mcp: github__create_issue", true},
-		{Request{Tool: "memory"}, "memory", true},
+		{command("go test ./internal/..."), "/work", "bash: go test:*", true},
+		{command("git status"), "/work", "bash: git status:*", true},
+		{command("npm test"), "/work", "bash: npm test:*", true},
+		{command("ls -la"), "/work", "bash: ls -la", true},
+		{command("cat notes.txt"), "/work", "bash: cat notes.txt", true},
+		{command("rm tmp"), "/work", "bash: rm tmp", true},
+		{command("python3 script.py"), "/work", "bash: python3 script.py", true},
+		{command("python3.12 -m pytest"), "/work", "bash: python3.12 -m pytest", true},
+		{command("node"), "/work", "bash: node", true},
+		{command("go run ./cmd/x"), "/work", "bash: go run ./cmd/x", true},
+		{command("perl -e 1"), "/work", "bash: perl -e 1", true},
+		{command("grep 'a b' notes.txt"), "/work", "", false},
+		{command("go test ./... && rm x"), "/work", "", false},
+		{command("echo x > out.txt"), "/work", "", false},
+		{file("edit", "/work/internal/a.go"), "/work", "edit: /work/internal/**", true},
+		{file("edit", "/work/a.go"), "/work", "edit: /work/**", true},
+		{file("read", "/etc/hosts"), "/work", "read: /etc/hosts", true},
+		{file("read", "/home/u/.bashrc"), "/home/u", "read: /home/u/.bashrc", true},
+		{file("read", "/a.txt"), "/", "read: /a.txt", true},
+		{file("read", "/a.txt"), "", "read: /a.txt", true},
+		{dir("grep", "/work"), "/work", "grep: /work/**", true},
+		{dir("grep", "/home/u"), "/work", "grep: /home/u", true},
+		{dir("glob", "/"), "/", "glob: /", true},
+		{Request{Tool: "web_fetch", Subject: Subject{Kind: KindDomain, Value: "go.dev"}}, "/work", "web_fetch: go.dev", true},
+		{Request{Tool: "mcp", Subject: Subject{Kind: KindName, Value: "github__create_issue"}}, "/work", "mcp: github__create_issue", true},
+		{Request{Tool: "memory"}, "/work", "memory", true},
 	} {
-		got, ok := Suggest(tc.req)
+		got, ok := Suggest(tc.req, tc.root)
 		if ok != tc.ok || (ok && got.String() != tc.want) {
-			t.Errorf("Suggest(%+v) = %q, %v; want %q, %v", tc.req, got.String(), ok, tc.want, tc.ok)
+			t.Errorf("Suggest(%+v, %q) = %q, %v; want %q, %v", tc.req, tc.root, got.String(), ok, tc.want, tc.ok)
 		}
 	}
 }
