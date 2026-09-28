@@ -14,7 +14,7 @@ import (
 )
 
 func (m *appModel) syncPermissionDialogCmd() tea.Cmd {
-	if m.read == nil || m.dialog == nil {
+	if m.read == nil || m.dialog == nil || m.denyingApproval != "" {
 		return nil
 	}
 	pending := m.pendingApprovals()
@@ -95,7 +95,7 @@ func (m *appModel) resolveApprovalCmd(permission surfacepermission.PermissionReq
 		return nil
 	}
 	return func() tea.Msg {
-		approval, err := m.rt.resolveApproval(m.ctx, permission.ID, approved)
+		approval, err := m.rt.ResolveApproval(m.ctx, permission.ID, core.ApprovalResolveRequest{Approved: approved})
 		return resolveApprovalMsg{
 			approval:   approval,
 			approved:   approved,

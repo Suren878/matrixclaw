@@ -162,6 +162,8 @@ type appModel struct {
 	providerName        string
 	providerModel       string
 	suppressedApprovals map[string]struct{}
+	// denyingApproval is the approval whose denial reason is being typed.
+	denyingApproval     string
 	autoEditSessions    map[string]struct{}
 	focus               appFocus
 	busy                bool

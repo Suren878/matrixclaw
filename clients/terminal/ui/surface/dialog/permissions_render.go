@@ -225,7 +225,7 @@ func (p *Permissions) renderButtons(contentWidth int) string {
 	for i, option := range options {
 		buttons = append(buttons, components.Button{
 			Label:   option.label,
-			Danger:  option.action == PermissionDeny,
+			Danger:  option.action == PermissionDeny || option.action == PermissionDenyWithReason,
 			Focused: p.selectedOption == i,
 		})
 	}

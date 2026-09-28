@@ -67,10 +67,17 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, msg.Cmd
 	case surfacedialog.ActionClose:
 		m.invalidateControlplaneResults()
-		if top := m.dialog.DialogLast(); top != nil && top.ID() == surfacedialog.CommandsID {
+		top := m.dialog.DialogLast()
+		if top != nil && top.ID() == surfacedialog.CommandsID {
 			m.commandsDialogRoot = false
 		}
 		m.dialog.CloseFrontDialog()
+		if top != nil && top.ID() == surfacedialog.PromptCommandID && m.denyingApproval != "" {
+			// The reason prompt was closed without denying: ask again.
+			delete(m.suppressedApprovals, m.denyingApproval)
+			m.denyingApproval = ""
+			return m, m.syncPermissionDialogCmd()
+		}
 		return m, nil
 	case controlplaneResultMsg:
 		return m, m.handleControlplaneResult(msg)

@@ -42,11 +42,3 @@ func (r *Runtime) cancelRun(ctx context.Context, runID string) (core.Run, error)
 	}
 	return client.CancelRun(ctx, runID)
 }
-
-func (r *Runtime) resolveApproval(ctx context.Context, approvalID string, approved bool) (core.Approval, error) {
-	client, err := r.daemon()
-	if err != nil {
-		return core.Approval{}, err
-	}
-	return client.ResolveApproval(ctx, approvalID, core.ApprovalResolveRequest{Approved: approved})
-}

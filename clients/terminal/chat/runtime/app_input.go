@@ -132,6 +132,9 @@ func (m *appModel) handleDialogInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if sourceID != "" && sourceID != surfacedialog.CommandsID {
 			m.dialog.CloseDialog(sourceID)
 		}
+		if sourceID == surfacedialog.PromptCommandID {
+			m.denyingApproval = ""
+		}
 		return m, m.handleRunControlplaneCommand(command, fromCommands)
 	}
 	next, cmd := m.Update(action)

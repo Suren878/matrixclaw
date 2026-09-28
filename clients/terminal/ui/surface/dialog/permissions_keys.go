@@ -10,6 +10,7 @@ type permissionsKeyMap struct {
 	Allow            key.Binding
 	AllowSession     key.Binding
 	Deny             key.Binding
+	DenyWithReason   key.Binding
 	Close            key.Binding
 	ToggleDiffMode   key.Binding
 	ToggleFullscreen key.Binding
@@ -50,6 +51,10 @@ func defaultPermissionsKeyMap() permissionsKeyMap {
 		Deny: key.NewBinding(
 			key.WithKeys("d", "D"),
 			key.WithHelp("d", "deny"),
+		),
+		DenyWithReason: key.NewBinding(
+			key.WithKeys("r", "R"),
+			key.WithHelp("r", "deny with reason"),
 		),
 		Close: CloseKey,
 		ToggleDiffMode: key.NewBinding(

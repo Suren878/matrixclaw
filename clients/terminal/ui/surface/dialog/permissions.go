@@ -16,9 +16,10 @@ const PermissionsID = "permissions"
 type PermissionAction string
 
 const (
-	PermissionAllow        PermissionAction = "allow"
-	PermissionAllowSession PermissionAction = "allow_session"
-	PermissionDeny         PermissionAction = "deny"
+	PermissionAllow          PermissionAction = "allow"
+	PermissionAllowSession   PermissionAction = "allow_session"
+	PermissionDeny           PermissionAction = "deny"
+	PermissionDenyWithReason PermissionAction = "deny_with_reason"
 )
 
 const (

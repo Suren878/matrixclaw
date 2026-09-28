@@ -30,6 +30,8 @@ func (p *Permissions) HandleMsg(msg tea.Msg) Action {
 			}
 		case key.Matches(msg, p.keyMap.Deny):
 			return p.respond(PermissionDeny)
+		case key.Matches(msg, p.keyMap.DenyWithReason):
+			return p.respond(PermissionDenyWithReason)
 		case key.Matches(msg, p.keyMap.ToggleDiffMode):
 			if p.hasDiffView() {
 				newMode := !p.isSplitMode()
@@ -168,7 +170,10 @@ func (p *Permissions) permissionOptions() []permissionOption {
 	if p.canAllowSession() {
 		options = append(options, permissionOption{label: "Allow Session", action: PermissionAllowSession})
 	}
-	options = append(options, permissionOption{label: "Deny", action: PermissionDeny})
+	options = append(options,
+		permissionOption{label: "Deny", action: PermissionDeny},
+		permissionOption{label: "Deny with reason", action: PermissionDenyWithReason},
+	)
 	return options
 }
 
