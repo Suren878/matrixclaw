@@ -476,6 +476,13 @@ func TestRecoveryAnswersEveryCallOfABatchInFlight(t *testing.T) {
 		t.Fatal(err)
 	}
 	saveRunRecoveryTestMessage(t, sqliteStore, done)
+	saveInterruptedToolCall(t, sqliteStore, run, "tool_asked", inspect.spec.ID)
+	if err := sqliteStore.CreateApproval(context.Background(), core.Approval{
+		ID: "approval_asked", SessionID: run.SessionID, RunID: run.ID, ToolCallRef: "tool_asked", ToolName: inspect.spec.ID,
+		State: core.ApprovalStatePending, RequestedAt: at,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	saveInterruptedToolCall(t, sqliteStore, run, "tool_read", inspect.spec.ID)
 	saveInterruptedToolCall(t, sqliteStore, run, "tool_write", mutation.spec.ID)
 	saveInterruptedToolCall(t, sqliteStore, run, "tool_write_too", mutation.spec.ID)
@@ -492,8 +499,8 @@ func TestRecoveryAnswersEveryCallOfABatchInFlight(t *testing.T) {
 		t.Fatalf("after recovery: inspections = %d (want the read in flight replayed), mutations = %d", inspect.callCount(), mutation.callCount())
 	}
 	approvals, err := sqliteStore.ListApprovals(context.Background(), run.SessionID, core.ApprovalStatePending)
-	if err != nil || len(approvals) != 2 {
-		t.Fatalf("pending approvals = %+v err = %v, want one retry per mutation in flight", approvals, err)
+	if err != nil || len(approvals) != 3 {
+		t.Fatalf("pending approvals = %+v err = %v, want the asked call's and one retry per mutation in flight", approvals, err)
 	}
 	for _, approval := range approvals {
 		if _, err := app.ResolveApproval(context.Background(), approval.ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
@@ -505,12 +512,15 @@ func TestRecoveryAnswersEveryCallOfABatchInFlight(t *testing.T) {
 	}
 
 	assertRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusCompleted)
-	if inspect.callCount() != 2 || mutation.callCount() != 2 {
-		t.Fatalf("inspections = %d, mutations = %d, want the deferred read and both writes once", inspect.callCount(), mutation.callCount())
+	if inspect.callCount() != 3 || mutation.callCount() != 2 {
+		t.Fatalf("inspections = %d, mutations = %d, want the asked read, the deferred read and both writes once", inspect.callCount(), mutation.callCount())
 	}
-	want := "tool_done=done before the crash|tool_read=recovered tool result|tool_write=recovered tool result|tool_write_too=recovered tool result|tool_later=recovered tool result"
+	want := "tool_done=done before the crash|tool_asked=recovered tool result|tool_read=recovered tool result|tool_write=recovered tool result|tool_write_too=recovered tool result|tool_later=recovered tool result"
 	if strings.Join(results, "|") != want {
 		t.Fatalf("model read %q", results)
+	}
+	for _, id := range []string{"tool_done", "tool_asked", "tool_read", "tool_write", "tool_write_too", "tool_later"} {
+		assertToolResultCount(t, sqliteStore, run.SessionID, id, 1)
 	}
 }
 

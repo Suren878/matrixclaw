@@ -174,20 +174,9 @@ func (c *Core) prepareRunAfterCrash(ctx context.Context, run *Run) (bool, error)
 	if err != nil {
 		return false, err
 	}
-	for _, approval := range approvalsForRun(approvals, run.ID) {
-		if approval.State == ApprovalStatePending {
-			if err := c.setRunStatus(ctx, run, RunStatusWaitingApproval, ""); err != nil {
-				return false, err
-			}
-			if err := c.saveRunCheckpoint(ctx, run.ID, RunCheckpointPhaseWaitingApproval, approval.ToolCallRef, approval.ToolName); err != nil {
-				return false, err
-			}
-			return false, nil
-		}
-	}
 
 	// Every call of a batch in flight is answered: read-only ones replay, mutating
-	// ones ask again; a child still running keeps the parent waiting for it.
+	// ones ask again, asked ones keep waiting; a running child keeps the parent waiting.
 	waitApproval := false
 	var waitSubagent *interruptedToolCall
 	for _, interrupted := range incompleteToolCallsForRun(messages, run.ID) {
