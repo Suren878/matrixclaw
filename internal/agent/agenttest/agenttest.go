@@ -422,6 +422,9 @@ type Fixture struct {
 	Prompts   *Prompts
 	Todos     *Todos
 	Clock     time.Time
+	// Now, when set, is the engine's clock instead of Clock, for tools that
+	// move time from their own goroutines.
+	Now func() time.Time
 	// Window is the model window of the fixture's task; 0 means unknown.
 	Window int
 	// Slept records the engine's waits, which return at once unless RealSleep is set.
@@ -472,6 +475,10 @@ func (f *Fixture) Engine() *agent.Engine {
 	if f.RealSleep {
 		sleep = nil
 	}
+	now := f.Now
+	if now == nil {
+		now = func() time.Time { return f.Clock }
+	}
 	return agent.New(agent.Config{
 		Journal:    f.Journal,
 		Tools:      f.Tools,
@@ -480,7 +487,7 @@ func (f *Fixture) Engine() *agent.Engine {
 		Sink:       f.Sink,
 		Prompts:    f.Prompts,
 		Todos:      f.Todos,
-		Now:        func() time.Time { return f.Clock },
+		Now:        now,
 		Sleep:      sleep,
 		ModelSlots: f.ModelSlots,
 		Locks:      f.Locks,

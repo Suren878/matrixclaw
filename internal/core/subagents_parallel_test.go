@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -172,5 +173,107 @@ func TestBackgroundChildrenInTheParentsDirectoryRunTogetherAndTakeTurnsPerEdit(t
 	defer mu.Unlock()
 	if overlapped {
 		t.Fatal("two children edited the directory at once")
+	}
+}
+
+// writingChildren runs a parent whose one reply starts two blocking children,
+// alpha and beta, with args; each child starts, makes one edit and reports,
+// telling on each step.
+func writingChildren(t *testing.T, args string, dir string, on func(task string, step string, call tools.Call)) {
+	t.Helper()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	t.Cleanup(cleanup)
+	editTool := funcTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation), fn: func(_ context.Context, call tools.Call) (tools.Result, error) {
+		on(strings.TrimPrefix(call.ToolCallID, "edit-"), "edits", call)
+		return tools.Result{Content: "mutated"}, nil
+	}}
+	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), editTool)...))
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		answered := len(toolResults(request)) > 0
+		switch task := childTask(request); {
+		case task != "" && !answered:
+			on(task, "starts", tools.Call{})
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "edit-" + task, Name: "mutate_state", Arguments: json.RawMessage(`{}`)}}}, nil
+		case task != "":
+			on(task, "reports", tools.Call{})
+			return providers.Response{Text: "changed " + task}, nil
+		case !answered:
+			return providers.Response{ToolCalls: []providers.ToolCall{
+				{ID: "call-a", Name: "agent", Arguments: json.RawMessage(`{"description":"A","prompt":"alpha"` + args + `}`)},
+				{ID: "call-b", Name: "agent", Arguments: json.RawMessage(`{"description":"B","prompt":"beta"` + args + `}`)},
+			}}, nil
+		default:
+			return providers.Response{Text: "Parent done."}, nil
+		}
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "writers", core.RunStatusAccepted, false)
+	sessionIn(t, db, session, dir, core.PermissionModeFullAuto)
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
+	if a, b := storedToolResult(t, db, session.ID, "call-a"), storedToolResult(t, db, session.ID, "call-b"); a != "changed alpha" || b != "changed beta" {
+		t.Fatalf("results = %q, %q", a, b)
+	}
+}
+
+func TestChildrenWritingTheParentsDirectoryTakeTurns(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
+	var order []string
+	betaStarted := make(chan struct{})
+	writingChildren(t, ``, t.TempDir(), func(task string, step string, _ tools.Call) {
+		mu.Lock()
+		order = append(order, task+" "+step)
+		mu.Unlock()
+		switch {
+		case task == "beta" && step == "starts":
+			close(betaStarted)
+		case task == "alpha" && step == "edits":
+			// Give beta the chance to start alongside, which it must not take.
+			select {
+			case <-betaStarted:
+			case <-time.After(200 * time.Millisecond):
+			}
+		}
+	})
+
+	if got := strings.Join(order, ", "); got != "alpha starts, alpha edits, alpha reports, beta starts, beta edits, beta reports" {
+		t.Fatalf("order = %s", got)
+	}
+}
+
+func TestWorktreeChildrenWorkAtOnce(t *testing.T) {
+	t.Parallel()
+	repo := gitRepo(t)
+	var both sync.WaitGroup
+	both.Add(2)
+	together := make(chan struct{})
+	go func() { both.Wait(); close(together) }()
+	var mu sync.Mutex
+	dirs := map[string]string{}
+	alone := false
+	writingChildren(t, `,"isolation":"worktree"`, repo, func(task string, step string, call tools.Call) {
+		if step != "edits" {
+			return
+		}
+		mu.Lock()
+		dirs[task] = call.WorkingDir
+		mu.Unlock()
+		both.Done()
+		select {
+		case <-together:
+		case <-time.After(5 * time.Second):
+			mu.Lock()
+			alone = true
+			mu.Unlock()
+		}
+	})
+
+	if alone {
+		t.Fatal("a worktree child edited while the other waited")
+	}
+	if dirs["alpha"] == repo || dirs["beta"] == repo || dirs["alpha"] == dirs["beta"] {
+		t.Fatalf("children edited in %v, the parent in %s", dirs, repo)
 	}
 }
