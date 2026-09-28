@@ -109,11 +109,12 @@ type Approvals interface {
 type InputKind string
 
 const (
-	InputSteer    InputKind = "steer"
-	InputApproved InputKind = "approved"
+	InputSteer   InputKind = "steer"
+	InputDecided InputKind = "decided"
 )
 
-// Input arrives from outside the engine: steer Text, or a granted approval.
+// Input arrives from outside the engine: steer Text, or a decided approval;
+// Denied approvals carry the user's Reason.
 type Input struct {
 	Kind       InputKind
 	ID         string
@@ -122,10 +123,12 @@ type Input struct {
 	ToolName   string
 	WorkingDir string
 	Args       json.RawMessage
+	Denied     bool
+	Reason     string
 }
 
 // Inbox delivers outside input. Peek never consumes: steers stay pending until the
-// engine consumes their IDs, and InputApproved returns granted approvals whose call
+// engine consumes their IDs, and InputDecided returns decided approvals whose call
 // has no result yet.
 type Inbox interface {
 	Peek(ctx context.Context, runID string, kind InputKind) ([]Input, error)

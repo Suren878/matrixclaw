@@ -135,7 +135,7 @@ func failedStep(err error) stepResult {
 }
 
 func (r *run) step(ctx context.Context) stepResult {
-	waiting, err := r.resumeApproved(ctx)
+	waiting, err := r.resumeDecided(ctx)
 	if err != nil {
 		return failedStep(err)
 	}

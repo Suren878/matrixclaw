@@ -189,7 +189,7 @@ func TestResolvedApprovalContinuesTheSameRun(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["write"] = writeTool
 	f.Approvals.Grant = func(p agent.Pending) {
-		f.Inbox.Approved = append(f.Inbox.Approved, agent.Input{Kind: agent.InputApproved, ToolCallID: p.ToolCallID, ToolName: p.ToolName, WorkingDir: "/work", Args: []byte(`{}`)})
+		f.Inbox.Decided = append(f.Inbox.Decided, agent.Input{Kind: agent.InputDecided, ToolCallID: p.ToolCallID, ToolName: p.ToolName, WorkingDir: "/work", Args: []byte(`{}`)})
 	}
 	model := agenttest.NewScriptedModel(calls(call("w1", "write")), text("Done."))
 
@@ -210,7 +210,7 @@ func TestGrantedApprovalIsExecutedBeforeTheNextModelCall(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["write"] = writeTool
 	f.Journal.Seed(agent.ToolCallMessage("w1", agenttest.SessionID, agenttest.RunID, "write", []byte(`{}`), false, f.Clock))
-	f.Inbox.Approved = []agent.Input{{Kind: agent.InputApproved, ToolCallID: "w1", ToolName: "write", WorkingDir: "/work", Args: []byte(`{}`)}}
+	f.Inbox.Decided = []agent.Input{{Kind: agent.InputDecided, ToolCallID: "w1", ToolName: "write", WorkingDir: "/work", Args: []byte(`{}`)}}
 	model := agenttest.NewScriptedModel(text("Done."))
 
 	outcome := run(t, f, model)
@@ -528,5 +528,33 @@ func TestApprovalRequestFailureFailsTheRun(t *testing.T) {
 	}
 	if _, ok := f.Journal.Result("w1"); ok {
 		t.Fatal("failed approval request left a tool result")
+	}
+}
+
+func TestDeniedCallGetsTheDenialAsItsResult(t *testing.T) {
+	for _, tc := range []struct{ reason, want string }{
+		{"use the staging database", "User denied: use the staging database"},
+		{"", "User denied."},
+	} {
+		f := agenttest.NewFixture()
+		f.Tools.Funcs["write"] = writeTool
+		f.Journal.Seed(agent.ToolCallMessage("w1", agenttest.SessionID, agenttest.RunID, "write", []byte(`{}`), false, f.Clock))
+		f.Inbox.Decided = []agent.Input{{Kind: agent.InputDecided, ToolCallID: "w1", ToolName: "write", WorkingDir: "/work", Args: []byte(`{}`), Denied: true, Reason: tc.reason}}
+		model := agenttest.NewScriptedModel(text("Understood."))
+
+		outcome := run(t, f, model)
+
+		if outcome.Status != agent.StatusCompleted || len(f.Tools.Calls) != 0 {
+			t.Fatalf("outcome = %+v calls = %+v", outcome, f.Tools.Calls)
+		}
+		if result, ok := f.Journal.Result("w1"); !ok || !result.Parts[0].ToolResult.IsError || result.Content != tc.want {
+			t.Fatalf("result = %+v", result)
+		}
+		if message, _ := f.Journal.Message("w1"); !message.Parts[0].ToolCall.Finished {
+			t.Fatal("denied call not marked finished")
+		}
+		if got := toolContent(model.Requests()[0], "w1"); got != tc.want {
+			t.Fatalf("request tool content = %q, want %q", got, tc.want)
+		}
 	}
 }

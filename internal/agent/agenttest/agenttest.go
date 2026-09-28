@@ -307,11 +307,11 @@ func (a *Approvals) Pending(ctx context.Context, _ string) (bool, error) {
 }
 
 // Inbox hands out pending steers, whose IDs are their text, until they are consumed,
-// and granted approvals on every peek. Like the store, it fails on a stopped context.
+// and decided approvals on every peek. Like the store, it fails on a stopped context.
 type Inbox struct {
-	Steers   []string
-	Approved []agent.Input
-	Cancel   bool
+	Steers  []string
+	Decided []agent.Input
+	Cancel  bool
 }
 
 func (in *Inbox) Peek(ctx context.Context, _ string, kind agent.InputKind) ([]agent.Input, error) {
@@ -325,8 +325,8 @@ func (in *Inbox) Peek(ctx context.Context, _ string, kind agent.InputKind) ([]ag
 			out = append(out, agent.Input{Kind: agent.InputSteer, ID: text, Text: text})
 		}
 		return out, nil
-	case agent.InputApproved:
-		return in.Approved, nil
+	case agent.InputDecided:
+		return in.Decided, nil
 	default:
 		return nil, fmt.Errorf("agenttest: unknown input kind %q", kind)
 	}

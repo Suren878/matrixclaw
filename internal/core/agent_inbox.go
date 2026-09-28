@@ -20,8 +20,8 @@ func (in coreInbox) Peek(ctx context.Context, runID string, kind agent.InputKind
 	switch kind {
 	case agent.InputSteer:
 		return in.steers(ctx, runID)
-	case agent.InputApproved:
-		return in.approved(ctx, runID)
+	case agent.InputDecided:
+		return in.decided(ctx, runID)
 	default:
 		return nil, fmt.Errorf("core: unknown inbox input %q", kind)
 	}
@@ -69,9 +69,11 @@ func (in coreInbox) Consume(ctx context.Context, runID string, ids []string) err
 	return nil
 }
 
-// approved returns granted approvals of the run whose tool call has no result yet.
-func (in coreInbox) approved(ctx context.Context, runID string) ([]agent.Input, error) {
-	approvals, err := in.c.store.ListApprovals(ctx, in.session.ID, ApprovalStateApproved)
+// decided returns the run's decided approvals whose call has no result yet, oldest
+// first; a call's newest approval decides it. A bridged child approval resumes the
+// parent's call whichever way the child's approval was decided.
+func (in coreInbox) decided(ctx context.Context, runID string) ([]agent.Input, error) {
+	approvals, err := in.c.store.ListApprovals(ctx, in.session.ID, "")
 	if err != nil {
 		return nil, err
 	}
@@ -86,6 +88,9 @@ func (in coreInbox) approved(ctx context.Context, runID string) ([]agent.Input, 
 			continue
 		}
 		seen[callID] = struct{}{}
+		if approval.State == ApprovalStatePending {
+			continue
+		}
 		done, err := in.c.store.HasToolResult(ctx, in.session.ID, callID)
 		if err != nil {
 			return nil, err
@@ -105,14 +110,18 @@ func (in coreInbox) approved(ctx context.Context, runID string) ([]agent.Input, 
 		if in.c.tools != nil {
 			spec, _ = in.c.tools.Spec(approval.ToolName)
 		}
+		_, bridged := decodeSubagentApprovalBridge(approval)
 		out = append(out, agent.Input{
-			Kind:       agent.InputApproved,
+			Kind:       agent.InputDecided,
 			ToolCallID: callID,
 			ToolName:   approval.ToolName,
 			WorkingDir: workingDirForApprovalResume(in.session.WorkingDir, spec, approval.Path),
 			Args:       args,
+			Denied:     approval.State == ApprovalStateRejected && !bridged,
+			Reason:     approval.Reason,
 		})
 	}
+	slices.Reverse(out)
 	return out, nil
 }
 

@@ -69,27 +69,29 @@ func (r *run) executeBatch(ctx context.Context, response providers.Response) (bo
 	return waiting, nil
 }
 
-// resumeApproved runs granted calls that have no result yet and reports whether
-// approvals of the run are still open.
-func (r *run) resumeApproved(ctx context.Context) (bool, error) {
-	pending, err := r.Approvals.Pending(ctx, r.task.RunID)
+// resumeDecided answers the run's decided approvals that have no result yet: a
+// granted call runs, a denied one gets the denial as its result. It reports
+// whether approvals of the run are still open.
+func (r *run) resumeDecided(ctx context.Context) (bool, error) {
+	decided, err := r.Inbox.Peek(ctx, r.task.RunID, InputDecided)
 	if err != nil {
 		return false, err
 	}
-	approved, err := r.Inbox.Peek(ctx, r.task.RunID, InputApproved)
-	if err != nil {
-		return false, err
-	}
-	for _, input := range approved {
+	for _, input := range decided {
 		if r.history.hasResult(input.ToolCallID) {
 			continue
 		}
 		request := callRequest{id: input.ToolCallID, name: input.ToolName, args: input.Args, workingDir: input.WorkingDir, approved: true}
-		if _, err := r.runCall(ctx, request); err != nil {
+		if input.Denied {
+			err = r.finishCall(ctx, request, r.toolCall(request), DenialResult(input.Reason))
+		} else {
+			_, err = r.runCall(ctx, request)
+		}
+		if err != nil {
 			return false, err
 		}
 	}
-	return pending, nil
+	return r.Approvals.Pending(ctx, r.task.RunID)
 }
 
 // runCall authorizes, journals and executes one call; it reports whether the call
@@ -98,16 +100,7 @@ func (r *run) runCall(ctx context.Context, req callRequest) (bool, error) {
 	if req.id == "" {
 		req.id = r.NewID("tool")
 	}
-	call := tools.Call{
-		SessionID:   r.task.SessionID,
-		RunID:       r.task.RunID,
-		ToolCallID:  req.id,
-		Client:      r.task.Client,
-		ExternalKey: r.task.ExternalKey,
-		WorkingDir:  req.workingDir,
-		Approved:    req.approved,
-		Args:        req.args,
-	}
+	call := r.toolCall(req)
 	decision, err := r.Tools.Authorize(ctx, req.name, call)
 	if err != nil {
 		return false, err
@@ -136,6 +129,19 @@ func (r *run) runCall(ctx context.Context, req callRequest) (bool, error) {
 		return err == nil, err
 	}
 	return false, r.finishCall(ctx, req, call, result)
+}
+
+func (r *run) toolCall(req callRequest) tools.Call {
+	return tools.Call{
+		SessionID:   r.task.SessionID,
+		RunID:       r.task.RunID,
+		ToolCallID:  req.id,
+		Client:      r.task.Client,
+		ExternalKey: r.task.ExternalKey,
+		WorkingDir:  req.workingDir,
+		Approved:    req.approved,
+		Args:        req.args,
+	}
 }
 
 // rejectCall journals a call that may not run with its error as the result, so the

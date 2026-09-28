@@ -61,6 +61,15 @@ func ToolResultMessage(id, sessionID, runID, callID, name string, result tools.R
 	}, nil
 }
 
+// DenialResult is the result the model reads for a call the user denied.
+func DenialResult(reason string) tools.Result {
+	content := "User denied."
+	if reason = strings.TrimSpace(reason); reason != "" {
+		content = "User denied: " + reason
+	}
+	return tools.Result{Content: content, Status: tools.ResultStatusError, IsError: true}
+}
+
 // ToolResultStatus is the stored status of a tool result.
 func ToolResultStatus(result tools.Result) tools.ResultStatus {
 	if result.Status != "" {
