@@ -15,6 +15,7 @@ const (
 	EventMessageCreated  EventType = "message.created"
 	EventMessageUpdated  EventType = "message.updated"
 	EventPlanUpdated     EventType = "plan.updated"
+	EventTodoUpdated     EventType = "todo.updated"
 	EventToolUpdated     EventType = "tool.updated"
 	EventApprovalRequest EventType = "approval.requested"
 	EventApprovalResult  EventType = "approval.resolved"

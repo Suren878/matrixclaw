@@ -89,6 +89,7 @@ func registeredToolDefinitions(t *testing.T) []providers.ToolDefinition {
 	for _, executors := range [][]tools.Executor{
 		webtools.NewWebResearchExecutorsWithService(web),
 		core.PlanToolExecutors(app),
+		core.TodoToolExecutors(app),
 		core.MemoryToolExecutors(app),
 		core.SubagentToolExecutors(app),
 		tools.NewOSMGeoExecutors(tools.NewOSMService(tools.OSMConfig{})),

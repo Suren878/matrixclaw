@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
@@ -59,6 +60,9 @@ func subagentSystemPrompt() string {
 
 func subagentToolAllowed(spec tools.Spec) bool {
 	id := strings.ToLower(strings.TrimSpace(spec.ID))
+	if id == todo.ToolName {
+		return true
+	}
 	if id == delegateTaskToolName || id == "memory" || strings.HasPrefix(id, "plan_") || id == "text_to_speech" {
 		return false
 	}
