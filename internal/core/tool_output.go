@@ -1,10 +1,12 @@
 package core
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -49,6 +51,9 @@ func (c *Core) toolFailure(sessionID string, err error) tools.Result {
 	return c.keepLargeOutput(sessionID, tools.Result{Content: err.Error(), IsError: true})
 }
 
+// toolOutputDir holds a session's kept tool outputs.
+const toolOutputDir = "tool-output"
+
 // writeToolOutput stores content under the session, named by its hash so a
 // repeated output lands in the same file.
 func (c *Core) writeToolOutput(sessionID string, content string) (string, error) {
@@ -56,7 +61,7 @@ func (c *Core) writeToolOutput(sessionID string, content string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(sessionDir, "tool-output")
+	dir := filepath.Join(sessionDir, toolOutputDir)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
@@ -76,6 +81,46 @@ func (c *Core) writeToolOutput(sessionID string, content string) (string, error)
 		return "", err
 	}
 	return path, nil
+}
+
+// pruneToolOutputs deletes the session's kept tool outputs except those the
+// messages after seq refer to; files still being written are left alone.
+func (c *Core) pruneToolOutputs(ctx context.Context, sessionID string, seq int64) error {
+	sessionDir, err := c.sessionDir(sessionID)
+	if err != nil {
+		return nil
+	}
+	dir := filepath.Join(sessionDir, toolOutputDir)
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	later, err := c.store.ListMessagesAfter(ctx, sessionID, seq, 0)
+	if err != nil {
+		return err
+	}
+	referenced := map[string]bool{}
+	for _, message := range later {
+		for _, part := range message.Parts {
+			if part.ToolResult != nil && part.ToolResult.OutputPath != "" {
+				referenced[part.ToolResult.OutputPath] = true
+			}
+		}
+	}
+	var errs []error
+	for _, entry := range entries {
+		path := filepath.Join(dir, entry.Name())
+		if strings.HasPrefix(entry.Name(), ".") || referenced[path] {
+			continue
+		}
+		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // removeSessionFiles deletes the files kept for a session.

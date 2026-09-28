@@ -3,13 +3,15 @@ package core
 import (
 	"context"
 	"fmt"
+	"log"
 
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 // ClearContext starts the session's model context afresh with a boundary that
-// covers every message so far; the transcript keeps them.
+// covers every message so far; the transcript keeps them, but not the tool
+// outputs kept in files for them.
 func (c *Core) ClearContext(ctx context.Context, sessionID string) (transcript.Message, error) {
 	sessionID = normalizeText(sessionID)
 	if sessionID == "" {
@@ -31,7 +33,14 @@ func (c *Core) ClearContext(ctx context.Context, sessionID string) (transcript.M
 	if len(latest) > 0 {
 		compaction.CoversThroughSeq = latest[0].Seq
 	}
-	return c.appendBoundary(ctx, sessionID, agentcontext.BoundaryLabel(compaction), compaction)
+	boundary, err := c.appendBoundary(ctx, sessionID, agentcontext.BoundaryLabel(compaction), compaction)
+	if err != nil {
+		return transcript.Message{}, err
+	}
+	if err := c.pruneToolOutputs(ctx, sessionID, compaction.CoversThroughSeq); err != nil {
+		log.Printf("core: remove cleared tool outputs of session %q: %v", sessionID, err)
+	}
+	return boundary, nil
 }
 
 // appendBoundary journals a context boundary of the session and announces it.

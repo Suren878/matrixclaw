@@ -4,12 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/store"
+	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -97,5 +100,39 @@ func TestCompactWithNothingToSummariseIsInvalidInput(t *testing.T) {
 
 	if _, err := app.CompactSession(context.Background(), session.ID); !errors.Is(err, core.ErrInvalidInput) {
 		t.Fatalf("CompactSession error = %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestClearContextRemovesTheToolOutputsItCovers(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	files := t.TempDir()
+	app.WithSessionFiles(files)
+	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("dump", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
+		return tools.Result{Content: strings.Repeat("d", 60_000)}, nil
+	}}))
+	calls := 0
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+		calls++
+		if calls == 1 {
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "dump_1", Name: "dump", Arguments: []byte(`{}`)}}}, nil
+		}
+		return providers.Response{Text: "Dumped."}, nil
+	})})
+	session, run := saveNativeRunWithHistory(t, db, "prune")
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(files, session.ID, "tool-output")
+	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 1 {
+		t.Fatalf("kept outputs = %v err = %v", entries, err)
+	}
+
+	if _, err := app.ClearContext(context.Background(), session.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
+		t.Fatalf("outputs after /clear = %v err = %v", entries, err)
 	}
 }
