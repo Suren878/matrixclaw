@@ -187,7 +187,7 @@ func TestInterruptedParentAndBlockingChildAreBothRescheduledAndComplete(t *testi
 		t.Fatal(err)
 	}
 	assertRecoveryRunStatus(t, db, task.ChildRunID, core.RunStatusCompleted)
-	if task.Status != core.SubagentTaskStatusCompleted || task.Summary != "child found 3 files" {
+	if task.Status != core.TaskStatusCompleted || task.Summary != "child found 3 files" {
 		t.Fatalf("task = %s %q", task.Status, task.Summary)
 	}
 	if starter.count(run.ID) == 0 || starter.count(task.ChildRunID) == 0 {

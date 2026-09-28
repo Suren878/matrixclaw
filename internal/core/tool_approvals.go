@@ -183,7 +183,7 @@ func (c *Core) passDecisionToSubagent(ctx context.Context, bridge subagentApprov
 	} else if !errors.Is(err, ErrNotFound) {
 		return err
 	}
-	if !subagentTaskTerminalStatus(task.Status) {
+	if !taskStatusTerminal(task.Status) {
 		if task, err = c.markSubagentTaskRunning(ctx, task); err != nil {
 			return err
 		}
@@ -350,7 +350,7 @@ func (c *Core) bridgedCallWaitsForSubagent(ctx context.Context, approval Approva
 		return false, err
 	}
 	task, err := c.store.GetSubagentTask(ctx, bridge.TaskID)
-	if err == nil && subagentTaskTerminalStatus(task.Status) {
+	if err == nil && taskStatusTerminal(task.Status) {
 		return false, nil
 	}
 	if err != nil && !errors.Is(err, ErrNotFound) {

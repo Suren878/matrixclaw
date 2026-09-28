@@ -16,7 +16,7 @@ func TestBlockingSubagentWorkJobCarriesHeartbeat(t *testing.T) {
 	job := subagentWorkJob(SubagentTask{
 		ID:        "subagent-1",
 		Mode:      SubagentTaskModeBlocking,
-		Status:    SubagentTaskStatusRunning,
+		Status:    TaskStatusRunning,
 		CreatedAt: now.Add(-time.Minute),
 		UpdatedAt: now,
 	})

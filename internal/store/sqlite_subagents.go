@@ -175,10 +175,10 @@ func (s *SQLiteStore) ListActiveSubagentTasksByParent(ctx context.Context, paren
 	return s.ListSubagentTasks(ctx, core.SubagentTaskFilter{
 		ParentSessionID: strings.TrimSpace(parentSessionID),
 		Mode:            core.SubagentTaskModeAsync,
-		Statuses: []core.SubagentTaskStatus{
-			core.SubagentTaskStatusPending,
-			core.SubagentTaskStatusRunning,
-			core.SubagentTaskStatusWaitingApproval,
+		Statuses: []core.TaskStatus{
+			core.TaskStatusPending,
+			core.TaskStatusRunning,
+			core.TaskStatusWaitingApproval,
 		},
 	})
 }
@@ -268,7 +268,7 @@ func scanSubagentTask(scanner subagentTaskScanner) (core.SubagentTask, error) {
 	if task.Isolation == "" {
 		task.Isolation = core.SubagentIsolationShared
 	}
-	task.Status = core.SubagentTaskStatus(status)
+	task.Status = core.TaskStatus(status)
 	task.CreatedAt = mustParseTime(createdAt)
 	task.UpdatedAt = mustParseTime(updatedAt)
 	if completionQueuedAt.Valid && completionQueuedAt.String != "" {

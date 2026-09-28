@@ -199,7 +199,7 @@ func activeSubagentNamesStatusText(names []string) string {
 
 func subagentTaskActive(task core.SubagentTask) bool {
 	switch task.Status {
-	case core.SubagentTaskStatusPending, core.SubagentTaskStatusRunning, core.SubagentTaskStatusWaitingApproval:
+	case core.TaskStatusPending, core.TaskStatusRunning, core.TaskStatusWaitingApproval:
 		return true
 	default:
 		return false
@@ -259,11 +259,11 @@ func activeSubagentPhase(snapshot viewmodel.Snapshot) string {
 		}
 		name := subagentTaskDisplayName(task)
 		switch task.Status {
-		case core.SubagentTaskStatusPending:
+		case core.TaskStatusPending:
 			return "Starting subagent: " + name
-		case core.SubagentTaskStatusRunning:
+		case core.TaskStatusRunning:
 			return "Waiting for subagent: " + name
-		case core.SubagentTaskStatusWaitingApproval:
+		case core.TaskStatusWaitingApproval:
 			return "Subagent waiting for permission: " + name
 		}
 	}

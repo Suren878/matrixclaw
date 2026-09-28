@@ -118,7 +118,7 @@ func spawnSubagentResultContent(result SpawnSubagentResult) string {
 	prefix := "started"
 	if result.Replayed {
 		prefix = "already running"
-		if subagentTaskTerminalStatus(task.Status) {
+		if taskStatusTerminal(task.Status) {
 			prefix = "already finished"
 		}
 	}
@@ -146,7 +146,7 @@ func formatSubagentTaskList(tasks []SubagentTask) string {
 		if taskLabel := strings.TrimSpace(task.DisplayName); taskLabel != "" {
 			line += " - " + taskLabel
 		}
-		if task.Summary != "" && subagentTaskTerminalStatus(task.Status) {
+		if task.Summary != "" && taskStatusTerminal(task.Status) {
 			line += ": " + strings.TrimSpace(task.Summary)
 		}
 		lines = append(lines, line)
@@ -205,12 +205,8 @@ func subagentCompletionTriggerID(parentSessionID string, tasks []SubagentTask) s
 	return "subagent_completion_" + stableIDPart(strings.Join(ids, "_"))
 }
 
-func subagentTaskTerminalStatus(status SubagentTaskStatus) bool {
-	return status == SubagentTaskStatusCompleted || status == SubagentTaskStatusFailed || status == SubagentTaskStatusCanceled
-}
-
 func subagentTaskFailed(task SubagentTask) bool {
-	return task.Status == SubagentTaskStatusFailed || task.Status == SubagentTaskStatusCanceled || strings.TrimSpace(task.Error) != ""
+	return task.Status == TaskStatusFailed || task.Status == TaskStatusCanceled || strings.TrimSpace(task.Error) != ""
 }
 
 func subagentTaskToolResultStatus(task SubagentTask) tools.ResultStatus {
@@ -224,10 +220,10 @@ func subagentTaskToolLifecycleState(task SubagentTask) ToolLifecycleState {
 	if subagentTaskFailed(task) {
 		return ToolLifecycleFailed
 	}
-	if subagentTaskTerminalStatus(task.Status) {
+	if taskStatusTerminal(task.Status) {
 		return ToolLifecycleCompleted
 	}
-	if task.Status == SubagentTaskStatusWaitingApproval {
+	if task.Status == TaskStatusWaitingApproval {
 		return ToolLifecycleWaitingApproval
 	}
 	return ToolLifecycleRequested

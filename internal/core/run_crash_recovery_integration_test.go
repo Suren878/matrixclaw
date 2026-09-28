@@ -606,7 +606,7 @@ func TestRecoverBlockingSubagentCompletesChildThenParentWithoutDuplicate(t *test
 		Mode: core.SubagentTaskModeBlocking, Isolation: core.SubagentIsolationShared,
 		ParentSessionID: parentSession.ID, ParentRunID: parentRun.ID, ParentToolCallID: "tool_delegate",
 		ChildSessionID: childSession.ID, ChildRunID: childRun.ID, Runtime: "matrixclaw",
-		Goal: "finish child work", Status: core.SubagentTaskStatusRunning,
+		Goal: "finish child work", Status: core.TaskStatusRunning,
 		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
@@ -622,7 +622,7 @@ func TestRecoverBlockingSubagentCompletesChildThenParentWithoutDuplicate(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if task.Status != core.SubagentTaskStatusCompleted {
+	if task.Status != core.TaskStatusCompleted {
 		t.Fatalf("subagent task status = %q, want completed", task.Status)
 	}
 }

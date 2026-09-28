@@ -110,7 +110,7 @@ func (c *Core) SpawnSubagent(ctx context.Context, input SpawnSubagentInput) (Spa
 		ChildRunID:       run.ID,
 		Runtime:          subagentTaskRuntimeLabel(runtime, child),
 		Goal:             goal,
-		Status:           SubagentTaskStatusRunning,
+		Status:           TaskStatusRunning,
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
@@ -120,7 +120,7 @@ func (c *Core) SpawnSubagent(ctx context.Context, input SpawnSubagentInput) (Spa
 
 	if err := c.startRun(ctx, run.ID); err != nil {
 		summary := "Subagent failed to start: " + err.Error()
-		_, _ = c.finishSubagentTaskRecord(ctx, task, SubagentTaskStatusFailed, summary, summary, false)
+		_, _ = c.finishSubagentTaskRecord(ctx, task, TaskStatusFailed, summary, summary, false)
 		return SpawnSubagentResult{}, err
 	}
 
@@ -141,7 +141,7 @@ func (c *Core) ListSubagents(ctx context.Context, parentSessionID string, includ
 		Limit:           limit,
 	}
 	if !includeRecent {
-		filter.Statuses = activeSubagentTaskStatuses()
+		filter.Statuses = activeTaskStatuses()
 	}
 	return c.store.ListSubagentTasks(ctx, filter)
 }

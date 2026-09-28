@@ -87,7 +87,7 @@ func subagentWorkJob(task SubagentTask) work.Job {
 		UpdatedAt:  updatedAt,
 		FinishedAt: task.FinishedAt,
 	}
-	if task.Status == SubagentTaskStatusRunning || task.Status == SubagentTaskStatusWaitingApproval {
+	if task.Status == TaskStatusRunning || task.Status == TaskStatusWaitingApproval {
 		heartbeatAt := updatedAt
 		job.HeartbeatAt = &heartbeatAt
 		startedAt := createdAt
@@ -97,15 +97,15 @@ func subagentWorkJob(task SubagentTask) work.Job {
 	return job
 }
 
-func workStatusForSubagent(status SubagentTaskStatus) string {
+func workStatusForSubagent(status TaskStatus) string {
 	switch status {
-	case SubagentTaskStatusRunning, SubagentTaskStatusWaitingApproval:
+	case TaskStatusRunning, TaskStatusWaitingApproval:
 		return work.StatusRunning
-	case SubagentTaskStatusCompleted:
+	case TaskStatusCompleted:
 		return work.StatusCompleted
-	case SubagentTaskStatusFailed:
+	case TaskStatusFailed:
 		return work.StatusFailed
-	case SubagentTaskStatusCanceled:
+	case TaskStatusCanceled:
 		return work.StatusCanceled
 	default:
 		return work.StatusPending

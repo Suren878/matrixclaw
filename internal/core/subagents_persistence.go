@@ -34,14 +34,14 @@ func (c *Core) updateSubagentTaskRecordWith(ctx context.Context, task SubagentTa
 
 func (c *Core) markSubagentTaskRunning(ctx context.Context, task SubagentTask) (SubagentTask, error) {
 	return c.updateSubagentTaskRecordWith(ctx, task, func(task *SubagentTask) {
-		task.Status = SubagentTaskStatusRunning
+		task.Status = TaskStatusRunning
 		task.UpdatedAt = c.now().UTC()
 	})
 }
 
 func (c *Core) markSubagentTaskWaitingApproval(ctx context.Context, task SubagentTask) (SubagentTask, error) {
 	return c.updateSubagentTaskRecordWith(ctx, task, func(task *SubagentTask) {
-		task.Status = SubagentTaskStatusWaitingApproval
+		task.Status = TaskStatusWaitingApproval
 		task.UpdatedAt = c.now().UTC()
 	})
 }
@@ -55,7 +55,7 @@ func (c *Core) touchSubagentTaskRecord(ctx context.Context, task SubagentTask, a
 	})
 }
 
-func (c *Core) finishSubagentTaskRecord(ctx context.Context, task SubagentTask, status SubagentTaskStatus, summary string, errText string, queueCompletion bool) (SubagentTask, error) {
+func (c *Core) finishSubagentTaskRecord(ctx context.Context, task SubagentTask, status TaskStatus, summary string, errText string, queueCompletion bool) (SubagentTask, error) {
 	return c.updateSubagentTaskRecordWith(ctx, task, func(task *SubagentTask) {
 		now := c.now().UTC()
 		task.Status = status

@@ -47,7 +47,7 @@ func (c *Core) touchSubagentTaskActivity(ctx context.Context, childRunID string,
 	if err != nil {
 		return nil
 	}
-	if subagentTaskTerminalStatus(task.Status) {
+	if taskStatusTerminal(task.Status) {
 		return nil
 	}
 	if at.IsZero() {
@@ -113,7 +113,7 @@ func ignoreMissing(err error) bool {
 }
 
 func (c *Core) syncAsyncSubagentTaskAfterRun(ctx context.Context, task SubagentTask, run Run) error {
-	if subagentTaskTerminalStatus(task.Status) {
+	if taskStatusTerminal(task.Status) {
 		return nil
 	}
 	switch run.Status {
@@ -125,13 +125,13 @@ func (c *Core) syncAsyncSubagentTaskAfterRun(ctx context.Context, task SubagentT
 		return nil
 	}
 	summary, failed := c.subagentRunSummary(ctx, task.ChildSessionID, task.ChildRunID, nil)
-	status := SubagentTaskStatusCompleted
+	status := TaskStatusCompleted
 	errText := ""
 	if run.Status == RunStatusCanceled {
-		status = SubagentTaskStatusCanceled
+		status = TaskStatusCanceled
 		errText = summary
 	} else if failed {
-		status = SubagentTaskStatusFailed
+		status = TaskStatusFailed
 		errText = summary
 	}
 	task, err := c.finishSubagentTaskRecord(ctx, task, status, summary, errText, true)
@@ -217,10 +217,10 @@ func (c *Core) deliverPendingSubagentCompletionsForParent(ctx context.Context, p
 	tasks, err := c.store.ListSubagentTasks(ctx, SubagentTaskFilter{
 		ParentSessionID: parentSessionID,
 		Mode:            SubagentTaskModeAsync,
-		Statuses: []SubagentTaskStatus{
-			SubagentTaskStatusCompleted,
-			SubagentTaskStatusFailed,
-			SubagentTaskStatusCanceled,
+		Statuses: []TaskStatus{
+			TaskStatusCompleted,
+			TaskStatusFailed,
+			TaskStatusCanceled,
 		},
 		Limit: 50,
 	})
@@ -310,7 +310,7 @@ func (c *Core) publishSubagentToolUpdate(task SubagentTask) {
 
 func (c *Core) RecoverSubagentTasks(ctx context.Context) error {
 	active, err := c.store.ListSubagentTasks(ctx, SubagentTaskFilter{
-		Statuses: activeSubagentTaskStatuses(),
+		Statuses: activeTaskStatuses(),
 		Limit:    200,
 	})
 	if err != nil {
@@ -363,10 +363,10 @@ func (c *Core) RecoverSubagentTasks(ctx context.Context) error {
 	return nil
 }
 
-func activeSubagentTaskStatuses() []SubagentTaskStatus {
-	return []SubagentTaskStatus{
-		SubagentTaskStatusPending,
-		SubagentTaskStatusRunning,
-		SubagentTaskStatusWaitingApproval,
+func activeTaskStatuses() []TaskStatus {
+	return []TaskStatus{
+		TaskStatusPending,
+		TaskStatusRunning,
+		TaskStatusWaitingApproval,
 	}
 }

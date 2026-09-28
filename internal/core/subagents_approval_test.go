@@ -161,7 +161,7 @@ func TestDeniedBridgedApprovalLetsTheChildGoOn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertSubagentTaskStatus(t, task, core.SubagentTaskStatusCompleted)
+	assertTaskStatus(t, task, core.TaskStatusCompleted)
 	for _, message := range sessionMessages(t, b.db, parent.SessionID) {
 		for _, part := range message.Parts {
 			if part.ToolResult != nil && part.ToolResult.ToolCallID == "call-delegate" && part.ToolResult.Content != "Child read: User denied: not in the shared tree" {

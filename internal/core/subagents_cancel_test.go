@@ -54,7 +54,7 @@ func blockUntilCanceled(ctx context.Context, started *startSignal) (providers.Re
 	return providers.Response{}, ctx.Err()
 }
 
-func assertSubagentTaskStatus(t *testing.T, task core.SubagentTask, want core.SubagentTaskStatus) {
+func assertTaskStatus(t *testing.T, task core.SubagentTask, want core.TaskStatus) {
 	t.Helper()
 	if task.Status != want {
 		t.Fatalf("subagent task status = %q (%s), want %q", task.Status, task.Error, want)
@@ -103,7 +103,7 @@ func TestCancelParentCancelsItsBlockingSubagent(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertRecoveryRunStatus(t, db, task.ChildRunID, core.RunStatusCanceled)
-	assertSubagentTaskStatus(t, task, core.SubagentTaskStatusCanceled)
+	assertTaskStatus(t, task, core.TaskStatusCanceled)
 	if got := starter.count(task.ChildRunID) + starter.count(run.ID); got != 0 {
 		t.Fatalf("reschedules = %d, want 0", got)
 	}
@@ -153,7 +153,7 @@ func TestCancelParentCancelsItsAsyncSubagentWithoutFollowUp(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertRecoveryRunStatus(t, db, task.ChildRunID, core.RunStatusCanceled)
-	assertSubagentTaskStatus(t, task, core.SubagentTaskStatusCanceled)
+	assertTaskStatus(t, task, core.TaskStatusCanceled)
 	if task.CompletionQueuedAt != nil {
 		t.Fatal("a canceled async subagent queued a completion for its canceled parent")
 	}

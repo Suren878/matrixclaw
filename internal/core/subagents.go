@@ -116,7 +116,7 @@ func (c *Core) DelegateTask(ctx context.Context, input DelegateTaskInput) (Deleg
 		ChildRunID:       run.ID,
 		Runtime:          subagentTaskRuntimeLabel(runtime, child),
 		Goal:             goal,
-		Status:           SubagentTaskStatusRunning,
+		Status:           TaskStatusRunning,
 		CreatedAt:        c.now().UTC(),
 		UpdatedAt:        c.now().UTC(),
 	}
@@ -129,10 +129,10 @@ func (c *Core) DelegateTask(ctx context.Context, input DelegateTaskInput) (Deleg
 }
 
 func (c *Core) resumeSubagentTask(ctx context.Context, task SubagentTask) (DelegateTaskResult, error) {
-	if task.Status == SubagentTaskStatusCompleted {
+	if task.Status == TaskStatusCompleted {
 		return DelegateTaskResult{Task: task, Summary: task.Summary}, nil
 	}
-	if task.Status == SubagentTaskStatusFailed && task.FinishedAt != nil {
+	if task.Status == TaskStatusFailed && task.FinishedAt != nil {
 		summary := strings.TrimSpace(task.Summary)
 		if summary == "" {
 			summary = strings.TrimSpace(task.Error)
@@ -214,10 +214,10 @@ func (c *Core) waitForSubagentStep(ctx context.Context, task SubagentTask) error
 }
 
 func (c *Core) finishSubagentTask(ctx context.Context, task SubagentTask, summary string, failed bool) (DelegateTaskResult, error) {
-	status := SubagentTaskStatusCompleted
+	status := TaskStatusCompleted
 	errText := ""
 	if failed {
-		status = SubagentTaskStatusFailed
+		status = TaskStatusFailed
 		errText = summary
 	}
 	task, err := c.finishSubagentTaskRecord(ctx, task, status, summary, errText, false)

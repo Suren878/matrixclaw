@@ -865,7 +865,7 @@ func TestBlockingSubagentReturnsChildSummaryToParent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if task.Status != core.SubagentTaskStatusCompleted || task.Summary != "child found 3 files" {
+	if task.Status != core.TaskStatusCompleted || task.Summary != "child found 3 files" {
 		t.Fatalf("task = %s %q", task.Status, task.Summary)
 	}
 	assertRecoveryRunStatus(t, db, task.ChildRunID, core.RunStatusCompleted)
@@ -901,7 +901,7 @@ func TestSubagentSummaryJoinsAReplyCutByTheOutputLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if task.Status != core.SubagentTaskStatusCompleted || task.Summary != "child found 3 files" {
+	if task.Status != core.TaskStatusCompleted || task.Summary != "child found 3 files" {
 		t.Fatalf("task = %s %q, want the cut reply joined with its continuation", task.Status, task.Summary)
 	}
 }
@@ -977,7 +977,7 @@ func TestAsyncSubagentCompletionStartsParentFollowUpRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if task.Status != core.SubagentTaskStatusCompleted || task.CompletionDeliveredAt == nil {
+	if task.Status != core.TaskStatusCompleted || task.CompletionDeliveredAt == nil {
 		t.Fatalf("task = %s delivered=%v", task.Status, task.CompletionDeliveredAt)
 	}
 }

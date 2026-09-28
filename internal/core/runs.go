@@ -275,7 +275,7 @@ func (c *Core) cancelRunRecords(ctx context.Context, run *Run) ([]string, error)
 func (c *Core) cancelSubagentChildren(ctx context.Context, run Run) ([]string, error) {
 	tasks, err := c.store.ListSubagentTasks(ctx, SubagentTaskFilter{
 		ParentSessionID: run.SessionID,
-		Statuses:        activeSubagentTaskStatuses(),
+		Statuses:        activeTaskStatuses(),
 	})
 	if err != nil {
 		return nil, err
@@ -297,7 +297,7 @@ func (c *Core) cancelSubagentChildren(ctx context.Context, run Run) ([]string, e
 			stopped = append(stopped, ids...)
 		}
 		const summary = "Subagent canceled with its parent run."
-		if _, err := c.finishSubagentTaskRecord(ctx, task, SubagentTaskStatusCanceled, summary, summary, false); err != nil {
+		if _, err := c.finishSubagentTaskRecord(ctx, task, TaskStatusCanceled, summary, summary, false); err != nil {
 			return nil, err
 		}
 	}

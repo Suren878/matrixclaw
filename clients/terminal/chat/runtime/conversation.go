@@ -66,7 +66,7 @@ func mergeSubagentToolResults(results map[string]surfacemessage.ToolResult, task
 			result.Metadata = string(metadata)
 		}
 		result.Status = subagentSurfaceResultStatus(task)
-		result.IsError = task.Status == core.SubagentTaskStatusFailed || task.Status == core.SubagentTaskStatusCanceled || strings.TrimSpace(task.Error) != ""
+		result.IsError = task.Status == core.TaskStatusFailed || task.Status == core.TaskStatusCanceled || strings.TrimSpace(task.Error) != ""
 		if strings.TrimSpace(result.Content) == "" || subagentTaskTerminal(task) {
 			result.Content = subagentSurfaceResultContent(task)
 		}
@@ -100,10 +100,10 @@ func subagentToolName(task core.SubagentTask) string {
 }
 
 func subagentSurfaceResultStatus(task core.SubagentTask) string {
-	if task.Status == core.SubagentTaskStatusFailed || task.Status == core.SubagentTaskStatusCanceled || strings.TrimSpace(task.Error) != "" {
+	if task.Status == core.TaskStatusFailed || task.Status == core.TaskStatusCanceled || strings.TrimSpace(task.Error) != "" {
 		return "error"
 	}
-	if task.Status == core.SubagentTaskStatusCompleted {
+	if task.Status == core.TaskStatusCompleted {
 		return "success"
 	}
 	return "neutral"
@@ -111,11 +111,11 @@ func subagentSurfaceResultStatus(task core.SubagentTask) string {
 
 func subagentToolLifecycleState(task core.SubagentTask) core.ToolLifecycleState {
 	switch task.Status {
-	case core.SubagentTaskStatusWaitingApproval:
+	case core.TaskStatusWaitingApproval:
 		return core.ToolLifecycleWaitingApproval
-	case core.SubagentTaskStatusCompleted:
+	case core.TaskStatusCompleted:
 		return core.ToolLifecycleCompleted
-	case core.SubagentTaskStatusFailed, core.SubagentTaskStatusCanceled:
+	case core.TaskStatusFailed, core.TaskStatusCanceled:
 		return core.ToolLifecycleFailed
 	default:
 		return core.ToolLifecycleRequested
@@ -134,11 +134,11 @@ func subagentSurfaceResultContent(task core.SubagentTask) string {
 		name = "subagent"
 	}
 	switch task.Status {
-	case core.SubagentTaskStatusCompleted:
+	case core.TaskStatusCompleted:
 		return strings.TrimSpace("Subagent " + name + " completed\n\n" + strings.TrimSpace(task.Summary))
-	case core.SubagentTaskStatusFailed:
+	case core.TaskStatusFailed:
 		return strings.TrimSpace("Subagent " + name + " failed\n\n" + strings.TrimSpace(firstNonEmptyRuntime(task.Error, task.Summary)))
-	case core.SubagentTaskStatusCanceled:
+	case core.TaskStatusCanceled:
 		return strings.TrimSpace("Subagent " + name + " canceled\n\n" + strings.TrimSpace(firstNonEmptyRuntime(task.Error, task.Summary)))
 	default:
 		return "Subagent " + name + " is running."
@@ -146,7 +146,7 @@ func subagentSurfaceResultContent(task core.SubagentTask) string {
 }
 
 func subagentTaskTerminal(task core.SubagentTask) bool {
-	return task.Status == core.SubagentTaskStatusCompleted || task.Status == core.SubagentTaskStatusFailed || task.Status == core.SubagentTaskStatusCanceled
+	return task.Status == core.TaskStatusCompleted || task.Status == core.TaskStatusFailed || task.Status == core.TaskStatusCanceled
 }
 
 func firstNonEmptyRuntime(values ...string) string {
