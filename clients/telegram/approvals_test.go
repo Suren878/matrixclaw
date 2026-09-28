@@ -231,7 +231,7 @@ func TestOnlyTheOwnerChatSendsUnrestricted(t *testing.T) {
 	}
 }
 
-func TestRunWaitingForEventsShowsItsBackgroundSubagentsApproval(t *testing.T) {
+func TestRunWaitingForEventsLeavesBackgroundApprovalsToTheirOwnDelivery(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -254,7 +254,7 @@ func TestRunWaitingForEventsShowsItsBackgroundSubagentsApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(api.sent) != 2 || api.sent[0].Text != "⏸ Waiting for background work" || !strings.Contains(api.sent[1].Text, "Approval required") || !strings.Contains(approvalButtons(t, api.sent[1])[0], "a1") {
+	if len(api.sent) != 1 || api.sent[0].Text != "⏸ Waiting for background work" {
 		t.Fatalf("sent = %+v", api.sent)
 	}
 }

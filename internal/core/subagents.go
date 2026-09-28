@@ -485,10 +485,14 @@ func (c *Core) mirrorPendingSubagentApproval(ctx context.Context, task SubagentT
 		ToolName:   agentToolName,
 		ToolCallID: task.ParentToolCallID,
 	}
-	if _, err := c.requestApproval(ctx, prepared, *request); err != nil {
+	approval, err := c.requestApproval(ctx, prepared, *request)
+	if err != nil {
 		return true, err
 	}
-	if task.Mode == SubagentTaskModeAsync || strings.TrimSpace(task.ParentRunID) == "" {
+	if task.Mode == SubagentTaskModeAsync {
+		return true, c.deliverBackgroundApproval(ctx, approval)
+	}
+	if strings.TrimSpace(task.ParentRunID) == "" {
 		return true, nil
 	}
 	run, err := c.store.GetRun(ctx, task.ParentRunID)
@@ -502,6 +506,34 @@ func (c *Core) mirrorPendingSubagentApproval(ctx context.Context, task SubagentT
 		return true, nil
 	}
 	return true, c.setRunStatus(ctx, &run, RunStatusWaitingApproval, "")
+}
+
+// deliverBackgroundApproval sends a background subagent's approval to the chat
+// the parent session's own runs answer in, as no run of it may be delivering.
+func (c *Core) deliverBackgroundApproval(ctx context.Context, approval Approval) error {
+	runs, err := c.store.ListSessionRuns(ctx, approval.SessionID, wakeChainWindow)
+	if err != nil {
+		return err
+	}
+	target, err := c.latestWakeTarget(ctx, runs)
+	if err != nil || target.client == "" {
+		return err
+	}
+	payload, err := json.Marshal(ApprovalDeliveryPayload{ApprovalID: approval.ID})
+	if err != nil {
+		return err
+	}
+	_, err = c.CreateClientDelivery(ctx, ClientDelivery{
+		Type:        ClientDeliveryTypeApproval,
+		Client:      target.client,
+		ExternalKey: target.externalKey,
+		SessionID:   approval.SessionID,
+		RunID:       approval.RunID,
+		Summary:     approval.Description,
+		Address:     target.address,
+		Payload:     payload,
+	})
+	return err
 }
 
 // refuseReadonlySubagentApproval denies a read-only child's approval without

@@ -146,18 +146,8 @@ func (w *Worker) deliverChatRunDelivery(ctx context.Context, target chatTarget, 
 	switch run.Status {
 	case core.RunStatusWaitingApproval:
 		return w.deliverRunApprovals(ctx, target, daemon, run)
-	case core.RunStatusAccepted, core.RunStatusRunning:
+	case core.RunStatusAccepted, core.RunStatusRunning, core.RunStatusWaitingEvents:
 		return w.deliverActiveRunProgress(ctx, target, daemon, run)
-	case core.RunStatusWaitingEvents:
-		// A background subagent the run waits for may ask for approval meanwhile.
-		if err := w.deliverActiveRunProgress(ctx, target, daemon, run); err != nil {
-			return err
-		}
-		approvals, err := daemon.ListApprovals(ctx, sessionID, core.ApprovalStatePending)
-		if err != nil {
-			return err
-		}
-		return w.renderApprovalUpdates(ctx, target, approvals, runID, w.runRenderState(target.externalKey, runID))
 	case core.RunStatusCompleted, core.RunStatusFailed, core.RunStatusCanceled:
 	default:
 		return nil
@@ -381,6 +371,17 @@ func (w *Worker) runRenderState(externalKey string, runID string) *runDeliverySt
 	return state
 }
 
+// activeRunRenderState is the render state of a run whose delivery is in
+// progress, or a throwaway one.
+func (w *Worker) activeRunRenderState(externalKey string, runID string) *runDeliveryState {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if state := w.states[runRenderStateKey(externalKey, runID)]; state != nil {
+		return state
+	}
+	return newRunDeliveryState()
+}
+
 func (w *Worker) clearRunRenderState(externalKey string, runID string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -423,6 +424,40 @@ func (w *Worker) deliverNotice(ctx context.Context, daemon *daemonclient.Client,
 	}
 	if err := w.sendText(ctx, target, delivery.Summary); err != nil {
 		return err
+	}
+	return w.acknowledgeSentDelivery(ctx, daemon, delivery.ID)
+}
+
+func (w *Worker) deliverPendingApprovals(ctx context.Context) error {
+	return w.deliverPendingDeliveries(ctx, core.ClientDeliveryTypeApproval, core.ClientDeliveryFilter{})
+}
+
+// deliverApproval asks the chat for a background subagent's approval, unless
+// it was decided meanwhile.
+func (w *Worker) deliverApproval(ctx context.Context, daemon *daemonclient.Client, delivery core.ClientDelivery) error {
+	target, ok := targetFromClientDelivery(delivery)
+	var payload core.ApprovalDeliveryPayload
+	if !ok || !target.isChat() || json.Unmarshal(delivery.Payload, &payload) != nil {
+		return daemon.AcknowledgeClientDelivery(ctx, delivery.ID)
+	}
+	approvals, err := w.daemon(target.externalKey).ListApprovals(ctx, delivery.SessionID, core.ApprovalStatePending)
+	if err != nil {
+		return err
+	}
+	// A delivery of the approval's run in progress may have asked already.
+	state := w.activeRunRenderState(target.externalKey, delivery.RunID)
+	for _, approval := range approvals {
+		if approval.ID != payload.ApprovalID {
+			continue
+		}
+		if _, asked := state.approvals[approval.ID]; asked {
+			break
+		}
+		messageID, err := w.sendApprovalMessage(ctx, target, approval)
+		if err != nil {
+			return err
+		}
+		state.approvals[approval.ID] = messageID
 	}
 	return w.acknowledgeSentDelivery(ctx, daemon, delivery.ID)
 }

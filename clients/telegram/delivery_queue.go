@@ -63,6 +63,8 @@ func (w *Worker) deliverPendingDeliveries(ctx context.Context, deliveryType stri
 			err = w.deliverDocument(ctx, delivery)
 		} else if deliveryType == core.ClientDeliveryTypeNotice {
 			err = w.deliverNotice(ctx, daemon, delivery)
+		} else if deliveryType == core.ClientDeliveryTypeApproval {
+			err = w.deliverApproval(ctx, daemon, delivery)
 		} else {
 			err = w.deliverPendingRunDelivery(ctx, daemon, delivery)
 		}

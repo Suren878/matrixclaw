@@ -208,15 +208,21 @@ func (w *Worker) renderApprovalUpdates(ctx context.Context, target chatTarget, a
 		if _, ok := state.approvals[approval.ID]; ok {
 			continue
 		}
-		reply, err := w.sendTelegramMessage(ctx, SendMessageRequest{
-			ChatID:      target.chatID,
-			Text:        clipTelegramText("Approval required\n\n" + renderApprovalText(approval)),
-			ReplyMarkup: approvalKeyboard(approval, w.keepsRules(target, permission.ScopeSession), w.keepsRules(target, permission.ScopeGlobal)),
-		})
+		messageID, err := w.sendApprovalMessage(ctx, target, approval)
 		if err != nil {
 			return err
 		}
-		state.approvals[approval.ID] = reply.MessageID
+		state.approvals[approval.ID] = messageID
 	}
 	return nil
+}
+
+// sendApprovalMessage asks the chat for the approval with its decision buttons.
+func (w *Worker) sendApprovalMessage(ctx context.Context, target chatTarget, approval core.Approval) (int64, error) {
+	reply, err := w.sendTelegramMessage(ctx, SendMessageRequest{
+		ChatID:      target.chatID,
+		Text:        clipTelegramText("Approval required\n\n" + renderApprovalText(approval)),
+		ReplyMarkup: approvalKeyboard(approval, w.keepsRules(target, permission.ScopeSession), w.keepsRules(target, permission.ScopeGlobal)),
+	})
+	return reply.MessageID, err
 }

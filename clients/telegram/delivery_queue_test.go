@@ -57,6 +57,7 @@ type deliveryTestDaemon struct {
 	failed       []string
 	storageError int
 	storageReads int
+	approvals    []core.Approval
 }
 
 func (d *deliveryTestDaemon) serve(w http.ResponseWriter, r *http.Request) {
@@ -88,6 +89,8 @@ func (d *deliveryTestDaemon) serve(w http.ResponseWriter, r *http.Request) {
 			{ID: "final-" + id, RunID: id, Role: transcript.MessageRoleAssistant, Content: "Final answer."},
 			{ID: "different-run", RunID: "unrelated", Role: transcript.MessageRoleAssistant, Content: "Ignore this."},
 		}})
+	case r.URL.Path == "/v1/approvals":
+		write(core.ApprovalsResponse{Approvals: d.approvals})
 	case strings.HasSuffix(r.URL.Path, "/ack"):
 		d.ackAttempts++
 		if d.ackFailures > 0 {
@@ -300,6 +303,56 @@ func TestNoticeDeliverySendsItsTextOnce(t *testing.T) {
 	}
 
 	if len(api.messages) != 1 || api.messages[0].ChatID != 7 || !strings.Contains(api.messages[0].Text, "task_1 finished") || !d.acked["notice-1"] {
+		t.Fatalf("messages = %+v acked = %v", api.messages, d.acked)
+	}
+}
+
+func TestApprovalDeliveryAsksWhileTheApprovalIsPending(t *testing.T) {
+	now := time.Unix(100, 0)
+	address := encodeDeliveryAddress(DeliveryAddress{Kind: telegramTargetChat, ChatID: 42})
+	payload := func(id string) json.RawMessage { return json.RawMessage(`{"approval_id":"` + id + `"}`) }
+	d := &deliveryTestDaemon{
+		deliveries: []core.ClientDelivery{
+			{ID: "ask-1", Type: core.ClientDeliveryTypeApproval, SessionID: "s1", RunID: "run-done", Address: address, Payload: payload("a1")},
+			{ID: "ask-2", Type: core.ClientDeliveryTypeApproval, SessionID: "s1", RunID: "run-done", Address: address, Payload: payload("a2")},
+		},
+		approvals: []core.Approval{{ID: "a1", SessionID: "s1", RunID: "run-done", State: core.ApprovalStatePending, ToolName: "agent", Description: `Subagent "Writer" requested approval for mutate_state`}},
+	}
+	api := &deliveryTestAPI{}
+	w := newDeliveryTestWorker(t, d, api, &now)
+
+	for range 2 {
+		if err := w.deliverPendingApprovals(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if len(api.messages) != 1 || api.messages[0].ChatID != 42 || !strings.Contains(api.messages[0].Text, "Approval required") || !strings.Contains(api.messages[0].Text, "Writer") {
+		t.Fatalf("messages = %+v", api.messages)
+	}
+	if buttons := approvalButtons(t, api.messages[0]); len(buttons) == 0 || buttons[0] != cbApprovalOnce+"a1" {
+		t.Fatalf("buttons = %v", buttons)
+	}
+	if !d.acked["ask-1"] || !d.acked["ask-2"] {
+		t.Fatalf("acked = %v", d.acked)
+	}
+}
+
+func TestApprovalDeliveryDoesNotRepeatWhatItsRunAsked(t *testing.T) {
+	now := time.Unix(100, 0)
+	d := &deliveryTestDaemon{
+		deliveries: []core.ClientDelivery{{ID: "ask-1", Type: core.ClientDeliveryTypeApproval, SessionID: "s1", RunID: "run-1", Address: encodeDeliveryAddress(DeliveryAddress{ChatID: 42}), Payload: json.RawMessage(`{"approval_id":"a1"}`)}},
+		approvals:  []core.Approval{{ID: "a1", SessionID: "s1", RunID: "run-1", State: core.ApprovalStatePending, ToolName: "agent"}},
+	}
+	api := &deliveryTestAPI{}
+	w := newDeliveryTestWorker(t, d, api, &now)
+	w.runRenderState("42", "run-1").approvals["a1"] = 5
+
+	if err := w.deliverPendingApprovals(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(api.messages) != 0 || !d.acked["ask-1"] {
 		t.Fatalf("messages = %+v acked = %v", api.messages, d.acked)
 	}
 }

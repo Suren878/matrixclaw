@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 // bridgedChild delegates from a parent to a child whose one mutating call waits
@@ -435,4 +437,70 @@ func TestStoppingABackgroundChildParkedOnApprovalEndsIt(t *testing.T) {
 	if mutations != 0 {
 		t.Fatalf("mutations = %d", mutations)
 	}
+}
+
+func TestBackgroundChildsApprovalGoesToTheChatTheSessionAnswersIn(t *testing.T) {
+	t.Parallel()
+	db := openScenarioStore(t)
+	app := core.New(db)
+	starter := &executingRunStarter{app: app}
+	app.WithSessionFiles(t.TempDir()).WithRunStarter(starter)
+	mutations := 0
+	mutate, _ := approvalTools(&mutations)
+	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), mutate)...))
+	var mu sync.Mutex
+	parentCalls := 0
+	parentDone := make(chan struct{})
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
+			<-parentDone
+			if toolResultContent(request, "call-child-mutate") != "" {
+				return providers.Response{Text: "Child stopped."}, nil
+			}
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-child-mutate", Name: "mutate_state", Arguments: []byte(`{}`)}}}, nil
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		parentCalls++
+		if parentCalls == 1 {
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-spawn", Name: "agent", Arguments: []byte(`{"description":"Writer","prompt":"change the state","background":true,"runtime":"matrixclaw"}`)}}}, nil
+		}
+		return providers.Response{Text: "Started the writer."}, nil
+	})})
+	session, earlier := saveCrashRecoveryRun(t, db, "approval-delivery", core.RunStatusCompleted, false)
+	run := core.Run{ID: "run_from_telegram", SessionID: session.ID, UserMessageID: "msg_from_telegram", Client: "telegram", ExternalKey: "42", Status: core.RunStatusAccepted, StartedAt: earlier.StartedAt.Add(time.Second), UpdatedAt: earlier.StartedAt.Add(time.Second)}
+	user := transcript.Message{ID: run.UserMessageID, SessionID: session.ID, RunID: run.ID, Role: transcript.MessageRoleUser, Content: "start a writer", Parts: transcript.NormalizeMessageParts("start a writer", nil), CreatedAt: run.StartedAt, UpdatedAt: run.StartedAt}
+	if err := db.AcceptMessage(context.Background(), user, run); err != nil {
+		t.Fatal(err)
+	}
+	address := json.RawMessage(`{"kind":"chat","chat_id":42}`)
+	if err := db.CreateClientDelivery(context.Background(), core.ClientDelivery{ID: "delivery_run", Type: core.ClientDeliveryTypeRun, Client: "telegram", ExternalKey: "42", SessionID: session.ID, RunID: run.ID, Address: address, Status: core.ClientDeliveryStatusSent, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
+	close(parentDone)
+
+	bridge := waitPendingApproval(t, db, session.ID, "call-spawn")
+	deliveries, err := db.ListClientDeliveries(context.Background(), core.ClientDeliveryFilter{Type: core.ClientDeliveryTypeApproval})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deliveries) != 1 {
+		t.Fatalf("approval deliveries = %+v", deliveries)
+	}
+	var payload core.ApprovalDeliveryPayload
+	delivery := deliveries[0]
+	if err := json.Unmarshal(delivery.Payload, &payload); err != nil || payload.ApprovalID != bridge.ID {
+		t.Fatalf("payload = %s, %v", delivery.Payload, err)
+	}
+	if delivery.Client != "telegram" || delivery.ExternalKey != "42" || delivery.SessionID != session.ID || string(delivery.Address) != string(address) || delivery.Status != core.ClientDeliveryStatusPending {
+		t.Fatalf("delivery = %+v", delivery)
+	}
+	if _, err := app.ResolveApproval(context.Background(), bridge.ID, core.ApprovalResolveRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	starter.wait(t)
 }

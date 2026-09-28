@@ -12,7 +12,15 @@ const (
 	ClientDeliveryTypeDocument      = "document"
 	// ClientDeliveryTypeNotice is a short text for the user outside any run.
 	ClientDeliveryTypeNotice = "notice"
+	// ClientDeliveryTypeApproval asks the user for a background subagent's
+	// approval outside the run that started it.
+	ClientDeliveryTypeApproval = "approval"
 )
+
+// ApprovalDeliveryPayload names the approval an approval delivery asks for.
+type ApprovalDeliveryPayload struct {
+	ApprovalID string `json:"approval_id"`
+}
 
 type DocumentDeliveryPayload struct {
 	StoragePath string `json:"storage_path"`
