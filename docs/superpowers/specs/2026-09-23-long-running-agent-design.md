@@ -653,7 +653,7 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   trigger IDs and `ListPendingSubagentCompletionTasks` are gone.
 - **Clients**: the TUI counts `waiting_events` as busy ("Waiting for background
   tasks"); Telegram shows progress, no typing, and "Waiting for background
-  tasks..."; the iOS package decodes it as `.unknown`.
+  work" in the run status message; the iOS package decodes it as `.unknown`.
 
 ### Implementation notes (as built, stage 6c)
 
@@ -792,8 +792,9 @@ new recovery; checkpoints without budget counters start from zero.
   read holds nothing back.
 - **Clients**: event `todo.updated` (named like the other events); the TUI
   panel is read-only, shown while items are open and toggled with `ctrl+n`;
-  `/todo` and `/todo clear` replace `/plan`; Telegram edits one silent message
-  per run built from the run's last successful `todo_write` call. `DELETE
+  `/todo` and `/todo clear` replace `/plan`; Telegram shows the run's last
+  successful `todo_write` list in its run status message (see the Telegram
+  notes). `DELETE
   /sessions/{id}/todo` answers with the emptied list. The iOS package is
   unchanged: no API type it decodes referred to plans.
 - **Removed**: the plan runner prompts are no longer filtered from provider
@@ -803,13 +804,31 @@ new recovery; checkpoints without budget counters start from zero.
 
 ### Implementation notes (as built, Telegram)
 
-- There is no single run-status message with step n/limit: each tool call
-  keeps its own silent status message (edited when it finishes), the todo list
-  has its own edited message (stage 5), engine notes are silent `Note:`
-  messages, and a waiting run shows "Waiting for background tasks...".
-- Deliveries still load the whole session with `ListMessages`;
-  `ListMessagesAfter(seq)` is available (`GET /v1/messages?after_seq=`) but
-  not used by the Telegram client yet.
+- **Run status message**: one silent message per run, created once the run
+  calls a tool or waits (a plain answer gets none) and sent without the
+  reply-keyboard removal so it stays editable. It holds the state, `step
+  n/limit`, the first tool call without a result with its subject (`+N more`
+  for parallel calls), the session's running background tasks and the run's
+  todo list, which no longer has a message of its own (one message to
+  throttle, re-create and flood-wait instead of two). It is edited only when
+  its text changes, at most every 2 s; the end state is always written. A
+  deleted or uneditable message is sent again; a flood wait is returned so
+  the delivery queue defers the chat by `retry_after`; other refusals are
+  logged and never fail the run's delivery. Tool calls send no messages;
+  failed tool results are no longer shown in Telegram.
+- **Progress API**: `GET /v1/runs/{id}/progress` returns `steps` (the run's
+  `run_steps` rows except summaries, which use no budget step), `step_limit`
+  (the run's budget as it would start now) and `tasks` (the session's pending
+  or running background tasks). It is read only when an edit is due.
+- **Loading**: each run delivery keeps the run's messages and a cursor below
+  the first message that may still change (a call without a result, an
+  assistant reply without a finish part, the run's last message) and asks
+  `ListMessagesAfter(cursor)`; the first load (also after a worker restart)
+  reads the latest 200 messages of the session. Inline and guest deliveries
+  use the same loader and still show no status message.
+- Separate messages remain for assistant segments, the final answer,
+  approvals, engine notes, the Continue offer, failure/cancel text and
+  generated speech.
 
 ## Testing
 

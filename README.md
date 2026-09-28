@@ -287,8 +287,8 @@ context note whenever it changes, so the system prompt stays cacheable.
 
 When a run replies without tools while its list still has open items and
 budget remains, it is asked once to continue or explain why it stops. The TUI
-shows the list in a side panel (`ctrl+n`), Telegram in one edited message per
-run, and `/todo` in both.
+shows the list in a side panel (`ctrl+n`), Telegram in the run's status message,
+and `/todo` in both.
 
 See [Todo List](docs/TODO.md) for the details.
 

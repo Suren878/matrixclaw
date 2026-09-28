@@ -59,28 +59,14 @@ type runDeliveryState struct {
 	messageIndex      map[string]int
 	messagesLoaded    bool
 	afterSeq          int64 // the next load asks for messages above this seq
-	statusSent        bool
+	status            runStatusMessage
+	errorSent         bool
 	continueOffered   bool
 	assistant         map[string]sentAssistantMessage
 	approvals         map[string]int64
-	toolCalls         map[string]sentToolCallStatus
 	voiceResults      map[string]int64
 	voiceFingerprints map[string]int64
 	notes             map[string]struct{}
-	todo              sentTodoStatus
-}
-
-type sentTodoStatus struct {
-	messageID int64
-	text      string
-}
-
-type sentToolCallStatus struct {
-	messageID int64
-	text      string
-	name      string
-	input     string
-	done      bool
 }
 
 type sentAssistantMessage struct {

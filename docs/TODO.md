@@ -66,8 +66,8 @@ earlier run never holds a run back; neither does a list that cannot be read.
 - **TUI:** a side panel shows the list while it has open items; `ctrl+n` shows
   or hides it; a short panel scrolls to keep the item in progress in view.
   Too small a terminal shows the list in a dialog instead.
-- **Telegram:** one silent message per run shows the list the run saved last
-  and is edited as the list changes. The message follows the run's
+- **Telegram:** the run's status message shows the list the run saved last
+  and is edited as the list changes. The list follows the run's
   `todo_write` calls only: a list emptied by `/todo clear`, `/clear` or the API
   while the run is going stays on it until the run writes the list again.
 - **Commands:** `/todo` shows the list, `/todo clear` empties it after a

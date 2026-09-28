@@ -254,7 +254,7 @@ func TestRunWaitingForEventsShowsItsBackgroundSubagentsApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(api.sent) != 1 || !strings.Contains(api.sent[0].Text, "Approval required") || !strings.Contains(approvalButtons(t, api.sent[0])[0], "a1") {
+	if len(api.sent) != 2 || api.sent[0].Text != "⏸ Waiting for background work" || !strings.Contains(api.sent[1].Text, "Approval required") || !strings.Contains(approvalButtons(t, api.sent[1])[0], "a1") {
 		t.Fatalf("sent = %+v", api.sent)
 	}
 }

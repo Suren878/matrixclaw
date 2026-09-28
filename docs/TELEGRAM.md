@@ -26,9 +26,9 @@ chats cannot bind to or send into a session that runs tools without asking
 (an external agent session, or one in `full_auto`).
 
 Session selection is stored in the daemon binding for the Telegram external
-key. Private chat runs deliver drafts, tool updates, approval buttons,
-assistant messages, generated speech, and document deliveries back to the same
-chat.
+key. Private chat runs deliver drafts, a run status message, approval
+buttons, assistant messages, generated speech, and document deliveries back to
+the same chat.
 
 Selecting a configured provider switches the current session immediately. When
 that provider exposes more than one model, Telegram opens the model picker next
@@ -39,7 +39,7 @@ so the default can be kept or another model can be selected.
 In private chats, generated text is shown with `sendMessageDraft`. The draft
 does not create a persistent first-character message. Once an assistant segment
 is complete, MatrixClaw sends the full formatted text with `sendMessage`.
-Intermediate assistant segments and tool status messages are sent silently;
+Intermediate assistant segments and the run status message are sent silently;
 the final answer's first chunk uses normal notifications. Telegram's silent
 messages may still appear in the notification tray, depending on the client.
 Approvals retain their normal notifications.
@@ -65,16 +65,30 @@ network failure is not guaranteed.
 
 ## Runs
 
-- **Tool calls**: each call gets one silent status message, edited when it
-  finishes. `agent` calls read "Subagent is working", or "Starting subagent"
-  for background children.
-- **Todo list**: one silent message per run shows the list the run saved last
-  and is edited as it changes.
+- **Run status**: once a run calls a tool or waits, it gets one silent status
+  message, edited in place instead of one message per tool call. It shows the
+  state (working, waiting for approval, waiting for background work, done,
+  stopped at the budget or on a loop, failed, canceled), `step n/limit` from
+  `GET /v1/runs/{id}/progress`, the running tool and its subject ("Using bash:
+  go test ./..."; parallel calls add "(+N more)"), the session's running
+  background tasks and the todo list the run saved last. It is edited only
+  when its text changes and at most every 2 seconds; the state the run ends
+  in is always written. "Message is not modified" is ignored, a deleted or
+  uneditable message is replaced by a new one, and a flood wait defers the
+  chat's deliveries until `retry_after` passes. A plain answer without tools
+  gets no status message. The final answer, approvals, engine notes, errors
+  and generated speech remain separate messages; inline and guest targets
+  show no status message.
+- **Loading**: a run delivery keeps the run's messages and asks the daemon
+  only for those above a `seq` cursor (`GET /v1/messages?after_seq=`), which
+  sits below the first message that may still change (a call without a
+  result, a streaming reply, the run's last message). The first load of a run,
+  also after a worker restart, reads the latest 200 messages of the session.
 - **Engine notes**: budget and loop warnings and similar notes arrive as silent
   `Note: …` messages. A run that stopped on its budget or on a loop ends with a
   notice and a **Continue** button (`/continue`).
-- **Waiting**: a run parked by `await` shows "Waiting for background tasks...",
-  without the typing indicator.
+- **Waiting**: a run parked by `await` shows "Waiting for background work" in
+  its status message, without the typing indicator.
 - **Messages during a run** steer it at its next step and wake a run that is
   waiting for background tasks.
 - **Background work**: when background work finishes in an idle session, a

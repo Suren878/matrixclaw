@@ -145,12 +145,12 @@ func (w *Worker) deliverChatRunDelivery(ctx context.Context, target chatTarget, 
 	w.updateRunTypingIndicator(ctx, target, &run)
 	switch run.Status {
 	case core.RunStatusWaitingApproval:
-		return w.deliverRunApprovals(ctx, target, daemon, sessionID, runID)
+		return w.deliverRunApprovals(ctx, target, daemon, run)
 	case core.RunStatusAccepted, core.RunStatusRunning:
-		return w.deliverActiveRunProgress(ctx, target, daemon, sessionID, runID)
+		return w.deliverActiveRunProgress(ctx, target, daemon, run)
 	case core.RunStatusWaitingEvents:
 		// A background subagent the run waits for may ask for approval meanwhile.
-		if err := w.deliverActiveRunProgress(ctx, target, daemon, sessionID, runID); err != nil {
+		if err := w.deliverActiveRunProgress(ctx, target, daemon, run); err != nil {
 			return err
 		}
 		approvals, err := daemon.ListApprovals(ctx, sessionID, core.ApprovalStatePending)
@@ -168,16 +168,7 @@ func (w *Worker) deliverChatRunDelivery(ctx context.Context, target chatTarget, 
 	if err != nil {
 		return err
 	}
-	if err := w.renderToolCallUpdates(ctx, target, messages, runID, state); err != nil {
-		return err
-	}
 	if err := w.renderVoiceToolResultUpdates(ctx, target, messages, runID, state); err != nil {
-		return err
-	}
-	if err := w.renderToolResultUpdates(ctx, target, messages, runID, state); err != nil {
-		return err
-	}
-	if err := w.renderTodoUpdates(ctx, target, messages, runID, state); err != nil {
 		return err
 	}
 	if err := w.renderEngineNotes(ctx, target, messages, runID, state); err != nil {
@@ -195,11 +186,14 @@ func (w *Worker) deliverChatRunDelivery(ctx context.Context, target chatTarget, 
 			return err
 		}
 	}
-	if run.Status != core.RunStatusCompleted && !state.statusSent {
+	if run.Status != core.RunStatusCompleted && !state.errorSent {
 		if err := w.sendText(ctx, target, renderRunStatus(run)); err != nil {
 			return err
 		}
-		state.statusSent = true
+		state.errorSent = true
+	}
+	if err := w.renderRunStatusMessage(ctx, target, daemon, run, messages, state); err != nil {
+		return err
 	}
 	if err := w.acknowledgeSentDelivery(ctx, daemon, deliveryID); err != nil {
 		return err
@@ -208,58 +202,52 @@ func (w *Worker) deliverChatRunDelivery(ctx context.Context, target chatTarget, 
 	return nil
 }
 
-func (w *Worker) deliverActiveRunProgress(ctx context.Context, target chatTarget, daemon *daemonclient.Client, sessionID string, runID string) error {
-	state := w.runRenderState(target.externalKey, runID)
-	messages, err := w.runMessages(ctx, daemon, sessionID, runID, state)
+func (w *Worker) deliverActiveRunProgress(ctx context.Context, target chatTarget, daemon *daemonclient.Client, run core.Run) error {
+	state := w.runRenderState(target.externalKey, run.ID)
+	messages, err := w.runMessages(ctx, daemon, run.SessionID, run.ID, state)
 	if err != nil {
 		return err
 	}
-	if err := w.renderAssistantProgressUpdates(ctx, target, messages, runID, state); err != nil {
+	if err := w.renderRunStatusMessage(ctx, target, daemon, run, messages, state); err != nil {
 		return err
 	}
-	if err := w.renderToolCallUpdates(ctx, target, messages, runID, state); err != nil {
+	if err := w.renderAssistantProgressUpdates(ctx, target, messages, run.ID, state); err != nil {
 		return err
 	}
-	if err := w.renderVoiceToolResultUpdates(ctx, target, messages, runID, state); err != nil {
+	if err := w.renderVoiceToolResultUpdates(ctx, target, messages, run.ID, state); err != nil {
 		return err
 	}
-	if err := w.renderToolResultUpdates(ctx, target, messages, runID, state); err != nil {
+	if err := w.renderEngineNotes(ctx, target, messages, run.ID, state); err != nil {
 		return err
 	}
-	if err := w.renderTodoUpdates(ctx, target, messages, runID, state); err != nil {
-		return err
-	}
-	if err := w.renderEngineNotes(ctx, target, messages, runID, state); err != nil {
-		return err
-	}
-	if err := w.renderAssistantStreamUpdate(ctx, target, messages, runID, state); err != nil {
+	if err := w.renderAssistantStreamUpdate(ctx, target, messages, run.ID, state); err != nil {
 		if IsRetryable(err) {
 			return err
 		}
-		log.Printf("telegram: assistant stream update failed chat=%d run=%s: %v", target.chatID, runID, err)
+		log.Printf("telegram: assistant stream update failed chat=%d run=%s: %v", target.chatID, run.ID, err)
 	}
 	return nil
 }
 
-func (w *Worker) deliverRunApprovals(ctx context.Context, target chatTarget, daemon *daemonclient.Client, sessionID string, runID string) error {
-	state := w.runRenderState(target.externalKey, runID)
-	messages, err := w.runMessages(ctx, daemon, sessionID, runID, state)
+func (w *Worker) deliverRunApprovals(ctx context.Context, target chatTarget, daemon *daemonclient.Client, run core.Run) error {
+	state := w.runRenderState(target.externalKey, run.ID)
+	messages, err := w.runMessages(ctx, daemon, run.SessionID, run.ID, state)
 	if err != nil {
 		return err
 	}
 	// Finish the current editable assistant segment before placing an approval
 	// below it. Resumed model output will start a new message after the approval.
-	if err := w.renderAssistantUpdates(silentTelegramDelivery(ctx), target, messages, runID, state); err != nil {
+	if err := w.renderAssistantUpdates(silentTelegramDelivery(ctx), target, messages, run.ID, state); err != nil {
 		return err
 	}
-	approvals, err := daemon.ListApprovals(ctx, sessionID, core.ApprovalStatePending)
+	approvals, err := daemon.ListApprovals(ctx, run.SessionID, core.ApprovalStatePending)
 	if err != nil {
 		return err
 	}
-	if len(approvals) == 0 {
-		return nil
+	if err := w.renderApprovalUpdates(ctx, target, approvals, run.ID, state); err != nil {
+		return err
 	}
-	return w.renderApprovalUpdates(ctx, target, approvals, runID, state)
+	return w.renderRunStatusMessage(ctx, target, daemon, run, messages, state)
 }
 
 func (w *Worker) deliverPendingDocuments(ctx context.Context) error {
@@ -372,7 +360,6 @@ func newRunDeliveryState() *runDeliveryState {
 	return &runDeliveryState{
 		assistant:         map[string]sentAssistantMessage{},
 		approvals:         map[string]int64{},
-		toolCalls:         map[string]sentToolCallStatus{},
 		voiceResults:      map[string]int64{},
 		voiceFingerprints: map[string]int64{},
 		notes:             map[string]struct{}{},

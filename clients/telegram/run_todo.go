@@ -1,7 +1,6 @@
 package telegram
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -9,25 +8,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
-
-// renderTodoUpdates keeps one silent message per run with the todo list the run
-// saved last, edited whenever the list changes.
-func (w *Worker) renderTodoUpdates(ctx context.Context, target chatTarget, messages []transcript.Message, runID string, state *runDeliveryState) error {
-	items, ok := runTodo(messages, runID)
-	if !ok {
-		return nil
-	}
-	text := renderTelegramTodo(items)
-	if text == state.todo.text {
-		return nil
-	}
-	messageID, err := w.editOrSendMessage(silentTelegramDelivery(ctx), target, state.todo.messageID, text, nil)
-	if err != nil {
-		return err
-	}
-	state.todo = sentTodoStatus{messageID: messageID, text: text}
-	return nil
-}
 
 // runTodo is the list the run's last successful todo_write call saved.
 func runTodo(messages []transcript.Message, runID string) ([]todo.Item, bool) {

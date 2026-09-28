@@ -69,7 +69,7 @@ as-built notes:
   `daemon.model_concurrency` (default 4) bounds model requests across all
   runs.
 - Replaced Planning Mode with a todo list: `todo_write`, a TUI side panel
-  (`ctrl+n`), one edited Telegram message per run and `/todo`. A run that stops
+  (`ctrl+n`), the Telegram run status message and `/todo`. A run that stops
   with open items is asked once to finish them. `/plan` and the plan tools are
   gone. See [docs/TODO.md](docs/TODO.md).
 - Added durable background tasks. `bash` has a timeout (default 600 s, at most
@@ -105,6 +105,9 @@ as-built notes:
   before any output or tool dispatch. Run checkpoints and crash recovery are
   more thorough, and interrupted runs are rescheduled while the daemon runs.
   Telegram draft streaming, flood waits and chunk delivery are retry-safe.
+- Telegram shows one silent, edited status message per run (state, step
+  n/limit, running tool, background tasks, todo list) instead of one message
+  per tool call, and loads only new run messages by `seq` on each delivery.
 - Fixed module context (storage, MCP, skills) dropping out of the assistant
   prompt after a daemon reload.
 - The iOS package decodes unknown run statuses as `.unknown`. It also decodes

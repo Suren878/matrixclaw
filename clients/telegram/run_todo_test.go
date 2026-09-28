@@ -1,10 +1,10 @@
 package telegram
 
 import (
-	"context"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
+	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -20,27 +20,16 @@ func todoResult(runID string, id string, failed bool) transcript.Message {
 	}}}
 }
 
-func TestRunTodoIsOneSilentMessageEditedAsTheListChanges(t *testing.T) {
-	api := &runRenderBotAPI{}
-	worker := &Worker{api: api}
-	target := chatTarget{chatID: 7, externalKey: "7"}
-	state := newRunDeliveryState()
+func TestRunStatusShowsTheListTheRunSavedLast(t *testing.T) {
+	run := core.Run{ID: "run-1", Status: core.RunStatusRunning}
 	messages := []transcript.Message{
 		todoCall("run-1", "c1", `[{"content":"Fix the bug","active_form":"Fixing the bug","status":"in_progress"},{"content":"Run the tests","status":"pending"}]`),
 		todoResult("run-1", "c1", false),
 	}
-	render := func() {
-		t.Helper()
-		if err := worker.renderTodoUpdates(context.Background(), target, messages, "run-1", state); err != nil {
-			t.Fatal(err)
-		}
+	if got := renderRunStatusText(run, core.RunProgress{}, messages); got != "⏳ Working\nThinking...\n\nTodo 0/2\n▶️ Fixing the bug\n⬜ Run the tests" {
+		t.Fatalf("status = %q", got)
 	}
 
-	render()
-	render()
-	if api.sendCount() != 1 || api.messages[0].Text != "Todo 0/2\n▶️ Fixing the bug\n⬜ Run the tests" || !api.messages[0].DisableNotification {
-		t.Fatalf("sent = %+v", api.messages)
-	}
 	messages = append(messages,
 		todoCall("run-1", "c2", `[{"content":"Fix the bug","status":"completed"},{"content":"Run the tests","status":"in_progress"}]`),
 		todoResult("run-1", "c2", false),
@@ -49,27 +38,7 @@ func TestRunTodoIsOneSilentMessageEditedAsTheListChanges(t *testing.T) {
 		todoCall("run-2", "c4", `[]`),
 		todoResult("run-2", "c4", false),
 	)
-	render()
-
-	if api.sendCount() != 1 || api.editCount() != 1 || api.messages[0].Text != "Todo 1/2\n✅ Fix the bug\n▶️ Run the tests" {
-		t.Fatalf("sent = %+v edits = %d", api.messages, api.editCount())
-	}
-}
-
-func TestTodoWriteHasNoToolStatusMessage(t *testing.T) {
-	api := &runRenderBotAPI{}
-	worker := &Worker{api: api}
-	messages := []transcript.Message{todoCall("run-1", "c1", `[]`), todoResult("run-1", "c1", false)}
-	state := newRunDeliveryState()
-
-	if err := worker.renderToolCallUpdates(context.Background(), chatTarget{chatID: 7, externalKey: "7"}, messages, "run-1", state); err != nil {
-		t.Fatal(err)
-	}
-	if err := worker.renderToolResultUpdates(context.Background(), chatTarget{chatID: 7, externalKey: "7"}, messages, "run-1", state); err != nil {
-		t.Fatal(err)
-	}
-
-	if api.sendCount() != 0 {
-		t.Fatalf("sent = %+v", api.messages)
+	if got := renderRunStatusText(run, core.RunProgress{}, messages); got != "⏳ Working\nThinking...\n\nTodo 1/2\n✅ Fix the bug\n▶️ Run the tests" {
+		t.Fatalf("status = %q", got)
 	}
 }
