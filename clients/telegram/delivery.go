@@ -58,7 +58,7 @@ func (w *Worker) deliverInlineRunDelivery(ctx context.Context, target chatTarget
 		return err
 	}
 	switch run.Status {
-	case core.RunStatusAccepted, core.RunStatusRunning:
+	case core.RunStatusAccepted, core.RunStatusRunning, core.RunStatusWaitingEvents:
 		messages, err := daemon.ListMessages(ctx, sessionID, 0)
 		if err != nil {
 			return err
@@ -141,7 +141,7 @@ func (w *Worker) deliverChatRunDelivery(ctx context.Context, target chatTarget, 
 	switch run.Status {
 	case core.RunStatusWaitingApproval:
 		return w.deliverRunApprovals(ctx, target, daemon, sessionID, runID)
-	case core.RunStatusAccepted, core.RunStatusRunning:
+	case core.RunStatusAccepted, core.RunStatusRunning, core.RunStatusWaitingEvents:
 		return w.deliverActiveRunProgress(ctx, target, daemon, sessionID, runID)
 	case core.RunStatusCompleted, core.RunStatusFailed, core.RunStatusCanceled:
 	default:

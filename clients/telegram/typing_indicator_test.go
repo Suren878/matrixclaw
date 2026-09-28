@@ -134,3 +134,18 @@ func (a *recordingBotAPI) SetMyCommands(context.Context, SetMyCommandsRequest) e
 func (a *recordingBotAPI) DeleteMyCommands(context.Context, DeleteMyCommandsRequest) error {
 	return nil
 }
+
+func TestRunWaitingForBackgroundTasksStopsTypingAndSaysSo(t *testing.T) {
+	api := &recordingBotAPI{}
+	worker := &Worker{api: api, config: Config{ChatActionInterval: 4 * time.Second}, now: time.Now}
+	run := &core.Run{ID: "run-1", Status: core.RunStatusWaitingEvents}
+
+	worker.updateRunTypingIndicator(context.Background(), chatTarget{chatID: 42, externalKey: "telegram:42"}, run)
+
+	if got := api.actionCount(); got != 0 {
+		t.Fatalf("typing actions while waiting = %d", got)
+	}
+	if got := renderRunStatus(*run); got != "Waiting for background tasks..." {
+		t.Fatalf("status = %q", got)
+	}
+}

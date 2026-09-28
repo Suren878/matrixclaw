@@ -162,7 +162,7 @@ func runIsActive(run *core.Run) bool {
 		return false
 	}
 	switch run.Status {
-	case core.RunStatusAccepted, core.RunStatusRunning, core.RunStatusWaitingApproval:
+	case core.RunStatusAccepted, core.RunStatusRunning, core.RunStatusWaitingApproval, core.RunStatusWaitingEvents:
 		return true
 	default:
 		return false

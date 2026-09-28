@@ -52,6 +52,8 @@ func renderRunStatus(run core.Run) string {
 		return "Thinking..."
 	case core.RunStatusWaitingApproval:
 		return "Approval required."
+	case core.RunStatusWaitingEvents:
+		return "Waiting for background tasks..."
 	case core.RunStatusCanceled:
 		return "Run canceled."
 	case core.RunStatusFailed:

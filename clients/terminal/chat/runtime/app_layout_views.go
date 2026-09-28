@@ -214,6 +214,9 @@ func (m *appModel) workingStatusPhase() string {
 	if activeRunWaitingForPermission(snapshot) {
 		return "Waiting for permission"
 	}
+	if snapshot.Run != nil && snapshot.Run.Status == core.RunStatusWaitingEvents {
+		return "Waiting for background tasks"
+	}
 	if update, ok := latestActiveToolUpdate(snapshot, core.ToolLifecycleRequested); ok {
 		if isSubagentToolName(update.ToolName) {
 			if phase := activeSubagentPhase(snapshot); phase != "" {
