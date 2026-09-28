@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/automation"
 	"github.com/Suren878/matrixclaw/internal/core"
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
@@ -118,6 +119,11 @@ type BudgetRuntime interface {
 	UpdateSessionBudget(ctx context.Context, sessionID string, budget core.SessionBudget) (core.SessionBudgetReport, error)
 }
 
+type TodoRuntime interface {
+	SessionTodo(ctx context.Context, sessionID string) (todo.List, error)
+	ClearSessionTodo(ctx context.Context, sessionID string) (todo.List, error)
+}
+
 type PlanRuntime interface {
 	SessionPlan(ctx context.Context, sessionID string) (core.SessionPlan, error)
 	SetSessionGoal(ctx context.Context, sessionID string, goal string) (core.SessionPlan, error)
@@ -222,6 +228,7 @@ type Dispatcher struct {
 	usage          UsageRuntime
 	budget         BudgetRuntime
 	plan           PlanRuntime
+	todo           TodoRuntime
 	memory         MemoryRuntime
 	search         SearchRuntime
 	storage        StorageRuntime
@@ -259,6 +266,7 @@ func New(runtime any, workingDir string) *Dispatcher {
 		d.usage, _ = runtime.(UsageRuntime)
 		d.budget, _ = runtime.(BudgetRuntime)
 		d.plan, _ = runtime.(PlanRuntime)
+		d.todo, _ = runtime.(TodoRuntime)
 		d.memory, _ = runtime.(MemoryRuntime)
 		d.search, _ = runtime.(SearchRuntime)
 		d.storage, _ = runtime.(StorageRuntime)
@@ -316,6 +324,8 @@ func (d *Dispatcher) Handle(ctx context.Context, externalKey string, text string
 		return d.handleBudget(ctx, externalKey, args)
 	case CommandPlan:
 		return d.handlePlan(ctx, externalKey, args)
+	case CommandTodo:
+		return d.handleTodo(ctx, externalKey, args)
 	case CommandMemory:
 		return d.handleMemory(ctx, args)
 	case CommandSearch:

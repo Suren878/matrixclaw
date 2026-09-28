@@ -1,6 +1,7 @@
 package core
 
 import (
+	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -167,6 +168,10 @@ type UsageResponse struct {
 
 type SessionBudgetResponse struct {
 	Budget SessionBudgetReport `json:"budget"`
+}
+
+type SessionTodoResponse struct {
+	Todo todo.List `json:"todo"`
 }
 
 type SessionPlanResponse struct {

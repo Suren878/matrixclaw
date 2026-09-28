@@ -59,6 +59,7 @@ func (s *Server) handleSessionByID(w http.ResponseWriter, r *http.Request) {
 		{suffix: "/context", handle: s.handleSessionContext},
 		{suffix: "/usage", handle: s.handleSessionUsage},
 		{suffix: "/budget", handle: s.handleSessionBudget},
+		{suffix: "/todo", handle: s.handleSessionTodo},
 		{suffix: "/plan/items", handle: s.handleSessionPlanItems},
 		{suffix: "/plan/status", handle: s.handleSessionPlanStatus},
 		{suffix: "/plan/run", handle: s.handleSessionPlanRun},

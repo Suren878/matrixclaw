@@ -65,6 +65,12 @@ func BuildCommandView(state MenuState) []CommandView {
 				status = "Matrixclaw only"
 				disabled = true
 			}
+		case CommandTodo:
+			title = "Todo"
+			if !state.Capabilities.NativeTools && hasSessionCapabilities(state.Capabilities) {
+				status = "Matrixclaw only"
+				disabled = true
+			}
 		case CommandMemory:
 			title = "Memory"
 			group = MenuItemGroupSecondary

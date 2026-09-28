@@ -15,6 +15,7 @@ const (
 	CommandContinue    = commandcatalog.CommandContinue
 	CommandBudget      = commandcatalog.CommandBudget
 	CommandPlan        = commandcatalog.CommandPlan
+	CommandTodo        = commandcatalog.CommandTodo
 	CommandMemory      = commandcatalog.CommandMemory
 	CommandSearch      = commandcatalog.CommandSearch
 	CommandSkills      = commandcatalog.CommandSkills

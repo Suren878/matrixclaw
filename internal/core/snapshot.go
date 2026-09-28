@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -16,6 +17,7 @@ type ClientSnapshot struct {
 	Capabilities          *SessionCapabilities     `json:"capabilities,omitempty"`
 	Context               *ContextReport           `json:"context,omitempty"`
 	Plan                  *SessionPlan             `json:"plan,omitempty"`
+	Todo                  *todo.List               `json:"todo,omitempty"`
 	Messages              []transcript.Message     `json:"messages"`
 	Run                   *Run                     `json:"run,omitempty"`
 	Timing                *RunTiming               `json:"timing,omitempty"`
@@ -51,6 +53,11 @@ func (c *Core) ClientSnapshot(ctx context.Context, client string, externalKey st
 	} else {
 		snapshot.Plan = &plan
 	}
+	list, err := c.store.GetSessionTodo(ctx, binding.SessionID)
+	if err != nil {
+		return ClientSnapshot{}, err
+	}
+	snapshot.Todo = &list
 
 	approvals, err := c.store.ListApprovals(ctx, binding.SessionID, "")
 	if err != nil {

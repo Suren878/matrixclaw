@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/automation"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
@@ -451,6 +452,22 @@ func (r ControlplaneRuntime) UpdateSessionBudget(ctx context.Context, sessionID 
 		return core.SessionBudgetReport{}, err
 	}
 	return client.UpdateSessionBudget(ctx, sessionID, budget)
+}
+
+func (r ControlplaneRuntime) SessionTodo(ctx context.Context, sessionID string) (todo.List, error) {
+	client, err := r.client("")
+	if err != nil {
+		return todo.List{}, err
+	}
+	return client.SessionTodo(ctx, sessionID)
+}
+
+func (r ControlplaneRuntime) ClearSessionTodo(ctx context.Context, sessionID string) (todo.List, error) {
+	client, err := r.client("")
+	if err != nil {
+		return todo.List{}, err
+	}
+	return client.ClearSessionTodo(ctx, sessionID)
 }
 
 func (r ControlplaneRuntime) SessionPlan(ctx context.Context, sessionID string) (core.SessionPlan, error) {

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -36,6 +37,12 @@ func (e LiveEvent) DecodeRun() (core.Run, error) {
 	var run core.Run
 	err := json.Unmarshal(e.Payload, &run)
 	return run, err
+}
+
+func (e LiveEvent) DecodeTodo() (todo.List, error) {
+	var list todo.List
+	err := json.Unmarshal(e.Payload, &list)
+	return list, err
 }
 
 func (e LiveEvent) DecodeSessionPlan() (core.SessionPlan, error) {

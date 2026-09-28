@@ -4,6 +4,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -15,6 +16,7 @@ type StateSnapshot struct {
 	Capabilities          *core.SessionCapabilities
 	Context               *core.ContextReport
 	Plan                  *core.SessionPlan
+	Todo                  *todo.List
 	Run                   *core.Run
 	Timing                *core.RunTiming
 	Messages              []transcript.Message
@@ -33,6 +35,7 @@ type State struct {
 	capabilities          *core.SessionCapabilities
 	context               *core.ContextReport
 	plan                  *core.SessionPlan
+	todo                  *todo.List
 	run                   *core.Run
 	timing                *core.RunTiming
 	messages              []transcript.Message
@@ -51,6 +54,7 @@ func NewState(snapshot core.ClientSnapshot) *State {
 		capabilities:          cloneSessionCapabilities(snapshot.Capabilities),
 		context:               cloneContextReport(snapshot.Context),
 		plan:                  cloneSessionPlan(snapshot.Plan),
+		todo:                  cloneTodo(snapshot.Todo),
 		run:                   cloneRun(snapshot.Run),
 		timing:                cloneTiming(snapshot.Timing),
 		messages:              append([]transcript.Message(nil), snapshot.Messages...),
@@ -103,6 +107,7 @@ func (s *State) Snapshot() StateSnapshot {
 		Capabilities: cloneSessionCapabilities(s.capabilities),
 		Context:      cloneContextReport(s.context),
 		Plan:         cloneSessionPlan(s.plan),
+		Todo:         cloneTodo(s.todo),
 		Run:          cloneRun(s.run),
 		Timing:       cloneTiming(s.timing),
 		Messages:     append([]transcript.Message(nil), s.messages...),
@@ -180,6 +185,15 @@ func cloneSessionPlan(plan *core.SessionPlan) *core.SessionPlan {
 	return &copy
 }
 
+func cloneTodo(list *todo.List) *todo.List {
+	if list == nil {
+		return nil
+	}
+	copy := *list
+	copy.Items = append([]todo.Item(nil), list.Items...)
+	return &copy
+}
+
 func (s *State) Apply(event daemonclient.LiveEvent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -233,6 +247,12 @@ func (s *State) Apply(event daemonclient.LiveEvent) error {
 		}
 		s.run = cloneRun(&run)
 		s.timing = nil
+	case core.EventTodoUpdated:
+		list, err := event.DecodeTodo()
+		if err != nil {
+			return err
+		}
+		s.todo = cloneTodo(&list)
 	case core.EventPlanUpdated:
 		plan, err := event.DecodeSessionPlan()
 		if err != nil {
