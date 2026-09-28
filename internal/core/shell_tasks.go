@@ -426,9 +426,9 @@ func (c *Core) RecoverTasks(ctx context.Context) error {
 	return nil
 }
 
-// stopSessionTasks stops the shell tasks a session runs, before it is deleted;
-// they are delivered first, so that their end wakes nothing in it.
-func (c *Core) stopSessionTasks(ctx context.Context, sessionID string) error {
+// stopSessionTasks stops the shell tasks a session runs when nobody will read
+// them; they are delivered first, so that their end wakes nothing in it.
+func (c *Core) stopSessionTasks(ctx context.Context, sessionID string, reason string) error {
 	tasks, err := c.store.ListTasks(ctx, TaskFilter{SessionID: sessionID, Kind: TaskKindShell, Statuses: []TaskStatus{TaskStatusRunning}})
 	if err != nil {
 		return err
@@ -441,7 +441,7 @@ func (c *Core) stopSessionTasks(ctx context.Context, sessionID string) error {
 		return err
 	}
 	for _, task := range tasks {
-		if _, err := c.cancelTask(ctx, task, "its session was deleted"); err != nil {
+		if _, err := c.cancelTask(ctx, task, reason); err != nil {
 			return err
 		}
 	}

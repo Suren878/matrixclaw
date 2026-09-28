@@ -152,7 +152,7 @@ func (c *Core) DeleteSession(ctx context.Context, sessionID string) error {
 	if sessionID == "" {
 		return fmt.Errorf("%w: session id is required", ErrInvalidInput)
 	}
-	if err := c.stopSessionTasks(ctx, sessionID); err != nil {
+	if err := c.stopSessionTasks(ctx, sessionID, "its session was deleted"); err != nil {
 		return err
 	}
 	if err := c.store.DeleteSession(ctx, sessionID); err != nil {

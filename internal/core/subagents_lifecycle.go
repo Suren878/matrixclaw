@@ -92,6 +92,12 @@ func (c *Core) afterRunExecution(ctx context.Context, runID string) error {
 		}
 		return err
 	}
+	if subagentRunStatusTerminal(run.Status) && isSubagentSession(session) {
+		// Nobody reads a child's background commands once it has finished.
+		if err := c.stopSessionTasks(ctx, session.ID, "its subagent finished"); err != nil {
+			return err
+		}
+	}
 	if subagentRunStatusTerminal(run.Status) {
 		if err := c.queuePendingSteersForRun(ctx, session.ID, run.ID); err != nil {
 			return err

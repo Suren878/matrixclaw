@@ -158,3 +158,77 @@ func TestBackgroundChildrenAreLimitedPerSession(t *testing.T) {
 		t.Fatalf("second = %v", err)
 	}
 }
+
+func TestCancelingARunStopsTheCommandsItStarted(t *testing.T) {
+	t.Parallel()
+	app, db, session, _ := newTaskCore(t)
+	now := runRecoveryTestTime()
+	for _, id := range []string{"run_one", "run_two"} {
+		if err := db.CreateRun(context.Background(), core.Run{ID: id, SessionID: session.ID, UserMessageID: "msg_" + id, Status: core.RunStatusRunning, StartedAt: now, UpdatedAt: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	start := func(runID string) string {
+		started, err := app.RunCommand(context.Background(), tools.Call{SessionID: session.ID, RunID: runID}, tools.Command{Command: "sleep 30", Background: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return started.TaskID
+	}
+	mine, other := start("run_one"), start("run_two")
+	t.Cleanup(func() { _, _ = app.CancelTask(context.Background(), other) })
+
+	if _, err := app.CancelRun(context.Background(), "run_one"); err != nil {
+		t.Fatal(err)
+	}
+
+	stopped := waitTaskStatus(t, db, mine, core.TaskStatusCanceled)
+	if stopped.Error != "its run was canceled" {
+		t.Fatalf("stopped = %+v", stopped)
+	}
+	waitProcessGone(t, stopped.PID)
+	if running, err := db.GetTask(context.Background(), other); err != nil || running.Status != core.TaskStatusRunning {
+		t.Fatalf("another run's task = %+v, %v", running, err)
+	}
+}
+
+func TestAFinishedChildsBackgroundCommandsStop(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithSessionFiles(t.TempDir())
+	registry := tools.NewRegistry(core.AgentToolExecutors(app)...)
+	if err := registry.Register(tools.NewShellExecutors(app)...); err != nil {
+		t.Fatal(err)
+	}
+	app.WithTools(registry)
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		answered := len(toolResults(request)) > 0
+		switch {
+		case childPrompt(request) != "" && !answered:
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "child-serve", Name: "bash", Arguments: json.RawMessage(`{"command":"sleep 30","run_in_background":true}`)}}}, nil
+		case childPrompt(request) != "":
+			return providers.Response{Text: "started the server"}, nil
+		case !answered:
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-child", Name: "agent", Arguments: json.RawMessage(`{"description":"Serve","prompt":"start the server"}`)}}}, nil
+		default:
+			return providers.Response{Text: "Done."}, nil
+		}
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "child_bash", core.RunStatusAccepted, false)
+	sessionIn(t, db, session, t.TempDir(), core.PermissionModeFullAuto)
+
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	child, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-child")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := db.ListTasks(context.Background(), core.TaskFilter{SessionID: child.ChildSessionID, Kind: core.TaskKindShell})
+	if err != nil || len(tasks) != 1 || tasks[0].Status != core.TaskStatusCanceled || tasks[0].Error != "its subagent finished" {
+		t.Fatalf("child tasks = %+v, %v", tasks, err)
+	}
+	waitProcessGone(t, tasks[0].PID)
+}
