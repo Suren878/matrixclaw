@@ -19,13 +19,17 @@ import (
 // taskOutputDir holds a session's background task output files.
 const taskOutputDir = "tasks"
 
+// taskStopGrace is how long a stopped command may take to end on SIGTERM
+// before its process group is killed.
+const taskStopGrace = 3 * time.Second
+
 // foregroundWaitDelay is how long a finished foreground command waits for
 // processes it left behind to close their output.
 const foregroundWaitDelay = 2 * time.Second
 
 // RunCommand runs a bash call's command. A background command, or a foreground
 // one still running after its AutoBackground delay, goes on as a task of the
-// call's session; a foreground one is killed at its timeout or when ctx stops.
+// call's session; a foreground one is stopped at its timeout or when ctx stops.
 func (c *Core) RunCommand(ctx context.Context, call tools.Call, command tools.Command) (tools.CommandResult, error) {
 	id := c.newID("task")
 	path, err := c.taskOutputPath(call.SessionID, id)
@@ -61,13 +65,13 @@ func (c *Core) RunCommand(ctx context.Context, call tools.Call, command tools.Co
 	case <-process.Done():
 		return c.finishedCommand(process, command, false)
 	case <-timeout.C:
-		_ = process.Kill()
+		_ = process.Stop(taskStopGrace)
 		<-process.Done()
 		return c.finishedCommand(process, command, true)
 	case <-background:
 		return c.adoptCommand(ctx, call, command, id, process, process.StartedAt().Add(command.Timeout))
 	case <-ctx.Done():
-		_ = process.Kill()
+		_ = process.Stop(taskStopGrace)
 		<-process.Done()
 		_ = os.Remove(path)
 		return tools.CommandResult{}, ctx.Err()
@@ -122,7 +126,7 @@ func (c *Core) adoptCommand(ctx context.Context, call tools.Call, command tools.
 	c.tasksMu.Unlock()
 	if err := c.store.CreateTask(context.WithoutCancel(ctx), task); err != nil {
 		c.forgetLiveTask(id)
-		_ = process.Kill()
+		_ = process.Stop(taskStopGrace)
 		return tools.CommandResult{}, err
 	}
 	c.publishTaskUpdated(task)
@@ -147,7 +151,7 @@ func (c *Core) watchShellTask(task Task, live *liveTask, deadline time.Time) {
 		select {
 		case <-process.Done():
 		case <-timer.C:
-			_ = process.Kill()
+			_ = process.Stop(taskStopGrace)
 			errText = fmt.Sprintf("killed when its timeout of %s ran out", deadline.Sub(task.StartedAt).Round(time.Second))
 		}
 	}
@@ -270,7 +274,7 @@ func (c *Core) StopTask(ctx context.Context, call tools.Call, taskID string) (to
 	return taskInfo(task), nil
 }
 
-// cancelTask ends a running task: a shell task's process group is killed, a
+// cancelTask ends a running task: a shell task's process group is stopped, a
 // subagent's run is canceled. A finished task is returned as it is.
 func (c *Core) cancelTask(ctx context.Context, task Task, reason string) (Task, error) {
 	if taskStatusTerminal(task.Status) {
@@ -286,7 +290,7 @@ func (c *Core) cancelTask(ctx context.Context, task Task, reason string) (Task, 
 		return Task{}, err
 	}
 	if live, ok := c.liveTask(task.ID); ok {
-		if err := live.process.Kill(); err != nil {
+		if err := live.process.Stop(taskStopGrace); err != nil {
 			return Task{}, err
 		}
 	}
@@ -324,7 +328,7 @@ func (c *Core) RecoverTasks(ctx context.Context) error {
 	return nil
 }
 
-// stopSessionTasks kills the shell tasks a session runs, before it is deleted.
+// stopSessionTasks stops the shell tasks a session runs, before it is deleted.
 func (c *Core) stopSessionTasks(ctx context.Context, sessionID string) error {
 	tasks, err := c.store.ListTasks(ctx, TaskFilter{SessionID: sessionID, Kind: TaskKindShell, Statuses: []TaskStatus{TaskStatusRunning}})
 	if err != nil {

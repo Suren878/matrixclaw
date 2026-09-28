@@ -377,8 +377,9 @@ output_cursor, child_session_id, child_run_id, started_at, finished_at`.
   stdout/stderr go to a file (mode 0600) capped at 20 MB, keeping the first
   1 MB and a rolling tail. Files are removed with the session.
 - `task_output(id, wait_seconds?, filter?)` returns output since the last read
-  (cursor) plus status; `task_kill(id)` kills the group. They replace
-  `job_output` / `job_kill`.
+  (cursor) plus status; `task_kill(id)` stops the group: SIGTERM, then SIGKILL
+  after 3 s if it still runs (timeouts, session deletion and canceled runs stop
+  commands the same way). They replace `job_output` / `job_kill`.
 - On daemon start, leftover `running` shell tasks have their process group
   killed and are marked `lost`; the model sees that in the next context message.
 - Completion emits `task_finished` into the session inbox.

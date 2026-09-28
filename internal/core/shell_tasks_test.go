@@ -167,6 +167,43 @@ func TestStoppedTaskIsCanceledWithoutAnEvent(t *testing.T) {
 	waitProcessGone(t, task.PID)
 }
 
+func TestStoppedTaskCanCleanUpOnTERM(t *testing.T) {
+	t.Parallel()
+	app, db, session, _ := newTaskCore(t)
+	command := foreground("trap 'echo cleaned up; exit 0' TERM; echo up; while true; do sleep 0.1; done")
+	command.Background = true
+	result, err := app.RunCommand(context.Background(), taskCall(session), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := db.GetTask(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if tail, _ := shelltask.Tail(task.OutputPath, 100); tail == "up\n" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the task wrote no output")
+		}
+	}
+
+	if _, err := app.StopTask(context.Background(), taskCall(session), result.TaskID); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		tail, err := shelltask.Tail(task.OutputPath, 100)
+		if strings.HasSuffix(tail, "cleaned up\n") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("output = %q, %v", tail, err)
+		}
+	}
+	waitProcessGone(t, task.PID)
+}
+
 func waitProcessGone(t *testing.T, pid int) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -189,7 +226,7 @@ func TestRecoverTasksKillsLeftoversAndMarksThemLost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = process.Kill() })
+	t.Cleanup(func() { _ = shelltask.KillGroup(process.PID()) })
 	left := core.Task{ID: "task_left", SessionID: session.ID, Kind: core.TaskKindShell, Status: core.TaskStatusRunning, Command: "sleep 60", Background: true,
 		PID: process.PID(), PGID: process.PID(), LeaderStart: process.Leader().Start, BootID: process.Leader().BootID, OutputPath: out.Path(), StartedAt: process.StartedAt(), UpdatedAt: process.StartedAt()}
 	if err := db.CreateTask(context.Background(), left); err != nil {

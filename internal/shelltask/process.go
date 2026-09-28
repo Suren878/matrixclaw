@@ -87,17 +87,39 @@ func (p *Process) ExitCode() int {
 	return p.exitCode
 }
 
-// Kill ends every process of the group.
-func (p *Process) Kill() error {
-	return KillGroup(p.PID())
+// Stop asks every process of the group to end with SIGTERM and kills the
+// group with SIGKILL when the command is not done within grace.
+func (p *Process) Stop(grace time.Duration) error {
+	select {
+	case <-p.done:
+		return nil
+	default:
+	}
+	if err := signalGroup(p.PID(), syscall.SIGTERM); err != nil {
+		return err
+	}
+	go func() {
+		timer := time.NewTimer(grace)
+		defer timer.Stop()
+		select {
+		case <-p.done:
+		case <-timer.C:
+			_ = KillGroup(p.PID())
+		}
+	}()
+	return nil
 }
 
 // KillGroup sends SIGKILL to the process group; a gone group is no error.
 func KillGroup(pgid int) error {
+	return signalGroup(pgid, syscall.SIGKILL)
+}
+
+func signalGroup(pgid int, signal syscall.Signal) error {
 	if pgid <= 0 {
 		return nil
 	}
-	if err := syscall.Kill(-pgid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+	if err := syscall.Kill(-pgid, signal); err != nil && !errors.Is(err, syscall.ESRCH) {
 		return err
 	}
 	return nil

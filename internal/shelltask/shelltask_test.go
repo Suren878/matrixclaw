@@ -94,20 +94,68 @@ func TestProcessRunsInItsOwnGroupAndReportsItsExitCode(t *testing.T) {
 	}
 }
 
-func TestKillEndsTheWholeGroup(t *testing.T) {
+// startReady starts command, which prints "ready" once it set itself up.
+func startReady(t *testing.T, command string) *shelltask.Process {
+	t.Helper()
 	out := newOutput(t)
-	p, err := shelltask.Start("sleep 60 & sleep 60; wait", t.TempDir(), out, 0)
+	p, err := shelltask.Start(command, t.TempDir(), out, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := p.Kill(); err != nil {
+	t.Cleanup(func() { _ = shelltask.KillGroup(p.PID()) })
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if chunk, _ := shelltask.Read(out.Path(), 0, 100); strings.Contains(chunk.Text, "ready") {
+			return p
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the command never got ready")
+		}
+	}
+}
+
+func waitDone(t *testing.T, p *shelltask.Process) {
+	t.Helper()
+	select {
+	case <-p.Done():
+	case <-time.After(10 * time.Second):
+		t.Fatal("the group outlived Stop")
+	}
+}
+
+func TestStopEndsTheWholeGroup(t *testing.T) {
+	p := startReady(t, "sleep 60 & echo ready; sleep 60; wait")
+	if err := p.Stop(time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	waitDone(t, p)
+	if code := p.ExitCode(); code != -1 {
+		t.Fatalf("exit code = %d", code)
+	}
+}
+
+func TestStopLetsACommandEndOnTERM(t *testing.T) {
+	p := startReady(t, "trap 'echo bye; exit 0' TERM; echo ready; while true; do sleep 0.1; done")
+	if err := p.Stop(time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	waitDone(t, p)
+	chunk, err := shelltask.Read(p.Output().Path(), 0, 100)
+	if code := p.ExitCode(); code != 0 || err != nil || !strings.HasSuffix(chunk.Text, "bye\n") {
+		t.Fatalf("exit code = %d, output = %q, %v", code, chunk.Text, err)
+	}
+}
+
+func TestStopKillsACommandThatIgnoresTERM(t *testing.T) {
+	p := startReady(t, "trap '' TERM; echo ready; while true; do sleep 0.1; done")
+	if err := p.Stop(500 * time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case <-p.Done():
-	case <-time.After(10 * time.Second):
-		t.Fatal("the group outlived Kill")
+		t.Fatal("SIGTERM ended a command that ignores it")
+	case <-time.After(200 * time.Millisecond):
 	}
+	waitDone(t, p)
 	if code := p.ExitCode(); code != -1 {
 		t.Fatalf("exit code = %d", code)
 	}
@@ -119,7 +167,7 @@ func TestKillLeftoverChecksTheLeaderWithoutPS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = p.Kill() })
+	t.Cleanup(func() { _ = shelltask.KillGroup(p.PID()) })
 	t.Setenv("PATH", "/nonexistent")
 	leader := p.Leader()
 	if leader.PID != p.PID() || leader.BootID == "" || leader.Start == "" {
@@ -156,7 +204,7 @@ func TestKillLeftoverLeavesALeaderlessGroupAlone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = p.Kill() })
+	t.Cleanup(func() { _ = shelltask.KillGroup(p.PID()) })
 	for deadline := time.Now().Add(10 * time.Second); syscall.Kill(p.PID(), 0) == nil; time.Sleep(10 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatal("the shell did not exit")
