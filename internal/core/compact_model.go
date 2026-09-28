@@ -15,20 +15,20 @@ func (c *Core) WithCompactModel(providerID string, modelID string) *Core {
 	return c
 }
 
-// compactRuntime is the configured summary model; nil means the run's own model,
-// also when the configured one cannot be resolved.
-func (c *Core) compactRuntime(ctx context.Context) providers.Runtime {
+// compactRuntime is the configured summary model and its context window; nil
+// means the run's own model, also when the configured one cannot be resolved.
+func (c *Core) compactRuntime(ctx context.Context) (providers.Runtime, int) {
 	if c.compactProvider == "" {
-		return nil
+		return nil, 0
 	}
 	llms := c.sessionLLMs()
 	if llms == nil {
-		return nil
+		return nil, 0
 	}
-	runtime, _, _, err := llms.Resolve(ctx, c.compactProvider, c.compactModel)
+	runtime, _, modelID, err := llms.Resolve(ctx, c.compactProvider, c.compactModel)
 	if err != nil || runtime == nil {
 		log.Printf("core: compact model %s/%s is unavailable, summaries use the run's model: %v", c.compactProvider, c.compactModel, err)
-		return nil
+		return nil, 0
 	}
-	return runtime
+	return runtime, c.modelContextWindowTokens(c.compactProvider, modelID)
 }

@@ -3,6 +3,7 @@ package agent_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -279,5 +280,93 @@ func TestContinuationCarriesTheEarlierRunsKeptTexts(t *testing.T) {
 	marks := boundaries(f.Journal.Messages)
 	if len(marks) != 2 || len(marks[1].Compaction.Kept) != 1 || marks[1].Compaction.Kept[0] != "User: first ask" {
 		t.Fatalf("boundaries = %+v", marks)
+	}
+}
+
+// pastTurns is n earlier runs of the session, each a question and an answer
+// of answerRunes.
+func pastTurns(n int, answerRunes int) []transcript.Message {
+	var history []transcript.Message
+	for i := range n {
+		for _, message := range pastTurn(answerRunes) {
+			message.ID = fmt.Sprintf("%s_%d", message.ID, i)
+			history = append(history, message)
+		}
+	}
+	return history
+}
+
+// overThreshold is a tool step reporting a prompt of 70k tokens, over the
+// summary threshold of a 100k window.
+func overThreshold() agenttest.Turn {
+	return agenttest.Turn{Response: providers.Response{ToolCalls: []providers.ToolCall{call("c1", "read")}, Usage: providers.Usage{PromptTokens: 70_000}}}
+}
+
+func isStandaloneSummary(request providers.Request) bool {
+	return strings.HasPrefix(request.SystemPrompt, "You compact matrixclaw chat histories")
+}
+
+func TestFailingCompactModelFallsBackToTheRunModel(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.WithHistory(pastTurn(100_000)...)
+	f.Window = 100_000
+	f.Tools.Funcs["read"] = readTool
+	main := agenttest.NewScriptedModel(overThreshold(), text("RUN MODEL SUMMARY"), text("Done."))
+	cheap := agenttest.NewScriptedModel(agenttest.Turn{Err: errors.New("cheap: status 404: model not found")})
+	task := f.Task(main)
+	task.CompactModel = cheap
+
+	outcome := runTask(t, f, task)
+
+	requests := main.Requests()
+	if outcome.Status != agent.StatusCompleted || len(cheap.Requests()) != 1 || len(requests) != 3 || !isStandaloneSummary(requests[1]) {
+		t.Fatalf("outcome = %+v cheap = %d main = %d", outcome, len(cheap.Requests()), len(requests))
+	}
+	if marks := boundaries(f.Journal.Messages); len(marks) != 1 || marks[0].Compaction.Summary != "RUN MODEL SUMMARY" {
+		t.Fatalf("boundaries = %+v", marks)
+	}
+}
+
+func TestEmptyReusedRequestSummaryFallsBackToChunks(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.WithHistory(pastTurn(100_000)...)
+	f.Window = 100_000
+	f.Tools.Funcs["read"] = readTool
+	model := agenttest.NewScriptedModel(overThreshold(), text(""), text("SUMMARY"), text("Done."))
+
+	outcome := run(t, f, model)
+
+	requests := model.Requests()
+	if outcome.Status != agent.StatusCompleted || len(requests) != 4 || lastMessage(requests[1]).Content != agentcontext.SummaryInstruction || !isStandaloneSummary(requests[2]) {
+		t.Fatalf("outcome = %+v requests = %d", outcome, len(requests))
+	}
+	if marks := boundaries(f.Journal.Messages); len(marks) != 1 || marks[0].Compaction.Summary != "SUMMARY" {
+		t.Fatalf("boundaries = %+v", marks)
+	}
+}
+
+func TestCompactModelChunksBySizeOfItsOwnWindow(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.WithHistory(pastTurns(12, 40_000)...)
+	f.Window = 100_000
+	main := agenttest.NewScriptedModel(text("Done."))
+	var chunks []int
+	cheap := agenttest.ModelFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		chunks = append(chunks, agentcontext.EstimateRequestTokens(request))
+		return providers.Response{Text: "PART"}, nil
+	})
+	task := f.Task(main)
+	task.CompactModel = cheap
+	task.CompactWindowTokens = 20_000
+
+	outcome := runTask(t, f, task)
+
+	if outcome.Status != agent.StatusCompleted || len(chunks) < 4 {
+		t.Fatalf("outcome = %+v chunk requests = %v, want one per covered answer", outcome, chunks)
+	}
+	for _, tokens := range chunks {
+		if tokens > 10_000 {
+			t.Fatalf("chunk requests = %v tokens, want each within the compact model's 20k window", chunks)
+		}
 	}
 }

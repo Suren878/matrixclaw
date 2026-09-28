@@ -18,16 +18,21 @@ type promptAnchor struct {
 // contextLimit is the prompt room of the run's model: its window without the
 // output limit the next request sends and a reserve.
 func (r *run) contextLimit() int {
-	output := r.counters.OutputLimit
-	if output == 0 {
-		output = int(providers.DefaultMaxOutputTokens)
-		if limiter, ok := r.task.Model.(providers.OutputLimiter); ok {
-			if current, _ := limiter.OutputLimits(); current > 0 {
-				output = int(current)
-			}
+	return agentcontext.EffectiveWindow(r.task.WindowTokens, outputTokens(r.task.Model, r.counters.OutputLimit))
+}
+
+// outputTokens is the output limit a request to model sends: limit when set,
+// else the model's own, else the default.
+func outputTokens(model Model, limit int) int {
+	if limit > 0 {
+		return limit
+	}
+	if limiter, ok := model.(providers.OutputLimiter); ok {
+		if current, _ := limiter.OutputLimits(); current > 0 {
+			return int(current)
 		}
 	}
-	return agentcontext.EffectiveWindow(r.task.WindowTokens, output)
+	return int(providers.DefaultMaxOutputTokens)
 }
 
 // promptTokens is the prompt size of request: the provider's report for the last

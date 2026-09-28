@@ -30,32 +30,42 @@ func (r *run) compactHistory(ctx context.Context, reuse *providers.Request, befo
 	if agentcontext.EstimateMessageTokens(covered)*10 < before {
 		return false, nil
 	}
-	summary, err := r.summary(ctx, reuse, previous, covered, limit)
+	summary, err := r.summary(ctx, reuse, previous, covered)
 	if err != nil {
 		return false, fmt.Errorf("auto compact session: %w", err)
 	}
 	return true, r.writeBoundary(ctx, previous, covered, summary, before)
 }
 
-// summary asks for the summary with the step's own request, so the provider
-// reuses its cached prefix; without one, when that request is too long, or with
-// a compact model set, the covered history is summarised on its own, in chunks.
-func (r *run) summary(ctx context.Context, reuse *providers.Request, previous *transcript.Compaction, covered []transcript.Message, limit int) (string, error) {
-	if reuse != nil && r.task.CompactModel == nil {
-		text, err := r.prefixSummary(ctx, *reuse)
-		if err == nil || !agentcontext.IsContextLengthExceeded(err) {
+// summary asks the compact model, when set, or else the step's own request, so
+// the provider reuses its cached prefix; without either, or when that fails, the
+// run's model summarises the covered history on its own, in chunks.
+func (r *run) summary(ctx context.Context, reuse *providers.Request, previous *transcript.Compaction, covered []transcript.Message) (string, error) {
+	if r.task.CompactModel != nil || reuse != nil {
+		text, err := r.preferredSummary(ctx, reuse, previous, covered)
+		if err == nil || ctx.Err() != nil {
 			return text, err
 		}
 	}
-	model := r.task.Model
+	return r.chunkedSummary(ctx, r.task.Model, r.contextLimit()/2, previous, covered)
+}
+
+func (r *run) preferredSummary(ctx context.Context, reuse *providers.Request, previous *transcript.Compaction, covered []transcript.Message) (string, error) {
 	if r.task.CompactModel != nil {
-		model = r.task.CompactModel
+		limit := agentcontext.EffectiveWindow(r.task.CompactWindowTokens, outputTokens(r.task.CompactModel, 0))
+		return r.chunkedSummary(ctx, r.task.CompactModel, limit/2, previous, covered)
 	}
+	return r.prefixSummary(ctx, *reuse)
+}
+
+// chunkedSummary summarises the covered history with model, outside the run's
+// own request, in chunks of about chunkTokens.
+func (r *run) chunkedSummary(ctx context.Context, model Model, chunkTokens int, previous *transcript.Compaction, covered []transcript.Message) (string, error) {
 	return agentcontext.Summarize(ctx, summaryModel{r: r, model: model}, agentcontext.SummaryInput{
 		SessionID:   r.task.SessionID,
 		Previous:    agentcontext.SummaryText(previous),
 		Messages:    covered,
-		ChunkTokens: limit / 2,
+		ChunkTokens: chunkTokens,
 	})
 }
 

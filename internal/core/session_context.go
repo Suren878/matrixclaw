@@ -101,15 +101,16 @@ func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSes
 	if len(window.Messages) == 0 {
 		return CompactSessionResult{}, errNothingToCompact
 	}
-	runtime := c.compactRuntime(ctx)
+	runtime, windowTokens := c.compactRuntime(ctx)
 	if runtime == nil {
 		if runtime, err = c.resolveSessionRuntime(ctx, session); err != nil {
 			return CompactSessionResult{}, err
 		}
+		windowTokens = c.sessionContextWindowTokens(session)
 	}
 	previous := window.Compaction()
 	base := c.contextBaseTokens()
-	limit := agentcontext.EffectiveWindow(c.sessionContextWindowTokens(session), int(providers.DefaultMaxOutputTokens))
+	limit := agentcontext.EffectiveWindow(windowTokens, int(providers.DefaultMaxOutputTokens))
 	summary, err := agentcontext.Summarize(ctx, runtime, agentcontext.SummaryInput{
 		SessionID:   session.ID,
 		Previous:    agentcontext.SummaryText(previous),
@@ -209,8 +210,14 @@ func (c *Core) contextReport(sessionID string, window agent.Window) ContextRepor
 
 func (c *Core) sessionContextWindowTokens(session Session) int {
 	session = c.decorateSessionLLM(session)
-	providerID := strings.TrimSpace(session.ProviderID)
-	modelID := strings.TrimSpace(session.ModelID)
+	return c.modelContextWindowTokens(session.ProviderID, session.ModelID)
+}
+
+// modelContextWindowTokens is the window of a provider's model: a manual
+// setting first, then the model catalog, else the fallback.
+func (c *Core) modelContextWindowTokens(providerID string, modelID string) int {
+	providerID = strings.TrimSpace(providerID)
+	modelID = strings.TrimSpace(modelID)
 	providerType := ""
 	if llms := c.sessionLLMs(); llms != nil && providerID != "" {
 		if manual, ok := llms.(SessionLLMContextWindowRegistry); ok {

@@ -136,8 +136,8 @@ func (c *Core) nativeEngine(ctx context.Context, run Run, session Session, runti
 		Resume:       resume,
 		Continues:    continues,
 	}
-	if compact := c.compactRuntime(ctx); compact != nil {
-		task.CompactModel = compact
+	if compact, windowTokens := c.compactRuntime(ctx); compact != nil {
+		task.CompactModel, task.CompactWindowTokens = compact, windowTokens
 	}
 	return task, engine, nil
 }
