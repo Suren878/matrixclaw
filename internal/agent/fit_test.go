@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -300,5 +301,36 @@ func TestTheElisionIsCheckpointedBeforeTheModelCall(t *testing.T) {
 
 	if outcome.Status != agent.StatusCompleted || len(elided) == 0 || elided[0] == 0 {
 		t.Fatalf("outcome = %+v checkpointed elision at the elided requests = %v", outcome, elided)
+	}
+}
+
+func TestElisionThatHidesNothingLeavesTheRequestsAlone(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Window = 100_000
+	f.Tools.Funcs["read"] = counterTool()
+	// Every step reports a prompt over the elision threshold, and the replies
+	// pass the image and result cut-offs, but there is no image or large
+	// result to hide.
+	turns := signedSteps(12, "read")
+	for i := range turns {
+		turns[i].Response.Usage.PromptTokens = 50_000
+	}
+	model := agenttest.NewScriptedModel(append(turns, text("Done."))...)
+
+	outcome := run(t, f, model)
+
+	requests := model.Requests()
+	if outcome.Status != agent.StatusCompleted || len(requests) != 13 {
+		t.Fatalf("outcome = %+v requests = %d", outcome, len(requests))
+	}
+	for i := 1; i < len(requests); i++ {
+		previous, _ := json.Marshal(requests[i-1].Messages)
+		next, _ := json.Marshal(requests[i].Messages[:len(requests[i-1].Messages)])
+		if string(previous) != string(next) {
+			t.Fatalf("request %d changed the prefix of request %d", i+1, i)
+		}
+	}
+	if last := f.Journal.States[len(f.Journal.States)-1].Counters; last.HistoryEdit != 0 {
+		t.Fatalf("counters = %+v, want no history edit", last)
 	}
 }

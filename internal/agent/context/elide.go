@@ -63,7 +63,7 @@ func NextElision(messages []transcript.Message) Elision {
 // AdvanceElision moves current up to NextElision of messages and reports
 // whether it moved. Once results (or images) are elided, they move on only when
 // five more tool rounds (or replies) became eligible, or when forced, so the
-// request prefix stays stable.
+// request prefix stays stable; it never moves without hiding something more.
 func AdvanceElision(messages []transcript.Message, current Elision, force bool) (Elision, bool) {
 	next := NextElision(messages)
 	next.ResultsThroughSeq = max(next.ResultsThroughSeq, current.ResultsThroughSeq)
@@ -74,10 +74,26 @@ func AdvanceElision(messages []transcript.Message, current Elision, force bool) 
 	rounds, replies := newlyEligible(messages, current, next)
 	results := next.ResultsThroughSeq > current.ResultsThroughSeq && (current.ResultsThroughSeq == 0 || rounds >= elideRoundStep)
 	images := next.ImagesThroughSeq > current.ImagesThroughSeq && (current.ImagesThroughSeq == 0 || replies >= elideReplyStep)
-	if !force && !results && !images {
+	if !force && !results && !images || !hidesMore(messages, current, next) {
 		return current, false
 	}
 	return next, true
+}
+
+// hidesMore reports whether next hides a result or an image current shows.
+func hidesMore(messages []transcript.Message, current, next Elision) bool {
+	for _, message := range messages {
+		for _, part := range message.Parts {
+			if part.Image != nil && message.Seq > current.ImagesThroughSeq && message.Seq <= next.ImagesThroughSeq {
+				return true
+			}
+			if part.ToolResult != nil && message.Role == transcript.MessageRoleTool && message.Seq > current.ResultsThroughSeq && message.Seq <= next.ResultsThroughSeq &&
+				EstimateTextTokens(part.ToolResult.Content) > elideMinTokens {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // newlyEligible counts the tool rounds whose results and the replies whose

@@ -59,7 +59,7 @@ func TestAdvanceElisionWaitsForFiveNewRoundsUnlessForced(t *testing.T) {
 	var rounds []int64
 	for i, seq := 0, int64(2); i < 10; i, seq = i+1, seq+3 {
 		rounds = append(rounds, seq)
-		messages = append(messages, toolStep(seq, fmt.Sprintf("c%d", i), "out")...)
+		messages = append(messages, toolStep(seq, fmt.Sprintf("c%d", i), strings.Repeat("x", 8_000))...)
 	}
 	next := NextElision(messages)
 
@@ -88,5 +88,17 @@ func TestElidedResultKeepsItsUserGuidance(t *testing.T) {
 
 	if !strings.HasPrefix(got, "[output of read") || !strings.HasSuffix(got, "]\n\nUser guidance: focus on the parser") {
 		t.Fatalf("elided result = %q", got)
+	}
+}
+
+func TestAdvanceElisionDoesNotMoveWithoutHidingAnything(t *testing.T) {
+	messages := []transcript.Message{textMessage(1, transcript.MessageRoleUser, "r1", "task")}
+	for i, seq := 0, int64(2); i < 10; i, seq = i+1, seq+3 {
+		messages = append(messages, toolStep(seq, fmt.Sprintf("c%d", i), "out")...)
+	}
+	for _, force := range []bool{false, true} {
+		if got, moved := AdvanceElision(messages, Elision{}, force); moved || got != (Elision{}) {
+			t.Fatalf("forced %t: elision = %+v %v over small results and no images", force, got, moved)
+		}
 	}
 }
