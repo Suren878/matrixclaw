@@ -169,6 +169,9 @@ func (c *Core) resolveSession(ctx context.Context, input HandleMessageInput) (Se
 		if err != nil {
 			return Session{}, err
 		}
+		if input.Restricted && RunsUnattended(session) {
+			return Session{}, ErrSessionRestricted
+		}
 		session = c.decorateSessionLLM(session)
 		if workingDir != "" && workingDir != session.WorkingDir {
 			session.WorkingDir = workingDir
@@ -199,6 +202,9 @@ func (c *Core) resolveSession(ctx context.Context, input HandleMessageInput) (Se
 		if err != nil {
 			return Session{}, err
 		}
+		if input.Restricted && RunsUnattended(session) {
+			return Session{}, ErrSessionRestricted
+		}
 		session = c.decorateSessionLLM(session)
 		if workingDir != "" && workingDir != session.WorkingDir {
 			session.WorkingDir = workingDir
@@ -223,6 +229,9 @@ func (c *Core) resolveSession(ctx context.Context, input HandleMessageInput) (Se
 	}
 	if len(sessions) != 1 {
 		return Session{}, ErrSessionSelectionRequired
+	}
+	if input.Restricted && RunsUnattended(sessions[0]) {
+		return Session{}, ErrSessionRestricted
 	}
 	if _, err := c.UseBinding(ctx, UseBindingInput{
 		Client:      input.Client,

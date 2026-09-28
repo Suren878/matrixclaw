@@ -45,6 +45,12 @@ type Session struct {
 	UpdatedAt         time.Time      `json:"updated_at"`
 }
 
+// RunsUnattended reports whether a session's tools run without asking: an
+// external agent session or one in full_auto.
+func RunsUnattended(session Session) bool {
+	return CapabilitiesForSession(session).ExternalAgent || NormalizePermissionMode(string(session.PermissionMode)) == PermissionModeFullAuto
+}
+
 type SessionCapabilities struct {
 	ProviderSelection bool `json:"provider_selection"`
 	PermissionMode    bool `json:"permission_mode"`

@@ -629,7 +629,7 @@ func (w *Worker) saveTemporaryTelegramUpload(ctx context.Context, target chatTar
 }
 
 func (w *Worker) sendUserMessageParts(ctx context.Context, target chatTarget, text string, parts []transcript.MessagePart) error {
-	daemon := w.daemon(target.externalKey)
+	daemon := w.daemonFor(target, target.externalKey)
 	if target.isChat() {
 		if err := w.api.SendChatAction(ctx, SendChatActionRequest{
 			ChatID: target.chatID,
@@ -643,6 +643,9 @@ func (w *Worker) sendUserMessageParts(ctx context.Context, target chatTarget, te
 	if err != nil {
 		if daemonclient.IsAPIStatus(err, http.StatusConflict) {
 			return w.handleSessionSelectionRequired(ctx, target)
+		}
+		if daemonclient.IsAPIStatus(err, http.StatusForbidden) {
+			return w.sendText(ctx, target, "Only the owner can use a session that runs tools without asking (external agent or full_auto). Choose or create another session.")
 		}
 		return w.sendText(ctx, target, fmt.Sprintf("Request failed: %v", err))
 	}

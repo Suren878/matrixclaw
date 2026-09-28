@@ -65,3 +65,63 @@ func TestOnlyTheOwnerCreatesExternalAgentSessions(t *testing.T) {
 		}
 	}
 }
+
+// boundSessionsRuntime lists sessions and records the bindings and runs asked for.
+type boundSessionsRuntime struct {
+	agentSessionsRuntime
+	sessions  []core.Session
+	bound     string
+	continued []string
+}
+
+func (r *boundSessionsRuntime) ListSessions(context.Context) ([]core.Session, error) {
+	return r.sessions, nil
+}
+
+func (r *boundSessionsRuntime) UseSession(_ context.Context, _ string, sessionID string) (core.ClientBinding, error) {
+	r.bound = sessionID
+	return core.ClientBinding{SessionID: sessionID}, nil
+}
+
+func (r *boundSessionsRuntime) CurrentBinding(context.Context, string) (core.ClientBinding, error) {
+	return core.ClientBinding{SessionID: r.bound}, nil
+}
+
+func (r *boundSessionsRuntime) ContinueSession(_ context.Context, _ string, sessionID string) (core.AcceptRunResult, error) {
+	r.continued = append(r.continued, sessionID)
+	return core.AcceptRunResult{}, nil
+}
+
+func TestOnlyTheOwnerReachesSessionsThatRunUnattended(t *testing.T) {
+	sessions := []core.Session{
+		{ID: "agent", Title: "agent", RuntimeID: core.SessionRuntimeExternalAgent, PermissionMode: core.PermissionModeFullAuto},
+		{ID: "auto", Title: "auto", RuntimeID: core.SessionRuntimeMatrixClaw, PermissionMode: core.PermissionModeFullAuto},
+		{ID: "plain", Title: "plain", RuntimeID: core.SessionRuntimeMatrixClaw, PermissionMode: core.PermissionModeDefault},
+	}
+	for _, owner := range []bool{false, true} {
+		for _, session := range sessions {
+			runtime := &boundSessionsRuntime{agentSessionsRuntime: agentSessionsRuntime{rulesRuntime: rulesRuntime{owner: owner}}, sessions: sessions}
+			dispatcher := New(runtime, "")
+
+			used, err := dispatcher.Handle(context.Background(), "key", "/session use "+session.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reachable := owner || session.ID == "plain"
+			if reachable != (runtime.bound == session.ID) {
+				t.Fatalf("owner=%v %s: bound = %q (%q)", owner, session.ID, runtime.bound, used.Text)
+			}
+			if !reachable && used.Text != "Only the owner can use a session that runs tools without asking (external agent or full_auto)." {
+				t.Fatalf("owner=%v %s: reply = %q", owner, session.ID, used.Text)
+			}
+
+			runtime.bound = session.ID
+			if _, err := dispatcher.Handle(context.Background(), "key", "/continue"); err != nil {
+				t.Fatal(err)
+			}
+			if reachable != (len(runtime.continued) == 1) {
+				t.Fatalf("owner=%v %s: continued = %v", owner, session.ID, runtime.continued)
+			}
+		}
+	}
+}

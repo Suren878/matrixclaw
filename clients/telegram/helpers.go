@@ -27,6 +27,14 @@ func (w *Worker) daemon(externalKey string) *daemonclient.Client {
 	return client
 }
 
+// daemonFor is the daemon client that acts for target: outside the owner chat it
+// may not send into a session that runs tools without asking.
+func (w *Worker) daemonFor(target chatTarget, externalKey string) *daemonclient.Client {
+	client := w.daemon(externalKey)
+	client.Restricted = !w.ownerChat(target)
+	return client
+}
+
 func (w *Worker) allowMessage(message *Message) bool {
 	if message == nil {
 		return false

@@ -168,12 +168,15 @@ func (d *Dispatcher) skillAICreate(ctx context.Context, externalKey string, desc
 	if d.messages == nil || d.sender == nil {
 		return Result{Handled: true, Text: "AI skill creation needs an active chat session."}, nil
 	}
-	sessionID, err := d.currentSessionID(ctx, externalKey)
+	sessionID, session, err := d.currentSession(ctx, externalKey)
 	if err != nil {
 		return Result{}, err
 	}
 	if strings.TrimSpace(sessionID) == "" {
 		return Result{Handled: true, Text: "Open or create a chat session before creating a skill with AI."}, nil
+	}
+	if session != nil && !d.mayUse(*session) {
+		return Result{Handled: true, Text: unattendedRefusal}, nil
 	}
 	content := strings.Join([]string{
 		"AI-assisted Matrixclaw skill creation is active.",

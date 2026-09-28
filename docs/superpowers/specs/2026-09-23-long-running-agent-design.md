@@ -482,6 +482,10 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   `server__tool`. Global rules, permission modes and external agent sessions
   (which start in full_auto) are changed or started only by the TUI and the
   Telegram owner chat, and Telegram guests change no rules (client-side checks).
+  Other clients may not bind to or send into a session that runs tools without
+  asking (`core.RunsUnattended`: external agent or full_auto): controlplane
+  refuses `/session use`, `/continue` and AI skill creation, and their messages
+  carry `restricted`, which core refuses with 403 on every resolution path.
 - **Delegated agents**: Codex and Claude Code children run their own tools;
   matrixclaw rules govern only the delegate call, not what the child does.
 

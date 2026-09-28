@@ -115,6 +115,8 @@ type HandleMessageInput struct {
 	WorkingDir         string                   `json:"working_dir"`
 	DeliveryAddress    json.RawMessage          `json:"delivery_address,omitempty"`
 	AllowAutoBindOne   bool                     `json:"allow_auto_bind_one"`
+	// Restricted keeps the client out of sessions that RunsUnattended.
+	Restricted bool `json:"restricted,omitempty"`
 	// Continue starts a run that continues the session's latest run; Text is ignored.
 	Continue bool `json:"continue,omitempty"`
 }

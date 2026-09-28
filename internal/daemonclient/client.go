@@ -44,7 +44,10 @@ type Client struct {
 	ExternalKey  string
 	APIToken     string
 	Capabilities core.ClientCapabilities
-	HTTPClient   *http.Client
+	// Restricted keeps this client's messages out of sessions that run tools
+	// without asking (core.RunsUnattended).
+	Restricted bool
+	HTTPClient *http.Client
 	// EventHTTPClient is intentionally separate from HTTPClient because SSE
 	// subscriptions must not inherit the short JSON request timeout.
 	EventHTTPClient *http.Client

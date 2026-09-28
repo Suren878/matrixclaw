@@ -6,12 +6,15 @@ func (d *Dispatcher) handleContinue(ctx context.Context, externalKey string) (Re
 	if d.continuer == nil {
 		return unsupportedRuntime("continue"), nil
 	}
-	sessionID, err := d.currentSessionID(ctx, externalKey)
+	sessionID, session, err := d.currentSession(ctx, externalKey)
 	if err != nil {
 		return Result{}, err
 	}
 	if sessionID == "" {
 		return Result{Handled: true, Text: "Select or create a session first."}, nil
+	}
+	if session != nil && !d.mayUse(*session) {
+		return Result{Handled: true, Text: unattendedRefusal}, nil
 	}
 	if _, err := d.continuer.ContinueSession(ctx, externalKey, sessionID); err != nil {
 		return Result{}, err

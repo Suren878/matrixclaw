@@ -198,3 +198,35 @@ func TestReasonPromptLetsTheMessageThroughOnceTheApprovalIsDecidedElsewhere(t *t
 		t.Fatalf("message never reached the chat: %q", bodies)
 	}
 }
+
+func TestOnlyTheOwnerChatSendsUnrestricted(t *testing.T) {
+	for _, tc := range []struct {
+		target     chatTarget
+		restricted bool
+	}{
+		{chatTarget{kind: telegramTargetChat, chatID: 42, externalKey: "42"}, false},
+		{chatTarget{kind: telegramTargetChat, chatID: 7, externalKey: "7"}, true},
+		{chatTarget{kind: telegramTargetGuest, chatID: 42, guestQueryID: "q", externalKey: "guest:q"}, true},
+	} {
+		var sent []core.HandleMessageInput
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var input core.HandleMessageInput
+			_ = json.NewDecoder(r.Body).Decode(&input)
+			sent = append(sent, input)
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": core.ErrSessionRestricted.Error()})
+		}))
+		api := &approvalBotAPI{}
+		worker := &Worker{api: api, config: Config{AllowedUserID: 42, BaseURL: server.URL, ClientName: "telegram-test", DaemonHTTPClient: server.Client()}, prompts: map[string]controlplane.PromptData{}}
+
+		err := worker.sendUserMessage(context.Background(), tc.target, "hi")
+		server.Close()
+
+		if err != nil || len(sent) != 1 || sent[0].Restricted != tc.restricted {
+			t.Fatalf("%s %s: sent = %+v err = %v", tc.target.kind, tc.target.externalKey, sent, err)
+		}
+		if tc.target.isChat() && (len(api.sent) == 0 || !strings.Contains(api.sent[len(api.sent)-1].Text, "Only the owner")) {
+			t.Fatalf("%s: replies = %+v", tc.target.externalKey, api.sent)
+		}
+	}
+}

@@ -78,7 +78,7 @@ func (d *Dispatcher) sessionRuntimePicker(ctx context.Context) (Result, error) {
 	picker := NewPickerData(PickerSessionRuntime, "New Session").
 		Back(sessionsCommand()).
 		Row("matrixclaw", "Matrixclaw", "Built-in", sessionNewCommand("matrixclaw"))
-	if d.externalAgents != nil && d.startsExternalAgents() {
+	if d.externalAgents != nil && d.owner() {
 		agents, err := d.externalAgents.ListExternalAgents(ctx)
 		if err != nil {
 			return Result{}, err
@@ -122,6 +122,9 @@ func (d *Dispatcher) handleSession(ctx context.Context, externalKey string, args
 		sessionID, _ := firstCommandToken(rest)
 		if sessionID == "" {
 			return Result{Handled: true, Text: "Usage: /session use <id>"}, nil
+		}
+		if target, err := d.findSession(ctx, sessionID); err == nil && !d.mayUse(target) {
+			return Result{Handled: true, Text: unattendedRefusal}, nil
 		}
 		binding, err := d.sessions.UseSession(ctx, externalKey, sessionID)
 		if err != nil {
@@ -195,15 +198,23 @@ type sessionTarget struct {
 	externalAgentID string
 }
 
-// startsExternalAgents reports whether this client may start external agent
-// sessions, which run in full_auto: only a client that may switch modes.
-func (d *Dispatcher) startsExternalAgents() bool {
+// owner reports whether this client is the owner's: the only one that may
+// switch modes, start external agent sessions (they run in full_auto) and use
+// any session that core.RunsUnattended.
+func (d *Dispatcher) owner() bool {
 	return d.permissions != nil && d.permissions.ManagesPermissionMode()
 }
 
+// mayUse reports whether this client may bind to or send into session.
+func (d *Dispatcher) mayUse(session core.Session) bool {
+	return d.owner() || !core.RunsUnattended(session)
+}
+
+const unattendedRefusal = "Only the owner can use a session that runs tools without asking (external agent or full_auto)."
+
 func (d *Dispatcher) createSession(ctx context.Context, externalKey string, target sessionTarget, title string) (Result, error) {
 	runtimeID := core.NormalizeSessionRuntime(target.runtimeID)
-	if runtimeID == core.SessionRuntimeExternalAgent && !d.startsExternalAgents() {
+	if runtimeID == core.SessionRuntimeExternalAgent && !d.owner() {
 		return Result{Handled: true, Text: "Only the owner can start an external agent session."}, nil
 	}
 	if title = strings.TrimSpace(title); title == "" {
@@ -498,11 +509,14 @@ func (d *Dispatcher) rebindAfterDelete(ctx context.Context, externalKey string) 
 	if err != nil {
 		return "", err
 	}
-	if len(sessions) > 0 {
-		if _, err := d.sessions.UseSession(ctx, externalKey, sessions[0].ID); err != nil {
+	for _, session := range sessions {
+		if !d.mayUse(session) {
+			continue
+		}
+		if _, err := d.sessions.UseSession(ctx, externalKey, session.ID); err != nil {
 			return "", err
 		}
-		return "Current session: " + formatSessionLabel(sessions[0], true), nil
+		return "Current session: " + formatSessionLabel(session, true), nil
 	}
 	result, err := d.createSession(ctx, externalKey, sessionTarget{runtimeID: core.SessionRuntimeMatrixClaw}, d.initialSessionTitle(externalKey))
 	if err != nil {

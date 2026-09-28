@@ -140,7 +140,7 @@ func (w *Worker) startInlineUserMessage(ctx context.Context, target chatTarget, 
 }
 
 func (w *Worker) sendInlineUserMessageInSession(ctx context.Context, target chatTarget, text string, sessionID string) error {
-	daemon := w.daemon(target.externalKey)
+	daemon := w.daemonFor(target, target.externalKey)
 	result, err := daemon.SendMessagePartsModeWithDelivery(
 		ctx,
 		strings.TrimSpace(sessionID),
@@ -173,8 +173,7 @@ func (w *Worker) inlineFallbackSessionID(ctx context.Context, externalKey string
 		if session.Hidden {
 			continue
 		}
-		if core.NormalizeSessionRuntime(session.RuntimeID) == core.SessionRuntimeExternalAgent ||
-			core.NormalizeSessionKind(session.Kind) == core.SessionKindExternalAgent {
+		if core.RunsUnattended(session) {
 			continue
 		}
 		if strings.TrimSpace(session.ID) != "" {

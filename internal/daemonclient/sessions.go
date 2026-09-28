@@ -301,6 +301,7 @@ func (c *Client) SendMessagePartsModeWithDelivery(ctx context.Context, sessionID
 		WorkingDir:         strings.TrimSpace(workingDir),
 		DeliveryAddress:    deliveryAddress,
 		AllowAutoBindOne:   true,
+		Restricted:         c.Restricted,
 	}
 	if err := c.doJSON(ctx, http.MethodPost, "/v1/messages", request, &response); err != nil {
 		return core.AcceptRunResult{}, err
@@ -319,6 +320,7 @@ func (c *Client) ContinueSession(ctx context.Context, sessionID string, workingD
 		SessionID:          strings.TrimSpace(sessionID),
 		WorkingDir:         strings.TrimSpace(workingDir),
 		AllowAutoBindOne:   true,
+		Restricted:         c.Restricted,
 		Continue:           true,
 	}
 	if err := c.doJSON(ctx, http.MethodPost, "/v1/messages", request, &response); err != nil {

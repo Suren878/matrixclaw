@@ -449,3 +449,21 @@ func TestWebFetchRulesCoverEveryURLFetch(t *testing.T) {
 		t.Fatalf("research under a whole-tool deny = %q", got)
 	}
 }
+
+func TestRestrictedClientsReachNoUnattendedSession(t *testing.T) {
+	app, db, _, dir := permissionCore(t)
+	auto := permissionSession(t, db, "session_auto", dir, core.PermissionModeFullAuto, "")
+	input := core.HandleMessageInput{Client: "telegram", ExternalKey: "guest:q", Text: "hi", Restricted: true, AllowAutoBindOne: true}
+
+	explicit := input
+	explicit.SessionID = auto.ID
+	if _, err := app.AcceptRun(context.Background(), explicit); !errors.Is(err, core.ErrSessionRestricted) {
+		t.Fatalf("explicit session: err = %v", err)
+	}
+	if _, err := app.AcceptRun(context.Background(), input); !errors.Is(err, core.ErrSessionRestricted) {
+		t.Fatalf("the only session: err = %v", err)
+	}
+	if _, err := db.GetBinding(context.Background(), "telegram", "guest:q"); err == nil {
+		t.Fatal("a restricted client was bound to a full_auto session")
+	}
+}
