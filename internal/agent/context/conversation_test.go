@@ -139,6 +139,31 @@ func TestProviderConversationPairsResultsWithMixedTextAndToolCalls(t *testing.T)
 	}
 }
 
+func TestUnansweredCallsOfAnEndedRunGetAClosingResult(t *testing.T) {
+	callMessage := func(id string, deferred bool) transcript.Message {
+		return transcript.Message{ID: id, Role: transcript.MessageRoleAssistant, Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindToolCall, ToolCall: &transcript.ToolCallPart{ID: id, Name: "write", Input: `{}`, Deferred: deferred}}}}
+	}
+	history := []transcript.Message{
+		{Role: transcript.MessageRoleUser, Content: "Change both"},
+		callMessage("started", false),
+		callMessage("held", true),
+		{Role: transcript.MessageRoleUser, Content: "Never mind"},
+	}
+	conversation, err := Conversation(context.Background(), history, nil, "", false, Identity{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results := map[string]string{}
+	for _, message := range conversation {
+		if message.ToolCallID != "" {
+			results[message.ToolCallID] = message.Content
+		}
+	}
+	if results["started"] != "Tool execution failed before completion." || results["held"] != "Not run: the run was canceled." {
+		t.Fatalf("results = %v", results)
+	}
+}
+
 func (r staticAttachmentReader) ReadAttachment(context.Context, string, bool, int64) (AttachmentData, error) {
 	return r.data, r.err
 }

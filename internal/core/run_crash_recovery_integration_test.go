@@ -450,7 +450,7 @@ func TestRecoveryLeavesDeferredCallsToTheResumedRun(t *testing.T) {
 	}
 
 	assertRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusCompleted)
-	if strings.Join(results, "|") != "User denied.|recovered tool result" || inspect.callCount() != 1 || mutation.callCount() != 0 {
+	if strings.Join(results, "|") != "User denied.|Not run: an earlier call in this batch was denied (mutate_state)." || inspect.callCount() != 0 || mutation.callCount() != 0 {
 		t.Fatalf("model read %q, inspect = %d, mutations = %d", results, inspect.callCount(), mutation.callCount())
 	}
 }

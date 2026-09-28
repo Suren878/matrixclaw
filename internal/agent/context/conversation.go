@@ -28,6 +28,7 @@ func Conversation(ctx context.Context, history []transcript.Message, reader Atta
 		return nil, err
 	}
 	toolResults := collectProviderToolResults(entries)
+	deferred := deferredToolCallIDs(history)
 
 	conversation := make([]providers.Message, 0, len(entries))
 	for i := 0; i < len(entries); i++ {
@@ -35,7 +36,7 @@ func Conversation(ctx context.Context, history []transcript.Message, reader Atta
 			step, next := collectToolStep(entries, i)
 			if len(step.ToolCalls) > 0 {
 				conversation = append(conversation, step)
-				conversation = appendProviderToolResults(conversation, step.ToolCalls, toolResults)
+				conversation = appendProviderToolResults(conversation, step.ToolCalls, toolResults, deferred)
 				i = next - 1
 				continue
 			}
@@ -149,7 +150,22 @@ func isAdditionalBatchableToolCallMessage(message providers.Message) bool {
 	return strings.TrimSpace(message.Role) == string(transcript.MessageRoleAssistant) && isToolCallOnlyProviderMessage(message)
 }
 
-func appendProviderToolResults(conversation []providers.Message, toolCalls []providers.ToolCall, toolResults map[string]providers.Message) []providers.Message {
+// deferredToolCallIDs lists the calls held back behind an approval barrier.
+func deferredToolCallIDs(history []transcript.Message) map[string]bool {
+	deferred := map[string]bool{}
+	for _, message := range history {
+		for _, part := range message.Parts {
+			if part.ToolCall != nil && part.ToolCall.Deferred {
+				deferred[strings.TrimSpace(part.ToolCall.ID)] = true
+			}
+		}
+	}
+	return deferred
+}
+
+// appendProviderToolResults pairs each call with its result; a call left without
+// one gets a closing error: one held back behind a barrier never ran.
+func appendProviderToolResults(conversation []providers.Message, toolCalls []providers.ToolCall, toolResults map[string]providers.Message, deferred map[string]bool) []providers.Message {
 	for _, toolCall := range toolCalls {
 		toolCallID := strings.TrimSpace(toolCall.ID)
 		if toolCallID == "" {
@@ -160,18 +176,13 @@ func appendProviderToolResults(conversation []providers.Message, toolCalls []pro
 			delete(toolResults, toolCallID)
 			continue
 		}
-		conversation = append(conversation, syntheticFailedToolResult(toolCallID))
+		content := "Tool execution failed before completion."
+		if deferred[toolCallID] {
+			content = "Not run: the run was canceled."
+		}
+		conversation = append(conversation, providers.Message{Role: string(transcript.MessageRoleTool), ToolCallID: toolCallID, Content: content, IsError: true})
 	}
 	return conversation
-}
-
-func syntheticFailedToolResult(toolCallID string) providers.Message {
-	return providers.Message{
-		Role:       string(transcript.MessageRoleTool),
-		ToolCallID: toolCallID,
-		Content:    "Tool execution failed before completion.",
-		IsError:    true,
-	}
 }
 
 // engineNoteMessage is the user text the model reads for an engine note; other

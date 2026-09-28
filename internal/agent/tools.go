@@ -92,9 +92,9 @@ func (r *run) executeBatch(ctx context.Context, response providers.Response) (bo
 }
 
 // resumeDecided answers the run's decided approvals that have no result yet: a
-// granted call runs, a denied one gets the denial as its result. Once none is
-// pending, the calls deferred behind a barrier run. It reports whether the run
-// still waits for approval.
+// granted call runs, a denied one gets the denial as its result and the calls it
+// held back are not run. Once none is pending, the calls deferred behind a
+// barrier run. It reports whether the run still waits for approval.
 func (r *run) resumeDecided(ctx context.Context) (bool, error) {
 	decided, err := r.Inbox.Peek(ctx, r.task.RunID, InputDecided)
 	if err != nil {
@@ -106,7 +106,7 @@ func (r *run) resumeDecided(ctx context.Context) (bool, error) {
 		}
 		request := callRequest{id: input.ToolCallID, name: input.ToolName, args: input.Args, workingDir: input.WorkingDir, approved: true}
 		if input.Denied {
-			err = r.finishCall(ctx, request, r.toolCall(request), DenialResult(input.Reason))
+			err = r.denyCall(ctx, request, input.Reason)
 		} else {
 			_, err = r.runCall(ctx, request)
 		}
@@ -125,7 +125,7 @@ func (r *run) resumeDecided(ctx context.Context) (bool, error) {
 // them is a barrier again.
 func (r *run) runDeferred(ctx context.Context) (bool, error) {
 	waiting := false
-	for _, request := range r.deferredCalls() {
+	for _, request := range r.deferredCalls("") {
 		state, err := r.runCall(ctx, request)
 		if err != nil {
 			return false, err
@@ -138,15 +138,36 @@ func (r *run) runDeferred(ctx context.Context) (bool, error) {
 	return waiting, nil
 }
 
-// deferredCalls lists the run's calls still held back by a barrier, in call order.
-func (r *run) deferredCalls() []callRequest {
+// denyCall answers a denied call with the denial and every call its barrier held
+// back with an error, so the model re-plans instead of running them.
+func (r *run) denyCall(ctx context.Context, req callRequest, reason string) error {
+	for _, held := range r.deferredCalls(req.id) {
+		if err := r.rejectCall(ctx, held, fmt.Sprintf("Not run: an earlier call in this batch was denied (%s).", req.name)); err != nil {
+			return err
+		}
+	}
+	return r.finishCall(ctx, req, r.toolCall(req), DenialResult(reason))
+}
+
+// deferredCalls lists the run's calls still held back, in call order: behind
+// the barrier with the given ID, or behind any barrier when it is empty.
+func (r *run) deferredCalls(barrier string) []callRequest {
 	var out []callRequest
+	behind := ""
 	for _, message := range r.history.all() {
 		if message.RunID != r.task.RunID {
 			continue
 		}
 		for _, part := range message.Parts {
-			if call := part.ToolCall; call != nil && call.Deferred && !r.history.hasResult(call.ID) {
+			call := part.ToolCall
+			if call == nil {
+				continue
+			}
+			if !call.Deferred {
+				behind = call.ID
+				continue
+			}
+			if (barrier == "" || barrier == behind) && !r.history.hasResult(call.ID) {
 				out = append(out, callRequest{id: call.ID, name: call.Name, args: json.RawMessage(call.Input), workingDir: r.task.WorkingDir})
 			}
 		}

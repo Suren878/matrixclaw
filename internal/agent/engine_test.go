@@ -230,14 +230,14 @@ func TestMutatingApprovalDefersTheRestOfTheBatch(t *testing.T) {
 	}
 
 	f.Approvals.Open = false
-	f.Inbox.Decided = []agent.Input{{Kind: agent.InputDecided, ToolCallID: "w1", ToolName: "write", WorkingDir: "/work", Args: []byte(`{}`), Denied: true, Reason: "not yet"}}
+	f.Inbox.Decided = []agent.Input{{Kind: agent.InputDecided, ToolCallID: "w1", ToolName: "write", WorkingDir: "/work", Args: []byte(`{}`)}}
 	outcome = run(t, f, model)
 
 	if outcome.Status != agent.StatusWaitingApproval || len(f.Approvals.Requests) != 2 || f.Approvals.Requests[1].ToolCallID != "w2" {
-		t.Fatalf("after the denial: outcome = %+v requests = %+v", outcome, f.Approvals.Requests)
+		t.Fatalf("after the grant: outcome = %+v requests = %+v", outcome, f.Approvals.Requests)
 	}
-	if got := executedIDs(f); got != "r1,w1,r2,w2" {
-		t.Fatalf("executed = %s, want r1,w1,r2,w2", got)
+	if got := executedIDs(f); got != "r1,w1,w1,r2,w2" {
+		t.Fatalf("executed = %s, want r1,w1,w1,r2,w2", got)
 	}
 	if message, _ := f.Journal.Message("w2"); message.Parts[0].ToolCall.Deferred {
 		t.Fatal("the new barrier is still marked deferred")
@@ -251,10 +251,40 @@ func TestMutatingApprovalDefersTheRestOfTheBatch(t *testing.T) {
 	outcome = run(t, f, model)
 
 	if outcome.Status != agent.StatusCompleted || len(model.Requests()) != 2 {
-		t.Fatalf("after the grant: outcome = %+v requests = %d", outcome, len(model.Requests()))
+		t.Fatalf("after the second grant: outcome = %+v requests = %d", outcome, len(model.Requests()))
 	}
 	request := model.Requests()[1]
-	for id, want := range map[string]string{"r1": "file body", "w1": "User denied: not yet", "r2": "file body", "w2": "written"} {
+	for id, want := range map[string]string{"r1": "file body", "w1": "written", "r2": "file body", "w2": "written"} {
+		if got := toolContent(request, id); got != want {
+			t.Fatalf("result of %s = %q, want %q", id, got, want)
+		}
+	}
+	if split := agenttest.SplitToolPair(request); split != "" {
+		t.Fatal(split)
+	}
+}
+
+func TestDeniedBarrierAnswersTheCallsItHeldBack(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["write"] = writeTool
+	f.Tools.Funcs["read"] = readTool
+	f.Tools.Mutating = map[string]bool{"write": true}
+	model := agenttest.NewScriptedModel(calls(call("r1", "read"), call("w1", "write"), call("r2", "read"), call("w2", "write")), text("Done."))
+	run(t, f, model)
+
+	f.Approvals.Open = false
+	f.Inbox.Decided = []agent.Input{{Kind: agent.InputDecided, ToolCallID: "w1", ToolName: "write", WorkingDir: "/work", Args: []byte(`{}`), Denied: true, Reason: "not yet"}}
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted || len(model.Requests()) != 2 {
+		t.Fatalf("after the denial: outcome = %+v requests = %d", outcome, len(model.Requests()))
+	}
+	if got := executedIDs(f); got != "r1,w1" {
+		t.Fatalf("executed = %s, want r1,w1", got)
+	}
+	request := model.Requests()[1]
+	notRun := "Not run: an earlier call in this batch was denied (write)."
+	for id, want := range map[string]string{"r1": "file body", "w1": "User denied: not yet", "r2": notRun, "w2": notRun} {
 		if got := toolContent(request, id); got != want {
 			t.Fatalf("result of %s = %q, want %q", id, got, want)
 		}
