@@ -381,3 +381,58 @@ func TestRunLeftWaitingForApprovalWithAWakeupResumesOnItsTimer(t *testing.T) {
 		t.Fatalf("wakeup = %v", err)
 	}
 }
+
+func TestStoppingABackgroundChildParkedOnApprovalEndsIt(t *testing.T) {
+	t.Parallel()
+	db := openScenarioStore(t)
+	app := core.New(db)
+	starter := &executingRunStarter{app: app}
+	app.WithSessionFiles(t.TempDir()).WithRunStarter(starter)
+	mutations := 0
+	mutate, _ := approvalTools(&mutations)
+	app.WithTools(tools.NewRegistry(append(append(core.AgentToolExecutors(app), core.AwaitToolExecutors(app)...), mutate)...))
+	var mu sync.Mutex
+	parentCalls := 0
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-child-mutate", Name: "mutate_state", Arguments: []byte(`{}`)}}}, nil
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		parentCalls++
+		switch parentCalls {
+		case 1:
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-spawn", Name: "agent", Arguments: []byte(`{"description":"Writer","prompt":"change the state","background":true,"runtime":"matrixclaw"}`)}}}, nil
+		case 2:
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-await", Name: "await", Arguments: []byte(`{}`)}}}, nil
+		}
+		return providers.Response{Text: "Parent done."}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "stop-parked-child", core.RunStatusAccepted, false)
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	bridge := waitPendingApproval(t, db, session.ID, "call-spawn")
+	task, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-spawn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitRunStatus(t, db, task.ChildRunID, core.RunStatusWaitingApproval)
+
+	stopped, err := app.CancelTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if stopped.Status != core.TaskStatusCanceled || stopped.FinishedAt == nil {
+		t.Fatalf("stopped task = %+v", stopped)
+	}
+	if decided, err := db.GetApproval(context.Background(), bridge.ID); err != nil || decided.State != core.ApprovalStateRejected {
+		t.Fatalf("parent's copy of the child's approval = %+v, %v", decided, err)
+	}
+	waitRunStatus(t, db, run.ID, core.RunStatusCompleted)
+	starter.wait(t)
+	if mutations != 0 {
+		t.Fatalf("mutations = %d", mutations)
+	}
+}

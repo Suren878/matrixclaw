@@ -72,6 +72,11 @@ func (c *Core) afterRunExecution(ctx context.Context, runID string) error {
 		return err
 	}
 	if task, err := c.store.GetSubagentTaskByChildRun(ctx, runID); err == nil {
+		if subagentRunStatusTerminal(run.Status) {
+			if err := c.rejectChildApprovalCopies(ctx, task); err != nil {
+				return err
+			}
+		}
 		switch task.Mode {
 		case SubagentTaskModeAsync:
 			if syncErr := c.syncAsyncSubagentTaskAfterRun(ctx, task, run); syncErr != nil {
