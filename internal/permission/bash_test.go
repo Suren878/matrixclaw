@@ -2,6 +2,7 @@ package permission
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -159,5 +160,14 @@ func TestParseLineAllowsOnlyPlainSyntax(t *testing.T) {
 		if got := ParseLine(line); got.Risky != risky {
 			t.Errorf("ParseLine(%q) risky = %v, want %v", line, got.Risky, risky)
 		}
+	}
+}
+
+func TestParseLineSkipsOversizedLines(t *testing.T) {
+	if got := ParseLine(strings.Repeat("(", 200_000)); !got.Risky {
+		t.Fatal("a 200k-paren line is not risky")
+	}
+	if got := ParseLine("rm -rf / " + strings.Repeat("x ", 10_000)); !got.Risky || got.Commands[0][0] != "rm" {
+		t.Fatalf("oversized line = %q risky=%v, want its words and risky", got.Commands[0][:2], got.Risky)
 	}
 }

@@ -61,11 +61,19 @@ var programFlags = map[string]flagSet{
 	"make":      {letters: "E"},
 }
 
+// maxLineBytes bounds the lines ParseLine parses: the parser recurses once per
+// nesting level, and deep enough nesting overflows the goroutine stack.
+const maxLineBytes = 16 << 10
+
 // ParseLine parses a bash command line. Only plain syntax is safe: simple
 // commands, lists, pipes, groups, if, while and for over plain words; anything
 // else is risky. A line that does not parse keeps its whitespace-separated words
-// as a single command, so deny rules still see them.
+// as a single command, so deny rules still see them; so does one over
+// maxLineBytes, which is not parsed at all.
 func ParseLine(text string) Line {
+	if len(text) > maxLineBytes {
+		return Line{Commands: [][]string{strings.Fields(text)}, Risky: true}
+	}
 	file, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(text), "")
 	if err != nil {
 		return Line{Commands: [][]string{strings.Fields(text)}, Risky: true}
