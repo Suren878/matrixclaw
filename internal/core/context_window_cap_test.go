@@ -55,3 +55,32 @@ func TestContextWindowCapBoundsRunsAndTheContextReport(t *testing.T) {
 		})
 	}
 }
+
+type outputLimitedRuntime struct {
+	generationRuntimeFunc
+	output int64
+}
+
+func (r outputLimitedRuntime) OutputLimits() (int64, int64) { return r.output, r.output }
+
+func TestContextReportRecommendsCompactingWhereRunsWouldSummarise(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	// A 64k output limit leaves 50k of a 100k window, so ~45k tokens of
+	// history are past the 80% mark.
+	app.WithSessionLLMs(windowLLMs{window: 100_000, recoveryLLMs: recoveryLLMs{runtime: outputLimitedRuntime{output: 65_536, generationRuntimeFunc: func(context.Context, providers.Request) (providers.Response, error) {
+		return providers.Response{Text: "Done."}, nil
+	}}}})
+	big := strings.Repeat("x", 180_000)
+	session, _ := saveNativeRunWithHistory(t, db, "report", transcript.Message{
+		ID: "msg_old_report", Role: transcript.MessageRoleUser, Content: big, Parts: transcript.NormalizeMessageParts(big, nil),
+	})
+
+	report, err := app.SessionContext(context.Background(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Compact.Recommended {
+		t.Fatalf("report of ~%d tokens does not recommend compacting", report.TokenEstimate)
+	}
+}

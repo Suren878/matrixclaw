@@ -20,12 +20,15 @@ const (
 
 var legacyCompactStats = regexp.MustCompile(`~([0-9]+(?:\.[0-9]+)?[kKmM]?)\s*->\s*~([0-9]+(?:\.[0-9]+)?[kKmM]?)\s+tokens`)
 
-// migrateCompactionMarkers adds messages.compaction_json and turns the text
-// markers older versions wrote into boundaries; such a marker covered every
-// message of its session written before it.
+// migrateCompactionMarkers adds messages.compaction_json with an index of the
+// boundaries and turns the text markers older versions wrote into boundaries;
+// such a marker covered every message of its session written before it.
 func migrateCompactionMarkers(db *sql.DB) error {
 	if err := ensureColumn(db, "messages", "compaction_json", `ALTER TABLE messages ADD COLUMN compaction_json TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_boundaries ON messages(session_id, seq) WHERE compaction_json <> ''`); err != nil {
+		return fmt.Errorf("store: index context boundaries: %w", err)
 	}
 	rows, err := db.Query(`SELECT id, seq, content FROM messages WHERE role = 'system' AND compaction_json = '' AND (content LIKE ? OR content LIKE ?)`, legacyCompactPrefix+"%", legacyClearPrefix+"%")
 	if err != nil {

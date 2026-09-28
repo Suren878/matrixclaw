@@ -84,7 +84,7 @@ func (c *Core) ClientSnapshot(ctx context.Context, client string, externalKey st
 	snapshot.Subagents = subagents
 	snapshot.PendingInputs = pendingInputs
 	snapshot.Messages = messages
-	context := c.contextReportForSession(session, window)
+	context := c.contextReportForSession(ctx, session, window)
 	snapshot.Context = &context
 	snapshot.Approvals, snapshot.ToolUpdates, snapshot.ApprovalNotifications = deriveClientSnapshotToolState(approvals, messages)
 	if len(messages) == 0 {

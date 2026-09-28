@@ -2,8 +2,10 @@ package store_test
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -36,5 +38,35 @@ func TestLegacyContextMarkersBecomeBoundaries(t *testing.T) {
 	}
 	if notice, err := reopened.GetMessage(ctx, "notice"); err != nil || notice.Compaction != nil {
 		t.Fatalf("plain notice = %+v err = %v", notice, err)
+	}
+}
+
+func TestLatestBoundaryLookupUsesTheBoundaryIndex(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "matrixclaw.db")
+	st := openTestStore(t, path)
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	rows, err := db.Query(`EXPLAIN QUERY PLAN SELECT id FROM messages WHERE session_id = ? AND compaction_json <> '' ORDER BY seq DESC LIMIT 1`, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	var plan []string
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	if len(plan) != 1 || !strings.Contains(plan[0], "idx_messages_boundaries") {
+		t.Fatalf("query plan = %q", plan)
 	}
 }

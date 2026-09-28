@@ -74,7 +74,7 @@ func (c *Core) SessionContext(ctx context.Context, sessionID string) (ContextRep
 	if err != nil {
 		return ContextReport{}, err
 	}
-	return c.contextReportForSession(session, window), nil
+	return c.contextReportForSession(ctx, session, window), nil
 }
 
 // CompactSession summarises what the model sees of the session into a boundary
@@ -110,7 +110,7 @@ func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSes
 	}
 	previous := window.Compaction()
 	base := c.contextBaseTokens()
-	limit := agentcontext.EffectiveWindow(windowTokens, int(providers.DefaultMaxOutputTokens))
+	limit := agent.ContextLimit(runtime, windowTokens, 0)
 	summary, err := agentcontext.Summarize(ctx, runtime, agentcontext.SummaryInput{
 		SessionID:   session.ID,
 		Previous:    agentcontext.SummaryText(previous),
@@ -137,7 +137,7 @@ func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSes
 	if err != nil {
 		return CompactSessionResult{}, err
 	}
-	return CompactSessionResult{Message: message, Context: c.contextReportForSession(session, next)}, nil
+	return CompactSessionResult{Message: message, Context: c.contextReportForSession(ctx, session, next)}, nil
 }
 
 // sessionRunActive reports whether the session has an unfinished run, including
@@ -158,10 +158,16 @@ func (c *Core) contextBaseTokens() int {
 		c.estimateToolSchemaTokens()
 }
 
-func (c *Core) contextReportForSession(session Session, window agent.Window) ContextReport {
+// contextReportForSession reports the session's context against the prompt room
+// its runs get; without a resolvable model, the default output limit applies.
+func (c *Core) contextReportForSession(ctx context.Context, session Session, window agent.Window) ContextReport {
 	report := c.contextReport(session.ID, window)
 	report.WindowTokens = c.sessionContextWindowTokens(session)
-	limit := agentcontext.EffectiveWindow(report.WindowTokens, int(providers.DefaultMaxOutputTokens))
+	var model agent.Model
+	if runtime, err := c.resolveSessionRuntime(ctx, session); err == nil {
+		model = runtime
+	}
+	limit := agent.ContextLimit(model, report.WindowTokens, 0)
 	if agentcontext.SummaryDue(report.TokenEstimate, limit) {
 		report.Compact = ContextCompact{Recommended: true, Reason: fmt.Sprintf("estimated context has reached %d%% of the model's usable window; compact before continuing", agentcontext.SummaryPercent)}
 	}

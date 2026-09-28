@@ -25,6 +25,10 @@ var overflowPhrases = []string{
 	"request too large",
 }
 
+// rateLimitPhrases mark a request over a rate limit, such as tokens per
+// minute, which providers word much like a request over the window.
+var rateLimitPhrases = []string{"per min", "tpm", "rate limit", "rate_limit"}
+
 // IsContextLengthExceeded recognises provider errors for requests over the model window.
 func IsContextLengthExceeded(err error) bool {
 	if err == nil {
@@ -33,6 +37,11 @@ func IsContextLengthExceeded(err error) bool {
 	text := strings.ToLower(err.Error())
 	for wrapped := errors.Unwrap(err); wrapped != nil; wrapped = errors.Unwrap(wrapped) {
 		text += " " + strings.ToLower(wrapped.Error())
+	}
+	for _, phrase := range rateLimitPhrases {
+		if strings.Contains(text, phrase) {
+			return false
+		}
 	}
 	for _, phrase := range overflowPhrases {
 		if strings.Contains(text, phrase) {

@@ -53,7 +53,7 @@ func (r *run) summary(ctx context.Context, reuse *providers.Request, previous *t
 
 func (r *run) preferredSummary(ctx context.Context, reuse *providers.Request, previous *transcript.Compaction, covered []transcript.Message) (string, error) {
 	if r.task.CompactModel != nil {
-		limit := agentcontext.EffectiveWindow(r.task.CompactWindowTokens, outputTokens(r.task.CompactModel, 0))
+		limit := ContextLimit(r.task.CompactModel, r.task.CompactWindowTokens, 0)
 		return r.chunkedSummary(ctx, r.task.CompactModel, limit/2, previous, covered)
 	}
 	return r.prefixSummary(ctx, *reuse)
