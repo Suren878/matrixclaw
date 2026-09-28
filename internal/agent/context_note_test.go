@@ -144,9 +144,13 @@ func TestContextNoteIsSentAgainWhenASummaryCoversIt(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Window = 20_000
 	f.Prompts.ContextText = "Plan: parser"
-	big := strings.Repeat("b", 10_000)
+	// Results under 1k tokens are never elided; the usage reported for the
+	// fourth step puts the fifth over the summary threshold.
+	big := strings.Repeat("b", 3_800)
 	f.Tools.Funcs["read"] = func(call tools.Call) tools.Result { return tools.Result{Content: call.ToolCallID + big} }
-	model := agenttest.NewScriptedModel(append(toolSteps(4, "read"), text("SUMMARY"), text("Done."))...)
+	steps := toolSteps(4, "read")
+	steps[3].Response.Usage.PromptTokens = 8_500
+	model := agenttest.NewScriptedModel(append(steps, text("SUMMARY"), text("Done."))...)
 
 	run(t, f, model)
 

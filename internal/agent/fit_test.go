@@ -56,8 +56,11 @@ func TestSmallEstimateWithoutReportedUsageDoesNotSummarise(t *testing.T) {
 func TestOldBulkyResultsAreElidedAtSixtyPercentAndStayElided(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Window = 100_000
+	// Five rounds of ~4.5k tokens fit in 30% of the usable window; the system
+	// prompt takes the eleventh request over 60% of it.
+	f.Prompts.Text = strings.Repeat("s", 20_000)
 	f.Tools.Funcs["read"] = func(call tools.Call) tools.Result {
-		return tools.Result{Content: call.ToolCallID + " " + strings.Repeat("x", 20_000)}
+		return tools.Result{Content: call.ToolCallID + " " + strings.Repeat("x", 18_000)}
 	}
 	model := agenttest.NewScriptedModel(append(toolSteps(11, "read"), text("Done."))...)
 

@@ -16,11 +16,36 @@ func TestNextElisionKeepsTheLastFiveRoundsAndThreeReplies(t *testing.T) {
 		messages = append(messages, toolStep(seq, fmt.Sprintf("c%d", i), "out")...)
 	}
 
-	if got, want := NextElision(messages), (Elision{ResultsThroughSeq: rounds[2] - 1, ImagesThroughSeq: rounds[4] - 1}); got != want {
+	if got, want := NextElision(messages, wideLimit), (Elision{ResultsThroughSeq: rounds[2] - 1, ImagesThroughSeq: rounds[4] - 1}); got != want {
 		t.Fatalf("NextElision = %+v, want %+v", got, want)
 	}
-	if got := NextElision(messages[:16]); got.ResultsThroughSeq != 0 {
+	if got := NextElision(messages[:16], wideLimit); got.ResultsThroughSeq != 0 {
 		t.Fatalf("five rounds elide results through %d, want nothing", got.ResultsThroughSeq)
+	}
+}
+
+// wideLimit is a usable window in which five rounds always fit.
+const wideLimit = 1_000_000
+
+func TestNextElisionKeepsFewerRoundsWhenTheyOutgrowTheirShare(t *testing.T) {
+	messages := []transcript.Message{textMessage(1, transcript.MessageRoleUser, "r1", "task")}
+	var rounds []int64
+	for i, seq := 0, int64(2); i < 7; i, seq = i+1, seq+3 {
+		rounds = append(rounds, seq)
+		messages = append(messages, toolStep(seq, fmt.Sprintf("c%d", i), strings.Repeat("x", 8_000))...)
+	}
+
+	for _, tc := range []struct {
+		limit int
+		kept  int
+	}{
+		{limit: wideLimit, kept: 5},
+		{limit: 15_000, kept: 2}, // 30% holds two rounds of ~2k tokens
+		{limit: 5_000, kept: 1},  // the newest round stays even over its share
+	} {
+		if got, want := NextElision(messages, tc.limit).ResultsThroughSeq, rounds[len(rounds)-tc.kept]-1; got != want {
+			t.Fatalf("limit %d: results elided through %d, want %d (%d rounds kept)", tc.limit, got, want, tc.kept)
+		}
 	}
 }
 
@@ -61,20 +86,20 @@ func TestAdvanceElisionWaitsForFiveNewRoundsUnlessForced(t *testing.T) {
 		rounds = append(rounds, seq)
 		messages = append(messages, toolStep(seq, fmt.Sprintf("c%d", i), strings.Repeat("x", 8_000))...)
 	}
-	next := NextElision(messages)
+	next := NextElision(messages, wideLimit)
 
-	if got, moved := AdvanceElision(messages, Elision{}, false); !moved || got != next {
+	if got, moved := AdvanceElision(messages, wideLimit, Elision{}, false); !moved || got != next {
 		t.Fatalf("first elision = %+v %v, want %+v", got, moved, next)
 	}
 	current := Elision{ResultsThroughSeq: rounds[1] - 1, ImagesThroughSeq: rounds[3] - 1}
-	if got, moved := AdvanceElision(messages, current, false); moved || got != current {
+	if got, moved := AdvanceElision(messages, wideLimit, current, false); moved || got != current {
 		t.Fatalf("four new rounds moved the elision to %+v", got)
 	}
-	if got, moved := AdvanceElision(messages, current, true); !moved || got != next {
+	if got, moved := AdvanceElision(messages, wideLimit, current, true); !moved || got != next {
 		t.Fatalf("forced elision = %+v %v, want %+v", got, moved, next)
 	}
 	current = Elision{ResultsThroughSeq: rounds[0] - 1, ImagesThroughSeq: rounds[2] - 1}
-	if got, moved := AdvanceElision(messages, current, false); !moved || got != next {
+	if got, moved := AdvanceElision(messages, wideLimit, current, false); !moved || got != next {
 		t.Fatalf("five new rounds = %+v %v, want %+v", got, moved, next)
 	}
 }
@@ -97,7 +122,7 @@ func TestAdvanceElisionDoesNotMoveWithoutHidingAnything(t *testing.T) {
 		messages = append(messages, toolStep(seq, fmt.Sprintf("c%d", i), "out")...)
 	}
 	for _, force := range []bool{false, true} {
-		if got, moved := AdvanceElision(messages, Elision{}, force); moved || got != (Elision{}) {
+		if got, moved := AdvanceElision(messages, wideLimit, Elision{}, force); moved || got != (Elision{}) {
 			t.Fatalf("forced %t: elision = %+v %v over small results and no images", force, got, moved)
 		}
 	}

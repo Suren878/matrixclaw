@@ -15,6 +15,7 @@ const ElisionPercent = 60
 
 const (
 	elideKeepRounds  = 5
+	elideKeepPercent = 30
 	elideKeepReplies = 3
 	// elideRoundStep and elideReplyStep are how many more rounds or replies
 	// must become eligible before an elision moves on.
@@ -37,35 +38,51 @@ type Elision struct {
 	ImagesThroughSeq  int64
 }
 
-// NextElision covers the results before the last five tool rounds and the
-// images before the last three replies of messages.
-func NextElision(messages []transcript.Message) Elision {
-	var rounds, replies []int64
-	for _, message := range messages {
+// NextElision covers the results before the last five tool rounds, or before
+// fewer of them when five outgrow 30% of the usable window of limit tokens (the
+// newest round always stays), and the images before the last three replies.
+func NextElision(messages []transcript.Message, limit int) Elision {
+	var rounds, replies []int
+	for i, message := range messages {
 		if message.Role != transcript.MessageRoleAssistant || len(messageToolCallIDs(message)) > 0 {
 			continue
 		}
-		replies = append(replies, message.Seq)
+		replies = append(replies, i)
 		if isToolStepReply(message) {
-			rounds = append(rounds, message.Seq)
+			rounds = append(rounds, i)
 		}
 	}
 	var elision Elision
-	if len(rounds) > elideKeepRounds {
-		elision.ResultsThroughSeq = rounds[len(rounds)-elideKeepRounds] - 1
+	if kept := keptRounds(messages, rounds, limit); len(rounds) > kept {
+		elision.ResultsThroughSeq = messages[rounds[len(rounds)-kept]].Seq - 1
 	}
 	if len(replies) > elideKeepReplies {
-		elision.ImagesThroughSeq = replies[len(replies)-elideKeepReplies] - 1
+		elision.ImagesThroughSeq = messages[replies[len(replies)-elideKeepReplies]].Seq - 1
 	}
 	return elision
+}
+
+// keptRounds is how many of the newest rounds, each starting at its index in
+// messages, stay whole: up to five within their share of limit, at least one.
+func keptRounds(messages []transcript.Message, rounds []int, limit int) int {
+	budget, used, end := limit*elideKeepPercent/100, 0, len(messages)
+	kept := 0
+	for i := len(rounds) - 1; i >= 0 && kept < elideKeepRounds; i-- {
+		used += EstimateMessageTokens(messages[rounds[i]:end])
+		if kept > 0 && used > budget {
+			break
+		}
+		kept, end = kept+1, rounds[i]
+	}
+	return max(kept, 1)
 }
 
 // AdvanceElision moves current up to NextElision of messages and reports
 // whether it moved. Once results (or images) are elided, they move on only when
 // five more tool rounds (or replies) became eligible, or when forced, so the
 // request prefix stays stable; it never moves without hiding something more.
-func AdvanceElision(messages []transcript.Message, current Elision, force bool) (Elision, bool) {
-	next := NextElision(messages)
+func AdvanceElision(messages []transcript.Message, limit int, current Elision, force bool) (Elision, bool) {
+	next := NextElision(messages, limit)
 	next.ResultsThroughSeq = max(next.ResultsThroughSeq, current.ResultsThroughSeq)
 	next.ImagesThroughSeq = max(next.ImagesThroughSeq, current.ImagesThroughSeq)
 	if next == current {

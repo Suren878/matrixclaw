@@ -70,7 +70,7 @@ func (r *run) elision() agentcontext.Elision {
 // reports whether it moved; the request prefix changes only then.
 func (r *run) advanceElision(force bool) bool {
 	_, messages := r.history.window()
-	next, moved := agentcontext.AdvanceElision(messages, r.elision(), force)
+	next, moved := agentcontext.AdvanceElision(messages, r.contextLimit(), r.elision(), force)
 	if !moved {
 		return false
 	}

@@ -139,15 +139,16 @@ func talkingCall(replyRunes int, toolCall providers.ToolCall) agenttest.Turn {
 
 func TestSummaryKeepsTheAssignmentStepsAndWholeToolSteps(t *testing.T) {
 	f := agenttest.NewFixture()
-	// A 20k window keeps a tail of ~2.5k tokens, the newest step; the usage
-	// reported for the third step puts the fourth over the summary threshold.
+	// A 20k window keeps a tail of ~2.5k tokens, the newest step; results under
+	// 1k tokens are never elided, and the usage reported for the third step puts
+	// the fourth over the summary threshold.
 	f.Window = 20_000
-	big := strings.Repeat("b", 10_000)
+	big := strings.Repeat("b", 3_800)
 	f.Tools.Funcs["read"] = func(call tools.Call) tools.Result { return tools.Result{Content: call.ToolCallID + big} }
 	f.Inbox.Steers = []string{"focus on the parser"}
-	third := talkingCall(400, call("r3", "read"))
+	third := talkingCall(1_600, call("r3", "read"))
 	third.Response.Usage.PromptTokens = 7_000
-	model := agenttest.NewScriptedModel(talkingCall(400, call("r1", "read")), talkingCall(400, call("r2", "read")), third, text("SUMMARY"), text("Done."))
+	model := agenttest.NewScriptedModel(talkingCall(1_600, call("r1", "read")), talkingCall(1_600, call("r2", "read")), third, text("SUMMARY"), text("Done."))
 
 	outcome := run(t, f, model)
 
