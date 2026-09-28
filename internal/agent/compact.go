@@ -69,11 +69,11 @@ func (r *run) chunkedSummary(ctx context.Context, model Model, chunkTokens int, 
 	})
 }
 
-// prefixSummary sends request with the summary instruction appended and tool
-// calls forbidden.
+// prefixSummary sends request with the summary instruction appended. Its
+// tool_choice stays as it was, since changing it would cost the cached prefix;
+// tool calls in the reply are dropped and a reply without text fails.
 func (r *run) prefixSummary(ctx context.Context, request providers.Request) (string, error) {
 	request.Messages = append(slices.Clone(request.Messages), providers.Message{Role: string(transcript.MessageRoleUser), Content: agentcontext.SummaryInstruction})
-	request.ToolChoice = providers.ToolChoiceNone
 	response, err := (summaryModel{r: r, model: r.task.Model}).Generate(ctx, request)
 	if err != nil {
 		return "", err

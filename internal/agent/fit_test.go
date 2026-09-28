@@ -119,7 +119,7 @@ func TestElisionAdvancesOncePerFiveNewRoundsBelowTheSummaryThreshold(t *testing.
 	}
 }
 
-func TestSummaryReusesTheStepsRequestWithToolsDisabled(t *testing.T) {
+func TestSummaryReusesTheStepsRequestUnchanged(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.WithHistory(pastTurn(100_000)...)
 	f.Window = 100_000
@@ -134,7 +134,7 @@ func TestSummaryReusesTheStepsRequestWithToolsDisabled(t *testing.T) {
 
 	requests := model.Requests()
 	summary := requests[1]
-	if summary.SystemPrompt != requests[0].SystemPrompt || len(summary.Tools) == 0 || len(summary.Tools) != len(requests[0].Tools) || summary.ToolChoice != providers.ToolChoiceNone || summary.CacheKey != agenttest.SessionID {
+	if summary.SystemPrompt != requests[0].SystemPrompt || len(summary.Tools) == 0 || len(summary.Tools) != len(requests[0].Tools) || summary.ToolChoice != requests[0].ToolChoice || summary.CacheKey != agenttest.SessionID {
 		t.Fatalf("summary request does not reuse the step's prefix: %+v", summary)
 	}
 	if !reflect.DeepEqual(summary.Messages[:len(requests[0].Messages)], requests[0].Messages) || lastMessage(summary).Content != agentcontext.SummaryInstruction {
@@ -179,5 +179,43 @@ func TestOverflowWithNothingToSummariseExhaustsTheContext(t *testing.T) {
 
 	if outcome.Status != agent.StatusFailed || outcome.StopReason != agent.StopContextExhausted || len(model.Requests()) != 1 {
 		t.Fatalf("outcome = %+v requests = %d", outcome, len(model.Requests()))
+	}
+}
+
+func TestToolCallsInAReusedRequestSummaryAreDropped(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.WithHistory(pastTurn(100_000)...)
+	f.Window = 100_000
+	f.Tools.Funcs["read"] = readTool
+	first := agenttest.Turn{Response: providers.Response{ToolCalls: []providers.ToolCall{call("c1", "read")}, Usage: providers.Usage{PromptTokens: 70_000}}}
+	summary := agenttest.Turn{Response: providers.Response{Text: "SUMMARY", ToolCalls: []providers.ToolCall{call("c2", "read")}, StopReason: providers.StopToolUse}}
+	model := agenttest.NewScriptedModel(first, summary, text("Done."))
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted || len(model.Requests()) != 3 || len(f.Tools.Calls) != 1 {
+		t.Fatalf("outcome = %+v requests = %d calls = %d", outcome, len(model.Requests()), len(f.Tools.Calls))
+	}
+	if marks := boundaries(f.Journal.Messages); len(marks) != 1 || marks[0].Compaction.Summary != "SUMMARY" {
+		t.Fatalf("boundaries = %+v", marks)
+	}
+}
+
+func TestReusedRequestSummaryWithOnlyToolCallsFallsBackToChunks(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.WithHistory(pastTurn(100_000)...)
+	f.Window = 100_000
+	f.Tools.Funcs["read"] = readTool
+	first := agenttest.Turn{Response: providers.Response{ToolCalls: []providers.ToolCall{call("c1", "read")}, Usage: providers.Usage{PromptTokens: 70_000}}}
+	model := agenttest.NewScriptedModel(first, calls(call("c2", "read")), text("SUMMARY"), text("Done."))
+
+	outcome := run(t, f, model)
+
+	requests := model.Requests()
+	if outcome.Status != agent.StatusCompleted || len(requests) != 4 || !isStandaloneSummary(requests[2]) || len(f.Tools.Calls) != 1 {
+		t.Fatalf("outcome = %+v requests = %d calls = %d", outcome, len(requests), len(f.Tools.Calls))
+	}
+	if marks := boundaries(f.Journal.Messages); len(marks) != 1 || marks[0].Compaction.Summary != "SUMMARY" {
+		t.Fatalf("boundaries = %+v", marks)
 	}
 }
