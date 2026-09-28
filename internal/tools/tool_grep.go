@@ -129,6 +129,11 @@ func grepFiles(ctx context.Context, pattern string, root string, include string,
 		if d.IsDir() {
 			return nil
 		}
+		// A link below the root may lead to a file the permission rules guard;
+		// the subject they checked is the root.
+		if path != root && d.Type()&fs.ModeSymlink != 0 {
+			return nil
+		}
 		if isProtectedCredentialPath(path) {
 			return nil
 		}

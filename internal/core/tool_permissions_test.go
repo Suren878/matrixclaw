@@ -388,3 +388,19 @@ func TestAskRuleAsksBeforeAToolThatAsksOnItsOwn(t *testing.T) {
 		t.Fatalf("result = %+v ran = %v", pending, bash.ran)
 	}
 }
+
+func TestGrepDoesNotFollowALinkToADeniedFile(t *testing.T) {
+	app, db, _, dir := permissionCore(t)
+	session := permissionSession(t, db, "session_link", dir, core.PermissionModeFullAuto, "")
+	saveRule(t, db, "rule_secret", permission.Rule{Tool: "read", Pattern: filepath.Join(dir, "secret") + "/**", Effect: permission.Deny, SessionID: session.ID})
+	if err := os.MkdirAll(filepath.Join(dir, "public"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "secret", "key.txt"), filepath.Join(dir, "public", "key.txt")); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := resultText(executeTool(t, app, session.ID, "grep", `{"pattern":"hunter2","path":"public"}`, false)); strings.Contains(got, "hunter2") {
+		t.Fatalf("grep read through the link: %q", got)
+	}
+}
