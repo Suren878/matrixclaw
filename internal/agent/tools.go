@@ -23,11 +23,23 @@ type callRequest struct {
 	approved   bool
 }
 
-// executeBatch runs the response's tool calls in order; approval-bound calls park,
-// the rest of the batch still runs.
+// callState is where a call stands after runCall.
+type callState int
+
+const (
+	callDone callState = iota
+	// callPending waits for approval; later calls of its batch still run.
+	callPending
+	// callBarrier waits for approval and holds back the later calls of its batch.
+	callBarrier
+)
+
+// executeBatch runs the response's tool calls in order. A call waiting for approval
+// parks while the rest of the batch runs, unless it is a barrier: every later call
+// is then journaled deferred and runs once the run's approvals are decided.
 func (r *run) executeBatch(ctx context.Context, response providers.Response) (bool, error) {
 	seen := make(map[string]providers.ToolCall)
-	waiting := false
+	waiting, barrier := false, false
 	for _, toolCall := range response.ToolCalls {
 		if err := ctx.Err(); err != nil {
 			return false, err
@@ -59,19 +71,30 @@ func (r *run) executeBatch(ctx context.Context, response providers.Response) (bo
 		if name == "" {
 			return false, errors.New("provider returned tool call without a name")
 		}
+		if id == "" {
+			id = r.NewID("tool")
+		}
 		request := callRequest{id: id, name: name, args: toolCall.Arguments, workingDir: r.task.WorkingDir}
-		pending, err := r.runCall(ctx, request)
+		if barrier {
+			if err := r.deferCall(ctx, request); err != nil {
+				return false, err
+			}
+			continue
+		}
+		state, err := r.runCall(ctx, request)
 		if err != nil {
 			return false, err
 		}
-		waiting = waiting || pending
+		waiting = waiting || state != callDone
+		barrier = state == callBarrier
 	}
 	return waiting, nil
 }
 
 // resumeDecided answers the run's decided approvals that have no result yet: a
-// granted call runs, a denied one gets the denial as its result. It reports
-// whether approvals of the run are still open.
+// granted call runs, a denied one gets the denial as its result. Once none is
+// pending, the calls deferred behind a barrier run. It reports whether the run
+// still waits for approval.
 func (r *run) resumeDecided(ctx context.Context) (bool, error) {
 	decided, err := r.Inbox.Peek(ctx, r.task.RunID, InputDecided)
 	if err != nil {
@@ -91,44 +114,122 @@ func (r *run) resumeDecided(ctx context.Context) (bool, error) {
 			return false, err
 		}
 	}
-	return r.Approvals.Pending(ctx, r.task.RunID)
+	pending, err := r.Approvals.Pending(ctx, r.task.RunID)
+	if err != nil || pending {
+		return pending, err
+	}
+	return r.runDeferred(ctx)
 }
 
-// runCall authorizes, journals and executes one call; it reports whether the call
-// now waits for approval.
-func (r *run) runCall(ctx context.Context, req callRequest) (bool, error) {
-	if req.id == "" {
-		req.id = r.NewID("tool")
+// runDeferred runs the calls held back by a barrier in call order, until one of
+// them is a barrier again.
+func (r *run) runDeferred(ctx context.Context) (bool, error) {
+	waiting := false
+	for _, request := range r.deferredCalls() {
+		state, err := r.runCall(ctx, request)
+		if err != nil {
+			return false, err
+		}
+		if state == callBarrier {
+			return true, nil
+		}
+		waiting = waiting || state == callPending
 	}
+	return waiting, nil
+}
+
+// deferredCalls lists the run's calls still held back by a barrier, in call order.
+func (r *run) deferredCalls() []callRequest {
+	var out []callRequest
+	for _, message := range r.history.all() {
+		if message.RunID != r.task.RunID {
+			continue
+		}
+		for _, part := range message.Parts {
+			if call := part.ToolCall; call != nil && call.Deferred && !r.history.hasResult(call.ID) {
+				out = append(out, callRequest{id: call.ID, name: call.Name, args: json.RawMessage(call.Input), workingDir: r.task.WorkingDir})
+			}
+		}
+	}
+	return out
+}
+
+// runCall authorizes, journals and executes one call and reports where it stands.
+func (r *run) runCall(ctx context.Context, req callRequest) (callState, error) {
 	call := r.toolCall(req)
 	decision, err := r.Tools.Authorize(ctx, req.name, call)
 	if err != nil {
-		return false, err
+		return callDone, err
 	}
 	if !decision.Allowed {
 		if req.approved {
-			return false, errors.New(decision.Reason)
+			return callDone, errors.New(decision.Reason)
 		}
-		return false, r.rejectCall(ctx, req, decision.Reason)
+		return callDone, r.rejectCall(ctx, req, decision.Reason)
 	}
-	if _, exists := r.history.message(req.id); !exists {
-		if err := r.history.append(ctx, r.callMessage(req, false)); err != nil {
-			return false, err
-		}
-		r.Sink.Emit(Event{Kind: EventToolRequested, SessionID: r.task.SessionID, RunID: r.task.RunID, ToolCallID: req.id, ToolName: req.name})
+	if err := r.startCall(ctx, req); err != nil {
+		return callDone, err
 	}
 	if err := r.checkpoint(ctx, PhaseTool, req.id, req.name); err != nil {
-		return false, err
+		return callDone, err
 	}
 	result, err := r.Tools.Execute(ctx, req.name, call)
 	if err != nil {
-		return false, err
+		return callDone, err
 	}
-	if result.Approval != nil && !req.approved {
-		err := r.Approvals.Request(ctx, Pending{RunID: r.task.RunID, SessionID: r.task.SessionID, ToolCallID: req.id, ToolName: req.name, Request: *result.Approval})
-		return err == nil, err
+	if result.Approval == nil || req.approved {
+		return callDone, r.finishCall(ctx, req, call, result)
 	}
-	return false, r.finishCall(ctx, req, call, result)
+	if err := r.Approvals.Request(ctx, Pending{RunID: r.task.RunID, SessionID: r.task.SessionID, ToolCallID: req.id, ToolName: req.name, Request: *result.Approval}); err != nil {
+		return callDone, err
+	}
+	if decision.Barrier {
+		return callBarrier, nil
+	}
+	return callPending, nil
+}
+
+// startCall journals a call about to run and announces it; a call held back by
+// a barrier loses its deferred mark.
+func (r *run) startCall(ctx context.Context, req callRequest) error {
+	if existing, ok := r.history.message(req.id); ok && !deferredCall(existing) {
+		return nil
+	}
+	if err := r.writeCall(ctx, req, false); err != nil {
+		return err
+	}
+	r.Sink.Emit(Event{Kind: EventToolRequested, SessionID: r.task.SessionID, RunID: r.task.RunID, ToolCallID: req.id, ToolName: req.name})
+	return nil
+}
+
+// deferCall journals a call held back by an approval barrier.
+func (r *run) deferCall(ctx context.Context, req callRequest) error {
+	if _, ok := r.history.message(req.id); ok {
+		return nil
+	}
+	message := r.callMessage(req, false)
+	message.Parts[0].ToolCall.Deferred = true
+	return r.history.append(ctx, message)
+}
+
+// writeCall journals the call's message, or updates the one already journaled.
+func (r *run) writeCall(ctx context.Context, req callRequest, finished bool) error {
+	message := r.callMessage(req, finished)
+	existing, ok := r.history.message(req.id)
+	if !ok {
+		return r.history.append(ctx, message)
+	}
+	message.CreatedAt = existing.CreatedAt
+	return r.history.finish(ctx, message)
+}
+
+func deferredCall(message transcript.Message) bool {
+	for _, part := range message.Parts {
+		if part.ToolCall != nil && part.ToolCall.Deferred {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *run) toolCall(req callRequest) tools.Call {
@@ -147,7 +248,7 @@ func (r *run) toolCall(req callRequest) tools.Call {
 // rejectCall journals a call that may not run with its error as the result, so the
 // model can correct it.
 func (r *run) rejectCall(ctx context.Context, req callRequest, reason string) error {
-	if err := r.history.append(ctx, r.callMessage(req, true)); err != nil {
+	if err := r.writeCall(ctx, req, true); err != nil {
 		return err
 	}
 	result := tools.Result{Content: reason, IsError: true}
@@ -159,11 +260,7 @@ func (r *run) rejectCall(ctx context.Context, req callRequest, reason string) er
 }
 
 func (r *run) finishCall(ctx context.Context, req callRequest, call tools.Call, result tools.Result) error {
-	finished := ToolCallMessage(req.id, r.task.SessionID, r.task.RunID, req.name, req.args, true, r.Now())
-	if existing, ok := r.history.message(req.id); ok {
-		finished.CreatedAt = existing.CreatedAt
-	}
-	if err := r.history.finish(ctx, finished); err != nil {
+	if err := r.writeCall(ctx, req, true); err != nil {
 		return err
 	}
 	message, err := r.appendResult(ctx, req, result)

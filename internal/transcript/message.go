@@ -103,6 +103,8 @@ type ToolCallPart struct {
 	Name     string `json:"name"`
 	Input    string `json:"input"`
 	Finished bool   `json:"finished,omitempty"`
+	// Deferred marks a call held back behind an approval barrier; it has not started.
+	Deferred bool `json:"deferred,omitempty"`
 }
 
 type ToolResultPart struct {

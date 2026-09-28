@@ -183,7 +183,7 @@ func approvalTools(mutations *int) (funcTool, *recoveryTool) {
 	return mutate, &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
 }
 
-func TestNativeRunParksForApprovalAndResumesAfterGrant(t *testing.T) {
+func TestNativeRunHoldsLaterCallsBehindAnApprovalBarrier(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	mutations := 0
@@ -201,13 +201,7 @@ func TestNativeRunParksForApprovalAndResumesAfterGrant(t *testing.T) {
 				{ID: "call-inspect", Name: "inspect_state", Arguments: []byte(`{}`)},
 			}}, nil
 		}
-		results := map[string]string{}
-		for _, message := range request.Messages {
-			if message.Role == "tool" {
-				results[message.ToolCallID] = message.Content
-			}
-		}
-		resumedWithBothResults = results["call-mutate"] == "mutated" && results["call-inspect"] == "recovered tool result"
+		resumedWithBothResults = toolResultContent(request, "call-mutate") == "mutated" && toolResultContent(request, "call-inspect") == "recovered tool result"
 		return providers.Response{Text: "Done."}, nil
 	})})
 	session, run := saveCrashRecoveryRun(t, db, "approval", core.RunStatusAccepted, false)
@@ -216,8 +210,8 @@ func TestNativeRunParksForApprovalAndResumesAfterGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusWaitingApproval)
-	assertToolResultCount(t, db, session.ID, "call-inspect", 1)
 	assertToolResultCount(t, db, session.ID, "call-mutate", 0)
+	assertToolResultCount(t, db, session.ID, "call-inspect", 0)
 	approvals, err := db.ListApprovals(context.Background(), session.ID, core.ApprovalStatePending)
 	if err != nil {
 		t.Fatal(err)
@@ -225,7 +219,7 @@ func TestNativeRunParksForApprovalAndResumesAfterGrant(t *testing.T) {
 	if len(approvals) != 1 || approvals[0].ToolCallRef != "call-mutate" || approvals[0].Action != "write_state" {
 		t.Fatalf("pending approvals = %#v", approvals)
 	}
-	if calls != 1 || mutations != 0 || inspect.callCount() != 1 {
+	if calls != 1 || mutations != 0 || inspect.callCount() != 0 {
 		t.Fatalf("before grant: model=%d mutations=%d inspect=%d", calls, mutations, inspect.callCount())
 	}
 
@@ -240,9 +234,9 @@ func TestNativeRunParksForApprovalAndResumesAfterGrant(t *testing.T) {
 	}
 
 	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
-	assertToolResultCount(t, db, session.ID, "call-mutate", 1)
-	if calls != 2 || mutations != 1 || !resumedWithBothResults {
-		t.Fatalf("after grant: model=%d mutations=%d both results=%v", calls, mutations, resumedWithBothResults)
+	assertToolResultCount(t, db, session.ID, "call-inspect", 1)
+	if calls != 2 || mutations != 1 || inspect.callCount() != 1 || !resumedWithBothResults {
+		t.Fatalf("after grant: model=%d mutations=%d inspect=%d both results=%v", calls, mutations, inspect.callCount(), resumedWithBothResults)
 	}
 }
 

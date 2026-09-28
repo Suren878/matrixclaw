@@ -75,9 +75,11 @@ type Step struct {
 }
 
 // Decision says whether a requested tool call may run; Reason goes back to the model.
+// A Barrier call that waits for approval holds back the calls after it in its batch.
 type Decision struct {
 	Allowed bool
 	Reason  string
+	Barrier bool
 }
 
 // Tools lists, authorizes, executes and finalizes the tools of one run. Execute

@@ -379,7 +379,7 @@ func incompleteToolCallsForRun(messages []transcript.Message, runID string) []in
 			continue
 		}
 		for _, part := range message.Parts {
-			if part.ToolCall == nil {
+			if part.ToolCall == nil || part.ToolCall.Deferred {
 				continue
 			}
 			id := normalizeText(part.ToolCall.ID)

@@ -41,14 +41,14 @@ func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) 
 	if _, err := t.c.isNewToolCallMessage(ctx, call.SessionID, call.ToolCallID); err != nil {
 		return agent.Decision{}, err
 	}
-	_, _, err := t.c.checkToolCall(ctx, call.SessionID, name)
+	_, spec, err := t.c.checkToolCall(ctx, call.SessionID, name)
 	if errors.Is(err, ErrInvalidInput) {
 		return agent.Decision{Reason: err.Error()}, nil
 	}
 	if err != nil {
 		return agent.Decision{}, err
 	}
-	return agent.Decision{Allowed: true}, nil
+	return agent.Decision{Allowed: true, Barrier: spec.Mutates()}, nil
 }
 
 func (t coreTools) Execute(ctx context.Context, name string, call tools.Call) (tools.Result, error) {

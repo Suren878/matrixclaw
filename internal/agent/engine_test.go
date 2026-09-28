@@ -160,28 +160,107 @@ func TestUpdatedMessageEventsCarryTheStoredSeq(t *testing.T) {
 	}
 }
 
-func TestApprovalRequestParksAfterTheRestOfTheBatch(t *testing.T) {
+func lookupTool(call tools.Call) tools.Result {
+	if !call.Approved {
+		return tools.Result{Approval: &tools.ApprovalRequest{ToolID: "lookup", ToolCallID: call.ToolCallID, Action: "lookup"}}
+	}
+	return tools.Result{Content: "looked up"}
+}
+
+func executedIDs(f *agenttest.Fixture) string {
+	ids := make([]string, 0, len(f.Tools.Calls))
+	for _, call := range f.Tools.Calls {
+		ids = append(ids, call.ToolCallID)
+	}
+	return strings.Join(ids, ",")
+}
+
+func TestApprovalThatIsNotABarrierLetsTheBatchRun(t *testing.T) {
 	f := agenttest.NewFixture()
-	f.Tools.Funcs["write"] = writeTool
+	f.Tools.Funcs["lookup"] = lookupTool
 	f.Tools.Funcs["read"] = readTool
-	model := agenttest.NewScriptedModel(calls(call("w1", "write"), call("r1", "read")))
+	model := agenttest.NewScriptedModel(calls(call("l1", "lookup"), call("r1", "read")))
 
 	outcome := run(t, f, model)
 
 	if outcome.Status != agent.StatusWaitingApproval {
 		t.Fatalf("outcome = %+v", outcome)
 	}
-	if len(f.Approvals.Requests) != 1 || f.Approvals.Requests[0].ToolCallID != "w1" || f.Approvals.Requests[0].Request.Action != "write" {
+	if len(f.Approvals.Requests) != 1 || f.Approvals.Requests[0].ToolCallID != "l1" || f.Approvals.Requests[0].Request.Action != "lookup" {
 		t.Fatalf("approval requests = %+v", f.Approvals.Requests)
 	}
 	if _, ok := f.Journal.Result("r1"); !ok {
-		t.Fatal("read after the approval barrier did not run")
+		t.Fatal("the read after a non-barrier approval did not run")
 	}
-	if _, ok := f.Journal.Result("w1"); ok {
-		t.Fatal("unapproved write has a result")
+	if _, ok := f.Journal.Result("l1"); ok {
+		t.Fatal("unapproved lookup has a result")
 	}
-	if message, _ := f.Journal.Message("w1"); message.Parts[0].ToolCall.Finished {
+	if message, _ := f.Journal.Message("l1"); message.Parts[0].ToolCall.Finished {
 		t.Fatal("pending call marked finished")
+	}
+}
+
+func TestMutatingApprovalDefersTheRestOfTheBatch(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["write"] = writeTool
+	f.Tools.Funcs["read"] = readTool
+	f.Tools.Mutating = map[string]bool{"write": true}
+	model := agenttest.NewScriptedModel(calls(call("r1", "read"), call("w1", "write"), call("r2", "read"), call("w2", "write")), text("Done."))
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusWaitingApproval || len(f.Approvals.Requests) != 1 || f.Approvals.Requests[0].ToolCallID != "w1" {
+		t.Fatalf("outcome = %+v requests = %+v", outcome, f.Approvals.Requests)
+	}
+	if got := executedIDs(f); got != "r1,w1" {
+		t.Fatalf("executed = %s, want r1,w1", got)
+	}
+	for _, id := range []string{"r2", "w2"} {
+		if message, ok := f.Journal.Message(id); !ok || !message.Parts[0].ToolCall.Deferred {
+			t.Fatalf("%s not journaled deferred: %+v", id, message)
+		}
+		if _, ok := f.Journal.Result(id); ok {
+			t.Fatalf("%s has a result before the decision", id)
+		}
+	}
+	for _, event := range f.Sink.Events {
+		if event.Kind == agent.EventToolRequested && (event.ToolCallID == "r2" || event.ToolCallID == "w2") {
+			t.Fatalf("deferred call %s announced as requested", event.ToolCallID)
+		}
+	}
+
+	f.Approvals.Open = false
+	f.Inbox.Decided = []agent.Input{{Kind: agent.InputDecided, ToolCallID: "w1", ToolName: "write", WorkingDir: "/work", Args: []byte(`{}`), Denied: true, Reason: "not yet"}}
+	outcome = run(t, f, model)
+
+	if outcome.Status != agent.StatusWaitingApproval || len(f.Approvals.Requests) != 2 || f.Approvals.Requests[1].ToolCallID != "w2" {
+		t.Fatalf("after the denial: outcome = %+v requests = %+v", outcome, f.Approvals.Requests)
+	}
+	if got := executedIDs(f); got != "r1,w1,r2,w2" {
+		t.Fatalf("executed = %s, want r1,w1,r2,w2", got)
+	}
+	if message, _ := f.Journal.Message("w2"); message.Parts[0].ToolCall.Deferred {
+		t.Fatal("the new barrier is still marked deferred")
+	}
+	if len(model.Requests()) != 1 {
+		t.Fatalf("model called %d times while a barrier was open", len(model.Requests()))
+	}
+
+	f.Approvals.Open = false
+	f.Inbox.Decided = append(f.Inbox.Decided, agent.Input{Kind: agent.InputDecided, ToolCallID: "w2", ToolName: "write", WorkingDir: "/work", Args: []byte(`{}`)})
+	outcome = run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted || len(model.Requests()) != 2 {
+		t.Fatalf("after the grant: outcome = %+v requests = %d", outcome, len(model.Requests()))
+	}
+	request := model.Requests()[1]
+	for id, want := range map[string]string{"r1": "file body", "w1": "User denied: not yet", "r2": "file body", "w2": "written"} {
+		if got := toolContent(request, id); got != want {
+			t.Fatalf("result of %s = %q, want %q", id, got, want)
+		}
+	}
+	if split := agenttest.SplitToolPair(request); split != "" {
+		t.Fatal(split)
 	}
 }
 

@@ -218,10 +218,12 @@ func (j *Journal) replace(msg transcript.Message) error {
 // ToolFunc executes one fake tool call.
 type ToolFunc func(call tools.Call) tools.Result
 
-// Tools authorizes registered names only and records executed and finished calls.
-// OnExecute and OnFinish run first and fail the call with their error.
+// Tools authorizes registered names only, making the Mutating ones approval
+// barriers, and records executed and finished calls. OnExecute and OnFinish run
+// first and fail the call with their error.
 type Tools struct {
 	Funcs     map[string]ToolFunc
+	Mutating  map[string]bool
 	Calls     []tools.Call
 	Finished  []string
 	OnExecute func(name string, call tools.Call) error
@@ -248,7 +250,7 @@ func (t *Tools) Authorize(_ context.Context, name string, _ tools.Call) (agent.D
 	if _, ok := t.Funcs[name]; !ok {
 		return agent.Decision{Reason: fmt.Sprintf("invalid input: unknown tool %q", name)}, nil
 	}
-	return agent.Decision{Allowed: true}, nil
+	return agent.Decision{Allowed: true, Barrier: t.Mutating[name]}, nil
 }
 
 func (t *Tools) Execute(_ context.Context, name string, call tools.Call) (tools.Result, error) {

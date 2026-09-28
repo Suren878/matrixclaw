@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/orchestration"
@@ -406,6 +407,51 @@ func TestRecoverDeniedToolReturnsTheDenialToTheModel(t *testing.T) {
 	assertToolResultCount(t, sqliteStore, run.SessionID, "tool_mutation", 1)
 	if saw != "User denied: keep the old config" || mutation.callCount() != 0 {
 		t.Fatalf("model read %q, mutations = %d", saw, mutation.callCount())
+	}
+}
+
+func TestRecoveryLeavesDeferredCallsToTheResumedRun(t *testing.T) {
+	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	starter := &recordingRunStarter{}
+	mutation := &recoveryTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation)}
+	inspect := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
+	var results []string
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		results = []string{toolResultContent(request, "tool_mutation"), toolResultContent(request, "tool_inspect")}
+		return providers.Response{Text: "Done."}, nil
+	})})
+	app.WithRunStarter(starter)
+	app.WithTools(tools.NewRegistry(mutation, inspect))
+	_, run := saveCrashRecoveryRun(t, sqliteStore, "deferred", core.RunStatusRunning, false)
+	saveInterruptedToolCall(t, sqliteStore, run, "tool_mutation", mutation.spec.ID)
+	deferred := agent.ToolCallMessage("tool_inspect", run.SessionID, run.ID, inspect.spec.ID, []byte(`{}`), false, run.StartedAt.Add(2*time.Second))
+	deferred.Parts[0].ToolCall.Deferred = true
+	saveRunRecoveryTestMessage(t, sqliteStore, deferred)
+	decided := runRecoveryTestTime()
+	if err := sqliteStore.CreateApproval(context.Background(), core.Approval{
+		ID: "approval_mutation", SessionID: run.SessionID, RunID: run.ID, ToolCallRef: "tool_mutation", ToolName: mutation.spec.ID,
+		State: core.ApprovalStateRejected, RequestedAt: decided, DecidedAt: &decided,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.RecoverActiveRuns(context.Background()); err != nil {
+		t.Fatalf("RecoverActiveRuns: %v", err)
+	}
+	if inspect.callCount() != 0 {
+		t.Fatal("recovery replayed a deferred call")
+	}
+	if approvals, err := sqliteStore.ListApprovals(context.Background(), run.SessionID, core.ApprovalStatePending); err != nil || len(approvals) != 0 {
+		t.Fatalf("recovery approvals = %+v err = %v", approvals, err)
+	}
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	assertRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusCompleted)
+	if strings.Join(results, "|") != "User denied.|recovered tool result" || inspect.callCount() != 1 || mutation.callCount() != 0 {
+		t.Fatalf("model read %q, inspect = %d, mutations = %d", results, inspect.callCount(), mutation.callCount())
 	}
 }
 
