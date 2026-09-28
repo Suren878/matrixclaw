@@ -156,6 +156,7 @@ func (c *Core) nativeEngine(ctx context.Context, run Run, session Session, runti
 		Inbox:       coreInbox{c: c, session: session},
 		Sink:        coreSink{c: c},
 		Prompts:     &corePrompts{c: c, turn: turn},
+		Todos:       coreTodos{c: c},
 		Attachments: c.attachments,
 		Now:         func() time.Time { return c.now().UTC() },
 		NewID:       c.newID,

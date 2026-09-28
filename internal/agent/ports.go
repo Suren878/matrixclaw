@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -173,6 +174,12 @@ type Event struct {
 // Sink fans engine events out to clients.
 type Sink interface {
 	Emit(event Event)
+}
+
+type Todos interface {
+	// Open lists the unfinished items of the session's todo list when a run of
+	// chain (a run and the runs it continues) wrote it, and none otherwise.
+	Open(ctx context.Context, sessionID string, chain []string) ([]todo.Item, error)
 }
 
 // Prompts supplies the core-owned parts of every request: the system prompt and

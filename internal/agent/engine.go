@@ -22,6 +22,7 @@ type Config struct {
 	Inbox       Inbox
 	Sink        Sink
 	Prompts     Prompts
+	Todos       Todos
 	Attachments agentcontext.AttachmentReader
 	Now         func() time.Time
 	NewID       func(prefix string) string
@@ -237,6 +238,9 @@ func (r *run) handleResponse(ctx context.Context, gen generation) stepResult {
 	}
 	if strings.TrimSpace(response.Text) == "" {
 		return stepResult{kind: stepDone, assistant: &assistant, saved: gen.saved, response: response, err: providers.ErrEmptyResponse, markErrored: true}
+	}
+	if result, nudged := r.nudgeOpenTodo(ctx, gen, response); nudged {
+		return result
 	}
 	return stepResult{kind: stepDone, assistant: &assistant, saved: gen.saved, response: response}
 }

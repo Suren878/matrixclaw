@@ -71,6 +71,19 @@ func (c *Core) saveSessionTodo(ctx context.Context, list todo.List) (todo.List, 
 	return list, nil
 }
 
+// coreTodos is the engine's Todos port.
+type coreTodos struct {
+	c *Core
+}
+
+func (t coreTodos) Open(ctx context.Context, sessionID string, chain []string) ([]todo.Item, error) {
+	list, err := t.c.store.GetSessionTodo(ctx, sessionID)
+	if err != nil || !list.InChain(chain) {
+		return nil, err
+	}
+	return todo.Open(list.Items), nil
+}
+
 // TodoToolExecutors exposes the session's todo list to models.
 func TodoToolExecutors(app *Core) []tools.Executor {
 	if app == nil {

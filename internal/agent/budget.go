@@ -11,11 +11,9 @@ import (
 // wrapUpShare is the used share of a limit at which the run is told to wrap up.
 const wrapUpShare = 0.8
 
-// Counters is what a run has used of its budget, its no-progress streak, its
-// output-limit state, its run of low-yield summaries, what its requests elide,
-// the newest seq of its last history edit and the prompt room a provider
-// overflow taught it; it is checkpointed so a parked or restarted run continues
-// from it.
+// steps: no-progress streak, output limit, low-yield summaries, elision, last
+// history edit, learned prompt room and whether open todo items were pointed
+// out. It is checkpointed so a parked or restarted run continues from it.
 type Counters struct {
 	Steps         int           `json:"steps,omitempty"`
 	Tokens        int64         `json:"tokens,omitempty"`
@@ -32,6 +30,7 @@ type Counters struct {
 	ElidedImages  int64         `json:"elided_images,omitempty"`
 	HistoryEdit   int64         `json:"history_edit,omitempty"`
 	LearnedLimit  int           `json:"learned_limit,omitempty"`
+	TodoNudged    bool          `json:"todo_nudged,omitempty"`
 }
 
 // Carried is what the session's next run starts from: what the requests elide

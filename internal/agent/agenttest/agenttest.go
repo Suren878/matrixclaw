@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
+	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/agent/toolsched"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -391,6 +392,20 @@ func (p *Prompts) Context(context.Context) string {
 	return p.ContextText
 }
 
+// it was asked about. Like the store, it fails on a stopped context.
+type Todos struct {
+	Items  []todo.Item
+	Chains [][]string
+}
+
+func (t *Todos) Open(ctx context.Context, _ string, chain []string) ([]todo.Item, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	t.Chains = append(t.Chains, chain)
+	return todo.Open(t.Items), nil
+}
+
 // Fixture wires an engine to fresh fakes around one seeded user message.
 type Fixture struct {
 	Journal   *Journal
@@ -399,6 +414,7 @@ type Fixture struct {
 	Inbox     *Inbox
 	Sink      *Sink
 	Prompts   *Prompts
+	Todos     *Todos
 	Clock     time.Time
 	// Window is the model window of the fixture's task; 0 means unknown.
 	Window int
@@ -422,6 +438,7 @@ func NewFixture() *Fixture {
 		Inbox:     &Inbox{},
 		Sink:      &Sink{},
 		Prompts:   &Prompts{Text: "system"},
+		Todos:     &Todos{},
 		Clock:     clock,
 	}
 	f.Journal.Seed(transcript.Message{
@@ -456,6 +473,7 @@ func (f *Fixture) Engine() *agent.Engine {
 		Inbox:      f.Inbox,
 		Sink:       f.Sink,
 		Prompts:    f.Prompts,
+		Todos:      f.Todos,
 		Now:        func() time.Time { return f.Clock },
 		Sleep:      sleep,
 		ModelSlots: f.ModelSlots,

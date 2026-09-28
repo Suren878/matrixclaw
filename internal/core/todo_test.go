@@ -159,3 +159,54 @@ func TestTodoWritesOfOneSessionShareAConcurrencyKey(t *testing.T) {
 		t.Fatalf("todo_write keys = %q", first)
 	}
 }
+
+func TestOpenTodoHoldsBackOnlyRunsOfTheChainThatWroteIt(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	ctx := context.Background()
+	app.WithRunStarter(&recordingRunStarter{})
+	app.WithTools(tools.NewRegistry(core.TodoToolExecutors(app)...))
+	var requests []providers.Request
+	app.WithSessionLLMs(scriptedLLMs(&requests,
+		todoWriteCall("call_list", `[{"content":"Fix the bug","status":"in_progress"},{"content":"Run the tests","status":"pending"}]`),
+		providers.Response{Text: "Looking into it."},
+		providers.Response{Text: "Blocked: the tests need a database."},
+		providers.Response{Text: "Continuing."},
+		providers.Response{Text: "Still blocked on the database."},
+		providers.Response{Text: "Paris."},
+	))
+	session, first := saveCrashRecoveryRun(t, db, "todo_nudge", core.RunStatusAccepted, false)
+	nudged := func(request providers.Request) bool {
+		last := request.Messages[len(request.Messages)-1]
+		return last.Role == "user" && strings.Contains(last.Content, "Your todo list has 2 items open")
+	}
+
+	if err := app.ExecuteRun(ctx, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(requests) != 3 || !nudged(requests[2]) {
+		t.Fatalf("first run: %d requests, want the reply followed by one nudge", len(requests))
+	}
+	continued, err := app.AcceptRun(ctx, core.HandleMessageInput{SessionID: session.ID, Continue: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.ExecuteRun(ctx, continued.Run.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(requests) != 5 || !nudged(requests[4]) {
+		t.Fatalf("/continue run: %d requests, want its chain's open items pointed out", len(requests))
+	}
+	other, err := app.AcceptRun(ctx, core.HandleMessageInput{SessionID: session.ID, Text: "What is the capital of France?"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.ExecuteRun(ctx, other.Run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(requests) != 6 {
+		t.Fatalf("an unrelated run was held back by an earlier chain's todo: %d requests", len(requests))
+	}
+	assertRecoveryRunStatus(t, db, other.Run.ID, core.RunStatusCompleted)
+}
