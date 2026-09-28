@@ -197,7 +197,7 @@ func (c *Core) passDecisionToSubagent(ctx context.Context, bridge subagentApprov
 	if task.Mode == SubagentTaskModeAsync {
 		return nil
 	}
-	return c.resumeParentAfterSubagentTerminal(ctx, task)
+	return c.resumeParentForSubagentStatus(ctx, task)
 }
 
 // finishApprovalCall writes result for the approval's call unless it has one.
