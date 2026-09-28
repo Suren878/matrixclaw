@@ -10,14 +10,14 @@ import (
 
 func TestRunBudgetsFromConfigOverrideOnlyTheGivenFields(t *testing.T) {
 	budgets, err := runBudgetsFromConfig(setup.RunBudgetsConfig{
-		User:       setup.RunBudgetConfig{Steps: 300, ActiveTime: "2h"},
+		User:       setup.RunBudgetConfig{Steps: 120, ActiveTime: "2h"},
 		Automation: setup.RunBudgetConfig{Tokens: 50000},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defaults := core.DefaultRunBudgets()
-	if budgets.User.Steps != 300 || budgets.User.ActiveTime != 2*time.Hour || budgets.User.Tokens != 0 {
+	if budgets.User.Steps != 120 || budgets.User.ActiveTime != 2*time.Hour || budgets.User.Tokens != 0 {
 		t.Fatalf("user budget = %+v", budgets.User)
 	}
 	if budgets.Subagent != defaults.Subagent {

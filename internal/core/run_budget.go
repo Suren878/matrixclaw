@@ -17,9 +17,9 @@ type RunBudgets struct {
 // DefaultRunBudgets apply when the daemon configuration names none.
 func DefaultRunBudgets() RunBudgets {
 	return RunBudgets{
-		User:       agent.Budget{Steps: 32, ActiveTime: 4 * time.Hour},
-		Subagent:   agent.Budget{Steps: 32, ActiveTime: time.Hour},
-		Automation: agent.Budget{Steps: 32, ActiveTime: 30 * time.Minute},
+		User:       agent.Budget{Steps: 300, ActiveTime: 4 * time.Hour},
+		Subagent:   agent.Budget{Steps: 100, ActiveTime: time.Hour},
+		Automation: agent.Budget{Steps: 50, ActiveTime: 30 * time.Minute},
 	}
 }
 
