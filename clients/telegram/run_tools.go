@@ -234,17 +234,8 @@ func telegramPrettyToolName(name string) string {
 	return strings.Join(strings.Fields(name), " ")
 }
 
-func isPlanToolName(name string) bool {
-	switch strings.TrimSpace(name) {
-	case "plan_get", "plan_set_goal", "plan_add_item", "plan_update_item", "plan_clear":
-		return true
-	default:
-		return false
-	}
-}
-
 func isHiddenTelegramToolStatusName(name string) bool {
-	return isPlanToolName(name) || name == todo.ToolName || isTextToSpeechToolName(name) || isWebToolName(name)
+	return name == todo.ToolName || isTextToSpeechToolName(name) || isWebToolName(name)
 }
 
 func isWebToolName(name string) bool {

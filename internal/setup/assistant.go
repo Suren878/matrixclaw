@@ -117,7 +117,7 @@ func compactProjectContext(promptContext AssistantPromptContext) string {
 	}
 	parts = append(parts,
 		"runtime=durable_sessions_shared_by_terminal_and_telegram",
-		"control_plane=/modules,/provider,/permissions,/context,/usage,/plan,/search,/tasks,/server",
+		"control_plane=/modules,/provider,/permissions,/context,/usage,/todo,/search,/tasks,/server",
 		"tools=files,shell,web,storage,automation,tts,skills,mcp_when_enabled",
 		"voice=tts_output_tool_when_available;stt_transcribes_user_speech_before_chat",
 		"approvals=write_shell_skill_manage_and_risky_tools_need_permission",

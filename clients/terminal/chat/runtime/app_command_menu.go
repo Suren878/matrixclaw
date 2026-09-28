@@ -43,7 +43,6 @@ func (m *appModel) currentSessionCapabilities() core.SessionCapabilities {
 	return core.SessionCapabilities{
 		ProviderSelection: true,
 		PermissionMode:    true,
-		PlanningMode:      true,
 		NativeTools:       true,
 	}
 }

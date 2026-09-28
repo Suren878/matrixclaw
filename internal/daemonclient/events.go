@@ -45,12 +45,6 @@ func (e LiveEvent) DecodeTodo() (todo.List, error) {
 	return list, err
 }
 
-func (e LiveEvent) DecodeSessionPlan() (core.SessionPlan, error) {
-	var plan core.SessionPlan
-	err := json.Unmarshal(e.Payload, &plan)
-	return plan, err
-}
-
 func (e LiveEvent) DecodeApproval() (core.Approval, error) {
 	var approval core.Approval
 	err := json.Unmarshal(e.Payload, &approval)

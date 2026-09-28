@@ -54,7 +54,6 @@ func RunsUnattended(session Session) bool {
 type SessionCapabilities struct {
 	ProviderSelection bool `json:"provider_selection"`
 	PermissionMode    bool `json:"permission_mode"`
-	PlanningMode      bool `json:"planning_mode"`
 	NativeTools       bool `json:"native_tools"`
 	ExternalAgent     bool `json:"external_agent"`
 }
@@ -66,7 +65,6 @@ func CapabilitiesForSession(session Session) SessionCapabilities {
 	return SessionCapabilities{
 		ProviderSelection: true,
 		PermissionMode:    true,
-		PlanningMode:      true,
 		NativeTools:       true,
 	}
 }

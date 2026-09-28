@@ -8,7 +8,6 @@ import (
 	surfacehistory "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/history"
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
-	"github.com/Suren878/matrixclaw/internal/agent/prompt"
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -44,7 +43,7 @@ func ToSurfaceMessage(message transcript.Message) surfacemessage.Message {
 			}
 		case transcript.MessagePartKindToolCall:
 			if part.ToolCall != nil {
-				if isPlanToolName(part.ToolCall.Name) || part.ToolCall.Name == todo.ToolName {
+				if part.ToolCall.Name == todo.ToolName {
 					continue
 				}
 				out.Parts = append(out.Parts, surfacemessage.ToolCall{
@@ -56,7 +55,7 @@ func ToSurfaceMessage(message transcript.Message) surfacemessage.Message {
 			}
 		case transcript.MessagePartKindToolResult:
 			if part.ToolResult != nil {
-				if isPlanToolName(part.ToolResult.Name) || part.ToolResult.Name == todo.ToolName {
+				if part.ToolResult.Name == todo.ToolName {
 					continue
 				}
 				out.Parts = append(out.Parts, surfacemessage.ToolResult{
@@ -92,9 +91,6 @@ func ToSurfaceMessage(message transcript.Message) surfacemessage.Message {
 func ToSurfaceMessages(messages []transcript.Message) []surfacemessage.Message {
 	out := make([]surfacemessage.Message, 0, len(messages))
 	for _, message := range messages {
-		if prompt.IsPlanRunPrompt(message) {
-			continue
-		}
 		if message.Origin == transcript.OriginEngineModel {
 			continue
 		}
@@ -120,15 +116,6 @@ func shouldKeepSurfaceMessage(message surfacemessage.Message) bool {
 		}
 	}
 	return message.Role == surfacemessage.User
-}
-
-func isPlanToolName(name string) bool {
-	switch strings.TrimSpace(name) {
-	case "plan_get", "plan_set_goal", "plan_add_item", "plan_update_item", "plan_clear":
-		return true
-	default:
-		return false
-	}
 }
 
 func ToSurfacePermissionRequest(request core.PermissionRequest) surfacepermission.PermissionRequest {

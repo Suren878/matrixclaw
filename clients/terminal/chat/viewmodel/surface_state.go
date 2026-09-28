@@ -17,7 +17,6 @@ type Snapshot struct {
 	Session               *core.Session
 	Capabilities          *core.SessionCapabilities
 	Context               *core.ContextReport
-	Plan                  *core.SessionPlan
 	Todo                  *todo.List
 	Run                   *core.Run
 	Timing                *core.RunTiming
@@ -60,7 +59,6 @@ func FromStateSnapshot(snapshot clientruntime.StateSnapshot) Snapshot {
 		Session:       cloneSession(snapshot.Session),
 		Capabilities:  cloneSessionCapabilities(snapshot.Capabilities),
 		Context:       cloneContextReport(snapshot.Context),
-		Plan:          cloneSessionPlan(snapshot.Plan),
 		Todo:          snapshot.Todo,
 		Run:           cloneRun(snapshot.Run),
 		Timing:        cloneTiming(snapshot.Timing),
@@ -115,15 +113,6 @@ func cloneContextReport(report *core.ContextReport) *core.ContextReport {
 		}
 		copy.LastProviderUsage = &usage
 	}
-	return &copy
-}
-
-func cloneSessionPlan(plan *core.SessionPlan) *core.SessionPlan {
-	if plan == nil {
-		return nil
-	}
-	copy := *plan
-	copy.Items = append([]core.PlanItem(nil), plan.Items...)
 	return &copy
 }
 

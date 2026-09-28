@@ -124,14 +124,6 @@ type TodoRuntime interface {
 	ClearSessionTodo(ctx context.Context, sessionID string) (todo.List, error)
 }
 
-type PlanRuntime interface {
-	SessionPlan(ctx context.Context, sessionID string) (core.SessionPlan, error)
-	SetSessionGoal(ctx context.Context, sessionID string, goal string) (core.SessionPlan, error)
-	ClearSessionPlan(ctx context.Context, sessionID string) (core.SessionPlan, error)
-	AddPlanItem(ctx context.Context, sessionID string, text string, parentID string) (core.SessionPlan, error)
-	UpdatePlanItem(ctx context.Context, sessionID string, itemID string, status core.PlanItemStatus, text string) (core.SessionPlan, error)
-}
-
 type MemoryRuntime interface {
 	ListMemories(ctx context.Context, filter core.MemoryFilter) ([]core.MemoryEntry, error)
 }
@@ -227,7 +219,6 @@ type Dispatcher struct {
 	contextRuntime ContextRuntime
 	usage          UsageRuntime
 	budget         BudgetRuntime
-	plan           PlanRuntime
 	todo           TodoRuntime
 	memory         MemoryRuntime
 	search         SearchRuntime
@@ -265,7 +256,6 @@ func New(runtime any, workingDir string) *Dispatcher {
 		d.contextRuntime, _ = runtime.(ContextRuntime)
 		d.usage, _ = runtime.(UsageRuntime)
 		d.budget, _ = runtime.(BudgetRuntime)
-		d.plan, _ = runtime.(PlanRuntime)
 		d.todo, _ = runtime.(TodoRuntime)
 		d.memory, _ = runtime.(MemoryRuntime)
 		d.search, _ = runtime.(SearchRuntime)
@@ -322,8 +312,6 @@ func (d *Dispatcher) Handle(ctx context.Context, externalKey string, text string
 		return d.handleContinue(ctx, externalKey)
 	case CommandBudget:
 		return d.handleBudget(ctx, externalKey, args)
-	case CommandPlan:
-		return d.handlePlan(ctx, externalKey, args)
 	case CommandTodo:
 		return d.handleTodo(ctx, externalKey, args)
 	case CommandMemory:

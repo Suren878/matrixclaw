@@ -470,63 +470,6 @@ func (r ControlplaneRuntime) ClearSessionTodo(ctx context.Context, sessionID str
 	return client.ClearSessionTodo(ctx, sessionID)
 }
 
-func (r ControlplaneRuntime) SessionPlan(ctx context.Context, sessionID string) (core.SessionPlan, error) {
-	client, err := r.client("")
-	if err != nil {
-		return core.SessionPlan{}, err
-	}
-	return client.SessionPlan(ctx, sessionID)
-}
-
-func (r ControlplaneRuntime) SetSessionGoal(ctx context.Context, sessionID string, goal string) (core.SessionPlan, error) {
-	client, err := r.client("")
-	if err != nil {
-		return core.SessionPlan{}, err
-	}
-	return client.SetSessionGoal(ctx, sessionID, goal)
-}
-
-func (r ControlplaneRuntime) ClearSessionPlan(ctx context.Context, sessionID string) (core.SessionPlan, error) {
-	client, err := r.client("")
-	if err != nil {
-		return core.SessionPlan{}, err
-	}
-	return client.ClearSessionPlan(ctx, sessionID)
-}
-
-func (r ControlplaneRuntime) AddPlanItem(ctx context.Context, sessionID string, text string, parentID string) (core.SessionPlan, error) {
-	client, err := r.client("")
-	if err != nil {
-		return core.SessionPlan{}, err
-	}
-	return client.AddPlanItemWithParent(ctx, sessionID, text, parentID)
-}
-
-func (r ControlplaneRuntime) UpdatePlanItem(ctx context.Context, sessionID string, itemID string, status core.PlanItemStatus, text string) (core.SessionPlan, error) {
-	client, err := r.client("")
-	if err != nil {
-		return core.SessionPlan{}, err
-	}
-	return client.UpdatePlanItem(ctx, sessionID, itemID, status, text)
-}
-
-func (r ControlplaneRuntime) StartSessionPlanRun(ctx context.Context, sessionID string, reset bool) (core.PlanRun, core.SessionPlan, error) {
-	client, err := r.client("")
-	if err != nil {
-		return core.PlanRun{}, core.SessionPlan{}, err
-	}
-	return client.StartSessionPlanRun(ctx, sessionID, reset)
-}
-
-func (r ControlplaneRuntime) BindSessionPlanRunStep(ctx context.Context, sessionID string, runID string) error {
-	client, err := r.client("")
-	if err != nil {
-		return err
-	}
-	_, _, err = client.BindSessionPlanRunStep(ctx, sessionID, runID)
-	return err
-}
-
 func (r ControlplaneRuntime) Search(ctx context.Context, filter core.SearchFilter) (core.SearchReport, error) {
 	client, err := r.client("")
 	if err != nil {

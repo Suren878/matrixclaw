@@ -59,12 +59,6 @@ func BuildCommandView(state MenuState) []CommandView {
 		case CommandContext:
 			title = "Context"
 			group = MenuItemGroupSecondary
-		case CommandPlan:
-			title = "Planning Mode"
-			if !state.Capabilities.PlanningMode && hasSessionCapabilities(state.Capabilities) {
-				status = "Matrixclaw only"
-				disabled = true
-			}
 		case CommandTodo:
 			title = "Todo"
 			if !state.Capabilities.NativeTools && hasSessionCapabilities(state.Capabilities) {
@@ -110,7 +104,6 @@ func BuildCommandView(state MenuState) []CommandView {
 func hasSessionCapabilities(capabilities core.SessionCapabilities) bool {
 	return capabilities.ProviderSelection ||
 		capabilities.PermissionMode ||
-		capabilities.PlanningMode ||
 		capabilities.NativeTools ||
 		capabilities.ExternalAgent
 }

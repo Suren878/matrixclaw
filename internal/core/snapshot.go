@@ -16,7 +16,6 @@ type ClientSnapshot struct {
 	Session               *Session                 `json:"session,omitempty"`
 	Capabilities          *SessionCapabilities     `json:"capabilities,omitempty"`
 	Context               *ContextReport           `json:"context,omitempty"`
-	Plan                  *SessionPlan             `json:"plan,omitempty"`
 	Todo                  *todo.List               `json:"todo,omitempty"`
 	Messages              []transcript.Message     `json:"messages"`
 	Run                   *Run                     `json:"run,omitempty"`
@@ -48,11 +47,6 @@ func (c *Core) ClientSnapshot(ctx context.Context, client string, externalKey st
 	snapshot.Session = &session
 	capabilities := CapabilitiesForSession(session)
 	snapshot.Capabilities = &capabilities
-	if plan, err := c.store.GetSessionPlan(ctx, binding.SessionID); err != nil {
-		return ClientSnapshot{}, err
-	} else {
-		snapshot.Plan = &plan
-	}
 	list, err := c.store.GetSessionTodo(ctx, binding.SessionID)
 	if err != nil {
 		return ClientSnapshot{}, err
