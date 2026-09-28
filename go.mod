@@ -25,10 +25,11 @@ require (
 	github.com/sahilm/fuzzy v0.1.1
 	github.com/zeebo/xxh3 v1.1.0
 	golang.org/x/net v0.56.0
-	golang.org/x/sys v0.46.0
+	golang.org/x/sys v0.47.0
 	golang.org/x/text v0.39.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.39.1
+	mvdan.cc/sh/v3 v3.14.1
 )
 
 require (
