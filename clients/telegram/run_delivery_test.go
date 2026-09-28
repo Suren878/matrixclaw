@@ -169,8 +169,8 @@ func TestLongRunDeliveryReadsEachMessageAboutOnce(t *testing.T) {
 	if !d.acked {
 		t.Fatal("final delivery was not acknowledged")
 	}
-	if texts := api.messageTexts(); texts[len(texts)-1] != "All fixed." {
-		t.Fatalf("last message = %q", texts[len(texts)-1])
+	if texts := api.messageTexts(); len(texts) != 2 || texts[1] != "All fixed." {
+		t.Fatalf("messages = %q, want the run status and the answer", texts)
 	}
 	total := 2 + 2*steps
 	if served := d.servedRows(); served > 4*total {
