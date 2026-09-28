@@ -22,6 +22,7 @@ const (
 	cbApprovalOnce    = "ao:"
 	cbApprovalSession = "as:"
 	cbApprovalDeny    = "ad:"
+	cbApprovalReason  = "ar:"
 
 	restartProgressText   = "Architect is restarting..."
 	modelPickerPageSize   = 20

@@ -48,6 +48,8 @@ func (w *Worker) handleCallbackQuery(ctx context.Context, cq *CallbackQuery) err
 		return w.resolveApprovalCallback(telegramCtx, target, cq, strings.TrimPrefix(cq.Data, cbApprovalSession), true, true)
 	case strings.HasPrefix(cq.Data, cbApprovalDeny):
 		return w.resolveApprovalCallback(telegramCtx, target, cq, strings.TrimPrefix(cq.Data, cbApprovalDeny), false, false)
+	case strings.HasPrefix(cq.Data, cbApprovalReason):
+		return w.askDenialReason(telegramCtx, target, strings.TrimPrefix(cq.Data, cbApprovalReason))
 	default:
 		return nil
 	}
@@ -110,7 +112,16 @@ func isContextCompactCommand(command string) bool {
 	return matchesCatalogCommand(command, commandcatalog.CommandContext, "compact confirm")
 }
 
+// askDenialReason makes the chat's next message the reason for denying the approval.
+func (w *Worker) askDenialReason(ctx context.Context, target chatTarget, approvalID string) error {
+	w.setPrompt(target.externalKey, controlplane.DenyWithReasonPrompt(approvalID))
+	return w.sendText(ctx, target, "Send the reason for denying, or /cancel.")
+}
+
 func (w *Worker) resolveApprovalCallback(ctx context.Context, target chatTarget, cq *CallbackQuery, approvalID string, approved bool, allowSession bool) error {
+	if prompt, ok := w.prompt(target.externalKey); ok && prompt.SubmitCommandPrefix == controlplane.DenyWithReasonPrompt(approvalID).SubmitCommandPrefix {
+		w.clearPrompt(target.externalKey)
+	}
 	approval, err := w.daemon(target.externalKey).ResolveApproval(ctx, approvalID, core.ApprovalResolveRequest{Approved: approved})
 	if err != nil {
 		return w.editOrSend(ctx, target, cq.Message.MessageID, fmt.Sprintf("Resolve approval failed: %v", err), nil)

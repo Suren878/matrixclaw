@@ -19,6 +19,7 @@ func approvalKeyboard(approval core.Approval) *InlineKeyboardMarkup {
 			firstRow,
 			{
 				{Text: "❌ Deny", CallbackData: cbApprovalDeny + approvalID},
+				{Text: "✍️ Deny with reason", CallbackData: cbApprovalReason + approvalID},
 			},
 		},
 	}
