@@ -146,7 +146,7 @@ func statusForCoreError(err error) int {
 		return http.StatusConflict
 	case errors.Is(err, core.ErrRunActive):
 		return http.StatusConflict
-	case errors.Is(err, core.ErrSessionRestricted):
+	case errors.Is(err, core.ErrSessionRestricted), errors.Is(err, core.ErrOwnerOnly):
 		return http.StatusForbidden
 	default:
 		return http.StatusInternalServerError

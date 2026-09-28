@@ -28,6 +28,9 @@ func (c *Core) ResolveApproval(ctx context.Context, approvalID string, decision 
 		}
 		return Approval{}, fmt.Errorf("%w: approval already resolved", ErrInvalidInput)
 	}
+	if decision.Approved && decision.Always == permission.ScopeGlobal && decision.Restricted {
+		return Approval{}, fmt.Errorf("%w: keep a rule for every session", ErrOwnerOnly)
+	}
 	if decision.Approved && decision.Always != "" {
 		if err := c.keepSuggestedRule(ctx, approval, decision.Always); err != nil {
 			return Approval{}, err

@@ -10,8 +10,21 @@ import (
 )
 
 // applyOutcome persists how the engine left a native run and reports whether
-// the run was kept for recovery.
+// the run was kept for recovery. A run canceled while its engine finished stays
+// canceled, with its reply marked so.
 func (c *Core) applyOutcome(ctx context.Context, run Run, outcome agent.Outcome) (bool, error) {
+	kept, err := c.writeOutcome(ctx, run, outcome)
+	if !errors.Is(err, ErrRunEnded) {
+		return kept, err
+	}
+	latest, err := c.store.GetRun(ctx, run.ID)
+	if err != nil || latest.Status != RunStatusCanceled {
+		return false, err
+	}
+	return false, c.finishCanceledAssistant(ctx, outcome.Assistant, outcome.AssistantSaved)
+}
+
+func (c *Core) writeOutcome(ctx context.Context, run Run, outcome agent.Outcome) (bool, error) {
 	switch outcome.Status {
 	case agent.StatusCompleted:
 		if outcome.Assistant == nil {

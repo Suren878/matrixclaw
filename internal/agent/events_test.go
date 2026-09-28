@@ -111,6 +111,20 @@ func TestAwaitParksTheRunUntilAnAwaitedTaskFinishes(t *testing.T) {
 	}
 }
 
+func TestAnAwaitedTaskThatEndedWithoutAnEventWakesTheRun(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["await"] = awaitTool(f, "task_a")
+	model := agenttest.NewScriptedModel(calls(call("w1", "await")), text("Read it already; done."))
+	parked := run(t, f, model)
+
+	f.Inbox.Ended = []string{"task_a"}
+	done := resume(t, f, model, parked.Counters)
+
+	if done.Status != agent.StatusCompleted || done.Counters.Await != nil {
+		t.Fatalf("done = %+v", done)
+	}
+}
+
 func TestUserInputWakesAnAwaitingRun(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["await"] = awaitTool(f)

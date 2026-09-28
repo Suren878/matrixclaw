@@ -147,10 +147,12 @@ type Input struct {
 
 // Inbox delivers outside input. Peek never consumes: steers and events stay
 // pending until the engine consumes their IDs, and InputDecided returns decided
-// approvals whose call has no result yet.
+// approvals whose call has no result yet. Finished reports whether any of the
+// background tasks ended, even if its event went elsewhere.
 type Inbox interface {
 	Peek(ctx context.Context, runID string, kind InputKind) ([]Input, error)
 	Consume(ctx context.Context, runID string, ids []string) error
+	Finished(ctx context.Context, taskIDs []string) (bool, error)
 	Canceled(ctx context.Context, runID string) (bool, error)
 }
 

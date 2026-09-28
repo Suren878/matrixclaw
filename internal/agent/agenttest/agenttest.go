@@ -318,12 +318,13 @@ func (a *Approvals) Pending(ctx context.Context, _ string) (bool, error) {
 }
 
 // Inbox hands out pending steers, whose IDs are their text, and events until
-// they are consumed, and decided approvals on every peek. Like the store, it
-// fails on a stopped context.
+// they are consumed, and decided approvals on every peek; Ended lists tasks that
+// finished without an event. Like the store, it fails on a stopped context.
 type Inbox struct {
 	Steers  []string
 	Decided []agent.Input
 	Events  []agent.Input
+	Ended   []string
 	Cancel  bool
 }
 
@@ -354,6 +355,13 @@ func (in *Inbox) Consume(ctx context.Context, _ string, ids []string) error {
 	in.Steers = slices.DeleteFunc(in.Steers, func(text string) bool { return slices.Contains(ids, text) })
 	in.Events = slices.DeleteFunc(in.Events, func(event agent.Input) bool { return slices.Contains(ids, event.ID) })
 	return nil
+}
+
+func (in *Inbox) Finished(ctx context.Context, taskIDs []string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(taskIDs, func(id string) bool { return slices.Contains(in.Ended, id) }), nil
 }
 
 func (in *Inbox) Canceled(ctx context.Context, _ string) (bool, error) {

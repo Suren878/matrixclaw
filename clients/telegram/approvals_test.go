@@ -16,7 +16,13 @@ import (
 
 type approvalBotAPI struct {
 	recordingBotAPI
-	sent []SendMessageRequest
+	sent  []SendMessageRequest
+	edits []EditMessageTextRequest
+}
+
+func (a *approvalBotAPI) EditMessageText(_ context.Context, request EditMessageTextRequest) (EditMessageTextResponse, error) {
+	a.edits = append(a.edits, request)
+	return EditMessageTextResponse{}, nil
 }
 
 func (a *approvalBotAPI) SendMessage(_ context.Context, request SendMessageRequest) (SentMessage, error) {
@@ -55,11 +61,14 @@ func TestDenyWithReasonSendsTheNextMessageAsTheReason(t *testing.T) {
 	if path != "" {
 		t.Fatalf("resolved before the reason arrived: %s", path)
 	}
+	if len(api.edits) != 1 || api.edits[0].MessageID != 7 || api.edits[0].ReplyMarkup != nil || !strings.Contains(api.edits[0].Text, "send the reason") {
+		t.Fatalf("approval message edits = %+v, want its buttons gone", api.edits)
+	}
 	if err := worker.handleTextMessage(context.Background(), &Message{MessageID: 8, Chat: chat, From: &User{ID: 42}, Text: "not on production"}); err != nil {
 		t.Fatal(err)
 	}
 
-	if path != "/v1/approvals/approval_1/resolve" || resolved != (core.ApprovalResolveRequest{Reason: "not on production"}) {
+	if path != "/v1/approvals/approval_1/resolve" || resolved != (core.ApprovalResolveRequest{Reason: "not on production", Restricted: true}) {
 		t.Fatalf("resolved %s with %+v", path, resolved)
 	}
 	if last := api.sent[len(api.sent)-1].Text; !strings.Contains(last, "Denied bash: not on production") {
@@ -256,5 +265,53 @@ func TestRunWaitingForEventsLeavesBackgroundApprovalsToTheirOwnDelivery(t *testi
 
 	if len(api.sent) != 1 || api.sent[0].Text != "⏸ Waiting for background work" {
 		t.Fatalf("sent = %+v", api.sent)
+	}
+}
+
+func TestCancelingADenialReasonAsksForTheApprovalAgain(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/bindings/current":
+			_ = json.NewEncoder(w).Encode(core.ClientBindingResponse{Binding: core.ClientBinding{SessionID: "session_1"}})
+		case "/v1/approvals":
+			_ = json.NewEncoder(w).Encode(core.ApprovalsResponse{Approvals: []core.Approval{{ID: "approval_1", SessionID: "session_1", RunID: "run_1", State: core.ApprovalStatePending, ToolName: "bash"}}})
+		default:
+			http.Error(w, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	api := &approvalBotAPI{}
+	worker := &Worker{api: api, config: Config{BaseURL: server.URL, ClientName: "telegram-test", DaemonHTTPClient: server.Client()}, prompts: map[string]controlplane.PromptData{}}
+	chat := Chat{ID: 42, Type: "private"}
+	if err := worker.handleCallbackQuery(context.Background(), &CallbackQuery{ID: "cq", From: &User{ID: 42}, Message: &Message{MessageID: 7, Chat: chat, Text: "Approval required"}, Data: cbApprovalReason + "approval_1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := worker.handleTextMessage(context.Background(), &Message{MessageID: 8, Chat: chat, From: &User{ID: 42}, Text: "/cancel"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(api.sent) != 1 || !strings.Contains(api.sent[0].Text, "Approval required") || approvalButtons(t, api.sent[0])[0] != cbApprovalOnce+"approval_1" {
+		t.Fatalf("sent = %+v", api.sent)
+	}
+}
+
+func TestApprovalsDecidedOutsideTheOwnerChatAreRestricted(t *testing.T) {
+	for _, allowed := range []int64{7, 42} {
+		var resolved core.ApprovalResolveRequest
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = json.NewDecoder(r.Body).Decode(&resolved)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(core.ApprovalResponse{Approval: core.Approval{ID: "a1", State: core.ApprovalStateApproved}})
+		}))
+		worker := &Worker{api: &approvalBotAPI{}, config: Config{AllowedUserID: allowed, BaseURL: server.URL, ClientName: "telegram-test", DaemonHTTPClient: server.Client()}, prompts: map[string]controlplane.PromptData{}}
+
+		err := worker.handleCallbackQuery(context.Background(), &CallbackQuery{ID: "cq", From: &User{ID: allowed}, Message: &Message{MessageID: 7, Chat: Chat{ID: 42, Type: "private"}}, Data: cbApprovalSession + "a1"})
+		server.Close()
+
+		if err != nil || resolved.Restricted != (allowed != 42) {
+			t.Fatalf("owner %d: resolved = %+v, %v", allowed, resolved, err)
+		}
 	}
 }

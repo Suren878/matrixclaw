@@ -9,5 +9,7 @@ var (
 	ErrInvalidInput             = errors.New("invalid input")
 	ErrExecutionUnavailable     = errors.New("execution unavailable")
 	ErrRunActive                = errors.New("run is active")
+	ErrRunEnded                 = errors.New("run already ended")
 	ErrSessionRestricted        = errors.New("only the owner can use a session that runs tools without asking (external agent or full_auto)")
+	ErrOwnerOnly                = errors.New("only the owner can do this")
 )

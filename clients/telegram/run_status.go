@@ -41,8 +41,12 @@ func (w *Worker) renderRunStatusMessage(ctx context.Context, target chatTarget, 
 	if retryableDeliveryError(err) {
 		return err
 	}
+	approvals, err := daemon.ListApprovals(ctx, run.SessionID, core.ApprovalStatePending)
+	if retryableDeliveryError(err) {
+		return err
+	}
 	// Without progress the message still shows the state, tools and todo.
-	text := renderRunStatusText(run, progress, messages)
+	text := renderRunStatusText(run, progress, messages, askedCalls(approvals, run.ID))
 	if text == status.text {
 		return nil
 	}
@@ -97,10 +101,21 @@ func runStatusShown(run core.Run, messages []transcript.Message) bool {
 	return false
 }
 
-func renderRunStatusText(run core.Run, progress core.RunProgress, messages []transcript.Message) string {
+// askedCalls are the run's calls waiting for approval.
+func askedCalls(approvals []core.Approval, runID string) map[string]bool {
+	asked := map[string]bool{}
+	for _, approval := range approvals {
+		if approval.RunID == runID {
+			asked[approval.ToolCallRef] = true
+		}
+	}
+	return asked
+}
+
+func renderRunStatusText(run core.Run, progress core.RunProgress, messages []transcript.Message, asked map[string]bool) string {
 	lines := []string{runStatusHeadline(run) + runStatusSteps(progress)}
 	if !runFinished(run.Status) {
-		if tools := runningToolsLine(messages); tools != "" {
+		if tools := runningToolsLine(messages, asked); tools != "" {
 			lines = append(lines, tools)
 		} else if run.Status == core.RunStatusRunning || run.Status == core.RunStatusAccepted {
 			lines = append(lines, "Thinking...")
@@ -152,9 +167,9 @@ func runStatusSteps(progress core.RunProgress) string {
 	}
 }
 
-// runningToolsLine names the first tool call still without a result, and how
-// many more run with it.
-func runningToolsLine(messages []transcript.Message) string {
+// runningToolsLine names the first tool call still without a result that is
+// neither held back nor asked, and how many more run with it.
+func runningToolsLine(messages []transcript.Message, asked map[string]bool) string {
 	answered := map[string]bool{}
 	for _, message := range messages {
 		for _, part := range message.Parts {
@@ -166,7 +181,7 @@ func runningToolsLine(messages []transcript.Message) string {
 	var running []transcript.ToolCallPart
 	for _, message := range messages {
 		for _, part := range message.Parts {
-			if call := part.ToolCall; call != nil && !answered[call.ID] && call.Name != todo.ToolName {
+			if call := part.ToolCall; call != nil && !answered[call.ID] && !call.Deferred && !asked[call.ID] && call.Name != todo.ToolName {
 				running = append(running, *call)
 			}
 		}

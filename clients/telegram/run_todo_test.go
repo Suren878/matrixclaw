@@ -26,7 +26,7 @@ func TestRunStatusShowsTheListTheRunSavedLast(t *testing.T) {
 		todoCall("run-1", "c1", `[{"content":"Fix the bug","active_form":"Fixing the bug","status":"in_progress"},{"content":"Run the tests","status":"pending"}]`),
 		todoResult("run-1", "c1", false),
 	}
-	if got := renderRunStatusText(run, core.RunProgress{}, messages); got != "⏳ Working\nThinking...\n\nTodo 0/2\n▶️ Fixing the bug\n⬜ Run the tests" {
+	if got := renderRunStatusText(run, core.RunProgress{}, messages, nil); got != "⏳ Working\nThinking...\n\nTodo 0/2\n▶️ Fixing the bug\n⬜ Run the tests" {
 		t.Fatalf("status = %q", got)
 	}
 
@@ -38,7 +38,7 @@ func TestRunStatusShowsTheListTheRunSavedLast(t *testing.T) {
 		todoCall("run-2", "c4", `[]`),
 		todoResult("run-2", "c4", false),
 	)
-	if got := renderRunStatusText(run, core.RunProgress{}, messages); got != "⏳ Working\nThinking...\n\nTodo 1/2\n✅ Fix the bug\n▶️ Run the tests" {
+	if got := renderRunStatusText(run, core.RunProgress{}, messages, nil); got != "⏳ Working\nThinking...\n\nTodo 1/2\n✅ Fix the bug\n▶️ Run the tests" {
 		t.Fatalf("status = %q", got)
 	}
 }

@@ -326,6 +326,25 @@ func TestAlwaysAllowNeedsASuggestedRule(t *testing.T) {
 	}
 }
 
+func TestOnlyTheOwnerKeepsAGlobalRule(t *testing.T) {
+	t.Parallel()
+	app, db, _, dir := permissionCore(t)
+	session := permissionSession(t, db, "session_guest_rule", dir, core.PermissionModeDefault, "")
+	pending := executeTool(t, app, session.ID, "bash", `{"command":"go test ./..."}`, false)
+
+	_, err := app.ResolveApproval(context.Background(), pending.Approval.ID, core.ApprovalResolveRequest{Approved: true, Always: permission.ScopeGlobal, Restricted: true})
+
+	if !errors.Is(err, core.ErrOwnerOnly) {
+		t.Fatalf("error = %v, want ErrOwnerOnly", err)
+	}
+	if stored, _ := db.GetApproval(context.Background(), pending.Approval.ID); stored.State != core.ApprovalStatePending {
+		t.Fatalf("approval state = %s, want still pending", stored.State)
+	}
+	if _, err := app.ResolveApproval(context.Background(), pending.Approval.ID, core.ApprovalResolveRequest{Approved: true, Always: permission.ScopeSession, Restricted: true}); err != nil {
+		t.Fatalf("a session rule from a restricted client: %v", err)
+	}
+}
+
 func TestAddedRulesNameAbsolutePathsAndKnownTools(t *testing.T) {
 	t.Parallel()
 	app, db, _, dir := permissionCore(t)

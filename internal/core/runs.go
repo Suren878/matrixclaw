@@ -171,7 +171,19 @@ func (c *Core) AcceptTriggeredRun(ctx context.Context, input HandleTriggeredRunI
 		StartedAt:          now,
 		UpdatedAt:          now,
 	}
-	if err := c.store.AcceptMessage(ctx, message, run); err != nil {
+	// A session busy with another run skips the trigger, as its fire fails.
+	gate := c.sessionGate(session.ID)
+	gate.Lock()
+	if _, err := c.store.GetActiveRunBySession(ctx, session.ID); !errors.Is(err, ErrNotFound) {
+		gate.Unlock()
+		if err == nil {
+			err = fmt.Errorf("%w: the session is busy with another run", ErrRunActive)
+		}
+		return AcceptRunResult{}, err
+	}
+	err = c.store.AcceptMessage(ctx, message, run)
+	gate.Unlock()
+	if err != nil {
 		if existing, loadErr := c.store.GetRun(ctx, runID); loadErr == nil {
 			return AcceptRunResult{SessionID: existing.SessionID, Status: AcceptRunStatusStarted, UserMessage: message, Run: existing}, nil
 		}

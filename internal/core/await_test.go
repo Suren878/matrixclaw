@@ -458,3 +458,34 @@ func TestDeletingASessionWakesNothingInIt(t *testing.T) {
 		t.Fatalf("starts = %v", s.starter.ids)
 	}
 }
+
+func TestAwaitedTaskReadElsewhereStillWakesTheRun(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	starter := &recordingRunStarter{}
+	app.WithRunStarter(starter)
+	ctx := context.Background()
+	session, run := saveCrashRecoveryRun(t, db, "await-read", core.RunStatusWaitingEvents, false)
+	now := runRecoveryTestTime()
+	if err := db.CreateTask(ctx, core.Task{ID: "task_read", SessionID: session.ID, Kind: core.TaskKindShell, Status: core.TaskStatusRunning, Command: "make", Background: true, StartedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.FinishTask(ctx, "task_read", core.TaskStatusCompleted, nil, "", now); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.MarkTasksDelivered(ctx, []string{"task_read"}, run.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SaveRunWakeup(ctx, core.RunWakeup{RunID: run.ID, SessionID: session.ID, WakeAt: time.Now().UTC().Add(time.Hour), TaskIDs: []string{"task_read"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.RecoverActiveRuns(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := starter.count(run.ID); got != 1 {
+		t.Fatalf("run starts = %d, want 1", got)
+	}
+}

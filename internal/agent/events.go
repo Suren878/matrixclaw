@@ -29,9 +29,9 @@ func (r *run) drainEvents(ctx context.Context) error {
 }
 
 // resumeAwait keeps a run that called await parked until what it waits for
-// happened: an awaited task finished, the user wrote, which is journaled as a
-// user message, or the wait timed out, which the model is told. It reports
-// whether the run still waits.
+// happened: an awaited task finished, even one whose event went elsewhere, the
+// user wrote, which is journaled as a user message, or the wait timed out,
+// which the model is told. It reports whether the run still waits.
 func (r *run) resumeAwait(ctx context.Context) (bool, error) {
 	await := r.counters.Await
 	if await == nil {
@@ -48,6 +48,11 @@ func (r *run) resumeAwait(ctx context.Context) (bool, error) {
 	finished := slices.ContainsFunc(events, func(event Input) bool {
 		return len(await.TaskIDs) == 0 || slices.Contains(await.TaskIDs, event.ID)
 	})
+	if !finished && len(await.TaskIDs) > 0 {
+		if finished, err = r.Inbox.Finished(ctx, await.TaskIDs); err != nil {
+			return false, err
+		}
+	}
 	switch {
 	case len(steers) > 0:
 		r.counters.Await = nil

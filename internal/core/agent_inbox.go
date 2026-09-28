@@ -29,6 +29,10 @@ func (in coreInbox) Peek(ctx context.Context, runID string, kind agent.InputKind
 	}
 }
 
+func (in coreInbox) Finished(ctx context.Context, taskIDs []string) (bool, error) {
+	return in.c.anyTaskFinished(ctx, taskIDs)
+}
+
 func (in coreInbox) Canceled(ctx context.Context, runID string) (bool, error) {
 	return in.c.isRunCanceled(ctx, runID)
 }

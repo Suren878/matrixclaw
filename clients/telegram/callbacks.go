@@ -58,7 +58,7 @@ func (w *Worker) handleCallbackQuery(ctx context.Context, cq *CallbackQuery) err
 	case strings.HasPrefix(cq.Data, cbApprovalDeny):
 		return w.resolveApprovalCallback(telegramCtx, target, cq, strings.TrimPrefix(cq.Data, cbApprovalDeny), core.ApprovalResolveRequest{})
 	case strings.HasPrefix(cq.Data, cbApprovalReason):
-		return w.askDenialReason(telegramCtx, target, strings.TrimPrefix(cq.Data, cbApprovalReason))
+		return w.askDenialReason(telegramCtx, target, cq, strings.TrimPrefix(cq.Data, cbApprovalReason))
 	default:
 		return nil
 	}
@@ -121,17 +121,18 @@ func isContextCompactCommand(command string) bool {
 	return matchesCatalogCommand(command, commandcatalog.CommandContext, "compact confirm")
 }
 
-// askDenialReason makes the chat's next message the reason for denying the approval.
-func (w *Worker) askDenialReason(ctx context.Context, target chatTarget, approvalID string) error {
+// askDenialReason makes the chat's next message the reason for denying the
+// approval; its message loses the buttons, which /cancel brings back.
+func (w *Worker) askDenialReason(ctx context.Context, target chatTarget, cq *CallbackQuery, approvalID string) error {
 	w.setPrompt(target.externalKey, controlplane.DenyWithReasonPrompt(approvalID))
-	return w.sendText(ctx, target, "Send the reason for denying, or /cancel.")
+	return w.editOrSend(ctx, target, cq.Message.MessageID, "Denying: send the reason, or /cancel.\n\n"+cq.Message.Text, nil)
 }
 
 func (w *Worker) resolveApprovalCallback(ctx context.Context, target chatTarget, cq *CallbackQuery, approvalID string, request core.ApprovalResolveRequest) error {
 	if prompt, ok := w.prompt(target.externalKey); ok && prompt.SubmitCommandPrefix == controlplane.DenyWithReasonPrompt(approvalID).SubmitCommandPrefix {
 		w.clearPrompt(target.externalKey)
 	}
-	approval, err := w.daemon(target.externalKey).ResolveApproval(ctx, approvalID, request)
+	approval, err := w.daemonFor(target, target.externalKey).ResolveApproval(ctx, approvalID, request)
 	if err != nil {
 		return w.editOrSend(ctx, target, cq.Message.MessageID, fmt.Sprintf("Resolve approval failed: %v", err), nil)
 	}

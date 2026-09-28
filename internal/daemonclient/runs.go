@@ -22,6 +22,7 @@ func (c *Client) ListApprovals(ctx context.Context, sessionID string, state core
 }
 
 func (c *Client) ResolveApproval(ctx context.Context, approvalID string, request core.ApprovalResolveRequest) (core.Approval, error) {
+	request.Restricted = c.Restricted
 	var response core.ApprovalResponse
 	path := "/v1/approvals/" + escapedPath(approvalID) + "/resolve"
 	if err := c.doJSON(ctx, http.MethodPost, path, request, &response); err != nil {

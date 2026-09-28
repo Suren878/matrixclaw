@@ -1,7 +1,9 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 )
@@ -30,6 +32,17 @@ func (s *Server) handleToolExecute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req.Approved = false
+	// A run's own calls keep its checkpoint; a call from outside must not.
+	if runID := strings.TrimSpace(req.RunID); runID != "" {
+		run, err := s.core.GetRun(r.Context(), runID)
+		if err == nil && !runEnded(run.Status) {
+			err = fmt.Errorf("%w: run %s is in progress", core.ErrRunActive, runID)
+		}
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+	}
 	result, err := s.core.ExecuteTool(r.Context(), req)
 	if err != nil {
 		writeError(w, err)
@@ -37,4 +50,8 @@ func (s *Server) handleToolExecute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, core.ToolExecuteResponse{Result: result})
+}
+
+func runEnded(status core.RunStatus) bool {
+	return status == core.RunStatusCompleted || status == core.RunStatusFailed || status == core.RunStatusCanceled
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log"
-	"slices"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -113,13 +112,26 @@ func (c *Core) waitOver(ctx context.Context, run Run) (bool, error) {
 	if err != nil || len(steers) > 0 {
 		return len(steers) > 0, err
 	}
-	events, err := c.store.ListTasks(ctx, TaskFilter{SessionID: run.SessionID, Undelivered: true})
-	if err != nil {
-		return false, err
+	if len(wakeup.TaskIDs) > 0 {
+		return c.anyTaskFinished(ctx, wakeup.TaskIDs)
 	}
-	return slices.ContainsFunc(events, func(task Task) bool {
-		return len(wakeup.TaskIDs) == 0 || slices.Contains(wakeup.TaskIDs, task.ID)
-	}), nil
+	events, err := c.store.ListTasks(ctx, TaskFilter{SessionID: run.SessionID, Undelivered: true})
+	return len(events) > 0, err
+}
+
+// anyTaskFinished reports whether any of the tasks ended, whether or not its
+// end was delivered to a run.
+func (c *Core) anyTaskFinished(ctx context.Context, taskIDs []string) (bool, error) {
+	for _, id := range taskIDs {
+		task, err := c.store.GetTask(ctx, id)
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil || task.FinishedAt != nil {
+			return err == nil, err
+		}
+	}
+	return false, nil
 }
 
 // WakeDueRuns starts the waiting runs whose timer ran out.

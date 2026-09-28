@@ -41,6 +41,9 @@ func (w *Worker) handlePendingPrompt(ctx context.Context, target chatTarget, tex
 	}
 	if isPromptCloseCommand(text) {
 		w.clearPrompt(target.externalKey)
+		if approvalID, ok := controlplane.DeniedApproval(prompt.SubmitCommandPrefix); ok {
+			return true, w.askApprovalAgain(ctx, target, approvalID)
+		}
 		if strings.TrimSpace(prompt.CancelCommand) != "" {
 			result, err := w.dispatcher(target).Handle(ctx, target.externalKey, strings.TrimSpace(prompt.CancelCommand))
 			if err != nil {
@@ -72,21 +75,39 @@ func (w *Worker) denialDecidedElsewhere(ctx context.Context, target chatTarget, 
 	if !ok {
 		return false
 	}
+	_, pending, known := w.sessionApproval(ctx, target, approvalID)
+	return known && !pending
+}
+
+// askApprovalAgain asks for an approval whose denial reason was canceled, with
+// its buttons, while it is pending.
+func (w *Worker) askApprovalAgain(ctx context.Context, target chatTarget, approvalID string) error {
+	approval, pending, _ := w.sessionApproval(ctx, target, approvalID)
+	if !pending {
+		return w.sendText(ctx, target, "Closed.")
+	}
+	_, err := w.sendApprovalMessage(ctx, target, approval)
+	return err
+}
+
+// sessionApproval finds the approval among the pending ones of the chat's
+// session; known is false when that cannot be told.
+func (w *Worker) sessionApproval(ctx context.Context, target chatTarget, approvalID string) (approval core.Approval, pending bool, known bool) {
 	daemon := w.daemon(target.externalKey)
 	binding, err := daemon.CurrentBinding(ctx)
 	if err != nil || strings.TrimSpace(binding.SessionID) == "" {
-		return false
+		return core.Approval{}, false, false
 	}
-	pending, err := daemon.ListApprovals(ctx, binding.SessionID, core.ApprovalStatePending)
+	approvals, err := daemon.ListApprovals(ctx, binding.SessionID, core.ApprovalStatePending)
 	if err != nil {
-		return false
+		return core.Approval{}, false, false
 	}
-	for _, approval := range pending {
+	for _, approval := range approvals {
 		if approval.ID == approvalID {
-			return false
+			return approval, true, true
 		}
 	}
-	return true
+	return core.Approval{}, false, true
 }
 
 func isPromptCloseCommand(text string) bool {

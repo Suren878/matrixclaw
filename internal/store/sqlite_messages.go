@@ -292,16 +292,8 @@ ORDER BY started_at ASC, updated_at ASC`,
 }
 
 func (s *SQLiteStore) UpdateRun(ctx context.Context, run core.Run) error {
-	result, err := updateRun(ctx, s.db, run)
-	if err != nil {
+	if err := updateRun(ctx, s.db, run); err != nil {
 		return fmt.Errorf("store: update run: %w", err)
-	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("store: update run rows: %w", err)
-	}
-	if count == 0 {
-		return core.ErrNotFound
 	}
 	return nil
 }
@@ -317,7 +309,7 @@ func (s *SQLiteStore) CompleteRun(ctx context.Context, assistantMessage transcri
 		return fmt.Errorf("store: insert assistant message: %w", err)
 	}
 
-	if _, err := updateRun(ctx, tx, run); err != nil {
+	if err := updateRun(ctx, tx, run); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("store: update completed run: %w", err)
 	}
@@ -371,6 +363,7 @@ func (s *SQLiteStore) AcceptMessage(ctx context.Context, message transcript.Mess
 
 type sqlExecer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
 type messageScanner interface {
@@ -487,11 +480,13 @@ func scanRun(scanner runScanner) (core.Run, error) {
 	return run, nil
 }
 
-func updateRun(ctx context.Context, execer sqlExecer, run core.Run) (sql.Result, error) {
-	return execer.ExecContext(ctx, `
+// updateRun writes the run unless it already ended with another status: an
+// ended run keeps how it ended (core.ErrRunEnded).
+func updateRun(ctx context.Context, execer sqlExecer, run core.Run) error {
+	result, err := execer.ExecContext(ctx, `
 UPDATE runs
 SET client_capabilities_json = ?, status = ?, error = ?, stop_reason = ?, finished_at = ?, updated_at = ?
-WHERE id = ?`,
+WHERE id = ? AND (status NOT IN ('completed', 'failed', 'canceled') OR status = ?)`,
 		marshalClientCapabilities(run.ClientCapabilities),
 		string(run.Status),
 		run.Error,
@@ -499,7 +494,24 @@ WHERE id = ?`,
 		nullableTime(run.FinishedAt),
 		formatTime(run.UpdatedAt),
 		run.ID,
+		string(run.Status),
 	)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil || count > 0 {
+		return err
+	}
+	var exists int
+	err = execer.QueryRowContext(ctx, `SELECT 1 FROM runs WHERE id = ?`, run.ID).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return core.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	return core.ErrRunEnded
 }
 
 func touchSession(ctx context.Context, execer sqlExecer, sessionID string, updatedAt time.Time) error {

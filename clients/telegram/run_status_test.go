@@ -149,14 +149,16 @@ func TestPlainAnswerHasNoRunStatus(t *testing.T) {
 
 func TestRunStatusShowsWaitsAndHowTheRunStopped(t *testing.T) {
 	h := newRunStatusHarness(t)
-	h.daemon.add(toolCallMessage("call-1", "bash", `{"command":"rm -rf build"}`, false), toolCallMessage("call-2", "bash", `{"command":"ls"}`, false))
+	held := toolCallMessage("call-2", "bash", `{"command":"ls"}`, false)
+	held.Parts[0].ToolCall.Deferred = true
+	h.daemon.add(toolCallMessage("call-1", "bash", `{"command":"rm -rf build"}`, false), held)
 	h.daemon.set(func(d *runDaemon) {
 		d.run.Status = core.RunStatusWaitingApproval
-		d.approvals = []core.Approval{{ID: "a1", RunID: d.run.ID, State: core.ApprovalStatePending, ToolName: "bash"}}
+		d.approvals = []core.Approval{{ID: "a1", RunID: d.run.ID, ToolCallRef: "call-1", State: core.ApprovalStatePending, ToolName: "bash"}}
 	})
 	h.mustDeliver(0)
 	texts := h.api.messageTexts()
-	if len(texts) != 2 || !strings.HasPrefix(texts[0], "Approval required") || texts[1] != "✋ Waiting for approval · step 1/300\nUsing bash: rm -rf build (+1 more)" {
+	if len(texts) != 2 || !strings.HasPrefix(texts[0], "Approval required") || texts[1] != "✋ Waiting for approval · step 1/300" {
 		t.Fatalf("messages = %q", texts)
 	}
 
@@ -166,6 +168,20 @@ func TestRunStatusShowsWaitsAndHowTheRunStopped(t *testing.T) {
 	h.mustDeliver(time.Second)
 	texts = h.api.messageTexts()
 	if len(texts) != 4 || texts[1] != "⚠️ Stopped at the budget · step 300/300" || texts[3] != "The run stopped at its budget." {
+		t.Fatalf("messages = %q", texts)
+	}
+}
+
+func TestRunStatusCountsOnlyCallsThatRun(t *testing.T) {
+	h := newRunStatusHarness(t)
+	h.daemon.add(toolCallMessage("call-1", "bash", `{"command":"rm -rf build"}`, false), toolCallMessage("call-2", "bash", `{"command":"go test ./..."}`, false))
+	h.daemon.set(func(d *runDaemon) {
+		d.approvals = []core.Approval{{ID: "a1", RunID: d.run.ID, ToolCallRef: "call-1", State: core.ApprovalStatePending, ToolName: "bash"}}
+	})
+
+	h.mustDeliver(0)
+
+	if texts := h.api.messageTexts(); len(texts) != 1 || texts[0] != "⏳ Working · step 1/300\nUsing bash: go test ./..." {
 		t.Fatalf("messages = %q", texts)
 	}
 }

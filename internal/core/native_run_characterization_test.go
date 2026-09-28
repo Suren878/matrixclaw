@@ -994,3 +994,46 @@ func TestContextOverflowWithNothingToSummariseFailsAsContextExhausted(t *testing
 		t.Fatalf("ExecuteRun err = %v, run = %+v (%v)", err, stored, getErr)
 	}
 }
+
+// cancelingStore cancels the run just before its completion is written, as a
+// cancel arriving while the engine finishes does.
+type cancelingStore struct {
+	*store.SQLiteStore
+}
+
+func (s *cancelingStore) CompleteRun(ctx context.Context, assistant transcript.Message, run core.Run) error {
+	canceled := run
+	canceled.Status, canceled.Error = core.RunStatusCanceled, "canceled by user"
+	if err := s.SQLiteStore.UpdateRun(ctx, canceled); err != nil {
+		return err
+	}
+	return s.SQLiteStore.CompleteRun(ctx, assistant, run)
+}
+
+func TestACancelWhileTheEngineFinishesStands(t *testing.T) {
+	t.Parallel()
+	db, err := store.NewSQLite(filepath.Join(t.TempDir(), "matrixclaw.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	app := core.New(&cancelingStore{SQLiteStore: db})
+	app.WithRunStarter(&recordingRunStarter{})
+	app.WithSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "Done."}})
+	session, run := saveCrashRecoveryRun(t, db, "cancel-at-end", core.RunStatusAccepted, false)
+
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCanceled)
+	var replies []transcript.Message
+	for _, message := range sessionMessages(t, db, session.ID) {
+		if message.Role == transcript.MessageRoleAssistant {
+			replies = append(replies, message)
+		}
+	}
+	if len(replies) != 1 || !transcript.HasFinishReason(replies[0], "canceled") {
+		t.Fatalf("replies = %+v, want the reply marked canceled", replies)
+	}
+}
