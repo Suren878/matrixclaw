@@ -6,6 +6,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	telephonymodule "github.com/Suren878/matrixclaw/internal/modules/telephony"
+	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
@@ -52,6 +53,13 @@ func (e *setupAwareToolExecutor) Execute(ctx context.Context, toolID string, cal
 		return tools.Result{}, core.ErrExecutionUnavailable
 	}
 	return e.inner.Execute(ctx, toolID, call)
+}
+
+func (e *setupAwareToolExecutor) Subject(toolID string, call tools.Call) permission.Subject {
+	if e == nil || e.inner == nil {
+		return permission.Subject{}
+	}
+	return e.inner.Subject(toolID, call)
 }
 
 func (e *setupAwareToolExecutor) visible(toolID string) bool {

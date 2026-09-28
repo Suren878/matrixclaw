@@ -162,9 +162,6 @@ func (r *run) runCall(ctx context.Context, req callRequest) (callState, error) {
 		return callDone, err
 	}
 	if !decision.Allowed {
-		if req.approved {
-			return callDone, errors.New(decision.Reason)
-		}
 		return callDone, r.rejectCall(ctx, req, decision.Reason)
 	}
 	if err := r.startCall(ctx, req); err != nil {

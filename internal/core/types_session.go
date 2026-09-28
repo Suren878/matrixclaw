@@ -2,6 +2,8 @@ package core
 
 import (
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/permission"
 )
 
 type SessionStatus string
@@ -89,9 +91,9 @@ type RenameSessionInput struct {
 type PermissionMode string
 
 const (
-	PermissionModeDefault     PermissionMode = "default"
-	PermissionModeAcceptEdits PermissionMode = "accept_edits"
-	PermissionModeFullAuto    PermissionMode = "full_auto"
+	PermissionModeDefault     PermissionMode = permission.ModeDefault
+	PermissionModeAcceptEdits PermissionMode = permission.ModeAcceptEdits
+	PermissionModeFullAuto    PermissionMode = permission.ModeFullAuto
 )
 
 type UpdateSessionPermissionModeInput struct {

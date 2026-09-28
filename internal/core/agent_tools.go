@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
+	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -35,18 +36,30 @@ func (t coreTools) Specs(ctx context.Context) []tools.Spec {
 	return specs
 }
 
+// Authorize rejects invalid calls and those a deny rule blocks; the rest of the
+// permission check runs with the call in Execute.
 func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) (agent.Decision, error) {
 	// A call ID owned by another session fails the run with a clear error instead of
 	// a primary-key conflict on the first journal write.
 	if _, err := t.c.isNewToolCallMessage(ctx, call.SessionID, call.ToolCallID); err != nil {
 		return agent.Decision{}, err
 	}
-	_, spec, err := t.c.checkToolCall(ctx, call.SessionID, name)
+	session, spec, err := t.c.checkToolCall(ctx, call.SessionID, name)
 	if errors.Is(err, ErrInvalidInput) {
 		return agent.Decision{Reason: err.Error()}, nil
 	}
 	if err != nil {
 		return agent.Decision{}, err
+	}
+	if call.WorkingDir = normalizeWorkingDir(call.WorkingDir); call.WorkingDir == "" {
+		call.WorkingDir = session.WorkingDir
+	}
+	check, err := t.c.checkPermission(ctx, call.SessionID, spec, call)
+	if err != nil {
+		return agent.Decision{}, err
+	}
+	if check.verdict.Effect == permission.Deny {
+		return agent.Decision{Reason: blockedResult(check.verdict.Rule).Content}, nil
 	}
 	return agent.Decision{Allowed: true, Barrier: spec.Mutates()}, nil
 }

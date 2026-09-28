@@ -3,20 +3,30 @@ package core
 import (
 	"context"
 
+	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
+// executeToolWithGrant runs a call as its permission says: a deny rule blocks
+// it; a grant, an allow rule or the mode preset runs it approved; an ask rule
+// requests approval; otherwise the tool's own dry run decides.
 func (c *Core) executeToolWithGrant(ctx context.Context, prepared preparedToolCall, input ExecuteToolInput) (tools.Result, error) {
-	result, execErr := c.executePreparedTool(ctx, prepared, input.Approved, input.Args, input.Client, input.ExternalKey)
-	if result.Approval != nil && !input.Approved {
-		autoApproved, err := c.autoApprovesTool(ctx, prepared, result)
-		if err != nil {
-			return tools.Result{}, err
-		}
-		if !autoApproved {
-			return result, execErr
-		}
-		result, execErr = c.executePreparedTool(ctx, prepared, true, input.Args, input.Client, input.ExternalKey)
+	check, err := c.checkPermission(ctx, prepared.SessionID, prepared.Spec, prepared.call(input, input.Approved))
+	if err != nil {
+		return tools.Result{}, err
+	}
+	verdict := check.verdict
+	var result tools.Result
+	var execErr error
+	switch {
+	case verdict.Effect == permission.Deny:
+		return blockedResult(verdict.Rule), nil
+	case input.Approved || verdict.Effect == permission.Allow:
+		result, execErr = c.tools.Execute(ctx, prepared.ToolName, prepared.call(input, true))
+	case verdict.Effect == permission.Ask && !prepared.Spec.RequiresApproval():
+		result = askedByRule(prepared, input, verdict.Rule)
+	default:
+		result, execErr = c.tools.Execute(ctx, prepared.ToolName, prepared.call(input, false))
 	}
 	if execErr != nil || result.Approval != nil {
 		return result, execErr
@@ -24,15 +34,15 @@ func (c *Core) executeToolWithGrant(ctx context.Context, prepared preparedToolCa
 	return c.keepLargeOutput(prepared.SessionID, result), nil
 }
 
-func (c *Core) executePreparedTool(ctx context.Context, prepared preparedToolCall, approved bool, args []byte, client string, externalKey string) (tools.Result, error) {
-	return c.tools.Execute(ctx, prepared.ToolName, tools.Call{
+func (prepared preparedToolCall) call(input ExecuteToolInput, approved bool) tools.Call {
+	return tools.Call{
 		SessionID:   prepared.SessionID,
 		RunID:       prepared.RunID,
 		ToolCallID:  prepared.ToolCallID,
-		Client:      client,
-		ExternalKey: externalKey,
+		Client:      input.Client,
+		ExternalKey: input.ExternalKey,
 		WorkingDir:  prepared.WorkingDir,
 		Approved:    approved,
-		Args:        args,
-	})
+		Args:        input.Args,
+	}
 }

@@ -160,6 +160,8 @@ type ToolExecutor interface {
 	List() []tools.Spec
 	Spec(toolID string) (tools.Spec, bool)
 	Execute(ctx context.Context, toolID string, call tools.Call) (tools.Result, error)
+	// Subject is what permission rules match of a call.
+	Subject(toolID string, call tools.Call) permission.Subject
 }
 
 type SessionLLMRegistry interface {
