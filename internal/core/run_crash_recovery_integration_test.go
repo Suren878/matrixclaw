@@ -313,28 +313,59 @@ func TestStartupRecoveryAndPersistedWorkflowRaceExecutesRunOnce(t *testing.T) {
 	}
 }
 
-func TestRecoverReadOnlyToolReplaysAutomaticallyOnce(t *testing.T) {
+// slowTool is a read-only tool whose calls last until release is closed.
+type slowTool struct {
+	recoveryTool
+	release chan struct{}
+}
+
+func (t *slowTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
+	<-t.release
+	return t.recoveryTool.Execute(ctx, call)
+}
+
+func TestRecoveryLeavesReadOnlyCallsInFlightToTheResumedRun(t *testing.T) {
 	t.Parallel()
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	starter := &recordingRunStarter{}
 	app.WithRunStarter(starter)
-	readTool := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
-	app.WithTools(tools.NewRegistry(readTool))
-
-	_, run := saveCrashRecoveryRun(t, sqliteStore, "readonly", core.RunStatusRunning, false)
-	saveInterruptedToolCall(t, sqliteStore, run, "tool_readonly", readTool.spec.ID)
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns: %v", err)
+	app.WithSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "Inspected."}})
+	slow := &slowTool{recoveryTool: recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}, release: make(chan struct{})}
+	app.WithTools(tools.NewRegistry(slow))
+	var runs []core.Run
+	for _, name := range []string{"slow_a", "slow_b"} {
+		_, run := saveCrashRecoveryRun(t, sqliteStore, name, core.RunStatusRunning, false)
+		saveInterruptedToolCall(t, sqliteStore, run, "tool_"+name, slow.spec.ID)
+		runs = append(runs, run)
 	}
-	if got := readTool.callCount(); got != 1 {
+
+	recovered := make(chan error, 1)
+	go func() { recovered <- app.RecoverActiveRuns(context.Background()) }()
+	select {
+	case err := <-recovered:
+		if err != nil {
+			t.Fatalf("RecoverActiveRuns: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		close(slow.release)
+		t.Fatal("recovery waited for a read-only call")
+	}
+	for _, run := range runs {
+		if got := starter.count(run.ID); got != 1 {
+			t.Fatalf("run %s schedules = %d, want 1", run.ID, got)
+		}
+	}
+	close(slow.release)
+	if err := app.ExecuteRun(context.Background(), runs[0].ID); err != nil {
+		t.Fatal(err)
+	}
+
+	assertRecoveryRunStatus(t, sqliteStore, runs[0].ID, core.RunStatusCompleted)
+	assertToolResultCount(t, sqliteStore, runs[0].SessionID, "tool_slow_a", 1)
+	if got := slow.callCount(); got != 1 {
 		t.Fatalf("read-only tool executions = %d, want 1", got)
 	}
-	if got := starter.count(run.ID); got != 1 {
-		t.Fatalf("recovered run schedules = %d, want 1", got)
-	}
-	assertRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusAccepted)
-	assertToolResultCount(t, sqliteStore, run.SessionID, "tool_readonly", 1)
 }
 
 func TestRecoverMutatingToolRequiresFreshApprovalBeforeSingleReplay(t *testing.T) {
@@ -504,8 +535,8 @@ func TestRecoveryAnswersEveryCallOfABatchInFlight(t *testing.T) {
 	}
 
 	assertRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusWaitingApproval)
-	if inspect.callCount() != 1 || mutation.callCount() != 0 {
-		t.Fatalf("after recovery: inspections = %d (want the read in flight replayed), mutations = %d", inspect.callCount(), mutation.callCount())
+	if inspect.callCount() != 0 || mutation.callCount() != 0 {
+		t.Fatalf("after recovery: inspections = %d, mutations = %d, want none before the run resumes", inspect.callCount(), mutation.callCount())
 	}
 	approvals, err := sqliteStore.ListApprovals(context.Background(), run.SessionID, core.ApprovalStatePending)
 	if err != nil || len(approvals) != 3 {
@@ -522,7 +553,7 @@ func TestRecoveryAnswersEveryCallOfABatchInFlight(t *testing.T) {
 
 	assertRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusCompleted)
 	if inspect.callCount() != 3 || mutation.callCount() != 2 {
-		t.Fatalf("inspections = %d, mutations = %d, want the asked read, the deferred read and both writes once", inspect.callCount(), mutation.callCount())
+		t.Fatalf("inspections = %d, mutations = %d, want the asked read, both deferred reads and both writes once", inspect.callCount(), mutation.callCount())
 	}
 	want := "tool_done=done before the crash|tool_asked=recovered tool result|tool_read=recovered tool result|tool_write=recovered tool result|tool_write_too=recovered tool result|tool_later=recovered tool result"
 	if strings.Join(results, "|") != want {

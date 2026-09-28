@@ -191,9 +191,9 @@ func (c *Core) prepareRunAfterCrash(ctx context.Context, run *Run) (bool, error)
 		return false, err
 	}
 
-	// Every call of a batch in flight is answered: read-only ones replay, mutating
+	// Every call of a batch in flight is settled: read-only ones and those the last
+	// batch checkpoint names not started are deferred for the resumed run, mutating
 	// ones ask again, asked ones keep waiting; a running child keeps the parent waiting.
-	// A call the last batch checkpoint names deferred never started: it is deferred again.
 	notStarted := map[string]bool{}
 	if previous.Batch != nil {
 		for _, id := range previous.Batch.DeferredIDs {
@@ -296,7 +296,7 @@ func (c *Core) recoverInterruptedTool(ctx context.Context, run Run, interrupted 
 		return recoveryToolContinue, c.finishUnknownInterruptedTool(ctx, run, interrupted)
 	}
 	if !spec.Mutates() {
-		return recoveryToolContinue, c.replayInterruptedTool(ctx, run, interrupted)
+		return recoveryToolContinue, c.deferInterruptedCall(ctx, interrupted)
 	}
 	if _, err := c.ensureRunRecoveryApproval(ctx, run, interrupted, approvals); err != nil {
 		return recoveryToolContinue, err
@@ -321,8 +321,8 @@ func (c *Core) replayInterruptedTool(ctx context.Context, run Run, interrupted i
 	return nil
 }
 
-// deferInterruptedCall marks a call that never started deferred again, so the
-// resumed run starts it behind its barrier.
+// deferInterruptedCall marks a call deferred, so the resumed run starts it
+// through its permission check.
 func (c *Core) deferInterruptedCall(ctx context.Context, interrupted interruptedToolCall) error {
 	message := interrupted.Message
 	message.Parts = slices.Clone(message.Parts)
