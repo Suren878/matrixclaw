@@ -86,7 +86,7 @@ func (c *Core) recordApprovalDecision(ctx context.Context, approval Approval, de
 	approval.State = approvalState(decision.Approved)
 	approval.DecidedAt = &decidedAt
 	if !decision.Approved {
-		approval.Reason = normalizeText(decision.Reason)
+		approval.Reason = approvalReason(decision.Reason)
 	}
 	if err := c.store.UpdateApproval(ctx, approval); err != nil {
 		return Approval{}, err
@@ -116,6 +116,18 @@ func (c *Core) recordApprovalDecision(ctx context.Context, approval Approval, de
 	}
 	c.publishToolUpdate(approval.SessionID, approval.RunID, update)
 	return approval, nil
+}
+
+// maxApprovalReasonRunes caps the denial reason the model reads as a result.
+const maxApprovalReasonRunes = 2000
+
+func approvalReason(reason string) string {
+	reason = normalizeText(reason)
+	runes := []rune(reason)
+	if len(runes) <= maxApprovalReasonRunes {
+		return reason
+	}
+	return strings.TrimSpace(string(runes[:maxApprovalReasonRunes-1])) + "…"
 }
 
 // resumeDecidedRun starts a parked run once none of its approvals is pending. A run

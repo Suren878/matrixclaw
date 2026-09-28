@@ -45,3 +45,26 @@ func TestApprovalRejectsOtherAnswers(t *testing.T) {
 		}
 	}
 }
+
+func TestApprovalDenySplitsOnAnyWhitespace(t *testing.T) {
+	runtime := &approvalRuntime{}
+
+	_, err := New(runtime, "").Handle(context.Background(), "key", "/approval deny\tapproval_1\nnot on\tproduction")
+
+	if err != nil || len(runtime.ids) != 1 || runtime.ids[0] != "approval_1" || runtime.requests[0].Reason != "not on\tproduction" {
+		t.Fatalf("ids = %v requests = %+v err = %v", runtime.ids, runtime.requests, err)
+	}
+}
+
+func TestDeniedApprovalNamesTheApprovalOfADenyCommand(t *testing.T) {
+	for command, want := range map[string]string{
+		DenyWithReasonPrompt("approval_1").SubmitCommandPrefix: "approval_1",
+		"/approval deny approval_2 not now":                    "approval_2",
+		"/approval deny":                                       "",
+		"/permissions delete rule_1":                           "",
+	} {
+		if got, ok := DeniedApproval(command); got != want || ok != (want != "") {
+			t.Errorf("DeniedApproval(%q) = %q, %v", command, got, ok)
+		}
+	}
+}

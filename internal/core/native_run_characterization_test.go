@@ -438,6 +438,28 @@ func TestDeniedCallOutsideARunGetsTheDenialAsItsResult(t *testing.T) {
 	}
 }
 
+func TestDenialReasonIsCappedAt2000Characters(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	mutations := 0
+	mutate, _ := approvalTools(&mutations)
+	app.WithTools(tools.NewRegistry(mutate))
+	session, _ := saveCrashRecoveryRun(t, db, "long-reason", core.RunStatusCompleted, false)
+	pending, err := app.ExecuteTool(context.Background(), core.ExecuteToolInput{SessionID: session.ID, ToolName: "mutate_state", ToolCallID: "call-api", Args: []byte(`{}`)})
+	if err != nil || pending.Approval == nil {
+		t.Fatalf("ExecuteTool = %+v err = %v", pending, err)
+	}
+
+	approval, err := app.ResolveApproval(context.Background(), pending.Approval.ID, core.ApprovalResolveRequest{Reason: strings.Repeat("я", 5000)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if runes := []rune(approval.Reason); len(runes) != 2000 || string(runes[1998:]) != "я…" {
+		t.Fatalf("reason has %d runes, ends %q", len(runes), string(runes[len(runes)-2:]))
+	}
+}
+
 func toolResultContent(request providers.Request, callID string) string {
 	for _, message := range request.Messages {
 		if message.Role == "tool" && message.ToolCallID == callID {

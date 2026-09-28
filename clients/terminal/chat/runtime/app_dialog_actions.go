@@ -17,7 +17,6 @@ func (m *appModel) handlePermissionResponse(msg surfacedialog.ActionPermissionRe
 	request := core.ApprovalResolveRequest{}
 	switch msg.Action {
 	case surfacedialog.PermissionDenyWithReason:
-		m.denyingApproval = msg.Permission.ID
 		m.dialog.OpenDialog(surfacedialog.NewPromptCommand(m.com, controlplane.DenyWithReasonPrompt(msg.Permission.ID)))
 		return nil
 	case surfacedialog.PermissionAllow:

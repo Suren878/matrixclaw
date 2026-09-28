@@ -21,6 +21,11 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 	}
 	if msg.err != nil {
 		m.showControlplaneError(msg.err)
+		if approvalID, ok := controlplane.DeniedApproval(msg.command); ok {
+			// The denial failed: ask about the approval again.
+			delete(m.suppressedApprovals, approvalID)
+			return m.syncPermissionDialogCmd()
+		}
 		return nil
 	}
 	if isPlanSnapshotCommand(msg.command) && msg.result.ReloadSnapshot {

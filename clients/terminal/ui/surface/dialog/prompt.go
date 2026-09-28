@@ -51,6 +51,9 @@ func NewPromptCommand(com *surfacecommon.Common, data PromptCommandData) *Prompt
 
 func (*PromptCommand) ID() string { return PromptCommandID }
 
+// SubmitCommandPrefix is the command the prompt's answer is appended to.
+func (d *PromptCommand) SubmitCommandPrefix() string { return d.data.SubmitCommandPrefix }
+
 func (d *PromptCommand) HandleMsg(msg tea.Msg) Action {
 	if _, ok := msg.(loadingTickMsg); ok {
 		if !d.loading {

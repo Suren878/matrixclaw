@@ -9,13 +9,21 @@ import (
 
 	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
 	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
+	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 )
 
 func (m *appModel) syncPermissionDialogCmd() tea.Cmd {
-	if m.read == nil || m.dialog == nil || m.denyingApproval != "" {
+	if m.read == nil || m.dialog == nil {
 		return nil
+	}
+	if denying := m.denyingApproval(); denying != "" {
+		if m.approvalPending(denying) {
+			return nil
+		}
+		// Decided elsewhere: the reason prompt has nothing left to deny.
+		m.dialog.CloseDialog(surfacedialog.PromptCommandID)
 	}
 	pending := m.pendingApprovals()
 	if len(pending) == 0 {
@@ -34,6 +42,26 @@ func (m *appModel) syncPermissionDialogCmd() tea.Cmd {
 
 	m.dialog.OpenDialog(surfacedialog.NewPermissions(m.com, pending[0]))
 	return nil
+}
+
+// denyingApproval is the approval whose denial reason is being typed: the one
+// the deny prompt on top of the dialogs asks about.
+func (m *appModel) denyingApproval() string {
+	prompt, ok := m.dialog.DialogLast().(*surfacedialog.PromptCommand)
+	if !ok {
+		return ""
+	}
+	approvalID, _ := controlplane.DeniedApproval(prompt.SubmitCommandPrefix())
+	return approvalID
+}
+
+func (m *appModel) approvalPending(approvalID string) bool {
+	for _, approval := range m.currentSnapshot().Approvals {
+		if approval.ID == approvalID {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *appModel) pendingApprovals() []surfacepermission.PermissionRequest {

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/controlplane"
+	"github.com/Suren878/matrixclaw/internal/core"
 )
 
 func (w *Worker) setPrompt(externalKey string, prompt controlplane.PromptData) {
@@ -54,11 +55,38 @@ func (w *Worker) handlePendingPrompt(ctx context.Context, target chatTarget, tex
 		return false, nil
 	}
 	w.clearPrompt(target.externalKey)
+	if w.denialDecidedElsewhere(ctx, target, prompt) {
+		return false, nil
+	}
 	result, err := w.dispatcher(target).Handle(ctx, target.externalKey, prompt.SubmitCommandPrefix+strings.TrimSpace(text))
 	if err != nil {
 		return true, w.sendText(ctx, target, fmt.Sprintf("Command failed: %v", err))
 	}
 	return true, w.renderCommandResult(ctx, target, result)
+}
+
+// denialDecidedElsewhere reports whether prompt asks why to deny an approval of
+// the chat's session that is no longer pending, so the text is a new message.
+func (w *Worker) denialDecidedElsewhere(ctx context.Context, target chatTarget, prompt controlplane.PromptData) bool {
+	approvalID, ok := controlplane.DeniedApproval(prompt.SubmitCommandPrefix)
+	if !ok {
+		return false
+	}
+	daemon := w.daemon(target.externalKey)
+	binding, err := daemon.CurrentBinding(ctx)
+	if err != nil || strings.TrimSpace(binding.SessionID) == "" {
+		return false
+	}
+	pending, err := daemon.ListApprovals(ctx, binding.SessionID, core.ApprovalStatePending)
+	if err != nil {
+		return false
+	}
+	for _, approval := range pending {
+		if approval.ID == approvalID {
+			return false
+		}
+	}
+	return true
 }
 
 func isPromptCloseCommand(text string) bool {

@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -133,5 +134,45 @@ func TestAlwaysGlobalNeedsTheOwnerChat(t *testing.T) {
 		if allowed == 42 && (len(resolved) != 1 || resolved[0] != (core.ApprovalResolveRequest{Approved: true, Always: permission.ScopeGlobal})) {
 			t.Fatalf("owner chat: resolved = %+v", resolved)
 		}
+	}
+}
+
+func TestReasonPromptLetsTheMessageThroughOnceTheApprovalIsDecidedElsewhere(t *testing.T) {
+	var resolves int
+	var bodies []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/v1/bindings/current":
+			_ = json.NewEncoder(w).Encode(core.ClientBindingResponse{Binding: core.ClientBinding{SessionID: "session_1"}})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/approvals":
+			_ = json.NewEncoder(w).Encode(core.ApprovalsResponse{})
+		case strings.HasPrefix(r.URL.Path, "/v1/approvals/"):
+			resolves++
+			http.Error(w, "approval already resolved", http.StatusBadRequest)
+		default:
+			body, _ := io.ReadAll(r.Body)
+			bodies = append(bodies, string(body))
+			http.Error(w, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	worker := &Worker{
+		api:     &approvalBotAPI{},
+		config:  Config{BaseURL: server.URL, ClientName: "telegram-test", DaemonHTTPClient: server.Client()},
+		prompts: map[string]controlplane.PromptData{},
+	}
+	chat := Chat{ID: 42, Type: "private"}
+	if err := worker.handleCallbackQuery(context.Background(), &CallbackQuery{ID: "cq", From: &User{ID: 42}, Message: &Message{MessageID: 7, Chat: chat}, Data: cbApprovalReason + "approval_1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	_ = worker.handleTextMessage(context.Background(), &Message{MessageID: 8, Chat: chat, From: &User{ID: 42}, Text: "what changed?"})
+
+	if _, ok := worker.prompt("42"); ok || resolves != 0 {
+		t.Fatalf("prompt kept = %v, resolves = %d", ok, resolves)
+	}
+	if !strings.Contains(strings.Join(bodies, "\n"), "what changed?") {
+		t.Fatalf("message never reached the chat: %q", bodies)
 	}
 }

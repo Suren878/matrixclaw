@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"strings"
+	"unicode"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 )
@@ -40,8 +41,24 @@ func (d *Dispatcher) handleApproval(ctx context.Context, args string) (Result, e
 	return Result{Handled: true, Text: text, ReloadSnapshot: true}, nil
 }
 
+// DeniedApproval returns the approval that a "/approval deny <id> [reason]"
+// command, or the prefix its prompt submits, denies.
+func DeniedApproval(command string) (string, bool) {
+	name, rest := cutWord(command)
+	action, rest := cutWord(rest)
+	approvalID, _ := cutWord(rest)
+	if !strings.EqualFold(name, controlplaneCommand("approval")) || !strings.EqualFold(action, "deny") || approvalID == "" {
+		return "", false
+	}
+	return approvalID, true
+}
+
 // cutWord splits text into its first word and the trimmed rest.
 func cutWord(text string) (string, string) {
-	word, rest, _ := strings.Cut(strings.TrimSpace(text), " ")
-	return word, strings.TrimSpace(rest)
+	text = strings.TrimSpace(text)
+	end := strings.IndexFunc(text, unicode.IsSpace)
+	if end < 0 {
+		return text, ""
+	}
+	return text[:end], strings.TrimSpace(text[end:])
 }
