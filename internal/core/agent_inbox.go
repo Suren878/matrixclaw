@@ -154,14 +154,12 @@ func (a coreApprovals) Pending(ctx context.Context, runID string) (bool, error) 
 	return a.c.runHasPendingApprovals(ctx, a.sessionID, runID)
 }
 
-// events lists the session's background tasks that finished unseen, in the
-// order they finished.
+// events are the session's task events.
 func (in coreInbox) events(ctx context.Context) ([]agent.Input, error) {
-	tasks, err := in.c.store.ListTasks(ctx, TaskFilter{SessionID: in.session.ID, Undelivered: true})
+	tasks, err := in.c.taskEvents(ctx, in.session.ID)
 	if err != nil {
 		return nil, err
 	}
-	slices.SortStableFunc(tasks, func(a, b Task) int { return a.FinishedAt.Compare(*b.FinishedAt) })
 	out := make([]agent.Input, 0, len(tasks))
 	for _, task := range tasks {
 		out = append(out, agent.Input{Kind: agent.InputEvent, ID: task.ID, Text: taskEventText(task)})

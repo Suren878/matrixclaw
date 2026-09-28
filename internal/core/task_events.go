@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/shelltask"
@@ -10,6 +11,17 @@ import (
 
 // taskEventTail is how much of a finished command's output its event shows.
 const taskEventTail = 2000
+
+// taskEvents lists the session's background tasks that finished unseen, in the
+// order they finished.
+func (c *Core) taskEvents(ctx context.Context, sessionID string) ([]Task, error) {
+	tasks, err := c.store.ListTasks(ctx, TaskFilter{SessionID: sessionID, Undelivered: true})
+	if err != nil {
+		return nil, err
+	}
+	slices.SortStableFunc(tasks, func(a, b Task) int { return a.FinishedAt.Compare(*b.FinishedAt) })
+	return tasks, nil
+}
 
 // taskEventText tells the model how a background task ended.
 func taskEventText(task Task) string {

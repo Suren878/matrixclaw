@@ -619,7 +619,8 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
 - **Idle sessions**: a finished background task (a command that exited by
   itself, or any subagent) in an idle top-level session starts a run with
   trigger `wake` (automation budget) whose user message says background work
-  finished; the events follow as notes and are delivered to it. It gets the
+  finished; the events are journaled after it as notes and delivered to it
+  under the session gate before it starts, so no run reads them twice. It gets the
   client, capabilities and delivery address of the newest run before the wake
   chain, so Telegram receives its reply. Twenty wake runs in a row without a
   user run stop the chain: the session shows a system message and the chat

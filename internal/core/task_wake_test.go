@@ -193,3 +193,48 @@ func TestMessageToABusySessionSteersByDefault(t *testing.T) {
 		t.Fatalf("accepted = %+v, %v", accepted, err)
 	}
 }
+
+func TestWakeRunTakesItsEventsBeforeItStarts(t *testing.T) {
+	t.Parallel()
+	db := openScenarioStore(t)
+	app := core.New(db)
+	starter := &recordingRunStarter{}
+	app.WithSessionFiles(t.TempDir()).WithRunStarter(starter)
+	var requests []providers.Request
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		requests = append(requests, request)
+		return providers.Response{Text: "Reported."}, nil
+	})})
+	session := permissionSession(t, db, "session_wake_events", t.TempDir(), core.PermissionModeDefault, "")
+	ctx := context.Background()
+	now := runRecoveryTestTime()
+	if err := db.CreateTask(ctx, core.Task{ID: "task_done", SessionID: session.ID, Kind: core.TaskKindSubagent, Status: core.TaskStatusRunning, Command: "check the logs", Background: true, StartedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.FinishTask(ctx, "task_done", core.TaskStatusCompleted, nil, "", now); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.RecoverTaskEvents(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(starter.ids) != 1 {
+		t.Fatalf("started runs = %v", starter.ids)
+	}
+	wakeID := starter.ids[0]
+	task, err := db.GetTask(ctx, "task_done")
+	if err != nil || task.DeliveredRunID != wakeID {
+		t.Fatalf("before the wake run started, task = %+v, %v", task, err)
+	}
+	if err := app.ExecuteRun(ctx, wakeID); err != nil {
+		t.Fatal(err)
+	}
+	var sent []string
+	for _, message := range requests[0].Messages {
+		sent = append(sent, message.Content)
+	}
+	if text := strings.Join(sent, "\n"); strings.Count(text, "Subagent task_done (task_done) finished") != 1 {
+		t.Fatalf("the wake request sends:\n%s", text)
+	}
+}

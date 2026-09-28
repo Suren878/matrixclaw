@@ -62,7 +62,7 @@ func (c *Core) prepareWake(ctx context.Context, sessionID string, finished *Task
 	if err != nil || len(inputs) > 0 {
 		return nil, nil, err
 	}
-	events, err := c.store.ListTasks(ctx, TaskFilter{SessionID: session.ID, Undelivered: true})
+	events, err := c.taskEvents(ctx, session.ID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -101,7 +101,29 @@ func (c *Core) prepareWake(ctx context.Context, sessionID string, finished *Task
 	if err != nil {
 		return nil, nil, err
 	}
+	if err := c.journalWakeEvents(ctx, result.Run, events); err != nil {
+		_, err = c.failAcceptedRun(ctx, result, err)
+		return nil, nil, err
+	}
 	return &result, nil, nil
+}
+
+// journalWakeEvents writes the events a wake run is for after its message as
+// engine notes and delivers them to it, before it starts, so that no run reads
+// them again.
+func (c *Core) journalWakeEvents(ctx context.Context, run Run, events []Task) error {
+	for _, task := range events {
+		text := taskEventText(task)
+		now := c.now().UTC()
+		note := transcript.Message{ID: c.newID("msg"), SessionID: run.SessionID, RunID: run.ID, Role: transcript.MessageRoleSystem, Origin: transcript.OriginEngine, Content: text, Parts: transcript.NormalizeMessageParts(text, nil), CreatedAt: now, UpdatedAt: now}
+		if _, err := c.store.AppendMessage(ctx, note); err != nil {
+			return err
+		}
+		if err := c.store.MarkTasksDelivered(ctx, []string{task.ID}, run.ID, now); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // taskWakesSession reports whether a finished task starts a run: a command
