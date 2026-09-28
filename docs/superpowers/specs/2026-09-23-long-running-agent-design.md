@@ -667,7 +667,9 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   directory (`isolation shared`, not readonly) takes `subagents:<dir>` and is a
   barrier; readonly, worktree and background children take no key and are no
   barriers, so several run at once. Children started together get different
-  names (the parent's session gate covers naming).
+  names and keep the background limit: both are reserved under the parent's
+  session gate, while the child's session (an external runtime's start
+  included) is created outside it.
 - **Readonly**: `tasks.readonly`; the child sees no mutating tool and core
   refuses one (`… this subagent is read-only`); a readonly Codex or Claude Code
   child runs with approval policy `never` and sandbox `read-only` (Claude Code

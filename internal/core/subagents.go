@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -115,8 +116,82 @@ func (c *Core) RunAgent(ctx context.Context, input AgentInput) (AgentResult, err
 }
 
 // startSubagent creates the child session, its run and the task that links
-// them to the parent's call; a worktree child gets its own git worktree.
+// them to the parent's call; a worktree child gets its own git worktree. The
+// parent's session gate is held only to reserve the child and record its task.
 func (c *Core) startSubagent(ctx context.Context, parent Session, input AgentInput, prompt string, parentRunID string, parentToolCallID string) (SubagentTask, Run, error) {
+	agentName, err := c.reserveSubagent(ctx, parent.ID, input.Background)
+	if err != nil {
+		return SubagentTask{}, Run{}, err
+	}
+	task, run, err := c.createSubagent(ctx, parent, input, prompt, parentRunID, parentToolCallID, agentName)
+	if err != nil {
+		_ = c.endSubagentStart(ctx, parent.ID, agentName, nil)
+		return SubagentTask{}, Run{}, err
+	}
+	return task, run, c.endSubagentStart(ctx, parent.ID, agentName, &task)
+}
+
+// reserveSubagent names a child its parent starts and takes a background slot
+// for a background one, so children started at once by one reply get
+// different names and keep the limit; the reservation lasts until endSubagentStart.
+func (c *Core) reserveSubagent(ctx context.Context, parentID string, background bool) (string, error) {
+	gate := c.sessionGate(parentID)
+	gate.Lock()
+	defer gate.Unlock()
+	c.mu.RLock()
+	starting := maps.Clone(c.startingAgents[parentID])
+	c.mu.RUnlock()
+	if background {
+		active, err := c.store.ListActiveSubagentTasksByParent(ctx, parentID)
+		if err != nil {
+			return "", err
+		}
+		count := len(active)
+		for _, startingBackground := range starting {
+			if startingBackground {
+				count++
+			}
+		}
+		if count >= c.backgroundAgents {
+			return "", fmt.Errorf("%w: at most %d background subagents run at once in a session; await one of them first", ErrInvalidInput, c.backgroundAgents)
+		}
+	}
+	name, err := c.assignSubagentAgentName(ctx, parentID, starting)
+	if err != nil {
+		return "", err
+	}
+	c.mu.Lock()
+	if c.startingAgents == nil {
+		c.startingAgents = map[string]map[string]bool{}
+	}
+	if c.startingAgents[parentID] == nil {
+		c.startingAgents[parentID] = map[string]bool{}
+	}
+	c.startingAgents[parentID][name] = background
+	c.mu.Unlock()
+	return name, nil
+}
+
+// endSubagentStart records the started child's task, if any, and drops its
+// reservation in one step under the parent's gate.
+func (c *Core) endSubagentStart(ctx context.Context, parentID string, name string, task *SubagentTask) error {
+	gate := c.sessionGate(parentID)
+	gate.Lock()
+	defer gate.Unlock()
+	var err error
+	if task != nil {
+		err = c.createSubagentTaskRecord(ctx, *task)
+	}
+	c.mu.Lock()
+	delete(c.startingAgents[parentID], name)
+	if len(c.startingAgents[parentID]) == 0 {
+		delete(c.startingAgents, parentID)
+	}
+	c.mu.Unlock()
+	return err
+}
+
+func (c *Core) createSubagent(ctx context.Context, parent Session, input AgentInput, prompt string, parentRunID string, parentToolCallID string, agentName string) (SubagentTask, Run, error) {
 	runtime := normalizeSubagentRuntime(input.Runtime)
 	isolation := normalizeSubagentIsolation(input.Isolation)
 	if input.Readonly {
@@ -131,24 +206,6 @@ func (c *Core) startSubagent(ctx context.Context, parent Session, input AgentInp
 		}
 		workingDir = dir
 	}
-	// Children started at once by one reply get different names and count
-	// toward the background limit one after another.
-	gate := c.sessionGate(parent.ID)
-	gate.Lock()
-	defer gate.Unlock()
-	if input.Background {
-		active, err := c.store.ListActiveSubagentTasksByParent(ctx, parent.ID)
-		if err != nil {
-			return SubagentTask{}, Run{}, err
-		}
-		if len(active) >= c.backgroundAgents {
-			return SubagentTask{}, Run{}, fmt.Errorf("%w: at most %d background subagents run at once in a session; await one of them first", ErrInvalidInput, c.backgroundAgents)
-		}
-	}
-	agentName, err := c.assignSubagentAgentName(ctx, parent.ID)
-	if err != nil {
-		return SubagentTask{}, Run{}, err
-	}
 	child, err := c.createSubagentSession(ctx, parent, runtime, input.Model, workingDir, agentName, input.Readonly)
 	if err != nil {
 		return SubagentTask{}, Run{}, err
@@ -162,7 +219,7 @@ func (c *Core) startSubagent(ctx context.Context, parent Session, input AgentInp
 		mode = SubagentTaskModeAsync
 	}
 	now := c.now().UTC()
-	task := SubagentTask{
+	return SubagentTask{
 		ID:               taskID,
 		AgentName:        agentName,
 		DisplayName:      subagentDisplayName(input.Description, prompt),
@@ -180,11 +237,7 @@ func (c *Core) startSubagent(ctx context.Context, parent Session, input AgentInp
 		Status:           TaskStatusRunning,
 		CreatedAt:        now,
 		UpdatedAt:        now,
-	}
-	if err := c.createSubagentTaskRecord(ctx, task); err != nil {
-		return SubagentTask{}, Run{}, err
-	}
-	return task, run, nil
+	}, run, nil
 }
 
 func (c *Core) resumeSubagentTask(ctx context.Context, task SubagentTask) (AgentResult, error) {

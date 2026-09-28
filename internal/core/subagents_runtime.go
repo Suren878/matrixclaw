@@ -49,12 +49,17 @@ func (c *Core) createSubagentSession(ctx context.Context, parent Session, runtim
 	}
 }
 
-func (c *Core) assignSubagentAgentName(ctx context.Context, parentSessionID string) (string, error) {
+// assignSubagentAgentName picks a name no child of the parent has, nor any of
+// the children it is starting.
+func (c *Core) assignSubagentAgentName(ctx context.Context, parentSessionID string, starting map[string]bool) (string, error) {
 	tasks, err := c.store.ListSubagentTasks(ctx, SubagentTaskFilter{ParentSessionID: strings.TrimSpace(parentSessionID)})
 	if err != nil {
 		return "", err
 	}
-	used := make(map[string]struct{}, len(tasks))
+	used := make(map[string]struct{}, len(tasks)+len(starting))
+	for name := range starting {
+		used[strings.ToLower(name)] = struct{}{}
+	}
 	for _, task := range tasks {
 		name := strings.TrimSpace(task.AgentName)
 		if name == "" {
