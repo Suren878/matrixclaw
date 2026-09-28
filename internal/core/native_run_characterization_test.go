@@ -928,7 +928,7 @@ func runAsyncSubagentScenario(t *testing.T) asyncSubagentScenario {
 			return providers.Response{Text: "child async result"}, nil
 		}
 		for _, message := range request.Messages {
-			if message.Role == "user" && strings.HasPrefix(message.Content, "Subagent ") && strings.Contains(message.Content, "completed.") {
+			if message.Role == "user" && strings.HasPrefix(message.Content, "Subagent ") && strings.Contains(message.Content, "finished: completed.") {
 				return providers.Response{Text: "Synthesized."}, nil
 			}
 		}
@@ -950,16 +950,12 @@ func runAsyncSubagentScenario(t *testing.T) asyncSubagentScenario {
 
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		followUp := ""
-		for _, message := range sessionMessages(t, db, session.ID) {
-			if message.Role == transcript.MessageRoleUser && strings.HasPrefix(message.Content, "Subagent ") && strings.Contains(message.Content, "completed.") {
-				followUp = message.RunID
-			}
+		runs, err := db.ListSessionRuns(context.Background(), session.ID, 0)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if followUp != "" {
-			if got, err := db.GetRun(context.Background(), followUp); err == nil && got.Status == core.RunStatusCompleted {
-				break
-			}
+		if runs[0].Trigger == core.RunTriggerWake && runs[0].Status == core.RunStatusCompleted {
+			break
 		}
 		if time.Now().After(deadline) {
 			t.Fatal("subagent completion follow-up run did not complete")

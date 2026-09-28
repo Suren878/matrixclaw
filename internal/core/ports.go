@@ -28,7 +28,6 @@ type SubagentTaskStore interface {
 	GetSubagentTaskByChildRun(ctx context.Context, childRunID string) (SubagentTask, error)
 	ListSubagentTasks(ctx context.Context, filter SubagentTaskFilter) ([]SubagentTask, error)
 	ListActiveSubagentTasksByParent(ctx context.Context, parentSessionID string) ([]SubagentTask, error)
-	ListPendingSubagentCompletionTasks(ctx context.Context, limit int) ([]SubagentTask, error)
 }
 
 type BindingStore interface {

@@ -53,7 +53,7 @@ func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptR
 			wakeRunID = active.ID
 		}
 	case errors.Is(err, ErrNotFound):
-		result, err = c.createAcceptedRun(ctx, session, text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress, "")
+		result, err = c.createAcceptedRun(ctx, session, text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress, "", "")
 		if err != nil {
 			gate.Unlock()
 			return AcceptRunResult{}, err

@@ -408,3 +408,19 @@ func telegramDocumentCaption(caption string) string {
 	}
 	return string(runes[:1021]) + "..."
 }
+
+func (w *Worker) deliverPendingNotices(ctx context.Context) error {
+	return w.deliverPendingDeliveries(ctx, core.ClientDeliveryTypeNotice, core.ClientDeliveryFilter{})
+}
+
+// deliverNotice sends a notice's text to its chat.
+func (w *Worker) deliverNotice(ctx context.Context, daemon *daemonclient.Client, delivery core.ClientDelivery) error {
+	target, ok := targetFromClientDelivery(delivery)
+	if !ok || strings.TrimSpace(delivery.Summary) == "" {
+		return daemon.AcknowledgeClientDelivery(ctx, delivery.ID)
+	}
+	if err := w.sendText(ctx, target, delivery.Summary); err != nil {
+		return err
+	}
+	return w.acknowledgeSentDelivery(ctx, daemon, delivery.ID)
+}

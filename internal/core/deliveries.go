@@ -10,6 +10,8 @@ const (
 	ClientDeliveryTypeDaemonRestart = "daemon_restart"
 	ClientDeliveryTypeRun           = "run"
 	ClientDeliveryTypeDocument      = "document"
+	// ClientDeliveryTypeNotice is a short text for the user outside any run.
+	ClientDeliveryTypeNotice = "notice"
 )
 
 type DocumentDeliveryPayload struct {

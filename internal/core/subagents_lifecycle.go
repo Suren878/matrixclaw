@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"errors"
-	"sort"
 	"time"
 )
 
@@ -102,8 +101,8 @@ func (c *Core) afterRunExecution(ctx context.Context, runID string) error {
 			return err
 		}
 	}
-	if !isSubagentSession(session) && subagentRunStatusTerminal(run.Status) {
-		return c.deliverPendingSubagentCompletionsForParent(ctx, session.ID)
+	if subagentRunStatusTerminal(run.Status) {
+		return c.wakeSession(ctx, session.ID, nil)
 	}
 	return nil
 }
@@ -139,10 +138,12 @@ func (c *Core) syncAsyncSubagentTaskAfterRun(ctx context.Context, task SubagentT
 		return err
 	}
 	c.publishSubagentToolUpdate(task)
-	if finished, err := c.store.GetTask(ctx, task.ID); err == nil {
-		c.taskFinished(ctx, finished)
+	finished, err := c.store.GetTask(ctx, task.ID)
+	if err != nil {
+		return err
 	}
-	return c.deliverPendingSubagentCompletionsForParent(ctx, task.ParentSessionID)
+	c.taskFinished(ctx, finished)
+	return nil
 }
 
 func (c *Core) syncBlockingSubagentTaskAfterRun(ctx context.Context, task SubagentTask, run Run) error {
@@ -209,89 +210,6 @@ func (c *Core) syncBlockingSubagentTaskAfterRun(ctx context.Context, task Subage
 	return c.startRun(ctx, parentRunID)
 }
 
-func (c *Core) deliverPendingSubagentCompletionsForParent(ctx context.Context, parentSessionID string) error {
-	parentSessionID = normalizeText(parentSessionID)
-	if parentSessionID == "" {
-		return nil
-	}
-	if ready, err := c.parentReadyForSubagentAutoResume(ctx, parentSessionID); err != nil || !ready {
-		return err
-	}
-	tasks, err := c.store.ListSubagentTasks(ctx, SubagentTaskFilter{
-		ParentSessionID: parentSessionID,
-		Mode:            SubagentTaskModeAsync,
-		Statuses: []TaskStatus{
-			TaskStatusCompleted,
-			TaskStatusFailed,
-			TaskStatusCanceled,
-		},
-		Limit: 50,
-	})
-	if err != nil {
-		return err
-	}
-	pending := make([]SubagentTask, 0, len(tasks))
-	for _, task := range tasks {
-		if task.DeliveredAt == nil {
-			pending = append(pending, task)
-		}
-	}
-	if len(pending) == 0 {
-		return nil
-	}
-	sort.Slice(pending, func(i, j int) bool {
-		return pending[i].CreatedAt.Before(pending[j].CreatedAt)
-	})
-	triggerID := subagentCompletionTriggerID(parentSessionID, pending)
-	result, err := c.AcceptTriggeredRun(ctx, HandleTriggeredRunInput{
-		TriggerID: triggerID,
-		SessionID: parentSessionID,
-		Text:      subagentCompletionPrompt(pending),
-	})
-	if err != nil {
-		return err
-	}
-	now := c.now().UTC()
-	for _, task := range pending {
-		if _, err := c.markSubagentCompletionDelivered(ctx, task, now, result.Run.ID); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (c *Core) parentReadyForSubagentAutoResume(ctx context.Context, parentSessionID string) (bool, error) {
-	pendingInputs, err := c.store.ListPendingSessionInputs(ctx, parentSessionID)
-	if err != nil {
-		return false, err
-	}
-	if len(pendingInputs) > 0 {
-		return false, nil
-	}
-	messages, err := c.store.ListMessages(ctx, parentSessionID, 0)
-	if err != nil {
-		return false, err
-	}
-	if len(messages) == 0 {
-		return true, nil
-	}
-	for i := len(messages) - 1; i >= 0; i-- {
-		runID := normalizeText(messages[i].RunID)
-		if runID == "" {
-			continue
-		}
-		run, err := c.store.GetRun(ctx, runID)
-		if errors.Is(err, ErrNotFound) {
-			return true, nil
-		}
-		if err != nil {
-			return false, err
-		}
-		return subagentRunStatusTerminal(run.Status), nil
-	}
-	return true, nil
-}
-
 // publishSubagentToolUpdate tells clients the parent's spawn_subagent call finished;
 // the result itself reaches the parent through the completion run.
 func (c *Core) publishSubagentToolUpdate(task SubagentTask) {
@@ -347,20 +265,6 @@ func (c *Core) RecoverSubagentTasks(ctx context.Context) error {
 					return err
 				}
 			}
-		}
-	}
-	pending, err := c.store.ListPendingSubagentCompletionTasks(ctx, 200)
-	if err != nil {
-		return err
-	}
-	seenParents := map[string]struct{}{}
-	for _, task := range pending {
-		if _, ok := seenParents[task.ParentSessionID]; ok {
-			continue
-		}
-		seenParents[task.ParentSessionID] = struct{}{}
-		if err := c.deliverPendingSubagentCompletionsForParent(ctx, task.ParentSessionID); err != nil {
-			return err
 		}
 	}
 	return nil

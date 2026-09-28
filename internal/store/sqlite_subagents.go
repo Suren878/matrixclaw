@@ -155,20 +155,6 @@ func (s *SQLiteStore) ListActiveSubagentTasksByParent(ctx context.Context, paren
 	})
 }
 
-// ListPendingSubagentCompletionTasks lists finished async subagents whose parent
-// was not told yet, oldest first.
-func (s *SQLiteStore) ListPendingSubagentCompletionTasks(ctx context.Context, limit int) ([]core.SubagentTask, error) {
-	query := "SELECT " + subagentTaskColumns + ` FROM tasks
-WHERE kind = 'subagent' AND background = 1 AND finished_at IS NOT NULL AND delivered_at IS NULL
-ORDER BY finished_at ASC, id ASC`
-	var args []any
-	if limit > 0 {
-		query += " LIMIT ?"
-		args = append(args, limit)
-	}
-	return s.listSubagentTasks(ctx, query, args...)
-}
-
 func (s *SQLiteStore) listSubagentTasks(ctx context.Context, query string, args ...any) ([]core.SubagentTask, error) {
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {

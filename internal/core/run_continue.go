@@ -48,7 +48,7 @@ func (c *Core) createContinueRun(ctx context.Context, session Session, input Han
 		return AcceptRunResult{}, err
 	}
 	parts := transcript.NormalizeMessageParts(continueRunText, nil)
-	return c.createAcceptedRun(ctx, session, continueRunText, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress, latest.ID)
+	return c.createAcceptedRun(ctx, session, continueRunText, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress, latest.ID, "")
 }
 
 // continuedRuns lists the runs run continues, nearest first; the chain ends at a

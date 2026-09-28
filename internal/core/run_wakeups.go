@@ -81,18 +81,6 @@ func (c *Core) waitOver(ctx context.Context, run Run) (bool, error) {
 	}), nil
 }
 
-// wakeSessionRun wakes the session's run if it waits for events.
-func (c *Core) wakeSessionRun(ctx context.Context, sessionID string) error {
-	active, err := c.store.GetActiveRunBySession(ctx, sessionID)
-	if errors.Is(err, ErrNotFound) || err == nil && active.Status != RunStatusWaitingEvents {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	return c.wakeWaitingRun(ctx, sessionID, active.ID)
-}
-
 // WakeDueRuns starts the waiting runs whose timer ran out.
 func (c *Core) WakeDueRuns(ctx context.Context) error {
 	due, err := c.store.ListDueRunWakeups(ctx, c.now().UTC())

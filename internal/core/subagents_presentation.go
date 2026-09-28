@@ -175,36 +175,6 @@ func (c *Core) subagentTaskDetail(task SubagentTask) string {
 	return strings.Join(lines, "\n")
 }
 
-func subagentCompletionPrompt(tasks []SubagentTask) string {
-	if len(tasks) == 1 {
-		task := tasks[0]
-		return strings.Join([]string{
-			fmt.Sprintf("Subagent %s completed.", subagentTaskAgentName(task)),
-			"Task: " + strings.TrimSpace(task.DisplayName),
-			"Goal: " + task.Goal,
-			"Status: " + string(task.Status),
-			"Summary: " + firstNonEmpty(task.Summary, task.Error),
-			"",
-			"Briefly synthesize this result for the user and decide whether any follow-up action is needed.",
-		}, "\n")
-	}
-	lines := []string{"Multiple subagents completed:"}
-	for _, task := range tasks {
-		lines = append(lines, fmt.Sprintf("- %s [%s]: %s", subagentTaskAgentName(task), task.Status, firstNonEmpty(task.Summary, task.Error)))
-	}
-	lines = append(lines, "", "Briefly synthesize these results for the user and decide whether any follow-up action is needed.")
-	return strings.Join(lines, "\n")
-}
-
-func subagentCompletionTriggerID(parentSessionID string, tasks []SubagentTask) string {
-	ids := make([]string, 0, len(tasks)+1)
-	ids = append(ids, parentSessionID)
-	for _, task := range tasks {
-		ids = append(ids, task.ID)
-	}
-	return "subagent_completion_" + stableIDPart(strings.Join(ids, "_"))
-}
-
 func subagentTaskFailed(task SubagentTask) bool {
 	return task.Status == TaskStatusFailed || task.Status == TaskStatusCanceled || strings.TrimSpace(task.Error) != ""
 }

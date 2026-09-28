@@ -202,6 +202,9 @@ func Run(ctx context.Context) error {
 		if err := app.RecoverSubagentTasks(context.Background()); err != nil {
 			log.Printf("matrixclawd subagent recovery failed: %v", err)
 		}
+		if err := app.RecoverTaskEvents(context.Background()); err != nil {
+			log.Printf("matrixclawd background task event recovery failed: %v", err)
+		}
 	})
 
 	log.Printf("matrixclawd bootstrap: setup=%s", bootstrap.SetupPath)

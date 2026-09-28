@@ -358,13 +358,20 @@ func taskInfo(task Task) tools.TaskInfo {
 	}
 }
 
-// taskFinished wakes the session's run if it waits for events; a running run
-// reads the event at its next step.
+// taskFinished lets the task's session react: a run waiting for events wakes,
+// a running run reads the event at its next step, an idle session starts a run.
 func (c *Core) taskFinished(ctx context.Context, task Task) {
 	if !task.Background || task.DeliveredAt != nil {
 		return
 	}
-	if err := c.wakeSessionRun(ctx, task.SessionID); err != nil {
-		log.Printf("core: wake session %q for task %q: %v", task.SessionID, task.ID, err)
+	active, err := c.store.GetActiveRunBySession(ctx, task.SessionID)
+	switch {
+	case errors.Is(err, ErrNotFound):
+		err = c.wakeSession(ctx, task.SessionID, &task)
+	case err == nil && active.Status == RunStatusWaitingEvents:
+		err = c.wakeWaitingRun(ctx, task.SessionID, active.ID)
+	}
+	if err != nil {
+		log.Printf("core: tell session %q that task %q finished: %v", task.SessionID, task.ID, err)
 	}
 }

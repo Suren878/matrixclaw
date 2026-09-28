@@ -285,3 +285,21 @@ func TestDeliveryCancellationLeavesPendingWork(t *testing.T) {
 		t.Fatalf("cancelled work finalized: acked=%v failed=%v", d.acked, d.failed)
 	}
 }
+
+func TestNoticeDeliverySendsItsTextOnce(t *testing.T) {
+	now := time.Unix(100, 0)
+	notice := core.ClientDelivery{ID: "notice-1", Type: core.ClientDeliveryTypeNotice, SessionID: "s1", Summary: "Background task task_1 finished.", Address: encodeDeliveryAddress(DeliveryAddress{ChatID: 7})}
+	d := &deliveryTestDaemon{deliveries: []core.ClientDelivery{notice}}
+	api := &deliveryTestAPI{}
+	w := newDeliveryTestWorker(t, d, api, &now)
+
+	for range 2 {
+		if err := w.deliverPendingNotices(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if len(api.messages) != 1 || api.messages[0].ChatID != 7 || !strings.Contains(api.messages[0].Text, "task_1 finished") || !d.acked["notice-1"] {
+		t.Fatalf("messages = %+v acked = %v", api.messages, d.acked)
+	}
+}

@@ -75,22 +75,6 @@ func (c *Core) finishSubagentTaskRecord(ctx context.Context, task SubagentTask, 
 	})
 }
 
-func (c *Core) markSubagentCompletionDelivered(ctx context.Context, task SubagentTask, at time.Time, runID string) (SubagentTask, error) {
-	if at.IsZero() {
-		at = c.now().UTC()
-	}
-	at = at.UTC()
-	if err := c.store.MarkTasksDelivered(ctx, []string{task.ID}, runID, at); err != nil {
-		return SubagentTask{}, err
-	}
-	task.DeliveredAt = &at
-	task.DeliveredRunID = runID
-	task.UpdatedAt = at
-	c.saveSubagentWorkJob(ctx, task)
-	c.publishSubagentTaskUpdated(task)
-	return task, nil
-}
-
 func (c *Core) publishSubagentTaskUpdated(task SubagentTask) {
 	c.publishEvent(Event{
 		Type:      EventSubagentUpdated,

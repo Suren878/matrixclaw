@@ -53,11 +53,14 @@ func TestSubagentTasksMoveIntoTheTasksTable(t *testing.T) {
 
 	for reopen := 0; reopen < 2; reopen++ {
 		st := openTestStore(t, path)
-		pending, err := st.ListPendingSubagentCompletionTasks(ctx, 0)
+		pending, err := st.ListTasks(ctx, core.TaskFilter{SessionID: "s1", Undelivered: true})
 		if err != nil || len(pending) != 1 || pending[0].ID != "queued" {
 			t.Fatalf("open %d: pending = %+v, %v", reopen, pending, err)
 		}
-		queued := pending[0]
+		queued, err := st.GetSubagentTask(ctx, "queued")
+		if err != nil {
+			t.Fatal(err)
+		}
 		if queued.Mode != core.SubagentTaskModeAsync || queued.ParentRunID != "r1" || queued.ParentToolCallID != "call_1" ||
 			queued.ChildRunID != "child_1" || queued.Goal != "Read the logs" || queued.Summary != "All good" || queued.Isolation != core.SubagentIsolationShared {
 			t.Fatalf("open %d: queued = %+v", reopen, queued)
