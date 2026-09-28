@@ -35,6 +35,13 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Task recovery kills what the previous daemon left, so a second daemon on
+	// the same data must not start.
+	releaseData, err := lockDataDir(dataDir(bootstrap.DBPath))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = releaseData() }()
 
 	sqliteStore, err := store.NewSQLite(bootstrap.DBPath)
 	if err != nil {

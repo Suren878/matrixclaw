@@ -574,7 +574,10 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   `task_kill{id}` asks for approval like `job_kill` did and also cancels a
   subagent task. The shell tools are registered with the core as their
   `tools.ShellTasks`.
-- **Restart**: `RecoverTasks` runs before the workflow worker starts; a
+- **Restart**: the daemon holds an exclusive `flock` on
+  `matrixclawd.lock` in its data directory for its lifetime, so a second
+  daemon on the same data exits with an error. `RecoverTasks` runs before the
+  workflow worker starts; a
   leftover group is killed only when its leader still runs in the same boot
   (`/proc/sys/kernel/random/boot_id`, macOS `kern.boottime`) with the start
   recorded at spawn (`/proc/<pid>/stat` starttime, macOS `kern.proc.pid`);
