@@ -120,13 +120,24 @@ accept-edits  -> approvalPolicy: on-request, sandbox: workspace-write
 default       -> approvalPolicy: on-request, sandbox: read-only
 ```
 
+An external agent session created without a mode starts in `full-auto`. Only
+the owner can start one, from the TUI or the Telegram owner chat. Other
+Telegram chats cannot bind to or send into it. The same restriction applies to
+any session in `full-auto`.
+
+MatrixClaw permission rules govern only MatrixClaw's own tools. A Codex or
+Claude Code session, or an external subagent, runs its own tools under the
+policy above.
+
 ## Subagents
 
 MatrixClaw assistant sessions receive an `agent` tool for bounded child work.
 Child sessions are hidden from the normal session list, receive an isolated
 prompt built from the call's prompt, and return a compact summary to the parent
-run. A `readonly` external child gets `approvalPolicy: never` and
-`sandbox: read-only`: Codex refuses writes without asking, and Claude Code runs
+run. An external child runs in `full-auto` (`approvalPolicy: never`,
+`sandbox: danger-full-access`) unless it is `readonly`. A `readonly` external
+child gets `approvalPolicy: never` and `sandbox: read-only`: Codex refuses
+writes without asking, and Claude Code runs
 in `dontAsk` mode, which denies every call that would prompt (edits and shell
 commands outside its read-only set) while reads still work. Tools a user's
 Claude Code `permissions.allow` rules pre-approve still run there. MatrixClaw

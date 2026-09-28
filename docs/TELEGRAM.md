@@ -13,8 +13,17 @@ Normal Telegram usage is centered on the user's private bot chat.
 /sessions        list, select, rename, or delete sessions
 /provider        select provider and model
 /permissions     approval mode (owner chat only) and permission rules
+/todo            show or clear the session's todo list
+/continue        continue the latest run with a fresh budget
+/budget          show or override the session's run budget
+/tasks           background tasks and scheduled AI tasks
 /modules         manage modules
 ```
+
+The owner chat is the private chat of `allowed_user_id`. Only it changes the
+permission mode, keeps global rules, or starts external agent sessions. Other
+chats cannot bind to or send into a session that runs tools without asking
+(an external agent session, or one in `full_auto`).
 
 Session selection is stored in the daemon binding for the Telegram external
 key. Private chat runs deliver drafts, tool updates, approval buttons,
@@ -53,6 +62,34 @@ successfully delivered chunk is recorded before returning an error, so retrying
 a later chunk does not resend the already confirmed prefix. These delivery IDs
 are in memory; exactly-once delivery across a worker restart or an ambiguous
 network failure is not guaranteed.
+
+## Runs
+
+- **Tool calls**: each call gets one silent status message, edited when it
+  finishes. `agent` calls read "Subagent is working", or "Starting subagent"
+  for background children.
+- **Todo list**: one silent message per run shows the list the run saved last
+  and is edited as it changes.
+- **Engine notes**: budget and loop warnings and similar notes arrive as silent
+  `Note: …` messages. A run that stopped on its budget or on a loop ends with a
+  notice and a **Continue** button (`/continue`).
+- **Waiting**: a run parked by `await` shows "Waiting for background tasks...",
+  without the typing indicator.
+- **Messages during a run** steer it at its next step and wake a run that is
+  waiting for background tasks.
+- **Background work**: when background work finishes in an idle session, a
+  wake run starts and its reply goes to the chat of the newest run (never a
+  guest or inline target). After 20 wake runs in a row without a user message,
+  the chat gets one notice per finished task instead.
+
+## Approvals
+
+An approval message offers **Allow**, **Always: session** and, in the owner
+chat, **Always: global** when the daemon suggests a rule (for example
+`bash: go test:*`), plus **Deny** and **Deny with reason**. Deny with reason
+asks for the reason in the next message (`/cancel` aborts). The model receives
+`User denied: <reason>` and continues. Guest and inline targets keep no rules.
+A background subagent's approval is asked in its parent's chat.
 
 ## Inline Mode
 

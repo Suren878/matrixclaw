@@ -7,15 +7,35 @@ smaller contract tests only where they protect a risky boundary.
 
 ## Current CI Gate
 
-CI currently runs:
+CI (`.github/workflows/test.yml`, and the release workflow before building)
+runs a `gofmt` check and then:
 
 ```bash
+go test ./...
 go build ./...
 go vet ./...
 ```
 
-Do not add `go test ./...` back to CI until the new suite covers real product
-behavior and is stable enough to be trusted.
+`golangci-lint` also runs on new issues. Every commit to `main` should pass
+`go build ./... && go vet ./... && go test ./...` locally.
+
+## Running Locally
+
+- A cold `go test -count=1 ./...` takes about 10 s of wall time on a warm build
+  cache. `internal/core` is the slowest package at about 7 s.
+- Its tests each build their own SQLite store and core in a temporary
+  directory, so they call `t.Parallel()`. Only a test that captures the global
+  logger stays sequential. Keep new core tests parallel and free of package
+  state.
+- With the race detector, `go test -race ./internal/agent/...
+  ./internal/core ./internal/store ./internal/shelltask ./internal/permission`
+  takes about a minute (`internal/core` and `internal/store` about 45 to 60 s
+  each). Run it after concurrency changes to the engine, scheduler, tasks, or
+  store.
+- `internal/shelltask` and the core background-task tests start real `bash`
+  process groups, so they need a Unix host.
+- The store opens SQLite with WAL and `synchronous = NORMAL`, which keeps
+  store-heavy tests fast.
 
 ## Test Shape
 
@@ -35,6 +55,8 @@ Tests should drive MatrixClaw through stable boundaries:
 - fake Telegram/client delivery adapters
 - SQLite persistence with temporary databases
 - tool approval and tool-result loops
+- the agent engine through its ports with `agenttest.ScriptedModel` and fakes
+  (`internal/agent/agenttest`)
 
 Avoid tests that only assert private formatting, incidental helper output, or a
 branch that was added once and is unlikely to fail in a way users can observe.

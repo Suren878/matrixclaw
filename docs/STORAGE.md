@@ -22,6 +22,17 @@ If `MATRIXCLAW_DB_PATH` or setup points the daemon at a different database, the
 storage root moves next to that database. Storage metadata is kept under
 `.matrixclaw/` inside the storage root.
 
+The same directory holds two more items:
+
+- `sessions/<session id>/` stores per-session agent files. `tool-output/` has
+  full tool results too large for the model's context (the model gets the head,
+  the tail and the path). `tasks/<task id>.log` has background command output
+  (mode 0600, capped at 20 MB by keeping the first 1 MB and the newest part).
+  They are removed with the session; `/clear` removes the tool outputs of the
+  cleared history.
+- `matrixclawd.lock` is held by the running daemon, so a second daemon on the
+  same data exits.
+
 ## Stored Files
 
 Stored files are durable local files with metadata:
