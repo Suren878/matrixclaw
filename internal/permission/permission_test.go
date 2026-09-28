@@ -53,6 +53,37 @@ func TestEvaluateOrdersDenyAskAllowThenPreset(t *testing.T) {
 	}
 }
 
+func TestBashGuardRulesHoldWhateverAllows(t *testing.T) {
+	deny := []Rule{rule(Deny, "bash", "rm:*")}
+	full := Preset(ModeFullAuto, "/work")
+	for _, tc := range []struct {
+		line   string
+		rules  []Rule
+		preset []Rule
+		want   Effect
+	}{
+		{"/bin/rm -rf ~", deny, full, Deny},
+		{"timeout 5 rm x", deny, full, Ask},
+		{"command rm x", deny, full, Ask},
+		{"$'rm' x", deny, full, Ask},
+		{"'rm' x", deny, full, Deny},
+		{`\rm x`, deny, full, Deny},
+		{"{rm,-rf,x}", deny, full, Ask},
+		{"echo|xargs rm", deny, full, Ask},
+		{"bash -c 'rm x'", deny, full, Ask},
+		{"env rm x", append([]Rule{rule(Allow, "bash", "")}, deny...), nil, Ask},
+		{"sudo git push", []Rule{rule(Ask, "bash", "git push:*")}, full, Ask},
+		{"echo x > out.txt", deny, full, Ask},
+		{"go test ./...", deny, full, Allow},
+		{"echo x > out.txt", []Rule{rule(Deny, "*", "/home/u/secrets/**")}, full, Allow},
+		{"./go test ./...", []Rule{rule(Allow, "bash", "go test:*")}, nil, ""},
+	} {
+		if got := Evaluate(command(tc.line), tc.rules, tc.preset); got.Effect != tc.want {
+			t.Errorf("%q: verdict = %q by %q, want %q", tc.line, got.Effect, got.Rule.String(), tc.want)
+		}
+	}
+}
+
 func TestPathGlobs(t *testing.T) {
 	for _, tc := range []struct {
 		pattern, path string

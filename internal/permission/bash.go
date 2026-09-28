@@ -17,13 +17,20 @@ type Line struct {
 	Risky    bool
 }
 
-// wrappers run another command given as their arguments.
+// wrappers run a command given as their arguments, or change which program a
+// later command runs.
 var wrappers = map[string]bool{
-	".": true, "bash": true, "builtin": true, "busybox": true, "chroot": true, "command": true,
-	"dash": true, "doas": true, "env": true, "eval": true, "exec": true, "fish": true,
-	"ionice": true, "ksh": true, "ltrace": true, "nice": true, "nohup": true, "parallel": true,
-	"script": true, "setsid": true, "sh": true, "source": true, "stdbuf": true, "strace": true,
-	"su": true, "sudo": true, "time": true, "timeout": true, "watch": true, "xargs": true, "zsh": true,
+	".": true, "alias": true, "bash": true, "builtin": true, "busybox": true, "chroot": true, "chrt": true,
+	"command": true, "dash": true, "doas": true, "enable": true, "env": true, "eval": true, "exec": true,
+	"expect": true, "faketime": true, "firejail": true, "fish": true, "flock": true, "hash": true,
+	"ionice": true, "ksh": true, "ltrace": true, "mapfile": true, "nice": true, "nohup": true,
+	"nsenter": true, "numactl": true, "parallel": true, "pkexec": true, "prlimit": true,
+	"proxychains": true, "proxychains4": true, "read": true, "readarray": true, "rlwrap": true,
+	"runuser": true, "screen": true, "script": true, "setpriv": true, "setsid": true, "sg": true,
+	"sh": true, "source": true, "sshpass": true, "stdbuf": true, "strace": true, "su": true,
+	"sudo": true, "systemd-run": true, "taskset": true, "time": true, "timeout": true, "tmux": true,
+	"torsocks": true, "trap": true, "unbuffer": true, "unshare": true, "valgrind": true, "watch": true,
+	"xargs": true, "zsh": true,
 }
 
 // flagSet names the flags of one command that run another program or write a
@@ -59,6 +66,7 @@ var programFlags = map[string]flagSet{
 	"curl":      {names: []string{"config"}, letters: "oK"},
 	"wget":      {letters: "O"},
 	"make":      {letters: "E"},
+	"printf":    {letters: "v"},
 }
 
 // maxLineBytes bounds the lines ParseLine parses: the parser recurses once per
@@ -114,10 +122,20 @@ func (l *Line) addCall(call *syntax.CallExpr) {
 		}
 		words = append(words, word)
 	}
-	if words[0] == "" || wrappers[filepath.Base(words[0])] || runsProgram(words) {
+	if !plainCommand(call.Args[0]) || wrappers[filepath.Base(words[0])] || runsProgram(words) {
 		l.Risky = true
 	}
 	l.Commands = append(l.Commands, words)
+}
+
+// plainCommand reports whether a command name is unquoted text without escapes,
+// so rules compare it exactly as bash looks it up.
+func plainCommand(word *syntax.Word) bool {
+	if len(word.Parts) != 1 {
+		return false
+	}
+	lit, ok := word.Parts[0].(*syntax.Lit)
+	return ok && lit.Value != "" && !strings.Contains(lit.Value, `\`)
 }
 
 // runsProgram reports whether a command passes one of its programFlags, gives

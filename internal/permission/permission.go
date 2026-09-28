@@ -109,7 +109,8 @@ type Verdict struct {
 }
 
 // Evaluate applies rules to req: deny rules first, then ask rules, then allow
-// rules; preset rules are consulted only when none of those decided.
+// rules; preset rules are consulted only when none of those decided. A risky
+// command line asks whenever a deny or ask rule names its tool.
 func Evaluate(req Request, rules []Rule, preset []Rule) Verdict {
 	var line Line
 	if req.Subject.Kind == KindCommand {
@@ -120,6 +121,11 @@ func Evaluate(req Request, rules []Rule, preset []Rule) Verdict {
 			if rule.Effect == effect && rule.covers(req.Tool) && rule.touches(req.Subject, line) {
 				return Verdict{Effect: effect, Rule: rule}
 			}
+		}
+	}
+	if line.Risky {
+		if rule, ok := guardedBy(rules, req.Tool); ok {
+			return Verdict{Effect: Ask, Rule: rule}
 		}
 	}
 	for _, set := range [][]Rule{rules, preset} {
@@ -140,11 +146,21 @@ func (r Rule) touches(subject Subject, line Line) bool {
 		return matchSubject(r.Pattern, subject)
 	}
 	for _, words := range line.Commands {
-		if matchCommand(r.Pattern, words) {
+		if matchCommand(r.Pattern, words, true) {
 			return true
 		}
 	}
 	return false
+}
+
+// guardedBy finds a deny or ask rule written for tool itself.
+func guardedBy(rules []Rule, tool string) (Rule, bool) {
+	for _, rule := range rules {
+		if (rule.Effect == Deny || rule.Effect == Ask) && strings.EqualFold(rule.Tool, tool) {
+			return rule, true
+		}
+	}
+	return Rule{}, false
 }
 
 // allowedBy finds the allow rule that lets req run. A command line needs a rule
@@ -177,7 +193,7 @@ func allowedBy(rules []Rule, req Request, line Line) (Rule, bool) {
 
 func commandAllowedBy(rules []Rule, tool string, words []string) (Rule, bool) {
 	for _, rule := range rules {
-		if rule.Effect == Allow && rule.covers(tool) && matchCommand(rule.Pattern, words) {
+		if rule.Effect == Allow && rule.covers(tool) && matchCommand(rule.Pattern, words, false) {
 			return rule, true
 		}
 	}

@@ -1,6 +1,7 @@
 package permission
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -25,15 +26,20 @@ func matchSubject(pattern string, subject Subject) bool {
 }
 
 // matchCommand matches one simple command: "go test:*" matches the commands that
-// start with those words, "git status" only that exact command.
-func matchCommand(pattern string, words []string) bool {
+// start with those words, "git status" only that exact command. byName compares
+// the command by its base name, so "rm" also matches /bin/rm.
+func matchCommand(pattern string, words []string, byName bool) bool {
 	body, prefix := strings.CutSuffix(strings.TrimSpace(pattern), ":*")
 	want := strings.Fields(body)
 	if len(want) == 0 || len(words) < len(want) || !prefix && len(words) != len(want) {
 		return false
 	}
 	for i, word := range want {
-		if words[i] != word {
+		got := words[i]
+		if i == 0 && byName {
+			got, word = filepath.Base(got), filepath.Base(word)
+		}
+		if got != word {
 			return false
 		}
 	}
