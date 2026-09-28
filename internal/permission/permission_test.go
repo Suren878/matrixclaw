@@ -84,6 +84,35 @@ func TestBashGuardRulesHoldWhateverAllows(t *testing.T) {
 	}
 }
 
+func TestSearchesMeetTheRulesOfWhatTheyReach(t *testing.T) {
+	search := func(tool, dir string) Request {
+		return Request{Tool: tool, Subject: Subject{Kind: KindDirectory, Value: dir}}
+	}
+	secrets := []Rule{rule(Deny, "read", "/home/u/secrets/**")}
+	for _, tc := range []struct {
+		name  string
+		req   Request
+		rules []Rule
+		want  Effect
+	}{
+		{"grep above the secrets", search("grep", "/home/u"), secrets, Deny},
+		{"glob from the root", search("glob", "/"), secrets, Deny},
+		{"ls inside the secrets", search("ls", "/home/u/secrets/sub"), secrets, Deny},
+		{"grep beside the secrets", search("grep", "/home/u/project"), secrets, ""},
+		{"a star element", search("grep", "/home/u"), []Rule{rule(Ask, "read", "/home/u/*.env")}, Ask},
+		{"a star element stays one level", search("grep", "/home/u/project"), []Rule{rule(Ask, "read", "/home/u/*.env")}, ""},
+		{"a double star reaches below", search("grep", "/home/u/project"), []Rule{rule(Deny, "read", "/home/u/**/.env")}, Deny},
+		{"an exact path", search("ls", "/home"), []Rule{rule(Deny, "*", "/home/u/.netrc")}, Deny},
+		{"read allows a search inside", search("grep", "/work/sub"), []Rule{rule(Allow, "read", "/work/**")}, Allow},
+		{"allow does not reach down", search("grep", "/"), []Rule{rule(Allow, "read", "/work/**")}, ""},
+		{"grep rules leave ls alone", search("ls", "/home/u"), []Rule{rule(Deny, "grep", "/home/u/secrets/**")}, ""},
+	} {
+		if got := Evaluate(tc.req, tc.rules, nil); got.Effect != tc.want {
+			t.Errorf("%s: verdict = %q, want %q", tc.name, got.Effect, tc.want)
+		}
+	}
+}
+
 func TestPathGlobs(t *testing.T) {
 	for _, tc := range []struct {
 		pattern, path string

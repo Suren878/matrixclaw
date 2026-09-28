@@ -25,6 +25,24 @@ func matchSubject(pattern string, subject Subject) bool {
 	}
 }
 
+// reaches reports whether a path pattern may match dir or a path below it,
+// comparing element by element; an element with "**" may match anything below.
+func reaches(pattern string, dir string) bool {
+	want := strings.Split(strings.TrimSuffix(pattern, "/"), "/")
+	have := strings.Split(strings.TrimSuffix(dir, "/"), "/")
+	for i, elem := range have {
+		switch {
+		case i == len(want):
+			return false
+		case strings.Contains(want[i], "**"):
+			return true
+		case !globMatch(want[i], elem):
+			return false
+		}
+	}
+	return true
+}
+
 // matchCommand matches one simple command: "go test:*" matches the commands that
 // start with those words, "git status" only that exact command. byName compares
 // the command by its base name, so "rm" also matches /bin/rm.

@@ -59,9 +59,13 @@ func (r Rule) wildcard() bool {
 	return pattern == "" || pattern == "*"
 }
 
+// covers reports whether the rule applies to tool; read rules also cover the
+// searches, which read what they find.
 func (r Rule) covers(tool string) bool {
-	return r.Tool == "*" || strings.EqualFold(r.Tool, tool)
+	return r.Tool == "*" || strings.EqualFold(r.Tool, tool) || strings.EqualFold(r.Tool, "read") && searchTools[strings.ToLower(tool)]
 }
+
+var searchTools = map[string]bool{"grep": true, "glob": true, "ls": true}
 
 // Suggestion is the rule an "Always allow" answer saves.
 type Suggestion struct {
@@ -136,10 +140,13 @@ func Evaluate(req Request, rules []Rule, preset []Rule) Verdict {
 	return Verdict{}
 }
 
-// touches reports whether the rule matches the subject or, for a command line,
-// any one of its simple commands.
+// touches reports whether the rule matches the subject, any path a search from
+// a directory subject may reach or, for a command line, any of its simple commands.
 func (r Rule) touches(subject Subject, line Line) bool {
 	if r.wildcard() {
+		return true
+	}
+	if subject.Kind == KindDirectory && reaches(r.Pattern, subject.Value) {
 		return true
 	}
 	if subject.Kind != KindCommand {
