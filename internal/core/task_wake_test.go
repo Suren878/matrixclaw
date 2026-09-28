@@ -188,6 +188,28 @@ func TestMessageToABusySessionSteersByDefault(t *testing.T) {
 	}
 }
 
+func TestSteeringFromAnotherChatDeliversTheRunThere(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	session, run := saveCrashRecoveryRun(t, db, "steered", core.RunStatusRunning, false)
+	steer := core.HandleMessageInput{SessionID: session.ID, Client: "telegram", ExternalKey: "42", DeliveryAddress: telegramAddress, Text: "also check the logs"}
+
+	for range 2 {
+		if accepted, err := app.AcceptRun(context.Background(), steer); err != nil || accepted.Status != core.AcceptRunStatusSteered || accepted.Input.TargetRunID != run.ID {
+			t.Fatalf("accepted = %+v, %v", accepted, err)
+		}
+	}
+
+	deliveries, err := db.ListClientDeliveries(context.Background(), core.ClientDeliveryFilter{RunID: run.ID})
+	if err != nil || len(deliveries) != 1 {
+		t.Fatalf("deliveries = %+v, %v", deliveries, err)
+	}
+	if got := deliveries[0]; got.Type != core.ClientDeliveryTypeRun || got.Client != "telegram" || got.ExternalKey != "42" || string(got.Address) != string(telegramAddress) || got.Status != core.ClientDeliveryStatusPending {
+		t.Fatalf("delivery = %+v", got)
+	}
+}
+
 func TestWakeRunTakesItsEventsBeforeItStarts(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)

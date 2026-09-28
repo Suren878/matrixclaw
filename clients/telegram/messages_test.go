@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Suren878/matrixclaw/internal/core"
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
 )
 
@@ -143,4 +144,34 @@ func (a *oversizedDocumentBotAPI) DownloadFile(context.Context, string) ([]byte,
 func (a *oversizedDocumentBotAPI) SendMessage(_ context.Context, request SendMessageRequest) (SentMessage, error) {
 	a.messages = append(a.messages, request)
 	return SentMessage{}, nil
+}
+
+func TestSteeringARunningTaskIsAcknowledgedAndItsRunDelivered(t *testing.T) {
+	var deliveryQueries []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/messages":
+			_ = json.NewEncoder(w).Encode(core.AcceptRunResult{SessionID: "session-1", Status: core.AcceptRunStatusSteered, Input: &core.SessionInput{ID: "input-1", TargetRunID: "run-1"}})
+		case "/v1/client-deliveries":
+			deliveryQueries = append(deliveryQueries, r.URL.Query().Get("run_id"))
+			_ = json.NewEncoder(w).Encode(core.ClientDeliveriesResponse{})
+		default:
+			http.Error(w, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	api := &approvalBotAPI{}
+	worker := &Worker{api: api, config: Config{BaseURL: server.URL, ClientName: "telegram-test", DaemonHTTPClient: server.Client()}}
+
+	if err := worker.sendUserMessage(context.Background(), chatTarget{kind: telegramTargetChat, chatID: 42, externalKey: "42"}, "also check the logs"); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(api.sent) != 1 || api.sent[0].Text != "Sent to the running task." {
+		t.Fatalf("sent = %+v", api.sent)
+	}
+	if len(deliveryQueries) != 1 || deliveryQueries[0] != "run-1" {
+		t.Fatalf("delivery queries = %q", deliveryQueries)
+	}
 }

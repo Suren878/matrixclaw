@@ -37,6 +37,9 @@ func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptR
 	switch {
 	case err == nil:
 		pending, createErr := c.createPendingSessionInput(ctx, session, active, input, text, parts)
+		if createErr == nil && pending.Mode == BusyInputModeSteer {
+			createErr = c.deliverRunToSteerer(ctx, active, input, text, parts)
+		}
 		if createErr != nil {
 			gate.Unlock()
 			return AcceptRunResult{}, createErr
@@ -87,6 +90,20 @@ func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptR
 	}
 
 	return result, nil
+}
+
+// deliverRunToSteerer delivers the run a message steers to the client it came
+// from as well, unless the run is delivered there already.
+func (c *Core) deliverRunToSteerer(ctx context.Context, run Run, input HandleMessageInput, text string, parts []transcript.MessagePart) error {
+	delivery, ok, err := c.prepareSessionRunDelivery(run, text, parts, input.Client, input.ExternalKey, input.DeliveryAddress)
+	if err != nil || !ok {
+		return err
+	}
+	existing, err := c.store.ListClientDeliveries(ctx, ClientDeliveryFilter{Client: delivery.Client, ExternalKey: delivery.ExternalKey, RunID: run.ID, Type: ClientDeliveryTypeRun, Limit: 1})
+	if err != nil || len(existing) > 0 {
+		return err
+	}
+	return c.store.CreateClientDelivery(ctx, delivery)
 }
 
 func messagePartsHaveUserContent(parts []transcript.MessagePart) bool {

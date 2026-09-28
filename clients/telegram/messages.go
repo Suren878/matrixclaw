@@ -11,6 +11,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/commandcatalog"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
+	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -649,7 +650,15 @@ func (w *Worker) sendUserMessageParts(ctx context.Context, target chatTarget, te
 		}
 		return w.sendText(ctx, target, fmt.Sprintf("Request failed: %v", err))
 	}
-	if err := w.deliverPendingRun(ctx, target, result.SessionID, result.Run.ID); err != nil && ctx.Err() == nil {
+	runID := result.Run.ID
+	if result.Status == core.AcceptRunStatusSteered && result.Input != nil {
+		// The running task reads the message; its answer is delivered here too.
+		if err := w.sendText(ctx, target, "Sent to the running task."); err != nil {
+			return err
+		}
+		runID = result.Input.TargetRunID
+	}
+	if err := w.deliverPendingRun(ctx, target, result.SessionID, runID); err != nil && ctx.Err() == nil {
 		log.Printf("telegram: run delivery lookup failed: %v", err)
 	}
 	return nil
