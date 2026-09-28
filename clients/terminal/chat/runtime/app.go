@@ -213,7 +213,7 @@ func newApp(ctx context.Context, rt *Runtime) *appModel {
 		providerModel:       providerModel,
 		suppressedApprovals: map[string]struct{}{},
 		focus:               appFocusEditor,
-		busyInputMode:       core.BusyInputModeQueue,
+		busyInputMode:       core.BusyInputModeSteer,
 		now:                 time.Now(),
 	}
 }

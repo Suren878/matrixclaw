@@ -13,17 +13,6 @@ import (
 
 const busyInputStatusMessageID = "local:busy-input-status"
 
-func normalizeLocalBusyInputMode(mode core.BusyInputMode) core.BusyInputMode {
-	switch core.BusyInputMode(strings.ToLower(strings.TrimSpace(string(mode)))) {
-	case core.BusyInputModeSteer:
-		return core.BusyInputModeSteer
-	case core.BusyInputModeInterrupt:
-		return core.BusyInputModeInterrupt
-	default:
-		return core.BusyInputModeQueue
-	}
-}
-
 func (m *appModel) handleBusySubmitCommand(content string) (bool, tea.Cmd) {
 	command := strings.TrimSpace(content)
 	if command == "" || !strings.HasPrefix(command, "/") {
@@ -50,7 +39,7 @@ func (m *appModel) handleBusySubmitCommand(content string) (bool, tea.Cmd) {
 	}
 	fields := strings.Fields(command)
 	if len(fields) == 1 || strings.EqualFold(fields[1], "status") {
-		m.showInputStatus(fmt.Sprintf("Busy mode: %s", normalizeLocalBusyInputMode(m.busyInputMode)))
+		m.showInputStatus(fmt.Sprintf("Busy mode: %s", m.busyInputMode))
 		return true, nil
 	}
 	switch strings.ToLower(fields[1]) {

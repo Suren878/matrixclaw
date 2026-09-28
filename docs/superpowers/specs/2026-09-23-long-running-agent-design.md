@@ -624,8 +624,10 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   while the parent waits for events) but never parks the parent's run; a run
   found waiting for approval with a wakeup loses the wakeup and resumes once
   nothing is pending.
-- **Input**: a message without a busy mode steers (TUI and Telegram send
-  none); a queued message for a waiting run steers it too.
+- **Input**: a message without a busy mode steers (Telegram sends none; the
+  TUI sends steer unless `/queue` or `/busy` picks another mode); a queued
+  message for a waiting run steers it too, and messages queued while a run
+  worked become steers that wake it once it waits.
 - **Idle sessions**: a finished background task (a command that exited by
   itself, or any subagent) in an idle top-level session starts a run with
   trigger `wake` (automation budget) whose user message says background work

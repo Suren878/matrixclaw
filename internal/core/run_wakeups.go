@@ -48,6 +48,9 @@ func (c *Core) wakeWaitingRun(ctx context.Context, sessionID string, runID strin
 	case run.Status != RunStatusWaitingEvents:
 		return nil
 	}
+	if err := c.steerQueuedInputs(ctx, run); err != nil {
+		return err
+	}
 	due, err := c.waitOver(ctx, run)
 	if err != nil || !due {
 		return err
@@ -69,6 +72,28 @@ func (c *Core) healApprovalPark(ctx context.Context, run Run) error {
 		return err
 	}
 	return c.startDecidedRun(ctx, run)
+}
+
+// steerQueuedInputs turns messages queued behind a waiting run into steers
+// for it, so that they wake it.
+func (c *Core) steerQueuedInputs(ctx context.Context, run Run) error {
+	inputs, err := c.store.ListPendingSessionInputs(ctx, run.SessionID)
+	if err != nil {
+		return err
+	}
+	for _, input := range inputs {
+		if input.Mode != BusyInputModeQueue {
+			continue
+		}
+		input.Mode = BusyInputModeSteer
+		input.TargetRunID = run.ID
+		input.UpdatedAt = c.now().UTC()
+		if err := c.store.UpdateSessionInput(ctx, input); err != nil {
+			return err
+		}
+		c.publishSessionInputUpdated(input)
+	}
+	return nil
 }
 
 // waitOver reports whether a waiting run has something to go on with.

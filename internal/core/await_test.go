@@ -226,3 +226,25 @@ func TestAwaitReportsTasksThatAlreadyFinished(t *testing.T) {
 		t.Fatalf("run-less = %+v, %v", runless, err)
 	}
 }
+
+func TestMessageQueuedWhileTheRunWorkedWakesItOnceItAwaits(t *testing.T) {
+	t.Parallel()
+	db := openScenarioStore(t)
+	hooked := &parkHookStore{SQLiteStore: db}
+	s, _ := newAwaitScenario(t, hooked, db, func(string) string { return `{}` })
+	hooked.onPark = func() {
+		accepted, err := s.app.AcceptRun(context.Background(), core.HandleMessageInput{SessionID: s.session.ID, Text: "also check the logs", BusyMode: core.BusyInputModeQueue})
+		if err != nil || accepted.Status != core.AcceptRunStatusQueued {
+			t.Errorf("accepted = %+v, %v", accepted, err)
+		}
+	}
+
+	if err := s.app.ExecuteRun(context.Background(), s.run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	waitRunStatus(t, db, s.run.ID, core.RunStatusCompleted)
+	if got := s.woken(t); !strings.Contains(got, "also check the logs") {
+		t.Fatalf("the woken request sends %q", got)
+	}
+}

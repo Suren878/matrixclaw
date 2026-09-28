@@ -22,14 +22,14 @@ func (m *appModel) handleSubmit(msg surfaceinput.SubmitMsg) tea.Cmd {
 		m.setBusy(false)
 		return nil
 	}
+	mode := core.BusyInputMode("")
+	if m.busy {
+		mode = m.busyInputMode
+	}
 	m.err = ""
 	m.setBusy(true)
 	if m.chat != nil {
 		m.chat.ScrollToBottom()
-	}
-	mode := core.BusyInputMode("")
-	if m.busy {
-		mode = normalizeLocalBusyInputMode(m.busyInputMode)
 	}
 	return m.sendMessageCmd(msg.Content, msg.Attachments, mode)
 }
