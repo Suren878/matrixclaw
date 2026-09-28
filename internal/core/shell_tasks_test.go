@@ -131,7 +131,7 @@ func TestBackgroundTaskOutputWaitsAndFilters(t *testing.T) {
 		t.Fatalf("result = %+v, %v", result, err)
 	}
 	out, err := app.ReadTaskOutput(context.Background(), taskCall(session), tools.TaskRead{TaskID: result.TaskID, Wait: 10 * time.Second, Filter: "^FAIL", Limit: 100})
-	if err != nil || out.Text != "FAIL 2\nFAIL 3" || out.Status != "failed" || out.ExitCode == nil || *out.ExitCode != 1 {
+	if err != nil || out.Text != "FAIL 2\nFAIL 3" || out.Status != "failed" || out.ExitCode == nil || *out.ExitCode != 1 || out.Running {
 		t.Fatalf("output = %+v, %v", out, err)
 	}
 	if task, _ := db.GetTask(context.Background(), result.TaskID); task.OutputCursor == 0 {
@@ -155,6 +155,9 @@ func TestStoppedTaskIsCanceledWithoutAnEvent(t *testing.T) {
 	result, err := app.RunCommand(context.Background(), taskCall(session), command)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if out, err := app.ReadTaskOutput(context.Background(), taskCall(session), tools.TaskRead{TaskID: result.TaskID, Wait: 10 * time.Millisecond}); err != nil || !out.Running {
+		t.Fatalf("output of a running task = %+v, %v", out, err)
 	}
 
 	info, err := app.StopTask(context.Background(), taskCall(session), result.TaskID)

@@ -111,3 +111,38 @@ func TestRejectedCallStreakSurvivesAnApprovalPark(t *testing.T) {
 		t.Fatalf("outcome = %+v last checkpoint counters = %+v", outcome, last)
 	}
 }
+
+func TestRepeatedAwaitsOnALongTaskAreNotALoop(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["await"] = awaitTool(f, "task_a")
+	model := agenttest.NewScriptedModel(append(toolSteps(6, "await"), text("Still building."))...)
+
+	outcome := run(t, f, model)
+	for outcome.Status == agent.StatusWaitingEvents {
+		f.Clock = outcome.Counters.Await.Until
+		outcome = resume(t, f, model, outcome.Counters)
+	}
+
+	if outcome.StopReason != agent.StopDone || outcome.Assistant.Content != "Still building." {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+	for _, note := range engineNotes(f.Journal.Messages) {
+		if strings.Contains(note.Content, "repeating") {
+			t.Fatalf("a loop warning after awaits: %q", note.Content)
+		}
+	}
+}
+
+func TestQuietWaitsForARunningTaskAreNotALoop(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["task_output"] = func(tools.Call) tools.Result {
+		return tools.Result{Content: "(no new output)\n\n(task running)", Waiting: true}
+	}
+	model := agenttest.NewScriptedModel(append(toolSteps(6, "task_output"), text("Still building."))...)
+
+	outcome := run(t, f, model)
+
+	if outcome.StopReason != agent.StopDone || len(engineNotes(f.Journal.Messages)) != 0 {
+		t.Fatalf("outcome = %+v notes = %+v", outcome, engineNotes(f.Journal.Messages))
+	}
+}

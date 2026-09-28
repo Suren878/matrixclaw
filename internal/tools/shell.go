@@ -213,7 +213,8 @@ func (e *taskOutputExecutor) Execute(ctx context.Context, call Call) (Result, er
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Content: taskOutputText(out), Metadata: out.TaskInfo, Status: ResultStatusNeutral}, nil
+	waiting := wait > 0 && out.Running && out.Text == "" && out.Skipped == 0
+	return Result{Content: taskOutputText(out), Metadata: out.TaskInfo, Status: ResultStatusNeutral, Waiting: waiting}, nil
 }
 
 func taskOutputText(out TaskOutput) string {

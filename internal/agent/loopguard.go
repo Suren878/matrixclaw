@@ -19,8 +19,12 @@ const (
 )
 
 // observeCall records a finished call; a call whose name, arguments and result
-// match the previous one extends the no-progress streak.
+// match the previous one extends the no-progress streak. Waiting on a task
+// that is still running is not a repeat.
 func (c *Counters) observeCall(name string, args []byte, result tools.Result) {
+	if result.Await != nil || result.Waiting {
+		return
+	}
 	hash := callHash(name, args, result)
 	if hash == c.LoopHash {
 		c.LoopRepeats++

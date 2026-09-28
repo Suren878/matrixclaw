@@ -149,6 +149,9 @@ type Result struct {
 	// Await parks the run once its batch is done, until one of the tasks
 	// finishes, the user writes or Until passes.
 	Await *Await `json:"await,omitempty"`
+	// Waiting marks a result that only reports a task still running after the
+	// call waited for it; the no-progress guard skips it.
+	Waiting bool `json:"waiting,omitempty"`
 }
 
 // Await is what a run waits for: any of TaskIDs, or any background task of its

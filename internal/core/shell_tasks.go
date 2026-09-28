@@ -288,7 +288,7 @@ func (c *Core) ReadTaskOutput(ctx context.Context, call tools.Call, read tools.T
 			return tools.TaskOutput{}, err
 		}
 	}
-	out := tools.TaskOutput{TaskInfo: taskInfo(task)}
+	out := tools.TaskOutput{TaskInfo: taskInfo(task), Running: task.FinishedAt == nil}
 	if task.Kind != TaskKindShell {
 		out.Text = firstNonEmpty(task.Summary, task.Error)
 		return out, nil

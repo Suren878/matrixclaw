@@ -104,6 +104,25 @@ func TestTaskOutputShowsNewOutputAndStatus(t *testing.T) {
 	}
 }
 
+func TestOnlyAQuietWaitOnARunningTaskIsMarkedWaiting(t *testing.T) {
+	running := TaskInfo{TaskID: "task_1", Status: "running"}
+	quiet := &fakeShellTasks{output: TaskOutput{TaskInfo: running, Running: true}}
+	if waited := runShellTool(t, quiet, "task_output", `{"id":"task_1","wait_seconds":600}`); !waited.Waiting {
+		t.Fatalf("a quiet wait = %+v", waited)
+	}
+	if polled := runShellTool(t, quiet, "task_output", `{"id":"task_1"}`); polled.Waiting {
+		t.Fatalf("a poll without waiting = %+v", polled)
+	}
+	talking := &fakeShellTasks{output: TaskOutput{TaskInfo: running, Running: true, Text: "ok 12/40\n"}}
+	if read := runShellTool(t, talking, "task_output", `{"id":"task_1","wait_seconds":600}`); read.Waiting {
+		t.Fatalf("new output = %+v", read)
+	}
+	done := &fakeShellTasks{output: TaskOutput{TaskInfo: TaskInfo{TaskID: "task_1", Status: "completed"}}}
+	if ended := runShellTool(t, done, "task_output", `{"id":"task_1","wait_seconds":600}`); ended.Waiting {
+		t.Fatalf("a finished task = %+v", ended)
+	}
+}
+
 func TestTaskKillAsksThenStops(t *testing.T) {
 	tasks := &fakeShellTasks{}
 	registry := NewRegistry(NewShellExecutors(tasks)...)

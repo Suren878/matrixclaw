@@ -60,10 +60,12 @@ type TaskInfo struct {
 }
 
 // TaskOutput is a task's output since the last read. Skipped counts bytes
-// dropped from the file before Text; More is set when more output is waiting.
+// dropped from the file before Text; More is set when more output is waiting;
+// Running is set while the task has not finished.
 type TaskOutput struct {
 	TaskInfo
 	Text    string
 	Skipped int64
 	More    bool
+	Running bool
 }
