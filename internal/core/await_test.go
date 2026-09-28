@@ -248,3 +248,79 @@ func TestMessageQueuedWhileTheRunWorkedWakesItOnceItAwaits(t *testing.T) {
 		t.Fatalf("the woken request sends %q", got)
 	}
 }
+
+func TestCancelingAWaitingRunStopsItsTasksWithoutWakingTheSession(t *testing.T) {
+	t.Parallel()
+	db := openScenarioStore(t)
+	app := core.New(db)
+	starter := &executingRunStarter{app: app}
+	app.WithSessionFiles(t.TempDir()).WithRunStarter(starter)
+	app.WithTools(tools.NewRegistry(core.AwaitToolExecutors(app)...))
+	session, run := saveCrashRecoveryRun(t, db, "cancel-waiting", core.RunStatusAccepted, false)
+	ctx := context.Background()
+	started, err := app.RunCommand(ctx, tools.Call{SessionID: session.ID, RunID: run.ID}, tools.Command{Command: "sleep 30", Background: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = app.CancelTask(context.Background(), started.TaskID) })
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		if toolResultContent(request, "call_await") == "" {
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call_await", Name: "await", Arguments: json.RawMessage(`{"ids":["` + started.TaskID + `"]}`)}}}, nil
+		}
+		return providers.Response{Text: "Done."}, nil
+	})})
+	if err := app.ExecuteRun(ctx, run.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusWaitingEvents)
+	now := time.Now().UTC()
+	if err := db.CreateTask(ctx, core.Task{ID: "task_other", SessionID: session.ID, RunID: run.ID, Kind: core.TaskKindShell, Status: core.TaskStatusRunning, Command: "make", Background: true, StartedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	code := 0
+	if _, err := db.FinishTask(ctx, "task_other", core.TaskStatusCompleted, &code, "", now); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := app.CancelRun(ctx, run.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.RecoverTaskEvents(ctx); err != nil {
+		t.Fatal(err)
+	}
+	starter.wait(t)
+
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCanceled)
+	if task, err := db.GetTask(ctx, started.TaskID); err != nil || task.Status != core.TaskStatusCanceled {
+		t.Fatalf("awaited task = %+v, %v", task, err)
+	}
+	if _, err := db.GetRunWakeup(ctx, run.ID); err != core.ErrNotFound {
+		t.Fatalf("wakeup after cancel: %v", err)
+	}
+	if runs, err := db.ListSessionRuns(ctx, session.ID, 0); err != nil || len(runs) != 1 {
+		t.Fatalf("runs = %+v, %v", runs, err)
+	}
+}
+
+func TestCancelingARunWaitingForApprovalStartsTheQueuedMessage(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	starter := &recordingRunStarter{}
+	app.WithRunStarter(starter)
+	session, run := saveCrashRecoveryRun(t, db, "cancel-approval", core.RunStatusWaitingApproval, false)
+	ctx := context.Background()
+	queued, err := app.AcceptRun(ctx, core.HandleMessageInput{SessionID: session.ID, Text: "next task", BusyMode: core.BusyInputModeQueue})
+	if err != nil || queued.Status != core.AcceptRunStatusQueued {
+		t.Fatalf("queued = %+v, %v", queued, err)
+	}
+
+	if _, err := app.CancelRun(ctx, run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	runs, err := db.ListSessionRuns(ctx, session.ID, 0)
+	if err != nil || len(runs) != 2 || starter.count(runs[0].ID) != 1 {
+		t.Fatalf("runs = %+v, starts = %v, %v", runs, starter.ids, err)
+	}
+}

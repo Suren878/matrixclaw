@@ -429,6 +429,23 @@ func (c *Core) stopSessionTasks(ctx context.Context, sessionID string) error {
 	return nil
 }
 
+// stopRunCommands stops the background commands a canceled run started.
+func (c *Core) stopRunCommands(ctx context.Context, run Run) error {
+	tasks, err := c.store.ListTasks(ctx, TaskFilter{SessionID: run.SessionID, Kind: TaskKindShell, Statuses: []TaskStatus{TaskStatusRunning}})
+	if err != nil {
+		return err
+	}
+	for _, task := range tasks {
+		if task.RunID != run.ID {
+			continue
+		}
+		if _, err := c.cancelTask(ctx, task, "its run was canceled"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (c *Core) taskOutputPath(sessionID string, taskID string) (string, error) {
 	dir, err := c.sessionDir(sessionID)
 	if err != nil {

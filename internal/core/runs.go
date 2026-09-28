@@ -252,6 +252,7 @@ func (c *Core) CancelRun(ctx context.Context, runID string) (Run, error) {
 	if subagentRunStatusTerminal(run.Status) {
 		return run, nil
 	}
+	parked := (run.Status == RunStatusWaitingEvents || run.Status == RunStatusWaitingApproval) && !c.runIsActive(run.ID)
 	stopped, err := c.cancelRunRecords(ctx, &run)
 	if err != nil {
 		return Run{}, err
@@ -259,12 +260,18 @@ func (c *Core) CancelRun(ctx context.Context, runID string) (Run, error) {
 	for _, id := range stopped {
 		c.cancelActiveRun(id)
 	}
+	if parked {
+		// No execution of the run is left to start what waits behind it.
+		if _, err := c.startNextPendingSessionInput(ctx, run.SessionID); err != nil {
+			return run, err
+		}
+	}
 	return run, nil
 }
 
 // cancelRunRecords marks the run and its active subagent children canceled before
-// any of them is stopped, so a stopped child is not kept for recovery. It returns
-// the ids of the runs to stop.
+// any of them is stopped, so a stopped child is not kept for recovery, then stops
+// the commands they run in the background. It returns the ids of the runs to stop.
 func (c *Core) cancelRunRecords(ctx context.Context, run *Run) ([]string, error) {
 	children, err := c.cancelSubagentChildren(ctx, *run)
 	if err != nil {
@@ -274,6 +281,12 @@ func (c *Core) cancelRunRecords(ctx context.Context, run *Run) ([]string, error)
 		return nil, err
 	}
 	if err := c.setRunStatus(ctx, run, RunStatusCanceled, "canceled by user"); err != nil {
+		return nil, err
+	}
+	if err := c.store.DeleteRunWakeup(ctx, run.ID); err != nil {
+		return nil, err
+	}
+	if err := c.stopRunCommands(ctx, *run); err != nil {
 		return nil, err
 	}
 	return append([]string{run.ID}, children...), nil

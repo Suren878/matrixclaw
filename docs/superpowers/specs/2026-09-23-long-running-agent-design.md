@@ -623,7 +623,9 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   subagent's approval is asked in its parent's session (Telegram shows it
   while the parent waits for events) but never parks the parent's run; a run
   found waiting for approval with a wakeup loses the wakeup and resumes once
-  nothing is pending.
+  nothing is pending. Canceling a run drops its wakeup and stops the
+  background commands and subagents it started; canceling a parked run
+  starts the next queued message, and tasks of a canceled run wake nothing.
 - **Input**: a message without a busy mode steers (Telegram sends none; the
   TUI sends steer unless `/queue` or `/busy` picks another mode); a queued
   message for a waiting run steers it too, and messages queued while a run

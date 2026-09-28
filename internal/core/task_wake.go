@@ -84,10 +84,12 @@ func (c *Core) prepareWake(ctx context.Context, sessionID string, finished *Task
 	}
 	wakes := false
 	for _, task := range events {
-		wakes = wakes || taskWakesSession(task)
+		if wakes, err = c.taskWakesSession(ctx, task); err != nil || wakes {
+			break
+		}
 	}
-	if !wakes {
-		return nil, nil, nil
+	if err != nil || !wakes {
+		return nil, nil, err
 	}
 	runs, err := c.store.ListSessionRuns(ctx, session.ID, maxWakeChain+1)
 	if err != nil {
@@ -106,8 +108,11 @@ func (c *Core) prepareWake(ctx context.Context, sessionID string, finished *Task
 		last = runs[chain]
 	}
 	if chain >= maxWakeChain {
-		if finished == nil || !taskWakesSession(*finished) {
+		if finished == nil {
 			return nil, nil, nil
+		}
+		if wakes, err := c.taskWakesSession(ctx, *finished); err != nil || !wakes {
+			return nil, nil, err
 		}
 		text := fmt.Sprintf("%s finished. This session has continued on its own %d times in a row, so it waits for your message before it goes on.", taskLabel(*finished), maxWakeChain)
 		return nil, &wakeNotice{session: session, last: last, text: text}, nil
@@ -147,13 +152,17 @@ func (c *Core) journalWakeEvents(ctx context.Context, run Run, events []Task) er
 }
 
 // taskWakesSession reports whether a finished task starts a run: a command
-// that ended by itself or a subagent; a stopped or lost command waits for the
-// session's next run.
-func taskWakesSession(task Task) bool {
-	if task.Kind == TaskKindSubagent {
-		return true
+// that ended by itself or a subagent, unless the run that started it was
+// canceled; a stopped or lost command waits for the session's next run.
+func (c *Core) taskWakesSession(ctx context.Context, task Task) (bool, error) {
+	if task.Kind != TaskKindSubagent && task.Status != TaskStatusCompleted && task.Status != TaskStatusFailed {
+		return false, nil
 	}
-	return task.Status == TaskStatusCompleted || task.Status == TaskStatusFailed
+	canceled, err := c.isRunCanceled(ctx, task.RunID)
+	if errors.Is(err, ErrNotFound) {
+		return true, nil
+	}
+	return !canceled, err
 }
 
 func taskLabel(task Task) string {
