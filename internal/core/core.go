@@ -40,6 +40,7 @@ type Core struct {
 	sessionFiles    string
 	compactProvider string
 	compactModel    string
+	windowCap       int
 	// compactUnavailable is set while the compact model cannot be resolved,
 	// so the failure is logged once.
 	compactUnavailable atomic.Bool

@@ -48,6 +48,9 @@ type DaemonConfig struct {
 	AutostartOnBoot bool               `json:"autostart_on_boot"`
 	Budgets         RunBudgetsConfig   `json:"budgets,omitzero"`
 	CompactModel    CompactModelConfig `json:"compact_model,omitzero"`
+	// ContextWindowCap bounds every model's context window in tokens; 0 keeps
+	// the default of 200000. Set it to the model's window to disable the cap.
+	ContextWindowCap int `json:"context_window_cap,omitempty"`
 }
 
 // RunBudgetsConfig overrides the built-in run budget per trigger.

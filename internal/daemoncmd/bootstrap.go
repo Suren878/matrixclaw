@@ -32,6 +32,7 @@ type bootstrapConfig struct {
 	ExternalAgents setup.ModulesConfig
 	Budgets        core.RunBudgets
 	CompactModel   setup.CompactModelConfig
+	WindowCap      int
 }
 
 func loadBootstrap() (bootstrapConfig, error) {
@@ -76,6 +77,7 @@ func loadBootstrap() (bootstrapConfig, error) {
 		}
 		cfg.Budgets = budgets
 		cfg.CompactModel = setupCfg.Daemon.CompactModel
+		cfg.WindowCap = setupCfg.Daemon.ContextWindowCap
 
 		if err := setup.ImportDaemonEnvironmentFile(service.Path(), setupCfg); err != nil {
 			return bootstrapConfig{}, fmt.Errorf("load setup daemon environment %s: %w", setup.DaemonEnvironmentFilePath(service.Path()), err)
