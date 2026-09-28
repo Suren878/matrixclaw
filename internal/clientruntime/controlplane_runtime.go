@@ -767,3 +767,27 @@ func (r ControlplaneRuntime) DeleteMCPServer(ctx context.Context, serverID strin
 	}
 	return client.DeleteMCPServer(ctx, serverID)
 }
+
+func (r ControlplaneRuntime) SessionTasks(ctx context.Context, sessionID string) ([]core.Task, error) {
+	client, err := r.client("")
+	if err != nil {
+		return nil, err
+	}
+	return client.SessionTasks(ctx, sessionID)
+}
+
+func (r ControlplaneRuntime) TaskDetail(ctx context.Context, taskID string) (core.TaskDetailResponse, error) {
+	client, err := r.client("")
+	if err != nil {
+		return core.TaskDetailResponse{}, err
+	}
+	return client.TaskDetail(ctx, taskID)
+}
+
+func (r ControlplaneRuntime) CancelTask(ctx context.Context, taskID string) (core.Task, error) {
+	client, err := r.client("")
+	if err != nil {
+		return core.Task{}, err
+	}
+	return client.CancelTask(ctx, taskID)
+}

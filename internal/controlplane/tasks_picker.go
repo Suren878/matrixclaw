@@ -7,13 +7,26 @@ import (
 	"github.com/Suren878/matrixclaw/internal/automation"
 )
 
-func (d *Dispatcher) tasksPicker(ctx context.Context) (Result, error) {
+// tasksPicker lists the bound session's background tasks, then the scheduled tasks.
+func (d *Dispatcher) tasksPicker(ctx context.Context, externalKey string) (Result, error) {
+	if d.automation == nil && d.tasks == nil {
+		return unsupportedRuntime("tasks"), nil
+	}
+	items, err := d.backgroundTaskItems(ctx, externalKey)
+	if err != nil {
+		return Result{}, err
+	}
+	if d.automation == nil {
+		if len(items) == 0 {
+			return Result{Handled: true, Text: "No background tasks."}, nil
+		}
+		return Result{Handled: true, Picker: NewPickerData(PickerTasks, "Tasks").Items(items...).Ptr()}, nil
+	}
 	jobs, err := d.automation.ListAutomationJobs(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 	active, closed := splitAutomationJobs(jobs)
-	items := make([]PickerItem, 0, len(active)+3)
 	for _, job := range active {
 		items = append(items, PickerItem{
 			ID:      "open:" + job.ID,

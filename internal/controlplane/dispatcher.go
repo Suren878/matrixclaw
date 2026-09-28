@@ -220,6 +220,7 @@ type Dispatcher struct {
 	usage          UsageRuntime
 	budget         BudgetRuntime
 	todo           TodoRuntime
+	tasks          BackgroundTaskRuntime
 	memory         MemoryRuntime
 	search         SearchRuntime
 	storage        StorageRuntime
@@ -257,6 +258,7 @@ func New(runtime any, workingDir string) *Dispatcher {
 		d.usage, _ = runtime.(UsageRuntime)
 		d.budget, _ = runtime.(BudgetRuntime)
 		d.todo, _ = runtime.(TodoRuntime)
+		d.tasks, _ = runtime.(BackgroundTaskRuntime)
 		d.memory, _ = runtime.(MemoryRuntime)
 		d.search, _ = runtime.(SearchRuntime)
 		d.storage, _ = runtime.(StorageRuntime)
@@ -337,4 +339,11 @@ func (d *Dispatcher) Handle(ctx context.Context, externalKey string, text string
 	default:
 		return Result{Handled: true, Text: "Unknown command.\n\n" + HelpText()}, nil
 	}
+}
+
+// BackgroundTaskRuntime reads and stops the background tasks of sessions.
+type BackgroundTaskRuntime interface {
+	SessionTasks(ctx context.Context, sessionID string) ([]core.Task, error)
+	TaskDetail(ctx context.Context, taskID string) (core.TaskDetailResponse, error)
+	CancelTask(ctx context.Context, taskID string) (core.Task, error)
 }

@@ -3,12 +3,15 @@ package controlplane
 import "context"
 
 func (d *Dispatcher) handleTasks(ctx context.Context, externalKey string, args string) (Result, error) {
+	step, rest := firstCommandStep(args)
+	switch step {
+	case "":
+		return d.tasksPicker(ctx, externalKey)
+	case "bg":
+		return d.handleBackgroundTask(ctx, externalKey, rest)
+	}
 	if d.automation == nil {
 		return unsupportedRuntime("tasks"), nil
-	}
-	step, rest := firstCommandStep(args)
-	if step == "" {
-		return d.tasksPicker(ctx)
 	}
 	switch step {
 	case "add":
@@ -18,7 +21,7 @@ func (d *Dispatcher) handleTasks(ctx context.Context, externalKey string, args s
 	case "menu":
 		jobID, _ := firstCommandToken(rest)
 		if jobID == "" {
-			return d.tasksPicker(ctx)
+			return d.tasksPicker(ctx, externalKey)
 		}
 		return d.taskActionsPicker(ctx, jobID)
 	case "pause":
@@ -88,6 +91,6 @@ func (d *Dispatcher) handleTasks(ctx context.Context, externalKey string, args s
 		}
 		return Result{Handled: true, Text: "Task started: " + fire.RunID}, nil
 	default:
-		return Result{Handled: true, Text: "Usage:\n/tasks\n/tasks add once 2026-04-26 16:00 -- prompt\n/tasks add cron \"0 10 1 * *\" -- prompt\n/tasks complete <id>\n/tasks delete <id>\n/tasks run <id>"}, nil
+		return Result{Handled: true, Text: "Usage:\n/tasks\n/tasks bg <id> [output|stop]\n/tasks add once 2026-04-26 16:00 -- prompt\n/tasks add cron \"0 10 1 * *\" -- prompt\n/tasks complete <id>\n/tasks delete <id>\n/tasks run <id>"}, nil
 	}
 }

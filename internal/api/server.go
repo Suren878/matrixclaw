@@ -168,4 +168,5 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/v1/memory", s.handleMemory)
 	s.mux.HandleFunc("/v1/messages", s.handleMessages)
 	s.mux.HandleFunc("/v1/runs/", s.handleRunByID)
+	s.mux.HandleFunc("/v1/tasks/", s.handleTaskByID)
 }

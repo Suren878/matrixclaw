@@ -60,6 +60,7 @@ func (s *Server) handleSessionByID(w http.ResponseWriter, r *http.Request) {
 		{suffix: "/usage", handle: s.handleSessionUsage},
 		{suffix: "/budget", handle: s.handleSessionBudget},
 		{suffix: "/todo", handle: s.handleSessionTodo},
+		{suffix: "/tasks", handle: s.handleSessionTasks},
 		{suffix: "/compact", handle: s.handleSessionCompact},
 		{suffix: "/clear", handle: s.handleSessionClear},
 		{suffix: "/system-message", handle: s.handleSessionSystemMessage},

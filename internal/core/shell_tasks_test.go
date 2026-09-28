@@ -288,3 +288,36 @@ func TestNativeRunSeesFinishedAndRunningTasks(t *testing.T) {
 		t.Fatalf("task_done = %+v, %v", done, err)
 	}
 }
+
+func TestUserStopsATaskAndTheSessionIsTold(t *testing.T) {
+	t.Parallel()
+	app, db, session, _ := newTaskCore(t)
+	command := foreground("echo up; sleep 30")
+	command.Background = true
+	result, err := app.RunCommand(context.Background(), taskCall(session), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, err := app.ListSessionTasks(context.Background(), session.ID)
+	if err != nil || len(listed) != 1 || listed[0].ID != result.TaskID {
+		t.Fatalf("listed = %+v, %v", listed, err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if detail, err := app.TaskDetail(context.Background(), result.TaskID); err == nil && detail.OutputTail == "up\n" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the task wrote no output")
+		}
+	}
+
+	task, err := app.CancelTask(context.Background(), result.TaskID)
+	if err != nil || task.Status != core.TaskStatusCanceled {
+		t.Fatalf("cancel = %+v, %v", task, err)
+	}
+	waitProcessGone(t, task.PID)
+	events, err := db.ListTasks(context.Background(), core.TaskFilter{SessionID: session.ID, Undelivered: true})
+	if err != nil || len(events) != 1 || events[0].Error != "stopped by the user" {
+		t.Fatalf("events = %+v, %v", events, err)
+	}
+}

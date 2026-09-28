@@ -68,3 +68,19 @@ type TaskFilter struct {
 	Undelivered bool
 	Limit       int
 }
+
+// SessionTasksResponse lists a session's background tasks.
+type SessionTasksResponse struct {
+	Tasks []Task `json:"tasks"`
+}
+
+// TaskResponse carries one task.
+type TaskResponse struct {
+	Task Task `json:"task"`
+}
+
+// TaskDetailResponse is a task and the end of its output.
+type TaskDetailResponse struct {
+	Task       Task   `json:"task"`
+	OutputTail string `json:"output_tail,omitempty"`
+}
