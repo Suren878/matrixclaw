@@ -116,7 +116,7 @@ type Verdict struct {
 
 // Evaluate applies rules to req: deny rules first, then ask rules, then allow
 // rules; preset rules are consulted only when none of those decided. A risky
-// command line asks whenever a deny or ask rule names its tool.
+// command line asks whenever a deny or ask rule may catch its tool.
 func Evaluate(req Request, rules []Rule, preset []Rule) Verdict {
 	var line Line
 	if req.Subject.Kind == KindCommand {
@@ -162,10 +162,11 @@ func (r Rule) touches(subject Subject, line Line) bool {
 	return false
 }
 
-// Guard finds a deny or ask rule written for tool itself.
+// Guard finds a deny or ask rule that may catch some calls of tool: one for the
+// tool itself or one with a pattern for every tool.
 func Guard(rules []Rule, tool string) (Rule, bool) {
 	for _, rule := range rules {
-		if (rule.Effect == Deny || rule.Effect == Ask) && strings.EqualFold(rule.Tool, tool) {
+		if (rule.Effect == Deny || rule.Effect == Ask) && (strings.EqualFold(rule.Tool, tool) || rule.Tool == "*" && !rule.wildcard()) {
 			return rule, true
 		}
 	}

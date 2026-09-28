@@ -34,13 +34,17 @@ type ResearchRequest struct {
 	Browser    string   `json:"browser,omitempty"`
 	Freshness  string   `json:"freshness,omitempty"`
 	Async      string   `json:"async,omitempty"`
+	// RequireURLCheck fetches a URL only through the context's URL check (see
+	// WithURLCheck), so a job resumed without one fetches nothing.
+	RequireURLCheck bool `json:"require_url_check,omitempty"`
 }
 
 type AskRequest struct {
-	ResearchID string `json:"research_id"`
-	Question   string `json:"question"`
-	Freshness  string `json:"freshness,omitempty"`
-	Browser    string `json:"browser,omitempty"`
+	ResearchID      string `json:"research_id"`
+	Question        string `json:"question"`
+	Freshness       string `json:"freshness,omitempty"`
+	Browser         string `json:"browser,omitempty"`
+	RequireURLCheck bool   `json:"require_url_check,omitempty"`
 }
 
 type StatusRequest struct {
@@ -57,6 +61,8 @@ func (r *ResearchRequest) UnmarshalJSON(data []byte) error {
 		Browser    any      `json:"browser,omitempty"`
 		Freshness  string   `json:"freshness,omitempty"`
 		Async      any      `json:"async,omitempty"`
+
+		RequireURLCheck bool `json:"require_url_check,omitempty"`
 	}
 	var input wire
 	if err := json.Unmarshal(data, &input); err != nil {
@@ -70,6 +76,7 @@ func (r *ResearchRequest) UnmarshalJSON(data []byte) error {
 	r.Browser = optionString(input.Browser)
 	r.Freshness = input.Freshness
 	r.Async = optionString(input.Async)
+	r.RequireURLCheck = input.RequireURLCheck
 	return nil
 }
 

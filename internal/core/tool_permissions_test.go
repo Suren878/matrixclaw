@@ -75,6 +75,25 @@ func (webTool) PermissionSubject(tools.Call) permission.Subject {
 	return permission.Subject{Kind: permission.KindDomain, Value: "docs.example"}
 }
 
+// researchTool fetches search results, one of them from evil.example.
+type researchTool struct{}
+
+func (researchTool) Spec() tools.Spec {
+	spec := recoveryToolSpec("web_research", tools.EffectReadOnly)
+	spec.Category = tools.CategoryWeb
+	return spec
+}
+
+func (researchTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
+	if call.Recheck == nil || !call.Guarded {
+		return tools.Result{Content: "unguarded"}, nil
+	}
+	if err := call.Recheck(ctx, permission.Subject{Kind: permission.KindDomain, Value: "evil.example"}); err != nil {
+		return tools.Result{Content: "skipped: " + err.Error()}, nil
+	}
+	return tools.Result{Content: "researched"}, nil
+}
+
 // permissionCore has the real file tools and a fake bash over a temp working directory.
 func permissionCore(t *testing.T) (*core.Core, *store.SQLiteStore, *commandTool, string) {
 	t.Helper()
@@ -93,7 +112,7 @@ func permissionCore(t *testing.T) (*core.Core, *store.SQLiteStore, *commandTool,
 		}
 	}
 	bash := &commandTool{}
-	registry := tools.NewCoreReadOnlyRegistry(tools.NewWriteExecutor(), bash, webTool{})
+	registry := tools.NewCoreReadOnlyRegistry(tools.NewWriteExecutor(), bash, webTool{}, researchTool{})
 	app.WithTools(registry)
 	return app, db, bash, dir
 }
@@ -409,5 +428,24 @@ func TestGrepDoesNotFollowALinkToADeniedFile(t *testing.T) {
 
 	if got := resultText(executeTool(t, app, session.ID, "grep", `{"pattern":"hunter2","path":"public"}`, false)); strings.Contains(got, "hunter2") {
 		t.Fatalf("grep read through the link: %q", got)
+	}
+}
+
+func TestWebFetchRulesCoverEveryURLFetch(t *testing.T) {
+	app, db, _, dir := permissionCore(t)
+	session := permissionSession(t, db, "session_research", dir, core.PermissionModeFullAuto, "")
+	if got := resultText(executeTool(t, app, session.ID, "web_research", `{}`, false)); got != "unguarded" {
+		t.Fatalf("research without rules = %q", got)
+	}
+	rule, err := app.AddPermissionRule(context.Background(), session.ID, core.PermissionRuleRequest{Tool: "web_research", Pattern: "Evil.Example", Effect: permission.Deny, Scope: permission.ScopeSession})
+	if err != nil || rule.String() != "web_fetch: evil.example" {
+		t.Fatalf("rule = %s err = %v", rule.String(), err)
+	}
+	if got := resultText(executeTool(t, app, session.ID, "web_research", `{}`, false)); got != "skipped: blocked by rule web_fetch: evil.example" {
+		t.Fatalf("guarded research = %q", got)
+	}
+	saveRule(t, db, "rule_web", permission.Rule{Tool: "web_fetch", Effect: permission.Deny, SessionID: session.ID})
+	if got := resultText(executeTool(t, app, session.ID, "web_research", `{}`, false)); got != "Blocked by rule web_fetch" {
+		t.Fatalf("research under a whole-tool deny = %q", got)
 	}
 }

@@ -193,6 +193,8 @@ func (e *Engine) Ask(ctx context.Context, request AskRequest) (ResearchResult, e
 		Browser:    request.Browser,
 		Freshness:  firstNonEmpty(request.Freshness, "auto"),
 		Async:      "false",
+
+		RequireURLCheck: request.RequireURLCheck,
 	}
 	job, err := e.createJob(ctx, request.ResearchID, "followup", researchRequest)
 	if err != nil {
@@ -606,6 +608,9 @@ func (e *Engine) executeResearch(ctx context.Context, session ResearchSession, r
 func (e *Engine) readSource(ctx context.Context, researchID string, source *Source, request ResearchRequest) (string, []string) {
 	var warnings []string
 	var text string
+	if err := checkURL(ctx, source.URL, request.RequireURLCheck); err != nil {
+		return "", []string{"skipped " + source.URL + ": " + err.Error()}
+	}
 	if e.fetcher != nil {
 		page, err := e.fetcher.Fetch(ctx, source.URL, 80_000)
 		if err != nil {

@@ -75,7 +75,8 @@ func TestBashGuardRulesHoldWhateverAllows(t *testing.T) {
 		{"sudo git push", []Rule{rule(Ask, "bash", "git push:*")}, full, Ask},
 		{"echo x > out.txt", deny, full, Ask},
 		{"go test ./...", deny, full, Allow},
-		{"echo x > out.txt", []Rule{rule(Deny, "*", "/home/u/secrets/**")}, full, Allow},
+		{"echo x > out.txt", []Rule{rule(Deny, "*", "/home/u/secrets/**")}, full, Ask},
+		{"echo x > out.txt", []Rule{rule(Deny, "read", "/home/u/secrets/**")}, full, Allow},
 		{"./go test ./...", []Rule{rule(Allow, "bash", "go test:*")}, nil, ""},
 	} {
 		if got := Evaluate(command(tc.line), tc.rules, tc.preset); got.Effect != tc.want {

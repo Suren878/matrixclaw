@@ -10,7 +10,8 @@ import (
 
 const permissionsUsage = "Usage: /permissions default|accept_edits|full_auto, /permissions add allow|ask|deny <tool> [pattern] [global], /permissions delete <rule id>. " +
 	"Deny rules match commands, not the code an interpreter runs (python -c, node -e, awk, sed e, make and npm scripts, test runners): " +
-	"allowing such a command allows any code, and a test runner or build (bash: go test:*, npm test:*, make:*) runs code the agent may edit first under accept_edits."
+	"allowing such a command allows any code, and a test runner or build (bash: go test:*, npm test:*, make:*) runs code the agent may edit first under accept_edits. " +
+	"web_fetch rules cover every URL web_fetch, web_research and web_research_ask fetch; MCP browser tools follow mcp rules only."
 
 func (d *Dispatcher) handlePermissions(ctx context.Context, externalKey string, args string) (Result, error) {
 	if d.permissions == nil {

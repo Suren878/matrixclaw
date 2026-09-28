@@ -101,13 +101,16 @@ func (c *Core) permissionRules(ctx context.Context, session Session) ([]permissi
 }
 
 // permissionTool is the tool name rules are written for: every MCP tool is "mcp"
-// (its subject names server and tool) and multiedit shares the rules of edit.
+// (its subject names server and tool), multiedit shares the rules of edit, and
+// the research tools, which fetch URLs, share those of web_fetch.
 func permissionTool(spec tools.Spec) string {
 	switch {
 	case strings.HasPrefix(spec.Namespace, "mcp."):
 		return "mcp"
 	case spec.ID == "multiedit":
 		return "edit"
+	case spec.ID == "web_research" || spec.ID == "web_research_ask":
+		return "web_fetch"
 	default:
 		return spec.ID
 	}

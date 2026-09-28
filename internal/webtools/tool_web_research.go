@@ -77,6 +77,7 @@ func (e *webResearchExecutor) Execute(ctx context.Context, call tools.Call) (too
 	if e == nil || e.web == nil || !e.web.ResearchConfigured() {
 		return tools.Result{Content: "web research engine is not configured", Status: tools.ResultStatusError, IsError: true}, nil
 	}
+	ctx = withRecheck(ctx, call.Recheck)
 	var result webresearch.ResearchResult
 	var err error
 	switch e.name {
@@ -84,6 +85,9 @@ func (e *webResearchExecutor) Execute(ctx context.Context, call tools.Call) (too
 		var input webresearch.AskRequest
 		if decodeErr := json.Unmarshal(call.Args, &input); decodeErr != nil {
 			return tools.Result{}, tools.InvalidArgs(webResearchAskToolName, decodeErr)
+		}
+		if call.Guarded {
+			input.Browser, input.RequireURLCheck = "never", true
 		}
 		result, err = e.web.Ask(ctx, input)
 	case webResearchStatusToolName:
@@ -96,6 +100,11 @@ func (e *webResearchExecutor) Execute(ctx context.Context, call tools.Call) (too
 		var input webresearch.ResearchRequest
 		if decodeErr := json.Unmarshal(call.Args, &input); decodeErr != nil {
 			return tools.Result{}, tools.InvalidArgs(webResearchToolName, decodeErr)
+		}
+		if call.Guarded {
+			// A background job would outlive the call's rules, and the browser
+			// cannot report where its redirects led.
+			input.Async, input.Browser, input.RequireURLCheck = "false", "never", true
 		}
 		result, err = e.web.Research(ctx, input)
 	}

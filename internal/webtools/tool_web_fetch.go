@@ -31,7 +31,7 @@ var webFetchClient = &http.Client{
 		if len(via) >= 5 {
 			return fmt.Errorf("too many redirects")
 		}
-		if err := recheckRedirect(req); err != nil {
+		if err := webresearch.CheckURL(req.Context(), req.URL.String()); err != nil {
 			return fmt.Errorf("redirect to %s: %w", req.URL.Hostname(), err)
 		}
 		if err := validateFetchURL(req.Context(), req.URL.String()); err != nil {
@@ -106,7 +106,9 @@ func (e *webFetchExecutor) executeWebFetchResearch(ctx context.Context, params W
 		URLs:       []string{params.URL},
 		MaxSources: 1,
 		Browser:    browserMode(guarded),
-		Async:      "false",
+
+		RequireURLCheck: guarded,
+		Async:           "false",
 	})
 	metadata := metadataFromResearchFetch(params.URL, result)
 	if err != nil {
