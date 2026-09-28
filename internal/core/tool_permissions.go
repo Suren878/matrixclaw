@@ -22,6 +22,14 @@ type callPermission struct {
 	preset  []permission.Rule
 }
 
+// guard lets the call recheck the rules for subjects it reaches later, and marks
+// it when a deny or ask rule names its tool.
+func (check callPermission) guard(call tools.Call) tools.Call {
+	call.Recheck = check.recheck
+	_, call.Guarded = permission.Guard(check.rules, check.request.Tool)
+	return call
+}
+
 // recheck refuses a subject the call reaches later, such as a redirect's host,
 // that a deny or ask rule catches.
 func (check callPermission) recheck(_ context.Context, subject permission.Subject) error {

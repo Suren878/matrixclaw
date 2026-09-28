@@ -51,10 +51,10 @@ func (e *webFetchExecutor) Execute(ctx context.Context, call tools.Call) (tools.
 	ctx = withRecheck(ctx, call.Recheck)
 
 	if params.Task != "" {
-		return e.executeWebFetchResearch(ctx, params, true)
+		return e.executeWebFetchResearch(ctx, params, true, call.Guarded)
 	}
 	if e.web != nil && e.web.ResearchConfigured() {
-		return e.executeWebFetchResearch(ctx, params, false)
+		return e.executeWebFetchResearch(ctx, params, false, call.Guarded)
 	}
 
 	page, err := FetchWebPage(ctx, params.URL, params.MaxLength)
@@ -85,7 +85,9 @@ func (e *webFetchExecutor) Execute(ctx context.Context, call tools.Call) (tools.
 	}, nil
 }
 
-func (e *webFetchExecutor) executeWebFetchResearch(ctx context.Context, params WebFetchParams, taskMode bool) (tools.Result, error) {
+// executeWebFetchResearch fetches through the research engine; a guarded call
+// skips its browser fallback, which cannot report where redirects led.
+func (e *webFetchExecutor) executeWebFetchResearch(ctx context.Context, params WebFetchParams, taskMode bool, guarded bool) (tools.Result, error) {
 	if e.web == nil || !e.web.ResearchConfigured() {
 		metadata := WebFetchResponseMetadata{URL: params.URL}
 		return tools.Result{
@@ -103,7 +105,7 @@ func (e *webFetchExecutor) executeWebFetchResearch(ctx context.Context, params W
 		Task:       task,
 		URLs:       []string{params.URL},
 		MaxSources: 1,
-		Browser:    "auto",
+		Browser:    browserMode(guarded),
 		Async:      "false",
 	})
 	metadata := metadataFromResearchFetch(params.URL, result)
@@ -147,6 +149,13 @@ func metadataFromResearchFetch(inputURL string, result webresearch.ResearchResul
 	metadata.ContentType = source.ContentType
 	metadata.ArtifactIDs = append([]string(nil), source.ArtifactIDs...)
 	return metadata
+}
+
+func browserMode(guarded bool) string {
+	if guarded {
+		return "never"
+	}
+	return "auto"
 }
 
 func FetchWebPage(ctx context.Context, rawURL string, maxLength int) (WebFetchedPage, error) {

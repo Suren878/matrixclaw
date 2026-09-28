@@ -26,15 +26,11 @@ func (c *Core) executeToolWithGrant(ctx context.Context, prepared preparedToolCa
 	case verdict.Effect == permission.Deny:
 		return blockedResult(verdict.Rule), nil
 	case input.Approved || verdict.Effect == permission.Allow:
-		call := prepared.call(input, true)
-		call.Recheck = check.recheck
-		result, execErr = c.tools.Execute(ctx, prepared.ToolName, call)
+		result, execErr = c.tools.Execute(ctx, prepared.ToolName, check.guard(prepared.call(input, true)))
 	case verdict.Effect == permission.Ask:
 		result = askedByRule(prepared, input, verdict.Rule)
 	default:
-		call := prepared.call(input, false)
-		call.Recheck = check.recheck
-		result, execErr = c.tools.Execute(ctx, prepared.ToolName, call)
+		result, execErr = c.tools.Execute(ctx, prepared.ToolName, check.guard(prepared.call(input, false)))
 	}
 	if result.Approval != nil && result.Approval.Suggestion == nil && verdict.Effect != permission.Ask {
 		if suggestion, ok := permission.Suggest(check.request, check.root); ok {

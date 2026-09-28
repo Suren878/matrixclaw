@@ -65,6 +65,9 @@ func (webTool) Execute(ctx context.Context, call tools.Call) (tools.Result, erro
 	if err := call.Recheck(ctx, permission.Subject{Kind: permission.KindDomain, Value: "Evil.Example."}); err != nil {
 		return tools.Result{Content: err.Error(), IsError: true}, nil
 	}
+	if call.Guarded {
+		return tools.Result{Content: "fetched, guarded"}, nil
+	}
 	return tools.Result{Content: "fetched"}, nil
 }
 
@@ -371,6 +374,10 @@ func TestRedirectsMeetTheRulesOfTheCall(t *testing.T) {
 	session := permissionSession(t, db, "session_redirect", dir, core.PermissionModeFullAuto, "")
 	if got := resultText(executeTool(t, app, session.ID, "web_fetch", `{}`, false)); got != "fetched" {
 		t.Fatalf("unruled redirect = %q", got)
+	}
+	saveRule(t, db, "rule_other", permission.Rule{Tool: "web_fetch", Pattern: "other.example", Effect: permission.Ask, SessionID: session.ID})
+	if got := resultText(executeTool(t, app, session.ID, "web_fetch", `{}`, false)); got != "fetched, guarded" {
+		t.Fatalf("redirect under an unrelated rule = %q", got)
 	}
 	saveRule(t, db, "rule_evil", permission.Rule{Tool: "web_fetch", Pattern: "evil.example", Effect: permission.Deny, SessionID: session.ID})
 	if got := resultText(executeTool(t, app, session.ID, "web_fetch", `{}`, false)); !strings.Contains(got, "web_fetch: evil.example") {
