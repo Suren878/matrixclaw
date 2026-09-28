@@ -98,7 +98,8 @@ func newlyEligible(messages []transcript.Message, current, next Elision) (rounds
 }
 
 // Elide returns messages with the covered results over ~1k tokens and the
-// covered images replaced by short notes; messages itself is not changed.
+// covered images replaced by short notes; a result keeps the user guidance
+// steered into it. messages itself is not changed.
 func Elide(messages []transcript.Message, elision Elision) []transcript.Message {
 	if elision.ResultsThroughSeq == 0 && elision.ImagesThroughSeq == 0 {
 		return messages
@@ -136,6 +137,9 @@ func elideResults(message transcript.Message, calls map[string]transcript.ToolCa
 		}
 		result := *part.ToolResult
 		result.Content = elidedResultNote(calls[strings.TrimSpace(result.ToolCallID)], result, tokens)
+		for _, guidance := range result.Guidance {
+			result.Content += "\n\nUser guidance: " + guidance
+		}
 		parts[i].ToolResult = &result
 	}
 	message.Parts = parts

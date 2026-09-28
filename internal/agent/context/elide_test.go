@@ -78,3 +78,15 @@ func TestAdvanceElisionWaitsForFiveNewRoundsUnlessForced(t *testing.T) {
 		t.Fatalf("five new rounds = %+v %v, want %+v", got, moved, next)
 	}
 }
+
+func TestElidedResultKeepsItsUserGuidance(t *testing.T) {
+	content := strings.Repeat("x", 8_000) + "\n\nUser guidance: focus on the parser"
+	messages := []transcript.Message{{ID: "c1_result", Seq: 3, Role: transcript.MessageRoleTool, Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindToolResult,
+		ToolResult: &transcript.ToolResultPart{ToolCallID: "c1", Name: "read", Content: content, Guidance: []string{"focus on the parser"}}}}}}
+
+	got := Elide(messages, Elision{ResultsThroughSeq: 3})[0].Parts[0].ToolResult.Content
+
+	if !strings.HasPrefix(got, "[output of read") || !strings.HasSuffix(got, "]\n\nUser guidance: focus on the parser") {
+		t.Fatalf("elided result = %q", got)
+	}
+}
