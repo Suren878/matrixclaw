@@ -3,6 +3,7 @@ package core_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -105,7 +106,7 @@ func TestSlowForegroundCommandMovesToTheBackground(t *testing.T) {
 		t.Fatalf("result = %+v, %v", result, err)
 	}
 	task := waitTaskStatus(t, db, result.TaskID, core.TaskStatusCompleted)
-	if task.Kind != core.TaskKindShell || task.RunID != "run_tasks" || task.ParentToolCallID != "call_bash" || task.ExitCode == nil || *task.ExitCode != 0 || task.DeliveredAt != nil {
+	if task.Kind != core.TaskKindShell || task.RunID != "run_tasks" || task.ParentToolCallID != "call_bash" || task.ExitCode == nil || *task.ExitCode != 0 {
 		t.Fatalf("task = %+v", task)
 	}
 
@@ -222,7 +223,7 @@ func TestRecoverTasksKillsLeftoversAndMarksThemLost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	process, err := shelltask.Start("sleep 60", session.WorkingDir, out, 0)
+	process, err := shelltask.Start("sleep 60", session.WorkingDir, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,5 +357,88 @@ func TestUserStopsATaskAndTheSessionIsTold(t *testing.T) {
 	events, err := db.ListTasks(context.Background(), core.TaskFilter{SessionID: session.ID, Undelivered: true})
 	if err != nil || len(events) != 1 || events[0].Error != "stopped by the user" {
 		t.Fatalf("events = %+v, %v", events, err)
+	}
+}
+
+func TestSessionTasksListsBackgroundTasksPastManyOthers(t *testing.T) {
+	t.Parallel()
+	app, db, session, _ := newTaskCore(t)
+	ctx := context.Background()
+	now := runRecoveryTestTime()
+	if err := db.CreateTask(ctx, core.Task{ID: "task_bg", SessionID: session.ID, Kind: core.TaskKindShell, Status: core.TaskStatusRunning, Command: "npm run dev", Background: true, StartedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 40 {
+		at := now.Add(time.Duration(i+1) * time.Second)
+		if err := db.CreateTask(ctx, core.Task{ID: fmt.Sprintf("task_fg_%d", i), SessionID: session.ID, Kind: core.TaskKindSubagent, Status: core.TaskStatusCompleted, Command: "look", StartedAt: at, UpdatedAt: at}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	listed, err := app.ListSessionTasks(ctx, session.ID)
+
+	if err != nil || len(listed) != 1 || listed[0].ID != "task_bg" {
+		t.Fatalf("listed = %+v, %v", listed, err)
+	}
+}
+
+func TestSessionRunsAtMostItsLimitOfBackgroundCommands(t *testing.T) {
+	t.Parallel()
+	app, _, session, _ := newTaskCore(t)
+	app.WithBackgroundTaskLimit(1)
+	command := foreground("sleep 30")
+	command.Background = true
+	first, err := app.RunCommand(context.Background(), taskCall(session), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = app.StopTask(context.Background(), taskCall(session), first.TaskID) })
+
+	if _, err := app.RunCommand(context.Background(), taskCall(session), command); !errors.Is(err, core.ErrInvalidInput) || !strings.Contains(err.Error(), "already runs 1 background command") {
+		t.Fatalf("second background command err = %v", err)
+	}
+	slow := foreground("sleep 0.5; echo done")
+	slow.AutoBackground = 100 * time.Millisecond
+	result, err := app.RunCommand(context.Background(), taskCall(session), slow)
+	if err != nil || result.TaskID != "" || result.Output != "done\n" {
+		t.Fatalf("slow command = %+v, %v", result, err)
+	}
+}
+
+func TestAutoBackgroundedCommandKeepsWhatItLeftRunning(t *testing.T) {
+	t.Parallel()
+	app, db, session, _ := newTaskCore(t)
+	command := foreground("sleep 0.3; (sleep 2.5; echo late) & echo early")
+	command.AutoBackground = 100 * time.Millisecond
+
+	result, err := app.RunCommand(context.Background(), taskCall(session), command)
+	if err != nil || result.TaskID == "" {
+		t.Fatalf("result = %+v, %v", result, err)
+	}
+
+	task := waitTaskStatus(t, db, result.TaskID, core.TaskStatusCompleted)
+	if tail, err := shelltask.Tail(task.OutputPath, 100); err != nil || tail != "early\nlate\n" {
+		t.Fatalf("output = %q, %v", tail, err)
+	}
+}
+
+func TestTaskOutputWaitsForASubagent(t *testing.T) {
+	t.Parallel()
+	app, db, session, _ := newTaskCore(t)
+	ctx := context.Background()
+	now := runRecoveryTestTime()
+	if err := db.CreateTask(ctx, core.Task{ID: "task_agent", SessionID: session.ID, Kind: core.TaskKindSubagent, Status: core.TaskStatusRunning, Command: "look", Background: true, StartedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		_, _ = db.FinishTask(ctx, "task_agent", core.TaskStatusCompleted, nil, "", now)
+	}()
+
+	started := time.Now()
+	out, err := app.ReadTaskOutput(ctx, taskCall(session), tools.TaskRead{TaskID: "task_agent", Wait: 10 * time.Second, Limit: 100})
+
+	if err != nil || out.Status != "completed" || time.Since(started) > 5*time.Second {
+		t.Fatalf("output = %+v, %v after %s", out, err, time.Since(started))
 	}
 }

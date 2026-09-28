@@ -61,12 +61,13 @@ type Task struct {
 	FinishedAt       *time.Time `json:"finished_at,omitempty"`
 }
 
-// TaskFilter selects tasks; Undelivered keeps finished background tasks their
-// session has not seen.
+// TaskFilter selects tasks; Background keeps background tasks only and
+// Undelivered finished background tasks their session has not seen.
 type TaskFilter struct {
 	SessionID   string
 	Kind        TaskKind
 	Statuses    []TaskStatus
+	Background  bool
 	Undelivered bool
 	Limit       int
 }

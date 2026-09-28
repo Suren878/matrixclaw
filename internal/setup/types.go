@@ -54,6 +54,9 @@ type DaemonConfig struct {
 	// ModelConcurrency bounds the model requests all runs make at once; 0
 	// keeps the default of 4.
 	ModelConcurrency int `json:"model_concurrency,omitempty"`
+	// BackgroundTasks bounds the background commands one session runs at
+	// once; 0 keeps the default of 8.
+	BackgroundTasks int `json:"background_tasks,omitempty"`
 }
 
 // RunBudgetsConfig overrides the built-in run budget per trigger.

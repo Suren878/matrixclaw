@@ -81,7 +81,7 @@ func TestOutputKeepsItsHeadAndNewestTailPastTheCap(t *testing.T) {
 
 func TestProcessRunsInItsOwnGroupAndReportsItsExitCode(t *testing.T) {
 	out := newOutput(t)
-	p, err := shelltask.Start("echo out; echo err >&2; exit 3", t.TempDir(), out, time.Second)
+	p, err := shelltask.Start("echo out; echo err >&2; exit 3", t.TempDir(), out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestProcessRunsInItsOwnGroupAndReportsItsExitCode(t *testing.T) {
 func startReady(t *testing.T, command string) *shelltask.Process {
 	t.Helper()
 	out := newOutput(t)
-	p, err := shelltask.Start(command, t.TempDir(), out, 0)
+	p, err := shelltask.Start(command, t.TempDir(), out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestStopKillsACommandThatIgnoresTERM(t *testing.T) {
 
 func TestKillLeftoverChecksTheLeaderWithoutPS(t *testing.T) {
 	out := newOutput(t)
-	p, err := shelltask.Start("sleep 60", t.TempDir(), out, 0)
+	p, err := shelltask.Start("sleep 60", t.TempDir(), out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestKillLeftoverChecksTheLeaderWithoutPS(t *testing.T) {
 
 func TestKillLeftoverLeavesALeaderlessGroupAlone(t *testing.T) {
 	out := newOutput(t)
-	p, err := shelltask.Start("sleep 60 & exit 0", t.TempDir(), out, 0)
+	p, err := shelltask.Start("sleep 60 & exit 0", t.TempDir(), out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,5 +222,94 @@ func TestKillLeftoverLeavesALeaderlessGroupAlone(t *testing.T) {
 func TestReadOfAMissingFileFails(t *testing.T) {
 	if _, err := shelltask.Read(filepath.Join(t.TempDir(), "gone.log"), 0, 10); err == nil || !strings.Contains(err.Error(), "no such file") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestOneWriteLargerThanTheCapKeepsTheHead(t *testing.T) {
+	out := newOutput(t)
+	start := bytes.Repeat([]byte("s"), 100)
+	huge := append(bytes.Repeat([]byte("m"), shelltask.MaxBytes), "THE END"...)
+	for _, part := range [][]byte{start, huge} {
+		if n, err := out.Write(part); err != nil || n != len(part) {
+			t.Fatalf("write = %d, %v", n, err)
+		}
+	}
+
+	head, err := shelltask.Read(out.Path(), 98, 4)
+	if err != nil || head.Text != "ssmm" {
+		t.Fatalf("head = %+v, %v", head, err)
+	}
+	total := int64(len(start) + len(huge))
+	end, err := shelltask.Read(out.Path(), total-7, 100)
+	if err != nil || end.Text != "THE END" || end.Next != total {
+		t.Fatalf("end = %+v, %v", end, err)
+	}
+}
+
+func TestAFailedCompactionLosesNoCount(t *testing.T) {
+	out := newOutput(t)
+	full := [][]byte{bytes.Repeat([]byte("h"), shelltask.HeadBytes), bytes.Repeat([]byte("m"), shelltask.MaxBytes-shelltask.HeadBytes)}
+	for _, part := range full {
+		if _, err := out.Write(part); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dir := filepath.Dir(out.Path())
+	if err := os.Rename(dir, dir+".away"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := out.Write([]byte("lost")); err == nil {
+		t.Fatal("a write that could not compact succeeded")
+	}
+	if err := os.Rename(dir+".away", dir); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := out.Write([]byte("THE END")); err != nil {
+		t.Fatal(err)
+	}
+	total := int64(shelltask.MaxBytes + 7)
+	end, err := shelltask.Read(out.Path(), total-7, 100)
+	if err != nil || end.Text != "THE END" || end.Next != total || end.More {
+		t.Fatalf("end = %+v, %v", end, err)
+	}
+}
+
+func TestDoneWaitsForCommandsTheShellLeftRunning(t *testing.T) {
+	out := newOutput(t)
+	p, err := shelltask.Start("(sleep 0.5; echo late) & echo early", t.TempDir(), out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = shelltask.KillGroup(p.PID()) })
+	select {
+	case <-p.Exited():
+	case <-time.After(10 * time.Second):
+		t.Fatal("the shell did not exit")
+	}
+	select {
+	case <-p.Done():
+		t.Fatal("done before the command the shell left running")
+	default:
+	}
+	waitDone(t, p)
+	if chunk, err := shelltask.Read(out.Path(), 0, 100); err != nil || chunk.Text != "early\nlate\n" {
+		t.Fatalf("output = %+v, %v", chunk, err)
+	}
+}
+
+func TestWaitOutputStopsReadingAfterTheDelay(t *testing.T) {
+	out := newOutput(t)
+	p, err := shelltask.Start("(sleep 30; echo late) & echo early", t.TempDir(), out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = shelltask.KillGroup(p.PID()) })
+
+	p.WaitOutput(100 * time.Millisecond)
+
+	waitDone(t, p)
+	if chunk, err := shelltask.Read(out.Path(), 0, 100); err != nil || chunk.Text != "early\n" {
+		t.Fatalf("output = %+v, %v", chunk, err)
 	}
 }

@@ -55,6 +55,8 @@ type Core struct {
 	// liveTasks are the shell tasks this daemon started that still run.
 	tasksMu   sync.Mutex
 	liveTasks map[string]*liveTask
+	// backgroundTasks bounds the background commands one session runs.
+	backgroundTasks int
 }
 
 type SkillsPromptContextRequest struct {
@@ -92,19 +94,20 @@ type AssistantProfile struct {
 
 func New(store Store) *Core {
 	return &Core{
-		store:         store,
-		activeRuns:    map[string]*activeRun{},
-		scheduledRuns: map[string]time.Time{},
-		sessionGates:  map[string]*sync.Mutex{},
-		liveTasks:     map[string]*liveTask{},
-		events:        newEventBus(),
-		now:           time.Now,
-		newID:         defaultID,
-		historyLimit:  50,
-		lifetime:      context.Background(),
-		budgets:       DefaultRunBudgets(),
-		modelSlots:    toolsched.NewSemaphore(DefaultModelConcurrency),
-		toolLocks:     toolsched.NewLocks(),
+		store:           store,
+		activeRuns:      map[string]*activeRun{},
+		scheduledRuns:   map[string]time.Time{},
+		sessionGates:    map[string]*sync.Mutex{},
+		liveTasks:       map[string]*liveTask{},
+		backgroundTasks: DefaultBackgroundTasks,
+		events:          newEventBus(),
+		now:             time.Now,
+		newID:           defaultID,
+		historyLimit:    50,
+		lifetime:        context.Background(),
+		budgets:         DefaultRunBudgets(),
+		modelSlots:      toolsched.NewSemaphore(DefaultModelConcurrency),
+		toolLocks:       toolsched.NewLocks(),
 	}
 }
 

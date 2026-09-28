@@ -86,6 +86,7 @@ func Run(ctx context.Context) error {
 		WithCompactModel(bootstrap.CompactModel.Provider, bootstrap.CompactModel.Model).
 		WithContextWindowCap(bootstrap.WindowCap).
 		WithModelConcurrency(bootstrap.ModelConcurrency).
+		WithBackgroundTaskLimit(bootstrap.BackgroundTasks).
 		WithWorkStore(workStore).
 		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()}).
 		WithSkillsContext(skillsModule).

@@ -59,16 +59,13 @@ func exitCodeOf(task Task) int {
 // runningTasksPrompt lists the session's background tasks that still run, for
 // the context note; "" when none does.
 func (c *Core) runningTasksPrompt(ctx context.Context, sessionID string) string {
-	tasks, err := c.store.ListTasks(ctx, TaskFilter{SessionID: sessionID, Statuses: []TaskStatus{TaskStatusPending, TaskStatusRunning, TaskStatusWaitingApproval}})
+	tasks, err := c.store.ListTasks(ctx, TaskFilter{SessionID: sessionID, Statuses: []TaskStatus{TaskStatusPending, TaskStatusRunning, TaskStatusWaitingApproval}, Background: true})
 	if err != nil {
 		return ""
 	}
 	lines := []string{"Background tasks still running (task_output reads them, task_kill stops them):"}
 	for i := len(tasks) - 1; i >= 0; i-- {
 		task := tasks[i]
-		if !task.Background {
-			continue
-		}
 		label := task.ID
 		if task.Kind == TaskKindSubagent {
 			label += " (subagent " + firstNonEmpty(task.AgentName, task.Description) + ")"

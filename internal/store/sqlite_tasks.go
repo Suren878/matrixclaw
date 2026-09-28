@@ -80,6 +80,9 @@ func (s *SQLiteStore) ListTasks(ctx context.Context, filter core.TaskFilter) ([]
 		}
 		where = append(where, "status IN ("+strings.Join(placeholders, ", ")+")")
 	}
+	if filter.Background {
+		where = append(where, "background = 1")
+	}
 	if filter.Undelivered {
 		where = append(where, "background = 1 AND finished_at IS NOT NULL AND delivered_at IS NULL")
 	}

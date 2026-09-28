@@ -27,10 +27,28 @@ const taskStopGrace = 3 * time.Second
 // processes it left behind to close their output.
 const foregroundWaitDelay = 2 * time.Second
 
+// DefaultBackgroundTasks is how many background commands a session runs at
+// once unless the daemon configures another limit.
+const DefaultBackgroundTasks = 8
+
+// WithBackgroundTaskLimit bounds the background commands one session runs at
+// once; 0 or less keeps the default.
+func (c *Core) WithBackgroundTaskLimit(n int) *Core {
+	if n <= 0 {
+		n = DefaultBackgroundTasks
+	}
+	c.backgroundTasks = n
+	return c
+}
+
 // RunCommand runs a bash call's command. A background command, or a foreground
 // one still running after its AutoBackground delay, goes on as a task of the
-// call's session; a foreground one is stopped at its timeout or when ctx stops.
+// call's session while it runs fewer than its limit; a foreground one is
+// stopped at its timeout or when ctx stops.
 func (c *Core) RunCommand(ctx context.Context, call tools.Call, command tools.Command) (tools.CommandResult, error) {
+	if command.Background && c.backgroundTasksFull(call.SessionID) {
+		return tools.CommandResult{}, c.backgroundTasksFullError()
+	}
 	id := c.newID("task")
 	path, err := c.taskOutputPath(call.SessionID, id)
 	if err != nil {
@@ -40,18 +58,20 @@ func (c *Core) RunCommand(ctx context.Context, call tools.Call, command tools.Co
 	if err != nil {
 		return tools.CommandResult{}, err
 	}
-	waitDelay := foregroundWaitDelay
-	if command.Background {
-		waitDelay = 0
-	}
-	process, err := shelltask.Start(command.Command, command.WorkingDir, out, waitDelay)
+	process, err := shelltask.Start(command.Command, command.WorkingDir, out)
 	if err != nil {
 		_ = out.Close()
 		_ = os.Remove(path)
 		return tools.CommandResult{}, err
 	}
 	if command.Background {
-		return c.adoptCommand(ctx, call, command, id, process, time.Time{})
+		result, err := c.adoptCommand(ctx, call, command, id, process, time.Time{})
+		if errors.Is(err, errBackgroundTasksFull) {
+			_ = process.Stop(taskStopGrace)
+			process.WaitOutput(foregroundWaitDelay)
+			_ = os.Remove(path)
+		}
+		return result, err
 	}
 	timeout := time.NewTimer(command.Timeout)
 	defer timeout.Stop()
@@ -61,21 +81,54 @@ func (c *Core) RunCommand(ctx context.Context, call tools.Call, command tools.Co
 		defer timer.Stop()
 		background = timer.C
 	}
-	select {
-	case <-process.Done():
-		return c.finishedCommand(process, command, false)
-	case <-timeout.C:
-		_ = process.Stop(taskStopGrace)
-		<-process.Done()
-		return c.finishedCommand(process, command, true)
-	case <-background:
-		return c.adoptCommand(ctx, call, command, id, process, process.StartedAt().Add(command.Timeout))
-	case <-ctx.Done():
-		_ = process.Stop(taskStopGrace)
-		<-process.Done()
-		_ = os.Remove(path)
-		return tools.CommandResult{}, ctx.Err()
+	for {
+		select {
+		case <-process.Exited():
+			process.WaitOutput(foregroundWaitDelay)
+			return c.finishedCommand(process, command, false)
+		case <-timeout.C:
+			_ = process.Stop(taskStopGrace)
+			process.WaitOutput(foregroundWaitDelay)
+			return c.finishedCommand(process, command, true)
+		case <-background:
+			result, err := c.adoptCommand(ctx, call, command, id, process, process.StartedAt().Add(command.Timeout))
+			if !errors.Is(err, errBackgroundTasksFull) {
+				return result, err
+			}
+			// The session runs all the background commands it may; this one
+			// stays in the foreground.
+			background = nil
+		case <-ctx.Done():
+			_ = process.Stop(taskStopGrace)
+			process.WaitOutput(foregroundWaitDelay)
+			_ = os.Remove(path)
+			return tools.CommandResult{}, ctx.Err()
+		}
 	}
+}
+
+// errBackgroundTasksFull is returned while a session runs as many background
+// commands as it may.
+var errBackgroundTasksFull = fmt.Errorf("%w: too many background commands", ErrInvalidInput)
+
+func (c *Core) backgroundTasksFullError() error {
+	return fmt.Errorf("%w: this session already runs %d background commands; wait for one (await, task_output with wait_seconds) or stop one with task_kill first", errBackgroundTasksFull, c.backgroundTasks)
+}
+
+func (c *Core) backgroundTasksFull(sessionID string) bool {
+	c.tasksMu.Lock()
+	defer c.tasksMu.Unlock()
+	return c.sessionLiveTasksLocked(sessionID) >= c.backgroundTasks
+}
+
+func (c *Core) sessionLiveTasksLocked(sessionID string) int {
+	n := 0
+	for _, live := range c.liveTasks {
+		if live.sessionID == sessionID {
+			n++
+		}
+	}
+	return n
 }
 
 // finishedCommand reads a foreground command's output; the file is kept only
@@ -97,7 +150,9 @@ func (c *Core) finishedCommand(process *shelltask.Process, command tools.Command
 }
 
 // adoptCommand records a running command as a background task and watches it
-// until it ends or, with a deadline, is killed then.
+// until it ends or, with a deadline, is stopped then. While the session runs
+// as many as it may, it fails with errBackgroundTasksFull and leaves the
+// command alone.
 func (c *Core) adoptCommand(ctx context.Context, call tools.Call, command tools.Command, id string, process *shelltask.Process, deadline time.Time) (tools.CommandResult, error) {
 	now := c.now().UTC()
 	leader := process.Leader()
@@ -120,8 +175,12 @@ func (c *Core) adoptCommand(ctx context.Context, call tools.Call, command tools.
 		StartedAt:        process.StartedAt().UTC(),
 		UpdatedAt:        now,
 	}
-	live := &liveTask{process: process, recorded: make(chan struct{})}
+	live := &liveTask{sessionID: call.SessionID, process: process, recorded: make(chan struct{})}
 	c.tasksMu.Lock()
+	if c.sessionLiveTasksLocked(call.SessionID) >= c.backgroundTasks {
+		c.tasksMu.Unlock()
+		return tools.CommandResult{}, c.backgroundTasksFullError()
+	}
 	c.liveTasks[id] = live
 	c.tasksMu.Unlock()
 	if err := c.store.CreateTask(context.WithoutCancel(ctx), task); err != nil {
@@ -136,8 +195,9 @@ func (c *Core) adoptCommand(ctx context.Context, call tools.Call, command tools.
 
 // liveTask is a shell task of this daemon; recorded is closed once its end is stored.
 type liveTask struct {
-	process  *shelltask.Process
-	recorded chan struct{}
+	sessionID string
+	process   *shelltask.Process
+	recorded  chan struct{}
 }
 
 func (c *Core) watchShellTask(task Task, live *liveTask, deadline time.Time) {
@@ -207,18 +267,8 @@ func (c *Core) ReadTaskOutput(ctx context.Context, call tools.Call, read tools.T
 			return tools.TaskOutput{}, fmt.Errorf("%w: filter: %v", ErrInvalidInput, err)
 		}
 	}
-	if live, ok := c.liveTask(task.ID); ok && read.Wait > 0 {
-		timer := time.NewTimer(read.Wait)
-		select {
-		case <-live.recorded:
-		case <-timer.C:
-		case <-ctx.Done():
-		}
-		timer.Stop()
-		if err := ctx.Err(); err != nil {
-			return tools.TaskOutput{}, err
-		}
-		if task, err = c.store.GetTask(ctx, task.ID); err != nil {
+	if task.FinishedAt == nil {
+		if task, err = c.awaitTask(ctx, task, read.Wait); err != nil {
 			return tools.TaskOutput{}, err
 		}
 	}
@@ -245,6 +295,43 @@ func (c *Core) ReadTaskOutput(ctx context.Context, call tools.Call, read tools.T
 		out.Text = matchingLines(out.Text, filter)
 	}
 	return out, nil
+}
+
+// taskPollInterval is how often awaitTask looks at a task that is not a
+// shell task of this daemon.
+const taskPollInterval = 250 * time.Millisecond
+
+// awaitTask returns a running task once it finished or wait ran out. A shell
+// task of this daemon is done once its end is stored; any other shell task
+// ended before, maybe after it was read.
+func (c *Core) awaitTask(ctx context.Context, task Task, wait time.Duration) (Task, error) {
+	var recorded <-chan struct{}
+	if live, ok := c.liveTask(task.ID); ok {
+		recorded = live.recorded
+	} else if task.Kind == TaskKindShell {
+		return c.store.GetTask(ctx, task.ID)
+	}
+	if wait <= 0 {
+		return task, nil
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	poll := time.NewTicker(taskPollInterval)
+	defer poll.Stop()
+	for {
+		select {
+		case <-recorded:
+			return c.store.GetTask(ctx, task.ID)
+		case <-timer.C:
+			return c.store.GetTask(ctx, task.ID)
+		case <-ctx.Done():
+			return Task{}, ctx.Err()
+		case <-poll.C:
+			if current, err := c.store.GetTask(ctx, task.ID); err != nil || current.FinishedAt != nil {
+				return current, err
+			}
+		}
+	}
 }
 
 func matchingLines(text string, filter *regexp.Regexp) string {

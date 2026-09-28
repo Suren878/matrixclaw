@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -10,6 +11,23 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
+
+func TestEachEventIsConsumedOnceItIsJournaled(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Inbox.Events = []agent.Input{{Kind: agent.InputEvent, ID: "task_1", Text: "first"}, {Kind: agent.InputEvent, ID: "task_2", Text: "second"}}
+	f.Journal.OnAppend = func(message transcript.Message) error {
+		if message.Content == "second" {
+			return errors.New("disk full")
+		}
+		return nil
+	}
+
+	_, _ = f.Engine().Run(context.Background(), f.Task(agenttest.NewScriptedModel(text("Done."))))
+
+	if len(f.Inbox.Events) != 1 || f.Inbox.Events[0].ID != "task_2" {
+		t.Fatalf("events left = %+v", f.Inbox.Events)
+	}
+}
 
 func TestFinishedTasksReachTheModelAsNotesBeforeItsNextStep(t *testing.T) {
 	f := agenttest.NewFixture()

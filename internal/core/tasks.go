@@ -19,17 +19,11 @@ func (c *Core) ListSessionTasks(ctx context.Context, sessionID string) ([]Task, 
 	if err != nil {
 		return nil, err
 	}
-	tasks, err := c.store.ListTasks(ctx, TaskFilter{SessionID: session.ID, Limit: maxListedTasks})
-	if err != nil {
-		return nil, err
+	tasks, err := c.store.ListTasks(ctx, TaskFilter{SessionID: session.ID, Background: true, Limit: maxListedTasks})
+	if tasks == nil && err == nil {
+		tasks = []Task{}
 	}
-	out := make([]Task, 0, len(tasks))
-	for _, task := range tasks {
-		if task.Background {
-			out = append(out, task)
-		}
-	}
-	return out, nil
+	return tasks, err
 }
 
 // TaskDetail returns a task and the end of its output.

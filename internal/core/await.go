@@ -89,14 +89,12 @@ func (t *awaitTool) Execute(ctx context.Context, call tools.Call) (tools.Result,
 // background task of the session.
 func (c *Core) awaitedTasks(ctx context.Context, sessionID string, ids []string) (waiting []string, finished []string, err error) {
 	if len(ids) == 0 {
-		tasks, err := c.store.ListTasks(ctx, TaskFilter{SessionID: sessionID, Statuses: []TaskStatus{TaskStatusPending, TaskStatusRunning, TaskStatusWaitingApproval}})
+		tasks, err := c.store.ListTasks(ctx, TaskFilter{SessionID: sessionID, Statuses: []TaskStatus{TaskStatusPending, TaskStatusRunning, TaskStatusWaitingApproval}, Background: true})
 		if err != nil {
 			return nil, nil, err
 		}
 		for _, task := range tasks {
-			if task.Background {
-				waiting = append(waiting, task.ID)
-			}
+			waiting = append(waiting, task.ID)
 		}
 		return waiting, nil, nil
 	}

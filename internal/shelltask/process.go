@@ -2,6 +2,8 @@ package shelltask
 
 import (
 	"errors"
+	"io"
+	"os"
 	"os/exec"
 	"syscall"
 	"time"
@@ -11,6 +13,8 @@ import (
 type Process struct {
 	cmd       *exec.Cmd
 	out       *Output
+	reader    *os.File
+	exited    chan struct{}
 	done      chan struct{}
 	exitCode  int
 	startedAt time.Time
@@ -27,31 +31,45 @@ type Leader struct {
 }
 
 // Start runs command with bash -lc in dir, in a process group of its own, its
-// stdout and stderr going to out. Once the shell exits, Done waits at most
-// waitDelay for commands it left running to close the output; 0 waits for them.
-func Start(command, dir string, out *Output, waitDelay time.Duration) (*Process, error) {
+// stdout and stderr going to out until every process that has them, the shell
+// and the commands it left running, closed them.
+func Start(command, dir string, out *Output) (*Process, error) {
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
 	cmd := exec.Command("bash", "-lc", command)
 	cmd.Dir = dir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Stdout, cmd.Stderr = out, out
-	cmd.WaitDelay = waitDelay
-	p := &Process{cmd: cmd, out: out, done: make(chan struct{}), exitCode: -1, startedAt: time.Now()}
-	if err := cmd.Start(); err != nil {
+	cmd.Stdout, cmd.Stderr = writer, writer
+	p := &Process{cmd: cmd, out: out, reader: reader, exited: make(chan struct{}), done: make(chan struct{}), exitCode: -1, startedAt: time.Now()}
+	err = cmd.Start()
+	_ = writer.Close()
+	if err != nil {
+		_ = reader.Close()
 		return nil, err
 	}
 	// Until Wait reaps the shell its PID cannot go to another process.
 	p.leader = Leader{PID: p.PID()}
 	p.leader.BootID, _ = bootID()
 	p.leader.Start, _ = processStart(p.PID())
-	go p.wait()
+	copied := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(out, reader)
+		_ = reader.Close()
+		close(copied)
+	}()
+	go p.wait(copied)
 	return p, nil
 }
 
-func (p *Process) wait() {
+func (p *Process) wait(copied <-chan struct{}) {
 	_ = p.cmd.Wait()
 	if state := p.cmd.ProcessState; state != nil {
 		p.exitCode = state.ExitCode()
 	}
+	close(p.exited)
+	<-copied
 	_ = p.out.Close()
 	close(p.done)
 }
@@ -74,6 +92,28 @@ func (p *Process) Leader() Leader {
 // Output is where the process writes.
 func (p *Process) Output() *Output {
 	return p.out
+}
+
+// Exited is closed once the shell exited; commands it left running may still
+// write.
+func (p *Process) Exited() <-chan struct{} {
+	return p.exited
+}
+
+// WaitOutput waits for the shell to exit and then at most delay for the
+// commands it left running to close the output; after that it stops reading
+// what they write. It returns once Done is closed.
+func (p *Process) WaitOutput(delay time.Duration) {
+	<-p.exited
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-p.done:
+		return
+	case <-timer.C:
+	}
+	_ = p.reader.SetReadDeadline(time.Now())
+	<-p.done
 }
 
 // Done is closed once the process exited and its output is closed.

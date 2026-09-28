@@ -565,25 +565,31 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   room; reads use output offsets, so a cursor survives the rewrite.
   Foreground commands write the same file, removed when they finish unless
   their output was longer than the call returns (30 000 bytes; the result then
-  names the file). A foreground command waits 2 s for commands it left behind
-  to close the output; a background one waits for them.
+  names the file). Once the shell of a foreground command exits, the call
+  waits 2 s for commands it left behind to close the output and then stops
+  reading it; a command in the background, started there or moved there,
+  keeps its output open until they close it.
 - **Bash**: `timeout` and `auto_background_after` are seconds (default 600 and
   120; timeout at most 3600). A command moved to the background keeps its
-  timeout; one started with `run_in_background` has none. `task_output{id,
-  wait_seconds ≤ 600, filter}` returns at most 30 000 bytes from the task's
-  cursor (a filter keeps matching lines; the cursor still advances);
+  timeout; one started with `run_in_background` has none. A session runs at
+  most `daemon.background_tasks` (default 8) background commands: past that
+  `run_in_background` fails and a slow command stays in the foreground.
+  `task_output{id, wait_seconds ≤ 600, filter}` returns at most 30 000 bytes
+  from the task's cursor (a filter keeps matching lines; the cursor still
+  advances); it waits for a subagent task too, and calls for one task take
+  turns (concurrency key `task:<id>`);
   `task_kill{id}` asks for approval like `job_kill` did and also cancels a
   subagent task. The shell tools are registered with the core as their
   `tools.ShellTasks`.
 - **Restart**: the daemon holds an exclusive `flock` on
   `matrixclawd.lock` in its data directory for its lifetime, so a second
   daemon on the same data exits with an error. `RecoverTasks` runs before the
-  workflow worker starts; a
-  leftover group is killed only when its leader still runs in the same boot
-  (`/proc/sys/kernel/random/boot_id`, macOS `kern.boottime`) with the start
-  recorded at spawn (`/proc/<pid>/stat` starttime, macOS `kern.proc.pid`);
-  a leaderless group or one that cannot be checked is only marked lost. Lost tasks do not start a
-  run; the next run reads them. Deleting a session kills its tasks.
+  workflow worker starts; a leftover group is killed only when its leader
+  still runs in the same boot (`/proc/sys/kernel/random/boot_id`, macOS
+  `kern.boottime`) with the start recorded at spawn (`/proc/<pid>/stat`
+  starttime, macOS `kern.proc.pid`); a leaderless group or one that cannot be
+  checked is only marked lost. Lost tasks do not start a run; the next run
+  reads them. Deleting a session kills its tasks.
 - **`/tasks`** lists the bound session's background tasks above the scheduled
   tasks (`/tasks bg <id>` shows the output tail, `stop` asks first); API
   `GET /v1/sessions/{id}/tasks`, `GET /v1/tasks/{id}`,

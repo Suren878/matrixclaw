@@ -67,8 +67,18 @@ func (o *Output) Write(p []byte) (int, error) {
 		o.size += int64(n)
 		return n, err
 	}
-	if err := o.compact(p); err != nil {
-		return 0, err
+	written := 0
+	if o.size < HeadBytes {
+		// The head fills up first, so that compacting finds it whole.
+		n, err := o.file.Write(p[:HeadBytes-o.size])
+		o.size += int64(n)
+		if err != nil {
+			return n, err
+		}
+		written = n
+	}
+	if err := o.compact(p[written:]); err != nil {
+		return written, err
 	}
 	return len(p), nil
 }
@@ -86,7 +96,7 @@ func (o *Output) Close() error {
 }
 
 // compact rewrites the file as its head, the marker and the newest half of the
-// room left, ending with p.
+// room left, ending with p; o changes only once the file was replaced.
 func (o *Output) compact(p []byte) error {
 	tailStart := int64(HeadBytes)
 	if o.dropped > 0 {
@@ -95,9 +105,9 @@ func (o *Output) compact(p []byte) error {
 	tail := o.size - tailStart
 	keep := (MaxBytes - HeadBytes - markerLen) / 2
 	fromFile := min(max(keep-int64(len(p)), 0), tail)
-	o.dropped += tail - fromFile
+	dropped := o.dropped + tail - fromFile
 	if int64(len(p)) > keep {
-		o.dropped += int64(len(p)) - keep
+		dropped += int64(len(p)) - keep
 		p = p[int64(len(p))-keep:]
 	}
 
@@ -110,7 +120,7 @@ func (o *Output) compact(p []byte) error {
 	if err != nil {
 		return err
 	}
-	written, err := o.writeCompacted(temp, source, tailStart+tail-fromFile, fromFile, p)
+	written, err := writeCompacted(temp, source, dropped, tailStart+tail-fromFile, fromFile, p)
 	if err = errors.Join(err, temp.Close()); err != nil {
 		_ = os.Remove(temp.Name())
 		return err
@@ -119,17 +129,17 @@ func (o *Output) compact(p []byte) error {
 		_ = os.Remove(temp.Name())
 		return err
 	}
+	o.dropped, o.size = dropped, written
 	_ = o.file.Close()
 	o.file, err = os.OpenFile(o.path, os.O_WRONLY|os.O_APPEND, 0o600)
-	o.size = written
 	return err
 }
 
-func (o *Output) writeCompacted(dst io.Writer, source *os.File, keptFrom, kept int64, p []byte) (int64, error) {
+func writeCompacted(dst io.Writer, source *os.File, dropped, keptFrom, kept int64, p []byte) (int64, error) {
 	var written int64
 	for _, part := range []io.Reader{
 		io.NewSectionReader(source, 0, HeadBytes),
-		strings.NewReader(marker(o.dropped)),
+		strings.NewReader(marker(dropped)),
 		io.NewSectionReader(source, keptFrom, kept),
 		bytes.NewReader(p),
 	} {

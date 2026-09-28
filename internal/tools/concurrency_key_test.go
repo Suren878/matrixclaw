@@ -53,3 +53,12 @@ func TestRegistryConcurrencyKeyPrefersTheExecutorsOwnKey(t *testing.T) {
 		t.Fatalf("unknown tool key = %q", got)
 	}
 }
+
+func TestTaskOutputCallsOfOneTaskTakeTurns(t *testing.T) {
+	registry := NewRegistry(NewShellExecutors(nil)...)
+	call := Call{WorkingDir: "/work", Args: []byte(`{"id":" task_1 ","wait_seconds":60}`)}
+
+	if got := registry.ConcurrencyKey("task_output", call); got != "task:task_1" {
+		t.Fatalf("task_output key = %q", got)
+	}
+}

@@ -85,6 +85,13 @@ func (e *taskOutputExecutor) Spec() Spec {
 	return coreDefinitionSpec(taskOutputToolName)
 }
 
+// ConcurrencyKey lets the reads of one task take turns, as each moves its cursor.
+func (e *taskOutputExecutor) ConcurrencyKey(call Call) string {
+	var params TaskOutputParams
+	_ = json.Unmarshal(call.Args, &params)
+	return "task:" + strings.TrimSpace(params.ID)
+}
+
 func (e *taskKillExecutor) Spec() Spec {
 	return coreDefinitionSpec(taskKillToolName)
 }
