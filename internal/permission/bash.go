@@ -61,8 +61,10 @@ var programFlags = map[string]flagSet{
 	"make":      {letters: "E"},
 }
 
-// ParseLine parses a bash command line; one that does not parse keeps its
-// whitespace-separated words as a single command, so deny rules still see them.
+// ParseLine parses a bash command line. Only plain syntax is safe: simple
+// commands, lists, pipes, groups, if, while and for over plain words; anything
+// else is risky. A line that does not parse keeps its whitespace-separated words
+// as a single command, so deny rules still see them.
 func ParseLine(text string) Line {
 	file, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(text), "")
 	if err != nil {
@@ -71,13 +73,17 @@ func ParseLine(text string) Line {
 	var line Line
 	syntax.Walk(file, func(node syntax.Node) bool {
 		switch node := node.(type) {
+		case nil, *syntax.File, *syntax.Stmt, *syntax.Comment, *syntax.BinaryCmd, *syntax.Subshell, *syntax.Block,
+			*syntax.IfClause, *syntax.WhileClause, *syntax.ForClause, *syntax.WordIter, *syntax.Word, *syntax.Lit:
 		case *syntax.CallExpr:
 			line.addCall(node)
+		case *syntax.SglQuoted:
+			line.Risky = line.Risky || node.Dollar
+		case *syntax.DblQuoted:
+			line.Risky = line.Risky || node.Dollar
 		case *syntax.Redirect:
-			if writesFile(node) {
-				line.Risky = true
-			}
-		case *syntax.CmdSubst, *syntax.ProcSubst, *syntax.DeclClause, *syntax.FuncDecl, *syntax.CoprocClause:
+			line.Risky = line.Risky || writesFile(node)
+		default:
 			line.Risky = true
 		}
 		return true
@@ -222,6 +228,9 @@ func literal(word *syntax.Word) (string, bool) {
 			}
 			text.WriteString(part.Value)
 		case *syntax.DblQuoted:
+			if part.Dollar {
+				return "", false
+			}
 			for _, inner := range part.Parts {
 				lit, ok := inner.(*syntax.Lit)
 				if !ok {

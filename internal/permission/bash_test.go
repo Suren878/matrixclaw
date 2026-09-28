@@ -131,3 +131,33 @@ func TestParseLineMarksWordsBashExpandsRisky(t *testing.T) {
 		}
 	}
 }
+
+func TestParseLineAllowsOnlyPlainSyntax(t *testing.T) {
+	for line, risky := range map[string]bool{
+		`go test ./... && [[ 'a[$(touch /tmp/pwn)]' -eq 0 ]]`: true,
+		`[[ -v 'a[$(touch /tmp/pwn)]' ]]`:                     true,
+		`[[ -f go.mod ]]`:                                     true,
+		`(( a[$(id)] ))`:                                      true,
+		`let 'a[$(id)]=1'`:                                    true,
+		`time go test ./...`:                                  true,
+		`case x in x) ls;; esac`:                              true,
+		`for ((;;)); do ls; done`:                             true,
+		`for f in a b; do echo $f; done`:                      true,
+		`echo $"x"`:                                           true,
+		`echo "$HOME"`:                                        true,
+		`ls @(a|b)`:                                           true,
+		`declare -a x`:                                        true,
+		`(go test ./...)`:                                     false,
+		`{ go vet ./...; go test ./...; }`:                    false,
+		`if go vet ./...; then go test ./...; else ls; fi`:    false,
+		`while false; do ls; done`:                            false,
+		`for f in a b; do go test ./...; done`:                false,
+		`! go test ./... |& tee /dev/null || ls`:              false,
+		"go test ./... # run":                                 false,
+		"cat <<'EOF'\n$(id)\nEOF":                             false,
+	} {
+		if got := ParseLine(line); got.Risky != risky {
+			t.Errorf("ParseLine(%q) risky = %v, want %v", line, got.Risky, risky)
+		}
+	}
+}
