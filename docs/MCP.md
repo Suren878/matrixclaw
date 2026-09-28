@@ -83,7 +83,7 @@ See [Browser Module](BROWSER.md) for managed Local Playwright setup, browser
 runtime modes, and the reserved managed MCP server ID.
 
 The assistant sees these tools alongside built-in filesystem, shell, storage,
-voice, automation, and plan tools.
+voice, automation, and todo tools.
 
 ## Configuration Fields
 

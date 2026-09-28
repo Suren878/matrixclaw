@@ -16,13 +16,13 @@ flowchart LR
     ORCH --> TOOLS[Tools]
     TOOLS --> APPROVALS[Approvals]
     CORE --> MODULES[Modules]
-    CORE --> PLAN[Planning Mode]
+    CORE --> TODO[Todo lists]
     MODULES --> STORAGE[Storage]
     MODULES --> VOICE[Voice]
     MODULES --> MCP[MCP]
     MODULES --> WEB[Web Search / Browser]
     APPROVALS --> STORE
-    PLAN --> STORE
+    TODO --> STORE
     MODULES --> STORE
 ```
 
@@ -33,7 +33,7 @@ The daemon owns:
 - sessions, messages, runs, run events, and provider usage.
 - approval requests and approval decisions.
 - provider and model selection.
-- plan goals, plan items, and plan-run checkpoints.
+- each session's todo list.
 - storage metadata and temporary-file lifecycle.
 - module configuration for voice, web search, browser, MCP, skills, and
   external agents.
@@ -47,7 +47,7 @@ restarting Telegram does not lose runs or approvals.
 - All assistant work becomes a persisted run.
 - Tool approvals are durable and restart-safe.
 - Provider/model choices are session data, not client process data.
-- Planning Mode state is session data; the daemon advances the runner.
+- Todo lists are session data; the model writes them, clients show them.
 - Storage, voice, browser, MCP, skills, web search, and external agents are
   daemon modules behind the same local API.
 - Optional heavy local runtimes run only when selected by module config.
@@ -63,7 +63,7 @@ restarting Telegram does not lose runs or approvals.
   uploads, inline mode, guest mode, and voice/file routing.
 - `clients/ios`: Swift package for the daemon HTTP/SSE API.
 - `internal/api`: local HTTP API.
-- `internal/core`: sessions, runs, approvals, messages, planning, deliveries,
+- `internal/core`: sessions, runs, approvals, messages, todo lists, deliveries,
   memory, subagents, and external-agent execution.
 - `internal/controlplane`: shared command semantics for terminal and Telegram.
 - `internal/store`: SQLite persistence.

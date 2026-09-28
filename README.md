@@ -20,13 +20,13 @@ in SQLite and gives your AI sessions a durable home outside any single app or
 chat window.
 
 The core owns the session: context, files, tool history, approvals, provider
-settings, model choice, usage records, goals/plans, persistent memory,
+settings, model choice, usage records, todo lists, persistent memory,
 searchable history, and optional external-agent attachments. The Terminal TUI,
 Telegram bot, and future mobile clients are only interfaces connected to the
 same local runtime.
 
 `matrixclaw` is built for personal work first: development, research, files,
-remote checks, reminders, provider switching, visible task plans, memory,
+remote checks, reminders, provider switching, visible todo lists, memory,
 subagents, and agent workflows where continuity and explicit control matter.
 
 It is useful if you want a self-hosted or local-first AI assistant that can keep
@@ -43,13 +43,13 @@ runtime through Terminal, Telegram, or MCP.
 - **Small Go daemon:** about 26 MiB RAM while idle on the current Linux server,
   with exact usage depending on OS, build, and active clients.
 - **One assistant, many clients:** begin a session in Terminal TUI and continue it in Telegram.
-- **Local-first state:** sessions, runs, approvals, files, plans, usage, and provider choices live in SQLite.
+- **Local-first state:** sessions, runs, approvals, files, todo lists, usage, and provider choices live in SQLite.
 - **Provider switching:** OpenAI-compatible APIs, OpenAI Codex subscription OAuth, Anthropic, Gemini, Chinese provider presets, and custom endpoints.
 - **External agents:** Codex app-server and Claude Code sessions attach to the same session model.
 - **Subagents:** MatrixClaw sessions can delegate bounded tasks to hidden child
   runs through `delegate_task`, including MatrixClaw, Codex, or Claude Code runtimes.
 - **Tools with approvals:** file and shell tools pause before risky changes.
-- **Planning Mode:** persistent goals, tasks, subtasks, resumable execution, and a core-owned runner.
+- **Todo list:** the assistant tracks multi-step work with `todo_write`; a run that stops with open items is asked once to finish them or say why.
 - **Memory and search:** the assistant can save approved durable memories and search previous sessions with `memory` and `session_search`.
 - **Usage ledger:** provider token usage is recorded when available.
 - **Storage module:** Telegram uploads and generated files land in local storage, with temporary files promoted only when needed.
@@ -138,7 +138,7 @@ flowchart TD
     D --> S[Sessions / Runs]
     D --> A[Approvals / ACL]
     D --> F[Files / Deliveries]
-    D --> P[Goals / Plans]
+    D --> P[Todo lists]
     D --> U[Usage / Search]
 
     S --> B[Providers / Tools / Local SQLite]
@@ -247,7 +247,7 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
 - OpenAI-compatible, OpenAI Codex subscription OAuth, Anthropic-compatible, Gemini, and custom provider adapters, including presets such as DeepSeek, Qwen / DashScope, Z.AI / GLM, Kimi, MiniMax, OpenRouter, Vercel AI Gateway, NVIDIA NIM, Hugging Face, NovitaAI, GMI Cloud, StepFun, Ollama Cloud, and Kilo Code.
 - Experimental external-agent sessions through Codex app-server.
 - Service-owned tool execution with approval previews before writes and shell actions.
-- Planning Mode for multi-step work, with persistent tasks/subtasks, resumable execution, model-facing `plan_*` tools, and manual `/plan` commands.
+- Todo lists for multi-step work: the model-facing `todo_write` tool, a TUI side panel, a Telegram status message, and `/todo`.
 - Token usage recorded per model generation (prompt, cache read/write, output, reasoning), surfaced in `/usage` and `/context`.
 - SQLite-backed durable memory and message search through `/memory`, `/search`, and assistant-facing `memory` / `session_search` tools.
 - Local storage module for temporary uploads, stored files, imports, previews, promotion, deletion, and cleanup settings.
@@ -270,32 +270,19 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
 - SQLite-backed local state with reconnectable clients and session handoff.
 - Automation jobs for reminders and scheduled AI tasks.
 
-## Planning Mode
+## Todo List
 
-Planning Mode turns a loose multi-step request into durable session work. A plan
-has a goal, top-level tasks, optional subtasks, and explicit item statuses:
-`pending`, `active`, `done`, and `skipped`.
+For work of three or more steps the assistant keeps a todo list with the
+`todo_write` tool: each call replaces the whole list, and at most one item is
+`in_progress`. The list is stored per session and reaches the model in a
+context note whenever it changes, so the system prompt stays cacheable.
 
-The TUI shows the plan in a side panel with tree rendering for subtasks. You can
-create and edit tasks manually, or let the assistant create/update the plan
-through safe plan tools.
+When a run replies without tools while its list still has open items and
+budget remains, it is asked once to continue or explain why it stops. The TUI
+shows the list in a side panel (`ctrl+n`), Telegram in one edited message per
+run, and `/todo` in both.
 
-Execution is owned by the core runtime:
-
-- The daemon stores plan state in SQLite.
-- A persisted plan runner checkpoints the current item, last run, attempts, and status.
-- Parent tasks with open subtasks are treated as sections, not executable work.
-- The runner selects the next executable leaf item and runs one item at a time.
-- On successful completion, core closes the item and auto-closes parent sections when all children are terminal.
-- If the model reports a blocked step, the runner records the blocked state instead of marking it done.
-- If the TUI or daemon restarts, unfinished plans can be resumed from stored state.
-
-This keeps the model from being the source of truth for whether the plan is
-complete. The model performs the current task; the daemon owns the workflow
-state.
-
-See [Planning Mode](docs/PLANNING.md) for the implementation model and edge
-cases.
+See [Todo List](docs/TODO.md) for the details.
 
 ## Commands
 
@@ -431,13 +418,8 @@ These are client commands, not model tools.
 /context                     inspect compacted context and token estimate
 /usage                       show runs, steps, prompt/cache/output/reasoning tokens
 /memory                      show durable assistant memory
-/plan                        show Planning Mode
-/plan goal <text>            set the session goal
-/plan add <text>             add a plan item
-/plan subtask <n> <text>     add a subtask under an item
-/plan edit <n> <text>        edit a plan item
-/plan active|done|skip <n>   update a plan item by number
-/plan clear                  clear Planning Mode after confirmation
+/todo                        show the todo list
+/todo clear                  empty the todo list after confirmation
 /search <query>              search stored message history
 /modules storage             manage local stored and temporary files
 /modules tts                 manage Text to Speech providers and voices
@@ -448,9 +430,8 @@ These are client commands, not model tools.
 /server, /status, /restart, /stop   inspect, restart, or stop the local service
 ```
 
-For multi-step user requests, the assistant also receives safe plan tools:
-`plan_get`, `plan_set_goal`, `plan_add_item`, `plan_update_item`, and
-`plan_clear`. These update the same session plan that manual commands display.
+For multi-step work the assistant keeps the session's todo list with
+`todo_write`; `/todo` shows the same list.
 
 The assistant also receives memory tools: `session_search` searches stored
 conversation history across sessions, while `memory` can list memories and save,
@@ -504,10 +485,10 @@ flowchart LR
     ORCH --> TOOLS[Tools]
     TOOLS --> APPROVALS[Durable approvals]
     APPROVALS --> STORE
-    CORE --> PLAN[Planning Mode state]
+    CORE --> TODO[Todo lists]
     CORE --> SEARCH[Search / Usage]
     CORE --> MODULES[Storage / Voice / MCP / Automation modules]
-    PLAN --> STORE
+    TODO --> STORE
     SEARCH --> STORE
     MODULES --> STORE
 ```
@@ -519,7 +500,7 @@ Core rules:
 - all real work becomes a persisted run
 - tool approvals are durable and restart-safe
 - provider and model selection are session data
-- Planning Mode state and plan-run checkpoints are session data
+- todo lists are session data
 - search and token usage are read-only views over local SQLite state
 - storage, voice, MCP, and external agents are daemon modules behind the same local API
 - orchestration, providers, and tools are replaceable adapter families
@@ -572,10 +553,10 @@ The tool accepts:
 - `working_dir` optional
 
 Subagent runs start with an isolated prompt built from the delegated
-goal/context. They do not inherit the parent chat history, plan, skills prompt,
-or memory prompt. Child MatrixClaw runs use a restricted tool view: no recursive
-`delegate_task`, no `memory`, no `plan_*`, no TTS, and no automation/storage/
-skills category tools.
+goal/context. They do not inherit the parent chat history, todo list, skills
+prompt, or memory prompt. Child MatrixClaw runs use a restricted tool view: no
+recursive `delegate_task`, no `memory`, no TTS, and no automation/storage/skills
+category tools; they keep their own todo list with `todo_write`.
 
 If a child run reaches a permission approval, MatrixClaw does not open a
 separate user approval flow in this version. The delegated task finishes with a
@@ -861,7 +842,7 @@ modes, temporary-file lifecycle, and Telegram voice/file flow. See
 - [`internal/modules/telephony`](internal/modules/telephony): telephony module and approval-gated call tool
 - [`internal/telephony`](internal/telephony): Asterisk ARI, RTP, realtime, and call recording gateway code
 - [`internal/tools`](internal/tools): builtin tools
-- [`docs`](docs): planning, MCP, local voice, and storage notes
+- [`docs`](docs): todo list, MCP, local voice, and storage notes
 - [`scripts`](scripts): install, uninstall, and release-build scripts
 - [`packaging`](packaging): release and Homebrew packaging notes
 

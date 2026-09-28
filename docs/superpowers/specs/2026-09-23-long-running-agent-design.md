@@ -596,6 +596,39 @@ EXISTS session_plan_items, plan_runs`. Existing plans are not migrated (noted
 in CHANGELOG). Runs in `waiting_approval` at upgrade time are picked up by the
 new recovery; checkpoints without budget counters start from zero.
 
+### Implementation notes (as built, stage 5)
+
+- **Where it lives**: `internal/agent/todo` holds the items, their checks and
+  their text; `todo_write` is a core tool (`core/todo.go`); the engine asks a
+  `Todos` port for the open items of a chain and knows nothing else of todo.
+- **Tool**: `content` and `status` are required, `active_form` optional; at
+  most 50 items and one `in_progress`; an invalid list is not saved and the
+  model reads `Todo list not saved: <what to correct>.` The tool is read-only
+  (it replaces the agent's own list, so recovery replays it without asking)
+  and allowed for subagents explicitly. Its calls take the concurrency key
+  `todo:<session>`, so parallel `todo_write` calls of one session replace the
+  list one after another.
+- **Chain**: `chain_run_id` is the first run of the writer's `/continue`
+  chain (followed back up to 32 runs); a run's chain holds the list when it
+  contains `chain_run_id` or `updated_run_id`.
+- **Context note**: the list is a section of the note whenever it has items,
+  whichever chain wrote it, in subagents too. Without the plan section a run
+  with no status, memory change, recovery notice or todo sends no note.
+- **Completion check**: the reply before the nudge is kept (finish
+  `end_turn`); the nudge is an `engine_model` note, sent once per run
+  (`Counters.TodoNudged`), not when a limit is reached; a list that cannot be
+  read holds nothing back.
+- **Clients**: event `todo.updated` (named like the other events); the TUI
+  panel is read-only, shown while items are open and toggled with `ctrl+n`;
+  `/todo` and `/todo clear` replace `/plan`; Telegram edits one silent message
+  per run built from the run's last successful `todo_write` call. `DELETE
+  /sessions/{id}/todo` answers with the emptied list. The iOS package is
+  unchanged: no API type it decodes referred to plans.
+- **Removed**: the plan runner prompts are no longer filtered from provider
+  requests, so old ones in a history reach the model as user messages;
+  `Conversation` and `TextOnlyConversation` lost their run ID parameter.
+  `session_goals`, `session_plan_items` and `plan_runs` are dropped on open.
+
 ## Testing
 
 - `internal/agent` with `agenttest.ScriptedModel`: a 300-step run; budget
