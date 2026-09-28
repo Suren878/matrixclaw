@@ -61,7 +61,7 @@ func mergeSubagentToolResults(results map[string]surfacemessage.ToolResult, task
 		}
 		result := results[toolCallID]
 		result.ToolCallID = toolCallID
-		result.Name = subagentToolName(task)
+		result.Name = "agent"
 		if metadata, err := json.Marshal(task); err == nil {
 			result.Metadata = string(metadata)
 		}
@@ -82,7 +82,7 @@ func mergeSubagentToolUpdates(updates map[string]core.ToolUpdate, tasks []core.S
 		}
 		update := updates[toolCallID]
 		update.ToolCallID = toolCallID
-		update.ToolName = subagentToolName(task)
+		update.ToolName = "agent"
 		update.State = subagentToolLifecycleState(task)
 		update.ResultStatus = subagentSurfaceResultStatus(task)
 		update.RunID = strings.TrimSpace(task.ParentRunID)
@@ -90,13 +90,6 @@ func mergeSubagentToolUpdates(updates map[string]core.ToolUpdate, tasks []core.S
 		update.Error = strings.TrimSpace(task.Error)
 		updates[toolCallID] = update
 	}
-}
-
-func subagentToolName(task core.SubagentTask) string {
-	if task.Mode == core.SubagentTaskModeAsync {
-		return "spawn_subagent"
-	}
-	return "delegate_task"
 }
 
 func subagentSurfaceResultStatus(task core.SubagentTask) string {

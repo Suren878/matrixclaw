@@ -484,8 +484,7 @@ func compactWorkingToolText(value string) string {
 }
 
 func isSubagentToolName(name string) bool {
-	name = strings.ToLower(strings.TrimSpace(name))
-	return name == "delegate_task" || name == "spawn_subagent"
+	return strings.ToLower(strings.TrimSpace(name)) == "agent"
 }
 
 func formatWorkingElapsed(d time.Duration) string {

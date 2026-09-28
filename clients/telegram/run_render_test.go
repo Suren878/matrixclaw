@@ -10,19 +10,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func TestDelegateTaskStatusExplainsThatSubagentIsWorking(t *testing.T) {
-	action, detail := telegramToolAction(transcript.ToolCallPart{
-		Name:  "delegate_task",
-		Input: `{"goal":"inspect the supervisor","runtime":"codex"}`,
-	})
-	if action != "Subagent is working" {
-		t.Fatalf("action = %q, want Subagent is working", action)
-	}
-	if detail != "inspect the supervisor" {
-		t.Fatalf("detail = %q, want delegated goal", detail)
-	}
-}
-
 func TestAssistantStreamEditsOnePersistentMessageAcrossApproval(t *testing.T) {
 	api := &runRenderBotAPI{}
 	worker := &Worker{api: api, config: Config{StreamFlushInterval: time.Nanosecond}}
@@ -256,4 +243,18 @@ func (a *runRenderBotAPI) messageTexts() []string {
 		texts = append(texts, message.Text)
 	}
 	return texts
+}
+
+func TestAgentStatusExplainsWhatTheSubagentDoes(t *testing.T) {
+	action, detail := telegramToolAction(transcript.ToolCallPart{
+		Name:  "agent",
+		Input: `{"description":"Inspect the supervisor","prompt":"inspect the supervisor loop","runtime":"codex"}`,
+	})
+	if action != "Subagent is working" || detail != "Inspect the supervisor" {
+		t.Fatalf("action = %q, detail = %q", action, detail)
+	}
+	started, _ := telegramToolAction(transcript.ToolCallPart{Name: "agent", Input: `{"description":"Scan","prompt":"scan","background":true}`})
+	if started != "Starting subagent" {
+		t.Fatalf("background action = %q", started)
+	}
 }

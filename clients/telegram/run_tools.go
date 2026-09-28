@@ -93,10 +93,12 @@ func telegramToolAction(call transcript.ToolCallPart) (string, string) {
 	params := decodeTelegramToolParams(call.Input)
 	name := strings.ToLower(strings.TrimSpace(call.Name))
 	switch name {
-	case "delegate_task":
-		return "Subagent is working", firstNonEmpty(telegramParam(params, "goal"), telegramParam(params, "runtime"))
-	case "spawn_subagent":
-		return "Starting subagent", firstNonEmpty(telegramParam(params, "name"), telegramParam(params, "goal"))
+	case "agent":
+		action := "Subagent is working"
+		if telegramParam(params, "background") == "true" {
+			action = "Starting subagent"
+		}
+		return action, firstNonEmpty(telegramParam(params, "description"), telegramParam(params, "prompt"))
 	case "web_search":
 		return "Searching web", telegramParam(params, "query")
 	case "web_fetch":

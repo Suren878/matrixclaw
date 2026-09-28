@@ -9,18 +9,30 @@ import (
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
 )
 
-type DelegateTaskToolMessageItem struct{ *baseToolMessageItem }
+type AgentToolMessageItem struct{ *baseToolMessageItem }
 
-func NewDelegateTaskToolMessageItem(sty *surfacestyles.Styles, toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult, canceled bool) ToolMessageItem {
-	return newBaseToolMessageItem(sty, toolCall, result, &DelegateTaskToolRenderContext{}, canceled)
+func NewAgentToolMessageItem(sty *surfacestyles.Styles, toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult, canceled bool) ToolMessageItem {
+	return newBaseToolMessageItem(sty, toolCall, result, &AgentToolRenderContext{}, canceled)
 }
 
-type DelegateTaskToolRenderContext struct{}
+type AgentToolRenderContext struct{}
 
-type delegateTaskRenderParams struct {
-	Name    string `json:"name"`
-	Goal    string `json:"goal"`
-	Runtime string `json:"runtime"`
+type agentRenderParams struct {
+	Description string `json:"description"`
+	Prompt      string `json:"prompt"`
+	Runtime     string `json:"runtime"`
+}
+
+func (d *AgentToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
+	cappedWidth := cappedMessageWidth(width)
+	params := parseAgentParams(opts.ToolCall.Input)
+	return renderSubagentTool(sty, cappedWidth, opts, params)
+}
+
+func parseAgentParams(input string) agentRenderParams {
+	var params agentRenderParams
+	_ = json.Unmarshal([]byte(input), &params)
+	return params
 }
 
 type subagentTaskMetadata struct {
@@ -33,23 +45,11 @@ type subagentTaskMetadata struct {
 	Error       string `json:"error"`
 }
 
-func (d *DelegateTaskToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
-	cappedWidth := cappedMessageWidth(width)
-	params := parseDelegateTaskParams(opts.ToolCall.Input)
-	return renderSubagentTool(sty, cappedWidth, opts, params)
-}
-
-func parseDelegateTaskParams(input string) delegateTaskRenderParams {
-	var params delegateTaskRenderParams
-	_ = json.Unmarshal([]byte(input), &params)
-	return params
-}
-
-func renderSubagentTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts, params delegateTaskRenderParams) string {
+func renderSubagentTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts, params agentRenderParams) string {
 	metadata := parseSubagentTaskMetadata(opts.Result)
-	agentName := strings.Join(strings.Fields(firstNonEmptyLocal(metadata.AgentName, metadata.DisplayName, params.Name, delegateRuntimeLabel(params.Runtime))), " ")
-	taskLabel := strings.Join(strings.Fields(firstNonEmptyLocal(metadata.DisplayName, params.Name)), " ")
-	goal := strings.Join(strings.Fields(firstNonEmptyLocal(metadata.Goal, params.Goal)), " ")
+	agentName := strings.Join(strings.Fields(firstNonEmptyLocal(metadata.AgentName, metadata.DisplayName, params.Description, delegateRuntimeLabel(params.Runtime))), " ")
+	taskLabel := strings.Join(strings.Fields(firstNonEmptyLocal(metadata.DisplayName, params.Description)), " ")
+	goal := strings.Join(strings.Fields(firstNonEmptyLocal(metadata.Goal, params.Prompt)), " ")
 	status := subagentRenderStatus(metadata.Status, opts)
 	header := toolHeader(sty, opts.Status, subagentRenderLabel(agentName, status), width, opts.Compact, subagentTaskPreview(taskLabel, goal))
 	if opts.Compact {
@@ -170,8 +170,7 @@ func subagentToolStatusFromResult(result *surfacemessage.ToolResult) (ToolStatus
 }
 
 func isSubagentToolNameLocal(name string) bool {
-	name = strings.ToLower(strings.TrimSpace(name))
-	return name == "delegate_task" || name == "spawn_subagent"
+	return strings.ToLower(strings.TrimSpace(name)) == "agent"
 }
 
 func parseSubagentTaskMetadata(result *surfacemessage.ToolResult) subagentTaskMetadata {

@@ -87,16 +87,16 @@ func (t *baseToolMessageItem) subagentPreviewData() (surfacedialog.FilePreviewDa
 	if !isSubagentToolNameLocal(t.toolCall.Name) {
 		return surfacedialog.FilePreviewData{}, false
 	}
-	params := parseDelegateTaskParams(t.toolCall.Input)
+	params := parseAgentParams(t.toolCall.Input)
 	metadata := parseSubagentTaskMetadata(t.result)
 	var out strings.Builder
-	if name := firstNonEmptyLocal(metadata.AgentName, metadata.DisplayName, params.Name); name != "" {
+	if name := firstNonEmptyLocal(metadata.AgentName, metadata.DisplayName, params.Description); name != "" {
 		_, _ = fmt.Fprintf(&out, "Name: %s\n", name)
 	}
-	if task := firstNonEmptyLocal(metadata.DisplayName, params.Name); task != "" {
+	if task := firstNonEmptyLocal(metadata.DisplayName, params.Description); task != "" {
 		_, _ = fmt.Fprintf(&out, "Task: %s\n", task)
 	}
-	if goal := firstNonEmptyLocal(metadata.Goal, params.Goal); goal != "" {
+	if goal := firstNonEmptyLocal(metadata.Goal, params.Prompt); goal != "" {
 		_, _ = fmt.Fprintf(&out, "Goal: %s\n", goal)
 	}
 	if runtime := firstNonEmptyLocal(metadata.Runtime, params.Runtime); runtime != "" {

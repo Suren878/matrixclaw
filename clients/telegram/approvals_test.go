@@ -240,7 +240,7 @@ func TestRunWaitingForEventsShowsItsBackgroundSubagentsApproval(t *testing.T) {
 		case "/v1/messages":
 			_ = json.NewEncoder(w).Encode(core.MessagesResponse{})
 		case "/v1/approvals":
-			_ = json.NewEncoder(w).Encode(core.ApprovalsResponse{Approvals: []core.Approval{{ID: "a1", SessionID: "session-1", RunID: "run-1", State: core.ApprovalStatePending, ToolName: "spawn_subagent", Description: `Subagent "Writer" requested approval for mutate_state`}}})
+			_ = json.NewEncoder(w).Encode(core.ApprovalsResponse{Approvals: []core.Approval{{ID: "a1", SessionID: "session-1", RunID: "run-1", State: core.ApprovalStatePending, ToolName: "agent", Description: `Subagent "Writer" requested approval for mutate_state`}}})
 		default:
 			http.Error(w, "unexpected request", http.StatusNotFound)
 		}
