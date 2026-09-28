@@ -21,6 +21,9 @@ var panicResult = tools.Result{Content: "The tool failed unexpectedly; the daemo
 // canceledResult answers a call a canceled run did not finish.
 var canceledResult = tools.Result{Content: "Canceled by user.", Status: tools.ResultStatusError, IsError: true}
 
+// failedResult answers a call a failed run did not finish.
+var failedResult = tools.Result{Content: "The run failed before this call finished.", Status: tools.ResultStatusError, IsError: true}
+
 // callState is where a call of a batch stands.
 type callState int
 
@@ -71,8 +74,11 @@ func (r *run) runCalls(ctx context.Context, requests []callRequest) (bool, error
 		return false, nil
 	}
 	batchCtx, stop := context.WithCancel(ctx)
-	defer stop()
 	b := &batch{r: r, sched: toolsched.NewBatch[callOutcome](batchCtx, r.Locks, maxParallelCalls), barrier: -1}
+	defer func() {
+		stop()
+		b.drain()
+	}()
 	for _, request := range requests {
 		b.calls = append(b.calls, &batchCall{req: request, call: r.toolCall(request)})
 	}
@@ -82,10 +88,7 @@ func (r *run) runCalls(ctx context.Context, requests []callRequest) (bool, error
 	}
 	stop()
 	b.drain()
-	if ctx.Err() != nil {
-		return false, errors.Join(ctx.Err(), b.keep(ctx))
-	}
-	return false, err
+	return false, b.stopped(ctx, err)
 }
 
 func (b *batch) run(ctx context.Context) error {
@@ -126,9 +129,6 @@ func (b *batch) admit(ctx context.Context) error {
 			return err
 		}
 		if !decision.Allowed {
-			if err := b.r.writeCall(ctx, c.req, true); err != nil {
-				return err
-			}
 			c.state, c.result = callRejected, tools.Result{Content: decision.Reason, IsError: true}
 			b.next++
 			continue
@@ -240,7 +240,7 @@ func (b *batch) journal(ctx context.Context) error {
 			}
 			c.state = callJournaled
 		case callRejected:
-			if err := b.r.answerCall(ctx, c.req, c.result); err != nil {
+			if err := b.r.rejectCall(ctx, c.req, c.result); err != nil {
 				return err
 			}
 			c.state = callJournaled
@@ -257,27 +257,46 @@ func (b *batch) drain() {
 	}
 }
 
-// keep journals, once the run's context stopped, the results of the calls that
-// finished before; a canceled run also answers every other call as canceled.
-func (b *batch) keep(ctx context.Context) error {
+// stopped journals, once the batch stopped on err, the results of the calls
+// that finished before; a failed or canceled run also answers every other call,
+// an interrupted one leaves them to recovery.
+func (b *batch) stopped(ctx context.Context, err error) error {
+	interrupted := ctx.Err()
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), detachedWriteTimeout)
 	defer cancel()
-	canceled, err := b.r.Inbox.Canceled(ctx, b.r.task.RunID)
-	if err != nil {
-		return err
+	rest := &failedResult
+	if interrupted != nil {
+		err, rest = interrupted, nil
+		canceled, cancelErr := b.r.Inbox.Canceled(ctx, b.r.task.RunID)
+		if cancelErr != nil {
+			return errors.Join(err, cancelErr)
+		}
+		if canceled {
+			rest = &canceledResult
+		}
 	}
-	for _, c := range b.calls[b.journaled:] {
+	return errors.Join(err, b.keep(ctx, rest))
+}
+
+// keep journals the calls of a stopped batch that have no result yet: finished
+// and rejected ones with theirs, the others with rest unless it is nil.
+func (b *batch) keep(ctx context.Context, rest *tools.Result) error {
+	for _, c := range b.calls {
+		if b.r.history.hasResult(c.req.id) {
+			continue
+		}
+		var err error
 		switch {
 		case c.state == callFinished:
 			err = b.r.finishCall(ctx, c.req, c.call, c.result)
 		case c.state == callRejected:
-			err = b.r.answerCall(ctx, c.req, c.result)
-		case !canceled || c.state == callJournaled:
+			err = b.r.rejectCall(ctx, c.req, c.result)
+		case rest == nil:
 			continue
 		case c.state == callWaiting:
-			err = b.r.rejectCall(ctx, c.req, canceledResult)
+			err = b.r.rejectCall(ctx, c.req, *rest)
 		default:
-			err = b.r.finishCall(ctx, c.req, c.call, canceledResult)
+			err = b.r.finishCall(ctx, c.req, c.call, *rest)
 		}
 		if err != nil {
 			return err

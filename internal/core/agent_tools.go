@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"sync"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/permission"
@@ -20,10 +21,12 @@ type nativeTurn struct {
 	ToolUse            bool
 }
 
-// coreTools is the Tools port of one native run.
+// coreTools is the Tools port of one native run. authorized holds the verdict
+// Authorize reached for a call until its Execute takes it; it ends with the run.
 type coreTools struct {
-	c    *Core
-	turn nativeTurn
+	c          *Core
+	turn       nativeTurn
+	authorized *sync.Map
 }
 
 func (t coreTools) Specs(ctx context.Context) []tools.Spec {
@@ -55,8 +58,7 @@ func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) 
 	if call.WorkingDir = normalizeWorkingDir(call.WorkingDir); call.WorkingDir == "" {
 		call.WorkingDir = session.WorkingDir
 	}
-	key := authorizedKey(call)
-	t.c.authorized.Delete(key)
+	t.authorized.Delete(call.ToolCallID)
 	check, err := t.c.checkPermission(ctx, call.SessionID, spec, call)
 	if err != nil {
 		return agent.Decision{}, err
@@ -65,7 +67,7 @@ func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) 
 		return agent.Decision{Reason: blockedResult(check.verdict.Rule).Content}, nil
 	}
 	if call.ToolCallID != "" {
-		t.c.authorized.Store(key, check)
+		t.authorized.Store(call.ToolCallID, check)
 	}
 	barrier := spec.Mutates() && (check.verdict.Effect != permission.Allow || spec.ID == delegateTaskToolName)
 	return agent.Decision{Allowed: true, Barrier: barrier, Key: t.c.tools.ConcurrencyKey(spec.ID, call)}, nil
@@ -83,7 +85,7 @@ func (t coreTools) Execute(ctx context.Context, name string, call tools.Call) (t
 	prepared := preparedToolCall{SessionID: call.SessionID, RunID: call.RunID, ToolName: name, Spec: spec, ToolCallID: call.ToolCallID, WorkingDir: workingDir}
 	input := ExecuteToolInput{Client: call.Client, ExternalKey: call.ExternalKey, Approved: call.Approved, Args: call.Args}
 	var check *callPermission
-	if kept, ok := t.c.authorized.LoadAndDelete(authorizedKey(call)); ok {
+	if kept, ok := t.authorized.LoadAndDelete(call.ToolCallID); ok {
 		authorized := kept.(callPermission)
 		check = &authorized
 	}
@@ -95,11 +97,6 @@ func (t coreTools) Execute(ctx context.Context, name string, call tools.Call) (t
 		result = t.c.toolFailure(call.SessionID, execErr)
 	}
 	return result, nil
-}
-
-// authorizedKey names a call's verdict between Authorize and Execute.
-func authorizedKey(call tools.Call) string {
-	return call.SessionID + "\x00" + call.ToolCallID
 }
 
 func (t coreTools) Finish(ctx context.Context, name string, call tools.Call, result tools.Result, message transcript.Message) error {

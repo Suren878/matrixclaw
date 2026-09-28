@@ -524,6 +524,54 @@ func TestRecoveryAnswersEveryCallOfABatchInFlight(t *testing.T) {
 	}
 }
 
+func TestRecoveryDefersAgainTheCallsTheBatchCheckpointNamesNotStarted(t *testing.T) {
+	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	mutation := &recoveryTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation)}
+	inspect := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
+	var results []string
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		results = toolResults(request)
+		return providers.Response{Text: "Done."}, nil
+	})})
+	app.WithRunStarter(&recordingRunStarter{})
+	app.WithTools(tools.NewRegistry(mutation, inspect))
+	_, run := saveCrashRecoveryRun(t, sqliteStore, "batch_checkpoint", core.RunStatusRunning, false)
+	// The barrier returned and the call behind it lost its deferred mark, but the
+	// daemon stopped before the next checkpoint started it.
+	saveInterruptedToolCall(t, sqliteStore, run, "tool_write", mutation.spec.ID)
+	saveInterruptedToolCall(t, sqliteStore, run, "tool_after", inspect.spec.ID)
+	if err := sqliteStore.SaveRunCheckpoint(context.Background(), core.RunCheckpoint{
+		RunID: run.ID, Phase: core.RunCheckpointPhase(agent.PhaseToolBatch), UpdatedAt: runRecoveryTestTime(),
+		Batch: &agent.ToolBatch{CallIDs: []string{"tool_write", "tool_after"}, DeferredIDs: []string{"tool_after"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.RecoverActiveRuns(context.Background()); err != nil {
+		t.Fatalf("RecoverActiveRuns: %v", err)
+	}
+
+	if inspect.callCount() != 0 {
+		t.Fatal("recovery replayed a call that never started")
+	}
+	approvals, err := sqliteStore.ListApprovals(context.Background(), run.SessionID, core.ApprovalStatePending)
+	if err != nil || len(approvals) != 1 || approvals[0].ToolCallRef != "tool_write" {
+		t.Fatalf("pending approvals = %+v err = %v, want a retry of the write only", approvals, err)
+	}
+	if _, err := app.ResolveApproval(context.Background(), approvals[0].ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	assertRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusCompleted)
+	if strings.Join(results, "|") != "tool_write=recovered tool result|tool_after=recovered tool result" || inspect.callCount() != 1 || mutation.callCount() != 1 {
+		t.Fatalf("model read %q, inspections = %d, mutations = %d", results, inspect.callCount(), mutation.callCount())
+	}
+}
+
 func TestRecoverBlockingSubagentCompletesChildThenParentWithoutDuplicate(t *testing.T) {
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()

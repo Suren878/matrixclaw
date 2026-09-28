@@ -664,8 +664,8 @@ func TestApprovalRequestFailureFailsTheRun(t *testing.T) {
 	if outcome.Status != agent.StatusFailed || outcome.Err == nil || outcome.Err.Error() != "approvals unavailable" {
 		t.Fatalf("outcome = %+v", outcome)
 	}
-	if _, ok := f.Journal.Result("w1"); ok {
-		t.Fatal("failed approval request left a tool result")
+	if result, _ := f.Journal.Result("w1"); !strings.Contains(result.Content, "run failed") || len(f.Tools.Finished) != 1 {
+		t.Fatalf("result of the call = %q, want the run's failure", result.Content)
 	}
 }
 

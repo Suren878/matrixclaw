@@ -2,9 +2,11 @@ package agent_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
@@ -332,4 +334,94 @@ func TestInterruptedBatchLeavesUnfinishedCallsToRecovery(t *testing.T) {
 	if message, _ := f.Journal.Message("r3"); !message.Parts[0].ToolCall.Deferred {
 		t.Fatal("the call that never started lost its deferred mark")
 	}
+}
+
+func TestCanceledBatchAnswersAnAskedCallBeforeARunningOne(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["lookup"] = lookupTool
+	f.Tools.Funcs["wait"] = func(tools.Call) tools.Result { return tools.Result{Content: "waited"} }
+	f.Tools.OnExecute = func(ctx context.Context, name string, _ tools.Call) error {
+		if name == "wait" {
+			<-ctx.Done()
+			return ctx.Err()
+		}
+		return nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f.Approvals.OnRequest = func(agent.Pending) error {
+		f.Inbox.Cancel = true
+		cancel()
+		return nil
+	}
+	model := agenttest.NewScriptedModel(calls(call("l1", "lookup"), call("w2", "wait")))
+
+	outcome, err := f.Engine().Run(ctx, f.Task(model))
+	if err != nil || outcome.Status != agent.StatusInterrupted {
+		t.Fatalf("outcome = %+v err = %v", outcome, err)
+	}
+	for _, id := range []string{"l1", "w2"} {
+		if result, ok := f.Journal.Result(id); !ok || result.Content != "Canceled by user." {
+			t.Fatalf("result of %s = %+v, want it canceled", id, result)
+		}
+	}
+}
+
+func TestRejectedCallIsJournaledTogetherWithItsResult(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["read"] = readTool
+	model := agenttest.NewScriptedModel(calls(call("r1", "read"), call("g2", "ghost")), text("Done."))
+
+	run(t, f, model)
+
+	for i, message := range f.Journal.Messages {
+		if message.ID != "g2" {
+			continue
+		}
+		if i+1 == len(f.Journal.Messages) || f.Journal.Messages[i+1].Role != transcript.MessageRoleTool || f.Journal.Messages[i+1].Parts[0].ToolResult.ToolCallID != "g2" {
+			t.Fatal("the rejected call's result does not follow its call")
+		}
+		return
+	}
+	t.Fatal("the rejected call was not journaled")
+}
+
+func TestFailedBatchKeepsFinishedResultsAndAnswersTheRest(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := agenttest.NewFixture()
+		f.Tools.Funcs["read"] = readTool
+		f.Tools.Funcs["wait"] = func(tools.Call) tools.Result { return tools.Result{Content: "waited"} }
+		f.Tools.Funcs["fail"] = func(tools.Call) tools.Result { return tools.Result{Content: "unreachable"} }
+		fail := make(chan struct{})
+		f.Tools.OnExecute = func(ctx context.Context, name string, _ tools.Call) error {
+			switch name {
+			case "wait":
+				<-ctx.Done()
+				return ctx.Err()
+			case "fail":
+				<-fail
+				return errors.New("tool backend unavailable")
+			}
+			return nil
+		}
+		model := agenttest.NewScriptedModel(calls(call("w1", "wait"), call("r2", "read"), call("f3", "fail")))
+		outcome := start(f, model)
+		synctest.Wait()
+		close(fail)
+
+		if got := <-outcome; got.Status != agent.StatusFailed {
+			t.Fatalf("outcome = %+v", got)
+		}
+		if got := resultOrder(f); got != "w1,r2,f3" {
+			t.Fatalf("results = %s, want every call answered in call order", got)
+		}
+		if result, _ := f.Journal.Result("r2"); result.Content != "file body" {
+			t.Fatalf("result of the finished read = %q", result.Content)
+		}
+		for _, id := range []string{"w1", "f3"} {
+			if result, _ := f.Journal.Result(id); !strings.Contains(result.Content, "run failed") {
+				t.Fatalf("result of %s = %q, want the failure", id, result.Content)
+			}
+		}
+	})
 }

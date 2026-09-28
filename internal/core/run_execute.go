@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
@@ -151,7 +152,7 @@ func (c *Core) nativeEngine(ctx context.Context, run Run, session Session, runti
 	}
 	engine := agent.New(agent.Config{
 		Journal:     coreJournal{c: c},
-		Tools:       coreTools{c: c, turn: turn},
+		Tools:       coreTools{c: c, turn: turn, authorized: &sync.Map{}},
 		Approvals:   coreApprovals{c: c, sessionID: session.ID},
 		Inbox:       coreInbox{c: c, session: session},
 		Sink:        coreSink{c: c},

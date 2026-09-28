@@ -52,9 +52,6 @@ type Core struct {
 
 	// badBoundaries holds the IDs of unreadable boundaries already logged.
 	badBoundaries sync.Map
-	// authorized holds the permission verdict Authorize reached for a native
-	// run's call until its Execute takes it.
-	authorized sync.Map
 }
 
 type SkillsPromptContextRequest struct {

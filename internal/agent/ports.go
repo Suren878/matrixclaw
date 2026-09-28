@@ -64,7 +64,8 @@ type State struct {
 }
 
 // ToolBatch names the calls of the batch being run, in call order, and those
-// of them held back (deferred) when the checkpoint was written.
+// of them held back (deferred) when the checkpoint was written; crash recovery
+// defers those again.
 type ToolBatch struct {
 	CallIDs     []string `json:"call_ids"`
 	DeferredIDs []string `json:"deferred_ids,omitempty"`

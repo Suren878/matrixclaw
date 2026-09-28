@@ -510,7 +510,11 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
 - **Barrier**: a mutating call is a barrier unless a rule or the mode allows it
   (it then cannot ask); `delegate_task` always is, as its child may ask. The
   calls after a barrier are journaled `deferred` at once and start when it
-  returns without asking; if it asks they stay deferred as in stage 4a.
+  returns without asking; if it asks they stay deferred as in stage 4a. So
+  delegations never run in parallel: two in one reply take turns behind the
+  barrier, and those of other runs into one directory wait for
+  `subagents:<dir>`. A call refused by `Authorize` is journaled together with
+  its error, in call order.
 - **Checkpoints** are written by the engine goroutine only: `model` before each
   generation, `tool_batch{call_ids, deferred_ids}` (column
   `run_checkpoints.tool_batch`) whenever calls of a batch start, after they are
@@ -519,12 +523,16 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   and crash recovery keep their writes.
 - **Recovery**: a call is completed (result), in flight (journaled without a
   result: read-only calls replay, mutating ones ask again, every call of the
-  batch and not only the first) or not started (`deferred`: it runs when the
-  run resumes). A call still waiting for its key or a slot counts as in flight.
+  batch and not only the first, asked ones keep waiting for their decision) or
+  not started (`deferred`, or named in `deferred_ids` of the last `tool_batch`
+  checkpoint, which marks it deferred again: it runs when the run resumes). A
+  call still waiting for its key or a slot counts as in flight.
 - **Stop**: results of calls finished before the run's context stopped are
   journaled; what a call returns afterwards is dropped. A canceled run answers
-  every other call of the batch `Canceled by user.`; an interrupted run leaves
-  them to recovery. A panicking tool becomes an error result.
+  every other call of the batch `Canceled by user.` (asked ones included), a
+  failed run (a tool or journal error) answers them with the failure; an
+  interrupted run leaves them to recovery. A panicking tool becomes an error
+  result.
 - **Model slots**: `daemon.model_concurrency` (default 4) bounds the model
   requests of all native runs, subagents and summaries included. A run holds a
   slot only inside `Generate`, so a parent blocked in `delegate_task` holds none.

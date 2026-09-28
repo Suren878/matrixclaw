@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -140,6 +141,10 @@ func (c *Core) prepareRunAfterCrash(ctx context.Context, run *Run) (bool, error)
 	if run == nil {
 		return false, nil
 	}
+	previous, _, err := c.runCheckpoint(ctx, run.ID)
+	if err != nil {
+		return false, err
+	}
 	checkpoint, err := c.markRunRecovery(ctx, run.ID)
 	if err != nil {
 		return false, err
@@ -177,9 +182,22 @@ func (c *Core) prepareRunAfterCrash(ctx context.Context, run *Run) (bool, error)
 
 	// Every call of a batch in flight is answered: read-only ones replay, mutating
 	// ones ask again, asked ones keep waiting; a running child keeps the parent waiting.
+	// A call the last batch checkpoint names deferred never started: it is deferred again.
+	notStarted := map[string]bool{}
+	if previous.Batch != nil {
+		for _, id := range previous.Batch.DeferredIDs {
+			notStarted[id] = true
+		}
+	}
 	waitApproval := false
 	var waitSubagent *interruptedToolCall
 	for _, interrupted := range incompleteToolCallsForRun(messages, run.ID) {
+		if notStarted[interrupted.Call.ID] {
+			if err := c.deferInterruptedCall(ctx, interrupted); err != nil {
+				return false, err
+			}
+			continue
+		}
 		disposition, err := c.recoverInterruptedTool(ctx, *run, interrupted, approvals)
 		if err != nil {
 			return false, err
@@ -289,6 +307,26 @@ func (c *Core) replayInterruptedTool(ctx context.Context, run Run, interrupted i
 	if err != nil && result.ToolResultMessage == nil {
 		return err
 	}
+	return nil
+}
+
+// deferInterruptedCall marks a call that never started deferred again, so the
+// resumed run starts it behind its barrier.
+func (c *Core) deferInterruptedCall(ctx context.Context, interrupted interruptedToolCall) error {
+	message := interrupted.Message
+	message.Parts = slices.Clone(message.Parts)
+	for i, part := range message.Parts {
+		if part.ToolCall != nil && part.ToolCall.ID == interrupted.Call.ID {
+			call := *part.ToolCall
+			call.Deferred = true
+			message.Parts[i].ToolCall = &call
+		}
+	}
+	message.UpdatedAt = c.now().UTC()
+	if err := c.store.UpdateMessage(ctx, message); err != nil {
+		return err
+	}
+	c.publishEvent(Event{Type: EventMessageUpdated, SessionID: message.SessionID, RunID: message.RunID, Payload: message})
 	return nil
 }
 
