@@ -228,7 +228,15 @@ func (c *Core) finishOrBridgeSubagentTask(ctx context.Context, task SubagentTask
 	return c.finishSubagentTask(ctx, task, summary, failed)
 }
 
+// bridgeSubagentApproval asks the parent for a blocking child's approval; a
+// read-only child's is refused and the call goes on waiting for the child.
 func (c *Core) bridgeSubagentApproval(ctx context.Context, task SubagentTask, approval Approval) (AgentResult, error) {
+	if task.Readonly {
+		if err := c.refuseReadonlySubagentApproval(ctx, approval); err != nil {
+			return AgentResult{}, err
+		}
+		return c.finishOrBridgeSubagentTask(ctx, task, nil)
+	}
 	task, err := c.markSubagentTaskWaitingApproval(ctx, task)
 	if err != nil {
 		return AgentResult{}, err
@@ -389,7 +397,8 @@ func subagentRunStatusTerminal(status RunStatus) bool {
 
 // mirrorPendingSubagentApproval asks the parent for the child's pending approval;
 // only a blocking child's parent run waits for it. It reports false when the
-// child has none: its approval was just decided and the child has not resumed yet.
+// child has none (its approval was just decided and the child has not resumed
+// yet) or is read-only, whose approval is refused.
 func (c *Core) mirrorPendingSubagentApproval(ctx context.Context, task SubagentTask) (bool, error) {
 	childApproval, err := c.pendingApprovalForRun(ctx, task.ChildSessionID, task.ChildRunID)
 	if errors.Is(err, ErrNotFound) {
@@ -397,6 +406,9 @@ func (c *Core) mirrorPendingSubagentApproval(ctx context.Context, task SubagentT
 	}
 	if err != nil {
 		return false, err
+	}
+	if task.Readonly {
+		return false, c.refuseReadonlySubagentApproval(ctx, childApproval)
 	}
 	existing, err := c.subagentBridgeApprovalForChild(ctx, task, childApproval.ID)
 	if err != nil {
@@ -436,6 +448,14 @@ func (c *Core) mirrorPendingSubagentApproval(ctx context.Context, task SubagentT
 		return true, nil
 	}
 	return true, c.setRunStatus(ctx, &run, RunStatusWaitingApproval, "")
+}
+
+// refuseReadonlySubagentApproval denies a read-only child's approval without
+// asking anyone; the child reads the denial and goes on.
+func (c *Core) refuseReadonlySubagentApproval(ctx context.Context, approval Approval) error {
+	reason := "read-only subagent cannot run " + firstNonEmpty(strings.TrimSpace(approval.ToolName), "this tool")
+	_, err := c.ResolveApproval(ctx, approval.ID, ApprovalResolveRequest{Reason: reason})
+	return err
 }
 
 func (c *Core) subagentBridgeApprovalForChild(ctx context.Context, task SubagentTask, childApprovalID string) (Approval, error) {

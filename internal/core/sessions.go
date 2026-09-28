@@ -133,7 +133,11 @@ func (c *Core) UpdateSessionPermissionMode(ctx context.Context, input UpdateSess
 	}
 	if session.Kind == SessionKindExternalAgent && c.externalStore != nil {
 		if attachment, err := c.externalStore.GetExternalAgentSession(ctx, session.ID); err == nil {
-			approvalPolicy, sandbox := externalAgentPolicyForPermissionMode(session.PermissionMode)
+			readonly, err := c.readonlySubagent(ctx, session.ID)
+			if err != nil {
+				return Session{}, err
+			}
+			approvalPolicy, sandbox := externalAgentPolicy(session.PermissionMode, readonly)
 			attachment.ApprovalPolicy = approvalPolicy
 			attachment.Sandbox = sandbox
 			attachment.UpdatedAt = session.UpdatedAt

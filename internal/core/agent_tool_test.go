@@ -294,3 +294,57 @@ func TestParentPromptExplainsTheAgentTool(t *testing.T) {
 		}
 	}
 }
+
+func TestReadonlyChildsApprovalIsRefusedWithoutAskingTheParent(t *testing.T) {
+	t.Parallel()
+	for _, background := range []bool{false, true} {
+		t.Run(map[bool]string{false: "blocking", true: "background"}[background], func(t *testing.T) {
+			t.Parallel()
+			app, db, cleanup := newCrashRecoveryCore(t)
+			defer cleanup()
+			starter := &executingRunStarter{app: app}
+			app.WithRunStarter(starter)
+			app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), askingReadTool("ask_read"))...))
+			var mu sync.Mutex
+			var childSaw string
+			app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+				results := toolResults(request)
+				switch {
+				case childPrompt(request) != "" && len(results) == 0:
+					return providers.Response{ToolCalls: []providers.ToolCall{{ID: "child-read", Name: "ask_read", Arguments: json.RawMessage(`{}`)}}}, nil
+				case childPrompt(request) != "":
+					mu.Lock()
+					childSaw = results[0]
+					mu.Unlock()
+					return providers.Response{Text: "read nothing"}, nil
+				case len(results) == 0:
+					args, _ := json.Marshal(map[string]any{"description": "Look", "prompt": "look around", "readonly": true, "background": background})
+					return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-look", Name: "agent", Arguments: args}}}, nil
+				default:
+					return providers.Response{Text: "Done."}, nil
+				}
+			})})
+			session, run := saveCrashRecoveryRun(t, db, "readonly_ask", core.RunStatusAccepted, false)
+
+			if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+				t.Fatal(err)
+			}
+			task, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-look")
+			if err != nil {
+				t.Fatal(err)
+			}
+			waitRunStatus(t, db, task.ChildRunID, core.RunStatusCompleted)
+			starter.wait(t)
+
+			mu.Lock()
+			defer mu.Unlock()
+			if childSaw != "child-read=User denied: read-only subagent cannot run ask_read" {
+				t.Fatalf("the child read %q", childSaw)
+			}
+			approvals, err := db.ListApprovals(context.Background(), session.ID, "")
+			if err != nil || len(approvals) != 0 {
+				t.Fatalf("parent approvals = %+v, %v", approvals, err)
+			}
+		})
+	}
+}

@@ -670,8 +670,10 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   names (the parent's session gate covers naming).
 - **Readonly**: `tasks.readonly`; the child sees no mutating tool and core
   refuses one (`… this subagent is read-only`); a readonly Codex or Claude Code
-  child runs in `default` mode, its read-only sandbox. A readonly child is
-  always `shared`.
+  child runs with approval policy `never` and sandbox `read-only` (Claude Code
+  `dontAsk`), so nothing asks and nothing writes. Any approval a readonly child
+  still asks for is refused (`read-only subagent cannot run <tool>`), never
+  bridged to the parent. A readonly child is always `shared`.
 - **Background**: a `subagent` task (`background` 1) started at once; its
   completion is a 6a/6b event (note, await, idle wake). The limit is
   `daemon.background_agents` (default 4) per session; a repeated call returns

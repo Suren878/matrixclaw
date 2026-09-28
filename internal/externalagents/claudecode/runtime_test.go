@@ -88,6 +88,13 @@ func TestClaudePromptArgsUsesStreamingAndRootCompatibleAutoMode(t *testing.T) {
 	}
 }
 
+func TestReadOnlyClaudeSessionIsDeniedEveryChangeWithoutAsking(t *testing.T) {
+	session := externalagents.ExternalSession{ApprovalPolicy: "never", Sandbox: "read-only"}
+	if joined := strings.Join(claudePromptArgs(session, "hello"), " "); !strings.Contains(joined, "--permission-mode dontAsk") {
+		t.Fatalf("args = %q, want dontAsk", joined)
+	}
+}
+
 func TestClaudeStreamDeltaParsesTextAndThinking(t *testing.T) {
 	textEvent := json.RawMessage(`{"type":"content_block_delta","delta":{"type":"text_delta","text":"hello"}}`)
 	kind, delta := claudeStreamDelta(textEvent)

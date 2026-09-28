@@ -144,7 +144,7 @@ func (c *Core) createExternalAgentAttachment(ctx context.Context, session Sessio
 	if !availability.Enabled {
 		return fmt.Errorf("%w: external agent %q is not enabled", ErrExecutionUnavailable, agentID)
 	}
-	approvalPolicy, sandbox := externalAgentPolicyForPermissionMode(session.PermissionMode)
+	approvalPolicy, sandbox := externalAgentPolicy(session.PermissionMode, input.Readonly)
 	externalSession, err := runtime.StartSession(ctx, externalagents.StartSessionRequest{
 		CWD:            session.WorkingDir,
 		Model:          normalizeText(input.ModelID),
@@ -191,7 +191,12 @@ func externalAgentMetadataJSON(metadata map[string]any) (string, error) {
 	return string(data), nil
 }
 
-func externalAgentPolicyForPermissionMode(mode PermissionMode) (string, string) {
+// externalAgentPolicy is the approval policy and sandbox an external agent
+// runs with; a read-only one is refused every change without being asked.
+func externalAgentPolicy(mode PermissionMode, readonly bool) (string, string) {
+	if readonly {
+		return "never", "read-only"
+	}
 	switch NormalizePermissionMode(string(mode)) {
 	case PermissionModeFullAuto:
 		return "never", "danger-full-access"

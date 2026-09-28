@@ -125,8 +125,13 @@ default       -> approvalPolicy: on-request, sandbox: read-only
 MatrixClaw assistant sessions receive an `agent` tool for bounded child work.
 Child sessions are hidden from the normal session list, receive an isolated
 prompt built from the call's prompt, and return a compact summary to the parent
-run. A `readonly` external child runs in the runtime's read-only sandbox
-(`default` mode) instead of full access.
+run. A `readonly` external child gets `approvalPolicy: never` and
+`sandbox: read-only`: Codex refuses writes without asking, and Claude Code runs
+in `dontAsk` mode, which denies every call that would prompt (edits and shell
+commands outside its read-only set) while reads still work. Tools a user's
+Claude Code `permissions.allow` rules pre-approve still run there. MatrixClaw
+refuses any approval a read-only child asks for ("read-only subagent cannot run
+<tool>") instead of asking the parent.
 
 Allowed runtimes are:
 

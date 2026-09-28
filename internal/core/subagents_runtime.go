@@ -12,7 +12,7 @@ import (
 var subagentAgentNamePool = []string{"Neo", "Trinity", "Morpheus", "Niobe", "Seraph", "Oracle", "Link", "Switch", "Apoc", "Tank", "Dozer", "Mouse"}
 
 // createSubagentSession creates a child's hidden session; a read-only external
-// child runs in the default mode, its runtime's read-only sandbox.
+// child never asks for approval and runs in its runtime's read-only sandbox.
 func (c *Core) createSubagentSession(ctx context.Context, parent Session, runtime SubagentRuntime, model string, workingDir string, displayName string, readonly bool) (Session, error) {
 	title := "Subagent: " + truncateForTitle(firstNonEmpty(displayName, "Task"), 64)
 	switch runtime {
@@ -22,10 +22,6 @@ func (c *Core) createSubagentSession(ctx context.Context, parent Session, runtim
 		if !ok {
 			return Session{}, fmt.Errorf("%w: external agent %q is not configured", ErrExecutionUnavailable, agentID)
 		}
-		mode := PermissionModeFullAuto
-		if readonly {
-			mode = PermissionModeDefault
-		}
 		return c.CreateSession(ctx, CreateSessionInput{
 			Title:           title,
 			Kind:            SessionKindExternalAgent,
@@ -34,8 +30,9 @@ func (c *Core) createSubagentSession(ctx context.Context, parent Session, runtim
 			Hidden:          true,
 			WorkingDir:      workingDir,
 			ModelID:         normalizeText(model),
-			PermissionMode:  mode,
+			PermissionMode:  PermissionModeFullAuto,
 			ExternalAgentID: canonical,
+			Readonly:        readonly,
 		})
 	default:
 		return c.CreateSession(ctx, CreateSessionInput{

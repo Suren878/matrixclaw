@@ -85,6 +85,8 @@ type CreateSessionInput struct {
 	ModelID         string
 	PermissionMode  PermissionMode
 	ExternalAgentID string
+	// Readonly starts an external agent that never asks and cannot write.
+	Readonly bool
 }
 
 type RenameSessionInput struct {
