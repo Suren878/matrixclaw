@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -47,6 +48,28 @@ func TestContinueIsRejectedWhileARunIsActive(t *testing.T) {
 
 	if !errors.Is(err, core.ErrRunActive) {
 		t.Fatalf("error = %v, want ErrRunActive", err)
+	}
+}
+
+func TestContinueAfterTheContextFilledUpPointsToContextClear(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	starter := &recordingRunStarter{}
+	app.WithRunStarter(starter)
+	session, full := saveCrashRecoveryRun(t, db, "continue-full", core.RunStatusFailed, false)
+	full.StopReason = agent.StopContextExhausted
+	if err := db.UpdateRun(context.Background(), full); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := app.AcceptRun(context.Background(), core.HandleMessageInput{SessionID: session.ID, Continue: true})
+
+	if !errors.Is(err, core.ErrInvalidInput) || !strings.Contains(err.Error(), "/context clear") {
+		t.Fatalf("error = %v, want a refusal pointing to /context clear", err)
+	}
+	if runs, _ := db.ListSessionRuns(context.Background(), session.ID, 10); len(runs) != 1 {
+		t.Fatalf("runs = %d, want only the full one", len(runs))
 	}
 }
 

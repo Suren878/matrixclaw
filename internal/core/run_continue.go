@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -46,6 +47,9 @@ func (c *Core) createContinueRun(ctx context.Context, session Session, input Han
 	}
 	if err != nil {
 		return AcceptRunResult{}, err
+	}
+	if latest.StopReason == agent.StopContextExhausted {
+		return AcceptRunResult{}, fmt.Errorf("%w: the conversation no longer fits the model's context; clear it with /context clear or start a /new session", ErrInvalidInput)
 	}
 	parts := transcript.NormalizeMessageParts(continueRunText, nil)
 	return c.createAcceptedRun(ctx, session, continueRunText, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress, latest.ID, "")
