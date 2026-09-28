@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/agent/agenttest"
@@ -47,5 +48,28 @@ func TestModelSlotsBoundGenerationsAcrossRuns(t *testing.T) {
 	}
 	if most.Load() != 1 {
 		t.Fatalf("%d generations ran at once, want 1", most.Load())
+	}
+}
+
+func TestPanickingGenerationGivesItsModelSlotBack(t *testing.T) {
+	slots := toolsched.NewSemaphore(1)
+	crash := agenttest.NewFixture()
+	crash.ModelSlots = slots
+	func() {
+		defer func() { _ = recover() }()
+		_, _ = crash.Engine().Run(context.Background(), crash.Task(agenttest.ModelFunc(func(context.Context, providers.Request) (providers.Response, error) {
+			panic("provider bug")
+		})))
+	}()
+
+	for range 4 {
+		f := agenttest.NewFixture()
+		f.ModelSlots = slots
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		outcome, err := f.Engine().Run(ctx, f.Task(agenttest.NewScriptedModel(text("Done."))))
+		cancel()
+		if err != nil || outcome.Status != agent.StatusCompleted {
+			t.Fatalf("outcome = %+v err = %v, want the slot free again", outcome, err)
+		}
 	}
 }

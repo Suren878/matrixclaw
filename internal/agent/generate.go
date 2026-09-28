@@ -52,15 +52,9 @@ type summaryModel struct {
 
 func (m summaryModel) Generate(ctx context.Context, request providers.Request) (providers.Response, error) {
 	for attempt := 0; ; attempt++ {
-		release, err := m.r.ModelSlots.Acquire(ctx)
-		if err != nil {
-			return providers.Response{}, err
-		}
-		started := time.Now()
-		response, err := m.model.Generate(ctx, request)
-		release()
+		response, latency, err := m.r.generateOnSlot(ctx, m.model, request)
 		if err == nil {
-			return response, m.r.recordStep(ctx, response, compactStopReason, time.Since(started))
+			return response, m.r.recordStep(ctx, response, compactStopReason, latency)
 		}
 		if ctx.Err() != nil || attempt >= len(retryBackoffs) || !providers.IsRetryableGenerationError(err) {
 			return response, err
@@ -151,21 +145,28 @@ func (r *run) generate(ctx context.Context, request providers.Request) (generati
 		dirty = true
 		return flush(false)
 	})
-	release, err := r.ModelSlots.Acquire(ctx)
-	if err != nil {
-		return gen, err
-	}
-	started := time.Now()
-	response, err := r.task.Model.Generate(streamCtx, request)
-	release()
+	response, latency, err := r.generateOnSlot(streamCtx, r.task.Model, request)
 	if err == nil {
-		err = r.recordStep(ctx, response, stepStopReason(response), time.Since(started))
+		err = r.recordStep(ctx, response, stepStopReason(response), latency)
 	}
 	if flushErr := flush(true); flushErr != nil {
 		err = errors.Join(err, flushErr)
 	}
 	gen.response = response
 	return gen, err
+}
+
+// generateOnSlot runs one generation holding a model slot, given back even if
+// the model panics; the latency leaves out the wait for the slot.
+func (r *run) generateOnSlot(ctx context.Context, model Model, request providers.Request) (providers.Response, time.Duration, error) {
+	release, err := r.ModelSlots.Acquire(ctx)
+	if err != nil {
+		return providers.Response{}, 0, err
+	}
+	defer release()
+	started := time.Now()
+	response, err := model.Generate(ctx, request)
+	return response, time.Since(started), err
 }
 
 // stepStopReason is the run_steps stop reason of a model generation.
