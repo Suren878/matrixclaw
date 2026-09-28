@@ -537,6 +537,53 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   requests of all native runs, subagents and summaries included. A run holds a
   slot only inside `Generate`, so a parent blocked in `delegate_task` holds none.
 
+### Implementation notes (as built, stage 6a)
+
+- **Table**: `tasks` also keeps what subagents need (`description`,
+  `agent_name`, `background`, `summary`, `error`, `result_message_id`) and
+  `readonly` for stage 6c. `subagent_tasks` rows are copied on open (columns an
+  old database lacks take their defaults; rows of deleted sessions are
+  skipped) and the table is dropped. Blocking/async subagents are
+  `background` 0/1.
+- **Events**: a finished background task with `delivered_at` NULL is the
+  event; `delivered_run_id` names the run that read it. Only
+  `MarkTasksDelivered` writes these columns. A task the parent already knows
+  about (blocking subagents, `task_kill`, a subagent canceled with its parent,
+  `task_output` after the task ended) is delivered when it ends. Queued
+  subagent completions replace `completion_queued_at/delivered_at`.
+- **Engine**: `Inbox.Peek(InputEvent)` returns the session's undelivered
+  tasks in finish order; each step starts by journaling them as `origin:
+  engine` notes (exit code, command, the last 2000 bytes of output and the
+  file path; for subagents the result) and consumes them. Running background
+  tasks are a section of the context note. Subagent completions reach a
+  running parent the same way; an idle parent still gets a triggered run.
+- **Processes** (`internal/shelltask`): `bash -lc` in its own process group,
+  stdout and stderr through a pipe into `<session files>/<session>/tasks/
+  <task>.log` (0600). Past 20 MB the file is rewritten as the first 1 MB, a
+  fixed-width marker with the dropped byte count, and the newest half of the
+  room; reads use output offsets, so a cursor survives the rewrite.
+  Foreground commands write the same file, removed when they finish unless
+  their output was longer than the call returns (30 000 bytes; the result then
+  names the file). A foreground command waits 2 s for commands it left behind
+  to close the output; a background one waits for them.
+- **Bash**: `timeout` and `auto_background_after` are seconds (default 600 and
+  120; timeout at most 3600). A command moved to the background keeps its
+  timeout; one started with `run_in_background` has none. `task_output{id,
+  wait_seconds ≤ 600, filter}` returns at most 30 000 bytes from the task's
+  cursor (a filter keeps matching lines; the cursor still advances);
+  `task_kill{id}` asks for approval like `job_kill` did and also cancels a
+  subagent task. The shell tools are registered with the core as their
+  `tools.ShellTasks`.
+- **Restart**: `RecoverTasks` runs before the workflow worker starts; a
+  leftover leader whose start time (`ps -o lstart=`, no `/proc`) differs from
+  the task's is another process and is not killed. Lost tasks do not start a
+  run; the next run reads them. Deleting a session kills its tasks.
+- **`/tasks`** lists the bound session's background tasks above the scheduled
+  tasks (`/tasks bg <id>` shows the output tail, `stop` asks first); API
+  `GET /v1/sessions/{id}/tasks`, `GET /v1/tasks/{id}`,
+  `POST /v1/tasks/{id}/cancel`. A task the user stops is an event for the
+  session.
+
 ## 5. Providers
 
 - `providers.Request` gains `MaxOutputTokens` (priority: provider config →
