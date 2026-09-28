@@ -78,7 +78,7 @@ func (d *Dispatcher) sessionRuntimePicker(ctx context.Context) (Result, error) {
 	picker := NewPickerData(PickerSessionRuntime, "New Session").
 		Back(sessionsCommand()).
 		Row("matrixclaw", "Matrixclaw", "Built-in", sessionNewCommand("matrixclaw"))
-	if d.externalAgents != nil {
+	if d.externalAgents != nil && d.startsExternalAgents() {
 		agents, err := d.externalAgents.ListExternalAgents(ctx)
 		if err != nil {
 			return Result{}, err
@@ -195,8 +195,17 @@ type sessionTarget struct {
 	externalAgentID string
 }
 
+// startsExternalAgents reports whether this client may start external agent
+// sessions, which run in full_auto: only a client that may switch modes.
+func (d *Dispatcher) startsExternalAgents() bool {
+	return d.permissions != nil && d.permissions.ManagesPermissionMode()
+}
+
 func (d *Dispatcher) createSession(ctx context.Context, externalKey string, target sessionTarget, title string) (Result, error) {
 	runtimeID := core.NormalizeSessionRuntime(target.runtimeID)
+	if runtimeID == core.SessionRuntimeExternalAgent && !d.startsExternalAgents() {
+		return Result{Handled: true, Text: "Only the owner can start an external agent session."}, nil
+	}
 	if title = strings.TrimSpace(title); title == "" {
 		title = d.defaultSessionTitle(externalKey)
 	}
