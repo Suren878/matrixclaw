@@ -2,6 +2,7 @@ package permission
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
@@ -9,8 +10,8 @@ import (
 
 // Line is a parsed bash command line: the words of every simple command (those in
 // substitutions too; a word that is not plain text is ""), and Risky when no
-// pattern rule may allow it: it writes a file, assigns or declares variables,
-// substitutes, runs a wrapper or an -exec style flag, or does not parse.
+// pattern rule may allow it: it writes files, assigns, substitutes, runs a wrapper
+// or a flag that runs a program, or does not parse.
 type Line struct {
 	Commands [][]string
 	Risky    bool
@@ -25,10 +26,40 @@ var wrappers = map[string]bool{
 	"su": true, "sudo": true, "time": true, "timeout": true, "watch": true, "xargs": true, "zsh": true,
 }
 
-var (
-	execFlags        = map[string]bool{"-exec": true, "-execdir": true, "-ok": true, "-okdir": true}
-	execFlagPrefixes = []string{"-toolexec", "--toolexec", "--exec", "--to-command", "--checkpoint-action", "--upload-pack", "--receive-pack", "--rsh"}
-)
+// flagSet names the flags of one command that run another program or write a
+// file they name: long names without dashes, and short letters that also count
+// inside a cluster such as "-xIcmd".
+type flagSet struct {
+	names   []string
+	letters string
+}
+
+// programFlags are keyed by command, "command subcommand", or "" for every command.
+var programFlags = map[string]flagSet{
+	"": {names: []string{
+		"exec", "execdir", "ok", "okdir", "toolexec", "vettool", "eval", "pre", "pager", "extcmd",
+		"to-command", "checkpoint-action", "info-script", "new-volume-script", "use-compress-program",
+		"compress-program", "unzip-command", "diff-program", "rsh", "rsh-command", "rmt-command",
+		"rsync-path", "upload-pack", "receive-pack", "open-files-in-pager", "config-env", "exec-path",
+		"sendmail-cmd", "to-cmd", "cc-cmd", "output", "output-document", "log-file",
+	}},
+	"go":        {names: []string{"o"}},
+	"find":      {names: []string{"delete", "fprint", "fprint0", "fprintf", "fls"}},
+	"git":       {letters: "cxO"},
+	"git clone": {letters: "u"},
+	"tar":       {letters: "IF"},
+	"rsync":     {letters: "e"},
+	"ssh":       {letters: "oFS"},
+	"scp":       {letters: "oFS"},
+	"sftp":      {letters: "oFS"},
+	"man":       {letters: "PH"},
+	"less":      {letters: "oO"},
+	"sort":      {letters: "o"},
+	"zip":       {letters: "T"},
+	"curl":      {names: []string{"config"}, letters: "oK"},
+	"wget":      {letters: "O"},
+	"make":      {letters: "E"},
+}
 
 // ParseLine parses a bash command line; one that does not parse keeps its
 // whitespace-separated words as a single command, so deny rules still see them.
@@ -64,23 +95,39 @@ func (l *Line) addCall(call *syntax.CallExpr) {
 	words := make([]string, 0, len(call.Args))
 	for _, arg := range call.Args {
 		word, ok := literal(arg)
-		if !ok || execFlag(word) {
+		if !ok {
 			l.Risky = true
 		}
 		words = append(words, word)
 	}
-	if words[0] == "" || wrappers[filepath.Base(words[0])] {
+	if words[0] == "" || wrappers[filepath.Base(words[0])] || runsProgram(words) {
 		l.Risky = true
 	}
 	l.Commands = append(l.Commands, words)
 }
 
-func execFlag(word string) bool {
-	if execFlags[word] {
-		return true
+// runsProgram reports whether a command passes one of its programFlags, gives
+// tar an old-style cluster with one, or overrides a make variable.
+func runsProgram(words []string) bool {
+	command := filepath.Base(words[0])
+	sets := []flagSet{programFlags[""], programFlags[command]}
+	for _, word := range words[1:] {
+		if set, ok := programFlags[command+" "+word]; ok {
+			sets = append(sets, set)
+		}
 	}
-	for _, prefix := range execFlagPrefixes {
-		if strings.HasPrefix(word, prefix) {
+	for i, word := range words[1:] {
+		switch {
+		case strings.HasPrefix(word, "-"):
+			name, _, _ := strings.Cut(strings.TrimLeft(word, "-"), "=")
+			for _, set := range sets {
+				if slices.Contains(set.names, name) || !strings.HasPrefix(word, "--") && strings.ContainsAny(word[1:], set.letters) {
+					return true
+				}
+			}
+		case command == "tar" && i == 0 && strings.ContainsAny(word, programFlags["tar"].letters):
+			return true
+		case command == "make" && strings.Contains(word, "="):
 			return true
 		}
 	}
