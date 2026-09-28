@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"context"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -20,6 +21,7 @@ import (
 type bridgedChild struct {
 	app       *core.Core
 	db        *store.SQLiteStore
+	parking   *parkingStore
 	mutations int
 	mu        sync.Mutex
 	saw       string
@@ -27,9 +29,14 @@ type bridgedChild struct {
 
 func newBridgedChild(t *testing.T, starter func(*core.Core) core.RunStarter, lead ...providers.ToolCall) *bridgedChild {
 	t.Helper()
-	app, db, cleanup := newCrashRecoveryCore(t)
-	t.Cleanup(cleanup)
-	b := &bridgedChild{app: app, db: db}
+	db, err := store.NewSQLite(filepath.Join(t.TempDir(), "matrixclaw.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	parking := &parkingStore{SQLiteStore: db}
+	app := core.New(parking)
+	b := &bridgedChild{app: app, db: db, parking: parking}
 	app.WithRunStarter(starter(app))
 	mutate, _ := approvalTools(&b.mutations)
 	app.WithTools(tools.NewRegistry(append(core.SubagentToolExecutors(app), mutate, askingReadTool("ask_read"))...))
@@ -239,5 +246,35 @@ func TestParentWaitsForItsChildAfterEveryApprovalIsDecided(t *testing.T) {
 				t.Fatalf("ask_read result = %q", got)
 			}
 		})
+	}
+}
+
+func TestChildApprovalDecidedWhileTheChildParksKeepsTheParentWaiting(t *testing.T) {
+	var starter *executingRunStarter
+	b := newBridgedChild(t, func(app *core.Core) core.RunStarter {
+		starter = &executingRunStarter{app: app}
+		return starter
+	})
+	b.parking.beforePark = func() {
+		task, err := b.db.GetSubagentTaskByParentToolCall(context.Background(), "session_bridge-race", "run_bridge-race", "call-delegate")
+		if err != nil {
+			t.Errorf("subagent task: %v", err)
+			return
+		}
+		child := pendingApprovalFor(t, b.db, task.ChildSessionID, "call-child-mutate")
+		if _, err := b.app.ResolveApproval(context.Background(), child.ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
+			t.Errorf("ResolveApproval: %v", err)
+		}
+	}
+	session, run := saveCrashRecoveryRun(t, b.db, "bridge-race", core.RunStatusAccepted, false)
+
+	if err := b.app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	starter.wait(t)
+
+	assertRecoveryRunStatus(t, b.db, run.ID, core.RunStatusCompleted)
+	if got := storedToolResult(t, b.db, session.ID, "call-delegate"); got != "Child read: mutated" {
+		t.Fatalf("delegate result = %q", got)
 	}
 }

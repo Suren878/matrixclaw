@@ -155,25 +155,65 @@ func (c *Core) finishOrBridgeSubagentTask(ctx context.Context, task SubagentTask
 	}
 	if execErr == nil && run.Status == RunStatusWaitingApproval {
 		approval, err := c.pendingApprovalForRun(ctx, task.ChildSessionID, task.ChildRunID)
-		if err != nil {
+		if err == nil {
+			return c.bridgeSubagentApproval(ctx, task, approval)
+		}
+		if !errors.Is(err, ErrNotFound) {
 			return DelegateTaskResult{}, err
 		}
-		task, err = c.markSubagentTaskWaitingApproval(ctx, task)
-		if err != nil {
+	}
+	if execErr == nil && !subagentRunStatusTerminal(run.Status) {
+		if err := c.waitForSubagentStep(ctx, task); err != nil {
 			return DelegateTaskResult{}, err
 		}
-		request, err := c.subagentApprovalRequest(ctx, task, approval)
-		if err != nil {
-			return DelegateTaskResult{}, err
-		}
-		return DelegateTaskResult{
-			Task:     task,
-			Summary:  "Subagent is waiting for permission.",
-			Approval: request,
-		}, nil
+		return c.finishOrBridgeSubagentTask(ctx, task, nil)
 	}
 	summary, failed := c.subagentRunSummary(ctx, task.ChildSessionID, task.ChildRunID, execErr)
 	return c.finishSubagentTask(ctx, task, summary, failed)
+}
+
+func (c *Core) bridgeSubagentApproval(ctx context.Context, task SubagentTask, approval Approval) (DelegateTaskResult, error) {
+	task, err := c.markSubagentTaskWaitingApproval(ctx, task)
+	if err != nil {
+		return DelegateTaskResult{}, err
+	}
+	request, err := c.subagentApprovalRequest(ctx, task, approval)
+	if err != nil {
+		return DelegateTaskResult{}, err
+	}
+	return DelegateTaskResult{
+		Task:     task,
+		Summary:  "Subagent is waiting for permission.",
+		Approval: request,
+	}, nil
+}
+
+// waitForSubagentStep waits while the child is still running, including right
+// after its approval was decided, until it finishes or asks for approval again.
+func (c *Core) waitForSubagentStep(ctx context.Context, task SubagentTask) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	events := c.SubscribeEvents(ctx, task.ChildSessionID)
+	for {
+		run, err := c.store.GetRun(ctx, task.ChildRunID)
+		if err != nil {
+			return err
+		}
+		if subagentRunStatusTerminal(run.Status) {
+			return nil
+		}
+		if run.Status == RunStatusWaitingApproval {
+			_, err := c.pendingApprovalForRun(ctx, task.ChildSessionID, task.ChildRunID)
+			if !errors.Is(err, ErrNotFound) {
+				return err
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-events:
+		}
+	}
 }
 
 func (c *Core) finishSubagentTask(ctx context.Context, task SubagentTask, summary string, failed bool) (DelegateTaskResult, error) {
