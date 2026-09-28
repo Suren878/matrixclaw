@@ -41,6 +41,20 @@ func (c *Client) ListMessages(ctx context.Context, sessionID string, limit int) 
 	return response.Messages, nil
 }
 
+// ListMessagesAfter returns up to limit messages (all when limit is 0) with seq
+// above afterSeq, oldest first.
+func (c *Client) ListMessagesAfter(ctx context.Context, sessionID string, afterSeq int64, limit int) ([]transcript.Message, error) {
+	values := url.Values{}
+	values.Set("session_id", strings.TrimSpace(sessionID))
+	values.Set("after_seq", strconv.FormatInt(afterSeq, 10))
+	values.Set("limit", strconv.Itoa(limit))
+	var response core.MessagesResponse
+	if err := c.doJSON(ctx, http.MethodGet, "/v1/messages?"+values.Encode(), nil, &response); err != nil {
+		return nil, err
+	}
+	return response.Messages, nil
+}
+
 func (c *Client) ListSessions(ctx context.Context) ([]core.Session, error) {
 	var response core.SessionsResponse
 	if err := c.doJSON(ctx, http.MethodGet, "/v1/sessions", nil, &response); err != nil {

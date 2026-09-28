@@ -90,3 +90,35 @@ func (c *Core) sessionBudgetReport(session Session, override SessionBudget) Sess
 		Tokens:        budget.Tokens,
 	}
 }
+
+// RunProgress counts the run's budget steps from run_steps (summaries use none),
+// the step limit of its budget and its session's live background tasks.
+func (c *Core) RunProgress(ctx context.Context, runID string) (RunProgress, error) {
+	run, err := c.GetRun(ctx, runID)
+	if err != nil {
+		return RunProgress{}, err
+	}
+	session, err := c.store.GetSession(ctx, run.SessionID)
+	if err != nil {
+		return RunProgress{}, err
+	}
+	budget, err := c.runBudget(ctx, run, session)
+	if err != nil {
+		return RunProgress{}, err
+	}
+	steps, err := c.store.ListRunSteps(ctx, run.ID)
+	if err != nil {
+		return RunProgress{}, err
+	}
+	tasks, err := c.store.ListTasks(ctx, TaskFilter{SessionID: session.ID, Statuses: activeTaskStatuses(), Background: true})
+	if err != nil {
+		return RunProgress{}, err
+	}
+	progress := RunProgress{StepLimit: budget.Steps, Tasks: len(tasks)}
+	for _, step := range steps {
+		if step.StopReason != agent.CompactStopReason {
+			progress.Steps++
+		}
+	}
+	return progress, nil
+}

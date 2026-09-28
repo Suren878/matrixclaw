@@ -126,6 +126,10 @@ type RunStepsResponse struct {
 	Steps []RunStep `json:"steps"`
 }
 
+type RunProgressResponse struct {
+	Progress RunProgress `json:"progress"`
+}
+
 type ClientBindingResponse struct {
 	Binding ClientBinding `json:"binding"`
 }

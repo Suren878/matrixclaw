@@ -84,6 +84,14 @@ type RunStep struct {
 	CreatedAt        time.Time `json:"created_at"`
 }
 
+// RunProgress is how far a run is: the budget steps it used, its step limit (0 is
+// unlimited) and the background tasks of its session still running.
+type RunProgress struct {
+	Steps     int `json:"steps"`
+	StepLimit int `json:"step_limit"`
+	Tasks     int `json:"tasks"`
+}
+
 type BusyInputMode string
 
 const (

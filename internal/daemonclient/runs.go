@@ -39,6 +39,15 @@ func (c *Client) GetRun(ctx context.Context, runID string) (core.Run, error) {
 	return response.Run, nil
 }
 
+func (c *Client) RunProgress(ctx context.Context, runID string) (core.RunProgress, error) {
+	var response core.RunProgressResponse
+	path := "/v1/runs/" + escapedPath(runID) + "/progress"
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return core.RunProgress{}, err
+	}
+	return response.Progress, nil
+}
+
 func (c *Client) CancelRun(ctx context.Context, runID string) (core.Run, error) {
 	var response core.RunResponse
 	path := "/v1/runs/" + escapedPath(runID) + "/cancel"

@@ -17,6 +17,13 @@ func (s *Server) handleRunByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, core.RunStepsResponse{Steps: steps})
+	case r.Method == http.MethodGet && strings.HasSuffix(path, "/progress"):
+		progress, err := s.core.RunProgress(r.Context(), strings.TrimSuffix(path, "/progress"))
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, core.RunProgressResponse{Progress: progress})
 	case r.Method == http.MethodGet:
 		runID := path
 		run, err := s.core.GetRun(r.Context(), runID)

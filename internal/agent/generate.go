@@ -21,8 +21,8 @@ type generation struct {
 	response  providers.Response
 }
 
-// compactStopReason marks summary generations in run_steps.
-const compactStopReason = "compact"
+// CompactStopReason marks summary generations in run_steps; they use no budget step.
+const CompactStopReason = "compact"
 
 // recordStep stores one successful generation as a run step and counts its tokens
 // against the run's budget.
@@ -54,7 +54,7 @@ func (m summaryModel) Generate(ctx context.Context, request providers.Request) (
 	for attempt := 0; ; attempt++ {
 		response, latency, err := m.r.generateOnSlot(ctx, m.model, request)
 		if err == nil {
-			return response, m.r.recordStep(ctx, response, compactStopReason, latency)
+			return response, m.r.recordStep(ctx, response, CompactStopReason, latency)
 		}
 		if ctx.Err() != nil || attempt >= len(retryBackoffs) || !providers.IsRetryableGenerationError(err) {
 			return response, err

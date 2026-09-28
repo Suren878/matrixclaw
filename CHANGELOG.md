@@ -170,7 +170,8 @@ default):
     The `todo.updated` event replaces `plan.updated`.
   - Runs gain `trigger`, `continues_run_id`, `stop_reason` and the
     `waiting_events` status. `GET /v1/runs/{id}/steps` lists a run's
-    generations.
+    generations; `GET /v1/runs/{id}/progress` returns its budget steps used,
+    its step limit and the session's running background tasks.
   - Messages gain `seq`, `origin` and `compaction`. `GET /v1/messages` accepts
     `after_seq`, and a message with `continue: true` continues the latest run.
   - `POST /v1/sessions/{id}/clear` clears the context.
