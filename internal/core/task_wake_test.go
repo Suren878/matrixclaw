@@ -238,3 +238,57 @@ func TestWakeRunTakesItsEventsBeforeItStarts(t *testing.T) {
 		t.Fatalf("the wake request sends:\n%s", text)
 	}
 }
+
+// finishedTask stores a background command that finished unseen.
+func (s *wakeScenario) finishedTask(t *testing.T, id string) {
+	t.Helper()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := s.db.CreateTask(ctx, core.Task{ID: id, SessionID: s.session.ID, Kind: core.TaskKindShell, Status: core.TaskStatusRunning, Command: "make " + id, Background: true, StartedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	code := 0
+	if _, err := s.db.FinishTask(ctx, id, core.TaskStatusCompleted, &code, "", now); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (s *wakeScenario) notices(t *testing.T) []core.ClientDelivery {
+	t.Helper()
+	notices, err := s.db.ListClientDeliveries(context.Background(), core.ClientDeliveryFilter{Type: core.ClientDeliveryTypeNotice})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return notices
+}
+
+func TestFailedWakeRunStopsTheChainWithOneNotice(t *testing.T) {
+	t.Parallel()
+	s := newWakeScenario(t)
+	s.userRun(t)
+	s.starter.wait(t)
+	s.app.WithSessionLLMs(recoveryLLMs{})
+	ctx := context.Background()
+
+	s.finishedTask(t, "task_a")
+	if err := s.app.RecoverTaskEvents(ctx); err != nil {
+		t.Fatal(err)
+	}
+	s.starter.wait(t)
+	s.finishedTask(t, "task_b")
+	if err := s.app.RecoverTaskEvents(ctx); err != nil {
+		t.Fatal(err)
+	}
+	s.starter.wait(t)
+
+	runs := s.runs(t)
+	if len(runs) != 2 || runs[0].Trigger != core.RunTriggerWake || runs[0].Status != core.RunStatusFailed {
+		t.Fatalf("runs = %+v", runs)
+	}
+	if notices := s.notices(t); len(notices) != 1 || notices[0].Client != "telegram" || string(notices[0].Address) != string(telegramAddress) {
+		t.Fatalf("notices = %+v", notices)
+	}
+	if task, err := s.db.GetTask(ctx, "task_b"); err != nil || task.DeliveredAt != nil {
+		t.Fatalf("the next run should read task_b: %+v, %v", task, err)
+	}
+}

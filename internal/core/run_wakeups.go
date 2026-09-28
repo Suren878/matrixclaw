@@ -62,10 +62,8 @@ func (c *Core) wakeWaitingRun(ctx context.Context, sessionID string, runID strin
 // of events and starts it when nothing is pending; its await is kept in its
 // checkpoint, so it parks again once resumed.
 func (c *Core) healApprovalPark(ctx context.Context, run Run) error {
-	if _, err := c.store.GetRunWakeup(ctx, run.ID); errors.Is(err, ErrNotFound) {
-		return nil
-	} else if err != nil {
-		return err
+	if _, err := c.store.GetRunWakeup(ctx, run.ID); err != nil {
+		return ignoreNotFound(err)
 	}
 	if err := c.store.DeleteRunWakeup(ctx, run.ID); err != nil {
 		return err

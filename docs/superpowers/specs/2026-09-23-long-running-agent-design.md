@@ -634,7 +634,9 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   client, capabilities and delivery address of the newest run before the wake
   chain, so Telegram receives its reply. Twenty wake runs in a row without a
   user run stop the chain: the session shows a system message and the chat
-  gets a `notice` delivery per finished task. Stopped and lost commands wait
+  gets a `notice` delivery per finished task. A wake run that failed or was
+  canceled stops the chain until the user writes; a failed one tells the user
+  once, the same way. Stopped and lost commands wait
   for the next run. Subagent completion runs are wake runs now; their prompt,
   trigger IDs and `ListPendingSubagentCompletionTasks` are gone.
 - **Clients**: the TUI counts `waiting_events` as busy ("Waiting for background

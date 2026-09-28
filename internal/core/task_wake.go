@@ -34,10 +34,26 @@ func (c *Core) wakeSession(ctx context.Context, sessionID string, finished *Task
 		return nil
 	}
 	if err := c.startRun(ctx, result.Run.ID); err != nil {
-		_, err = c.failAcceptedRun(ctx, *result, err)
-		return err
+		failed, err := c.failAcceptedRun(ctx, *result, err)
+		return errors.Join(err, c.noticeFailedWakeRun(ctx, failed.Run.ID))
 	}
 	return nil
+}
+
+// noticeFailedWakeRun tells the user when a run started for finished
+// background work failed; the session then starts no other on its own until
+// the user writes.
+func (c *Core) noticeFailedWakeRun(ctx context.Context, runID string) error {
+	run, err := c.store.GetRun(ctx, runID)
+	if err != nil || run.Trigger != RunTriggerWake || run.Status != RunStatusFailed {
+		return ignoreNotFound(err)
+	}
+	session, err := c.store.GetSession(ctx, run.SessionID)
+	if err != nil {
+		return ignoreNotFound(err)
+	}
+	text := fmt.Sprintf("Background work finished, but the run started for it failed (%s). This session waits for your message before it goes on.", firstNonEmpty(run.Error, "no reason given"))
+	return c.sendWakeNotice(ctx, wakeNotice{session: session, last: run, text: text})
 }
 
 // wakeNotice tells the user that background work finished while the session
@@ -76,6 +92,10 @@ func (c *Core) prepareWake(ctx context.Context, sessionID string, finished *Task
 	runs, err := c.store.ListSessionRuns(ctx, session.ID, maxWakeChain+1)
 	if err != nil {
 		return nil, nil, err
+	}
+	if len(runs) > 0 && runs[0].Trigger == RunTriggerWake && (runs[0].Status == RunStatusFailed || runs[0].Status == RunStatusCanceled) {
+		// The last run this session started on its own did not get through.
+		return nil, nil, nil
 	}
 	chain := 0
 	for chain < len(runs) && runs[chain].Trigger == RunTriggerWake {
@@ -197,4 +217,11 @@ func (c *Core) RecoverTaskEvents(ctx context.Context) error {
 		errs = append(errs, c.wakeSession(ctx, task.SessionID, nil))
 	}
 	return errors.Join(errs...)
+}
+
+func ignoreNotFound(err error) error {
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	}
+	return err
 }

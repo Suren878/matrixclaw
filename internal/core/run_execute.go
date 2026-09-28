@@ -41,7 +41,13 @@ func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
 	}
 	defer c.resumeParkedRun(runID)
 	defer unregisterRun()
+	ready := false
 	defer func() {
+		if ready {
+			if err := c.noticeFailedWakeRun(context.Background(), runID); err != nil {
+				log.Printf("core: notice for failed wake run %q failed: %v", runID, err)
+			}
+		}
 		if err := c.afterRunExecution(context.Background(), runID); err != nil {
 			log.Printf("core: after run execution for %q failed: %v", runID, err)
 		}
