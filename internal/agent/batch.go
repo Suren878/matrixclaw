@@ -18,6 +18,9 @@ const detachedWriteTimeout = 5 * time.Second
 // panicResult answers a call whose tool panicked.
 var panicResult = tools.Result{Content: "The tool failed unexpectedly; the daemon log has the details.", Status: tools.ResultStatusError, IsError: true}
 
+// canceledResult answers a call a canceled run did not finish.
+var canceledResult = tools.Result{Content: "Canceled by user.", Status: tools.ResultStatusError, IsError: true}
+
 // callState is where a call of a batch stands.
 type callState int
 
@@ -255,17 +258,26 @@ func (b *batch) drain() {
 }
 
 // keep journals, once the run's context stopped, the results of the calls that
-// finished before; the others are left to crash recovery.
+// finished before; a canceled run also answers every other call as canceled.
 func (b *batch) keep(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), detachedWriteTimeout)
 	defer cancel()
+	canceled, err := b.r.Inbox.Canceled(ctx, b.r.task.RunID)
+	if err != nil {
+		return err
+	}
 	for _, c := range b.calls[b.journaled:] {
-		var err error
-		switch c.state {
-		case callFinished:
+		switch {
+		case c.state == callFinished:
 			err = b.r.finishCall(ctx, c.req, c.call, c.result)
-		case callRejected:
+		case c.state == callRejected:
 			err = b.r.answerCall(ctx, c.req, c.result)
+		case !canceled || c.state == callJournaled:
+			continue
+		case c.state == callWaiting:
+			err = b.r.rejectCall(ctx, c.req, canceledResult)
+		default:
+			err = b.r.finishCall(ctx, c.req, c.call, canceledResult)
 		}
 		if err != nil {
 			return err

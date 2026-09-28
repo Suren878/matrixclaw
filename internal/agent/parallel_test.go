@@ -291,6 +291,32 @@ func stoppedBatch(t *testing.T, canceled bool) (*agenttest.Fixture, agent.Outcom
 	return f, outcome
 }
 
+func TestCanceledBatchKeepsFinishedResultsAndCancelsTheRest(t *testing.T) {
+	f, outcome := stoppedBatch(t, true)
+
+	if outcome.Status != agent.StatusInterrupted {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+	want := map[string]string{"r1": "file body", "w2": "Canceled by user.", "r3": "Canceled by user."}
+	for id, content := range want {
+		if result, ok := f.Journal.Result(id); !ok || result.Content != content {
+			t.Fatalf("result of %s = %+v, want %q", id, result, content)
+		}
+	}
+	if got := resultOrder(f); got != "r1,w2,r3" {
+		t.Fatalf("results = %s", got)
+	}
+	if got := eventOrder(f, agent.EventToolFinished); got != "r1,w2" {
+		t.Fatalf("tool.finished = %s, want no event for the call that never started", got)
+	}
+	if message, _ := f.Journal.Message("r3"); message.Parts[0].ToolCall.Deferred {
+		t.Fatal("the canceled deferred call is still marked deferred")
+	}
+	if got := executedIDs(f); got != "r1" {
+		t.Fatalf("executed = %s, want only r1 to have returned", got)
+	}
+}
+
 func TestInterruptedBatchLeavesUnfinishedCallsToRecovery(t *testing.T) {
 	f, outcome := stoppedBatch(t, false)
 

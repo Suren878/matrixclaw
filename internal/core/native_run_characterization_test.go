@@ -660,6 +660,13 @@ func TestCancelDuringToolStopsRunWithoutAnotherModelCall(t *testing.T) {
 	if !sealed {
 		t.Fatal("tool-turn assistant message was not sealed as canceled")
 	}
+	answered := false
+	for _, message := range sessionMessages(t, db, session.ID) {
+		answered = answered || (message.Role == transcript.MessageRoleTool && message.Content == "Canceled by user.")
+	}
+	if !answered {
+		t.Fatal("the call in flight was not answered as canceled")
+	}
 	if _, err := db.GetRunCheckpoint(context.Background(), run.ID); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("canceled run checkpoint error = %v, want ErrNotFound", err)
 	}
