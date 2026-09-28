@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/store"
@@ -34,6 +36,37 @@ func TestClearContextCoversEveryMessageSoFar(t *testing.T) {
 	latest, err := db.LatestCompaction(context.Background(), session.ID)
 	if err != nil || latest.ID != cleared.ID || latest.Seq <= cleared.Compaction.CoversThroughSeq {
 		t.Fatalf("stored boundary = %+v err = %v", latest, err)
+	}
+}
+
+func TestClearContextClearsTheTodoList(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session, run := saveCrashRecoveryRun(t, db, "clear_todo", core.RunStatusCompleted, false)
+	if err := db.SaveSessionTodo(ctx, todo.List{SessionID: session.ID, Items: []todo.Item{{Content: "a", Status: todo.Pending}}, UpdatedRunID: run.ID}); err != nil {
+		t.Fatal(err)
+	}
+	events := app.SubscribeEvents(ctx, session.ID)
+
+	if _, err := app.ClearContext(ctx, session.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if list, err := app.SessionTodo(ctx, session.ID); err != nil || len(list.Items) != 0 || list.UpdatedRunID != "" {
+		t.Fatalf("todo after /clear = %+v err = %v", list, err)
+	}
+	for {
+		select {
+		case event := <-events:
+			if payload, ok := event.Payload.(todo.List); ok && event.Type == core.EventTodoUpdated && len(payload.Items) == 0 {
+				return
+			}
+		case <-time.After(time.Second):
+			t.Fatal("no todo.updated event")
+		}
 	}
 }
 
