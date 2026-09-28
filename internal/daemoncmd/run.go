@@ -110,6 +110,9 @@ func Run(ctx context.Context) error {
 	}
 	extraTools = append(extraTools, webtools.NewWebResearchExecutorsWithService(webTools)...)
 	toolRegistry := tools.NewCoreCodingRegistry(extraTools...)
+	if err := toolRegistry.Register(tools.NewShellExecutors(app)...); err != nil {
+		return err
+	}
 	if err := toolRegistry.Register(core.TodoToolExecutors(app)...); err != nil {
 		return err
 	}
@@ -129,6 +132,10 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	app.WithTools(newSetupAwareToolExecutor(toolRegistry, bootstrap.SetupService))
+	// Shell tasks do not survive a restart; this runs before any run can start new ones.
+	if err := app.RecoverTasks(ctx); err != nil {
+		log.Printf("matrixclawd background task recovery failed: %v", err)
+	}
 	// The workflow worker executes persisted runs as soon as it starts, so it
 	// starts only once the core is fully wired and before anything accepts runs.
 	lifetime, stopLifetime := context.WithCancel(ctx)

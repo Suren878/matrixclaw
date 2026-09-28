@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"time"
 
 	"github.com/Suren878/matrixclaw/internal/permission"
 )
@@ -128,14 +127,6 @@ type FileVersion struct {
 	Removals   int    `json:"removals,omitempty"`
 }
 
-type BackgroundJob struct {
-	ID          string    `json:"shell_id"`
-	Command     string    `json:"command"`
-	WorkingDir  string    `json:"working_dir"`
-	Description string    `json:"description,omitempty"`
-	StartedAt   time.Time `json:"started_at"`
-}
-
 type ResultStatus string
 
 const (
@@ -152,7 +143,6 @@ type Result struct {
 	IsError     bool             `json:"is_error,omitempty"`
 	Approval    *ApprovalRequest `json:"approval,omitempty"`
 	FileVersion *FileVersion     `json:"file_version,omitempty"`
-	Background  *BackgroundJob   `json:"background,omitempty"`
 	// OutputPath is the file holding the full output when Content was cut.
 	OutputPath string `json:"output_path,omitempty"`
 }

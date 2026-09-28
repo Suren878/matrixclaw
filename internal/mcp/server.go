@@ -73,9 +73,6 @@ func toolResultToMCP(result tools.Result) *sdk.CallToolResult {
 	if result.FileVersion != nil {
 		structured["file_version"] = result.FileVersion
 	}
-	if result.Background != nil {
-		structured["background"] = result.Background
-	}
 	if result.Approval != nil {
 		structured["approval"] = result.Approval
 		out.IsError = true

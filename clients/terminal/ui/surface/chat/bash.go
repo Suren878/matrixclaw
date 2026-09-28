@@ -15,24 +15,12 @@ import (
 )
 
 type BashToolMessageItem struct{ *baseToolMessageItem }
-type JobOutputToolMessageItem struct{ *baseToolMessageItem }
-type JobKillToolMessageItem struct{ *baseToolMessageItem }
 
 func NewBashToolMessageItem(sty *surfacestyles.Styles, toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult, canceled bool) ToolMessageItem {
 	return newBaseToolMessageItem(sty, toolCall, result, &BashToolRenderContext{}, canceled)
 }
 
-func NewJobOutputToolMessageItem(sty *surfacestyles.Styles, toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult, canceled bool) ToolMessageItem {
-	return newBaseToolMessageItem(sty, toolCall, result, &JobOutputToolRenderContext{}, canceled)
-}
-
-func NewJobKillToolMessageItem(sty *surfacestyles.Styles, toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult, canceled bool) ToolMessageItem {
-	return newBaseToolMessageItem(sty, toolCall, result, &JobKillToolRenderContext{}, canceled)
-}
-
 type BashToolRenderContext struct{}
-type JobOutputToolRenderContext struct{}
-type JobKillToolRenderContext struct{}
 
 func (b *BashToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
@@ -53,7 +41,7 @@ func (b *BashToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int,
 	if meta.Background {
 		description := cmp.Or(meta.Description, params.Command)
 		content := "Command: " + params.Command + "\n" + opts.Result.Content
-		return renderJobTool(sty, opts, cappedWidth, "Start", meta.ShellID, description, content)
+		return renderTaskTool(sty, opts, cappedWidth, "Start", meta.TaskID, description, content)
 	}
 
 	cmd := strings.ReplaceAll(params.Command, "\n", " ")
@@ -114,20 +102,44 @@ func isExpectedNeutralBashResult(toolCall surfacemessage.ToolCall, result *surfa
 	return meta.ExitCode == 1 && strings.TrimSpace(meta.Output) == "" && tools.IsProcessProbeCommand(params.Command)
 }
 
-func (j *JobOutputToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
+type TaskOutputToolMessageItem struct{ *baseToolMessageItem }
+
+type TaskKillToolMessageItem struct{ *baseToolMessageItem }
+
+func NewTaskOutputToolMessageItem(sty *surfacestyles.Styles, toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult, canceled bool) ToolMessageItem {
+	return newBaseToolMessageItem(sty, toolCall, result, &TaskOutputToolRenderContext{}, canceled)
+}
+
+func NewTaskKillToolMessageItem(sty *surfacestyles.Styles, toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult, canceled bool) ToolMessageItem {
+	return newBaseToolMessageItem(sty, toolCall, result, &TaskKillToolRenderContext{}, canceled)
+}
+
+type TaskOutputToolRenderContext struct{}
+
+type TaskKillToolRenderContext struct{}
+
+func (j *TaskOutputToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
+	return renderTaskToolCall(sty, width, opts, "Output")
+}
+
+func (j *TaskKillToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
+	return renderTaskToolCall(sty, width, opts, "Kill")
+}
+
+func renderTaskToolCall(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts, action string) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
-		return pendingTool(sty, "Job", opts.Anim, opts.Compact)
+		return pendingTool(sty, "Task", opts.Anim, opts.Compact)
 	}
 
-	var params tools.JobOutputParams
+	var params tools.TaskOutputParams
 	if err := json.Unmarshal([]byte(opts.ToolCall.Input), &params); err != nil {
 		return toolErrorContent(sty, &surfacemessage.ToolResult{Content: "Invalid parameters"}, cappedWidth)
 	}
 
 	var description string
 	if opts.HasResult() && opts.Result.Metadata != "" {
-		var meta tools.JobOutputResponseMetadata
+		var meta tools.TaskInfo
 		if err := json.Unmarshal([]byte(opts.Result.Metadata), &meta); err == nil {
 			description = cmp.Or(meta.Description, meta.Command)
 		}
@@ -137,37 +149,11 @@ func (j *JobOutputToolRenderContext) RenderTool(sty *surfacestyles.Styles, width
 	if opts.HasResult() {
 		content = opts.Result.Content
 	}
-	return renderJobTool(sty, opts, cappedWidth, "Output", params.ShellID, description, content)
+	return renderTaskTool(sty, opts, cappedWidth, action, params.ID, description, content)
 }
 
-func (j *JobKillToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
-	cappedWidth := cappedMessageWidth(width)
-	if opts.IsPending() {
-		return pendingTool(sty, "Job", opts.Anim, opts.Compact)
-	}
-
-	var params tools.JobKillParams
-	if err := json.Unmarshal([]byte(opts.ToolCall.Input), &params); err != nil {
-		return toolErrorContent(sty, &surfacemessage.ToolResult{Content: "Invalid parameters"}, cappedWidth)
-	}
-
-	var description string
-	if opts.HasResult() && opts.Result.Metadata != "" {
-		var meta tools.JobKillResponseMetadata
-		if err := json.Unmarshal([]byte(opts.Result.Metadata), &meta); err == nil {
-			description = cmp.Or(meta.Description, meta.Command)
-		}
-	}
-
-	content := ""
-	if opts.HasResult() {
-		content = opts.Result.Content
-	}
-	return renderJobTool(sty, opts, cappedWidth, "Kill", params.ShellID, description, content)
-}
-
-func renderJobTool(sty *surfacestyles.Styles, opts *ToolRenderOpts, width int, action, shellID, description, content string) string {
-	header := jobHeader(sty, opts.Status, action, shellID, description, width)
+func renderTaskTool(sty *surfacestyles.Styles, opts *ToolRenderOpts, width int, action, taskID, description, content string) string {
+	header := taskHeader(sty, opts.Status, action, taskID, description, width)
 	if opts.Compact {
 		return header
 	}
@@ -183,12 +169,12 @@ func renderJobTool(sty *surfacestyles.Styles, opts *ToolRenderOpts, width int, a
 	return joinToolParts(header, body)
 }
 
-func jobHeader(sty *surfacestyles.Styles, status ToolStatus, action, shellID, description string, width int) string {
+func taskHeader(sty *surfacestyles.Styles, status ToolStatus, action, taskID, description string, width int) string {
 	icon := toolIcon(sty, status)
-	jobPart := sty.Tool.JobToolName.Render("Job")
+	taskPart := sty.Tool.JobToolName.Render("Task")
 	actionPart := sty.Tool.JobAction.Render("(" + action + ")")
-	pidPart := sty.Tool.JobPID.Render("PID " + shellID)
-	prefix := fmt.Sprintf("%s %s %s %s", icon, jobPart, actionPart, pidPart)
+	idPart := sty.Tool.JobPID.Render(taskID)
+	prefix := fmt.Sprintf("%s %s %s %s", icon, taskPart, actionPart, idPart)
 
 	if description == "" {
 		return prefix

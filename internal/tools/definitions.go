@@ -1,5 +1,7 @@
 package tools
 
+// Definition is a core tool; one whose executor needs the daemon's services
+// (the shell tools) has no NewExecutor and is registered on its own.
 type Definition struct {
 	Spec        Spec
 	NewExecutor func() Executor
@@ -192,13 +194,12 @@ var coreDefinitions = []Definition{
 			OutputKind:       OutputText,
 			InputJSONSchema:  bashInputSchema,
 		},
-		NewExecutor: NewBashExecutor,
 	},
 	{
 		Spec: Spec{
-			ID:              jobOutputToolName,
-			Name:            "JobOutput",
-			Description:     "Read background job output",
+			ID:              taskOutputToolName,
+			Name:            "TaskOutput",
+			Description:     "Read a background task's new output",
 			Risk:            RiskSafe,
 			Effect:          EffectReadOnly,
 			ApprovalMode:    ApprovalNever,
@@ -206,25 +207,23 @@ var coreDefinitions = []Definition{
 			Category:        CategoryShell,
 			Profiles:        []Profile{ProfileCoding},
 			OutputKind:      OutputJob,
-			InputJSONSchema: jobOutputInputSchema,
+			InputJSONSchema: taskOutputInputSchema,
 		},
-		NewExecutor: NewJobOutputExecutor,
 	},
 	{
 		Spec: Spec{
-			ID:               jobKillToolName,
-			Name:             "JobKill",
-			Description:      "Kill a background job",
+			ID:               taskKillToolName,
+			Name:             "TaskKill",
+			Description:      "Stop a background task",
 			Risk:             RiskApproval,
 			Effect:           EffectMutation,
 			ApprovalMode:     ApprovalOnRequest,
-			PermissionParams: "job_kill",
+			PermissionParams: "task_kill",
 			Namespace:        namespaceCoreShell,
 			Category:         CategoryShell,
 			Profiles:         []Profile{ProfileCoding},
 			OutputKind:       OutputJob,
-			InputJSONSchema:  jobKillInputSchema,
+			InputJSONSchema:  taskKillInputSchema,
 		},
-		NewExecutor: NewJobKillExecutor,
 	},
 }

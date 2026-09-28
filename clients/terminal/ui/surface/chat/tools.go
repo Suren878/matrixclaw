@@ -119,10 +119,10 @@ func NewToolMessageItem(
 	switch normalizedToolName(toolCall.Name) {
 	case "bash":
 		item = NewBashToolMessageItem(sty, toolCall, result, canceled)
-	case "job_output":
-		item = NewJobOutputToolMessageItem(sty, toolCall, result, canceled)
-	case "job_kill":
-		item = NewJobKillToolMessageItem(sty, toolCall, result, canceled)
+	case "task_output":
+		item = NewTaskOutputToolMessageItem(sty, toolCall, result, canceled)
+	case "task_kill":
+		item = NewTaskKillToolMessageItem(sty, toolCall, result, canceled)
 	case "read":
 		item = NewReadToolMessageItem(sty, toolCall, result, canceled)
 	case "write":

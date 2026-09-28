@@ -63,7 +63,7 @@ func TestBashExecutorBlocksManagedBrowserInstallEvenWhenApproved(t *testing.T) {
 	args, _ := json.Marshal(BashParams{
 		Command: "playwright-mcp install-browser chrome-for-testing",
 	})
-	result, err := NewBashExecutor().Execute(context.Background(), Call{
+	result, err := NewShellExecutors(nil)[0].Execute(context.Background(), Call{
 		Args:     args,
 		Approved: true,
 	})
@@ -82,7 +82,7 @@ func TestBashExecutorBlocksManagedBrowserInstallBeforeApproval(t *testing.T) {
 	args, _ := json.Marshal(BashParams{
 		Command: "npm install --prefix /tmp/matrixclaw/runtime/browser/playwright-mcp @playwright/mcp@latest",
 	})
-	result, err := NewBashExecutor().Execute(context.Background(), Call{Args: args})
+	result, err := NewShellExecutors(nil)[0].Execute(context.Background(), Call{Args: args})
 	if err != nil {
 		t.Fatal(err)
 	}

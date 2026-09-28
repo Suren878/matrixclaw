@@ -37,7 +37,7 @@ func (e keyedExecutor) ConcurrencyKey(call Call) string { return "own:" + call.W
 
 func TestRegistryConcurrencyKeyPrefersTheExecutorsOwnKey(t *testing.T) {
 	own := keyedExecutor{spec: Spec{ID: "own", Name: "Own", Description: "own key", Risk: RiskSafe, Namespace: "test", Effect: EffectMutation, Category: CategoryAutomation, Profiles: []Profile{ProfileCoding}, OutputKind: OutputText, InputJSONSchema: []byte(`{}`)}}
-	registry := NewRegistry(NewBashExecutor(), own)
+	registry := NewRegistry(append(NewShellExecutors(nil), own)...)
 	if err := registry.Err(); err != nil {
 		t.Fatal(err)
 	}

@@ -21,7 +21,7 @@ func TestPermissionSubjectsNameResolvedPathsAndCommands(t *testing.T) {
 	if err := os.Symlink(real, filepath.Join(root, "link")); err != nil {
 		t.Fatal(err)
 	}
-	registry := NewCoreCodingRegistry()
+	registry := NewCoreCodingRegistry(NewShellExecutors(nil)...)
 	for _, tc := range []struct {
 		tool string
 		args string
@@ -37,7 +37,7 @@ func TestPermissionSubjectsNameResolvedPathsAndCommands(t *testing.T) {
 		{"ls", `{}`, permission.Subject{Kind: permission.KindDirectory, Value: root}},
 		{"read", `{}`, permission.Subject{}},
 		{"bash", `not json`, permission.Subject{}},
-		{"job_output", `{"shell_id":"job-1"}`, permission.Subject{}},
+		{"task_output", `{"id":"task_1"}`, permission.Subject{}},
 	} {
 		got := registry.Subject(tc.tool, Call{WorkingDir: root, Args: json.RawMessage(tc.args)})
 		if got != tc.want {

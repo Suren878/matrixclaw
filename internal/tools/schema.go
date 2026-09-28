@@ -95,27 +95,29 @@ var (
     "description": {"type": "string"},
     "command": {"type": "string"},
     "working_dir": {"type": "string"},
-    "run_in_background": {"type": "boolean"},
-    "auto_background_after": {"type": "integer", "minimum": 0}
+    "run_in_background": {"type": "boolean", "description": "Start the command as a background task and return its task id at once."},
+    "timeout": {"type": "integer", "minimum": 0, "maximum": 3600, "description": "Seconds before a foreground command is killed; default 600."},
+    "auto_background_after": {"type": "integer", "minimum": 0, "description": "Seconds after which a foreground command still running becomes a background task; default 120."}
   },
   "required": ["command"],
   "additionalProperties": false
 }`)
-	jobOutputInputSchema = rawSchema(`{
+	taskOutputInputSchema = rawSchema(`{
   "type": "object",
   "properties": {
-    "shell_id": {"type": "string"},
-    "wait": {"type": "boolean"}
+    "id": {"type": "string", "description": "The background task id."},
+    "wait_seconds": {"type": "integer", "minimum": 0, "maximum": 600, "description": "Wait up to this long for the task to finish first."},
+    "filter": {"type": "string", "description": "Regular expression; only matching lines of the new output are returned."}
   },
-  "required": ["shell_id"],
+  "required": ["id"],
   "additionalProperties": false
 }`)
-	jobKillInputSchema = rawSchema(`{
+	taskKillInputSchema = rawSchema(`{
   "type": "object",
   "properties": {
-    "shell_id": {"type": "string"}
+    "id": {"type": "string", "description": "The background task id."}
   },
-  "required": ["shell_id"],
+  "required": ["id"],
   "additionalProperties": false
 }`)
 )

@@ -1,32 +1,38 @@
 package tools
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os/exec"
 	"strings"
-	"sync"
-	"syscall"
 	"time"
-
-	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 const (
-	bashToolName      = "bash"
-	jobOutputToolName = "job_output"
-	jobKillToolName   = "job_kill"
-	maxToolOutput     = 30000
+	bashToolName       = "bash"
+	taskOutputToolName = "task_output"
+	taskKillToolName   = "task_kill"
+	maxToolOutput      = 30000
 )
+
+// A foreground command is killed after its timeout, 10 minutes unless the call
+// names up to 60, and moves to the background after 2 minutes.
+const (
+	DefaultCommandTimeout = 10 * time.Minute
+	MaxCommandTimeout     = time.Hour
+	DefaultAutoBackground = 2 * time.Minute
+	maxTaskWait           = 10 * time.Minute
+)
+
+var errShellUnavailable = errors.New("shell commands are not available in this daemon")
 
 type BashParams struct {
 	Description         string `json:"description,omitempty"`
 	Command             string `json:"command"`
 	WorkingDir          string `json:"working_dir,omitempty"`
 	RunInBackground     bool   `json:"run_in_background,omitempty"`
+	Timeout             int    `json:"timeout,omitempty"`
 	AutoBackgroundAfter int    `json:"auto_background_after,omitempty"`
 }
 
@@ -35,6 +41,7 @@ type BashPermissionsParams struct {
 	Command             string `json:"command"`
 	WorkingDir          string `json:"working_dir"`
 	RunInBackground     bool   `json:"run_in_background"`
+	Timeout             int    `json:"timeout"`
 	AutoBackgroundAfter int    `json:"auto_background_after"`
 }
 
@@ -46,84 +53,40 @@ type BashResponseMetadata struct {
 	Description      string `json:"description,omitempty"`
 	WorkingDirectory string `json:"working_directory"`
 	Background       bool   `json:"background,omitempty"`
-	ShellID          string `json:"shell_id,omitempty"`
+	TaskID           string `json:"task_id,omitempty"`
+	TimedOut         bool   `json:"timed_out,omitempty"`
+	OutputPath       string `json:"output_path,omitempty"`
 }
 
-type JobOutputParams struct {
-	ShellID string `json:"shell_id"`
-	Wait    bool   `json:"wait,omitempty"`
+type TaskOutputParams struct {
+	ID          string `json:"id"`
+	WaitSeconds int    `json:"wait_seconds,omitempty"`
+	Filter      string `json:"filter,omitempty"`
 }
 
-type JobKillParams struct {
-	ShellID string `json:"shell_id"`
+type TaskKillParams struct {
+	ID string `json:"id"`
 }
 
-type JobOutputResponseMetadata struct {
-	ShellID          string `json:"shell_id"`
-	Command          string `json:"command"`
-	Description      string `json:"description"`
-	Done             bool   `json:"done"`
-	WorkingDirectory string `json:"working_directory"`
+type bashExecutor struct{ tasks ShellTasks }
+type taskOutputExecutor struct{ tasks ShellTasks }
+type taskKillExecutor struct{ tasks ShellTasks }
+
+// NewShellExecutors returns bash, task_output and task_kill over tasks.
+func NewShellExecutors(tasks ShellTasks) []Executor {
+	return []Executor{&bashExecutor{tasks: tasks}, &taskOutputExecutor{tasks: tasks}, &taskKillExecutor{tasks: tasks}}
 }
-
-type JobKillResponseMetadata struct {
-	ShellID     string `json:"shell_id"`
-	Command     string `json:"command"`
-	Description string `json:"description"`
-}
-
-type jobState struct {
-	info       BackgroundJob
-	cmd        *exec.Cmd
-	output     synchronizedBuffer
-	mu         sync.Mutex
-	done       bool
-	err        error
-	finishedAt time.Time
-}
-
-type synchronizedBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (b *synchronizedBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.Write(p)
-}
-
-func (b *synchronizedBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.String()
-}
-
-type jobManager struct {
-	mu   sync.RWMutex
-	jobs map[string]*jobState
-}
-
-type bashExecutor struct{}
-type jobOutputExecutor struct{}
-type jobKillExecutor struct{}
-
-var defaultJobManager = &jobManager{jobs: map[string]*jobState{}}
-
-func NewBashExecutor() Executor      { return &bashExecutor{} }
-func NewJobOutputExecutor() Executor { return &jobOutputExecutor{} }
-func NewJobKillExecutor() Executor   { return &jobKillExecutor{} }
 
 func (e *bashExecutor) Spec() Spec {
 	return coreDefinitionSpec(bashToolName)
 }
 
-func (e *jobOutputExecutor) Spec() Spec {
-	return coreDefinitionSpec(jobOutputToolName)
+func (e *taskOutputExecutor) Spec() Spec {
+	return coreDefinitionSpec(taskOutputToolName)
 }
 
-func (e *jobKillExecutor) Spec() Spec {
-	return coreDefinitionSpec(jobKillToolName)
+func (e *taskKillExecutor) Spec() Spec {
+	return coreDefinitionSpec(taskKillToolName)
 }
 
 func (e *bashExecutor) Execute(ctx context.Context, call Call) (Result, error) {
@@ -137,6 +100,10 @@ func (e *bashExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 	if blockedManagedBrowserInstallCommand(params.Command) {
 		return Result{Content: managedBrowserSetupMessage, Status: ResultStatusError, IsError: true}, nil
 	}
+	timeout, autoBackground, err := commandLimits(params)
+	if err != nil {
+		return Result{Content: err.Error(), Status: ResultStatusError, IsError: true}, nil
+	}
 	workingDir := resolvePath(call.WorkingDir, params.WorkingDir)
 	if !call.Approved {
 		return approvalResult(bashToolName, "execute", workingDir, "Execute command: "+params.Command, BashPermissionsParams{
@@ -144,234 +111,145 @@ func (e *bashExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 			Command:             params.Command,
 			WorkingDir:          workingDir,
 			RunInBackground:     params.RunInBackground,
+			Timeout:             params.Timeout,
 			AutoBackgroundAfter: params.AutoBackgroundAfter,
 		}), nil
 	}
-
-	if params.RunInBackground {
-		job, err := defaultJobManager.start(params, workingDir)
-		if err != nil {
-			return Result{}, fmt.Errorf("bash: start background job: %w", err)
-		}
-		return Result{
-			Content: fmt.Sprintf("Background job started: %s", job.info.ID),
-			Metadata: BashResponseMetadata{
-				StartTime:        job.info.StartedAt.UnixMilli(),
-				EndTime:          time.Now().UnixMilli(),
-				Output:           "",
-				Description:      job.info.Description,
-				WorkingDirectory: job.info.WorkingDir,
-				Background:       true,
-				ShellID:          job.info.ID,
-			},
-			Background: &job.info,
-		}, nil
+	if e.tasks == nil {
+		return Result{}, errShellUnavailable
 	}
-
-	startedAt := time.Now()
-	cmd := exec.CommandContext(ctx, "bash", "-lc", params.Command)
-	cmd.Dir = workingDir
-	configureCommandProcessGroup(cmd, true)
-	output, err := cmd.CombinedOutput()
-	trimmed := trimOutput(string(output))
+	result, err := e.tasks.RunCommand(ctx, call, Command{
+		Command:        params.Command,
+		Description:    params.Description,
+		WorkingDir:     workingDir,
+		Background:     params.RunInBackground,
+		Timeout:        timeout,
+		AutoBackground: autoBackground,
+		OutputLimit:    maxToolOutput,
+	})
 	if err != nil {
-		exitCode := commandExitCode(err)
-		isError := !isExpectedEmptyProcessProbe(params.Command, trimmed, exitCode)
-		status := ResultStatusError
-		if !isError {
-			status = ResultStatusNeutral
-		}
-		return Result{
-			Content: trimmed,
-			Metadata: BashResponseMetadata{
-				StartTime:        startedAt.UnixMilli(),
-				EndTime:          time.Now().UnixMilli(),
-				Output:           trimmed,
-				ExitCode:         exitCode,
-				Description:      params.Description,
-				WorkingDirectory: workingDir,
-			},
-			Status:  status,
-			IsError: isError,
-		}, nil
+		return Result{}, fmt.Errorf("bash: %w", err)
 	}
-
-	return Result{
-		Content: trimmed,
-		Metadata: BashResponseMetadata{
-			StartTime:        startedAt.UnixMilli(),
-			EndTime:          time.Now().UnixMilli(),
-			Output:           trimmed,
-			Description:      params.Description,
-			WorkingDirectory: workingDir,
-		},
-	}, nil
+	meta := BashResponseMetadata{
+		StartTime:        result.StartedAt.UnixMilli(),
+		EndTime:          result.EndedAt.UnixMilli(),
+		Description:      params.Description,
+		WorkingDirectory: workingDir,
+	}
+	if result.TaskID != "" {
+		meta.Background, meta.TaskID = true, result.TaskID
+		return Result{Content: backgroundStartText(result.TaskID, params.RunInBackground, autoBackground), Metadata: meta}, nil
+	}
+	meta.Output = strings.TrimSpace(result.Output)
+	meta.ExitCode, meta.TimedOut, meta.OutputPath = result.ExitCode, result.TimedOut, result.OutputPath
+	content := meta.Output
+	if result.OutputPath != "" {
+		content += "\n\n(output truncated; the full output is in " + result.OutputPath + ")"
+	}
+	if result.TimedOut {
+		content += fmt.Sprintf("\n\n(killed after its timeout of %s; run long commands with run_in_background)", timeout)
+		return Result{Content: strings.TrimSpace(content), Metadata: meta, Status: ResultStatusError, IsError: true}, nil
+	}
+	if result.ExitCode == 0 {
+		return Result{Content: content, Metadata: meta}, nil
+	}
+	status := ResultStatusError
+	if isExpectedEmptyProcessProbe(params.Command, meta.Output, result.ExitCode) {
+		status = ResultStatusNeutral
+	}
+	return Result{Content: content, Metadata: meta, Status: status, IsError: status == ResultStatusError}, nil
 }
 
-func (e *jobOutputExecutor) Execute(ctx context.Context, call Call) (Result, error) {
-	var params JobOutputParams
-	if err := json.Unmarshal(call.Args, &params); err != nil {
-		return Result{}, InvalidArgs(jobOutputToolName, err)
+// commandLimits reads a call's timeout and auto-background delay in seconds;
+// zero takes the defaults.
+func commandLimits(params BashParams) (time.Duration, time.Duration, error) {
+	timeout := time.Duration(params.Timeout) * time.Second
+	switch {
+	case params.Timeout < 0 || timeout > MaxCommandTimeout:
+		return 0, 0, fmt.Errorf("timeout is in seconds, at most %d", int(MaxCommandTimeout/time.Second))
+	case params.AutoBackgroundAfter < 0:
+		return 0, 0, errors.New("auto_background_after is in seconds and must not be negative")
+	case timeout == 0:
+		timeout = DefaultCommandTimeout
 	}
-	job, ok := defaultJobManager.get(strings.TrimSpace(params.ShellID))
-	if !ok {
-		return Result{Content: "job not found", IsError: true}, nil
+	autoBackground := time.Duration(params.AutoBackgroundAfter) * time.Second
+	if autoBackground == 0 {
+		autoBackground = DefaultAutoBackground
 	}
-	if params.Wait {
-		ticker := time.NewTicker(50 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			_, done, _ := job.snapshot()
-			if done {
-				break
-			}
-			select {
-			case <-ctx.Done():
-				return Result{}, ctx.Err()
-			case <-ticker.C:
-			}
-		}
-	}
-	output, done, jobErr := job.snapshot()
-	content := trimOutput(output)
-	if content == "" {
-		content = "no output"
-	}
-	if done {
-		if jobErr != nil {
-			content += "\n\n(job failed: " + jobErr.Error() + ")"
-		} else {
-			content += "\n\n(job completed)"
-		}
-	}
-	return Result{
-		Content: content,
-		Metadata: JobOutputResponseMetadata{
-			ShellID:          job.info.ID,
-			Command:          job.info.Command,
-			Description:      job.info.Description,
-			Done:             done,
-			WorkingDirectory: job.info.WorkingDir,
-		},
-		IsError: done && jobErr != nil,
-	}, nil
+	return timeout, autoBackground, nil
 }
 
-func (e *jobKillExecutor) Execute(_ context.Context, call Call) (Result, error) {
-	var params JobKillParams
-	if err := json.Unmarshal(call.Args, &params); err != nil {
-		return Result{}, InvalidArgs(jobKillToolName, err)
+func backgroundStartText(taskID string, requested bool, after time.Duration) string {
+	how := "Read its output with task_output (wait_seconds waits for it to finish); stop it with task_kill."
+	if requested {
+		return "Background task " + taskID + " started. " + how
 	}
-	jobID := strings.TrimSpace(params.ShellID)
-	if jobID == "" {
-		return Result{Content: "shell_id is required", IsError: true}, nil
+	return fmt.Sprintf("The command is still running after %s, so it went on as background task %s. %s", after, taskID, how)
+}
+
+func (e *taskOutputExecutor) Execute(ctx context.Context, call Call) (Result, error) {
+	var params TaskOutputParams
+	if err := json.Unmarshal(call.Args, &params); err != nil {
+		return Result{}, InvalidArgs(taskOutputToolName, err)
+	}
+	if strings.TrimSpace(params.ID) == "" {
+		return Result{Content: "id is required", IsError: true}, nil
+	}
+	wait := time.Duration(params.WaitSeconds) * time.Second
+	if params.WaitSeconds < 0 || wait > maxTaskWait {
+		return Result{Content: fmt.Sprintf("wait_seconds is at most %d", int(maxTaskWait/time.Second)), IsError: true}, nil
+	}
+	if e.tasks == nil {
+		return Result{}, errShellUnavailable
+	}
+	out, err := e.tasks.ReadTaskOutput(ctx, call, TaskRead{TaskID: strings.TrimSpace(params.ID), Wait: wait, Filter: params.Filter, Limit: maxToolOutput})
+	if err != nil {
+		return Result{}, err
+	}
+	return Result{Content: taskOutputText(out), Metadata: out.TaskInfo, Status: ResultStatusNeutral}, nil
+}
+
+func taskOutputText(out TaskOutput) string {
+	var parts []string
+	if out.Skipped > 0 {
+		parts = append(parts, fmt.Sprintf("[... %d bytes of output dropped ...]", out.Skipped))
+	}
+	if text := strings.TrimRight(out.Text, "\n"); text != "" {
+		parts = append(parts, text)
+	} else {
+		parts = append(parts, "(no new output)")
+	}
+	status := "(task " + out.Status
+	if out.ExitCode != nil {
+		status += fmt.Sprintf(", exit code %d", *out.ExitCode)
+	}
+	parts = append(parts, status+")")
+	if out.More {
+		parts = append(parts, "(more output is waiting: call task_output again, or read "+out.OutputPath+")")
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+func (e *taskKillExecutor) Execute(ctx context.Context, call Call) (Result, error) {
+	var params TaskKillParams
+	if err := json.Unmarshal(call.Args, &params); err != nil {
+		return Result{}, InvalidArgs(taskKillToolName, err)
+	}
+	id := strings.TrimSpace(params.ID)
+	if id == "" {
+		return Result{Content: "id is required", IsError: true}, nil
 	}
 	if !call.Approved {
-		return approvalResult(jobKillToolName, "kill", jobID, "Kill background job "+jobID, params), nil
+		return approvalResult(taskKillToolName, "kill", id, "Stop background task "+id, params), nil
 	}
-	job, ok := defaultJobManager.get(jobID)
-	if !ok {
-		return Result{Content: "job not found", IsError: true}, nil
+	if e.tasks == nil {
+		return Result{}, errShellUnavailable
 	}
-	if err := defaultJobManager.kill(jobID); err != nil {
-		return Result{Content: err.Error(), IsError: true}, nil
+	info, err := e.tasks.StopTask(ctx, call, id)
+	if err != nil {
+		return Result{}, err
 	}
-	return Result{
-		Content: "job killed: " + jobID,
-		Metadata: JobKillResponseMetadata{
-			ShellID:     jobID,
-			Command:     job.info.Command,
-			Description: job.info.Description,
-		},
-	}, nil
-}
-
-func (m *jobManager) start(params BashParams, workingDir string) (*jobState, error) {
-	jobID := fmt.Sprintf("job-%d", time.Now().UnixNano())
-	cmd := exec.Command("bash", "-lc", params.Command)
-	cmd.Dir = workingDir
-	configureCommandProcessGroup(cmd, false)
-
-	job := &jobState{
-		info: BackgroundJob{
-			ID:          jobID,
-			Command:     params.Command,
-			WorkingDir:  workingDir,
-			Description: params.Description,
-			StartedAt:   time.Now(),
-		},
-		cmd: cmd,
-	}
-	cmd.Stdout = &job.output
-	cmd.Stderr = &job.output
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-
-	m.mu.Lock()
-	m.jobs[jobID] = job
-	m.mu.Unlock()
-
-	safego.Go("tools.shellJob.wait", func() {
-		err := cmd.Wait()
-		job.mu.Lock()
-		job.done = true
-		job.err = err
-		job.finishedAt = time.Now()
-		job.mu.Unlock()
-	})
-
-	return job, nil
-}
-
-func (m *jobManager) get(jobID string) (*jobState, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	job, ok := m.jobs[jobID]
-	return job, ok
-}
-
-func (m *jobManager) kill(jobID string) error {
-	job, ok := m.get(jobID)
-	if !ok {
-		return fmt.Errorf("job not found")
-	}
-	if job.cmd.Process == nil {
-		return fmt.Errorf("job has no running process")
-	}
-	if err := killCommandProcessGroup(job.cmd); err != nil {
-		return err
-	}
-	return nil
-}
-
-func configureCommandProcessGroup(cmd *exec.Cmd, canCancel bool) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	if !canCancel {
-		return
-	}
-	cmd.Cancel = func() error {
-		return killCommandProcessGroup(cmd)
-	}
-	cmd.WaitDelay = 2 * time.Second
-}
-
-func killCommandProcessGroup(cmd *exec.Cmd) error {
-	if cmd == nil || cmd.Process == nil || cmd.Process.Pid <= 0 {
-		return nil
-	}
-	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err != nil && err != syscall.ESRCH {
-		return err
-	}
-	return nil
-}
-
-func commandExitCode(err error) int {
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return exitErr.ExitCode()
-	}
-	return -1
+	return Result{Content: "Task " + id + " is " + info.Status + ".", Metadata: info}, nil
 }
 
 func isExpectedEmptyProcessProbe(command string, output string, exitCode int) bool {
@@ -397,18 +275,4 @@ func IsProcessProbeCommand(command string) bool {
 	default:
 		return false
 	}
-}
-
-func (j *jobState) snapshot() (string, bool, error) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	return j.output.String(), j.done, j.err
-}
-
-func trimOutput(value string) string {
-	value = strings.TrimSpace(value)
-	if len(value) <= maxToolOutput {
-		return value
-	}
-	return value[:maxToolOutput] + "\n\n(output truncated)"
 }
