@@ -66,7 +66,7 @@ func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) 
 	if call.ToolCallID != "" {
 		t.c.authorized.Store(key, check)
 	}
-	return agent.Decision{Allowed: true, Barrier: spec.Mutates()}, nil
+	return agent.Decision{Allowed: true, Barrier: spec.Mutates(), Key: t.c.tools.ConcurrencyKey(spec.ID, call)}, nil
 }
 
 func (t coreTools) Execute(ctx context.Context, name string, call tools.Call) (tools.Result, error) {

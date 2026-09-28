@@ -62,6 +62,13 @@ func (e *setupAwareToolExecutor) Subject(toolID string, call tools.Call) permiss
 	return e.inner.Subject(toolID, call)
 }
 
+func (e *setupAwareToolExecutor) ConcurrencyKey(toolID string, call tools.Call) string {
+	if e == nil || e.inner == nil {
+		return ""
+	}
+	return e.inner.ConcurrencyKey(toolID, call)
+}
+
 func (e *setupAwareToolExecutor) visible(toolID string) bool {
 	switch strings.TrimSpace(toolID) {
 	case telephonymodule.CallToolID:

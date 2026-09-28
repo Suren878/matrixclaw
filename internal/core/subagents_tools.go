@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
@@ -98,6 +99,15 @@ func (t *delegateTaskTool) Spec() tools.Spec {
 		OutputKind:      tools.OutputText,
 		InputJSONSchema: delegateTaskToolSchema,
 	}
+}
+
+// ConcurrencyKey lets one delegated child at a time work in a directory. It is
+// not the directory's own key, which the child's calls take while this call
+// holds its key.
+func (t *delegateTaskTool) ConcurrencyKey(call tools.Call) string {
+	var input delegateTaskInput
+	_ = json.Unmarshal(call.Args, &input)
+	return "subagents:" + filepath.Clean(firstNonEmpty(normalizeWorkingDir(input.WorkingDir), call.WorkingDir))
 }
 
 func (t *delegateTaskTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
