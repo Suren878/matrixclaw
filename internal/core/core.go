@@ -52,6 +52,9 @@ type Core struct {
 
 	// badBoundaries holds the IDs of unreadable boundaries already logged.
 	badBoundaries sync.Map
+	// liveTasks are the shell tasks this daemon started that still run.
+	tasksMu   sync.Mutex
+	liveTasks map[string]*liveTask
 }
 
 type SkillsPromptContextRequest struct {
@@ -93,6 +96,7 @@ func New(store Store) *Core {
 		activeRuns:    map[string]*activeRun{},
 		scheduledRuns: map[string]time.Time{},
 		sessionGates:  map[string]*sync.Mutex{},
+		liveTasks:     map[string]*liveTask{},
 		events:        newEventBus(),
 		now:           time.Now,
 		newID:         defaultID,
