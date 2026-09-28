@@ -484,9 +484,12 @@ func TestBackgroundChildsApprovalGoesToTheChatTheSessionAnswersIn(t *testing.T) 
 	close(parentDone)
 
 	bridge := waitPendingApproval(t, db, session.ID, "call-spawn")
-	deliveries, err := db.ListClientDeliveries(context.Background(), core.ClientDeliveryFilter{Type: core.ClientDeliveryTypeApproval})
-	if err != nil {
-		t.Fatal(err)
+	var deliveries []core.ClientDelivery
+	for deadline := time.Now().Add(5 * time.Second); len(deliveries) == 0 && time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		var err error
+		if deliveries, err = db.ListClientDeliveries(context.Background(), core.ClientDeliveryFilter{Type: core.ClientDeliveryTypeApproval}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if len(deliveries) != 1 {
 		t.Fatalf("approval deliveries = %+v", deliveries)
