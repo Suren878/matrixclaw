@@ -29,11 +29,6 @@ func CoreDefinitionsFor(policy Policy) []Definition {
 	return out
 }
 
-func CoreSpec(toolID string) (Spec, bool) {
-	spec := coreDefinitionSpec(toolID)
-	return spec, spec.ID != ""
-}
-
 func executorsFromDefinitions(definitions []Definition) []Executor {
 	executors := make([]Executor, 0, len(definitions))
 	for _, definition := range definitions {
