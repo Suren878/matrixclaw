@@ -283,3 +283,101 @@ func TestChildApprovalDecidedWhileTheChildParksKeepsTheParentWaiting(t *testing.
 		t.Fatalf("delegate result = %q", got)
 	}
 }
+
+func waitPendingApproval(t *testing.T, db *store.SQLiteStore, sessionID string, callID string) core.Approval {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		approvals, err := db.ListApprovals(context.Background(), sessionID, core.ApprovalStatePending)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, approval := range approvals {
+			if approval.ToolCallRef == callID {
+				return approval
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no pending approval for %s", callID)
+		}
+	}
+}
+
+func TestParentAwaitingABackgroundChildWakesAfterTheChildsApproval(t *testing.T) {
+	t.Parallel()
+	db := openScenarioStore(t)
+	app := core.New(db)
+	starter := &executingRunStarter{app: app}
+	app.WithSessionFiles(t.TempDir()).WithRunStarter(starter)
+	mutations := 0
+	mutate, _ := approvalTools(&mutations)
+	app.WithTools(tools.NewRegistry(append(append(core.SubagentToolExecutors(app), core.AwaitToolExecutors(app)...), mutate)...))
+	var mu sync.Mutex
+	parked := make(chan struct{})
+	childCalls, parentCalls := 0, 0
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
+			<-parked
+			mu.Lock()
+			defer mu.Unlock()
+			childCalls++
+			if childCalls == 1 {
+				return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-child-mutate", Name: "mutate_state", Arguments: []byte(`{}`)}}}, nil
+			}
+			return providers.Response{Text: "Child done."}, nil
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		parentCalls++
+		switch parentCalls {
+		case 1:
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-spawn", Name: "spawn_subagent", Arguments: []byte(`{"name":"Writer","goal":"change the state","runtime":"matrixclaw"}`)}}}, nil
+		case 2:
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-await", Name: "await", Arguments: []byte(`{}`)}}}, nil
+		}
+		return providers.Response{Text: "Parent done."}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "await-child", core.RunStatusAccepted, false)
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusWaitingEvents)
+	close(parked)
+
+	bridge := waitPendingApproval(t, db, session.ID, "call-spawn")
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusWaitingEvents)
+	if _, err := app.ResolveApproval(context.Background(), bridge.ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	waitRunStatus(t, db, run.ID, core.RunStatusCompleted)
+	starter.wait(t)
+	if mutations != 1 {
+		t.Fatalf("mutations = %d", mutations)
+	}
+	if _, err := db.GetRunWakeup(context.Background(), run.ID); err != core.ErrNotFound {
+		t.Fatalf("wakeup after the run completed: %v", err)
+	}
+}
+
+func TestRunLeftWaitingForApprovalWithAWakeupResumesOnItsTimer(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	starter := &recordingRunStarter{}
+	app.WithRunStarter(starter)
+	session, run := saveCrashRecoveryRun(t, db, "stale-wakeup", core.RunStatusWaitingApproval, false)
+	if err := db.SaveRunWakeup(context.Background(), core.RunWakeup{RunID: run.ID, SessionID: session.ID, WakeAt: time.Now().UTC().Add(-time.Second)}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.WakeDueRuns(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := starter.count(run.ID); got != 1 {
+		t.Fatalf("run starts = %d, want 1", got)
+	}
+	if _, err := db.GetRunWakeup(context.Background(), run.ID); err != core.ErrNotFound {
+		t.Fatalf("wakeup = %v", err)
+	}
+}

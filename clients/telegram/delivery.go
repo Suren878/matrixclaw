@@ -141,8 +141,18 @@ func (w *Worker) deliverChatRunDelivery(ctx context.Context, target chatTarget, 
 	switch run.Status {
 	case core.RunStatusWaitingApproval:
 		return w.deliverRunApprovals(ctx, target, daemon, sessionID, runID)
-	case core.RunStatusAccepted, core.RunStatusRunning, core.RunStatusWaitingEvents:
+	case core.RunStatusAccepted, core.RunStatusRunning:
 		return w.deliverActiveRunProgress(ctx, target, daemon, sessionID, runID)
+	case core.RunStatusWaitingEvents:
+		// A background subagent the run waits for may ask for approval meanwhile.
+		if err := w.deliverActiveRunProgress(ctx, target, daemon, sessionID, runID); err != nil {
+			return err
+		}
+		approvals, err := daemon.ListApprovals(ctx, sessionID, core.ApprovalStatePending)
+		if err != nil {
+			return err
+		}
+		return w.renderApprovalUpdates(ctx, target, approvals, runID, w.runRenderState(target.externalKey, runID))
 	case core.RunStatusCompleted, core.RunStatusFailed, core.RunStatusCanceled:
 	default:
 		return nil

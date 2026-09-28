@@ -144,11 +144,17 @@ func (c *Core) resumeDecidedRun(ctx context.Context, sessionID string, runID str
 	if err != nil || run.Status != RunStatusWaitingApproval {
 		return err
 	}
-	pending, err := c.runHasPendingApprovals(ctx, sessionID, runID)
+	return c.startDecidedRun(ctx, run)
+}
+
+// startDecidedRun starts a run waiting for approval once none is pending; the
+// caller holds the session gate.
+func (c *Core) startDecidedRun(ctx context.Context, run Run) error {
+	pending, err := c.runHasPendingApprovals(ctx, run.SessionID, run.ID)
 	if err != nil || pending {
 		return err
 	}
-	return c.startRun(ctx, runID)
+	return c.startRun(ctx, run.ID)
 }
 
 // finishRunlessApproval completes a call made outside a run (API, voice, MCP
@@ -321,6 +327,7 @@ func approvalsForRun(approvals []Approval, runID string) []Approval {
 
 // runHasPendingApprovals reports whether the run still waits on a decision: one
 // of its approvals is pending or a decided bridged call waits for its subagent.
+// A background subagent's approval never holds its parent's run.
 func (c *Core) runHasPendingApprovals(ctx context.Context, sessionID string, runID string) (bool, error) {
 	approvals, err := c.store.ListApprovals(ctx, sessionID, "")
 	if err != nil {
@@ -328,7 +335,14 @@ func (c *Core) runHasPendingApprovals(ctx context.Context, sessionID string, run
 	}
 	for _, approval := range approvalsForRun(approvals, runID) {
 		if approval.State == ApprovalStatePending {
-			return true, nil
+			background, err := c.backgroundSubagentApproval(ctx, approval)
+			if err != nil {
+				return false, err
+			}
+			if !background {
+				return true, nil
+			}
+			continue
 		}
 		waiting, err := c.bridgedCallWaitsForSubagent(ctx, approval)
 		if err != nil || waiting {
@@ -364,4 +378,18 @@ func (c *Core) bridgedCallWaitsForSubagent(ctx context.Context, approval Approva
 		return false, err
 	}
 	return !subagentRunStatusTerminal(run.Status), nil
+}
+
+// backgroundSubagentApproval reports whether the approval asks for a background
+// subagent's call.
+func (c *Core) backgroundSubagentApproval(ctx context.Context, approval Approval) (bool, error) {
+	bridge, bridged := decodeSubagentApprovalBridge(approval)
+	if !bridged {
+		return false, nil
+	}
+	task, err := c.store.GetSubagentTask(ctx, bridge.TaskID)
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
+	return err == nil && task.Mode == SubagentTaskModeAsync, err
 }

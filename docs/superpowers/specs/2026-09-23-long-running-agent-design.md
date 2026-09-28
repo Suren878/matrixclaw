@@ -619,7 +619,11 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   timers fire on its first tick after a restart), at startup for every
   waiting run, and after the parking run is no longer active
   (`resumeParkedRun`), which closes the race with an event that arrived while
-  it parked. `prepareClaimedRun` accepts a waiting run.
+  it parked. `prepareClaimedRun` accepts a waiting run. A background
+  subagent's approval is asked in its parent's session (Telegram shows it
+  while the parent waits for events) but never parks the parent's run; a run
+  found waiting for approval with a wakeup loses the wakeup and resumes once
+  nothing is pending.
 - **Input**: a message without a busy mode steers (TUI and Telegram send
   none); a queued message for a waiting run steers it too.
 - **Idle sessions**: a finished background task (a command that exited by

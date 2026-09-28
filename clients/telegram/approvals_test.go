@@ -230,3 +230,31 @@ func TestOnlyTheOwnerChatSendsUnrestricted(t *testing.T) {
 		}
 	}
 }
+
+func TestRunWaitingForEventsShowsItsBackgroundSubagentsApproval(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/runs/run-1":
+			_ = json.NewEncoder(w).Encode(core.RunResponse{Run: core.Run{ID: "run-1", SessionID: "session-1", Status: core.RunStatusWaitingEvents}})
+		case "/v1/messages":
+			_ = json.NewEncoder(w).Encode(core.MessagesResponse{})
+		case "/v1/approvals":
+			_ = json.NewEncoder(w).Encode(core.ApprovalsResponse{Approvals: []core.Approval{{ID: "a1", SessionID: "session-1", RunID: "run-1", State: core.ApprovalStatePending, ToolName: "spawn_subagent", Description: `Subagent "Writer" requested approval for mutate_state`}}})
+		default:
+			http.Error(w, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	api := &approvalBotAPI{}
+	worker := &Worker{api: api, config: Config{BaseURL: server.URL, ClientName: "telegram-test", DaemonHTTPClient: server.Client()}}
+	target := chatTarget{kind: telegramTargetChat, chatID: 42, externalKey: "42"}
+
+	if err := worker.deliverChatRunDelivery(context.Background(), target, "session-1", "run-1", "delivery-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(api.sent) != 1 || !strings.Contains(api.sent[0].Text, "Approval required") || !strings.Contains(approvalButtons(t, api.sent[0])[0], "a1") {
+		t.Fatalf("sent = %+v", api.sent)
+	}
+}

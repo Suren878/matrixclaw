@@ -360,9 +360,9 @@ func subagentRunStatusTerminal(status RunStatus) bool {
 	return status == RunStatusCompleted || status == RunStatusFailed || status == RunStatusCanceled
 }
 
-// mirrorPendingSubagentApproval asks the parent for the child's pending approval.
-// It reports false when the child has none: its approval was just decided and
-// the child has not resumed yet.
+// mirrorPendingSubagentApproval asks the parent for the child's pending approval;
+// only a blocking child's parent run waits for it. It reports false when the
+// child has none: its approval was just decided and the child has not resumed yet.
 func (c *Core) mirrorPendingSubagentApproval(ctx context.Context, task SubagentTask) (bool, error) {
 	childApproval, err := c.pendingApprovalForRun(ctx, task.ChildSessionID, task.ChildRunID)
 	if errors.Is(err, ErrNotFound) {
@@ -395,7 +395,7 @@ func (c *Core) mirrorPendingSubagentApproval(ctx context.Context, task SubagentT
 	if _, err := c.requestApproval(ctx, prepared, *request); err != nil {
 		return true, err
 	}
-	if strings.TrimSpace(task.ParentRunID) == "" {
+	if task.Mode == SubagentTaskModeAsync || strings.TrimSpace(task.ParentRunID) == "" {
 		return true, nil
 	}
 	run, err := c.store.GetRun(ctx, task.ParentRunID)

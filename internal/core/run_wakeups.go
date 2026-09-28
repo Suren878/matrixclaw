@@ -40,10 +40,12 @@ func (c *Core) wakeWaitingRun(ctx context.Context, sessionID string, runID strin
 	if err != nil {
 		return err
 	}
-	if subagentRunStatusTerminal(run.Status) {
+	switch {
+	case subagentRunStatusTerminal(run.Status):
 		return c.store.DeleteRunWakeup(ctx, runID)
-	}
-	if run.Status != RunStatusWaitingEvents {
+	case run.Status == RunStatusWaitingApproval:
+		return c.healApprovalPark(ctx, run)
+	case run.Status != RunStatusWaitingEvents:
 		return nil
 	}
 	due, err := c.waitOver(ctx, run)
@@ -54,6 +56,21 @@ func (c *Core) wakeWaitingRun(ctx context.Context, sessionID string, runID strin
 		return err
 	}
 	return c.startRun(ctx, run.ID)
+}
+
+// healApprovalPark drops the wakeup of a run that waits for approval instead
+// of events and starts it when nothing is pending; its await is kept in its
+// checkpoint, so it parks again once resumed.
+func (c *Core) healApprovalPark(ctx context.Context, run Run) error {
+	if _, err := c.store.GetRunWakeup(ctx, run.ID); errors.Is(err, ErrNotFound) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if err := c.store.DeleteRunWakeup(ctx, run.ID); err != nil {
+		return err
+	}
+	return c.startDecidedRun(ctx, run)
 }
 
 // waitOver reports whether a waiting run has something to go on with.

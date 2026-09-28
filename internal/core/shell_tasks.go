@@ -453,8 +453,8 @@ func taskInfo(task Task) tools.TaskInfo {
 	}
 }
 
-// taskFinished lets the task's session react: a run waiting for events wakes,
-// a running run reads the event at its next step, an idle session starts a run.
+// taskFinished lets the task's session react: a parked run wakes, a running
+// run reads the event at its next step, an idle session starts a run.
 func (c *Core) taskFinished(ctx context.Context, task Task) {
 	if !task.Background || task.DeliveredAt != nil {
 		return
@@ -463,7 +463,7 @@ func (c *Core) taskFinished(ctx context.Context, task Task) {
 	switch {
 	case errors.Is(err, ErrNotFound):
 		err = c.wakeSession(ctx, task.SessionID, &task)
-	case err == nil && active.Status == RunStatusWaitingEvents:
+	case err == nil && (active.Status == RunStatusWaitingEvents || active.Status == RunStatusWaitingApproval):
 		err = c.wakeWaitingRun(ctx, task.SessionID, active.ID)
 	}
 	if err != nil {
