@@ -153,6 +153,15 @@ func HeadTail(text string, maxTokens int) string {
 		strings.TrimLeftFunc(string(runes[len(runes)-tail:]), unicode.IsSpace)
 }
 
+// trimRunes keeps the first maxRunes runes of the trimmed value and marks a cut.
+func trimRunes(value string, maxRunes int) string {
+	value = strings.TrimSpace(value)
+	if runes := []rune(value); len(runes) > maxRunes {
+		return string(runes[:maxRunes]) + "…"
+	}
+	return value
+}
+
 // runesWithin is how many runes from the start of runes, or from its end, fit
 // in tokens by the script-aware estimate.
 func runesWithin(runes []rune, tokens int, fromEnd bool) int {

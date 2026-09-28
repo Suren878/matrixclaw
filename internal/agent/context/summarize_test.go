@@ -89,3 +89,18 @@ func TestSummarizeFailsWhenMergingDoesNotShrink(t *testing.T) {
 		t.Fatalf("requests = %d, want only the three chunk summaries", len(generator.requests))
 	}
 }
+
+func TestAnOverlongPieceIsCutToAboutAChunkInAnyScript(t *testing.T) {
+	for _, letter := range []string{"w", "ж"} {
+		generator := &recordingGenerator{}
+
+		_, err := Summarize(context.Background(), generator, SummaryInput{SessionID: "s1", Previous: strings.Repeat(letter, 100_000), ChunkTokens: 4_000})
+
+		if err != nil || len(generator.requests) != 1 {
+			t.Fatalf("%s: err = %v requests = %d", letter, err, len(generator.requests))
+		}
+		if tokens := EstimateTextTokens(generator.requests[0].Messages[0].Content); tokens < 3_900 || tokens > 4_100 {
+			t.Fatalf("%s: the chunk is ~%d tokens, want about 4k", letter, tokens)
+		}
+	}
+}

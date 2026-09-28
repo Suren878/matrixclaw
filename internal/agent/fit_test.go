@@ -14,6 +14,7 @@ import (
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func TestReportedPromptTokensDecideWhenToSummarise(t *testing.T) {
@@ -335,5 +336,28 @@ func TestElisionThatHidesNothingLeavesTheRequestsAlone(t *testing.T) {
 	}
 	if last := f.Journal.States[len(f.Journal.States)-1].Counters; last.HistoryEdit != 0 {
 		t.Fatalf("counters = %+v, want no history edit", last)
+	}
+}
+
+func TestSignedReasoningBeforeTheNewestBoundaryIsNotReplayed(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["read"] = counterTool()
+	if outcome := run(t, f, agenttest.NewScriptedModel(append(signedSteps(1, "read"), text("Read."))...)); outcome.Status != agent.StatusCompleted {
+		t.Fatalf("first outcome = %+v", outcome)
+	}
+	// A boundary written without the counters that record it, as by a crash
+	// right after it or by a manual compaction, still edits the history.
+	user, _ := f.Journal.Message("msg_user")
+	f.Journal.Seed(transcript.Message{ID: "msg_boundary", SessionID: agenttest.SessionID, Role: transcript.MessageRoleSystem, Content: "Context compacted.",
+		Compaction: &transcript.Compaction{Summary: "SUMMARY", CoversThroughSeq: user.Seq}})
+	model := agenttest.NewScriptedModel(text("Done."))
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+	if signed, plain := signatures(model.Requests()[0]); len(signed) != 0 || plain != 1 {
+		t.Fatalf("signed = %v plain = %d, want only the plain reasoning", signed, plain)
 	}
 }

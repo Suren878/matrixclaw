@@ -197,7 +197,7 @@ func argsSummary(input string) string {
 	decoder := json.NewDecoder(strings.NewReader(input))
 	decoder.UseNumber()
 	if err := decoder.Decode(&args); err != nil {
-		return trimRunes(strings.TrimSpace(input), argsSummaryRunes)
+		return trimRunes(input, argsSummaryRunes)
 	}
 	keys := make([]string, 0, len(args))
 	for key := range args {
@@ -210,14 +210,6 @@ func argsSummary(input string) string {
 		pairs = append(pairs, key+"="+string(value))
 	}
 	return trimRunes(strings.Join(pairs, ", "), argsSummaryRunes)
-}
-
-func trimRunes(value string, maxRunes int) string {
-	runes := []rune(value)
-	if len(runes) <= maxRunes {
-		return value
-	}
-	return string(runes[:maxRunes]) + "…"
 }
 
 func elideImages(message transcript.Message) transcript.Message {

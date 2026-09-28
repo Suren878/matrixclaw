@@ -163,7 +163,7 @@ func TestKeptCutsTheMiddleOfALongText(t *testing.T) {
 	long := "HEAD" + strings.Repeat("m", 40_000) + "TAIL"
 	kept := Kept(nil, []transcript.Message{textMessage(1, transcript.MessageRoleUser, "r1", long)}, []string{"r1"})
 
-	if len(kept) != 1 || !strings.HasPrefix(kept[0], "User: HEAD") || !strings.HasSuffix(kept[0], "TAIL") || !strings.Contains(kept[0], "[... cut ...]") {
+	if len(kept) != 1 || !strings.HasPrefix(kept[0], "User: HEAD") || !strings.HasSuffix(kept[0], "TAIL") || !strings.Contains(kept[0], "tokens omitted ...]") {
 		t.Fatalf("kept = %.60q ... %.60q", kept[0], kept[0][len(kept[0])-60:])
 	}
 	if tokens := EstimateTextTokens(kept[0]); tokens > 2_050 {

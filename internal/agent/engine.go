@@ -67,6 +67,10 @@ func (e *Engine) Run(ctx context.Context, task Task) (outcome Outcome, err error
 	}
 	r := &run{Config: e.cfg, task: task, history: newHistory(e.cfg.Journal, e.cfg.Sink, window), counters: task.Resume, started: e.cfg.Now()}
 	defer func() { outcome.Counters = r.counters }()
+	if window.Boundary != nil {
+		// A boundary edits the history even when no checkpoint recorded it.
+		r.counters.HistoryEdit = max(r.counters.HistoryEdit, window.Boundary.Seq)
+	}
 	r.system, r.custom = e.cfg.Prompts.System(ctx, window.Messages)
 	if ToolUseAllowed(task.Model) {
 		r.tools = toolDefinitions(e.cfg.Tools.Specs(ctx))

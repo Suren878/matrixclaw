@@ -92,7 +92,7 @@ func Kept(previous *transcript.Compaction, covered []transcript.Message, runIDs 
 		}
 		if message.Role == transcript.MessageRoleUser {
 			if text := strings.TrimSpace(message.Content); text != "" {
-				kept = append(kept, "User: "+cutMiddle(text, keptTextTokens))
+				kept = append(kept, "User: "+HeadTail(text, keptTextTokens))
 			}
 			continue
 		}
@@ -101,22 +101,11 @@ func Kept(previous *transcript.Compaction, covered []transcript.Message, runIDs 
 				continue
 			}
 			for _, guidance := range part.ToolResult.Guidance {
-				kept = append(kept, "User guidance: "+cutMiddle(guidance, keptTextTokens))
+				kept = append(kept, "User guidance: "+HeadTail(guidance, keptTextTokens))
 			}
 		}
 	}
 	return kept
-}
-
-// cutMiddle keeps the head and tail of text within about maxTokens.
-func cutMiddle(text string, maxTokens int) string {
-	tokens := EstimateTextTokens(text)
-	if tokens <= maxTokens {
-		return text
-	}
-	runes := []rune(text)
-	half := len(runes) * maxTokens / tokens / 2
-	return string(runes[:half]) + "\n\n[... cut ...]\n\n" + string(runes[len(runes)-half:])
 }
 
 // SummaryText is the user text that stands for the history a boundary covers;

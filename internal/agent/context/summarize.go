@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/Suren878/matrixclaw/internal/agent/prompt"
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -163,7 +162,7 @@ func trimToTokens(text string, maxTokens int) string {
 		return text
 	}
 	runes := []rune(text)
-	return string(runes[:min(len(runes), maxTokens*5/2)]) + "\n[truncated]"
+	return string(runes[:runesWithin(runes, maxTokens, false)]) + "…"
 }
 
 // messageGroup is a message and the results of the calls it made.
@@ -209,19 +208,19 @@ func groupText(group messageGroup) string {
 
 func messageSummaryText(message transcript.Message) string {
 	if len(message.Parts) == 0 {
-		return trimRunesEnd(message.Content, summaryTextRunes)
+		return trimRunes(message.Content, summaryTextRunes)
 	}
 	values := make([]string, 0, len(message.Parts))
 	for _, part := range message.Parts {
 		switch {
 		case part.Text != nil:
-			values = append(values, trimRunesEnd(part.Text.Text, summaryTextRunes))
+			values = append(values, trimRunes(part.Text.Text, summaryTextRunes))
 		case part.Image != nil:
 			values = append(values, "image: "+imagePartLabel(*part.Image))
 		case part.ToolCall != nil:
-			values = append(values, "tool call: "+part.ToolCall.Name+" "+trimRunesEnd(part.ToolCall.Input, summaryToolRunes))
+			values = append(values, "tool call: "+part.ToolCall.Name+" "+trimRunes(part.ToolCall.Input, summaryToolRunes))
 		case part.ToolResult != nil:
-			values = append(values, "tool result: "+part.ToolResult.Name+" "+trimRunesEnd(part.ToolResult.Content, summaryToolRunes))
+			values = append(values, "tool result: "+part.ToolResult.Name+" "+trimRunes(part.ToolResult.Content, summaryToolRunes))
 		}
 	}
 	return strings.TrimSpace(strings.Join(values, "\n"))
@@ -256,12 +255,4 @@ func messageIsToolResultFor(message transcript.Message, ids map[string]struct{})
 		}
 	}
 	return false
-}
-
-func trimRunesEnd(value string, maxRunes int) string {
-	value = strings.TrimSpace(value)
-	if maxRunes <= 0 || utf8.RuneCountInString(value) <= maxRunes {
-		return value
-	}
-	return string([]rune(value)[:maxRunes]) + "\n[truncated]"
 }
