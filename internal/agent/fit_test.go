@@ -219,3 +219,63 @@ func TestReusedRequestSummaryWithOnlyToolCallsFallsBackToChunks(t *testing.T) {
 		t.Fatalf("boundaries = %+v", marks)
 	}
 }
+
+// signedSteps are n tool steps whose replies carry plain and signed reasoning.
+func signedSteps(n int, name string) []agenttest.Turn {
+	turns := toolSteps(n, name)
+	for i := range turns {
+		plain := fmt.Sprintf("plain%d", i+1)
+		turns[i].Response.ReasoningContent = &plain
+		turns[i].Response.Reasoning = []providers.ReasoningBlock{{Text: fmt.Sprintf("think%d", i+1), Signature: fmt.Sprintf("sig%d", i+1)}}
+	}
+	return turns
+}
+
+// signatures lists the signed reasoning and counts the plain reasoning of the
+// assistant messages of request.
+func signatures(request providers.Request) (signed []string, plain int) {
+	for _, message := range request.Messages {
+		for _, block := range message.Reasoning {
+			signed = append(signed, block.Signature)
+		}
+		if message.ReasoningContent != nil {
+			plain++
+		}
+	}
+	return signed, plain
+}
+
+func TestSignedReasoningBeforeAHistoryEditIsNotReplayed(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Window = 100_000
+	f.Tools.Funcs["read"] = func(call tools.Call) tools.Result {
+		return tools.Result{Content: call.ToolCallID + " " + strings.Repeat("x", 20_000)}
+	}
+	model := agenttest.NewScriptedModel(append(signedSteps(11, "read"), text("Done."))...)
+
+	outcome := run(t, f, model)
+
+	requests := model.Requests()
+	if outcome.Status != agent.StatusCompleted || len(requests) != 12 {
+		t.Fatalf("outcome = %+v requests = %d", outcome, len(requests))
+	}
+	edited := 0
+	for i, request := range requests {
+		if strings.HasPrefix(toolContent(request, "read1"), "[output of read() hidden") {
+			edited = i
+			break
+		}
+	}
+	if edited == 0 {
+		t.Fatal("no request elided read1")
+	}
+	if signed, plain := signatures(requests[edited-1]); len(signed) != edited-1 || plain != edited-1 {
+		t.Fatalf("before the edit: signed = %v plain = %d, want all %d replayed", signed, plain, edited-1)
+	}
+	if signed, plain := signatures(requests[edited]); len(signed) != 0 || plain != edited {
+		t.Fatalf("at the edit: signed = %v plain = %d, want only the %d plain texts", signed, plain, edited)
+	}
+	if signed, _ := signatures(requests[edited+1]); !reflect.DeepEqual(signed, []string{fmt.Sprintf("sig%d", edited+1)}) {
+		t.Fatalf("after the edit: signed = %v, want only the newer step's", signed)
+	}
+}

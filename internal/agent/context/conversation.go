@@ -457,6 +457,27 @@ func withoutForeignSignedReasoning(message transcript.Message, target Identity) 
 	if strings.TrimSpace(message.Provider) == strings.TrimSpace(target.Provider) && strings.TrimSpace(message.Model) == strings.TrimSpace(target.Model) {
 		return message
 	}
+	return withoutSignedReasoning(message)
+}
+
+// WithoutSignedReasoning drops the signed or encrypted reasoning of messages up
+// to throughSeq, which was signed over a history since edited; plain reasoning
+// stays. messages itself is not changed.
+func WithoutSignedReasoning(messages []transcript.Message, throughSeq int64) []transcript.Message {
+	if throughSeq == 0 {
+		return messages
+	}
+	out := make([]transcript.Message, len(messages))
+	for i, message := range messages {
+		if message.Seq <= throughSeq {
+			message = withoutSignedReasoning(message)
+		}
+		out[i] = message
+	}
+	return out
+}
+
+func withoutSignedReasoning(message transcript.Message) transcript.Message {
 	parts := make([]transcript.MessagePart, 0, len(message.Parts))
 	for _, part := range message.Parts {
 		if part.Reasoning == nil || !isSignedReasoning(*part.Reasoning) {

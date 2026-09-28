@@ -75,8 +75,18 @@ func (r *run) advanceElision(force bool) bool {
 		return false
 	}
 	r.counters.ElidedResults, r.counters.ElidedImages = next.ResultsThroughSeq, next.ImagesThroughSeq
-	r.anchor = nil
+	r.editedHistory()
 	return true
+}
+
+// editedHistory records that the requests' history changed up to its newest
+// message: the reported prompt size no longer applies, and reasoning signed
+// over the old history is not replayed.
+func (r *run) editedHistory() {
+	r.anchor = nil
+	if all := r.history.all(); len(all) > 0 {
+		r.counters.HistoryEdit = all[len(all)-1].Seq
+	}
 }
 
 const contextExhaustedText = "This run's conversation no longer fits the model's context window, even after summarising it, so the run stops here. Do not call tools. Reply briefly: what is done, what remains, and how to continue."

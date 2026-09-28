@@ -47,7 +47,7 @@ func (r *run) buildRequest(ctx context.Context, final StopReason) (providers.Req
 	if len(messages) > 0 {
 		r.requestSeq = messages[len(messages)-1].Seq
 	}
-	messages = agentcontext.Elide(messages, r.elision())
+	messages = agentcontext.WithoutSignedReasoning(agentcontext.Elide(messages, r.elision()), r.counters.HistoryEdit)
 	request := providers.Request{
 		RunID:              r.task.RunID,
 		SessionID:          r.task.SessionID,

@@ -93,7 +93,6 @@ func (r *run) writeBoundary(ctx context.Context, previous *transcript.Compaction
 	}
 	compaction.TokensAfter = max(0, before-agentcontext.EstimateMessageTokens(covered)-agentcontext.EstimateTextTokens(agentcontext.SummaryText(previous))+agentcontext.EstimateTextTokens(agentcontext.SummaryText(&compaction)))
 	r.counters.observeSummary(compaction.TokensBefore, compaction.TokensAfter)
-	r.anchor = nil
 	content := agentcontext.BoundaryLabel(compaction)
 	now := r.Now()
 	err := r.history.append(ctx, transcript.Message{
@@ -109,6 +108,7 @@ func (r *run) writeBoundary(ctx context.Context, previous *transcript.Compaction
 	if err != nil {
 		return fmt.Errorf("auto compact session: %w", err)
 	}
+	r.editedHistory()
 	return nil
 }
 
