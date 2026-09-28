@@ -34,6 +34,12 @@ type Counters struct {
 	LearnedLimit  int           `json:"learned_limit,omitempty"`
 }
 
+// Carried is what the session's next run starts from: what the requests elide
+// and the last history edit, so its first request looks like the last one.
+func (c Counters) Carried() Counters {
+	return Counters{ElidedResults: c.ElidedResults, ElidedImages: c.ElidedImages, HistoryEdit: c.HistoryEdit}
+}
+
 // active is the run's working time: what it had used before plus this Run call.
 func (r *run) active() time.Duration {
 	return r.task.Resume.Active + r.Now().Sub(r.started)

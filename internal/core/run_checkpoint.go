@@ -101,6 +101,36 @@ func (c *Core) resumeCounters(ctx context.Context, runID string) (agent.Counters
 	return counters, nil
 }
 
+// carriedCounters are the counters the session's previous run left for the
+// next one; unreadable ones start from zero.
+func (c *Core) carriedCounters(ctx context.Context, sessionID string) (agent.Counters, error) {
+	state, err := c.store.GetSessionEngineState(ctx, sessionID)
+	if err != nil || len(state) == 0 {
+		return agent.Counters{}, err
+	}
+	var counters agent.Counters
+	if err := json.Unmarshal(state, &counters); err != nil {
+		log.Printf("core: session %q has unreadable carried counters, starting from zero: %v", sessionID, err)
+		return agent.Counters{}, nil
+	}
+	return counters, nil
+}
+
+// carryCounters keeps what a run's counters carry over to the session's next run.
+func (c *Core) carryCounters(ctx context.Context, sessionID string, counters agent.Counters) {
+	carried := counters.Carried()
+	if carried == (agent.Counters{}) {
+		return
+	}
+	state, err := json.Marshal(carried)
+	if err == nil {
+		err = c.store.SaveSessionEngineState(ctx, sessionID, state, c.now().UTC())
+	}
+	if err != nil {
+		log.Printf("core: keep carried counters of session %q: %v", sessionID, err)
+	}
+}
+
 func (c *Core) markRunRecovery(ctx context.Context, runID string) (RunCheckpoint, error) {
 	store, ok := c.store.(RunCheckpointStore)
 	if !ok {

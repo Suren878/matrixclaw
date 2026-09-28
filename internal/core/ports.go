@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -81,6 +82,12 @@ type SessionBudgetStore interface {
 	SaveSessionBudget(ctx context.Context, sessionID string, budget SessionBudget, updatedAt time.Time) error
 }
 
+// EngineStateStore keeps the engine counters a session's next run starts from.
+type EngineStateStore interface {
+	GetSessionEngineState(ctx context.Context, sessionID string) (json.RawMessage, error)
+	SaveSessionEngineState(ctx context.Context, sessionID string, state json.RawMessage, updatedAt time.Time) error
+}
+
 type PlanStore interface {
 	GetSessionPlan(ctx context.Context, sessionID string) (SessionPlan, error)
 	SetSessionGoal(ctx context.Context, sessionID string, goal string, updatedAt time.Time) error
@@ -128,6 +135,7 @@ type Store interface {
 	SessionInputStore
 	UsageStore
 	SessionBudgetStore
+	EngineStateStore
 	PlanStore
 	SearchStore
 	MemoryStore

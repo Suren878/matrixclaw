@@ -216,6 +216,15 @@ CREATE TABLE IF NOT EXISTS session_budgets (
 )`); err != nil {
 		return fmt.Errorf("store: create session budgets table: %w", err)
 	}
+	if _, err := db.Exec(`
+CREATE TABLE IF NOT EXISTS session_engine_state (
+    session_id TEXT PRIMARY KEY,
+    engine_state TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+)`); err != nil {
+		return fmt.Errorf("store: create session engine state table: %w", err)
+	}
 	return migrateMessageSearch(db)
 }
 

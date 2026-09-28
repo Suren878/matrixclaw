@@ -54,7 +54,7 @@ func sleep(ctx context.Context, d time.Duration) error {
 
 // Run executes steps until the run completes, parks, fails or ctx stops. The error
 // is reserved for failures that must leave the run's status untouched.
-func (e *Engine) Run(ctx context.Context, task Task) (Outcome, error) {
+func (e *Engine) Run(ctx context.Context, task Task) (outcome Outcome, err error) {
 	if task.RunID == "" || task.SessionID == "" || task.Model == nil {
 		return Outcome{}, errors.New("agent: task requires run, session and model")
 	}
@@ -66,6 +66,7 @@ func (e *Engine) Run(ctx context.Context, task Task) (Outcome, error) {
 		return Outcome{Status: StatusFailed, Err: err}, nil
 	}
 	r := &run{Config: e.cfg, task: task, history: newHistory(e.cfg.Journal, e.cfg.Sink, window), counters: task.Resume, started: e.cfg.Now()}
+	defer func() { outcome.Counters = r.counters }()
 	r.system, r.custom = e.cfg.Prompts.System(ctx, window.Messages)
 	if ToolUseAllowed(task.Model) {
 		r.tools = toolDefinitions(e.cfg.Tools.Specs(ctx))
@@ -78,9 +79,9 @@ func (e *Engine) Run(ctx context.Context, task Task) (Outcome, error) {
 		if ctx.Err() != nil {
 			return r.interrupted(result), nil
 		}
-		outcome, done, err := r.settle(ctx, result)
+		settled, done, err := r.settle(ctx, result)
 		if err != nil || done {
-			return outcome, err
+			return settled, err
 		}
 	}
 }
