@@ -80,6 +80,7 @@ type SessionInputStore interface {
 	ListPendingSessionInputs(ctx context.Context, sessionID string) ([]SessionInput, error)
 	NextPendingSessionInput(ctx context.Context, sessionID string) (SessionInput, error)
 	ListPendingSteerInputs(ctx context.Context, sessionID string, runID string) ([]SessionInput, error)
+	HasConsumedSessionInput(ctx context.Context, sessionID string, runID string) (bool, error)
 }
 
 type UsageStore interface {

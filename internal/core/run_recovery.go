@@ -38,24 +38,26 @@ func (c *Core) RecoverActiveRuns(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	var errs []error
 	for _, run := range runs {
 		if run.Status == RunStatusWaitingEvents {
 			if err := c.wakeWaitingRun(ctx, run.SessionID, run.ID); err != nil {
-				return fmt.Errorf("wake waiting run %s: %w", run.ID, err)
+				errs = append(errs, fmt.Errorf("wake waiting run %s: %w", run.ID, err))
 			}
 			continue
 		}
 		start, err := c.prepareInactiveRunForRecovery(ctx, run.ID)
 		if err != nil {
-			return fmt.Errorf("recover interrupted run %s: %w", run.ID, err)
+			errs = append(errs, fmt.Errorf("recover interrupted run %s: %w", run.ID, err))
+			continue
 		}
 		if start {
 			if err := c.startRun(ctx, run.ID); err != nil {
-				return fmt.Errorf("restart recovered run %s: %w", run.ID, err)
+				errs = append(errs, fmt.Errorf("restart recovered run %s: %w", run.ID, err))
 			}
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // prepareInactiveRunForRecovery serializes startup recovery with workflow

@@ -52,17 +52,33 @@ func (c *Core) noticeFailedWakeRun(ctx context.Context, runID string) error {
 	if err != nil {
 		return ignoreNotFound(err)
 	}
+	target, _, err := c.wakeTargetOf(ctx, run)
+	if err != nil {
+		return err
+	}
 	text := fmt.Sprintf("Background work finished, but the run started for it failed (%s). This session waits for your message before it goes on.", firstNonEmpty(run.Error, "no reason given"))
-	return c.sendWakeNotice(ctx, wakeNotice{session: session, last: run, text: text})
+	return c.sendWakeNotice(ctx, wakeNotice{session: session, target: target, text: text})
 }
 
 // wakeNotice tells the user that background work finished while the session
 // may not wake itself.
 type wakeNotice struct {
 	session Session
-	last    Run
+	target  wakeTarget
 	text    string
 }
+
+// wakeTarget is where a run or notice the session starts on its own goes; an
+// empty one stays in the session.
+type wakeTarget struct {
+	client       string
+	externalKey  string
+	capabilities ClientCapabilities
+	address      json.RawMessage
+}
+
+// wakeChainWindow is how many of a session's newest runs prepareWake reads.
+const wakeChainWindow = 5 * maxWakeChain
 
 // prepareWake creates the wake run under the session gate: only for an idle,
 // top-level session with a task whose end should wake it.
@@ -91,21 +107,17 @@ func (c *Core) prepareWake(ctx context.Context, sessionID string, finished *Task
 	if err != nil || !wakes {
 		return nil, nil, err
 	}
-	runs, err := c.store.ListSessionRuns(ctx, session.ID, maxWakeChain+1)
+	runs, err := c.store.ListSessionRuns(ctx, session.ID, wakeChainWindow)
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(runs) > 0 && runs[0].Trigger == RunTriggerWake && (runs[0].Status == RunStatusFailed || runs[0].Status == RunStatusCanceled) {
-		// The last run this session started on its own did not get through.
-		return nil, nil, nil
+	chain, stopped, err := c.wakeChain(ctx, session.ID, runs)
+	if err != nil || stopped {
+		return nil, nil, err
 	}
-	chain := 0
-	for chain < len(runs) && runs[chain].Trigger == RunTriggerWake {
-		chain++
-	}
-	var last Run
-	if chain < len(runs) {
-		last = runs[chain]
+	target, err := c.latestWakeTarget(ctx, runs)
+	if err != nil {
+		return nil, nil, err
 	}
 	if chain >= maxWakeChain {
 		if finished == nil {
@@ -115,14 +127,10 @@ func (c *Core) prepareWake(ctx context.Context, sessionID string, finished *Task
 			return nil, nil, err
 		}
 		text := fmt.Sprintf("%s finished. This session has continued on its own %d times in a row, so it waits for your message before it goes on.", taskLabel(*finished), maxWakeChain)
-		return nil, &wakeNotice{session: session, last: last, text: text}, nil
-	}
-	address, err := c.runDeliveryAddress(ctx, last)
-	if err != nil {
-		return nil, nil, err
+		return nil, &wakeNotice{session: session, target: target, text: text}, nil
 	}
 	parts := transcript.NormalizeMessageParts(wakeRunText, nil)
-	result, err := c.createAcceptedRun(ctx, session, wakeRunText, parts, last.Client, last.ExternalKey, last.ClientCapabilities, address, "", RunTriggerWake)
+	result, err := c.createAcceptedRun(ctx, session, wakeRunText, parts, target.client, target.externalKey, target.capabilities, target.address, "", RunTriggerWake)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -131,6 +139,69 @@ func (c *Core) prepareWake(ctx context.Context, sessionID string, finished *Task
 		return nil, nil, err
 	}
 	return &result, nil, nil
+}
+
+// wakeChain counts the newest wake runs in a row that took no message from
+// the user; automation runs neither count nor end the chain. stopped reports
+// that the newest of them failed or was canceled.
+func (c *Core) wakeChain(ctx context.Context, sessionID string, runs []Run) (chain int, stopped bool, err error) {
+	for _, run := range runs {
+		if run.Trigger == RunTriggerAutomation {
+			continue
+		}
+		if run.Trigger != RunTriggerWake {
+			break
+		}
+		steered, err := c.store.HasConsumedSessionInput(ctx, sessionID, run.ID)
+		if err != nil {
+			return 0, false, err
+		}
+		if steered {
+			break
+		}
+		if chain == 0 && (run.Status == RunStatusFailed || run.Status == RunStatusCanceled) {
+			stopped = true
+		}
+		chain++
+	}
+	return chain, stopped, nil
+}
+
+// latestWakeTarget is the newest of the runs' targets that a later message
+// still reaches.
+func (c *Core) latestWakeTarget(ctx context.Context, runs []Run) (wakeTarget, error) {
+	for _, run := range runs {
+		target, ok, err := c.wakeTargetOf(ctx, run)
+		if err != nil || ok {
+			return target, err
+		}
+	}
+	return wakeTarget{}, nil
+}
+
+// wakeTargetOf is where the run's reply was delivered, unless a later message
+// cannot go there: a Telegram guest query or inline message answers only once.
+func (c *Core) wakeTargetOf(ctx context.Context, run Run) (wakeTarget, bool, error) {
+	if run.Client == "" || run.ExternalKey == "" {
+		return wakeTarget{}, false, nil
+	}
+	deliveries, err := c.store.ListClientDeliveries(ctx, ClientDeliveryFilter{RunID: run.ID, Type: ClientDeliveryTypeRun, Limit: 1})
+	if err != nil {
+		return wakeTarget{}, false, err
+	}
+	var address json.RawMessage
+	if len(deliveries) > 0 {
+		address = deliveries[0].Address
+	}
+	var once struct {
+		Kind            string `json:"kind"`
+		GuestQueryID    string `json:"guest_query_id"`
+		InlineMessageID string `json:"inline_message_id"`
+	}
+	if len(address) > 0 && json.Unmarshal(address, &once) == nil && (once.Kind == "guest" || once.Kind == "inline" || once.GuestQueryID != "" || once.InlineMessageID != "") {
+		return wakeTarget{}, false, nil
+	}
+	return wakeTarget{client: run.Client, externalKey: run.ExternalKey, capabilities: run.ClientCapabilities, address: address}, true, nil
 }
 
 // journalWakeEvents writes the events a wake run is for after its message as
@@ -172,39 +243,21 @@ func taskLabel(task Task) string {
 	return "Background task " + task.ID + " (" + truncateForTitle(task.Command, 80) + ")"
 }
 
-// runDeliveryAddress is where the run's reply was delivered; none for a run
-// without a client delivery.
-func (c *Core) runDeliveryAddress(ctx context.Context, run Run) (json.RawMessage, error) {
-	if run.ID == "" || run.Client == "" || run.ExternalKey == "" {
-		return nil, nil
-	}
-	deliveries, err := c.store.ListClientDeliveries(ctx, ClientDeliveryFilter{RunID: run.ID, Type: ClientDeliveryTypeRun, Limit: 1})
-	if err != nil || len(deliveries) == 0 {
-		return nil, err
-	}
-	return deliveries[0].Address, nil
-}
-
-// sendWakeNotice shows the notice in the session and sends it where the user
-// last wrote from.
+// sendWakeNotice shows the notice in the session and sends it to its target.
 func (c *Core) sendWakeNotice(ctx context.Context, notice wakeNotice) error {
 	if _, err := c.CreateSystemMessage(ctx, notice.session.ID, notice.text); err != nil {
 		return err
 	}
-	if notice.last.Client == "" || notice.last.ExternalKey == "" {
+	if notice.target.client == "" {
 		return nil
 	}
-	address, err := c.runDeliveryAddress(ctx, notice.last)
-	if err != nil {
-		return err
-	}
-	_, err = c.CreateClientDelivery(ctx, ClientDelivery{
+	_, err := c.CreateClientDelivery(ctx, ClientDelivery{
 		Type:        ClientDeliveryTypeNotice,
-		Client:      notice.last.Client,
-		ExternalKey: notice.last.ExternalKey,
+		Client:      notice.target.client,
+		ExternalKey: notice.target.externalKey,
 		SessionID:   notice.session.ID,
 		Summary:     notice.text,
-		Address:     address,
+		Address:     notice.target.address,
 	})
 	return err
 }

@@ -228,17 +228,27 @@ func (c *Core) watchShellTask(task Task, live *liveTask, deadline time.Time) {
 // finishTask ends a task unless it already ended and tells its session's
 // clients; the finished task becomes an event for the session.
 func (c *Core) finishTask(ctx context.Context, taskID string, status TaskStatus, exitCode *int, errText string) error {
-	finished, err := c.store.FinishTask(ctx, taskID, status, exitCode, errText, c.now().UTC())
+	task, finished, err := c.recordTaskEnd(ctx, taskID, status, exitCode, errText)
 	if err != nil || !finished {
 		return err
 	}
-	task, err := c.store.GetTask(ctx, taskID)
-	if err != nil {
-		return err
-	}
-	c.publishTaskUpdated(task)
 	c.taskFinished(ctx, task)
 	return nil
+}
+
+// recordTaskEnd stores how a task ended, unless it already had, and tells its
+// session's clients.
+func (c *Core) recordTaskEnd(ctx context.Context, taskID string, status TaskStatus, exitCode *int, errText string) (Task, bool, error) {
+	finished, err := c.store.FinishTask(ctx, taskID, status, exitCode, errText, c.now().UTC())
+	if err != nil || !finished {
+		return Task{}, false, err
+	}
+	task, err := c.store.GetTask(ctx, taskID)
+	if err != nil {
+		return Task{}, false, err
+	}
+	c.publishTaskUpdated(task)
+	return task, true, nil
 }
 
 func (c *Core) forgetLiveTask(id string) {
@@ -395,7 +405,8 @@ func (c *Core) sessionTask(ctx context.Context, sessionID string, taskID string)
 
 // RecoverTasks runs at daemon start: shell tasks left running by the previous
 // daemon are marked lost, and their process group is killed when its leader is
-// surely still theirs.
+// surely still theirs. Runs start later: RecoverActiveRuns wakes runs waiting
+// for them and the next run of the session reads them.
 func (c *Core) RecoverTasks(ctx context.Context) error {
 	tasks, err := c.store.ListTasks(ctx, TaskFilter{Kind: TaskKindShell, Statuses: []TaskStatus{TaskStatusRunning}})
 	if err != nil {
@@ -408,17 +419,25 @@ func (c *Core) RecoverTasks(ctx context.Context) error {
 		if err := shelltask.KillLeftover(shelltask.Leader{PID: task.PID, BootID: task.BootID, Start: task.LeaderStart}); err != nil {
 			log.Printf("core: kill leftover task %q: %v", task.ID, err)
 		}
-		if err := c.finishTask(ctx, task.ID, TaskStatusLost, nil, "the daemon restarted while it ran and stopped it"); err != nil {
+		if _, _, err := c.recordTaskEnd(ctx, task.ID, TaskStatusLost, nil, "the daemon restarted while it ran and stopped it"); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// stopSessionTasks stops the shell tasks a session runs, before it is deleted.
+// stopSessionTasks stops the shell tasks a session runs, before it is deleted;
+// they are delivered first, so that their end wakes nothing in it.
 func (c *Core) stopSessionTasks(ctx context.Context, sessionID string) error {
 	tasks, err := c.store.ListTasks(ctx, TaskFilter{SessionID: sessionID, Kind: TaskKindShell, Statuses: []TaskStatus{TaskStatusRunning}})
 	if err != nil {
+		return err
+	}
+	ids := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		ids = append(ids, task.ID)
+	}
+	if err := c.store.MarkTasksDelivered(ctx, ids, "", c.now().UTC()); err != nil {
 		return err
 	}
 	for _, task := range tasks {

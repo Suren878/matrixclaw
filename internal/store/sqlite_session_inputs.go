@@ -106,6 +106,20 @@ ORDER BY created_at ASC, id ASC`
 	return inputs, nil
 }
 
+// HasConsumedSessionInput reports whether the run took a message of the session.
+func (s *SQLiteStore) HasConsumedSessionInput(ctx context.Context, sessionID string, runID string) (bool, error) {
+	var found int
+	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM session_inputs WHERE session_id = ? AND consumed_run_id = ? LIMIT 1`,
+		strings.TrimSpace(sessionID), strings.TrimSpace(runID)).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("store: find consumed session input: %w", err)
+	}
+	return true, nil
+}
+
 func (s *SQLiteStore) NextPendingSessionInput(ctx context.Context, sessionID string) (core.SessionInput, error) {
 	row := s.db.QueryRowContext(ctx, `
 	SELECT id, session_id, target_run_id, mode, status, text, parts_json, client, external_key, client_capabilities_json, delivery_address_json, working_dir, consumed_run_id, error, created_at, updated_at, consumed_at

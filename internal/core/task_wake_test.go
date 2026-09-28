@@ -121,15 +121,7 @@ func TestWakeChainStopsAfterTwentyRunsWithoutTheUser(t *testing.T) {
 	s := newWakeScenario(t)
 	s.userRun(t)
 	ctx := context.Background()
-	for i := range 20 {
-		at := time.Now().UTC().Add(time.Duration(i+1) * time.Second)
-		id := fmt.Sprintf("run_wake_%d", i)
-		message := transcript.Message{ID: "msg_" + id, SessionID: s.session.ID, RunID: id, Role: transcript.MessageRoleUser, Content: "woken", CreatedAt: at, UpdatedAt: at}
-		run := core.Run{ID: id, SessionID: s.session.ID, UserMessageID: message.ID, Trigger: core.RunTriggerWake, Status: core.RunStatusCompleted, StartedAt: at, UpdatedAt: at}
-		if err := s.db.AcceptMessage(ctx, message, run); err != nil {
-			t.Fatal(err)
-		}
-	}
+	s.addRuns(t, core.RunTriggerWake, 20, false)
 	before := len(s.runs(t))
 
 	taskID := s.runTask(t, "true")
@@ -170,7 +162,9 @@ func TestStoppedTasksDoNotWakeAnIdleSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitTaskStatus(t, s.db, taskID, core.TaskStatusCanceled)
-	time.Sleep(100 * time.Millisecond)
+	if err := s.app.RecoverTaskEvents(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 
 	if after := len(s.runs(t)); after != before {
 		t.Fatalf("a stopped task started a run: %d runs, want %d", after, before)
@@ -239,6 +233,30 @@ func TestWakeRunTakesItsEventsBeforeItStarts(t *testing.T) {
 	}
 }
 
+// addRuns stores n completed runs with the trigger after the session's runs;
+// delivered ones went to the Telegram chat.
+func (s *wakeScenario) addRuns(t *testing.T, trigger core.RunTrigger, n int, delivered bool) []string {
+	t.Helper()
+	ctx := context.Background()
+	var ids []string
+	for range n {
+		at := time.Now().UTC()
+		id := fmt.Sprintf("run_%s_%d", trigger, len(s.runs(t)))
+		message := transcript.Message{ID: "msg_" + id, SessionID: s.session.ID, RunID: id, Role: transcript.MessageRoleUser, Content: "woken", CreatedAt: at, UpdatedAt: at}
+		run := core.Run{ID: id, SessionID: s.session.ID, UserMessageID: message.ID, Trigger: trigger, Status: core.RunStatusCompleted, StartedAt: at, UpdatedAt: at}
+		var deliveries []core.ClientDelivery
+		if delivered {
+			run.Client, run.ExternalKey = "telegram", "telegram:42"
+			deliveries = append(deliveries, core.ClientDelivery{ID: "delivery_" + id, Type: core.ClientDeliveryTypeRun, Client: "telegram", ExternalKey: "telegram:42", SessionID: s.session.ID, RunID: id, Address: telegramAddress, Status: core.ClientDeliveryStatusPending, CreatedAt: at, UpdatedAt: at})
+		}
+		if err := s.db.AcceptMessage(ctx, message, run, deliveries...); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // finishedTask stores a background command that finished unseen.
 func (s *wakeScenario) finishedTask(t *testing.T, id string) {
 	t.Helper()
@@ -290,5 +308,97 @@ func TestFailedWakeRunStopsTheChainWithOneNotice(t *testing.T) {
 	}
 	if task, err := s.db.GetTask(ctx, "task_b"); err != nil || task.DeliveredAt != nil {
 		t.Fatalf("the next run should read task_b: %+v, %v", task, err)
+	}
+}
+
+// userRunFrom is a finished run a Telegram target started.
+func (s *wakeScenario) userRunFrom(t *testing.T, externalKey string, address string) {
+	t.Helper()
+	accepted, err := s.app.AcceptRun(context.Background(), core.HandleMessageInput{SessionID: s.session.ID, Client: "telegram", ExternalKey: externalKey, DeliveryAddress: json.RawMessage(address), Text: "look it up"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitRunStatus(t, s.db, accepted.Run.ID, core.RunStatusCompleted)
+	s.starter.wait(t)
+}
+
+func TestWakeRunIsDeliveredToAChatNeverToAGuestOrInlineQuery(t *testing.T) {
+	t.Parallel()
+	s := newWakeScenario(t)
+	s.userRun(t)
+	s.userRunFrom(t, "42", `{"kind":"inline","inline_message_id":"inline_1"}`)
+	s.userRunFrom(t, "guest:query_1", `{"kind":"guest","guest_query_id":"query_1"}`)
+	ctx := context.Background()
+
+	s.finishedTask(t, "task_a")
+	if err := s.app.RecoverTaskEvents(ctx); err != nil {
+		t.Fatal(err)
+	}
+	s.starter.wait(t)
+
+	wake := s.runs(t)[0]
+	deliveries, err := s.db.ListClientDeliveries(ctx, core.ClientDeliveryFilter{RunID: wake.ID})
+	if err != nil || wake.Trigger != core.RunTriggerWake || len(deliveries) != 1 || deliveries[0].ExternalKey != "telegram:42" || string(deliveries[0].Address) != string(telegramAddress) {
+		t.Fatalf("wake run %+v delivered to %+v, %v", wake, deliveries, err)
+	}
+}
+
+func TestWakeChainCountsWakeRunsTheUserDidNotReach(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name  string
+		setup func(t *testing.T, s *wakeScenario)
+		wakes bool
+	}{
+		{"an automation run does not end it", func(t *testing.T, s *wakeScenario) {
+			s.addRuns(t, core.RunTriggerWake, 20, false)
+			s.addRuns(t, core.RunTriggerAutomation, 1, false)
+		}, false},
+		{"a steer from the user ends it", func(t *testing.T, s *wakeScenario) {
+			ids := s.addRuns(t, core.RunTriggerWake, 20, false)
+			now := time.Now().UTC()
+			steer := core.SessionInput{ID: "input_steer", SessionID: s.session.ID, TargetRunID: ids[19], Mode: core.BusyInputModeSteer, Status: core.SessionInputStatusConsumed, Text: "also check the logs", ConsumedRunID: ids[19], ConsumedAt: &now, CreatedAt: now, UpdatedAt: now}
+			if err := s.db.CreateSessionInput(ctx, steer); err != nil {
+				t.Fatal(err)
+			}
+		}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newWakeScenario(t)
+			s.userRun(t)
+			s.starter.wait(t)
+			tc.setup(t, s)
+			before := len(s.runs(t))
+
+			s.finishedTask(t, "task_a")
+			if err := s.app.RecoverTaskEvents(ctx); err != nil {
+				t.Fatal(err)
+			}
+			s.starter.wait(t)
+
+			if woke := len(s.runs(t)) > before; woke != tc.wakes {
+				t.Fatalf("woke = %v, want %v", woke, tc.wakes)
+			}
+		})
+	}
+}
+
+func TestWakeChainNoticeReachesTheChatPastTheNewestRuns(t *testing.T) {
+	t.Parallel()
+	s := newWakeScenario(t)
+	s.addRuns(t, core.RunTriggerWake, 25, true)
+
+	taskID := s.runTask(t, "true")
+
+	var notices []core.ClientDelivery
+	for deadline := time.Now().Add(10 * time.Second); len(notices) == 0; time.Sleep(10 * time.Millisecond) {
+		notices = s.notices(t)
+		if time.Now().After(deadline) {
+			t.Fatal("no notice")
+		}
+	}
+	if len(notices) != 1 || notices[0].ExternalKey != "telegram:42" || string(notices[0].Address) != string(telegramAddress) || !strings.Contains(notices[0].Summary, taskID) {
+		t.Fatalf("notices = %+v", notices)
 	}
 }

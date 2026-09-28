@@ -55,10 +55,11 @@ func (c *Core) wakeWaitingRun(ctx context.Context, sessionID string, runID strin
 	if err != nil || !due {
 		return err
 	}
-	if err := c.store.DeleteRunWakeup(ctx, run.ID); err != nil {
+	// The wakeup stays until the run is started, so a failed start is retried.
+	if err := c.startRun(ctx, run.ID); err != nil {
 		return err
 	}
-	return c.startRun(ctx, run.ID)
+	return c.store.DeleteRunWakeup(ctx, run.ID)
 }
 
 // healApprovalPark drops the wakeup of a run that waits for approval instead

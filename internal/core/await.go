@@ -36,7 +36,7 @@ func (t *awaitTool) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              awaitToolName,
 		Name:            "Await",
-		Description:     "Wait for background tasks to finish instead of polling them. Ends your turn; you are woken when one of the tasks finishes, the user writes, or the timeout passes.",
+		Description:     "Wait for background tasks to finish instead of polling them. Ends your turn; you are woken when one of the tasks finishes, the user writes, or the timeout passes. Call it after the calls that start the tasks have returned: task ids come from their results, and in the same reply it may run before them.",
 		Risk:            tools.RiskSafe,
 		Effect:          tools.EffectReadOnly,
 		ApprovalMode:    tools.ApprovalNever,
@@ -81,6 +81,9 @@ func (t *awaitTool) Execute(ctx context.Context, call tools.Call) (tools.Result,
 		await.TaskIDs = waiting
 	}
 	content := fmt.Sprintf("Waiting up to %s for %s. You are woken when one of them finishes, the user writes, or the time is up.", timeout, strings.Join(waiting, ", "))
+	if len(finished) > 0 {
+		content += " Already finished: " + strings.Join(finished, "; ") + "."
+	}
 	return tools.Result{Content: content, Status: tools.ResultStatusNeutral, Await: await}, nil
 }
 

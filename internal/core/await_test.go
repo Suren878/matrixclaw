@@ -3,6 +3,7 @@ package core_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -217,6 +218,17 @@ func TestAwaitReportsTasksThatAlreadyFinished(t *testing.T) {
 	if err != nil || result.Await != nil || result.Content != "Already finished: "+started.TaskID+" failed, exit code 3." {
 		t.Fatalf("result = %+v, %v", result, err)
 	}
+	running, err := app.RunCommand(context.Background(), tools.Call{SessionID: session.ID}, tools.Command{Command: "sleep 30", Background: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	both, err := await.Execute(context.Background(), tools.Call{SessionID: session.ID, RunID: "run_x", Args: json.RawMessage(`{"ids":["` + started.TaskID + `","` + running.TaskID + `"]}`)})
+	if _, stopErr := app.CancelTask(context.Background(), running.TaskID); stopErr != nil {
+		t.Fatal(stopErr)
+	}
+	if err != nil || both.Await == nil || !strings.Contains(both.Content, "Already finished: "+started.TaskID+" failed, exit code 3.") {
+		t.Fatalf("both = %+v, %v", both, err)
+	}
 	idle, err := await.Execute(context.Background(), tools.Call{SessionID: session.ID, RunID: "run_x", Args: json.RawMessage(`{}`)})
 	if err != nil || idle.Await != nil || !strings.Contains(idle.Content, "nothing to wait for") {
 		t.Fatalf("idle = %+v, %v", idle, err)
@@ -322,5 +334,127 @@ func TestCancelingARunWaitingForApprovalStartsTheQueuedMessage(t *testing.T) {
 	runs, err := db.ListSessionRuns(ctx, session.ID, 0)
 	if err != nil || len(runs) != 2 || starter.count(runs[0].ID) != 1 {
 		t.Fatalf("runs = %+v, starts = %v, %v", runs, starter.ids, err)
+	}
+}
+
+type failingRunStarter struct{}
+
+func (failingRunStarter) StartRun(context.Context, string) error {
+	return errors.New("run starter down")
+}
+
+func TestWakeupStaysUntilItsRunStarts(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithRunStarter(failingRunStarter{})
+	session, run := saveCrashRecoveryRun(t, db, "wake-retry", core.RunStatusWaitingEvents, false)
+	ctx := context.Background()
+	if err := db.SaveRunWakeup(ctx, core.RunWakeup{RunID: run.ID, SessionID: session.ID, WakeAt: time.Now().UTC().Add(-time.Second)}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.WakeDueRuns(ctx); err == nil {
+		t.Fatal("waking with a broken run starter did not fail")
+	}
+	if _, err := db.GetRunWakeup(ctx, run.ID); err != nil {
+		t.Fatalf("wakeup after a failed start: %v", err)
+	}
+	starter := &recordingRunStarter{}
+	app.WithRunStarter(starter)
+	if err := app.WakeDueRuns(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	if starter.count(run.ID) != 1 {
+		t.Fatalf("starts = %v", starter.ids)
+	}
+	if _, err := db.GetRunWakeup(ctx, run.ID); err != core.ErrNotFound {
+		t.Fatalf("wakeup after the start: %v", err)
+	}
+}
+
+func TestLostTasksWakeNothingBeforeRunsCanStart(t *testing.T) {
+	t.Parallel()
+	db := openScenarioStore(t)
+	app := core.New(db).WithSessionFiles(t.TempDir())
+	session := permissionSession(t, db, "session_restart", t.TempDir(), core.PermissionModeDefault, "")
+	ctx := context.Background()
+	now := time.Now().UTC()
+	for _, task := range []core.Task{
+		{ID: "task_subagent", SessionID: session.ID, Kind: core.TaskKindSubagent, Status: core.TaskStatusRunning, Command: "scan", Background: true, StartedAt: now, UpdatedAt: now},
+		{ID: "task_shell", SessionID: session.ID, Kind: core.TaskKindShell, Status: core.TaskStatusRunning, Command: "make", Background: true, StartedAt: now, UpdatedAt: now},
+	} {
+		if err := db.CreateTask(ctx, task); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.FinishTask(ctx, "task_subagent", core.TaskStatusCompleted, nil, "", now); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.RecoverTasks(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if runs, err := db.ListSessionRuns(ctx, session.ID, 0); err != nil || len(runs) != 0 {
+		t.Fatalf("runs before the run starter = %+v, %v", runs, err)
+	}
+	starter := &recordingRunStarter{}
+	app.WithRunStarter(starter)
+	if err := app.RecoverTaskEvents(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(starter.ids) != 1 {
+		t.Fatalf("starts = %v", starter.ids)
+	}
+}
+
+// wakeupFailingStore fails reading the wakeup of one run.
+type wakeupFailingStore struct {
+	*store.SQLiteStore
+	runID string
+}
+
+func (s wakeupFailingStore) GetRunWakeup(ctx context.Context, runID string) (core.RunWakeup, error) {
+	if runID == s.runID {
+		return core.RunWakeup{}, errors.New("disk error")
+	}
+	return s.SQLiteStore.GetRunWakeup(ctx, runID)
+}
+
+func TestRecoverActiveRunsGoesOnPastAFailedWake(t *testing.T) {
+	t.Parallel()
+	db := openScenarioStore(t)
+	_, broken := saveCrashRecoveryRun(t, db, "wake-broken", core.RunStatusWaitingEvents, false)
+	_, fine := saveCrashRecoveryRun(t, db, "wake-fine", core.RunStatusWaitingEvents, false)
+	app := core.New(wakeupFailingStore{SQLiteStore: db, runID: broken.ID})
+	starter := &recordingRunStarter{}
+	app.WithRunStarter(starter)
+
+	if err := app.RecoverActiveRuns(context.Background()); err == nil {
+		t.Fatal("recovery hid the failed wake")
+	}
+
+	if starter.count(fine.ID) != 1 {
+		t.Fatalf("starts = %v", starter.ids)
+	}
+}
+
+func TestDeletingASessionWakesNothingInIt(t *testing.T) {
+	t.Parallel()
+	db := openScenarioStore(t)
+	s, _ := newAwaitScenario(t, db, db, func(id string) string { return `{"ids":["` + id + `"]}` })
+	if err := s.app.ExecuteRun(context.Background(), s.run.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertRecoveryRunStatus(t, db, s.run.ID, core.RunStatusWaitingEvents)
+
+	if err := s.app.DeleteSession(context.Background(), s.session.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(s.starter.ids) != 0 {
+		t.Fatalf("starts = %v", s.starter.ids)
 	}
 }

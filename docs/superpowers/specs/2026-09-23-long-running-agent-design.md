@@ -589,7 +589,9 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   `kern.boottime`) with the start recorded at spawn (`/proc/<pid>/stat`
   starttime, macOS `kern.proc.pid`); a leaderless group or one that cannot be
   checked is only marked lost. Lost tasks do not start a run; the next run
-  reads them. Deleting a session kills its tasks.
+  reads them, and `RecoverActiveRuns` (after the run starter exists) wakes a
+  run waiting for them. Deleting a session kills its tasks without waking
+  anything in it.
 - **`/tasks`** lists the bound session's background tasks above the scheduled
   tasks (`/tasks bg <id>` shows the output tail, `stop` asks first); API
   `GET /v1/sessions/{id}/tasks`, `GET /v1/tasks/{id}`,
@@ -602,8 +604,10 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   600}`, category automation, so children lack it). Its result is written at
   once ("Waiting up to … for …"); `tools.Result.Await` puts `{task_ids, until}`
   into `Counters.Await`, so the park survives an approval or a restart. Named
-  tasks that already finished are reported instead of waited for; with no
-  running background task it says so. It needs a run.
+  tasks that already finished are reported (alone when none still runs);
+  with no running background task it says so. It needs a run. Task ids come
+  from the results of the calls that start the tasks, so its description asks
+  for it after they returned: in the same reply it may run before them.
 - **Park**: each step starts with `resumeAwait`: it clears `Counters.Await`
   when a steer is pending (written as a user message, since no tool result can
   carry it), an event for an awaited task (any task without ids) is pending,
@@ -614,7 +618,8 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   without a model call.
 - **Wake**: `wakeWaitingRun` runs under the session gate and starts the run
   when its timer ran out, a steer for it is pending or an awaited task
-  finished unseen; it deletes the wakeup. It is called when a task finishes,
+  finished unseen; it deletes the wakeup once the run is started, so a failed
+  start is retried. It is called when a task finishes,
   when a message arrives, by `WakeDueRuns` (a one-second ticker; overdue
   timers fire on its first tick after a restart), at startup for every
   waiting run, and after the parking run is no longer active
@@ -626,8 +631,9 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   nothing is pending. Canceling a run drops its wakeup and stops the
   background commands and subagents it started; canceling a parked run
   starts the next queued message, and tasks of a canceled run wake nothing.
-- **Input**: a message without a busy mode steers (Telegram sends none; the
-  TUI sends steer unless `/queue` or `/busy` picks another mode); a queued
+- **Input**: a message without a busy mode steers (Telegram, the iOS app and
+  controlplane skill prompts send none; the TUI sends steer unless `/queue`
+  or `/busy` picks another mode); a queued
   message for a waiting run steers it too, and messages queued while a run
   worked become steers that wake it once it waits.
 - **Idle sessions**: a finished background task (a command that exited by
@@ -635,10 +641,12 @@ runtime, model}`; `runtime`/`model` keep delegation to Codex and Claude Code.
   trigger `wake` (automation budget) whose user message says background work
   finished; the events are journaled after it as notes and delivered to it
   under the session gate before it starts, so no run reads them twice. It gets the
-  client, capabilities and delivery address of the newest run before the wake
-  chain, so Telegram receives its reply. Twenty wake runs in a row without a
-  user run stop the chain: the session shows a system message and the chat
-  gets a `notice` delivery per finished task. A wake run that failed or was
+  client, capabilities and delivery address of the newest run whose delivery a
+  later message still reaches (a Telegram chat, never a guest or inline
+  query), so Telegram receives its reply. Twenty wake runs in a row that took
+  no user message (a steer into one ends the chain; automation runs neither
+  count nor end it) stop the chain: the session shows a system message and
+  the same chat gets a `notice` delivery per finished task. A wake run that failed or was
   canceled stops the chain until the user writes; a failed one tells the user
   once, the same way. Stopped and lost commands wait
   for the next run. Subagent completion runs are wake runs now; their prompt,
