@@ -7,6 +7,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/commandcatalog"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
+	"github.com/Suren878/matrixclaw/internal/core"
 )
 
 func (w *Worker) handleCallbackQuery(ctx context.Context, cq *CallbackQuery) error {
@@ -110,7 +111,7 @@ func isContextCompactCommand(command string) bool {
 }
 
 func (w *Worker) resolveApprovalCallback(ctx context.Context, target chatTarget, cq *CallbackQuery, approvalID string, approved bool, allowSession bool) error {
-	approval, err := w.daemon(target.externalKey).ResolveApproval(ctx, approvalID, approved)
+	approval, err := w.daemon(target.externalKey).ResolveApproval(ctx, approvalID, core.ApprovalResolveRequest{Approved: approved})
 	if err != nil {
 		return w.editOrSend(ctx, target, cq.Message.MessageID, fmt.Sprintf("Resolve approval failed: %v", err), nil)
 	}

@@ -72,7 +72,7 @@ func TestContextBoundariesAreRejectedWhileARunWaitsForApproval(t *testing.T) {
 	if err != nil || len(approvals) != 1 {
 		t.Fatalf("pending approvals = %+v err = %v", approvals, err)
 	}
-	if _, err := app.ResolveApproval(ctx, approvals[0].ID, true); err != nil {
+	if _, err := app.ResolveApproval(ctx, approvals[0].ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
 		t.Fatal(err)
 	}
 	if err := app.ExecuteRun(ctx, run.ID); err != nil {

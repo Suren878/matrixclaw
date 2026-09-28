@@ -41,7 +41,7 @@ func (s *Server) handleApprovalByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	approval, err := s.core.ResolveApproval(r.Context(), approvalID, req.Approved)
+	approval, err := s.core.ResolveApproval(r.Context(), approvalID, req)
 	if err != nil {
 		writeError(w, err)
 		return

@@ -66,8 +66,11 @@ type CreateSystemMessageRequest struct {
 	Content string `json:"content"`
 }
 
+// ApprovalResolveRequest is a user's decision on an approval; Reason explains a
+// denial to the model.
 type ApprovalResolveRequest struct {
-	Approved bool `json:"approved"`
+	Approved bool   `json:"approved"`
+	Reason   string `json:"reason,omitempty"`
 }
 
 type AdminRestartRequest struct {

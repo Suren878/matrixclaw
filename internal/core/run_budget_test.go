@@ -107,7 +107,7 @@ func TestBudgetCountersSurviveAnApprovalPark(t *testing.T) {
 	if err != nil || len(approvals) != 1 {
 		t.Fatalf("pending approvals = %+v err = %v", approvals, err)
 	}
-	if _, err := app.ResolveApproval(context.Background(), approvals[0].ID, true); err != nil {
+	if _, err := app.ResolveApproval(context.Background(), approvals[0].ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
 		t.Fatal(err)
 	}
 	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {

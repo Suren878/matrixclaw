@@ -8,35 +8,56 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func (c *Core) ResolveApproval(ctx context.Context, approvalID string, approved bool) (Approval, error) {
+// ResolveApproval records the user's decision on an approval. A run resumes once
+// none of its approvals is pending and reads a denial as the call's result; a
+// call made outside a run is replayed or answered here.
+func (c *Core) ResolveApproval(ctx context.Context, approvalID string, decision ApprovalResolveRequest) (Approval, error) {
 	approval, err := c.store.GetApproval(ctx, normalizeText(approvalID))
 	if err != nil {
 		return Approval{}, err
 	}
 	if approval.State != ApprovalStatePending {
-		switch {
-		case approved && approval.State == ApprovalStateApproved:
+		if approval.State == approvalState(decision.Approved) {
 			return approval, nil
-		case !approved && approval.State == ApprovalStateRejected:
-			return approval, nil
-		default:
-			return Approval{}, fmt.Errorf("%w: approval already resolved", ErrInvalidInput)
 		}
+		return Approval{}, fmt.Errorf("%w: approval already resolved", ErrInvalidInput)
 	}
-	if bridge, ok := decodeSubagentApprovalBridge(approval); ok {
-		return c.resolveSubagentApprovalBridge(ctx, approval, bridge, approved)
+	bridge, bridged := decodeSubagentApprovalBridge(approval)
+	approval, err = c.recordApprovalDecision(ctx, approval, decision, bridged)
+	if err != nil {
+		return Approval{}, err
 	}
-	decidedAt := c.now().UTC()
+	switch {
+	case bridged:
+		return approval, c.resolveSubagentApprovalBridge(ctx, approval, bridge, decision)
+	case strings.TrimSpace(approval.RunID) == "":
+		return approval, c.finishRunlessApproval(ctx, approval)
+	default:
+		return approval, c.resumeDecidedRun(ctx, approval.SessionID, approval.RunID)
+	}
+}
+
+func approvalState(approved bool) ApprovalState {
 	if approved {
-		approval.State = ApprovalStateApproved
-	} else {
-		approval.State = ApprovalStateRejected
+		return ApprovalStateApproved
 	}
+	return ApprovalStateRejected
+}
+
+// recordApprovalDecision stores the decision and tells clients where the call
+// stands; a bridged call keeps going whichever way its child's call was decided.
+func (c *Core) recordApprovalDecision(ctx context.Context, approval Approval, decision ApprovalResolveRequest, bridged bool) (Approval, error) {
+	decidedAt := c.now().UTC()
+	approval.State = approvalState(decision.Approved)
 	approval.DecidedAt = &decidedAt
+	if !decision.Approved {
+		approval.Reason = normalizeText(decision.Reason)
+	}
 	if err := c.store.UpdateApproval(ctx, approval); err != nil {
 		return Approval{}, err
 	}
@@ -47,130 +68,77 @@ func (c *Core) ResolveApproval(ctx context.Context, approvalID string, approved 
 		Payload: PermissionNotification{
 			ApprovalID: approval.ID,
 			ToolCallID: approval.ToolCallRef,
-			Granted:    approved,
-			Denied:     !approved,
+			Granted:    decision.Approved,
+			Denied:     !decision.Approved,
 		},
 	})
-	if approved {
-		c.publishEvent(Event{
-			Type:      EventToolUpdated,
-			SessionID: approval.SessionID,
-			RunID:     approval.RunID,
-			Payload: ToolUpdate{
-				ToolCallID: approval.ToolCallRef,
-				ToolName:   approval.ToolName,
-				State:      ToolLifecycleRequested,
-				RunID:      approval.RunID,
-				SessionID:  approval.SessionID,
-				ApprovalID: approval.ID,
-			},
-		})
-		if strings.TrimSpace(approval.RunID) == "" {
-			if _, err := c.replayApprovedTool(ctx, approval); err != nil {
-				return Approval{}, err
-			}
-		} else {
-			if err := c.startRun(ctx, approval.RunID); err != nil {
-				return Approval{}, err
-			}
-		}
-	} else {
-		c.publishEvent(Event{
-			Type:      EventToolUpdated,
-			SessionID: approval.SessionID,
-			RunID:     approval.RunID,
-			Payload: ToolUpdate{
-				ToolCallID: approval.ToolCallRef,
-				ToolName:   approval.ToolName,
-				State:      ToolLifecycleFailed,
-				RunID:      approval.RunID,
-				SessionID:  approval.SessionID,
-				ApprovalID: approval.ID,
-				Error:      "approval denied",
-			},
-		})
-		if strings.TrimSpace(approval.RunID) != "" {
-			run, runErr := c.store.GetRun(ctx, approval.RunID)
-			if runErr == nil {
-				if failErr := c.failRunByID(ctx, run, errors.New("approval denied")); failErr != nil {
-					return Approval{}, failErr
-				}
-			}
-		}
+	update := ToolUpdate{
+		ToolCallID: approval.ToolCallRef,
+		ToolName:   approval.ToolName,
+		State:      ToolLifecycleRequested,
+		RunID:      approval.RunID,
+		SessionID:  approval.SessionID,
+		ApprovalID: approval.ID,
 	}
+	if !decision.Approved && !bridged {
+		update.State = ToolLifecycleFailed
+		update.Error = agent.DenialResult(approval.Reason).Content
+	}
+	c.publishToolUpdate(approval.SessionID, approval.RunID, update)
 	return approval, nil
 }
 
-func (c *Core) resolveSubagentApprovalBridge(ctx context.Context, approval Approval, bridge subagentApprovalBridgeParams, approved bool) (Approval, error) {
-	decidedAt := c.now().UTC()
-	if approved {
-		approval.State = ApprovalStateApproved
-	} else {
-		approval.State = ApprovalStateRejected
+// resumeDecidedRun starts a run once none of its approvals is pending.
+func (c *Core) resumeDecidedRun(ctx context.Context, sessionID string, runID string) error {
+	pending, err := c.runHasPendingApprovals(ctx, sessionID, runID)
+	if err != nil || pending {
+		return err
 	}
-	approval.DecidedAt = &decidedAt
-	if err := c.store.UpdateApproval(ctx, approval); err != nil {
-		return Approval{}, err
-	}
-	c.publishEvent(Event{
-		Type:      EventApprovalResult,
-		SessionID: approval.SessionID,
-		RunID:     approval.RunID,
-		Payload: PermissionNotification{
-			ApprovalID: approval.ID,
-			ToolCallID: approval.ToolCallRef,
-			Granted:    approved,
-			Denied:     !approved,
-		},
-	})
+	return c.startRun(ctx, runID)
+}
 
+// finishRunlessApproval completes a call made outside a run (API, voice, MCP
+// server): a grant replays it, a denial becomes its result.
+func (c *Core) finishRunlessApproval(ctx context.Context, approval Approval) error {
+	if approval.State == ApprovalStateApproved {
+		_, err := c.replayApprovedTool(ctx, approval)
+		return err
+	}
+	return c.finishApprovalCall(ctx, approval, agent.DenialResult(approval.Reason))
+}
+
+func (c *Core) resolveSubagentApprovalBridge(ctx context.Context, approval Approval, bridge subagentApprovalBridgeParams, decision ApprovalResolveRequest) error {
 	task, err := c.store.GetSubagentTask(ctx, bridge.TaskID)
 	if err != nil {
 		task, err = c.store.GetSubagentTaskByChildRun(ctx, bridge.ChildRunID)
 	}
 	if err != nil {
-		return Approval{}, err
+		return err
 	}
 
-	if _, err := c.ResolveApproval(ctx, bridge.ChildApprovalID, approved); err != nil {
+	if _, err := c.ResolveApproval(ctx, bridge.ChildApprovalID, decision); err != nil {
 		terminal, terminalErr := c.subagentTaskTerminal(ctx, task)
 		if terminalErr != nil || !terminal {
-			return Approval{}, err
+			return err
 		}
 	}
 
-	if approved {
+	if decision.Approved {
 		if latest, err := c.store.GetSubagentTask(ctx, task.ID); err == nil {
 			task = latest
 		} else if !errors.Is(err, ErrNotFound) {
-			return Approval{}, err
+			return err
 		}
 		if !subagentTaskTerminalStatus(task.Status) {
 			task, err = c.markSubagentTaskRunning(ctx, task)
 			if err != nil {
-				return Approval{}, err
+				return err
 			}
 		}
-		c.publishEvent(Event{
-			Type:      EventToolUpdated,
-			SessionID: approval.SessionID,
-			RunID:     approval.RunID,
-			Payload: ToolUpdate{
-				ToolCallID: approval.ToolCallRef,
-				ToolName:   approval.ToolName,
-				State:      ToolLifecycleRequested,
-				RunID:      approval.RunID,
-				SessionID:  approval.SessionID,
-				ApprovalID: approval.ID,
-			},
-		})
 		if task.Mode == SubagentTaskModeAsync {
-			return approval, nil
+			return nil
 		}
-		if err := c.resumeParentAfterSubagentTerminal(ctx, task); err != nil {
-			return Approval{}, err
-		}
-		return approval, nil
+		return c.resumeParentAfterSubagentTerminal(ctx, task)
 	}
 
 	summary := "Subagent approval denied"
@@ -179,31 +147,27 @@ func (c *Core) resolveSubagentApprovalBridge(ctx context.Context, approval Appro
 	}
 	task, err = c.finishSubagentTaskRecord(ctx, task, SubagentTaskStatusFailed, summary, summary, false)
 	if err != nil {
-		return Approval{}, err
+		return err
 	}
 	if task.Mode == SubagentTaskModeAsync {
 		c.publishSubagentToolUpdate(task)
 		task, err = c.queueSubagentCompletionRecord(ctx, task)
 		if err != nil {
-			return Approval{}, err
+			return err
 		}
-		if err := c.deliverPendingSubagentCompletionsForParent(ctx, task.ParentSessionID); err != nil {
-			return Approval{}, err
-		}
-		return approval, nil
+		return c.deliverPendingSubagentCompletionsForParent(ctx, task.ParentSessionID)
 	}
-	if err := c.finishRejectedSubagentDelegateTool(ctx, approval, task, summary); err != nil {
-		return Approval{}, err
+	if err := c.finishApprovalCall(ctx, approval, tools.Result{Content: summary, Metadata: task, Status: tools.ResultStatusError, IsError: true}); err != nil {
+		return err
 	}
 	if strings.TrimSpace(approval.RunID) != "" {
-		if err := c.startRun(ctx, approval.RunID); err != nil {
-			return Approval{}, err
-		}
+		return c.startRun(ctx, approval.RunID)
 	}
-	return approval, nil
+	return nil
 }
 
-func (c *Core) finishRejectedSubagentDelegateTool(ctx context.Context, approval Approval, task SubagentTask, summary string) error {
+// finishApprovalCall writes result for the approval's call unless it has one.
+func (c *Core) finishApprovalCall(ctx context.Context, approval Approval, result tools.Result) error {
 	toolCallID := strings.TrimSpace(approval.ToolCallRef)
 	done, err := c.store.HasToolResult(ctx, approval.SessionID, toolCallID)
 	if err != nil || done {
@@ -211,22 +175,17 @@ func (c *Core) finishRejectedSubagentDelegateTool(ctx context.Context, approval 
 	}
 	toolCall, err := c.sessionToolCallMessage(ctx, approval.SessionID, toolCallID)
 	if err != nil {
-		return fmt.Errorf("parent delegate tool call: %w", err)
+		return err
 	}
 	args, _ := toolCallArgs(toolCall)
 	prepared := preparedToolCall{
 		SessionID:  approval.SessionID,
 		RunID:      approval.RunID,
 		ToolName:   approval.ToolName,
-		ToolCallID: approval.ToolCallRef,
+		ToolCallID: toolCallID,
 		Message:    toolCall,
 	}
-	_, _, err = c.finishToolCall(ctx, prepared, ExecuteToolInput{Args: args}, tools.Result{
-		Content:  summary,
-		Metadata: task,
-		Status:   tools.ResultStatusError,
-		IsError:  true,
-	})
+	_, _, err = c.finishToolCall(ctx, prepared, ExecuteToolInput{Args: args}, result)
 	return err
 }
 

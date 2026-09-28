@@ -229,7 +229,7 @@ func TestNativeRunParksForApprovalAndResumesAfterGrant(t *testing.T) {
 		t.Fatalf("before grant: model=%d mutations=%d inspect=%d", calls, mutations, inspect.callCount())
 	}
 
-	if _, err := app.ResolveApproval(context.Background(), approvals[0].ID, true); err != nil {
+	if _, err := app.ResolveApproval(context.Background(), approvals[0].ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
 		t.Fatal(err)
 	}
 	if got := starter.count(run.ID); got != 1 {
@@ -246,15 +246,23 @@ func TestNativeRunParksForApprovalAndResumesAfterGrant(t *testing.T) {
 	}
 }
 
-func TestNativeRunFailsWhenApprovalIsDenied(t *testing.T) {
+func TestDeniedApprovalReturnsTheReasonToTheModel(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	mutations := 0
 	mutate, inspect := approvalTools(&mutations)
 	app.WithTools(tools.NewRegistry(mutate, inspect))
-	app.WithRunStarter(&recordingRunStarter{})
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
-		return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-mutate", Name: "mutate_state", Arguments: []byte(`{}`)}}}, nil
+	starter := &recordingRunStarter{}
+	app.WithRunStarter(starter)
+	calls := 0
+	var denial string
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		calls++
+		if calls == 1 {
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-mutate", Name: "mutate_state", Arguments: []byte(`{}`)}}}, nil
+		}
+		denial = toolResultContent(request, "call-mutate")
+		return providers.Response{Text: "Leaving the state alone."}, nil
 	})})
 	session, run := saveCrashRecoveryRun(t, db, "denied", core.RunStatusAccepted, false)
 	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
@@ -265,17 +273,121 @@ func TestNativeRunFailsWhenApprovalIsDenied(t *testing.T) {
 		t.Fatalf("pending approvals = %#v, err = %v", approvals, err)
 	}
 
-	if _, err := app.ResolveApproval(context.Background(), approvals[0].ID, false); err == nil || err.Error() != "approval denied" {
-		t.Fatalf("ResolveApproval(deny) error = %v, want approval denied", err)
-	}
-
-	got, err := db.GetRun(context.Background(), run.ID)
-	if err != nil {
+	if _, err := app.ResolveApproval(context.Background(), approvals[0].ID, core.ApprovalResolveRequest{Reason: "the state is shared"}); err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != core.RunStatusFailed || got.Error != "approval denied" || mutations != 0 {
-		t.Fatalf("run = %s (%s), mutations = %d", got.Status, got.Error, mutations)
+	if got := starter.count(run.ID); got != 1 {
+		t.Fatalf("resume schedules = %d, want 1", got)
 	}
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
+	if denial != "User denied: the state is shared" || mutations != 0 {
+		t.Fatalf("model read %q, mutations = %d", denial, mutations)
+	}
+	stored, err := db.GetApproval(context.Background(), approvals[0].ID)
+	if err != nil || stored.State != core.ApprovalStateRejected || stored.Reason != "the state is shared" {
+		t.Fatalf("stored approval = %+v err = %v", stored, err)
+	}
+}
+
+func askingReadTool(id string) funcTool {
+	return funcTool{spec: recoveryToolSpec(id, tools.EffectReadOnly), fn: func(_ context.Context, call tools.Call) (tools.Result, error) {
+		if !call.Approved {
+			return tools.Result{Approval: &tools.ApprovalRequest{ToolID: id, ToolCallID: call.ToolCallID, Action: "read_secret"}}, nil
+		}
+		return tools.Result{Content: "secret " + id}, nil
+	}}
+}
+
+func TestRunResumesOnceEveryApprovalIsDecided(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithTools(tools.NewRegistry(askingReadTool("read_a"), askingReadTool("read_b")))
+	starter := &recordingRunStarter{}
+	app.WithRunStarter(starter)
+	var results []string
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		if len(results) == 0 && toolResultContent(request, "call-a") == "" {
+			return providers.Response{ToolCalls: []providers.ToolCall{
+				{ID: "call-a", Name: "read_a", Arguments: []byte(`{}`)},
+				{ID: "call-b", Name: "read_b", Arguments: []byte(`{}`)},
+			}}, nil
+		}
+		results = []string{toolResultContent(request, "call-a"), toolResultContent(request, "call-b")}
+		return providers.Response{Text: "Done."}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "two-approvals", core.RunStatusAccepted, false)
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	approvals, err := db.ListApprovals(context.Background(), session.ID, core.ApprovalStatePending)
+	if err != nil || len(approvals) != 2 {
+		t.Fatalf("pending approvals = %#v, err = %v", approvals, err)
+	}
+
+	byCall := map[string]string{}
+	for _, approval := range approvals {
+		byCall[approval.ToolCallRef] = approval.ID
+	}
+	if _, err := app.ResolveApproval(context.Background(), byCall["call-a"], core.ApprovalResolveRequest{Approved: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := starter.count(run.ID); got != 0 {
+		t.Fatalf("run scheduled %d times while an approval was still open", got)
+	}
+	if _, err := app.ResolveApproval(context.Background(), byCall["call-b"], core.ApprovalResolveRequest{Reason: "not that one"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := starter.count(run.ID); got != 1 {
+		t.Fatalf("resume schedules = %d, want 1", got)
+	}
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
+	if strings.Join(results, "|") != "secret read_a|User denied: not that one" {
+		t.Fatalf("model read %q", results)
+	}
+}
+
+func TestDeniedCallOutsideARunGetsTheDenialAsItsResult(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	mutations := 0
+	mutate, _ := approvalTools(&mutations)
+	app.WithTools(tools.NewRegistry(mutate))
+	session, _ := saveCrashRecoveryRun(t, db, "runless", core.RunStatusCompleted, false)
+	pending, err := app.ExecuteTool(context.Background(), core.ExecuteToolInput{SessionID: session.ID, ToolName: "mutate_state", ToolCallID: "call-api", Args: []byte(`{}`)})
+	if err != nil || pending.Approval == nil {
+		t.Fatalf("ExecuteTool = %+v err = %v", pending, err)
+	}
+
+	if _, err := app.ResolveApproval(context.Background(), pending.Approval.ID, core.ApprovalResolveRequest{Reason: "not now"}); err != nil {
+		t.Fatal(err)
+	}
+
+	assertToolResultCount(t, db, session.ID, "call-api", 1)
+	for _, message := range sessionMessages(t, db, session.ID) {
+		if message.Role == transcript.MessageRoleTool && message.Content != "User denied: not now" {
+			t.Fatalf("result = %q", message.Content)
+		}
+	}
+	if mutations != 0 {
+		t.Fatalf("mutations = %d", mutations)
+	}
+}
+
+func toolResultContent(request providers.Request, callID string) string {
+	for _, message := range request.Messages {
+		if message.Role == "tool" && message.ToolCallID == callID {
+			return message.Content
+		}
+	}
+	return ""
 }
 
 func TestSteerDuringToolIsAppendedToThatToolResult(t *testing.T) {

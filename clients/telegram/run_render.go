@@ -208,7 +208,7 @@ func (w *Worker) renderApprovalUpdates(ctx context.Context, target chatTarget, a
 			continue
 		}
 		if w.autoApprovesEditApproval(target, approval) {
-			if _, err := w.daemon(target.externalKey).ResolveApproval(ctx, approval.ID, true); err != nil {
+			if _, err := w.daemon(target.externalKey).ResolveApproval(ctx, approval.ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
 				return err
 			}
 			state.approvals[approval.ID] = 0

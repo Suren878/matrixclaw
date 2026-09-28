@@ -357,7 +357,7 @@ func TestRecoverMutatingToolRequiresFreshApprovalBeforeSingleReplay(t *testing.T
 	if len(approvals) != 1 || approvals[0].Action != "retry_after_daemon_restart" {
 		t.Fatalf("recovery approvals = %#v, want one restart retry approval", approvals)
 	}
-	if _, err := app.ResolveApproval(context.Background(), approvals[0].ID, true); err != nil {
+	if _, err := app.ResolveApproval(context.Background(), approvals[0].ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
 		t.Fatalf("ResolveApproval: %v", err)
 	}
 	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {

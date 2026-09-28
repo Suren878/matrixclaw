@@ -48,5 +48,5 @@ func (r *Runtime) resolveApproval(ctx context.Context, approvalID string, approv
 	if err != nil {
 		return core.Approval{}, err
 	}
-	return client.ResolveApproval(ctx, approvalID, approved)
+	return client.ResolveApproval(ctx, approvalID, core.ApprovalResolveRequest{Approved: approved})
 }

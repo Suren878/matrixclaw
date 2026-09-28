@@ -21,10 +21,9 @@ func (c *Client) ListApprovals(ctx context.Context, sessionID string, state core
 	return response.Approvals, nil
 }
 
-func (c *Client) ResolveApproval(ctx context.Context, approvalID string, approved bool) (core.Approval, error) {
+func (c *Client) ResolveApproval(ctx context.Context, approvalID string, request core.ApprovalResolveRequest) (core.Approval, error) {
 	var response core.ApprovalResponse
 	path := "/v1/approvals/" + escapedPath(approvalID) + "/resolve"
-	request := core.ApprovalResolveRequest{Approved: approved}
 	if err := c.doJSON(ctx, http.MethodPost, path, request, &response); err != nil {
 		return core.Approval{}, err
 	}
