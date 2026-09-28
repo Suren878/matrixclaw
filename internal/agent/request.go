@@ -62,11 +62,11 @@ func (r *run) buildRequest(ctx context.Context, final StopReason) (providers.Req
 	}
 	summary := agentcontext.SummaryMessages(compaction)
 	if !ToolUseAllowed(r.task.Model) {
-		request.Messages = append(summary, agentcontext.TextOnlyConversation(messages, r.task.RunID)...)
+		request.Messages = append(summary, agentcontext.TextOnlyConversation(messages)...)
 		request.Messages = providers.NormalizeMessages(request.Messages, providers.ToolUseDisabled)
 		return request, nil
 	}
-	conversation, err := agentcontext.Conversation(ctx, messages, r.Attachments, r.task.RunID, ImageInputAllowed(r.task.Model), modelIdentity(r.task.Model))
+	conversation, err := agentcontext.Conversation(ctx, messages, r.Attachments, ImageInputAllowed(r.task.Model), modelIdentity(r.task.Model))
 	if err != nil {
 		return providers.Request{}, err
 	}

@@ -30,7 +30,7 @@ func TestToolStepIsReplayedAsOneAssistantMessage(t *testing.T) {
 		stepCallMessage("c"), stepResultMessage("c", "C", false),
 		{Role: transcript.MessageRoleAssistant, Content: "Done"},
 	}
-	conversation, err := Conversation(context.Background(), history, nil, "", false, Identity{})
+	conversation, err := Conversation(context.Background(), history, nil, false, Identity{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestPlainReasoningOnOlderToolCallsStaysReasoningContent(t *testing.T) {
 		}},
 		stepResultMessage("a", "A", false),
 	}
-	conversation, err := Conversation(context.Background(), history, nil, "", false, Identity{})
+	conversation, err := Conversation(context.Background(), history, nil, false, Identity{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestOlderToolStepsWithoutReplyStaySeparatePerResponse(t *testing.T) {
 		stepCallMessage("a"), stepResultMessage("a", "A", false),
 		stepCallMessage("b"), stepResultMessage("b", "B", false),
 	}
-	conversation, err := Conversation(context.Background(), history, nil, "", false, Identity{})
+	conversation, err := Conversation(context.Background(), history, nil, false, Identity{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestLateResultAfterSteerStaysWithItsToolStep(t *testing.T) {
 		{Role: transcript.MessageRoleUser, Content: "Also check c"},
 		stepResultMessage("b", "B", false),
 	}
-	conversation, err := Conversation(context.Background(), history, nil, "", false, Identity{})
+	conversation, err := Conversation(context.Background(), history, nil, false, Identity{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestSignedReasoningIsReplayedOnlyToTheModelThatProducedIt(t *testing.T) {
 		{name: "other provider", identity: Identity{Provider: "gemini", Model: "claude-a"}, wantSigned: 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			conversation, err := Conversation(context.Background(), history, nil, "", false, tc.identity)
+			conversation, err := Conversation(context.Background(), history, nil, false, tc.identity)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -151,7 +151,7 @@ func TestEngineNotesReachTheModelAsUserText(t *testing.T) {
 		note, modelNote,
 	}
 
-	conversation, err := Conversation(context.Background(), history, nil, "", false, Identity{})
+	conversation, err := Conversation(context.Background(), history, nil, false, Identity{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestEngineNotesReachTheModelAsUserText(t *testing.T) {
 		}
 	}
 
-	text := TextOnlyConversation(history, "")
+	text := TextOnlyConversation(history)
 	if n := len(text); n < 2 || text[n-2].Content != note.Content || text[n-1].Role != "user" || text[n-1].Content != modelNote.Content {
 		t.Fatalf("text-only conversation = %+v", text)
 	}

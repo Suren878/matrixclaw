@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -57,5 +58,43 @@ func TestSessionTodoGoesWithItsSession(t *testing.T) {
 
 	if list, err := st.GetSessionTodo(ctx, "s1"); err != nil || len(list.Items) != 0 {
 		t.Fatalf("todo of a recreated session = %+v err = %v", list, err)
+	}
+}
+
+func TestPlanningTablesAreDroppedOnOpen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "matrixclaw.db")
+	if err := openTestStore(t, path).Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`CREATE TABLE session_goals (session_id TEXT PRIMARY KEY, goal TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL)`,
+		`CREATE TABLE session_plan_items (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, text TEXT NOT NULL)`,
+		`CREATE INDEX idx_session_plan_items_session_position ON session_plan_items(session_id)`,
+		`CREATE TABLE plan_runs (session_id TEXT PRIMARY KEY, status TEXT NOT NULL)`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := openTestStore(t, path).Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err = sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var left int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name IN ('session_goals', 'session_plan_items', 'plan_runs') OR name LIKE 'idx_session_plan_items%'`).Scan(&left); err != nil || left != 0 {
+		t.Fatalf("planning tables left = %d err = %v", left, err)
 	}
 }

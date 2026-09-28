@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/Suren878/matrixclaw/internal/agent/prompt"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -171,11 +170,11 @@ type messageGroup struct {
 }
 
 // messageGroups groups each message with the results of its calls; system rows
-// (engine notes, boundaries) and plan runner prompts are left out.
+// (engine notes, boundaries) are left out.
 func messageGroups(messages []transcript.Message) []messageGroup {
 	filtered := make([]transcript.Message, 0, len(messages))
 	for _, message := range messages {
-		if message.Role == transcript.MessageRoleSystem || prompt.IsPlanRunPrompt(message) {
+		if message.Role == transcript.MessageRoleSystem {
 			continue
 		}
 		filtered = append(filtered, message)

@@ -139,38 +139,6 @@ CREATE TABLE IF NOT EXISTS run_steps (
     FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS session_goals (
-    session_id TEXT PRIMARY KEY,
-    goal TEXT NOT NULL DEFAULT '',
-    updated_at TEXT NOT NULL,
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS session_plan_items (
-    id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    parent_id TEXT NOT NULL DEFAULT '',
-    text TEXT NOT NULL,
-    status TEXT NOT NULL,
-    position INTEGER NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS plan_runs (
-    session_id TEXT PRIMARY KEY,
-    status TEXT NOT NULL,
-    current_item_id TEXT NOT NULL DEFAULT '',
-    last_run_id TEXT NOT NULL DEFAULT '',
-    last_error TEXT NOT NULL DEFAULT '',
-    step_no INTEGER NOT NULL DEFAULT 0,
-    attempt INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-);
-
 CREATE TABLE IF NOT EXISTS approvals (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
@@ -286,9 +254,6 @@ CREATE INDEX IF NOT EXISTS idx_session_inputs_target_run
 
 CREATE INDEX IF NOT EXISTS idx_memories_scope_workdir_updated
     ON memories(scope, working_dir, updated_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_session_plan_items_session_position
-    ON session_plan_items(session_id, position);
 
 CREATE INDEX IF NOT EXISTS idx_file_snapshots_session_path_version
     ON file_snapshots(session_id, path, version DESC);

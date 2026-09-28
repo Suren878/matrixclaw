@@ -63,11 +63,10 @@ func subagentToolAllowed(spec tools.Spec) bool {
 	if id == todo.ToolName {
 		return true
 	}
-	if id == delegateTaskToolName || id == "memory" || strings.HasPrefix(id, "plan_") || id == "text_to_speech" {
+	if id == delegateTaskToolName || id == "memory" || id == "text_to_speech" {
 		return false
 	}
-	namespace := strings.ToLower(strings.TrimSpace(spec.Namespace))
-	if namespace == "core.memory" || namespace == "core.plan" {
+	if strings.ToLower(strings.TrimSpace(spec.Namespace)) == "core.memory" {
 		return false
 	}
 	switch spec.Category {

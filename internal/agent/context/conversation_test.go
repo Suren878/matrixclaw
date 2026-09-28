@@ -130,7 +130,7 @@ func TestProviderConversationPairsResultsWithMixedTextAndToolCalls(t *testing.T)
 		{Role: transcript.MessageRoleTool, Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindToolResult, ToolResult: &transcript.ToolResultPart{ToolCallID: "call-1", Name: "inspect", Content: "Actual result"}}}},
 		{Role: transcript.MessageRoleAssistant, Content: "Done"},
 	}
-	conversation, err := Conversation(context.Background(), history, nil, "", false, Identity{})
+	conversation, err := Conversation(context.Background(), history, nil, false, Identity{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestUnansweredCallsOfAnEndedRunGetAClosingResult(t *testing.T) {
 		callMessage("held", true),
 		{Role: transcript.MessageRoleUser, Content: "Never mind"},
 	}
-	conversation, err := Conversation(context.Background(), history, nil, "", false, Identity{})
+	conversation, err := Conversation(context.Background(), history, nil, false, Identity{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestOversizedResultReachesTheModelAsHeadAndTail(t *testing.T) {
 		{ID: "c1", Role: transcript.MessageRoleAssistant, Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindToolCall, ToolCall: &transcript.ToolCallPart{ID: "c1", Name: "browser_snapshot", Input: "{}"}}}},
 		{ID: "c1_result", Role: transcript.MessageRoleTool, Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindToolResult, ToolResult: &transcript.ToolResultPart{ToolCallID: "c1", Name: "browser_snapshot", Content: big}}}},
 	}
-	messages, err := Conversation(context.Background(), history, nil, "run", false, Identity{})
+	messages, err := Conversation(context.Background(), history, nil, false, Identity{})
 	if err != nil || len(messages) != 2 {
 		t.Fatalf("messages = %d err = %v", len(messages), err)
 	}

@@ -117,7 +117,6 @@ func TestNativeToolRoundPublishesEventsInOrder(t *testing.T) {
 	}
 	want := []string{
 		"run.updated running",
-		"message.created system/text",
 		"message.created assistant/text",
 		"message.updated assistant/text,finish",
 		"message.created assistant/tool_call",
@@ -810,7 +809,7 @@ func TestNativeRunSeesOnlyTheNewestBoundaryAndLaterMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(seen.Messages) != 3 || !strings.Contains(seen.Messages[0].Content, "EARLIER WORK") || seen.Messages[1].Content != "original task window" || !strings.HasPrefix(seen.Messages[2].Content, "Context update") {
+	if len(seen.Messages) != 2 || !strings.Contains(seen.Messages[0].Content, "EARLIER WORK") || seen.Messages[1].Content != "original task window" {
 		t.Fatalf("request messages = %+v", seen.Messages)
 	}
 }

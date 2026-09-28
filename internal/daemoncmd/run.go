@@ -110,9 +110,6 @@ func Run(ctx context.Context) error {
 	}
 	extraTools = append(extraTools, webtools.NewWebResearchExecutorsWithService(webTools)...)
 	toolRegistry := tools.NewCoreCodingRegistry(extraTools...)
-	if err := toolRegistry.Register(core.PlanToolExecutors(app)...); err != nil {
-		return err
-	}
 	if err := toolRegistry.Register(core.TodoToolExecutors(app)...); err != nil {
 		return err
 	}

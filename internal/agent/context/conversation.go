@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Suren878/matrixclaw/internal/agent/prompt"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -22,8 +21,8 @@ type Identity struct {
 }
 
 // Conversation converts history into provider messages, pairing every tool call with its result; signed reasoning is kept only for target.
-func Conversation(ctx context.Context, history []transcript.Message, reader AttachmentReader, currentRunID string, allowImageInput bool, target Identity) ([]providers.Message, error) {
-	entries, err := convertProviderConversationHistory(ctx, history, reader, currentRunID, allowImageInput, target)
+func Conversation(ctx context.Context, history []transcript.Message, reader AttachmentReader, allowImageInput bool, target Identity) ([]providers.Message, error) {
+	entries, err := convertProviderConversationHistory(ctx, history, reader, allowImageInput, target)
 	if err != nil {
 		return nil, err
 	}
@@ -105,10 +104,10 @@ collect:
 	return step, i
 }
 
-func convertProviderConversationHistory(ctx context.Context, history []transcript.Message, reader AttachmentReader, currentRunID string, allowImageInput bool, target Identity) ([]providerConversationEntry, error) {
+func convertProviderConversationHistory(ctx context.Context, history []transcript.Message, reader AttachmentReader, allowImageInput bool, target Identity) ([]providerConversationEntry, error) {
 	entries := make([]providerConversationEntry, 0, len(history))
 	for _, message := range history {
-		if skipInternalPlanPromptForProvider(message, currentRunID) || transcript.HasFinishReason(message, transcript.FinishReasonDaemonRestart) {
+		if transcript.HasFinishReason(message, transcript.FinishReasonDaemonRestart) {
 			continue
 		}
 		message = withoutForeignSignedReasoning(message, target)
@@ -196,10 +195,10 @@ func engineNoteMessage(message transcript.Message) (providers.Message, bool) {
 }
 
 // TextOnlyConversation renders history as plain text for models without tool calling.
-func TextOnlyConversation(history []transcript.Message, currentRunID string) []providers.Message {
+func TextOnlyConversation(history []transcript.Message) []providers.Message {
 	conversation := make([]providers.Message, 0, len(history))
 	for _, message := range history {
-		if skipInternalPlanPromptForProvider(message, currentRunID) || transcript.HasFinishReason(message, transcript.FinishReasonDaemonRestart) {
+		if transcript.HasFinishReason(message, transcript.FinishReasonDaemonRestart) {
 			continue
 		}
 		if message.Role == transcript.MessageRoleSystem {
@@ -222,17 +221,6 @@ func TextOnlyConversation(history []transcript.Message, currentRunID string) []p
 		})
 	}
 	return conversation
-}
-
-func skipInternalPlanPromptForProvider(message transcript.Message, currentRunID string) bool {
-	if !prompt.IsPlanRunPrompt(message) {
-		return false
-	}
-	currentRunID = strings.TrimSpace(currentRunID)
-	if currentRunID == "" {
-		return true
-	}
-	return strings.TrimSpace(message.RunID) != currentRunID
 }
 
 func textOnlyProviderContent(message transcript.Message) string {
