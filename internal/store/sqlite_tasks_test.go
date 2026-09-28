@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 )
@@ -114,5 +115,60 @@ func TestMarkTasksDeliveredKeepsTheFirstDelivery(t *testing.T) {
 	got, err := st.GetSubagentTask(ctx, "task_1")
 	if err != nil || got.DeliveredRunID != "run_a" || got.DeliveredAt == nil || !got.DeliveredAt.Equal(testEpoch) {
 		t.Fatalf("task = %+v, %v", got, err)
+	}
+}
+
+func TestShellTasksFinishOnceAndBecomeEventsUntilDelivered(t *testing.T) {
+	ctx := context.Background()
+	st := openTestStore(t, filepath.Join(t.TempDir(), "tasks.db"))
+	createTestSession(t, st, "s1")
+	createTestSession(t, st, "s2")
+	for _, task := range []core.Task{
+		{ID: "task_a", SessionID: "s1", RunID: "r1", ParentToolCallID: "call_1", Kind: core.TaskKindShell, Status: core.TaskStatusRunning, Command: "npm test", WorkingDir: "/work", Background: true, PID: 42, PGID: 42, OutputPath: "/data/s1/tasks/task_a.log", StartedAt: testEpoch, UpdatedAt: testEpoch},
+		{ID: "task_b", SessionID: "s1", Kind: core.TaskKindShell, Status: core.TaskStatusRunning, Command: "sleep 9", Background: true, StartedAt: testEpoch.Add(time.Second), UpdatedAt: testEpoch},
+		{ID: "task_c", SessionID: "s2", Kind: core.TaskKindShell, Status: core.TaskStatusRunning, Command: "make", Background: true, StartedAt: testEpoch, UpdatedAt: testEpoch},
+	} {
+		if err := st.CreateTask(ctx, task); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := st.GetTask(ctx, "task_a")
+	if err != nil || got.RunID != "r1" || got.ParentToolCallID != "call_1" || got.PID != 42 || got.OutputPath != "/data/s1/tasks/task_a.log" || got.ExitCode != nil || !got.Background {
+		t.Fatalf("task = %+v, %v", got, err)
+	}
+
+	code := 1
+	finished, err := st.FinishTask(ctx, "task_a", core.TaskStatusFailed, &code, "", testEpoch.Add(time.Minute))
+	if err != nil || !finished {
+		t.Fatalf("finish = %v, %v", finished, err)
+	}
+	again, err := st.FinishTask(ctx, "task_a", core.TaskStatusCanceled, nil, "killed", testEpoch.Add(2*time.Minute))
+	if err != nil || again {
+		t.Fatalf("second finish = %v, %v", again, err)
+	}
+	if err := st.SetTaskCursor(ctx, "task_a", 128); err != nil {
+		t.Fatal(err)
+	}
+	got, err = st.GetTask(ctx, "task_a")
+	if err != nil || got.Status != core.TaskStatusFailed || got.ExitCode == nil || *got.ExitCode != 1 || got.OutputCursor != 128 || got.FinishedAt == nil {
+		t.Fatalf("finished task = %+v, %v", got, err)
+	}
+
+	running, err := st.ListTasks(ctx, core.TaskFilter{Kind: core.TaskKindShell, Statuses: []core.TaskStatus{core.TaskStatusRunning}})
+	if err != nil || len(running) != 2 || running[0].ID != "task_b" || running[1].ID != "task_c" {
+		t.Fatalf("running = %+v, %v", running, err)
+	}
+	events, err := st.ListTasks(ctx, core.TaskFilter{SessionID: "s1", Undelivered: true})
+	if err != nil || len(events) != 1 || events[0].ID != "task_a" {
+		t.Fatalf("events = %+v, %v", events, err)
+	}
+	if err := st.MarkTasksDelivered(ctx, []string{"task_a"}, "r2", testEpoch.Add(3*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if events, err := st.ListTasks(ctx, core.TaskFilter{SessionID: "s1", Undelivered: true}); err != nil || len(events) != 0 {
+		t.Fatalf("events after delivery = %+v, %v", events, err)
+	}
+	if _, err := st.GetTask(ctx, "task_gone"); err != core.ErrNotFound {
+		t.Fatalf("missing task err = %v", err)
 	}
 }

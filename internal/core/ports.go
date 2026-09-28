@@ -173,7 +173,13 @@ type SessionLLMContextWindowRegistry interface {
 	ContextWindowTokens(providerID string, modelID string) (int, bool)
 }
 
-// TaskStore keeps the background tasks of sessions.
+// TaskStore keeps the background tasks of sessions. FinishTask ends a task
+// once and reports whether this call ended it.
 type TaskStore interface {
+	CreateTask(ctx context.Context, task Task) error
+	GetTask(ctx context.Context, taskID string) (Task, error)
+	ListTasks(ctx context.Context, filter TaskFilter) ([]Task, error)
+	FinishTask(ctx context.Context, taskID string, status TaskStatus, exitCode *int, errText string, at time.Time) (bool, error)
+	SetTaskCursor(ctx context.Context, taskID string, cursor int64) error
 	MarkTasksDelivered(ctx context.Context, taskIDs []string, runID string, at time.Time) error
 }
