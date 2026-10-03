@@ -22,7 +22,7 @@ type StateSnapshot struct {
 	ToolUpdates           []core.ToolUpdate
 	Approvals             []core.PermissionRequest
 	ApprovalNotifications []core.PermissionNotification
-	Subagents             []core.SubagentTask
+	Subagents             []core.Task
 	PendingInputs         []core.SessionInput
 }
 
@@ -39,7 +39,7 @@ type State struct {
 	toolUpdates           map[string]core.ToolUpdate
 	approvals             map[string]core.PermissionRequest
 	approvalNotifications map[string]core.PermissionNotification
-	subagents             map[string]core.SubagentTask
+	subagents             map[string]core.Task
 	pendingInputs         map[string]core.SessionInput
 }
 
@@ -56,7 +56,7 @@ func NewState(snapshot core.ClientSnapshot) *State {
 		toolUpdates:           map[string]core.ToolUpdate{},
 		approvals:             map[string]core.PermissionRequest{},
 		approvalNotifications: map[string]core.PermissionNotification{},
-		subagents:             map[string]core.SubagentTask{},
+		subagents:             map[string]core.Task{},
 		pendingInputs:         map[string]core.SessionInput{},
 	}
 	for _, update := range snapshot.ToolUpdates {
@@ -124,7 +124,7 @@ func (s *State) Snapshot() StateSnapshot {
 		out.Subagents = append(out.Subagents, task)
 	}
 	sort.SliceStable(out.Subagents, func(i, j int) bool {
-		return out.Subagents[i].CreatedAt.Before(out.Subagents[j].CreatedAt)
+		return out.Subagents[i].StartedAt.Before(out.Subagents[j].StartedAt)
 	})
 	for _, input := range s.pendingInputs {
 		out.PendingInputs = append(out.PendingInputs, input)
@@ -219,12 +219,12 @@ func (s *State) Apply(event daemonclient.LiveEvent) error {
 			return err
 		}
 		s.todo = cloneTodo(&list)
-	case core.EventSubagentUpdated:
-		task, err := event.DecodeSubagentTask()
+	case core.EventTaskUpdated:
+		task, err := event.DecodeTask()
 		if err != nil {
 			return err
 		}
-		if task.ID != "" {
+		if task.ID != "" && task.Kind == core.TaskKindSubagent {
 			s.subagents[task.ID] = task
 		}
 	case core.EventInputUpdated:

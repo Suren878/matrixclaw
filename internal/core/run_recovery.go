@@ -260,8 +260,8 @@ func (c *Core) recoverInterruptedTool(ctx context.Context, run Run, interrupted 
 		}
 	}
 
-	if task, err := c.store.GetSubagentTaskByParentToolCall(ctx, run.SessionID, run.ID, call.ID); err == nil {
-		if task.Mode == SubagentTaskModeBlocking {
+	if task, err := c.subagentTaskOfCall(ctx, run.SessionID, run.ID, call.ID); err == nil {
+		if !task.Background {
 			childRun, childErr := c.store.GetRun(ctx, task.ChildRunID)
 			if childErr != nil && !errors.Is(childErr, ErrNotFound) {
 				return recoveryToolContinue, childErr

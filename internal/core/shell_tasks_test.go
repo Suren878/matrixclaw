@@ -301,7 +301,7 @@ func TestNativeRunSeesFinishedAndRunningTasks(t *testing.T) {
 		}
 	}
 	code := 1
-	if _, err := db.FinishTask(ctx, "task_done", core.TaskStatusFailed, &code, "", now); err != nil {
+	if _, err := db.FinishTask(ctx, "task_done", core.TaskEnd{Status: core.TaskStatusFailed, ExitCode: &code, At: now}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -435,7 +435,7 @@ func TestTaskOutputWaitsForASubagent(t *testing.T) {
 	}
 	go func() {
 		time.Sleep(300 * time.Millisecond)
-		_, _ = db.FinishTask(ctx, "task_agent", core.TaskStatusCompleted, nil, "", now)
+		_, _ = db.FinishTask(ctx, "task_agent", core.TaskEnd{Status: core.TaskStatusCompleted, At: now})
 	}()
 
 	started := time.Now()

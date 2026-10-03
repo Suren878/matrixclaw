@@ -81,18 +81,18 @@ func subagentToolAllowed(spec tools.Spec) bool {
 	return true
 }
 
-func subagentTaskFailed(task SubagentTask) bool {
+func subagentTaskFailed(task Task) bool {
 	return task.Status == TaskStatusFailed || task.Status == TaskStatusCanceled || strings.TrimSpace(task.Error) != ""
 }
 
-func subagentTaskToolResultStatus(task SubagentTask) tools.ResultStatus {
+func subagentTaskToolResultStatus(task Task) tools.ResultStatus {
 	if subagentTaskFailed(task) {
 		return tools.ResultStatusError
 	}
 	return tools.ResultStatusSuccess
 }
 
-func subagentTaskToolLifecycleState(task SubagentTask) ToolLifecycleState {
+func subagentTaskToolLifecycleState(task Task) ToolLifecycleState {
 	if subagentTaskFailed(task) {
 		return ToolLifecycleFailed
 	}

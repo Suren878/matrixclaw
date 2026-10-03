@@ -180,7 +180,7 @@ func TestInterruptedParentAndBlockingChildAreBothRescheduledAndComplete(t *testi
 
 	waitForRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
 	starter.wait(t)
-	task, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-delegate")
+	task, err := taskOfCall(db, session.ID, run.ID, "call-delegate")
 	if err != nil {
 		t.Fatal(err)
 	}

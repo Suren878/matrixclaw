@@ -58,27 +58,27 @@ func TestSubagentTasksMoveIntoTheTasksTable(t *testing.T) {
 		if err != nil || len(pending) != 1 || pending[0].ID != "queued" {
 			t.Fatalf("open %d: pending = %+v, %v", reopen, pending, err)
 		}
-		queued, err := st.GetSubagentTask(ctx, "queued")
+		queued, err := st.GetTask(ctx, "queued")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if queued.Mode != core.SubagentTaskModeAsync || queued.ParentRunID != "r1" || queued.ParentToolCallID != "call_1" ||
-			queued.ChildRunID != "child_1" || queued.Goal != "Read the logs" || queued.Summary != "All good" || queued.Isolation != core.SubagentIsolationShared {
+		if queued.Kind != core.TaskKindSubagent || !queued.Background || queued.RunID != "r1" || queued.ParentToolCallID != "call_1" ||
+			queued.ChildRunID != "child_1" || queued.Command != "Read the logs" || queued.Summary != "All good" || queued.Isolation != core.SubagentIsolationShared {
 			t.Fatalf("open %d: queued = %+v", reopen, queued)
 		}
-		delivered, err := st.GetSubagentTask(ctx, "delivered")
+		delivered, err := st.GetTask(ctx, "delivered")
 		if err != nil || delivered.DeliveredAt == nil || delivered.DeliveredRunID != "r2" {
 			t.Fatalf("open %d: delivered = %+v, %v", reopen, delivered, err)
 		}
-		blocking, err := st.GetSubagentTask(ctx, "blocking")
-		if err != nil || blocking.Mode != core.SubagentTaskModeBlocking || blocking.DeliveredAt == nil {
+		blocking, err := st.GetTask(ctx, "blocking")
+		if err != nil || blocking.Background || blocking.DeliveredAt == nil {
 			t.Fatalf("open %d: blocking = %+v, %v", reopen, blocking, err)
 		}
-		active, err := st.ListActiveSubagentTasksByParent(ctx, "s1")
+		active, err := st.ListTasks(ctx, core.TaskFilter{SessionID: "s1", Kind: core.TaskKindSubagent, Background: true, Statuses: []core.TaskStatus{core.TaskStatusRunning}})
 		if err != nil || len(active) != 1 || active[0].ID != "running" || active[0].DeliveredAt != nil {
 			t.Fatalf("open %d: active = %+v, %v", reopen, active, err)
 		}
-		if _, err := st.GetSubagentTask(ctx, "orphan"); err != core.ErrNotFound {
+		if _, err := st.GetTask(ctx, "orphan"); err != core.ErrNotFound {
 			t.Fatalf("open %d: orphan err = %v", reopen, err)
 		}
 		_ = st.Close()
@@ -102,8 +102,8 @@ func TestMarkTasksDeliveredKeepsTheFirstDelivery(t *testing.T) {
 	ctx := context.Background()
 	st := openTestStore(t, filepath.Join(t.TempDir(), "tasks.db"))
 	createTestSession(t, st, "s1")
-	task := core.SubagentTask{ID: "task_1", Mode: core.SubagentTaskModeAsync, ParentSessionID: "s1", Runtime: "matrixclaw", Goal: "Look", Status: core.TaskStatusCompleted, CreatedAt: testEpoch, UpdatedAt: testEpoch, FinishedAt: &testEpoch}
-	if err := st.CreateSubagentTask(ctx, task); err != nil {
+	task := core.Task{ID: "task_1", Kind: core.TaskKindSubagent, Background: true, SessionID: "s1", Runtime: "matrixclaw", Command: "Look", Status: core.TaskStatusRunning, StartedAt: testEpoch, UpdatedAt: testEpoch}
+	if err := st.CreateTask(ctx, task); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.MarkTasksDelivered(ctx, []string{"task_1"}, "run_a", testEpoch); err != nil {
@@ -112,13 +112,39 @@ func TestMarkTasksDeliveredKeepsTheFirstDelivery(t *testing.T) {
 	if err := st.MarkTasksDelivered(ctx, []string{"task_1"}, "run_b", testEpoch.Add(1)); err != nil {
 		t.Fatal(err)
 	}
-	// Saving the task again leaves its delivery alone.
-	if err := st.UpdateSubagentTask(ctx, task); err != nil {
+	// Ending the task delivered leaves the first delivery alone.
+	if _, err := st.FinishTask(ctx, "task_1", core.TaskEnd{Status: core.TaskStatusCompleted, Summary: "Seen", Delivered: true, At: testEpoch.Add(2)}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := st.GetSubagentTask(ctx, "task_1")
-	if err != nil || got.DeliveredRunID != "run_a" || got.DeliveredAt == nil || !got.DeliveredAt.Equal(testEpoch) {
+	got, err := st.GetTask(ctx, "task_1")
+	if err != nil || got.DeliveredRunID != "run_a" || got.DeliveredAt == nil || !got.DeliveredAt.Equal(testEpoch) || got.Summary != "Seen" {
 		t.Fatalf("task = %+v, %v", got, err)
+	}
+}
+
+func TestSubagentTaskStatusChangesOnlyUntilItEnds(t *testing.T) {
+	ctx := context.Background()
+	st := openTestStore(t, filepath.Join(t.TempDir(), "tasks.db"))
+	createTestSession(t, st, "s1")
+	task := core.Task{ID: "task_1", Kind: core.TaskKindSubagent, SessionID: "s1", Command: "Look", Status: core.TaskStatusRunning, StartedAt: testEpoch, UpdatedAt: testEpoch}
+	if err := st.CreateTask(ctx, task); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetTaskStatus(ctx, "task_1", core.TaskStatusWaitingApproval, testEpoch); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := st.GetTask(ctx, "task_1"); err != nil || got.Status != core.TaskStatusWaitingApproval {
+		t.Fatalf("task = %+v, %v", got, err)
+	}
+	if _, err := st.FinishTask(ctx, "task_1", core.TaskEnd{Status: core.TaskStatusFailed, Summary: "Subagent failed: boom", Error: "boom", At: testEpoch}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetTaskStatus(ctx, "task_1", core.TaskStatusRunning, testEpoch); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetTask(ctx, "task_1")
+	if err != nil || got.Status != core.TaskStatusFailed || got.Summary != "Subagent failed: boom" || got.DeliveredAt != nil {
+		t.Fatalf("ended task = %+v, %v", got, err)
 	}
 }
 
@@ -142,11 +168,11 @@ func TestShellTasksFinishOnceAndBecomeEventsUntilDelivered(t *testing.T) {
 	}
 
 	code := 1
-	finished, err := st.FinishTask(ctx, "task_a", core.TaskStatusFailed, &code, "", testEpoch.Add(time.Minute))
+	finished, err := st.FinishTask(ctx, "task_a", core.TaskEnd{Status: core.TaskStatusFailed, ExitCode: &code, At: testEpoch.Add(time.Minute)})
 	if err != nil || !finished {
 		t.Fatalf("finish = %v, %v", finished, err)
 	}
-	again, err := st.FinishTask(ctx, "task_a", core.TaskStatusCanceled, nil, "killed", testEpoch.Add(2*time.Minute))
+	again, err := st.FinishTask(ctx, "task_a", core.TaskEnd{Status: core.TaskStatusCanceled, Error: "killed", At: testEpoch.Add(2 * time.Minute)})
 	if err != nil || again {
 		t.Fatalf("second finish = %v, %v", again, err)
 	}
@@ -181,23 +207,16 @@ func TestSubagentTaskKeepsReadonlyModelAndChildSession(t *testing.T) {
 	ctx := context.Background()
 	st := openTestStore(t, filepath.Join(t.TempDir(), "tasks.db"))
 	createTestSession(t, st, "s1")
-	task := core.SubagentTask{ID: "task_1", Mode: core.SubagentTaskModeAsync, Readonly: true, Model: "gpt-x", ParentSessionID: "s1", ChildSessionID: "child_1", Runtime: "matrixclaw", Goal: "Review", Status: core.TaskStatusRunning, CreatedAt: testEpoch, UpdatedAt: testEpoch}
-	if err := st.CreateSubagentTask(ctx, task); err != nil {
+	task := core.Task{ID: "task_1", Kind: core.TaskKindSubagent, Background: true, Readonly: true, Model: "gpt-x", SessionID: "s1", ChildSessionID: "child_1", Runtime: "matrixclaw", Command: "Review", Status: core.TaskStatusRunning, StartedAt: testEpoch, UpdatedAt: testEpoch}
+	if err := st.CreateTask(ctx, task); err != nil {
 		t.Fatal(err)
 	}
-	got, err := st.GetSubagentTaskByChildSession(ctx, "child_1")
-	if err != nil || !got.Readonly || got.Model != "gpt-x" || got.ID != "task_1" {
-		t.Fatalf("task = %+v, %v", got, err)
+	got, err := st.ListTasks(ctx, core.TaskFilter{ChildSessionID: "child_1"})
+	if err != nil || len(got) != 1 || !got[0].Readonly || got[0].Model != "gpt-x" || got[0].ID != "task_1" || got[0].Isolation != core.SubagentIsolationShared {
+		t.Fatalf("tasks = %+v, %v", got, err)
 	}
-	task.Readonly = false
-	if err := st.UpdateSubagentTask(ctx, task); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := st.GetSubagentTask(ctx, "task_1"); err != nil || got.Readonly {
-		t.Fatalf("updated task = %+v, %v", got, err)
-	}
-	if _, err := st.GetSubagentTaskByChildSession(ctx, "nobody"); err != core.ErrNotFound {
-		t.Fatalf("missing child session err = %v", err)
+	if none, err := st.ListTasks(ctx, core.TaskFilter{ChildSessionID: "nobody"}); err != nil || len(none) != 0 {
+		t.Fatalf("tasks of an unknown child session = %+v, %v", none, err)
 	}
 }
 

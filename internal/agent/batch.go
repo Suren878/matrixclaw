@@ -246,7 +246,7 @@ func (b *batch) journal(ctx context.Context) error {
 		case callRunning:
 			return nil
 		case callFinished:
-			if err := b.r.finishCall(ctx, c.req, c.call, c.result); err != nil {
+			if err := b.r.finishCall(ctx, c.req, c.result); err != nil {
 				return err
 			}
 			c.state = callJournaled
@@ -297,7 +297,7 @@ func (b *batch) keep(ctx context.Context, rest *tools.Result) error {
 		var err error
 		switch {
 		case c.state == callFinished:
-			err = b.r.finishCall(ctx, c.req, c.call, c.result)
+			err = b.r.finishCall(ctx, c.req, c.result)
 		case c.state == callRejected:
 			err = b.r.rejectCall(ctx, c.req, c.result)
 		case rest == nil:
@@ -305,7 +305,7 @@ func (b *batch) keep(ctx context.Context, rest *tools.Result) error {
 		case c.state == callWaiting:
 			err = b.r.rejectCall(ctx, c.req, *rest)
 		default:
-			err = b.r.finishCall(ctx, c.req, c.call, *rest)
+			err = b.r.finishCall(ctx, c.req, *rest)
 		}
 		if err != nil {
 			return err

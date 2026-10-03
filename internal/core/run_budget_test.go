@@ -287,7 +287,7 @@ func TestSubagentStoppedAtItsBudgetReportsAPartialResult(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	task, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-delegate")
+	task, err := taskOfCall(db, session.ID, run.ID, "call-delegate")
 	if err != nil {
 		t.Fatal(err)
 	}

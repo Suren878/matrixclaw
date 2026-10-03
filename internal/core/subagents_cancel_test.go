@@ -9,6 +9,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -54,7 +55,19 @@ func blockUntilCanceled(ctx context.Context, started *startSignal) (providers.Re
 	return providers.Response{}, ctx.Err()
 }
 
-func assertTaskStatus(t *testing.T, task core.SubagentTask, want core.TaskStatus) {
+// taskOfCall is the subagent task a parent's call started.
+func taskOfCall(db *store.SQLiteStore, sessionID string, runID string, callID string) (core.Task, error) {
+	tasks, err := db.ListTasks(context.Background(), core.TaskFilter{SessionID: sessionID, RunID: runID, ParentToolCallID: callID, Kind: core.TaskKindSubagent})
+	if err == nil && len(tasks) == 0 {
+		err = core.ErrNotFound
+	}
+	if err != nil {
+		return core.Task{}, err
+	}
+	return tasks[0], nil
+}
+
+func assertTaskStatus(t *testing.T, task core.Task, want core.TaskStatus) {
 	t.Helper()
 	if task.Status != want {
 		t.Fatalf("subagent task status = %q (%s), want %q", task.Status, task.Error, want)
@@ -98,7 +111,7 @@ func TestCancelParentCancelsItsBlockingSubagent(t *testing.T) {
 	starter.wait(t)
 
 	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCanceled)
-	task, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-delegate")
+	task, err := taskOfCall(db, session.ID, run.ID, "call-delegate")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +161,7 @@ func TestCancelParentCancelsItsAsyncSubagentWithoutFollowUp(t *testing.T) {
 	starter.wait(t)
 
 	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCanceled)
-	task, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-spawn")
+	task, err := taskOfCall(db, session.ID, run.ID, "call-spawn")
 	if err != nil {
 		t.Fatal(err)
 	}

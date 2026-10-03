@@ -164,7 +164,7 @@ func TestBackgroundChildrenInTheParentsDirectoryRunTogetherAndTakeTurnsPerEdit(t
 	close(release)
 
 	for _, id := range []string{"call-a", "call-b"} {
-		task, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, id)
+		task, err := taskOfCall(db, session.ID, run.ID, id)
 		if err != nil {
 			t.Fatal(err)
 		}

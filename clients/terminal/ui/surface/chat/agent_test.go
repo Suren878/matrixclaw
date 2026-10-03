@@ -13,7 +13,7 @@ import (
 func TestAgentCallRendersAsASubagentCard(t *testing.T) {
 	sty := surfacestyles.DefaultStyles()
 	call := surfacemessage.ToolCall{ID: "call_1", Name: "agent", Input: `{"description":"Review the parser","prompt":"review the parser for bugs","readonly":true}`, Finished: true}
-	result := &surfacemessage.ToolResult{ToolCallID: "call_1", Name: "agent", Content: "No bugs found.", Metadata: `{"agent_name":"Neo","display_name":"Review the parser","status":"completed","summary":"No bugs found."}`}
+	result := &surfacemessage.ToolResult{ToolCallID: "call_1", Name: "agent", Content: "No bugs found.", Metadata: `{"agent_name":"Neo","description":"Review the parser","status":"completed","summary":"No bugs found."}`}
 
 	rendered := ansi.Strip(NewToolMessageItem(&sty, call, result, false).RawRender(120))
 

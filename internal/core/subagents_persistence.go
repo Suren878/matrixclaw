@@ -2,72 +2,65 @@ package core
 
 import (
 	"context"
+	"errors"
 )
 
-type subagentTaskMutator func(*SubagentTask)
+// findTask is the one task the filter selects; ErrNotFound when none does.
+func (c *Core) findTask(ctx context.Context, filter TaskFilter) (Task, error) {
+	filter.Limit = 1
+	tasks, err := c.store.ListTasks(ctx, filter)
+	if err != nil {
+		return Task{}, err
+	}
+	if len(tasks) == 0 {
+		return Task{}, ErrNotFound
+	}
+	return tasks[0], nil
+}
 
-func (c *Core) createSubagentTaskRecord(ctx context.Context, task SubagentTask) error {
-	if err := c.store.CreateSubagentTask(ctx, task); err != nil {
+// subagentTaskOfCall is the subagent task a parent's call started.
+func (c *Core) subagentTaskOfCall(ctx context.Context, sessionID string, runID string, callID string) (Task, error) {
+	return c.findTask(ctx, TaskFilter{SessionID: sessionID, RunID: runID, ParentToolCallID: callID, Kind: TaskKindSubagent})
+}
+
+func (c *Core) createSubagentTaskRecord(ctx context.Context, task Task) error {
+	if err := c.store.CreateTask(ctx, task); err != nil {
 		return err
 	}
-	c.publishSubagentTaskUpdated(task)
+	c.publishTaskUpdated(task)
 	return nil
 }
 
-func (c *Core) updateSubagentTaskRecord(ctx context.Context, task SubagentTask) error {
-	if err := c.store.UpdateSubagentTask(ctx, task); err != nil {
-		return err
+// setSubagentTaskStatus moves a subagent task that has not ended to status.
+func (c *Core) setSubagentTaskStatus(ctx context.Context, task Task, status TaskStatus) (Task, error) {
+	if err := c.store.SetTaskStatus(ctx, task.ID, status, c.now().UTC()); err != nil {
+		return Task{}, err
 	}
-	c.publishSubagentTaskUpdated(task)
-	return nil
-}
-
-func (c *Core) updateSubagentTaskRecordWith(ctx context.Context, task SubagentTask, mutate subagentTaskMutator) (SubagentTask, error) {
-	if mutate != nil {
-		mutate(&task)
+	task, err := c.store.GetTask(ctx, task.ID)
+	if err != nil {
+		return Task{}, err
 	}
-	return task, c.updateSubagentTaskRecord(ctx, task)
+	c.publishTaskUpdated(task)
+	return task, nil
 }
 
-func (c *Core) markSubagentTaskRunning(ctx context.Context, task SubagentTask) (SubagentTask, error) {
-	return c.updateSubagentTaskRecordWith(ctx, task, func(task *SubagentTask) {
-		task.Status = TaskStatusRunning
-		task.UpdatedAt = c.now().UTC()
-	})
-}
-
-func (c *Core) markSubagentTaskWaitingApproval(ctx context.Context, task SubagentTask) (SubagentTask, error) {
-	return c.updateSubagentTaskRecordWith(ctx, task, func(task *SubagentTask) {
-		task.Status = TaskStatusWaitingApproval
-		task.UpdatedAt = c.now().UTC()
-	})
-}
-
-// finishSubagentTaskRecord ends the task; without queueCompletion its parent
-// is not told it finished, as it already knows.
-func (c *Core) finishSubagentTaskRecord(ctx context.Context, task SubagentTask, status TaskStatus, summary string, errText string, queueCompletion bool) (SubagentTask, error) {
-	now := c.now().UTC()
-	if !queueCompletion {
-		if err := c.store.MarkTasksDelivered(ctx, []string{task.ID}, "", now); err != nil {
-			return SubagentTask{}, err
-		}
-		task.DeliveredAt = &now
+// finishSubagentTaskRecord ends the task unless it ended already and returns
+// it as stored; without queueCompletion its parent is not told it finished, as
+// it already knows.
+func (c *Core) finishSubagentTaskRecord(ctx context.Context, task Task, status TaskStatus, summary string, errText string, queueCompletion bool) (Task, error) {
+	ended, err := c.store.FinishTask(ctx, task.ID, TaskEnd{Status: status, Summary: summary, Error: errText, Delivered: !queueCompletion, At: c.now().UTC()})
+	if err != nil {
+		return Task{}, err
 	}
-	return c.updateSubagentTaskRecordWith(ctx, task, func(task *SubagentTask) {
-		task.Status = status
-		task.Summary = summary
-		task.Error = errText
-		task.UpdatedAt = now
-		finishedAt := now
-		task.FinishedAt = &finishedAt
-	})
-}
-
-func (c *Core) publishSubagentTaskUpdated(task SubagentTask) {
-	c.publishEvent(Event{
-		Type:      EventSubagentUpdated,
-		SessionID: task.ParentSessionID,
-		RunID:     task.ParentRunID,
-		Payload:   task,
-	})
+	stored, err := c.store.GetTask(ctx, task.ID)
+	if errors.Is(err, ErrNotFound) && !ended {
+		return task, nil
+	}
+	if err != nil {
+		return Task{}, err
+	}
+	if ended {
+		c.publishTaskUpdated(stored)
+	}
+	return stored, nil
 }

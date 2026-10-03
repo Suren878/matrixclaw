@@ -860,7 +860,7 @@ func TestBlockingSubagentReturnsChildSummaryToParent(t *testing.T) {
 	if delegateResult != "child found 3 files" {
 		t.Fatalf("delegate result = %q", delegateResult)
 	}
-	task, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-delegate")
+	task, err := taskOfCall(db, session.ID, run.ID, "call-delegate")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -896,7 +896,7 @@ func TestSubagentSummaryJoinsAReplyCutByTheOutputLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	task, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-delegate")
+	task, err := taskOfCall(db, session.ID, run.ID, "call-delegate")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -967,7 +967,7 @@ func TestAsyncSubagentCompletionStartsParentFollowUpRun(t *testing.T) {
 	t.Parallel()
 	scenario := runAsyncSubagentScenario(t)
 
-	task, err := scenario.db.GetSubagentTaskByParentToolCall(context.Background(), scenario.session.ID, scenario.run.ID, "call-spawn")
+	task, err := taskOfCall(scenario.db, scenario.session.ID, scenario.run.ID, "call-spawn")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -61,8 +61,8 @@ func (e LiveEvent) DecodeToolUpdate() (core.ToolUpdate, error) {
 	return update, err
 }
 
-func (e LiveEvent) DecodeSubagentTask() (core.SubagentTask, error) {
-	var task core.SubagentTask
+func (e LiveEvent) DecodeTask() (core.Task, error) {
+	var task core.Task
 	err := json.Unmarshal(e.Payload, &task)
 	return task, err
 }

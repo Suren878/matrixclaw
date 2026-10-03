@@ -223,17 +223,15 @@ type ToolFunc func(call tools.Call) tools.Result
 
 // Tools authorizes registered names only (Mutating ones are barriers, Keys
 // and Delegated fill the decision) and records executed calls in start order
-// (read Calls after Run returns) and finished ones. OnExecute runs first, on
-// the call's goroutine, and fails the call with its error; OnFinish likewise.
+// (read Calls after Run returns). OnExecute runs first, on the call's
+// goroutine, and fails the call with its error.
 type Tools struct {
 	Funcs     map[string]ToolFunc
 	Mutating  map[string]bool
 	Keys      map[string]string
 	Delegated map[string]bool
 	Calls     []tools.Call
-	Finished  []string
 	OnExecute func(ctx context.Context, name string, call tools.Call) error
-	OnFinish  func(name string, call tools.Call) error
 	// SpecReads counts tool listings.
 	SpecReads int
 	mu        sync.Mutex
@@ -270,16 +268,6 @@ func (t *Tools) Execute(ctx context.Context, name string, call tools.Call) (tool
 	t.Calls = append(t.Calls, call)
 	t.mu.Unlock()
 	return t.Funcs[name](call), nil
-}
-
-func (t *Tools) Finish(_ context.Context, name string, call tools.Call, _ tools.Result, _ transcript.Message) error {
-	if t.OnFinish != nil {
-		if err := t.OnFinish(name, call); err != nil {
-			return err
-		}
-	}
-	t.Finished = append(t.Finished, call.ToolCallID)
-	return nil
 }
 
 // Approvals records requests; Grant, when set, resolves each request at once.

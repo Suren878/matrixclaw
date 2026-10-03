@@ -114,7 +114,7 @@ func (r *run) denyCall(ctx context.Context, req callRequest, reason string) erro
 			return err
 		}
 	}
-	return r.finishCall(ctx, req, r.toolCall(req), DenialResult(reason))
+	return r.finishCall(ctx, req, DenialResult(reason))
 }
 
 // deferredCalls lists the run's calls still held back, in call order: behind
@@ -217,7 +217,7 @@ func (r *run) answerCall(ctx context.Context, req callRequest, result tools.Resu
 	return nil
 }
 
-func (r *run) finishCall(ctx context.Context, req callRequest, call tools.Call, result tools.Result) error {
+func (r *run) finishCall(ctx context.Context, req callRequest, result tools.Result) error {
 	if err := r.writeCall(ctx, req, true); err != nil {
 		return err
 	}
@@ -227,7 +227,7 @@ func (r *run) finishCall(ctx context.Context, req callRequest, call tools.Call, 
 	}
 	r.counters.observeCall(req.name, req.args, result)
 	r.Sink.Emit(Event{Kind: EventToolFinished, SessionID: r.task.SessionID, RunID: r.task.RunID, ToolCallID: req.id, ToolName: req.name, ResultMessageID: message.ID, Result: result})
-	return r.Tools.Finish(ctx, req.name, call, result, message)
+	return nil
 }
 
 // appendResult writes a tool result with any pending steer guidance merged into it.

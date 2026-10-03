@@ -306,18 +306,12 @@ func (c *Core) cancelRunRecords(ctx context.Context, run *Run) ([]string, error)
 // cancelSubagentChildren cancels the active subagent tasks the run started and
 // returns the ids of their runs to stop.
 func (c *Core) cancelSubagentChildren(ctx context.Context, run Run) ([]string, error) {
-	tasks, err := c.store.ListSubagentTasks(ctx, SubagentTaskFilter{
-		ParentSessionID: run.SessionID,
-		Statuses:        activeTaskStatuses(),
-	})
+	tasks, err := c.store.ListTasks(ctx, TaskFilter{SessionID: run.SessionID, RunID: run.ID, Kind: TaskKindSubagent, Statuses: activeTaskStatuses()})
 	if err != nil {
 		return nil, err
 	}
 	var stopped []string
 	for _, task := range tasks {
-		if task.ParentRunID != run.ID {
-			continue
-		}
 		child, err := c.store.GetRun(ctx, task.ChildRunID)
 		if err != nil && !errors.Is(err, ErrNotFound) {
 			return nil, err
@@ -339,8 +333,8 @@ func (c *Core) cancelSubagentChildren(ctx context.Context, run Run) ([]string, e
 
 // rejectChildApprovalCopies rejects the parent's copies of a subagent's
 // approvals once the subagent's run ended; the parent's call is not failed.
-func (c *Core) rejectChildApprovalCopies(ctx context.Context, task SubagentTask) error {
-	return c.rejectPendingApprovals(ctx, task.ParentSessionID, false, "", func(approval Approval) bool {
+func (c *Core) rejectChildApprovalCopies(ctx context.Context, task Task) error {
+	return c.rejectPendingApprovals(ctx, task.SessionID, false, "", func(approval Approval) bool {
 		bridge, bridged := decodeSubagentApprovalBridge(approval)
 		return bridged && bridge.ChildRunID == task.ChildRunID
 	})

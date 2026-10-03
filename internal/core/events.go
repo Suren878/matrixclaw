@@ -18,7 +18,6 @@ const (
 	EventToolUpdated     EventType = "tool.updated"
 	EventApprovalRequest EventType = "approval.requested"
 	EventApprovalResult  EventType = "approval.resolved"
-	EventSubagentUpdated EventType = "subagent.updated"
 	EventInputUpdated    EventType = "input.updated"
 	EventTaskUpdated     EventType = "task.updated"
 )

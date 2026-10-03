@@ -290,7 +290,7 @@ func TestCancelingAWaitingRunStopsItsTasksWithoutWakingTheSession(t *testing.T) 
 		t.Fatal(err)
 	}
 	code := 0
-	if _, err := db.FinishTask(ctx, "task_other", core.TaskStatusCompleted, &code, "", now); err != nil {
+	if _, err := db.FinishTask(ctx, "task_other", core.TaskEnd{Status: core.TaskStatusCompleted, ExitCode: &code, At: now}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -414,7 +414,7 @@ func TestLostTasksWakeNothingBeforeRunsCanStart(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := db.FinishTask(ctx, "task_subagent", core.TaskStatusCompleted, nil, "", now); err != nil {
+	if _, err := db.FinishTask(ctx, "task_subagent", core.TaskEnd{Status: core.TaskStatusCompleted, At: now}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -496,7 +496,7 @@ func TestAwaitedTaskReadElsewhereStillWakesTheRun(t *testing.T) {
 	if err := db.CreateTask(ctx, core.Task{ID: "task_read", SessionID: session.ID, Kind: core.TaskKindShell, Status: core.TaskStatusRunning, Command: "make", Background: true, StartedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.FinishTask(ctx, "task_read", core.TaskStatusCompleted, nil, "", now); err != nil {
+	if _, err := db.FinishTask(ctx, "task_read", core.TaskEnd{Status: core.TaskStatusCompleted, At: now}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.MarkTasksDelivered(ctx, []string{"task_read"}, run.ID, now); err != nil {

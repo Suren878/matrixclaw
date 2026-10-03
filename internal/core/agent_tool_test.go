@@ -92,7 +92,7 @@ func TestReadonlyChildrenRunTogetherWithReadOnlyTools(t *testing.T) {
 	}
 	names := map[string]bool{}
 	for _, id := range []string{"call-a", "call-b"} {
-		task, err := db.GetSubagentTaskByParentToolCall(context.Background(), "session_readonly", run.ID, id)
+		task, err := taskOfCall(db, "session_readonly", run.ID, id)
 		if err != nil || !task.Readonly || task.Status != core.TaskStatusCompleted || !strings.HasPrefix(task.Summary, "looked at") {
 			t.Fatalf("task %s = %+v, %v", id, task, err)
 		}
@@ -148,7 +148,7 @@ func TestBackgroundChildrenAreLimitedPerSession(t *testing.T) {
 	}
 
 	first, err := start("call-1")
-	if err != nil || first.Task.Mode != core.SubagentTaskModeAsync || !strings.HasPrefix(first.Task.ID, "task_") {
+	if err != nil || !first.Task.Background || !strings.HasPrefix(first.Task.ID, "task_") {
 		t.Fatalf("first = %+v, %v", first, err)
 	}
 	again, err := start("call-1")
@@ -183,7 +183,7 @@ func TestBackgroundChildrenStartedTogetherKeepTheLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tasks, err := db.ListSubagentTasks(context.Background(), core.SubagentTaskFilter{ParentSessionID: session.ID})
+	tasks, err := db.ListTasks(context.Background(), core.TaskFilter{SessionID: session.ID, Kind: core.TaskKindSubagent})
 	if err != nil || len(tasks) != 2 {
 		t.Fatalf("started %d children, want 2 (%v)", len(tasks), err)
 	}
@@ -262,7 +262,7 @@ func TestAFinishedChildsBackgroundCommandsStop(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	child, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-child")
+	child, err := taskOfCall(db, session.ID, run.ID, "call-child")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +331,7 @@ func TestReadonlyChildsApprovalIsRefusedWithoutAskingTheParent(t *testing.T) {
 			if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
 				t.Fatal(err)
 			}
-			task, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-look")
+			task, err := taskOfCall(db, session.ID, run.ID, "call-look")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -362,8 +362,8 @@ func TestAChildsLabelIsOneLine(t *testing.T) {
 		{"", "\n  Count the files.\nThen report the biggest one.", "Count the files."},
 	} {
 		result, err := app.RunAgent(context.Background(), core.AgentInput{ParentSessionID: session.ID, ParentRunID: run.ID, ParentToolCallID: "call-" + tc.want, Description: tc.description, Prompt: tc.prompt, Background: true})
-		if err != nil || result.Task.DisplayName != tc.want {
-			t.Fatalf("label = %q, %v; want %q", result.Task.DisplayName, err, tc.want)
+		if err != nil || result.Task.Description != tc.want {
+			t.Fatalf("label = %q, %v; want %q", result.Task.Description, err, tc.want)
 		}
 	}
 }

@@ -80,7 +80,7 @@ func (b *bridgedChild) park(t *testing.T) (core.Run, core.Approval, string) {
 	}
 	assertRecoveryRunStatus(t, b.db, run.ID, core.RunStatusWaitingApproval)
 	bridge := pendingApprovalFor(t, b.db, session.ID, "call-delegate")
-	task, err := b.db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-delegate")
+	task, err := taskOfCall(b.db, session.ID, run.ID, "call-delegate")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestDeniedBridgedApprovalLetsTheChildGoOn(t *testing.T) {
 	if b.mutations != 0 || b.childSaw() != "User denied: not in the shared tree" {
 		t.Fatalf("mutations = %d, child saw %q", b.mutations, b.childSaw())
 	}
-	task, err := b.db.GetSubagentTaskByParentToolCall(context.Background(), parent.SessionID, parent.ID, "call-delegate")
+	task, err := taskOfCall(b.db, parent.SessionID, parent.ID, "call-delegate")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +263,7 @@ func TestChildApprovalDecidedWhileTheChildParksKeepsTheParentWaiting(t *testing.
 		return starter
 	})
 	b.parking.beforePark = func() {
-		task, err := b.db.GetSubagentTaskByParentToolCall(context.Background(), "session_bridge-race", "run_bridge-race", "call-delegate")
+		task, err := taskOfCall(b.db, "session_bridge-race", "run_bridge-race", "call-delegate")
 		if err != nil {
 			t.Errorf("subagent task: %v", err)
 			return
@@ -392,7 +392,7 @@ func TestStoppingABackgroundChildParkedOnApprovalEndsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	bridge := waitPendingApproval(t, db, session.ID, "call-spawn")
-	task, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-spawn")
+	task, err := taskOfCall(db, session.ID, run.ID, "call-spawn")
 	if err != nil {
 		t.Fatal(err)
 	}

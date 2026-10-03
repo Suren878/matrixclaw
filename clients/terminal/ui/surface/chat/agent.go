@@ -31,8 +31,8 @@ func parseAgentParams(input string) agentRenderParams {
 
 type subagentTaskMetadata struct {
 	AgentName   string `json:"agent_name"`
-	DisplayName string `json:"display_name"`
-	Goal        string `json:"goal"`
+	DisplayName string `json:"description"`
+	Goal        string `json:"command"`
 	Runtime     string `json:"runtime"`
 	Status      string `json:"status"`
 	Summary     string `json:"summary"`

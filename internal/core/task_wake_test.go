@@ -227,7 +227,7 @@ func TestWakeRunTakesItsEventsBeforeItStarts(t *testing.T) {
 	if err := db.CreateTask(ctx, core.Task{ID: "task_done", SessionID: session.ID, Kind: core.TaskKindSubagent, Status: core.TaskStatusRunning, Command: "check the logs", Background: true, StartedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.FinishTask(ctx, "task_done", core.TaskStatusCompleted, nil, "", now); err != nil {
+	if _, err := db.FinishTask(ctx, "task_done", core.TaskEnd{Status: core.TaskStatusCompleted, At: now}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -288,7 +288,7 @@ func (s *wakeScenario) finishedTask(t *testing.T, id string) {
 		t.Fatal(err)
 	}
 	code := 0
-	if _, err := s.db.FinishTask(ctx, id, core.TaskStatusCompleted, &code, "", now); err != nil {
+	if _, err := s.db.FinishTask(ctx, id, core.TaskEnd{Status: core.TaskStatusCompleted, ExitCode: &code, At: now}); err != nil {
 		t.Fatal(err)
 	}
 }

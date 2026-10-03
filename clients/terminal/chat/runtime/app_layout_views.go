@@ -102,7 +102,7 @@ func (m *appModel) waitingSubagentsStatusView() string {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(colorToHex(m.styles.Primary))).Render(line)
 }
 
-func combinedWaitingStatusText(inputs []core.SessionInput, tasks []core.SubagentTask) string {
+func combinedWaitingStatusText(inputs []core.SessionInput, tasks []core.Task) string {
 	parts := make([]string, 0, 2)
 	if text := pendingInputsStatusText(inputs); text != "" {
 		parts = append(parts, text)
@@ -151,7 +151,7 @@ func pendingInputsStatusText(inputs []core.SessionInput) string {
 	}
 }
 
-func activeSubagentsStatusText(tasks []core.SubagentTask) string {
+func activeSubagentsStatusText(tasks []core.Task) string {
 	names := make([]string, 0, len(tasks))
 	for _, task := range tasks {
 		if !subagentTaskActive(task) {
@@ -177,7 +177,7 @@ func activeSubagentsStatusTextForSnapshot(snapshot viewmodel.Snapshot, phase str
 		if !subagentTaskActive(task) {
 			continue
 		}
-		if task.Mode == core.SubagentTaskModeBlocking && currentRunID != "" && strings.TrimSpace(task.ParentRunID) != currentRunID {
+		if !task.Background && currentRunID != "" && strings.TrimSpace(task.RunID) != currentRunID {
 			continue
 		}
 		if name := subagentTaskDisplayName(task); name != "" {
@@ -194,7 +194,7 @@ func activeSubagentNamesStatusText(names []string) string {
 	return "Subagents: " + strings.Join(names, ", ")
 }
 
-func subagentTaskActive(task core.SubagentTask) bool {
+func subagentTaskActive(task core.Task) bool {
 	switch task.Status {
 	case core.TaskStatusPending, core.TaskStatusRunning, core.TaskStatusWaitingApproval:
 		return true
@@ -251,10 +251,10 @@ func activeSubagentPhase(snapshot viewmodel.Snapshot) string {
 	}
 	for i := len(snapshot.Subagents) - 1; i >= 0; i-- {
 		task := snapshot.Subagents[i]
-		if task.Mode != core.SubagentTaskModeBlocking {
+		if task.Background {
 			continue
 		}
-		if strings.TrimSpace(task.ParentRunID) != runID {
+		if strings.TrimSpace(task.RunID) != runID {
 			continue
 		}
 		name := subagentTaskDisplayName(task)
@@ -270,11 +270,11 @@ func activeSubagentPhase(snapshot viewmodel.Snapshot) string {
 	return ""
 }
 
-func subagentTaskDisplayName(task core.SubagentTask) string {
+func subagentTaskDisplayName(task core.Task) string {
 	if name := strings.Join(strings.Fields(task.AgentName), " "); name != "" {
 		return name
 	}
-	if name := strings.Join(strings.Fields(task.DisplayName), " "); name != "" {
+	if name := strings.Join(strings.Fields(task.Description), " "); name != "" {
 		return name
 	}
 	if runtime := strings.TrimSpace(task.Runtime); runtime != "" {

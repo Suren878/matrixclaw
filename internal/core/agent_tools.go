@@ -8,7 +8,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/tools"
-	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 // nativeTurn is what the per-step prompt and tool list of a native run depend
@@ -106,10 +105,6 @@ func (t coreTools) Execute(ctx context.Context, name string, call tools.Call) (t
 		result = t.c.toolFailure(call.SessionID, execErr)
 	}
 	return result, nil
-}
-
-func (t coreTools) Finish(ctx context.Context, name string, call tools.Call, result tools.Result, message transcript.Message) error {
-	return t.c.recordSubagentResultMessage(ctx, result.Metadata, message.ID)
 }
 
 // nativeToolSpecs lists the tools a native run may see; nil without a registry.

@@ -23,7 +23,7 @@ type Snapshot struct {
 	ToolUpdates           []core.ToolUpdate
 	Approvals             []surfacepermission.PermissionRequest
 	ApprovalNotifications []surfacepermission.PermissionNotification
-	Subagents             []core.SubagentTask
+	Subagents             []core.Task
 	PendingInputs         []core.SessionInput
 }
 
@@ -62,7 +62,7 @@ func FromStateSnapshot(snapshot clientruntime.StateSnapshot) Snapshot {
 		Timing:        cloneTiming(snapshot.Timing),
 		Messages:      backfillAssistantMessageLLM(ToSurfaceMessages(snapshot.Messages), snapshot.Session),
 		ToolUpdates:   append([]core.ToolUpdate(nil), snapshot.ToolUpdates...),
-		Subagents:     append([]core.SubagentTask(nil), snapshot.Subagents...),
+		Subagents:     append([]core.Task(nil), snapshot.Subagents...),
 		PendingInputs: append([]core.SessionInput(nil), snapshot.PendingInputs...),
 	}
 	for _, approval := range snapshot.Approvals {

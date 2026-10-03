@@ -239,7 +239,7 @@ func (c *Core) finishTask(ctx context.Context, taskID string, status TaskStatus,
 // recordTaskEnd stores how a task ended, unless it already had, and tells its
 // session's clients.
 func (c *Core) recordTaskEnd(ctx context.Context, taskID string, status TaskStatus, exitCode *int, errText string) (Task, bool, error) {
-	finished, err := c.store.FinishTask(ctx, taskID, status, exitCode, errText, c.now().UTC())
+	finished, err := c.store.FinishTask(ctx, taskID, TaskEnd{Status: status, ExitCode: exitCode, Error: errText, At: c.now().UTC()})
 	if err != nil || !finished {
 		return Task{}, false, err
 	}

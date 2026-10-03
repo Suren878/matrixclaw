@@ -52,7 +52,7 @@ func (c *Core) createSubagentSession(ctx context.Context, parent Session, runtim
 // assignSubagentAgentName picks a name no child of the parent has, nor any of
 // the children it is starting.
 func (c *Core) assignSubagentAgentName(ctx context.Context, parentSessionID string, starting map[string]bool) (string, error) {
-	tasks, err := c.store.ListSubagentTasks(ctx, SubagentTaskFilter{ParentSessionID: strings.TrimSpace(parentSessionID)})
+	tasks, err := c.store.ListTasks(ctx, TaskFilter{SessionID: parentSessionID, Kind: TaskKindSubagent})
 	if err != nil {
 		return "", err
 	}
@@ -80,11 +80,11 @@ func (c *Core) assignSubagentAgentName(ctx context.Context, parentSessionID stri
 	}
 }
 
-func subagentTaskAgentName(task SubagentTask) string {
+func subagentTaskAgentName(task Task) string {
 	if name := strings.Join(strings.Fields(task.AgentName), " "); name != "" {
 		return name
 	}
-	if name := strings.Join(strings.Fields(task.DisplayName), " "); name != "" {
+	if name := strings.Join(strings.Fields(task.Description), " "); name != "" {
 		return name
 	}
 	if id := strings.TrimSpace(task.ID); id != "" {
@@ -135,7 +135,7 @@ func isSubagentSession(session Session) bool {
 
 // readonlySubagent reports whether the child session was started read-only.
 func (c *Core) readonlySubagent(ctx context.Context, sessionID string) (bool, error) {
-	task, err := c.store.GetSubagentTaskByChildSession(ctx, sessionID)
+	task, err := c.findTask(ctx, TaskFilter{ChildSessionID: sessionID, Kind: TaskKindSubagent})
 	if errors.Is(err, ErrNotFound) {
 		return false, nil
 	}

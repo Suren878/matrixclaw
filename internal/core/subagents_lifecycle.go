@@ -5,38 +5,9 @@ import (
 	"errors"
 )
 
-func (c *Core) recordSubagentResultMessage(ctx context.Context, metadata any, resultMessageID string) error {
-	resultMessageID = normalizeText(resultMessageID)
-	if resultMessageID == "" {
-		return nil
-	}
-	task, ok := metadata.(SubagentTask)
-	if !ok {
-		if taskPtr, ptrOK := metadata.(*SubagentTask); ptrOK && taskPtr != nil {
-			task = *taskPtr
-			ok = true
-		}
-	}
-	if !ok || normalizeText(task.ID) == "" || task.Mode != SubagentTaskModeAsync {
-		return nil
-	}
-	current, err := c.store.GetSubagentTask(ctx, task.ID)
-	if err != nil {
-		return err
-	}
-	if current.ResultMessageID == resultMessageID {
-		return nil
-	}
-	_, err = c.updateSubagentTaskRecordWith(ctx, current, func(task *SubagentTask) {
-		task.ResultMessageID = resultMessageID
-		task.UpdatedAt = c.now().UTC()
-	})
-	return err
-}
-
 // syncSubagentTask brings the task of a subagent's run up to date with it.
 func (c *Core) syncSubagentTask(ctx context.Context, run Run) error {
-	task, err := c.store.GetSubagentTaskByChildRun(ctx, run.ID)
+	task, err := c.findTask(ctx, TaskFilter{ChildRunID: run.ID, Kind: TaskKindSubagent})
 	if errors.Is(err, ErrNotFound) {
 		return nil
 	}
@@ -48,7 +19,7 @@ func (c *Core) syncSubagentTask(ctx context.Context, run Run) error {
 			return err
 		}
 	}
-	if task.Mode == SubagentTaskModeAsync {
+	if task.Background {
 		return c.syncAsyncSubagentTaskAfterRun(ctx, task, run)
 	}
 	return c.syncBlockingSubagentTaskAfterRun(ctx, task, run)
@@ -58,7 +29,7 @@ func ignoreMissing(err error) bool {
 	return errors.Is(err, ErrNotFound)
 }
 
-func (c *Core) syncAsyncSubagentTaskAfterRun(ctx context.Context, task SubagentTask, run Run) error {
+func (c *Core) syncAsyncSubagentTaskAfterRun(ctx context.Context, task Task, run Run) error {
 	if task.Status.Terminal() {
 		return nil
 	}
@@ -79,12 +50,7 @@ func (c *Core) syncAsyncSubagentTaskAfterRun(ctx context.Context, task SubagentT
 		status = TaskStatusFailed
 		errText = summary
 	}
-	task, err := c.finishSubagentTaskRecord(ctx, task, status, summary, errText, true)
-	if err != nil {
-		return err
-	}
-	c.publishSubagentToolUpdate(task)
-	finished, err := c.store.GetTask(ctx, task.ID)
+	finished, err := c.finishSubagentTaskRecord(ctx, task, status, summary, errText, true)
 	if err != nil {
 		return err
 	}
@@ -92,10 +58,10 @@ func (c *Core) syncAsyncSubagentTaskAfterRun(ctx context.Context, task SubagentT
 	return nil
 }
 
-func (c *Core) syncBlockingSubagentTaskAfterRun(ctx context.Context, task SubagentTask, run Run) error {
+func (c *Core) syncBlockingSubagentTaskAfterRun(ctx context.Context, task Task, run Run) error {
 	switch {
 	case run.Status == RunStatusWaitingApproval:
-		parentRunID := normalizeText(task.ParentRunID)
+		parentRunID := normalizeText(task.RunID)
 		if parentRunID == "" {
 			return nil
 		}
@@ -114,7 +80,7 @@ func (c *Core) syncBlockingSubagentTaskAfterRun(ctx context.Context, task Subage
 	case !run.Status.Terminal():
 		return nil
 	}
-	parentRunID := normalizeText(task.ParentRunID)
+	parentRunID := normalizeText(task.RunID)
 	if parentRunID == "" {
 		return nil
 	}
@@ -170,14 +136,14 @@ func (c *Core) runWaitsForBlockingChild(ctx context.Context, sessionID string, r
 		return false, err
 	}
 	for _, interrupted := range calls {
-		task, err := c.store.GetSubagentTaskByParentToolCall(ctx, sessionID, runID, interrupted.Call.ID)
+		task, err := c.subagentTaskOfCall(ctx, sessionID, runID, interrupted.Call.ID)
 		if errors.Is(err, ErrNotFound) {
 			continue
 		}
 		if err != nil {
 			return false, err
 		}
-		if task.Mode != SubagentTaskModeBlocking || task.Status.Terminal() {
+		if task.Background || task.Status.Terminal() {
 			continue
 		}
 		terminal, err := c.subagentTaskTerminal(ctx, task)
@@ -191,30 +157,8 @@ func (c *Core) runWaitsForBlockingChild(ctx context.Context, sessionID string, r
 	return false, nil
 }
 
-// publishSubagentToolUpdate tells clients the parent's agent call finished;
-// the result itself reaches the parent through the completion run.
-func (c *Core) publishSubagentToolUpdate(task SubagentTask) {
-	resultMessageID := normalizeText(task.ResultMessageID)
-	if resultMessageID == "" {
-		return
-	}
-	c.publishToolUpdate(task.ParentSessionID, task.ParentRunID, ToolUpdate{
-		ToolCallID:      task.ParentToolCallID,
-		ToolName:        agentToolName,
-		State:           subagentTaskToolLifecycleState(task),
-		ResultStatus:    string(subagentTaskToolResultStatus(task)),
-		RunID:           task.ParentRunID,
-		SessionID:       task.ParentSessionID,
-		ResultMessageID: resultMessageID,
-		Error:           task.Error,
-	})
-}
-
 func (c *Core) RecoverSubagentTasks(ctx context.Context) error {
-	active, err := c.store.ListSubagentTasks(ctx, SubagentTaskFilter{
-		Statuses: activeTaskStatuses(),
-		Limit:    200,
-	})
+	active, err := c.store.ListTasks(ctx, TaskFilter{Kind: TaskKindSubagent, Statuses: activeTaskStatuses()})
 	if err != nil {
 		return err
 	}
@@ -223,8 +167,8 @@ func (c *Core) RecoverSubagentTasks(ctx context.Context) error {
 		if err != nil {
 			continue
 		}
-		switch task.Mode {
-		case SubagentTaskModeAsync:
+		switch {
+		case task.Background:
 			if run.Status.Terminal() || run.Status == RunStatusWaitingApproval {
 				if err := c.syncAsyncSubagentTaskAfterRun(ctx, task, run); err != nil {
 					return err
@@ -234,7 +178,7 @@ func (c *Core) RecoverSubagentTasks(ctx context.Context) error {
 			if err := c.startRun(ctx, task.ChildRunID); err != nil {
 				return err
 			}
-		case SubagentTaskModeBlocking:
+		default:
 			if run.Status.Terminal() || run.Status == RunStatusWaitingApproval {
 				if err := c.syncBlockingSubagentTaskAfterRun(ctx, task, run); err != nil {
 					return err

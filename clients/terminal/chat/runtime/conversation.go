@@ -53,7 +53,7 @@ func indexToolUpdates(updates []core.ToolUpdate) map[string]core.ToolUpdate {
 	return index
 }
 
-func mergeSubagentToolResults(results map[string]surfacemessage.ToolResult, tasks []core.SubagentTask) {
+func mergeSubagentToolResults(results map[string]surfacemessage.ToolResult, tasks []core.Task) {
 	for _, task := range tasks {
 		toolCallID := strings.TrimSpace(task.ParentToolCallID)
 		if toolCallID == "" {
@@ -74,7 +74,7 @@ func mergeSubagentToolResults(results map[string]surfacemessage.ToolResult, task
 	}
 }
 
-func mergeSubagentToolUpdates(updates map[string]core.ToolUpdate, tasks []core.SubagentTask) {
+func mergeSubagentToolUpdates(updates map[string]core.ToolUpdate, tasks []core.Task) {
 	for _, task := range tasks {
 		toolCallID := strings.TrimSpace(task.ParentToolCallID)
 		if toolCallID == "" {
@@ -85,14 +85,14 @@ func mergeSubagentToolUpdates(updates map[string]core.ToolUpdate, tasks []core.S
 		update.ToolName = "agent"
 		update.State = subagentToolLifecycleState(task)
 		update.ResultStatus = subagentSurfaceResultStatus(task)
-		update.RunID = strings.TrimSpace(task.ParentRunID)
-		update.SessionID = strings.TrimSpace(task.ParentSessionID)
+		update.RunID = strings.TrimSpace(task.RunID)
+		update.SessionID = strings.TrimSpace(task.SessionID)
 		update.Error = strings.TrimSpace(task.Error)
 		updates[toolCallID] = update
 	}
 }
 
-func subagentSurfaceResultStatus(task core.SubagentTask) string {
+func subagentSurfaceResultStatus(task core.Task) string {
 	if task.Status == core.TaskStatusFailed || task.Status == core.TaskStatusCanceled || strings.TrimSpace(task.Error) != "" {
 		return "error"
 	}
@@ -102,7 +102,7 @@ func subagentSurfaceResultStatus(task core.SubagentTask) string {
 	return "neutral"
 }
 
-func subagentToolLifecycleState(task core.SubagentTask) core.ToolLifecycleState {
+func subagentToolLifecycleState(task core.Task) core.ToolLifecycleState {
 	switch task.Status {
 	case core.TaskStatusWaitingApproval:
 		return core.ToolLifecycleWaitingApproval
@@ -115,10 +115,10 @@ func subagentToolLifecycleState(task core.SubagentTask) core.ToolLifecycleState 
 	}
 }
 
-func subagentSurfaceResultContent(task core.SubagentTask) string {
+func subagentSurfaceResultContent(task core.Task) string {
 	name := strings.Join(strings.Fields(task.AgentName), " ")
 	if name == "" {
-		name = strings.Join(strings.Fields(task.DisplayName), " ")
+		name = strings.Join(strings.Fields(task.Description), " ")
 	}
 	if name == "" {
 		name = strings.TrimSpace(task.ID)
@@ -138,7 +138,7 @@ func subagentSurfaceResultContent(task core.SubagentTask) string {
 	}
 }
 
-func subagentTaskTerminal(task core.SubagentTask) bool {
+func subagentTaskTerminal(task core.Task) bool {
 	return task.Status == core.TaskStatusCompleted || task.Status == core.TaskStatusFailed || task.Status == core.TaskStatusCanceled
 }
 

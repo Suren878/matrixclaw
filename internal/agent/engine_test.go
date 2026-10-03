@@ -137,8 +137,8 @@ func TestToolRoundTripIsJournaledInOrder(t *testing.T) {
 	if got := toolContent(model.Requests()[1], "c1"); got != "file body" {
 		t.Fatalf("second request tool content = %q", got)
 	}
-	if fmt.Sprint(f.Tools.Finished) != "[c1]" {
-		t.Fatalf("finished = %v", f.Tools.Finished)
+	if got := eventOrder(f, agent.EventToolFinished); got != "c1" {
+		t.Fatalf("tool.finished = %s", got)
 	}
 }
 
@@ -715,7 +715,7 @@ func TestApprovalRequestFailureFailsTheRun(t *testing.T) {
 	if outcome.Status != agent.StatusFailed || outcome.Err == nil || outcome.Err.Error() != "approvals unavailable" {
 		t.Fatalf("outcome = %+v", outcome)
 	}
-	if result, _ := f.Journal.Result("w1"); !strings.Contains(result.Content, "run failed") || len(f.Tools.Finished) != 1 {
+	if result, _ := f.Journal.Result("w1"); !strings.Contains(result.Content, "run failed") || eventOrder(f, agent.EventToolFinished) != "w1" {
 		t.Fatalf("result of the call = %q, want the run's failure", result.Content)
 	}
 }

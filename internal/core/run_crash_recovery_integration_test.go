@@ -642,13 +642,13 @@ func TestRecoverBlockingSubagentCompletesChildThenParentWithoutDuplicate(t *test
 	delegateArgs := `{"description":"Finish","prompt":"finish child work","runtime":"matrixclaw"}`
 	saveInterruptedToolCallWithInput(t, sqliteStore, parentRun, "tool_delegate", "agent", delegateArgs)
 	now := runRecoveryTestTime().Add(3 * time.Second)
-	if err := sqliteStore.CreateSubagentTask(context.Background(), core.SubagentTask{
-		ID: "subagent_recovery", AgentName: "Neo", DisplayName: "Recovery child",
-		Mode: core.SubagentTaskModeBlocking, Isolation: core.SubagentIsolationShared,
-		ParentSessionID: parentSession.ID, ParentRunID: parentRun.ID, ParentToolCallID: "tool_delegate",
+	if err := sqliteStore.CreateTask(context.Background(), core.Task{
+		ID: "subagent_recovery", Kind: core.TaskKindSubagent, AgentName: "Neo", Description: "Recovery child",
+		Isolation: core.SubagentIsolationShared,
+		SessionID: parentSession.ID, RunID: parentRun.ID, ParentToolCallID: "tool_delegate",
 		ChildSessionID: childSession.ID, ChildRunID: childRun.ID, Runtime: "matrixclaw",
-		Goal: "finish child work", Status: core.TaskStatusRunning,
-		CreatedAt: now, UpdatedAt: now,
+		Command: "finish child work", Status: core.TaskStatusRunning,
+		StartedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -659,7 +659,7 @@ func TestRecoverBlockingSubagentCompletesChildThenParentWithoutDuplicate(t *test
 	waitForRecoveryRunStatus(t, sqliteStore, childRun.ID, core.RunStatusCompleted)
 	waitForRecoveryRunStatus(t, sqliteStore, parentRun.ID, core.RunStatusCompleted)
 	assertToolResultCount(t, sqliteStore, parentSession.ID, "tool_delegate", 1)
-	task, err := sqliteStore.GetSubagentTask(context.Background(), "subagent_recovery")
+	task, err := sqliteStore.GetTask(context.Background(), "subagent_recovery")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -684,12 +684,12 @@ func TestRestartedParentWaitsForAllItsBlockingChildren(t *testing.T) {
 				childSession, childRun := saveCrashRecoveryRun(t, sqliteStore, "child_"+name, core.RunStatusAccepted, true)
 				saveInterruptedToolCallWithInput(t, sqliteStore, parentRun, "tool_"+name, "agent", `{"description":"Part `+name+`","prompt":"do `+name+`","runtime":"matrixclaw"}`)
 				now := runRecoveryTestTime().Add(3 * time.Second)
-				if err := sqliteStore.CreateSubagentTask(context.Background(), core.SubagentTask{
-					ID: "subagent_" + name, AgentName: "Neo", DisplayName: "Child " + name,
-					Mode: core.SubagentTaskModeBlocking, Isolation: core.SubagentIsolationShared,
-					ParentSessionID: parentSession.ID, ParentRunID: parentRun.ID, ParentToolCallID: "tool_" + name,
+				if err := sqliteStore.CreateTask(context.Background(), core.Task{
+					ID: "subagent_" + name, Kind: core.TaskKindSubagent, AgentName: "Neo", Description: "Child " + name,
+					Isolation: core.SubagentIsolationShared,
+					SessionID: parentSession.ID, RunID: parentRun.ID, ParentToolCallID: "tool_" + name,
 					ChildSessionID: childSession.ID, ChildRunID: childRun.ID, Runtime: "matrixclaw",
-					Goal: "do " + name, Status: core.TaskStatusRunning, CreatedAt: now, UpdatedAt: now,
+					Command: "do " + name, Status: core.TaskStatusRunning, StartedAt: now, UpdatedAt: now,
 				}); err != nil {
 					t.Fatal(err)
 				}

@@ -87,7 +87,7 @@ func (t *agentTool) Execute(ctx context.Context, call tools.Call) (tools.Result,
 	if err != nil {
 		return tools.Result{}, err
 	}
-	if result.Task.Mode == SubagentTaskModeAsync {
+	if result.Task.Background {
 		return tools.Result{Content: backgroundAgentContent(result), Metadata: result.Task, Status: tools.ResultStatusNeutral}, nil
 	}
 	out := tools.Result{Content: agentResultContent(result), Metadata: result.Task, IsError: result.IsError, Status: agentResultStatus(result)}

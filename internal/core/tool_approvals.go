@@ -174,9 +174,9 @@ func (c *Core) finishRunlessApproval(ctx context.Context, approval Approval) err
 // child runs its call or reads the denial and goes on, while the parent keeps
 // waiting for the child.
 func (c *Core) passDecisionToSubagent(ctx context.Context, bridge subagentApprovalBridgeParams, decision ApprovalResolveRequest) error {
-	task, err := c.store.GetSubagentTask(ctx, bridge.TaskID)
+	task, err := c.store.GetTask(ctx, bridge.TaskID)
 	if err != nil {
-		task, err = c.store.GetSubagentTaskByChildRun(ctx, bridge.ChildRunID)
+		task, err = c.findTask(ctx, TaskFilter{ChildRunID: bridge.ChildRunID, Kind: TaskKindSubagent})
 	}
 	if err != nil {
 		return err
@@ -187,17 +187,17 @@ func (c *Core) passDecisionToSubagent(ctx context.Context, bridge subagentApprov
 			return err
 		}
 	}
-	if latest, err := c.store.GetSubagentTask(ctx, task.ID); err == nil {
+	if latest, err := c.store.GetTask(ctx, task.ID); err == nil {
 		task = latest
 	} else if !errors.Is(err, ErrNotFound) {
 		return err
 	}
 	if !task.Status.Terminal() {
-		if task, err = c.markSubagentTaskRunning(ctx, task); err != nil {
+		if task, err = c.setSubagentTaskStatus(ctx, task, TaskStatusRunning); err != nil {
 			return err
 		}
 	}
-	if task.Mode == SubagentTaskModeAsync {
+	if task.Background {
 		return nil
 	}
 	return c.resumeParentForSubagentStatus(ctx, task)
@@ -347,7 +347,7 @@ func (c *Core) bridgedCallWaitsForSubagent(ctx context.Context, approval Approva
 	if err != nil || done {
 		return false, err
 	}
-	task, err := c.store.GetSubagentTask(ctx, bridge.TaskID)
+	task, err := c.store.GetTask(ctx, bridge.TaskID)
 	if err == nil && task.Status.Terminal() {
 		return false, nil
 	}
@@ -371,9 +371,9 @@ func (c *Core) backgroundSubagentApproval(ctx context.Context, approval Approval
 	if !bridged {
 		return false, nil
 	}
-	task, err := c.store.GetSubagentTask(ctx, bridge.TaskID)
+	task, err := c.store.GetTask(ctx, bridge.TaskID)
 	if errors.Is(err, ErrNotFound) {
 		return false, nil
 	}
-	return err == nil && task.Mode == SubagentTaskModeAsync, err
+	return err == nil && task.Background, err
 }
