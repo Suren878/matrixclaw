@@ -56,7 +56,6 @@ func normalizeModulesConfig(modules ModulesConfig) ModulesConfig {
 	modules.Telephony = normalizeTelephonyConfig(modules.Telephony)
 	modules.MCP = normalizeMCPConfig(modules.MCP)
 	modules.Browser = normalizeBrowserConfig(modules.Browser)
-	modules.Skills = normalizeSkillsConfig(modules.Skills)
 	if len(modules.ExternalAgents) == 0 {
 		modules.ExternalAgents = nil
 		return modules
@@ -85,22 +84,6 @@ func normalizeModulesConfig(modules ModulesConfig) ModulesConfig {
 	}
 	modules.ExternalAgents = normalized
 	return modules
-}
-
-func normalizeSkillsConfig(cfg SkillsConfig) SkillsConfig {
-	if strings.TrimSpace(cfg.TrustPolicy) == "" {
-		cfg.TrustPolicy = "quarantine"
-	}
-	if strings.TrimSpace(cfg.SelfImprove) == "" {
-		cfg.SelfImprove = "drafts"
-	}
-	if !cfg.Enabled {
-		cfg.Enabled = true
-	}
-	if !cfg.AutoInvoke {
-		cfg.AutoInvoke = true
-	}
-	return cfg
 }
 
 func normalizeMCPConfig(cfg MCPConfig) MCPConfig {

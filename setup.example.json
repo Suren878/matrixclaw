@@ -25,9 +25,6 @@
     "autostart_on_boot": false
   },
   "clients": {
-    "terminal": {
-      "enabled": true
-    },
     "telegram": {
       "enabled": false,
       "bot_token": "",

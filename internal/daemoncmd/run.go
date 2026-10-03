@@ -232,8 +232,8 @@ func skillsConfigFromBootstrap(bootstrap bootstrapConfig) skills.Config {
 	cfg := bootstrap.ExternalAgents.Skills
 	return skills.Config{
 		DBPath:      bootstrap.DBPath,
-		Enabled:     cfg.Enabled,
-		AutoInvoke:  cfg.AutoInvoke,
+		Enabled:     cfg.IsEnabled(),
+		AutoInvoke:  cfg.IsAutoInvoke(),
 		TrustPolicy: cfg.TrustPolicy,
 		SelfImprove: cfg.SelfImprove,
 	}

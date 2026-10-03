@@ -1,8 +1,6 @@
 package setup
 
 import (
-	"time"
-
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
@@ -10,7 +8,6 @@ const CurrentVersion = 3
 
 type Config struct {
 	Version          int              `json:"version"`
-	CompletedAt      time.Time        `json:"completed_at"`
 	ActiveProviderID string           `json:"active_provider_id,omitempty"`
 	Assistant        AssistantConfig  `json:"assistant,omitempty"`
 	Providers        []ProviderConfig `json:"providers,omitempty"`
@@ -85,12 +82,7 @@ type CompactModelConfig struct {
 }
 
 type ClientsConfig struct {
-	Terminal TerminalConfig `json:"terminal"`
 	Telegram TelegramConfig `json:"telegram"`
-}
-
-type TerminalConfig struct {
-	Enabled bool `json:"enabled"`
 }
 
 type TelegramConfig struct {
@@ -112,11 +104,21 @@ type ModulesConfig struct {
 	Skills         SkillsConfig                   `json:"skills,omitempty"`
 }
 
+// SkillsConfig leaves Enabled and AutoInvoke unset unless the user turned
+// them off; unset means on.
 type SkillsConfig struct {
-	Enabled     bool   `json:"enabled,omitempty"`
-	AutoInvoke  bool   `json:"auto_invoke,omitempty"`
+	Enabled     *bool  `json:"enabled,omitempty"`
+	AutoInvoke  *bool  `json:"auto_invoke,omitempty"`
 	TrustPolicy string `json:"trust_policy,omitempty"`
 	SelfImprove string `json:"self_improve,omitempty"`
+}
+
+func (c SkillsConfig) IsEnabled() bool {
+	return c.Enabled == nil || *c.Enabled
+}
+
+func (c SkillsConfig) IsAutoInvoke() bool {
+	return c.AutoInvoke == nil || *c.AutoInvoke
 }
 
 type MCPConfig struct {

@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 	providerdiscovery "github.com/Suren878/matrixclaw/internal/providers/discovery"
@@ -18,7 +17,6 @@ import (
 type Service struct {
 	mu               sync.Mutex
 	store            Store
-	now              func() time.Time
 	daemonManager    daemonManager
 	telegramValidate telegramValidator
 }
@@ -26,7 +24,6 @@ type Service struct {
 func NewService(store Store) *Service {
 	return &Service{
 		store:            store,
-		now:              time.Now,
 		daemonManager:    newSystemdUserDaemonManager(),
 		telegramValidate: newTelegramHTTPValidator(),
 	}

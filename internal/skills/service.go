@@ -63,10 +63,6 @@ func normalizeConfig(cfg Config) Config {
 	if cfg.SelfImprove == "" {
 		cfg.SelfImprove = DefaultSelfImprove
 	}
-	if !cfg.Enabled {
-		cfg.Enabled = true
-	}
-	cfg.AutoInvoke = true
 	return cfg
 }
 

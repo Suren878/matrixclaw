@@ -3,6 +3,7 @@ package setup
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -75,5 +76,19 @@ func TestConcurrentModuleUpdatesAreAllSaved(t *testing.T) {
 	}
 	if got := len(cfg.Modules.MCP.Servers); got != servers {
 		t.Fatalf("saved %d mcp servers, want %d", got, servers)
+	}
+}
+
+func TestSkillsStayOnUnlessTurnedOff(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "setup.json")
+	if err := os.WriteFile(path, []byte(`{"version":3,"modules":{"skills":{"auto_invoke":false}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := NewFileStore(path).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Modules.Skills.IsEnabled() || cfg.Modules.Skills.IsAutoInvoke() {
+		t.Fatalf("enabled=%t auto_invoke=%t, want true false", cfg.Modules.Skills.IsEnabled(), cfg.Modules.Skills.IsAutoInvoke())
 	}
 }

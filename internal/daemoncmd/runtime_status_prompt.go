@@ -156,7 +156,7 @@ func skillsStatusLine(cfg setup.SkillsConfig, tools map[string]struct{}) string 
 			toolCount++
 		}
 	}
-	return fmt.Sprintf("skills: enabled=%t; auto_invoke=%t; trust_policy=%s; tools=%d/3", cfg.Enabled, cfg.AutoInvoke, firstNonEmpty(cfg.TrustPolicy, "quarantine"), toolCount)
+	return fmt.Sprintf("skills: enabled=%t; auto_invoke=%t; trust_policy=%s; tools=%d/3", cfg.IsEnabled(), cfg.IsAutoInvoke(), firstNonEmpty(cfg.TrustPolicy, "quarantine"), toolCount)
 }
 
 func externalAgentsStatusLine(configs map[string]setup.ExternalAgentConfig) string {

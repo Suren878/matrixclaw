@@ -113,8 +113,8 @@ func withSkillsService(stderr io.Writer, binaryName string, service *appsetup.Se
 	}
 	svc, err := skills.NewService(skills.Config{
 		DBPath:      cfg.Daemon.DBPath,
-		Enabled:     cfg.Modules.Skills.Enabled,
-		AutoInvoke:  cfg.Modules.Skills.AutoInvoke,
+		Enabled:     cfg.Modules.Skills.IsEnabled(),
+		AutoInvoke:  cfg.Modules.Skills.IsAutoInvoke(),
 		TrustPolicy: cfg.Modules.Skills.TrustPolicy,
 		SelfImprove: cfg.Modules.Skills.SelfImprove,
 	})

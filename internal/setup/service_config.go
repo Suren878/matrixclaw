@@ -100,7 +100,6 @@ func (s *Service) buildConfig(draft Draft) (Config, error) {
 	}
 	cfg := Config{
 		Version:          CurrentVersion,
-		CompletedAt:      s.now().UTC(),
 		ActiveProviderID: activeProviderID,
 		Assistant: AssistantConfig{
 			Name:               strings.TrimSpace(draft.AssistantName),
@@ -110,7 +109,6 @@ func (s *Service) buildConfig(draft Draft) (Config, error) {
 		Providers: configured,
 		Daemon:    existing.Daemon,
 		Clients: ClientsConfig{
-			Terminal: TerminalConfig{Enabled: true},
 			Telegram: TelegramConfig{
 				Enabled:            telegramEnabled,
 				BotToken:           telegramToken,
