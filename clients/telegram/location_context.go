@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/modules/geo"
 )
 
 const telegramLocationContextTTL = 30 * time.Minute
@@ -144,7 +144,7 @@ func (w *Worker) telegramOSMContext(ctx context.Context, location Location, incl
 	defer cancel()
 
 	sections := []string{}
-	reverse, err := w.geo.ReverseGeocode(lookupCtx, tools.OSMReverseGeocodeParams{
+	reverse, err := w.geo.ReverseGeocode(lookupCtx, geo.OSMReverseGeocodeParams{
 		Latitude:  location.Latitude,
 		Longitude: location.Longitude,
 		Language:  "ru,en",
@@ -157,7 +157,7 @@ func (w *Worker) telegramOSMContext(ctx context.Context, location Location, incl
 	}
 
 	if includeNearby {
-		nearby, err := w.geo.NearbyPlaces(lookupCtx, tools.OSMNearbyPlacesParams{
+		nearby, err := w.geo.NearbyPlaces(lookupCtx, geo.OSMNearbyPlacesParams{
 			Latitude:     location.Latitude,
 			Longitude:    location.Longitude,
 			RadiusMeters: telegramNearbyRadiusMeters(location),
@@ -182,7 +182,7 @@ func telegramNearbyRadiusMeters(location Location) int {
 	return min(radius, 5000)
 }
 
-func formatTelegramOSMReverseContext(result tools.OSMReverseGeocodeResult) string {
+func formatTelegramOSMReverseContext(result geo.OSMReverseGeocodeResult) string {
 	lines := []string{"OSM reverse-geocoded address for the exact coordinates:"}
 	if result.DisplayName != "" {
 		lines = append(lines, "Display name: "+result.DisplayName)
@@ -202,7 +202,7 @@ func formatTelegramOSMReverseContext(result tools.OSMReverseGeocodeResult) strin
 	return strings.Join(lines, "\n")
 }
 
-func formatTelegramOSMNearbyContext(result tools.OSMNearbyPlacesResult) string {
+func formatTelegramOSMNearbyContext(result geo.OSMNearbyPlacesResult) string {
 	lines := []string{
 		fmt.Sprintf("OSM nearby places from Overpass, sorted by distance within %dm:", result.RadiusMeters),
 	}
@@ -238,7 +238,7 @@ func formatTelegramOSMNearbyContext(result tools.OSMNearbyPlacesResult) string {
 	return strings.Join(lines, "\n")
 }
 
-func formatTelegramOSMAddress(address tools.OSMAddress) string {
+func formatTelegramOSMAddress(address geo.OSMAddress) string {
 	parts := []string{}
 	if street := formatTelegramStreetAddress(address.Road, address.HouseNumber); street != "" {
 		parts = append(parts, street)
@@ -251,7 +251,7 @@ func formatTelegramOSMAddress(address tools.OSMAddress) string {
 	return strings.Join(parts, ", ")
 }
 
-func formatTelegramOSMAddressComponents(address tools.OSMAddress) string {
+func formatTelegramOSMAddressComponents(address geo.OSMAddress) string {
 	components := []string{}
 	appendComponent := func(key, value string) {
 		if value = strings.TrimSpace(value); value != "" {

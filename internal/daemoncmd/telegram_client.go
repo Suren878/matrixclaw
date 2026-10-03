@@ -14,9 +14,9 @@ import (
 	"github.com/Suren878/matrixclaw/clients/telegram"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
+	"github.com/Suren878/matrixclaw/internal/modules/geo"
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/setup"
-	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 type telegramClientAdapter struct {
@@ -26,7 +26,7 @@ type telegramClientAdapter struct {
 	applied     telegram.Config
 	offset      atomic.Int64
 	commandsSet bool
-	geo         *tools.OSMService
+	geo         *geo.OSMService
 	// botAPIURL overrides the Telegram Bot API address in tests.
 	botAPIURL string
 }

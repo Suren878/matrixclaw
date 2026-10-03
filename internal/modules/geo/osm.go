@@ -1,4 +1,5 @@
-package tools
+// Package geo offers OpenStreetMap reverse geocoding and nearby place search.
+package geo
 
 import (
 	"context"
@@ -13,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 const (
@@ -35,7 +38,7 @@ const (
 )
 
 var (
-	reverseGeocodeOSMInputSchema = rawSchema(`{
+	reverseGeocodeOSMInputSchema = json.RawMessage(`{
   "type": "object",
   "properties": {
     "latitude": {"type": "number", "minimum": -90, "maximum": 90},
@@ -45,7 +48,7 @@ var (
   "required": ["latitude", "longitude"],
   "additionalProperties": false
 }`)
-	nearbyPlacesOSMInputSchema = rawSchema(`{
+	nearbyPlacesOSMInputSchema = json.RawMessage(`{
   "type": "object",
   "properties": {
     "latitude": {"type": "number", "minimum": -90, "maximum": 90},
@@ -220,77 +223,77 @@ func NewOSMService(cfg OSMConfig) *OSMService {
 	}
 }
 
-func NewOSMGeoExecutors(service *OSMService) []Executor {
+func NewOSMGeoExecutors(service *OSMService) []tools.Executor {
 	if service == nil {
 		service = NewOSMServiceFromEnv()
 	}
-	return []Executor{
+	return []tools.Executor{
 		NewReverseGeocodeOSMExecutor(service),
 		NewNearbyPlacesOSMExecutor(service),
 	}
 }
 
-func NewReverseGeocodeOSMExecutor(service *OSMService) Executor {
+func NewReverseGeocodeOSMExecutor(service *OSMService) tools.Executor {
 	if service == nil {
 		service = NewOSMServiceFromEnv()
 	}
 	return &reverseGeocodeOSMExecutor{service: service}
 }
 
-func NewNearbyPlacesOSMExecutor(service *OSMService) Executor {
+func NewNearbyPlacesOSMExecutor(service *OSMService) tools.Executor {
 	if service == nil {
 		service = NewOSMServiceFromEnv()
 	}
 	return &nearbyPlacesOSMExecutor{service: service}
 }
 
-func (e *reverseGeocodeOSMExecutor) Spec() Spec {
-	return Spec{
+func (e *reverseGeocodeOSMExecutor) Spec() tools.Spec {
+	return tools.Spec{
 		ID:              reverseGeocodeOSMToolName,
 		Description:     "Resolve exact latitude/longitude coordinates to OpenStreetMap address components using Nominatim. Use this before text-based local search; keep coordinates authoritative.",
-		Effect:          EffectReadOnly,
-		Namespace:       namespaceCoreWeb,
-		Category:        CategoryWeb,
+		Effect:          tools.EffectReadOnly,
+		Namespace:       "core.web",
+		Category:        tools.CategoryWeb,
 		InputJSONSchema: reverseGeocodeOSMInputSchema,
 	}
 }
 
-func (e *reverseGeocodeOSMExecutor) Execute(ctx context.Context, call Call) (Result, error) {
+func (e *reverseGeocodeOSMExecutor) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
 	var params OSMReverseGeocodeParams
 	if err := json.Unmarshal(call.Args, &params); err != nil {
-		return Result{}, InvalidArgs(reverseGeocodeOSMToolName, err)
+		return tools.Result{}, tools.InvalidArgs(reverseGeocodeOSMToolName, err)
 	}
 	result, err := e.service.ReverseGeocode(ctx, params)
 	if err != nil {
-		return Result{Content: fmt.Sprintf("reverse_geocode_osm failed: %v", err), IsError: true}, nil
+		return tools.Result{Content: fmt.Sprintf("reverse_geocode_osm failed: %v", err), IsError: true}, nil
 	}
-	return Result{
+	return tools.Result{
 		Content:  formatOSMReverseGeocode(result),
 		Metadata: result,
 	}, nil
 }
 
-func (e *nearbyPlacesOSMExecutor) Spec() Spec {
-	return Spec{
+func (e *nearbyPlacesOSMExecutor) Spec() tools.Spec {
+	return tools.Spec{
 		ID:              nearbyPlacesOSMToolName,
 		Description:     "Find nearby food and drink places by exact coordinates using OpenStreetMap Overpass data. Use latitude/longitude and radius, not a guessed street or district.",
-		Effect:          EffectReadOnly,
-		Namespace:       namespaceCoreWeb,
-		Category:        CategoryWeb,
+		Effect:          tools.EffectReadOnly,
+		Namespace:       "core.web",
+		Category:        tools.CategoryWeb,
 		InputJSONSchema: nearbyPlacesOSMInputSchema,
 	}
 }
 
-func (e *nearbyPlacesOSMExecutor) Execute(ctx context.Context, call Call) (Result, error) {
+func (e *nearbyPlacesOSMExecutor) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
 	var params OSMNearbyPlacesParams
 	if err := json.Unmarshal(call.Args, &params); err != nil {
-		return Result{}, InvalidArgs(nearbyPlacesOSMToolName, err)
+		return tools.Result{}, tools.InvalidArgs(nearbyPlacesOSMToolName, err)
 	}
 	result, err := e.service.NearbyPlaces(ctx, params)
 	if err != nil {
-		return Result{Content: fmt.Sprintf("nearby_places_osm failed: %v", err), IsError: true}, nil
+		return tools.Result{Content: fmt.Sprintf("nearby_places_osm failed: %v", err), IsError: true}, nil
 	}
-	return Result{
+	return tools.Result{
 		Content:  formatOSMNearbyPlaces(result),
 		Metadata: result,
 	}, nil

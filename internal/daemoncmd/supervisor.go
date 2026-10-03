@@ -15,9 +15,9 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
+	"github.com/Suren878/matrixclaw/internal/modules/geo"
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/setup"
-	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 const (
@@ -61,7 +61,7 @@ func applyAssistantProfile(app assistantProfileSetter, base core.AssistantProfil
 	app.SetAssistantProfile(base)
 }
 
-func newSupervisor(ctx context.Context, server *api.Server, app *core.Core, geo *tools.OSMService) *supervisor {
+func newSupervisor(ctx context.Context, server *api.Server, app *core.Core, geo *geo.OSMService) *supervisor {
 	s := &supervisor{
 		ctx:      ctx,
 		server:   server,

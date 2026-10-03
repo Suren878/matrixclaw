@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/controlplane"
-	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/modules/geo"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -19,7 +19,7 @@ type Config struct {
 	TelegramBaseURL         string
 	AllowedUserID           int64
 	InlineCachePath         string
-	Geo                     *tools.OSMService
+	Geo                     *geo.OSMService
 	Offset                  *atomic.Int64
 	SkipCommandRegistration bool
 }
@@ -43,7 +43,7 @@ type Worker struct {
 	locations        map[string]telegramLocationContext
 	pendingLocations map[string]pendingLocationRequest
 	chatActions      map[string]time.Time
-	geo              *tools.OSMService
+	geo              *geo.OSMService
 	now              func() time.Time
 }
 

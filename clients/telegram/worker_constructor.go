@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/controlplane"
-	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/modules/geo"
 )
 
 func NewWorker(cfg Config) (*Worker, error) {
@@ -16,7 +16,7 @@ func NewWorker(cfg Config) (*Worker, error) {
 		return nil, fmt.Errorf("telegram: daemon base URL is required")
 	}
 	if cfg.Geo == nil {
-		cfg.Geo = tools.NewOSMServiceFromEnv()
+		cfg.Geo = geo.NewOSMServiceFromEnv()
 	}
 	client, err := NewClient(ClientConfig{
 		Token:      cfg.BotToken,

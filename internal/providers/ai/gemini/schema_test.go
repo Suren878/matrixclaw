@@ -8,6 +8,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/automation"
 	"github.com/Suren878/matrixclaw/internal/core"
 	deliverymodule "github.com/Suren878/matrixclaw/internal/modules/delivery"
+	"github.com/Suren878/matrixclaw/internal/modules/geo"
 	storagemodule "github.com/Suren878/matrixclaw/internal/modules/storage"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/skills"
@@ -93,7 +94,7 @@ func registeredToolDefinitions(t *testing.T) []providers.ToolDefinition {
 		core.AwaitToolExecutors(app),
 		core.MemoryToolExecutors(app),
 		core.AgentToolExecutors(app),
-		tools.NewOSMGeoExecutors(tools.NewOSMService(tools.OSMConfig{})),
+		geo.NewOSMGeoExecutors(geo.NewOSMService(geo.OSMConfig{})),
 		skills.ToolExecutors(nil),
 	} {
 		if err := registry.Register(executors...); err != nil {

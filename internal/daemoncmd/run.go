@@ -16,6 +16,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
 	"github.com/Suren878/matrixclaw/internal/modules"
 	deliverymodule "github.com/Suren878/matrixclaw/internal/modules/delivery"
+	"github.com/Suren878/matrixclaw/internal/modules/geo"
 	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
 	mcpmodule "github.com/Suren878/matrixclaw/internal/modules/mcp"
 	skillsmodule "github.com/Suren878/matrixclaw/internal/modules/skills"
@@ -109,7 +110,7 @@ func Run(ctx context.Context) error {
 	webSearchConfig := webSearchProviderConfig(bootstrap.SetupService)
 	webResearchEngine := newWebResearchEngine(bootstrap.DBPath, bootstrap.ExternalAgents.MCP, mcpModule, webResearchStore, webSearchConfig)
 	webTools := webtools.NewWebService(webSearchConfig, webResearchEngine)
-	osmGeo := tools.NewOSMServiceFromEnv()
+	osmGeo := geo.NewOSMServiceFromEnv()
 	extraTools := []tools.Executor{
 		automation.NewReminderTool(automationService),
 		automation.NewScheduledAITaskTool(automationService),
@@ -140,7 +141,7 @@ func Run(ctx context.Context) error {
 	if err := toolRegistry.Err(); err != nil {
 		return err
 	}
-	if err := toolRegistry.Register(tools.NewOSMGeoExecutors(osmGeo)...); err != nil {
+	if err := toolRegistry.Register(geo.NewOSMGeoExecutors(osmGeo)...); err != nil {
 		return err
 	}
 	if err := moduleRegistry.RegisterTools(toolRegistry); err != nil {
