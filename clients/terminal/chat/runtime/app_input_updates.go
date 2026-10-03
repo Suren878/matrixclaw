@@ -15,16 +15,16 @@ func (m *appModel) handleSubmit(msg surfaceinput.SubmitMsg) tea.Cmd {
 		return cmd
 	}
 	if m.state().SessionID() == "" {
-		m.err = "no active session"
+		m.showError("no active session")
 		m.restoreEditorDraft(msg.Content, msg.Attachments)
 		m.setBusy(false)
 		return nil
 	}
 	mode := core.BusyInputMode("")
-	if m.busy {
-		mode = m.busyInputMode
+	if m.input.busy {
+		mode = m.input.busyMode
 	}
-	m.err = ""
+	m.clearNotice()
 	m.setBusy(true)
 	if m.chat != nil {
 		m.chat.ScrollToBottom()
@@ -34,10 +34,10 @@ func (m *appModel) handleSubmit(msg surfaceinput.SubmitMsg) tea.Cmd {
 
 func (m *appModel) handleAttachFiles() {
 	if err := m.attachFilesFromEditorValue(); err != nil {
-		m.err = err.Error()
+		m.showError(err.Error())
 		return
 	}
-	m.err = ""
+	m.clearNotice()
 }
 
 func (m *appModel) handleEditorHeightChanged() tea.Cmd {

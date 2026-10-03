@@ -55,7 +55,7 @@ func TestFailedDenialAsksAboutTheApprovalAgain(t *testing.T) {
 	if m.dialog.ContainsDialog(surfacedialog.PromptCommandID) || permissionShown(m) != "" {
 		t.Fatal("reason prompt or approval still shown after submitting")
 	}
-	m.Update(controlplaneResultMsg{command: "/approval deny a1 not now", seq: m.controlplaneSeq, err: errors.New("daemon unavailable")})
+	m.Update(controlplaneResultMsg{command: "/approval deny a1 not now", seq: m.dialog.seq, err: errors.New("daemon unavailable")})
 
 	if got := permissionShown(m); got != "a1" {
 		t.Fatalf("approval shown after the failure = %q", got)

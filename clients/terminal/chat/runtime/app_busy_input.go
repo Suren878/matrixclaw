@@ -20,14 +20,14 @@ func (m *appModel) handleBusySubmitCommand(content string) (bool, tea.Cmd) {
 	}
 	if mode, text, ok := parseBusyMessageCommand(command); ok {
 		if strings.TrimSpace(text) == "" {
-			m.err = "usage: /queue <text> or /steer <text>"
+			m.showError("usage: /queue <text> or /steer <text>")
 			return true, nil
 		}
 		if m.state().SessionID() == "" {
-			m.err = "no active session"
+			m.showError("no active session")
 			return true, nil
 		}
-		m.err = ""
+		m.clearNotice()
 		m.setBusy(true)
 		if m.chat != nil {
 			m.chat.ScrollToBottom()
@@ -39,22 +39,22 @@ func (m *appModel) handleBusySubmitCommand(content string) (bool, tea.Cmd) {
 	}
 	fields := strings.Fields(command)
 	if len(fields) == 1 || strings.EqualFold(fields[1], "status") {
-		m.showInputStatus(fmt.Sprintf("Busy mode: %s", m.busyInputMode))
+		m.showInputStatus(fmt.Sprintf("Busy mode: %s", m.input.busyMode))
 		return true, nil
 	}
 	switch strings.ToLower(fields[1]) {
 	case string(core.BusyInputModeQueue):
-		m.busyInputMode = core.BusyInputModeQueue
+		m.input.busyMode = core.BusyInputModeQueue
 	case string(core.BusyInputModeSteer):
-		m.busyInputMode = core.BusyInputModeSteer
+		m.input.busyMode = core.BusyInputModeSteer
 	case string(core.BusyInputModeInterrupt):
-		m.busyInputMode = core.BusyInputModeInterrupt
+		m.input.busyMode = core.BusyInputModeInterrupt
 	default:
-		m.err = "usage: /busy [queue|steer|interrupt|status]"
+		m.showError("usage: /busy [queue|steer|interrupt|status]")
 		return true, nil
 	}
-	m.err = ""
-	m.showInputStatus(fmt.Sprintf("Busy mode: %s", m.busyInputMode))
+	m.clearNotice()
+	m.showInputStatus(fmt.Sprintf("Busy mode: %s", m.input.busyMode))
 	return true, nil
 }
 
@@ -105,7 +105,7 @@ func (m *appModel) showInputStatus(text string) {
 	if text == "" {
 		return
 	}
-	m.err = ""
+	m.clearNotice()
 	m.upsertTransientMessage(newBusyInputStatusMessage(text))
 	m.syncChat()
 }

@@ -22,12 +22,12 @@ func (m *appModel) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
-	if m.focus == appFocusEditor {
+	if m.input.focus == appFocusEditor {
 		switch {
-		case m.busy && key.Matches(msg, km.Editor.Escape):
+		case m.input.busy && key.Matches(msg, km.Editor.Escape):
 			return m.openCancelRunDialog()
-		case m.busy && key.Matches(msg, km.Editor.OpenEditor):
-			m.err = "agent is working, please wait"
+		case m.input.busy && key.Matches(msg, km.Editor.OpenEditor):
+			m.showWarning("agent is working, please wait")
 			return nil
 		}
 		return m.input.Update(msg)
@@ -35,13 +35,13 @@ func (m *appModel) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	switch {
 	case key.Matches(msg, km.Chat.Cancel):
-		if m.busy {
+		if m.input.busy {
 			return m.openCancelRunDialog()
 		}
 	case key.Matches(msg, km.Tab):
 		return m.setFocus(appFocusEditor)
 	case key.Matches(msg, km.Chat.Reload):
-		m.err = ""
+		m.clearNotice()
 		return m.reload()
 	}
 
@@ -78,7 +78,7 @@ func (m *appModel) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if content == "" {
 			return nil
 		}
-		m.err = ""
+		m.clearNotice()
 		return tea.SetClipboard(content)
 	default:
 		if handled, cmd := m.chat.HandleKeyMsg(msg); handled {
@@ -102,14 +102,13 @@ func (m *appModel) handleGlobalKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 }
 
 func (m *appModel) handleDialogInput(msg tea.Msg) tea.Cmd {
-	if m.dialog == nil || !m.dialog.HasDialogs() {
+	if !m.dialog.HasDialogs() {
 		return nil
 	}
 	sourceID := ""
 	if top := m.dialog.DialogLast(); top != nil {
 		sourceID = top.ID()
 	}
-	fromCommands := m.commandsDialogRoot && m.dialog.ContainsDialog(surfacedialog.CommandsID)
 	action := m.dialog.Update(msg)
 	if action == nil {
 		return nil
@@ -118,7 +117,7 @@ func (m *appModel) handleDialogInput(msg tea.Msg) tea.Cmd {
 		if sourceID != "" && sourceID != surfacedialog.CommandsID {
 			m.dialog.CloseDialog(sourceID)
 		}
-		return m.handleRunControlplaneCommand(command, fromCommands)
+		return m.handleRunControlplaneCommand(command)
 	}
 	return m.update(action)
 }

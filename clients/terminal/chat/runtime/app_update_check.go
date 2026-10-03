@@ -30,10 +30,10 @@ func (m *appModel) checkUpdateCmd() tea.Cmd {
 }
 
 func (m *appModel) handleUpdateCheck(msg updateCheckMsg) {
-	if msg.err != nil || !msg.ok || m.updatePrompted {
+	if msg.err != nil || !msg.ok || m.updates.prompted {
 		return
 	}
-	m.updatePrompted = true
+	m.updates.prompted = true
 	m.dialog.OpenDialog(surfacedialog.NewConfirmCommand(m.com, controlplane.ConfirmData{
 		Message:        "A new matrixclaw release is available: " + msg.update.Current + " -> " + msg.update.Latest + "\n\nUpdate now?",
 		ConfirmLabel:   "Yes",
@@ -53,10 +53,10 @@ func (m *appModel) handleUpdateCommand(command string) tea.Cmd {
 		return nil
 	}
 	version := strings.TrimSpace(fields[2])
-	if version == "" || m.updateInstalling {
+	if version == "" || m.updates.installing {
 		return nil
 	}
-	m.updateInstalling = true
+	m.updates.installing = true
 	m.dialog.CloseDialog(surfacedialog.ConfirmCommandID)
 	m.dialog.OpenDialog(surfacedialog.NewInfo(m.com, surfacedialog.InfoData{
 		ID:    updateInfoDialogID,
@@ -85,7 +85,7 @@ func (m *appModel) installUpdateCmd(version string) tea.Cmd {
 }
 
 func (m *appModel) handleUpdateInstall(msg updateInstallMsg) {
-	m.updateInstalling = false
+	m.updates.installing = false
 	if msg.err != nil {
 		if info, ok := m.dialog.Dialog(updateInfoDialogID).(*surfacedialog.Info); ok {
 			info.SetText("Update failed: " + msg.err.Error() + updateOutputSuffix(msg.output))

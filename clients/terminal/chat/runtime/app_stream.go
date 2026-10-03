@@ -123,7 +123,7 @@ func (m *appModel) streamFailed(err error) tea.Cmd {
 	m.loading = false
 	m.setBusy(false)
 	if err != nil {
-		m.err = err.Error()
+		m.showError(err.Error())
 	}
 	m.stopStream()
 	if m.read == nil {
@@ -191,7 +191,7 @@ func (m *appModel) applyEvent(event daemonclient.LiveEvent) tea.Cmd {
 		m.setBusy(runIsActive(run))
 		m.showRunStopNotice(*run)
 		if run.Status == core.RunStatusFailed && strings.TrimSpace(run.Error) != "" {
-			m.err = run.Error
+			m.showError(run.Error)
 		}
 	case core.EventInputUpdated:
 		if input, err := event.DecodeSessionInput(); err == nil {
@@ -204,11 +204,11 @@ func (m *appModel) applyEvent(event daemonclient.LiveEvent) tea.Cmd {
 func (m *appModel) applySnapshot(snapshot core.ClientSnapshot) {
 	m.clearContextCompactProgress()
 	if m.read != nil && m.read.SessionID() != snapshot.SessionID {
-		m.transientMessages = nil
+		m.notes = nil
 		m.todoPanel = todoPanelAuto
 		m.chat, m.rows = nil, keptRows{}
 	}
-	m.err = snapshotError(snapshot)
+	m.showError(snapshotError(snapshot))
 	m.read = readmodel.New(snapshot)
 	m.setBusy(runIsActive(snapshot.Run))
 	m.syncChat()

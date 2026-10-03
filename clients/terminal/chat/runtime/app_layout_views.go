@@ -37,11 +37,8 @@ func (m *appModel) statusViews() (string, string) {
 	data := surfaceheader.StatusData{
 		HelpView: m.footerView(),
 	}
-	if strings.TrimSpace(m.err) != "" {
-		data.Info = surfaceheader.StatusInfo{
-			Type: surfaceheader.StatusInfoTypeError,
-			Msg:  m.err,
-		}
+	if m.notice.text != "" {
+		data.Info = surfaceheader.StatusInfo{Type: m.notice.kind, Msg: m.notice.text}
 	}
 	return m.status.Views(m.width, data)
 }
@@ -52,7 +49,7 @@ func (m *appModel) workingStatusView() string {
 	if m.width <= 0 {
 		return ""
 	}
-	if !m.busy {
+	if !m.input.busy {
 		return m.waitingSubagentsStatusView()
 	}
 	run := m.state().Run()

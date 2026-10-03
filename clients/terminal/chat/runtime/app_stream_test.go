@@ -141,15 +141,15 @@ func TestARunIsFollowedFromLiveEventsWithoutReloading(t *testing.T) {
 	deliver(t, m, core.EventMessageCreated, textMessage("m1", transcript.MessageRoleUser, 0, "hello"))
 	deliver(t, m, core.EventRunUpdated, running)
 	deliver(t, m, core.EventMessageCreated, finishedReply("m2", 5, "Hi there."))
-	if !m.busy {
+	if !m.input.busy {
 		t.Fatal("not busy while the run runs")
 	}
 	completed := running
 	completed.Status = core.RunStatusCompleted
 	deliver(t, m, core.EventRunUpdated, completed)
 
-	if m.busy || m.stream.id != stream || m.loading {
-		t.Fatalf("after the run: busy=%v reloaded=%v loading=%v", m.busy, m.stream.id != stream, m.loading)
+	if m.input.busy || m.stream.id != stream || m.loading {
+		t.Fatalf("after the run: busy=%v reloaded=%v loading=%v", m.input.busy, m.stream.id != stream, m.loading)
 	}
 	screen := ansi.Strip(m.viewContent())
 	for _, want := range []string{"hello", "Hi there."} {

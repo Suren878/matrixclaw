@@ -13,7 +13,7 @@ import (
 
 func (m *appModel) handlePermissionResponse(msg surfacedialog.ActionPermissionResponse) tea.Cmd {
 	m.dialog.CloseDialog(surfacedialog.PermissionsID)
-	m.suppressedApprovals[msg.Permission.ID] = struct{}{}
+	m.dialog.suppressed[msg.Permission.ID] = struct{}{}
 	request := core.ApprovalResolveRequest{}
 	switch msg.Action {
 	case surfacedialog.PermissionDenyWithReason:
@@ -49,17 +49,17 @@ func (m *appModel) handleOpenFilePreview(msg surfacedialog.ActionOpenFilePreview
 
 func (m *appModel) handleExternalEditorAction() tea.Cmd {
 	m.dialog.CloseDialog(surfacedialog.CommandsID)
-	m.commandsDialogRoot = false
-	if m.busy {
-		m.err = "agent is working, please wait"
+	m.dialog.menuClosed()
+	if m.input.busy {
+		m.showWarning("agent is working, please wait")
 		return nil
 	}
 	return m.input.Editor().OpenExternalEditor()
 }
 
-func (m *appModel) handleRunControlplaneCommand(msg surfacedialog.ActionRunControlplaneCommand, fromCommands bool) tea.Cmd {
+func (m *appModel) handleRunControlplaneCommand(msg surfacedialog.ActionRunControlplaneCommand) tea.Cmd {
 	command := strings.TrimSpace(msg.Command)
-	m.returnToCommands = m.controlplaneCommandReturnsToCommands(fromCommands)
+	m.dialog.commandStarted()
 	if strings.HasPrefix(command, "/update ") {
 		return m.handleUpdateCommand(command)
 	}
@@ -80,17 +80,10 @@ func (m *appModel) handleRunControlplaneCommand(msg surfacedialog.ActionRunContr
 	return tea.Batch(m.dialog.StartLoading(), m.controlplaneCmd(command))
 }
 
-func (m *appModel) controlplaneCommandReturnsToCommands(fromCommands bool) bool {
-	if fromCommands {
-		return true
-	}
-	return m.returnToCommands && m.dialog.HasDialogs()
-}
-
 func (m *appModel) handleResolveApproval(msg resolveApprovalMsg) tea.Cmd {
 	if msg.err != nil {
-		delete(m.suppressedApprovals, msg.approvalID)
-		m.err = msg.err.Error()
+		delete(m.dialog.suppressed, msg.approvalID)
+		m.showError(msg.err.Error())
 		return m.syncPermissionDialogCmd()
 	}
 	return m.syncPermissionDialogCmd()
@@ -98,12 +91,12 @@ func (m *appModel) handleResolveApproval(msg resolveApprovalMsg) tea.Cmd {
 
 func (m *appModel) handleCancelRunResult(msg cancelRunResultMsg) tea.Cmd {
 	if msg.err != nil {
-		m.err = msg.err.Error()
+		m.showError(msg.err.Error())
 		return nil
 	}
 	m.setBusy(runIsActive(&msg.run))
 	if msg.run.Status == core.RunStatusCanceled {
-		m.err = ""
+		m.clearNotice()
 	}
 	return nil
 }

@@ -12,7 +12,7 @@ import (
 )
 
 func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
-	if msg.seq != 0 && msg.seq != m.controlplaneSeq {
+	if msg.seq != 0 && msg.seq != m.dialog.seq {
 		return nil
 	}
 	m.dialog.StopLoading()
@@ -23,7 +23,7 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 		m.showControlplaneError(msg.err)
 		if approvalID, ok := controlplane.DeniedApproval(msg.command); ok {
 			// The denial failed: ask about the approval again.
-			delete(m.suppressedApprovals, approvalID)
+			delete(m.dialog.suppressed, approvalID)
 			return m.syncPermissionDialogCmd()
 		}
 		return nil
@@ -44,14 +44,14 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 	if m.dialog.HasDialogs() {
 		m.closeAllDialogs()
 	}
-	m.returnToCommands = false
-	m.err = strings.TrimSpace(msg.result.Text)
-	if m.err != "" && !msg.result.ReloadSnapshot {
-		m.dialog.OpenDialog(surfacedialog.NewInfo(m.com, surfacedialog.InfoData{
-			Title: resultTitle(msg.result.Text),
-			Text:  m.err,
-		}))
-		m.err = ""
+	m.dialog.menu = menuNone
+	text := strings.TrimSpace(msg.result.Text)
+	switch {
+	case text != "" && !msg.result.ReloadSnapshot:
+		m.clearNotice()
+		m.dialog.OpenDialog(surfacedialog.NewInfo(m.com, surfacedialog.InfoData{Title: resultTitle(text), Text: text}))
+	default:
+		m.showInfo(text)
 	}
 	if msg.result.ReloadSnapshot {
 		return m.reloadSnapshotCmd()
@@ -61,14 +61,14 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 
 func (m *appModel) showControlplaneTextResult(result controlplane.Result) bool {
 	text := strings.TrimSpace(result.Text)
-	if text == "" || (!m.returnToCommands && !m.dialog.HasDialogs()) {
+	if text == "" || (!m.dialog.fromMenu() && !m.dialog.HasDialogs()) {
 		return false
 	}
 	var closeAction surfacedialog.Action
-	if m.returnToCommands {
+	if m.dialog.fromMenu() {
 		closeAction = surfacedialog.ActionOpenCommands{}
 	}
-	m.err = ""
+	m.clearNotice()
 	m.showControlplaneDialog(surfacedialog.NewInfo(m.com, surfacedialog.InfoData{
 		Title:       resultTitle(text),
 		Text:        text,
@@ -89,14 +89,14 @@ func (m *appModel) showControlplaneError(err error) {
 		for m.dialog.ContainsDialog(surfacedialog.ConfirmCommandID) {
 			m.dialog.CloseDialog(surfacedialog.ConfirmCommandID)
 		}
-		m.err = ""
+		m.clearNotice()
 		m.dialog.OpenDialog(surfacedialog.NewInfo(m.com, surfacedialog.InfoData{
 			Title: "Command Failed",
 			Text:  text,
 		}))
 		return
 	}
-	m.err = text
+	m.showError(text)
 }
 
 func (m *appModel) handleContextCompactResult(msg controlplaneResultMsg) tea.Cmd {
@@ -184,7 +184,7 @@ func (m *appModel) controlplanePickerCloseAction(picker controlplane.PickerData,
 }
 
 func (m *appModel) controlplanePickerReturnsToCommands(picker controlplane.PickerData, view controlplane.PickerViewData) bool {
-	return m.returnToCommands && !picker.Popup && view.Footer == nil
+	return m.dialog.fromMenu() && !picker.Popup && view.Footer == nil
 }
 
 func popupPickerLegend(picker controlplane.PickerData) string {
@@ -214,14 +214,13 @@ func controlplaneCloseAction(command string) surfacedialog.Action {
 
 func (m *appModel) closeControlplaneDialogs() {
 	m.dialog.CloseDialog(surfacedialog.CommandsID)
-	m.commandsDialogRoot = false
+	m.dialog.menuClosed()
 	m.closeControlplaneTransientDialogs()
 }
 
 func (m *appModel) closeAllDialogs() {
 	m.dialog.CloseAll()
-	m.commandsDialogRoot = false
-	m.returnToCommands = false
+	m.dialog.menu = menuNone
 }
 
 func (m *appModel) closeControlplaneTransientDialogs() {
@@ -234,13 +233,13 @@ func (m *appModel) closeControlplaneTransientDialogs() {
 }
 
 func (m *appModel) showControlplaneDialog(dialog surfacedialog.Dialog) {
-	m.err = ""
+	m.clearNotice()
 	if dialog == nil {
 		return
 	}
 	nextID := dialog.ID()
 	if nextID == surfacedialog.CommandsID {
-		m.commandsDialogRoot = false
+		m.dialog.menuClosed()
 		m.closeControlplaneTransientDialogs()
 	} else if nextID != surfacedialog.ConfirmCommandID {
 		m.dialog.CloseDialog(surfacedialog.ConfirmCommandID)
@@ -256,7 +255,7 @@ func (m *appModel) showControlplaneDialog(dialog surfacedialog.Dialog) {
 
 func (m *appModel) reloadSnapshotCmd() tea.Cmd {
 	if !m.dialog.HasDialogs() {
-		m.returnToCommands = false
+		m.dialog.menu = menuNone
 	}
 	return m.reload()
 }

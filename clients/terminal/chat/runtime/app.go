@@ -100,6 +100,29 @@ type updateInstallMsg struct {
 	err     error
 }
 
+// composer is the editor and how it sends: the focus, whether a run is busy
+// and what a message sent while busy does.
+type composer struct {
+	surfaceinput.Model
+	focus    appFocus
+	busy     bool
+	busyMode core.BusyInputMode
+}
+
+// restartState follows a daemon restart this terminal asked for.
+type restartState struct {
+	pending     bool
+	requestedAt time.Time
+	// reopenTerminal restarts the terminal too once the daemon is back.
+	reopenTerminal bool
+}
+
+// updateState follows the update check and install.
+type updateState struct {
+	prompted   bool
+	installing bool
+}
+
 type appFocus int
 
 const (
@@ -114,7 +137,7 @@ type appModel struct {
 	com    *surfacecommon.Common
 	header *surfaceheader.Header
 	status *surfaceheader.Status
-	dialog *surfacedialog.Overlay
+	dialog dialogs
 	help   help.Model
 	styles surfacestyles.Styles
 
@@ -125,31 +148,22 @@ type appModel struct {
 	chatWidth int
 
 	loading bool
-	err     string
+	notice  notice
 	read    *readmodel.Model
 	chat    *surfacemodel.Chat
 	rows    keptRows
-	input   surfaceinput.Model
+	input   composer
 	stream  stream
 
-	transientMessages   []surfacemessage.Message
-	workingDir          string
-	version             string
-	suppressedApprovals map[string]struct{}
-	focus               appFocus
-	busy                bool
-	busyInputMode       core.BusyInputMode
-	now                 time.Time
-	spinnerFrame        int
-	restartPending      bool
-	restartRequestedAt  time.Time
-	restartTUIPending   bool
-	commandsDialogRoot  bool
-	returnToCommands    bool
-	updatePrompted      bool
-	updateInstalling    bool
-	controlplaneSeq     uint64
-	todoPanel           todoPanelChoice
+	// notes are the terminal's own lines in the transcript (busy mode, compaction).
+	notes        []surfacemessage.Message
+	workingDir   string
+	version      string
+	now          time.Time
+	spinnerFrame int
+	restart      restartState
+	updates      updateState
+	todoPanel    todoPanelChoice
 }
 
 func newApp(ctx context.Context, rt *Runtime) *appModel {
@@ -163,27 +177,23 @@ func newApp(ctx context.Context, rt *Runtime) *appModel {
 		}
 		version = runtimeVersion(rt.config.Version)
 	}
-	input := surfaceinput.New(com)
 	h := help.New()
 	h.Styles = styles.Help
 	return &appModel{
-		ctx:                 ctx,
-		rt:                  rt,
-		com:                 com,
-		header:              surfaceheader.New(&styles, version),
-		status:              surfaceheader.NewStatus(&styles),
-		dialog:              surfacedialog.NewOverlay(),
-		help:                h,
-		styles:              styles,
-		loading:             true,
-		input:               input,
-		workingDir:          strings.TrimSpace(workingDir),
-		version:             version,
-		suppressedApprovals: map[string]struct{}{},
-		rows:                keptRows{},
-		focus:               appFocusEditor,
-		busyInputMode:       core.BusyInputModeSteer,
-		now:                 time.Now(),
+		ctx:        ctx,
+		rt:         rt,
+		com:        com,
+		header:     surfaceheader.New(&styles, version),
+		status:     surfaceheader.NewStatus(&styles),
+		dialog:     dialogs{Overlay: surfacedialog.NewOverlay(), suppressed: map[string]struct{}{}},
+		help:       h,
+		styles:     styles,
+		loading:    true,
+		input:      composer{Model: surfaceinput.New(com), focus: appFocusEditor, busyMode: core.BusyInputModeSteer},
+		workingDir: strings.TrimSpace(workingDir),
+		version:    version,
+		rows:       keptRows{},
+		now:        time.Now(),
 	}
 }
 

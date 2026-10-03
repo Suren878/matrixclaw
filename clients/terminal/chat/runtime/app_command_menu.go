@@ -15,10 +15,9 @@ func (m *appModel) openCommandsDialog() {
 		Legend:  "enter run · esc back",
 		Entries: commandmenu.Entries(m.commandMenuState()),
 	})
-	m.returnToCommands = false
 	m.closeControlplaneDialogs()
 	m.dialog.OpenDialog(dialog)
-	m.commandsDialogRoot = true
+	m.dialog.menu = menuRoot
 }
 
 func (m *appModel) commandMenuState() commandmenu.State {

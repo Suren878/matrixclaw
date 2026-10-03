@@ -23,7 +23,7 @@ func restartAfterUpdate(t *testing.T, answer string) string {
 		if m.dialog.HasDialogs() {
 			t.Fatal("declined restart dialog still open")
 		}
-		m.handleRunControlplaneCommand(surfacedialog.ActionRunControlplaneCommand{Command: "/restart confirm"}, false)
+		m.handleRunControlplaneCommand(surfacedialog.ActionRunControlplaneCommand{Command: "/restart confirm"})
 	}
 	m.handleServerRestartPoll(serverRestartPollMsg{deliveries: []core.ClientDelivery{{
 		ID: "d1", Type: core.ClientDeliveryTypeDaemonRestart, Status: core.ClientDeliveryStatusReady, CreatedAt: time.Now().UTC(),

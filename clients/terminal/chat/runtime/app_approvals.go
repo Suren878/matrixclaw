@@ -13,7 +13,7 @@ import (
 )
 
 func (m *appModel) syncPermissionDialogCmd() tea.Cmd {
-	if m.read == nil || m.dialog == nil {
+	if m.read == nil {
 		return nil
 	}
 	if denying := m.denyingApproval(); denying != "" {
@@ -66,7 +66,7 @@ func (m *appModel) pendingApprovals() []surfacepermission.PermissionRequest {
 	approvals := m.state().Approvals()
 	pending := make([]surfacepermission.PermissionRequest, 0, len(approvals))
 	for _, approval := range approvals {
-		if _, suppressed := m.suppressedApprovals[approval.ID]; suppressed {
+		if _, suppressed := m.dialog.suppressed[approval.ID]; suppressed {
 			continue
 		}
 		pending = append(pending, approval)
@@ -81,16 +81,16 @@ func (m *appModel) pendingApprovals() []surfacepermission.PermissionRequest {
 }
 
 func (m *appModel) pruneSuppressedApprovals() {
-	if len(m.suppressedApprovals) == 0 || m.read == nil {
+	if len(m.dialog.suppressed) == 0 || m.read == nil {
 		return
 	}
 	active := map[string]struct{}{}
 	for _, approval := range m.state().Approvals() {
 		active[approval.ID] = struct{}{}
 	}
-	for id := range m.suppressedApprovals {
+	for id := range m.dialog.suppressed {
 		if _, ok := active[id]; !ok {
-			delete(m.suppressedApprovals, id)
+			delete(m.dialog.suppressed, id)
 		}
 	}
 }

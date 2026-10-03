@@ -13,7 +13,7 @@ func (m *appModel) ShortHelp() []key.Binding {
 	quit := km.Quit
 	helpKey := km.Help
 
-	if m.focus == appFocusEditor {
+	if m.input.focus == appFocusEditor {
 		tab.SetHelp("tab", "focus chat")
 		out := []key.Binding{
 			km.Commands,
@@ -49,7 +49,7 @@ func (m *appModel) FullHelp() [][]key.Binding {
 		helpKey.SetHelp("ctrl+g", "less")
 	}
 
-	if m.focus == appFocusEditor {
+	if m.input.focus == appFocusEditor {
 		return [][]key.Binding{
 			{
 				km.Commands,

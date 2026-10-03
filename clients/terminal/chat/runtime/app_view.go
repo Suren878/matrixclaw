@@ -35,7 +35,7 @@ func (m *appModel) drawContent(canvas uv.Screen, layout appLayout) {
 		uv.NewStyledString(layout.headerView).Draw(canvas, uv.Rect(0, 0, m.width, layout.headerHeight))
 	}
 	if layout.footerHeight > 0 {
-		footerRect := uv.Rect(0, m.height-layout.footerHeight, m.width, m.height)
+		footerRect := uv.Rect(0, m.height-layout.footerHeight, m.width, layout.footerHeight)
 		if strings.TrimSpace(layout.statusHelpView) != "" {
 			uv.NewStyledString(layout.statusHelpView).Draw(canvas, footerRect)
 		}
@@ -45,20 +45,21 @@ func (m *appModel) drawContent(canvas uv.Screen, layout appLayout) {
 	}
 
 	chatWidth := layout.chatWidth(m.width)
+	body := uv.Rect(0, layout.bodyTop, chatWidth, layout.bodyHeight())
 	if m.chat != nil && layout.bodyBottom > layout.bodyTop {
-		m.chat.Draw(canvas, uv.Rect(0, layout.bodyTop, chatWidth, layout.bodyBottom))
+		m.chat.Draw(canvas, body)
 	} else if m.loading {
-		uv.NewStyledString(m.styles.Base.Render("Loading terminal...")).Draw(canvas, uv.Rect(0, layout.bodyTop, chatWidth, layout.bodyBottom))
-	} else if m.err != "" {
-		uv.NewStyledString(m.styles.TagError.Render("Error: ")+m.styles.Base.Render(m.err)).Draw(canvas, uv.Rect(0, layout.bodyTop, chatWidth, layout.bodyBottom))
+		uv.NewStyledString(m.styles.Base.Render("Loading terminal...")).Draw(canvas, body)
+	} else if failure := m.failure(); failure != "" {
+		uv.NewStyledString(m.styles.TagError.Render("Error: ")+m.styles.Base.Render(failure)).Draw(canvas, body)
 	} else {
-		uv.NewStyledString(m.styles.Base.Render("No active session")).Draw(canvas, uv.Rect(0, layout.bodyTop, chatWidth, layout.bodyBottom))
+		uv.NewStyledString(m.styles.Base.Render("No active session")).Draw(canvas, body)
 	}
 	if layout.todoWidth > 0 && layout.bodyBottom > layout.bodyTop {
-		uv.NewStyledString(m.todoPanelView(layout.todoWidth, layout.bodyHeight())).Draw(canvas, uv.Rect(chatWidth, layout.bodyTop, m.width, layout.bodyBottom))
+		uv.NewStyledString(m.todoPanelView(layout.todoWidth, layout.bodyHeight())).Draw(canvas, uv.Rect(chatWidth, layout.bodyTop, layout.todoWidth, layout.bodyHeight()))
 	}
 	if layout.inputHeight > 0 {
-		uv.NewStyledString(layout.inputView).Draw(canvas, uv.Rect(0, layout.editorTop, m.width, layout.editorBottom))
+		uv.NewStyledString(layout.inputView).Draw(canvas, uv.Rect(0, layout.editorTop, m.width, layout.editorBottom-layout.editorTop))
 	}
 }
 

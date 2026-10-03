@@ -51,9 +51,9 @@ func (m *appModel) openServerRestartDialog(reopenTerminal bool) tea.Cmd {
 		Title: "Restart",
 		Text:  serverRestartProgressText,
 	}))
-	m.restartPending = true
-	m.restartTUIPending = reopenTerminal
-	m.restartRequestedAt = time.Now().UTC()
+	m.restart.pending = true
+	m.restart.reopenTerminal = reopenTerminal
+	m.restart.requestedAt = time.Now().UTC()
 	return tea.Batch(m.restartDaemonCmd(), m.serverRestartTickCmd())
 }
 
@@ -84,7 +84,7 @@ func (m *appModel) serverRestartDeliveryCmd() tea.Cmd {
 		}
 		deliveries, err := m.rt.ListClientDeliveries(m.ctx, core.ClientDeliveryFilter{
 			Type:         core.ClientDeliveryTypeDaemonRestart,
-			CreatedAfter: m.restartRequestedAt.Add(-2 * time.Second),
+			CreatedAfter: m.restart.requestedAt.Add(-2 * time.Second),
 			Limit:        20,
 		})
 		return serverRestartPollMsg{deliveries: deliveries, err: err}
@@ -102,7 +102,7 @@ func (m *appModel) acknowledgeRestartDeliveryCmd(deliveryID string) tea.Cmd {
 
 func (m *appModel) handleServerStatusRefresh(msg serverStatusRefreshMsg) {
 	if msg.err != nil {
-		m.err = msg.err.Error()
+		m.showError(msg.err.Error())
 		return
 	}
 	if dialog, ok := m.dialog.Dialog(surfacedialog.ServerStatusInfoID).(*surfacedialog.Info); ok {
@@ -123,41 +123,41 @@ func (m *appModel) handleServerStatusTick() tea.Cmd {
 
 func (m *appModel) handleServerRestartRequest(msg serverRestartRequestMsg) {
 	if msg.err != nil {
-		m.restartPending = false
+		m.restart.pending = false
 		m.setServerRestartDialogText("Daemon restart failed: " + msg.err.Error())
 	}
 }
 
 func (m *appModel) handleServerRestartTick() tea.Cmd {
-	if m.restartPending && m.dialog.ContainsDialog(surfacedialog.ServerRestartInfoID) {
+	if m.restart.pending && m.dialog.ContainsDialog(surfacedialog.ServerRestartInfoID) {
 		return m.serverRestartDeliveryCmd()
 	}
 	return nil
 }
 
 func (m *appModel) handleServerRestartPoll(msg serverRestartPollMsg) tea.Cmd {
-	if !m.restartPending {
+	if !m.restart.pending {
 		return nil
 	}
 	if msg.err != nil {
 		return m.serverRestartTickCmd()
 	}
-	delivery, ok := latestRestartDelivery(msg.deliveries, m.restartRequestedAt)
+	delivery, ok := latestRestartDelivery(msg.deliveries, m.restart.requestedAt)
 	if !ok {
 		return m.serverRestartTickCmd()
 	}
 	switch delivery.Status {
 	case core.ClientDeliveryStatusReady:
-		m.restartPending = false
+		m.restart.pending = false
 		m.setServerRestartDialogText(deliveryDisplayText(delivery, serverRestartCompleteText))
-		if m.restartTUIPending {
-			m.restartTUIPending = false
+		if m.restart.reopenTerminal {
+			m.restart.reopenTerminal = false
 			m.setServerRestartDialogText(deliveryDisplayText(delivery, serverRestartCompleteText) + "\n\nRestarting terminal...")
 			return tea.Sequence(m.acknowledgeRestartDeliveryCmd(delivery.ID), m.restartTerminalCmd())
 		}
 		return tea.Batch(m.acknowledgeRestartDeliveryCmd(delivery.ID), m.reload())
 	case core.ClientDeliveryStatusFailed:
-		m.restartPending = false
+		m.restart.pending = false
 		if strings.TrimSpace(delivery.Error) != "" {
 			m.setServerRestartDialogText("Daemon restart failed: " + delivery.Error)
 		} else {
@@ -169,7 +169,7 @@ func (m *appModel) handleServerRestartPoll(msg serverRestartPollMsg) tea.Cmd {
 
 func (m *appModel) handleServerRestartAck(msg serverRestartAckMsg) {
 	if msg.err != nil {
-		m.err = msg.err.Error()
+		m.showError(msg.err.Error())
 	}
 }
 
@@ -177,7 +177,7 @@ func (m *appModel) handleTerminalRestart(msg terminalRestartMsg) tea.Cmd {
 	if msg.err == nil {
 		return nil
 	}
-	m.err = "Terminal restart failed: " + msg.err.Error()
+	m.showError("Terminal restart failed: " + msg.err.Error())
 	m.setServerRestartDialogText(serverRestartCompleteText + "\n\nTerminal restart failed: " + msg.err.Error())
 	return m.reload()
 }

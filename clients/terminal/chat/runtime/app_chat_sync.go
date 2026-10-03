@@ -43,13 +43,13 @@ func (m *appModel) syncChat() {
 	}
 	if m.chat == nil {
 		m.chat = surfacemodel.NewChat(&surfacecommon.Common{Styles: &m.styles})
-		if m.focus == appFocusChat {
+		if m.input.focus == appFocusChat {
 			m.chat.Focus()
 		}
 	}
 	follow := m.chat.Follow() || m.chat.Len() == 0
 	selectedID := m.chat.SelectedMessageID()
-	m.chat.SetMessages(m.rows.reconcile(buildChatRows(&m.styles, m.read, m.transientMessages))...)
+	m.chat.SetMessages(m.rows.reconcile(buildChatRows(&m.styles, m.read, m.notes))...)
 	if follow {
 		m.chat.SelectLast()
 		m.chat.ScrollToBottom()

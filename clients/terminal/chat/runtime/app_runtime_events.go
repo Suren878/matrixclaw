@@ -9,7 +9,7 @@ import (
 func (m *appModel) handleSendMessageResult(msg sendMessageResultMsg) tea.Cmd {
 	if msg.err != nil {
 		m.setBusy(false)
-		m.err = msg.err.Error()
+		m.showError(msg.err.Error())
 		m.restoreEditorDraft(msg.content, msg.attachments)
 		return nil
 	}

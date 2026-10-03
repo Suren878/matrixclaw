@@ -37,7 +37,7 @@ func (m *appModel) currentSessionLLM() (string, string) {
 }
 
 func (m *appModel) setBusy(busy bool) {
-	m.busy = busy
+	m.input.busy = busy
 	m.input.SetWorking(busy)
 }
 

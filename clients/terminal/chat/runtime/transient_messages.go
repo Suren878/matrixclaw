@@ -11,25 +11,25 @@ func (m *appModel) upsertTransientMessage(message surfacemessage.Message) {
 	if id == "" {
 		return
 	}
-	for i := range m.transientMessages {
-		if m.transientMessages[i].ID == id {
-			m.transientMessages[i] = message
+	for i := range m.notes {
+		if m.notes[i].ID == id {
+			m.notes[i] = message
 			return
 		}
 	}
-	m.transientMessages = append(m.transientMessages, message)
+	m.notes = append(m.notes, message)
 }
 
 func (m *appModel) removeTransientMessage(id string) {
 	id = strings.TrimSpace(id)
-	if id == "" || len(m.transientMessages) == 0 {
+	if id == "" || len(m.notes) == 0 {
 		return
 	}
-	next := m.transientMessages[:0]
-	for _, message := range m.transientMessages {
+	next := m.notes[:0]
+	for _, message := range m.notes {
 		if message.ID != id {
 			next = append(next, message)
 		}
 	}
-	m.transientMessages = next
+	m.notes = next
 }

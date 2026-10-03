@@ -19,7 +19,7 @@ func isContextCompactCommand(command string) bool {
 }
 
 func (m *appModel) startContextCompactProgress() {
-	m.err = ""
+	m.clearNotice()
 	m.upsertTransientMessage(newCompactTransientMessage(compactProgressText))
 	m.syncChat()
 }
@@ -29,7 +29,7 @@ func (m *appModel) completeContextCompactProgress(text string) {
 	if text == "" {
 		text = compactCompleteText
 	}
-	m.err = ""
+	m.clearNotice()
 	m.upsertTransientMessage(newCompactTransientMessage(text))
 	m.syncChat()
 }
@@ -41,7 +41,7 @@ func (m *appModel) failContextCompactProgress(err error) {
 		details = strings.TrimSpace(err.Error())
 		text = compactFailedPrefix + ": " + details
 	}
-	m.err = ""
+	m.clearNotice()
 	message := newCompactTransientMessage(text)
 	message.AddFinish(surfacemessage.FinishReasonError, compactFailedPrefix, details)
 	m.upsertTransientMessage(message)

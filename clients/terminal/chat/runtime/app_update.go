@@ -39,10 +39,10 @@ func (m *appModel) update(msg tea.Msg) tea.Cmd {
 	case surfaceeditor.HeightChangedMsg:
 		return m.handleEditorHeightChanged()
 	case surfaceeditor.ExternalEditorErrorMsg:
-		m.err = msg.Err.Error()
+		m.showError(msg.Err.Error())
 		return nil
 	case surfaceeditor.ExternalEditorWarningMsg:
-		m.err = msg.Message
+		m.showWarning(msg.Message)
 		return nil
 	case surfacedialog.ActionPermissionResponse:
 		return m.handlePermissionResponse(msg)
@@ -61,7 +61,7 @@ func (m *appModel) update(msg tea.Msg) tea.Cmd {
 		m.openCommandsDialog()
 		return nil
 	case surfacedialog.ActionRunControlplaneCommand:
-		return m.handleRunControlplaneCommand(msg, m.commandsDialogRoot && m.dialog.ContainsDialog(surfacedialog.CommandsID))
+		return m.handleRunControlplaneCommand(msg)
 	case surfacedialog.ActionQuit:
 		return tea.Quit
 	case surfacedialog.ActionCmd:
@@ -70,13 +70,13 @@ func (m *appModel) update(msg tea.Msg) tea.Cmd {
 		m.invalidateControlplaneResults()
 		top := m.dialog.DialogLast()
 		if top != nil && top.ID() == surfacedialog.CommandsID {
-			m.commandsDialogRoot = false
+			m.dialog.menuClosed()
 		}
 		denying := m.denyingApproval()
 		m.dialog.CloseFrontDialog()
 		if denying != "" {
 			// The reason prompt was closed without denying: ask again.
-			delete(m.suppressedApprovals, denying)
+			delete(m.dialog.suppressed, denying)
 			return m.syncPermissionDialogCmd()
 		}
 		return nil
@@ -99,7 +99,7 @@ func (m *appModel) update(msg tea.Msg) tea.Cmd {
 		if m.dialog.HasDialogs() {
 			return m.handleDialogInput(msg)
 		}
-		if m.focus == appFocusEditor {
+		if m.input.focus == appFocusEditor {
 			return m.input.Update(msg)
 		}
 		return nil
@@ -125,7 +125,7 @@ func (m *appModel) update(msg tea.Msg) tea.Cmd {
 		return tea.Batch(cmds...)
 	case workingTickMsg:
 		m.now = msg.at
-		if m.busy {
+		if m.input.busy {
 			m.spinnerFrame = (m.spinnerFrame + 1) % len(workingSpinnerFrames)
 		} else {
 			m.spinnerFrame = 0
@@ -172,7 +172,7 @@ func (m *appModel) update(msg tea.Msg) tea.Cmd {
 	if m.dialog.HasDialogs() {
 		return m.handleDialogInput(msg)
 	}
-	if m.focus == appFocusEditor {
+	if m.input.focus == appFocusEditor {
 		return m.input.Update(msg)
 	}
 	return nil
