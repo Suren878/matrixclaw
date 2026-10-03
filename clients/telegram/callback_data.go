@@ -96,7 +96,7 @@ func (w *Worker) compactCallbackData(data string) string {
 	ref := callbackRefData(data)
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.callbacks[ref] = data
+	w.callbacks.put(ref, data)
 	return ref
 }
 
@@ -106,7 +106,7 @@ func (w *Worker) resolveCallbackData(data string) string {
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	resolved := w.callbacks[data]
+	resolved, _ := w.callbacks.get(data)
 	if resolved == "" {
 		return data
 	}

@@ -34,11 +34,10 @@ type Worker struct {
 	deliveryReceipts map[string]time.Time // confirmed sends awaiting daemon acknowledgement
 	states           map[string]*runDeliveryState
 	prompts          map[string]controlplane.PromptData
-	callbacks        map[string]string
-	inline           map[string]string
-	inlineRuns       map[string]struct{}
-	messages         map[string]struct{}
-	messageLog       []string
+	callbacks        *recentMap[string]   // long callback data by short ref
+	inline           *recentMap[string]   // inline query text by button token
+	inlineRuns       *recentMap[struct{}] // inline messages that already started a run
+	messages         *recentMap[struct{}] // handled updates, for dedupe
 	locations        map[string]telegramLocationContext
 	pendingLocations map[string]pendingLocationRequest
 	chatActions      map[string]time.Time

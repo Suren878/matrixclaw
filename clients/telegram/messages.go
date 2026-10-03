@@ -88,19 +88,7 @@ func (w *Worker) markMessageSeen(message *Message) bool {
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if _, ok := w.messages[key]; ok {
-		return true
-	}
-	w.messages[key] = struct{}{}
-	w.messageLog = append(w.messageLog, key)
-	const maxSeenTelegramMessages = 2048
-	if len(w.messageLog) > maxSeenTelegramMessages {
-		oldest := w.messageLog[0]
-		copy(w.messageLog, w.messageLog[1:])
-		w.messageLog = w.messageLog[:len(w.messageLog)-1]
-		delete(w.messages, oldest)
-	}
-	return false
+	return w.messages.put(key, struct{}{})
 }
 
 func telegramMessageDedupKey(message *Message) string {

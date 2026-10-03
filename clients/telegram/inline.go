@@ -219,8 +219,8 @@ func (w *Worker) rememberInlineRequest(queryID string, text string) string {
 	text = strings.TrimSpace(text)
 	token := inlineRequestToken(queryID, text)
 	w.mu.Lock()
-	w.inline[token] = text
-	snapshot := copyInlineRequests(w.inline)
+	w.inline.put(token, text)
+	snapshot := w.inline.snapshot()
 	w.mu.Unlock()
 	if err := writeInlineRequestCache(w.config.InlineCachePath, snapshot); err != nil {
 		log.Printf("telegram: persist inline request cache failed: %v", err)
@@ -234,19 +234,19 @@ func (w *Worker) inlineRequestText(token string) string {
 		return ""
 	}
 	w.mu.Lock()
-	if text := strings.TrimSpace(w.inline[token]); text != "" {
-		w.mu.Unlock()
+	text, ok := w.inline.get(token)
+	w.mu.Unlock()
+	if ok {
 		return text
 	}
-	w.mu.Unlock()
 
 	cached := readInlineRequestCache(w.config.InlineCachePath)
-	text := strings.TrimSpace(cached[token])
+	text = strings.TrimSpace(cached[token])
 	if text == "" {
 		return ""
 	}
 	w.mu.Lock()
-	w.inline[token] = text
+	w.inline.put(token, text)
 	w.mu.Unlock()
 	return text
 }
@@ -258,7 +258,7 @@ func (w *Worker) inlineMessageStarted(inlineMessageID string) bool {
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	_, ok := w.inlineRuns[inlineMessageID]
+	_, ok := w.inlineRuns.get(inlineMessageID)
 	return ok
 }
 
@@ -269,7 +269,7 @@ func (w *Worker) markInlineMessageStarted(inlineMessageID string) {
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.inlineRuns[inlineMessageID] = struct{}{}
+	w.inlineRuns.put(inlineMessageID, struct{}{})
 }
 
 func inlineRequestToken(queryID string, text string) string {

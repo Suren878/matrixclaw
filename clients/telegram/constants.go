@@ -11,6 +11,9 @@ const (
 	daemonHTTPTimeout      = 15 * time.Second
 	telegramHTTPTimeout    = 45 * time.Second
 	defaultButtonTextLimit = 64
+	recentCallbackLimit    = 1024
+	recentInlineLimit      = 512
+	recentMessageLimit     = 2048
 	ClientName             = "telegram"
 	defaultMessageLimit    = 4000
 	maxCallbackDataBytes   = 64
