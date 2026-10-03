@@ -66,6 +66,9 @@ func (w *Worker) handleTextMessage(ctx context.Context, message *Message) error 
 	if isDaemonRestartCommand(text) {
 		return w.dispatchRestartCommandAndEdit(target, 0)
 	}
+	if isCancelRunCommand(text) && target.isChat() {
+		return w.cancelSessionRun(ctx, target)
+	}
 	if result, err := w.dispatcher(target).Handle(ctx, text); err != nil {
 		return w.sendText(ctx, target, fmt.Sprintf("Command failed: %v", err))
 	} else if result.Handled {

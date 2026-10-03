@@ -51,7 +51,11 @@ func (w *Worker) renderRunStatusMessage(ctx context.Context, target chatTarget, 
 	if text == status.text {
 		return nil
 	}
-	messageID, err := w.writeRunStatus(silentTelegramDelivery(ctx), target, status.messageID, text)
+	var markup *InlineKeyboardMarkup
+	if !final {
+		markup = cancelRunMarkup(run.ID)
+	}
+	messageID, err := w.writeRunStatus(silentTelegramDelivery(ctx), target, status.messageID, text, markup)
 	if err != nil && (IsRetryable(err) || ctx.Err() != nil) {
 		return err
 	}
@@ -64,10 +68,10 @@ func (w *Worker) renderRunStatusMessage(ctx context.Context, target chatTarget, 
 
 // writeRunStatus edits the status message, or sends a new one when there is none
 // or it was deleted or can no longer be edited.
-func (w *Worker) writeRunStatus(ctx context.Context, target chatTarget, messageID int64, text string) (int64, error) {
+func (w *Worker) writeRunStatus(ctx context.Context, target chatTarget, messageID int64, text string, markup *InlineKeyboardMarkup) (int64, error) {
 	formatted := formatTelegramText(text)
 	if messageID != 0 {
-		err := w.editFormattedMessage(ctx, EditMessageTextRequest{ChatID: target.chatID, MessageID: messageID}, formatted)
+		err := w.editFormattedMessage(ctx, EditMessageTextRequest{ChatID: target.chatID, MessageID: messageID, ReplyMarkup: markup}, formatted)
 		if err == nil || isTelegramMessageNotModified(err) {
 			return messageID, nil
 		}
@@ -75,7 +79,7 @@ func (w *Worker) writeRunStatus(ctx context.Context, target chatTarget, messageI
 			return messageID, err
 		}
 	}
-	sent, err := w.sendFormattedTelegramMessage(ctx, SendMessageRequest{ChatID: target.chatID, SkipReplyKeyboardRemove: true}, formatted)
+	sent, err := w.sendFormattedTelegramMessage(ctx, SendMessageRequest{ChatID: target.chatID, SkipReplyKeyboardRemove: true, ReplyMarkup: markup}, formatted)
 	if err != nil {
 		return messageID, err
 	}

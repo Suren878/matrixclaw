@@ -27,6 +27,7 @@ type runDaemon struct {
 	approvals []core.Approval
 	served    int
 	acked     bool
+	canceled  int
 }
 
 func newRunDaemon() *runDaemon {
@@ -82,6 +83,15 @@ func (d *runDaemon) serve(w http.ResponseWriter, r *http.Request) {
 			deliveries = append(deliveries, core.ClientDelivery{ID: "delivery-1", Type: core.ClientDeliveryTypeRun, RunID: d.run.ID, SessionID: d.run.SessionID, Address: encodeDeliveryAddress(DeliveryAddress{ChatID: 7})})
 		}
 		write(core.ClientDeliveriesResponse{Deliveries: deliveries})
+	case r.URL.Path == "/v1/runs/"+d.run.ID+"/cancel":
+		d.canceled++
+		if !runFinished(d.run.Status) {
+			d.run.Status = core.RunStatusCanceled
+		}
+		write(core.RunResponse{Run: d.run})
+	case r.URL.Path == "/v1/snapshot":
+		run := d.run
+		write(core.ClientSnapshotResponse{Snapshot: core.ClientSnapshot{SessionID: run.SessionID, Run: &run}})
 	case r.URL.Path == "/v1/runs/"+d.run.ID+"/progress":
 		write(core.RunProgressResponse{Progress: d.progress})
 	case r.URL.Path == "/v1/runs/"+d.run.ID:
@@ -246,5 +256,55 @@ func TestARestartedWorkerContinuesTheRunsMessages(t *testing.T) {
 	texts := api.messageTexts()
 	if len(texts) != 3 || !strings.HasPrefix(texts[0], "✅ Done") || texts[1] != "Let me look at the logs first." || texts[2] != "Done." {
 		t.Fatalf("messages = %q, want the status edited to done, the segment once and the answer", texts)
+	}
+}
+
+func TestTheRunStatusMessageCancelsTheRun(t *testing.T) {
+	now := time.Unix(100, 0)
+	d := newRunDaemon()
+	api := &runRenderBotAPI{}
+	w := newRunDaemonWorker(t, d, api, &now)
+	d.add(transcript.Message{ID: "user", Role: transcript.MessageRoleUser, Content: "Deploy"}, toolCallMessage("call-1", "bash", `{"command":"sleep 600"}`, false))
+	if err := w.deliverPending(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	markup, _ := api.messages[0].ReplyMarkup.(*InlineKeyboardMarkup)
+	if markup == nil || markup.InlineKeyboard[0][0].CallbackData != cbCancelRun+"run-1" {
+		t.Fatalf("status message markup = %#v", api.messages[0].ReplyMarkup)
+	}
+
+	now = now.Add(5 * time.Second)
+	tap := &CallbackQuery{ID: "cq", From: &User{ID: 7}, Message: &Message{MessageID: 1, Chat: Chat{ID: 7, Type: "private"}}, Data: markup.InlineKeyboard[0][0].CallbackData}
+	if err := w.handleCallbackQuery(context.Background(), tap); err != nil {
+		t.Fatal(err)
+	}
+
+	if d.canceled != 1 || !d.acked {
+		t.Fatalf("canceled = %d, delivery acked = %v", d.canceled, d.acked)
+	}
+	last := api.edits[len(api.edits)-1]
+	if last.MessageID != 1 || !strings.HasPrefix(last.Text, "⛔ Canceled") || last.ReplyMarkup != nil {
+		t.Fatalf("final status edit = %+v", last)
+	}
+}
+
+func TestCancelCommandCancelsTheSessionsRun(t *testing.T) {
+	now := time.Unix(100, 0)
+	d := newRunDaemon()
+	d.set(func(d *runDaemon) { d.acked = true }) // the run is delivered elsewhere
+	api := &runRenderBotAPI{}
+	w := newRunDaemonWorker(t, d, api, &now)
+	cancel := func() {
+		t.Helper()
+		if err := w.handleTextMessage(context.Background(), &Message{MessageID: int64(len(api.messages) + 100), Chat: Chat{ID: 7, Type: "private"}, From: &User{ID: 7}, Text: "/cancel"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cancel()
+	cancel()
+
+	if texts := api.messageTexts(); d.canceled != 1 || len(texts) != 2 || texts[0] != "Run canceled." || texts[1] != "Nothing is running." {
+		t.Fatalf("canceled = %d, replies = %q", d.canceled, texts)
 	}
 }

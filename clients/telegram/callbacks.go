@@ -57,6 +57,8 @@ func (w *Worker) handleCallbackQuery(ctx context.Context, cq *CallbackQuery) err
 		return w.resolveApprovalCallback(telegramCtx, target, cq, strings.TrimPrefix(cq.Data, cbApprovalGlobal), core.ApprovalResolveRequest{Approved: true, Always: permission.ScopeGlobal})
 	case strings.HasPrefix(cq.Data, cbApprovalDeny):
 		return w.resolveApprovalCallback(telegramCtx, target, cq, strings.TrimPrefix(cq.Data, cbApprovalDeny), core.ApprovalResolveRequest{})
+	case strings.HasPrefix(cq.Data, cbCancelRun):
+		return w.cancelRun(telegramCtx, target, strings.TrimPrefix(cq.Data, cbCancelRun))
 	case strings.HasPrefix(cq.Data, cbApprovalReason):
 		return w.askDenialReason(telegramCtx, target, cq, strings.TrimPrefix(cq.Data, cbApprovalReason))
 	default:

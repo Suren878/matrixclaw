@@ -72,7 +72,8 @@ func (w *Worker) handlePendingPrompt(ctx context.Context, target chatTarget, tex
 	if !ok {
 		return false, nil
 	}
-	if w.nowUTC().Sub(prompt.askedAt) > promptLifetime {
+	// A late /cancel still closes the prompt rather than the running task.
+	if w.nowUTC().Sub(prompt.askedAt) > promptLifetime && !isPromptCloseCommand(text) {
 		if err := w.restoreApproval(ctx, target, prompt, false); err != nil {
 			log.Printf("telegram: restore approval %s failed: %v", prompt.denial.id, err)
 		}
