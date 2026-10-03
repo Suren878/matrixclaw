@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 
@@ -163,6 +164,7 @@ func Run(ctx context.Context) error {
 	server.SetSkillsService(skillsModule.Service())
 	server.SetSetupService(bootstrap.SetupService)
 	server.SetRealtimeVoiceService(newRealtimeVoiceManager(bootstrap.SetupService, app))
+	server.SetMCPChanged(mcpConfigChanged(bootstrap))
 	supervisor := newSupervisor(ctx, server, app, osmGeo)
 	supervisor.SetModuleContext(moduleRegistry.Context)
 	supervisor.SetExternalAgents(sqliteStore, externalRuntimes, bootstrap.ExternalAgents.ExternalAgents)
@@ -249,6 +251,16 @@ func mcpConfigWithBrowser(modules setup.ModulesConfig) setup.MCPConfig {
 		return cfg
 	}
 	return cfg
+}
+
+// mcpConfigChanged reports whether the saved MCP and browser settings differ
+// from those the MCP module was built with at startup.
+func mcpConfigChanged(bootstrap bootstrapConfig) func() bool {
+	started := mcpConfigWithBrowser(bootstrap.ExternalAgents)
+	return func() bool {
+		cfg, err := bootstrap.SetupService.Load()
+		return err == nil && !reflect.DeepEqual(mcpConfigWithBrowser(cfg.Modules), started)
+	}
 }
 
 func appendOrReplaceMCPServer(servers []setup.MCPServerConfig, server setup.MCPServerConfig) []setup.MCPServerConfig {

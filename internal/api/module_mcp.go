@@ -29,7 +29,7 @@ func (s *Server) getMCPConfig(w http.ResponseWriter, _ *http.Request) {
 		writeErrorMessage(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeMCPConfigResponse(w, cfg)
+	s.writeMCPConfigResponse(w, cfg)
 }
 
 func (s *Server) updateMCPConfig(w http.ResponseWriter, r *http.Request) {
@@ -42,10 +42,7 @@ func (s *Server) updateMCPConfig(w http.ResponseWriter, r *http.Request) {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if !s.reloadAfterMCPConfigChange(w, r) {
-		return
-	}
-	writeMCPConfigResponse(w, cfg)
+	s.writeMCPConfigResponse(w, cfg)
 }
 
 func (s *Server) handleMCPByID(w http.ResponseWriter, r *http.Request) {
@@ -95,10 +92,7 @@ func (s *Server) createMCPServer(w http.ResponseWriter, r *http.Request) {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if !s.reloadAfterMCPConfigChange(w, r) {
-		return
-	}
-	writeMCPConfigResponse(w, cfg)
+	s.writeMCPConfigResponse(w, cfg)
 }
 
 func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request, serverID string) {
@@ -111,10 +105,7 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request, serverI
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if !s.reloadAfterMCPConfigChange(w, r) {
-		return
-	}
-	writeMCPConfigResponse(w, cfg)
+	s.writeMCPConfigResponse(w, cfg)
 }
 
 func (s *Server) deleteMCPServer(w http.ResponseWriter, r *http.Request, serverID string) {
@@ -123,27 +114,20 @@ func (s *Server) deleteMCPServer(w http.ResponseWriter, r *http.Request, serverI
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if !s.reloadAfterMCPConfigChange(w, r) {
-		return
-	}
-	writeMCPConfigResponse(w, cfg)
+	s.writeMCPConfigResponse(w, cfg)
 }
 
-func (s *Server) reloadAfterMCPConfigChange(w http.ResponseWriter, r *http.Request) bool {
-	if s.adminReload == nil {
-		return true
-	}
-	if err := s.adminReload(r.Context()); err != nil {
-		writeErrorMessage(w, http.StatusInternalServerError, err.Error())
-		return false
-	}
-	return true
-}
-
-func writeMCPConfigResponse(w http.ResponseWriter, cfg setup.MCPConfig) {
+func (s *Server) writeMCPConfigResponse(w http.ResponseWriter, cfg setup.MCPConfig) {
 	writeJSON(w, http.StatusOK, setup.MCPConfigResponse{
-		Config:  cfg,
-		Enabled: cfg.Enabled,
-		Status:  setup.MCPConfigStatus(cfg),
+		Config:          cfg,
+		Enabled:         cfg.Enabled,
+		Status:          setup.MCPConfigStatus(cfg),
+		RestartRequired: s.mcpRestartRequired(),
 	})
+}
+
+// mcpRestartRequired reports whether the saved MCP and browser settings differ
+// from those the daemon started with; they apply only on restart.
+func (s *Server) mcpRestartRequired() bool {
+	return s.mcpChanged != nil && s.mcpChanged()
 }

@@ -29,7 +29,12 @@ func (s *Server) getBrowserModule(w http.ResponseWriter, _ *http.Request) {
 		writeErrorMessage(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.writeBrowserModuleResponse(w, module)
+}
+
+func (s *Server) writeBrowserModuleResponse(w http.ResponseWriter, module setup.BrowserModuleDescriptor) {
 	module = localruntime.New("").DecorateBrowserModule(module)
+	module.RestartRequired = s.mcpRestartRequired()
 	writeJSON(w, http.StatusOK, setup.BrowserModuleResponse{Module: module})
 }
 
@@ -43,14 +48,7 @@ func (s *Server) updateBrowserModule(w http.ResponseWriter, r *http.Request) {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if s.adminReload != nil {
-		if err := s.adminReload(r.Context()); err != nil {
-			writeErrorMessage(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-	}
-	module = localruntime.New("").DecorateBrowserModule(module)
-	writeJSON(w, http.StatusOK, setup.BrowserModuleResponse{Module: module})
+	s.writeBrowserModuleResponse(w, module)
 }
 
 func (s *Server) handleBrowserProvider(w http.ResponseWriter, r *http.Request) {
@@ -95,19 +93,5 @@ func (s *Server) handleBrowserProvider(w http.ResponseWriter, r *http.Request) {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if browserProviderActionReloadsModule(module, provider, request.Action) && s.adminReload != nil {
-		if err := s.adminReload(r.Context()); err != nil {
-			writeErrorMessage(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-	}
 	writeJSON(w, http.StatusOK, setup.BrowserProviderActionResponse{Provider: updated})
-}
-
-func browserProviderActionReloadsModule(module setup.BrowserModuleDescriptor, provider setup.BrowserProviderOption, action string) bool {
-	if !module.Enabled || module.ProviderID != provider.ID {
-		return false
-	}
-	action = strings.ToLower(strings.TrimSpace(action))
-	return action == provider.ActionIDs.InstallRuntime || action == provider.ActionIDs.DeleteRuntime
 }

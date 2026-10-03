@@ -138,3 +138,21 @@ func TestTelegramAdapterRestartsWorkerOnlyWhenItsConfigChanges(t *testing.T) {
 		t.Fatalf("changed config cancelled %d polls, want 1", got)
 	}
 }
+
+func TestMCPConfigChangedAfterSavedServerEdit(t *testing.T) {
+	service := testSetupService(t, setup.TelephonyConfig{})
+	cfg, err := service.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := mcpConfigChanged(bootstrapConfig{SetupService: service, ExternalAgents: cfg.Modules})
+	if changed() {
+		t.Fatal("unchanged MCP settings reported as changed")
+	}
+	if _, err := service.CreateMCPServer(setup.MCPServerConfig{ID: "docs", Name: "docs", Transport: "stdio", Command: "docs"}); err != nil {
+		t.Fatal(err)
+	}
+	if !changed() {
+		t.Fatal("added MCP server not reported as needing a restart")
+	}
+}

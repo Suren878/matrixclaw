@@ -62,6 +62,7 @@ func (d *Dispatcher) mcpPicker(ctx context.Context) (Result, error) {
 	}
 	servers := externalMCPServers(resp.Config.Servers)
 	picker := NewPickerData(PickerMCP, "External MCP Servers").
+		Meta(restartRequiredMeta(resp.RestartRequired)).
 		Back(modulesCommand()).
 		Row("enabled", "External MCP", formatEnabled(resp.Config.Enabled), mcpCommand("enabled")).
 		Action("add", "Add Server", "", mcpCommand("add"))
@@ -448,4 +449,12 @@ func parseEnabledChoice(value string) (bool, bool) {
 	default:
 		return false, false
 	}
+}
+
+// restartRequiredMeta tells that saved changes apply after a daemon restart.
+func restartRequiredMeta(required bool) string {
+	if !required {
+		return ""
+	}
+	return "Restart the daemon (/restart) to apply the changes."
 }

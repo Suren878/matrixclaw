@@ -130,6 +130,8 @@ type MCPConfigResponse struct {
 	Config  MCPConfig `json:"config"`
 	Enabled bool      `json:"enabled"`
 	Status  string    `json:"status"`
+	// RestartRequired is set while the running daemon uses older MCP settings.
+	RestartRequired bool `json:"restart_required,omitempty"`
 }
 
 type MCPConfigUpdate struct {
@@ -215,6 +217,8 @@ type BrowserModuleDescriptor struct {
 	Status       string                  `json:"status"`
 	Config       BrowserProviderConfig   `json:"config,omitempty"`
 	Providers    []BrowserProviderOption `json:"providers,omitempty"`
+	// RestartRequired is set while the running daemon uses older browser settings.
+	RestartRequired bool `json:"restart_required,omitempty"`
 }
 
 type BrowserModuleResponse struct {

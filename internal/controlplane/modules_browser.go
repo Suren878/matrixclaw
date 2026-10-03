@@ -41,6 +41,7 @@ func (d *Dispatcher) browserModulePicker(ctx context.Context) (Result, error) {
 		provider, _ := selectedBrowserProvider(module)
 		picker := NewPickerData(PickerBrowser, "Browser").
 			Context(module.ID).
+			Meta(restartRequiredMeta(module.RestartRequired)).
 			Back(modulesCommand())
 		providerItem := PickerItem{
 			ID:       "provider",
