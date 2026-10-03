@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -97,7 +98,7 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 	for {
 		endpoint := strings.TrimRight(baseURL, "/") + "/models"
 		if pageToken != "" {
-			endpoint += "?pageToken=" + pageToken
+			endpoint += "?" + url.Values{"pageToken": {pageToken}}.Encode()
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 		if err != nil {

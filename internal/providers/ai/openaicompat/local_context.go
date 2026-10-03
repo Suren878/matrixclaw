@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -44,7 +45,11 @@ func shouldProbeLocalContext(cfg Config, baseURL string) bool {
 		return false
 	}
 	host := strings.ToLower(u.Hostname())
-	return host == "localhost" || host == "::1"
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func registerOllamaContextWindow(ctx context.Context, cfg Config, client *http.Client, serverURL string, setHeaders func(*http.Request), model string) {
