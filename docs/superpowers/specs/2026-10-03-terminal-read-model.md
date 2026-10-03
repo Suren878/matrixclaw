@@ -224,3 +224,34 @@ lines removed, ~900 added.
 - *User-visible wording*: Telegram progress lines take the shared verbs (e.g.
   "Fetching web page" instead of "Fetching page"); the header context number
   now moves at step ends rather than per streamed token.
+
+## As built
+
+- Steps landed in the planned order, plus `c5f8748` (the compaction marker's
+  number formatter moved to `surface/common`, the last `agent/context` import).
+- `readmodel.Model` keeps all messages as first seen and rebuilds the shown
+  slice only after a message change (a new slice, so rows may hold pointers into
+  the old one). Message revisions come from one process-wide counter, so a row
+  built from an older model never matches a newer one after a reload.
+- Chat rows carry a signature (message and result revisions, tool state,
+  approval, subagent); `keptRows.reconcile` reuses rows with equal signatures
+  and carries a rebuilt row's expansion over. `Chat` is no longer recreated per
+  event; only a session switch starts a new one.
+- `context.updated` is emitted by the engine after each main generation
+  (`agent.EventContextMeasured`: provider prompt + output tokens, else its
+  estimate) and deduplicated per session in `coreSink`. No store reads.
+- `daemonclient.SubscribeEvents` lost its `afterID` argument (the API still
+  accepts `after`); the terminal never replays.
+- Subagent rows: `surfacemessage.Subagent` is the presentation type,
+  `readmodel.subagentFrom` the only reader of `core.SubagentTask`.
+- `toolview.FileChangeOf` decodes write/edit/multiedit input and metadata by
+  JSON field names, not `internal/tools` types.
+- Theme tokens keep the previous hex values; the goldens stayed byte-identical
+  through the style change.
+- Found while adding goldens: the screen was drawn with rectangles measured to
+  the screen bottom (`uv.Rect` takes width and height), so the editor blanked
+  the help and status line. Fixed in `4eee851`; the goldens now show the footer.
+- `appModel.err` became a typed `notice`; a command's result text after a
+  reload shows as information instead of an error.
+- Not done here: the `firstNonEmpty` helpers in `ui/components` and
+  `ui/surface/dialog` (left to Phase C #8), setup styles (C4's area).

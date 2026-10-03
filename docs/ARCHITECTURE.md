@@ -45,6 +45,18 @@ The daemon owns:
 Clients own presentation state only. Exiting the TUI does not end a session, and
 restarting Telegram does not lose runs or approvals.
 
+## Clients and Live Events
+
+Clients follow a session through `GET /v1/events` (server-sent events: messages,
+runs, tool states, approvals, todo lists, subagents, pending inputs, and
+`context.updated`, the context size the engine measured after each step).
+`ClientSnapshot.event_id` names the newest event a snapshot already reflects.
+The terminal opens the event stream first and loads the snapshot second,
+dropping events at or below `event_id`; after that it changes only through
+events (`clients/terminal/chat/readmodel`), reloading on reconnect and session
+switches. How a tool call is shown (title, progress verb, main parameter,
+file change) comes from `internal/toolview` for the terminal and Telegram alike.
+
 ## Runtime Rules
 
 - All assistant work becomes a persisted run.
@@ -120,7 +132,8 @@ for the details and the as-built notes of each stage.
 - `cmd/matrixclawd`: daemon composition root.
 - `cmd/matrixclaw-telephony-gateway`: optional Asterisk/SIP to realtime voice
   bridge.
-- `clients/terminal`: setup UI, chat TUI, and terminal widgets.
+- `clients/terminal`: setup UI, chat TUI, and terminal widgets; colours are
+  tokens in `clients/terminal/theme`.
 - `clients/telegram`: Telegram Bot API client, command rendering, deliveries,
   uploads, inline mode, guest mode, and voice/file routing.
 - `clients/ios`: Swift package for the daemon HTTP/SSE API.
@@ -133,6 +146,7 @@ for the details and the as-built notes of each stage.
 - `internal/shelltask`: background shell processes and their output files.
 - `internal/transcript`: message types.
 - `internal/controlplane`: shared command semantics for terminal and Telegram.
+- `internal/toolview`: shared presentation of tool calls for the clients.
 - `internal/store`: SQLite persistence.
 - `internal/providers`: provider adapters, provider catalog, model catalogs, and
   provider-specific wire quirks.
