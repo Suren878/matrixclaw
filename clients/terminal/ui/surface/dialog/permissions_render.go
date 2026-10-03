@@ -92,11 +92,14 @@ func (p *Permissions) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 	if content != "" {
 		parts = append(parts, "", content)
 	}
-	parts = append(parts, "", buttons, "", helpView)
+	parts = append(parts, "")
+	buttonsTop := dialogStyle.GetBorderTopSize() + dialogStyle.GetPaddingTop() + lipgloss.Height(lipgloss.JoinVertical(lipgloss.Left, parts...))
+	parts = append(parts, buttons, "", helpView)
 
 	innerContent := lipgloss.JoinVertical(lipgloss.Left, parts...)
 	view := dialogStyle.Render(innerContent)
 	p.lastView = view
+	p.buttonRows = [2]int{buttonsTop, buttonsTop + buttonsHeight}
 	p.lastViewRect = surfacecommon.CenterRect(area, lipgloss.Width(view), lipgloss.Height(view))
 	DrawCenterCursor(scr, area, view, nil)
 	return nil

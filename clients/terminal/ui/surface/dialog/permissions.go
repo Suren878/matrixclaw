@@ -61,6 +61,8 @@ type Permissions struct {
 
 	lastView     string
 	lastViewRect image.Rectangle
+	// buttonRows are the first and past-the-last lines of lastView with buttons.
+	buttonRows [2]int
 
 	diff diffPane
 

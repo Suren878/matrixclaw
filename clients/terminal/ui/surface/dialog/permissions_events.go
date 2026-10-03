@@ -118,8 +118,8 @@ func (p *Permissions) handleMouseClick(msg tea.MouseMsg) (PermissionAction, bool
 		buttons := p.permissionOptions()
 
 		hits := make([]buttonHit, 0, len(buttons))
-		for i, line := range lines {
-			plain := ansi.Strip(line)
+		for i := p.buttonRows[0]; i < min(p.buttonRows[1], len(lines)); i++ {
+			plain := ansi.Strip(lines[i])
 			for _, btn := range buttons {
 				idx := strings.Index(plain, btn.label)
 				if idx < 0 {
