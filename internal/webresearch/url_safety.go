@@ -1,4 +1,4 @@
-package webtools
+package webresearch
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 )
 
 // blockedCIDRs lists IP ranges that must never be fetched.
-// Mirrors Hermes agent's url_safety.py approach.
 var blockedCIDRs = func() []*net.IPNet {
 	raw := []string{
 		"127.0.0.0/8",    // loopback
@@ -45,7 +44,9 @@ var blockedHosts = []string{
 	"100.100.100.200", // Alibaba cloud metadata
 }
 
-func validateFetchURL(ctx context.Context, rawURL string) error {
+// ValidatePublicURL rejects non-HTTP URLs and hosts that resolve to private,
+// loopback, link-local or cloud metadata addresses.
+func ValidatePublicURL(ctx context.Context, rawURL string) error {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return fmt.Errorf("url is required")
@@ -99,7 +100,8 @@ func validatePublicIPs(host string, addrs []net.IPAddr) error {
 	return nil
 }
 
-func dialPublicAddress(ctx context.Context, network string, address string) (net.Conn, error) {
+// DialPublicAddress dials only after every resolved address passes the guard.
+func DialPublicAddress(ctx context.Context, network string, address string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, fmt.Errorf("invalid network address %q: %w", address, err)

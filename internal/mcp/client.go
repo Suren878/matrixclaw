@@ -24,6 +24,9 @@ type clientSession struct {
 	server  ServerConfig
 	session *sdk.ClientSession
 	tools   []*sdk.Tool
+	// mu serialises calls on the session, so the browser fallback and model
+	// tool calls never drive one browser at the same time.
+	mu sync.Mutex
 }
 
 func NewClientModule(ctx context.Context, cfg Config) (*ClientModule, error) {
@@ -55,7 +58,7 @@ func (m *ClientModule) RegisterTools(registry *tools.Registry) error {
 			if remoteTool == nil {
 				continue
 			}
-			if err := registry.Register(newRemoteToolExecutor(session.server, session.session, remoteTool)); err != nil {
+			if err := registry.Register(newRemoteToolExecutor(session.server, session, remoteTool)); err != nil {
 				registerErr = err
 			}
 		}
@@ -139,13 +142,12 @@ func envPairs(values map[string]string) []string {
 
 type remoteToolExecutor struct {
 	server     ServerConfig
-	session    *sdk.ClientSession
+	session    *clientSession
 	remoteName string
 	spec       tools.Spec
-	mu         sync.Mutex
 }
 
-func newRemoteToolExecutor(server ServerConfig, session *sdk.ClientSession, remoteTool *sdk.Tool) tools.Executor {
+func newRemoteToolExecutor(server ServerConfig, session *clientSession, remoteTool *sdk.Tool) tools.Executor {
 	inputSchema := toolInputSchema(remoteTool.InputSchema)
 	name := strings.TrimSpace(remoteTool.Name)
 	effect, risk, approval := remoteToolPolicy(server, name)
@@ -170,25 +172,20 @@ func newRemoteToolExecutor(server ServerConfig, session *sdk.ClientSession, remo
 }
 
 func remoteToolPolicy(server ServerConfig, remoteName string) (tools.Effect, tools.RiskLevel, tools.ApprovalMode) {
-	if isApprovalFreeBrowserTool(server, remoteName) {
-		return browserToolEffect(remoteName), tools.RiskSafe, tools.ApprovalNever
-	}
-	if server.ReadOnly {
+	if server.ReadOnly || server.ID == "browser" && browserReadsPageOnly(remoteName) {
 		return tools.EffectReadOnly, tools.RiskSafe, tools.ApprovalNever
 	}
 	return tools.EffectMutation, tools.RiskApproval, tools.ApprovalOnRequest
 }
 
-func isApprovalFreeBrowserTool(server ServerConfig, remoteName string) bool {
-	return strings.TrimSpace(server.ID) == "browser" && strings.TrimSpace(remoteName) != ""
-}
-
-func browserToolEffect(remoteName string) tools.Effect {
+// browserReadsPageOnly names the browser tools that only inspect the open page.
+// Navigation reaches arbitrary hosts, private ones included, so it asks.
+func browserReadsPageOnly(remoteName string) bool {
 	switch strings.TrimSpace(remoteName) {
 	case "browser_snapshot", "browser_console_messages", "browser_network_requests", "browser_network_request":
-		return tools.EffectReadOnly
+		return true
 	default:
-		return tools.EffectMutation
+		return false
 	}
 }
 
@@ -197,7 +194,7 @@ func (e *remoteToolExecutor) Spec() tools.Spec {
 }
 
 func (e *remoteToolExecutor) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
-	if e == nil || e.session == nil {
+	if e == nil || e.session == nil || e.session.session == nil {
 		return tools.Result{}, fmt.Errorf("mcp: remote session is not connected")
 	}
 	if e.spec.RequiresApproval() && !call.Approved {
@@ -218,12 +215,12 @@ func (e *remoteToolExecutor) Execute(ctx context.Context, call tools.Call) (tool
 	}
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	e.mu.Lock()
-	result, err := e.session.CallTool(callCtx, &sdk.CallToolParams{
+	e.session.mu.Lock()
+	result, err := e.session.session.CallTool(callCtx, &sdk.CallToolParams{
 		Name:      e.remoteName,
 		Arguments: rawJSONMap(call.Args),
 	})
-	e.mu.Unlock()
+	e.session.mu.Unlock()
 	if err != nil {
 		return tools.Result{}, fmt.Errorf("mcp: call %s: %w", e.remoteName, err)
 	}

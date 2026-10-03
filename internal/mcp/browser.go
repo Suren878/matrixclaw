@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -12,12 +11,10 @@ import (
 )
 
 type browserClient struct {
-	server     ServerConfig
-	session    *sdk.ClientSession
+	session    *clientSession
 	navigate   string
 	snapshot   string
 	screenshot string
-	mu         sync.Mutex
 }
 
 func (m *ClientModule) Browser() webresearch.Browser {
@@ -28,7 +25,7 @@ func (m *ClientModule) Browser() webresearch.Browser {
 		if session == nil || session.session == nil {
 			continue
 		}
-		browser := browserClient{server: session.server, session: session.session}
+		browser := browserClient{session: session}
 		for _, tool := range session.tools {
 			if tool == nil {
 				continue
@@ -52,14 +49,14 @@ func (m *ClientModule) Browser() webresearch.Browser {
 }
 
 func (b *browserClient) Available() bool {
-	return b != nil && b.session != nil && b.navigate != "" && b.snapshot != ""
+	return b != nil && b.session != nil && b.session.session != nil && b.navigate != "" && b.snapshot != ""
 }
 
 func (b *browserClient) SetupHint() string {
 	if b == nil {
 		return "browser fallback is unavailable; configure an MCP browser server."
 	}
-	return "MCP browser server is connected: " + firstNonEmpty(b.server.Name, b.server.ID)
+	return "MCP browser server is connected: " + firstNonEmpty(b.session.server.Name, b.session.server.ID)
 }
 
 func (b *browserClient) Fetch(ctx context.Context, url string) (webresearch.BrowserPage, error) {
@@ -91,9 +88,9 @@ func (b *browserClient) Fetch(ctx context.Context, url string) (webresearch.Brow
 }
 
 func (b *browserClient) call(ctx context.Context, name string, args map[string]any) (string, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	result, err := b.session.CallTool(ctx, &sdk.CallToolParams{
+	b.session.mu.Lock()
+	defer b.session.mu.Unlock()
+	result, err := b.session.session.CallTool(ctx, &sdk.CallToolParams{
 		Name:      name,
 		Arguments: args,
 	})

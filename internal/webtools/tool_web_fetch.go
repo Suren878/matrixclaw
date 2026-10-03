@@ -20,7 +20,7 @@ import (
 var webFetchTransport = func() *http.Transport {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
-	transport.DialContext = dialPublicAddress
+	transport.DialContext = webresearch.DialPublicAddress
 	return transport
 }()
 
@@ -34,7 +34,7 @@ var webFetchClient = &http.Client{
 		if err := webresearch.CheckURL(req.Context(), req.URL.String()); err != nil {
 			return fmt.Errorf("redirect to %s: %w", req.URL.Hostname(), err)
 		}
-		if err := validateFetchURL(req.Context(), req.URL.String()); err != nil {
+		if err := webresearch.ValidatePublicURL(req.Context(), req.URL.String()); err != nil {
 			return fmt.Errorf("unsafe redirect: %w", err)
 		}
 		return nil
@@ -169,7 +169,7 @@ func FetchWebPage(ctx context.Context, rawURL string, maxLength int) (WebFetched
 		maxLength = maxWebFetchMaxLength
 	}
 
-	if err := validateFetchURL(ctx, rawURL); err != nil {
+	if err := webresearch.ValidatePublicURL(ctx, rawURL); err != nil {
 		return WebFetchedPage{URL: rawURL}, err
 	}
 

@@ -643,6 +643,9 @@ func (e *Engine) readSource(ctx context.Context, researchID string, source *Sour
 		}
 	}
 	if shouldUseBrowser(request.Browser, text) {
+		if err := ValidatePublicURL(ctx, source.URL); err != nil {
+			return text, appendUnique(warnings, "browser fallback skipped for "+source.URL+": "+err.Error())
+		}
 		if e.browser == nil || !e.browser.Available() {
 			warnings = appendUnique(warnings, browserSetupHint(e.browser))
 			return text, warnings
