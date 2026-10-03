@@ -123,8 +123,6 @@ func pickerItemPrefix(kind controlplane.PickerKind, item controlplane.PickerItem
 		return "🔌 "
 	case controlplane.PickerSkills, controlplane.PickerSkillsSection, controlplane.PickerSkill, controlplane.PickerSessionSkills, controlplane.PickerSessionSkill:
 		return "📘 "
-	case controlplane.PickerBrowser:
-		return "🌐 "
 	case controlplane.PickerServer:
 		return map[string]string{"status": "📊 ", "restart": "🔄 "}[item.ID]
 	}

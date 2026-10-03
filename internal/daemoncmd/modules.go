@@ -75,7 +75,7 @@ func buildModules(deps moduleDeps) (daemonModules, error) {
 	if err != nil {
 		return daemonModules{}, err
 	}
-	return daemonModules{set: set, api: api.Modules{Set: set, TTS: tts, STT: stt, Telephony: telephony, Browser: browser}}, nil
+	return daemonModules{set: set, api: api.Modules{Set: set, TTS: tts, STT: stt}}, nil
 }
 
 // RuntimeStatusPromptContext is the model's note on module state. It leaves

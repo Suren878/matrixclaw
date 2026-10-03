@@ -63,50 +63,31 @@ func (m *Module) Close() error { return nil }
 
 func (m *Module) Status(context.Context) modules.Status {
 	cfg, gw := m.current()
-	module := setup.TelephonyModuleFromConfig(cfg.Modules)
+	telephony := cfg.Modules.Telephony
 	return modules.Status{
 		ID:      m.ID(),
-		Title:   module.Title,
-		Enabled: module.Enabled,
+		Title:   "Telephony",
+		Enabled: telephony.Enabled,
 		Ready:   gw != nil,
-		State:   module.Status,
+		State:   configStatus(telephony),
 		Facts: []modules.Fact{
-			{Key: "gateway_configured", Label: "Gateway", Value: boolText(module.GatewayURL != "")},
-			{Key: "token_configured", Label: "Token", Value: boolText(module.TokenConfigured)},
+			{Key: "gateway_configured", Label: "Gateway", Value: boolText(telephony.GatewayURL != "")},
+			{Key: "token_configured", Label: "Token", Value: boolText(telephony.GatewayToken != "")},
 		},
 	}
 }
 
-// Descriptor is the module's settings with the gateway's health.
-func (m *Module) Descriptor(ctx context.Context) setup.TelephonyModuleDescriptor {
-	cfg, _ := m.current()
-	module := setup.TelephonyModuleFromConfig(cfg.Modules)
-	if module.GatewayURL == "" {
-		return module
-	}
-	ctx, cancel := context.WithTimeout(ctx, healthTimeout)
-	defer cancel()
-	health, err := newGateway(module.GatewayURL, cfg.Modules.Telephony.GatewayToken).Health(ctx)
+func configStatus(cfg setup.TelephonyConfig) string {
 	switch {
-	case err != nil:
-		module.GatewayError = err.Error()
-		if module.Enabled {
-			module.Status = "Gateway unreachable"
-		}
-	case !health.Ready:
-		module.GatewayReachable = true
-		module.GatewayError = "gateway is not ready: " + firstNonEmpty(health.Error, "no reason given")
-		if module.Enabled {
-			module.Status = "Gateway degraded"
-		}
+	case !cfg.Enabled && cfg.GatewayURL != "":
+		return "Disabled"
+	case !cfg.Enabled:
+		return "Not configured"
+	case cfg.GatewayURL == "":
+		return "Gateway URL required"
 	default:
-		module.GatewayReachable = true
-		module.Ready = module.Enabled
-		if module.Enabled {
-			module.Status = "Ready"
-		}
+		return "Configured"
 	}
-	return module
 }
 
 func boolText(value bool) string {

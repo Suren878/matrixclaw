@@ -3,11 +3,13 @@ package telephony
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
 
+	"github.com/Suren878/matrixclaw/internal/modules"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
@@ -75,22 +77,50 @@ func TestToolsTalkToTheGateway(t *testing.T) {
 	}
 }
 
-func TestDescriptorProbesTheGateway(t *testing.T) {
+func TestSettingsProbeTheGateway(t *testing.T) {
 	status := `{"ready":true}`
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(status))
 	}))
 	defer server.Close()
 	m := applied(t, setup.TelephonyConfig{Enabled: true, GatewayURL: server.URL})
-	if module := m.Descriptor(context.Background()); !module.GatewayReachable || !module.Ready || module.Status != "Ready" {
-		t.Fatalf("module = %+v", module)
+	state := func() string {
+		item, _ := modules.Find(m.Settings(context.Background()), []string{"status"})
+		return item.Display
+	}
+	if got := state(); got != "Ready" {
+		t.Fatalf("state = %q", got)
 	}
 	status = `{"ready":false,"error":"ARI down"}`
-	if module := m.Descriptor(context.Background()); !module.GatewayReachable || module.Ready || module.Status != "Gateway degraded" {
-		t.Fatalf("module = %+v", module)
+	if got := state(); got != "Gateway degraded" {
+		t.Fatalf("state = %q", got)
 	}
 	server.Close()
-	if module := m.Descriptor(context.Background()); module.GatewayReachable || module.Status != "Gateway unreachable" {
-		t.Fatalf("module = %+v", module)
+	if got := state(); got != "Gateway unreachable" {
+		t.Fatalf("state = %q", got)
+	}
+}
+
+func TestSettingsChangeTheGatewayAndRefuseABadURL(t *testing.T) {
+	m := applied(t, setup.TelephonyConfig{})
+	cfg := setup.Config{}
+	for _, change := range []struct{ path, value string }{{"gateway_url", "http://gw:8090"}, {"gateway_token", "secret"}, {"enabled", "on"}} {
+		edit, err := m.Change(context.Background(), []string{change.path}, change.value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := edit.Config(&cfg); err != nil {
+			t.Fatal(change.path, err)
+		}
+	}
+	if telephony := cfg.Modules.Telephony; !telephony.Enabled || telephony.GatewayURL != "http://gw:8090" || telephony.GatewayToken != "secret" {
+		t.Fatalf("telephony = %+v", telephony)
+	}
+	edit, _ := m.Change(context.Background(), []string{"gateway_url"}, "gw")
+	if err := edit.Config(&cfg); !errors.Is(err, modules.ErrInvalidSetting) {
+		t.Fatalf("bad URL error = %v", err)
+	}
+	if _, err := m.Change(context.Background(), []string{"nope"}, ""); !errors.Is(err, modules.ErrUnknownSetting) {
+		t.Fatalf("unknown setting error = %v", err)
 	}
 }

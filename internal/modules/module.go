@@ -38,6 +38,8 @@ type Status struct {
 	Detail  string   `json:"detail,omitempty"`
 	Facts   []Fact   `json:"facts,omitempty"`
 	Tools   []string `json:"tools,omitempty"`
+	// Settings tells that the module has a settings screen (Configurable).
+	Settings bool `json:"settings,omitempty"`
 }
 
 // Fact is one labelled value of a module's status.
@@ -106,13 +108,39 @@ func (s *Set) Context() []string {
 func (s *Set) Statuses(ctx context.Context) []Status {
 	out := make([]Status, 0, len(s.modules))
 	for _, module := range s.modules {
-		status := module.Status(ctx)
-		for _, executor := range module.Tools() {
-			status.Tools = append(status.Tools, executor.Spec().ID)
-		}
-		out = append(out, status)
+		out = append(out, status(ctx, module))
 	}
 	return out
+}
+
+func status(ctx context.Context, module Module) Status {
+	status := module.Status(ctx)
+	for _, executor := range module.Tools() {
+		status.Tools = append(status.Tools, executor.Spec().ID)
+	}
+	_, status.Settings = module.(Configurable)
+	return status
+}
+
+// Configurable is the module with id when it has a settings screen.
+func (s *Set) Configurable(id string) (Configurable, bool) {
+	for _, module := range s.modules {
+		if module.ID() == id {
+			configurable, ok := module.(Configurable)
+			return configurable, ok
+		}
+	}
+	return nil, false
+}
+
+// Settings is the settings screen of the module with id.
+func (s *Set) Settings(ctx context.Context, id string) (Settings, bool) {
+	for _, module := range s.modules {
+		if configurable, ok := module.(Configurable); ok && module.ID() == id {
+			return Settings{Status: status(ctx, module), Items: configurable.Settings(ctx)}, true
+		}
+	}
+	return Settings{}, false
 }
 
 func (s *Set) Close() error {

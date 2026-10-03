@@ -10,40 +10,6 @@ const (
 	BrowserProviderPlaywright = "playwright"
 )
 
-func (s *Service) UpdateBrowserModule(update BrowserModuleUpdate) (BrowserModuleDescriptor, error) {
-	cfg, err := s.Update(func(cfg *Config) error {
-		cfg.Modules.Browser = applyBrowserModuleUpdate(cfg.Modules.Browser, update)
-		return nil
-	})
-	if err != nil {
-		return BrowserModuleDescriptor{}, err
-	}
-	return BrowserModuleFromConfig(cfg.Modules), nil
-}
-
-func applyBrowserModuleUpdate(current BrowserConfig, update BrowserModuleUpdate) BrowserConfig {
-	current = normalizeBrowserConfig(current)
-	if update.Enabled != nil {
-		current.Enabled = *update.Enabled
-	}
-	if providerID := normalizeBrowserProviderID(update.ProviderID); providerID != "" {
-		current.ProviderID = providerID
-	}
-	if update.ProviderConfig != nil {
-		next := normalizeBrowserProviderConfig(*update.ProviderConfig)
-		if next.RuntimeMode != "" {
-			current.ProviderConfig.RuntimeMode = next.RuntimeMode
-		}
-		if strings.TrimSpace(update.ProviderConfig.BinaryPath) != "" {
-			current.ProviderConfig.BinaryPath = next.BinaryPath
-		}
-		if strings.TrimSpace(update.ProviderConfig.BrowserPath) != "" {
-			current.ProviderConfig.BrowserPath = next.BrowserPath
-		}
-	}
-	return normalizeBrowserConfig(current)
-}
-
 func BrowserModuleFromConfig(modules ModulesConfig) BrowserModuleDescriptor {
 	cfg := normalizeBrowserConfig(modules.Browser)
 	providers := browserProviders(cfg)

@@ -10,35 +10,13 @@ func storageCommand(parts ...string) string {
 	return modulesCommand(values...)
 }
 
-func browserCommand(parts ...string) string {
-	values := append([]string{"browser"}, parts...)
-	return modulesCommand(values...)
-}
-
 func voiceModuleCommand(moduleID string, parts ...string) string {
 	values := append([]string{moduleID}, parts...)
 	return modulesCommand(values...)
 }
 
-func textToSpeechCommand(parts ...string) string {
-	return voiceModuleCommand("tts", parts...)
-}
-
-func speechToTextCommand(parts ...string) string {
-	return voiceModuleCommand("stt", parts...)
-}
-
 func realtimeVoiceCommand(parts ...string) string {
 	return voiceModuleCommand("realtime_voice", parts...)
-}
-
-func telephonyCommand(parts ...string) string {
-	values := append([]string{"telephony"}, parts...)
-	return modulesCommand(values...)
-}
-
-func telephonyCommandPrefix(parts ...string) string {
-	return telephonyCommand(parts...) + " "
 }
 
 func storageCommandPrefix(parts ...string) string {
@@ -153,11 +131,6 @@ func externalAgentSetEnabledCommand(agentID string, value string) string {
 
 func externalAgentNewSessionCommand(agentID string) string {
 	return sessionNewCommand(agentID)
-}
-
-func webSearchCommand(parts ...string) string {
-	values := append([]string{"web"}, parts...)
-	return modulesCommand(values...)
 }
 
 func skillsCommand(parts ...string) string {

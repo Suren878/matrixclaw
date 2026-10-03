@@ -34,13 +34,6 @@ func (d *Dispatcher) realtimeVoiceInfo(ctx context.Context) (Result, error) {
 	}, nil
 }
 
-func realtimeVoiceModuleListInfo(module realtime.ModuleDescriptor) string {
-	if !module.Enabled {
-		return ""
-	}
-	return firstNonEmptyTrimmed(module.ProviderName, module.ProviderID)
-}
-
 func realtimeVoiceProviderStatus(module realtime.ModuleDescriptor) string {
 	provider := realtimeVoiceProvider(module)
 	if !module.Enabled && realtimeVoiceProviderConfigured(provider) {

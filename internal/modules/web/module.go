@@ -43,7 +43,12 @@ func (m *Module) Context() string { return "" }
 func (m *Module) Close() error { return nil }
 
 func (m *Module) Status(context.Context) modules.Status {
-	provider := setup.WebSearchConfigStatus(*m.config.Load())
+	provider := searchProviders[0].name
+	for _, p := range searchProviders {
+		if p.id == providerID(*m.config.Load()) {
+			provider = p.name
+		}
+	}
 	return modules.Status{
 		ID:      m.ID(),
 		Title:   "Web Search",

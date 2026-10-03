@@ -79,6 +79,8 @@ var clientRoutes = []struct {
 
 	// Modules.
 	{"GET", "/v1/modules", "GET /v1/modules"},
+	{"GET", "/v1/settings/tts", "GET /v1/settings/{module}"},
+	{"POST", "/v1/settings/web_search", "POST /v1/settings/{module}"},
 	{"GET", "/v1/modules/storage/files?prefix=notes", "GET /v1/modules/storage/files"},
 	{"POST", "/v1/modules/storage/files", "POST /v1/modules/storage/files"},
 	{"GET", "/v1/modules/storage/files/notes%2Fa.md?encoding=base64", "GET /v1/modules/storage/files/{path...}"},
@@ -102,13 +104,6 @@ var clientRoutes = []struct {
 	{"GET", "/v1/realtime-voice/sessions/v1", "GET /v1/realtime-voice/sessions/{id}"},
 	{"DELETE", "/v1/realtime-voice/sessions/v1", "DELETE /v1/realtime-voice/sessions/{id}"},
 	{"GET", "/v1/realtime-voice/sessions/v1/stream", "GET /v1/realtime-voice/sessions/{id}/stream"},
-	{"GET", "/v1/modules/telephony", "GET /v1/modules/telephony"},
-	{"PATCH", "/v1/modules/telephony", "PATCH /v1/modules/telephony"},
-	{"GET", "/v1/modules/web-search", "GET /v1/modules/web-search"},
-	{"PATCH", "/v1/modules/web-search", "PATCH /v1/modules/web-search"},
-	{"GET", "/v1/modules/browser", "GET /v1/modules/browser"},
-	{"PATCH", "/v1/modules/browser", "PATCH /v1/modules/browser"},
-	{"POST", "/v1/modules/browser/providers/playwright/action", "POST /v1/modules/browser/providers/{provider}/action"},
 	{"GET", "/v1/modules/mcp", "GET /v1/modules/mcp"},
 	{"PATCH", "/v1/modules/mcp", "PATCH /v1/modules/mcp"},
 	{"POST", "/v1/modules/mcp/servers", "POST /v1/modules/mcp/servers"},

@@ -292,11 +292,6 @@ func (d *Dispatcher) mcpServerInfo(ctx context.Context, serverID string) (Result
 	}}, nil
 }
 
-func mcpExternalConfigStatus(cfg setup.MCPConfig) string {
-	cfg.Servers = externalMCPServers(cfg.Servers)
-	return setup.MCPConfigStatus(cfg)
-}
-
 func externalMCPServers(servers []setup.MCPServerConfig) []setup.MCPServerConfig {
 	out := make([]setup.MCPServerConfig, 0, len(servers))
 	for _, server := range servers {

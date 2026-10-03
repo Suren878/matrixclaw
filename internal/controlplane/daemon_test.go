@@ -10,6 +10,8 @@ import (
 	"github.com/Suren878/matrixclaw/internal/api"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
+	"github.com/Suren878/matrixclaw/internal/modules"
+	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/store"
 )
 
@@ -45,11 +47,15 @@ func newAPIDaemon(t *testing.T, deps api.Deps) *apiDaemon {
 	return &apiDaemon{t: t, core: deps.Core, url: server.URL}
 }
 
-func (d *apiDaemon) runAs(role core.Role, command string) Result {
-	d.t.Helper()
+func (d *apiDaemon) dispatcher(role core.Role) *Dispatcher {
 	client := daemonclient.New(d.url, "test", "key")
 	client.Role = role
-	result, err := New(client, "").Handle(context.Background(), command)
+	return New(client, "")
+}
+
+func (d *apiDaemon) runAs(role core.Role, command string) Result {
+	d.t.Helper()
+	result, err := d.dispatcher(role).Handle(context.Background(), command)
 	if err != nil {
 		d.t.Fatalf("%s: %v", command, err)
 	}
@@ -59,4 +65,30 @@ func (d *apiDaemon) runAs(role core.Role, command string) Result {
 func (d *apiDaemon) run(command string) Result {
 	d.t.Helper()
 	return d.runAs(core.RoleOwner, command)
+}
+
+// newModulesDaemon runs the daemon API over mods, applied from a setup.json
+// of its own after every change as the daemon does.
+func newModulesDaemon(t *testing.T, mods ...modules.Module) (*apiDaemon, *setup.Service) {
+	t.Helper()
+	store := setup.NewFileStore(filepath.Join(t.TempDir(), "setup.json"))
+	if err := store.Save(setup.Config{Version: setup.CurrentVersion}); err != nil {
+		t.Fatal(err)
+	}
+	service := setup.NewService(store)
+	set, err := modules.NewSet(nil, mods...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	apply := func(ctx context.Context) error {
+		cfg, err := service.Load()
+		if err != nil {
+			return err
+		}
+		return set.Apply(ctx, cfg)
+	}
+	if err := apply(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	return newAPIDaemon(t, api.Deps{Setup: service, Modules: api.Modules{Set: set}, Reload: apply}), service
 }

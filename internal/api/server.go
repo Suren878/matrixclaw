@@ -11,8 +11,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/automation"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/modules"
-	browsermodule "github.com/Suren878/matrixclaw/internal/modules/browser"
-	telephonymodule "github.com/Suren878/matrixclaw/internal/modules/telephony"
 	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 	"github.com/Suren878/matrixclaw/internal/setup"
@@ -37,10 +35,8 @@ type Deps struct {
 
 // Modules are the daemon modules the API serves settings and actions of.
 type Modules struct {
-	Set       *modules.Set
-	TTS, STT  *voicemodule.Module
-	Telephony *telephonymodule.Module
-	Browser   *browsermodule.Module
+	Set      *modules.Set
+	TTS, STT *voicemodule.Module
 }
 
 type Server struct {
@@ -171,6 +167,8 @@ func (s *Server) routes() {
 		{"POST /v1/tools/execute", s.handleToolExecute},
 
 		{"GET /v1/modules", s.handleModules},
+		{"GET /v1/settings/{module}", s.handleModuleSettings},
+		{"POST /v1/settings/{module}", ownerOnly(s.handleModuleSettingsChange)},
 		{"GET /v1/modules/storage/files", s.handleStorageFiles},
 		{"POST /v1/modules/storage/files", withBodyLimit(storageSaveJSONBodyLimitBytes, s.handleStorageFileCreate)},
 		{"GET /v1/modules/storage/files/{path...}", s.handleStorageFile},
@@ -193,13 +191,6 @@ func (s *Server) routes() {
 		{"GET /v1/realtime-voice/sessions/{id}", s.handleRealtimeVoiceSession},
 		{"DELETE /v1/realtime-voice/sessions/{id}", s.handleRealtimeVoiceSessionClose},
 		{"GET /v1/realtime-voice/sessions/{id}/stream", s.handleRealtimeVoiceStream},
-		{"GET /v1/modules/telephony", s.handleTelephonyModule},
-		{"PATCH /v1/modules/telephony", ownerOnly(s.handleTelephonyModuleUpdate)},
-		{"GET /v1/modules/web-search", s.handleWebSearch},
-		{"PATCH /v1/modules/web-search", ownerOnly(s.handleWebSearchUpdate)},
-		{"GET /v1/modules/browser", s.handleBrowserModule},
-		{"PATCH /v1/modules/browser", ownerOnly(s.handleBrowserModuleUpdate)},
-		{"POST /v1/modules/browser/providers/{provider}/action", ownerOnly(s.handleBrowserProviderAction)},
 		{"GET /v1/modules/mcp", s.handleMCP},
 		{"PATCH /v1/modules/mcp", ownerOnly(s.handleMCPUpdate)},
 		{"POST /v1/modules/mcp/servers", ownerOnly(s.handleMCPServerCreate)},

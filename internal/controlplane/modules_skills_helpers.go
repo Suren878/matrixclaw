@@ -90,26 +90,6 @@ func skillsSectionEmptyInfo(section string) string {
 	}
 }
 
-func skillsModuleInfo(items []skills.Skill) string {
-	if len(items) == 0 {
-		return ""
-	}
-	trusted := 0
-	quarantined := 0
-	for _, item := range items {
-		if item.TrustState == skills.TrustTrusted && item.State == skills.StateActive && item.Enabled {
-			trusted++
-		}
-		if item.TrustState == skills.TrustQuarantine {
-			quarantined++
-		}
-	}
-	if quarantined > 0 {
-		return fmt.Sprintf("%d enabled · %d review", trusted, quarantined)
-	}
-	return fmt.Sprintf("%d enabled", trusted)
-}
-
 func skillCountInfo(count int) string {
 	if count == 0 {
 		return ""

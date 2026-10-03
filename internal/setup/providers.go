@@ -52,6 +52,7 @@ func normalizeModulesConfig(modules ModulesConfig) ModulesConfig {
 	modules.SpeechToText = normalizeVoiceModuleConfig("stt", modules.SpeechToText)
 	modules.RealtimeVoice = normalizeRealtimeVoiceConfig(modules.RealtimeVoice)
 	modules.Telephony = normalizeTelephonyConfig(modules.Telephony)
+	modules.WebSearch = normalizeWebSearchConfig(modules.WebSearch)
 	modules.MCP = normalizeMCPConfig(modules.MCP)
 	modules.Browser = storedBrowserConfig(modules.Browser)
 	if len(modules.ExternalAgents) == 0 {

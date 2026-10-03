@@ -1,0 +1,106 @@
+package controlplane
+
+import (
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/modules/telephony"
+	"github.com/Suren878/matrixclaw/internal/modules/web"
+	"github.com/Suren878/matrixclaw/internal/setup"
+)
+
+func TestModulesListsTheScreensWithTheirState(t *testing.T) {
+	daemon, _ := newModulesDaemon(t, web.New(), telephony.New())
+	result := daemon.run("/modules")
+
+	if ids := pickerItemIDs(result); !slices.Equal(ids, []string{"agents", "web_search", "telephony"}) {
+		t.Fatalf("modules = %v", ids)
+	}
+	if web := result.Picker.Items[1]; web.Info != "DuckDuckGo" || web.Command != "/modules web_search" {
+		t.Fatalf("web search row = %+v", web)
+	}
+}
+
+func TestChoosingAProviderThatNeedsAKeyAsksForIt(t *testing.T) {
+	daemon, service := newModulesDaemon(t, web.New())
+
+	page := daemon.run("/modules web_search")
+	if page.Picker == nil || page.Picker.Items[0].Info != "DuckDuckGo" || page.Picker.Back != "/modules" {
+		t.Fatalf("page = %+v", page.Picker)
+	}
+	choice := daemon.run(page.Picker.Items[0].Command)
+	if choice.Picker == nil || !choice.Picker.Popup || len(choice.Picker.Items) != 4 || !choice.Picker.Items[0].Selected {
+		t.Fatalf("choice = %+v", choice.Picker)
+	}
+
+	asked := daemon.run(choice.Picker.Items[1].Command)
+	if asked.Prompt == nil || !asked.Prompt.Sensitive || !strings.Contains(asked.Prompt.Title, "Tavily needs its API key") {
+		t.Fatalf("choosing Tavily = %+v", asked)
+	}
+	saved := daemon.run(asked.Prompt.SubmitCommandPrefix + "tvly-secret-1234")
+	if saved.Picker == nil || saved.Picker.Items[0].Info != "Tavily" || saved.Picker.Items[1].Info != "****1234" {
+		t.Fatalf("after the key = %+v", saved.Picker)
+	}
+	for _, text := range resultStrings(saved) {
+		if strings.Contains(text, "secret") {
+			t.Fatalf("the key reached the client: %q", text)
+		}
+	}
+	cfg, _ := service.Load()
+	if cfg.Modules.WebSearch.Provider != setup.WebSearchProviderTavily || cfg.Modules.WebSearch.TavilyKey != "tvly-secret-1234" {
+		t.Fatalf("web search = %+v", cfg.Modules.WebSearch)
+	}
+
+	cleared := daemon.run(asked.Prompt.SubmitCommandPrefix + "-")
+	if cleared.Picker == nil || cleared.Picker.Items[0].Info != "DuckDuckGo" {
+		t.Fatalf("clearing the active key = %+v", cleared.Picker)
+	}
+}
+
+func TestTelephonySettingsEditAndValidate(t *testing.T) {
+	daemon, service := newModulesDaemon(t, telephony.New())
+
+	page := daemon.run("/modules telephony")
+	if enabled := page.Picker.Items[0]; !enabled.Disabled || enabled.Info != "Set the gateway URL first" {
+		t.Fatalf("enabled row without a gateway = %+v", enabled)
+	}
+	prompt := daemon.run("/modules telephony open gateway_url")
+	if prompt.Prompt == nil || prompt.Prompt.Sensitive || prompt.Prompt.CancelCommand != "/modules telephony" {
+		t.Fatalf("gateway prompt = %+v", prompt)
+	}
+	if _, err := daemon.dispatcher(core.RoleOwner).Handle(t.Context(), prompt.Prompt.SubmitCommandPrefix+"not a url"); err == nil {
+		t.Fatal("a bad gateway URL was saved")
+	}
+	daemon.run(prompt.Prompt.SubmitCommandPrefix + "http://127.0.0.1:1")
+	toggle := daemon.run("/modules telephony open enabled")
+	if toggle.Picker == nil || len(toggle.Picker.Items) != 2 {
+		t.Fatalf("toggle = %+v", toggle)
+	}
+	daemon.run(toggle.Picker.Items[0].Command)
+	if cfg, _ := service.Load(); !cfg.Modules.Telephony.Enabled || cfg.Modules.Telephony.GatewayURL != "http://127.0.0.1:1" {
+		t.Fatalf("telephony = %+v", cfg.Modules.Telephony)
+	}
+	status := daemon.run("/modules telephony open status")
+	if status.Info == nil || status.Info.Rows[0].Value != "Gateway unreachable" {
+		t.Fatalf("status = %+v", status.Info)
+	}
+}
+
+func TestNonOwnersSeeModuleSettingsReadOnly(t *testing.T) {
+	daemon, service := newModulesDaemon(t, web.New())
+
+	page := daemon.runAs(core.RoleMember, "/modules web_search")
+	for _, item := range page.Picker.Items {
+		if item.Command != "" || !item.Disabled {
+			t.Fatalf("member row = %+v", item)
+		}
+	}
+	if _, err := daemon.dispatcher(core.RoleMember).Handle(t.Context(), "/modules web_search set searxng_url http://searx"); err == nil {
+		t.Fatal("the daemon took a member's setting")
+	}
+	if cfg, _ := service.Load(); cfg.Modules.WebSearch.BaseURL != "" {
+		t.Fatalf("web search = %+v", cfg.Modules.WebSearch)
+	}
+}
