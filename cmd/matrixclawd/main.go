@@ -9,5 +9,5 @@ import (
 )
 
 func main() {
-	os.Exit(daemoncmd.RunCLI(context.Background(), os.Stdout, filepath.Base(os.Args[0]), os.Args[1:], daemoncmd.Run))
+	os.Exit(daemoncmd.RunCLI(context.Background(), os.Stdout, os.Stderr, filepath.Base(os.Args[0]), os.Args[1:], daemoncmd.Run))
 }

@@ -10,7 +10,7 @@ import (
 	"syscall"
 )
 
-func RunCLI(ctx context.Context, stdout io.Writer, binaryName string, args []string, run func(context.Context) error) int {
+func RunCLI(ctx context.Context, stdout io.Writer, stderr io.Writer, binaryName string, args []string, run func(context.Context) error) int {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -24,8 +24,8 @@ func RunCLI(ctx context.Context, stdout io.Writer, binaryName string, args []str
 			printDaemonUsage(stdout, binaryName)
 			return 0
 		default:
-			_, _ = fmt.Fprintf(stdout, "%s: unknown argument %q\n", binaryName, args[0])
-			printDaemonUsage(stdout, binaryName)
+			_, _ = fmt.Fprintf(stderr, "%s: unknown argument %q\n", binaryName, args[0])
+			printDaemonUsage(stderr, binaryName)
 			return 2
 		}
 	}
@@ -35,7 +35,7 @@ func RunCLI(ctx context.Context, stdout io.Writer, binaryName string, args []str
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx); err != nil {
-		_, _ = fmt.Fprintf(stdout, "%s: daemon: %v\n", binaryName, err)
+		_, _ = fmt.Fprintf(stderr, "%s: daemon: %v\n", binaryName, err)
 		return 1
 	}
 	return 0

@@ -35,13 +35,11 @@ func (d *Dispatcher) tasksPicker(ctx context.Context, externalKey string) (Resul
 			Command: taskMenuCommand(job.ID),
 		})
 	}
-	archiveTitle := "Archive"
 	archiveInfo := "Completed tasks"
 	if len(closed) > 0 {
-		archiveTitle = "Archive"
 		archiveInfo = fmt.Sprintf("%d completed", len(closed))
 	}
-	items = append(items, PickerItem{ID: "archive", Title: archiveTitle, Info: archiveInfo, Command: tasksArchiveCommand()})
+	items = append(items, PickerItem{ID: "archive", Title: "Archive", Info: archiveInfo, Command: tasksArchiveCommand()})
 	return Result{
 		Handled: true,
 		Picker:  NewPickerData(PickerTasks, "Tasks").Items(items...).Ptr(),

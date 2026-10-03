@@ -23,7 +23,7 @@ import (
 
 func TestRunCLIStopsOnSIGTERM(t *testing.T) {
 	var out bytes.Buffer
-	code := RunCLI(context.Background(), &out, "matrixclawd", nil, func(ctx context.Context) error {
+	code := RunCLI(context.Background(), &out, &out, "matrixclawd", nil, func(ctx context.Context) error {
 		if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
 			return err
 		}

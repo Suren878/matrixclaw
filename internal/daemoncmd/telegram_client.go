@@ -18,56 +18,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-type clientRegistry struct {
-	clients []clientAdapter
-}
-
-func newClientRegistry(geo *tools.OSMService) *clientRegistry {
-	return &clientRegistry{
-		clients: []clientAdapter{
-			&telegramClientAdapter{geo: geo},
-		},
-	}
-}
-
-func (r *clientRegistry) Apply(ctx context.Context, bootstrap bootstrapConfig) error {
-	if r == nil {
-		return nil
-	}
-	for _, client := range r.clients {
-		if client == nil {
-			continue
-		}
-		if err := client.Apply(ctx, bootstrap); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (r *clientRegistry) RestartDeliverySenders(bootstrap bootstrapConfig) []restartDeliverySender {
-	if r == nil {
-		return nil
-	}
-	senders := []restartDeliverySender{}
-	for _, client := range r.clients {
-		if client == nil {
-			continue
-		}
-		sender, ok := client.RestartDeliverySender(bootstrap)
-		if ok {
-			senders = append(senders, sender)
-		}
-	}
-	return senders
-}
-
-type clientAdapter interface {
-	Apply(context.Context, bootstrapConfig) error
-	RestartDeliveryAddressNormalizer() restartDeliveryAddressNormalizer
-	RestartDeliverySender(bootstrapConfig) (restartDeliverySender, bool)
-}
-
 type telegramClientAdapter struct {
 	mu          sync.Mutex
 	cancel      context.CancelFunc
@@ -156,23 +106,33 @@ func (a *telegramClientAdapter) stopWorker() {
 	a.done = nil
 }
 
-func (a *telegramClientAdapter) RestartDeliveryAddressNormalizer() restartDeliveryAddressNormalizer {
-	return telegram.RestartDeliveryCodec{}
+// normalizeRestartAddress validates a Telegram restart notice address; other
+// clients' addresses are kept as given.
+func (a *telegramClientAdapter) normalizeRestartAddress(notification *core.ClientDeliveryTarget) (json.RawMessage, error) {
+	if len(notification.Address) == 0 {
+		return nil, nil
+	}
+	if strings.TrimSpace(notification.Client) != telegram.ClientName {
+		return append(json.RawMessage(nil), notification.Address...), nil
+	}
+	return telegram.RestartDeliveryCodec{}.NormalizeRestartDeliveryAddress(notification.Address)
 }
 
-func (a *telegramClientAdapter) RestartDeliverySender(bootstrap bootstrapConfig) (restartDeliverySender, bool) {
+// restartDeliverySender returns the sender of pending restart notices, or nil
+// while Telegram is off.
+func (a *telegramClientAdapter) restartDeliverySender(bootstrap bootstrapConfig) *telegram.RestartDeliverySender {
 	cfg := bootstrap.Telegram
 	if !cfg.Enabled {
-		return nil, false
+		return nil
 	}
 	sender, err := telegram.NewRestartDeliverySender(telegram.RestartDeliverySenderConfig{
 		BotToken: cfg.BotToken,
 	})
 	if err != nil {
 		log.Printf("matrixclawd telegram restart delivery sender failed: %v", err)
-		return nil, false
+		return nil
 	}
-	return sender, true
+	return sender
 }
 
 type telegramClientBootstrap struct {

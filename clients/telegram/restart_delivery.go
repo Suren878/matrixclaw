@@ -11,10 +11,6 @@ import (
 
 type RestartDeliveryCodec struct{}
 
-func (RestartDeliveryCodec) ClientName() string {
-	return ClientName
-}
-
 func (RestartDeliveryCodec) NormalizeRestartDeliveryAddress(raw json.RawMessage) (json.RawMessage, error) {
 	address, err := decodeRestartDeliveryAddress(raw)
 	if err != nil {
@@ -48,10 +44,6 @@ func NewRestartDeliverySender(cfg RestartDeliverySenderConfig) (*RestartDelivery
 		api = client
 	}
 	return &RestartDeliverySender{api: api}, nil
-}
-
-func (s *RestartDeliverySender) ClientName() string {
-	return ClientName
 }
 
 func (s *RestartDeliverySender) DeliverRestartNotification(ctx context.Context, delivery core.ClientDelivery, fallback string) error {

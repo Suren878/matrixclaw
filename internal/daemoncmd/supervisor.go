@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Suren878/matrixclaw/clients/telegram"
 	"github.com/Suren878/matrixclaw/internal/api"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
@@ -29,7 +30,7 @@ type supervisor struct {
 	ctx           context.Context
 	server        *api.Server
 	app           *core.Core
-	clients       *clientRegistry
+	telegram      *telegramClientAdapter
 	moduleContext func() []string
 
 	// reloadMu serializes applying the setup and swapping external agents.
@@ -62,10 +63,10 @@ func applyAssistantProfile(app assistantProfileSetter, base core.AssistantProfil
 
 func newSupervisor(ctx context.Context, server *api.Server, app *core.Core, geo *tools.OSMService) *supervisor {
 	s := &supervisor{
-		ctx:     ctx,
-		server:  server,
-		app:     app,
-		clients: newClientRegistry(geo),
+		ctx:      ctx,
+		server:   server,
+		app:      app,
+		telegram: &telegramClientAdapter{geo: geo},
 	}
 	if server != nil {
 		server.SetAdminReload(s.Reload)
@@ -86,7 +87,7 @@ func (s *supervisor) applyBootstrap(bootstrap bootstrapConfig) error {
 		s.app.SetSessionLLMs(bootstrap.SessionLLMs)
 		applyAssistantProfile(s.app, bootstrap.Assistant, s.moduleContext)
 	}
-	return s.clients.Apply(s.ctx, bootstrap)
+	return s.telegram.Apply(s.ctx, bootstrap)
 }
 
 // SetModuleContext sets the module-context source (storage/MCP/skills) that
@@ -266,7 +267,7 @@ func (s *supervisor) saveRestartDelivery(ctx context.Context, req core.AdminRest
 	if summary == "" {
 		summary = daemonRestartText
 	}
-	address, err := s.clients.NormalizeRestartDeliveryAddress(notification)
+	address, err := s.telegram.normalizeRestartAddress(notification)
 	if err != nil {
 		return core.ClientDelivery{}, err
 	}
@@ -283,12 +284,16 @@ func (s *supervisor) saveRestartDelivery(ctx context.Context, req core.AdminRest
 }
 
 func (s *supervisor) DeliverPendingStartupNotifications(bootstrap bootstrapConfig) {
-	senders := s.clients.RestartDeliverySenders(bootstrap)
-	s.markPullClientRestartDeliveriesReady(senders)
-	s.deliverPendingRestartNotifications(senders)
+	sender := s.telegram.restartDeliverySender(bootstrap)
+	s.markPullClientRestartDeliveriesReady(sender != nil)
+	if sender != nil {
+		s.deliverPendingRestartNotifications(sender)
+	}
 }
 
-func (s *supervisor) markPullClientRestartDeliveriesReady(senders []restartDeliverySender) {
+// markPullClientRestartDeliveriesReady hands pending restart notices to the
+// clients that fetch them; Telegram's are pushed while it is on.
+func (s *supervisor) markPullClientRestartDeliveriesReady(telegramPushes bool) {
 	if s.app == nil {
 		return
 	}
@@ -304,18 +309,8 @@ func (s *supervisor) markPullClientRestartDeliveriesReady(senders []restartDeliv
 		log.Printf("matrixclawd delivery recovery failed: %v", err)
 		return
 	}
-	pushClients := map[string]struct{}{}
-	for _, sender := range senders {
-		if sender == nil {
-			continue
-		}
-		client := strings.TrimSpace(sender.ClientName())
-		if client != "" {
-			pushClients[client] = struct{}{}
-		}
-	}
 	for _, delivery := range deliveries {
-		if _, ok := pushClients[strings.TrimSpace(delivery.Client)]; ok {
+		if telegramPushes && strings.TrimSpace(delivery.Client) == telegram.ClientName {
 			continue
 		}
 		if err := s.app.MarkClientDeliveryReady(ctx, delivery); err != nil {
@@ -324,43 +319,33 @@ func (s *supervisor) markPullClientRestartDeliveriesReady(senders []restartDeliv
 	}
 }
 
-func (s *supervisor) deliverPendingRestartNotifications(senders []restartDeliverySender) {
-	if s.app == nil || len(senders) == 0 {
+func (s *supervisor) deliverPendingRestartNotifications(sender *telegram.RestartDeliverySender) {
+	if s.app == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	for _, sender := range senders {
-		if sender == nil {
-			continue
-		}
-		clientName := strings.TrimSpace(sender.ClientName())
-		if clientName == "" {
-			log.Printf("matrixclawd restart delivery sender %T has empty client name", sender)
-			continue
-		}
-		deliveries, err := s.app.ListClientDeliveries(ctx, core.ClientDeliveryFilter{
-			Client: clientName,
-			Type:   core.ClientDeliveryTypeDaemonRestart,
-			Status: core.ClientDeliveryStatusPending,
-			Limit:  20,
-		})
-		if err != nil {
-			log.Printf("matrixclawd %s delivery recovery failed: %v", clientName, err)
-			continue
-		}
-		for _, delivery := range deliveries {
-			if err := sender.DeliverRestartNotification(ctx, delivery, daemonRestartText); err != nil {
-				log.Printf("matrixclawd %s delivery %s failed: %v", clientName, delivery.ID, err)
-				if markErr := s.app.MarkClientDeliveryFailed(ctx, delivery, err); markErr != nil {
-					log.Printf("matrixclawd mark %s delivery %s failed: %v", clientName, delivery.ID, markErr)
-				}
-				continue
+	deliveries, err := s.app.ListClientDeliveries(ctx, core.ClientDeliveryFilter{
+		Client: telegram.ClientName,
+		Type:   core.ClientDeliveryTypeDaemonRestart,
+		Status: core.ClientDeliveryStatusPending,
+		Limit:  20,
+	})
+	if err != nil {
+		log.Printf("matrixclawd telegram delivery recovery failed: %v", err)
+		return
+	}
+	for _, delivery := range deliveries {
+		if err := sender.DeliverRestartNotification(ctx, delivery, daemonRestartText); err != nil {
+			log.Printf("matrixclawd telegram delivery %s failed: %v", delivery.ID, err)
+			if markErr := s.app.MarkClientDeliveryFailed(ctx, delivery, err); markErr != nil {
+				log.Printf("matrixclawd mark telegram delivery %s failed: %v", delivery.ID, markErr)
 			}
-			if err := s.app.MarkClientDeliverySent(ctx, delivery); err != nil {
-				log.Printf("matrixclawd mark %s delivery %s sent failed: %v", clientName, delivery.ID, err)
-			}
+			continue
+		}
+		if err := s.app.MarkClientDeliverySent(ctx, delivery); err != nil {
+			log.Printf("matrixclawd mark telegram delivery %s sent failed: %v", delivery.ID, err)
 		}
 	}
 }
