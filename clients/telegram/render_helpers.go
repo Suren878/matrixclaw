@@ -15,9 +15,6 @@ func renderApprovalText(approval core.Approval) string {
 	if approval.ToolName != "" {
 		lines = append(lines, "Tool: "+approval.ToolName)
 	}
-	if approval.Action != "" {
-		lines = append(lines, "Action: "+approval.Action)
-	}
 	if approval.Path != "" {
 		lines = append(lines, "Path: "+approval.Path)
 	}

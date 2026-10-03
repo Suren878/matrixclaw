@@ -244,7 +244,6 @@ func (s *streamState) handleToolCalls(ctx context.Context, calls []ProviderToolC
 				ID:          result.Approval.ID,
 				ToolCallID:  call.ID,
 				ToolName:    call.Name,
-				Action:      result.Approval.Action,
 				Path:        result.Approval.Path,
 				Description: result.Approval.Description,
 			})); err != nil {

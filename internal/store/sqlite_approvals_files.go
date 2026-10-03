@@ -20,8 +20,8 @@ func (s *SQLiteStore) CreateApproval(ctx context.Context, approval core.Approval
 		suggestion = string(body)
 	}
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO approvals(id, session_id, run_id, task_id, tool_call_ref, tool_name, description, action, params_json, path, state, reason, suggestion_json, requested_at, decided_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+INSERT INTO approvals(id, session_id, run_id, task_id, tool_call_ref, tool_name, description, params_json, path, state, reason, suggestion_json, requested_at, decided_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		approval.ID,
 		approval.SessionID,
 		approval.RunID,
@@ -29,7 +29,6 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		approval.ToolCallRef,
 		approval.ToolName,
 		approval.Description,
-		approval.Action,
 		string(approval.Params),
 		approval.Path,
 		string(approval.State),
@@ -80,7 +79,7 @@ WHERE id = ?`,
 
 // approvalSelect reads approvals with the name of the subagent that asked.
 const approvalSelect = `SELECT a.id, a.session_id, a.run_id, a.task_id, COALESCE(t.agent_name, ''), a.tool_call_ref, a.tool_name,
-a.description, a.action, a.params_json, a.path, a.state, a.reason, a.suggestion_json, a.requested_at, a.decided_at
+a.description, a.params_json, a.path, a.state, a.reason, a.suggestion_json, a.requested_at, a.decided_at
 FROM approvals a LEFT JOIN tasks t ON t.id = a.task_id AND a.task_id <> ''`
 
 // ListApprovals lists the approvals in state (any when empty) the session's
@@ -115,7 +114,7 @@ func (s *SQLiteStore) queryApprovals(ctx context.Context, query string, args ...
 		var suggestionJSON string
 		var requestedAt string
 		var decidedAt sql.NullString
-		if err := rows.Scan(&approval.ID, &approval.SessionID, &approval.RunID, &approval.TaskID, &approval.AgentName, &approval.ToolCallRef, &approval.ToolName, &approval.Description, &approval.Action, &paramsJSON, &approval.Path, &rawState, &approval.Reason, &suggestionJSON, &requestedAt, &decidedAt); err != nil {
+		if err := rows.Scan(&approval.ID, &approval.SessionID, &approval.RunID, &approval.TaskID, &approval.AgentName, &approval.ToolCallRef, &approval.ToolName, &approval.Description, &paramsJSON, &approval.Path, &rawState, &approval.Reason, &suggestionJSON, &requestedAt, &decidedAt); err != nil {
 			return nil, fmt.Errorf("store: scan approval: %w", err)
 		}
 		approval.State = core.ApprovalState(rawState)

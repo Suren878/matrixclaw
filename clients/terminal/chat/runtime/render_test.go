@@ -162,7 +162,7 @@ func TestRenderPermissionDialog(t *testing.T) {
 			textMessage("m01", transcript.MessageRoleUser, 0, "Clean the build cache"),
 			toolCallMessage("m02", 2, "call_bash", "bash", map[string]any{"command": "rm -rf ./build"}),
 		},
-		Approvals: []core.Approval{{ID: "approval_1", SessionID: "session_1", RunID: "run_1", ToolCallRef: "call_bash", ToolName: "bash", Action: "execute", Description: "Run a shell command", Params: json.RawMessage(`{"command":"rm -rf ./build"}`), State: core.ApprovalStatePending}},
+		Approvals: []core.Approval{{ID: "approval_1", SessionID: "session_1", RunID: "run_1", ToolCallRef: "call_bash", ToolName: "bash", Description: "Run a shell command", Params: json.RawMessage(`{"command":"rm -rf ./build"}`), State: core.ApprovalStatePending}},
 	}
 	m, screen := renderApp(t, 110, 30, snapshot)
 	if !strings.Contains(ansi.Strip(screen), "rm -rf ./build") || !m.dialog.HasDialogs() {

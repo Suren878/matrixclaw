@@ -213,7 +213,6 @@ type ApprovalRequestedPayload struct {
 	ID          string `json:"id"`
 	ToolCallID  string `json:"tool_call_id,omitempty"`
 	ToolName    string `json:"tool_name"`
-	Action      string `json:"action,omitempty"`
 	Path        string `json:"path,omitempty"`
 	Description string `json:"description,omitempty"`
 }

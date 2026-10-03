@@ -9,7 +9,6 @@ type PermissionRequest struct {
 	ToolCallID  string                      `json:"tool_call_id"`
 	ToolName    string                      `json:"tool_name"`
 	Description string                      `json:"description"`
-	Action      string                      `json:"action"`
 	Params      any                         `json:"params,omitempty"`
 	Path        string                      `json:"path"`
 	Suggestion  *permissionrules.Suggestion `json:"suggestion,omitempty"`

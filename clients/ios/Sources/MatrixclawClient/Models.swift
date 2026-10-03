@@ -290,7 +290,6 @@ public struct Approval: Codable, Identifiable, Equatable, Sendable {
     public var toolCallId: String?
     public var toolName: String?
     public var description: String?
-    public var action: String?
     public var params: JSONValue?
     public var path: String?
     public var state: ApprovalState

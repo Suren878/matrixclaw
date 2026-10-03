@@ -27,7 +27,6 @@ type Approval struct {
 	ToolCallRef string          `json:"tool_call_id,omitempty"`
 	ToolName    string          `json:"tool_name,omitempty"`
 	Description string          `json:"description,omitempty"`
-	Action      string          `json:"action,omitempty"`
 	Params      json.RawMessage `json:"params,omitempty"`
 	Path        string          `json:"path,omitempty"`
 	State       ApprovalState   `json:"state"`
@@ -47,7 +46,6 @@ type PermissionRequest struct {
 	ToolCallID  string                 `json:"tool_call_id"`
 	ToolName    string                 `json:"tool_name"`
 	Description string                 `json:"description"`
-	Action      string                 `json:"action"`
 	Params      json.RawMessage        `json:"params,omitempty"`
 	Path        string                 `json:"path"`
 	Suggestion  *permission.Suggestion `json:"suggestion,omitempty"`

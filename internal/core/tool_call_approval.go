@@ -57,7 +57,6 @@ func (c *Core) requestApproval(ctx context.Context, prepared preparedToolCall, r
 			ToolCallID:  prepared.ToolCallID,
 			ToolName:    approval.ToolName,
 			Description: approval.Description,
-			Action:      approval.Action,
 			Params:      approval.Params,
 			Path:        approval.Path,
 			Suggestion:  approval.Suggestion,
