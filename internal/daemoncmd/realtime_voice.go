@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
@@ -17,12 +18,15 @@ import (
 func newRealtimeVoiceManager(setupService *setup.Service, app *core.Core) *realtime.Manager {
 	manager := realtime.NewManager(app, realtime.Config{}).
 		SetConfigSource(realtimeVoiceConfigSource(setupService))
-	manager.RegisterProvider(geminilive.New(geminilive.Config{}).
-		SetConfigSource(geminiLiveConfigSource(setupService)))
-	manager.RegisterProvider(grokvoice.New(grokvoice.Config{}).
-		SetConfigSource(grokVoiceConfigSource(setupService)))
-	manager.RegisterProvider(openairealtime.New(openairealtime.Config{}).
-		SetConfigSource(openAIRealtimeConfigSource(setupService)))
+	manager.RegisterProvider(geminilive.New(geminilive.Config{}).SetConfigSource(func(ctx context.Context) geminilive.Config {
+		return geminilive.Config(geminiLiveSource.config(setupService))
+	}))
+	manager.RegisterProvider(grokvoice.New(grokvoice.Config{}).SetConfigSource(func(ctx context.Context) grokvoice.Config {
+		return grokvoice.Config(grokVoiceSource.config(setupService))
+	}))
+	manager.RegisterProvider(openairealtime.New(openairealtime.Config{}).SetConfigSource(func(ctx context.Context) openairealtime.Config {
+		return openairealtime.Config(openAIRealtimeSource.config(setupService))
+	}))
 	return manager
 }
 
@@ -52,132 +56,63 @@ func realtimeVoiceConfigSource(setupService *setup.Service) realtime.ConfigSourc
 	}
 }
 
-func geminiLiveConfigSource(setupService *setup.Service) geminilive.ConfigSource {
-	return func(ctx context.Context) geminilive.Config {
-		cfg := geminilive.Config{}
-		if setupService != nil {
-			if setupCfg, err := setupService.Load(); err == nil {
-				module := setup.RealtimeVoiceModuleDescriptor(setupCfg.Modules)
-				providerCfg := realtimeVoiceProviderConfig(module, realtime.ProviderGemini)
-				cfg.APIKey = providerCfg.APIKey
-				cfg.APIKeyEnv = providerCfg.APIKeyEnv
-				cfg.ModelID = providerCfg.ModelID
-				cfg.VoiceID = providerCfg.VoiceID
-				cfg.Language = providerCfg.Language
-				cfg.WSURL = providerCfg.Endpoint
-				cfg.SystemInstruction = realtimeVoiceSystemInstruction(setupCfg)
-				cfg.APIKey = firstNonEmpty(
-					cfg.APIKey,
-					realtimeAPIKeyFromEnvName(cfg.APIKeyEnv),
-					configuredGeminiAPIKey(setupCfg),
-				)
-			}
-		}
-		cfg.APIKey = firstNonEmpty(
-			os.Getenv("MATRIXCLAW_GEMINI_LIVE_API_KEY"),
-			cfg.APIKey,
-			os.Getenv("GEMINI_API_KEY"),
-			os.Getenv("GOOGLE_API_KEY"),
-		)
-		cfg.ModelID = firstNonEmpty(
-			os.Getenv("MATRIXCLAW_GEMINI_LIVE_MODEL"),
-			os.Getenv("MATRIXCLAW_REALTIME_VOICE_MODEL"),
-			cfg.ModelID,
-		)
-		cfg.VoiceID = firstNonEmpty(os.Getenv("MATRIXCLAW_GEMINI_LIVE_VOICE"), cfg.VoiceID)
-		cfg.Language = firstNonEmpty(
-			os.Getenv("MATRIXCLAW_GEMINI_LIVE_LANGUAGE"),
-			os.Getenv("MATRIXCLAW_REALTIME_VOICE_LANGUAGE"),
-			cfg.Language,
-		)
-		cfg.WSURL = firstNonEmpty(os.Getenv("MATRIXCLAW_GEMINI_LIVE_WS_URL"), cfg.WSURL)
-		return cfg
-	}
+// realtimeProviderConfig has the fields every realtime voice provider's Config has.
+type realtimeProviderConfig struct {
+	APIKey            string
+	APIKeyEnv         string
+	WSURL             string
+	ModelID           string
+	VoiceID           string
+	Language          string
+	SystemInstruction string
+	DialTimeout       time.Duration
 }
 
-func grokVoiceConfigSource(setupService *setup.Service) grokvoice.ConfigSource {
-	return func(ctx context.Context) grokvoice.Config {
-		cfg := grokvoice.Config{}
-		if setupService != nil {
-			if setupCfg, err := setupService.Load(); err == nil {
-				module := setup.RealtimeVoiceModuleDescriptor(setupCfg.Modules)
-				providerCfg := realtimeVoiceProviderConfig(module, realtime.ProviderGrok)
-				cfg.APIKey = providerCfg.APIKey
-				cfg.APIKeyEnv = providerCfg.APIKeyEnv
-				cfg.ModelID = providerCfg.ModelID
-				cfg.VoiceID = providerCfg.VoiceID
-				cfg.Language = providerCfg.Language
-				cfg.WSURL = providerCfg.Endpoint
-				cfg.SystemInstruction = realtimeVoiceSystemInstruction(setupCfg)
-				cfg.APIKey = firstNonEmpty(
-					cfg.APIKey,
-					realtimeAPIKeyFromEnvName(cfg.APIKeyEnv),
-					configuredXAIAPIKey(setupCfg),
-				)
-			}
-		}
-		cfg.APIKey = firstNonEmpty(
-			os.Getenv("MATRIXCLAW_GROK_VOICE_API_KEY"),
-			cfg.APIKey,
-			os.Getenv("XAI_API_KEY"),
-			os.Getenv("GROK_API_KEY"),
-		)
-		cfg.ModelID = firstNonEmpty(
-			os.Getenv("MATRIXCLAW_GROK_VOICE_MODEL"),
-			os.Getenv("MATRIXCLAW_REALTIME_VOICE_MODEL"),
-			cfg.ModelID,
-		)
-		cfg.VoiceID = firstNonEmpty(os.Getenv("MATRIXCLAW_GROK_VOICE_VOICE"), cfg.VoiceID)
-		cfg.Language = firstNonEmpty(
-			os.Getenv("MATRIXCLAW_GROK_VOICE_LANGUAGE"),
-			os.Getenv("MATRIXCLAW_REALTIME_VOICE_LANGUAGE"),
-			cfg.Language,
-		)
-		cfg.WSURL = firstNonEmpty(os.Getenv("MATRIXCLAW_GROK_VOICE_WS_URL"), cfg.WSURL)
-		return cfg
-	}
+// realtimeProviderSource resolves one realtime voice provider's config from
+// setup, overridden by the MATRIXCLAW_<envPrefix>_* environment variables.
+type realtimeProviderSource struct {
+	id        string
+	envPrefix string
+	keyEnvs   []string
+	matches   func(setup.ProviderConfig) bool
 }
 
-func openAIRealtimeConfigSource(setupService *setup.Service) openairealtime.ConfigSource {
-	return func(ctx context.Context) openairealtime.Config {
-		cfg := openairealtime.Config{}
-		if setupService != nil {
-			if setupCfg, err := setupService.Load(); err == nil {
-				module := setup.RealtimeVoiceModuleDescriptor(setupCfg.Modules)
-				providerCfg := realtimeVoiceProviderConfig(module, realtime.ProviderOpenAI)
-				cfg.APIKey = providerCfg.APIKey
-				cfg.APIKeyEnv = providerCfg.APIKeyEnv
-				cfg.ModelID = providerCfg.ModelID
-				cfg.VoiceID = providerCfg.VoiceID
-				cfg.Language = providerCfg.Language
-				cfg.WSURL = providerCfg.Endpoint
-				cfg.SystemInstruction = realtimeVoiceSystemInstruction(setupCfg)
-				cfg.APIKey = firstNonEmpty(
-					cfg.APIKey,
-					realtimeAPIKeyFromEnvName(cfg.APIKeyEnv),
-					configuredOpenAIAPIKey(setupCfg),
-				)
-			}
+var (
+	geminiLiveSource     = realtimeProviderSource{id: realtime.ProviderGemini, envPrefix: "GEMINI_LIVE", keyEnvs: []string{"GEMINI_API_KEY", "GOOGLE_API_KEY"}, matches: isGeminiProvider}
+	grokVoiceSource      = realtimeProviderSource{id: realtime.ProviderGrok, envPrefix: "GROK_VOICE", keyEnvs: []string{"XAI_API_KEY", "GROK_API_KEY"}, matches: isXAIProvider}
+	openAIRealtimeSource = realtimeProviderSource{id: realtime.ProviderOpenAI, envPrefix: "OPENAI_REALTIME", keyEnvs: []string{"OPENAI_API_KEY"}, matches: isOpenAIProvider}
+)
+
+func (p realtimeProviderSource) config(setupService *setup.Service) realtimeProviderConfig {
+	cfg := realtimeProviderConfig{}
+	if setupService != nil {
+		if setupCfg, err := setupService.Load(); err == nil {
+			module := setup.RealtimeVoiceModuleDescriptor(setupCfg.Modules)
+			providerCfg := realtimeVoiceProviderConfig(module, p.id)
+			cfg.APIKeyEnv = providerCfg.APIKeyEnv
+			cfg.ModelID = providerCfg.ModelID
+			cfg.VoiceID = providerCfg.VoiceID
+			cfg.Language = providerCfg.Language
+			cfg.WSURL = providerCfg.Endpoint
+			cfg.SystemInstruction = realtimeVoiceSystemInstruction(setupCfg)
+			cfg.APIKey = firstNonEmpty(
+				providerCfg.APIKey,
+				realtimeAPIKeyFromEnvName(cfg.APIKeyEnv),
+				configuredProviderAPIKey(setupCfg, p.matches),
+			)
 		}
-		cfg.APIKey = firstNonEmpty(
-			os.Getenv("MATRIXCLAW_OPENAI_REALTIME_API_KEY"),
-			cfg.APIKey,
-			os.Getenv("OPENAI_API_KEY"),
-		)
-		cfg.ModelID = firstNonEmpty(
-			os.Getenv("MATRIXCLAW_OPENAI_REALTIME_MODEL"),
-			os.Getenv("MATRIXCLAW_REALTIME_VOICE_MODEL"),
-			cfg.ModelID,
-		)
-		cfg.VoiceID = firstNonEmpty(os.Getenv("MATRIXCLAW_OPENAI_REALTIME_VOICE"), cfg.VoiceID)
-		cfg.Language = firstNonEmpty(
-			os.Getenv("MATRIXCLAW_OPENAI_REALTIME_LANGUAGE"),
-			os.Getenv("MATRIXCLAW_REALTIME_VOICE_LANGUAGE"),
-			cfg.Language,
-		)
-		cfg.WSURL = firstNonEmpty(os.Getenv("MATRIXCLAW_OPENAI_REALTIME_WS_URL"), cfg.WSURL)
-		return cfg
 	}
+	env := func(name string) string { return os.Getenv("MATRIXCLAW_" + p.envPrefix + "_" + name) }
+	keys := []string{env("API_KEY"), cfg.APIKey}
+	for _, name := range p.keyEnvs {
+		keys = append(keys, os.Getenv(name))
+	}
+	cfg.APIKey = firstNonEmpty(keys...)
+	cfg.ModelID = firstNonEmpty(env("MODEL"), os.Getenv("MATRIXCLAW_REALTIME_VOICE_MODEL"), cfg.ModelID)
+	cfg.VoiceID = firstNonEmpty(env("VOICE"), cfg.VoiceID)
+	cfg.Language = firstNonEmpty(env("LANGUAGE"), os.Getenv("MATRIXCLAW_REALTIME_VOICE_LANGUAGE"), cfg.Language)
+	cfg.WSURL = firstNonEmpty(env("WS_URL"), cfg.WSURL)
+	return cfg
 }
 
 func realtimeVoiceProviderConfig(module setup.VoiceModuleDescriptor, providerID string) setup.VoiceProviderConfig {
@@ -209,33 +144,9 @@ func realtimeVoiceSystemInstruction(cfg setup.Config) string {
 	return "Assistant identity:\n- Your configured assistant name is " + strconv.Quote(name) + ". Use this exact name when asked who you are."
 }
 
-func configuredGeminiAPIKey(cfg setup.Config) string {
+func configuredProviderAPIKey(cfg setup.Config, matches func(setup.ProviderConfig) bool) string {
 	for _, provider := range cfg.Providers {
-		if !isGeminiProvider(provider) {
-			continue
-		}
-		if resolved, ok := setup.ProviderConfigWithResolvedAPIKey(provider); ok {
-			return strings.TrimSpace(resolved.APIKey)
-		}
-	}
-	return ""
-}
-
-func configuredXAIAPIKey(cfg setup.Config) string {
-	for _, provider := range cfg.Providers {
-		if !isXAIProvider(provider) {
-			continue
-		}
-		if resolved, ok := setup.ProviderConfigWithResolvedAPIKey(provider); ok {
-			return strings.TrimSpace(resolved.APIKey)
-		}
-	}
-	return ""
-}
-
-func configuredOpenAIAPIKey(cfg setup.Config) string {
-	for _, provider := range cfg.Providers {
-		if !isOpenAIProvider(provider) {
+		if !matches(provider) {
 			continue
 		}
 		if resolved, ok := setup.ProviderConfigWithResolvedAPIKey(provider); ok {
