@@ -79,6 +79,35 @@ func TestOutputKeepsItsHeadAndNewestTailPastTheCap(t *testing.T) {
 	}
 }
 
+func TestReadingInOrderGetsPastAHeadCutMidCharacter(t *testing.T) {
+	out := newOutput(t)
+	// One ASCII byte, then two-byte runes: the head cut splits one of them.
+	if _, err := out.Write([]byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	line := []byte(strings.Repeat("я", 1<<15))
+	for written := 0; written < shelltask.MaxBytes+shelltask.HeadBytes; written += len(line) {
+		if _, err := out.Write(line); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var cursor int64
+	for range 200 {
+		chunk, err := shelltask.Read(out.Path(), cursor, 64<<10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !chunk.More {
+			return
+		}
+		if chunk.Next == cursor {
+			t.Fatalf("stuck at cursor %d: empty chunk with more to read", cursor)
+		}
+		cursor = chunk.Next
+	}
+	t.Fatalf("did not reach the end; cursor %d", cursor)
+}
+
 func TestProcessRunsInItsOwnGroupAndReportsItsExitCode(t *testing.T) {
 	out := newOutput(t)
 	p, err := shelltask.Start("echo out; echo err >&2; exit 3", t.TempDir(), out)

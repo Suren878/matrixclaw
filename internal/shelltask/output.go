@@ -243,7 +243,7 @@ func Read(path string, cursor int64, limit int) (Chunk, error) {
 	if _, err := file.ReadAt(buf, offset); err != nil && !errors.Is(err, io.EOF) {
 		return Chunk{}, err
 	}
-	buf = completeRunes(buf, offset+n < l.size)
+	buf = completeRunes(buf, offset+n < end)
 	next := cursor + int64(len(buf))
 	return Chunk{Text: string(buf), Next: next, Skipped: skipped, More: next < l.total()}, nil
 }
