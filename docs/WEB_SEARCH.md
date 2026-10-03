@@ -128,3 +128,6 @@ Each provider stores its credentials independently:
 
 Switching providers does not clear the other provider's key. You can store
 both a Tavily and a Serper key and switch between them instantly.
+
+The daemon API (`/v1/modules/web-search`) shows the keys only as masked
+previews. To remove a stored key or URL, enter `-` in its prompt.

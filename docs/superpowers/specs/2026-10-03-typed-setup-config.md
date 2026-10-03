@@ -173,3 +173,33 @@ session no longer contacts Telegram.
   answers with a reopen hint.
 - TUI wizard: model tests for provider save validation and bool editing;
   manual run of `matrixclaw setup` against a temp `MATRIXCLAW_SETUP_PATH`.
+
+## As built
+
+- Steps 1 and 2 landed as one commit: the wizard and the API paths shared the
+  `Draft` plumbing too closely to keep both green separately. Step 6 is a
+  small extra cleanup of provider helpers that only the old forms used.
+- `Service.Update` canonicalizes the config (trim, persisted aliases, strip
+  defaults) before `Config.Validate`; `Apply` uses the same path, creating
+  the file on first run. `CheckProvider` (structure plus a usable key) runs
+  in `ConfigureProvider` and the wizard, not in `Validate`, so an env key that
+  disappears never blocks unrelated edits.
+- `ProviderModelCatalog` is a function of a `ProviderConfig` and returns the
+  response only; `ProviderModelCatalogFor` applies pending form edits with
+  the same base-URL/key guard as saving.
+- Stored defaults dropped on save: provider `name`, `type`, `api_key_env`,
+  `base_url` equal to the catalog's, `catalog_id`; assistant name
+  "matrixclaw"; browser `provider_id` "playwright" and `runtime_mode`
+  "per_task"; local voice model/voice/language/binary/endpoint/runtime mode
+  equal to the defaults and voice entries left empty by that. Provider model
+  and reasoning effort are kept as stored (they can be user choices); cloud
+  realtime voice providers keep their endpoint and key env as before, since
+  the daemon's env overrides read them.
+- Controlplane provider forms: `/provider form <id> [field|set|save]`, form
+  state is a `setup.ProviderSetupUpdate` over the provider's
+  `ProviderSetupItem` in a 30 min / 64 entry store; a failed save keeps the
+  form open with the daemon's error. Typing `-` in a telephony or web search
+  prompt still clears the value (now sent as an explicit empty field).
+- The unconfigured provider items now carry `api_key_preview` too (e.g.
+  `env:OPENAI_API_KEY`), so a form for a provider with an env key can load
+  models and save without retyping it.

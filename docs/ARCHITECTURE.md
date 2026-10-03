@@ -114,6 +114,25 @@ Around the engine:
 See the [design spec](superpowers/specs/2026-09-23-long-running-agent-design.md)
 for the details and the as-built notes of each stage.
 
+## Setup Config
+
+`setup.json` is one typed `setup.Config` owned by `internal/setup`:
+
+- Every edit goes through `Service.Update(func(*Config) error)`, which loads,
+  changes, validates (structure only, no network) and saves the file under
+  one lock. Provider edits, the session model switch and module settings
+  change only their own part of the file.
+- The file stores the user's choices, not built-in defaults: a provider keeps
+  only what differs from its catalog entry, voice and browser providers only
+  what differs from theirs. `ProviderConfig.Effective`/`Runtime` and the
+  module descriptors fill the defaults when the config is read.
+- The terminal setup wizard edits a `Config` in memory and saves it with
+  `Service.Apply`, the only place that checks the Telegram token.
+- Update requests use pointer fields: absent leaves a value alone, empty
+  clears or resets it. Form layouts live in the clients: the controlplane
+  keeps an open provider form by an opaque id, so the API key never travels
+  inside a command string.
+
 ## Repository Map
 
 - `cmd/matrixclaw`: CLI, setup entrypoint, TUI launcher, service commands.
