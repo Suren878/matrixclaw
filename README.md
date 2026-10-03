@@ -634,7 +634,7 @@ Piper voices are fetched from the online Piper voice catalog when available,
 with bundled English and Russian fallbacks. The setup flow is:
 
 ```text
-/modules -> Text to Speech -> Setup Provider -> Piper
+/modules -> Text to Speech -> Piper
 ```
 
 Choose `Engine` to install or delete the managed `piper-tts` runtime. Then open
@@ -643,7 +643,7 @@ active voice. Piper engine installation and voice downloads stay separate so a
 small open-source install does not pull every voice by default. The status
 screen reports local model storage, runtime mode, and current process RAM.
 
-Supertonic 3 is the heavier local TTS option. Its `Runtime` row installs the
+Supertonic 3 is the heavier local TTS option. Its `Engine` row installs the
 Python SDK with local server support and runs the official `supertonic download`
 command for the shared model. Voice styles M1-M5/F1-F5 are selected without
 separate per-voice downloads, and language can stay on `Auto` or be pinned to
@@ -662,7 +662,7 @@ exposes Whisper's supported language codes from Afrikaans through Chinese
 instead of hard-coding only English/Russian:
 
 ```text
-/modules -> Speech to Text -> Setup Provider -> Whisper.cpp
+/modules -> Speech to Text -> Whisper.cpp
 ```
 
 Open `Model`, download a model size, select the active model, then leave
@@ -704,7 +704,8 @@ Relevant API endpoints:
 
 ```text
 GET   /v1/modules/voice/realtime_voice
-PATCH /v1/modules/voice/realtime_voice
+GET   /v1/settings/realtime_voice
+POST  /v1/settings/realtime_voice
 POST  /v1/realtime-voice/sessions
 GET   /v1/realtime-voice/sessions/{id}
 GET   /v1/realtime-voice/sessions/{id}/stream
@@ -716,9 +717,8 @@ also be changed from the control plane:
 
 ```text
 /modules realtime_voice
-/modules realtime_voice provider-select
-/modules realtime_voice setup
-/modules realtime_voice enabled
+/modules realtime_voice open provider
+/modules realtime_voice open gemini_live
 ```
 
 The control plane stores the enabled flag, the selected provider and each

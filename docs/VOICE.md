@@ -44,9 +44,9 @@ Piper, Supertonic, and Whisper.cpp can also be installed from the TUI without
 running the full voice runtime installer:
 
 ```text
-/modules -> Text to Speech -> Setup Provider -> Piper -> Engine
-/modules -> Text to Speech -> Setup Provider -> Supertonic 3 -> Engine
-/modules -> Speech to Text -> Setup Provider -> Whisper.cpp -> Engine
+/modules -> Text to Speech -> Piper -> Engine
+/modules -> Text to Speech -> Supertonic 3 -> Engine
+/modules -> Speech to Text -> Whisper.cpp -> Engine
 ```
 
 The Piper runtime row installs or deletes the managed local `piper-tts`

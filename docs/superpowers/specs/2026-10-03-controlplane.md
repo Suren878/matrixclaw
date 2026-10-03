@@ -256,3 +256,38 @@ Rough size: −7.5k / +3k lines (tests +1.2k).
   paging stay otherwise the same.
 - C2 edits `internal/tools` and the core tool pipeline in parallel; this
   branch touches neither.
+
+## As built
+
+Commits follow the plan; non-owner gating of the client's own module screens
+is a commit of its own. Differences from the design:
+
+- Settings live at `GET|POST /v1/settings/{module}`, not
+  `/v1/modules/{id}/settings`: that pattern overlaps `GET
+  /v1/modules/skills/{id}` in the mux with neither more specific.
+  `modules.Change` gained `Reload` for changes that alter what modules offer
+  without editing setup.json (installing the browser engine adds its MCP
+  server). Text and secret values: an empty prompt keeps the value, `-`
+  clears it (the client sends ""); the daemon stores what it is sent.
+- One JSON decoder treats an empty body as the zero value; the
+  permission-mode endpoint now refuses an empty mode instead of resetting it.
+  The mux answers unknown paths and methods with its plain-text 404/405.
+- Voice: the local voice descriptor types and fallback catalogs moved to
+  `localruntime` (`VoiceModule`, `VoiceProvider`, `VoiceModel`); setup keeps
+  the persisted shape, its defaults (so setup.json keeps dropping them on
+  save) and the Supertonic/Whisper language tables, now the only copies.
+  Piper models carry `Country` instead of it being parsed from
+  descriptions. `localruntime.Runtime.Offline` keeps the bundled catalogs
+  (tests use it). Choosing a provider whose model is missing selects another
+  installed one when there is one; the Supertonic storage walk of cache
+  directories and the per-provider "Installed" confirmations are gone.
+- Realtime: `Manager.Edit` and `setup.VoiceModuleUpdate` went with the
+  PATCH endpoint; an API key can now be cleared (`-`).
+- Telegram's own daemon client (deliveries, lookups) acts as a `member`;
+  only `daemonFor(target)` acts as the owner, so the restart interceptor
+  now runs with the chat's role.
+- Kept as they were: MCP paths (`/v1/modules/mcp/{id}/server`), the storage
+  and voice TTS/STT execution paths, `GET /v1/runs/{id}/steps`.
+
+Size (against main at 99d625b): Go outside tests +3.7k / −9.9k, tests
++1.6k / −0.7k; 208 files.

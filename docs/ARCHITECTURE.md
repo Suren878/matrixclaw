@@ -181,9 +181,8 @@ for the details and the as-built notes of each stage.
 - The terminal setup wizard edits a `Config` in memory and saves it with
   `Service.Apply`, the only place that checks the Telegram token.
 - Update requests use pointer fields: absent leaves a value alone, empty
-  clears or resets it. Form layouts live in the clients: the controlplane
-  keeps an open provider form by an opaque id, so the API key never travels
-  inside a command string.
+  clears or resets it. The controlplane keeps an open provider form by an
+  opaque id, so the API key never travels inside a command string.
 
 ## Modules
 
@@ -205,6 +204,13 @@ browser, MCP and skills are modules (`internal/modules`): each implements
 - `Status` is cheap and render-ready (`enabled`, `ready`, `state`, facts,
   tools); `GET /v1/modules` lists them and the model's runtime note is built
   from them.
+- A module with settings implements `modules.Configurable`: `Settings`
+  describes its screen as typed items (toggle, choice, text, secret, action,
+  page, info) and `Change` runs a change (installing an engine, downloading a
+  model) and returns the setup.json edit and the page to show next.
+  `GET|POST /v1/settings/{module}` serve them; the API saves the edit and
+  reloads. TTS, STT, realtime voice, telephony, web search and the browser
+  are configured this way, so provider knowledge stays in the daemon.
 - Local runtimes run under one `procsup.Supervisor` owned by the daemon's
   `localruntime.Runtime`: one process per provider, readiness probed outside
   the lock, stopped on shutdown (and with `Pdeathsig` on Linux).
@@ -213,6 +219,18 @@ browser, MCP and skills are modules (`internal/modules`): each implements
   realtime module resolves provider settings and API keys once per reload and
   composes the assistant identity, custom instructions and, for phone calls,
   the phone prompt.
+
+## Commands and Screens
+
+`internal/controlplane` turns slash commands into screens for the terminal
+and Telegram: a `Dispatcher` holds one `*daemonclient.Client` (client name,
+external key and role) and answers with a `Result` (text, picker, form,
+prompt, confirm or info) whose rows carry the next command. Clients render
+`PickerData` themselves (Telegram buttons, paging and wording, terminal
+menus); a picker carries the command that shows it again. Module settings
+are drawn from the daemon's items by one generic screen
+(`/modules <id> [open|confirm|set] <path>`); external agents, skills, MCP
+and storage keep screens of their own.
 
 ## Repository Map
 
@@ -233,7 +251,8 @@ browser, MCP and skills are modules (`internal/modules`): each implements
 - `internal/permission`: permission rules and bash command parsing.
 - `internal/shelltask`: background shell processes and their output files.
 - `internal/transcript`: message types.
-- `internal/controlplane`: shared command semantics for terminal and Telegram.
+- `internal/controlplane`: slash commands and screens for terminal and Telegram.
+- `internal/daemonclient`: the Go client of the daemon API.
 - `internal/toolview`: shared presentation of tool calls for the clients.
 - `internal/store`: SQLite persistence.
 - `internal/providers`: provider adapters, provider catalog, model catalogs, and
@@ -255,6 +274,15 @@ browser, MCP and skills are modules (`internal/modules`): each implements
 
 `matrixclawd` is intended for local clients. By default it refuses non-loopback
 HTTP binds unless `MATRIXCLAW_ALLOW_REMOTE_HTTP=1` is set explicitly.
+
+Routes are Go `ServeMux` patterns in one table (`internal/api/server.go`);
+`api.New(Deps)` takes every service once. A client asserts who it acts for in
+`X-Matrixclaw-Role` (`owner`, `member`, `guest`; none is the owner); every
+caller holds the API token, so the daemon trusts it as it trusts the token.
+Telegram derives it from the chat an update came from. Settings writes,
+permission modes, global rules and daemon restart/stop are the owner's;
+guests keep no rules; members and guests stay out of sessions that run
+unattended. Clients only hide what the daemon would refuse.
 
 The daemon API is the stable boundary used by the TUI, Telegram worker, iOS
 client package, MCP stdio server, and operational commands.
