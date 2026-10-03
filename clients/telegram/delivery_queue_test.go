@@ -364,7 +364,7 @@ func TestApprovalDeliveryDoesNotRepeatWhatItsRunAsked(t *testing.T) {
 	}
 	api := &deliveryTestAPI{}
 	w := newDeliveryTestWorker(t, d, api, &now)
-	w.runRenderState("42", "run-1").approvals["a1"] = 5
+	w.runRenderState(chatTarget{kind: telegramTargetChat, chatID: 42, externalKey: "42"}, "run-1").approvals["a1"] = 5
 
 	if err := w.deliverPending(context.Background()); err != nil {
 		t.Fatal(err)

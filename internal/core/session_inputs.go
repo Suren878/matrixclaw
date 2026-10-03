@@ -158,7 +158,8 @@ func (c *Core) createPendingSessionInput(ctx context.Context, session Session, a
 		// A run waiting for events takes any message at once.
 		mode = BusyInputModeSteer
 	}
-	if mode == BusyInputModeSteer && !sessionAcceptsNativeSteer(session) {
+	if mode == BusyInputModeSteer && (input.ReplyOnce || !sessionAcceptsNativeSteer(session)) {
+		// A reply-once address takes only the reply of a run of its own.
 		mode = BusyInputModeQueue
 	}
 	now := c.now().UTC()

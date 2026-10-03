@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -96,7 +97,7 @@ func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptR
 	return result, nil
 }
 
-// deliverRunToSteerer delivers the run a message steers to the client it came
+// deliverRunToSteerer delivers the run a message steers to the address it came
 // from as well, unless the run is delivered there already.
 func (c *Core) deliverRunToSteerer(ctx context.Context, run Run, input HandleMessageInput, text string, parts []transcript.MessagePart) error {
 	if !input.ClientCapabilities.ReceivesDeliveries {
@@ -106,9 +107,14 @@ func (c *Core) deliverRunToSteerer(ctx context.Context, run Run, input HandleMes
 	if err != nil || !ok {
 		return err
 	}
-	existing, err := c.store.ListClientDeliveries(ctx, ClientDeliveryFilter{Client: delivery.Client, ExternalKey: delivery.ExternalKey, RunID: run.ID, Type: ClientDeliveryTypeRun, Limit: 1})
-	if err != nil || len(existing) > 0 {
+	existing, err := c.store.ListClientDeliveries(ctx, ClientDeliveryFilter{Client: delivery.Client, ExternalKey: delivery.ExternalKey, RunID: run.ID, Type: ClientDeliveryTypeRun})
+	if err != nil {
 		return err
+	}
+	for _, other := range existing {
+		if bytes.Equal(other.Address, delivery.Address) {
+			return nil
+		}
 	}
 	return c.store.CreateClientDelivery(ctx, delivery)
 }

@@ -27,7 +27,6 @@ func (w *Worker) deliverPendingRun(ctx context.Context, target chatTarget, sessi
 		ExternalKey: target.externalKey,
 		SessionID:   sessionID,
 		RunID:       runID,
-		Limit:       1,
 	})
 }
 
@@ -55,7 +54,7 @@ func (w *Worker) deliverInlineRunDelivery(ctx context.Context, target chatTarget
 	if err != nil {
 		return err
 	}
-	state := w.runRenderState(target.externalKey, runID)
+	state := w.runRenderState(target, runID)
 	switch run.Status {
 	case core.RunStatusAccepted, core.RunStatusRunning, core.RunStatusWaitingEvents:
 		messages, err := w.runMessages(ctx, daemon, sessionID, runID, state)
@@ -68,6 +67,9 @@ func (w *Worker) deliverInlineRunDelivery(ctx context.Context, target chatTarget
 		}
 		return w.sendText(ctx, target, text)
 	case core.RunStatusWaitingApproval:
+		if err := w.askInlineApprovalsInChat(ctx, target, daemon, run); err != nil {
+			return err
+		}
 		return w.sendText(ctx, target, "Approval required. Open the private Matrixclaw chat to approve or deny the request.")
 	case core.RunStatusCompleted, core.RunStatusFailed, core.RunStatusCanceled:
 	default:
@@ -99,8 +101,25 @@ func (w *Worker) deliverInlineRunDelivery(ctx context.Context, target chatTarget
 	if err := w.acknowledgeSentDelivery(ctx, daemon, deliveryID); err != nil {
 		return err
 	}
-	w.clearRunRenderState(target.externalKey, runID)
+	w.clearRunRenderState(target, runID)
+	if chat, ok := targetFromTelegramExternalKey(target.externalKey); ok {
+		w.clearUnusedRunRenderState(chat, runID)
+	}
 	return nil
+}
+
+// askInlineApprovalsInChat asks the private chat of the inline request's user
+// for the run's approvals, which only a chat can answer.
+func (w *Worker) askInlineApprovalsInChat(ctx context.Context, target chatTarget, daemon *daemonclient.Client, run core.Run) error {
+	chat, ok := targetFromTelegramExternalKey(target.externalKey)
+	if !ok || !chat.isChat() {
+		return nil
+	}
+	approvals, err := daemon.ListApprovals(ctx, run.SessionID, core.ApprovalStatePending)
+	if err != nil {
+		return err
+	}
+	return w.renderApprovalUpdates(ctx, chat, approvals, run.ID, w.runRenderState(chat, run.ID))
 }
 
 func (w *Worker) deliverGuestRunDelivery(ctx context.Context, target chatTarget, sessionID string, runID string, deliveryID string) error {
@@ -116,7 +135,7 @@ func (w *Worker) deliverGuestRunDelivery(ctx context.Context, target chatTarget,
 	}
 	text := renderRunStatus(run)
 	if run.Status == core.RunStatusCompleted {
-		messages, err := w.runMessages(ctx, daemon, sessionID, runID, w.runRenderState(target.externalKey, runID))
+		messages, err := w.runMessages(ctx, daemon, sessionID, runID, w.runRenderState(target, runID))
 		if err != nil {
 			return err
 		}
@@ -130,7 +149,7 @@ func (w *Worker) deliverGuestRunDelivery(ctx context.Context, target chatTarget,
 	if err := w.acknowledgeSentDelivery(ctx, daemon, deliveryID); err != nil {
 		return err
 	}
-	w.clearRunRenderState(target.externalKey, runID)
+	w.clearRunRenderState(target, runID)
 	return nil
 }
 
@@ -151,7 +170,7 @@ func (w *Worker) deliverChatRunDelivery(ctx context.Context, target chatTarget, 
 		return nil
 	}
 
-	state := w.runRenderState(target.externalKey, runID)
+	state := w.runRenderState(target, runID)
 	messages, err := w.runMessages(ctx, daemon, sessionID, runID, state)
 	if err != nil {
 		return err
@@ -186,12 +205,12 @@ func (w *Worker) deliverChatRunDelivery(ctx context.Context, target chatTarget, 
 	if err := w.acknowledgeSentDelivery(ctx, daemon, deliveryID); err != nil {
 		return err
 	}
-	w.clearRunRenderState(target.externalKey, runID)
+	w.clearRunRenderState(target, runID)
 	return nil
 }
 
 func (w *Worker) deliverActiveRunProgress(ctx context.Context, target chatTarget, daemon *daemonclient.Client, run core.Run) error {
-	state := w.runRenderState(target.externalKey, run.ID)
+	state := w.runRenderState(target, run.ID)
 	messages, err := w.runMessages(ctx, daemon, run.SessionID, run.ID, state)
 	if err != nil {
 		return err
@@ -218,7 +237,7 @@ func (w *Worker) deliverActiveRunProgress(ctx context.Context, target chatTarget
 }
 
 func (w *Worker) deliverRunApprovals(ctx context.Context, target chatTarget, daemon *daemonclient.Client, run core.Run) error {
-	state := w.runRenderState(target.externalKey, run.ID)
+	state := w.runRenderState(target, run.ID)
 	messages, err := w.runMessages(ctx, daemon, run.SessionID, run.ID, state)
 	if err != nil {
 		return err
@@ -350,10 +369,10 @@ func newRunDeliveryState() *runDeliveryState {
 	}
 }
 
-func (w *Worker) runRenderState(externalKey string, runID string) *runDeliveryState {
+func (w *Worker) runRenderState(target chatTarget, runID string) *runDeliveryState {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	key := runRenderStateKey(externalKey, runID)
+	key := runRenderStateKey(target, runID)
 	state := w.states[key]
 	if state == nil {
 		state = newRunDeliveryState()
@@ -364,23 +383,36 @@ func (w *Worker) runRenderState(externalKey string, runID string) *runDeliverySt
 
 // activeRunRenderState is the render state of a run whose delivery is in
 // progress, or a throwaway one.
-func (w *Worker) activeRunRenderState(externalKey string, runID string) *runDeliveryState {
+func (w *Worker) activeRunRenderState(target chatTarget, runID string) *runDeliveryState {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if state := w.states[runRenderStateKey(externalKey, runID)]; state != nil {
+	if state := w.states[runRenderStateKey(target, runID)]; state != nil {
 		return state
 	}
 	return newRunDeliveryState()
 }
 
-func (w *Worker) clearRunRenderState(externalKey string, runID string) {
+func (w *Worker) clearRunRenderState(target chatTarget, runID string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	delete(w.states, runRenderStateKey(externalKey, runID))
+	delete(w.states, runRenderStateKey(target, runID))
 }
 
-func runRenderStateKey(externalKey string, runID string) string {
-	return strings.TrimSpace(externalKey) + ":" + strings.TrimSpace(runID)
+// clearUnusedRunRenderState drops a render state no delivery of the run loaded
+// messages for, such as the approvals an inline request asked in the chat.
+func (w *Worker) clearUnusedRunRenderState(target chatTarget, runID string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	key := runRenderStateKey(target, runID)
+	if state := w.states[key]; state != nil && !state.messagesLoaded {
+		delete(w.states, key)
+	}
+}
+
+// runRenderStateKey tells apart the deliveries of one run to a chat and to an
+// inline message of the same user.
+func runRenderStateKey(target chatTarget, runID string) string {
+	return string(target.kind) + ":" + strings.TrimSpace(target.externalKey) + ":" + strings.TrimSpace(runID)
 }
 
 func documentFileName(values ...string) string {
@@ -438,7 +470,7 @@ func (w *Worker) deliverApproval(ctx context.Context, daemon *daemonclient.Clien
 		return err
 	}
 	// A delivery of the approval's run in progress may have asked already.
-	state := w.activeRunRenderState(target.externalKey, delivery.RunID)
+	state := w.activeRunRenderState(target, delivery.RunID)
 	for _, approval := range approvals {
 		if approval.ID != payload.ApprovalID {
 			continue

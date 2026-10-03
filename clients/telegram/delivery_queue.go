@@ -59,7 +59,7 @@ func (w *Worker) deliverPendingDeliveries(ctx context.Context, filter core.Clien
 			err = w.acknowledgeSentDelivery(ctx, daemon, delivery.ID)
 			if err == nil && delivery.Type == core.ClientDeliveryTypeRun {
 				if target, ok := targetFromClientDelivery(delivery); ok {
-					w.clearRunRenderState(target.externalKey, delivery.RunID)
+					w.clearRunRenderState(target, delivery.RunID)
 				}
 			}
 		case delivery.Type == core.ClientDeliveryTypeRun:

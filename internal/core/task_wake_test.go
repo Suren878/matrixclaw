@@ -262,6 +262,43 @@ func TestSteeringFromAnotherChatDeliversTheRunThere(t *testing.T) {
 	}
 }
 
+func TestSteeringFromAChatDeliversARunAnInlineRequestStartedThere(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	ctx := context.Background()
+	session, run := saveCrashRecoveryRun(t, db, "inline", core.RunStatusWaitingApproval, false)
+	inline := core.ClientDelivery{ID: "delivery_inline", Type: core.ClientDeliveryTypeRun, Client: "telegram", ExternalKey: "42", SessionID: session.ID, RunID: run.ID, Address: json.RawMessage(`{"kind":"inline","inline_message_id":"im"}`), ReplyOnce: true, Status: core.ClientDeliveryStatusPending}
+	if err := db.CreateClientDelivery(ctx, inline); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := app.AcceptRun(ctx, core.HandleMessageInput{SessionID: session.ID, Client: "telegram", ExternalKey: "42", DeliveryAddress: telegramAddress, ClientCapabilities: chatCapabilities, Text: "what is it waiting for?"}); err != nil {
+		t.Fatal(err)
+	}
+
+	deliveries, err := db.ListClientDeliveries(ctx, core.ClientDeliveryFilter{RunID: run.ID})
+	if err != nil || len(deliveries) != 2 {
+		t.Fatalf("deliveries = %+v, %v", deliveries, err)
+	}
+}
+
+func TestReplyOnceMessagesToABusySessionWaitForTheirOwnRun(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	session, run := saveCrashRecoveryRun(t, db, "busy", core.RunStatusRunning, false)
+
+	accepted, err := app.AcceptRun(context.Background(), core.HandleMessageInput{SessionID: session.ID, Client: "telegram", ExternalKey: "42", DeliveryAddress: json.RawMessage(`{"kind":"inline","inline_message_id":"im"}`), ReplyOnce: true, ClientCapabilities: chatCapabilities, Text: "Request: weather"})
+
+	if err != nil || accepted.Status != core.AcceptRunStatusQueued || accepted.Input == nil || accepted.Input.Mode != core.BusyInputModeQueue {
+		t.Fatalf("accepted = %+v, %v", accepted, err)
+	}
+	if deliveries, err := db.ListClientDeliveries(context.Background(), core.ClientDeliveryFilter{RunID: run.ID}); err != nil || len(deliveries) != 0 {
+		t.Fatalf("the busy run is delivered to the inline message: %+v, %v", deliveries, err)
+	}
+}
+
 func TestWakeRunTakesItsEventsBeforeItStarts(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)

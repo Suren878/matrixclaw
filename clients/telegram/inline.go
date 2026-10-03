@@ -154,6 +154,9 @@ func (w *Worker) sendInlineUserMessageInSession(ctx context.Context, target chat
 	if err != nil {
 		return err
 	}
+	if result.Status == core.AcceptRunStatusQueued {
+		return w.sendText(ctx, target, "Matrixclaw is busy with another task. The answer will appear here once it is done.")
+	}
 	if err := w.deliverPendingRun(ctx, target, result.SessionID, result.Run.ID); err != nil && ctx.Err() == nil {
 		return err
 	}
