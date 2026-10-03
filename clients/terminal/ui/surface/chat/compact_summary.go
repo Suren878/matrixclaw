@@ -8,10 +8,10 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
 	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
-	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 )
 
 type contextMarkerKind string
@@ -122,7 +122,7 @@ func compactSummaryStats(boundary surfacemessage.ContextBoundary) string {
 	if boundary.Cleared || boundary.TokensBefore <= 0 {
 		return ""
 	}
-	return fmt.Sprintf("(~%s -> ~%s tokens)", agentcontext.FormatShortNumber(boundary.TokensBefore), agentcontext.FormatShortNumber(boundary.TokensAfter))
+	return fmt.Sprintf("(~%s -> ~%s tokens)", common.FormatTokens(boundary.TokensBefore), common.FormatTokens(boundary.TokensAfter))
 }
 
 func (k contextMarkerKind) idSuffix() string {

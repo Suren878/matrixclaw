@@ -1,9 +1,9 @@
 package runtime
 
 import (
-	"fmt"
 	"strings"
 
+	surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
@@ -26,20 +26,7 @@ func (m *appModel) contextUsageText() string {
 
 func formatHeaderContextUsage(report core.ContextReport) string {
 	if report.WindowTokens > 0 {
-		return "Context: ~" + formatTokenCount(report.TokenEstimate) + " / " + formatTokenCount(report.WindowTokens)
+		return "Context: ~" + surfacecommon.FormatTokens(report.TokenEstimate) + " / " + surfacecommon.FormatTokens(report.WindowTokens)
 	}
-	return "Context: ~" + formatTokenCount(report.TokenEstimate)
-}
-
-func formatTokenCount(tokens int) string {
-	switch {
-	case tokens >= 1_000_000:
-		return fmt.Sprintf("%.1fM", float64(tokens)/1_000_000)
-	case tokens >= 10_000:
-		return fmt.Sprintf("%.0fk", float64(tokens)/1_000)
-	case tokens >= 1_000:
-		return fmt.Sprintf("%.1fk", float64(tokens)/1_000)
-	default:
-		return fmt.Sprintf("%d", tokens)
-	}
+	return "Context: ~" + surfacecommon.FormatTokens(report.TokenEstimate)
 }
