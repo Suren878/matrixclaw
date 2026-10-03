@@ -1,8 +1,6 @@
 package realtime
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -80,12 +78,4 @@ func appendTranscript(builder *strings.Builder, text string) {
 
 func normalizeID(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
-}
-
-func newID(prefix string) string {
-	buf := make([]byte, 8)
-	if _, err := rand.Read(buf); err != nil {
-		return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
-	}
-	return strings.TrimSpace(prefix) + "_" + hex.EncodeToString(buf)
 }

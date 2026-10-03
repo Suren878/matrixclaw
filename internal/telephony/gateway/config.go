@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/telephony/phone"
+	"github.com/Suren878/matrixclaw/internal/xdg"
 )
 
 const (
@@ -155,29 +156,11 @@ func allowedPhoneSet(raw string) map[string]struct{} {
 }
 
 func defaultRecordingDir() string {
-	stateRoot := strings.TrimSpace(os.Getenv("XDG_STATE_HOME"))
-	if stateRoot == "" {
-		if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-			stateRoot = filepath.Join(home, ".local", "state")
-		}
-	}
-	if stateRoot == "" {
-		stateRoot = os.TempDir()
-	}
-	return filepath.Join(stateRoot, "matrixclaw", "storage", "temporary", defaultRecordingPrefix)
+	return filepath.Join(xdg.StateHome(), "matrixclaw", "storage", "temporary", defaultRecordingPrefix)
 }
 
 func defaultDebugAudioDir() string {
-	stateRoot := strings.TrimSpace(os.Getenv("XDG_STATE_HOME"))
-	if stateRoot == "" {
-		if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-			stateRoot = filepath.Join(home, ".local", "state")
-		}
-	}
-	if stateRoot == "" {
-		stateRoot = os.TempDir()
-	}
-	return filepath.Join(stateRoot, "matrixclaw", "telephony-debug")
+	return filepath.Join(xdg.StateHome(), "matrixclaw", "telephony-debug")
 }
 
 func normalizeRecordingFormat(value string) string {

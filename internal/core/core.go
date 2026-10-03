@@ -2,9 +2,6 @@ package core
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -13,6 +10,7 @@ import (
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/agent/toolsched"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
+	"github.com/Suren878/matrixclaw/internal/ids"
 )
 
 type Core struct {
@@ -114,7 +112,7 @@ func New(store Store) *Core {
 		backgroundAgents: DefaultBackgroundAgents,
 		events:           newEventBus(),
 		now:              time.Now,
-		newID:            defaultID,
+		newID:            ids.New,
 		lifetime:         context.Background(),
 		budgets:          DefaultRunBudgets(),
 		modelSlots:       toolsched.NewSemaphore(DefaultModelConcurrency),
@@ -238,14 +236,6 @@ func (c *Core) WithRuntimeStatusContext(provider RuntimeStatusContextProvider) *
 		c.runtimeStatus = provider
 	}
 	return c
-}
-
-func defaultID(prefix string) string {
-	buf := make([]byte, 8)
-	if _, err := rand.Read(buf); err != nil {
-		return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
-	}
-	return prefix + "_" + hex.EncodeToString(buf)
 }
 
 func normalizeText(value string) string {

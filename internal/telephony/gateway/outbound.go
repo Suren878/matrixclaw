@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/ids"
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/telephony/phone"
 	"github.com/Suren878/matrixclaw/internal/textutil"
@@ -26,7 +27,7 @@ func (s *Server) startCall(parent context.Context, req createCallRequest) (CallS
 	if s.cfg.MatrixclawToken == "" {
 		return CallSnapshot{}, errors.New("MatrixClaw API token is required")
 	}
-	id := newID("call")
+	id := ids.New("call")
 	ctx, cancel := s.callContext()
 	now := time.Now().UTC()
 	call := &Call{

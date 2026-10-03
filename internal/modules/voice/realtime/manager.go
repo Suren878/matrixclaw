@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/ids"
 	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
@@ -137,7 +138,7 @@ func (m *Manager) CreateSession(ctx context.Context, req SessionCreateRequest) (
 	now := m.now().UTC()
 	session := &voiceSession{
 		info: SessionInfo{
-			ID:            newID("voice"),
+			ID:            ids.New("voice"),
 			Status:        SessionStatusCreated,
 			ProviderID:    spec.ID,
 			ProviderName:  spec.Name,

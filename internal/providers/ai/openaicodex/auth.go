@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/textutil"
+	"github.com/Suren878/matrixclaw/internal/xdg"
 )
 
 const (
@@ -71,7 +72,7 @@ func AuthStorePath() string {
 	if dir := strings.TrimSpace(os.Getenv("MATRIXCLAW_AUTH_DIR")); dir != "" {
 		return filepath.Join(dir, "openai-codex.json")
 	}
-	return filepath.Join(defaultStateDir(), "matrixclaw", "auth", "openai-codex.json")
+	return filepath.Join(xdg.StateHome(), "matrixclaw", "auth", "openai-codex.json")
 }
 
 func ResolveCredentials(ctx context.Context, client *http.Client, baseURL string) (Credentials, error) {
@@ -589,15 +590,4 @@ func decodeError(raw []byte) string {
 
 func formEscape(value string) string {
 	return url.QueryEscape(value)
-}
-
-func defaultStateDir() string {
-	if value := strings.TrimSpace(os.Getenv("XDG_STATE_HOME")); value != "" {
-		return value
-	}
-	home, err := os.UserHomeDir()
-	if err == nil && strings.TrimSpace(home) != "" {
-		return filepath.Join(home, ".local", "state")
-	}
-	return os.TempDir()
 }

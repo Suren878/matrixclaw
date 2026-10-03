@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/xdg"
 )
 
 // Validate checks the config's structure; it reads no environment and makes
@@ -90,22 +91,11 @@ func defaultDBPath() string {
 		return value
 	}
 
-	return filepath.Join(defaultStateDir(), "matrixclaw", "matrixclaw.db")
+	return filepath.Join(xdg.StateHome(), "matrixclaw", "matrixclaw.db")
 }
 
 func DefaultDBPath() string {
 	return defaultDBPath()
-}
-
-func defaultStateDir() string {
-	if value := strings.TrimSpace(os.Getenv("XDG_STATE_HOME")); value != "" {
-		return value
-	}
-	home, err := os.UserHomeDir()
-	if err == nil && strings.TrimSpace(home) != "" {
-		return filepath.Join(home, ".local", "state")
-	}
-	return os.TempDir()
 }
 
 func defaultTimezone() string {

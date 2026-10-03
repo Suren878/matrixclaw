@@ -2,8 +2,6 @@ package automation
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/ids"
 	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
@@ -56,7 +55,7 @@ func NewService(store Store, runner Runner, timezone string) *Service {
 		timezone:     strings.TrimSpace(timezone),
 		tickInterval: DefaultTickInterval,
 		now:          time.Now,
-		newID:        randomID,
+		newID:        ids.New,
 	}
 }
 
@@ -562,12 +561,4 @@ func telegramDeliveryAddressFromExternalKey(value string) (int64, bool) {
 		return 0, false
 	}
 	return chatID, true
-}
-
-func randomID(prefix string) string {
-	buf := make([]byte, 8)
-	if _, err := rand.Read(buf); err != nil {
-		return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
-	}
-	return prefix + "_" + hex.EncodeToString(buf)
 }

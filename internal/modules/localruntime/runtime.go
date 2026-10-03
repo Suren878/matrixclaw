@@ -14,6 +14,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/procsup"
 	"github.com/Suren878/matrixclaw/internal/setup"
+	"github.com/Suren878/matrixclaw/internal/xdg"
 )
 
 const (
@@ -457,16 +458,7 @@ func (r *Runtime) rootDir() string {
 	if value := strings.TrimSpace(os.Getenv("MATRIXCLAW_LOCAL_DIR")); value != "" {
 		return value
 	}
-	base := strings.TrimSpace(os.Getenv("XDG_STATE_HOME"))
-	if base == "" {
-		if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-			base = filepath.Join(home, ".local", "state")
-		}
-	}
-	if base == "" {
-		base = os.TempDir()
-	}
-	return filepath.Join(base, "matrixclaw", "local")
+	return filepath.Join(xdg.StateHome(), "matrixclaw", "local")
 }
 
 func (r *Runtime) runtimeDir() string {

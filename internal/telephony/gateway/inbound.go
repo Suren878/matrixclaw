@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/ids"
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/textutil"
 )
@@ -61,7 +62,7 @@ func (s *Server) startInboundCall(parent context.Context, event ariEvent) {
 		return
 	}
 	log.Printf("telephony inbound call accepted from %q (%s)", strings.TrimSpace(from), ariChannelSummary(channel))
-	id := newID("call")
+	id := ids.New("call")
 	ctx, cancel := s.callContext()
 	now := time.Now().UTC()
 	call := &Call{
