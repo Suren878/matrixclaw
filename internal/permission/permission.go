@@ -246,9 +246,10 @@ var (
 		"podman": true, "poetry": true, "rustup": true, "systemctl": true, "terraform": true, "uv": true, "yarn": true,
 	}
 	exactSubcommands = map[string]bool{
-		"bundle exec": true, "cargo run": true, "docker exec": true, "docker run": true, "go run": true,
-		"kubectl exec": true, "npm exec": true, "pnpm dlx": true, "pnpm exec": true, "podman exec": true,
-		"podman run": true, "poetry run": true, "uv run": true, "yarn dlx": true, "yarn exec": true,
+		"bundle exec": true, "cargo run": true, "docker compose": true, "docker exec": true, "docker run": true,
+		"go run": true, "kubectl exec": true, "kubectl run": true, "npm exec": true, "pnpm dlx": true,
+		"pnpm exec": true, "podman compose": true, "podman exec": true, "podman run": true, "poetry run": true,
+		"uv run": true, "yarn dlx": true, "yarn exec": true,
 	}
 )
 

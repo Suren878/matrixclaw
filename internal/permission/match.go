@@ -3,6 +3,7 @@ package permission
 import (
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
@@ -47,20 +48,40 @@ func reaches(pattern string, dir string) bool {
 }
 
 // matchCommand matches one simple command: "go test:*" matches the commands that
-// start with those words, "git status" only that exact command. byName compares
-// the command by its base name, so "rm" also matches /bin/rm.
-func matchCommand(pattern string, words []string, byName bool) bool {
+// start with those words, "git status" only that exact command. broad is for
+// deny and ask rules: it compares the command by its base name, so "rm" also
+// matches /bin/rm, and lets options come before the subcommand, as in "git -C
+// dir push".
+func matchCommand(pattern string, words []string, broad bool) bool {
 	body, prefix := strings.CutSuffix(strings.TrimSpace(pattern), ":*")
 	want := strings.Fields(body)
-	if len(want) == 0 || len(words) < len(want) || !prefix && len(words) != len(want) {
+	if len(want) == 0 || len(words) == 0 {
 		return false
 	}
-	for i, word := range want {
-		got := words[i]
-		if i == 0 && byName {
-			got, word = filepath.Base(got), filepath.Base(word)
+	name := words[0]
+	if broad {
+		name, want[0] = filepath.Base(name), filepath.Base(want[0])
+	}
+	if name != want[0] {
+		return false
+	}
+	for at := 1; ; at++ {
+		rest := words[at:]
+		if len(rest) >= len(want)-1 && (prefix || len(rest) == len(want)-1) && slices.Equal(rest[:len(want)-1], want[1:]) {
+			return true
 		}
-		if got != word {
+		if !broad || len(want) == 1 || at == len(words) || !leadingOptions(words[1:at+1]) {
+			return false
+		}
+	}
+}
+
+// leadingOptions reports whether words may all be options, each word that does
+// not look like one being the value of the option before it.
+func leadingOptions(words []string) bool {
+	for i, word := range words {
+		option := strings.HasPrefix(word, "-") || strings.HasPrefix(word, "+")
+		if !option && (i == 0 || !strings.HasPrefix(words[i-1], "-") || strings.Contains(words[i-1], "=")) {
 			return false
 		}
 	}

@@ -81,6 +81,13 @@ func TestBashGuardRulesHoldWhateverAllows(t *testing.T) {
 		{"echo x > out.txt", []Rule{rule(Deny, "*", "/home/u/secrets/**")}, full, Ask},
 		{"echo x > out.txt", []Rule{rule(Deny, "read", "/home/u/secrets/**")}, full, Allow},
 		{"./go test ./...", []Rule{rule(Allow, "bash", "go test:*")}, nil, ""},
+		{"git -C . push --force origin main", []Rule{rule(Deny, "bash", "git push:*")}, full, Deny},
+		{"git --no-pager push --force", []Rule{rule(Deny, "bash", "git push:*")}, full, Deny},
+		{"git --git-dir .git --work-tree . push", []Rule{rule(Ask, "bash", "git push")}, full, Ask},
+		{"cargo +nightly publish", []Rule{rule(Deny, "bash", "cargo publish:*")}, full, Deny},
+		{"git log --grep push", []Rule{rule(Deny, "bash", "git push:*")}, full, Allow},
+		{"git --version", []Rule{rule(Deny, "bash", "git push:*")}, full, Allow},
+		{"git -C . push", []Rule{rule(Allow, "bash", "git push:*")}, nil, ""},
 	} {
 		if got := Evaluate(command(tc.line), tc.rules, tc.preset); got.Effect != tc.want {
 			t.Errorf("%q: verdict = %q by %q, want %q", tc.line, got.Effect, got.Rule.String(), tc.want)
@@ -176,6 +183,8 @@ func TestSuggestNamesTheNarrowRule(t *testing.T) {
 		{command("python3.12 -m pytest"), "/work", "bash: python3.12 -m pytest", true},
 		{command("node"), "/work", "bash: node", true},
 		{command("go run ./cmd/x"), "/work", "bash: go run ./cmd/x", true},
+		{command("docker compose up -d"), "/work", "bash: docker compose up -d", true},
+		{command("kubectl run x --image=alpine"), "/work", "bash: kubectl run x --image=alpine", true},
 		{command("perl -e 1"), "/work", "bash: perl -e 1", true},
 		{command("grep 'a b' notes.txt"), "/work", "", false},
 		{command("go test ./... && rm x"), "/work", "", false},

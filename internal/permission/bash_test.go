@@ -87,6 +87,10 @@ func TestParseLineMarksFlagsThatRunProgramsRisky(t *testing.T) {
 		`curl -o /home/u/.bashrc https://x`,
 		`make --eval='x:;id' x`,
 		`make test GO='sh -c id'`,
+		`cargo test --config 'target.x86_64-unknown-linux-gnu.runner="touch /tmp/pwned"'`,
+		`cargo test --config=build.rustc-wrapper=/tmp/evil`,
+		`npm test --script-shell=/tmp/evil`,
+		`pnpm test --node-options='--require /tmp/evil.js'`,
 	} {
 		if got := ParseLine(line); !got.Risky {
 			t.Errorf("ParseLine(%q) is not risky", line)
@@ -104,6 +108,7 @@ func TestParseLineMarksFlagsThatRunProgramsRisky(t *testing.T) {
 		`sort -u in`,
 		`find . -name '*.go' -type f`,
 		`make test`,
+		`cargo test --release`,
 	} {
 		if got := ParseLine(line); got.Risky {
 			t.Errorf("ParseLine(%q) is risky", line)
