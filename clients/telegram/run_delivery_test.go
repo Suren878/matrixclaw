@@ -77,7 +77,7 @@ func (d *runDaemon) serve(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.URL.Path == "/v1/client-deliveries":
 		deliveries := []core.ClientDelivery{}
-		if !d.acked && query.Get("type") == core.ClientDeliveryTypeRun {
+		if !d.acked && (query.Get("type") == "" || query.Get("type") == core.ClientDeliveryTypeRun) {
 			deliveries = append(deliveries, core.ClientDelivery{ID: "delivery-1", Type: core.ClientDeliveryTypeRun, RunID: d.run.ID, SessionID: d.run.SessionID, Address: encodeDeliveryAddress(DeliveryAddress{ChatID: 7})})
 		}
 		write(core.ClientDeliveriesResponse{Deliveries: deliveries})
@@ -149,7 +149,7 @@ func TestLongRunDeliveryReadsEachMessageAboutOnce(t *testing.T) {
 	deliver := func() {
 		t.Helper()
 		now = now.Add(time.Second)
-		if err := w.deliverPendingRuns(context.Background()); err != nil {
+		if err := w.deliverPending(context.Background()); err != nil {
 			t.Fatal(err)
 		}
 	}

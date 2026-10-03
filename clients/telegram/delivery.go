@@ -15,17 +15,14 @@ import (
 
 const maxTelegramDocumentBytes int64 = 50 << 20
 
-func (w *Worker) deliverPendingRuns(ctx context.Context) error {
-	return w.deliverPendingDeliveries(ctx, core.ClientDeliveryTypeRun, core.ClientDeliveryFilter{})
-}
-
 func (w *Worker) deliverPendingRun(ctx context.Context, target chatTarget, sessionID string, runID string) error {
 	sessionID = strings.TrimSpace(sessionID)
 	runID = strings.TrimSpace(runID)
 	if sessionID == "" || runID == "" {
 		return nil
 	}
-	return w.deliverPendingDeliveries(ctx, core.ClientDeliveryTypeRun, core.ClientDeliveryFilter{
+	return w.deliverPendingDeliveries(ctx, core.ClientDeliveryFilter{
+		Type:        core.ClientDeliveryTypeRun,
 		ExternalKey: target.externalKey,
 		SessionID:   sessionID,
 		RunID:       runID,
@@ -240,10 +237,6 @@ func (w *Worker) deliverRunApprovals(ctx context.Context, target chatTarget, dae
 	return w.renderRunStatusMessage(ctx, target, daemon, run, messages, state)
 }
 
-func (w *Worker) deliverPendingDocuments(ctx context.Context) error {
-	return w.deliverPendingDeliveries(ctx, core.ClientDeliveryTypeDocument, core.ClientDeliveryFilter{})
-}
-
 func (w *Worker) deliverDocument(ctx context.Context, delivery core.ClientDelivery) error {
 	target, ok := targetFromClientDelivery(delivery)
 	if !ok {
@@ -409,10 +402,6 @@ func telegramDocumentCaption(caption string) string {
 	return string(runes[:1021]) + "..."
 }
 
-func (w *Worker) deliverPendingNotices(ctx context.Context) error {
-	return w.deliverPendingDeliveries(ctx, core.ClientDeliveryTypeNotice, core.ClientDeliveryFilter{})
-}
-
 // deliverNotice sends a notice's text to its chat.
 func (w *Worker) deliverNotice(ctx context.Context, daemon *daemonclient.Client, delivery core.ClientDelivery) error {
 	target, ok := targetFromClientDelivery(delivery)
@@ -423,10 +412,6 @@ func (w *Worker) deliverNotice(ctx context.Context, daemon *daemonclient.Client,
 		return err
 	}
 	return w.acknowledgeSentDelivery(ctx, daemon, delivery.ID)
-}
-
-func (w *Worker) deliverPendingApprovals(ctx context.Context) error {
-	return w.deliverPendingDeliveries(ctx, core.ClientDeliveryTypeApproval, core.ClientDeliveryFilter{})
 }
 
 // deliverApproval asks the chat for a background subagent's approval, unless

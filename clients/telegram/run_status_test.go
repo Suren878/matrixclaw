@@ -31,7 +31,7 @@ func newRunStatusHarness(t *testing.T) *runStatusHarness {
 // deliver advances the clock and runs one delivery pass.
 func (h *runStatusHarness) deliver(after time.Duration) error {
 	h.now = h.now.Add(after)
-	return h.worker.deliverPendingRuns(context.Background())
+	return h.worker.deliverPending(context.Background())
 }
 
 func (h *runStatusHarness) mustDeliver(after time.Duration) {

@@ -72,17 +72,8 @@ func (w *Worker) runDeliveryLoop(ctx context.Context) error {
 			return nil
 		case <-timer.C:
 		}
-		if err := w.deliverPendingRuns(ctx); err != nil && ctx.Err() == nil {
-			log.Printf("telegram: run delivery failed: %v", err)
-		}
-		if err := w.deliverPendingDocuments(ctx); err != nil && ctx.Err() == nil {
-			log.Printf("telegram: document delivery failed: %v", err)
-		}
-		if err := w.deliverPendingNotices(ctx); err != nil && ctx.Err() == nil {
-			log.Printf("telegram: notice delivery failed: %v", err)
-		}
-		if err := w.deliverPendingApprovals(ctx); err != nil && ctx.Err() == nil {
-			log.Printf("telegram: approval delivery failed: %v", err)
+		if err := w.deliverPending(ctx); err != nil && ctx.Err() == nil {
+			log.Printf("telegram: delivery failed: %v", err)
 		}
 		timer.Reset(streamFlushInterval)
 	}

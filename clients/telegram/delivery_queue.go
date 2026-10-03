@@ -11,14 +11,18 @@ import (
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 )
 
-func (w *Worker) deliverPendingDeliveries(ctx context.Context, deliveryType string, filter core.ClientDeliveryFilter) error {
+// deliverPending sends this client's pending deliveries of every type.
+func (w *Worker) deliverPending(ctx context.Context) error {
+	return w.deliverPendingDeliveries(ctx, core.ClientDeliveryFilter{})
+}
+
+func (w *Worker) deliverPendingDeliveries(ctx context.Context, filter core.ClientDeliveryFilter) error {
 	w.delivery.Lock()
 	defer w.delivery.Unlock()
 
 	ctx = context.WithValue(ctx, telegramDeferredRetryKey{}, true)
 	daemon := w.daemon("")
 	filter.Client = ClientName
-	filter.Type = deliveryType
 	filter.Status = core.ClientDeliveryStatusPending
 	if filter.Limit <= 0 {
 		filter.Limit = 20
@@ -49,21 +53,25 @@ func (w *Worker) deliverPendingDeliveries(ctx context.Context, deliveryType stri
 		if w.nowUTC().Before(w.deliveryRetryAt[key]) {
 			continue
 		}
-		if _, sent := w.deliveryReceipts[delivery.ID]; sent {
+		_, sent := w.deliveryReceipts[delivery.ID]
+		switch {
+		case sent:
 			err = w.acknowledgeSentDelivery(ctx, daemon, delivery.ID)
 			if err == nil && delivery.Type == core.ClientDeliveryTypeRun {
 				if target, ok := targetFromClientDelivery(delivery); ok {
 					w.clearRunRenderState(target.externalKey, delivery.RunID)
 				}
 			}
-		} else if deliveryType == core.ClientDeliveryTypeDocument {
-			err = w.deliverDocument(ctx, delivery)
-		} else if deliveryType == core.ClientDeliveryTypeNotice {
-			err = w.deliverNotice(ctx, daemon, delivery)
-		} else if deliveryType == core.ClientDeliveryTypeApproval {
-			err = w.deliverApproval(ctx, daemon, delivery)
-		} else {
+		case delivery.Type == core.ClientDeliveryTypeRun:
 			err = w.deliverPendingRunDelivery(ctx, daemon, delivery)
+		case delivery.Type == core.ClientDeliveryTypeDocument:
+			err = w.deliverDocument(ctx, delivery)
+		case delivery.Type == core.ClientDeliveryTypeNotice:
+			err = w.deliverNotice(ctx, daemon, delivery)
+		case delivery.Type == core.ClientDeliveryTypeApproval:
+			err = w.deliverApproval(ctx, daemon, delivery)
+		default:
+			continue // daemon restart notices are sent by the daemon itself
 		}
 		if err == nil {
 			continue
@@ -71,14 +79,11 @@ func (w *Worker) deliverPendingDeliveries(ctx context.Context, deliveryType stri
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		_, sent := w.deliveryReceipts[delivery.ID]
+		_, sent = w.deliveryReceipts[delivery.ID]
 		if retryableDeliveryError(err) || sent {
 			delay := telegramRetryAfter(err)
 			if delay <= 0 {
 				delay = pollRetryDelay
-				if delay <= 0 {
-					delay = 2 * time.Second
-				}
 			}
 			w.deliveryRetryAt[key] = w.nowUTC().Add(delay)
 		} else {

@@ -69,7 +69,7 @@ func (d *deliveryTestDaemon) serve(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/v1/client-deliveries":
 		pending := []core.ClientDelivery{}
 		for _, delivery := range d.deliveries {
-			if !d.acked[delivery.ID] && delivery.Type == r.URL.Query().Get("type") {
+			if !d.acked[delivery.ID] && (r.URL.Query().Get("type") == "" || delivery.Type == r.URL.Query().Get("type")) {
 				pending = append(pending, delivery)
 			}
 		}
@@ -145,7 +145,7 @@ func TestDeliveryFloodWaitDoesNotBlockOtherChats(t *testing.T) {
 	w := newDeliveryTestWorker(t, d, api, &now)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if err := w.deliverPendingRuns(ctx); !IsRetryable(err) {
+	if err := w.deliverPending(ctx); !IsRetryable(err) {
 		t.Fatalf("expected retryable flood error, got %v", err)
 	}
 	if ctx.Err() != nil {
@@ -155,7 +155,7 @@ func TestDeliveryFloodWaitDoesNotBlockOtherChats(t *testing.T) {
 		t.Fatalf("attempted chats=%v, want one failed attempt then two chunks in other chat", api.attemptedChats)
 	}
 	now = now.Add(30 * time.Second)
-	if err := w.deliverPendingRuns(context.Background()); err != nil {
+	if err := w.deliverPending(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if len(api.attemptedChats) != 3 {
@@ -163,7 +163,7 @@ func TestDeliveryFloodWaitDoesNotBlockOtherChats(t *testing.T) {
 	}
 	now = now.Add(30 * time.Second)
 	api.chatError = nil
-	if err := w.deliverPendingRuns(context.Background()); err != nil {
+	if err := w.deliverPending(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	d.mu.Lock()
@@ -180,7 +180,7 @@ func TestDeliveryRetriesDaemonFailureWithoutMarkingFailed(t *testing.T) {
 		testRunDelivery("other", DeliveryAddress{ChatID: 2}),
 	}, runErrors: map[string]int{"unavailable": http.StatusServiceUnavailable}}
 	w := newDeliveryTestWorker(t, d, &deliveryTestAPI{}, &now)
-	if err := w.deliverPendingRuns(context.Background()); !retryableDeliveryError(err) {
+	if err := w.deliverPending(context.Background()); !retryableDeliveryError(err) {
 		t.Fatalf("error=%v", err)
 	}
 	d.mu.Lock()
@@ -190,7 +190,7 @@ func TestDeliveryRetriesDaemonFailureWithoutMarkingFailed(t *testing.T) {
 	delete(d.runErrors, "unavailable")
 	d.mu.Unlock()
 	now = now.Add(3 * time.Second)
-	if err := w.deliverPendingRuns(context.Background()); err != nil {
+	if err := w.deliverPending(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	d.mu.Lock()
@@ -214,7 +214,7 @@ func TestFinalDeliveryUsesLatestAnswerAndRetriesOnlyAcknowledgement(t *testing.T
 			d := &deliveryTestDaemon{deliveries: []core.ClientDelivery{testRunDelivery("run", tc.address)}, ackFailures: 1}
 			api := &deliveryTestAPI{}
 			w := newDeliveryTestWorker(t, d, api, &now)
-			if err := w.deliverPendingRuns(context.Background()); !retryableDeliveryError(err) {
+			if err := w.deliverPending(context.Background()); !retryableDeliveryError(err) {
 				t.Fatalf("ack error=%v", err)
 			}
 			if tc.name == "inline" && (len(api.edits) != 1 || api.edits[0].Text != "Final answer.") {
@@ -225,7 +225,7 @@ func TestFinalDeliveryUsesLatestAnswerAndRetriesOnlyAcknowledgement(t *testing.T
 			}
 			before := len(api.messages) + len(api.edits) + len(api.guests)
 			now = now.Add(3 * time.Second)
-			if err := w.deliverPendingRuns(context.Background()); err != nil {
+			if err := w.deliverPending(context.Background()); err != nil {
 				t.Fatal(err)
 			}
 			if after := len(api.messages) + len(api.edits) + len(api.guests); after != before {
@@ -248,7 +248,7 @@ func TestDocumentRetriesStorageAndAcknowledgementWithoutResending(t *testing.T) 
 	d := &deliveryTestDaemon{deliveries: []core.ClientDelivery{{ID: "doc", Type: core.ClientDeliveryTypeDocument, Address: encodeDeliveryAddress(DeliveryAddress{ChatID: 1}), Payload: json.RawMessage(`{"storage_path":"result.txt"}`)}}, storageError: http.StatusServiceUnavailable, ackFailures: 1}
 	api := &deliveryTestAPI{}
 	w := newDeliveryTestWorker(t, d, api, &now)
-	if err := w.deliverPendingDocuments(context.Background()); !retryableDeliveryError(err) {
+	if err := w.deliverPending(context.Background()); !retryableDeliveryError(err) {
 		t.Fatalf("storage error=%v", err)
 	}
 	d.mu.Lock()
@@ -258,11 +258,11 @@ func TestDocumentRetriesStorageAndAcknowledgementWithoutResending(t *testing.T) 
 	d.storageError = 0
 	d.mu.Unlock()
 	now = now.Add(3 * time.Second)
-	if err := w.deliverPendingDocuments(context.Background()); !retryableDeliveryError(err) {
+	if err := w.deliverPending(context.Background()); !retryableDeliveryError(err) {
 		t.Fatalf("ack error=%v", err)
 	}
 	now = now.Add(3 * time.Second)
-	if err := w.deliverPendingDocuments(context.Background()); err != nil {
+	if err := w.deliverPending(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if len(api.documents) != 1 || string(api.documents[0].Document) != "hello" {
@@ -281,7 +281,7 @@ func TestDeliveryCancellationLeavesPendingWork(t *testing.T) {
 	defer cancel()
 	d := &deliveryTestDaemon{deliveries: []core.ClientDelivery{testRunDelivery("cancelled", DeliveryAddress{ChatID: 1})}}
 	w := newDeliveryTestWorker(t, d, &deliveryTestAPI{cancel: cancel}, &now)
-	if err := w.deliverPendingRuns(ctx); !errors.Is(err, context.Canceled) {
+	if err := w.deliverPending(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("error=%v", err)
 	}
 	d.mu.Lock()
@@ -299,7 +299,7 @@ func TestNoticeDeliverySendsItsTextOnce(t *testing.T) {
 	w := newDeliveryTestWorker(t, d, api, &now)
 
 	for range 2 {
-		if err := w.deliverPendingNotices(context.Background()); err != nil {
+		if err := w.deliverPending(context.Background()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -324,7 +324,7 @@ func TestApprovalDeliveryAsksWhileTheApprovalIsPending(t *testing.T) {
 	w := newDeliveryTestWorker(t, d, api, &now)
 
 	for range 2 {
-		if err := w.deliverPendingApprovals(context.Background()); err != nil {
+		if err := w.deliverPending(context.Background()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -350,7 +350,7 @@ func TestApprovalDeliveryDoesNotRepeatWhatItsRunAsked(t *testing.T) {
 	w := newDeliveryTestWorker(t, d, api, &now)
 	w.runRenderState("42", "run-1").approvals["a1"] = 5
 
-	if err := w.deliverPendingApprovals(context.Background()); err != nil {
+	if err := w.deliverPending(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
