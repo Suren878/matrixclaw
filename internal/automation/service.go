@@ -20,6 +20,9 @@ const (
 	DefaultTickInterval = 30 * time.Second
 	DefaultTimezone     = "UTC"
 	telegramClientName  = "telegram"
+	// busyRetryWindow is how long past its time a job whose session is busy
+	// with another run is tried again on every tick before its fire fails.
+	busyRetryWindow = time.Hour
 )
 
 type Runner interface {
@@ -352,6 +355,10 @@ func (s *Service) runFire(ctx context.Context, job Job, fire Fire, scheduledFor 
 		SessionID:          job.SessionID,
 		Text:               renderPrompt(job, scheduledFor, now),
 	})
+	if errors.Is(err, core.ErrRunActive) && now.Sub(scheduledFor) < busyRetryWindow {
+		// The fire stays running and the job due: the next tick tries again.
+		return fire, nil
+	}
 	if err != nil {
 		fire.Status = FireStatusFailed
 		fire.Error = err.Error()

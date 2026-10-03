@@ -146,7 +146,7 @@ func (c *Core) AcceptTriggeredRun(ctx context.Context, input HandleTriggeredRunI
 		return result, err
 	}
 
-	// A session busy with another run skips the trigger, as its fire fails.
+	// A session busy with another run refuses the trigger; automation tries it again later.
 	gate := c.sessionGate(session.ID)
 	gate.Lock()
 	if _, err := c.store.GetActiveRunBySession(ctx, session.ID); !errors.Is(err, ErrNotFound) {
