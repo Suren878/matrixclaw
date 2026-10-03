@@ -3,10 +3,12 @@ package core
 import (
 	"context"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/agent"
 )
 
 type activeRun struct {
-	cancel context.CancelFunc
+	cancel context.CancelCauseFunc
 }
 
 func (c *Core) activeRunContext(parent context.Context, runID string) (context.Context, func(), bool) {
@@ -15,12 +17,12 @@ func (c *Core) activeRunContext(parent context.Context, runID string) (context.C
 		return parent, func() {}, true
 	}
 
-	ctx, cancel := context.WithCancel(parent)
+	ctx, cancel := context.WithCancelCause(parent)
 	active := &activeRun{cancel: cancel}
 	c.mu.Lock()
 	if c.activeRuns[runID] != nil {
 		c.mu.Unlock()
-		cancel()
+		cancel(nil)
 		return parent, func() {}, false
 	}
 	delete(c.scheduledRuns, runID)
@@ -33,7 +35,7 @@ func (c *Core) activeRunContext(parent context.Context, runID string) (context.C
 			delete(c.activeRuns, runID)
 		}
 		c.mu.Unlock()
-		cancel()
+		cancel(nil)
 	}, true
 }
 
@@ -48,6 +50,8 @@ func (c *Core) runIsActive(runID string) bool {
 	return active != nil
 }
 
+// cancelActiveRun stops the run's executor with agent.ErrCanceled as the cause,
+// which tells a cancel from an interruption.
 func (c *Core) cancelActiveRun(runID string) {
 	runID = strings.TrimSpace(runID)
 	if runID == "" {
@@ -58,6 +62,6 @@ func (c *Core) cancelActiveRun(runID string) {
 	active := c.activeRuns[runID]
 	c.mu.RUnlock()
 	if active != nil && active.cancel != nil {
-		active.cancel()
+		active.cancel(agent.ErrCanceled)
 	}
 }

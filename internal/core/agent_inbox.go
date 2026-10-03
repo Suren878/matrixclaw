@@ -33,10 +33,6 @@ func (in coreInbox) Finished(ctx context.Context, taskIDs []string) (bool, error
 	return in.c.anyTaskFinished(ctx, taskIDs)
 }
 
-func (in coreInbox) Canceled(ctx context.Context, runID string) (bool, error) {
-	return in.c.isRunCanceled(ctx, runID)
-}
-
 // steers lists the run's pending steer input in arrival order.
 func (in coreInbox) steers(ctx context.Context, runID string) ([]agent.Input, error) {
 	inputs, err := in.c.store.ListPendingSteerInputs(ctx, in.session.ID, runID)

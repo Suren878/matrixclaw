@@ -148,3 +148,85 @@ func TestExternalAgentBurstPersistsCoalescedProgress(t *testing.T) {
 		}
 	}
 }
+
+// hangingExternalRuntime streams one delta and then works until its turn's
+// context stops.
+type hangingExternalRuntime struct {
+	burstExternalRuntime
+	started     chan struct{}
+	interrupted chan struct{}
+}
+
+func (r *hangingExternalRuntime) Send(ctx context.Context, _ externalagents.ExternalSession, _ externalagents.Input) (<-chan externalagents.Event, error) {
+	events := make(chan externalagents.Event, 4)
+	go func() {
+		defer close(events)
+		now := time.Now().UTC()
+		events <- externalagents.Event{Kind: externalagents.EventMessageDelta, AgentID: r.ID(), Text: "partial", At: now}
+		close(r.started)
+		<-ctx.Done()
+	}()
+	return events, nil
+}
+
+func (r *hangingExternalRuntime) Interrupt(context.Context, externalagents.ExternalSession) error {
+	close(r.interrupted)
+	return nil
+}
+
+func TestCancelingAnExternalRunInterruptsItsAgentAndSealsTheReply(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db, err := store.NewSQLite(filepath.Join(t.TempDir(), "matrixclaw.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	runtime := &hangingExternalRuntime{started: make(chan struct{}), interrupted: make(chan struct{})}
+	registry, err := externalagents.NewRegistry(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := core.New(db).WithExternalAgents(registry, db)
+	now := time.Now().UTC()
+	session := core.Session{ID: "session-hang", Title: "Hang", Kind: core.SessionKindExternalAgent, RuntimeID: core.SessionRuntimeExternalAgent, Status: core.SessionStatusActive, WorkingDir: t.TempDir(), CreatedAt: now, UpdatedAt: now}
+	if err := db.CreateSession(ctx, session); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SaveExternalAgentSession(ctx, externalagents.SessionAttachment{SessionID: session.ID, AgentID: runtime.ID(), ExternalThreadID: "thread-1", Model: "test", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	run := core.Run{ID: "run-hang", SessionID: session.ID, UserMessageID: "msg-hang", Status: core.RunStatusAccepted, StartedAt: now, UpdatedAt: now}
+	if err := db.AcceptMessage(ctx, transcript.Message{ID: run.UserMessageID, SessionID: session.ID, RunID: run.ID, Role: transcript.MessageRoleUser, Content: "work", CreatedAt: now, UpdatedAt: now}, run); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- app.ExecuteRun(ctx, run.ID) }()
+	<-runtime.started
+	if _, err := app.CancelRun(ctx, run.ID); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the canceled external run did not stop")
+	}
+
+	<-runtime.interrupted
+	got, err := db.GetRun(ctx, run.ID)
+	if err != nil || got.Status != core.RunStatusCanceled {
+		t.Fatalf("run = %+v err = %v", got, err)
+	}
+	messages, err := db.ListRunMessages(ctx, session.ID, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := messages[len(messages)-1]
+	if last.Role != transcript.MessageRoleAssistant || last.Content != "partial" || !transcript.HasFinishReason(last, transcript.FinishReasonCanceled) {
+		t.Fatalf("last message = %+v", last)
+	}
+}

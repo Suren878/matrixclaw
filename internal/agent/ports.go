@@ -153,7 +153,6 @@ type Inbox interface {
 	Peek(ctx context.Context, runID string, kind InputKind) ([]Input, error)
 	Consume(ctx context.Context, runID string, ids []string) error
 	Finished(ctx context.Context, taskIDs []string) (bool, error)
-	Canceled(ctx context.Context, runID string) (bool, error)
 }
 
 // EventKind names what Sink receives.

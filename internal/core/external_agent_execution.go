@@ -136,9 +136,6 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 		case <-runCtx.Done():
 			return c.finishExternalRunAfterContextStopped(run, &assistant, assistantSaved, runtime, externalSession)
 		case <-ticker.C:
-			if handled, cancelErr := c.checkExternalRunCanceled(ctx, run, &assistant, assistantSaved, runtime, externalSession); handled {
-				return cancelErr
-			}
 			if err := flushProgress(false); err != nil {
 				return c.failRun(ctx, run, err)
 			}
@@ -151,13 +148,7 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 				return c.finishExternalRunAfterContextStopped(run, &assistant, assistantSaved, runtime, externalSession)
 			}
 			if !ok {
-				if handled, cancelErr := c.checkExternalRunCanceled(ctx, run, &assistant, assistantSaved, runtime, externalSession); handled {
-					return cancelErr
-				}
 				return c.persistAssistantError(ctx, run, &assistant, assistantSaved, errors.New("external agent event stream ended before turn completed"))
-			}
-			if handled, cancelErr := c.checkExternalRunCanceled(ctx, run, &assistant, assistantSaved, runtime, externalSession); handled {
-				return cancelErr
 			}
 			switch event.Kind {
 			case externalagents.EventTurnStarted:
@@ -184,9 +175,6 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 			case externalagents.EventTurnCompleted:
 				return c.completeExternalAgentRun(ctx, &run, &assistant, assistantSaved)
 			case externalagents.EventTurnFailed:
-				if handled, cancelErr := c.checkExternalRunCanceled(ctx, run, &assistant, assistantSaved, runtime, externalSession); handled {
-					return cancelErr
-				}
 				errText := strings.TrimSpace(event.Error)
 				if errText == "" {
 					errText = "external agent turn failed"
@@ -530,17 +518,6 @@ func (c *Core) completeExternalAgentRun(ctx context.Context, run *Run, assistant
 		Finish: &transcript.FinishPart{Reason: transcript.FinishReasonEndTurn},
 	})
 	return c.completeAssistantTurn(ctx, run, assistant, assistantSaved)
-}
-
-func (c *Core) checkExternalRunCanceled(ctx context.Context, run Run, assistant *transcript.Message, assistantSaved bool, runtime externalagents.RuntimeAgent, session externalagents.ExternalSession) (bool, error) {
-	canceled, err := c.isRunCanceled(ctx, run.ID)
-	if err != nil || !canceled {
-		return false, nil
-	}
-	if runtime != nil {
-		_ = runtime.Interrupt(ctx, session)
-	}
-	return true, c.finishCanceledAssistant(ctx, assistant, assistantSaved)
 }
 
 func (c *Core) finishExternalRunAfterContextStopped(run Run, assistant *transcript.Message, assistantSaved bool, runtime externalagents.RuntimeAgent, session externalagents.ExternalSession) error {

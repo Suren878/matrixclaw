@@ -274,17 +274,13 @@ func (b *batch) drain() {
 // that finished before; a failed or canceled run also answers every other call,
 // an interrupted one leaves them to recovery.
 func (b *batch) stopped(ctx context.Context, err error) error {
-	interrupted := ctx.Err()
+	interrupted, byUser := ctx.Err(), canceled(ctx)
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), detachedWriteTimeout)
 	defer cancel()
 	rest := &failedResult
 	if interrupted != nil {
 		err, rest = interrupted, nil
-		canceled, cancelErr := b.r.Inbox.Canceled(ctx, b.r.task.RunID)
-		if cancelErr != nil {
-			return errors.Join(err, cancelErr)
-		}
-		if canceled {
+		if byUser {
 			rest = &canceledResult
 		}
 	}

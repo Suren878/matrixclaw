@@ -325,7 +325,6 @@ type Inbox struct {
 	Decided []agent.Input
 	Events  []agent.Input
 	Ended   []string
-	Cancel  bool
 }
 
 func (in *Inbox) Peek(ctx context.Context, _ string, kind agent.InputKind) ([]agent.Input, error) {
@@ -362,13 +361,6 @@ func (in *Inbox) Finished(ctx context.Context, taskIDs []string) (bool, error) {
 		return false, err
 	}
 	return slices.ContainsFunc(taskIDs, func(id string) bool { return slices.Contains(in.Ended, id) }), nil
-}
-
-func (in *Inbox) Canceled(ctx context.Context, _ string) (bool, error) {
-	if err := ctx.Err(); err != nil {
-		return false, err
-	}
-	return in.Cancel, nil
 }
 
 // Sink records every event.
