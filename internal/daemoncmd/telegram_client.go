@@ -107,35 +107,6 @@ func (a *telegramClientAdapter) stopWorker() {
 	a.done = nil
 }
 
-// normalizeRestartAddress validates a Telegram restart notice address; other
-// clients' addresses are kept as given.
-func (a *telegramClientAdapter) normalizeRestartAddress(notification *core.ClientDeliveryTarget) (json.RawMessage, error) {
-	if len(notification.Address) == 0 {
-		return nil, nil
-	}
-	if strings.TrimSpace(notification.Client) != telegram.ClientName {
-		return append(json.RawMessage(nil), notification.Address...), nil
-	}
-	return telegram.RestartDeliveryCodec{}.NormalizeRestartDeliveryAddress(notification.Address)
-}
-
-// restartDeliverySender returns the sender of pending restart notices, or nil
-// while Telegram is off.
-func (a *telegramClientAdapter) restartDeliverySender(bootstrap bootstrapConfig) *telegram.RestartDeliverySender {
-	cfg := bootstrap.Telegram
-	if !cfg.Enabled {
-		return nil
-	}
-	sender, err := telegram.NewRestartDeliverySender(telegram.RestartDeliverySenderConfig{
-		BotToken: cfg.BotToken,
-	})
-	if err != nil {
-		log.Printf("matrixclawd telegram restart delivery sender failed: %v", err)
-		return nil
-	}
-	return sender
-}
-
 type telegramClientBootstrap struct {
 	Enabled       bool
 	BotToken      string

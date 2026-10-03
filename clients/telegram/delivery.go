@@ -408,7 +408,17 @@ func (w *Worker) deliverNotice(ctx context.Context, daemon *daemonclient.Client,
 	if !ok || strings.TrimSpace(delivery.Summary) == "" {
 		return daemon.AcknowledgeClientDelivery(ctx, delivery.ID)
 	}
-	if err := w.sendText(ctx, target, delivery.Summary); err != nil {
+	var payload core.NoticeDeliveryPayload
+	if len(delivery.Payload) > 0 && json.Unmarshal(delivery.Payload, &payload) != nil {
+		return daemon.AcknowledgeClientDelivery(ctx, delivery.ID)
+	}
+	var err error
+	if payload.Replace {
+		err = w.editOrSend(ctx, target, target.messageID, telegramPersonaText(delivery.Summary), nil)
+	} else {
+		err = w.sendText(ctx, target, delivery.Summary)
+	}
+	if err != nil {
 		return err
 	}
 	return w.acknowledgeSentDelivery(ctx, daemon, delivery.ID)

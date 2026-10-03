@@ -164,3 +164,49 @@ func TestSubagentApprovalsLinkToTheirTaskAndBridgeCopiesGo(t *testing.T) {
 		t.Fatalf("parent run = %+v, %v; want it left running for recovery", run, err)
 	}
 }
+
+func TestRestartDeliveriesBecomeHeldNotices(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "matrixclaw.db")
+	if err := openTestStore(t, path).Close(); err != nil {
+		t.Fatal(err)
+	}
+	db := rawDB(t, path)
+	if _, err := db.Exec(`INSERT INTO client_deliveries(id, type, client, external_key, session_id, run_id, task_id, summary, address_json, status, error, created_at, updated_at) VALUES
+		('waiting', 'daemon_restart', 'telegram', 'k', '', '', '', 'Daemon restarted.', '{"kind":"chat","chat_id":1,"message_id":7}', 'pending', '', '', ''),
+		('ready', 'daemon_restart', 'terminal', 'k', '', '', '', '', '', 'ready', '', '', ''),
+		('failed', 'daemon_restart', 'telegram', 'k', '', '', '', '', '', 'failed', 'boom', '', ''),
+		('other', 'notice', 'telegram', 'k', '', '', '', 'hi', '', 'pending', '', '', '')`); err != nil {
+		t.Fatal(err)
+	}
+
+	for range 2 {
+		if err := openTestStore(t, path).Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := db.Query(`SELECT id, type, status, payload_json FROM client_deliveries ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	got := []string{}
+	for rows.Next() {
+		var id, kind, status, payload string
+		if err := rows.Scan(&id, &kind, &status, &payload); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, strings.Join([]string{id, kind, status, payload}, " "))
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		`failed notice failed {"replace":true}`,
+		`other notice pending `,
+		`ready notice sent {"replace":true}`,
+		`waiting notice held {"replace":true}`,
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("deliveries:\n%s", strings.Join(got, "\n"))
+	}
+}

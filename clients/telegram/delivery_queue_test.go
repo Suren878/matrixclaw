@@ -309,6 +309,22 @@ func TestNoticeDeliverySendsItsTextOnce(t *testing.T) {
 	}
 }
 
+func TestRestartNoticeReplacesTheRequestMessage(t *testing.T) {
+	now := time.Unix(100, 0)
+	notice := core.ClientDelivery{ID: "restart-1", Type: core.ClientDeliveryTypeNotice, Summary: "Daemon restarted.",
+		Address: encodeDeliveryAddress(DeliveryAddress{Kind: string(telegramTargetChat), ChatID: 7, MessageID: 3}), Payload: json.RawMessage(`{"replace":true}`)}
+	d := &deliveryTestDaemon{deliveries: []core.ClientDelivery{notice}}
+	api := &deliveryTestAPI{}
+	w := newDeliveryTestWorker(t, d, api, &now)
+
+	if err := w.deliverPending(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.messages) != 0 || len(api.edits) != 1 || api.edits[0].ChatID != 7 || api.edits[0].MessageID != 3 || !strings.Contains(api.edits[0].Text, "restarted") || !d.acked["restart-1"] {
+		t.Fatalf("messages = %+v edits = %+v acked = %v", api.messages, api.edits, d.acked)
+	}
+}
+
 func TestApprovalDeliveryAsksWhileTheApprovalIsPending(t *testing.T) {
 	now := time.Unix(100, 0)
 	address := encodeDeliveryAddress(DeliveryAddress{Kind: string(telegramTargetChat), ChatID: 42})

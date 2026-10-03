@@ -7,15 +7,20 @@ import (
 )
 
 const (
-	ClientDeliveryTypeDaemonRestart = "daemon_restart"
-	ClientDeliveryTypeRun           = "run"
-	ClientDeliveryTypeDocument      = "document"
+	ClientDeliveryTypeRun      = "run"
+	ClientDeliveryTypeDocument = "document"
 	// ClientDeliveryTypeNotice is a short text for the user outside any run.
 	ClientDeliveryTypeNotice = "notice"
 	// ClientDeliveryTypeApproval asks the user for a background subagent's
 	// approval outside the run that started it.
 	ClientDeliveryTypeApproval = "approval"
 )
+
+// NoticeDeliveryPayload is a notice's optional payload; Replace asks the
+// client to replace the message at the address instead of sending a new one.
+type NoticeDeliveryPayload struct {
+	Replace bool `json:"replace,omitempty"`
+}
 
 // ApprovalDeliveryPayload names the approval an approval delivery asks for.
 type ApprovalDeliveryPayload struct {
@@ -94,8 +99,24 @@ func (c *Core) ListClientDeliveries(ctx context.Context, filter ClientDeliveryFi
 	return c.store.ListClientDeliveries(ctx, filter)
 }
 
-func (c *Core) MarkClientDeliveryReady(ctx context.Context, delivery ClientDelivery) error {
-	return c.finishClientDelivery(ctx, delivery, ClientDeliveryStatusReady, "")
+// ReleaseHeldClientDeliveries makes the deliveries held for the next daemon
+// start, like the restart notice, pending for their clients.
+func (c *Core) ReleaseHeldClientDeliveries(ctx context.Context) error {
+	if c == nil || c.store == nil {
+		return fmt.Errorf("%w: store not configured", ErrExecutionUnavailable)
+	}
+	held, err := c.store.ListClientDeliveries(ctx, ClientDeliveryFilter{Status: ClientDeliveryStatusHeld, Limit: 100})
+	if err != nil {
+		return err
+	}
+	for _, delivery := range held {
+		delivery.Status = ClientDeliveryStatusPending
+		delivery.UpdatedAt = c.now().UTC()
+		if err := c.store.UpdateClientDelivery(ctx, delivery); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *Core) MarkClientDeliverySent(ctx context.Context, delivery ClientDelivery) error {

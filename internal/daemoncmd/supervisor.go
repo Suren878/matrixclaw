@@ -1,7 +1,9 @@
 package daemoncmd
 
 import (
+	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -12,7 +14,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Suren878/matrixclaw/clients/telegram"
 	"github.com/Suren878/matrixclaw/internal/api"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
@@ -278,6 +279,8 @@ func (s *supervisor) stopSystemdService(ctx context.Context) error {
 	return fmt.Errorf("systemctl stop matrixclawd.service failed: %w: %s", err, message)
 }
 
+// saveRestartDelivery holds the restart notice for the requester until the
+// restarted daemon releases it.
 func (s *supervisor) saveRestartDelivery(ctx context.Context, req core.AdminRestartRequest) (core.ClientDelivery, error) {
 	if s.app == nil || req.Notification == nil {
 		return core.ClientDelivery{}, nil
@@ -287,89 +290,20 @@ func (s *supervisor) saveRestartDelivery(ctx context.Context, req core.AdminRest
 	if client == "" {
 		return core.ClientDelivery{}, nil
 	}
-	summary := strings.TrimSpace(notification.Summary)
-	if summary == "" {
-		summary = daemonRestartText
-	}
-	address, err := s.telegram.normalizeRestartAddress(notification)
+	payload, err := json.Marshal(core.NoticeDeliveryPayload{Replace: true})
 	if err != nil {
 		return core.ClientDelivery{}, err
 	}
 	return s.app.CreateClientDelivery(ctx, core.ClientDelivery{
-		Type:        core.ClientDeliveryTypeDaemonRestart,
+		Type:        core.ClientDeliveryTypeNotice,
+		Status:      core.ClientDeliveryStatusHeld,
 		Client:      client,
 		ExternalKey: strings.TrimSpace(notification.ExternalKey),
 		SessionID:   strings.TrimSpace(notification.SessionID),
 		RunID:       strings.TrimSpace(notification.RunID),
 		TaskID:      strings.TrimSpace(notification.TaskID),
-		Summary:     summary,
-		Address:     address,
+		Summary:     cmp.Or(strings.TrimSpace(notification.Summary), daemonRestartText),
+		Address:     notification.Address,
+		Payload:     payload,
 	})
-}
-
-func (s *supervisor) DeliverPendingStartupNotifications(bootstrap bootstrapConfig) {
-	sender := s.telegram.restartDeliverySender(bootstrap)
-	s.markPullClientRestartDeliveriesReady(sender != nil)
-	if sender != nil {
-		s.deliverPendingRestartNotifications(sender)
-	}
-}
-
-// markPullClientRestartDeliveriesReady hands pending restart notices to the
-// clients that fetch them; Telegram's are pushed while it is on.
-func (s *supervisor) markPullClientRestartDeliveriesReady(telegramPushes bool) {
-	if s.app == nil {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-
-	deliveries, err := s.app.ListClientDeliveries(ctx, core.ClientDeliveryFilter{
-		Type:   core.ClientDeliveryTypeDaemonRestart,
-		Status: core.ClientDeliveryStatusPending,
-		Limit:  100,
-	})
-	if err != nil {
-		log.Printf("matrixclawd delivery recovery failed: %v", err)
-		return
-	}
-	for _, delivery := range deliveries {
-		if telegramPushes && strings.TrimSpace(delivery.Client) == telegram.ClientName {
-			continue
-		}
-		if err := s.app.MarkClientDeliveryReady(ctx, delivery); err != nil {
-			log.Printf("matrixclawd mark delivery %s ready failed: %v", delivery.ID, err)
-		}
-	}
-}
-
-func (s *supervisor) deliverPendingRestartNotifications(sender *telegram.RestartDeliverySender) {
-	if s.app == nil {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-
-	deliveries, err := s.app.ListClientDeliveries(ctx, core.ClientDeliveryFilter{
-		Client: telegram.ClientName,
-		Type:   core.ClientDeliveryTypeDaemonRestart,
-		Status: core.ClientDeliveryStatusPending,
-		Limit:  20,
-	})
-	if err != nil {
-		log.Printf("matrixclawd telegram delivery recovery failed: %v", err)
-		return
-	}
-	for _, delivery := range deliveries {
-		if err := sender.DeliverRestartNotification(ctx, delivery, daemonRestartText); err != nil {
-			log.Printf("matrixclawd telegram delivery %s failed: %v", delivery.ID, err)
-			if markErr := s.app.MarkClientDeliveryFailed(ctx, delivery, err); markErr != nil {
-				log.Printf("matrixclawd mark telegram delivery %s failed: %v", delivery.ID, markErr)
-			}
-			continue
-		}
-		if err := s.app.MarkClientDeliverySent(ctx, delivery); err != nil {
-			log.Printf("matrixclawd mark telegram delivery %s sent failed: %v", delivery.ID, err)
-		}
-	}
 }

@@ -148,8 +148,10 @@ func Run(ctx context.Context) error {
 		errCh <- err
 	})
 	safego.Go("automation.Run", func() { automationService.Run(ctx) })
-	safego.Go("supervisor.deliverStartupNotifications", func() {
-		supervisor.DeliverPendingStartupNotifications(bootstrap)
+	safego.Go("core.releaseHeldDeliveries", func() {
+		if err := app.ReleaseHeldClientDeliveries(context.Background()); err != nil {
+			log.Printf("matrixclawd release held deliveries: %v", err)
+		}
 	})
 	// External agents are configured by now, so recovered runs find theirs.
 	safego.Go("core.recover", func() {

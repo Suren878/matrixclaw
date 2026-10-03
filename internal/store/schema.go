@@ -141,6 +141,15 @@ CREATE TABLE IF NOT EXISTS session_inputs (
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_session_inputs_target_run ON session_inputs(target_run_id, mode, status)`); err != nil {
 		return fmt.Errorf("store: create session inputs target index: %w", err)
 	}
+	// Restart notices became held notices: a pending one waits for this start,
+	// one marked ready was for a client that never took it.
+	if _, err := db.Exec(`UPDATE client_deliveries
+SET type = 'notice',
+    status = CASE status WHEN 'pending' THEN 'held' WHEN 'ready' THEN 'sent' ELSE status END,
+    payload_json = '{"replace":true}'
+WHERE type = 'daemon_restart'`); err != nil {
+		return fmt.Errorf("store: convert restart deliveries: %w", err)
+	}
 	if _, err := db.Exec(`UPDATE sessions SET runtime_id = 'external_agent' WHERE kind = 'external_agent' AND runtime_id IN ('matrixclaw', 'codex', 'codex-app')`); err != nil {
 		return fmt.Errorf("store: backfill external session runtime: %w", err)
 	}

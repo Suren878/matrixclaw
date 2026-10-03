@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -83,7 +84,7 @@ func (m *appModel) serverRestartDeliveryCmd() tea.Cmd {
 			return serverRestartPollMsg{err: fmt.Errorf("terminal runtime is not configured")}
 		}
 		deliveries, err := m.rt.ListClientDeliveries(m.ctx, core.ClientDeliveryFilter{
-			Type:         core.ClientDeliveryTypeDaemonRestart,
+			Type:         core.ClientDeliveryTypeNotice,
 			CreatedAfter: m.restart.requestedAt.Add(-2 * time.Second),
 			Limit:        20,
 		})
@@ -147,7 +148,7 @@ func (m *appModel) handleServerRestartPoll(msg serverRestartPollMsg) tea.Cmd {
 		return m.serverRestartTickCmd()
 	}
 	switch delivery.Status {
-	case core.ClientDeliveryStatusReady:
+	case core.ClientDeliveryStatusPending, core.ClientDeliveryStatusSent:
 		m.restart.pending = false
 		m.setServerRestartDialogText(deliveryDisplayText(delivery, serverRestartCompleteText))
 		if m.restart.reopenTerminal {
@@ -197,7 +198,8 @@ func (m *appModel) setServerRestartDialogText(text string) {
 func latestRestartDelivery(deliveries []core.ClientDelivery, requestedAt time.Time) (core.ClientDelivery, bool) {
 	var latest core.ClientDelivery
 	for _, delivery := range deliveries {
-		if delivery.Type != core.ClientDeliveryTypeDaemonRestart {
+		var payload core.NoticeDeliveryPayload
+		if delivery.Type != core.ClientDeliveryTypeNotice || json.Unmarshal(delivery.Payload, &payload) != nil || !payload.Replace {
 			continue
 		}
 		if !requestedAt.IsZero() && delivery.CreatedAt.Before(requestedAt.Add(-2*time.Second)) {

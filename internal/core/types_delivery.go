@@ -16,9 +16,10 @@ type ClientDeliveryStatus string
 
 const (
 	ClientDeliveryStatusPending ClientDeliveryStatus = "pending"
-	ClientDeliveryStatusReady   ClientDeliveryStatus = "ready"
-	ClientDeliveryStatusSent    ClientDeliveryStatus = "sent"
-	ClientDeliveryStatusFailed  ClientDeliveryStatus = "failed"
+	// ClientDeliveryStatusHeld waits for the next daemon start.
+	ClientDeliveryStatusHeld   ClientDeliveryStatus = "held"
+	ClientDeliveryStatusSent   ClientDeliveryStatus = "sent"
+	ClientDeliveryStatusFailed ClientDeliveryStatus = "failed"
 )
 
 type ClientDeliveryTarget struct {

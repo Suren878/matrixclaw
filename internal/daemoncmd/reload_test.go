@@ -138,3 +138,35 @@ func TestTelegramAdapterRestartsWorkerOnlyWhenItsConfigChanges(t *testing.T) {
 		t.Fatalf("changed config cancelled %d polls, want 1", got)
 	}
 }
+
+func TestRestartNoticeIsHeldUntilTheNextStart(t *testing.T) {
+	ctx := context.Background()
+	sqliteStore, err := store.NewSQLite(filepath.Join(t.TempDir(), "matrixclaw.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+	app := core.New(sqliteStore)
+	s := newSupervisor(ctx, nil, app, nil, nil)
+	saved, err := s.saveRestartDelivery(ctx, core.AdminRestartRequest{Notification: &core.ClientDeliveryTarget{Client: "telegram", ExternalKey: "7", Address: []byte(`{"kind":"chat","chat_id":7,"message_id":3}`)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending := func() []core.ClientDelivery {
+		deliveries, err := app.ListClientDeliveries(ctx, core.ClientDeliveryFilter{Client: "telegram", Status: core.ClientDeliveryStatusPending})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return deliveries
+	}
+	if saved.Status != core.ClientDeliveryStatusHeld || len(pending()) != 0 {
+		t.Fatalf("saved = %+v, pending before restart = %v", saved, pending())
+	}
+	if err := app.ReleaseHeldClientDeliveries(ctx); err != nil {
+		t.Fatal(err)
+	}
+	released := pending()
+	if len(released) != 1 || released[0].Type != core.ClientDeliveryTypeNotice || released[0].Summary != daemonRestartText || string(released[0].Payload) != `{"replace":true}` {
+		t.Fatalf("released = %+v", released)
+	}
+}

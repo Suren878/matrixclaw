@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -26,7 +27,7 @@ func restartAfterUpdate(t *testing.T, answer string) string {
 		m.handleRunControlplaneCommand(surfacedialog.ActionRunControlplaneCommand{Command: "/restart confirm"})
 	}
 	m.handleServerRestartPoll(serverRestartPollMsg{deliveries: []core.ClientDelivery{{
-		ID: "d1", Type: core.ClientDeliveryTypeDaemonRestart, Status: core.ClientDeliveryStatusReady, CreatedAt: time.Now().UTC(),
+		ID: "d1", Type: core.ClientDeliveryTypeNotice, Status: core.ClientDeliveryStatusPending, Payload: json.RawMessage(`{"replace":true}`), CreatedAt: time.Now().UTC(),
 	}}})
 	return ansi.Strip(m.viewContent())
 }

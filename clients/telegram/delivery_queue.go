@@ -71,7 +71,7 @@ func (w *Worker) deliverPendingDeliveries(ctx context.Context, filter core.Clien
 		case delivery.Type == core.ClientDeliveryTypeApproval:
 			err = w.deliverApproval(ctx, daemon, delivery)
 		default:
-			continue // daemon restart notices are sent by the daemon itself
+			continue
 		}
 		if err == nil {
 			continue
