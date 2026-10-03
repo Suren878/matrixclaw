@@ -118,7 +118,7 @@ type MemoryStore interface {
 type ApprovalStore interface {
 	CreateApproval(ctx context.Context, approval Approval) error
 	GetApproval(ctx context.Context, approvalID string) (Approval, error)
-	UpdateApproval(ctx context.Context, approval Approval) error
+	DecideApproval(ctx context.Context, approval Approval) error
 	ListApprovals(ctx context.Context, sessionID string, state ApprovalState) ([]Approval, error)
 	ListRunApprovals(ctx context.Context, sessionID string, runID string) ([]Approval, error)
 }

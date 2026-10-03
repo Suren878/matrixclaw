@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -19,7 +20,7 @@ func TestApprovalKeepsTheDenialReason(t *testing.T) {
 	}
 	decided := testEpoch.Add(1)
 	approval.State, approval.Reason, approval.DecidedAt = core.ApprovalStateRejected, "use the staging database", &decided
-	if err := st.UpdateApproval(ctx, approval); err != nil {
+	if err := st.DecideApproval(ctx, approval); err != nil {
 		t.Fatal(err)
 	}
 
@@ -30,6 +31,28 @@ func TestApprovalKeepsTheDenialReason(t *testing.T) {
 	listed, err := st.ListApprovals(ctx, "s1", core.ApprovalStateRejected)
 	if err != nil || len(listed) != 1 || listed[0].Reason != "use the staging database" {
 		t.Fatalf("listed = %+v err = %v", listed, err)
+	}
+}
+
+func TestAnApprovalIsDecidedOnce(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	createTestSession(t, st, "s1")
+	approval := core.Approval{ID: "a1", SessionID: "s1", ToolName: "bash", State: core.ApprovalStatePending, RequestedAt: testEpoch}
+	if err := st.CreateApproval(ctx, approval); err != nil {
+		t.Fatal(err)
+	}
+	decided := testEpoch.Add(1)
+	approval.State, approval.DecidedAt = core.ApprovalStateApproved, &decided
+	if err := st.DecideApproval(ctx, approval); err != nil {
+		t.Fatal(err)
+	}
+	approval.State = core.ApprovalStateRejected
+	if err := st.DecideApproval(ctx, approval); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("second decision err = %v", err)
+	}
+	if stored, err := st.GetApproval(ctx, "a1"); err != nil || stored.State != core.ApprovalStateApproved {
+		t.Fatalf("stored = %+v err = %v", stored, err)
 	}
 }
 

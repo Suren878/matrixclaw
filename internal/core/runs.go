@@ -356,7 +356,11 @@ func (c *Core) rejectRunApprovals(ctx context.Context, run Run, errText string) 
 		approval.State = ApprovalStateRejected
 		decidedAt := c.now().UTC()
 		approval.DecidedAt = &decidedAt
-		if err := c.store.UpdateApproval(ctx, approval); err != nil {
+		err := c.store.DecideApproval(ctx, approval)
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil {
 			return err
 		}
 		audience, audienceRun := c.approvalAudience(ctx, approval)

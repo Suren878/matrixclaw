@@ -54,22 +54,25 @@ func (s *SQLiteStore) GetApproval(ctx context.Context, approvalID string) (core.
 	return approvals[0], nil
 }
 
-func (s *SQLiteStore) UpdateApproval(ctx context.Context, approval core.Approval) error {
+// DecideApproval records the decision on a pending approval; it fails with
+// core.ErrNotFound when no pending approval has that id.
+func (s *SQLiteStore) DecideApproval(ctx context.Context, approval core.Approval) error {
 	result, err := s.db.ExecContext(ctx, `
 UPDATE approvals
 SET state = ?, reason = ?, decided_at = ?
-WHERE id = ?`,
+WHERE id = ? AND state = ?`,
 		string(approval.State),
 		approval.Reason,
 		nullableTime(approval.DecidedAt),
 		approval.ID,
+		string(core.ApprovalStatePending),
 	)
 	if err != nil {
-		return fmt.Errorf("store: update approval: %w", err)
+		return fmt.Errorf("store: decide approval: %w", err)
 	}
 	count, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("store: update approval rows: %w", err)
+		return fmt.Errorf("store: decide approval rows: %w", err)
 	}
 	if count == 0 {
 		return core.ErrNotFound

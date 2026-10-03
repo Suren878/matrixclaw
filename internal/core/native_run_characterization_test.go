@@ -1079,3 +1079,36 @@ func TestAPreviewSeesTheWritesOfEarlierCallsInItsBatch(t *testing.T) {
 		t.Fatalf("preview = %+v (%s), %v", change, approvals[0].Params, err)
 	}
 }
+
+// Two clients approve one run-less approval at once (double tap, or Telegram
+// and the terminal): the granted call must run once.
+func TestARunlessCallApprovedByClientsAtOnceRunsOnce(t *testing.T) {
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	var mu sync.Mutex
+	runs := 0
+	app.WithTools(tools.NewRegistry(funcTool{ask: "write?", spec: recoveryToolSpec("write_state", tools.EffectMutation), fn: func(context.Context, tools.Call) (tools.Result, error) {
+		mu.Lock()
+		runs++
+		mu.Unlock()
+		time.Sleep(50 * time.Millisecond)
+		return tools.Result{Content: "written"}, nil
+	}}))
+	session, _ := saveCrashRecoveryRun(t, db, "runless", core.RunStatusCompleted, false)
+	result, err := app.ExecuteTool(context.Background(), core.ExecuteToolInput{SessionID: session.ID, ToolName: "write_state", Args: []byte(`{}`)})
+	if err != nil || result.Approval == nil {
+		t.Fatalf("ExecuteTool = %#v, %v", result, err)
+	}
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			if _, err := app.ResolveApproval(context.Background(), result.Approval.ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	wg.Wait()
+	if runs != 1 {
+		t.Fatalf("approved call ran %d times", runs)
+	}
+}

@@ -24,10 +24,7 @@ func (c *Core) ResolveApproval(ctx context.Context, approvalID string, decision 
 		return Approval{}, err
 	}
 	if approval.State != ApprovalStatePending {
-		if approval.State == approvalState(decision.Approved) {
-			return approval, nil
-		}
-		return Approval{}, fmt.Errorf("%w: approval already resolved", ErrInvalidInput)
+		return alreadyDecided(approval, decision)
 	}
 	if decision.Approved && decision.Always == permission.ScopeGlobal && decision.Restricted {
 		return Approval{}, fmt.Errorf("%w: keep a rule for every session", ErrOwnerOnly)
@@ -37,10 +34,18 @@ func (c *Core) ResolveApproval(ctx context.Context, approvalID string, decision 
 			return Approval{}, err
 		}
 	}
-	approval, err = c.recordApprovalDecision(ctx, approval, decision)
+	decided, err := c.recordApprovalDecision(ctx, approval, decision)
+	if errors.Is(err, ErrNotFound) {
+		// Another client decided it between the read and the write.
+		if approval, err = c.store.GetApproval(ctx, approval.ID); err != nil {
+			return Approval{}, err
+		}
+		return alreadyDecided(approval, decision)
+	}
 	if err != nil {
 		return Approval{}, err
 	}
+	approval = decided
 	if approval.RunID == "" {
 		return approval, c.finishRunlessApproval(ctx, approval)
 	}
@@ -70,6 +75,15 @@ func (c *Core) keepSuggestedRule(ctx context.Context, approval Approval, scope p
 	return c.store.CreatePermissionRule(ctx, rule)
 }
 
+// alreadyDecided answers a decision on an approval that is no longer pending:
+// a repeat of the decision made is a no-op, a different one is refused.
+func alreadyDecided(approval Approval, decision ApprovalResolveRequest) (Approval, error) {
+	if approval.State == approvalState(decision.Approved) {
+		return approval, nil
+	}
+	return Approval{}, fmt.Errorf("%w: approval already resolved", ErrInvalidInput)
+}
+
 func approvalState(approved bool) ApprovalState {
 	if approved {
 		return ApprovalStateApproved
@@ -86,7 +100,7 @@ func (c *Core) recordApprovalDecision(ctx context.Context, approval Approval, de
 	if !decision.Approved {
 		approval.Reason = approvalReason(decision.Reason)
 	}
-	if err := c.store.UpdateApproval(ctx, approval); err != nil {
+	if err := c.store.DecideApproval(ctx, approval); err != nil {
 		return Approval{}, err
 	}
 	audience, audienceRun := c.approvalAudience(ctx, approval)
