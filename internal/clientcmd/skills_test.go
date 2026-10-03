@@ -54,6 +54,13 @@ func TestSkillsCommandUsesTheDaemon(t *testing.T) {
 	if !filepath.IsAbs(installPath) {
 		t.Fatalf("install path = %q, want it resolved against the CLI working directory", installPath)
 	}
+	const repo = "https://github.com/o/r/tree/main/x"
+	if code := runSkillsCommand(&stdout, &stderr, "matrixclaw", service, []string{"install", repo}); code != 0 {
+		t.Fatalf("install url exit=%d stderr=%s", code, stderr.String())
+	}
+	if installPath != repo {
+		t.Fatalf("install url sent as %q, want %q", installPath, repo)
+	}
 }
 
 func stubDaemon(baseURL string) func() {

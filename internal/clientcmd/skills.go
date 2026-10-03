@@ -56,7 +56,7 @@ func runSkillsCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 			return 2
 		}
 		return withSkillsDaemon(stderr, binaryName, service, "skills install", func(ctx context.Context, client *daemonclient.Client) error {
-			path, err := filepath.Abs(args[1])
+			path, err := skillInstallSource(args[1])
 			if err != nil {
 				return err
 			}
@@ -132,6 +132,15 @@ func printSkills(w io.Writer, binaryName string, items []skills.Skill) {
 		}
 		_, _ = fmt.Fprintf(w, "%s: skill %s [%s/%s/%s] %s\n", binaryName, item.ID, item.TrustState, status, item.State, item.Description)
 	}
+}
+
+// skillInstallSource is a local path made absolute for the daemon, or an
+// http(s) URL as given.
+func skillInstallSource(arg string) (string, error) {
+	if lower := strings.ToLower(arg); strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "http://") {
+		return arg, nil
+	}
+	return filepath.Abs(arg)
 }
 
 func printSkillsUsage(w io.Writer, binaryName string) {
