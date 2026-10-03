@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -279,6 +280,7 @@ func (t *deleteTool) Spec() tools.Spec {
 		ID:          "storage_delete",
 		Description: "Delete a file from matrixclaw local storage. Ask for approval before deleting user documents.",
 		Effect:      tools.EffectMutation,
+		Asks:        true,
 		Namespace:   "module.storage",
 		Category:    tools.CategoryStorage,
 		InputJSONSchema: json.RawMessage(`{
@@ -292,28 +294,29 @@ func (t *deleteTool) Spec() tools.Spec {
 	}
 }
 
-func (t *deleteTool) Execute(_ context.Context, call tools.Call) (tools.Result, error) {
-	if t == nil || t.store == nil {
-		return tools.Result{Content: "Local storage is not configured.", Status: tools.ResultStatusError}, nil
-	}
+// deletePath reads the storage path a storage_delete call names.
+func deletePath(call tools.Call) (string, error) {
 	var input struct {
 		Path string `json:"path"`
 	}
 	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{Content: "Invalid storage_delete arguments.", Status: tools.ResultStatusError}, nil
+		return "", errors.New("invalid storage_delete arguments")
 	}
-	path := strings.TrimSpace(input.Path)
-	if !call.Approved {
-		return tools.Result{
-			Content: "Approval required",
-			Approval: &tools.ApprovalRequest{
-				ToolID:      "storage_delete",
-				Action:      "delete_storage_file",
-				Path:        path,
-				Description: "Delete storage file " + path,
-				Params:      input,
-			},
-		}, nil
+	return strings.TrimSpace(input.Path), nil
+}
+
+func (t *deleteTool) Preview(_ context.Context, call tools.Call) (tools.ApprovalRequest, error) {
+	path, err := deletePath(call)
+	return tools.ApprovalRequest{Description: "Delete storage file " + path, Path: path, Params: map[string]string{"path": path}}, err
+}
+
+func (t *deleteTool) Execute(_ context.Context, call tools.Call) (tools.Result, error) {
+	if t == nil || t.store == nil {
+		return tools.Result{Content: "Local storage is not configured.", Status: tools.ResultStatusError}, nil
+	}
+	path, err := deletePath(call)
+	if err != nil {
+		return tools.Result{Content: err.Error(), Status: tools.ResultStatusError}, nil
 	}
 	entry, err := t.store.Delete(path)
 	if err != nil {

@@ -20,7 +20,6 @@ type callRequest struct {
 	name       string
 	args       json.RawMessage
 	workingDir string
-	approved   bool
 }
 
 // executeBatch runs the response's tool calls as one batch.
@@ -87,7 +86,7 @@ func (r *run) resumeDecided(ctx context.Context) (bool, error) {
 		if r.history.hasResult(input.ToolCallID) {
 			continue
 		}
-		request := callRequest{id: input.ToolCallID, name: input.ToolName, args: input.Args, workingDir: input.WorkingDir, approved: true}
+		request := callRequest{id: input.ToolCallID, name: input.ToolName, args: input.Args, workingDir: input.WorkingDir}
 		if !input.Denied {
 			granted = append(granted, request)
 			continue
@@ -194,7 +193,6 @@ func (r *run) toolCall(req callRequest) tools.Call {
 		Client:      r.task.Client,
 		ExternalKey: r.task.ExternalKey,
 		WorkingDir:  req.workingDir,
-		Approved:    req.approved,
 		Args:        req.args,
 	}
 }

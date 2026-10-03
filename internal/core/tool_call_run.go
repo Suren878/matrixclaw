@@ -7,43 +7,42 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-// executeToolWithGrant runs a call as its permission says (check, or evaluated
-// now when nil): a deny rule blocks it; a grant, an allow rule or the mode preset
-// runs it approved; an ask rule requests approval; otherwise the tool's own dry
-// run decides. The tool may recheck the rules for subjects it reaches later.
-func (c *Core) executeToolWithGrant(ctx context.Context, prepared preparedToolCall, input ExecuteToolInput, check *callPermission) (tools.Result, error) {
+// runToolCall runs a call as its permission says (check, or evaluated now when
+// nil): a deny rule blocks it; a call that waits for approval returns the
+// tool's preview as its request instead of a result; any other call runs, and
+// may recheck the rules for subjects it reaches later.
+func (c *Core) runToolCall(ctx context.Context, prepared preparedToolCall, input ExecuteToolInput, check *callPermission) (tools.Result, *tools.ApprovalRequest, error) {
+	call := prepared.call(input)
 	if check == nil {
-		evaluated, err := c.checkPermission(ctx, prepared.SessionID, prepared.Spec, prepared.call(input, input.Approved))
+		evaluated, err := c.checkPermission(ctx, prepared.SessionID, prepared.Spec, call)
 		if err != nil {
-			return tools.Result{}, err
+			return tools.Result{}, nil, err
 		}
 		check = &evaluated
 	}
-	verdict := check.verdict
-	var result tools.Result
-	var execErr error
 	switch {
-	case verdict.Effect == permission.Deny:
-		return blockedResult(verdict.Rule), nil
-	case input.Approved || verdict.Effect == permission.Allow:
-		result, execErr = c.tools.Execute(ctx, prepared.ToolName, check.guard(prepared.call(input, true)))
-	case verdict.Effect == permission.Ask:
-		result = askedByRule(prepared, input, verdict.Rule)
-	default:
-		result, execErr = c.tools.Execute(ctx, prepared.ToolName, check.guard(prepared.call(input, false)))
-	}
-	if result.Approval != nil && result.Approval.Suggestion == nil && verdict.Effect != permission.Ask {
-		if suggestion, ok := permission.Suggest(check.request, check.root); ok {
-			result.Approval.Suggestion = &suggestion
+	case check.verdict.Effect == permission.Deny:
+		return blockedResult(check.verdict.Rule), nil, nil
+	case check.ask:
+		request, refused := c.tools.Preview(ctx, prepared.ToolName, call)
+		if refused != nil {
+			return *refused, nil, nil
 		}
+		if check.verdict.Effect == permission.Ask {
+			request.Description += "\nAsked by rule " + check.verdict.Rule.String() + "."
+		} else if suggestion, ok := permission.Suggest(check.request, check.root); ok {
+			request.Suggestion = &suggestion
+		}
+		return tools.Result{}, &request, nil
 	}
-	if execErr != nil || result.Approval != nil {
-		return result, execErr
+	result, err := c.tools.Execute(ctx, prepared.ToolName, check.guard(call))
+	if err != nil {
+		return result, nil, err
 	}
-	return c.keepLargeOutput(prepared.SessionID, result), nil
+	return c.keepLargeOutput(prepared.SessionID, result), nil, nil
 }
 
-func (prepared preparedToolCall) call(input ExecuteToolInput, approved bool) tools.Call {
+func (prepared preparedToolCall) call(input ExecuteToolInput) tools.Call {
 	return tools.Call{
 		SessionID:   prepared.SessionID,
 		RunID:       prepared.RunID,
@@ -51,7 +50,6 @@ func (prepared preparedToolCall) call(input ExecuteToolInput, approved bool) too
 		Client:      input.Client,
 		ExternalKey: input.ExternalKey,
 		WorkingDir:  prepared.WorkingDir,
-		Approved:    approved,
 		Args:        input.Args,
 	}
 }

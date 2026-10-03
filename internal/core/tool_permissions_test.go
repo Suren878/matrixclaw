@@ -24,15 +24,16 @@ type commandTool struct {
 
 func (t *commandTool) Spec() tools.Spec {
 	spec := recoveryToolSpec("bash", tools.EffectMutation)
-	spec.Category = tools.CategoryShell
+	spec.Category, spec.Asks = tools.CategoryShell, true
 	return spec
+}
+
+func (t *commandTool) Preview(_ context.Context, call tools.Call) (tools.ApprovalRequest, error) {
+	return tools.ApprovalRequest{Description: commandOf(call)}, nil
 }
 
 func (t *commandTool) Execute(_ context.Context, call tools.Call) (tools.Result, error) {
 	command := commandOf(call)
-	if !call.Approved {
-		return tools.Result{Approval: &tools.ApprovalRequest{ToolID: "bash", ToolCallID: call.ToolCallID, Action: "execute", Description: command}}, nil
-	}
 	t.ran = append(t.ran, command)
 	return tools.Result{Content: "ran " + command}, nil
 }
@@ -120,9 +121,9 @@ func saveRule(t *testing.T, db *store.SQLiteStore, id string, rule permission.Ru
 	}
 }
 
-func executeTool(t *testing.T, app *core.Core, sessionID string, tool string, args string, approved bool) core.ExecuteToolResult {
+func executeTool(t *testing.T, app *core.Core, sessionID string, tool string, args string) core.ExecuteToolResult {
 	t.Helper()
-	result, err := app.ExecuteTool(context.Background(), core.ExecuteToolInput{SessionID: sessionID, ToolName: tool, Args: json.RawMessage(args), Approved: approved})
+	result, err := app.ExecuteTool(context.Background(), core.ExecuteToolInput{SessionID: sessionID, ToolName: tool, Args: json.RawMessage(args)})
 	if err != nil {
 		t.Fatalf("ExecuteTool(%s %s): %v", tool, args, err)
 	}
@@ -143,13 +144,10 @@ func TestDenyRuleBlocksAReadOnlyToolForRunsAndDirectCalls(t *testing.T) {
 	saveRule(t, db, "rule_secret", permission.Rule{Tool: "read", Pattern: filepath.Join(dir, "secret") + "/**", Effect: permission.Deny, SessionID: session.ID})
 	blocked := "Blocked by rule read: " + filepath.Join(dir, "secret") + "/**"
 
-	if got := resultText(executeTool(t, app, session.ID, "read", `{"file_path":"secret/key.txt"}`, false)); got != blocked {
+	if got := resultText(executeTool(t, app, session.ID, "read", `{"file_path":"secret/key.txt"}`)); got != blocked {
 		t.Fatalf("direct call result = %q", got)
 	}
-	if got := resultText(executeTool(t, app, session.ID, "read", `{"file_path":"secret/key.txt"}`, true)); got != blocked {
-		t.Fatalf("approved replay result = %q", got)
-	}
-	if got := resultText(executeTool(t, app, session.ID, "read", `{"file_path":"notes.txt"}`, false)); got == blocked || got == "" {
+	if got := resultText(executeTool(t, app, session.ID, "read", `{"file_path":"notes.txt"}`)); got == blocked || got == "" {
 		t.Fatalf("unrelated read result = %q", got)
 	}
 
@@ -180,8 +178,8 @@ func TestAskRuleAsksBeforeAReadOnlyTool(t *testing.T) {
 	session := permissionSession(t, db, "session_ask", dir, core.PermissionModeDefault, "")
 	saveRule(t, db, "rule_ask", permission.Rule{Tool: "read", Pattern: dir + "/**", Effect: permission.Ask, SessionID: session.ID})
 
-	pending := executeTool(t, app, session.ID, "read", `{"file_path":"notes.txt"}`, false)
-	if pending.Approval == nil || pending.Approval.Action != "ask_rule" || pending.ToolResultMessage != nil {
+	pending := executeTool(t, app, session.ID, "read", `{"file_path":"notes.txt"}`)
+	if pending.Approval == nil || pending.Approval.Description != "Run read\nAsked by rule read: "+dir+"/**." || pending.ToolResultMessage != nil {
 		t.Fatalf("result = %+v", pending)
 	}
 	if _, err := app.ResolveApproval(context.Background(), pending.Approval.ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
@@ -196,12 +194,12 @@ func TestAllowRuleRunsMatchingCommandsWithoutAsking(t *testing.T) {
 	session := permissionSession(t, db, "session_allow", dir, core.PermissionModeDefault, "")
 	saveRule(t, db, "rule_echo", permission.Rule{Tool: "bash", Pattern: "echo:*", Effect: permission.Allow, SessionID: session.ID})
 
-	if got := resultText(executeTool(t, app, session.ID, "bash", `{"command":"echo ok && echo done"}`, false)); got != "ran echo ok && echo done" {
+	if got := resultText(executeTool(t, app, session.ID, "bash", `{"command":"echo ok && echo done"}`)); got != "ran echo ok && echo done" {
 		t.Fatalf("allowed command result = %q", got)
 	}
 	for _, command := range []string{"echo ok > out.txt", "rm -rf build", "echo ok; rm -rf build"} {
 		args, _ := json.Marshal(map[string]string{"command": command})
-		if result := executeTool(t, app, session.ID, "bash", string(args), false); result.Approval == nil {
+		if result := executeTool(t, app, session.ID, "bash", string(args)); result.Approval == nil {
 			t.Errorf("%q ran without approval: %+v", command, result)
 		}
 	}
@@ -219,13 +217,13 @@ func TestSubagentsAndOtherSessionsFollowInheritedAndGlobalRules(t *testing.T) {
 	saveRule(t, db, "rule_parent", permission.Rule{Tool: "read", Pattern: filepath.Join(dir, "secret") + "/**", Effect: permission.Deny, SessionID: parent.ID})
 	saveRule(t, db, "rule_global", permission.Rule{Tool: "bash", Pattern: "rm:*", Effect: permission.Deny, Scope: permission.ScopeGlobal})
 
-	if got := resultText(executeTool(t, app, child.ID, "read", `{"file_path":"secret/key.txt"}`, false)); got != "Blocked by rule read: "+filepath.Join(dir, "secret")+"/**" {
+	if got := resultText(executeTool(t, app, child.ID, "read", `{"file_path":"secret/key.txt"}`)); got != "Blocked by rule read: "+filepath.Join(dir, "secret")+"/**" {
 		t.Fatalf("child read = %q", got)
 	}
-	if got := resultText(executeTool(t, app, other.ID, "read", `{"file_path":"secret/key.txt"}`, false)); got == "" || strings.HasPrefix(got, "Blocked") {
+	if got := resultText(executeTool(t, app, other.ID, "read", `{"file_path":"secret/key.txt"}`)); got == "" || strings.HasPrefix(got, "Blocked") {
 		t.Fatalf("other session read = %q", got)
 	}
-	if got := resultText(executeTool(t, app, other.ID, "bash", `{"command":"rm -rf build"}`, false)); got != "Blocked by rule bash: rm:*" {
+	if got := resultText(executeTool(t, app, other.ID, "bash", `{"command":"rm -rf build"}`)); got != "Blocked by rule bash: rm:*" {
 		t.Fatalf("global rule result = %q", got)
 	}
 	if len(bash.ran) != 0 {
@@ -240,20 +238,20 @@ func TestModePresetsAllowEditsInsideTheWorkingDirectoryOrEverything(t *testing.T
 	auto := permissionSession(t, db, "session_auto", dir, core.PermissionModeFullAuto, "")
 	outside := filepath.Join(t.TempDir(), "outside.txt")
 
-	if result := executeTool(t, app, edits.ID, "write", `{"file_path":"inside.txt","content":"x"}`, false); result.Approval != nil {
+	if result := executeTool(t, app, edits.ID, "write", `{"file_path":"inside.txt","content":"x"}`); result.Approval != nil {
 		t.Fatalf("write inside the working directory asked: %+v", result.Approval)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "inside.txt")); err != nil {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"file_path": outside, "content": "x"})
-	if result := executeTool(t, app, edits.ID, "write", string(args), false); result.Approval == nil {
+	if result := executeTool(t, app, edits.ID, "write", string(args)); result.Approval == nil {
 		t.Fatal("write outside the working directory ran without approval")
 	}
-	if result := executeTool(t, app, edits.ID, "bash", `{"command":"go test ./..."}`, false); result.Approval == nil {
+	if result := executeTool(t, app, edits.ID, "bash", `{"command":"go test ./..."}`); result.Approval == nil {
 		t.Fatal("accept_edits ran a command without approval")
 	}
-	if result := executeTool(t, app, auto.ID, "bash", `{"command":"go test ./..."}`, false); result.Approval != nil || len(bash.ran) != 1 {
+	if result := executeTool(t, app, auto.ID, "bash", `{"command":"go test ./..."}`); result.Approval != nil || len(bash.ran) != 1 {
 		t.Fatalf("full_auto asked: %+v ran = %v", result.Approval, bash.ran)
 	}
 }
@@ -265,7 +263,7 @@ func TestAlwaysAllowKeepsTheSuggestedRule(t *testing.T) {
 		session := permissionSession(t, db, "session_always", dir, core.PermissionModeDefault, "")
 		other := permissionSession(t, db, "session_other", dir, core.PermissionModeDefault, "")
 
-		pending := executeTool(t, app, session.ID, "bash", `{"command":"go test ./..."}`, false)
+		pending := executeTool(t, app, session.ID, "bash", `{"command":"go test ./..."}`)
 		if pending.Approval == nil || pending.Approval.Suggestion == nil || pending.Approval.Suggestion.String() != "bash: go test:*" {
 			t.Fatalf("%s: approval = %+v", scope, pending.Approval)
 		}
@@ -273,10 +271,10 @@ func TestAlwaysAllowKeepsTheSuggestedRule(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if result := executeTool(t, app, session.ID, "bash", `{"command":"go test ./internal/..."}`, false); result.Approval != nil {
+		if result := executeTool(t, app, session.ID, "bash", `{"command":"go test ./internal/..."}`); result.Approval != nil {
 			t.Fatalf("%s: the kept rule did not allow the next test run", scope)
 		}
-		if result := executeTool(t, app, other.ID, "bash", `{"command":"go test ./..."}`, false); (result.Approval == nil) != (scope == permission.ScopeGlobal) {
+		if result := executeTool(t, app, other.ID, "bash", `{"command":"go test ./..."}`); (result.Approval == nil) != (scope == permission.ScopeGlobal) {
 			t.Fatalf("%s: other session approval = %+v", scope, result.Approval)
 		}
 		if len(bash.ran) < 2 {
@@ -289,7 +287,7 @@ func TestAlwaysAllowNeedsASuggestedRule(t *testing.T) {
 	t.Parallel()
 	app, db, _, dir := permissionCore(t)
 	session := permissionSession(t, db, "session_risky", dir, core.PermissionModeDefault, "")
-	pending := executeTool(t, app, session.ID, "bash", `{"command":"go test ./... > out.txt"}`, false)
+	pending := executeTool(t, app, session.ID, "bash", `{"command":"go test ./... > out.txt"}`)
 	if pending.Approval == nil || pending.Approval.Suggestion != nil {
 		t.Fatalf("approval = %+v", pending.Approval)
 	}
@@ -308,7 +306,7 @@ func TestOnlyTheOwnerKeepsAGlobalRule(t *testing.T) {
 	t.Parallel()
 	app, db, _, dir := permissionCore(t)
 	session := permissionSession(t, db, "session_guest_rule", dir, core.PermissionModeDefault, "")
-	pending := executeTool(t, app, session.ID, "bash", `{"command":"go test ./..."}`, false)
+	pending := executeTool(t, app, session.ID, "bash", `{"command":"go test ./..."}`)
 
 	_, err := app.ResolveApproval(context.Background(), pending.Approval.ID, core.ApprovalResolveRequest{Approved: true, Always: permission.ScopeGlobal, Restricted: true})
 
@@ -398,15 +396,15 @@ func TestRedirectsMeetTheRulesOfTheCall(t *testing.T) {
 	t.Parallel()
 	app, db, _, dir := permissionCore(t)
 	session := permissionSession(t, db, "session_redirect", dir, core.PermissionModeFullAuto, "")
-	if got := resultText(executeTool(t, app, session.ID, "web_fetch", `{}`, false)); got != "fetched" {
+	if got := resultText(executeTool(t, app, session.ID, "web_fetch", `{}`)); got != "fetched" {
 		t.Fatalf("unruled redirect = %q", got)
 	}
 	saveRule(t, db, "rule_other", permission.Rule{Tool: "web_fetch", Pattern: "other.example", Effect: permission.Ask, SessionID: session.ID})
-	if got := resultText(executeTool(t, app, session.ID, "web_fetch", `{}`, false)); got != "fetched" {
+	if got := resultText(executeTool(t, app, session.ID, "web_fetch", `{}`)); got != "fetched" {
 		t.Fatalf("redirect under an unrelated rule = %q", got)
 	}
 	saveRule(t, db, "rule_evil", permission.Rule{Tool: "web_fetch", Pattern: "evil.example", Effect: permission.Deny, SessionID: session.ID})
-	if got := resultText(executeTool(t, app, session.ID, "web_fetch", `{}`, false)); !strings.Contains(got, "web_fetch: evil.example") {
+	if got := resultText(executeTool(t, app, session.ID, "web_fetch", `{}`)); !strings.Contains(got, "web_fetch: evil.example") {
 		t.Fatalf("denied redirect = %q", got)
 	}
 }
@@ -417,8 +415,8 @@ func TestAskRuleAsksBeforeAToolThatAsksOnItsOwn(t *testing.T) {
 	session := permissionSession(t, db, "session_ask_bash", dir, core.PermissionModeFullAuto, "")
 	saveRule(t, db, "rule_ask", permission.Rule{Tool: "bash", Pattern: "git push:*", Effect: permission.Ask, SessionID: session.ID})
 
-	pending := executeTool(t, app, session.ID, "bash", `{"command":"git push"}`, false)
-	if pending.Approval == nil || pending.Approval.Action != "ask_rule" || len(bash.ran) != 0 {
+	pending := executeTool(t, app, session.ID, "bash", `{"command":"git push"}`)
+	if pending.Approval == nil || pending.Approval.Description != "git push\nAsked by rule bash: git push:*." || pending.Approval.Suggestion != nil || len(bash.ran) != 0 {
 		t.Fatalf("result = %+v ran = %v", pending, bash.ran)
 	}
 }
@@ -435,7 +433,7 @@ func TestGrepDoesNotFollowALinkToADeniedFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := resultText(executeTool(t, app, session.ID, "grep", `{"pattern":"hunter2","path":"public"}`, false)); strings.Contains(got, "hunter2") {
+	if got := resultText(executeTool(t, app, session.ID, "grep", `{"pattern":"hunter2","path":"public"}`)); strings.Contains(got, "hunter2") {
 		t.Fatalf("grep read through the link: %q", got)
 	}
 }
@@ -456,5 +454,65 @@ func TestRestrictedClientsReachNoUnattendedSession(t *testing.T) {
 	}
 	if _, err := db.GetBinding(context.Background(), "telegram", "guest:q"); err == nil {
 		t.Fatal("a restricted client was bound to a full_auto session")
+	}
+}
+
+// scopedStore fails the test on session-wide reads of messages or approvals.
+type scopedStore struct {
+	*store.SQLiteStore
+	t *testing.T
+}
+
+func (s scopedStore) ListMessages(ctx context.Context, sessionID string, limit int) ([]transcript.Message, error) {
+	s.t.Errorf("session-wide ListMessages(%s)", sessionID)
+	return s.SQLiteStore.ListMessages(ctx, sessionID, limit)
+}
+
+func (s scopedStore) ListMessagesAfter(ctx context.Context, sessionID string, afterSeq int64, limit int) ([]transcript.Message, error) {
+	s.t.Errorf("session-wide ListMessagesAfter(%s)", sessionID)
+	return s.SQLiteStore.ListMessagesAfter(ctx, sessionID, afterSeq, limit)
+}
+
+func (s scopedStore) ListApprovals(ctx context.Context, sessionID string, state core.ApprovalState) ([]core.Approval, error) {
+	s.t.Errorf("session-wide ListApprovals(%s)", sessionID)
+	return s.SQLiteStore.ListApprovals(ctx, sessionID, state)
+}
+
+func TestAGrantRunsTheCallOnceAndReadsOnlyItsRun(t *testing.T) {
+	t.Parallel()
+	_, db, _, dir := permissionCore(t)
+	app := core.New(scopedStore{SQLiteStore: db, t: t})
+	bash := &commandTool{}
+	app.WithTools(tools.NewRegistry(bash))
+	session := permissionSession(t, db, "session_grant", dir, core.PermissionModeDefault, "")
+	input := core.ExecuteToolInput{SessionID: session.ID, ToolName: "bash", ToolCallID: "call_grant", Args: json.RawMessage(`{"command":"make deploy"}`)}
+
+	pending, err := app.ExecuteTool(context.Background(), input)
+	if err != nil || pending.Approval == nil || pending.Approval.Description != "make deploy" || len(bash.ran) != 0 {
+		t.Fatalf("pending = %+v, %v, ran %v", pending, err, bash.ran)
+	}
+	if _, err := app.ResolveApproval(context.Background(), pending.Approval.ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
+		t.Fatal(err)
+	}
+	if len(bash.ran) != 1 {
+		t.Fatalf("after the grant ran = %v", bash.ran)
+	}
+	again, err := app.ExecuteTool(context.Background(), input)
+	if err != nil || again.Approval == nil || len(bash.ran) != 1 {
+		t.Fatalf("a used grant ran the call again: %+v, %v, ran %v", again, err, bash.ran)
+	}
+}
+
+func TestMemoryListsWithoutAskingAndAsksToChange(t *testing.T) {
+	t.Parallel()
+	app, db, _, dir := permissionCore(t)
+	app.WithTools(tools.NewRegistry(core.MemoryToolExecutors(app)...))
+	session := permissionSession(t, db, "session_memory", dir, core.PermissionModeDefault, "")
+	if listed := executeTool(t, app, session.ID, "memory", `{"action":"list"}`); listed.Approval != nil || listed.ToolResultMessage == nil {
+		t.Fatalf("list = %+v", listed)
+	}
+	added := executeTool(t, app, session.ID, "memory", `{"action":"add","scope":"global","content":"likes tea"}`)
+	if added.Approval == nil || added.Approval.Description != "Add Matrixclaw memory" {
+		t.Fatalf("add = %+v", added)
 	}
 }

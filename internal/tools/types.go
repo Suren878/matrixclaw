@@ -27,11 +27,13 @@ const (
 )
 
 // Spec describes a tool to the model and to the engine: Effect and Category
-// drive approvals and concurrency, Namespace groups a module's tools.
+// drive concurrency, Asks approvals, Namespace groups a module's tools.
 type Spec struct {
-	ID              string          `json:"id"`
-	Description     string          `json:"description,omitempty"`
-	Effect          Effect          `json:"effect,omitempty"`
+	ID          string `json:"id"`
+	Description string `json:"description,omitempty"`
+	Effect      Effect `json:"effect,omitempty"`
+	// Asks makes a call no permission rule decides wait for the user's approval.
+	Asks            bool            `json:"asks,omitempty"`
 	Namespace       string          `json:"namespace,omitempty"`
 	Category        Category        `json:"category,omitempty"`
 	InputJSONSchema json.RawMessage `json:"input_json_schema,omitempty"`
@@ -44,23 +46,26 @@ type Call struct {
 	Client      string          `json:"client,omitempty"`
 	ExternalKey string          `json:"external_key,omitempty"`
 	WorkingDir  string          `json:"working_dir,omitempty"`
-	Approved    bool            `json:"approved,omitempty"`
 	Args        json.RawMessage `json:"args,omitempty"`
 	// Recheck applies the permission rules to another subject the call reaches,
 	// such as a redirect's host; nil when no rules apply.
 	Recheck func(context.Context, permission.Subject) error `json:"-"`
 }
 
+// ApprovalRequest is what the user sees before a call runs: what it does, the
+// file or directory it changes and tool-specific details such as a diff.
 type ApprovalRequest struct {
-	ID          string `json:"id"`
-	ToolCallID  string `json:"tool_call_id,omitempty"`
-	ToolID      string `json:"tool_id"`
-	Action      string `json:"action"`
-	Path        string `json:"path,omitempty"`
 	Description string `json:"description,omitempty"`
+	Path        string `json:"path,omitempty"`
 	Params      any    `json:"params,omitempty"`
-	// Suggestion is the rule an "Always allow" answer keeps.
+	// Suggestion is the rule an "Always allow" answer keeps; core sets it.
 	Suggestion *permission.Suggestion `json:"suggestion,omitempty"`
+}
+
+// Previewer is implemented by tools whose approval shows more than the call's
+// arguments. Preview has no side effects; its error answers the call instead.
+type Previewer interface {
+	Preview(ctx context.Context, call Call) (ApprovalRequest, error)
 }
 
 type SkillManagePermissionsParams struct {
@@ -85,8 +90,7 @@ type Result struct {
 	Metadata any    `json:"metadata,omitempty"`
 	MIMEType string `json:"mime_type,omitempty"`
 	// Status is how the call went; empty is success.
-	Status   ResultStatus     `json:"status,omitempty"`
-	Approval *ApprovalRequest `json:"approval,omitempty"`
+	Status ResultStatus `json:"status,omitempty"`
 	// OutputPath is the file holding the full output when Content was cut.
 	OutputPath string `json:"output_path,omitempty"`
 	// Await parks the run once its batch is done, until one of the tasks

@@ -70,10 +70,6 @@ func toolResultToMCP(result tools.Result) *sdk.CallToolResult {
 	if result.Metadata != nil {
 		structured["metadata"] = result.Metadata
 	}
-	if result.Approval != nil {
-		structured["approval"] = result.Approval
-		out.IsError = true
-	}
 	out.StructuredContent = structured
 	return out
 }

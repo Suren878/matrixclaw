@@ -90,7 +90,6 @@ type ExecuteToolInput struct {
 	ExternalKey string          `json:"external_key,omitempty"`
 	ToolCallID  string          `json:"tool_call_id,omitempty"`
 	WorkingDir  string          `json:"working_dir,omitempty"`
-	Approved    bool            `json:"approved,omitempty"`
 	Args        json.RawMessage `json:"args,omitempty"`
 }
 

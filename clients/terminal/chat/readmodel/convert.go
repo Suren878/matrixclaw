@@ -206,7 +206,7 @@ func decodePermissionParams(toolName string, raw json.RawMessage) any {
 	}
 	switch toolName {
 	case "bash":
-		var params tools.BashPermissionsParams
+		var params tools.BashParams
 		if err := json.Unmarshal(raw, &params); err == nil {
 			return params
 		}

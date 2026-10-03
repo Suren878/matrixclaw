@@ -20,14 +20,16 @@ func TestBrowserToolsAskUnlessTheyOnlyReadThePage(t *testing.T) {
 		"browser_click":            true,
 	} {
 		executor := newRemoteToolExecutor(server, &Session{session: &sdk.ClientSession{}}, &sdk.Tool{Name: name})
-		if executor.Spec().Mutates() != wantAsk {
-			t.Errorf("%s: mutates=%v, want %v", name, executor.Spec().Mutates(), wantAsk)
+		if spec := executor.Spec(); spec.Mutates() != wantAsk || spec.Asks != wantAsk {
+			t.Errorf("%s: mutates=%v asks=%v, want %v", name, spec.Mutates(), spec.Asks, wantAsk)
 		}
-		if !wantAsk {
-			continue
-		}
-		if result, err := executor.Execute(context.Background(), tools.Call{}); err != nil || result.Approval == nil {
-			t.Errorf("%s: ran without approval (err=%v)", name, err)
-		}
+	}
+	readOnly := newRemoteToolExecutor(ServerConfig{ID: "docs", ReadOnly: true}, &Session{}, &sdk.Tool{Name: "search"})
+	if spec := readOnly.Spec(); spec.Asks || spec.Mutates() {
+		t.Errorf("read-only server tool: %+v", spec)
+	}
+	preview, err := newRemoteToolExecutor(server, &Session{}, &sdk.Tool{Name: "browser_click"}).(tools.Previewer).Preview(context.Background(), tools.Call{Args: []byte(`{"ref":"e1"}`)})
+	if err != nil || preview.Description != "Call remote MCP tool browser_click on browser" {
+		t.Errorf("preview = %+v, %v", preview, err)
 	}
 }

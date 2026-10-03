@@ -95,8 +95,6 @@ type remoteToolExecutor struct {
 	session    *Session
 	remoteName string
 	spec       tools.Spec
-	// asks is set for a tool that needs approval unless a rule allows it.
-	asks bool
 }
 
 func newRemoteToolExecutor(server ServerConfig, session *Session, remoteTool *sdk.Tool) tools.Executor {
@@ -107,11 +105,11 @@ func newRemoteToolExecutor(server ServerConfig, session *Session, remoteTool *sd
 		server:     server,
 		session:    session,
 		remoteName: name,
-		asks:       effect == tools.EffectMutation,
 		spec: tools.Spec{
 			ID:              ToolID(server.ToolPrefix, name),
 			Description:     remoteToolDescription(server, remoteTool),
 			Effect:          effect,
+			Asks:            effect == tools.EffectMutation,
 			Namespace:       "mcp." + server.ID,
 			Category:        tools.CategoryWeb,
 			InputJSONSchema: inputSchema,
@@ -143,21 +141,16 @@ func (e *remoteToolExecutor) Spec() tools.Spec {
 	return e.spec
 }
 
+func (e *remoteToolExecutor) Preview(_ context.Context, call tools.Call) (tools.ApprovalRequest, error) {
+	return tools.ApprovalRequest{
+		Description: "Call remote MCP tool " + e.remoteName + " on " + firstNonEmpty(e.server.Name, e.server.ID),
+		Params:      rawJSONMap(call.Args),
+	}, nil
+}
+
 func (e *remoteToolExecutor) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
 	if e == nil || e.session == nil || e.session.session == nil {
 		return tools.Result{}, fmt.Errorf("mcp: remote session is not connected")
-	}
-	if e.asks && !call.Approved {
-		return tools.Result{
-			Content: "Approval required before calling remote MCP tool " + e.remoteName,
-			Status:  tools.ResultStatusNeutral,
-			Approval: &tools.ApprovalRequest{
-				ToolID:      e.spec.ID,
-				Action:      "mcp:" + e.server.ID + ":" + e.remoteName,
-				Description: "Call remote MCP tool " + e.remoteName + " on " + firstNonEmpty(e.server.Name, e.server.ID),
-				Params:      rawJSONMap(call.Args),
-			},
-		}, nil
 	}
 	timeout := e.server.Timeout
 	if timeout <= 0 {

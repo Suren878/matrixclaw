@@ -3,6 +3,7 @@ package delivery
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -55,6 +56,7 @@ func (t *sendFileTool) Spec() tools.Spec {
 		ID:          sendFileToolID,
 		Description: "Send a MatrixClaw storage file to the current Telegram chat as a document. Use when the user asks you to send, attach, or share a saved file. The file must already be in MatrixClaw storage; use storage_list, storage_save, or storage_save_temp first if needed.",
 		Effect:      tools.EffectMutation,
+		Asks:        true,
 		Namespace:   "module.delivery",
 		Category:    tools.CategoryStorage,
 		InputJSONSchema: json.RawMessage(`{
@@ -72,50 +74,52 @@ func (t *sendFileTool) Spec() tools.Spec {
 	}
 }
 
-func (t *sendFileTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
+// document reads a send_file call into the document it delivers to the
+// call's Telegram chat; the file must be in storage.
+func (t *sendFileTool) document(call tools.Call) (core.DocumentDeliveryPayload, error) {
 	if t == nil || t.store == nil || t.deliveries == nil {
-		return tools.Result{Content: "File delivery is not configured.", Status: tools.ResultStatusError}, nil
+		return core.DocumentDeliveryPayload{}, errors.New("file delivery is not configured")
 	}
 	var input sendFileInput
 	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{Content: "Invalid send_file arguments.", Status: tools.ResultStatusError}, nil
+		return core.DocumentDeliveryPayload{}, errors.New("invalid send_file arguments")
 	}
 	input.Path = strings.TrimSpace(input.Path)
 	if input.Path == "" {
-		return tools.Result{Content: "send_file requires path.", Status: tools.ResultStatusError}, nil
+		return core.DocumentDeliveryPayload{}, errors.New("send_file requires path")
 	}
-	client := strings.TrimSpace(call.Client)
-	externalKey := strings.TrimSpace(call.ExternalKey)
-	if !strings.EqualFold(client, "telegram") || externalKey == "" {
-		return tools.Result{Content: "send_file is available only from an active Telegram chat.", Status: tools.ResultStatusError}, nil
+	if !strings.EqualFold(strings.TrimSpace(call.Client), "telegram") || strings.TrimSpace(call.ExternalKey) == "" {
+		return core.DocumentDeliveryPayload{}, errors.New("send_file is available only from an active Telegram chat")
 	}
-
 	source, err := t.readSource(input)
 	if err != nil {
-		return tools.Result{Content: fmt.Sprintf("File delivery failed: %s", err), Status: tools.ResultStatusError}, nil
+		return core.DocumentDeliveryPayload{}, fmt.Errorf("file delivery failed: %w", err)
 	}
-	fileName := deliveryFileName(input.FileName, source)
-	mimeType := firstNonEmpty(strings.TrimSpace(input.MIMEType), source.MIMEType, "application/octet-stream")
-	payload := core.DocumentDeliveryPayload{
+	return core.DocumentDeliveryPayload{
 		StoragePath: source.Path,
 		Temporary:   input.Temporary,
-		FileName:    fileName,
+		FileName:    deliveryFileName(input.FileName, source),
 		Caption:     strings.TrimSpace(input.Caption),
-		MIMEType:    mimeType,
+		MIMEType:    firstNonEmpty(strings.TrimSpace(input.MIMEType), source.MIMEType, "application/octet-stream"),
 		Size:        source.Size,
+	}, nil
+}
+
+func (t *sendFileTool) Preview(_ context.Context, call tools.Call) (tools.ApprovalRequest, error) {
+	payload, err := t.document(call)
+	return tools.ApprovalRequest{
+		Path:        payload.StoragePath,
+		Description: fmt.Sprintf("Send %s (%d bytes) to the current Telegram chat.", payload.FileName, payload.Size),
+		Params:      payload,
+	}, err
+}
+
+func (t *sendFileTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
+	payload, err := t.document(call)
+	if err != nil {
+		return tools.Result{Content: err.Error(), Status: tools.ResultStatusError}, nil
 	}
-	if !call.Approved {
-		return tools.Result{
-			Approval: &tools.ApprovalRequest{
-				ToolCallID:  call.ToolCallID,
-				ToolID:      sendFileToolID,
-				Action:      "send_file",
-				Path:        source.Path,
-				Description: fmt.Sprintf("Send %s (%d bytes) to the current Telegram chat.", fileName, source.Size),
-				Params:      payload,
-			},
-		}, nil
-	}
+	client, externalKey, fileName := strings.TrimSpace(call.Client), strings.TrimSpace(call.ExternalKey), payload.FileName
 
 	payloadRaw, err := json.Marshal(payload)
 	if err != nil {

@@ -66,10 +66,7 @@ func toolContent(request providers.Request, callID string) string {
 	return ""
 }
 
-func writeTool(call tools.Call) tools.Result {
-	if !call.Approved {
-		return tools.Result{Approval: &tools.ApprovalRequest{ToolID: "write", ToolCallID: call.ToolCallID, Action: "write"}}
-	}
+func writeTool(tools.Call) tools.Result {
 	return tools.Result{Content: "written"}
 }
 
@@ -131,7 +128,7 @@ func TestToolRoundTripIsJournaledInOrder(t *testing.T) {
 		t.Fatalf("checkpoints = %s", got)
 	}
 	executed := f.Tools.Calls[0]
-	if executed.ToolCallID != "c1" || executed.WorkingDir != "/work" || executed.Approved || executed.RunID != agenttest.RunID {
+	if executed.ToolCallID != "c1" || executed.WorkingDir != "/work" || executed.RunID != agenttest.RunID {
 		t.Fatalf("executed call = %+v", executed)
 	}
 	if got := toolContent(model.Requests()[1], "c1"); got != "file body" {
@@ -190,10 +187,7 @@ func TestUpdatedMessageEventsCarryTheStoredSeq(t *testing.T) {
 	}
 }
 
-func lookupTool(call tools.Call) tools.Result {
-	if !call.Approved {
-		return tools.Result{Approval: &tools.ApprovalRequest{ToolID: "lookup", ToolCallID: call.ToolCallID, Action: "lookup"}}
-	}
+func lookupTool(tools.Call) tools.Result {
 	return tools.Result{Content: "looked up"}
 }
 
@@ -210,6 +204,7 @@ func executedIDs(f *agenttest.Fixture) string {
 func TestApprovalThatIsNotABarrierLetsTheBatchRun(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["lookup"] = lookupTool
+	f.Tools.Asks["lookup"] = true
 	f.Tools.Funcs["read"] = readTool
 	model := agenttest.NewScriptedModel(calls(call("l1", "lookup"), call("r1", "read")))
 
@@ -218,7 +213,7 @@ func TestApprovalThatIsNotABarrierLetsTheBatchRun(t *testing.T) {
 	if outcome.Status != agent.StatusWaitingApproval {
 		t.Fatalf("outcome = %+v", outcome)
 	}
-	if len(f.Approvals.Requests) != 1 || f.Approvals.Requests[0].ToolCallID != "l1" || f.Approvals.Requests[0].Request.Action != "lookup" {
+	if len(f.Approvals.Requests) != 1 || f.Approvals.Requests[0].ToolCallID != "l1" || f.Approvals.Requests[0].Request.Description != "lookup" {
 		t.Fatalf("approval requests = %+v", f.Approvals.Requests)
 	}
 	if _, ok := f.Journal.Result("r1"); !ok {
@@ -235,6 +230,7 @@ func TestApprovalThatIsNotABarrierLetsTheBatchRun(t *testing.T) {
 func TestMutatingApprovalDefersTheRestOfTheBatch(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["write"] = writeTool
+	f.Tools.Asks["write"] = true
 	f.Tools.Funcs["read"] = readTool
 	f.Tools.Mutating = map[string]bool{"write": true}
 	model := agenttest.NewScriptedModel(calls(call("r1", "read"), call("w1", "write"), call("r2", "read"), call("w2", "write")), text("Done."))
@@ -299,6 +295,7 @@ func TestMutatingApprovalDefersTheRestOfTheBatch(t *testing.T) {
 func TestBatchCheckpointsNameTheCallsAndTheDeferredOnes(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["write"] = writeTool
+	f.Tools.Asks["write"] = true
 	f.Tools.Funcs["read"] = readTool
 	f.Tools.Mutating = map[string]bool{"write": true}
 	model := agenttest.NewScriptedModel(calls(call("r1", "read"), call("w1", "write"), call("r2", "read")), text("Done."))
@@ -321,6 +318,7 @@ func TestBatchCheckpointsNameTheCallsAndTheDeferredOnes(t *testing.T) {
 func TestDeniedBarrierAnswersTheCallsItHeldBack(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["write"] = writeTool
+	f.Tools.Asks["write"] = true
 	f.Tools.Funcs["read"] = readTool
 	f.Tools.Mutating = map[string]bool{"write": true}
 	model := agenttest.NewScriptedModel(calls(call("r1", "read"), call("w1", "write"), call("r2", "read"), call("w2", "write")), text("Done."))
@@ -351,6 +349,7 @@ func TestDeniedBarrierAnswersTheCallsItHeldBack(t *testing.T) {
 func TestResolvedApprovalContinuesTheSameRun(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["write"] = writeTool
+	f.Tools.Asks["write"] = true
 	f.Approvals.Grant = func(p agent.Pending) {
 		f.Inbox.Decided = append(f.Inbox.Decided, agent.Input{Kind: agent.InputDecided, ToolCallID: p.ToolCallID, ToolName: p.ToolName, WorkingDir: "/work", Args: []byte(`{}`)})
 	}
@@ -361,7 +360,7 @@ func TestResolvedApprovalContinuesTheSameRun(t *testing.T) {
 	if outcome.Status != agent.StatusCompleted || len(model.Requests()) != 2 {
 		t.Fatalf("outcome = %+v requests = %d", outcome, len(model.Requests()))
 	}
-	if len(f.Tools.Calls) != 2 || f.Tools.Calls[0].Approved || !f.Tools.Calls[1].Approved {
+	if len(f.Tools.Calls) != 2 {
 		t.Fatalf("calls = %+v", f.Tools.Calls)
 	}
 	if result, ok := f.Journal.Result("w1"); !ok || result.Content != "written" {
@@ -372,13 +371,14 @@ func TestResolvedApprovalContinuesTheSameRun(t *testing.T) {
 func TestGrantedApprovalIsExecutedBeforeTheNextModelCall(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["write"] = writeTool
+	f.Tools.Asks["write"] = true
 	f.Journal.Seed(agent.ToolCallMessage("w1", agenttest.SessionID, agenttest.RunID, "write", []byte(`{}`), false, f.Clock))
 	f.Inbox.Decided = []agent.Input{{Kind: agent.InputDecided, ToolCallID: "w1", ToolName: "write", WorkingDir: "/work", Args: []byte(`{}`)}}
 	model := agenttest.NewScriptedModel(text("Done."))
 
 	outcome := run(t, f, model)
 
-	if outcome.Status != agent.StatusCompleted || len(f.Tools.Calls) != 1 || !f.Tools.Calls[0].Approved {
+	if outcome.Status != agent.StatusCompleted || len(f.Tools.Calls) != 1 {
 		t.Fatalf("outcome = %+v calls = %+v", outcome, f.Tools.Calls)
 	}
 	if message, _ := f.Journal.Message("w1"); !message.Parts[len(message.Parts)-1].ToolCall.Finished {
@@ -717,6 +717,7 @@ func TestCancelWhileStreamingSealsThePartialReply(t *testing.T) {
 func TestStoppedContextWithOpenApprovalReportsTheParkedState(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["write"] = writeTool
+	f.Tools.Asks["write"] = true
 	ctx, cancel := context.WithCancel(context.Background())
 	f.Approvals.OnRequest = func(agent.Pending) error {
 		cancel()
@@ -733,6 +734,7 @@ func TestStoppedContextWithOpenApprovalReportsTheParkedState(t *testing.T) {
 func TestApprovalRequestFailureFailsTheRun(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["write"] = writeTool
+	f.Tools.Asks["write"] = true
 	f.Approvals.OnRequest = func(agent.Pending) error { return errors.New("approvals unavailable") }
 
 	outcome := run(t, f, agenttest.NewScriptedModel(calls(call("w1", "write"))))
@@ -752,6 +754,7 @@ func TestDeniedCallGetsTheDenialAsItsResult(t *testing.T) {
 	} {
 		f := agenttest.NewFixture()
 		f.Tools.Funcs["write"] = writeTool
+		f.Tools.Asks["write"] = true
 		f.Journal.Seed(agent.ToolCallMessage("w1", agenttest.SessionID, agenttest.RunID, "write", []byte(`{}`), false, f.Clock))
 		f.Inbox.Decided = []agent.Input{{Kind: agent.InputDecided, ToolCallID: "w1", ToolName: "write", WorkingDir: "/work", Args: []byte(`{}`), Denied: true, Reason: tc.reason}}
 		model := agenttest.NewScriptedModel(text("Understood."))

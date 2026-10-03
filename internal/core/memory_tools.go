@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/permission"
+
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
@@ -73,16 +75,18 @@ func (t *memoryTool) Spec() tools.Spec {
 		ID:              memoryToolName,
 		Description:     "List, add, replace, or remove persistent Matrixclaw memory. Mutations require approval.",
 		Effect:          tools.EffectMutation,
+		Asks:            true,
 		Namespace:       "core.memory",
 		Category:        tools.CategoryAutomation,
 		InputJSONSchema: memoryToolSchema,
 	}
 }
 
-func (t *memoryTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
+// readMemoryInput reads a memory call; no action is list and no directory the call's.
+func readMemoryInput(call tools.Call) (memoryToolInput, error) {
 	var input memoryToolInput
 	if err := decodeMemoryToolArgs(memoryToolName, call.Args, &input); err != nil {
-		return tools.Result{}, err
+		return input, err
 	}
 	input.Action = strings.ToLower(strings.TrimSpace(input.Action))
 	if input.Action == "" {
@@ -90,6 +94,40 @@ func (t *memoryTool) Execute(ctx context.Context, call tools.Call) (tools.Result
 	}
 	if input.WorkingDir == "" {
 		input.WorkingDir = call.WorkingDir
+	}
+	return input, nil
+}
+
+// PermissionSubject is the call's action, so rules (and the built-in
+// "memory: list") can let reading run while changes ask.
+func (t *memoryTool) PermissionSubject(call tools.Call) permission.Subject {
+	input, err := readMemoryInput(call)
+	if err != nil {
+		return permission.Subject{}
+	}
+	return permission.Subject{Kind: permission.KindName, Value: input.Action}
+}
+
+func (t *memoryTool) Preview(_ context.Context, call tools.Call) (tools.ApprovalRequest, error) {
+	input, err := readMemoryInput(call)
+	description := "Update Matrixclaw memory"
+	switch input.Action {
+	case "list":
+		description = "List Matrixclaw memory"
+	case "add":
+		description = "Add Matrixclaw memory"
+	case "replace":
+		description = "Replace Matrixclaw memory " + strings.TrimSpace(input.ID)
+	case "remove":
+		description = "Remove Matrixclaw memory " + strings.TrimSpace(input.ID)
+	}
+	return tools.ApprovalRequest{Description: description, Params: input}, err
+}
+
+func (t *memoryTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
+	input, err := readMemoryInput(call)
+	if err != nil {
+		return tools.Result{}, err
 	}
 	switch input.Action {
 	case "list":
@@ -103,9 +141,6 @@ func (t *memoryTool) Execute(ctx context.Context, call tools.Call) (tools.Result
 		}
 		return tools.Result{Content: formatMemoryEntries(entries), Metadata: entries, Status: tools.ResultStatusSuccess}, nil
 	case "add":
-		if !call.Approved {
-			return memoryApprovalResult(input), nil
-		}
 		entry, err := t.app.CreateMemory(ctx, MemoryEntry{
 			Scope:      MemoryScope(input.Scope),
 			Key:        input.Key,
@@ -117,9 +152,6 @@ func (t *memoryTool) Execute(ctx context.Context, call tools.Call) (tools.Result
 		}
 		return tools.Result{Content: "Memory added: " + entry.ID, Metadata: entry, Status: tools.ResultStatusSuccess}, nil
 	case "replace":
-		if !call.Approved {
-			return memoryApprovalResult(input), nil
-		}
 		entry, err := t.app.UpdateMemory(ctx, MemoryEntry{
 			ID:         input.ID,
 			Scope:      MemoryScope(input.Scope),
@@ -132,9 +164,6 @@ func (t *memoryTool) Execute(ctx context.Context, call tools.Call) (tools.Result
 		}
 		return tools.Result{Content: "Memory replaced: " + entry.ID, Metadata: entry, Status: tools.ResultStatusSuccess}, nil
 	case "remove":
-		if !call.Approved {
-			return memoryApprovalResult(input), nil
-		}
 		if err := t.app.DeleteMemory(ctx, input.ID); err != nil {
 			return memoryErrorResult(err), nil
 		}
@@ -165,28 +194,6 @@ func decodeMemoryToolArgs(toolID string, args json.RawMessage, dest any) error {
 		return tools.InvalidArgs(toolID, err)
 	}
 	return nil
-}
-
-func memoryApprovalResult(input memoryToolInput) tools.Result {
-	action := strings.ToLower(strings.TrimSpace(input.Action))
-	description := "Update Matrixclaw memory"
-	switch action {
-	case "add":
-		description = "Add Matrixclaw memory"
-	case "replace":
-		description = "Replace Matrixclaw memory " + strings.TrimSpace(input.ID)
-	case "remove":
-		description = "Remove Matrixclaw memory " + strings.TrimSpace(input.ID)
-	}
-	return tools.Result{
-		Content: "Approval required",
-		Approval: &tools.ApprovalRequest{
-			ToolID:      memoryToolName,
-			Action:      "memory:" + action,
-			Description: description,
-			Params:      input,
-		},
-	}
 }
 
 func memoryErrorResult(err error) tools.Result {

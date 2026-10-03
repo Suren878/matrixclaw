@@ -401,7 +401,7 @@ func TestRecoverMutatingToolRequiresFreshApprovalBeforeSingleReplay(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(approvals) != 1 || approvals[0].Action != "retry_after_daemon_restart" || approvals[0].Suggestion == nil || approvals[0].Suggestion.String() != "mutate_state" {
+	if len(approvals) != 1 || !strings.Contains(approvals[0].Description, "The daemon restarted") || approvals[0].Suggestion == nil || approvals[0].Suggestion.String() != "mutate_state" {
 		t.Fatalf("recovery approvals = %#v, want one restart retry approval", approvals)
 	}
 	if _, err := app.ResolveApproval(context.Background(), approvals[0].ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
@@ -415,6 +415,49 @@ func TestRecoverMutatingToolRequiresFreshApprovalBeforeSingleReplay(t *testing.T
 	}
 	assertRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusCompleted)
 	assertToolResultCount(t, sqliteStore, run.SessionID, "tool_mutation", 1)
+}
+
+func TestRecoveredGrantedCallWaitsForTheRetryApproval(t *testing.T) {
+	t.Parallel()
+	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	mutation := &recoveryTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation)}
+	mutation.spec.Asks = true
+	app.WithSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "done"}})
+	app.WithRunStarter(&recordingRunStarter{})
+	app.WithTools(tools.NewRegistry(mutation))
+	_, run := saveCrashRecoveryRun(t, sqliteStore, "granted_then_restart", core.RunStatusRunning, false)
+	saveInterruptedToolCall(t, sqliteStore, run, "tool_mutation", mutation.spec.ID)
+	decided := runRecoveryTestTime()
+	if err := sqliteStore.CreateApproval(context.Background(), core.Approval{
+		ID: "approval_granted", SessionID: run.SessionID, RunID: run.ID, ToolCallRef: "tool_mutation", ToolName: mutation.spec.ID,
+		State: core.ApprovalStateApproved, RequestedAt: decided, DecidedAt: &decided,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	recoverRun(t, app, run.ID)
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusWaitingApproval)
+	if got := mutation.callCount(); got != 0 {
+		t.Fatalf("the old grant re-ran the call %d times", got)
+	}
+	pending, err := sqliteStore.ListApprovals(context.Background(), run.SessionID, core.ApprovalStatePending)
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("pending = %+v, %v", pending, err)
+	}
+	if _, err := app.ResolveApproval(context.Background(), pending[0].ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusCompleted)
+	if got := mutation.callCount(); got != 1 {
+		t.Fatalf("executions after the retry grant = %d, want 1", got)
+	}
 }
 
 func TestRecoverDeniedToolReturnsTheDenialToTheModel(t *testing.T) {

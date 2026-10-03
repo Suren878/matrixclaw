@@ -118,6 +118,30 @@ func (r *Registry) Execute(ctx context.Context, toolID string, call Call) (Resul
 	return result, err
 }
 
+// Preview is the approval a call of the tool shows: the tool's own preview, or
+// else the call's arguments. An error from the tool is the call's error result.
+func (r *Registry) Preview(ctx context.Context, toolID string, call Call) (ApprovalRequest, *Result) {
+	r.mu.RLock()
+	registered, ok := r.executors[normalizeToolID(toolID)]
+	r.mu.RUnlock()
+	if !ok {
+		return ApprovalRequest{}, &Result{Content: fmt.Sprintf("unknown tool %q", strings.TrimSpace(toolID)), Status: ResultStatusError}
+	}
+	previewer, previews := registered.executor.(Previewer)
+	if !previews {
+		return ApprovalRequest{Description: "Run " + registered.spec.ID, Params: call.Args}, nil
+	}
+	request, err := previewer.Preview(ctx, call)
+	switch {
+	case errors.Is(err, ErrInvalidArgs):
+		result := invalidArgsResult(toolID, err)
+		return ApprovalRequest{}, &result
+	case err != nil:
+		return ApprovalRequest{}, &Result{Content: err.Error(), Status: ResultStatusError}
+	}
+	return request, nil
+}
+
 func (r *Registry) Spec(toolID string) (Spec, bool) {
 	if r == nil {
 		return Spec{}, false

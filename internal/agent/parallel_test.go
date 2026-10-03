@@ -338,6 +338,7 @@ func TestInterruptedBatchLeavesUnfinishedCallsToRecovery(t *testing.T) {
 func TestCanceledBatchAnswersAnAskedCallBeforeARunningOne(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["lookup"] = lookupTool
+	f.Tools.Asks["lookup"] = true
 	f.Tools.Funcs["wait"] = func(tools.Call) tools.Result { return tools.Result{Content: "waited"} }
 	f.Tools.OnExecute = func(ctx context.Context, name string, _ tools.Call) error {
 		if name == "wait" {

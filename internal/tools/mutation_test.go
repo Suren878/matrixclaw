@@ -16,7 +16,7 @@ func runMutation(t *testing.T, dir string, tool string, args any) Result {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := NewRegistry(CoreExecutors()...).Execute(context.Background(), tool, Call{WorkingDir: dir, Approved: true, Args: raw})
+	result, err := NewRegistry(CoreExecutors()...).Execute(context.Background(), tool, Call{WorkingDir: dir, Args: raw})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestMultiEditAppliesAllOrNothing(t *testing.T) {
 }
 
 func TestMutationRejectsMalformedArguments(t *testing.T) {
-	result, err := NewRegistry(CoreExecutors()...).Execute(context.Background(), "edit", Call{WorkingDir: t.TempDir(), Approved: true, Args: json.RawMessage(`{"file_path":3}`)})
+	result, err := NewRegistry(CoreExecutors()...).Execute(context.Background(), "edit", Call{WorkingDir: t.TempDir(), Args: json.RawMessage(`{"file_path":3}`)})
 	if err != nil || !result.IsError() || !strings.Contains(result.Content, "Invalid edit arguments") {
 		t.Fatalf("result = %+v, err = %v", result, err)
 	}
@@ -115,5 +115,42 @@ func TestCutPreviewKeepsTheLimitAndValidUTF8(t *testing.T) {
 	}
 	if !utf8.ValidString(got) {
 		t.Fatal("cut splits a rune")
+	}
+}
+
+func TestCoreToolsAskForChangesOnly(t *testing.T) {
+	registry := NewRegistry(append(CoreExecutors(), NewShellExecutors(nil)...)...)
+	for _, spec := range registry.List() {
+		if want := spec.Mutates(); spec.Asks != want {
+			t.Errorf("%s: asks = %v, want %v", spec.ID, spec.Asks, want)
+		}
+	}
+}
+
+func TestMutationPreviewValidatesWithoutWriting(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(path, []byte(strings.Repeat("x", approvalPreviewMaxBytes)+"\nend\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	registry := NewRegistry(CoreExecutors()...)
+	preview, refused := registry.Preview(context.Background(), "edit", Call{WorkingDir: dir, Args: json.RawMessage(`{"file_path":"a.txt","old_string":"end","new_string":"done"}`)})
+	change, ok := preview.Params.(FileChange)
+	if refused != nil || !ok || preview.Path != path || preview.Description != "Edit "+path || change.Additions != 1 || change.Removals != 1 {
+		t.Fatalf("preview = %+v, refused = %+v", preview, refused)
+	}
+	if len(change.OldContent) > approvalPreviewMaxBytes || !strings.Contains(change.NewContent, "approval preview truncated") {
+		t.Fatalf("preview not cut: old %d bytes", len(change.OldContent))
+	}
+	if strings.Contains(readFile(t, path), "done") {
+		t.Fatal("preview wrote the file")
+	}
+	_, refused = registry.Preview(context.Background(), "edit", Call{WorkingDir: dir, Args: json.RawMessage(`{"file_path":"a.txt","old_string":"absent","new_string":"x"}`)})
+	if refused == nil || !refused.IsError() || refused.Content != "old_string not found in file" {
+		t.Fatalf("refused = %+v", refused)
+	}
+	_, refused = registry.Preview(context.Background(), "write", Call{WorkingDir: dir, Args: json.RawMessage(`[]`)})
+	if refused == nil || !strings.Contains(refused.Content, "Invalid write arguments") {
+		t.Fatalf("bad args refused = %+v", refused)
 	}
 }

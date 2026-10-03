@@ -119,7 +119,7 @@ func (p *Permissions) renderHeader(contentWidth int) string {
 
 	switch p.permission.ToolName {
 	case toolNameBash:
-		if params, ok := surfacepermission.DecodeParams[tools.BashPermissionsParams](p.permission.Params); ok {
+		if params, ok := surfacepermission.DecodeParams[tools.BashParams](p.permission.Params); ok {
 			lines = append(lines, p.renderKeyValue("Desc", params.Description, contentWidth))
 		}
 	case toolNameEdit, toolNameWrite, toolNameMultiEdit, toolNameRead:

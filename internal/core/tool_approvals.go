@@ -230,7 +230,6 @@ func (c *Core) replayApprovedTool(ctx context.Context, approval Approval) (Execu
 		ToolName:   approval.ToolName,
 		ToolCallID: approval.ToolCallRef,
 		WorkingDir: workingDirForApprovalResume(session.WorkingDir, spec, approval.Path),
-		Approved:   true,
 		Args:       args,
 	})
 }

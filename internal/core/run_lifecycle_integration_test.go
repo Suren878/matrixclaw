@@ -90,10 +90,7 @@ func (d *restartableDaemon) start(t *testing.T) (*core.Core, context.CancelFunc)
 	t.Helper()
 	lifetime, stop := context.WithCancel(context.Background())
 	app := core.New(d.db).WithLifetime(lifetime)
-	mutate := funcTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation), fn: func(_ context.Context, call tools.Call) (tools.Result, error) {
-		if !call.Approved {
-			return tools.Result{Approval: &tools.ApprovalRequest{ToolID: "mutate_state", ToolCallID: call.ToolCallID, Action: "write_state"}}, nil
-		}
+	mutate := funcTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation), ask: "write the state", fn: func(context.Context, tools.Call) (tools.Result, error) {
 		d.mu.Lock()
 		d.mutations++
 		d.mu.Unlock()

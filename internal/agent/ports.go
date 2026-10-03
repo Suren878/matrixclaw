@@ -95,14 +95,15 @@ type Decision struct {
 	Delegated bool
 }
 
-// Tools lists, authorizes and executes the tools of one run. Execute errors are
-// fatal; tool failures come back as IsError results. Execute runs on a goroutine
-// of its own, concurrently with other calls of the batch; the other methods run
-// on the engine goroutine.
+// Tools lists, authorizes and executes the tools of one run. Execute returns
+// either a result or, for a call that waits for the user, its approval request.
+// Execute errors are fatal; tool failures come back as error results. Execute
+// runs on a goroutine of its own, concurrently with other calls of the batch;
+// the other methods run on the engine goroutine.
 type Tools interface {
 	Specs(ctx context.Context) []tools.Spec
 	Authorize(ctx context.Context, name string, call tools.Call) (Decision, error)
-	Execute(ctx context.Context, name string, call tools.Call) (tools.Result, error)
+	Execute(ctx context.Context, name string, call tools.Call) (tools.Result, *tools.ApprovalRequest, error)
 }
 
 // Pending is a tool call that waits for a user decision.

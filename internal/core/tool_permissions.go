@@ -12,11 +12,13 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-// callPermission is how the permission rules see one call and treat it; root
-// is the working directory suggestions stay inside.
+// callPermission is how the permission rules see one call and treat it; ask
+// is set when the call waits for approval; root is the working directory
+// suggestions stay inside.
 type callPermission struct {
 	request permission.Request
 	verdict permission.Verdict
+	ask     bool
 	root    string
 	rules   []permission.Rule
 	preset  []permission.Rule
@@ -42,8 +44,10 @@ func (check callPermission) recheck(_ context.Context, subject permission.Subjec
 }
 
 // checkPermission evaluates a call against the global rules, the rules of its
-// session and the session's parents, then the preset of the session's mode.
-// Engine runs and ExecuteTool (API, voice, MCP server, replays) both ask here.
+// session and the session's parents, then the preset of the session's mode; a
+// call that no rule decides asks when its spec does. A call that asks runs once
+// its grant is stored. Engine runs and ExecuteTool (API, voice, MCP server,
+// replays) both ask here.
 func (c *Core) checkPermission(ctx context.Context, sessionID string, spec tools.Spec, call tools.Call) (callPermission, error) {
 	session, err := c.store.GetSession(ctx, sessionID)
 	if err != nil {
@@ -60,7 +64,31 @@ func (c *Core) checkPermission(ctx context.Context, sessionID string, spec tools
 	root := realPath(firstNonEmpty(normalizeWorkingDir(session.WorkingDir), normalizeWorkingDir(call.WorkingDir)))
 	preset := permission.Preset(string(NormalizePermissionMode(string(session.PermissionMode))), root)
 	verdict := permission.Evaluate(request, rules, preset)
-	return callPermission{request: request, verdict: verdict, root: root, rules: rules, preset: preset}, nil
+	check := callPermission{request: request, verdict: verdict, root: root, rules: rules, preset: preset}
+	check.ask = verdict.Effect == permission.Ask || verdict.Effect == "" && spec.Asks
+	if check.ask && call.ToolCallID != "" {
+		granted, err := c.callGranted(ctx, sessionID, call.RunID, call.ToolCallID)
+		if err != nil {
+			return callPermission{}, err
+		}
+		check.ask = !granted
+	}
+	return check, nil
+}
+
+// callGranted reports whether the call's newest approval granted it and it has
+// no result yet, so a grant runs the call once. Both lookups stay within the
+// call's run (run-less calls share run "").
+func (c *Core) callGranted(ctx context.Context, sessionID string, runID string, callID string) (bool, error) {
+	approvals, err := c.store.ListRunApprovals(ctx, sessionID, runID)
+	if err != nil {
+		return false, err
+	}
+	if latest, ok := latestApprovalForCall(approvals, callID); !ok || latest.State != ApprovalStateApproved {
+		return false, nil
+	}
+	done, err := c.store.HasToolResult(ctx, sessionID, runID, callID)
+	return !done, err
 }
 
 // suggestRule is the rule an "Always allow" answer to a call of toolName keeps;
@@ -126,19 +154,4 @@ func realPath(path string) string {
 // blockedResult is what the model reads for a call a deny rule blocks.
 func blockedResult(rule permission.Rule) tools.Result {
 	return tools.Result{Content: "Blocked by rule " + rule.String(), Status: tools.ResultStatusError}
-}
-
-// askedByRule requests approval for a call an ask rule catches, whether or not
-// the tool would ask on its own.
-func askedByRule(prepared preparedToolCall, input ExecuteToolInput, rule permission.Rule) tools.Result {
-	return tools.Result{
-		Content: "Approval required",
-		Approval: &tools.ApprovalRequest{
-			ToolID:      prepared.ToolName,
-			ToolCallID:  prepared.ToolCallID,
-			Action:      "ask_rule",
-			Description: fmt.Sprintf("Rule %q asks before this call", rule.String()),
-			Params:      input.Args,
-		},
-	}
 }

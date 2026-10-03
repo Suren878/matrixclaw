@@ -128,6 +128,7 @@ func TestRejectedCallsExtendTheStreak(t *testing.T) {
 func TestRejectedCallStreakSurvivesAnApprovalPark(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["write"] = writeTool
+	f.Tools.Asks["write"] = true
 	model := agenttest.NewScriptedModel(calls(call("w1", "write"), call("g1", "ghost")))
 
 	outcome := run(t, f, model)

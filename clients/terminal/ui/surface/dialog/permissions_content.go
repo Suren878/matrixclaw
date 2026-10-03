@@ -28,7 +28,7 @@ func (p *Permissions) renderContent(width int) string {
 }
 
 func (p *Permissions) renderBashContent(width int) string {
-	params, ok := surfacepermission.DecodeParams[tools.BashPermissionsParams](p.permission.Params)
+	params, ok := surfacepermission.DecodeParams[tools.BashParams](p.permission.Params)
 	if !ok {
 		return ""
 	}

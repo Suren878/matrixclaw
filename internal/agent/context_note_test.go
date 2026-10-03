@@ -38,6 +38,7 @@ func TestSystemPromptAndToolsAreFixedForTheRun(t *testing.T) {
 		f.Prompts.Text = "system as of step " + call.ToolCallID
 		f.Prompts.ContextText = "Plan: step " + call.ToolCallID
 		f.Tools.Funcs["write"] = writeTool
+		f.Tools.Asks["write"] = true
 		return tools.Result{Content: "read " + call.ToolCallID}
 	}
 	model := agenttest.NewScriptedModel(calls(call("c1", "read")), calls(call("c2", "read")), text("Done."))

@@ -44,6 +44,9 @@ func TestEvaluateOrdersDenyAskAllowThenPreset(t *testing.T) {
 		{"tool star covers every tool", file("read", "/work/a.go"), []Rule{rule(Deny, "*", "")}, nil, Deny, "*"},
 		{"subject-less call matches only whole-tool rules", Request{Tool: "memory"}, []Rule{rule(Deny, "memory", "x*"), rule(Allow, "memory", "")}, nil, Allow, "memory"},
 		{"domain without case", Request{Tool: "web_fetch", Subject: Subject{Kind: KindDomain, Value: "Docs.Example.com"}}, []Rule{rule(Deny, "web_fetch", "*.example.com")}, nil, Deny, "web_fetch: *.example.com"},
+		{"every mode lists memory", Request{Tool: "memory", Subject: Subject{Kind: KindName, Value: "list"}}, nil, Preset(ModeDefault, "/work"), Allow, "memory: list"},
+		{"memory changes keep their default", Request{Tool: "memory", Subject: Subject{Kind: KindName, Value: "add"}}, nil, Preset(ModeAcceptEdits, "/work"), "", ""},
+		{"an ask rule beats the built-in", Request{Tool: "memory", Subject: Subject{Kind: KindName, Value: "list"}}, []Rule{rule(Ask, "memory", "")}, Preset(ModeDefault, ""), Ask, "memory"},
 		{"mcp name glob", Request{Tool: "mcp", Subject: Subject{Kind: KindName, Value: "browser__browser_click"}}, []Rule{rule(Allow, "mcp", "browser__*")}, nil, Allow, "mcp: browser__*"},
 	} {
 		got := Evaluate(tc.req, tc.rules, tc.preset)

@@ -85,6 +85,7 @@ func (t *ScheduledAITaskTool) Spec() tools.Spec {
 		ID:          "create_scheduled_ai_task",
 		Description: "Create a scheduled AI task. Use for recurring or one-time tasks that should run later in the current session.",
 		Effect:      tools.EffectMutation,
+		Asks:        true,
 		Namespace:   "core.automation",
 		Category:    tools.CategoryAutomation,
 		InputJSONSchema: json.RawMessage(`{
@@ -105,23 +106,9 @@ func (t *ScheduledAITaskTool) Execute(ctx context.Context, call tools.Call) (too
 	if t == nil || t.service == nil {
 		return tools.Result{}, fmt.Errorf("%w: automation service not configured", core.ErrExecutionUnavailable)
 	}
-	var input scheduledAITaskToolInput
-	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{Status: tools.ResultStatusError, Content: "Invalid scheduled task arguments."}, nil
-	}
-	create, result := t.validateScheduledAITaskInput(input, call.SessionID)
+	_, create, result := t.scheduledTask(call)
 	if result.IsError() {
 		return result, nil
-	}
-	if !call.Approved {
-		return tools.Result{
-			Approval: &tools.ApprovalRequest{
-				ToolID:      "create_scheduled_ai_task",
-				Action:      "schedule_ai_task",
-				Description: "Create scheduled AI task: " + strings.TrimSpace(input.Title),
-				Params:      input,
-			},
-		}, nil
 	}
 	job, err := t.service.CreateJobForRun(ctx, call.RunID, create)
 	if err != nil {
@@ -131,6 +118,28 @@ func (t *ScheduledAITaskTool) Execute(ctx context.Context, call tools.Call) (too
 		return tools.Result{}, err
 	}
 	return tools.Result{Content: fmt.Sprintf("Scheduled AI task created: %s", job.ID)}, nil
+}
+
+// Preview validates the schedule before the user is asked.
+func (t *ScheduledAITaskTool) Preview(_ context.Context, call tools.Call) (tools.ApprovalRequest, error) {
+	if t == nil || t.service == nil {
+		return tools.ApprovalRequest{}, fmt.Errorf("%w: automation service not configured", core.ErrExecutionUnavailable)
+	}
+	input, _, result := t.scheduledTask(call)
+	if result.IsError() {
+		return tools.ApprovalRequest{}, errors.New(result.Content)
+	}
+	return tools.ApprovalRequest{Description: "Create scheduled AI task: " + strings.TrimSpace(input.Title), Params: input}, nil
+}
+
+// scheduledTask reads and validates a call; an error result answers it.
+func (t *ScheduledAITaskTool) scheduledTask(call tools.Call) (scheduledAITaskToolInput, CreateJobInput, tools.Result) {
+	var input scheduledAITaskToolInput
+	if err := json.Unmarshal(call.Args, &input); err != nil {
+		return input, CreateJobInput{}, tools.Result{Status: tools.ResultStatusError, Content: "Invalid scheduled task arguments."}
+	}
+	create, result := t.validateScheduledAITaskInput(input, call.SessionID)
+	return input, create, result
 }
 
 type scheduledAITaskToolInput struct {

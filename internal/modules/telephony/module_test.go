@@ -59,7 +59,7 @@ func TestToolsTalkToTheGateway(t *testing.T) {
 	m := applied(t, setup.TelephonyConfig{Enabled: true, GatewayURL: server.URL, GatewayToken: "gw", DefaultProfile: "main"})
 	call, end := m.Tools()[0], m.Tools()[1]
 
-	result, err := call.Execute(context.Background(), tools.Call{Approved: true, Args: json.RawMessage(`{"to":"+1 555 0100","objective":"book"}`), SessionID: "s1"})
+	result, err := call.Execute(context.Background(), tools.Call{Args: json.RawMessage(`{"to":"+1 555 0100","objective":"book"}`), SessionID: "s1"})
 	if err != nil || result.IsError() {
 		t.Fatalf("call = %+v, %v", result, err)
 	}

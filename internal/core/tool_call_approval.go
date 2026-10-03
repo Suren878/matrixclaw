@@ -6,18 +6,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-// createPendingApproval records the approval a call made outside a run asked for.
-func (c *Core) createPendingApproval(ctx context.Context, prepared preparedToolCall, input ExecuteToolInput, result tools.Result, execErr error) (tools.Result, *Approval, bool, error) {
-	if result.Approval == nil || input.Approved {
-		return result, nil, false, execErr
-	}
-	approval, err := c.requestApproval(ctx, prepared, *result.Approval)
-	if err != nil {
-		return tools.Result{}, nil, false, err
-	}
-	return result, &approval, true, execErr
-}
-
 // requestApproval stores a pending approval for the call and announces it; it
 // leaves the run's checkpoint to the engine. A subagent's approval is announced
 // to its parent's session and chat; a read-only subagent's is refused at once.
@@ -39,7 +27,6 @@ func (c *Core) requestApproval(ctx context.Context, prepared preparedToolCall, r
 		ToolCallRef: prepared.ToolCallID,
 		ToolName:    prepared.ToolName,
 		Description: request.Description,
-		Action:      request.Action,
 		Params:      paramsRaw,
 		Path:        request.Path,
 		Suggestion:  request.Suggestion,

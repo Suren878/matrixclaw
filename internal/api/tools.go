@@ -24,10 +24,6 @@ func (s *Server) handleToolExecute(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &req) {
 		return
 	}
-	if req.Approved {
-		writeErrorMessage(w, http.StatusBadRequest, "tool approval must be resolved through /v1/approvals/{id}/resolve")
-		return
-	}
 
 	result, err := s.core.ExecuteTool(r.Context(), req)
 	if err != nil {

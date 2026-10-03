@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -21,11 +23,22 @@ import (
 type funcTool struct {
 	spec tools.Spec
 	fn   func(context.Context, tools.Call) (tools.Result, error)
+	// ask, when set, makes the tool ask first with this description.
+	ask string
 }
 
-func (t funcTool) Spec() tools.Spec { return t.spec }
+func (t funcTool) Spec() tools.Spec {
+	spec := t.spec
+	spec.Asks = t.ask != ""
+	return spec
+}
+
 func (t funcTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
 	return t.fn(ctx, call)
+}
+
+func (t funcTool) Preview(context.Context, tools.Call) (tools.ApprovalRequest, error) {
+	return tools.ApprovalRequest{Description: t.ask}, nil
 }
 
 type windowLLMs struct {
@@ -204,10 +217,7 @@ func TestParkedRunKeepsTheEngineCheckpoint(t *testing.T) {
 }
 
 func approvalTools(mutations *int) (funcTool, *recoveryTool) {
-	mutate := funcTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation), fn: func(_ context.Context, call tools.Call) (tools.Result, error) {
-		if !call.Approved {
-			return tools.Result{Approval: &tools.ApprovalRequest{ToolID: "mutate_state", ToolCallID: call.ToolCallID, Action: "write_state", Description: "write the state"}}, nil
-		}
+	mutate := funcTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation), ask: "write the state", fn: func(context.Context, tools.Call) (tools.Result, error) {
 		*mutations++
 		return tools.Result{Content: "mutated"}, nil
 	}}
@@ -248,7 +258,7 @@ func TestNativeRunHoldsLaterCallsBehindAnApprovalBarrier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(approvals) != 1 || approvals[0].ToolCallRef != "call-mutate" || approvals[0].Action != "write_state" {
+	if len(approvals) != 1 || approvals[0].ToolCallRef != "call-mutate" || approvals[0].Description != "write the state" {
 		t.Fatalf("pending approvals = %#v", approvals)
 	}
 	if calls != 1 || mutations != 0 || inspect.callCount() != 0 {
@@ -321,10 +331,7 @@ func TestDeniedApprovalReturnsTheReasonToTheModel(t *testing.T) {
 }
 
 func askingReadTool(id string) funcTool {
-	return funcTool{spec: recoveryToolSpec(id, tools.EffectReadOnly), fn: func(_ context.Context, call tools.Call) (tools.Result, error) {
-		if !call.Approved {
-			return tools.Result{Approval: &tools.ApprovalRequest{ToolID: id, ToolCallID: call.ToolCallID, Action: "read_secret"}}, nil
-		}
+	return funcTool{spec: recoveryToolSpec(id, tools.EffectReadOnly), ask: "read the secret", fn: func(context.Context, tools.Call) (tools.Result, error) {
 		return tools.Result{Content: "secret " + id}, nil
 	}}
 }
@@ -1035,5 +1042,40 @@ func TestACancelWhileTheEngineFinishesStands(t *testing.T) {
 	}
 	if len(replies) != 1 || !transcript.HasFinishReason(replies[0], "canceled") {
 		t.Fatalf("replies = %+v, want the reply marked canceled", replies)
+	}
+}
+
+func TestAPreviewSeesTheWritesOfEarlierCallsInItsBatch(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "a.txt")
+	app.WithTools(tools.NewRegistry(tools.CoreExecutors()...))
+	app.WithRunStarter(&recordingRunStarter{})
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+		return providers.Response{ToolCalls: []providers.ToolCall{
+			{ID: "call-write", Name: "write", Arguments: []byte(`{"file_path":"` + path + `","content":"one\n"}`)},
+			{ID: "call-edit", Name: "edit", Arguments: []byte(`{"file_path":"` + path + `","old_string":"one","new_string":"two"}`)},
+		}}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "preview_order", core.RunStatusAccepted, false)
+	if err := db.CreatePermissionRule(context.Background(), permission.Rule{ID: "rule_write", Tool: "write", Pattern: dir + "/**", Effect: permission.Allow, Scope: permission.ScopeSession, SessionID: session.ID}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	approvals, err := db.ListApprovals(context.Background(), session.ID, core.ApprovalStatePending)
+	if err != nil || len(approvals) != 1 || approvals[0].ToolCallRef != "call-edit" {
+		t.Fatalf("approvals = %+v, %v", approvals, err)
+	}
+	var change tools.FileChange
+	if err := json.Unmarshal(approvals[0].Params, &change); err != nil || change.OldContent != "one\n" || change.NewContent != "two\n" || approvals[0].Path != path {
+		t.Fatalf("preview = %+v (%s), %v", change, approvals[0].Params, err)
 	}
 }

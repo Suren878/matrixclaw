@@ -8,13 +8,13 @@ func (c *Core) ExecuteTool(ctx context.Context, input ExecuteToolInput) (Execute
 		return ExecuteToolResult{}, err
 	}
 
-	toolResult, execErr := c.executeToolWithGrant(ctx, prepared, input, nil)
-	toolResult, approval, pending, execErr := c.createPendingApproval(ctx, prepared, input, toolResult, execErr)
-	if pending {
-		return ExecuteToolResult{
-			ToolCallMessage: prepared.Message,
-			Approval:        approval,
-		}, nil
+	toolResult, ask, execErr := c.runToolCall(ctx, prepared, input, nil)
+	if ask != nil {
+		approval, err := c.requestApproval(ctx, prepared, *ask)
+		if err != nil {
+			return ExecuteToolResult{}, err
+		}
+		return ExecuteToolResult{ToolCallMessage: prepared.Message, Approval: &approval}, nil
 	}
 
 	finalResult := toolResult

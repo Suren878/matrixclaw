@@ -34,7 +34,7 @@ func (f *fakeShellTasks) StopTask(_ context.Context, _ Call, taskID string) (Tas
 func runShellTool(t *testing.T, tasks ShellTasks, name string, args string) Result {
 	t.Helper()
 	registry := NewRegistry(NewShellExecutors(tasks)...)
-	result, err := registry.Execute(context.Background(), name, Call{WorkingDir: "/work", Approved: true, Args: json.RawMessage(args)})
+	result, err := registry.Execute(context.Background(), name, Call{WorkingDir: "/work", Args: json.RawMessage(args)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,12 +123,15 @@ func TestOnlyAQuietWaitOnARunningTaskIsMarkedWaiting(t *testing.T) {
 	}
 }
 
-func TestTaskKillAsksThenStops(t *testing.T) {
+func TestTaskKillPreviewsThenStops(t *testing.T) {
 	tasks := &fakeShellTasks{}
 	registry := NewRegistry(NewShellExecutors(tasks)...)
-	asked, err := registry.Execute(context.Background(), "task_kill", Call{Args: json.RawMessage(`{"id":"task_1"}`)})
-	if err != nil || asked.Approval == nil || len(tasks.stopped) != 0 {
-		t.Fatalf("unapproved = %+v, %v", asked, err)
+	if spec, _ := registry.Spec("task_kill"); !spec.Asks {
+		t.Fatal("task_kill does not ask")
+	}
+	preview, refused := registry.Preview(context.Background(), "task_kill", Call{Args: json.RawMessage(`{"id":"task_1"}`)})
+	if refused != nil || preview.Description != "Stop background task task_1" || len(tasks.stopped) != 0 {
+		t.Fatalf("preview = %+v, %+v", preview, refused)
 	}
 	stopped := runShellTool(t, tasks, "task_kill", `{"id":"task_1"}`)
 	if stopped.Content != "Task task_1 is canceled." || len(tasks.stopped) != 1 {

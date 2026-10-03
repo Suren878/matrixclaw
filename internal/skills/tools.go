@@ -3,6 +3,7 @@ package skills
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -108,30 +109,38 @@ func (t *manageTool) Spec() tools.Spec {
 		ID:              "skill_manage",
 		Description:     "Create, edit, patch, write files for, archive, restore, pin, unpin, trust, quarantine, disable, or remove Matrixclaw skills. Mutations require approval.",
 		Effect:          tools.EffectMutation,
+		Asks:            true,
 		Namespace:       "module.skills",
 		Category:        tools.CategorySkills,
 		InputJSONSchema: json.RawMessage(`{"type":"object","properties":{"action":{"type":"string"},"id":{"type":"string"},"name":{"type":"string"},"description":{"type":"string"},"path":{"type":"string"},"content":{"type":"string"}},"required":["action"],"additionalProperties":false}`),
 	}
 }
 
-func (t *manageTool) Execute(_ context.Context, call tools.Call) (tools.Result, error) {
+// manageInput reads a skill_manage call, its action lower-cased.
+func manageInput(call tools.Call) (tools.SkillManagePermissionsParams, error) {
 	var input tools.SkillManagePermissionsParams
 	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{Content: "Invalid skill_manage arguments.", Status: tools.ResultStatusError}, nil
+		return input, errors.New("invalid skill_manage arguments")
 	}
-	action := strings.ToLower(strings.TrimSpace(input.Action))
-	if !call.Approved {
-		return tools.Result{
-			Content: "Approval required",
-			Approval: &tools.ApprovalRequest{
-				ToolID:      "skill_manage",
-				Action:      action,
-				Path:        skillManageApprovalPath(action, input),
-				Description: skillManageApprovalDescription(action, input),
-				Params:      input,
-			},
-		}, nil
+	input.Action = strings.ToLower(strings.TrimSpace(input.Action))
+	return input, nil
+}
+
+func (t *manageTool) Preview(_ context.Context, call tools.Call) (tools.ApprovalRequest, error) {
+	input, err := manageInput(call)
+	return tools.ApprovalRequest{
+		Path:        skillManageApprovalPath(input.Action, input),
+		Description: skillManageApprovalDescription(input.Action, input),
+		Params:      input,
+	}, err
+}
+
+func (t *manageTool) Execute(_ context.Context, call tools.Call) (tools.Result, error) {
+	input, err := manageInput(call)
+	if err != nil {
+		return tools.Result{Content: err.Error(), Status: tools.ResultStatusError}, nil
 	}
+	action := input.Action
 	switch action {
 	case "create":
 		return t.create(input)

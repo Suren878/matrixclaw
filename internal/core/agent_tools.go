@@ -42,9 +42,9 @@ func (t coreTools) Specs(ctx context.Context) []tools.Spec {
 }
 
 // Authorize rejects invalid calls and those a deny rule blocks; Execute acts on
-// the verdict it kept for the call. A mutating call is a barrier unless a rule or
-// the mode allows it, as it then cannot ask; a child writing the parent's
-// directory still can. A blocking child's time is its own.
+// the verdict it kept for the call. A mutating call that waits for approval is
+// a barrier, and so is a child writing the parent's directory. A blocking
+// child's time is its own.
 func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) (agent.Decision, error) {
 	// A call ID owned by another session fails the run with a clear error instead of
 	// a primary-key conflict on the first journal write.
@@ -72,7 +72,7 @@ func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) 
 	if call.ToolCallID != "" {
 		t.authorized.Store(call.ToolCallID, check)
 	}
-	decision := agent.Decision{Allowed: true, Barrier: spec.Mutates() && check.verdict.Effect != permission.Allow, Key: t.c.tools.ConcurrencyKey(spec.ID, call)}
+	decision := agent.Decision{Allowed: true, Barrier: spec.Mutates() && check.ask, Key: t.c.tools.ConcurrencyKey(spec.ID, call)}
 	if spec.ID == agentToolName {
 		input := parseAgentInput(call.Args)
 		decision.Barrier = agentCallWritesSharedDir(input)
@@ -81,30 +81,27 @@ func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) 
 	return decision, nil
 }
 
-func (t coreTools) Execute(ctx context.Context, name string, call tools.Call) (tools.Result, error) {
+func (t coreTools) Execute(ctx context.Context, name string, call tools.Call) (tools.Result, *tools.ApprovalRequest, error) {
 	session, spec, err := t.c.checkToolCall(ctx, call.SessionID, name)
 	if err != nil {
-		return tools.Result{}, err
+		return tools.Result{}, nil, err
 	}
 	workingDir := normalizeWorkingDir(call.WorkingDir)
 	if workingDir == "" {
 		workingDir = session.WorkingDir
 	}
 	prepared := preparedToolCall{SessionID: call.SessionID, RunID: call.RunID, ToolName: name, Spec: spec, ToolCallID: call.ToolCallID, WorkingDir: workingDir}
-	input := ExecuteToolInput{Client: call.Client, ExternalKey: call.ExternalKey, Approved: call.Approved, Args: call.Args}
+	input := ExecuteToolInput{Client: call.Client, ExternalKey: call.ExternalKey, Args: call.Args}
 	var check *callPermission
 	if kept, ok := t.authorized.LoadAndDelete(call.ToolCallID); ok {
 		authorized := kept.(callPermission)
 		check = &authorized
 	}
-	result, execErr := t.c.executeToolWithGrant(ctx, prepared, input, check)
-	if result.Approval != nil && !call.Approved {
-		return result, nil
-	}
+	result, ask, execErr := t.c.runToolCall(ctx, prepared, input, check)
 	if execErr != nil {
 		result = t.c.toolFailure(call.SessionID, execErr)
 	}
-	return result, nil
+	return result, ask, nil
 }
 
 // nativeToolSpecs lists the tools a native run may see; nil without a registry.

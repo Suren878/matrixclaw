@@ -133,6 +133,10 @@ func (s *Set) Execute(ctx context.Context, toolID string, call tools.Call) (tool
 	return s.registry.Load().Execute(ctx, toolID, call)
 }
 
+func (s *Set) Preview(ctx context.Context, toolID string, call tools.Call) (tools.ApprovalRequest, *tools.Result) {
+	return s.registry.Load().Preview(ctx, toolID, call)
+}
+
 func (s *Set) Subject(toolID string, call tools.Call) permission.Subject {
 	return s.registry.Load().Subject(toolID, call)
 }

@@ -69,21 +69,18 @@ func TestInstallsManagedBrowser(t *testing.T) {
 	}
 }
 
-func TestBashExecutorBlocksManagedBrowserInstallEvenWhenApproved(t *testing.T) {
+func TestBashExecutorBlocksManagedBrowserInstall(t *testing.T) {
 	args, _ := json.Marshal(BashParams{
 		Command: "playwright-mcp install-browser chrome-for-testing",
 	})
-	result, err := NewShellExecutors(nil)[0].Execute(context.Background(), Call{
-		Args:     args,
-		Approved: true,
-	})
+	result, err := NewShellExecutors(nil)[0].Execute(context.Background(), Call{Args: args})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !result.IsError() {
 		t.Fatalf("IsError = false, result = %#v", result)
 	}
-	if !strings.Contains(result.Content, "Managed Browser setup is only available through Modules") {
+	if !strings.Contains(result.Content, "the managed browser is installed only through Modules") {
 		t.Fatalf("content = %q, want managed Browser setup guidance", result.Content)
 	}
 }
@@ -92,14 +89,11 @@ func TestBashExecutorBlocksManagedBrowserInstallBeforeApproval(t *testing.T) {
 	args, _ := json.Marshal(BashParams{
 		Command: "npm install --prefix /tmp/matrixclaw/runtime/browser/playwright-mcp @playwright/mcp@latest",
 	})
-	result, err := NewShellExecutors(nil)[0].Execute(context.Background(), Call{Args: args})
-	if err != nil {
-		t.Fatal(err)
+	_, refused := NewRegistry(NewShellExecutors(nil)...).Preview(context.Background(), "bash", Call{Args: args})
+	if refused == nil || !refused.IsError() {
+		t.Fatalf("refused = %#v, want guard error without approval request", refused)
 	}
-	if !result.IsError() || result.Approval != nil {
-		t.Fatalf("result = %#v, want guard error without approval request", result)
-	}
-	if !strings.Contains(result.Content, "Modules -> Browser -> Install/Repair") {
-		t.Fatalf("content = %q, want Browser module setup guidance", result.Content)
+	if !strings.Contains(refused.Content, "Modules -> Browser -> Install/Repair") {
+		t.Fatalf("content = %q, want Browser module setup guidance", refused.Content)
 	}
 }

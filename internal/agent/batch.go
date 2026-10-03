@@ -49,6 +49,7 @@ type batchCall struct {
 
 type callOutcome struct {
 	result tools.Result
+	ask    *tools.ApprovalRequest
 	err    error
 }
 
@@ -143,7 +144,7 @@ func (b *batch) admit(ctx context.Context) error {
 			return err
 		}
 		c.state, c.key, c.delegated = callRunning, decision.Key, decision.Delegated
-		if decision.Barrier && !c.req.approved {
+		if decision.Barrier {
 			b.barrier = b.next
 		}
 		started = append(started, b.next)
@@ -180,8 +181,8 @@ func (b *batch) launch(i int) {
 	b.track(c, 1)
 	name, call := c.req.name, c.call
 	b.sched.Go(i, c.key, func(ctx context.Context) callOutcome {
-		result, err := b.r.Tools.Execute(ctx, name, call)
-		return callOutcome{result: result, err: err}
+		result, ask, err := b.r.Tools.Execute(ctx, name, call)
+		return callOutcome{result: result, ask: ask, err: err}
 	})
 }
 
@@ -200,7 +201,7 @@ func (b *batch) settle(ctx context.Context, done toolsched.Done[callOutcome]) er
 		return err
 	}
 	if asked {
-		if err := b.r.Approvals.Request(ctx, Pending{RunID: b.r.task.RunID, SessionID: b.r.task.SessionID, ToolCallID: c.req.id, ToolName: c.req.name, Request: *done.Value.result.Approval}); err != nil {
+		if err := b.r.Approvals.Request(ctx, Pending{RunID: b.r.task.RunID, SessionID: b.r.task.SessionID, ToolCallID: c.req.id, ToolName: c.req.name, Request: *done.Value.ask}); err != nil {
 			return err
 		}
 		b.waiting = true
@@ -225,7 +226,7 @@ func (b *batch) record(done toolsched.Done[callOutcome]) (bool, error) {
 	case done.Value.err != nil:
 		c.state = callStopped
 		return false, done.Value.err
-	case done.Value.result.Approval != nil && !c.req.approved:
+	case done.Value.ask != nil:
 		c.state = callAsked
 		return true, nil
 	default:

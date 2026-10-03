@@ -6,6 +6,7 @@ package permission
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -312,29 +313,36 @@ func homeDir() string {
 
 // Mode names are the permission presets: default leaves every tool to its own
 // default, accept_edits also allows file edits inside the working directory and
-// full_auto allows every call no rule denies or asks for.
+// full_auto allows every call no rule denies or asks for. Every mode also
+// carries Builtin.
 const (
 	ModeDefault     = "default"
 	ModeAcceptEdits = "accept_edits"
 	ModeFullAuto    = "full_auto"
 )
 
-// Preset is the rules mode adds after a session's own rules; root is the working
-// directory with symlinks resolved.
+// Builtin are the allow rules of every mode, which no stored rule removes: a
+// session's ask or deny rule still wins over them. Listing memory never asks,
+// while its changes do.
+var Builtin = []Rule{{ID: "builtin_memory_list", Tool: "memory", Pattern: "list", Effect: Allow}}
+
+// Preset is the rules mode adds after a session's own rules, Builtin included;
+// root is the working directory with symlinks resolved.
 func Preset(mode string, root string) []Rule {
+	preset := slices.Clone(Builtin)
 	switch mode {
 	case ModeFullAuto:
-		return []Rule{{Tool: "*", Effect: Allow}}
+		return append(preset, Rule{Tool: "*", Effect: Allow})
 	case ModeAcceptEdits:
 		if root == "" {
-			return nil
+			return preset
 		}
 		pattern := strings.TrimSuffix(root, "/") + "/**"
-		return []Rule{
-			{Tool: "write", Pattern: pattern, Effect: Allow},
-			{Tool: "edit", Pattern: pattern, Effect: Allow},
-		}
+		return append(preset,
+			Rule{Tool: "write", Pattern: pattern, Effect: Allow},
+			Rule{Tool: "edit", Pattern: pattern, Effect: Allow},
+		)
 	default:
-		return nil
+		return preset
 	}
 }

@@ -3,6 +3,7 @@ package telephony
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -27,6 +28,7 @@ func (t *callTool) Spec() tools.Spec {
 		ID:          CallToolID,
 		Description: "Place a real outbound phone call through the configured MatrixClaw telephony gateway and delegate a concrete phone conversation objective. Use only when the user asks to call a phone number or explicitly delegates a phone conversation.",
 		Effect:      tools.EffectMutation,
+		Asks:        true,
 		Namespace:   "module.telephony",
 		Category:    tools.CategoryAutomation,
 		InputJSONSchema: json.RawMessage(`{
@@ -44,10 +46,11 @@ func (t *callTool) Spec() tools.Spec {
 	}
 }
 
-func (t *callTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
+// readCallInput reads a telephony_call call, the number normalised.
+func readCallInput(call tools.Call) (callInput, error) {
 	var input callInput
 	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{Content: "Invalid telephony_call arguments.", Status: tools.ResultStatusError}, nil
+		return input, errors.New("invalid telephony_call arguments")
 	}
 	input.To = phone.Normalize(input.To)
 	input.Objective = strings.TrimSpace(input.Objective)
@@ -55,19 +58,20 @@ func (t *callTool) Execute(ctx context.Context, call tools.Call) (tools.Result, 
 	input.Profile = strings.TrimSpace(input.Profile)
 	input.SystemInstruction = strings.TrimSpace(input.SystemInstruction)
 	if input.To == "" {
-		return tools.Result{Content: "Phone number is required.", Status: tools.ResultStatusError}, nil
+		return input, errors.New("phone number is required")
 	}
-	if !call.Approved {
-		return tools.Result{
-			Content: "Approval required",
-			Approval: &tools.ApprovalRequest{
-				ToolID:      CallToolID,
-				Action:      "place_phone_call",
-				Path:        input.To,
-				Description: approvalDescription(input),
-				Params:      input,
-			},
-		}, nil
+	return input, nil
+}
+
+func (t *callTool) Preview(_ context.Context, call tools.Call) (tools.ApprovalRequest, error) {
+	input, err := readCallInput(call)
+	return tools.ApprovalRequest{Path: input.To, Description: approvalDescription(input), Params: input}, err
+}
+
+func (t *callTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
+	input, err := readCallInput(call)
+	if err != nil {
+		return tools.Result{Content: err.Error(), Status: tools.ResultStatusError}, nil
 	}
 	cfg, gw := t.module.current()
 	if gw == nil {

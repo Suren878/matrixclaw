@@ -121,17 +121,23 @@ func (e *mutationExecutor) Spec() Spec {
 	return coreDefinitionSpec(e.tool)
 }
 
+// Preview applies the call to the file as it is now, without writing it.
+func (e *mutationExecutor) Preview(_ context.Context, call Call) (ApprovalRequest, error) {
+	m, err := e.mutation(call)
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
+	change, err := mutateFile(m, false)
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
+	return ApprovalRequest{Description: e.describe(change.Path), Path: change.Path, Params: change.preview()}, nil
+}
+
 func (e *mutationExecutor) Execute(_ context.Context, call Call) (Result, error) {
 	m, err := e.mutation(call)
 	if err != nil {
 		return failure(err)
-	}
-	if !call.Approved {
-		change, err := mutateFile(m, false)
-		if err != nil {
-			return failure(err)
-		}
-		return approvalResult(e.tool, e.tool, change.Path, e.describe(change.Path), change.preview()), nil
 	}
 	change, err := mutateFile(m, true)
 	if err != nil {

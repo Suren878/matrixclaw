@@ -18,6 +18,7 @@ func TestRecoveryRerunsAsksAndAnswersTheInterruptedCalls(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["read"] = readTool
 	f.Tools.Funcs["write"] = writeTool
+	f.Tools.Asks["write"] = true
 	seedCall(f, "r1", "read")
 	seedCall(f, "w1", "write")
 	seedCall(f, "u1", "gone")
@@ -25,7 +26,7 @@ func TestRecoveryRerunsAsksAndAnswersTheInterruptedCalls(t *testing.T) {
 	task.Recovering = true
 	task.Interrupted = []agent.InterruptedCall{
 		{ToolCallID: "r1", Settle: agent.SettleRerun},
-		{ToolCallID: "w1", Settle: agent.SettleAsk, Request: tools.ApprovalRequest{Action: "retry_after_daemon_restart"}},
+		{ToolCallID: "w1", Settle: agent.SettleAsk, Request: tools.ApprovalRequest{Description: "retry after the restart"}},
 		{ToolCallID: "u1", Settle: agent.SettleAnswer, Result: tools.Result{Content: "unknown after restart", Status: tools.ResultStatusError}},
 	}
 
@@ -34,7 +35,7 @@ func TestRecoveryRerunsAsksAndAnswersTheInterruptedCalls(t *testing.T) {
 	if err != nil || outcome.Status != agent.StatusWaitingApproval {
 		t.Fatalf("outcome = %+v err = %v", outcome, err)
 	}
-	if len(f.Approvals.Requests) != 1 || f.Approvals.Requests[0].ToolCallID != "w1" || f.Approvals.Requests[0].Request.Action != "retry_after_daemon_restart" {
+	if len(f.Approvals.Requests) != 1 || f.Approvals.Requests[0].ToolCallID != "w1" || f.Approvals.Requests[0].Request.Description != "retry after the restart" {
 		t.Fatalf("requests = %+v", f.Approvals.Requests)
 	}
 	if result, ok := f.Journal.Result("u1"); !ok || result.Content != "unknown after restart" {

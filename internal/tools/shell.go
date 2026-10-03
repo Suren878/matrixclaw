@@ -36,15 +36,6 @@ type BashParams struct {
 	AutoBackgroundAfter int    `json:"auto_background_after,omitempty"`
 }
 
-type BashPermissionsParams struct {
-	Description         string `json:"description"`
-	Command             string `json:"command"`
-	WorkingDir          string `json:"working_dir"`
-	RunInBackground     bool   `json:"run_in_background"`
-	Timeout             int    `json:"timeout"`
-	AutoBackgroundAfter int    `json:"auto_background_after"`
-}
-
 type BashResponseMetadata struct {
 	StartTime        int64  `json:"start_time"`
 	EndTime          int64  `json:"end_time"`
@@ -96,44 +87,54 @@ func (e *taskKillExecutor) Spec() Spec {
 	return coreDefinitionSpec(taskKillToolName)
 }
 
-func (e *bashExecutor) Execute(ctx context.Context, call Call) (Result, error) {
+// bashCommand reads a call into the command it runs; an error is the model's
+// to fix, as is a command that would install the managed browser.
+func bashCommand(call Call) (BashParams, Command, error) {
 	var params BashParams
 	if err := json.Unmarshal(call.Args, &params); err != nil {
-		return Result{}, InvalidArgs(bashToolName, err)
+		return params, Command{}, InvalidArgs(bashToolName, err)
 	}
-	if strings.TrimSpace(params.Command) == "" {
-		return Result{Content: "command is required", Status: ResultStatusError}, nil
-	}
-	if installsManagedBrowser(params.Command) {
-		return Result{Content: managedBrowserSetupMessage, Status: ResultStatusError}, nil
+	switch {
+	case strings.TrimSpace(params.Command) == "":
+		return params, Command{}, errors.New("command is required")
+	case installsManagedBrowser(params.Command):
+		return params, Command{}, errors.New(managedBrowserSetupMessage)
 	}
 	timeout, autoBackground, err := commandLimits(params)
 	if err != nil {
-		return Result{Content: err.Error(), Status: ResultStatusError}, nil
+		return params, Command{}, err
 	}
-	workingDir := resolvePath(call.WorkingDir, params.WorkingDir)
-	if !call.Approved {
-		return approvalResult(bashToolName, "execute", workingDir, "Execute command: "+params.Command, BashPermissionsParams{
-			Description:         params.Description,
-			Command:             params.Command,
-			WorkingDir:          workingDir,
-			RunInBackground:     params.RunInBackground,
-			Timeout:             params.Timeout,
-			AutoBackgroundAfter: params.AutoBackgroundAfter,
-		}), nil
-	}
-	if e.tasks == nil {
-		return Result{}, errShellUnavailable
-	}
-	result, err := e.tasks.RunCommand(ctx, call, Command{
+	params.WorkingDir = resolvePath(call.WorkingDir, params.WorkingDir)
+	return params, Command{
 		Command:        params.Command,
 		Description:    params.Description,
-		WorkingDir:     workingDir,
+		WorkingDir:     params.WorkingDir,
 		Background:     params.RunInBackground,
 		Timeout:        timeout,
 		AutoBackground: autoBackground,
 		OutputLimit:    maxToolOutput,
-	})
+	}, nil
+}
+
+// Preview shows the command and the directory it runs in.
+func (e *bashExecutor) Preview(_ context.Context, call Call) (ApprovalRequest, error) {
+	params, _, err := bashCommand(call)
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
+	return ApprovalRequest{Description: "Execute command: " + params.Command, Path: params.WorkingDir, Params: params}, nil
+}
+
+func (e *bashExecutor) Execute(ctx context.Context, call Call) (Result, error) {
+	params, command, err := bashCommand(call)
+	if err != nil {
+		return failure(err)
+	}
+	if e.tasks == nil {
+		return Result{}, errShellUnavailable
+	}
+	workingDir, timeout, autoBackground := command.WorkingDir, command.Timeout, command.AutoBackground
+	result, err := e.tasks.RunCommand(ctx, call, command)
 	if err != nil {
 		return Result{}, fmt.Errorf("bash: %w", err)
 	}
@@ -238,17 +239,28 @@ func taskOutputText(out TaskOutput) string {
 	return strings.Join(parts, "\n\n")
 }
 
-func (e *taskKillExecutor) Execute(ctx context.Context, call Call) (Result, error) {
+// taskID reads the task a task_kill call stops.
+func taskID(call Call) (string, error) {
 	var params TaskKillParams
 	if err := json.Unmarshal(call.Args, &params); err != nil {
-		return Result{}, InvalidArgs(taskKillToolName, err)
+		return "", InvalidArgs(taskKillToolName, err)
 	}
 	id := strings.TrimSpace(params.ID)
 	if id == "" {
-		return Result{Content: "id is required", Status: ResultStatusError}, nil
+		return "", errors.New("id is required")
 	}
-	if !call.Approved {
-		return approvalResult(taskKillToolName, "kill", id, "Stop background task "+id, params), nil
+	return id, nil
+}
+
+func (e *taskKillExecutor) Preview(_ context.Context, call Call) (ApprovalRequest, error) {
+	id, err := taskID(call)
+	return ApprovalRequest{Description: "Stop background task " + id, Params: TaskKillParams{ID: id}}, err
+}
+
+func (e *taskKillExecutor) Execute(ctx context.Context, call Call) (Result, error) {
+	id, err := taskID(call)
+	if err != nil {
+		return failure(err)
 	}
 	if e.tasks == nil {
 		return Result{}, errShellUnavailable

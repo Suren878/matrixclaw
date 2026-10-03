@@ -221,15 +221,18 @@ func (j *Journal) replace(msg transcript.Message) error {
 // ToolFunc executes one fake tool call.
 type ToolFunc func(call tools.Call) tools.Result
 
-// Tools authorizes registered names only (Mutating ones are barriers, Keys
-// and Delegated fill the decision) and records executed calls in start order
-// (read Calls after Run returns). OnExecute runs first, on the call's
-// goroutine, and fails the call with its error.
+// Tools authorizes registered names only (Mutating ones are barriers until
+// granted, Keys and Delegated fill the decision) and records executed calls in
+// start order (read Calls after Run returns). A call of an Asks tool returns an
+// approval request until Inbox holds its grant, as core does. OnExecute runs
+// first, on the call's goroutine, and fails the call with its error.
 type Tools struct {
 	Funcs     map[string]ToolFunc
 	Mutating  map[string]bool
+	Asks      map[string]bool
 	Keys      map[string]string
 	Delegated map[string]bool
+	Inbox     *Inbox
 	Calls     []tools.Call
 	OnExecute func(ctx context.Context, name string, call tools.Call) error
 	// SpecReads counts tool listings.
@@ -251,23 +254,34 @@ func (t *Tools) Specs(context.Context) []tools.Spec {
 	return specs
 }
 
-func (t *Tools) Authorize(_ context.Context, name string, _ tools.Call) (agent.Decision, error) {
+func (t *Tools) Authorize(_ context.Context, name string, call tools.Call) (agent.Decision, error) {
 	if _, ok := t.Funcs[name]; !ok {
 		return agent.Decision{Reason: fmt.Sprintf("invalid input: unknown tool %q", name)}, nil
 	}
-	return agent.Decision{Allowed: true, Barrier: t.Mutating[name], Key: t.Keys[name], Delegated: t.Delegated[name]}, nil
+	return agent.Decision{Allowed: true, Barrier: t.Mutating[name] && !t.granted(call.ToolCallID), Key: t.Keys[name], Delegated: t.Delegated[name]}, nil
 }
 
-func (t *Tools) Execute(ctx context.Context, name string, call tools.Call) (tools.Result, error) {
+func (t *Tools) Execute(ctx context.Context, name string, call tools.Call) (tools.Result, *tools.ApprovalRequest, error) {
 	if t.OnExecute != nil {
 		if err := t.OnExecute(ctx, name, call); err != nil {
-			return tools.Result{}, err
+			return tools.Result{}, nil, err
 		}
 	}
 	t.mu.Lock()
 	t.Calls = append(t.Calls, call)
 	t.mu.Unlock()
-	return t.Funcs[name](call), nil
+	if t.Asks[name] && !t.granted(call.ToolCallID) {
+		return tools.Result{}, &tools.ApprovalRequest{Description: name}, nil
+	}
+	return t.Funcs[name](call), nil, nil
+}
+
+// granted reports whether Inbox holds a grant for the call.
+func (t *Tools) granted(callID string) bool {
+	if t.Inbox == nil {
+		return false
+	}
+	return slices.ContainsFunc(t.Inbox.Decided, func(input agent.Input) bool { return input.ToolCallID == callID && !input.Denied })
 }
 
 // Approvals records requests; Grant, when set, resolves each request at once.
@@ -429,11 +443,12 @@ type Fixture struct {
 // NewFixture returns fakes with the run's user message already journaled.
 func NewFixture() *Fixture {
 	clock := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
+	inbox := &Inbox{}
 	f := &Fixture{
 		Journal:   &Journal{},
-		Tools:     &Tools{Funcs: map[string]ToolFunc{}},
+		Tools:     &Tools{Funcs: map[string]ToolFunc{}, Asks: map[string]bool{}, Inbox: inbox},
 		Approvals: &Approvals{},
-		Inbox:     &Inbox{},
+		Inbox:     inbox,
 		Sink:      &Sink{},
 		Prompts:   &Prompts{Text: "system"},
 		Todos:     &Todos{},
