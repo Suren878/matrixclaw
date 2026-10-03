@@ -129,6 +129,9 @@ func toolErrorFromStatus(item map[string]any) string {
 		if errText := rawJSONString(item["error"]); errText != "" {
 			return errText
 		}
+		if status == "declined" {
+			return "declined: Codex asked for approval, which this session's permission mode does not grant"
+		}
 		return status
 	}
 	success, ok := item["success"].(bool)

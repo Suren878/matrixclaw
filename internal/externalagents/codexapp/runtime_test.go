@@ -132,3 +132,13 @@ func TestRuntimeInterruptSendsActiveTurnID(t *testing.T) {
 		t.Fatal("timed out waiting for interrupt request")
 	}
 }
+
+func TestNormalizeDeclinedCommandSaysWhy(t *testing.T) {
+	events, _ := normalizeNotification(Notification{
+		Method: "item/completed",
+		Params: ItemNotification{ThreadID: "thread-1", TurnID: "turn-1", Item: json.RawMessage(`{"id":"i","type":"commandExecution","command":"touch x","status":"declined"}`)},
+	}, "thread-1", "turn-1")
+	if len(events) != 1 || !strings.Contains(events[0].Error, "permission mode") {
+		t.Fatalf("events = %#v, want a declined tool explaining the permission mode", events)
+	}
+}

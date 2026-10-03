@@ -2,7 +2,9 @@ package codexapp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -259,6 +261,63 @@ func waitForBacklogAtMost(t *testing.T, client *Client, key turnKey, max int) {
 		case <-deadline:
 			t.Fatalf("backlog did not receive terminal event; size = %d", got)
 		case <-ticker.C:
+		}
+	}
+}
+
+func TestClientAnswersServerRequestsWithoutTakingTheirIDs(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	client := NewClient(clientConn)
+	t.Cleanup(func() {
+		_ = client.Close()
+		_ = serverConn.Close()
+	})
+
+	answers := make(chan map[string]json.RawMessage, 4)
+	go func() {
+		decoder := json.NewDecoder(serverConn)
+		var request map[string]json.RawMessage
+		if decoder.Decode(&request) != nil {
+			return
+		}
+		id := string(request["id"])
+		_, _ = serverConn.Write([]byte(`{"id":` + id + `,"method":"item/commandExecution/requestApproval","params":{"threadId":"t","turnId":"u","itemId":"i","command":"rm -rf /"}}` + "\n"))
+		_, _ = serverConn.Write([]byte(`{"id":"fc","method":"item/fileChange/requestApproval","params":{"threadId":"t","turnId":"u","itemId":"j"}}` + "\n"))
+		_, _ = serverConn.Write([]byte(`{"id":"x","method":"item/tool/call","params":{}}` + "\n"))
+		_, _ = serverConn.Write([]byte(`{"id":` + id + `,"result":{"turn":{"id":"real-turn"}}}` + "\n"))
+		for range 3 {
+			var answer map[string]json.RawMessage
+			if decoder.Decode(&answer) != nil {
+				return
+			}
+			answers <- answer
+		}
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	resp, err := client.StartTurn(ctx, TurnStartParams{ThreadID: "t"})
+	if err != nil || resp.Turn.ID != "real-turn" {
+		t.Fatalf("StartTurn() = %#v, %v; want real-turn", resp, err)
+	}
+	byID := map[string]string{}
+	for range 3 {
+		select {
+		case answer := <-answers:
+			byID[string(answer["id"])] = string(answer["result"]) + string(answer["error"])
+		case <-ctx.Done():
+			t.Fatalf("server requests answered = %v, want 3", byID)
+		}
+	}
+	if got := byID[`"fc"`]; got != `{"decision":"decline"}` {
+		t.Fatalf("file change answer = %s, want decline", got)
+	}
+	if got := byID[`"x"`]; !strings.Contains(got, `"code":-32601`) {
+		t.Fatalf("unsupported request answer = %s, want method-not-found error", got)
+	}
+	for id, got := range byID {
+		if id != `"fc"` && id != `"x"` && got != `{"decision":"decline"}` {
+			t.Fatalf("command approval answer = %s, want decline", got)
 		}
 	}
 }

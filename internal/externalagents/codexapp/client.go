@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/safego"
 )
@@ -75,6 +76,12 @@ type rpcRequest struct {
 	ID     string `json:"id,omitempty"`
 	Method string `json:"method"`
 	Params any    `json:"params,omitempty"`
+}
+
+type rpcResponse struct {
+	ID     json.RawMessage `json:"id"`
+	Result any             `json:"result,omitempty"`
+	Error  *rpcError       `json:"error,omitempty"`
 }
 
 type rpcIncoming struct {
@@ -270,7 +277,7 @@ func (c *Client) Err() error {
 	return c.err
 }
 
-func (c *Client) write(ctx context.Context, req rpcRequest) error {
+func (c *Client) write(ctx context.Context, req any) error {
 	done := make(chan error, 1)
 	safego.Go("codexapp.write", func() {
 		if !safego.Run("codexapp.write", func() {
@@ -319,6 +326,10 @@ func (c *Client) readLoopMessages() error {
 		if err := json.Unmarshal(line, &msg); err != nil {
 			return fmt.Errorf("decode codex app-server message: %w", err)
 		}
+		if len(msg.ID) > 0 && msg.Method != "" {
+			c.answerServerRequest(msg)
+			continue
+		}
 		if len(msg.ID) > 0 {
 			if err := c.handleReply(msg); err != nil {
 				return err
@@ -363,6 +374,31 @@ func (c *Client) handleReply(msg rpcIncoming) error {
 	}
 	replyCh <- rpcReply{result: msg.Result}
 	return nil
+}
+
+// answerServerRequest declines every approval codex asks for: matrixclaw has no
+// way to ask the user mid-turn, so codex reports the item as declined and the
+// turn goes on. Anything else gets method-not-found so codex never waits.
+func (c *Client) answerServerRequest(msg rpcIncoming) {
+	resp := rpcResponse{ID: msg.ID}
+	switch msg.Method {
+	case "item/commandExecution/requestApproval", "item/fileChange/requestApproval":
+		resp.Result = map[string]string{"decision": "decline"}
+	case "execCommandApproval", "applyPatchApproval":
+		resp.Result = map[string]string{"decision": "denied"}
+	case "mcpServer/elicitation/request":
+		resp.Result = map[string]string{"action": "decline"}
+	default:
+		resp.Error = &rpcError{Code: -32601, Message: "matrixclaw does not support " + msg.Method}
+	}
+	safego.Go("codexapp.answerServerRequest", func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := c.write(ctx, resp); err != nil {
+			c.setErr(err)
+			_ = c.conn.Close()
+		}
+	})
 }
 
 func (c *Client) handleNotification(msg rpcIncoming, raw []byte) error {
