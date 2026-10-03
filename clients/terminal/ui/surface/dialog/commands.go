@@ -5,14 +5,12 @@ import surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface
 // CommandsID is the identifier for the commands popup.
 const CommandsID = "commands"
 
-type CommandEntry = PickerEntry
-
 // CommandsData is the minimal runtime state needed to render the commands popup.
 type CommandsData struct {
 	Title       string
 	Meta        string
 	Legend      string
-	Entries     []CommandEntry
+	Entries     []PickerEntry
 	CloseAction Action
 }
 

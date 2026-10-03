@@ -18,7 +18,7 @@ type State struct {
 	ExternalEditorAvailable bool
 }
 
-func Entries(state State) []surfacedialog.CommandEntry {
+func Entries(state State) []surfacedialog.PickerEntry {
 	menu := controlplane.CommandMenuView(controlplane.SurfaceTerminal, controlplane.MenuState{
 		SessionTitle:   state.SessionTitle,
 		ProviderID:     state.ProviderID,
@@ -27,19 +27,19 @@ func Entries(state State) []surfacedialog.CommandEntry {
 		Capabilities:   state.Capabilities,
 	})
 
-	entries := make([]surfacedialog.CommandEntry, 0, 12)
+	entries := make([]surfacedialog.PickerEntry, 0, 12)
 	for _, item := range menu.Items {
 		entries = append(entries, commandEntry(item))
 	}
 	if state.ExternalEditorAvailable {
-		entries = append(entries, surfacedialog.CommandEntry{ID: "open_external_editor", Title: "External Editor", Shortcut: "ctrl+o", Action: surfacedialog.ActionExternalEditor{}})
+		entries = append(entries, surfacedialog.PickerEntry{ID: "open_external_editor", Title: "External Editor", Shortcut: "ctrl+o", Action: surfacedialog.ActionExternalEditor{}})
 	}
-	entries = append(entries, surfacedialog.CommandEntry{ID: "quit", Title: "Exit", Role: components.RoleExit, Footer: true, Action: surfacedialog.ActionQuit{}})
+	entries = append(entries, surfacedialog.PickerEntry{ID: "quit", Title: "Exit", Role: components.RoleExit, Footer: true, Action: surfacedialog.ActionQuit{}})
 	return entries
 }
 
-func commandEntry(item controlplane.ResultViewItem) surfacedialog.CommandEntry {
-	return surfacedialog.CommandEntry{
+func commandEntry(item controlplane.ResultViewItem) surfacedialog.PickerEntry {
+	return surfacedialog.PickerEntry{
 		ID:       item.ID,
 		Title:    item.Title,
 		Status:   item.Info,

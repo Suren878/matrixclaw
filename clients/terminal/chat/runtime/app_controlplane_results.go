@@ -29,7 +29,7 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 		return nil
 	}
 	if dialog := m.controlplaneDialog(msg.result); dialog != nil {
-		m.showControlplaneResultDialog(dialog)
+		m.showControlplaneDialog(dialog)
 		if msg.result.ReloadSnapshot {
 			return m.reloadSnapshotCmd()
 		}
@@ -139,7 +139,7 @@ func (m *appModel) controlplanePickerDialog(data controlplane.PickerData) surfac
 	picker := data
 	view := controlplane.PickerView(picker, controlplane.PickerViewOptions{Surface: controlplane.SurfaceTerminal})
 	closeAction := m.controlplanePickerCloseAction(picker, view)
-	if m.controlplanePickerIsPopup(picker) {
+	if picker.Popup {
 		entries := commandmenu.PickerRows(view)
 		return surfacedialog.NewPicker(m.com, surfacedialog.PickerData{
 			ID:          surfacedialog.PickerID,
@@ -185,10 +185,6 @@ func (m *appModel) controlplanePickerCloseAction(picker controlplane.PickerData,
 
 func (m *appModel) controlplanePickerReturnsToCommands(picker controlplane.PickerData, view controlplane.PickerViewData) bool {
 	return m.returnToCommands && !picker.Popup && view.Footer == nil
-}
-
-func (m *appModel) controlplanePickerIsPopup(picker controlplane.PickerData) bool {
-	return picker.Popup
 }
 
 func popupPickerLegend(picker controlplane.PickerData) string {
@@ -256,10 +252,6 @@ func (m *appModel) showControlplaneDialog(dialog surfacedialog.Dialog) {
 	}
 	m.dialog.CloseDialog(nextID)
 	m.dialog.OpenDialog(dialog)
-}
-
-func (m *appModel) showControlplaneResultDialog(dialog surfacedialog.Dialog) {
-	m.showControlplaneDialog(dialog)
 }
 
 func (m *appModel) reloadSnapshotCmd() tea.Cmd {

@@ -82,7 +82,7 @@ func (d *PromptCommand) HandleMsg(msg tea.Msg) Action {
 }
 
 func (d *PromptCommand) Cursor() *uv.Cursor {
-	cur := TextInputCursor(d.input, d.com.Styles.TextInput)
+	cur := d.input.Cursor(d.com.Styles.TextInput)
 	if cur == nil {
 		return nil
 	}

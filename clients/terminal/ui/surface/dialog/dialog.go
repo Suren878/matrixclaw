@@ -29,11 +29,6 @@ type Dialog interface {
 	Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor
 }
 
-// OccludingDialog hides lower dialogs while it is visible.
-type OccludingDialog interface {
-	OccludesBelow() bool
-}
-
 // LoadingDialog is a dialog that can show a loading state.
 type LoadingDialog interface {
 	StartLoading() tea.Cmd
@@ -179,25 +174,13 @@ func DrawCenter(scr uv.Screen, area uv.Rectangle, view string) {
 	DrawCenterCursor(scr, area, view, nil)
 }
 
-// Draw renders all open dialogs.
+// Draw renders the dialog in front; every dialog hides the ones below it.
 func (d *Overlay) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
-	var cur *uv.Cursor
-	start := 0
-	for i, dialog := range d.dialogs {
-		if dialog == nil {
-			continue
-		}
-		if occluding, ok := dialog.(OccludingDialog); ok && occluding.OccludesBelow() {
-			start = i
-		}
+	dialog := d.DialogLast()
+	if dialog == nil {
+		return nil
 	}
-	for _, dialog := range d.dialogs[start:] {
-		if dialog == nil {
-			continue
-		}
-		cur = dialog.Draw(scr, area)
-	}
-	return cur
+	return dialog.Draw(scr, area)
 }
 
 func (d *Overlay) removeDialog(idx int) {
