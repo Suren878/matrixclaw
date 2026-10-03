@@ -37,3 +37,34 @@ func TestMessageWhileBusySteersUnlessQueuedExplicitly(t *testing.T) {
 		t.Fatalf("busy modes = %q", modes)
 	}
 }
+
+func TestSlashTextThatIsNoCommandIsSentAsAMessage(t *testing.T) {
+	var sent []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var input core.HandleMessageInput
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		sent = append(sent, input.Text)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(core.AcceptRunResult{SessionID: "session_1", Status: core.AcceptRunStatusQueued})
+	}))
+	defer server.Close()
+	m := newApp(context.Background(), New(Config{BaseURL: server.URL}))
+	m.read = readmodel.New(core.ClientSnapshot{SessionID: "session_1"})
+
+	contents := []string{"/etc/nginx/nginx.conf fails to load, why?", "/busybox ls prints nothing"}
+	for _, content := range contents {
+		m.setBusy(true)
+		cmd := m.handleSubmit(surfaceinput.SubmitMsg{Content: content})
+		if cmd == nil {
+			t.Fatalf("%q was dropped", content)
+		}
+		cmd()
+	}
+
+	if len(sent) != 2 || sent[0] != contents[0] || sent[1] != contents[1] {
+		t.Fatalf("sent = %q", sent)
+	}
+}

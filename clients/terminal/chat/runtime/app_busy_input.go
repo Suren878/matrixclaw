@@ -34,10 +34,10 @@ func (m *appModel) handleBusySubmitCommand(content string) (bool, tea.Cmd) {
 		}
 		return true, m.sendMessageCmd(text, nil, mode)
 	}
-	if !strings.HasPrefix(strings.ToLower(command), "/busy") {
+	fields := strings.Fields(command)
+	if !strings.EqualFold(fields[0], "/busy") {
 		return false, nil
 	}
-	fields := strings.Fields(command)
 	if len(fields) == 1 || strings.EqualFold(fields[1], "status") {
 		m.showInputStatus(fmt.Sprintf("Busy mode: %s", m.input.busyMode))
 		return true, nil

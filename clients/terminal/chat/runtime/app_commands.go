@@ -13,7 +13,7 @@ func (m *appModel) handleControlplaneSubmit(content string, attachments []surfac
 	if strings.TrimSpace(content) == "" || len(attachments) > 0 || m.rt == nil {
 		return false, nil
 	}
-	if !strings.HasPrefix(strings.TrimSpace(content), "/") {
+	if _, _, ok := controlplane.Parse(content); !ok {
 		return false, nil
 	}
 	if strings.TrimSpace(content) == "/status" {
