@@ -1,6 +1,8 @@
 package tools
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +15,8 @@ import (
 	"strings"
 	"time"
 )
+
+const binarySniffBytes = 8 * 1024
 
 type grepMatch struct {
 	path     string
@@ -118,7 +122,7 @@ func grepFiles(ctx context.Context, pattern string, root string, include string,
 			return err
 		}
 		if walkErr != nil {
-			return walkErr
+			return walkErrorUnlessRoot(path, root, walkErr)
 		}
 		if shouldSkipHidden(path, root) {
 			if d.IsDir() {
@@ -146,27 +150,10 @@ func grepFiles(ctx context.Context, pattern string, root string, include string,
 			return nil
 		}
 
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return nil
-		}
-		lines := strings.Split(string(content), "\n")
-		info, _ := d.Info()
-		for lineIndex, line := range lines {
-			loc := regex.FindStringIndex(line)
-			if loc == nil {
-				continue
-			}
-			matches = append(matches, grepMatch{
-				path:     path,
-				modTime:  fileModTime(info),
-				lineNum:  lineIndex + 1,
-				charNum:  loc[0] + 1,
-				lineText: line,
-			})
-			if limit > 0 && len(matches) >= limit {
-				return errStopWalk
-			}
+		var full bool
+		matches, full = grepFile(path, regex, matches, limit)
+		if full {
+			return errStopWalk
 		}
 		return nil
 	})
@@ -179,9 +166,43 @@ func grepFiles(ctx context.Context, pattern string, root string, include string,
 	return matches, limit > 0 && len(matches) >= limit, nil
 }
 
-func fileModTime(info fs.FileInfo) time.Time {
-	if info == nil {
-		return time.Time{}
+// grepFile appends the file's matching lines and reports whether the limit is
+// reached. Files larger than read would open, or with a NUL near the start
+// (binary), are skipped.
+func grepFile(path string, regex *regexp.Regexp, matches []grepMatch, limit int) ([]grepMatch, bool) {
+	file, err := os.Open(path)
+	if err != nil {
+		return matches, false
 	}
-	return info.ModTime()
+	defer func() { _ = file.Close() }()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() > MaxReadBytes {
+		return matches, false
+	}
+	reader := bufio.NewReaderSize(file, binarySniffBytes)
+	if head, _ := reader.Peek(binarySniffBytes); bytes.IndexByte(head, 0) >= 0 {
+		return matches, false
+	}
+	for lineNum := 1; ; lineNum++ {
+		line, readErr := reader.ReadString('\n')
+		if line == "" && readErr != nil {
+			return matches, false
+		}
+		line = strings.TrimSuffix(line, "\n")
+		if loc := regex.FindStringIndex(line); loc != nil {
+			matches = append(matches, grepMatch{
+				path:     path,
+				modTime:  info.ModTime(),
+				lineNum:  lineNum,
+				charNum:  loc[0] + 1,
+				lineText: line,
+			})
+			if limit > 0 && len(matches) >= limit {
+				return matches, true
+			}
+		}
+		if readErr != nil {
+			return matches, false
+		}
+	}
 }

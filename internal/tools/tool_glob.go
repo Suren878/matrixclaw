@@ -58,7 +58,7 @@ func globFiles(ctx context.Context, pattern string, root string, limit int) ([]s
 			return err
 		}
 		if walkErr != nil {
-			return walkErr
+			return walkErrorUnlessRoot(path, root, walkErr)
 		}
 		if shouldSkipHidden(path, root) {
 			if d.IsDir() {

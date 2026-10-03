@@ -47,7 +47,7 @@ func listDirectoryTree(root string, params LSParams) (string, LSResponseMetadata
 	truncated := false
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return walkErr
+			return walkErrorUnlessRoot(path, root, walkErr)
 		}
 		if path == root {
 			return nil

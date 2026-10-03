@@ -341,3 +341,12 @@ func matchesAnyIgnore(path string, root string, ignore []string) bool {
 }
 
 var errStopWalk = fmt.Errorf("stop walk")
+
+// walkErrorUnlessRoot lets a search go past an entry it cannot read (macOS
+// TCC folders, lost+found); only an unreadable root fails the call.
+func walkErrorUnlessRoot(path string, root string, err error) error {
+	if path == root {
+		return err
+	}
+	return nil
+}
