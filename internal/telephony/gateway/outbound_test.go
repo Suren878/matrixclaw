@@ -63,13 +63,15 @@ func TestOutboundCallDoesNotDialBeforeRealtimeReady(t *testing.T) {
 
 	now := time.Now().UTC()
 	call := &Call{
-		ID:        "call_test",
-		Direction: "outbound",
-		To:        "15551234567",
-		Profile:   defaultSIPProfile,
-		Status:    "queued",
-		CreatedAt: now,
-		UpdatedAt: now,
+		CallSnapshot: CallSnapshot{
+			ID:        "call_test",
+			Direction: "outbound",
+			To:        "15551234567",
+			Profile:   defaultSIPProfile,
+			Status:    "queued",
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
 	}
 
 	err := server.runCallOnce(context.Background(), call, createCallRequest{To: call.To})
@@ -167,13 +169,15 @@ func TestOutboundCallDoesNotSendInitialPromptBeforeDialing(t *testing.T) {
 
 	now := time.Now().UTC()
 	call := &Call{
-		ID:        "call_test",
-		Direction: "outbound",
-		To:        "15551234567",
-		Profile:   defaultSIPProfile,
-		Status:    "queued",
-		CreatedAt: now,
-		UpdatedAt: now,
+		CallSnapshot: CallSnapshot{
+			ID:        "call_test",
+			Direction: "outbound",
+			To:        "15551234567",
+			Profile:   defaultSIPProfile,
+			Status:    "queued",
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
 	}
 
 	err := server.runCallOnce(context.Background(), call, createCallRequest{

@@ -98,12 +98,9 @@ func (s *Server) runConnectedCallWithRealtime(ctx context.Context, call *Call, r
 	playbackExternalID := safeARIID(id + "-playback-media")
 	s.setCallBridgeIDs(call, callBridgeIDs{
 		ChannelID:                 channelID,
-		BridgeID:                  playbackBridgeID,
-		ExternalChannelID:         playbackExternalID,
 		CaptureBridgeID:           captureBridgeID,
 		PlaybackBridgeID:          playbackBridgeID,
 		CaptureSnoopChannelID:     captureSnoopID,
-		PlaybackSnoopChannelID:    "",
 		CaptureExternalChannelID:  captureExternalID,
 		PlaybackExternalChannelID: playbackExternalID,
 	})

@@ -26,8 +26,6 @@ type pcmToPCM8Resampler struct {
 	inputRate  int
 }
 
-type pcm24ToPCM8Resampler = pcmToPCM8Resampler
-
 func newPCMToPCM8Resampler(inputRate int) *pcmToPCM8Resampler {
 	if inputRate <= 0 {
 		inputRate = 24000
@@ -44,14 +42,7 @@ func newPCMToPCM8Resampler(inputRate int) *pcmToPCM8Resampler {
 	}
 }
 
-func newPCM24ToPCM8Resampler() *pcm24ToPCM8Resampler {
-	return newPCMToPCM8Resampler(24000)
-}
-
 func (r *pcmToPCM8Resampler) Convert(in []byte) []int16 {
-	if r == nil {
-		return pcm24BytesToPCM8k(in)
-	}
 	if len(in) < 2 {
 		return nil
 	}
@@ -97,10 +88,6 @@ func (r *pcmToPCM8Resampler) compact() {
 	copy(r.pending, r.pending[keepFrom:])
 	r.pending = r.pending[:len(r.pending)-keepFrom]
 	r.nextCenter -= keepFrom
-}
-
-func pcm24BytesToPCM8k(in []byte) []int16 {
-	return newPCM24ToPCM8Resampler().Convert(in)
 }
 
 func lowpassSample(samples []int16, center int) int16 {

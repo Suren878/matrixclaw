@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -9,43 +10,11 @@ import (
 
 const finishedCallRetention = 24 * time.Hour
 
+// Call is a live call; CallSnapshot is the part reported over HTTP.
 type Call struct {
-	mu                         sync.Mutex
-	ID                         string     `json:"id"`
-	Direction                  string     `json:"direction,omitempty"`
-	To                         string     `json:"to"`
-	From                       string     `json:"from,omitempty"`
-	Profile                    string     `json:"profile,omitempty"`
-	Objective                  string     `json:"objective,omitempty"`
-	Status                     string     `json:"status"`
-	Error                      string     `json:"error,omitempty"`
-	RealtimeSessionID          string     `json:"realtime_session_id,omitempty"`
-	CoreSessionID              string     `json:"session_id,omitempty"`
-	OriginClient               string     `json:"origin_client,omitempty"`
-	OriginExternalKey          string     `json:"origin_external_key,omitempty"`
-	OriginSessionID            string     `json:"origin_session_id,omitempty"`
-	BridgeID                   string     `json:"bridge_id,omitempty"`
-	ChannelID                  string     `json:"channel_id,omitempty"`
-	ExternalChannelID          string     `json:"external_channel_id,omitempty"`
-	CaptureBridgeID            string     `json:"capture_bridge_id,omitempty"`
-	PlaybackBridgeID           string     `json:"playback_bridge_id,omitempty"`
-	CaptureSnoopChannelID      string     `json:"capture_snoop_channel_id,omitempty"`
-	PlaybackSnoopChannelID     string     `json:"playback_snoop_channel_id,omitempty"`
-	CaptureExternalChannelID   string     `json:"capture_external_channel_id,omitempty"`
-	PlaybackExternalChannelID  string     `json:"playback_external_channel_id,omitempty"`
-	CreatedAt                  time.Time  `json:"created_at"`
-	UpdatedAt                  time.Time  `json:"updated_at"`
-	AnsweredAt                 *time.Time `json:"answered_at,omitempty"`
-	FinishedAt                 *time.Time `json:"finished_at,omitempty"`
+	mu sync.Mutex
+	CallSnapshot
 	cancel                     context.CancelFunc
-	InputTranscript            string               `json:"input_transcript,omitempty"`
-	AssistantTranscript        string               `json:"assistant_transcript,omitempty"`
-	Transcript                 []CallTranscriptTurn `json:"transcript,omitempty"`
-	Recording                  *CallRecording       `json:"recording,omitempty"`
-	RTP                        rtpStats             `json:"rtp,omitempty"`
-	RTPCapture                 rtpStats             `json:"rtp_capture,omitempty"`
-	RTPPlayback                rtpStats             `json:"rtp_playback,omitempty"`
-	rtp                        *rtpSession
 	rtpIn                      *rtpSession
 	rtpOut                     *rtpSession
 	currentInputTranscript     string
@@ -66,13 +35,10 @@ type CallSnapshot struct {
 	OriginClient              string               `json:"origin_client,omitempty"`
 	OriginExternalKey         string               `json:"origin_external_key,omitempty"`
 	OriginSessionID           string               `json:"origin_session_id,omitempty"`
-	BridgeID                  string               `json:"bridge_id,omitempty"`
 	ChannelID                 string               `json:"channel_id,omitempty"`
-	ExternalChannelID         string               `json:"external_channel_id,omitempty"`
 	CaptureBridgeID           string               `json:"capture_bridge_id,omitempty"`
 	PlaybackBridgeID          string               `json:"playback_bridge_id,omitempty"`
 	CaptureSnoopChannelID     string               `json:"capture_snoop_channel_id,omitempty"`
-	PlaybackSnoopChannelID    string               `json:"playback_snoop_channel_id,omitempty"`
 	CaptureExternalChannelID  string               `json:"capture_external_channel_id,omitempty"`
 	PlaybackExternalChannelID string               `json:"playback_external_channel_id,omitempty"`
 	CreatedAt                 time.Time            `json:"created_at"`
@@ -118,45 +84,12 @@ func callSnapshot(call *Call) CallSnapshot {
 	}
 	call.mu.Lock()
 	defer call.mu.Unlock()
-
-	transcript := make([]CallTranscriptTurn, len(call.Transcript))
-	copy(transcript, call.Transcript)
-
-	return CallSnapshot{
-		ID:                        call.ID,
-		Direction:                 call.Direction,
-		To:                        call.To,
-		From:                      call.From,
-		Profile:                   call.Profile,
-		Objective:                 call.Objective,
-		Status:                    call.Status,
-		Error:                     call.Error,
-		RealtimeSessionID:         call.RealtimeSessionID,
-		CoreSessionID:             call.CoreSessionID,
-		OriginClient:              call.OriginClient,
-		OriginExternalKey:         call.OriginExternalKey,
-		OriginSessionID:           call.OriginSessionID,
-		BridgeID:                  call.BridgeID,
-		ChannelID:                 call.ChannelID,
-		ExternalChannelID:         call.ExternalChannelID,
-		CaptureBridgeID:           call.CaptureBridgeID,
-		PlaybackBridgeID:          call.PlaybackBridgeID,
-		CaptureSnoopChannelID:     call.CaptureSnoopChannelID,
-		PlaybackSnoopChannelID:    call.PlaybackSnoopChannelID,
-		CaptureExternalChannelID:  call.CaptureExternalChannelID,
-		PlaybackExternalChannelID: call.PlaybackExternalChannelID,
-		CreatedAt:                 call.CreatedAt,
-		UpdatedAt:                 call.UpdatedAt,
-		AnsweredAt:                cloneTimePtr(call.AnsweredAt),
-		FinishedAt:                cloneTimePtr(call.FinishedAt),
-		InputTranscript:           call.InputTranscript,
-		AssistantTranscript:       call.AssistantTranscript,
-		Transcript:                transcript,
-		Recording:                 callRecordingSnapshotLocked(call),
-		RTP:                       call.RTP,
-		RTPCapture:                call.RTPCapture,
-		RTPPlayback:               call.RTPPlayback,
-	}
+	snapshot := call.CallSnapshot
+	snapshot.AnsweredAt = cloneTimePtr(call.AnsweredAt)
+	snapshot.FinishedAt = cloneTimePtr(call.FinishedAt)
+	snapshot.Transcript = slices.Clone(call.Transcript)
+	snapshot.Recording = callRecordingSnapshotLocked(call)
+	return snapshot
 }
 
 func callTranscriptSnapshot(call *Call) []CallTranscriptTurn {
@@ -261,11 +194,9 @@ func callARIChannelIDs(call *Call) []string {
 	defer call.mu.Unlock()
 	return []string{
 		strings.TrimSpace(call.ChannelID),
-		strings.TrimSpace(call.ExternalChannelID),
 		strings.TrimSpace(call.CaptureExternalChannelID),
 		strings.TrimSpace(call.PlaybackExternalChannelID),
 		strings.TrimSpace(call.CaptureSnoopChannelID),
-		strings.TrimSpace(call.PlaybackSnoopChannelID),
 	}
 }
 
@@ -276,7 +207,6 @@ func callARIBridgeIDs(call *Call) []string {
 	call.mu.Lock()
 	defer call.mu.Unlock()
 	return []string{
-		strings.TrimSpace(call.BridgeID),
 		strings.TrimSpace(call.CaptureBridgeID),
 		strings.TrimSpace(call.PlaybackBridgeID),
 	}
@@ -333,15 +263,10 @@ func collectCallRTPStats(call *Call) (callRTPStatsSet, bool) {
 		return callRTPStatsSet{}, false
 	}
 	call.mu.Lock()
-	rtp := call.rtp
 	rtpIn := call.rtpIn
 	rtpOut := call.rtpOut
 	call.mu.Unlock()
 
-	if rtp != nil {
-		stats := rtp.Stats()
-		return callRTPStatsSet{RTP: stats, RTPCapture: stats}, true
-	}
 	if rtpIn == nil && rtpOut == nil {
 		return callRTPStatsSet{}, false
 	}
@@ -416,7 +341,6 @@ func (s *Server) clearCallRTPSessions(call *Call) {
 	if ok {
 		applyCallRTPStatsLocked(call, stats)
 	}
-	call.rtp = nil
 	call.rtpIn = nil
 	call.rtpOut = nil
 	call.UpdatedAt = time.Now().UTC()
@@ -429,12 +353,9 @@ func (s *Server) setCallBridgeIDs(call *Call, ids callBridgeIDs) {
 	}
 	call.mu.Lock()
 	call.ChannelID = strings.TrimSpace(ids.ChannelID)
-	call.BridgeID = strings.TrimSpace(ids.BridgeID)
-	call.ExternalChannelID = strings.TrimSpace(ids.ExternalChannelID)
 	call.CaptureBridgeID = strings.TrimSpace(ids.CaptureBridgeID)
 	call.PlaybackBridgeID = strings.TrimSpace(ids.PlaybackBridgeID)
 	call.CaptureSnoopChannelID = strings.TrimSpace(ids.CaptureSnoopChannelID)
-	call.PlaybackSnoopChannelID = strings.TrimSpace(ids.PlaybackSnoopChannelID)
 	call.CaptureExternalChannelID = strings.TrimSpace(ids.CaptureExternalChannelID)
 	call.PlaybackExternalChannelID = strings.TrimSpace(ids.PlaybackExternalChannelID)
 	call.UpdatedAt = time.Now().UTC()
@@ -485,12 +406,9 @@ func callRecordingSnapshotLocked(call *Call) *CallRecording {
 
 type callBridgeIDs struct {
 	ChannelID                 string
-	BridgeID                  string
-	ExternalChannelID         string
 	CaptureBridgeID           string
 	PlaybackBridgeID          string
 	CaptureSnoopChannelID     string
-	PlaybackSnoopChannelID    string
 	CaptureExternalChannelID  string
 	PlaybackExternalChannelID string
 }

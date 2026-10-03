@@ -64,16 +64,18 @@ func (s *Server) startInboundCall(parent context.Context, event ariEvent) {
 	ctx, cancel := s.callContext()
 	now := time.Now().UTC()
 	call := &Call{
-		ID:        id,
-		Direction: "inbound",
-		From:      strings.TrimSpace(from),
-		To:        strings.TrimSpace(s.cfg.CallerID),
-		Profile:   firstNonEmpty(s.cfg.SIPProfile, defaultSIPProfile),
-		Status:    "incoming",
-		CreatedAt: now,
-		UpdatedAt: now,
-		ChannelID: strings.TrimSpace(channel.ID),
-		cancel:    cancel,
+		CallSnapshot: CallSnapshot{
+			ID:        id,
+			Direction: "inbound",
+			From:      strings.TrimSpace(from),
+			To:        strings.TrimSpace(s.cfg.CallerID),
+			Profile:   firstNonEmpty(s.cfg.SIPProfile, defaultSIPProfile),
+			Status:    "incoming",
+			CreatedAt: now,
+			UpdatedAt: now,
+			ChannelID: strings.TrimSpace(channel.ID),
+		},
+		cancel: cancel,
 	}
 	s.mu.Lock()
 	s.calls[id] = call

@@ -29,18 +29,20 @@ func (s *Server) startCall(parent context.Context, req createCallRequest) (CallS
 	ctx, cancel := s.callContext()
 	now := time.Now().UTC()
 	call := &Call{
-		ID:                id,
-		Direction:         "outbound",
-		To:                to,
-		Profile:           firstNonEmpty(req.Profile, s.cfg.SIPProfile),
-		Objective:         firstNonEmpty(req.Objective, req.SystemInstruction),
-		Status:            "queued",
-		CreatedAt:         now,
-		UpdatedAt:         now,
-		OriginClient:      strings.TrimSpace(req.OriginClient),
-		OriginExternalKey: strings.TrimSpace(req.OriginExternalKey),
-		OriginSessionID:   strings.TrimSpace(req.OriginSessionID),
-		cancel:            cancel,
+		CallSnapshot: CallSnapshot{
+			ID:                id,
+			Direction:         "outbound",
+			To:                to,
+			Profile:           firstNonEmpty(req.Profile, s.cfg.SIPProfile),
+			Objective:         firstNonEmpty(req.Objective, req.SystemInstruction),
+			Status:            "queued",
+			CreatedAt:         now,
+			UpdatedAt:         now,
+			OriginClient:      strings.TrimSpace(req.OriginClient),
+			OriginExternalKey: strings.TrimSpace(req.OriginExternalKey),
+			OriginSessionID:   strings.TrimSpace(req.OriginSessionID),
+		},
+		cancel: cancel,
 	}
 	s.mu.Lock()
 	s.calls[id] = call
