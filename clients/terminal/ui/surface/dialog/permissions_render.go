@@ -12,6 +12,7 @@ import (
 	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/toolview"
 )
 
 func (p *Permissions) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
@@ -200,18 +201,11 @@ func (p *Permissions) renderKeyValue(keyText, value string, width int) string {
 }
 
 func (p *Permissions) renderToolName(width int) string {
-	toolName := p.permission.ToolName
-	if toolName == toolNameBash {
-		toolName = "Run"
-	} else if toolName == toolNameSkillManage {
+	toolName := toolview.Describe(p.permission.ToolName, "").Title
+	if p.permission.ToolName == toolNameSkillManage {
 		toolName = "Skill Approval"
-	} else if strings.HasPrefix(toolName, "mcp_") {
-		parts := strings.SplitN(toolName, "_", 3)
-		if len(parts) == 3 {
-			mcpName := prettyName(parts[1])
-			toolPart := prettyName(parts[2])
-			toolName = fmt.Sprintf("%s %s %s", mcpName, surfacestyles.ArrowRightIcon, toolPart)
-		}
+	} else if parts := strings.SplitN(p.permission.ToolName, "_", 3); len(parts) == 3 && parts[0] == "mcp" {
+		toolName = fmt.Sprintf("%s %s %s", toolview.PrettyName(parts[1]), surfacestyles.ArrowRightIcon, toolview.PrettyName(parts[2]))
 	}
 
 	return p.renderKeyValue("Tool", toolName, width)

@@ -62,7 +62,7 @@ func TestRunStatusIsOneSilentMessageEditedAsTheRunGoes(t *testing.T) {
 	h.daemon.add(toolCallMessage("call-0", "bash", `{"command":"go test ./..."}`, false))
 	h.mustDeliver(time.Second)
 	status := h.api.messages[0]
-	if h.api.sendCount() != 1 || status.Text != "⏳ Working · step 1/300\nUsing bash: go test ./..." || !status.DisableNotification || !status.SkipReplyKeyboardRemove {
+	if h.api.sendCount() != 1 || status.Text != "⏳ Working · step 1/300\nExecuting command: go test ./..." || !status.DisableNotification || !status.SkipReplyKeyboardRemove {
 		t.Fatalf("status = %+v", h.api.messages)
 	}
 
@@ -114,7 +114,7 @@ func TestRunStatusSurvivesTelegramRefusingEdits(t *testing.T) {
 	h.api.editError = &APIError{ErrorCode: 400, Description: "Bad Request: message to edit not found"}
 	h.progress(3, 0)
 	h.mustDeliver(3 * time.Second)
-	if h.api.sendCount() != 2 || h.api.messageText(2) != "⏳ Working · step 3/300\nUsing bash: make" {
+	if h.api.sendCount() != 2 || h.api.messageText(2) != "⏳ Working · step 3/300\nExecuting command: make" {
 		t.Fatalf("deleted status was not sent again: %q", h.api.messageTexts())
 	}
 
@@ -181,7 +181,7 @@ func TestRunStatusCountsOnlyCallsThatRun(t *testing.T) {
 
 	h.mustDeliver(0)
 
-	if texts := h.api.messageTexts(); len(texts) != 1 || texts[0] != "⏳ Working · step 1/300\nUsing bash: go test ./..." {
+	if texts := h.api.messageTexts(); len(texts) != 1 || texts[0] != "⏳ Working · step 1/300\nExecuting command: go test ./..." {
 		t.Fatalf("messages = %q", texts)
 	}
 }

@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"cmp"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -14,6 +13,7 @@ import (
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/toolview"
 )
 
 func (m *appModel) headerView() string {
@@ -366,47 +366,18 @@ func (m *appModel) workingIdleElapsed() string {
 	return formatWorkingElapsed(idle)
 }
 
-func workingToolPhase(name string) string {
-	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "bash":
-		return "Executing command"
-	case "read":
-		return "Reading file"
-	case "write":
-		return "Writing file"
-	case "edit", "multiedit":
-		return "Editing file"
-	case "grep", "glob":
-		return "Searching files"
-	case "ls":
-		return "Listing files"
-	case "web_fetch":
-		return "Fetching web page"
-	case "web_search":
-		return "Searching web"
-	case "web_research":
-		return "Researching web"
-	case "web_research_ask":
-		return "Checking research"
-	case "web_research_status":
-		return "Checking research status"
-	case "":
-		return "Running tool"
-	default:
-		return "Running " + strings.TrimSpace(name)
-	}
-}
-
+// workingToolPhaseWithDetail is the working line for a running tool: its verb
+// and main parameter.
 func workingToolPhaseWithDetail(messages []surfacemessage.Message, update core.ToolUpdate) string {
-	phase := workingToolPhase(update.ToolName)
-	call, ok := activeToolCall(messages, update.ToolCallID)
-	if !ok {
-		return phase
+	input := ""
+	if call, ok := activeToolCall(messages, update.ToolCallID); ok {
+		input = call.Input
 	}
-	if detail := workingToolDetail(update.ToolName, call.Input); detail != "" {
-		return phase + ": " + detail
+	call := toolview.Describe(update.ToolName, input)
+	if call.Detail == "" {
+		return call.Verb
 	}
-	return phase
+	return call.Verb + ": " + toolview.Shorten(call.Detail, 80)
 }
 
 func activeToolCall(messages []surfacemessage.Message, toolCallID string) (surfacemessage.ToolCall, bool) {
@@ -422,61 +393,6 @@ func activeToolCall(messages []surfacemessage.Message, toolCallID string) (surfa
 		}
 	}
 	return surfacemessage.ToolCall{}, false
-}
-
-func workingToolDetail(toolName string, input string) string {
-	var params map[string]any
-	if err := json.Unmarshal([]byte(input), &params); err != nil {
-		return ""
-	}
-	name := strings.ToLower(strings.TrimSpace(toolName))
-	switch name {
-	case "web_search", "session_search", "skill_search":
-		return compactWorkingToolParam(params, "query")
-	case "web_fetch":
-		return compactWorkingToolParam(params, "url")
-	case "web_research":
-		return firstNonEmptyRuntime(compactWorkingToolParam(params, "query"), compactWorkingToolParam(params, "task"), compactWorkingToolParam(params, "urls"))
-	case "web_research_ask":
-		return compactWorkingToolParam(params, "question")
-	case "web_research_status":
-		return compactWorkingToolParam(params, "research_id")
-	}
-	if strings.HasPrefix(name, "mcp_browser_") {
-		return firstNonEmptyRuntime(compactWorkingToolParam(params, "url"), compactWorkingToolParam(params, "text"), compactWorkingToolParam(params, "selector"), compactWorkingToolParam(params, "element"), compactWorkingToolParam(params, "query"), compactWorkingToolParam(params, "ref"))
-	}
-	return ""
-}
-
-func compactWorkingToolParam(params map[string]any, key string) string {
-	value, ok := params[key]
-	if !ok {
-		return ""
-	}
-	switch typed := value.(type) {
-	case string:
-		return compactWorkingToolText(typed)
-	case []any:
-		if len(typed) == 0 {
-			return ""
-		}
-		first := compactWorkingToolText(fmt.Sprint(typed[0]))
-		if first != "" && len(typed) > 1 {
-			return fmt.Sprintf("%s (+%d)", first, len(typed)-1)
-		}
-		return first
-	default:
-		return compactWorkingToolText(fmt.Sprint(value))
-	}
-}
-
-func compactWorkingToolText(value string) string {
-	value = strings.Join(strings.Fields(value), " ")
-	runes := []rune(value)
-	if len(runes) <= 80 {
-		return value
-	}
-	return strings.TrimSpace(string(runes[:79])) + "…"
 }
 
 func isSubagentToolName(name string) bool {

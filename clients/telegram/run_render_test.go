@@ -248,15 +248,14 @@ func (a *runRenderBotAPI) messageTexts() []string {
 }
 
 func TestAgentStatusExplainsWhatTheSubagentDoes(t *testing.T) {
-	action, detail := telegramToolAction(transcript.ToolCallPart{
-		Name:  "agent",
-		Input: `{"description":"Inspect the supervisor","prompt":"inspect the supervisor loop","runtime":"codex"}`,
-	})
-	if action != "Subagent is working" || detail != "Inspect the supervisor" {
-		t.Fatalf("action = %q, detail = %q", action, detail)
+	line := func(input string) string {
+		call := transcript.ToolCallPart{ID: "c1", Name: "agent", Input: input}
+		return runningToolsLine([]transcript.Message{{Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindToolCall, ToolCall: &call}}}}, nil)
 	}
-	started, _ := telegramToolAction(transcript.ToolCallPart{Name: "agent", Input: `{"description":"Scan","prompt":"scan","background":true}`})
-	if started != "Starting subagent" {
-		t.Fatalf("background action = %q", started)
+	if got := line(`{"description":"Inspect the supervisor","prompt":"inspect the supervisor loop","runtime":"codex"}`); got != "Subagent is working: Inspect the supervisor" {
+		t.Fatalf("line = %q", got)
+	}
+	if got := line(`{"description":"Scan","prompt":"scan","background":true}`); got != "Starting subagent: Scan" {
+		t.Fatalf("background line = %q", got)
 	}
 }

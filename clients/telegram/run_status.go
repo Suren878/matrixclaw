@@ -11,6 +11,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
+	"github.com/Suren878/matrixclaw/internal/toolview"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -189,8 +190,11 @@ func runningToolsLine(messages []transcript.Message, asked map[string]bool) stri
 	if len(running) == 0 {
 		return ""
 	}
-	action, detail := telegramToolAction(running[0])
-	line := action + telegramToolDetailSuffix(detail)
+	call := toolview.Describe(running[0].Name, running[0].Input)
+	line := call.Verb
+	if call.Detail != "" {
+		line += ": " + toolview.Shorten(call.Detail, 180)
+	}
 	if len(running) > 1 {
 		line += fmt.Sprintf(" (+%d more)", len(running)-1)
 	}
