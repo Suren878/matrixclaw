@@ -4,11 +4,12 @@ import (
 	"strings"
 
 	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
+	terminaltextfield "github.com/Suren878/matrixclaw/clients/terminal/ui/textfield"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
 func (m *model) providerEntries() []providerListEntry {
-	query := m.providerSearchQuery()
+	query := searchQuery(m.filterInput)
 	items := setup.ProviderItems(m.cfg)
 	entries := make([]providerListEntry, 0, len(items)+1)
 	entries = append(entries, providerListEntry{Kind: providerEntryContinue, Title: "Continue"})
@@ -60,8 +61,8 @@ func (m *model) providerModelViewportHeight() int {
 	return m.providerViewportHeight()
 }
 
-func (m *model) providerSearchQuery() string {
-	return strings.ToLower(strings.TrimSpace(m.filterInput.Value()))
+func searchQuery(field terminaltextfield.Model) string {
+	return strings.ToLower(strings.TrimSpace(field.Value()))
 }
 
 func matchesProviderSearch(query string, values ...string) bool {

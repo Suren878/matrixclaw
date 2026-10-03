@@ -17,7 +17,7 @@ type providerModelsLoadedMsg struct {
 }
 
 func (m *model) providerModelRows() []listEntry {
-	query := m.providerSearchQuery()
+	query := searchQuery(m.modelFilter)
 	rows := make([]listEntry, 0, len(m.providerModels))
 	for i, modelID := range m.providerModels {
 		if !matchesProviderSearch(query, modelID) {
@@ -29,7 +29,7 @@ func (m *model) providerModelRows() []listEntry {
 }
 
 func (m *model) openProviderModelPicker(ctx context.Context) tea.Cmd {
-	m.resetFilter("Find a model")
+	m.modelFilter = newSearchField("Find a model")
 	m.providerModels = nil
 	m.providerModelsLoading = true
 	m.providerModelLoadSeq++

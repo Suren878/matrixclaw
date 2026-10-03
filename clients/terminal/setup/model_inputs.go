@@ -132,6 +132,7 @@ func (m *model) afterTextEditorApply(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 	m.formError = ""
+	m.modelFilter = newSearchField("Find a model")
 	m.screen = screenProviderModelList
 	return true, nil
 }
@@ -201,8 +202,4 @@ func (m *model) syncTextAreaSize() {
 	frame := m.commandFrame()
 	m.textAreaInput.SetWidth(max(1, frame.InnerWidth()))
 	m.textAreaInput.SetHeight(components.TextViewEditorHeight(frame))
-}
-
-func (m *model) resetFilter(placeholder string) {
-	m.filterInput = newSearchField(placeholder)
 }

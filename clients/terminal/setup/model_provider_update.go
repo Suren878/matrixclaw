@@ -208,7 +208,7 @@ func (m *model) updateProviderModelList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	cmd := m.filterInput.Update(msg)
+	cmd := m.modelFilter.Update(msg)
 	m.clampProviderModelCursor(m.providerModelRows())
 	return m, cmd
 }

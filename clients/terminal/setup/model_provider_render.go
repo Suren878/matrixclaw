@@ -78,7 +78,7 @@ func (m *model) renderProviderModelList() string {
 	start, end := components.ViewportBounds(selectedRow, len(rows), m.providerModelViewportHeight())
 	card := components.RenderSearchListCard(m.commandFrame(), components.SearchListData{
 		Title:             "Models",
-		SearchValue:       m.filterInput.View(),
+		SearchValue:       m.modelFilter.View(),
 		SearchPlaceholder: "Search models",
 		SearchActive:      true,
 		EmptyText:         "No models match the current filter.",

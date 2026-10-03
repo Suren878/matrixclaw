@@ -87,7 +87,9 @@ type model struct {
 	cursor    int
 	tickCount int
 
+	// filterInput searches the provider list, modelFilter the model picker.
 	filterInput terminaltextfield.Model
+	modelFilter terminaltextfield.Model
 
 	cfg             setup.Config
 	cfgSnapshot     setup.Config
