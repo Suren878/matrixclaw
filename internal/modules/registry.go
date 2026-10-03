@@ -3,8 +3,6 @@ package modules
 import "github.com/Suren878/matrixclaw/internal/tools"
 
 type Module interface {
-	ID() string
-	Name() string
 	RegisterTools(*tools.Registry) error
 	Context() string
 }

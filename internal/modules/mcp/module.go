@@ -22,14 +22,6 @@ func New(ctx context.Context, cfg setup.MCPConfig) (*Module, error) {
 	return &Module{client: client}, nil
 }
 
-func (m *Module) ID() string {
-	return "mcp"
-}
-
-func (m *Module) Name() string {
-	return "MCP"
-}
-
 func (m *Module) RegisterTools(registry *tools.Registry) error {
 	if m == nil || m.client == nil {
 		return nil

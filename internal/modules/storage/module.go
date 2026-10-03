@@ -7,8 +7,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-const moduleID = "storage.local"
-
 type Config struct {
 	Root     string
 	MaxBytes int64
@@ -27,14 +25,6 @@ func New(cfg Config) (*Module, error) {
 		return nil, err
 	}
 	return &Module{store: store}, nil
-}
-
-func (m *Module) ID() string {
-	return moduleID
-}
-
-func (m *Module) Name() string {
-	return "Local Storage"
 }
 
 func (m *Module) Store() *LocalStore {

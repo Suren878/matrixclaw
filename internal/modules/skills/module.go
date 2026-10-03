@@ -9,8 +9,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-const moduleID = "skills"
-
 type Module struct {
 	service *coreskills.Service
 }
@@ -28,14 +26,6 @@ func (m *Module) Close() error {
 		return nil
 	}
 	return m.service.Close()
-}
-
-func (m *Module) ID() string {
-	return moduleID
-}
-
-func (m *Module) Name() string {
-	return "Skills"
 }
 
 func (m *Module) Service() *coreskills.Service {
