@@ -4,8 +4,12 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/modules"
 )
+
+// secretNotSet is what a secret item shows while no key is set.
+const secretNotSet = "Not set"
 
 func (s *Server) handleModuleSettings(w http.ResponseWriter, r *http.Request) {
 	settings, ok := s.Modules.Set.Settings(r.Context(), r.PathValue("module"))
@@ -13,7 +17,24 @@ func (s *Server) handleModuleSettings(w http.ResponseWriter, r *http.Request) {
 		writeErrorMessage(w, http.StatusNotFound, "module has no settings")
 		return
 	}
+	if roleOf(r) != core.RoleOwner {
+		settings.Items = hideSecretPreviews(settings.Items)
+	}
 	writeJSON(w, http.StatusOK, settings)
+}
+
+// hideSecretPreviews replaces masked key previews with whether a key is set,
+// for callers who may only look.
+func hideSecretPreviews(items []modules.Item) []modules.Item {
+	out := make([]modules.Item, len(items))
+	for i, item := range items {
+		if item.Kind == modules.ItemSecret && item.Display != "" && item.Display != secretNotSet {
+			item.Display = "Set"
+		}
+		item.Items = hideSecretPreviews(item.Items)
+		out[i] = item
+	}
+	return out
 }
 
 // handleModuleSettingsChange runs a module's change, saves its setup.json
