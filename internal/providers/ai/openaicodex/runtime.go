@@ -13,74 +13,28 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
-type Config struct {
-	ProviderID      string
-	CatalogID       string
-	BaseURL         string
-	Model           string
-	ReasoningEffort string
-	ToolUseMode     providers.ToolUseMode
-	Profile         providers.ProviderProfile
-	HTTPClient      *http.Client
-}
-
 type Runtime struct {
-	client          *http.Client
-	baseURL         string
-	model           string
+	providers.RuntimeBase
 	reasoningEffort string
-	profile         providers.RuntimeProfile
-	capabilities    providers.ModelCapabilities
 }
 
-func New(_ context.Context, cfg Config) (providers.Runtime, error) {
-	client := cfg.HTTPClient
-	if client == nil {
-		client = providers.NewHTTPClient()
+func New(_ context.Context, cfg providers.RuntimeConfig) (providers.Runtime, error) {
+	if cfg.CatalogKey() == "" {
+		cfg.CatalogID = "openai-codex"
 	}
-	baseURL := strings.TrimRight(firstNonEmpty(cfg.BaseURL, DefaultBaseURL), "/")
-	model := strings.TrimSpace(cfg.Model)
-	if model == "" {
-		model = providers.DefaultOpenAICodexModel
-	}
-	providerProfile := cfg.Profile
-	if providerProfile.IsZero() {
-		providerProfile = providers.ProfileForModel("openai-codex", providers.TypeOpenAICodex, model)
-	}
-	profile := providerProfile.RuntimeProfileWithOverrides(providers.RuntimeProfile{
-		ToolUseMode: cfg.ToolUseMode,
-	})
+	cfg.BaseURL = strings.TrimRight(firstNonEmpty(cfg.BaseURL, DefaultBaseURL), "/")
+	base := providers.NewRuntimeBase(cfg, providers.TypeOpenAICodex, providers.DefaultOpenAICodexModel)
 	reasoningEffort := ""
-	if providerProfile.SupportsReasoningEffort {
+	if base.Capabilities.ReasoningEffort {
 		reasoningEffort = providers.NormalizeReasoningEffort(cfg.ReasoningEffort)
 		if reasoningEffort == providers.ReasoningEffortNone {
 			reasoningEffort = ""
 		}
 	}
-	return &Runtime{
-		client:          client,
-		baseURL:         baseURL,
-		model:           model,
-		reasoningEffort: reasoningEffort,
-		profile:         profile,
-		capabilities:    providerProfile.Capabilities,
-	}, nil
-}
-
-func (r *Runtime) RuntimeProfile() providers.RuntimeProfile {
-	return r.profile
-}
-
-func (r *Runtime) Identity() (string, string) {
-	return providers.TypeOpenAICodex, r.model
-}
-
-func (r *Runtime) ModelCapabilities() providers.ModelCapabilities {
-	return r.capabilities
+	return &Runtime{RuntimeBase: base, reasoningEffort: reasoningEffort}, nil
 }
 
 func (r *Runtime) Generate(ctx context.Context, request providers.Request) (providers.Response, error) {
-	request = providers.NormalizeRequest(request, r.profile)
 	payload := r.responsesPayload(request)
 	if len(payload.Input) == 0 {
 		return providers.Response{}, errors.New("openai-codex: no input")
@@ -89,7 +43,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 	if err != nil {
 		return providers.Response{}, fmt.Errorf("openai-codex: marshal request: %w", err)
 	}
-	creds, err := ResolveCredentials(ctx, r.client, r.baseURL)
+	creds, err := ResolveCredentials(ctx, r.Client, r.BaseURL)
 	if err != nil {
 		return providers.Response{}, err
 	}
@@ -100,7 +54,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 	setCodexHeaders(req, creds.AccessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
-	res, err := r.client.Do(req)
+	res, err := r.Client.Do(req)
 	if err != nil {
 		return providers.Response{}, fmt.Errorf("openai-codex: request failed: %w", err)
 	}
@@ -226,10 +180,10 @@ type responsesUsage struct {
 // rejects the parameter, so the model's own limit applies.
 func (r *Runtime) responsesPayload(request providers.Request) responsesRequest {
 	payload := responsesRequest{
-		Model:             r.model,
+		Model:             r.Model,
 		Input:             make([]responsesItem, 0, len(request.Messages)),
 		Tools:             encodeResponsesTools(request.Tools),
-		ParallelToolCalls: r.capabilities.ParallelToolCalls,
+		ParallelToolCalls: r.Capabilities.ParallelToolCalls,
 		Store:             false,
 		PromptCacheKey:    strings.TrimSpace(request.CacheKey),
 		Stream:            true,
@@ -238,7 +192,7 @@ func (r *Runtime) responsesPayload(request providers.Request) responsesRequest {
 	if request.ToolChoice == providers.ToolChoiceNone && len(payload.Tools) > 0 {
 		payload.ToolChoice = string(providers.ToolChoiceNone)
 	}
-	if r.reasoningEffort != "" && (len(payload.Tools) == 0 || r.capabilities.ReasoningWithTools) {
+	if r.reasoningEffort != "" && (len(payload.Tools) == 0 || r.Capabilities.ReasoningWithTools) {
 		payload.Reasoning = &responsesReasoning{Effort: r.reasoningEffort}
 		payload.Include = []string{"reasoning.encrypted_content"}
 	}

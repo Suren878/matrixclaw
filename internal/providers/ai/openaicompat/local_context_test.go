@@ -22,7 +22,7 @@ func TestListModelsProbesContextWindowOnLoopbackIP(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	if _, err := ListModels(context.Background(), Config{ProviderID: "home-box", APIKey: "k", BaseURL: server.URL + "/v1"}); err != nil {
+	if _, err := ListModels(context.Background(), providers.RuntimeConfig{ProviderID: "home-box", APIKey: "k", BaseURL: server.URL + "/v1"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := providers.ResolveContextWindowTokens("home-box", providers.TypeOpenAICompat, "box-model"); got != 32768 {

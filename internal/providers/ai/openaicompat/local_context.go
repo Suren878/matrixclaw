@@ -13,7 +13,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
-func registerLocalContextWindows(ctx context.Context, cfg Config, client *http.Client, baseURL string, apiKey string, models []string) {
+func registerLocalContextWindows(ctx context.Context, cfg providers.RuntimeConfig, client *http.Client, baseURL string, apiKey string, models []string) {
 	if !shouldProbeLocalContext(cfg, baseURL) {
 		return
 	}
@@ -35,7 +35,7 @@ func registerLocalContextWindows(ctx context.Context, cfg Config, client *http.C
 	}
 }
 
-func shouldProbeLocalContext(cfg Config, baseURL string) bool {
+func shouldProbeLocalContext(cfg providers.RuntimeConfig, baseURL string) bool {
 	hint := strings.ToLower(strings.TrimSpace(cfg.ProviderID + " " + cfg.CatalogID + " " + baseURL))
 	if strings.Contains(hint, "ollama") || strings.Contains(hint, "lm-studio") || strings.Contains(hint, "lmstudio") || strings.Contains(hint, "llama.cpp") || strings.Contains(hint, "local") {
 		return true
@@ -52,7 +52,7 @@ func shouldProbeLocalContext(cfg Config, baseURL string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-func registerOllamaContextWindow(ctx context.Context, cfg Config, client *http.Client, serverURL string, setHeaders func(*http.Request), model string) {
+func registerOllamaContextWindow(ctx context.Context, cfg providers.RuntimeConfig, client *http.Client, serverURL string, setHeaders func(*http.Request), model string) {
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return
@@ -89,7 +89,7 @@ func registerOllamaContextWindow(ctx context.Context, cfg Config, client *http.C
 	registerDiscoveredContextWindow(cfg, model, tokens)
 }
 
-func registerLMStudioContextWindows(ctx context.Context, cfg Config, client *http.Client, serverURL string, setHeaders func(*http.Request)) {
+func registerLMStudioContextWindows(ctx context.Context, cfg providers.RuntimeConfig, client *http.Client, serverURL string, setHeaders func(*http.Request)) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, serverURL+"/api/v1/models", nil)
 	if err != nil {
 		return
@@ -140,7 +140,7 @@ func firstNonEmptyString(values ...string) string {
 	return ""
 }
 
-func registerOpenAIModelContextWindow(ctx context.Context, cfg Config, client *http.Client, serverURL string, setHeaders func(*http.Request), model string) {
+func registerOpenAIModelContextWindow(ctx context.Context, cfg providers.RuntimeConfig, client *http.Client, serverURL string, setHeaders func(*http.Request), model string) {
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return
@@ -165,7 +165,7 @@ func registerOpenAIModelContextWindow(ctx context.Context, cfg Config, client *h
 	registerDiscoveredContextWindow(cfg, model, contextWindowFromMap(payload))
 }
 
-func registerDiscoveredContextWindow(cfg Config, model string, tokens int) {
+func registerDiscoveredContextWindow(cfg providers.RuntimeConfig, model string, tokens int) {
 	if tokens <= 0 {
 		return
 	}

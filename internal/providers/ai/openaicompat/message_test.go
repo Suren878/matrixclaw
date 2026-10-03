@@ -9,7 +9,7 @@ import (
 )
 
 func TestChatMessageOmitsImagesForTextOnlyModel(t *testing.T) {
-	runtime := &Runtime{capabilities: providers.ModelCapabilities{ImageInput: false}}
+	runtime := &Runtime{RuntimeBase: providers.RuntimeBase{Capabilities: providers.ModelCapabilities{ImageInput: false}}}
 	message := runtime.chatMessage(providers.Message{
 		Role:    "user",
 		Content: "Describe this image.",
@@ -28,7 +28,7 @@ func TestChatMessageOmitsImagesForTextOnlyModel(t *testing.T) {
 }
 
 func TestChatMessageIncludesImagesForImageCapableModel(t *testing.T) {
-	runtime := &Runtime{capabilities: providers.ModelCapabilities{ImageInput: true}}
+	runtime := &Runtime{RuntimeBase: providers.RuntimeBase{Capabilities: providers.ModelCapabilities{ImageInput: true}}}
 	message := runtime.chatMessage(providers.Message{
 		Role:    "user",
 		Content: "Describe this image.",

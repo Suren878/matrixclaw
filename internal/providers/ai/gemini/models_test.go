@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
 func TestListModelsEscapesPageToken(t *testing.T) {
@@ -20,7 +22,7 @@ func TestListModelsEscapesPageToken(t *testing.T) {
 		_, _ = w.Write([]byte(`{"models":[{"name":"models/b","supportedGenerationMethods":["generateContent"]}]}`))
 	}))
 	defer server.Close()
-	models, err := ListModels(context.Background(), Config{ProviderID: "gemini", APIKey: "k", BaseURL: server.URL})
+	models, err := ListModels(context.Background(), providers.RuntimeConfig{ProviderID: "gemini", APIKey: "k", BaseURL: server.URL})
 	if err != nil {
 		t.Fatal(err)
 	}

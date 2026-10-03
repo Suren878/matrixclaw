@@ -77,7 +77,7 @@ func (r *Runtime) completedResponse(response responsesResponse) (providers.Respo
 	if text == "" && len(calls) == 0 && !stop.AllowsEmptyReply() {
 		return providers.Response{}, fmt.Errorf("openai-codex: %w", providers.ErrEmptyResponse)
 	}
-	return providers.Response{Text: text, ToolCalls: calls, Model: r.model, Provider: providers.TypeOpenAICodex, StopReason: stop, Reasoning: reasoning, Usage: response.Usage.toProviderUsage()}, nil
+	return providers.Response{Text: text, ToolCalls: calls, Model: r.Model, Provider: providers.TypeOpenAICodex, StopReason: stop, Reasoning: reasoning, Usage: response.Usage.toProviderUsage()}, nil
 }
 
 func reasoningSummary(parts []responsesSummaryPart) string {

@@ -12,11 +12,6 @@ import (
 
 // ToolUseAllowed reports whether the model can receive tool definitions.
 func ToolUseAllowed(model Model) bool {
-	if profiler, ok := model.(providers.RuntimeProfiler); ok {
-		if providers.NormalizeRuntimeProfile(profiler.RuntimeProfile()).ToolUseMode == providers.ToolUseDisabled {
-			return false
-		}
-	}
 	capabilities, ok := model.(providers.RuntimeCapabilityProvider)
 	if !ok {
 		return true

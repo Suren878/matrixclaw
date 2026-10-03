@@ -28,7 +28,7 @@ func TestGenerateAcceptsJSONWhenGatewayIgnoresStreamRequest(t *testing.T) {
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"Complete JSON reply"},"finish_reason":"stop"}]}`))
 	}))
 	defer server.Close()
-	runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: server.URL, Model: "test"})
+	runtime, err := New(context.Background(), providers.RuntimeConfig{APIKey: "test", BaseURL: server.URL, Model: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestGenerateReportsTypedHTTPErrorsWithoutRetrying(t *testing.T) {
 			w.WriteHeader(tc.status)
 			_, _ = w.Write([]byte(`{"error":{"message":"rejected"}}`))
 		}))
-		runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: server.URL, Model: "test"})
+		runtime, err := New(context.Background(), providers.RuntimeConfig{APIKey: "test", BaseURL: server.URL, Model: "test"})
 		if err != nil {
 			t.Fatal(err)
 		}

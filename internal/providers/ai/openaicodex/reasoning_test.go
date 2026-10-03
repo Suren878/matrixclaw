@@ -9,7 +9,7 @@ import (
 )
 
 func TestEncryptedReasoningIsRequestedAndReturned(t *testing.T) {
-	runtime := &Runtime{model: "gpt-5.4", reasoningEffort: "medium"}
+	runtime := &Runtime{RuntimeBase: providers.RuntimeBase{Model: "gpt-5.4"}, reasoningEffort: "medium"}
 	payload := runtime.responsesPayload(providers.Request{Messages: []providers.Message{{Role: "user", Content: "hello"}}})
 	if !slices.Contains(payload.Include, "reasoning.encrypted_content") {
 		t.Fatalf("include=%v", payload.Include)
@@ -25,7 +25,7 @@ func TestEncryptedReasoningIsRequestedAndReturned(t *testing.T) {
 }
 
 func TestReasoningIsReplayedBeforeCommentaryAndCalls(t *testing.T) {
-	payload := (&Runtime{model: "gpt-5.4"}).responsesPayload(providers.Request{Messages: []providers.Message{
+	payload := (&Runtime{RuntimeBase: providers.RuntimeBase{Model: "gpt-5.4"}}).responsesPayload(providers.Request{Messages: []providers.Message{
 		{Role: "user", Content: "go"},
 		{Role: "assistant", Content: "Checking.", Reasoning: []providers.ReasoningBlock{{RedactedData: "enc-1"}}, ToolCalls: []providers.ToolCall{{ID: "a", Name: "read", Arguments: json.RawMessage(`{}`)}}},
 		{Role: "tool", ToolCallID: "a", Content: "file"},

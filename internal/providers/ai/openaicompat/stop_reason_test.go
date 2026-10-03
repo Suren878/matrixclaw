@@ -34,7 +34,7 @@ func TestStreamFinishReasonBecomesStopReason(t *testing.T) {
 		{"content filter", sseStream(`{"choices":[{"delta":{},"finish_reason":"content_filter"}]}`), providers.StopContentFilter, "", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			response, err := (&Runtime{model: "test"}).decodeStream(context.Background(), strings.NewReader(tc.stream))
+			response, err := (&Runtime{RuntimeBase: providers.RuntimeBase{Model: "test"}}).decodeStream(context.Background(), strings.NewReader(tc.stream))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -51,7 +51,7 @@ func TestStreamFinishReasonBecomesStopReason(t *testing.T) {
 }
 
 func TestJSONFinishReasonLengthIsNotAnError(t *testing.T) {
-	response, err := (&Runtime{model: "test"}).decodeChatResponse([]byte(`{"choices":[{"message":{"content":"Partial"},"finish_reason":"length"}]}`))
+	response, err := (&Runtime{RuntimeBase: providers.RuntimeBase{Model: "test"}}).decodeChatResponse([]byte(`{"choices":[{"message":{"content":"Partial"},"finish_reason":"length"}]}`))
 	if err != nil || response.StopReason != providers.StopMaxTokens || response.Text != "Partial" {
 		t.Fatalf("response=%+v err=%v", response, err)
 	}
@@ -82,7 +82,7 @@ func TestFinishReasonMapping(t *testing.T) {
 				toolCallsJSON = "null"
 			}
 			body := fmt.Sprintf(`{"choices":[{"message":{"content":"hi","tool_calls":%s},"finish_reason":%q}]}`, toolCallsJSON, tc.finishReason)
-			response, err := (&Runtime{model: "test"}).decodeChatResponse([]byte(body))
+			response, err := (&Runtime{RuntimeBase: providers.RuntimeBase{Model: "test"}}).decodeChatResponse([]byte(body))
 			if tc.wantErr != nil {
 				if !errors.Is(err, tc.wantErr) {
 					t.Fatalf("err=%v, want %v", err, tc.wantErr)

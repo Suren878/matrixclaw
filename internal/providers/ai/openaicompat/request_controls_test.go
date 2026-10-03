@@ -29,7 +29,7 @@ func captureChatServer(t *testing.T, bodies *[]map[string]any) *httptest.Server 
 func TestRequestControlsReachTheWire(t *testing.T) {
 	var bodies []map[string]any
 	server := captureChatServer(t, &bodies)
-	runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: server.URL, Model: "controls-model"})
+	runtime, err := New(context.Background(), providers.RuntimeConfig{APIKey: "test", BaseURL: server.URL, Model: "controls-model"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestRequestControlsReachTheWire(t *testing.T) {
 
 func TestPromptCacheKeyUsesTheSessionKey(t *testing.T) {
 	request := providers.Request{CacheKey: "session-1", Messages: []providers.Message{{Role: "user", Content: "hello"}}}
-	if got := (&Runtime{model: "gpt-5.4", promptCacheKey: true}).chatPayload(context.Background(), request).PromptCacheKey; got != "session-1" {
+	if got := (&Runtime{RuntimeBase: providers.RuntimeBase{Model: "gpt-5.4"}, promptCacheKey: true}).chatPayload(context.Background(), request).PromptCacheKey; got != "session-1" {
 		t.Fatalf("prompt_cache_key=%q, want session-1", got)
 	}
 }
@@ -74,7 +74,7 @@ func TestGenerateDropsARejectedOutputLimit(t *testing.T) {
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`))
 	}))
 	defer server.Close()
-	runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: server.URL, Model: "small-limit-model"})
+	runtime, err := New(context.Background(), providers.RuntimeConfig{APIKey: "test", BaseURL: server.URL, Model: "small-limit-model"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestGenerateDropsAnUnsupportedOutputLimitField(t *testing.T) {
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`))
 	}))
 	defer server.Close()
-	runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: server.URL, Model: "unsupported-field-model"})
+	runtime, err := New(context.Background(), providers.RuntimeConfig{APIKey: "test", BaseURL: server.URL, Model: "unsupported-field-model"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestGenerateRemembersALearnedOutputLimit(t *testing.T) {
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`))
 	}))
 	defer server.Close()
-	runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: server.URL, Model: "learned-limit-model"})
+	runtime, err := New(context.Background(), providers.RuntimeConfig{APIKey: "test", BaseURL: server.URL, Model: "learned-limit-model"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestListModelsRegistersOutputLimit(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":[{"id":"vendor/maxout-model","context_length":200000,"top_provider":{"max_completion_tokens":8000}}]}`))
 	}))
 	defer server.Close()
-	if _, err := ListModels(context.Background(), Config{ProviderID: "maxout-router", APIKey: "test", BaseURL: server.URL}); err != nil {
+	if _, err := ListModels(context.Background(), providers.RuntimeConfig{ProviderID: "maxout-router", APIKey: "test", BaseURL: server.URL}); err != nil {
 		t.Fatal(err)
 	}
 	if got := providers.ResolveModelMetadata("maxout-router", providers.TypeOpenAICompat, "vendor/maxout-model").MaxOutputTokens; got != 8000 {
@@ -214,7 +214,7 @@ func TestClaudeOnOpenRouterGetsContentCacheBreakpoints(t *testing.T) {
 	}
 	payload := func(baseURL, model string) string {
 		t.Helper()
-		runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: baseURL, Model: model})
+		runtime, err := New(context.Background(), providers.RuntimeConfig{APIKey: "test", BaseURL: baseURL, Model: model})
 		if err != nil {
 			t.Fatal(err)
 		}

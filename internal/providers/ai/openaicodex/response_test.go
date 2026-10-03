@@ -11,7 +11,7 @@ import (
 )
 
 func TestCompletedStreamUsesFinalTextAndOrderedTools(t *testing.T) {
-	runtime := &Runtime{model: "test-model"}
+	runtime := &Runtime{RuntimeBase: providers.RuntimeBase{Model: "test-model"}}
 	var preview strings.Builder
 	ctx := providers.WithTextStream(context.Background(), func(delta string) error {
 		preview.WriteString(delta)

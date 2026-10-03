@@ -54,7 +54,7 @@ func (r *Runtime) assembleResponse(blocks []anthropicBlock, rawStopReason string
 	}
 	return providers.Response{
 		Text:       reply,
-		Model:      r.model,
+		Model:      r.Model,
 		Provider:   providers.TypeAnthropic,
 		Reasoning:  reasoning,
 		ToolCalls:  calls,

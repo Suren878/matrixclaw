@@ -2,43 +2,20 @@ package openaicompat
 
 import (
 	"context"
-	"errors"
-	"net/http"
 	"strings"
 	"sync"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
-type Config struct {
-	ProviderID      string
-	CatalogID       string
-	APIKey          string
-	BaseURL         string
-	ModelsURL       string
-	PublicModels    bool
-	Model           string
-	MaxOutputTokens int64
-	ReasoningEffort string
-	ToolUseMode     providers.ToolUseMode
-	Profile         providers.ProviderProfile
-	HTTPClient      *http.Client
-}
-
 type Runtime struct {
-	client              *http.Client
+	providers.RuntimeBase
 	endpoint            string
-	apiKey              string
-	model               string
-	metadataID          string
-	maxOutputTokens     int64
 	reasoningEffort     string
 	useCompletionMax    bool
 	promptCacheKey      bool
 	contentCacheControl bool
 	headers             map[string]string
-	profile             providers.RuntimeProfile
-	capabilities        providers.ModelCapabilities
 	maxTokensLimit      maxTokensLimitState
 }
 
@@ -78,37 +55,24 @@ func (r *Runtime) rememberMaxTokensRejection(capTokens int64, omit bool) {
 	}
 }
 
-func New(_ context.Context, cfg Config) (providers.Runtime, error) {
-	client, apiKey, baseURL, model, err := normalizeConfig(cfg)
-	if err != nil {
+func New(_ context.Context, cfg providers.RuntimeConfig) (providers.Runtime, error) {
+	base := providers.NewRuntimeBase(cfg, providers.TypeOpenAICompat, providers.DefaultOpenAICompatModel)
+	if err := base.RequireKeyAndURL("openaicompat"); err != nil {
 		return nil, err
 	}
-	providerProfile := cfg.Profile
-	if providerProfile.IsZero() {
-		providerProfile = providers.ProfileForProvider(providers.TypeOpenAICompat)
-	}
-	profile := providerProfile.RuntimeProfileWithOverrides(providers.RuntimeProfile{
-		ToolUseMode: cfg.ToolUseMode,
-	})
 	reasoningEffort := ""
-	if providerProfile.SupportsReasoningEffort {
+	if base.Capabilities.ReasoningEffort {
 		reasoningEffort = runtimeReasoningEffort(cfg.ReasoningEffort)
 	}
-	chatOptions := providers.ResolveOpenAIChatOptions(providerProfile, baseURL, model)
+	chatOptions := providers.ResolveOpenAIChatOptions(cfg.CatalogKey(), base.BaseURL, base.Model)
 	return &Runtime{
-		client:              client,
-		endpoint:            strings.TrimRight(baseURL, "/") + "/chat/completions",
-		apiKey:              apiKey,
-		model:               model,
-		metadataID:          firstNonEmptyString(cfg.ProviderID, cfg.CatalogID),
-		maxOutputTokens:     cfg.MaxOutputTokens,
+		RuntimeBase:         base,
+		endpoint:            strings.TrimRight(base.BaseURL, "/") + "/chat/completions",
 		reasoningEffort:     reasoningEffort,
 		useCompletionMax:    chatOptions.MaxCompletionTokens,
 		promptCacheKey:      chatOptions.PromptCacheKey,
 		contentCacheControl: chatOptions.ContentCacheControl,
 		headers:             chatOptions.Headers,
-		profile:             profile,
-		capabilities:        providerProfile.Capabilities,
 	}, nil
 }
 
@@ -120,25 +84,12 @@ func runtimeReasoningEffort(value string) string {
 	return effort
 }
 
-func (r *Runtime) RuntimeProfile() providers.RuntimeProfile {
-	return r.profile
-}
-
-func (r *Runtime) Identity() (string, string) {
-	return providers.TypeOpenAICompat, r.model
-}
-
-func (r *Runtime) ModelCapabilities() providers.ModelCapabilities {
-	return r.capabilities
-}
-
 func (r *Runtime) OutputLimits() (int64, int64) {
 	capTokens, omit := r.learnedMaxTokensLimit()
 	if omit {
 		return 0, 0
 	}
-	current := providers.ResolveMaxOutputTokens(0, r.maxOutputTokens, r.metadataID, providers.TypeOpenAICompat, r.model)
-	ceiling := int64(providers.ResolveModelMetadata(r.metadataID, providers.TypeOpenAICompat, r.model).MaxOutputTokens)
+	current, ceiling := r.CatalogOutputLimits()
 	if capTokens > 0 && (ceiling == 0 || capTokens < ceiling) {
 		ceiling = capTokens
 	}
@@ -146,27 +97,4 @@ func (r *Runtime) OutputLimits() (int64, int64) {
 		current = ceiling
 	}
 	return current, ceiling
-}
-
-func normalizeConfig(cfg Config) (*http.Client, string, string, string, error) {
-	apiKey := strings.TrimSpace(cfg.APIKey)
-	if apiKey == "" {
-		return nil, "", "", "", errors.New("openaicompat: api key is required")
-	}
-
-	baseURL := strings.TrimSpace(cfg.BaseURL)
-	if baseURL == "" {
-		return nil, "", "", "", errors.New("openaicompat: base url is required")
-	}
-
-	model := strings.TrimSpace(cfg.Model)
-	if model == "" {
-		model = providers.DefaultOpenAICompatModel
-	}
-
-	client := cfg.HTTPClient
-	if client == nil {
-		client = providers.NewHTTPClient()
-	}
-	return client, apiKey, baseURL, model, nil
 }

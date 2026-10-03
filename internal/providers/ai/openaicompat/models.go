@@ -12,21 +12,18 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
-func ListModels(ctx context.Context, cfg Config) ([]string, error) {
-	client := cfg.HTTPClient
-	if client == nil {
-		client = providers.NewHTTPClient()
-	}
-	apiKey := strings.TrimSpace(cfg.APIKey)
-	baseURL := strings.TrimSpace(cfg.BaseURL)
-	modelsURL := strings.TrimSpace(cfg.ModelsURL)
+func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, error) {
+	base := providers.NewRuntimeBase(cfg, providers.TypeOpenAICompat, "")
+	client, apiKey, baseURL := base.Client, base.APIKey, base.BaseURL
+	policy := providers.PolicyForProvider(cfg.CatalogKey(), providers.TypeOpenAICompat)
+	modelsURL := strings.TrimSpace(policy.ModelsURL)
 	if modelsURL == "" {
 		if baseURL == "" {
 			return nil, errors.New("openaicompat: base url is required")
 		}
 		modelsURL = strings.TrimRight(baseURL, "/") + "/models"
 	}
-	if apiKey == "" && !cfg.PublicModels {
+	if apiKey == "" && !policy.PublicModelCatalog {
 		return nil, errors.New("openaicompat: api key is required")
 	}
 
@@ -38,7 +35,7 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	req.Header.Set("Accept", "application/json")
-	chatOptions := providers.ResolveOpenAIChatOptions(cfg.Profile, baseURL, cfg.Model)
+	chatOptions := providers.ResolveOpenAIChatOptions(cfg.CatalogKey(), baseURL, base.Model)
 	applyDefaultHeaders(req, chatOptions.Headers)
 
 	res, err := client.Do(req)

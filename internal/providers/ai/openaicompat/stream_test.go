@@ -22,7 +22,7 @@ func TestDecodeStreamRequiresCompletion(t *testing.T) {
 		{"empty", "data: [DONE]\n\n", providers.ErrEmptyResponse, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			response, err := (&Runtime{model: "test"}).decodeStream(context.Background(), strings.NewReader(tc.frames))
+			response, err := (&Runtime{RuntimeBase: providers.RuntimeBase{Model: "test"}}).decodeStream(context.Background(), strings.NewReader(tc.frames))
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("error=%v, want %v", err, tc.wantErr)
 			}

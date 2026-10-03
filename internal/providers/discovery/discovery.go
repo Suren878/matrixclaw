@@ -9,10 +9,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
-	anthropic "github.com/Suren878/matrixclaw/internal/providers/ai/anthropiccompat"
-	"github.com/Suren878/matrixclaw/internal/providers/ai/gemini"
-	"github.com/Suren878/matrixclaw/internal/providers/ai/openaicodex"
-	"github.com/Suren878/matrixclaw/internal/providers/ai/openaicompat"
+	"github.com/Suren878/matrixclaw/internal/providers/factory"
 )
 
 // modelsDiscoveryTimeout caps how long a remote model listing call may take.
@@ -73,55 +70,19 @@ func normalizedModels(providerID string, providerType string, models []string) [
 }
 
 func fetchRemoteModels(ctx context.Context, input ModelDiscoveryInput) ([]string, error) {
-	providerType := providers.NormalizeOptionalProviderType(input.Type)
-	if providerType == "" {
+	cfg := providers.RuntimeConfig{
+		ProviderID: strings.TrimSpace(input.ID),
+		CatalogID:  strings.TrimSpace(input.CatalogID),
+		Type:       input.Type,
+		APIKey:     strings.TrimSpace(input.APIKey),
+		BaseURL:    strings.TrimSpace(input.BaseURL),
+		Model:      strings.TrimSpace(input.Model),
+	}
+	adapter, err := factory.AdapterFor(cfg)
+	if err != nil {
 		return nil, errors.New("remote model list unavailable")
 	}
-	providerID := firstNonEmpty(input.CatalogID, input.ID)
-	profile := providers.ProfileForModel(providerID, providerType, input.Model)
-
-	switch profile.RuntimeProviderType {
-	case providers.TypeOpenAICodex:
-		return openaicodex.ListModels(ctx, openaicodex.Config{
-			ProviderID: strings.TrimSpace(input.ID),
-			CatalogID:  strings.TrimSpace(input.CatalogID),
-			BaseURL:    strings.TrimSpace(input.BaseURL),
-			Model:      strings.TrimSpace(input.Model),
-			Profile:    profile,
-		})
-	case providers.TypeOpenAICompat:
-		policy := providers.PolicyForProvider(providerID, providerType)
-		return openaicompat.ListModels(ctx, openaicompat.Config{
-			ProviderID:   strings.TrimSpace(input.ID),
-			CatalogID:    strings.TrimSpace(input.CatalogID),
-			APIKey:       strings.TrimSpace(input.APIKey),
-			BaseURL:      strings.TrimSpace(input.BaseURL),
-			ModelsURL:    policy.ModelsURL,
-			PublicModels: policy.PublicModelCatalog,
-			Model:        strings.TrimSpace(input.Model),
-			Profile:      profile,
-		})
-	case providers.TypeAnthropic:
-		return anthropic.ListModels(ctx, anthropic.Config{
-			ProviderID: strings.TrimSpace(input.ID),
-			CatalogID:  strings.TrimSpace(input.CatalogID),
-			APIKey:     strings.TrimSpace(input.APIKey),
-			BaseURL:    strings.TrimSpace(input.BaseURL),
-			Model:      strings.TrimSpace(input.Model),
-			Profile:    profile,
-		})
-	case providers.TypeGemini:
-		return gemini.ListModels(ctx, gemini.Config{
-			ProviderID: strings.TrimSpace(input.ID),
-			CatalogID:  strings.TrimSpace(input.CatalogID),
-			APIKey:     strings.TrimSpace(input.APIKey),
-			BaseURL:    strings.TrimSpace(input.BaseURL),
-			Model:      strings.TrimSpace(input.Model),
-			Profile:    profile,
-		})
-	default:
-		return nil, errors.New("remote model list unavailable")
-	}
+	return adapter.ListModels(ctx, cfg)
 }
 
 func firstNonEmpty(values ...string) string {

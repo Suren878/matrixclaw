@@ -14,8 +14,8 @@ type OpenAIChatOptions struct {
 	ContentCacheControl bool // mark cache breakpoints in content parts; OpenRouter passes them to Claude models
 }
 
-func ResolveOpenAIChatOptions(profile ProviderProfile, baseURL string, model string) OpenAIChatOptions {
-	headers := copyStringMap(profile.ChatHeaders)
+func ResolveOpenAIChatOptions(providerID string, baseURL string, model string) OpenAIChatOptions {
+	headers := copyStringMap(PolicyForProvider(providerID, TypeOpenAICompat).ChatHeaders)
 	if headers == nil {
 		headers = map[string]string{}
 	}
@@ -25,7 +25,7 @@ func ResolveOpenAIChatOptions(profile ProviderProfile, baseURL string, model str
 	openAIHost := openAICompatibleHost(baseURL, "api.openai.com")
 	return OpenAIChatOptions{
 		Headers:             headers,
-		MaxCompletionTokens: NormalizeProviderID(profile.ProviderID) == "openai" || openAIHost && strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "gpt-5"),
+		MaxCompletionTokens: NormalizeProviderID(providerID) == "openai" || openAIHost && strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "gpt-5"),
 		PromptCacheKey:      openAIHost,
 		ContentCacheControl: openAICompatibleHost(baseURL, "openrouter.ai") && claudeModel(model),
 	}

@@ -27,7 +27,7 @@ func TestTextReplyCarriesStopReasonAndOutputLimit(t *testing.T) {
 		_, _ = w.Write([]byte(replies[len(limits)-1]))
 	}))
 	defer server.Close()
-	runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: server.URL, Model: "claude-test"})
+	runtime, err := New(context.Background(), providers.RuntimeConfig{APIKey: "test", BaseURL: server.URL, Model: "claude-test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestListModelsRegistersOutputLimit(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":[{"id":"claude-maxout-test","max_input_tokens":200000,"max_tokens":8192}]}`))
 	}))
 	defer server.Close()
-	if _, err := ListModels(context.Background(), Config{ProviderID: "anthropic-maxout", APIKey: "test", BaseURL: server.URL}); err != nil {
+	if _, err := ListModels(context.Background(), providers.RuntimeConfig{ProviderID: "anthropic-maxout", APIKey: "test", BaseURL: server.URL}); err != nil {
 		t.Fatal(err)
 	}
 	if got := providers.ResolveModelMetadata("anthropic-maxout", providers.TypeAnthropic, "claude-maxout-test").MaxOutputTokens; got != 8192 {

@@ -17,7 +17,7 @@ func generateAgainst(t *testing.T, reply string) (providers.Response, error) {
 		_, _ = w.Write([]byte("data: " + reply + "\n\n"))
 	}))
 	defer server.Close()
-	runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: server.URL, Model: "gemini-test"})
+	runtime, err := New(context.Background(), providers.RuntimeConfig{APIKey: "test", BaseURL: server.URL, Model: "gemini-test"})
 	if err != nil {
 		t.Fatal(err)
 	}

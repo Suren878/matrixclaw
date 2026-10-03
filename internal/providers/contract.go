@@ -89,10 +89,6 @@ type Runtime interface {
 	Generate(ctx context.Context, request Request) (Response, error)
 }
 
-type RuntimeProfiler interface {
-	RuntimeProfile() RuntimeProfile
-}
-
 type RuntimeCapabilityProvider interface {
 	ModelCapabilities() ModelCapabilities
 }

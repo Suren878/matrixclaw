@@ -27,7 +27,7 @@ func TestGenerateStreamsDeltasUntilFinishReason(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: server.URL, Model: "gemini-test"})
+	runtime, err := New(context.Background(), providers.RuntimeConfig{APIKey: "test", BaseURL: server.URL, Model: "gemini-test"})
 	if err != nil {
 		t.Fatal(err)
 	}

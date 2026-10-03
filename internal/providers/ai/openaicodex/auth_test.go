@@ -103,7 +103,7 @@ func TestGenerateReportsRateLimitsAsRetryable(t *testing.T) {
 			w.Header().Set("Retry-After", "2")
 			http.Error(w, `{"error":{"message":"slow down"}}`, status)
 		}))
-		runtime, err := New(context.Background(), Config{BaseURL: server.URL, Model: "gpt-5.4"})
+		runtime, err := New(context.Background(), providers.RuntimeConfig{BaseURL: server.URL, Model: "gpt-5.4"})
 		if err != nil {
 			t.Fatal(err)
 		}

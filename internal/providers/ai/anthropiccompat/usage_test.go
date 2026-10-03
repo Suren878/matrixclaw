@@ -35,7 +35,7 @@ func TestUsageCountsCachedInputAsPrompt(t *testing.T) {
 		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"Hi"}],"usage":{"input_tokens":100,"cache_creation_input_tokens":20,"cache_read_input_tokens":300,"output_tokens":50}}`))
 	}))
 	defer server.Close()
-	runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: server.URL, Model: "claude-test"})
+	runtime, err := New(context.Background(), providers.RuntimeConfig{APIKey: "test", BaseURL: server.URL, Model: "claude-test"})
 	if err != nil {
 		t.Fatal(err)
 	}

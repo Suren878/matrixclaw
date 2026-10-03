@@ -62,7 +62,7 @@ func startServer(t *testing.T, replies ...string) (*httptest.Server, func(int) [
 func newTestRuntime(t *testing.T, replies ...string) (providers.Runtime, func(int) []byte) {
 	t.Helper()
 	server, body := startServer(t, replies...)
-	runtime, err := New(context.Background(), Config{
+	runtime, err := New(context.Background(), providers.RuntimeConfig{
 		APIKey: "test-key", BaseURL: server.URL, Model: "claude-test", HTTPClient: server.Client(),
 	})
 	if err != nil {
@@ -419,35 +419,6 @@ func TestToolUseWithoutNameIsAMalformedCall(t *testing.T) {
 	}
 }
 
-func TestDisabledToolUseModeStripsToolsAndToolTurns(t *testing.T) {
-	server, sent := startServer(t, textReply("Plain."))
-	runtime, err := New(context.Background(), Config{
-		APIKey: "test-key", BaseURL: server.URL, Model: "claude-test", HTTPClient: server.Client(),
-		ToolUseMode: providers.ToolUseDisabled,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = runtime.Generate(context.Background(), providers.Request{
-		Tools: testTools,
-		Messages: []providers.Message{
-			{Role: "user", Content: "Inspect"},
-			{Role: "assistant", ToolCalls: []providers.ToolCall{{ID: "toolu_1", Name: "ls", Arguments: json.RawMessage(`{}`)}}},
-			{Role: "tool", ToolCallID: "toolu_1", Content: "a.go"},
-			{Role: "user", Content: "continue"},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := string(sent(0))
-	for _, forbidden := range []string{`"tools"`, "tool_use", "tool_result"} {
-		if strings.Contains(body, forbidden) {
-			t.Fatalf("disabled tool use still sends %s: %s", forbidden, body)
-		}
-	}
-}
-
 // rejectingServer answers 400 with message while the request matches reject,
 // and textReply otherwise; it returns the recorded request bodies.
 func rejectingServer(t *testing.T, reject func(body string) bool, message string) (providers.Runtime, *[]string) {
@@ -467,7 +438,7 @@ func rejectingServer(t *testing.T, reject func(body string) bool, message string
 		_, _ = io.WriteString(w, textReply("ok"))
 	}))
 	t.Cleanup(server.Close)
-	runtime, err := New(context.Background(), Config{APIKey: "k", BaseURL: server.URL, Model: "claude-test", HTTPClient: server.Client(), ToolUseMode: providers.ToolUseNative})
+	runtime, err := New(context.Background(), providers.RuntimeConfig{APIKey: "k", BaseURL: server.URL, Model: "claude-test", HTTPClient: server.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}

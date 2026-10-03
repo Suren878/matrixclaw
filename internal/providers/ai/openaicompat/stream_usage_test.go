@@ -25,7 +25,7 @@ func TestStreamedRequestAsksForUsage(t *testing.T) {
 		)))
 	}))
 	defer server.Close()
-	runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: server.URL, Model: "stream-model"})
+	runtime, err := New(context.Background(), providers.RuntimeConfig{APIKey: "test", BaseURL: server.URL, Model: "stream-model"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestGenerateRetriesWithoutRejectedStreamOptions(t *testing.T) {
 		_, _ = w.Write([]byte(sseStream(`{"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}`)))
 	}))
 	defer server.Close()
-	runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: server.URL, Model: "strict-gateway"})
+	runtime, err := New(context.Background(), providers.RuntimeConfig{APIKey: "test", BaseURL: server.URL, Model: "strict-gateway"})
 	if err != nil {
 		t.Fatal(err)
 	}

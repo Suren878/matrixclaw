@@ -23,7 +23,7 @@ func capturePayloads(t *testing.T, requests ...providers.Request) []generateCont
 		_, _ = w.Write([]byte(`data: {"candidates":[{"content":{"role":"model","parts":[{"text":"ok"}]},"finishReason":"STOP"}]}` + "\n\n"))
 	}))
 	defer server.Close()
-	runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: server.URL, Model: "gemini-test"})
+	runtime, err := New(context.Background(), providers.RuntimeConfig{APIKey: "test", BaseURL: server.URL, Model: "gemini-test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestListModelsRegistersOutputLimit(t *testing.T) {
 		_, _ = w.Write([]byte(`{"models":[{"name":"models/gemini-maxout-test","supportedGenerationMethods":["generateContent"],"inputTokenLimit":1048576,"outputTokenLimit":8192}]}`))
 	}))
 	defer server.Close()
-	if _, err := ListModels(context.Background(), Config{ProviderID: "gemini-maxout", APIKey: "test", BaseURL: server.URL}); err != nil {
+	if _, err := ListModels(context.Background(), providers.RuntimeConfig{ProviderID: "gemini-maxout", APIKey: "test", BaseURL: server.URL}); err != nil {
 		t.Fatal(err)
 	}
 	metadata := providers.ResolveModelMetadata("gemini-maxout", providers.TypeGemini, "models/gemini-maxout-test")

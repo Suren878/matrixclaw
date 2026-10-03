@@ -17,73 +17,29 @@ const (
 	defaultAnthropicVersion = "2023-06-01"
 )
 
-type Config struct {
-	ProviderID      string
-	CatalogID       string
-	APIKey          string
-	BaseURL         string
-	Model           string
-	MaxOutputTokens int64
-	ToolUseMode     providers.ToolUseMode
-	Profile         providers.ProviderProfile
-	HTTPClient      *http.Client
-}
-
 type Runtime struct {
-	client       *http.Client
-	endpoint     string
-	apiKey       string
-	model        string
-	providerID   string
-	maxTokens    int64
-	profile      providers.RuntimeProfile
-	capabilities providers.ModelCapabilities
+	providers.RuntimeBase
+	endpoint string
 }
 
-func New(_ context.Context, cfg Config) (providers.Runtime, error) {
-	client, apiKey, baseURL, model, maxTokens, err := normalizeConfig(cfg)
-	if err != nil {
+func New(_ context.Context, cfg providers.RuntimeConfig) (providers.Runtime, error) {
+	base := providers.NewRuntimeBase(cfg, providers.TypeAnthropic, providers.DefaultAnthropicModel)
+	if err := base.RequireKeyAndURL("anthropic"); err != nil {
 		return nil, err
 	}
-	providerProfile := cfg.Profile
-	if providerProfile.IsZero() {
-		providerProfile = providers.ProfileForProvider(providers.TypeAnthropic)
-	}
-
-	return &Runtime{
-		client:       client,
-		endpoint:     strings.TrimRight(baseURL, "/") + "/messages",
-		apiKey:       apiKey,
-		model:        model,
-		providerID:   metadataProviderID(cfg),
-		maxTokens:    maxTokens,
-		profile:      providerProfile.RuntimeProfileWithOverrides(providers.RuntimeProfile{ToolUseMode: cfg.ToolUseMode}),
-		capabilities: providerProfile.Capabilities,
-	}, nil
-}
-
-func (r *Runtime) RuntimeProfile() providers.RuntimeProfile {
-	return r.profile
-}
-
-func (r *Runtime) Identity() (string, string) {
-	return providers.TypeAnthropic, r.model
+	return &Runtime{RuntimeBase: base, endpoint: strings.TrimRight(base.BaseURL, "/") + "/messages"}, nil
 }
 
 func (r *Runtime) OutputLimits() (int64, int64) {
-	current := providers.ResolveMaxOutputTokens(0, r.maxTokens, r.providerID, providers.TypeAnthropic, r.model)
-	return current, int64(providers.ResolveModelMetadata(r.providerID, providers.TypeAnthropic, r.model).MaxOutputTokens)
+	return r.CatalogOutputLimits()
 }
 
-func (r *Runtime) ModelCapabilities() providers.ModelCapabilities {
-	return r.capabilities
-}
-
-func ListModels(ctx context.Context, cfg Config) ([]string, error) {
-	client, apiKey, baseURL, _, _, err := normalizeConfig(cfg)
-	if err != nil {
+func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, error) {
+	base := providers.NewRuntimeBase(cfg, providers.TypeAnthropic, providers.DefaultAnthropicModel)
+	if err := base.RequireKeyAndURL("anthropic"); err != nil {
 		return nil, err
 	}
+	client, apiKey, baseURL := base.Client, base.APIKey, base.BaseURL
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/models", nil)
 	if err != nil {
@@ -138,10 +94,9 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 }
 
 func (r *Runtime) Generate(ctx context.Context, request providers.Request) (providers.Response, error) {
-	request = providers.NormalizeRequest(request, r.profile)
 	payload := anthropicRequest{
-		Model:     r.model,
-		MaxTokens: providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.maxTokens, r.providerID, providers.TypeAnthropic, r.model),
+		Model:     r.Model,
+		MaxTokens: providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.MaxOutputTokens, r.MetadataID, providers.TypeAnthropic, r.Model),
 	}
 	if err := encodeRequest(&payload, request); err != nil {
 		return providers.Response{}, err
@@ -168,7 +123,7 @@ func (r *Runtime) send(ctx context.Context, payload anthropicRequest) (providers
 	if err != nil {
 		return providers.Response{}, fmt.Errorf("anthropic: build request: %w", err)
 	}
-	httpReq.Header.Set("x-api-key", r.apiKey)
+	httpReq.Header.Set("x-api-key", r.APIKey)
 	httpReq.Header.Set("anthropic-version", defaultAnthropicVersion)
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json")
@@ -176,7 +131,7 @@ func (r *Runtime) send(ctx context.Context, payload anthropicRequest) (providers
 		httpReq.Header.Set("Accept", "text/event-stream")
 	}
 
-	httpRes, err := r.client.Do(httpReq)
+	httpRes, err := r.Client.Do(httpReq)
 	if err != nil {
 		return providers.Response{}, fmt.Errorf("anthropic: request failed: %w", err)
 	}
@@ -212,13 +167,6 @@ func anthropicStopReason(reason string) providers.StopReason {
 	default:
 		return providers.StopEndTurn
 	}
-}
-
-func metadataProviderID(cfg Config) string {
-	if id := strings.TrimSpace(cfg.ProviderID); id != "" {
-		return id
-	}
-	return strings.TrimSpace(cfg.CatalogID)
 }
 
 type anthropicUsagePayload struct {
@@ -319,30 +267,4 @@ func decodeAnthropicError(statusCode int, body []byte) string {
 		return fmt.Sprintf("status %d", statusCode)
 	}
 	return fmt.Sprintf("status %d: %s", statusCode, text)
-}
-
-func normalizeConfig(cfg Config) (*http.Client, string, string, string, int64, error) {
-	apiKey := strings.TrimSpace(cfg.APIKey)
-	if apiKey == "" {
-		return nil, "", "", "", 0, errors.New("anthropic: api key is required")
-	}
-
-	baseURL := strings.TrimSpace(cfg.BaseURL)
-	if baseURL == "" {
-		return nil, "", "", "", 0, errors.New("anthropic: base url is required")
-	}
-
-	model := strings.TrimSpace(cfg.Model)
-	if model == "" {
-		model = providers.DefaultAnthropicModel
-	}
-
-	maxTokens := cfg.MaxOutputTokens
-
-	client := cfg.HTTPClient
-	if client == nil {
-		client = providers.NewHTTPClient()
-	}
-
-	return client, apiKey, baseURL, model, maxTokens, nil
 }

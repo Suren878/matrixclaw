@@ -11,7 +11,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
-func ListModels(ctx context.Context, cfg Config) ([]string, error) {
+func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, error) {
 	client := cfg.HTTPClient
 	if client == nil {
 		client = providers.NewHTTPClient()

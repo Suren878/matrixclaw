@@ -13,7 +13,7 @@ func (r *Runtime) chatMessage(message providers.Message) chatCompletionMessage {
 		Role:    normalizeOpenAIRole(message.Role),
 		Content: "",
 	}
-	if len(message.Images) > 0 && r.capabilities.ImageInput {
+	if len(message.Images) > 0 && r.Capabilities.ImageInput {
 		chatMessage.Content = openAIContentParts(message)
 	} else if content := strings.TrimSpace(message.Content); content != "" {
 		chatMessage.Content = content

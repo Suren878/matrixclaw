@@ -211,8 +211,8 @@ func (r *Registry) lookup(providerID string) (ProviderSpec, bool) {
 	return ProviderSpec{}, false
 }
 
-func runtimeConfigWithModel(provider ProviderSpec, model string) providerfactory.Config {
-	return providerfactory.Config{
+func runtimeConfigWithModel(provider ProviderSpec, model string) providers.RuntimeConfig {
+	return providers.RuntimeConfig{
 		ProviderID:      provider.ID,
 		CatalogID:       provider.CatalogID,
 		Type:            provider.Type,

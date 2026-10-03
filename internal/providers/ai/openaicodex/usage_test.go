@@ -13,7 +13,7 @@ func TestUsageKeepsCachedInputInPrompt(t *testing.T) {
 	stream := `data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":1000,"input_tokens_details":{"cached_tokens":700},"output_tokens":200,"output_tokens_details":{"reasoning_tokens":150},"total_tokens":1200}}}
 
 `
-	response, err := (&Runtime{model: "test-model"}).decodeStream(context.Background(), strings.NewReader(stream))
+	response, err := (&Runtime{RuntimeBase: providers.RuntimeBase{Model: "test-model"}}).decodeStream(context.Background(), strings.NewReader(stream))
 	if err != nil {
 		t.Fatal(err)
 	}

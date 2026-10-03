@@ -16,7 +16,7 @@ func TestOutputLimitsUseConfigThenDefaultUnderTheCatalogCeiling(t *testing.T) {
 		{3000, 3000},
 		{0, providers.DefaultMaxOutputTokens},
 	} {
-		r := &Runtime{model: "gemini-limits-model", providerID: "gemini-limits", maxOutputTokens: tc.configured}
+		r := &Runtime{RuntimeBase: providers.RuntimeBase{Model: "gemini-limits-model", MetadataID: "gemini-limits", MaxOutputTokens: tc.configured, ProviderType: providers.TypeGemini}}
 		if current, ceiling := r.OutputLimits(); current != tc.current || ceiling != 65536 {
 			t.Errorf("configured %d: limits = %d/%d, want %d/65536", tc.configured, current, ceiling, tc.current)
 		}

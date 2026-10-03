@@ -16,7 +16,7 @@ func TestOutputLimitsUseConfigThenDefaultUnderTheCatalogCeiling(t *testing.T) {
 		{2000, 2000},
 		{0, providers.DefaultMaxOutputTokens},
 	} {
-		r := &Runtime{model: "claude-limits-model", providerID: "anthropic-limits", maxTokens: tc.configured}
+		r := &Runtime{RuntimeBase: providers.RuntimeBase{Model: "claude-limits-model", MetadataID: "anthropic-limits", MaxOutputTokens: tc.configured, ProviderType: providers.TypeAnthropic}}
 		if current, ceiling := r.OutputLimits(); current != tc.current || ceiling != 64000 {
 			t.Errorf("configured %d: limits = %d/%d, want %d/64000", tc.configured, current, ceiling, tc.current)
 		}

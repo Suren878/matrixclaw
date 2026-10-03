@@ -53,7 +53,7 @@ func TestStreamAssemblesThinkingTextAndParallelToolCalls(t *testing.T) {
 		deltas = append(deltas, delta)
 		return nil
 	})
-	response, err := (&Runtime{model: "claude-test"}).decodeStream(ctx, strings.NewReader(stream))
+	response, err := (&Runtime{RuntimeBase: providers.RuntimeBase{Model: "claude-test"}}).decodeStream(ctx, strings.NewReader(stream))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestOverloadedStatusIsRetryable(t *testing.T) {
 		_, _ = io.WriteString(w, `{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`)
 	}))
 	t.Cleanup(server.Close)
-	runtime, err := New(context.Background(), Config{APIKey: "k", BaseURL: server.URL, Model: "claude-test", HTTPClient: server.Client()})
+	runtime, err := New(context.Background(), providers.RuntimeConfig{APIKey: "k", BaseURL: server.URL, Model: "claude-test", HTTPClient: server.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}

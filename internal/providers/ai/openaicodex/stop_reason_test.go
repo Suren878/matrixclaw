@@ -37,7 +37,7 @@ func TestTerminalStatusBecomesStopReason(t *testing.T) {
 }
 
 func TestPayloadCarriesCacheKeyAndToolChoiceButNoOutputLimit(t *testing.T) {
-	payload := (&Runtime{model: "gpt-5.4"}).responsesPayload(providers.Request{
+	payload := (&Runtime{RuntimeBase: providers.RuntimeBase{Model: "gpt-5.4"}}).responsesPayload(providers.Request{
 		CacheKey:        "session-1",
 		ToolChoice:      providers.ToolChoiceNone,
 		MaxOutputTokens: 4000,

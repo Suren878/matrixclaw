@@ -17,75 +17,32 @@ import (
 
 const skipThoughtSignatureValidator = "skip_thought_signature_validator"
 
-type Config struct {
-	ProviderID      string
-	CatalogID       string
-	APIKey          string
-	BaseURL         string
-	Model           string
-	MaxOutputTokens int64
-	ToolUseMode     providers.ToolUseMode
-	Profile         providers.ProviderProfile
-	HTTPClient      *http.Client
-}
-
 type Runtime struct {
-	client          *http.Client
-	endpoint        string
-	apiKey          string
-	model           string
-	providerID      string
-	maxOutputTokens int64
-	profile         providers.RuntimeProfile
-	capabilities    providers.ModelCapabilities
+	providers.RuntimeBase
+	endpoint string
 }
 
-func New(_ context.Context, cfg Config) (providers.Runtime, error) {
-	client, apiKey, baseURL, model, maxOutputTokens, err := normalizeConfig(cfg)
-	if err != nil {
+func New(_ context.Context, cfg providers.RuntimeConfig) (providers.Runtime, error) {
+	base := providers.NewRuntimeBase(cfg, providers.TypeGemini, providers.DefaultGeminiModel)
+	if err := base.RequireKeyAndURL("gemini"); err != nil {
 		return nil, err
 	}
-	providerProfile := cfg.Profile
-	if providerProfile.IsZero() {
-		providerProfile = providers.ProfileForProvider(providers.TypeGemini)
-	}
-
 	return &Runtime{
-		client:          client,
-		endpoint:        strings.TrimRight(baseURL, "/") + "/" + modelResource(model) + ":streamGenerateContent?alt=sse",
-		apiKey:          apiKey,
-		model:           model,
-		providerID:      metadataProviderID(cfg),
-		maxOutputTokens: maxOutputTokens,
-		profile: providerProfile.RuntimeProfileWithOverrides(providers.RuntimeProfile{
-			ToolUseMode: cfg.ToolUseMode,
-		}),
-		capabilities: providerProfile.Capabilities,
+		RuntimeBase: base,
+		endpoint:    strings.TrimRight(base.BaseURL, "/") + "/" + modelResource(base.Model) + ":streamGenerateContent?alt=sse",
 	}, nil
 }
 
-func (r *Runtime) RuntimeProfile() providers.RuntimeProfile {
-	return r.profile
-}
-
-func (r *Runtime) Identity() (string, string) {
-	return providers.TypeGemini, r.model
-}
-
 func (r *Runtime) OutputLimits() (int64, int64) {
-	current := providers.ResolveMaxOutputTokens(0, r.maxOutputTokens, r.providerID, providers.TypeGemini, r.model)
-	return current, int64(providers.ResolveModelMetadata(r.providerID, providers.TypeGemini, r.model).MaxOutputTokens)
+	return r.CatalogOutputLimits()
 }
 
-func (r *Runtime) ModelCapabilities() providers.ModelCapabilities {
-	return r.capabilities
-}
-
-func ListModels(ctx context.Context, cfg Config) ([]string, error) {
-	client, apiKey, baseURL, _, _, err := normalizeConfig(cfg)
-	if err != nil {
+func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, error) {
+	base := providers.NewRuntimeBase(cfg, providers.TypeGemini, providers.DefaultGeminiModel)
+	if err := base.RequireKeyAndURL("gemini"); err != nil {
 		return nil, err
 	}
+	client, apiKey, baseURL := base.Client, base.APIKey, base.BaseURL
 
 	var models []string
 	pageToken := ""
@@ -143,7 +100,6 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 }
 
 func (r *Runtime) Generate(ctx context.Context, request providers.Request) (providers.Response, error) {
-	request = providers.NormalizeRequest(request, r.profile)
 	payload := r.generatePayload(request)
 	if len(payload.Contents) == 0 {
 		return providers.Response{}, errors.New("gemini: no messages")
@@ -157,11 +113,11 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 	if err != nil {
 		return providers.Response{}, fmt.Errorf("gemini: build request: %w", err)
 	}
-	httpReq.Header.Set("x-goog-api-key", r.apiKey)
+	httpReq.Header.Set("x-goog-api-key", r.APIKey)
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "text/event-stream")
 
-	httpRes, err := r.client.Do(httpReq)
+	httpRes, err := r.Client.Do(httpReq)
 	if err != nil {
 		return providers.Response{}, fmt.Errorf("gemini: request failed: %w", err)
 	}
@@ -180,7 +136,7 @@ func (r *Runtime) generatePayload(request providers.Request) generateContentRequ
 	payload := generateContentRequest{
 		Contents: make([]geminiContent, 0, len(request.Messages)),
 		GenerationConfig: &generationConfig{
-			MaxOutputTokens: providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.maxOutputTokens, r.providerID, providers.TypeGemini, r.model),
+			MaxOutputTokens: providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.MaxOutputTokens, r.MetadataID, providers.TypeGemini, r.Model),
 		},
 	}
 	if systemPrompt := strings.TrimSpace(request.SystemPrompt); systemPrompt != "" {
@@ -431,7 +387,7 @@ func (r *Runtime) reply(parts []geminiPart, stop providers.StopReason, usage gem
 	}
 	return providers.Response{
 		Text:       reply,
-		Model:      r.model,
+		Model:      r.Model,
 		Provider:   providers.TypeGemini,
 		ToolCalls:  toolCalls,
 		Reasoning:  reasoning,
@@ -453,34 +409,6 @@ func geminiStopReason(reason string) (providers.StopReason, error) {
 	default:
 		return providers.StopEndTurn, nil
 	}
-}
-
-func normalizeConfig(cfg Config) (*http.Client, string, string, string, int64, error) {
-	apiKey := strings.TrimSpace(cfg.APIKey)
-	if apiKey == "" {
-		return nil, "", "", "", 0, errors.New("gemini: api key is required")
-	}
-	baseURL := strings.TrimSpace(cfg.BaseURL)
-	if baseURL == "" {
-		return nil, "", "", "", 0, errors.New("gemini: base url is required")
-	}
-	model := strings.TrimSpace(cfg.Model)
-	if model == "" {
-		model = providers.DefaultGeminiModel
-	}
-	maxOutputTokens := cfg.MaxOutputTokens
-	client := cfg.HTTPClient
-	if client == nil {
-		client = providers.NewHTTPClient()
-	}
-	return client, apiKey, baseURL, model, maxOutputTokens, nil
-}
-
-func metadataProviderID(cfg Config) string {
-	if id := strings.TrimSpace(cfg.ProviderID); id != "" {
-		return id
-	}
-	return strings.TrimSpace(cfg.CatalogID)
 }
 
 func modelResource(model string) string {
