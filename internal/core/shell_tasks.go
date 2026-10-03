@@ -430,10 +430,10 @@ func (c *Core) recoverShellTasks(ctx context.Context) error {
 	return nil
 }
 
-// stopSessionTasks stops the shell tasks a session runs when nobody will read
-// them; they are delivered first, so that their end wakes nothing in it.
+// stopSessionTasks stops the commands and subagents a session runs when nobody
+// will read them; they are delivered first, so that their end wakes nothing in it.
 func (c *Core) stopSessionTasks(ctx context.Context, sessionID string, reason string) error {
-	tasks, err := c.store.ListTasks(ctx, TaskFilter{SessionID: sessionID, Kind: TaskKindShell, Statuses: []TaskStatus{TaskStatusRunning}})
+	tasks, err := c.store.ListTasks(ctx, TaskFilter{SessionID: sessionID, Statuses: activeTaskStatuses()})
 	if err != nil {
 		return err
 	}

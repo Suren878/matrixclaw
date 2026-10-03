@@ -481,3 +481,38 @@ func TestTaskOutputWaitsForASubagent(t *testing.T) {
 		t.Fatalf("output = %+v, %v after %s", out, err, time.Since(started))
 	}
 }
+
+func TestDeletingASessionStopsItsRun(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithSessionFiles(t.TempDir())
+	started := make(chan struct{})
+	stopped := make(chan struct{})
+	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("long_build", tools.EffectReadOnly), fn: func(ctx context.Context, _ tools.Call) (tools.Result, error) {
+		close(started)
+		select {
+		case <-ctx.Done():
+			close(stopped)
+			return tools.Result{}, ctx.Err()
+		case <-time.After(2 * time.Second):
+			return tools.Result{Content: "built"}, nil
+		}
+	}}))
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-build", Name: "long_build", Arguments: []byte(`{}`)}}}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "delete_busy", core.RunStatusAccepted, false)
+	done := make(chan error, 1)
+	go func() { done <- app.ExecuteRun(context.Background(), run.ID) }()
+	<-started
+	if err := app.DeleteSession(context.Background(), session.ID); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("the deleted session's run kept executing its tool")
+	}
+	<-done
+}

@@ -179,3 +179,40 @@ func TestCancelParentCancelsItsAsyncSubagentWithoutFollowUp(t *testing.T) {
 		}
 	}
 }
+
+func TestDeletingASessionStopsTheSubagentsItRunsInTheBackground(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithSessionFiles(t.TempDir())
+	starter := &executingRunStarter{app: app}
+	app.WithRunStarter(starter)
+	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+	childStarted := newStartSignal()
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, request providers.Request) (providers.Response, error) {
+		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
+			return blockUntilCanceled(ctx, childStarted)
+		}
+		for _, message := range request.Messages {
+			if message.ToolCallID != "" {
+				return providers.Response{Text: "The scan runs in the background."}, nil
+			}
+		}
+		return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-spawn", Name: "agent", Arguments: []byte(`{"description":"Scanner","prompt":"scan the tree","background":true,"runtime":"matrixclaw"}`)}}}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "delete-spawn", core.RunStatusAccepted, false)
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitRecoverySignal(t, childStarted.ch, "child generation")
+	task, err := taskOfCall(db, session.ID, run.ID, "call-spawn")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.DeleteSession(context.Background(), session.ID); err != nil {
+		t.Fatal(err)
+	}
+	starter.wait(t)
+	assertRecoveryRunStatus(t, db, task.ChildRunID, core.RunStatusCanceled)
+}
