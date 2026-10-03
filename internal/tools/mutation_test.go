@@ -193,3 +193,39 @@ func TestApprovalPreviewShowsEditsPastTheLimit(t *testing.T) {
 		t.Fatalf("preview keeps unchanged text: old %d, new %d bytes", len(change.OldContent), len(change.NewContent))
 	}
 }
+
+func TestEditMatchesCRLFFilesByTheLinesReadShows(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(path, []byte("one\r\ntwo\r\nthree\r\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result := runMutation(t, dir, "edit", EditParams{FilePath: path, OldString: "one\ntwo", NewString: "uno\ndos"})
+	if result.IsError() || readFile(t, path) != "uno\r\ndos\r\nthree\r\n" {
+		t.Fatalf("result = %+v, file = %q", result, readFile(t, path))
+	}
+}
+
+func TestEditRefusesEmptyOldStringOnAFileWithContent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.go")
+	if err := os.WriteFile(path, []byte("package a\n\nfunc A() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if result := runMutation(t, dir, "edit", EditParams{FilePath: path, NewString: "// header\n"}); !result.IsError() {
+		t.Fatalf("result = %+v, want an error", result)
+	}
+	if result := runMutation(t, dir, "multiedit", MultiEditParams{FilePath: path, Edits: []EditOperation{{OldString: "func A", NewString: "func B"}, {NewString: "x"}}}); !result.IsError() {
+		t.Fatalf("multiedit result = %+v, want an error", result)
+	}
+	if got := readFile(t, path); got != "package a\n\nfunc A() {}\n" {
+		t.Fatalf("file = %q, want it unchanged", got)
+	}
+	empty := filepath.Join(dir, "empty.txt")
+	if err := os.WriteFile(empty, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if result := runMutation(t, dir, "edit", EditParams{FilePath: empty, NewString: "first\n"}); result.IsError() || readFile(t, empty) != "first\n" {
+		t.Fatalf("empty file: result = %+v", result)
+	}
+}

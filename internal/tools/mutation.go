@@ -225,9 +225,18 @@ func applyEdits(content string, edits []EditOperation) (string, error) {
 }
 
 func applyEdit(content string, edit EditOperation) (string, error) {
-	switch count := strings.Count(content, edit.OldString); {
-	case edit.OldString == "":
+	if edit.OldString == "" {
+		if content != "" {
+			return "", errors.New("old_string is empty; quote the text to replace, or use write to replace the whole file")
+		}
 		return edit.NewString, nil
+	}
+	// read shows CRLF lines without their CR, so a multi-line old_string
+	// quoted from it matches the file once its line ends are put back.
+	if !strings.Contains(content, edit.OldString) && strings.Contains(content, "\r\n") {
+		edit.OldString, edit.NewString = crlfLines(edit.OldString), crlfLines(edit.NewString)
+	}
+	switch count := strings.Count(content, edit.OldString); {
 	case count == 0:
 		return "", errors.New("old_string not found in file")
 	case edit.ReplaceAll:
@@ -236,6 +245,10 @@ func applyEdit(content string, edit EditOperation) (string, error) {
 		return "", errors.New("old_string appears multiple times in the file; set replace_all to true or provide more context")
 	}
 	return strings.Replace(content, edit.OldString, edit.NewString, 1), nil
+}
+
+func crlfLines(text string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\n", "\r\n")
 }
 
 // diffCounts counts the lines a unified diff of the change adds and removes.
