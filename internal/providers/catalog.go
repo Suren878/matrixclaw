@@ -72,25 +72,6 @@ func Catalog() []CatalogEntry {
 	return entries
 }
 
-func AvailableCatalog() []CatalogEntry {
-	all := Catalog()
-	available := make([]CatalogEntry, 0, len(all))
-	for _, entry := range all {
-		if entry.Implemented {
-			available = append(available, entry)
-		}
-	}
-	return available
-}
-
-func CatalogEntryByID(providerID string) (CatalogEntry, bool) {
-	spec, ok := ProviderSpecByID(providerID)
-	if !ok {
-		return CatalogEntry{}, false
-	}
-	return spec.Entry, true
-}
-
 func NormalizeProviderID(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
@@ -133,20 +114,12 @@ func ReasoningEffortsForModel(providerID string, providerType string, modelID st
 	}).ReasoningEfforts
 }
 
-func DefaultReasoningEffortForProvider(providerID string, providerType string) string {
-	return DefaultReasoningEffortForModel(providerID, providerType, "")
-}
-
 func DefaultReasoningEffortForModel(providerID string, providerType string, modelID string) string {
 	return ResolveModelCapabilities(ModelCapabilityInput{
 		ProviderID:   providerID,
 		ProviderType: providerType,
 		ModelID:      modelID,
 	}).DefaultReasoningEffort
-}
-
-func NormalizeReasoningEffortForProvider(providerID string, providerType string, value string) string {
-	return NormalizeReasoningEffortForModel(providerID, providerType, "", value)
 }
 
 func NormalizeReasoningEffortForModel(providerID string, providerType string, modelID string, value string) string {

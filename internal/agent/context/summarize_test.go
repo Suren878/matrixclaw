@@ -26,7 +26,7 @@ func TestSummarizeChunksLongHistoryAndMergesThePartials(t *testing.T) {
 	}
 	generator := &recordingGenerator{}
 
-	summary, err := Summarize(context.Background(), generator, SummaryInput{SessionID: "s1", Previous: "EARLIER", Messages: messages, ChunkTokens: 4_000})
+	summary, err := Summarize(context.Background(), generator, SummaryInput{Previous: "EARLIER", Messages: messages, ChunkTokens: 4_000})
 
 	if err != nil || summary != "summary 7" || len(generator.requests) != 7 {
 		t.Fatalf("summary = %q err = %v requests = %d, want six chunks and one merge", summary, err, len(generator.requests))
@@ -63,7 +63,7 @@ func TestSummarizeMergesLongPartialsInBoundedRounds(t *testing.T) {
 	}
 	generator := &wordyGenerator{runes: 6_000}
 
-	summary, err := Summarize(context.Background(), generator, SummaryInput{SessionID: "s1", Messages: messages, ChunkTokens: 4_000})
+	summary, err := Summarize(context.Background(), generator, SummaryInput{Messages: messages, ChunkTokens: 4_000})
 
 	if err != nil || len(generator.requests) != 12 || !strings.HasPrefix(summary, "summary 12 ") {
 		t.Fatalf("summary = %.20q err = %v requests = %d, want 6 chunks, then 3, 2 and 1 merges", summary, err, len(generator.requests))
@@ -82,7 +82,7 @@ func TestSummarizeFailsWhenMergingDoesNotShrink(t *testing.T) {
 	}
 	generator := &wordyGenerator{runes: 10_000}
 
-	if _, err := Summarize(context.Background(), generator, SummaryInput{SessionID: "s1", Messages: messages, ChunkTokens: 4_000}); err == nil {
+	if _, err := Summarize(context.Background(), generator, SummaryInput{Messages: messages, ChunkTokens: 4_000}); err == nil {
 		t.Fatal("want an error when partial summaries are too long to merge")
 	}
 	if len(generator.requests) != 3 {
@@ -94,7 +94,7 @@ func TestAnOverlongPieceIsCutToAboutAChunkInAnyScript(t *testing.T) {
 	for _, letter := range []string{"w", "ж"} {
 		generator := &recordingGenerator{}
 
-		_, err := Summarize(context.Background(), generator, SummaryInput{SessionID: "s1", Previous: strings.Repeat(letter, 100_000), ChunkTokens: 4_000})
+		_, err := Summarize(context.Background(), generator, SummaryInput{Previous: strings.Repeat(letter, 100_000), ChunkTokens: 4_000})
 
 		if err != nil || len(generator.requests) != 1 {
 			t.Fatalf("%s: err = %v requests = %d", letter, err, len(generator.requests))

@@ -63,7 +63,6 @@ func (r *run) preferredSummary(ctx context.Context, reuse *providers.Request, pr
 // own request, in chunks of about chunkTokens.
 func (r *run) chunkedSummary(ctx context.Context, model Model, chunkTokens int, previous *transcript.Compaction, covered []transcript.Message) (string, error) {
 	return agentcontext.Summarize(ctx, summaryModel{r: r, model: model}, agentcontext.SummaryInput{
-		SessionID:   r.task.SessionID,
 		Previous:    agentcontext.SummaryText(previous),
 		Messages:    covered,
 		ChunkTokens: chunkTokens,

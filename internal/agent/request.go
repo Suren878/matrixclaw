@@ -51,8 +51,6 @@ func (r *run) buildRequest(ctx context.Context, final StopReason) (providers.Req
 	}
 	messages = r.sent(messages)
 	request := providers.Request{
-		RunID:           r.task.RunID,
-		SessionID:       r.task.SessionID,
 		SystemPrompt:    r.system,
 		CacheKey:        r.task.SessionID,
 		MaxOutputTokens: r.counters.OutputLimit,

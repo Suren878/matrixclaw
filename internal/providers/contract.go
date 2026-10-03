@@ -47,8 +47,6 @@ type ReasoningBlock struct {
 }
 
 type Request struct {
-	RunID           string
-	SessionID       string
 	SystemPrompt    string
 	Messages        []Message
 	Tools           []ToolDefinition

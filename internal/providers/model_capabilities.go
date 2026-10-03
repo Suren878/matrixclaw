@@ -58,18 +58,6 @@ func ResolveModelCapabilities(input ModelCapabilityInput) ModelCapabilitySet {
 	}
 }
 
-func ProviderRuntimeCapabilities(providerID string, providerType string) ModelCapabilities {
-	return ModelRuntimeCapabilities(providerID, providerType, "")
-}
-
-func ModelRuntimeCapabilities(providerID string, providerType string, modelID string) ModelCapabilities {
-	return ResolveModelCapabilities(ModelCapabilityInput{
-		ProviderID:   providerID,
-		ProviderType: providerType,
-		ModelID:      modelID,
-	}).RuntimeCapabilities
-}
-
 func runtimeCapabilitiesFromProvider(providerCapabilities Capabilities, providerType string) ModelCapabilities {
 	capabilities := ModelCapabilities{
 		ToolCalling:       providerCapabilities.ToolCalling,

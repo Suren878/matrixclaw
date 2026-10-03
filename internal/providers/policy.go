@@ -1,7 +1,6 @@
 package providers
 
 type ProviderPolicy struct {
-	RequestedID         string
 	CatalogID           string
 	Known               bool
 	Implemented         bool
@@ -16,7 +15,6 @@ type ProviderPolicy struct {
 	Capabilities        Capabilities
 	ModelsURL           string
 	PublicModelCatalog  bool
-	SupportsHealthCheck bool
 	ChatHeaders         map[string]string
 	DefaultBaseURL      string
 	BaseURLOptions      []BaseURLOption
@@ -31,7 +29,6 @@ func PolicyForProvider(providerID string, providerType string) ProviderPolicy {
 		entry := spec.Entry
 		authMode := spec.Auth
 		return ProviderPolicy{
-			RequestedID:         requestedID,
 			CatalogID:           entry.ID,
 			Known:               true,
 			Implemented:         entry.Implemented,
@@ -46,7 +43,6 @@ func PolicyForProvider(providerID string, providerType string) ProviderPolicy {
 			Capabilities:        entry.Capabilities,
 			ModelsURL:           spec.ModelsURL,
 			PublicModelCatalog:  spec.PublicModelCatalog,
-			SupportsHealthCheck: entry.Capabilities.ModelDiscovery && !spec.DisableHealthCheck,
 			ChatHeaders:         copyStringMap(spec.ChatHeaders),
 			DefaultBaseURL:      entry.DefaultBaseURL,
 			BaseURLOptions:      append([]BaseURLOption(nil), entry.BaseURLOptions...),
@@ -60,7 +56,6 @@ func PolicyForProvider(providerID string, providerType string) ProviderPolicy {
 	authMode := defaultProviderAuthMode(normalizedType)
 	transport := defaultProviderTransport(normalizedType)
 	return ProviderPolicy{
-		RequestedID:         requestedID,
 		CatalogID:           requestedID,
 		Type:                normalizedType,
 		AuthMode:            authMode,
@@ -70,7 +65,6 @@ func PolicyForProvider(providerID string, providerType string) ProviderPolicy {
 		RuntimeProviderType: RuntimeProviderTypeForTransport(transport, normalizedType),
 		RequiresBaseURL:     normalizedType != "",
 		Capabilities:        defaultCapabilitiesForCustomProviderType(normalizedType),
-		SupportsHealthCheck: normalizedType != "",
 	}
 }
 

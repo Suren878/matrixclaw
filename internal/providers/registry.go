@@ -27,7 +27,6 @@ type ProviderSpec struct {
 	RuntimeProviderType string
 	ModelsURL           string
 	PublicModelCatalog  bool
-	DisableHealthCheck  bool
 	ChatHeaders         map[string]string // extra headers of an OpenAI-compatible chat endpoint
 }
 
@@ -101,22 +100,6 @@ func ProviderSpecByID(providerID string) (ProviderSpec, bool) {
 		}
 	}
 	return ProviderSpec{}, false
-}
-
-func ProviderAuthModeFor(providerID string, providerType string) ProviderAuthMode {
-	return PolicyForProvider(providerID, providerType).AuthMode
-}
-
-func ProviderRequiresAPIKey(providerID string, providerType string) bool {
-	return PolicyForProvider(providerID, providerType).RequiresAPIKey
-}
-
-func ProviderTransportFor(providerID string, providerType string) ProviderTransport {
-	return PolicyForProvider(providerID, providerType).Transport
-}
-
-func RuntimeProviderTypeFor(providerID string, providerType string) string {
-	return PolicyForProvider(providerID, providerType).RuntimeProviderType
 }
 
 func RuntimeProviderTypeForTransport(transport ProviderTransport, providerType string) string {

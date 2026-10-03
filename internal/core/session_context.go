@@ -112,7 +112,6 @@ func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSes
 	base := c.contextBaseTokens()
 	limit := agent.ContextLimit(runtime, windowTokens, 0)
 	summary, err := agentcontext.Summarize(ctx, runtime, agentcontext.SummaryInput{
-		SessionID:   session.ID,
 		Previous:    agentcontext.SummaryText(previous),
 		Messages:    window.Messages,
 		ChunkTokens: limit / 2,
