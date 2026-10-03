@@ -158,7 +158,8 @@ type hangingExternalRuntime struct {
 }
 
 func (r *hangingExternalRuntime) Send(ctx context.Context, _ externalagents.ExternalSession, _ externalagents.Input) (<-chan externalagents.Event, error) {
-	events := make(chan externalagents.Event, 4)
+	// Unbuffered, so started closes only once the run has taken the delta.
+	events := make(chan externalagents.Event)
 	go func() {
 		defer close(events)
 		now := time.Now().UTC()
