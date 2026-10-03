@@ -8,9 +8,6 @@ import (
 )
 
 func (d *Dispatcher) handleExternalAgents(ctx context.Context, args string) (Result, error) {
-	if d.externalAgents == nil {
-		return unsupportedRuntime("external agents"), nil
-	}
 	args = strings.TrimSpace(args)
 	if args == "" {
 		return d.externalAgentsPicker(ctx)
@@ -55,7 +52,7 @@ func (d *Dispatcher) handleExternalAgents(ctx context.Context, args string) (Res
 }
 
 func (d *Dispatcher) externalAgentsPicker(ctx context.Context) (Result, error) {
-	agents, err := d.externalAgents.ListExternalAgents(ctx)
+	agents, err := d.daemon.ListExternalAgents(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -76,7 +73,7 @@ func (d *Dispatcher) externalAgentsPicker(ctx context.Context) (Result, error) {
 }
 
 func (d *Dispatcher) externalAgentPicker(ctx context.Context, agentID string) (Result, error) {
-	agents, err := d.externalAgents.ListExternalAgents(ctx)
+	agents, err := d.daemon.ListExternalAgents(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -96,7 +93,7 @@ func (d *Dispatcher) externalAgentPicker(ctx context.Context, agentID string) (R
 }
 
 func (d *Dispatcher) externalAgentEnabledPicker(ctx context.Context, agentID string) (Result, error) {
-	agents, err := d.externalAgents.ListExternalAgents(ctx)
+	agents, err := d.daemon.ListExternalAgents(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -128,7 +125,7 @@ func (d *Dispatcher) setExternalAgentEnabled(ctx context.Context, agentID string
 }
 
 func (d *Dispatcher) updateExternalAgentEnabled(ctx context.Context, agentID string, enabled bool) (Result, error) {
-	agents, err := d.externalAgents.UpdateExternalAgent(ctx, agentID, core.UpdateExternalAgentRequest{Enabled: &enabled})
+	agents, err := d.daemon.UpdateExternalAgent(ctx, agentID, core.UpdateExternalAgentRequest{Enabled: &enabled})
 	if err != nil {
 		return Result{}, err
 	}
@@ -148,7 +145,7 @@ func (d *Dispatcher) updateExternalAgentEnabled(ctx context.Context, agentID str
 }
 
 func (d *Dispatcher) externalAgentPathPrompt(ctx context.Context, agentID string) (Result, error) {
-	agents, err := d.externalAgents.ListExternalAgents(ctx)
+	agents, err := d.daemon.ListExternalAgents(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -166,7 +163,7 @@ func (d *Dispatcher) externalAgentPathPrompt(ctx context.Context, agentID string
 }
 
 func (d *Dispatcher) updateExternalAgentPath(ctx context.Context, agentID string, path string) (Result, error) {
-	agents, err := d.externalAgents.ListExternalAgents(ctx)
+	agents, err := d.daemon.ListExternalAgents(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -174,7 +171,7 @@ func (d *Dispatcher) updateExternalAgentPath(ctx context.Context, agentID string
 	if !ok {
 		return Result{Handled: true, Text: "External agent not found: " + strings.TrimSpace(agentID)}, nil
 	}
-	agents, err = d.externalAgents.UpdateExternalAgent(ctx, agent.ID, core.UpdateExternalAgentRequest{Path: strings.TrimSpace(path)})
+	agents, err = d.daemon.UpdateExternalAgent(ctx, agent.ID, core.UpdateExternalAgentRequest{Path: strings.TrimSpace(path)})
 	if err != nil {
 		return Result{}, err
 	}

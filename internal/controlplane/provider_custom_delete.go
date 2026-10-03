@@ -22,7 +22,7 @@ func (d *Dispatcher) deleteCustomProvider(ctx context.Context, providerID string
 	if err != nil {
 		return Result{}, err
 	}
-	if err := d.providers.DeleteSetupProvider(ctx, provider.ID); err != nil {
+	if err := d.daemon.DeleteSetupProvider(ctx, provider.ID); err != nil {
 		return Result{}, err
 	}
 	return Result{Handled: true, Text: fmt.Sprintf("Provider `%s` deleted.", firstNonEmptyTrimmed(provider.Name, provider.ID)), ReloadSnapshot: true}, nil

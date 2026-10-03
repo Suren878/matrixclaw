@@ -8,11 +8,11 @@ import (
 
 func (d *Dispatcher) storagePicker(ctx context.Context) (Result, error) {
 	tempInfo := ""
-	if temp, err := d.storage.ListTemporaryStorageFiles(ctx, 1); err == nil {
+	if temp, err := d.daemon.ListTemporaryStorageFiles(ctx, 1); err == nil {
 		tempInfo = formatFileCountSize(temp.Settings.TotalFiles, temp.Settings.TotalBytes)
 	}
 	storedInfo := ""
-	if stored, err := d.storage.ListStorageFiles(ctx, localstorage.ListFilter{Limit: 200}); err == nil {
+	if stored, err := d.daemon.ListStorageFiles(ctx, localstorage.ListFilter{Limit: 200}); err == nil {
 		storedInfo = formatStoredFilesInfo(stored.Files)
 	}
 	return Result{

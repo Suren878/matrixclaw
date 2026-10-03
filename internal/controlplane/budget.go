@@ -11,18 +11,15 @@ import (
 
 const budgetUsage = "Usage: /budget [steps N | time 2h | tokens N | tokens off | reset]"
 
-func (d *Dispatcher) handleBudget(ctx context.Context, externalKey string, args string) (Result, error) {
-	if d.budget == nil {
-		return unsupportedRuntime("budget"), nil
-	}
-	sessionID, err := d.currentSessionID(ctx, externalKey)
+func (d *Dispatcher) handleBudget(ctx context.Context, args string) (Result, error) {
+	sessionID, err := d.currentSessionID(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 	if sessionID == "" {
 		return Result{Handled: true, Text: "Select or create a session first."}, nil
 	}
-	report, err := d.budget.SessionBudget(ctx, sessionID)
+	report, err := d.daemon.SessionBudget(ctx, sessionID)
 	if err != nil {
 		return Result{}, err
 	}
@@ -31,7 +28,7 @@ func (d *Dispatcher) handleBudget(ctx context.Context, externalKey string, args 
 		if !ok {
 			return Result{Handled: true, Text: budgetUsage}, nil
 		}
-		if report, err = d.budget.UpdateSessionBudget(ctx, sessionID, override); err != nil {
+		if report, err = d.daemon.UpdateSessionBudget(ctx, sessionID, override); err != nil {
 			return Result{}, err
 		}
 	}

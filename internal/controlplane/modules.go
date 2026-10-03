@@ -9,7 +9,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
-func (d *Dispatcher) handleModules(ctx context.Context, externalKey string, args string) (Result, error) {
+func (d *Dispatcher) handleModules(ctx context.Context, args string) (Result, error) {
 	step, rest := firstCommandStep(args)
 	if step == "" {
 		return d.modulesPicker(ctx)
@@ -32,7 +32,7 @@ func (d *Dispatcher) handleModules(ctx context.Context, externalKey string, args
 	case "browser":
 		return d.handleBrowserModule(ctx, rest)
 	case "skills":
-		return d.handleSkillsForExternal(ctx, externalKey, rest)
+		return d.handleSkillsForExternal(ctx, rest)
 	case "mcp":
 		return d.handleMCP(ctx, rest)
 	default:
@@ -42,48 +42,32 @@ func (d *Dispatcher) handleModules(ctx context.Context, externalKey string, args
 
 func (d *Dispatcher) modulesPicker(ctx context.Context) (Result, error) {
 	externalAgentsInfo, ttsInfo, sttInfo, realtimeVoiceInfo, telephonyInfo, browserInfo, webInfo, skillsInfo, mcpInfo := "", "", "", "", "", "", "", "", ""
-	if d.externalAgents != nil {
-		if agents, err := d.externalAgents.ListExternalAgents(ctx); err == nil {
-			externalAgentsInfo = externalAgentsModuleInfo(agents)
-		}
+	if agents, err := d.daemon.ListExternalAgents(ctx); err == nil {
+		externalAgentsInfo = externalAgentsModuleInfo(agents)
 	}
-	if d.voiceModules != nil {
-		if module, err := d.voiceModule(ctx, setup.VoiceModuleTTS); err == nil {
-			ttsInfo = voiceModuleListInfo(module)
-		}
-		if module, err := d.voiceModule(ctx, setup.VoiceModuleSTT); err == nil {
-			sttInfo = voiceModuleListInfo(module)
-		}
+	if module, err := d.voiceModule(ctx, setup.VoiceModuleTTS); err == nil {
+		ttsInfo = voiceModuleListInfo(module)
 	}
-	if d.realtimeVoice != nil {
-		if module, err := d.realtimeVoice.RealtimeVoiceModule(ctx); err == nil {
-			realtimeVoiceInfo = realtimeVoiceModuleListInfo(module)
-		}
+	if module, err := d.voiceModule(ctx, setup.VoiceModuleSTT); err == nil {
+		sttInfo = voiceModuleListInfo(module)
 	}
-	if d.telephony != nil {
-		if module, err := d.telephony.TelephonyModule(ctx); err == nil {
-			telephonyInfo = telephonyModuleListInfo(module)
-		}
+	if module, err := d.daemon.RealtimeVoiceModule(ctx); err == nil {
+		realtimeVoiceInfo = realtimeVoiceModuleListInfo(module)
 	}
-	if d.webSearch != nil {
-		if resp, err := d.webSearch.GetWebSearchConfig(ctx); err == nil {
-			webInfo = resp.Status
-		}
+	if module, err := d.daemon.TelephonyModule(ctx); err == nil {
+		telephonyInfo = telephonyModuleListInfo(module)
 	}
-	if d.browserModules != nil {
-		if module, err := d.browserModules.BrowserModule(ctx); err == nil {
-			browserInfo = browserModuleListInfo(module)
-		}
+	if resp, err := d.daemon.GetWebSearchConfig(ctx); err == nil {
+		webInfo = resp.Status
 	}
-	if d.skills != nil {
-		if items, err := d.skills.ListSkills(ctx, skillsLibrarySearchOptions()); err == nil {
-			skillsInfo = skillsModuleInfo(items)
-		}
+	if module, err := d.daemon.BrowserModule(ctx); err == nil {
+		browserInfo = browserModuleListInfo(module)
 	}
-	if d.mcp != nil {
-		if resp, err := d.mcp.MCPConfig(ctx); err == nil {
-			mcpInfo = mcpExternalConfigStatus(resp.Config)
-		}
+	if items, err := d.daemon.ListSkills(ctx, skillsLibrarySearchOptions()); err == nil {
+		skillsInfo = skillsModuleInfo(items)
+	}
+	if resp, err := d.daemon.MCPConfig(ctx); err == nil {
+		mcpInfo = mcpExternalConfigStatus(resp.Config)
 	}
 	return Result{
 		Handled: true,

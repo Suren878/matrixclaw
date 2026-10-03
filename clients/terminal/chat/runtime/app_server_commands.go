@@ -18,7 +18,7 @@ func (m *appModel) serverStatusCmd() tea.Cmd {
 		if m.rt == nil {
 			return serverStatusRefreshMsg{err: fmt.Errorf("terminal runtime is not configured")}
 		}
-		status, err := m.rt.ServerStatus(m.ctx)
+		status, err := m.rt.client.ServerStatus(m.ctx)
 		if err != nil {
 			return serverStatusRefreshMsg{err: err}
 		}
@@ -68,7 +68,7 @@ func (m *appModel) restartDaemonCmd() tea.Cmd {
 		if m.rt == nil {
 			return serverRestartRequestMsg{err: fmt.Errorf("terminal runtime is not configured")}
 		}
-		return serverRestartRequestMsg{err: m.rt.RestartDaemonWithNotification(m.ctx)}
+		return serverRestartRequestMsg{err: m.rt.client.RestartDaemonWithNotification(m.ctx, core.ClientDeliveryTarget{Client: m.rt.client.ClientName, ExternalKey: m.rt.client.ExternalKey})}
 	}
 }
 
@@ -83,7 +83,7 @@ func (m *appModel) serverRestartDeliveryCmd() tea.Cmd {
 		if m.rt == nil {
 			return serverRestartPollMsg{err: fmt.Errorf("terminal runtime is not configured")}
 		}
-		deliveries, err := m.rt.ListClientDeliveries(m.ctx, core.ClientDeliveryFilter{
+		deliveries, err := m.rt.client.ListClientDeliveries(m.ctx, core.ClientDeliveryFilter{
 			Type:         core.ClientDeliveryTypeNotice,
 			CreatedAfter: m.restart.requestedAt.Add(-2 * time.Second),
 			Limit:        20,
@@ -97,7 +97,7 @@ func (m *appModel) acknowledgeRestartDeliveryCmd(deliveryID string) tea.Cmd {
 		if m.rt == nil {
 			return serverRestartAckMsg{err: fmt.Errorf("terminal runtime is not configured")}
 		}
-		return serverRestartAckMsg{err: m.rt.AcknowledgeClientDelivery(m.ctx, deliveryID)}
+		return serverRestartAckMsg{err: m.rt.client.AcknowledgeClientDelivery(m.ctx, deliveryID)}
 	}
 }
 

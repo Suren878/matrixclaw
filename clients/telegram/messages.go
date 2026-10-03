@@ -65,7 +65,7 @@ func (w *Worker) handleTextMessage(ctx context.Context, message *Message) error 
 	if isDaemonRestartCommand(text) {
 		return w.dispatchRestartCommandAndEdit(target, 0)
 	}
-	if result, err := w.dispatcher(target).Handle(ctx, target.externalKey, text); err != nil {
+	if result, err := w.dispatcher(target).Handle(ctx, text); err != nil {
 		return w.sendText(ctx, target, fmt.Sprintf("Command failed: %v", err))
 	} else if result.Handled {
 		return w.renderCommandResult(ctx, target, result)
@@ -710,13 +710,13 @@ func (w *Worker) handleSessionSelectionRequired(ctx context.Context, target chat
 		return w.sendText(ctx, target, fmt.Sprintf("Load sessions failed: %v", err))
 	}
 	if len(sessions) == 0 {
-		result, err := w.dispatcher(target).Handle(ctx, target.externalKey, catalogCommand(controlplane.CommandNewSession, ""))
+		result, err := w.dispatcher(target).Handle(ctx, catalogCommand(controlplane.CommandNewSession, ""))
 		if err != nil {
 			return w.sendText(ctx, target, fmt.Sprintf("Create session failed: %v", err))
 		}
 		return w.renderCommandResult(ctx, target, withSessionSelectionPrompt(result))
 	}
-	result, err := w.dispatcher(target).Handle(ctx, target.externalKey, catalogCommand(controlplane.CommandSessions, ""))
+	result, err := w.dispatcher(target).Handle(ctx, catalogCommand(controlplane.CommandSessions, ""))
 	if err != nil {
 		return w.sendText(ctx, target, fmt.Sprintf("Load sessions failed: %v", err))
 	}

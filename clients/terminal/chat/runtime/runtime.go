@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Suren878/matrixclaw/internal/clientruntime"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 )
 
@@ -23,7 +22,6 @@ type Config struct {
 }
 
 type Runtime struct {
-	clientruntime.ControlplaneRuntime
 	config Config
 	client *daemonclient.Client
 }
@@ -54,15 +52,6 @@ func New(config Config) *Runtime {
 			Version:     strings.TrimSpace(config.Version),
 		},
 		client: daemonclient.New(strings.TrimRight(strings.TrimSpace(config.BaseURL), "/"), clientName, externalKey).WithAPIToken(config.APIToken),
-	}
-	rt.ControlplaneRuntime = clientruntime.ControlplaneRuntime{
-		Client:      clientName,
-		ExternalKey: externalKey,
-		WorkingDir:  rt.config.WorkingDir,
-		Daemon: func(string) (*daemonclient.Client, error) {
-			return rt.daemon()
-		},
-		Owner: true,
 	}
 	return rt
 }

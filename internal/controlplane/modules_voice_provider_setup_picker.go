@@ -129,7 +129,7 @@ func (d *Dispatcher) voiceModuleProviderForm(ctx context.Context, moduleID strin
 	if !module.Enabled {
 		return d.voiceModuleEnabledPicker(ctx, moduleID)
 	}
-	if _, err := d.voiceModules.UpdateVoiceModule(ctx, moduleID, setup.VoiceModuleUpdate{ProviderID: providerID}); err != nil {
+	if _, err := d.daemon.UpdateVoiceModule(ctx, moduleID, setup.VoiceModuleUpdate{ProviderID: providerID}); err != nil {
 		return Result{}, err
 	}
 	return d.voiceLocalProviderPicker(ctx, moduleID, providerID)

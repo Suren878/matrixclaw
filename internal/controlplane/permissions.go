@@ -13,14 +13,8 @@ const permissionsUsage = "Usage: /permissions default|accept_edits|full_auto, /p
 	"allowing such a command allows any code, and a test runner or build (bash: go test:*, npm test:*, make:*) runs code the agent may edit first under accept_edits. " +
 	"web_fetch rules cover every URL web_fetch fetches, redirects included; MCP browser tools follow mcp rules only."
 
-func (d *Dispatcher) handlePermissions(ctx context.Context, externalKey string, args string) (Result, error) {
-	if d.permissions == nil {
-		return unsupportedRuntime("permission"), nil
-	}
-	if d.sessions == nil {
-		return unsupportedRuntime("sessions"), nil
-	}
-	_, session, err := d.currentSession(ctx, externalKey)
+func (d *Dispatcher) handlePermissions(ctx context.Context, args string) (Result, error) {
+	_, session, err := d.currentSession(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -44,18 +38,16 @@ func (d *Dispatcher) handlePermissions(ctx context.Context, externalKey string, 
 	if !ok {
 		return Result{Handled: true, Text: permissionsUsage}, nil
 	}
-	if !d.permissions.ManagesPermissionMode() {
+	if !d.owner() {
 		return Result{Handled: true, Text: "Only the owner can switch the permission mode."}, nil
 	}
-	updated, err := d.permissions.UpdateSessionPermissionMode(ctx, session.ID, mode)
+	updated, err := d.daemon.UpdateSessionPermissionMode(ctx, session.ID, mode)
 	if err != nil {
 		return Result{}, err
 	}
 	text := "✅ Permission mode: " + permissionModeStatus(updated.PermissionMode)
-	if d.messages != nil {
-		if _, err := d.messages.CreateSystemMessage(ctx, updated.ID, text); err != nil {
-			return Result{}, err
-		}
+	if _, err := d.daemon.CreateSystemMessage(ctx, updated.ID, text); err != nil {
+		return Result{}, err
 	}
 	return Result{
 		Handled:        true,
@@ -68,14 +60,12 @@ func (d *Dispatcher) handlePermissions(ctx context.Context, externalKey string, 
 // choosing a rule deletes it.
 func (d *Dispatcher) permissionsPicker(ctx context.Context, session core.Session) (Result, error) {
 	picker := NewPickerData(PickerPermissions, "Permissions").Context(session.ID).Select("").Items(permissionModeItems(session.PermissionMode)...)
-	if d.rules != nil {
-		rules, err := d.rules.SessionPermissionRules(ctx, session.ID)
-		if err != nil {
-			return Result{}, err
-		}
-		for _, rule := range rules {
-			picker.Danger(rule.ID, string(rule.Effect)+" "+rule.String(), ruleScopeLabel(rule, session.ID), permissionsCommand("delete", rule.ID))
-		}
+	rules, err := d.daemon.SessionPermissionRules(ctx, session.ID)
+	if err != nil {
+		return Result{}, err
+	}
+	for _, rule := range rules {
+		picker.Danger(rule.ID, string(rule.Effect)+" "+rule.String(), ruleScopeLabel(rule, session.ID), permissionsCommand("delete", rule.ID))
 	}
 	return Result{Handled: true, Picker: picker.Ptr()}, nil
 }
@@ -93,9 +83,6 @@ func ruleScopeLabel(rule permission.Rule, sessionID string) string {
 
 // addPermissionRule reads "allow|ask|deny <tool> [pattern] [global]".
 func (d *Dispatcher) addPermissionRule(ctx context.Context, session core.Session, args string) (Result, error) {
-	if d.rules == nil {
-		return unsupportedRuntime("permission rule"), nil
-	}
 	fields := strings.Fields(args)
 	if len(fields) < 2 || !permission.Effect(strings.ToLower(fields[0])).Valid() {
 		return Result{Handled: true, Text: permissionsUsage}, nil
@@ -106,10 +93,10 @@ func (d *Dispatcher) addPermissionRule(ctx context.Context, session core.Session
 		request.Scope, pattern = permission.ScopeGlobal, pattern[:last]
 	}
 	request.Pattern = strings.Join(pattern, " ")
-	if !d.rules.ManagesRules(request.Scope) {
+	if !d.managesRules(request.Scope) {
 		return Result{Handled: true, Text: rulesRefusal(request.Scope)}, nil
 	}
-	rule, err := d.rules.AddPermissionRule(ctx, session.ID, request)
+	rule, err := d.daemon.AddPermissionRule(ctx, session.ID, request)
 	if err != nil {
 		return Result{}, err
 	}
@@ -125,11 +112,8 @@ func rulesRefusal(scope permission.Scope) string {
 
 // deletePermissionRule asks first, then deletes one of the session's rules.
 func (d *Dispatcher) deletePermissionRule(ctx context.Context, session core.Session, args string) (Result, error) {
-	if d.rules == nil {
-		return unsupportedRuntime("permission rule"), nil
-	}
 	ruleID, confirm := cutWord(args)
-	rules, err := d.rules.SessionPermissionRules(ctx, session.ID)
+	rules, err := d.daemon.SessionPermissionRules(ctx, session.ID)
 	if err != nil {
 		return Result{}, err
 	}
@@ -142,7 +126,7 @@ func (d *Dispatcher) deletePermissionRule(ctx context.Context, session core.Sess
 	if rule.ID == "" {
 		return Result{Handled: true, Text: "No such rule for this session."}, nil
 	}
-	if !d.rules.ManagesRules(rule.Scope) {
+	if !d.managesRules(rule.Scope) {
 		return Result{Handled: true, Text: rulesRefusal(rule.Scope)}, nil
 	}
 	label := string(rule.Effect) + " " + rule.String()
@@ -156,7 +140,7 @@ func (d *Dispatcher) deletePermissionRule(ctx context.Context, session core.Sess
 			ConfirmDanger:  true,
 		}}, nil
 	}
-	if err := d.rules.DeletePermissionRule(ctx, rule.ID); err != nil {
+	if err := d.daemon.DeletePermissionRule(ctx, rule.ID); err != nil {
 		return Result{}, err
 	}
 	return Result{Handled: true, Text: "🗑️ Rule deleted: " + label}, nil

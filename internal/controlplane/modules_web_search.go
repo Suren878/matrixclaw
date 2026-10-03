@@ -7,9 +7,6 @@ import (
 )
 
 func (d *Dispatcher) handleWebSearch(ctx context.Context, args string) (Result, error) {
-	if d.webSearch == nil {
-		return unsupportedRuntime("web search"), nil
-	}
 	step, rest := firstCommandStep(args)
 	switch step {
 	case "":
@@ -24,7 +21,7 @@ func (d *Dispatcher) handleWebSearch(ctx context.Context, args string) (Result, 
 }
 
 func (d *Dispatcher) webSearchPicker(ctx context.Context) (Result, error) {
-	resp, err := d.webSearch.GetWebSearchConfig(ctx)
+	resp, err := d.daemon.GetWebSearchConfig(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -86,7 +83,7 @@ func (d *Dispatcher) webSearchProviderDetail(ctx context.Context, provider, args
 }
 
 func (d *Dispatcher) webSearchDetailPicker(ctx context.Context, provider string) (Result, error) {
-	resp, err := d.webSearch.GetWebSearchConfig(ctx)
+	resp, err := d.daemon.GetWebSearchConfig(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -126,7 +123,7 @@ func (d *Dispatcher) webSearchDetailPicker(ctx context.Context, provider string)
 }
 
 func (d *Dispatcher) webSearchUse(ctx context.Context, provider string) (Result, error) {
-	_, err := d.webSearch.UpdateWebSearchConfig(ctx, setup.WebSearchConfigUpdate{Provider: &provider})
+	_, err := d.daemon.UpdateWebSearchConfig(ctx, setup.WebSearchConfigUpdate{Provider: &provider})
 	if err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
@@ -137,7 +134,7 @@ func (d *Dispatcher) webSearchUse(ctx context.Context, provider string) (Result,
 }
 
 func (d *Dispatcher) webSearchKeyPrompt(ctx context.Context, provider string) (Result, error) {
-	resp, err := d.webSearch.GetWebSearchConfig(ctx)
+	resp, err := d.daemon.GetWebSearchConfig(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -162,7 +159,7 @@ func (d *Dispatcher) webSearchSetKey(ctx context.Context, provider, key string) 
 	case setup.WebSearchProviderSerper:
 		update.SerperKey = clearableInput(key)
 	}
-	_, err := d.webSearch.UpdateWebSearchConfig(ctx, update)
+	_, err := d.daemon.UpdateWebSearchConfig(ctx, update)
 	if err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
@@ -170,7 +167,7 @@ func (d *Dispatcher) webSearchSetKey(ctx context.Context, provider, key string) 
 }
 
 func (d *Dispatcher) webSearchURLPrompt(ctx context.Context, provider string) (Result, error) {
-	resp, err := d.webSearch.GetWebSearchConfig(ctx)
+	resp, err := d.daemon.GetWebSearchConfig(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -184,7 +181,7 @@ func (d *Dispatcher) webSearchURLPrompt(ctx context.Context, provider string) (R
 }
 
 func (d *Dispatcher) webSearchSetURL(ctx context.Context, provider, rawURL string) (Result, error) {
-	_, err := d.webSearch.UpdateWebSearchConfig(ctx, setup.WebSearchConfigUpdate{
+	_, err := d.daemon.UpdateWebSearchConfig(ctx, setup.WebSearchConfigUpdate{
 		Provider: &provider,
 		BaseURL:  clearableInput(rawURL),
 	})

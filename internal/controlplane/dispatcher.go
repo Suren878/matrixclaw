@@ -5,187 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Suren878/matrixclaw/internal/agent/todo"
-	"github.com/Suren878/matrixclaw/internal/automation"
-	"github.com/Suren878/matrixclaw/internal/core"
-	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
-	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
-	"github.com/Suren878/matrixclaw/internal/permission"
-	"github.com/Suren878/matrixclaw/internal/setup"
-	"github.com/Suren878/matrixclaw/internal/skills"
-	"github.com/Suren878/matrixclaw/internal/transcript"
+	"github.com/Suren878/matrixclaw/internal/daemonclient"
 )
-
-type ClientRuntime interface {
-	ClientName() string
-}
-
-type SessionRuntime interface {
-	CurrentBinding(ctx context.Context, externalKey string) (core.ClientBinding, error)
-	ListSessions(ctx context.Context) ([]core.Session, error)
-	GetSession(ctx context.Context, sessionID string) (core.Session, error)
-	CreateSession(ctx context.Context, externalKey string, title string, workingDir string) (core.Session, error)
-	UseSession(ctx context.Context, externalKey string, sessionID string) (core.ClientBinding, error)
-	RenameSession(ctx context.Context, sessionID string, title string) (core.Session, error)
-	DeleteSession(ctx context.Context, sessionID string) error
-}
-
-type SessionRuntimeOptions interface {
-	CreateSessionWithOptions(ctx context.Context, externalKey string, input core.CreateSessionRequest) (core.Session, error)
-}
-
-type SessionModelRuntime interface {
-	SessionModels(ctx context.Context, sessionID string) (core.SessionModelsResponse, error)
-	UpdateSessionModel(ctx context.Context, sessionID string, modelID string) (core.Session, error)
-}
-
-type ExternalAgentRuntime interface {
-	ListExternalAgents(ctx context.Context) ([]core.ExternalAgentDescriptor, error)
-	UpdateExternalAgent(ctx context.Context, agentID string, update core.UpdateExternalAgentRequest) ([]core.ExternalAgentDescriptor, error)
-}
-
-type VoiceModuleRuntime interface {
-	VoiceModules(ctx context.Context) ([]setup.VoiceModuleDescriptor, error)
-	UpdateVoiceModule(ctx context.Context, moduleID string, update setup.VoiceModuleUpdate) ([]setup.VoiceModuleDescriptor, error)
-	VoiceProviderAction(ctx context.Context, moduleID string, providerID string, request setup.VoiceProviderActionRequest) (setup.VoiceProviderOption, error)
-}
-
-type RealtimeVoiceRuntime interface {
-	RealtimeVoiceModule(ctx context.Context) (realtime.ModuleDescriptor, error)
-	UpdateRealtimeVoiceModule(ctx context.Context, update setup.VoiceModuleUpdate) (realtime.ModuleDescriptor, error)
-}
-
-type TelephonyRuntime interface {
-	TelephonyModule(ctx context.Context) (setup.TelephonyModuleDescriptor, error)
-	UpdateTelephonyModule(ctx context.Context, update setup.TelephonyModuleUpdate) (setup.TelephonyModuleDescriptor, error)
-}
-
-type BrowserModuleRuntime interface {
-	BrowserModule(ctx context.Context) (setup.BrowserModuleDescriptor, error)
-	UpdateBrowserModule(ctx context.Context, update setup.BrowserModuleUpdate) (setup.BrowserModuleDescriptor, error)
-	BrowserProviderAction(ctx context.Context, providerID string, request setup.BrowserProviderActionRequest) (setup.BrowserProviderOption, error)
-}
-
-type ProviderRuntime interface {
-	ListSetupProviders(ctx context.Context) ([]setup.ProviderSetupItem, error)
-	ConfigureSetupProvider(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) (setup.ProviderSetupItem, error)
-	ProviderModelCatalog(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) (setup.ProviderModelsResponse, error)
-	DeleteSetupProvider(ctx context.Context, providerID string) error
-	UpdateSessionProvider(ctx context.Context, sessionID string, providerID string) (core.Session, error)
-}
-
-type PermissionRuntime interface {
-	UpdateSessionPermissionMode(ctx context.Context, sessionID string, mode core.PermissionMode) (core.Session, error)
-	// ManagesPermissionMode reports whether this client may switch a session's mode.
-	ManagesPermissionMode() bool
-}
-
-type PermissionRuleRuntime interface {
-	SessionPermissionRules(ctx context.Context, sessionID string) ([]permission.Rule, error)
-	AddPermissionRule(ctx context.Context, sessionID string, request core.PermissionRuleRequest) (permission.Rule, error)
-	DeletePermissionRule(ctx context.Context, ruleID string) error
-	// ManagesRules reports whether this client may add and delete rules of scope.
-	ManagesRules(scope permission.Scope) bool
-}
-
-type ApprovalRuntime interface {
-	ResolveApproval(ctx context.Context, approvalID string, request core.ApprovalResolveRequest) (core.Approval, error)
-}
-
-type SessionMessageRuntime interface {
-	CreateSystemMessage(ctx context.Context, sessionID string, content string) (transcript.Message, error)
-}
-
-type SessionSendRuntime interface {
-	SendMessage(ctx context.Context, sessionID string, content string) (core.AcceptRunResult, error)
-}
-
-type ContinueRuntime interface {
-	ContinueSession(ctx context.Context, externalKey string, sessionID string) (core.AcceptRunResult, error)
-}
-
-type ContextRuntime interface {
-	SessionContext(ctx context.Context, sessionID string) (core.ContextReport, error)
-	CompactSession(ctx context.Context, sessionID string) (core.CompactSessionResult, error)
-	ClearContext(ctx context.Context, sessionID string) (transcript.Message, error)
-}
-
-type UsageRuntime interface {
-	SessionUsage(ctx context.Context, sessionID string) (core.UsageReport, error)
-}
-
-type BudgetRuntime interface {
-	SessionBudget(ctx context.Context, sessionID string) (core.SessionBudgetReport, error)
-	UpdateSessionBudget(ctx context.Context, sessionID string, budget core.SessionBudget) (core.SessionBudgetReport, error)
-}
-
-type TodoRuntime interface {
-	SessionTodo(ctx context.Context, sessionID string) (todo.List, error)
-	ClearSessionTodo(ctx context.Context, sessionID string) (todo.List, error)
-}
-
-type MemoryRuntime interface {
-	ListMemories(ctx context.Context, filter core.MemoryFilter) ([]core.MemoryEntry, error)
-}
-
-type SearchRuntime interface {
-	Search(ctx context.Context, filter core.SearchFilter) (core.SearchReport, error)
-}
-
-type StorageRuntime interface {
-	ListTemporaryStorageFiles(ctx context.Context, limit int) (localstorage.TempListResult, error)
-	PromoteTemporaryStorageFile(ctx context.Context, tempPath string, destPath string) (localstorage.Entry, error)
-	DeleteTemporaryStorageFile(ctx context.Context, tempPath string) (localstorage.TempEntry, error)
-	CleanupTemporaryStorageFiles(ctx context.Context) (localstorage.CleanupResult, error)
-	UpdateTemporaryStorageSettings(ctx context.Context, autoCleanup *bool, ttlDays int64, maxGB float64) (localstorage.TempSettings, error)
-	ListStorageFiles(ctx context.Context, filter localstorage.ListFilter) (localstorage.ListResult, error)
-	ReadStorageFile(ctx context.Context, storagePath string) (localstorage.ReadResult, error)
-	DeleteStorageFile(ctx context.Context, storagePath string) (localstorage.Entry, error)
-}
-
-type AutomationRuntime interface {
-	ClientRuntime
-	CreateAutomationJob(ctx context.Context, input automation.CreateJobInput) (automation.Job, error)
-	ListAutomationJobs(ctx context.Context) ([]automation.Job, error)
-	PauseAutomationJob(ctx context.Context, jobID string) (automation.Job, error)
-	ResumeAutomationJob(ctx context.Context, jobID string) (automation.Job, error)
-	CompleteAutomationJob(ctx context.Context, jobID string) (automation.Job, error)
-	DeleteAutomationJob(ctx context.Context, jobID string) (automation.Job, error)
-	RunAutomationJobNow(ctx context.Context, jobID string) (automation.Fire, error)
-}
-
-type ServerRuntime interface {
-	ServerStatus(ctx context.Context) (core.ServerStatus, error)
-	StopDaemon(ctx context.Context) error
-}
-
-type WebSearchRuntime interface {
-	GetWebSearchConfig(ctx context.Context) (setup.WebSearchConfigResponse, error)
-	UpdateWebSearchConfig(ctx context.Context, update setup.WebSearchConfigUpdate) (setup.WebSearchConfigResponse, error)
-}
-
-type SkillsRuntime interface {
-	ListSkills(ctx context.Context, opts skills.SearchOptions) ([]skills.Skill, error)
-	SearchSkills(ctx context.Context, query string, opts skills.SearchOptions) ([]skills.Skill, error)
-	GetSkill(ctx context.Context, id string) (skills.SkillDetail, error)
-	InstallSkill(ctx context.Context, path string) ([]skills.Skill, error)
-	SkillAction(ctx context.Context, id string, action string) error
-	RemoveSkill(ctx context.Context, id string) error
-	SessionSkills(ctx context.Context, sessionID string) ([]skills.Skill, error)
-	UseSkill(ctx context.Context, sessionID string, skillID string) (skills.SkillDetail, error)
-	UnloadSkill(ctx context.Context, sessionID string, skillID string) error
-	CreateSkillDraft(ctx context.Context, request skills.DraftRequest) (skills.Skill, error)
-	UpdateSkillMetadata(ctx context.Context, id string, update skills.MetadataUpdate) (skills.Skill, error)
-	UpdateSkillBody(ctx context.Context, id string, body string) error
-}
-
-type MCPRuntime interface {
-	MCPConfig(ctx context.Context) (setup.MCPConfigResponse, error)
-	UpdateMCPConfig(ctx context.Context, update setup.MCPConfigUpdate) (setup.MCPConfigResponse, error)
-	CreateMCPServer(ctx context.Context, server setup.MCPServerConfig) (setup.MCPConfigResponse, error)
-	UpdateMCPServer(ctx context.Context, serverID string, update setup.MCPServerUpdate) (setup.MCPConfigResponse, error)
-	DeleteMCPServer(ctx context.Context, serverID string) (setup.MCPConfigResponse, error)
-}
 
 type Result struct {
 	Handled        bool
@@ -199,134 +20,61 @@ type Result struct {
 	Info           *InfoData
 }
 
+// Dispatcher runs slash commands against the daemon for one client: its
+// name, external key and role come with daemon.
 type Dispatcher struct {
-	configured     bool
-	sessions       SessionRuntime
-	sessionModels  SessionModelRuntime
-	externalAgents ExternalAgentRuntime
-	voiceModules   VoiceModuleRuntime
-	realtimeVoice  RealtimeVoiceRuntime
-	telephony      TelephonyRuntime
-	browserModules BrowserModuleRuntime
-	providers      ProviderRuntime
-	permissions    PermissionRuntime
-	rules          PermissionRuleRuntime
-	approvals      ApprovalRuntime
-	messages       SessionMessageRuntime
-	sender         SessionSendRuntime
-	continuer      ContinueRuntime
-	contextRuntime ContextRuntime
-	usage          UsageRuntime
-	budget         BudgetRuntime
-	todo           TodoRuntime
-	tasks          BackgroundTaskRuntime
-	memory         MemoryRuntime
-	search         SearchRuntime
-	storage        StorageRuntime
-	automation     AutomationRuntime
-	server         ServerRuntime
-	webSearch      WebSearchRuntime
-	skills         SkillsRuntime
-	mcp            MCPRuntime
-	workingDir     string
-	now            func() time.Time
+	daemon     *daemonclient.Client
+	workingDir string
+	now        func() time.Time
 }
 
-func New(runtime any, workingDir string) *Dispatcher {
-	d := &Dispatcher{
-		configured: runtime != nil,
-		workingDir: strings.TrimSpace(workingDir),
-		now:        time.Now,
-	}
-	if runtime != nil {
-		d.sessions, _ = runtime.(SessionRuntime)
-		d.sessionModels, _ = runtime.(SessionModelRuntime)
-		d.externalAgents, _ = runtime.(ExternalAgentRuntime)
-		d.voiceModules, _ = runtime.(VoiceModuleRuntime)
-		d.realtimeVoice, _ = runtime.(RealtimeVoiceRuntime)
-		d.telephony, _ = runtime.(TelephonyRuntime)
-		d.browserModules, _ = runtime.(BrowserModuleRuntime)
-		d.providers, _ = runtime.(ProviderRuntime)
-		d.permissions, _ = runtime.(PermissionRuntime)
-		d.rules, _ = runtime.(PermissionRuleRuntime)
-		d.approvals, _ = runtime.(ApprovalRuntime)
-		d.messages, _ = runtime.(SessionMessageRuntime)
-		d.sender, _ = runtime.(SessionSendRuntime)
-		d.continuer, _ = runtime.(ContinueRuntime)
-		d.contextRuntime, _ = runtime.(ContextRuntime)
-		d.usage, _ = runtime.(UsageRuntime)
-		d.budget, _ = runtime.(BudgetRuntime)
-		d.todo, _ = runtime.(TodoRuntime)
-		d.tasks, _ = runtime.(BackgroundTaskRuntime)
-		d.memory, _ = runtime.(MemoryRuntime)
-		d.search, _ = runtime.(SearchRuntime)
-		d.storage, _ = runtime.(StorageRuntime)
-		d.automation, _ = runtime.(AutomationRuntime)
-		d.server, _ = runtime.(ServerRuntime)
-		d.webSearch, _ = runtime.(WebSearchRuntime)
-		d.skills, _ = runtime.(SkillsRuntime)
-		d.mcp, _ = runtime.(MCPRuntime)
-	}
-	return d
+func New(daemon *daemonclient.Client, workingDir string) *Dispatcher {
+	return &Dispatcher{daemon: daemon, workingDir: strings.TrimSpace(workingDir), now: time.Now}
 }
 
-func unsupportedRuntime(area string) Result {
-	area = strings.TrimSpace(area)
-	if area == "" {
-		return Result{Handled: true, Text: "Command runtime is not configured."}
-	}
-	return Result{Handled: true, Text: "Command runtime does not support " + area + " commands."}
-}
-
-func (d *Dispatcher) Handle(ctx context.Context, externalKey string, text string) (Result, error) {
+func (d *Dispatcher) Handle(ctx context.Context, text string) (Result, error) {
 	spec, args, ok := Parse(text)
 	if !ok {
 		return Result{}, nil
-	}
-	if d == nil || !d.configured {
-		return Result{Handled: true, Text: "Command runtime is not configured."}, nil
 	}
 
 	switch spec.ID {
 	case CommandHelp:
 		return Result{Handled: true, Picker: CommandMenuPicker(MenuState{})}, nil
 	case CommandNewSession:
-		if d.sessions == nil {
-			return unsupportedRuntime("sessions"), nil
-		}
-		return d.handleNewSession(ctx, externalKey, args)
+		return d.handleNewSession(ctx, args)
 	case CommandSessions:
-		return d.handleSessions(ctx, externalKey)
+		return d.handleSessions(ctx)
 	case CommandSession:
-		return d.handleSession(ctx, externalKey, args)
+		return d.handleSession(ctx, args)
 	case CommandProvider:
-		return d.handleProvider(ctx, externalKey, args)
+		return d.handleProvider(ctx, args)
 	case CommandPermissions:
-		return d.handlePermissions(ctx, externalKey, args)
+		return d.handlePermissions(ctx, args)
 	case CommandApproval:
 		return d.handleApproval(ctx, args)
 	case CommandContext:
-		return d.handleContext(ctx, externalKey, args)
+		return d.handleContext(ctx, args)
 	case CommandUsage:
-		return d.handleUsage(ctx, externalKey)
+		return d.handleUsage(ctx)
 	case CommandContinue:
-		return d.handleContinue(ctx, externalKey)
+		return d.handleContinue(ctx)
 	case CommandBudget:
-		return d.handleBudget(ctx, externalKey, args)
+		return d.handleBudget(ctx, args)
 	case CommandTodo:
-		return d.handleTodo(ctx, externalKey, args)
+		return d.handleTodo(ctx, args)
 	case CommandMemory:
 		return d.handleMemory(ctx, args)
 	case CommandSearch:
-		return d.handleSearch(ctx, externalKey, args)
+		return d.handleSearch(ctx, args)
 	case CommandSkills:
-		return d.handleSessionSkills(ctx, externalKey, args)
+		return d.handleSessionSkills(ctx, args)
 	case CommandModules:
-		return d.handleModules(ctx, externalKey, args)
+		return d.handleModules(ctx, args)
 	case CommandRemind:
-		return d.handleRemind(ctx, externalKey, args)
+		return d.handleRemind(ctx, args)
 	case CommandTasks:
-		return d.handleTasks(ctx, externalKey, args)
+		return d.handleTasks(ctx, args)
 	case CommandServer:
 		return d.handleServer(), nil
 	case CommandStatus:
@@ -338,11 +86,4 @@ func (d *Dispatcher) Handle(ctx context.Context, externalKey string, text string
 	default:
 		return Result{Handled: true, Text: "Unknown command.\n\n" + HelpText()}, nil
 	}
-}
-
-// BackgroundTaskRuntime reads and stops the background tasks of sessions.
-type BackgroundTaskRuntime interface {
-	SessionTasks(ctx context.Context, sessionID string) ([]core.Task, error)
-	TaskDetail(ctx context.Context, taskID string) (core.TaskDetailResponse, error)
-	CancelTask(ctx context.Context, taskID string) (core.Task, error)
 }

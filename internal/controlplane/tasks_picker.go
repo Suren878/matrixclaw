@@ -8,21 +8,12 @@ import (
 )
 
 // tasksPicker lists the bound session's background tasks, then the scheduled tasks.
-func (d *Dispatcher) tasksPicker(ctx context.Context, externalKey string) (Result, error) {
-	if d.automation == nil && d.tasks == nil {
-		return unsupportedRuntime("tasks"), nil
-	}
-	items, err := d.backgroundTaskItems(ctx, externalKey)
+func (d *Dispatcher) tasksPicker(ctx context.Context) (Result, error) {
+	items, err := d.backgroundTaskItems(ctx)
 	if err != nil {
 		return Result{}, err
 	}
-	if d.automation == nil {
-		if len(items) == 0 {
-			return Result{Handled: true, Text: "No background tasks."}, nil
-		}
-		return Result{Handled: true, Picker: NewPickerData(PickerTasks, "Tasks").Items(items...).Ptr()}, nil
-	}
-	jobs, err := d.automation.ListAutomationJobs(ctx)
+	jobs, err := d.daemon.ListAutomationJobs(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -47,7 +38,7 @@ func (d *Dispatcher) tasksPicker(ctx context.Context, externalKey string) (Resul
 }
 
 func (d *Dispatcher) tasksArchivePicker(ctx context.Context) (Result, error) {
-	jobs, err := d.automation.ListAutomationJobs(ctx)
+	jobs, err := d.daemon.ListAutomationJobs(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -71,7 +62,7 @@ func (d *Dispatcher) tasksArchivePicker(ctx context.Context) (Result, error) {
 }
 
 func (d *Dispatcher) taskActionsPicker(ctx context.Context, jobID string) (Result, error) {
-	jobs, err := d.automation.ListAutomationJobs(ctx)
+	jobs, err := d.daemon.ListAutomationJobs(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -102,14 +93,14 @@ func (d *Dispatcher) taskActionsPicker(ctx context.Context, jobID string) (Resul
 }
 
 func (d *Dispatcher) deleteClosedTasks(ctx context.Context) (Result, error) {
-	jobs, err := d.automation.ListAutomationJobs(ctx)
+	jobs, err := d.daemon.ListAutomationJobs(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 	_, closed := splitAutomationJobs(jobs)
 	deleted := 0
 	for _, job := range closed {
-		if _, err := d.automation.DeleteAutomationJob(ctx, job.ID); err != nil {
+		if _, err := d.daemon.DeleteAutomationJob(ctx, job.ID); err != nil {
 			return Result{}, err
 		}
 		deleted++

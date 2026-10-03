@@ -1,99 +1,74 @@
 package controlplane
 
 import (
-	"context"
+	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-// agentSessionsRuntime creates sessions and offers one installed external agent.
-type agentSessionsRuntime struct {
-	rulesRuntime
-	created []core.CreateSessionRequest
+// agentSessionsDaemon creates sessions, offers one installed external agent
+// and records the runs it is asked to continue.
+type agentSessionsDaemon struct {
+	*fakeDaemon
+	created   []core.CreateSessionRequest
+	continued []string
 }
 
-func (r *agentSessionsRuntime) CreateSessionWithOptions(_ context.Context, _ string, request core.CreateSessionRequest) (core.Session, error) {
-	r.created = append(r.created, request)
-	return core.Session{ID: "s_new", Title: request.Title, RuntimeID: core.SessionRuntime(request.RuntimeID)}, nil
-}
-
-func (r *agentSessionsRuntime) ListExternalAgents(context.Context) ([]core.ExternalAgentDescriptor, error) {
-	return []core.ExternalAgentDescriptor{{ID: "claude", Installed: true, Enabled: true}}, nil
-}
-
-func (r *agentSessionsRuntime) UpdateExternalAgent(context.Context, string, core.UpdateExternalAgentRequest) ([]core.ExternalAgentDescriptor, error) {
-	return nil, nil
+func newAgentSessionsDaemon(t *testing.T) *agentSessionsDaemon {
+	d := &agentSessionsDaemon{fakeDaemon: newFakeDaemon(t)}
+	d.on("POST /v1/sessions", func(r *http.Request) any {
+		request := decode[core.CreateSessionRequest](r)
+		d.created = append(d.created, request)
+		session := core.Session{ID: "s_new", Title: request.Title, RuntimeID: core.SessionRuntime(request.RuntimeID)}
+		d.sessions = append(d.sessions, session)
+		return core.SessionResponse{Session: session}
+	}).on("GET /v1/external-agents", func(*http.Request) any {
+		return core.ExternalAgentsResponse{Agents: []core.ExternalAgentDescriptor{{ID: "claude", Installed: true, Enabled: true}}}
+	}).on("POST /v1/messages", func(r *http.Request) any {
+		input := decode[core.HandleMessageInput](r)
+		d.continued = append(d.continued, input.SessionID)
+		return core.AcceptRunResult{}
+	})
+	return d
 }
 
 func TestOnlyTheOwnerCreatesExternalAgentSessions(t *testing.T) {
-	for _, owner := range []bool{false, true} {
-		runtime := &agentSessionsRuntime{rulesRuntime: rulesRuntime{owner: owner}}
-		dispatcher := New(runtime, "")
+	for _, role := range []core.Role{core.RoleMember, core.RoleOwner} {
+		daemon := newAgentSessionsDaemon(t)
+		owner := role == core.RoleOwner
 
-		created, err := dispatcher.Handle(context.Background(), "key", "/session new claude review")
-		if err != nil {
-			t.Fatal(err)
-		}
-		picker, err := dispatcher.Handle(context.Background(), "key", "/session new")
-		if err != nil || picker.Picker == nil {
-			t.Fatalf("picker = %+v err = %v", picker, err)
+		created := daemon.runAs(role, "/session new claude review")
+		picker := daemon.runAs(role, "/session new")
+		if picker.Picker == nil {
+			t.Fatalf("picker = %+v", picker)
 		}
 		var offered []string
 		for _, item := range picker.Picker.Items {
 			offered = append(offered, item.ID)
 		}
-		if _, err := dispatcher.Handle(context.Background(), "key", "/session new matrixclaw"); err != nil {
-			t.Fatal(err)
-		}
+		daemon.runAs(role, "/session new matrixclaw")
 
 		agentSessions := 0
-		for _, request := range runtime.created {
+		for _, request := range daemon.created {
 			if request.RuntimeID == string(core.SessionRuntimeExternalAgent) {
 				agentSessions++
 			}
 		}
-		if owner != (agentSessions == 1) || len(runtime.created) != agentSessions+1 {
-			t.Fatalf("owner=%v: created = %+v (%q)", owner, runtime.created, created.Text)
+		if owner != (agentSessions == 1) || len(daemon.created) != agentSessions+1 {
+			t.Fatalf("%s: created = %+v (%q)", role, daemon.created, created.Text)
 		}
 		if owner != strings.Contains(strings.Join(offered, " "), "claude") {
-			t.Fatalf("owner=%v: picker offers %v", owner, offered)
+			t.Fatalf("%s: picker offers %v", role, offered)
 		}
 		if !owner && created.Text != "Only the owner can start an external agent session." {
 			t.Fatalf("non-owner reply = %q", created.Text)
 		}
+		if daemon.bound != "s_new" {
+			t.Fatalf("%s: the new session is not bound: %q", role, daemon.bound)
+		}
 	}
-}
-
-// boundSessionsRuntime lists sessions and records the bindings and runs asked for.
-type boundSessionsRuntime struct {
-	agentSessionsRuntime
-	sessions  []core.Session
-	bound     string
-	continued []string
-}
-
-func (r *boundSessionsRuntime) ListSessions(context.Context) ([]core.Session, error) {
-	return r.sessions, nil
-}
-
-func (r *boundSessionsRuntime) GetSession(ctx context.Context, id string) (core.Session, error) {
-	return sessionWithID(r.sessions, id)
-}
-
-func (r *boundSessionsRuntime) UseSession(_ context.Context, _ string, sessionID string) (core.ClientBinding, error) {
-	r.bound = sessionID
-	return core.ClientBinding{SessionID: sessionID}, nil
-}
-
-func (r *boundSessionsRuntime) CurrentBinding(context.Context, string) (core.ClientBinding, error) {
-	return core.ClientBinding{SessionID: r.bound}, nil
-}
-
-func (r *boundSessionsRuntime) ContinueSession(_ context.Context, _ string, sessionID string) (core.AcceptRunResult, error) {
-	r.continued = append(r.continued, sessionID)
-	return core.AcceptRunResult{}, nil
 }
 
 func TestOnlyTheOwnerReachesSessionsThatRunUnattended(t *testing.T) {
@@ -102,29 +77,24 @@ func TestOnlyTheOwnerReachesSessionsThatRunUnattended(t *testing.T) {
 		{ID: "auto", Title: "auto", RuntimeID: core.SessionRuntimeMatrixClaw, PermissionMode: core.PermissionModeFullAuto},
 		{ID: "plain", Title: "plain", RuntimeID: core.SessionRuntimeMatrixClaw, PermissionMode: core.PermissionModeDefault},
 	}
-	for _, owner := range []bool{false, true} {
+	for _, role := range []core.Role{core.RoleMember, core.RoleOwner} {
 		for _, session := range sessions {
-			runtime := &boundSessionsRuntime{agentSessionsRuntime: agentSessionsRuntime{rulesRuntime: rulesRuntime{owner: owner}}, sessions: sessions}
-			dispatcher := New(runtime, "")
+			daemon := newAgentSessionsDaemon(t)
+			daemon.sessions, daemon.bound = sessions, ""
 
-			used, err := dispatcher.Handle(context.Background(), "key", "/session use "+session.ID)
-			if err != nil {
-				t.Fatal(err)
+			used := daemon.runAs(role, "/session use "+session.ID)
+			reachable := role == core.RoleOwner || session.ID == "plain"
+			if reachable != (daemon.bound == session.ID) {
+				t.Fatalf("%s %s: bound = %q (%q)", role, session.ID, daemon.bound, used.Text)
 			}
-			reachable := owner || session.ID == "plain"
-			if reachable != (runtime.bound == session.ID) {
-				t.Fatalf("owner=%v %s: bound = %q (%q)", owner, session.ID, runtime.bound, used.Text)
-			}
-			if !reachable && used.Text != "Only the owner can use a session that runs tools without asking (external agent or full_auto)." {
-				t.Fatalf("owner=%v %s: reply = %q", owner, session.ID, used.Text)
+			if !reachable && used.Text != unattendedRefusal {
+				t.Fatalf("%s %s: reply = %q", role, session.ID, used.Text)
 			}
 
-			runtime.bound = session.ID
-			if _, err := dispatcher.Handle(context.Background(), "key", "/continue"); err != nil {
-				t.Fatal(err)
-			}
-			if reachable != (len(runtime.continued) == 1) {
-				t.Fatalf("owner=%v %s: continued = %v", owner, session.ID, runtime.continued)
+			daemon.bound = session.ID
+			daemon.runAs(role, "/continue")
+			if reachable != (len(daemon.continued) == 1) {
+				t.Fatalf("%s %s: continued = %v", role, session.ID, daemon.continued)
 			}
 		}
 	}

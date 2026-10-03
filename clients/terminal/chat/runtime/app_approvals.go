@@ -100,7 +100,7 @@ func (m *appModel) resolveApprovalCmd(permission surfacepermission.PermissionReq
 		return nil
 	}
 	return func() tea.Msg {
-		approval, err := m.rt.ResolveApproval(m.ctx, permission.ID, request)
+		approval, err := m.rt.client.ResolveApproval(m.ctx, permission.ID, request)
 		return resolveApprovalMsg{
 			approval:   approval,
 			approved:   request.Approved,

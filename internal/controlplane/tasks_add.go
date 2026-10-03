@@ -7,16 +7,13 @@ import (
 	"github.com/Suren878/matrixclaw/internal/automation"
 )
 
-func (d *Dispatcher) handleTaskAdd(ctx context.Context, externalKey string, args string) (Result, error) {
-	if d.sessions == nil {
-		return unsupportedRuntime("sessions"), nil
-	}
+func (d *Dispatcher) handleTaskAdd(ctx context.Context, args string) (Result, error) {
 	args = strings.TrimSpace(args)
 	fields := strings.Fields(args)
 	if len(fields) == 0 {
 		return Result{Handled: true, Text: "Usage: /tasks add once 2026-04-26 16:00 -- prompt"}, nil
 	}
-	binding, err := d.sessions.CurrentBinding(ctx, externalKey)
+	binding, err := d.currentBinding(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -30,11 +27,11 @@ func (d *Dispatcher) handleTaskAdd(ctx context.Context, externalKey string, args
 		if err != nil {
 			return Result{Handled: true, Text: err.Error()}, nil
 		}
-		job, err := d.automation.CreateAutomationJob(ctx, automation.CreateJobInput{
+		job, err := d.daemon.CreateAutomationJob(ctx, automation.CreateJobInput{
 			Kind:         automation.JobKindAITask,
 			SessionID:    binding.SessionID,
-			Client:       d.automation.ClientName(),
-			ExternalKey:  externalKey,
+			Client:       d.daemon.ClientName,
+			ExternalKey:  d.daemon.ExternalKey,
 			ScheduleMode: automation.ScheduleModeOnce,
 			RunAt:        &runAt,
 			Prompt:       prompt,
@@ -49,11 +46,11 @@ func (d *Dispatcher) handleTaskAdd(ctx context.Context, externalKey string, args
 		if !ok {
 			return Result{Handled: true, Text: "Usage: /tasks add cron \"0 10 1 * *\" -- prompt"}, nil
 		}
-		job, err := d.automation.CreateAutomationJob(ctx, automation.CreateJobInput{
+		job, err := d.daemon.CreateAutomationJob(ctx, automation.CreateJobInput{
 			Kind:         automation.JobKindAITask,
 			SessionID:    binding.SessionID,
-			Client:       d.automation.ClientName(),
-			ExternalKey:  externalKey,
+			Client:       d.daemon.ClientName,
+			ExternalKey:  d.daemon.ExternalKey,
 			ScheduleMode: automation.ScheduleModeCron,
 			CronExpr:     cronExpr,
 			Prompt:       prompt,

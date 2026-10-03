@@ -11,14 +11,8 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
-func (d *Dispatcher) handleContext(ctx context.Context, externalKey string, args string) (Result, error) {
-	if d.contextRuntime == nil {
-		return unsupportedRuntime("context"), nil
-	}
-	if d.sessions == nil {
-		return unsupportedRuntime("sessions"), nil
-	}
-	_, session, err := d.currentSession(ctx, externalKey)
+func (d *Dispatcher) handleContext(ctx context.Context, args string) (Result, error) {
+	_, session, err := d.currentSession(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -29,7 +23,7 @@ func (d *Dispatcher) handleContext(ctx context.Context, externalKey string, args
 	args = strings.TrimSpace(args)
 	switch strings.ToLower(args) {
 	case "info":
-		report, err := d.contextRuntime.SessionContext(ctx, session.ID)
+		report, err := d.daemon.SessionContext(ctx, session.ID)
 		if err != nil {
 			return Result{}, err
 		}
@@ -48,7 +42,7 @@ func (d *Dispatcher) handleContext(ctx context.Context, externalKey string, args
 			},
 		}, nil
 	case "clear confirm":
-		if _, err := d.contextRuntime.ClearContext(ctx, session.ID); err != nil {
+		if _, err := d.daemon.ClearContext(ctx, session.ID); err != nil {
 			return Result{}, err
 		}
 		return Result{Handled: true, Text: "Context cleared.", ReloadSnapshot: true}, nil
@@ -64,7 +58,7 @@ func (d *Dispatcher) handleContext(ctx context.Context, externalKey string, args
 			},
 		}, nil
 	case "compact confirm":
-		result, err := d.contextRuntime.CompactSession(ctx, session.ID)
+		result, err := d.daemon.CompactSession(ctx, session.ID)
 		if errors.Is(err, core.ErrInvalidInput) {
 			return Result{Handled: true, Text: "Nothing to compact yet."}, nil
 		}
@@ -74,7 +68,7 @@ func (d *Dispatcher) handleContext(ctx context.Context, externalKey string, args
 		return Result{Handled: true, Text: result.Message.Content, ReloadSnapshot: true}, nil
 	}
 
-	report, err := d.contextRuntime.SessionContext(ctx, session.ID)
+	report, err := d.daemon.SessionContext(ctx, session.ID)
 	if err != nil {
 		return Result{}, err
 	}

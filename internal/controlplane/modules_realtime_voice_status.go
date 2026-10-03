@@ -9,7 +9,7 @@ import (
 )
 
 func (d *Dispatcher) realtimeVoiceInfo(ctx context.Context) (Result, error) {
-	module, err := d.realtimeVoice.RealtimeVoiceModule(ctx)
+	module, err := d.daemon.RealtimeVoiceModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}

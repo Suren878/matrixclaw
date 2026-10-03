@@ -1,7 +1,7 @@
 package controlplane
 
 import (
-	"context"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -9,43 +9,37 @@ import (
 	"github.com/Suren878/matrixclaw/internal/permission"
 )
 
-type rulesRuntime struct {
-	tokenReportRuntime
-	owner   bool
-	guest   bool
+// rulesDaemon records permission mode changes and rule edits.
+type rulesDaemon struct {
+	*fakeDaemon
 	modes   []core.PermissionMode
-	rules   []permission.Rule
 	added   []core.PermissionRuleRequest
 	deleted []string
 }
 
-func (r *rulesRuntime) UpdateSessionPermissionMode(_ context.Context, sessionID string, mode core.PermissionMode) (core.Session, error) {
-	r.modes = append(r.modes, mode)
-	return core.Session{ID: sessionID, PermissionMode: mode}, nil
-}
-
-func (r *rulesRuntime) SessionPermissionRules(context.Context, string) ([]permission.Rule, error) {
-	return r.rules, nil
-}
-
-func (r *rulesRuntime) AddPermissionRule(_ context.Context, sessionID string, request core.PermissionRuleRequest) (permission.Rule, error) {
-	r.added = append(r.added, request)
-	rule := permission.Rule{ID: "rule_new", Tool: request.Tool, Pattern: request.Pattern, Effect: request.Effect, Scope: request.Scope}
-	if request.Scope == permission.ScopeSession {
-		rule.SessionID = sessionID
-	}
-	return rule, nil
-}
-
-func (r *rulesRuntime) DeletePermissionRule(_ context.Context, ruleID string) error {
-	r.deleted = append(r.deleted, ruleID)
-	return nil
-}
-
-func (r *rulesRuntime) ManagesPermissionMode() bool { return r.owner }
-
-func (r *rulesRuntime) ManagesRules(scope permission.Scope) bool {
-	return !r.guest && (scope == permission.ScopeSession || r.owner)
+func newRulesDaemon(t *testing.T) *rulesDaemon {
+	d := &rulesDaemon{fakeDaemon: newFakeDaemon(t)}
+	d.on("PATCH /v1/sessions/{id}/permissions", func(r *http.Request) any {
+		mode := core.PermissionMode(decode[core.UpdateSessionPermissionModeRequest](r).PermissionMode)
+		d.modes = append(d.modes, mode)
+		return core.SessionResponse{Session: core.Session{ID: r.PathValue("id"), PermissionMode: mode}}
+	}).on("GET /v1/sessions/{id}/permission-rules", func(*http.Request) any {
+		return core.PermissionRulesResponse{Rules: testRules()}
+	}).on("POST /v1/sessions/{id}/permission-rules", func(r *http.Request) any {
+		request := decode[core.PermissionRuleRequest](r)
+		d.added = append(d.added, request)
+		rule := permission.Rule{ID: "rule_new", Tool: request.Tool, Pattern: request.Pattern, Effect: request.Effect, Scope: request.Scope}
+		if request.Scope == permission.ScopeSession {
+			rule.SessionID = r.PathValue("id")
+		}
+		return core.PermissionRuleResponse{Rule: rule}
+	}).on("DELETE /v1/permission-rules/{id}", func(r *http.Request) any {
+		d.deleted = append(d.deleted, r.PathValue("id"))
+		return nil
+	}).on("POST /v1/sessions/{id}/system-message", func(*http.Request) any {
+		return core.MessageResponse{}
+	})
+	return d
 }
 
 func testRules() []permission.Rule {
@@ -57,12 +51,10 @@ func testRules() []permission.Rule {
 }
 
 func TestPermissionsListsModesAndRules(t *testing.T) {
-	runtime := &rulesRuntime{rules: testRules()}
+	result := newRulesDaemon(t).run("/permissions")
 
-	result, err := New(runtime, "").Handle(context.Background(), "key", "/permissions")
-
-	if err != nil || result.Picker == nil {
-		t.Fatalf("result = %+v err = %v", result, err)
+	if result.Picker == nil {
+		t.Fatalf("result = %+v", result)
 	}
 	var rows []string
 	for _, item := range result.Picker.Items {
@@ -76,64 +68,53 @@ func TestPermissionsListsModesAndRules(t *testing.T) {
 		"allow bash: go test:* | parent session | /permissions delete rule_parent",
 		"allow edit: /work/** | this session | /permissions delete rule_own",
 	}
-	if len(rows) != len(want) {
-		t.Fatalf("rows = %q", rows)
-	}
-	for i := range want {
-		if rows[i] != want[i] {
-			t.Fatalf("row %d = %q, want %q", i, rows[i], want[i])
-		}
+	if strings.Join(rows, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("rows:\n%s\nwant:\n%s", strings.Join(rows, "\n"), strings.Join(want, "\n"))
 	}
 }
 
 func TestPermissionsDeleteAsksThenDeletes(t *testing.T) {
-	runtime := &rulesRuntime{rules: testRules()}
-	dispatcher := New(runtime, "")
+	daemon := newRulesDaemon(t)
 
-	result, err := dispatcher.Handle(context.Background(), "key", "/permissions delete rule_own")
-	if err != nil || result.Confirm == nil || result.Confirm.ConfirmCommand != "/permissions delete rule_own confirm" || len(runtime.deleted) != 0 {
-		t.Fatalf("result = %+v deleted = %v err = %v", result, runtime.deleted, err)
+	result := daemon.run("/permissions delete rule_own")
+	if result.Confirm == nil || result.Confirm.ConfirmCommand != "/permissions delete rule_own confirm" || len(daemon.deleted) != 0 {
+		t.Fatalf("result = %+v deleted = %v", result, daemon.deleted)
 	}
-	result, err = dispatcher.Handle(context.Background(), "key", result.Confirm.ConfirmCommand)
-	if err != nil || len(runtime.deleted) != 1 || runtime.deleted[0] != "rule_own" || result.Text != "🗑️ Rule deleted: allow edit: /work/**" {
-		t.Fatalf("result = %+v deleted = %v err = %v", result, runtime.deleted, err)
+	result = daemon.run(result.Confirm.ConfirmCommand)
+	if len(daemon.deleted) != 1 || daemon.deleted[0] != "rule_own" || result.Text != "🗑️ Rule deleted: allow edit: /work/**" {
+		t.Fatalf("result = %+v deleted = %v", result, daemon.deleted)
 	}
 }
 
 func TestOnlyTheOwnerChangesGlobalRules(t *testing.T) {
-	for _, owner := range []bool{false, true} {
-		runtime := &rulesRuntime{owner: owner, rules: testRules()}
-		dispatcher := New(runtime, "")
+	for _, role := range []core.Role{core.RoleMember, core.RoleOwner} {
+		daemon := newRulesDaemon(t)
+		owner := role == core.RoleOwner
 
-		deleted, err := dispatcher.Handle(context.Background(), "key", "/permissions delete rule_global confirm")
-		if err != nil {
-			t.Fatal(err)
-		}
-		added, err := dispatcher.Handle(context.Background(), "key", "/permissions add deny read ~/.ssh/** global")
-		if err != nil {
-			t.Fatal(err)
-		}
+		deleted := daemon.runAs(role, "/permissions delete rule_global confirm")
+		added := daemon.runAs(role, "/permissions add deny read ~/.ssh/** global")
 
-		if owner != (len(runtime.deleted) == 1 && len(runtime.added) == 1) {
-			t.Fatalf("owner=%v: deleted = %v added = %+v (%q, %q)", owner, runtime.deleted, runtime.added, deleted.Text, added.Text)
+		if owner != (len(daemon.deleted) == 1 && len(daemon.added) == 1) {
+			t.Fatalf("%s: deleted = %v added = %+v (%q, %q)", role, daemon.deleted, daemon.added, deleted.Text, added.Text)
 		}
 		if !owner && (deleted.Text != "Only the owner can change global rules." || added.Text != deleted.Text) {
 			t.Fatalf("non-owner replies = %q, %q", deleted.Text, added.Text)
 		}
-		if owner && runtime.added[0] != (core.PermissionRuleRequest{Tool: "read", Pattern: "~/.ssh/**", Effect: permission.Deny, Scope: permission.ScopeGlobal}) {
-			t.Fatalf("added = %+v", runtime.added[0])
+		if owner && daemon.added[0] != (core.PermissionRuleRequest{Tool: "read", Pattern: "~/.ssh/**", Effect: permission.Deny, Scope: permission.ScopeGlobal}) {
+			t.Fatalf("added = %+v", daemon.added[0])
 		}
 	}
 }
 
 func TestOnlyTheOwnerSwitchesThePermissionMode(t *testing.T) {
-	for _, owner := range []bool{false, true} {
-		runtime := &rulesRuntime{owner: owner}
+	for _, role := range []core.Role{core.RoleMember, core.RoleOwner} {
+		daemon := newRulesDaemon(t)
+		owner := role == core.RoleOwner
 
-		result, err := New(runtime, "").Handle(context.Background(), "key", "/permissions full_auto")
+		result := daemon.runAs(role, "/permissions full_auto")
 
-		if err != nil || owner != (len(runtime.modes) == 1) {
-			t.Fatalf("owner=%v: modes = %v result = %q err = %v", owner, runtime.modes, result.Text, err)
+		if owner != (len(daemon.modes) == 1) {
+			t.Fatalf("%s: modes = %v result = %q", role, daemon.modes, result.Text)
 		}
 		if !owner && result.Text != "Only the owner can switch the permission mode." {
 			t.Fatalf("non-owner reply = %q", result.Text)
@@ -142,27 +123,20 @@ func TestOnlyTheOwnerSwitchesThePermissionMode(t *testing.T) {
 }
 
 func TestGuestsChangeNoRules(t *testing.T) {
-	runtime := &rulesRuntime{guest: true, rules: testRules()}
-	dispatcher := New(runtime, "")
+	daemon := newRulesDaemon(t)
 
-	deleted, err := dispatcher.Handle(context.Background(), "key", "/permissions delete rule_own confirm")
-	if err != nil {
-		t.Fatal(err)
-	}
-	added, err := dispatcher.Handle(context.Background(), "key", "/permissions add allow bash go test:*")
-	if err != nil {
-		t.Fatal(err)
-	}
+	deleted := daemon.runAs(core.RoleGuest, "/permissions delete rule_own confirm")
+	added := daemon.runAs(core.RoleGuest, "/permissions add allow bash go test:*")
 
-	if len(runtime.deleted) != 0 || len(runtime.added) != 0 || deleted.Text != "Guests cannot change permission rules." || added.Text != deleted.Text {
-		t.Fatalf("deleted = %v added = %+v (%q, %q)", runtime.deleted, runtime.added, deleted.Text, added.Text)
+	if len(daemon.deleted) != 0 || len(daemon.added) != 0 || deleted.Text != "Guests cannot change permission rules." || added.Text != deleted.Text {
+		t.Fatalf("deleted = %v added = %+v (%q, %q)", daemon.deleted, daemon.added, deleted.Text, added.Text)
 	}
 }
 
 func TestPermissionsUsageWarnsThatTestRunnersRunCode(t *testing.T) {
-	result, err := New(&rulesRuntime{}, "").Handle(context.Background(), "key", "/permissions nonsense")
-	if err != nil || !strings.Contains(result.Text, "accept_edits") || !strings.Contains(result.Text, "runs code") || !strings.Contains(result.Text, "redirects included") {
-		t.Fatalf("usage = %q err = %v", result.Text, err)
+	result := newRulesDaemon(t).run("/permissions nonsense")
+	if !strings.Contains(result.Text, "accept_edits") || !strings.Contains(result.Text, "runs code") || !strings.Contains(result.Text, "redirects included") {
+		t.Fatalf("usage = %q", result.Text)
 	}
 }
 
@@ -171,21 +145,19 @@ func TestPermissionsAddReadsEffectToolAndPattern(t *testing.T) {
 		"/permissions add allow bash go test:*": {Tool: "bash", Pattern: "go test:*", Effect: permission.Allow, Scope: permission.ScopeSession},
 		"/permissions add ask web_fetch":        {Tool: "web_fetch", Effect: permission.Ask, Scope: permission.ScopeSession},
 	} {
-		runtime := &rulesRuntime{}
+		daemon := newRulesDaemon(t)
 
-		result, err := New(runtime, "").Handle(context.Background(), "key", command)
+		result := daemon.runAs(core.RoleMember, command)
 
-		if err != nil || len(runtime.added) != 1 || runtime.added[0] != want {
-			t.Errorf("%s: result = %+v added = %+v err = %v", command, result, runtime.added, err)
+		if len(daemon.added) != 1 || daemon.added[0] != want {
+			t.Errorf("%s: result = %+v added = %+v", command, result, daemon.added)
 		}
 	}
 	for _, command := range []string{"/permissions add", "/permissions add allow", "/permissions add maybe bash ls:*", "/permissions sometimes"} {
-		runtime := &rulesRuntime{}
+		daemon := newRulesDaemon(t)
 
-		result, err := New(runtime, "").Handle(context.Background(), "key", command)
-
-		if err != nil || result.Text != permissionsUsage || len(runtime.added) != 0 {
-			t.Errorf("%s: result = %+v err = %v", command, result, err)
+		if result := daemon.runAs(core.RoleMember, command); result.Text != permissionsUsage || len(daemon.added) != 0 {
+			t.Errorf("%s: result = %+v", command, result)
 		}
 	}
 }

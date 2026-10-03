@@ -25,10 +25,7 @@ func (d *Dispatcher) setupProvider(ctx context.Context, providerID string) (setu
 	if err != nil {
 		return setup.ProviderSetupItem{}, err
 	}
-	if d.providers == nil {
-		return setup.ProviderSetupItem{}, fmt.Errorf("provider runtime is not configured")
-	}
-	providers, err := d.providers.ListSetupProviders(ctx)
+	providers, err := d.daemon.ListSetupProviders(ctx)
 	if err != nil {
 		return setup.ProviderSetupItem{}, err
 	}

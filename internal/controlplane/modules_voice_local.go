@@ -212,11 +212,11 @@ func (d *Dispatcher) useInstalledLocalModel(ctx context.Context, moduleID string
 	} else {
 		cfg.ModelID = model.ID
 	}
-	if _, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg}); err != nil {
+	if _, err := d.daemon.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg}); err != nil {
 		return Result{}, err
 	}
 	if voicePersistentProvider(module.ID, provider.ID) && normalizeVoiceRunMode(cfg.RuntimeMode) == voiceRuntimeModeAlways && voiceLocalRuntimeStartReady(module.ID, provider, cfg) {
-		if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "start"}); err != nil {
+		if _, err := d.daemon.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "start"}); err != nil {
 			return Result{}, err
 		}
 	}

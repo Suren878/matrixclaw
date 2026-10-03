@@ -2,26 +2,23 @@ package controlplane
 
 import "context"
 
-func (d *Dispatcher) handleTasks(ctx context.Context, externalKey string, args string) (Result, error) {
+func (d *Dispatcher) handleTasks(ctx context.Context, args string) (Result, error) {
 	step, rest := firstCommandStep(args)
 	switch step {
 	case "":
-		return d.tasksPicker(ctx, externalKey)
+		return d.tasksPicker(ctx)
 	case "bg":
-		return d.handleBackgroundTask(ctx, externalKey, rest)
-	}
-	if d.automation == nil {
-		return unsupportedRuntime("tasks"), nil
+		return d.handleBackgroundTask(ctx, rest)
 	}
 	switch step {
 	case "add":
-		return d.handleTaskAdd(ctx, externalKey, rest)
+		return d.handleTaskAdd(ctx, rest)
 	case "archive":
 		return d.tasksArchivePicker(ctx)
 	case "menu":
 		jobID, _ := firstCommandToken(rest)
 		if jobID == "" {
-			return d.tasksPicker(ctx, externalKey)
+			return d.tasksPicker(ctx)
 		}
 		return d.taskActionsPicker(ctx, jobID)
 	case "pause":
@@ -29,7 +26,7 @@ func (d *Dispatcher) handleTasks(ctx context.Context, externalKey string, args s
 		if jobID == "" {
 			return Result{Handled: true, Text: "Usage: /tasks pause <id>"}, nil
 		}
-		job, err := d.automation.PauseAutomationJob(ctx, jobID)
+		job, err := d.daemon.PauseAutomationJob(ctx, jobID)
 		if err != nil {
 			return Result{}, err
 		}
@@ -39,7 +36,7 @@ func (d *Dispatcher) handleTasks(ctx context.Context, externalKey string, args s
 		if jobID == "" {
 			return Result{Handled: true, Text: "Usage: /tasks resume <id>"}, nil
 		}
-		job, err := d.automation.ResumeAutomationJob(ctx, jobID)
+		job, err := d.daemon.ResumeAutomationJob(ctx, jobID)
 		if err != nil {
 			return Result{}, err
 		}
@@ -49,7 +46,7 @@ func (d *Dispatcher) handleTasks(ctx context.Context, externalKey string, args s
 		if jobID == "" {
 			return Result{Handled: true, Text: "Usage: /tasks complete <id>"}, nil
 		}
-		job, err := d.automation.CompleteAutomationJob(ctx, jobID)
+		job, err := d.daemon.CompleteAutomationJob(ctx, jobID)
 		if err != nil {
 			return Result{}, err
 		}
@@ -68,7 +65,7 @@ func (d *Dispatcher) handleTasks(ctx context.Context, externalKey string, args s
 		if jobID == "" {
 			return Result{Handled: true, Text: "Usage: /tasks delete-confirm <id>"}, nil
 		}
-		job, err := d.automation.DeleteAutomationJob(ctx, jobID)
+		job, err := d.daemon.DeleteAutomationJob(ctx, jobID)
 		if err != nil {
 			return Result{}, err
 		}
@@ -85,7 +82,7 @@ func (d *Dispatcher) handleTasks(ctx context.Context, externalKey string, args s
 		if jobID == "" {
 			return Result{Handled: true, Text: "Usage: /tasks run <id>"}, nil
 		}
-		fire, err := d.automation.RunAutomationJobNow(ctx, jobID)
+		fire, err := d.daemon.RunAutomationJobNow(ctx, jobID)
 		if err != nil {
 			return Result{}, err
 		}

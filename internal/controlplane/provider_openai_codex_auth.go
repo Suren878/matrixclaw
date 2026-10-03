@@ -15,7 +15,7 @@ func (d *Dispatcher) handleOpenAICodexAuth(ctx context.Context, args string) (Re
 	if strings.TrimSpace(providerID) == "" {
 		return Result{Handled: true, Text: "Provider id is required."}, nil
 	}
-	providers, err := d.providers.ListSetupProviders(ctx)
+	providers, err := d.daemon.ListSetupProviders(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -54,7 +54,7 @@ func (d *Dispatcher) handleOpenAICodexAuthComplete(ctx context.Context, args str
 	if strings.TrimSpace(providerID) == "" || strings.TrimSpace(token) == "" {
 		return Result{Handled: true, Text: "OpenAI Codex sign-in session is missing."}, nil
 	}
-	providers, err := d.providers.ListSetupProviders(ctx)
+	providers, err := d.daemon.ListSetupProviders(ctx)
 	if err != nil {
 		return Result{}, err
 	}

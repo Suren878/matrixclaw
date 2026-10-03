@@ -9,7 +9,7 @@ import (
 )
 
 func (d *Dispatcher) realtimeVoiceSetupPicker(ctx context.Context, providerID string) (Result, error) {
-	module, err := d.realtimeVoice.RealtimeVoiceModule(ctx)
+	module, err := d.daemon.RealtimeVoiceModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -54,7 +54,7 @@ func (d *Dispatcher) realtimeVoiceSetupProviderPicker(module realtime.ModuleDesc
 }
 
 func (d *Dispatcher) realtimeVoiceModelPicker(ctx context.Context, providerID string) (Result, error) {
-	module, err := d.realtimeVoice.RealtimeVoiceModule(ctx)
+	module, err := d.daemon.RealtimeVoiceModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -88,7 +88,7 @@ func (d *Dispatcher) realtimeVoiceModelPicker(ctx context.Context, providerID st
 }
 
 func (d *Dispatcher) realtimeVoiceVoicePicker(ctx context.Context, providerID string) (Result, error) {
-	module, err := d.realtimeVoice.RealtimeVoiceModule(ctx)
+	module, err := d.daemon.RealtimeVoiceModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -122,7 +122,7 @@ func (d *Dispatcher) realtimeVoiceVoicePicker(ctx context.Context, providerID st
 }
 
 func (d *Dispatcher) realtimeVoiceLanguagePicker(ctx context.Context, providerID string) (Result, error) {
-	module, err := d.realtimeVoice.RealtimeVoiceModule(ctx)
+	module, err := d.daemon.RealtimeVoiceModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -146,7 +146,7 @@ func (d *Dispatcher) realtimeVoiceLanguagePicker(ctx context.Context, providerID
 }
 
 func (d *Dispatcher) realtimeVoiceAdvancedPicker(ctx context.Context, providerID string) (Result, error) {
-	module, err := d.realtimeVoice.RealtimeVoiceModule(ctx)
+	module, err := d.daemon.RealtimeVoiceModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -166,7 +166,7 @@ func (d *Dispatcher) realtimeVoiceAdvancedPicker(ctx context.Context, providerID
 func (d *Dispatcher) realtimeVoiceSetupField(ctx context.Context, args string) (Result, error) {
 	field, rest := firstCommandStep(args)
 	providerID := firstField(rest)
-	module, err := d.realtimeVoice.RealtimeVoiceModule(ctx)
+	module, err := d.daemon.RealtimeVoiceModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -201,7 +201,7 @@ func (d *Dispatcher) realtimeVoiceSetupSet(ctx context.Context, args string) (Re
 	field, rest := firstCommandStep(args)
 	providerID, value := firstCommandStep(rest)
 	value = strings.TrimSpace(value)
-	module, err := d.realtimeVoice.RealtimeVoiceModule(ctx)
+	module, err := d.daemon.RealtimeVoiceModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -241,7 +241,7 @@ func (d *Dispatcher) realtimeVoiceSetupSet(ctx context.Context, args string) (Re
 	default:
 		return d.realtimeVoiceSetupPicker(ctx, provider.ID)
 	}
-	if _, err := d.realtimeVoice.UpdateRealtimeVoiceModule(ctx, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg}); err != nil {
+	if _, err := d.daemon.UpdateRealtimeVoiceModule(ctx, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg}); err != nil {
 		return Result{}, err
 	}
 	return d.realtimeVoiceSetupPicker(ctx, provider.ID)

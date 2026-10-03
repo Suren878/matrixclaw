@@ -10,21 +10,17 @@ import (
 )
 
 func (d *Dispatcher) handleServer() Result {
-	return Result{
-		Handled: true,
-		Picker: NewPickerData(PickerServer, "Server").
-			Row("status", "Status", "Uptime, CPU, memory", statusCommand()).
-			Row("restart", "Restart", "", restartCommand()).
-			Row("stop", "Stop", "", stopCommand()).
-			Ptr(),
+	picker := NewPickerData(PickerServer, "Server").
+		Row("status", "Status", "Uptime, CPU, memory", statusCommand())
+	if d.owner() {
+		picker.Row("restart", "Restart", "", restartCommand()).
+			Row("stop", "Stop", "", stopCommand())
 	}
+	return Result{Handled: true, Picker: picker.Ptr()}
 }
 
 func (d *Dispatcher) handleStatus(ctx context.Context) (Result, error) {
-	if d.server == nil {
-		return unsupportedRuntime("server"), nil
-	}
-	status, err := d.server.ServerStatus(ctx)
+	status, err := d.daemon.ServerStatus(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -41,8 +37,8 @@ func (d *Dispatcher) handleStatus(ctx context.Context) (Result, error) {
 // handleRestart asks to confirm; clients run the confirmed restart themselves
 // so they can show its progress and the notice after it.
 func (d *Dispatcher) handleRestart() Result {
-	if d.server == nil {
-		return unsupportedRuntime("server")
+	if !d.owner() {
+		return Result{Handled: true, Text: "Only the owner can restart the daemon."}
 	}
 	return Result{
 		Handled: true,
@@ -58,8 +54,8 @@ func (d *Dispatcher) handleRestart() Result {
 }
 
 func (d *Dispatcher) handleStop(ctx context.Context, args string) (Result, error) {
-	if d.server == nil {
-		return unsupportedRuntime("server"), nil
+	if !d.owner() {
+		return Result{Handled: true, Text: "Only the owner can stop the daemon."}, nil
 	}
 	if !strings.EqualFold(strings.TrimSpace(args), "confirm") {
 		return Result{
@@ -74,7 +70,7 @@ func (d *Dispatcher) handleStop(ctx context.Context, args string) (Result, error
 			},
 		}, nil
 	}
-	if err := d.server.StopDaemon(ctx); err != nil {
+	if err := d.daemon.StopDaemon(ctx); err != nil {
 		return Result{}, err
 	}
 	return Result{Handled: true, Text: "Server daemon stop requested."}, nil

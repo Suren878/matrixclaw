@@ -11,9 +11,6 @@ import (
 const managedBrowserMCPServerID = "browser"
 
 func (d *Dispatcher) handleMCP(ctx context.Context, args string) (Result, error) {
-	if d.mcp == nil {
-		return unsupportedRuntime("mcp"), nil
-	}
 	step, rest := firstCommandStep(args)
 	switch step {
 	case "":
@@ -56,7 +53,7 @@ func (d *Dispatcher) handleMCP(ctx context.Context, args string) (Result, error)
 }
 
 func (d *Dispatcher) mcpPicker(ctx context.Context) (Result, error) {
-	resp, err := d.mcp.MCPConfig(ctx)
+	resp, err := d.daemon.MCPConfig(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -81,7 +78,7 @@ func (d *Dispatcher) mcpPicker(ctx context.Context) (Result, error) {
 }
 
 func (d *Dispatcher) mcpEnabledPicker(ctx context.Context) (Result, error) {
-	resp, err := d.mcp.MCPConfig(ctx)
+	resp, err := d.daemon.MCPConfig(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -98,7 +95,7 @@ func (d *Dispatcher) setMCPEnabled(ctx context.Context, value string) (Result, e
 	if !ok {
 		return d.mcpEnabledPicker(ctx)
 	}
-	if _, err := d.mcp.UpdateMCPConfig(ctx, setup.MCPConfigUpdate{Enabled: &enabled}); err != nil {
+	if _, err := d.daemon.UpdateMCPConfig(ctx, setup.MCPConfigUpdate{Enabled: &enabled}); err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
 	return d.mcpPicker(ctx)
@@ -130,7 +127,7 @@ func (d *Dispatcher) createMCPServer(ctx context.Context, value string) (Result,
 		ToolPrefix:     serverID,
 		TimeoutSeconds: 30,
 	}
-	resp, err := d.mcp.CreateMCPServer(ctx, server)
+	resp, err := d.daemon.CreateMCPServer(ctx, server)
 	if err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
@@ -141,7 +138,7 @@ func (d *Dispatcher) createMCPServer(ctx context.Context, value string) (Result,
 }
 
 func (d *Dispatcher) mcpServerPicker(ctx context.Context, serverID string) (Result, error) {
-	resp, err := d.mcp.MCPConfig(ctx)
+	resp, err := d.daemon.MCPConfig(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -161,7 +158,7 @@ func (d *Dispatcher) mcpServerPicker(ctx context.Context, serverID string) (Resu
 }
 
 func (d *Dispatcher) mcpServerEditForm(ctx context.Context, serverID string) (Result, error) {
-	resp, err := d.mcp.MCPConfig(ctx)
+	resp, err := d.daemon.MCPConfig(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -190,7 +187,7 @@ func (d *Dispatcher) mcpServerEditForm(ctx context.Context, serverID string) (Re
 }
 
 func (d *Dispatcher) mcpServerFieldPrompt(ctx context.Context, serverID string, field string) (Result, error) {
-	resp, err := d.mcp.MCPConfig(ctx)
+	resp, err := d.daemon.MCPConfig(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -213,14 +210,14 @@ func (d *Dispatcher) setMCPServerField(ctx context.Context, serverID string, fie
 	if !ok {
 		return d.mcpServerEditForm(ctx, serverID)
 	}
-	if _, err := d.mcp.UpdateMCPServer(ctx, serverID, update); err != nil {
+	if _, err := d.daemon.UpdateMCPServer(ctx, serverID, update); err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
 	return d.mcpServerEditForm(ctx, serverID)
 }
 
 func (d *Dispatcher) mcpServerEnabledPicker(ctx context.Context, serverID string) (Result, error) {
-	resp, err := d.mcp.MCPConfig(ctx)
+	resp, err := d.daemon.MCPConfig(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -242,14 +239,14 @@ func (d *Dispatcher) setMCPServerEnabled(ctx context.Context, serverID string, v
 	if !ok {
 		return d.mcpServerEnabledPicker(ctx, serverID)
 	}
-	if _, err := d.mcp.UpdateMCPServer(ctx, serverID, setup.MCPServerUpdate{Enabled: &enabled}); err != nil {
+	if _, err := d.daemon.UpdateMCPServer(ctx, serverID, setup.MCPServerUpdate{Enabled: &enabled}); err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
 	return d.mcpServerPicker(ctx, serverID)
 }
 
 func (d *Dispatcher) mcpServerDeleteConfirm(ctx context.Context, serverID string) (Result, error) {
-	resp, err := d.mcp.MCPConfig(ctx)
+	resp, err := d.daemon.MCPConfig(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -269,14 +266,14 @@ func (d *Dispatcher) mcpServerDeleteConfirm(ctx context.Context, serverID string
 }
 
 func (d *Dispatcher) deleteMCPServer(ctx context.Context, serverID string) (Result, error) {
-	if _, err := d.mcp.DeleteMCPServer(ctx, serverID); err != nil {
+	if _, err := d.daemon.DeleteMCPServer(ctx, serverID); err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
 	return d.mcpPicker(ctx)
 }
 
 func (d *Dispatcher) mcpServerInfo(ctx context.Context, serverID string) (Result, error) {
-	resp, err := d.mcp.MCPConfig(ctx)
+	resp, err := d.daemon.MCPConfig(ctx)
 	if err != nil {
 		return Result{}, err
 	}

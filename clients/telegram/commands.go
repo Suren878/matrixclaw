@@ -13,7 +13,7 @@ func (w *Worker) dispatchCommandAndEdit(ctx context.Context, target chatTarget, 
 }
 
 func (w *Worker) dispatchCommandAndEditPage(ctx context.Context, target chatTarget, messageID int64, command string, page int) error {
-	result, err := w.dispatcher(target).Handle(ctx, target.externalKey, command)
+	result, err := w.dispatcher(target).Handle(ctx, command)
 	if err != nil {
 		return w.editOrSend(ctx, target, messageID, fmt.Sprintf("Command failed: %v", err), nil)
 	}

@@ -22,15 +22,12 @@ func DenyWithReasonPrompt(approvalID string) PromptData {
 // handleApproval answers "/approval deny <id> [reason]": the call is denied and
 // the model reads the reason as its result.
 func (d *Dispatcher) handleApproval(ctx context.Context, args string) (Result, error) {
-	if d.approvals == nil {
-		return unsupportedRuntime("approval"), nil
-	}
 	action, rest := cutWord(args)
 	approvalID, reason := cutWord(rest)
 	if !strings.EqualFold(action, "deny") || approvalID == "" {
 		return Result{Handled: true, Text: approvalUsage}, nil
 	}
-	approval, err := d.approvals.ResolveApproval(ctx, approvalID, core.ApprovalResolveRequest{Reason: reason})
+	approval, err := d.daemon.ResolveApproval(ctx, approvalID, core.ApprovalResolveRequest{Reason: reason})
 	if err != nil {
 		return Result{}, err
 	}

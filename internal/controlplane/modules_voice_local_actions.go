@@ -82,7 +82,7 @@ func (d *Dispatcher) voiceLocalProviderAction(ctx context.Context, moduleID stri
 			ConfirmDanger:  true,
 		}}, nil
 	case action == voiceActionConfirmID(provider.ActionIDs.DeleteRuntime):
-		updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "delete-runtime"})
+		updated, err := d.daemon.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "delete-runtime"})
 		if err != nil {
 			return Result{}, err
 		}

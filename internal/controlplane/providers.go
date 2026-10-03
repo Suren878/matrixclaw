@@ -11,14 +11,8 @@ import (
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
-func (d *Dispatcher) handleProvider(ctx context.Context, externalKey string, args string) (Result, error) {
-	if d.providers == nil {
-		return unsupportedRuntime("provider"), nil
-	}
-	if d.sessions == nil {
-		return unsupportedRuntime("sessions"), nil
-	}
-	_, session, err := d.currentSession(ctx, externalKey)
+func (d *Dispatcher) handleProvider(ctx context.Context, args string) (Result, error) {
+	_, session, err := d.currentSession(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -30,6 +24,9 @@ func (d *Dispatcher) handleProvider(ctx context.Context, externalKey string, arg
 	}
 	value := strings.TrimSpace(args)
 	step, rest := firstCommandStep(value)
+	if !d.owner() && step != "" && step != "use" {
+		return Result{Handled: true, Text: ownerOnlySettings}, nil
+	}
 	switch step {
 	case "key":
 		return d.handleProviderKey(ctx, session, rest)
@@ -47,13 +44,13 @@ func (d *Dispatcher) handleProvider(ctx context.Context, externalKey string, arg
 		return d.useProvider(ctx, session, rest)
 	}
 
-	providers, err := d.providers.ListSetupProviders(ctx)
+	providers, err := d.daemon.ListSetupProviders(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 	if value != "" {
 		provider, ok := findSetupProvider(providers, value)
-		if ok {
+		if ok && d.owner() {
 			return openProviderForm(providerForm{Provider: provider}), nil
 		}
 		return d.useProvider(ctx, session, value)
@@ -61,7 +58,7 @@ func (d *Dispatcher) handleProvider(ctx context.Context, externalKey string, arg
 
 	return Result{
 		Handled: true,
-		Picker:  NewPickerData(PickerProvider, "Provider").Items(ProviderPickerItems(providers, session)...).Ptr(),
+		Picker:  NewPickerData(PickerProvider, "Provider").Items(providerPickerItems(providers, session, d.owner())...).Ptr(),
 	}, nil
 }
 
@@ -85,7 +82,7 @@ func (d *Dispatcher) useProvider(ctx context.Context, session *core.Session, pro
 	if providerID == "" {
 		return Result{Handled: true, Text: "Provider id is required."}, nil
 	}
-	updated, err := d.providers.UpdateSessionProvider(ctx, session.ID, providerID)
+	updated, err := d.daemon.UpdateSessionProvider(ctx, session.ID, providerID)
 	if err != nil {
 		return Result{}, err
 	}
@@ -115,7 +112,7 @@ func (d *Dispatcher) handleProviderKey(ctx context.Context, session *core.Sessio
 	if providerID == "" {
 		return Result{Handled: true, Text: "Provider id is required."}, nil
 	}
-	providers, err := d.providers.ListSetupProviders(ctx)
+	providers, err := d.daemon.ListSetupProviders(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -126,7 +123,7 @@ func (d *Dispatcher) handleProviderKey(ctx context.Context, session *core.Sessio
 	if apiKey == "" || !ok {
 		return providerKeyPrompt(provider), nil
 	}
-	configured, err := d.providers.ConfigureSetupProvider(ctx, providerID, setup.ProviderSetupUpdate{
+	configured, err := d.daemon.ConfigureSetupProvider(ctx, providerID, setup.ProviderSetupUpdate{
 		APIKey: &apiKey,
 		Active: true,
 	})
@@ -134,7 +131,7 @@ func (d *Dispatcher) handleProviderKey(ctx context.Context, session *core.Sessio
 		return Result{}, err
 	}
 	if session != nil {
-		updated, updateErr := d.providers.UpdateSessionProvider(ctx, session.ID, configured.ID)
+		updated, updateErr := d.daemon.UpdateSessionProvider(ctx, session.ID, configured.ID)
 		if updateErr == nil {
 			return d.providerSelectedResult(ctx, updated)
 		}
@@ -149,23 +146,19 @@ func (d *Dispatcher) handleProviderKey(ctx context.Context, session *core.Sessio
 
 func (d *Dispatcher) providerSelectedResult(ctx context.Context, session core.Session) (Result, error) {
 	text := fmt.Sprintf("✅ Provider selected: %s · %s", session.ProviderID, session.ModelID)
-	if d.messages != nil {
-		if _, err := d.messages.CreateSystemMessage(ctx, session.ID, text); err != nil {
-			return Result{}, err
-		}
+	if _, err := d.daemon.CreateSystemMessage(ctx, session.ID, text); err != nil {
+		return Result{}, err
 	}
-	if d.sessionModels != nil {
-		response, err := d.sessionModels.SessionModels(ctx, session.ID)
-		if err == nil {
-			picker := sessionModelPicker(session.ID, response)
-			if len(picker.Items) > 1 {
-				picker.Meta = text + "\nChoose a model."
-				return Result{
-					Handled:        true,
-					Picker:         picker,
-					ReloadSnapshot: true,
-				}, nil
-			}
+	response, err := d.daemon.SessionModels(ctx, session.ID)
+	if err == nil {
+		picker := sessionModelPicker(session.ID, response)
+		if len(picker.Items) > 1 {
+			picker.Meta = text + "\nChoose a model."
+			return Result{
+				Handled:        true,
+				Picker:         picker,
+				ReloadSnapshot: true,
+			}, nil
 		}
 	}
 	return Result{

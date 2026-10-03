@@ -45,7 +45,7 @@ func (w *Worker) handlePendingPrompt(ctx context.Context, target chatTarget, tex
 			return true, w.askApprovalAgain(ctx, target, approvalID)
 		}
 		if strings.TrimSpace(prompt.CancelCommand) != "" {
-			result, err := w.dispatcher(target).Handle(ctx, target.externalKey, strings.TrimSpace(prompt.CancelCommand))
+			result, err := w.dispatcher(target).Handle(ctx, strings.TrimSpace(prompt.CancelCommand))
 			if err != nil {
 				return true, w.sendText(ctx, target, fmt.Sprintf("Command failed: %v", err))
 			}
@@ -61,7 +61,7 @@ func (w *Worker) handlePendingPrompt(ctx context.Context, target chatTarget, tex
 	if w.denialDecidedElsewhere(ctx, target, prompt) {
 		return false, nil
 	}
-	result, err := w.dispatcher(target).Handle(ctx, target.externalKey, prompt.SubmitCommandPrefix+strings.TrimSpace(text))
+	result, err := w.dispatcher(target).Handle(ctx, prompt.SubmitCommandPrefix+strings.TrimSpace(text))
 	if err != nil {
 		return true, w.sendText(ctx, target, fmt.Sprintf("Command failed: %v", err))
 	}

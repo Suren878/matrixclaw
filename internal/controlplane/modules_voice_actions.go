@@ -8,7 +8,7 @@ import (
 )
 
 func (d *Dispatcher) voicePostRuntimeInstallAction(ctx context.Context, module setup.VoiceModuleDescriptor, provider setup.VoiceProviderOption) (Result, error) {
-	updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "install-runtime"})
+	updated, err := d.daemon.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "install-runtime"})
 	if err != nil {
 		return Result{}, err
 	}
@@ -46,7 +46,7 @@ func (d *Dispatcher) voicePostRuntimeInstallAction(ctx context.Context, module s
 		return d.voiceLocalProviderPicker(ctx, module.ID, provider.ID)
 	}
 	if voicePersistentProvider(module.ID, provider.ID) && normalizeVoiceRunMode(provider.Config.RuntimeMode) == voiceRuntimeModeAlways && voiceLocalRuntimeStartReady(module.ID, provider, provider.Config) {
-		updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "start"})
+		updated, err := d.daemon.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "start"})
 		if err != nil {
 			return Result{}, err
 		}
@@ -57,7 +57,7 @@ func (d *Dispatcher) voicePostRuntimeInstallAction(ctx context.Context, module s
 
 func (d *Dispatcher) voicePostDownloadAction(ctx context.Context, module setup.VoiceModuleDescriptor, provider setup.VoiceProviderOption, modelID string) (Result, error) {
 	if module.ID == setup.VoiceModuleSTT && provider.ID == "whispercpp" && !provider.RuntimeInstalled {
-		updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "install-runtime"})
+		updated, err := d.daemon.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "install-runtime"})
 		if err != nil {
 			return Result{}, err
 		}
@@ -70,7 +70,7 @@ func (d *Dispatcher) voicePostDownloadAction(ctx context.Context, module setup.V
 			}
 		}
 	}
-	updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "download", ModelID: modelID})
+	updated, err := d.daemon.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "download", ModelID: modelID})
 	if err != nil {
 		return Result{}, err
 	}
@@ -81,7 +81,7 @@ func (d *Dispatcher) voicePostDownloadAction(ctx context.Context, module setup.V
 		if provider.ID == "piper" {
 			cfg.Language = voiceLanguageFromVoiceID(modelID)
 		}
-		modules, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg})
+		modules, err := d.daemon.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg})
 		if err != nil {
 			return Result{}, err
 		}
@@ -110,7 +110,7 @@ func (d *Dispatcher) voicePostDownloadAction(ctx context.Context, module setup.V
 				cfg.RuntimeMode = voiceRuntimeModePerTask
 			}
 			enabled := true
-			modules, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{Enabled: &enabled, ProviderID: provider.ID, ProviderConfig: &cfg})
+			modules, err := d.daemon.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{Enabled: &enabled, ProviderID: provider.ID, ProviderConfig: &cfg})
 			if err != nil {
 				return Result{}, err
 			}
@@ -122,7 +122,7 @@ func (d *Dispatcher) voicePostDownloadAction(ctx context.Context, module setup.V
 			return Result{}, err
 		}
 		if normalizeVoiceRunMode(cfg.RuntimeMode) == voiceRuntimeModeAlways && voiceLocalRuntimeStartReady(module.ID, provider, cfg) {
-			if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "start"}); err != nil {
+			if _, err := d.daemon.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "start"}); err != nil {
 				return Result{}, err
 			}
 		}
@@ -140,7 +140,7 @@ func (d *Dispatcher) voicePostDownloadAction(ctx context.Context, module setup.V
 
 func (d *Dispatcher) voicePostRuntimeAction(ctx context.Context, module setup.VoiceModuleDescriptor, provider setup.VoiceProviderOption, action string) (Result, error) {
 	action = strings.TrimSuffix(action, "-confirm")
-	updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: action})
+	updated, err := d.daemon.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: action})
 	if err != nil {
 		return Result{}, err
 	}
@@ -148,7 +148,7 @@ func (d *Dispatcher) voicePostRuntimeAction(ctx context.Context, module setup.Vo
 }
 
 func (d *Dispatcher) voicePostDeleteAction(ctx context.Context, module setup.VoiceModuleDescriptor, provider setup.VoiceProviderOption, modelID string) (Result, error) {
-	updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "delete", ModelID: modelID})
+	updated, err := d.daemon.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "delete", ModelID: modelID})
 	if err != nil {
 		return Result{}, err
 	}

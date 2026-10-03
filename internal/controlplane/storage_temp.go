@@ -10,7 +10,7 @@ import (
 )
 
 func (d *Dispatcher) storageTempPicker(ctx context.Context) (Result, error) {
-	result, err := d.storage.ListTemporaryStorageFiles(ctx, 50)
+	result, err := d.daemon.ListTemporaryStorageFiles(ctx, 50)
 	if err != nil {
 		return Result{}, err
 	}
@@ -61,7 +61,7 @@ func (d *Dispatcher) storageTempFilePicker(ctx context.Context, tempPath string)
 }
 
 func (d *Dispatcher) storageTempPromote(ctx context.Context, tempPath string) (Result, error) {
-	entry, err := d.storage.PromoteTemporaryStorageFile(ctx, strings.TrimSpace(tempPath), "")
+	entry, err := d.daemon.PromoteTemporaryStorageFile(ctx, strings.TrimSpace(tempPath), "")
 	if err != nil {
 		return Result{}, err
 	}
@@ -80,7 +80,7 @@ func (d *Dispatcher) storageTempDeleteConfirm(tempPath string) Result {
 }
 
 func (d *Dispatcher) storageTempDelete(ctx context.Context, tempPath string) (Result, error) {
-	entry, err := d.storage.DeleteTemporaryStorageFile(ctx, strings.TrimSpace(tempPath))
+	entry, err := d.daemon.DeleteTemporaryStorageFile(ctx, strings.TrimSpace(tempPath))
 	if err != nil {
 		return Result{}, err
 	}
@@ -95,7 +95,7 @@ func (d *Dispatcher) storageTempCleanup() (Result, error) {
 }
 
 func (d *Dispatcher) storageTempCleanupConfirmed(ctx context.Context) (Result, error) {
-	result, err := d.storage.CleanupTemporaryStorageFiles(ctx)
+	result, err := d.daemon.CleanupTemporaryStorageFiles(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -110,7 +110,7 @@ func (d *Dispatcher) storageTempCleanupConfirmed(ctx context.Context) (Result, e
 }
 
 func (d *Dispatcher) storageTempCleanupSettings(ctx context.Context) (Result, error) {
-	result, err := d.storage.ListTemporaryStorageFiles(ctx, 1)
+	result, err := d.daemon.ListTemporaryStorageFiles(ctx, 1)
 	if err != nil {
 		return Result{}, err
 	}
@@ -128,7 +128,7 @@ func (d *Dispatcher) storageTempCleanupSettings(ctx context.Context) (Result, er
 }
 
 func (d *Dispatcher) storageTempCleanupModePicker(ctx context.Context) (Result, error) {
-	result, err := d.storage.ListTemporaryStorageFiles(ctx, 1)
+	result, err := d.daemon.ListTemporaryStorageFiles(ctx, 1)
 	if err != nil {
 		return Result{}, err
 	}
@@ -152,13 +152,13 @@ func (d *Dispatcher) storageTempToggle(ctx context.Context, value string) (Resul
 	case "off", "disabled", "disable":
 		next = false
 	default:
-		result, err := d.storage.ListTemporaryStorageFiles(ctx, 1)
+		result, err := d.daemon.ListTemporaryStorageFiles(ctx, 1)
 		if err != nil {
 			return Result{}, err
 		}
 		next = !result.Settings.AutoCleanup
 	}
-	if _, err := d.storage.UpdateTemporaryStorageSettings(ctx, &next, 0, 0); err != nil {
+	if _, err := d.daemon.UpdateTemporaryStorageSettings(ctx, &next, 0, 0); err != nil {
 		return Result{}, err
 	}
 	return d.storageTempCleanupSettings(ctx)
@@ -178,7 +178,7 @@ func (d *Dispatcher) storageTempDays(ctx context.Context, raw string) (Result, e
 	if err != nil || days <= 0 {
 		return Result{Handled: true, Text: "Days must be a positive number."}, nil
 	}
-	if _, err := d.storage.UpdateTemporaryStorageSettings(ctx, nil, days, 0); err != nil {
+	if _, err := d.daemon.UpdateTemporaryStorageSettings(ctx, nil, days, 0); err != nil {
 		return Result{}, err
 	}
 	return d.storageTempCleanupSettings(ctx)
@@ -198,7 +198,7 @@ func (d *Dispatcher) storageTempMax(ctx context.Context, raw string) (Result, er
 	if err != nil || gb <= 0 {
 		return Result{Handled: true, Text: "Max size must be a positive number of GB."}, nil
 	}
-	if _, err := d.storage.UpdateTemporaryStorageSettings(ctx, nil, 0, gb); err != nil {
+	if _, err := d.daemon.UpdateTemporaryStorageSettings(ctx, nil, 0, gb); err != nil {
 		return Result{}, err
 	}
 	return d.storageTempCleanupSettings(ctx)

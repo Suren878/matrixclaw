@@ -9,7 +9,7 @@ import (
 )
 
 func (d *Dispatcher) skillBodyEditor(ctx context.Context, section string, skillID string) (Result, error) {
-	detail, err := d.skills.GetSkill(ctx, skillID)
+	detail, err := d.daemon.GetSkill(ctx, skillID)
 	if err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
@@ -23,7 +23,7 @@ func (d *Dispatcher) skillBodyEditor(ctx context.Context, section string, skillI
 }
 
 func (d *Dispatcher) skillView(ctx context.Context, skillID string, _ string) (Result, error) {
-	detail, err := d.skills.GetSkill(ctx, skillID)
+	detail, err := d.daemon.GetSkill(ctx, skillID)
 	if err != nil {
 		return Result{}, err
 	}
@@ -118,7 +118,7 @@ func (d *Dispatcher) skillCreateBodyEditor(rest string) (Result, error) {
 }
 
 func (d *Dispatcher) skillEditPrompt(ctx context.Context, section string, skillID string) (Result, error) {
-	detail, err := d.skills.GetSkill(ctx, skillID)
+	detail, err := d.daemon.GetSkill(ctx, skillID)
 	if err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
@@ -137,7 +137,7 @@ func (d *Dispatcher) skillInstall(ctx context.Context, path string) (Result, err
 	if path == "" {
 		return d.skillInstallPrompt(), nil
 	}
-	installed, err := d.skills.InstallSkill(ctx, path)
+	installed, err := d.daemon.InstallSkill(ctx, path)
 	if err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
@@ -157,18 +157,15 @@ func (d *Dispatcher) skillCreateSave(ctx context.Context, rest string) (Result, 
 	if !ok {
 		return Result{Handled: true, Text: "Invalid skill draft state."}, nil
 	}
-	draft, err := d.skills.CreateSkillDraft(ctx, skills.DraftRequest{Name: state.Name, Description: state.Description, Tags: state.Tags, Body: body})
+	draft, err := d.daemon.CreateSkillDraft(ctx, skills.DraftRequest{Name: state.Name, Description: state.Description, Tags: state.Tags, Body: body})
 	if err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
 	return d.skillPicker(ctx, "review", draft.ID)
 }
 
-func (d *Dispatcher) skillAICreate(ctx context.Context, externalKey string, description string) (Result, error) {
-	if d.messages == nil || d.sender == nil {
-		return Result{Handled: true, Text: "AI skill creation needs an active chat session."}, nil
-	}
-	sessionID, session, err := d.currentSession(ctx, externalKey)
+func (d *Dispatcher) skillAICreate(ctx context.Context, description string) (Result, error) {
+	sessionID, session, err := d.currentSession(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -186,7 +183,7 @@ func (d *Dispatcher) skillAICreate(ctx context.Context, externalKey string, desc
 		"After explicit save confirmation, call skill_manage with action=create, name, description, and content. This will open a skill approval dialog where the user can read the draft and approve or reject the write.",
 		"If the user rejects or asks for more changes, continue discussing and revising the draft in chat. The created skill must remain in quarantine/Needs Review until the user reviews and trusts it in Modules > Skills > Review Queue.",
 	}, "\n")
-	if _, err := d.messages.CreateSystemMessage(ctx, sessionID, content); err != nil {
+	if _, err := d.daemon.CreateSystemMessage(ctx, sessionID, content); err != nil {
 		return Result{}, err
 	}
 	prompt := strings.Join([]string{
@@ -196,7 +193,7 @@ func (d *Dispatcher) skillAICreate(ctx context.Context, externalKey string, desc
 		"Then show a draft SKILL.md. I may ask for changes before saving.",
 		"Save the skill only when I explicitly say to save or create it. After that, call skill_manage create so an approval opens with the draft. If I reject it, continue revising in chat.",
 	}, "\n")
-	if _, err := d.sender.SendMessage(ctx, sessionID, prompt); err != nil {
+	if _, err := d.daemon.SendMessage(ctx, sessionID, prompt, d.workingDir); err != nil {
 		return Result{}, err
 	}
 	return Result{
@@ -208,7 +205,7 @@ func (d *Dispatcher) skillAICreate(ctx context.Context, externalKey string, desc
 
 func (d *Dispatcher) skillEdit(ctx context.Context, section string, skillID string, value string) (Result, error) {
 	name, description, tags, category := parseSkillMetadataInput(value)
-	if _, err := d.skills.UpdateSkillMetadata(ctx, skillID, skills.MetadataUpdate{Name: name, Description: description, Tags: tags, Category: category}); err != nil {
+	if _, err := d.daemon.UpdateSkillMetadata(ctx, skillID, skills.MetadataUpdate{Name: name, Description: description, Tags: tags, Category: category}); err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
 	return d.skillEditMenu(ctx, section, skillID)

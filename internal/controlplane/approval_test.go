@@ -1,33 +1,35 @@
 package controlplane
 
 import (
-	"context"
+	"net/http"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-type approvalRuntime struct {
-	ids      []string
-	requests []core.ApprovalResolveRequest
-}
-
-func (r *approvalRuntime) ResolveApproval(_ context.Context, approvalID string, request core.ApprovalResolveRequest) (core.Approval, error) {
-	r.ids = append(r.ids, approvalID)
-	r.requests = append(r.requests, request)
-	return core.Approval{ID: approvalID, ToolName: "bash", State: core.ApprovalStateRejected, Reason: request.Reason}, nil
+// approvalDaemon records the approval decisions it is sent.
+func approvalDaemon(t *testing.T) (*fakeDaemon, *[]string, *[]core.ApprovalResolveRequest) {
+	var ids []string
+	var requests []core.ApprovalResolveRequest
+	daemon := newFakeDaemon(t).on("POST /v1/approvals/{id}/resolve", func(r *http.Request) any {
+		request := decode[core.ApprovalResolveRequest](r)
+		ids = append(ids, r.PathValue("id"))
+		requests = append(requests, request)
+		return core.ApprovalResponse{Approval: core.Approval{ID: r.PathValue("id"), ToolName: "bash", State: core.ApprovalStateRejected, Reason: request.Reason}}
+	})
+	return daemon, &ids, &requests
 }
 
 func TestApprovalDenyCarriesTheReason(t *testing.T) {
-	runtime := &approvalRuntime{}
+	daemon, ids, requests := approvalDaemon(t)
 
-	result, err := New(runtime, "").Handle(context.Background(), "key", DenyWithReasonPrompt("approval_1").SubmitCommandPrefix+"use  the staging db")
+	result := daemon.run(DenyWithReasonPrompt("approval_1").SubmitCommandPrefix + "use  the staging db")
 
-	if err != nil || len(runtime.ids) != 1 || runtime.ids[0] != "approval_1" {
-		t.Fatalf("result = %+v ids = %v err = %v", result, runtime.ids, err)
+	if len(*ids) != 1 || (*ids)[0] != "approval_1" {
+		t.Fatalf("result = %+v ids = %v", result, *ids)
 	}
-	if runtime.requests[0] != (core.ApprovalResolveRequest{Reason: "use  the staging db"}) {
-		t.Fatalf("request = %+v", runtime.requests[0])
+	if (*requests)[0] != (core.ApprovalResolveRequest{Reason: "use  the staging db"}) {
+		t.Fatalf("request = %+v", (*requests)[0])
 	}
 	if result.Text != "❌ Denied bash: use  the staging db" || !result.ReloadSnapshot {
 		t.Fatalf("result = %+v", result)
@@ -36,23 +38,23 @@ func TestApprovalDenyCarriesTheReason(t *testing.T) {
 
 func TestApprovalRejectsOtherAnswers(t *testing.T) {
 	for _, command := range []string{"/approval", "/approval deny", "/approval allow approval_1"} {
-		runtime := &approvalRuntime{}
+		daemon, ids, _ := approvalDaemon(t)
 
-		result, err := New(runtime, "").Handle(context.Background(), "key", command)
+		result := daemon.run(command)
 
-		if err != nil || result.Text != approvalUsage || len(runtime.ids) != 0 {
-			t.Errorf("%s: result = %+v ids = %v err = %v", command, result, runtime.ids, err)
+		if result.Text != approvalUsage || len(*ids) != 0 {
+			t.Errorf("%s: result = %+v ids = %v", command, result, *ids)
 		}
 	}
 }
 
 func TestApprovalDenySplitsOnAnyWhitespace(t *testing.T) {
-	runtime := &approvalRuntime{}
+	daemon, ids, requests := approvalDaemon(t)
 
-	_, err := New(runtime, "").Handle(context.Background(), "key", "/approval deny\tapproval_1\nnot on\tproduction")
+	daemon.run("/approval deny\tapproval_1\nnot on\tproduction")
 
-	if err != nil || len(runtime.ids) != 1 || runtime.ids[0] != "approval_1" || runtime.requests[0].Reason != "not on\tproduction" {
-		t.Fatalf("ids = %v requests = %+v err = %v", runtime.ids, runtime.requests, err)
+	if len(*ids) != 1 || (*ids)[0] != "approval_1" || (*requests)[0].Reason != "not on\tproduction" {
+		t.Fatalf("ids = %v requests = %+v", *ids, *requests)
 	}
 }
 

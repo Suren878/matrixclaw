@@ -1,22 +1,21 @@
 package controlplane
 
 import (
-	"context"
+	"net/http"
 	"testing"
 
+	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func (r tokenReportRuntime) ClearContext(context.Context, string) (transcript.Message, error) {
-	return transcript.Message{ID: "boundary", Compaction: &transcript.Compaction{Cleared: true}}, nil
-}
+func TestContextClearConfirmClearsTheSession(t *testing.T) {
+	daemon := newFakeDaemon(t).on("POST /v1/sessions/{id}/clear", func(*http.Request) any {
+		return core.MessageResponse{Message: transcript.Message{ID: "boundary", Compaction: &transcript.Compaction{Cleared: true}}}
+	})
 
-func TestContextClearConfirmClearsThroughTheContextRuntime(t *testing.T) {
-	result, err := New(tokenReportRuntime{}, "").Handle(context.Background(), "key", "/context clear confirm")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Text != "Context cleared." || !result.ReloadSnapshot {
+	result := daemon.run("/context clear confirm")
+
+	if result.Text != "Context cleared." || !result.ReloadSnapshot || daemon.called("POST /v1/sessions/s1/clear") != 1 {
 		t.Fatalf("result = %+v", result)
 	}
 }

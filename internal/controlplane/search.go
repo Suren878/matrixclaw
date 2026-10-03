@@ -8,18 +8,12 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-func (d *Dispatcher) handleSearch(ctx context.Context, externalKey string, args string) (Result, error) {
-	if d.search == nil {
-		return unsupportedRuntime("search"), nil
-	}
-	if d.sessions == nil {
-		return unsupportedRuntime("sessions"), nil
-	}
+func (d *Dispatcher) handleSearch(ctx context.Context, args string) (Result, error) {
 	query := strings.TrimSpace(args)
 	if query == "" {
 		return Result{Handled: true, Text: "Usage: /search <query>"}, nil
 	}
-	_, session, err := d.currentSession(ctx, externalKey)
+	_, session, err := d.currentSession(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -27,7 +21,7 @@ func (d *Dispatcher) handleSearch(ctx context.Context, externalKey string, args 
 	if session != nil {
 		sessionID = session.ID
 	}
-	report, err := d.search.Search(ctx, core.SearchFilter{Query: query, SessionID: sessionID, Limit: 20})
+	report, err := d.daemon.Search(ctx, core.SearchFilter{Query: query, SessionID: sessionID, Limit: 20})
 	if err != nil {
 		return Result{}, err
 	}

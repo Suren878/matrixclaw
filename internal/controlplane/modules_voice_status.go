@@ -51,7 +51,7 @@ func voiceModuleStatus(module setup.VoiceModuleDescriptor) Result {
 }
 
 func (d *Dispatcher) voiceModule(ctx context.Context, moduleID string) (setup.VoiceModuleDescriptor, error) {
-	modules, err := d.voiceModules.VoiceModules(ctx)
+	modules, err := d.daemon.VoiceModules(ctx)
 	if err != nil {
 		return setup.VoiceModuleDescriptor{}, err
 	}

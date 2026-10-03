@@ -8,9 +8,6 @@ import (
 )
 
 func (d *Dispatcher) handleVoiceModule(ctx context.Context, moduleID string, args string) (Result, error) {
-	if d.voiceModules == nil {
-		return unsupportedRuntime("voice modules"), nil
-	}
 	step, rest := firstCommandStep(args)
 	switch step {
 	case "":
@@ -195,7 +192,7 @@ func (d *Dispatcher) setVoiceModuleEnabled(ctx context.Context, moduleID string,
 		}
 	}
 	update := setup.VoiceModuleUpdate{Enabled: &enabled}
-	if _, err := d.voiceModules.UpdateVoiceModule(ctx, moduleID, update); err != nil {
+	if _, err := d.daemon.UpdateVoiceModule(ctx, moduleID, update); err != nil {
 		return Result{}, err
 	}
 	return d.voiceModulePicker(ctx, moduleID)

@@ -36,8 +36,7 @@ func (m *appModel) handleControlplaneSubmit(content string, attachments []surfac
 func (m *appModel) controlplaneCmd(content string) tea.Cmd {
 	seq := m.nextControlplaneSeq()
 	return func() tea.Msg {
-		dispatcher := controlplane.New(m.rt, m.workingDir)
-		result, err := dispatcher.Handle(m.ctx, strings.TrimSpace(m.rt.config.ExternalKey), content)
+		result, err := controlplane.New(m.rt.client, m.workingDir).Handle(m.ctx, content)
 		return controlplaneResultMsg{command: strings.TrimSpace(content), seq: seq, result: result, err: err}
 	}
 }

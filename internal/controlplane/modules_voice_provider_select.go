@@ -83,7 +83,7 @@ func (d *Dispatcher) setVoiceModuleProvider(ctx context.Context, moduleID string
 			return Result{}, err
 		}
 		enabled := false
-		if _, err := d.voiceModules.UpdateVoiceModule(ctx, moduleID, setup.VoiceModuleUpdate{Enabled: &enabled}); err != nil {
+		if _, err := d.daemon.UpdateVoiceModule(ctx, moduleID, setup.VoiceModuleUpdate{Enabled: &enabled}); err != nil {
 			return Result{}, err
 		}
 		return d.voiceModulePicker(ctx, moduleID)
@@ -128,7 +128,7 @@ func (d *Dispatcher) installAndSetVoiceModuleProvider(ctx context.Context, modul
 		return d.voiceModuleProviderSelectPicker(ctx, moduleID)
 	}
 	if provider.Local && voicePersistentProvider(module.ID, provider.ID) && !provider.RuntimeInstalled {
-		updated, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "install-runtime"})
+		updated, err := d.daemon.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "install-runtime"})
 		if err != nil {
 			return Result{}, err
 		}
@@ -197,7 +197,7 @@ func (d *Dispatcher) activateVoiceModuleProviderState(ctx context.Context, modul
 		cfg = defaultLocalTTSProviderConfig(provider, cfg)
 		update.ProviderConfig = &cfg
 	}
-	modules, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, update)
+	modules, err := d.daemon.UpdateVoiceModule(ctx, module.ID, update)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +205,7 @@ func (d *Dispatcher) activateVoiceModuleProviderState(ctx context.Context, modul
 		if err := d.stopOtherVoiceModuleProviders(ctx, module, provider.ID); err != nil {
 			return nil, err
 		}
-		if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "start"}); err != nil {
+		if _, err := d.daemon.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "start"}); err != nil {
 			return nil, err
 		}
 	}
@@ -254,7 +254,7 @@ func (d *Dispatcher) stopOtherVoiceModuleProviders(ctx context.Context, module s
 		if provider.ID == keepProviderID || !provider.Local || !voiceRunModeAlways(provider) || !provider.RuntimeInstalled {
 			continue
 		}
-		if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "stop"}); err != nil {
+		if _, err := d.daemon.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "stop"}); err != nil {
 			return err
 		}
 	}

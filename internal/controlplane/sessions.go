@@ -3,20 +3,20 @@ package controlplane
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/daemonclient"
+	"github.com/Suren878/matrixclaw/internal/permission"
 )
 
-func (d *Dispatcher) handleSessions(ctx context.Context, externalKey string) (Result, error) {
-	if d.sessions == nil {
-		return unsupportedRuntime("sessions"), nil
-	}
-	currentSessionID, session, err := d.currentSession(ctx, externalKey)
+func (d *Dispatcher) handleSessions(ctx context.Context) (Result, error) {
+	currentSessionID, session, err := d.currentSession(ctx)
 	if err != nil {
 		return Result{}, err
 	}
-	sessions, err := d.sessions.ListSessions(ctx)
+	sessions, err := d.daemon.ListSessions(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -64,23 +64,20 @@ func joinSessionInfo(parts ...string) string {
 	return strings.Join(values, " · ")
 }
 
-func (d *Dispatcher) handleNewSession(ctx context.Context, externalKey string, args string) (Result, error) {
-	if d.sessions == nil {
-		return unsupportedRuntime("sessions"), nil
-	}
+func (d *Dispatcher) handleNewSession(ctx context.Context, args string) (Result, error) {
 	args = strings.TrimSpace(args)
 	if args == "" {
 		return d.sessionRuntimePicker(ctx)
 	}
-	return d.createSession(ctx, externalKey, sessionTarget{runtimeID: core.SessionRuntimeMatrixClaw}, args)
+	return d.createSession(ctx, sessionTarget{runtimeID: core.SessionRuntimeMatrixClaw}, args)
 }
 
 func (d *Dispatcher) sessionRuntimePicker(ctx context.Context) (Result, error) {
 	picker := NewPickerData(PickerSessionRuntime, "New Session").
 		Back(sessionsCommand()).
 		Row("matrixclaw", "Matrixclaw", "Built-in", sessionNewCommand("matrixclaw"))
-	if d.externalAgents != nil && d.owner() {
-		agents, err := d.externalAgents.ListExternalAgents(ctx)
+	if d.owner() {
+		agents, err := d.daemon.ListExternalAgents(ctx)
 		if err != nil {
 			return Result{}, err
 		}
@@ -101,18 +98,15 @@ func externalAgentSessionRuntimeInfo(agent core.ExternalAgentDescriptor) string 
 	return "External"
 }
 
-func (d *Dispatcher) handleSession(ctx context.Context, externalKey string, args string) (Result, error) {
-	if d.sessions == nil {
-		return unsupportedRuntime("sessions"), nil
-	}
+func (d *Dispatcher) handleSession(ctx context.Context, args string) (Result, error) {
 	args = strings.TrimSpace(args)
 	if args == "" {
-		return d.handleSessions(ctx, externalKey)
+		return d.handleSessions(ctx)
 	}
 	step, rest := firstCommandStep(args)
 	switch step {
 	case "new":
-		return d.handleSessionNew(ctx, externalKey, rest)
+		return d.handleSessionNew(ctx, rest)
 	case "menu":
 		sessionID, _ := firstCommandToken(rest)
 		if sessionID == "" {
@@ -127,11 +121,11 @@ func (d *Dispatcher) handleSession(ctx context.Context, externalKey string, args
 		if target, err := d.findSession(ctx, sessionID); err == nil && !d.mayUse(target) {
 			return Result{Handled: true, Text: unattendedRefusal}, nil
 		}
-		binding, err := d.sessions.UseSession(ctx, externalKey, sessionID)
+		binding, err := d.daemon.UseSession(ctx, sessionID)
 		if err != nil {
 			return Result{}, err
 		}
-		_, session, err := d.currentSession(ctx, externalKey)
+		_, session, err := d.currentSession(ctx)
 		if err != nil {
 			return Result{}, err
 		}
@@ -145,7 +139,7 @@ func (d *Dispatcher) handleSession(ctx context.Context, externalKey string, args
 			ReloadSnapshot: true,
 		}, nil
 	case "current":
-		return d.handleCurrent(ctx, externalKey)
+		return d.handleCurrent(ctx)
 	case "rename":
 		sessionID, title := firstCommandToken(rest)
 		if sessionID == "" {
@@ -175,13 +169,13 @@ func (d *Dispatcher) handleSession(ctx context.Context, externalKey string, args
 		if sessionID == "" {
 			return Result{Handled: true, Text: "Usage: /session delete-confirmed <id>"}, nil
 		}
-		return d.handleSessionDeleteConfirmed(ctx, externalKey, sessionID)
+		return d.handleSessionDeleteConfirmed(ctx, sessionID)
 	default:
 		return Result{Handled: true, Text: "Usage:\n/session\n/session menu <id>\n/session use <id>\n/session rename <id> [title]\n/session delete <id>\n/session current"}, nil
 	}
 }
 
-func (d *Dispatcher) handleSessionNew(ctx context.Context, externalKey string, args string) (Result, error) {
+func (d *Dispatcher) handleSessionNew(ctx context.Context, args string) (Result, error) {
 	args = strings.TrimSpace(args)
 	if args == "" {
 		return d.sessionRuntimePicker(ctx)
@@ -191,7 +185,7 @@ func (d *Dispatcher) handleSessionNew(ctx context.Context, externalKey string, a
 	if target.runtimeID == "" {
 		return Result{Handled: true, Text: "Usage: /session new matrixclaw|AGENT [title]"}, nil
 	}
-	return d.createSession(ctx, externalKey, target, strings.TrimSpace(title))
+	return d.createSession(ctx, target, strings.TrimSpace(title))
 }
 
 type sessionTarget struct {
@@ -199,11 +193,24 @@ type sessionTarget struct {
 	externalAgentID string
 }
 
-// owner reports whether this client is the owner's: the only one that may
-// switch modes, start external agent sessions (they run in full_auto) and use
-// any session that core.RunsUnattended.
+// owner reports whether this client acts for the owner: the only one that may
+// change settings and modes, start external agent sessions (they run in
+// full_auto) and use any session that core.RunsUnattended.
 func (d *Dispatcher) owner() bool {
-	return d.permissions != nil && d.permissions.ManagesPermissionMode()
+	return d.daemon.Role == "" || d.daemon.Role == core.RoleOwner
+}
+
+// managesRules reports whether this client may add and delete rules of scope;
+// the daemon refuses the others.
+func (d *Dispatcher) managesRules(scope permission.Scope) bool {
+	switch d.daemon.Role {
+	case core.RoleGuest:
+		return false
+	case core.RoleMember:
+		return scope != permission.ScopeGlobal
+	default:
+		return true
+	}
 }
 
 // mayUse reports whether this client may bind to or send into session.
@@ -211,33 +218,30 @@ func (d *Dispatcher) mayUse(session core.Session) bool {
 	return d.owner() || !core.RunsUnattended(session)
 }
 
+const ownerOnlySettings = "Only the owner can change settings."
+
 const unattendedRefusal = "Only the owner can use a session that runs tools without asking (external agent or full_auto)."
 
-func (d *Dispatcher) createSession(ctx context.Context, externalKey string, target sessionTarget, title string) (Result, error) {
+func (d *Dispatcher) createSession(ctx context.Context, target sessionTarget, title string) (Result, error) {
 	runtimeID := core.NormalizeSessionRuntime(target.runtimeID)
 	if runtimeID == core.SessionRuntimeExternalAgent && !d.owner() {
 		return Result{Handled: true, Text: "Only the owner can start an external agent session."}, nil
 	}
 	if title = strings.TrimSpace(title); title == "" {
-		title = d.defaultSessionTitle(externalKey)
+		title = d.defaultSessionTitle()
 	}
-	var session core.Session
-	var err error
-	if options, ok := d.sessions.(SessionRuntimeOptions); ok {
-		request := core.CreateSessionRequest{
-			Title:      title,
-			RuntimeID:  string(runtimeID),
-			WorkingDir: d.workingDir,
-		}
-		if runtimeID == core.SessionRuntimeExternalAgent {
-			request.PermissionMode = string(core.PermissionModeFullAuto)
-			request.ExternalAgentID = target.externalAgentID
-		}
-		session, err = options.CreateSessionWithOptions(ctx, externalKey, request)
-	} else if runtimeID == core.SessionRuntimeMatrixClaw {
-		session, err = d.sessions.CreateSession(ctx, externalKey, title, d.workingDir)
-	} else {
-		return Result{Handled: true, Text: "Session runtime " + string(runtimeID) + " is not supported by this client."}, nil
+	request := core.CreateSessionRequest{
+		Title:      title,
+		RuntimeID:  string(runtimeID),
+		WorkingDir: d.workingDir,
+	}
+	if runtimeID == core.SessionRuntimeExternalAgent {
+		request.PermissionMode = string(core.PermissionModeFullAuto)
+		request.ExternalAgentID = target.externalAgentID
+	}
+	session, err := d.daemon.CreateSessionWithRequest(ctx, request)
+	if err == nil {
+		_, err = d.daemon.UseSession(ctx, session.ID)
 	}
 	if err != nil {
 		return Result{}, err
@@ -278,9 +282,7 @@ func (d *Dispatcher) sessionMenuPicker(session core.Session) *PickerData {
 		Context(session.ID).
 		Back(sessionsCommand()).
 		Row("use", "Use", "Make active", sessionUseCommand(session.ID))
-	if d.sessionModels != nil {
-		picker.Row("model", "Model", sessionModelInfo(session), sessionModelCommand(session.ID))
-	}
+	picker.Row("model", "Model", sessionModelInfo(session), sessionModelCommand(session.ID))
 	picker.Row("rename", "Rename", title, sessionRenameCommand(session.ID)).
 		Danger("delete", "Delete", "Permanent", sessionDeleteCommand(session.ID))
 	return picker.Ptr()
@@ -337,7 +339,7 @@ func (d *Dispatcher) handleSessionRename(ctx context.Context, sessionID string, 
 			},
 		}, nil
 	}
-	renamed, err := d.sessions.RenameSession(ctx, session.ID, title)
+	renamed, err := d.daemon.RenameSession(ctx, session.ID, title)
 	if err != nil {
 		return Result{}, err
 	}
@@ -349,14 +351,11 @@ func (d *Dispatcher) handleSessionRename(ctx context.Context, sessionID string, 
 }
 
 func (d *Dispatcher) handleSessionModel(ctx context.Context, sessionID string) (Result, error) {
-	if d.sessionModels == nil {
-		return unsupportedRuntime("session models"), nil
-	}
 	session, err := d.findSession(ctx, sessionID)
 	if err != nil {
 		return Result{}, err
 	}
-	response, err := d.sessionModels.SessionModels(ctx, session.ID)
+	response, err := d.daemon.SessionModels(ctx, session.ID)
 	if err != nil {
 		return Result{}, err
 	}
@@ -389,10 +388,7 @@ func sessionModelPicker(sessionID string, response core.SessionModelsResponse) *
 }
 
 func (d *Dispatcher) handleSessionSetModel(ctx context.Context, sessionID string, modelID string) (Result, error) {
-	if d.sessionModels == nil {
-		return unsupportedRuntime("session models"), nil
-	}
-	session, err := d.sessionModels.UpdateSessionModel(ctx, sessionID, modelID)
+	session, err := d.daemon.UpdateSessionModel(ctx, sessionID, modelID)
 	if err != nil {
 		return Result{}, err
 	}
@@ -411,22 +407,22 @@ func (d *Dispatcher) handleSessionDelete(sessionID string) Result {
 	}
 }
 
-func (d *Dispatcher) handleSessionDeleteConfirmed(ctx context.Context, externalKey string, sessionID string) (Result, error) {
+func (d *Dispatcher) handleSessionDeleteConfirmed(ctx context.Context, sessionID string) (Result, error) {
 	session, err := d.findSession(ctx, sessionID)
 	if err != nil {
 		return Result{}, err
 	}
-	currentSessionID, _, err := d.currentSession(ctx, externalKey)
+	currentSessionID, _, err := d.currentSession(ctx)
 	if err != nil {
 		return Result{}, err
 	}
-	if err := d.sessions.DeleteSession(ctx, session.ID); err != nil {
+	if err := d.daemon.DeleteSession(ctx, session.ID); err != nil {
 		return Result{}, err
 	}
 
 	text := "Deleted session " + formatSessionLabel(session, false) + "."
 	if strings.TrimSpace(currentSessionID) == strings.TrimSpace(session.ID) {
-		nextText, err := d.rebindAfterDelete(ctx, externalKey)
+		nextText, err := d.rebindAfterDelete(ctx)
 		if err != nil {
 			return Result{}, err
 		}
@@ -441,8 +437,8 @@ func (d *Dispatcher) handleSessionDeleteConfirmed(ctx context.Context, externalK
 	}, nil
 }
 
-func (d *Dispatcher) handleCurrent(ctx context.Context, externalKey string) (Result, error) {
-	_, session, err := d.currentSession(ctx, externalKey)
+func (d *Dispatcher) handleCurrent(ctx context.Context) (Result, error) {
+	_, session, err := d.currentSession(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -465,11 +461,8 @@ func (d *Dispatcher) handleCurrent(ctx context.Context, externalKey string) (Res
 	}, nil
 }
 
-func (d *Dispatcher) currentSession(ctx context.Context, externalKey string) (string, *core.Session, error) {
-	if d.sessions == nil {
-		return "", nil, nil
-	}
-	binding, err := d.sessions.CurrentBinding(ctx, externalKey)
+func (d *Dispatcher) currentSession(ctx context.Context) (string, *core.Session, error) {
+	binding, err := d.currentBinding(ctx)
 	if err != nil {
 		return "", nil, err
 	}
@@ -488,17 +481,27 @@ func (d *Dispatcher) currentSession(ctx context.Context, externalKey string) (st
 
 func (d *Dispatcher) findSession(ctx context.Context, sessionID string) (core.Session, error) {
 	sessionID = strings.TrimSpace(sessionID)
-	if d.sessions == nil || sessionID == "" {
+	if sessionID == "" {
 		return core.Session{}, core.ErrNotFound
 	}
-	return d.sessions.GetSession(ctx, sessionID)
+	session, err := d.daemon.GetSession(ctx, sessionID)
+	if daemonclient.IsAPIStatus(err, http.StatusNotFound) {
+		return core.Session{}, core.ErrNotFound
+	}
+	return session, err
 }
 
-func (d *Dispatcher) rebindAfterDelete(ctx context.Context, externalKey string) (string, error) {
-	if d.sessions == nil {
-		return "", nil
+// currentBinding is the session this client is bound to; none is no error.
+func (d *Dispatcher) currentBinding(ctx context.Context) (core.ClientBinding, error) {
+	binding, err := d.daemon.CurrentBinding(ctx)
+	if daemonclient.IsAPIStatus(err, http.StatusNotFound) {
+		return core.ClientBinding{}, nil
 	}
-	sessions, err := d.sessions.ListSessions(ctx)
+	return binding, err
+}
+
+func (d *Dispatcher) rebindAfterDelete(ctx context.Context) (string, error) {
+	sessions, err := d.daemon.ListSessions(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -506,23 +509,23 @@ func (d *Dispatcher) rebindAfterDelete(ctx context.Context, externalKey string) 
 		if !d.mayUse(session) {
 			continue
 		}
-		if _, err := d.sessions.UseSession(ctx, externalKey, session.ID); err != nil {
+		if _, err := d.daemon.UseSession(ctx, session.ID); err != nil {
 			return "", err
 		}
 		return "Current session: " + formatSessionLabel(session, true), nil
 	}
-	result, err := d.createSession(ctx, externalKey, sessionTarget{runtimeID: core.SessionRuntimeMatrixClaw}, d.initialSessionTitle(externalKey))
+	result, err := d.createSession(ctx, sessionTarget{runtimeID: core.SessionRuntimeMatrixClaw}, d.initialSessionTitle())
 	if err != nil {
 		return "", err
 	}
 	return result.Text, nil
 }
 
-func (d *Dispatcher) defaultSessionTitle(_ string) string {
+func (d *Dispatcher) defaultSessionTitle() string {
 	return "New chat"
 }
 
-func (d *Dispatcher) initialSessionTitle(_ string) string {
+func (d *Dispatcher) initialSessionTitle() string {
 	return "Main"
 }
 

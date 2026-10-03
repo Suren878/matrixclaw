@@ -8,9 +8,6 @@ import (
 )
 
 func (d *Dispatcher) handleRealtimeVoiceModule(ctx context.Context, args string) (Result, error) {
-	if d.realtimeVoice == nil {
-		return unsupportedRuntime("realtime voice"), nil
-	}
 	step, rest := firstCommandStep(args)
 	switch step {
 	case "":
@@ -45,7 +42,7 @@ func (d *Dispatcher) handleRealtimeVoiceModule(ctx context.Context, args string)
 }
 
 func (d *Dispatcher) realtimeVoicePicker(ctx context.Context) (Result, error) {
-	module, err := d.realtimeVoice.RealtimeVoiceModule(ctx)
+	module, err := d.daemon.RealtimeVoiceModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -68,7 +65,7 @@ func (d *Dispatcher) realtimeVoicePicker(ctx context.Context) (Result, error) {
 }
 
 func (d *Dispatcher) realtimeVoiceEnabledPicker(ctx context.Context) (Result, error) {
-	module, err := d.realtimeVoice.RealtimeVoiceModule(ctx)
+	module, err := d.daemon.RealtimeVoiceModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -95,7 +92,7 @@ func (d *Dispatcher) setRealtimeVoiceEnabled(ctx context.Context, value string) 
 		return d.realtimeVoiceEnabledPicker(ctx)
 	}
 	if enabled {
-		module, err := d.realtimeVoice.RealtimeVoiceModule(ctx)
+		module, err := d.daemon.RealtimeVoiceModule(ctx)
 		if err != nil {
 			return Result{}, err
 		}
@@ -103,14 +100,14 @@ func (d *Dispatcher) setRealtimeVoiceEnabled(ctx context.Context, value string) 
 			return d.realtimeVoiceSetupPicker(ctx, module.ProviderID)
 		}
 	}
-	if _, err := d.realtimeVoice.UpdateRealtimeVoiceModule(ctx, setup.VoiceModuleUpdate{Enabled: &enabled}); err != nil {
+	if _, err := d.daemon.UpdateRealtimeVoiceModule(ctx, setup.VoiceModuleUpdate{Enabled: &enabled}); err != nil {
 		return Result{}, err
 	}
 	return d.realtimeVoicePicker(ctx)
 }
 
 func (d *Dispatcher) realtimeVoiceProviderPicker(ctx context.Context) (Result, error) {
-	module, err := d.realtimeVoice.RealtimeVoiceModule(ctx)
+	module, err := d.daemon.RealtimeVoiceModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -139,12 +136,12 @@ func (d *Dispatcher) setRealtimeVoiceProvider(ctx context.Context, providerID st
 	providerID = strings.TrimSpace(providerID)
 	if strings.EqualFold(providerID, "disabled") || providerID == "" {
 		enabled := false
-		if _, err := d.realtimeVoice.UpdateRealtimeVoiceModule(ctx, setup.VoiceModuleUpdate{Enabled: &enabled}); err != nil {
+		if _, err := d.daemon.UpdateRealtimeVoiceModule(ctx, setup.VoiceModuleUpdate{Enabled: &enabled}); err != nil {
 			return Result{}, err
 		}
 		return d.realtimeVoicePicker(ctx)
 	}
-	module, err := d.realtimeVoice.RealtimeVoiceModule(ctx)
+	module, err := d.daemon.RealtimeVoiceModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -153,7 +150,7 @@ func (d *Dispatcher) setRealtimeVoiceProvider(ctx context.Context, providerID st
 	}
 	provider := realtimeVoiceProviderByID(module, providerID)
 	enabled := realtimeVoiceProviderConfigured(provider)
-	if _, err := d.realtimeVoice.UpdateRealtimeVoiceModule(ctx, setup.VoiceModuleUpdate{Enabled: &enabled, ProviderID: providerID}); err != nil {
+	if _, err := d.daemon.UpdateRealtimeVoiceModule(ctx, setup.VoiceModuleUpdate{Enabled: &enabled, ProviderID: providerID}); err != nil {
 		return Result{}, err
 	}
 	if !enabled {

@@ -2,11 +2,8 @@ package controlplane
 
 import "context"
 
-func (d *Dispatcher) handleContinue(ctx context.Context, externalKey string) (Result, error) {
-	if d.continuer == nil {
-		return unsupportedRuntime("continue"), nil
-	}
-	sessionID, session, err := d.currentSession(ctx, externalKey)
+func (d *Dispatcher) handleContinue(ctx context.Context) (Result, error) {
+	sessionID, session, err := d.currentSession(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -16,7 +13,7 @@ func (d *Dispatcher) handleContinue(ctx context.Context, externalKey string) (Re
 	if session != nil && !d.mayUse(*session) {
 		return Result{Handled: true, Text: unattendedRefusal}, nil
 	}
-	if _, err := d.continuer.ContinueSession(ctx, externalKey, sessionID); err != nil {
+	if _, err := d.daemon.ContinueSession(ctx, sessionID, d.workingDir); err != nil {
 		return Result{}, err
 	}
 	return Result{Handled: true, Text: "Continuing the last run."}, nil

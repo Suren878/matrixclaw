@@ -13,9 +13,6 @@ const (
 )
 
 func (d *Dispatcher) handleBrowserModule(ctx context.Context, args string) (Result, error) {
-	if d.browserModules == nil {
-		return unsupportedRuntime("browser"), nil
-	}
 	step, rest := firstCommandStep(args)
 	switch step {
 	case "":
@@ -36,7 +33,7 @@ func (d *Dispatcher) handleBrowserModule(ctx context.Context, args string) (Resu
 }
 
 func (d *Dispatcher) browserModulePicker(ctx context.Context) (Result, error) {
-	module, err := d.browserModules.BrowserModule(ctx)
+	module, err := d.daemon.BrowserModule(ctx)
 	if err == nil {
 		provider, _ := selectedBrowserProvider(module)
 		picker := NewPickerData(PickerBrowser, "Browser").
@@ -69,7 +66,7 @@ func (d *Dispatcher) browserModulePicker(ctx context.Context) (Result, error) {
 }
 
 func (d *Dispatcher) browserProviderSelectPicker(ctx context.Context) (Result, error) {
-	module, err := d.browserModules.BrowserModule(ctx)
+	module, err := d.daemon.BrowserModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -95,14 +92,14 @@ func (d *Dispatcher) browserProviderSelectPicker(ctx context.Context) (Result, e
 }
 
 func (d *Dispatcher) setBrowserProvider(ctx context.Context, value string) (Result, error) {
-	module, err := d.browserModules.BrowserModule(ctx)
+	module, err := d.daemon.BrowserModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 	value = strings.TrimSpace(value)
 	if strings.EqualFold(value, "disabled") || value == "" {
 		enabled := false
-		if _, err := d.browserModules.UpdateBrowserModule(ctx, setup.BrowserModuleUpdate{Enabled: &enabled}); err != nil {
+		if _, err := d.daemon.UpdateBrowserModule(ctx, setup.BrowserModuleUpdate{Enabled: &enabled}); err != nil {
 			return Result{}, err
 		}
 		return d.browserModulePicker(ctx)
@@ -112,14 +109,14 @@ func (d *Dispatcher) setBrowserProvider(ctx context.Context, value string) (Resu
 		return d.browserProviderSelectPicker(ctx)
 	}
 	enabled := true
-	if _, err := d.browserModules.UpdateBrowserModule(ctx, setup.BrowserModuleUpdate{Enabled: &enabled, ProviderID: provider.ID, ProviderConfig: &provider.Config}); err != nil {
+	if _, err := d.daemon.UpdateBrowserModule(ctx, setup.BrowserModuleUpdate{Enabled: &enabled, ProviderID: provider.ID, ProviderConfig: &provider.Config}); err != nil {
 		return Result{}, err
 	}
 	return d.browserModulePicker(ctx)
 }
 
 func (d *Dispatcher) browserRunModePicker(ctx context.Context) (Result, error) {
-	module, err := d.browserModules.BrowserModule(ctx)
+	module, err := d.daemon.BrowserModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -137,13 +134,13 @@ func (d *Dispatcher) browserRunModePicker(ctx context.Context) (Result, error) {
 }
 
 func (d *Dispatcher) setBrowserRuntimeMode(ctx context.Context, value string) (Result, error) {
-	module, err := d.browserModules.BrowserModule(ctx)
+	module, err := d.daemon.BrowserModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 	cfg := module.Config
 	cfg.RuntimeMode = normalizeBrowserRunMode(value)
-	if _, err := d.browserModules.UpdateBrowserModule(ctx, setup.BrowserModuleUpdate{ProviderConfig: &cfg}); err != nil {
+	if _, err := d.daemon.UpdateBrowserModule(ctx, setup.BrowserModuleUpdate{ProviderConfig: &cfg}); err != nil {
 		return Result{}, err
 	}
 	return d.browserModulePicker(ctx)
@@ -155,7 +152,7 @@ func (d *Dispatcher) browserProviderAction(ctx context.Context, args string) (Re
 	if providerID == "" || action == "" {
 		return d.browserModulePicker(ctx)
 	}
-	module, err := d.browserModules.BrowserModule(ctx)
+	module, err := d.daemon.BrowserModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -176,7 +173,7 @@ func (d *Dispatcher) browserProviderAction(ctx context.Context, args string) (Re
 			ConfirmDanger:  action == provider.ActionIDs.DeleteRuntime,
 		}}, nil
 	}
-	if _, err := d.browserModules.BrowserProviderAction(ctx, provider.ID, setup.BrowserProviderActionRequest{Action: action}); err != nil {
+	if _, err := d.daemon.BrowserProviderAction(ctx, provider.ID, setup.BrowserProviderActionRequest{Action: action}); err != nil {
 		return Result{}, err
 	}
 	return d.browserModulePicker(ctx)

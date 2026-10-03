@@ -11,11 +11,8 @@ import (
 
 const todoUsage = "Usage: /todo, /todo clear"
 
-func (d *Dispatcher) handleTodo(ctx context.Context, externalKey string, args string) (Result, error) {
-	if d.todo == nil {
-		return unsupportedRuntime("todo"), nil
-	}
-	_, session, err := d.currentSession(ctx, externalKey)
+func (d *Dispatcher) handleTodo(ctx context.Context, args string) (Result, error) {
+	_, session, err := d.currentSession(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -27,7 +24,7 @@ func (d *Dispatcher) handleTodo(ctx context.Context, externalKey string, args st
 	}
 	switch strings.ToLower(strings.TrimSpace(args)) {
 	case "":
-		list, err := d.todo.SessionTodo(ctx, session.ID)
+		list, err := d.daemon.SessionTodo(ctx, session.ID)
 		if err != nil {
 			return Result{}, err
 		}
@@ -42,7 +39,7 @@ func (d *Dispatcher) handleTodo(ctx context.Context, externalKey string, args st
 			CancelCommand:  "/todo",
 		}}, nil
 	case "clear confirm":
-		if _, err := d.todo.ClearSessionTodo(ctx, session.ID); err != nil {
+		if _, err := d.daemon.ClearSessionTodo(ctx, session.ID); err != nil {
 			return Result{}, err
 		}
 		return Result{Handled: true, Text: "Todo list cleared.", ReloadSnapshot: true}, nil

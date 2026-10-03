@@ -8,21 +8,15 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-func (d *Dispatcher) handleUsage(ctx context.Context, externalKey string) (Result, error) {
-	if d.usage == nil {
-		return unsupportedRuntime("usage"), nil
-	}
-	if d.sessions == nil {
-		return unsupportedRuntime("sessions"), nil
-	}
-	_, session, err := d.currentSession(ctx, externalKey)
+func (d *Dispatcher) handleUsage(ctx context.Context) (Result, error) {
+	_, session, err := d.currentSession(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 	if session == nil {
 		return Result{Handled: true, Text: "Select or create a session first."}, nil
 	}
-	report, err := d.usage.SessionUsage(ctx, session.ID)
+	report, err := d.daemon.SessionUsage(ctx, session.ID)
 	if err != nil {
 		return Result{}, err
 	}

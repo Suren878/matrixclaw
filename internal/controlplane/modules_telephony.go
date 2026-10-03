@@ -8,9 +8,6 @@ import (
 )
 
 func (d *Dispatcher) handleTelephonyModule(ctx context.Context, args string) (Result, error) {
-	if d.telephony == nil {
-		return unsupportedRuntime("telephony"), nil
-	}
 	step, rest := firstCommandStep(args)
 	switch step {
 	case "":
@@ -31,7 +28,7 @@ func (d *Dispatcher) handleTelephonyModule(ctx context.Context, args string) (Re
 }
 
 func (d *Dispatcher) telephonyPicker(ctx context.Context) (Result, error) {
-	module, err := d.telephony.TelephonyModule(ctx)
+	module, err := d.daemon.TelephonyModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -51,7 +48,7 @@ func (d *Dispatcher) telephonyPicker(ctx context.Context) (Result, error) {
 }
 
 func (d *Dispatcher) telephonyEnabledPicker(ctx context.Context) (Result, error) {
-	module, err := d.telephony.TelephonyModule(ctx)
+	module, err := d.daemon.TelephonyModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -77,14 +74,14 @@ func (d *Dispatcher) setTelephonyEnabled(ctx context.Context, value string) (Res
 	default:
 		return d.telephonyEnabledPicker(ctx)
 	}
-	if _, err := d.telephony.UpdateTelephonyModule(ctx, setup.TelephonyModuleUpdate{Enabled: &enabled}); err != nil {
+	if _, err := d.daemon.UpdateTelephonyModule(ctx, setup.TelephonyModuleUpdate{Enabled: &enabled}); err != nil {
 		return Result{}, err
 	}
 	return d.telephonyPicker(ctx)
 }
 
 func (d *Dispatcher) telephonyFieldPrompt(ctx context.Context, field string) (Result, error) {
-	module, err := d.telephony.TelephonyModule(ctx)
+	module, err := d.daemon.TelephonyModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -121,14 +118,14 @@ func (d *Dispatcher) telephonySetField(ctx context.Context, args string) (Result
 	default:
 		return d.telephonyPicker(ctx)
 	}
-	if _, err := d.telephony.UpdateTelephonyModule(ctx, update); err != nil {
+	if _, err := d.daemon.UpdateTelephonyModule(ctx, update); err != nil {
 		return Result{}, err
 	}
 	return d.telephonyPicker(ctx)
 }
 
 func (d *Dispatcher) telephonyInfo(ctx context.Context) (Result, error) {
-	module, err := d.telephony.TelephonyModule(ctx)
+	module, err := d.daemon.TelephonyModule(ctx)
 	if err != nil {
 		return Result{}, err
 	}

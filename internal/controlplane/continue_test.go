@@ -1,31 +1,31 @@
 package controlplane
 
 import (
-	"context"
+	"net/http"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-type continueRuntime struct {
-	tokenReportRuntime
-	continued []string
-}
-
-func (r *continueRuntime) ContinueSession(_ context.Context, externalKey string, sessionID string) (core.AcceptRunResult, error) {
-	r.continued = append(r.continued, externalKey+"/"+sessionID)
-	return core.AcceptRunResult{SessionID: sessionID}, nil
+func continueDaemon(t *testing.T) (*fakeDaemon, *[]core.HandleMessageInput) {
+	var continued []core.HandleMessageInput
+	daemon := newFakeDaemon(t).on("POST /v1/messages", func(r *http.Request) any {
+		input := decode[core.HandleMessageInput](r)
+		continued = append(continued, input)
+		return core.AcceptRunResult{SessionID: input.SessionID}
+	})
+	return daemon, &continued
 }
 
 func TestContinueCommandContinuesTheCurrentSession(t *testing.T) {
-	runtime := &continueRuntime{}
+	daemon, continued := continueDaemon(t)
 
-	result, err := New(runtime, "").Handle(context.Background(), "key", "/continue")
+	result := daemon.run("/continue")
 
-	if err != nil {
-		t.Fatal(err)
+	if result.Text != "Continuing the last run." || len(*continued) != 1 {
+		t.Fatalf("result = %+v continued = %+v", result, *continued)
 	}
-	if result.Text != "Continuing the last run." || len(runtime.continued) != 1 || runtime.continued[0] != "key/s1" {
-		t.Fatalf("result = %+v continued = %v", result, runtime.continued)
+	if input := (*continued)[0]; !input.Continue || input.SessionID != "s1" || input.ExternalKey != "key" {
+		t.Fatalf("continue request = %+v", input)
 	}
 }

@@ -7,13 +7,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/automation"
 )
 
-func (d *Dispatcher) handleRemind(ctx context.Context, externalKey string, args string) (Result, error) {
-	if d.automation == nil {
-		return unsupportedRuntime("reminders"), nil
-	}
-	if d.sessions == nil {
-		return unsupportedRuntime("sessions"), nil
-	}
+func (d *Dispatcher) handleRemind(ctx context.Context, args string) (Result, error) {
 	args = strings.TrimSpace(args)
 	if args == "" {
 		return Result{Handled: true, Text: "Usage:\n/remind in 10m -- message\n/remind 2026-04-26 16:00 -- message"}, nil
@@ -22,18 +16,18 @@ func (d *Dispatcher) handleRemind(ctx context.Context, externalKey string, args 
 	if err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
-	binding, err := d.sessions.CurrentBinding(ctx, externalKey)
+	binding, err := d.currentBinding(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 	if strings.TrimSpace(binding.SessionID) == "" {
 		return Result{Handled: true, Text: "Choose a session or create a new one before creating reminders."}, nil
 	}
-	job, err := d.automation.CreateAutomationJob(ctx, automation.CreateJobInput{
+	job, err := d.daemon.CreateAutomationJob(ctx, automation.CreateJobInput{
 		Kind:         automation.JobKindReminder,
 		SessionID:    binding.SessionID,
-		Client:       d.automation.ClientName(),
-		ExternalKey:  externalKey,
+		Client:       d.daemon.ClientName,
+		ExternalKey:  d.daemon.ExternalKey,
 		ScheduleMode: automation.ScheduleModeOnce,
 		RunAt:        &runAt,
 		Prompt:       prompt,

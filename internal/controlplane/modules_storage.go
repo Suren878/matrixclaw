@@ -6,9 +6,6 @@ import (
 )
 
 func (d *Dispatcher) handleStorage(ctx context.Context, args string) (Result, error) {
-	if d.storage == nil {
-		return unsupportedRuntime("storage"), nil
-	}
 	args = strings.TrimSpace(args)
 	if args == "" {
 		return d.storagePicker(ctx)

@@ -91,21 +91,21 @@ func (d *Dispatcher) setVoiceLocalProviderConfig(ctx context.Context, moduleID s
 			nextRuntimeMode = voiceRuntimeModePerTask
 		}
 		if nextRuntimeMode == voiceRuntimeModePerTask && voiceRunModeAlways(provider) {
-			if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "stop"}); err != nil {
+			if _, err := d.daemon.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "stop"}); err != nil {
 				return Result{}, err
 			}
 		}
 		cfg.RuntimeMode = nextRuntimeMode
 		cfg.Autostart = cfg.RuntimeMode == voiceRuntimeModeAlways
 	}
-	if _, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg}); err != nil {
+	if _, err := d.daemon.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg}); err != nil {
 		return Result{}, err
 	}
 	if voicePersistentProvider(module.ID, provider.ID) && nextRuntimeMode == voiceRuntimeModeAlways && (field == "runtime-mode" || field == "voice" || field == "model") && voiceLocalRuntimeStartReady(module.ID, provider, cfg) {
 		if err := d.stopOtherVoiceModuleProviders(ctx, module, provider.ID); err != nil {
 			return Result{}, err
 		}
-		if _, err := d.voiceModules.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "start"}); err != nil {
+		if _, err := d.daemon.VoiceProviderAction(ctx, module.ID, provider.ID, setup.VoiceProviderActionRequest{Action: "start"}); err != nil {
 			return Result{}, err
 		}
 	}
@@ -120,7 +120,7 @@ func (d *Dispatcher) disableVoiceModuleIfActiveProvider(ctx context.Context, mod
 		return false, nil
 	}
 	enabled := false
-	_, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{Enabled: &enabled})
+	_, err := d.daemon.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{Enabled: &enabled})
 	return err == nil, err
 }
 
@@ -159,7 +159,7 @@ func (d *Dispatcher) reselectTTSVoiceAfterDelete(ctx context.Context, module set
 		}
 		cfg.VoiceID = model.ID
 		cfg.Language = voiceLanguageFromVoiceID(model.ID)
-		_, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg})
+		_, err := d.daemon.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg})
 		return false, err
 	}
 	return d.disableVoiceModuleIfActiveProvider(ctx, module, provider)
@@ -179,7 +179,7 @@ func (d *Dispatcher) ensureSupertonicDefaultVoice(ctx context.Context, module se
 	if strings.TrimSpace(cfg.Endpoint) == "" {
 		cfg.Endpoint = "http://127.0.0.1:7788"
 	}
-	_, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg})
+	_, err := d.daemon.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg})
 	return err
 }
 
@@ -208,7 +208,7 @@ func (d *Dispatcher) reselectSTTModelAfterDelete(ctx context.Context, module set
 			continue
 		}
 		cfg.ModelID = model.ID
-		_, err := d.voiceModules.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg})
+		_, err := d.daemon.UpdateVoiceModule(ctx, module.ID, setup.VoiceModuleUpdate{ProviderID: provider.ID, ProviderConfig: &cfg})
 		return false, err
 	}
 	return d.disableVoiceModuleIfActiveProvider(ctx, module, provider)

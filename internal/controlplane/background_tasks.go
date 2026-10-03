@@ -13,15 +13,12 @@ import (
 const maxPickedTasks = 10
 
 // backgroundTaskItems lists the bound session's background tasks for /tasks.
-func (d *Dispatcher) backgroundTaskItems(ctx context.Context, externalKey string) ([]PickerItem, error) {
-	if d.tasks == nil {
-		return nil, nil
-	}
-	sessionID, err := d.currentSessionID(ctx, externalKey)
+func (d *Dispatcher) backgroundTaskItems(ctx context.Context) ([]PickerItem, error) {
+	sessionID, err := d.currentSessionID(ctx)
 	if err != nil || sessionID == "" {
 		return nil, err
 	}
-	tasks, err := d.tasks.SessionTasks(ctx, sessionID)
+	tasks, err := d.daemon.SessionTasks(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -38,22 +35,19 @@ func (d *Dispatcher) backgroundTaskItems(ctx context.Context, externalKey string
 }
 
 // handleBackgroundTask serves /tasks bg <id> [output | stop [confirm]].
-func (d *Dispatcher) handleBackgroundTask(ctx context.Context, externalKey string, args string) (Result, error) {
-	if d.tasks == nil {
-		return unsupportedRuntime("background task"), nil
-	}
+func (d *Dispatcher) handleBackgroundTask(ctx context.Context, args string) (Result, error) {
 	taskID, action := firstCommandToken(args)
 	if taskID == "" {
 		return Result{Handled: true, Text: "Usage: /tasks bg <id> [output|stop]"}, nil
 	}
-	detail, err := d.tasks.TaskDetail(ctx, taskID)
+	detail, err := d.daemon.TaskDetail(ctx, taskID)
 	if errors.Is(err, core.ErrNotFound) {
 		return Result{Handled: true, Text: "Task not found."}, nil
 	}
 	if err != nil {
 		return Result{}, err
 	}
-	sessionID, err := d.currentSessionID(ctx, externalKey)
+	sessionID, err := d.currentSessionID(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -81,7 +75,7 @@ func (d *Dispatcher) handleBackgroundTask(ctx context.Context, externalKey strin
 			ConfirmDanger:  true,
 		}}, nil
 	case "stop confirm":
-		stopped, err := d.tasks.CancelTask(ctx, task.ID)
+		stopped, err := d.daemon.CancelTask(ctx, task.ID)
 		if err != nil {
 			return Result{}, err
 		}

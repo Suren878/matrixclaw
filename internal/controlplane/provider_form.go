@@ -386,7 +386,7 @@ func providerFieldPrompt(formID string, form providerForm, field string, placeho
 }
 
 func (d *Dispatcher) providerModelPicker(ctx context.Context, formID string, form providerForm) (Result, error) {
-	response, err := d.providers.ProviderModelCatalog(ctx, form.Provider.ID, form.Update)
+	response, err := d.daemon.ProviderModelCatalog(ctx, form.Provider.ID, form.Update)
 	if err != nil {
 		return providerFormResult(formID, form, "Could not load remote models: "+err.Error()), nil
 	}
@@ -418,7 +418,7 @@ func (d *Dispatcher) saveProviderForm(ctx context.Context, session *core.Session
 	}
 	update := form.Update
 	update.Active = !form.Provider.Configured
-	configured, err := d.providers.ConfigureSetupProvider(ctx, providerID, update)
+	configured, err := d.daemon.ConfigureSetupProvider(ctx, providerID, update)
 	if err != nil {
 		return providerFormResult(formID, form, err.Error()), nil
 	}
@@ -429,19 +429,19 @@ func (d *Dispatcher) saveProviderForm(ctx context.Context, session *core.Session
 func (d *Dispatcher) providerSaved(ctx context.Context, session *core.Session, configured setup.ProviderSetupItem) (Result, error) {
 	selectedSession := session
 	if session != nil {
-		updated, err := d.providers.UpdateSessionProvider(ctx, session.ID, configured.ID)
+		updated, err := d.daemon.UpdateSessionProvider(ctx, session.ID, configured.ID)
 		if err != nil {
 			return Result{}, err
 		}
 		selectedSession = &updated
 	}
-	list, err := d.providers.ListSetupProviders(ctx)
+	list, err := d.daemon.ListSetupProviders(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 	return Result{
 		Handled:        true,
-		Picker:         NewPickerData(PickerProvider, "Provider").Items(ProviderPickerItems(list, selectedSession)...).Ptr(),
+		Picker:         NewPickerData(PickerProvider, "Provider").Items(providerPickerItems(list, selectedSession, d.owner())...).Ptr(),
 		ReloadSnapshot: true,
 	}, nil
 }

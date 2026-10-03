@@ -1,7 +1,8 @@
 package controlplane
 
 import (
-	"context"
+	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -9,85 +10,76 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-type backgroundTaskRuntime struct {
-	tokenReportRuntime
-	tasks    []core.Task
-	canceled []string
-}
-
-func (r *backgroundTaskRuntime) SessionTasks(_ context.Context, sessionID string) ([]core.Task, error) {
-	var out []core.Task
-	for _, task := range r.tasks {
-		if task.SessionID == sessionID {
-			out = append(out, task)
-		}
-	}
-	return out, nil
-}
-
-func (r *backgroundTaskRuntime) TaskDetail(_ context.Context, taskID string) (core.TaskDetailResponse, error) {
-	for _, task := range r.tasks {
-		if task.ID == taskID {
-			return core.TaskDetailResponse{Task: task, OutputTail: "listening on :3000\n"}, nil
-		}
-	}
-	return core.TaskDetailResponse{}, core.ErrNotFound
-}
-
-func (r *backgroundTaskRuntime) CancelTask(_ context.Context, taskID string) (core.Task, error) {
-	r.canceled = append(r.canceled, taskID)
-	return core.Task{ID: taskID, Kind: core.TaskKindShell, Command: "npm run dev", Status: core.TaskStatusCanceled}, nil
-}
-
-func newBackgroundTaskRuntime() *backgroundTaskRuntime {
+func backgroundTaskDaemon(t *testing.T) (*fakeDaemon, *[]string) {
 	code := 1
 	finished := time.Date(2026, 9, 29, 10, 0, 0, 0, time.UTC)
-	return &backgroundTaskRuntime{tasks: []core.Task{
+	tasks := []core.Task{
 		{ID: "task_dev", SessionID: "s1", Kind: core.TaskKindShell, Status: core.TaskStatusRunning, Command: "npm run dev", Background: true},
 		{ID: "task_test", SessionID: "s1", Kind: core.TaskKindShell, Status: core.TaskStatusFailed, Command: "go test ./...", ExitCode: &code, Background: true, FinishedAt: &finished},
 		{ID: "task_other", SessionID: "s2", Kind: core.TaskKindShell, Status: core.TaskStatusRunning, Command: "make", Background: true},
-	}}
+	}
+	var canceled []string
+	daemon := newFakeDaemon(t).
+		on("GET /v1/sessions/{id}/tasks", func(r *http.Request) any {
+			var out []core.Task
+			for _, task := range tasks {
+				if task.SessionID == r.PathValue("id") {
+					out = append(out, task)
+				}
+			}
+			return core.SessionTasksResponse{Tasks: out}
+		}).
+		on("GET /v1/tasks/{id}", func(r *http.Request) any {
+			index := slices.IndexFunc(tasks, func(task core.Task) bool { return task.ID == r.PathValue("id") })
+			if index < 0 {
+				return core.ErrNotFound
+			}
+			return core.TaskDetailResponse{Task: tasks[index], OutputTail: "listening on :3000\n"}
+		}).
+		on("POST /v1/tasks/{id}/cancel", func(r *http.Request) any {
+			canceled = append(canceled, r.PathValue("id"))
+			return core.TaskResponse{Task: core.Task{ID: r.PathValue("id"), Kind: core.TaskKindShell, Command: "npm run dev", Status: core.TaskStatusCanceled}}
+		}).
+		on("GET /v1/automation/jobs", func(*http.Request) any { return map[string]any{"jobs": []any{}} })
+	return daemon, &canceled
 }
 
 func TestTasksListsTheSessionsBackgroundTasks(t *testing.T) {
-	result, err := New(newBackgroundTaskRuntime(), "").Handle(context.Background(), "key", "/tasks")
+	daemon, _ := backgroundTaskDaemon(t)
 
-	if err != nil || result.Picker == nil || len(result.Picker.Items) != 2 {
-		t.Fatalf("result = %+v, %v", result, err)
+	result := daemon.run("/tasks")
+
+	if result.Picker == nil || len(result.Picker.Items) != 3 {
+		t.Fatalf("result = %+v", result)
 	}
 	first, second := result.Picker.Items[0], result.Picker.Items[1]
-	if first.Title != "npm run dev" || first.Info != "running" || first.Command != "/tasks bg task_dev" || second.Info != "failed, exit 1" {
+	if first.Title != "npm run dev" || first.Info != "running" || first.Command != "/tasks bg task_dev" || second.Info != "failed, exit 1" || result.Picker.Items[2].ID != "archive" {
 		t.Fatalf("items = %+v", result.Picker.Items)
 	}
 }
 
 func TestBackgroundTaskShowsOutputAndStopsAfterConfirmation(t *testing.T) {
-	runtime := newBackgroundTaskRuntime()
-	dispatcher := New(runtime, "")
+	daemon, canceled := backgroundTaskDaemon(t)
 
-	actions, err := dispatcher.Handle(context.Background(), "key", "/tasks bg task_dev")
-	if err != nil || actions.Picker == nil || len(actions.Picker.Items) != 2 || actions.Picker.Items[1].Command != "/tasks bg task_dev stop" {
-		t.Fatalf("actions = %+v, %v", actions, err)
+	actions := daemon.run("/tasks bg task_dev")
+	if actions.Picker == nil || len(actions.Picker.Items) != 2 || actions.Picker.Items[1].Command != "/tasks bg task_dev stop" {
+		t.Fatalf("actions = %+v", actions)
 	}
-	output, err := dispatcher.Handle(context.Background(), "key", "/tasks bg task_dev output")
-	if err != nil || output.Info == nil || output.Info.Text != "listening on :3000" {
-		t.Fatalf("output = %+v, %v", output, err)
+	if output := daemon.run("/tasks bg task_dev output"); output.Info == nil || output.Info.Text != "listening on :3000" {
+		t.Fatalf("output = %+v", output)
 	}
-	asked, err := dispatcher.Handle(context.Background(), "key", "/tasks bg task_dev stop")
-	if err != nil || asked.Confirm == nil || len(runtime.canceled) != 0 {
-		t.Fatalf("asked = %+v, %v", asked, err)
+	asked := daemon.run("/tasks bg task_dev stop")
+	if asked.Confirm == nil || len(*canceled) != 0 {
+		t.Fatalf("asked = %+v", asked)
 	}
-	stopped, err := dispatcher.Handle(context.Background(), "key", asked.Confirm.ConfirmCommand)
-	if err != nil || !strings.Contains(stopped.Text, "canceled") || len(runtime.canceled) != 1 || runtime.canceled[0] != "task_dev" {
-		t.Fatalf("stopped = %+v, %v, canceled %v", stopped, err, runtime.canceled)
+	if stopped := daemon.run(asked.Confirm.ConfirmCommand); !strings.Contains(stopped.Text, "canceled") || len(*canceled) != 1 || (*canceled)[0] != "task_dev" {
+		t.Fatalf("stopped = %+v, canceled %v", stopped, *canceled)
 	}
 
-	finished, err := dispatcher.Handle(context.Background(), "key", "/tasks bg task_test")
-	if err != nil || finished.Picker == nil || len(finished.Picker.Items) != 1 {
-		t.Fatalf("a finished task offers %+v, %v", finished, err)
+	if finished := daemon.run("/tasks bg task_test"); finished.Picker == nil || len(finished.Picker.Items) != 1 {
+		t.Fatalf("a finished task offers %+v", finished)
 	}
-	other, err := dispatcher.Handle(context.Background(), "key", "/tasks bg task_other stop confirm")
-	if err != nil || other.Text != "Task not found." || len(runtime.canceled) != 1 {
-		t.Fatalf("another session's task = %+v, %v", other, err)
+	if other := daemon.run("/tasks bg task_other stop confirm"); other.Text != "Task not found." || len(*canceled) != 1 {
+		t.Fatalf("another session's task = %+v", other)
 	}
 }

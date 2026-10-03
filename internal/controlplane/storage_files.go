@@ -9,7 +9,7 @@ import (
 )
 
 func (d *Dispatcher) storageFilesPicker(ctx context.Context) (Result, error) {
-	list, err := d.storage.ListStorageFiles(ctx, localstorage.ListFilter{Limit: 50})
+	list, err := d.daemon.ListStorageFiles(ctx, localstorage.ListFilter{Limit: 50})
 	if err != nil {
 		return Result{}, err
 	}
@@ -49,7 +49,7 @@ func (d *Dispatcher) storageFilePicker(ctx context.Context, storagePath string) 
 	if storagePath == "" {
 		return d.storageFilesPicker(ctx)
 	}
-	read, err := d.storage.ReadStorageFile(ctx, storagePath)
+	read, err := d.daemon.ReadStorageFile(ctx, storagePath)
 	if err != nil {
 		return Result{}, err
 	}
@@ -65,7 +65,7 @@ func (d *Dispatcher) storageFilePicker(ctx context.Context, storagePath string) 
 }
 
 func (d *Dispatcher) storageRead(ctx context.Context, storagePath string) (Result, error) {
-	read, err := d.storage.ReadStorageFile(ctx, strings.TrimSpace(storagePath))
+	read, err := d.daemon.ReadStorageFile(ctx, strings.TrimSpace(storagePath))
 	if err != nil {
 		return Result{}, err
 	}
@@ -94,7 +94,7 @@ func (d *Dispatcher) storageDeleteConfirm(storagePath string) Result {
 }
 
 func (d *Dispatcher) storageDelete(ctx context.Context, storagePath string) (Result, error) {
-	if _, err := d.storage.DeleteStorageFile(ctx, strings.TrimSpace(storagePath)); err != nil {
+	if _, err := d.daemon.DeleteStorageFile(ctx, strings.TrimSpace(storagePath)); err != nil {
 		return Result{}, err
 	}
 	return d.storageFilesPicker(ctx)
@@ -111,7 +111,7 @@ func (d *Dispatcher) storageClear(ctx context.Context) (Result, error) {
 	var deleted int
 	var freed int64
 	for {
-		list, err := d.storage.ListStorageFiles(ctx, localstorage.ListFilter{Limit: 200})
+		list, err := d.daemon.ListStorageFiles(ctx, localstorage.ListFilter{Limit: 200})
 		if err != nil {
 			return Result{}, err
 		}
@@ -119,7 +119,7 @@ func (d *Dispatcher) storageClear(ctx context.Context) (Result, error) {
 			break
 		}
 		for _, file := range list.Files {
-			entry, err := d.storage.DeleteStorageFile(ctx, file.Path)
+			entry, err := d.daemon.DeleteStorageFile(ctx, file.Path)
 			if err != nil {
 				return Result{}, err
 			}

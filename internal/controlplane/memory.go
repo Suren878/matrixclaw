@@ -9,15 +9,12 @@ import (
 )
 
 func (d *Dispatcher) handleMemory(ctx context.Context, args string) (Result, error) {
-	if d.memory == nil {
-		return unsupportedRuntime("memory"), nil
-	}
 	filter := core.MemoryFilter{
 		Scope:      memoryScopeArg(args),
 		WorkingDir: d.workingDir,
 		Limit:      50,
 	}
-	entries, err := d.memory.ListMemories(ctx, filter)
+	entries, err := d.daemon.ListMemories(ctx, filter)
 	if err != nil {
 		return Result{}, err
 	}

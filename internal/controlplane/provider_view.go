@@ -7,7 +7,9 @@ import (
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
-func ProviderPickerItems(items []setup.ProviderSetupItem, session *core.Session) []PickerItem {
+// providerPickerItems lists the providers for session; only the owner gets
+// the ones still to configure and the custom provider.
+func providerPickerItems(items []setup.ProviderSetupItem, session *core.Session, owner bool) []PickerItem {
 	out := make([]PickerItem, 0, len(items)+2)
 	sessionProviderID := ""
 	sessionModelID := ""
@@ -16,13 +18,16 @@ func ProviderPickerItems(items []setup.ProviderSetupItem, session *core.Session)
 		sessionModelID = strings.TrimSpace(session.ModelID)
 	}
 	for _, provider := range items {
+		if !owner && !provider.Configured {
+			continue
+		}
 		selected := strings.TrimSpace(provider.ID) == sessionProviderID
 		info := providerPickerInfo(provider)
 		if selected && sessionModelID != "" {
 			info = sessionModelID
 		}
 		command := providerCommand(provider.ID)
-		if provider.Configured && !selected {
+		if provider.Configured && (!selected || !owner) {
 			command = providerCommand("use", provider.ID)
 		}
 		out = append(out, PickerItem{
@@ -33,7 +38,9 @@ func ProviderPickerItems(items []setup.ProviderSetupItem, session *core.Session)
 			Command:  command,
 		})
 	}
-	out = append(out, PickerItem{ID: "custom", Title: "Custom Provider", Command: customProviderCommand(), Role: PickerItemRoleAction})
+	if owner {
+		out = append(out, PickerItem{ID: "custom", Title: "Custom Provider", Command: customProviderCommand(), Role: PickerItemRoleAction})
+	}
 	return out
 }
 

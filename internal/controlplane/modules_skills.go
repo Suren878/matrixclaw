@@ -7,11 +7,8 @@ import (
 	"github.com/Suren878/matrixclaw/internal/skills"
 )
 
-func (d *Dispatcher) handleSessionSkills(ctx context.Context, externalKey string, args string) (Result, error) {
-	if d.skills == nil {
-		return unsupportedRuntime("skills"), nil
-	}
-	sessionID, err := d.currentSessionID(ctx, externalKey)
+func (d *Dispatcher) handleSessionSkills(ctx context.Context, args string) (Result, error) {
+	sessionID, err := d.currentSessionID(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -27,12 +24,12 @@ func (d *Dispatcher) handleSessionSkills(ctx context.Context, externalKey string
 		case "view":
 			return d.skillView(ctx, step, sessionSkillCommand(step))
 		case "use":
-			if _, err := d.skills.UseSkill(ctx, sessionID, step); err != nil {
+			if _, err := d.daemon.UseSkill(ctx, sessionID, step); err != nil {
 				return Result{Handled: true, Text: err.Error()}, nil
 			}
 			return d.sessionSkillPicker(ctx, sessionID, step)
 		case "unload":
-			if err := d.skills.UnloadSkill(ctx, sessionID, step); err != nil {
+			if err := d.daemon.UnloadSkill(ctx, sessionID, step); err != nil {
 				return Result{Handled: true, Text: err.Error()}, nil
 			}
 			return d.sessionSkillPicker(ctx, sessionID, step)
@@ -42,11 +39,8 @@ func (d *Dispatcher) handleSessionSkills(ctx context.Context, externalKey string
 	}
 }
 
-func (d *Dispatcher) currentSessionID(ctx context.Context, externalKey string) (string, error) {
-	if d.sessions == nil {
-		return "", nil
-	}
-	binding, err := d.sessions.CurrentBinding(ctx, externalKey)
+func (d *Dispatcher) currentSessionID(ctx context.Context) (string, error) {
+	binding, err := d.currentBinding(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -58,11 +52,11 @@ func (d *Dispatcher) sessionSkillsPicker(ctx context.Context, sessionID string) 
 }
 
 func (d *Dispatcher) sessionSkillsPickerWithBack(ctx context.Context, sessionID string, title string, backCommand string) (Result, error) {
-	available, err := d.skills.ListSkills(ctx, skills.SearchOptions{Limit: 200})
+	available, err := d.daemon.ListSkills(ctx, skills.SearchOptions{Limit: 200})
 	if err != nil {
 		return Result{}, err
 	}
-	active, err := d.skills.SessionSkills(ctx, sessionID)
+	active, err := d.daemon.SessionSkills(ctx, sessionID)
 	if err != nil {
 		return Result{}, err
 	}
@@ -91,11 +85,11 @@ func (d *Dispatcher) sessionSkillsPickerWithBack(ctx context.Context, sessionID 
 }
 
 func (d *Dispatcher) sessionSkillPicker(ctx context.Context, sessionID string, skillID string) (Result, error) {
-	detail, err := d.skills.GetSkill(ctx, skillID)
+	detail, err := d.daemon.GetSkill(ctx, skillID)
 	if err != nil {
 		return Result{Handled: true, Text: "Skill not found: " + strings.TrimSpace(skillID)}, nil
 	}
-	active, err := d.skills.SessionSkills(ctx, sessionID)
+	active, err := d.daemon.SessionSkills(ctx, sessionID)
 	if err != nil {
 		return Result{}, err
 	}
@@ -115,10 +109,7 @@ func (d *Dispatcher) sessionSkillPicker(ctx context.Context, sessionID string, s
 	return Result{Handled: true, Picker: picker.Ptr()}, nil
 }
 
-func (d *Dispatcher) handleSkillsForExternal(ctx context.Context, externalKey string, args string) (Result, error) {
-	if d.skills == nil {
-		return unsupportedRuntime("skills"), nil
-	}
+func (d *Dispatcher) handleSkillsForExternal(ctx context.Context, args string) (Result, error) {
 	step, rest := firstCommandStep(args)
 	switch step {
 	case "":
@@ -134,7 +125,7 @@ func (d *Dispatcher) handleSkillsForExternal(ctx context.Context, externalKey st
 		}
 		return d.handleLibrarySkillAction(ctx, step, id, action, actionRest)
 	case "usage":
-		return d.skillsUsagePicker(ctx, externalKey)
+		return d.skillsUsagePicker(ctx)
 	case "add":
 		switch strings.TrimSpace(rest) {
 		case "manual", "create":
@@ -149,7 +140,7 @@ func (d *Dispatcher) handleSkillsForExternal(ctx context.Context, externalKey st
 		if strings.TrimSpace(rest) == "" {
 			return d.skillAICreatePrompt(), nil
 		}
-		return d.skillAICreate(ctx, externalKey, rest)
+		return d.skillAICreate(ctx, rest)
 	case "search":
 		if rest == "" {
 			return d.skillSearchPrompt(), nil
@@ -185,7 +176,7 @@ func actionRestFrom(rest string) string {
 }
 
 func (d *Dispatcher) skillsRootPicker(ctx context.Context) (Result, error) {
-	items, err := d.skills.ListSkills(ctx, skillsLibrarySearchOptions())
+	items, err := d.daemon.ListSkills(ctx, skillsLibrarySearchOptions())
 	if err != nil {
 		return Result{}, err
 	}
@@ -212,8 +203,8 @@ func (d *Dispatcher) skillAddPicker() Result {
 	return Result{Handled: true, Picker: picker.Ptr()}
 }
 
-func (d *Dispatcher) skillsUsagePicker(ctx context.Context, externalKey string) (Result, error) {
-	sessionID, err := d.currentSessionID(ctx, externalKey)
+func (d *Dispatcher) skillsUsagePicker(ctx context.Context) (Result, error) {
+	sessionID, err := d.currentSessionID(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -225,9 +216,9 @@ func (d *Dispatcher) skillsSectionPicker(ctx context.Context, section string, qu
 	var items []skills.Skill
 	var err error
 	if strings.TrimSpace(query) == "" {
-		items, err = d.skills.ListSkills(ctx, opts)
+		items, err = d.daemon.ListSkills(ctx, opts)
 	} else {
-		items, err = d.skills.SearchSkills(ctx, query, opts)
+		items, err = d.daemon.SearchSkills(ctx, query, opts)
 	}
 	if err != nil {
 		return Result{}, err
@@ -258,7 +249,7 @@ func (d *Dispatcher) skillsSectionPicker(ctx context.Context, section string, qu
 }
 
 func (d *Dispatcher) skillPicker(ctx context.Context, section string, skillID string) (Result, error) {
-	detail, err := d.skills.GetSkill(ctx, skillID)
+	detail, err := d.daemon.GetSkill(ctx, skillID)
 	if err != nil {
 		return Result{Handled: true, Text: "Skill not found: " + strings.TrimSpace(skillID)}, nil
 	}
@@ -290,7 +281,7 @@ func (d *Dispatcher) skillPicker(ctx context.Context, section string, skillID st
 }
 
 func (d *Dispatcher) skillEditMenu(ctx context.Context, section string, skillID string) (Result, error) {
-	detail, err := d.skills.GetSkill(ctx, skillID)
+	detail, err := d.daemon.GetSkill(ctx, skillID)
 	if err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
@@ -303,7 +294,7 @@ func (d *Dispatcher) skillEditMenu(ctx context.Context, section string, skillID 
 }
 
 func (d *Dispatcher) skillEnabledPicker(ctx context.Context, section string, skillID string) (Result, error) {
-	detail, err := d.skills.GetSkill(ctx, skillID)
+	detail, err := d.daemon.GetSkill(ctx, skillID)
 	if err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
@@ -328,7 +319,7 @@ func (d *Dispatcher) skillSetEnabled(ctx context.Context, section string, skillI
 	if enabled {
 		action = "enable"
 	}
-	if err := d.skills.SkillAction(ctx, skillID, action); err != nil {
+	if err := d.daemon.SkillAction(ctx, skillID, action); err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
 	return d.skillPicker(ctx, section, skillID)
@@ -343,25 +334,25 @@ func (d *Dispatcher) handleLibrarySkillAction(ctx context.Context, section strin
 	case "set-enabled":
 		return d.skillSetEnabled(ctx, section, skillID, actionRest)
 	case "trust-enable":
-		if err := d.skills.SkillAction(ctx, skillID, "trust"); err != nil {
+		if err := d.daemon.SkillAction(ctx, skillID, "trust"); err != nil {
 			return Result{Handled: true, Text: err.Error()}, nil
 		}
-		if err := d.skills.SkillAction(ctx, skillID, "enable"); err != nil {
+		if err := d.daemon.SkillAction(ctx, skillID, "enable"); err != nil {
 			return Result{Handled: true, Text: err.Error()}, nil
 		}
 		return d.skillPicker(ctx, "library", skillID)
 	case "enable":
-		if err := d.skills.SkillAction(ctx, skillID, "enable"); err != nil {
+		if err := d.daemon.SkillAction(ctx, skillID, "enable"); err != nil {
 			return Result{Handled: true, Text: err.Error()}, nil
 		}
 		return d.skillPicker(ctx, section, skillID)
 	case "disable":
-		if err := d.skills.SkillAction(ctx, skillID, "disable"); err != nil {
+		if err := d.daemon.SkillAction(ctx, skillID, "disable"); err != nil {
 			return Result{Handled: true, Text: err.Error()}, nil
 		}
 		return d.skillPicker(ctx, section, skillID)
 	case "trust", "quarantine", "archive", "restore", "pin", "unpin":
-		if err := d.skills.SkillAction(ctx, skillID, action); err != nil {
+		if err := d.daemon.SkillAction(ctx, skillID, action); err != nil {
 			return Result{Handled: true, Text: err.Error()}, nil
 		}
 		return d.skillPicker(ctx, section, skillID)
@@ -377,13 +368,13 @@ func (d *Dispatcher) handleLibrarySkillAction(ctx context.Context, section strin
 	case "edit-body":
 		return d.skillBodyEditor(ctx, section, skillID)
 	case "save-body":
-		if err := d.skills.UpdateSkillBody(ctx, skillID, actionRest); err != nil {
+		if err := d.daemon.UpdateSkillBody(ctx, skillID, actionRest); err != nil {
 			return Result{Handled: true, Text: err.Error()}, nil
 		}
 		return d.skillEditMenu(ctx, section, skillID)
 	case "remove":
 		if actionRest == "confirm" {
-			if err := d.skills.RemoveSkill(ctx, skillID); err != nil {
+			if err := d.daemon.RemoveSkill(ctx, skillID); err != nil {
 				return Result{Handled: true, Text: err.Error()}, nil
 			}
 			return d.skillsSectionPicker(ctx, section, "")

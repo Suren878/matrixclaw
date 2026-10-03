@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -12,11 +13,11 @@ import (
 )
 
 func TestProviderPickerItemsSelectsConfiguredProviderWithoutEditingSetup(t *testing.T) {
-	items := ProviderPickerItems([]setup.ProviderSetupItem{
+	items := providerPickerItems([]setup.ProviderSetupItem{
 		{ID: "current", Name: "Current", Configured: true},
 		{ID: "custom-cloud", Name: "Custom Cloud", Configured: true},
 		{ID: "new", Name: "New", Configured: false},
-	}, &core.Session{ProviderID: "current", ModelID: "current-model"})
+	}, &core.Session{ProviderID: "current", ModelID: "current-model"}, true)
 
 	commands := map[string]string{}
 	for _, item := range items {
@@ -34,15 +35,14 @@ func TestProviderPickerItemsSelectsConfiguredProviderWithoutEditingSetup(t *test
 }
 
 func TestSavedProviderFormSelectsTheProviderInTheSession(t *testing.T) {
-	runtime := &providerRuntimeStub{
-		configured: setup.ProviderSetupItem{ID: "custom-cloud", Name: "Custom Cloud", Configured: true},
-		providers: []setup.ProviderSetupItem{
-			{ID: "old", Name: "Old", Configured: true},
-			{ID: "custom-cloud", Name: "Custom Cloud", Type: "openai-compatible", BaseURL: "http://x", Model: "m", APIKeyPreview: "****1234", Configured: true},
-		},
-		updated: core.Session{ID: "session-1", ProviderID: "custom-cloud", ModelID: "custom-model"},
+	runtime := newProviderDaemon(t)
+	runtime.configured = setup.ProviderSetupItem{ID: "custom-cloud", Name: "Custom Cloud", Configured: true}
+	runtime.providers = []setup.ProviderSetupItem{
+		{ID: "old", Name: "Old", Configured: true},
+		{ID: "custom-cloud", Name: "Custom Cloud", Type: "openai-compatible", BaseURL: "http://x", Model: "m", APIKeyPreview: "****1234", Configured: true},
 	}
-	dispatcher := &Dispatcher{providers: runtime}
+	runtime.updated = core.Session{ID: "session-1", ProviderID: "custom-cloud", ModelID: "custom-model"}
+	dispatcher := runtime.dispatcher(core.RoleOwner)
 	formID := formIDOf(t, openProviderForm(providerForm{Provider: runtime.providers[1]}))
 
 	result, err := dispatcher.handleProviderForm(context.Background(), &core.Session{ID: "session-1", ProviderID: "old"}, formID+" save")
@@ -64,11 +64,10 @@ func TestSavedProviderFormSelectsTheProviderInTheSession(t *testing.T) {
 }
 
 func TestSavedProviderFormReportsSessionSelectionFailure(t *testing.T) {
-	runtime := &providerRuntimeStub{
-		configured: setup.ProviderSetupItem{ID: "custom-cloud", Configured: true},
-		updateErr:  errors.New("write failed"),
-	}
-	dispatcher := &Dispatcher{providers: runtime}
+	runtime := newProviderDaemon(t)
+	runtime.configured = setup.ProviderSetupItem{ID: "custom-cloud", Configured: true}
+	runtime.updateErr = errors.New("write failed")
+	dispatcher := runtime.dispatcher(core.RoleOwner)
 	formID := formIDOf(t, openProviderForm(providerForm{Provider: setup.ProviderSetupItem{ID: "custom-cloud", Type: "openai-compatible", Name: "Custom Cloud", BaseURL: "http://x", Model: "m", APIKeyPreview: "****1234", Configured: true}}))
 
 	if _, err := dispatcher.handleProviderForm(context.Background(), &core.Session{ID: "session-1"}, formID+" save"); err == nil {
@@ -77,8 +76,9 @@ func TestSavedProviderFormReportsSessionSelectionFailure(t *testing.T) {
 }
 
 func TestCustomProviderFormNeverPutsTheKeyInCommands(t *testing.T) {
-	runtime := &providerRuntimeStub{configured: setup.ProviderSetupItem{ID: "local-ai", Configured: true}}
-	dispatcher := &Dispatcher{providers: runtime}
+	runtime := newProviderDaemon(t)
+	runtime.configured = setup.ProviderSetupItem{ID: "local-ai", Configured: true}
+	dispatcher := runtime.dispatcher(core.RoleOwner)
 	ctx := context.Background()
 	result := openCustomProviderForm("openai")
 	formID := formIDOf(t, result)
@@ -168,7 +168,9 @@ func deref(value *string) string {
 	return *value
 }
 
-type providerRuntimeStub struct {
+// providerDaemon serves the provider setup and session LLM endpoints.
+type providerDaemon struct {
+	*fakeDaemon
 	lastID     string
 	lastUpdate setup.ProviderSetupUpdate
 	configured setup.ProviderSetupItem
@@ -176,48 +178,33 @@ type providerRuntimeStub struct {
 	updated    core.Session
 	updateErr  error
 	models     core.SessionModelsResponse
-	modelsErr  error
 }
 
-func (s *providerRuntimeStub) ListSetupProviders(context.Context) ([]setup.ProviderSetupItem, error) {
-	return append([]setup.ProviderSetupItem(nil), s.providers...), nil
-}
-
-func (s *providerRuntimeStub) ConfigureSetupProvider(_ context.Context, providerID string, update setup.ProviderSetupUpdate) (setup.ProviderSetupItem, error) {
-	s.lastID, s.lastUpdate = providerID, update
-	return s.configured, nil
-}
-
-func (s *providerRuntimeStub) ProviderModelCatalog(context.Context, string, setup.ProviderSetupUpdate) (setup.ProviderModelsResponse, error) {
-	return setup.ProviderModelsResponse{}, nil
-}
-
-func (s *providerRuntimeStub) DeleteSetupProvider(context.Context, string) error {
-	return nil
-}
-
-func (s *providerRuntimeStub) UpdateSessionProvider(context.Context, string, string) (core.Session, error) {
-	return s.updated, s.updateErr
-}
-
-func (s *providerRuntimeStub) SessionModels(context.Context, string) (core.SessionModelsResponse, error) {
-	return s.models, s.modelsErr
-}
-
-func (s *providerRuntimeStub) UpdateSessionModel(context.Context, string, string) (core.Session, error) {
-	return core.Session{}, nil
+func newProviderDaemon(t *testing.T) *providerDaemon {
+	d := &providerDaemon{fakeDaemon: newFakeDaemon(t)}
+	d.on("GET /v1/setup/providers", func(*http.Request) any {
+		return setup.ProviderSetupListResponse{Providers: d.providers}
+	}).on("PATCH /v1/setup/providers/{id}", func(r *http.Request) any {
+		d.lastID, d.lastUpdate = r.PathValue("id"), decode[setup.ProviderSetupUpdate](r)
+		return setup.ProviderSetupResponse{Provider: d.configured}
+	}).on("PATCH /v1/sessions/{id}/llm", func(*http.Request) any {
+		if d.updateErr != nil {
+			return d.updateErr
+		}
+		return core.SessionResponse{Session: d.updated}
+	}).on("GET /v1/sessions/{id}/models", func(*http.Request) any {
+		return d.models
+	}).on("POST /v1/sessions/{id}/system-message", func(*http.Request) any {
+		return core.MessageResponse{}
+	})
+	return d
 }
 
 func TestUseProviderOffersModelPickerWhenCatalogHasMultipleModels(t *testing.T) {
-	runtime := &providerRuntimeStub{
-		updated: core.Session{ID: "session-1", ProviderID: "foresko", ModelID: "qwen3.8"},
-		models: core.SessionModelsResponse{
-			ProviderID: "foresko",
-			ModelID:    "qwen3.8",
-			Models:     []string{"gemma-4-26B-A4B", "qwen3.8"},
-		},
-	}
-	dispatcher := &Dispatcher{providers: runtime, sessionModels: runtime}
+	runtime := newProviderDaemon(t)
+	runtime.updated = core.Session{ID: "session-1", ProviderID: "foresko", ModelID: "qwen3.8"}
+	runtime.models = core.SessionModelsResponse{ProviderID: "foresko", ModelID: "qwen3.8", Models: []string{"gemma-4-26B-A4B", "qwen3.8"}}
+	dispatcher := runtime.dispatcher(core.RoleOwner)
 
 	result, err := dispatcher.useProvider(context.Background(), &core.Session{ID: "session-1"}, "foresko")
 	if err != nil {
@@ -238,15 +225,10 @@ func TestUseProviderOffersModelPickerWhenCatalogHasMultipleModels(t *testing.T) 
 }
 
 func TestUseProviderKeepsConfirmationWhenCatalogHasOneModel(t *testing.T) {
-	runtime := &providerRuntimeStub{
-		updated: core.Session{ID: "session-1", ProviderID: "foresko", ModelID: "qwen3.8"},
-		models: core.SessionModelsResponse{
-			ProviderID: "foresko",
-			ModelID:    "qwen3.8",
-			Models:     []string{"qwen3.8"},
-		},
-	}
-	dispatcher := &Dispatcher{providers: runtime, sessionModels: runtime}
+	runtime := newProviderDaemon(t)
+	runtime.updated = core.Session{ID: "session-1", ProviderID: "foresko", ModelID: "qwen3.8"}
+	runtime.models = core.SessionModelsResponse{ProviderID: "foresko", ModelID: "qwen3.8", Models: []string{"qwen3.8"}}
+	dispatcher := runtime.dispatcher(core.RoleOwner)
 
 	result, err := dispatcher.useProvider(context.Background(), &core.Session{ID: "session-1"}, "foresko")
 	if err != nil {
