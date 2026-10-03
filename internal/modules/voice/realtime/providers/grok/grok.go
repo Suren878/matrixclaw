@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 // Spec is Grok Voice's catalog and codec.
@@ -82,7 +83,7 @@ func (c *codec) SetupDone(msg []byte) (bool, error) {
 		return true, nil
 	case "error":
 		if decoded.Error != nil {
-			return false, errors.New(firstNonEmpty(decoded.Error.Message, decoded.Error.Code, "session update failed"))
+			return false, errors.New(textutil.FirstNonEmpty(decoded.Error.Message, decoded.Error.Code, "session update failed"))
 		}
 		return false, errors.New("session update failed")
 	default:
@@ -167,13 +168,4 @@ func sessionUpdateMessage(req realtime.ProviderConnectRequest) map[string]any {
 		session["tools"] = declarations
 	}
 	return map[string]any{"type": "session.update", "session": session}
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			return value
-		}
-	}
-	return ""
 }

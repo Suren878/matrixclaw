@@ -14,6 +14,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/safego"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 type Runtime struct {
@@ -115,16 +116,16 @@ func (r *Runtime) StartSession(_ context.Context, req externalagents.StartSessio
 		AgentID:        AgentID,
 		CWD:            cwd,
 		Model:          model,
-		ApprovalPolicy: defaultString(req.ApprovalPolicy, defaultApprovalPolicy),
-		Sandbox:        defaultString(req.Sandbox, defaultSandbox),
+		ApprovalPolicy: textutil.FirstNonEmpty(req.ApprovalPolicy, defaultApprovalPolicy),
+		Sandbox:        textutil.FirstNonEmpty(req.Sandbox, defaultSandbox),
 		Metadata:       map[string]any{"mode": "cli"},
 	}, nil
 }
 
 func (r *Runtime) ResumeSession(_ context.Context, session externalagents.ExternalSession) (externalagents.ExternalSession, error) {
 	session.AgentID = AgentID
-	session.ApprovalPolicy = defaultString(session.ApprovalPolicy, defaultApprovalPolicy)
-	session.Sandbox = defaultString(session.Sandbox, defaultSandbox)
+	session.ApprovalPolicy = textutil.FirstNonEmpty(session.ApprovalPolicy, defaultApprovalPolicy)
+	session.Sandbox = textutil.FirstNonEmpty(session.Sandbox, defaultSandbox)
 	if session.Metadata == nil {
 		session.Metadata = map[string]any{"mode": "cli"}
 	}
@@ -276,7 +277,7 @@ func (r *Runtime) runPromptCommand(ctx context.Context, out chan<- externalagent
 		return
 	}
 	if result.IsError || (result.Subtype != "" && result.Subtype != "success") || strings.TrimSpace(result.Error) != "" {
-		message := firstNonEmptyClaude(strings.TrimSpace(result.Error), strings.TrimSpace(result.Result), "claudecode: turn failed")
+		message := textutil.FirstNonEmpty(result.Error, result.Result, "claudecode: turn failed")
 		emitClaudeFailureWithSession(ctx, out, sessionID, turnID, message)
 		return
 	}
@@ -386,15 +387,6 @@ func claudeAssistantText(raw json.RawMessage) string {
 	return text.String()
 }
 
-func firstNonEmptyClaude(values ...string) string {
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
 func claudePromptArgs(session externalagents.ExternalSession, text string) []string {
 	args := []string{"-p", text, "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
 	if sessionID := claudeSessionID(session); sessionID != "" {
@@ -425,13 +417,6 @@ func claudePermissionMode(session externalagents.ExternalSession) string {
 	default:
 		return "default"
 	}
-}
-
-func defaultString(value string, fallback string) string {
-	if value = strings.TrimSpace(value); value != "" {
-		return value
-	}
-	return fallback
 }
 
 func claudeSessionID(session externalagents.ExternalSession) string {

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/coder/websocket"
 )
 
@@ -92,7 +93,7 @@ type ariEvents struct {
 
 func newARIClient(baseURL string, user string, password string) *ariClient {
 	return &ariClient{
-		baseURL:  trimRightSlash(firstNonEmpty(baseURL, defaultARIURL)),
+		baseURL:  trimRightSlash(textutil.FirstNonEmpty(baseURL, defaultARIURL)),
 		user:     strings.TrimSpace(user),
 		password: strings.TrimSpace(password),
 		http:     &http.Client{Timeout: 15 * time.Second},
@@ -257,8 +258,8 @@ func (c *ariClient) snoop(ctx context.Context, req snoopRequest) (ariChannel, er
 	}
 	query := url.Values{}
 	query.Set("app", req.App)
-	query.Set("spy", firstNonEmpty(req.Spy, "none"))
-	query.Set("whisper", firstNonEmpty(req.Whisper, "none"))
+	query.Set("spy", textutil.FirstNonEmpty(req.Spy, "none"))
+	query.Set("whisper", textutil.FirstNonEmpty(req.Whisper, "none"))
 	if req.AppArgs != "" {
 		query.Set("appArgs", req.AppArgs)
 	}
@@ -274,7 +275,7 @@ func (c *ariClient) externalMedia(ctx context.Context, req externalMediaRequest)
 	query := url.Values{}
 	query.Set("app", req.App)
 	query.Set("external_host", req.ExternalHost)
-	query.Set("format", firstNonEmpty(req.Format, "alaw"))
+	query.Set("format", textutil.FirstNonEmpty(req.Format, "alaw"))
 	query.Set("encapsulation", "rtp")
 	query.Set("transport", "udp")
 	query.Set("connection_type", "client")

@@ -11,6 +11,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/providers/discovery"
 	providerfactory "github.com/Suren878/matrixclaw/internal/providers/factory"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 var (
@@ -82,7 +83,7 @@ func (r *Registry) Providers() []core.SessionProviderOption {
 		}
 		options = append(options, core.SessionProviderOption{
 			ID:           cfg.ID,
-			Label:        firstNonEmpty(cfg.Name, cfg.ID),
+			Label:        textutil.FirstNonEmpty(cfg.Name, cfg.ID),
 			Type:         providers.NormalizeOptionalProviderType(cfg.Type),
 			DefaultModel: strings.TrimSpace(cfg.Model),
 			Configured:   true,
@@ -104,7 +105,7 @@ func (r *Registry) Normalize(providerID string, modelID string) (core.SessionPro
 	}
 	option := core.SessionProviderOption{
 		ID:           cfg.ID,
-		Label:        firstNonEmpty(cfg.Name, cfg.ID),
+		Label:        textutil.FirstNonEmpty(cfg.Name, cfg.ID),
 		Type:         providers.NormalizeOptionalProviderType(cfg.Type),
 		DefaultModel: strings.TrimSpace(cfg.Model),
 		Configured:   true,
@@ -223,13 +224,4 @@ func runtimeConfigWithModel(provider ProviderSpec, model string) providers.Runti
 		ReasoningEffort: provider.ReasoningEffort,
 		ToolUseMode:     provider.ToolUseMode,
 	}
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
 }

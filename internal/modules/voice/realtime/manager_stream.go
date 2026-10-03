@@ -10,6 +10,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/safego"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -59,7 +60,7 @@ func (m *Manager) ServeStream(ctx context.Context, sessionID string, stream Stre
 		VoiceSessionID:    info.ID,
 		SessionID:         info.CoreSessionID,
 		Client:            info.Client,
-		WorkingDir:        firstNonEmpty(session.workingDir, coreSession.WorkingDir),
+		WorkingDir:        textutil.FirstNonEmpty(session.workingDir, coreSession.WorkingDir),
 		ModelID:           info.ModelID,
 		VoiceID:           info.VoiceID,
 		Language:          info.Language,
@@ -150,7 +151,7 @@ func (s *streamState) handleClientEvent(ctx context.Context, event Event) (bool,
 		return false, s.provider.Send(ctx, ProviderInput{
 			Type:          ProviderInputAudioAppend,
 			AudioBase64:   payload.AudioBase64,
-			AudioMIMEType: firstNonEmpty(payload.MIMEType, audioMIMEType(s.info.InputAudio)),
+			AudioMIMEType: textutil.FirstNonEmpty(payload.MIMEType, audioMIMEType(s.info.InputAudio)),
 		})
 	case EventInputAudioEnd:
 		return false, s.provider.Send(ctx, ProviderInput{Type: ProviderInputAudioEnd})
@@ -195,7 +196,7 @@ func (s *streamState) handleProviderOutput(ctx context.Context, output ProviderO
 		}
 		return s.stream.Write(ctx, newEvent(s.info.ID, EventAssistantAudioDelta, AssistantAudioPayload{
 			AudioBase64: output.AudioBase64,
-			MIMEType:    firstNonEmpty(output.MIMEType, audioMIMEType(s.info.OutputAudio)),
+			MIMEType:    textutil.FirstNonEmpty(output.MIMEType, audioMIMEType(s.info.OutputAudio)),
 		}))
 	case ProviderOutputTurnComplete:
 		return s.finishTurn(ctx)
@@ -218,7 +219,7 @@ func (s *streamState) handleProviderOutput(ctx context.Context, output ProviderO
 func (s *streamState) handleToolCalls(ctx context.Context, calls []ProviderToolCall) error {
 	for i := range calls {
 		call := calls[i]
-		call.ID = firstNonEmpty(call.ID, fmt.Sprintf("%s_tool_%d", s.info.ID, i+1))
+		call.ID = textutil.FirstNonEmpty(call.ID, fmt.Sprintf("%s_tool_%d", s.info.ID, i+1))
 		call.Name = strings.TrimSpace(call.Name)
 		if call.Name == "" {
 			continue
@@ -233,7 +234,7 @@ func (s *streamState) handleToolCalls(ctx context.Context, calls []ProviderToolC
 			SessionID:   s.info.CoreSessionID,
 			ToolName:    call.Name,
 			ToolCallID:  call.ID,
-			WorkingDir:  firstNonEmpty(s.session.workingDir, s.coreSession.WorkingDir),
+			WorkingDir:  textutil.FirstNonEmpty(s.session.workingDir, s.coreSession.WorkingDir),
 			Client:      s.info.Client,
 			ExternalKey: s.info.ExternalKey,
 			Args:        call.Args,

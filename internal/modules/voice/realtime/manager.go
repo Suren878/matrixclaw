@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 type Manager struct {
@@ -112,12 +114,12 @@ func (m *Manager) CreateSession(ctx context.Context, req SessionCreateRequest) (
 		}
 	}
 	providerCfg := cfg.provider(spec)
-	modelID := firstNonEmpty(req.ModelID, providerCfg.ModelID)
+	modelID := textutil.FirstNonEmpty(req.ModelID, providerCfg.ModelID)
 	if modelID == "" {
 		return SessionInfo{}, fmt.Errorf("%w: realtime voice model is required", ErrInvalidRequest)
 	}
-	voiceID := firstNonEmpty(req.VoiceID, providerCfg.VoiceID)
-	language := spec.NormalizeLanguage(firstNonEmpty(req.Language, providerCfg.Language))
+	voiceID := textutil.FirstNonEmpty(req.VoiceID, providerCfg.VoiceID)
+	language := spec.NormalizeLanguage(textutil.FirstNonEmpty(req.Language, providerCfg.Language))
 	inputAudio := normalizeAudioFormat(req.InputAudio, DefaultInputAudioFormat())
 	outputAudio := normalizeAudioFormat(req.OutputAudio, DefaultOutputAudioFormat())
 	if err := validateAudioFormat(inputAudio, DefaultInputAudioFormat(), "input_audio"); err != nil {
@@ -151,7 +153,7 @@ func (m *Manager) CreateSession(ctx context.Context, req SessionCreateRequest) (
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		},
-		workingDir:        firstNonEmpty(req.WorkingDir, coreSession.WorkingDir),
+		workingDir:        textutil.FirstNonEmpty(req.WorkingDir, coreSession.WorkingDir),
 		systemInstruction: strings.TrimSpace(req.SystemInstruction),
 	}
 

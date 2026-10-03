@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, error) {
@@ -16,7 +17,7 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 	if client == nil {
 		client = providers.NewHTTPClient()
 	}
-	baseURL := strings.TrimRight(firstNonEmpty(cfg.BaseURL, DefaultBaseURL), "/")
+	baseURL := strings.TrimRight(textutil.FirstNonEmpty(cfg.BaseURL, DefaultBaseURL), "/")
 	creds, err := ResolveCredentials(ctx, client, baseURL)
 	if err != nil {
 		return nil, err
@@ -88,7 +89,7 @@ type modelItem struct {
 }
 
 func (m modelItem) modelID() string {
-	return firstNonEmpty(m.ID, m.Model, m.Name, m.Slug)
+	return textutil.FirstNonEmpty(m.ID, m.Model, m.Name, m.Slug)
 }
 
 func (m modelItem) contextWindowTokens() int {

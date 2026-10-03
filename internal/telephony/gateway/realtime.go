@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/coder/websocket"
 )
 
@@ -41,7 +42,7 @@ func newRealtimeClient(api *matrixclawClient) *realtimeClient {
 
 func (c *realtimeClient) Connect(ctx context.Context, input realtimeConnectRequest) (*realtimeConn, error) {
 	create := realtime.SessionCreateRequest{
-		Client:            firstNonEmpty(input.Client, "telephony"),
+		Client:            textutil.FirstNonEmpty(input.Client, "telephony"),
 		ExternalKey:       strings.TrimSpace(input.ExternalKey),
 		SessionID:         strings.TrimSpace(input.SessionID),
 		SystemInstruction: strings.TrimSpace(input.SystemInstruction),

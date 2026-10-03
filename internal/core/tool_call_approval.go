@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -35,7 +36,7 @@ func (c *Core) requestApproval(ctx context.Context, prepared preparedToolCall, r
 	}
 	if subagent && task.Readonly {
 		approval.State, approval.DecidedAt = ApprovalStateRejected, &approval.RequestedAt
-		approval.Reason = "read-only subagent cannot run " + firstNonEmpty(prepared.ToolName, "this tool")
+		approval.Reason = "read-only subagent cannot run " + cmp.Or(prepared.ToolName, "this tool")
 		return approval, c.store.CreateApproval(ctx, approval)
 	}
 	if err := c.store.CreateApproval(ctx, approval); err != nil {

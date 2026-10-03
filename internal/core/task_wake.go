@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -52,7 +53,7 @@ func (c *Core) noticeFailedWakeRun(ctx context.Context, run Run) error {
 	if err != nil {
 		return err
 	}
-	text := fmt.Sprintf("Background work finished, but the run started for it failed (%s). This session waits for your message before it goes on.", firstNonEmpty(run.Error, "no reason given"))
+	text := fmt.Sprintf("Background work finished, but the run started for it failed (%s). This session waits for your message before it goes on.", cmp.Or(run.Error, "no reason given"))
 	return c.sendWakeNotice(ctx, wakeNotice{session: session, target: target, text: text})
 }
 
@@ -234,7 +235,7 @@ func (c *Core) taskWakesSession(ctx context.Context, task Task) (bool, error) {
 
 func taskLabel(task Task) string {
 	if task.Kind == TaskKindSubagent {
-		return "Subagent " + firstNonEmpty(task.AgentName, task.ID)
+		return "Subagent " + cmp.Or(task.AgentName, task.ID)
 	}
 	return "Background task " + task.ID + " (" + truncateForTitle(task.Command, 80) + ")"
 }

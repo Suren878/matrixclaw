@@ -10,6 +10,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/safego"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 type Runtime struct {
@@ -57,8 +58,8 @@ func (r *Runtime) StartSession(ctx context.Context, req externalagents.StartSess
 	resp, err := client.StartThread(ctx, ThreadStartParams{
 		Model:                 strings.TrimSpace(req.Model),
 		CWD:                   strings.TrimSpace(req.CWD),
-		ApprovalPolicy:        defaultString(req.ApprovalPolicy, defaultApprovalPolicy),
-		Sandbox:               defaultString(req.Sandbox, defaultSandbox),
+		ApprovalPolicy:        textutil.FirstNonEmpty(req.ApprovalPolicy, defaultApprovalPolicy),
+		Sandbox:               textutil.FirstNonEmpty(req.Sandbox, defaultSandbox),
 		BaseInstructions:      req.BaseInstructions,
 		DeveloperInstructions: req.DeveloperInstructions,
 		Config:                req.Metadata,
@@ -72,8 +73,8 @@ func (r *Runtime) StartSession(ctx context.Context, req externalagents.StartSess
 		ExternalSessionID: resp.Thread.SessionID,
 		CWD:               resp.CWD,
 		Model:             resp.Model,
-		ApprovalPolicy:    defaultString(req.ApprovalPolicy, defaultApprovalPolicy),
-		Sandbox:           defaultString(req.Sandbox, defaultSandbox),
+		ApprovalPolicy:    textutil.FirstNonEmpty(req.ApprovalPolicy, defaultApprovalPolicy),
+		Sandbox:           textutil.FirstNonEmpty(req.Sandbox, defaultSandbox),
 		Metadata:          map[string]any{"mode": "app-server"},
 	}, nil
 }
@@ -90,8 +91,8 @@ func (r *Runtime) ResumeSession(ctx context.Context, session externalagents.Exte
 		ThreadID:       session.ExternalThreadID,
 		Model:          session.Model,
 		CWD:            session.CWD,
-		ApprovalPolicy: defaultString(session.ApprovalPolicy, defaultApprovalPolicy),
-		Sandbox:        defaultString(session.Sandbox, defaultSandbox),
+		ApprovalPolicy: textutil.FirstNonEmpty(session.ApprovalPolicy, defaultApprovalPolicy),
+		Sandbox:        textutil.FirstNonEmpty(session.Sandbox, defaultSandbox),
 	})
 	if err != nil {
 		return externalagents.ExternalSession{}, err
@@ -101,8 +102,8 @@ func (r *Runtime) ResumeSession(ctx context.Context, session externalagents.Exte
 	session.ExternalSessionID = resp.Thread.SessionID
 	session.CWD = resp.CWD
 	session.Model = resp.Model
-	session.ApprovalPolicy = defaultString(session.ApprovalPolicy, defaultApprovalPolicy)
-	session.Sandbox = defaultString(session.Sandbox, defaultSandbox)
+	session.ApprovalPolicy = textutil.FirstNonEmpty(session.ApprovalPolicy, defaultApprovalPolicy)
+	session.Sandbox = textutil.FirstNonEmpty(session.Sandbox, defaultSandbox)
 	if session.Metadata == nil {
 		session.Metadata = map[string]any{"mode": "app-server"}
 	}
@@ -149,7 +150,7 @@ func turnStartParams(session externalagents.ExternalSession, text string) TurnSt
 	return TurnStartParams{
 		ThreadID:       session.ExternalThreadID,
 		Input:          []UserInput{TextInput(text)},
-		ApprovalPolicy: defaultString(session.ApprovalPolicy, defaultApprovalPolicy),
+		ApprovalPolicy: textutil.FirstNonEmpty(session.ApprovalPolicy, defaultApprovalPolicy),
 		Model:          strings.TrimSpace(session.Model),
 	}
 }
@@ -551,14 +552,6 @@ func completedTurnOutcome(turn Turn) (externalagents.EventKind, string) {
 	default:
 		return externalagents.EventTurnFailed, fmt.Sprintf("codex turn completed with unexpected status %q", turn.Status)
 	}
-}
-
-func defaultString(value string, fallback string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return fallback
-	}
-	return value
 }
 
 func isThreadNotLoadedError(err error) bool {

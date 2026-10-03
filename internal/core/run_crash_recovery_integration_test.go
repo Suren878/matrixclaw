@@ -15,6 +15,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/store"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -71,20 +72,13 @@ func (r recoveryLLMs) Providers() []core.SessionProviderOption {
 	return []core.SessionProviderOption{{ID: "recovery-test", Configured: true, DefaultModel: "test-model"}}
 }
 func (r recoveryLLMs) Normalize(providerID string, modelID string) (core.SessionProviderOption, string, error) {
-	return core.SessionProviderOption{ID: firstRecoveryValue(providerID, "recovery-test"), Configured: true, DefaultModel: "test-model"}, firstRecoveryValue(modelID, "test-model"), nil
+	return core.SessionProviderOption{ID: textutil.FirstNonEmpty(providerID, "recovery-test"), Configured: true, DefaultModel: "test-model"}, textutil.FirstNonEmpty(modelID, "test-model"), nil
 }
 func (r recoveryLLMs) Models(context.Context, string) ([]string, error) {
 	return []string{"test-model"}, nil
 }
 func (r recoveryLLMs) Resolve(context.Context, string, string) (providers.Runtime, core.SessionProviderOption, string, error) {
 	return r.runtime, core.SessionProviderOption{ID: "recovery-test", Configured: true, DefaultModel: "test-model"}, "test-model", nil
-}
-
-func firstRecoveryValue(value string, fallback string) string {
-	if value = strings.TrimSpace(value); value != "" {
-		return value
-	}
-	return fallback
 }
 
 type recordingRunStarter struct {

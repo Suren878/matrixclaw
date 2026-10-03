@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 type serverMessage struct {
@@ -38,7 +39,7 @@ func decodeServerOutputs(data []byte) []realtime.ProviderOutput {
 	case "conversation.item.input_audio_transcription.updated":
 		return nil
 	case "conversation.item.input_audio_transcription.completed":
-		if text := firstNonEmpty(msg.Transcript, msg.Text, msg.Delta); text != "" {
+		if text := textutil.FirstNonEmpty(msg.Transcript, msg.Text, msg.Delta); text != "" {
 			return []realtime.ProviderOutput{{Type: realtime.ProviderOutputInputTranscript, Text: text, Raw: raw}}
 		}
 	case "response.output_audio.delta":
@@ -46,7 +47,7 @@ func decodeServerOutputs(data []byte) []realtime.ProviderOutput {
 			return []realtime.ProviderOutput{{Type: realtime.ProviderOutputAssistantAudio, AudioBase64: text, Raw: raw}}
 		}
 	case "response.output_audio_transcript.delta", "response.text.delta", "response.output_text.delta":
-		if text := firstNonEmpty(msg.Delta, msg.Text, msg.Transcript); text != "" {
+		if text := textutil.FirstNonEmpty(msg.Delta, msg.Text, msg.Transcript); text != "" {
 			return []realtime.ProviderOutput{{Type: realtime.ProviderOutputAssistantTranscript, Text: text, Raw: raw}}
 		}
 	case "response.output_audio_transcript.done":
@@ -75,7 +76,7 @@ func decodeServerOutputs(data []byte) []realtime.ProviderOutput {
 		return []realtime.ProviderOutput{{Type: realtime.ProviderOutputInterrupted, Raw: raw}}
 	case "error":
 		if msg.Error != nil {
-			return []realtime.ProviderOutput{{Type: realtime.ProviderOutputError, Error: firstNonEmpty(msg.Error.Message, msg.Error.Code, "Grok Voice error"), Raw: raw}}
+			return []realtime.ProviderOutput{{Type: realtime.ProviderOutputError, Error: textutil.FirstNonEmpty(msg.Error.Message, msg.Error.Code, "Grok Voice error"), Raw: raw}}
 		}
 		return []realtime.ProviderOutput{{Type: realtime.ProviderOutputError, Error: "Grok Voice error", Raw: raw}}
 	}

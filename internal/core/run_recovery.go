@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -117,7 +118,7 @@ func (c *Core) settleInterrupted(ctx context.Context, run Run, call transcript.T
 		return rerun, nil
 	}
 	return agent.InterruptedCall{ToolCallID: call.ID, Settle: agent.SettleAsk, Request: tools.ApprovalRequest{
-		Description: fmt.Sprintf("The daemon restarted while %s may have been executing. Retry this mutating tool? MatrixClaw will not replay it without confirmation.", firstNonEmpty(call.Name, "a tool")),
+		Description: fmt.Sprintf("The daemon restarted while %s may have been executing. Retry this mutating tool? MatrixClaw will not replay it without confirmation.", cmp.Or(call.Name, "a tool")),
 		Suggestion:  c.suggestRule(ctx, run.SessionID, call.Name, []byte(call.Input)),
 	}}, nil
 }

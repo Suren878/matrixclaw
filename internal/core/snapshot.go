@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"sort"
 	"strings"
@@ -120,9 +121,9 @@ func deriveClientSnapshotToolState(approvals []Approval, messages []transcript.M
 			}
 			update := updates[toolCallID]
 			update.ToolCallID = toolCallID
-			update.ToolName = firstNonEmpty(update.ToolName, strings.TrimSpace(part.ToolCall.Name))
-			update.RunID = firstNonEmpty(update.RunID, strings.TrimSpace(message.RunID))
-			update.SessionID = firstNonEmpty(update.SessionID, strings.TrimSpace(message.SessionID))
+			update.ToolName = cmp.Or(update.ToolName, strings.TrimSpace(part.ToolCall.Name))
+			update.RunID = cmp.Or(update.RunID, strings.TrimSpace(message.RunID))
+			update.SessionID = cmp.Or(update.SessionID, strings.TrimSpace(message.SessionID))
 			if update.State == "" {
 				update.State = ToolLifecycleRequested
 			}
@@ -141,9 +142,9 @@ func deriveClientSnapshotToolState(approvals []Approval, messages []transcript.M
 			}
 			update := updates[toolCallID]
 			update.ToolCallID = toolCallID
-			update.ToolName = firstNonEmpty(update.ToolName, strings.TrimSpace(part.ToolResult.Name))
-			update.RunID = firstNonEmpty(update.RunID, strings.TrimSpace(message.RunID))
-			update.SessionID = firstNonEmpty(update.SessionID, strings.TrimSpace(message.SessionID))
+			update.ToolName = cmp.Or(update.ToolName, strings.TrimSpace(part.ToolResult.Name))
+			update.RunID = cmp.Or(update.RunID, strings.TrimSpace(message.RunID))
+			update.SessionID = cmp.Or(update.SessionID, strings.TrimSpace(message.SessionID))
 			update.ResultMessageID = strings.TrimSpace(message.ID)
 			update.ResultStatus = normalizeToolResultStatus(part.ToolResult.Status)
 			if update.ResultStatus == "error" {
@@ -165,9 +166,9 @@ func deriveClientSnapshotToolState(approvals []Approval, messages []transcript.M
 			if toolCallID != "" {
 				update := updates[toolCallID]
 				update.ToolCallID = toolCallID
-				update.ToolName = firstNonEmpty(update.ToolName, strings.TrimSpace(approval.ToolName))
-				update.RunID = firstNonEmpty(update.RunID, strings.TrimSpace(approval.RunID))
-				update.SessionID = firstNonEmpty(update.SessionID, strings.TrimSpace(approval.SessionID))
+				update.ToolName = cmp.Or(update.ToolName, strings.TrimSpace(approval.ToolName))
+				update.RunID = cmp.Or(update.RunID, strings.TrimSpace(approval.RunID))
+				update.SessionID = cmp.Or(update.SessionID, strings.TrimSpace(approval.SessionID))
 				update.ApprovalID = strings.TrimSpace(approval.ID)
 				update.State = ToolLifecycleWaitingApproval
 				updates[toolCallID] = update
@@ -183,9 +184,9 @@ func deriveClientSnapshotToolState(approvals []Approval, messages []transcript.M
 			})
 			update := updates[toolCallID]
 			update.ToolCallID = toolCallID
-			update.ToolName = firstNonEmpty(update.ToolName, strings.TrimSpace(approval.ToolName))
-			update.RunID = firstNonEmpty(update.RunID, strings.TrimSpace(approval.RunID))
-			update.SessionID = firstNonEmpty(update.SessionID, strings.TrimSpace(approval.SessionID))
+			update.ToolName = cmp.Or(update.ToolName, strings.TrimSpace(approval.ToolName))
+			update.RunID = cmp.Or(update.RunID, strings.TrimSpace(approval.RunID))
+			update.SessionID = cmp.Or(update.SessionID, strings.TrimSpace(approval.SessionID))
 			update.ApprovalID = strings.TrimSpace(approval.ID)
 			if update.State == "" || update.State == ToolLifecycleRequested || update.State == ToolLifecycleWaitingApproval {
 				update.State = ToolLifecycleRequested
@@ -203,9 +204,9 @@ func deriveClientSnapshotToolState(approvals []Approval, messages []transcript.M
 			})
 			update := updates[toolCallID]
 			update.ToolCallID = toolCallID
-			update.ToolName = firstNonEmpty(update.ToolName, strings.TrimSpace(approval.ToolName))
-			update.RunID = firstNonEmpty(update.RunID, strings.TrimSpace(approval.RunID))
-			update.SessionID = firstNonEmpty(update.SessionID, strings.TrimSpace(approval.SessionID))
+			update.ToolName = cmp.Or(update.ToolName, strings.TrimSpace(approval.ToolName))
+			update.RunID = cmp.Or(update.RunID, strings.TrimSpace(approval.RunID))
+			update.SessionID = cmp.Or(update.SessionID, strings.TrimSpace(approval.SessionID))
 			update.ApprovalID = strings.TrimSpace(approval.ID)
 			if update.State == "" || update.State == ToolLifecycleRequested || update.State == ToolLifecycleWaitingApproval {
 				update.State = ToolLifecycleFailed
@@ -247,11 +248,4 @@ func normalizeToolResultStatus(status string) string {
 		return "success"
 	}
 	return status
-}
-
-func firstNonEmpty(value string, fallback string) string {
-	if strings.TrimSpace(value) != "" {
-		return value
-	}
-	return fallback
 }

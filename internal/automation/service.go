@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 const (
@@ -456,10 +457,10 @@ func (s *Service) createRunDeliveries(ctx context.Context, job Job, result core.
 			Type:        core.ClientDeliveryTypeRun,
 			Client:      target.Client,
 			ExternalKey: target.ExternalKey,
-			SessionID:   firstNonEmpty(result.SessionID, target.SessionID),
-			RunID:       firstNonEmpty(result.Run.ID, target.RunID),
-			TaskID:      firstNonEmpty(job.ID, target.TaskID),
-			Summary:     firstNonEmpty(job.Title, target.Summary),
+			SessionID:   textutil.FirstNonEmpty(result.SessionID, target.SessionID),
+			RunID:       textutil.FirstNonEmpty(result.Run.ID, target.RunID),
+			TaskID:      textutil.FirstNonEmpty(job.ID, target.TaskID),
+			Summary:     textutil.FirstNonEmpty(job.Title, target.Summary),
 			Address:     target.Address,
 			Status:      core.ClientDeliveryStatusPending,
 		})
@@ -523,15 +524,6 @@ func dedupeDeliveryTargets(targets []core.ClientDeliveryTarget) []core.ClientDel
 		deduped = append(deduped, target)
 	}
 	return deduped
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 func deliveryAddressForJob(job Job) json.RawMessage {

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -61,7 +62,7 @@ func (c *Core) checkPermission(ctx context.Context, sessionID string, spec tools
 		call.WorkingDir = session.WorkingDir
 	}
 	request := permission.Request{Tool: permissionTool(spec), Subject: c.tools.Subject(spec.ID, call)}
-	root := realPath(firstNonEmpty(normalizeWorkingDir(session.WorkingDir), normalizeWorkingDir(call.WorkingDir)))
+	root := realPath(cmp.Or(normalizeWorkingDir(session.WorkingDir), normalizeWorkingDir(call.WorkingDir)))
 	preset := permission.Preset(string(NormalizePermissionMode(string(session.PermissionMode))), root)
 	verdict := permission.Evaluate(request, rules, preset)
 	check := callPermission{request: request, verdict: verdict, root: root, rules: rules, preset: preset}

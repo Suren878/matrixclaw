@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -26,7 +27,7 @@ func (c *Core) taskEvents(ctx context.Context, sessionID string) ([]Task, error)
 // taskEventText tells the model how a background task ended.
 func taskEventText(task Task) string {
 	if task.Kind == TaskKindSubagent {
-		return fmt.Sprintf("Subagent %s (%s) finished: %s.\nGoal: %s\nResult: %s", firstNonEmpty(task.AgentName, task.ID), task.ID, task.Status, task.Command, firstNonEmpty(firstNonEmpty(task.Summary, task.Error), "none"))
+		return fmt.Sprintf("Subagent %s (%s) finished: %s.\nGoal: %s\nResult: %s", cmp.Or(task.AgentName, task.ID), task.ID, task.Status, task.Command, cmp.Or(task.Summary, task.Error, "none"))
 	}
 	var head string
 	switch task.Status {
@@ -68,7 +69,7 @@ func (c *Core) runningTasksPrompt(ctx context.Context, sessionID string) string 
 		task := tasks[i]
 		label := task.ID
 		if task.Kind == TaskKindSubagent {
-			label += " (subagent " + firstNonEmpty(task.AgentName, task.Description) + ")"
+			label += " (subagent " + cmp.Or(task.AgentName, task.Description) + ")"
 		}
 		lines = append(lines, "- "+label+": "+truncateForTitle(task.Command, 200))
 	}

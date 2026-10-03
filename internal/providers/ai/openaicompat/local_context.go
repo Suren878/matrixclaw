@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 func registerLocalContextWindows(ctx context.Context, cfg providers.RuntimeConfig, client *http.Client, baseURL string, apiKey string, models []string) {
@@ -119,7 +120,7 @@ func registerLMStudioContextWindows(ctx context.Context, cfg providers.RuntimeCo
 		return
 	}
 	for _, model := range payload.Models {
-		id := firstNonEmptyString(model.ID, model.Key)
+		id := textutil.FirstNonEmpty(model.ID, model.Key)
 		tokens := model.MaxContextLength
 		for _, instance := range model.LoadedInstances {
 			if instance.Config.ContextLength > 0 {
@@ -129,15 +130,6 @@ func registerLMStudioContextWindows(ctx context.Context, cfg providers.RuntimeCo
 		}
 		registerDiscoveredContextWindow(cfg, id, tokens)
 	}
-}
-
-func firstNonEmptyString(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
 }
 
 func registerOpenAIModelContextWindow(ctx context.Context, cfg providers.RuntimeConfig, client *http.Client, serverURL string, setHeaders func(*http.Request), model string) {

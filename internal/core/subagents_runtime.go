@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"strings"
@@ -13,7 +14,7 @@ var subagentAgentNamePool = []string{"Neo", "Trinity", "Morpheus", "Niobe", "Ser
 // createSubagentSession creates a child's hidden session; a read-only external
 // child never asks for approval and runs in its runtime's read-only sandbox.
 func (c *Core) createSubagentSession(ctx context.Context, parent Session, runtime SubagentRuntime, model string, workingDir string, displayName string, readonly bool) (Session, error) {
-	title := "Subagent: " + truncateForTitle(firstNonEmpty(displayName, "Task"), 64)
+	title := "Subagent: " + truncateForTitle(cmp.Or(displayName, "Task"), 64)
 	switch runtime {
 	case SubagentRuntimeCodex, SubagentRuntimeClaude:
 		agentID := string(runtime)
@@ -42,7 +43,7 @@ func (c *Core) createSubagentSession(ctx context.Context, parent Session, runtim
 			Hidden:          true,
 			WorkingDir:      workingDir,
 			ProviderID:      parent.ProviderID,
-			ModelID:         firstNonEmpty(normalizeText(model), parent.ModelID),
+			ModelID:         cmp.Or(normalizeText(model), parent.ModelID),
 			PermissionMode:  parent.PermissionMode,
 		})
 	}

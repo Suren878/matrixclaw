@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/safego"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 func (s *Server) runInboundListener(ctx context.Context) {
@@ -53,7 +54,7 @@ func (s *Server) startInboundCall(parent context.Context, event ariEvent) {
 	if channel == nil {
 		return
 	}
-	from := firstNonEmpty(channel.Caller.Number, channel.Caller.Name, channel.Name)
+	from := textutil.FirstNonEmpty(channel.Caller.Number, channel.Caller.Name, channel.Name)
 	if !s.cfg.InboundCallerAllowed(from) {
 		log.Printf("telephony inbound call rejected from %q (%s)", strings.TrimSpace(from), ariChannelSummary(channel))
 		_ = s.ari.hangup(context.Background(), channel.ID)
@@ -69,7 +70,7 @@ func (s *Server) startInboundCall(parent context.Context, event ariEvent) {
 			Direction: "inbound",
 			From:      strings.TrimSpace(from),
 			To:        strings.TrimSpace(s.cfg.CallerID),
-			Profile:   firstNonEmpty(s.cfg.SIPProfile, defaultSIPProfile),
+			Profile:   textutil.FirstNonEmpty(s.cfg.SIPProfile, defaultSIPProfile),
 			Status:    "incoming",
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -98,7 +99,7 @@ func (s *Server) runInboundCallOnce(ctx context.Context, call *Call) error {
 	}
 	req := createCallRequest{
 		SystemInstruction: inboundSystemInstruction(s.cfg.InboundPrompt),
-		InitialMessage:    firstNonEmpty(s.cfg.InboundGreeting, "Здравствуйте."),
+		InitialMessage:    textutil.FirstNonEmpty(s.cfg.InboundGreeting, "Здравствуйте."),
 		ExternalKey:       inboundExternalKey(call),
 	}
 	s.updateCall(call, "preparing", "")

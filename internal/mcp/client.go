@@ -13,6 +13,7 @@ import (
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/Suren878/matrixclaw/internal/procsup"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
@@ -40,18 +41,18 @@ func Connect(ctx context.Context, cfg ServerConfig) (*Session, error) {
 	}, &sdk.ClientOptions{Capabilities: &sdk.ClientCapabilities{}})
 	session, err := client.Connect(connectCtx, serverTransport(cfg), nil)
 	if err != nil {
-		return nil, fmt.Errorf("mcp: connect %s: %w", firstNonEmpty(cfg.Name, cfg.ID), err)
+		return nil, fmt.Errorf("mcp: connect %s: %w", textutil.FirstNonEmpty(cfg.Name, cfg.ID), err)
 	}
 	toolsResult, err := session.ListTools(connectCtx, nil)
 	if err != nil {
 		_ = session.Close()
-		return nil, fmt.Errorf("mcp: list tools for %s: %w", firstNonEmpty(cfg.Name, cfg.ID), err)
+		return nil, fmt.Errorf("mcp: list tools for %s: %w", textutil.FirstNonEmpty(cfg.Name, cfg.ID), err)
 	}
 	return &Session{server: cfg, session: session, tools: toolsResult.Tools}, nil
 }
 
 // Name is the server's display name.
-func (s *Session) Name() string { return firstNonEmpty(s.server.Name, s.server.ID) }
+func (s *Session) Name() string { return textutil.FirstNonEmpty(s.server.Name, s.server.ID) }
 
 // Tools are the server's tools as matrixclaw tools.
 func (s *Session) Tools() []tools.Executor {
@@ -143,7 +144,7 @@ func (e *remoteToolExecutor) Spec() tools.Spec {
 
 func (e *remoteToolExecutor) Preview(_ context.Context, call tools.Call) (tools.ApprovalRequest, error) {
 	return tools.ApprovalRequest{
-		Description: "Call remote MCP tool " + e.remoteName + " on " + firstNonEmpty(e.server.Name, e.server.ID),
+		Description: "Call remote MCP tool " + e.remoteName + " on " + textutil.FirstNonEmpty(e.server.Name, e.server.ID),
 		Params:      rawJSONMap(call.Args),
 	}, nil
 }
@@ -250,14 +251,5 @@ func remoteToolDescription(server ServerConfig, remoteTool *sdk.Tool) string {
 	if description == "" {
 		description = "Remote MCP tool"
 	}
-	return description + " (remote MCP server: " + firstNonEmpty(server.Name, server.ID) + ", tool: " + strings.TrimSpace(remoteTool.Name) + ")"
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			return value
-		}
-	}
-	return ""
+	return description + " (remote MCP server: " + textutil.FirstNonEmpty(server.Name, server.ID) + ", tool: " + strings.TrimSpace(remoteTool.Name) + ")"
 }

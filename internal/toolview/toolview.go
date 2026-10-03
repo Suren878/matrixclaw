@@ -3,6 +3,7 @@
 package toolview
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -49,7 +50,7 @@ var specs = map[string]spec{
 	"multiedit":                {title: "Multi-Edit", verb: "Editing file", primary: []string{"file_path"}},
 	"glob":                     {title: "Glob", verb: "Searching files", primary: []string{"pattern"}, extra: []string{"path"}},
 	"grep":                     {title: "Grep", verb: "Searching files", primary: []string{"pattern"}, extra: []string{"path", "include", "literal_text"}},
-	"ls":                       {title: "List", verb: "Listing files", detail: func(params map[string]any) string { return orDefault(Value(params, "path"), ".") }},
+	"ls":                       {title: "List", verb: "Listing files", detail: func(params map[string]any) string { return cmp.Or(Value(params, "path"), ".") }},
 	"web_search":               {title: "Search Web", verb: "Searching web", primary: []string{"query"}, extra: []string{"limit"}},
 	"web_fetch":                {title: "Fetch Web Page", verb: "Fetching web page", primary: []string{"url"}},
 	"session_search":           {title: "Search Sessions", verb: "Searching sessions", primary: []string{"query"}, extra: []string{"session_id", "limit"}},
@@ -62,7 +63,7 @@ var specs = map[string]spec{
 	"create_scheduled_ai_task": {title: "🗓 Scheduled Task", verb: "Scheduling task", detail: scheduled("prompt")},
 	"reverse_geocode_osm":      {title: "Reverse Geocode", verb: "Checking address", detail: coordinates},
 	"nearby_places_osm": {title: "Nearby Places", verb: "Checking nearby places", detail: func(params map[string]any) string {
-		return orDefault(coordinates(params), Value(params, "radius_m"))
+		return cmp.Or(coordinates(params), Value(params, "radius_m"))
 	}},
 	"agent": {title: "Agent", primary: []string{"description", "prompt"}, verbFor: func(params map[string]any) string {
 		if Value(params, "background") == "true" {
@@ -183,13 +184,6 @@ func firstValue(params map[string]any, keys []string) string {
 		}
 	}
 	return ""
-}
-
-func orDefault(value string, fallback string) string {
-	if value != "" {
-		return value
-	}
-	return fallback
 }
 
 // scheduled shows a scheduled item by its title and time, else by textKey.

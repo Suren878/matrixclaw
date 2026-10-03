@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"gopkg.in/yaml.v3"
 	_ "modernc.org/sqlite"
 )
@@ -255,7 +256,7 @@ func (s *Service) InstallLocal(source string, opts InstallOptions) (Skill, error
 	if err != nil {
 		return Skill{}, err
 	}
-	trust := normalizeTrust(firstNonEmpty(opts.TrustState, s.initialTrustState()))
+	trust := normalizeTrust(textutil.FirstNonEmpty(opts.TrustState, s.initialTrustState()))
 	id := NormalizeID(doc.Name)
 	if exists, _ := s.Exists(id); exists {
 		id = id + "-" + hash[:8]
@@ -281,7 +282,7 @@ func (s *Service) InstallLocal(source string, opts InstallOptions) (Skill, error
 		Platforms:   doc.Platforms,
 		Category:    doc.Category,
 		Path:        target,
-		Source:      firstNonEmpty(opts.Source, "local"),
+		Source:      textutil.FirstNonEmpty(opts.Source, "local"),
 		Provenance:  opts.Provenance,
 		Hash:        hash,
 		TrustState:  trust,

@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 type CallRecording struct {
@@ -76,15 +78,15 @@ func (s *Server) startChannelRecording(ctx context.Context, call *Call, channelI
 	now := time.Now().UTC()
 	s.updateCallRecording(call, recording, func(r *CallRecording) {
 		r.StartedAt = &now
-		r.Status = firstNonEmpty(live.State, "recording")
+		r.Status = textutil.FirstNonEmpty(live.State, "recording")
 	})
 	recordingSnapshot, _ := callRecordingRefSnapshot(call, recording)
 	log.Printf(
 		"telephony call %s channel recording started: name=%s state=%s capture_format=%s output_format=%s target=%s",
 		callID(call),
 		recordingSnapshot.Name,
-		firstNonEmpty(live.State, "recording"),
-		firstNonEmpty(live.Format, captureFormat),
+		textutil.FirstNonEmpty(live.State, "recording"),
+		textutil.FirstNonEmpty(live.Format, captureFormat),
 		recordingSnapshot.Format,
 		strings.TrimSpace(live.TargetURI),
 	)
@@ -336,7 +338,7 @@ func (s *Server) saveRecordingTemporary(ctx context.Context, call *Call, recordi
 			r.Size = response.File.Size
 		})
 	}
-	return firstNonEmpty(response.File.Path, tempPath), nil
+	return textutil.FirstNonEmpty(response.File.Path, tempPath), nil
 }
 
 func formatCallRecording(recording CallRecording) string {

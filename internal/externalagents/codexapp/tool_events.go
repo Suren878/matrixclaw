@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 type codexToolEvent struct {
@@ -54,11 +56,11 @@ func codexToolFromItem(raw json.RawMessage, completed bool) (codexToolEvent, boo
 		if server := stringField(item, "server"); server != "" {
 			name = server + "." + name
 		}
-		return codexToolEvent{ID: id, Name: defaultString(name, "mcp_tool"), Input: rawJSONString(item["arguments"]), Output: rawJSONString(item["result"]), Error: toolErrorFromStatus(item)}, true
+		return codexToolEvent{ID: id, Name: textutil.FirstNonEmpty(name, "mcp_tool"), Input: rawJSONString(item["arguments"]), Output: rawJSONString(item["result"]), Error: toolErrorFromStatus(item)}, true
 	case "dynamicToolCall":
-		return codexToolEvent{ID: id, Name: defaultString(stringField(item, "tool"), "dynamic_tool"), Input: rawJSONString(item["arguments"]), Output: rawJSONString(item["contentItems"]), Error: toolErrorFromStatus(item)}, true
+		return codexToolEvent{ID: id, Name: textutil.FirstNonEmpty(stringField(item, "tool"), "dynamic_tool"), Input: rawJSONString(item["arguments"]), Output: rawJSONString(item["contentItems"]), Error: toolErrorFromStatus(item)}, true
 	case "collabAgentToolCall":
-		return codexToolEvent{ID: id, Name: defaultString(stringField(item, "tool"), "agent_task"), Input: mustJSONString(map[string]any{
+		return codexToolEvent{ID: id, Name: textutil.FirstNonEmpty(stringField(item, "tool"), "agent_task"), Input: mustJSONString(map[string]any{
 			"prompt":           item["prompt"],
 			"model":            item["model"],
 			"reasoning_effort": item["reasoningEffort"],

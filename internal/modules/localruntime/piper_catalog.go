@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 const piperVoicesCatalogURL = "https://huggingface.co/rhasspy/piper-voices/resolve/main/voices.json"
@@ -100,7 +102,7 @@ func fetchPiperCatalogModels() ([]VoiceModel, error) {
 }
 
 func piperCatalogModel(key string, entry piperCatalogEntry) VoiceModel {
-	key = strings.TrimSpace(firstNonEmptyLocal(entry.Key, key))
+	key = textutil.FirstNonEmpty(entry.Key, key)
 	if key == "" {
 		return VoiceModel{}
 	}
@@ -188,15 +190,6 @@ func qualityRank(quality string) int {
 	default:
 		return 4
 	}
-}
-
-func firstNonEmptyLocal(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
 }
 
 func nonEmptyLocal(values ...string) []string {

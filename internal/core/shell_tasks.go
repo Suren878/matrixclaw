@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -290,7 +291,7 @@ func (c *Core) ReadTaskOutput(ctx context.Context, call tools.Call, read tools.T
 	}
 	out := tools.TaskOutput{TaskInfo: taskInfo(task), Running: task.FinishedAt == nil}
 	if task.Kind != TaskKindShell {
-		out.Text = firstNonEmpty(task.Summary, task.Error)
+		out.Text = cmp.Or(task.Summary, task.Error)
 		return out, nil
 	}
 	chunk, err := shelltask.Read(task.OutputPath, task.OutputCursor, read.Limit)

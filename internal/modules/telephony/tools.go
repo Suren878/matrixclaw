@@ -4,7 +4,6 @@ package telephony
 
 import (
 	"context"
-	"strings"
 	"sync"
 	"time"
 
@@ -95,13 +94,4 @@ func boolText(value bool) string {
 		return "yes"
 	}
 	return "no"
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
 }

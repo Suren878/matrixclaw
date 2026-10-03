@@ -11,6 +11,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/sessionllm"
 	"github.com/Suren878/matrixclaw/internal/setup"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 const (
@@ -95,7 +96,7 @@ func loadBootstrap() (bootstrapConfig, error) {
 
 		if activeProvider, ok := setupCfg.ActiveProvider(); ok {
 			if runtimeProvider, ok := activeProvider.Runtime(); !ok {
-				return bootstrapConfig{}, fmt.Errorf("load setup config %s: %s API key is required; set api_key or %s", service.Path(), runtimeProvider.Name, firstNonEmpty(runtimeProvider.APIKeyEnv, "the provider API key environment variable"))
+				return bootstrapConfig{}, fmt.Errorf("load setup config %s: %s API key is required; set api_key or %s", service.Path(), runtimeProvider.Name, textutil.FirstNonEmpty(runtimeProvider.APIKeyEnv, "the provider API key environment variable"))
 			}
 		}
 
@@ -157,15 +158,6 @@ func sessionProviderSpecsFromSetup(cfg setup.Config) []sessionllm.ProviderSpec {
 		})
 	}
 	return specs
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
 }
 
 func allowRemoteHTTP() bool {

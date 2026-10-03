@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 type Runtime struct {
@@ -22,7 +23,7 @@ func New(_ context.Context, cfg providers.RuntimeConfig) (providers.Runtime, err
 	if cfg.CatalogKey() == "" {
 		cfg.CatalogID = "openai-codex"
 	}
-	cfg.BaseURL = strings.TrimRight(firstNonEmpty(cfg.BaseURL, DefaultBaseURL), "/")
+	cfg.BaseURL = strings.TrimRight(textutil.FirstNonEmpty(cfg.BaseURL, DefaultBaseURL), "/")
 	base := providers.NewRuntimeBase(cfg, providers.TypeOpenAICodex, providers.DefaultOpenAICodexModel)
 	reasoningEffort := ""
 	if base.Capabilities.ReasoningEffort {

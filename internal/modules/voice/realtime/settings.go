@@ -8,6 +8,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/modules"
 	"github.com/Suren878/matrixclaw/internal/setup"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 // Settings are the provider choice and a page per provider: its key, model,
@@ -48,7 +49,7 @@ func (m *Manager) providerPage(provider ProviderDescriptor) modules.Item {
 		key, model, choiceOf("voice", "Voice", cfg.VoiceID, provider.Voices), language,
 		{Key: "advanced", Kind: modules.ItemPage, Label: "Advanced", Items: []modules.Item{
 			{Key: "api_key_env", Kind: modules.ItemText, Label: "API Key Env", Value: cfg.APIKeyEnv,
-				Display: firstNonEmpty(cfg.APIKeyEnv, "Default env fallbacks"), Hint: firstNonEmpty(strings.Join(provider.KeyEnvs, " or "), "API_KEY")},
+				Display: textutil.FirstNonEmpty(cfg.APIKeyEnv, "Default env fallbacks"), Hint: textutil.FirstNonEmpty(strings.Join(provider.KeyEnvs, " or "), "API_KEY")},
 			{Key: "endpoint", Kind: modules.ItemText, Label: "Endpoint", Value: cfg.Endpoint, Display: cfg.Endpoint, Hint: "wss://..."},
 		}},
 	}}

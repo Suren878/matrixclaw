@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/telephony/phone"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
@@ -80,11 +81,11 @@ func (t *callTool) Execute(ctx context.Context, call tools.Call) (tools.Result, 
 	telephonyCfg := cfg.Modules.Telephony
 	placed, err := gw.PlaceCall(ctx, map[string]any{
 		"to":                  input.To,
-		"profile":             firstNonEmpty(input.Profile, telephonyCfg.DefaultProfile),
+		"profile":             textutil.FirstNonEmpty(input.Profile, telephonyCfg.DefaultProfile),
 		"objective":           input.Objective,
 		"system_instruction":  input.SystemInstruction,
 		"initial_message":     input.InitialMessage,
-		"external_key":        firstNonEmpty(call.ExternalKey, input.To),
+		"external_key":        textutil.FirstNonEmpty(call.ExternalKey, input.To),
 		"session_id":          call.SessionID,
 		"origin_client":       call.Client,
 		"origin_external_key": call.ExternalKey,
@@ -101,7 +102,7 @@ func (t *callTool) Execute(ctx context.Context, call tools.Call) (tools.Result, 
 }
 
 func approvalDescription(input callInput) string {
-	objective := firstNonEmpty(input.Objective, input.InitialMessage)
+	objective := textutil.FirstNonEmpty(input.Objective, input.InitialMessage)
 	if objective == "" {
 		return "Place a real outbound phone call to " + input.To + "."
 	}

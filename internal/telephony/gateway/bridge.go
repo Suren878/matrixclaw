@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/safego"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 func (s *Server) connectRealtime(ctx context.Context, call *Call, req createCallRequest) (*realtimeConn, error) {
@@ -17,12 +18,12 @@ func (s *Server) connectRealtime(ctx context.Context, call *Call, req createCall
 	realtimeClient := newRealtimeClient(s.api)
 	realtime, err := realtimeClient.Connect(ctx, realtimeConnectRequest{
 		Client:      "telephony",
-		ExternalKey: firstNonEmpty(req.ExternalKey, snapshot.ID),
+		ExternalKey: textutil.FirstNonEmpty(req.ExternalKey, snapshot.ID),
 		SessionID:   strings.TrimSpace(req.SessionID),
 		SystemInstruction: phoneSystemInstruction(phonePromptInput{
 			CallID:        snapshot.ID,
 			OpeningPhrase: req.InitialMessage,
-			Objective:     firstNonEmpty(req.SystemInstruction, req.Objective),
+			Objective:     textutil.FirstNonEmpty(req.SystemInstruction, req.Objective),
 			Direction:     snapshot.Direction,
 		}),
 	})
@@ -296,7 +297,7 @@ func initialPhoneStartPrompt(call *Call, req createCallRequest) string {
 	if call != nil {
 		direction = callDirection(call)
 	}
-	objective := strings.TrimSpace(firstNonEmpty(req.SystemInstruction, req.Objective))
+	objective := textutil.FirstNonEmpty(req.SystemInstruction, req.Objective)
 	parts := []string{
 		"The phone call is connected. Begin speaking now.",
 		"Say a short natural opening using this phrase: " + phrase,

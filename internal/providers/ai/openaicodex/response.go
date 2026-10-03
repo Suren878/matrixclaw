@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 func (r *Runtime) decodeResponse(raw []byte) (providers.Response, error) {
@@ -23,7 +24,7 @@ func (r *Runtime) decodeResponse(raw []byte) (providers.Response, error) {
 // executing unfinished arguments or losing calls present only in final output.
 func (r *Runtime) completedResponse(response responsesResponse) (providers.Response, error) {
 	if response.Error != nil {
-		return providers.Response{}, fmt.Errorf("openai-codex: %s", firstNonEmpty(response.Error.Message, response.Error.Code, "response failed"))
+		return providers.Response{}, fmt.Errorf("openai-codex: %s", textutil.FirstNonEmpty(response.Error.Message, response.Error.Code, "response failed"))
 	}
 	stop, err := responsesStopReason(response)
 	if err != nil {
@@ -110,7 +111,7 @@ func responsesStopReason(response responsesResponse) (providers.StopReason, erro
 	case reason == "content_filter":
 		return providers.StopContentFilter, nil
 	default:
-		return "", fmt.Errorf("openai-codex: incomplete response: %s", firstNonEmpty(reason, "no reason given"))
+		return "", fmt.Errorf("openai-codex: incomplete response: %s", textutil.FirstNonEmpty(reason, "no reason given"))
 	}
 }
 
@@ -126,16 +127,16 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 			return fmt.Errorf("openai-codex: decode stream event: %w", err)
 		}
 		if chunk.Error != nil {
-			return fmt.Errorf("openai-codex: %s", firstNonEmpty(chunk.Error.Message, chunk.Error.Code, "stream error"))
+			return fmt.Errorf("openai-codex: %s", textutil.FirstNonEmpty(chunk.Error.Message, chunk.Error.Code, "stream error"))
 		}
-		switch firstNonEmpty(chunk.Type, event.Type) {
+		switch textutil.FirstNonEmpty(chunk.Type, event.Type) {
 		case "response.output_text.delta", "response.refusal.delta":
 			return providers.StreamText(ctx, chunk.Delta)
 		case "error":
-			return fmt.Errorf("openai-codex: %s", firstNonEmpty(chunk.Message, chunk.Code, "stream error"))
+			return fmt.Errorf("openai-codex: %s", textutil.FirstNonEmpty(chunk.Message, chunk.Code, "stream error"))
 		case "response.failed", "response.cancelled":
 			// Some gateways omit response.status on terminal failure events.
-			chunk.Response.Status = strings.TrimPrefix(firstNonEmpty(chunk.Type, event.Type), "response.")
+			chunk.Response.Status = strings.TrimPrefix(textutil.FirstNonEmpty(chunk.Type, event.Type), "response.")
 			_, err := r.completedResponse(chunk.Response)
 			return err
 		case "response.incomplete":

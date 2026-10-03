@@ -8,15 +8,6 @@ import (
 	"time"
 )
 
-func firstNonEmptyTrimmed(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
-}
-
 func userLingerEnabled(ctx context.Context, username string) (bool, error) {
 	if strings.TrimSpace(username) == "" {
 		return false, errors.New("empty username")

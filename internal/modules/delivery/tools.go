@@ -10,6 +10,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
@@ -100,7 +101,7 @@ func (t *sendFileTool) document(call tools.Call) (core.DocumentDeliveryPayload, 
 		Temporary:   input.Temporary,
 		FileName:    deliveryFileName(input.FileName, source),
 		Caption:     strings.TrimSpace(input.Caption),
-		MIMEType:    firstNonEmpty(strings.TrimSpace(input.MIMEType), source.MIMEType, "application/octet-stream"),
+		MIMEType:    textutil.FirstNonEmpty(input.MIMEType, source.MIMEType, "application/octet-stream"),
 		Size:        source.Size,
 	}, nil
 }
@@ -166,18 +167,9 @@ func (t *sendFileTool) readSource(input sendFileInput) (sendFileSource, error) {
 }
 
 func deliveryFileName(override string, source sendFileSource) string {
-	name := firstNonEmpty(strings.TrimSpace(override), source.Title, filepath.Base(source.Path))
+	name := textutil.FirstNonEmpty(override, source.Title, filepath.Base(source.Path))
 	if name == "." || name == string(filepath.Separator) {
 		return "matrixclaw-file"
 	}
 	return name
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }

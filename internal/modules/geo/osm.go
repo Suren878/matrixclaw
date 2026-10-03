@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
@@ -381,7 +382,7 @@ func (s *OSMService) ReverseGeocode(ctx context.Context, params OSMReverseGeocod
 		Category:    strings.TrimSpace(out.Category),
 		Type:        strings.TrimSpace(out.Type),
 		Source:      "nominatim.openstreetmap.org",
-		Attribution: firstNonEmpty(strings.TrimSpace(out.Licence), "OpenStreetMap contributors, ODbL"),
+		Attribution: textutil.FirstNonEmpty(out.Licence, "OpenStreetMap contributors, ODbL"),
 	}
 	s.reverseCacheSet(key, result)
 	return result, nil
@@ -617,7 +618,7 @@ func osmPlaceFromElement(originLat, originLon float64, radiusMeters int, typ str
 	default:
 		return OSMPlace{}, false
 	}
-	name := firstNonEmpty(tags["name"], tags["name:ru"], tags["name:en"], tags["brand"])
+	name := textutil.FirstNonEmpty(tags["name"], tags["name:ru"], tags["name:en"], tags["brand"])
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return OSMPlace{}, false
@@ -637,8 +638,8 @@ func osmPlaceFromElement(originLat, originLon float64, radiusMeters int, typ str
 		Address:        formatOSMAddressTags(addressTags),
 		AddressTags:    addressTags,
 		OpeningHours:   strings.TrimSpace(tags["opening_hours"]),
-		Phone:          firstNonEmpty(tags["phone"], tags["contact:phone"]),
-		Website:        firstNonEmpty(tags["website"], tags["contact:website"]),
+		Phone:          textutil.FirstNonEmpty(tags["phone"], tags["contact:phone"]),
+		Website:        textutil.FirstNonEmpty(tags["website"], tags["contact:website"]),
 		OSMType:        strings.TrimSpace(typ),
 		OSMID:          id,
 		OSMURL:         osmElementURL(typ, id),
@@ -688,10 +689,10 @@ func osmAddressFromTags(tags map[string]string) OSMAddress {
 	return OSMAddress{
 		HouseNumber:   strings.TrimSpace(tags["house_number"]),
 		Road:          strings.TrimSpace(tags["road"]),
-		Neighbourhood: firstNonEmpty(tags["neighbourhood"], tags["quarter"]),
+		Neighbourhood: textutil.FirstNonEmpty(tags["neighbourhood"], tags["quarter"]),
 		Suburb:        strings.TrimSpace(tags["suburb"]),
-		District:      firstNonEmpty(tags["city_district"], tags["district"], tags["borough"]),
-		City:          firstNonEmpty(tags["city"], tags["town"], tags["village"], tags["municipality"]),
+		District:      textutil.FirstNonEmpty(tags["city_district"], tags["district"], tags["borough"]),
+		City:          textutil.FirstNonEmpty(tags["city"], tags["town"], tags["village"], tags["municipality"]),
 		County:        strings.TrimSpace(tags["county"]),
 		State:         strings.TrimSpace(tags["state"]),
 		Postcode:      strings.TrimSpace(tags["postcode"]),
@@ -824,15 +825,6 @@ func containsString(values []string, target string) bool {
 		}
 	}
 	return false
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 func envBoolFalse(value string) bool {

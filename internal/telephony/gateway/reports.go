@@ -5,6 +5,8 @@ import (
 	"log"
 	"strings"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 func (s *Server) postCallReport(parent context.Context, call *Call, req createCallRequest) {
@@ -20,9 +22,9 @@ func (s *Server) postCallReport(parent context.Context, call *Call, req createCa
 	}
 	snapshot := callSnapshot(call)
 	payload := map[string]any{
-		"client":              firstNonEmpty(req.OriginClient, snapshot.OriginClient),
-		"external_key":        firstNonEmpty(req.OriginExternalKey, snapshot.OriginExternalKey),
-		"session_id":          firstNonEmpty(req.OriginSessionID, snapshot.OriginSessionID, snapshot.CoreSessionID),
+		"client":              textutil.FirstNonEmpty(req.OriginClient, snapshot.OriginClient),
+		"external_key":        textutil.FirstNonEmpty(req.OriginExternalKey, snapshot.OriginExternalKey),
+		"session_id":          textutil.FirstNonEmpty(req.OriginSessionID, snapshot.OriginSessionID, snapshot.CoreSessionID),
 		"text":                text,
 		"busy_mode":           "queue",
 		"allow_auto_bind_one": true,
@@ -42,10 +44,10 @@ func shouldPostCallReport(call *Call, req createCallRequest) bool {
 	if req.PostCallReport != nil && !*req.PostCallReport {
 		return false
 	}
-	if firstNonEmpty(req.OriginClient, snapshot.OriginClient) == "" {
+	if textutil.FirstNonEmpty(req.OriginClient, snapshot.OriginClient) == "" {
 		return false
 	}
-	if firstNonEmpty(req.OriginExternalKey, snapshot.OriginExternalKey) == "" {
+	if textutil.FirstNonEmpty(req.OriginExternalKey, snapshot.OriginExternalKey) == "" {
 		return false
 	}
 	return true
@@ -60,7 +62,7 @@ func postCallReportPrompt(call *Call, req createCallRequest) string {
 	var sections []string
 	sections = append(sections, strings.TrimSpace(`Phone call completed. Write a concise report to the user in the user's language. Do not place another phone call. Explain whether the phone objective succeeded, list the important facts, mention any errors or unanswered items, and include a readable transcript of the conversation.`))
 	sections = append(sections, "Call status:\n"+formatCallStatus(call))
-	if objective := firstNonEmpty(snapshot.Objective, req.Objective, req.SystemInstruction); objective != "" {
+	if objective := textutil.FirstNonEmpty(snapshot.Objective, req.Objective, req.SystemInstruction); objective != "" {
 		sections = append(sections, "Original phone objective:\n"+objective)
 	}
 	if transcript := formatTranscript(turns); transcript != "" {

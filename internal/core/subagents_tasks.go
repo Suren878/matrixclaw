@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -224,7 +225,7 @@ func (c *Core) deliverSubagentApproval(ctx context.Context, approval Approval, t
 }
 
 func subagentApprovalSummary(approval Approval) string {
-	summary := fmt.Sprintf("Subagent %s asks to run %s", firstNonEmpty(approval.AgentName, "subagent"), firstNonEmpty(approval.ToolName, "a tool"))
+	summary := fmt.Sprintf("Subagent %s asks to run %s", cmp.Or(approval.AgentName, "subagent"), cmp.Or(approval.ToolName, "a tool"))
 	if detail := strings.TrimSpace(approval.Description); detail != "" {
 		summary += ": " + detail
 	}

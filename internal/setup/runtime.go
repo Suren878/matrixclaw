@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 const DaemonUnitName = "matrixclawd.service"
@@ -70,7 +72,7 @@ func newSystemdUserDaemonManager() *systemdUserDaemonManager {
 			}
 			return systemUser{
 				Username: usr.Username,
-				HomeDir:  firstNonEmptyTrimmed(strings.TrimSpace(usr.HomeDir), strings.TrimSpace(os.Getenv("HOME"))),
+				HomeDir:  textutil.FirstNonEmpty(usr.HomeDir, os.Getenv("HOME")),
 			}, nil
 		},
 		checkLinger: userLingerEnabled,

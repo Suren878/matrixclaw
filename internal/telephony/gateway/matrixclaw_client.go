@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 type matrixclawClient struct {
@@ -22,7 +24,7 @@ func newMatrixclawClient(baseURL string, token string, httpClient *http.Client) 
 		httpClient = &http.Client{Timeout: 45 * time.Second}
 	}
 	return &matrixclawClient{
-		baseURL: trimRightSlash(firstNonEmpty(baseURL, defaultMatrixclawURL)),
+		baseURL: trimRightSlash(textutil.FirstNonEmpty(baseURL, defaultMatrixclawURL)),
 		token:   strings.TrimSpace(token),
 		http:    httpClient,
 	}

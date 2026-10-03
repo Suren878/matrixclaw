@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 type ariRecordRequest struct {
@@ -34,9 +36,9 @@ type ariStoredRecording struct {
 func (c *ariClient) recordChannel(ctx context.Context, channelID string, req ariRecordRequest) (ariLiveRecording, error) {
 	query := url.Values{}
 	query.Set("name", strings.TrimSpace(req.Name))
-	query.Set("format", firstNonEmpty(req.Format, defaultRecordingFormat))
-	query.Set("ifExists", firstNonEmpty(req.IfExists, "overwrite"))
-	query.Set("terminateOn", firstNonEmpty(req.TerminateOn, "none"))
+	query.Set("format", textutil.FirstNonEmpty(req.Format, defaultRecordingFormat))
+	query.Set("ifExists", textutil.FirstNonEmpty(req.IfExists, "overwrite"))
+	query.Set("terminateOn", textutil.FirstNonEmpty(req.TerminateOn, "none"))
 	query.Set("beep", strconv.FormatBool(req.Beep))
 	if req.MaxDurationSeconds > 0 {
 		query.Set("maxDurationSeconds", strconv.Itoa(req.MaxDurationSeconds))

@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 const (
@@ -84,14 +86,14 @@ func ResolveCredentials(ctx context.Context, client *http.Client, baseURL string
 				return Credentials{}, err
 			}
 		}
-		creds.BaseURL = firstNonEmpty(baseURL, creds.BaseURL, DefaultBaseURL)
+		creds.BaseURL = textutil.FirstNonEmpty(baseURL, creds.BaseURL, DefaultBaseURL)
 		return creds, nil
 	}
 	if creds, ok := readCodexCLICredentials(); ok {
 		if tokenExpiring(creds.AccessToken, 0) {
 			return Credentials{}, errors.New("openai-codex: Codex CLI credentials are expired; run `matrixclaw providers login openai-codex`")
 		}
-		creds.BaseURL = firstNonEmpty(baseURL, creds.BaseURL, DefaultBaseURL)
+		creds.BaseURL = textutil.FirstNonEmpty(baseURL, creds.BaseURL, DefaultBaseURL)
 		return creds, nil
 	}
 	return Credentials{}, errors.New("openai-codex: no ChatGPT/Codex credentials; run `matrixclaw providers login openai-codex`")
@@ -255,11 +257,11 @@ func CompleteDeviceLogin(ctx context.Context, client *http.Client, device LoginD
 func CurrentAuthStatus() AuthStatus {
 	if creds, ok, err := readMatrixclawCredentials(); err == nil && ok {
 		expired := tokenExpiring(creds.AccessToken, 0)
-		return AuthStatus{SignedIn: !expired, Source: firstNonEmpty(creds.Source, "matrixclaw-auth-store"), Expired: expired}
+		return AuthStatus{SignedIn: !expired, Source: textutil.FirstNonEmpty(creds.Source, "matrixclaw-auth-store"), Expired: expired}
 	}
 	if creds, ok := readCodexCLICredentials(); ok {
 		expired := tokenExpiring(creds.AccessToken, 0)
-		return AuthStatus{SignedIn: !expired, Source: firstNonEmpty(creds.Source, "codex-cli-auth-store"), Expired: expired}
+		return AuthStatus{SignedIn: !expired, Source: textutil.FirstNonEmpty(creds.Source, "codex-cli-auth-store"), Expired: expired}
 	}
 	return AuthStatus{}
 }
@@ -284,7 +286,7 @@ func readMatrixclawCredentials() (Credentials, bool, error) {
 	return Credentials{
 		AccessToken:  access,
 		RefreshToken: refresh,
-		BaseURL:      firstNonEmpty(store.BaseURL, DefaultBaseURL),
+		BaseURL:      textutil.FirstNonEmpty(store.BaseURL, DefaultBaseURL),
 		Source:       "matrixclaw-auth-store",
 		LastRefresh:  store.LastRefresh,
 	}, true, nil
@@ -359,7 +361,7 @@ func refreshCredentials(ctx context.Context, client *http.Client, creds Credenti
 	return Credentials{
 		AccessToken:  access,
 		RefreshToken: refresh,
-		BaseURL:      firstNonEmpty(creds.BaseURL, DefaultBaseURL),
+		BaseURL:      textutil.FirstNonEmpty(creds.BaseURL, DefaultBaseURL),
 		Source:       "matrixclaw-auth-store",
 		LastRefresh:  time.Now().UTC(),
 	}, nil
@@ -486,7 +488,7 @@ func saveCredentials(creds Credentials) error {
 	}
 	store := tokenStore{
 		AuthMode:    "chatgpt",
-		BaseURL:     firstNonEmpty(creds.BaseURL, DefaultBaseURL),
+		BaseURL:     textutil.FirstNonEmpty(creds.BaseURL, DefaultBaseURL),
 		LastRefresh: time.Now().UTC(),
 		Tokens: map[string]string{
 			"access_token":  strings.TrimSpace(creds.AccessToken),
@@ -598,13 +600,4 @@ func defaultStateDir() string {
 		return filepath.Join(home, ".local", "state")
 	}
 	return os.TempDir()
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
 }

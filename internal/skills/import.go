@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 type pluginManifest struct {
@@ -32,7 +34,7 @@ func (s *Service) installPlugin(root string, manifestPath string, opts InstallOp
 			return nil, fmt.Errorf("plugin skill path escapes plugin root: %s", rel)
 		}
 		skill, err := s.InstallLocal(path, InstallOptions{
-			Provenance: firstNonEmpty(opts.Provenance, manifestPath),
+			Provenance: textutil.FirstNonEmpty(opts.Provenance, manifestPath),
 			Source:     "plugin",
 			TrustState: opts.TrustState,
 		})
@@ -55,7 +57,7 @@ func (s *Service) installHermesTree(root string, opts InstallOptions) ([]Skill, 
 				return nil
 			}
 			skill, installErr := s.InstallLocal(filepath.Dir(path), InstallOptions{
-				Provenance: firstNonEmpty(opts.Provenance, root),
+				Provenance: textutil.FirstNonEmpty(opts.Provenance, root),
 				Source:     "hermes",
 				TrustState: opts.TrustState,
 			})

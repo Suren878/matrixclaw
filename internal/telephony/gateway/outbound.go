@@ -10,6 +10,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/telephony/phone"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 func (s *Server) startCall(parent context.Context, req createCallRequest) (CallSnapshot, error) {
@@ -33,8 +34,8 @@ func (s *Server) startCall(parent context.Context, req createCallRequest) (CallS
 			ID:                id,
 			Direction:         "outbound",
 			To:                to,
-			Profile:           firstNonEmpty(req.Profile, s.cfg.SIPProfile),
-			Objective:         firstNonEmpty(req.Objective, req.SystemInstruction),
+			Profile:           textutil.FirstNonEmpty(req.Profile, s.cfg.SIPProfile),
+			Objective:         textutil.FirstNonEmpty(req.Objective, req.SystemInstruction),
 			Status:            "queued",
 			CreatedAt:         now,
 			UpdatedAt:         now,
@@ -87,7 +88,7 @@ func (s *Server) runCallOnce(ctx context.Context, call *Call, req createCallRequ
 	s.updateCall(call, "dialing", "")
 
 	snapshot := callSnapshot(call)
-	endpoint := fmt.Sprintf("PJSIP/%s@%s", snapshot.To, firstNonEmpty(snapshot.Profile, s.cfg.SIPProfile))
+	endpoint := fmt.Sprintf("PJSIP/%s@%s", snapshot.To, textutil.FirstNonEmpty(snapshot.Profile, s.cfg.SIPProfile))
 	if err := s.ari.originate(ctx, originateRequest{
 		ChannelID: callID,
 		Endpoint:  endpoint,

@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -50,7 +51,7 @@ func ParseSkillFile(path string) (Document, error) {
 		License:     cleanString(metadata["license"]),
 		Tags:        stringSlice(metadata["tags"]),
 		Platforms:   stringSlice(metadata["platforms"]),
-		Category:    firstNonEmpty(cleanString(metadata["category"]), cleanString(nested(metadata, "metadata", "hermes", "category"))),
+		Category:    cmp.Or(cleanString(metadata["category"]), cleanString(nested(metadata, "metadata", "hermes", "category"))),
 		Body:        strings.TrimSpace(body),
 		Metadata:    metadata,
 	}
@@ -183,15 +184,6 @@ func nested(values map[string]any, path ...string) any {
 		current = m[key]
 	}
 	return current
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }
 
 var skillIDCleanup = regexp.MustCompile(`[^a-z0-9_-]+`)

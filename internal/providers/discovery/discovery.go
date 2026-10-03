@@ -10,6 +10,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/providers/factory"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 // modelsDiscoveryTimeout caps how long a remote model listing call may take.
@@ -28,7 +29,7 @@ func Models(ctx context.Context, input ModelDiscoveryInput) ([]string, error) {
 	ctx, cancel := context.WithTimeout(ctx, modelsDiscoveryTimeout)
 	defer cancel()
 
-	providerID := firstNonEmpty(input.CatalogID, input.ID)
+	providerID := textutil.FirstNonEmpty(input.CatalogID, input.ID)
 	policy := providers.PolicyForProvider(providerID, input.Type)
 	if strings.TrimSpace(input.APIKey) == "" && policy.RequiresAPIKey && !policy.PublicModelCatalog {
 		return nil, errors.New("enter a valid API key first")
@@ -83,13 +84,4 @@ func fetchRemoteModels(ctx context.Context, input ModelDiscoveryInput) ([]string
 		return nil, errors.New("remote model list unavailable")
 	}
 	return adapter.ListModels(ctx, cfg)
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }

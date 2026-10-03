@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
@@ -170,21 +171,21 @@ func (t *manageTool) Execute(_ context.Context, call tools.Call) (tools.Result, 
 func skillManageApprovalPath(action string, input tools.SkillManagePermissionsParams) string {
 	switch action {
 	case "create":
-		name := firstNonEmpty(input.ID, input.Name)
+		name := textutil.FirstNonEmpty(input.ID, input.Name)
 		id := slugifySkillName(name)
 		if id == "" {
 			id = "new-skill"
 		}
 		return filepath.ToSlash(filepath.Join("skills", id, "SKILL.md"))
 	default:
-		return strings.TrimSpace(firstNonEmpty(input.ID, input.Path))
+		return textutil.FirstNonEmpty(input.ID, input.Path)
 	}
 }
 
 func skillManageApprovalDescription(action string, input tools.SkillManagePermissionsParams) string {
 	switch action {
 	case "create":
-		name := strings.TrimSpace(firstNonEmpty(input.Name, input.ID))
+		name := textutil.FirstNonEmpty(input.Name, input.ID)
 		if name == "" {
 			name = "new skill"
 		}
@@ -217,7 +218,7 @@ func slugifySkillName(value string) string {
 }
 
 func (t *manageTool) create(input tools.SkillManagePermissionsParams) (tools.Result, error) {
-	name := firstNonEmpty(input.Name, input.ID)
+	name := textutil.FirstNonEmpty(input.Name, input.ID)
 	if strings.TrimSpace(name) == "" || strings.TrimSpace(input.Description) == "" {
 		return tools.Result{Content: "Skill create requires name and description.", Status: tools.ResultStatusError}, nil
 	}

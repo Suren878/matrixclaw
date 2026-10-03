@@ -7,6 +7,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/modules"
 	"github.com/Suren878/matrixclaw/internal/setup"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 type searchProvider struct {
@@ -31,7 +32,7 @@ func (m *Module) Settings(context.Context) []modules.Item {
 		provider,
 		{Key: "tavily_key", Kind: modules.ItemSecret, Label: "Tavily API Key", Display: secretDisplay(cfg.TavilyKey), Hint: "tvly-..."},
 		{Key: "serper_key", Kind: modules.ItemSecret, Label: "Serper API Key", Display: secretDisplay(cfg.SerperKey), Hint: "..."},
-		{Key: "searxng_url", Kind: modules.ItemText, Label: "SearXNG Base URL", Value: cfg.BaseURL, Display: firstNonEmpty(cfg.BaseURL, "Not set"), Hint: "http://localhost:8888"},
+		{Key: "searxng_url", Kind: modules.ItemText, Label: "SearXNG Base URL", Value: cfg.BaseURL, Display: textutil.FirstNonEmpty(cfg.BaseURL, "Not set"), Hint: "http://localhost:8888"},
 	}
 }
 
@@ -123,11 +124,4 @@ func secretDisplay(secret string) string {
 		return "Not set"
 	}
 	return setup.MaskSecret(secret)
-}
-
-func firstNonEmpty(value string, fallback string) string {
-	if value = strings.TrimSpace(value); value != "" {
-		return value
-	}
-	return fallback
 }

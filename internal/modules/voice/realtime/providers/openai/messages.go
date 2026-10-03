@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 type serverMessage struct {
@@ -95,7 +96,7 @@ func (d *messageDecoder) Decode(data []byte) []realtime.ProviderOutput {
 			}}
 		}
 	case "response.output_audio_transcript.done", "response.output_text.done", "response.text.done":
-		if transcript := firstNonEmpty(msg.Transcript, msg.Text); transcript != "" {
+		if transcript := textutil.FirstNonEmpty(msg.Transcript, msg.Text); transcript != "" {
 			return []realtime.ProviderOutput{{
 				Type: realtime.ProviderOutputAssistantTranscript,
 				Text: transcript,
@@ -216,7 +217,7 @@ func responseErrorMessage(response *serverResponse) string {
 		if message := serverErrorMessage(response.StatusDetails.Error, ""); message != "" {
 			return message
 		}
-		if message := firstNonEmpty(response.StatusDetails.Reason, response.StatusDetails.Type); message != "" {
+		if message := textutil.FirstNonEmpty(response.StatusDetails.Reason, response.StatusDetails.Type); message != "" {
 			return "OpenAI Realtime response " + message
 		}
 	}
@@ -230,5 +231,5 @@ func serverErrorMessage(err *serverError, fallback string) string {
 	if err == nil {
 		return strings.TrimSpace(fallback)
 	}
-	return firstNonEmpty(err.Message, err.Code, err.Type, fallback)
+	return textutil.FirstNonEmpty(err.Message, err.Code, err.Type, fallback)
 }

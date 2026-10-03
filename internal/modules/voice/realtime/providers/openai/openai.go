@@ -131,12 +131,3 @@ func (c *codec) Encode(input realtime.ProviderInput) ([]any, error) {
 func (c *codec) Decode(msg []byte) []realtime.ProviderOutput {
 	return c.decoder.Decode(msg)
 }
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			return value
-		}
-	}
-	return ""
-}
