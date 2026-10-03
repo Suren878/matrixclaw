@@ -115,3 +115,29 @@ func TestGenerateReportsRateLimitsAsRetryable(t *testing.T) {
 		}
 	}
 }
+
+func TestRefreshOutlivesACanceledRun(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "openai-codex.json")
+	t.Setenv("MATRIXCLAW_CODEX_AUTH_FILE", path)
+	t.Setenv("CODEX_HOME", filepath.Join(dir, "codex"))
+	raw, _ := json.Marshal(tokenStore{Tokens: map[string]string{"access_token": testJWT(time.Now().Add(time.Minute), "old"), "refresh_token": "r1"}})
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		cancel()
+		time.Sleep(50 * time.Millisecond)
+		_, _ = fmt.Fprintf(w, `{"access_token":%q,"refresh_token":"r2"}`, testJWT(time.Now().Add(time.Hour), "new"))
+	}))
+	defer server.Close()
+	target, _ := url.Parse(server.URL)
+
+	_, _ = ResolveCredentials(ctx, &http.Client{Transport: redirectTransport{target: target}}, "")
+	creds, ok, err := readMatrixclawCredentials()
+	if err != nil || !ok || creds.RefreshToken != "r2" {
+		t.Fatalf("store = %+v ok=%v err=%v; want the rotated refresh token saved", creds, ok, err)
+	}
+}

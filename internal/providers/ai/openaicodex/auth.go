@@ -118,7 +118,11 @@ func refreshStoredCredentials(ctx context.Context, client *http.Client) (Credent
 	if !tokenExpiring(creds.AccessToken, refreshSkew) {
 		return creds, nil
 	}
-	refreshed, err := refreshCredentials(ctx, client, creds)
+	// The refresh token is single use: once the server rotates it, the new one
+	// must be saved even when the run that asked is canceled meanwhile.
+	refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), defaultRequestTimout)
+	defer cancel()
+	refreshed, err := refreshCredentials(refreshCtx, client, creds)
 	if err != nil {
 		return Credentials{}, err
 	}
