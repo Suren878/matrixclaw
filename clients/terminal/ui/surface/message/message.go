@@ -201,18 +201,6 @@ func (m *Message) FinishThinking() {
 	}
 }
 
-func (m *Message) ThinkingDuration() time.Duration {
-	reasoning := m.ReasoningContent()
-	if reasoning.StartedAt == 0 {
-		return 0
-	}
-	end := reasoning.FinishedAt
-	if end == 0 {
-		end = time.Now().Unix()
-	}
-	return time.Duration(end-reasoning.StartedAt) * time.Second
-}
-
 func (m *Message) FinishToolCall(toolCallID string) {
 	for i, part := range m.Parts {
 		if c, ok := part.(ToolCall); ok && c.ID == toolCallID {

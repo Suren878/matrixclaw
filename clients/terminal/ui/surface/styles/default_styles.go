@@ -389,11 +389,6 @@ func DefaultStyles() Styles {
 	s.Chat.Message.AssistantInfoProvider = s.Subtle
 	s.Chat.Message.AssistantInfoDuration = s.Subtle
 
-	s.Chat.Message.ThinkingBox = s.Subtle.Background(bgBaseLighter)
-	s.Chat.Message.ThinkingTruncationHint = s.Muted
-	s.Chat.Message.ThinkingFooterTitle = s.Muted
-	s.Chat.Message.ThinkingFooterDuration = s.Subtle
-
 	s.TextSelection = lipgloss.NewStyle().Foreground(tone(charmtone.Salt)).Background(tone(charmtone.Charple))
 
 	s.Dialog.Title = base.Padding(0, 1).Foreground(primary)

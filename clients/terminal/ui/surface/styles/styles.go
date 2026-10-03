@@ -201,14 +201,10 @@ type Styles struct {
 			ToolCallBlurred  lipgloss.Style
 			SectionHeader    lipgloss.Style
 
-			ThinkingBox            lipgloss.Style
-			ThinkingTruncationHint lipgloss.Style
-			ThinkingFooterTitle    lipgloss.Style
-			ThinkingFooterDuration lipgloss.Style
-			AssistantInfoIcon      lipgloss.Style
-			AssistantInfoModel     lipgloss.Style
-			AssistantInfoProvider  lipgloss.Style
-			AssistantInfoDuration  lipgloss.Style
+			AssistantInfoIcon     lipgloss.Style
+			AssistantInfoModel    lipgloss.Style
+			AssistantInfoProvider lipgloss.Style
+			AssistantInfoDuration lipgloss.Style
 		}
 	}
 
