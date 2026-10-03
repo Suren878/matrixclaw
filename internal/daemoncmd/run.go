@@ -165,7 +165,7 @@ func Run(ctx context.Context) error {
 	server.SetRealtimeVoiceService(newRealtimeVoiceManager(bootstrap.SetupService, app))
 	supervisor := newSupervisor(ctx, server, app, osmGeo)
 	supervisor.SetModuleContext(moduleRegistry.Context)
-	supervisor.SetExternalAgents(sqliteStore, externalRuntimes)
+	supervisor.SetExternalAgents(sqliteStore, externalRuntimes, bootstrap.ExternalAgents.ExternalAgents)
 	defer supervisor.CloseExternalAgents()
 	httpServer := &http.Server{
 		Addr:              bootstrap.Addr,

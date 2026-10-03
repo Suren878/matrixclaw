@@ -91,10 +91,11 @@ func externalAgentIDForRuntime(runtimeID SessionRuntime, explicit string) string
 }
 
 func (c *Core) ExternalAgents(ctx context.Context) []ExternalAgentDescriptor {
-	if c.externalAgents == nil {
+	registry := c.externalAgentRegistry()
+	if registry == nil {
 		return nil
 	}
-	descriptors := c.externalAgents.List(ctx)
+	descriptors := registry.List(ctx)
 	out := make([]ExternalAgentDescriptor, 0, len(descriptors))
 	for _, descriptor := range descriptors {
 		out = append(out, ExternalAgentDescriptor{
@@ -115,10 +116,11 @@ func (c *Core) ExternalAgents(ctx context.Context) []ExternalAgentDescriptor {
 }
 
 func (c *Core) ResolveExternalAgentID(id string) (string, bool) {
-	if c.externalAgents == nil {
+	registry := c.externalAgentRegistry()
+	if registry == nil {
 		return "", false
 	}
-	return c.externalAgents.CanonicalID(id)
+	return registry.CanonicalID(id)
 }
 
 func (c *Core) createExternalAgentAttachment(ctx context.Context, session Session, input CreateSessionInput) error {

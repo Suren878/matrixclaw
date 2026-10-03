@@ -12,9 +12,11 @@ import (
 )
 
 type Config struct {
-	BaseURL                 string
-	APIToken                string
-	BotToken                string
+	BaseURL  string
+	APIToken string
+	BotToken string
+	// TelegramBaseURL overrides the Bot API address; empty means Telegram's.
+	TelegramBaseURL         string
 	AllowedUserID           int64
 	InlineCachePath         string
 	Geo                     *tools.OSMService

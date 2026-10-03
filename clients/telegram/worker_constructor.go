@@ -20,6 +20,7 @@ func NewWorker(cfg Config) (*Worker, error) {
 	}
 	client, err := NewClient(ClientConfig{
 		Token:      cfg.BotToken,
+		BaseURL:    cfg.TelegramBaseURL,
 		HTTPClient: &http.Client{Timeout: telegramHTTPTimeout},
 	})
 	if err != nil {

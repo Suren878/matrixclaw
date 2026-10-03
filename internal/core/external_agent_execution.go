@@ -62,10 +62,11 @@ func (c *Core) tryExecuteExternalAgentRun(ctx context.Context, runCtx context.Co
 }
 
 func (c *Core) externalRuntime(agentID string) (externalagents.RuntimeAgent, error) {
-	if c.externalAgents == nil {
+	registry := c.externalAgentRegistry()
+	if registry == nil {
 		return nil, fmt.Errorf("%w: external agent registry unavailable", ErrExecutionUnavailable)
 	}
-	agent, ok := c.externalAgents.Get(agentID)
+	agent, ok := registry.Get(agentID)
 	if !ok {
 		return nil, fmt.Errorf("%w: external agent %q is not configured", ErrExecutionUnavailable, agentID)
 	}

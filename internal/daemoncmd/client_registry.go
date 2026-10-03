@@ -71,50 +71,89 @@ type clientAdapter interface {
 type telegramClientAdapter struct {
 	mu          sync.Mutex
 	cancel      context.CancelFunc
+	done        chan struct{}
+	applied     telegram.Config
 	offset      atomic.Int64
 	commandsSet bool
 	geo         *tools.OSMService
+	// botAPIURL overrides the Telegram Bot API address in tests.
+	botAPIURL string
 }
 
+// Apply restarts the worker only when its config changed or it stopped, and
+// waits for the old worker to stop so two never poll at once.
 func (a *telegramClientAdapter) Apply(ctx context.Context, bootstrap bootstrapConfig) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	cfg := bootstrap.Telegram
+	boot := bootstrap.Telegram
+	cfg := telegram.Config{}
+	if boot.Enabled {
+		cfg = telegram.Config{
+			BaseURL:         daemonBaseURL(bootstrap.Addr),
+			APIToken:        bootstrap.APIToken,
+			BotToken:        boot.BotToken,
+			TelegramBaseURL: a.botAPIURL,
+			AllowedUserID:   boot.AllowedUserID,
+			InlineCachePath: telegramInlineCachePath(bootstrap.DBPath),
+			Offset:          &a.offset,
+			Geo:             a.geo,
+		}
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	if a.cancel != nil {
-		a.cancel()
-		a.cancel = nil
+	if cfg == a.applied && (!boot.Enabled || a.workerRunning()) {
+		return nil
 	}
-	if !cfg.Enabled {
+	a.stopWorker()
+	a.applied = telegram.Config{}
+	if !boot.Enabled {
 		return nil
 	}
 
-	worker, err := telegram.NewWorker(telegram.Config{
-		BaseURL:                 daemonBaseURL(bootstrap.Addr),
-		APIToken:                bootstrap.APIToken,
-		BotToken:                cfg.BotToken,
-		AllowedUserID:           cfg.AllowedUserID,
-		InlineCachePath:         telegramInlineCachePath(bootstrap.DBPath),
-		Offset:                  &a.offset,
-		SkipCommandRegistration: a.commandsSet,
-		Geo:                     a.geo,
-	})
+	workerCfg := cfg
+	workerCfg.SkipCommandRegistration = a.commandsSet
+	worker, err := telegram.NewWorker(workerCfg)
 	if err != nil {
 		return err
 	}
 	a.commandsSet = true
+	a.applied = cfg
 
 	workerCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
 	a.cancel = cancel
+	a.done = done
 	safego.Go("telegram.worker", func() {
+		defer close(done)
 		if err := worker.Run(workerCtx); err != nil && workerCtx.Err() == nil {
 			log.Printf("matrixclaw telegram worker stopped: %v", err)
 		}
 	})
 	return nil
+}
+
+func (a *telegramClientAdapter) workerRunning() bool {
+	if a.done == nil {
+		return false
+	}
+	select {
+	case <-a.done:
+		return false
+	default:
+		return true
+	}
+}
+
+func (a *telegramClientAdapter) stopWorker() {
+	if a.cancel == nil {
+		return
+	}
+	a.cancel()
+	<-a.done
+	a.cancel = nil
+	a.done = nil
 }
 
 func (a *telegramClientAdapter) RestartDeliveryAddressNormalizer() restartDeliveryAddressNormalizer {

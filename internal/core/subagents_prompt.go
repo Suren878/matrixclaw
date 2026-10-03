@@ -94,7 +94,7 @@ func (c *Core) subagentRuntimeInfo(ctx context.Context) []subagentRuntimeInfo {
 			Available: true,
 		},
 	}
-	if c == nil || c.externalAgents == nil {
+	if c == nil || c.externalAgentRegistry() == nil {
 		return out
 	}
 	for _, descriptor := range c.ExternalAgents(ctx) {

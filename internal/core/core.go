@@ -125,7 +125,7 @@ func New(store Store) *Core {
 // after any run has started or after the Core is shared across goroutines —
 // doing so races with the agent loop reading those fields. Post-construction
 // mutation must go through the locked Set* methods (SetSessionLLMs,
-// SetAssistantProfile).
+// SetAssistantProfile, SetExternalAgents).
 func (c *Core) WithAttachmentReader(reader agentcontext.AttachmentReader) *Core {
 	if reader != nil {
 		c.attachments = reader
@@ -156,9 +156,22 @@ func (c *Core) WithRunStarter(starter RunStarter) *Core {
 }
 
 func (c *Core) WithExternalAgents(registry *externalagents.Registry, store externalagents.AttachmentStore) *Core {
-	c.externalAgents = registry
 	c.externalStore = store
+	c.SetExternalAgents(registry)
 	return c
+}
+
+// SetExternalAgents swaps the external agent registry while the daemon serves.
+func (c *Core) SetExternalAgents(registry *externalagents.Registry) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.externalAgents = registry
+}
+
+func (c *Core) externalAgentRegistry() *externalagents.Registry {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.externalAgents
 }
 
 func (c *Core) WithSessionLLMs(registry SessionLLMRegistry) *Core {

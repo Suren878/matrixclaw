@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"maps"
 	"os/exec"
 	"strings"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
 	"github.com/Suren878/matrixclaw/internal/safego"
+	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
@@ -24,13 +26,17 @@ const (
 )
 
 type supervisor struct {
-	ctx              context.Context
-	server           *api.Server
-	app              *core.Core
-	clients          *clientRegistry
+	ctx           context.Context
+	server        *api.Server
+	app           *core.Core
+	clients       *clientRegistry
+	moduleContext func() []string
+
+	// reloadMu serializes applying the setup and swapping external agents.
+	reloadMu         sync.Mutex
 	externalStore    externalagents.AttachmentStore
 	externalRuntimes []externalagents.RuntimeAgent
-	moduleContext    func() []string
+	externalConfig   map[string]setup.ExternalAgentConfig
 
 	restartMu  sync.Mutex
 	restarting bool
@@ -70,6 +76,12 @@ func newSupervisor(ctx context.Context, server *api.Server, app *core.Core, geo 
 }
 
 func (s *supervisor) ApplyBootstrap(bootstrap bootstrapConfig) error {
+	s.reloadMu.Lock()
+	defer s.reloadMu.Unlock()
+	return s.applyBootstrap(bootstrap)
+}
+
+func (s *supervisor) applyBootstrap(bootstrap bootstrapConfig) error {
 	if s.app != nil {
 		s.app.SetSessionLLMs(bootstrap.SessionLLMs)
 		applyAssistantProfile(s.app, bootstrap.Assistant, s.moduleContext)
@@ -84,27 +96,45 @@ func (s *supervisor) SetModuleContext(moduleContext func() []string) {
 }
 
 func (s *supervisor) Reload(ctx context.Context) error {
+	s.reloadMu.Lock()
+	defer s.reloadMu.Unlock()
 	bootstrap, err := loadBootstrap()
 	if err != nil {
 		return err
 	}
-	if s.app != nil && s.externalStore != nil {
-		registry, runtimes, err := builtins.BuildRegistry(bootstrap.ExternalAgents)
-		if err != nil {
-			return err
-		}
-		s.app.WithExternalAgents(registry, s.externalStore)
-		s.replaceExternalRuntimes(runtimes)
+	if err := s.applyExternalAgents(bootstrap.ExternalAgents); err != nil {
+		return err
 	}
-	return s.ApplyBootstrap(bootstrap)
+	return s.applyBootstrap(bootstrap)
 }
 
-func (s *supervisor) SetExternalAgents(store externalagents.AttachmentStore, runtimes []externalagents.RuntimeAgent) {
+// applyExternalAgents rebuilds the external agents only when their config
+// changed, since rebuilding closes the runtimes live sessions use.
+func (s *supervisor) applyExternalAgents(modules setup.ModulesConfig) error {
+	if s.app == nil || s.externalStore == nil || maps.Equal(modules.ExternalAgents, s.externalConfig) {
+		return nil
+	}
+	registry, runtimes, err := builtins.BuildRegistry(modules)
+	if err != nil {
+		return err
+	}
+	s.app.SetExternalAgents(registry)
+	s.replaceExternalRuntimes(runtimes)
+	s.externalConfig = maps.Clone(modules.ExternalAgents)
+	return nil
+}
+
+func (s *supervisor) SetExternalAgents(store externalagents.AttachmentStore, runtimes []externalagents.RuntimeAgent, cfg map[string]setup.ExternalAgentConfig) {
+	s.reloadMu.Lock()
+	defer s.reloadMu.Unlock()
 	s.externalStore = store
 	s.externalRuntimes = append([]externalagents.RuntimeAgent(nil), runtimes...)
+	s.externalConfig = maps.Clone(cfg)
 }
 
 func (s *supervisor) CloseExternalAgents() {
+	s.reloadMu.Lock()
+	defer s.reloadMu.Unlock()
 	s.replaceExternalRuntimes(nil)
 }
 

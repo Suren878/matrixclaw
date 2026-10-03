@@ -20,6 +20,7 @@ func (w *Worker) Run(ctx context.Context) error {
 	w.runLoopSafely("telegram.deliveryLoop", errc, func() error { return w.runDeliveryLoop(runCtx) })
 	err := <-errc
 	cancel()
+	<-errc
 	if err == nil || ctx.Err() != nil {
 		return nil
 	}

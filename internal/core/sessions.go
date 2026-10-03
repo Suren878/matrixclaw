@@ -379,7 +379,7 @@ func CoreSessionIsExternalAgent(session Session) bool {
 }
 
 func (c *Core) externalAgentModels(ctx context.Context, session Session) []string {
-	if c == nil || c.externalAgents == nil || c.externalStore == nil {
+	if c == nil || c.externalAgentRegistry() == nil || c.externalStore == nil {
 		return nil
 	}
 	attachment, err := c.externalStore.GetExternalAgentSession(ctx, session.ID)
@@ -390,10 +390,14 @@ func (c *Core) externalAgentModels(ctx context.Context, session Session) []strin
 }
 
 func (c *Core) externalAgentModelList(ctx context.Context, agentID string) []string {
-	if c == nil || c.externalAgents == nil {
+	if c == nil {
 		return nil
 	}
-	agent, ok := c.externalAgents.Get(agentID)
+	registry := c.externalAgentRegistry()
+	if registry == nil {
+		return nil
+	}
+	agent, ok := registry.Get(agentID)
 	if !ok {
 		return nil
 	}
@@ -414,10 +418,14 @@ func (c *Core) externalAgentDefaultModel(ctx context.Context, agentID string) st
 }
 
 func (c *Core) externalAgentDisplayName(agentID string) string {
-	if c == nil || c.externalAgents == nil {
+	if c == nil {
 		return ""
 	}
-	agent, ok := c.externalAgents.Get(agentID)
+	registry := c.externalAgentRegistry()
+	if registry == nil {
+		return ""
+	}
+	agent, ok := registry.Get(agentID)
 	if !ok {
 		return ""
 	}
