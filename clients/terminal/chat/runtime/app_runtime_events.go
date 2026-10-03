@@ -17,7 +17,18 @@ func (m *appModel) handleSendMessageResult(msg sendMessageResultMsg) tea.Cmd {
 	case core.AcceptRunStatusQueued, core.AcceptRunStatusSteered, core.AcceptRunStatusInterrupting:
 		m.showAcceptedInputStatus(msg.result.Status)
 	default:
-		m.setBusy(runIsActive(&msg.result.Run))
+		m.setBusy(runIsActive(m.acceptedRun(msg.result.Run)))
 	}
 	return nil
+}
+
+// acceptedRun prefers the read model's copy of the run: its events may
+// already have ended the run the accept reply still calls accepted.
+func (m *appModel) acceptedRun(run core.Run) *core.Run {
+	if m.read != nil {
+		if known := m.read.Run(); known != nil && known.ID == run.ID {
+			return known
+		}
+	}
+	return &run
 }

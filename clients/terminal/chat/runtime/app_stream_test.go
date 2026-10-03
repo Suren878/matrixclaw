@@ -158,3 +158,16 @@ func TestARunIsFollowedFromLiveEventsWithoutReloading(t *testing.T) {
 		}
 	}
 }
+
+func TestARunThatEndsBeforeTheSendReplyDoesNotStayBusy(t *testing.T) {
+	m, _ := renderApp(t, 100, 30, core.ClientSnapshot{SessionID: "session_1", Session: renderSession(), Context: renderContext()})
+	accepted := core.Run{ID: "run_1", SessionID: "session_1", Status: core.RunStatusAccepted, StartedAt: at(0)}
+	failed := accepted
+	failed.Status, failed.Error = core.RunStatusFailed, "provider: no api key"
+	deliver(t, m, core.EventRunUpdated, failed)
+
+	m.Update(sendMessageResultMsg{content: "hello", result: core.AcceptRunResult{SessionID: "session_1", Status: core.AcceptRunStatusStarted, Run: accepted}})
+	if m.input.busy {
+		t.Fatal("busy after the run already failed")
+	}
+}
