@@ -149,7 +149,7 @@ func (d *Dispatcher) handleProviderKey(ctx context.Context, session *core.Sessio
 		return providerKeyPrompt(provider), nil
 	}
 	configured, err := d.providers.ConfigureSetupProvider(ctx, providerID, setup.ProviderSetupUpdate{
-		APIKey: apiKey,
+		APIKey: &apiKey,
 		Active: true,
 	})
 	if err != nil {

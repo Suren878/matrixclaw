@@ -84,7 +84,7 @@ func daemonEnvironmentNames(cfg Config) []string {
 		if strings.TrimSpace(provider.APIKey) != "" {
 			continue
 		}
-		envName := providerAPIKeyEnvName(provider)
+		envName := provider.Effective().APIKeyEnv
 		if !validEnvironmentName(envName) {
 			continue
 		}

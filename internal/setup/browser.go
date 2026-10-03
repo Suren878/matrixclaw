@@ -18,7 +18,7 @@ func (s *Service) BrowserModule() (BrowserModuleDescriptor, error) {
 }
 
 func (s *Service) UpdateBrowserModule(update BrowserModuleUpdate) (BrowserModuleDescriptor, error) {
-	cfg, err := s.update(func(cfg *Config) error {
+	cfg, err := s.Update(func(cfg *Config) error {
 		cfg.Modules.Browser = applyBrowserModuleUpdate(cfg.Modules.Browser, update)
 		return nil
 	})

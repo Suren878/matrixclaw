@@ -18,7 +18,7 @@ func (s *Server) handleSetupProviders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	providers, err := s.setup.ProviderSetupItems()
+	providers, err := s.setup.ProviderItems()
 	if err != nil {
 		writeErrorMessage(w, http.StatusInternalServerError, err.Error())
 		return
@@ -63,7 +63,7 @@ func (s *Server) handleSetupProviderByID(w http.ResponseWriter, r *http.Request)
 		if !decodeJSONBody(w, r, &update) {
 			return
 		}
-		models, err := s.setup.ProviderModelCatalogContext(r.Context(), providerID, update)
+		models, err := s.setup.ProviderModelCatalogFor(r.Context(), providerID, update)
 		if err != nil {
 			writeErrorMessage(w, http.StatusBadRequest, err.Error())
 			return
@@ -72,7 +72,7 @@ func (s *Server) handleSetupProviderByID(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if r.Method == http.MethodDelete {
-		if err := s.setup.DeleteProviderContext(r.Context(), providerID); err != nil {
+		if err := s.setup.DeleteProvider(providerID); err != nil {
 			writeErrorMessage(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -89,7 +89,7 @@ func (s *Server) handleSetupProviderByID(w http.ResponseWriter, r *http.Request)
 	if !decodeJSONBody(w, r, &update) {
 		return
 	}
-	item, err := s.setup.ConfigureProviderContext(r.Context(), providerID, update)
+	item, err := s.setup.ConfigureProvider(providerID, update)
 	if err != nil {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return

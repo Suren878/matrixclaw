@@ -14,7 +14,7 @@ func (s *Service) GetWebSearchConfig() (WebSearchConfig, error) {
 }
 
 func (s *Service) UpdateWebSearchConfig(update WebSearchConfig) (WebSearchConfig, error) {
-	cfg, err := s.update(func(cfg *Config) error {
+	cfg, err := s.Update(func(cfg *Config) error {
 		merged := mergeWebSearchConfig(cfg.Modules.WebSearch, update)
 		if err := validateWebSearchConfig(merged); err != nil {
 			return err

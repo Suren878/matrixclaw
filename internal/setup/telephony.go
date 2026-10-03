@@ -17,7 +17,7 @@ func (s *Service) TelephonyModule() (TelephonyModuleDescriptor, error) {
 }
 
 func (s *Service) UpdateTelephonyModule(update TelephonyModuleUpdate) (TelephonyModuleDescriptor, error) {
-	cfg, err := s.update(func(cfg *Config) error {
+	cfg, err := s.Update(func(cfg *Config) error {
 		merged := mergeTelephonyConfig(cfg.Modules.Telephony, update)
 		if err := validateTelephonyConfig(merged); err != nil {
 			return err

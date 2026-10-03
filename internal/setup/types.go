@@ -393,53 +393,6 @@ type VoiceProviderActionResponse struct {
 	Provider VoiceProviderOption `json:"provider"`
 }
 
-type Draft struct {
-	ActiveProviderID      string
-	AssistantName         string
-	AssistantSystemPrompt string
-	AssistantCustomPrompt string
-	Providers             []ProviderDraft
-	HTTPAddr              string
-	DBPath                string
-	Timezone              string
-	AutostartOnBoot       string
-	TelegramEnabled       string
-	TelegramBotToken      string
-	TelegramAllowedUID    string
-	TelegramProviderSetup string
-}
-
-type ProviderDraft struct {
-	ID                  string
-	CatalogID           string
-	Name                string
-	Type                string
-	APIKey              string
-	APIKeyEnv           string
-	BaseURL             string
-	Model               string
-	ToolUseMode         providers.ToolUseMode
-	ContextWindow       string
-	MaxOutputTokens     string
-	ReasoningEffort     string
-	HasStoredAPIKey     bool
-	StoredAPIKeyPreview string
-}
-
-type ProviderOption struct {
-	ID              string
-	Name            string
-	Type            string
-	Implemented     bool
-	RequiresBaseURL bool
-	Capabilities    providers.Capabilities
-	DefaultBaseURL  string
-	BaseURLOptions  []providers.BaseURLOption
-	DefaultModel    string
-	APIKeyEnv       string
-	Notes           string
-}
-
 type ProviderSetupItem struct {
 	ID              string                    `json:"id"`
 	CatalogID       string                    `json:"catalog_id,omitempty"`
@@ -462,16 +415,18 @@ type ProviderSetupItem struct {
 	Notes           string                    `json:"notes,omitempty"`
 }
 
+// ProviderSetupUpdate changes the fields that are present; an empty value
+// resets a field to its built-in default (or clears the key).
 type ProviderSetupUpdate struct {
-	Name            string                `json:"name,omitempty"`
-	Type            string                `json:"type,omitempty"`
-	APIKey          string                `json:"api_key,omitempty"`
-	BaseURL         string                `json:"base_url,omitempty"`
-	Model           string                `json:"model,omitempty"`
-	ContextWindow   int                   `json:"context_window,omitempty"`
-	ReasoningEffort string                `json:"reasoning_effort,omitempty"`
-	ToolUseMode     providers.ToolUseMode `json:"tool_use_mode,omitempty"`
-	Active          bool                  `json:"active,omitempty"`
+	Name            *string                `json:"name,omitempty"`
+	Type            *string                `json:"type,omitempty"`
+	APIKey          *string                `json:"api_key,omitempty"`
+	BaseURL         *string                `json:"base_url,omitempty"`
+	Model           *string                `json:"model,omitempty"`
+	ContextWindow   *int                   `json:"context_window,omitempty"`
+	ReasoningEffort *string                `json:"reasoning_effort,omitempty"`
+	ToolUseMode     *providers.ToolUseMode `json:"tool_use_mode,omitempty"`
+	Active          bool                   `json:"active,omitempty"`
 }
 
 type ProviderSetupListResponse struct {

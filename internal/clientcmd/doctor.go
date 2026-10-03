@@ -66,7 +66,7 @@ func runDoctorCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 	}
 	_, _ = fmt.Fprintln(stdout)
 
-	setupProviders := appsetup.ProviderSetupItemsFromConfig(cfg, service.ProviderOptions())
+	setupProviders := appsetup.ProviderItems(cfg)
 	runtimeProviders, err := client.ListSessionProviders(context.Background())
 	if err != nil {
 		_, _ = fmt.Fprintf(stdout, "%s: ERROR runtime providers: %v\n", binaryName, err)

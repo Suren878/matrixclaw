@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -11,16 +12,16 @@ import (
 )
 
 func (m *model) renderSummary() string {
-	summary := setup.SummaryFromDraft(m.draft)
+	summary := m.summary()
 	items := []components.Item{
 		summaryItem("Active provider", fmt.Sprintf("%s (%s)", nonEmpty(summary.Provider.Name, "Not configured"), nonEmpty(summary.Provider.Model, "no model"))),
 		summaryItem(providerAuthSummaryLabel(summary.Provider.ID), nonEmpty(summary.Provider.APIKeyPreview, "Not configured")),
-		summaryItem("Configured providers", fmt.Sprintf("%d", len(setup.ConfiguredProviders(m.draft)))),
+		summaryItem("Configured providers", fmt.Sprintf("%d", len(m.cfg.Providers))),
 		summaryItem("Assistant", fmt.Sprintf("%s · %s", nonEmpty(summary.Assistant.Name, "matrixclaw"), summary.Assistant.Status)),
-		summaryItem("Daemon HTTP", m.draft.HTTPAddr),
-		summaryItem("SQLite", m.draft.DBPath),
-		summaryItem("Timezone", m.draft.Timezone),
-		summaryItem("Autostart", nonEmpty(m.draft.AutostartOnBoot, "no")),
+		summaryItem("Daemon HTTP", m.cfg.Daemon.HTTPAddr),
+		summaryItem("SQLite", m.cfg.Daemon.DBPath),
+		summaryItem("Timezone", m.cfg.Daemon.Timezone),
+		summaryItem("Autostart", yesNo(m.cfg.Daemon.AutostartOnBoot)),
 		summaryItem("Telegram", summary.Telegram.Status),
 	}
 	if m.formError != "" {
@@ -91,7 +92,7 @@ func (m *model) updateSummary(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenChannelsList
 		m.cursor = 0
 	case "enter", "ctrl+s":
-		result, err := m.service.Apply(m.draft)
+		result, err := m.service.Apply(context.Background(), m.cfg)
 		if err != nil {
 			m.formError = err.Error()
 			return m, nil
@@ -113,4 +114,11 @@ func (m *model) updateSuccess(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	return m, nil
+}
+
+// summary is the wizard's config as it would be saved.
+func (m *model) summary() setup.Summary {
+	summary := setup.SummaryFromConfig(m.cfg)
+	summary.Daemon.RuntimeStatus = "Not applied"
+	return summary
 }

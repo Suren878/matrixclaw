@@ -8,8 +8,8 @@ import (
 
 func TestLargeTextEditorEnterKeepsEditingCustomPrompt(t *testing.T) {
 	m := &model{screen: screenAssistantForm}
-	m.draft.AssistantCustomPrompt = "old prompt"
-	m.openTextEditor(textEditAssistantCustomPrompt, "Custom prompt", "", m.draft.AssistantCustomPrompt, false)
+	m.cfg.Assistant.CustomInstructions = "old prompt"
+	m.openTextEditor(textEditAssistantCustomPrompt, "Custom prompt", "", m.cfg.Assistant.CustomInstructions, false)
 	m.textAreaInput.SetValue("first line")
 
 	_, _ = m.updateLargeTextEditor(keyPress(tea.KeyEnter, 0))
@@ -17,7 +17,7 @@ func TestLargeTextEditorEnterKeepsEditingCustomPrompt(t *testing.T) {
 	if m.screen != screenTextEditor {
 		t.Fatalf("screen = %v, want screenTextEditor", m.screen)
 	}
-	if got := m.draft.AssistantCustomPrompt; got != "old prompt" {
+	if got := m.cfg.Assistant.CustomInstructions; got != "old prompt" {
 		t.Fatalf("AssistantCustomPrompt = %q, want unchanged draft", got)
 	}
 }
@@ -32,7 +32,7 @@ func TestLargeTextEditorCtrlSSavesCustomPrompt(t *testing.T) {
 	if m.screen != screenAssistantForm {
 		t.Fatalf("screen = %v, want screenAssistantForm", m.screen)
 	}
-	if got := m.draft.AssistantCustomPrompt; got != "first line\nsecond line" {
+	if got := m.cfg.Assistant.CustomInstructions; got != "first line\nsecond line" {
 		t.Fatalf("AssistantCustomPrompt = %q", got)
 	}
 }

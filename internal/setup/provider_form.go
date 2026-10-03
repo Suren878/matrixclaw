@@ -80,22 +80,6 @@ type ProviderModelPickerState struct {
 	PublicCatalog bool
 }
 
-func ProviderFormSpecForDraft(provider ProviderDraft) ProviderFormSpec {
-	return ProviderFormSpecFromInput(ProviderFormSpecInput{
-		ID:                  provider.ID,
-		CatalogID:           provider.CatalogID,
-		Name:                provider.Name,
-		Type:                provider.Type,
-		APIKey:              provider.APIKey,
-		BaseURL:             provider.BaseURL,
-		Model:               provider.Model,
-		ReasoningEffort:     provider.ReasoningEffort,
-		ToolUseMode:         provider.ToolUseMode,
-		HasStoredAPIKey:     provider.HasStoredAPIKey,
-		StoredAPIKeyPreview: provider.StoredAPIKeyPreview,
-	})
-}
-
 func ProviderFormSpecFromInput(input ProviderFormSpecInput) ProviderFormSpec {
 	providerID := providers.NormalizeProviderID(input.ID)
 	catalogID := providers.NormalizeProviderID(input.CatalogID)

@@ -101,14 +101,22 @@ func (state ProviderFormState) ValidationMessage(requireAPIKey bool) string {
 }
 
 func (state ProviderFormState) ToSetupUpdate(providerType string, active bool) ProviderSetupUpdate {
+	toolUseMode := state.ToolUseMode
 	return ProviderSetupUpdate{
-		Name:            state.Name,
-		Type:            providerType,
-		BaseURL:         state.BaseURL,
-		Model:           state.Model,
-		APIKey:          state.APIKey,
-		ReasoningEffort: state.ReasoningEffort,
-		ToolUseMode:     state.ToolUseMode,
+		Name:            nonEmptyPointer(state.Name),
+		Type:            nonEmptyPointer(providerType),
+		BaseURL:         nonEmptyPointer(state.BaseURL),
+		Model:           nonEmptyPointer(state.Model),
+		APIKey:          nonEmptyPointer(state.APIKey),
+		ReasoningEffort: nonEmptyPointer(state.ReasoningEffort),
+		ToolUseMode:     map[bool]*providers.ToolUseMode{true: &toolUseMode}[toolUseMode != ""],
 		Active:          active,
 	}
+}
+
+func nonEmptyPointer(value string) *string {
+	if value = strings.TrimSpace(value); value == "" {
+		return nil
+	}
+	return &value
 }

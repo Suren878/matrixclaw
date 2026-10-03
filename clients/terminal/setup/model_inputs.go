@@ -85,36 +85,29 @@ func (m *model) applyTextEditorValue() {
 	}
 	switch m.textEditorTarget {
 	case textEditDaemonHTTPAddr:
-		m.draft.HTTPAddr = value
+		m.cfg.Daemon.HTTPAddr = value
 	case textEditDaemonDBPath:
-		m.draft.DBPath = value
+		m.cfg.Daemon.DBPath = value
 	case textEditDaemonTimezone:
-		m.draft.Timezone = value
+		m.cfg.Daemon.Timezone = value
 	case textEditProviderName:
 		m.editingProvider.Name = value
 	case textEditProviderAPIKey:
 		if value != "" {
 			m.editingProvider.APIKey = value
-			if m.providerRequiresKeyCheck() {
-				m.editingProvider.HasStoredAPIKey = false
-				m.editingProvider.StoredAPIKeyPreview = ""
-			} else {
-				m.editingProvider.HasStoredAPIKey = true
-				m.editingProvider.StoredAPIKeyPreview = setup.MaskSecret(value)
-			}
 		}
 	case textEditProviderModel:
 		m.editingProvider.Model = value
 	case textEditProviderBaseURL:
 		m.editingProvider.BaseURL = value
 	case textEditAssistantName:
-		m.draft.AssistantName = value
+		m.cfg.Assistant.Name = value
 	case textEditAssistantCustomPrompt:
-		m.draft.AssistantCustomPrompt = value
+		m.cfg.Assistant.CustomInstructions = value
 	case textEditTelegramBotToken:
-		m.draft.TelegramBotToken = value
+		m.cfg.Clients.Telegram.BotToken = value
 	case textEditTelegramAllowedUID:
-		m.draft.TelegramAllowedUID = value
+		m.cfg.Clients.Telegram.AllowedUserID = value
 	}
 }
 
@@ -125,30 +118,19 @@ func (m *model) afterTextEditorApply(ctx context.Context) (bool, error) {
 	if strings.TrimSpace(m.editingProvider.APIKey) == "" {
 		return false, errors.New("API key is required")
 	}
-	if !m.providerRequiresKeyCheck() {
+	if !m.providerChecksKey() {
 		return false, nil
 	}
-	response, err := m.loadProviderModels(ctx)
-	if err != nil {
-		m.editingProvider.HasStoredAPIKey = true
-		m.editingProvider.StoredAPIKeyPreview = setup.MaskSecret(m.editingProvider.APIKey)
-		m.formError = "Could not load remote models: " + err.Error()
-		m.screen = screenProviderForm
-		return true, nil
-	}
+	response := m.loadProviderModels(ctx)
 	if response.Status != setup.ProviderModelStatusOK {
-		m.editingProvider.HasStoredAPIKey = true
-		m.editingProvider.StoredAPIKeyPreview = setup.MaskSecret(m.editingProvider.APIKey)
 		if response.ManualInput {
-			m.openProviderModelTextEditor(setup.ProviderModelCatalogManualMessage(response))
+			m.openProviderModelTextEditor(manualModelMessage(response.Message))
 		} else {
-			m.formError = setup.ProviderModelCatalogMessage(response)
+			m.formError = response.Message
 			m.screen = screenProviderForm
 		}
 		return true, nil
 	}
-	m.editingProvider.HasStoredAPIKey = true
-	m.editingProvider.StoredAPIKeyPreview = setup.MaskSecret(m.editingProvider.APIKey)
 	m.formError = ""
 	m.screen = screenProviderModelList
 	return true, nil

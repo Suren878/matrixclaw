@@ -24,7 +24,7 @@ func (s *Service) UpdateVoiceModule(id string, update VoiceModuleUpdate) ([]Voic
 	if id == "" {
 		return nil, fmt.Errorf("voice module id is required")
 	}
-	cfg, err := s.update(func(cfg *Config) error {
+	cfg, err := s.Update(func(cfg *Config) error {
 		current := voiceModuleConfigByID(cfg.Modules, id)
 		if update.Enabled != nil {
 			current.Enabled = *update.Enabled

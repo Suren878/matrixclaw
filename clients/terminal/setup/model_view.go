@@ -2,8 +2,6 @@ package setup
 
 import (
 	tea "charm.land/bubbletea/v2"
-
-	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
 func (m *model) View() tea.View {
@@ -20,7 +18,7 @@ func (m *model) viewContent() string {
 	case screenIntro:
 		return m.renderSplash()
 	case screenDaemonList:
-		summary := setup.SummaryFromDraft(m.draft)
+		summary := m.summary()
 		return m.renderStepList("Daemon", "Step 1/5", "Server", daemonListStatus(summary.Daemon))
 	case screenDaemonForm:
 		return m.renderDaemonForm()
@@ -45,7 +43,7 @@ func (m *model) viewContent() string {
 	case screenAssistantForm:
 		return m.renderAssistantForm()
 	case screenChannelsList:
-		summary := setup.SummaryFromDraft(m.draft)
+		summary := m.summary()
 		return m.renderStepList("Channels", "Step 4/5", "Telegram", summary.Telegram.Status)
 	case screenTelegramForm:
 		return m.renderTelegramForm()
