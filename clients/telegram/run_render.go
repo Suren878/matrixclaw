@@ -165,24 +165,62 @@ func formatAssistantTelegramChunks(text string) []telegramFormattedText {
 	return formatted
 }
 
+// splitTelegramText cuts text into chunks of at most limit runes; a code block
+// cut in two is closed at the end of one chunk and reopened in the next.
 func splitTelegramText(text string, limit int) []string {
 	text = strings.TrimSpace(strings.ReplaceAll(text, "\r\n", "\n"))
-	if text == "" || limit <= 0 {
+	if text == "" || limit <= len(codeFenceClose) {
 		return nil
 	}
 	runes := []rune(text)
 	chunks := make([]string, 0, (len(runes)+limit-1)/limit)
 	for len(runes) > limit {
 		split := telegramTextSplitIndex(runes, limit)
-		if chunk := strings.TrimSpace(string(runes[:split])); chunk != "" {
+		chunk := string(runes[:split])
+		rest := string(runes[split:])
+		if openFence(chunk) != "" {
+			split = telegramTextSplitIndex(runes, limit-len(codeFenceClose))
+			chunk, rest = string(runes[:split]), string(runes[split:])
+		}
+		chunk = strings.TrimSpace(chunk)
+		if fence := openFence(chunk); fence != "" {
+			chunk += codeFenceClose
+			rest = fence + "\n" + strings.TrimLeft(rest, "\n")
+		} else {
+			rest = strings.TrimSpace(rest)
+		}
+		if chunk != "" {
 			chunks = append(chunks, chunk)
 		}
-		runes = []rune(strings.TrimSpace(string(runes[split:])))
+		runes = []rune(rest)
 	}
 	if chunk := strings.TrimSpace(string(runes)); chunk != "" {
 		chunks = append(chunks, chunk)
 	}
 	return chunks
+}
+
+const codeFenceClose = "\n```"
+
+// openFence is the opening line of the code block text leaves open, if any;
+// one too long to repeat is a bare fence.
+func openFence(text string) string {
+	open := ""
+	for line := range strings.SplitSeq(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "```") {
+			continue
+		}
+		if open == "" {
+			open = trimmed
+			if len(open) > 24 {
+				open = "```"
+			}
+		} else {
+			open = ""
+		}
+	}
+	return open
 }
 
 func telegramTextSplitIndex(runes []rune, limit int) int {

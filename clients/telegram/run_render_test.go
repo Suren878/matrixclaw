@@ -259,3 +259,29 @@ func TestAgentStatusExplainsWhatTheSubagentDoes(t *testing.T) {
 		t.Fatalf("background line = %q", got)
 	}
 }
+
+func TestLongCodeBlocksStayCodeAcrossChunks(t *testing.T) {
+	code := strings.Repeat("    total = a * b * c  # multiply the three inputs\n", 110)
+	text := "Here is the script:\n```python\n" + code + "```\nRun it with python3 and check the output."
+
+	chunks := formatAssistantTelegramChunks(text)
+
+	if len(chunks) < 2 {
+		t.Fatalf("chunks = %d, want the code split", len(chunks))
+	}
+	for i, chunk := range chunks {
+		if len([]rune(chunk.Plain)) > defaultMessageLimit || strings.HasSuffix(chunk.Plain, "…") {
+			t.Fatalf("chunk %d is clipped: %d runes", i, len([]rune(chunk.Plain)))
+		}
+		if strings.Contains(chunk.Text, "<i>") {
+			t.Fatalf("chunk %d renders code as prose: %q", i, chunk.Text[:200])
+		}
+	}
+	last := chunks[len(chunks)-1].Text
+	if !strings.HasSuffix(last, "</pre>\nRun it with python3 and check the output.") {
+		t.Fatalf("last chunk ends %q", last[max(0, len(last)-120):])
+	}
+	if !strings.HasPrefix(chunks[1].Plain, "```python\n    total") {
+		t.Fatalf("second chunk starts %q", chunks[1].Plain[:40])
+	}
+}
