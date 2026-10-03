@@ -183,7 +183,6 @@ func (s *Server) routes() {
 		{"POST /v1/modules/voice/tts", s.handleTextToSpeech},
 		{"POST /v1/modules/voice/stt", withBodyLimit(voiceAudioJSONBodyLimitBytes, s.handleSpeechToText)},
 		{"GET /v1/modules/voice/realtime_voice", s.handleRealtimeVoiceModule},
-		{"PATCH /v1/modules/voice/realtime_voice", ownerOnly(s.handleRealtimeVoiceModuleUpdate)},
 		{"POST /v1/realtime-voice/sessions", s.handleRealtimeVoiceSessionCreate},
 		{"GET /v1/realtime-voice/sessions/{id}", s.handleRealtimeVoiceSession},
 		{"DELETE /v1/realtime-voice/sessions/{id}", s.handleRealtimeVoiceSessionClose},

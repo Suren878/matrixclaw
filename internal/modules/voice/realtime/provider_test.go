@@ -179,22 +179,38 @@ func TestApplyResolvesKeysInOrder(t *testing.T) {
 	}
 }
 
-func TestEditStoresOnlyUserValues(t *testing.T) {
+func TestSettingsStoreOnlyUserValues(t *testing.T) {
 	m := NewManager(nil, langSpec)
-	module := setup.VoiceModuleConfig{Providers: map[string]setup.VoiceProviderConfig{"lang": {APIKey: "old"}}}
-	enabled := true
-	err := m.Edit(&module, setup.VoiceModuleUpdate{Enabled: &enabled, ProviderID: "LANG", ProviderConfig: &setup.VoiceProviderConfig{
-		ModelID: "m1", VoiceID: "v2", Language: "ru", Endpoint: "wss://lang.example/ws", RuntimeMode: "always_running",
-	}})
-	if err != nil {
-		t.Fatal(err)
+	cfg := setup.Config{Modules: setup.ModulesConfig{RealtimeVoice: setup.VoiceModuleConfig{
+		Providers: map[string]setup.VoiceProviderConfig{"lang": {APIKey: "old"}},
+	}}}
+	for _, change := range []struct {
+		path  []string
+		value string
+	}{
+		{[]string{"lang", "model"}, "m1"},
+		{[]string{"lang", "language"}, "ru"},
+		{[]string{"lang", "advanced", "endpoint"}, "wss://lang.example/ws"},
+	} {
+		edit, err := m.Change(context.Background(), change.path, change.value)
+		if err != nil {
+			t.Fatal(change.path, err)
+		}
+		if err := edit.Config(&cfg); err != nil {
+			t.Fatal(err)
+		}
 	}
-	want := setup.VoiceProviderConfig{APIKey: "old", VoiceID: "v2", Language: "ru-RU"}
-	if !module.Enabled || module.ProviderID != "lang" || module.Providers["lang"] != want {
-		t.Fatalf("module = %+v", module)
+	if got := cfg.Modules.RealtimeVoice.Providers["lang"]; got != (setup.VoiceProviderConfig{APIKey: "old", Language: "ru-RU"}) {
+		t.Fatalf("stored = %+v", got)
 	}
-	if err := m.Edit(&module, setup.VoiceModuleUpdate{ProviderID: "nope"}); err == nil {
-		t.Fatal("expected an unknown provider to fail")
+	for _, bad := range [][]string{{"lang", "model"}, {"nope", "model"}} {
+		if _, err := m.Change(context.Background(), bad, "m9"); err == nil {
+			t.Fatalf("%v = m9 was accepted", bad)
+		}
+	}
+	choose, err := m.Change(context.Background(), []string{"provider"}, "lang")
+	if err != nil || len(choose.Open) != 1 || choose.Open[0] != "lang" {
+		t.Fatalf("choosing a provider without a key = %+v, %v", choose, err)
 	}
 }
 

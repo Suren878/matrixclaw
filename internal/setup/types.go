@@ -267,12 +267,6 @@ type VoiceProviderConfig struct {
 	Threads     int    `json:"threads,omitempty"`
 }
 
-type VoiceModuleUpdate struct {
-	Enabled        *bool                `json:"enabled,omitempty"`
-	ProviderID     string               `json:"provider_id,omitempty"`
-	ProviderConfig *VoiceProviderConfig `json:"provider_config,omitempty"`
-}
-
 type ProviderSetupItem struct {
 	ID              string                    `json:"id"`
 	CatalogID       string                    `json:"catalog_id,omitempty"`

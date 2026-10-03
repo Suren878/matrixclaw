@@ -10,15 +10,6 @@ func storageCommand(parts ...string) string {
 	return modulesCommand(values...)
 }
 
-func voiceModuleCommand(moduleID string, parts ...string) string {
-	values := append([]string{moduleID}, parts...)
-	return modulesCommand(values...)
-}
-
-func realtimeVoiceCommand(parts ...string) string {
-	return voiceModuleCommand("realtime_voice", parts...)
-}
-
 func storageCommandPrefix(parts ...string) string {
 	return storageCommand(parts...) + " "
 }

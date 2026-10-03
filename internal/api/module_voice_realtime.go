@@ -11,30 +11,12 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
-	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/coder/websocket"
 )
 
 const realtimeVoiceWebSocketReadLimit = 8 << 20
 
 func (s *Server) handleRealtimeVoiceModule(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, realtime.ModuleResponse{Module: s.Realtime.Descriptor(r.Context())})
-}
-
-func (s *Server) handleRealtimeVoiceModuleUpdate(w http.ResponseWriter, r *http.Request) {
-	var update setup.VoiceModuleUpdate
-	if !decodeJSON(w, r, &update) {
-		return
-	}
-	if _, err := s.Setup.Update(func(cfg *setup.Config) error {
-		return s.Realtime.Edit(&cfg.Modules.RealtimeVoice, update)
-	}); err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if !s.reload(w, r.Context()) {
-		return
-	}
 	writeJSON(w, http.StatusOK, realtime.ModuleResponse{Module: s.Realtime.Descriptor(r.Context())})
 }
 

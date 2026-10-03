@@ -123,44 +123,6 @@ func assistantIdentity(name string) string {
 	return "Assistant identity:\n- Your configured assistant name is " + strconv.Quote(name) + ". Use this exact name when asked who you are."
 }
 
-// Edit applies update to the stored realtime settings; values equal to the
-// provider's defaults are not stored, and an empty key keeps the stored one.
-func (m *Manager) Edit(module *setup.VoiceModuleConfig, update setup.VoiceModuleUpdate) error {
-	if update.Enabled != nil {
-		module.Enabled = *update.Enabled
-	}
-	providerID := normalizeID(module.ProviderID)
-	if update.ProviderID != "" {
-		spec, ok := m.spec(update.ProviderID)
-		if !ok {
-			return errors.New("realtime voice provider " + strconv.Quote(update.ProviderID) + " is not available")
-		}
-		providerID = spec.ID
-		module.ProviderID = spec.ID
-	}
-	if update.ProviderConfig == nil {
-		return nil
-	}
-	spec, ok := m.spec(providerID)
-	if !ok {
-		spec = m.specs[0]
-	}
-	next := *update.ProviderConfig
-	stored := module.Providers[spec.ID]
-	next.APIKey = cmp.Or(strings.TrimSpace(next.APIKey), stored.APIKey)
-	next.APIKeyEnv = cmp.Or(strings.TrimSpace(next.APIKeyEnv), stored.APIKeyEnv)
-	next.Endpoint = omitDefault(next.Endpoint, spec.Endpoint)
-	next.ModelID = omitDefault(next.ModelID, spec.DefaultModel)
-	next.VoiceID = omitDefault(next.VoiceID, spec.DefaultVoice)
-	next.Language = omitDefault(spec.NormalizeLanguage(next.Language), "auto")
-	next.RuntimeMode, next.BinaryPath, next.Threads, next.Autostart = "", "", 0, false
-	if module.Providers == nil {
-		module.Providers = map[string]setup.VoiceProviderConfig{}
-	}
-	module.Providers[spec.ID] = next
-	return nil
-}
-
 func omitDefault(value string, def string) string {
 	if value = strings.TrimSpace(value); strings.EqualFold(value, def) {
 		return ""

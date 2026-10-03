@@ -96,7 +96,6 @@ var clientRoutes = []struct {
 	{"POST", "/v1/modules/voice/tts", "POST /v1/modules/voice/tts"},
 	{"POST", "/v1/modules/voice/stt", "POST /v1/modules/voice/stt"},
 	{"GET", "/v1/modules/voice/realtime_voice", "GET /v1/modules/voice/realtime_voice"},
-	{"PATCH", "/v1/modules/voice/realtime_voice", "PATCH /v1/modules/voice/realtime_voice"},
 	{"POST", "/v1/realtime-voice/sessions", "POST /v1/realtime-voice/sessions"},
 	{"GET", "/v1/realtime-voice/sessions/v1", "GET /v1/realtime-voice/sessions/{id}"},
 	{"DELETE", "/v1/realtime-voice/sessions/v1", "DELETE /v1/realtime-voice/sessions/{id}"},
