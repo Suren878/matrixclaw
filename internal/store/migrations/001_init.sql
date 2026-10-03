@@ -169,18 +169,6 @@ CREATE TABLE IF NOT EXISTS approvals (
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS file_snapshots (
-    id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    path TEXT NOT NULL,
-    content TEXT NOT NULL,
-    version INTEGER NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    UNIQUE(session_id, path, version),
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-);
-
 CREATE TABLE IF NOT EXISTS client_deliveries (
     id TEXT PRIMARY KEY,
     type TEXT NOT NULL,
@@ -277,9 +265,6 @@ CREATE INDEX IF NOT EXISTS idx_session_inputs_target_run
 
 CREATE INDEX IF NOT EXISTS idx_memories_scope_workdir_updated
     ON memories(scope, working_dir, updated_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_file_snapshots_session_path_version
-    ON file_snapshots(session_id, path, version DESC);
 
 CREATE INDEX IF NOT EXISTS idx_client_deliveries_status
     ON client_deliveries(client, type, status, created_at);

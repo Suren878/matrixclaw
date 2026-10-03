@@ -139,10 +139,6 @@ type PermissionRuleStore interface {
 	ListPermissionRules(ctx context.Context, sessionIDs []string) ([]permission.Rule, error)
 }
 
-type FileSnapshotStore interface {
-	CreateFileSnapshot(ctx context.Context, snapshot FileSnapshot) (FileSnapshot, error)
-}
-
 type Store interface {
 	SessionStore
 	SubagentTaskStore
@@ -162,7 +158,6 @@ type Store interface {
 	MemoryStore
 	ApprovalStore
 	PermissionRuleStore
-	FileSnapshotStore
 }
 
 // RunStarter starts the execution of an accepted run; by default the core

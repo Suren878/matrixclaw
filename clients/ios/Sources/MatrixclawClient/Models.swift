@@ -454,7 +454,6 @@ public enum EventType: String, Codable, Sendable {
     case toolUpdated = "tool.updated"
     case approvalRequested = "approval.requested"
     case approvalResolved = "approval.resolved"
-    case fileVersioned = "file.versioned"
     case unknown
 
     public init(from decoder: Decoder) throws {

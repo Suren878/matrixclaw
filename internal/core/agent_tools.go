@@ -109,10 +109,6 @@ func (t coreTools) Execute(ctx context.Context, name string, call tools.Call) (t
 }
 
 func (t coreTools) Finish(ctx context.Context, name string, call tools.Call, result tools.Result, message transcript.Message) error {
-	prepared := preparedToolCall{SessionID: call.SessionID, RunID: call.RunID, ToolName: name, ToolCallID: call.ToolCallID}
-	if err := t.c.saveFileVersionSnapshot(ctx, prepared, result, message.CreatedAt); err != nil {
-		return err
-	}
 	return t.c.recordSubagentResultMessage(ctx, result.Metadata, message.ID)
 }
 

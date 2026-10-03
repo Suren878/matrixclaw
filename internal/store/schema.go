@@ -190,7 +190,7 @@ CREATE TABLE IF NOT EXISTS session_todos (
 // dropRetiredTables removes the Planning Mode tables that todo lists replaced
 // and the web research job tables (children before work_jobs).
 func dropRetiredTables(db *sql.DB) error {
-	for _, table := range []string{"plan_runs", "session_plan_items", "session_goals", "work_facts", "work_artifacts", "work_jobs"} {
+	for _, table := range []string{"plan_runs", "session_plan_items", "session_goals", "work_facts", "work_artifacts", "work_jobs", "file_snapshots"} {
 		if _, err := db.Exec(`DROP TABLE IF EXISTS ` + table); err != nil {
 			return fmt.Errorf("store: drop %s: %w", table, err)
 		}

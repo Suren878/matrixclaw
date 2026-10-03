@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -27,9 +26,6 @@ func (c *Core) finishToolCall(ctx context.Context, prepared preparedToolCall, in
 		return transcript.Message{}, nil, err
 	}
 	c.publishFinishedToolUpdate(prepared, resultMessage.ID, result)
-	if err := c.saveFileVersionSnapshot(ctx, prepared, result, resultMessage.CreatedAt); err != nil {
-		return transcript.Message{}, nil, err
-	}
 	if err := c.saveRunCheckpoint(ctx, prepared.RunID); err != nil {
 		return transcript.Message{}, nil, err
 	}
@@ -72,28 +68,4 @@ func (c *Core) publishToolUpdate(sessionID string, runID string, update ToolUpda
 		RunID:     runID,
 		Payload:   update,
 	})
-}
-
-func (c *Core) saveFileVersionSnapshot(ctx context.Context, prepared preparedToolCall, result tools.Result, createdAt time.Time) error {
-	if result.FileVersion == nil {
-		return nil
-	}
-	fileSnapshot, err := c.store.CreateFileSnapshot(ctx, FileSnapshot{
-		ID:        c.newID("file"),
-		SessionID: prepared.SessionID,
-		Path:      result.FileVersion.Path,
-		Content:   result.FileVersion.NewContent,
-		CreatedAt: createdAt,
-		UpdatedAt: createdAt,
-	})
-	if err != nil {
-		return err
-	}
-	c.publishEvent(Event{
-		Type:      EventFileVersioned,
-		SessionID: prepared.SessionID,
-		RunID:     prepared.RunID,
-		Payload:   fileSnapshot,
-	})
-	return nil
 }

@@ -54,16 +54,6 @@ type PermissionNotification struct {
 	Denied     bool   `json:"denied,omitempty"`
 }
 
-type FileSnapshot struct {
-	ID        string    `json:"id"`
-	SessionID string    `json:"session_id"`
-	Path      string    `json:"path"`
-	Content   string    `json:"content"`
-	Version   int       `json:"version"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
 type ToolLifecycleState string
 
 const (
