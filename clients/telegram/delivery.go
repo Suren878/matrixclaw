@@ -376,6 +376,7 @@ func (w *Worker) runRenderState(target chatTarget, runID string) *runDeliverySta
 	state := w.states[key]
 	if state == nil {
 		state = newRunDeliveryState()
+		state.startedAt = w.nowUTC()
 		w.states[key] = state
 	}
 	return state

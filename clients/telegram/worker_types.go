@@ -15,9 +15,11 @@ type Config struct {
 	APIToken string
 	BotToken string
 	// TelegramBaseURL overrides the Bot API address; empty means Telegram's.
-	TelegramBaseURL         string
-	AllowedUserID           int64
-	InlineCachePath         string
+	TelegramBaseURL string
+	AllowedUserID   int64
+	InlineCachePath string
+	// RenderStatePath keeps which Telegram messages show each run in delivery.
+	RenderStatePath         string
 	Geo                     *geo.OSMService
 	Offset                  *atomic.Int64
 	SkipCommandRegistration bool
@@ -34,6 +36,7 @@ type Worker struct {
 	deliveryRetryAt  map[string]time.Time // guarded by delivery
 	deliveryReceipts map[string]time.Time // confirmed sends awaiting daemon acknowledgement
 	states           map[string]*runDeliveryState
+	savedStates      []byte // the render states last written, guarded by delivery
 	prompts          map[string]pendingPrompt
 	callbacks        *recentMap[string]   // long callback data by short ref
 	inline           *recentMap[string]   // inline query text by button token
@@ -47,6 +50,7 @@ type Worker struct {
 }
 
 type runDeliveryState struct {
+	startedAt         time.Time
 	messages          []transcript.Message // the run's messages loaded so far, by seq
 	messageIndex      map[string]int
 	messagesLoaded    bool

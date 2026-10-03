@@ -19,6 +19,7 @@ func (w *Worker) deliverPending(ctx context.Context) error {
 func (w *Worker) deliverPendingDeliveries(ctx context.Context, filter core.ClientDeliveryFilter) error {
 	w.delivery.Lock()
 	defer w.delivery.Unlock()
+	defer w.saveRenderStates()
 
 	ctx = context.WithValue(ctx, telegramDeferredRetryKey{}, true)
 	daemon := w.daemon("")

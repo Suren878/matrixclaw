@@ -47,7 +47,8 @@ func (a *telegramClientAdapter) Apply(ctx context.Context, bootstrap bootstrapCo
 			BotToken:        boot.BotToken,
 			TelegramBaseURL: a.botAPIURL,
 			AllowedUserID:   boot.AllowedUserID,
-			InlineCachePath: telegramInlineCachePath(bootstrap.DBPath),
+			InlineCachePath: telegramStatePath(bootstrap.DBPath, "telegram-inline-cache.json"),
+			RenderStatePath: telegramStatePath(bootstrap.DBPath, "telegram-render-state.json"),
 			Offset:          &a.offset,
 			Geo:             a.geo,
 		}
@@ -134,12 +135,13 @@ func telegramBootstrapFromSetup(cfg setup.TelegramConfig) (telegramClientBootstr
 	return client, nil
 }
 
-func telegramInlineCachePath(dbPath string) string {
+// telegramStatePath is the path of a Telegram worker file next to the database.
+func telegramStatePath(dbPath string, name string) string {
 	dbPath = strings.TrimSpace(dbPath)
 	if dbPath == "" {
 		return ""
 	}
-	return filepath.Join(filepath.Dir(dbPath), "telegram-inline-cache.json")
+	return filepath.Join(filepath.Dir(dbPath), name)
 }
 
 func automationDeliveryTargets(bootstrap bootstrapConfig) []core.ClientDeliveryTarget {

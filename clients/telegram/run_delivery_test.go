@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -208,5 +209,42 @@ func TestRunMessagesSeeUpdatesOfMessagesThatMayStillChange(t *testing.T) {
 	got := load()
 	if len(got) != 3 || got[0].Content != "Let me check." || got[2].ID != "result-call-1" {
 		t.Fatalf("run messages = %+v", got)
+	}
+}
+
+func TestARestartedWorkerContinuesTheRunsMessages(t *testing.T) {
+	now := time.Now()
+	d := newRunDaemon()
+	api := &runRenderBotAPI{}
+	server := httptest.NewServer(http.HandlerFunc(d.serve))
+	t.Cleanup(server.Close)
+	config := Config{BaseURL: server.URL, RenderStatePath: filepath.Join(t.TempDir(), "render.json")}
+	deliver := func(w *Worker) {
+		t.Helper()
+		now = now.Add(5 * time.Second)
+		w.now = func() time.Time { return now }
+		if err := w.deliverPending(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	segment := transcript.Message{ID: "seg-1", Role: transcript.MessageRoleAssistant, Content: "Let me look at the logs first.", Parts: []transcript.MessagePart{
+		{Kind: transcript.MessagePartKindText, Text: &transcript.TextPart{Text: "Let me look at the logs first."}},
+		{Kind: transcript.MessagePartKindFinish, Finish: &transcript.FinishPart{Reason: "tool_calls"}},
+	}}
+	d.add(transcript.Message{ID: "user", Role: transcript.MessageRoleUser, Content: "Why is it down?"}, segment, toolCallMessage("call-1", "bash", `{"command":"journalctl"}`, false))
+	deliver(newWorker(config, api))
+
+	d.add(toolResultMessage("call-1", "bash"), finalReply("Done."))
+	d.set(func(d *runDaemon) { d.run.Status = core.RunStatusCompleted })
+	deliver(newWorker(config, api))
+
+	for _, edit := range api.edits {
+		if edit.MessageID == 2 {
+			t.Fatalf("the shown segment was edited again: %+v", edit)
+		}
+	}
+	texts := api.messageTexts()
+	if len(texts) != 3 || !strings.HasPrefix(texts[0], "✅ Done") || texts[1] != "Let me look at the logs first." || texts[2] != "Done." {
+		t.Fatalf("messages = %q, want the status edited to done, the segment once and the answer", texts)
 	}
 }

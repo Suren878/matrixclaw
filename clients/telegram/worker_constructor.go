@@ -33,6 +33,7 @@ func newWorker(cfg Config, api BotAPI) *Worker {
 	if offset == nil {
 		offset = &atomic.Int64{}
 	}
+	states, savedStates := loadRenderStates(cfg.RenderStatePath, time.Now().UTC())
 	return &Worker{
 		api:              api,
 		config:           cfg,
@@ -41,7 +42,8 @@ func newWorker(cfg Config, api BotAPI) *Worker {
 		offset:           offset,
 		deliveryRetryAt:  map[string]time.Time{},
 		deliveryReceipts: map[string]time.Time{},
-		states:           map[string]*runDeliveryState{},
+		states:           states,
+		savedStates:      savedStates,
 		prompts:          map[string]pendingPrompt{},
 		callbacks:        newRecentMap[string](recentCallbackLimit),
 		inline:           newRecentMap[string](recentInlineLimit),
