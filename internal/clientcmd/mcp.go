@@ -138,10 +138,14 @@ func (r *daemonToolRuntime) Execute(ctx context.Context, toolID string, call too
 		}, nil
 	}
 	if result.ToolResultMessage != nil {
-		return tools.Result{
-			Content: result.ToolResultMessage.Content,
-			Status:  tools.ResultStatusSuccess,
-		}, nil
+		status := tools.ResultStatusSuccess
+		for _, part := range result.ToolResultMessage.Parts {
+			if part.ToolResult != nil {
+				status = tools.ResultStatus(textutil.FirstNonEmpty(part.ToolResult.Status, string(tools.ResultStatusSuccess)))
+				break
+			}
+		}
+		return tools.Result{Content: result.ToolResultMessage.Content, Status: status}, nil
 	}
 	return tools.Result{Content: "matrixclaw tool completed.", Status: tools.ResultStatusSuccess}, nil
 }
