@@ -11,26 +11,19 @@ import (
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
-func (s *Server) handleSessionProviders(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
-	writeJSON(w, http.StatusOK, core.SessionProvidersResponse{Providers: s.core.SessionProviderOptions()})
+func (s *Server) handleSessionProviders(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, core.SessionProvidersResponse{Providers: s.Core.SessionProviderOptions()})
 }
 
-func (s *Server) handleSessionLLMModels(w http.ResponseWriter, r *http.Request, sessionID string) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
-	providerID, modelID, models, err := s.core.ModelsForSession(r.Context(), sessionID)
+func (s *Server) handleSessionLLMModels(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("id")
+	providerID, modelID, models, err := s.Core.ModelsForSession(r.Context(), sessionID)
 	if shouldReloadSessionLLM(err) {
 		if reloadErr := s.reloadSessionLLMRegistry(r.Context()); reloadErr != nil {
 			writeErrorMessage(w, http.StatusInternalServerError, "reload provider registry: "+reloadErr.Error())
 			return
 		}
-		providerID, modelID, models, err = s.core.ModelsForSession(r.Context(), sessionID)
+		providerID, modelID, models, err = s.Core.ModelsForSession(r.Context(), sessionID)
 	}
 	if err != nil {
 		writeError(w, err)
@@ -43,25 +36,22 @@ func (s *Server) handleSessionLLMModels(w http.ResponseWriter, r *http.Request, 
 	})
 }
 
-func (s *Server) handleSessionLLMUpdate(w http.ResponseWriter, r *http.Request, sessionID string) {
-	if r.Method != http.MethodPatch {
-		writeMethodNotAllowed(w, http.MethodPatch)
-		return
-	}
+func (s *Server) handleSessionLLMUpdate(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("id")
 	var req core.UpdateSessionLLMRequest
-	if !decodeJSONBody(w, r, &req) {
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 
 	switch {
 	case strings.TrimSpace(req.ProviderID) != "":
-		session, err := s.core.UpdateSessionProvider(r.Context(), sessionID, req.ProviderID)
+		session, err := s.Core.UpdateSessionProvider(r.Context(), sessionID, req.ProviderID)
 		if shouldReloadSessionLLM(err) {
 			if reloadErr := s.reloadSessionLLMRegistry(r.Context()); reloadErr != nil {
 				writeErrorMessage(w, http.StatusInternalServerError, "reload provider registry: "+reloadErr.Error())
 				return
 			}
-			session, err = s.core.UpdateSessionProvider(r.Context(), sessionID, req.ProviderID)
+			session, err = s.Core.UpdateSessionProvider(r.Context(), sessionID, req.ProviderID)
 		}
 		if err != nil {
 			writeError(w, err)
@@ -69,13 +59,13 @@ func (s *Server) handleSessionLLMUpdate(w http.ResponseWriter, r *http.Request, 
 		}
 		writeJSON(w, http.StatusOK, core.SessionResponse{Session: session})
 	case strings.TrimSpace(req.ModelID) != "":
-		session, err := s.core.UpdateSessionModel(r.Context(), sessionID, req.ModelID)
+		session, err := s.Core.UpdateSessionModel(r.Context(), sessionID, req.ModelID)
 		if shouldReloadSessionLLM(err) {
 			if reloadErr := s.reloadSessionLLMRegistry(r.Context()); reloadErr != nil {
 				writeErrorMessage(w, http.StatusInternalServerError, "reload provider registry: "+reloadErr.Error())
 				return
 			}
-			session, err = s.core.UpdateSessionModel(r.Context(), sessionID, req.ModelID)
+			session, err = s.Core.UpdateSessionModel(r.Context(), sessionID, req.ModelID)
 		}
 		if err != nil {
 			writeError(w, err)
@@ -92,25 +82,19 @@ func (s *Server) handleSessionLLMUpdate(w http.ResponseWriter, r *http.Request, 
 }
 
 func (s *Server) persistSessionModelSelection(ctx context.Context, session core.Session) error {
-	if s.setup == nil {
-		return nil
-	}
 	providerID := strings.TrimSpace(session.ProviderID)
 	modelID := strings.TrimSpace(session.ModelID)
 	if providerID == "" || modelID == "" {
 		return nil
 	}
-	if _, err := s.setup.ConfigureProvider(providerID, setup.ProviderSetupUpdate{Model: &modelID}); err != nil {
+	if _, err := s.Setup.ConfigureProvider(providerID, setup.ProviderSetupUpdate{Model: &modelID}); err != nil {
 		return err
 	}
 	return s.reloadSessionLLMRegistry(ctx)
 }
 
 func (s *Server) reloadSessionLLMRegistry(ctx context.Context) error {
-	if s.adminReload == nil {
-		return nil
-	}
-	if err := s.adminReload(ctx); err != nil {
+	if err := s.Reload(ctx); err != nil {
 		return err
 	}
 	s.markRuntimeReloaded()

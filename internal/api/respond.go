@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -36,86 +37,42 @@ func writeNotFound(w http.ResponseWriter) {
 	writeErrorMessage(w, http.StatusNotFound, "not found")
 }
 
-func decodeJSONBody(w http.ResponseWriter, r *http.Request, target any) bool {
-	return decodeJSONBodyLimit(w, r, target, defaultJSONBodyLimitBytes)
+type bodyLimitKey struct{}
+
+// withBodyLimit raises the JSON body limit of one route.
+func withBodyLimit(limit int64, handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		handler(w, r.WithContext(context.WithValue(r.Context(), bodyLimitKey{}, limit)))
+	}
 }
 
-func decodeJSONBodyLimit(w http.ResponseWriter, r *http.Request, target any, limit int64) bool {
-	if requestBodyTooLarge(r, limit) {
+// decodeJSON reads the request body into target; an empty body leaves target
+// as it is. It answers 400 or 413 and returns false when the body is bad.
+func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
+	limit := defaultJSONBodyLimitBytes
+	if routeLimit, ok := r.Context().Value(bodyLimitKey{}).(int64); ok {
+		limit = routeLimit
+	}
+	if r.ContentLength > limit {
 		writeErrorMessage(w, http.StatusRequestEntityTooLarge, "request body too large")
 		return false
 	}
-	decoder := newLimitedJSONDecoder(w, r, limit)
-	if err := decoder.Decode(target); err != nil {
-		writeJSONDecodeError(w, err)
-		return false
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		writeInvalidJSON(w)
-		return false
-	}
-	return true
-}
-
-func decodeOptionalJSONBody(w http.ResponseWriter, r *http.Request, target any) bool {
-	return decodeOptionalJSONBodyLimit(w, r, target, defaultJSONBodyLimitBytes)
-}
-
-func decodeOptionalJSONBodyLimit(w http.ResponseWriter, r *http.Request, target any, limit int64) bool {
-	if requestBodyTooLarge(r, limit) {
-		writeErrorMessage(w, http.StatusRequestEntityTooLarge, "request body too large")
-		return false
-	}
-	decoder := newLimitedJSONDecoder(w, r, limit)
-	if err := decoder.Decode(target); err != nil {
-		if errors.Is(err, io.EOF) {
-			return true
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
+	if err := decoder.Decode(target); err != nil && !errors.Is(err, io.EOF) {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			writeErrorMessage(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return false
 		}
-		writeJSONDecodeError(w, err)
-		return false
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		writeInvalidJSON(w)
 		return false
+	} else if err == nil {
+		if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+			writeInvalidJSON(w)
+			return false
+		}
 	}
 	return true
-}
-
-func newLimitedJSONDecoder(w http.ResponseWriter, r *http.Request, limit int64) *json.Decoder {
-	if limit <= 0 {
-		limit = defaultJSONBodyLimitBytes
-	}
-	return json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
-}
-
-func requestBodyTooLarge(r *http.Request, limit int64) bool {
-	return limit > 0 && r.ContentLength > limit
-}
-
-func writeJSONDecodeError(w http.ResponseWriter, err error) {
-	var maxBytesError *http.MaxBytesError
-	if errors.As(err, &maxBytesError) {
-		writeErrorMessage(w, http.StatusRequestEntityTooLarge, "request body too large")
-		return
-	}
-	writeInvalidJSON(w)
-}
-
-func writeMethodNotAllowed(w http.ResponseWriter, allowed ...string) {
-	w.Header().Set("Allow", joinAllowed(allowed))
-	writeErrorMessage(w, http.StatusMethodNotAllowed, "method not allowed")
-}
-
-func joinAllowed(allowed []string) string {
-	if len(allowed) == 0 {
-		return ""
-	}
-
-	result := allowed[0]
-	for i := 1; i < len(allowed); i++ {
-		result += ", " + allowed[i]
-	}
-	return result
 }
 
 func writeError(w http.ResponseWriter, err error) {

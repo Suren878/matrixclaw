@@ -6,26 +6,17 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-func (s *Server) handleTools(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
-	writeJSON(w, http.StatusOK, core.ToolsResponse{Tools: s.core.ListToolSpecs()})
+func (s *Server) handleTools(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, core.ToolsResponse{Tools: s.Core.ListToolSpecs()})
 }
 
 func (s *Server) handleToolExecute(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeMethodNotAllowed(w, http.MethodPost)
-		return
-	}
-
 	var req core.ExecuteToolInput
-	if !decodeJSONBody(w, r, &req) {
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 
-	result, err := s.core.ExecuteTool(r.Context(), req)
+	result, err := s.Core.ExecuteTool(r.Context(), req)
 	if err != nil {
 		writeError(w, err)
 		return

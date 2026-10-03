@@ -8,12 +8,8 @@ import (
 )
 
 func (s *Server) handleMemory(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	entries, err := s.core.ListMemories(r.Context(), core.MemoryFilter{
+	entries, err := s.Core.ListMemories(r.Context(), core.MemoryFilter{
 		Scope:      core.MemoryScope(r.URL.Query().Get("scope")),
 		WorkingDir: r.URL.Query().Get("working_dir"),
 		Limit:      limit,

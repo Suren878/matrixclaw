@@ -2,47 +2,34 @@ package api
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-func (s *Server) handleSessionPermissionRules(w http.ResponseWriter, r *http.Request, sessionID string) {
-	switch r.Method {
-	case http.MethodGet:
-		rules, err := s.core.SessionPermissionRules(r.Context(), sessionID)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, core.PermissionRulesResponse{Rules: rules})
-	case http.MethodPost:
-		var request core.PermissionRuleRequest
-		if !decodeJSONBody(w, r, &request) {
-			return
-		}
-		rule, err := s.core.AddPermissionRule(r.Context(), sessionID, request)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, core.PermissionRuleResponse{Rule: rule})
-	default:
-		writeMethodNotAllowed(w, http.MethodGet, http.MethodPost)
+func (s *Server) handleSessionPermissionRules(w http.ResponseWriter, r *http.Request) {
+	rules, err := s.Core.SessionPermissionRules(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeError(w, err)
+		return
 	}
+	writeJSON(w, http.StatusOK, core.PermissionRulesResponse{Rules: rules})
 }
 
-func (s *Server) handlePermissionRuleByID(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		writeMethodNotAllowed(w, http.MethodDelete)
+func (s *Server) handlePermissionRuleCreate(w http.ResponseWriter, r *http.Request) {
+	var request core.PermissionRuleRequest
+	if !decodeJSON(w, r, &request) {
 		return
 	}
-	ruleID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/permission-rules/"), "/")
-	if ruleID == "" || strings.Contains(ruleID, "/") {
-		writeNotFound(w)
+	rule, err := s.Core.AddPermissionRule(r.Context(), r.PathValue("id"), request)
+	if err != nil {
+		writeError(w, err)
 		return
 	}
-	if err := s.core.DeletePermissionRule(r.Context(), ruleID); err != nil {
+	writeJSON(w, http.StatusOK, core.PermissionRuleResponse{Rule: rule})
+}
+
+func (s *Server) handlePermissionRuleDelete(w http.ResponseWriter, r *http.Request) {
+	if err := s.Core.DeletePermissionRule(r.Context(), r.PathValue("id")); err != nil {
 		writeError(w, err)
 		return
 	}

@@ -16,11 +16,6 @@ type eventReadyResponse struct {
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
-
 	sessionID := r.URL.Query().Get("session_id")
 	if sessionID == "" {
 		writeErrorMessage(w, http.StatusBadRequest, "session_id is required")
@@ -42,7 +37,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	events := s.core.SubscribeEventsAfter(r.Context(), sessionID, afterID)
+	events := s.Core.SubscribeEventsAfter(r.Context(), sessionID, afterID)
 	writeSSE(w, "ready", eventReadyResponse{SessionID: sessionID, AfterID: afterID})
 	flusher.Flush()
 

@@ -8,11 +8,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-func (s *Server) handleServerStatus(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
+func (s *Server) handleServerStatus(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, core.ServerStatusResponse{Status: s.collectServerStatus()})
 }
 

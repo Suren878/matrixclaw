@@ -8,135 +8,80 @@ import (
 )
 
 func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		sessions, err := s.core.ListSessions(r.Context(), core.SessionListFilter{})
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, core.SessionsResponse{Sessions: sessions})
-	case http.MethodPost:
-		var req core.CreateSessionRequest
-		if !decodeJSONBody(w, r, &req) {
-			return
-		}
-
-		session, err := s.core.CreateSession(r.Context(), core.CreateSessionInput{
-			Title:           req.Title,
-			Kind:            core.SessionKind(req.Kind),
-			RuntimeID:       core.SessionRuntime(req.RuntimeID),
-			WorkingDir:      req.WorkingDir,
-			ProviderID:      req.ProviderID,
-			ModelID:         req.ModelID,
-			PermissionMode:  core.PermissionMode(req.PermissionMode),
-			ExternalAgentID: req.ExternalAgentID,
-		})
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusCreated, core.SessionResponse{Session: session})
-	default:
-		writeMethodNotAllowed(w, http.MethodGet, http.MethodPost)
+	sessions, err := s.Core.ListSessions(r.Context(), core.SessionListFilter{})
+	if err != nil {
+		writeError(w, err)
+		return
 	}
+	writeJSON(w, http.StatusOK, core.SessionsResponse{Sessions: sessions})
 }
 
-func (s *Server) handleSessionByID(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/v1/sessions/"))
-	if path == "" {
-		writeNotFound(w)
+func (s *Server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
+	var req core.CreateSessionRequest
+	if !decodeJSON(w, r, &req) {
 		return
 	}
-	childRoutes := []struct {
-		suffix string
-		handle func(http.ResponseWriter, *http.Request, string)
-	}{
-		{suffix: "/llm", handle: s.handleSessionLLMUpdate},
-		{suffix: "/permissions", handle: s.handleSessionPermissionsUpdate},
-		{suffix: "/permission-rules", handle: s.handleSessionPermissionRules},
-		{suffix: "/models", handle: s.handleSessionLLMModels},
-		{suffix: "/context", handle: s.handleSessionContext},
-		{suffix: "/usage", handle: s.handleSessionUsage},
-		{suffix: "/budget", handle: s.handleSessionBudget},
-		{suffix: "/todo", handle: s.handleSessionTodo},
-		{suffix: "/tasks", handle: s.handleSessionTasks},
-		{suffix: "/compact", handle: s.handleSessionCompact},
-		{suffix: "/clear", handle: s.handleSessionClear},
-		{suffix: "/system-message", handle: s.handleSessionSystemMessage},
-	}
-	for _, route := range childRoutes {
-		sessionID, matched, ok := sessionChildID(path, route.suffix)
-		if !matched {
-			continue
-		}
-		if !ok {
-			writeNotFound(w)
-			return
-		}
-		route.handle(w, r, sessionID)
+	session, err := s.Core.CreateSession(r.Context(), core.CreateSessionInput{
+		Title:           req.Title,
+		Kind:            core.SessionKind(req.Kind),
+		RuntimeID:       core.SessionRuntime(req.RuntimeID),
+		WorkingDir:      req.WorkingDir,
+		ProviderID:      req.ProviderID,
+		ModelID:         req.ModelID,
+		PermissionMode:  core.PermissionMode(req.PermissionMode),
+		ExternalAgentID: req.ExternalAgentID,
+	})
+	if err != nil {
+		writeError(w, err)
 		return
 	}
-
-	sessionID := path
-	if strings.Contains(sessionID, "/") {
-		writeNotFound(w)
-		return
-	}
-
-	switch r.Method {
-	case http.MethodGet:
-		session, err := s.core.GetSession(r.Context(), sessionID)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, core.SessionResponse{Session: session})
-	case http.MethodPatch:
-		var req core.RenameSessionRequest
-		if !decodeJSONBody(w, r, &req) {
-			return
-		}
-
-		session, err := s.core.RenameSession(r.Context(), core.RenameSessionInput{
-			SessionID: sessionID,
-			Title:     req.Title,
-		})
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, core.SessionResponse{Session: session})
-	case http.MethodDelete:
-		if err := s.core.DeleteSession(r.Context(), sessionID); err != nil {
-			writeError(w, err)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-	default:
-		writeMethodNotAllowed(w, http.MethodGet, http.MethodPatch, http.MethodDelete)
-	}
+	writeJSON(w, http.StatusCreated, core.SessionResponse{Session: session})
 }
 
-func sessionChildID(path string, suffix string) (string, bool, bool) {
-	if !strings.HasSuffix(path, suffix) {
-		return "", false, false
-	}
-	sessionID := strings.TrimSpace(strings.TrimSuffix(path, suffix))
-	return sessionID, true, sessionID != "" && !strings.Contains(sessionID, "/")
-}
-
-func (s *Server) handleSessionPermissionsUpdate(w http.ResponseWriter, r *http.Request, sessionID string) {
-	if r.Method != http.MethodPatch {
-		writeMethodNotAllowed(w, http.MethodPatch)
+func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
+	session, err := s.Core.GetSession(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeError(w, err)
 		return
 	}
+	writeJSON(w, http.StatusOK, core.SessionResponse{Session: session})
+}
+
+func (s *Server) handleSessionRename(w http.ResponseWriter, r *http.Request) {
+	var req core.RenameSessionRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	session, err := s.Core.RenameSession(r.Context(), core.RenameSessionInput{
+		SessionID: r.PathValue("id"),
+		Title:     req.Title,
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, core.SessionResponse{Session: session})
+}
+
+func (s *Server) handleSessionDelete(w http.ResponseWriter, r *http.Request) {
+	if err := s.Core.DeleteSession(r.Context(), r.PathValue("id")); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleSessionPermissionsUpdate(w http.ResponseWriter, r *http.Request) {
 	var req core.UpdateSessionPermissionModeRequest
-	if !decodeJSONBody(w, r, &req) {
+	if !decodeJSON(w, r, &req) {
 		return
 	}
-	session, err := s.core.UpdateSessionPermissionMode(r.Context(), core.UpdateSessionPermissionModeInput{
-		SessionID:      sessionID,
+	if strings.TrimSpace(req.PermissionMode) == "" {
+		writeErrorMessage(w, http.StatusBadRequest, "permission_mode is required")
+		return
+	}
+	session, err := s.Core.UpdateSessionPermissionMode(r.Context(), core.UpdateSessionPermissionModeInput{
+		SessionID:      r.PathValue("id"),
 		PermissionMode: core.NormalizePermissionMode(req.PermissionMode),
 	})
 	if err != nil {

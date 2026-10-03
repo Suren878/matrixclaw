@@ -6,12 +6,8 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-func (s *Server) handleSessionContext(w http.ResponseWriter, r *http.Request, sessionID string) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
-	report, err := s.core.SessionContext(r.Context(), sessionID)
+func (s *Server) handleSessionContext(w http.ResponseWriter, r *http.Request) {
+	report, err := s.Core.SessionContext(r.Context(), r.PathValue("id"))
 	if err != nil {
 		writeError(w, err)
 		return
@@ -19,12 +15,8 @@ func (s *Server) handleSessionContext(w http.ResponseWriter, r *http.Request, se
 	writeJSON(w, http.StatusOK, core.SessionContextResponse{Context: report})
 }
 
-func (s *Server) handleSessionUsage(w http.ResponseWriter, r *http.Request, sessionID string) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
-	report, err := s.core.Usage(r.Context(), core.UsageFilter{SessionID: sessionID})
+func (s *Server) handleSessionUsage(w http.ResponseWriter, r *http.Request) {
+	report, err := s.Core.Usage(r.Context(), core.UsageFilter{SessionID: r.PathValue("id")})
 	if err != nil {
 		writeError(w, err)
 		return
@@ -32,12 +24,8 @@ func (s *Server) handleSessionUsage(w http.ResponseWriter, r *http.Request, sess
 	writeJSON(w, http.StatusOK, core.UsageResponse{Usage: report})
 }
 
-func (s *Server) handleSessionCompact(w http.ResponseWriter, r *http.Request, sessionID string) {
-	if r.Method != http.MethodPost {
-		writeMethodNotAllowed(w, http.MethodPost)
-		return
-	}
-	result, err := s.core.CompactSession(r.Context(), sessionID)
+func (s *Server) handleSessionCompact(w http.ResponseWriter, r *http.Request) {
+	result, err := s.Core.CompactSession(r.Context(), r.PathValue("id"))
 	if err != nil {
 		writeError(w, err)
 		return
@@ -45,12 +33,8 @@ func (s *Server) handleSessionCompact(w http.ResponseWriter, r *http.Request, se
 	writeJSON(w, http.StatusOK, core.SessionCompactResponse{Compact: result})
 }
 
-func (s *Server) handleSessionClear(w http.ResponseWriter, r *http.Request, sessionID string) {
-	if r.Method != http.MethodPost {
-		writeMethodNotAllowed(w, http.MethodPost)
-		return
-	}
-	message, err := s.core.ClearContext(r.Context(), sessionID)
+func (s *Server) handleSessionClear(w http.ResponseWriter, r *http.Request) {
+	message, err := s.Core.ClearContext(r.Context(), r.PathValue("id"))
 	if err != nil {
 		writeError(w, err)
 		return

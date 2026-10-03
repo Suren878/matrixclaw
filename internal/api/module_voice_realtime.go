@@ -18,51 +18,32 @@ import (
 const realtimeVoiceWebSocketReadLimit = 8 << 20
 
 func (s *Server) handleRealtimeVoiceModule(w http.ResponseWriter, r *http.Request) {
-	if s.realtimeVoice == nil {
-		writeErrorMessage(w, http.StatusNotImplemented, "realtime voice service is not configured")
-		return
-	}
-	switch r.Method {
-	case http.MethodGet:
-		writeJSON(w, http.StatusOK, realtime.ModuleResponse{Module: s.realtimeVoice.Descriptor(r.Context())})
-	case http.MethodPatch:
-		if s.setup == nil {
-			writeErrorMessage(w, http.StatusNotImplemented, "setup service is not configured")
-			return
-		}
-		var update setup.VoiceModuleUpdate
-		if !decodeJSONBody(w, r, &update) {
-			return
-		}
-		if _, err := s.setup.Update(func(cfg *setup.Config) error {
-			return s.realtimeVoice.Edit(&cfg.Modules.RealtimeVoice, update)
-		}); err != nil {
-			writeErrorMessage(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		if !s.reload(w, r.Context()) {
-			return
-		}
-		writeJSON(w, http.StatusOK, realtime.ModuleResponse{Module: s.realtimeVoice.Descriptor(r.Context())})
-	default:
-		writeMethodNotAllowed(w, http.MethodGet, http.MethodPatch)
-	}
+	writeJSON(w, http.StatusOK, realtime.ModuleResponse{Module: s.Realtime.Descriptor(r.Context())})
 }
 
-func (s *Server) handleRealtimeVoiceSessions(w http.ResponseWriter, r *http.Request) {
-	if s.realtimeVoice == nil {
-		writeErrorMessage(w, http.StatusNotImplemented, "realtime voice service is not configured")
+func (s *Server) handleRealtimeVoiceModuleUpdate(w http.ResponseWriter, r *http.Request) {
+	var update setup.VoiceModuleUpdate
+	if !decodeJSON(w, r, &update) {
 		return
 	}
-	if r.Method != http.MethodPost {
-		writeMethodNotAllowed(w, http.MethodPost)
+	if _, err := s.Setup.Update(func(cfg *setup.Config) error {
+		return s.Realtime.Edit(&cfg.Modules.RealtimeVoice, update)
+	}); err != nil {
+		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if !s.reload(w, r.Context()) {
+		return
+	}
+	writeJSON(w, http.StatusOK, realtime.ModuleResponse{Module: s.Realtime.Descriptor(r.Context())})
+}
+
+func (s *Server) handleRealtimeVoiceSessionCreate(w http.ResponseWriter, r *http.Request) {
 	var req realtime.SessionCreateRequest
-	if !decodeJSONBody(w, r, &req) {
+	if !decodeJSON(w, r, &req) {
 		return
 	}
-	session, err := s.realtimeVoice.CreateSession(r.Context(), req)
+	session, err := s.Realtime.CreateSession(r.Context(), req)
 	if err != nil {
 		writeRealtimeVoiceError(w, err)
 		return
@@ -70,57 +51,32 @@ func (s *Server) handleRealtimeVoiceSessions(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusCreated, realtime.SessionCreateResponse{Session: session})
 }
 
-func (s *Server) handleRealtimeVoiceSessionByID(w http.ResponseWriter, r *http.Request) {
-	if s.realtimeVoice == nil {
-		writeErrorMessage(w, http.StatusNotImplemented, "realtime voice service is not configured")
+func (s *Server) handleRealtimeVoiceSession(w http.ResponseWriter, r *http.Request) {
+	session, err := s.Realtime.Session(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeRealtimeVoiceError(w, err)
 		return
 	}
-	rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/realtime-voice/sessions/"), "/")
-	sessionID, suffix, _ := strings.Cut(rest, "/")
-	if sessionID == "" {
-		writeNotFound(w)
-		return
-	}
-	if suffix == "stream" {
-		s.handleRealtimeVoiceStream(w, r, sessionID)
-		return
-	}
-	if suffix != "" {
-		writeNotFound(w)
-		return
-	}
-	switch r.Method {
-	case http.MethodGet:
-		session, err := s.realtimeVoice.Session(r.Context(), sessionID)
-		if err != nil {
-			writeRealtimeVoiceError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, realtime.SessionResponse{Session: session})
-	case http.MethodDelete:
-		session, err := s.realtimeVoice.CloseSession(r.Context(), sessionID)
-		if err != nil {
-			writeRealtimeVoiceError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, realtime.SessionResponse{Session: session})
-	default:
-		writeMethodNotAllowed(w, http.MethodGet, http.MethodDelete)
-	}
+	writeJSON(w, http.StatusOK, realtime.SessionResponse{Session: session})
 }
 
-func (s *Server) handleRealtimeVoiceStream(w http.ResponseWriter, r *http.Request, sessionID string) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
+func (s *Server) handleRealtimeVoiceSessionClose(w http.ResponseWriter, r *http.Request) {
+	session, err := s.Realtime.CloseSession(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeRealtimeVoiceError(w, err)
 		return
 	}
+	writeJSON(w, http.StatusOK, realtime.SessionResponse{Session: session})
+}
+
+func (s *Server) handleRealtimeVoiceStream(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
 	if err != nil {
 		return
 	}
 	conn.SetReadLimit(realtimeVoiceWebSocketReadLimit)
 	stream := &realtimeWebSocketStream{conn: conn}
-	if err := s.realtimeVoice.ServeStream(r.Context(), sessionID, stream); err != nil {
+	if err := s.Realtime.ServeStream(r.Context(), r.PathValue("id"), stream); err != nil {
 		_ = stream.Close(err)
 	}
 }

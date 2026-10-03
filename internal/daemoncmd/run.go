@@ -102,15 +102,20 @@ func Run(ctx context.Context) error {
 	defer stopLifetime()
 	app.WithLifetime(lifetime)
 	safego.Go("core.runWakeups", func() { app.RunWakeups(lifetime) })
-	server := api.New(app)
-	server.SetAPIToken(bootstrap.APIToken)
-	server.SetAutomationService(automationService)
-	server.SetStorageStore(storageModule.Store())
-	server.SetSkillsService(skillsModule.Service())
-	server.SetSetupService(bootstrap.SetupService)
-	server.SetModules(daemon.api)
-	server.SetRealtimeVoiceService(realtimeVoice)
-	supervisor := newSupervisor(ctx, server, app, osmGeo, daemon.set)
+	supervisor := newSupervisor(ctx, app, osmGeo, daemon.set)
+	server := api.New(api.Deps{
+		Core:       app,
+		Automation: automationService,
+		Storage:    storageModule.Store(),
+		Realtime:   realtimeVoice,
+		Modules:    daemon.api,
+		Skills:     skillsModule.Service(),
+		Setup:      bootstrap.SetupService,
+		Reload:     supervisor.Reload,
+		Restart:    supervisor.RestartDaemon,
+		Stop:       supervisor.StopDaemon,
+		APIToken:   bootstrap.APIToken,
+	})
 	app.WithRuntimeStatusContext(supervisor)
 	supervisor.SetExternalAgents(sqliteStore, externalRuntimes, bootstrap.Setup.Modules.ExternalAgents)
 	defer func() {

@@ -14,7 +14,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Suren878/matrixclaw/internal/api"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
@@ -32,7 +31,6 @@ const (
 
 type supervisor struct {
 	ctx      context.Context
-	server   *api.Server
 	app      *core.Core
 	telegram *telegramClientAdapter
 	modules  *modules.Set
@@ -66,20 +64,13 @@ func applyAssistantProfile(app assistantProfileSetter, base core.AssistantProfil
 	app.SetAssistantProfile(base)
 }
 
-func newSupervisor(ctx context.Context, server *api.Server, app *core.Core, geo *geo.OSMService, set *modules.Set) *supervisor {
-	s := &supervisor{
+func newSupervisor(ctx context.Context, app *core.Core, geo *geo.OSMService, set *modules.Set) *supervisor {
+	return &supervisor{
 		ctx:      ctx,
-		server:   server,
 		app:      app,
 		modules:  set,
 		telegram: &telegramClientAdapter{geo: geo},
 	}
-	if server != nil {
-		server.SetAdminReload(s.Reload)
-		server.SetAdminRestart(s.RestartDaemon)
-		server.SetAdminStop(s.StopDaemon)
-	}
-	return s
 }
 
 func (s *supervisor) ApplyBootstrap(bootstrap bootstrapConfig) error {

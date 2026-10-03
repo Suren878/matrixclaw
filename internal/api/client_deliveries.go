@@ -11,15 +11,6 @@ import (
 )
 
 func (s *Server) handleClientDeliveries(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
-	if s.core == nil {
-		writeErrorMessage(w, http.StatusServiceUnavailable, "core is not configured")
-		return
-	}
-
 	limit := 20
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 		parsed, err := strconv.Atoi(raw)
@@ -38,7 +29,7 @@ func (s *Server) handleClientDeliveries(w http.ResponseWriter, r *http.Request) 
 		}
 		createdAfter = parsed
 	}
-	deliveries, err := s.core.ListClientDeliveries(r.Context(), core.ClientDeliveryFilter{
+	deliveries, err := s.Core.ListClientDeliveries(r.Context(), core.ClientDeliveryFilter{
 		Client:       r.URL.Query().Get("client"),
 		ExternalKey:  r.URL.Query().Get("external_key"),
 		SessionID:    r.URL.Query().Get("session_id"),
@@ -56,45 +47,25 @@ func (s *Server) handleClientDeliveries(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, core.ClientDeliveriesResponse{Deliveries: deliveries})
 }
 
-func (s *Server) handleClientDeliveryByID(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeMethodNotAllowed(w, http.MethodPost)
+func (s *Server) handleClientDeliveryAck(w http.ResponseWriter, r *http.Request) {
+	if err := s.Core.AcknowledgeClientDelivery(r.Context(), r.PathValue("id")); err != nil {
+		writeError(w, err)
 		return
 	}
-	if s.core == nil {
-		writeErrorMessage(w, http.StatusServiceUnavailable, "core is not configured")
-		return
-	}
+	writeJSON(w, http.StatusOK, core.OKResponse{OK: true})
+}
 
-	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/client-deliveries/"), "/")
-	deliveryID, action, ok := strings.Cut(path, "/")
-	deliveryID = strings.TrimSpace(deliveryID)
-	action = strings.TrimSpace(action)
-	if !ok || deliveryID == "" || strings.Contains(action, "/") {
-		writeErrorMessage(w, http.StatusNotFound, "client delivery endpoint not found")
+func (s *Server) handleClientDeliveryFail(w http.ResponseWriter, r *http.Request) {
+	var request core.ClientDeliveryFailRequest
+	if !decodeJSON(w, r, &request) {
 		return
 	}
-	switch action {
-	case "ack":
-		if err := s.core.AcknowledgeClientDelivery(r.Context(), deliveryID); err != nil {
-			writeError(w, err)
-			return
-		}
-	case "fail":
-		var request core.ClientDeliveryFailRequest
-		if !decodeOptionalJSONBody(w, r, &request) {
-			return
-		}
-		var deliveryErr error
-		if errText := strings.TrimSpace(request.Error); errText != "" {
-			deliveryErr = errors.New(errText)
-		}
-		if err := s.core.MarkClientDeliveryFailed(r.Context(), core.ClientDelivery{ID: deliveryID}, deliveryErr); err != nil {
-			writeError(w, err)
-			return
-		}
-	default:
-		writeErrorMessage(w, http.StatusNotFound, "client delivery endpoint not found")
+	var deliveryErr error
+	if errText := strings.TrimSpace(request.Error); errText != "" {
+		deliveryErr = errors.New(errText)
+	}
+	if err := s.Core.MarkClientDeliveryFailed(r.Context(), core.ClientDelivery{ID: r.PathValue("id")}, deliveryErr); err != nil {
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, core.OKResponse{OK: true})

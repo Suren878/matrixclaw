@@ -16,7 +16,7 @@ func TestStatusNoteFollowsAppliedModules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := newSupervisor(context.Background(), nil, nil, nil, set)
+	s := newSupervisor(context.Background(), nil, nil, set)
 	cfg := setup.Config{Modules: setup.ModulesConfig{
 		Telephony:      setup.TelephonyConfig{Enabled: true, GatewayURL: "http://gw"},
 		ExternalAgents: map[string]setup.ExternalAgentConfig{"codex-app": {Enabled: true}},

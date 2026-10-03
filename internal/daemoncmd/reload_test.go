@@ -33,7 +33,7 @@ func TestReloadKeepsExternalAgentsWhenTheirConfigIsUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = sqliteStore.Close() }()
-	s := newSupervisor(context.Background(), nil, core.New(sqliteStore), nil, nil)
+	s := newSupervisor(context.Background(), core.New(sqliteStore), nil, nil)
 	runtime := &closeCountingRuntime{}
 	cfg := map[string]setup.ExternalAgentConfig{"codex": {Enabled: true}}
 	s.SetExternalAgents(sqliteStore, []externalagents.RuntimeAgent{runtime}, cfg)
@@ -147,7 +147,7 @@ func TestRestartNoticeIsHeldUntilTheNextStart(t *testing.T) {
 	}
 	defer func() { _ = sqliteStore.Close() }()
 	app := core.New(sqliteStore)
-	s := newSupervisor(ctx, nil, app, nil, nil)
+	s := newSupervisor(ctx, app, nil, nil)
 	saved, err := s.saveRestartDelivery(ctx, core.AdminRestartRequest{Notification: &core.ClientDeliveryTarget{Client: "telegram", ExternalKey: "7", Address: []byte(`{"kind":"chat","chat_id":7,"message_id":3}`)}})
 	if err != nil {
 		t.Fatal(err)

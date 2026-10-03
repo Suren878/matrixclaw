@@ -6,27 +6,24 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-func (s *Server) handleSessionBudget(w http.ResponseWriter, r *http.Request, sessionID string) {
-	switch r.Method {
-	case http.MethodGet:
-		report, err := s.core.SessionBudget(r.Context(), sessionID)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, core.SessionBudgetResponse{Budget: report})
-	case http.MethodPut:
-		var budget core.SessionBudget
-		if !decodeJSONBody(w, r, &budget) {
-			return
-		}
-		report, err := s.core.UpdateSessionBudget(r.Context(), sessionID, budget)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, core.SessionBudgetResponse{Budget: report})
-	default:
-		writeMethodNotAllowed(w, http.MethodGet, http.MethodPut)
+func (s *Server) handleSessionBudget(w http.ResponseWriter, r *http.Request) {
+	report, err := s.Core.SessionBudget(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeError(w, err)
+		return
 	}
+	writeJSON(w, http.StatusOK, core.SessionBudgetResponse{Budget: report})
+}
+
+func (s *Server) handleSessionBudgetUpdate(w http.ResponseWriter, r *http.Request) {
+	var budget core.SessionBudget
+	if !decodeJSON(w, r, &budget) {
+		return
+	}
+	report, err := s.Core.UpdateSessionBudget(r.Context(), r.PathValue("id"), budget)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, core.SessionBudgetResponse{Budget: report})
 }

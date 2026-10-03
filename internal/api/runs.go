@@ -2,50 +2,42 @@ package api
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-func (s *Server) handleRunByID(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/v1/runs/")
-	switch {
-	case r.Method == http.MethodGet && strings.HasSuffix(path, "/steps"):
-		steps, err := s.core.RunSteps(r.Context(), strings.TrimSuffix(path, "/steps"))
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, core.RunStepsResponse{Steps: steps})
-	case r.Method == http.MethodGet && strings.HasSuffix(path, "/progress"):
-		progress, err := s.core.RunProgress(r.Context(), strings.TrimSuffix(path, "/progress"))
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, core.RunProgressResponse{Progress: progress})
-	case r.Method == http.MethodGet:
-		runID := path
-		run, err := s.core.GetRun(r.Context(), runID)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, core.RunResponse{Run: run})
-	case r.Method == http.MethodPost && strings.HasSuffix(path, "/cancel"):
-		runID := strings.TrimSuffix(path, "/cancel")
-		runID = strings.TrimSuffix(runID, "/")
-		if runID == "" {
-			writeErrorMessage(w, http.StatusBadRequest, "run id is required")
-			return
-		}
-		run, err := s.core.CancelRun(r.Context(), runID)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, core.RunResponse{Run: run})
-	default:
-		writeMethodNotAllowed(w, http.MethodGet, http.MethodPost)
+func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
+	run, err := s.Core.GetRun(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeError(w, err)
+		return
 	}
+	writeJSON(w, http.StatusOK, core.RunResponse{Run: run})
+}
+
+func (s *Server) handleRunSteps(w http.ResponseWriter, r *http.Request) {
+	steps, err := s.Core.RunSteps(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, core.RunStepsResponse{Steps: steps})
+}
+
+func (s *Server) handleRunProgress(w http.ResponseWriter, r *http.Request) {
+	progress, err := s.Core.RunProgress(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, core.RunProgressResponse{Progress: progress})
+}
+
+func (s *Server) handleRunCancel(w http.ResponseWriter, r *http.Request) {
+	run, err := s.Core.CancelRun(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, core.RunResponse{Run: run})
 }

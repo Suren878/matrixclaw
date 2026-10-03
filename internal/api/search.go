@@ -8,12 +8,8 @@ import (
 )
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	report, err := s.core.Search(r.Context(), core.SearchFilter{
+	report, err := s.Core.Search(r.Context(), core.SearchFilter{
 		Query:     r.URL.Query().Get("q"),
 		SessionID: r.URL.Query().Get("session_id"),
 		Limit:     limit,

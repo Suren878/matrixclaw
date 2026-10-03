@@ -8,65 +8,39 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
 	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
-	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
-func (s *Server) voiceModule(id string) *voicemodule.Module {
+func (s *Server) voiceModule(w http.ResponseWriter, id string) *voicemodule.Module {
 	switch id {
 	case setup.VoiceModuleTTS:
-		return s.modules.TTS
+		return s.Modules.TTS
 	case setup.VoiceModuleSTT:
-		return s.modules.STT
+		return s.Modules.STT
 	default:
+		writeErrorMessage(w, http.StatusNotFound, "voice module not found")
 		return nil
 	}
 }
 
 func (s *Server) voiceDescriptors() []setup.VoiceModuleDescriptor {
-	return []setup.VoiceModuleDescriptor{s.modules.TTS.Descriptor(), s.modules.STT.Descriptor()}
+	return []setup.VoiceModuleDescriptor{s.Modules.TTS.Descriptor(), s.Modules.STT.Descriptor()}
 }
 
-func (s *Server) handleVoiceModules(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
+func (s *Server) handleVoiceModules(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, setup.VoiceModulesResponse{Modules: s.voiceDescriptors()})
 }
 
-func (s *Server) handleVoiceModuleByID(w http.ResponseWriter, r *http.Request) {
-	rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/modules/voice/"), "/")
-	moduleID, suffix, _ := strings.Cut(rest, "/")
-	if moduleID == realtime.ModuleID && suffix == "" {
-		s.handleRealtimeVoiceModule(w, r)
-		return
-	}
-	module := s.voiceModule(moduleID)
-	if module == nil {
-		writeErrorMessage(w, http.StatusNotFound, "voice module not found")
-		return
-	}
-	if strings.HasPrefix(suffix, "providers/") {
-		s.handleVoiceProvider(w, r, module, strings.TrimPrefix(suffix, "providers/"))
-		return
-	}
-	switch {
-	case r.Method == http.MethodPost && moduleID == setup.VoiceModuleTTS:
-		s.handleTextToSpeech(w, r)
-		return
-	case r.Method == http.MethodPost && moduleID == setup.VoiceModuleSTT:
-		s.handleSpeechToText(w, r)
-		return
-	case r.Method != http.MethodPatch:
-		writeMethodNotAllowed(w, http.MethodPatch, http.MethodPost)
+func (s *Server) handleVoiceModuleUpdate(w http.ResponseWriter, r *http.Request) {
+	moduleID := r.PathValue("module")
+	if s.voiceModule(w, moduleID) == nil {
 		return
 	}
 	var update setup.VoiceModuleUpdate
-	if !decodeJSONBody(w, r, &update) {
+	if !decodeJSON(w, r, &update) {
 		return
 	}
-	if _, err := s.setup.UpdateVoiceModule(moduleID, update); err != nil {
+	if _, err := s.Setup.UpdateVoiceModule(moduleID, update); err != nil {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -76,22 +50,14 @@ func (s *Server) handleVoiceModuleByID(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, setup.VoiceModulesResponse{Modules: s.voiceDescriptors()})
 }
 
-func (s *Server) handleVoiceProvider(w http.ResponseWriter, r *http.Request, module *voicemodule.Module, suffix string) {
-	providerID, actionSuffix, _ := strings.Cut(strings.Trim(suffix, "/"), "/")
-	if providerID == "" {
-		writeErrorMessage(w, http.StatusBadRequest, "voice provider id is required")
+func (s *Server) handleVoiceProviderAction(w http.ResponseWriter, r *http.Request) {
+	module := s.voiceModule(w, r.PathValue("module"))
+	if module == nil {
 		return
 	}
-	if actionSuffix != "action" {
-		writeNotFound(w)
-		return
-	}
-	if r.Method != http.MethodPost {
-		writeMethodNotAllowed(w, http.MethodPost)
-		return
-	}
+	providerID := r.PathValue("provider")
 	var request setup.VoiceProviderActionRequest
-	if !decodeJSONBody(w, r, &request) {
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	updated, err := module.Action(r.Context(), providerID, request)
@@ -136,10 +102,10 @@ func (s *Server) persistDownloadedVoiceModel(ctx context.Context, moduleID strin
 	default:
 		return false, nil
 	}
-	if _, err := s.setup.UpdateVoiceModule(moduleID, setup.VoiceModuleUpdate{ProviderID: providerID, ProviderConfig: &cfg}); err != nil {
+	if _, err := s.Setup.UpdateVoiceModule(moduleID, setup.VoiceModuleUpdate{ProviderID: providerID, ProviderConfig: &cfg}); err != nil {
 		return false, err
 	}
-	return true, s.applySetup(ctx)
+	return true, s.Reload(ctx)
 }
 
 func findVoiceProvider(module setup.VoiceModuleDescriptor, providerID string) (setup.VoiceProviderOption, bool) {
@@ -161,10 +127,10 @@ func voiceLanguageFromVoiceID(voiceID string) string {
 
 func (s *Server) handleTextToSpeech(w http.ResponseWriter, r *http.Request) {
 	var request voicemodule.TextToSpeechRequest
-	if !decodeJSONBody(w, r, &request) {
+	if !decodeJSON(w, r, &request) {
 		return
 	}
-	response, err := s.modules.TTS.TextToSpeech(r.Context(), request)
+	response, err := s.Modules.TTS.TextToSpeech(r.Context(), request)
 	if err != nil {
 		writeVoiceError(w, err)
 		return
@@ -174,10 +140,10 @@ func (s *Server) handleTextToSpeech(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSpeechToText(w http.ResponseWriter, r *http.Request) {
 	var request voicemodule.SpeechToTextRequest
-	if !decodeJSONBodyLimit(w, r, &request, voiceAudioJSONBodyLimitBytes) {
+	if !decodeJSON(w, r, &request) {
 		return
 	}
-	response, err := s.modules.STT.SpeechToText(r.Context(), request)
+	response, err := s.Modules.STT.SpeechToText(r.Context(), request)
 	if err != nil {
 		writeVoiceError(w, err)
 		return
