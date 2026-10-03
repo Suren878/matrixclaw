@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -20,8 +21,9 @@ func (m *appModel) loadInitialCmd() tea.Cmd {
 }
 
 func (m *appModel) subscribeCmd(sessionID string, streamID uint64, afterID uint64) tea.Cmd {
+	ctx := m.streamCtx
 	return func() tea.Msg {
-		events, errs, err := m.rt.subscribeEvents(m.ctx, sessionID, afterID)
+		events, errs, err := m.rt.subscribeEvents(ctx, sessionID, afterID)
 		return subscribeReadyMsg{
 			sessionID: sessionID,
 			streamID:  streamID,
@@ -63,7 +65,7 @@ func (m *appModel) reconnectCmd() tea.Cmd {
 	})
 }
 
-func (m *appModel) applySnapshot(snapshot core.ClientSnapshot, restartStream bool) {
+func (m *appModel) applySnapshot(snapshot core.ClientSnapshot) {
 	m.clearContextCompactProgress()
 	previousSessionID := strings.TrimSpace(m.session)
 	nextSessionID := strings.TrimSpace(snapshot.SessionID)
@@ -72,17 +74,31 @@ func (m *appModel) applySnapshot(snapshot core.ClientSnapshot, restartStream boo
 		m.transientMessages = nil
 		m.todoPanel = todoPanelAuto
 	}
-	if restartStream {
-		m.streamID++
-		if previousSessionID != nextSessionID {
-			m.lastEventID = 0
-		}
+	m.restartStream()
+	if previousSessionID != nextSessionID {
+		m.lastEventID = 0
 	}
 	m.err = snapshotError(snapshot)
 	m.session = snapshot.SessionID
 	m.read = viewmodel.NewReadModel(snapshot)
 	m.setBusy(runIsActive(snapshot.Run))
 	m.rebuildChat()
+}
+
+// restartStream closes the current event stream and prepares the context for the next one;
+// messages from the closed stream are ignored once streamID moves on.
+func (m *appModel) restartStream() {
+	m.stopStream()
+	m.streamCtx, m.cancelStream = context.WithCancel(m.ctx)
+}
+
+func (m *appModel) stopStream() {
+	if m.cancelStream != nil {
+		m.cancelStream()
+	}
+	m.streamCtx, m.cancelStream = nil, nil
+	m.events, m.eventErr = nil, nil
+	m.streamID++
 }
 
 func snapshotError(snapshot core.ClientSnapshot) string {

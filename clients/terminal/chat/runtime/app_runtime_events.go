@@ -16,15 +16,14 @@ func (m *appModel) handleLoadInitial(msg loadInitialMsg) tea.Cmd {
 	m.loading = false
 	if msg.err != nil {
 		m.setBusy(false)
-		m.events = nil
-		m.eventErr = nil
+		m.stopStream()
 		m.err = msg.err.Error()
 		if strings.TrimSpace(m.session) != "" || m.lastEventID > 0 {
 			return m.reconnectCmd()
 		}
 		return nil
 	}
-	m.applySnapshot(msg.snapshot, true)
+	m.applySnapshot(msg.snapshot)
 	return tea.Batch(
 		m.syncPermissionDialogCmd(),
 		m.subscribeCmd(msg.snapshot.SessionID, m.streamID, m.lastEventID),

@@ -154,6 +154,9 @@ type appModel struct {
 	events   <-chan daemonclient.LiveEvent
 	eventErr <-chan error
 
+	streamCtx    context.Context
+	cancelStream context.CancelFunc
+
 	transientMessages   []surfacemessage.Message
 	workingDir          string
 	version             string
