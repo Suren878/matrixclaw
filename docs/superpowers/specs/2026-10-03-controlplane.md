@@ -57,14 +57,26 @@ own client (owner). `clientruntime` is deleted; the terminal `Runtime` holds
 did (404 binding → none, create+use session, default working dir, automation
 client/external key) become dispatcher helpers.
 
-**Daemon-side authorization** (same policy as today, now enforced): the API
-reads the role into the request context. Changing a session's permission mode
-and adding/deleting a global rule need `owner`; guests may keep no rule
-(also through an approval's "always"); `member`/`guest` are restricted from
-sessions that run unattended (`core.RunsUnattended`). The `restricted` JSON
-fields go (`json:"-"`, filled from the header). The dispatcher only hides
-what the daemon would refuse (it reads `client.Role`). Requests without the
-header (iOS, CLI, gateway) act as the owner, as now.
+**Daemon-side authorization.** The API reads the role into the request
+context; a refused request answers 403 (`core.ErrOwnerOnly`).
+
+- Owner only: changing a session's permission mode, adding/deleting a global
+  rule, and (new) every settings write: module settings, setup providers,
+  MCP, external agents, the skills library, and admin reload/restart/stop.
+  Reads stay open, so non-owner chats keep the read-only status views.
+- Guests may keep no rule (also through an approval's "always").
+- `member`/`guest` stay out of sessions that run unattended
+  (`core.RunsUnattended`); the `restricted` JSON fields go (`json:"-"`,
+  filled from the header).
+
+The header is an assertion by a trusted local client: every caller holds the
+API token, so the daemon trusts it as it trusts the token. It is never derived
+from end-user input: Telegram sets it from the verified sender id of the
+update (`ownerChat`), never from message text. Requests without the header
+(iOS, CLI, gateway) act as the owner, as now. The dispatcher only hides what
+the daemon would refuse (it reads `client.Role`): non-owners see module and
+provider screens read-only (status rows, no edit commands), and no server
+restart/stop.
 
 ### 2. Module settings from the daemon
 
@@ -218,8 +230,14 @@ Rough size: −7.5k / +3k lines (tests +1.2k).
 
 ## Risks and tests
 
-- Paths drift: the route test registers every client path (method + sample
-  path, escaped ids with `%2F`) against the real mux and asserts no 404/405.
+- Paths drift: the route test lists every client path (method + sample
+  path, escaped ids with `%2F`) used by daemonclient (terminal, Telegram,
+  CLI), the telephony gateway and the Swift package, and asserts the real
+  mux routes each one (no 404/405). Removed endpoints are grepped across Go
+  and Swift for remaining callers.
+- C2 drops `Result.Approval`, `call.Approved` and the approval `action`
+  field; approval rendering in the clients is touched only where the picker
+  model forces it.
 - Authorization: API tests per role (mode change, global/session rules,
   approval always, unattended session) — owner allowed, member/guest refused.
 - Voice flows lose client logic: `modules/voice` tests drive `Settings`/
@@ -231,7 +249,8 @@ Rough size: −7.5k / +3k lines (tests +1.2k).
   `Open` after a change, errors as text. Bespoke screens get their first
   tests: skills (list, remove, edit), MCP (toggle, add, delete), storage
   (list, delete, temp cleanup).
-- Behaviour changes (deliberate): `/modules` rows show the daemon's status
+- Behaviour changes (deliberate): settings writes and server restart/stop
+  are owner-only (non-owner Telegram chats see status only); `/modules` rows show the daemon's status
   line; module pickers lose their TTS/STT/LIVE/TEL label prefixes in
   Telegram; module wording comes from the daemon. Commands, menus, forms and
   paging stay otherwise the same.
