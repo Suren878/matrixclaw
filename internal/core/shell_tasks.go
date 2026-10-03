@@ -217,6 +217,10 @@ func (c *Core) watchShellTask(task Task, live *liveTask, deadline time.Time) {
 		}
 	}
 	code := process.ExitCode()
+	if c.lifetime.Err() != nil {
+		// The daemon's stop ends its commands too; the next start marks it lost.
+		return
+	}
 	status := TaskStatusCompleted
 	if code != 0 {
 		status = TaskStatusFailed
@@ -490,9 +494,10 @@ func taskInfo(task Task) tools.TaskInfo {
 }
 
 // taskFinished lets the task's session react: a parked run wakes, a running
-// run reads the event at its next step, an idle session starts a run.
+// run reads the event at its next step, an idle session starts a run. While
+// the daemon stops it does nothing; the next start settles the session.
 func (c *Core) taskFinished(ctx context.Context, task Task) {
-	if !task.Background || task.DeliveredAt != nil {
+	if !task.Background || task.DeliveredAt != nil || c.lifetime.Err() != nil {
 		return
 	}
 	active, err := c.store.GetActiveRunBySession(ctx, task.SessionID)

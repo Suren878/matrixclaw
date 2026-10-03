@@ -252,6 +252,42 @@ func TestRecoveryKillsLeftoverShellTasksAndMarksThemLost(t *testing.T) {
 	}
 }
 
+// systemd's stop signals the daemon's whole cgroup, so its background
+// commands end with it: the next start reports them lost, and no run is
+// started (and failed) for them meanwhile.
+func TestACommandEndingWithTheDaemonIsLostAfterTheRestart(t *testing.T) {
+	t.Parallel()
+	app, db, session, files := newTaskCore(t)
+	lifetime, stop := context.WithCancel(context.Background())
+	app.WithLifetime(lifetime)
+	command := foreground("sleep 30")
+	command.Background = true
+	result, err := app.RunCommand(context.Background(), taskCall(session), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := db.GetTask(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stop()
+	app.WaitRuns()
+	_ = syscall.Kill(-task.PID, syscall.SIGTERM)
+	waitProcessGone(t, task.PID)
+	time.Sleep(100 * time.Millisecond)
+	if err := core.New(db).WithSessionFiles(files).Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if task, err := db.GetTask(context.Background(), result.TaskID); err != nil || task.Status != core.TaskStatusLost {
+		t.Fatalf("task after restart = %+v, %v", task, err)
+	}
+	if runs, err := db.ListSessionRuns(context.Background(), session.ID, 0); err != nil || len(runs) != 0 {
+		t.Fatalf("runs = %+v, %v", runs, err)
+	}
+}
+
 func TestDeletingASessionStopsItsTasks(t *testing.T) {
 	t.Parallel()
 	app, db, session, _ := newTaskCore(t)
