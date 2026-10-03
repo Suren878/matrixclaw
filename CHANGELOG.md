@@ -175,7 +175,56 @@ default):
   context" item, the `MATRIXCLAW_CONTEXT_WINDOW_CACHE` variable, and the
   `files` list in session snapshots.
 
+### Structural rewrites
+
+Design notes for each: `docs/superpowers/specs/2026-10-03-*.md`.
+
+- Runs: one lifecycle path writes run status, with an explicit table of
+  allowed transitions; one recovery entry point; cancel works through the
+  run's context instead of polling the database. Shell and subagent tasks are
+  one task model (`task.updated`; the `subagent.updated` event and the old
+  subagent JSON field names are gone). A subagent's approval is its own,
+  names the subagent and is sent to the parent's Telegram chat; while a
+  blocking subagent waits for it, the parent shows `running`. A canceled
+  subagent ends `canceled`; a failed parent cancels its blocking subagents.
+  Output an external agent sent just before a cancel is kept.
+- Tools: core alone decides whether a call asks, from the tool's default,
+  permission rules and the session mode; tools only build a side-effect-free
+  preview. An ask rule now shows the real diff or command. Mutating tools that
+  never ask no longer hold back later calls in a batch. Edit and multiedit
+  validate the whole file before asking. Approvals have no "Action:" line;
+  tool results carry only `status`.
+- Web: `web_search` and `web_fetch` only. `web_fetch {url}` returns the page's
+  main content as markdown (long pages go to a session file) and never drives
+  a browser; for JavaScript-only pages it suggests the browser tools.
+  `web_research`, `web_research_ask` and `web_research_status` are gone; deep
+  research runs through read-only subagents. Old research tables and the
+  `web-research` folder are removed on start.
+- Setup: setup.json is one typed config edited in place. Picking a model or
+  editing a provider never contacts Telegram or a provider. Built-in defaults
+  are no longer stored, so catalog updates reach existing installs. Leaving
+  the setup wizard half-way no longer resumes its edits. Clients see web
+  search keys only as masked previews.
+- Modules share one lifecycle. MCP server and browser changes apply without a
+  restart, and one failing MCP server no longer disables the rest. Telephony,
+  TTS and skill tools appear only while their module is on. Voice runtimes
+  stop when deselected and when the daemon exits. `GET /v1/modules` reports
+  every module's status.
+- Terminal: one read model updated in place from live events (no reload after
+  every action); expanded tool output stays expanded; context usage comes from
+  the daemon (`context.updated`); the help line at the bottom is visible
+  again. Telegram progress lines share the terminal's tool wording.
+
 ### Upgrade notes (breaking)
+
+- Update `matrixclawd` and `matrixclaw-telephony-gateway` together: their
+  health payloads now use a boolean `ready`.
+- Telephony: inbound calls are rejected unless
+  `MATRIXCLAW_TELEPHONY_INBOUND_ALLOWED_CALLERS` is set.
+  `MATRIXCLAW_TELEPHONY_PHONE_PROMPT` and `MATRIXCLAW_TELEPHONY_ASSISTANT_NAME`
+  are removed (the daemon sends the configured prompt and identity), as are
+  `MATRIXCLAW_REALTIME_VOICE_*` and
+  `MATRIXCLAW_{GEMINI_LIVE,GROK_VOICE,OPENAI_REALTIME}_*`.
 
 - **Back up the database before upgrading.** The migrations are one-way, and
   an older binary cannot use the migrated database. Downgrading is not
