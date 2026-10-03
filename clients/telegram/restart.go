@@ -10,7 +10,7 @@ import (
 
 func (w *Worker) dispatchRestartCommandAndEdit(target chatTarget, messageID int64) error {
 	log.Printf("telegram: daemon restart requested chat=%d message=%d", target.chatID, messageID)
-	telegramCtx, cancel := context.WithTimeout(context.Background(), defaultTelegramHTTPTimeout)
+	telegramCtx, cancel := context.WithTimeout(context.Background(), telegramHTTPTimeout)
 	defer cancel()
 	if messageID > 0 {
 		updatedMessageID, err := w.editOrSendMessage(telegramCtx, target, messageID, restartProgressText, nil)
@@ -29,11 +29,11 @@ func (w *Worker) dispatchRestartCommandAndEdit(target chatTarget, messageID int6
 		messageID = sent.MessageID
 	}
 
-	restartCtx, cancel := context.WithTimeout(context.Background(), defaultDaemonHTTPTimeout)
+	restartCtx, cancel := context.WithTimeout(context.Background(), daemonHTTPTimeout)
 	defer cancel()
-	err := w.daemon("").RestartDaemonWithNotification(restartCtx, deliveryTargetForMessage(w.config.ClientName, target, messageID))
+	err := w.daemon("").RestartDaemonWithNotification(restartCtx, deliveryTargetForMessage(ClientName, target, messageID))
 
-	telegramCtx, cancel = context.WithTimeout(context.Background(), defaultTelegramHTTPTimeout)
+	telegramCtx, cancel = context.WithTimeout(context.Background(), telegramHTTPTimeout)
 	defer cancel()
 	if err != nil {
 		log.Printf("telegram: daemon restart failed chat=%d message=%d: %v", target.chatID, messageID, err)

@@ -15,18 +15,8 @@ type Config struct {
 	BaseURL                 string
 	APIToken                string
 	BotToken                string
-	TelegramBaseURL         string
 	AllowedUserID           int64
-	ClientName              string
-	WorkingDir              string
 	InlineCachePath         string
-	PollTimeout             time.Duration
-	PollLimit               int
-	PollRetryDelay          time.Duration
-	StreamFlushInterval     time.Duration
-	ChatActionInterval      time.Duration
-	BotHTTPClient           HTTPDoer
-	DaemonHTTPClient        *http.Client
 	Geo                     *tools.OSMService
 	Offset                  *atomic.Int64
 	SkipCommandRegistration bool
@@ -35,6 +25,8 @@ type Config struct {
 type Worker struct {
 	api              BotAPI
 	config           Config
+	daemonHTTP       *http.Client
+	flushInterval    time.Duration // assistant stream edits are at least this far apart
 	offset           *atomic.Int64
 	mu               sync.Mutex
 	delivery         sync.Mutex

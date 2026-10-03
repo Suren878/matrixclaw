@@ -3,18 +3,17 @@ package telegram
 import "time"
 
 const (
-	defaultPollTimeout         = 30 * time.Second
-	defaultPollLimit           = 100
-	defaultPollRetryDelay      = 2 * time.Second
-	defaultStreamFlushInterval = 800 * time.Millisecond
-	defaultChatActionInterval  = 4 * time.Second
-	defaultDaemonHTTPTimeout   = 15 * time.Second
-	defaultTelegramHTTPTimeout = 45 * time.Second
-	defaultButtonTextLimit     = 64
-	ClientName                 = "telegram"
-	defaultClientName          = ClientName
-	defaultMessageLimit        = 4000
-	maxCallbackDataBytes       = 64
+	pollTimeout            = 30 * time.Second
+	pollLimit              = 100
+	pollRetryDelay         = 2 * time.Second
+	streamFlushInterval    = 800 * time.Millisecond
+	chatActionInterval     = 4 * time.Second
+	daemonHTTPTimeout      = 15 * time.Second
+	telegramHTTPTimeout    = 45 * time.Second
+	defaultButtonTextLimit = 64
+	ClientName             = "telegram"
+	defaultMessageLimit    = 4000
+	maxCallbackDataBytes   = 64
 
 	cbPicker          = "pk:"
 	cbPickerPage      = "pg:"

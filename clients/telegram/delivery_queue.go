@@ -17,7 +17,7 @@ func (w *Worker) deliverPendingDeliveries(ctx context.Context, deliveryType stri
 
 	ctx = context.WithValue(ctx, telegramDeferredRetryKey{}, true)
 	daemon := w.daemon("")
-	filter.Client = w.config.ClientName
+	filter.Client = ClientName
 	filter.Type = deliveryType
 	filter.Status = core.ClientDeliveryStatusPending
 	if filter.Limit <= 0 {
@@ -28,9 +28,6 @@ func (w *Worker) deliverPendingDeliveries(ctx context.Context, deliveryType stri
 		return err
 	}
 	now := w.nowUTC()
-	if w.deliveryRetryAt == nil {
-		w.deliveryRetryAt = make(map[string]time.Time)
-	}
 	for key, deadline := range w.deliveryRetryAt {
 		if !now.Before(deadline) {
 			delete(w.deliveryRetryAt, key)
@@ -78,7 +75,7 @@ func (w *Worker) deliverPendingDeliveries(ctx context.Context, deliveryType stri
 		if retryableDeliveryError(err) || sent {
 			delay := telegramRetryAfter(err)
 			if delay <= 0 {
-				delay = w.config.PollRetryDelay
+				delay = pollRetryDelay
 				if delay <= 0 {
 					delay = 2 * time.Second
 				}
@@ -121,9 +118,6 @@ func retryableDeliveryError(err error) bool {
 // within this worker's lifetime. It cannot resolve ambiguous Telegram timeouts
 // or provide exactly-once delivery across a process restart.
 func (w *Worker) acknowledgeSentDelivery(ctx context.Context, daemon *daemonclient.Client, id string) error {
-	if w.deliveryReceipts == nil {
-		w.deliveryReceipts = make(map[string]time.Time)
-	}
 	w.deliveryReceipts[id] = w.nowUTC()
 	if err := daemon.AcknowledgeClientDelivery(ctx, id); err != nil {
 		return err

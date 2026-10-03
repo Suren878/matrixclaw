@@ -8,13 +8,12 @@ import (
 
 func (w *Worker) dispatcher(target chatTarget) *controlplane.Dispatcher {
 	runtime := clientruntime.ControlplaneRuntime{
-		Client:     w.config.ClientName,
-		WorkingDir: w.config.WorkingDir,
+		Client: ClientName,
 		Daemon: func(externalKey string) (*daemonclient.Client, error) {
 			return w.daemonFor(target, externalKey), nil
 		},
 		Owner: w.ownerChat(target),
 		Guest: !target.isChat(),
 	}
-	return controlplane.New(runtime, w.config.WorkingDir)
+	return controlplane.New(runtime, "")
 }

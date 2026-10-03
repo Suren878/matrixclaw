@@ -15,51 +15,32 @@ func NewWorker(cfg Config) (*Worker, error) {
 	if strings.TrimSpace(cfg.BaseURL) == "" {
 		return nil, fmt.Errorf("telegram: daemon base URL is required")
 	}
-	if strings.TrimSpace(cfg.ClientName) == "" {
-		cfg.ClientName = defaultClientName
-	}
-	if cfg.PollTimeout <= 0 {
-		cfg.PollTimeout = defaultPollTimeout
-	}
-	if cfg.PollLimit <= 0 || cfg.PollLimit > 100 {
-		cfg.PollLimit = defaultPollLimit
-	}
-	if cfg.PollRetryDelay <= 0 {
-		cfg.PollRetryDelay = defaultPollRetryDelay
-	}
-	if cfg.StreamFlushInterval <= 0 {
-		cfg.StreamFlushInterval = defaultStreamFlushInterval
-	}
-	if cfg.ChatActionInterval <= 0 {
-		cfg.ChatActionInterval = defaultChatActionInterval
-	}
-	if cfg.BotHTTPClient == nil {
-		cfg.BotHTTPClient = &http.Client{Timeout: defaultTelegramHTTPTimeout}
-	}
-	if cfg.DaemonHTTPClient == nil {
-		cfg.DaemonHTTPClient = &http.Client{Timeout: defaultDaemonHTTPTimeout}
-	}
 	if cfg.Geo == nil {
 		cfg.Geo = tools.NewOSMServiceFromEnv()
 	}
-	offset := cfg.Offset
-	if offset == nil {
-		offset = &atomic.Int64{}
-	}
-
 	client, err := NewClient(ClientConfig{
 		Token:      cfg.BotToken,
-		BaseURL:    cfg.TelegramBaseURL,
-		HTTPClient: cfg.BotHTTPClient,
+		HTTPClient: &http.Client{Timeout: telegramHTTPTimeout},
 	})
 	if err != nil {
 		return nil, err
 	}
+	return newWorker(cfg, client), nil
+}
 
+func newWorker(cfg Config, api BotAPI) *Worker {
+	offset := cfg.Offset
+	if offset == nil {
+		offset = &atomic.Int64{}
+	}
 	return &Worker{
-		api:              client,
+		api:              api,
 		config:           cfg,
+		daemonHTTP:       &http.Client{Timeout: daemonHTTPTimeout},
+		flushInterval:    streamFlushInterval,
 		offset:           offset,
+		deliveryRetryAt:  map[string]time.Time{},
+		deliveryReceipts: map[string]time.Time{},
 		states:           map[string]*runDeliveryState{},
 		prompts:          map[string]controlplane.PromptData{},
 		callbacks:        map[string]string{},
@@ -70,5 +51,5 @@ func NewWorker(cfg Config) (*Worker, error) {
 		pendingLocations: map[string]pendingLocationRequest{},
 		chatActions:      map[string]time.Time{},
 		geo:              cfg.Geo,
-	}, nil
+	}
 }

@@ -17,13 +17,13 @@ const (
 )
 
 func (w *Worker) daemon(externalKey string) *daemonclient.Client {
-	client := daemonclient.New(w.config.BaseURL, w.config.ClientName, externalKey).
+	client := daemonclient.New(w.config.BaseURL, ClientName, externalKey).
 		WithAPIToken(w.config.APIToken).
 		WithCapabilities(core.ClientCapabilities{
 			SupportsVoiceDelivery:    true,
 			SupportsDocumentDelivery: true,
 		})
-	client.HTTPClient = w.config.DaemonHTTPClient
+	client.HTTPClient = w.daemonHTTP
 	return client
 }
 

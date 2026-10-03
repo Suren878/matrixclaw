@@ -12,11 +12,8 @@ import (
 func TestRunTypingIndicatorSendsForActiveStatusAndThrottles(t *testing.T) {
 	api := &recordingBotAPI{}
 	now := time.Date(2026, 6, 17, 12, 0, 0, 0, time.UTC)
-	worker := &Worker{
-		api:    api,
-		config: Config{ChatActionInterval: 4 * time.Second},
-		now:    func() time.Time { return now },
-	}
+	worker := newWorker(Config{}, api)
+	worker.now = func() time.Time { return now }
 	target := chatTarget{chatID: 42, externalKey: "telegram:42"}
 	run := &core.Run{ID: "run-1", Status: core.RunStatusRunning}
 
@@ -45,11 +42,8 @@ func TestRunTypingIndicatorSendsForActiveStatusAndThrottles(t *testing.T) {
 func TestRunTypingIndicatorStopsForInactiveStatus(t *testing.T) {
 	api := &recordingBotAPI{}
 	now := time.Date(2026, 6, 17, 12, 0, 0, 0, time.UTC)
-	worker := &Worker{
-		api:    api,
-		config: Config{ChatActionInterval: 4 * time.Second},
-		now:    func() time.Time { return now },
-	}
+	worker := newWorker(Config{}, api)
+	worker.now = func() time.Time { return now }
 	target := chatTarget{chatID: 42, externalKey: "telegram:42"}
 	run := &core.Run{ID: "run-1", Status: core.RunStatusRunning}
 
@@ -137,7 +131,8 @@ func (a *recordingBotAPI) DeleteMyCommands(context.Context, DeleteMyCommandsRequ
 
 func TestRunWaitingForBackgroundTasksStopsTypingAndSaysSo(t *testing.T) {
 	api := &recordingBotAPI{}
-	worker := &Worker{api: api, config: Config{ChatActionInterval: 4 * time.Second}, now: time.Now}
+	worker := newWorker(Config{}, api)
+	worker.now = time.Now
 	run := &core.Run{ID: "run-1", Status: core.RunStatusWaitingEvents}
 
 	worker.updateRunTypingIndicator(context.Background(), chatTarget{chatID: 42, externalKey: "telegram:42"}, run)

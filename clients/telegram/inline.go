@@ -92,7 +92,7 @@ func (w *Worker) handleInlineCallback(ctx context.Context, cq *CallbackQuery) er
 	if cq == nil || !w.allowInlineUser(cq.From) {
 		return nil
 	}
-	telegramCtx, cancel := context.WithTimeout(ctx, defaultTelegramHTTPTimeout)
+	telegramCtx, cancel := context.WithTimeout(ctx, telegramHTTPTimeout)
 	defer cancel()
 
 	inlineMessageID := strings.TrimSpace(cq.InlineMessageID)
@@ -146,7 +146,7 @@ func (w *Worker) sendInlineUserMessageInSession(ctx context.Context, target chat
 		strings.TrimSpace(sessionID),
 		inlineRunPrompt(text),
 		nil,
-		w.config.WorkingDir,
+		"",
 		"",
 		encodeDeliveryAddress(deliveryAddressFromTarget(target, 0)),
 	)
@@ -219,9 +219,6 @@ func (w *Worker) rememberInlineRequest(queryID string, text string) string {
 	text = strings.TrimSpace(text)
 	token := inlineRequestToken(queryID, text)
 	w.mu.Lock()
-	if w.inline == nil {
-		w.inline = map[string]string{}
-	}
 	w.inline[token] = text
 	snapshot := copyInlineRequests(w.inline)
 	w.mu.Unlock()
@@ -249,9 +246,6 @@ func (w *Worker) inlineRequestText(token string) string {
 		return ""
 	}
 	w.mu.Lock()
-	if w.inline == nil {
-		w.inline = map[string]string{}
-	}
 	w.inline[token] = text
 	w.mu.Unlock()
 	return text
@@ -275,9 +269,6 @@ func (w *Worker) markInlineMessageStarted(inlineMessageID string) {
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.inlineRuns == nil {
-		w.inlineRuns = map[string]struct{}{}
-	}
 	w.inlineRuns[inlineMessageID] = struct{}{}
 }
 

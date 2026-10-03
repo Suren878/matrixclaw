@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/safego"
@@ -13,9 +12,6 @@ import (
 func (w *Worker) Run(ctx context.Context) error {
 	if !w.config.SkipCommandRegistration {
 		w.registerCommands(ctx)
-	}
-	if strings.TrimSpace(w.config.BaseURL) == "" {
-		return w.runUpdateLoop(ctx)
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -52,7 +48,7 @@ func (w *Worker) runUpdateLoop(ctx context.Context) error {
 				return nil
 			}
 			if IsRetryable(err) {
-				wait := w.config.PollRetryDelay
+				wait := pollRetryDelay
 				var apiErr *APIError
 				if errors.As(err, &apiErr) && apiErr.RetryAfter > 0 {
 					wait = apiErr.RetryAfter
@@ -68,10 +64,6 @@ func (w *Worker) runUpdateLoop(ctx context.Context) error {
 }
 
 func (w *Worker) runDeliveryLoop(ctx context.Context) error {
-	interval := w.config.StreamFlushInterval
-	if interval <= 0 {
-		interval = defaultStreamFlushInterval
-	}
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 	for {
@@ -92,15 +84,15 @@ func (w *Worker) runDeliveryLoop(ctx context.Context) error {
 		if err := w.deliverPendingApprovals(ctx); err != nil && ctx.Err() == nil {
 			log.Printf("telegram: approval delivery failed: %v", err)
 		}
-		timer.Reset(interval)
+		timer.Reset(streamFlushInterval)
 	}
 }
 
 func (w *Worker) pollOnce(ctx context.Context) error {
 	updates, err := w.api.GetUpdates(ctx, GetUpdatesRequest{
 		Offset:         w.offset.Load(),
-		Limit:          w.config.PollLimit,
-		TimeoutSeconds: int(w.config.PollTimeout / time.Second),
+		Limit:          pollLimit,
+		TimeoutSeconds: int(pollTimeout / time.Second),
 		AllowedUpdates: telegramAllowedUpdates(),
 	})
 	if err != nil {

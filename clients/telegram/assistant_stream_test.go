@@ -16,7 +16,8 @@ func streamTestMessage(text string) transcript.Message {
 func TestPrivateAssistantDraftNotifiesOnlyOnFinalAnswer(t *testing.T) {
 	api := &runRenderBotAPI{}
 	now := time.Now()
-	worker := &Worker{api: api, now: func() time.Time { return now }}
+	worker := newWorker(Config{}, api)
+	worker.now = func() time.Time { return now }
 	state := newRunDeliveryState()
 	target := chatTarget{chatID: 42}
 	message := streamTestMessage("П")
@@ -54,7 +55,8 @@ func TestPrivateAssistantDraftNotifiesOnlyOnFinalAnswer(t *testing.T) {
 func TestGroupPreviewBuffersFirstCharacterAndThrottlesEdits(t *testing.T) {
 	api := &runRenderBotAPI{}
 	now := time.Now()
-	worker := &Worker{api: api, now: func() time.Time { return now }}
+	worker := newWorker(Config{}, api)
+	worker.now = func() time.Time { return now }
 	state := newRunDeliveryState()
 	target := chatTarget{chatID: -42}
 	message := streamTestMessage("Я")
@@ -93,7 +95,8 @@ func TestGroupPreviewBuffersFirstCharacterAndThrottlesEdits(t *testing.T) {
 func TestShortAnswerIsFlushedAtCompletionAndSlowPreviewIsBounded(t *testing.T) {
 	api := &runRenderBotAPI{}
 	now := time.Now()
-	worker := &Worker{api: api, now: func() time.Time { return now }}
+	worker := newWorker(Config{}, api)
+	worker.now = func() time.Time { return now }
 	state := newRunDeliveryState()
 	target := chatTarget{chatID: -42}
 	message := streamTestMessage("Да")
@@ -122,7 +125,8 @@ func TestShortAnswerIsFlushedAtCompletionAndSlowPreviewIsBounded(t *testing.T) {
 
 func TestDraftUnavailableFallsBackToOneBufferedMessage(t *testing.T) {
 	api := &runRenderBotAPI{draftError: &APIError{ErrorCode: 400, Description: "drafts are not supported"}}
-	worker := &Worker{api: api, config: Config{StreamFlushInterval: time.Nanosecond}}
+	worker := newWorker(Config{}, api)
+	worker.flushInterval = time.Nanosecond
 	state := newRunDeliveryState()
 	target := chatTarget{chatID: 42}
 	message := streamTestMessage("Содержательная первая фраза.")
@@ -140,7 +144,8 @@ func TestDraftUnavailableFallsBackToOneBufferedMessage(t *testing.T) {
 func TestDraftFloodWaitDoesNotBlockDeliveryAndFinalTextStillArrives(t *testing.T) {
 	api := &runRenderBotAPI{draftError: &APIError{ErrorCode: 429, RetryAfter: time.Minute}}
 	now := time.Now()
-	worker := &Worker{api: api, now: func() time.Time { return now }}
+	worker := newWorker(Config{}, api)
+	worker.now = func() time.Time { return now }
 	state := newRunDeliveryState()
 	target := chatTarget{chatID: 42}
 	message := streamTestMessage("Partial")
@@ -169,7 +174,7 @@ func TestDraftFloodWaitDoesNotBlockDeliveryAndFinalTextStillArrives(t *testing.T
 
 func TestAssistantDeliveryRetainsSuccessfulChunksAfterFailure(t *testing.T) {
 	api := &runRenderBotAPI{sendErrorAt: 2}
-	worker := &Worker{api: api}
+	worker := newWorker(Config{}, api)
 	state := newRunDeliveryState()
 	target := chatTarget{chatID: 42}
 	message := streamTestMessage(strings.Repeat("слово ", 900))
@@ -192,7 +197,7 @@ func TestAssistantDeliveryRetainsSuccessfulChunksAfterFailure(t *testing.T) {
 
 func TestAssistantReplacesDeletedMessageAndRemovesStaleOverflow(t *testing.T) {
 	api := &runRenderBotAPI{}
-	worker := &Worker{api: api}
+	worker := newWorker(Config{}, api)
 	target := chatTarget{chatID: -42}
 	sent, err := worker.sendAssistantMessage(context.Background(), target, sentAssistantMessage{}, strings.Repeat("a", 4500))
 	if err != nil {

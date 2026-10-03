@@ -15,7 +15,7 @@ func (w *Worker) handleCallbackQuery(ctx context.Context, cq *CallbackQuery) err
 	if cq == nil {
 		return nil
 	}
-	telegramCtx, cancel := context.WithTimeout(ctx, defaultTelegramHTTPTimeout)
+	telegramCtx, cancel := context.WithTimeout(ctx, telegramHTTPTimeout)
 	defer cancel()
 	if strings.HasPrefix(strings.TrimSpace(cq.Data), inlineCallbackPrefix) {
 		return w.handleInlineCallback(telegramCtx, cq)

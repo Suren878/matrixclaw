@@ -125,7 +125,9 @@ func newDeliveryTestWorker(t *testing.T, daemon *deliveryTestDaemon, api *delive
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(daemon.serve))
 	t.Cleanup(server.Close)
-	return &Worker{api: api, config: Config{BaseURL: server.URL, DaemonHTTPClient: server.Client(), ClientName: "telegram-test"}, now: func() time.Time { return *now }}
+	worker := newWorker(Config{BaseURL: server.URL}, api)
+	worker.now = func() time.Time { return *now }
+	return worker
 }
 
 func testRunDelivery(id string, address DeliveryAddress) core.ClientDelivery {

@@ -78,9 +78,6 @@ func (w *Worker) rememberTelegramLocation(target chatTarget, location Location) 
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.locations == nil {
-		w.locations = map[string]telegramLocationContext{}
-	}
 	w.locations[target.externalKey] = telegramLocationContext{
 		Location: location,
 		SharedAt: w.nowUTC(),
@@ -109,9 +106,6 @@ func (w *Worker) rememberPendingLocationRequest(target chatTarget, text string) 
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.pendingLocations == nil {
-		w.pendingLocations = map[string]pendingLocationRequest{}
-	}
 	w.pendingLocations[target.externalKey] = pendingLocationRequest{
 		Text: text,
 	}

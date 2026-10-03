@@ -12,7 +12,8 @@ import (
 
 func TestAssistantStreamEditsOnePersistentMessageAcrossApproval(t *testing.T) {
 	api := &runRenderBotAPI{}
-	worker := &Worker{api: api, config: Config{StreamFlushInterval: time.Nanosecond}}
+	worker := newWorker(Config{}, api)
+	worker.flushInterval = time.Nanosecond
 	target := chatTarget{chatID: -42, externalKey: "telegram:-42"}
 	state := newRunDeliveryState()
 	state.assistant["assistant-before"] = sentAssistantMessage{firstSeenAt: time.Now().Add(-2 * time.Second)}
@@ -128,7 +129,8 @@ func TestAssistantStreamEditsOnePersistentMessageAcrossApproval(t *testing.T) {
 
 func TestAssistantStreamSplitsLongTextWithoutLosingContent(t *testing.T) {
 	api := &runRenderBotAPI{}
-	worker := &Worker{api: api, config: Config{StreamFlushInterval: time.Nanosecond}}
+	worker := newWorker(Config{}, api)
+	worker.flushInterval = time.Nanosecond
 	target := chatTarget{chatID: -42, externalKey: "telegram:-42"}
 	state := newRunDeliveryState()
 	message := transcript.Message{

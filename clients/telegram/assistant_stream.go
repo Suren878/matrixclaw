@@ -34,10 +34,7 @@ func (w *Worker) streamAssistantMessage(ctx context.Context, target chatTarget, 
 	if now.Before(sent.nextUpdateAt) {
 		return nil
 	}
-	interval := w.config.StreamFlushInterval
-	if interval <= 0 {
-		interval = defaultStreamFlushInterval
-	}
+	interval := w.flushInterval
 	ctx = context.WithValue(ctx, telegramPreviewKey{}, true)
 	if target.chatID > 0 && !sent.draftDisabled {
 		if sent.draftID == 0 {

@@ -88,9 +88,6 @@ func (w *Worker) markMessageSeen(message *Message) bool {
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.messages == nil {
-		w.messages = map[string]struct{}{}
-	}
 	if _, ok := w.messages[key]; ok {
 		return true
 	}
@@ -640,7 +637,7 @@ func (w *Worker) sendUserMessageParts(ctx context.Context, target chatTarget, te
 		}
 	}
 
-	result, err := daemon.SendMessagePartsModeWithDelivery(ctx, "", text, parts, w.config.WorkingDir, "", encodeDeliveryAddress(deliveryAddressFromTarget(target, 0)))
+	result, err := daemon.SendMessagePartsModeWithDelivery(ctx, "", text, parts, "", "", encodeDeliveryAddress(deliveryAddressFromTarget(target, 0)))
 	if err != nil {
 		if daemonclient.IsAPIStatus(err, http.StatusConflict) {
 			return w.handleSessionSelectionRequired(ctx, target)

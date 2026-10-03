@@ -360,9 +360,6 @@ func (w *Worker) runRenderState(externalKey string, runID string) *runDeliverySt
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	key := runRenderStateKey(externalKey, runID)
-	if w.states == nil {
-		w.states = make(map[string]*runDeliveryState)
-	}
 	state := w.states[key]
 	if state == nil {
 		state = newRunDeliveryState()

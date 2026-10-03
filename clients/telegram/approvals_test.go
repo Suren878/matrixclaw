@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/permission"
 )
@@ -48,11 +47,7 @@ func TestDenyWithReasonSendsTheNextMessageAsTheReason(t *testing.T) {
 	}))
 	defer server.Close()
 	api := &approvalBotAPI{}
-	worker := &Worker{
-		api:     api,
-		config:  Config{BaseURL: server.URL, ClientName: "telegram-test", DaemonHTTPClient: server.Client()},
-		prompts: map[string]controlplane.PromptData{},
-	}
+	worker := newWorker(Config{BaseURL: server.URL}, api)
 	chat := Chat{ID: 42, Type: "private"}
 
 	if err := worker.handleCallbackQuery(context.Background(), &CallbackQuery{ID: "cq", From: &User{ID: 42}, Message: &Message{MessageID: 7, Chat: chat}, Data: cbApprovalReason + "approval_1"}); err != nil {
@@ -106,7 +101,7 @@ func TestApprovalButtonsOfferGlobalRulesOnlyInTheOwnerChat(t *testing.T) {
 		{owner, plain, "ao:a2 ad:a2 ar:a2"},
 	} {
 		api := &approvalBotAPI{}
-		worker := &Worker{api: api, config: Config{AllowedUserID: 42}}
+		worker := newWorker(Config{AllowedUserID: 42}, api)
 
 		if err := worker.renderApprovalUpdates(context.Background(), tc.target, []core.Approval{tc.approval}, "run", newRunDeliveryState()); err != nil {
 			t.Fatal(err)
@@ -129,7 +124,7 @@ func TestAlwaysGlobalNeedsTheOwnerChat(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(core.ApprovalResponse{Approval: core.Approval{ID: "a1", State: core.ApprovalStateApproved, Suggestion: &permission.Suggestion{Tool: "bash", Pattern: "go test:*"}}})
 		}))
 		api := &approvalBotAPI{}
-		worker := &Worker{api: api, config: Config{AllowedUserID: allowed, BaseURL: server.URL, ClientName: "telegram-test", DaemonHTTPClient: server.Client()}, prompts: map[string]controlplane.PromptData{}}
+		worker := newWorker(Config{AllowedUserID: allowed, BaseURL: server.URL}, api)
 
 		err := worker.handleCallbackQuery(context.Background(), &CallbackQuery{ID: "cq", From: &User{ID: 42}, Message: &Message{MessageID: 7, Chat: Chat{ID: 42, Type: "private"}}, Data: cbApprovalGlobal + "a1"})
 		server.Close()
@@ -155,7 +150,7 @@ func TestGuestsKeepNoRules(t *testing.T) {
 	}))
 	defer server.Close()
 	api := &approvalBotAPI{}
-	worker := &Worker{api: api, config: Config{AllowedUserID: 42, BaseURL: server.URL, ClientName: "telegram-test", DaemonHTTPClient: server.Client()}, prompts: map[string]controlplane.PromptData{}}
+	worker := newWorker(Config{AllowedUserID: 42, BaseURL: server.URL}, api)
 
 	for _, data := range []string{cbApprovalSession + "a1", cbApprovalGlobal + "a1"} {
 		message := &Message{MessageID: 7, Chat: Chat{ID: 42, Type: "private"}, GuestQueryID: "q"}
@@ -188,11 +183,7 @@ func TestReasonPromptLetsTheMessageThroughOnceTheApprovalIsDecidedElsewhere(t *t
 		}
 	}))
 	defer server.Close()
-	worker := &Worker{
-		api:     &approvalBotAPI{},
-		config:  Config{BaseURL: server.URL, ClientName: "telegram-test", DaemonHTTPClient: server.Client()},
-		prompts: map[string]controlplane.PromptData{},
-	}
+	worker := newWorker(Config{BaseURL: server.URL}, &approvalBotAPI{})
 	chat := Chat{ID: 42, Type: "private"}
 	if err := worker.handleCallbackQuery(context.Background(), &CallbackQuery{ID: "cq", From: &User{ID: 42}, Message: &Message{MessageID: 7, Chat: chat}, Data: cbApprovalReason + "approval_1"}); err != nil {
 		t.Fatal(err)
@@ -226,7 +217,7 @@ func TestOnlyTheOwnerChatSendsUnrestricted(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": core.ErrSessionRestricted.Error()})
 		}))
 		api := &approvalBotAPI{}
-		worker := &Worker{api: api, config: Config{AllowedUserID: 42, BaseURL: server.URL, ClientName: "telegram-test", DaemonHTTPClient: server.Client()}, prompts: map[string]controlplane.PromptData{}}
+		worker := newWorker(Config{AllowedUserID: 42, BaseURL: server.URL}, api)
 
 		err := worker.sendUserMessage(context.Background(), tc.target, "hi")
 		server.Close()
@@ -256,7 +247,7 @@ func TestRunWaitingForEventsLeavesBackgroundApprovalsToTheirOwnDelivery(t *testi
 	}))
 	defer server.Close()
 	api := &approvalBotAPI{}
-	worker := &Worker{api: api, config: Config{BaseURL: server.URL, ClientName: "telegram-test", DaemonHTTPClient: server.Client()}}
+	worker := newWorker(Config{BaseURL: server.URL}, api)
 	target := chatTarget{kind: telegramTargetChat, chatID: 42, externalKey: "42"}
 
 	if err := worker.deliverChatRunDelivery(context.Background(), target, "session-1", "run-1", "delivery-1"); err != nil {
@@ -282,7 +273,7 @@ func TestCancelingADenialReasonAsksForTheApprovalAgain(t *testing.T) {
 	}))
 	defer server.Close()
 	api := &approvalBotAPI{}
-	worker := &Worker{api: api, config: Config{BaseURL: server.URL, ClientName: "telegram-test", DaemonHTTPClient: server.Client()}, prompts: map[string]controlplane.PromptData{}}
+	worker := newWorker(Config{BaseURL: server.URL}, api)
 	chat := Chat{ID: 42, Type: "private"}
 	if err := worker.handleCallbackQuery(context.Background(), &CallbackQuery{ID: "cq", From: &User{ID: 42}, Message: &Message{MessageID: 7, Chat: chat, Text: "Approval required"}, Data: cbApprovalReason + "approval_1"}); err != nil {
 		t.Fatal(err)
@@ -305,7 +296,7 @@ func TestApprovalsDecidedOutsideTheOwnerChatAreRestricted(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(core.ApprovalResponse{Approval: core.Approval{ID: "a1", State: core.ApprovalStateApproved}})
 		}))
-		worker := &Worker{api: &approvalBotAPI{}, config: Config{AllowedUserID: allowed, BaseURL: server.URL, ClientName: "telegram-test", DaemonHTTPClient: server.Client()}, prompts: map[string]controlplane.PromptData{}}
+		worker := newWorker(Config{AllowedUserID: allowed, BaseURL: server.URL}, &approvalBotAPI{})
 
 		err := worker.handleCallbackQuery(context.Background(), &CallbackQuery{ID: "cq", From: &User{ID: allowed}, Message: &Message{MessageID: 7, Chat: Chat{ID: 42, Type: "private"}}, Data: cbApprovalSession + "a1"})
 		server.Close()

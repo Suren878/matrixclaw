@@ -5,7 +5,6 @@ import (
 	"log"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 )
@@ -38,16 +37,9 @@ func (w *Worker) sendRunTypingIndicator(ctx context.Context, target chatTarget, 
 	if w == nil || w.api == nil || key == "" {
 		return
 	}
-	interval := w.config.ChatActionInterval
-	if interval <= 0 {
-		interval = defaultChatActionInterval
-	}
 	now := w.nowUTC()
 	w.mu.Lock()
-	if w.chatActions == nil {
-		w.chatActions = map[string]time.Time{}
-	}
-	if last, ok := w.chatActions[key]; ok && now.Sub(last) < interval {
+	if last, ok := w.chatActions[key]; ok && now.Sub(last) < chatActionInterval {
 		w.mu.Unlock()
 		return
 	}

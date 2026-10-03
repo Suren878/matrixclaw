@@ -117,7 +117,9 @@ func newRunDaemonWorker(t *testing.T, d *runDaemon, api BotAPI, now *time.Time) 
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(d.serve))
 	t.Cleanup(server.Close)
-	return &Worker{api: api, config: Config{BaseURL: server.URL, DaemonHTTPClient: server.Client(), ClientName: "telegram-test"}, now: func() time.Time { return *now }}
+	worker := newWorker(Config{BaseURL: server.URL}, api)
+	worker.now = func() time.Time { return *now }
+	return worker
 }
 
 func toolCallMessage(id string, name string, input string, finished bool) transcript.Message {

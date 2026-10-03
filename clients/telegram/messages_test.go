@@ -34,14 +34,7 @@ func TestUnsupportedDocumentImageIsStoredWithoutStartingRun(t *testing.T) {
 	defer server.Close()
 
 	api := &documentImageBotAPI{content: []byte("<svg/>")}
-	worker := &Worker{
-		api: api,
-		config: Config{
-			BaseURL:          server.URL,
-			ClientName:       "telegram-test",
-			DaemonHTTPClient: server.Client(),
-		},
-	}
+	worker := newWorker(Config{BaseURL: server.URL}, api)
 	err := worker.handleDocumentImageMessage(context.Background(), &Message{
 		Chat: Chat{ID: 42, Type: "private"},
 		Document: &Document{
@@ -79,7 +72,7 @@ func TestUnsupportedDocumentImageIsStoredWithoutStartingRun(t *testing.T) {
 
 func TestDocumentDownloadUsesTelegramFileSizeLimit(t *testing.T) {
 	api := &oversizedDocumentBotAPI{}
-	worker := &Worker{api: api}
+	worker := newWorker(Config{}, api)
 	err := worker.handleDocumentMessage(context.Background(), &Message{
 		Chat: Chat{ID: 42, Type: "private"},
 		Document: &Document{
@@ -162,7 +155,7 @@ func TestSteeringARunningTaskIsAcknowledgedAndItsRunDelivered(t *testing.T) {
 	}))
 	defer server.Close()
 	api := &approvalBotAPI{}
-	worker := &Worker{api: api, config: Config{BaseURL: server.URL, ClientName: "telegram-test", DaemonHTTPClient: server.Client()}}
+	worker := newWorker(Config{BaseURL: server.URL}, api)
 
 	if err := worker.sendUserMessage(context.Background(), chatTarget{kind: telegramTargetChat, chatID: 42, externalKey: "42"}, "also check the logs"); err != nil {
 		t.Fatal(err)

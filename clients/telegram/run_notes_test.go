@@ -11,7 +11,7 @@ import (
 
 func TestEngineNotesAreSentOnceAndSilently(t *testing.T) {
 	api := &runRenderBotAPI{}
-	worker := &Worker{api: api}
+	worker := newWorker(Config{}, api)
 	target := chatTarget{chatID: 7, externalKey: "7"}
 	state := newRunDeliveryState()
 	messages := []transcript.Message{
@@ -33,7 +33,7 @@ func TestEngineNotesAreSentOnceAndSilently(t *testing.T) {
 
 func TestModelOnlyEngineNoteIsNotSentWhileAShownOneIs(t *testing.T) {
 	api := &runRenderBotAPI{}
-	worker := &Worker{api: api}
+	worker := newWorker(Config{}, api)
 	target := chatTarget{chatID: 7, externalKey: "7"}
 	state := newRunDeliveryState()
 	messages := []transcript.Message{
@@ -52,7 +52,7 @@ func TestModelOnlyEngineNoteIsNotSentWhileAShownOneIs(t *testing.T) {
 
 func TestRunStoppedEarlyOffersAContinueButtonOnce(t *testing.T) {
 	api := &runRenderBotAPI{}
-	worker := &Worker{api: api}
+	worker := newWorker(Config{}, api)
 	target := chatTarget{chatID: 7, externalKey: "7"}
 	state := newRunDeliveryState()
 	stopped := core.Run{ID: "run-1", Status: core.RunStatusCompleted, StopReason: agent.StopBudgetExhausted}

@@ -96,9 +96,6 @@ func (w *Worker) compactCallbackData(data string) string {
 	ref := callbackRefData(data)
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.callbacks == nil {
-		w.callbacks = map[string]string{}
-	}
 	w.callbacks[ref] = data
 	return ref
 }
