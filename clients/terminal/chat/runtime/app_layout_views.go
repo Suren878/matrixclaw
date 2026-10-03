@@ -88,7 +88,7 @@ func (m *appModel) workingStatusLine(snapshot *readmodel.Model, run *core.Run, p
 	if len(details) > 0 {
 		detail = " • " + strings.Join(details, " • ")
 	}
-	line := lipgloss.NewStyle().Foreground(lipgloss.Color(colorToHex(m.styles.Primary))).Render("[" + model + "] " + spinner + " " + phase + " (" + timing + " • esc to cancel" + detail + ")")
+	line := lipgloss.NewStyle().Foreground(m.styles.Primary).Render("[" + model + "] " + spinner + " " + phase + " (" + timing + " • esc to cancel" + detail + ")")
 	return line
 }
 
@@ -98,7 +98,7 @@ func (m *appModel) waitingSubagentsStatusView() string {
 	if line == "" {
 		return ""
 	}
-	return lipgloss.NewStyle().Foreground(lipgloss.Color(colorToHex(m.styles.Primary))).Render(line)
+	return lipgloss.NewStyle().Foreground(m.styles.Primary).Render(line)
 }
 
 func combinedWaitingStatusText(inputs []core.SessionInput, subagents []surfacemessage.Subagent) string {
@@ -400,11 +400,4 @@ func (m *appModel) inputSectionView() string {
 	}
 	parts = append([]string{""}, parts...)
 	return strings.Join(parts, "\n")
-}
-
-func colorToHex(c interface {
-	RGBA() (uint32, uint32, uint32, uint32)
-}) string {
-	r, g, b, _ := c.RGBA()
-	return fmt.Sprintf("#%02x%02x%02x", uint8(r>>8), uint8(g>>8), uint8(b>>8))
 }

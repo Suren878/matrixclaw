@@ -87,7 +87,7 @@ func todoWindow(lines []string, focus int, height int) []string {
 
 func (m *appModel) todoPanelTitle(width int) string {
 	style := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colorToHex(m.styles.White))).
+		Foreground(m.styles.White).
 		Bold(true).
 		Width(max(1, width)).
 		Align(lipgloss.Center)

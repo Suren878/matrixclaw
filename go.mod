@@ -13,7 +13,6 @@ require (
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/ultraviolet v0.0.0-20260420095748-421e4a7fa8d7
 	github.com/charmbracelet/x/ansi v0.11.7
-	github.com/charmbracelet/x/exp/charmtone v0.0.0-20260420102150-fe550f2efce5
 	github.com/clipperhouse/displaywidth v0.11.0
 	github.com/clipperhouse/uax29/v2 v2.7.0
 	github.com/coder/websocket v1.8.15

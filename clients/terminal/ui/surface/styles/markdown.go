@@ -1,18 +1,16 @@
 package styles
 
 import (
-	"image/color"
-
 	"charm.land/glamour/v2/ansi"
-	"github.com/Suren878/matrixclaw/clients/terminal/ui/surface/colorx"
-	"github.com/charmbracelet/x/exp/charmtone"
+
+	"github.com/Suren878/matrixclaw/clients/terminal/theme"
 )
 
-func defaultMarkdownStyles(green color.Color) ansi.StyleConfig {
+func defaultMarkdownStyles() ansi.StyleConfig {
 	return ansi.StyleConfig{
 		Document: ansi.StyleBlock{
 			StylePrimitive: ansi.StylePrimitive{
-				Color: new(charmtone.Smoke.Hex()),
+				Color: new(theme.CodeText),
 			},
 		},
 		BlockQuote: ansi.StyleBlock{
@@ -26,7 +24,7 @@ func defaultMarkdownStyles(green color.Color) ansi.StyleConfig {
 		Heading: ansi.StyleBlock{
 			StylePrimitive: ansi.StylePrimitive{
 				BlockSuffix: "\n",
-				Color:       new(charmtone.Malibu.Hex()),
+				Color:       new(theme.InfoStrong),
 				Bold:        new(true),
 			},
 		},
@@ -34,8 +32,8 @@ func defaultMarkdownStyles(green color.Color) ansi.StyleConfig {
 			StylePrimitive: ansi.StylePrimitive{
 				Prefix:          " ",
 				Suffix:          " ",
-				Color:           new(charmtone.Zest.Hex()),
-				BackgroundColor: new(charmtone.Charple.Hex()),
+				Color:           new(theme.Highlight),
+				BackgroundColor: new(theme.SelectionBg),
 				Bold:            new(true),
 			},
 		},
@@ -62,7 +60,7 @@ func defaultMarkdownStyles(green color.Color) ansi.StyleConfig {
 		H6: ansi.StyleBlock{
 			StylePrimitive: ansi.StylePrimitive{
 				Prefix: "###### ",
-				Color:  new(charmtone.Guac.Hex()),
+				Color:  new(theme.Accent),
 				Bold:   new(false),
 			},
 		},
@@ -76,7 +74,7 @@ func defaultMarkdownStyles(green color.Color) ansi.StyleConfig {
 			Bold: new(true),
 		},
 		HorizontalRule: ansi.StylePrimitive{
-			Color:  new(charmtone.Charcoal.Hex()),
+			Color:  new(theme.Line),
 			Format: "\n--------\n",
 		},
 		Item: ansi.StylePrimitive{
@@ -91,116 +89,116 @@ func defaultMarkdownStyles(green color.Color) ansi.StyleConfig {
 			Unticked:       "[ ] ",
 		},
 		Link: ansi.StylePrimitive{
-			Color:     new(charmtone.Zinc.Hex()),
+			Color:     new(theme.CodeLink),
 			Underline: new(true),
 		},
 		LinkText: ansi.StylePrimitive{
-			Color: new(colorx.Hex(green)),
+			Color: new(theme.Success),
 			Bold:  new(true),
 		},
 		Image: ansi.StylePrimitive{
-			Color:     new(charmtone.Cheeky.Hex()),
+			Color:     new(theme.CodeBuiltin),
 			Underline: new(true),
 		},
 		ImageText: ansi.StylePrimitive{
-			Color:  new(charmtone.Squid.Hex()),
+			Color:  new(theme.CodeMuted),
 			Format: "Image: {{.text}} →",
 		},
 		Code: ansi.StyleBlock{
 			StylePrimitive: ansi.StylePrimitive{
 				Prefix: " ",
 				Suffix: " ",
-				Color:  new(colorx.Hex(green)),
+				Color:  new(theme.Success),
 			},
 		},
 		CodeBlock: ansi.StyleCodeBlock{
 			StyleBlock: ansi.StyleBlock{
 				StylePrimitive: ansi.StylePrimitive{
-					Color: new(charmtone.Charcoal.Hex()),
+					Color: new(theme.Line),
 				},
 				Margin: new(uint(defaultMargin)),
 			},
 			Chroma: &ansi.Chroma{
 				Text: ansi.StylePrimitive{
-					Color: new(charmtone.Smoke.Hex()),
+					Color: new(theme.CodeText),
 				},
 				Error: ansi.StylePrimitive{
-					Color:           new(charmtone.Butter.Hex()),
-					BackgroundColor: new(charmtone.Sriracha.Hex()),
+					Color:           new(theme.Strong),
+					BackgroundColor: new(theme.ErrorStrong),
 				},
 				Comment: ansi.StylePrimitive{
-					Color: new(charmtone.Oyster.Hex()),
+					Color: new(theme.Subtle),
 				},
 				CommentPreproc: ansi.StylePrimitive{
-					Color: new(charmtone.Bengal.Hex()),
+					Color: new(theme.CodePreproc),
 				},
 				Keyword: ansi.StylePrimitive{
-					Color: new(charmtone.Malibu.Hex()),
+					Color: new(theme.InfoStrong),
 				},
 				KeywordReserved: ansi.StylePrimitive{
-					Color: new(charmtone.Pony.Hex()),
+					Color: new(theme.CodeReserved),
 				},
 				KeywordNamespace: ansi.StylePrimitive{
-					Color: new(charmtone.Pony.Hex()),
+					Color: new(theme.CodeReserved),
 				},
 				KeywordType: ansi.StylePrimitive{
-					Color: new(charmtone.Guppy.Hex()),
+					Color: new(theme.CodeType),
 				},
 				Operator: ansi.StylePrimitive{
-					Color: new(charmtone.Salmon.Hex()),
+					Color: new(theme.CodeOperator),
 				},
 				Punctuation: ansi.StylePrimitive{
-					Color: new(charmtone.Zest.Hex()),
+					Color: new(theme.Highlight),
 				},
 				Name: ansi.StylePrimitive{
-					Color: new(charmtone.Smoke.Hex()),
+					Color: new(theme.CodeText),
 				},
 				NameBuiltin: ansi.StylePrimitive{
-					Color: new(charmtone.Cheeky.Hex()),
+					Color: new(theme.CodeBuiltin),
 				},
 				NameTag: ansi.StylePrimitive{
-					Color: new(charmtone.Mauve.Hex()),
+					Color: new(theme.CodeTag),
 				},
 				NameAttribute: ansi.StylePrimitive{
-					Color: new(charmtone.Hazy.Hex()),
+					Color: new(theme.CodeAttribute),
 				},
 				NameClass: ansi.StylePrimitive{
-					Color:     new(charmtone.Salt.Hex()),
+					Color:     new(theme.SelectionFg),
 					Underline: new(true),
 					Bold:      new(true),
 				},
 				NameDecorator: ansi.StylePrimitive{
-					Color: new(charmtone.Citron.Hex()),
+					Color: new(theme.CodeDecorator),
 				},
 				NameFunction: ansi.StylePrimitive{
-					Color: new(charmtone.Guac.Hex()),
+					Color: new(theme.Accent),
 				},
 				LiteralNumber: ansi.StylePrimitive{
-					Color: new(charmtone.Julep.Hex()),
+					Color: new(theme.Success),
 				},
 				LiteralString: ansi.StylePrimitive{
-					Color: new(charmtone.Cumin.Hex()),
+					Color: new(theme.CodeString),
 				},
 				LiteralStringEscape: ansi.StylePrimitive{
-					Color: new(charmtone.Bok.Hex()),
+					Color: new(theme.AccentBright),
 				},
 				GenericDeleted: ansi.StylePrimitive{
-					Color: new(charmtone.Coral.Hex()),
+					Color: new(theme.Error),
 				},
 				GenericEmph: ansi.StylePrimitive{
 					Italic: new(true),
 				},
 				GenericInserted: ansi.StylePrimitive{
-					Color: new(charmtone.Guac.Hex()),
+					Color: new(theme.Accent),
 				},
 				GenericStrong: ansi.StylePrimitive{
 					Bold: new(true),
 				},
 				GenericSubheading: ansi.StylePrimitive{
-					Color: new(charmtone.Squid.Hex()),
+					Color: new(theme.CodeMuted),
 				},
 				Background: ansi.StylePrimitive{
-					BackgroundColor: new(charmtone.Charcoal.Hex()),
+					BackgroundColor: new(theme.Line),
 				},
 			},
 		},

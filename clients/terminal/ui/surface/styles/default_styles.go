@@ -3,57 +3,49 @@ package styles
 import (
 	"charm.land/bubbles/v2/help"
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/exp/charmtone"
 
 	"github.com/Suren878/matrixclaw/clients/terminal/theme"
 	"github.com/Suren878/matrixclaw/clients/terminal/ui/surface/diffview"
 )
 
-const (
-	semanticUserMessageBg   = theme.UserBubble
-	semanticControlSelected = theme.Bright
-	semanticControlText     = theme.SelectedFg
-	semanticMarkerFocused   = theme.Marker
-)
-
-// DefaultStyles returns the default styles for the UI.
+// DefaultStyles builds the chat, dialog and editor styles from the theme colours.
 func DefaultStyles() Styles {
 	var (
-		primary   = charmtone.Guac
-		secondary = charmtone.Bok
-		tertiary  = charmtone.Julep
+		primary   = lipgloss.Color(theme.Accent)
+		secondary = lipgloss.Color(theme.AccentBright)
+		tertiary  = lipgloss.Color(theme.Success)
 
-		bgBase        = charmtone.Pepper
-		bgBaseLighter = charmtone.BBQ
-		bgSubtle      = charmtone.Charcoal
-		bgOverlay     = charmtone.Iron
+		bgBase        = lipgloss.Color(theme.Background)
+		bgBaseLighter = lipgloss.Color(theme.Surface)
+		bgSubtle      = lipgloss.Color(theme.Line)
+		bgOverlay     = lipgloss.Color(theme.Overlay)
 
-		fgBase      = charmtone.Ash
+		fgBase      = lipgloss.Color(theme.Foreground)
 		fgMuted     = lipgloss.Color(theme.MutedLight)
 		fgHalfMuted = lipgloss.Color(theme.MutedLight)
-		fgSubtle    = charmtone.Oyster
+		fgSubtle    = lipgloss.Color(theme.Subtle)
 
-		border      = charmtone.Charcoal
-		borderFocus = charmtone.Guac
+		border      = lipgloss.Color(theme.Line)
+		borderFocus = lipgloss.Color(theme.Accent)
 
-		warning = charmtone.Zest
+		warning = lipgloss.Color(theme.Highlight)
 
-		white = charmtone.Butter
+		white = lipgloss.Color(theme.Strong)
 
-		blueLight = charmtone.Sardine
-		blue      = charmtone.Malibu
+		blueLight = lipgloss.Color(theme.Info)
+		blue      = lipgloss.Color(theme.InfoStrong)
 
-		yellow = charmtone.Mustard
+		yellow = lipgloss.Color(theme.Caution)
 
-		green     = charmtone.Julep
-		greenDark = charmtone.Guac
+		green     = lipgloss.Color(theme.Success)
+		greenDark = lipgloss.Color(theme.Accent)
 
-		red     = charmtone.Coral
-		redDark = charmtone.Sriracha
+		red     = lipgloss.Color(theme.Error)
+		redDark = lipgloss.Color(theme.ErrorStrong)
 
-		userMessageBg    = lipgloss.Color(semanticUserMessageBg)
+		userMessageBg    = lipgloss.Color(theme.UserBubble)
 		toolOutputCodeBg = bgBase
-		focusedMarkerBg  = lipgloss.Color(semanticMarkerFocused)
+		focusedMarkerBg  = lipgloss.Color(theme.Marker)
 	)
 
 	base := lipgloss.NewStyle().Foreground(fgBase)
@@ -114,7 +106,7 @@ func DefaultStyles() Styles {
 		},
 	}
 
-	s.Markdown = defaultMarkdownStyles(green)
+	s.Markdown = defaultMarkdownStyles()
 
 	s.Help = help.Styles{
 		ShortKey:       base.Foreground(fgMuted),
@@ -224,7 +216,7 @@ func DefaultStyles() Styles {
 	s.EditorPromptNormalBlurred = lipgloss.NewStyle().Foreground(fgMuted)
 
 	s.Section.Title = s.Subtle
-	s.Section.Line = s.Base.Foreground(charmtone.Charcoal)
+	s.Section.Line = s.Base.Foreground(lipgloss.Color(theme.Line))
 
 	s.Files.Path = s.Muted
 	s.Files.Additions = s.Base.Foreground(greenDark)
@@ -246,7 +238,7 @@ func DefaultStyles() Styles {
 	s.Chat.Message.AssistantInfoProvider = s.Subtle
 	s.Chat.Message.AssistantInfoDuration = s.Subtle
 
-	s.TextSelection = lipgloss.NewStyle().Foreground(charmtone.Salt).Background(charmtone.Charple)
+	s.TextSelection = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.SelectionFg)).Background(lipgloss.Color(theme.SelectionBg))
 
 	s.Dialog.Title = base.Padding(0, 1).Foreground(primary)
 	s.Dialog.View = base.Border(lipgloss.RoundedBorder()).BorderForeground(borderFocus)
