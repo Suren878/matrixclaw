@@ -118,23 +118,6 @@ func textToSpeechToolResponse(result *transcript.ToolResultPart) (voicemodule.Te
 	if result == nil || len(result.Metadata) == 0 {
 		return voicemodule.TextToSpeechResponse{}, false
 	}
-	var metadata struct {
-		Type          string `json:"type"`
-		ContentBase64 string `json:"content_base64"`
-		MIMEType      string `json:"mime_type"`
-		FileName      string `json:"file_name"`
-	}
-	if err := json.Unmarshal(result.Metadata, &metadata); err == nil && strings.TrimSpace(metadata.ContentBase64) != "" {
-		response := voicemodule.TextToSpeechResponse{
-			ContentBase64: metadata.ContentBase64,
-			MIMEType:      metadata.MIMEType,
-			FileName:      metadata.FileName,
-		}
-		if strings.TrimSpace(response.MIMEType) == "" {
-			response.MIMEType = strings.TrimSpace(result.MIMEType)
-		}
-		return response, true
-	}
 	var response voicemodule.TextToSpeechResponse
 	if err := json.Unmarshal(result.Metadata, &response); err != nil {
 		return voicemodule.TextToSpeechResponse{}, false

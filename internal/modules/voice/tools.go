@@ -16,14 +16,6 @@ type textToSpeechTool struct {
 	service *Service
 }
 
-type textToSpeechToolMetadata struct {
-	Type          string `json:"type"`
-	Delivery      string `json:"delivery"`
-	ContentBase64 string `json:"content_base64"`
-	MIMEType      string `json:"mime_type"`
-	FileName      string `json:"file_name"`
-}
-
 func NewTextToSpeechTool(setupService setupLoader) tools.Executor {
 	return &textToSpeechTool{service: NewService(setupService)}
 }
@@ -73,14 +65,8 @@ func (t *textToSpeechTool) Execute(ctx context.Context, call tools.Call) (tools.
 		return tools.Result{Content: fmt.Sprintf("Text to speech failed: %s", err), IsError: true, Status: tools.ResultStatusError}, nil
 	}
 	return tools.Result{
-		Content: "Speech audio generated.",
-		Metadata: textToSpeechToolMetadata{
-			Type:          "matrixclaw.tts_audio",
-			Delivery:      "voice",
-			ContentBase64: response.ContentBase64,
-			MIMEType:      response.MIMEType,
-			FileName:      response.FileName,
-		},
+		Content:  "Speech audio generated.",
+		Metadata: response,
 		MIMEType: response.MIMEType,
 		Status:   tools.ResultStatusSuccess,
 	}, nil
