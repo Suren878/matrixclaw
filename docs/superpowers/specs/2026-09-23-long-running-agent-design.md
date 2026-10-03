@@ -201,8 +201,9 @@ check.
 
 **Loop guard.** Hash of `(name, args, result)` — it detects *no progress*, not
 repetition, so polling tools (`task_output`, `git status`) that return new
-output are not flagged. 3 identical consecutive triples → engine message "you
-are repeating X with the same result, change approach"; 5 → final turn and
+output are not flagged. A triple seen 3 times among the last 20 calls (in a
+row or in a cycle such as read → check → read) → engine message "you are
+repeating X with the same result, change approach"; 5 → final turn and
 `completed` with `stop_reason=loop_detected`.
 
 **Engine messages** (nudges, continuations, warnings, recovery notices, the

@@ -14,8 +14,9 @@ as-built notes:
   without tools says what is done and what remains. The old 32-step failure is
   gone.
 - Runs now report a stop reason: `done`, `budget_exhausted`, `loop_detected`
-  or `context_exhausted`. A loop guard warns after 3 identical calls with the
-  same result and stops the run after 5. Polling that returns new output does
+  or `context_exhausted`. A loop guard warns when the same call with the same
+  result shows up 3 times among the last 20 calls, in a row or in a cycle, and
+  stops the run at 5. Polling that returns new output does
   not count. Replies cut by the output limit are continued, up to 3 times in a
   row.
 - Added `/continue`, which starts a fresh-budget run after one that stopped

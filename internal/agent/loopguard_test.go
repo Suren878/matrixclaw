@@ -39,11 +39,37 @@ func TestRepeatingACallWithoutProgressWarnsThenStops(t *testing.T) {
 		t.Fatal("loop warning repeated within one streak")
 	}
 	final := requests[5]
-	if final.ToolChoice != providers.ToolChoiceNone || !strings.Contains(lastMessage(final).Content, "5 times in a row") {
+	if final.ToolChoice != providers.ToolChoiceNone || !strings.Contains(lastMessage(final).Content, "5 times among your recent calls") {
 		t.Fatalf("final turn = %q / %+v", final.ToolChoice, lastMessage(final))
 	}
 	if notes := engineNotes(f.Journal.Messages); len(notes) != 2 || notes[0].Origin != transcript.OriginEngine || notes[1].Origin != transcript.OriginEngineModel {
 		t.Fatalf("engine notes = %+v, want the shown warning and the model-only final-turn note", notes)
+	}
+}
+
+func TestCyclingThroughTheSameCallsWarnsThenStops(t *testing.T) {
+	f := agenttest.NewFixture()
+	for _, name := range []string{"read", "check", "inspect"} {
+		f.Tools.Funcs[name] = statusTool
+	}
+	cycle := []string{"read", "check", "inspect"}
+	turns := make([]agenttest.Turn, 0, 14)
+	for i := 0; i < 13; i++ {
+		turns = append(turns, calls(call(fmt.Sprintf("c%d", i), cycle[i%3])))
+	}
+	model := agenttest.NewScriptedModel(append(turns, text("Going in circles; stopping."))...)
+
+	outcome := run(t, f, model)
+
+	requests := model.Requests()
+	if outcome.StopReason != agent.StopLoopDetected || len(f.Tools.Calls) != 13 || len(requests) != 14 {
+		t.Fatalf("outcome = %+v requests = %d tool calls = %d", outcome, len(requests), len(f.Tools.Calls))
+	}
+	if note := lastMessage(requests[7]); !strings.Contains(note.Content, "You are repeating read") {
+		t.Fatalf("request 8 ends with %+v, want the loop warning", note)
+	}
+	if final := requests[13]; final.ToolChoice != providers.ToolChoiceNone {
+		t.Fatalf("final turn tool choice = %q", final.ToolChoice)
 	}
 }
 

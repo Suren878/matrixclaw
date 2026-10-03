@@ -21,7 +21,7 @@ type Counters struct {
 	Tokens        int64         `json:"tokens,omitempty"`
 	Active        time.Duration `json:"active,omitempty"`
 	WrapUpSent    bool          `json:"wrap_up_sent,omitempty"`
-	LoopHash      string        `json:"loop_hash,omitempty"`
+	LoopRecent    string        `json:"loop_recent,omitempty"`
 	LoopTool      string        `json:"loop_tool,omitempty"`
 	LoopRepeats   int           `json:"loop_repeats,omitempty"`
 	LoopWarned    bool          `json:"loop_warned,omitempty"`

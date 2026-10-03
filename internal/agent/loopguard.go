@@ -11,26 +11,37 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-// Identical consecutive (tool, arguments, result) triples mean no progress: the
-// model is warned at loopWarnRepeats and the run stops at loopStopRepeats.
+// A (tool, arguments, result) triple seen again among the last loopWindow
+// calls means no progress, whether repeated in a row or in a cycle: the model
+// is warned at loopWarnRepeats sightings and the run stops at loopStopRepeats.
 const (
+	loopWindow      = 20
 	loopWarnRepeats = 3
 	loopStopRepeats = 5
 )
 
-// observeCall records a finished call; a call whose name, arguments and result
-// match the previous one extends the no-progress streak. Waiting on a task
-// that is still running is not a repeat.
+// observeCall records a finished call and how often the same call with the
+// same result appears in the recent window; a call not seen there ends the
+// warned streak. Waiting on a task that is still running is not a repeat.
 func (c *Counters) observeCall(name string, args []byte, result tools.Result) {
 	if result.Await != nil || result.Waiting {
 		return
 	}
 	hash := callHash(name, args, result)
-	if hash == c.LoopHash {
-		c.LoopRepeats++
-		return
+	c.LoopRecent += hash
+	if len(c.LoopRecent) > loopWindow*len(hash) {
+		c.LoopRecent = c.LoopRecent[len(c.LoopRecent)-loopWindow*len(hash):]
 	}
-	c.LoopHash, c.LoopTool, c.LoopRepeats, c.LoopWarned = hash, name, 1, false
+	seen := 0
+	for i := 0; i < len(c.LoopRecent); i += len(hash) {
+		if c.LoopRecent[i:i+len(hash)] == hash {
+			seen++
+		}
+	}
+	if seen == 1 {
+		c.LoopWarned = false
+	}
+	c.LoopTool, c.LoopRepeats = name, seen
 }
 
 func callHash(name string, args []byte, result tools.Result) string {
@@ -43,7 +54,7 @@ func callHash(name string, args []byte, result tools.Result) string {
 	if result.IsError {
 		sum.Write([]byte{1})
 	}
-	return hex.EncodeToString(sum.Sum(nil))
+	return hex.EncodeToString(sum.Sum(nil)[:8])
 }
 
 // canonicalArgs re-encodes JSON arguments with sorted keys, so a different layout
@@ -71,5 +82,5 @@ func loopWarningText(tool string) string {
 }
 
 func loopStopText(tool string) string {
-	return fmt.Sprintf("You called %s with the same arguments and got the same result %d times in a row, so this run stops here. Do not call tools. Reply briefly: what is done, what remains, and how to continue.", tool, loopStopRepeats)
+	return fmt.Sprintf("You called %s with the same arguments and got the same result %d times among your recent calls, so this run stops here. Do not call tools. Reply briefly: what is done, what remains, and how to continue.", tool, loopStopRepeats)
 }
