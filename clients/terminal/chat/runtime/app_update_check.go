@@ -42,8 +42,13 @@ func (m *appModel) handleUpdateCheck(msg updateCheckMsg) {
 	}))
 }
 
+// handleUpdateCommand runs the terminal-local "/update install <version>" and
+// "/update restart" (restart the daemon, then reopen the terminal) commands.
 func (m *appModel) handleUpdateCommand(command string) tea.Cmd {
 	fields := strings.Fields(command)
+	if len(fields) == 2 && fields[0] == "/update" && fields[1] == "restart" {
+		return m.openServerRestartDialog(true)
+	}
 	if len(fields) < 3 || fields[0] != "/update" || fields[1] != "install" {
 		return nil
 	}
@@ -94,12 +99,11 @@ func (m *appModel) handleUpdateInstall(msg updateInstallMsg) {
 		return
 	}
 	m.dialog.CloseDialog(updateInfoDialogID)
-	m.restartTUIPending = true
 	m.dialog.OpenDialog(surfacedialog.NewConfirmCommand(m.com, controlplane.ConfirmData{
 		Message:        "Updated to " + strings.TrimSpace(msg.version) + ".\n\nRestart daemon now? Terminal will reopen after restart.",
 		ConfirmLabel:   "Yes",
 		CancelLabel:    "No",
-		ConfirmCommand: "/restart confirm",
+		ConfirmCommand: "/update restart",
 	}))
 }
 

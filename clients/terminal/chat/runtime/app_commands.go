@@ -22,7 +22,7 @@ func (m *appModel) handleControlplaneSubmit(content string, attachments []surfac
 	}
 	if isDaemonRestartCommand(content) {
 		m.returnToCommands = false
-		return true, m.openServerRestartDialog()
+		return true, m.openServerRestartDialog(false)
 	}
 	if isContextCompactCommand(content) {
 		m.returnToCommands = false

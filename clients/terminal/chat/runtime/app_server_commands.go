@@ -44,7 +44,7 @@ func (m *appModel) openServerStatusDialog() tea.Cmd {
 	return tea.Batch(m.serverStatusCmd(), m.serverStatusTickCmd())
 }
 
-func (m *appModel) openServerRestartDialog() tea.Cmd {
+func (m *appModel) openServerRestartDialog(reopenTerminal bool) tea.Cmd {
 	m.closeAllDialogs()
 	m.dialog.OpenDialog(surfacedialog.NewInfo(m.com, surfacedialog.InfoData{
 		ID:    surfacedialog.ServerRestartInfoID,
@@ -52,6 +52,7 @@ func (m *appModel) openServerRestartDialog() tea.Cmd {
 		Text:  serverRestartProgressText,
 	}))
 	m.restartPending = true
+	m.restartTUIPending = reopenTerminal
 	m.restartRequestedAt = time.Now().UTC()
 	return tea.Batch(m.restartDaemonCmd(), m.serverRestartTickCmd())
 }

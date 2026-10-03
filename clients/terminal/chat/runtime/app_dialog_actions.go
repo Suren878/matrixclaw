@@ -75,7 +75,7 @@ func (m *appModel) handleRunControlplaneCommand(msg surfacedialog.ActionRunContr
 		return m.openServerStatusDialog()
 	}
 	if isDaemonRestartCommand(command) {
-		return m.openServerRestartDialog()
+		return m.openServerRestartDialog(false)
 	}
 	return tea.Batch(m.dialog.StartLoading(), m.controlplaneCmd(command))
 }
