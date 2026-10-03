@@ -92,7 +92,7 @@ func normalizeMCPConfig(cfg MCPConfig) MCPConfig {
 	for _, server := range cfg.Servers {
 		server.ID = slugID(server.ID)
 		server.Name = strings.TrimSpace(server.Name)
-		server.Transport = normalizeMCPTransport(server.Transport)
+		server.Transport = NormalizeMCPTransport(server.Transport)
 		server.Command = strings.TrimSpace(server.Command)
 		server.Endpoint = strings.TrimRight(strings.TrimSpace(server.Endpoint), "/")
 		server.ToolPrefix = slugID(server.ToolPrefix)
@@ -144,7 +144,9 @@ func slugID(value string) string {
 	return strings.Trim(b.String(), "_")
 }
 
-func normalizeMCPTransport(value string) string {
+// NormalizeMCPTransport is "http" for the streamable HTTP transport and
+// "stdio" for anything else.
+func NormalizeMCPTransport(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "http", "streamable_http", "streamable-http":
 		return "http"

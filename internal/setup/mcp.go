@@ -2,6 +2,7 @@ package setup
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/textutil"
@@ -46,11 +47,7 @@ func (s *Service) CreateMCPServer(server MCPServerConfig) (MCPConfig, error) {
 			return fmt.Errorf("mcp server already exists: %s", server.ID)
 		}
 		cfg.Servers = append(cfg.Servers, server)
-		*cfg = normalizeMCPConfig(*cfg)
-		if !mcpServerConfigExists(cfg.Servers, server.ID) {
-			return fmt.Errorf("mcp server %s is incomplete", server.ID)
-		}
-		return nil
+		return normalizeCheckedMCPConfig(cfg, server.ID)
 	})
 }
 
@@ -60,7 +57,7 @@ func normalizeMCPServerForCreate(server MCPServerConfig) MCPServerConfig {
 	if server.Name == "" {
 		server.Name = server.ID
 	}
-	server.Transport = normalizeMCPTransport(server.Transport)
+	server.Transport = NormalizeMCPTransport(server.Transport)
 	server.Command = strings.TrimSpace(server.Command)
 	server.Endpoint = strings.TrimRight(strings.TrimSpace(server.Endpoint), "/")
 	server.ToolPrefix = slugID(server.ToolPrefix)
@@ -115,8 +112,7 @@ func (s *Service) UpdateMCPServer(serverID string, update MCPServerUpdate) (MCPC
 			if update.TimeoutSeconds != nil {
 				cfg.Servers[i].TimeoutSeconds = *update.TimeoutSeconds
 			}
-			*cfg = normalizeMCPConfig(*cfg)
-			return nil
+			return normalizeCheckedMCPConfig(cfg, id)
 		}
 		return fmt.Errorf("mcp server not found: %s", id)
 	})
@@ -144,6 +140,28 @@ func (s *Service) DeleteMCPServer(serverID string) (MCPConfig, error) {
 		*cfg = normalizeMCPConfig(*cfg)
 		return nil
 	})
+}
+
+// normalizeCheckedMCPConfig normalizes cfg after server id was saved, refusing
+// a server normalize would drop or whose tool prefix another server or the
+// Browser module uses.
+func normalizeCheckedMCPConfig(cfg *MCPConfig, id string) error {
+	normalized := normalizeMCPConfig(*cfg)
+	index := slices.IndexFunc(normalized.Servers, func(server MCPServerConfig) bool { return server.ID == id })
+	if index < 0 {
+		return fmt.Errorf("mcp server %s is incomplete: a stdio server needs a command, an http server an endpoint", id)
+	}
+	prefix := normalized.Servers[index].ToolPrefix
+	if prefix == BrowserModuleBrowser {
+		return fmt.Errorf("mcp tool prefix %q is reserved for the Browser module", prefix)
+	}
+	for i, server := range normalized.Servers {
+		if i != index && server.ToolPrefix == prefix {
+			return fmt.Errorf("mcp tool prefix %q is already used by server %s", prefix, server.ID)
+		}
+	}
+	*cfg = normalized
+	return nil
 }
 
 func mcpServerConfigExists(servers []MCPServerConfig, id string) bool {

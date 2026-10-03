@@ -207,6 +207,11 @@ func (d *Dispatcher) mcpServerFieldPrompt(ctx context.Context, serverID string, 
 }
 
 func (d *Dispatcher) setMCPServerField(ctx context.Context, serverID string, field string, value string) (Result, error) {
+	if field == "transport" {
+		if prompt, ok, err := d.mcpServerTargetPrompt(ctx, serverID, value); err != nil || ok {
+			return prompt, err
+		}
+	}
 	update, ok := mcpServerUpdateForField(field, value)
 	if !ok {
 		return d.mcpServerEditForm(ctx, serverID)
@@ -215,6 +220,36 @@ func (d *Dispatcher) setMCPServerField(ctx context.Context, serverID string, fie
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
 	return d.mcpServerEditForm(ctx, serverID)
+}
+
+// mcpServerTargetPrompt asks for the endpoint or command a server lacks for
+// the transport it switches to, so both are saved together.
+func (d *Dispatcher) mcpServerTargetPrompt(ctx context.Context, serverID string, value string) (Result, bool, error) {
+	transport, target := firstCommandToken(value)
+	if transport == "" || target != "" {
+		return Result{}, false, nil
+	}
+	resp, err := d.daemon.MCPConfig(ctx)
+	if err != nil {
+		return Result{}, false, err
+	}
+	server, ok := findExternalMCPServer(resp.Config.Servers, serverID)
+	if !ok {
+		return Result{}, false, nil
+	}
+	field := "command"
+	if setup.NormalizeMCPTransport(transport) == "http" {
+		field = "endpoint"
+	}
+	if title, current, placeholder := mcpServerFieldPromptText(server, field); current == "" {
+		return Result{Handled: true, Prompt: &PromptData{
+			Title:               title,
+			Placeholder:         placeholder,
+			SubmitCommandPrefix: mcpServerCommand(server.ID, "set", "transport", transport) + " ",
+			CancelCommand:       mcpServerCommand(server.ID, "edit"),
+		}}, true, nil
+	}
+	return Result{}, false, nil
 }
 
 func (d *Dispatcher) mcpServerEnabledPicker(ctx context.Context, serverID string) (Result, error) {
@@ -388,7 +423,16 @@ func mcpServerUpdateForField(field string, value string) (setup.MCPServerUpdate,
 	case "name":
 		return setup.MCPServerUpdate{Name: &value}, true
 	case "transport":
-		return setup.MCPServerUpdate{Transport: &value}, true
+		transport, target := firstCommandToken(value)
+		update := setup.MCPServerUpdate{Transport: &transport}
+		switch {
+		case target == "":
+		case setup.NormalizeMCPTransport(transport) == "http":
+			update.Endpoint = &target
+		default:
+			update.Command = &target
+		}
+		return update, true
 	case "command":
 		return setup.MCPServerUpdate{Command: &value}, true
 	case "args":

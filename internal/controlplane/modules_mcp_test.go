@@ -64,3 +64,27 @@ func TestReservedMCPServerIDIsRefused(t *testing.T) {
 		t.Fatalf("servers = %+v", cfg.Modules.MCP.Servers)
 	}
 }
+
+func TestMCPServerSwitchesToHTTPThroughTheForm(t *testing.T) {
+	daemon, service := mcpDaemon(t)
+	daemon.run("/modules mcp create docs")
+
+	asked := daemon.run("/modules mcp docs set transport http")
+	if asked.Prompt == nil {
+		t.Fatalf("transport http = %+v", asked)
+	}
+	form := daemon.run(asked.Prompt.SubmitCommandPrefix + "https://docs.example/mcp")
+	if form.Form == nil {
+		t.Fatalf("after endpoint = %+v", form)
+	}
+	cfg, _ := service.Load()
+	if servers := cfg.Modules.MCP.Servers; len(servers) != 1 || servers[0].Transport != "http" || servers[0].Endpoint != "https://docs.example/mcp" {
+		t.Fatalf("servers = %+v", servers)
+	}
+	if result := daemon.run("/modules mcp docs set endpoint"); result.Text == "" {
+		t.Fatalf("clearing the endpoint = %+v", result)
+	}
+	if cfg, _ := service.Load(); len(cfg.Modules.MCP.Servers) != 1 {
+		t.Fatalf("servers after clearing the endpoint = %+v", cfg.Modules.MCP.Servers)
+	}
+}
