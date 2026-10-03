@@ -78,7 +78,8 @@ func (c *Core) transition(ctx context.Context, run *Run, change runChange) error
 		return err
 	}
 	*run = next
-	if from == RunStatusWaitingEvents && change.To != RunStatusWaitingEvents {
+	// An ended run may have parked after the caller read it.
+	if change.To != RunStatusWaitingEvents && (from == RunStatusWaitingEvents || change.To.Terminal()) {
 		if err := c.store.DeleteRunWakeup(ctx, run.ID); err != nil {
 			return err
 		}

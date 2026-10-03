@@ -337,6 +337,54 @@ func TestCancelingARunWaitingForApprovalStartsTheQueuedMessage(t *testing.T) {
 	}
 }
 
+// staleRunStore reads the run as still running once armed, as CancelRun does
+// when the run parks just after it looked.
+type staleRunStore struct {
+	*store.SQLiteStore
+	armed sync.Once
+	stale bool
+}
+
+func (s *staleRunStore) GetRun(ctx context.Context, runID string) (core.Run, error) {
+	run, err := s.SQLiteStore.GetRun(ctx, runID)
+	if s.stale {
+		s.armed.Do(func() { run.Status = core.RunStatusRunning })
+	}
+	return run, err
+}
+
+func TestCancelLandingAsTheRunParksStartsTheMessageItMissed(t *testing.T) {
+	t.Parallel()
+	_, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	stale := &staleRunStore{SQLiteStore: db}
+	app := core.New(stale)
+	starter := &recordingRunStarter{}
+	app.WithRunStarter(starter)
+	session, run := saveCrashRecoveryRun(t, db, "cancel-parking", core.RunStatusWaitingEvents, false)
+	ctx := context.Background()
+	if err := db.SaveRunWakeup(ctx, core.RunWakeup{RunID: run.ID, SessionID: session.ID, WakeAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	steered, err := app.AcceptRun(ctx, core.HandleMessageInput{SessionID: session.ID, Text: "next task"})
+	if err != nil || steered.Status != core.AcceptRunStatusSteered {
+		t.Fatalf("steered = %+v, %v", steered, err)
+	}
+
+	stale.stale = true
+	if _, err := app.CancelRun(ctx, run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	runs, err := db.ListSessionRuns(ctx, session.ID, 0)
+	if err != nil || len(runs) != 2 || starter.count(runs[0].ID) != 1 {
+		t.Fatalf("runs = %+v, starts = %v, %v", runs, starter.ids, err)
+	}
+	if _, err := db.GetRunWakeup(ctx, run.ID); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("wakeup of the canceled run: %v", err)
+	}
+}
+
 func TestCanceledRunRecordsFinishedAt(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)

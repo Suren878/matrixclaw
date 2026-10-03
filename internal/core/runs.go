@@ -274,7 +274,6 @@ func (c *Core) CancelRun(ctx context.Context, runID string) (Run, error) {
 	if run.Status.Terminal() {
 		return run, nil
 	}
-	parked := (run.Status == RunStatusWaitingEvents || run.Status == RunStatusWaitingApproval) && !c.runIsActive(run.ID)
 	stopped, err := c.cancelRunRecords(ctx, &run)
 	if errors.Is(err, ErrRunEnded) {
 		// The run ended on its own meanwhile; that end stands.
@@ -286,8 +285,9 @@ func (c *Core) CancelRun(ctx context.Context, runID string) (Run, error) {
 	for _, id := range stopped {
 		c.cancelActiveRun(id)
 	}
-	if parked {
-		// No execution of the run is left to do what follows its end.
+	if !c.runIsActive(run.ID) {
+		// No execution of the run is left to do what follows its end; one that
+		// released just now did it too, and a repeat is harmless.
 		c.afterRun(ctx, run.ID)
 	}
 	return run, nil
