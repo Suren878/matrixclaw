@@ -39,7 +39,8 @@ func (w *Worker) handleCallbackQuery(ctx context.Context, cq *CallbackQuery) err
 
 	switch {
 	case strings.HasPrefix(cq.Data, cbPicker):
-		return w.handlePickerCallback(telegramCtx, target, cq)
+		// A picked command such as compaction may outlast the Telegram timeout.
+		return w.handlePickerCallback(ctx, target, cq)
 	case strings.HasPrefix(cq.Data, cbPickerPage):
 		return w.handlePickerPageCallback(telegramCtx, target, cq)
 	case strings.HasPrefix(cq.Data, cbApprovalOnce):

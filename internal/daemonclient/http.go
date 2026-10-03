@@ -51,19 +51,22 @@ func (c *Client) doJSONWithClient(ctx context.Context, method string, path strin
 }
 
 func (c *Client) compactHTTPClient() *http.Client {
-	if c == nil || c.HTTPClient == nil || c.HTTPClient == defaultHTTPClient {
-		return defaultCompactHTTPClient
-	}
-	return c.HTTPClient
+	return c.httpClientWithTimeout(defaultCompactHTTPClient)
 }
 
 func (c *Client) voiceRuntimeHTTPClient() *http.Client {
+	return c.httpClientWithTimeout(defaultVoiceRuntimeHTTPClient)
+}
+
+// httpClientWithTimeout is the client's HTTP client with at least fallback's
+// timeout, or fallback when the client has the default one.
+func (c *Client) httpClientWithTimeout(fallback *http.Client) *http.Client {
 	if c == nil || c.HTTPClient == nil || c.HTTPClient == defaultHTTPClient {
-		return defaultVoiceRuntimeHTTPClient
+		return fallback
 	}
-	if c.HTTPClient.Timeout > 0 && c.HTTPClient.Timeout < defaultVoiceRuntimeTimeout {
+	if c.HTTPClient.Timeout > 0 && c.HTTPClient.Timeout < fallback.Timeout {
 		clone := *c.HTTPClient
-		clone.Timeout = defaultVoiceRuntimeTimeout
+		clone.Timeout = fallback.Timeout
 		return &clone
 	}
 	return c.HTTPClient
