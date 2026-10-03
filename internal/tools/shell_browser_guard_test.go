@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestBlockedManagedBrowserInstallCommand(t *testing.T) {
+func TestInstallsManagedBrowser(t *testing.T) {
 	tests := []struct {
 		name    string
 		command string
@@ -34,6 +34,16 @@ func TestBlockedManagedBrowserInstallCommand(t *testing.T) {
 			blocked: true,
 		},
 		{
+			name:    "quoted package through npm exec in a pipeline",
+			command: "cd /tmp && npm exec -- '@playwright/mcp@0.0.40' install-browser chrome",
+			blocked: true,
+		},
+		{
+			name:    "binary by absolute path",
+			command: "/opt/node/bin/playwright-mcp install-browser chromium",
+			blocked: true,
+		},
+		{
 			name:    "ordinary playwright browser install",
 			command: "npx playwright install chromium",
 			blocked: false,
@@ -52,8 +62,8 @@ func TestBlockedManagedBrowserInstallCommand(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := blockedManagedBrowserInstallCommand(tc.command); got != tc.blocked {
-				t.Fatalf("blockedManagedBrowserInstallCommand(%q) = %t, want %t", tc.command, got, tc.blocked)
+			if got := installsManagedBrowser(tc.command); got != tc.blocked {
+				t.Fatalf("installsManagedBrowser(%q) = %t, want %t", tc.command, got, tc.blocked)
 			}
 		})
 	}

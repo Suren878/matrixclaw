@@ -104,7 +104,7 @@ func (e *bashExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 	if strings.TrimSpace(params.Command) == "" {
 		return Result{Content: "command is required", Status: ResultStatusError}, nil
 	}
-	if blockedManagedBrowserInstallCommand(params.Command) {
+	if installsManagedBrowser(params.Command) {
 		return Result{Content: managedBrowserSetupMessage, Status: ResultStatusError}, nil
 	}
 	timeout, autoBackground, err := commandLimits(params)
