@@ -12,7 +12,7 @@ import (
 func TestEngineNotesAreSentOnceAndSilently(t *testing.T) {
 	api := &runRenderBotAPI{}
 	worker := newWorker(Config{}, api)
-	target := chatTarget{chatID: 7, externalKey: "7"}
+	target := chatTarget{kind: telegramTargetChat, chatID: 7, externalKey: "7"}
 	state := newRunDeliveryState()
 	messages := []transcript.Message{
 		{ID: "n1", RunID: "run-1", Role: transcript.MessageRoleSystem, Origin: transcript.OriginEngine, Content: "Budget note: about 2 steps left."},
@@ -34,7 +34,7 @@ func TestEngineNotesAreSentOnceAndSilently(t *testing.T) {
 func TestModelOnlyEngineNoteIsNotSentWhileAShownOneIs(t *testing.T) {
 	api := &runRenderBotAPI{}
 	worker := newWorker(Config{}, api)
-	target := chatTarget{chatID: 7, externalKey: "7"}
+	target := chatTarget{kind: telegramTargetChat, chatID: 7, externalKey: "7"}
 	state := newRunDeliveryState()
 	messages := []transcript.Message{
 		{ID: "n1", RunID: "run-1", Role: transcript.MessageRoleSystem, Origin: transcript.OriginEngineModel, Content: "Do not call tools. Reply briefly."},
@@ -53,7 +53,7 @@ func TestModelOnlyEngineNoteIsNotSentWhileAShownOneIs(t *testing.T) {
 func TestRunStoppedEarlyOffersAContinueButtonOnce(t *testing.T) {
 	api := &runRenderBotAPI{}
 	worker := newWorker(Config{}, api)
-	target := chatTarget{chatID: 7, externalKey: "7"}
+	target := chatTarget{kind: telegramTargetChat, chatID: 7, externalKey: "7"}
 	state := newRunDeliveryState()
 	stopped := core.Run{ID: "run-1", Status: core.RunStatusCompleted, StopReason: agent.StopBudgetExhausted}
 

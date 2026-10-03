@@ -206,8 +206,8 @@ func TestFinalDeliveryUsesLatestAnswerAndRetriesOnlyAcknowledgement(t *testing.T
 		address DeliveryAddress
 	}{
 		{"chat", DeliveryAddress{ChatID: 1}},
-		{"inline", DeliveryAddress{Kind: telegramTargetInline, InlineMessageID: "inline-1"}},
-		{"guest", DeliveryAddress{Kind: telegramTargetGuest, GuestQueryID: "guest-1"}},
+		{"inline", DeliveryAddress{Kind: string(telegramTargetInline), InlineMessageID: "inline-1"}},
+		{"guest", DeliveryAddress{Kind: string(telegramTargetGuest), GuestQueryID: "guest-1"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			now := time.Unix(100, 0)
@@ -311,7 +311,7 @@ func TestNoticeDeliverySendsItsTextOnce(t *testing.T) {
 
 func TestApprovalDeliveryAsksWhileTheApprovalIsPending(t *testing.T) {
 	now := time.Unix(100, 0)
-	address := encodeDeliveryAddress(DeliveryAddress{Kind: telegramTargetChat, ChatID: 42})
+	address := encodeDeliveryAddress(DeliveryAddress{Kind: string(telegramTargetChat), ChatID: 42})
 	payload := func(id string) json.RawMessage { return json.RawMessage(`{"approval_id":"` + id + `"}`) }
 	d := &deliveryTestDaemon{
 		deliveries: []core.ClientDelivery{

@@ -19,7 +19,7 @@ func TestPrivateAssistantDraftNotifiesOnlyOnFinalAnswer(t *testing.T) {
 	worker := newWorker(Config{}, api)
 	worker.now = func() time.Time { return now }
 	state := newRunDeliveryState()
-	target := chatTarget{chatID: 42}
+	target := chatTarget{kind: telegramTargetChat, chatID: 42}
 	message := streamTestMessage("П")
 	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []transcript.Message{message}, "run", state); err != nil {
 		t.Fatal(err)
@@ -58,7 +58,7 @@ func TestGroupPreviewBuffersFirstCharacterAndThrottlesEdits(t *testing.T) {
 	worker := newWorker(Config{}, api)
 	worker.now = func() time.Time { return now }
 	state := newRunDeliveryState()
-	target := chatTarget{chatID: -42}
+	target := chatTarget{kind: telegramTargetChat, chatID: -42}
 	message := streamTestMessage("Я")
 	update := func() {
 		t.Helper()
@@ -98,7 +98,7 @@ func TestShortAnswerIsFlushedAtCompletionAndSlowPreviewIsBounded(t *testing.T) {
 	worker := newWorker(Config{}, api)
 	worker.now = func() time.Time { return now }
 	state := newRunDeliveryState()
-	target := chatTarget{chatID: -42}
+	target := chatTarget{kind: telegramTargetChat, chatID: -42}
 	message := streamTestMessage("Да")
 	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []transcript.Message{message}, "run", state); err != nil {
 		t.Fatal(err)
@@ -128,7 +128,7 @@ func TestDraftUnavailableFallsBackToOneBufferedMessage(t *testing.T) {
 	worker := newWorker(Config{}, api)
 	worker.flushInterval = time.Nanosecond
 	state := newRunDeliveryState()
-	target := chatTarget{chatID: 42}
+	target := chatTarget{kind: telegramTargetChat, chatID: 42}
 	message := streamTestMessage("Содержательная первая фраза.")
 	for i := 0; i < 2; i++ {
 		message.Content += " Продолжение."
@@ -147,7 +147,7 @@ func TestDraftFloodWaitDoesNotBlockDeliveryAndFinalTextStillArrives(t *testing.T
 	worker := newWorker(Config{}, api)
 	worker.now = func() time.Time { return now }
 	state := newRunDeliveryState()
-	target := chatTarget{chatID: 42}
+	target := chatTarget{kind: telegramTargetChat, chatID: 42}
 	message := streamTestMessage("Partial")
 	started := time.Now()
 	if err := worker.renderAssistantStreamUpdate(context.Background(), target, []transcript.Message{message}, "run", state); err == nil {
@@ -176,7 +176,7 @@ func TestAssistantDeliveryRetainsSuccessfulChunksAfterFailure(t *testing.T) {
 	api := &runRenderBotAPI{sendErrorAt: 2}
 	worker := newWorker(Config{}, api)
 	state := newRunDeliveryState()
-	target := chatTarget{chatID: 42}
+	target := chatTarget{kind: telegramTargetChat, chatID: 42}
 	message := streamTestMessage(strings.Repeat("слово ", 900))
 	if err := worker.renderAssistantUpdates(context.Background(), target, []transcript.Message{message}, "run", state); err == nil {
 		t.Fatal("expected second chunk failure")
@@ -198,7 +198,7 @@ func TestAssistantDeliveryRetainsSuccessfulChunksAfterFailure(t *testing.T) {
 func TestAssistantReplacesDeletedMessageAndRemovesStaleOverflow(t *testing.T) {
 	api := &runRenderBotAPI{}
 	worker := newWorker(Config{}, api)
-	target := chatTarget{chatID: -42}
+	target := chatTarget{kind: telegramTargetChat, chatID: -42}
 	sent, err := worker.sendAssistantMessage(context.Background(), target, sentAssistantMessage{}, strings.Repeat("a", 4500))
 	if err != nil {
 		t.Fatal(err)

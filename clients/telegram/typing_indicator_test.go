@@ -14,7 +14,7 @@ func TestRunTypingIndicatorSendsForActiveStatusAndThrottles(t *testing.T) {
 	now := time.Date(2026, 6, 17, 12, 0, 0, 0, time.UTC)
 	worker := newWorker(Config{}, api)
 	worker.now = func() time.Time { return now }
-	target := chatTarget{chatID: 42, externalKey: "telegram:42"}
+	target := chatTarget{kind: telegramTargetChat, chatID: 42, externalKey: "telegram:42"}
 	run := &core.Run{ID: "run-1", Status: core.RunStatusRunning}
 
 	worker.updateRunTypingIndicator(context.Background(), target, run)
@@ -44,7 +44,7 @@ func TestRunTypingIndicatorStopsForInactiveStatus(t *testing.T) {
 	now := time.Date(2026, 6, 17, 12, 0, 0, 0, time.UTC)
 	worker := newWorker(Config{}, api)
 	worker.now = func() time.Time { return now }
-	target := chatTarget{chatID: 42, externalKey: "telegram:42"}
+	target := chatTarget{kind: telegramTargetChat, chatID: 42, externalKey: "telegram:42"}
 	run := &core.Run{ID: "run-1", Status: core.RunStatusRunning}
 
 	worker.updateRunTypingIndicator(context.Background(), target, run)
@@ -135,7 +135,7 @@ func TestRunWaitingForBackgroundTasksStopsTypingAndSaysSo(t *testing.T) {
 	worker.now = time.Now
 	run := &core.Run{ID: "run-1", Status: core.RunStatusWaitingEvents}
 
-	worker.updateRunTypingIndicator(context.Background(), chatTarget{chatID: 42, externalKey: "telegram:42"}, run)
+	worker.updateRunTypingIndicator(context.Background(), chatTarget{kind: telegramTargetChat, chatID: 42, externalKey: "telegram:42"}, run)
 
 	if got := api.actionCount(); got != 0 {
 		t.Fatalf("typing actions while waiting = %d", got)

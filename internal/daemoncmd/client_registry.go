@@ -162,7 +162,7 @@ func automationDeliveryTargets(bootstrap bootstrapConfig) []core.ClientDeliveryT
 	targets := []core.ClientDeliveryTarget{}
 	cfg := telegramBootstrap(bootstrap)
 	if cfg.Enabled && cfg.BotToken != "" && cfg.AllowedUserID != 0 {
-		address, err := json.Marshal(telegram.DeliveryAddress{ChatID: cfg.AllowedUserID})
+		address, err := json.Marshal(telegram.ChatDeliveryAddress(cfg.AllowedUserID))
 		if err == nil {
 			targets = append(targets, core.ClientDeliveryTarget{
 				Client:      telegram.ClientName,

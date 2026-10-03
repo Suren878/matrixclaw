@@ -77,7 +77,7 @@ type sentAssistantChunk struct {
 }
 
 type chatTarget struct {
-	kind            string
+	kind            targetKind
 	chatID          int64
 	messageID       int64
 	guestQueryID    string

@@ -28,19 +28,19 @@ func encodeDeliveryAddress(address DeliveryAddress) json.RawMessage {
 func deliveryAddressFromTarget(target chatTarget, messageID int64) DeliveryAddress {
 	if target.isInline() {
 		return DeliveryAddress{
-			Kind:            telegramTargetInline,
+			Kind:            string(telegramTargetInline),
 			InlineMessageID: strings.TrimSpace(target.inlineMessageID),
 		}
 	}
 	if target.isGuest() {
 		return DeliveryAddress{
-			Kind:            telegramTargetGuest,
+			Kind:            string(telegramTargetGuest),
 			GuestQueryID:    strings.TrimSpace(target.guestQueryID),
 			InlineMessageID: strings.TrimSpace(target.inlineMessageID),
 		}
 	}
 	return DeliveryAddress{
-		Kind:      telegramTargetChat,
+		Kind:      string(telegramTargetChat),
 		ChatID:    target.chatID,
 		MessageID: messageID,
 	}
@@ -62,23 +62,23 @@ func decodeDeliveryAddress(raw json.RawMessage) (DeliveryAddress, error) {
 	if err := json.Unmarshal(raw, &address); err != nil {
 		return DeliveryAddress{}, fmt.Errorf("decode delivery address: %w", err)
 	}
-	address.Kind = strings.TrimSpace(address.Kind)
+	kind := targetKind(strings.TrimSpace(address.Kind))
 	switch {
-	case address.Kind == telegramTargetGuest || strings.TrimSpace(address.GuestQueryID) != "":
-		address.Kind = telegramTargetGuest
+	case kind == telegramTargetGuest || strings.TrimSpace(address.GuestQueryID) != "":
+		address.Kind = string(telegramTargetGuest)
 		address.GuestQueryID = strings.TrimSpace(address.GuestQueryID)
 		address.InlineMessageID = strings.TrimSpace(address.InlineMessageID)
 		if address.GuestQueryID == "" {
 			return DeliveryAddress{}, fmt.Errorf("delivery address missing guest_query_id")
 		}
-	case address.Kind == telegramTargetInline || strings.TrimSpace(address.InlineMessageID) != "":
-		address.Kind = telegramTargetInline
+	case kind == telegramTargetInline || strings.TrimSpace(address.InlineMessageID) != "":
+		address.Kind = string(telegramTargetInline)
 		address.InlineMessageID = strings.TrimSpace(address.InlineMessageID)
 		if address.InlineMessageID == "" {
 			return DeliveryAddress{}, fmt.Errorf("delivery address missing inline_message_id")
 		}
-	case address.Kind == "" || address.Kind == telegramTargetChat:
-		address.Kind = telegramTargetChat
+	case kind == "" || kind == telegramTargetChat:
+		address.Kind = string(telegramTargetChat)
 		if address.ChatID == 0 {
 			return DeliveryAddress{}, fmt.Errorf("delivery address missing chat_id")
 		}
@@ -96,7 +96,7 @@ func targetFromDeliveryAddress(raw json.RawMessage, externalKey string) (chatTar
 	if err != nil {
 		return targetFromTelegramExternalKey(externalKey)
 	}
-	if address.Kind == telegramTargetGuest {
+	if address.Kind == string(telegramTargetGuest) {
 		target := chatTarget{
 			kind:            telegramTargetGuest,
 			guestQueryID:    address.GuestQueryID,
@@ -108,7 +108,7 @@ func targetFromDeliveryAddress(raw json.RawMessage, externalKey string) (chatTar
 		}
 		return target, true
 	}
-	if address.Kind == telegramTargetInline {
+	if address.Kind == string(telegramTargetInline) {
 		return chatTarget{
 			kind:            telegramTargetInline,
 			inlineMessageID: address.InlineMessageID,
@@ -143,21 +143,16 @@ func targetFromTelegramExternalKey(externalKey string) (chatTarget, bool) {
 			externalKey:  telegramGuestExternalKey(guestQueryID),
 		}, true
 	}
-	parts := strings.Split(externalKey, ":")
-	if len(parts) > 2 {
-		return chatTarget{}, false
-	}
-	chatID, err := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
+	chatID, err := strconv.ParseInt(externalKey, 10, 64)
 	if err != nil || chatID == 0 {
 		return chatTarget{}, false
 	}
-	target := chatTarget{kind: telegramTargetChat, chatID: chatID, externalKey: telegramExternalKey(chatID)}
-	if len(parts) == 2 {
-		if _, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64); err != nil {
-			return chatTarget{}, false
-		}
-	}
-	return target, true
+	return chatTarget{kind: telegramTargetChat, chatID: chatID, externalKey: telegramExternalKey(chatID)}, true
+}
+
+// ChatDeliveryAddress addresses the private or group chat chatID.
+func ChatDeliveryAddress(chatID int64) DeliveryAddress {
+	return DeliveryAddress{Kind: string(telegramTargetChat), ChatID: chatID}
 }
 
 func telegramExternalKey(chatID int64) string {

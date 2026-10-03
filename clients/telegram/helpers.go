@@ -10,10 +10,12 @@ import (
 	"github.com/Suren878/matrixclaw/internal/permission"
 )
 
+type targetKind string
+
 const (
-	telegramTargetChat   = "chat"
-	telegramTargetGuest  = "guest"
-	telegramTargetInline = "inline"
+	telegramTargetChat   targetKind = "chat"
+	telegramTargetGuest  targetKind = "guest"
+	telegramTargetInline targetKind = "inline"
 )
 
 func (w *Worker) daemon(externalKey string) *daemonclient.Client {
@@ -106,16 +108,15 @@ func targetFromMessage(message *Message) chatTarget {
 }
 
 func (target chatTarget) isGuest() bool {
-	return target.kind == telegramTargetGuest || strings.TrimSpace(target.guestQueryID) != ""
+	return target.kind == telegramTargetGuest
 }
 
 func (target chatTarget) isInline() bool {
-	return target.kind == telegramTargetInline ||
-		(target.kind == "" && strings.TrimSpace(target.inlineMessageID) != "" && strings.TrimSpace(target.guestQueryID) == "")
+	return target.kind == telegramTargetInline
 }
 
 func (target chatTarget) isChat() bool {
-	return !target.isGuest() && !target.isInline()
+	return target.kind == telegramTargetChat
 }
 
 func sleepContext(ctx context.Context, d time.Duration) bool {
