@@ -36,6 +36,7 @@ func (m *Manager) ServeStream(ctx context.Context, sessionID string, stream Stre
 	if !ok {
 		return ErrSessionNotFound
 	}
+	defer m.forgetSession(sessionID)
 	info := m.markSessionStreaming(session)
 	provider, _, ok := m.provider(ctx, info.ProviderID)
 	if !ok || provider == nil {
@@ -43,7 +44,6 @@ func (m *Manager) ServeStream(ctx context.Context, sessionID string, stream Stre
 	}
 	coreSession, err := m.core.GetSession(ctx, info.CoreSessionID)
 	if err != nil {
-		m.markSessionClosed(session, err.Error(), SessionStatusFailed)
 		return err
 	}
 
@@ -65,14 +65,12 @@ func (m *Manager) ServeStream(ctx context.Context, sessionID string, stream Stre
 		Tools:             m.toolDeclarations(info.Client),
 	})
 	if err != nil {
-		m.markSessionClosed(session, err.Error(), SessionStatusFailed)
 		_ = stream.Write(streamCtx, newEvent(info.ID, EventError, ErrorPayload{Message: err.Error(), Recoverable: false}))
 		return err
 	}
 	defer func() { _ = conn.Close(nil) }()
 
 	if err := stream.Write(streamCtx, newEvent(info.ID, EventSessionReady, map[string]any{"session": info})); err != nil {
-		m.markSessionClosed(session, err.Error(), SessionStatusFailed)
 		return err
 	}
 
@@ -96,38 +94,27 @@ func (m *Manager) ServeStream(ctx context.Context, sessionID string, stream Stre
 		select {
 		case item := <-clientCh:
 			if item.err != nil {
-				m.markSessionClosed(session, "", SessionStatusClosed)
 				return nil
 			}
 			if done, err := state.handleClientEvent(streamCtx, item.event); done || err != nil {
-				if err != nil {
-					m.markSessionClosed(session, err.Error(), SessionStatusFailed)
-					return err
-				}
-				m.markSessionClosed(session, "", SessionStatusClosed)
-				return nil
+				return err
 			}
 		case item := <-providerCh:
 			if item.err != nil {
 				if errors.Is(item.err, io.EOF) || streamCtx.Err() != nil {
-					m.markSessionClosed(session, "", SessionStatusClosed)
 					return nil
 				}
-				m.markSessionClosed(session, item.err.Error(), SessionStatusFailed)
 				_ = stream.Write(streamCtx, newEvent(info.ID, EventError, ErrorPayload{Message: item.err.Error(), Recoverable: false}))
 				return item.err
 			}
 			if err := state.handleProviderOutput(streamCtx, item.output); err != nil {
-				m.markSessionClosed(session, err.Error(), SessionStatusFailed)
 				return err
 			}
 		case event := <-coreCh:
 			if err := state.handleCoreEvent(streamCtx, event); err != nil {
-				m.markSessionClosed(session, err.Error(), SessionStatusFailed)
 				return err
 			}
 		case <-streamCtx.Done():
-			m.markSessionClosed(session, "", SessionStatusClosed)
 			return nil
 		}
 	}

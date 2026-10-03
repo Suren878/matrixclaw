@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 )
@@ -45,6 +46,8 @@ func (m *Manager) resolveCoreSession(ctx context.Context, req SessionCreateReque
 	}
 	return session, nil
 }
+
+const unstreamedSessionTTL = time.Minute
 
 func (m *Manager) session(sessionID string) (*voiceSession, bool) {
 	m.mu.RLock()
@@ -88,28 +91,33 @@ func (m *Manager) markSessionStreaming(session *voiceSession) SessionInfo {
 	return session.info
 }
 
-func (m *Manager) markSessionClosed(session *voiceSession, message string, status SessionStatus) SessionInfo {
+func (m *Manager) markSessionClosed(session *voiceSession) SessionInfo {
 	session.mu.Lock()
 	defer session.mu.Unlock()
 	now := m.now().UTC()
-	session.info.Status = status
-	session.info.Error = strings.TrimSpace(message)
+	session.info.Status = SessionStatusClosed
 	session.info.UpdatedAt = now
 	session.info.ClosedAt = &now
 	return session.info
 }
 
-func (m *Manager) activeSessionCountLocked() int {
-	count := 0
-	for _, session := range m.sessions {
+func (m *Manager) forgetSession(sessionID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.sessions, strings.TrimSpace(sessionID))
+}
+
+// pruneUnstreamedLocked drops sessions whose client never opened the stream,
+// for example after a failed websocket dial.
+func (m *Manager) pruneUnstreamedLocked(now time.Time) {
+	for id, session := range m.sessions {
 		session.mu.Lock()
-		status := session.info.Status
+		stale := session.info.Status == SessionStatusCreated && now.Sub(session.info.CreatedAt) > unstreamedSessionTTL
 		session.mu.Unlock()
-		if status != SessionStatusClosed && status != SessionStatusFailed {
-			count++
+		if stale {
+			delete(m.sessions, id)
 		}
 	}
-	return count
 }
 
 func (m *Manager) currentConfig(ctx context.Context) Config {

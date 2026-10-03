@@ -159,7 +159,8 @@ func (m *Manager) CreateSession(ctx context.Context, req SessionCreateRequest) (
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if limit := maxSessions(cfg.MaxSessions); limit > 0 && m.activeSessionCountLocked() >= limit {
+	m.pruneUnstreamedLocked(now)
+	if limit := maxSessions(cfg.MaxSessions); limit > 0 && len(m.sessions) >= limit {
 		return SessionInfo{}, fmt.Errorf("%w: active realtime voice session limit reached", ErrInvalidRequest)
 	}
 	m.sessions[session.info.ID] = session
@@ -181,5 +182,6 @@ func (m *Manager) CloseSession(ctx context.Context, sessionID string) (SessionIn
 	if !ok {
 		return SessionInfo{}, ErrSessionNotFound
 	}
-	return m.markSessionClosed(session, "", SessionStatusClosed), nil
+	m.forgetSession(sessionID)
+	return m.markSessionClosed(session), nil
 }

@@ -117,7 +117,6 @@ const (
 	SessionStatusCreated   SessionStatus = "created"
 	SessionStatusStreaming SessionStatus = "streaming"
 	SessionStatusClosed    SessionStatus = "closed"
-	SessionStatusFailed    SessionStatus = "failed"
 )
 
 type SessionInfo struct {
@@ -137,7 +136,6 @@ type SessionInfo struct {
 	CreatedAt     time.Time     `json:"created_at"`
 	UpdatedAt     time.Time     `json:"updated_at"`
 	ClosedAt      *time.Time    `json:"closed_at,omitempty"`
-	Error         string        `json:"error,omitempty"`
 }
 
 type EventType string
