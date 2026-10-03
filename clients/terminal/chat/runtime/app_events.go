@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"time"
 
@@ -154,13 +155,14 @@ func (m *appModel) workingTickCmd() tea.Cmd {
 	})
 }
 
+// syncPromptHistory fills the prompt history newest first, so Up recalls the latest prompt.
 func (m *appModel) syncPromptHistory() {
 	if m.read == nil {
 		return
 	}
 	snapshot := m.read.Snapshot()
 	prompts := make([]string, 0, len(snapshot.Messages))
-	for _, msg := range snapshot.Messages {
+	for _, msg := range slices.Backward(snapshot.Messages) {
 		if msg.Role != surfacemessage.User {
 			continue
 		}
