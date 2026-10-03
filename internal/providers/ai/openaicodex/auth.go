@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -78,17 +79,12 @@ func ResolveCredentials(ctx context.Context, client *http.Client, baseURL string
 	if creds, ok, err := readMatrixclawCredentials(); err != nil {
 		return Credentials{}, err
 	} else if ok {
-		creds.BaseURL = firstNonEmpty(baseURL, creds.BaseURL, DefaultBaseURL)
 		if tokenExpiring(creds.AccessToken, refreshSkew) {
-			refreshed, err := refreshCredentials(ctx, client, creds)
-			if err != nil {
+			if creds, err = refreshStoredCredentials(ctx, client); err != nil {
 				return Credentials{}, err
 			}
-			if err := saveCredentials(refreshed); err != nil {
-				return Credentials{}, err
-			}
-			return refreshed, nil
 		}
+		creds.BaseURL = firstNonEmpty(baseURL, creds.BaseURL, DefaultBaseURL)
 		return creds, nil
 	}
 	if creds, ok := readCodexCLICredentials(); ok {
@@ -99,6 +95,34 @@ func ResolveCredentials(ctx context.Context, client *http.Client, baseURL string
 		return creds, nil
 	}
 	return Credentials{}, errors.New("openai-codex: no ChatGPT/Codex credentials; run `matrixclaw providers login openai-codex`")
+}
+
+// refreshLocks holds one mutex per auth store path: a refresh token is single
+// use, so concurrent callers must wait for the first refresh and reuse it.
+var refreshLocks sync.Map
+
+func refreshStoredCredentials(ctx context.Context, client *http.Client) (Credentials, error) {
+	lock, _ := refreshLocks.LoadOrStore(AuthStorePath(), &sync.Mutex{})
+	lock.(*sync.Mutex).Lock()
+	defer lock.(*sync.Mutex).Unlock()
+	creds, ok, err := readMatrixclawCredentials()
+	if err != nil {
+		return Credentials{}, err
+	}
+	if !ok {
+		return Credentials{}, errors.New("openai-codex: auth store disappeared during refresh")
+	}
+	if !tokenExpiring(creds.AccessToken, refreshSkew) {
+		return creds, nil
+	}
+	refreshed, err := refreshCredentials(ctx, client, creds)
+	if err != nil {
+		return Credentials{}, err
+	}
+	if err := saveCredentials(refreshed); err != nil {
+		return Credentials{}, err
+	}
+	return refreshed, nil
 }
 
 func StartDeviceLogin(ctx context.Context, client *http.Client) (LoginDevice, error) {
@@ -473,7 +497,22 @@ func saveCredentials(creds Credentials) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(raw, '\n'), 0o600)
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".openai-codex-*.json")
+	if err != nil {
+		return fmt.Errorf("openai-codex: write auth store: %w", err)
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }()
+	if _, err := tmp.Write(append(raw, '\n')); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("openai-codex: write auth store: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("openai-codex: write auth store: %w", err)
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		return fmt.Errorf("openai-codex: write auth store: %w", err)
+	}
+	return nil
 }
 
 func tokenExpiring(token string, skew time.Duration) bool {
