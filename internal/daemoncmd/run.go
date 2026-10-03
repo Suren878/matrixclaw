@@ -149,12 +149,7 @@ func Run(ctx context.Context) error {
 		log.Printf("matrixclawd background task recovery failed: %v", err)
 	}
 	lifetime, stopLifetime := context.WithCancel(ctx)
-	defer func() {
-		// Ending the lifetime interrupts the executing runs and keeps them for
-		// recovery; they finish writing before the store closes.
-		stopLifetime()
-		app.WaitRuns()
-	}()
+	defer stopLifetime()
 	app.WithLifetime(lifetime)
 	safego.Go("core.runWakeups", func() { app.RunWakeups(lifetime) })
 	server := api.New(app)
@@ -168,7 +163,13 @@ func Run(ctx context.Context) error {
 	supervisor := newSupervisor(ctx, server, app, osmGeo)
 	supervisor.SetModuleContext(moduleRegistry.Context)
 	supervisor.SetExternalAgents(sqliteStore, externalRuntimes, bootstrap.ExternalAgents.ExternalAgents)
-	defer supervisor.CloseExternalAgents()
+	defer func() {
+		// Ending the lifetime interrupts the executing runs and keeps them for
+		// recovery; they finish writing before external agents and the store close.
+		stopLifetime()
+		app.WaitRuns()
+		supervisor.CloseExternalAgents()
+	}()
 	httpServer := &http.Server{
 		Addr:              bootstrap.Addr,
 		Handler:           server.Handler(),
