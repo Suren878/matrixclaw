@@ -2,15 +2,14 @@ package model
 
 import "charm.land/bubbles/v2/key"
 
+// KeyMap holds the terminal key bindings that the key handlers match and the
+// help bar shows.
 type KeyMap struct {
 	Editor struct {
-		AddFile     key.Binding
 		SendMessage key.Binding
 		OpenEditor  key.Binding
 		Newline     key.Binding
-		AddImage    key.Binding
-		PasteImage  key.Binding
-		MentionFile key.Binding
+		AttachFiles key.Binding
 		Commands    key.Binding
 
 		AttachmentDeleteMode key.Binding
@@ -22,42 +21,26 @@ type KeyMap struct {
 	}
 
 	Chat struct {
-		NewSession     key.Binding
-		AddAttachment  key.Binding
-		Cancel         key.Binding
-		Tab            key.Binding
-		TogglePills    key.Binding
-		PillLeft       key.Binding
-		PillRight      key.Binding
-		Down           key.Binding
-		Up             key.Binding
-		UpDown         key.Binding
-		DownOneItem    key.Binding
-		UpOneItem      key.Binding
-		UpDownOneItem  key.Binding
-		PageDown       key.Binding
-		PageUp         key.Binding
-		HalfPageDown   key.Binding
-		HalfPageUp     key.Binding
-		Home           key.Binding
-		End            key.Binding
-		Copy           key.Binding
-		ClearHighlight key.Binding
-		Expand         key.Binding
-		View           key.Binding
-	}
-
-	Initialize struct {
-		Yes,
-		No,
-		Enter,
-		Switch key.Binding
+		Todo         key.Binding
+		Cancel       key.Binding
+		Reload       key.Binding
+		Up           key.Binding
+		Down         key.Binding
+		UpDown       key.Binding
+		PageDown     key.Binding
+		PageUp       key.Binding
+		HalfPageDown key.Binding
+		HalfPageUp   key.Binding
+		Home         key.Binding
+		End          key.Binding
+		Copy         key.Binding
+		Expand       key.Binding
+		View         key.Binding
 	}
 
 	Quit     key.Binding
 	Help     key.Binding
 	Commands key.Binding
-	Suspend  key.Binding
 	Sessions key.Binding
 	Tab      key.Binding
 }
@@ -76,10 +59,6 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("ctrl+p"),
 			key.WithHelp("ctrl+p", "commands"),
 		),
-		Suspend: key.NewBinding(
-			key.WithKeys("ctrl+z"),
-			key.WithHelp("ctrl+z", "suspend"),
-		),
 		Sessions: key.NewBinding(
 			key.WithKeys("ctrl+s"),
 			key.WithHelp("ctrl+s", "sessions"),
@@ -90,10 +69,6 @@ func DefaultKeyMap() KeyMap {
 		),
 	}
 
-	km.Editor.AddFile = key.NewBinding(
-		key.WithKeys("/"),
-		key.WithHelp("/", "add file"),
-	)
 	km.Editor.SendMessage = key.NewBinding(
 		key.WithKeys("enter"),
 		key.WithHelp("enter", "send"),
@@ -106,17 +81,9 @@ func DefaultKeyMap() KeyMap {
 		key.WithKeys("shift+enter", "ctrl+j"),
 		key.WithHelp("ctrl+j", "newline"),
 	)
-	km.Editor.AddImage = key.NewBinding(
-		key.WithKeys("ctrl+f"),
-		key.WithHelp("ctrl+f", "add image"),
-	)
-	km.Editor.PasteImage = key.NewBinding(
-		key.WithKeys("ctrl+v"),
-		key.WithHelp("ctrl+v", "paste image from clipboard"),
-	)
-	km.Editor.MentionFile = key.NewBinding(
-		key.WithKeys("@"),
-		key.WithHelp("@", "mention file"),
+	km.Editor.AttachFiles = key.NewBinding(
+		key.WithKeys("ctrl+f", "ctrl+v"),
+		key.WithHelp("ctrl+f", "attach the file paths typed in the editor"),
 	)
 	km.Editor.Commands = key.NewBinding(
 		key.WithKeys("/"),
@@ -141,64 +108,36 @@ func DefaultKeyMap() KeyMap {
 		key.WithKeys("down"),
 	)
 
-	km.Chat.NewSession = key.NewBinding(
+	km.Chat.Todo = key.NewBinding(
 		key.WithKeys("ctrl+n"),
 		key.WithHelp("ctrl+n", "todo"),
 	)
-	km.Chat.AddAttachment = key.NewBinding(
-		key.WithKeys("ctrl+f"),
-		key.WithHelp("ctrl+f", "add attachment"),
-	)
 	km.Chat.Cancel = key.NewBinding(
 		key.WithKeys("esc", "alt+esc"),
-		key.WithHelp("esc", "close"),
+		key.WithHelp("esc", "cancel run"),
 	)
-	km.Chat.Tab = key.NewBinding(
-		key.WithKeys("tab"),
-		key.WithHelp("tab", "change focus"),
-	)
-	km.Chat.TogglePills = key.NewBinding(
-		key.WithKeys("ctrl+t", "ctrl+space"),
-		key.WithHelp("ctrl+t", "toggle tasks"),
-	)
-	km.Chat.PillLeft = key.NewBinding(
-		key.WithKeys("left"),
-		key.WithHelp("←/→", "switch section"),
-	)
-	km.Chat.PillRight = key.NewBinding(
-		key.WithKeys("right"),
-		key.WithHelp("←/→", "switch section"),
-	)
-	km.Chat.Down = key.NewBinding(
-		key.WithKeys("down", "ctrl+j", "j"),
-		key.WithHelp("↓", "down"),
+	km.Chat.Reload = key.NewBinding(
+		key.WithKeys("r"),
+		key.WithHelp("r", "reload"),
 	)
 	km.Chat.Up = key.NewBinding(
-		key.WithKeys("up", "ctrl+k", "k"),
+		key.WithKeys("up", "k"),
 		key.WithHelp("↑", "up"),
+	)
+	km.Chat.Down = key.NewBinding(
+		key.WithKeys("down", "j"),
+		key.WithHelp("↓", "down"),
 	)
 	km.Chat.UpDown = key.NewBinding(
 		key.WithKeys("up", "down"),
 		key.WithHelp("↑↓", "scroll"),
-	)
-	km.Chat.UpOneItem = key.NewBinding(
-		key.WithKeys("shift+up", "K"),
-		key.WithHelp("shift+↑", "up one item"),
-	)
-	km.Chat.DownOneItem = key.NewBinding(
-		key.WithKeys("shift+down", "J"),
-		key.WithHelp("shift+↓", "down one item"),
-	)
-	km.Chat.UpDownOneItem = key.NewBinding(
-		key.WithKeys("shift+up", "shift+down"),
-		key.WithHelp("shift+↑↓", "scroll one item"),
 	)
 	km.Chat.HalfPageDown = key.NewBinding(
 		key.WithKeys("d"),
 		key.WithHelp("d", "half page down"),
 	)
 	km.Chat.PageDown = key.NewBinding(
-		key.WithKeys("pgdown", " ", "f"),
+		key.WithKeys("pgdown", "f"),
 		key.WithHelp("f/pgdn", "page down"),
 	)
 	km.Chat.PageUp = key.NewBinding(
@@ -206,7 +145,7 @@ func DefaultKeyMap() KeyMap {
 		key.WithHelp("b/pgup", "page up"),
 	)
 	km.Chat.HalfPageUp = key.NewBinding(
-		key.WithKeys("u"),
+		key.WithKeys("u", "ctrl+u"),
 		key.WithHelp("u", "half page up"),
 	)
 	km.Chat.Home = key.NewBinding(
@@ -221,10 +160,6 @@ func DefaultKeyMap() KeyMap {
 		key.WithKeys("c", "y", "C", "Y"),
 		key.WithHelp("c/y", "copy"),
 	)
-	km.Chat.ClearHighlight = key.NewBinding(
-		key.WithKeys("esc", "alt+esc"),
-		key.WithHelp("esc", "clear selection"),
-	)
 	km.Chat.Expand = key.NewBinding(
 		key.WithKeys("space"),
 		key.WithHelp("space", "expand/collapse"),
@@ -232,22 +167,6 @@ func DefaultKeyMap() KeyMap {
 	km.Chat.View = key.NewBinding(
 		key.WithKeys("enter", "v"),
 		key.WithHelp("enter/v", "view"),
-	)
-	km.Initialize.Yes = key.NewBinding(
-		key.WithKeys("y", "Y"),
-		key.WithHelp("y", "yes"),
-	)
-	km.Initialize.No = key.NewBinding(
-		key.WithKeys("n", "N", "esc", "alt+esc"),
-		key.WithHelp("n", "no"),
-	)
-	km.Initialize.Switch = key.NewBinding(
-		key.WithKeys("left", "right", "tab"),
-		key.WithHelp("tab", "switch"),
-	)
-	km.Initialize.Enter = key.NewBinding(
-		key.WithKeys("enter"),
-		key.WithHelp("enter", "select"),
 	)
 
 	return km

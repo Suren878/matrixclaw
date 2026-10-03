@@ -21,12 +21,10 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.handleSubmit(msg)
 	case surfaceinput.FocusMainMsg:
 		return m, m.setFocus(appFocusChat)
-	case surfaceinput.OpenTodoMsg:
-		return m, m.toggleTodoPanel()
 	case surfaceinput.OpenCommandsMsg:
 		m.openCommandsDialog()
 		return m, nil
-	case surfaceinput.AddImageMsg, surfaceinput.PasteImageMsg:
+	case surfaceinput.AttachFilesMsg:
 		m.handleAttachFiles()
 		return m, nil
 	case surfaceinput.QuitRequestMsg:

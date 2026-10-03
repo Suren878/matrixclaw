@@ -8,35 +8,35 @@ import (
 
 func (m *appModel) ShortHelp() []key.Binding {
 	km := m.input.KeyMap()
-	tab := copyBinding(km.Tab)
-	sessions := copyBinding(km.Sessions)
-	quit := copyBinding(km.Quit)
-	helpKey := copyBinding(km.Help)
+	tab := km.Tab
+	sessions := km.Sessions
+	quit := km.Quit
+	helpKey := km.Help
 
 	if m.focus == appFocusEditor {
 		tab.SetHelp("tab", "focus chat")
 		out := []key.Binding{
-			copyBinding(km.Commands),
+			km.Commands,
 			tab,
 			sessions,
-			copyBinding(km.Editor.Newline),
+			km.Editor.Newline,
 			quit,
 			helpKey,
 		}
 		if value := strings.TrimSpace(m.input.Value()); value == "" {
-			out = append([]key.Binding{copyBinding(km.Chat.NewSession)}, out...)
+			out = append([]key.Binding{km.Chat.Todo}, out...)
 		}
 		return out
 	}
 
 	tab.SetHelp("tab", "focus editor")
 	return []key.Binding{
-		copyBinding(km.Commands),
+		km.Commands,
 		tab,
 		sessions,
-		copyBinding(km.Chat.UpDown),
-		copyBinding(km.Chat.View),
-		copyBinding(km.Chat.Copy),
+		km.Chat.UpDown,
+		km.Chat.View,
+		km.Chat.Copy,
 		quit,
 		helpKey,
 	}
@@ -44,7 +44,7 @@ func (m *appModel) ShortHelp() []key.Binding {
 
 func (m *appModel) FullHelp() [][]key.Binding {
 	km := m.input.KeyMap()
-	helpKey := copyBinding(km.Help)
+	helpKey := km.Help
 	if m.help.ShowAll {
 		helpKey.SetHelp("ctrl+g", "less")
 	}
@@ -52,48 +52,44 @@ func (m *appModel) FullHelp() [][]key.Binding {
 	if m.focus == appFocusEditor {
 		return [][]key.Binding{
 			{
-				copyBinding(km.Commands),
-				copyBinding(km.Tab),
-				copyBinding(km.Sessions),
-				copyBinding(km.Chat.NewSession),
+				km.Commands,
+				km.Tab,
+				km.Sessions,
+				km.Chat.Todo,
 				helpKey,
 			},
 			{
-				copyBinding(km.Editor.SendMessage),
-				copyBinding(km.Editor.Newline),
-				copyBinding(km.Editor.OpenEditor),
-				copyBinding(km.Quit),
+				km.Editor.SendMessage,
+				km.Editor.Newline,
+				km.Editor.OpenEditor,
+				km.Quit,
 			},
 		}
 	}
 
 	return [][]key.Binding{
 		{
-			copyBinding(km.Commands),
-			copyBinding(km.Tab),
-			copyBinding(km.Sessions),
+			km.Commands,
+			km.Tab,
+			km.Sessions,
 			helpKey,
 		},
 		{
-			copyBinding(km.Chat.UpDown),
-			copyBinding(km.Chat.HalfPageDown),
-			copyBinding(km.Chat.HalfPageUp),
-			copyBinding(km.Chat.View),
-			copyBinding(km.Chat.Copy),
+			km.Chat.UpDown,
+			km.Chat.HalfPageDown,
+			km.Chat.HalfPageUp,
+			km.Chat.View,
+			km.Chat.Copy,
 		},
 		{
-			copyBinding(km.Chat.PageDown),
-			copyBinding(km.Chat.PageUp),
-			copyBinding(km.Chat.Home),
-			copyBinding(km.Chat.End),
+			km.Chat.PageDown,
+			km.Chat.PageUp,
+			km.Chat.Home,
+			km.Chat.End,
 		},
 		{
-			copyBinding(km.Chat.Expand),
-			copyBinding(km.Quit),
+			km.Chat.Expand,
+			km.Quit,
 		},
 	}
-}
-
-func copyBinding(binding key.Binding) key.Binding {
-	return binding
 }

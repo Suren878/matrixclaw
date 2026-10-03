@@ -10,20 +10,14 @@ import (
 )
 
 func (m *appModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if handled, cmd := m.handleGlobalKey(msg); handled {
-		return m, cmd
-	}
-
 	km := m.input.KeyMap()
 
-	switch msg.String() {
-	case "ctrl+s":
+	switch {
+	case key.Matches(msg, km.Sessions):
 		return m, m.controlplaneCmd("/sessions")
-	case "ctrl+n":
+	case key.Matches(msg, km.Chat.Todo):
 		return m, m.toggleTodoPanel()
-	}
-
-	if key.Matches(msg, km.Commands) {
+	case key.Matches(msg, km.Commands):
 		m.openCommandsDialog()
 		return m, nil
 	}
@@ -39,14 +33,14 @@ func (m *appModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, m.input.Update(msg)
 	}
 
-	switch msg.String() {
-	case "esc":
+	switch {
+	case key.Matches(msg, km.Chat.Cancel):
 		if m.busy {
 			return m, m.openCancelRunDialog()
 		}
-	case "tab":
+	case key.Matches(msg, km.Tab):
 		return m, m.setFocus(appFocusEditor)
-	case "r":
+	case key.Matches(msg, km.Chat.Reload):
 		m.loading = true
 		m.err = ""
 		return m, m.loadInitialCmd()
@@ -56,31 +50,31 @@ func (m *appModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	switch msg.String() {
-	case "down", "j":
+	switch {
+	case key.Matches(msg, km.Chat.Down):
 		m.chat.SelectNext()
 		return m, m.chat.ScrollToSelectedAndAnimate()
-	case "up", "k":
+	case key.Matches(msg, km.Chat.Up):
 		m.chat.SelectPrev()
 		return m, m.chat.ScrollToSelectedAndAnimate()
-	case "d":
+	case key.Matches(msg, km.Chat.HalfPageDown):
 		return m, m.chat.ScrollByAndAnimate(max(1, m.chat.Height()/2))
-	case "u", "ctrl+u":
+	case key.Matches(msg, km.Chat.HalfPageUp):
 		return m, m.chat.ScrollByAndAnimate(-max(1, m.chat.Height()/2))
-	case "pgdown", "f":
+	case key.Matches(msg, km.Chat.PageDown):
 		return m, m.chat.ScrollByAndAnimate(max(1, m.chat.Height()))
-	case "pgup", "b":
+	case key.Matches(msg, km.Chat.PageUp):
 		return m, m.chat.ScrollByAndAnimate(-max(1, m.chat.Height()))
-	case "home", "g":
+	case key.Matches(msg, km.Chat.Home):
 		m.chat.SelectFirst()
 		return m, m.chat.ScrollToSelectedAndAnimate()
-	case "end", "G":
+	case key.Matches(msg, km.Chat.End):
 		m.chat.SelectLast()
 		return m, m.chat.ScrollToSelectedAndAnimate()
-	case " ":
+	case key.Matches(msg, km.Chat.Expand):
 		m.chat.ToggleExpandedSelectedItem()
 		return m, nil
-	case "c", "y", "C", "Y":
+	case key.Matches(msg, km.Chat.Copy):
 		content := strings.TrimSpace(m.chat.CopyContent())
 		if content == "" {
 			return m, nil
@@ -96,10 +90,11 @@ func (m *appModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *appModel) handleGlobalKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c":
+	km := m.input.KeyMap()
+	switch {
+	case key.Matches(msg, km.Quit):
 		return true, tea.Quit
-	case "ctrl+g":
+	case key.Matches(msg, km.Help):
 		m.help.ShowAll = !m.help.ShowAll
 		m.resizeChat()
 		return true, nil

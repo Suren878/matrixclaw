@@ -20,11 +20,7 @@ type FocusMainMsg struct{}
 
 type OpenCommandsMsg struct{}
 
-type OpenTodoMsg struct{}
-
-type AddImageMsg struct{}
-
-type PasteImageMsg struct{}
+type AttachFilesMsg struct{}
 
 type QuitRequestMsg struct{}
 
@@ -101,17 +97,11 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		}
 
 		switch {
-		case key.Matches(msg, m.keyMap.Editor.AddImage):
-			return msgCmd(AddImageMsg{})
-
-		case key.Matches(msg, m.keyMap.Editor.PasteImage):
-			return msgCmd(PasteImageMsg{})
+		case key.Matches(msg, m.keyMap.Editor.AttachFiles):
+			return msgCmd(AttachFilesMsg{})
 
 		case key.Matches(msg, m.keyMap.Editor.SendMessage):
 			return m.handleSendMessage()
-
-		case key.Matches(msg, m.keyMap.Chat.NewSession):
-			return msgCmd(OpenTodoMsg{})
 
 		case key.Matches(msg, m.keyMap.Tab):
 			m.editor.Blur()
