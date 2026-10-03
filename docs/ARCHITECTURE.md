@@ -67,6 +67,9 @@ file change) comes from `internal/toolview` for the terminal and Telegram alike.
 - Optional heavy local runtimes run only when selected by module config.
 - One daemon per data directory: `matrixclawd` holds `matrixclawd.lock` next to
   the database for its lifetime.
+- Client input is trimmed once where it enters: exported `core.Core` methods
+  trim the IDs, keys and text they are handed; internal paths and the store
+  take values as they are.
 
 ## Native Runs
 
@@ -254,7 +257,8 @@ and storage keep screens of their own.
 - `internal/controlplane`: slash commands and screens for terminal and Telegram.
 - `internal/daemonclient`: the Go client of the daemon API.
 - `internal/toolview`: shared presentation of tool calls for the clients.
-- `internal/store`: SQLite persistence.
+- `internal/store`: SQLite persistence; entities scan through one `rowScanner`
+  and list queries through `queryAll`.
 - `internal/providers`: provider adapters, provider catalog, model catalogs, and
   provider-specific wire quirks.
 - `internal/modules`: the module lifecycle and the daemon modules (storage,
@@ -266,6 +270,8 @@ and storage keep screens of their own.
   (SSRF-safe fetch, readability and markdown); no state of their own.
 - `internal/mcp`: MCP client/server bridge.
 - `internal/externalagents`: external-agent registry and adapters.
+- `internal/textutil`, `internal/ids`, `internal/xdg`: leaf helpers shared
+  across packages (`FirstNonEmpty`/`NonBlank`, record IDs, XDG state dir).
 - `scripts`: install, uninstall, release build, and optional voice runtime
   scripts.
 - `packaging`: release and Homebrew packaging notes.
