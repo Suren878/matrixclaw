@@ -210,6 +210,16 @@ Design notes for each: `docs/superpowers/specs/2026-10-03-*.md`.
   TTS and skill tools appear only while their module is on. Voice runtimes
   stop when deselected and when the daemon exits. `GET /v1/modules` reports
   every module's status.
+- Commands and settings: clients run slash commands through one daemon
+  client; module settings screens (TTS, STT, realtime voice, telephony, web
+  search, browser) come from the daemon and render the same in the terminal
+  and Telegram. Only the owner can change settings, permission modes and
+  global rules or restart/stop the daemon; other Telegram chats see module
+  status read-only, without key previews. The HTTP API uses Go's route
+  patterns; module settings live at `GET`/`POST /v1/settings/{module}`, and
+  skills got named endpoints (`?order=usage`, `POST /v1/modules/skills/drafts`,
+  `/v1/sessions/{id}/skills`). The old per-module voice, telephony, web search
+  and browser endpoints are gone.
 - Terminal: one read model updated in place from live events (no reload after
   every action); expanded tool output stays expanded; context usage comes from
   the daemon (`context.updated`); the help line at the bottom is visible
