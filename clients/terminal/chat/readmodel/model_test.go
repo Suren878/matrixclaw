@@ -111,3 +111,12 @@ func TestContextUpdateKeepsTheRestOfTheReport(t *testing.T) {
 		t.Fatalf("context = %+v", report)
 	}
 }
+
+func TestSnapshotApprovalKeepsTheSubagentName(t *testing.T) {
+	m := New(core.ClientSnapshot{SessionID: "parent", Approvals: []core.Approval{{
+		ID: "a1", SessionID: "child", TaskID: "task_1", AgentName: "researcher", ToolCallRef: "call_1", ToolName: "bash", State: core.ApprovalStatePending,
+	}}})
+	if got := m.Approvals()[0].AgentName; got != "researcher" {
+		t.Fatalf("agent name = %q, want researcher", got)
+	}
+}
