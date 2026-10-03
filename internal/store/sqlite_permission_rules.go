@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS permission_rules (
 func (s *SQLiteStore) CreatePermissionRule(ctx context.Context, rule permission.Rule) error {
 	var sessionID any
 	if rule.Scope == permission.ScopeSession {
-		sessionID = strings.TrimSpace(rule.SessionID)
+		sessionID = rule.SessionID
 	}
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO permission_rules(id, tool, pattern, effect, scope, session_id, created_at)
@@ -48,7 +48,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?)`,
 
 // DeletePermissionRule removes a rule; ErrNotFound when no rule has the ID.
 func (s *SQLiteStore) DeletePermissionRule(ctx context.Context, ruleID string) error {
-	result, err := s.db.ExecContext(ctx, `DELETE FROM permission_rules WHERE id = ?`, strings.TrimSpace(ruleID))
+	result, err := s.db.ExecContext(ctx, `DELETE FROM permission_rules WHERE id = ?`, ruleID)
 	if err != nil {
 		return fmt.Errorf("store: delete permission rule: %w", err)
 	}
@@ -73,7 +73,7 @@ WHERE session_id IS NULL`
 	if len(sessionIDs) > 0 {
 		query += ` OR session_id IN (?` + strings.Repeat(`, ?`, len(sessionIDs)-1) + `)`
 		for _, id := range sessionIDs {
-			args = append(args, strings.TrimSpace(id))
+			args = append(args, id)
 		}
 	}
 	query += ` ORDER BY created_at, id`

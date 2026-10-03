@@ -75,7 +75,7 @@ func sessionKindForRuntime(runtimeID SessionRuntime) SessionKind {
 }
 
 func externalAgentIDForRuntime(runtimeID SessionRuntime, explicit string) string {
-	explicit = normalizeText(explicit)
+	explicit = strings.TrimSpace(explicit)
 	if explicit != "" {
 		return explicit
 	}
@@ -135,7 +135,7 @@ func (c *Core) createExternalAgentAttachment(ctx context.Context, session Sessio
 	approvalPolicy, sandbox := externalAgentPolicy(session.PermissionMode, input.Readonly)
 	externalSession, err := runtime.StartSession(ctx, externalagents.StartSessionRequest{
 		CWD:            session.WorkingDir,
-		Model:          normalizeText(input.ModelID),
+		Model:          input.ModelID,
 		ApprovalPolicy: approvalPolicy,
 		Sandbox:        sandbox,
 		Metadata: map[string]any{

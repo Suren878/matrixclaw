@@ -19,7 +19,7 @@ import (
 // none of its approvals is pending and reads a denial as the call's result; a
 // call made outside a run is replayed or answered here.
 func (c *Core) ResolveApproval(ctx context.Context, approvalID string, decision ApprovalResolveRequest) (Approval, error) {
-	approval, err := c.store.GetApproval(ctx, normalizeText(approvalID))
+	approval, err := c.store.GetApproval(ctx, strings.TrimSpace(approvalID))
 	if err != nil {
 		return Approval{}, err
 	}
@@ -41,7 +41,7 @@ func (c *Core) ResolveApproval(ctx context.Context, approvalID string, decision 
 	if err != nil {
 		return Approval{}, err
 	}
-	if strings.TrimSpace(approval.RunID) == "" {
+	if approval.RunID == "" {
 		return approval, c.finishRunlessApproval(ctx, approval)
 	}
 	return approval, c.resumeDecidedRun(ctx, approval.SessionID, approval.RunID)
@@ -121,7 +121,7 @@ func (c *Core) recordApprovalDecision(ctx context.Context, approval Approval, de
 const maxApprovalReasonRunes = 2000
 
 func approvalReason(reason string) string {
-	reason = normalizeText(reason)
+	reason = strings.TrimSpace(reason)
 	runes := []rune(reason)
 	if len(runes) <= maxApprovalReasonRunes {
 		return reason
@@ -168,7 +168,7 @@ func (c *Core) finishRunlessApproval(ctx context.Context, approval Approval) err
 
 // finishApprovalCall writes result for the approval's call unless it has one.
 func (c *Core) finishApprovalCall(ctx context.Context, approval Approval, result tools.Result) error {
-	toolCallID := strings.TrimSpace(approval.ToolCallRef)
+	toolCallID := approval.ToolCallRef
 	done, err := c.store.HasToolResult(ctx, approval.SessionID, approval.RunID, toolCallID)
 	if err != nil || done {
 		return err
@@ -190,7 +190,7 @@ func (c *Core) finishApprovalCall(ctx context.Context, approval Approval, result
 }
 
 func (c *Core) ListApprovals(ctx context.Context, sessionID string, state ApprovalState) ([]Approval, error) {
-	return c.store.ListApprovals(ctx, normalizeText(sessionID), state)
+	return c.store.ListApprovals(ctx, strings.TrimSpace(sessionID), state)
 }
 
 func workingDirForApprovalResume(sessionWorkingDir string, spec tools.Spec, approvalPath string) string {
@@ -236,7 +236,6 @@ func (c *Core) replayApprovedTool(ctx context.Context, approval Approval) (Execu
 
 // sessionToolCallMessage loads the assistant message that carries toolCallID.
 func (c *Core) sessionToolCallMessage(ctx context.Context, sessionID string, toolCallID string) (transcript.Message, error) {
-	toolCallID = strings.TrimSpace(toolCallID)
 	if toolCallID == "" {
 		return transcript.Message{}, fmt.Errorf("%w: tool call id is required", ErrInvalidInput)
 	}
@@ -253,7 +252,7 @@ func (c *Core) sessionToolCallMessage(ctx context.Context, sessionID string, too
 // toolCallArgs returns the input of the tool call part whose id is the message id.
 func toolCallArgs(message transcript.Message) (json.RawMessage, bool) {
 	for _, part := range message.Parts {
-		if part.ToolCall == nil || strings.TrimSpace(part.ToolCall.ID) != message.ID {
+		if part.ToolCall == nil || part.ToolCall.ID != message.ID {
 			continue
 		}
 		if strings.TrimSpace(part.ToolCall.Input) == "" {

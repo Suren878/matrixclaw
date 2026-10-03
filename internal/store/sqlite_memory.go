@@ -52,7 +52,7 @@ WHERE id = ?`,
 }
 
 func (s *SQLiteStore) DeleteMemory(ctx context.Context, id string) error {
-	result, err := s.db.ExecContext(ctx, `DELETE FROM memories WHERE id = ?`, strings.TrimSpace(id))
+	result, err := s.db.ExecContext(ctx, `DELETE FROM memories WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("store: delete memory: %w", err)
 	}
@@ -68,7 +68,7 @@ func (s *SQLiteStore) GetMemory(ctx context.Context, id string) (core.MemoryEntr
 	row := s.db.QueryRowContext(ctx, `
 SELECT id, scope, key, content, working_dir, created_at, updated_at
 FROM memories
-WHERE id = ?`, strings.TrimSpace(id))
+WHERE id = ?`, id)
 	entry, err := scanMemory(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -85,13 +85,13 @@ SELECT id, scope, key, content, working_dir, created_at, updated_at
 FROM memories`
 	args := []any{}
 	clauses := []string{}
-	if strings.TrimSpace(string(filter.Scope)) != "" {
+	if filter.Scope != "" {
 		clauses = append(clauses, "scope = ?")
-		args = append(args, strings.TrimSpace(string(filter.Scope)))
+		args = append(args, string(filter.Scope))
 	}
-	if strings.TrimSpace(filter.WorkingDir) != "" {
+	if filter.WorkingDir != "" {
 		clauses = append(clauses, "(working_dir = '' OR working_dir = ?)")
-		args = append(args, strings.TrimSpace(filter.WorkingDir))
+		args = append(args, filter.WorkingDir)
 	}
 	if len(clauses) > 0 {
 		query += " WHERE " + strings.Join(clauses, " AND ")

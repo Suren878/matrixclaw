@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 )
@@ -12,7 +11,6 @@ type activeRun struct {
 }
 
 func (c *Core) activeRunContext(parent context.Context, runID string) (context.Context, func(), bool) {
-	runID = strings.TrimSpace(runID)
 	if runID == "" {
 		return parent, func() {}, true
 	}
@@ -40,7 +38,6 @@ func (c *Core) activeRunContext(parent context.Context, runID string) (context.C
 }
 
 func (c *Core) runIsActive(runID string) bool {
-	runID = strings.TrimSpace(runID)
 	if runID == "" {
 		return false
 	}
@@ -53,7 +50,6 @@ func (c *Core) runIsActive(runID string) bool {
 // cancelActiveRun stops the run's executor with agent.ErrCanceled as the cause,
 // which tells a cancel from an interruption.
 func (c *Core) cancelActiveRun(runID string) {
-	runID = strings.TrimSpace(runID)
 	if runID == "" {
 		return
 	}

@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -70,7 +71,7 @@ func (b *eventBus) Subscribe(ctx context.Context, sessionID string) <-chan Event
 
 func (b *eventBus) SubscribeAfter(ctx context.Context, sessionID string, afterID uint64) <-chan Event {
 	out := make(chan Event, eventChannelBuffer)
-	normalizedSessionID := normalizeText(sessionID)
+	sessionID = strings.TrimSpace(sessionID)
 
 	b.mu.Lock()
 	id := b.nextID
@@ -81,14 +82,14 @@ func (b *eventBus) SubscribeAfter(ctx context.Context, sessionID string, afterID
 			if event.ID <= afterID {
 				continue
 			}
-			if normalizedSessionID != "" && normalizedSessionID != normalizeText(event.SessionID) {
+			if sessionID != "" && sessionID != event.SessionID {
 				continue
 			}
 			replay = append(replay, event)
 		}
 	}
 	b.subscribers[id] = eventSubscription{
-		sessionID: normalizedSessionID,
+		sessionID: sessionID,
 		ch:        out,
 		done:      ctx.Done(),
 	}
@@ -117,7 +118,7 @@ func (b *eventBus) Publish(event Event) {
 	}
 	subs := make([]eventSubscription, 0, len(b.subscribers))
 	for _, sub := range b.subscribers {
-		if sub.sessionID != "" && sub.sessionID != normalizeText(event.SessionID) {
+		if sub.sessionID != "" && sub.sessionID != event.SessionID {
 			continue
 		}
 		subs = append(subs, sub)

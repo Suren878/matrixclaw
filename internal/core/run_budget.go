@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
@@ -53,7 +54,7 @@ func (c *Core) runBudget(ctx context.Context, run Run, session Session) (agent.B
 
 // SessionBudget reports the session's overrides and the budget of its next run.
 func (c *Core) SessionBudget(ctx context.Context, sessionID string) (SessionBudgetReport, error) {
-	session, err := c.store.GetSession(ctx, normalizeText(sessionID))
+	session, err := c.store.GetSession(ctx, strings.TrimSpace(sessionID))
 	if err != nil {
 		return SessionBudgetReport{}, err
 	}
@@ -70,7 +71,7 @@ func (c *Core) UpdateSessionBudget(ctx context.Context, sessionID string, budget
 	if err := budget.validate(); err != nil {
 		return SessionBudgetReport{}, err
 	}
-	session, err := c.store.GetSession(ctx, normalizeText(sessionID))
+	session, err := c.store.GetSession(ctx, strings.TrimSpace(sessionID))
 	if err != nil {
 		return SessionBudgetReport{}, err
 	}

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -14,7 +13,7 @@ import (
 // GetSessionBudget returns the session's budget overrides; none stored is the zero value.
 func (s *SQLiteStore) GetSessionBudget(ctx context.Context, sessionID string) (core.SessionBudget, error) {
 	var steps, activeSeconds, tokens sql.NullInt64
-	err := s.db.QueryRowContext(ctx, `SELECT steps, active_seconds, tokens FROM session_budgets WHERE session_id = ?`, strings.TrimSpace(sessionID)).Scan(&steps, &activeSeconds, &tokens)
+	err := s.db.QueryRowContext(ctx, `SELECT steps, active_seconds, tokens FROM session_budgets WHERE session_id = ?`, sessionID).Scan(&steps, &activeSeconds, &tokens)
 	if errors.Is(err, sql.ErrNoRows) {
 		return core.SessionBudget{}, nil
 	}
@@ -26,7 +25,6 @@ func (s *SQLiteStore) GetSessionBudget(ctx context.Context, sessionID string) (c
 
 // SaveSessionBudget replaces the session's budget overrides; an empty budget removes them.
 func (s *SQLiteStore) SaveSessionBudget(ctx context.Context, sessionID string, budget core.SessionBudget, updatedAt time.Time) error {
-	sessionID = strings.TrimSpace(sessionID)
 	if budget.IsZero() {
 		if _, err := s.db.ExecContext(ctx, `DELETE FROM session_budgets WHERE session_id = ?`, sessionID); err != nil {
 			return fmt.Errorf("store: delete session budget: %w", err)

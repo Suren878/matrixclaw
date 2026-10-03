@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -41,8 +40,8 @@ func (in coreInbox) steers(ctx context.Context, runID string) ([]agent.Input, er
 	}
 	var out []agent.Input
 	for _, input := range inputs {
-		if text := normalizeText(input.Text); text != "" {
-			out = append(out, agent.Input{Kind: agent.InputSteer, ID: input.ID, Text: text})
+		if input.Text != "" {
+			out = append(out, agent.Input{Kind: agent.InputSteer, ID: input.ID, Text: input.Text})
 		}
 	}
 	return out, nil
@@ -85,7 +84,7 @@ func (in coreInbox) decided(ctx context.Context, runID string) ([]agent.Input, e
 	seen := map[string]struct{}{}
 	var out []agent.Input
 	for _, approval := range approvals {
-		callID := strings.TrimSpace(approval.ToolCallRef)
+		callID := approval.ToolCallRef
 		if callID == "" {
 			continue
 		}

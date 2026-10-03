@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -26,14 +25,14 @@ func (s *SQLiteStore) SaveRunWakeup(ctx context.Context, wakeup core.RunWakeup) 
 	if _, err := s.db.ExecContext(ctx, `
 INSERT INTO run_wakeups(run_id, session_id, wake_at, task_ids_json) VALUES(?, ?, ?, ?)
 ON CONFLICT(run_id) DO UPDATE SET session_id = excluded.session_id, wake_at = excluded.wake_at, task_ids_json = excluded.task_ids_json`,
-		strings.TrimSpace(wakeup.RunID), strings.TrimSpace(wakeup.SessionID), wakeup.WakeAt.UnixMilli(), taskIDs); err != nil {
+		wakeup.RunID, wakeup.SessionID, wakeup.WakeAt.UnixMilli(), taskIDs); err != nil {
 		return fmt.Errorf("store: save run wakeup: %w", err)
 	}
 	return nil
 }
 
 func (s *SQLiteStore) GetRunWakeup(ctx context.Context, runID string) (core.RunWakeup, error) {
-	wakeup, err := scanRunWakeup(s.db.QueryRowContext(ctx, `SELECT run_id, session_id, wake_at, task_ids_json FROM run_wakeups WHERE run_id = ?`, strings.TrimSpace(runID)))
+	wakeup, err := scanRunWakeup(s.db.QueryRowContext(ctx, `SELECT run_id, session_id, wake_at, task_ids_json FROM run_wakeups WHERE run_id = ?`, runID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return core.RunWakeup{}, core.ErrNotFound
 	}
@@ -44,7 +43,7 @@ func (s *SQLiteStore) GetRunWakeup(ctx context.Context, runID string) (core.RunW
 }
 
 func (s *SQLiteStore) DeleteRunWakeup(ctx context.Context, runID string) error {
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM run_wakeups WHERE run_id = ?`, strings.TrimSpace(runID)); err != nil {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM run_wakeups WHERE run_id = ?`, runID); err != nil {
 		return fmt.Errorf("store: delete run wakeup: %w", err)
 	}
 	return nil

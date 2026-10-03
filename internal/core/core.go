@@ -237,7 +237,3 @@ func (c *Core) WithRuntimeStatusContext(provider RuntimeStatusContextProvider) *
 	}
 	return c
 }
-
-func normalizeText(value string) string {
-	return strings.TrimSpace(value)
-}

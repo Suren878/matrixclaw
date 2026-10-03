@@ -18,7 +18,7 @@ func (s *SQLiteStore) MarkTasksDelivered(ctx context.Context, taskIDs []string, 
 	if len(taskIDs) == 0 {
 		return nil
 	}
-	args := []any{formatTime(at), strings.TrimSpace(runID), formatTime(at)}
+	args := []any{formatTime(at), runID, formatTime(at)}
 	placeholders := make([]string, 0, len(taskIDs))
 	for _, id := range taskIDs {
 		placeholders = append(placeholders, "?")
@@ -55,7 +55,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 }
 
 func (s *SQLiteStore) GetTask(ctx context.Context, taskID string) (core.Task, error) {
-	task, err := scanTask(s.db.QueryRowContext(ctx, `SELECT `+taskColumns+` FROM tasks WHERE id = ?`, strings.TrimSpace(taskID)))
+	task, err := scanTask(s.db.QueryRowContext(ctx, `SELECT `+taskColumns+` FROM tasks WHERE id = ?`, taskID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return core.Task{}, core.ErrNotFound
 	}
@@ -69,12 +69,12 @@ func (s *SQLiteStore) GetTask(ctx context.Context, taskID string) (core.Task, er
 func (s *SQLiteStore) ListTasks(ctx context.Context, filter core.TaskFilter) ([]core.Task, error) {
 	where := []string{"1 = 1"}
 	var args []any
-	if id := strings.TrimSpace(filter.SessionID); id != "" {
+	if filter.SessionID != "" {
 		where = append(where, "session_id = ?")
-		args = append(args, id)
+		args = append(args, filter.SessionID)
 	}
 	for column, value := range map[string]string{"kind": string(filter.Kind), "run_id": filter.RunID, "parent_tool_call_id": filter.ParentToolCallID, "child_run_id": filter.ChildRunID, "child_session_id": filter.ChildSessionID} {
-		if value = strings.TrimSpace(value); value != "" {
+		if value != "" {
 			where = append(where, column+" = ?")
 			args = append(args, value)
 		}
@@ -108,7 +108,7 @@ func (s *SQLiteStore) FinishTask(ctx context.Context, taskID string, end core.Ta
 	result, err := s.db.ExecContext(ctx, `
 UPDATE tasks SET status = ?, exit_code = ?, summary = ?, error = ?, finished_at = ?, updated_at = ?,
     delivered_at = CASE WHEN ? AND delivered_at IS NULL THEN ? ELSE delivered_at END
-WHERE id = ? AND finished_at IS NULL`, string(end.Status), end.ExitCode, end.Summary, end.Error, at, at, end.Delivered, at, strings.TrimSpace(taskID))
+WHERE id = ? AND finished_at IS NULL`, string(end.Status), end.ExitCode, end.Summary, end.Error, at, at, end.Delivered, at, taskID)
 	if err != nil {
 		return false, fmt.Errorf("store: finish task: %w", err)
 	}
@@ -121,14 +121,14 @@ WHERE id = ? AND finished_at IS NULL`, string(end.Status), end.ExitCode, end.Sum
 
 // SetTaskStatus moves a task that has not ended to status.
 func (s *SQLiteStore) SetTaskStatus(ctx context.Context, taskID string, status core.TaskStatus, at time.Time) error {
-	if _, err := s.db.ExecContext(ctx, `UPDATE tasks SET status = ?, updated_at = ? WHERE id = ? AND finished_at IS NULL`, string(status), formatTime(at), strings.TrimSpace(taskID)); err != nil {
+	if _, err := s.db.ExecContext(ctx, `UPDATE tasks SET status = ?, updated_at = ? WHERE id = ? AND finished_at IS NULL`, string(status), formatTime(at), taskID); err != nil {
 		return fmt.Errorf("store: set task status: %w", err)
 	}
 	return nil
 }
 
 func (s *SQLiteStore) SetTaskCursor(ctx context.Context, taskID string, cursor int64) error {
-	if _, err := s.db.ExecContext(ctx, `UPDATE tasks SET output_cursor = ? WHERE id = ?`, cursor, strings.TrimSpace(taskID)); err != nil {
+	if _, err := s.db.ExecContext(ctx, `UPDATE tasks SET output_cursor = ? WHERE id = ?`, cursor, taskID); err != nil {
 		return fmt.Errorf("store: set task cursor: %w", err)
 	}
 	return nil

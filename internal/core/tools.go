@@ -1,8 +1,15 @@
 package core
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
+// ExecuteTool runs one tool call outside the agent loop.
 func (c *Core) ExecuteTool(ctx context.Context, input ExecuteToolInput) (ExecuteToolResult, error) {
+	input.SessionID = strings.TrimSpace(input.SessionID)
+	input.ToolName = strings.TrimSpace(input.ToolName)
+	input.ToolCallID = strings.TrimSpace(input.ToolCallID)
 	prepared, err := c.prepareToolCall(ctx, input)
 	if err != nil {
 		return ExecuteToolResult{}, err

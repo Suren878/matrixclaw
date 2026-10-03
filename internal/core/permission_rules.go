@@ -15,7 +15,7 @@ import (
 // SessionPermissionRules lists the rules a session's calls follow: the global
 // rules, its own and its parents'.
 func (c *Core) SessionPermissionRules(ctx context.Context, sessionID string) ([]permission.Rule, error) {
-	session, err := c.store.GetSession(ctx, normalizeText(sessionID))
+	session, err := c.store.GetSession(ctx, strings.TrimSpace(sessionID))
 	if err != nil {
 		return nil, err
 	}
@@ -27,14 +27,14 @@ func (c *Core) SessionPermissionRules(ctx context.Context, sessionID string) ([]
 // working directory (so do path patterns of rules for every tool), domains are
 // normalised, and a rule for one MCP tool names it as "server__tool".
 func (c *Core) AddPermissionRule(ctx context.Context, sessionID string, request PermissionRuleRequest) (permission.Rule, error) {
-	session, err := c.store.GetSession(ctx, normalizeText(sessionID))
+	session, err := c.store.GetSession(ctx, strings.TrimSpace(sessionID))
 	if err != nil {
 		return permission.Rule{}, err
 	}
 	rule := permission.Rule{
 		ID:        c.newID("rule"),
-		Tool:      normalizeText(request.Tool),
-		Pattern:   normalizeText(request.Pattern),
+		Tool:      strings.TrimSpace(request.Tool),
+		Pattern:   strings.TrimSpace(request.Pattern),
 		Effect:    request.Effect,
 		Scope:     request.Scope,
 		CreatedAt: c.now().UTC(),
@@ -78,7 +78,7 @@ func (c *Core) GlobalPermissionRules(ctx context.Context) ([]permission.Rule, er
 
 // DeletePermissionRule removes a rule.
 func (c *Core) DeletePermissionRule(ctx context.Context, ruleID string) error {
-	return c.store.DeletePermissionRule(ctx, normalizeText(ruleID))
+	return c.store.DeletePermissionRule(ctx, strings.TrimSpace(ruleID))
 }
 
 func (c *Core) toolSpec(toolID string) (tools.Spec, bool) {

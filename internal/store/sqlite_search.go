@@ -26,9 +26,9 @@ FROM message_fts f
 JOIN messages m ON m.seq = f.rowid
 WHERE message_fts MATCH ?`
 	args := []any{query}
-	if strings.TrimSpace(filter.SessionID) != "" {
+	if filter.SessionID != "" {
 		sqlQuery += " AND m.session_id = ?"
-		args = append(args, strings.TrimSpace(filter.SessionID))
+		args = append(args, filter.SessionID)
 	}
 	sqlQuery += "\nORDER BY rank\nLIMIT ?"
 	args = append(args, limit)
@@ -46,7 +46,7 @@ WHERE message_fts MATCH ?`
 // upsertMessageSearch replaces the search row of a stored message; rows are
 // keyed by messages.seq.
 func upsertMessageSearch(ctx context.Context, execer sqlExecer, message transcript.Message) error {
-	if strings.TrimSpace(message.ID) == "" {
+	if message.ID == "" {
 		return nil
 	}
 	if _, err := execer.ExecContext(ctx, `DELETE FROM message_fts WHERE rowid = (SELECT seq FROM messages WHERE id = ?)`, message.ID); err != nil {

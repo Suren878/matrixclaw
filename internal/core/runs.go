@@ -13,10 +13,14 @@ import (
 const runScheduleLease = 30 * time.Second
 
 func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptRunResult, error) {
+	input.SessionID = strings.TrimSpace(input.SessionID)
+	input.Client = strings.TrimSpace(input.Client)
+	input.ExternalKey = strings.TrimSpace(input.ExternalKey)
+	input.WorkingDir = strings.TrimSpace(input.WorkingDir)
 	if input.Continue {
 		return c.acceptContinueRun(ctx, input)
 	}
-	text := normalizeText(input.Text)
+	text := strings.TrimSpace(input.Text)
 	parts := transcript.NormalizeMessageParts(text, input.Parts)
 	if text == "" && !messagePartsHaveUserContent(parts) {
 		return AcceptRunResult{}, fmt.Errorf("%w: message text is required", ErrInvalidInput)
@@ -119,16 +123,16 @@ func messagePartsHaveUserContent(parts []transcript.MessagePart) bool {
 }
 
 func (c *Core) AcceptTriggeredRun(ctx context.Context, input HandleTriggeredRunInput) (AcceptRunResult, error) {
-	text := normalizeText(input.Text)
+	text := strings.TrimSpace(input.Text)
 	if text == "" {
 		return AcceptRunResult{}, fmt.Errorf("%w: message text is required", ErrInvalidInput)
 	}
-	triggerID := normalizeText(input.TriggerID)
+	triggerID := strings.TrimSpace(input.TriggerID)
 	if triggerID == "" {
 		return AcceptRunResult{}, fmt.Errorf("%w: trigger id is required", ErrInvalidInput)
 	}
 	session, err := c.resolveSession(ctx, HandleMessageInput{
-		SessionID:  normalizeText(input.SessionID),
+		SessionID:  strings.TrimSpace(input.SessionID),
 		WorkingDir: input.WorkingDir,
 	})
 	if err != nil {
@@ -154,8 +158,8 @@ func (c *Core) AcceptTriggeredRun(ctx context.Context, input HandleTriggeredRunI
 		MessageID:    deterministicMessageID(triggerID),
 		Text:         text,
 		Parts:        transcript.NormalizeMessageParts(text, nil),
-		Client:       input.Client,
-		ExternalKey:  input.ExternalKey,
+		Client:       strings.TrimSpace(input.Client),
+		ExternalKey:  strings.TrimSpace(input.ExternalKey),
 		Capabilities: input.ClientCapabilities,
 		Trigger:      RunTriggerAutomation,
 	})
@@ -173,7 +177,6 @@ func (c *Core) AcceptTriggeredRun(ctx context.Context, input HandleTriggeredRunI
 }
 
 func (c *Core) startRun(ctx context.Context, runID string) error {
-	runID = normalizeText(runID)
 	if runID == "" {
 		return fmt.Errorf("%w: run id is required", ErrInvalidInput)
 	}
@@ -248,14 +251,15 @@ func stableIDPart(value string) string {
 }
 
 func (c *Core) GetRun(ctx context.Context, runID string) (Run, error) {
-	if normalizeText(runID) == "" {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
 		return Run{}, fmt.Errorf("%w: run id is required", ErrInvalidInput)
 	}
-	return c.store.GetRun(ctx, normalizeText(runID))
+	return c.store.GetRun(ctx, runID)
 }
 
 func (c *Core) CancelRun(ctx context.Context, runID string) (Run, error) {
-	runID = normalizeText(runID)
+	runID = strings.TrimSpace(runID)
 	if runID == "" {
 		return Run{}, fmt.Errorf("%w: run id is required", ErrInvalidInput)
 	}

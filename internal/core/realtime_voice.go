@@ -23,7 +23,7 @@ type CommitRealtimeVoiceTurnResult struct {
 }
 
 func (c *Core) CommitRealtimeVoiceTurn(ctx context.Context, input CommitRealtimeVoiceTurnInput) (CommitRealtimeVoiceTurnResult, error) {
-	sessionID := normalizeText(input.SessionID)
+	sessionID := strings.TrimSpace(input.SessionID)
 	if sessionID == "" {
 		return CommitRealtimeVoiceTurnResult{}, fmt.Errorf("%w: session id is required", ErrInvalidInput)
 	}
@@ -53,7 +53,7 @@ func (c *Core) CommitRealtimeVoiceTurn(ctx context.Context, input CommitRealtime
 		if result.UserMessage != nil {
 			createdAt = now.Add(time.Nanosecond)
 		}
-		message := realtimeVoiceTextMessage(c.newID("msg"), sessionID, transcript.MessageRoleAssistant, assistantTranscript, normalizeText(input.ProviderID), normalizeText(input.ModelID), createdAt)
+		message := realtimeVoiceTextMessage(c.newID("msg"), sessionID, transcript.MessageRoleAssistant, assistantTranscript, strings.TrimSpace(input.ProviderID), strings.TrimSpace(input.ModelID), createdAt)
 		if _, err := c.store.AppendMessage(ctx, message); err != nil {
 			return CommitRealtimeVoiceTurnResult{}, err
 		}

@@ -73,7 +73,7 @@ WHERE id = ?`,
 }
 
 func (s *SQLiteStore) GetMessage(ctx context.Context, messageID string) (transcript.Message, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT `+messageColumns+` FROM messages WHERE id = ?`, strings.TrimSpace(messageID))
+	row := s.db.QueryRowContext(ctx, `SELECT `+messageColumns+` FROM messages WHERE id = ?`, messageID)
 	message, err := scanMessage(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return transcript.Message{}, core.ErrNotFound
@@ -95,7 +95,7 @@ SELECT EXISTS (
       AND m.run_id = ?
       AND m.role = 'tool'
       AND json_extract(p.value, '$.tool_result.tool_call_id') = ?
-)`, sessionID, runID, strings.TrimSpace(toolCallID)).Scan(&found)
+)`, sessionID, runID, toolCallID).Scan(&found)
 	if err != nil {
 		return false, fmt.Errorf("store: has tool result: %w", err)
 	}
@@ -185,7 +185,7 @@ WHERE session_id = ?
   AND status IN (?, ?, ?, ?)
 ORDER BY started_at DESC, updated_at DESC
 LIMIT 1`,
-		strings.TrimSpace(sessionID),
+		sessionID,
 		string(core.RunStatusAccepted),
 		string(core.RunStatusRunning),
 		string(core.RunStatusWaitingApproval),
@@ -209,7 +209,7 @@ SELECT `+runColumns+`
 FROM runs
 WHERE session_id = ?
 ORDER BY (SELECT seq FROM messages WHERE messages.id = runs.user_message_id) DESC
-LIMIT 1`, strings.TrimSpace(sessionID))
+LIMIT 1`, sessionID)
 
 	run, err := scanRun(row)
 	if err != nil {
@@ -227,7 +227,7 @@ SELECT ` + runColumns + `
 FROM runs
 WHERE session_id = ?
 ORDER BY (SELECT seq FROM messages WHERE messages.id = runs.user_message_id) DESC`
-	args := []any{strings.TrimSpace(sessionID)}
+	args := []any{sessionID}
 	if limit > 0 {
 		query += " LIMIT ?"
 		args = append(args, limit)

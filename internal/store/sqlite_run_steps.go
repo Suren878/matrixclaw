@@ -11,15 +11,14 @@ import (
 
 // SaveRunStep appends step as the next step number of its run.
 func (s *SQLiteStore) SaveRunStep(ctx context.Context, step core.RunStep) error {
-	runID := strings.TrimSpace(step.RunID)
-	if runID == "" {
+	if step.RunID == "" {
 		return core.ErrInvalidInput
 	}
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO run_steps(run_id, step, model, provider, prompt_tokens, cache_read_tokens, cache_write_tokens,
     output_tokens, reasoning_tokens, stop_reason, latency_ms, tool_calls, created_at)
 VALUES(?, (SELECT COALESCE(MAX(step), 0) + 1 FROM run_steps WHERE run_id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		runID, runID, step.Model, step.Provider,
+		step.RunID, step.RunID, step.Model, step.Provider,
 		step.PromptTokens, step.CacheReadTokens, step.CacheWriteTokens,
 		step.OutputTokens, step.ReasoningTokens, step.StopReason,
 		step.LatencyMillis, step.ToolCalls, formatTime(step.CreatedAt),
@@ -36,7 +35,7 @@ SELECT run_id, step, model, provider, prompt_tokens, cache_read_tokens, cache_wr
        output_tokens, reasoning_tokens, stop_reason, latency_ms, tool_calls, created_at
 FROM run_steps
 WHERE run_id = ?
-ORDER BY step`, strings.TrimSpace(runID))
+ORDER BY step`, runID)
 }
 
 func scanRunStep(row rowScanner) (core.RunStep, error) {
@@ -64,13 +63,13 @@ FROM run_steps s
 JOIN runs r ON r.id = s.run_id`
 	args := make([]any, 0, 3)
 	clauses := make([]string, 0, 2)
-	if sessionID := strings.TrimSpace(filter.SessionID); sessionID != "" {
+	if filter.SessionID != "" {
 		clauses = append(clauses, "r.session_id = ?")
-		args = append(args, sessionID)
+		args = append(args, filter.SessionID)
 	}
-	if runID := strings.TrimSpace(filter.RunID); runID != "" {
+	if filter.RunID != "" {
 		clauses = append(clauses, "s.run_id = ?")
-		args = append(args, runID)
+		args = append(args, filter.RunID)
 	}
 	if len(clauses) > 0 {
 		query += "\nWHERE " + strings.Join(clauses, " AND ")

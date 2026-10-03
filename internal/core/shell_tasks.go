@@ -397,7 +397,7 @@ func (c *Core) cancelTask(ctx context.Context, task Task, reason string) (Task, 
 
 // sessionTask is the task with the ID if it belongs to the session.
 func (c *Core) sessionTask(ctx context.Context, sessionID string, taskID string) (Task, error) {
-	task, err := c.store.GetTask(ctx, normalizeText(taskID))
+	task, err := c.store.GetTask(ctx, strings.TrimSpace(taskID))
 	if errors.Is(err, ErrNotFound) || err == nil && task.SessionID != sessionID {
 		return Task{}, fmt.Errorf("%w: no task %q in this session", ErrInvalidInput, taskID)
 	}

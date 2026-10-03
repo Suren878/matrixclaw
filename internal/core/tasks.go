@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/shelltask"
 )
@@ -15,7 +16,7 @@ const taskOutputTail = 3000
 
 // ListSessionTasks lists the session's background tasks, newest first.
 func (c *Core) ListSessionTasks(ctx context.Context, sessionID string) ([]Task, error) {
-	session, err := c.store.GetSession(ctx, normalizeText(sessionID))
+	session, err := c.store.GetSession(ctx, strings.TrimSpace(sessionID))
 	if err != nil {
 		return nil, err
 	}
@@ -28,7 +29,7 @@ func (c *Core) ListSessionTasks(ctx context.Context, sessionID string) ([]Task, 
 
 // TaskDetail returns a task and the end of its output.
 func (c *Core) TaskDetail(ctx context.Context, taskID string) (TaskDetailResponse, error) {
-	task, err := c.store.GetTask(ctx, normalizeText(taskID))
+	task, err := c.store.GetTask(ctx, strings.TrimSpace(taskID))
 	if err != nil {
 		return TaskDetailResponse{}, err
 	}
@@ -43,7 +44,7 @@ func (c *Core) TaskDetail(ctx context.Context, taskID string) (TaskDetailRespons
 
 // CancelTask stops a task for the user; its session reads that at its next step.
 func (c *Core) CancelTask(ctx context.Context, taskID string) (Task, error) {
-	task, err := c.store.GetTask(ctx, normalizeText(taskID))
+	task, err := c.store.GetTask(ctx, strings.TrimSpace(taskID))
 	if err != nil {
 		return Task{}, err
 	}

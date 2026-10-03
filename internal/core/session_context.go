@@ -61,7 +61,7 @@ var ErrSessionRequired = errors.New("session_id is required")
 var errNothingToCompact = fmt.Errorf("%w: nothing to compact", ErrInvalidInput)
 
 func (c *Core) SessionContext(ctx context.Context, sessionID string) (ContextReport, error) {
-	sessionID = normalizeText(sessionID)
+	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return ContextReport{}, ErrSessionRequired
 	}
@@ -80,7 +80,7 @@ func (c *Core) SessionContext(ctx context.Context, sessionID string) (ContextRep
 // CompactSession summarises what the model sees of the session into a boundary
 // that covers all of it.
 func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSessionResult, error) {
-	sessionID = normalizeText(sessionID)
+	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return CompactSessionResult{}, ErrSessionRequired
 	}

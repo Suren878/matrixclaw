@@ -24,8 +24,7 @@ func (c *Core) firstMessageAutoTitle(ctx context.Context, session Session, text 
 }
 
 func (c *Core) applyAutoSessionTitle(ctx context.Context, session Session, title string) {
-	title = normalizeText(title)
-	if title == "" || strings.TrimSpace(session.Title) == title {
+	if title == "" || session.Title == title {
 		return
 	}
 	session.Title = title

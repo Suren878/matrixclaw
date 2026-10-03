@@ -12,16 +12,17 @@ import (
 )
 
 func (c *Core) CreateSession(ctx context.Context, input CreateSessionInput) (Session, error) {
-	title := normalizeText(input.Title)
+	input.ModelID = strings.TrimSpace(input.ModelID)
+	title := strings.TrimSpace(input.Title)
 	if title == "" {
 		return Session{}, fmt.Errorf("%w: session title is required", ErrInvalidInput)
 	}
 	runtimeID := sessionRuntimeForCreate(input.RuntimeID, input.Kind, input.ExternalAgentID)
 	kind := sessionKindForRuntime(runtimeID)
 	workingDir := normalizeWorkingDir(input.WorkingDir)
-	providerID := normalizeText(input.ProviderID)
-	modelID := normalizeText(input.ModelID)
-	rawPermissionMode := normalizeText(string(input.PermissionMode))
+	providerID := strings.TrimSpace(input.ProviderID)
+	modelID := input.ModelID
+	rawPermissionMode := strings.TrimSpace(string(input.PermissionMode))
 	permissionMode := NormalizePermissionMode(string(input.PermissionMode))
 	if kind == SessionKindExternalAgent && rawPermissionMode == "" {
 		permissionMode = PermissionModeFullAuto
@@ -40,7 +41,7 @@ func (c *Core) CreateSession(ctx context.Context, input CreateSessionInput) (Ses
 		}
 	} else {
 		providerID = ""
-		modelID = normalizeText(input.ModelID)
+		modelID = input.ModelID
 	}
 
 	now := c.now().UTC()
@@ -49,7 +50,7 @@ func (c *Core) CreateSession(ctx context.Context, input CreateSessionInput) (Ses
 		Title:           title,
 		Kind:            kind,
 		RuntimeID:       runtimeID,
-		ParentSessionID: normalizeText(input.ParentSessionID),
+		ParentSessionID: strings.TrimSpace(input.ParentSessionID),
 		Hidden:          input.Hidden,
 		WorkingDir:      workingDir,
 		ProviderID:      providerID,
@@ -83,7 +84,7 @@ func (c *Core) ListSessions(ctx context.Context, filter SessionListFilter) ([]Se
 }
 
 func (c *Core) GetSession(ctx context.Context, sessionID string) (Session, error) {
-	sessionID = normalizeText(sessionID)
+	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return Session{}, fmt.Errorf("%w: session id is required", ErrInvalidInput)
 	}
@@ -95,11 +96,11 @@ func (c *Core) GetSession(ctx context.Context, sessionID string) (Session, error
 }
 
 func (c *Core) RenameSession(ctx context.Context, input RenameSessionInput) (Session, error) {
-	sessionID := normalizeText(input.SessionID)
+	sessionID := strings.TrimSpace(input.SessionID)
 	if sessionID == "" {
 		return Session{}, fmt.Errorf("%w: session id is required", ErrInvalidInput)
 	}
-	title := normalizeText(input.Title)
+	title := strings.TrimSpace(input.Title)
 	if title == "" {
 		return Session{}, fmt.Errorf("%w: session title is required", ErrInvalidInput)
 	}
@@ -117,7 +118,7 @@ func (c *Core) RenameSession(ctx context.Context, input RenameSessionInput) (Ses
 }
 
 func (c *Core) UpdateSessionPermissionMode(ctx context.Context, input UpdateSessionPermissionModeInput) (Session, error) {
-	sessionID := normalizeText(input.SessionID)
+	sessionID := strings.TrimSpace(input.SessionID)
 	if sessionID == "" {
 		return Session{}, fmt.Errorf("%w: session id is required", ErrInvalidInput)
 	}
@@ -152,7 +153,7 @@ func (c *Core) UpdateSessionPermissionMode(ctx context.Context, input UpdateSess
 }
 
 func (c *Core) DeleteSession(ctx context.Context, sessionID string) error {
-	sessionID = normalizeText(sessionID)
+	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return fmt.Errorf("%w: session id is required", ErrInvalidInput)
 	}
@@ -260,8 +261,8 @@ func (c *Core) resolveSession(ctx context.Context, input HandleMessageInput) (Se
 }
 
 func (c *Core) UpdateSessionProvider(ctx context.Context, sessionID string, providerID string) (Session, error) {
-	sessionID = normalizeText(sessionID)
-	providerID = normalizeText(providerID)
+	sessionID = strings.TrimSpace(sessionID)
+	providerID = strings.TrimSpace(providerID)
 	if sessionID == "" || providerID == "" {
 		return Session{}, fmt.Errorf("%w: session id and provider id are required", ErrInvalidInput)
 	}
@@ -288,8 +289,8 @@ func (c *Core) UpdateSessionProvider(ctx context.Context, sessionID string, prov
 }
 
 func (c *Core) UpdateSessionModel(ctx context.Context, sessionID string, modelID string) (Session, error) {
-	sessionID = normalizeText(sessionID)
-	modelID = normalizeText(modelID)
+	sessionID = strings.TrimSpace(sessionID)
+	modelID = strings.TrimSpace(modelID)
 	if sessionID == "" || modelID == "" {
 		return Session{}, fmt.Errorf("%w: session id and model id are required", ErrInvalidInput)
 	}
@@ -319,7 +320,7 @@ func (c *Core) UpdateSessionModel(ctx context.Context, sessionID string, modelID
 	if llms == nil {
 		return Session{}, fmt.Errorf("%w: provider registry unavailable", ErrExecutionUnavailable)
 	}
-	providerID := normalizeText(session.ProviderID)
+	providerID := session.ProviderID
 	if providerID == "" {
 		providerID, _ = llms.ActiveSelection()
 	}
@@ -345,7 +346,7 @@ func (c *Core) SessionProviderOptions() []SessionProviderOption {
 }
 
 func (c *Core) ModelsForSession(ctx context.Context, sessionID string) (string, string, []string, error) {
-	sessionID = normalizeText(sessionID)
+	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return "", "", nil, fmt.Errorf("%w: session id is required", ErrInvalidInput)
 	}
@@ -355,7 +356,7 @@ func (c *Core) ModelsForSession(ctx context.Context, sessionID string) (string, 
 	}
 	session = c.decorateSessionLLM(session)
 	if CoreSessionIsExternalAgent(session) {
-		modelID := strings.TrimSpace(session.ModelID)
+		modelID := session.ModelID
 		models := c.externalAgentModels(ctx, session)
 		if modelID == "" && len(models) > 0 {
 			modelID = models[0]
@@ -441,12 +442,12 @@ func (c *Core) decorateSession(ctx context.Context, session Session) Session {
 	if err != nil {
 		return session
 	}
-	session.ExternalAgentID = strings.TrimSpace(attachment.AgentID)
+	session.ExternalAgentID = attachment.AgentID
 	session.ExternalAgentName = c.externalAgentDisplayName(attachment.AgentID)
-	if strings.TrimSpace(session.ModelID) == "" {
+	if session.ModelID == "" {
 		session.ModelID = strings.TrimSpace(attachment.Model)
 	}
-	if strings.TrimSpace(session.ModelID) == "" {
+	if session.ModelID == "" {
 		session.ModelID = c.externalAgentDefaultModel(ctx, attachment.AgentID)
 	}
 	return session
@@ -470,13 +471,13 @@ func (c *Core) decorateSessionLLM(session Session) Session {
 		return session
 	}
 	providerID, modelID := llms.ActiveSelection()
-	if strings.TrimSpace(session.ProviderID) == "" {
+	if session.ProviderID == "" {
 		session.ProviderID = providerID
 	}
-	if strings.TrimSpace(session.ModelID) == "" {
+	if session.ModelID == "" {
 		session.ModelID = modelID
 	}
-	if strings.TrimSpace(session.ProviderID) != "" {
+	if session.ProviderID != "" {
 		if _, resolvedModel, err := llms.Normalize(session.ProviderID, session.ModelID); err == nil {
 			session.ModelID = resolvedModel
 		}
@@ -485,7 +486,7 @@ func (c *Core) decorateSessionLLM(session Session) Session {
 }
 
 func normalizeWorkingDir(value string) string {
-	value = normalizeText(value)
+	value = strings.TrimSpace(value)
 	if value == "" {
 		return ""
 	}

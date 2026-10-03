@@ -84,9 +84,9 @@ func (s *SQLiteStore) ListPendingSessionInputs(ctx context.Context, sessionID st
 FROM session_inputs
 WHERE status = ?`
 	args := []any{string(core.SessionInputStatusPending)}
-	if strings.TrimSpace(sessionID) != "" {
+	if sessionID != "" {
 		query += ` AND session_id = ?`
-		args = append(args, strings.TrimSpace(sessionID))
+		args = append(args, sessionID)
 	}
 	query += `
 ORDER BY created_at ASC, id ASC`
@@ -98,7 +98,7 @@ ORDER BY created_at ASC, id ASC`
 func (s *SQLiteStore) HasConsumedSessionInput(ctx context.Context, sessionID string, runID string) (bool, error) {
 	var found int
 	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM session_inputs WHERE session_id = ? AND consumed_run_id = ? LIMIT 1`,
-		strings.TrimSpace(sessionID), strings.TrimSpace(runID)).Scan(&found)
+		sessionID, runID).Scan(&found)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -117,7 +117,7 @@ WHERE session_id = ?
   AND mode IN (?, ?)
 ORDER BY created_at ASC, id ASC
 LIMIT 1`,
-		strings.TrimSpace(sessionID),
+		sessionID,
 		string(core.SessionInputStatusPending),
 		string(core.BusyInputModeQueue),
 		string(core.BusyInputModeInterrupt),
@@ -141,8 +141,8 @@ WHERE session_id = ?
   AND mode = ?
   AND status = ?
 ORDER BY created_at ASC, id ASC`,
-		strings.TrimSpace(sessionID),
-		strings.TrimSpace(runID),
+		sessionID,
+		runID,
 		string(core.BusyInputModeSteer),
 		string(core.SessionInputStatusPending),
 	)

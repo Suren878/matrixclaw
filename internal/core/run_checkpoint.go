@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
@@ -46,7 +45,6 @@ func (c *Core) saveEngineCheckpoint(ctx context.Context, state agent.State) erro
 // updateRunCheckpoint applies update to the run's checkpoint and keeps every field
 // update leaves alone, such as the recovery count or the engine counters.
 func (c *Core) updateRunCheckpoint(ctx context.Context, runID string, update func(*RunCheckpoint)) error {
-	runID = normalizeText(runID)
 	if runID == "" {
 		return nil
 	}
@@ -125,7 +123,7 @@ func (c *Core) markRunRecovery(ctx context.Context, runID string) (RunCheckpoint
 }
 
 func (c *Core) runCheckpoint(ctx context.Context, runID string) (RunCheckpoint, bool, error) {
-	checkpoint, err := c.store.GetRunCheckpoint(ctx, normalizeText(runID))
+	checkpoint, err := c.store.GetRunCheckpoint(ctx, runID)
 	if errors.Is(err, ErrNotFound) {
 		return RunCheckpoint{}, false, nil
 	}
@@ -136,10 +134,10 @@ func (c *Core) runCheckpoint(ctx context.Context, runID string) (RunCheckpoint, 
 }
 
 func (c *Core) clearRunCheckpoint(ctx context.Context, runID string) {
-	if strings.TrimSpace(runID) == "" {
+	if runID == "" {
 		return
 	}
-	_ = c.store.DeleteRunCheckpoint(ctx, normalizeText(runID))
+	_ = c.store.DeleteRunCheckpoint(ctx, runID)
 }
 
 // runRecoveryNotice tells a recovered run that it was interrupted.

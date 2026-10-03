@@ -8,7 +8,7 @@ import (
 )
 
 func (c *Core) CreateSystemMessage(ctx context.Context, sessionID string, content string) (transcript.Message, error) {
-	sessionID = normalizeText(sessionID)
+	sessionID = strings.TrimSpace(sessionID)
 	content = strings.TrimSpace(content)
 	if sessionID == "" {
 		return transcript.Message{}, ErrSessionRequired

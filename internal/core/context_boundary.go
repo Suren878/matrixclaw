@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
@@ -14,7 +15,7 @@ import (
 // covers every message so far and an empty todo list; the transcript keeps the
 // messages, but not the tool outputs kept in files for them.
 func (c *Core) ClearContext(ctx context.Context, sessionID string) (transcript.Message, error) {
-	sessionID = normalizeText(sessionID)
+	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return transcript.Message{}, ErrSessionRequired
 	}

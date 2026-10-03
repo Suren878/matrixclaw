@@ -57,7 +57,6 @@ func (g *sessionGate) Unlock() {
 
 // sessionGate returns the session's gate; the caller must Lock and Unlock it once.
 func (c *Core) sessionGate(sessionID string) *sessionGate {
-	sessionID = normalizeText(sessionID)
 	if sessionID == "" {
 		sessionID = "_"
 	}
@@ -120,10 +119,10 @@ func (c *Core) createAcceptedRun(ctx context.Context, session Session, in newRun
 		ID:                 runID,
 		SessionID:          session.ID,
 		UserMessageID:      messageID,
-		Client:             normalizeText(in.Client),
-		ExternalKey:        normalizeText(in.ExternalKey),
+		Client:             in.Client,
+		ExternalKey:        in.ExternalKey,
 		ClientCapabilities: in.Capabilities,
-		ContinuesRunID:     normalizeText(in.ContinuesRunID),
+		ContinuesRunID:     in.ContinuesRunID,
 		Trigger:            in.Trigger,
 		Status:             RunStatusAccepted,
 		StartedAt:          now,
@@ -171,12 +170,12 @@ func (c *Core) createPendingSessionInput(ctx context.Context, session Session, a
 		Status:             SessionInputStatusPending,
 		Text:               text,
 		Parts:              parts,
-		Client:             normalizeText(input.Client),
-		ExternalKey:        normalizeText(input.ExternalKey),
+		Client:             input.Client,
+		ExternalKey:        input.ExternalKey,
 		ClientCapabilities: input.ClientCapabilities,
 		DeliveryAddress:    cloneRawMessage(input.DeliveryAddress),
 		ReplyOnce:          input.ReplyOnce,
-		WorkingDir:         normalizeText(input.WorkingDir),
+		WorkingDir:         input.WorkingDir,
 		CreatedAt:          now,
 		UpdatedAt:          now,
 	}
@@ -202,7 +201,6 @@ func (c *Core) publishSessionInputUpdated(input SessionInput) {
 }
 
 func (c *Core) startNextPendingSessionInput(ctx context.Context, sessionID string) (bool, error) {
-	sessionID = normalizeText(sessionID)
 	if sessionID == "" || c == nil || c.store == nil {
 		return false, nil
 	}
@@ -275,8 +273,6 @@ func (c *Core) consumeSessionInputAsRun(ctx context.Context, session Session, in
 }
 
 func (c *Core) prepareSessionRunDelivery(run Run, text string, parts []transcript.MessagePart, client string, externalKey string, to deliveryTo) (ClientDelivery, bool, error) {
-	client = normalizeText(client)
-	externalKey = normalizeText(externalKey)
 	if client == "" || externalKey == "" {
 		return ClientDelivery{}, false, nil
 	}
@@ -284,8 +280,8 @@ func (c *Core) prepareSessionRunDelivery(run Run, text string, parts []transcrip
 		Type:        ClientDeliveryTypeRun,
 		Client:      client,
 		ExternalKey: externalKey,
-		SessionID:   normalizeText(run.SessionID),
-		RunID:       normalizeText(run.ID),
+		SessionID:   run.SessionID,
+		RunID:       run.ID,
 		Summary:     sessionRunDeliverySummary(text, parts),
 		Address:     cloneRawMessage(to.Address),
 		ReplyOnce:   to.ReplyOnce,

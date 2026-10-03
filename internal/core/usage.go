@@ -10,8 +10,8 @@ import (
 )
 
 func (c *Core) Usage(ctx context.Context, filter UsageFilter) (UsageReport, error) {
-	filter.SessionID = normalizeText(filter.SessionID)
-	filter.RunID = normalizeText(filter.RunID)
+	filter.SessionID = strings.TrimSpace(filter.SessionID)
+	filter.RunID = strings.TrimSpace(filter.RunID)
 	records, err := c.store.ListUsageRecords(ctx, filter)
 	if err != nil {
 		return UsageReport{}, err
@@ -23,7 +23,7 @@ func (c *Core) Usage(ctx context.Context, filter UsageFilter) (UsageReport, erro
 }
 
 func summarizeUsage(records []UsageRecord, sessionID string) UsageSummary {
-	summary := UsageSummary{SessionID: strings.TrimSpace(sessionID), Runs: len(records)}
+	summary := UsageSummary{SessionID: sessionID, Runs: len(records)}
 	for _, record := range records {
 		summary.Steps += record.Steps
 		summary.PromptTokens += record.PromptTokens
@@ -36,7 +36,7 @@ func summarizeUsage(records []UsageRecord, sessionID string) UsageSummary {
 }
 
 func (c *Core) RunSteps(ctx context.Context, runID string) ([]RunStep, error) {
-	runID = normalizeText(runID)
+	runID = strings.TrimSpace(runID)
 	if runID == "" {
 		return nil, fmt.Errorf("%w: run id is required", ErrInvalidInput)
 	}
@@ -46,7 +46,7 @@ func (c *Core) RunSteps(ctx context.Context, runID string) ([]RunStep, error) {
 // recordRunStep stores one generation of a run. A failed write is logged and
 // never fails the run.
 func (c *Core) recordRunStep(ctx context.Context, step agent.Step) {
-	runID := normalizeText(step.RunID)
+	runID := step.RunID
 	if runID == "" || c.store == nil {
 		return
 	}

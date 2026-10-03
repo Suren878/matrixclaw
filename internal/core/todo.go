@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -11,7 +12,7 @@ import (
 
 // SessionTodo returns the session's todo list.
 func (c *Core) SessionTodo(ctx context.Context, sessionID string) (todo.List, error) {
-	sessionID = normalizeText(sessionID)
+	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return todo.List{}, ErrSessionRequired
 	}
@@ -23,7 +24,7 @@ func (c *Core) SessionTodo(ctx context.Context, sessionID string) (todo.List, er
 
 // ClearSessionTodo empties the session's todo list.
 func (c *Core) ClearSessionTodo(ctx context.Context, sessionID string) (todo.List, error) {
-	sessionID = normalizeText(sessionID)
+	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return todo.List{}, ErrSessionRequired
 	}
@@ -117,7 +118,7 @@ func (t *todoTool) Spec() tools.Spec {
 // ConcurrencyKey serialises one session's todo writes, so the calls of a batch
 // replace the list one after another.
 func (t *todoTool) ConcurrencyKey(call tools.Call) string {
-	return "todo:" + normalizeText(call.SessionID)
+	return "todo:" + call.SessionID
 }
 
 func (t *todoTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
@@ -125,7 +126,7 @@ func (t *todoTool) Execute(ctx context.Context, call tools.Call) (tools.Result, 
 	if err != nil {
 		return tools.Result{Content: "Todo list not saved: " + err.Error() + ".", Status: tools.ResultStatusError}, nil
 	}
-	if _, err := t.app.writeSessionTodo(ctx, normalizeText(call.SessionID), normalizeText(call.RunID), items); err != nil {
+	if _, err := t.app.writeSessionTodo(ctx, call.SessionID, call.RunID, items); err != nil {
 		return tools.Result{}, err
 	}
 	return tools.Result{Content: todoToolResult(items), Status: tools.ResultStatusSuccess}, nil

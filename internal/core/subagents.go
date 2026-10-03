@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strings"
 )
 
 // DefaultBackgroundAgents is how many background subagents one session may run
@@ -49,11 +50,12 @@ type AgentResult struct {
 // whose result reaches the parent as an event. A repeated call (after a
 // restart) waits for the child it started again, or reports it.
 func (c *Core) RunAgent(ctx context.Context, input AgentInput) (AgentResult, error) {
-	prompt := normalizeText(input.Prompt)
+	prompt := strings.TrimSpace(input.Prompt)
 	if prompt == "" {
 		return AgentResult{}, fmt.Errorf("%w: prompt is required", ErrInvalidInput)
 	}
-	parent, err := c.store.GetSession(ctx, normalizeText(input.ParentSessionID))
+	input.Model = strings.TrimSpace(input.Model)
+	parent, err := c.store.GetSession(ctx, input.ParentSessionID)
 	if err != nil {
 		return AgentResult{}, err
 	}
@@ -64,8 +66,8 @@ func (c *Core) RunAgent(ctx context.Context, input AgentInput) (AgentResult, err
 	if isSubagentSession(parent) {
 		return AgentResult{}, fmt.Errorf("%w: child subagents cannot start agents", ErrInvalidInput)
 	}
-	parentRunID := normalizeText(input.ParentRunID)
-	parentToolCallID := normalizeText(input.ParentToolCallID)
+	parentRunID := input.ParentRunID
+	parentToolCallID := input.ParentToolCallID
 	if parentRunID != "" && parentToolCallID != "" {
 		existing, err := c.subagentTaskOfCall(ctx, parent.ID, parentRunID, parentToolCallID)
 		switch {
@@ -230,7 +232,7 @@ func (c *Core) createSubagent(ctx context.Context, parent Session, input AgentIn
 		Background:       input.Background,
 		AgentName:        agentName,
 		Runtime:          subagentTaskRuntimeLabel(runtime, child),
-		Model:            normalizeText(input.Model),
+		Model:            input.Model,
 		Isolation:        isolation,
 		Readonly:         input.Readonly,
 		ChildSessionID:   child.ID,

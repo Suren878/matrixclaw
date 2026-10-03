@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -14,7 +13,7 @@ import (
 // starts from; nil when none were stored.
 func (s *SQLiteStore) GetSessionEngineState(ctx context.Context, sessionID string) (json.RawMessage, error) {
 	var state string
-	err := s.db.QueryRowContext(ctx, `SELECT engine_state FROM session_engine_state WHERE session_id = ?`, strings.TrimSpace(sessionID)).Scan(&state)
+	err := s.db.QueryRowContext(ctx, `SELECT engine_state FROM session_engine_state WHERE session_id = ?`, sessionID).Scan(&state)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -32,7 +31,7 @@ VALUES(?, ?, ?)
 ON CONFLICT(session_id) DO UPDATE SET
     engine_state = excluded.engine_state,
     updated_at = excluded.updated_at`,
-		strings.TrimSpace(sessionID), string(state), formatTime(updatedAt))
+		sessionID, string(state), formatTime(updatedAt))
 	if err != nil {
 		return fmt.Errorf("store: save session engine state: %w", err)
 	}

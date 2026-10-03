@@ -40,6 +40,13 @@ func (c *Core) CreateClientDelivery(ctx context.Context, delivery ClientDelivery
 	if c == nil || c.store == nil {
 		return ClientDelivery{}, fmt.Errorf("%w: store not configured", ErrExecutionUnavailable)
 	}
+	delivery.Type = strings.TrimSpace(delivery.Type)
+	delivery.Client = strings.TrimSpace(delivery.Client)
+	delivery.ExternalKey = strings.TrimSpace(delivery.ExternalKey)
+	delivery.SessionID = strings.TrimSpace(delivery.SessionID)
+	delivery.RunID = strings.TrimSpace(delivery.RunID)
+	delivery.TaskID = strings.TrimSpace(delivery.TaskID)
+	delivery.Summary = strings.TrimSpace(delivery.Summary)
 	delivery, err := c.prepareClientDelivery(delivery)
 	if err != nil {
 		return ClientDelivery{}, err
@@ -51,13 +58,6 @@ func (c *Core) CreateClientDelivery(ctx context.Context, delivery ClientDelivery
 }
 
 func (c *Core) prepareClientDelivery(delivery ClientDelivery) (ClientDelivery, error) {
-	delivery.Type = normalizeText(delivery.Type)
-	delivery.Client = normalizeText(delivery.Client)
-	delivery.ExternalKey = normalizeText(delivery.ExternalKey)
-	delivery.SessionID = normalizeText(delivery.SessionID)
-	delivery.RunID = normalizeText(delivery.RunID)
-	delivery.TaskID = normalizeText(delivery.TaskID)
-	delivery.Summary = normalizeText(delivery.Summary)
 	if delivery.Type == "" {
 		return ClientDelivery{}, fmt.Errorf("%w: delivery type is required", ErrInvalidInput)
 	}

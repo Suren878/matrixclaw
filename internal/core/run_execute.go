@@ -29,7 +29,6 @@ func (c *Core) WithModelConcurrency(n int) *Core {
 
 // ExecuteRun claims a run and executes it with its external agent or the native engine.
 func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
-	runID = normalizeText(runID)
 	runCtx, release, registered := c.activeRunContext(ctx, runID)
 	if !registered {
 		return nil

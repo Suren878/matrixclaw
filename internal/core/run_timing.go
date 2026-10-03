@@ -1,14 +1,13 @@
 package core
 
 import (
-	"strings"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func deriveRunTiming(run Run, approvals []Approval, messages []transcript.Message, now time.Time) RunTiming {
-	runID := strings.TrimSpace(run.ID)
+	runID := run.ID
 	if runID == "" {
 		return RunTiming{}
 	}
@@ -24,7 +23,7 @@ func deriveRunTiming(run Run, approvals []Approval, messages []transcript.Messag
 	toolStarted := map[string]time.Time{}
 	waitStart := run.StartedAt
 	for _, message := range messages {
-		if strings.TrimSpace(message.RunID) != runID {
+		if message.RunID != runID {
 			continue
 		}
 		messageEventAt := message.UpdatedAt
@@ -37,10 +36,10 @@ func deriveRunTiming(run Run, approvals []Approval, messages []transcript.Messag
 		for _, part := range message.Parts {
 			if part.ToolCall != nil {
 				timing.ModelMillis += durationMillis(waitStart, message.CreatedAt)
-				toolStarted[strings.TrimSpace(part.ToolCall.ID)] = message.CreatedAt
+				toolStarted[part.ToolCall.ID] = message.CreatedAt
 			}
 			if part.ToolResult != nil {
-				toolCallID := strings.TrimSpace(part.ToolResult.ToolCallID)
+				toolCallID := part.ToolResult.ToolCallID
 				if startedAt, ok := toolStarted[toolCallID]; ok {
 					timing.ToolMillis += durationMillis(startedAt, message.CreatedAt)
 				}
@@ -53,7 +52,7 @@ func deriveRunTiming(run Run, approvals []Approval, messages []transcript.Messag
 	}
 
 	for _, approval := range approvals {
-		if strings.TrimSpace(approval.RunID) != runID {
+		if approval.RunID != runID {
 			continue
 		}
 		approvalEnd := now

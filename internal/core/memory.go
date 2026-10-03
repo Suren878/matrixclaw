@@ -37,7 +37,7 @@ func (c *Core) SessionSearch(ctx context.Context, filter SearchFilter) (SessionS
 
 func (c *Core) CreateMemory(ctx context.Context, entry MemoryEntry) (MemoryEntry, error) {
 	entry.Scope = normalizeMemoryScope(entry.Scope)
-	entry.Key = normalizeText(entry.Key)
+	entry.Key = strings.TrimSpace(entry.Key)
 	entry.Content = strings.TrimSpace(entry.Content)
 	entry.WorkingDir = normalizeMemoryWorkingDir(entry.Scope, entry.WorkingDir)
 	if entry.Content == "" {
@@ -60,7 +60,7 @@ func (c *Core) CreateMemory(ctx context.Context, entry MemoryEntry) (MemoryEntry
 }
 
 func (c *Core) UpdateMemory(ctx context.Context, entry MemoryEntry) (MemoryEntry, error) {
-	id := normalizeText(entry.ID)
+	id := strings.TrimSpace(entry.ID)
 	if id == "" {
 		return MemoryEntry{}, fmt.Errorf("%w: memory id is required", ErrInvalidInput)
 	}
@@ -72,7 +72,7 @@ func (c *Core) UpdateMemory(ctx context.Context, entry MemoryEntry) (MemoryEntry
 		existing.Scope = normalizeMemoryScope(entry.Scope)
 	}
 	if strings.TrimSpace(entry.Key) != "" {
-		existing.Key = normalizeText(entry.Key)
+		existing.Key = strings.TrimSpace(entry.Key)
 	}
 	if strings.TrimSpace(entry.Content) != "" {
 		existing.Content = strings.TrimSpace(entry.Content)
@@ -88,7 +88,7 @@ func (c *Core) UpdateMemory(ctx context.Context, entry MemoryEntry) (MemoryEntry
 }
 
 func (c *Core) DeleteMemory(ctx context.Context, id string) error {
-	id = normalizeText(id)
+	id = strings.TrimSpace(id)
 	if id == "" {
 		return fmt.Errorf("%w: memory id is required", ErrInvalidInput)
 	}
@@ -96,7 +96,7 @@ func (c *Core) DeleteMemory(ctx context.Context, id string) error {
 }
 
 func (c *Core) ListMemories(ctx context.Context, filter MemoryFilter) ([]MemoryEntry, error) {
-	if strings.TrimSpace(string(filter.Scope)) != "" {
+	if filter.Scope = MemoryScope(strings.TrimSpace(string(filter.Scope))); filter.Scope != "" {
 		filter.Scope = normalizeMemoryScope(filter.Scope)
 	}
 	filter.WorkingDir = normalizeWorkingDir(filter.WorkingDir)

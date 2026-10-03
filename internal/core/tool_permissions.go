@@ -113,7 +113,7 @@ func (c *Core) suggestRule(ctx context.Context, sessionID string, toolName strin
 // permissionRules are the global rules and the rules of the session and its parents.
 func (c *Core) permissionRules(ctx context.Context, session Session) ([]permission.Rule, error) {
 	sessionIDs := []string{session.ID}
-	for parentID := normalizeText(session.ParentSessionID); parentID != "" && !slices.Contains(sessionIDs, parentID); {
+	for parentID := session.ParentSessionID; parentID != "" && !slices.Contains(sessionIDs, parentID); {
 		sessionIDs = append(sessionIDs, parentID)
 		parent, err := c.store.GetSession(ctx, parentID)
 		if errors.Is(err, ErrNotFound) {
@@ -122,7 +122,7 @@ func (c *Core) permissionRules(ctx context.Context, session Session) ([]permissi
 		if err != nil {
 			return nil, err
 		}
-		parentID = normalizeText(parent.ParentSessionID)
+		parentID = parent.ParentSessionID
 	}
 	return c.store.ListPermissionRules(ctx, sessionIDs)
 }

@@ -50,29 +50,29 @@ SELECT ` + clientDeliveryColumns + `
 FROM client_deliveries`
 	args := []any{}
 	clauses := []string{}
-	if strings.TrimSpace(filter.Client) != "" {
+	if filter.Client != "" {
 		clauses = append(clauses, "client = ?")
-		args = append(args, strings.TrimSpace(filter.Client))
+		args = append(args, filter.Client)
 	}
-	if strings.TrimSpace(filter.ExternalKey) != "" {
+	if filter.ExternalKey != "" {
 		clauses = append(clauses, "external_key = ?")
-		args = append(args, strings.TrimSpace(filter.ExternalKey))
+		args = append(args, filter.ExternalKey)
 	}
-	if strings.TrimSpace(filter.SessionID) != "" {
+	if filter.SessionID != "" {
 		clauses = append(clauses, "session_id = ?")
-		args = append(args, strings.TrimSpace(filter.SessionID))
+		args = append(args, filter.SessionID)
 	}
-	if strings.TrimSpace(filter.RunID) != "" {
+	if filter.RunID != "" {
 		clauses = append(clauses, "run_id = ?")
-		args = append(args, strings.TrimSpace(filter.RunID))
+		args = append(args, filter.RunID)
 	}
-	if strings.TrimSpace(filter.TaskID) != "" {
+	if filter.TaskID != "" {
 		clauses = append(clauses, "task_id = ?")
-		args = append(args, strings.TrimSpace(filter.TaskID))
+		args = append(args, filter.TaskID)
 	}
-	if strings.TrimSpace(filter.Type) != "" {
+	if filter.Type != "" {
 		clauses = append(clauses, "type = ?")
-		args = append(args, strings.TrimSpace(filter.Type))
+		args = append(args, filter.Type)
 	}
 	if filter.Status != "" {
 		clauses = append(clauses, "status = ?")

@@ -29,7 +29,7 @@ func (c *Core) createSubagentSession(ctx context.Context, parent Session, runtim
 			ParentSessionID: parent.ID,
 			Hidden:          true,
 			WorkingDir:      workingDir,
-			ModelID:         normalizeText(model),
+			ModelID:         model,
 			PermissionMode:  PermissionModeFullAuto,
 			ExternalAgentID: canonical,
 			Readonly:        readonly,
@@ -43,7 +43,7 @@ func (c *Core) createSubagentSession(ctx context.Context, parent Session, runtim
 			Hidden:          true,
 			WorkingDir:      workingDir,
 			ProviderID:      parent.ProviderID,
-			ModelID:         cmp.Or(normalizeText(model), parent.ModelID),
+			ModelID:         cmp.Or(model, parent.ModelID),
 			PermissionMode:  parent.PermissionMode,
 		})
 	}
@@ -61,7 +61,7 @@ func (c *Core) assignSubagentAgentName(ctx context.Context, parentSessionID stri
 		used[strings.ToLower(name)] = struct{}{}
 	}
 	for _, task := range tasks {
-		name := strings.TrimSpace(task.AgentName)
+		name := task.AgentName
 		if name == "" {
 			continue
 		}
@@ -87,7 +87,7 @@ func subagentTaskAgentName(task Task) string {
 	if name := strings.Join(strings.Fields(task.Description), " "); name != "" {
 		return name
 	}
-	if id := strings.TrimSpace(task.ID); id != "" {
+	if id := task.ID; id != "" {
 		return id
 	}
 	return "subagent"
@@ -125,5 +125,5 @@ func (c *Core) subagentRunSummary(ctx context.Context, run Run) (string, bool) {
 }
 
 func isSubagentSession(session Session) bool {
-	return strings.TrimSpace(session.ParentSessionID) != "" || session.Hidden
+	return session.ParentSessionID != "" || session.Hidden
 }

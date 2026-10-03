@@ -42,7 +42,7 @@ func (c *Core) ClientSnapshot(ctx context.Context, client string, externalKey st
 	}
 
 	snapshot := ClientSnapshot{EventID: eventID, SessionID: binding.SessionID}
-	if strings.TrimSpace(binding.SessionID) == "" {
+	if binding.SessionID == "" {
 		return snapshot, nil
 	}
 
@@ -91,7 +91,7 @@ func (c *Core) ClientSnapshot(ctx context.Context, client string, externalKey st
 		return snapshot, nil
 	}
 
-	lastRunID := strings.TrimSpace(messages[len(messages)-1].RunID)
+	lastRunID := messages[len(messages)-1].RunID
 	if lastRunID == "" {
 		return snapshot, nil
 	}
@@ -115,15 +115,15 @@ func deriveClientSnapshotToolState(approvals []Approval, messages []transcript.M
 			if part.ToolCall == nil {
 				continue
 			}
-			toolCallID := strings.TrimSpace(part.ToolCall.ID)
+			toolCallID := part.ToolCall.ID
 			if toolCallID == "" {
 				continue
 			}
 			update := updates[toolCallID]
 			update.ToolCallID = toolCallID
-			update.ToolName = cmp.Or(update.ToolName, strings.TrimSpace(part.ToolCall.Name))
-			update.RunID = cmp.Or(update.RunID, strings.TrimSpace(message.RunID))
-			update.SessionID = cmp.Or(update.SessionID, strings.TrimSpace(message.SessionID))
+			update.ToolName = cmp.Or(update.ToolName, part.ToolCall.Name)
+			update.RunID = cmp.Or(update.RunID, message.RunID)
+			update.SessionID = cmp.Or(update.SessionID, message.SessionID)
 			if update.State == "" {
 				update.State = ToolLifecycleRequested
 			}
@@ -136,16 +136,16 @@ func deriveClientSnapshotToolState(approvals []Approval, messages []transcript.M
 			if part.ToolResult == nil {
 				continue
 			}
-			toolCallID := strings.TrimSpace(part.ToolResult.ToolCallID)
+			toolCallID := part.ToolResult.ToolCallID
 			if toolCallID == "" {
 				continue
 			}
 			update := updates[toolCallID]
 			update.ToolCallID = toolCallID
-			update.ToolName = cmp.Or(update.ToolName, strings.TrimSpace(part.ToolResult.Name))
-			update.RunID = cmp.Or(update.RunID, strings.TrimSpace(message.RunID))
-			update.SessionID = cmp.Or(update.SessionID, strings.TrimSpace(message.SessionID))
-			update.ResultMessageID = strings.TrimSpace(message.ID)
+			update.ToolName = cmp.Or(update.ToolName, part.ToolResult.Name)
+			update.RunID = cmp.Or(update.RunID, message.RunID)
+			update.SessionID = cmp.Or(update.SessionID, message.SessionID)
+			update.ResultMessageID = message.ID
 			update.ResultStatus = normalizeToolResultStatus(part.ToolResult.Status)
 			if update.ResultStatus == "error" {
 				update.State = ToolLifecycleFailed
@@ -159,17 +159,17 @@ func deriveClientSnapshotToolState(approvals []Approval, messages []transcript.M
 	}
 
 	for _, approval := range approvals {
-		toolCallID := strings.TrimSpace(approval.ToolCallRef)
+		toolCallID := approval.ToolCallRef
 		switch approval.State {
 		case ApprovalStatePending:
 			pendingApprovals = append(pendingApprovals, approval)
 			if toolCallID != "" {
 				update := updates[toolCallID]
 				update.ToolCallID = toolCallID
-				update.ToolName = cmp.Or(update.ToolName, strings.TrimSpace(approval.ToolName))
-				update.RunID = cmp.Or(update.RunID, strings.TrimSpace(approval.RunID))
-				update.SessionID = cmp.Or(update.SessionID, strings.TrimSpace(approval.SessionID))
-				update.ApprovalID = strings.TrimSpace(approval.ID)
+				update.ToolName = cmp.Or(update.ToolName, approval.ToolName)
+				update.RunID = cmp.Or(update.RunID, approval.RunID)
+				update.SessionID = cmp.Or(update.SessionID, approval.SessionID)
+				update.ApprovalID = approval.ID
 				update.State = ToolLifecycleWaitingApproval
 				updates[toolCallID] = update
 			}
@@ -178,16 +178,16 @@ func deriveClientSnapshotToolState(approvals []Approval, messages []transcript.M
 				continue
 			}
 			notifications = append(notifications, PermissionNotification{
-				ApprovalID: strings.TrimSpace(approval.ID),
+				ApprovalID: approval.ID,
 				ToolCallID: toolCallID,
 				Granted:    true,
 			})
 			update := updates[toolCallID]
 			update.ToolCallID = toolCallID
-			update.ToolName = cmp.Or(update.ToolName, strings.TrimSpace(approval.ToolName))
-			update.RunID = cmp.Or(update.RunID, strings.TrimSpace(approval.RunID))
-			update.SessionID = cmp.Or(update.SessionID, strings.TrimSpace(approval.SessionID))
-			update.ApprovalID = strings.TrimSpace(approval.ID)
+			update.ToolName = cmp.Or(update.ToolName, approval.ToolName)
+			update.RunID = cmp.Or(update.RunID, approval.RunID)
+			update.SessionID = cmp.Or(update.SessionID, approval.SessionID)
+			update.ApprovalID = approval.ID
 			if update.State == "" || update.State == ToolLifecycleRequested || update.State == ToolLifecycleWaitingApproval {
 				update.State = ToolLifecycleRequested
 				update.Error = ""
@@ -198,16 +198,16 @@ func deriveClientSnapshotToolState(approvals []Approval, messages []transcript.M
 				continue
 			}
 			notifications = append(notifications, PermissionNotification{
-				ApprovalID: strings.TrimSpace(approval.ID),
+				ApprovalID: approval.ID,
 				ToolCallID: toolCallID,
 				Denied:     true,
 			})
 			update := updates[toolCallID]
 			update.ToolCallID = toolCallID
-			update.ToolName = cmp.Or(update.ToolName, strings.TrimSpace(approval.ToolName))
-			update.RunID = cmp.Or(update.RunID, strings.TrimSpace(approval.RunID))
-			update.SessionID = cmp.Or(update.SessionID, strings.TrimSpace(approval.SessionID))
-			update.ApprovalID = strings.TrimSpace(approval.ID)
+			update.ToolName = cmp.Or(update.ToolName, approval.ToolName)
+			update.RunID = cmp.Or(update.RunID, approval.RunID)
+			update.SessionID = cmp.Or(update.SessionID, approval.SessionID)
+			update.ApprovalID = approval.ID
 			if update.State == "" || update.State == ToolLifecycleRequested || update.State == ToolLifecycleWaitingApproval {
 				update.State = ToolLifecycleFailed
 				update.Error = "approval denied"

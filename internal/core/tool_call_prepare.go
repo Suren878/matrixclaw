@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -26,8 +27,7 @@ func (c *Core) checkToolCall(ctx context.Context, sessionID string, toolName str
 	if c.tools == nil {
 		return Session{}, tools.Spec{}, fmt.Errorf("%w: tools are not configured", ErrExecutionUnavailable)
 	}
-	sessionID = normalizeText(sessionID)
-	toolName = normalizeText(toolName)
+	toolName = strings.TrimSpace(toolName)
 	if sessionID == "" {
 		return Session{}, tools.Spec{}, fmt.Errorf("%w: session_id is required", ErrInvalidInput)
 	}
@@ -68,14 +68,14 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 	if err != nil {
 		return preparedToolCall{}, err
 	}
-	sessionID := normalizeText(input.SessionID)
-	toolName := normalizeText(input.ToolName)
+	sessionID := input.SessionID
+	toolName := input.ToolName
 	workingDir := normalizeWorkingDir(input.WorkingDir)
 	if workingDir == "" {
 		workingDir = session.WorkingDir
 	}
 
-	toolCallID := normalizeText(input.ToolCallID)
+	toolCallID := input.ToolCallID
 	if toolCallID == "" {
 		toolCallID = c.newID("tool")
 	}

@@ -33,7 +33,7 @@ func toolResultCallIDs(messages []transcript.Message) map[string]struct{} {
 			if part.ToolResult == nil {
 				continue
 			}
-			toolCallID := strings.TrimSpace(part.ToolResult.ToolCallID)
+			toolCallID := part.ToolResult.ToolCallID
 			if toolCallID == "" {
 				continue
 			}

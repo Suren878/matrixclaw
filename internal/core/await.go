@@ -54,7 +54,7 @@ func (t *awaitTool) Execute(ctx context.Context, call tools.Call) (tools.Result,
 	}
 	timeout := time.Duration(input.TimeoutSeconds) * time.Second
 	switch {
-	case strings.TrimSpace(call.RunID) == "":
+	case call.RunID == "":
 		return awaitError("await waits inside a run only."), nil
 	case input.TimeoutSeconds < 0 || timeout > maxAwaitTimeout:
 		return awaitError(fmt.Sprintf("timeout_seconds is at most %d.", int(maxAwaitTimeout/time.Second))), nil
