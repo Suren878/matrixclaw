@@ -128,6 +128,11 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 			}
 			continue
 		case event, ok := <-events:
+			// What the agent already sent is kept even when the run stopped
+			// meanwhile; only the turn's end is not acted on then.
+			if ok {
+				progressDirty = applyExternalOutput(&assistant, event) || progressDirty
+			}
 			if runCtx.Err() != nil {
 				return c.finishExternalRunAfterContextStopped(run, &assistant, assistantSaved, runtime, externalSession)
 			}
@@ -146,16 +151,6 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 				if err := c.touchExternalRunActivity(ctx, &run, event.At); err != nil {
 					return c.failRun(ctx, run, err)
 				}
-			case externalagents.EventMessageDelta:
-				progressDirty = applyExternalMessageDelta(&assistant, event.Text) || progressDirty
-			case externalagents.EventReasoningDelta:
-				progressDirty = applyExternalReasoningDelta(&assistant, event.Text) || progressDirty
-			case externalagents.EventToolStarted:
-				progressDirty = applyExternalToolStarted(&assistant, event) || progressDirty
-			case externalagents.EventToolOutputDelta, externalagents.EventDiffUpdated:
-				progressDirty = applyExternalToolOutputDelta(&assistant, event) || progressDirty
-			case externalagents.EventToolCompleted:
-				progressDirty = applyExternalToolCompleted(&assistant, event) || progressDirty
 			case externalagents.EventTurnCompleted:
 				return c.completeExternalAgentRun(ctx, &run, &assistant, assistantSaved)
 			case externalagents.EventTurnFailed:
@@ -171,6 +166,25 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 				}
 			}
 		}
+	}
+}
+
+// applyExternalOutput adds an output event to the reply and reports whether
+// it changed.
+func applyExternalOutput(assistant *transcript.Message, event externalagents.Event) bool {
+	switch event.Kind {
+	case externalagents.EventMessageDelta:
+		return applyExternalMessageDelta(assistant, event.Text)
+	case externalagents.EventReasoningDelta:
+		return applyExternalReasoningDelta(assistant, event.Text)
+	case externalagents.EventToolStarted:
+		return applyExternalToolStarted(assistant, event)
+	case externalagents.EventToolOutputDelta, externalagents.EventDiffUpdated:
+		return applyExternalToolOutputDelta(assistant, event)
+	case externalagents.EventToolCompleted:
+		return applyExternalToolCompleted(assistant, event)
+	default:
+		return false
 	}
 }
 
