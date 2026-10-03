@@ -38,7 +38,7 @@ func (r *run) continueCutReply(ctx context.Context, gen generation, response pro
 	r.raiseOutputLimit()
 	r.counters.Continuations++
 	assistant := gen.assistant
-	if err := r.finishTurn(ctx, &assistant, gen.saved, response, string(providers.StopMaxTokens)); err != nil {
+	if err := r.finishTurn(ctx, &assistant, gen.saved, response, transcript.FinishReasonMaxTokens); err != nil {
 		return unfinishedTurn(ctx, gen, err)
 	}
 	if err := r.appendEngineMessage(ctx, transcript.OriginEngineModel, continueText); err != nil {

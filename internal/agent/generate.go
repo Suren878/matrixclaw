@@ -10,7 +10,8 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-const progressFlushInterval = 750 * time.Millisecond
+// ProgressFlushInterval is how often a streaming reply is written to the journal.
+const ProgressFlushInterval = 750 * time.Millisecond
 
 var errRunCanceled = errors.New("run canceled")
 
@@ -101,7 +102,7 @@ func (r *run) generate(ctx context.Context, request providers.Request) (generati
 			return nil
 		}
 		now := r.Now()
-		if !force && gen.saved && !lastFlush.IsZero() && now.Sub(lastFlush) < progressFlushInterval {
+		if !force && gen.saved && !lastFlush.IsZero() && now.Sub(lastFlush) < ProgressFlushInterval {
 			return nil
 		}
 		gen.assistant.Parts = transcript.NormalizeMessageParts(gen.assistant.Content, nil)
@@ -129,7 +130,7 @@ func (r *run) generate(ctx context.Context, request providers.Request) (generati
 		default:
 		}
 		now := r.Now()
-		if lastCancelCheck.IsZero() || now.Sub(lastCancelCheck) >= progressFlushInterval {
+		if lastCancelCheck.IsZero() || now.Sub(lastCancelCheck) >= ProgressFlushInterval {
 			lastCancelCheck = now
 			if r.canceled(ctx) {
 				return errRunCanceled

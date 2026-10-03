@@ -28,7 +28,7 @@ type Core struct {
 	externalStore   externalagents.AttachmentStore
 	activeRuns      map[string]*activeRun
 	scheduledRuns   map[string]time.Time
-	sessionGates    map[string]*sync.Mutex
+	sessionGates    map[string]*sessionGate
 	tools           ToolExecutor
 	skillsContext   SkillsPromptContextProvider
 	runtimeStatus   RuntimeStatusContextProvider
@@ -101,7 +101,7 @@ func New(store Store) *Core {
 		store:            store,
 		activeRuns:       map[string]*activeRun{},
 		scheduledRuns:    map[string]time.Time{},
-		sessionGates:     map[string]*sync.Mutex{},
+		sessionGates:     map[string]*sessionGate{},
 		liveTasks:        map[string]*liveTask{},
 		backgroundTasks:  DefaultBackgroundTasks,
 		backgroundAgents: DefaultBackgroundAgents,

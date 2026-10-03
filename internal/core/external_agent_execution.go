@@ -8,12 +8,12 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 const (
-	assistantProgressFlushInterval = 750 * time.Millisecond
 	externalRunHeartbeatInterval   = 5 * time.Second
 	externalToolInputLimit         = 64 * 1024
 	externalToolOutputPerItemLimit = 64 * 1024
@@ -121,7 +121,7 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 			return nil
 		}
 		now := c.now().UTC()
-		if !force && assistantSaved && !lastProgressFlush.IsZero() && now.Sub(lastProgressFlush) < assistantProgressFlushInterval {
+		if !force && assistantSaved && !lastProgressFlush.IsZero() && now.Sub(lastProgressFlush) < agent.ProgressFlushInterval {
 			return nil
 		}
 		if err := c.saveExternalAssistantProgress(ctx, &assistant, &assistantSaved); err != nil {
@@ -132,7 +132,7 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 		return c.touchExternalRunActivity(ctx, &run, now)
 	}
 
-	ticker := time.NewTicker(assistantProgressFlushInterval)
+	ticker := time.NewTicker(agent.ProgressFlushInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -539,7 +539,7 @@ func (c *Core) completeExternalAgentRun(ctx context.Context, run *Run, assistant
 	}
 	assistant.Parts = append(assistant.Parts, transcript.MessagePart{
 		Kind:   transcript.MessagePartKindFinish,
-		Finish: &transcript.FinishPart{Reason: "end_turn"},
+		Finish: &transcript.FinishPart{Reason: transcript.FinishReasonEndTurn},
 	})
 	run.Status = RunStatusCompleted
 	run.Error = ""

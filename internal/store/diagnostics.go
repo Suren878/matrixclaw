@@ -58,15 +58,25 @@ func CheckSQLite(path string) (Diagnostics, error) {
 func canonicalSchemaReady(db *sql.DB) (bool, error) {
 	requiredTables := []string{
 		"sessions",
+		"tasks",
 		"client_bindings",
 		"messages",
+		"memories",
 		"runs",
+		"run_checkpoints",
+		"run_wakeups",
 		"session_inputs",
+		"run_steps",
 		"approvals",
 		"file_snapshots",
 		"client_deliveries",
 		"automation_jobs",
 		"automation_fires",
+		"external_agent_sessions",
+		"session_budgets",
+		"session_engine_state",
+		"session_todos",
+		"permission_rules",
 	}
 	for _, table := range requiredTables {
 		var exists int

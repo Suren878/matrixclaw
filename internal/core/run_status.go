@@ -103,7 +103,7 @@ func appendErrorFinishPart(content string, message string) []transcript.MessageP
 	parts = append(parts, transcript.MessagePart{
 		Kind: transcript.MessagePartKindFinish,
 		Finish: &transcript.FinishPart{
-			Reason:  "error",
+			Reason:  transcript.FinishReasonError,
 			Message: message,
 		},
 	})
@@ -115,7 +115,7 @@ func appendCanceledFinishPart(content string, message string) []transcript.Messa
 	parts = append(parts, transcript.MessagePart{
 		Kind: transcript.MessagePartKindFinish,
 		Finish: &transcript.FinishPart{
-			Reason:  "canceled",
+			Reason:  transcript.FinishReasonCanceled,
 			Message: message,
 		},
 	})

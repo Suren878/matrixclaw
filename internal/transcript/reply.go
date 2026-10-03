@@ -26,7 +26,7 @@ func RunReply(messages []Message, runID string) string {
 		if strings.TrimSpace(message.RunID) == runID && message.Origin.IsEngine() {
 			continue
 		}
-		if !isRunReply(message, runID) || !HasFinishReason(message, "max_tokens") {
+		if !isRunReply(message, runID) || !HasFinishReason(message, FinishReasonMaxTokens) {
 			break
 		}
 		parts = append(parts, message.Content)

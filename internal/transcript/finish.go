@@ -2,8 +2,15 @@ package transcript
 
 import "strings"
 
-// FinishReasonDaemonRestart seals a message a daemon restart interrupted.
-const FinishReasonDaemonRestart = "daemon_restart"
+// Finish reasons of assistant messages.
+const (
+	FinishReasonEndTurn       = "end_turn"
+	FinishReasonToolCalls     = "tool_calls"
+	FinishReasonMaxTokens     = "max_tokens"
+	FinishReasonError         = "error"
+	FinishReasonCanceled      = "canceled"
+	FinishReasonDaemonRestart = "daemon_restart"
+)
 
 // HasFinishReason reports whether the message has a finish part with the reason;
 // an empty reason matches any finish part.

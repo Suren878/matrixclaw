@@ -227,7 +227,7 @@ func (r *run) handleResponse(ctx context.Context, gen generation) stepResult {
 	assistant := gen.assistant
 	if len(response.ToolCalls) > 0 {
 		r.counters.Continuations = 0
-		if err := r.finishTurn(ctx, &assistant, gen.saved, response, "tool_calls"); err != nil {
+		if err := r.finishTurn(ctx, &assistant, gen.saved, response, transcript.FinishReasonToolCalls); err != nil {
 			return unfinishedTurn(ctx, gen, err)
 		}
 		waiting, err := r.executeBatch(ctx, response)

@@ -131,7 +131,7 @@ func usageFinishPart(usage providers.Usage) *transcript.MessagePart {
 	return &transcript.MessagePart{
 		Kind: transcript.MessagePartKindFinish,
 		Finish: &transcript.FinishPart{
-			Reason:  "end_turn",
+			Reason:  transcript.FinishReasonEndTurn,
 			Details: payload,
 		},
 	}

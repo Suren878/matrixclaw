@@ -65,7 +65,7 @@ func isToolStepReply(message transcript.Message) bool {
 		return false
 	}
 	for _, part := range message.Parts {
-		if part.Finish != nil && part.Finish.Reason == "tool_calls" {
+		if part.Finish != nil && part.Finish.Reason == transcript.FinishReasonToolCalls {
 			return true
 		}
 	}

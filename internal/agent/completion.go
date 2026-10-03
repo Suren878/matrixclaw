@@ -24,7 +24,7 @@ func (r *run) nudgeOpenTodo(ctx context.Context, gen generation, response provid
 	r.counters.TodoNudged = true
 	r.counters.Continuations = 0
 	assistant := gen.assistant
-	if err := r.finishTurn(ctx, &assistant, gen.saved, response, string(providers.StopEndTurn)); err != nil {
+	if err := r.finishTurn(ctx, &assistant, gen.saved, response, transcript.FinishReasonEndTurn); err != nil {
 		return unfinishedTurn(ctx, gen, err), true
 	}
 	if err := r.appendEngineMessage(ctx, transcript.OriginEngineModel, openTodoText(open)); err != nil {
