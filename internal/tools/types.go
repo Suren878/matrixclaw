@@ -72,15 +72,6 @@ type SkillManagePermissionsParams struct {
 	Content     string `json:"content,omitempty"`
 }
 
-type FileVersion struct {
-	Path       string `json:"path"`
-	OldContent string `json:"old_content,omitempty"`
-	NewContent string `json:"new_content,omitempty"`
-	Diff       string `json:"diff,omitempty"`
-	Additions  int    `json:"additions,omitempty"`
-	Removals   int    `json:"removals,omitempty"`
-}
-
 type ResultStatus string
 
 const (
@@ -94,9 +85,8 @@ type Result struct {
 	Metadata any    `json:"metadata,omitempty"`
 	MIMEType string `json:"mime_type,omitempty"`
 	// Status is how the call went; empty is success.
-	Status      ResultStatus     `json:"status,omitempty"`
-	Approval    *ApprovalRequest `json:"approval,omitempty"`
-	FileVersion *FileVersion     `json:"file_version,omitempty"`
+	Status   ResultStatus     `json:"status,omitempty"`
+	Approval *ApprovalRequest `json:"approval,omitempty"`
 	// OutputPath is the file holding the full output when Content was cut.
 	OutputPath string `json:"output_path,omitempty"`
 	// Await parks the run once its batch is done, until one of the tasks

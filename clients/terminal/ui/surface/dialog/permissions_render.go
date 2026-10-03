@@ -125,17 +125,9 @@ func (p *Permissions) renderHeader(contentWidth int) string {
 	case toolNameEdit, toolNameWrite, toolNameMultiEdit, toolNameRead:
 		var filePath string
 		switch p.permission.ToolName {
-		case toolNameEdit:
-			if params, ok := surfacepermission.DecodeParams[tools.EditPermissionsParams](p.permission.Params); ok {
-				filePath = params.FilePath
-			}
-		case toolNameWrite:
-			if params, ok := surfacepermission.DecodeParams[tools.WritePermissionsParams](p.permission.Params); ok {
-				filePath = params.FilePath
-			}
-		case toolNameMultiEdit:
-			if params, ok := surfacepermission.DecodeParams[tools.MultiEditPermissionsParams](p.permission.Params); ok {
-				filePath = params.FilePath
+		case toolNameEdit, toolNameWrite, toolNameMultiEdit:
+			if change, ok := surfacepermission.DecodeParams[tools.FileChange](p.permission.Params); ok {
+				filePath = change.Path
 			}
 		case toolNameRead:
 			if params, ok := surfacepermission.DecodeParams[surfacepermission.ReadPermissionsParams](p.permission.Params); ok {

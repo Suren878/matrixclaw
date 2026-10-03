@@ -109,8 +109,6 @@ func renderFileChange(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts
 	}
 	hint := "press enter for diff"
 	switch {
-	case change.EditsFailed > 0:
-		hint = fmt.Sprintf("%d/%d edits applied, press enter for diff", change.EditsApplied, change.Edits)
 	case change.Edits > 0:
 		hint = fmt.Sprintf("%d edits, press enter for diff", change.Edits)
 	}

@@ -43,8 +43,8 @@ func TestShortenCutsAtRunesWithAnEllipsis(t *testing.T) {
 }
 
 func TestFileChangeOfReadsInputAndResult(t *testing.T) {
-	change, ok := FileChangeOf("multiedit", `{"file_path":"a.go","edits":[{},{},{}]}`, `{"additions":2,"removals":1,"old_content":"x","new_content":"y","edits_applied":2,"edits_failed":[{"index":2}]}`)
-	want := FileChange{Path: "a.go", Edits: 3, Done: true, Old: "x", New: "y", Additions: 2, Removals: 1, EditsApplied: 2, EditsFailed: 1}
+	change, ok := FileChangeOf("multiedit", `{"file_path":"a.go","edits":[{},{},{}]}`, `{"file_path":"/w/a.go","additions":2,"removals":1,"old_content":"x","new_content":"y"}`)
+	want := FileChange{Path: "a.go", Edits: 3, Done: true, Old: "x", New: "y", Additions: 2, Removals: 1}
 	if !ok || change != want {
 		t.Fatalf("change = %+v, want %+v", change, want)
 	}

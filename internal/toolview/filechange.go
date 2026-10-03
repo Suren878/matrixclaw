@@ -14,8 +14,6 @@ type FileChange struct {
 	Done                bool
 	Old, New            string
 	Additions, Removals int
-	// EditsApplied and EditsFailed count a multiedit's outcome.
-	EditsApplied, EditsFailed int
 }
 
 // FileChangeOf reads a file-changing call from its input and, once it has run,
@@ -36,12 +34,10 @@ func FileChangeOf(name string, input string, metadata string) (FileChange, bool)
 	}
 	change := FileChange{Path: params.FilePath, Edits: len(params.Edits)}
 	var meta struct {
-		Additions    int               `json:"additions"`
-		Removals     int               `json:"removals"`
-		OldContent   string            `json:"old_content"`
-		NewContent   string            `json:"new_content"`
-		EditsApplied int               `json:"edits_applied"`
-		EditsFailed  []json.RawMessage `json:"edits_failed"`
+		Additions  int    `json:"additions"`
+		Removals   int    `json:"removals"`
+		OldContent string `json:"old_content"`
+		NewContent string `json:"new_content"`
 	}
 	if json.Unmarshal([]byte(metadata), &meta) != nil {
 		return change, true
@@ -52,6 +48,5 @@ func FileChangeOf(name string, input string, metadata string) (FileChange, bool)
 		change.New = params.Content
 	}
 	change.Additions, change.Removals = meta.Additions, meta.Removals
-	change.EditsApplied, change.EditsFailed = meta.EditsApplied, len(meta.EditsFailed)
 	return change, true
 }

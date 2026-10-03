@@ -2,71 +2,30 @@ package tools
 
 import (
 	"fmt"
-	"io"
-	"os"
 	"unicode/utf8"
 )
 
+// approvalPreviewMaxBytes bounds each text an approval shows.
 const approvalPreviewMaxBytes = 64 * 1024
 
-type approvalContentPreview struct {
-	Content   string
-	Bytes     int
-	Truncated bool
-}
-
-func readApprovalContentPreview(path string) (approvalContentPreview, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return approvalContentPreview{}, err
-	}
-	defer func() { _ = file.Close() }()
-	info, statErr := file.Stat()
-
-	content, err := io.ReadAll(io.LimitReader(file, int64(approvalPreviewMaxBytes)+1))
-	if err != nil {
-		return approvalContentPreview{}, err
-	}
-	preview := approvalPreviewString(string(content))
-	if statErr == nil && info.Size() > int64(approvalPreviewMaxBytes) {
-		preview.Bytes = int(info.Size())
-		preview.Truncated = true
-		preview.Content = truncateApprovalPreview(string(content), preview.Bytes)
-	}
-	return preview, nil
-}
-
-func approvalPreviewString(content string) approvalContentPreview {
-	preview := approvalContentPreview{
-		Content: content,
-		Bytes:   len(content),
-	}
+// cutPreview is content cut to approvalPreviewMaxBytes, notice included.
+func cutPreview(content string) string {
 	if len(content) <= approvalPreviewMaxBytes {
-		return preview
+		return content
 	}
-	preview.Truncated = true
-	preview.Content = truncateApprovalPreview(content, len(content))
-	return preview
-}
-
-func truncateApprovalPreview(content string, fullBytes int) string {
-	shownBytes := approvalPreviewMaxBytes
+	shown := approvalPreviewMaxBytes
 	var notice string
-	var maxContentBytes int
 	for {
-		notice = fmt.Sprintf("\n\n[approval preview truncated: showing first %d of %d bytes]", shownBytes, fullBytes)
-		maxContentBytes = approvalPreviewMaxBytes - len(notice)
-		if maxContentBytes < 0 {
-			maxContentBytes = 0
-		}
-		if maxContentBytes == shownBytes {
+		notice = fmt.Sprintf("\n\n[approval preview truncated: showing first %d of %d bytes]", shown, len(content))
+		fits := max(approvalPreviewMaxBytes-len(notice), 0)
+		if fits == shown {
 			break
 		}
-		shownBytes = maxContentBytes
+		shown = fits
 	}
-	truncated := content[:maxContentBytes]
-	for len(truncated) > 0 && !utf8.ValidString(truncated) {
-		truncated = truncated[:len(truncated)-1]
+	cut := content[:shown]
+	for len(cut) > 0 && !utf8.ValidString(cut) {
+		cut = cut[:len(cut)-1]
 	}
-	return truncated + notice
+	return cut + notice
 }

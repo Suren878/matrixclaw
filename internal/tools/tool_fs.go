@@ -180,14 +180,6 @@ func comparableFilesystemPath(path string) string {
 	return absPath
 }
 
-func resolveMutationPath(workingDir string, value string) (FilesystemPathPolicy, *Result) {
-	policy, err := ResolveFilesystemPath(workingDir, value)
-	if err != nil {
-		return FilesystemPathPolicy{}, &Result{Content: fmt.Sprintf("Invalid path: %v", err), Status: ResultStatusError}
-	}
-	return policy, nil
-}
-
 func ensureMutationWriteTarget(path string, allowMissing bool) error {
 	parent := filepath.Dir(path)
 	parentInfo, err := os.Lstat(parent)

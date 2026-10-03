@@ -14,12 +14,8 @@ func (p *Permissions) renderContent(width int) string {
 	switch p.permission.ToolName {
 	case toolNameBash:
 		return p.renderBashContent(width)
-	case toolNameEdit:
-		return p.renderEditContent(width)
-	case toolNameWrite:
-		return p.renderWriteContent(width)
-	case toolNameMultiEdit:
-		return p.renderMultiEditContent(width)
+	case toolNameEdit, toolNameWrite, toolNameMultiEdit:
+		return p.renderFileChangeContent(width)
 	case toolNameRead:
 		return p.renderReadContent(width)
 	case toolNameLS:
@@ -40,28 +36,12 @@ func (p *Permissions) renderBashContent(width int) string {
 	return p.renderContentPanel(params.Command, width)
 }
 
-func (p *Permissions) renderEditContent(contentWidth int) string {
-	params, ok := surfacepermission.DecodeParams[tools.EditPermissionsParams](p.permission.Params)
+func (p *Permissions) renderFileChangeContent(contentWidth int) string {
+	change, ok := surfacepermission.DecodeParams[tools.FileChange](p.permission.Params)
 	if !ok {
 		return ""
 	}
-	return p.renderDiff(params.FilePath, params.OldContent, params.NewContent, contentWidth)
-}
-
-func (p *Permissions) renderWriteContent(contentWidth int) string {
-	params, ok := surfacepermission.DecodeParams[tools.WritePermissionsParams](p.permission.Params)
-	if !ok {
-		return ""
-	}
-	return p.renderDiff(params.FilePath, params.OldContent, params.NewContent, contentWidth)
-}
-
-func (p *Permissions) renderMultiEditContent(contentWidth int) string {
-	params, ok := surfacepermission.DecodeParams[tools.MultiEditPermissionsParams](p.permission.Params)
-	if !ok {
-		return ""
-	}
-	return p.renderDiff(params.FilePath, params.OldContent, params.NewContent, contentWidth)
+	return p.renderDiff(change.Path, change.OldContent, change.NewContent, contentWidth)
 }
 
 func (p *Permissions) renderDiff(filePath, oldContent, newContent string, contentWidth int) string {

@@ -42,18 +42,10 @@ func (e *readExecutor) PermissionSubject(call Call) permission.Subject {
 	return fileSubject(call, &params, func() string { return params.FilePath })
 }
 
-func (e *writeExecutor) PermissionSubject(call Call) permission.Subject {
-	var params WriteParams
-	return fileSubject(call, &params, func() string { return params.FilePath })
-}
-
-func (e *editExecutor) PermissionSubject(call Call) permission.Subject {
-	var params EditParams
-	return fileSubject(call, &params, func() string { return params.FilePath })
-}
-
-func (e *multiEditExecutor) PermissionSubject(call Call) permission.Subject {
-	var params MultiEditParams
+func (e *mutationExecutor) PermissionSubject(call Call) permission.Subject {
+	var params struct {
+		FilePath string `json:"file_path"`
+	}
 	return fileSubject(call, &params, func() string { return params.FilePath })
 }
 

@@ -210,20 +210,10 @@ func decodePermissionParams(toolName string, raw json.RawMessage) any {
 		if err := json.Unmarshal(raw, &params); err == nil {
 			return params
 		}
-	case "write":
-		var params tools.WritePermissionsParams
-		if err := json.Unmarshal(raw, &params); err == nil {
-			return params
-		}
-	case "edit":
-		var params tools.EditPermissionsParams
-		if err := json.Unmarshal(raw, &params); err == nil {
-			return params
-		}
-	case "multiedit":
-		var params tools.MultiEditPermissionsParams
-		if err := json.Unmarshal(raw, &params); err == nil {
-			return params
+	case "write", "edit", "multiedit":
+		var change tools.FileChange
+		if err := json.Unmarshal(raw, &change); err == nil {
+			return change
 		}
 	case "skill_manage":
 		var params tools.SkillManagePermissionsParams

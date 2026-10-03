@@ -32,7 +32,7 @@ func splitShown(screen string) bool {
 func TestDiffDialogsToggleBetweenUnifiedAndSplit(t *testing.T) {
 	com := surfacecommon.DefaultCommon()
 	dialogs := map[string]Dialog{
-		"permission": NewPermissions(com, surfacepermission.PermissionRequest{ID: "a1", ToolName: "edit", Params: tools.EditPermissionsParams{FilePath: "parse.go", OldContent: "n := 1\n", NewContent: "n := 2\n"}}),
+		"permission": NewPermissions(com, surfacepermission.PermissionRequest{ID: "a1", ToolName: "edit", Params: tools.FileChange{Path: "parse.go", OldContent: "n := 1\n", NewContent: "n := 2\n"}}),
 		"preview":    NewDiffPreview(com, DiffPreviewData{Title: "Edit Changes", FilePath: "parse.go", OldContent: "n := 1\n", NewContent: "n := 2\n", Additions: 1, Removals: 1}),
 	}
 	for name, d := range dialogs {
