@@ -385,12 +385,6 @@ func workingToolPhase(name string) string {
 		return "Fetching web page"
 	case "web_search":
 		return "Searching web"
-	case "web_research":
-		return "Researching web"
-	case "web_research_ask":
-		return "Checking research"
-	case "web_research_status":
-		return "Checking research status"
 	case "":
 		return "Running tool"
 	default:
@@ -436,12 +430,6 @@ func workingToolDetail(toolName string, input string) string {
 		return compactWorkingToolParam(params, "query")
 	case "web_fetch":
 		return compactWorkingToolParam(params, "url")
-	case "web_research":
-		return firstNonEmptyRuntime(compactWorkingToolParam(params, "query"), compactWorkingToolParam(params, "task"), compactWorkingToolParam(params, "urls"))
-	case "web_research_ask":
-		return compactWorkingToolParam(params, "question")
-	case "web_research_status":
-		return compactWorkingToolParam(params, "research_id")
 	}
 	if strings.HasPrefix(name, "mcp_browser_") {
 		return firstNonEmptyRuntime(compactWorkingToolParam(params, "url"), compactWorkingToolParam(params, "text"), compactWorkingToolParam(params, "selector"), compactWorkingToolParam(params, "element"), compactWorkingToolParam(params, "query"), compactWorkingToolParam(params, "ref"))

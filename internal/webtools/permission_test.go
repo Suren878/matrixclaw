@@ -13,7 +13,7 @@ import (
 )
 
 func TestWebFetchSubjectIsTheHost(t *testing.T) {
-	registry := tools.NewRegistry(NewWebFetchExecutorWithService(nil))
+	registry := tools.NewRegistry(NewFetchTool())
 	for args, want := range map[string]permission.Subject{
 		`{"url":"https://Docs.Example.com:8443/a?b=1"}`: {Kind: permission.KindDomain, Value: "docs.example.com"},
 		`{"url":"https://Bücher.example./"}`:            {Kind: permission.KindDomain, Value: "xn--bcher-kva.example"},
@@ -32,11 +32,11 @@ func TestWebFetchRedirectsMeetTheRules(t *testing.T) {
 		asked = append(asked, subject)
 		return errors.New("blocked by rule web_fetch: evil.example")
 	}
-	req, err := http.NewRequestWithContext(withRecheck(context.Background(), recheck), http.MethodGet, "https://Evil.Example./x", nil)
+	req, err := http.NewRequest(http.MethodGet, "https://Evil.Example./x", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = webFetchClient.CheckRedirect(req, nil)
+	err = fetchClient(recheck).CheckRedirect(req, nil)
 	if err == nil || !strings.Contains(err.Error(), "blocked by rule") || len(asked) != 1 || asked[0].Value != "evil.example" {
 		t.Fatalf("redirect error = %v, asked = %+v", err, asked)
 	}

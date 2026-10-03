@@ -17,7 +17,7 @@ import (
 
 var webSearchClient = &http.Client{Timeout: webSearchTimeout * time.Second}
 
-func (e *webSearchExecutor) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
+func (e webSearchExecutor) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
 	var params WebSearchParams
 	if err := json.Unmarshal(call.Args, &params); err != nil {
 		return tools.Result{}, tools.InvalidArgs(webSearchToolName, err)
@@ -34,7 +34,14 @@ func (e *webSearchExecutor) Execute(ctx context.Context, call tools.Call) (tools
 		params.Limit = maxWebSearchLimit
 	}
 
-	results, provider, err := e.web.Search(ctx, params.Query, params.Limit)
+	var cfg SearchConfig
+	if e.config != nil {
+		var err error
+		if cfg, err = e.config(); err != nil {
+			return tools.Result{Content: fmt.Sprintf("web search failed: %v", err), IsError: true}, nil
+		}
+	}
+	results, provider, err := search(ctx, params.Query, params.Limit, cfg)
 	if err != nil {
 		return tools.Result{Content: fmt.Sprintf("web search failed: %v", err), IsError: true}, nil
 	}
@@ -50,7 +57,8 @@ func (e *webSearchExecutor) Execute(ctx context.Context, call tools.Call) (tools
 	}, nil
 }
 
-func RunWebSearch(ctx context.Context, query string, limit int, cfg WebSearchProviderConfig) ([]WebSearchResult, string, error) {
+// search asks the configured provider and falls back to DuckDuckGo.
+func search(ctx context.Context, query string, limit int, cfg SearchConfig) ([]WebSearchResult, string, error) {
 	switch cfg.Provider {
 	case "tavily":
 		if cfg.TavilyKey != "" {
@@ -392,4 +400,16 @@ func formatSearchResults(query, provider string, results []WebSearchResult) stri
 		}
 	}
 	return strings.TrimSpace(b.String())
+}
+
+func boundWebToolText(value string, maxChars int) string {
+	value = strings.TrimSpace(value)
+	if value == "" || maxChars <= 0 || len(value) <= maxChars {
+		return value
+	}
+	cut := strings.LastIndex(value[:maxChars], " ")
+	if cut < maxChars/2 {
+		cut = maxChars
+	}
+	return strings.TrimSpace(value[:cut]) + "..."
 }

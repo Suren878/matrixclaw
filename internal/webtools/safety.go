@@ -1,4 +1,4 @@
-package webresearch
+package webtools
 
 import (
 	"context"
@@ -44,9 +44,9 @@ var blockedHosts = []string{
 	"100.100.100.200", // Alibaba cloud metadata
 }
 
-// ValidatePublicURL rejects non-HTTP URLs and hosts that resolve to private,
+// validatePublicURL rejects non-HTTP URLs and hosts that resolve to private,
 // loopback, link-local or cloud metadata addresses.
-func ValidatePublicURL(ctx context.Context, rawURL string) error {
+func validatePublicURL(ctx context.Context, rawURL string) error {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return fmt.Errorf("url is required")
@@ -100,8 +100,8 @@ func validatePublicIPs(host string, addrs []net.IPAddr) error {
 	return nil
 }
 
-// DialPublicAddress dials only after every resolved address passes the guard.
-func DialPublicAddress(ctx context.Context, network string, address string) (net.Conn, error) {
+// dialPublicAddress dials only after every resolved address passes the guard.
+func dialPublicAddress(ctx context.Context, network string, address string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, fmt.Errorf("invalid network address %q: %w", address, err)

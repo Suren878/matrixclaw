@@ -23,12 +23,6 @@ func telegramToolAction(call transcript.ToolCallPart) (string, string) {
 		return "Searching web", telegramParam(params, "query")
 	case "web_fetch":
 		return "Fetching page", telegramParam(params, "url")
-	case "web_research":
-		return "Researching web", firstNonEmpty(telegramParam(params, "query"), telegramParam(params, "task"), telegramParam(params, "urls"))
-	case "web_research_ask":
-		return "Checking research", telegramParam(params, "question")
-	case "web_research_status":
-		return "Checking research", telegramParam(params, "research_id")
 	case "reverse_geocode_osm":
 		return "Checking address", telegramCoordinatesDetail(params)
 	case "nearby_places_osm":

@@ -8,11 +8,11 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func (c *Core) webResearchPromptAvailable() bool {
+func (c *Core) webPromptAvailable() bool {
 	if c == nil || c.tools == nil {
 		return false
 	}
-	_, ok := c.tools.Spec("web_research")
+	_, ok := c.tools.Spec("web_fetch")
 	return ok
 }
 
@@ -111,8 +111,8 @@ func (c *Core) nativeSystemPrompt(ctx context.Context, turn nativeTurn, assistan
 	if workingDir != "" {
 		sections = append(sections, prompt.ProjectRoot(workingDir))
 	}
-	if c.webResearchPromptAvailable() {
-		sections = append(sections, prompt.WebResearchGuidance())
+	if turn.ToolUse && c.webPromptAvailable() {
+		sections = append(sections, prompt.WebGuidance())
 	}
 	if c.agentPromptAvailable() {
 		sections = append(sections, c.agentGuidancePrompt(ctx))

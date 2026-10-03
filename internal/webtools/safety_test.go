@@ -1,4 +1,4 @@
-package webresearch
+package webtools
 
 import (
 	"context"
@@ -22,8 +22,8 @@ func TestValidateFetchURLRejectsPrivateTargets(t *testing.T) {
 		rawURL := rawURL
 		t.Run(rawURL, func(t *testing.T) {
 			t.Parallel()
-			if err := ValidatePublicURL(context.Background(), rawURL); err == nil {
-				t.Fatalf("ValidatePublicURL(%q) unexpectedly succeeded", rawURL)
+			if err := validatePublicURL(context.Background(), rawURL); err == nil {
+				t.Fatalf("validatePublicURL(%q) unexpectedly succeeded", rawURL)
 			}
 		})
 	}

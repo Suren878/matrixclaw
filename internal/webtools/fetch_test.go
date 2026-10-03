@@ -15,7 +15,7 @@ func TestWebFetchRedirectPolicyRejectsPrivateTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := &http.Request{URL: redirectURL}
-	err = webFetchClient.CheckRedirect(req, []*http.Request{{}})
+	err = fetchClient(nil).CheckRedirect(req, []*http.Request{{}})
 	if err == nil || !strings.Contains(err.Error(), "unsafe redirect") {
 		t.Fatalf("CheckRedirect error = %v, want unsafe redirect error", err)
 	}

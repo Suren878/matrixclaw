@@ -5,47 +5,19 @@ import (
 )
 
 const (
-	namespaceCoreWeb          = "core.web"
-	webFetchToolName          = "web_fetch"
-	webSearchToolName         = "web_search"
-	webResearchToolName       = "web_research"
-	webResearchAskToolName    = "web_research_ask"
-	webResearchStatusToolName = "web_research_status"
+	namespaceCoreWeb  = "core.web"
+	webFetchToolName  = "web_fetch"
+	webSearchToolName = "web_search"
 
-	defaultWebFetchMaxLength = 20000
-	maxWebFetchMaxLength     = 100000
-	defaultWebSearchLimit    = 8
-	maxWebSearchLimit        = 20
+	defaultWebSearchLimit = 8
+	maxWebSearchLimit     = 20
 
 	webFetchTimeout  = 15
 	webSearchTimeout = 15
 )
 
 type WebFetchParams struct {
-	URL       string `json:"url"`
-	Task      string `json:"task,omitempty"`
-	MaxLength int    `json:"max_length,omitempty"`
-}
-
-type WebFetchResponseMetadata struct {
-	URL         string   `json:"url"`
-	Title       string   `json:"title,omitempty"`
-	StatusCode  int      `json:"status_code,omitempty"`
-	ContentType string   `json:"content_type,omitempty"`
-	Truncated   bool     `json:"truncated,omitempty"`
-	CharCount   int      `json:"char_count,omitempty"`
-	ResearchID  string   `json:"research_id,omitempty"`
-	ArtifactIDs []string `json:"artifact_ids,omitempty"`
-}
-
-type WebFetchedPage struct {
-	URL         string `json:"url"`
-	Title       string `json:"title,omitempty"`
-	Text        string `json:"text,omitempty"`
-	HTML        string `json:"html,omitempty"`
-	StatusCode  int    `json:"status_code,omitempty"`
-	ContentType string `json:"content_type,omitempty"`
-	Truncated   bool   `json:"truncated,omitempty"`
+	URL string `json:"url"`
 }
 
 type WebSearchParams struct {
@@ -66,34 +38,35 @@ type WebSearchResponseMetadata struct {
 	Results  []WebSearchResult `json:"results"`
 }
 
-type webFetchExecutor struct {
-	web *WebService
-}
-
-type webSearchExecutor struct {
-	web *WebService
-}
-
-// WebSearchProviderConfig holds the active provider credentials for web search.
-type WebSearchProviderConfig struct {
+// SearchConfig holds the active provider credentials for web search.
+type SearchConfig struct {
 	Provider  string
 	TavilyKey string
 	SerperKey string
 	BaseURL   string
 }
 
-func NewWebFetchExecutorWithService(web *WebService) tools.Executor {
-	return &webFetchExecutor{web: web}
+type webFetchExecutor struct{}
+
+type webSearchExecutor struct {
+	config func() (SearchConfig, error)
 }
 
-func NewWebSearchExecutorWithService(web *WebService) tools.Executor {
-	return &webSearchExecutor{web: web}
+// NewFetchTool is web_fetch: one public page as readable text.
+func NewFetchTool() tools.Executor {
+	return webFetchExecutor{}
 }
 
-func (e *webFetchExecutor) Spec() tools.Spec {
+// NewSearchTool is web_search over the provider config reads at each call;
+// nil config searches DuckDuckGo.
+func NewSearchTool(config func() (SearchConfig, error)) tools.Executor {
+	return webSearchExecutor{config: config}
+}
+
+func (webFetchExecutor) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              webFetchToolName,
-		Description:     "Fetch a URL through compact web research artifacts; task mode returns extracted facts/result",
+		Description:     "Fetch a public http(s) URL and return its main content as markdown",
 		Effect:          tools.EffectReadOnly,
 		Namespace:       namespaceCoreWeb,
 		Category:        tools.CategoryWeb,
@@ -101,7 +74,7 @@ func (e *webFetchExecutor) Spec() tools.Spec {
 	}
 }
 
-func (e *webSearchExecutor) Spec() tools.Spec {
+func (webSearchExecutor) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              webSearchToolName,
 		Description:     "Search the web and return titles, URLs, and descriptions",

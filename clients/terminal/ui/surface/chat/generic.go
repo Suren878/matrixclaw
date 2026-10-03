@@ -94,13 +94,7 @@ func genericToolParams(name string, params map[string]any) []string {
 	case "web_search":
 		return compactGenericToolParams(params, []string{"query"}, []string{"limit"})
 	case "web_fetch":
-		return compactGenericToolParams(params, []string{"url"}, []string{"task", "max_length"})
-	case "web_research":
-		return compactGenericToolParams(params, []string{"query", "task", "urls"}, []string{"depth", "max_sources", "browser", "freshness", "async"})
-	case "web_research_ask":
-		return compactGenericToolParams(params, []string{"question"}, []string{"research_id", "freshness", "browser"})
-	case "web_research_status":
-		return compactGenericToolParams(params, []string{"research_id"}, nil)
+		return compactGenericToolParams(params, []string{"url"}, nil)
 	case "session_search", "skill_search":
 		return compactGenericToolParams(params, []string{"query"}, []string{"session_id", "limit"})
 	case "skill_view", "skill_use":
@@ -229,12 +223,6 @@ func genericPrettyName(name string) string {
 		return "Search Web"
 	case "web_fetch":
 		return "Fetch Web Page"
-	case "web_research":
-		return "Research Web"
-	case "web_research_ask":
-		return "Ask Research"
-	case "web_research_status":
-		return "Check Research"
 	case "session_search":
 		return "Search Sessions"
 	case "skill_search":

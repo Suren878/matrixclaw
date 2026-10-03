@@ -24,8 +24,7 @@ type clientSession struct {
 	server  ServerConfig
 	session *sdk.ClientSession
 	tools   []*sdk.Tool
-	// mu serialises calls on the session, so the browser fallback and model
-	// tool calls never drive one browser at the same time.
+	// mu serialises calls on the session.
 	mu sync.Mutex
 }
 
