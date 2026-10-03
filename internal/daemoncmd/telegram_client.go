@@ -25,6 +25,7 @@ type telegramClientAdapter struct {
 	done        chan struct{}
 	applied     telegram.Config
 	offset      atomic.Int64
+	offsetBot   string // the bot token offset counts the updates of
 	commandsSet bool
 	geo         *geo.OSMService
 	// botAPIURL overrides the Telegram Bot API address in tests.
@@ -63,6 +64,11 @@ func (a *telegramClientAdapter) Apply(ctx context.Context, bootstrap bootstrapCo
 		return nil
 	}
 
+	// Update ids are per bot, so a new bot polls from its first update.
+	if cfg.BotToken != a.offsetBot {
+		a.offset.Store(0)
+		a.offsetBot = cfg.BotToken
+	}
 	workerCfg := cfg
 	workerCfg.SkipCommandRegistration = a.commandsSet
 	worker, err := telegram.NewWorker(workerCfg)

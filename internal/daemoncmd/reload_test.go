@@ -2,6 +2,7 @@ package daemoncmd
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -55,6 +56,7 @@ func TestReloadKeepsExternalAgentsWhenTheirConfigIsUnchanged(t *testing.T) {
 
 type fakeBotAPI struct {
 	polls     atomic.Int32
+	offset    atomic.Int64 // of the last poll
 	cancelled atomic.Int32
 	started   chan struct{}
 }
@@ -63,10 +65,14 @@ func newFakeBotAPI(t *testing.T) (*fakeBotAPI, *httptest.Server) {
 	t.Helper()
 	bot := &fakeBotAPI{started: make(chan struct{}, 16)}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.Copy(io.Discard, r.Body)
+		var poll struct {
+			Offset int64 `json:"offset"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&poll)
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/getUpdates"):
+			bot.offset.Store(poll.Offset)
 			bot.polls.Add(1)
 			bot.started <- struct{}{}
 			select {
@@ -136,6 +142,41 @@ func TestTelegramAdapterRestartsWorkerOnlyWhenItsConfigChanges(t *testing.T) {
 	}
 	if got := bot.cancelled.Load(); got != 1 {
 		t.Fatalf("changed config cancelled %d polls, want 1", got)
+	}
+}
+
+func TestTelegramAdapterPollsANewBotFromTheStart(t *testing.T) {
+	bot, server := newFakeBotAPI(t)
+	adapter := &telegramClientAdapter{botAPIURL: server.URL}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() {
+		cancel()
+		adapter.mu.Lock()
+		adapter.stopWorker()
+		adapter.mu.Unlock()
+	}()
+	cfg := telegramTestBootstrap(strings.TrimPrefix(server.URL, "http://"), 1)
+	if err := adapter.Apply(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	bot.waitForPoll(t)
+	adapter.offset.Store(987654321)
+
+	cfg.Telegram.AllowedUserID = 2
+	if err := adapter.Apply(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	bot.waitForPoll(t)
+	if got := bot.offset.Load(); got != 987654321 {
+		t.Fatalf("same bot polled from offset %d, want the confirmed one", got)
+	}
+	cfg.Telegram.BotToken = "456:other"
+	if err := adapter.Apply(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	bot.waitForPoll(t)
+	if got := bot.offset.Load(); got != 0 {
+		t.Fatalf("new bot polled from offset %d, want 0", got)
 	}
 }
 
