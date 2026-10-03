@@ -108,13 +108,7 @@ func (s *Service) buildConfig(draft Draft) (Config, error) {
 			CustomInstructions: strings.TrimSpace(draft.AssistantCustomPrompt),
 		},
 		Providers: configured,
-		Daemon: DaemonConfig{
-			HTTPAddr:        httpAddr,
-			DBPath:          dbPath,
-			Timezone:        timezone,
-			APIToken:        apiToken,
-			AutostartOnBoot: autostart,
-		},
+		Daemon:    existing.Daemon,
 		Clients: ClientsConfig{
 			Terminal: TerminalConfig{Enabled: true},
 			Telegram: TelegramConfig{
@@ -126,6 +120,11 @@ func (s *Service) buildConfig(draft Draft) (Config, error) {
 		},
 		Modules: existing.Modules,
 	}
+	cfg.Daemon.HTTPAddr = httpAddr
+	cfg.Daemon.DBPath = dbPath
+	cfg.Daemon.Timezone = timezone
+	cfg.Daemon.APIToken = apiToken
+	cfg.Daemon.AutostartOnBoot = autostart
 	return normalizeConfig(cfg), nil
 }
 

@@ -280,6 +280,20 @@ func (s *Service) Draft() (Draft, error) {
 	return defaultDraft(), nil
 }
 
+// savedDraft is the saved config as a draft: daemon API edits start from it,
+// never from an unfinished setup wizard draft.
+func (s *Service) savedDraft() (Draft, error) {
+	cfg, err := s.Load()
+	switch {
+	case err == nil:
+		return draftFromConfig(cfg), nil
+	case errors.Is(err, ErrConfigNotFound), errors.Is(err, ErrUnsupportedConfigVersion):
+		return defaultDraft(), nil
+	default:
+		return Draft{}, err
+	}
+}
+
 func (s *Service) Summary() (Summary, error) {
 	return s.SummaryContext(context.Background())
 }
@@ -383,7 +397,7 @@ func (s *Service) ConfigureProviderContext(ctx context.Context, providerID strin
 		return ProviderSetupItem{}, errors.New("provider id is required")
 	}
 
-	draft, err := s.Draft()
+	draft, err := s.savedDraft()
 	if err != nil {
 		return ProviderSetupItem{}, err
 	}
@@ -412,7 +426,7 @@ func (s *Service) DeleteProviderContext(ctx context.Context, providerID string) 
 	if providerID == "" {
 		return errors.New("provider id is required")
 	}
-	draft, err := s.Draft()
+	draft, err := s.savedDraft()
 	if err != nil {
 		return err
 	}
