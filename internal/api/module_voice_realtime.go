@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 	"github.com/coder/websocket"
 )
@@ -25,6 +26,7 @@ func (s *Server) handleRealtimeVoiceSessionCreate(w http.ResponseWriter, r *http
 	if !decodeJSON(w, r, &req) {
 		return
 	}
+	req.Restricted = roleOf(r) != core.RoleOwner
 	session, err := s.Realtime.CreateSession(r.Context(), req)
 	if err != nil {
 		writeRealtimeVoiceError(w, err)
@@ -122,6 +124,8 @@ func writeRealtimeVoiceError(w http.ResponseWriter, err error) {
 		writeErrorMessage(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, realtime.ErrProviderUnavailable):
 		writeErrorMessage(w, http.StatusConflict, err.Error())
+	case errors.Is(err, core.ErrSessionRestricted):
+		writeErrorMessage(w, http.StatusForbidden, err.Error())
 	default:
 		writeErrorMessage(w, http.StatusBadGateway, err.Error())
 	}

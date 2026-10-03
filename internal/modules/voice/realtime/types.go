@@ -51,6 +51,9 @@ type SessionCreateRequest struct {
 	InputAudio        AudioFormat `json:"input_audio,omitempty"`
 	OutputAudio       AudioFormat `json:"output_audio,omitempty"`
 	PersistMode       PersistMode `json:"persist_mode,omitempty"`
+	// Restricted keeps a caller other than the owner out of sessions that
+	// core.RunsUnattended; the API sets it from the caller's role.
+	Restricted bool `json:"-"`
 }
 
 type SessionCreateResponse struct {

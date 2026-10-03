@@ -2,17 +2,37 @@ package api
 
 import (
 	"net/http"
+	"slices"
 
+	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
-func (s *Server) handleMCP(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 	cfg, err := s.Setup.GetMCPConfig()
 	if err != nil {
 		writeErrorMessage(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if roleOf(r) != core.RoleOwner {
+		cfg.Servers = slices.Clone(cfg.Servers)
+		for i := range cfg.Servers {
+			cfg.Servers[i].Env = maskedEnv(cfg.Servers[i].Env)
+		}
+	}
 	s.writeMCPConfigResponse(w, cfg)
+}
+
+// maskedEnv keeps the names of an MCP server's env and hides the values.
+func maskedEnv(env map[string]string) map[string]string {
+	if env == nil {
+		return nil
+	}
+	out := make(map[string]string, len(env))
+	for name, value := range env {
+		out[name] = setup.MaskSecret(value)
+	}
+	return out
 }
 
 func (s *Server) handleMCPUpdate(w http.ResponseWriter, r *http.Request) {

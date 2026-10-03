@@ -15,6 +15,9 @@ func (s *Server) handleToolExecute(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
+	if !s.mayUseSession(w, r, req.SessionID) {
+		return
+	}
 
 	result, err := s.Core.ExecuteTool(r.Context(), req)
 	if err != nil {

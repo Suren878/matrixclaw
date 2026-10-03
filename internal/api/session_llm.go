@@ -71,9 +71,11 @@ func (s *Server) handleSessionLLMUpdate(w http.ResponseWriter, r *http.Request) 
 			writeError(w, err)
 			return
 		}
-		if err := s.persistSessionModelSelection(r.Context(), session); err != nil {
-			writeError(w, err)
-			return
+		if roleOf(r) == core.RoleOwner {
+			if err := s.persistSessionModelSelection(r.Context(), session); err != nil {
+				writeError(w, err)
+				return
+			}
 		}
 		writeJSON(w, http.StatusOK, core.SessionResponse{Session: session})
 	default:

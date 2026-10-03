@@ -21,6 +21,10 @@ func (s *Server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
+	if roleOf(r) != core.RoleOwner && core.NormalizePermissionMode(req.PermissionMode) != core.PermissionModeDefault {
+		writeError(w, core.ErrOwnerOnly)
+		return
+	}
 	session, err := s.Core.CreateSession(r.Context(), core.CreateSessionInput{
 		Title:           req.Title,
 		Kind:            core.SessionKind(req.Kind),

@@ -47,6 +47,24 @@ func ownerOnly(handler http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// mayUseSession answers 403 and returns false when a non-owner targets a
+// session that runs tools without asking.
+func (s *Server) mayUseSession(w http.ResponseWriter, r *http.Request, sessionID string) bool {
+	if roleOf(r) == core.RoleOwner {
+		return true
+	}
+	session, err := s.Core.GetSession(r.Context(), sessionID)
+	if err != nil {
+		writeError(w, err)
+		return false
+	}
+	if core.RunsUnattended(session) {
+		writeError(w, core.ErrSessionRestricted)
+		return false
+	}
+	return true
+}
+
 // keepsRules reports whether the caller may add or remove a rule of scope:
 // session rules for everyone but guests, global ones for the owner.
 func keepsRules(r *http.Request, scope permission.Scope) bool {
