@@ -5,6 +5,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 // approvalKeyboard answers one approval; "Always" keeps the suggested rule, and
@@ -33,12 +34,12 @@ func formKeyboard(form controlplane.FormData) *InlineKeyboardMarkup {
 			continue
 		}
 		rows = append(rows, []InlineKeyboardButton{
-			clippedCommandButton("✏️ "+firstNonEmpty(field.Label, field.ID), field.EditCommand),
+			clippedCommandButton("✏️ "+textutil.FirstNonEmpty(field.Label, field.ID), field.EditCommand),
 		})
 	}
 	rows = append(rows, []InlineKeyboardButton{
-		commandButton("✅ "+firstNonEmpty(form.SubmitLabel, "Save"), form.SubmitCommand),
-		commandButton("✖️ "+firstNonEmpty(form.CancelLabel, "Close"), form.CancelCommand),
+		commandButton("✅ "+textutil.FirstNonEmpty(form.SubmitLabel, "Save"), form.SubmitCommand),
+		commandButton("✖️ "+textutil.FirstNonEmpty(form.CancelLabel, "Close"), form.CancelCommand),
 	})
 	return &InlineKeyboardMarkup{InlineKeyboard: rows}
 }
@@ -47,8 +48,8 @@ func confirmKeyboard(confirm controlplane.ConfirmData) *InlineKeyboardMarkup {
 	return &InlineKeyboardMarkup{
 		InlineKeyboard: [][]InlineKeyboardButton{
 			{
-				commandButton("✅ "+firstNonEmpty(confirm.ConfirmLabel, "Confirm"), confirm.ConfirmCommand),
-				commandButton("✖️ "+firstNonEmpty(confirm.CancelLabel, "Close"), confirm.CancelCommand),
+				commandButton("✅ "+textutil.FirstNonEmpty(confirm.ConfirmLabel, "Confirm"), confirm.ConfirmCommand),
+				commandButton("✖️ "+textutil.FirstNonEmpty(confirm.CancelLabel, "Close"), confirm.CancelCommand),
 			},
 		},
 	}

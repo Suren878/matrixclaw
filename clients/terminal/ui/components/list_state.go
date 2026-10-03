@@ -88,3 +88,18 @@ func hasSelectable(items []Item) bool {
 	}
 	return false
 }
+
+// ViewportBounds returns the [start, end) window of visible rows that keeps
+// selected near the middle of total rows.
+func ViewportBounds(selected int, total int, visible int) (int, int) {
+	if total <= visible || visible <= 0 {
+		return 0, total
+	}
+	start := max(selected-visible/2, 0)
+	end := start + visible
+	if end > total {
+		end = total
+		start = max(end-visible, 0)
+	}
+	return start, end
+}

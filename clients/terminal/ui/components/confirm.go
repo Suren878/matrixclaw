@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -46,12 +47,12 @@ func confirmBody(frame Frame, data ConfirmData) []string {
 func confirmButtonSpecs(data ConfirmData) []ButtonSpec {
 	if data.OnlyCancel {
 		return []ButtonSpec{
-			{Label: firstNonEmpty(data.CancelLabel, "Close"), Role: RoleCancel, Danger: data.CancelDanger},
+			{Label: textutil.FirstNonEmpty(data.CancelLabel, "Close"), Role: RoleCancel, Danger: data.CancelDanger},
 		}
 	}
 	return []ButtonSpec{
-		{Label: firstNonEmpty(data.ConfirmLabel, "Confirm"), Role: RoleSubmit, Danger: data.ConfirmDanger},
-		{Label: firstNonEmpty(data.CancelLabel, "Close"), Role: RoleCancel, Danger: data.CancelDanger},
+		{Label: textutil.FirstNonEmpty(data.ConfirmLabel, "Confirm"), Role: RoleSubmit, Danger: data.ConfirmDanger},
+		{Label: textutil.FirstNonEmpty(data.CancelLabel, "Close"), Role: RoleCancel, Danger: data.CancelDanger},
 	}
 }
 

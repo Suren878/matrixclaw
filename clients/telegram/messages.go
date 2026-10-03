@@ -14,6 +14,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -229,7 +230,7 @@ func (w *Worker) handleVoiceMessage(ctx context.Context, message *Message) error
 		lookupFailedFormat:   "Telegram voice lookup failed: %v",
 		downloadFailedFormat: "Telegram voice download failed: %v",
 		inferMIMEFromPath:    true,
-		fallbackMIME:         firstNonEmpty(voice.MIMEType, "audio/ogg"),
+		fallbackMIME:         textutil.FirstNonEmpty(voice.MIMEType, "audio/ogg"),
 	})
 }
 
@@ -403,8 +404,8 @@ func generatedSpeechPayload(response voicemodule.TextToSpeechResponse) (telegram
 	}
 	return telegramSpeechPayload{
 		content:  content,
-		fileName: firstNonEmpty(response.FileName, "matrixclaw-tts.mp3"),
-		mimeType: firstNonEmpty(response.MIMEType, "audio/mpeg"),
+		fileName: textutil.FirstNonEmpty(response.FileName, "matrixclaw-tts.mp3"),
+		mimeType: textutil.FirstNonEmpty(response.MIMEType, "audio/mpeg"),
 	}, nil
 }
 
@@ -476,11 +477,11 @@ func useTelegramVoiceUpload(fileName string, mimeType string) bool {
 }
 
 func (w *Worker) saveGeneratedSpeechToStorage(ctx context.Context, target chatTarget, response voicemodule.TextToSpeechResponse, content []byte) {
-	name := safeStorageFileName(firstNonEmpty(response.FileName, "matrixclaw-tts.mp3"))
+	name := safeStorageFileName(textutil.FirstNonEmpty(response.FileName, "matrixclaw-tts.mp3"))
 	if name == "" {
 		name = "matrixclaw-tts.mp3"
 	}
-	mimeType := firstNonEmpty(response.MIMEType, "audio/mpeg")
+	mimeType := textutil.FirstNonEmpty(response.MIMEType, "audio/mpeg")
 	storagePath := fmt.Sprintf("telegram/audio/chat%d-%d-%s", target.chatID, time.Now().UnixNano(), name)
 	if _, err := w.daemon(target.externalKey).SaveStorageFile(ctx, storagePath, content, name, []string{"telegram", "generated", "audio", "tts"}, mimeType); err != nil {
 		log.Printf("telegram: save generated speech to storage failed: %v", err)

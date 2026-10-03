@@ -10,6 +10,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/modules"
 	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
 	"github.com/Suren878/matrixclaw/internal/setup"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 // Settings are the provider choice, a page per provider (engine, models or
@@ -75,7 +76,7 @@ func (m *Module) providerPage(provider localruntime.VoiceProvider) modules.Item 
 		}},
 		modules.Item{Key: "status", Kind: modules.ItemInfo, Label: "Status", Display: provider.Status, Facts: providerFacts(provider)},
 	)
-	display := strings.Join(nonEmpty(installedLabel(provider), ramEstimate(provider)), " · ")
+	display := strings.Join(textutil.NonBlank(installedLabel(provider), ramEstimate(provider)), " · ")
 	return modules.Item{Key: provider.ID, Kind: modules.ItemPage, Label: provider.Name, Display: display, Items: items}
 }
 
@@ -87,7 +88,7 @@ func (m *Module) modelsPage(provider localruntime.VoiceProvider, key string, nou
 	add := modules.Item{Key: "add", Kind: modules.ItemChoice, Label: "Add " + noun}
 	for _, model := range provider.Models {
 		option := modules.Option{Value: model.ID, Label: cmp.Or(model.Name, model.ID), Group: languageGroup(provider, model),
-			Info: strings.Join(nonEmpty("Download", model.Size, model.RAM), " · ")}
+			Info: strings.Join(textutil.NonBlank("Download", model.Size, model.RAM), " · ")}
 		switch {
 		case model.Installed:
 			option.Info = "Installed"
@@ -105,7 +106,7 @@ func (m *Module) modelsPage(provider localruntime.VoiceProvider, key string, nou
 			page.Display = cmp.Or(model.Name, model.ID)
 		}
 		page.Items = append(page.Items, modules.Item{Key: model.ID, Kind: modules.ItemPage, Label: cmp.Or(model.Name, model.ID),
-			Display: strings.Join(nonEmpty(state, model.Size), " · "), Items: []modules.Item{
+			Display: strings.Join(textutil.NonBlank(state, model.Size), " · "), Items: []modules.Item{
 				{Key: "use", Kind: modules.ItemAction, Label: "Use " + strings.ToLower(noun), Display: use},
 				{Key: "delete", Kind: modules.ItemAction, Label: "Delete " + strings.ToLower(noun), Danger: true,
 					Confirm: "Delete the " + cmp.Or(model.Name, model.ID) + " " + strings.ToLower(noun) + "?"},
@@ -471,14 +472,4 @@ func formatBytes(bytes uint64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
-}
-
-func nonEmpty(values ...string) []string {
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			out = append(out, value)
-		}
-	}
-	return out
 }

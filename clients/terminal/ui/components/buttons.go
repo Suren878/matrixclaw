@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 type Button struct {
@@ -54,7 +55,7 @@ func renderButtonSpecs(styles Styles, width int, specs []ButtonSpec, selected in
 
 func buttonFromSpec(spec ButtonSpec, focused bool, dangerByRole bool) Button {
 	return Button{
-		Label:   firstNonEmpty(spec.Label, string(spec.Role)),
+		Label:   textutil.FirstNonEmpty(spec.Label, string(spec.Role)),
 		Danger:  spec.Danger || dangerByRole && roleIsDestructive(spec.Role),
 		Focused: focused,
 	}

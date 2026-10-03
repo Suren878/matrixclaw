@@ -6,12 +6,13 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 func (m *model) renderAssistantForm() string {
 	items := []listItem{
 		{Title: "Continue"},
-		{Title: "Name", Status: nonEmpty(m.cfg.Assistant.Name, "matrixclaw")},
+		{Title: "Name", Status: textutil.FirstNonEmpty(m.cfg.Assistant.Name, "matrixclaw")},
 		{Title: "User prompt", Status: assistantPromptStatus(m.cfg.Assistant.CustomInstructions)},
 	}
 	extraLines := []string{"", setupFooterStyle.Render("System prompt is managed by matrixclaw.")}

@@ -1,5 +1,7 @@
 package components
 
+import "github.com/Suren878/matrixclaw/internal/textutil"
+
 type PickerData struct {
 	Title           string
 	Meta            string
@@ -12,7 +14,7 @@ type PickerData struct {
 }
 
 func RenderPickerCard(frame Frame, data PickerData) string {
-	help := helpWithShortcuts(firstNonEmpty(data.Help, "enter select · ↑/↓ move · esc close"), append(data.Items, data.Footer...))
+	help := helpWithShortcuts(textutil.FirstNonEmpty(data.Help, "enter select · ↑/↓ move · esc close"), append(data.Items, data.Footer...))
 	frame = frame.WithInnerWidth(0)
 	return frame.RenderCard(FrameData{
 		Title: data.Title,

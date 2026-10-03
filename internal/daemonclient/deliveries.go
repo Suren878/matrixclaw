@@ -9,12 +9,13 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 func (c *Client) ListClientDeliveries(ctx context.Context, filter core.ClientDeliveryFilter) ([]core.ClientDelivery, error) {
 	values := url.Values{}
-	client := firstNonEmpty(filter.Client, c.ClientName)
-	externalKey := firstNonEmpty(filter.ExternalKey, c.ExternalKey)
+	client := textutil.FirstNonEmpty(filter.Client, c.ClientName)
+	externalKey := textutil.FirstNonEmpty(filter.ExternalKey, c.ExternalKey)
 	if strings.TrimSpace(client) != "" {
 		values.Set("client", strings.TrimSpace(client))
 	}

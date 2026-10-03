@@ -24,13 +24,6 @@ func handleSetupReadError(stderr io.Writer, binaryName string, service *appsetup
 	return 1
 }
 
-func nonEmpty(value string, fallback string) string {
-	if value != "" {
-		return value
-	}
-	return fallback
-}
-
 func yesNo(value bool) string {
 	if value {
 		return "yes"
@@ -47,13 +40,4 @@ func redactSecrets(text string, secrets ...string) string {
 		text = strings.ReplaceAll(text, secret, appsetup.MaskSecret(secret))
 	}
 	return text
-}
-
-func firstNonEmptyTrimmed(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
 }

@@ -1,5 +1,7 @@
 package components
 
+import "github.com/Suren878/matrixclaw/internal/textutil"
+
 type ListData struct {
 	Title          string
 	Meta           string
@@ -13,7 +15,7 @@ type ListData struct {
 }
 
 func RenderListCard(frame Frame, data ListData) string {
-	help := helpWithShortcuts(firstNonEmpty(data.Help, "enter select · ↑/↓ move · esc back"), append(data.Items, data.Footer...))
+	help := helpWithShortcuts(textutil.FirstNonEmpty(data.Help, "enter select · ↑/↓ move · esc back"), append(data.Items, data.Footer...))
 	frame = frame.WithInnerWidth(0)
 	return frame.RenderCard(FrameData{
 		Title: data.Title,

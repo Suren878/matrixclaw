@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 // maxPickedTasks bounds the background tasks /tasks lists.
@@ -87,9 +88,9 @@ func (d *Dispatcher) handleBackgroundTask(ctx context.Context, args string) (Res
 
 func backgroundTaskTitle(task core.Task) string {
 	if task.Kind == core.TaskKindSubagent {
-		return "Subagent " + firstNonEmptyTrimmed(task.AgentName, task.ID)
+		return "Subagent " + textutil.FirstNonEmpty(task.AgentName, task.ID)
 	}
-	return truncateTaskText(firstNonEmptyTrimmed(task.Description, task.Command), 48)
+	return truncateTaskText(textutil.FirstNonEmpty(task.Description, task.Command), 48)
 }
 
 func backgroundTaskStatus(task core.Task) string {
@@ -116,7 +117,7 @@ func backgroundTaskInfo(detail core.TaskDetailResponse) InfoData {
 	}
 	text := strings.TrimSpace(detail.OutputTail)
 	if task.Kind == core.TaskKindSubagent {
-		text = firstNonEmptyTrimmed(task.Summary, task.Error)
+		text = textutil.FirstNonEmpty(task.Summary, task.Error)
 	}
 	if text == "" {
 		text = "No output yet."

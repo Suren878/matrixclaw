@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/skills"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 func skillsLibrarySearchOptions() skills.SearchOptions {
@@ -119,7 +120,7 @@ func skillInfo(skill skills.Skill) string {
 	} else if skill.State != "" && skill.State != skills.StateActive {
 		parts = append(parts, skill.State)
 	}
-	return strings.Join(nonEmptyStrings(parts...), " · ")
+	return strings.Join(textutil.NonBlank(parts...), " · ")
 }
 
 func skillSearchText(skill skills.Skill) string {
@@ -134,7 +135,7 @@ func skillSearchText(skill skills.Skill) string {
 	}
 	parts = append(parts, skill.Tags...)
 	parts = append(parts, skill.Platforms...)
-	return strings.Join(nonEmptyStrings(parts...), " ")
+	return strings.Join(textutil.NonBlank(parts...), " ")
 }
 
 func sessionSkillsMeta(active []skills.Skill) string {

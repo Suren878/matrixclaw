@@ -4,6 +4,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
 )
 
 const mouseNoiseThreshold = 15 * time.Millisecond
@@ -22,7 +23,7 @@ func (f *mouseEventFilter) Filter(_ tea.Model, msg tea.Msg) tea.Msg {
 		return msg
 	}
 	_, isMotion := msg.(tea.MouseMotionMsg)
-	if !isWheelMouse(mouse) && !isMotion {
+	if !common.IsWheelMouse(mouse) && !isMotion {
 		return msg
 	}
 	now := time.Now()
@@ -31,13 +32,4 @@ func (f *mouseEventFilter) Filter(_ tea.Model, msg tea.Msg) tea.Msg {
 	}
 	f.lastMouseEvent = now
 	return msg
-}
-
-func isWheelMouse(msg tea.MouseMsg) bool {
-	switch msg.Mouse().Button {
-	case tea.MouseWheelUp, tea.MouseWheelDown, tea.MouseWheelLeft, tea.MouseWheelRight:
-		return true
-	default:
-		return false
-	}
 }

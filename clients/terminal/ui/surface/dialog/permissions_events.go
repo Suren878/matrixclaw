@@ -5,6 +5,7 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -70,7 +71,7 @@ func (p *Permissions) HandleMsg(msg tea.Msg) Action {
 				return p.respond(action)
 			}
 		}
-		if isWheelMouse(msg) {
+		if common.IsWheelMouse(msg) {
 			if p.hasDiffView() {
 				switch mouse.Button {
 				case tea.MouseWheelLeft:
@@ -197,13 +198,4 @@ func (p *Permissions) scrollLeft() {
 func (p *Permissions) scrollRight() {
 	p.diff.scrollRight()
 	p.viewportDirty = true
-}
-
-func isWheelMouse(msg tea.MouseMsg) bool {
-	switch msg.Mouse().Button {
-	case tea.MouseWheelUp, tea.MouseWheelDown, tea.MouseWheelLeft, tea.MouseWheelRight:
-		return true
-	default:
-		return false
-	}
 }

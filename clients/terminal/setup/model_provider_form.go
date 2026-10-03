@@ -98,7 +98,7 @@ func (m *model) providerFormItems() []providerFormItem {
 		items = append(items, providerFormItem{Row: listItem{Title: "Reasoning effort", Status: view.effective.ReasoningEffort}, Field: providerFieldReasoning})
 	}
 	if view.capabilities.ProviderCapabilities.ToolCalling {
-		items = append(items, providerFormItem{Row: listItem{Title: "Tool use", Status: toolUseLabel(view.effective.ToolUseMode)}, Field: providerFieldToolUse})
+		items = append(items, providerFormItem{Row: listItem{Title: "Tool use", Status: view.effective.ToolUseMode.Label()}, Field: providerFieldToolUse})
 	}
 	return items
 }
@@ -142,16 +142,9 @@ func (m *model) providerReasoningItems() []listItem {
 func toolUseItems() []listItem {
 	items := make([]listItem, 0, len(toolUseModes))
 	for _, mode := range toolUseModes {
-		items = append(items, listItem{Title: toolUseLabel(mode)})
+		items = append(items, listItem{Title: mode.Label()})
 	}
 	return items
-}
-
-func toolUseLabel(mode providers.ToolUseMode) string {
-	if providers.NormalizeToolUseMode(mode) == providers.ToolUseDisabled {
-		return "Disabled"
-	}
-	return "Enabled"
 }
 
 func (m *model) providerFormSubtitle() string {

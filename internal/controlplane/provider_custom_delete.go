@@ -3,6 +3,8 @@ package controlplane
 import (
 	"context"
 	"fmt"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 func (d *Dispatcher) customProviderDeleteConfirm(ctx context.Context, providerID string) (Result, error) {
@@ -10,7 +12,7 @@ func (d *Dispatcher) customProviderDeleteConfirm(ctx context.Context, providerID
 	if err != nil {
 		return Result{}, err
 	}
-	name := firstNonEmptyTrimmed(provider.Name, provider.ID)
+	name := textutil.FirstNonEmpty(provider.Name, provider.ID)
 	return Result{
 		Handled: true,
 		Confirm: deleteConfirmData("Delete custom provider `"+name+"`?", customProviderCommand("delete-confirm", providerEncodedID(provider.ID)), providerCommand(providerEncodedID(provider.ID))),
@@ -25,5 +27,5 @@ func (d *Dispatcher) deleteCustomProvider(ctx context.Context, providerID string
 	if err := d.daemon.DeleteSetupProvider(ctx, provider.ID); err != nil {
 		return Result{}, err
 	}
-	return Result{Handled: true, Text: fmt.Sprintf("Provider `%s` deleted.", firstNonEmptyTrimmed(provider.Name, provider.ID)), ReloadSnapshot: true}, nil
+	return Result{Handled: true, Text: fmt.Sprintf("Provider `%s` deleted.", textutil.FirstNonEmpty(provider.Name, provider.ID)), ReloadSnapshot: true}, nil
 }

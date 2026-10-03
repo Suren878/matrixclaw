@@ -143,12 +143,3 @@ func sleepContext(ctx context.Context, d time.Duration) bool {
 		return true
 	}
 }
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
-}

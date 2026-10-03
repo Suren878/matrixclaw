@@ -6,6 +6,7 @@ import (
 	"unicode"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 const approvalUsage = "Usage: /approval deny <approval id> [reason]"
@@ -31,7 +32,7 @@ func (d *Dispatcher) handleApproval(ctx context.Context, args string) (Result, e
 	if err != nil {
 		return Result{}, err
 	}
-	text := "❌ Denied " + firstNonEmptyTrimmed(approval.ToolName, "the call")
+	text := "❌ Denied " + textutil.FirstNonEmpty(approval.ToolName, "the call")
 	if approval.Reason != "" {
 		text += ": " + approval.Reason
 	}

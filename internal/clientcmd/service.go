@@ -1,6 +1,7 @@
 package clientcmd
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -18,7 +19,7 @@ func runStatusCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 	}
 	_, _ = fmt.Fprintf(stdout, "%s: setup path: %s\n", binaryName, service.Path())
 	_, _ = fmt.Fprintf(stdout, "%s: provider: %s (%s) [%s]\n", binaryName, summary.Provider.Name, summary.Provider.Model, summary.Provider.Status)
-	_, _ = fmt.Fprintf(stdout, "%s: api key: %s\n", binaryName, nonEmpty(summary.Provider.APIKeyPreview, "Not configured"))
+	_, _ = fmt.Fprintf(stdout, "%s: api key: %s\n", binaryName, cmp.Or(summary.Provider.APIKeyPreview, "Not configured"))
 	printServiceSummary(stdout, binaryName, summary.Daemon)
 	_, _ = fmt.Fprintf(stdout, "%s: telegram: %s\n", binaryName, summary.Telegram.Status)
 	if summary.Telegram.Username != "" {

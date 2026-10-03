@@ -55,3 +55,11 @@ func NormalizeMessages(messages []Message, mode ToolUseMode) []Message {
 	}
 	return out
 }
+
+// Label is the mode as setup screens show it.
+func (m ToolUseMode) Label() string {
+	if NormalizeToolUseMode(m) == ToolUseDisabled {
+		return "Disabled"
+	}
+	return "Enabled"
+}

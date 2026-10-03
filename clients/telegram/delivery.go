@@ -10,6 +10,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -315,7 +316,7 @@ func (w *Worker) readDeliveryDocument(ctx context.Context, target chatTarget, pa
 		if err != nil {
 			return nil, "", "", err
 		}
-		return content, documentFileName(payload.FileName, result.File.Title, result.File.Path), firstNonEmpty(payload.MIMEType, result.File.MIMEType, "application/octet-stream"), nil
+		return content, documentFileName(payload.FileName, result.File.Title, result.File.Path), textutil.FirstNonEmpty(payload.MIMEType, result.File.MIMEType, "application/octet-stream"), nil
 	}
 	result, err := daemon.ReadStorageFileBytes(ctx, payload.StoragePath)
 	if err != nil {
@@ -325,7 +326,7 @@ func (w *Worker) readDeliveryDocument(ctx context.Context, target chatTarget, pa
 	if err != nil {
 		return nil, "", "", err
 	}
-	return content, documentFileName(payload.FileName, result.File.Title, result.File.Path), firstNonEmpty(payload.MIMEType, result.File.MIMEType, "application/octet-stream"), nil
+	return content, documentFileName(payload.FileName, result.File.Title, result.File.Path), textutil.FirstNonEmpty(payload.MIMEType, result.File.MIMEType, "application/octet-stream"), nil
 }
 
 func targetFromClientDelivery(delivery core.ClientDelivery) (chatTarget, bool) {
@@ -383,7 +384,7 @@ func runRenderStateKey(externalKey string, runID string) string {
 }
 
 func documentFileName(values ...string) string {
-	name := firstNonEmpty(values...)
+	name := textutil.FirstNonEmpty(values...)
 	if name == "" {
 		name = "matrixclaw-file"
 	}

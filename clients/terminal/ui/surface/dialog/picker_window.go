@@ -14,34 +14,12 @@ func (p *Picker) visibleWindow(limit int) ([]components.Item, int, []components.
 	if cursor < 0 || cursor >= len(mainOptions) {
 		cursor = 0
 	}
-	start, end := viewportBounds(cursor, len(mainOptions), limit)
+	start, end := components.ViewportBounds(cursor, len(mainOptions), limit)
 	selected := -1
 	if mainCursor >= start && mainCursor < end {
 		selected = mainCursor - start
 	}
 	return pickerItems(mainOptions[start:end]), selected, pickerItems(footerOptions), footerCursor
-}
-
-func viewportBounds(selected int, total int, visible int) (int, int) {
-	if total <= visible {
-		return 0, total
-	}
-	if visible <= 0 {
-		return 0, total
-	}
-	start := selected - visible/2
-	if start < 0 {
-		start = 0
-	}
-	end := start + visible
-	if end > total {
-		end = total
-		start = end - visible
-		if start < 0 {
-			start = 0
-		}
-	}
-	return start, end
 }
 
 func pickerItems(options []pickerOption) []components.Item {

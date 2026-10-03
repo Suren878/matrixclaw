@@ -11,7 +11,7 @@ func (m *model) renderProviderList() string {
 	if m.cursor > 0 {
 		selectedRow = selectedEntryRow(rows, m.cursor)
 	}
-	start, end := viewportBounds(selectedRow, len(rows), m.providerViewportHeight())
+	start, end := components.ViewportBounds(selectedRow, len(rows), m.providerViewportHeight())
 	topSelected := 0
 	selected := -1
 	if m.cursor > 0 {
@@ -75,7 +75,7 @@ func (m *model) renderProviderModelList() string {
 	if selectedRow < 0 {
 		selectedRow = 0
 	}
-	start, end := viewportBounds(selectedRow, len(rows), m.providerModelViewportHeight())
+	start, end := components.ViewportBounds(selectedRow, len(rows), m.providerModelViewportHeight())
 	card := components.RenderSearchListCard(m.commandFrame(), components.SearchListData{
 		Title:             "Models",
 		SearchValue:       m.filterInput.View(),

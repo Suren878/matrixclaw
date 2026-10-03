@@ -57,25 +57,6 @@ func firstField(value string) string {
 	return fields[0]
 }
 
-func firstNonEmptyTrimmed(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
-}
-
-func nonEmptyStrings(values ...string) []string {
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			out = append(out, trimmed)
-		}
-	}
-	return out
-}
-
 // customProviderID turns a custom provider's name into its id.
 func customProviderID(name string) string {
 	var out []rune

@@ -12,6 +12,7 @@ import (
 	"github.com/clipperhouse/uax29/v2/words"
 
 	"github.com/Suren878/matrixclaw/clients/terminal/ui/surface/chat"
+	"github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
 	"github.com/Suren878/matrixclaw/clients/terminal/ui/surface/list"
 )
 
@@ -33,7 +34,7 @@ type DelayedClickMsg struct {
 // HandleViewportMouse handles mouse input in chat-local coordinates.
 func (m *Chat) HandleViewportMouse(msg tea.MouseMsg, x, y int) (bool, tea.Cmd) {
 	switch mouse := msg.Mouse(); {
-	case isWheelMouse(msg):
+	case common.IsWheelMouse(msg):
 		if y < 0 || y >= m.Height() {
 			return false, nil
 		}
@@ -60,7 +61,7 @@ func (m *Chat) HandleViewportMouse(msg tea.MouseMsg, x, y int) (bool, tea.Cmd) {
 			return false, nil
 		}
 		return m.HandleMouseDown(x, y)
-	case isMouseMotion(msg):
+	case common.IsMouseMotion(msg):
 		if y <= 0 {
 			cmd := m.scrollByAndKeepSelection(-1, func() {
 				m.SelectPrev()
@@ -76,7 +77,7 @@ func (m *Chat) HandleViewportMouse(msg tea.MouseMsg, x, y int) (bool, tea.Cmd) {
 			return true, cmd
 		}
 		return m.HandleMouseDrag(x, y), nil
-	case isMouseRelease(msg):
+	case common.IsMouseRelease(msg):
 		return m.HandleMouseUp(x, y), nil
 	default:
 		return false, nil
@@ -465,26 +466,7 @@ func abs(x int) int {
 	return x
 }
 
-func isWheelMouse(msg tea.MouseMsg) bool {
-	switch msg.Mouse().Button {
-	case tea.MouseWheelUp, tea.MouseWheelDown, tea.MouseWheelLeft, tea.MouseWheelRight:
-		return true
-	default:
-		return false
-	}
-}
-
 func isMouseClick(msg tea.MouseMsg) bool {
 	_, ok := msg.(tea.MouseClickMsg)
-	return ok
-}
-
-func isMouseMotion(msg tea.MouseMsg) bool {
-	_, ok := msg.(tea.MouseMotionMsg)
-	return ok
-}
-
-func isMouseRelease(msg tea.MouseMsg) bool {
-	_, ok := msg.(tea.MouseReleaseMsg)
 	return ok
 }

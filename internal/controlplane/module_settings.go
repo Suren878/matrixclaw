@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/modules"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 // Module settings screens are drawn from the daemon's settings items:
@@ -46,14 +47,14 @@ func (d *Dispatcher) moduleSettingsPage(ctx context.Context, moduleID string, pa
 // settingsPage is the page at path (nil: the module's), one row per item.
 func (d *Dispatcher) settingsPage(moduleID string, settings modules.Settings, path []string, message string) Result {
 	title, items := settings.Status.Title, settings.Items
-	meta := strings.Join(nonEmptyStrings(message, settings.Status.State, settings.Status.Detail), "\n")
+	meta := strings.Join(textutil.NonBlank(message, settings.Status.State, settings.Status.Detail), "\n")
 	back := modulesCommand()
 	if len(path) > 0 {
 		page, ok := modules.Find(settings.Items, path)
 		if !ok || page.Kind != modules.ItemPage {
 			return d.settingsPage(moduleID, settings, nil, message)
 		}
-		title, items, meta = page.Label, page.Items, strings.Join(nonEmptyStrings(message, page.Display), "\n")
+		title, items, meta = page.Label, page.Items, strings.Join(textutil.NonBlank(message, page.Display), "\n")
 		back = settingsOpenCommand(moduleID, path[:len(path)-1])
 	}
 	picker := NewPickerData(PickerModule, title).Command(settingsOpenCommand(moduleID, path)).Meta(meta).Back(back)
@@ -159,7 +160,7 @@ func (d *Dispatcher) openSetting(moduleID string, settings modules.Settings, pat
 			placeholder = item.Display
 		}
 		return Result{Handled: true, Prompt: &PromptData{
-			Title:               strings.Join(nonEmptyStrings(message, item.Label), "\n"),
+			Title:               strings.Join(textutil.NonBlank(message, item.Label), "\n"),
 			Placeholder:         placeholder + " · - to clear",
 			Value:               item.Value,
 			SubmitCommandPrefix: settingsCommand(moduleID, "set", path, "") + " ",

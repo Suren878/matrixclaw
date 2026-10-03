@@ -1,5 +1,7 @@
 package components
 
+import "github.com/Suren878/matrixclaw/internal/textutil"
+
 type InfoData struct {
 	Title          string
 	Meta           string
@@ -11,7 +13,7 @@ type InfoData struct {
 }
 
 func RenderInfoCard(frame Frame, data InfoData) string {
-	help := firstNonEmpty(data.Help, "enter/esc back")
+	help := textutil.FirstNonEmpty(data.Help, "enter/esc back")
 	frame = frame.WithInnerWidth(0)
 	return frame.RenderCard(FrameData{
 		Title: data.Title,

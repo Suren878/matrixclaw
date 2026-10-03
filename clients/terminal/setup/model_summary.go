@@ -9,15 +9,16 @@ import (
 
 	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	"github.com/Suren878/matrixclaw/internal/setup"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 func (m *model) renderSummary() string {
 	summary := m.summary()
 	items := []components.Item{
-		summaryItem("Active provider", fmt.Sprintf("%s (%s)", nonEmpty(summary.Provider.Name, "Not configured"), nonEmpty(summary.Provider.Model, "no model"))),
-		summaryItem(providerAuthSummaryLabel(summary.Provider.ID), nonEmpty(summary.Provider.APIKeyPreview, "Not configured")),
+		summaryItem("Active provider", fmt.Sprintf("%s (%s)", textutil.FirstNonEmpty(summary.Provider.Name, "Not configured"), textutil.FirstNonEmpty(summary.Provider.Model, "no model"))),
+		summaryItem(providerAuthSummaryLabel(summary.Provider.ID), textutil.FirstNonEmpty(summary.Provider.APIKeyPreview, "Not configured")),
 		summaryItem("Configured providers", fmt.Sprintf("%d", len(m.cfg.Providers))),
-		summaryItem("Assistant", fmt.Sprintf("%s · %s", nonEmpty(summary.Assistant.Name, "matrixclaw"), summary.Assistant.Status)),
+		summaryItem("Assistant", fmt.Sprintf("%s · %s", textutil.FirstNonEmpty(summary.Assistant.Name, "matrixclaw"), summary.Assistant.Status)),
 		summaryItem("Daemon HTTP", m.cfg.Daemon.HTTPAddr),
 		summaryItem("SQLite", m.cfg.Daemon.DBPath),
 		summaryItem("Timezone", m.cfg.Daemon.Timezone),
@@ -36,11 +37,11 @@ func (m *model) renderSuccess() string {
 		{Title: "Setup complete.", Disabled: true},
 		components.Divider(""),
 		summaryItem("Config path", m.result.Path),
-		summaryItem("Active provider", fmt.Sprintf("%s (%s)", nonEmpty(summary.Provider.Name, "Not configured"), nonEmpty(summary.Provider.Model, "no model"))),
-		summaryItem("Assistant", fmt.Sprintf("%s · %s", nonEmpty(summary.Assistant.Name, "matrixclaw"), summary.Assistant.Status)),
-		summaryItem(providerAuthSummaryLabel(summary.Provider.ID), nonEmpty(summary.Provider.APIKeyPreview, "Not configured")),
+		summaryItem("Active provider", fmt.Sprintf("%s (%s)", textutil.FirstNonEmpty(summary.Provider.Name, "Not configured"), textutil.FirstNonEmpty(summary.Provider.Model, "no model"))),
+		summaryItem("Assistant", fmt.Sprintf("%s · %s", textutil.FirstNonEmpty(summary.Assistant.Name, "matrixclaw"), summary.Assistant.Status)),
+		summaryItem(providerAuthSummaryLabel(summary.Provider.ID), textutil.FirstNonEmpty(summary.Provider.APIKeyPreview, "Not configured")),
 		summaryItem("Configured providers", fmt.Sprintf("%d", len(m.result.Config.Providers))),
-		summaryItem("Daemon", fmt.Sprintf("%s · %s", summary.Daemon.Status, nonEmpty(summary.Daemon.RuntimeStatus, "Unknown"))),
+		summaryItem("Daemon", fmt.Sprintf("%s · %s", summary.Daemon.Status, textutil.FirstNonEmpty(summary.Daemon.RuntimeStatus, "Unknown"))),
 		summaryItem("Telegram", summary.Telegram.Status),
 	}
 	items = appendOptionalSummaryItem(items, "Telegram bot", func() string {
@@ -49,7 +50,7 @@ func (m *model) renderSuccess() string {
 		}
 		return "@" + summary.Telegram.Username
 	}())
-	items = appendOptionalSummaryItem(items, "Warning", firstNonEmpty(summary.Daemon.Warning, summary.Telegram.Warning))
+	items = appendOptionalSummaryItem(items, "Warning", textutil.FirstNonEmpty(summary.Daemon.Warning, summary.Telegram.Warning))
 	return m.renderInfoScreen("Setup Saved", "", items, "enter quit · q quit")
 }
 

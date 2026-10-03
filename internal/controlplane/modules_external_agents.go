@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 func (d *Dispatcher) handleExternalAgents(ctx context.Context, args string) (Result, error) {
@@ -219,7 +220,7 @@ func externalAgentPathInfo(agent core.ExternalAgentDescriptor) string {
 		return path
 	}
 	if !agent.Installed {
-		return firstNonEmptyTrimmed(agent.Detail, "codex binary not found")
+		return textutil.FirstNonEmpty(agent.Detail, "codex binary not found")
 	}
 	return "Default codex"
 }
@@ -249,9 +250,9 @@ func externalAgentTitle(agent core.ExternalAgentDescriptor) string {
 func externalAgentInfo(agent core.ExternalAgentDescriptor) string {
 	switch {
 	case !agent.Installed:
-		return firstNonEmptyTrimmed(agent.Detail, "Not installed")
+		return textutil.FirstNonEmpty(agent.Detail, "Not installed")
 	case agent.Enabled:
-		return "Enabled · " + firstNonEmptyTrimmed(agent.Version, agent.Mode, "external")
+		return "Enabled · " + textutil.FirstNonEmpty(agent.Version, agent.Mode, "external")
 	default:
 		return "Installed · disabled" + externalAgentVersionSuffix(agent)
 	}

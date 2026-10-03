@@ -158,7 +158,7 @@ func (d *DiffPreview) HandleMsg(msg tea.Msg) Action {
 			d.viewportDirty = true
 		}
 	case tea.MouseMsg:
-		if isWheelMouse(msg) {
+		if surfacecommon.IsWheelMouse(msg) {
 			mouse := msg.Mouse()
 			if d.hasStructuredDiff() {
 				switch mouse.Button {

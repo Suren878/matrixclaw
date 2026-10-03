@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/setup"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 const managedBrowserMCPServerID = "browser"
@@ -348,7 +349,7 @@ func mcpServerTitle(server setup.MCPServerConfig) string {
 }
 
 func mcpServerInfoText(server setup.MCPServerConfig) string {
-	return strings.Join(nonEmptyStrings(formatEnabled(server.Enabled), server.Transport, mcpServerTarget(server)), " · ")
+	return strings.Join(textutil.NonBlank(formatEnabled(server.Enabled), server.Transport, mcpServerTarget(server)), " · ")
 }
 
 func mcpServerTarget(server setup.MCPServerConfig) string {

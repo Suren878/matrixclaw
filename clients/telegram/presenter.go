@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/controlplane"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 type commandPresentation struct {
@@ -23,7 +24,7 @@ func presentCommandResult(result controlplane.Result, page int) commandPresentat
 	case result.Form != nil:
 		text, markup = formText(*result.Form), formKeyboard(*result.Form)
 	case result.Prompt != nil:
-		text = firstNonEmpty(result.Prompt.Title, "Send the new value.") + "\n/close to close"
+		text = textutil.FirstNonEmpty(result.Prompt.Title, "Send the new value.") + "\n/close to close"
 	case result.TextEdit != nil:
 		text = strings.TrimSpace(result.TextEdit.Value)
 	case result.Confirm != nil:
@@ -93,7 +94,7 @@ func slicesIndexSelected(items []controlplane.PickerItem) int {
 // pickerItemLabel is a row's button text: a marker for its kind or role, the
 // title and its info, and ✅ when it is selected.
 func pickerItemLabel(kind controlplane.PickerKind, item controlplane.PickerItem) string {
-	label := firstNonEmpty(item.Title, item.ID)
+	label := textutil.FirstNonEmpty(item.Title, item.ID)
 	if info := strings.TrimSpace(item.Info); info != "" {
 		label += " · " + info
 	}
@@ -130,10 +131,10 @@ func pickerItemPrefix(kind controlplane.PickerKind, item controlplane.PickerItem
 }
 
 func formText(form controlplane.FormData) string {
-	lines := []string{firstNonEmpty(form.Title, "Form")}
+	lines := []string{textutil.FirstNonEmpty(form.Title, "Form")}
 	for _, field := range form.Fields {
 		if label := strings.TrimSpace(field.Label); label != "" {
-			lines = append(lines, label+": "+firstNonEmpty(field.Value, "Empty"))
+			lines = append(lines, label+": "+textutil.FirstNonEmpty(field.Value, "Empty"))
 		}
 	}
 	return strings.Join(lines, "\n")

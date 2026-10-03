@@ -6,6 +6,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
 	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
 )
 
@@ -142,7 +143,7 @@ func (m *appModel) handleMouse(msg tea.MouseMsg) tea.Cmd {
 		return nil
 	}
 
-	if !isMouseRelease(msg) && !isMouseMotion(msg) && (mouse.Y < bodyTop || mouse.Y >= bodyBottom) {
+	if !common.IsMouseRelease(msg) && !common.IsMouseMotion(msg) && (mouse.Y < bodyTop || mouse.Y >= bodyBottom) {
 		return nil
 	}
 
@@ -152,14 +153,4 @@ func (m *appModel) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	}
 	focusCmd := m.setFocus(appFocusChat)
 	return tea.Batch(focusCmd, cmd)
-}
-
-func isMouseMotion(msg tea.MouseMsg) bool {
-	_, ok := msg.(tea.MouseMotionMsg)
-	return ok
-}
-
-func isMouseRelease(msg tea.MouseMsg) bool {
-	_, ok := msg.(tea.MouseReleaseMsg)
-	return ok
 }

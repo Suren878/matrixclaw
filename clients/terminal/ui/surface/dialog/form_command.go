@@ -9,6 +9,7 @@ import (
 	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 const FormCommandID = "form_command"
@@ -122,7 +123,7 @@ func (d *FormCommand) items() []components.Item {
 
 func (d *FormCommand) buttons() []components.ButtonSpec {
 	return []components.ButtonSpec{
-		{Label: firstNonEmptyTrimmed(d.data.SubmitLabel, "Save"), Role: components.RoleSubmit},
-		{Label: firstNonEmptyTrimmed(d.data.CancelLabel, "Close"), Role: components.RoleBack},
+		{Label: textutil.FirstNonEmpty(d.data.SubmitLabel, "Save"), Role: components.RoleSubmit},
+		{Label: textutil.FirstNonEmpty(d.data.CancelLabel, "Close"), Role: components.RoleBack},
 	}
 }

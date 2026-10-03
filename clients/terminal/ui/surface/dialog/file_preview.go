@@ -112,7 +112,7 @@ func (p *FilePreview) HandleMsg(msg tea.Msg) Action {
 			p.viewport, _ = p.viewport.Update(msg)
 		}
 	case tea.MouseMsg:
-		if isWheelMouse(msg) {
+		if surfacecommon.IsWheelMouse(msg) {
 			p.viewport, _ = p.viewport.Update(msg)
 		}
 	}

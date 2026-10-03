@@ -9,6 +9,7 @@ import (
 	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 const ConfirmCommandID = "confirm_command"
@@ -65,8 +66,8 @@ func (d *ConfirmCommand) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 	}
 	view := components.RenderConfirmCard(components.NewFrame(area.Dx(), area.Dy()), components.ConfirmData{
 		Message:       message,
-		ConfirmLabel:  firstNonEmptyTrimmed(d.data.ConfirmLabel, "Confirm"),
-		CancelLabel:   firstNonEmptyTrimmed(d.data.CancelLabel, "Close"),
+		ConfirmLabel:  textutil.FirstNonEmpty(d.data.ConfirmLabel, "Confirm"),
+		CancelLabel:   textutil.FirstNonEmpty(d.data.CancelLabel, "Close"),
 		Selected:      d.state.Selected,
 		ConfirmDanger: d.data.ConfirmDanger,
 		CancelDanger:  d.data.CancelDanger,
@@ -85,13 +86,4 @@ func (d *ConfirmCommand) StartLoading() tea.Cmd {
 func (d *ConfirmCommand) StopLoading() {
 	d.loading = false
 	d.frame = 0
-}
-
-func firstNonEmptyTrimmed(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
 }

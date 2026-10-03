@@ -7,6 +7,7 @@ import (
 	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 type State struct {
@@ -62,9 +63,9 @@ func PickerEntries(picker controlplane.PickerData) []surfacedialog.PickerEntry {
 		}
 		entries = append(entries, surfacedialog.PickerEntry{
 			ID:       item.ID,
-			Title:    firstNonEmpty(item.Title, item.ID),
+			Title:    textutil.FirstNonEmpty(item.Title, item.ID),
 			Status:   strings.TrimSpace(item.Info),
-			Search:   firstNonEmpty(item.Search, item.Title+" "+item.Info),
+			Search:   textutil.FirstNonEmpty(item.Search, item.Title+" "+item.Info),
 			Role:     components.RoleNormal,
 			Tone:     tone,
 			Selected: item.Selected || item.Focused,
@@ -87,7 +88,7 @@ func PickerEntries(picker controlplane.PickerData) []surfacedialog.PickerEntry {
 // PickerCloseAction is what dismissing the picker does: go back, run its
 // close command, or just close.
 func PickerCloseAction(picker controlplane.PickerData) surfacedialog.Action {
-	if command := firstNonEmpty(picker.Back, picker.Close); command != "" {
+	if command := textutil.FirstNonEmpty(picker.Back, picker.Close); command != "" {
 		return surfacedialog.ActionRunControlplaneCommand{Command: command}
 	}
 	return surfacedialog.ActionClose{}
@@ -105,13 +106,4 @@ func PickerLegend(kind controlplane.PickerKind) string {
 	default:
 		return "enter select · esc back"
 	}
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			return value
-		}
-	}
-	return ""
 }

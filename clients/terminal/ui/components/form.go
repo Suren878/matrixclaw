@@ -1,6 +1,10 @@
 package components
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
+)
 
 type FormData struct {
 	Title      string
@@ -14,7 +18,7 @@ type FormData struct {
 }
 
 func RenderFormCard(frame Frame, data FormData) string {
-	help := firstNonEmpty(data.Help, "enter select · ↑/↓ move · ←/→ action · esc back")
+	help := textutil.FirstNonEmpty(data.Help, "enter select · ↑/↓ move · ←/→ action · esc back")
 	frame = frame.WithInnerWidth(0)
 	styles := frame.styles()
 	fieldFocus := -1

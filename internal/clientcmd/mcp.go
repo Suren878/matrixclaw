@@ -10,6 +10,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/mcp"
 	"github.com/Suren878/matrixclaw/internal/setup"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
@@ -121,7 +122,7 @@ func (r *daemonToolRuntime) Execute(ctx context.Context, toolID string, call too
 	result, err := r.client.ExecuteTool(ctx, core.ExecuteToolInput{
 		SessionID:  r.sessionID,
 		ToolName:   toolID,
-		WorkingDir: firstNonEmptyTrimmed(call.WorkingDir, r.workingDir),
+		WorkingDir: textutil.FirstNonEmpty(call.WorkingDir, r.workingDir),
 		Args:       call.Args,
 	})
 	if err != nil {

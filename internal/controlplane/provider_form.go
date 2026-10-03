@@ -14,6 +14,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/setup"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 // providerForm is an open provider form: the provider as saved (or a new
@@ -113,7 +114,7 @@ func (f providerForm) baseURL() string {
 }
 
 func (f providerForm) model() string {
-	return pendingOr(f.Update.Model, firstNonEmptyTrimmed(f.Provider.Model, f.Provider.DefaultModel))
+	return pendingOr(f.Update.Model, textutil.FirstNonEmpty(f.Provider.Model, f.Provider.DefaultModel))
 }
 
 func (f providerForm) capabilities() providers.ModelCapabilitySet {
@@ -146,7 +147,7 @@ func (f providerForm) modelNeedsKey() bool {
 
 func (f providerForm) title() string {
 	if f.Provider.ID != "" {
-		return "Edit " + firstNonEmptyTrimmed(f.Provider.Name, f.Provider.ID)
+		return "Edit " + textutil.FirstNonEmpty(f.Provider.Name, f.Provider.ID)
 	}
 	if f.Provider.Type == providers.TypeAnthropic {
 		return "Custom Anthropic-Compatible"
@@ -228,7 +229,7 @@ func (f providerForm) fields() []providerFormField {
 		fields = append(fields, providerFormField{id: "reasoning", label: "Reasoning effort", value: f.reasoningEffort()})
 	}
 	if capabilities.ToolCalling {
-		fields = append(fields, providerFormField{id: "tools", label: "Tool use", value: toolUseLabel(f.toolUseMode())})
+		fields = append(fields, providerFormField{id: "tools", label: "Tool use", value: f.toolUseMode().Label()})
 	}
 	return fields
 }
@@ -240,13 +241,6 @@ func (f providerForm) missing() string {
 		}
 	}
 	return ""
-}
-
-func toolUseLabel(mode providers.ToolUseMode) string {
-	if providers.NormalizeToolUseMode(mode) == providers.ToolUseDisabled {
-		return "Disabled"
-	}
-	return "Enabled"
 }
 
 func providerFormCommand(formID string, parts ...string) string {
@@ -348,7 +342,7 @@ func (d *Dispatcher) providerFormField(ctx context.Context, formID string, form 
 		current := providers.NormalizeToolUseMode(form.toolUseMode())
 		items := make([]PickerItem, 0, 2)
 		for _, mode := range []providers.ToolUseMode{providers.ToolUseNative, providers.ToolUseDisabled} {
-			items = append(items, PickerItem{ID: string(mode), Title: toolUseLabel(mode), Focused: mode == current, Command: set(string(mode))})
+			items = append(items, PickerItem{ID: string(mode), Title: mode.Label(), Focused: mode == current, Command: set(string(mode))})
 		}
 		return picker("tool mode", items), nil
 	}
@@ -359,11 +353,11 @@ func providerFieldPrompt(formID string, form providerForm, field string, placeho
 	title, value := field, ""
 	switch field {
 	case "name":
-		title, value, placeholder = "provider name", form.name(), firstNonEmptyTrimmed(placeholder, "Local AI")
+		title, value, placeholder = "provider name", form.name(), textutil.FirstNonEmpty(placeholder, "Local AI")
 	case "base":
-		title, value, placeholder = "base URL", form.baseURL(), firstNonEmptyTrimmed(placeholder, "https://api.example.com/v1")
+		title, value, placeholder = "base URL", form.baseURL(), textutil.FirstNonEmpty(placeholder, "https://api.example.com/v1")
 	case "model":
-		value, placeholder = form.model(), firstNonEmptyTrimmed(placeholder, "model-id")
+		value, placeholder = form.model(), textutil.FirstNonEmpty(placeholder, "model-id")
 	case "key":
 		title, placeholder = "API key", "API key"
 		if form.hasKey() {
