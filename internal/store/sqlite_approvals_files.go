@@ -100,37 +100,22 @@ func (s *SQLiteStore) ListRunApprovals(ctx context.Context, sessionID string, ru
 }
 
 func (s *SQLiteStore) queryApprovals(ctx context.Context, query string, args ...any) ([]core.Approval, error) {
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("store: list approvals: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
+	return queryAll(ctx, s.db, "approvals", scanApproval, query, args...)
+}
 
-	var approvals []core.Approval
-	for rows.Next() {
-		var approval core.Approval
-		var rawState string
-		var paramsJSON string
-		var suggestionJSON string
-		var requestedAt string
-		var decidedAt sql.NullString
-		if err := rows.Scan(&approval.ID, &approval.SessionID, &approval.RunID, &approval.TaskID, &approval.AgentName, &approval.ToolCallRef, &approval.ToolName, &approval.Description, &paramsJSON, &approval.Path, &rawState, &approval.Reason, &suggestionJSON, &requestedAt, &decidedAt); err != nil {
-			return nil, fmt.Errorf("store: scan approval: %w", err)
-		}
-		approval.State = core.ApprovalState(rawState)
-		approval.Params = json.RawMessage(paramsJSON)
-		approval.Suggestion = decodeSuggestion(suggestionJSON)
-		approval.RequestedAt = mustParseTime(requestedAt)
-		if decidedAt.Valid {
-			parsed := mustParseTime(decidedAt.String)
-			approval.DecidedAt = &parsed
-		}
-		approvals = append(approvals, approval)
+func scanApproval(row rowScanner) (core.Approval, error) {
+	var approval core.Approval
+	var rawState, paramsJSON, suggestionJSON, requestedAt string
+	var decidedAt sql.NullString
+	if err := row.Scan(&approval.ID, &approval.SessionID, &approval.RunID, &approval.TaskID, &approval.AgentName, &approval.ToolCallRef, &approval.ToolName, &approval.Description, &paramsJSON, &approval.Path, &rawState, &approval.Reason, &suggestionJSON, &requestedAt, &decidedAt); err != nil {
+		return core.Approval{}, err
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: iterate approvals: %w", err)
-	}
-	return approvals, nil
+	approval.State = core.ApprovalState(rawState)
+	approval.Params = json.RawMessage(paramsJSON)
+	approval.Suggestion = decodeSuggestion(suggestionJSON)
+	approval.RequestedAt = mustParseTime(requestedAt)
+	approval.DecidedAt = parseNullableTime(decidedAt)
+	return approval, nil
 }
 
 // decodeSuggestion reads a stored suggestion; an unreadable one offers none.

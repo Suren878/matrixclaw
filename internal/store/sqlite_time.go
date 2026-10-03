@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"strconv"
 	"strings"
 	"time"
@@ -34,4 +35,12 @@ func mustParseTime(value string) time.Time {
 		return time.Time{}
 	}
 	return parsed
+}
+
+func parseNullableTime(value sql.NullString) *time.Time {
+	if !value.Valid || value.String == "" {
+		return nil
+	}
+	parsed := mustParseTime(value.String)
+	return &parsed
 }

@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "embed"
 )
@@ -250,29 +251,8 @@ func ensureColumn(db *sql.DB, table string, column string, alterSQL string) erro
 }
 
 func hasColumn(db *sql.DB, table string, column string) (bool, error) {
-	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
-	if err != nil {
-		return false, fmt.Errorf("store: inspect %s schema: %w", table, err)
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var cid int
-		var name string
-		var columnType string
-		var notNull int
-		var defaultValue any
-		var primaryKey int
-		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-			return false, fmt.Errorf("store: scan %s schema: %w", table, err)
-		}
-		if name == column {
-			return true, nil
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return false, fmt.Errorf("store: iterate %s schema: %w", table, err)
-	}
-	return false, nil
+	columns, err := tableColumns(db, table)
+	return columns[strings.ToLower(column)], err
 }
 
 // migrateApprovalTasks links each subagent's approval to its task. The copies

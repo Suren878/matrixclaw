@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -77,7 +78,10 @@ func (s *SQLiteStore) GetMessage(ctx context.Context, messageID string) (transcr
 	if errors.Is(err, sql.ErrNoRows) {
 		return transcript.Message{}, core.ErrNotFound
 	}
-	return message, err
+	if err != nil {
+		return transcript.Message{}, fmt.Errorf("store: get message: %w", err)
+	}
+	return message, nil
 }
 
 // HasToolResult reports whether a tool message of the session answers toolCallID.
@@ -113,7 +117,7 @@ ORDER BY seq DESC`
 	if err != nil {
 		return nil, err
 	}
-	reverseMessages(messages)
+	slices.Reverse(messages)
 	return messages, nil
 }
 
@@ -150,28 +154,14 @@ LIMIT 1`, sessionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return transcript.Message{}, core.ErrNotFound
 	}
-	return message, err
+	if err != nil {
+		return transcript.Message{}, fmt.Errorf("store: get latest compaction: %w", err)
+	}
+	return message, nil
 }
 
 func (s *SQLiteStore) queryMessages(ctx context.Context, query string, args ...any) ([]transcript.Message, error) {
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("store: list messages: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var messages []transcript.Message
-	for rows.Next() {
-		message, err := scanMessage(rows)
-		if err != nil {
-			return nil, err
-		}
-		messages = append(messages, message)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: iterate messages: %w", err)
-	}
-	return messages, nil
+	return queryAll(ctx, s.db, "messages", scanMessage, query, args...)
 }
 
 func (s *SQLiteStore) GetRun(ctx context.Context, runID string) (core.Run, error) {
@@ -242,24 +232,11 @@ ORDER BY (SELECT seq FROM messages WHERE messages.id = runs.user_message_id) DES
 		query += " LIMIT ?"
 		args = append(args, limit)
 	}
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("store: list session runs: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	var runs []core.Run
-	for rows.Next() {
-		run, err := scanRun(rows)
-		if err != nil {
-			return nil, fmt.Errorf("store: scan session run: %w", err)
-		}
-		runs = append(runs, run)
-	}
-	return runs, rows.Err()
+	return queryAll(ctx, s.db, "session runs", scanRun, query, args...)
 }
 
 func (s *SQLiteStore) ListActiveRuns(ctx context.Context) ([]core.Run, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	return queryAll(ctx, s.db, "active runs", scanRun, `
 SELECT `+runColumns+`
 FROM runs
 WHERE status IN (?, ?, ?, ?)
@@ -269,23 +246,6 @@ ORDER BY started_at ASC, updated_at ASC`,
 		string(core.RunStatusWaitingApproval),
 		string(core.RunStatusWaitingEvents),
 	)
-	if err != nil {
-		return nil, fmt.Errorf("store: list active runs: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	runs := []core.Run{}
-	for rows.Next() {
-		run, err := scanRun(rows)
-		if err != nil {
-			return nil, fmt.Errorf("store: scan active run: %w", err)
-		}
-		runs = append(runs, run)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: iterate active runs: %w", err)
-	}
-	return runs, nil
 }
 
 // SealRun writes the run together with the reply it ends or parks with, if
@@ -363,30 +323,12 @@ func (s *SQLiteStore) AcceptMessage(ctx context.Context, message transcript.Mess
 	return nil
 }
 
-type sqlExecer interface {
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-}
-
-type messageScanner interface {
-	Scan(dest ...any) error
-}
-
-type runScanner interface {
-	Scan(dest ...any) error
-}
-
 const messageColumns = `id, session_id, run_id, role, origin, content, parts_json, model, provider, created_at, updated_at, seq, compaction_json`
 
 const runColumns = `id, session_id, user_message_id, client, external_key, client_capabilities_json, status, error, stop_reason, continues_run_id, trigger_kind, started_at, finished_at, updated_at`
 
-// sqlRowQueryer is satisfied by *sql.DB and *sql.Tx.
-type sqlRowQueryer interface {
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-}
-
 // insertMessage assigns the next database-wide seq in the same statement and returns it.
-func insertMessage(ctx context.Context, queryer sqlRowQueryer, message transcript.Message) (int64, error) {
+func insertMessage(ctx context.Context, queryer sqlExecer, message transcript.Message) (int64, error) {
 	var seq int64
 	err := queryer.QueryRowContext(ctx, `
 INSERT INTO messages(id, session_id, run_id, role, origin, content, parts_json, model, provider, created_at, updated_at, compaction_json, seq)
@@ -408,7 +350,7 @@ RETURNING seq`,
 	return seq, err
 }
 
-func scanMessage(scanner messageScanner) (transcript.Message, error) {
+func scanMessage(scanner rowScanner) (transcript.Message, error) {
 	var message transcript.Message
 	var role string
 	var origin string
@@ -419,7 +361,7 @@ func scanMessage(scanner messageScanner) (transcript.Message, error) {
 	var updatedAt string
 	var compactionJSON string
 	if err := scanner.Scan(&message.ID, &message.SessionID, &message.RunID, &role, &origin, &message.Content, &partsJSON, &model, &provider, &createdAt, &updatedAt, &message.Seq, &compactionJSON); err != nil {
-		return transcript.Message{}, fmt.Errorf("store: scan message: %w", err)
+		return transcript.Message{}, err
 	}
 	message.Role = transcript.MessageRole(role)
 	message.Origin = transcript.Origin(origin)
@@ -457,7 +399,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	return err
 }
 
-func scanRun(scanner runScanner) (core.Run, error) {
+func scanRun(scanner rowScanner) (core.Run, error) {
 	var run core.Run
 	var status string
 	var stopReason string
@@ -474,10 +416,7 @@ func scanRun(scanner runScanner) (core.Run, error) {
 	run.StopReason = agent.StopReason(stopReason)
 	run.Trigger = core.RunTrigger(trigger)
 	run.StartedAt = mustParseTime(startedAt)
-	if finishedAt.Valid {
-		parsed := mustParseTime(finishedAt.String)
-		run.FinishedAt = &parsed
-	}
+	run.FinishedAt = parseNullableTime(finishedAt)
 	run.UpdatedAt = mustParseTime(updatedAt)
 	return run, nil
 }
@@ -532,12 +471,6 @@ func messageUpdatedAt(message transcript.Message) time.Time {
 		return message.UpdatedAt
 	}
 	return message.CreatedAt
-}
-
-func reverseMessages(messages []transcript.Message) {
-	for left, right := 0, len(messages)-1; left < right; left, right = left+1, right-1 {
-		messages[left], messages[right] = messages[right], messages[left]
-	}
 }
 
 func marshalCompaction(compaction *transcript.Compaction) string {

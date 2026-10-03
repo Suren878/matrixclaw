@@ -77,25 +77,15 @@ WHERE session_id IS NULL`
 		}
 	}
 	query += ` ORDER BY created_at, id`
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("store: list permission rules: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	var rules []permission.Rule
-	for rows.Next() {
+	return queryAll(ctx, s.db, "permission rules", func(row rowScanner) (permission.Rule, error) {
 		var rule permission.Rule
 		var effect, scope, createdAt string
-		if err := rows.Scan(&rule.ID, &rule.Tool, &rule.Pattern, &effect, &scope, &rule.SessionID, &createdAt); err != nil {
-			return nil, fmt.Errorf("store: scan permission rule: %w", err)
+		if err := row.Scan(&rule.ID, &rule.Tool, &rule.Pattern, &effect, &scope, &rule.SessionID, &createdAt); err != nil {
+			return permission.Rule{}, err
 		}
 		rule.Effect = permission.Effect(effect)
 		rule.Scope = permission.Scope(scope)
 		rule.CreatedAt = mustParseTime(createdAt)
-		rules = append(rules, rule)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: iterate permission rules: %w", err)
-	}
-	return rules, nil
+		return rule, nil
+	}, query, args...)
 }

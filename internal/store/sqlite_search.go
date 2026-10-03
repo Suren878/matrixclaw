@@ -32,27 +32,15 @@ WHERE message_fts MATCH ?`
 	}
 	sqlQuery += "\nORDER BY rank\nLIMIT ?"
 	args = append(args, limit)
-
-	rows, err := s.db.QueryContext(ctx, sqlQuery, args...)
-	if err != nil {
-		return nil, fmt.Errorf("store: search messages: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var results []core.SearchResult
-	for rows.Next() {
+	return queryAll(ctx, s.db, "search results", func(row rowScanner) (core.SearchResult, error) {
 		var result core.SearchResult
 		var createdAt string
-		if err := rows.Scan(&result.MessageID, &result.SessionID, &result.Role, &result.Snippet, &result.Provider, &result.Model, &result.Rank, &createdAt); err != nil {
-			return nil, fmt.Errorf("store: scan search result: %w", err)
+		if err := row.Scan(&result.MessageID, &result.SessionID, &result.Role, &result.Snippet, &result.Provider, &result.Model, &result.Rank, &createdAt); err != nil {
+			return core.SearchResult{}, err
 		}
 		result.CreatedAt = mustParseTime(createdAt)
-		results = append(results, result)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: iterate search results: %w", err)
-	}
-	return results, nil
+		return result, nil
+	}, sqlQuery, args...)
 }
 
 // upsertMessageSearch replaces the search row of a stored message; rows are

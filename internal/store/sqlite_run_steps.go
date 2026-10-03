@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -30,34 +31,25 @@ VALUES(?, (SELECT COALESCE(MAX(step), 0) + 1 FROM run_steps WHERE run_id = ?), ?
 }
 
 func (s *SQLiteStore) ListRunSteps(ctx context.Context, runID string) ([]core.RunStep, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	return queryAll(ctx, s.db, "run steps", scanRunStep, `
 SELECT run_id, step, model, provider, prompt_tokens, cache_read_tokens, cache_write_tokens,
        output_tokens, reasoning_tokens, stop_reason, latency_ms, tool_calls, created_at
 FROM run_steps
 WHERE run_id = ?
 ORDER BY step`, strings.TrimSpace(runID))
-	if err != nil {
-		return nil, fmt.Errorf("store: list run steps: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
+}
 
-	var steps []core.RunStep
-	for rows.Next() {
-		var step core.RunStep
-		var createdAt string
-		if err := rows.Scan(&step.RunID, &step.Step, &step.Model, &step.Provider,
-			&step.PromptTokens, &step.CacheReadTokens, &step.CacheWriteTokens,
-			&step.OutputTokens, &step.ReasoningTokens, &step.StopReason,
-			&step.LatencyMillis, &step.ToolCalls, &createdAt); err != nil {
-			return nil, fmt.Errorf("store: scan run step: %w", err)
-		}
-		step.CreatedAt = mustParseTime(createdAt)
-		steps = append(steps, step)
+func scanRunStep(row rowScanner) (core.RunStep, error) {
+	var step core.RunStep
+	var createdAt string
+	if err := row.Scan(&step.RunID, &step.Step, &step.Model, &step.Provider,
+		&step.PromptTokens, &step.CacheReadTokens, &step.CacheWriteTokens,
+		&step.OutputTokens, &step.ReasoningTokens, &step.StopReason,
+		&step.LatencyMillis, &step.ToolCalls, &createdAt); err != nil {
+		return core.RunStep{}, err
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: iterate run steps: %w", err)
-	}
-	return steps, nil
+	step.CreatedAt = mustParseTime(createdAt)
+	return step, nil
 }
 
 // ListUsageRecords sums run_steps per run, oldest run first; Limit keeps the latest runs.
@@ -88,29 +80,22 @@ JOIN runs r ON r.id = s.run_id`
 		query += "\nLIMIT ?"
 		args = append(args, filter.Limit)
 	}
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	records, err := queryAll(ctx, s.db, "usage records", scanUsageRecord, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("store: list usage records: %w", err)
+		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
-
-	var records []core.UsageRecord
-	for rows.Next() {
-		var record core.UsageRecord
-		var updatedAt string
-		if err := rows.Scan(&record.SessionID, &record.RunID, &record.Steps, &record.Provider, &record.Model,
-			&record.PromptTokens, &record.CacheReadTokens, &record.CacheWriteTokens,
-			&record.OutputTokens, &record.ReasoningTokens, &updatedAt); err != nil {
-			return nil, fmt.Errorf("store: scan usage record: %w", err)
-		}
-		record.UpdatedAt = mustParseTime(updatedAt)
-		records = append(records, record)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: iterate usage records: %w", err)
-	}
-	for left, right := 0, len(records)-1; left < right; left, right = left+1, right-1 {
-		records[left], records[right] = records[right], records[left]
-	}
+	slices.Reverse(records)
 	return records, nil
+}
+
+func scanUsageRecord(row rowScanner) (core.UsageRecord, error) {
+	var record core.UsageRecord
+	var updatedAt string
+	if err := row.Scan(&record.SessionID, &record.RunID, &record.Steps, &record.Provider, &record.Model,
+		&record.PromptTokens, &record.CacheReadTokens, &record.CacheWriteTokens,
+		&record.OutputTokens, &record.ReasoningTokens, &updatedAt); err != nil {
+		return core.UsageRecord{}, err
+	}
+	record.UpdatedAt = mustParseTime(updatedAt)
+	return record, nil
 }

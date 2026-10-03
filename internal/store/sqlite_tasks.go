@@ -59,7 +59,10 @@ func (s *SQLiteStore) GetTask(ctx context.Context, taskID string) (core.Task, er
 	if errors.Is(err, sql.ErrNoRows) {
 		return core.Task{}, core.ErrNotFound
 	}
-	return task, err
+	if err != nil {
+		return core.Task{}, fmt.Errorf("store: get task: %w", err)
+	}
+	return task, nil
 }
 
 // ListTasks lists the tasks the filter selects, newest first.
@@ -95,23 +98,7 @@ func (s *SQLiteStore) ListTasks(ctx context.Context, filter core.TaskFilter) ([]
 		query += " LIMIT ?"
 		args = append(args, filter.Limit)
 	}
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("store: list tasks: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	var tasks []core.Task
-	for rows.Next() {
-		task, err := scanTask(rows)
-		if err != nil {
-			return nil, err
-		}
-		tasks = append(tasks, task)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: iterate tasks: %w", err)
-	}
-	return tasks, nil
+	return queryAll(ctx, s.db, "tasks", scanTask, query, args...)
 }
 
 // FinishTask ends a task that has not ended and reports whether it did; a
@@ -147,11 +134,7 @@ func (s *SQLiteStore) SetTaskCursor(ctx context.Context, taskID string, cursor i
 	return nil
 }
 
-type taskScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanTask(scanner taskScanner) (core.Task, error) {
+func scanTask(scanner rowScanner) (core.Task, error) {
 	var task core.Task
 	var kind, status, isolation, startedAt, updatedAt string
 	var exitCode sql.NullInt64
@@ -161,10 +144,7 @@ func scanTask(scanner taskScanner) (core.Task, error) {
 		&task.PID, &task.PGID, &task.LeaderStart, &task.BootID, &task.OutputPath, &exitCode, &task.OutputCursor,
 		&task.ChildSessionID, &task.ChildRunID, &task.Summary, &task.Error,
 		&deliveredAt, &task.DeliveredRunID, &startedAt, &updatedAt, &finishedAt); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return core.Task{}, err
-		}
-		return core.Task{}, fmt.Errorf("store: scan task: %w", err)
+		return core.Task{}, err
 	}
 	task.Kind = core.TaskKind(kind)
 	task.Status = core.TaskStatus(status)
@@ -180,12 +160,4 @@ func scanTask(scanner taskScanner) (core.Task, error) {
 	task.DeliveredAt = parseNullableTime(deliveredAt)
 	task.FinishedAt = parseNullableTime(finishedAt)
 	return task, nil
-}
-
-func parseNullableTime(value sql.NullString) *time.Time {
-	if !value.Valid || value.String == "" {
-		return nil
-	}
-	parsed := mustParseTime(value.String)
-	return &parsed
 }

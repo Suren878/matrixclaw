@@ -91,24 +91,7 @@ WHERE status = ?`
 	query += `
 ORDER BY created_at ASC, id ASC`
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("store: list pending session inputs: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var inputs []core.SessionInput
-	for rows.Next() {
-		input, err := scanSessionInput(rows)
-		if err != nil {
-			return nil, err
-		}
-		inputs = append(inputs, input)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: iterate pending session inputs: %w", err)
-	}
-	return inputs, nil
+	return queryAll(ctx, s.db, "pending session inputs", scanSessionInput, query, args...)
 }
 
 // HasConsumedSessionInput reports whether the run took a message of the session.
@@ -150,7 +133,7 @@ LIMIT 1`,
 }
 
 func (s *SQLiteStore) ListPendingSteerInputs(ctx context.Context, sessionID string, runID string) ([]core.SessionInput, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	return queryAll(ctx, s.db, "pending steer inputs", scanSessionInput, `
 	SELECT `+sessionInputColumns+`
 FROM session_inputs
 WHERE session_id = ?
@@ -163,30 +146,9 @@ ORDER BY created_at ASC, id ASC`,
 		string(core.BusyInputModeSteer),
 		string(core.SessionInputStatusPending),
 	)
-	if err != nil {
-		return nil, fmt.Errorf("store: list pending steer inputs: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var inputs []core.SessionInput
-	for rows.Next() {
-		input, err := scanSessionInput(rows)
-		if err != nil {
-			return nil, err
-		}
-		inputs = append(inputs, input)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: iterate pending steer inputs: %w", err)
-	}
-	return inputs, nil
 }
 
-type sessionInputScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanSessionInput(scanner sessionInputScanner) (core.SessionInput, error) {
+func scanSessionInput(scanner rowScanner) (core.SessionInput, error) {
 	var input core.SessionInput
 	var mode string
 	var status string
@@ -227,10 +189,7 @@ func scanSessionInput(scanner sessionInputScanner) (core.SessionInput, error) {
 	}
 	input.CreatedAt = mustParseTime(createdAt)
 	input.UpdatedAt = mustParseTime(updatedAt)
-	if consumedAt.Valid && strings.TrimSpace(consumedAt.String) != "" {
-		parsed := mustParseTime(consumedAt.String)
-		input.ConsumedAt = &parsed
-	}
+	input.ConsumedAt = parseNullableTime(consumedAt)
 	return input, nil
 }
 

@@ -37,7 +37,10 @@ func (s *SQLiteStore) GetRunWakeup(ctx context.Context, runID string) (core.RunW
 	if errors.Is(err, sql.ErrNoRows) {
 		return core.RunWakeup{}, core.ErrNotFound
 	}
-	return wakeup, err
+	if err != nil {
+		return core.RunWakeup{}, fmt.Errorf("store: get run wakeup: %w", err)
+	}
+	return wakeup, nil
 }
 
 func (s *SQLiteStore) DeleteRunWakeup(ctx context.Context, runID string) error {
@@ -49,40 +52,20 @@ func (s *SQLiteStore) DeleteRunWakeup(ctx context.Context, runID string) error {
 
 // ListDueRunWakeups lists the wakeups due at at, earliest first.
 func (s *SQLiteStore) ListDueRunWakeups(ctx context.Context, at time.Time) ([]core.RunWakeup, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT run_id, session_id, wake_at, task_ids_json FROM run_wakeups WHERE wake_at <= ? ORDER BY wake_at ASC`, at.UnixMilli())
-	if err != nil {
-		return nil, fmt.Errorf("store: list due run wakeups: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	var wakeups []core.RunWakeup
-	for rows.Next() {
-		wakeup, err := scanRunWakeup(rows)
-		if err != nil {
-			return nil, err
-		}
-		wakeups = append(wakeups, wakeup)
-	}
-	return wakeups, rows.Err()
+	return queryAll(ctx, s.db, "due run wakeups", scanRunWakeup, `SELECT run_id, session_id, wake_at, task_ids_json FROM run_wakeups WHERE wake_at <= ? ORDER BY wake_at ASC`, at.UnixMilli())
 }
 
-type runWakeupScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanRunWakeup(scanner runWakeupScanner) (core.RunWakeup, error) {
+func scanRunWakeup(scanner rowScanner) (core.RunWakeup, error) {
 	var wakeup core.RunWakeup
 	var wakeAt int64
 	var taskIDs string
 	if err := scanner.Scan(&wakeup.RunID, &wakeup.SessionID, &wakeAt, &taskIDs); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return core.RunWakeup{}, err
-		}
-		return core.RunWakeup{}, fmt.Errorf("store: scan run wakeup: %w", err)
+		return core.RunWakeup{}, err
 	}
 	wakeup.WakeAt = time.UnixMilli(wakeAt).UTC()
 	if taskIDs != "" {
 		if err := json.Unmarshal([]byte(taskIDs), &wakeup.TaskIDs); err != nil {
-			return core.RunWakeup{}, fmt.Errorf("store: decode run wakeup tasks: %w", err)
+			return core.RunWakeup{}, fmt.Errorf("decode tasks: %w", err)
 		}
 	}
 	return wakeup, nil

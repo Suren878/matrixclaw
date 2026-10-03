@@ -74,7 +74,7 @@ WHERE id = ?`, strings.TrimSpace(id))
 		if errors.Is(err, sql.ErrNoRows) {
 			return core.MemoryEntry{}, core.ErrNotFound
 		}
-		return core.MemoryEntry{}, err
+		return core.MemoryEntry{}, fmt.Errorf("store: get memory: %w", err)
 	}
 	return entry, nil
 }
@@ -101,36 +101,16 @@ FROM memories`
 		query += " LIMIT ?"
 		args = append(args, filter.Limit)
 	}
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("store: list memories: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	entries := []core.MemoryEntry{}
-	for rows.Next() {
-		entry, err := scanMemory(rows)
-		if err != nil {
-			return nil, err
-		}
-		entries = append(entries, entry)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: iterate memories: %w", err)
-	}
-	return entries, nil
+	return queryAll(ctx, s.db, "memories", scanMemory, query, args...)
 }
 
-type memoryScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanMemory(scanner memoryScanner) (core.MemoryEntry, error) {
+func scanMemory(scanner rowScanner) (core.MemoryEntry, error) {
 	var entry core.MemoryEntry
 	var scope string
 	var createdAt string
 	var updatedAt string
 	if err := scanner.Scan(&entry.ID, &scope, &entry.Key, &entry.Content, &entry.WorkingDir, &createdAt, &updatedAt); err != nil {
-		return core.MemoryEntry{}, fmt.Errorf("store: scan memory: %w", err)
+		return core.MemoryEntry{}, err
 	}
 	entry.Scope = core.MemoryScope(scope)
 	entry.CreatedAt = mustParseTime(createdAt)

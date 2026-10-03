@@ -136,7 +136,7 @@ func indexUnsearchedMessages(db *sql.DB) error {
 	for _, seq := range pending {
 		message, err := scanMessage(tx.QueryRowContext(ctx, `SELECT `+messageColumns+` FROM messages WHERE seq = ?`, seq))
 		if err != nil {
-			return err
+			return fmt.Errorf("store: read message for search backfill: %w", err)
 		}
 		if err := upsertMessageSearch(ctx, tx, message); err != nil {
 			return err

@@ -90,25 +90,7 @@ FROM client_deliveries`
 		query += " LIMIT ?"
 		args = append(args, filter.Limit)
 	}
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("store: list client deliveries: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	deliveries := []core.ClientDelivery{}
-	for rows.Next() {
-		delivery, err := scanClientDelivery(rows)
-		if err != nil {
-			return nil, err
-		}
-		deliveries = append(deliveries, delivery)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: iterate client deliveries: %w", err)
-	}
-	return deliveries, nil
+	return queryAll(ctx, s.db, "client deliveries", scanClientDelivery, query, args...)
 }
 
 func (s *SQLiteStore) UpdateClientDelivery(ctx context.Context, delivery core.ClientDelivery) error {
@@ -133,11 +115,7 @@ WHERE id = ?`,
 	return nil
 }
 
-type clientDeliveryScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanClientDelivery(scanner clientDeliveryScanner) (core.ClientDelivery, error) {
+func scanClientDelivery(scanner rowScanner) (core.ClientDelivery, error) {
 	var delivery core.ClientDelivery
 	var status string
 	var address string
@@ -163,7 +141,7 @@ func scanClientDelivery(scanner clientDeliveryScanner) (core.ClientDelivery, err
 		&updatedAt,
 		&finishedAt,
 	); err != nil {
-		return core.ClientDelivery{}, fmt.Errorf("store: scan client delivery: %w", err)
+		return core.ClientDelivery{}, err
 	}
 	delivery.Status = core.ClientDeliveryStatus(status)
 	if address != "" {
@@ -174,9 +152,6 @@ func scanClientDelivery(scanner clientDeliveryScanner) (core.ClientDelivery, err
 	}
 	delivery.CreatedAt = mustParseTime(createdAt)
 	delivery.UpdatedAt = mustParseTime(updatedAt)
-	if finishedAt.Valid {
-		parsed := mustParseTime(finishedAt.String)
-		delivery.FinishedAt = &parsed
-	}
+	delivery.FinishedAt = parseNullableTime(finishedAt)
 	return delivery, nil
 }

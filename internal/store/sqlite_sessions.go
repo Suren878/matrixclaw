@@ -11,7 +11,7 @@ import (
 
 func (s *SQLiteStore) CreateSession(ctx context.Context, session core.Session) error {
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO sessions(id, title, kind, runtime_id, parent_session_id, hidden, working_dir, provider_id, model_id, permission_mode, status, created_at, updated_at)
+INSERT INTO sessions(`+sessionColumns+`)
 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		session.ID,
 		session.Title,
@@ -34,39 +34,18 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 }
 
 func (s *SQLiteStore) GetSession(ctx context.Context, sessionID string) (core.Session, error) {
-	var session core.Session
-	var kind string
-	var status string
-	var runtimeID string
-	var hidden int
-	var createdAt string
-	var updatedAt string
-	var permissionMode string
-	row := s.db.QueryRowContext(ctx, `
-SELECT id, title, kind, runtime_id, parent_session_id, hidden, working_dir, provider_id, model_id, permission_mode, status, created_at, updated_at
-FROM sessions
-WHERE id = ?`, sessionID)
-	if err := row.Scan(&session.ID, &session.Title, &kind, &runtimeID, &session.ParentSessionID, &hidden, &session.WorkingDir, &session.ProviderID, &session.ModelID, &permissionMode, &status, &createdAt, &updatedAt); err != nil {
+	session, err := scanSession(s.db.QueryRowContext(ctx, `SELECT `+sessionColumns+` FROM sessions WHERE id = ?`, sessionID))
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return core.Session{}, core.ErrNotFound
 		}
 		return core.Session{}, fmt.Errorf("store: get session: %w", err)
 	}
-
-	session.Kind = core.NormalizeSessionKind(core.SessionKind(kind))
-	session.RuntimeID = core.NormalizeSessionRuntime(core.SessionRuntime(runtimeID))
-	session.Hidden = hidden != 0
-	session.Status = core.SessionStatus(status)
-	session.PermissionMode = core.NormalizePermissionMode(permissionMode)
-	session.CreatedAt = mustParseTime(createdAt)
-	session.UpdatedAt = mustParseTime(updatedAt)
 	return session, nil
 }
 
 func (s *SQLiteStore) ListSessions(ctx context.Context, filter core.SessionListFilter) ([]core.Session, error) {
-	query := `
-SELECT id, title, kind, runtime_id, parent_session_id, hidden, working_dir, provider_id, model_id, permission_mode, status, created_at, updated_at
-FROM sessions`
+	query := `SELECT ` + sessionColumns + ` FROM sessions`
 	args := []any{}
 	if !filter.IncludeArchived {
 		query += ` WHERE status != ?`
@@ -81,39 +60,26 @@ FROM sessions`
 		query += ` hidden = 0`
 	}
 	query += ` ORDER BY updated_at DESC, created_at DESC`
+	return queryAll(ctx, s.db, "sessions", scanSession, query, args...)
+}
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("store: list sessions: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
+const sessionColumns = `id, title, kind, runtime_id, parent_session_id, hidden, working_dir, provider_id, model_id, permission_mode, status, created_at, updated_at`
 
-	var sessions []core.Session
-	for rows.Next() {
-		var session core.Session
-		var kind string
-		var status string
-		var runtimeID string
-		var permissionMode string
-		var hidden int
-		var createdAt string
-		var updatedAt string
-		if err := rows.Scan(&session.ID, &session.Title, &kind, &runtimeID, &session.ParentSessionID, &hidden, &session.WorkingDir, &session.ProviderID, &session.ModelID, &permissionMode, &status, &createdAt, &updatedAt); err != nil {
-			return nil, fmt.Errorf("store: scan session: %w", err)
-		}
-		session.Kind = core.NormalizeSessionKind(core.SessionKind(kind))
-		session.RuntimeID = core.NormalizeSessionRuntime(core.SessionRuntime(runtimeID))
-		session.Hidden = hidden != 0
-		session.Status = core.SessionStatus(status)
-		session.PermissionMode = core.NormalizePermissionMode(permissionMode)
-		session.CreatedAt = mustParseTime(createdAt)
-		session.UpdatedAt = mustParseTime(updatedAt)
-		sessions = append(sessions, session)
+func scanSession(row rowScanner) (core.Session, error) {
+	var session core.Session
+	var kind, status, runtimeID, permissionMode, createdAt, updatedAt string
+	var hidden int
+	if err := row.Scan(&session.ID, &session.Title, &kind, &runtimeID, &session.ParentSessionID, &hidden, &session.WorkingDir, &session.ProviderID, &session.ModelID, &permissionMode, &status, &createdAt, &updatedAt); err != nil {
+		return core.Session{}, err
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: iterate sessions: %w", err)
-	}
-	return sessions, nil
+	session.Kind = core.NormalizeSessionKind(core.SessionKind(kind))
+	session.RuntimeID = core.NormalizeSessionRuntime(core.SessionRuntime(runtimeID))
+	session.Hidden = hidden != 0
+	session.Status = core.SessionStatus(status)
+	session.PermissionMode = core.NormalizePermissionMode(permissionMode)
+	session.CreatedAt = mustParseTime(createdAt)
+	session.UpdatedAt = mustParseTime(updatedAt)
+	return session, nil
 }
 
 func (s *SQLiteStore) UpdateSession(ctx context.Context, session core.Session) error {
