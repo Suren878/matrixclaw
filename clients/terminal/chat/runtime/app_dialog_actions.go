@@ -93,8 +93,7 @@ func (m *appModel) handleResolveApproval(msg resolveApprovalMsg) tea.Cmd {
 		m.err = msg.err.Error()
 		return m.syncPermissionDialogCmd()
 	}
-	m.applyResolvedApproval(msg)
-	return tea.Batch(m.syncPermissionDialogCmd(), m.loadInitialCmd())
+	return m.syncPermissionDialogCmd()
 }
 
 func (m *appModel) handleCancelRunResult(msg cancelRunResultMsg) tea.Cmd {
@@ -106,5 +105,5 @@ func (m *appModel) handleCancelRunResult(msg cancelRunResultMsg) tea.Cmd {
 	if msg.run.Status == core.RunStatusCanceled {
 		m.err = ""
 	}
-	return m.loadInitialCmd()
+	return nil
 }

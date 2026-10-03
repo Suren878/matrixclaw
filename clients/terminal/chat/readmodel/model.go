@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"slices"
 	"strings"
+	"sync/atomic"
 
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
@@ -49,9 +50,11 @@ type Model struct {
 	inputList        []core.SessionInput
 	subagentCreated  map[string]int64
 	inputCreated     map[string]int64
-
-	rev uint64
 }
+
+// revisions numbers message changes across all models, so a row built from an
+// older model never matches a newer model's revision.
+var revisions atomic.Uint64
 
 type entry struct {
 	message surfacemessage.Message
@@ -243,8 +246,8 @@ func (m *Model) Messages() []surfacemessage.Message {
 	return m.visible
 }
 
-// Revision is the change count at which the message with id last changed, 0
-// for an unknown message.
+// Revision identifies the last change of the message with id, 0 for an
+// unknown message.
 func (m *Model) Revision(id string) uint64 {
 	if e, ok := m.entries[id]; ok {
 		return e.rev
@@ -267,16 +270,16 @@ func (m *Model) upsertMessage(message transcript.Message) {
 		surface.Provider = cmp.Or(strings.TrimSpace(surface.Provider), strings.TrimSpace(m.session.ProviderID))
 		surface.Model = cmp.Or(strings.TrimSpace(surface.Model), strings.TrimSpace(m.session.ModelID))
 	}
-	m.rev++
+	rev := revisions.Add(1)
 	e, ok := m.entries[message.ID]
 	if !ok {
 		e = &entry{}
 		m.entries[message.ID] = e
 		m.order = append(m.order, message.ID)
 	}
-	e.message, e.shown, e.rev = surface, shouldKeepSurfaceMessage(surface), m.rev
+	e.message, e.shown, e.rev = surface, shouldKeepSurfaceMessage(surface), rev
 	for _, result := range surface.ToolResults() {
-		m.resultRevs[result.ToolCallID] = m.rev
+		m.resultRevs[result.ToolCallID] = rev
 	}
 	m.stale = true
 }

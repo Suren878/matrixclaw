@@ -41,9 +41,8 @@ func (m *appModel) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, km.Tab):
 		return m.setFocus(appFocusEditor)
 	case key.Matches(msg, km.Chat.Reload):
-		m.loading = true
 		m.err = ""
-		return m.loadInitialCmd()
+		return m.reload()
 	}
 
 	if m.chat == nil {

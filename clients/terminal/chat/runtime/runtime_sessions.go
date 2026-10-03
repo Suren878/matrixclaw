@@ -50,13 +50,6 @@ func (r *Runtime) ensureSession(ctx context.Context) (string, error) {
 	return binding.SessionID, nil
 }
 
-func (r *Runtime) loadOrInitSnapshot(ctx context.Context) (core.ClientSnapshot, error) {
-	if _, err := r.ensureSession(ctx); err != nil {
-		return core.ClientSnapshot{}, err
-	}
-	return r.loadSnapshot(ctx)
-}
-
 func defaultInitialSessionTitle() string {
 	return "Main"
 }

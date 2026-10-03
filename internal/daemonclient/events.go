@@ -79,12 +79,14 @@ func (e LiveEvent) DecodeContextUsage() (core.ContextUsage, error) {
 	return usage, err
 }
 
-func (c *Client) SubscribeEvents(ctx context.Context, sessionID string, afterID uint64) (<-chan LiveEvent, <-chan error, error) {
+// SubscribeEvents streams the session's live events; it returns once the
+// daemon has registered the subscription.
+func (c *Client) SubscribeEvents(ctx context.Context, sessionID string) (<-chan LiveEvent, <-chan error, error) {
 	httpClient := c.EventHTTPClient
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	path := c.BaseURL + "/v1/events?session_id=" + url.QueryEscape(sessionID) + "&after=" + strconv.FormatUint(afterID, 10)
+	path := c.BaseURL + "/v1/events?session_id=" + url.QueryEscape(sessionID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, nil, err

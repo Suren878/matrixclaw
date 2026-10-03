@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"encoding/json"
 	"sort"
 	"strings"
 
@@ -11,7 +10,6 @@ import (
 	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
-	"github.com/Suren878/matrixclaw/internal/daemonclient"
 )
 
 func (m *appModel) syncPermissionDialogCmd() tea.Cmd {
@@ -133,38 +131,4 @@ func (m *appModel) openCancelRunDialog() tea.Cmd {
 	}
 	m.dialog.OpenDialog(surfacedialog.NewConfirmRunCancel(m.com, run.ID))
 	return nil
-}
-
-func (m *appModel) applyResolvedApproval(msg resolveApprovalMsg) {
-	if m.read == nil {
-		return
-	}
-
-	sessionID := strings.TrimSpace(msg.approval.SessionID)
-	if sessionID == "" {
-		sessionID = strings.TrimSpace(m.session)
-	}
-
-	payload, err := json.Marshal(core.PermissionNotification{
-		ApprovalID: msg.approvalID,
-		ToolCallID: msg.approval.ToolCallRef,
-		Granted:    msg.approved,
-		Denied:     !msg.approved,
-	})
-	if err != nil {
-		m.err = err.Error()
-		return
-	}
-
-	if err := m.read.Apply(daemonclient.LiveEvent{
-		Type:      core.EventApprovalResult,
-		SessionID: sessionID,
-		RunID:     msg.approval.RunID,
-		Payload:   payload,
-	}); err != nil {
-		m.err = err.Error()
-		return
-	}
-
-	m.syncChat()
 }

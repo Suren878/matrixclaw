@@ -20,7 +20,6 @@ import (
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
-	"github.com/Suren878/matrixclaw/internal/daemonclient"
 	"github.com/Suren878/matrixclaw/internal/updater"
 )
 
@@ -31,28 +30,6 @@ const serverStatusRefreshInterval = time.Second
 const serverRestartPollInterval = time.Second
 const serverRestartProgressText = "Daemon is restarting..."
 const serverRestartCompleteText = "Daemon restarted."
-
-type loadInitialMsg struct {
-	snapshot core.ClientSnapshot
-	err      error
-}
-
-type subscribeReadyMsg struct {
-	sessionID string
-	streamID  uint64
-	events    <-chan daemonclient.LiveEvent
-	errs      <-chan error
-	err       error
-}
-
-type liveEventMsg struct {
-	streamID uint64
-	event    daemonclient.LiveEvent
-	err      error
-	done     bool
-}
-
-type reconnectMsg struct{}
 
 type resolveApprovalMsg struct {
 	approval   core.Approval
@@ -147,18 +124,13 @@ type appModel struct {
 	frame     appLayout
 	chatWidth int
 
-	loading  bool
-	err      string
-	session  string
-	read     *readmodel.Model
-	chat     *surfacemodel.Chat
-	rows     keptRows
-	input    surfaceinput.Model
-	events   <-chan daemonclient.LiveEvent
-	eventErr <-chan error
-
-	streamCtx    context.Context
-	cancelStream context.CancelFunc
+	loading bool
+	err     string
+	read    *readmodel.Model
+	chat    *surfacemodel.Chat
+	rows    keptRows
+	input   surfaceinput.Model
+	stream  stream
 
 	transientMessages   []surfacemessage.Message
 	workingDir          string
@@ -167,8 +139,6 @@ type appModel struct {
 	focus               appFocus
 	busy                bool
 	busyInputMode       core.BusyInputMode
-	streamID            uint64
-	lastEventID         uint64
 	now                 time.Time
 	spinnerFrame        int
 	restartPending      bool
@@ -218,5 +188,5 @@ func newApp(ctx context.Context, rt *Runtime) *appModel {
 }
 
 func (m *appModel) Init() tea.Cmd {
-	return tea.Batch(m.loadInitialCmd(), m.input.Focus(), m.workingTickCmd(), m.checkUpdateCmd())
+	return tea.Batch(m.reload(), m.input.Focus(), m.workingTickCmd(), m.checkUpdateCmd())
 }

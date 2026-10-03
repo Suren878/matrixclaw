@@ -30,7 +30,8 @@ func renderApp(t *testing.T, width int, height int, snapshot core.ClientSnapshot
 	m := newApp(context.Background(), New(Config{Version: "1.0.0"}))
 	m.now = renderBase.Add(42 * time.Second)
 	m.Update(tea.WindowSizeMsg{Width: width, Height: height})
-	m.Update(loadInitialMsg{snapshot: snapshot})
+	m.Update(connectedMsg{streamID: m.stream.id, sessionID: snapshot.SessionID})
+	m.Update(snapshotMsg{streamID: m.stream.id, snapshot: snapshot})
 	return m, m.viewContent()
 }
 
@@ -186,6 +187,5 @@ func deliver(t *testing.T, m *appModel, eventType core.EventType, payload any) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.lastEventID++
-	m.Update(liveEventMsg{streamID: m.streamID, event: daemonclient.LiveEvent{ID: m.lastEventID, Type: eventType, SessionID: "session_1", Payload: raw}})
+	m.Update(liveEventMsg{streamID: m.stream.id, event: daemonclient.LiveEvent{Type: eventType, SessionID: "session_1", Payload: raw}})
 }

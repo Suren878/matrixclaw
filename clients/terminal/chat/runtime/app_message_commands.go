@@ -58,7 +58,7 @@ func (m *appModel) sendMessageCmd(content string, attachments []surfaceeditor.At
 			}
 		}
 	}
-	sessionID := strings.TrimSpace(m.session)
+	sessionID := m.state().SessionID()
 	return func() tea.Msg {
 		result, err := m.rt.sendMessageMode(m.ctx, sessionID, content, busyMode, attachments...)
 		return sendMessageResultMsg{

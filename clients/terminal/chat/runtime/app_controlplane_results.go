@@ -258,6 +258,5 @@ func (m *appModel) reloadSnapshotCmd() tea.Cmd {
 	if !m.dialog.HasDialogs() {
 		m.returnToCommands = false
 	}
-	m.loading = true
-	return m.loadInitialCmd()
+	return m.reload()
 }

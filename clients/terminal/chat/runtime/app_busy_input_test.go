@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Suren878/matrixclaw/clients/terminal/chat/readmodel"
 	surfaceinput "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/input"
 	"github.com/Suren878/matrixclaw/internal/core"
 )
@@ -25,7 +26,7 @@ func TestMessageWhileBusySteersUnlessQueuedExplicitly(t *testing.T) {
 	}))
 	defer server.Close()
 	m := newApp(context.Background(), New(Config{BaseURL: server.URL}))
-	m.session = "session_1"
+	m.read = readmodel.New(core.ClientSnapshot{SessionID: "session_1"})
 
 	for _, content := range []string{"also check the logs", "/queue then run the tests"} {
 		m.setBusy(true)

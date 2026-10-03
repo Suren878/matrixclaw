@@ -64,3 +64,17 @@ func TestExpandedOutputStaysExpandedWhenItsRowChanges(t *testing.T) {
 		t.Fatalf("output collapsed after its tool update:\n%s", screen)
 	}
 }
+
+func TestReloadedSnapshotReplacesRowsWhoseContentChanged(t *testing.T) {
+	snapshot := streamingSnapshot()
+	m, _ := renderApp(t, 120, 60, snapshot)
+
+	snapshot.Messages[3] = textMessage("m4", transcript.MessageRoleAssistant, 3, "Rebuilt from scratch")
+	m.stopStream()
+	m.Update(connectedMsg{streamID: m.stream.id, sessionID: "session_1"})
+	m.Update(snapshotMsg{streamID: m.stream.id, snapshot: snapshot})
+
+	if screen := ansi.Strip(m.viewContent()); !strings.Contains(screen, "Rebuilt from scratch") {
+		t.Fatalf("reloaded content not shown:\n%s", screen)
+	}
+}

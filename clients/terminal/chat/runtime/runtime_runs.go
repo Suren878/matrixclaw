@@ -8,12 +8,12 @@ import (
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 )
 
-func (r *Runtime) subscribeEvents(ctx context.Context, sessionID string, afterID uint64) (<-chan daemonclient.LiveEvent, <-chan error, error) {
+func (r *Runtime) subscribeEvents(ctx context.Context, sessionID string) (<-chan daemonclient.LiveEvent, <-chan error, error) {
 	client, err := r.daemon()
 	if err != nil {
 		return nil, nil, err
 	}
-	return client.SubscribeEvents(ctx, sessionID, afterID)
+	return client.SubscribeEvents(ctx, sessionID)
 }
 
 func (r *Runtime) sendMessageMode(ctx context.Context, sessionID string, text string, busyMode core.BusyInputMode, attachments ...surfaceeditor.Attachment) (core.AcceptRunResult, error) {

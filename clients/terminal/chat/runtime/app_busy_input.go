@@ -23,7 +23,7 @@ func (m *appModel) handleBusySubmitCommand(content string) (bool, tea.Cmd) {
 			m.err = "usage: /queue <text> or /steer <text>"
 			return true, nil
 		}
-		if strings.TrimSpace(m.session) == "" {
+		if m.state().SessionID() == "" {
 			m.err = "no active session"
 			return true, nil
 		}

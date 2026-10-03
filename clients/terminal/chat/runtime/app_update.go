@@ -154,10 +154,10 @@ func (m *appModel) update(msg tea.Msg) tea.Cmd {
 	case updateInstallMsg:
 		m.handleUpdateInstall(msg)
 		return nil
-	case loadInitialMsg:
-		return m.handleLoadInitial(msg)
-	case subscribeReadyMsg:
-		return m.handleSubscribeReady(msg)
+	case connectedMsg:
+		return m.handleConnected(msg)
+	case snapshotMsg:
+		return m.handleSnapshot(msg)
 	case liveEventMsg:
 		return m.handleLiveEvent(msg)
 	case resolveApprovalMsg:
@@ -167,8 +167,7 @@ func (m *appModel) update(msg tea.Msg) tea.Cmd {
 	case cancelRunResultMsg:
 		return m.handleCancelRunResult(msg)
 	case reconnectMsg:
-		m.loading = true
-		return m.loadInitialCmd()
+		return m.reload()
 	}
 	if m.dialog.HasDialogs() {
 		return m.handleDialogInput(msg)
