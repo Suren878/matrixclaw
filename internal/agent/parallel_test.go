@@ -318,6 +318,38 @@ func TestCanceledBatchKeepsFinishedResultsAndCancelsTheRest(t *testing.T) {
 	}
 }
 
+func TestACallThatFinishedAsTheRunWasCanceledKeepsItsResult(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["write"] = func(tools.Call) tools.Result { return tools.Result{Content: "written"} }
+	f.Tools.Funcs["wait"] = func(tools.Call) tools.Result { return tools.Result{Content: "waited"} }
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	waiting := make(chan struct{})
+	f.Tools.OnExecute = func(ctx context.Context, name string, _ tools.Call) error {
+		if name == "write" {
+			<-waiting
+			cancel(agent.ErrCanceled)
+			return nil
+		}
+		close(waiting)
+		// The wait returns its result once the run stopped too.
+		<-ctx.Done()
+		return nil
+	}
+	model := agenttest.NewScriptedModel(calls(call("w1", "write"), call("w2", "wait")))
+
+	outcome, err := f.Engine().Run(ctx, f.Task(model))
+
+	if err != nil || outcome.Status != agent.StatusCanceled {
+		t.Fatalf("outcome = %+v err = %v", outcome, err)
+	}
+	for id, content := range map[string]string{"w1": "written", "w2": "waited"} {
+		if result, ok := f.Journal.Result(id); !ok || result.Content != content {
+			t.Fatalf("result of %s = %+v, want %q", id, result, content)
+		}
+	}
+}
+
 func TestInterruptedBatchLeavesUnfinishedCallsToRecovery(t *testing.T) {
 	f, outcome := stoppedBatch(t, false)
 

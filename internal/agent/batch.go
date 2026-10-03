@@ -188,12 +188,12 @@ func (b *batch) launch(i int) {
 
 // settle takes a finished call: one that asks for approval is requested at
 // once, and a barrier that asked holds back the calls not admitted yet. A call
-// that returns after the run's context stopped counts as stopped.
+// that returns after the run's context stopped keeps only a result it finished with.
 func (b *batch) settle(ctx context.Context, done toolsched.Done[callOutcome]) error {
 	c := b.calls[done.Index]
 	b.track(c, -1)
 	if err := ctx.Err(); err != nil {
-		c.state = callStopped
+		c.stop(done)
 		return err
 	}
 	asked, err := b.record(done)
@@ -261,14 +261,25 @@ func (b *batch) journal(ctx context.Context) error {
 	return nil
 }
 
-// drain waits for the calls still running once the batch stopped and drops
-// what they return: they were stopped too.
+// drain waits for the calls still running once the batch stopped; each keeps
+// only a result it finished with.
 func (b *batch) drain() {
 	for b.sched.Running() > 0 {
-		c := b.calls[b.sched.Next().Index]
+		done := b.sched.Next()
+		c := b.calls[done.Index]
 		b.track(c, -1)
-		c.state = callStopped
+		c.stop(done)
 	}
+}
+
+// stop settles a call that returned once its batch stopped: a result it
+// finished with stands; a failure, likely the stop's own, counts as stopped.
+func (c *batchCall) stop(done toolsched.Done[callOutcome]) {
+	if done.Err == nil && done.Value.err == nil && done.Value.ask == nil && done.Value.result.Status != tools.ResultStatusError {
+		c.state, c.result = callFinished, done.Value.result
+		return
+	}
+	c.state = callStopped
 }
 
 // stopped journals, once the batch stopped on err, the results of the calls
