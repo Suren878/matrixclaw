@@ -34,7 +34,7 @@ func (m *appModel) handleUpdateCheck(msg updateCheckMsg) {
 		return
 	}
 	m.updates.prompted = true
-	m.dialog.OpenDialog(surfacedialog.NewConfirmCommand(m.com, controlplane.ConfirmData{
+	m.dialog.openUnasked(surfacedialog.NewConfirmCommand(m.com, controlplane.ConfirmData{
 		Message:        "A new matrixclaw release is available: " + msg.update.Current + " -> " + msg.update.Latest + "\n\nUpdate now?",
 		ConfirmLabel:   "Yes",
 		CancelLabel:    "No",
@@ -99,7 +99,7 @@ func (m *appModel) handleUpdateInstall(msg updateInstallMsg) {
 		return
 	}
 	m.dialog.CloseDialog(updateInfoDialogID)
-	m.dialog.OpenDialog(surfacedialog.NewConfirmCommand(m.com, controlplane.ConfirmData{
+	m.dialog.openUnasked(surfacedialog.NewConfirmCommand(m.com, controlplane.ConfirmData{
 		Message:        "Updated to " + strings.TrimSpace(msg.version) + ".\n\nRestart daemon now? Terminal will reopen after restart.",
 		ConfirmLabel:   "Yes",
 		CancelLabel:    "No",

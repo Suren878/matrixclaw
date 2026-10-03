@@ -38,7 +38,7 @@ func (m *appModel) syncPermissionDialogCmd() tea.Cmd {
 		m.dialog.CloseDialog(surfacedialog.PermissionsID)
 	}
 
-	m.dialog.OpenDialog(surfacedialog.NewPermissions(m.com, pending[0]))
+	m.dialog.openUnasked(surfacedialog.NewPermissions(m.com, pending[0]))
 	return nil
 }
 

@@ -185,7 +185,7 @@ func newApp(ctx context.Context, rt *Runtime) *appModel {
 		com:        com,
 		header:     surfaceheader.New(&styles, version),
 		status:     surfaceheader.NewStatus(&styles),
-		dialog:     dialogs{Overlay: surfacedialog.NewOverlay(), suppressed: map[string]struct{}{}},
+		dialog:     dialogs{Overlay: surfacedialog.NewOverlay(), suppressed: map[string]struct{}{}, now: time.Now},
 		help:       h,
 		styles:     styles,
 		loading:    true,

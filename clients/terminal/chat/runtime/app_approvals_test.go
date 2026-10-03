@@ -4,7 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -12,6 +17,8 @@ import (
 	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
+	"github.com/Suren878/matrixclaw/internal/permission"
+	"github.com/Suren878/matrixclaw/internal/updater"
 )
 
 func newApprovalApp(t *testing.T, ids ...string) *appModel {
@@ -86,5 +93,81 @@ func TestClosedReasonPromptDoesNotHoldBackOtherApprovals(t *testing.T) {
 
 	if got := permissionShown(m); got != "a2" {
 		t.Fatalf("approval shown = %q, want a2", got)
+	}
+}
+
+// typeKeys presses each key 100ms after the previous one and returns the
+// command of the last.
+func typeKeys(m *appModel, clock *time.Time, keys ...tea.KeyPressMsg) tea.Cmd {
+	var cmd tea.Cmd
+	for _, key := range keys {
+		*clock = clock.Add(100 * time.Millisecond)
+		_, cmd = m.Update(key)
+	}
+	return cmd
+}
+
+func letters(text string) []tea.KeyPressMsg {
+	keys := make([]tea.KeyPressMsg, 0, len(text))
+	for _, r := range text {
+		keys = append(keys, tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	return keys
+}
+
+func TestTypingWhenAnApprovalPopsUpDoesNotAnswerIt(t *testing.T) {
+	var resolved []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		if strings.HasSuffix(r.URL.Path, "/resolve") {
+			resolved = append(resolved, strings.TrimSpace(string(raw)))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+	m := newApp(context.Background(), New(Config{BaseURL: server.URL}))
+	clock := at(0)
+	m.dialog.now = func() time.Time { return clock }
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m.Update(connectedMsg{streamID: m.stream.id, sessionID: "session_1"})
+	m.Update(snapshotMsg{streamID: m.stream.id, snapshot: core.ClientSnapshot{SessionID: "session_1", Session: renderSession(),
+		Run: &core.Run{ID: "run_1", SessionID: "session_1", Status: core.RunStatusRunning}}})
+
+	typeKeys(m, &clock, letters("please ")...)
+	deliver(t, m, core.EventApprovalRequest, core.PermissionRequest{ID: "approval_1", SessionID: "session_1", ToolCallID: "call_1", ToolName: "bash",
+		Params: []byte(`{"command":"rm -rf ~/projects"}`), Suggestion: &permission.Suggestion{Tool: "bash", Pattern: "rm *"}})
+	typeKeys(m, &clock, append(letters("go on and also allow"), tea.KeyPressMsg{Code: tea.KeyEnter})...)
+	if permissionShown(m) != "approval_1" {
+		t.Fatal("typing answered the approval")
+	}
+
+	clock = clock.Add(time.Second)
+	if cmd := typeKeys(m, &clock, tea.KeyPressMsg{Code: 'g', Text: "g"}, tea.KeyPressMsg{Code: tea.KeyEnter}); cmd != nil {
+		cmd()
+	}
+	if len(resolved) != 1 || resolved[0] != `{"approved":true,"always":"global"}` {
+		t.Fatalf("g, enter after a pause resolved %q", resolved)
+	}
+}
+
+func TestTypingWhenTheUpdatePromptPopsUpDoesNotInstall(t *testing.T) {
+	m := newApp(context.Background(), nil)
+	clock := at(0)
+	m.dialog.now = func() time.Time { return clock }
+	m.Update(updateCheckMsg{update: updater.Update{Current: "1.0.0", Latest: "1.1.0"}, ok: true})
+
+	// The commands are not run: an accepted prompt would install for real.
+	for _, key := range letters("yes") {
+		clock = clock.Add(100 * time.Millisecond)
+		m.Update(key)
+	}
+	if m.dialog.ContainsDialog(updateInfoDialogID) || !m.dialog.ContainsDialog(surfacedialog.ConfirmCommandID) {
+		t.Fatal("typing answered the update prompt")
+	}
+	clock = clock.Add(time.Second)
+	m.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	if !m.dialog.ContainsDialog(updateInfoDialogID) {
+		t.Fatal("y after a pause did not start the update")
 	}
 }

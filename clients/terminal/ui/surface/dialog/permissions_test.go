@@ -26,17 +26,41 @@ func TestPermissionsDialogOffersDenyWithReason(t *testing.T) {
 	}
 }
 
-func TestPermissionsDialogOffersAlwaysAllowOnlyWithASuggestedRule(t *testing.T) {
+func TestPermissionsDialogKeepsAlwaysAllowOnlyAfterAConfirmingEnter(t *testing.T) {
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	suggested := surfacepermission.PermissionRequest{ID: "approval_1", ToolName: "bash", Suggestion: &permission.Suggestion{Tool: "bash", Pattern: "go test:*"}}
 	for key, want := range map[rune]PermissionAction{'s': PermissionAlwaysSession, 'g': PermissionAlwaysGlobal} {
-		action := NewPermissions(surfacecommon.DefaultCommon(), suggested).HandleMsg(tea.KeyPressMsg{Code: key, Text: string(key)})
-		if response, ok := action.(ActionPermissionResponse); !ok || response.Action != want {
-			t.Fatalf("%c: action = %#v, want %s", key, action, want)
+		p := NewPermissions(surfacecommon.DefaultCommon(), suggested)
+		if action := p.HandleMsg(tea.KeyPressMsg{Code: key, Text: string(key)}); action != nil {
+			t.Fatalf("%c alone answered: %#v", key, action)
+		}
+		if response, ok := p.HandleMsg(enter).(ActionPermissionResponse); !ok || response.Action != want {
+			t.Fatalf("%c, enter: want %s", key, want)
 		}
 	}
 	plain := surfacepermission.PermissionRequest{ID: "approval_2", ToolName: "bash"}
-	if action := NewPermissions(surfacecommon.DefaultCommon(), plain).HandleMsg(tea.KeyPressMsg{Code: 's', Text: "s"}); action != nil {
-		t.Fatalf("always allow without a suggested rule: %#v", action)
+	p := NewPermissions(surfacecommon.DefaultCommon(), plain)
+	p.HandleMsg(tea.KeyPressMsg{Code: 's', Text: "s"})
+	if response, ok := p.HandleMsg(enter).(ActionPermissionResponse); !ok || response.Action != PermissionDeny {
+		t.Fatal("s, enter without a suggested rule did not deny")
+	}
+}
+
+func TestPermissionsDialogEnterDeniesUntilAnotherChoiceIsMade(t *testing.T) {
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	request := surfacepermission.PermissionRequest{ID: "approval_1", ToolName: "bash", Suggestion: &permission.Suggestion{Tool: "bash", Pattern: "rm *"}}
+	if response, ok := NewPermissions(surfacecommon.DefaultCommon(), request).HandleMsg(enter).(ActionPermissionResponse); !ok || response.Action != PermissionDeny {
+		t.Fatal("enter did not deny")
+	}
+	if response, ok := NewPermissions(surfacecommon.DefaultCommon(), request).HandleMsg(tea.KeyPressMsg{Code: 'a', Text: "a"}).(ActionPermissionResponse); !ok || response.Action != PermissionAllow {
+		t.Fatal("a did not allow once")
+	}
+	p := NewPermissions(surfacecommon.DefaultCommon(), request)
+	for range 3 {
+		p.HandleMsg(tea.KeyPressMsg{Code: tea.KeyLeft})
+	}
+	if response, ok := p.HandleMsg(enter).(ActionPermissionResponse); !ok || response.Action != PermissionAllow {
+		t.Fatal("three steps left and enter did not allow")
 	}
 }
 

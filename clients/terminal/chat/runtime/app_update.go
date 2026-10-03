@@ -87,6 +87,9 @@ func (m *appModel) update(msg tea.Msg) tea.Cmd {
 			return cmd
 		}
 		if m.dialog.HasDialogs() {
+			if m.dialog.keyGuarded() {
+				return nil
+			}
 			return m.handleDialogInput(msg)
 		}
 		return m.handleKey(msg)

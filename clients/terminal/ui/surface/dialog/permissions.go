@@ -89,14 +89,15 @@ func NewPermissions(com *surfacecommon.Common, perm surfacepermission.Permission
 		HalfPageDown: key.NewBinding(key.WithDisabled()),
 	}
 
-	return &Permissions{
-		com:            com,
-		permission:     perm,
-		selectedOption: 0,
-		viewport:       vp,
-		help:           h,
-		keyMap:         km,
+	p := &Permissions{
+		com:        com,
+		permission: perm,
+		viewport:   vp,
+		help:       h,
+		keyMap:     km,
 	}
+	p.focusOption(PermissionDeny)
+	return p
 }
 
 func (p *Permissions) calculateContentWidth(width int) int {

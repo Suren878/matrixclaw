@@ -24,13 +24,9 @@ func (p *Permissions) HandleMsg(msg tea.Msg) Action {
 		case key.Matches(msg, p.keyMap.Allow):
 			return p.respond(PermissionAllow)
 		case key.Matches(msg, p.keyMap.AlwaysSession):
-			if p.permission.Suggestion != nil {
-				return p.respond(PermissionAlwaysSession)
-			}
+			p.focusOption(PermissionAlwaysSession)
 		case key.Matches(msg, p.keyMap.AlwaysGlobal):
-			if p.permission.Suggestion != nil {
-				return p.respond(PermissionAlwaysGlobal)
-			}
+			p.focusOption(PermissionAlwaysGlobal)
 		case key.Matches(msg, p.keyMap.Deny):
 			return p.respond(PermissionDeny)
 		case key.Matches(msg, p.keyMap.DenyWithReason):
@@ -156,6 +152,16 @@ func (p *Permissions) selectCurrentOption() tea.Msg {
 		p.selectedOption = 0
 	}
 	return p.respond(options[p.selectedOption].action)
+}
+
+// focusOption moves the focus to the option for action, if offered; a rule
+// that outlives the call is only kept after a confirming enter.
+func (p *Permissions) focusOption(action PermissionAction) {
+	for i, option := range p.permissionOptions() {
+		if option.action == action {
+			p.selectedOption = i
+		}
+	}
 }
 
 func (p *Permissions) respond(action PermissionAction) tea.Msg {
