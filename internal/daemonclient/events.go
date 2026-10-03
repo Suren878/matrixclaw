@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -23,6 +24,7 @@ type LiveEvent struct {
 	SessionID string          `json:"session_id"`
 	RunID     string          `json:"run_id,omitempty"`
 	Payload   json.RawMessage `json:"payload,omitempty"`
+	At        time.Time       `json:"at"`
 }
 
 func (e LiveEvent) DecodeMessage() (transcript.Message, error) {

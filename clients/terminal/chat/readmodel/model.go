@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
@@ -26,7 +27,8 @@ type Model struct {
 	context      *core.ContextReport
 	todo         *todo.List
 	run          *core.Run
-	timing       *core.RunTiming
+	// lastEventAt is when the session last showed activity, by daemon clock.
+	lastEventAt time.Time
 
 	// order lists message IDs as first seen; entries hold their conversion.
 	order   []string
@@ -71,7 +73,6 @@ func New(snapshot core.ClientSnapshot) *Model {
 		context:         snapshot.Context,
 		todo:            snapshot.Todo,
 		run:             snapshot.Run,
-		timing:          snapshot.Timing,
 		entries:         map[string]*entry{},
 		resultRevs:      map[string]uint64{},
 		toolUpdates:     map[string]core.ToolUpdate{},
@@ -110,6 +111,9 @@ func New(snapshot core.ClientSnapshot) *Model {
 	m.sortApprovals()
 	m.sortSubagents()
 	m.sortInputs()
+	if snapshot.Timing != nil {
+		m.lastEventAt = snapshot.Timing.LastEventAt
+	}
 	return m
 }
 
@@ -117,6 +121,9 @@ func New(snapshot core.ClientSnapshot) *Model {
 func (m *Model) Apply(event daemonclient.LiveEvent) error {
 	if event.SessionID != "" && event.SessionID != m.sessionID {
 		return nil
+	}
+	if event.At.After(m.lastEventAt) {
+		m.lastEventAt = event.At
 	}
 	switch event.Type {
 	case core.EventMessageCreated, core.EventMessageUpdated:
@@ -162,7 +169,7 @@ func (m *Model) Apply(event daemonclient.LiveEvent) error {
 		if err != nil {
 			return err
 		}
-		m.run, m.timing = &run, nil
+		m.run = &run
 	case core.EventTodoUpdated:
 		list, err := event.DecodeTodo()
 		if err != nil {
@@ -203,7 +210,7 @@ func (m *Model) Session() *core.Session             { return m.session }
 func (m *Model) Context() *core.ContextReport       { return m.context }
 func (m *Model) Todo() *todo.List                   { return m.todo }
 func (m *Model) Run() *core.Run                     { return m.run }
-func (m *Model) Timing() *core.RunTiming            { return m.timing }
+func (m *Model) LastEventAt() time.Time             { return m.lastEventAt }
 func (m *Model) ToolUpdates() []core.ToolUpdate     { return m.toolUpdateList }
 func (m *Model) PendingInputs() []core.SessionInput { return m.inputList }
 

@@ -171,3 +171,28 @@ func TestARunThatEndsBeforeTheSendReplyDoesNotStayBusy(t *testing.T) {
 		t.Fatal("busy after the run already failed")
 	}
 }
+
+func TestIdleTimeCountsFromTheLastLiveEvent(t *testing.T) {
+	snapshot := core.ClientSnapshot{SessionID: "session_1", Session: renderSession(), Context: renderContext(),
+		Run:      &core.Run{ID: "run_1", SessionID: "session_1", Status: core.RunStatusRunning, StartedAt: at(0)},
+		Timing:   &core.RunTiming{LastEventAt: at(0)},
+		Messages: []transcript.Message{textMessage("m1", transcript.MessageRoleUser, 0, "write an essay")}}
+	m, _ := renderApp(t, 120, 30, snapshot)
+	for i := 1; i <= 12; i++ {
+		reply := textMessage("m2", transcript.MessageRoleAssistant, i*10, strings.Repeat("word ", i*10))
+		raw, err := json.Marshal(reply)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.Update(liveEventMsg{streamID: m.stream.id, event: daemonclient.LiveEvent{Type: core.EventMessageUpdated, SessionID: "session_1", Payload: raw, At: at(i * 10)}})
+	}
+
+	m.now = at(121)
+	if line := ansi.Strip(m.workingStatusView()); strings.Contains(line, "idle") {
+		t.Fatalf("idle while the reply streamed 1s ago: %q", line)
+	}
+	m.now = at(135)
+	if line := ansi.Strip(m.workingStatusView()); !strings.Contains(line, "idle 15s") {
+		t.Fatalf("no idle time 15s after the last event: %q", line)
+	}
+}

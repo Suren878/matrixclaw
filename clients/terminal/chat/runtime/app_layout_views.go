@@ -307,11 +307,11 @@ func modelOutputPhase(messages []surfacemessage.Message) string {
 }
 
 func (m *appModel) workingIdleElapsed() string {
-	timing := m.state().Timing()
-	if timing == nil || timing.LastEventAt.IsZero() {
+	lastEventAt := m.state().LastEventAt()
+	if lastEventAt.IsZero() {
 		return ""
 	}
-	idle := m.now.Sub(timing.LastEventAt)
+	idle := m.now.Sub(lastEventAt)
 	if idle < 10*time.Second {
 		return ""
 	}
