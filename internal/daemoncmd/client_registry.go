@@ -3,6 +3,7 @@ package daemoncmd
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"path/filepath"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"github.com/Suren878/matrixclaw/clients/telegram"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/safego"
+	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
@@ -78,7 +80,7 @@ func (a *telegramClientAdapter) Apply(ctx context.Context, bootstrap bootstrapCo
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	cfg := telegramBootstrap(bootstrap)
+	cfg := bootstrap.Telegram
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -120,7 +122,7 @@ func (a *telegramClientAdapter) RestartDeliveryAddressNormalizer() restartDelive
 }
 
 func (a *telegramClientAdapter) RestartDeliverySender(bootstrap bootstrapConfig) (restartDeliverySender, bool) {
-	cfg := telegramBootstrap(bootstrap)
+	cfg := bootstrap.Telegram
 	if !cfg.Enabled {
 		return nil, false
 	}
@@ -140,14 +142,19 @@ type telegramClientBootstrap struct {
 	AllowedUserID int64
 }
 
-func telegramBootstrap(bootstrap bootstrapConfig) telegramClientBootstrap {
-	client := bootstrap.Clients[telegram.ClientName]
-	cfg := telegramClientBootstrap{
-		Enabled:       client.Enabled,
-		BotToken:      strings.TrimSpace(client.Values["bot_token"]),
-		AllowedUserID: client.Int64Values["allowed_user_id"],
+func telegramBootstrapFromSetup(cfg setup.TelegramConfig) (telegramClientBootstrap, error) {
+	client := telegramClientBootstrap{
+		Enabled:  cfg.Enabled,
+		BotToken: strings.TrimSpace(cfg.BotToken),
 	}
-	return cfg
+	if raw := strings.TrimSpace(cfg.AllowedUserID); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			return telegramClientBootstrap{}, fmt.Errorf("parse telegram allowed user id: %w", err)
+		}
+		client.AllowedUserID = id
+	}
+	return client, nil
 }
 
 func telegramInlineCachePath(dbPath string) string {
@@ -160,7 +167,7 @@ func telegramInlineCachePath(dbPath string) string {
 
 func automationDeliveryTargets(bootstrap bootstrapConfig) []core.ClientDeliveryTarget {
 	targets := []core.ClientDeliveryTarget{}
-	cfg := telegramBootstrap(bootstrap)
+	cfg := bootstrap.Telegram
 	if cfg.Enabled && cfg.BotToken != "" && cfg.AllowedUserID != 0 {
 		address, err := json.Marshal(telegram.ChatDeliveryAddress(cfg.AllowedUserID))
 		if err == nil {

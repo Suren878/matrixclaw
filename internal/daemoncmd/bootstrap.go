@@ -28,7 +28,7 @@ type bootstrapConfig struct {
 	SetupPath      string
 	Timezone       string
 	APIToken       string
-	Clients        map[string]setup.ClientBootstrap
+	Telegram       telegramClientBootstrap
 	ExternalAgents setup.ModulesConfig
 	Budgets        core.RunBudgets
 	CompactModel   setup.CompactModelConfig
@@ -104,11 +104,11 @@ func loadBootstrap() (bootstrapConfig, error) {
 			SystemPrompt:       setup.InitializeAssistantSystemPromptForConfig(setupCfg.Assistant.SystemPrompt, setupCfg),
 			CustomInstructions: setupCfg.Assistant.CustomInstructions,
 		}
-		clients, err := setup.ClientBootstrapsFromConfig(setupCfg)
+		telegramClient, err := telegramBootstrapFromSetup(setupCfg.Clients.Telegram)
 		if err != nil {
 			return bootstrapConfig{}, fmt.Errorf("load setup config %s: %w", service.Path(), err)
 		}
-		cfg.Clients = clients
+		cfg.Telegram = telegramClient
 		cfg.ExternalAgents = setupCfg.Modules
 	}
 
