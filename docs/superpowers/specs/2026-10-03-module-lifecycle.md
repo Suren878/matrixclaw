@@ -310,3 +310,42 @@ instead). Rough size: −2300 / +1300 lines.
   composition tests.
 - Overlap: C1 and C7 are merged (this branch is rebased on them); controlplane
   (C6 later) gets only forced edits.
+
+## As built
+
+Commits follow the plan (the gateway env contract and lint gate were added
+before implementation). Differences from the design:
+
+- `modules.Set.Apply` applies every module, then rebuilds the tool registry;
+  the supervisor applies the set before the assistant profile so module
+  paragraphs are current. At start the daemon binds its listener, applies the
+  setup, then serves, so no request sees the base tools only.
+- The model's status note shows `enabled`, `ready`, facts and the module's
+  visible tool count, never `state`, so it does not change while a runtime
+  starts or stops. `Status` makes no network calls: realtime reads the last
+  cached key check, telephony does not probe the gateway (its descriptor
+  endpoint still does).
+- Skills: `Apply` shows or hides the skill tools, prompt paragraph and skill
+  prompt; the trust policy and auto-invoke still apply at start.
+- Voice: TTS and STT are two `voice.Module`s on one runtime. Runtimes are
+  started/stopped only when the module's settings change, so a manual stop
+  survives unrelated reloads. Local voice catalogs and defaults stay in
+  `setup` (C6 can move them with the settings descriptors).
+- Realtime: the realtime section of setup.json is only trimmed by `setup`;
+  `Manager.Edit` drops values equal to the catalog's on the next edit, so
+  defaults written by older versions stay until then. The LLM-provider key is
+  matched by provider id (`gemini`, `xai`, `openai`), no longer by base URL.
+  All three providers now use the same language policy text, and the user's
+  custom instructions reach every realtime session, not only phone calls.
+- MCP closes removed or changed sessions before connecting new ones (in
+  parallel); the browser's Playwright server stays owned by its MCP session
+  (with `Pdeathsig`) rather than `procsup`.
+- Restart notice: a `notice` with payload `{"replace":true}` (so other notices
+  that carry a message id are never edited) and status `held`; the store
+  conversion also marks old `ready` rows `sent`. `MarkClientDeliveryReady`
+  and the `ready` status are gone.
+- `TelephonyModuleDescriptor.realtime_module_id` was dropped (setup no longer
+  knows the realtime module); `ready` was added to it.
+- No `daemonclient.Modules` yet: nothing reads `GET /v1/modules` until C6.
+
+Size: about −5.4k / +3.5k lines of Go outside tests (+1.0k net test lines).

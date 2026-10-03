@@ -721,8 +721,9 @@ also be changed from the control plane:
 /modules realtime_voice enabled
 ```
 
-The UI stores the enabled flag and selected provider in setup. Model, voice,
-endpoint, and API key can be set in `setup.json` or by environment variables:
+The control plane stores the enabled flag, the selected provider and each
+provider's model, voice, language, endpoint and API key in `setup.json`; only
+values that differ from the provider's defaults are written:
 
 ```json
 {
@@ -731,28 +732,10 @@ endpoint, and API key can be set in `setup.json` or by environment variables:
       "enabled": true,
       "provider_id": "grok_voice",
       "providers": {
-        "gemini_live": {
-          "api_key": "",
-          "api_key_env": "MATRIXCLAW_GEMINI_LIVE_API_KEY",
-          "model_id": "gemini-2.5-flash-native-audio-preview-12-2025",
-          "voice_id": "Puck",
-          "endpoint": "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
-        },
         "grok_voice": {
-          "api_key": "",
-          "api_key_env": "XAI_API_KEY",
-          "model_id": "grok-voice-latest",
-          "voice_id": "eve",
-          "language": "ru",
-          "endpoint": "wss://api.x.ai/v1/realtime"
-        },
-        "openai_realtime": {
-          "api_key": "",
-          "api_key_env": "OPENAI_API_KEY",
-          "model_id": "gpt-realtime-2.1",
-          "voice_id": "marin",
-          "language": "ru-RU",
-          "endpoint": "wss://api.openai.com/v1/realtime"
+          "api_key_env": "MY_XAI_KEY",
+          "voice_id": "ara",
+          "language": "ru"
         }
       }
     }
@@ -760,32 +743,10 @@ endpoint, and API key can be set in `setup.json` or by environment variables:
 }
 ```
 
-Useful environment overrides:
-
-```bash
-MATRIXCLAW_REALTIME_VOICE_ENABLED=1
-
-# Gemini Live
-MATRIXCLAW_REALTIME_VOICE_PROVIDER=gemini_live
-MATRIXCLAW_GEMINI_LIVE_API_KEY=...
-MATRIXCLAW_GEMINI_LIVE_MODEL=gemini-2.5-flash-native-audio-preview-12-2025
-MATRIXCLAW_GEMINI_LIVE_VOICE=Puck
-MATRIXCLAW_GEMINI_LIVE_LANGUAGE=ru-RU
-
-# Grok Voice
-MATRIXCLAW_REALTIME_VOICE_PROVIDER=grok_voice
-MATRIXCLAW_GROK_VOICE_API_KEY=...
-MATRIXCLAW_GROK_VOICE_MODEL=grok-voice-latest
-MATRIXCLAW_GROK_VOICE_VOICE=eve
-MATRIXCLAW_GROK_VOICE_LANGUAGE=ru
-
-# OpenAI Realtime
-MATRIXCLAW_REALTIME_VOICE_PROVIDER=openai_realtime
-MATRIXCLAW_OPENAI_REALTIME_API_KEY=...
-MATRIXCLAW_OPENAI_REALTIME_MODEL=gpt-realtime-2.1
-MATRIXCLAW_OPENAI_REALTIME_VOICE=marin
-MATRIXCLAW_OPENAI_REALTIME_LANGUAGE=ru-RU
-```
+The API key comes from `api_key`, else the variable named by `api_key_env`,
+else a configured LLM provider of the same vendor (`gemini`, `xai`, `openai`),
+else the vendor's usual variable (`GEMINI_API_KEY`/`GOOGLE_API_KEY`,
+`XAI_API_KEY`/`GROK_API_KEY`, `OPENAI_API_KEY`).
 
 OpenAI Realtime receives 24 kHz PCM. MatrixClaw keeps its provider-neutral
 16 kHz input contract and resamples client or telephony audio inside the
@@ -809,7 +770,8 @@ Current shape:
   the telephony module is enabled and configured.
 - Outbound calls can carry a concrete phone objective and a phone-specific
   prompt.
-- Inbound calls can be restricted by an allowed caller list.
+- Inbound calls are answered only for callers on the allowed caller list;
+  without a list every inbound call is rejected.
 - Final transcripts, post-call reports, and MP3 recordings can be saved into
   MatrixClaw temporary storage under `call-records`.
 
@@ -833,7 +795,11 @@ MATRIXCLAW_TELEPHONY_RECORDING_FORMAT=mp3
 ```
 
 `MATRIXCLAW_TELEPHONY_INBOUND_ALLOWED_CALLERS` accepts numbers separated by
-newlines, spaces, commas, or semicolons.
+newlines, spaces, commas, or semicolons; an empty list rejects every inbound
+call. The assistant's name, the user's custom instructions and the phone
+prompt (`modules.telephony.phone_prompt`) come from the daemon for every call;
+`MATRIXCLAW_TELEPHONY_INBOUND_GREETING` and `MATRIXCLAW_TELEPHONY_INBOUND_PROMPT`
+add the inbound greeting and instructions.
 
 Provider-specific SIP trunk services are deployment details. The intended
 boundary is Asterisk/SIP, so each user can bring their own telephony provider

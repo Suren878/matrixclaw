@@ -62,7 +62,8 @@ The TUI exposes this as:
 
 Interactive browser actions are exposed to the assistant as MCP tools. When the
 Browser module is enabled and installed, the daemon injects a managed MCP server
-with ID `browser`. The MCP module reserves that ID so a user-defined MCP server
+with ID `browser`; enabling, installing or changing the run mode applies at
+once, without a daemon restart. The MCP module reserves that ID so a user-defined MCP server
 does not conflict with the managed browser server.
 
 Remote tools are registered with prefixed IDs such as:

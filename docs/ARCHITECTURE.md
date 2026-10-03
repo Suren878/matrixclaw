@@ -175,6 +175,35 @@ for the details and the as-built notes of each stage.
   keeps an open provider form by an opaque id, so the API key never travels
   inside a command string.
 
+## Modules
+
+Storage, delivery, maps, web search, TTS, STT, realtime voice, telephony,
+browser, MCP and skills are modules (`internal/modules`): each implements
+`Module` (`ID`, `Apply(ctx, setup.Config)`, `Tools`, `Context`, `Status`,
+`Close`).
+
+- `daemoncmd/modules.go` builds every module once; `modules.Set` owns them and
+  is the core's tool executor. It serves the base tools (shell, files, todo,
+  memory, agents, automation) plus the tools each module offers now, so a
+  module that is off or unconfigured offers none (telephony tools appear only
+  with a gateway).
+- `supervisor.Reload` (`POST /v1/admin/reload`, the wizard, and every API
+  handler after a setup edit) loads setup.json and applies it under one lock:
+  session LLMs, external agents, the module set, the assistant profile with
+  the modules' prompt paragraphs, and Telegram. Each part does nothing when
+  its own settings did not change; MCP reconnects only changed servers.
+- `Status` is cheap and render-ready (`enabled`, `ready`, `state`, facts,
+  tools); `GET /v1/modules` lists them and the model's runtime note is built
+  from them.
+- Local runtimes run under one `procsup.Supervisor` owned by the daemon's
+  `localruntime.Runtime`: one process per provider, readiness probed outside
+  the lock, stopped on shutdown (and with `Pdeathsig` on Linux).
+- Realtime voice providers are `realtime.ProviderSpec`s (catalog, key check,
+  dial) with a `Codec`; one websocket session engine serves them all. The
+  realtime module resolves provider settings and API keys once per reload and
+  composes the assistant identity, custom instructions and, for phone calls,
+  the phone prompt.
+
 ## Repository Map
 
 - `cmd/matrixclaw`: CLI, setup entrypoint, TUI launcher, service commands.
@@ -199,8 +228,10 @@ for the details and the as-built notes of each stage.
 - `internal/store`: SQLite persistence.
 - `internal/providers`: provider adapters, provider catalog, model catalogs, and
   provider-specific wire quirks.
-- `internal/modules`: daemon modules for storage, voice, MCP, skills, delivery,
-  telephony tools, and local runtimes.
+- `internal/modules`: the module lifecycle and the daemon modules (storage,
+  voice, realtime voice, telephony, browser, MCP, skills, web, delivery, geo)
+  and the local voice and browser runtimes.
+- `internal/procsup`: supervised local helper processes.
 - `internal/tools`: built-in assistant tools.
 - `internal/webtools`: `web_search` (provider clients) and `web_fetch`
   (SSRF-safe fetch, readability and markdown); no state of their own.

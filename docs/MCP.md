@@ -43,8 +43,11 @@ transports are stdio command servers and streamable HTTP servers.
 }
 ```
 
-When `matrixclawd` starts, it connects to enabled MCP servers, runs `tools/list`,
-and registers each remote tool as a matrixclaw tool. Tool IDs are prefixed:
+`matrixclawd` connects to enabled MCP servers, runs `tools/list`, and offers
+each remote tool as a matrixclaw tool. Changes apply without a restart: only
+servers that were added or changed reconnect, removed ones disconnect, and a
+server that fails to connect is shown in the module status while the others
+keep working. Tool IDs are prefixed:
 
 ```text
 mcp_<server>_<remote_tool>

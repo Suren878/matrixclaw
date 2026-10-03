@@ -79,6 +79,11 @@ Local voice providers support two modes:
   managed Piper process, Supertonic uses `supertonic serve` on loopback, and
   Whisper.cpp uses `whisper-server` with its local `/inference` endpoint.
 
+The daemon starts the selected always-running runtime when the module's
+settings change (and at start), stops runtimes that are no longer selected,
+and stops every runtime it started when it exits; on Linux the runtimes also
+die with the daemon.
+
 Always-running mode is useful when voice is frequent and startup latency matters.
 Run-per-task mode is better when RAM matters more than latency. Whisper.cpp
 model size controls peak memory during transcription: `tiny` is lightest,
