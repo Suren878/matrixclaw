@@ -181,6 +181,28 @@ func (s *parkHookStore) SaveRunCheckpoint(ctx context.Context, checkpoint core.R
 	return s.SQLiteStore.SaveRunCheckpoint(ctx, checkpoint)
 }
 
+// parkFailingStore fails the checkpoint the engine writes as a run parks.
+type parkFailingStore struct{ *store.SQLiteStore }
+
+func (s parkFailingStore) SaveRunCheckpoint(ctx context.Context, checkpoint core.RunCheckpoint) error {
+	if strings.Contains(string(checkpoint.EngineState), `"await"`) {
+		return errors.New("disk full")
+	}
+	return s.SQLiteStore.SaveRunCheckpoint(ctx, checkpoint)
+}
+
+func TestAStoreErrorAsTheRunParksFailsIt(t *testing.T) {
+	t.Parallel()
+	db := openScenarioStore(t)
+	s, _ := newAwaitScenario(t, parkFailingStore{db}, db, func(string) string { return `{}` })
+
+	if err := s.app.ExecuteRun(context.Background(), s.run.ID); err == nil || !strings.Contains(err.Error(), "disk full") {
+		t.Fatalf("ExecuteRun = %v", err)
+	}
+
+	assertRecoveryRunStatus(t, db, s.run.ID, core.RunStatusFailed)
+}
+
 func TestTaskFinishingWhileTheRunParksStillWakesIt(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)

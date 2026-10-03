@@ -64,6 +64,10 @@ func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
 		return c.failRun(ctx, run, err)
 	}
 	outcome, err := engine.Run(runCtx, task)
+	if err != nil && runCtx.Err() == nil {
+		// Nothing else ends a run whose engine failed outside its outcome.
+		return c.failRun(ctx, run, err)
+	}
 	if err != nil {
 		return err
 	}
