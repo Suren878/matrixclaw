@@ -207,3 +207,40 @@ Rough size: ~-900/+500 lines.
   diff against the written content.
 - Migration tests for `is_error` -> status and the dropped column
   (`schema_upgrade_test.go` pattern).
+
+## As built
+
+Commits in the planned order (status, file mutations, guard, approval
+contract, action strings), with the lead's decisions applied:
+
+- **Persisted data is not rewritten.** `transcript.ToolResultPart` no longer
+  writes `is_error`; its `UnmarshalJSON` reads a legacy part with
+  `is_error: true` and no status as `status: "error"` (phase D removes it).
+  `approvals.action` is neither written nor read; the column stays until
+  phase D. No migration runs.
+- **Built-in rule.** `permission.Builtin` (`memory: list` = allow) is part of
+  every mode's preset, so it is not a stored rule and cannot be deleted; a
+  session `ask`/`deny` rule on `memory` still wins. It is documented in
+  `ARCHITECTURE.md`; `/permissions` (controlplane, owned by C6) does not list
+  it yet.
+- **Grant lookups are run-scoped.** `Core.callGranted` uses
+  `ListRunApprovals(session, run)` (index `approvals(session_id, run_id,
+  state)`) and `HasToolResult(session, run, call)` (index
+  `messages(session_id, run_id, seq)`); a run-less call uses run `""`, i.e.
+  the session's run-less calls only. `TestAGrantRunsTheCallOnceAndReadsOnlyItsRun`
+  fails on any session-wide `ListMessages`/`ListApprovals` on that path.
+- **Port shape.** `agent.Tools.Execute` returns `(tools.Result,
+  *tools.ApprovalRequest, error)`; `core.ToolExecutor` gained
+  `Preview(ctx, tool, call) (tools.ApprovalRequest, *tools.Result)` (served by
+  `tools.Registry` and `modules.Set`). Tools without `Preview` show
+  "Run <tool>" and their arguments.
+- **Ask rules** append "Asked by rule <rule>." to the tool's own preview and
+  suggest no "Always" rule, as before.
+- **Bash guard** message is now lower-case ("the managed browser is installed
+  only through Modules -> Browser -> Install/Repair") because it travels as an
+  error; file tools' "file not found"/"invalid path" likewise.
+- `storage_delete`, `send_file`, `skill_manage`, `telephony_call`,
+  `create_scheduled_ai_task`, `memory`, MCP tools, bash, task_kill and the file
+  tools implement `Preview`; their validation runs before anyone is asked.
+- Not done here: `tools.SkillManagePermissionsParams` still lives in `tools`
+  (audit item 16, skills area).

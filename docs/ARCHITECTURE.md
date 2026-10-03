@@ -109,7 +109,7 @@ talks to them through ports (`internal/agent/ports.go`):
 | Port | Core adapter | Purpose |
 |---|---|---|
 | `Journal` | `coreJournal` | load the context window from the latest boundary, append messages, checkpoint, record `run_steps` |
-| `Tools` | `coreTools` | tool specs, authorisation (permission rules, concurrency key, barrier), execution |
+| `Tools` | `coreTools` | tool specs, authorisation (permission rules, concurrency key, barrier), execution or the approval request |
 | `Approvals` | `coreApprovals` | park a call for a user decision |
 | `Inbox` | `coreInbox` | steer input, decided approvals, finished background tasks |
 | `Sink` | `coreSink` | stream events to clients |
@@ -139,6 +139,16 @@ Around the engine:
   `core`, `store`, `api`, and `agent`.
 - `internal/permission`: rules, subjects, bash parsing, and mode presets;
   `core.checkPermission` applies them for every tool call.
+- Tool contract (`internal/tools`): a `Spec` says whether a call asks by
+  default (`Asks`); core alone decides from that, the rules and the mode
+  (deny, then ask, then allow; `permission.Builtin` adds `memory: list` =
+  allow to every mode, which no stored rule removes). A call that asks runs
+  only on a grant: its newest approval is approved and it has no result yet,
+  read from the run's approvals, so a grant runs it once. What the approval
+  shows comes from the tool's optional side-effect-free `Preview` (a
+  `tools.FileChange` diff, the command and its directory), built on the call's
+  goroutine under its concurrency key; a preview error answers the call.
+  Executors never see approvals. `Result.Status` is the only status field.
 - `internal/shelltask`: background shell commands in their own process groups
   with size-capped output files; `core` tracks them as `Task`s (kind `shell`)
   in the `tasks` table, next to subagents (kind `subagent`), with one
