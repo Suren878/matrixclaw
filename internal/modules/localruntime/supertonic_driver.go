@@ -48,7 +48,7 @@ func (supertonicDriver) decorate(r *Runtime, _ string, provider setup.VoiceProvi
 		provider.RuntimeState = RuntimeStopped
 		provider.RuntimeDetail = ""
 		provider.Status = "Local · run per task"
-	} else if r.supertonicServerProcessRunning(provider) {
+	} else if r.voiceRuntimeRunning(provider) {
 		provider.RuntimeState = RuntimeRunning
 		provider.RuntimeDetail = ""
 		provider.Status = "Local · running"
@@ -88,32 +88,11 @@ func (supertonicDriver) installRuntime(ctx context.Context, r *Runtime, _ string
 }
 
 func (supertonicDriver) deleteRuntime(r *Runtime, _ string, provider setup.VoiceProviderOption) error {
-	if err := r.stopSupertonicServerProcess(provider); err != nil {
-		return err
-	}
+	r.procs.Stop(provider.ID)
 	if err := os.RemoveAll(filepath.Dir(filepath.Dir(r.managedSupertonicBinaryPath()))); err != nil {
 		return err
 	}
 	return os.RemoveAll(filepath.Join(r.runtimeDir(), "supertonic3"))
-}
-
-func (supertonicDriver) startRuntime(ctx context.Context, r *Runtime, _ string, provider setup.VoiceProviderOption) error {
-	if _, err := r.VoiceBinaryPath(provider); err != nil {
-		return err
-	}
-	return r.startSupertonicServerProcess(ctx, provider)
-}
-
-func (supertonicDriver) stopRuntime(r *Runtime, _ string, provider setup.VoiceProviderOption) error {
-	return r.stopSupertonicServerProcess(provider)
-}
-
-func (supertonicDriver) stopForDelete(r *Runtime, provider setup.VoiceProviderOption) error {
-	return r.stopSupertonicServerProcess(provider)
-}
-
-func (supertonicDriver) runtimeRunning(r *Runtime, provider setup.VoiceProviderOption) bool {
-	return r.supertonicServerProcessRunning(provider)
 }
 
 func (supertonicDriver) managedBinaryPath(r *Runtime, provider setup.VoiceProviderOption) (string, error) {
@@ -122,10 +101,6 @@ func (supertonicDriver) managedBinaryPath(r *Runtime, provider setup.VoiceProvid
 
 func (supertonicDriver) voiceBinaryPath(r *Runtime, provider setup.VoiceProviderOption) (string, error) {
 	return localVoiceBinaryPath(provider, r.supertonicModelCacheComplete, r.managedSupertonicBinaryPath)
-}
-
-func (supertonicDriver) processNames(provider setup.VoiceProviderOption) []string {
-	return append(configuredBinaryProcessName(provider), "supertonic")
 }
 
 func (r *Runtime) managedSupertonicBinaryPath() string {

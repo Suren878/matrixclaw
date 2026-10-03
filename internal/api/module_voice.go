@@ -25,7 +25,7 @@ func (s *Server) handleVoiceModules(w http.ResponseWriter, r *http.Request) {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	modules = localruntime.New("").DecorateVoiceModules(modules)
+	modules = s.localRuntime.DecorateVoiceModules(modules)
 	writeJSON(w, http.StatusOK, setup.VoiceModulesResponse{Modules: modules})
 }
 
@@ -77,7 +77,7 @@ func (s *Server) handleVoiceModuleByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	modules = localruntime.New("").DecorateVoiceModules(modules)
+	modules = s.localRuntime.DecorateVoiceModules(modules)
 	writeJSON(w, http.StatusOK, setup.VoiceModulesResponse{Modules: modules})
 }
 
@@ -113,7 +113,7 @@ func (s *Server) handleVoiceProvider(w http.ResponseWriter, r *http.Request, mod
 		writeErrorMessage(w, http.StatusNotFound, "voice provider not found")
 		return
 	}
-	updated, err := localruntime.New("").ApplyVoiceAction(r.Context(), moduleID, provider, request)
+	updated, err := s.localRuntime.ApplyVoiceAction(r.Context(), moduleID, provider, request)
 	if err != nil {
 		writeVoiceError(w, err)
 		return
@@ -123,7 +123,7 @@ func (s *Server) handleVoiceProvider(w http.ResponseWriter, r *http.Request, mod
 			writeVoiceError(w, err)
 			return
 		} else if ok {
-			if decorated, found := findVoiceProvider(localruntime.New("").DecorateVoiceModules(modules), moduleID, providerID); found {
+			if decorated, found := findVoiceProvider(s.localRuntime.DecorateVoiceModules(modules), moduleID, providerID); found {
 				updated = decorated
 			}
 		}
@@ -197,7 +197,7 @@ func (s *Server) handleTextToSpeech(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &request) {
 		return
 	}
-	response, err := voicemodule.NewService(s.setup).TextToSpeech(r.Context(), request)
+	response, err := s.voice.TextToSpeech(r.Context(), request)
 	if err != nil {
 		writeVoiceError(w, err)
 		return
@@ -214,7 +214,7 @@ func (s *Server) handleSpeechToText(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBodyLimit(w, r, &request, voiceAudioJSONBodyLimitBytes) {
 		return
 	}
-	response, err := voicemodule.NewService(s.setup).SpeechToText(r.Context(), request)
+	response, err := s.voice.SpeechToText(r.Context(), request)
 	if err != nil {
 		writeVoiceError(w, err)
 		return

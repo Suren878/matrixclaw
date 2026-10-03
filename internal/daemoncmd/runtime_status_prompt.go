@@ -25,9 +25,6 @@ func (p *setupRuntimeStatusContext) RuntimeStatusPromptContext(_ context.Context
 		return ""
 	}
 	runtime := p.runtime
-	if runtime == nil {
-		runtime = localruntime.New("")
-	}
 	toolSet := toolIDSet(req.ToolIDs)
 	lines := []string{"Current runtime status (as of this note; a newer note replaces it):"}
 	lines = append(lines, browserStatusLine(runtime.DecorateBrowserModule(setup.BrowserModuleFromConfig(cfg.Modules)), toolSet))

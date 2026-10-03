@@ -20,13 +20,8 @@ type voiceProviderDriver interface {
 	actionTarget(provider setup.VoiceProviderOption, modelID string) setup.VoiceProviderOption
 	installRuntime(ctx context.Context, r *Runtime, moduleID string, provider setup.VoiceProviderOption) error
 	deleteRuntime(r *Runtime, moduleID string, provider setup.VoiceProviderOption) error
-	startRuntime(ctx context.Context, r *Runtime, moduleID string, provider setup.VoiceProviderOption) error
-	stopRuntime(r *Runtime, moduleID string, provider setup.VoiceProviderOption) error
-	stopForDelete(r *Runtime, provider setup.VoiceProviderOption) error
-	runtimeRunning(r *Runtime, provider setup.VoiceProviderOption) bool
 	managedBinaryPath(r *Runtime, provider setup.VoiceProviderOption) (string, error)
 	voiceBinaryPath(r *Runtime, provider setup.VoiceProviderOption) (string, error)
-	processNames(provider setup.VoiceProviderOption) []string
 }
 
 func driverForProvider(providerID string) (voiceProviderDriver, bool) {
@@ -168,11 +163,4 @@ func localManagedBinaryPath(provider setup.VoiceProviderOption, managed func() s
 		}
 	}
 	return "", fmt.Errorf("%s runtime is not installed", provider.Name)
-}
-
-func configuredBinaryProcessName(provider setup.VoiceProviderOption) []string {
-	if binary := strings.TrimSpace(provider.Config.BinaryPath); binary != "" {
-		return []string{filepath.Base(binary)}
-	}
-	return nil
 }

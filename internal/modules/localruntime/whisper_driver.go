@@ -96,32 +96,11 @@ func (whisperDriver) installRuntime(ctx context.Context, r *Runtime, _ string, _
 }
 
 func (whisperDriver) deleteRuntime(r *Runtime, _ string, provider setup.VoiceProviderOption) error {
-	if err := r.stopWhisperServerProcess(provider); err != nil {
-		return err
-	}
+	r.procs.Stop(provider.ID)
 	if err := os.RemoveAll(r.managedWhisperRuntimeDir()); err != nil {
 		return err
 	}
 	return os.RemoveAll(filepath.Join(r.rootDir(), "voice", "stt", "whispercpp"))
-}
-
-func (whisperDriver) startRuntime(ctx context.Context, r *Runtime, moduleID string, provider setup.VoiceProviderOption) error {
-	if _, err := r.WhisperServerPath(provider); err != nil {
-		return err
-	}
-	return r.startWhisperServerProcess(ctx, moduleID, provider)
-}
-
-func (whisperDriver) stopRuntime(r *Runtime, _ string, provider setup.VoiceProviderOption) error {
-	return r.stopWhisperServerProcess(provider)
-}
-
-func (whisperDriver) stopForDelete(r *Runtime, provider setup.VoiceProviderOption) error {
-	return r.stopWhisperServerProcess(provider)
-}
-
-func (whisperDriver) runtimeRunning(r *Runtime, provider setup.VoiceProviderOption) bool {
-	return r.whisperServerProcessRunning(provider)
 }
 
 func (whisperDriver) managedBinaryPath(r *Runtime, provider setup.VoiceProviderOption) (string, error) {
@@ -150,10 +129,6 @@ func (whisperDriver) voiceBinaryPath(r *Runtime, provider setup.VoiceProviderOpt
 		return path, nil
 	}
 	return "", fmt.Errorf("%s runtime is not installed", provider.Name)
-}
-
-func (whisperDriver) processNames(provider setup.VoiceProviderOption) []string {
-	return append(configuredBinaryProcessName(provider), "whisper-server", "whisper-cli", "main")
 }
 
 func (r *Runtime) managedWhisperRuntimeDir() string {

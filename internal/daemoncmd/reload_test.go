@@ -13,6 +13,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
+	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/store"
 )
@@ -145,7 +146,7 @@ func TestMCPConfigChangedAfterSavedServerEdit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	changed := mcpConfigChanged(bootstrapConfig{SetupService: service, ExternalAgents: cfg.Modules})
+	changed := mcpConfigChanged(localruntime.New(t.TempDir()), bootstrapConfig{SetupService: service, ExternalAgents: cfg.Modules})
 	if changed() {
 		t.Fatal("unchanged MCP settings reported as changed")
 	}

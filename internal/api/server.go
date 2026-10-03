@@ -10,6 +10,8 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/automation"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
+	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/skills"
@@ -20,6 +22,8 @@ type Server struct {
 	automation    *automation.Service
 	storage       storageStore
 	realtimeVoice *realtime.Manager
+	localRuntime  *localruntime.Runtime
+	voice         *voicemodule.Service
 	skills        *skills.Service
 	mux           *http.ServeMux
 	setup         *setup.Service
@@ -77,6 +81,12 @@ func (s *Server) SetStorageStore(store storageStore) {
 
 func (s *Server) SetRealtimeVoiceService(service *realtime.Manager) {
 	s.realtimeVoice = service
+}
+
+// SetLocalVoice sets the daemon's local runtime and the voice service on it.
+func (s *Server) SetLocalVoice(runtime *localruntime.Runtime, voice *voicemodule.Service) {
+	s.localRuntime = runtime
+	s.voice = voice
 }
 
 func (s *Server) SetSkillsService(service *skills.Service) {

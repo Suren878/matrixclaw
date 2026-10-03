@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/procsup"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -29,16 +30,27 @@ const (
 	RuntimeStopped        = "stopped"
 )
 
+// Runtime manages local voice and browser runtimes; the daemon builds one and
+// closes it on shutdown, which stops the processes it started.
 type Runtime struct {
 	root   string
 	client *http.Client
+	procs  *procsup.Supervisor
 }
 
+// New uses root for models, or the default local state dir when root is "".
 func New(root string) *Runtime {
-	return &Runtime{
+	r := &Runtime{
 		root:   strings.TrimSpace(root),
 		client: &http.Client{Timeout: 30 * time.Minute},
 	}
+	r.procs = procsup.New(r.runtimeDir())
+	return r
+}
+
+func (r *Runtime) Close() error {
+	r.procs.StopAll()
+	return nil
 }
 
 func (r *Runtime) DecorateVoiceModules(modules []setup.VoiceModuleDescriptor) []setup.VoiceModuleDescriptor {
@@ -101,7 +113,10 @@ func (r *Runtime) VoiceModelInstalled(moduleID string, provider setup.VoiceProvi
 }
 
 func (r *Runtime) VoiceRuntimeRSSBytes(provider setup.VoiceProviderOption) uint64 {
-	return voiceRuntimeRSSBytes(provider)
+	if process, ok := r.procs.Running(provider.ID); ok {
+		return process.RSS()
+	}
+	return 0
 }
 
 func (r *Runtime) VoiceModelInstalledForID(moduleID string, provider setup.VoiceProviderOption, modelID string) (bool, string) {
@@ -129,29 +144,6 @@ func (r *Runtime) VoiceModelPathForID(moduleID string, provider setup.VoiceProvi
 		return driver.modelPath(r, moduleID, provider, modelID)
 	}
 	return ""
-}
-
-func voiceRuntimeProcessNames(provider setup.VoiceProviderOption) []string {
-	names := []string{}
-	if driver, ok := driverForProvider(provider.ID); ok {
-		names = append(names, driver.processNames(provider)...)
-	} else if binary := strings.TrimSpace(provider.Config.BinaryPath); binary != "" {
-		names = append(names, filepath.Base(binary))
-	}
-	seen := map[string]struct{}{}
-	out := make([]string, 0, len(names))
-	for _, name := range names {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
-		}
-		if _, ok := seen[name]; ok {
-			continue
-		}
-		seen[name] = struct{}{}
-		out = append(out, name)
-	}
-	return out
 }
 
 func (r *Runtime) ApplyVoiceAction(ctx context.Context, moduleID string, provider setup.VoiceProviderOption, request setup.VoiceProviderActionRequest) (setup.VoiceProviderOption, error) {
@@ -236,9 +228,7 @@ func (r *Runtime) downloadVoiceModel(ctx context.Context, moduleID string, provi
 }
 
 func (r *Runtime) deleteVoiceModel(moduleID string, provider setup.VoiceProviderOption) (setup.VoiceProviderOption, error) {
-	if err := r.stopVoiceRuntimeForDelete(provider); err != nil {
-		return provider, err
-	}
+	r.procs.Stop(provider.ID)
 	target := r.VoiceModelPath(moduleID, provider)
 	if target == "" {
 		return provider, errors.New("local voice model path is empty")
@@ -254,13 +244,6 @@ func (r *Runtime) deleteVoiceModel(moduleID string, provider setup.VoiceProvider
 	}
 	_ = os.Remove(filepath.Dir(target))
 	return r.DecorateVoiceProvider(moduleID, provider), nil
-}
-
-func (r *Runtime) stopVoiceRuntimeForDelete(provider setup.VoiceProviderOption) error {
-	if driver, ok := driverForProvider(provider.ID); ok {
-		return driver.stopForDelete(r, provider)
-	}
-	return nil
 }
 
 func (r *Runtime) startVoiceRuntime(ctx context.Context, moduleID string, provider setup.VoiceProviderOption) (setup.VoiceProviderOption, error) {
@@ -280,11 +263,7 @@ func (r *Runtime) startVoiceRuntime(ctx context.Context, moduleID string, provid
 			return provider, errors.New("local voice model is not installed")
 		}
 	}
-	driver, ok := driverForProvider(provider.ID)
-	if !ok {
-		return provider, fmt.Errorf("local voice provider %q cannot be started yet", provider.ID)
-	}
-	if err := driver.startRuntime(ctx, r, moduleID, provider); err != nil {
+	if _, err := r.server(ctx, moduleID, provider); err != nil {
 		return provider, err
 	}
 	return r.DecorateVoiceProvider(moduleID, provider), nil
@@ -297,21 +276,13 @@ func (r *Runtime) stopVoiceRuntime(moduleID string, provider setup.VoiceProvider
 	if voiceProviderRunsPerTask(provider) {
 		return provider, fmt.Errorf("%s is configured to run per task", provider.Name)
 	}
-	driver, ok := driverForProvider(provider.ID)
-	if !ok {
-		return provider, fmt.Errorf("local voice provider %q cannot be stopped yet", provider.ID)
-	}
-	if err := driver.stopRuntime(r, moduleID, provider); err != nil {
-		return provider, err
-	}
+	r.procs.Stop(provider.ID)
 	return r.DecorateVoiceProvider(moduleID, provider), nil
 }
 
 func (r *Runtime) voiceRuntimeRunning(provider setup.VoiceProviderOption) bool {
-	if driver, ok := driverForProvider(provider.ID); ok {
-		return driver.runtimeRunning(r, provider)
-	}
-	return false
+	_, ok := r.procs.Running(provider.ID)
+	return ok
 }
 
 func (r *Runtime) VoiceBinaryPath(provider setup.VoiceProviderOption) (string, error) {
@@ -372,6 +343,7 @@ func runRuntimeCommand(ctx context.Context, name string, args ...string) error {
 
 func runRuntimeCommandWithEnv(ctx context.Context, env []string, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
+	procsup.Prepare(cmd)
 	if len(env) > 0 {
 		cmd.Env = env
 	}

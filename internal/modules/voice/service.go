@@ -29,11 +29,12 @@ type setupLoader interface {
 }
 
 type Service struct {
-	setup setupLoader
+	setup   setupLoader
+	runtime *localruntime.Runtime
 }
 
-func NewService(setupService setupLoader) *Service {
-	return &Service{setup: setupService}
+func NewService(setupService setupLoader, runtime *localruntime.Runtime) *Service {
+	return &Service{setup: setupService, runtime: runtime}
 }
 
 func (s *Service) TextToSpeech(ctx context.Context, req TextToSpeechRequest) (TextToSpeechResponse, error) {
@@ -68,7 +69,7 @@ func (s *Service) piperTextToSpeech(ctx context.Context, module setup.VoiceModul
 	if err := ensureVoiceProviderAvailable(provider); err != nil {
 		return TextToSpeechResponse{}, err
 	}
-	content, err := localruntime.New("").PiperTextToSpeech(ctx, provider, text)
+	content, err := s.runtime.PiperTextToSpeech(ctx, provider, text)
 	if err != nil {
 		return TextToSpeechResponse{}, err
 	}
@@ -87,7 +88,7 @@ func (s *Service) supertonicTextToSpeech(ctx context.Context, module setup.Voice
 	if err := ensureVoiceProviderAvailable(provider); err != nil {
 		return TextToSpeechResponse{}, err
 	}
-	content, err := localruntime.New("").SupertonicTextToSpeech(ctx, provider, text)
+	content, err := s.runtime.SupertonicTextToSpeech(ctx, provider, text)
 	if err != nil {
 		return TextToSpeechResponse{}, err
 	}
@@ -166,7 +167,7 @@ func (s *Service) whisperCppSpeechToText(ctx context.Context, module setup.Voice
 	if err := ensureVoiceProviderAvailable(provider); err != nil {
 		return SpeechToTextResponse{}, err
 	}
-	text, err := localruntime.New("").WhisperSpeechToText(ctx, provider, localruntime.WhisperSpeechInput{
+	text, err := s.runtime.WhisperSpeechToText(ctx, provider, localruntime.WhisperSpeechInput{
 		Content:  content,
 		FileName: req.FileName,
 		MIMEType: req.MIMEType,
@@ -197,7 +198,7 @@ func (s *Service) voiceModule(moduleID string) (setup.VoiceModuleDescriptor, err
 	if err != nil {
 		return setup.VoiceModuleDescriptor{}, err
 	}
-	modules := localruntime.New("").DecorateVoiceModules(setup.VoiceModuleDescriptors(cfg.Modules))
+	modules := s.runtime.DecorateVoiceModules(setup.VoiceModuleDescriptors(cfg.Modules))
 	for _, module := range modules {
 		if module.ID == moduleID {
 			return module, nil

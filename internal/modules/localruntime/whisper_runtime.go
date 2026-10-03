@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/procsup"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -52,6 +53,7 @@ func (r *Runtime) WhisperSpeechToText(ctx context.Context, provider setup.VoiceP
 		args = append(args, "-t", fmt.Sprintf("%d", provider.Config.Threads))
 	}
 	cmd := exec.CommandContext(ctx, binary, args...)
+	procsup.Prepare(cmd)
 	var stderr bytes.Buffer
 	var stdout bytes.Buffer
 	cmd.Stderr = &stderr
@@ -139,10 +141,8 @@ func (r *Runtime) WhisperServerPath(provider setup.VoiceProviderOption) (string,
 }
 
 func (r *Runtime) whisperServerSpeechToText(ctx context.Context, provider setup.VoiceProviderOption, input WhisperSpeechInput) (string, error) {
-	if !r.whisperServerProcessRunning(provider) {
-		if err := r.startWhisperServerProcess(ctx, setup.VoiceModuleSTT, provider); err != nil {
-			return "", err
-		}
+	if _, err := r.server(ctx, setup.VoiceModuleSTT, provider); err != nil {
+		return "", err
 	}
 	audioPath, cleanup, err := r.prepareWhisperAudio(ctx, input)
 	if err != nil {
@@ -175,7 +175,7 @@ func (r *Runtime) whisperServerSpeechToText(ctx context.Context, provider setup.
 	if err := writer.Close(); err != nil {
 		return "", err
 	}
-	endpoint := strings.TrimRight(r.whisperServerEndpoint(provider), "/") + "/inference"
+	endpoint := serverEndpoint(provider, defaultWhisperServerEndpoint) + "/inference"
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, body)
 	if err != nil {
 		return "", err
@@ -250,6 +250,7 @@ func (r *Runtime) prepareWhisperAudio(ctx context.Context, input WhisperSpeechIn
 		return "", func() {}, err
 	}
 	cmd := exec.CommandContext(ctx, ffmpeg, "-y", "-i", inputPath, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wavPath)
+	procsup.Prepare(cmd)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {

@@ -77,32 +77,11 @@ func (piperDriver) installRuntime(ctx context.Context, r *Runtime, _ string, _ s
 }
 
 func (piperDriver) deleteRuntime(r *Runtime, _ string, provider setup.VoiceProviderOption) error {
-	if err := r.stopPiperProcess(provider); err != nil {
-		return err
-	}
+	r.procs.Stop(provider.ID)
 	if err := os.RemoveAll(filepath.Dir(filepath.Dir(r.managedPiperBinaryPath()))); err != nil {
 		return err
 	}
 	return os.RemoveAll(filepath.Join(r.rootDir(), "voice", "tts", "piper"))
-}
-
-func (piperDriver) startRuntime(ctx context.Context, r *Runtime, moduleID string, provider setup.VoiceProviderOption) error {
-	if _, err := r.VoiceBinaryPath(provider); err != nil {
-		return err
-	}
-	return r.startPiperProcess(moduleID, provider)
-}
-
-func (piperDriver) stopRuntime(r *Runtime, _ string, provider setup.VoiceProviderOption) error {
-	return r.stopPiperProcess(provider)
-}
-
-func (piperDriver) stopForDelete(r *Runtime, provider setup.VoiceProviderOption) error {
-	return r.stopPiperProcess(provider)
-}
-
-func (piperDriver) runtimeRunning(r *Runtime, provider setup.VoiceProviderOption) bool {
-	return r.piperProcessRunning(provider)
 }
 
 func (piperDriver) managedBinaryPath(r *Runtime, provider setup.VoiceProviderOption) (string, error) {
@@ -111,10 +90,6 @@ func (piperDriver) managedBinaryPath(r *Runtime, provider setup.VoiceProviderOpt
 
 func (piperDriver) voiceBinaryPath(r *Runtime, provider setup.VoiceProviderOption) (string, error) {
 	return localVoiceBinaryPath(provider, nil, r.managedPiperBinaryPath)
-}
-
-func (piperDriver) processNames(provider setup.VoiceProviderOption) []string {
-	return append(configuredBinaryProcessName(provider), "piper", "piper-tts")
 }
 
 func (r *Runtime) managedPiperBinaryPath() string {

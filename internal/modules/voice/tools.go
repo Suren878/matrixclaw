@@ -16,8 +16,8 @@ type textToSpeechTool struct {
 	service *Service
 }
 
-func NewTextToSpeechTool(setupService setupLoader) tools.Executor {
-	return &textToSpeechTool{service: NewService(setupService)}
+func NewTextToSpeechTool(service *Service) tools.Executor {
+	return &textToSpeechTool{service: service}
 }
 
 func (t *textToSpeechTool) Spec() tools.Spec {

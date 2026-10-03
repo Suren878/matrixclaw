@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -33,7 +32,7 @@ func (s *Server) getBrowserModule(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) writeBrowserModuleResponse(w http.ResponseWriter, module setup.BrowserModuleDescriptor) {
-	module = localruntime.New("").DecorateBrowserModule(module)
+	module = s.localRuntime.DecorateBrowserModule(module)
 	module.RestartRequired = s.mcpRestartRequired()
 	writeJSON(w, http.StatusOK, setup.BrowserModuleResponse{Module: module})
 }
@@ -88,7 +87,7 @@ func (s *Server) handleBrowserProvider(w http.ResponseWriter, r *http.Request) {
 		writeErrorMessage(w, http.StatusNotFound, "browser provider not found")
 		return
 	}
-	updated, err := localruntime.New("").ApplyBrowserAction(r.Context(), provider, request)
+	updated, err := s.localRuntime.ApplyBrowserAction(r.Context(), provider, request)
 	if err != nil {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return

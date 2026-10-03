@@ -58,13 +58,16 @@ func Run(ctx context.Context) error {
 	defer func() { _ = automationStore.Close() }()
 
 	removeWebResearchFiles(bootstrap.DBPath)
+	localRuntime := localruntime.New("")
+	defer func() { _ = localRuntime.Close() }()
+	voiceService := voicemodule.NewService(bootstrap.SetupService, localRuntime)
 	storageModule, err := localstorage.New(localstorage.Config{
 		Root: defaultStorageRoot(bootstrap.DBPath),
 	})
 	if err != nil {
 		return err
 	}
-	mcpModule, err := mcpmodule.New(ctx, mcpConfigWithBrowser(bootstrap.ExternalAgents))
+	mcpModule, err := mcpmodule.New(ctx, mcpConfigWithBrowser(localRuntime, bootstrap.ExternalAgents))
 	if err != nil {
 		log.Printf("matrixclawd mcp module disabled: %v", err)
 		mcpModule, _ = mcpmodule.New(ctx, setup.MCPConfig{})
@@ -88,7 +91,7 @@ func Run(ctx context.Context) error {
 		WithBackgroundAgents(bootstrap.BackgroundAgents).
 		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()}).
 		WithSkillsContext(skillsModule).
-		WithRuntimeStatusContext(&setupRuntimeStatusContext{setup: bootstrap.SetupService, runtime: localruntime.New("")})
+		WithRuntimeStatusContext(&setupRuntimeStatusContext{setup: bootstrap.SetupService, runtime: localRuntime})
 	// The workflow worker (below) may start executing persisted runs before
 	// supervisor.ApplyBootstrap runs, so the profile is set here too, via the
 	// same helper, ensuring module context is never missing.
@@ -107,7 +110,7 @@ func Run(ctx context.Context) error {
 		deliverymodule.NewSendFileTool(storageModule.Store(), app),
 		telephonymodule.NewCallTool(bootstrap.SetupService),
 		telephonymodule.NewEndCallTool(bootstrap.SetupService),
-		voicemodule.NewTextToSpeechTool(bootstrap.SetupService),
+		voicemodule.NewTextToSpeechTool(voiceService),
 		webtools.NewFetchTool(),
 		webtools.NewSearchTool(webSearchConfig(bootstrap.SetupService)),
 	}
@@ -147,8 +150,9 @@ func Run(ctx context.Context) error {
 	server.SetStorageStore(storageModule.Store())
 	server.SetSkillsService(skillsModule.Service())
 	server.SetSetupService(bootstrap.SetupService)
+	server.SetLocalVoice(localRuntime, voiceService)
 	server.SetRealtimeVoiceService(newRealtimeVoiceManager(bootstrap.SetupService, app))
-	server.SetMCPChanged(mcpConfigChanged(bootstrap))
+	server.SetMCPChanged(mcpConfigChanged(localRuntime, bootstrap))
 	supervisor := newSupervisor(ctx, server, app, osmGeo)
 	supervisor.SetModuleContext(moduleRegistry.Context)
 	supervisor.SetExternalAgents(sqliteStore, externalRuntimes, bootstrap.ExternalAgents.ExternalAgents)
@@ -180,7 +184,7 @@ func Run(ctx context.Context) error {
 	if err := supervisor.ApplyBootstrap(bootstrap); err != nil {
 		return err
 	}
-	startConfiguredVoiceRuntimes(ctx, bootstrap.SetupService)
+	startConfiguredVoiceRuntimes(ctx, bootstrap.SetupService, localRuntime)
 	safego.Go("automation.Run", func() { automationService.Run(ctx) })
 	safego.Go("supervisor.deliverStartupNotifications", func() {
 		supervisor.DeliverPendingStartupNotifications(bootstrap)
@@ -214,7 +218,7 @@ func skillsConfigFromBootstrap(bootstrap bootstrapConfig) skills.Config {
 	}
 }
 
-func mcpConfigWithBrowser(modules setup.ModulesConfig) setup.MCPConfig {
+func mcpConfigWithBrowser(runtime *localruntime.Runtime, modules setup.ModulesConfig) setup.MCPConfig {
 	cfg := modules.MCP
 	browserModule := setup.BrowserModuleFromConfig(modules)
 	if !browserModule.Enabled {
@@ -224,7 +228,7 @@ func mcpConfigWithBrowser(modules setup.ModulesConfig) setup.MCPConfig {
 		if provider.ID != browserModule.ProviderID {
 			continue
 		}
-		if server, ok := localruntime.New("").PlaywrightMCPServerConfig(provider); ok {
+		if server, ok := runtime.PlaywrightMCPServerConfig(provider); ok {
 			cfg.Enabled = true
 			cfg.Servers = appendOrReplaceMCPServer(cfg.Servers, server)
 		}
@@ -235,11 +239,11 @@ func mcpConfigWithBrowser(modules setup.ModulesConfig) setup.MCPConfig {
 
 // mcpConfigChanged reports whether the saved MCP and browser settings differ
 // from those the MCP module was built with at startup.
-func mcpConfigChanged(bootstrap bootstrapConfig) func() bool {
-	started := mcpConfigWithBrowser(bootstrap.ExternalAgents)
+func mcpConfigChanged(runtime *localruntime.Runtime, bootstrap bootstrapConfig) func() bool {
+	started := mcpConfigWithBrowser(runtime, bootstrap.ExternalAgents)
 	return func() bool {
 		cfg, err := bootstrap.SetupService.Load()
-		return err == nil && !reflect.DeepEqual(mcpConfigWithBrowser(cfg.Modules), started)
+		return err == nil && !reflect.DeepEqual(mcpConfigWithBrowser(runtime, cfg.Modules), started)
 	}
 }
 
@@ -254,7 +258,7 @@ func appendOrReplaceMCPServer(servers []setup.MCPServerConfig, server setup.MCPS
 	return append(out, server)
 }
 
-func startConfiguredVoiceRuntimes(ctx context.Context, service *setup.Service) {
+func startConfiguredVoiceRuntimes(ctx context.Context, service *setup.Service, runtime *localruntime.Runtime) {
 	if service == nil {
 		return
 	}
@@ -263,7 +267,6 @@ func startConfiguredVoiceRuntimes(ctx context.Context, service *setup.Service) {
 		log.Printf("voice runtime bootstrap skipped: %s", err)
 		return
 	}
-	runtime := localruntime.New("")
 	for _, module := range modules {
 		if !module.Enabled {
 			continue

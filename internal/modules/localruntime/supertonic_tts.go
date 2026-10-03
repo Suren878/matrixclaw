@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/procsup"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -37,6 +38,7 @@ func (r *Runtime) supertonicOneShotTextToSpeech(ctx context.Context, provider se
 	}
 
 	cmd := exec.CommandContext(ctx, binaryPath, args...)
+	procsup.Prepare(cmd)
 	cmd.Env = r.supertonicEnv(provider)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
