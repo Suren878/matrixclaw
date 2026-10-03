@@ -9,9 +9,7 @@ import (
 )
 
 type pluginManifest struct {
-	Name       string         `json:"name"`
-	Skills     []string       `json:"skills"`
-	MCPServers map[string]any `json:"mcpServers"`
+	Skills []string `json:"skills"`
 }
 
 func (s *Service) installPlugin(root string, manifestPath string, opts InstallOptions) ([]Skill, error) {
@@ -22,13 +20,6 @@ func (s *Service) installPlugin(root string, manifestPath string, opts InstallOp
 	var manifest pluginManifest
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		return nil, fmt.Errorf("parse plugin manifest: %w", err)
-	}
-	if len(manifest.MCPServers) > 0 {
-		for id, cfg := range manifest.MCPServers {
-			cfgJSON, _ := json.Marshal(cfg)
-			_, _ = s.db.Exec(`INSERT OR REPLACE INTO skill_plugin_mcp_candidates(id, plugin_path, config_json, enabled, created_at) VALUES (?, ?, ?, 0, ?)`,
-				NormalizeID(firstNonEmpty(manifest.Name, filepath.Base(root))+"-"+id), root, string(cfgJSON), formatTime(s.now().UTC()))
-		}
 	}
 	var installed []Skill
 	for _, rel := range manifest.Skills {

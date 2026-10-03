@@ -234,7 +234,6 @@ func skillsConfigFromBootstrap(bootstrap bootstrapConfig) skills.Config {
 		Enabled:     cfg.IsEnabled(),
 		AutoInvoke:  cfg.IsAutoInvoke(),
 		TrustPolicy: cfg.TrustPolicy,
-		SelfImprove: cfg.SelfImprove,
 	}
 }
 

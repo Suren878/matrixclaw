@@ -11,7 +11,6 @@ const (
 	StateArchived = "archived"
 
 	DefaultTrustPolicy = "quarantine"
-	DefaultSelfImprove = "drafts"
 )
 
 type Config struct {
@@ -20,7 +19,6 @@ type Config struct {
 	Enabled     bool
 	AutoInvoke  bool
 	TrustPolicy string
-	SelfImprove string
 }
 
 type Document struct {

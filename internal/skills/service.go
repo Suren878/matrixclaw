@@ -60,9 +60,6 @@ func normalizeConfig(cfg Config) Config {
 	if cfg.TrustPolicy == "" {
 		cfg.TrustPolicy = DefaultTrustPolicy
 	}
-	if cfg.SelfImprove == "" {
-		cfg.SelfImprove = DefaultSelfImprove
-	}
 	return cfg
 }
 
@@ -838,18 +835,4 @@ func formatTime(value time.Time) string {
 func parseTime(value string) time.Time {
 	t, _ := time.Parse(time.RFC3339Nano, strings.TrimSpace(value))
 	return t
-}
-
-func (s *Service) DB() *sql.DB {
-	if s == nil {
-		return nil
-	}
-	return s.db
-}
-
-func (s *Service) Root() string {
-	if s == nil {
-		return ""
-	}
-	return s.root
 }

@@ -110,7 +110,6 @@ type SkillsConfig struct {
 	Enabled     *bool  `json:"enabled,omitempty"`
 	AutoInvoke  *bool  `json:"auto_invoke,omitempty"`
 	TrustPolicy string `json:"trust_policy,omitempty"`
-	SelfImprove string `json:"self_improve,omitempty"`
 }
 
 func (c SkillsConfig) IsEnabled() bool {
