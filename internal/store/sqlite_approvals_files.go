@@ -96,18 +96,25 @@ WHERE id = ?`,
 	return nil
 }
 
+const approvalColumns = `id, session_id, run_id, tool_call_ref, tool_name, description, action, params_json, path, state, reason, suggestion_json, requested_at, decided_at`
+
+// ListApprovals lists the session's approvals in state (any when empty), newest first.
 func (s *SQLiteStore) ListApprovals(ctx context.Context, sessionID string, state core.ApprovalState) ([]core.Approval, error) {
-	query := `
-SELECT id, session_id, run_id, tool_call_ref, tool_name, description, action, params_json, path, state, reason, suggestion_json, requested_at, decided_at
-FROM approvals
-WHERE session_id = ?`
+	query := `SELECT ` + approvalColumns + ` FROM approvals WHERE session_id = ?`
 	args := []any{sessionID}
 	if state != "" {
 		query += ` AND state = ?`
 		args = append(args, string(state))
 	}
-	query += ` ORDER BY requested_at DESC`
+	return s.queryApprovals(ctx, query+` ORDER BY requested_at DESC`, args...)
+}
 
+// ListRunApprovals lists the approvals the run asked for, newest first.
+func (s *SQLiteStore) ListRunApprovals(ctx context.Context, sessionID string, runID string) ([]core.Approval, error) {
+	return s.queryApprovals(ctx, `SELECT `+approvalColumns+` FROM approvals WHERE session_id = ? AND run_id = ? ORDER BY requested_at DESC`, sessionID, runID)
+}
+
+func (s *SQLiteStore) queryApprovals(ctx context.Context, query string, args ...any) ([]core.Approval, error) {
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("store: list approvals: %w", err)

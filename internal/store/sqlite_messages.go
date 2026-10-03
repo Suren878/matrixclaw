@@ -81,16 +81,17 @@ func (s *SQLiteStore) GetMessage(ctx context.Context, messageID string) (transcr
 }
 
 // HasToolResult reports whether a tool message of the session answers toolCallID.
-func (s *SQLiteStore) HasToolResult(ctx context.Context, sessionID string, toolCallID string) (bool, error) {
+func (s *SQLiteStore) HasToolResult(ctx context.Context, sessionID string, runID string, toolCallID string) (bool, error) {
 	var found bool
 	err := s.db.QueryRowContext(ctx, `
 SELECT EXISTS (
     SELECT 1
     FROM messages m, json_each(CASE WHEN json_valid(m.parts_json) THEN m.parts_json ELSE '[]' END) p
     WHERE m.session_id = ?
+      AND m.run_id = ?
       AND m.role = 'tool'
       AND json_extract(p.value, '$.tool_result.tool_call_id') = ?
-)`, sessionID, strings.TrimSpace(toolCallID)).Scan(&found)
+)`, sessionID, runID, strings.TrimSpace(toolCallID)).Scan(&found)
 	if err != nil {
 		return false, fmt.Errorf("store: has tool result: %w", err)
 	}
@@ -114,6 +115,14 @@ ORDER BY seq DESC`
 	}
 	reverseMessages(messages)
 	return messages, nil
+}
+
+// ListRunMessages returns the messages of the run in seq order.
+func (s *SQLiteStore) ListRunMessages(ctx context.Context, sessionID string, runID string) ([]transcript.Message, error) {
+	return s.queryMessages(ctx, `SELECT `+messageColumns+`
+FROM messages
+WHERE session_id = ? AND run_id = ?
+ORDER BY seq ASC`, sessionID, runID)
 }
 
 // ListMessagesAfter returns up to limit messages (all when limit is 0) with seq > afterSeq, ascending.

@@ -244,16 +244,11 @@ func (c *Core) updateExternalAgentSessionFromEvent(ctx context.Context, attachme
 }
 
 func (c *Core) findRunUserMessage(ctx context.Context, run Run) (transcript.Message, error) {
-	messages, err := c.store.ListMessages(ctx, run.SessionID, 0)
-	if err != nil {
-		return transcript.Message{}, err
+	message, err := c.store.GetMessage(ctx, run.UserMessageID)
+	if err == nil && message.SessionID != run.SessionID {
+		err = ErrNotFound
 	}
-	for _, message := range messages {
-		if message.ID == run.UserMessageID {
-			return message, nil
-		}
-	}
-	return transcript.Message{}, ErrNotFound
+	return message, err
 }
 
 func applyExternalMessageDelta(assistant *transcript.Message, delta string) bool {

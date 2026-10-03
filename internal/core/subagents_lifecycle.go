@@ -175,11 +175,11 @@ func (c *Core) syncBlockingSubagentTaskAfterRun(ctx context.Context, task Subage
 	if _, err := c.finishOrBridgeSubagentTask(ctx, task, nil); err != nil {
 		return err
 	}
-	messages, err := c.store.ListMessages(ctx, parentRun.SessionID, 0)
+	calls, err := c.incompleteToolCalls(ctx, parentRun.SessionID, parentRun.ID)
 	if err != nil {
 		return err
 	}
-	for _, interrupted := range incompleteToolCallsForRun(messages, parentRun.ID) {
+	for _, interrupted := range calls {
 		if normalizeText(interrupted.Call.ID) != normalizeText(task.ParentToolCallID) {
 			continue
 		}
@@ -204,11 +204,11 @@ func (c *Core) syncBlockingSubagentTaskAfterRun(ctx context.Context, task Subage
 // runWaitsForBlockingChild reports whether a call of the run has no result yet
 // while its blocking subagent still works on it.
 func (c *Core) runWaitsForBlockingChild(ctx context.Context, sessionID string, runID string) (bool, error) {
-	messages, err := c.store.ListMessages(ctx, sessionID, 0)
+	calls, err := c.incompleteToolCalls(ctx, sessionID, runID)
 	if err != nil {
 		return false, err
 	}
-	for _, interrupted := range incompleteToolCallsForRun(messages, runID) {
+	for _, interrupted := range calls {
 		task, err := c.store.GetSubagentTaskByParentToolCall(ctx, sessionID, runID, interrupted.Call.ID)
 		if errors.Is(err, ErrNotFound) {
 			continue

@@ -50,8 +50,11 @@ type MessageStore interface {
 	SaveMessageProgress(ctx context.Context, message transcript.Message) (int64, error)
 	UpdateMessageProgress(ctx context.Context, message transcript.Message) error
 	GetMessage(ctx context.Context, messageID string) (transcript.Message, error)
-	HasToolResult(ctx context.Context, sessionID string, toolCallID string) (bool, error)
+	// HasToolResult reports whether the run has a result for the call; a call's
+	// result is always written by the call's own run.
+	HasToolResult(ctx context.Context, sessionID string, runID string, toolCallID string) (bool, error)
 	ListMessages(ctx context.Context, sessionID string, limit int) ([]transcript.Message, error)
+	ListRunMessages(ctx context.Context, sessionID string, runID string) ([]transcript.Message, error)
 	ListMessagesAfter(ctx context.Context, sessionID string, afterSeq int64, limit int) ([]transcript.Message, error)
 	LatestCompaction(ctx context.Context, sessionID string) (transcript.Message, error)
 }
@@ -126,6 +129,7 @@ type ApprovalStore interface {
 	GetApproval(ctx context.Context, approvalID string) (Approval, error)
 	UpdateApproval(ctx context.Context, approval Approval) error
 	ListApprovals(ctx context.Context, sessionID string, state ApprovalState) ([]Approval, error)
+	ListRunApprovals(ctx context.Context, sessionID string, runID string) ([]Approval, error)
 }
 
 // PermissionRuleStore keeps permission rules; global rules belong to no session.

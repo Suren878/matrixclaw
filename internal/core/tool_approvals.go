@@ -206,7 +206,7 @@ func (c *Core) passDecisionToSubagent(ctx context.Context, bridge subagentApprov
 // finishApprovalCall writes result for the approval's call unless it has one.
 func (c *Core) finishApprovalCall(ctx context.Context, approval Approval, result tools.Result) error {
 	toolCallID := strings.TrimSpace(approval.ToolCallRef)
-	done, err := c.store.HasToolResult(ctx, approval.SessionID, toolCallID)
+	done, err := c.store.HasToolResult(ctx, approval.SessionID, approval.RunID, toolCallID)
 	if err != nil || done {
 		return err
 	}
@@ -313,30 +313,15 @@ func toolCallArgs(message transcript.Message) (json.RawMessage, bool) {
 	return nil, false
 }
 
-func approvalsForRun(approvals []Approval, runID string) []Approval {
-	runID = strings.TrimSpace(runID)
-	if runID == "" {
-		return nil
-	}
-	matched := make([]Approval, 0, len(approvals))
-	for _, approval := range approvals {
-		if approval.RunID != runID {
-			continue
-		}
-		matched = append(matched, approval)
-	}
-	return matched
-}
-
 // runHasPendingApprovals reports whether the run still waits: one of its
 // approvals is pending or one of its calls waits for its blocking subagent. A
 // background subagent's approval never holds its parent's run.
 func (c *Core) runHasPendingApprovals(ctx context.Context, sessionID string, runID string) (bool, error) {
-	approvals, err := c.store.ListApprovals(ctx, sessionID, "")
+	approvals, err := c.store.ListRunApprovals(ctx, sessionID, runID)
 	if err != nil {
 		return false, err
 	}
-	for _, approval := range approvalsForRun(approvals, runID) {
+	for _, approval := range approvals {
 		if approval.State != ApprovalStatePending {
 			continue
 		}
@@ -358,7 +343,7 @@ func (c *Core) bridgedCallWaitsForSubagent(ctx context.Context, approval Approva
 	if !bridged || approval.State == ApprovalStatePending {
 		return false, nil
 	}
-	done, err := c.store.HasToolResult(ctx, approval.SessionID, strings.TrimSpace(approval.ToolCallRef))
+	done, err := c.store.HasToolResult(ctx, approval.SessionID, approval.RunID, strings.TrimSpace(approval.ToolCallRef))
 	if err != nil || done {
 		return false, err
 	}

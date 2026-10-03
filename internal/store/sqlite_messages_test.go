@@ -148,13 +148,13 @@ func TestLegacyMessagesGetSeqInCreatedAtOrder(t *testing.T) {
 }
 
 func toolCallMessage(id string, sessionID string) transcript.Message {
-	return transcript.Message{ID: id, SessionID: sessionID, Role: transcript.MessageRoleAssistant, CreatedAt: testEpoch, Parts: []transcript.MessagePart{{
+	return transcript.Message{ID: id, SessionID: sessionID, RunID: "r1", Role: transcript.MessageRoleAssistant, CreatedAt: testEpoch, Parts: []transcript.MessagePart{{
 		Kind: transcript.MessagePartKindToolCall, ToolCall: &transcript.ToolCallPart{ID: id, Name: "read", Input: `{"path":"a"}`},
 	}}}
 }
 
 func toolResultMessage(id string, sessionID string, toolCallID string) transcript.Message {
-	return transcript.Message{ID: id, SessionID: sessionID, Role: transcript.MessageRoleTool, CreatedAt: testEpoch, Parts: []transcript.MessagePart{{
+	return transcript.Message{ID: id, SessionID: sessionID, RunID: "r1", Role: transcript.MessageRoleTool, CreatedAt: testEpoch, Parts: []transcript.MessagePart{{
 		Kind: transcript.MessagePartKindToolResult, ToolResult: &transcript.ToolResultPart{ToolCallID: toolCallID, Name: "read", Content: "ok"},
 	}}}
 }
@@ -162,7 +162,7 @@ func toolResultMessage(id string, sessionID string, toolCallID string) transcrip
 // assistantToolResultMessage carries a tool_result part on a non-tool role, to pin
 // that HasToolResult only counts role='tool' messages.
 func assistantToolResultMessage(id string, sessionID string, toolCallID string) transcript.Message {
-	return transcript.Message{ID: id, SessionID: sessionID, Role: transcript.MessageRoleAssistant, CreatedAt: testEpoch, Parts: []transcript.MessagePart{{
+	return transcript.Message{ID: id, SessionID: sessionID, RunID: "r1", Role: transcript.MessageRoleAssistant, CreatedAt: testEpoch, Parts: []transcript.MessagePart{{
 		Kind: transcript.MessagePartKindToolResult, ToolResult: &transcript.ToolResultPart{ToolCallID: toolCallID, Name: "read", Content: "ok"},
 	}}}
 }
@@ -195,22 +195,30 @@ func TestMessagePointLookups(t *testing.T) {
 
 	t.Run("HasToolResult", func(t *testing.T) {
 		for _, tc := range []struct {
-			sessionID, toolCallID string
-			want                  bool
+			sessionID, runID, toolCallID string
+			want                         bool
 		}{
-			{"s1", "call-1", true},
-			{"s1", "call-2", false},
-			{"s2", "call-2", true},
-			{"s1", "missing", false},
-			{"s2", "call-3", false},
+			{"s1", "r1", "call-1", true},
+			{"s1", "r2", "call-1", false},
+			{"s1", "r1", "call-2", false},
+			{"s2", "r1", "call-2", true},
+			{"s1", "r1", "missing", false},
+			{"s2", "r1", "call-3", false},
 		} {
-			got, err := st.HasToolResult(ctx, tc.sessionID, tc.toolCallID)
+			got, err := st.HasToolResult(ctx, tc.sessionID, tc.runID, tc.toolCallID)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if got != tc.want {
-				t.Errorf("HasToolResult(%s, %s)=%v, want %v", tc.sessionID, tc.toolCallID, got, tc.want)
+				t.Errorf("HasToolResult(%s, %s, %s)=%v, want %v", tc.sessionID, tc.runID, tc.toolCallID, got, tc.want)
 			}
+		}
+	})
+
+	t.Run("ListRunMessages", func(t *testing.T) {
+		got, err := st.ListRunMessages(ctx, "s1", "r1")
+		if err != nil || len(got) != 2 || got[0].ID != "call-1" || got[1].ID != "result-1" {
+			t.Fatalf("ListRunMessages(s1, r1)=%+v, %v", got, err)
 		}
 	})
 

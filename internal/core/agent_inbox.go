@@ -83,13 +83,13 @@ func (in coreInbox) Consume(ctx context.Context, runID string, ids []string) err
 // first; a call's newest approval decides it. A bridged call resumes, whichever way
 // its child's approval was decided, only once the subagent is done.
 func (in coreInbox) decided(ctx context.Context, runID string) ([]agent.Input, error) {
-	approvals, err := in.c.store.ListApprovals(ctx, in.session.ID, "")
+	approvals, err := in.c.store.ListRunApprovals(ctx, in.session.ID, runID)
 	if err != nil {
 		return nil, err
 	}
 	seen := map[string]struct{}{}
 	var out []agent.Input
-	for _, approval := range approvalsForRun(approvals, runID) {
+	for _, approval := range approvals {
 		callID := strings.TrimSpace(approval.ToolCallRef)
 		if callID == "" {
 			continue
@@ -101,7 +101,7 @@ func (in coreInbox) decided(ctx context.Context, runID string) ([]agent.Input, e
 		if approval.State == ApprovalStatePending {
 			continue
 		}
-		done, err := in.c.store.HasToolResult(ctx, in.session.ID, callID)
+		done, err := in.c.store.HasToolResult(ctx, in.session.ID, runID, callID)
 		if err != nil {
 			return nil, err
 		}

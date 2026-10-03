@@ -138,11 +138,8 @@ func (c *Core) runNeedsCrashRecovery(ctx context.Context, run Run) (bool, error)
 		if _, ok, err := c.runCheckpoint(ctx, run.ID); err != nil || ok {
 			return ok, err
 		}
-		messages, err := c.store.ListMessages(ctx, run.SessionID, 0)
-		if err != nil {
-			return false, err
-		}
-		return len(incompleteToolCallsForRun(messages, run.ID)) > 0, nil
+		calls, err := c.incompleteToolCalls(ctx, run.SessionID, run.ID)
+		return len(calls) > 0, err
 	default:
 		return false, nil
 	}
@@ -164,7 +161,7 @@ func (c *Core) prepareRunAfterCrash(ctx context.Context, run *Run) (bool, error)
 		return false, c.setRunStatus(ctx, run, RunStatusFailed, fmt.Sprintf("run stopped after %d daemon-restart recovery attempts", checkpoint.RecoveryCount-1))
 	}
 
-	messages, err := c.store.ListMessages(ctx, run.SessionID, 0)
+	messages, err := c.store.ListRunMessages(ctx, run.SessionID, run.ID)
 	if err != nil {
 		return false, err
 	}
@@ -183,7 +180,7 @@ func (c *Core) prepareRunAfterCrash(ctx context.Context, run *Run) (bool, error)
 		}
 		return true, nil
 	}
-	approvals, err := c.store.ListApprovals(ctx, run.SessionID, "")
+	approvals, err := c.store.ListRunApprovals(ctx, run.SessionID, run.ID)
 	if err != nil {
 		return false, err
 	}
@@ -349,7 +346,7 @@ func (c *Core) finishUnknownInterruptedTool(ctx context.Context, run Run, interr
 }
 
 func (c *Core) ensureRunRecoveryApproval(ctx context.Context, run Run, interrupted interruptedToolCall, approvals []Approval) (Approval, error) {
-	for _, approval := range approvalsForRun(approvals, run.ID) {
+	for _, approval := range approvals {
 		if approval.ToolCallRef != interrupted.Call.ID || approval.State != ApprovalStatePending {
 			continue
 		}
@@ -400,6 +397,15 @@ func latestApprovalForToolCall(approvals []Approval, runID string, toolCallID st
 		}
 	}
 	return latest, found
+}
+
+// incompleteToolCalls lists the run's tool calls that have no result yet.
+func (c *Core) incompleteToolCalls(ctx context.Context, sessionID string, runID string) ([]interruptedToolCall, error) {
+	messages, err := c.store.ListRunMessages(ctx, sessionID, runID)
+	if err != nil {
+		return nil, err
+	}
+	return incompleteToolCallsForRun(messages, runID), nil
 }
 
 func incompleteToolCallsForRun(messages []transcript.Message, runID string) []interruptedToolCall {

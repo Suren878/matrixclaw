@@ -21,6 +21,7 @@ func migrateMessageSeq(db *sql.DB) error {
 		`DROP INDEX IF EXISTS idx_messages_session_created_at`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_seq ON messages(seq)`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_session_seq ON messages(session_id, seq)`,
+		`CREATE INDEX IF NOT EXISTS idx_messages_session_run ON messages(session_id, run_id, seq)`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			return fmt.Errorf("store: index message seq: %w", err)

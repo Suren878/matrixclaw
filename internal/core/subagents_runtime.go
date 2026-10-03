@@ -112,7 +112,7 @@ func (c *Core) subagentRunSummary(ctx context.Context, sessionID string, runID s
 		}
 		return "Subagent failed with status " + string(run.Status) + ".", true
 	}
-	messages, err := c.store.ListMessages(ctx, sessionID, 0)
+	messages, err := c.store.ListRunMessages(ctx, sessionID, runID)
 	if err != nil {
 		return "Subagent failed: " + err.Error(), true
 	}

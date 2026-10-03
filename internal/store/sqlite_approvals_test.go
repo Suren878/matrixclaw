@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/permission"
@@ -56,5 +57,26 @@ func TestApprovalKeepsItsSuggestedRule(t *testing.T) {
 		if (approval.ID == "a1") != (approval.Suggestion != nil) {
 			t.Fatalf("listed %s suggestion = %+v", approval.ID, approval.Suggestion)
 		}
+	}
+}
+
+func TestRunApprovalsAreTheRunsOwnNewestFirst(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	createTestSession(t, st, "s1")
+	for i, approval := range []core.Approval{
+		{ID: "a1", SessionID: "s1", RunID: "r1", State: core.ApprovalStateApproved},
+		{ID: "a2", SessionID: "s1", RunID: "r2", State: core.ApprovalStatePending},
+		{ID: "a3", SessionID: "s1", RunID: "r1", State: core.ApprovalStatePending},
+	} {
+		approval.RequestedAt = testEpoch.Add(time.Duration(i) * time.Second)
+		if err := st.CreateApproval(ctx, approval); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	listed, err := st.ListRunApprovals(ctx, "s1", "r1")
+	if err != nil || len(listed) != 2 || listed[0].ID != "a3" || listed[1].ID != "a1" {
+		t.Fatalf("listed = %+v err = %v", listed, err)
 	}
 }
