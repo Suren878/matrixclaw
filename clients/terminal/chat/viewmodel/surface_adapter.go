@@ -2,6 +2,7 @@ package viewmodel
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -31,6 +32,10 @@ func ToSurfaceMessage(message transcript.Message) surfacemessage.Message {
 		case transcript.MessagePartKindText:
 			if part.Text != nil {
 				out.Parts = append(out.Parts, surfacemessage.TextContent{Text: part.Text.Text})
+			}
+		case transcript.MessagePartKindImage:
+			if part.Image != nil {
+				out.Parts = append(out.Parts, surfacemessage.ImageContent{Name: imageName(*part.Image), MIMEType: part.Image.MIMEType})
 			}
 		case transcript.MessagePartKindReasoning:
 			if part.Reasoning != nil {
@@ -86,6 +91,16 @@ func ToSurfaceMessage(message transcript.Message) surfacemessage.Message {
 		out.Boundary = &surfacemessage.ContextBoundary{Summary: compaction.Summary, Cleared: compaction.Cleared, TokensBefore: compaction.TokensBefore, TokensAfter: compaction.TokensAfter}
 	}
 	return out
+}
+
+func imageName(image transcript.ImagePart) string {
+	if name := strings.TrimSpace(image.Name); name != "" {
+		return name
+	}
+	if path := strings.TrimSpace(image.StoragePath); path != "" {
+		return filepath.Base(path)
+	}
+	return "image"
 }
 
 func ToSurfaceMessages(messages []transcript.Message) []surfacemessage.Message {

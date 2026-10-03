@@ -1,7 +1,6 @@
 package message
 
 import (
-	"encoding/base64"
 	"slices"
 	"strings"
 	"time"
@@ -47,24 +46,13 @@ type TextContent struct {
 
 func (TextContent) isPart() {}
 
-type ImageURLContent struct {
-	URL    string `json:"url"`
-	Detail string `json:"detail,omitempty"`
-}
-
-func (ImageURLContent) isPart() {}
-
-type BinaryContent struct {
-	Path     string `json:"path,omitempty"`
+// ImageContent is an image attached to a message; only its name is shown.
+type ImageContent struct {
+	Name     string `json:"name,omitempty"`
 	MIMEType string `json:"mime_type,omitempty"`
-	Data     []byte `json:"data,omitempty"`
 }
 
-func (BinaryContent) isPart() {}
-
-func (bc BinaryContent) String() string {
-	return base64.StdEncoding.EncodeToString(bc.Data)
-}
+func (ImageContent) isPart() {}
 
 type ToolCall struct {
 	ID       string `json:"id"`
@@ -137,20 +125,10 @@ func (m *Message) ReasoningContent() ReasoningContent {
 	return ReasoningContent{}
 }
 
-func (m *Message) ImageURLContent() []ImageURLContent {
-	items := make([]ImageURLContent, 0)
+func (m *Message) Images() []ImageContent {
+	items := make([]ImageContent, 0)
 	for _, part := range m.Parts {
-		if c, ok := part.(ImageURLContent); ok {
-			items = append(items, c)
-		}
-	}
-	return items
-}
-
-func (m *Message) BinaryContent() []BinaryContent {
-	items := make([]BinaryContent, 0)
-	for _, part := range m.Parts {
-		if c, ok := part.(BinaryContent); ok {
+		if c, ok := part.(ImageContent); ok {
 			items = append(items, c)
 		}
 	}
@@ -309,14 +287,6 @@ func (m *Message) AddFinish(reason FinishReason, message string, details string)
 		Message: message,
 		Details: details,
 	})
-}
-
-func (m *Message) AddImageURL(url string, detail string) {
-	m.Parts = append(m.Parts, ImageURLContent{URL: url, Detail: detail})
-}
-
-func (m *Message) AddBinary(mimeType string, data []byte) {
-	m.Parts = append(m.Parts, BinaryContent{MIMEType: mimeType, Data: data})
 }
 
 func (m *Message) HasRenderableText() bool {

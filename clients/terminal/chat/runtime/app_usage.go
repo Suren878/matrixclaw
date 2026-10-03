@@ -118,9 +118,7 @@ func estimateMessagesTokens(messages []surfacemessage.Message) int {
 			switch part := part.(type) {
 			case surfacemessage.TextContent:
 				total += agentcontext.EstimateTextTokens(part.Text)
-			case surfacemessage.ImageURLContent:
-				total += agentcontext.EstimatedImageTokens
-			case surfacemessage.BinaryContent:
+			case surfacemessage.ImageContent:
 				total += agentcontext.EstimatedImageTokens
 			case surfacemessage.ToolResult:
 				total += agentcontext.EstimateTextTokens(part.Content)

@@ -42,8 +42,8 @@ func (m *UserMessageItem) RawRender(width int) string {
 	msgContent := strings.TrimSpace(m.message.Content().Text)
 	content = common.RenderMessageText(msgContent, m.sty, cappedWidth)
 
-	if len(m.message.BinaryContent()) > 0 {
-		attachmentsStr := m.renderAttachments(cappedWidth)
+	if images := m.message.Images(); len(images) > 0 {
+		attachmentsStr := m.attachments.Render(images, cappedWidth)
 		if content == "" {
 			content = attachmentsStr
 		} else {
@@ -62,8 +62,4 @@ func (m *UserMessageItem) Render(width int) string {
 
 func (m *UserMessageItem) ID() string {
 	return m.message.ID
-}
-
-func (m *UserMessageItem) renderAttachments(width int) string {
-	return m.attachments.Render(m.message.BinaryContent(), false, width)
 }
