@@ -239,7 +239,7 @@ func (c *Core) finishTask(ctx context.Context, taskID string, status TaskStatus,
 // recordTaskEnd stores how a task ended, unless it already had, and tells its
 // session's clients.
 func (c *Core) recordTaskEnd(ctx context.Context, taskID string, status TaskStatus, exitCode *int, errText string) (Task, bool, error) {
-	finished, err := c.store.FinishTask(ctx, taskID, status, exitCode, errText, c.now().UTC())
+	finished, err := c.store.FinishTask(ctx, taskID, TaskEnd{Status: status, ExitCode: exitCode, Error: errText, At: c.now().UTC()})
 	if err != nil || !finished {
 		return Task{}, false, err
 	}
@@ -403,11 +403,10 @@ func (c *Core) sessionTask(ctx context.Context, sessionID string, taskID string)
 	return task, err
 }
 
-// RecoverTasks runs at daemon start: shell tasks left running by the previous
-// daemon are marked lost, and their process group is killed when its leader is
-// surely still theirs. Runs start later: RecoverActiveRuns wakes runs waiting
-// for them and the next run of the session reads them.
-func (c *Core) RecoverTasks(ctx context.Context) error {
+// recoverShellTasks marks the shell tasks the previous daemon left running
+// lost, and kills their process group when its leader is surely still theirs;
+// runs waiting for them wake, and the session's next run reads them.
+func (c *Core) recoverShellTasks(ctx context.Context) error {
 	tasks, err := c.store.ListTasks(ctx, TaskFilter{Kind: TaskKindShell, Statuses: []TaskStatus{TaskStatusRunning}})
 	if err != nil {
 		return err

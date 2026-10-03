@@ -12,10 +12,13 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
+const sessionInputColumns = `id, session_id, target_run_id, mode, status, text, parts_json, client, external_key,
+client_capabilities_json, delivery_address_json, reply_once, working_dir, consumed_run_id, error, created_at, updated_at, consumed_at`
+
 func (s *SQLiteStore) CreateSessionInput(ctx context.Context, input core.SessionInput) error {
 	if _, err := s.db.ExecContext(ctx, `
-	INSERT INTO session_inputs(id, session_id, target_run_id, mode, status, text, parts_json, client, external_key, client_capabilities_json, delivery_address_json, working_dir, consumed_run_id, error, created_at, updated_at, consumed_at)
-	VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	INSERT INTO session_inputs(`+sessionInputColumns+`)
+	VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		input.ID,
 		input.SessionID,
 		input.TargetRunID,
@@ -27,6 +30,7 @@ func (s *SQLiteStore) CreateSessionInput(ctx context.Context, input core.Session
 		input.ExternalKey,
 		marshalClientCapabilities(input.ClientCapabilities),
 		string(input.DeliveryAddress),
+		input.ReplyOnce,
 		input.WorkingDir,
 		input.ConsumedRunID,
 		input.Error,
@@ -42,7 +46,7 @@ func (s *SQLiteStore) CreateSessionInput(ctx context.Context, input core.Session
 func (s *SQLiteStore) UpdateSessionInput(ctx context.Context, input core.SessionInput) error {
 	result, err := s.db.ExecContext(ctx, `
 	UPDATE session_inputs
-	SET target_run_id = ?, mode = ?, status = ?, text = ?, parts_json = ?, client = ?, external_key = ?, client_capabilities_json = ?, delivery_address_json = ?, working_dir = ?, consumed_run_id = ?, error = ?, updated_at = ?, consumed_at = ?
+	SET target_run_id = ?, mode = ?, status = ?, text = ?, parts_json = ?, client = ?, external_key = ?, client_capabilities_json = ?, delivery_address_json = ?, reply_once = ?, working_dir = ?, consumed_run_id = ?, error = ?, updated_at = ?, consumed_at = ?
 	WHERE id = ?`,
 		input.TargetRunID,
 		string(input.Mode),
@@ -53,6 +57,7 @@ func (s *SQLiteStore) UpdateSessionInput(ctx context.Context, input core.Session
 		input.ExternalKey,
 		marshalClientCapabilities(input.ClientCapabilities),
 		string(input.DeliveryAddress),
+		input.ReplyOnce,
 		input.WorkingDir,
 		input.ConsumedRunID,
 		input.Error,
@@ -75,7 +80,7 @@ func (s *SQLiteStore) UpdateSessionInput(ctx context.Context, input core.Session
 
 func (s *SQLiteStore) ListPendingSessionInputs(ctx context.Context, sessionID string) ([]core.SessionInput, error) {
 	query := `
-	SELECT id, session_id, target_run_id, mode, status, text, parts_json, client, external_key, client_capabilities_json, delivery_address_json, working_dir, consumed_run_id, error, created_at, updated_at, consumed_at
+	SELECT ` + sessionInputColumns + `
 FROM session_inputs
 WHERE status = ?`
 	args := []any{string(core.SessionInputStatusPending)}
@@ -122,7 +127,7 @@ func (s *SQLiteStore) HasConsumedSessionInput(ctx context.Context, sessionID str
 
 func (s *SQLiteStore) NextPendingSessionInput(ctx context.Context, sessionID string) (core.SessionInput, error) {
 	row := s.db.QueryRowContext(ctx, `
-	SELECT id, session_id, target_run_id, mode, status, text, parts_json, client, external_key, client_capabilities_json, delivery_address_json, working_dir, consumed_run_id, error, created_at, updated_at, consumed_at
+	SELECT `+sessionInputColumns+`
 FROM session_inputs
 WHERE session_id = ?
   AND status = ?
@@ -146,7 +151,7 @@ LIMIT 1`,
 
 func (s *SQLiteStore) ListPendingSteerInputs(ctx context.Context, sessionID string, runID string) ([]core.SessionInput, error) {
 	rows, err := s.db.QueryContext(ctx, `
-	SELECT id, session_id, target_run_id, mode, status, text, parts_json, client, external_key, client_capabilities_json, delivery_address_json, working_dir, consumed_run_id, error, created_at, updated_at, consumed_at
+	SELECT `+sessionInputColumns+`
 FROM session_inputs
 WHERE session_id = ?
   AND target_run_id = ?
@@ -203,6 +208,7 @@ func scanSessionInput(scanner sessionInputScanner) (core.SessionInput, error) {
 		&input.ExternalKey,
 		&capabilitiesJSON,
 		&deliveryAddressJSON,
+		&input.ReplyOnce,
 		&input.WorkingDir,
 		&input.ConsumedRunID,
 		&input.Error,

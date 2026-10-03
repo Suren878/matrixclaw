@@ -2,7 +2,6 @@ package setup
 
 import (
 	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
-	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
 func (m *model) renderProviderList() string {
@@ -99,27 +98,11 @@ func setupLoadingFrame(frame int) string {
 }
 
 func (m *model) renderProviderEffortList() string {
-	field, ok := m.providerFormSpec().Field(setup.ProviderFormFieldReasoningEffort)
-	if !ok {
-		return m.renderPickerFrame("Reasoning Effort", nil, m.providerEffortCursor)
-	}
-	items := make([]listItem, 0, len(field.Choices))
-	for _, choice := range field.Choices {
-		items = append(items, listItem{Title: choice.Title, Status: choice.Status})
-	}
-	return m.renderPickerFrame("Reasoning Effort", items, m.providerEffortCursor)
+	return m.renderPickerFrame("Reasoning Effort", m.providerReasoningItems(), m.providerEffortCursor)
 }
 
 func (m *model) renderProviderToolUseList() string {
-	field, ok := m.providerFormSpec().Field(setup.ProviderFormFieldToolUse)
-	if !ok {
-		return m.renderPickerFrame("Tool Use", nil, m.providerToolUseCursor)
-	}
-	items := make([]listItem, 0, len(field.Choices))
-	for _, choice := range field.Choices {
-		items = append(items, listItem{Title: choice.Title, Status: choice.Status})
-	}
-	return m.renderPickerFrame("Tool Use", items, m.providerToolUseCursor)
+	return m.renderPickerFrame("Tool Use", toolUseItems(), m.providerToolUseCursor)
 }
 
 func pagedSearchItems(rows []listEntry, hasPrevious bool, hasNext bool) []components.Item {

@@ -11,8 +11,8 @@ import (
 func (m *model) renderAssistantForm() string {
 	items := []listItem{
 		{Title: "Continue"},
-		{Title: "Name", Status: nonEmpty(m.draft.AssistantName, "matrixclaw")},
-		{Title: "User prompt", Status: assistantPromptStatus(m.draft.AssistantCustomPrompt)},
+		{Title: "Name", Status: nonEmpty(m.cfg.Assistant.Name, "matrixclaw")},
+		{Title: "User prompt", Status: assistantPromptStatus(m.cfg.Assistant.CustomInstructions)},
 	}
 	extraLines := []string{"", setupFooterStyle.Render("System prompt is managed by matrixclaw.")}
 	card := components.RenderListCard(m.commandFrame(), components.ListData{
@@ -36,7 +36,7 @@ func (m *model) updateAssistantForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 	event := m.updateListSelection(keyMsg.String(), &m.formFocus, itemCount)
 	switch event.Kind {
 	case components.EventBack:
-		m.cancelDraftForm(screenProviderList)
+		m.cancelForm(screenProviderList)
 	case components.EventSelect:
 		if m.formFocus == 0 {
 			if err := m.handleAssistantFormSave(); err != nil {
@@ -48,22 +48,18 @@ func (m *model) updateAssistantForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch m.formFocus {
 		case 1:
-			m.openTextEditor(textEditAssistantName, "Assistant Name", "matrixclaw", m.draft.AssistantName, false)
+			m.openTextEditor(textEditAssistantName, "Assistant Name", "matrixclaw", m.cfg.Assistant.Name, false)
 		case 2:
-			m.openTextEditor(textEditAssistantCustomPrompt, "User Prompt", "User instructions for every run", m.draft.AssistantCustomPrompt, false)
+			m.openTextEditor(textEditAssistantCustomPrompt, "User Prompt", "User instructions for every run", m.cfg.Assistant.CustomInstructions, false)
 		}
 	}
 	return m, nil
 }
 
 func (m *model) handleAssistantFormSave() error {
-	m.draft.AssistantName = strings.TrimSpace(m.draft.AssistantName)
-	m.draft.AssistantSystemPrompt = strings.TrimSpace(m.draft.AssistantSystemPrompt)
-	m.draft.AssistantCustomPrompt = strings.TrimSpace(m.draft.AssistantCustomPrompt)
-	if m.draft.AssistantName == "" {
-		m.draft.AssistantName = "matrixclaw"
-	}
-	return m.saveDraftAndReturn(screenChannelsList)
+	m.cfg.Assistant.Name = strings.TrimSpace(m.cfg.Assistant.Name)
+	m.cfg.Assistant.CustomInstructions = strings.TrimSpace(m.cfg.Assistant.CustomInstructions)
+	return m.commitFormAndReturn(screenChannelsList)
 }
 
 func assistantPromptStatus(value string) string {

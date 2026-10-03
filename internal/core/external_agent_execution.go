@@ -22,43 +22,25 @@ const (
 	externalTruncationMarker       = "\n\n[MatrixClaw: output truncated; the external agent retains the full result]"
 )
 
-func (c *Core) tryExecuteExternalAgentRun(ctx context.Context, runCtx context.Context, runID string) (bool, error) {
+// tryExecuteExternalAgentRun executes a claimed run of an external agent's
+// session and reports whether the session was one.
+func (c *Core) tryExecuteExternalAgentRun(ctx context.Context, runCtx context.Context, claimed claimedRun, session Session) (bool, error) {
 	if c.externalStore == nil {
 		return false, nil
 	}
-
-	run, err := c.store.GetRun(ctx, normalizeText(runID))
-	if err != nil {
-		return false, err
-	}
-	if run.Status.Terminal() {
-		return true, nil
-	}
-	if run.Status == RunStatusRunning {
-		return true, c.failOrphanedRun(ctx, run)
-	}
-
-	session, err := c.store.GetSession(ctx, run.SessionID)
-	if err != nil {
-		return true, c.failRun(ctx, run, err)
-	}
+	run := claimed.Run
 	attachment, err := c.externalStore.GetExternalAgentSession(ctx, session.ID)
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return false, nil
-		}
 		return true, c.failRun(ctx, run, err)
 	}
 	runtime, err := c.externalRuntime(attachment.AgentID)
 	if err != nil {
 		return true, c.failRun(ctx, run, err)
 	}
-
-	if err := c.setRunStatus(ctx, &run, RunStatusRunning, ""); err != nil {
-		return true, err
-	}
-
-	return true, c.executeExternalAgentRun(ctx, runCtx, run, runtime, attachment)
+	return true, c.executeExternalAgentRun(ctx, runCtx, claimed, runtime, attachment)
 }
 
 func (c *Core) externalRuntime(agentID string) (externalagents.RuntimeAgent, error) {
@@ -73,21 +55,23 @@ func (c *Core) externalRuntime(agentID string) (externalagents.RuntimeAgent, err
 	return runtime, nil
 }
 
-func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Context, run Run, runtime externalagents.RuntimeAgent, attachment externalagents.SessionAttachment) error {
+func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Context, claimed claimedRun, runtime externalagents.RuntimeAgent, attachment externalagents.SessionAttachment) error {
+	run := claimed.Run
 	userMessage, err := c.findRunUserMessage(ctx, run)
 	if err != nil {
 		return c.failRun(ctx, run, err)
 	}
 	inputText := userMessage.Content
-	if checkpoint, ok, checkpointErr := c.runCheckpoint(ctx, run.ID); checkpointErr != nil {
-		return c.failRun(ctx, run, checkpointErr)
-	} else if ok {
-		if recoveryPrompt := runCheckpointRecoveryPrompt(checkpoint); recoveryPrompt != "" {
-			inputText = recoveryPrompt + "\n\nContinue the existing task from where it stopped. Inspect the workspace before making further changes. Original task for reference:\n" + userMessage.Content
+	if claimed.Recovering {
+		// The agent's own tools may have run; only it can say where it stopped.
+		messages, err := c.store.ListRunMessages(ctx, run.SessionID, run.ID)
+		if err == nil {
+			err = c.sealExternalReply(ctx, run.ID, messages)
 		}
-	}
-	if err := c.saveRunCheckpoint(ctx, run.ID); err != nil {
-		return c.failRun(ctx, run, err)
+		if err != nil {
+			return c.failRun(ctx, run, err)
+		}
+		inputText = runRecoveryNotice + "\n\nContinue the existing task from where it stopped. Inspect the workspace before making further changes. Original task for reference:\n" + userMessage.Content
 	}
 	externalSession := attachment.ExternalSession()
 	if strings.TrimSpace(externalSession.Model) == "" {
@@ -136,9 +120,6 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 		case <-runCtx.Done():
 			return c.finishExternalRunAfterContextStopped(run, &assistant, assistantSaved, runtime, externalSession)
 		case <-ticker.C:
-			if handled, cancelErr := c.checkExternalRunCanceled(ctx, run, &assistant, assistantSaved, runtime, externalSession); handled {
-				return cancelErr
-			}
 			if err := flushProgress(false); err != nil {
 				return c.failRun(ctx, run, err)
 			}
@@ -147,17 +128,16 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 			}
 			continue
 		case event, ok := <-events:
+			// What the agent already sent is kept even when the run stopped
+			// meanwhile; only the turn's end is not acted on then.
+			if ok {
+				progressDirty = applyExternalOutput(&assistant, event) || progressDirty
+			}
 			if runCtx.Err() != nil {
 				return c.finishExternalRunAfterContextStopped(run, &assistant, assistantSaved, runtime, externalSession)
 			}
 			if !ok {
-				if handled, cancelErr := c.checkExternalRunCanceled(ctx, run, &assistant, assistantSaved, runtime, externalSession); handled {
-					return cancelErr
-				}
-				return c.persistAssistantError(ctx, run, &assistant, assistantSaved, errors.New("external agent event stream ended before turn completed"))
-			}
-			if handled, cancelErr := c.checkExternalRunCanceled(ctx, run, &assistant, assistantSaved, runtime, externalSession); handled {
-				return cancelErr
+				return c.failWithReply(ctx, run, &assistant, assistantSaved, "", errors.New("external agent event stream ended before turn completed"))
 			}
 			switch event.Kind {
 			case externalagents.EventTurnStarted:
@@ -171,27 +151,14 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 				if err := c.touchExternalRunActivity(ctx, &run, event.At); err != nil {
 					return c.failRun(ctx, run, err)
 				}
-			case externalagents.EventMessageDelta:
-				progressDirty = applyExternalMessageDelta(&assistant, event.Text) || progressDirty
-			case externalagents.EventReasoningDelta:
-				progressDirty = applyExternalReasoningDelta(&assistant, event.Text) || progressDirty
-			case externalagents.EventToolStarted:
-				progressDirty = applyExternalToolStarted(&assistant, event) || progressDirty
-			case externalagents.EventToolOutputDelta, externalagents.EventDiffUpdated:
-				progressDirty = applyExternalToolOutputDelta(&assistant, event) || progressDirty
-			case externalagents.EventToolCompleted:
-				progressDirty = applyExternalToolCompleted(&assistant, event) || progressDirty
 			case externalagents.EventTurnCompleted:
 				return c.completeExternalAgentRun(ctx, &run, &assistant, assistantSaved)
 			case externalagents.EventTurnFailed:
-				if handled, cancelErr := c.checkExternalRunCanceled(ctx, run, &assistant, assistantSaved, runtime, externalSession); handled {
-					return cancelErr
-				}
 				errText := strings.TrimSpace(event.Error)
 				if errText == "" {
 					errText = "external agent turn failed"
 				}
-				return c.persistAssistantError(ctx, run, &assistant, assistantSaved, errors.New(errText))
+				return c.failWithReply(ctx, run, &assistant, assistantSaved, "", errors.New(errText))
 			}
 			if progressDirty && !assistantSaved {
 				if err := flushProgress(true); err != nil {
@@ -199,6 +166,25 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 				}
 			}
 		}
+	}
+}
+
+// applyExternalOutput adds an output event to the reply and reports whether
+// it changed.
+func applyExternalOutput(assistant *transcript.Message, event externalagents.Event) bool {
+	switch event.Kind {
+	case externalagents.EventMessageDelta:
+		return applyExternalMessageDelta(assistant, event.Text)
+	case externalagents.EventReasoningDelta:
+		return applyExternalReasoningDelta(assistant, event.Text)
+	case externalagents.EventToolStarted:
+		return applyExternalToolStarted(assistant, event)
+	case externalagents.EventToolOutputDelta, externalagents.EventDiffUpdated:
+		return applyExternalToolOutputDelta(assistant, event)
+	case externalagents.EventToolCompleted:
+		return applyExternalToolCompleted(assistant, event)
+	default:
+		return false
 	}
 }
 
@@ -314,9 +300,6 @@ func (c *Core) saveExternalAssistantProgress(ctx context.Context, assistant *tra
 }
 
 func (c *Core) touchExternalRunActivity(ctx context.Context, run *Run, at time.Time) error {
-	if run == nil {
-		return nil
-	}
 	if at.IsZero() {
 		at = c.now().UTC()
 	} else {
@@ -326,7 +309,7 @@ func (c *Core) touchExternalRunActivity(ctx context.Context, run *Run, at time.T
 		return nil
 	}
 	run.UpdatedAt = at
-	if err := c.store.UpdateRun(ctx, *run); err != nil {
+	if err := c.store.TouchRun(ctx, run.ID, at); err != nil {
 		return err
 	}
 	c.publishEvent(Event{Type: EventRunUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: *run})
@@ -521,26 +504,13 @@ func defaultExternalToolName(name string) string {
 	return name
 }
 
+// completeExternalAgentRun ends the run with the agent's finished turn.
 func (c *Core) completeExternalAgentRun(ctx context.Context, run *Run, assistant *transcript.Message, assistantSaved bool) error {
-	if assistant == nil || run == nil {
-		return nil
-	}
 	assistant.Parts = append(transcript.NormalizeMessageParts(assistant.Content, assistant.Parts), transcript.MessagePart{
 		Kind:   transcript.MessagePartKindFinish,
 		Finish: &transcript.FinishPart{Reason: transcript.FinishReasonEndTurn},
 	})
-	return c.completeAssistantTurn(ctx, run, assistant, assistantSaved)
-}
-
-func (c *Core) checkExternalRunCanceled(ctx context.Context, run Run, assistant *transcript.Message, assistantSaved bool, runtime externalagents.RuntimeAgent, session externalagents.ExternalSession) (bool, error) {
-	canceled, err := c.isRunCanceled(ctx, run.ID)
-	if err != nil || !canceled {
-		return false, nil
-	}
-	if runtime != nil {
-		_ = runtime.Interrupt(ctx, session)
-	}
-	return true, c.finishCanceledAssistant(ctx, assistant, assistantSaved)
+	return c.transition(ctx, run, runChange{To: RunStatusCompleted, Reply: assistant, ReplySaved: assistantSaved})
 }
 
 func (c *Core) finishExternalRunAfterContextStopped(run Run, assistant *transcript.Message, assistantSaved bool, runtime externalagents.RuntimeAgent, session externalagents.ExternalSession) error {
@@ -555,10 +525,10 @@ func (c *Core) finishExternalRunAfterContextStopped(run Run, assistant *transcri
 		_ = runtime.Interrupt(ctx, session)
 	}
 	if current.Status == RunStatusCanceled {
-		return c.finishCanceledAssistant(ctx, assistant, assistantSaved)
+		return c.sealCanceledReply(ctx, assistant, assistantSaved)
 	}
 	if current.Status.Terminal() {
 		return nil
 	}
-	return c.preserveRunForRecovery(ctx, current, assistant, assistantSaved)
+	return c.sealInterruptedReply(ctx, assistant, assistantSaved)
 }

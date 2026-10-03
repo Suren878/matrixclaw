@@ -161,7 +161,7 @@ func TestGuestsChangeNoRules(t *testing.T) {
 
 func TestPermissionsUsageWarnsThatTestRunnersRunCode(t *testing.T) {
 	result, err := New(&rulesRuntime{}, "").Handle(context.Background(), "key", "/permissions nonsense")
-	if err != nil || !strings.Contains(result.Text, "accept_edits") || !strings.Contains(result.Text, "runs code") || !strings.Contains(result.Text, "web_research") {
+	if err != nil || !strings.Contains(result.Text, "accept_edits") || !strings.Contains(result.Text, "runs code") || !strings.Contains(result.Text, "redirects included") {
 		t.Fatalf("usage = %q err = %v", result.Text, err)
 	}
 }

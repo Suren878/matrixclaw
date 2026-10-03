@@ -1,24 +1,25 @@
 package setup
 
-import (
-	"strings"
-
-	"github.com/Suren878/matrixclaw/internal/providers"
-)
+import "strings"
 
 func SummaryFromConfig(cfg Config) Summary {
-	active, _ := ActiveProviderConfig(cfg)
+	stored, configured := cfg.ActiveProvider()
+	active, hasKey := stored.Runtime()
+	preview := stored.APIKeyPreview()
+	if !configured {
+		active, preview = ProviderConfig{}, ""
+	}
 	return Summary{
 		Assistant: AssistantSummary{
-			Name:   firstNonEmptyTrimmed(cfg.Assistant.Name, "matrixclaw"),
+			Name:   cfg.Assistant.NameOrDefault(),
 			Status: assistantStatus(cfg.Assistant),
 		},
 		Provider: ProviderSummary{
 			ID:            active.ID,
 			Name:          active.Name,
 			Model:         active.Model,
-			Status:        providerStatus(providerConfigHasAPIKey(active)),
-			APIKeyPreview: ProviderAPIKeyPreview(active),
+			Status:        providerStatus(configured && hasKey),
+			APIKeyPreview: preview,
 		},
 		Daemon: DaemonSummary{
 			Status:        daemonStatus(cfg.Daemon.HTTPAddr, cfg.Daemon.DBPath),
@@ -33,54 +34,6 @@ func SummaryFromConfig(cfg Config) Summary {
 				cfg.Clients.Telegram.Enabled,
 				cfg.Clients.Telegram.BotToken,
 				cfg.Clients.Telegram.AllowedUserID,
-			),
-		},
-	}
-}
-
-func SummaryFromDraft(d Draft) Summary {
-	active, ok := FindProviderDraft(d, d.ActiveProviderID)
-	if !ok || !ProviderDraftConfigured(active) {
-		active = ProviderDraft{}
-		ok = false
-	}
-	if !ok {
-		for _, provider := range ConfiguredProviders(d) {
-			active = provider
-			ok = true
-			break
-		}
-	}
-	name := ""
-	if ok {
-		name = active.Name
-	}
-
-	return Summary{
-		Assistant: AssistantSummary{
-			Name:   firstNonEmptyTrimmed(d.AssistantName, "matrixclaw"),
-			Status: assistantDraftStatus(d),
-		},
-		Provider: ProviderSummary{
-			ID:            active.ID,
-			Name:          name,
-			Model:         active.Model,
-			Status:        providerStatus(ProviderDraftConfigured(active)),
-			APIKeyPreview: currentDraftAPIKeyPreview(active),
-		},
-		Daemon: DaemonSummary{
-			Status:        daemonStatus(d.HTTPAddr, d.DBPath),
-			HTTPAddr:      d.HTTPAddr,
-			DBPath:        d.DBPath,
-			Timezone:      d.Timezone,
-			Autostart:     ParseBool(d.AutostartOnBoot),
-			RuntimeStatus: "Not applied",
-		},
-		Telegram: TelegramSummary{
-			Status: telegramStatus(
-				ParseBool(d.TelegramEnabled),
-				d.TelegramBotToken,
-				d.TelegramAllowedUID,
 			),
 		},
 	}
@@ -127,36 +80,4 @@ func assistantStatus(assistant AssistantConfig) string {
 		return "Configured · Custom"
 	}
 	return "Configured"
-}
-
-func assistantDraftStatus(d Draft) string {
-	if strings.TrimSpace(d.AssistantCustomPrompt) != "" {
-		return "Configured · Custom"
-	}
-	return "Configured"
-}
-
-func currentDraftAPIKeyPreview(provider ProviderDraft) string {
-	if policy := providers.PolicyForProvider(firstNonEmptyTrimmed(provider.CatalogID, provider.ID), provider.Type); !policy.RequiresAPIKey {
-		return policy.AuthStatusLabel
-	}
-	if provider.HasStoredAPIKey {
-		return provider.StoredAPIKeyPreview
-	}
-	if strings.TrimSpace(provider.APIKey) != "" {
-		return MaskSecret(provider.APIKey)
-	}
-	envName := providerDraftAPIKeyEnvName(provider)
-	if envName != "" && strings.TrimSpace(providerAPIKeyFromEnvName(envName)) != "" {
-		return "env:" + envName
-	}
-	return ""
-}
-
-func providerConfigHasAPIKey(provider ProviderConfig) bool {
-	if !providers.PolicyForProvider(firstNonEmptyTrimmed(provider.CatalogID, provider.ID), provider.Type).RequiresAPIKey {
-		return strings.TrimSpace(provider.Model) != ""
-	}
-	_, ok := ResolvedProviderAPIKey(provider)
-	return ok
 }

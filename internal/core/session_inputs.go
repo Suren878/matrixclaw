@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 
@@ -74,24 +73,31 @@ func (c *Core) sessionGate(sessionID string) *sessionGate {
 }
 
 // newRun is a run to accept with its user message; empty IDs are generated.
-// With Deliver set, the run's reply is queued for the client at DeliveryAddress.
+// With Deliver set, the run's reply is queued for the client at To.
 type newRun struct {
-	RunID           string
-	MessageID       string
-	Text            string
-	Parts           []transcript.MessagePart
-	Client          string
-	ExternalKey     string
-	Capabilities    ClientCapabilities
-	Deliver         bool
-	DeliveryAddress json.RawMessage
-	ContinuesRunID  string
-	Trigger         RunTrigger
+	RunID          string
+	MessageID      string
+	Text           string
+	Parts          []transcript.MessagePart
+	Client         string
+	ExternalKey    string
+	Capabilities   ClientCapabilities
+	Deliver        bool
+	To             deliveryTo
+	ContinuesRunID string
+	Trigger        RunTrigger
 }
 
 // clientRun is a run answering a client's message, delivered back to it.
-func clientRun(text string, parts []transcript.MessagePart, client string, externalKey string, capabilities ClientCapabilities, address json.RawMessage) newRun {
-	return newRun{Text: text, Parts: parts, Client: client, ExternalKey: externalKey, Capabilities: capabilities, Deliver: true, DeliveryAddress: address}
+func clientRun(text string, parts []transcript.MessagePart, client string, externalKey string, capabilities ClientCapabilities, to deliveryTo) newRun {
+	return newRun{Text: text, Parts: parts, Client: client, ExternalKey: externalKey, Capabilities: capabilities, Deliver: true, To: to}
+}
+
+// deliveryTo is where in a client a run's reply goes; ReplyOnce addresses take
+// one reply only.
+type deliveryTo struct {
+	Address   json.RawMessage
+	ReplyOnce bool
 }
 
 func (c *Core) createAcceptedRun(ctx context.Context, session Session, in newRun) (AcceptRunResult, error) {
@@ -125,7 +131,7 @@ func (c *Core) createAcceptedRun(ctx context.Context, session Session, in newRun
 	}
 	var deliveries []ClientDelivery
 	if in.Deliver {
-		delivery, hasDelivery, err := c.prepareSessionRunDelivery(run, in.Text, in.Parts, in.Client, in.ExternalKey, in.DeliveryAddress)
+		delivery, hasDelivery, err := c.prepareSessionRunDelivery(run, in.Text, in.Parts, in.Client, in.ExternalKey, in.To)
 		if err != nil {
 			return AcceptRunResult{}, err
 		}
@@ -169,6 +175,7 @@ func (c *Core) createPendingSessionInput(ctx context.Context, session Session, a
 		ExternalKey:        normalizeText(input.ExternalKey),
 		ClientCapabilities: input.ClientCapabilities,
 		DeliveryAddress:    cloneRawMessage(input.DeliveryAddress),
+		ReplyOnce:          input.ReplyOnce,
 		WorkingDir:         normalizeText(input.WorkingDir),
 		CreatedAt:          now,
 		UpdatedAt:          now,
@@ -250,7 +257,7 @@ func (c *Core) startNextPendingSessionInput(ctx context.Context, sessionID strin
 
 func (c *Core) consumeSessionInputAsRun(ctx context.Context, session Session, input SessionInput) (AcceptRunResult, error) {
 	parts := transcript.NormalizeMessageParts(input.Text, input.Parts)
-	result, err := c.createAcceptedRun(ctx, session, clientRun(input.Text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress))
+	result, err := c.createAcceptedRun(ctx, session, clientRun(input.Text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, deliveryTo{input.DeliveryAddress, input.ReplyOnce}))
 	if err != nil {
 		return AcceptRunResult{}, err
 	}
@@ -267,7 +274,7 @@ func (c *Core) consumeSessionInputAsRun(ctx context.Context, session Session, in
 	return result, nil
 }
 
-func (c *Core) prepareSessionRunDelivery(run Run, text string, parts []transcript.MessagePart, client string, externalKey string, address json.RawMessage) (ClientDelivery, bool, error) {
+func (c *Core) prepareSessionRunDelivery(run Run, text string, parts []transcript.MessagePart, client string, externalKey string, to deliveryTo) (ClientDelivery, bool, error) {
 	client = normalizeText(client)
 	externalKey = normalizeText(externalKey)
 	if client == "" || externalKey == "" {
@@ -280,7 +287,8 @@ func (c *Core) prepareSessionRunDelivery(run Run, text string, parts []transcrip
 		SessionID:   normalizeText(run.SessionID),
 		RunID:       normalizeText(run.ID),
 		Summary:     sessionRunDeliverySummary(text, parts),
-		Address:     cloneRawMessage(address),
+		Address:     cloneRawMessage(to.Address),
+		ReplyOnce:   to.ReplyOnce,
 		Status:      ClientDeliveryStatusPending,
 	}
 	prepared, err := c.prepareClientDelivery(delivery)
@@ -353,31 +361,6 @@ func (c *Core) queuePendingSteersForInactiveSession(ctx context.Context, session
 			return err
 		}
 		c.publishSessionInputUpdated(input)
-	}
-	return nil
-}
-
-func (c *Core) RecoverSessionInputs(ctx context.Context) error {
-	if c == nil || c.store == nil {
-		return nil
-	}
-	inputs, err := c.store.ListPendingSessionInputs(ctx, "")
-	if err != nil {
-		return err
-	}
-	seen := map[string]struct{}{}
-	for _, input := range inputs {
-		sessionID := normalizeText(input.SessionID)
-		if sessionID == "" {
-			continue
-		}
-		if _, ok := seen[sessionID]; ok {
-			continue
-		}
-		seen[sessionID] = struct{}{}
-		if _, err := c.startNextPendingSessionInput(ctx, sessionID); err != nil {
-			return fmt.Errorf("recover session input %s: %w", sessionID, err)
-		}
 	}
 	return nil
 }

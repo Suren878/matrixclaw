@@ -126,6 +126,7 @@ CREATE TABLE IF NOT EXISTS session_inputs (
     external_key TEXT NOT NULL DEFAULT '',
     client_capabilities_json TEXT NOT NULL DEFAULT '',
     delivery_address_json TEXT NOT NULL DEFAULT '',
+    reply_once INTEGER NOT NULL DEFAULT 0,
     working_dir TEXT NOT NULL DEFAULT '',
     consumed_run_id TEXT NOT NULL DEFAULT '',
     error TEXT NOT NULL DEFAULT '',
@@ -157,6 +158,7 @@ CREATE TABLE IF NOT EXISTS approvals (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
     run_id TEXT NOT NULL DEFAULT '',
+    task_id TEXT NOT NULL DEFAULT '',
     tool_call_ref TEXT NOT NULL DEFAULT '',
     tool_name TEXT NOT NULL DEFAULT '',
     description TEXT NOT NULL DEFAULT '',
@@ -166,18 +168,6 @@ CREATE TABLE IF NOT EXISTS approvals (
     state TEXT NOT NULL,
     requested_at TEXT NOT NULL,
     decided_at TEXT,
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS file_snapshots (
-    id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    path TEXT NOT NULL,
-    content TEXT NOT NULL,
-    version INTEGER NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    UNIQUE(session_id, path, version),
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
@@ -191,6 +181,7 @@ CREATE TABLE IF NOT EXISTS client_deliveries (
     task_id TEXT NOT NULL,
     summary TEXT NOT NULL,
     address_json TEXT NOT NULL,
+    reply_once INTEGER NOT NULL DEFAULT 0,
     payload_json TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL,
     error TEXT NOT NULL,
@@ -277,9 +268,6 @@ CREATE INDEX IF NOT EXISTS idx_session_inputs_target_run
 
 CREATE INDEX IF NOT EXISTS idx_memories_scope_workdir_updated
     ON memories(scope, working_dir, updated_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_file_snapshots_session_path_version
-    ON file_snapshots(session_id, path, version DESC);
 
 CREATE INDEX IF NOT EXISTS idx_client_deliveries_status
     ON client_deliveries(client, type, status, created_at);

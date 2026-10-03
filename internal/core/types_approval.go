@@ -17,9 +17,13 @@ const (
 )
 
 type Approval struct {
-	ID          string          `json:"id"`
-	SessionID   string          `json:"session_id"`
-	RunID       string          `json:"run_id,omitempty"`
+	ID        string `json:"id"`
+	SessionID string `json:"session_id"`
+	RunID     string `json:"run_id,omitempty"`
+	// TaskID names the subagent task whose child asked, AgentName its name;
+	// the approval is listed and announced in the parent's session.
+	TaskID      string          `json:"task_id,omitempty"`
+	AgentName   string          `json:"agent_name,omitempty"`
 	ToolCallRef string          `json:"tool_call_id,omitempty"`
 	ToolName    string          `json:"tool_name,omitempty"`
 	Description string          `json:"description,omitempty"`
@@ -38,6 +42,8 @@ type Approval struct {
 type PermissionRequest struct {
 	ID          string                 `json:"id"`
 	SessionID   string                 `json:"session_id"`
+	TaskID      string                 `json:"task_id,omitempty"`
+	AgentName   string                 `json:"agent_name,omitempty"`
 	ToolCallID  string                 `json:"tool_call_id"`
 	ToolName    string                 `json:"tool_name"`
 	Description string                 `json:"description"`
@@ -52,16 +58,6 @@ type PermissionNotification struct {
 	ToolCallID string `json:"tool_call_id"`
 	Granted    bool   `json:"granted,omitempty"`
 	Denied     bool   `json:"denied,omitempty"`
-}
-
-type FileSnapshot struct {
-	ID        string    `json:"id"`
-	SessionID string    `json:"session_id"`
-	Path      string    `json:"path"`
-	Content   string    `json:"content"`
-	Version   int       `json:"version"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type ToolLifecycleState string
@@ -85,9 +81,10 @@ type ToolUpdate struct {
 	Error           string             `json:"error,omitempty"`
 }
 
+// ExecuteToolInput is a tool call made outside any run (the API, voice, the
+// MCP server); a run's calls go through its engine.
 type ExecuteToolInput struct {
 	SessionID   string          `json:"session_id"`
-	RunID       string          `json:"run_id,omitempty"`
 	ToolName    string          `json:"tool_name"`
 	Client      string          `json:"client,omitempty"`
 	ExternalKey string          `json:"external_key,omitempty"`

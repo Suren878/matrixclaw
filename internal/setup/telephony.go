@@ -17,7 +17,7 @@ func (s *Service) TelephonyModule() (TelephonyModuleDescriptor, error) {
 }
 
 func (s *Service) UpdateTelephonyModule(update TelephonyModuleUpdate) (TelephonyModuleDescriptor, error) {
-	cfg, err := s.update(func(cfg *Config) error {
+	cfg, err := s.Update(func(cfg *Config) error {
 		merged := mergeTelephonyConfig(cfg.Modules.Telephony, update)
 		if err := validateTelephonyConfig(merged); err != nil {
 			return err
@@ -63,31 +63,17 @@ func mergeTelephonyConfig(existing TelephonyConfig, update TelephonyModuleUpdate
 	if update.Enabled != nil {
 		merged.Enabled = *update.Enabled
 	}
-	if strings.TrimSpace(update.GatewayURL) != "" {
-		merged.GatewayURL = update.GatewayURL
-	}
-	if strings.TrimSpace(update.GatewayToken) != "" {
-		merged.GatewayToken = update.GatewayToken
-	}
-	if strings.TrimSpace(update.DefaultProfile) != "" {
-		merged.DefaultProfile = update.DefaultProfile
-	}
-	if strings.TrimSpace(update.PhonePrompt) != "" {
-		merged.PhonePrompt = update.PhonePrompt
-	}
-	if update.ClearToken || strings.TrimSpace(update.GatewayToken) == "-" {
-		merged.GatewayToken = ""
-	}
-	if strings.TrimSpace(update.GatewayURL) == "-" {
-		merged.GatewayURL = ""
-	}
-	if strings.TrimSpace(update.DefaultProfile) == "-" {
-		merged.DefaultProfile = ""
-	}
-	if strings.TrimSpace(update.PhonePrompt) == "-" {
-		merged.PhonePrompt = ""
-	}
+	setIfPresent(&merged.GatewayURL, update.GatewayURL)
+	setIfPresent(&merged.GatewayToken, update.GatewayToken)
+	setIfPresent(&merged.DefaultProfile, update.DefaultProfile)
+	setIfPresent(&merged.PhonePrompt, update.PhonePrompt)
 	return normalizeTelephonyConfig(merged)
+}
+
+func setIfPresent(field *string, value *string) {
+	if value != nil {
+		*field = *value
+	}
 }
 
 func validateTelephonyConfig(cfg TelephonyConfig) error {

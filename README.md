@@ -60,7 +60,7 @@ runtime through Terminal, Telegram, or MCP.
 - **Memory and search:** the assistant can save approved durable memories and search previous sessions with `memory` and `session_search`.
 - **Usage ledger:** provider token usage is recorded when available.
 - **Storage module:** Telegram uploads and generated files land in local storage, with temporary files promoted only when needed.
-- **Web research and browser tools:** `web_research`, `web_research_ask`, and compatibility `web_search` / `web_fetch` tools with SQLite-backed facts/sources and runtime artifacts. Search providers: DuckDuckGo (free, no key), Tavily (1 000 req/mo free), Serper (2 500 req/mo free), SearXNG (self-hosted). Configure from `/modules` without restarting. When an MCP browser server is connected, MatrixClaw can also expose interactive browser tools for opening pages, clicking, typing, waiting, and screenshots.
+- **Web and browser tools:** `web_search`, and `web_fetch` returning a page's main content as markdown (long pages kept in a session file); broad research runs in read-only subagents. Search providers: DuckDuckGo (free, no key), Tavily (1 000 req/mo free), Serper (2 500 req/mo free), SearXNG (self-hosted). Configure from `/modules` without restarting. When an MCP browser server is connected, MatrixClaw can also expose interactive browser tools for opening pages, clicking, typing, waiting, and screenshots.
 - **Voice modules:** Piper and Supertonic TTS plus Whisper.cpp STT run locally.
   Realtime speech-to-speech is available through the daemon WebSocket gateway
   with Gemini Live, Grok Voice, and OpenAI Realtime providers, and an optional
@@ -272,7 +272,7 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
   ARI/externalMedia and SIP/PJSIP calls into realtime voice sessions, exposes an
   approval-gated `telephony_call` tool, supports inbound caller allowlists, and
   can save transcripts, post-call reports, and temporary MP3 call recordings.
-- Web research tools with compact provider-visible facts/sources, follow-up reuse by `research_id`, runtime artifact storage, provider selection, and per-provider credential storage; provider switch takes effect immediately without a daemon restart.
+- Web search with provider selection and per-provider credential storage (a provider switch takes effect without a daemon restart), and web_fetch with readable-content extraction.
 - MCP client module for stdio and streamable HTTP MCP servers, registering remote tools as matrixclaw tools.
 - MCP stdio server mode for exposing matrixclaw daemon tools to external MCP hosts.
 - SQLite-backed local state with reconnectable clients and session handoff.

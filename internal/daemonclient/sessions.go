@@ -213,10 +213,12 @@ func (c *Client) SendMessageMode(ctx context.Context, sessionID string, text str
 }
 
 func (c *Client) SendMessagePartsMode(ctx context.Context, sessionID string, text string, parts []transcript.MessagePart, workingDir string, busyMode core.BusyInputMode) (core.AcceptRunResult, error) {
-	return c.SendMessagePartsModeWithDelivery(ctx, sessionID, text, parts, workingDir, busyMode, nil)
+	return c.SendMessagePartsModeWithDelivery(ctx, sessionID, text, parts, workingDir, busyMode, nil, false)
 }
 
-func (c *Client) SendMessagePartsModeWithDelivery(ctx context.Context, sessionID string, text string, parts []transcript.MessagePart, workingDir string, busyMode core.BusyInputMode, deliveryAddress json.RawMessage) (core.AcceptRunResult, error) {
+// SendMessagePartsModeWithDelivery sends a message whose run is delivered to
+// deliveryAddress; replyOnce marks an address that takes one reply only.
+func (c *Client) SendMessagePartsModeWithDelivery(ctx context.Context, sessionID string, text string, parts []transcript.MessagePart, workingDir string, busyMode core.BusyInputMode, deliveryAddress json.RawMessage, replyOnce bool) (core.AcceptRunResult, error) {
 	var response core.AcceptRunResult
 	request := core.HandleMessageInput{
 		Client:             c.ClientName,
@@ -228,6 +230,7 @@ func (c *Client) SendMessagePartsModeWithDelivery(ctx context.Context, sessionID
 		BusyMode:           busyMode,
 		WorkingDir:         strings.TrimSpace(workingDir),
 		DeliveryAddress:    deliveryAddress,
+		ReplyOnce:          replyOnce,
 		AllowAutoBindOne:   true,
 		Restricted:         c.Restricted,
 	}

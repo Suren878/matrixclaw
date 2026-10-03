@@ -10,8 +10,6 @@ flowchart LR
     IOS[iOS client package] --> API
     API --> CORE[Core runtime]
     CORE --> STORE[(SQLite)]
-    CORE --> WF[Workflow worker]
-    WF --> CORE
     CORE --> ENGINE[Agent engine]
     CORE --> AGENTS[External agents]
     ENGINE --> PROVIDERS[LLM providers]
@@ -73,11 +71,37 @@ file change) comes from `internal/toolview` for the terminal and Telegram alike.
 ## Native Runs
 
 A run is accepted by `internal/core` and executed in a goroutine of its own,
-which calls `Core.ExecuteRun`; runs left active by a restart are recovered by
-`Core.RecoverActiveRuns`. External agent sessions go to their adapter; native sessions build an
-`agent.Engine` and call `Engine.Run(ctx, Task)`, then apply its `Outcome`
+which calls `Core.ExecuteRun`: `claim` (under the session gate) makes the run
+`running`, then external agent sessions go to their adapter and native sessions
+build an `agent.Engine` and call `Engine.Run(ctx, Task)`, whose `Outcome`
 (`completed` with a stop reason, `waiting_approval`, `waiting_events`,
-`interrupted`, `canceled` or `failed`).
+`interrupted`, `canceled` or `failed`) core applies.
+
+Run status has one writer, `transition` (`internal/core/run_lifecycle.go`):
+
+```text
+accepted ─▶ running ─▶ completed
+               │  ▲
+               ▼  │
+   waiting_approval / waiting_events
+any status that has not ended ─▶ failed | canceled
+```
+
+It keeps `finished_at`, the wakeup of a run waiting for events, the checkpoint
+(cleared on the end) and the subagent task the run works for, seals the reply in
+the same transaction, rejects an ended run's approvals and publishes
+`run.updated`. `afterRun`, run when the executor lets go of a run (or by
+`CancelRun` for a parked one), starts the session's next queued message, wakes
+it for finished background work, or resumes a parked run whose decision or
+event arrived while it parked. Canceling cancels the run's context with the
+cause `agent.ErrCanceled`; any other stop interrupts it.
+
+A run found `running` without an executor was interrupted: `claim` counts the
+recovery (at most 8) and tells the engine how to settle each call left without
+a result (`agent.Task.Interrupted`: run again, ask again for a mutating call,
+or answer), so recovery too goes through the engine. `Core.Recover`, called
+once at daemon start, marks leftover shell tasks lost, resumes each active run
+once, tells subagent tasks whose child ended, and settles idle sessions.
 
 `internal/agent` is the loop. It knows nothing of SQLite, HTTP, or clients and
 talks to them through ports (`internal/agent/ports.go`):
@@ -93,7 +117,8 @@ talks to them through ports (`internal/agent/ports.go`):
 | `Todos` | `coreTodos` | open todo items of the run's `/continue` chain |
 
 While a native run is active the engine is the only writer of its session's
-transcript; everything else reaches it through the inbox. Messages are ordered
+transcript; everything else reaches it through the inbox. `Core.ExecuteTool`
+serves run-less calls only (API, voice, MCP server). Messages are ordered
 by an integer `seq`, and persisted messages are never rewritten.
 
 Engine packages:
@@ -115,16 +140,40 @@ Around the engine:
 - `internal/permission`: rules, subjects, bash parsing, and mode presets;
   `core.checkPermission` applies them for every tool call.
 - `internal/shelltask`: background shell commands in their own process groups
-  with size-capped output files; `core` tracks them in the `tasks` table with
-  background subagents.
+  with size-capped output files; `core` tracks them as `Task`s (kind `shell`)
+  in the `tasks` table, next to subagents (kind `subagent`), with one
+  `task.updated` event.
+- Subagents: the `agent` tool starts a child run; a blocking call waits for
+  the child's run to end, a background one returns its task, whose end is an
+  event. A child's approval is its own (`approvals.task_id`), listed and
+  announced in the parent's session and sent to the parent's chat.
 - `await` parks a run in `waiting_events`; `run_wakeups` timers, finished
   tasks, and user messages wake it. Finished work in an idle session starts a
   `wake` run.
-- On start the daemon marks leftover shell tasks `lost`, recovers active runs
-  from their checkpoints, and re-arms wake timers.
+- On start the daemon calls `Core.Recover` (see above); wake timers fire on the
+  first tick of `RunWakeups`.
 
 See the [design spec](superpowers/specs/2026-09-23-long-running-agent-design.md)
 for the details and the as-built notes of each stage.
+
+## Setup Config
+
+`setup.json` is one typed `setup.Config` owned by `internal/setup`:
+
+- Every edit goes through `Service.Update(func(*Config) error)`, which loads,
+  changes, validates (structure only, no network) and saves the file under
+  one lock. Provider edits, the session model switch and module settings
+  change only their own part of the file.
+- The file stores the user's choices, not built-in defaults: a provider keeps
+  only what differs from its catalog entry, voice and browser providers only
+  what differs from theirs. `ProviderConfig.Effective`/`Runtime` and the
+  module descriptors fill the defaults when the config is read.
+- The terminal setup wizard edits a `Config` in memory and saves it with
+  `Service.Apply`, the only place that checks the Telegram token.
+- Update requests use pointer fields: absent leaves a value alone, empty
+  clears or resets it. Form layouts live in the clients: the controlplane
+  keeps an open provider form by an opaque id, so the API key never travels
+  inside a command string.
 
 ## Repository Map
 
@@ -153,6 +202,8 @@ for the details and the as-built notes of each stage.
 - `internal/modules`: daemon modules for storage, voice, MCP, skills, delivery,
   telephony tools, and local runtimes.
 - `internal/tools`: built-in assistant tools.
+- `internal/webtools`: `web_search` (provider clients) and `web_fetch`
+  (SSRF-safe fetch, readability and markdown); no state of their own.
 - `internal/mcp`: MCP client/server bridge.
 - `internal/externalagents`: external-agent registry and adapters.
 - `scripts`: install, uninstall, release build, and optional voice runtime

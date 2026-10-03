@@ -48,3 +48,12 @@ func redactSecrets(text string, secrets ...string) string {
 	}
 	return text
 }
+
+func firstNonEmptyTrimmed(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}

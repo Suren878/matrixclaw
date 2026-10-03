@@ -3,10 +3,8 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -75,23 +73,6 @@ func TestRunProgressCountsBudgetStepsAndLiveBackgroundTasks(t *testing.T) {
 	}
 	if want := (core.RunProgress{Steps: 2, StepLimit: 7, Tasks: 2}); response.Progress != want {
 		t.Fatalf("progress = %+v, want %+v", response.Progress, want)
-	}
-}
-
-func TestToolExecuteKeepsOutOfARunInProgress(t *testing.T) {
-	server, st := newAPITestServer(t)
-	run := core.Run{ID: "r1", SessionID: "s1", UserMessageID: "u1", Status: core.RunStatusWaitingApproval, StartedAt: apiTestEpoch, UpdatedAt: apiTestEpoch}
-	acceptTestRun(t, st, run)
-
-	recorder := httptest.NewRecorder()
-	body := strings.NewReader(`{"session_id":"s1","run_id":"r1","tool_name":"read","args":{}}`)
-	server.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/tools/execute", body))
-
-	if recorder.Code != http.StatusConflict {
-		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
-	}
-	if _, err := st.GetRunCheckpoint(context.Background(), "r1"); !errors.Is(err, core.ErrNotFound) {
-		t.Fatalf("checkpoint = %v, want none written", err)
 	}
 }
 

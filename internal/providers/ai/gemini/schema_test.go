@@ -75,20 +75,18 @@ func decodeParameters(t *testing.T, raw json.RawMessage) map[string]any {
 func registeredToolDefinitions(t *testing.T) []providers.ToolDefinition {
 	t.Helper()
 	app := core.New(nil)
-	web := webtools.NewWebService(nil, nil)
 	registry := tools.NewRegistry(append(tools.CoreExecutors(),
 		automation.NewReminderTool(nil),
 		automation.NewScheduledAITaskTool(nil),
 		deliverymodule.NewSendFileTool(nil, nil),
-		webtools.NewWebFetchExecutorWithService(web),
-		webtools.NewWebSearchExecutorWithService(web),
+		webtools.NewFetchTool(),
+		webtools.NewSearchTool(nil),
 	)...)
 	storage, err := storagemodule.New(storagemodule.Config{Root: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, executors := range [][]tools.Executor{
-		webtools.NewWebResearchExecutorsWithService(web),
 		tools.NewShellExecutors(app),
 		core.TodoToolExecutors(app),
 		core.AwaitToolExecutors(app),
@@ -121,20 +119,8 @@ func TestRegisteredToolSchemasReachTheWireAsGeminiSchemas(t *testing.T) {
 	if len(declarations) != len(definitions) {
 		t.Fatalf("declarations=%d, tools=%d", len(declarations), len(definitions))
 	}
-	sawWebResearch := false
 	for _, declaration := range declarations {
-		parameters := decodeParameters(t, declaration.Parameters)
-		assertGeminiSchema(t, declaration.Name, parameters)
-		if declaration.Name == "web_research" {
-			sawWebResearch = true
-			depth := parameters["properties"].(map[string]any)["depth"].(map[string]any)
-			if !reflect.DeepEqual(depth["enum"], []any{"quick", "standard", "deep"}) {
-				t.Errorf("web_research depth enum=%v", depth["enum"])
-			}
-		}
-	}
-	if !sawWebResearch {
-		t.Fatal("web_research is not registered")
+		assertGeminiSchema(t, declaration.Name, decodeParameters(t, declaration.Parameters))
 	}
 }
 

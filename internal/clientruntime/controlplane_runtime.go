@@ -588,7 +588,7 @@ func (r ControlplaneRuntime) GetWebSearchConfig(ctx context.Context) (setup.WebS
 	return client.GetWebSearchConfig(ctx)
 }
 
-func (r ControlplaneRuntime) UpdateWebSearchConfig(ctx context.Context, update setup.WebSearchConfig) (setup.WebSearchConfigResponse, error) {
+func (r ControlplaneRuntime) UpdateWebSearchConfig(ctx context.Context, update setup.WebSearchConfigUpdate) (setup.WebSearchConfigResponse, error) {
 	client, err := r.client("")
 	if err != nil {
 		return setup.WebSearchConfigResponse{}, err

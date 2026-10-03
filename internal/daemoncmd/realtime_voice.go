@@ -137,7 +137,7 @@ func realtimeAPIKeyFromEnvName(name string) string {
 }
 
 func realtimeVoiceSystemInstruction(cfg setup.Config) string {
-	name := strings.Join(strings.Fields(cfg.Assistant.Name), " ")
+	name := strings.Join(strings.Fields(cfg.Assistant.NameOrDefault()), " ")
 	if name == "" {
 		return ""
 	}
@@ -146,43 +146,34 @@ func realtimeVoiceSystemInstruction(cfg setup.Config) string {
 
 func configuredProviderAPIKey(cfg setup.Config, matches func(setup.ProviderConfig) bool) string {
 	for _, provider := range cfg.Providers {
-		if !matches(provider) {
-			continue
-		}
-		if resolved, ok := setup.ProviderConfigWithResolvedAPIKey(provider); ok {
-			return strings.TrimSpace(resolved.APIKey)
+		if resolved, ok := provider.Runtime(); ok && matches(resolved) {
+			return resolved.APIKey
 		}
 	}
 	return ""
 }
 
 func isGeminiProvider(provider setup.ProviderConfig) bool {
-	switch strings.ToLower(strings.TrimSpace(firstNonEmpty(provider.Type, provider.CatalogID, provider.ID))) {
+	switch strings.ToLower(firstNonEmpty(provider.Type, provider.ID)) {
 	case "gemini", "google-gemini":
 		return true
 	default:
-		return strings.EqualFold(strings.TrimSpace(provider.CatalogID), "gemini") ||
-			strings.EqualFold(strings.TrimSpace(provider.ID), "gemini")
+		return strings.EqualFold(provider.ID, "gemini")
 	}
 }
 
 func isXAIProvider(provider setup.ProviderConfig) bool {
-	id := strings.ToLower(strings.TrimSpace(firstNonEmpty(provider.Type, provider.CatalogID, provider.ID)))
-	baseURL := strings.ToLower(strings.TrimSpace(provider.BaseURL))
+	id := strings.ToLower(firstNonEmpty(provider.Type, provider.ID))
 	switch id {
 	case "xai", "grok", "x-ai":
 		return true
 	default:
-		return strings.EqualFold(strings.TrimSpace(provider.CatalogID), "xai") ||
-			strings.EqualFold(strings.TrimSpace(provider.ID), "xai") ||
-			strings.Contains(baseURL, "api.x.ai")
+		return strings.EqualFold(provider.ID, "xai") || strings.Contains(strings.ToLower(provider.BaseURL), "api.x.ai")
 	}
 }
 
 func isOpenAIProvider(provider setup.ProviderConfig) bool {
-	id := strings.ToLower(strings.TrimSpace(firstNonEmpty(provider.CatalogID, provider.ID)))
-	baseURL := strings.ToLower(strings.TrimSpace(provider.BaseURL))
-	return id == "openai" || strings.Contains(baseURL, "api.openai.com")
+	return strings.EqualFold(provider.ID, "openai") || strings.Contains(strings.ToLower(provider.BaseURL), "api.openai.com")
 }
 
 func boolEnv(name string) (bool, bool) {

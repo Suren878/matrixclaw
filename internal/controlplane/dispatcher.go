@@ -161,7 +161,7 @@ type ServerRuntime interface {
 
 type WebSearchRuntime interface {
 	GetWebSearchConfig(ctx context.Context) (setup.WebSearchConfigResponse, error)
-	UpdateWebSearchConfig(ctx context.Context, update setup.WebSearchConfig) (setup.WebSearchConfigResponse, error)
+	UpdateWebSearchConfig(ctx context.Context, update setup.WebSearchConfigUpdate) (setup.WebSearchConfigResponse, error)
 }
 
 type SkillsRuntime interface {

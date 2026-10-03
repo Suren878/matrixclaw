@@ -23,7 +23,7 @@ func (s *Service) UpdateMCPConfig(update MCPConfigUpdate) (MCPConfig, error) {
 }
 
 func (s *Service) updateMCP(change func(*MCPConfig) error) (MCPConfig, error) {
-	cfg, err := s.update(func(cfg *Config) error { return change(&cfg.Modules.MCP) })
+	cfg, err := s.Update(func(cfg *Config) error { return change(&cfg.Modules.MCP) })
 	if err != nil {
 		return MCPConfig{}, err
 	}

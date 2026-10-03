@@ -35,3 +35,14 @@ func TestPermissionsDialogOffersAlwaysAllowOnlyWithASuggestedRule(t *testing.T) 
 		t.Fatalf("always allow without a suggested rule: %#v", action)
 	}
 }
+
+func TestPermissionsDialogNamesTheSubagentThatAsks(t *testing.T) {
+	for request, want := range map[surfacepermission.PermissionRequest]string{
+		{ID: "approval_1", ToolName: "bash"}:                   "Agent",
+		{ID: "approval_2", ToolName: "bash", AgentName: "Neo"}: "Subagent: Neo",
+	} {
+		if got := permissionSourceLabel(request); got != want {
+			t.Fatalf("source of %+v = %q, want %q", request, got, want)
+		}
+	}
+}

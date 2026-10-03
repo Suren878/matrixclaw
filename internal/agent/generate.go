@@ -131,7 +131,7 @@ func (r *run) generate(ctx context.Context, request providers.Request) (generati
 		Role:      transcript.MessageRoleAssistant,
 	}}
 	dirty := false
-	var lastFlush, lastCancelCheck time.Time
+	var lastFlush time.Time
 	flush := func(force bool) error {
 		if !dirty {
 			return nil
@@ -163,13 +163,6 @@ func (r *run) generate(ctx context.Context, request providers.Request) (generati
 		case <-ctx.Done():
 			return errRunCanceled
 		default:
-		}
-		now := r.Now()
-		if lastCancelCheck.IsZero() || now.Sub(lastCancelCheck) >= ProgressFlushInterval {
-			lastCancelCheck = now
-			if r.canceled(ctx) {
-				return errRunCanceled
-			}
 		}
 		if !gen.saved && gen.assistant.Content == "" {
 			delta = strings.TrimPrefix(delta, "\n")

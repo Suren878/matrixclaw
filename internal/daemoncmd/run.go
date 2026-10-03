@@ -29,9 +29,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/skills"
 	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/tools"
-	"github.com/Suren878/matrixclaw/internal/webresearch"
 	"github.com/Suren878/matrixclaw/internal/webtools"
-	"github.com/Suren878/matrixclaw/internal/work"
 )
 
 func Run(ctx context.Context) error {
@@ -58,13 +56,8 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = automationStore.Close() }()
-	workStore, err := work.NewSQLiteStore(bootstrap.DBPath)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = workStore.Close() }()
-	webResearchStore := webresearch.NewStore(workStore)
 
+	removeWebResearchFiles(bootstrap.DBPath)
 	storageModule, err := localstorage.New(localstorage.Config{
 		Root: defaultStorageRoot(bootstrap.DBPath),
 	})
@@ -107,9 +100,6 @@ func Run(ctx context.Context) error {
 	app.WithExternalAgents(externalRegistry, sqliteStore)
 	automationService := automation.NewService(automationStore, app, bootstrap.Timezone).
 		WithDeliveryTargets(automationDeliveryTargets(bootstrap))
-	webSearchConfig := webSearchProviderConfig(bootstrap.SetupService)
-	webResearchEngine := newWebResearchEngine(bootstrap.DBPath, bootstrap.ExternalAgents.MCP, mcpModule, webResearchStore, webSearchConfig)
-	webTools := webtools.NewWebService(webSearchConfig, webResearchEngine)
 	osmGeo := geo.NewOSMServiceFromEnv()
 	extraTools := []tools.Executor{
 		automation.NewReminderTool(automationService),
@@ -118,10 +108,9 @@ func Run(ctx context.Context) error {
 		telephonymodule.NewCallTool(bootstrap.SetupService),
 		telephonymodule.NewEndCallTool(bootstrap.SetupService),
 		voicemodule.NewTextToSpeechTool(bootstrap.SetupService),
-		webtools.NewWebFetchExecutorWithService(webTools),
-		webtools.NewWebSearchExecutorWithService(webTools),
+		webtools.NewFetchTool(),
+		webtools.NewSearchTool(webSearchConfig(bootstrap.SetupService)),
 	}
-	extraTools = append(extraTools, webtools.NewWebResearchExecutorsWithService(webTools)...)
 	toolRegistry := tools.NewRegistry(append(tools.CoreExecutors(), extraTools...)...)
 	if err := toolRegistry.Register(tools.NewShellExecutors(app)...); err != nil {
 		return err
@@ -148,10 +137,6 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	app.WithTools(newSetupAwareToolExecutor(toolRegistry, bootstrap.SetupService))
-	// Shell tasks do not survive a restart; this runs before any run can start new ones.
-	if err := app.RecoverTasks(ctx); err != nil {
-		log.Printf("matrixclawd background task recovery failed: %v", err)
-	}
 	lifetime, stopLifetime := context.WithCancel(ctx)
 	defer stopLifetime()
 	app.WithLifetime(lifetime)
@@ -197,22 +182,13 @@ func Run(ctx context.Context) error {
 	}
 	startConfiguredVoiceRuntimes(ctx, bootstrap.SetupService)
 	safego.Go("automation.Run", func() { automationService.Run(ctx) })
-	safego.Go("webresearch.Run", func() { webResearchEngine.Start(ctx) })
 	safego.Go("supervisor.deliverStartupNotifications", func() {
 		supervisor.DeliverPendingStartupNotifications(bootstrap)
 	})
-	safego.Go("core.recoverState", func() {
-		if err := app.RecoverActiveRuns(context.Background()); err != nil {
-			log.Printf("matrixclawd active run recovery failed: %v", err)
-		}
-		if err := app.RecoverSessionInputs(context.Background()); err != nil {
-			log.Printf("matrixclawd session input recovery failed: %v", err)
-		}
-		if err := app.RecoverSubagentTasks(context.Background()); err != nil {
-			log.Printf("matrixclawd subagent recovery failed: %v", err)
-		}
-		if err := app.RecoverTaskEvents(context.Background()); err != nil {
-			log.Printf("matrixclawd background task event recovery failed: %v", err)
+	// External agents are configured by now, so recovered runs find theirs.
+	safego.Go("core.recover", func() {
+		if err := app.Recover(context.Background()); err != nil {
+			log.Printf("matrixclawd recovery: %v", err)
 		}
 	})
 
@@ -303,5 +279,13 @@ func startConfiguredVoiceRuntimes(ctx context.Context, service *setup.Service) {
 				log.Printf("%s %s runtime autostart failed: %s", module.ID, provider.ID, err)
 			}
 		}
+	}
+}
+
+// webSearchConfig reads the web search provider from setup at each search.
+func webSearchConfig(service *setup.Service) func() (webtools.SearchConfig, error) {
+	return func() (webtools.SearchConfig, error) {
+		cfg, err := service.GetWebSearchConfig()
+		return webtools.SearchConfig{Provider: cfg.Provider, TavilyKey: cfg.TavilyKey, SerperKey: cfg.SerperKey, BaseURL: cfg.BaseURL}, err
 	}
 }

@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/setup"
@@ -22,10 +23,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func cloneDraft(d setup.Draft) setup.Draft {
-	out := d
-	if d.Providers != nil {
-		out.Providers = append([]setup.ProviderDraft(nil), d.Providers...)
-	}
-	return out
+func cloneConfig(cfg setup.Config) setup.Config {
+	cfg.Providers = slices.Clone(cfg.Providers)
+	return cfg
 }

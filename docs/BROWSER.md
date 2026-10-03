@@ -1,7 +1,7 @@
 # Browser Module
 
 The Browser module manages local Playwright browser automation for MatrixClaw.
-It is separate from web search: web research returns compact facts and sources,
+It is separate from web search: `web_fetch` reads a page over plain HTTP,
 while browser tools can interact with rendered pages when a real browser is
 needed.
 
@@ -78,11 +78,11 @@ mcp_browser_wait
 Exact names depend on the MCP server's tool names. Non-read-only browser tools
 use the normal MatrixClaw approval flow.
 
-## Web Research Relationship
+## Web Fetch Relationship
 
-`web_research` can use a browser fallback for pages that direct HTTP fetching
-cannot read. That fallback stores raw page artifacts and returns compact facts
-and source references to the assistant.
+`web_fetch` never uses the browser. When a page shows almost no text without
+JavaScript, its result says so, and the assistant can open the page with the
+browser tools under their normal approvals.
 
 For interactive browser work such as clicking through flows, filling forms,
 waiting for dynamic content, or taking screenshots, use the MCP browser tools

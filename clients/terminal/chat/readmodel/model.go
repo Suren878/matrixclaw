@@ -180,8 +180,8 @@ func (m *Model) Apply(event daemonclient.LiveEvent) error {
 		}
 		next.TokenEstimate, next.WindowTokens = usage.TokenEstimate, usage.WindowTokens
 		m.context = &next
-	case core.EventSubagentUpdated:
-		task, err := event.DecodeSubagentTask()
+	case core.EventTaskUpdated:
+		task, err := event.DecodeTask()
 		if err != nil {
 			return err
 		}
@@ -284,12 +284,12 @@ func (m *Model) upsertMessage(message transcript.Message) {
 	m.stale = true
 }
 
-func (m *Model) putSubagent(task core.SubagentTask) {
-	if task.ID == "" {
+func (m *Model) putSubagent(task core.Task) {
+	if task.ID == "" || task.Kind != core.TaskKindSubagent {
 		return
 	}
 	m.subagents[task.ID] = subagentFrom(task)
-	m.subagentCreated[task.ID] = task.CreatedAt.UnixNano()
+	m.subagentCreated[task.ID] = task.StartedAt.UnixNano()
 }
 
 func (m *Model) putInput(input core.SessionInput) {

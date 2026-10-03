@@ -103,7 +103,8 @@ chat, **Always: global** when the daemon suggests a rule (for example
 `bash: go test:*`), plus **Deny** and **Deny with reason**. Deny with reason
 asks for the reason in the next message (`/cancel` aborts). The model receives
 `User denied: <reason>` and continues. Guest and inline targets keep no rules.
-A background subagent's approval is asked in its parent's chat.
+A subagent's approval (blocking or background) is asked in its parent's chat,
+headed with the subagent's name, while the parent's run keeps its own status.
 
 ## Inline Mode
 

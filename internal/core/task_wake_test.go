@@ -162,7 +162,7 @@ func TestStoppedTasksDoNotWakeAnIdleSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitTaskStatus(t, s.db, taskID, core.TaskStatusCanceled)
-	if err := s.app.RecoverTaskEvents(context.Background()); err != nil {
+	if err := s.app.Recover(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -227,11 +227,11 @@ func TestWakeRunTakesItsEventsBeforeItStarts(t *testing.T) {
 	if err := db.CreateTask(ctx, core.Task{ID: "task_done", SessionID: session.ID, Kind: core.TaskKindSubagent, Status: core.TaskStatusRunning, Command: "check the logs", Background: true, StartedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.FinishTask(ctx, "task_done", core.TaskStatusCompleted, nil, "", now); err != nil {
+	if _, err := db.FinishTask(ctx, "task_done", core.TaskEnd{Status: core.TaskStatusCompleted, At: now}); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := app.RecoverTaskEvents(ctx); err != nil {
+	if err := app.Recover(ctx); err != nil {
 		t.Fatal(err)
 	}
 
@@ -288,7 +288,7 @@ func (s *wakeScenario) finishedTask(t *testing.T, id string) {
 		t.Fatal(err)
 	}
 	code := 0
-	if _, err := s.db.FinishTask(ctx, id, core.TaskStatusCompleted, &code, "", now); err != nil {
+	if _, err := s.db.FinishTask(ctx, id, core.TaskEnd{Status: core.TaskStatusCompleted, ExitCode: &code, At: now}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -311,12 +311,12 @@ func TestFailedWakeRunStopsTheChainWithOneNotice(t *testing.T) {
 	ctx := context.Background()
 
 	s.finishedTask(t, "task_a")
-	if err := s.app.RecoverTaskEvents(ctx); err != nil {
+	if err := s.app.Recover(ctx); err != nil {
 		t.Fatal(err)
 	}
 	s.starter.wait(t)
 	s.finishedTask(t, "task_b")
-	if err := s.app.RecoverTaskEvents(ctx); err != nil {
+	if err := s.app.Recover(ctx); err != nil {
 		t.Fatal(err)
 	}
 	s.starter.wait(t)
@@ -333,10 +333,10 @@ func TestFailedWakeRunStopsTheChainWithOneNotice(t *testing.T) {
 	}
 }
 
-// userRunFrom is a finished run a Telegram target started.
-func (s *wakeScenario) userRunFrom(t *testing.T, externalKey string, address string) {
+// replyOnceRun is a finished run a Telegram target that takes one reply started.
+func (s *wakeScenario) replyOnceRun(t *testing.T, externalKey string, address string) {
 	t.Helper()
-	accepted, err := s.app.AcceptRun(context.Background(), core.HandleMessageInput{SessionID: s.session.ID, Client: "telegram", ExternalKey: externalKey, DeliveryAddress: json.RawMessage(address), Text: "look it up"})
+	accepted, err := s.app.AcceptRun(context.Background(), core.HandleMessageInput{SessionID: s.session.ID, Client: "telegram", ExternalKey: externalKey, DeliveryAddress: json.RawMessage(address), ReplyOnce: true, Text: "look it up"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,16 +344,16 @@ func (s *wakeScenario) userRunFrom(t *testing.T, externalKey string, address str
 	s.starter.wait(t)
 }
 
-func TestWakeRunIsDeliveredToAChatNeverToAGuestOrInlineQuery(t *testing.T) {
+func TestWakeRunIsDeliveredToAChatNeverToAReplyOnceTarget(t *testing.T) {
 	t.Parallel()
 	s := newWakeScenario(t)
 	s.userRun(t)
-	s.userRunFrom(t, "42", `{"kind":"inline","inline_message_id":"inline_1"}`)
-	s.userRunFrom(t, "guest:query_1", `{"kind":"guest","guest_query_id":"query_1"}`)
+	s.replyOnceRun(t, "42", `{"inline":"inline_1"}`)
+	s.replyOnceRun(t, "guest:query_1", `{"guest":"query_1"}`)
 	ctx := context.Background()
 
 	s.finishedTask(t, "task_a")
-	if err := s.app.RecoverTaskEvents(ctx); err != nil {
+	if err := s.app.Recover(ctx); err != nil {
 		t.Fatal(err)
 	}
 	s.starter.wait(t)
@@ -394,7 +394,7 @@ func TestWakeChainCountsWakeRunsTheUserDidNotReach(t *testing.T) {
 			before := len(s.runs(t))
 
 			s.finishedTask(t, "task_a")
-			if err := s.app.RecoverTaskEvents(ctx); err != nil {
+			if err := s.app.Recover(ctx); err != nil {
 				t.Fatal(err)
 			}
 			s.starter.wait(t)

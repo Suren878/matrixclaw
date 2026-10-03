@@ -20,17 +20,6 @@ type SessionStore interface {
 	DeleteSession(ctx context.Context, sessionID string) error
 }
 
-type SubagentTaskStore interface {
-	CreateSubagentTask(ctx context.Context, task SubagentTask) error
-	UpdateSubagentTask(ctx context.Context, task SubagentTask) error
-	GetSubagentTask(ctx context.Context, taskID string) (SubagentTask, error)
-	GetSubagentTaskByParentToolCall(ctx context.Context, parentSessionID string, parentRunID string, parentToolCallID string) (SubagentTask, error)
-	GetSubagentTaskByChildRun(ctx context.Context, childRunID string) (SubagentTask, error)
-	GetSubagentTaskByChildSession(ctx context.Context, childSessionID string) (SubagentTask, error)
-	ListSubagentTasks(ctx context.Context, filter SubagentTaskFilter) ([]SubagentTask, error)
-	ListActiveSubagentTasksByParent(ctx context.Context, parentSessionID string) ([]SubagentTask, error)
-}
-
 type BindingStore interface {
 	SaveBinding(ctx context.Context, binding ClientBinding) error
 	GetBinding(ctx context.Context, client string, externalKey string) (ClientBinding, error)
@@ -66,8 +55,10 @@ type RunStore interface {
 	// ListSessionRuns lists the session's newest runs first, ordered by their user message.
 	ListSessionRuns(ctx context.Context, sessionID string, limit int) ([]Run, error)
 	ListActiveRuns(ctx context.Context) ([]Run, error)
-	UpdateRun(ctx context.Context, run Run) error
-	CompleteRun(ctx context.Context, assistantMessage transcript.Message, run Run) error
+	// SealRun writes the run with the reply it ends or parks with, if any, in
+	// one transaction; an ended run keeps how it ended (ErrRunEnded).
+	SealRun(ctx context.Context, run Run, reply *transcript.Message, replySaved bool) error
+	TouchRun(ctx context.Context, runID string, at time.Time) error
 
 	AcceptMessage(ctx context.Context, message transcript.Message, run Run, deliveries ...ClientDelivery) error
 }
@@ -139,13 +130,8 @@ type PermissionRuleStore interface {
 	ListPermissionRules(ctx context.Context, sessionIDs []string) ([]permission.Rule, error)
 }
 
-type FileSnapshotStore interface {
-	CreateFileSnapshot(ctx context.Context, snapshot FileSnapshot) (FileSnapshot, error)
-}
-
 type Store interface {
 	SessionStore
-	SubagentTaskStore
 	TaskStore
 	BindingStore
 	DeliveryStore
@@ -162,7 +148,6 @@ type Store interface {
 	MemoryStore
 	ApprovalStore
 	PermissionRuleStore
-	FileSnapshotStore
 }
 
 // RunStarter starts the execution of an accepted run; by default the core
@@ -191,13 +176,15 @@ type SessionLLMRegistry interface {
 	ContextWindowTokens(providerID string, modelID string) (int, bool)
 }
 
-// TaskStore keeps the background tasks of sessions. FinishTask ends a task
-// once and reports whether this call ended it.
+// TaskStore keeps the shell and subagent tasks of sessions. FinishTask ends a
+// task once and reports whether this call ended it; SetTaskStatus changes only
+// a task that has not ended.
 type TaskStore interface {
 	CreateTask(ctx context.Context, task Task) error
 	GetTask(ctx context.Context, taskID string) (Task, error)
 	ListTasks(ctx context.Context, filter TaskFilter) ([]Task, error)
-	FinishTask(ctx context.Context, taskID string, status TaskStatus, exitCode *int, errText string, at time.Time) (bool, error)
+	FinishTask(ctx context.Context, taskID string, end TaskEnd) (bool, error)
+	SetTaskStatus(ctx context.Context, taskID string, status TaskStatus, at time.Time) error
 	SetTaskCursor(ctx context.Context, taskID string, cursor int64) error
 	MarkTasksDelivered(ctx context.Context, taskIDs []string, runID string, at time.Time) error
 }

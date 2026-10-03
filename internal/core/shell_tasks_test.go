@@ -219,7 +219,7 @@ func waitProcessGone(t *testing.T, pid int) {
 	}
 }
 
-func TestRecoverTasksKillsLeftoversAndMarksThemLost(t *testing.T) {
+func TestRecoveryKillsLeftoverShellTasksAndMarksThemLost(t *testing.T) {
 	t.Parallel()
 	app, db, session, files := newTaskCore(t)
 	out, err := shelltask.CreateOutput(filepath.Join(files, session.ID, "tasks", "task_left.log"))
@@ -237,7 +237,7 @@ func TestRecoverTasksKillsLeftoversAndMarksThemLost(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := app.RecoverTasks(context.Background()); err != nil {
+	if err := app.Recover(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -301,7 +301,7 @@ func TestNativeRunSeesFinishedAndRunningTasks(t *testing.T) {
 		}
 	}
 	code := 1
-	if _, err := db.FinishTask(ctx, "task_done", core.TaskStatusFailed, &code, "", now); err != nil {
+	if _, err := db.FinishTask(ctx, "task_done", core.TaskEnd{Status: core.TaskStatusFailed, ExitCode: &code, At: now}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -435,7 +435,7 @@ func TestTaskOutputWaitsForASubagent(t *testing.T) {
 	}
 	go func() {
 		time.Sleep(300 * time.Millisecond)
-		_, _ = db.FinishTask(ctx, "task_agent", core.TaskStatusCompleted, nil, "", now)
+		_, _ = db.FinishTask(ctx, "task_agent", core.TaskEnd{Status: core.TaskStatusCompleted, At: now})
 	}()
 
 	started := time.Now()

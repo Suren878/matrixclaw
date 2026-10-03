@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -16,12 +15,12 @@ import (
 
 type Service struct {
 	mu               sync.Mutex
-	store            Store
+	store            *FileStore
 	daemonManager    daemonManager
 	telegramValidate telegramValidator
 }
 
-func NewService(store Store) *Service {
+func NewService(store *FileStore) *Service {
 	return &Service{
 		store:            store,
 		daemonManager:    newSystemdUserDaemonManager(),
@@ -61,22 +60,61 @@ func (s *Service) Load() (Config, error) {
 	return s.store.Load()
 }
 
-// update applies change to the saved config and saves it under the service
-// lock, so concurrent edits don't overwrite each other.
-func (s *Service) update(change func(*Config) error) (Config, error) {
+// Update applies change to the saved config, validates the result and saves
+// it under the service lock, so concurrent edits don't overwrite each other.
+func (s *Service) Update(change func(*Config) error) (Config, error) {
+	return s.update(change, false)
+}
+
+// update is Update; with create it starts from an empty config when there is
+// no usable file yet.
+func (s *Service) update(change func(*Config) error, create bool) (Config, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cfg, err := s.store.Load()
+	if create && (errors.Is(err, ErrConfigNotFound) || errors.Is(err, ErrUnsupportedConfigVersion)) {
+		cfg, err = Config{Version: CurrentVersion}, nil
+	}
 	if err != nil {
 		return Config{}, err
 	}
 	if err := change(&cfg); err != nil {
 		return Config{}, err
 	}
+	cfg = normalizeConfig(cfg)
+	if err := cfg.Validate(); err != nil {
+		return Config{}, err
+	}
 	if err := s.store.Save(cfg); err != nil {
 		return Config{}, err
 	}
 	return s.store.Load()
+}
+
+// EditableConfig is the saved config, or a new one with local defaults when
+// none is saved yet; existing reports which.
+func (s *Service) EditableConfig() (cfg Config, existing bool, err error) {
+	cfg, err = s.Load()
+	switch {
+	case err == nil:
+		return cfg, true, nil
+	case errors.Is(err, ErrConfigNotFound), errors.Is(err, ErrUnsupportedConfigVersion):
+		return NewConfig(), false, nil
+	default:
+		return Config{}, false, err
+	}
+}
+
+// NewConfig is a first-run config with this machine's defaults.
+func NewConfig() Config {
+	return Config{
+		Version: CurrentVersion,
+		Daemon: DaemonConfig{
+			HTTPAddr: defaultHTTPAddr(),
+			DBPath:   defaultDBPath(),
+			Timezone: defaultTimezone(),
+		},
+	}
 }
 
 func (s *Service) AllowProviderSetupForClient(client string) (bool, error) {
@@ -102,217 +140,256 @@ func (s *Service) IsConfigured() (bool, error) {
 	return false, err
 }
 
-func (s *Service) ProviderOptions() []ProviderOption {
-	return builtInProviderOptions()
-}
-
-func (s *Service) ProviderSetupItems() ([]ProviderSetupItem, error) {
-	draft, err := s.Draft()
+func (s *Service) ProviderItems() ([]ProviderSetupItem, error) {
+	cfg, err := s.Load()
 	if err != nil {
 		return nil, err
 	}
-	return ProviderSetupItemsFromDraft(draft, s.ProviderOptions()), nil
+	return ProviderItems(cfg), nil
 }
 
-func ProviderSetupItemsFromDraft(draft Draft, options []ProviderOption) []ProviderSetupItem {
-	configured := ConfiguredProviders(draft)
-	providers := make([]providerItemSource, 0, len(configured))
-	for _, provider := range configured {
-		providers = append(providers, providerDraftItemSource(provider))
-	}
-	return providerSetupItems(providers, draft.ActiveProviderID, availableBuiltInProviders(draft, options))
-}
-
-type providerItemSource struct {
-	id              string
-	catalogID       string
-	name            string
-	providerTyp     string
-	capabilities    providers.Capabilities
-	requiresBaseURL bool
-	baseURL         string
-	model           string
-	reasoningEffort string
-	toolUseMode     providers.ToolUseMode
-	contextWindow   int
-	apiKeyPreview   string
-}
-
-func providerDraftItemSource(provider ProviderDraft) providerItemSource {
-	catalogID := firstNonEmptyTrimmed(provider.CatalogID, provider.ID)
-	capabilitySet := providers.ResolveModelCapabilities(providers.ModelCapabilityInput{
-		ProviderID:   catalogID,
-		ProviderType: provider.Type,
-		ModelID:      provider.Model,
+// ConfigureProvider applies update to the provider, adding it when it is not
+// configured yet; a new provider, or update.Active, makes it the active one.
+func (s *Service) ConfigureProvider(providerID string, update ProviderSetupUpdate) (ProviderSetupItem, error) {
+	var savedID string
+	cfg, err := s.Update(func(cfg *Config) error {
+		provider, exists := cfg.Provider(providerID)
+		if !exists {
+			var err error
+			provider, err = NewProviderConfig(providerID, deref(update.Type), deref(update.Name))
+			if err != nil {
+				return err
+			}
+		}
+		if err := applyProviderUpdate(&provider, update); err != nil {
+			return err
+		}
+		if err := CheckProvider(provider); err != nil {
+			return err
+		}
+		cfg.SetProvider(provider)
+		if cfg.ActiveProviderID == "" || update.Active || !exists {
+			cfg.ActiveProviderID = provider.ID
+		}
+		savedID = provider.ID
+		return nil
 	})
-	return providerItemSource{
-		id:              provider.ID,
-		catalogID:       provider.CatalogID,
-		name:            provider.Name,
-		providerTyp:     provider.Type,
-		capabilities:    capabilitySet.ProviderCapabilities,
-		requiresBaseURL: providers.PolicyForProvider(catalogID, provider.Type).RequiresBaseURL,
-		baseURL:         provider.BaseURL,
-		model:           provider.Model,
-		reasoningEffort: providers.NormalizeReasoningEffortForModel(catalogID, provider.Type, provider.Model, provider.ReasoningEffort),
-		toolUseMode:     providers.NormalizeOptionalToolUseMode(provider.ToolUseMode),
-		contextWindow:   parsePositiveInt(provider.ContextWindow),
-		apiKeyPreview:   currentDraftAPIKeyPreview(provider),
+	if err != nil {
+		return ProviderSetupItem{}, err
 	}
+	for _, item := range ProviderItems(cfg) {
+		if item.Configured && sameProvider(item.ID, savedID) {
+			return item, nil
+		}
+	}
+	return ProviderSetupItem{}, fmt.Errorf("provider %q was not saved", savedID)
 }
 
-func providerConfigItemSource(provider ProviderConfig) providerItemSource {
-	catalogID := firstNonEmptyTrimmed(provider.CatalogID, provider.ID)
-	capabilitySet := providers.ResolveModelCapabilities(providers.ModelCapabilityInput{
-		ProviderID:   catalogID,
-		ProviderType: provider.Type,
-		ModelID:      provider.Model,
+// DeleteProvider removes a custom provider; built-in ones stay.
+func (s *Service) DeleteProvider(providerID string) error {
+	_, err := s.Update(func(cfg *Config) error {
+		provider, ok := cfg.Provider(providerID)
+		if !ok {
+			return fmt.Errorf("provider %q was not found", providerID)
+		}
+		if provider.policy().Known {
+			return fmt.Errorf("provider %q is built in and cannot be deleted here", provider.Effective().Name)
+		}
+		cfg.removeProvider(provider.ID)
+		return nil
 	})
-	return providerItemSource{
-		id:              provider.ID,
-		catalogID:       provider.CatalogID,
-		name:            provider.Name,
-		providerTyp:     provider.Type,
-		capabilities:    capabilitySet.ProviderCapabilities,
-		requiresBaseURL: providers.PolicyForProvider(catalogID, provider.Type).RequiresBaseURL,
-		baseURL:         provider.BaseURL,
-		model:           provider.Model,
-		reasoningEffort: providers.NormalizeReasoningEffortForModel(catalogID, provider.Type, provider.Model, provider.ReasoningEffort),
-		toolUseMode:     providers.NormalizeOptionalToolUseMode(provider.ToolUseMode),
-		contextWindow:   provider.ContextWindow,
-		apiKeyPreview:   ProviderAPIKeyPreview(provider),
-	}
+	return err
 }
 
-func providerSetupItems(providerSources []providerItemSource, activeProviderID string, options []ProviderOption) []ProviderSetupItem {
-	items := make([]ProviderSetupItem, 0, len(providerSources)+len(options))
-	seen := make(map[string]struct{}, len(providerSources))
-	for _, provider := range providerSources {
-		id := strings.TrimSpace(provider.id)
-		if id == "" {
-			continue
-		}
-		active := sameProvider(id, activeProviderID)
-		if active {
-			items = append(items, providerSetupItem(provider, active))
-			seen[providers.CanonicalProviderID(id)] = struct{}{}
-		}
-	}
-	for _, provider := range providerSources {
-		id := strings.TrimSpace(provider.id)
-		if id == "" {
-			continue
-		}
-		seenID := providers.CanonicalProviderID(id)
-		if _, ok := seen[seenID]; ok {
-			continue
-		}
-		items = append(items, providerSetupItem(provider, false))
-		seen[seenID] = struct{}{}
-	}
-	for _, option := range options {
-		if _, ok := seen[providers.CanonicalProviderID(option.ID)]; ok {
-			continue
-		}
-		items = append(items, providerOptionSetupItem(option))
-	}
-	return items
-}
-
-func providerSetupItem(provider providerItemSource, active bool) ProviderSetupItem {
-	status := "Configured"
-	if model := strings.TrimSpace(provider.model); model != "" {
-		status += " · " + model
-	}
-	if active {
-		status += " · Active"
-	}
-	return ProviderSetupItem{
-		ID:              provider.id,
-		CatalogID:       provider.catalogID,
-		Name:            firstNonEmptyTrimmed(provider.name, provider.id),
-		Type:            provider.providerTyp,
-		Status:          status,
-		Configured:      true,
-		Active:          active,
-		Implemented:     true,
-		RequiresBaseURL: provider.requiresBaseURL,
-		Capabilities:    provider.capabilities,
-		BaseURL:         provider.baseURL,
-		BaseURLOptions:  providerBaseURLOptions(firstNonEmptyTrimmed(provider.catalogID, provider.id)),
-		Model:           provider.model,
-		ContextWindow:   provider.contextWindow,
-		ReasoningEffort: provider.reasoningEffort,
-		ToolUseMode:     provider.toolUseMode,
-		APIKeyPreview:   provider.apiKeyPreview,
-	}
-}
-
-func providerOptionSetupItem(option ProviderOption) ProviderSetupItem {
-	status := ""
-	if !option.Implemented {
-		status = "Planned"
-	}
-	capabilitySet := providers.ResolveModelCapabilities(providers.ModelCapabilityInput{
-		ProviderID:   option.ID,
-		ProviderType: option.Type,
-		ModelID:      option.DefaultModel,
-	})
-	return ProviderSetupItem{
-		ID:              option.ID,
-		CatalogID:       option.ID,
-		Name:            option.Name,
-		Type:            option.Type,
-		Status:          status,
-		Configured:      false,
-		Active:          false,
-		Implemented:     option.Implemented,
-		RequiresBaseURL: option.RequiresBaseURL,
-		Capabilities:    capabilitySet.ProviderCapabilities,
-		BaseURL:         option.DefaultBaseURL,
-		BaseURLOptions:  append([]providers.BaseURLOption(nil), option.BaseURLOptions...),
-		DefaultModel:    option.DefaultModel,
-		ReasoningEffort: capabilitySet.DefaultReasoningEffort,
-		Notes:           option.Notes,
-	}
-}
-
-func (s *Service) Draft() (Draft, error) {
-	draft, draftErr := s.store.LoadDraft()
-	if draftErr == nil {
-		return draft, nil
-	}
-	if draftErr != nil && !errors.Is(draftErr, ErrDraftNotFound) {
-		return Draft{}, draftErr
-	}
-
+// ProviderModelCatalogFor lists the models of a provider as update would
+// leave it, without saving anything.
+func (s *Service) ProviderModelCatalogFor(ctx context.Context, providerID string, update ProviderSetupUpdate) (ProviderModelsResponse, error) {
 	cfg, err := s.Load()
-	if err == nil {
-		return draftFromConfig(cfg), nil
+	if err != nil && !errors.Is(err, ErrConfigNotFound) {
+		return ProviderModelsResponse{}, err
 	}
-	if !errors.Is(err, ErrConfigNotFound) && !errors.Is(err, ErrUnsupportedConfigVersion) {
-		return Draft{}, err
+	provider, ok := cfg.Provider(providerID)
+	if !ok {
+		provider, err = NewProviderConfig(providerID, deref(update.Type), deref(update.Name))
+		if err != nil {
+			return ProviderModelsResponse{}, err
+		}
 	}
-
-	return defaultDraft(), nil
+	if err := applyProviderUpdate(&provider, update); err != nil {
+		return ProviderModelsResponse{}, err
+	}
+	return ProviderModelCatalog(ctx, provider), nil
 }
 
-// savedDraft is the saved config as a draft: daemon API edits start from it,
-// never from an unfinished setup wizard draft.
-func (s *Service) savedDraft() (Draft, error) {
-	cfg, err := s.Load()
-	switch {
-	case err == nil:
-		return draftFromConfig(cfg), nil
-	case errors.Is(err, ErrConfigNotFound), errors.Is(err, ErrUnsupportedConfigVersion):
-		return defaultDraft(), nil
-	default:
-		return Draft{}, err
+// ProviderModelCatalog asks the provider for its models with its stored or
+// environment API key.
+func ProviderModelCatalog(ctx context.Context, provider ProviderConfig) ProviderModelsResponse {
+	runtime, hasKey := provider.Runtime()
+	policy := provider.policy()
+	if !providers.ResolveModelCapabilities(providers.ModelCapabilityInput{ProviderID: runtime.ID, ProviderType: runtime.Type, ModelID: runtime.Model}).ProviderCapabilities.ModelDiscovery {
+		return ProviderModelsResponse{
+			Status:      ProviderModelStatusUnsupported,
+			Source:      ProviderModelSourceManual,
+			Message:     runtime.Name + " does not support model discovery",
+			ManualInput: true,
+		}
 	}
+	if !hasKey && !policy.PublicModelCatalog {
+		return ProviderModelsResponse{
+			Status:         ProviderModelStatusRequiresKey,
+			Source:         ProviderModelSourceManual,
+			Message:        "API key required",
+			RequiresAPIKey: true,
+		}
+	}
+	source := providerModelCatalogSource(policy, runtime.APIKey)
+	models, err := providerdiscovery.Models(ctx, providerdiscovery.ModelDiscoveryInput{
+		ID:        runtime.ID,
+		CatalogID: runtime.ID,
+		Type:      runtime.Type,
+		BaseURL:   runtime.BaseURL,
+		APIKey:    runtime.APIKey,
+		Model:     runtime.Model,
+	})
+	if err != nil {
+		status := ProviderModelStatusUnavailable
+		if isProviderModelAuthError(err) {
+			status = ProviderModelStatusAuthError
+		}
+		return ProviderModelsResponse{
+			Status:         status,
+			Source:         source,
+			Message:        "Could not load remote models: " + err.Error(),
+			RequiresAPIKey: policy.RequiresAPIKey,
+			ManualInput:    !policy.Known && status != ProviderModelStatusAuthError,
+		}
+	}
+	if len(models) == 0 {
+		return ProviderModelsResponse{
+			Status:         ProviderModelStatusUnavailable,
+			Source:         source,
+			Message:        "No models available",
+			RequiresAPIKey: policy.RequiresAPIKey,
+			ManualInput:    !policy.Known,
+		}
+	}
+	return ProviderModelsResponse{
+		Models:         models,
+		Metadata:       providerCatalogMetadata(runtime.ID, runtime.Type, models),
+		Status:         ProviderModelStatusOK,
+		Source:         source,
+		RequiresAPIKey: policy.RequiresAPIKey,
+	}
+}
+
+func providerCatalogMetadata(providerID string, providerType string, models []string) []providers.ModelMetadata {
+	metadata := make([]providers.ModelMetadata, 0, len(models))
+	for _, model := range models {
+		item := providers.ResolveModelMetadata(providerID, providerType, model)
+		if strings.TrimSpace(item.ID) == "" {
+			continue
+		}
+		metadata = append(metadata, item)
+	}
+	if len(metadata) == 0 {
+		return nil
+	}
+	return metadata
+}
+
+func providerModelCatalogSource(policy providers.ProviderPolicy, apiKey string) string {
+	if policy.PublicModelCatalog {
+		return ProviderModelSourcePublicCatalog
+	}
+	if strings.TrimSpace(apiKey) != "" {
+		return ProviderModelSourceConfiguredKey
+	}
+	return ProviderModelSourceLiveCatalog
+}
+
+func isProviderModelAuthError(err error) bool {
+	message := strings.ToLower(err.Error())
+	for _, marker := range []string{"401", "403", "unauthorized", "forbidden", "invalid api key", "incorrect api key", "permission"} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// Apply saves the sections the setup wizard edits (assistant, providers,
+// daemon address, paths, timezone and autostart, clients) over the current
+// file, after checking the Telegram token, and installs and starts the daemon.
+func (s *Service) Apply(ctx context.Context, edited Config) (ApplyResult, error) {
+	edited = normalizeConfig(edited)
+	if err := edited.Validate(); err != nil {
+		return ApplyResult{}, err
+	}
+	telegramSummary, err := s.validateTelegram(ctx, edited.Clients.Telegram)
+	if err != nil {
+		return ApplyResult{}, err
+	}
+	cfg, err := s.update(func(cfg *Config) error {
+		cfg.Assistant = edited.Assistant
+		cfg.Providers = edited.Providers
+		cfg.ActiveProviderID = edited.ActiveProviderID
+		cfg.Daemon.HTTPAddr = edited.Daemon.HTTPAddr
+		cfg.Daemon.DBPath = edited.Daemon.DBPath
+		cfg.Daemon.Timezone = edited.Daemon.Timezone
+		cfg.Daemon.AutostartOnBoot = edited.Daemon.AutostartOnBoot
+		cfg.Clients = edited.Clients
+		token, err := existingOrNewAPIToken(cfg.Daemon.APIToken)
+		if err != nil {
+			return fmt.Errorf("generate api token: %w", err)
+		}
+		cfg.Daemon.APIToken = token
+		return nil
+	}, true)
+	if err != nil {
+		return ApplyResult{}, err
+	}
+
+	result := ApplyResult{Config: cfg, Path: s.store.Path()}
+	result.Summary = SummaryFromConfig(cfg)
+	if cfg.Clients.Telegram.Enabled {
+		result.Summary.Telegram = telegramSummary
+	}
+	if s.daemonManager != nil {
+		daemonSummary, warnings, applyErr := s.daemonManager.Apply(ctx, s.store.Path(), cfg)
+		result.Warnings = append(result.Warnings, warnings...)
+		result.Summary.Daemon = daemonSummary
+		if applyErr != nil {
+			return result, applyErr
+		}
+	}
+	return result, nil
+}
+
+func (s *Service) validateTelegram(ctx context.Context, telegram TelegramConfig) (TelegramSummary, error) {
+	if s.telegramValidate == nil || !telegram.Enabled {
+		return TelegramSummary{}, nil
+	}
+	return s.telegramValidate.Validate(ctx, telegram.BotToken)
 }
 
 func (s *Service) Summary() (Summary, error) {
 	return s.SummaryContext(context.Background())
+}
+
+func (s *Service) SummaryContext(ctx context.Context) (Summary, error) {
+	cfg, err := s.Load()
+	if err != nil {
+		return Summary{}, err
+	}
+	summary := SummaryFromConfig(cfg)
+	if s.daemonManager != nil {
+		daemonSummary, inspectErr := s.daemonManager.Inspect(ctx, s.store.Path(), cfg)
+		if inspectErr != nil {
+			return Summary{}, inspectErr
+		}
+		summary.Daemon = daemonSummary
+	}
+	return summary, nil
 }
 
 func (s *Service) EnsureDaemonContext(ctx context.Context) (DaemonSummary, error) {
@@ -345,9 +422,8 @@ func (s *Service) RestartDaemonContext(ctx context.Context) (DaemonSummary, erro
 	if err != nil {
 		return DaemonSummary{}, err
 	}
-	summary := daemonConfiguredSummary(cfg)
 	if s.daemonManager == nil {
-		return summary, nil
+		return daemonConfiguredSummary(cfg), nil
 	}
 	return s.daemonManager.Restart(ctx, s.store.Path(), cfg)
 }
@@ -357,412 +433,16 @@ func (s *Service) StopDaemonContext(ctx context.Context) (DaemonSummary, error) 
 	if err != nil {
 		return DaemonSummary{}, err
 	}
-	summary := daemonConfiguredSummary(cfg)
 	if s.daemonManager == nil {
-		return summary, nil
+		return daemonConfiguredSummary(cfg), nil
 	}
 	return s.daemonManager.Stop(ctx, s.store.Path(), cfg)
 }
 
-func (s *Service) SummaryContext(ctx context.Context) (Summary, error) {
-	cfg, err := s.Load()
-	if err != nil {
-		return Summary{}, err
+func deref[T any](value *T) T {
+	var zero T
+	if value == nil {
+		return zero
 	}
-	summary := SummaryFromConfig(cfg)
-	if s.daemonManager != nil {
-		daemonSummary, inspectErr := s.daemonManager.Inspect(ctx, s.store.Path(), cfg)
-		if inspectErr != nil {
-			return Summary{}, inspectErr
-		}
-		summary.Daemon = daemonSummary
-	}
-	return summary, nil
-}
-
-func (s *Service) BuiltInProviderDraft(draft Draft, providerID string) (ProviderDraft, error) {
-	if provider, ok := FindProviderDraft(draft, providerID); ok {
-		return provider, nil
-	}
-	option, ok := lookupProviderOption(providerID)
-	if !ok {
-		return ProviderDraft{}, fmt.Errorf("unknown provider %q", providerID)
-	}
-	if !option.Implemented {
-		return ProviderDraft{}, fmt.Errorf("provider %q is listed but not implemented yet", option.Name)
-	}
-	return draftProviderFromOption(option), nil
-}
-
-func (s *Service) NewCustomProviderDraft(draft Draft, providerType string) (ProviderDraft, error) {
-	providerType = providers.NormalizeOptionalProviderType(providerType)
-	switch providerType {
-	case providers.TypeOpenAICompat, providers.TypeOpenAICodex, providers.TypeAnthropic:
-		return newCustomDraftProvider(providerType, draft.Providers), nil
-	default:
-		return ProviderDraft{}, fmt.Errorf("unsupported custom provider type %q", providerType)
-	}
-}
-
-func (s *Service) SaveDraft(draft Draft) error {
-	return s.store.SaveDraft(draft)
-}
-
-func (s *Service) ConfigureProviderContext(ctx context.Context, providerID string, update ProviderSetupUpdate) (ProviderSetupItem, error) {
-	providerID = strings.TrimSpace(providerID)
-	if providerID == "" {
-		return ProviderSetupItem{}, errors.New("provider id is required")
-	}
-	savedID, err := s.configureProvider(ctx, providerID, update)
-	if err != nil {
-		return ProviderSetupItem{}, err
-	}
-	return s.providerSetupItem(savedID)
-}
-
-func (s *Service) configureProvider(ctx context.Context, providerID string, update ProviderSetupUpdate) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	draft, err := s.savedDraft()
-	if err != nil {
-		return "", err
-	}
-	provider, err := s.providerDraftForSetupUpdate(draft, providerID, update)
-	if err != nil {
-		return "", err
-	}
-	wasConfigured := ProviderDraftConfigured(provider)
-	provider, err = applyProviderSetupUpdate(provider, update)
-	if err != nil {
-		return "", err
-	}
-
-	draft = UpsertProviderDraft(draft, provider)
-	if draft.ActiveProviderID == "" || update.Active || !wasConfigured {
-		draft.ActiveProviderID = provider.ID
-	}
-	if err := s.saveRuntimeConfig(ctx, draft); err != nil {
-		return "", err
-	}
-	return provider.ID, nil
-}
-
-func (s *Service) DeleteProviderContext(ctx context.Context, providerID string) error {
-	providerID = providers.NormalizeProviderID(providerID)
-	if providerID == "" {
-		return errors.New("provider id is required")
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	draft, err := s.savedDraft()
-	if err != nil {
-		return err
-	}
-	provider, ok := FindProviderDraft(draft, providerID)
-	if !ok {
-		return fmt.Errorf("provider %q was not found", providerID)
-	}
-	if !isCustomProviderDraft(provider) {
-		return fmt.Errorf("provider %q is built in and cannot be deleted here", provider.Name)
-	}
-	wasActive := sameProvider(draft.ActiveProviderID, providerID)
-	draft = DeleteProviderDraft(draft, providerID)
-	activeProvider, hasActiveProvider := FindProviderDraft(draft, draft.ActiveProviderID)
-	if wasActive || draft.ActiveProviderID == "" || !hasActiveProvider || !ProviderDraftConfigured(activeProvider) {
-		draft.ActiveProviderID = ""
-		for _, candidate := range ConfiguredProviders(draft) {
-			draft.ActiveProviderID = candidate.ID
-			break
-		}
-	}
-	return s.saveRuntimeConfig(ctx, draft)
-}
-
-func (s *Service) providerDraftForSetupUpdate(draft Draft, providerID string, update ProviderSetupUpdate) (ProviderDraft, error) {
-	provider, err := s.BuiltInProviderDraft(draft, providerID)
-	if err == nil {
-		return provider, nil
-	}
-	providerType := providers.NormalizeOptionalProviderType(update.Type)
-	switch providerType {
-	case providers.TypeOpenAICompat, providers.TypeOpenAICodex, providers.TypeAnthropic:
-	default:
-		return ProviderDraft{}, err
-	}
-	providerID = providers.NormalizeProviderID(providerID)
-	if providerID == "" {
-		return ProviderDraft{}, errors.New("provider id is required")
-	}
-	name := strings.TrimSpace(update.Name)
-	if name == "" {
-		name = providerID
-	}
-	return ProviderDraft{
-		ID:              providerID,
-		Name:            name,
-		Type:            providerType,
-		BaseURL:         strings.TrimSpace(update.BaseURL),
-		Model:           strings.TrimSpace(update.Model),
-		ToolUseMode:     providers.NormalizeOptionalToolUseMode(update.ToolUseMode),
-		ReasoningEffort: providers.DefaultReasoningEffortForModel(providerID, providerType, update.Model),
-		HasStoredAPIKey: false,
-	}, nil
-}
-
-// saveRuntimeConfig saves draft as the config; the caller holds s.mu.
-func (s *Service) saveRuntimeConfig(ctx context.Context, draft Draft) error {
-	cfg, _, err := s.buildValidatedConfig(ctx, draft)
-	if err != nil {
-		return err
-	}
-	if err := s.store.Save(cfg); err != nil {
-		return err
-	}
-	return s.store.ClearDraft()
-}
-
-func (s *Service) ProviderModels(ctx context.Context, provider ProviderDraft) ([]string, error) {
-	result, err := s.ProviderModelCatalog(ctx, provider)
-	if err != nil {
-		return nil, err
-	}
-	if result.Status != ProviderModelStatusOK {
-		return nil, providerModelsResponseError(result)
-	}
-	return result.Models, nil
-}
-
-func (s *Service) ProviderModelCatalog(ctx context.Context, provider ProviderDraft) (ProviderModelsResponse, error) {
-	providerID := firstNonEmptyTrimmed(provider.CatalogID, provider.ID)
-	policy := providers.PolicyForProvider(providerID, provider.Type)
-	if !providers.ResolveModelCapabilities(providers.ModelCapabilityInput{
-		ProviderID:   providerID,
-		ProviderType: provider.Type,
-		ModelID:      provider.Model,
-	}).ProviderCapabilities.ModelDiscovery {
-		return ProviderModelsResponse{
-			Status:      ProviderModelStatusUnsupported,
-			Source:      ProviderModelSourceManual,
-			Message:     fmt.Sprintf("%s does not support model discovery", providerDisplayName(provider, ProviderOption{}, false)),
-			ManualInput: true,
-		}, nil
-	}
-	if strings.TrimSpace(provider.APIKey) == "" {
-		existing, err := s.Load()
-		if err == nil {
-			if saved, ok := findProviderConfig(existing, provider.ID); ok {
-				provider.APIKey, _ = ResolvedProviderAPIKey(saved)
-			}
-		}
-	}
-	if strings.TrimSpace(provider.APIKey) == "" {
-		provider.APIKey = providerAPIKeyFromEnvName(providerDraftAPIKeyEnvName(provider))
-	}
-	if strings.TrimSpace(provider.APIKey) == "" && policy.RequiresAPIKey && !policy.PublicModelCatalog {
-		return ProviderModelsResponse{
-			Status:         ProviderModelStatusRequiresKey,
-			Source:         ProviderModelSourceManual,
-			Message:        "API key required",
-			RequiresAPIKey: true,
-		}, nil
-	}
-	models, err := providerdiscovery.Models(ctx, providerdiscovery.ModelDiscoveryInput{
-		ID:        provider.ID,
-		CatalogID: provider.CatalogID,
-		Type:      provider.Type,
-		BaseURL:   provider.BaseURL,
-		APIKey:    provider.APIKey,
-		Model:     provider.Model,
-	})
-	if err != nil {
-		status := ProviderModelStatusUnavailable
-		if isProviderModelAuthError(err) {
-			status = ProviderModelStatusAuthError
-		}
-		return ProviderModelsResponse{
-			Status:         status,
-			Source:         providerModelCatalogSource(policy, provider.APIKey),
-			Message:        "Could not load remote models: " + err.Error(),
-			RequiresAPIKey: policy.RequiresAPIKey,
-			ManualInput:    !policy.Known && status != ProviderModelStatusAuthError,
-		}, nil
-	}
-	if len(models) == 0 {
-		return ProviderModelsResponse{
-			Status:         ProviderModelStatusUnavailable,
-			Source:         providerModelCatalogSource(policy, provider.APIKey),
-			Message:        "No models available",
-			RequiresAPIKey: policy.RequiresAPIKey,
-			ManualInput:    !policy.Known,
-		}, nil
-	}
-	return ProviderModelsResponse{
-		Models:         models,
-		Metadata:       providerCatalogMetadata(firstNonEmptyTrimmed(provider.CatalogID, provider.ID), provider.Type, models),
-		Status:         ProviderModelStatusOK,
-		Source:         providerModelCatalogSource(policy, provider.APIKey),
-		RequiresAPIKey: policy.RequiresAPIKey,
-	}, nil
-}
-
-func providerCatalogMetadata(providerID string, providerType string, models []string) []providers.ModelMetadata {
-	metadata := make([]providers.ModelMetadata, 0, len(models))
-	for _, model := range models {
-		item := providers.ResolveModelMetadata(providerID, providerType, model)
-		if strings.TrimSpace(item.ID) == "" {
-			continue
-		}
-		metadata = append(metadata, item)
-	}
-	if len(metadata) == 0 {
-		return nil
-	}
-	return metadata
-}
-
-func (s *Service) ProviderModelCatalogContext(ctx context.Context, providerID string, update ProviderSetupUpdate) (ProviderModelsResponse, error) {
-	draft, err := s.Draft()
-	if err != nil {
-		return ProviderModelsResponse{}, err
-	}
-	provider, ok := FindProviderDraft(draft, providerID)
-	if !ok {
-		provider, err = s.BuiltInProviderDraft(draft, providerID)
-		if err != nil {
-			provider, err = s.providerDraftForSetupUpdate(draft, providerID, update)
-			if err != nil {
-				return ProviderModelsResponse{}, err
-			}
-		}
-	}
-	provider, err = applyProviderSetupUpdate(provider, update)
-	if err != nil {
-		return ProviderModelsResponse{}, err
-	}
-	return s.ProviderModelCatalog(ctx, provider)
-}
-
-func providerModelCatalogSource(policy providers.ProviderPolicy, apiKey string) string {
-	if policy.PublicModelCatalog {
-		return ProviderModelSourcePublicCatalog
-	}
-	if strings.TrimSpace(apiKey) != "" {
-		return ProviderModelSourceConfiguredKey
-	}
-	return ProviderModelSourceLiveCatalog
-}
-
-func providerModelsResponseError(response ProviderModelsResponse) error {
-	return errors.New(ProviderModelCatalogMessage(response))
-}
-
-func isProviderModelAuthError(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "401") ||
-		strings.Contains(message, "403") ||
-		strings.Contains(message, "unauthorized") ||
-		strings.Contains(message, "forbidden") ||
-		strings.Contains(message, "invalid api key") ||
-		strings.Contains(message, "incorrect api key") ||
-		strings.Contains(message, "permission")
-}
-
-func applyProviderSetupUpdate(provider ProviderDraft, update ProviderSetupUpdate) (ProviderDraft, error) {
-	if isCustomProviderDraft(provider) {
-		if name := strings.TrimSpace(update.Name); name != "" {
-			provider.Name = name
-		}
-		if providerType := providers.NormalizeOptionalProviderType(update.Type); providerType != "" {
-			switch providerType {
-			case providers.TypeOpenAICompat, providers.TypeOpenAICodex, providers.TypeAnthropic:
-				provider.Type = providerType
-			default:
-				return ProviderDraft{}, fmt.Errorf("unsupported custom provider type %q", providerType)
-			}
-		}
-	}
-	if apiKey := normalizeProviderAPIKey(update.APIKey); apiKey != "" {
-		provider.APIKey = apiKey
-		provider.HasStoredAPIKey = true
-		provider.StoredAPIKeyPreview = MaskSecret(apiKey)
-	}
-	if baseURL := strings.TrimSpace(update.BaseURL); baseURL != "" {
-		if provider.HasStoredAPIKey && strings.TrimSpace(update.APIKey) == "" && strings.TrimSpace(provider.BaseURL) != "" && strings.TrimSpace(provider.BaseURL) != baseURL {
-			return ProviderDraft{}, errors.New("changing provider base URL requires re-entering the API key")
-		}
-		provider.BaseURL = baseURL
-	}
-	if model := strings.TrimSpace(update.Model); model != "" {
-		provider.Model = model
-	}
-	if update.ContextWindow > 0 {
-		provider.ContextWindow = strconv.Itoa(update.ContextWindow)
-	}
-	if reasoningEffort := providers.NormalizeReasoningEffortForModel(firstNonEmptyTrimmed(provider.CatalogID, provider.ID), provider.Type, firstNonEmptyTrimmed(update.Model, provider.Model), update.ReasoningEffort); reasoningEffort != "" {
-		provider.ReasoningEffort = reasoningEffort
-	}
-	if toolUseMode := providers.NormalizeOptionalToolUseMode(update.ToolUseMode); toolUseMode != "" {
-		provider.ToolUseMode = toolUseMode
-	}
-	return provider, nil
-}
-
-func parsePositiveInt(value string) int {
-	parsed, err := strconv.Atoi(strings.TrimSpace(value))
-	if err != nil || parsed <= 0 {
-		return 0
-	}
-	return parsed
-}
-
-func (s *Service) providerSetupItem(providerID string) (ProviderSetupItem, error) {
-	items, err := s.ProviderSetupItems()
-	if err != nil {
-		return ProviderSetupItem{}, err
-	}
-	for _, item := range items {
-		if sameProvider(item.ID, providerID) {
-			return item, nil
-		}
-	}
-	return ProviderSetupItem{}, fmt.Errorf("provider %q was not saved", providerID)
-}
-
-func (s *Service) Apply(draft Draft) (ApplyResult, error) {
-	return s.ApplyContext(context.Background(), draft)
-}
-
-func (s *Service) ApplyContext(ctx context.Context, draft Draft) (ApplyResult, error) {
-	s.mu.Lock()
-	cfg, telegramSummary, err := s.buildValidatedConfig(ctx, draft)
-	if err == nil {
-		err = s.store.Save(cfg)
-	}
-	s.mu.Unlock()
-	if err != nil {
-		return ApplyResult{}, err
-	}
-
-	result := ApplyResult{
-		Config: cfg,
-		Path:   s.store.Path(),
-	}
-	summary := summaryWithRuntimeValidation(cfg, telegramSummary)
-	if s.daemonManager != nil {
-		daemonSummary, warnings, applyErr := s.daemonManager.Apply(ctx, s.store.Path(), cfg)
-		result.Warnings = append(result.Warnings, warnings...)
-		summary.Daemon = daemonSummary
-		if applyErr != nil {
-			result.Summary = summary
-			return result, applyErr
-		}
-	}
-	if err := s.store.ClearDraft(); err != nil {
-		return ApplyResult{}, err
-	}
-	result.Summary = summary
-	return result, nil
+	return *value
 }

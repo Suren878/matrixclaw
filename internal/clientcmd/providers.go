@@ -21,7 +21,7 @@ func runProvidersCommand(stdout io.Writer, stderr io.Writer, binaryName string, 
 	if err != nil {
 		return handleSetupReadError(stderr, binaryName, service, "providers", err)
 	}
-	items := appsetup.ProviderSetupItemsFromConfig(cfg, service.ProviderOptions())
+	items := appsetup.ProviderItems(cfg)
 	for _, item := range items {
 		state := "available"
 		if item.Configured {
@@ -41,64 +41,41 @@ func runProvidersCommand(stdout io.Writer, stderr io.Writer, binaryName string, 
 }
 
 func runProviderVerifyCommand(stdout io.Writer, stderr io.Writer, binaryName string, service *appsetup.Service, args []string) int {
-	draft, err := service.Draft()
+	cfg, err := service.Load()
 	if err != nil {
 		return handleSetupReadError(stderr, binaryName, service, "providers verify", err)
 	}
 	includeCatalogs := providerVerifyIncludesCatalogs(args)
 	items := []appsetup.ProviderSetupItem(nil)
-	if includeCatalogs {
-		items, err = service.ProviderSetupItems()
-		if err != nil {
-			return handleSetupReadError(stderr, binaryName, service, "providers verify", err)
-		}
-	} else {
-		configured := appsetup.ConfiguredProviders(draft)
-		for _, provider := range configured {
-			items = append(items, appsetup.ProviderSetupItem{
-				ID:         provider.ID,
-				CatalogID:  provider.CatalogID,
-				Name:       provider.Name,
-				Type:       provider.Type,
-				Model:      provider.Model,
-				Configured: true,
-			})
+	for _, item := range appsetup.ProviderItems(cfg) {
+		if item.Configured || includeCatalogs {
+			items = append(items, item)
 		}
 	}
 	if len(items) == 0 {
 		_, _ = fmt.Fprintf(stdout, "%s: providers verify: no configured providers\n", binaryName)
 		return 1
 	}
-	cfg, _ := service.Load()
 	failures := 0
 	for _, provider := range items {
-		if !includeCatalogs && !provider.Configured {
-			continue
+		name := provider.Name
+		secret := ""
+		if stored, ok := cfg.Provider(provider.ID); ok {
+			secret = stored.APIKey
 		}
-		name := strings.TrimSpace(provider.Name)
-		if name == "" {
-			name = strings.TrimSpace(provider.ID)
-		}
-		if !providers.ResolveModelCapabilities(providers.ModelCapabilityInput{
-			ProviderID:   firstNonEmptyTrimmed(provider.CatalogID, provider.ID),
-			ProviderType: provider.Type,
-			ModelID:      provider.Model,
-		}).ProviderCapabilities.ModelDiscovery {
+		if !provider.Capabilities.ModelDiscovery {
 			_, _ = fmt.Fprintf(stdout, "%s: provider %s: skipped (model discovery unsupported)\n", binaryName, name)
 			continue
 		}
-		result, err := service.ProviderModelCatalogContext(context.Background(), provider.ID, appsetup.ProviderSetupUpdate{})
+		result, err := service.ProviderModelCatalogFor(context.Background(), provider.ID, appsetup.ProviderSetupUpdate{})
 		if err != nil {
-			_, _ = fmt.Fprintf(stdout, "%s: provider %s: ERROR %s\n", binaryName, name, redactSecrets(err.Error(), providerSecret(cfg, provider.ID)))
+			_, _ = fmt.Fprintf(stdout, "%s: provider %s: ERROR %s\n", binaryName, name, redactSecrets(err.Error(), secret))
 			failures++
 			continue
 		}
 		if result.Status != appsetup.ProviderModelStatusOK {
-			_, _ = fmt.Fprintf(stdout, "%s: provider %s: %s %s\n", binaryName, name, strings.ToUpper(result.Status), redactSecrets(result.Message, providerSecret(cfg, provider.ID)))
-			if provider.Configured && result.Status != appsetup.ProviderModelStatusRequiresKey && result.Status != appsetup.ProviderModelStatusUnsupported {
-				failures++
-			}
-			if !provider.Configured && result.Status != appsetup.ProviderModelStatusRequiresKey && result.Status != appsetup.ProviderModelStatusUnsupported {
+			_, _ = fmt.Fprintf(stdout, "%s: provider %s: %s %s\n", binaryName, name, strings.ToUpper(result.Status), redactSecrets(result.Message, secret))
+			if result.Status != appsetup.ProviderModelStatusRequiresKey && result.Status != appsetup.ProviderModelStatusUnsupported {
 				failures++
 			}
 			continue
@@ -160,23 +137,4 @@ func providerVerifyIncludesCatalogs(args []string) bool {
 		}
 	}
 	return false
-}
-
-func firstNonEmptyTrimmed(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
-}
-
-func providerSecret(cfg appsetup.Config, providerID string) string {
-	providerID = strings.TrimSpace(providerID)
-	for _, provider := range cfg.Providers {
-		if strings.EqualFold(strings.TrimSpace(provider.ID), providerID) {
-			return strings.TrimSpace(provider.APIKey)
-		}
-	}
-	return ""
 }

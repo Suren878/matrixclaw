@@ -1,10 +1,8 @@
 package setup
 
 import (
-	"fmt"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -55,7 +53,7 @@ func normalizeModulesConfig(modules ModulesConfig) ModulesConfig {
 	modules.RealtimeVoice = normalizeVoiceModuleConfig("realtime_voice", modules.RealtimeVoice)
 	modules.Telephony = normalizeTelephonyConfig(modules.Telephony)
 	modules.MCP = normalizeMCPConfig(modules.MCP)
-	modules.Browser = normalizeBrowserConfig(modules.Browser)
+	modules.Browser = storedBrowserConfig(modules.Browser)
 	if len(modules.ExternalAgents) == 0 {
 		modules.ExternalAgents = nil
 		return modules
@@ -185,54 +183,48 @@ func normalizeAssistantConfig(assistant AssistantConfig) AssistantConfig {
 	assistant.Name = strings.TrimSpace(assistant.Name)
 	assistant.SystemPrompt = userSystemPrompt(assistant.SystemPrompt)
 	assistant.CustomInstructions = strings.TrimSpace(assistant.CustomInstructions)
-	if assistant.Name == "" {
-		assistant.Name = "matrixclaw"
+	if assistant.Name == DefaultAssistantName {
+		assistant.Name = ""
 	}
 	return assistant
 }
 
+// normalizeProviderConfig trims a stored provider and leaves out the values
+// that only repeat the catalog's: name, type, key env name and base URL.
 func normalizeProviderConfig(provider ProviderConfig) (ProviderConfig, bool) {
 	provider.ID = providers.NormalizeProviderID(provider.ID)
-	provider.CatalogID = providers.NormalizeProviderID(provider.CatalogID)
 	provider.Type = providers.NormalizeOptionalProviderType(provider.Type)
 	provider.Name = strings.TrimSpace(provider.Name)
 	provider.APIKey = normalizeProviderAPIKey(provider.APIKey)
 	provider.APIKeyEnv = strings.TrimSpace(provider.APIKeyEnv)
 	provider.BaseURL = strings.TrimSpace(provider.BaseURL)
-	provider.Model = strings.TrimSpace(provider.Model)
-	if provider.ContextWindow < 0 {
-		provider.ContextWindow = 0
-	}
+	provider.ContextWindow = max(provider.ContextWindow, 0)
+	provider.MaxOutputTokens = max(provider.MaxOutputTokens, 0)
+	provider.ReasoningEffort = providers.NormalizeReasoningEffort(provider.ReasoningEffort)
 	provider.ToolUseMode = providers.NormalizeOptionalToolUseMode(provider.ToolUseMode)
-
 	if provider.ID == "" {
 		return ProviderConfig{}, false
 	}
-	if provider.CatalogID == "" {
-		provider.CatalogID = provider.ID
-	}
-	if policy := providers.PolicyForProvider(provider.CatalogID, provider.Type); policy.Known {
+	policy := provider.policy()
+	if policy.Known {
 		provider.ID = policy.CatalogID
-		provider.CatalogID = policy.CatalogID
-		if provider.Name == "" {
-			provider.Name = policy.Name
-		}
-		if provider.Type == "" {
-			provider.Type = policy.Type
-		}
-		if provider.APIKeyEnv == "" {
-			provider.APIKeyEnv = policy.APIKeyEnv
-		}
-		if provider.BaseURL == "" {
-			provider.BaseURL = policy.DefaultBaseURL
-		}
-		if provider.Model == "" {
-			provider.Model = policy.DefaultModel
-		}
+		provider.Name = omitDefault(provider.Name, policy.Name)
+		provider.Type = omitDefault(provider.Type, policy.Type)
+		provider.APIKeyEnv = omitDefault(provider.APIKeyEnv, policy.APIKeyEnv)
+		provider.BaseURL = omitDefault(provider.BaseURL, policy.DefaultBaseURL)
+	} else {
+		provider.APIKeyEnv = omitDefault(provider.APIKeyEnv, customProviderAPIKeyEnv(provider.Type))
 	}
-	provider.Model = providers.NormalizeModelID(provider.CatalogID, provider.Type, provider.Model)
-	provider.ReasoningEffort = providers.NormalizeReasoningEffortForModel(provider.CatalogID, provider.Type, provider.Model, provider.ReasoningEffort)
+	provider.Model = providers.NormalizeModelID(provider.ID, provider.Type, provider.Model)
 	return provider, true
+}
+
+func omitDefault[T comparable](value T, builtIn T) T {
+	var zero T
+	if value == builtIn {
+		return zero
+	}
+	return value
 }
 
 func activeProviderFromConfig(cfg Config) (ProviderConfig, bool) {
@@ -248,219 +240,6 @@ func activeProviderFromConfig(cfg Config) (ProviderConfig, bool) {
 		return ProviderConfig{}, false
 	}
 	return cfg.Providers[0], true
-}
-
-func ActiveProviderConfig(cfg Config) (ProviderConfig, bool) {
-	cfg = normalizeConfig(cfg)
-	if cfg.ActiveProviderID == "" {
-		return ProviderConfig{}, false
-	}
-	for _, provider := range cfg.Providers {
-		if sameProvider(provider.ID, cfg.ActiveProviderID) {
-			return provider, true
-		}
-	}
-	return ProviderConfig{}, false
-}
-
-func findProviderConfig(cfg Config, providerID string) (ProviderConfig, bool) {
-	cfg = normalizeConfig(cfg)
-	providerID = providers.NormalizeProviderID(providerID)
-	for _, provider := range cfg.Providers {
-		if sameProvider(provider.ID, providerID) {
-			return provider, true
-		}
-	}
-	return ProviderConfig{}, false
-}
-
-func ProviderDraftConfigured(provider ProviderDraft) bool {
-	if !providerPolicyForDraft(provider).RequiresAPIKey {
-		return strings.TrimSpace(provider.Model) != ""
-	}
-	if strings.TrimSpace(provider.APIKey) != "" {
-		return true
-	}
-	if strings.TrimSpace(providerAPIKeyFromEnvName(providerDraftAPIKeyEnvName(provider))) != "" {
-		return true
-	}
-	return provider.HasStoredAPIKey && strings.TrimSpace(provider.StoredAPIKeyPreview) != ""
-}
-
-func FindProviderDraft(draft Draft, providerID string) (ProviderDraft, bool) {
-	providerID = providers.NormalizeProviderID(providerID)
-	for _, provider := range draft.Providers {
-		if sameProvider(provider.ID, providerID) {
-			return provider, true
-		}
-	}
-	return ProviderDraft{}, false
-}
-
-func UpsertProviderDraft(draft Draft, provider ProviderDraft) Draft {
-	provider.ID = providers.NormalizeProviderID(provider.ID)
-	provider.CatalogID = providers.NormalizeProviderID(provider.CatalogID)
-	next := make([]ProviderDraft, 0, len(draft.Providers)+1)
-	replaced := false
-	for _, existing := range draft.Providers {
-		if sameProvider(existing.ID, provider.ID) {
-			next = append(next, provider)
-			replaced = true
-			continue
-		}
-		next = append(next, existing)
-	}
-	if !replaced {
-		next = append(next, provider)
-	}
-	draft.Providers = next
-	return draft
-}
-
-func DeleteProviderDraft(draft Draft, providerID string) Draft {
-	next := make([]ProviderDraft, 0, len(draft.Providers))
-	for _, provider := range draft.Providers {
-		if sameProvider(provider.ID, providerID) {
-			continue
-		}
-		next = append(next, provider)
-	}
-	draft.Providers = next
-	if sameProvider(draft.ActiveProviderID, providerID) {
-		draft.ActiveProviderID = ""
-		for _, provider := range ConfiguredProviders(draft) {
-			draft.ActiveProviderID = provider.ID
-			break
-		}
-	}
-	return draft
-}
-
-func builtInProviderOptions() []ProviderOption {
-	specs := providers.ProviderSpecs()
-	options := make([]ProviderOption, 0, len(specs))
-	for _, spec := range specs {
-		policy := providers.PolicyForProvider(spec.Entry.ID, spec.Entry.Type)
-		if !policy.Implemented {
-			continue
-		}
-		options = append(options, providerOptionFromPolicy(policy))
-	}
-	return options
-}
-
-func providerOptionFromPolicy(policy providers.ProviderPolicy) ProviderOption {
-	return ProviderOption{
-		ID:              policy.CatalogID,
-		Name:            policy.Name,
-		Type:            policy.Type,
-		Implemented:     policy.Implemented,
-		RequiresBaseURL: policy.RequiresBaseURL,
-		Capabilities:    policy.Capabilities,
-		DefaultBaseURL:  policy.DefaultBaseURL,
-		BaseURLOptions:  append([]providers.BaseURLOption(nil), policy.BaseURLOptions...),
-		DefaultModel:    policy.DefaultModel,
-		APIKeyEnv:       policy.APIKeyEnv,
-		Notes:           policy.Notes,
-	}
-}
-
-func ConfiguredProviders(draft Draft) []ProviderDraft {
-	configured := make([]ProviderDraft, 0, len(draft.Providers))
-	for _, provider := range draft.Providers {
-		if ProviderDraftConfigured(provider) {
-			configured = append(configured, provider)
-		}
-	}
-	return configured
-}
-
-func availableBuiltInProviders(draft Draft, options []ProviderOption) []ProviderOption {
-	available := make([]ProviderOption, 0, len(options))
-	for _, option := range options {
-		if _, ok := FindProviderDraft(draft, option.ID); ok {
-			continue
-		}
-		available = append(available, option)
-	}
-	return available
-}
-
-func isCustomProviderDraft(provider ProviderDraft) bool {
-	return !providerPolicyForDraft(provider).Known
-}
-
-func draftProviderFromOption(option ProviderOption) ProviderDraft {
-	return ProviderDraft{
-		ID:              option.ID,
-		CatalogID:       option.ID,
-		Name:            option.Name,
-		Type:            option.Type,
-		APIKeyEnv:       option.APIKeyEnv,
-		BaseURL:         option.DefaultBaseURL,
-		Model:           option.DefaultModel,
-		ReasoningEffort: providers.DefaultReasoningEffortForModel(option.ID, option.Type, option.DefaultModel),
-		HasStoredAPIKey: false,
-	}
-}
-
-func draftProviderFromConfig(provider ProviderConfig) ProviderDraft {
-	hasStoredAPIKey := strings.TrimSpace(provider.APIKey) != ""
-	draft := ProviderDraft{
-		ID:                  provider.ID,
-		CatalogID:           provider.CatalogID,
-		Name:                provider.Name,
-		Type:                provider.Type,
-		APIKey:              "",
-		APIKeyEnv:           provider.APIKeyEnv,
-		BaseURL:             provider.BaseURL,
-		Model:               provider.Model,
-		ToolUseMode:         provider.ToolUseMode,
-		ReasoningEffort:     provider.ReasoningEffort,
-		HasStoredAPIKey:     hasStoredAPIKey,
-		StoredAPIKeyPreview: MaskSecret(provider.APIKey),
-	}
-	if provider.ContextWindow > 0 {
-		draft.ContextWindow = strconv.Itoa(provider.ContextWindow)
-	}
-	if provider.MaxOutputTokens > 0 {
-		draft.MaxOutputTokens = strconv.FormatInt(provider.MaxOutputTokens, 10)
-	}
-	return draft
-}
-
-func ProviderConfigWithResolvedAPIKey(provider ProviderConfig) (ProviderConfig, bool) {
-	if !providerPolicyForConfig(provider).RequiresAPIKey {
-		provider.APIKey = ""
-		return provider, true
-	}
-	resolved, ok := ResolvedProviderAPIKey(provider)
-	provider.APIKey = resolved
-	return provider, ok
-}
-
-func ResolvedProviderAPIKey(provider ProviderConfig) (string, bool) {
-	if apiKey := normalizeProviderAPIKey(provider.APIKey); apiKey != "" {
-		return apiKey, true
-	}
-	if apiKey := normalizeProviderAPIKey(providerAPIKeyFromEnvName(providerAPIKeyEnvName(provider))); apiKey != "" {
-		return apiKey, true
-	}
-	return "", false
-}
-
-func ProviderAPIKeyPreview(provider ProviderConfig) string {
-	if policy := providerPolicyForConfig(provider); !policy.RequiresAPIKey {
-		return policy.AuthStatusLabel
-	}
-	if apiKey := normalizeProviderAPIKey(provider.APIKey); apiKey != "" {
-		return MaskSecret(apiKey)
-	}
-	envName := providerAPIKeyEnvName(provider)
-	if envName == "" || normalizeProviderAPIKey(providerAPIKeyFromEnvName(envName)) == "" {
-		return ""
-	}
-	return "env:" + envName
 }
 
 func normalizeProviderAPIKey(value string) string {
@@ -483,99 +262,10 @@ func normalizeProviderAPIKey(value string) string {
 	return value
 }
 
-func providerAPIKeyEnvName(provider ProviderConfig) string {
-	return providerAPIKeyEnvNameFor(provider.APIKeyEnv, provider.CatalogID, provider.ID, provider.Type)
-}
-
-func providerDraftAPIKeyEnvName(provider ProviderDraft) string {
-	return providerAPIKeyEnvNameFor(provider.APIKeyEnv, provider.CatalogID, provider.ID, provider.Type)
-}
-
-func providerAPIKeyEnvNameFor(explicit string, catalogID string, providerID string, providerType string) string {
-	if envName := strings.TrimSpace(explicit); envName != "" {
-		return envName
-	}
-	policy := providers.PolicyForProvider(firstNonEmptyTrimmed(catalogID, providerID), providerType)
-	if policy.Known {
-		return strings.TrimSpace(policy.APIKeyEnv)
-	}
-	if !policy.RequiresAPIKey {
-		return ""
-	}
-	switch providers.NormalizeOptionalProviderType(providerType) {
-	case providers.TypeAnthropic:
-		return "ANTHROPIC_API_KEY"
-	case providers.TypeOpenAICompat:
-		return "OPENAI_COMPAT_API_KEY"
-	default:
-		return ""
-	}
-}
-
 func providerAPIKeyFromEnvName(envName string) string {
 	envName = strings.TrimSpace(envName)
 	if envName == "" {
 		return ""
 	}
 	return normalizeProviderAPIKey(os.Getenv(envName))
-}
-
-func newCustomDraftProvider(baseType string, existing []ProviderDraft) ProviderDraft {
-	baseType = providers.NormalizeOptionalProviderType(baseType)
-	name := "Custom OpenAI-Compatible"
-	baseURL := "https://api.example.com/v1"
-	apiKeyEnv := "OPENAI_COMPAT_API_KEY"
-	idBase := "custom-openai-compatible"
-	if baseType == providers.TypeAnthropic {
-		name = "Custom Anthropic-Compatible"
-		baseURL = "https://api.example.com/v1"
-		apiKeyEnv = "ANTHROPIC_API_KEY"
-		idBase = "custom-anthropic-compatible"
-	}
-	return ProviderDraft{
-		ID:              uniqueProviderID(idBase, existing),
-		Name:            name,
-		Type:            baseType,
-		APIKeyEnv:       apiKeyEnv,
-		BaseURL:         baseURL,
-		Model:           "",
-		ReasoningEffort: providers.DefaultReasoningEffortForModel("", baseType, ""),
-		HasStoredAPIKey: false,
-	}
-}
-
-func uniqueProviderID(base string, existing []ProviderDraft) string {
-	base = providers.NormalizeProviderID(base)
-	if base == "" {
-		base = "custom-provider"
-	}
-	taken := make(map[string]struct{}, len(existing))
-	for _, provider := range existing {
-		taken[providers.NormalizeProviderID(provider.ID)] = struct{}{}
-	}
-	if _, exists := taken[base]; !exists {
-		return base
-	}
-	for i := 2; ; i++ {
-		candidate := fmt.Sprintf("%s-%d", base, i)
-		if _, exists := taken[candidate]; !exists {
-			return candidate
-		}
-	}
-}
-
-func lookupProviderOption(providerID string) (ProviderOption, bool) {
-	policy := providers.PolicyForProvider(providerID, "")
-	if policy.Known && policy.Implemented {
-		return providerOptionFromPolicy(policy), true
-	}
-	return ProviderOption{}, false
-}
-
-func providerPolicyForDraft(provider ProviderDraft) providers.ProviderPolicy {
-	return providers.PolicyForProvider(firstNonEmptyTrimmed(provider.CatalogID, provider.ID), provider.Type)
-}
-
-func providerPolicyForConfig(provider ProviderConfig) providers.ProviderPolicy {
-	return providers.PolicyForProvider(firstNonEmptyTrimmed(provider.CatalogID, provider.ID), provider.Type)
 }

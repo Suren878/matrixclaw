@@ -34,8 +34,8 @@ func (c *Core) wakeSession(ctx context.Context, sessionID string, finished *Task
 		return nil
 	}
 	if err := c.startRun(ctx, result.Run.ID); err != nil {
-		failed, err := c.failAcceptedRun(ctx, *result, err)
-		return errors.Join(err, c.noticeFailedWakeRun(ctx, failed.Run.ID))
+		_, err = c.failAcceptedRun(ctx, *result, err)
+		return err
 	}
 	return nil
 }
@@ -43,11 +43,7 @@ func (c *Core) wakeSession(ctx context.Context, sessionID string, finished *Task
 // noticeFailedWakeRun tells the user when a run started for finished
 // background work failed; the session then starts no other on its own until
 // the user writes.
-func (c *Core) noticeFailedWakeRun(ctx context.Context, runID string) error {
-	run, err := c.store.GetRun(ctx, runID)
-	if err != nil || run.Trigger != RunTriggerWake || run.Status != RunStatusFailed {
-		return ignoreNotFound(err)
-	}
+func (c *Core) noticeFailedWakeRun(ctx context.Context, run Run) error {
 	session, err := c.store.GetSession(ctx, run.SessionID)
 	if err != nil {
 		return ignoreNotFound(err)
@@ -130,7 +126,7 @@ func (c *Core) prepareWake(ctx context.Context, sessionID string, finished *Task
 		return nil, &wakeNotice{session: session, target: target, text: text}, nil
 	}
 	parts := transcript.NormalizeMessageParts(wakeRunText, nil)
-	run := clientRun(wakeRunText, parts, target.client, target.externalKey, target.capabilities, target.address)
+	run := clientRun(wakeRunText, parts, target.client, target.externalKey, target.capabilities, deliveryTo{Address: target.address})
 	run.Trigger = RunTriggerWake
 	result, err := c.createAcceptedRun(ctx, session, run)
 	if err != nil {
@@ -182,7 +178,7 @@ func (c *Core) latestWakeTarget(ctx context.Context, runs []Run) (wakeTarget, er
 }
 
 // wakeTargetOf is where the run's reply was delivered, unless a later message
-// cannot go there: a Telegram guest query or inline message answers only once.
+// cannot go there (a reply-once address).
 func (c *Core) wakeTargetOf(ctx context.Context, run Run) (wakeTarget, bool, error) {
 	if run.Client == "" || run.ExternalKey == "" {
 		return wakeTarget{}, false, nil
@@ -193,15 +189,10 @@ func (c *Core) wakeTargetOf(ctx context.Context, run Run) (wakeTarget, bool, err
 	}
 	var address json.RawMessage
 	if len(deliveries) > 0 {
+		if deliveries[0].ReplyOnce {
+			return wakeTarget{}, false, nil
+		}
 		address = deliveries[0].Address
-	}
-	var once struct {
-		Kind            string `json:"kind"`
-		GuestQueryID    string `json:"guest_query_id"`
-		InlineMessageID string `json:"inline_message_id"`
-	}
-	if len(address) > 0 && json.Unmarshal(address, &once) == nil && (once.Kind == "guest" || once.Kind == "inline" || once.GuestQueryID != "" || once.InlineMessageID != "") {
-		return wakeTarget{}, false, nil
 	}
 	return wakeTarget{client: run.Client, externalKey: run.ExternalKey, capabilities: run.ClientCapabilities, address: address}, true, nil
 }
@@ -231,11 +222,14 @@ func (c *Core) taskWakesSession(ctx context.Context, task Task) (bool, error) {
 	if task.Kind != TaskKindSubagent && task.Status != TaskStatusCompleted && task.Status != TaskStatusFailed {
 		return false, nil
 	}
-	canceled, err := c.isRunCanceled(ctx, task.RunID)
+	if task.RunID == "" {
+		return true, nil
+	}
+	run, err := c.store.GetRun(ctx, task.RunID)
 	if errors.Is(err, ErrNotFound) {
 		return true, nil
 	}
-	return !canceled, err
+	return run.Status != RunStatusCanceled, err
 }
 
 func taskLabel(task Task) string {
@@ -262,25 +256,6 @@ func (c *Core) sendWakeNotice(ctx context.Context, notice wakeNotice) error {
 		Address:     notice.target.address,
 	})
 	return err
-}
-
-// RecoverTaskEvents starts the runs that idle sessions owe to background work
-// finished before the daemon restarted.
-func (c *Core) RecoverTaskEvents(ctx context.Context) error {
-	events, err := c.store.ListTasks(ctx, TaskFilter{Undelivered: true})
-	if err != nil {
-		return err
-	}
-	seen := map[string]bool{}
-	var errs []error
-	for _, task := range events {
-		if seen[task.SessionID] {
-			continue
-		}
-		seen[task.SessionID] = true
-		errs = append(errs, c.wakeSession(ctx, task.SessionID, nil))
-	}
-	return errors.Join(errs...)
 }
 
 func ignoreNotFound(err error) error {

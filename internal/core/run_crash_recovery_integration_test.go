@@ -158,8 +158,8 @@ func TestRecoverRunningGenerationSkipsPartialAndCompletes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns: %v", err)
+	if err := app.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover: %v", err)
 	}
 	waitForRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusCompleted)
 
@@ -196,7 +196,7 @@ func TestEndingTheLifetimeKeepsExecutingRunsForRecovery(t *testing.T) {
 	app.WithLifetime(lifetime).WithSessionLLMs(recoveryLLMs{runtime: interruptedRuntime})
 	_, run := saveCrashRecoveryRun(t, sqliteStore, "lifetime_end", core.RunStatusAccepted, false)
 
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
+	if err := app.Recover(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	waitRecoverySignal(t, interruptedRuntime.started, "native generation start")
@@ -245,8 +245,8 @@ func TestGracefulExecutorStopPreservesAndRecoversNativeGeneration(t *testing.T) 
 	recoveredRuntime := &recoveryRuntime{text: "native resumed after restart"}
 	restarted := core.New(sqliteStore).
 		WithSessionLLMs(recoveryLLMs{runtime: recoveredRuntime})
-	if err := restarted.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns after graceful stop: %v", err)
+	if err := restarted.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover after graceful stop: %v", err)
 	}
 	waitForRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusCompleted)
 	request := recoveredRuntime.lastRequest()
@@ -310,7 +310,7 @@ func TestStartupRecoveryAndPersistedWorkflowRaceExecutesRunOnce(t *testing.T) {
 	}()
 	go func() {
 		<-start
-		errorsSeen <- app.RecoverActiveRuns(context.Background())
+		errorsSeen <- app.Recover(context.Background())
 	}()
 	close(start)
 	for i := 0; i < 2; i++ {
@@ -352,11 +352,11 @@ func TestRecoveryLeavesReadOnlyCallsInFlightToTheResumedRun(t *testing.T) {
 	}
 
 	recovered := make(chan error, 1)
-	go func() { recovered <- app.RecoverActiveRuns(context.Background()) }()
+	go func() { recovered <- app.Recover(context.Background()) }()
 	select {
 	case err := <-recovered:
 		if err != nil {
-			t.Fatalf("RecoverActiveRuns: %v", err)
+			t.Fatalf("Recover: %v", err)
 		}
 	case <-time.After(5 * time.Second):
 		close(slow.release)
@@ -392,9 +392,7 @@ func TestRecoverMutatingToolRequiresFreshApprovalBeforeSingleReplay(t *testing.T
 
 	_, run := saveCrashRecoveryRun(t, sqliteStore, "mutation", core.RunStatusRunning, false)
 	saveInterruptedToolCall(t, sqliteStore, run, "tool_mutation", mutation.spec.ID)
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns: %v", err)
-	}
+	recoverRun(t, app, run.ID)
 	assertRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusWaitingApproval)
 	if got := mutation.callCount(); got != 0 {
 		t.Fatalf("mutating tool executed without recovery approval: %d", got)
@@ -442,8 +440,8 @@ func TestRecoverDeniedToolReturnsTheDenialToTheModel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns: %v", err)
+	if err := app.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover: %v", err)
 	}
 	if got := starter.count(run.ID); got != 1 {
 		t.Fatalf("recovered run schedules = %d, want 1", got)
@@ -486,8 +484,8 @@ func TestRecoveryLeavesDeferredCallsToTheResumedRun(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns: %v", err)
+	if err := app.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover: %v", err)
 	}
 	if inspect.callCount() != 0 {
 		t.Fatal("recovery replayed a deferred call")
@@ -541,9 +539,7 @@ func TestRecoveryAnswersEveryCallOfABatchInFlight(t *testing.T) {
 	deferred.Parts[0].ToolCall.Deferred = true
 	saveRunRecoveryTestMessage(t, sqliteStore, deferred)
 
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns: %v", err)
-	}
+	recoverRun(t, app, run.ID)
 
 	assertRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusWaitingApproval)
 	if inspect.callCount() != 0 || mutation.callCount() != 0 {
@@ -600,9 +596,7 @@ func TestRecoveryDefersAgainTheCallsTheBatchCheckpointNamesNotStarted(t *testing
 		t.Fatal(err)
 	}
 
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns: %v", err)
-	}
+	recoverRun(t, app, run.ID)
 
 	if inspect.callCount() != 0 {
 		t.Fatal("recovery replayed a call that never started")
@@ -636,30 +630,30 @@ func TestRecoverBlockingSubagentCompletesChildThenParentWithoutDuplicate(t *test
 	childSession, childRun := saveCrashRecoveryRun(t, sqliteStore, "child", core.RunStatusRunning, true)
 	parentRun.StartedAt = childRun.StartedAt.Add(-time.Minute)
 	parentRun.UpdatedAt = parentRun.StartedAt
-	if err := sqliteStore.UpdateRun(context.Background(), parentRun); err != nil {
+	if err := sqliteStore.SealRun(context.Background(), parentRun, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	delegateArgs := `{"description":"Finish","prompt":"finish child work","runtime":"matrixclaw"}`
 	saveInterruptedToolCallWithInput(t, sqliteStore, parentRun, "tool_delegate", "agent", delegateArgs)
 	now := runRecoveryTestTime().Add(3 * time.Second)
-	if err := sqliteStore.CreateSubagentTask(context.Background(), core.SubagentTask{
-		ID: "subagent_recovery", AgentName: "Neo", DisplayName: "Recovery child",
-		Mode: core.SubagentTaskModeBlocking, Isolation: core.SubagentIsolationShared,
-		ParentSessionID: parentSession.ID, ParentRunID: parentRun.ID, ParentToolCallID: "tool_delegate",
+	if err := sqliteStore.CreateTask(context.Background(), core.Task{
+		ID: "subagent_recovery", Kind: core.TaskKindSubagent, AgentName: "Neo", Description: "Recovery child",
+		Isolation: core.SubagentIsolationShared,
+		SessionID: parentSession.ID, RunID: parentRun.ID, ParentToolCallID: "tool_delegate",
 		ChildSessionID: childSession.ID, ChildRunID: childRun.ID, Runtime: "matrixclaw",
-		Goal: "finish child work", Status: core.TaskStatusRunning,
-		CreatedAt: now, UpdatedAt: now,
+		Command: "finish child work", Status: core.TaskStatusRunning,
+		StartedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns: %v", err)
+	if err := app.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover: %v", err)
 	}
 	waitForRecoveryRunStatus(t, sqliteStore, childRun.ID, core.RunStatusCompleted)
 	waitForRecoveryRunStatus(t, sqliteStore, parentRun.ID, core.RunStatusCompleted)
 	assertToolResultCount(t, sqliteStore, parentSession.ID, "tool_delegate", 1)
-	task, err := sqliteStore.GetSubagentTask(context.Background(), "subagent_recovery")
+	task, err := sqliteStore.GetTask(context.Background(), "subagent_recovery")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -669,48 +663,46 @@ func TestRecoverBlockingSubagentCompletesChildThenParentWithoutDuplicate(t *test
 }
 
 func TestRestartedParentWaitsForAllItsBlockingChildren(t *testing.T) {
-	for _, status := range []core.RunStatus{core.RunStatusRunning, core.RunStatusWaitingApproval} {
-		t.Run(string(status), func(t *testing.T) {
-			t.Parallel()
-			app, sqliteStore, cleanup := newCrashRecoveryCore(t)
-			defer cleanup()
-			app.WithSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "child done"}})
-			starter := &recordingRunStarter{}
-			app.WithRunStarter(starter)
-			app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
-			parentSession, parentRun := saveCrashRecoveryRun(t, sqliteStore, "parent", status, false)
-			var childRuns []core.Run
-			for _, name := range []string{"a", "b"} {
-				childSession, childRun := saveCrashRecoveryRun(t, sqliteStore, "child_"+name, core.RunStatusAccepted, true)
-				saveInterruptedToolCallWithInput(t, sqliteStore, parentRun, "tool_"+name, "agent", `{"description":"Part `+name+`","prompt":"do `+name+`","runtime":"matrixclaw"}`)
-				now := runRecoveryTestTime().Add(3 * time.Second)
-				if err := sqliteStore.CreateSubagentTask(context.Background(), core.SubagentTask{
-					ID: "subagent_" + name, AgentName: "Neo", DisplayName: "Child " + name,
-					Mode: core.SubagentTaskModeBlocking, Isolation: core.SubagentIsolationShared,
-					ParentSessionID: parentSession.ID, ParentRunID: parentRun.ID, ParentToolCallID: "tool_" + name,
-					ChildSessionID: childSession.ID, ChildRunID: childRun.ID, Runtime: "matrixclaw",
-					Goal: "do " + name, Status: core.TaskStatusRunning, CreatedAt: now, UpdatedAt: now,
-				}); err != nil {
-					t.Fatal(err)
-				}
-				childRuns = append(childRuns, childRun)
-			}
+	t.Parallel()
+	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "child done"}})
+	starter := &executingRunStarter{app: app}
+	app.WithRunStarter(starter)
+	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+	parentSession, parentRun := saveCrashRecoveryRun(t, sqliteStore, "parent", core.RunStatusRunning, false)
+	var childRuns []core.Run
+	for _, name := range []string{"a", "b"} {
+		childSession, childRun := saveCrashRecoveryRun(t, sqliteStore, "child_"+name, core.RunStatusAccepted, true)
+		saveInterruptedToolCallWithInput(t, sqliteStore, parentRun, "tool_"+name, "agent", `{"description":"Part `+name+`","prompt":"do `+name+`","runtime":"matrixclaw"}`)
+		now := runRecoveryTestTime().Add(3 * time.Second)
+		if err := sqliteStore.CreateTask(context.Background(), core.Task{
+			ID: "subagent_" + name, Kind: core.TaskKindSubagent, AgentName: "Neo", Description: "Child " + name,
+			Isolation: core.SubagentIsolationShared,
+			SessionID: parentSession.ID, RunID: parentRun.ID, ParentToolCallID: "tool_" + name,
+			ChildSessionID: childSession.ID, ChildRunID: childRun.ID, Runtime: "matrixclaw",
+			Command: "do " + name, Status: core.TaskStatusRunning, StartedAt: now, UpdatedAt: now,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		childRuns = append(childRuns, childRun)
+	}
 
-			if err := app.ExecuteRun(context.Background(), childRuns[0].ID); err != nil {
-				t.Fatal(err)
-			}
-			assertToolResultCount(t, sqliteStore, parentSession.ID, "tool_a", 1)
-			if starter.count(parentRun.ID) != 0 {
-				t.Fatal("the parent started while its other blocking child still ran")
-			}
-			if err := app.ExecuteRun(context.Background(), childRuns[1].ID); err != nil {
-				t.Fatal(err)
-			}
-			assertToolResultCount(t, sqliteStore, parentSession.ID, "tool_b", 1)
-			if starter.count(parentRun.ID) != 1 {
-				t.Fatalf("parent starts = %d, want 1 once both children finished", starter.count(parentRun.ID))
-			}
-		})
+	if err := app.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	waitForRecoveryRunStatus(t, sqliteStore, parentRun.ID, core.RunStatusCompleted)
+	starter.wait(t)
+
+	for i, name := range []string{"a", "b"} {
+		assertToolResultCount(t, sqliteStore, parentSession.ID, "tool_"+name, 1)
+		if got := storedToolResult(t, sqliteStore, parentSession.ID, "tool_"+name); got != "child done" {
+			t.Fatalf("tool_%s result = %q", name, got)
+		}
+		assertRecoveryRunStatus(t, sqliteStore, childRuns[i].ID, core.RunStatusCompleted)
+		if got := starter.count(childRuns[i].ID); got != 1 {
+			t.Fatalf("child %s starts = %d, want 1", name, got)
+		}
 	}
 }
 
@@ -815,8 +807,8 @@ func TestRecoverExternalAgentContinuesExistingSession(t *testing.T) {
 	}
 	saveRunRecoveryTestMessage(t, sqliteStore, partial)
 
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns: %v", err)
+	if err := app.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover: %v", err)
 	}
 	waitForRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusCompleted)
 	input := runtime.receivedInput()
@@ -869,13 +861,25 @@ func TestGracefulExecutorStopRecoversExternalSessionWithoutNativeToolReplay(t *t
 		t.Fatal(err)
 	}
 	restarted := core.New(sqliteStore).WithExternalAgents(recoveredRegistry, sqliteStore)
-	if err := restarted.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns external after graceful stop: %v", err)
+	if err := restarted.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover external after graceful stop: %v", err)
 	}
 	waitForRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusCompleted)
 	assertToolResultCount(t, sqliteStore, session.ID, "external_tool_in_flight", 0)
 	if !strings.Contains(recoveredRuntime.receivedInput(), "Continue the existing task") {
 		t.Fatalf("external runtime did not receive a continuation prompt: %q", recoveredRuntime.receivedInput())
+	}
+}
+
+// recoverRun recovers the daemon's active runs and executes run, as the run
+// starter of a test that only records starts does not.
+func recoverRun(t *testing.T, app *core.Core, runID string) {
+	t.Helper()
+	if err := app.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover: %v", err)
+	}
+	if err := app.ExecuteRun(context.Background(), runID); err != nil {
+		t.Fatalf("ExecuteRun: %v", err)
 	}
 }
 

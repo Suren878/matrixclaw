@@ -610,7 +610,7 @@ func (w *Worker) sendUserMessageParts(ctx context.Context, target chatTarget, te
 		w.sendTypingChatAction(ctx, target, "message")
 	}
 
-	result, err := daemon.SendMessagePartsModeWithDelivery(ctx, "", text, parts, "", "", encodeDeliveryAddress(deliveryAddressFromTarget(target, 0)))
+	result, err := daemon.SendMessagePartsModeWithDelivery(ctx, "", text, parts, "", "", encodeDeliveryAddress(deliveryAddressFromTarget(target, 0)), target.repliesOnce())
 	if err != nil {
 		if daemonclient.IsAPIStatus(err, http.StatusConflict) {
 			return w.handleSessionSelectionRequired(ctx, target)

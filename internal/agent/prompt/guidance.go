@@ -18,16 +18,15 @@ func ToolUseDiscipline() string {
 - For simple lookups, prefer one direct path to the answer over parallel or repeated searches.`)
 }
 
-// WebResearchGuidance is the guidance for using web_research over legacy web tools.
-func WebResearchGuidance() string {
-	return strings.TrimSpace(`Web research:
-- For current or changing information, ratings, reviews, prices, schedules, broad web search, or source-backed answers where no exact target site/page is specified, prefer web_research over legacy web_search/web_fetch.
-- When the user explicitly asks to visit, open, check, or look at a specific website/domain/page, use browser tools for the direct page instead of starting web_research.
-- If the exact URL is unknown for a specific-site lookup, prefer the site's own navigation/search in the browser. Use web_search only as a fallback when the direct site path is unavailable, blocked, ambiguous, or fails to find the page.
-- For follow-up questions about prior web research, use web_research_ask with the prior research_id before starting a new search.
-- web_research returns compact facts, sources, warnings, next actions, and a research_id; raw HTML, long page text, DOM snapshots, and screenshots are stored as artifacts and should not be pasted into chat.
-- Do not combine web_research, web_search, and browser tools for a simple single-page lookup unless the direct page result is missing, ambiguous, blocked, or conflicts with another source. If fallback web_search is needed, keep it to one focused query.
-- Use browser=always for web_research only when the task is broad research and fetched pages are empty, dynamic, or blocked. If browser fallback is unavailable, report the setup hint returned by the tool.`)
+// WebGuidance is the guidance for web_search, web_fetch and web research.
+func WebGuidance() string {
+	return strings.TrimSpace(`Web:
+- web_search finds pages; web_fetch reads one page as markdown. For current or changing information, search, then fetch the one or two most relevant results, and name the URLs your answer rests on.
+- When the user names a site or page, fetch it directly instead of searching for it.
+- A long page comes back as an excerpt with the path of a file holding all of it; read or grep that file instead of fetching the page again.
+- Use browser tools to interact with a page (log in, click, fill forms), or when web_fetch says the page needs JavaScript.
+- For research across many sources, delegate independent questions to agent children with readonly:true; they search and read on their own, run in parallel, and return a summary.
+- Keep simple lookups to one focused search and few fetches.`)
 }
 
 // VoiceOutputGuidance is the guidance for spoken/TTS output via text_to_speech.

@@ -1,50 +1,104 @@
 package setup
 
 import (
+	"slices"
 	"strings"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 
 	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
-func (m *model) providerFormSubtitle() string {
-	selected := m.editingProvider
-	parts := []string{}
-	if selected.HasStoredAPIKey {
-		parts = append(parts, "Saved key "+selected.StoredAPIKeyPreview)
-	}
-	return strings.Join(parts, " ")
-}
+type providerField int
+
+const (
+	providerFieldName providerField = iota
+	providerFieldBaseURL
+	providerFieldAPIKey
+	providerFieldModel
+	providerFieldReasoning
+	providerFieldToolUse
+)
+
+var toolUseModes = []providers.ToolUseMode{providers.ToolUseNative, providers.ToolUseDisabled}
 
 type providerFormItem struct {
-	Row             listItem
-	Target          textEditTarget
-	RequiredMessage string
-	BaseURL         bool
-	Reasoning       bool
-	ToolUse         bool
+	Row      listItem
+	Field    providerField
+	Required string
+}
+
+// providerFormView is what the provider form shows for the provider being
+// edited: its effective values and the catalog facts that pick the fields.
+type providerFormView struct {
+	effective    setup.ProviderConfig
+	policy       providers.ProviderPolicy
+	capabilities providers.ModelCapabilitySet
+}
+
+func (m *model) providerForm() providerFormView {
+	effective := m.editingProvider.Effective()
+	return providerFormView{
+		effective: effective,
+		policy:    providers.PolicyForProvider(m.editingProvider.ID, m.editingProvider.Type),
+		capabilities: providers.ResolveModelCapabilities(providers.ModelCapabilityInput{
+			ProviderID: effective.ID, ProviderType: effective.Type, ModelID: effective.Model,
+		}),
+	}
+}
+
+func (v providerFormView) custom() bool {
+	return !v.policy.Known
+}
+
+func (v providerFormView) modelPicker() bool {
+	return !v.custom() && v.capabilities.ProviderCapabilities.ModelDiscovery
+}
+
+// modelNeedsKey: the model list can't load until an API key is entered.
+func (v providerFormView) modelNeedsKey() bool {
+	if !v.modelPicker() || !v.policy.RequiresAPIKey || v.policy.PublicModelCatalog {
+		return false
+	}
+	_, ok := v.effective.Runtime()
+	return !ok
 }
 
 func (m *model) providerFormItems() []providerFormItem {
-	spec := m.providerFormSpec()
-	fields := setup.ProviderFormViewFields(spec, setup.ProviderFormViewOptions{})
-	items := make([]providerFormItem, 0, len(fields))
-	for _, field := range fields {
-		row := listItem{Title: field.Label, Status: field.Status}
-		if field.Accent {
-			row.Tone = components.RowToneAccent
+	view := m.providerForm()
+	p := m.editingProvider
+	items := make([]providerFormItem, 0, 6)
+	if view.custom() {
+		items = append(items, providerFormItem{Row: listItem{Title: "Provider name", Status: p.Name}, Field: providerFieldName, Required: "provider name is required"})
+	}
+	if options := view.policy.BaseURLOptions; view.custom() || len(options) > 0 {
+		title, status := "Base URL", view.effective.BaseURL
+		if len(options) > 0 {
+			title = "Endpoint"
+			if i := baseURLOptionIndex(options, status); i >= 0 {
+				status = options[i].Name
+			}
 		}
-		row.Disabled = field.Disabled
-		item := providerFormItem{
-			Row:             row,
-			Target:          providerFormTarget(field.ID),
-			RequiredMessage: field.RequiredMessage,
-			BaseURL:         field.ID == setup.ProviderFormFieldBaseURL && field.Picker,
-			Reasoning:       field.ID == setup.ProviderFormFieldReasoningEffort,
-			ToolUse:         field.ID == setup.ProviderFormFieldToolUse,
-		}
-		items = append(items, item)
+		items = append(items, providerFormItem{Row: listItem{Title: title, Status: status}, Field: providerFieldBaseURL, Required: "provider base URL is required"})
+	}
+	if view.policy.RequiresAPIKey {
+		items = append(items, providerFormItem{Row: listItem{Title: "API key", Status: p.APIKeyPreview()}, Field: providerFieldAPIKey, Required: "provider API key is required"})
+	}
+	modelRow := listItem{Title: "Model", Status: view.effective.Model}
+	if view.modelNeedsKey() {
+		modelRow.Status, modelRow.Disabled = "API key required", true
+	} else if modelRow.Status != "" {
+		modelRow.Tone = components.RowToneAccent
+	}
+	items = append(items, providerFormItem{Row: modelRow, Field: providerFieldModel, Required: "provider model is required"})
+	if view.capabilities.ProviderCapabilities.ReasoningEffort {
+		items = append(items, providerFormItem{Row: listItem{Title: "Reasoning effort", Status: view.effective.ReasoningEffort}, Field: providerFieldReasoning})
+	}
+	if view.capabilities.ProviderCapabilities.ToolCalling {
+		items = append(items, providerFormItem{Row: listItem{Title: "Tool use", Status: toolUseLabel(view.effective.ToolUseMode)}, Field: providerFieldToolUse})
 	}
 	return items
 }
@@ -57,121 +111,65 @@ func providerFormRows(items []providerFormItem) []listItem {
 	return rows
 }
 
-func (m *model) providerBaseURLOptions() []string {
-	field, ok := m.providerFormSpec().Field(setup.ProviderFormFieldBaseURL)
-	if !ok || len(field.Options) == 0 {
-		return nil
-	}
-	return append([]string(nil), field.Options...)
+func baseURLOptionIndex(options []providers.BaseURLOption, url string) int {
+	return slices.IndexFunc(options, func(option providers.BaseURLOption) bool {
+		return strings.TrimSpace(option.URL) == strings.TrimSpace(url)
+	})
 }
 
 func (m *model) providerBaseURLItems() []listItem {
-	field, ok := m.providerFormSpec().Field(setup.ProviderFormFieldBaseURL)
-	if !ok || len(field.Choices) == 0 {
-		return nil
-	}
-	items := make([]listItem, 0, len(field.Choices))
-	for _, choice := range field.Choices {
-		items = append(items, listItem{Title: choice.Title, Status: choice.Status})
+	options := m.providerForm().policy.BaseURLOptions
+	items := make([]listItem, 0, len(options))
+	for _, option := range options {
+		items = append(items, listItem{Title: option.Name, Status: option.URL})
 	}
 	return items
 }
 
-func (m *model) providerBaseURLIndex() int {
-	current := strings.TrimSpace(m.editingProvider.BaseURL)
-	for i, value := range m.providerBaseURLOptions() {
-		if strings.TrimSpace(value) == current {
-			return i
-		}
-	}
-	return 0
-}
-
-func (m *model) reasoningEffortIndex() int {
-	current := strings.TrimSpace(m.editingProvider.ReasoningEffort)
-	for i, effort := range m.providerReasoningEfforts() {
-		if effort == current {
-			return i
-		}
-	}
-	return defaultReasoningEffortIndex(m.providerReasoningEfforts())
-}
-
 func (m *model) providerReasoningEfforts() []string {
-	field, ok := m.providerFormSpec().Field(setup.ProviderFormFieldReasoningEffort)
-	if !ok || len(field.Options) == 0 {
-		return nil
+	return m.providerForm().capabilities.ReasoningEfforts
+}
+
+func (m *model) providerReasoningItems() []listItem {
+	efforts := m.providerReasoningEfforts()
+	items := make([]listItem, 0, len(efforts))
+	for _, effort := range efforts {
+		items = append(items, listItem{Title: cases.Title(language.Und).String(effort)})
 	}
-	return append([]string(nil), field.Options...)
+	return items
 }
 
-func (m *model) providerSupportsReasoningEffort() bool {
-	_, ok := m.providerFormSpec().Field(setup.ProviderFormFieldReasoningEffort)
-	return ok
-}
-
-func (m *model) providerSupportsToolUse() bool {
-	_, ok := m.providerFormSpec().Field(setup.ProviderFormFieldToolUse)
-	return ok
-}
-
-func defaultReasoningEffortIndex(efforts []string) int {
-	for i, effort := range efforts {
-		if effort == providers.DefaultReasoningEffort {
-			return i
-		}
+func toolUseItems() []listItem {
+	items := make([]listItem, 0, len(toolUseModes))
+	for _, mode := range toolUseModes {
+		items = append(items, listItem{Title: toolUseLabel(mode)})
 	}
-	return 0
+	return items
 }
 
-func (m *model) toolUseModeIndex() int {
-	current := providers.NormalizeToolUseMode(m.editingProvider.ToolUseMode)
-	for i, mode := range setup.ProviderFormToolUseModes() {
-		if mode == current {
-			return i
-		}
+func toolUseLabel(mode providers.ToolUseMode) string {
+	if providers.NormalizeToolUseMode(mode) == providers.ToolUseDisabled {
+		return "Disabled"
 	}
-	return 0
+	return "Enabled"
+}
+
+func (m *model) providerFormSubtitle() string {
+	if strings.TrimSpace(m.editingProvider.APIKey) == "" {
+		return ""
+	}
+	return "Saved key " + setup.MaskSecret(m.editingProvider.APIKey)
 }
 
 func (m *model) providerAPIKeyPlaceholder() string {
-	if m.editingProvider.HasStoredAPIKey {
-		return "Leave empty to keep " + m.editingProvider.StoredAPIKeyPreview
+	if strings.TrimSpace(m.editingProvider.APIKey) != "" {
+		return "Leave empty to keep " + setup.MaskSecret(m.editingProvider.APIKey)
 	}
 	return "Enter your API key"
 }
 
-func (m *model) providerFormSpec() setup.ProviderFormSpec {
-	return setup.ProviderFormSpecForDraft(m.editingProvider)
-}
-
-func providerFormTarget(fieldID setup.ProviderFormFieldID) textEditTarget {
-	switch fieldID {
-	case setup.ProviderFormFieldName:
-		return textEditProviderName
-	case setup.ProviderFormFieldBaseURL:
-		return textEditProviderBaseURL
-	case setup.ProviderFormFieldAPIKey:
-		return textEditProviderAPIKey
-	case setup.ProviderFormFieldModel:
-		return textEditProviderModel
-	default:
-		return textEditNone
-	}
-}
-
-func (m *model) providerModelUsesPicker() bool {
-	field, ok := m.providerFormSpec().Field(setup.ProviderFormFieldModel)
-	return ok && field.Picker
-}
-
-func (m *model) providerRequiresKeyCheck() bool {
-	providerID := strings.TrimSpace(m.editingProvider.CatalogID)
-	if providerID == "" {
-		providerID = m.editingProvider.ID
-	}
-	if !providers.PolicyForProvider(providerID, m.editingProvider.Type).RequiresAPIKey {
-		return false
-	}
-	return m.providerModelUsesPicker()
+// providerChecksKey: a new key is checked by loading the model list.
+func (m *model) providerChecksKey() bool {
+	view := m.providerForm()
+	return view.policy.RequiresAPIKey && view.modelPicker()
 }

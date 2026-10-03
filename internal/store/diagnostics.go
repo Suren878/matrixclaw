@@ -68,7 +68,6 @@ func canonicalSchemaReady(db *sql.DB) (bool, error) {
 		"session_inputs",
 		"run_steps",
 		"approvals",
-		"file_snapshots",
 		"client_deliveries",
 		"automation_jobs",
 		"automation_fires",

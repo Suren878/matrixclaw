@@ -137,8 +137,8 @@ func TestToolRoundTripIsJournaledInOrder(t *testing.T) {
 	if got := toolContent(model.Requests()[1], "c1"); got != "file body" {
 		t.Fatalf("second request tool content = %q", got)
 	}
-	if fmt.Sprint(f.Tools.Finished) != "[c1]" {
-		t.Fatalf("finished = %v", f.Tools.Finished)
+	if got := eventOrder(f, agent.EventToolFinished); got != "c1" {
+		t.Fatalf("tool.finished = %s", got)
 	}
 }
 
@@ -504,11 +504,15 @@ func TestStreamingProgressIsBatched(t *testing.T) {
 
 func TestCancellationSeenAfterGenerationSealsTheReply(t *testing.T) {
 	f := agenttest.NewFixture()
-	f.Inbox.Cancel = true
+	ctx, cancel := context.WithCancelCause(context.Background())
+	model := agenttest.ModelFunc(func(context.Context, providers.Request) (providers.Response, error) {
+		cancel(agent.ErrCanceled)
+		return providers.Response{Text: "Hi"}, nil
+	})
 
-	outcome := run(t, f, agenttest.NewScriptedModel(text("Hi")))
+	outcome, err := f.Engine().Run(ctx, f.Task(model))
 
-	if outcome.Status != agent.StatusCanceled || outcome.Assistant == nil {
+	if err != nil || outcome.Status != agent.StatusCanceled || outcome.Assistant == nil {
 		t.Fatalf("outcome = %+v", outcome)
 	}
 }
@@ -686,18 +690,21 @@ func TestCancelWhileStreamingSealsThePartialReply(t *testing.T) {
 	f := agenttest.NewFixture()
 	var streamErr error
 	attempts := 0
+	runCtx, cancel := context.WithCancelCause(context.Background())
 	model := agenttest.ModelFunc(func(ctx context.Context, _ providers.Request) (providers.Response, error) {
 		attempts++
 		if err := providers.StreamText(ctx, "Partial"); err != nil {
 			return providers.Response{}, err
 		}
-		f.Inbox.Cancel = true
-		f.Clock = f.Clock.Add(time.Second)
+		cancel(agent.ErrCanceled)
 		streamErr = providers.StreamText(ctx, " more")
 		return providers.Response{}, streamErr
 	})
 
-	outcome := run(t, f, model)
+	outcome, err := f.Engine().Run(runCtx, f.Task(model))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if streamErr == nil || streamErr.Error() != "run canceled" || attempts != 1 {
 		t.Fatalf("stream error = %v attempts = %d", streamErr, attempts)
@@ -733,7 +740,7 @@ func TestApprovalRequestFailureFailsTheRun(t *testing.T) {
 	if outcome.Status != agent.StatusFailed || outcome.Err == nil || outcome.Err.Error() != "approvals unavailable" {
 		t.Fatalf("outcome = %+v", outcome)
 	}
-	if result, _ := f.Journal.Result("w1"); !strings.Contains(result.Content, "run failed") || len(f.Tools.Finished) != 1 {
+	if result, _ := f.Journal.Result("w1"); !strings.Contains(result.Content, "run failed") || eventOrder(f, agent.EventToolFinished) != "w1" {
 		t.Fatalf("result of the call = %q, want the run's failure", result.Content)
 	}
 }

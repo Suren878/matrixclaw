@@ -9,23 +9,23 @@ import (
 )
 
 // subagentFrom is the only place that reads the daemon's subagent task.
-func subagentFrom(task core.SubagentTask) surfacemessage.Subagent {
+func subagentFrom(task core.Task) surfacemessage.Subagent {
 	return surfacemessage.Subagent{
 		ID:               task.ID,
-		Name:             cmp.Or(oneLine(task.AgentName), oneLine(task.DisplayName), runtimeLabel(task.Runtime)),
-		Task:             oneLine(task.DisplayName),
-		Goal:             oneLine(task.Goal),
+		Name:             cmp.Or(oneLine(task.AgentName), oneLine(task.Description), runtimeLabel(task.Runtime)),
+		Task:             oneLine(task.Description),
+		Goal:             oneLine(task.Command),
 		Runtime:          strings.TrimSpace(task.Runtime),
 		State:            subagentState(task),
 		Summary:          strings.TrimSpace(task.Summary),
 		Error:            strings.TrimSpace(task.Error),
-		Blocking:         task.Mode == core.SubagentTaskModeBlocking,
-		ParentRunID:      strings.TrimSpace(task.ParentRunID),
+		Blocking:         !task.Background,
+		ParentRunID:      strings.TrimSpace(task.RunID),
 		ParentToolCallID: strings.TrimSpace(task.ParentToolCallID),
 	}
 }
 
-func subagentState(task core.SubagentTask) surfacemessage.SubagentState {
+func subagentState(task core.Task) surfacemessage.SubagentState {
 	switch task.Status {
 	case core.TaskStatusPending:
 		return surfacemessage.SubagentPending

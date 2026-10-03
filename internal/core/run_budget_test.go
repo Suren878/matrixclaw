@@ -141,8 +141,8 @@ func TestRecoveredRunKeepsItsBudgetCounters(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns: %v", err)
+	if err := app.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover: %v", err)
 	}
 	waitForRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
 
@@ -168,8 +168,8 @@ func TestRecoveredRunKeepsItsRaisedOutputLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns: %v", err)
+	if err := app.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover: %v", err)
 	}
 	waitForRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
 
@@ -287,7 +287,7 @@ func TestSubagentStoppedAtItsBudgetReportsAPartialResult(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	task, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-delegate")
+	task, err := taskOfCall(db, session.ID, run.ID, "call-delegate")
 	if err != nil {
 		t.Fatal(err)
 	}

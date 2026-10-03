@@ -20,10 +20,6 @@ func voiceModuleCommand(moduleID string, parts ...string) string {
 	return modulesCommand(values...)
 }
 
-func voiceModuleCommandPrefix(moduleID string, parts ...string) string {
-	return voiceModuleCommand(moduleID, parts...) + " "
-}
-
 func textToSpeechCommand(parts ...string) string {
 	return voiceModuleCommand("tts", parts...)
 }

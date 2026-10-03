@@ -34,7 +34,7 @@ func (s *SQLiteStore) SaveMessageProgress(ctx context.Context, message transcrip
 }
 
 func (s *SQLiteStore) UpdateMessage(ctx context.Context, message transcript.Message) error {
-	if err := s.updateMessageRow(ctx, message); err != nil {
+	if err := updateMessageRow(ctx, s.db, message); err != nil {
 		return err
 	}
 	_ = upsertMessageSearch(ctx, s.db, message)
@@ -42,11 +42,11 @@ func (s *SQLiteStore) UpdateMessage(ctx context.Context, message transcript.Mess
 }
 
 func (s *SQLiteStore) UpdateMessageProgress(ctx context.Context, message transcript.Message) error {
-	return s.updateMessageRow(ctx, message)
+	return updateMessageRow(ctx, s.db, message)
 }
 
-func (s *SQLiteStore) updateMessageRow(ctx context.Context, message transcript.Message) error {
-	result, err := s.db.ExecContext(ctx, `
+func updateMessageRow(ctx context.Context, execer sqlExecer, message transcript.Message) error {
+	result, err := execer.ExecContext(ctx, `
 UPDATE messages
 SET role = ?, content = ?, parts_json = ?, model = ?, provider = ?, updated_at = ?
 WHERE id = ?`,
@@ -288,38 +288,43 @@ ORDER BY started_at ASC, updated_at ASC`,
 	return runs, nil
 }
 
-func (s *SQLiteStore) UpdateRun(ctx context.Context, run core.Run) error {
-	if err := updateRun(ctx, s.db, run); err != nil {
-		return fmt.Errorf("store: update run: %w", err)
+// SealRun writes the run together with the reply it ends or parks with, if
+// any, in one transaction: a saved reply is updated, another one inserted. An
+// ended run keeps how it ended (core.ErrRunEnded), and the reply is not written.
+func (s *SQLiteStore) SealRun(ctx context.Context, run core.Run, reply *transcript.Message, replySaved bool) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store: begin seal run: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if reply != nil && replySaved {
+		err = updateMessageRow(ctx, tx, *reply)
+	} else if reply != nil {
+		_, err = insertMessage(ctx, tx, *reply)
+		if err == nil {
+			err = touchSession(ctx, tx, reply.SessionID, reply.CreatedAt)
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("store: seal run reply: %w", err)
+	}
+	if err := updateRun(ctx, tx, run); err != nil {
+		return fmt.Errorf("store: seal run: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: commit seal run: %w", err)
+	}
+	if reply != nil {
+		_ = upsertMessageSearch(ctx, s.db, *reply)
 	}
 	return nil
 }
 
-func (s *SQLiteStore) CompleteRun(ctx context.Context, assistantMessage transcript.Message, run core.Run) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("store: begin complete run: %w", err)
+// TouchRun records activity of a run without changing anything else of it.
+func (s *SQLiteStore) TouchRun(ctx context.Context, runID string, at time.Time) error {
+	if _, err := s.db.ExecContext(ctx, `UPDATE runs SET updated_at = ? WHERE id = ?`, formatTime(at), runID); err != nil {
+		return fmt.Errorf("store: touch run: %w", err)
 	}
-
-	if _, err := insertMessage(ctx, tx, assistantMessage); err != nil {
-		_ = tx.Rollback()
-		return fmt.Errorf("store: insert assistant message: %w", err)
-	}
-
-	if err := updateRun(ctx, tx, run); err != nil {
-		_ = tx.Rollback()
-		return fmt.Errorf("store: update completed run: %w", err)
-	}
-
-	if err := touchSession(ctx, tx, assistantMessage.SessionID, assistantMessage.CreatedAt); err != nil {
-		_ = tx.Rollback()
-		return fmt.Errorf("store: update session after complete run: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("store: commit complete run: %w", err)
-	}
-	_ = upsertMessageSearch(ctx, s.db, assistantMessage)
 	return nil
 }
 

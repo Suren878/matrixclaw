@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"cmp"
 	"strings"
 )
 
@@ -18,7 +19,7 @@ func (s *Service) BrowserModule() (BrowserModuleDescriptor, error) {
 }
 
 func (s *Service) UpdateBrowserModule(update BrowserModuleUpdate) (BrowserModuleDescriptor, error) {
-	cfg, err := s.update(func(cfg *Config) error {
+	cfg, err := s.Update(func(cfg *Config) error {
 		cfg.Modules.Browser = applyBrowserModuleUpdate(cfg.Modules.Browser, update)
 		return nil
 	})
@@ -78,12 +79,19 @@ func BrowserModuleFromConfig(modules ModulesConfig) BrowserModuleDescriptor {
 	}
 }
 
+// normalizeBrowserConfig is the browser module with its defaults filled.
 func normalizeBrowserConfig(cfg BrowserConfig) BrowserConfig {
-	cfg.ProviderID = normalizeBrowserProviderID(cfg.ProviderID)
-	if cfg.ProviderID == "" {
-		cfg.ProviderID = BrowserProviderPlaywright
-	}
+	cfg.ProviderID = cmp.Or(normalizeBrowserProviderID(cfg.ProviderID), BrowserProviderPlaywright)
 	cfg.ProviderConfig = normalizeBrowserProviderConfig(cfg.ProviderConfig)
+	return cfg
+}
+
+// storedBrowserConfig is the browser module without the values that only
+// repeat its defaults.
+func storedBrowserConfig(cfg BrowserConfig) BrowserConfig {
+	cfg = normalizeBrowserConfig(cfg)
+	cfg.ProviderID = omitDefault(cfg.ProviderID, BrowserProviderPlaywright)
+	cfg.ProviderConfig.RuntimeMode = omitDefault(cfg.ProviderConfig.RuntimeMode, "per_task")
 	return cfg
 }
 

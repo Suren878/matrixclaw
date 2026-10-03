@@ -164,27 +164,10 @@ func (p *Permissions) renderHeader(contentWidth int) string {
 }
 
 func permissionSourceLabel(permission surfacepermission.PermissionRequest) string {
-	params, ok := permission.Params.(map[string]any)
-	if !ok || permissionParamString(params, "source") != "subagent_approval_bridge" {
-		return "Agent"
+	if name := strings.TrimSpace(permission.AgentName); name != "" {
+		return "Subagent: " + name
 	}
-	label := permissionParamString(params, "subagent_title")
-	if label == "" {
-		label = permissionParamString(params, "runtime")
-	}
-	label = strings.TrimSpace(strings.TrimPrefix(label, "Subagent:"))
-	if label == "" {
-		return "Subagent"
-	}
-	return "Subagent: " + label
-}
-
-func permissionParamString(params map[string]any, key string) string {
-	value, ok := params[key]
-	if !ok || value == nil {
-		return ""
-	}
-	return strings.TrimSpace(fmt.Sprint(value))
+	return "Agent"
 }
 
 func (p *Permissions) renderKeyValue(keyText, value string, width int) string {

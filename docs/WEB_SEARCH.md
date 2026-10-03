@@ -1,123 +1,54 @@
 # Web Search
 
-matrixclaw exposes a unified web research toolset to the assistant. The primary
-tool is `web_research`; `web_research_ask` handles follow-up questions by
-reusing the saved research session before fetching again. Legacy `web_search`
-and `web_fetch` remain available for compatibility, but their outputs are
-compact and bounded.
+matrixclaw gives the assistant two web tools: `web_search` finds pages and
+`web_fetch` reads one page. Research across many sources is the assistant
+searching and fetching itself, or handing independent questions to read-only
+`agent` children, which run in parallel and report back.
 
 DuckDuckGo works out of the box with no API key. Tavily, Serper, and SearXNG can
 be configured from Modules -> Web Search.
 
 ## Tools
 
-### `web_research`
-
-Runs a bounded research workflow: search, fetch selected sources, optionally use
-browser fallback, store raw artifacts, and return only compact results.
+### `web_search`
 
 ```
-task         - research task or question
-query        - optional search query; defaults to task
-urls         - optional URLs to read directly
-max_sources  - 1-12, default 5
-depth        - quick, standard, or deep
-browser      - auto, always, or never
-freshness    - auto, refresh, or cache
-async        - auto, true, or false
+query  - search query
+limit  - 1-20, default 8
 ```
 
-Result format is compact text plus structured metadata:
+Returns titles, URLs, and short descriptions from the configured provider,
+falling back to DuckDuckGo when the provider fails.
 
-```text
-research_id: wr_...
-status: completed
-
-answer:
-...bounded answer...
-
-facts:
-1. Fact text [source_id]
-
-sources:
-1. Page title
-   https://example.com
-
-warnings:
-- Browser fallback setup hint, blocked fetch, or other caveat.
-```
-
-
-### Browser fallback and browser tools
-
-`web_research` can use a configured browser fallback for pages where direct
-fetching is blocked, empty, or too dynamic. That fallback reads the rendered
-page, stores text/DOM/screenshot artifacts, and still returns only compact facts
-and sources to the main assistant context.
-
-MatrixClaw also supports full interactive browser automation through MCP browser
-servers. Those tools are separate from `web_research` and are registered as
-normal MatrixClaw tools with `mcp_<server>_<tool>` IDs. For a server configured
-with `id: "browser"`, browser actions may appear as tools such as:
-
-```text
-mcp_browser_navigate
-mcp_browser_click
-mcp_browser_type
-mcp_browser_screenshot
-mcp_browser_wait
-```
-
-Exact names depend on the MCP server. If the remote tool is named
-`browser_click`, the MatrixClaw tool ID keeps that name after the server prefix.
-Non-read-only browser tools require normal MatrixClaw approval.
-
-Raw page text, HTML, DOM snapshots, and screenshots are saved as runtime
-artifacts under the web research artifact directory and are not pasted into the
-main provider context. Default retention is 30 days.
-
-### `web_research_ask`
-
-Answers a follow-up against a saved `research_id`. It first searches stored
-facts/artifacts. If the answer is missing or the freshness policy requires an
-update, it performs a follow-up search/fetch/browser pass in the same research
-session.
+### `web_fetch`
 
 ```
-research_id  - id returned by web_research
-question     - follow-up question
-freshness    - auto, refresh, or cache
-browser      - auto, always, or never
+url  - http or https URL
 ```
 
-### `web_research_status`
+Returns the page's main content as markdown, headed by its title and final URL
+(after redirects):
 
-Checks a research session by `research_id`, including background jobs started
-with `async=true` or long `async=auto` runs.
+- HTML goes through readability (the main article or document body, without
+  navigation, sidebars and footers) and is converted to markdown with absolute
+  links; when readability finds too little, the whole body is converted with
+  page chrome removed. Plain text, markdown, JSON and XML are returned as they
+  are. Bodies are decoded by their charset. Other content types are refused.
+- At most 5 MB is downloaded and 400,000 characters returned. A result above
+  about 8,000 tokens is kept in a file of the session, and the assistant gets
+  its beginning and end with the file's path to read or grep the rest.
+- A page that shows almost no text without JavaScript (scripts, tiny visible
+  text, and a `<noscript>` notice or several scripts) returns whatever text it
+  has plus a note to open it with browser tools. web_fetch never drives a
+  browser itself.
+- Private and internal addresses (localhost, RFC 1918 ranges, link-local, cloud
+  metadata endpoints) are refused before connecting, at every redirect, and
+  at dial time. `web_fetch` permission rules apply to the URL's host and to
+  every redirect.
 
-### Compatibility tools
-
-`web_search` runs only search and returns compact titles, URLs, and snippets.
-
-`web_fetch` remains active for older prompts, but it is now artifact-first:
-without `task`, it fetches one URL, stores raw text/HTML as artifacts when the
-web research engine is available, and returns only diagnostic metadata plus
-artifact/research references. With `task`, it routes through the same extraction
-path as `web_research` and returns compact facts/results for that URL.
-
-For interactive browser tasks such as opening a page, clicking through a flow,
-typing into forms, waiting for dynamic content, or taking screenshots, configure
-an MCP browser server and use its `mcp_browser_*` tools.
-
-See [Browser Module](BROWSER.md) for managed Playwright setup, install/repair,
-runtime modes, and MCP tool registration.
-
-Both compatibility tools stay compact and bounded. Runtime guidance prefers
-`web_research` for source-backed answers, current information, ratings,
-reviews, comparisons, and follow-up research.
-
-Private/internal addresses (localhost, RFC 1918 ranges, link-local, cloud
-metadata endpoints) are blocked before any direct fetch request is made.
+For interactive work (logging in, clicking through a flow, filling forms,
+screenshots) configure an MCP browser server and use its `mcp_browser_*` tools;
+see [Browser Module](BROWSER.md). Their actions follow the normal approvals.
 
 ## Providers
 
@@ -197,3 +128,6 @@ Each provider stores its credentials independently:
 
 Switching providers does not clear the other provider's key. You can store
 both a Tavily and a Serper key and switch between them instantly.
+
+The daemon API (`/v1/modules/web-search`) shows the keys only as masked
+previews. To remove a stored key or URL, enter `-` in its prompt.

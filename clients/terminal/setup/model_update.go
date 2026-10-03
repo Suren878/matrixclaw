@@ -35,7 +35,7 @@ func (m *model) updateStepList(msg tea.Msg, back screen, next screen, edit scree
 			return m, nil
 		}
 		if m.cursor == 1 {
-			m.openDraftForm(edit)
+			m.openForm(edit)
 			return m, nil
 		}
 	case components.EventBack:
@@ -114,8 +114,8 @@ func updateConfirmSelection(key string, selected *int) components.Event {
 	return event
 }
 
-func (m *model) openDraftForm(target screen) {
-	m.draftSnapshot = cloneDraft(m.draft)
+func (m *model) openForm(target screen) {
+	m.cfgSnapshot = cloneConfig(m.cfg)
 	m.screen = target
 	m.formFocus = 0
 	m.formAction = 0
@@ -128,16 +128,13 @@ func (m *model) returnToList(target screen) {
 	m.cursor = 0
 }
 
-func (m *model) cancelDraftForm(target screen) {
-	m.draft = cloneDraft(m.draftSnapshot)
+func (m *model) cancelForm(target screen) {
+	m.cfg = cloneConfig(m.cfgSnapshot)
 	m.returnToList(target)
 }
 
-func (m *model) saveDraftAndReturn(target screen) error {
-	if err := m.service.SaveDraft(m.draft); err != nil {
-		return err
-	}
-	m.draftSnapshot = cloneDraft(m.draft)
+func (m *model) commitFormAndReturn(target screen) error {
+	m.cfgSnapshot = cloneConfig(m.cfg)
 	m.returnToList(target)
 	return nil
 }

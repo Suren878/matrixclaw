@@ -246,7 +246,7 @@ func (b *batch) journal(ctx context.Context) error {
 		case callRunning:
 			return nil
 		case callFinished:
-			if err := b.r.finishCall(ctx, c.req, c.call, c.result); err != nil {
+			if err := b.r.finishCall(ctx, c.req, c.result); err != nil {
 				return err
 			}
 			c.state = callJournaled
@@ -274,17 +274,13 @@ func (b *batch) drain() {
 // that finished before; a failed or canceled run also answers every other call,
 // an interrupted one leaves them to recovery.
 func (b *batch) stopped(ctx context.Context, err error) error {
-	interrupted := ctx.Err()
+	interrupted, byUser := ctx.Err(), canceled(ctx)
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), detachedWriteTimeout)
 	defer cancel()
 	rest := &failedResult
 	if interrupted != nil {
 		err, rest = interrupted, nil
-		canceled, cancelErr := b.r.Inbox.Canceled(ctx, b.r.task.RunID)
-		if cancelErr != nil {
-			return errors.Join(err, cancelErr)
-		}
-		if canceled {
+		if byUser {
 			rest = &canceledResult
 		}
 	}
@@ -301,7 +297,7 @@ func (b *batch) keep(ctx context.Context, rest *tools.Result) error {
 		var err error
 		switch {
 		case c.state == callFinished:
-			err = b.r.finishCall(ctx, c.req, c.call, c.result)
+			err = b.r.finishCall(ctx, c.req, c.result)
 		case c.state == callRejected:
 			err = b.r.rejectCall(ctx, c.req, c.result)
 		case rest == nil:
@@ -309,7 +305,7 @@ func (b *batch) keep(ctx context.Context, rest *tools.Result) error {
 		case c.state == callWaiting:
 			err = b.r.rejectCall(ctx, c.req, *rest)
 		default:
-			err = b.r.finishCall(ctx, c.req, c.call, *rest)
+			err = b.r.finishCall(ctx, c.req, *rest)
 		}
 		if err != nil {
 			return err

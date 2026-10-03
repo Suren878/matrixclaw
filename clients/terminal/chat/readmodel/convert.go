@@ -136,6 +136,7 @@ func toSurfacePermissionRequest(request core.PermissionRequest) surfacepermissio
 	return surfacepermission.PermissionRequest{
 		ID:          request.ID,
 		SessionID:   request.SessionID,
+		AgentName:   request.AgentName,
 		ToolCallID:  request.ToolCallID,
 		ToolName:    request.ToolName,
 		Description: request.Description,

@@ -75,9 +75,9 @@ registered MatrixClaw tool becomes `mcp_browser_browser_click`. MatrixClaw does
 not rename remote tool names beyond adding the configured prefix, so the exact
 IDs are visible in the tool registry.
 
-Web research can use a browser MCP server as a dynamic-page fallback, but full
-actions such as clicking, typing, screenshots, and waits remain regular MCP
-tools called by the assistant.
+Browser actions such as navigating, clicking, typing, screenshots, and waits
+are regular MCP tools called by the assistant; `web_fetch` points the assistant
+to them for pages rendered by JavaScript.
 
 See [Browser Module](BROWSER.md) for managed Local Playwright setup, browser
 runtime modes, and the reserved managed MCP server ID.

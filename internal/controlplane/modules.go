@@ -67,7 +67,7 @@ func (d *Dispatcher) modulesPicker(ctx context.Context) (Result, error) {
 	}
 	if d.webSearch != nil {
 		if resp, err := d.webSearch.GetWebSearchConfig(ctx); err == nil {
-			webInfo = setup.WebSearchConfigStatus(resp.Config)
+			webInfo = resp.Status
 		}
 	}
 	if d.browserModules != nil {

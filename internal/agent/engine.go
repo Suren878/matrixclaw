@@ -85,9 +85,17 @@ func (e *Engine) Run(ctx context.Context, task Task) (outcome Outcome, err error
 	if ToolUseAllowed(task.Model) {
 		r.tools = toolDefinitions(e.cfg.Tools.Specs(ctx))
 	}
+	if task.Recovering {
+		if err := r.recover(ctx); err != nil {
+			if ctx.Err() != nil {
+				return Outcome{Status: StatusInterrupted}, nil
+			}
+			return Outcome{Status: StatusFailed, Err: err}, nil
+		}
+	}
 	for {
 		result := r.step(ctx)
-		if result.canceled {
+		if result.canceled || canceled(ctx) {
 			return Outcome{Status: StatusCanceled, Assistant: result.assistant, AssistantSaved: result.saved}, nil
 		}
 		if ctx.Err() != nil {
@@ -215,7 +223,7 @@ func (r *run) step(ctx context.Context) stepResult {
 		}
 		return result
 	}
-	if r.canceled(ctx) {
+	if canceled(ctx) {
 		return stepResult{kind: stepDone, canceled: true, assistant: &gen.assistant, saved: gen.saved}
 	}
 	if final != "" {
@@ -305,7 +313,7 @@ func unfinishedTurn(ctx context.Context, gen generation, err error) stepResult {
 }
 
 func (r *run) settle(ctx context.Context, result stepResult) (Outcome, bool, error) {
-	if result.assistant != nil && r.canceled(ctx) {
+	if result.assistant != nil && canceled(ctx) {
 		return Outcome{Status: StatusCanceled, Assistant: result.assistant, AssistantSaved: result.saved}, true, nil
 	}
 	if result.err != nil {
@@ -358,9 +366,12 @@ func (r *run) interrupted(result stepResult) Outcome {
 	return outcome
 }
 
-func (r *run) canceled(ctx context.Context) bool {
-	canceled, err := r.Inbox.Canceled(ctx, r.task.RunID)
-	return err == nil && canceled
+// ErrCanceled is the cause of a run's context when the user canceled the run;
+// a context stopped for any other cause interrupts the run.
+var ErrCanceled = errors.New("run canceled by user")
+
+func canceled(ctx context.Context) bool {
+	return errors.Is(context.Cause(ctx), ErrCanceled)
 }
 
 // checkpoint records the durable phase together with the run's counters; only

@@ -13,10 +13,10 @@ import (
 
 func (m *model) renderDaemonForm() string {
 	items := []listItem{
-		{Title: "HTTP address", Status: m.draft.HTTPAddr},
-		{Title: "SQLite path", Status: m.draft.DBPath},
-		{Title: "Timezone", Status: m.draft.Timezone},
-		{Title: "Autostart on boot", Status: nonEmpty(m.draft.AutostartOnBoot, "no")},
+		{Title: "HTTP address", Status: m.cfg.Daemon.HTTPAddr},
+		{Title: "SQLite path", Status: m.cfg.Daemon.DBPath},
+		{Title: "Timezone", Status: m.cfg.Daemon.Timezone},
+		{Title: "Autostart on boot", Status: yesNo(m.cfg.Daemon.AutostartOnBoot)},
 	}
 	return m.renderEditableForm("Daemon", items)
 }
@@ -26,7 +26,7 @@ func (m *model) renderDaemonTimezoneList() string {
 	items := make([]listItem, 0, len(options)+1)
 	for _, option := range options {
 		status := option.ID
-		if option.ID == strings.TrimSpace(m.draft.Timezone) {
+		if option.ID == strings.TrimSpace(m.cfg.Daemon.Timezone) {
 			status = option.ID + " · selected"
 		}
 		items = append(items, listItem{Title: option.Label, Status: status})
@@ -36,16 +36,16 @@ func (m *model) renderDaemonTimezoneList() string {
 }
 
 func (m *model) updateDaemonForm(msg tea.Msg) (tea.Model, tea.Cmd) {
-	return m.updateForm(msg, 4, func() { m.cancelDraftForm(screenDaemonList) }, m.handleDaemonFormSave, func() tea.Cmd {
+	return m.updateForm(msg, 4, func() { m.cancelForm(screenDaemonList) }, m.handleDaemonFormSave, func() tea.Cmd {
 		switch m.formFocus {
 		case 0:
-			m.openTextEditor(textEditDaemonHTTPAddr, "HTTP Address", "127.0.0.1:8080", m.draft.HTTPAddr, false)
+			m.openTextEditor(textEditDaemonHTTPAddr, "HTTP Address", "127.0.0.1:8080", m.cfg.Daemon.HTTPAddr, false)
 		case 1:
-			m.openTextEditor(textEditDaemonDBPath, "SQLite Path", "/path/to/matrixclaw.db", m.draft.DBPath, false)
+			m.openTextEditor(textEditDaemonDBPath, "SQLite Path", "/path/to/matrixclaw.db", m.cfg.Daemon.DBPath, false)
 		case 2:
 			m.openTimezonePicker()
 		case 3:
-			m.openBoolPicker(boolEditDaemonAutostart, m.draft.AutostartOnBoot)
+			m.openBoolPicker(boolEditDaemonAutostart, m.cfg.Daemon.AutostartOnBoot)
 		}
 		return nil
 	})
@@ -64,11 +64,11 @@ func (m *model) updateDaemonTimezoneList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case components.EventSelect:
 		if m.timezoneCursor >= 0 && m.timezoneCursor < len(options) {
-			m.draft.Timezone = options[m.timezoneCursor].ID
+			m.cfg.Daemon.Timezone = options[m.timezoneCursor].ID
 			m.screen = screenDaemonForm
 			return m, nil
 		}
-		m.openTextEditor(textEditDaemonTimezone, "Custom Timezone", "Europe/Berlin", m.draft.Timezone, false)
+		m.openTextEditor(textEditDaemonTimezone, "Custom Timezone", "Europe/Berlin", m.cfg.Daemon.Timezone, false)
 	}
 	return m, nil
 }
@@ -77,7 +77,7 @@ func (m *model) openTimezonePicker() {
 	options := setup.TimezoneOptions(time.Now())
 	m.timezoneCursor = len(options)
 	for i, option := range options {
-		if option.ID == strings.TrimSpace(m.draft.Timezone) {
+		if option.ID == strings.TrimSpace(m.cfg.Daemon.Timezone) {
 			m.timezoneCursor = i
 			break
 		}
@@ -87,20 +87,19 @@ func (m *model) openTimezonePicker() {
 }
 
 func (m *model) handleDaemonFormSave() error {
-	m.draft.HTTPAddr = strings.TrimSpace(m.draft.HTTPAddr)
-	m.draft.DBPath = strings.TrimSpace(m.draft.DBPath)
-	m.draft.Timezone = strings.TrimSpace(m.draft.Timezone)
-	m.draft.AutostartOnBoot = strings.TrimSpace(m.draft.AutostartOnBoot)
-	if m.draft.HTTPAddr == "" {
+	m.cfg.Daemon.HTTPAddr = strings.TrimSpace(m.cfg.Daemon.HTTPAddr)
+	m.cfg.Daemon.DBPath = strings.TrimSpace(m.cfg.Daemon.DBPath)
+	m.cfg.Daemon.Timezone = strings.TrimSpace(m.cfg.Daemon.Timezone)
+	if m.cfg.Daemon.HTTPAddr == "" {
 		return fmt.Errorf("daemon HTTP address is required")
 	}
-	if m.draft.DBPath == "" {
+	if m.cfg.Daemon.DBPath == "" {
 		return fmt.Errorf("daemon DB path is required")
 	}
-	if m.draft.Timezone == "" {
+	if m.cfg.Daemon.Timezone == "" {
 		return fmt.Errorf("daemon timezone is required")
 	}
-	return m.saveDraftAndReturn(screenProviderList)
+	return m.commitFormAndReturn(screenProviderList)
 }
 
 func daemonListStatus(summary setup.DaemonSummary) string {

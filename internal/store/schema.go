@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS memories (
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_memories_scope_workdir_updated ON memories(scope, working_dir, updated_at DESC)`); err != nil {
 		return fmt.Errorf("store: create memories index: %w", err)
 	}
-	if err := dropPlanningTables(db); err != nil {
+	if err := dropRetiredTables(db); err != nil {
 		return err
 	}
 	if err := migrateSubagentTasks(db); err != nil {
@@ -129,6 +129,9 @@ CREATE TABLE IF NOT EXISTS session_inputs (
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_approvals_session_run_state ON approvals(session_id, run_id, state)`); err != nil {
 		return fmt.Errorf("store: create approvals run index: %w", err)
 	}
+	if err := migrateApprovalTasks(db); err != nil {
+		return err
+	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id, hidden)`); err != nil {
 		return fmt.Errorf("store: create sessions parent index: %w", err)
 	}
@@ -184,12 +187,41 @@ CREATE TABLE IF NOT EXISTS session_todos (
 	if err := migratePermissionRules(db); err != nil {
 		return err
 	}
+	// Only a run waiting for events has a wakeup; older builds left others.
+	if _, err := db.Exec(`DELETE FROM run_wakeups WHERE run_id NOT IN (SELECT id FROM runs WHERE status = 'waiting_events')`); err != nil {
+		return fmt.Errorf("store: drop stale run wakeups: %w", err)
+	}
+	for _, table := range []struct{ name, address string }{{"client_deliveries", "address_json"}, {"session_inputs", "delivery_address_json"}} {
+		if err := migrateReplyOnce(db, table.name, table.address); err != nil {
+			return err
+		}
+	}
 	return migrateMessageSearch(db)
 }
 
-// dropPlanningTables removes the Planning Mode tables that todo lists replaced.
-func dropPlanningTables(db *sql.DB) error {
-	for _, table := range []string{"plan_runs", "session_plan_items", "session_goals"} {
+// migrateReplyOnce adds reply_once to table and sets it where the address is
+// a Telegram guest query or inline message, which a later message cannot reach.
+func migrateReplyOnce(db *sql.DB, table string, address string) error {
+	exists, err := hasColumn(db, table, "reply_once")
+	if err != nil || exists {
+		return err
+	}
+	if _, err := db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN reply_once INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return fmt.Errorf("store: add %s.reply_once: %w", table, err)
+	}
+	field := func(name string) string {
+		return `COALESCE(CASE WHEN json_valid(` + address + `) THEN json_extract(` + address + `, '$.` + name + `') END, '')`
+	}
+	if _, err := db.Exec(`UPDATE ` + table + ` SET reply_once = 1 WHERE ` + field("kind") + ` IN ('guest', 'inline') OR ` + field("guest_query_id") + ` <> '' OR ` + field("inline_message_id") + ` <> ''`); err != nil {
+		return fmt.Errorf("store: backfill %s.reply_once: %w", table, err)
+	}
+	return nil
+}
+
+// dropRetiredTables removes the Planning Mode tables that todo lists replaced
+// and the web research job tables (children before work_jobs).
+func dropRetiredTables(db *sql.DB) error {
+	for _, table := range []string{"plan_runs", "session_plan_items", "session_goals", "work_facts", "work_artifacts", "work_jobs", "file_snapshots"} {
 		if _, err := db.Exec(`DROP TABLE IF EXISTS ` + table); err != nil {
 			return fmt.Errorf("store: drop %s: %w", table, err)
 		}
@@ -232,4 +264,34 @@ func hasColumn(db *sql.DB, table string, column string) (bool, error) {
 		return false, fmt.Errorf("store: iterate %s schema: %w", table, err)
 	}
 	return false, nil
+}
+
+// migrateApprovalTasks links each subagent's approval to its task. The copies
+// older builds made of them in the parent session (params source
+// subagent_approval_bridge) are dropped, and a parent run parked on such a
+// copy is left running, so recovery resumes its agent call.
+func migrateApprovalTasks(db *sql.DB) error {
+	exists, err := hasColumn(db, "approvals", "task_id")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := db.Exec(`ALTER TABLE approvals ADD COLUMN task_id TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("store: add approvals.task_id: %w", err)
+		}
+		const bridge = `params_json LIKE '%"source":"subagent_approval_bridge"%'`
+		for _, stmt := range []string{
+			`UPDATE approvals SET task_id = COALESCE((SELECT t.id FROM tasks t WHERE t.kind = 'subagent' AND t.child_session_id = approvals.session_id), '') WHERE task_id = ''`,
+			`UPDATE runs SET status = 'running' WHERE status = 'waiting_approval' AND id IN (SELECT run_id FROM approvals WHERE ` + bridge + `)`,
+			`DELETE FROM approvals WHERE ` + bridge,
+		} {
+			if _, err := db.Exec(stmt); err != nil {
+				return fmt.Errorf("store: link approvals to subagent tasks: %w", err)
+			}
+		}
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_approvals_task ON approvals(task_id) WHERE task_id <> ''`); err != nil {
+		return fmt.Errorf("store: create approvals task index: %w", err)
+	}
+	return nil
 }

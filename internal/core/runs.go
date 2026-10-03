@@ -56,7 +56,7 @@ func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptR
 			wakeRunID = active.ID
 		}
 	case errors.Is(err, ErrNotFound):
-		result, err = c.createAcceptedRun(ctx, session, clientRun(text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress))
+		result, err = c.createAcceptedRun(ctx, session, clientRun(text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, deliveryTo{input.DeliveryAddress, input.ReplyOnce}))
 		if err != nil {
 			gate.Unlock()
 			return AcceptRunResult{}, err
@@ -95,7 +95,7 @@ func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptR
 // deliverRunToSteerer delivers the run a message steers to the client it came
 // from as well, unless the run is delivered there already.
 func (c *Core) deliverRunToSteerer(ctx context.Context, run Run, input HandleMessageInput, text string, parts []transcript.MessagePart) error {
-	delivery, ok, err := c.prepareSessionRunDelivery(run, text, parts, input.Client, input.ExternalKey, input.DeliveryAddress)
+	delivery, ok, err := c.prepareSessionRunDelivery(run, text, parts, input.Client, input.ExternalKey, deliveryTo{input.DeliveryAddress, input.ReplyOnce})
 	if err != nil || !ok {
 		return err
 	}
@@ -269,6 +269,10 @@ func (c *Core) CancelRun(ctx context.Context, runID string) (Run, error) {
 	}
 	parked := (run.Status == RunStatusWaitingEvents || run.Status == RunStatusWaitingApproval) && !c.runIsActive(run.ID)
 	stopped, err := c.cancelRunRecords(ctx, &run)
+	if errors.Is(err, ErrRunEnded) {
+		// The run ended on its own meanwhile; that end stands.
+		return c.store.GetRun(ctx, run.ID)
+	}
 	if err != nil {
 		return Run{}, err
 	}
@@ -277,9 +281,7 @@ func (c *Core) CancelRun(ctx context.Context, runID string) (Run, error) {
 	}
 	if parked {
 		// No execution of the run is left to do what follows its end.
-		if err := c.afterRunExecution(ctx, run.ID); err != nil {
-			return run, err
-		}
+		c.afterRun(ctx, run.ID)
 	}
 	return run, nil
 }
@@ -288,17 +290,11 @@ func (c *Core) CancelRun(ctx context.Context, runID string) (Run, error) {
 // any of them is stopped, so a stopped child is not kept for recovery, then stops
 // the commands they run in the background. It returns the ids of the runs to stop.
 func (c *Core) cancelRunRecords(ctx context.Context, run *Run) ([]string, error) {
-	children, err := c.cancelSubagentChildren(ctx, *run)
+	children, err := c.cancelSubagentChildren(ctx, *run, false)
 	if err != nil {
 		return nil, err
 	}
-	if err := c.rejectRunApprovals(ctx, *run); err != nil {
-		return nil, err
-	}
-	if err := c.setRunStatus(ctx, run, RunStatusCanceled, "canceled by user"); err != nil {
-		return nil, err
-	}
-	if err := c.store.DeleteRunWakeup(ctx, run.ID); err != nil {
+	if err := c.transition(ctx, run, runChange{To: RunStatusCanceled, Err: "canceled by user"}); err != nil {
 		return nil, err
 	}
 	if err := c.stopRunCommands(ctx, *run); err != nil {
@@ -307,20 +303,22 @@ func (c *Core) cancelRunRecords(ctx context.Context, run *Run) ([]string, error)
 	return append([]string{run.ID}, children...), nil
 }
 
-// cancelSubagentChildren cancels the active subagent tasks the run started and
-// returns the ids of their runs to stop.
-func (c *Core) cancelSubagentChildren(ctx context.Context, run Run) ([]string, error) {
-	tasks, err := c.store.ListSubagentTasks(ctx, SubagentTaskFilter{
-		ParentSessionID: run.SessionID,
-		Statuses:        activeTaskStatuses(),
-	})
+// cancelSubagentChildren cancels the active subagent tasks the run started,
+// only its blocking ones with blockingOnly, and returns the ids of their runs
+// to stop. Each task ends delivered first, so its end is no event.
+func (c *Core) cancelSubagentChildren(ctx context.Context, run Run, blockingOnly bool) ([]string, error) {
+	tasks, err := c.store.ListTasks(ctx, TaskFilter{SessionID: run.SessionID, RunID: run.ID, Kind: TaskKindSubagent, Statuses: activeTaskStatuses()})
 	if err != nil {
 		return nil, err
 	}
 	var stopped []string
 	for _, task := range tasks {
-		if task.ParentRunID != run.ID {
+		if blockingOnly && task.Background {
 			continue
+		}
+		const summary = "Subagent canceled with its parent run."
+		if _, _, err := c.endSubagentTask(ctx, task, TaskEnd{Status: TaskStatusCanceled, Summary: summary, Error: summary, Delivered: true}); err != nil {
+			return nil, err
 		}
 		child, err := c.store.GetRun(ctx, task.ChildRunID)
 		if err != nil && !errors.Is(err, ErrNotFound) {
@@ -328,44 +326,24 @@ func (c *Core) cancelSubagentChildren(ctx context.Context, run Run) ([]string, e
 		}
 		if err == nil && !child.Status.Terminal() {
 			ids, err := c.cancelRunRecords(ctx, &child)
-			if err != nil {
+			if err != nil && !errors.Is(err, ErrRunEnded) {
 				return nil, err
 			}
 			stopped = append(stopped, ids...)
-		}
-		const summary = "Subagent canceled with its parent run."
-		if _, err := c.finishSubagentTaskRecord(ctx, task, TaskStatusCanceled, summary, summary, false); err != nil {
-			return nil, err
 		}
 	}
 	return stopped, nil
 }
 
-func (c *Core) rejectRunApprovals(ctx context.Context, run Run) error {
-	return c.rejectPendingApprovals(ctx, run.SessionID, true, func(approval Approval) bool { return approval.RunID == run.ID })
-}
-
-// rejectChildApprovalCopies rejects the parent's copies of a subagent's
-// approvals once the subagent's run ended; the parent's call is not failed.
-func (c *Core) rejectChildApprovalCopies(ctx context.Context, task SubagentTask) error {
-	return c.rejectPendingApprovals(ctx, task.ParentSessionID, false, func(approval Approval) bool {
-		bridge, bridged := decodeSubagentApprovalBridge(approval)
-		return bridged && bridge.ChildRunID == task.ChildRunID
-	})
-}
-
-// rejectPendingApprovals rejects the session's pending approvals that match;
-// failCalls tells clients the calls that asked for them failed.
-func (c *Core) rejectPendingApprovals(ctx context.Context, sessionID string, failCalls bool, match func(Approval) bool) error {
-	if sessionID == "" {
-		return nil
-	}
-	approvals, err := c.store.ListApprovals(ctx, sessionID, ApprovalStatePending)
-	if err != nil && !errors.Is(err, ErrNotFound) {
+// rejectRunApprovals rejects the approvals an ended run leaves pending and
+// tells clients the calls that asked for them failed with errText.
+func (c *Core) rejectRunApprovals(ctx context.Context, run Run, errText string) error {
+	approvals, err := c.store.ListRunApprovals(ctx, run.SessionID, run.ID)
+	if err != nil {
 		return err
 	}
 	for _, approval := range approvals {
-		if !match(approval) {
+		if approval.State != ApprovalStatePending {
 			continue
 		}
 		approval.State = ApprovalStateRejected
@@ -374,33 +352,21 @@ func (c *Core) rejectPendingApprovals(ctx context.Context, sessionID string, fai
 		if err := c.store.UpdateApproval(ctx, approval); err != nil {
 			return err
 		}
+		audience, audienceRun := c.approvalAudience(ctx, approval)
 		c.publishEvent(Event{
 			Type:      EventApprovalResult,
-			SessionID: approval.SessionID,
-			RunID:     approval.RunID,
-			Payload: PermissionNotification{
-				ApprovalID: approval.ID,
-				ToolCallID: approval.ToolCallRef,
-				Granted:    false,
-				Denied:     true,
-			},
+			SessionID: audience,
+			RunID:     audienceRun,
+			Payload:   PermissionNotification{ApprovalID: approval.ID, ToolCallID: approval.ToolCallRef, Denied: true},
 		})
-		if !failCalls {
-			continue
-		}
-		c.publishEvent(Event{
-			Type:      EventToolUpdated,
-			SessionID: approval.SessionID,
-			RunID:     approval.RunID,
-			Payload: ToolUpdate{
-				ToolCallID: approval.ToolCallRef,
-				ToolName:   approval.ToolName,
-				State:      ToolLifecycleFailed,
-				RunID:      approval.RunID,
-				SessionID:  approval.SessionID,
-				ApprovalID: approval.ID,
-				Error:      "canceled by user",
-			},
+		c.publishToolUpdate(approval.SessionID, approval.RunID, ToolUpdate{
+			ToolCallID: approval.ToolCallRef,
+			ToolName:   approval.ToolName,
+			State:      ToolLifecycleFailed,
+			RunID:      approval.RunID,
+			SessionID:  approval.SessionID,
+			ApprovalID: approval.ID,
+			Error:      errText,
 		})
 	}
 	return nil

@@ -100,7 +100,7 @@ func (s *Server) persistSessionModelSelection(ctx context.Context, session core.
 	if providerID == "" || modelID == "" {
 		return nil
 	}
-	if _, err := s.setup.ConfigureProviderContext(ctx, providerID, setup.ProviderSetupUpdate{Model: modelID}); err != nil {
+	if _, err := s.setup.ConfigureProvider(providerID, setup.ProviderSetupUpdate{Model: &modelID}); err != nil {
 		return err
 	}
 	return s.reloadSessionLLMRegistry(ctx)

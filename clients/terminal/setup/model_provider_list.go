@@ -4,47 +4,34 @@ import (
 	"strings"
 
 	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
-	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
 func (m *model) providerEntries() []providerListEntry {
 	query := m.providerSearchQuery()
-	entries := make([]providerListEntry, 0, len(m.draft.Providers)+len(m.builtInProviders)+2)
-
-	entries = append(entries, providerListEntry{
-		Kind:   providerEntryContinue,
-		Title:  "Continue",
-		Status: "",
-	})
-
-	for _, item := range setup.ProviderSetupItemsFromDraft(m.draft, m.builtInProviders) {
-		if !matchesProviderSearch(query,
-			item.Name,
-			item.ID,
-			item.Model,
-			item.DefaultModel,
-			item.Status,
-		) {
+	items := setup.ProviderItems(m.cfg)
+	entries := make([]providerListEntry, 0, len(items)+1)
+	entries = append(entries, providerListEntry{Kind: providerEntryContinue, Title: "Continue"})
+	for _, item := range items {
+		if !matchesProviderSearch(query, item.Name, item.ID, item.Model, item.DefaultModel) {
 			continue
 		}
-		entry := providerListEntry{
-			Kind:   providerEntryAvailable,
-			Title:  setup.ProviderDisplayName(item),
-			Status: setup.ProviderDisplayStatus(item),
-		}
+		entry := providerListEntry{Kind: providerEntryAvailable, Title: item.Name, Provider: setup.ProviderConfig{ID: item.ID}}
 		if item.Configured {
-			provider, _ := setup.FindProviderDraft(m.draft, item.ID)
 			entry.Kind = providerEntryConfigured
-			entry.Provider = provider
-		} else {
-			option, _ := lookupOption(m.builtInProviders, item.CatalogID)
-			entry.Option = option
+			entry.Provider, _ = m.cfg.Provider(item.ID)
+			entry.Status = strings.Join(append([]string{item.Model}, activeStatus(item.Active)...), " · ")
 		}
 		entries = append(entries, entry)
 	}
-
 	return entries
+}
+
+func activeStatus(active bool) []string {
+	if active {
+		return []string{"Active"}
+	}
+	return nil
 }
 
 func (m *model) providerSearchRows(entries []providerListEntry) []listEntry {
@@ -90,14 +77,4 @@ func searchItems(rows []listEntry) []components.Item {
 		items = append(items, components.Item{Title: row.Text, Status: row.Status})
 	}
 	return items
-}
-
-func lookupOption(options []setup.ProviderOption, providerID string) (setup.ProviderOption, bool) {
-	providerID = providers.CanonicalProviderID(providerID)
-	for _, option := range options {
-		if providers.CanonicalProviderID(option.ID) == providerID {
-			return option, true
-		}
-	}
-	return setup.ProviderOption{}, false
 }

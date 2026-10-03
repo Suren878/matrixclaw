@@ -22,7 +22,7 @@ func (d *Dispatcher) handleCustomProvider(ctx context.Context, session *core.Ses
 		if len(fields) < 2 {
 			return Result{Handled: true, Text: "Provider id is required."}, nil
 		}
-		return d.handleProviderEdit(ctx, session, fields[1])
+		return d.handleProviderEdit(ctx, fields[1])
 	case "delete":
 		if len(fields) < 2 {
 			return Result{Handled: true, Text: "Provider id is required."}, nil
@@ -34,7 +34,7 @@ func (d *Dispatcher) handleCustomProvider(ctx context.Context, session *core.Ses
 		}
 		return d.deleteCustomProvider(ctx, fields[1])
 	default:
-		return d.handleCustomProviderCreate(ctx, session, args, fields[0])
+		return openCustomProviderForm(fields[0]), nil
 	}
 }
 

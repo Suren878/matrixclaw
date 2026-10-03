@@ -5,25 +5,10 @@ import (
 	"errors"
 	"log"
 	"time"
-
-	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 // wakeupInterval is how often due run wakeups are looked for.
 const wakeupInterval = time.Second
-
-// parkRun leaves a run waiting for what its await asked for; its wakeup keeps
-// the timer and the awaited tasks.
-func (c *Core) parkRun(ctx context.Context, run Run, await *tools.Await) error {
-	if await == nil {
-		return errors.New("core: a run waiting for events has nothing to wait for")
-	}
-	wakeup := RunWakeup{RunID: run.ID, SessionID: run.SessionID, WakeAt: await.Until, TaskIDs: await.TaskIDs}
-	if err := c.store.SaveRunWakeup(ctx, wakeup); err != nil {
-		return err
-	}
-	return c.setRunStatus(ctx, &run, RunStatusWaitingEvents, "")
-}
 
 // wakeWaitingRun starts a run parked in waiting_events once what it waits for
 // happened: an awaited task finished, the user wrote, or its timer ran out.
@@ -33,18 +18,10 @@ func (c *Core) wakeWaitingRun(ctx context.Context, sessionID string, runID strin
 	gate.Lock()
 	defer gate.Unlock()
 	run, err := c.store.GetRun(ctx, runID)
-	if errors.Is(err, ErrNotFound) {
-		return c.store.DeleteRunWakeup(ctx, runID)
-	}
 	if err != nil {
-		return err
+		return ignoreNotFound(err)
 	}
-	switch {
-	case run.Status.Terminal():
-		return c.store.DeleteRunWakeup(ctx, runID)
-	case run.Status == RunStatusWaitingApproval:
-		return c.healApprovalPark(ctx, run)
-	case run.Status != RunStatusWaitingEvents:
+	if run.Status != RunStatusWaitingEvents {
 		return nil
 	}
 	if err := c.steerQueuedInputs(ctx, run); err != nil {
@@ -54,24 +31,8 @@ func (c *Core) wakeWaitingRun(ctx context.Context, sessionID string, runID strin
 	if err != nil || !due {
 		return err
 	}
-	// The wakeup stays until the run is started, so a failed start is retried.
-	if err := c.startRun(ctx, run.ID); err != nil {
-		return err
-	}
-	return c.store.DeleteRunWakeup(ctx, run.ID)
-}
-
-// healApprovalPark drops the wakeup of a run that waits for approval instead
-// of events and starts it when nothing is pending; its await is kept in its
-// checkpoint, so it parks again once resumed.
-func (c *Core) healApprovalPark(ctx context.Context, run Run) error {
-	if _, err := c.store.GetRunWakeup(ctx, run.ID); err != nil {
-		return ignoreNotFound(err)
-	}
-	if err := c.store.DeleteRunWakeup(ctx, run.ID); err != nil {
-		return err
-	}
-	return c.startDecidedRun(ctx, run)
+	// The wakeup stays until the run executes, so a failed start is retried.
+	return c.startRun(ctx, run.ID)
 }
 
 // steerQueuedInputs turns messages queued behind a waiting run into steers

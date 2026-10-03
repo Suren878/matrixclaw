@@ -92,15 +92,15 @@ func loadBootstrap() (bootstrapConfig, error) {
 			return bootstrapConfig{}, fmt.Errorf("load setup daemon environment %s: %w", setup.DaemonEnvironmentFilePath(service.Path()), err)
 		}
 
-		if activeProvider, ok := setup.ActiveProviderConfig(setupCfg); ok {
-			if _, ok := setup.ProviderConfigWithResolvedAPIKey(activeProvider); !ok {
-				return bootstrapConfig{}, fmt.Errorf("load setup config %s: %s API key is required; set api_key or %s", service.Path(), firstNonEmpty(activeProvider.Name, activeProvider.ID, activeProvider.Type), firstNonEmpty(activeProvider.APIKeyEnv, "the provider API key environment variable"))
+		if activeProvider, ok := setupCfg.ActiveProvider(); ok {
+			if runtimeProvider, ok := activeProvider.Runtime(); !ok {
+				return bootstrapConfig{}, fmt.Errorf("load setup config %s: %s API key is required; set api_key or %s", service.Path(), runtimeProvider.Name, firstNonEmpty(runtimeProvider.APIKeyEnv, "the provider API key environment variable"))
 			}
 		}
 
 		cfg.SessionLLMs = sessionllm.New(setupCfg.ActiveProviderID, sessionProviderSpecsFromSetup(setupCfg))
 		cfg.Assistant = core.AssistantProfile{
-			Name:               setupCfg.Assistant.Name,
+			Name:               setupCfg.Assistant.NameOrDefault(),
 			SystemPrompt:       setupCfg.Assistant.SystemPromptOrDefault(),
 			CustomInstructions: setupCfg.Assistant.CustomInstructions,
 		}
@@ -140,10 +140,10 @@ func loadBootstrap() (bootstrapConfig, error) {
 func sessionProviderSpecsFromSetup(cfg setup.Config) []sessionllm.ProviderSpec {
 	specs := make([]sessionllm.ProviderSpec, 0, len(cfg.Providers))
 	for _, provider := range cfg.Providers {
-		runtimeProvider, _ := setup.ProviderConfigWithResolvedAPIKey(provider)
+		runtimeProvider, _ := provider.Runtime()
 		specs = append(specs, sessionllm.ProviderSpec{
 			ID:              runtimeProvider.ID,
-			CatalogID:       runtimeProvider.CatalogID,
+			CatalogID:       runtimeProvider.ID,
 			Name:            runtimeProvider.Name,
 			Type:            runtimeProvider.Type,
 			APIKey:          runtimeProvider.APIKey,

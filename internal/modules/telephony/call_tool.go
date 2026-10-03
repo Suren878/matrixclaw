@@ -88,7 +88,7 @@ func (t *callTool) Execute(ctx context.Context, call tools.Call) (tools.Result, 
 		"origin_external_key":           call.ExternalKey,
 		"origin_session_id":             call.SessionID,
 		"phone_prompt":                  telephonyCfg.PhonePrompt,
-		"assistant_name":                cfg.Assistant.Name,
+		"assistant_name":                cfg.Assistant.NameOrDefault(),
 		"assistant_custom_instructions": cfg.Assistant.CustomInstructions,
 	}
 	payload, err := json.Marshal(requestBody)

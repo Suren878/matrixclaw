@@ -12,10 +12,10 @@ import (
 
 func (m *model) renderTelegramForm() string {
 	items := []listItem{
-		{Title: "Enabled", Status: nonEmpty(m.draft.TelegramEnabled, "no")},
-		{Title: "Bot token", Status: maskOrBlank(m.draft.TelegramBotToken)},
-		{Title: "Allowed user id", Status: m.draft.TelegramAllowedUID},
-		{Title: "Provider setup", Status: nonEmpty(m.draft.TelegramProviderSetup, "no")},
+		{Title: "Enabled", Status: yesNo(m.cfg.Clients.Telegram.Enabled)},
+		{Title: "Bot token", Status: maskOrBlank(m.cfg.Clients.Telegram.BotToken)},
+		{Title: "Allowed user id", Status: m.cfg.Clients.Telegram.AllowedUserID},
+		{Title: "Provider setup", Status: yesNo(m.cfg.Clients.Telegram.AllowProviderSetup)},
 	}
 	return m.renderEditableForm("Telegram", items, "Risk option: allows provider API key setup from Telegram.")
 }
@@ -26,16 +26,16 @@ func (m *model) renderBoolPicker() string {
 }
 
 func (m *model) updateTelegramForm(msg tea.Msg) (tea.Model, tea.Cmd) {
-	return m.updateForm(msg, 4, func() { m.cancelDraftForm(screenChannelsList) }, m.handleTelegramFormSave, func() tea.Cmd {
+	return m.updateForm(msg, 4, func() { m.cancelForm(screenChannelsList) }, m.handleTelegramFormSave, func() tea.Cmd {
 		switch m.formFocus {
 		case 0:
-			m.openBoolPicker(boolEditTelegramEnabled, m.draft.TelegramEnabled)
+			m.openBoolPicker(boolEditTelegramEnabled, m.cfg.Clients.Telegram.Enabled)
 		case 1:
-			m.openTextEditor(textEditTelegramBotToken, "Bot Token", "Telegram bot token", m.draft.TelegramBotToken, true)
+			m.openTextEditor(textEditTelegramBotToken, "Bot Token", "Telegram bot token", m.cfg.Clients.Telegram.BotToken, true)
 		case 2:
-			m.openTextEditor(textEditTelegramAllowedUID, "Allowed User ID", "Allowed user id", m.draft.TelegramAllowedUID, false)
+			m.openTextEditor(textEditTelegramAllowedUID, "Allowed User ID", "Allowed user id", m.cfg.Clients.Telegram.AllowedUserID, false)
 		case 3:
-			m.openBoolPicker(boolEditTelegramProviderSetup, m.draft.TelegramProviderSetup)
+			m.openBoolPicker(boolEditTelegramProviderSetup, m.cfg.Clients.Telegram.AllowProviderSetup)
 		}
 		return nil
 	})
@@ -51,17 +51,14 @@ func (m *model) updateBoolPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case components.EventBack:
 		m.screen = m.boolPickerReturnScreen()
 	case components.EventSelect:
-		value := "no"
-		if m.boolPickerCursor == 0 {
-			value = "yes"
-		}
+		value := m.boolPickerCursor == 0
 		switch m.boolPickerTarget {
 		case boolEditDaemonAutostart:
-			m.draft.AutostartOnBoot = value
+			m.cfg.Daemon.AutostartOnBoot = value
 		case boolEditTelegramEnabled:
-			m.draft.TelegramEnabled = value
+			m.cfg.Clients.Telegram.Enabled = value
 		case boolEditTelegramProviderSetup:
-			m.draft.TelegramProviderSetup = value
+			m.cfg.Clients.Telegram.AllowProviderSetup = value
 		}
 		m.screen = m.boolPickerReturnScreen()
 	}
@@ -69,25 +66,23 @@ func (m *model) updateBoolPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) handleTelegramFormSave() error {
-	m.draft.TelegramEnabled = strings.TrimSpace(m.draft.TelegramEnabled)
-	m.draft.TelegramBotToken = strings.TrimSpace(m.draft.TelegramBotToken)
-	m.draft.TelegramAllowedUID = strings.TrimSpace(m.draft.TelegramAllowedUID)
-	m.draft.TelegramProviderSetup = strings.TrimSpace(m.draft.TelegramProviderSetup)
-	if setup.ParseBool(m.draft.TelegramEnabled) {
-		if m.draft.TelegramBotToken == "" {
+	m.cfg.Clients.Telegram.BotToken = strings.TrimSpace(m.cfg.Clients.Telegram.BotToken)
+	m.cfg.Clients.Telegram.AllowedUserID = strings.TrimSpace(m.cfg.Clients.Telegram.AllowedUserID)
+	if m.cfg.Clients.Telegram.Enabled {
+		if m.cfg.Clients.Telegram.BotToken == "" {
 			return fmt.Errorf("telegram bot token is required when Telegram is enabled")
 		}
-		if m.draft.TelegramAllowedUID == "" {
+		if m.cfg.Clients.Telegram.AllowedUserID == "" {
 			return fmt.Errorf("telegram allowed user id is required when Telegram is enabled")
 		}
 	}
-	return m.saveDraftAndReturn(screenChannelsList)
+	return m.commitFormAndReturn(screenChannelsList)
 }
 
-func (m *model) openBoolPicker(target boolEditTarget, current string) {
+func (m *model) openBoolPicker(target boolEditTarget, current bool) {
 	m.boolPickerTarget = target
 	m.boolPickerCursor = 1
-	if setup.ParseBool(current) {
+	if current {
 		m.boolPickerCursor = 0
 	}
 	m.formError = ""
@@ -123,4 +118,11 @@ func maskOrBlank(value string) string {
 		return ""
 	}
 	return setup.MaskSecret(value)
+}
+
+func yesNo(value bool) string {
+	if value {
+		return "yes"
+	}
+	return "no"
 }

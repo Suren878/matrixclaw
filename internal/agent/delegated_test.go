@@ -8,6 +8,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/agent/agenttest"
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func TestTimeSpentOnlyInDelegatedCallsIsNotActiveTime(t *testing.T) {
@@ -45,8 +46,8 @@ func TestTimeADelegatedCallRunsAlongsideTheRunsOwnCallsIsActiveTime(t *testing.T
 		return now
 	}
 	bashJournaled := make(chan struct{})
-	f.Tools.OnFinish = func(name string, _ tools.Call) error {
-		if name == "bash" {
+	f.Journal.OnAppend = func(message transcript.Message) error {
+		if message.Role == transcript.MessageRoleTool && message.Parts[0].ToolResult.ToolCallID == "b1" {
 			close(bashJournaled)
 		}
 		return nil

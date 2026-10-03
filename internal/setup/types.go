@@ -22,15 +22,16 @@ type AssistantConfig struct {
 	CustomInstructions string `json:"custom_instructions,omitempty"`
 }
 
+// ProviderConfig is a configured provider as stored: for a built-in provider
+// the fields the catalog defines are left empty (see Effective).
 type ProviderConfig struct {
 	ID              string                `json:"id"`
-	CatalogID       string                `json:"catalog_id,omitempty"`
-	Name            string                `json:"name"`
-	Type            string                `json:"type"`
-	APIKey          string                `json:"api_key"`
+	Name            string                `json:"name,omitempty"`
+	Type            string                `json:"type,omitempty"`
+	APIKey          string                `json:"api_key,omitempty"`
 	APIKeyEnv       string                `json:"api_key_env,omitempty"`
 	BaseURL         string                `json:"base_url,omitempty"`
-	Model           string                `json:"model"`
+	Model           string                `json:"model,omitempty"`
 	ContextWindow   int                   `json:"context_window,omitempty"`
 	MaxOutputTokens int64                 `json:"max_output_tokens,omitempty"`
 	ReasoningEffort string                `json:"reasoning_effort,omitempty"`
@@ -263,13 +264,14 @@ type TelephonyModuleResponse struct {
 	Module TelephonyModuleDescriptor `json:"module"`
 }
 
+// TelephonyModuleUpdate changes the fields that are present; an empty value
+// clears the field.
 type TelephonyModuleUpdate struct {
-	Enabled        *bool  `json:"enabled,omitempty"`
-	GatewayURL     string `json:"gateway_url,omitempty"`
-	GatewayToken   string `json:"gateway_token,omitempty"`
-	DefaultProfile string `json:"default_profile,omitempty"`
-	PhonePrompt    string `json:"phone_prompt,omitempty"`
-	ClearToken     bool   `json:"clear_token,omitempty"`
+	Enabled        *bool   `json:"enabled,omitempty"`
+	GatewayURL     *string `json:"gateway_url,omitempty"`
+	GatewayToken   *string `json:"gateway_token,omitempty"`
+	DefaultProfile *string `json:"default_profile,omitempty"`
+	PhonePrompt    *string `json:"phone_prompt,omitempty"`
 }
 
 // WebSearchConfig stores the web search provider choice and credentials.
@@ -281,10 +283,23 @@ type WebSearchConfig struct {
 	BaseURL   string `json:"base_url,omitempty"`
 }
 
+// WebSearchConfigUpdate changes the fields that are present; an empty key or
+// base URL clears it.
+type WebSearchConfigUpdate struct {
+	Provider  *string `json:"provider,omitempty"`
+	TavilyKey *string `json:"tavily_key,omitempty"`
+	SerperKey *string `json:"serper_key,omitempty"`
+	BaseURL   *string `json:"base_url,omitempty"`
+}
+
+// WebSearchConfigResponse describes the web search settings; keys appear only
+// as masked previews.
 type WebSearchConfigResponse struct {
-	Config   WebSearchConfig `json:"config"`
-	Provider string          `json:"provider"`
-	Status   string          `json:"status"`
+	Provider         string `json:"provider"`
+	Status           string `json:"status"`
+	BaseURL          string `json:"base_url,omitempty"`
+	TavilyKeyPreview string `json:"tavily_key_preview,omitempty"`
+	SerperKeyPreview string `json:"serper_key_preview,omitempty"`
 }
 
 const (
@@ -393,53 +408,6 @@ type VoiceProviderActionResponse struct {
 	Provider VoiceProviderOption `json:"provider"`
 }
 
-type Draft struct {
-	ActiveProviderID      string
-	AssistantName         string
-	AssistantSystemPrompt string
-	AssistantCustomPrompt string
-	Providers             []ProviderDraft
-	HTTPAddr              string
-	DBPath                string
-	Timezone              string
-	AutostartOnBoot       string
-	TelegramEnabled       string
-	TelegramBotToken      string
-	TelegramAllowedUID    string
-	TelegramProviderSetup string
-}
-
-type ProviderDraft struct {
-	ID                  string
-	CatalogID           string
-	Name                string
-	Type                string
-	APIKey              string
-	APIKeyEnv           string
-	BaseURL             string
-	Model               string
-	ToolUseMode         providers.ToolUseMode
-	ContextWindow       string
-	MaxOutputTokens     string
-	ReasoningEffort     string
-	HasStoredAPIKey     bool
-	StoredAPIKeyPreview string
-}
-
-type ProviderOption struct {
-	ID              string
-	Name            string
-	Type            string
-	Implemented     bool
-	RequiresBaseURL bool
-	Capabilities    providers.Capabilities
-	DefaultBaseURL  string
-	BaseURLOptions  []providers.BaseURLOption
-	DefaultModel    string
-	APIKeyEnv       string
-	Notes           string
-}
-
 type ProviderSetupItem struct {
 	ID              string                    `json:"id"`
 	CatalogID       string                    `json:"catalog_id,omitempty"`
@@ -462,16 +430,18 @@ type ProviderSetupItem struct {
 	Notes           string                    `json:"notes,omitempty"`
 }
 
+// ProviderSetupUpdate changes the fields that are present; an empty value
+// resets a field to its built-in default (or clears the key).
 type ProviderSetupUpdate struct {
-	Name            string                `json:"name,omitempty"`
-	Type            string                `json:"type,omitempty"`
-	APIKey          string                `json:"api_key,omitempty"`
-	BaseURL         string                `json:"base_url,omitempty"`
-	Model           string                `json:"model,omitempty"`
-	ContextWindow   int                   `json:"context_window,omitempty"`
-	ReasoningEffort string                `json:"reasoning_effort,omitempty"`
-	ToolUseMode     providers.ToolUseMode `json:"tool_use_mode,omitempty"`
-	Active          bool                  `json:"active,omitempty"`
+	Name            *string                `json:"name,omitempty"`
+	Type            *string                `json:"type,omitempty"`
+	APIKey          *string                `json:"api_key,omitempty"`
+	BaseURL         *string                `json:"base_url,omitempty"`
+	Model           *string                `json:"model,omitempty"`
+	ContextWindow   *int                   `json:"context_window,omitempty"`
+	ReasoningEffort *string                `json:"reasoning_effort,omitempty"`
+	ToolUseMode     *providers.ToolUseMode `json:"tool_use_mode,omitempty"`
+	Active          bool                   `json:"active,omitempty"`
 }
 
 type ProviderSetupListResponse struct {

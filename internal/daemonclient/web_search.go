@@ -15,7 +15,7 @@ func (c *Client) GetWebSearchConfig(ctx context.Context) (setup.WebSearchConfigR
 	return response, nil
 }
 
-func (c *Client) UpdateWebSearchConfig(ctx context.Context, update setup.WebSearchConfig) (setup.WebSearchConfigResponse, error) {
+func (c *Client) UpdateWebSearchConfig(ctx context.Context, update setup.WebSearchConfigUpdate) (setup.WebSearchConfigResponse, error) {
 	var response setup.WebSearchConfigResponse
 	if err := c.doJSON(ctx, http.MethodPatch, "/v1/modules/web-search", update, &response); err != nil {
 		return setup.WebSearchConfigResponse{}, err

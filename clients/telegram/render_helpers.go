@@ -9,6 +9,9 @@ import (
 
 func renderApprovalText(approval core.Approval) string {
 	lines := []string{}
+	if approval.AgentName != "" {
+		lines = append(lines, "Subagent: "+approval.AgentName)
+	}
 	if approval.ToolName != "" {
 		lines = append(lines, "Tool: "+approval.ToolName)
 	}

@@ -130,7 +130,7 @@ func Evaluate(req Request, rules []Rule, preset []Rule) Verdict {
 		}
 	}
 	if line.Risky {
-		if rule, ok := Guard(rules, req.Tool); ok {
+		if rule, ok := guardRule(rules, req.Tool); ok {
 			return Verdict{Effect: Ask, Rule: rule}
 		}
 	}
@@ -162,9 +162,9 @@ func (r Rule) touches(subject Subject, line Line) bool {
 	return false
 }
 
-// Guard finds a deny or ask rule that may catch some calls of tool: one for the
+// guardRule finds a deny or ask rule that may catch some calls of tool: one for the
 // tool itself or one with a pattern for every tool.
-func Guard(rules []Rule, tool string) (Rule, bool) {
+func guardRule(rules []Rule, tool string) (Rule, bool) {
 	for _, rule := range rules {
 		if (rule.Effect == Deny || rule.Effect == Ask) && (strings.EqualFold(rule.Tool, tool) || rule.Tool == "*" && !rule.wildcard()) {
 			return rule, true

@@ -30,41 +30,36 @@ func (c *Core) WithModelConcurrency(n int) *Core {
 // ExecuteRun claims a run and executes it with its external agent or the native engine.
 func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
 	runID = normalizeText(runID)
-	reschedule := false
+	runCtx, release, registered := c.activeRunContext(ctx, runID)
+	if !registered {
+		return nil
+	}
+	kept := false
 	defer func() {
-		if reschedule {
+		release()
+		c.afterRun(context.Background(), runID)
+		if kept {
 			c.rescheduleInterruptedRun(runID)
 		}
 	}()
-	runCtx, unregisterRun, claimed := c.activeRunContext(ctx, runID)
-	if !claimed {
-		return nil
-	}
-	defer c.resumeParkedRun(runID)
-	defer unregisterRun()
-	ready := false
-	defer func() {
-		if ready {
-			if err := c.noticeFailedWakeRun(context.Background(), runID); err != nil {
-				log.Printf("core: notice for failed wake run %q failed: %v", runID, err)
-			}
-		}
-		if err := c.afterRunExecution(context.Background(), runID); err != nil {
-			log.Printf("core: after run execution for %q failed: %v", runID, err)
-		}
-	}()
-	ready, err := c.prepareClaimedRun(ctx, runID)
-	if err != nil || !ready {
-		return err
-	}
-	if handled, err := c.tryExecuteExternalAgentRun(ctx, runCtx, runID); handled || err != nil {
-		return err
-	}
-	run, session, runtime, ok, err := c.prepareNativeRun(ctx, runID)
+	claimed, ok, err := c.claim(ctx, runID)
 	if err != nil || !ok {
 		return err
 	}
-	task, engine, err := c.nativeEngine(ctx, run, session, runtime)
+	run := claimed.Run
+	session, err := c.store.GetSession(ctx, run.SessionID)
+	if err != nil {
+		return c.failRun(ctx, run, err)
+	}
+	if handled, err := c.tryExecuteExternalAgentRun(ctx, runCtx, claimed, session); handled || err != nil {
+		return err
+	}
+	session = c.decorateSessionLLM(session)
+	runtime, err := c.resolveSessionRuntime(ctx, session)
+	if err != nil {
+		return c.failRun(ctx, run, err)
+	}
+	task, engine, err := c.nativeEngine(ctx, claimed, session, runtime)
 	if err != nil {
 		return c.failRun(ctx, run, err)
 	}
@@ -73,7 +68,7 @@ func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
 		return err
 	}
 	c.carryCounters(ctx, session.ID, outcome.Counters)
-	reschedule, err = c.applyOutcome(ctx, run, outcome)
+	kept, err = c.applyOutcome(ctx, run, outcome)
 	return err
 }
 
@@ -118,58 +113,10 @@ func (c *Core) rescheduleInterruptedRun(runID string) {
 	}
 }
 
-// resumeParkedRun starts a run that parked while what it waits for arrived:
-// ResolveApproval or an event found it still active and left the start to
-// this check, which runs once the run is no longer active.
-func (c *Core) resumeParkedRun(runID string) {
-	if c.lifetime.Err() != nil {
-		return
-	}
-	ctx := context.Background()
-	run, err := c.store.GetRun(ctx, runID)
-	if err == nil {
-		switch run.Status {
-		case RunStatusWaitingApproval:
-			err = c.resumeDecidedRun(ctx, run.SessionID, runID)
-		case RunStatusWaitingEvents:
-			err = c.wakeWaitingRun(ctx, run.SessionID, runID)
-		}
-	}
-	if err != nil && !ignoreMissing(err) {
-		log.Printf("core: resume parked run %q failed: %v", runID, err)
-	}
-}
-
-// prepareNativeRun marks an accepted native run as running and resolves its model.
-func (c *Core) prepareNativeRun(ctx context.Context, runID string) (Run, Session, providers.Runtime, bool, error) {
-	run, err := c.store.GetRun(ctx, normalizeText(runID))
-	if err != nil {
-		return Run{}, Session{}, nil, false, err
-	}
-	if run.Status.Terminal() {
-		return Run{}, Session{}, nil, false, nil
-	}
-	if run.Status == RunStatusRunning {
-		return Run{}, Session{}, nil, false, c.failOrphanedRun(ctx, run)
-	}
-	session, err := c.store.GetSession(ctx, run.SessionID)
-	if err != nil {
-		return Run{}, Session{}, nil, false, c.failRun(ctx, run, err)
-	}
-	session = c.decorateSessionLLM(session)
-	runtime, err := c.resolveSessionRuntime(ctx, session)
-	if err != nil {
-		return Run{}, Session{}, nil, false, c.failRun(ctx, run, err)
-	}
-	if err := c.setRunStatus(ctx, &run, RunStatusRunning, ""); err != nil {
-		return Run{}, Session{}, nil, false, err
-	}
-	return run, session, runtime, true, nil
-}
-
 // nativeEngine builds the engine and task of one native run; the task resumes the
 // counters of the run's checkpoint, or else those the session's last run carried.
-func (c *Core) nativeEngine(ctx context.Context, run Run, session Session, runtime providers.Runtime) (agent.Task, *agent.Engine, error) {
+func (c *Core) nativeEngine(ctx context.Context, claimed claimedRun, session Session, runtime providers.Runtime) (agent.Task, *agent.Engine, error) {
+	run := claimed.Run
 	resume, err := c.resumeCounters(ctx, run.ID)
 	if err == nil && resume == (agent.Counters{}) {
 		resume, err = c.carriedCounters(ctx, session.ID)
@@ -227,6 +174,12 @@ func (c *Core) nativeEngine(ctx context.Context, run Run, session Session, runti
 	}
 	if compact, windowTokens := c.compactRuntime(ctx); compact != nil {
 		task.CompactModel, task.CompactWindowTokens = compact, windowTokens
+	}
+	if claimed.Recovering {
+		task.Recovering = true
+		if task.Interrupted, err = c.interruptedCalls(ctx, run, claimed.Batch); err != nil {
+			return agent.Task{}, nil, err
+		}
 	}
 	return task, engine, nil
 }

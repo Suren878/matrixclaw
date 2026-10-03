@@ -84,8 +84,9 @@ func TestApprovalResultClearsTheRequestAndNotesTheDecision(t *testing.T) {
 func TestSubagentsAndInputsFollowTheirEvents(t *testing.T) {
 	now := time.Now()
 	m := New(core.ClientSnapshot{SessionID: "s1"})
-	apply(t, m, core.EventSubagentUpdated, "s1", core.SubagentTask{ID: "t2", Runtime: "codex", Status: core.TaskStatusRunning, Mode: core.SubagentTaskModeBlocking, ParentToolCallID: "call_2", CreatedAt: now.Add(time.Second)})
-	apply(t, m, core.EventSubagentUpdated, "s1", core.SubagentTask{ID: "t1", AgentName: "scout", Status: core.TaskStatusLost, CreatedAt: now})
+	apply(t, m, core.EventTaskUpdated, "s1", core.Task{ID: "t2", Kind: core.TaskKindSubagent, Runtime: "codex", Status: core.TaskStatusRunning, ParentToolCallID: "call_2", StartedAt: now.Add(time.Second)})
+	apply(t, m, core.EventTaskUpdated, "s1", core.Task{ID: "t1", Kind: core.TaskKindSubagent, AgentName: "scout", Status: core.TaskStatusLost, StartedAt: now})
+	apply(t, m, core.EventTaskUpdated, "s1", core.Task{ID: "t3", Kind: core.TaskKindShell, Status: core.TaskStatusRunning, StartedAt: now})
 	apply(t, m, core.EventInputUpdated, "s1", core.SessionInput{ID: "i1", Status: core.SessionInputStatusPending, Mode: core.BusyInputModeQueue})
 	apply(t, m, core.EventInputUpdated, "s1", core.SessionInput{ID: "i1", Status: core.SessionInputStatusConsumed})
 

@@ -389,12 +389,12 @@ type parkingStore struct {
 	beforePark func()
 }
 
-func (s *parkingStore) UpdateRun(ctx context.Context, run core.Run) error {
+func (s *parkingStore) SealRun(ctx context.Context, run core.Run, reply *transcript.Message, replySaved bool) error {
 	if hook := s.beforePark; hook != nil && run.Status == core.RunStatusWaitingApproval {
 		s.beforePark = nil
 		hook()
 	}
-	return s.SQLiteStore.UpdateRun(ctx, run)
+	return s.SQLiteStore.SealRun(ctx, run, reply, replySaved)
 }
 
 func TestApprovalDecidedWhileTheRunParksResumesIt(t *testing.T) {
@@ -860,7 +860,7 @@ func TestBlockingSubagentReturnsChildSummaryToParent(t *testing.T) {
 	if delegateResult != "child found 3 files" {
 		t.Fatalf("delegate result = %q", delegateResult)
 	}
-	task, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-delegate")
+	task, err := taskOfCall(db, session.ID, run.ID, "call-delegate")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -896,7 +896,7 @@ func TestSubagentSummaryJoinsAReplyCutByTheOutputLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	task, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-delegate")
+	task, err := taskOfCall(db, session.ID, run.ID, "call-delegate")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -967,7 +967,7 @@ func TestAsyncSubagentCompletionStartsParentFollowUpRun(t *testing.T) {
 	t.Parallel()
 	scenario := runAsyncSubagentScenario(t)
 
-	task, err := scenario.db.GetSubagentTaskByParentToolCall(context.Background(), scenario.session.ID, scenario.run.ID, "call-spawn")
+	task, err := taskOfCall(scenario.db, scenario.session.ID, scenario.run.ID, "call-spawn")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -999,13 +999,15 @@ type cancelingStore struct {
 	*store.SQLiteStore
 }
 
-func (s *cancelingStore) CompleteRun(ctx context.Context, assistant transcript.Message, run core.Run) error {
-	canceled := run
-	canceled.Status, canceled.Error = core.RunStatusCanceled, "canceled by user"
-	if err := s.SQLiteStore.UpdateRun(ctx, canceled); err != nil {
-		return err
+func (s *cancelingStore) SealRun(ctx context.Context, run core.Run, reply *transcript.Message, replySaved bool) error {
+	if run.Status == core.RunStatusCompleted {
+		canceled := run
+		canceled.Status, canceled.Error = core.RunStatusCanceled, "canceled by user"
+		if err := s.SQLiteStore.SealRun(ctx, canceled, nil, false); err != nil {
+			return err
+		}
 	}
-	return s.SQLiteStore.CompleteRun(ctx, assistant, run)
+	return s.SQLiteStore.SealRun(ctx, run, reply, replySaved)
 }
 
 func TestACancelWhileTheEngineFinishesStands(t *testing.T) {

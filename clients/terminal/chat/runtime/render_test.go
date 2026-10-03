@@ -125,7 +125,7 @@ func TestRenderTranscript(t *testing.T) {
 			toolResultMessage("m14", 60, "call_agent", "agent", "Two callers, both fine.", nil),
 			finishedReply("m15", 70, "The loop started at `1` instead of `2`. Fixed and the test passes."),
 		},
-		Subagents: []core.SubagentTask{{ID: "task_1", AgentName: "scout", DisplayName: "Check callers", ParentSessionID: "session_1", ParentRunID: "run_1", ParentToolCallID: "call_agent", Goal: "Find other callers of Parse", Status: core.TaskStatusCompleted, Summary: "Two callers, both fine.", CreatedAt: at(13), UpdatedAt: at(60)}},
+		Subagents: []core.Task{{ID: "task_1", Kind: core.TaskKindSubagent, AgentName: "scout", Description: "Check callers", SessionID: "session_1", RunID: "run_1", ParentToolCallID: "call_agent", Command: "Find other callers of Parse", Status: core.TaskStatusCompleted, Summary: "Two callers, both fine.", StartedAt: at(13), UpdatedAt: at(60)}},
 	}
 	_, screen := renderApp(t, 110, 70, snapshot)
 	assertGolden(t, "transcript", screen)

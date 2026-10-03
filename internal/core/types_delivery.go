@@ -32,21 +32,23 @@ type ClientDeliveryTarget struct {
 }
 
 type ClientDelivery struct {
-	ID          string               `json:"id"`
-	Type        string               `json:"type"`
-	Client      string               `json:"client"`
-	ExternalKey string               `json:"external_key,omitempty"`
-	SessionID   string               `json:"session_id,omitempty"`
-	RunID       string               `json:"run_id,omitempty"`
-	TaskID      string               `json:"task_id,omitempty"`
-	Summary     string               `json:"summary,omitempty"`
-	Address     json.RawMessage      `json:"address,omitempty"`
-	Payload     json.RawMessage      `json:"payload,omitempty"`
-	Status      ClientDeliveryStatus `json:"status"`
-	Error       string               `json:"error,omitempty"`
-	CreatedAt   time.Time            `json:"created_at"`
-	UpdatedAt   time.Time            `json:"updated_at"`
-	FinishedAt  *time.Time           `json:"finished_at,omitempty"`
+	ID          string          `json:"id"`
+	Type        string          `json:"type"`
+	Client      string          `json:"client"`
+	ExternalKey string          `json:"external_key,omitempty"`
+	SessionID   string          `json:"session_id,omitempty"`
+	RunID       string          `json:"run_id,omitempty"`
+	TaskID      string          `json:"task_id,omitempty"`
+	Summary     string          `json:"summary,omitempty"`
+	Address     json.RawMessage `json:"address,omitempty"`
+	// ReplyOnce is set when Address takes one reply only.
+	ReplyOnce  bool                 `json:"reply_once,omitempty"`
+	Payload    json.RawMessage      `json:"payload,omitempty"`
+	Status     ClientDeliveryStatus `json:"status"`
+	Error      string               `json:"error,omitempty"`
+	CreatedAt  time.Time            `json:"created_at"`
+	UpdatedAt  time.Time            `json:"updated_at"`
+	FinishedAt *time.Time           `json:"finished_at,omitempty"`
 }
 
 type ClientDeliveryFilter struct {

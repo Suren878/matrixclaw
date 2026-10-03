@@ -49,9 +49,6 @@ type Call struct {
 	// Recheck applies the permission rules to another subject the call reaches,
 	// such as a redirect's host; nil when no rules apply.
 	Recheck func(context.Context, permission.Subject) error `json:"-"`
-	// Guarded is set when a deny or ask rule names the tool, so it must not reach
-	// subjects it cannot recheck, such as where a browser was redirected.
-	Guarded bool `json:"-"`
 }
 
 type ApprovalRequest struct {

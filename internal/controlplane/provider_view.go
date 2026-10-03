@@ -48,5 +48,5 @@ func providerPickerInfo(provider setup.ProviderSetupItem) string {
 	if !provider.Configured {
 		return ""
 	}
-	return providerListInfo(provider)
+	return strings.TrimSpace(provider.Model)
 }

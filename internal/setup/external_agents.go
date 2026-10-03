@@ -18,7 +18,7 @@ func (s *Service) UpdateExternalAgent(id string, update ExternalAgentConfig) (Co
 	if id == "" {
 		return Config{}, fmt.Errorf("external agent id is required")
 	}
-	return s.update(func(cfg *Config) error {
+	return s.Update(func(cfg *Config) error {
 		if cfg.Modules.ExternalAgents == nil {
 			cfg.Modules.ExternalAgents = map[string]ExternalAgentConfig{}
 		}

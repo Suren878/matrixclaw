@@ -2,7 +2,6 @@ package controlplane
 
 import (
 	"context"
-	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
@@ -29,10 +28,7 @@ func (d *Dispatcher) webSearchPicker(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	current := resp.Config.Provider
-	if current == "" {
-		current = setup.WebSearchProviderDDG
-	}
+	current := resp.Provider
 
 	return Result{
 		Handled: true,
@@ -94,20 +90,15 @@ func (d *Dispatcher) webSearchDetailPicker(ctx context.Context, provider string)
 	if err != nil {
 		return Result{}, err
 	}
-	cfg := resp.Config
-	current := cfg.Provider
-	if current == "" {
-		current = setup.WebSearchProviderDDG
-	}
+	current := resp.Provider
+	keyPreview := webSearchKeyPreview(resp, provider)
 
 	var useDisabled bool
 	switch provider {
-	case setup.WebSearchProviderTavily:
-		useDisabled = strings.TrimSpace(cfg.TavilyKey) == ""
-	case setup.WebSearchProviderSerper:
-		useDisabled = strings.TrimSpace(cfg.SerperKey) == ""
+	case setup.WebSearchProviderTavily, setup.WebSearchProviderSerper:
+		useDisabled = keyPreview == ""
 	case setup.WebSearchProviderSearXNG:
-		useDisabled = strings.TrimSpace(cfg.BaseURL) == ""
+		useDisabled = resp.BaseURL == ""
 	}
 
 	picker := NewPickerData(PickerWebSearchProvider, webSearchProviderLabel(provider)).
@@ -121,20 +112,10 @@ func (d *Dispatcher) webSearchDetailPicker(ctx context.Context, provider string)
 		})
 
 	switch provider {
-	case setup.WebSearchProviderTavily:
-		keyInfo := "Not set"
-		if cfg.TavilyKey != "" {
-			keyInfo = maskKey(cfg.TavilyKey)
-		}
-		picker.Row("key", "API Key", keyInfo, webSearchCommand(provider, "key"))
-	case setup.WebSearchProviderSerper:
-		keyInfo := "Not set"
-		if cfg.SerperKey != "" {
-			keyInfo = maskKey(cfg.SerperKey)
-		}
-		picker.Row("key", "API Key", keyInfo, webSearchCommand(provider, "key"))
+	case setup.WebSearchProviderTavily, setup.WebSearchProviderSerper:
+		picker.Row("key", "API Key", firstNonEmptyTrimmed(keyPreview, "Not set"), webSearchCommand(provider, "key"))
 	case setup.WebSearchProviderSearXNG:
-		urlInfo := cfg.BaseURL
+		urlInfo := resp.BaseURL
 		if urlInfo == "" {
 			urlInfo = "Not set"
 		}
@@ -145,7 +126,7 @@ func (d *Dispatcher) webSearchDetailPicker(ctx context.Context, provider string)
 }
 
 func (d *Dispatcher) webSearchUse(ctx context.Context, provider string) (Result, error) {
-	_, err := d.webSearch.UpdateWebSearchConfig(ctx, setup.WebSearchConfig{Provider: provider})
+	_, err := d.webSearch.UpdateWebSearchConfig(ctx, setup.WebSearchConfigUpdate{Provider: &provider})
 	if err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
@@ -160,18 +141,13 @@ func (d *Dispatcher) webSearchKeyPrompt(ctx context.Context, provider string) (R
 	if err != nil {
 		return Result{}, err
 	}
-	var existingKey string
-	switch provider {
-	case setup.WebSearchProviderTavily:
-		existingKey = resp.Config.TavilyKey
-	case setup.WebSearchProviderSerper:
-		existingKey = resp.Config.SerperKey
-	}
 	title, placeholder := webSearchKeyPromptText(provider)
+	if preview := webSearchKeyPreview(resp, provider); preview != "" {
+		placeholder = preview + " · - to clear"
+	}
 	return Result{Handled: true, Prompt: &PromptData{
 		Title:               title,
 		Placeholder:         placeholder,
-		Value:               existingKey,
 		SubmitCommandPrefix: webSearchCommand(provider, "key") + " ",
 		CancelCommand:       webSearchCommand(provider),
 		Sensitive:           true,
@@ -179,13 +155,12 @@ func (d *Dispatcher) webSearchKeyPrompt(ctx context.Context, provider string) (R
 }
 
 func (d *Dispatcher) webSearchSetKey(ctx context.Context, provider, key string) (Result, error) {
-	key = strings.TrimSpace(key)
-	update := setup.WebSearchConfig{Provider: provider}
+	update := setup.WebSearchConfigUpdate{Provider: &provider}
 	switch provider {
 	case setup.WebSearchProviderTavily:
-		update.TavilyKey = key
+		update.TavilyKey = clearableInput(key)
 	case setup.WebSearchProviderSerper:
-		update.SerperKey = key
+		update.SerperKey = clearableInput(key)
 	}
 	_, err := d.webSearch.UpdateWebSearchConfig(ctx, update)
 	if err != nil {
@@ -202,17 +177,16 @@ func (d *Dispatcher) webSearchURLPrompt(ctx context.Context, provider string) (R
 	return Result{Handled: true, Prompt: &PromptData{
 		Title:               "SearXNG Base URL",
 		Placeholder:         "http://localhost:8888",
-		Value:               resp.Config.BaseURL,
+		Value:               resp.BaseURL,
 		SubmitCommandPrefix: webSearchCommand(provider, "url") + " ",
 		CancelCommand:       webSearchCommand(provider),
 	}}, nil
 }
 
 func (d *Dispatcher) webSearchSetURL(ctx context.Context, provider, rawURL string) (Result, error) {
-	rawURL = strings.TrimSpace(rawURL)
-	_, err := d.webSearch.UpdateWebSearchConfig(ctx, setup.WebSearchConfig{
-		Provider: provider,
-		BaseURL:  rawURL,
+	_, err := d.webSearch.UpdateWebSearchConfig(ctx, setup.WebSearchConfigUpdate{
+		Provider: &provider,
+		BaseURL:  clearableInput(rawURL),
 	})
 	if err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
@@ -244,10 +218,13 @@ func webSearchKeyPromptText(provider string) (title, placeholder string) {
 	}
 }
 
-func maskKey(key string) string {
-	key = strings.TrimSpace(key)
-	if len(key) <= 8 {
-		return strings.Repeat("*", len(key))
+func webSearchKeyPreview(resp setup.WebSearchConfigResponse, provider string) string {
+	switch provider {
+	case setup.WebSearchProviderTavily:
+		return resp.TavilyKeyPreview
+	case setup.WebSearchProviderSerper:
+		return resp.SerperKeyPreview
+	default:
+		return ""
 	}
-	return key[:4] + strings.Repeat("*", len(key)-8) + key[len(key)-4:]
 }

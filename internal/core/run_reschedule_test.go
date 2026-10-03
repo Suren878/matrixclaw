@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -117,8 +118,8 @@ func TestRunInterruptedDuringToolReplaysItAndCompletes(t *testing.T) {
 				assertRecoveryRunStatus(t, db, run.ID, core.RunStatusRunning)
 				restarted := core.New(db)
 				configure(restarted)
-				if err := restarted.RecoverActiveRuns(context.Background()); err != nil {
-					t.Fatalf("RecoverActiveRuns: %v", err)
+				if err := restarted.Recover(context.Background()); err != nil {
+					t.Fatalf("Recover: %v", err)
 				}
 			}
 
@@ -136,14 +137,14 @@ func TestRunInterruptedDuringToolReplaysItAndCompletes(t *testing.T) {
 	}
 }
 
-func TestInterruptedParentAndBlockingChildAreBothRescheduledAndComplete(t *testing.T) {
+func TestInterruptedParentWaitsAgainForItsRunningBlockingChild(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	starter := &executingRunStarter{app: app}
 	app.WithRunStarter(starter)
 	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
-	childStarted := newStartSignal()
+	childStarted, release := newStartSignal(), make(chan struct{})
 	var mu sync.Mutex
 	childCalls := 0
 	var delegateResult string
@@ -151,11 +152,9 @@ func TestInterruptedParentAndBlockingChildAreBothRescheduledAndComplete(t *testi
 		mu.Lock()
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
 			childCalls++
-			first := childCalls == 1
 			mu.Unlock()
-			if first {
-				return blockUntilCanceled(ctx, childStarted)
-			}
+			childStarted.once.Do(func() { close(childStarted.ch) })
+			<-release
 			return providers.Response{Text: "child found 3 files"}, nil
 		}
 		defer mu.Unlock()
@@ -177,10 +176,16 @@ func TestInterruptedParentAndBlockingChildAreBothRescheduledAndComplete(t *testi
 	if err := waitRecoveryError(t, done, "interrupted parent"); err != nil {
 		t.Fatalf("ExecuteRun: %v", err)
 	}
+	for deadline := time.Now().Add(5 * time.Second); starter.count(run.ID) == 0; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the interrupted parent was not rescheduled")
+		}
+	}
+	close(release)
 
 	waitForRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
 	starter.wait(t)
-	task, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-delegate")
+	task, err := taskOfCall(db, session.ID, run.ID, "call-delegate")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,13 +193,13 @@ func TestInterruptedParentAndBlockingChildAreBothRescheduledAndComplete(t *testi
 	if task.Status != core.TaskStatusCompleted || task.Summary != "child found 3 files" {
 		t.Fatalf("task = %s %q", task.Status, task.Summary)
 	}
-	if starter.count(run.ID) == 0 || starter.count(task.ChildRunID) == 0 {
-		t.Fatalf("reschedules parent=%d child=%d, want both", starter.count(run.ID), starter.count(task.ChildRunID))
+	if starter.count(task.ChildRunID) != 1 {
+		t.Fatalf("child schedules = %d, want its one start", starter.count(task.ChildRunID))
 	}
 	assertToolResultCount(t, db, session.ID, "call-delegate", 1)
 	mu.Lock()
 	defer mu.Unlock()
-	if delegateResult != "child found 3 files" {
-		t.Fatalf("delegate result seen by the parent = %q", delegateResult)
+	if delegateResult != "child found 3 files" || childCalls != 1 {
+		t.Fatalf("delegate result seen by the parent = %q, child calls = %d", delegateResult, childCalls)
 	}
 }

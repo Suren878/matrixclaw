@@ -8,11 +8,11 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func (c *Core) webResearchPromptAvailable() bool {
+func (c *Core) webPromptAvailable() bool {
 	if c == nil || c.tools == nil {
 		return false
 	}
-	_, ok := c.tools.Spec("web_research")
+	_, ok := c.tools.Spec("web_fetch")
 	return ok
 }
 
@@ -64,8 +64,8 @@ func (p *corePrompts) System(ctx context.Context, history []transcript.Message) 
 // the run started.
 func (p *corePrompts) Context(ctx context.Context) string {
 	var sections []string
-	if checkpoint, ok, err := p.c.runCheckpoint(ctx, p.turn.RunID); err == nil && ok {
-		sections = append(sections, runCheckpointRecoveryPrompt(checkpoint))
+	if checkpoint, ok, err := p.c.runCheckpoint(ctx, p.turn.RunID); err == nil && ok && checkpoint.RecoveryCount > 0 {
+		sections = append(sections, runRecoveryNotice)
 	}
 	sections = append(sections, p.c.sessionTodoPrompt(ctx, p.turn.SessionID, append([]string{p.turn.RunID}, p.turn.Continues...)), p.c.runningTasksPrompt(ctx, p.turn.SessionID))
 	if p.turn.Subagent {
@@ -111,8 +111,8 @@ func (c *Core) nativeSystemPrompt(ctx context.Context, turn nativeTurn, assistan
 	if workingDir != "" {
 		sections = append(sections, prompt.ProjectRoot(workingDir))
 	}
-	if c.webResearchPromptAvailable() {
-		sections = append(sections, prompt.WebResearchGuidance())
+	if turn.ToolUse && c.webPromptAvailable() {
+		sections = append(sections, prompt.WebGuidance())
 	}
 	if c.agentPromptAvailable() {
 		sections = append(sections, c.agentGuidancePrompt(ctx))

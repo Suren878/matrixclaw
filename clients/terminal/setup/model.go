@@ -73,8 +73,7 @@ type providerListEntry struct {
 	Kind     providerEntryKind
 	Title    string
 	Status   string
-	Provider setup.ProviderDraft
-	Option   setup.ProviderOption
+	Provider setup.ProviderConfig
 }
 
 type model struct {
@@ -90,13 +89,13 @@ type model struct {
 
 	filterInput terminaltextfield.Model
 
-	draft            setup.Draft
-	builtInProviders []setup.ProviderOption
-	editingProvider  setup.ProviderDraft
-	result           setup.ApplyResult
-	err              error
-	aborted          bool
-	hasExisting      bool
+	cfg             setup.Config
+	cfgSnapshot     setup.Config
+	editingProvider setup.ProviderConfig
+	result          setup.ApplyResult
+	err             error
+	aborted         bool
+	hasExisting     bool
 
 	providerTypeCursor       int
 	providerNoProviderCursor int
@@ -109,7 +108,6 @@ type model struct {
 	formFocus                int
 	formAction               int
 	formError                string
-	draftSnapshot            setup.Draft
 
 	textEditorInput       terminaltextfield.Model
 	textAreaInput         textarea.Model
@@ -122,23 +120,17 @@ type model struct {
 }
 
 func newModel(service *setup.Service) (*model, error) {
-	draft, err := service.Draft()
-	if err != nil {
-		return nil, err
-	}
-
-	hasExisting, err := service.IsConfigured()
+	cfg, hasExisting, err := service.EditableConfig()
 	if err != nil {
 		return nil, err
 	}
 
 	m := &model{
-		service:          service,
-		screen:           screenIntro,
-		draft:            draft,
-		builtInProviders: service.ProviderOptions(),
-		hasExisting:      hasExisting,
-		filterInput:      newSearchField("Find a provider"),
+		service:     service,
+		screen:      screenIntro,
+		cfg:         cfg,
+		hasExisting: hasExisting,
+		filterInput: newSearchField("Find a provider"),
 	}
 	return m, nil
 }

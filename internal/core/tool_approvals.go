@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
@@ -36,24 +37,18 @@ func (c *Core) ResolveApproval(ctx context.Context, approvalID string, decision 
 			return Approval{}, err
 		}
 	}
-	bridge, bridged := decodeSubagentApprovalBridge(approval)
-	approval, err = c.recordApprovalDecision(ctx, approval, decision, bridged)
+	approval, err = c.recordApprovalDecision(ctx, approval, decision)
 	if err != nil {
 		return Approval{}, err
 	}
-	switch {
-	case bridged:
-		decision.Always = ""
-		return approval, c.passDecisionToSubagent(ctx, bridge, decision)
-	case strings.TrimSpace(approval.RunID) == "":
+	if strings.TrimSpace(approval.RunID) == "" {
 		return approval, c.finishRunlessApproval(ctx, approval)
-	default:
-		return approval, c.resumeDecidedRun(ctx, approval.SessionID, approval.RunID)
 	}
+	return approval, c.resumeDecidedRun(ctx, approval.SessionID, approval.RunID)
 }
 
 // keepSuggestedRule saves the approval's suggested rule as an allow rule; a
-// session rule belongs to the approval's session, the parent's for a bridged one.
+// session rule belongs to the approval's session, the parent's for a subagent's.
 func (c *Core) keepSuggestedRule(ctx context.Context, approval Approval, scope permission.Scope) error {
 	if !scope.Valid() {
 		return fmt.Errorf("%w: unknown rule scope %q", ErrInvalidInput, scope)
@@ -70,7 +65,7 @@ func (c *Core) keepSuggestedRule(ctx context.Context, approval Approval, scope p
 		CreatedAt: c.now().UTC(),
 	}
 	if scope == permission.ScopeSession {
-		rule.SessionID = approval.SessionID
+		rule.SessionID, _ = c.approvalAudience(ctx, approval)
 	}
 	return c.store.CreatePermissionRule(ctx, rule)
 }
@@ -83,8 +78,8 @@ func approvalState(approved bool) ApprovalState {
 }
 
 // recordApprovalDecision stores the decision and tells clients where the call
-// stands; a bridged call keeps going whichever way its child's call was decided.
-func (c *Core) recordApprovalDecision(ctx context.Context, approval Approval, decision ApprovalResolveRequest, bridged bool) (Approval, error) {
+// stands.
+func (c *Core) recordApprovalDecision(ctx context.Context, approval Approval, decision ApprovalResolveRequest) (Approval, error) {
 	decidedAt := c.now().UTC()
 	approval.State = approvalState(decision.Approved)
 	approval.DecidedAt = &decidedAt
@@ -94,10 +89,11 @@ func (c *Core) recordApprovalDecision(ctx context.Context, approval Approval, de
 	if err := c.store.UpdateApproval(ctx, approval); err != nil {
 		return Approval{}, err
 	}
+	audience, audienceRun := c.approvalAudience(ctx, approval)
 	c.publishEvent(Event{
 		Type:      EventApprovalResult,
-		SessionID: approval.SessionID,
-		RunID:     approval.RunID,
+		SessionID: audience,
+		RunID:     audienceRun,
 		Payload: PermissionNotification{
 			ApprovalID: approval.ID,
 			ToolCallID: approval.ToolCallRef,
@@ -113,7 +109,7 @@ func (c *Core) recordApprovalDecision(ctx context.Context, approval Approval, de
 		SessionID:  approval.SessionID,
 		ApprovalID: approval.ID,
 	}
-	if !decision.Approved && !bridged {
+	if !decision.Approved {
 		update.State = ToolLifecycleFailed
 		update.Error = agent.DenialResult(approval.Reason).Content
 	}
@@ -170,39 +166,6 @@ func (c *Core) finishRunlessApproval(ctx context.Context, approval Approval) err
 	return c.finishApprovalCall(ctx, approval, agent.DenialResult(approval.Reason))
 }
 
-// passDecisionToSubagent hands the decision to the child's own approval: the
-// child runs its call or reads the denial and goes on, while the parent keeps
-// waiting for the child.
-func (c *Core) passDecisionToSubagent(ctx context.Context, bridge subagentApprovalBridgeParams, decision ApprovalResolveRequest) error {
-	task, err := c.store.GetSubagentTask(ctx, bridge.TaskID)
-	if err != nil {
-		task, err = c.store.GetSubagentTaskByChildRun(ctx, bridge.ChildRunID)
-	}
-	if err != nil {
-		return err
-	}
-	if _, err := c.ResolveApproval(ctx, bridge.ChildApprovalID, decision); err != nil {
-		terminal, terminalErr := c.subagentTaskTerminal(ctx, task)
-		if terminalErr != nil || !terminal {
-			return err
-		}
-	}
-	if latest, err := c.store.GetSubagentTask(ctx, task.ID); err == nil {
-		task = latest
-	} else if !errors.Is(err, ErrNotFound) {
-		return err
-	}
-	if !task.Status.Terminal() {
-		if task, err = c.markSubagentTaskRunning(ctx, task); err != nil {
-			return err
-		}
-	}
-	if task.Mode == SubagentTaskModeAsync {
-		return nil
-	}
-	return c.resumeParentForSubagentStatus(ctx, task)
-}
-
 // finishApprovalCall writes result for the approval's call unless it has one.
 func (c *Core) finishApprovalCall(ctx context.Context, approval Approval, result tools.Result) error {
 	toolCallID := strings.TrimSpace(approval.ToolCallRef)
@@ -242,6 +205,7 @@ func workingDirForApprovalResume(sessionWorkingDir string, spec tools.Spec, appr
 	return normalizeWorkingDir(approvalPath)
 }
 
+// replayApprovedTool runs a call made outside a run once it was granted.
 func (c *Core) replayApprovedTool(ctx context.Context, approval Approval) (ExecuteToolResult, error) {
 	session, err := c.store.GetSession(ctx, approval.SessionID)
 	if err != nil {
@@ -261,25 +225,13 @@ func (c *Core) replayApprovedTool(ctx context.Context, approval Approval) (Execu
 	if c.tools != nil {
 		spec, _ = c.tools.Spec(approval.ToolName)
 	}
-	client := ""
-	externalKey := ""
-	if strings.TrimSpace(approval.RunID) != "" {
-		if run, runErr := c.store.GetRun(ctx, approval.RunID); runErr == nil {
-			client = run.Client
-			externalKey = run.ExternalKey
-		}
-	}
-
 	return c.ExecuteTool(ctx, ExecuteToolInput{
-		SessionID:   approval.SessionID,
-		RunID:       approval.RunID,
-		ToolName:    approval.ToolName,
-		Client:      client,
-		ExternalKey: externalKey,
-		ToolCallID:  approval.ToolCallRef,
-		WorkingDir:  workingDirForApprovalResume(session.WorkingDir, spec, approval.Path),
-		Approved:    true,
-		Args:        args,
+		SessionID:  approval.SessionID,
+		ToolName:   approval.ToolName,
+		ToolCallID: approval.ToolCallRef,
+		WorkingDir: workingDirForApprovalResume(session.WorkingDir, spec, approval.Path),
+		Approved:   true,
+		Args:       args,
 	})
 }
 
@@ -313,67 +265,11 @@ func toolCallArgs(message transcript.Message) (json.RawMessage, bool) {
 	return nil, false
 }
 
-// runHasPendingApprovals reports whether the run still waits: one of its
-// approvals is pending or one of its calls waits for its blocking subagent. A
-// background subagent's approval never holds its parent's run.
+// runHasPendingApprovals reports whether one of the run's approvals is pending.
 func (c *Core) runHasPendingApprovals(ctx context.Context, sessionID string, runID string) (bool, error) {
 	approvals, err := c.store.ListRunApprovals(ctx, sessionID, runID)
 	if err != nil {
 		return false, err
 	}
-	for _, approval := range approvals {
-		if approval.State != ApprovalStatePending {
-			continue
-		}
-		background, err := c.backgroundSubagentApproval(ctx, approval)
-		if err != nil {
-			return false, err
-		}
-		if !background {
-			return true, nil
-		}
-	}
-	return c.runWaitsForBlockingChild(ctx, sessionID, runID)
-}
-
-// bridgedCallWaitsForSubagent reports whether a decided bridged approval's call
-// has no result yet while its subagent is still working on it.
-func (c *Core) bridgedCallWaitsForSubagent(ctx context.Context, approval Approval) (bool, error) {
-	bridge, bridged := decodeSubagentApprovalBridge(approval)
-	if !bridged || approval.State == ApprovalStatePending {
-		return false, nil
-	}
-	done, err := c.store.HasToolResult(ctx, approval.SessionID, approval.RunID, strings.TrimSpace(approval.ToolCallRef))
-	if err != nil || done {
-		return false, err
-	}
-	task, err := c.store.GetSubagentTask(ctx, bridge.TaskID)
-	if err == nil && task.Status.Terminal() {
-		return false, nil
-	}
-	if err != nil && !errors.Is(err, ErrNotFound) {
-		return false, err
-	}
-	run, err := c.store.GetRun(ctx, bridge.ChildRunID)
-	if errors.Is(err, ErrNotFound) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return !run.Status.Terminal(), nil
-}
-
-// backgroundSubagentApproval reports whether the approval asks for a background
-// subagent's call.
-func (c *Core) backgroundSubagentApproval(ctx context.Context, approval Approval) (bool, error) {
-	bridge, bridged := decodeSubagentApprovalBridge(approval)
-	if !bridged {
-		return false, nil
-	}
-	task, err := c.store.GetSubagentTask(ctx, bridge.TaskID)
-	if errors.Is(err, ErrNotFound) {
-		return false, nil
-	}
-	return err == nil && task.Mode == SubagentTaskModeAsync, err
+	return slices.ContainsFunc(approvals, func(approval Approval) bool { return approval.State == ApprovalStatePending }), nil
 }

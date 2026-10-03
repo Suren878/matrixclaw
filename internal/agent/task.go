@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -28,6 +29,30 @@ type Task struct {
 	// Continues lists the runs this one continues, nearest first; what they keep
 	// verbatim past a summary stays kept.
 	Continues []string
+	// Recovering is set when a restart or an interruption stopped the run's
+	// previous execution; Interrupted settles the calls it left without a result.
+	Recovering  bool
+	Interrupted []InterruptedCall
+}
+
+// Settle is how a resumed run settles a call a restart left without a result.
+type Settle string
+
+const (
+	// SettleRerun runs the call again through Authorize once nothing is pending.
+	SettleRerun Settle = "rerun"
+	// SettleAsk asks the user with Request before the call runs again.
+	SettleAsk Settle = "ask"
+	// SettleAnswer journals Result as the call's result.
+	SettleAnswer Settle = "answer"
+)
+
+// InterruptedCall is a call of the run a restart left without a result.
+type InterruptedCall struct {
+	ToolCallID string
+	Settle     Settle
+	Request    tools.ApprovalRequest
+	Result     tools.Result
 }
 
 // Budget limits one run; a zero field is unlimited.

@@ -95,15 +95,14 @@ type Decision struct {
 	Delegated bool
 }
 
-// Tools lists, authorizes, executes and finalizes the tools of one run. Execute
-// errors are fatal; tool failures come back as IsError results. Execute runs on
-// a goroutine of its own, concurrently with other calls of the batch; the other
-// methods run on the engine goroutine. Finish runs after the result is written.
+// Tools lists, authorizes and executes the tools of one run. Execute errors are
+// fatal; tool failures come back as IsError results. Execute runs on a goroutine
+// of its own, concurrently with other calls of the batch; the other methods run
+// on the engine goroutine.
 type Tools interface {
 	Specs(ctx context.Context) []tools.Spec
 	Authorize(ctx context.Context, name string, call tools.Call) (Decision, error)
 	Execute(ctx context.Context, name string, call tools.Call) (tools.Result, error)
-	Finish(ctx context.Context, name string, call tools.Call, result tools.Result, message transcript.Message) error
 }
 
 // Pending is a tool call that waits for a user decision.
@@ -153,7 +152,6 @@ type Inbox interface {
 	Peek(ctx context.Context, runID string, kind InputKind) ([]Input, error)
 	Consume(ctx context.Context, runID string, ids []string) error
 	Finished(ctx context.Context, taskIDs []string) (bool, error)
-	Canceled(ctx context.Context, runID string) (bool, error)
 }
 
 // EventKind names what Sink receives.

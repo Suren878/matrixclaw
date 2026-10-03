@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,18 +19,20 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-// bridgedChild delegates from a parent to a child whose one mutating call waits
-// for approval; the parent's lead calls come before its delegate call.
-type bridgedChild struct {
+// askingChild delegates from a parent to a blocking child whose one mutating
+// call waits for approval; the parent's lead calls come before its agent call.
+type askingChild struct {
 	app       *core.Core
 	db        *store.SQLiteStore
 	parking   *parkingStore
-	mutations int
+	starter   *executingRunStarter
+	mutations atomic.Int32
 	mu        sync.Mutex
 	saw       string
+	requests  []providers.Request
 }
 
-func newBridgedChild(t *testing.T, starter func(*core.Core) core.RunStarter, lead ...providers.ToolCall) *bridgedChild {
+func newAskingChild(t *testing.T, lead ...providers.ToolCall) *askingChild {
 	t.Helper()
 	db, err := store.NewSQLite(filepath.Join(t.TempDir(), "matrixclaw.db"))
 	if err != nil {
@@ -38,9 +41,15 @@ func newBridgedChild(t *testing.T, starter func(*core.Core) core.RunStarter, lea
 	t.Cleanup(func() { _ = db.Close() })
 	parking := &parkingStore{SQLiteStore: db}
 	app := core.New(parking)
-	b := &bridgedChild{app: app, db: db, parking: parking}
-	app.WithRunStarter(starter(app))
-	mutate, _ := approvalTools(&b.mutations)
+	b := &askingChild{app: app, db: db, parking: parking, starter: &executingRunStarter{app: app}}
+	app.WithRunStarter(b.starter)
+	mutate := funcTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation), fn: func(_ context.Context, call tools.Call) (tools.Result, error) {
+		if !call.Approved {
+			return tools.Result{Approval: &tools.ApprovalRequest{ToolID: "mutate_state", ToolCallID: call.ToolCallID, Action: "write_state", Description: "write the state", Suggestion: &permission.Suggestion{Tool: "mutate_state"}}}, nil
+		}
+		b.mutations.Add(1)
+		return tools.Result{Content: "mutated"}, nil
+	}}
 	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), mutate, askingReadTool("ask_read"))...))
 	childCalls, parentCalls := 0, 0
 	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
@@ -55,6 +64,7 @@ func newBridgedChild(t *testing.T, starter func(*core.Core) core.RunStarter, lea
 			return providers.Response{Text: "Child read: " + b.saw}, nil
 		}
 		parentCalls++
+		b.requests = append(b.requests, request)
 		if parentCalls == 1 {
 			delegate := providers.ToolCall{ID: "call-delegate", Name: "agent", Arguments: []byte(`{"description":"Change the state","prompt":"change the state","runtime":"matrixclaw"}`)}
 			return providers.Response{ToolCalls: append(slices.Clone(lead), delegate)}, nil
@@ -64,28 +74,49 @@ func newBridgedChild(t *testing.T, starter func(*core.Core) core.RunStarter, lea
 	return b
 }
 
-func (b *bridgedChild) childSaw() string {
+func (b *askingChild) childSaw() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.saw
 }
 
-// park runs the parent until it waits for the child's approval and returns the
-// parent's run, its bridged approval and the child's run.
-func (b *bridgedChild) park(t *testing.T) (core.Run, core.Approval, string) {
+// lastParentRequest is the newest model request of the parent.
+func (b *askingChild) lastParentRequest() providers.Request {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.requests[len(b.requests)-1]
+}
+
+// start runs the parent in the background until its child asks for approval
+// and returns the parent's run, the child's approval, the task and the channel
+// ExecuteRun of the parent returns on.
+func (b *askingChild) start(t *testing.T, name string) (core.Run, core.Approval, core.Task, chan error) {
 	t.Helper()
-	session, run := saveCrashRecoveryRun(t, b.db, "bridge-parent", core.RunStatusAccepted, false)
-	if err := b.app.ExecuteRun(context.Background(), run.ID); err != nil {
-		t.Fatal(err)
-	}
-	assertRecoveryRunStatus(t, b.db, run.ID, core.RunStatusWaitingApproval)
-	bridge := pendingApprovalFor(t, b.db, session.ID, "call-delegate")
-	task, err := b.db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-delegate")
+	session, run := saveCrashRecoveryRun(t, b.db, name, core.RunStatusAccepted, false)
+	done := make(chan error, 1)
+	go func() { done <- b.app.ExecuteRun(context.Background(), run.ID) }()
+	approval := waitPendingApproval(t, b.db, session.ID, "call-child-mutate")
+	task, err := taskOfCall(b.db, session.ID, run.ID, "call-delegate")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertRecoveryRunStatus(t, b.db, task.ChildRunID, core.RunStatusWaitingApproval)
-	return run, bridge, task.ChildRunID
+	waitRunStatus(t, b.db, task.ChildRunID, core.RunStatusWaitingApproval)
+	assertRecoveryRunStatus(t, b.db, run.ID, core.RunStatusRunning)
+	return run, approval, task, done
+}
+
+// finish waits for the parent's ExecuteRun to return and its runs to settle.
+func (b *askingChild) finish(t *testing.T, done chan error) {
+	t.Helper()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the parent did not return")
+	}
+	b.starter.wait(t)
 }
 
 func pendingApprovalFor(t *testing.T, db *store.SQLiteStore, sessionID string, callID string) core.Approval {
@@ -115,87 +146,68 @@ func storedToolResult(t *testing.T, db *store.SQLiteStore, sessionID string, cal
 	return ""
 }
 
-func TestGrantingABridgedApprovalBeforeTheChildResumes(t *testing.T) {
+func TestASubagentAsksTheUserWhileItsParentWaitsInItsCall(t *testing.T) {
 	t.Parallel()
-	starter := &recordingRunStarter{}
-	b := newBridgedChild(t, func(*core.Core) core.RunStarter { return starter })
-	parent, bridge, childRunID := b.park(t)
+	b := newAskingChild(t)
+	parent, approval, task, done := b.start(t, "ask-parent")
 
-	if _, err := b.app.ResolveApproval(context.Background(), bridge.ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
+	if approval.TaskID != task.ID || approval.AgentName != "Neo" || approval.SessionID != task.ChildSessionID || approval.RunID != task.ChildRunID || approval.ToolName != "mutate_state" {
+		t.Fatalf("child's approval = %+v, task = %+v", approval, task)
+	}
+	if stored, err := b.db.GetTask(context.Background(), task.ID); err != nil || stored.Status != core.TaskStatusWaitingApproval {
+		t.Fatalf("task = %+v, %v", stored, err)
+	}
+	if _, err := b.app.ResolveApproval(context.Background(), approval.ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
 		t.Fatalf("ResolveApproval: %v", err)
 	}
-	if got := starter.count(childRunID); got != 1 {
-		t.Fatalf("child schedules = %d, want 1", got)
-	}
-	if err := b.app.ExecuteRun(context.Background(), childRunID); err != nil {
-		t.Fatal(err)
-	}
-	if err := b.app.ExecuteRun(context.Background(), parent.ID); err != nil {
-		t.Fatal(err)
-	}
+	b.finish(t, done)
 
 	assertRecoveryRunStatus(t, b.db, parent.ID, core.RunStatusCompleted)
-	if b.mutations != 1 || b.childSaw() != "mutated" {
-		t.Fatalf("mutations = %d, child saw %q", b.mutations, b.childSaw())
+	if b.mutations.Load() != 1 || b.childSaw() != "mutated" {
+		t.Fatalf("mutations = %d, child saw %q", b.mutations.Load(), b.childSaw())
+	}
+	if got := storedToolResult(t, b.db, parent.SessionID, "call-delegate"); got != "Child read: mutated" {
+		t.Fatalf("delegate result = %q", got)
+	}
+	if stored, err := b.db.GetTask(context.Background(), task.ID); err != nil || stored.Status != core.TaskStatusCompleted || stored.DeliveredAt == nil {
+		t.Fatalf("task = %+v, %v", stored, err)
 	}
 }
 
-func TestDeniedBridgedApprovalLetsTheChildGoOn(t *testing.T) {
+func TestDeniedSubagentApprovalLetsTheChildGoOn(t *testing.T) {
 	t.Parallel()
-	var starter *executingRunStarter
-	b := newBridgedChild(t, func(app *core.Core) core.RunStarter {
-		starter = &executingRunStarter{app: app}
-		return starter
-	})
-	parent, bridge, childRunID := b.park(t)
+	b := newAskingChild(t)
+	parent, approval, task, done := b.start(t, "deny-parent")
 
-	if _, err := b.app.ResolveApproval(context.Background(), bridge.ID, core.ApprovalResolveRequest{Reason: "not in the shared tree"}); err != nil {
+	if _, err := b.app.ResolveApproval(context.Background(), approval.ID, core.ApprovalResolveRequest{Reason: "not in the shared tree"}); err != nil {
 		t.Fatalf("ResolveApproval: %v", err)
 	}
-	waitForRecoveryRunStatus(t, b.db, parent.ID, core.RunStatusCompleted)
-	starter.wait(t)
+	b.finish(t, done)
 
-	assertRecoveryRunStatus(t, b.db, childRunID, core.RunStatusCompleted)
-	if b.mutations != 0 || b.childSaw() != "User denied: not in the shared tree" {
-		t.Fatalf("mutations = %d, child saw %q", b.mutations, b.childSaw())
+	assertRecoveryRunStatus(t, b.db, parent.ID, core.RunStatusCompleted)
+	assertRecoveryRunStatus(t, b.db, task.ChildRunID, core.RunStatusCompleted)
+	if b.mutations.Load() != 0 || b.childSaw() != "User denied: not in the shared tree" {
+		t.Fatalf("mutations = %d, child saw %q", b.mutations.Load(), b.childSaw())
 	}
-	task, err := b.db.GetSubagentTaskByParentToolCall(context.Background(), parent.SessionID, parent.ID, "call-delegate")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertTaskStatus(t, task, core.TaskStatusCompleted)
-	for _, message := range sessionMessages(t, b.db, parent.SessionID) {
-		for _, part := range message.Parts {
-			if part.ToolResult != nil && part.ToolResult.ToolCallID == "call-delegate" && part.ToolResult.Content != "Child read: User denied: not in the shared tree" {
-				t.Fatalf("delegate result = %q", part.ToolResult.Content)
-			}
-		}
+	if got := storedToolResult(t, b.db, parent.SessionID, "call-delegate"); got != "Child read: User denied: not in the shared tree" {
+		t.Fatalf("delegate result = %q", got)
 	}
 }
 
-func TestAlwaysAllowOnABridgedApprovalKeepsTheRuleForTheParent(t *testing.T) {
+func TestAlwaysAllowOnASubagentApprovalKeepsTheRuleForTheParent(t *testing.T) {
 	t.Parallel()
-	var starter *executingRunStarter
-	b := newBridgedChild(t, func(app *core.Core) core.RunStarter {
-		starter = &executingRunStarter{app: app}
-		return starter
-	})
-	parent, bridge, childRunID := b.park(t)
-	if bridge.Suggestion == nil || bridge.Suggestion.String() != "mutate_state" {
-		t.Fatalf("bridged suggestion = %+v", bridge.Suggestion)
+	b := newAskingChild(t)
+	parent, approval, task, done := b.start(t, "always-parent")
+	if approval.Suggestion == nil || approval.Suggestion.String() != "mutate_state" {
+		t.Fatalf("suggestion = %+v", approval.Suggestion)
 	}
 
-	if _, err := b.app.ResolveApproval(context.Background(), bridge.ID, core.ApprovalResolveRequest{Approved: true, Always: permission.ScopeSession}); err != nil {
+	if _, err := b.app.ResolveApproval(context.Background(), approval.ID, core.ApprovalResolveRequest{Approved: true, Always: permission.ScopeSession}); err != nil {
 		t.Fatal(err)
 	}
-	waitForRecoveryRunStatus(t, b.db, parent.ID, core.RunStatusCompleted)
-	starter.wait(t)
+	b.finish(t, done)
 
-	child, err := b.db.GetRun(context.Background(), childRunID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	rules, err := b.db.ListPermissionRules(context.Background(), []string{child.SessionID})
+	rules, err := b.db.ListPermissionRules(context.Background(), []string{task.ChildSessionID})
 	if err != nil || len(rules) != 0 {
 		t.Fatalf("child rules = %+v err = %v", rules, err)
 	}
@@ -203,48 +215,39 @@ func TestAlwaysAllowOnABridgedApprovalKeepsTheRuleForTheParent(t *testing.T) {
 	if err != nil || len(rules) != 1 || rules[0].String() != "mutate_state" || rules[0].SessionID != parent.SessionID {
 		t.Fatalf("parent rules = %+v err = %v", rules, err)
 	}
-	if b.mutations != 1 {
-		t.Fatalf("mutations = %d", b.mutations)
+	if b.mutations.Load() != 1 {
+		t.Fatalf("mutations = %d", b.mutations.Load())
 	}
 }
 
 func TestParentWaitsForItsChildAfterEveryApprovalIsDecided(t *testing.T) {
 	t.Parallel()
-	for _, bridgedFirst := range []bool{true, false} {
-		t.Run(map[bool]string{true: "bridged first", false: "read first"}[bridgedFirst], func(t *testing.T) {
-			starter := &recordingRunStarter{}
-			b := newBridgedChild(t, func(*core.Core) core.RunStarter { return starter }, providers.ToolCall{ID: "call-ask", Name: "ask_read", Arguments: []byte(`{}`)})
-			parent, bridge, childRunID := b.park(t)
-			order := []string{bridge.ID, pendingApprovalFor(t, b.db, parent.SessionID, "call-ask").ID}
-			if !bridgedFirst {
+	for _, childFirst := range []bool{true, false} {
+		t.Run(map[bool]string{true: "child first", false: "parent first"}[childFirst], func(t *testing.T) {
+			t.Parallel()
+			b := newAskingChild(t, providers.ToolCall{ID: "call-ask", Name: "ask_read", Arguments: []byte(`{}`)})
+			parent, child, task, done := b.start(t, "both-ask")
+			order := []string{child.ID, pendingApprovalFor(t, b.db, parent.SessionID, "call-ask").ID}
+			if !childFirst {
 				slices.Reverse(order)
 			}
 
-			for _, id := range order {
-				if _, err := b.app.ResolveApproval(context.Background(), id, core.ApprovalResolveRequest{Approved: true}); err != nil {
-					t.Fatalf("ResolveApproval(%s): %v", id, err)
-				}
-			}
-			if got := starter.count(parent.ID); got != 0 {
-				t.Fatalf("parent scheduled %d times while its child still works", got)
-			}
-			assertRecoveryRunStatus(t, b.db, parent.ID, core.RunStatusWaitingApproval)
-
-			if err := b.app.ExecuteRun(context.Background(), childRunID); err != nil {
+			if _, err := b.app.ResolveApproval(context.Background(), order[0], core.ApprovalResolveRequest{Approved: true}); err != nil {
 				t.Fatal(err)
 			}
-			deadline := time.Now().Add(5 * time.Second)
-			for starter.count(parent.ID) == 0 {
-				if time.Now().After(deadline) {
-					t.Fatal("parent not scheduled after its child finished")
-				}
-				time.Sleep(10 * time.Millisecond)
+			if !childFirst {
+				assertRecoveryRunStatus(t, b.db, parent.ID, core.RunStatusRunning)
 			}
-			if err := b.app.ExecuteRun(context.Background(), parent.ID); err != nil {
+			if _, err := b.app.ResolveApproval(context.Background(), order[1], core.ApprovalResolveRequest{Approved: true}); err != nil {
 				t.Fatal(err)
 			}
+			if !childFirst {
+				b.finish(t, done)
+			}
+			waitRunStatus(t, b.db, parent.ID, core.RunStatusCompleted)
+			b.starter.wait(t)
 
-			assertRecoveryRunStatus(t, b.db, parent.ID, core.RunStatusCompleted)
+			assertRecoveryRunStatus(t, b.db, task.ChildRunID, core.RunStatusCompleted)
 			if got := storedToolResult(t, b.db, parent.SessionID, "call-delegate"); got != "Child read: mutated" {
 				t.Fatalf("delegate result = %q", got)
 			}
@@ -257,13 +260,9 @@ func TestParentWaitsForItsChildAfterEveryApprovalIsDecided(t *testing.T) {
 
 func TestChildApprovalDecidedWhileTheChildParksKeepsTheParentWaiting(t *testing.T) {
 	t.Parallel()
-	var starter *executingRunStarter
-	b := newBridgedChild(t, func(app *core.Core) core.RunStarter {
-		starter = &executingRunStarter{app: app}
-		return starter
-	})
+	b := newAskingChild(t)
 	b.parking.beforePark = func() {
-		task, err := b.db.GetSubagentTaskByParentToolCall(context.Background(), "session_bridge-race", "run_bridge-race", "call-delegate")
+		task, err := taskOfCall(b.db, "session_park-race", "run_park-race", "call-delegate")
 		if err != nil {
 			t.Errorf("subagent task: %v", err)
 			return
@@ -273,16 +272,86 @@ func TestChildApprovalDecidedWhileTheChildParksKeepsTheParentWaiting(t *testing.
 			t.Errorf("ResolveApproval: %v", err)
 		}
 	}
-	session, run := saveCrashRecoveryRun(t, b.db, "bridge-race", core.RunStatusAccepted, false)
+	session, run := saveCrashRecoveryRun(t, b.db, "park-race", core.RunStatusAccepted, false)
 
 	if err := b.app.ExecuteRun(context.Background(), run.ID); err != nil {
 		t.Fatal(err)
 	}
-	starter.wait(t)
+	b.starter.wait(t)
 
 	assertRecoveryRunStatus(t, b.db, run.ID, core.RunStatusCompleted)
 	if got := storedToolResult(t, b.db, session.ID, "call-delegate"); got != "Child read: mutated" {
 		t.Fatalf("delegate result = %q", got)
+	}
+}
+
+func TestMessagesToAParentWaitingForItsChildSteerOrQueueAsUsual(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []core.BusyInputMode{core.BusyInputModeSteer, core.BusyInputModeQueue} {
+		t.Run(string(mode), func(t *testing.T) {
+			t.Parallel()
+			b := newAskingChild(t)
+			parent, approval, _, done := b.start(t, "busy-"+string(mode))
+
+			accepted, err := b.app.AcceptRun(context.Background(), core.HandleMessageInput{SessionID: parent.SessionID, Text: "also check the logs", BusyMode: mode})
+			if err != nil || accepted.Input == nil || accepted.Input.Mode != mode {
+				t.Fatalf("accepted = %+v, %v", accepted, err)
+			}
+			if _, err := b.app.ResolveApproval(context.Background(), approval.ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
+				t.Fatal(err)
+			}
+			b.finish(t, done)
+
+			switch mode {
+			case core.BusyInputModeSteer:
+				assertRecoveryRunStatus(t, b.db, parent.ID, core.RunStatusCompleted)
+				if got := toolResultContent(b.lastParentRequest(), "call-delegate"); !strings.Contains(got, "User guidance: also check the logs") {
+					t.Fatalf("delegate result the parent read = %q", got)
+				}
+			case core.BusyInputModeQueue:
+				runs, err := b.db.ListSessionRuns(context.Background(), parent.SessionID, 0)
+				if err != nil || len(runs) != 2 || runs[0].ID == parent.ID {
+					t.Fatalf("runs = %+v, %v; want the queued message's run after the parent", runs, err)
+				}
+				waitRunStatus(t, b.db, runs[0].ID, core.RunStatusCompleted)
+				b.starter.wait(t)
+			}
+		})
+	}
+}
+
+func TestCancelingAParentWaitingForItsChildEndsTheWaitAndTheChild(t *testing.T) {
+	t.Parallel()
+	b := newAskingChild(t)
+	parent, approval, task, done := b.start(t, "cancel-waiting")
+
+	if _, err := b.app.CancelRun(context.Background(), parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the parent kept waiting for its child after it was canceled")
+	}
+	b.starter.wait(t)
+
+	assertRecoveryRunStatus(t, b.db, parent.ID, core.RunStatusCanceled)
+	assertRecoveryRunStatus(t, b.db, task.ChildRunID, core.RunStatusCanceled)
+	if decided, err := b.db.GetApproval(context.Background(), approval.ID); err != nil || decided.State != core.ApprovalStateRejected {
+		t.Fatalf("child's approval = %+v, %v", decided, err)
+	}
+	if stored, err := b.db.GetTask(context.Background(), task.ID); err != nil || stored.Status != core.TaskStatusCanceled || stored.DeliveredAt == nil {
+		t.Fatalf("task = %+v, %v", stored, err)
+	}
+	// The call ends canceled, or with its child's end when that came first.
+	if got := storedToolResult(t, b.db, parent.SessionID, "call-delegate"); got != "Canceled by user." && got != "Subagent canceled with its parent run." {
+		t.Fatalf("delegate result = %q", got)
+	}
+	if b.mutations.Load() != 0 {
+		t.Fatalf("mutations = %d", b.mutations.Load())
 	}
 }
 
@@ -345,9 +414,9 @@ func TestParentAwaitingABackgroundChildWakesAfterTheChildsApproval(t *testing.T)
 	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusWaitingEvents)
 	close(parked)
 
-	bridge := waitPendingApproval(t, db, session.ID, "call-spawn")
+	approval := waitPendingApproval(t, db, session.ID, "call-child-mutate")
 	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusWaitingEvents)
-	if _, err := app.ResolveApproval(context.Background(), bridge.ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
+	if _, err := app.ResolveApproval(context.Background(), approval.ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -358,29 +427,6 @@ func TestParentAwaitingABackgroundChildWakesAfterTheChildsApproval(t *testing.T)
 	}
 	if _, err := db.GetRunWakeup(context.Background(), run.ID); err != core.ErrNotFound {
 		t.Fatalf("wakeup after the run completed: %v", err)
-	}
-}
-
-func TestRunLeftWaitingForApprovalWithAWakeupResumesOnItsTimer(t *testing.T) {
-	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
-	defer cleanup()
-	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
-	session, run := saveCrashRecoveryRun(t, db, "stale-wakeup", core.RunStatusWaitingApproval, false)
-	if err := db.SaveRunWakeup(context.Background(), core.RunWakeup{RunID: run.ID, SessionID: session.ID, WakeAt: time.Now().UTC().Add(-time.Second)}); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := app.WakeDueRuns(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-
-	if got := starter.count(run.ID); got != 1 {
-		t.Fatalf("run starts = %d, want 1", got)
-	}
-	if _, err := db.GetRunWakeup(context.Background(), run.ID); err != core.ErrNotFound {
-		t.Fatalf("wakeup = %v", err)
 	}
 }
 
@@ -414,8 +460,8 @@ func TestStoppingABackgroundChildParkedOnApprovalEndsIt(t *testing.T) {
 	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
 		t.Fatal(err)
 	}
-	bridge := waitPendingApproval(t, db, session.ID, "call-spawn")
-	task, err := db.GetSubagentTaskByParentToolCall(context.Background(), session.ID, run.ID, "call-spawn")
+	approval := waitPendingApproval(t, db, session.ID, "call-child-mutate")
+	task, err := taskOfCall(db, session.ID, run.ID, "call-spawn")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -429,8 +475,8 @@ func TestStoppingABackgroundChildParkedOnApprovalEndsIt(t *testing.T) {
 	if stopped.Status != core.TaskStatusCanceled || stopped.FinishedAt == nil {
 		t.Fatalf("stopped task = %+v", stopped)
 	}
-	if decided, err := db.GetApproval(context.Background(), bridge.ID); err != nil || decided.State != core.ApprovalStateRejected {
-		t.Fatalf("parent's copy of the child's approval = %+v, %v", decided, err)
+	if decided, err := db.GetApproval(context.Background(), approval.ID); err != nil || decided.State != core.ApprovalStateRejected {
+		t.Fatalf("child's approval = %+v, %v", decided, err)
 	}
 	waitRunStatus(t, db, run.ID, core.RunStatusCompleted)
 	starter.wait(t)
@@ -483,7 +529,7 @@ func TestBackgroundChildsApprovalGoesToTheChatTheSessionAnswersIn(t *testing.T) 
 	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
 	close(parentDone)
 
-	bridge := waitPendingApproval(t, db, session.ID, "call-spawn")
+	approval := waitPendingApproval(t, db, session.ID, "call-child-mutate")
 	var deliveries []core.ClientDelivery
 	for deadline := time.Now().Add(5 * time.Second); len(deliveries) == 0 && time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
 		var err error
@@ -496,13 +542,16 @@ func TestBackgroundChildsApprovalGoesToTheChatTheSessionAnswersIn(t *testing.T) 
 	}
 	var payload core.ApprovalDeliveryPayload
 	delivery := deliveries[0]
-	if err := json.Unmarshal(delivery.Payload, &payload); err != nil || payload.ApprovalID != bridge.ID {
+	if err := json.Unmarshal(delivery.Payload, &payload); err != nil || payload.ApprovalID != approval.ID {
 		t.Fatalf("payload = %s, %v", delivery.Payload, err)
 	}
 	if delivery.Client != "telegram" || delivery.ExternalKey != "42" || delivery.SessionID != session.ID || string(delivery.Address) != string(address) || delivery.Status != core.ClientDeliveryStatusPending {
 		t.Fatalf("delivery = %+v", delivery)
 	}
-	if _, err := app.ResolveApproval(context.Background(), bridge.ID, core.ApprovalResolveRequest{}); err != nil {
+	if delivery.RunID != run.ID || delivery.TaskID == "" {
+		t.Fatalf("delivery = %+v, want the parent's run and the child's task", delivery)
+	}
+	if _, err := app.ResolveApproval(context.Background(), approval.ID, core.ApprovalResolveRequest{}); err != nil {
 		t.Fatal(err)
 	}
 	starter.wait(t)

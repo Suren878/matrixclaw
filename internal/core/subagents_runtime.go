@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -52,7 +51,7 @@ func (c *Core) createSubagentSession(ctx context.Context, parent Session, runtim
 // assignSubagentAgentName picks a name no child of the parent has, nor any of
 // the children it is starting.
 func (c *Core) assignSubagentAgentName(ctx context.Context, parentSessionID string, starting map[string]bool) (string, error) {
-	tasks, err := c.store.ListSubagentTasks(ctx, SubagentTaskFilter{ParentSessionID: strings.TrimSpace(parentSessionID)})
+	tasks, err := c.store.ListTasks(ctx, TaskFilter{SessionID: parentSessionID, Kind: TaskKindSubagent})
 	if err != nil {
 		return "", err
 	}
@@ -80,11 +79,11 @@ func (c *Core) assignSubagentAgentName(ctx context.Context, parentSessionID stri
 	}
 }
 
-func subagentTaskAgentName(task SubagentTask) string {
+func subagentTaskAgentName(task Task) string {
 	if name := strings.Join(strings.Fields(task.AgentName), " "); name != "" {
 		return name
 	}
-	if name := strings.Join(strings.Fields(task.DisplayName), " "); name != "" {
+	if name := strings.Join(strings.Fields(task.Description), " "); name != "" {
 		return name
 	}
 	if id := strings.TrimSpace(task.ID); id != "" {
@@ -98,25 +97,20 @@ func (c *Core) createSubagentRun(ctx context.Context, session Session, prompt st
 	return result.Run, err
 }
 
-func (c *Core) subagentRunSummary(ctx context.Context, sessionID string, runID string, execErr error) (string, bool) {
-	if execErr != nil {
-		return "Subagent failed: " + execErr.Error(), true
-	}
-	run, err := c.store.GetRun(ctx, runID)
-	if err != nil {
-		return "Subagent failed: " + err.Error(), true
-	}
+// subagentRunSummary is what an ended child's run tells its parent, and
+// whether the child failed.
+func (c *Core) subagentRunSummary(ctx context.Context, run Run) (string, bool) {
 	if run.Status == RunStatusFailed || run.Status == RunStatusCanceled {
-		if strings.TrimSpace(run.Error) != "" {
-			return "Subagent failed: " + strings.TrimSpace(run.Error), true
+		if text := strings.TrimSpace(run.Error); text != "" {
+			return "Subagent failed: " + text, true
 		}
 		return "Subagent failed with status " + string(run.Status) + ".", true
 	}
-	messages, err := c.store.ListRunMessages(ctx, sessionID, runID)
+	messages, err := c.store.ListRunMessages(ctx, run.SessionID, run.ID)
 	if err != nil {
 		return "Subagent failed: " + err.Error(), true
 	}
-	summary := transcript.RunReply(messages, runID)
+	summary := transcript.RunReply(messages, run.ID)
 	if run.StopReason.Continuable() {
 		if summary == "" {
 			summary = "none"
@@ -131,13 +125,4 @@ func (c *Core) subagentRunSummary(ctx context.Context, sessionID string, runID s
 
 func isSubagentSession(session Session) bool {
 	return strings.TrimSpace(session.ParentSessionID) != "" || session.Hidden
-}
-
-// readonlySubagent reports whether the child session was started read-only.
-func (c *Core) readonlySubagent(ctx context.Context, sessionID string) (bool, error) {
-	task, err := c.store.GetSubagentTaskByChildSession(ctx, sessionID)
-	if errors.Is(err, ErrNotFound) {
-		return false, nil
-	}
-	return task.Readonly, err
 }

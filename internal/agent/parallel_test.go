@@ -268,8 +268,8 @@ func stoppedBatch(t *testing.T, canceled bool) (*agenttest.Fixture, agent.Outcom
 	f.Tools.Funcs["read"] = readTool
 	f.Tools.Funcs["wait"] = func(tools.Call) tools.Result { return tools.Result{Content: "waited"} }
 	f.Tools.Mutating = map[string]bool{"wait": true}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
 	f.Tools.OnExecute = func(ctx context.Context, name string, _ tools.Call) error {
 		if name == "wait" {
 			<-ctx.Done()
@@ -279,8 +279,7 @@ func stoppedBatch(t *testing.T, canceled bool) (*agenttest.Fixture, agent.Outcom
 	}
 	f.Journal.OnAppend = func(message transcript.Message) error {
 		if message.Role == transcript.MessageRoleTool && message.Parts[0].ToolResult.ToolCallID == "r1" {
-			f.Inbox.Cancel = canceled
-			cancel()
+			cancel(stopCause(canceled))
 		}
 		return nil
 	}
@@ -296,7 +295,7 @@ func stoppedBatch(t *testing.T, canceled bool) (*agenttest.Fixture, agent.Outcom
 func TestCanceledBatchKeepsFinishedResultsAndCancelsTheRest(t *testing.T) {
 	f, outcome := stoppedBatch(t, true)
 
-	if outcome.Status != agent.StatusInterrupted {
+	if outcome.Status != agent.StatusCanceled {
 		t.Fatalf("outcome = %+v", outcome)
 	}
 	want := map[string]string{"r1": "file body", "w2": "Canceled by user.", "r3": "Canceled by user."}
@@ -347,17 +346,16 @@ func TestCanceledBatchAnswersAnAskedCallBeforeARunningOne(t *testing.T) {
 		}
 		return nil
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
 	f.Approvals.OnRequest = func(agent.Pending) error {
-		f.Inbox.Cancel = true
-		cancel()
+		cancel(agent.ErrCanceled)
 		return nil
 	}
 	model := agenttest.NewScriptedModel(calls(call("l1", "lookup"), call("w2", "wait")))
 
 	outcome, err := f.Engine().Run(ctx, f.Task(model))
-	if err != nil || outcome.Status != agent.StatusInterrupted {
+	if err != nil || outcome.Status != agent.StatusCanceled {
 		t.Fatalf("outcome = %+v err = %v", outcome, err)
 	}
 	for _, id := range []string{"l1", "w2"} {
@@ -424,4 +422,12 @@ func TestFailedBatchKeepsFinishedResultsAndAnswersTheRest(t *testing.T) {
 			}
 		}
 	})
+}
+
+// stopCause is how a test stops a run: canceled by the user or interrupted.
+func stopCause(canceled bool) error {
+	if canceled {
+		return agent.ErrCanceled
+	}
+	return context.Canceled
 }

@@ -7,7 +7,6 @@ import (
 	mcpbridge "github.com/Suren878/matrixclaw/internal/mcp"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/tools"
-	"github.com/Suren878/matrixclaw/internal/webresearch"
 )
 
 type Module struct {
@@ -34,13 +33,6 @@ func (m *Module) Context() string {
 		return ""
 	}
 	return m.client.Context()
-}
-
-func (m *Module) Browser() webresearch.Browser {
-	if m == nil || m.client == nil {
-		return nil
-	}
-	return m.client.Browser()
 }
 
 func (m *Module) Close() error {
