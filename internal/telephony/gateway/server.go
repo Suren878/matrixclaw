@@ -33,6 +33,9 @@ func Run(ctx context.Context, cfg Config) error {
 		safego.Go("telephony.cleanupStaleARIOnReady", func() { s.cleanupStaleARIOnReady(ctx) })
 	}
 	if cfg.InboundEnabled {
+		if len(cfg.InboundAllowed) == 0 {
+			log.Printf("matrixclaw telephony gateway: inbound calls are on but MATRIXCLAW_TELEPHONY_INBOUND_ALLOWED_CALLERS is empty; every caller is rejected")
+		}
 		safego.Go("telephony.inboundListener", func() { s.runInboundListener(ctx) })
 	}
 	httpServer := &http.Server{

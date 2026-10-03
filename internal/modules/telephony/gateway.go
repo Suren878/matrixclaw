@@ -76,8 +76,8 @@ func (g *gateway) EndCall(ctx context.Context, callID string) error {
 
 // gatewayHealth is the gateway's own view of its readiness.
 type gatewayHealth struct {
-	Status string `json:"status"`
-	Error  string `json:"error"`
+	Ready bool   `json:"ready"`
+	Error string `json:"error"`
 }
 
 func (g *gateway) Health(ctx context.Context) (gatewayHealth, error) {

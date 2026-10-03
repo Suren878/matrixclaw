@@ -44,8 +44,6 @@ type Config struct {
 	InboundGreeting  string
 	InboundPrompt    string
 	InboundAllowed   map[string]struct{}
-	PhonePrompt      string
-	AssistantName    string
 	RecordCalls      bool
 	RecordingDir     string
 	RecordingFormat  string
@@ -76,8 +74,6 @@ func ConfigFromEnv() Config {
 		InboundGreeting:  env("MATRIXCLAW_TELEPHONY_INBOUND_GREETING", "Здравствуйте."),
 		InboundPrompt:    strings.TrimSpace(os.Getenv("MATRIXCLAW_TELEPHONY_INBOUND_PROMPT")),
 		InboundAllowed:   allowedPhoneSet(os.Getenv("MATRIXCLAW_TELEPHONY_INBOUND_ALLOWED_CALLERS")),
-		PhonePrompt:      strings.TrimSpace(os.Getenv("MATRIXCLAW_TELEPHONY_PHONE_PROMPT")),
-		AssistantName:    strings.TrimSpace(os.Getenv("MATRIXCLAW_TELEPHONY_ASSISTANT_NAME")),
 		RecordCalls:      boolEnv("MATRIXCLAW_TELEPHONY_RECORD_CALLS", true),
 		RecordingDir:     env("MATRIXCLAW_TELEPHONY_RECORDING_DIR", defaultRecordingDir()),
 		RecordingFormat:  normalizeRecordingFormat(env("MATRIXCLAW_TELEPHONY_RECORDING_FORMAT", defaultRecordingFormat)),
@@ -89,10 +85,8 @@ func ConfigFromEnv() Config {
 	}
 }
 
+// InboundCallerAllowed admits only listed callers; with no list, none.
 func (c Config) InboundCallerAllowed(caller string) bool {
-	if len(c.InboundAllowed) == 0 {
-		return true
-	}
 	_, ok := c.InboundAllowed[phone.Normalize(caller)]
 	return ok
 }

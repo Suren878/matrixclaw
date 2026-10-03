@@ -53,7 +53,7 @@ func (m *Manager) ServeStream(ctx context.Context, sessionID string, stream Stre
 	defer func() { _ = stream.Close(nil) }()
 
 	session.mu.Lock()
-	instruction := spec.Instructions(cfg.Instructions, session.systemInstruction, info.Language)
+	instruction := spec.Instructions(cfg.instructions(info.Client), session.systemInstruction, info.Language)
 	session.mu.Unlock()
 	conn, err := connect(streamCtx, spec, cfg.provider(spec), ProviderConnectRequest{
 		VoiceSessionID:    info.ID,

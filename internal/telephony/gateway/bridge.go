@@ -20,13 +20,10 @@ func (s *Server) connectRealtime(ctx context.Context, call *Call, req createCall
 		ExternalKey: firstNonEmpty(req.ExternalKey, snapshot.ID),
 		SessionID:   strings.TrimSpace(req.SessionID),
 		SystemInstruction: phoneSystemInstruction(phonePromptInput{
-			AssistantName:      firstNonEmpty(req.AssistantName, s.cfg.AssistantName),
-			CallID:             snapshot.ID,
-			OpeningPhrase:      req.InitialMessage,
-			PhonePrompt:        firstNonEmpty(req.PhonePrompt, s.cfg.PhonePrompt),
-			CustomInstructions: req.AssistantCustomInstructions,
-			Objective:          firstNonEmpty(req.SystemInstruction, req.Objective),
-			Direction:          snapshot.Direction,
+			CallID:        snapshot.ID,
+			OpeningPhrase: req.InitialMessage,
+			Objective:     firstNonEmpty(req.SystemInstruction, req.Objective),
+			Direction:     snapshot.Direction,
 		}),
 	})
 	if err != nil {

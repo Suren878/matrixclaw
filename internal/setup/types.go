@@ -245,6 +245,7 @@ type TelephonyModuleDescriptor struct {
 	ID               string          `json:"id"`
 	Title            string          `json:"title"`
 	Enabled          bool            `json:"enabled"`
+	Ready            bool            `json:"ready"`
 	Status           string          `json:"status"`
 	GatewayURL       string          `json:"gateway_url,omitempty"`
 	GatewayReachable bool            `json:"gateway_reachable,omitempty"`

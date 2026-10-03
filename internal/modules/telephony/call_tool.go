@@ -75,19 +75,16 @@ func (t *callTool) Execute(ctx context.Context, call tools.Call) (tools.Result, 
 	}
 	telephonyCfg := cfg.Modules.Telephony
 	placed, err := gw.PlaceCall(ctx, map[string]any{
-		"to":                            input.To,
-		"profile":                       firstNonEmpty(input.Profile, telephonyCfg.DefaultProfile),
-		"objective":                     input.Objective,
-		"system_instruction":            input.SystemInstruction,
-		"initial_message":               input.InitialMessage,
-		"external_key":                  firstNonEmpty(call.ExternalKey, input.To),
-		"session_id":                    call.SessionID,
-		"origin_client":                 call.Client,
-		"origin_external_key":           call.ExternalKey,
-		"origin_session_id":             call.SessionID,
-		"phone_prompt":                  telephonyCfg.PhonePrompt,
-		"assistant_name":                cfg.Assistant.NameOrDefault(),
-		"assistant_custom_instructions": cfg.Assistant.CustomInstructions,
+		"to":                  input.To,
+		"profile":             firstNonEmpty(input.Profile, telephonyCfg.DefaultProfile),
+		"objective":           input.Objective,
+		"system_instruction":  input.SystemInstruction,
+		"initial_message":     input.InitialMessage,
+		"external_key":        firstNonEmpty(call.ExternalKey, input.To),
+		"session_id":          call.SessionID,
+		"origin_client":       call.Client,
+		"origin_external_key": call.ExternalKey,
+		"origin_session_id":   call.SessionID,
 	})
 	if err != nil {
 		return tools.Result{Content: fmt.Sprintf("Telephony call failed: %s", err), IsError: true, Status: tools.ResultStatusError}, nil

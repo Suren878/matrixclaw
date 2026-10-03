@@ -76,17 +76,17 @@ func TestToolsTalkToTheGateway(t *testing.T) {
 }
 
 func TestDescriptorProbesTheGateway(t *testing.T) {
-	status := `{"status":"ready"}`
+	status := `{"ready":true}`
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(status))
 	}))
 	defer server.Close()
 	m := applied(t, setup.TelephonyConfig{Enabled: true, GatewayURL: server.URL})
-	if module := m.Descriptor(context.Background()); !module.GatewayReachable || module.Status != "Ready" {
+	if module := m.Descriptor(context.Background()); !module.GatewayReachable || !module.Ready || module.Status != "Ready" {
 		t.Fatalf("module = %+v", module)
 	}
-	status = `{"status":"not_ready","error":"ARI down"}`
-	if module := m.Descriptor(context.Background()); !module.GatewayReachable || module.Status != "Gateway degraded" {
+	status = `{"ready":false,"error":"ARI down"}`
+	if module := m.Descriptor(context.Background()); !module.GatewayReachable || module.Ready || module.Status != "Gateway degraded" {
 		t.Fatalf("module = %+v", module)
 	}
 	server.Close()

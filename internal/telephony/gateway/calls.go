@@ -55,20 +55,17 @@ type CallSnapshot struct {
 }
 
 type createCallRequest struct {
-	To                          string `json:"to"`
-	Profile                     string `json:"profile,omitempty"`
-	Objective                   string `json:"objective,omitempty"`
-	SystemInstruction           string `json:"system_instruction,omitempty"`
-	InitialMessage              string `json:"initial_message,omitempty"`
-	AssistantName               string `json:"assistant_name,omitempty"`
-	ExternalKey                 string `json:"external_key,omitempty"`
-	SessionID                   string `json:"session_id,omitempty"`
-	OriginClient                string `json:"origin_client,omitempty"`
-	OriginExternalKey           string `json:"origin_external_key,omitempty"`
-	OriginSessionID             string `json:"origin_session_id,omitempty"`
-	PhonePrompt                 string `json:"phone_prompt,omitempty"`
-	AssistantCustomInstructions string `json:"assistant_custom_instructions,omitempty"`
-	PostCallReport              *bool  `json:"post_call_report,omitempty"`
+	To                string `json:"to"`
+	Profile           string `json:"profile,omitempty"`
+	Objective         string `json:"objective,omitempty"`
+	SystemInstruction string `json:"system_instruction,omitempty"`
+	InitialMessage    string `json:"initial_message,omitempty"`
+	ExternalKey       string `json:"external_key,omitempty"`
+	SessionID         string `json:"session_id,omitempty"`
+	OriginClient      string `json:"origin_client,omitempty"`
+	OriginExternalKey string `json:"origin_external_key,omitempty"`
+	OriginSessionID   string `json:"origin_session_id,omitempty"`
+	PostCallReport    *bool  `json:"post_call_report,omitempty"`
 }
 
 type CallTranscriptTurn struct {

@@ -2,21 +2,20 @@ package gateway
 
 import "strings"
 
+// phonePromptInput is the call's part of the phone instructions; the daemon
+// adds the assistant's identity and the configured phone prompt.
 type phonePromptInput struct {
-	AssistantName      string
-	CallID             string
-	OpeningPhrase      string
-	PhonePrompt        string
-	CustomInstructions string
-	Objective          string
-	Direction          string
+	CallID        string
+	OpeningPhrase string
+	Objective     string
+	Direction     string
 }
 
 func phoneSystemInstruction(input phonePromptInput) string {
 	sections := []string{strings.TrimSpace(`You are speaking on a live phone call through MatrixClaw telephony.
 
 Identity:
-- Your configured assistant name is provided below. If asked who you are, use exactly that name and do not invent another identity.
+- Your configured assistant name is given in the assistant identity. If asked who you are, use exactly that name and do not invent another identity.
 - If a user, owner, or client name is provided in the call objective, phone instructions, or user custom instructions, you may identify yourself as that person's assistant. Never invent this person name.
 - Do not mention internal systems, realtime audio, Gemini, Grok, Asterisk, SIP, RTP, call IDs, tools, or MatrixClaw unless the human explicitly asks about the technical system.
 
@@ -54,9 +53,6 @@ Ending the call:
 - To end the call, first say one short natural goodbye phrase, then call the telephony_end_call tool with the current call_id.
 - Do not say that you are calling a tool. Do not read out or mention the call_id.
 - Do not use telephony_call during an active phone conversation.`)}
-	if name := strings.TrimSpace(input.AssistantName); name != "" {
-		sections = append(sections, "Assistant name:\n"+name)
-	}
 	if callID := strings.TrimSpace(input.CallID); callID != "" {
 		sections = append(sections, "Current call_id for telephony_end_call:\n"+callID)
 	}
@@ -65,12 +61,6 @@ Ending the call:
 	}
 	if opening := strings.TrimSpace(input.OpeningPhrase); opening != "" {
 		sections = append(sections, "Preferred first assistant phrase after the first meaningful human utterance:\n"+opening)
-	}
-	if phonePrompt := strings.TrimSpace(input.PhonePrompt); phonePrompt != "" {
-		sections = append(sections, "Phone assistant instructions:\n"+phonePrompt)
-	}
-	if customInstructions := strings.TrimSpace(input.CustomInstructions); customInstructions != "" {
-		sections = append(sections, "User custom instructions:\n"+customInstructions)
 	}
 	if objective := strings.TrimSpace(input.Objective); objective != "" {
 		sections = append(sections, "Call objective:\n"+objective)

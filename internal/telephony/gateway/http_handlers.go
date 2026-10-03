@@ -32,32 +32,27 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-	status := "ready"
 	var problems []string
 	if s.cfg.ARIPassword == "" {
-		status = "not_ready"
 		problems = append(problems, "ARI password is required")
 	}
 	if s.cfg.MatrixclawToken == "" {
-		status = "not_ready"
 		problems = append(problems, "MatrixClaw API token is required")
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 1500*time.Millisecond)
 	defer cancel()
 	if s.cfg.ARIPassword != "" {
 		if err := s.ari.probe(ctx); err != nil {
-			status = "not_ready"
 			problems = append(problems, "ARI: "+err.Error())
 		}
 	}
 	if s.cfg.MatrixclawToken != "" {
 		if err := s.probeMatrixclaw(ctx); err != nil {
-			status = "not_ready"
 			problems = append(problems, "MatrixClaw: "+err.Error())
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":                 status,
+		"ready":                  len(problems) == 0,
 		"error":                  strings.Join(problems, "; "),
 		"ari_app":                s.cfg.ARIApp,
 		"profile":                s.cfg.SIPProfile,

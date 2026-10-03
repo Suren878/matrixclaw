@@ -93,14 +93,15 @@ func (m *Module) Descriptor(ctx context.Context) setup.TelephonyModuleDescriptor
 		if module.Enabled {
 			module.Status = "Gateway unreachable"
 		}
-	case !strings.EqualFold(strings.TrimSpace(health.Status), "ready"):
+	case !health.Ready:
 		module.GatewayReachable = true
-		module.GatewayError = "gateway status is " + firstNonEmpty(health.Status, health.Error, "not ready")
+		module.GatewayError = "gateway is not ready: " + firstNonEmpty(health.Error, "no reason given")
 		if module.Enabled {
 			module.Status = "Gateway degraded"
 		}
 	default:
 		module.GatewayReachable = true
+		module.Ready = module.Enabled
 		if module.Enabled {
 			module.Status = "Ready"
 		}

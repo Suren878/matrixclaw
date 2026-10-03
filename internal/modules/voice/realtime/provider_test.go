@@ -170,7 +170,7 @@ func TestApplyResolvesKeysInOrder(t *testing.T) {
 		t.Fatalf("key = %q, want the provider's env", got)
 	}
 	got := m.currentConfig()
-	if !got.Enabled || !strings.Contains(got.Instructions, `"Ava"`) {
+	if !got.Enabled || !strings.Contains(got.Identity, `"Ava"`) {
 		t.Fatalf("config = %+v", got)
 	}
 	effective := got.provider(langSpec)
@@ -244,5 +244,16 @@ func TestFunctionDeclarationsSanitizeSchemas(t *testing.T) {
 	typed := FunctionDeclarations(tools, true, true)[0]
 	if typed["type"] != "function" || typed["parameters"].(map[string]any)["additionalProperties"] != false {
 		t.Fatalf("typed = %v", typed)
+	}
+}
+
+func TestInstructionsAddThePhonePromptForCalls(t *testing.T) {
+	cfg := Config{Identity: "identity", CustomInstructions: "be kind", PhonePrompt: "phone rules"}
+	call := cfg.instructions("telephony")
+	if call != "identity\n\nPhone assistant instructions:\nphone rules\n\nUser custom instructions:\nbe kind" {
+		t.Fatalf("telephony instructions = %q", call)
+	}
+	if other := cfg.instructions("ios"); strings.Contains(other, "phone rules") || !strings.Contains(other, "be kind") {
+		t.Fatalf("other instructions = %q", other)
 	}
 }

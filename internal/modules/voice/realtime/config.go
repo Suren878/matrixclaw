@@ -29,9 +29,30 @@ type Config struct {
 	Enabled     bool
 	ProviderID  string
 	MaxSessions int // 0 means the default of 8
-	// Instructions come before every session's own: the assistant identity.
-	Instructions string
-	Providers    map[string]ProviderConfig
+	// Identity, the user's custom instructions and, for phone calls, the
+	// phone prompt come before every session's own instructions.
+	Identity           string
+	CustomInstructions string
+	PhonePrompt        string
+	Providers          map[string]ProviderConfig
+}
+
+// telephonyClient is the client name of the telephony gateway's sessions.
+const telephonyClient = "telephony"
+
+// instructions are the daemon's instructions for a session of client.
+func (c Config) instructions(client string) string {
+	parts := []string{}
+	if c.Identity != "" {
+		parts = append(parts, c.Identity)
+	}
+	if c.PhonePrompt != "" && strings.EqualFold(strings.TrimSpace(client), telephonyClient) {
+		parts = append(parts, "Phone assistant instructions:\n"+c.PhonePrompt)
+	}
+	if c.CustomInstructions != "" {
+		parts = append(parts, "User custom instructions:\n"+c.CustomInstructions)
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 // provider is spec's effective settings: stored values over its defaults.
@@ -50,10 +71,12 @@ func (c Config) provider(spec ProviderSpec) ProviderConfig {
 func (m *Manager) Apply(_ context.Context, cfg setup.Config) error {
 	module := cfg.Modules.RealtimeVoice
 	next := Config{
-		Enabled:      module.Enabled,
-		ProviderID:   normalizeID(module.ProviderID),
-		Instructions: assistantIdentity(cfg.Assistant.NameOrDefault()),
-		Providers:    map[string]ProviderConfig{},
+		Enabled:            module.Enabled,
+		ProviderID:         normalizeID(module.ProviderID),
+		Identity:           assistantIdentity(cfg.Assistant.NameOrDefault()),
+		CustomInstructions: strings.TrimSpace(cfg.Assistant.CustomInstructions),
+		PhonePrompt:        strings.TrimSpace(cfg.Modules.Telephony.PhonePrompt),
+		Providers:          map[string]ProviderConfig{},
 	}
 	for _, spec := range m.specs {
 		stored := module.Providers[spec.ID]

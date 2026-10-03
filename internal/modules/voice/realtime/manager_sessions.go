@@ -99,7 +99,7 @@ func (m *Manager) toolDeclarations(client string) []ToolDeclaration {
 	if m == nil || m.core == nil {
 		return nil
 	}
-	telephony := strings.EqualFold(strings.TrimSpace(client), "telephony")
+	telephony := strings.EqualFold(strings.TrimSpace(client), telephonyClient)
 	specs := m.core.ListToolSpecs()
 	out := make([]ToolDeclaration, 0, len(specs))
 	for _, spec := range specs {
