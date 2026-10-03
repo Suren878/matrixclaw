@@ -11,22 +11,22 @@ import (
 const orphanedRunError = "run was left running without an active executor; daemon restarted or the worker event stream was lost. Retry the task to start a fresh run"
 
 func (c *Core) failOrphanedRun(ctx context.Context, run Run) error {
-	return c.failRunByID(ctx, run, errors.New(orphanedRunError))
+	return c.failRun(ctx, run, errors.New(orphanedRunError))
 }
 
+// persistAssistantError seals the reply with the error and fails the run.
 func (c *Core) persistAssistantError(ctx context.Context, run Run, assistant *transcript.Message, assistantSaved bool, cause error) error {
-	if assistantSaved {
-		if updateErr := c.markAssistantErrored(ctx, assistant, cause); updateErr != nil {
-			return c.failRunByID(ctx, run, fmt.Errorf("%w (assistant update failed: %w)", cause, updateErr))
-		}
-	} else {
-		if saveErr := c.saveAssistantErrored(ctx, assistant, cause); saveErr != nil {
-			return c.failRunByID(ctx, run, fmt.Errorf("%w (assistant save failed: %w)", cause, saveErr))
+	if assistant != nil {
+		assistant.Parts = withFinishPart(assistant.Content, transcript.FinishReasonError, cause.Error())
+		if err := c.sealAssistant(ctx, assistant, assistantSaved); err != nil {
+			cause = fmt.Errorf("%w (assistant save failed: %w)", cause, err)
 		}
 	}
-	return c.failRunByID(ctx, run, cause)
+	return c.failRun(ctx, run, cause)
 }
 
+// setRunStatus moves the run to status: it keeps FinishedAt,
+// clears the checkpoint of an ended run and publishes the change.
 func (c *Core) setRunStatus(ctx context.Context, run *Run, status RunStatus, errText string) error {
 	if run == nil {
 		return nil
@@ -58,68 +58,35 @@ func (c *Core) setRunStatus(ctx context.Context, run *Run, status RunStatus, err
 	return nil
 }
 
-func (c *Core) markAssistantErrored(ctx context.Context, assistant *transcript.Message, cause error) error {
-	if assistant == nil {
-		return nil
-	}
-	assistant.UpdatedAt = c.now().UTC()
-	assistant.Parts = appendErrorFinishPart(assistant.Content, cause.Error())
-	if err := c.store.UpdateMessage(ctx, *assistant); err != nil {
-		return err
-	}
-	c.publishEvent(Event{
-		Type:      EventMessageUpdated,
-		SessionID: assistant.SessionID,
-		RunID:     assistant.RunID,
-		Payload:   *assistant,
-	})
-	return nil
-}
-
-func (c *Core) saveAssistantErrored(ctx context.Context, assistant *transcript.Message, cause error) error {
-	if assistant == nil {
-		return nil
-	}
+// sealAssistant saves the assistant reply: created when it was not saved yet,
+// updated otherwise.
+func (c *Core) sealAssistant(ctx context.Context, assistant *transcript.Message, saved bool) error {
 	now := c.now().UTC()
 	if assistant.CreatedAt.IsZero() {
 		assistant.CreatedAt = now
 	}
 	assistant.UpdatedAt = now
-	assistant.Parts = appendErrorFinishPart(assistant.Content, cause.Error())
-	if _, err := c.store.AppendMessage(ctx, *assistant); err != nil {
+	event := EventMessageUpdated
+	var err error
+	if saved {
+		err = c.store.UpdateMessage(ctx, *assistant)
+	} else {
+		event = EventMessageCreated
+		_, err = c.store.AppendMessage(ctx, *assistant)
+	}
+	if err != nil {
 		return err
 	}
-	c.publishEvent(Event{
-		Type:      EventMessageCreated,
-		SessionID: assistant.SessionID,
-		RunID:     assistant.RunID,
-		Payload:   *assistant,
-	})
+	c.publishEvent(Event{Type: event, SessionID: assistant.SessionID, RunID: assistant.RunID, Payload: *assistant})
 	return nil
 }
 
-func appendErrorFinishPart(content string, message string) []transcript.MessagePart {
-	parts := transcript.NormalizeMessageParts(content, nil)
-	parts = append(parts, transcript.MessagePart{
-		Kind: transcript.MessagePartKindFinish,
-		Finish: &transcript.FinishPart{
-			Reason:  transcript.FinishReasonError,
-			Message: message,
-		},
+// withFinishPart is the reply's text followed by a finish part.
+func withFinishPart(content string, reason string, message string) []transcript.MessagePart {
+	return append(transcript.NormalizeMessageParts(content, nil), transcript.MessagePart{
+		Kind:   transcript.MessagePartKindFinish,
+		Finish: &transcript.FinishPart{Reason: reason, Message: message},
 	})
-	return parts
-}
-
-func appendCanceledFinishPart(content string, message string) []transcript.MessagePart {
-	parts := transcript.NormalizeMessageParts(content, nil)
-	parts = append(parts, transcript.MessagePart{
-		Kind: transcript.MessagePartKindFinish,
-		Finish: &transcript.FinishPart{
-			Reason:  transcript.FinishReasonCanceled,
-			Message: message,
-		},
-	})
-	return parts
 }
 
 func (c *Core) isRunCanceled(ctx context.Context, runID string) (bool, error) {
@@ -138,68 +105,23 @@ func (c *Core) finishCanceledAssistant(ctx context.Context, assistant *transcrip
 	if assistant == nil {
 		return nil
 	}
-	message := "Canceled by user."
-	now := c.now().UTC()
-	if assistantSaved {
-		assistant.UpdatedAt = now
-		assistant.Parts = appendCanceledFinishPart(assistant.Content, message)
-		if err := c.store.UpdateMessage(ctx, *assistant); err != nil {
-			return err
-		}
-		c.publishEvent(Event{
-			Type:      EventMessageUpdated,
-			SessionID: assistant.SessionID,
-			RunID:     assistant.RunID,
-			Payload:   *assistant,
-		})
-		return nil
-	}
-	if assistant.CreatedAt.IsZero() {
-		assistant.CreatedAt = now
-	}
-	assistant.UpdatedAt = now
-	assistant.Parts = appendCanceledFinishPart(assistant.Content, message)
-	if _, err := c.store.AppendMessage(ctx, *assistant); err != nil {
-		return err
-	}
-	c.publishEvent(Event{
-		Type:      EventMessageCreated,
-		SessionID: assistant.SessionID,
-		RunID:     assistant.RunID,
-		Payload:   *assistant,
-	})
-	return nil
+	assistant.Parts = withFinishPart(assistant.Content, transcript.FinishReasonCanceled, "Canceled by user.")
+	return c.sealAssistant(ctx, assistant, assistantSaved)
 }
 
 func (c *Core) failAcceptedRun(ctx context.Context, result AcceptRunResult, cause error) (AcceptRunResult, error) {
-	if err := c.failRunByID(ctx, result.Run, cause); err != nil {
+	run := result.Run
+	if err := c.setRunStatus(ctx, &run, RunStatusFailed, cause.Error()); err != nil {
 		return result, err
 	}
-
-	result.Run.Status = RunStatusFailed
-	result.Run.Error = cause.Error()
-	finishedAt := c.now().UTC()
-	result.Run.FinishedAt = &finishedAt
-	result.Run.UpdatedAt = finishedAt
+	result.Run = run
 	return result, cause
 }
 
-func (c *Core) failRunByID(ctx context.Context, run Run, cause error) error {
-	finishedAt := c.now().UTC()
-	run.Status = RunStatusFailed
-	run.Error = cause.Error()
-	run.FinishedAt = &finishedAt
-	run.UpdatedAt = finishedAt
-
-	if err := c.store.UpdateRun(ctx, run); err != nil {
+// failRun ends the run as failed and returns cause.
+func (c *Core) failRun(ctx context.Context, run Run, cause error) error {
+	if err := c.setRunStatus(ctx, &run, RunStatusFailed, cause.Error()); err != nil {
 		return err
 	}
-	c.clearRunCheckpoint(ctx, run.ID)
-	c.publishEvent(Event{
-		Type:      EventRunUpdated,
-		SessionID: run.SessionID,
-		RunID:     run.ID,
-		Payload:   run,
-	})
 	return cause
 }

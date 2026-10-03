@@ -31,7 +31,7 @@ func (c *Core) writeOutcome(ctx context.Context, run Run, outcome agent.Outcome)
 			return false, nil
 		}
 		run.StopReason = outcome.StopReason
-		return false, c.completeAssistantTurn(ctx, &run, run.SessionID, outcome.Assistant, outcome.AssistantSaved)
+		return false, c.completeAssistantTurn(ctx, &run, outcome.Assistant, outcome.AssistantSaved)
 	case agent.StatusWaitingApproval:
 		return false, c.setRunStatus(ctx, &run, RunStatusWaitingApproval, "")
 	case agent.StatusWaitingEvents:
@@ -43,7 +43,7 @@ func (c *Core) writeOutcome(ctx context.Context, run Run, outcome agent.Outcome)
 		if outcome.MarkErrored && outcome.Assistant != nil {
 			return false, c.persistAssistantError(ctx, run, outcome.Assistant, outcome.AssistantSaved, outcome.Err)
 		}
-		return false, c.failRunByID(ctx, run, outcome.Err)
+		return false, c.failRun(ctx, run, outcome.Err)
 	case agent.StatusInterrupted:
 		return c.applyInterruptedOutcome(run, outcome)
 	default:
@@ -69,7 +69,7 @@ func (c *Core) applyInterruptedOutcome(run Run, outcome agent.Outcome) (bool, er
 	switch outcome.Reached {
 	case agent.StatusCompleted:
 		latest.StopReason = outcome.StopReason
-		return false, c.completeAssistantTurn(ctx, &latest, latest.SessionID, outcome.Assistant, outcome.AssistantSaved)
+		return false, c.completeAssistantTurn(ctx, &latest, outcome.Assistant, outcome.AssistantSaved)
 	case agent.StatusWaitingApproval:
 		pending, err := c.runHasPendingApprovals(ctx, latest.SessionID, latest.ID)
 		if err != nil {
@@ -91,62 +91,34 @@ func (c *Core) applyInterruptedOutcome(run Run, outcome agent.Outcome) (bool, er
 	return !current.Status.Terminal(), nil
 }
 
-func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID string, assistant *transcript.Message, assistantSaved bool) error {
+// completeAssistantTurn saves the final reply and completes the run with it.
+func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, assistant *transcript.Message, assistantSaved bool) error {
 	if run == nil || assistant == nil {
 		return errors.New("core: complete assistant turn requires run and assistant")
 	}
 	finishedAt := c.now().UTC()
-	if !assistantSaved {
-		assistant.CreatedAt = finishedAt
-		assistant.UpdatedAt = finishedAt
-		run.Status = RunStatusCompleted
-		run.Error = ""
-		run.FinishedAt = &finishedAt
-		run.UpdatedAt = finishedAt
-
-		if err := c.store.CompleteRun(ctx, *assistant, *run); err != nil {
-			return fmt.Errorf("complete run: %w", err)
-		}
-		c.clearRunCheckpoint(ctx, run.ID)
-		c.publishEvent(Event{
-			Type:      EventMessageCreated,
-			SessionID: sessionID,
-			RunID:     run.ID,
-			Payload:   *assistant,
-		})
-		c.publishEvent(Event{
-			Type:      EventRunUpdated,
-			SessionID: sessionID,
-			RunID:     run.ID,
-			Payload:   *run,
-		})
-		return nil
-	}
-
 	assistant.UpdatedAt = finishedAt
 	run.Status = RunStatusCompleted
 	run.Error = ""
 	run.FinishedAt = &finishedAt
 	run.UpdatedAt = finishedAt
-
-	if err := c.store.UpdateMessage(ctx, *assistant); err != nil {
-		return fmt.Errorf("update assistant message: %w", err)
-	}
-	if err := c.store.UpdateRun(ctx, *run); err != nil {
-		return err
+	event := EventMessageUpdated
+	if assistantSaved {
+		if err := c.store.UpdateMessage(ctx, *assistant); err != nil {
+			return fmt.Errorf("update assistant message: %w", err)
+		}
+		if err := c.store.UpdateRun(ctx, *run); err != nil {
+			return err
+		}
+	} else {
+		event = EventMessageCreated
+		assistant.CreatedAt = finishedAt
+		if err := c.store.CompleteRun(ctx, *assistant, *run); err != nil {
+			return fmt.Errorf("complete run: %w", err)
+		}
 	}
 	c.clearRunCheckpoint(ctx, run.ID)
-	c.publishEvent(Event{
-		Type:      EventMessageUpdated,
-		SessionID: sessionID,
-		RunID:     run.ID,
-		Payload:   *assistant,
-	})
-	c.publishEvent(Event{
-		Type:      EventRunUpdated,
-		SessionID: sessionID,
-		RunID:     run.ID,
-		Payload:   *run,
-	})
+	c.publishEvent(Event{Type: event, SessionID: run.SessionID, RunID: run.ID, Payload: *assistant})
+	c.publishEvent(Event{Type: EventRunUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: *run})
 	return nil
 }

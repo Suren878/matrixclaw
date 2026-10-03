@@ -65,7 +65,7 @@ func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
 	}
 	task, engine, err := c.nativeEngine(ctx, run, session, runtime)
 	if err != nil {
-		return c.failRunByID(ctx, run, err)
+		return c.failRun(ctx, run, err)
 	}
 	outcome, err := engine.Run(runCtx, task)
 	if err != nil {
@@ -123,12 +123,12 @@ func (c *Core) prepareNativeRun(ctx context.Context, runID string) (Run, Session
 	}
 	session, err := c.store.GetSession(ctx, run.SessionID)
 	if err != nil {
-		return Run{}, Session{}, nil, false, c.failRunByID(ctx, run, err)
+		return Run{}, Session{}, nil, false, c.failRun(ctx, run, err)
 	}
 	session = c.decorateSessionLLM(session)
 	runtime, err := c.resolveSessionRuntime(ctx, session)
 	if err != nil {
-		return Run{}, Session{}, nil, false, c.failRunByID(ctx, run, err)
+		return Run{}, Session{}, nil, false, c.failRun(ctx, run, err)
 	}
 	if err := c.setRunStatus(ctx, &run, RunStatusRunning, ""); err != nil {
 		return Run{}, Session{}, nil, false, err

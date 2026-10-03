@@ -161,7 +161,7 @@ func (c *Core) prepareRunAfterCrash(ctx context.Context, run *Run) (bool, error)
 		return false, err
 	}
 	if checkpoint.RecoveryCount > maxRunRecoveryAttempts {
-		return false, c.failRecoveredRun(ctx, run, fmt.Sprintf("run stopped after %d daemon-restart recovery attempts", checkpoint.RecoveryCount-1))
+		return false, c.setRunStatus(ctx, run, RunStatusFailed, fmt.Sprintf("run stopped after %d daemon-restart recovery attempts", checkpoint.RecoveryCount-1))
 	}
 
 	messages, err := c.store.ListMessages(ctx, run.SessionID, 0)
@@ -480,21 +480,8 @@ func appendDaemonRestartFinish(message *transcript.Message) {
 func (c *Core) preserveRunForRecovery(ctx context.Context, run Run, assistant *transcript.Message, assistantSaved bool) error {
 	if assistant != nil && (assistantSaved || strings.TrimSpace(assistant.Content) != "" || len(assistant.Parts) > 0) {
 		appendDaemonRestartFinish(assistant)
-		now := c.now().UTC()
-		if assistant.CreatedAt.IsZero() {
-			assistant.CreatedAt = now
-		}
-		assistant.UpdatedAt = now
-		if assistantSaved {
-			if err := c.store.UpdateMessage(ctx, *assistant); err != nil {
-				return err
-			}
-			c.publishEvent(Event{Type: EventMessageUpdated, SessionID: assistant.SessionID, RunID: assistant.RunID, Payload: *assistant})
-		} else {
-			if _, err := c.store.AppendMessage(ctx, *assistant); err != nil {
-				return err
-			}
-			c.publishEvent(Event{Type: EventMessageCreated, SessionID: assistant.SessionID, RunID: assistant.RunID, Payload: *assistant})
+		if err := c.sealAssistant(ctx, assistant, assistantSaved); err != nil {
+			return err
 		}
 	}
 
@@ -516,21 +503,4 @@ func messageHasToolPart(message transcript.Message) bool {
 		}
 	}
 	return false
-}
-
-func (c *Core) failRecoveredRun(ctx context.Context, run *Run, message string) error {
-	if run == nil {
-		return nil
-	}
-	finishedAt := c.now().UTC()
-	run.Status = RunStatusFailed
-	run.Error = strings.TrimSpace(message)
-	run.FinishedAt = &finishedAt
-	run.UpdatedAt = finishedAt
-	if err := c.store.UpdateRun(ctx, *run); err != nil {
-		return err
-	}
-	c.clearRunCheckpoint(ctx, run.ID)
-	c.publishEvent(Event{Type: EventRunUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: *run})
-	return nil
 }

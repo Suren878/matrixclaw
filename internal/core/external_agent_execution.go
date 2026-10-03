@@ -40,18 +40,18 @@ func (c *Core) tryExecuteExternalAgentRun(ctx context.Context, runCtx context.Co
 
 	session, err := c.store.GetSession(ctx, run.SessionID)
 	if err != nil {
-		return true, c.failRunByID(ctx, run, err)
+		return true, c.failRun(ctx, run, err)
 	}
 	attachment, err := c.externalStore.GetExternalAgentSession(ctx, session.ID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return false, nil
 		}
-		return true, c.failRunByID(ctx, run, err)
+		return true, c.failRun(ctx, run, err)
 	}
 	runtime, err := c.externalRuntime(attachment.AgentID)
 	if err != nil {
-		return true, c.failRunByID(ctx, run, err)
+		return true, c.failRun(ctx, run, err)
 	}
 
 	if err := c.setRunStatus(ctx, &run, RunStatusRunning, ""); err != nil {
@@ -79,18 +79,18 @@ func (c *Core) externalRuntime(agentID string) (externalagents.RuntimeAgent, err
 func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Context, run Run, runtime externalagents.RuntimeAgent, attachment externalagents.SessionAttachment) error {
 	userMessage, err := c.findRunUserMessage(ctx, run)
 	if err != nil {
-		return c.failRunByID(ctx, run, err)
+		return c.failRun(ctx, run, err)
 	}
 	inputText := userMessage.Content
 	if checkpoint, ok, checkpointErr := c.runCheckpoint(ctx, run.ID); checkpointErr != nil {
-		return c.failRunByID(ctx, run, checkpointErr)
+		return c.failRun(ctx, run, checkpointErr)
 	} else if ok {
 		if recoveryPrompt := runCheckpointRecoveryPrompt(checkpoint); recoveryPrompt != "" {
 			inputText = recoveryPrompt + "\n\nContinue the existing task from where it stopped. Inspect the workspace before making further changes. Original task for reference:\n" + userMessage.Content
 		}
 	}
 	if err := c.saveRunCheckpoint(ctx, run.ID); err != nil {
-		return c.failRunByID(ctx, run, err)
+		return c.failRun(ctx, run, err)
 	}
 	externalSession := attachment.ExternalSession()
 	if strings.TrimSpace(externalSession.Model) == "" {
@@ -102,7 +102,7 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 		if runCtx.Err() != nil {
 			return c.finishExternalRunAfterContextStopped(run, nil, false, runtime, externalSession)
 		}
-		return c.failRunByID(ctx, run, err)
+		return c.failRun(ctx, run, err)
 	}
 
 	assistant := transcript.Message{
@@ -143,10 +143,10 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 				return cancelErr
 			}
 			if err := flushProgress(false); err != nil {
-				return c.failRunByID(ctx, run, err)
+				return c.failRun(ctx, run, err)
 			}
 			if err := c.touchExternalRunActivity(ctx, &run, c.now().UTC()); err != nil {
-				return c.failRunByID(ctx, run, err)
+				return c.failRun(ctx, run, err)
 			}
 			continue
 		case event, ok := <-events:
@@ -165,14 +165,14 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 			switch event.Kind {
 			case externalagents.EventTurnStarted:
 				if err := c.updateExternalAgentSessionFromEvent(ctx, &attachment, &externalSession, event); err != nil {
-					return c.failRunByID(ctx, run, err)
+					return c.failRun(ctx, run, err)
 				}
 				if err := c.touchExternalRunActivity(ctx, &run, event.At); err != nil {
-					return c.failRunByID(ctx, run, err)
+					return c.failRun(ctx, run, err)
 				}
 			case externalagents.EventHeartbeat:
 				if err := c.touchExternalRunActivity(ctx, &run, event.At); err != nil {
-					return c.failRunByID(ctx, run, err)
+					return c.failRun(ctx, run, err)
 				}
 			case externalagents.EventMessageDelta:
 				progressDirty = applyExternalMessageDelta(&assistant, event.Text) || progressDirty
@@ -198,7 +198,7 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 			}
 			if progressDirty && !assistantSaved {
 				if err := flushProgress(true); err != nil {
-					return c.failRunByID(ctx, run, err)
+					return c.failRun(ctx, run, err)
 				}
 			}
 		}
@@ -533,40 +533,11 @@ func (c *Core) completeExternalAgentRun(ctx context.Context, run *Run, assistant
 	if assistant == nil || run == nil {
 		return nil
 	}
-	finishedAt := c.now().UTC()
-	if assistant.Parts == nil {
-		assistant.Parts = transcript.NormalizeMessageParts(assistant.Content, nil)
-	}
-	assistant.Parts = append(assistant.Parts, transcript.MessagePart{
+	assistant.Parts = append(transcript.NormalizeMessageParts(assistant.Content, assistant.Parts), transcript.MessagePart{
 		Kind:   transcript.MessagePartKindFinish,
 		Finish: &transcript.FinishPart{Reason: transcript.FinishReasonEndTurn},
 	})
-	run.Status = RunStatusCompleted
-	run.Error = ""
-	run.FinishedAt = &finishedAt
-	run.UpdatedAt = finishedAt
-	if !assistantSaved {
-		assistant.CreatedAt = finishedAt
-		assistant.UpdatedAt = finishedAt
-		if err := c.store.CompleteRun(ctx, *assistant, *run); err != nil {
-			return err
-		}
-		c.clearRunCheckpoint(ctx, run.ID)
-		c.publishEvent(Event{Type: EventMessageCreated, SessionID: run.SessionID, RunID: run.ID, Payload: *assistant})
-		c.publishEvent(Event{Type: EventRunUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: *run})
-		return nil
-	}
-	assistant.UpdatedAt = finishedAt
-	if err := c.store.UpdateMessage(ctx, *assistant); err != nil {
-		return err
-	}
-	if err := c.store.UpdateRun(ctx, *run); err != nil {
-		return err
-	}
-	c.clearRunCheckpoint(ctx, run.ID)
-	c.publishEvent(Event{Type: EventMessageUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: *assistant})
-	c.publishEvent(Event{Type: EventRunUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: *run})
-	return nil
+	return c.completeAssistantTurn(ctx, run, assistant, assistantSaved)
 }
 
 func (c *Core) checkExternalRunCanceled(ctx context.Context, run Run, assistant *transcript.Message, assistantSaved bool, runtime externalagents.RuntimeAgent, session externalagents.ExternalSession) (bool, error) {
