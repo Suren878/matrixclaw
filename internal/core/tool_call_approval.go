@@ -16,7 +16,7 @@ func (c *Core) createPendingApproval(ctx context.Context, prepared preparedToolC
 	if err != nil {
 		return tools.Result{}, nil, false, err
 	}
-	if err := c.saveRunCheckpoint(ctx, prepared.RunID, RunCheckpointPhaseWaitingApproval, prepared.ToolCallID, prepared.ToolName); err != nil {
+	if err := c.saveRunCheckpoint(ctx, prepared.RunID); err != nil {
 		return tools.Result{}, nil, false, err
 	}
 	return result, &approval, true, execErr

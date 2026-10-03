@@ -150,7 +150,7 @@ func TestNativeRunCheckpointsModelAndToolBatchPhases(t *testing.T) {
 		if checkpoint.Batch != nil {
 			calls = strings.Join(checkpoint.Batch.CallIDs, "+")
 		}
-		seen = append(seen, fmt.Sprintf("%s:%s:%s", label, checkpoint.Phase, calls))
+		seen = append(seen, label+":"+calls)
 	}
 	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
 		record("tool")
@@ -171,7 +171,7 @@ func TestNativeRunCheckpointsModelAndToolBatchPhases(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := []string{"model1:model:", "tool:tool_batch:call-1", "model2:model:"}
+	want := []string{"model1:", "tool:call-1", "model2:"}
 	if strings.Join(seen, "|") != strings.Join(want, "|") {
 		t.Fatalf("checkpoints = %v, want %v", seen, want)
 	}
@@ -199,7 +199,7 @@ func TestParkedRunKeepsTheEngineCheckpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if checkpoint.Phase != core.RunCheckpointPhaseModel || checkpoint.ToolCallID != "" || !strings.Contains(string(checkpoint.EngineState), `"steps":1`) {
+	if checkpoint.Batch != nil || !strings.Contains(string(checkpoint.EngineState), `"steps":1`) {
 		t.Fatalf("parked checkpoint = %+v (%s)", checkpoint, checkpoint.EngineState)
 	}
 }

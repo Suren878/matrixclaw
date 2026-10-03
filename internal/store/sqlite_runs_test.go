@@ -38,7 +38,7 @@ func TestRunCheckpointKeepsEngineState(t *testing.T) {
 	st := newTestStore(t)
 	createTestSession(t, st, "s1")
 	createTestRun(t, st, "s1", "r1")
-	checkpoint := core.RunCheckpoint{RunID: "r1", Phase: core.RunCheckpointPhaseModel, EngineState: json.RawMessage(`{"steps":3}`), UpdatedAt: testEpoch}
+	checkpoint := core.RunCheckpoint{RunID: "r1", EngineState: json.RawMessage(`{"steps":3}`), UpdatedAt: testEpoch}
 	if err := st.SaveRunCheckpoint(ctx, checkpoint); err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestRunCheckpointKeepsTheToolBatch(t *testing.T) {
 	createTestSession(t, st, "s1")
 	createTestRun(t, st, "s1", "r1")
 	batch := &agent.ToolBatch{CallIDs: []string{"c1", "c2", "c3"}, DeferredIDs: []string{"c3"}}
-	if err := st.SaveRunCheckpoint(ctx, core.RunCheckpoint{RunID: "r1", Phase: core.RunCheckpointPhase(agent.PhaseToolBatch), Batch: batch, UpdatedAt: testEpoch}); err != nil {
+	if err := st.SaveRunCheckpoint(ctx, core.RunCheckpoint{RunID: "r1", Batch: batch, UpdatedAt: testEpoch}); err != nil {
 		t.Fatal(err)
 	}
 	stored, err := st.GetRunCheckpoint(ctx, "r1")
@@ -63,7 +63,7 @@ func TestRunCheckpointKeepsTheToolBatch(t *testing.T) {
 		t.Fatalf("stored checkpoint = %+v err = %v", stored, err)
 	}
 
-	if err := st.SaveRunCheckpoint(ctx, core.RunCheckpoint{RunID: "r1", Phase: core.RunCheckpointPhaseModel, UpdatedAt: testEpoch}); err != nil {
+	if err := st.SaveRunCheckpoint(ctx, core.RunCheckpoint{RunID: "r1", UpdatedAt: testEpoch}); err != nil {
 		t.Fatal(err)
 	}
 	if stored, err := st.GetRunCheckpoint(ctx, "r1"); err != nil || stored.Batch != nil {

@@ -89,7 +89,7 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 			inputText = recoveryPrompt + "\n\nContinue the existing task from where it stopped. Inspect the workspace before making further changes. Original task for reference:\n" + userMessage.Content
 		}
 	}
-	if err := c.saveRunCheckpoint(ctx, run.ID, RunCheckpointPhaseExternalAgent, "", ""); err != nil {
+	if err := c.saveRunCheckpoint(ctx, run.ID); err != nil {
 		return c.failRunByID(ctx, run, err)
 	}
 	externalSession := attachment.ExternalSession()

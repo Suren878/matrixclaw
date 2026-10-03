@@ -30,7 +30,7 @@ func (c *Core) finishToolCall(ctx context.Context, prepared preparedToolCall, in
 	if err := c.saveFileVersionSnapshot(ctx, prepared, result, resultMessage.CreatedAt); err != nil {
 		return transcript.Message{}, nil, err
 	}
-	if err := c.saveRunCheckpoint(ctx, prepared.RunID, RunCheckpointPhaseModel, "", ""); err != nil {
+	if err := c.saveRunCheckpoint(ctx, prepared.RunID); err != nil {
 		return transcript.Message{}, nil, err
 	}
 	return toolCallMessage, resultMessage, nil

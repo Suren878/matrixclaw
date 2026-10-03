@@ -11,29 +11,16 @@ import (
 	"github.com/Suren878/matrixclaw/internal/agent"
 )
 
-type RunCheckpointPhase string
-
-const (
-	RunCheckpointPhaseModel           RunCheckpointPhase = "model"
-	RunCheckpointPhaseTool            RunCheckpointPhase = "tool"
-	RunCheckpointPhaseExternalAgent   RunCheckpointPhase = "external_agent"
-	RunCheckpointPhaseWaitingApproval RunCheckpointPhase = "waiting_approval"
-	RunCheckpointPhaseWaitingSubagent RunCheckpointPhase = "waiting_subagent"
-	RunCheckpointPhaseRecovering      RunCheckpointPhase = "recovering"
-	runRecoveryReasonDaemonRestart                       = "daemon_restart"
-)
-
+// RunCheckpoint marks a run that passed an execution boundary; a run that has
+// one when the daemon starts is recovered.
 type RunCheckpoint struct {
-	RunID      string             `json:"run_id"`
-	Phase      RunCheckpointPhase `json:"phase"`
-	ToolCallID string             `json:"tool_call_id,omitempty"`
-	ToolName   string             `json:"tool_name,omitempty"`
+	RunID string `json:"run_id"`
 	// Batch is set in the engine's tool_batch phase.
-	Batch          *agent.ToolBatch `json:"tool_batch,omitempty"`
-	RecoveryCount  int              `json:"recovery_count,omitempty"`
-	RecoveryReason string           `json:"recovery_reason,omitempty"`
-	EngineState    json.RawMessage  `json:"engine_state,omitempty"`
-	UpdatedAt      time.Time        `json:"updated_at"`
+	Batch *agent.ToolBatch `json:"tool_batch,omitempty"`
+	// RecoveryCount counts the daemon restarts the run was recovered from.
+	RecoveryCount int             `json:"recovery_count,omitempty"`
+	EngineState   json.RawMessage `json:"engine_state,omitempty"`
+	UpdatedAt     time.Time       `json:"updated_at"`
 }
 
 // RunCheckpointStore keeps the execution boundaries crash recovery resumes from.
@@ -43,26 +30,21 @@ type RunCheckpointStore interface {
 	DeleteRunCheckpoint(ctx context.Context, runID string) error
 }
 
-func (c *Core) saveRunCheckpoint(ctx context.Context, runID string, phase RunCheckpointPhase, toolCallID string, toolName string) error {
+// saveRunCheckpoint records a boundary outside a tool batch.
+func (c *Core) saveRunCheckpoint(ctx context.Context, runID string) error {
 	return c.updateRunCheckpoint(ctx, runID, func(checkpoint *RunCheckpoint) {
-		checkpoint.Phase = phase
-		checkpoint.ToolCallID = normalizeText(toolCallID)
-		checkpoint.ToolName = normalizeText(toolName)
 		checkpoint.Batch = nil
 	})
 }
 
-// saveEngineCheckpoint stores the engine's phase and batch together with its
-// run counters; while a native run is active only its engine calls it.
+// saveEngineCheckpoint stores the engine's batch together with its run
+// counters; while a native run is active only its engine calls it.
 func (c *Core) saveEngineCheckpoint(ctx context.Context, state agent.State) error {
 	counters, err := json.Marshal(state.Counters)
 	if err != nil {
 		return err
 	}
 	return c.updateRunCheckpoint(ctx, state.RunID, func(checkpoint *RunCheckpoint) {
-		checkpoint.Phase = RunCheckpointPhase(state.Phase)
-		checkpoint.ToolCallID = ""
-		checkpoint.ToolName = ""
 		checkpoint.Batch = state.Batch
 		checkpoint.EngineState = counters
 	})
@@ -137,12 +119,8 @@ func (c *Core) markRunRecovery(ctx context.Context, runID string) (RunCheckpoint
 		return RunCheckpoint{}, err
 	}
 	checkpoint.RunID = runID
-	checkpoint.Phase = RunCheckpointPhaseRecovering
-	checkpoint.ToolCallID = ""
-	checkpoint.ToolName = ""
 	checkpoint.Batch = nil
 	checkpoint.RecoveryCount++
-	checkpoint.RecoveryReason = runRecoveryReasonDaemonRestart
 	checkpoint.UpdatedAt = c.now().UTC()
 	if err := c.store.SaveRunCheckpoint(ctx, checkpoint); err != nil {
 		return RunCheckpoint{}, err
@@ -169,7 +147,7 @@ func (c *Core) clearRunCheckpoint(ctx context.Context, runID string) {
 }
 
 func runCheckpointRecoveryPrompt(checkpoint RunCheckpoint) string {
-	if checkpoint.RecoveryCount <= 0 || checkpoint.RecoveryReason != runRecoveryReasonDaemonRestart {
+	if checkpoint.RecoveryCount <= 0 {
 		return ""
 	}
 	return "Recovery notice: the MatrixClaw daemon restarted while this run was active. Continue from the durable conversation and workspace state. Do not repeat a mutating action merely because its previous result is missing. Inspect the current state first, and only retry a mutation when an explicit recovery approval or clear evidence shows it is still required."

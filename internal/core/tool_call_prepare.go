@@ -96,7 +96,7 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 		return preparedToolCall{}, err
 	}
 	if !isNewCall {
-		if err := c.saveRunCheckpoint(ctx, runID, RunCheckpointPhaseTool, toolCallID, toolName); err != nil {
+		if err := c.saveRunCheckpoint(ctx, runID); err != nil {
 			return preparedToolCall{}, err
 		}
 		return prepared, nil
@@ -117,7 +117,7 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 		RunID:      message.RunID,
 		SessionID:  sessionID,
 	})
-	if err := c.saveRunCheckpoint(ctx, runID, RunCheckpointPhaseTool, toolCallID, toolName); err != nil {
+	if err := c.saveRunCheckpoint(ctx, runID); err != nil {
 		return preparedToolCall{}, err
 	}
 	return prepared, nil

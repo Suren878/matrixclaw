@@ -138,7 +138,7 @@ func TestRecoveredRunKeepsItsBudgetCounters(t *testing.T) {
 	app.WithRunStarter(orchestration.NewStub(app))
 	_, run := saveCrashRecoveryRun(t, db, "budget-recovery", core.RunStatusRunning, false)
 	if err := db.SaveRunCheckpoint(context.Background(), core.RunCheckpoint{
-		RunID: run.ID, Phase: core.RunCheckpointPhaseModel, EngineState: json.RawMessage(`{"steps":2}`), UpdatedAt: run.UpdatedAt,
+		RunID: run.ID, EngineState: json.RawMessage(`{"steps":2}`), UpdatedAt: run.UpdatedAt,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestRecoveredRunKeepsItsRaisedOutputLimit(t *testing.T) {
 	app.WithRunStarter(orchestration.NewStub(app))
 	_, run := saveCrashRecoveryRun(t, db, "output-limit-recovery", core.RunStatusRunning, false)
 	if err := db.SaveRunCheckpoint(context.Background(), core.RunCheckpoint{
-		RunID: run.ID, Phase: core.RunCheckpointPhaseModel, EngineState: json.RawMessage(`{"output_limit":8000}`), UpdatedAt: run.UpdatedAt,
+		RunID: run.ID, EngineState: json.RawMessage(`{"output_limit":8000}`), UpdatedAt: run.UpdatedAt,
 	}); err != nil {
 		t.Fatal(err)
 	}

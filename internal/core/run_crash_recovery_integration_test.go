@@ -163,7 +163,7 @@ func TestRecoverRunningGenerationSkipsPartialAndCompletes(t *testing.T) {
 	}
 	saveRunRecoveryTestMessage(t, sqliteStore, partial)
 	if err := sqliteStore.SaveRunCheckpoint(context.Background(), core.RunCheckpoint{
-		RunID: run.ID, Phase: core.RunCheckpointPhaseModel, UpdatedAt: run.UpdatedAt,
+		RunID: run.ID, UpdatedAt: run.UpdatedAt,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -214,12 +214,8 @@ func TestGracefulExecutorStopPreservesAndRecoversNativeGeneration(t *testing.T) 
 		t.Fatalf("ExecuteRun after shutdown: %v", err)
 	}
 	assertRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusRunning)
-	checkpoint, err := sqliteStore.GetRunCheckpoint(context.Background(), run.ID)
-	if err != nil {
+	if _, err := sqliteStore.GetRunCheckpoint(context.Background(), run.ID); err != nil {
 		t.Fatalf("GetRunCheckpoint: %v", err)
-	}
-	if checkpoint.Phase != core.RunCheckpointPhaseRecovering {
-		t.Fatalf("checkpoint phase = %q, want recovering", checkpoint.Phase)
 	}
 	messages, err := sqliteStore.ListMessages(context.Background(), run.SessionID, 0)
 	if err != nil {
@@ -288,7 +284,7 @@ func TestStartupRecoveryAndPersistedWorkflowRaceExecutesRunOnce(t *testing.T) {
 
 	_, run := saveCrashRecoveryRun(t, sqliteStore, "startup_race", core.RunStatusRunning, false)
 	if err := sqliteStore.SaveRunCheckpoint(context.Background(), core.RunCheckpoint{
-		RunID: run.ID, Phase: core.RunCheckpointPhaseModel, UpdatedAt: run.UpdatedAt,
+		RunID: run.ID, UpdatedAt: run.UpdatedAt,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -584,7 +580,7 @@ func TestRecoveryDefersAgainTheCallsTheBatchCheckpointNamesNotStarted(t *testing
 	saveInterruptedToolCall(t, sqliteStore, run, "tool_write", mutation.spec.ID)
 	saveInterruptedToolCall(t, sqliteStore, run, "tool_after", inspect.spec.ID)
 	if err := sqliteStore.SaveRunCheckpoint(context.Background(), core.RunCheckpoint{
-		RunID: run.ID, Phase: core.RunCheckpointPhase(agent.PhaseToolBatch), UpdatedAt: runRecoveryTestTime(),
+		RunID: run.ID, UpdatedAt: runRecoveryTestTime(),
 		Batch: &agent.ToolBatch{CallIDs: []string{"tool_write", "tool_after"}, DeferredIDs: []string{"tool_after"}},
 	}); err != nil {
 		t.Fatal(err)

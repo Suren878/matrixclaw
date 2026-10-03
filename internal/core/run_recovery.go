@@ -178,9 +178,6 @@ func (c *Core) prepareRunAfterCrash(ctx context.Context, run *Run) (bool, error)
 		if err := c.markLatestAssistantInterrupted(ctx, run.ID, messages, true); err != nil {
 			return false, err
 		}
-		if err := c.saveRunCheckpoint(ctx, run.ID, RunCheckpointPhaseRecovering, "", ""); err != nil {
-			return false, err
-		}
 		if err := c.setRunStatus(ctx, run, RunStatusAccepted, ""); err != nil {
 			return false, err
 		}
@@ -200,8 +197,7 @@ func (c *Core) prepareRunAfterCrash(ctx context.Context, run *Run) (bool, error)
 			notStarted[id] = true
 		}
 	}
-	waitApproval := false
-	var waitSubagent *interruptedToolCall
+	waitApproval, waitSubagent := false, false
 	for _, interrupted := range incompleteToolCallsForRun(messages, run.ID) {
 		if notStarted[interrupted.Call.ID] {
 			if err := c.deferInterruptedCall(ctx, interrupted); err != nil {
@@ -217,22 +213,17 @@ func (c *Core) prepareRunAfterCrash(ctx context.Context, run *Run) (bool, error)
 		case recoveryToolWaitApproval:
 			waitApproval = true
 		case recoveryToolWaitSubagent:
-			if waitSubagent == nil {
-				waitSubagent = &interrupted
-			}
+			waitSubagent = true
 		}
 	}
-	if waitSubagent != nil {
-		return false, c.saveRunCheckpoint(ctx, run.ID, RunCheckpointPhaseWaitingSubagent, waitSubagent.Call.ID, waitSubagent.Call.Name)
+	if waitSubagent {
+		return false, nil
 	}
 	if waitApproval {
 		return false, c.setRunStatus(ctx, run, RunStatusWaitingApproval, "")
 	}
 
 	if err := c.markLatestPartialAssistantInterrupted(ctx, run.ID, messages); err != nil {
-		return false, err
-	}
-	if err := c.saveRunCheckpoint(ctx, run.ID, RunCheckpointPhaseRecovering, "", ""); err != nil {
 		return false, err
 	}
 	if err := c.setRunStatus(ctx, run, RunStatusAccepted, ""); err != nil {
@@ -515,7 +506,7 @@ func (c *Core) preserveRunForRecovery(ctx context.Context, run Run, assistant *t
 		c.clearRunCheckpoint(ctx, run.ID)
 		return nil
 	}
-	return c.saveRunCheckpoint(ctx, run.ID, RunCheckpointPhaseRecovering, "", "")
+	return c.saveRunCheckpoint(ctx, run.ID)
 }
 
 func messageHasToolPart(message transcript.Message) bool {
