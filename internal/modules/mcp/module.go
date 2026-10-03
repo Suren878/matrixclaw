@@ -34,6 +34,7 @@ type Module struct {
 type session interface {
 	Name() string
 	Tools() []tools.Executor
+	Alive() bool
 	Close() error
 }
 
@@ -56,9 +57,9 @@ func New(extra ExtraServer) *Module {
 
 func (m *Module) ID() string { return "mcp" }
 
-// Apply connects the servers that are new or changed, in parallel, and
-// closes the ones removed or changed; unchanged servers keep their session.
-// A server that fails to connect is reported in Status.
+// Apply connects the servers that are new, changed or stopped, in parallel,
+// and closes the ones removed or changed; the others keep their session. A
+// server that fails to connect is reported in Status.
 func (m *Module) Apply(ctx context.Context, cfg setup.Config) error {
 	wanted := map[string]mcpbridge.ServerConfig{}
 	for _, server := range wantedServers(cfg, m.extra) {
@@ -71,7 +72,7 @@ func (m *Module) Apply(ctx context.Context, cfg setup.Config) error {
 	var stale []connected
 	keep := map[string]connected{}
 	for id, conn := range current {
-		if server, ok := wanted[id]; ok && reflect.DeepEqual(server, conn.config) {
+		if server, ok := wanted[id]; ok && reflect.DeepEqual(server, conn.config) && conn.session.Alive() {
 			keep[id] = conn
 		} else {
 			stale = append(stale, conn)
@@ -187,10 +188,17 @@ func (m *Module) Context() string {
 }
 
 func (m *Module) Status(context.Context) modules.Status {
-	connectedCount := len(m.connectedServers())
+	connectedCount := 0
+	failures := []string{}
+	for _, conn := range m.connectedServers() {
+		if conn.session.Alive() {
+			connectedCount++
+		} else {
+			failures = append(failures, conn.config.ID+": server stopped; it restarts on the next call")
+		}
+	}
 	m.mu.RLock()
 	enabled := m.enabled
-	failures := make([]string, 0, len(m.failed))
 	for id, err := range m.failed {
 		failures = append(failures, id+": "+err)
 	}

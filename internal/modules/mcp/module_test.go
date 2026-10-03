@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -128,5 +131,79 @@ func TestExtraServerRunsWithoutTheMCPSwitch(t *testing.T) {
 	}
 	if ids := toolIDs(m); !slices.Equal(ids, []string{"mcp_browser_navigate"}) {
 		t.Fatalf("tools = %v", ids)
+	}
+}
+
+// crashingTools is the stdio server TestMain runs: "crash" kills it.
+type crashingTools struct{}
+
+func (crashingTools) List() []tools.Spec { return remoteTools{ids: []string{"crash", "echo"}}.List() }
+
+func (crashingTools) Execute(_ context.Context, id string, _ tools.Call) (tools.Result, error) {
+	if id == "crash" {
+		os.Exit(3)
+	}
+	return tools.Result{Content: "ok"}, nil
+}
+
+func TestMain(m *testing.M) {
+	if os.Getenv("MATRIXCLAW_TEST_STDIO_MCP") == "1" {
+		_ = mcpbridge.NewToolServer(crashingTools{}).Run(context.Background(), &sdk.StdioTransport{})
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
+func callTool(t *testing.T, m *Module, id string) (tools.Result, error) {
+	t.Helper()
+	for _, tool := range m.Tools() {
+		if tool.Spec().ID == id {
+			return tool.Execute(context.Background(), tools.Call{Args: json.RawMessage(`{}`)})
+		}
+	}
+	t.Fatalf("no tool %s in %v", id, toolIDs(m))
+	return tools.Result{}, nil
+}
+
+func waitForState(t *testing.T, m *Module, state string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for m.Status(context.Background()).State != state {
+		if time.Now().After(deadline) {
+			t.Fatalf("status = %+v, want %q", m.Status(context.Background()), state)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestCrashedStdioServerIsReconnected(t *testing.T) {
+	ctx := context.Background()
+	cfg := withServers(true, setup.MCPServerConfig{ID: "local", Enabled: true, Command: os.Args[0], Env: map[string]string{"MATRIXCLAW_TEST_STDIO_MCP": "1"}})
+	m, connects := countingModule(nil)
+	defer func() { _ = m.Close() }()
+	if err := m.Apply(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	waitForState(t, m, "1 connected")
+
+	if _, err := callTool(t, m, "mcp_local_crash"); err == nil {
+		t.Fatal("crash call succeeded")
+	}
+	waitForState(t, m, "0 connected, 1 failed")
+	if result, err := callTool(t, m, "mcp_local_echo"); err != nil || result.IsError() || !strings.HasPrefix(result.Content, "ok") {
+		t.Fatalf("call after crash = %+v, %v; want the server restarted", result, err)
+	}
+	waitForState(t, m, "1 connected")
+
+	_, _ = callTool(t, m, "mcp_local_crash")
+	waitForState(t, m, "0 connected, 1 failed")
+	if err := m.Apply(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if got := connects.Load(); got != 2 {
+		t.Fatalf("connects = %d, want Apply to reconnect the stopped server", got)
+	}
+	if status := m.Status(ctx); !status.Ready || status.State != "1 connected" {
+		t.Fatalf("status after Apply = %+v", status)
 	}
 }

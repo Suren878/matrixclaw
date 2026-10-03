@@ -17,17 +17,30 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-// Session is a connection to one MCP server and the tools it offers.
+// Session is a connection to one MCP server and the tools it offers. A server
+// that stopped is started again on the next call.
 type Session struct {
-	server  ServerConfig
-	session *sdk.ClientSession
-	tools   []*sdk.Tool
-	// mu serialises calls on the session.
-	mu sync.Mutex
+	server ServerConfig
+	tools  []*sdk.Tool
+	// calls serialises calls on the session; mu guards the connection.
+	calls  sync.Mutex
+	mu     sync.Mutex
+	conn   *sdk.ClientSession
+	done   <-chan struct{}
+	closed bool
 }
 
 // Connect starts or reaches the server and lists its tools.
 func Connect(ctx context.Context, cfg ServerConfig) (*Session, error) {
+	conn, done, serverTools, err := dial(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &Session{server: cfg, tools: serverTools, conn: conn, done: done}, nil
+}
+
+// dial connects to the server; done is closed when the connection ends.
+func dial(ctx context.Context, cfg ServerConfig) (*sdk.ClientSession, <-chan struct{}, []*sdk.Tool, error) {
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = 15 * time.Second
@@ -39,16 +52,21 @@ func Connect(ctx context.Context, cfg ServerConfig) (*Session, error) {
 		Name:    "matrixclaw",
 		Version: "1.0.0",
 	}, &sdk.ClientOptions{Capabilities: &sdk.ClientCapabilities{}})
-	session, err := client.Connect(connectCtx, serverTransport(cfg), nil)
+	conn, err := client.Connect(connectCtx, serverTransport(cfg), nil)
 	if err != nil {
-		return nil, fmt.Errorf("mcp: connect %s: %w", textutil.FirstNonEmpty(cfg.Name, cfg.ID), err)
+		return nil, nil, nil, fmt.Errorf("mcp: connect %s: %w", textutil.FirstNonEmpty(cfg.Name, cfg.ID), err)
 	}
-	toolsResult, err := session.ListTools(connectCtx, nil)
+	toolsResult, err := conn.ListTools(connectCtx, nil)
 	if err != nil {
-		_ = session.Close()
-		return nil, fmt.Errorf("mcp: list tools for %s: %w", textutil.FirstNonEmpty(cfg.Name, cfg.ID), err)
+		_ = conn.Close()
+		return nil, nil, nil, fmt.Errorf("mcp: list tools for %s: %w", textutil.FirstNonEmpty(cfg.Name, cfg.ID), err)
 	}
-	return &Session{server: cfg, session: session, tools: toolsResult.Tools}, nil
+	done := make(chan struct{})
+	go func() {
+		_ = conn.Wait()
+		close(done)
+	}()
+	return conn, done, toolsResult.Tools, nil
 }
 
 // Name is the server's display name.
@@ -65,8 +83,52 @@ func (s *Session) Tools() []tools.Executor {
 	return out
 }
 
+// Alive reports whether the connection to the server is still open.
+func (s *Session) Alive() bool {
+	s.mu.Lock()
+	done := s.done
+	s.mu.Unlock()
+	select {
+	case <-done:
+		return false
+	default:
+		return true
+	}
+}
+
 func (s *Session) Close() error {
-	return s.session.Close()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = true
+	return s.conn.Close()
+}
+
+// callTool calls one tool, first restarting a server that stopped. A call the
+// server died during is not repeated: it may have had effects.
+func (s *Session) callTool(ctx context.Context, params *sdk.CallToolParams) (*sdk.CallToolResult, error) {
+	s.calls.Lock()
+	defer s.calls.Unlock()
+	if !s.Alive() {
+		conn, done, _, err := dial(ctx, s.server)
+		if err != nil {
+			return nil, err
+		}
+		s.mu.Lock()
+		if s.closed {
+			s.mu.Unlock()
+			_ = conn.Close()
+			return nil, fmt.Errorf("mcp: %s session is closed", s.Name())
+		}
+		s.conn, s.done = conn, done
+		s.mu.Unlock()
+	}
+	s.mu.Lock()
+	conn, closed := s.conn, s.closed
+	s.mu.Unlock()
+	if closed {
+		return nil, fmt.Errorf("mcp: %s session is closed", s.Name())
+	}
+	return conn.CallTool(ctx, params)
 }
 
 func serverTransport(cfg ServerConfig) sdk.Transport {
@@ -150,7 +212,7 @@ func (e *remoteToolExecutor) Preview(_ context.Context, call tools.Call) (tools.
 }
 
 func (e *remoteToolExecutor) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
-	if e == nil || e.session == nil || e.session.session == nil {
+	if e == nil || e.session == nil {
 		return tools.Result{}, fmt.Errorf("mcp: remote session is not connected")
 	}
 	timeout := e.server.Timeout
@@ -159,12 +221,10 @@ func (e *remoteToolExecutor) Execute(ctx context.Context, call tools.Call) (tool
 	}
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	e.session.mu.Lock()
-	result, err := e.session.session.CallTool(callCtx, &sdk.CallToolParams{
+	result, err := e.session.callTool(callCtx, &sdk.CallToolParams{
 		Name:      e.remoteName,
 		Arguments: rawJSONMap(call.Args),
 	})
-	e.session.mu.Unlock()
 	if err != nil {
 		return tools.Result{}, fmt.Errorf("mcp: call %s: %w", e.remoteName, err)
 	}
