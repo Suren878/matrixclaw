@@ -100,7 +100,7 @@ func loadBootstrap() (bootstrapConfig, error) {
 
 		cfg.SessionLLMs = sessionllm.New(setupCfg.ActiveProviderID, sessionProviderSpecsFromSetup(setupCfg))
 		cfg.Assistant = core.AssistantProfile{
-			Name:               setupCfg.Assistant.Name,
+			Name:               setupCfg.Assistant.NameOrDefault(),
 			SystemPrompt:       setupCfg.Assistant.SystemPromptOrDefault(),
 			CustomInstructions: setupCfg.Assistant.CustomInstructions,
 		}

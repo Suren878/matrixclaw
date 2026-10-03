@@ -14,6 +14,17 @@ const (
 	savedProjectContext  = "\n\nProject context:\n"
 )
 
+// DefaultAssistantName is the assistant's name unless the user picks another.
+const DefaultAssistantName = "matrixclaw"
+
+// NameOrDefault is the user's assistant name, or the built-in one.
+func (a AssistantConfig) NameOrDefault() string {
+	if name := strings.TrimSpace(a.Name); name != "" {
+		return name
+	}
+	return DefaultAssistantName
+}
+
 // SystemPromptOrDefault is the user's own system prompt, or the built-in one.
 func (a AssistantConfig) SystemPromptOrDefault() string {
 	if prompt := strings.TrimSpace(a.SystemPrompt); prompt != "" {

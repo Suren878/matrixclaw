@@ -11,7 +11,7 @@ func SummaryFromConfig(cfg Config) Summary {
 	}
 	return Summary{
 		Assistant: AssistantSummary{
-			Name:   firstNonEmptyTrimmed(cfg.Assistant.Name, "matrixclaw"),
+			Name:   cfg.Assistant.NameOrDefault(),
 			Status: assistantStatus(cfg.Assistant),
 		},
 		Provider: ProviderSummary{

@@ -43,7 +43,7 @@ func runTUICommand(stderr io.Writer, binaryName string, service *appsetup.Servic
 		Provider:    providerName,
 		Model:       providerModel,
 		Assistant: core.AssistantProfile{
-			Name:               cfg.Assistant.Name,
+			Name:               cfg.Assistant.NameOrDefault(),
 			SystemPrompt:       cfg.Assistant.SystemPromptOrDefault(),
 			CustomInstructions: cfg.Assistant.CustomInstructions,
 		},

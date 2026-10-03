@@ -137,7 +137,7 @@ func realtimeAPIKeyFromEnvName(name string) string {
 }
 
 func realtimeVoiceSystemInstruction(cfg setup.Config) string {
-	name := strings.Join(strings.Fields(cfg.Assistant.Name), " ")
+	name := strings.Join(strings.Fields(cfg.Assistant.NameOrDefault()), " ")
 	if name == "" {
 		return ""
 	}

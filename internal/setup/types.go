@@ -22,15 +22,16 @@ type AssistantConfig struct {
 	CustomInstructions string `json:"custom_instructions,omitempty"`
 }
 
+// ProviderConfig is a configured provider as stored: for a built-in provider
+// the fields the catalog defines are left empty (see Effective).
 type ProviderConfig struct {
 	ID              string                `json:"id"`
-	CatalogID       string                `json:"catalog_id,omitempty"`
-	Name            string                `json:"name"`
-	Type            string                `json:"type"`
-	APIKey          string                `json:"api_key"`
+	Name            string                `json:"name,omitempty"`
+	Type            string                `json:"type,omitempty"`
+	APIKey          string                `json:"api_key,omitempty"`
 	APIKeyEnv       string                `json:"api_key_env,omitempty"`
 	BaseURL         string                `json:"base_url,omitempty"`
-	Model           string                `json:"model"`
+	Model           string                `json:"model,omitempty"`
 	ContextWindow   int                   `json:"context_window,omitempty"`
 	MaxOutputTokens int64                 `json:"max_output_tokens,omitempty"`
 	ReasoningEffort string                `json:"reasoning_effort,omitempty"`

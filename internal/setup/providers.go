@@ -53,7 +53,7 @@ func normalizeModulesConfig(modules ModulesConfig) ModulesConfig {
 	modules.RealtimeVoice = normalizeVoiceModuleConfig("realtime_voice", modules.RealtimeVoice)
 	modules.Telephony = normalizeTelephonyConfig(modules.Telephony)
 	modules.MCP = normalizeMCPConfig(modules.MCP)
-	modules.Browser = normalizeBrowserConfig(modules.Browser)
+	modules.Browser = storedBrowserConfig(modules.Browser)
 	if len(modules.ExternalAgents) == 0 {
 		modules.ExternalAgents = nil
 		return modules
@@ -183,54 +183,48 @@ func normalizeAssistantConfig(assistant AssistantConfig) AssistantConfig {
 	assistant.Name = strings.TrimSpace(assistant.Name)
 	assistant.SystemPrompt = userSystemPrompt(assistant.SystemPrompt)
 	assistant.CustomInstructions = strings.TrimSpace(assistant.CustomInstructions)
-	if assistant.Name == "" {
-		assistant.Name = "matrixclaw"
+	if assistant.Name == DefaultAssistantName {
+		assistant.Name = ""
 	}
 	return assistant
 }
 
+// normalizeProviderConfig trims a stored provider and leaves out the values
+// that only repeat the catalog's: name, type, key env name and base URL.
 func normalizeProviderConfig(provider ProviderConfig) (ProviderConfig, bool) {
 	provider.ID = providers.NormalizeProviderID(provider.ID)
-	provider.CatalogID = providers.NormalizeProviderID(provider.CatalogID)
 	provider.Type = providers.NormalizeOptionalProviderType(provider.Type)
 	provider.Name = strings.TrimSpace(provider.Name)
 	provider.APIKey = normalizeProviderAPIKey(provider.APIKey)
 	provider.APIKeyEnv = strings.TrimSpace(provider.APIKeyEnv)
 	provider.BaseURL = strings.TrimSpace(provider.BaseURL)
-	provider.Model = strings.TrimSpace(provider.Model)
-	if provider.ContextWindow < 0 {
-		provider.ContextWindow = 0
-	}
+	provider.ContextWindow = max(provider.ContextWindow, 0)
+	provider.MaxOutputTokens = max(provider.MaxOutputTokens, 0)
+	provider.ReasoningEffort = providers.NormalizeReasoningEffort(provider.ReasoningEffort)
 	provider.ToolUseMode = providers.NormalizeOptionalToolUseMode(provider.ToolUseMode)
-
 	if provider.ID == "" {
 		return ProviderConfig{}, false
 	}
-	if provider.CatalogID == "" {
-		provider.CatalogID = provider.ID
-	}
-	if policy := providers.PolicyForProvider(provider.CatalogID, provider.Type); policy.Known {
+	policy := provider.policy()
+	if policy.Known {
 		provider.ID = policy.CatalogID
-		provider.CatalogID = policy.CatalogID
-		if provider.Name == "" {
-			provider.Name = policy.Name
-		}
-		if provider.Type == "" {
-			provider.Type = policy.Type
-		}
-		if provider.APIKeyEnv == "" {
-			provider.APIKeyEnv = policy.APIKeyEnv
-		}
-		if provider.BaseURL == "" {
-			provider.BaseURL = policy.DefaultBaseURL
-		}
-		if provider.Model == "" {
-			provider.Model = policy.DefaultModel
-		}
+		provider.Name = omitDefault(provider.Name, policy.Name)
+		provider.Type = omitDefault(provider.Type, policy.Type)
+		provider.APIKeyEnv = omitDefault(provider.APIKeyEnv, policy.APIKeyEnv)
+		provider.BaseURL = omitDefault(provider.BaseURL, policy.DefaultBaseURL)
+	} else {
+		provider.APIKeyEnv = omitDefault(provider.APIKeyEnv, customProviderAPIKeyEnv(provider.Type))
 	}
-	provider.Model = providers.NormalizeModelID(provider.CatalogID, provider.Type, provider.Model)
-	provider.ReasoningEffort = providers.NormalizeReasoningEffortForModel(provider.CatalogID, provider.Type, provider.Model, provider.ReasoningEffort)
+	provider.Model = providers.NormalizeModelID(provider.ID, provider.Type, provider.Model)
 	return provider, true
+}
+
+func omitDefault[T comparable](value T, builtIn T) T {
+	var zero T
+	if value == builtIn {
+		return zero
+	}
+	return value
 }
 
 func activeProviderFromConfig(cfg Config) (ProviderConfig, bool) {

@@ -22,7 +22,7 @@ func TestOpenAIRealtimeVoiceProviderDefaults(t *testing.T) {
 }
 
 func TestOpenAIRealtimeVoiceProviderKeepsCloudCredentials(t *testing.T) {
-	cfg := normalizeVoiceProviderConfig(VoiceModuleRealtime, "openai_realtime", VoiceProviderConfig{
+	cfg := effectiveVoiceProviderConfig(VoiceModuleRealtime, "openai_realtime", VoiceProviderConfig{
 		APIKey:    "  sk-test  ",
 		APIKeyEnv: "  CUSTOM_OPENAI_KEY  ",
 		Language:  "ru_ru",

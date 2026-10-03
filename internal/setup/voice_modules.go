@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"cmp"
 	"fmt"
 	"strings"
 )
@@ -59,7 +60,7 @@ func (s *Service) UpdateVoiceModule(id string, update VoiceModuleUpdate) ([]Voic
 					providerConfig.APIKeyEnv = existing.APIKeyEnv
 				}
 			}
-			current.Providers[providerID] = normalizeVoiceProviderConfig(id, providerID, providerConfig)
+			current.Providers[providerID] = providerConfig
 		}
 		current = normalizeVoiceModuleConfig(id, current)
 		setVoiceModuleConfigByID(&cfg.Modules, id, current)
@@ -109,49 +110,55 @@ func voiceModuleDescriptor(id string, title string, cfg VoiceModuleConfig) Voice
 	}
 }
 
+// normalizeVoiceModuleConfig trims a stored voice module and keeps, per
+// provider, only the settings that differ from the provider's defaults.
 func normalizeVoiceModuleConfig(moduleID string, cfg VoiceModuleConfig) VoiceModuleConfig {
 	moduleID = normalizeVoiceModuleID(moduleID)
 	cfg.ProviderID = normalizeVoiceProviderID(cfg.ProviderID)
 	if !voiceProviderExists(moduleID, cfg.ProviderID) {
-		cfg.ProviderID = defaultVoiceProviderID(moduleID)
+		cfg.ProviderID = ""
 	}
-	if len(cfg.Providers) == 0 {
-		cfg.Providers = nil
-	}
-	normalized := map[string]VoiceProviderConfig{}
+	stored := map[string]VoiceProviderConfig{}
 	for providerID, providerCfg := range cfg.Providers {
 		providerID = normalizeVoiceProviderID(providerID)
-		if providerID == "" || !voiceProviderExists(moduleID, providerID) {
+		if !voiceProviderExists(moduleID, providerID) {
 			continue
 		}
-		normalized[providerID] = normalizeVoiceProviderConfig(moduleID, providerID, providerCfg)
-	}
-	for _, provider := range voiceProviders(moduleID) {
-		if provider.Local {
-			if _, ok := normalized[provider.ID]; !ok {
-				normalized[provider.ID] = defaultVoiceProviderConfig(provider.ID)
-			}
+		if providerCfg = storedVoiceProviderConfig(moduleID, providerID, providerCfg); providerCfg != (VoiceProviderConfig{}) {
+			stored[providerID] = providerCfg
 		}
 	}
-	if len(normalized) == 0 {
-		cfg.Providers = nil
-	} else {
-		cfg.Providers = normalized
+	cfg.Providers = nil
+	if len(stored) > 0 {
+		cfg.Providers = stored
 	}
 	return cfg
 }
 
+// voiceProviderConfigByID is a provider's effective settings in module.
 func voiceProviderConfigByID(moduleID string, module VoiceModuleConfig, providerID string) VoiceProviderConfig {
 	providerID = normalizeVoiceProviderID(providerID)
-	if module.Providers != nil {
-		if cfg, ok := module.Providers[providerID]; ok {
-			return normalizeVoiceProviderConfig(moduleID, providerID, cfg)
-		}
-	}
-	return defaultVoiceProviderConfig(providerID)
+	return effectiveVoiceProviderConfig(moduleID, providerID, module.Providers[providerID])
 }
 
-func normalizeVoiceProviderConfig(moduleID string, providerID string, cfg VoiceProviderConfig) VoiceProviderConfig {
+func storedVoiceProviderConfig(moduleID string, providerID string, cfg VoiceProviderConfig) VoiceProviderConfig {
+	cfg = effectiveVoiceProviderConfig(moduleID, providerID, cfg)
+	defaults := defaultVoiceProviderConfig(providerID)
+	cfg.ModelID = omitDefault(cfg.ModelID, defaults.ModelID)
+	cfg.VoiceID = omitDefault(cfg.VoiceID, defaults.VoiceID)
+	cfg.Language = omitDefault(cfg.Language, defaults.Language)
+	cfg.BinaryPath = omitDefault(cfg.BinaryPath, defaults.BinaryPath)
+	if !isCloudRealtimeVoiceProvider(providerID) {
+		cfg.Endpoint = omitDefault(cfg.Endpoint, defaults.Endpoint)
+	}
+	cfg.RuntimeMode = omitDefault(cfg.RuntimeMode, "per_task")
+	return cfg
+}
+
+// effectiveVoiceProviderConfig normalizes cfg and fills the provider's
+// defaults for what it leaves empty; a cloud provider's endpoint and key env
+// stay empty unless set, so the realtime env overrides apply.
+func effectiveVoiceProviderConfig(moduleID string, providerID string, cfg VoiceProviderConfig) VoiceProviderConfig {
 	moduleID = normalizeVoiceModuleID(moduleID)
 	providerID = normalizeVoiceProviderID(providerID)
 	if moduleID == VoiceModuleRealtime && isCloudRealtimeVoiceProvider(providerID) {
@@ -180,21 +187,14 @@ func normalizeVoiceProviderConfig(moduleID string, providerID string, cfg VoiceP
 	cfg.Endpoint = strings.TrimSpace(cfg.Endpoint)
 	cfg.RuntimeMode = normalizeVoiceRuntimeMode(cfg.RuntimeMode)
 	defaults := defaultVoiceProviderConfig(providerID)
-	if cfg.ModelID == "" {
-		cfg.ModelID = defaults.ModelID
+	cfg.ModelID = cmp.Or(cfg.ModelID, defaults.ModelID)
+	cfg.VoiceID = cmp.Or(cfg.VoiceID, defaults.VoiceID)
+	cfg.Language = cmp.Or(cfg.Language, defaults.Language)
+	cfg.BinaryPath = cmp.Or(cfg.BinaryPath, defaults.BinaryPath)
+	if !isCloudRealtimeVoiceProvider(providerID) {
+		cfg.Endpoint = cmp.Or(cfg.Endpoint, defaults.Endpoint)
 	}
-	if cfg.VoiceID == "" {
-		cfg.VoiceID = defaults.VoiceID
-	}
-	if cfg.Language == "" {
-		cfg.Language = defaults.Language
-	}
-	if cfg.BinaryPath == "" {
-		cfg.BinaryPath = defaults.BinaryPath
-	}
-	if cfg.Threads < 0 {
-		cfg.Threads = 0
-	}
+	cfg.Threads = max(cfg.Threads, 0)
 	return cfg
 }
 
