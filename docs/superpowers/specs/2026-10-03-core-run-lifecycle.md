@@ -1,6 +1,6 @@
 # Core run lifecycle — design
 
-Status: proposed (Phase C #1 of the 2026-10-03 audit cleanup; core report
+Status: built (Phase C #1 of the 2026-10-03 audit cleanup; core report
 items 4, 12, 14, 15, 16, 17 and the area verdict).
 
 ## Current shape and what is wrong with it
@@ -344,3 +344,37 @@ ported (subagent approval tests in particular), not dropped.
   child waits for approval (Telegram shows the child's approval as its own
   message, as it does for background children); a canceled blocking child's
   task is `canceled`; a failed parent cancels its blocking children.
+
+## As built
+
+Where the build differs from the text above:
+
+- **`afterRun`** is run by the executor when it lets go of the run, and by
+  `CancelRun` for a run that has none; `transition` does not call it, as it may
+  run under a session gate the hooks take. An executor whose run was
+  interrupted while the daemon lives hands it back to the run starter.
+- **Edges**: an interrupted run stays `running` until it executes again; there
+  is no edge back to `accepted`. `claim` treats only `running` as interrupted:
+  a `waiting_approval` run with nothing pending resumes normally (its approved
+  calls never started), and an `accepted` run is never recovered.
+- **Recovery plan** reaches the engine in `agent.Task` (`Recovering`,
+  `Interrupted []InterruptedCall` with `Settle` rerun, ask or answer), not
+  through `Inbox`, as it exists only at the start of an execution. External
+  agent runs keep their recovery in core (prompt and reply seal).
+- **`Tools.Finish`** left the engine port with the unified task (commit 5), as
+  its only user was the result-message bookkeeping.
+- **Subagent approvals**: a read-only child's approval is stored rejected with
+  no event or delivery. The approval delivery carries the parent's run and the
+  task. `ListApprovals(session)` adds the session's subagents' approvals by
+  `task_id`; `rejectRunApprovals` replaced the session-wide rejection.
+- **Cancel race**: `CancelRun` of a run that ended meanwhile returns it as it
+  ended, without an error. A parent canceled while it waits for its child may
+  read the child's end ("Subagent canceled with its parent run.") as its call's
+  result, when that came before the parent's own stop.
+- **`Core.Recover`** runs once after the bootstrap applied external agents, in
+  the goroutine that ran the five calls before, so shell tasks are marked lost
+  a moment after the API serves (a live task is never touched).
+- Left as they were: `tasks.result_message_id` (no longer written; phase D
+  drops it with the canonical schema), `TaskStatusPending` (never written),
+  `tools.Result.FileVersion` (C2).
+- An extra commit made the approval rejection of an ended run run-scoped.

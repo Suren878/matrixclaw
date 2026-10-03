@@ -10,8 +10,6 @@ flowchart LR
     IOS[iOS client package] --> API
     API --> CORE[Core runtime]
     CORE --> STORE[(SQLite)]
-    CORE --> WF[Workflow worker]
-    WF --> CORE
     CORE --> ENGINE[Agent engine]
     CORE --> AGENTS[External agents]
     ENGINE --> PROVIDERS[LLM providers]
@@ -61,11 +59,37 @@ restarting Telegram does not lose runs or approvals.
 ## Native Runs
 
 A run is accepted by `internal/core` and executed in a goroutine of its own,
-which calls `Core.ExecuteRun`; runs left active by a restart are recovered by
-`Core.RecoverActiveRuns`. External agent sessions go to their adapter; native sessions build an
-`agent.Engine` and call `Engine.Run(ctx, Task)`, then apply its `Outcome`
+which calls `Core.ExecuteRun`: `claim` (under the session gate) makes the run
+`running`, then external agent sessions go to their adapter and native sessions
+build an `agent.Engine` and call `Engine.Run(ctx, Task)`, whose `Outcome`
 (`completed` with a stop reason, `waiting_approval`, `waiting_events`,
-`interrupted`, `canceled` or `failed`).
+`interrupted`, `canceled` or `failed`) core applies.
+
+Run status has one writer, `transition` (`internal/core/run_lifecycle.go`):
+
+```text
+accepted ─▶ running ─▶ completed
+               │  ▲
+               ▼  │
+   waiting_approval / waiting_events
+any status that has not ended ─▶ failed | canceled
+```
+
+It keeps `finished_at`, the wakeup of a run waiting for events, the checkpoint
+(cleared on the end) and the subagent task the run works for, seals the reply in
+the same transaction, rejects an ended run's approvals and publishes
+`run.updated`. `afterRun`, run when the executor lets go of a run (or by
+`CancelRun` for a parked one), starts the session's next queued message, wakes
+it for finished background work, or resumes a parked run whose decision or
+event arrived while it parked. Canceling cancels the run's context with the
+cause `agent.ErrCanceled`; any other stop interrupts it.
+
+A run found `running` without an executor was interrupted: `claim` counts the
+recovery (at most 8) and tells the engine how to settle each call left without
+a result (`agent.Task.Interrupted`: run again, ask again for a mutating call,
+or answer), so recovery too goes through the engine. `Core.Recover`, called
+once at daemon start, marks leftover shell tasks lost, resumes each active run
+once, tells subagent tasks whose child ended, and settles idle sessions.
 
 `internal/agent` is the loop. It knows nothing of SQLite, HTTP, or clients and
 talks to them through ports (`internal/agent/ports.go`):
@@ -81,7 +105,8 @@ talks to them through ports (`internal/agent/ports.go`):
 | `Todos` | `coreTodos` | open todo items of the run's `/continue` chain |
 
 While a native run is active the engine is the only writer of its session's
-transcript; everything else reaches it through the inbox. Messages are ordered
+transcript; everything else reaches it through the inbox. `Core.ExecuteTool`
+serves run-less calls only (API, voice, MCP server). Messages are ordered
 by an integer `seq`, and persisted messages are never rewritten.
 
 Engine packages:
@@ -103,13 +128,18 @@ Around the engine:
 - `internal/permission`: rules, subjects, bash parsing, and mode presets;
   `core.checkPermission` applies them for every tool call.
 - `internal/shelltask`: background shell commands in their own process groups
-  with size-capped output files; `core` tracks them in the `tasks` table with
-  background subagents.
+  with size-capped output files; `core` tracks them as `Task`s (kind `shell`)
+  in the `tasks` table, next to subagents (kind `subagent`), with one
+  `task.updated` event.
+- Subagents: the `agent` tool starts a child run; a blocking call waits for
+  the child's run to end, a background one returns its task, whose end is an
+  event. A child's approval is its own (`approvals.task_id`), listed and
+  announced in the parent's session and sent to the parent's chat.
 - `await` parks a run in `waiting_events`; `run_wakeups` timers, finished
   tasks, and user messages wake it. Finished work in an idle session starts a
   `wake` run.
-- On start the daemon marks leftover shell tasks `lost`, recovers active runs
-  from their checkpoints, and re-arms wake timers.
+- On start the daemon calls `Core.Recover` (see above); wake timers fire on the
+  first tick of `RunWakeups`.
 
 See the [design spec](superpowers/specs/2026-09-23-long-running-agent-design.md)
 for the details and the as-built notes of each stage.
