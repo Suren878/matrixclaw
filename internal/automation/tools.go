@@ -163,9 +163,6 @@ func (t *ScheduledAITaskTool) validateScheduledAITaskInput(input scheduledAITask
 		return CreateJobInput{}, tools.Result{IsError: true, Content: "schedule_mode must be once or cron."}
 	}
 	if _, err := t.service.buildJob(create); err != nil {
-		if errors.Is(err, core.ErrInvalidInput) {
-			return CreateJobInput{}, tools.Result{IsError: true, Content: err.Error()}
-		}
 		return CreateJobInput{}, tools.Result{IsError: true, Content: err.Error()}
 	}
 	return create, tools.Result{}

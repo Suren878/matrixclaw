@@ -29,11 +29,9 @@ const (
 type FireStatus string
 
 const (
-	FireStatusPending   FireStatus = "pending"
 	FireStatusRunning   FireStatus = "running"
 	FireStatusCompleted FireStatus = "completed"
 	FireStatusFailed    FireStatus = "failed"
-	FireStatusSkipped   FireStatus = "skipped"
 )
 
 type Job struct {
@@ -69,7 +67,6 @@ type Fire struct {
 	JobID        string     `json:"job_id"`
 	ScheduledFor time.Time  `json:"scheduled_for"`
 	Status       FireStatus `json:"status"`
-	ResultState  string     `json:"result_state,omitempty"`
 	RunID        string     `json:"run_id,omitempty"`
 	Error        string     `json:"error,omitempty"`
 	CreatedAt    time.Time  `json:"created_at"`

@@ -174,13 +174,12 @@ WHERE id = ?`,
 
 func (s *SQLiteStore) CreateAutomationFire(ctx context.Context, fire Fire) error {
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO automation_fires(id, job_id, scheduled_for, status, result_state, run_id, error, created_at, updated_at, finished_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+INSERT INTO automation_fires(id, job_id, scheduled_for, status, run_id, error, created_at, updated_at, finished_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		fire.ID,
 		fire.JobID,
 		sqliteFormatTime(fire.ScheduledFor),
 		string(fire.Status),
-		fire.ResultState,
 		fire.RunID,
 		fire.Error,
 		sqliteFormatTime(fire.CreatedAt),
@@ -198,7 +197,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 
 func (s *SQLiteStore) GetAutomationFireBySchedule(ctx context.Context, jobID string, scheduledFor time.Time) (Fire, error) {
 	row := s.db.QueryRowContext(ctx, `
-SELECT id, job_id, scheduled_for, status, result_state, run_id, error, created_at, updated_at, finished_at
+SELECT id, job_id, scheduled_for, status, run_id, error, created_at, updated_at, finished_at
 FROM automation_fires
 WHERE job_id = ? AND scheduled_for = ?`, jobID, sqliteFormatTime(scheduledFor))
 	fire, err := scanSQLiteAutomationFire(row)
@@ -214,10 +213,9 @@ WHERE job_id = ? AND scheduled_for = ?`, jobID, sqliteFormatTime(scheduledFor))
 func (s *SQLiteStore) UpdateAutomationFire(ctx context.Context, fire Fire) error {
 	result, err := s.db.ExecContext(ctx, `
 UPDATE automation_fires
-SET status = ?, result_state = ?, run_id = ?, error = ?, updated_at = ?, finished_at = ?
+SET status = ?, run_id = ?, error = ?, updated_at = ?, finished_at = ?
 WHERE id = ?`,
 		string(fire.Status),
-		fire.ResultState,
 		fire.RunID,
 		fire.Error,
 		sqliteFormatTime(fire.UpdatedAt),
@@ -312,7 +310,6 @@ func scanSQLiteAutomationFire(scanner sqliteAutomationFireScanner) (Fire, error)
 		&fire.JobID,
 		&scheduledFor,
 		&status,
-		&fire.ResultState,
 		&fire.RunID,
 		&fire.Error,
 		&createdAt,
