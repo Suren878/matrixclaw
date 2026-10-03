@@ -125,6 +125,7 @@ type SessionInput struct {
 	ExternalKey        string                   `json:"external_key,omitempty"`
 	ClientCapabilities ClientCapabilities       `json:"client_capabilities,omitempty"`
 	DeliveryAddress    json.RawMessage          `json:"delivery_address,omitempty"`
+	ReplyOnce          bool                     `json:"reply_once,omitempty"`
 	WorkingDir         string                   `json:"working_dir,omitempty"`
 	ConsumedRunID      string                   `json:"consumed_run_id,omitempty"`
 	Error              string                   `json:"error,omitempty"`
@@ -143,7 +144,10 @@ type HandleMessageInput struct {
 	BusyMode           BusyInputMode            `json:"busy_mode,omitempty"`
 	WorkingDir         string                   `json:"working_dir"`
 	DeliveryAddress    json.RawMessage          `json:"delivery_address,omitempty"`
-	AllowAutoBindOne   bool                     `json:"allow_auto_bind_one"`
+	// ReplyOnce marks a delivery address that takes one reply only (a Telegram
+	// guest query or inline message); the session never answers there on its own.
+	ReplyOnce        bool `json:"reply_once,omitempty"`
+	AllowAutoBindOne bool `json:"allow_auto_bind_one"`
 	// Restricted keeps the client out of sessions that RunsUnattended.
 	Restricted bool `json:"restricted,omitempty"`
 	// Continue starts a run that continues the session's latest run; Text is ignored.

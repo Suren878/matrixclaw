@@ -184,7 +184,31 @@ CREATE TABLE IF NOT EXISTS session_todos (
 	if err := migratePermissionRules(db); err != nil {
 		return err
 	}
+	for _, table := range []struct{ name, address string }{{"client_deliveries", "address_json"}, {"session_inputs", "delivery_address_json"}} {
+		if err := migrateReplyOnce(db, table.name, table.address); err != nil {
+			return err
+		}
+	}
 	return migrateMessageSearch(db)
+}
+
+// migrateReplyOnce adds reply_once to table and sets it where the address is
+// a Telegram guest query or inline message, which a later message cannot reach.
+func migrateReplyOnce(db *sql.DB, table string, address string) error {
+	exists, err := hasColumn(db, table, "reply_once")
+	if err != nil || exists {
+		return err
+	}
+	if _, err := db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN reply_once INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return fmt.Errorf("store: add %s.reply_once: %w", table, err)
+	}
+	field := func(name string) string {
+		return `COALESCE(CASE WHEN json_valid(` + address + `) THEN json_extract(` + address + `, '$.` + name + `') END, '')`
+	}
+	if _, err := db.Exec(`UPDATE ` + table + ` SET reply_once = 1 WHERE ` + field("kind") + ` IN ('guest', 'inline') OR ` + field("guest_query_id") + ` <> '' OR ` + field("inline_message_id") + ` <> ''`); err != nil {
+		return fmt.Errorf("store: backfill %s.reply_once: %w", table, err)
+	}
+	return nil
 }
 
 // dropRetiredTables removes the Planning Mode tables that todo lists replaced

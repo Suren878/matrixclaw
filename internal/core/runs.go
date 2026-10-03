@@ -56,7 +56,7 @@ func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptR
 			wakeRunID = active.ID
 		}
 	case errors.Is(err, ErrNotFound):
-		result, err = c.createAcceptedRun(ctx, session, clientRun(text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress))
+		result, err = c.createAcceptedRun(ctx, session, clientRun(text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, deliveryTo{input.DeliveryAddress, input.ReplyOnce}))
 		if err != nil {
 			gate.Unlock()
 			return AcceptRunResult{}, err
@@ -95,7 +95,7 @@ func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptR
 // deliverRunToSteerer delivers the run a message steers to the client it came
 // from as well, unless the run is delivered there already.
 func (c *Core) deliverRunToSteerer(ctx context.Context, run Run, input HandleMessageInput, text string, parts []transcript.MessagePart) error {
-	delivery, ok, err := c.prepareSessionRunDelivery(run, text, parts, input.Client, input.ExternalKey, input.DeliveryAddress)
+	delivery, ok, err := c.prepareSessionRunDelivery(run, text, parts, input.Client, input.ExternalKey, deliveryTo{input.DeliveryAddress, input.ReplyOnce})
 	if err != nil || !ok {
 		return err
 	}

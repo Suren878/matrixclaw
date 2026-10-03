@@ -17,6 +17,12 @@ type DeliveryAddress struct {
 	InlineMessageID string `json:"inline_message_id,omitempty"`
 }
 
+// repliesOnce reports whether the target takes one reply only: a guest query
+// or an inline message, which a later message of the session cannot reach.
+func (t chatTarget) repliesOnce() bool {
+	return t.isInline() || t.isGuest()
+}
+
 func encodeDeliveryAddress(address DeliveryAddress) json.RawMessage {
 	data, err := json.Marshal(address)
 	if err != nil {

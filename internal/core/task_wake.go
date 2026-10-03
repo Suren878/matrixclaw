@@ -130,7 +130,7 @@ func (c *Core) prepareWake(ctx context.Context, sessionID string, finished *Task
 		return nil, &wakeNotice{session: session, target: target, text: text}, nil
 	}
 	parts := transcript.NormalizeMessageParts(wakeRunText, nil)
-	run := clientRun(wakeRunText, parts, target.client, target.externalKey, target.capabilities, target.address)
+	run := clientRun(wakeRunText, parts, target.client, target.externalKey, target.capabilities, deliveryTo{Address: target.address})
 	run.Trigger = RunTriggerWake
 	result, err := c.createAcceptedRun(ctx, session, run)
 	if err != nil {
@@ -182,7 +182,7 @@ func (c *Core) latestWakeTarget(ctx context.Context, runs []Run) (wakeTarget, er
 }
 
 // wakeTargetOf is where the run's reply was delivered, unless a later message
-// cannot go there: a Telegram guest query or inline message answers only once.
+// cannot go there (a reply-once address).
 func (c *Core) wakeTargetOf(ctx context.Context, run Run) (wakeTarget, bool, error) {
 	if run.Client == "" || run.ExternalKey == "" {
 		return wakeTarget{}, false, nil
@@ -193,15 +193,10 @@ func (c *Core) wakeTargetOf(ctx context.Context, run Run) (wakeTarget, bool, err
 	}
 	var address json.RawMessage
 	if len(deliveries) > 0 {
+		if deliveries[0].ReplyOnce {
+			return wakeTarget{}, false, nil
+		}
 		address = deliveries[0].Address
-	}
-	var once struct {
-		Kind            string `json:"kind"`
-		GuestQueryID    string `json:"guest_query_id"`
-		InlineMessageID string `json:"inline_message_id"`
-	}
-	if len(address) > 0 && json.Unmarshal(address, &once) == nil && (once.Kind == "guest" || once.Kind == "inline" || once.GuestQueryID != "" || once.InlineMessageID != "") {
-		return wakeTarget{}, false, nil
 	}
 	return wakeTarget{client: run.Client, externalKey: run.ExternalKey, capabilities: run.ClientCapabilities, address: address}, true, nil
 }

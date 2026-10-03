@@ -149,6 +149,7 @@ func (w *Worker) sendInlineUserMessageInSession(ctx context.Context, target chat
 		"",
 		"",
 		encodeDeliveryAddress(deliveryAddressFromTarget(target, 0)),
+		target.repliesOnce(),
 	)
 	if err != nil {
 		return err

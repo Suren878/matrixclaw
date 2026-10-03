@@ -10,6 +10,9 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
+const clientDeliveryColumns = `id, type, client, external_key, session_id, run_id, task_id, summary, address_json, reply_once,
+payload_json, status, error, created_at, updated_at, finished_at`
+
 func (s *SQLiteStore) CreateClientDelivery(ctx context.Context, delivery core.ClientDelivery) error {
 	if err := insertClientDelivery(ctx, s.db, delivery); err != nil {
 		return fmt.Errorf("store: create client delivery: %w", err)
@@ -19,8 +22,8 @@ func (s *SQLiteStore) CreateClientDelivery(ctx context.Context, delivery core.Cl
 
 func insertClientDelivery(ctx context.Context, execer sqlExecer, delivery core.ClientDelivery) error {
 	_, err := execer.ExecContext(ctx, `
-INSERT INTO client_deliveries(id, type, client, external_key, session_id, run_id, task_id, summary, address_json, payload_json, status, error, created_at, updated_at, finished_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+INSERT INTO client_deliveries(`+clientDeliveryColumns+`)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		delivery.ID,
 		delivery.Type,
 		delivery.Client,
@@ -30,6 +33,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		delivery.TaskID,
 		delivery.Summary,
 		string(delivery.Address),
+		delivery.ReplyOnce,
 		string(delivery.Payload),
 		string(delivery.Status),
 		delivery.Error,
@@ -42,7 +46,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 
 func (s *SQLiteStore) ListClientDeliveries(ctx context.Context, filter core.ClientDeliveryFilter) ([]core.ClientDelivery, error) {
 	query := `
-SELECT id, type, client, external_key, session_id, run_id, task_id, summary, address_json, payload_json, status, error, created_at, updated_at, finished_at
+SELECT ` + clientDeliveryColumns + `
 FROM client_deliveries`
 	args := []any{}
 	clauses := []string{}
@@ -151,6 +155,7 @@ func scanClientDelivery(scanner clientDeliveryScanner) (core.ClientDelivery, err
 		&delivery.TaskID,
 		&delivery.Summary,
 		&address,
+		&delivery.ReplyOnce,
 		&payload,
 		&status,
 		&delivery.Error,
