@@ -218,7 +218,10 @@ reads `provider.Languages` instead of its own tables.
 - The daemon owns identity: `POST /v1/calls` loses `assistant_name`,
   `phone_prompt` and `assistant_custom_instructions`; the gateway loses
   `MATRIXCLAW_TELEPHONY_PHONE_PROMPT` / `…_ASSISTANT_NAME` and those prompt
-  sections; inbound calls now get the configured phone prompt too.
+  sections; inbound calls now get the configured phone prompt too. Every
+  other gateway variable keeps its meaning (pinned by a config test); inbound
+  calls still use `…_INBOUND_GREETING` and `…_INBOUND_PROMPT`, on top of the
+  daemon-composed identity and phone prompt.
 - **Behaviour change:** inbound calls are rejected unless
   `MATRIXCLAW_TELEPHONY_INBOUND_ALLOWED_CALLERS` lists the caller; the gateway
   logs a warning at start when inbound is on with an empty list.
@@ -245,7 +248,8 @@ address codec, `markPullClientRestartDeliveriesReady`,
   together; an old gateway ignores the missing ones). Swift is unaffected
   (it uses storage only); `daemonclient` gains `Modules`.
 - SQLite: idempotent statement in `applyCanonicalSchema`: `daemon_restart`
-  rows become `notice`, `pending`→`held`, `ready`→`sent`.
+  rows become `notice`, `pending`→`held`, `ready`→`sent`; tested on an
+  old-shape database, applied twice.
 - setup.json: no shape change. Realtime entries saved by older versions
   load as before (languages are normalized by the provider when used).
 - **Dropped env overrides:** `MATRIXCLAW_REALTIME_VOICE_{ENABLED,PROVIDER,
@@ -304,6 +308,5 @@ instead). Rough size: −2300 / +1300 lines.
 - Prompt changes (phone prompt order, custom instructions in all realtime
   sessions, status note format) are model-facing; covered by instruction
   composition tests.
-- Overlap: `run.go` (C1) — wiring moves to `modules.go`, recovery untouched;
-  `clients/terminal/chat/runtime/app_server_commands.go` (C7) — small edit to
-  the restart poll; controlplane (C6 later) — only forced edits.
+- Overlap: C1 and C7 are merged (this branch is rebased on them); controlplane
+  (C6 later) gets only forced edits.
