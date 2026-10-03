@@ -64,7 +64,7 @@ func TestDecodeStreamKeepsSparseToolIndicesInOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(response.ToolCalls) != 2 || response.ToolCalls[0].ID != "two" || response.ToolCalls[1].ID != "five" {
+	if len(response.ToolCalls) != 2 || response.ToolCalls[0].Name != "inspect2" || response.ToolCalls[1].Name != "inspect5" {
 		t.Fatalf("tools=%#v", response.ToolCalls)
 	}
 }
@@ -81,5 +81,26 @@ func TestDecodeStreamStopsAtDoneWithoutWaitingForConnectionClose(t *testing.T) {
 	_, err := (&Runtime{}).decodeStream(context.Background(), io.MultiReader(strings.NewReader(frames), failIfRead{t}))
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Kimi numbers calls per conversation, so two responses can both carry
+// functions.read:0; each response's calls get IDs of their own.
+func TestEachResponseGivesItsToolCallsIDsOfTheirOwn(t *testing.T) {
+	frames := `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"functions.read:0","function":{"name":"read","arguments":"{}"}},{"index":1,"id":"functions.read:0","function":{"name":"read","arguments":"{}"}},{"index":2,"id":"functions.read:1","function":{"name":"read","arguments":"{}"}}]}}]}` + "\n\ndata: [DONE]\n\n"
+	first, err := (&Runtime{}).decodeStream(context.Background(), strings.NewReader(frames))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := (&Runtime{}).decodeStream(context.Background(), strings.NewReader(frames))
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := first.ToolCalls
+	if len(calls) != 3 || calls[0].ID != calls[1].ID || calls[0].ID == calls[2].ID || len(calls[0].ID) > 40 {
+		t.Fatalf("calls = %+v, want a repeated call to keep one ID and another call its own", calls)
+	}
+	if second.ToolCalls[0].ID == calls[0].ID {
+		t.Fatalf("both responses gave their call the ID %q", calls[0].ID)
 	}
 }

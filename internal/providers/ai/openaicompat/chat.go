@@ -378,7 +378,7 @@ func (r *Runtime) finishResponse(text string, reasoning *string, calls []provide
 		ReasoningContent: reasoning,
 		Model:            r.Model,
 		Provider:         providers.TypeOpenAICompat,
-		ToolCalls:        calls,
+		ToolCalls:        namespaceToolCalls(calls),
 		StopReason:       stop,
 		Usage:            usage,
 	}, nil

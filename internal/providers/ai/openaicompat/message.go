@@ -1,6 +1,7 @@
 package openaicompat
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -104,6 +105,26 @@ func decodeToolCalls(value []chatCompletionToolCall) []providers.ToolCall {
 		})
 	}
 	return result
+}
+
+// namespaceToolCalls gives the response's calls IDs of their own: Kimi numbers
+// calls per conversation (functions.read:0), so its IDs repeat in other sessions
+// and after compaction. A call the response repeats keeps one ID.
+func namespaceToolCalls(calls []providers.ToolCall) []providers.ToolCall {
+	prefix := "call_" + rand.Text()
+	ids := make(map[string]string, len(calls))
+	for i := range calls {
+		if calls[i].ID == "" {
+			continue
+		}
+		id, ok := ids[calls[i].ID]
+		if !ok {
+			id = fmt.Sprintf("%s_%d", prefix, len(ids))
+			ids[calls[i].ID] = id
+		}
+		calls[i].ID = id
+	}
+	return calls
 }
 
 func validateToolCalls(calls []providers.ToolCall) error {
