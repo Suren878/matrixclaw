@@ -524,7 +524,7 @@ func (s *Service) CreateDraft(name string, description string, tags []string, bo
 	if body == "" {
 		body = "Describe when to use this skill and the steps to follow."
 	}
-	cleanTags := cleanStringSlice(tags)
+	cleanTags := textutil.UniqueNonBlank(tags...)
 	id := NormalizeID(name)
 	if id == "" {
 		return Skill{}, fmt.Errorf("skill draft requires a valid name")
@@ -588,7 +588,7 @@ func (s *Service) UpdateMetadata(id string, update MetadataUpdate) (Skill, error
 		metadata["description"] = strings.TrimSpace(update.Description)
 	}
 	if update.Tags != nil {
-		metadata["tags"] = cleanStringSlice(update.Tags)
+		metadata["tags"] = textutil.UniqueNonBlank(update.Tags...)
 	}
 	if strings.TrimSpace(update.Category) != "" {
 		metadata["category"] = strings.TrimSpace(update.Category)
@@ -750,23 +750,6 @@ func skillMarkdown(name string, description string, tags []string, body string) 
 	}
 	raw, _ := yaml.Marshal(metadata)
 	return "---\n" + strings.TrimSpace(string(raw)) + "\n---\n" + strings.TrimSpace(body) + "\n"
-}
-
-func cleanStringSlice(values []string) []string {
-	out := make([]string, 0, len(values))
-	seen := map[string]struct{}{}
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		out = append(out, value)
-	}
-	return out
 }
 
 func copyDir(source string, target string) error {

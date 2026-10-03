@@ -13,3 +13,29 @@ func FirstNonEmpty(values ...string) string {
 	}
 	return ""
 }
+
+// NonBlank returns the values trimmed, without the blank ones.
+func NonBlank(values ...string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+// UniqueNonBlank is NonBlank without repeats; the first occurrence stays.
+func UniqueNonBlank(values ...string) []string {
+	out := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if _, ok := seen[value]; ok || value == "" {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}

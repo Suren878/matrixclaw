@@ -3,6 +3,8 @@ package setup
 import (
 	"fmt"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 func (s *Service) GetMCPConfig() (MCPConfig, error) {
@@ -71,7 +73,7 @@ func normalizeMCPServerForCreate(server MCPServerConfig) MCPServerConfig {
 	if server.TimeoutSeconds < 0 {
 		server.TimeoutSeconds = 0
 	}
-	server.Args = trimStringSlice(server.Args)
+	server.Args = textutil.NonBlank(server.Args...)
 	server.Env = trimStringMap(server.Env)
 	return server
 }

@@ -58,7 +58,7 @@ func decodeModels(raw []byte) ([]string, error) {
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		var values []string
 		if listErr := json.Unmarshal(raw, &values); listErr == nil {
-			return cleanModels(values), nil
+			return textutil.UniqueNonBlank(values...), nil
 		}
 		return nil, fmt.Errorf("openai-codex: decode models response: %w", err)
 	}
@@ -75,7 +75,7 @@ func decodeModels(raw []byte) ([]string, error) {
 			values = append(values, id)
 		}
 	}
-	return cleanModels(values), nil
+	return textutil.UniqueNonBlank(values...), nil
 }
 
 type modelItem struct {
@@ -103,21 +103,4 @@ func (m modelItem) contextWindowTokens() int {
 	default:
 		return 0
 	}
-}
-
-func cleanModels(values []string) []string {
-	models := make([]string, 0, len(values))
-	seen := map[string]struct{}{}
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		models = append(models, value)
-	}
-	return models
 }

@@ -3,6 +3,8 @@ package mcp
 import (
 	"strings"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 const (
@@ -42,7 +44,7 @@ func NormalizeConfig(cfg Config) Config {
 		if server.ToolPrefix == "" {
 			server.ToolPrefix = server.ID
 		}
-		server.Args = trimStrings(server.Args)
+		server.Args = textutil.NonBlank(server.Args...)
 		server.Env = trimMap(server.Env)
 		if server.ID == "" {
 			continue
@@ -71,16 +73,6 @@ func normalizeTransport(value string) string {
 	default:
 		return TransportStdio
 	}
-}
-
-func trimStrings(values []string) []string {
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			out = append(out, value)
-		}
-	}
-	return out
 }
 
 func trimMap(values map[string]string) map[string]string {

@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 type piperDriver struct{}
@@ -143,7 +145,7 @@ func ensureConfiguredPiperVoiceModel(provider VoiceProvider) VoiceProvider {
 		Name: voiceID,
 	}
 	if language, voice, quality, ok := splitPiperVoiceID(voiceID); ok {
-		model.Name = strings.TrimSpace(strings.Join(nonEmptyLocal(titleWords(voice), qualityLabel(quality)), " "))
+		model.Name = strings.Join(textutil.NonBlank(titleWords(voice), qualityLabel(quality)), " ")
 		model.LanguageCode = language
 		model.Quality = quality
 		if model.Name == "" {

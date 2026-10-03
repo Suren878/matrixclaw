@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"gopkg.in/yaml.v3"
 )
 
@@ -145,7 +146,7 @@ func cleanString(value any) string {
 func stringSlice(value any) []string {
 	switch v := value.(type) {
 	case []string:
-		return cleanStrings(v)
+		return textutil.NonBlank(v...)
 	case []any:
 		values := make([]string, 0, len(v))
 		for _, item := range v {
@@ -162,16 +163,6 @@ func stringSlice(value any) []string {
 	default:
 		return nil
 	}
-}
-
-func cleanStrings(values []string) []string {
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			out = append(out, value)
-		}
-	}
-	return out
 }
 
 func nested(values map[string]any, path ...string) any {

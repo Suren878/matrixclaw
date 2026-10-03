@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 func normalizeConfig(cfg Config) Config {
@@ -101,7 +102,7 @@ func normalizeMCPConfig(cfg MCPConfig) MCPConfig {
 		if server.TimeoutSeconds < 0 {
 			server.TimeoutSeconds = 0
 		}
-		server.Args = trimStringSlice(server.Args)
+		server.Args = textutil.NonBlank(server.Args...)
 		server.Env = trimStringMap(server.Env)
 		if server.ID == "" {
 			continue
@@ -150,16 +151,6 @@ func normalizeMCPTransport(value string) string {
 	default:
 		return "stdio"
 	}
-}
-
-func trimStringSlice(values []string) []string {
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			out = append(out, value)
-		}
-	}
-	return out
 }
 
 func trimStringMap(values map[string]string) map[string]string {

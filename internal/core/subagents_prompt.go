@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 func (c *Core) agentGuidancePrompt(ctx context.Context) string {
@@ -102,7 +104,7 @@ func (c *Core) subagentRuntimeInfo(ctx context.Context) []subagentRuntimeInfo {
 		if runtime == "" {
 			continue
 		}
-		models := normalizeModelNames(c.externalAgentModelList(ctx, descriptor.ID))
+		models := textutil.UniqueNonBlank(c.externalAgentModelList(ctx, descriptor.ID)...)
 		out = append(out, subagentRuntimeInfo{
 			Runtime:   runtime,
 			Label:     strings.TrimSpace(descriptor.DisplayName),
@@ -132,23 +134,6 @@ func subagentRuntimeDetail(descriptor ExternalAgentDescriptor) string {
 		return "disabled"
 	}
 	return ""
-}
-
-func normalizeModelNames(models []string) []string {
-	out := make([]string, 0, len(models))
-	seen := map[string]struct{}{}
-	for _, model := range models {
-		model = strings.TrimSpace(model)
-		if model == "" {
-			continue
-		}
-		if _, ok := seen[model]; ok {
-			continue
-		}
-		seen[model] = struct{}{}
-		out = append(out, model)
-	}
-	return out
 }
 
 func availableSubagentRuntimeIDs(runtimes []subagentRuntimeInfo) []string {

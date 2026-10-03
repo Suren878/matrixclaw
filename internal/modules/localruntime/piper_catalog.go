@@ -117,7 +117,7 @@ func piperCatalogModel(key string, entry piperCatalogEntry) VoiceModel {
 		ID:           key,
 		Name:         titleWords(name) + " " + qualityLabel(quality),
 		Size:         formatVoiceModelSize(piperCatalogONNXSize(entry.Files)),
-		Description:  strings.TrimSpace(strings.Join(nonEmptyLocal(languageName, strings.TrimSpace(entry.Language.CountryEnglish)), " · ")),
+		Description:  strings.Join(textutil.NonBlank(languageName, entry.Language.CountryEnglish), " · "),
 		Default:      key == "en_US-lessac-medium",
 		LanguageCode: languageCode,
 		LanguageName: languageName,
@@ -190,14 +190,4 @@ func qualityRank(quality string) int {
 	default:
 		return 4
 	}
-}
-
-func nonEmptyLocal(values ...string) []string {
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			out = append(out, trimmed)
-		}
-	}
-	return out
 }
