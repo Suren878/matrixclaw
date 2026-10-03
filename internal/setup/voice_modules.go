@@ -11,8 +11,6 @@ const (
 	VoiceModuleRealtime = "realtime_voice"
 )
 
-const FutureVoiceModuleRealtime = VoiceModuleRealtime
-
 func (s *Service) VoiceModules() ([]VoiceModuleDescriptor, error) {
 	cfg, err := s.Load()
 	if err != nil {
