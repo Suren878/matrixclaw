@@ -234,7 +234,7 @@ func (r *Runtime) responsesPayload(request providers.Request) responsesRequest {
 		PromptCacheKey:    strings.TrimSpace(request.CacheKey),
 		Stream:            true,
 	}
-	payload.Instructions = combinedSystemPrompt(request.SystemPrompt, request.CustomInstructions)
+	payload.Instructions = strings.TrimSpace(request.SystemPrompt)
 	if request.ToolChoice == providers.ToolChoiceNone && len(payload.Tools) > 0 {
 		payload.ToolChoice = string(providers.ToolChoiceNone)
 	}
@@ -394,20 +394,5 @@ func (usage responsesUsage) toProviderUsage() providers.Usage {
 		CacheReadTokens: usage.InputTokensDetails.CachedTokens,
 		ReasoningTokens: usage.OutputTokensDetails.ReasoningTokens,
 		ProviderRaw:     raw,
-	}
-}
-
-func combinedSystemPrompt(systemPrompt string, customInstructions string) string {
-	systemPrompt = strings.TrimSpace(systemPrompt)
-	customInstructions = strings.TrimSpace(customInstructions)
-	switch {
-	case systemPrompt == "" && customInstructions == "":
-		return ""
-	case systemPrompt == "":
-		return customInstructions
-	case customInstructions == "":
-		return systemPrompt
-	default:
-		return systemPrompt + "\n\n" + customInstructions
 	}
 }

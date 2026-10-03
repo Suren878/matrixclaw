@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"strings"
 
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -50,12 +51,11 @@ func (r *run) buildRequest(ctx context.Context, final StopReason) (providers.Req
 	}
 	messages = r.sent(messages)
 	request := providers.Request{
-		RunID:              r.task.RunID,
-		SessionID:          r.task.SessionID,
-		SystemPrompt:       r.system,
-		CustomInstructions: r.custom,
-		CacheKey:           r.task.SessionID,
-		MaxOutputTokens:    r.counters.OutputLimit,
+		RunID:           r.task.RunID,
+		SessionID:       r.task.SessionID,
+		SystemPrompt:    r.system,
+		CacheKey:        r.task.SessionID,
+		MaxOutputTokens: r.counters.OutputLimit,
 	}
 	if final != "" {
 		request.ToolChoice = providers.ToolChoiceNone
@@ -73,6 +73,19 @@ func (r *run) buildRequest(ctx context.Context, final StopReason) (providers.Req
 	request.Messages = append(summary, conversation...)
 	request.Tools = r.tools
 	return request, nil
+}
+
+// withCustomInstructions appends the user's own instructions to the system prompt.
+func withCustomInstructions(system string, custom string) string {
+	system, custom = strings.TrimSpace(system), strings.TrimSpace(custom)
+	switch {
+	case custom == "":
+		return system
+	case system == "":
+		return "User custom instructions:\n" + custom
+	default:
+		return system + "\n\nUser custom instructions:\n" + custom
+	}
 }
 
 // sent is messages as the run's requests carry them: elided, and without the

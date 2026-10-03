@@ -393,13 +393,14 @@ func (s *Sink) Kinds() []agent.EventKind {
 // context; SystemCalls counts system prompt builds.
 type Prompts struct {
 	Text        string
+	Custom      string
 	ContextText string
 	SystemCalls int
 }
 
 func (p *Prompts) System(context.Context, []transcript.Message) (string, string) {
 	p.SystemCalls++
-	return p.Text, ""
+	return p.Text, p.Custom
 }
 
 func (p *Prompts) Context(context.Context) string {

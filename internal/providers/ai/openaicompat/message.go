@@ -8,19 +8,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
-func combinedSystemPrompt(systemPrompt string, customInstructions string) string {
-	systemPrompt = strings.TrimSpace(systemPrompt)
-	customInstructions = strings.TrimSpace(customInstructions)
-	if customInstructions == "" {
-		return systemPrompt
-	}
-	block := "User custom instructions:\n" + customInstructions
-	if systemPrompt == "" {
-		return block
-	}
-	return systemPrompt + "\n\n" + block
-}
-
 func (r *Runtime) chatMessage(message providers.Message) chatCompletionMessage {
 	chatMessage := chatCompletionMessage{
 		Role:    normalizeOpenAIRole(message.Role),

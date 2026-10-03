@@ -183,7 +183,7 @@ func (r *Runtime) generatePayload(request providers.Request) generateContentRequ
 			MaxOutputTokens: providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.maxOutputTokens, r.providerID, providers.TypeGemini, r.model),
 		},
 	}
-	if systemPrompt := combinedSystemPrompt(request.SystemPrompt, request.CustomInstructions); systemPrompt != "" {
+	if systemPrompt := strings.TrimSpace(request.SystemPrompt); systemPrompt != "" {
 		payload.SystemInstruction = &geminiContent{
 			Parts: []geminiPart{{Text: systemPrompt}},
 		}
@@ -496,19 +496,6 @@ func normalizeGeminiRole(role string) string {
 		return "model"
 	}
 	return "user"
-}
-
-func combinedSystemPrompt(systemPrompt string, customInstructions string) string {
-	systemPrompt = strings.TrimSpace(systemPrompt)
-	customInstructions = strings.TrimSpace(customInstructions)
-	if customInstructions == "" {
-		return systemPrompt
-	}
-	block := "User custom instructions:\n" + customInstructions
-	if systemPrompt == "" {
-		return block
-	}
-	return systemPrompt + "\n\n" + block
 }
 
 func rawObject(value json.RawMessage) json.RawMessage {

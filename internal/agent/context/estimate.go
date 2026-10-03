@@ -96,7 +96,7 @@ func runeCost(r rune) int {
 }
 
 func EstimateRequestTokens(request providers.Request) int {
-	total := EstimateTextTokens(request.SystemPrompt) + EstimateTextTokens(request.CustomInstructions)
+	total := EstimateTextTokens(request.SystemPrompt)
 	for _, message := range request.Messages {
 		total += EstimateTextTokens(message.Role)
 		total += EstimateTextTokens(message.Content)

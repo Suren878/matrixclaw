@@ -28,7 +28,7 @@ const (
 // encodeRequest fills system, tools, tool choice and messages of payload.
 // Cache breakpoints are set only for session requests (non-empty CacheKey).
 func encodeRequest(payload *anthropicRequest, request providers.Request) error {
-	if system := combinedSystemPrompt(request.SystemPrompt, request.CustomInstructions); system != "" {
+	if system := strings.TrimSpace(request.SystemPrompt); system != "" {
 		payload.System = []anthropicBlock{{Type: "text", Text: system}}
 	}
 	payload.Tools = encodeTools(request.Tools)
@@ -43,19 +43,6 @@ func encodeRequest(payload *anthropicRequest, request providers.Request) error {
 		markCacheBreakpoints(payload)
 	}
 	return nil
-}
-
-func combinedSystemPrompt(systemPrompt string, customInstructions string) string {
-	systemPrompt = strings.TrimSpace(systemPrompt)
-	customInstructions = strings.TrimSpace(customInstructions)
-	if customInstructions == "" {
-		return systemPrompt
-	}
-	block := "User custom instructions:\n" + customInstructions
-	if systemPrompt == "" {
-		return block
-	}
-	return systemPrompt + "\n\n" + block
 }
 
 func encodeTools(tools []providers.ToolDefinition) []anthropicTool {

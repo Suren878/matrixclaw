@@ -47,15 +47,14 @@ type ReasoningBlock struct {
 }
 
 type Request struct {
-	RunID              string
-	SessionID          string
-	SystemPrompt       string
-	CustomInstructions string
-	Messages           []Message
-	Tools              []ToolDefinition
-	MaxOutputTokens    int        // 0 = provider config, then model catalog, then DefaultMaxOutputTokens
-	ToolChoice         ToolChoice // tools stay defined with ToolChoiceNone so the cached prefix survives
-	CacheKey           string     // session id; adapters use it for prompt_cache_key or cache breakpoints
+	RunID           string
+	SessionID       string
+	SystemPrompt    string
+	Messages        []Message
+	Tools           []ToolDefinition
+	MaxOutputTokens int        // 0 = provider config, then model catalog, then DefaultMaxOutputTokens
+	ToolChoice      ToolChoice // tools stay defined with ToolChoiceNone so the cached prefix survives
+	CacheKey        string     // session id; adapters use it for prompt_cache_key or cache breakpoints
 }
 
 type Response struct {

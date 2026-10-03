@@ -81,7 +81,7 @@ func (e *Engine) Run(ctx context.Context, task Task) (outcome Outcome, err error
 		// A boundary edits the history even when no checkpoint recorded it.
 		r.counters.HistoryEdit = max(r.counters.HistoryEdit, window.Boundary.Seq)
 	}
-	r.system, r.custom = e.cfg.Prompts.System(ctx, window.Messages)
+	r.system = withCustomInstructions(e.cfg.Prompts.System(ctx, window.Messages))
 	if ToolUseAllowed(task.Model) {
 		r.tools = toolDefinitions(e.cfg.Tools.Specs(ctx))
 	}
@@ -110,10 +110,10 @@ type run struct {
 	delegated  time.Duration
 	anchor     *promptAnchor
 	requestSeq int64
-	// system, custom and tools are built once, so every request of the run
-	// shares one prefix.
-	system, custom string
-	tools          []providers.ToolDefinition
+	// system and tools are built once, so every request of the run shares one
+	// prefix.
+	system string
+	tools  []providers.ToolDefinition
 }
 
 type stepKind int

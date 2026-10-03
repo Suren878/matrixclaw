@@ -251,7 +251,7 @@ func (r *Runtime) chatPayload(ctx context.Context, request providers.Request) ch
 		Model:    r.model,
 		Messages: make([]chatCompletionMessage, 0, len(request.Messages)+2),
 	}
-	if systemPrompt := combinedSystemPrompt(request.SystemPrompt, request.CustomInstructions); systemPrompt != "" {
+	if systemPrompt := strings.TrimSpace(request.SystemPrompt); systemPrompt != "" {
 		payload.Messages = append(payload.Messages, chatCompletionMessage{
 			Role:    "system",
 			Content: systemPrompt,

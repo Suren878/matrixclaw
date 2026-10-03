@@ -590,6 +590,18 @@ func TestRetryableErrorBeforeOutputIsRetried(t *testing.T) {
 	}
 }
 
+func TestCustomInstructionsFollowTheSystemPromptUnderOneLabel(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Prompts.Custom = "  Answer in French.  "
+	model := agenttest.NewScriptedModel(text("ok"))
+
+	run(t, f, model)
+
+	if got := model.Requests()[0].SystemPrompt; got != "system\n\nUser custom instructions:\nAnswer in French." {
+		t.Fatalf("system prompt = %q", got)
+	}
+}
+
 func TestRateLimitWaitsForRetryAfterWithinTheCap(t *testing.T) {
 	for _, tc := range []struct {
 		retryAfter time.Duration
