@@ -73,6 +73,12 @@ func (e LiveEvent) DecodeSessionInput() (core.SessionInput, error) {
 	return input, err
 }
 
+func (e LiveEvent) DecodeContextUsage() (core.ContextUsage, error) {
+	var usage core.ContextUsage
+	err := json.Unmarshal(e.Payload, &usage)
+	return usage, err
+}
+
 func (c *Client) SubscribeEvents(ctx context.Context, sessionID string, afterID uint64) (<-chan LiveEvent, <-chan error, error) {
 	httpClient := c.EventHTTPClient
 	if httpClient == nil {

@@ -79,6 +79,17 @@ func (r *run) anchorUsage(response providers.Response) {
 	}
 }
 
+// reportContext tells clients how much of the window the conversation fills
+// after a generation: the prompt and output the provider reported, else an
+// estimate of both.
+func (r *run) reportContext(request providers.Request, response providers.Response) {
+	tokens := int(response.Usage.PromptTokens + response.Usage.OutputTokens)
+	if response.Usage.PromptTokens == 0 {
+		tokens = agentcontext.EstimateRequestTokens(request) + agentcontext.EstimateTextTokens(response.Text)
+	}
+	r.Sink.Emit(Event{Kind: EventContextMeasured, SessionID: r.task.SessionID, RunID: r.task.RunID, ContextTokens: tokens, WindowTokens: r.task.WindowTokens})
+}
+
 // elision is what the run currently hides from its requests.
 func (r *run) elision() agentcontext.Elision {
 	return agentcontext.Elision{ResultsThroughSeq: r.counters.ElidedResults, ImagesThroughSeq: r.counters.ElidedImages}

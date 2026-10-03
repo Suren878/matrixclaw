@@ -49,6 +49,8 @@ type Core struct {
 
 	// badBoundaries holds the IDs of unreadable boundaries already logged.
 	badBoundaries sync.Map
+	// contextUsage is the ContextUsage last announced per session ID.
+	contextUsage sync.Map
 	// liveTasks are the shell tasks this daemon started that still run.
 	tasksMu   sync.Mutex
 	liveTasks map[string]*liveTask

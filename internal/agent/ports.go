@@ -164,6 +164,8 @@ const (
 	EventMessageUpdated EventKind = "message.updated"
 	EventToolRequested  EventKind = "tool.requested"
 	EventToolFinished   EventKind = "tool.finished"
+	// EventContextMeasured carries ContextTokens and WindowTokens after a step.
+	EventContextMeasured EventKind = "context.measured"
 )
 
 // Event is live progress for clients.
@@ -176,6 +178,8 @@ type Event struct {
 	ToolName        string
 	ResultMessageID string
 	Result          tools.Result
+	ContextTokens   int
+	WindowTokens    int
 }
 
 // Sink fans engine events out to clients.

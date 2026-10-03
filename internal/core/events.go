@@ -22,7 +22,16 @@ const (
 	EventSubagentUpdated EventType = "subagent.updated"
 	EventInputUpdated    EventType = "input.updated"
 	EventTaskUpdated     EventType = "task.updated"
+	EventContextUpdated  EventType = "context.updated"
 )
+
+// ContextUsage is how much of the model's window a session's conversation
+// fills, as measured after a run's latest step.
+type ContextUsage struct {
+	SessionID     string `json:"session_id"`
+	TokenEstimate int    `json:"token_estimate"`
+	WindowTokens  int    `json:"window_tokens,omitempty"`
+}
 
 // Event is the daemon-owned envelope for live fan-out.
 type Event struct {
@@ -124,6 +133,13 @@ func (b *eventBus) Publish(event Event) {
 		default:
 		}
 	}
+}
+
+// LastID is the ID of the newest published event, 0 before the first.
+func (b *eventBus) LastID() uint64 {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.nextEventID
 }
 
 func (c *Core) SubscribeEvents(ctx context.Context, sessionID string) <-chan Event {

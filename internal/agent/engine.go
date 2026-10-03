@@ -179,6 +179,7 @@ func (r *run) step(ctx context.Context) stepResult {
 		return failedStep(err)
 	}
 	r.counters.Steps++
+	sent := request
 	gen, err := r.generateWithRetry(ctx, request)
 	if err != nil && providers.IsContextOverflow(err) {
 		tokens := r.promptTokens(request)
@@ -194,6 +195,7 @@ func (r *run) step(ctx context.Context) stepResult {
 			if buildErr != nil {
 				return failedStep(buildErr)
 			}
+			sent = retry
 			if gen, err = r.generateWithRetry(ctx, retry); err != nil && providers.IsContextOverflow(err) {
 				err = fmt.Errorf("%w: %w", ErrContextExhausted, err)
 			}
@@ -201,6 +203,7 @@ func (r *run) step(ctx context.Context) stepResult {
 	}
 	if err == nil {
 		r.anchorUsage(gen.response)
+		r.reportContext(sent, gen.response)
 	}
 	if final != "" && errors.Is(err, providers.ErrEmptyResponse) {
 		return finalTurn(gen, final)

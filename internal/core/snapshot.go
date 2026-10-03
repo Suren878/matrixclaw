@@ -12,6 +12,9 @@ import (
 const clientSnapshotMessageLimit = 50
 
 type ClientSnapshot struct {
+	// EventID is the newest event published before the snapshot was read: every
+	// event up to it is already reflected here.
+	EventID               uint64                   `json:"event_id,omitempty"`
 	SessionID             string                   `json:"session_id"`
 	Session               *Session                 `json:"session,omitempty"`
 	Capabilities          *SessionCapabilities     `json:"capabilities,omitempty"`
@@ -28,12 +31,16 @@ type ClientSnapshot struct {
 }
 
 func (c *Core) ClientSnapshot(ctx context.Context, client string, externalKey string) (ClientSnapshot, error) {
+	var eventID uint64
+	if c.events != nil {
+		eventID = c.events.LastID()
+	}
 	binding, err := c.CurrentBinding(ctx, client, externalKey)
 	if err != nil {
 		return ClientSnapshot{}, err
 	}
 
-	snapshot := ClientSnapshot{SessionID: binding.SessionID}
+	snapshot := ClientSnapshot{EventID: eventID, SessionID: binding.SessionID}
 	if strings.TrimSpace(binding.SessionID) == "" {
 		return snapshot, nil
 	}

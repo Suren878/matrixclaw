@@ -123,7 +123,7 @@ func TestToolRoundTripIsJournaledInOrder(t *testing.T) {
 	if messages[3].Content != "file body" || messages[3].Parts[0].ToolResult.ToolCallID != "c1" {
 		t.Fatalf("result message = %+v", messages[3])
 	}
-	wantKinds := []agent.EventKind{agent.EventMessageCreated, agent.EventMessageCreated, agent.EventToolRequested, agent.EventMessageUpdated, agent.EventMessageCreated, agent.EventToolFinished}
+	wantKinds := []agent.EventKind{agent.EventContextMeasured, agent.EventMessageCreated, agent.EventMessageCreated, agent.EventToolRequested, agent.EventMessageUpdated, agent.EventMessageCreated, agent.EventToolFinished, agent.EventContextMeasured}
 	if fmt.Sprint(f.Sink.Kinds()) != fmt.Sprint(wantKinds) {
 		t.Fatalf("events = %v, want %v", f.Sink.Kinds(), wantKinds)
 	}
@@ -139,6 +139,31 @@ func TestToolRoundTripIsJournaledInOrder(t *testing.T) {
 	}
 	if fmt.Sprint(f.Tools.Finished) != "[c1]" {
 		t.Fatalf("finished = %v", f.Tools.Finished)
+	}
+}
+
+func TestEachStepReportsTheContextItFills(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Window = 100_000
+	f.Tools.Funcs["read"] = readTool
+	model := agenttest.NewScriptedModel(
+		agenttest.Turn{Response: providers.Response{ToolCalls: []providers.ToolCall{{ID: "c1", Name: "read", Arguments: []byte(`{"path":"a"}`)}}, Usage: providers.Usage{PromptTokens: 900, OutputTokens: 40}}},
+		text("Done."),
+	)
+
+	run(t, f, model)
+
+	var measured []agent.Event
+	for _, event := range f.Sink.Events {
+		if event.Kind == agent.EventContextMeasured {
+			measured = append(measured, event)
+		}
+	}
+	if len(measured) != 2 || measured[0].ContextTokens != 940 || measured[0].WindowTokens != 100_000 || measured[0].SessionID != agenttest.SessionID {
+		t.Fatalf("measured = %+v", measured)
+	}
+	if measured[1].ContextTokens <= 0 {
+		t.Fatalf("a step without provider usage reported %d tokens", measured[1].ContextTokens)
 	}
 }
 
