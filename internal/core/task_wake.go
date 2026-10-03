@@ -188,14 +188,14 @@ func (c *Core) wakeTargetOf(ctx context.Context, run Run) (wakeTarget, bool, err
 	if err != nil {
 		return wakeTarget{}, false, err
 	}
-	var address json.RawMessage
-	if len(deliveries) > 0 {
-		if deliveries[0].ReplyOnce {
-			return wakeTarget{}, false, nil
-		}
-		address = deliveries[0].Address
+	// A client that got no delivery for the run follows runs through events and
+	// needs no target; one that got a reply-once delivery cannot take another.
+	if len(deliveries) == 0 || deliveries[0].ReplyOnce {
+		return wakeTarget{}, false, nil
 	}
-	return wakeTarget{client: run.Client, externalKey: run.ExternalKey, capabilities: run.ClientCapabilities, address: address}, true, nil
+	capabilities := run.ClientCapabilities
+	capabilities.ReceivesDeliveries = true
+	return wakeTarget{client: run.Client, externalKey: run.ExternalKey, capabilities: capabilities, address: deliveries[0].Address}, true, nil
 }
 
 // journalWakeEvents writes the events a wake run is for after its message as

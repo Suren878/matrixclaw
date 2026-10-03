@@ -26,6 +26,7 @@ func (w *Worker) daemon(externalKey string) *daemonclient.Client {
 		WithCapabilities(core.ClientCapabilities{
 			SupportsVoiceDelivery:    true,
 			SupportsDocumentDelivery: true,
+			ReceivesDeliveries:       true,
 		})
 	client.HTTPClient = w.daemonHTTP
 	client.Role = core.RoleMember

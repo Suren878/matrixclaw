@@ -168,6 +168,9 @@ type HandleTriggeredRunInput struct {
 type ClientCapabilities struct {
 	SupportsVoiceDelivery    bool `json:"supports_voice_delivery,omitempty"`
 	SupportsDocumentDelivery bool `json:"supports_document_delivery,omitempty"`
+	// ReceivesDeliveries is a client that fetches its run replies from the
+	// delivery queue; others follow runs through events.
+	ReceivesDeliveries bool `json:"receives_deliveries,omitempty"`
 }
 
 type AcceptRunResult struct {

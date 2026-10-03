@@ -392,6 +392,7 @@ func automationClientCapabilities(client string) core.ClientCapabilities {
 		return core.ClientCapabilities{
 			SupportsVoiceDelivery:    true,
 			SupportsDocumentDelivery: true,
+			ReceivesDeliveries:       true,
 		}
 	}
 	return core.ClientCapabilities{}

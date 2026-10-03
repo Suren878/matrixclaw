@@ -63,6 +63,11 @@ CREATE TABLE IF NOT EXISTS memories (
 	if err := dropRetiredTables(db); err != nil {
 		return err
 	}
+	// Terminals follow runs through events and never fetched their run
+	// deliveries, which piled up pending.
+	if _, err := db.Exec(`DELETE FROM client_deliveries WHERE status = 'pending' AND client LIKE 'terminal%'`); err != nil {
+		return fmt.Errorf("store: drop unfetched terminal deliveries: %w", err)
+	}
 	if err := migrateSubagentTasks(db); err != nil {
 		return err
 	}

@@ -18,6 +18,9 @@ import (
 
 var telegramAddress = json.RawMessage(`{"chat_id":42}`)
 
+// chatCapabilities are a client that fetches its replies from the delivery queue.
+var chatCapabilities = core.ClientCapabilities{ReceivesDeliveries: true}
+
 // wakeScenario is a session a Telegram chat last wrote to; its model answers
 // every request with "Reported." and records them.
 type wakeScenario struct {
@@ -49,7 +52,7 @@ func newWakeScenario(t *testing.T) *wakeScenario {
 // userRun is a finished run the Telegram chat started.
 func (s *wakeScenario) userRun(t *testing.T) core.Run {
 	t.Helper()
-	accepted, err := s.app.AcceptRun(context.Background(), core.HandleMessageInput{SessionID: s.session.ID, Client: "telegram", ExternalKey: "telegram:42", DeliveryAddress: telegramAddress, Text: "run the tests"})
+	accepted, err := s.app.AcceptRun(context.Background(), core.HandleMessageInput{SessionID: s.session.ID, Client: "telegram", ExternalKey: "telegram:42", DeliveryAddress: telegramAddress, ClientCapabilities: chatCapabilities, Text: "run the tests"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +196,7 @@ func TestSteeringFromAnotherChatDeliversTheRunThere(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	session, run := saveCrashRecoveryRun(t, db, "steered", core.RunStatusRunning, false)
-	steer := core.HandleMessageInput{SessionID: session.ID, Client: "telegram", ExternalKey: "42", DeliveryAddress: telegramAddress, Text: "also check the logs"}
+	steer := core.HandleMessageInput{SessionID: session.ID, Client: "telegram", ExternalKey: "42", DeliveryAddress: telegramAddress, ClientCapabilities: chatCapabilities, Text: "also check the logs"}
 
 	for range 2 {
 		if accepted, err := app.AcceptRun(context.Background(), steer); err != nil || accepted.Status != core.AcceptRunStatusSteered || accepted.Input.TargetRunID != run.ID {
@@ -336,7 +339,7 @@ func TestFailedWakeRunStopsTheChainWithOneNotice(t *testing.T) {
 // replyOnceRun is a finished run a Telegram target that takes one reply started.
 func (s *wakeScenario) replyOnceRun(t *testing.T, externalKey string, address string) {
 	t.Helper()
-	accepted, err := s.app.AcceptRun(context.Background(), core.HandleMessageInput{SessionID: s.session.ID, Client: "telegram", ExternalKey: externalKey, DeliveryAddress: json.RawMessage(address), ReplyOnce: true, Text: "look it up"})
+	accepted, err := s.app.AcceptRun(context.Background(), core.HandleMessageInput{SessionID: s.session.ID, Client: "telegram", ExternalKey: externalKey, DeliveryAddress: json.RawMessage(address), ReplyOnce: true, ClientCapabilities: chatCapabilities, Text: "look it up"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -422,5 +425,32 @@ func TestWakeChainNoticeReachesTheChatPastTheNewestRuns(t *testing.T) {
 	}
 	if len(notices) != 1 || notices[0].ExternalKey != "telegram:42" || string(notices[0].Address) != string(telegramAddress) || !strings.Contains(notices[0].Summary, taskID) {
 		t.Fatalf("notices = %+v", notices)
+	}
+}
+
+func TestOnlyClientsThatFetchDeliveriesGetARunDelivery(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	ctx := context.Background()
+	first := permissionSession(t, db, "session_terminal", t.TempDir(), core.PermissionModeDefault, "")
+	second := permissionSession(t, db, "session_chat", t.TempDir(), core.PermissionModeDefault, "")
+	terminal, err := app.AcceptRun(ctx, core.HandleMessageInput{SessionID: first.ID, Client: "terminal", ExternalKey: "local", Text: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	chat, err := app.AcceptRun(ctx, core.HandleMessageInput{SessionID: second.ID, Client: "telegram", ExternalKey: "42", DeliveryAddress: telegramAddress, ClientCapabilities: chatCapabilities, Text: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		runID string
+		want  int
+	}{{terminal.Run.ID, 0}, {chat.Run.ID, 1}} {
+		deliveries, err := db.ListClientDeliveries(ctx, core.ClientDeliveryFilter{RunID: tc.runID})
+		if err != nil || len(deliveries) != tc.want {
+			t.Fatalf("run %s: deliveries = %+v, %v; want %d", tc.runID, deliveries, err, tc.want)
+		}
 	}
 }

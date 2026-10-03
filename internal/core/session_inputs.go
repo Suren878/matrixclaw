@@ -89,7 +89,7 @@ type newRun struct {
 
 // clientRun is a run answering a client's message, delivered back to it.
 func clientRun(text string, parts []transcript.MessagePart, client string, externalKey string, capabilities ClientCapabilities, to deliveryTo) newRun {
-	return newRun{Text: text, Parts: parts, Client: client, ExternalKey: externalKey, Capabilities: capabilities, Deliver: true, To: to}
+	return newRun{Text: text, Parts: parts, Client: client, ExternalKey: externalKey, Capabilities: capabilities, Deliver: capabilities.ReceivesDeliveries, To: to}
 }
 
 // deliveryTo is where in a client a run's reply goes; ReplyOnce addresses take
