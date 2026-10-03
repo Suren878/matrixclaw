@@ -28,71 +28,37 @@ type CommandView struct {
 func BuildCommandView(state MenuState) []CommandView {
 	items := make([]CommandView, 0, len(Catalog()))
 	for _, spec := range Catalog() {
-		title := spec.Description
 		status := ""
-		group := MenuItemGroupPrimary
 		disabled := false
 		switch spec.ID {
-		case CommandNewSession:
-			title = "New Session"
 		case CommandSessions:
-			title = "Sessions"
-			if value := strings.TrimSpace(state.SessionTitle); value != "" {
-				status = value
-			}
+			status = strings.TrimSpace(state.SessionTitle)
 		case CommandProvider:
-			title = "Provider"
 			if !state.Capabilities.ProviderSelection && hasSessionCapabilities(state.Capabilities) {
 				status = "Matrixclaw only"
 				disabled = true
-			} else if value := strings.TrimSpace(state.ProviderID); value != "" {
-				status = value
+			} else {
+				status = strings.TrimSpace(state.ProviderID)
 			}
 		case CommandPermissions:
-			title = "Permission Mode"
 			if !state.Capabilities.PermissionMode && hasSessionCapabilities(state.Capabilities) {
 				status = "Matrixclaw only"
 				disabled = true
 			} else {
 				status = permissionModeStatus(state.PermissionMode)
 			}
-		case CommandContext:
-			title = "Context"
-			group = MenuItemGroupSecondary
 		case CommandTodo:
-			title = "Todo"
 			if !state.Capabilities.NativeTools && hasSessionCapabilities(state.Capabilities) {
 				status = "Matrixclaw only"
 				disabled = true
 			}
-		case CommandMemory:
-			title = "Memory"
-			group = MenuItemGroupSecondary
-		case CommandModules:
-			title = "Modules"
-			group = MenuItemGroupSecondary
-		case CommandTasks:
-			title = "Tasks"
-		case CommandServer:
-			title = "Server"
-			group = MenuItemGroupSecondary
-		case CommandHelp:
-			title = "Help"
-		case CommandRemind:
-			title = "Reminder"
-		case CommandStatus:
-			title = "Server Status"
-		case CommandRestart:
-			title = "Restart Daemon"
-		case CommandStop:
-			title = "Stop Daemon"
 		}
 		items = append(items, CommandView{
 			ID:       string(spec.ID),
 			Command:  spec.Command,
-			Title:    title,
+			Title:    spec.Title,
 			Status:   status,
-			Group:    group,
+			Group:    spec.Group,
 			Public:   spec.Public,
 			Menu:     spec.Menu,
 			Disabled: disabled,

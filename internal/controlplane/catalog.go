@@ -1,33 +1,86 @@
 package controlplane
 
-import "github.com/Suren878/matrixclaw/internal/commandcatalog"
+import "strings"
 
-type CommandID = commandcatalog.CommandID
+type CommandID string
 
 const (
-	CommandNewSession  = commandcatalog.CommandNewSession
-	CommandSessions    = commandcatalog.CommandSessions
-	CommandSession     = commandcatalog.CommandSession
-	CommandProvider    = commandcatalog.CommandProvider
-	CommandPermissions = commandcatalog.CommandPermissions
-	CommandContext     = commandcatalog.CommandContext
-	CommandUsage       = commandcatalog.CommandUsage
-	CommandContinue    = commandcatalog.CommandContinue
-	CommandBudget      = commandcatalog.CommandBudget
-	CommandTodo        = commandcatalog.CommandTodo
-	CommandMemory      = commandcatalog.CommandMemory
-	CommandSearch      = commandcatalog.CommandSearch
-	CommandSkills      = commandcatalog.CommandSkills
-	CommandModules     = commandcatalog.CommandModules
-	CommandRemind      = commandcatalog.CommandRemind
-	CommandTasks       = commandcatalog.CommandTasks
-	CommandServer      = commandcatalog.CommandServer
-	CommandStatus      = commandcatalog.CommandStatus
-	CommandRestart     = commandcatalog.CommandRestart
-	CommandStop        = commandcatalog.CommandStop
-	CommandHelp        = commandcatalog.CommandHelp
-	CommandApproval    = commandcatalog.CommandApproval
+	CommandNewSession  CommandID = "new_session"
+	CommandSessions    CommandID = "sessions"
+	CommandSession     CommandID = "session"
+	CommandProvider    CommandID = "provider"
+	CommandPermissions CommandID = "permissions"
+	CommandContext     CommandID = "context"
+	CommandUsage       CommandID = "usage"
+	CommandContinue    CommandID = "continue"
+	CommandBudget      CommandID = "budget"
+	CommandTodo        CommandID = "todo"
+	CommandMemory      CommandID = "memory"
+	CommandSearch      CommandID = "search"
+	CommandSkills      CommandID = "skills"
+	CommandModules     CommandID = "modules"
+	CommandRemind      CommandID = "remind"
+	CommandTasks       CommandID = "tasks"
+	CommandServer      CommandID = "server"
+	CommandStatus      CommandID = "status"
+	CommandRestart     CommandID = "restart"
+	CommandStop        CommandID = "stop"
+	CommandHelp        CommandID = "help"
+	CommandApproval    CommandID = "approval"
 )
+
+type CommandSpec struct {
+	ID      CommandID
+	Command string
+	Aliases []string
+	Title   string
+	Group   MenuItemGroup
+	Menu    bool
+	Public  bool
+}
+
+var commandCatalog = []CommandSpec{
+	{ID: CommandNewSession, Command: "/new", Title: "New Session", Menu: true},
+	{ID: CommandSessions, Command: "/sessions", Title: "Sessions", Menu: true, Public: true},
+	{ID: CommandSession, Command: "/session", Title: "Session commands"},
+	{ID: CommandProvider, Command: "/provider", Title: "Provider", Menu: true, Public: true},
+	{ID: CommandPermissions, Command: "/permissions", Aliases: []string{"mode"}, Title: "Permission Mode", Menu: true, Public: true},
+	{ID: CommandContext, Command: "/context", Title: "Context", Group: MenuItemGroupSecondary, Menu: true, Public: true},
+	{ID: CommandUsage, Command: "/usage", Title: "Token usage", Public: true},
+	{ID: CommandContinue, Command: "/continue", Title: "Continue the last run", Public: true},
+	{ID: CommandBudget, Command: "/budget", Title: "Run budget", Public: true},
+	{ID: CommandTodo, Command: "/todo", Title: "Todo", Menu: true, Public: true},
+	{ID: CommandMemory, Command: "/memory", Title: "Memory", Group: MenuItemGroupSecondary, Menu: true, Public: true},
+	{ID: CommandSearch, Command: "/search", Title: "Search history", Public: true},
+	{ID: CommandSkills, Command: "/skills", Title: "Session skills", Menu: true, Public: true},
+	{ID: CommandModules, Command: "/modules", Title: "Modules", Group: MenuItemGroupSecondary, Menu: true, Public: true},
+	{ID: CommandRemind, Command: "/remind", Title: "Reminder", Public: true},
+	{ID: CommandTasks, Command: "/tasks", Title: "Tasks", Menu: true, Public: true},
+	{ID: CommandServer, Command: "/server", Title: "Server", Group: MenuItemGroupSecondary, Menu: true, Public: true},
+	{ID: CommandStatus, Command: "/status", Title: "Server Status", Public: true},
+	{ID: CommandRestart, Command: "/restart", Title: "Restart Daemon", Public: true},
+	{ID: CommandStop, Command: "/stop", Title: "Stop Daemon", Public: true},
+	{ID: CommandHelp, Command: "/help", Aliases: []string{"commands", "start"}, Title: "Help", Public: true},
+	{ID: CommandApproval, Command: "/approval", Title: "Answer an approval"},
+}
+
+func Catalog() []CommandSpec {
+	return commandCatalog
+}
+
+// CommandLine is the command text that runs id with args.
+func CommandLine(id CommandID, args string) string {
+	for _, spec := range commandCatalog {
+		if spec.ID != id {
+			continue
+		}
+		if args = strings.TrimSpace(args); args != "" {
+			return spec.Command + " " + args
+		}
+		return spec.Command
+	}
+	return ""
+}
 
 type PickerKind string
 
@@ -71,8 +124,6 @@ const (
 	PickerWebSearch         PickerKind = "web_search"
 	PickerWebSearchProvider PickerKind = "web_search_provider"
 )
-
-type CommandSpec = commandcatalog.CommandSpec
 
 type PickerData struct {
 	Kind         PickerKind
@@ -130,8 +181,4 @@ func (item PickerItem) NeedsSeparator() bool {
 	default:
 		return false
 	}
-}
-
-func Catalog() []CommandSpec {
-	return commandcatalog.Catalog()
 }

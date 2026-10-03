@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Suren878/matrixclaw/internal/commandcatalog"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/permission"
@@ -118,7 +117,7 @@ func (w *Worker) deleteMenuMessage(ctx context.Context, target chatTarget, messa
 const compactProgressText = "🧠 Compact started..."
 
 func isContextCompactCommand(command string) bool {
-	return matchesCatalogCommand(command, commandcatalog.CommandContext, "compact confirm")
+	return matchesCatalogCommand(command, controlplane.CommandContext, "compact confirm")
 }
 
 // askDenialReason makes the chat's next message the reason for denying the

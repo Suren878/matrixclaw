@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Suren878/matrixclaw/internal/commandcatalog"
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -39,7 +38,7 @@ func (w *Worker) offerContinue(ctx context.Context, target chatTarget, run core.
 	if notice == "" || state.continueOffered {
 		return nil
 	}
-	markup := &InlineKeyboardMarkup{InlineKeyboard: [][]InlineKeyboardButton{{commandButton("Continue", catalogCommand(commandcatalog.CommandContinue, ""))}}}
+	markup := &InlineKeyboardMarkup{InlineKeyboard: [][]InlineKeyboardButton{{commandButton("Continue", catalogCommand(controlplane.CommandContinue, ""))}}}
 	if _, err := w.sendTelegramMessage(ctx, SendMessageRequest{ChatID: target.chatID, Text: notice, ReplyMarkup: markup}); err != nil {
 		return err
 	}
