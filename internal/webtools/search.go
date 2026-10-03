@@ -1,8 +1,10 @@
 package webtools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -41,12 +43,15 @@ func (e webSearchExecutor) Execute(ctx context.Context, call tools.Call) (tools.
 			return tools.Result{Content: fmt.Sprintf("web search failed: %v", err), Status: tools.ResultStatusError}, nil
 		}
 	}
-	results, provider, err := search(ctx, params.Query, params.Limit, cfg)
+	results, provider, failed, err := search(ctx, params.Query, params.Limit, cfg)
 	if err != nil {
 		return tools.Result{Content: fmt.Sprintf("web search failed: %v", err), Status: tools.ResultStatusError}, nil
 	}
 
 	content := formatSearchResults(params.Query, provider, results)
+	if failed != nil {
+		content = fmt.Sprintf("note: %s search failed (%v), so these results are from DuckDuckGo\n\n%s", cfg.Provider, failed, content)
+	}
 	return tools.Result{
 		Content: content,
 		Metadata: WebSearchResponseMetadata{
@@ -57,33 +62,34 @@ func (e webSearchExecutor) Execute(ctx context.Context, call tools.Call) (tools.
 	}, nil
 }
 
-// search asks the configured provider and falls back to DuckDuckGo.
-func search(ctx context.Context, query string, limit int, cfg SearchConfig) ([]WebSearchResult, string, error) {
+// search asks the configured provider and falls back to DuckDuckGo; failed is
+// why the configured provider gave no results.
+func search(ctx context.Context, query string, limit int, cfg SearchConfig) (results []WebSearchResult, provider string, failed error, err error) {
 	switch cfg.Provider {
 	case "tavily":
 		if cfg.TavilyKey != "" {
-			if results, err := searchTavily(ctx, query, limit, cfg.TavilyKey); err == nil {
-				return results, "tavily", nil
+			if results, failed = searchTavily(ctx, query, limit, cfg.TavilyKey); failed == nil {
+				return results, "tavily", nil, nil
 			}
 		}
 	case "serper":
 		if cfg.SerperKey != "" {
-			if results, err := searchSerper(ctx, query, limit, cfg.SerperKey); err == nil {
-				return results, "serper", nil
+			if results, failed = searchSerper(ctx, query, limit, cfg.SerperKey); failed == nil {
+				return results, "serper", nil, nil
 			}
 		}
 	case "searxng":
 		if cfg.BaseURL != "" {
-			if results, err := searchSearXNG(ctx, query, limit, cfg.BaseURL); err == nil {
-				return results, "searxng", nil
+			if results, failed = searchSearXNG(ctx, query, limit, cfg.BaseURL); failed == nil {
+				return results, "searxng", nil, nil
 			}
 		}
 	}
-	results, err := searchDDG(ctx, query, limit)
+	results, err = searchDDG(ctx, query, limit)
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, errors.Join(failed, err)
 	}
-	return results, "duckduckgo", nil
+	return results, "duckduckgo", failed, nil
 }
 
 // searchTavily uses the Tavily Search API — designed for AI agents.
@@ -261,9 +267,15 @@ func searchDDG(ctx context.Context, query string, limit int) ([]WebSearchResult,
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("duckduckgo returned %d", resp.StatusCode)
+	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
 	if err != nil {
 		return nil, err
+	}
+	if bytes.Contains(body, []byte("anomaly-modal")) || bytes.Contains(body, []byte("challenge-form")) {
+		return nil, errors.New("duckduckgo asked for a bot check; configure a search provider in setup")
 	}
 
 	return parseDDGResults(body, limit), nil
