@@ -35,7 +35,7 @@ func (c *Core) tryExecuteExternalAgentRun(ctx context.Context, runCtx context.Co
 		return true, nil
 	}
 	if run.Status == RunStatusRunning {
-		return true, c.failOrphanedRun(ctx, run)
+		return true, c.failRun(ctx, run, errOrphanedRun)
 	}
 
 	session, err := c.store.GetSession(ctx, run.SessionID)
@@ -54,7 +54,7 @@ func (c *Core) tryExecuteExternalAgentRun(ctx context.Context, runCtx context.Co
 		return true, c.failRun(ctx, run, err)
 	}
 
-	if err := c.setRunStatus(ctx, &run, RunStatusRunning, ""); err != nil {
+	if err := c.transition(ctx, &run, runChange{To: RunStatusRunning}); err != nil {
 		return true, err
 	}
 
@@ -148,7 +148,7 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 				return c.finishExternalRunAfterContextStopped(run, &assistant, assistantSaved, runtime, externalSession)
 			}
 			if !ok {
-				return c.persistAssistantError(ctx, run, &assistant, assistantSaved, errors.New("external agent event stream ended before turn completed"))
+				return c.failWithReply(ctx, run, &assistant, assistantSaved, "", errors.New("external agent event stream ended before turn completed"))
 			}
 			switch event.Kind {
 			case externalagents.EventTurnStarted:
@@ -179,7 +179,7 @@ func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Conte
 				if errText == "" {
 					errText = "external agent turn failed"
 				}
-				return c.persistAssistantError(ctx, run, &assistant, assistantSaved, errors.New(errText))
+				return c.failWithReply(ctx, run, &assistant, assistantSaved, "", errors.New(errText))
 			}
 			if progressDirty && !assistantSaved {
 				if err := flushProgress(true); err != nil {
@@ -302,9 +302,6 @@ func (c *Core) saveExternalAssistantProgress(ctx context.Context, assistant *tra
 }
 
 func (c *Core) touchExternalRunActivity(ctx context.Context, run *Run, at time.Time) error {
-	if run == nil {
-		return nil
-	}
 	if at.IsZero() {
 		at = c.now().UTC()
 	} else {
@@ -314,7 +311,7 @@ func (c *Core) touchExternalRunActivity(ctx context.Context, run *Run, at time.T
 		return nil
 	}
 	run.UpdatedAt = at
-	if err := c.store.UpdateRun(ctx, *run); err != nil {
+	if err := c.store.TouchRun(ctx, run.ID, at); err != nil {
 		return err
 	}
 	c.publishEvent(Event{Type: EventRunUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: *run})
@@ -509,15 +506,13 @@ func defaultExternalToolName(name string) string {
 	return name
 }
 
+// completeExternalAgentRun ends the run with the agent's finished turn.
 func (c *Core) completeExternalAgentRun(ctx context.Context, run *Run, assistant *transcript.Message, assistantSaved bool) error {
-	if assistant == nil || run == nil {
-		return nil
-	}
 	assistant.Parts = append(transcript.NormalizeMessageParts(assistant.Content, assistant.Parts), transcript.MessagePart{
 		Kind:   transcript.MessagePartKindFinish,
 		Finish: &transcript.FinishPart{Reason: transcript.FinishReasonEndTurn},
 	})
-	return c.completeAssistantTurn(ctx, run, assistant, assistantSaved)
+	return c.transition(ctx, run, runChange{To: RunStatusCompleted, Reply: assistant, ReplySaved: assistantSaved})
 }
 
 func (c *Core) finishExternalRunAfterContextStopped(run Run, assistant *transcript.Message, assistantSaved bool, runtime externalagents.RuntimeAgent, session externalagents.ExternalSession) error {
@@ -532,7 +527,7 @@ func (c *Core) finishExternalRunAfterContextStopped(run Run, assistant *transcri
 		_ = runtime.Interrupt(ctx, session)
 	}
 	if current.Status == RunStatusCanceled {
-		return c.finishCanceledAssistant(ctx, assistant, assistantSaved)
+		return c.sealCanceledReply(ctx, assistant, assistantSaved)
 	}
 	if current.Status.Terminal() {
 		return nil

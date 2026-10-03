@@ -501,7 +501,10 @@ func (c *Core) mirrorPendingSubagentApproval(ctx context.Context, task SubagentT
 	if run.Status.Terminal() {
 		return true, nil
 	}
-	return true, c.setRunStatus(ctx, &run, RunStatusWaitingApproval, "")
+	if run.Status == RunStatusWaitingApproval {
+		return true, nil
+	}
+	return true, c.transition(ctx, &run, runChange{To: RunStatusWaitingApproval})
 }
 
 // deliverBackgroundApproval sends a background subagent's approval to the chat

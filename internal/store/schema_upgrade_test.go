@@ -1,10 +1,15 @@
 package store_test
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 // rawDB opens the database file behind the store, closing the store first.
@@ -86,5 +91,33 @@ func TestTelegramGuestAndInlineAddressesBecomeReplyOnce(t *testing.T) {
 	}
 	if strings.Join(once, ",") != "guest,inline" {
 		t.Fatalf("reply-once deliveries = %v", once)
+	}
+}
+
+func TestWakeupsOfRunsNotWaitingForEventsAreDroppedOnOpen(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "matrixclaw.db")
+	st := openTestStore(t, path)
+	createTestSession(t, st, "s1")
+	for id, status := range map[string]core.RunStatus{"waiting": core.RunStatusWaitingEvents, "approval": core.RunStatusWaitingApproval} {
+		run := core.Run{ID: id, SessionID: "s1", UserMessageID: "m_" + id, Status: status, StartedAt: testEpoch, UpdatedAt: testEpoch}
+		if err := st.AcceptMessage(ctx, transcript.Message{ID: "m_" + id, SessionID: "s1", RunID: id, Role: transcript.MessageRoleUser, CreatedAt: testEpoch}, run); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.SaveRunWakeup(ctx, core.RunWakeup{RunID: id, SessionID: "s1", WakeAt: testEpoch}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened := openTestStore(t, path)
+	t.Cleanup(func() { _ = reopened.Close() })
+	if _, err := reopened.GetRunWakeup(ctx, "waiting"); err != nil {
+		t.Fatalf("wakeup of the waiting run: %v", err)
+	}
+	if _, err := reopened.GetRunWakeup(ctx, "approval"); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("wakeup of the run waiting for approval: %v", err)
 	}
 }

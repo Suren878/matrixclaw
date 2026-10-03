@@ -361,29 +361,6 @@ func TestParentAwaitingABackgroundChildWakesAfterTheChildsApproval(t *testing.T)
 	}
 }
 
-func TestRunLeftWaitingForApprovalWithAWakeupResumesOnItsTimer(t *testing.T) {
-	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
-	defer cleanup()
-	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
-	session, run := saveCrashRecoveryRun(t, db, "stale-wakeup", core.RunStatusWaitingApproval, false)
-	if err := db.SaveRunWakeup(context.Background(), core.RunWakeup{RunID: run.ID, SessionID: session.ID, WakeAt: time.Now().UTC().Add(-time.Second)}); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := app.WakeDueRuns(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-
-	if got := starter.count(run.ID); got != 1 {
-		t.Fatalf("run starts = %d, want 1", got)
-	}
-	if _, err := db.GetRunWakeup(context.Background(), run.ID); err != core.ErrNotFound {
-		t.Fatalf("wakeup = %v", err)
-	}
-}
-
 func TestStoppingABackgroundChildParkedOnApprovalEndsIt(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)

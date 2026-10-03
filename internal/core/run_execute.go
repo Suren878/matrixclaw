@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -12,6 +13,9 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/safego"
 )
+
+// errOrphanedRun fails a run found running with no executor where none was expected.
+var errOrphanedRun = errors.New("run was left running without an active executor; daemon restarted or the worker event stream was lost. Retry the task to start a fresh run")
 
 // DefaultModelConcurrency is how many model requests native runs make at once
 // unless the daemon configures another limit.
@@ -30,27 +34,16 @@ func (c *Core) WithModelConcurrency(n int) *Core {
 // ExecuteRun claims a run and executes it with its external agent or the native engine.
 func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
 	runID = normalizeText(runID)
-	reschedule := false
-	defer func() {
-		if reschedule {
-			c.rescheduleInterruptedRun(runID)
-		}
-	}()
-	runCtx, unregisterRun, claimed := c.activeRunContext(ctx, runID)
+	runCtx, release, claimed := c.activeRunContext(ctx, runID)
 	if !claimed {
 		return nil
 	}
-	defer c.resumeParkedRun(runID)
-	defer unregisterRun()
-	ready := false
+	kept := false
 	defer func() {
-		if ready {
-			if err := c.noticeFailedWakeRun(context.Background(), runID); err != nil {
-				log.Printf("core: notice for failed wake run %q failed: %v", runID, err)
-			}
-		}
-		if err := c.afterRunExecution(context.Background(), runID); err != nil {
-			log.Printf("core: after run execution for %q failed: %v", runID, err)
+		release()
+		c.afterRun(context.Background(), runID)
+		if kept {
+			c.rescheduleInterruptedRun(runID)
 		}
 	}()
 	ready, err := c.prepareClaimedRun(ctx, runID)
@@ -73,7 +66,7 @@ func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
 		return err
 	}
 	c.carryCounters(ctx, session.ID, outcome.Counters)
-	reschedule, err = c.applyOutcome(ctx, run, outcome)
+	kept, err = c.applyOutcome(ctx, run, outcome)
 	return err
 }
 
@@ -118,28 +111,6 @@ func (c *Core) rescheduleInterruptedRun(runID string) {
 	}
 }
 
-// resumeParkedRun starts a run that parked while what it waits for arrived:
-// ResolveApproval or an event found it still active and left the start to
-// this check, which runs once the run is no longer active.
-func (c *Core) resumeParkedRun(runID string) {
-	if c.lifetime.Err() != nil {
-		return
-	}
-	ctx := context.Background()
-	run, err := c.store.GetRun(ctx, runID)
-	if err == nil {
-		switch run.Status {
-		case RunStatusWaitingApproval:
-			err = c.resumeDecidedRun(ctx, run.SessionID, runID)
-		case RunStatusWaitingEvents:
-			err = c.wakeWaitingRun(ctx, run.SessionID, runID)
-		}
-	}
-	if err != nil && !ignoreMissing(err) {
-		log.Printf("core: resume parked run %q failed: %v", runID, err)
-	}
-}
-
 // prepareNativeRun marks an accepted native run as running and resolves its model.
 func (c *Core) prepareNativeRun(ctx context.Context, runID string) (Run, Session, providers.Runtime, bool, error) {
 	run, err := c.store.GetRun(ctx, normalizeText(runID))
@@ -150,7 +121,7 @@ func (c *Core) prepareNativeRun(ctx context.Context, runID string) (Run, Session
 		return Run{}, Session{}, nil, false, nil
 	}
 	if run.Status == RunStatusRunning {
-		return Run{}, Session{}, nil, false, c.failOrphanedRun(ctx, run)
+		return Run{}, Session{}, nil, false, c.failRun(ctx, run, errOrphanedRun)
 	}
 	session, err := c.store.GetSession(ctx, run.SessionID)
 	if err != nil {
@@ -161,7 +132,7 @@ func (c *Core) prepareNativeRun(ctx context.Context, runID string) (Run, Session
 	if err != nil {
 		return Run{}, Session{}, nil, false, c.failRun(ctx, run, err)
 	}
-	if err := c.setRunStatus(ctx, &run, RunStatusRunning, ""); err != nil {
+	if err := c.transition(ctx, &run, runChange{To: RunStatusRunning}); err != nil {
 		return Run{}, Session{}, nil, false, err
 	}
 	return run, session, runtime, true, nil

@@ -636,7 +636,7 @@ func TestRecoverBlockingSubagentCompletesChildThenParentWithoutDuplicate(t *test
 	childSession, childRun := saveCrashRecoveryRun(t, sqliteStore, "child", core.RunStatusRunning, true)
 	parentRun.StartedAt = childRun.StartedAt.Add(-time.Minute)
 	parentRun.UpdatedAt = parentRun.StartedAt
-	if err := sqliteStore.UpdateRun(context.Background(), parentRun); err != nil {
+	if err := sqliteStore.SealRun(context.Background(), parentRun, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	delegateArgs := `{"description":"Finish","prompt":"finish child work","runtime":"matrixclaw"}`

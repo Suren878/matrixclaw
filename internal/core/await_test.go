@@ -361,7 +361,7 @@ func (failingRunStarter) StartRun(context.Context, string) error {
 	return errors.New("run starter down")
 }
 
-func TestWakeupStaysUntilItsRunStarts(t *testing.T) {
+func TestWakeupStaysUntilItsRunExecutes(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
@@ -387,8 +387,15 @@ func TestWakeupStaysUntilItsRunStarts(t *testing.T) {
 	if starter.count(run.ID) != 1 {
 		t.Fatalf("starts = %v", starter.ids)
 	}
+	if _, err := db.GetRunWakeup(ctx, run.ID); err != nil {
+		t.Fatalf("wakeup before the run executes: %v", err)
+	}
+	app.WithSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "Woke."}})
+	if err := app.ExecuteRun(ctx, run.ID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.GetRunWakeup(ctx, run.ID); err != core.ErrNotFound {
-		t.Fatalf("wakeup after the start: %v", err)
+		t.Fatalf("wakeup after the run executed: %v", err)
 	}
 }
 

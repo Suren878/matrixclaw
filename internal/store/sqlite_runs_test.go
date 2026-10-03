@@ -20,7 +20,7 @@ func TestRunStopContinuationAndTriggerAreStored(t *testing.T) {
 	acceptTestRun(t, st, run)
 	run.Status = core.RunStatusCompleted
 	run.StopReason = agent.StopBudgetExhausted
-	if err := st.UpdateRun(ctx, run); err != nil {
+	if err := st.SealRun(ctx, run, nil, false); err != nil {
 		t.Fatal(err)
 	}
 

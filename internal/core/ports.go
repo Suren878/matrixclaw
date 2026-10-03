@@ -66,8 +66,10 @@ type RunStore interface {
 	// ListSessionRuns lists the session's newest runs first, ordered by their user message.
 	ListSessionRuns(ctx context.Context, sessionID string, limit int) ([]Run, error)
 	ListActiveRuns(ctx context.Context) ([]Run, error)
-	UpdateRun(ctx context.Context, run Run) error
-	CompleteRun(ctx context.Context, assistantMessage transcript.Message, run Run) error
+	// SealRun writes the run with the reply it ends or parks with, if any, in
+	// one transaction; an ended run keeps how it ended (ErrRunEnded).
+	SealRun(ctx context.Context, run Run, reply *transcript.Message, replySaved bool) error
+	TouchRun(ctx context.Context, runID string, at time.Time) error
 
 	AcceptMessage(ctx context.Context, message transcript.Message, run Run, deliveries ...ClientDelivery) error
 }

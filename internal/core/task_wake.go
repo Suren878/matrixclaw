@@ -34,8 +34,8 @@ func (c *Core) wakeSession(ctx context.Context, sessionID string, finished *Task
 		return nil
 	}
 	if err := c.startRun(ctx, result.Run.ID); err != nil {
-		failed, err := c.failAcceptedRun(ctx, *result, err)
-		return errors.Join(err, c.noticeFailedWakeRun(ctx, failed.Run.ID))
+		_, err = c.failAcceptedRun(ctx, *result, err)
+		return err
 	}
 	return nil
 }
@@ -43,11 +43,7 @@ func (c *Core) wakeSession(ctx context.Context, sessionID string, finished *Task
 // noticeFailedWakeRun tells the user when a run started for finished
 // background work failed; the session then starts no other on its own until
 // the user writes.
-func (c *Core) noticeFailedWakeRun(ctx context.Context, runID string) error {
-	run, err := c.store.GetRun(ctx, runID)
-	if err != nil || run.Trigger != RunTriggerWake || run.Status != RunStatusFailed {
-		return ignoreNotFound(err)
-	}
+func (c *Core) noticeFailedWakeRun(ctx context.Context, run Run) error {
 	session, err := c.store.GetSession(ctx, run.SessionID)
 	if err != nil {
 		return ignoreNotFound(err)
@@ -226,11 +222,14 @@ func (c *Core) taskWakesSession(ctx context.Context, task Task) (bool, error) {
 	if task.Kind != TaskKindSubagent && task.Status != TaskStatusCompleted && task.Status != TaskStatusFailed {
 		return false, nil
 	}
-	canceled, err := c.isRunCanceled(ctx, task.RunID)
+	if task.RunID == "" {
+		return true, nil
+	}
+	run, err := c.store.GetRun(ctx, task.RunID)
 	if errors.Is(err, ErrNotFound) {
 		return true, nil
 	}
-	return !canceled, err
+	return run.Status != RunStatusCanceled, err
 }
 
 func taskLabel(task Task) string {

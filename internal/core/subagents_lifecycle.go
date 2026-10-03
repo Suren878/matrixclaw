@@ -34,63 +34,24 @@ func (c *Core) recordSubagentResultMessage(ctx context.Context, metadata any, re
 	return err
 }
 
-func (c *Core) afterRunExecution(ctx context.Context, runID string) error {
-	runID = normalizeText(runID)
-	if runID == "" || c == nil || c.store == nil {
+// syncSubagentTask brings the task of a subagent's run up to date with it.
+func (c *Core) syncSubagentTask(ctx context.Context, run Run) error {
+	task, err := c.store.GetSubagentTaskByChildRun(ctx, run.ID)
+	if errors.Is(err, ErrNotFound) {
 		return nil
 	}
-	run, err := c.store.GetRun(ctx, runID)
 	if err != nil {
-		if ignoreMissing(err) {
-			return nil
-		}
 		return err
-	}
-	if task, err := c.store.GetSubagentTaskByChildRun(ctx, runID); err == nil {
-		if run.Status.Terminal() {
-			if err := c.rejectChildApprovalCopies(ctx, task); err != nil {
-				return err
-			}
-		}
-		switch task.Mode {
-		case SubagentTaskModeAsync:
-			if syncErr := c.syncAsyncSubagentTaskAfterRun(ctx, task, run); syncErr != nil {
-				return syncErr
-			}
-		case SubagentTaskModeBlocking:
-			if syncErr := c.syncBlockingSubagentTaskAfterRun(ctx, task, run); syncErr != nil {
-				return syncErr
-			}
-		}
-	} else if !ignoreMissing(err) {
-		return err
-	}
-	session, err := c.store.GetSession(ctx, run.SessionID)
-	if err != nil {
-		if ignoreMissing(err) {
-			return nil
-		}
-		return err
-	}
-	if run.Status.Terminal() && isSubagentSession(session) {
-		// Nobody reads a child's background commands once it has finished.
-		if err := c.stopSessionTasks(ctx, session.ID, "its subagent finished"); err != nil {
-			return err
-		}
 	}
 	if run.Status.Terminal() {
-		if err := c.queuePendingSteersForRun(ctx, session.ID, run.ID); err != nil {
-			return err
-		}
-		startedInput, err := c.startNextPendingSessionInput(ctx, session.ID)
-		if err != nil || startedInput {
+		if err := c.rejectChildApprovalCopies(ctx, task); err != nil {
 			return err
 		}
 	}
-	if run.Status.Terminal() {
-		return c.wakeSession(ctx, session.ID, nil)
+	if task.Mode == SubagentTaskModeAsync {
+		return c.syncAsyncSubagentTaskAfterRun(ctx, task, run)
 	}
-	return nil
+	return c.syncBlockingSubagentTaskAfterRun(ctx, task, run)
 }
 
 func ignoreMissing(err error) bool {
@@ -195,7 +156,7 @@ func (c *Core) syncBlockingSubagentTaskAfterRun(ctx context.Context, task Subage
 	if waiting, err := c.runWaitsForBlockingChild(ctx, parentRun.SessionID, parentRun.ID); err != nil || waiting {
 		return err
 	}
-	if err := c.setRunStatus(ctx, &parentRun, RunStatusAccepted, ""); err != nil {
+	if err := c.transition(ctx, &parentRun, runChange{To: RunStatusAccepted}); err != nil {
 		return err
 	}
 	return c.startRun(ctx, parentRunID)

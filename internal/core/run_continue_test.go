@@ -59,7 +59,7 @@ func TestContinueAfterTheContextFilledUpPointsToContextClear(t *testing.T) {
 	app.WithRunStarter(starter)
 	session, full := saveCrashRecoveryRun(t, db, "continue-full", core.RunStatusFailed, false)
 	full.StopReason = agent.StopContextExhausted
-	if err := db.UpdateRun(context.Background(), full); err != nil {
+	if err := db.SealRun(context.Background(), full, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -110,7 +110,7 @@ func TestContinueKeepsTheOriginalAssignmentVerbatim(t *testing.T) {
 		Parts: transcript.NormalizeMessageParts(answer, nil), CreatedAt: runRecoveryTestTime(), UpdatedAt: runRecoveryTestTime(),
 	})
 	first.Status = core.RunStatusCompleted
-	if err := db.UpdateRun(ctx, first); err != nil {
+	if err := db.SealRun(ctx, first, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	continued, err := app.AcceptRun(ctx, core.HandleMessageInput{SessionID: session.ID, Continue: true})

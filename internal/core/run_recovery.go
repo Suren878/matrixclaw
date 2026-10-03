@@ -157,7 +157,7 @@ func (c *Core) prepareRunAfterCrash(ctx context.Context, run *Run) (bool, error)
 		return false, err
 	}
 	if checkpoint.RecoveryCount > maxRunRecoveryAttempts {
-		return false, c.setRunStatus(ctx, run, RunStatusFailed, fmt.Sprintf("run stopped after %d daemon-restart recovery attempts", checkpoint.RecoveryCount-1))
+		return false, c.transition(ctx, run, runChange{To: RunStatusFailed, Err: fmt.Sprintf("run stopped after %d daemon-restart recovery attempts", checkpoint.RecoveryCount-1)})
 	}
 
 	messages, err := c.store.ListRunMessages(ctx, run.SessionID, run.ID)
@@ -174,7 +174,7 @@ func (c *Core) prepareRunAfterCrash(ctx context.Context, run *Run) (bool, error)
 		if err := c.markLatestAssistantInterrupted(ctx, run.ID, messages, true); err != nil {
 			return false, err
 		}
-		if err := c.setRunStatus(ctx, run, RunStatusAccepted, ""); err != nil {
+		if err := c.handBack(ctx, run); err != nil {
 			return false, err
 		}
 		return true, nil
@@ -216,16 +216,27 @@ func (c *Core) prepareRunAfterCrash(ctx context.Context, run *Run) (bool, error)
 		return false, nil
 	}
 	if waitApproval {
-		return false, c.setRunStatus(ctx, run, RunStatusWaitingApproval, "")
+		if run.Status == RunStatusWaitingApproval {
+			return false, nil
+		}
+		return false, c.transition(ctx, run, runChange{To: RunStatusWaitingApproval})
 	}
 
 	if err := c.markLatestPartialAssistantInterrupted(ctx, run.ID, messages); err != nil {
 		return false, err
 	}
-	if err := c.setRunStatus(ctx, run, RunStatusAccepted, ""); err != nil {
+	if err := c.handBack(ctx, run); err != nil {
 		return false, err
 	}
 	return true, nil
+}
+
+// handBack leaves a recovered run accepted, ready to execute again.
+func (c *Core) handBack(ctx context.Context, run *Run) error {
+	if run.Status == RunStatusAccepted {
+		return nil
+	}
+	return c.transition(ctx, run, runChange{To: RunStatusAccepted})
 }
 
 type recoveryToolDisposition int
@@ -485,7 +496,7 @@ func appendDaemonRestartFinish(message *transcript.Message) {
 func (c *Core) preserveRunForRecovery(ctx context.Context, run Run, assistant *transcript.Message, assistantSaved bool) error {
 	if assistant != nil && (assistantSaved || strings.TrimSpace(assistant.Content) != "" || len(assistant.Parts) > 0) {
 		appendDaemonRestartFinish(assistant)
-		if err := c.sealAssistant(ctx, assistant, assistantSaved); err != nil {
+		if err := c.sealReply(ctx, assistant, assistantSaved); err != nil {
 			return err
 		}
 	}

@@ -184,6 +184,10 @@ CREATE TABLE IF NOT EXISTS session_todos (
 	if err := migratePermissionRules(db); err != nil {
 		return err
 	}
+	// Only a run waiting for events has a wakeup; older builds left others.
+	if _, err := db.Exec(`DELETE FROM run_wakeups WHERE run_id NOT IN (SELECT id FROM runs WHERE status = 'waiting_events')`); err != nil {
+		return fmt.Errorf("store: drop stale run wakeups: %w", err)
+	}
 	for _, table := range []struct{ name, address string }{{"client_deliveries", "address_json"}, {"session_inputs", "delivery_address_json"}} {
 		if err := migrateReplyOnce(db, table.name, table.address); err != nil {
 			return err
