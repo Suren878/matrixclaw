@@ -1,9 +1,6 @@
 package providers
 
-import (
-	"strings"
-	"sync"
-)
+import "strings"
 
 // DefaultFallbackContextWindowTokens is assumed for a model whose window is unknown.
 const DefaultFallbackContextWindowTokens = 128_000
@@ -67,32 +64,9 @@ type contextWindowPattern struct {
 	Tokens  int
 }
 
-var contextWindowOverrides = struct {
-	sync.RWMutex
-	values map[string]int
-}{values: map[string]int{}}
-
-var contextWindowCacheOnce sync.Once
-
+// RegisterContextWindowTokens records a context window a live listing reported.
 func RegisterContextWindowTokens(providerID string, providerType string, modelID string, tokens int) {
-	if tokens <= 0 {
-		return
-	}
-	contextWindowCacheOnce.Do(loadContextWindowCache)
-	for _, key := range contextWindowKeys(providerID, providerType, modelID) {
-		if key == "" {
-			continue
-		}
-		contextWindowOverrides.Lock()
-		contextWindowOverrides.values[key] = tokens
-		contextWindowOverrides.Unlock()
-		modelMetadataOverrides.Lock()
-		existing := modelMetadataOverrides.values[key]
-		existing.ContextWindow = tokens
-		modelMetadataOverrides.values[key] = existing
-		modelMetadataOverrides.Unlock()
-	}
-	saveContextWindowCache()
+	RegisterModelMetadata(providerID, providerType, modelID, ModelMetadataRegistration{ContextWindow: tokens})
 }
 
 func ResolveContextWindowTokens(providerID string, providerType string, modelID string) int {
@@ -116,18 +90,6 @@ func resolveStaticContextWindowTokens(providerID string, providerType string, mo
 		return tokens, ModelMetadataSourceStaticRule
 	}
 	return DefaultFallbackContextWindowTokens, ModelMetadataSourceFallback
-}
-
-func lookupContextWindowOverride(providerID string, providerType string, modelID string) int {
-	for _, key := range contextWindowKeys(providerID, providerType, modelID) {
-		contextWindowOverrides.RLock()
-		tokens := contextWindowOverrides.values[key]
-		contextWindowOverrides.RUnlock()
-		if tokens > 0 {
-			return tokens
-		}
-	}
-	return 0
 }
 
 func contextWindowKeys(providerID string, providerType string, modelID string) []string {

@@ -32,17 +32,9 @@ type ModelMetadata struct {
 	CapabilitySource       ModelMetadataSource `json:"capability_source,omitempty"`
 }
 
+// ModelMetadataRegistration is what a live listing reports for one model; nil
+// and zero fields are unknown.
 type ModelMetadataRegistration struct {
-	ContextWindow       int
-	MaxOutputTokens     int
-	ToolCalling         *bool
-	ImageInput          *bool
-	ReasoningEffort     *bool
-	ReasoningEfforts    []string
-	SupportedParameters []string
-}
-
-type cachedModelMetadata struct {
 	ContextWindow       int      `json:"context_window,omitempty"`
 	MaxOutputTokens     int      `json:"max_output_tokens,omitempty"`
 	ToolCalling         *bool    `json:"tool_calling,omitempty"`
@@ -54,29 +46,23 @@ type cachedModelMetadata struct {
 
 var modelMetadataOverrides = struct {
 	sync.RWMutex
-	values map[string]cachedModelMetadata
-}{values: map[string]cachedModelMetadata{}}
+	values map[string]ModelMetadataRegistration
+}{values: map[string]ModelMetadataRegistration{}}
 
 func RegisterModelMetadata(providerID string, providerType string, modelID string, metadata ModelMetadataRegistration) {
-	metadata = normalizeModelMetadataRegistration(metadata)
-	if metadata.ContextWindow <= 0 && metadata.MaxOutputTokens <= 0 && metadata.ToolCalling == nil && metadata.ImageInput == nil && metadata.ReasoningEffort == nil && len(metadata.ReasoningEfforts) == 0 && len(metadata.SupportedParameters) == 0 {
+	if !modelMetadataKnown(metadata) {
 		return
 	}
-	contextWindowCacheOnce.Do(loadContextWindowCache)
+	modelMetadataOverrides.Lock()
+	defer modelMetadataOverrides.Unlock()
 	for _, key := range contextWindowKeys(providerID, providerType, modelID) {
-		if key == "" {
-			continue
+		if key != "" {
+			modelMetadataOverrides.values[key] = mergeModelMetadata(modelMetadataOverrides.values[key], metadata)
 		}
-		modelMetadataOverrides.Lock()
-		existing := modelMetadataOverrides.values[key]
-		modelMetadataOverrides.values[key] = mergeCachedModelMetadata(existing, metadata)
-		modelMetadataOverrides.Unlock()
 	}
-	saveContextWindowCache()
 }
 
 func ResolveModelMetadata(providerID string, providerType string, modelID string) ModelMetadata {
-	contextWindowCacheOnce.Do(loadContextWindowCache)
 	providerID = NormalizeProviderID(providerID)
 	providerType = NormalizeProviderType(providerType)
 	modelID = strings.TrimSpace(modelID)
@@ -139,48 +125,8 @@ func ResolveModelMetadata(providerID string, providerType string, modelID string
 	}
 }
 
-func normalizeModelMetadataRegistration(metadata ModelMetadataRegistration) ModelMetadataRegistration {
-	if metadata.ContextWindow < 0 {
-		metadata.ContextWindow = 0
-	}
-	if metadata.MaxOutputTokens < 0 {
-		metadata.MaxOutputTokens = 0
-	}
-	metadata.ReasoningEfforts = cleanReasoningEfforts(metadata.ReasoningEfforts)
-	metadata.SupportedParameters = cleanModelParameters(metadata.SupportedParameters)
-	return metadata
-}
-
-func mergeCachedModelMetadata(existing cachedModelMetadata, next ModelMetadataRegistration) cachedModelMetadata {
-	if next.ContextWindow > 0 {
-		existing.ContextWindow = next.ContextWindow
-	}
-	if next.MaxOutputTokens > 0 {
-		existing.MaxOutputTokens = next.MaxOutputTokens
-	}
-	if next.ToolCalling != nil {
-		value := *next.ToolCalling
-		existing.ToolCalling = &value
-	}
-	if next.ImageInput != nil {
-		value := *next.ImageInput
-		existing.ImageInput = &value
-	}
-	if next.ReasoningEffort != nil {
-		value := *next.ReasoningEffort
-		existing.ReasoningEffort = &value
-	}
-	if len(next.ReasoningEfforts) > 0 {
-		existing.ReasoningEfforts = copyStrings(next.ReasoningEfforts)
-	}
-	if len(next.SupportedParameters) > 0 {
-		existing.SupportedParameters = copyStrings(next.SupportedParameters)
-	}
-	return existing
-}
-
-func lookupCachedModelMetadata(providerID string, providerType string, modelID string) (cachedModelMetadata, bool) {
-	var out cachedModelMetadata
+func lookupCachedModelMetadata(providerID string, providerType string, modelID string) (ModelMetadataRegistration, bool) {
+	var out ModelMetadataRegistration
 	found := false
 	for _, key := range contextWindowKeys(providerID, providerType, modelID) {
 		modelMetadataOverrides.RLock()
@@ -189,19 +135,13 @@ func lookupCachedModelMetadata(providerID string, providerType string, modelID s
 		if !ok {
 			continue
 		}
-		out = mergeCachedMetadata(out, metadata)
+		out = mergeModelMetadata(out, metadata)
 		found = true
-	}
-	if out.ContextWindow <= 0 {
-		if tokens := lookupContextWindowOverride(providerID, providerType, modelID); tokens > 0 {
-			out.ContextWindow = tokens
-			found = true
-		}
 	}
 	return out, found
 }
 
-func mergeCachedMetadata(existing cachedModelMetadata, next cachedModelMetadata) cachedModelMetadata {
+func mergeModelMetadata(existing ModelMetadataRegistration, next ModelMetadataRegistration) ModelMetadataRegistration {
 	if next.ContextWindow > 0 {
 		existing.ContextWindow = next.ContextWindow
 	}
@@ -229,7 +169,7 @@ func mergeCachedMetadata(existing cachedModelMetadata, next cachedModelMetadata)
 	return existing
 }
 
-func cachedModelMetadataNonZero(metadata cachedModelMetadata) bool {
+func modelMetadataKnown(metadata ModelMetadataRegistration) bool {
 	return metadata.ContextWindow > 0 ||
 		metadata.MaxOutputTokens > 0 ||
 		metadata.ToolCalling != nil ||
@@ -239,7 +179,7 @@ func cachedModelMetadataNonZero(metadata cachedModelMetadata) bool {
 		len(metadata.SupportedParameters) > 0
 }
 
-func applyCachedCapabilities(capabilities ModelCapabilities, metadata cachedModelMetadata, providerType string) ModelCapabilities {
+func applyCachedCapabilities(capabilities ModelCapabilities, metadata ModelMetadataRegistration, providerType string) ModelCapabilities {
 	if metadata.ToolCalling != nil {
 		capabilities.ToolCalling = *metadata.ToolCalling
 		capabilities.ParallelToolCalls = *metadata.ToolCalling

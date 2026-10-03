@@ -38,6 +38,7 @@ func Models(ctx context.Context, input ModelDiscoveryInput) ([]string, error) {
 	}
 
 	models, err := fetchRemoteModels(ctx, input)
+	providers.SaveModelMetadata()
 	if err != nil {
 		return nil, fmt.Errorf("could not verify API key or load models: %w", err)
 	}

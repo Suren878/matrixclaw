@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ import (
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
 	telephonymodule "github.com/Suren878/matrixclaw/internal/modules/telephony"
 	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
+	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/skills"
@@ -43,6 +45,7 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = releaseData() }()
+	providers.UseModelMetadataCache(filepath.Join(dataDir(bootstrap.DBPath), "runtime", "context-windows.json"))
 
 	sqliteStore, err := store.NewSQLite(bootstrap.DBPath)
 	if err != nil {
