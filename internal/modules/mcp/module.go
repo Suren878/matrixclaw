@@ -5,12 +5,15 @@ import (
 	"time"
 
 	mcpbridge "github.com/Suren878/matrixclaw/internal/mcp"
+	"github.com/Suren878/matrixclaw/internal/modules"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 type Module struct {
 	client *mcpbridge.ClientModule
+	cfg    setup.MCPConfig
+	tools  []tools.Executor
 }
 
 func New(ctx context.Context, cfg setup.MCPConfig) (*Module, error) {
@@ -18,14 +21,20 @@ func New(ctx context.Context, cfg setup.MCPConfig) (*Module, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Module{client: client}, nil
+	return &Module{client: client, cfg: cfg, tools: client.Tools()}, nil
 }
 
-func (m *Module) RegisterTools(registry *tools.Registry) error {
-	if m == nil || m.client == nil {
-		return nil
-	}
-	return m.client.RegisterTools(registry)
+func (m *Module) ID() string { return "mcp" }
+
+// Apply keeps the servers the daemon started with; they apply on restart.
+func (m *Module) Apply(context.Context, setup.Config) error { return nil }
+
+func (m *Module) Tools() []tools.Executor {
+	return m.tools
+}
+
+func (m *Module) Status(context.Context) modules.Status {
+	return modules.Status{ID: m.ID(), Title: "MCP", Enabled: m.cfg.Enabled, Ready: m.cfg.Enabled, State: setup.MCPConfigStatus(m.cfg)}
 }
 
 func (m *Module) Context() string {

@@ -40,11 +40,8 @@ func (s *Server) handleRealtimeVoiceModule(w http.ResponseWriter, r *http.Reques
 			writeErrorMessage(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if s.adminReload != nil {
-			if err := s.adminReload(r.Context()); err != nil {
-				writeErrorMessage(w, http.StatusInternalServerError, err.Error())
-				return
-			}
+		if !s.reload(w, r.Context()) {
+			return
 		}
 		writeJSON(w, http.StatusOK, realtime.ModuleResponse{Module: s.realtimeVoice.Descriptor(r.Context())})
 	default:

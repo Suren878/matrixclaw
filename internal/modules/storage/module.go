@@ -34,23 +34,18 @@ func (m *Module) Store() *LocalStore {
 	return m.store
 }
 
-func (m *Module) RegisterTools(registry *tools.Registry) error {
-	if m == nil || m.store == nil || registry == nil {
-		return nil
-	}
-	return registry.Register(
+// Tools are the storage tools.
+func (m *Module) Tools() []tools.Executor {
+	return []tools.Executor{
 		NewSaveTool(m.store),
 		NewReadTool(m.store),
 		NewListTool(m.store),
 		NewUpdateMetadataTool(m.store),
 		NewDeleteTool(m.store),
 		NewSaveTemporaryTool(m.store),
-	)
+	}
 }
 
 func (m *Module) Context() string {
-	if m == nil || m.store == nil {
-		return ""
-	}
 	return strings.TrimSpace(`Local storage is available. Use storage_save to save user documents or generated text into matrixclaw storage, storage_list to find saved files by path/title/tags/query, and storage_read to retrieve saved text. Uploaded files may appear in messages as temp_path values; use storage_save_temp with temp_path and a permanent dest_path when the user asks to keep an uploaded image or file.`)
 }

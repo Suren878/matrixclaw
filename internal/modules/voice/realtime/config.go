@@ -12,7 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/modules"
 	"github.com/Suren878/matrixclaw/internal/setup"
+	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 const (
@@ -231,5 +233,51 @@ func (m *Manager) providerDescriptor(ctx context.Context, spec ProviderSpec, cfg
 		Languages:     spec.Languages,
 		InputFormats:  []AudioFormat{DefaultInputAudioFormat()},
 		OutputFormats: []AudioFormat{DefaultOutputAudioFormat()},
+	}
+}
+
+// peek is the cached check of key, if any, without checking it.
+func (k *keyChecks) peek(spec ProviderSpec, key string) (keyCheck, bool) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	cached, ok := k.results[spec.ID]
+	return cached, ok && cached.key == sha256.Sum256([]byte(key))
+}
+
+func (m *Manager) ID() string { return ModuleID }
+
+func (m *Manager) Tools() []tools.Executor { return nil }
+
+func (m *Manager) Context() string { return "" }
+
+// Close leaves running sessions to end with their streams.
+func (m *Manager) Close() error { return nil }
+
+// Status reports the module from its settings and the last key check.
+func (m *Manager) Status(context.Context) modules.Status {
+	cfg := m.currentConfig()
+	spec := m.activeSpec(cfg)
+	provider := cfg.provider(spec)
+	check, checked := m.keys.peek(spec, provider.APIKey)
+	state := "Disabled"
+	switch {
+	case !cfg.Enabled:
+	case provider.APIKey == "":
+		state = "API key required"
+	case checked && check.err != nil:
+		state = "Could not verify API key"
+	default:
+		state = "Ready"
+	}
+	return modules.Status{
+		ID:      ModuleID,
+		Title:   "Realtime Voice",
+		Enabled: cfg.Enabled,
+		Ready:   state == "Ready",
+		State:   state,
+		Facts: []modules.Fact{
+			{Key: "provider", Label: "Provider", Value: spec.Name},
+			{Key: "model", Label: "Model", Value: provider.ModelID},
+		},
 	}
 }

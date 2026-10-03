@@ -23,16 +23,11 @@ func (s *Server) handleBrowserModule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getBrowserModule(w http.ResponseWriter, _ *http.Request) {
-	module, err := s.setup.BrowserModule()
-	if err != nil {
-		writeErrorMessage(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	s.writeBrowserModuleResponse(w, module)
+	s.writeBrowserModuleResponse(w)
 }
 
-func (s *Server) writeBrowserModuleResponse(w http.ResponseWriter, module setup.BrowserModuleDescriptor) {
-	module = s.localRuntime.DecorateBrowserModule(module)
+func (s *Server) writeBrowserModuleResponse(w http.ResponseWriter) {
+	module := s.modules.Browser.Descriptor()
 	module.RestartRequired = s.mcpRestartRequired()
 	writeJSON(w, http.StatusOK, setup.BrowserModuleResponse{Module: module})
 }
@@ -42,12 +37,14 @@ func (s *Server) updateBrowserModule(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &update) {
 		return
 	}
-	module, err := s.setup.UpdateBrowserModule(update)
-	if err != nil {
+	if _, err := s.setup.UpdateBrowserModule(update); err != nil {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.writeBrowserModuleResponse(w, module)
+	if !s.reload(w, r.Context()) {
+		return
+	}
+	s.writeBrowserModuleResponse(w)
 }
 
 func (s *Server) handleBrowserProvider(w http.ResponseWriter, r *http.Request) {
@@ -69,25 +66,7 @@ func (s *Server) handleBrowserProvider(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &request) {
 		return
 	}
-	module, err := s.setup.BrowserModule()
-	if err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	var provider setup.BrowserProviderOption
-	found := false
-	for _, item := range module.Providers {
-		if item.ID == providerID {
-			provider = item
-			found = true
-			break
-		}
-	}
-	if !found {
-		writeErrorMessage(w, http.StatusNotFound, "browser provider not found")
-		return
-	}
-	updated, err := s.localRuntime.ApplyBrowserAction(r.Context(), provider, request)
+	updated, err := s.modules.Browser.Action(r.Context(), providerID, request)
 	if err != nil {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return

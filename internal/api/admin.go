@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -57,4 +58,22 @@ func (s *Server) handleAdminStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, core.OKResponse{OK: true})
+}
+
+// applySetup makes the running daemon follow setup.json after an edit.
+func (s *Server) applySetup(ctx context.Context) error {
+	if s.adminReload == nil {
+		return nil
+	}
+	return s.adminReload(ctx)
+}
+
+// reload is applySetup for a handler; it answers 500 and returns false when
+// applying fails.
+func (s *Server) reload(w http.ResponseWriter, ctx context.Context) bool {
+	if err := s.applySetup(ctx); err != nil {
+		writeErrorMessage(w, http.StatusInternalServerError, err.Error())
+		return false
+	}
+	return true
 }

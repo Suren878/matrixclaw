@@ -47,22 +47,17 @@ func NewClientModule(ctx context.Context, cfg Config) (*ClientModule, error) {
 	return module, nil
 }
 
-func (m *ClientModule) RegisterTools(registry *tools.Registry) error {
-	if m == nil || registry == nil {
-		return nil
-	}
-	var registerErr error
+// Tools are the connected servers' tools.
+func (m *ClientModule) Tools() []tools.Executor {
+	out := []tools.Executor{}
 	for _, session := range m.sessions {
 		for _, remoteTool := range session.tools {
-			if remoteTool == nil {
-				continue
-			}
-			if err := registry.Register(newRemoteToolExecutor(session.server, session, remoteTool)); err != nil {
-				registerErr = err
+			if remoteTool != nil {
+				out = append(out, newRemoteToolExecutor(session.server, session, remoteTool))
 			}
 		}
 	}
-	return registerErr
+	return out
 }
 
 func (m *ClientModule) Context() string {

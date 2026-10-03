@@ -13,11 +13,7 @@ import (
 const TextToSpeechToolID = "text_to_speech"
 
 type textToSpeechTool struct {
-	service *Service
-}
-
-func NewTextToSpeechTool(service *Service) tools.Executor {
-	return &textToSpeechTool{service: service}
+	module *Module
 }
 
 func (t *textToSpeechTool) Spec() tools.Spec {
@@ -39,9 +35,6 @@ func (t *textToSpeechTool) Spec() tools.Spec {
 }
 
 func (t *textToSpeechTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
-	if t == nil || t.service == nil {
-		return tools.Result{Content: "Text to speech is not configured.", IsError: true, Status: tools.ResultStatusError}, nil
-	}
 	var input struct {
 		Text string `json:"text"`
 	}
@@ -52,7 +45,7 @@ func (t *textToSpeechTool) Execute(ctx context.Context, call tools.Call) (tools.
 	if text == "" {
 		return tools.Result{Content: "Text is required.", IsError: true, Status: tools.ResultStatusError}, nil
 	}
-	response, err := t.service.TextToSpeech(ctx, TextToSpeechRequest{Text: text})
+	response, err := t.module.TextToSpeech(ctx, TextToSpeechRequest{Text: text})
 	if err != nil {
 		if errors.Is(err, ErrModuleDisabled) {
 			return tools.Result{Content: "Text to speech is disabled.", IsError: true, Status: tools.ResultStatusError}, nil

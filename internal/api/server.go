@@ -10,7 +10,9 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/automation"
 	"github.com/Suren878/matrixclaw/internal/core"
-	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
+	"github.com/Suren878/matrixclaw/internal/modules"
+	browsermodule "github.com/Suren878/matrixclaw/internal/modules/browser"
+	telephonymodule "github.com/Suren878/matrixclaw/internal/modules/telephony"
 	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 	"github.com/Suren878/matrixclaw/internal/setup"
@@ -22,8 +24,7 @@ type Server struct {
 	automation    *automation.Service
 	storage       storageStore
 	realtimeVoice *realtime.Manager
-	localRuntime  *localruntime.Runtime
-	voice         *voicemodule.Service
+	modules       Modules
 	skills        *skills.Service
 	mux           *http.ServeMux
 	setup         *setup.Service
@@ -83,10 +84,16 @@ func (s *Server) SetRealtimeVoiceService(service *realtime.Manager) {
 	s.realtimeVoice = service
 }
 
-// SetLocalVoice sets the daemon's local runtime and the voice service on it.
-func (s *Server) SetLocalVoice(runtime *localruntime.Runtime, voice *voicemodule.Service) {
-	s.localRuntime = runtime
-	s.voice = voice
+// Modules are the daemon modules the API serves settings and actions of.
+type Modules struct {
+	Set       *modules.Set
+	TTS, STT  *voicemodule.Module
+	Telephony *telephonymodule.Module
+	Browser   *browsermodule.Module
+}
+
+func (s *Server) SetModules(modules Modules) {
+	s.modules = modules
 }
 
 func (s *Server) SetSkillsService(service *skills.Service) {
@@ -159,6 +166,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/v1/bindings/use", s.handleUseBinding)
 	s.mux.HandleFunc("/v1/tools", s.handleTools)
 	s.mux.HandleFunc("/v1/tools/execute", s.handleToolExecute)
+	s.mux.HandleFunc("/v1/modules", s.handleModules)
 	s.mux.HandleFunc("/v1/modules/storage/files", s.handleStorageFiles)
 	s.mux.HandleFunc("/v1/modules/storage/files/", s.handleStorageFileByPath)
 	s.mux.HandleFunc("/v1/modules/storage/temp", s.handleStorageTemp)

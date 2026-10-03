@@ -34,7 +34,7 @@ func TestReloadKeepsExternalAgentsWhenTheirConfigIsUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = sqliteStore.Close() }()
-	s := newSupervisor(context.Background(), nil, core.New(sqliteStore), nil)
+	s := newSupervisor(context.Background(), nil, core.New(sqliteStore), nil, nil)
 	runtime := &closeCountingRuntime{}
 	cfg := map[string]setup.ExternalAgentConfig{"codex": {Enabled: true}}
 	s.SetExternalAgents(sqliteStore, []externalagents.RuntimeAgent{runtime}, cfg)
@@ -156,4 +156,13 @@ func TestMCPConfigChangedAfterSavedServerEdit(t *testing.T) {
 	if !changed() {
 		t.Fatal("added MCP server not reported as needing a restart")
 	}
+}
+
+func testSetupService(t *testing.T, telephony setup.TelephonyConfig) *setup.Service {
+	t.Helper()
+	store := setup.NewFileStore(filepath.Join(t.TempDir(), "setup.json"))
+	if err := store.Save(setup.Config{Modules: setup.ModulesConfig{Telephony: telephony}}); err != nil {
+		t.Fatalf("save setup: %v", err)
+	}
+	return setup.NewService(store)
 }

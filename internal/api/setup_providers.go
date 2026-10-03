@@ -76,11 +76,8 @@ func (s *Server) handleSetupProviderByID(w http.ResponseWriter, r *http.Request)
 			writeErrorMessage(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if s.adminReload != nil {
-			if err := s.adminReload(r.Context()); err != nil {
-				writeErrorMessage(w, http.StatusInternalServerError, err.Error())
-				return
-			}
+		if !s.reload(w, r.Context()) {
+			return
 		}
 		writeJSON(w, http.StatusOK, setup.ProviderSetupOKResponse{OK: true})
 		return

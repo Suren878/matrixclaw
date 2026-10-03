@@ -40,5 +40,8 @@ func (s *Server) updateWebSearchConfig(w http.ResponseWriter, r *http.Request) {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if !s.reload(w, r.Context()) {
+		return
+	}
 	writeJSON(w, http.StatusOK, setup.WebSearchResponse(cfg))
 }

@@ -94,13 +94,11 @@ func registeredToolDefinitions(t *testing.T) []providers.ToolDefinition {
 		core.AgentToolExecutors(app),
 		geo.NewOSMGeoExecutors(geo.NewOSMService(geo.OSMConfig{})),
 		skills.ToolExecutors(nil),
+		storage.Tools(),
 	} {
 		if err := registry.Register(executors...); err != nil {
 			t.Fatal(err)
 		}
-	}
-	if err := storage.RegisterTools(registry); err != nil {
-		t.Fatal(err)
 	}
 	var definitions []providers.ToolDefinition
 	for _, spec := range registry.List() {

@@ -10,14 +10,6 @@ const (
 	BrowserProviderPlaywright = "playwright"
 )
 
-func (s *Service) BrowserModule() (BrowserModuleDescriptor, error) {
-	cfg, err := s.Load()
-	if err != nil {
-		return BrowserModuleDescriptor{}, err
-	}
-	return BrowserModuleFromConfig(cfg.Modules), nil
-}
-
 func (s *Service) UpdateBrowserModule(update BrowserModuleUpdate) (BrowserModuleDescriptor, error) {
 	cfg, err := s.Update(func(cfg *Config) error {
 		cfg.Modules.Browser = applyBrowserModuleUpdate(cfg.Modules.Browser, update)

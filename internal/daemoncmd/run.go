@@ -7,22 +7,17 @@ import (
 	"net/http"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/api"
 	"github.com/Suren878/matrixclaw/internal/automation"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
-	"github.com/Suren878/matrixclaw/internal/modules"
-	deliverymodule "github.com/Suren878/matrixclaw/internal/modules/delivery"
 	"github.com/Suren878/matrixclaw/internal/modules/geo"
 	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
 	mcpmodule "github.com/Suren878/matrixclaw/internal/modules/mcp"
 	skillsmodule "github.com/Suren878/matrixclaw/internal/modules/skills"
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
-	telephonymodule "github.com/Suren878/matrixclaw/internal/modules/telephony"
-	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 	geminilive "github.com/Suren878/matrixclaw/internal/modules/voice/realtime/providers/gemini"
 	grokvoice "github.com/Suren878/matrixclaw/internal/modules/voice/realtime/providers/grok"
@@ -32,8 +27,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/skills"
 	"github.com/Suren878/matrixclaw/internal/store"
-	"github.com/Suren878/matrixclaw/internal/tools"
-	"github.com/Suren878/matrixclaw/internal/webtools"
 )
 
 func Run(ctx context.Context) error {
@@ -64,7 +57,6 @@ func Run(ctx context.Context) error {
 	removeWebResearchFiles(bootstrap.DBPath)
 	localRuntime := localruntime.New("")
 	defer func() { _ = localRuntime.Close() }()
-	voiceService := voicemodule.NewService(bootstrap.SetupService, localRuntime)
 	storageModule, err := localstorage.New(localstorage.Config{
 		Root: defaultStorageRoot(bootstrap.DBPath),
 	})
@@ -76,13 +68,10 @@ func Run(ctx context.Context) error {
 		log.Printf("matrixclawd mcp module disabled: %v", err)
 		mcpModule, _ = mcpmodule.New(ctx, setup.MCPConfig{})
 	}
-	defer func() { _ = mcpModule.Close() }()
 	skillsModule, err := skillsmodule.New(skillsConfigFromBootstrap(bootstrap))
 	if err != nil {
 		return err
 	}
-	defer func() { _ = skillsModule.Close() }()
-	moduleRegistry := modules.NewRegistry(storageModule, mcpModule, skillsModule)
 
 	app := core.New(sqliteStore).
 		WithSessionLLMs(bootstrap.SessionLLMs).
@@ -94,12 +83,7 @@ func Run(ctx context.Context) error {
 		WithBackgroundTaskLimit(bootstrap.BackgroundTasks).
 		WithBackgroundAgents(bootstrap.BackgroundAgents).
 		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()}).
-		WithSkillsContext(skillsModule).
-		WithRuntimeStatusContext(&setupRuntimeStatusContext{setup: bootstrap.SetupService, runtime: localRuntime})
-	// The workflow worker (below) may start executing persisted runs before
-	// supervisor.ApplyBootstrap runs, so the profile is set here too, via the
-	// same helper, ensuring module context is never missing.
-	applyAssistantProfile(app, bootstrap.Assistant, moduleRegistry.Context)
+		WithSkillsContext(skillsModule)
 	externalRegistry, externalRuntimes, err := builtins.BuildRegistry(bootstrap.Setup.Modules)
 	if err != nil {
 		return err
@@ -108,42 +92,21 @@ func Run(ctx context.Context) error {
 	automationService := automation.NewService(automationStore, app, bootstrap.Timezone).
 		WithDeliveryTargets(automationDeliveryTargets(bootstrap))
 	osmGeo := geo.NewOSMServiceFromEnv()
-	extraTools := []tools.Executor{
-		automation.NewReminderTool(automationService),
-		automation.NewScheduledAITaskTool(automationService),
-		deliverymodule.NewSendFileTool(storageModule.Store(), app),
-		telephonymodule.NewCallTool(bootstrap.SetupService),
-		telephonymodule.NewEndCallTool(bootstrap.SetupService),
-		voicemodule.NewTextToSpeechTool(voiceService),
-		webtools.NewFetchTool(),
-		webtools.NewSearchTool(webSearchConfig(bootstrap.SetupService)),
-	}
-	toolRegistry := tools.NewRegistry(append(tools.CoreExecutors(), extraTools...)...)
-	if err := toolRegistry.Register(tools.NewShellExecutors(app)...); err != nil {
+	realtimeVoice := realtime.NewManager(app, geminilive.Spec, grokvoice.Spec, openairealtime.Spec)
+	daemon, err := buildModules(moduleDeps{
+		app:        app,
+		automation: automationService,
+		runtime:    localRuntime,
+		storage:    storageModule,
+		skills:     skillsModule,
+		mcp:        mcpModule,
+		realtime:   realtimeVoice,
+		geo:        osmGeo,
+	})
+	if err != nil {
 		return err
 	}
-	if err := toolRegistry.Register(core.TodoToolExecutors(app)...); err != nil {
-		return err
-	}
-	if err := toolRegistry.Register(core.AwaitToolExecutors(app)...); err != nil {
-		return err
-	}
-	if err := toolRegistry.Register(core.MemoryToolExecutors(app)...); err != nil {
-		return err
-	}
-	if err := toolRegistry.Register(core.AgentToolExecutors(app)...); err != nil {
-		return err
-	}
-	if err := toolRegistry.Err(); err != nil {
-		return err
-	}
-	if err := toolRegistry.Register(geo.NewOSMGeoExecutors(osmGeo)...); err != nil {
-		return err
-	}
-	if err := moduleRegistry.RegisterTools(toolRegistry); err != nil {
-		return err
-	}
-	app.WithTools(newSetupAwareToolExecutor(toolRegistry, bootstrap.SetupService))
+	app.WithTools(daemon.set)
 	lifetime, stopLifetime := context.WithCancel(ctx)
 	defer stopLifetime()
 	app.WithLifetime(lifetime)
@@ -154,43 +117,46 @@ func Run(ctx context.Context) error {
 	server.SetStorageStore(storageModule.Store())
 	server.SetSkillsService(skillsModule.Service())
 	server.SetSetupService(bootstrap.SetupService)
-	server.SetLocalVoice(localRuntime, voiceService)
-	realtimeVoice := realtime.NewManager(app, geminilive.Spec, grokvoice.Spec, openairealtime.Spec)
+	server.SetModules(daemon.api)
 	server.SetRealtimeVoiceService(realtimeVoice)
 	server.SetMCPChanged(mcpConfigChanged(localRuntime, bootstrap))
-	supervisor := newSupervisor(ctx, server, app, osmGeo)
-	supervisor.realtime = realtimeVoice
-	supervisor.SetModuleContext(moduleRegistry.Context)
+	supervisor := newSupervisor(ctx, server, app, osmGeo, daemon.set)
+	app.WithRuntimeStatusContext(supervisor)
 	supervisor.SetExternalAgents(sqliteStore, externalRuntimes, bootstrap.Setup.Modules.ExternalAgents)
 	defer func() {
 		// Ending the lifetime interrupts the executing runs and keeps them for
-		// recovery; they finish writing before external agents and the store close.
+		// recovery; they finish writing before modules, external agents and
+		// the store close.
 		stopLifetime()
 		app.WaitRuns()
 		supervisor.CloseExternalAgents()
+		_ = daemon.set.Close()
 	}()
 	httpServer := &http.Server{
-		Addr:              bootstrap.Addr,
 		Handler:           server.Handler(),
 		BaseContext:       func(net.Listener) context.Context { return ctx },
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 	}
-
+	// Requests wait on the bound listener until the setup is applied, so no
+	// run starts without the module tools.
+	listener, err := net.Listen("tcp", bootstrap.Addr)
+	if err != nil {
+		return err
+	}
+	if err := supervisor.ApplyBootstrap(bootstrap); err != nil {
+		_ = listener.Close()
+		return err
+	}
 	errCh := make(chan error, 2)
 	safego.Go("daemon.httpServer", func() {
-		err := httpServer.ListenAndServe()
+		err := httpServer.Serve(listener)
 		if err == http.ErrServerClosed {
 			err = nil
 		}
 		errCh <- err
 	})
-
-	if err := supervisor.ApplyBootstrap(bootstrap); err != nil {
-		return err
-	}
-	startConfiguredVoiceRuntimes(ctx, bootstrap.SetupService, localRuntime)
 	safego.Go("automation.Run", func() { automationService.Run(ctx) })
 	safego.Go("supervisor.deliverStartupNotifications", func() {
 		supervisor.DeliverPendingStartupNotifications(bootstrap)
@@ -262,39 +228,4 @@ func appendOrReplaceMCPServer(servers []setup.MCPServerConfig, server setup.MCPS
 		}
 	}
 	return append(out, server)
-}
-
-func startConfiguredVoiceRuntimes(ctx context.Context, service *setup.Service, runtime *localruntime.Runtime) {
-	if service == nil {
-		return
-	}
-	modules, err := service.VoiceModules()
-	if err != nil {
-		log.Printf("voice runtime bootstrap skipped: %s", err)
-		return
-	}
-	for _, module := range modules {
-		if !module.Enabled {
-			continue
-		}
-		for _, provider := range module.Providers {
-			if provider.ID != module.ProviderID || !provider.Local || (provider.ID != "piper" && provider.ID != "supertonic" && provider.ID != "whispercpp") {
-				continue
-			}
-			if !strings.EqualFold(strings.TrimSpace(provider.Config.RuntimeMode), "always_running") {
-				continue
-			}
-			if _, err := runtime.ApplyVoiceAction(ctx, module.ID, provider, setup.VoiceProviderActionRequest{Action: localruntime.ActionStart}); err != nil {
-				log.Printf("%s %s runtime autostart failed: %s", module.ID, provider.ID, err)
-			}
-		}
-	}
-}
-
-// webSearchConfig reads the web search provider from setup at each search.
-func webSearchConfig(service *setup.Service) func() (webtools.SearchConfig, error) {
-	return func() (webtools.SearchConfig, error) {
-		cfg, err := service.GetWebSearchConfig()
-		return webtools.SearchConfig{Provider: cfg.Provider, TavilyKey: cfg.TavilyKey, SerperKey: cfg.SerperKey, BaseURL: cfg.BaseURL}, err
-	}
 }

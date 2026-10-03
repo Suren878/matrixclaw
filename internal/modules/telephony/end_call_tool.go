@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
+
+type endCallTool struct {
+	module *Module
+}
 
 type endCallInput struct {
 	CallID string `json:"call_id,omitempty"`
@@ -46,25 +48,12 @@ func (t *endCallTool) Execute(ctx context.Context, call tools.Call) (tools.Resul
 	if callID == "" {
 		return tools.Result{Content: "No active telephony call id was provided.", IsError: true, Status: tools.ResultStatusError}, nil
 	}
-	cfg, err := t.gateway.config()
-	if err != nil {
-		return tools.Result{Content: err.Error(), IsError: true, Status: tools.ResultStatusError}, nil
+	_, gw := t.module.current()
+	if gw == nil {
+		return tools.Result{Content: "Telephony is not configured.", IsError: true, Status: tools.ResultStatusError}, nil
 	}
-	telephonyCfg := cfg.Modules.Telephony
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, strings.TrimRight(telephonyCfg.GatewayURL, "/")+"/v1/calls/"+url.PathEscape(callID), nil)
-	if err != nil {
-		return tools.Result{}, err
-	}
-	if strings.TrimSpace(telephonyCfg.GatewayToken) != "" {
-		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(telephonyCfg.GatewayToken))
-	}
-	res, err := t.gateway.http.Do(req)
-	if err != nil {
+	if err := gw.EndCall(ctx, callID); err != nil {
 		return tools.Result{Content: fmt.Sprintf("Telephony end call failed: %s", err), IsError: true, Status: tools.ResultStatusError}, nil
-	}
-	defer func() { _ = res.Body.Close() }()
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return tools.Result{Content: fmt.Sprintf("Telephony gateway returned HTTP %d while ending the call.", res.StatusCode), IsError: true, Status: tools.ResultStatusError}, nil
 	}
 	return tools.Result{Content: "Phone call ended.", Status: tools.ResultStatusSuccess}, nil
 }

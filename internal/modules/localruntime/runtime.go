@@ -280,6 +280,11 @@ func (r *Runtime) stopVoiceRuntime(moduleID string, provider setup.VoiceProvider
 	return r.DecorateVoiceProvider(moduleID, provider), nil
 }
 
+// StopVoiceRuntime stops the provider's server when one runs.
+func (r *Runtime) StopVoiceRuntime(providerID string) {
+	r.procs.Stop(providerID)
+}
+
 func (r *Runtime) voiceRuntimeRunning(provider setup.VoiceProviderOption) bool {
 	_, ok := r.procs.Running(provider.ID)
 	return ok

@@ -1,11 +1,9 @@
 package telephony
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/telephony/phone"
@@ -20,8 +18,8 @@ type callInput struct {
 	SystemInstruction string `json:"system_instruction,omitempty"`
 }
 
-type callResponse struct {
-	Call any `json:"call"`
+type callTool struct {
+	module *Module
 }
 
 func (t *callTool) Spec() tools.Spec {
@@ -71,12 +69,12 @@ func (t *callTool) Execute(ctx context.Context, call tools.Call) (tools.Result, 
 			},
 		}, nil
 	}
-	cfg, err := t.gateway.config()
-	if err != nil {
-		return tools.Result{Content: err.Error(), IsError: true, Status: tools.ResultStatusError}, nil
+	cfg, gw := t.module.current()
+	if gw == nil {
+		return tools.Result{Content: "Telephony is not configured.", IsError: true, Status: tools.ResultStatusError}, nil
 	}
 	telephonyCfg := cfg.Modules.Telephony
-	requestBody := map[string]any{
+	placed, err := gw.PlaceCall(ctx, map[string]any{
 		"to":                            input.To,
 		"profile":                       firstNonEmpty(input.Profile, telephonyCfg.DefaultProfile),
 		"objective":                     input.Objective,
@@ -90,32 +88,13 @@ func (t *callTool) Execute(ctx context.Context, call tools.Call) (tools.Result, 
 		"phone_prompt":                  telephonyCfg.PhonePrompt,
 		"assistant_name":                cfg.Assistant.NameOrDefault(),
 		"assistant_custom_instructions": cfg.Assistant.CustomInstructions,
-	}
-	payload, err := json.Marshal(requestBody)
-	if err != nil {
-		return tools.Result{}, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(telephonyCfg.GatewayURL, "/")+"/v1/calls", bytes.NewReader(payload))
-	if err != nil {
-		return tools.Result{}, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if strings.TrimSpace(telephonyCfg.GatewayToken) != "" {
-		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(telephonyCfg.GatewayToken))
-	}
-	res, err := t.gateway.http.Do(req)
+	})
 	if err != nil {
 		return tools.Result{Content: fmt.Sprintf("Telephony call failed: %s", err), IsError: true, Status: tools.ResultStatusError}, nil
 	}
-	defer func() { _ = res.Body.Close() }()
-	var response callResponse
-	_ = json.NewDecoder(res.Body).Decode(&response)
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return tools.Result{Content: fmt.Sprintf("Telephony gateway returned HTTP %d.", res.StatusCode), Metadata: response, IsError: true, Status: tools.ResultStatusError}, nil
-	}
 	return tools.Result{
 		Content:  "Phone call started: " + input.To,
-		Metadata: response.Call,
+		Metadata: placed,
 		Status:   tools.ResultStatusSuccess,
 	}, nil
 }

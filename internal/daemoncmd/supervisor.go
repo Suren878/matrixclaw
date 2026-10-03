@@ -2,12 +2,14 @@ package daemoncmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"maps"
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Suren878/matrixclaw/clients/telegram"
@@ -15,8 +17,8 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
+	"github.com/Suren878/matrixclaw/internal/modules"
 	"github.com/Suren878/matrixclaw/internal/modules/geo"
-	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
@@ -28,12 +30,12 @@ const (
 )
 
 type supervisor struct {
-	ctx           context.Context
-	server        *api.Server
-	app           *core.Core
-	telegram      *telegramClientAdapter
-	moduleContext func() []string
-	realtime      *realtime.Manager
+	ctx      context.Context
+	server   *api.Server
+	app      *core.Core
+	telegram *telegramClientAdapter
+	modules  *modules.Set
+	applied  atomic.Pointer[setup.Config]
 
 	// reloadMu serializes applying the setup and swapping external agents.
 	reloadMu         sync.Mutex
@@ -63,11 +65,12 @@ func applyAssistantProfile(app assistantProfileSetter, base core.AssistantProfil
 	app.SetAssistantProfile(base)
 }
 
-func newSupervisor(ctx context.Context, server *api.Server, app *core.Core, geo *geo.OSMService) *supervisor {
+func newSupervisor(ctx context.Context, server *api.Server, app *core.Core, geo *geo.OSMService, set *modules.Set) *supervisor {
 	s := &supervisor{
 		ctx:      ctx,
 		server:   server,
 		app:      app,
+		modules:  set,
 		telegram: &telegramClientAdapter{geo: geo},
 	}
 	if server != nil {
@@ -84,23 +87,37 @@ func (s *supervisor) ApplyBootstrap(bootstrap bootstrapConfig) error {
 	return s.applyBootstrap(bootstrap)
 }
 
+// applyBootstrap makes the daemon follow the loaded setup; each part does
+// nothing when its own settings did not change.
 func (s *supervisor) applyBootstrap(bootstrap bootstrapConfig) error {
-	if s.app != nil {
-		s.app.SetSessionLLMs(bootstrap.SessionLLMs)
-		applyAssistantProfile(s.app, bootstrap.Assistant, s.moduleContext)
-	}
-	if s.realtime != nil {
-		if err := s.realtime.Apply(s.ctx, bootstrap.Setup); err != nil {
-			return err
+	cfg := bootstrap.Setup
+	s.applied.Store(&cfg)
+	var errs []error
+	if s.modules != nil {
+		if err := s.modules.Apply(s.ctx, cfg); err != nil {
+			errs = append(errs, err)
 		}
 	}
-	return s.telegram.Apply(s.ctx, bootstrap)
+	if s.app != nil {
+		s.app.SetSessionLLMs(bootstrap.SessionLLMs)
+		var moduleContext func() []string
+		if s.modules != nil {
+			moduleContext = s.modules.Context
+		}
+		applyAssistantProfile(s.app, bootstrap.Assistant, moduleContext)
+	}
+	if err := s.telegram.Apply(s.ctx, bootstrap); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
-// SetModuleContext sets the module-context source (storage/MCP/skills) that
-// ApplyBootstrap appends to the assistant profile's system prompt.
-func (s *supervisor) SetModuleContext(moduleContext func() []string) {
-	s.moduleContext = moduleContext
+// appliedConfig is the setup the daemon follows now.
+func (s *supervisor) appliedConfig() setup.Config {
+	if cfg := s.applied.Load(); cfg != nil {
+		return *cfg
+	}
+	return setup.Config{}
 }
 
 func (s *supervisor) Reload(ctx context.Context) error {

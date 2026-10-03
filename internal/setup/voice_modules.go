@@ -11,14 +11,6 @@ const (
 	VoiceModuleSTT = "stt"
 )
 
-func (s *Service) VoiceModules() ([]VoiceModuleDescriptor, error) {
-	cfg, err := s.Load()
-	if err != nil {
-		return nil, err
-	}
-	return VoiceModuleDescriptors(cfg.Modules), nil
-}
-
 func (s *Service) UpdateVoiceModule(id string, update VoiceModuleUpdate) ([]VoiceModuleDescriptor, error) {
 	id = normalizeVoiceModuleID(id)
 	if id == "" {

@@ -8,14 +8,6 @@ import (
 
 const TelephonyModuleID = "telephony"
 
-func (s *Service) TelephonyModule() (TelephonyModuleDescriptor, error) {
-	cfg, err := s.Load()
-	if err != nil {
-		return TelephonyModuleDescriptor{}, err
-	}
-	return TelephonyModuleFromConfig(cfg.Modules), nil
-}
-
 func (s *Service) UpdateTelephonyModule(update TelephonyModuleUpdate) (TelephonyModuleDescriptor, error) {
 	cfg, err := s.Update(func(cfg *Config) error {
 		merged := mergeTelephonyConfig(cfg.Modules.Telephony, update)
