@@ -34,7 +34,7 @@ func (dv *DiffView) computeDiff() error {
 		dv.after.path,
 		dv.before.content,
 		dv.edits,
-		dv.contextLines,
+		udiff.DefaultContextLines,
 	)
 	return dv.err
 }
@@ -72,35 +72,6 @@ func (dv *DiffView) detectNumDigits() {
 		dv.beforeNumDigits = max(dv.beforeNumDigits, len(strconv.Itoa(h.FromLine+len(h.Lines))))
 		dv.afterNumDigits = max(dv.afterNumDigits, len(strconv.Itoa(h.ToLine+len(h.Lines))))
 	}
-}
-
-func (dv *DiffView) detectTotalLines() {
-	dv.totalLines = 0
-
-	switch dv.layout {
-	case layoutUnified:
-		for _, h := range dv.unified.Hunks {
-			dv.totalLines += len(h.Lines)
-		}
-	case layoutSplit:
-		for _, h := range dv.splitHunks {
-			dv.totalLines += 1 + len(h.lines)
-		}
-	}
-}
-
-func (dv *DiffView) preventInfiniteYScroll() {
-	if dv.infiniteYScroll {
-		return
-	}
-
-	if dv.height > 0 {
-		maxYOffset := max(0, dv.totalLines-dv.height)
-		dv.yOffset = min(dv.yOffset, maxYOffset)
-	} else {
-		dv.yOffset = min(dv.yOffset, max(0, dv.totalLines-1))
-	}
-	dv.yOffset = max(0, dv.yOffset)
 }
 
 // detectCodeWidth calculates the maximum width of code lines in the diff view.
@@ -151,10 +122,7 @@ func (dv *DiffView) resizeCodeWidth() {
 
 	switch dv.layout {
 	case layoutUnified:
-		prefixWidth := leadingSymbolsSize
-		if dv.lineNumbers {
-			prefixWidth = max(dv.beforeNumDigits, dv.afterNumDigits) + leadingSymbolsSize
-		}
+		prefixWidth := max(dv.beforeNumDigits, dv.afterNumDigits) + leadingSymbolsSize
 		dv.codeWidth = max(0, dv.width-prefixWidth)
 	case layoutSplit:
 		remainingWidth := dv.width - fullNumWidth - leadingSymbolsSize*2

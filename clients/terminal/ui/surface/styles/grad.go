@@ -14,7 +14,7 @@ func foregroundGrad(t *Styles, input string, color1, color2 color.Color) []strin
 		return []string{""}
 	}
 	if len(input) == 1 {
-		return []string{t.Base.Foreground(gloss(color1)).Render(input)}
+		return []string{t.Base.Foreground(color1).Render(input)}
 	}
 	var clusters []string
 	gr := uniseg.NewGraphemes(input)
@@ -24,7 +24,7 @@ func foregroundGrad(t *Styles, input string, color1, color2 color.Color) []strin
 
 	ramp := blendColors(len(clusters), color1, color2)
 	for i, c := range ramp {
-		clusters[i] = t.Base.Foreground(gloss(c)).Render(clusters[i])
+		clusters[i] = t.Base.Foreground(c).Render(clusters[i])
 	}
 	return clusters
 }

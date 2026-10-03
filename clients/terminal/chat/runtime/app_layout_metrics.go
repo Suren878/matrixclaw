@@ -137,10 +137,3 @@ func (m *appModel) availableTodoPanelWidth() int {
 	}
 	return width
 }
-
-func (m *appModel) isCompactLayout() bool {
-	if m.width <= 0 || m.height <= 0 {
-		return false
-	}
-	return m.width < compactModeWidthBreakpoint || m.height < compactModeHeightBreakpoint
-}

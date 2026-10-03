@@ -4,9 +4,6 @@ import (
 	"image/color"
 
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/exp/charmtone"
-
-	"github.com/Suren878/matrixclaw/clients/terminal/ui/surface/colorx"
 )
 
 type CursorShape int
@@ -54,20 +51,4 @@ type TextAreaStyles struct {
 	Focused TextAreaStyleState
 	Blurred TextAreaStyleState
 	Cursor  TextAreaCursorStyle
-}
-
-func new[T any](value T) *T {
-	return &value
-}
-
-func tone(key charmtone.Key) color.Color {
-	return key
-}
-
-func gloss(c color.Color) color.Color {
-	return c
-}
-
-func hex(c color.Color) string {
-	return colorx.Hex(c)
 }

@@ -4,6 +4,7 @@ import (
 	"image/color"
 
 	"charm.land/glamour/v2/ansi"
+	"github.com/Suren878/matrixclaw/clients/terminal/ui/surface/colorx"
 	"github.com/charmbracelet/x/exp/charmtone"
 )
 
@@ -94,7 +95,7 @@ func defaultMarkdownStyles(green color.Color) ansi.StyleConfig {
 			Underline: new(true),
 		},
 		LinkText: ansi.StylePrimitive{
-			Color: new(hex(green)),
+			Color: new(colorx.Hex(green)),
 			Bold:  new(true),
 		},
 		Image: ansi.StylePrimitive{
@@ -109,7 +110,7 @@ func defaultMarkdownStyles(green color.Color) ansi.StyleConfig {
 			StylePrimitive: ansi.StylePrimitive{
 				Prefix: " ",
 				Suffix: " ",
-				Color:  new(hex(green)),
+				Color:  new(colorx.Hex(green)),
 			},
 		},
 		CodeBlock: ansi.StyleCodeBlock{

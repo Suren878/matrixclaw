@@ -25,7 +25,6 @@ import (
 )
 
 const reconnectDelay = time.Second
-const compactModeWidthBreakpoint = 120
 const compactModeHeightBreakpoint = 30
 const workingStatusTickInterval = 120 * time.Millisecond
 const serverStatusRefreshInterval = time.Second

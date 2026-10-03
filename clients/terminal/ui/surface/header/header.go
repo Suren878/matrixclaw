@@ -1,7 +1,6 @@
 package header
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -13,12 +12,6 @@ const (
 	leftPadding  = 1
 	rightPadding = 1
 )
-
-// Data is the daemon-agnostic input required to render the terminal header shell.
-type Data struct {
-	LSPErrorCount int
-	UsageText     string
-}
 
 // Header renders the terminal header shell.
 type Header struct {
@@ -38,14 +31,14 @@ func New(styles *surfacestyles.Styles, version string) *Header {
 	}
 }
 
-// View renders the terminal header shell.
-func (h *Header) View(width int, compact bool, data Data) string {
+// View renders the terminal header shell with the context usage text on the right.
+func (h *Header) View(width int, usageText string) string {
 	if h == nil || h.styles == nil || width <= 0 {
 		return ""
 	}
 	t := h.styles
 	innerWidth := max(0, width-leftPadding-rightPadding)
-	metadata := renderHeaderMetadata(t, h.appTitle(), data, innerWidth)
+	metadata := renderHeaderMetadata(t, h.appTitle(), usageText, innerWidth)
 	if strings.TrimSpace(metadata) == "" {
 		return ""
 	}
@@ -61,27 +54,17 @@ func (h *Header) appTitle() string {
 	return "matrixclaw v" + version
 }
 
-func renderHeaderMetadata(styles *surfacestyles.Styles, title string, data Data, availWidth int) string {
+func renderHeaderMetadata(styles *surfacestyles.Styles, title string, usageText string, availWidth int) string {
 	title = styles.Header.Title.Render(title)
-	meta := renderHeaderMeta(styles, data)
+	meta := ""
+	if usageText = strings.TrimSpace(usageText); usageText != "" {
+		meta = styles.Header.Meta.Render(usageText)
+	}
 	line := title + " " + headerSlashFill(styles, max(0, availWidth-lipWidth(title)-lipWidth(meta)-2))
 	if meta != "" {
 		line += " " + meta
 	}
 	return ansi.Truncate(line, max(0, availWidth), "…")
-}
-
-func renderHeaderMeta(styles *surfacestyles.Styles, data Data) string {
-	var parts []string
-	if data.LSPErrorCount > 0 {
-		parts = append(parts, styles.LSP.ErrorDiagnostic.Render(fmt.Sprintf("%s%d", surfacestyles.LSPErrorIcon, data.LSPErrorCount)))
-	}
-	if usageText := strings.TrimSpace(data.UsageText); usageText != "" {
-		parts = append(parts, styles.Header.Meta.Render(usageText))
-	}
-
-	dot := styles.Header.Separator.Render(" • ")
-	return strings.Join(parts, dot)
 }
 
 func headerSlashFill(styles *surfacestyles.Styles, width int) string {

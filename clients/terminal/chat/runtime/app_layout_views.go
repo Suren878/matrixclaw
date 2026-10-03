@@ -19,10 +19,7 @@ func (m *appModel) headerView() string {
 	if m.header == nil || m.width <= 0 {
 		return ""
 	}
-	return m.header.View(m.width, m.isCompactLayout(), surfaceheader.Data{
-		LSPErrorCount: 0,
-		UsageText:     m.contextUsageText(),
-	})
+	return m.header.View(m.width, m.contextUsageText())
 }
 
 func (m *appModel) footerView() string {

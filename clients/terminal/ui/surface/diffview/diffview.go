@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
-	"github.com/alecthomas/chroma/v2"
 	"github.com/aymanbagabas/go-udiff"
 )
 
@@ -27,19 +26,13 @@ const (
 
 // DiffView represents a view for displaying differences between two files.
 type DiffView struct {
-	layout          layout
-	before          file
-	after           file
-	contextLines    int
-	lineNumbers     bool
-	height          int
-	width           int
-	xOffset         int
-	yOffset         int
-	infiniteYScroll bool
-	style           Style
-	tabWidth        int
-	chromaStyle     *chroma.Style
+	layout   layout
+	before   file
+	after    file
+	width    int
+	xOffset  int
+	style    Style
+	tabWidth int
 
 	isComputed bool
 	err        error
@@ -48,15 +41,11 @@ type DiffView struct {
 
 	splitHunks []splitHunk
 
-	totalLines      int
 	codeWidth       int
 	fullCodeWidth   int
 	extraColOnAfter bool
 	beforeNumDigits int
 	afterNumDigits  int
-
-	cachedLexer chroma.Lexer
-	syntaxCache map[string]string
 }
 
 const errUnknownDiffViewLayout = "unknown diffview layout"
@@ -71,8 +60,6 @@ func (dv *DiffView) String() string {
 	dv.convertDiffToSplit()
 	dv.adjustStyles()
 	dv.detectNumDigits()
-	dv.detectTotalLines()
-	dv.preventInfiniteYScroll()
 
 	if dv.width <= 0 {
 		dv.detectCodeWidth()
@@ -83,9 +70,6 @@ func (dv *DiffView) String() string {
 	style := lipgloss.NewStyle()
 	if dv.width > 0 {
 		style = style.MaxWidth(dv.width)
-	}
-	if dv.height > 0 {
-		style = style.MaxHeight(dv.height)
 	}
 
 	switch dv.layout {
