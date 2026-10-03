@@ -99,6 +99,25 @@ type PromptRequest struct {
 	Messages   []PromptMessage
 }
 
-type UsageSummary struct {
+// SkillsResponse is a list of skills on the daemon API.
+type SkillsResponse struct {
 	Skills []Skill `json:"skills"`
+}
+
+// InstallRequest installs the skills found at a local path.
+type InstallRequest struct {
+	Path string `json:"path"`
+}
+
+// DraftRequest creates a draft skill.
+type DraftRequest struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Tags        []string `json:"tags,omitempty"`
+	Body        string   `json:"body,omitempty"`
+}
+
+// BodyRequest replaces a skill's instructions.
+type BodyRequest struct {
+	Body string `json:"body"`
 }

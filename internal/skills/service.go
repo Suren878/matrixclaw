@@ -666,9 +666,9 @@ func (s *Service) Remove(id string) error {
 	return err
 }
 
-func (s *Service) Usage() (UsageSummary, error) {
-	skills, err := s.querySkills(`SELECT ` + skillColumns("") + ` FROM skills ORDER BY use_count DESC, view_count DESC, name`)
-	return UsageSummary{Skills: skills}, err
+// Usage lists every skill, most used first.
+func (s *Service) Usage() ([]Skill, error) {
+	return s.querySkills(`SELECT ` + skillColumns("") + ` FROM skills ORDER BY use_count DESC, view_count DESC, name`)
 }
 
 func (s *Service) getSkill(id string) (Skill, error) {

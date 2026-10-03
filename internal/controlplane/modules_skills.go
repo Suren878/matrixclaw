@@ -324,7 +324,11 @@ func (d *Dispatcher) skillSetEnabled(ctx context.Context, section string, skillI
 	if !ok {
 		return d.skillEnabledPicker(ctx, section, skillID)
 	}
-	if err := d.skills.SetSkillEnabled(ctx, skillID, enabled); err != nil {
+	action := "disable"
+	if enabled {
+		action = "enable"
+	}
+	if err := d.skills.SkillAction(ctx, skillID, action); err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
 	return d.skillPicker(ctx, section, skillID)
@@ -342,17 +346,17 @@ func (d *Dispatcher) handleLibrarySkillAction(ctx context.Context, section strin
 		if err := d.skills.SkillAction(ctx, skillID, "trust"); err != nil {
 			return Result{Handled: true, Text: err.Error()}, nil
 		}
-		if err := d.skills.SetSkillEnabled(ctx, skillID, true); err != nil {
+		if err := d.skills.SkillAction(ctx, skillID, "enable"); err != nil {
 			return Result{Handled: true, Text: err.Error()}, nil
 		}
 		return d.skillPicker(ctx, "library", skillID)
 	case "enable":
-		if err := d.skills.SetSkillEnabled(ctx, skillID, true); err != nil {
+		if err := d.skills.SkillAction(ctx, skillID, "enable"); err != nil {
 			return Result{Handled: true, Text: err.Error()}, nil
 		}
 		return d.skillPicker(ctx, section, skillID)
 	case "disable":
-		if err := d.skills.SetSkillEnabled(ctx, skillID, false); err != nil {
+		if err := d.skills.SkillAction(ctx, skillID, "disable"); err != nil {
 			return Result{Handled: true, Text: err.Error()}, nil
 		}
 		return d.skillPicker(ctx, section, skillID)

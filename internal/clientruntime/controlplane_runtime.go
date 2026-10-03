@@ -676,12 +676,12 @@ func (r ControlplaneRuntime) UnloadSkill(ctx context.Context, sessionID string, 
 	return client.UnloadSkill(ctx, sessionID, skillID)
 }
 
-func (r ControlplaneRuntime) CreateSkillDraft(ctx context.Context, name string, description string, tags []string, body string) (skills.Skill, error) {
+func (r ControlplaneRuntime) CreateSkillDraft(ctx context.Context, request skills.DraftRequest) (skills.Skill, error) {
 	client, err := r.client("")
 	if err != nil {
 		return skills.Skill{}, err
 	}
-	return client.CreateSkillDraft(ctx, name, description, tags, body)
+	return client.CreateSkillDraft(ctx, request)
 }
 
 func (r ControlplaneRuntime) UpdateSkillMetadata(ctx context.Context, id string, update skills.MetadataUpdate) (skills.Skill, error) {
@@ -698,14 +698,6 @@ func (r ControlplaneRuntime) UpdateSkillBody(ctx context.Context, id string, bod
 		return err
 	}
 	return client.UpdateSkillBody(ctx, id, body)
-}
-
-func (r ControlplaneRuntime) SetSkillEnabled(ctx context.Context, id string, enabled bool) error {
-	client, err := r.client("")
-	if err != nil {
-		return err
-	}
-	return client.SetSkillEnabled(ctx, id, enabled)
 }
 
 func (r ControlplaneRuntime) BrowserModule(ctx context.Context) (setup.BrowserModuleDescriptor, error) {

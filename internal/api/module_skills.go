@@ -8,47 +8,37 @@ import (
 	"github.com/Suren878/matrixclaw/internal/skills"
 )
 
+// handleSkills lists the library: matching query when set, by use with
+// order=usage.
 func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
-	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
-	query := strings.TrimSpace(r.URL.Query().Get("query"))
+	query := r.URL.Query()
+	limit, _ := strconv.Atoi(strings.TrimSpace(query.Get("limit")))
 	opts := skills.SearchOptions{
 		Limit:              limit,
-		IncludeQuarantined: truthyQuery(r.URL.Query().Get("include_quarantined")),
-		IncludeArchived:    truthyQuery(r.URL.Query().Get("include_archived")),
-		IncludeDisabled:    truthyQuery(r.URL.Query().Get("include_disabled")),
+		IncludeQuarantined: query.Get("include_quarantined") == "1",
+		IncludeArchived:    query.Get("include_archived") == "1",
+		IncludeDisabled:    query.Get("include_disabled") == "1",
 	}
 	var result []skills.Skill
 	var err error
-	if query != "" {
-		result, err = s.Skills.Search(query, opts)
-	} else {
+	switch {
+	case query.Get("order") == "usage":
+		result, err = s.Skills.Usage()
+	case strings.TrimSpace(query.Get("query")) != "":
+		result, err = s.Skills.Search(strings.TrimSpace(query.Get("query")), opts)
+	default:
 		result, err = s.Skills.List(opts)
 	}
 	if err != nil {
 		writeErrorMessage(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"skills": result})
+	writeJSON(w, http.StatusOK, skills.SkillsResponse{Skills: result})
 }
 
-func (s *Server) handleSkillCreate(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Path        string   `json:"path"`
-		Name        string   `json:"name,omitempty"`
-		Description string   `json:"description,omitempty"`
-		Tags        []string `json:"tags,omitempty"`
-		Body        string   `json:"body,omitempty"`
-	}
+func (s *Server) handleSkillInstall(w http.ResponseWriter, r *http.Request) {
+	var req skills.InstallRequest
 	if !decodeJSON(w, r, &req) {
-		return
-	}
-	if strings.TrimSpace(req.Path) == "" {
-		draft, err := s.Skills.CreateDraft(req.Name, req.Description, req.Tags, req.Body)
-		if err != nil {
-			writeErrorMessage(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusCreated, draft)
 		return
 	}
 	installed, err := s.Skills.InstallPath(req.Path, skills.InstallOptions{Provenance: req.Path})
@@ -56,25 +46,20 @@ func (s *Server) handleSkillCreate(w http.ResponseWriter, r *http.Request) {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"skills": installed})
+	writeJSON(w, http.StatusCreated, skills.SkillsResponse{Skills: installed})
 }
 
-func truthyQuery(value string) bool {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
-	}
-}
-
-func (s *Server) handleSkillUsage(w http.ResponseWriter, _ *http.Request) {
-	usage, err := s.Skills.Usage()
-	if err != nil {
-		writeErrorMessage(w, http.StatusInternalServerError, err.Error())
+func (s *Server) handleSkillDraft(w http.ResponseWriter, r *http.Request) {
+	var req skills.DraftRequest
+	if !decodeJSON(w, r, &req) {
 		return
 	}
-	writeJSON(w, http.StatusOK, usage)
+	draft, err := s.Skills.CreateDraft(req.Name, req.Description, req.Tags, req.Body)
+	if err != nil {
+		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, draft)
 }
 
 func (s *Server) handleSkill(w http.ResponseWriter, r *http.Request) {
@@ -84,14 +69,6 @@ func (s *Server) handleSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, detail)
-}
-
-func (s *Server) handleSkillDelete(w http.ResponseWriter, r *http.Request) {
-	if err := s.Skills.Remove(r.PathValue("id")); err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) handleSkillUpdate(w http.ResponseWriter, r *http.Request) {
@@ -108,38 +85,55 @@ func (s *Server) handleSkillUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSkillBody(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Body string `json:"body"`
-	}
+	var req skills.BodyRequest
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if err := s.Skills.UpdateBody(r.PathValue("id"), req.Body); err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeSkillResult(w, s.Skills.UpdateBody(r.PathValue("id"), req.Body))
+}
+
+func (s *Server) handleSkillDelete(w http.ResponseWriter, r *http.Request) {
+	writeSkillResult(w, s.Skills.Remove(r.PathValue("id")))
 }
 
 func (s *Server) handleSkillAction(w http.ResponseWriter, r *http.Request) {
-	if err := s.applySkillAction(r.PathValue("id"), r.PathValue("action")); err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+	id := r.PathValue("id")
+	var err error
+	switch r.PathValue("action") {
+	case "trust":
+		err = s.Skills.Trust(id)
+	case "quarantine":
+		err = s.Skills.Quarantine(id)
+	case "disable":
+		err = s.Skills.Disable(id)
+	case "enable":
+		err = s.Skills.SetEnabled(id, true)
+	case "archive":
+		err = s.Skills.Archive(id)
+	case "restore":
+		err = s.Skills.Restore(id)
+	case "pin":
+		err = s.Skills.Pin(id, true)
+	case "unpin":
+		err = s.Skills.Pin(id, false)
+	default:
+		writeNotFound(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeSkillResult(w, err)
 }
 
 func (s *Server) handleSessionSkills(w http.ResponseWriter, r *http.Request) {
-	items, err := s.Skills.SessionSkills(r.PathValue("session"))
+	items, err := s.Skills.SessionSkills(r.PathValue("id"))
 	if err != nil {
 		writeErrorMessage(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"skills": items})
+	writeJSON(w, http.StatusOK, skills.SkillsResponse{Skills: items})
 }
 
 func (s *Server) handleSessionSkillUse(w http.ResponseWriter, r *http.Request) {
-	detail, err := s.Skills.Use(r.PathValue("session"), r.PathValue("skill"))
+	detail, err := s.Skills.Use(r.PathValue("id"), r.PathValue("skill"))
 	if err != nil {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
@@ -148,38 +142,13 @@ func (s *Server) handleSessionSkillUse(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSessionSkillUnload(w http.ResponseWriter, r *http.Request) {
-	if err := s.Skills.Unload(r.PathValue("session"), r.PathValue("skill")); err != nil {
+	writeSkillResult(w, s.Skills.Unload(r.PathValue("id"), r.PathValue("skill")))
+}
+
+func writeSkillResult(w http.ResponseWriter, err error) {
+	if err != nil {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-}
-
-func (s *Server) applySkillAction(id string, action string) error {
-	switch strings.ToLower(strings.TrimSpace(action)) {
-	case "trust":
-		return s.Skills.Trust(id)
-	case "quarantine":
-		return s.Skills.Quarantine(id)
-	case "disable":
-		return s.Skills.Disable(id)
-	case "enable":
-		return s.Skills.SetEnabled(id, true)
-	case "archive":
-		return s.Skills.Archive(id)
-	case "restore":
-		return s.Skills.Restore(id)
-	case "pin":
-		return s.Skills.Pin(id, true)
-	case "unpin":
-		return s.Skills.Pin(id, false)
-	default:
-		return errUnknownSkillAction(action)
-	}
-}
-
-type errUnknownSkillAction string
-
-func (e errUnknownSkillAction) Error() string {
-	return "unknown skill action: " + string(e)
+	w.WriteHeader(http.StatusNoContent)
 }

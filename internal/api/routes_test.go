@@ -115,16 +115,18 @@ var clientRoutes = []struct {
 	{"PATCH", "/v1/modules/mcp/github/server", "PATCH /v1/modules/mcp/{id}/server"},
 	{"DELETE", "/v1/modules/mcp/github/server", "DELETE /v1/modules/mcp/{id}/server"},
 	{"GET", "/v1/modules/skills?include_archived=1", "GET /v1/modules/skills"},
+	{"GET", "/v1/modules/skills?order=usage", "GET /v1/modules/skills"},
 	{"POST", "/v1/modules/skills", "POST /v1/modules/skills"},
-	{"GET", "/v1/modules/skills/usage", "GET /v1/modules/skills/usage"},
-	{"GET", "/v1/modules/skills/sessions/s1", "GET /v1/modules/skills/sessions/{session}"},
-	{"POST", "/v1/modules/skills/sessions/s1/review/use", "POST /v1/modules/skills/sessions/{session}/{skill}/use"},
-	{"POST", "/v1/modules/skills/sessions/s1/review/unload", "POST /v1/modules/skills/sessions/{session}/{skill}/unload"},
+	{"POST", "/v1/modules/skills/drafts", "POST /v1/modules/skills/drafts"},
 	{"GET", "/v1/modules/skills/team%2Freview", "GET /v1/modules/skills/{id}"},
+	{"GET", "/v1/modules/skills/usage", "GET /v1/modules/skills/{id}"},
 	{"PATCH", "/v1/modules/skills/review", "PATCH /v1/modules/skills/{id}"},
 	{"DELETE", "/v1/modules/skills/review", "DELETE /v1/modules/skills/{id}"},
-	{"PATCH", "/v1/modules/skills/review/body", "PATCH /v1/modules/skills/{id}/body"},
+	{"PUT", "/v1/modules/skills/review/body", "PUT /v1/modules/skills/{id}/body"},
 	{"POST", "/v1/modules/skills/review/trust", "POST /v1/modules/skills/{id}/{action}"},
+	{"GET", "/v1/sessions/s1/skills", "GET /v1/sessions/{id}/skills"},
+	{"POST", "/v1/sessions/s1/skills/review", "POST /v1/sessions/{id}/skills/{skill}"},
+	{"DELETE", "/v1/sessions/s1/skills/review", "DELETE /v1/sessions/{id}/skills/{skill}"},
 }
 
 func TestClientRoutesReachTheirHandlers(t *testing.T) {

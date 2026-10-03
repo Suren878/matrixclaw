@@ -157,7 +157,7 @@ func (d *Dispatcher) skillCreateSave(ctx context.Context, rest string) (Result, 
 	if !ok {
 		return Result{Handled: true, Text: "Invalid skill draft state."}, nil
 	}
-	draft, err := d.skills.CreateSkillDraft(ctx, state.Name, state.Description, state.Tags, body)
+	draft, err := d.skills.CreateSkillDraft(ctx, skills.DraftRequest{Name: state.Name, Description: state.Description, Tags: state.Tags, Body: body})
 	if err != nil {
 		return Result{Handled: true, Text: err.Error()}, nil
 	}

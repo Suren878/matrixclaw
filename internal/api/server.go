@@ -206,16 +206,16 @@ func (s *Server) routes() {
 		{"PATCH /v1/modules/mcp/{id}/server", s.handleMCPServerUpdate},
 		{"DELETE /v1/modules/mcp/{id}/server", s.handleMCPServerDelete},
 		{"GET /v1/modules/skills", s.handleSkills},
-		{"POST /v1/modules/skills", s.handleSkillCreate},
-		{"GET /v1/modules/skills/usage", s.handleSkillUsage},
-		{"GET /v1/modules/skills/sessions/{session}", s.handleSessionSkills},
-		{"POST /v1/modules/skills/sessions/{session}/{skill}/use", s.handleSessionSkillUse},
-		{"POST /v1/modules/skills/sessions/{session}/{skill}/unload", s.handleSessionSkillUnload},
+		{"POST /v1/modules/skills", s.handleSkillInstall},
+		{"POST /v1/modules/skills/drafts", s.handleSkillDraft},
 		{"GET /v1/modules/skills/{id}", s.handleSkill},
 		{"PATCH /v1/modules/skills/{id}", s.handleSkillUpdate},
 		{"DELETE /v1/modules/skills/{id}", s.handleSkillDelete},
-		{"PATCH /v1/modules/skills/{id}/body", s.handleSkillBody},
+		{"PUT /v1/modules/skills/{id}/body", s.handleSkillBody},
 		{"POST /v1/modules/skills/{id}/{action}", s.handleSkillAction},
+		{"GET /v1/sessions/{id}/skills", s.handleSessionSkills},
+		{"POST /v1/sessions/{id}/skills/{skill}", s.handleSessionSkillUse},
+		{"DELETE /v1/sessions/{id}/skills/{skill}", s.handleSessionSkillUnload},
 	}
 	for _, route := range routes {
 		s.mux.HandleFunc(route.pattern, route.handler)

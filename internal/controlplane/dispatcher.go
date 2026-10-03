@@ -174,10 +174,9 @@ type SkillsRuntime interface {
 	SessionSkills(ctx context.Context, sessionID string) ([]skills.Skill, error)
 	UseSkill(ctx context.Context, sessionID string, skillID string) (skills.SkillDetail, error)
 	UnloadSkill(ctx context.Context, sessionID string, skillID string) error
-	CreateSkillDraft(ctx context.Context, name string, description string, tags []string, body string) (skills.Skill, error)
+	CreateSkillDraft(ctx context.Context, request skills.DraftRequest) (skills.Skill, error)
 	UpdateSkillMetadata(ctx context.Context, id string, update skills.MetadataUpdate) (skills.Skill, error)
 	UpdateSkillBody(ctx context.Context, id string, body string) error
-	SetSkillEnabled(ctx context.Context, id string, enabled bool) error
 }
 
 type MCPRuntime interface {

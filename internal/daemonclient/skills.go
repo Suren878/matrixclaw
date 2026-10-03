@@ -10,52 +10,46 @@ import (
 	"github.com/Suren878/matrixclaw/internal/skills"
 )
 
-type skillsListResponse struct {
-	Skills []skills.Skill `json:"skills"`
+func (c *Client) ListSkills(ctx context.Context, opts skills.SearchOptions) ([]skills.Skill, error) {
+	return c.skills(ctx, skillsQuery("", opts))
 }
 
-func (c *Client) ListSkills(ctx context.Context, opts skills.SearchOptions) ([]skills.Skill, error) {
+func (c *Client) SearchSkills(ctx context.Context, query string, opts skills.SearchOptions) ([]skills.Skill, error) {
+	return c.skills(ctx, skillsQuery(query, opts))
+}
+
+// SkillUsage lists the skills by how often they were used.
+func (c *Client) SkillUsage(ctx context.Context) ([]skills.Skill, error) {
+	return c.skills(ctx, url.Values{"order": {"usage"}})
+}
+
+func skillsQuery(query string, opts skills.SearchOptions) url.Values {
 	values := url.Values{}
+	if query = strings.TrimSpace(query); query != "" {
+		values.Set("query", query)
+	}
 	if opts.Limit > 0 {
 		values.Set("limit", strconv.Itoa(opts.Limit))
 	}
-	if opts.IncludeQuarantined {
-		values.Set("include_quarantined", "1")
+	for name, on := range map[string]bool{
+		"include_quarantined": opts.IncludeQuarantined,
+		"include_archived":    opts.IncludeArchived,
+		"include_disabled":    opts.IncludeDisabled,
+	} {
+		if on {
+			values.Set(name, "1")
+		}
 	}
-	if opts.IncludeArchived {
-		values.Set("include_archived", "1")
-	}
-	if opts.IncludeDisabled {
-		values.Set("include_disabled", "1")
-	}
+	return values
+}
+
+func (c *Client) skills(ctx context.Context, values url.Values) ([]skills.Skill, error) {
 	path := "/v1/modules/skills"
 	if encoded := values.Encode(); encoded != "" {
 		path += "?" + encoded
 	}
-	var response skillsListResponse
+	var response skills.SkillsResponse
 	if err := c.doJSON(ctx, http.MethodGet, path, nil, &response); err != nil {
-		return nil, err
-	}
-	return response.Skills, nil
-}
-
-func (c *Client) SearchSkills(ctx context.Context, query string, opts skills.SearchOptions) ([]skills.Skill, error) {
-	values := url.Values{}
-	values.Set("query", query)
-	if opts.Limit > 0 {
-		values.Set("limit", strconv.Itoa(opts.Limit))
-	}
-	if opts.IncludeQuarantined {
-		values.Set("include_quarantined", "1")
-	}
-	if opts.IncludeArchived {
-		values.Set("include_archived", "1")
-	}
-	if opts.IncludeDisabled {
-		values.Set("include_disabled", "1")
-	}
-	var response skillsListResponse
-	if err := c.doJSON(ctx, http.MethodGet, "/v1/modules/skills?"+values.Encode(), nil, &response); err != nil {
 		return nil, err
 	}
 	return response.Skills, nil
@@ -63,74 +57,23 @@ func (c *Client) SearchSkills(ctx context.Context, query string, opts skills.Sea
 
 func (c *Client) GetSkill(ctx context.Context, id string) (skills.SkillDetail, error) {
 	var response skills.SkillDetail
-	path := "/v1/modules/skills/" + escapedPath(id)
-	if err := c.doJSON(ctx, http.MethodGet, path, nil, &response); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, skillPath(id), nil, &response); err != nil {
 		return skills.SkillDetail{}, err
 	}
 	return response, nil
 }
 
 func (c *Client) InstallSkill(ctx context.Context, path string) ([]skills.Skill, error) {
-	var response skillsListResponse
-	request := struct {
-		Path string `json:"path"`
-	}{Path: path}
-	if err := c.doJSON(ctx, http.MethodPost, "/v1/modules/skills", request, &response); err != nil {
+	var response skills.SkillsResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/v1/modules/skills", skills.InstallRequest{Path: path}, &response); err != nil {
 		return nil, err
 	}
 	return response.Skills, nil
 }
 
-func (c *Client) SkillAction(ctx context.Context, id string, action string) error {
-	path := "/v1/modules/skills/" + escapedPath(id) + "/" + escapedPath(action)
-	return c.doJSON(ctx, http.MethodPost, path, nil, nil)
-}
-
-// SkillUsage lists the skills by how often they were used.
-func (c *Client) SkillUsage(ctx context.Context) ([]skills.Skill, error) {
-	var response skills.UsageSummary
-	if err := c.doJSON(ctx, http.MethodGet, "/v1/modules/skills/usage", nil, &response); err != nil {
-		return nil, err
-	}
-	return response.Skills, nil
-}
-
-func (c *Client) RemoveSkill(ctx context.Context, id string) error {
-	return c.doJSON(ctx, http.MethodDelete, "/v1/modules/skills/"+escapedPath(id), nil, nil)
-}
-
-func (c *Client) SessionSkills(ctx context.Context, sessionID string) ([]skills.Skill, error) {
-	var response skillsListResponse
-	path := "/v1/modules/skills/sessions/" + escapedPath(sessionID)
-	if err := c.doJSON(ctx, http.MethodGet, path, nil, &response); err != nil {
-		return nil, err
-	}
-	return response.Skills, nil
-}
-
-func (c *Client) UseSkill(ctx context.Context, sessionID string, skillID string) (skills.SkillDetail, error) {
-	var response skills.SkillDetail
-	path := "/v1/modules/skills/sessions/" + escapedPath(sessionID) + "/" + escapedPath(skillID) + "/use"
-	if err := c.doJSON(ctx, http.MethodPost, path, nil, &response); err != nil {
-		return skills.SkillDetail{}, err
-	}
-	return response, nil
-}
-
-func (c *Client) UnloadSkill(ctx context.Context, sessionID string, skillID string) error {
-	path := "/v1/modules/skills/sessions/" + escapedPath(sessionID) + "/" + escapedPath(skillID) + "/unload"
-	return c.doJSON(ctx, http.MethodPost, path, nil, nil)
-}
-
-func (c *Client) CreateSkillDraft(ctx context.Context, name string, description string, tags []string, body string) (skills.Skill, error) {
+func (c *Client) CreateSkillDraft(ctx context.Context, request skills.DraftRequest) (skills.Skill, error) {
 	var response skills.Skill
-	request := struct {
-		Name        string   `json:"name"`
-		Description string   `json:"description"`
-		Tags        []string `json:"tags,omitempty"`
-		Body        string   `json:"body,omitempty"`
-	}{Name: strings.TrimSpace(name), Description: strings.TrimSpace(description), Tags: tags, Body: body}
-	if err := c.doJSON(ctx, http.MethodPost, "/v1/modules/skills", request, &response); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, "/v1/modules/skills/drafts", request, &response); err != nil {
 		return skills.Skill{}, err
 	}
 	return response, nil
@@ -138,25 +81,50 @@ func (c *Client) CreateSkillDraft(ctx context.Context, name string, description 
 
 func (c *Client) UpdateSkillMetadata(ctx context.Context, id string, update skills.MetadataUpdate) (skills.Skill, error) {
 	var response skills.Skill
-	path := "/v1/modules/skills/" + escapedPath(id)
-	if err := c.doJSON(ctx, http.MethodPatch, path, update, &response); err != nil {
+	if err := c.doJSON(ctx, http.MethodPatch, skillPath(id), update, &response); err != nil {
 		return skills.Skill{}, err
 	}
 	return response, nil
 }
 
 func (c *Client) UpdateSkillBody(ctx context.Context, id string, body string) error {
-	request := struct {
-		Body string `json:"body"`
-	}{Body: body}
-	path := "/v1/modules/skills/" + escapedPath(id) + "/body"
-	return c.doJSON(ctx, http.MethodPatch, path, request, nil)
+	return c.doJSON(ctx, http.MethodPut, skillPath(id)+"/body", skills.BodyRequest{Body: body}, nil)
 }
 
-func (c *Client) SetSkillEnabled(ctx context.Context, id string, enabled bool) error {
-	action := "disable"
-	if enabled {
-		action = "enable"
+// SkillAction runs trust, quarantine, enable, disable, archive, restore, pin
+// or unpin on a skill.
+func (c *Client) SkillAction(ctx context.Context, id string, action string) error {
+	return c.doJSON(ctx, http.MethodPost, skillPath(id)+"/"+escapedPath(action), nil, nil)
+}
+
+func (c *Client) RemoveSkill(ctx context.Context, id string) error {
+	return c.doJSON(ctx, http.MethodDelete, skillPath(id), nil, nil)
+}
+
+func (c *Client) SessionSkills(ctx context.Context, sessionID string) ([]skills.Skill, error) {
+	var response skills.SkillsResponse
+	if err := c.doJSON(ctx, http.MethodGet, sessionSkillsPath(sessionID), nil, &response); err != nil {
+		return nil, err
 	}
-	return c.SkillAction(ctx, id, action)
+	return response.Skills, nil
+}
+
+func (c *Client) UseSkill(ctx context.Context, sessionID string, skillID string) (skills.SkillDetail, error) {
+	var response skills.SkillDetail
+	if err := c.doJSON(ctx, http.MethodPost, sessionSkillsPath(sessionID)+"/"+escapedPath(skillID), nil, &response); err != nil {
+		return skills.SkillDetail{}, err
+	}
+	return response, nil
+}
+
+func (c *Client) UnloadSkill(ctx context.Context, sessionID string, skillID string) error {
+	return c.doJSON(ctx, http.MethodDelete, sessionSkillsPath(sessionID)+"/"+escapedPath(skillID), nil, nil)
+}
+
+func skillPath(id string) string {
+	return "/v1/modules/skills/" + escapedPath(id)
+}
+
+func sessionSkillsPath(sessionID string) string {
+	return "/v1/sessions/" + escapedPath(sessionID) + "/skills"
 }
