@@ -53,7 +53,7 @@ func (s *Service) CreateMCPServer(server MCPServerConfig) (MCPConfig, error) {
 }
 
 func normalizeMCPServerForCreate(server MCPServerConfig) MCPServerConfig {
-	server.ID = normalizeMCPID(server.ID)
+	server.ID = slugID(server.ID)
 	server.Name = strings.TrimSpace(server.Name)
 	if server.Name == "" {
 		server.Name = server.ID
@@ -61,7 +61,7 @@ func normalizeMCPServerForCreate(server MCPServerConfig) MCPServerConfig {
 	server.Transport = normalizeMCPTransport(server.Transport)
 	server.Command = strings.TrimSpace(server.Command)
 	server.Endpoint = strings.TrimRight(strings.TrimSpace(server.Endpoint), "/")
-	server.ToolPrefix = normalizeMCPID(server.ToolPrefix)
+	server.ToolPrefix = slugID(server.ToolPrefix)
 	if server.ToolPrefix == "" {
 		server.ToolPrefix = server.ID
 	}
@@ -77,7 +77,7 @@ func normalizeMCPServerForCreate(server MCPServerConfig) MCPServerConfig {
 }
 
 func (s *Service) UpdateMCPServer(serverID string, update MCPServerUpdate) (MCPConfig, error) {
-	id := normalizeMCPID(serverID)
+	id := slugID(serverID)
 	if reservedExternalMCPServerID(id) {
 		return MCPConfig{}, fmt.Errorf("mcp server id %q is reserved for the Browser module", id)
 	}
@@ -124,7 +124,7 @@ func (s *Service) UpdateMCPServer(serverID string, update MCPServerUpdate) (MCPC
 }
 
 func (s *Service) DeleteMCPServer(serverID string) (MCPConfig, error) {
-	id := normalizeMCPID(serverID)
+	id := slugID(serverID)
 	if id == "" {
 		return MCPConfig{}, fmt.Errorf("mcp server id is required")
 	}
@@ -134,7 +134,7 @@ func (s *Service) DeleteMCPServer(serverID string) (MCPConfig, error) {
 	return s.updateMCP(func(cfg *MCPConfig) error {
 		servers := make([]MCPServerConfig, 0, len(cfg.Servers))
 		for _, server := range cfg.Servers {
-			if normalizeMCPID(server.ID) != id {
+			if slugID(server.ID) != id {
 				servers = append(servers, server)
 			}
 		}
@@ -148,9 +148,9 @@ func (s *Service) DeleteMCPServer(serverID string) (MCPConfig, error) {
 }
 
 func mcpServerConfigExists(servers []MCPServerConfig, id string) bool {
-	id = normalizeMCPID(id)
+	id = slugID(id)
 	for _, server := range servers {
-		if normalizeMCPID(server.ID) == id {
+		if slugID(server.ID) == id {
 			return true
 		}
 	}
@@ -158,7 +158,7 @@ func mcpServerConfigExists(servers []MCPServerConfig, id string) bool {
 }
 
 func reservedExternalMCPServerID(id string) bool {
-	return normalizeMCPID(id) == BrowserModuleBrowser
+	return slugID(id) == BrowserModuleBrowser
 }
 
 func MCPConfigStatus(cfg MCPConfig) string {

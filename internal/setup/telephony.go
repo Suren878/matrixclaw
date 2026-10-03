@@ -53,7 +53,7 @@ func TelephonyModuleFromConfig(modules ModulesConfig) TelephonyModuleDescriptor 
 func normalizeTelephonyConfig(cfg TelephonyConfig) TelephonyConfig {
 	cfg.GatewayURL = strings.TrimRight(strings.TrimSpace(cfg.GatewayURL), "/")
 	cfg.GatewayToken = normalizeProviderAPIKey(cfg.GatewayToken)
-	cfg.DefaultProfile = normalizeTelephonyProfileID(cfg.DefaultProfile)
+	cfg.DefaultProfile = slugID(cfg.DefaultProfile)
 	cfg.PhonePrompt = strings.TrimSpace(cfg.PhonePrompt)
 	return cfg
 }
@@ -122,23 +122,4 @@ func telephonyConfigStatus(cfg TelephonyConfig) string {
 		return "Gateway URL required"
 	}
 	return "Configured"
-}
-
-func normalizeTelephonyProfileID(value string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
-	var b strings.Builder
-	lastUnderscore := false
-	for _, r := range value {
-		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
-		if ok {
-			b.WriteRune(r)
-			lastUnderscore = false
-			continue
-		}
-		if !lastUnderscore {
-			b.WriteByte('_')
-			lastUnderscore = true
-		}
-	}
-	return strings.Trim(b.String(), "_")
 }

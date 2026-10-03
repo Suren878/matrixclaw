@@ -90,12 +90,12 @@ func normalizeMCPConfig(cfg MCPConfig) MCPConfig {
 	servers := make([]MCPServerConfig, 0, len(cfg.Servers))
 	seen := map[string]struct{}{}
 	for _, server := range cfg.Servers {
-		server.ID = normalizeMCPID(server.ID)
+		server.ID = slugID(server.ID)
 		server.Name = strings.TrimSpace(server.Name)
 		server.Transport = normalizeMCPTransport(server.Transport)
 		server.Command = strings.TrimSpace(server.Command)
 		server.Endpoint = strings.TrimRight(strings.TrimSpace(server.Endpoint), "/")
-		server.ToolPrefix = normalizeMCPID(server.ToolPrefix)
+		server.ToolPrefix = slugID(server.ToolPrefix)
 		if server.ToolPrefix == "" {
 			server.ToolPrefix = server.ID
 		}
@@ -124,7 +124,8 @@ func normalizeMCPConfig(cfg MCPConfig) MCPConfig {
 	return cfg
 }
 
-func normalizeMCPID(value string) string {
+// slugID lowercases value and joins its letter and digit runs with "_".
+func slugID(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	var b strings.Builder
 	lastUnderscore := false
