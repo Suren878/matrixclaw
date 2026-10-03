@@ -42,7 +42,7 @@ type EditOperation struct {
 }
 
 // FileChange is what write, edit and multiedit do to one file: the result's
-// metadata and, cut to approvalPreviewMaxBytes, what their approval shows.
+// metadata and, reduced by preview, what their approval shows.
 type FileChange struct {
 	Path       string `json:"file_path"`
 	OldContent string `json:"old_content,omitempty"`
@@ -207,12 +207,6 @@ func mutateFile(m fileMutation, commit bool) (FileChange, error) {
 		return FileChange{}, fmt.Errorf("write %s: %w", m.path, err)
 	}
 	return change, nil
-}
-
-// preview is the change as an approval shows it, each side cut to approvalPreviewMaxBytes.
-func (c FileChange) preview() FileChange {
-	c.OldContent, c.NewContent = cutPreview(c.OldContent), cutPreview(c.NewContent)
-	return c
 }
 
 // applyEdits applies edits in order; any that does not apply fails them all.
