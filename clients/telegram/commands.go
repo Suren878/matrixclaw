@@ -18,7 +18,7 @@ func (w *Worker) dispatchCommandAndEditPage(ctx context.Context, target chatTarg
 		return w.editOrSend(ctx, target, messageID, fmt.Sprintf("Command failed: %v", err), nil)
 	}
 	if messageID > 0 && controlplaneResultIsCommandMenu(result) {
-		w.clearPrompt(target.externalKey)
+		w.replacePrompt(ctx, target, nil)
 		return w.deleteMenuMessage(ctx, target, messageID, "Menu closed.")
 	}
 	return w.renderCommandResultPage(ctx, target, messageID, result, page)

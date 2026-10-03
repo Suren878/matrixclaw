@@ -6,7 +6,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/modules/geo"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -35,7 +34,7 @@ type Worker struct {
 	deliveryRetryAt  map[string]time.Time // guarded by delivery
 	deliveryReceipts map[string]time.Time // confirmed sends awaiting daemon acknowledgement
 	states           map[string]*runDeliveryState
-	prompts          map[string]controlplane.PromptData
+	prompts          map[string]pendingPrompt
 	callbacks        *recentMap[string]   // long callback data by short ref
 	inline           *recentMap[string]   // inline query text by button token
 	inlineRuns       *recentMap[struct{}] // inline messages that already started a run

@@ -118,16 +118,19 @@ func isContextCompactCommand(command string) bool {
 }
 
 // askDenialReason makes the chat's next message the reason for denying the
-// approval; its message loses the buttons, which /cancel brings back.
-func (w *Worker) askDenialReason(ctx context.Context, target chatTarget, cq *CallbackQuery, approvalID string) error {
-	w.setPrompt(target.externalKey, controlplane.DenyWithReasonPrompt(approvalID))
+// approval ("<approval id>:<session id>"); its message loses the buttons, which
+// /cancel brings back.
+func (w *Worker) askDenialReason(ctx context.Context, target chatTarget, cq *CallbackQuery, data string) error {
+	approvalID, sessionID, _ := strings.Cut(data, ":")
+	w.replacePrompt(ctx, target, &pendingPrompt{
+		PromptData: controlplane.DenyWithReasonPrompt(approvalID),
+		denial:     approvalRef{id: approvalID, sessionID: sessionID, messageID: cq.Message.MessageID},
+	})
 	return w.editOrSend(ctx, target, cq.Message.MessageID, "Denying: send the reason, or /cancel.\n\n"+cq.Message.Text, nil)
 }
 
 func (w *Worker) resolveApprovalCallback(ctx context.Context, target chatTarget, cq *CallbackQuery, approvalID string, request core.ApprovalResolveRequest) error {
-	if prompt, ok := w.prompt(target.externalKey); ok && prompt.SubmitCommandPrefix == controlplane.DenyWithReasonPrompt(approvalID).SubmitCommandPrefix {
-		w.clearPrompt(target.externalKey)
-	}
+	w.forgetDenial(target.externalKey, approvalID)
 	approval, err := w.daemonFor(target, target.externalKey).ResolveApproval(ctx, approvalID, request)
 	if err != nil {
 		return w.editOrSend(ctx, target, cq.Message.MessageID, fmt.Sprintf("Resolve approval failed: %v", err), nil)

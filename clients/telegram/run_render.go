@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
-	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -259,8 +258,12 @@ func (w *Worker) renderApprovalUpdates(ctx context.Context, target chatTarget, a
 func (w *Worker) sendApprovalMessage(ctx context.Context, target chatTarget, approval core.Approval) (int64, error) {
 	reply, err := w.sendTelegramMessage(ctx, SendMessageRequest{
 		ChatID:      target.chatID,
-		Text:        clipTelegramText("Approval required\n\n" + renderApprovalText(approval)),
-		ReplyMarkup: approvalKeyboard(approval, w.keepsRules(target, permission.ScopeSession), w.keepsRules(target, permission.ScopeGlobal)),
+		Text:        clipTelegramText(approvalRequestText(approval)),
+		ReplyMarkup: w.approvalKeyboard(target, approval),
 	})
 	return reply.MessageID, err
+}
+
+func approvalRequestText(approval core.Approval) string {
+	return "Approval required\n\n" + renderApprovalText(approval)
 }

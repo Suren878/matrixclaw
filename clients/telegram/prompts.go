@@ -3,34 +3,79 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-func (w *Worker) setPrompt(externalKey string, prompt controlplane.PromptData) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.prompts[externalKey] = prompt
+// promptLifetime is how long a prompt takes the chat's next message as its
+// answer; a later message is an ordinary one.
+const promptLifetime = 10 * time.Minute
+
+type pendingPrompt struct {
+	controlplane.PromptData
+	askedAt time.Time
+	// denial is the approval a denial reason prompt is for.
+	denial approvalRef
 }
 
-func (w *Worker) clearPrompt(externalKey string) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	delete(w.prompts, externalKey)
+// approvalRef is an approval and the chat message that asks for it.
+type approvalRef struct {
+	id        string
+	sessionID string
+	messageID int64
 }
 
-func (w *Worker) prompt(externalKey string) (controlplane.PromptData, bool) {
+// replacePrompt makes next (nil for none) the chat's prompt; an approval whose
+// denial reason prompt it replaces is asked for again.
+func (w *Worker) replacePrompt(ctx context.Context, target chatTarget, next *pendingPrompt) {
+	w.mu.Lock()
+	previous, had := w.prompts[target.externalKey]
+	if next == nil {
+		delete(w.prompts, target.externalKey)
+	} else {
+		next.askedAt = w.nowUTC()
+		w.prompts[target.externalKey] = *next
+	}
+	w.mu.Unlock()
+	if had && (next == nil || next.denial.id != previous.denial.id) {
+		if err := w.restoreApproval(ctx, target, previous, false); err != nil {
+			log.Printf("telegram: restore approval %s failed: %v", previous.denial.id, err)
+		}
+	}
+}
+
+// takePrompt removes and returns the chat's prompt.
+func (w *Worker) takePrompt(externalKey string) (pendingPrompt, bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	prompt, ok := w.prompts[externalKey]
+	delete(w.prompts, externalKey)
 	return prompt, ok
 }
 
+// forgetDenial drops the chat's denial reason prompt for approvalID, which was
+// decided with a button.
+func (w *Worker) forgetDenial(externalKey string, approvalID string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.prompts[externalKey].denial.id == approvalID {
+		delete(w.prompts, externalKey)
+	}
+}
+
 func (w *Worker) handlePendingPrompt(ctx context.Context, target chatTarget, text string) (bool, error) {
-	prompt, ok := w.prompt(target.externalKey)
+	prompt, ok := w.takePrompt(target.externalKey)
 	if !ok {
+		return false, nil
+	}
+	if w.nowUTC().Sub(prompt.askedAt) > promptLifetime {
+		if err := w.restoreApproval(ctx, target, prompt, false); err != nil {
+			log.Printf("telegram: restore approval %s failed: %v", prompt.denial.id, err)
+		}
 		return false, nil
 	}
 	if prompt.Sensitive && target.isChat() {
@@ -40,9 +85,8 @@ func (w *Worker) handlePendingPrompt(ctx context.Context, target chatTarget, tex
 		})
 	}
 	if isPromptCloseCommand(text) {
-		w.clearPrompt(target.externalKey)
-		if approvalID, ok := controlplane.DeniedApproval(prompt.SubmitCommandPrefix); ok {
-			return true, w.askApprovalAgain(ctx, target, approvalID)
+		if prompt.denial.id != "" {
+			return true, w.restoreApproval(ctx, target, prompt, true)
 		}
 		if strings.TrimSpace(prompt.CancelCommand) != "" {
 			result, err := w.dispatcher(target).Handle(ctx, strings.TrimSpace(prompt.CancelCommand))
@@ -54,12 +98,16 @@ func (w *Worker) handlePendingPrompt(ctx context.Context, target chatTarget, tex
 		return true, w.sendText(ctx, target, "Closed.")
 	}
 	if strings.HasPrefix(strings.TrimSpace(text), "/") {
-		w.clearPrompt(target.externalKey)
+		if err := w.restoreApproval(ctx, target, prompt, false); err != nil {
+			log.Printf("telegram: restore approval %s failed: %v", prompt.denial.id, err)
+		}
 		return false, nil
 	}
-	w.clearPrompt(target.externalKey)
-	if w.denialDecidedElsewhere(ctx, target, prompt) {
-		return false, nil
+	if prompt.denial.id != "" {
+		if _, pending, known := w.pendingApproval(ctx, target, prompt.denial); known && !pending {
+			// Decided elsewhere meanwhile: the text is a new message.
+			return false, nil
+		}
 	}
 	result, err := w.dispatcher(target).Handle(ctx, prompt.SubmitCommandPrefix+strings.TrimSpace(text))
 	if err != nil {
@@ -68,42 +116,34 @@ func (w *Worker) handlePendingPrompt(ctx context.Context, target chatTarget, tex
 	return true, w.renderCommandResult(ctx, target, result)
 }
 
-// denialDecidedElsewhere reports whether prompt asks why to deny an approval of
-// the chat's session that is no longer pending, so the text is a new message.
-func (w *Worker) denialDecidedElsewhere(ctx context.Context, target chatTarget, prompt controlplane.PromptData) bool {
-	approvalID, ok := controlplane.DeniedApproval(prompt.SubmitCommandPrefix)
-	if !ok {
-		return false
+// restoreApproval gives the approval of a dropped denial reason prompt its
+// buttons back while it is pending; announce says "Closed." otherwise.
+func (w *Worker) restoreApproval(ctx context.Context, target chatTarget, prompt pendingPrompt, announce bool) error {
+	approval, pending := core.Approval{}, false
+	if prompt.denial.id != "" {
+		approval, pending, _ = w.pendingApproval(ctx, target, prompt.denial)
 	}
-	_, pending, known := w.sessionApproval(ctx, target, approvalID)
-	return known && !pending
-}
-
-// askApprovalAgain asks for an approval whose denial reason was canceled, with
-// its buttons, while it is pending.
-func (w *Worker) askApprovalAgain(ctx context.Context, target chatTarget, approvalID string) error {
-	approval, pending, _ := w.sessionApproval(ctx, target, approvalID)
 	if !pending {
-		return w.sendText(ctx, target, "Closed.")
+		if announce {
+			return w.sendText(ctx, target, "Closed.")
+		}
+		return nil
 	}
-	_, err := w.sendApprovalMessage(ctx, target, approval)
-	return err
+	return w.editOrSend(ctx, target, prompt.denial.messageID, approvalRequestText(approval), w.approvalKeyboard(target, approval))
 }
 
-// sessionApproval finds the approval among the pending ones of the chat's
-// session; known is false when that cannot be told.
-func (w *Worker) sessionApproval(ctx context.Context, target chatTarget, approvalID string) (approval core.Approval, pending bool, known bool) {
-	daemon := w.daemon(target.externalKey)
-	binding, err := daemon.CurrentBinding(ctx)
-	if err != nil || strings.TrimSpace(binding.SessionID) == "" {
+// pendingApproval finds the approval among the pending ones of its session;
+// known is false when that cannot be told.
+func (w *Worker) pendingApproval(ctx context.Context, target chatTarget, ref approvalRef) (approval core.Approval, pending bool, known bool) {
+	if ref.sessionID == "" {
 		return core.Approval{}, false, false
 	}
-	approvals, err := daemon.ListApprovals(ctx, binding.SessionID, core.ApprovalStatePending)
+	approvals, err := w.daemon(target.externalKey).ListApprovals(ctx, ref.sessionID, core.ApprovalStatePending)
 	if err != nil {
 		return core.Approval{}, false, false
 	}
 	for _, approval := range approvals {
-		if approval.ID == approvalID {
+		if approval.ID == ref.id {
 			return approval, true, true
 		}
 	}

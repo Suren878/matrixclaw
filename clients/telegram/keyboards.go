@@ -5,12 +5,14 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 // approvalKeyboard answers one approval; "Always" keeps the suggested rule, and
 // only the owner's chat may keep it for every session.
-func approvalKeyboard(approval core.Approval, session bool, global bool) *InlineKeyboardMarkup {
+func (w *Worker) approvalKeyboard(target chatTarget, approval core.Approval) *InlineKeyboardMarkup {
+	session, global := w.keepsRules(target, permission.ScopeSession), w.keepsRules(target, permission.ScopeGlobal)
 	approvalID := approval.ID
 	rows := [][]InlineKeyboardButton{{{Text: "✅ Allow", CallbackData: cbApprovalOnce + approvalID}}}
 	if approval.Suggestion != nil && session {
@@ -22,7 +24,7 @@ func approvalKeyboard(approval core.Approval, session bool, global bool) *Inline
 	}
 	rows = append(rows, []InlineKeyboardButton{
 		{Text: "❌ Deny", CallbackData: cbApprovalDeny + approvalID},
-		{Text: "✍️ Deny with reason", CallbackData: cbApprovalReason + approvalID},
+		{Text: "✍️ Deny with reason", CallbackData: cbApprovalReason + approvalID + ":" + approval.SessionID},
 	})
 	return &InlineKeyboardMarkup{InlineKeyboard: rows}
 }

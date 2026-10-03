@@ -13,9 +13,9 @@ func (w *Worker) renderCommandResult(ctx context.Context, target chatTarget, res
 func (w *Worker) renderCommandResultPage(ctx context.Context, target chatTarget, editMessageID int64, result controlplane.Result, page int) error {
 	presentation := presentCommandResult(result, page)
 	if result.Prompt == nil {
-		w.clearPrompt(target.externalKey)
+		w.replacePrompt(ctx, target, nil)
 	} else {
-		w.setPrompt(target.externalKey, *result.Prompt)
+		w.replacePrompt(ctx, target, &pendingPrompt{PromptData: *result.Prompt})
 	}
 	return w.editOrSend(ctx, target, editMessageID, presentation.Text, presentation.ReplyMarkup)
 }
