@@ -36,6 +36,7 @@ type RuntimeOptions struct {
 const (
 	defaultApprovalPolicy = "never"
 	defaultSandbox        = "danger-full-access"
+	initializeTimeout     = 30 * time.Second
 )
 
 func NewRuntime(opts RuntimeOptions) *Runtime {
@@ -229,7 +230,11 @@ func (r *Runtime) ensureClient(ctx context.Context) (*Client, error) {
 		r.ownsClient = true
 	}
 	if !r.initialized {
-		if _, err := r.client.Initialize(ctx, InitializeParams{
+		// The handshake belongs to the shared process too: abandoning it when
+		// one run is canceled leaves codex initialized and refusing a repeat.
+		initCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), initializeTimeout)
+		defer cancel()
+		if _, err := r.client.Initialize(initCtx, InitializeParams{
 			ClientInfo: ClientInfo{
 				Name:    "matrixclaw",
 				Version: "0",
@@ -238,6 +243,10 @@ func (r *Runtime) ensureClient(ctx context.Context) (*Client, error) {
 				ExperimentalAPI: true,
 			},
 		}); err != nil {
+			if r.ownsClient {
+				_ = r.client.Close()
+				r.client = nil
+			}
 			return nil, err
 		}
 		r.initialized = true

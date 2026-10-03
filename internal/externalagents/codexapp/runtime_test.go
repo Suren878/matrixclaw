@@ -142,3 +142,48 @@ func TestNormalizeDeclinedCommandSaysWhy(t *testing.T) {
 		t.Fatalf("events = %#v, want a declined tool explaining the permission mode", events)
 	}
 }
+
+func TestRuntimeCanceledInitializeDoesNotBreakNextRun(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	client := NewClient(clientConn)
+	runtime := NewRuntime(RuntimeOptions{Enabled: true, Client: client})
+	t.Cleanup(func() {
+		_ = runtime.Close()
+		_ = client.Close()
+		_ = serverConn.Close()
+	})
+	go func() {
+		decoder := json.NewDecoder(serverConn)
+		initialized := false
+		for {
+			var request map[string]json.RawMessage
+			if decoder.Decode(&request) != nil {
+				return
+			}
+			id := string(request["id"])
+			switch string(request["method"]) {
+			case `"initialize"`:
+				if initialized {
+					_, _ = serverConn.Write([]byte(`{"id":` + id + `,"error":{"code":-32600,"message":"Already initialized"}}` + "\n"))
+					continue
+				}
+				initialized = true
+				time.Sleep(300 * time.Millisecond)
+				_, _ = serverConn.Write([]byte(`{"id":` + id + `,"result":{}}` + "\n"))
+			case `"thread/start"`:
+				_, _ = serverConn.Write([]byte(`{"id":` + id + `,"result":{"thread":{"id":"thread-1"}}}` + "\n"))
+			}
+		}
+	}()
+
+	canceled, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, _ = runtime.StartSession(canceled, externalagents.StartSessionRequest{})
+
+	ctx, cancel2 := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel2()
+	session, err := runtime.StartSession(ctx, externalagents.StartSessionRequest{})
+	if err != nil || session.ExternalThreadID != "thread-1" {
+		t.Fatalf("StartSession() after a canceled one = %#v, %v; want thread-1", session, err)
+	}
+}
