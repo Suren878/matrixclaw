@@ -35,6 +35,7 @@ type Animatable interface {
 
 type Expandable interface {
 	ToggleExpanded() bool
+	Expanded() bool
 }
 
 type KeyEventHandler interface {

@@ -11,56 +11,61 @@ import (
 )
 
 func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd := m.update(msg)
+	m.relayout()
+	return m, cmd
+}
+
+func (m *appModel) update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.resizeChat()
-		return m, m.input.SetWidth(m.editorWidth())
+		return m.input.SetWidth(m.editorWidth())
 	case surfaceinput.SubmitMsg:
-		return m, m.handleSubmit(msg)
+		return m.handleSubmit(msg)
 	case surfaceinput.FocusMainMsg:
-		return m, m.setFocus(appFocusChat)
+		return m.setFocus(appFocusChat)
 	case surfaceinput.OpenCommandsMsg:
 		m.openCommandsDialog()
-		return m, nil
+		return nil
 	case surfaceinput.AttachFilesMsg:
 		m.handleAttachFiles()
-		return m, nil
+		return nil
 	case surfaceinput.QuitRequestMsg:
-		return m, tea.Quit
+		return tea.Quit
 	case surfaceeditor.OpenEditorMsg:
-		return m, m.input.Update(msg)
+		return m.input.Update(msg)
 	case surfaceeditor.HeightChangedMsg:
-		return m, m.handleEditorHeightChanged()
+		return m.handleEditorHeightChanged()
 	case surfaceeditor.ExternalEditorErrorMsg:
 		m.err = msg.Err.Error()
-		return m, nil
+		return nil
 	case surfaceeditor.ExternalEditorWarningMsg:
 		m.err = msg.Message
-		return m, nil
+		return nil
 	case surfacedialog.ActionPermissionResponse:
-		return m, m.handlePermissionResponse(msg)
+		return m.handlePermissionResponse(msg)
 	case surfacedialog.ActionConfirmRunCancel:
-		return m, m.handleConfirmRunCancel(msg)
+		return m.handleConfirmRunCancel(msg)
 	case surfacedialog.ActionOpenDiffPreview:
 		m.handleOpenDiffPreview(msg)
-		return m, nil
+		return nil
 	case surfacedialog.ActionOpenFilePreview:
 		m.handleOpenFilePreview(msg)
-		return m, nil
+		return nil
 	case surfacedialog.ActionExternalEditor:
-		return m, m.handleExternalEditorAction()
+		return m.handleExternalEditorAction()
 	case surfacedialog.ActionOpenCommands:
 		m.invalidateControlplaneResults()
 		m.openCommandsDialog()
-		return m, nil
+		return nil
 	case surfacedialog.ActionRunControlplaneCommand:
-		return m, m.handleRunControlplaneCommand(msg, m.commandsDialogRoot && m.dialog.ContainsDialog(surfacedialog.CommandsID))
+		return m.handleRunControlplaneCommand(msg, m.commandsDialogRoot && m.dialog.ContainsDialog(surfacedialog.CommandsID))
 	case surfacedialog.ActionQuit:
-		return m, tea.Quit
+		return tea.Quit
 	case surfacedialog.ActionCmd:
-		return m, msg.Cmd
+		return msg.Cmd
 	case surfacedialog.ActionClose:
 		m.invalidateControlplaneResults()
 		top := m.dialog.DialogLast()
@@ -72,14 +77,14 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if denying != "" {
 			// The reason prompt was closed without denying: ask again.
 			delete(m.suppressedApprovals, denying)
-			return m, m.syncPermissionDialogCmd()
+			return m.syncPermissionDialogCmd()
 		}
-		return m, nil
+		return nil
 	case controlplaneResultMsg:
-		return m, m.handleControlplaneResult(msg)
+		return m.handleControlplaneResult(msg)
 	case tea.KeyPressMsg:
 		if handled, cmd := m.handleGlobalKey(msg); handled {
-			return m, cmd
+			return cmd
 		}
 		if m.dialog.HasDialogs() {
 			return m.handleDialogInput(msg)
@@ -95,18 +100,18 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleDialogInput(msg)
 		}
 		if m.focus == appFocusEditor {
-			return m, m.input.Update(msg)
+			return m.input.Update(msg)
 		}
-		return m, nil
+		return nil
 	case surfacemodel.DelayedClickMsg:
 		if m.chat == nil {
-			return m, nil
+			return nil
 		}
 		m.chat.HandleDelayedClick(msg)
-		return m, nil
+		return nil
 	case surfaceanim.StepMsg:
 		if m.chat == nil {
-			return m, nil
+			return nil
 		}
 		cmds := make([]tea.Cmd, 0, 2)
 		if cmd := m.chat.Animate(msg); cmd != nil {
@@ -117,7 +122,7 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, cmd)
 			}
 		}
-		return m, tea.Batch(cmds...)
+		return tea.Batch(cmds...)
 	case workingTickMsg:
 		m.now = msg.at
 		if m.busy {
@@ -125,51 +130,51 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.spinnerFrame = 0
 		}
-		return m, m.workingTickCmd()
+		return m.workingTickCmd()
 	case serverStatusRefreshMsg:
 		m.handleServerStatusRefresh(msg)
-		return m, nil
+		return nil
 	case serverStatusTickMsg:
-		return m, m.handleServerStatusTick()
+		return m.handleServerStatusTick()
 	case serverRestartRequestMsg:
 		m.handleServerRestartRequest(msg)
-		return m, nil
+		return nil
 	case serverRestartTickMsg:
-		return m, m.handleServerRestartTick()
+		return m.handleServerRestartTick()
 	case serverRestartPollMsg:
-		return m, m.handleServerRestartPoll(msg)
+		return m.handleServerRestartPoll(msg)
 	case serverRestartAckMsg:
 		m.handleServerRestartAck(msg)
-		return m, nil
+		return nil
 	case terminalRestartMsg:
-		return m, m.handleTerminalRestart(msg)
+		return m.handleTerminalRestart(msg)
 	case updateCheckMsg:
 		m.handleUpdateCheck(msg)
-		return m, nil
+		return nil
 	case updateInstallMsg:
 		m.handleUpdateInstall(msg)
-		return m, nil
+		return nil
 	case loadInitialMsg:
-		return m, m.handleLoadInitial(msg)
+		return m.handleLoadInitial(msg)
 	case subscribeReadyMsg:
-		return m, m.handleSubscribeReady(msg)
+		return m.handleSubscribeReady(msg)
 	case liveEventMsg:
-		return m, m.handleLiveEvent(msg)
+		return m.handleLiveEvent(msg)
 	case resolveApprovalMsg:
-		return m, m.handleResolveApproval(msg)
+		return m.handleResolveApproval(msg)
 	case sendMessageResultMsg:
-		return m, m.handleSendMessageResult(msg)
+		return m.handleSendMessageResult(msg)
 	case cancelRunResultMsg:
-		return m, m.handleCancelRunResult(msg)
+		return m.handleCancelRunResult(msg)
 	case reconnectMsg:
 		m.loading = true
-		return m, m.loadInitialCmd()
+		return m.loadInitialCmd()
 	}
 	if m.dialog.HasDialogs() {
 		return m.handleDialogInput(msg)
 	}
 	if m.focus == appFocusEditor {
-		return m, m.input.Update(msg)
+		return m.input.Update(msg)
 	}
-	return m, nil
+	return nil
 }

@@ -219,6 +219,8 @@ func (t *baseToolMessageItem) isSpinning() bool {
 	return !t.toolCall.Finished && t.status != ToolStatusCanceled
 }
 
+func (t *baseToolMessageItem) Expanded() bool { return t.expandedContent }
+
 func (t *baseToolMessageItem) ToggleExpanded() bool {
 	t.expandedContent = !t.expandedContent
 	t.clearCache()

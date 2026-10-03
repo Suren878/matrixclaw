@@ -30,8 +30,10 @@ type Model struct {
 	// order lists message IDs as first seen; entries hold their conversion.
 	order   []string
 	entries map[string]*entry
-	visible []surfacemessage.Message
-	stale   bool
+	// resultRevs is the revision of each tool call's result message.
+	resultRevs map[string]uint64
+	visible    []surfacemessage.Message
+	stale      bool
 
 	toolUpdates   map[string]core.ToolUpdate
 	approvals     map[string]surfacepermission.PermissionRequest
@@ -68,6 +70,7 @@ func New(snapshot core.ClientSnapshot) *Model {
 		run:             snapshot.Run,
 		timing:          snapshot.Timing,
 		entries:         map[string]*entry{},
+		resultRevs:      map[string]uint64{},
 		toolUpdates:     map[string]core.ToolUpdate{},
 		approvals:       map[string]surfacepermission.PermissionRequest{},
 		notifications:   map[string]surfacepermission.PermissionNotification{},
@@ -249,6 +252,12 @@ func (m *Model) Revision(id string) uint64 {
 	return 0
 }
 
+// ResultRevision is the revision of the message holding the result of the
+// tool call callID, 0 before it has one.
+func (m *Model) ResultRevision(callID string) uint64 {
+	return m.resultRevs[callID]
+}
+
 func (m *Model) upsertMessage(message transcript.Message) {
 	if message.ID == "" || message.Origin == transcript.OriginEngineModel {
 		return
@@ -266,6 +275,9 @@ func (m *Model) upsertMessage(message transcript.Message) {
 		m.order = append(m.order, message.ID)
 	}
 	e.message, e.shown, e.rev = surface, shouldKeepSurfaceMessage(surface), m.rev
+	for _, result := range surface.ToolResults() {
+		m.resultRevs[result.ToolCallID] = m.rev
+	}
 	m.stale = true
 }
 

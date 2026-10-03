@@ -166,5 +166,5 @@ func (m *appModel) applyResolvedApproval(msg resolveApprovalMsg) {
 		return
 	}
 
-	m.rebuildChat()
+	m.syncChat()
 }

@@ -65,26 +65,25 @@ func (m *appModel) layout() appLayout {
 	}
 }
 
-func (m *appModel) resizeChat() {
-	if m.chat == nil || m.width <= 0 || m.height <= 0 {
+// relayout lays the screen out once per update: View draws m.frame, mouse
+// hits are tested against it, and the chat is resized when its area changed.
+func (m *appModel) relayout() {
+	if m.width <= 0 || m.height <= 0 {
+		m.frame = appLayout{}
 		return
 	}
-	layout := m.layout()
-	bodyHeight := layout.bodyBottom - layout.bodyTop
-	if bodyHeight < 1 {
-		bodyHeight = m.height
+	m.frame = m.layout()
+	if m.chat == nil {
+		return
 	}
-	m.chat.SetSize(layout.chatWidth(m.width), bodyHeight)
-}
-
-func (m *appModel) bodyBounds() (int, int) {
-	layout := m.layout()
-	return layout.bodyTop, layout.bodyBottom
-}
-
-func (m *appModel) editorBounds() (int, int) {
-	layout := m.layout()
-	return layout.editorTop, layout.editorBottom
+	width, height := m.frame.chatWidth(m.width), m.frame.bodyHeight()
+	if height < 1 {
+		height = m.height
+	}
+	if width != m.chatWidth || height != m.chat.Height() {
+		m.chatWidth = width
+		m.chat.SetSize(width, height)
+	}
 }
 
 func (m *appModel) chromeHeights(header string, footer string) (int, int) {

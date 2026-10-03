@@ -143,12 +143,16 @@ type appModel struct {
 
 	width  int
 	height int
+	// frame is the layout of the last update; chatWidth the chat's width in it.
+	frame     appLayout
+	chatWidth int
 
 	loading  bool
 	err      string
 	session  string
 	read     *readmodel.Model
 	chat     *surfacemodel.Chat
+	rows     keptRows
 	input    surfaceinput.Model
 	events   <-chan daemonclient.LiveEvent
 	eventErr <-chan error
@@ -206,6 +210,7 @@ func newApp(ctx context.Context, rt *Runtime) *appModel {
 		workingDir:          strings.TrimSpace(workingDir),
 		version:             version,
 		suppressedApprovals: map[string]struct{}{},
+		rows:                keptRows{},
 		focus:               appFocusEditor,
 		busyInputMode:       core.BusyInputModeSteer,
 		now:                 time.Now(),

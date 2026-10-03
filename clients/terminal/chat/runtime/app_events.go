@@ -83,7 +83,7 @@ func (m *appModel) applySnapshot(snapshot core.ClientSnapshot) {
 	m.session = snapshot.SessionID
 	m.read = readmodel.New(snapshot)
 	m.setBusy(runIsActive(snapshot.Run))
-	m.rebuildChat()
+	m.syncChat()
 }
 
 // restartStream closes the current event stream and prepares the context for the next one;

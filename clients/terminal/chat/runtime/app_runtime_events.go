@@ -73,7 +73,7 @@ func (m *appModel) handleLiveEvent(msg liveEventMsg) tea.Cmd {
 		if cmd := m.handleInputUpdatedEvent(msg); cmd != nil {
 			return cmd
 		}
-		m.rebuildChat()
+		m.syncChat()
 	}
 	return tea.Batch(m.syncPermissionDialogCmd(), m.waitEventCmd(msg.streamID, m.events, m.eventErr))
 }
@@ -133,7 +133,7 @@ func (m *appModel) handleSendMessageResult(msg sendMessageResultMsg) tea.Cmd {
 		m.applyAcceptedRunToReadModel(msg.result)
 	}
 	m.setBusy(runIsActive(&msg.result.Run))
-	m.rebuildChat()
+	m.syncChat()
 	return m.loadInitialCmd()
 }
 

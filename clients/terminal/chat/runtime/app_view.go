@@ -21,7 +21,7 @@ func (m *appModel) viewContent() string {
 	if m.width <= 0 || m.height <= 0 {
 		return ""
 	}
-	layout := m.layout()
+	layout := m.frame
 	canvas := uv.NewScreenBuffer(m.width, m.height)
 	m.drawContent(canvas, layout)
 	if m.dialog.HasDialogs() {

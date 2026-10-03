@@ -43,7 +43,6 @@ func (m *appModel) handleAttachFiles() {
 }
 
 func (m *appModel) handleEditorHeightChanged() tea.Cmd {
-	m.resizeChat()
 	if m.chat != nil && m.chat.Follow() {
 		return m.chat.ScrollToBottomAndAnimate()
 	}

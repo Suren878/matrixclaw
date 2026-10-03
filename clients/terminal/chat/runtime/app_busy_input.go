@@ -107,7 +107,7 @@ func (m *appModel) showInputStatus(text string) {
 	}
 	m.err = ""
 	m.upsertTransientMessage(newBusyInputStatusMessage(text))
-	m.rebuildChat()
+	m.syncChat()
 }
 
 func newBusyInputStatusMessage(text string) surfacemessage.Message {

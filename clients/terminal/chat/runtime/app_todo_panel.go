@@ -43,7 +43,6 @@ func (m *appModel) toggleTodoPanel() tea.Cmd {
 	} else {
 		m.todoPanel = todoPanelShown
 	}
-	m.resizeChat()
 	return nil
 }
 

@@ -1,49 +1,61 @@
 package runtime
 
 import (
-	"strings"
-
+	surfacechat "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/chat"
 	surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
-	surfacelist "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/list"
 	surfacemodel "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/model"
 )
 
-func (m *appModel) rebuildChat() {
+// keptRows are the chat rows of the last sync by ID.
+type keptRows map[string]chatRow
+
+// reconcile reuses the kept row for every row whose signature did not change,
+// so its render cache survives; a changed row keeps the old one's expansion.
+func (kept keptRows) reconcile(rows []chatRow) []surfacechat.MessageItem {
+	items := make([]surfacechat.MessageItem, len(rows))
+	next := make(keptRows, len(rows))
+	for i, row := range rows {
+		id := row.item.ID()
+		if old, ok := kept[id]; ok {
+			if old.sig == row.sig {
+				row = old
+			} else if was, ok := old.item.(surfacechat.Expandable); ok && was.Expanded() {
+				if now, ok := row.item.(surfacechat.Expandable); ok {
+					now.ToggleExpanded()
+				}
+			}
+		}
+		next[id] = row
+		items[i] = row.item
+	}
+	clear(kept)
+	for id, row := range next {
+		kept[id] = row
+	}
+	return items
+}
+
+// syncChat brings the chat rows up to date with the read model, keeping the
+// selection and, unless the chat follows new output, the scroll position.
+func (m *appModel) syncChat() {
 	if m.read == nil {
 		return
 	}
-	selectedID := ""
-	follow := true
-	var viewport surfacemodelViewportSnapshot
-	if m.chat != nil {
-		selectedID = m.chat.SelectedMessageID()
-		follow = m.chat.Follow()
-		viewport = surfacemodelViewportSnapshot{snapshot: m.chat.SnapshotViewport(), ok: true}
+	if m.chat == nil {
+		m.chat = surfacemodel.NewChat(&surfacecommon.Common{Styles: &m.styles})
+		if m.focus == appFocusChat {
+			m.chat.Focus()
+		}
 	}
-	chatModel := surfacemodel.NewChat(&surfacecommon.Common{Styles: &m.styles})
-	chatModel.SetMessages(buildChatItems(&m.styles, m.read, m.transientMessages)...)
-	chatModel.Focus()
-	m.chat = chatModel
-	m.resizeChat()
-	if follow || !viewport.ok {
+	follow := m.chat.Follow() || m.chat.Len() == 0
+	selectedID := m.chat.SelectedMessageID()
+	m.chat.SetMessages(m.rows.reconcile(buildChatRows(&m.styles, m.read, m.transientMessages))...)
+	if follow {
 		m.chat.SelectLast()
 		m.chat.ScrollToBottom()
-	} else {
-		if strings.TrimSpace(selectedID) != "" {
-			_ = m.chat.SetSelectedByID(selectedID)
-		}
-		m.chat.RestoreViewport(viewport.snapshot)
+	} else if selectedID != "" {
+		_ = m.chat.SetSelectedByID(selectedID)
 	}
 	m.syncPromptHistory()
-	if m.focus == appFocusEditor {
-		m.chat.Blur()
-	} else {
-		m.chat.Focus()
-	}
 	m.pruneSuppressedApprovals()
-}
-
-type surfacemodelViewportSnapshot struct {
-	snapshot surfacelist.ViewportSnapshot
-	ok       bool
 }
