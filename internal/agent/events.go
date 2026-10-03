@@ -68,18 +68,36 @@ func (r *run) resumeAwait(ctx context.Context) (bool, error) {
 	}
 }
 
+// appendImageSteers journals the pending steers that came with images, which
+// no tool result can carry, before the next model call.
+func (r *run) appendImageSteers(ctx context.Context) error {
+	steers, err := r.Inbox.Peek(ctx, r.task.RunID, InputSteer)
+	if err != nil {
+		return err
+	}
+	steers = slices.DeleteFunc(steers, func(steer Input) bool { return len(steer.Images) == 0 })
+	if len(steers) == 0 {
+		return nil
+	}
+	return r.appendSteers(ctx, steers)
+}
+
 // appendSteers journals steer input that no tool result can carry as one user
 // message and consumes it.
 func (r *run) appendSteers(ctx context.Context, steers []Input) error {
 	texts := make([]string, 0, len(steers))
 	ids := make([]string, 0, len(steers))
+	var images []transcript.MessagePart
 	for _, steer := range steers {
-		texts = append(texts, steer.Text)
+		if steer.Text != "" {
+			texts = append(texts, steer.Text)
+		}
+		images = append(images, steer.Images...)
 		ids = append(ids, steer.ID)
 	}
 	text := strings.Join(texts, "\n\n")
 	now := r.Now()
-	message := transcript.Message{ID: r.NewID("msg"), SessionID: r.task.SessionID, RunID: r.task.RunID, Role: transcript.MessageRoleUser, Content: text, Parts: transcript.NormalizeMessageParts(text, nil), CreatedAt: now, UpdatedAt: now}
+	message := transcript.Message{ID: r.NewID("msg"), SessionID: r.task.SessionID, RunID: r.task.RunID, Role: transcript.MessageRoleUser, Content: text, Parts: append(transcript.NormalizeMessageParts(text, nil), images...), CreatedAt: now, UpdatedAt: now}
 	if err := r.history.append(ctx, message); err != nil {
 		return err
 	}

@@ -241,6 +241,10 @@ func (r *run) appendResult(ctx context.Context, req callRequest, result tools.Re
 	}
 	ids := make([]string, 0, len(steers))
 	for _, steer := range steers {
+		if len(steer.Images) > 0 {
+			// A tool result carries no images; the next step journals it.
+			continue
+		}
 		appendUserGuidanceToToolResult(&message, steer.Text)
 		ids = append(ids, steer.ID)
 	}

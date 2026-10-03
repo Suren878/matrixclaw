@@ -191,6 +191,55 @@ func TestMessageToABusySessionSteersByDefault(t *testing.T) {
 	}
 }
 
+// visionRuntime is a model that takes images.
+type visionRuntime struct{ generationRuntimeFunc }
+
+func (visionRuntime) ModelCapabilities() providers.ModelCapabilities {
+	return providers.ModelCapabilities{ToolCalling: true, ImageInput: true}
+}
+
+func TestAPhotoSteeredIntoABusyRunReachesTheModel(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
+		close(started)
+		<-release
+		return tools.Result{Content: "inspected"}, nil
+	}}))
+	var last providers.Request
+	app.WithSessionLLMs(recoveryLLMs{runtime: visionRuntime{func(_ context.Context, request providers.Request) (providers.Response, error) {
+		last = request
+		if len(request.Messages) == 1 {
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-img", Name: "inspect_state", Arguments: []byte(`{}`)}}}, nil
+		}
+		return providers.Response{Text: "A cat."}, nil
+	}}})
+	session, run := saveCrashRecoveryRun(t, db, "steer_img", core.RunStatusAccepted, false)
+	done := make(chan error, 1)
+	go func() { done <- app.ExecuteRun(context.Background(), run.ID) }()
+	<-started
+	parts := []transcript.MessagePart{
+		{Kind: transcript.MessagePartKindText, Text: &transcript.TextPart{Text: "what is on this screenshot?"}},
+		{Kind: transcript.MessagePartKindImage, Image: &transcript.ImagePart{MIMEType: "image/png", DataBase64: "iVBORw0KGgo="}},
+	}
+	result, err := app.AcceptRun(context.Background(), core.HandleMessageInput{SessionID: session.ID, Text: "what is on this screenshot?", Parts: parts})
+	if err != nil || result.Status != core.AcceptRunStatusSteered {
+		t.Fatalf("AcceptRun = %#v, %v", result, err)
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+
+	steer := last.Messages[len(last.Messages)-1]
+	if steer.Role != "user" || steer.Content != "what is on this screenshot?" || len(steer.Images) != 1 {
+		t.Fatalf("last message the model read = %+v", steer)
+	}
+}
+
 func TestSteeringFromAnotherChatDeliversTheRunThere(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)

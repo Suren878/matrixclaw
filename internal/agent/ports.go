@@ -130,13 +130,14 @@ const (
 	InputEvent   InputKind = "event"
 )
 
-// Input arrives from outside the engine: steer Text, a decided approval, or an
-// event such as a finished background task, whose Text the model reads.
-// Denied approvals carry the user's Reason.
+// Input arrives from outside the engine: steer Text with the Images sent with
+// it, a decided approval, or an event such as a finished background task, whose
+// Text the model reads. Denied approvals carry the user's Reason.
 type Input struct {
 	Kind       InputKind
 	ID         string
 	Text       string
+	Images     []transcript.MessagePart
 	ToolCallID string
 	ToolName   string
 	WorkingDir string

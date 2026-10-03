@@ -172,6 +172,9 @@ func (r *run) step(ctx context.Context) stepResult {
 	if err := r.drainEvents(ctx); err != nil {
 		return failedStep(err)
 	}
+	if err := r.appendImageSteers(ctx); err != nil {
+		return failedStep(err)
+	}
 	if err := r.syncContext(ctx); err != nil {
 		return failedStep(err)
 	}

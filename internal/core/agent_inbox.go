@@ -7,6 +7,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 // coreInbox is the Inbox port of one native run.
@@ -40,8 +41,9 @@ func (in coreInbox) steers(ctx context.Context, runID string) ([]agent.Input, er
 	}
 	var out []agent.Input
 	for _, input := range inputs {
-		if input.Text != "" {
-			out = append(out, agent.Input{Kind: agent.InputSteer, ID: input.ID, Text: input.Text})
+		images := slices.DeleteFunc(slices.Clone(input.Parts), func(part transcript.MessagePart) bool { return part.Kind != transcript.MessagePartKindImage })
+		if input.Text != "" || len(images) > 0 {
+			out = append(out, agent.Input{Kind: agent.InputSteer, ID: input.ID, Text: input.Text, Images: images})
 		}
 	}
 	return out, nil
