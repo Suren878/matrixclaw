@@ -201,7 +201,7 @@ func (d *Dispatcher) choicePicker(moduleID string, path []string, item modules.I
 	if grouped {
 		picker.Command(settingsOpenCommand(moduleID, path) + " " + group).Back(settingsOpenCommand(moduleID, path))
 	} else {
-		picker.Select(parent)
+		picker.Command(settingsOpenCommand(moduleID, path)).Select(parent)
 	}
 	for _, option := range item.Options {
 		if grouped && option.Group != group {

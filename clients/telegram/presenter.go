@@ -60,7 +60,11 @@ func presentPicker(picker controlplane.PickerData, page int) (string, *InlineKey
 	}
 	rows := make([][]InlineKeyboardButton, 0, len(items)+2)
 	for _, item := range items {
-		rows = append(rows, []InlineKeyboardButton{clippedCommandButton(pickerItemLabel(picker.Kind, item), item.Command)})
+		button := clippedCommandButton(pickerItemLabel(picker.Kind, item), item.Command)
+		if strings.TrimSpace(item.Command) == "" {
+			button.CallbackData = cbNoop
+		}
+		rows = append(rows, []InlineKeyboardButton{button})
 	}
 	if pages > 1 {
 		var nav []InlineKeyboardButton
@@ -151,10 +155,15 @@ func confirmText(confirm controlplane.ConfirmData) string {
 	return text
 }
 
+// infoText is the info's text, or its rows when it has none; a text repeats
+// the rows.
 func infoText(info controlplane.InfoData) string {
 	var lines []string
 	if title := strings.TrimSpace(info.Title); title != "" {
 		lines = append(lines, title)
+	}
+	if text := strings.TrimSpace(info.Text); text != "" {
+		return strings.Join(append(lines, text), "\n")
 	}
 	for _, row := range info.Rows {
 		label, value := strings.TrimSpace(row.Label), strings.TrimSpace(row.Value)
@@ -164,9 +173,6 @@ func infoText(info controlplane.InfoData) string {
 		case label != "" || value != "":
 			lines = append(lines, label+value)
 		}
-	}
-	if text := strings.TrimSpace(info.Text); text != "" {
-		lines = append(lines, text)
 	}
 	return strings.Join(lines, "\n")
 }

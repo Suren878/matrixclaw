@@ -39,3 +39,26 @@ func TestLongPickersPageWithTheirCommand(t *testing.T) {
 		t.Fatalf("a picker without a command shows %d rows, want all 45 and Back", len(markup.InlineKeyboard))
 	}
 }
+
+func TestDisabledPickerRowsKeepTheMenu(t *testing.T) {
+	picker := controlplane.PickerData{Kind: controlplane.PickerModule, Title: "Telephony", Close: "/modules"}
+	picker.Items = []controlplane.PickerItem{{ID: "enabled", Title: "Enabled", Disabled: true}}
+
+	_, markup := presentPicker(picker, 0)
+
+	data := markup.InlineKeyboard[0][0].CallbackData
+	if kind, _, ok := parsePickerCallbackData(data); strings.HasPrefix(data, cbPicker) && ok && kind == callbackKindDismiss {
+		t.Fatalf("a disabled row dismisses the menu: %q", data)
+	}
+}
+
+func TestInfoShowsEachValueOnce(t *testing.T) {
+	info := controlplane.InfoData{Title: "Run Budget", Text: "Steps: 50 (default)\n\nUse /budget steps N.", Rows: []controlplane.InfoRow{{Label: "Steps", Value: "50 (default)"}}}
+	if text := infoText(info); strings.Count(text, "Steps: 50") != 1 {
+		t.Fatalf("info text = %q", text)
+	}
+	rowsOnly := controlplane.InfoData{Title: "Server Status", Rows: []controlplane.InfoRow{{Label: "Uptime", Value: "1h"}}}
+	if text := infoText(rowsOnly); text != "Server Status\nUptime: 1h" {
+		t.Fatalf("rows only info text = %q", text)
+	}
+}

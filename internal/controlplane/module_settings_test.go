@@ -37,6 +37,10 @@ func TestChoosingAProviderThatNeedsAKeyAsksForIt(t *testing.T) {
 	if choice.Picker == nil || !choice.Picker.Popup || len(choice.Picker.Items) != 4 || !choice.Picker.Items[0].Selected {
 		t.Fatalf("choice = %+v", choice.Picker)
 	}
+	// Clients page long choices by showing the picker again.
+	if again := daemon.run(choice.Picker.Command); again.Picker == nil || len(again.Picker.Items) != 4 {
+		t.Fatalf("choice command %q shows %+v", choice.Picker.Command, again)
+	}
 
 	asked := daemon.run(choice.Picker.Items[1].Command)
 	if asked.Prompt == nil || !asked.Prompt.Sensitive || !strings.Contains(asked.Prompt.Title, "Tavily needs its API key") {

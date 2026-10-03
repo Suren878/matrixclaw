@@ -26,6 +26,7 @@ const (
 	cbApprovalGlobal  = "ag:"
 	cbApprovalDeny    = "ad:"
 	cbApprovalReason  = "ar:"
+	cbNoop            = "no:" // a row that only answers the tap
 
 	restartProgressText   = "Architect is restarting..."
 	modelPickerPageSize   = 20
