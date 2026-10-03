@@ -134,6 +134,47 @@ default):
 }
 ```
 
+### Fixes and cleanup from the code audit
+
+- Editing a provider or switching a session's model no longer resets the
+  `daemon` settings above, and an abandoned setup wizard draft can no longer
+  overwrite the live config. Concurrent module settings changes no longer
+  overwrite each other.
+- setup.json keeps only your own system prompt; an empty value means the
+  built-in one, so prompt updates reach existing installs. Saved copies of
+  old built-in prompts and their generated "Project context" block are read
+  as no override. setup.json no longer writes `completed_at`,
+  `clients.terminal`, `modules.mcp.servers[].require_approval` or
+  `modules.skills.self_improve`; `modules.skills.enabled` and `auto_invoke`
+  can now be turned off.
+- The daemon shuts down cleanly on `systemctl stop`/`restart`: runs are
+  interrupted and recovered on the next start. It no longer uses the
+  `<db>-workflows.db` file (go-workflows is gone), which can be deleted.
+- Module settings edits no longer restart Telegram polling or external
+  agents. MCP and browser settings say when a daemon restart is needed.
+- `/memory` works in Telegram and the terminal; removing a skill works.
+- Rate limits and server errors from every provider, Codex included, are
+  retried, honouring Retry-After up to a minute. Codex OAuth refresh no
+  longer races between parallel runs, and its auth file is written
+  atomically.
+- `web_fetch` no longer reaches private or cloud-metadata addresses through
+  the browser fallback. Browser MCP tools other than reading the open page
+  (snapshot, console, network) now ask for approval unless a permission rule
+  allows them.
+- The terminal no longer leaks an event-stream connection on every reload;
+  Up recalls the latest prompt first; images you send show in the
+  transcript; space expands tool output again.
+- Realtime voice and telephony no longer refuse new sessions after failed
+  calls; a failed whisper or supertonic start returns an error instead of
+  crashing the daemon. Canceled runs record when they finished.
+- Run-state checks no longer load the whole session history (two new
+  indexes are created on first start). External agent versions are probed
+  once instead of on every run. The Telegram worker polls the daemon a
+  quarter as often while idle and its inline cache is bounded.
+- Removed: `matrixclaw skills curator`, the setup wizard's "Refresh project
+  context" item, the `MATRIXCLAW_CONTEXT_WINDOW_CACHE` variable, and the
+  `files` list in session snapshots.
+
 ### Upgrade notes (breaking)
 
 - **Back up the database before upgrading.** The migrations are one-way, and
