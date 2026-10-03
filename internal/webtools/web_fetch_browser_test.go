@@ -9,6 +9,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/webresearch"
+	"github.com/Suren878/matrixclaw/internal/work"
 )
 
 // countingBrowser is a browser fallback that cannot say where its redirects led.
@@ -24,11 +25,12 @@ func (b *countingBrowser) Fetch(_ context.Context, url string) (webresearch.Brow
 func browserFetchExecutor(t *testing.T, browser webresearch.Browser, fetch webresearch.FetchFunc) tools.Executor {
 	t.Helper()
 	dir := t.TempDir()
-	store, err := webresearch.NewSQLiteStore(filepath.Join(dir, "work.db"))
+	workStore, err := work.NewSQLiteStore(filepath.Join(dir, "work.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = store.Close() })
+	t.Cleanup(func() { _ = workStore.Close() })
+	store := webresearch.NewStore(workStore)
 	engine := webresearch.NewEngine(webresearch.Config{
 		Store:        store,
 		ArtifactRoot: filepath.Join(dir, "artifacts"),

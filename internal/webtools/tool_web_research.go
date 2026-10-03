@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	"github.com/Suren878/matrixclaw/internal/tools"
 
 	"github.com/Suren878/matrixclaw/internal/webresearch"
@@ -12,10 +13,6 @@ import (
 type webResearchExecutor struct {
 	name string
 	web  *WebService
-}
-
-func NewWebResearchExecutors(engine *webresearch.Engine) []tools.Executor {
-	return NewWebResearchExecutorsWithService(NewWebService(nil, engine))
 }
 
 func NewWebResearchExecutorsWithService(web *WebService) []tools.Executor {

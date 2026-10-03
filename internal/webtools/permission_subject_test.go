@@ -13,7 +13,7 @@ import (
 )
 
 func TestWebFetchSubjectIsTheHost(t *testing.T) {
-	registry := tools.NewRegistry(NewWebFetchExecutor())
+	registry := tools.NewRegistry(NewWebFetchExecutorWithService(nil))
 	for args, want := range map[string]permission.Subject{
 		`{"url":"https://Docs.Example.com:8443/a?b=1"}`: {Kind: permission.KindDomain, Value: "docs.example.com"},
 		`{"url":"https://Bücher.example./"}`:            {Kind: permission.KindDomain, Value: "xn--bcher-kva.example"},

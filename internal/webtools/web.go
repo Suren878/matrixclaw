@@ -82,16 +82,8 @@ type WebSearchProviderConfig struct {
 	BaseURL   string
 }
 
-func NewWebFetchExecutor() tools.Executor {
-	return NewWebFetchExecutorWithService(nil)
-}
-
 func NewWebFetchExecutorWithService(web *WebService) tools.Executor {
 	return &webFetchExecutor{web: web}
-}
-
-func NewWebSearchExecutor(config func() (WebSearchProviderConfig, error)) tools.Executor {
-	return NewWebSearchExecutorWithService(NewWebService(config, nil))
 }
 
 func NewWebSearchExecutorWithService(web *WebService) tools.Executor {

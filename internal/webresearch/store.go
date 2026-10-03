@@ -17,7 +17,6 @@ var ErrNotFound = errors.New("webresearch: not found")
 
 type WorkStore struct {
 	store work.Store
-	close func() error
 }
 
 type researchPayload struct {
@@ -28,26 +27,11 @@ type researchPayload struct {
 	Sources     []Source `json:"sources,omitempty"`
 }
 
-func NewSQLiteStore(path string) (*WorkStore, error) {
-	store, err := work.NewSQLiteStore(path)
-	if err != nil {
-		return nil, fmt.Errorf("webresearch: open work store: %w", err)
-	}
-	return &WorkStore{store: store, close: store.Close}, nil
-}
-
 func NewStore(store work.Store) *WorkStore {
 	if store == nil {
 		return nil
 	}
 	return &WorkStore{store: store}
-}
-
-func (s *WorkStore) Close() error {
-	if s == nil || s.close == nil {
-		return nil
-	}
-	return s.close()
 }
 
 func (s *WorkStore) CreateSession(ctx context.Context, session ResearchSession) error {

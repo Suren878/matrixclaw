@@ -12,17 +12,19 @@ import (
 	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/webresearch"
+	"github.com/Suren878/matrixclaw/internal/work"
 )
 
 // recordingEngine is a research engine whose fetches and browser loads are recorded.
 func recordingEngine(t *testing.T) (*webresearch.Engine, *[]string, *countingBrowser) {
 	t.Helper()
 	dir := t.TempDir()
-	store, err := webresearch.NewSQLiteStore(filepath.Join(dir, "work.db"))
+	workStore, err := work.NewSQLiteStore(filepath.Join(dir, "work.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = store.Close() })
+	t.Cleanup(func() { _ = workStore.Close() })
+	store := webresearch.NewStore(workStore)
 	var fetched []string
 	browser := &countingBrowser{}
 	engine := webresearch.NewEngine(webresearch.Config{
