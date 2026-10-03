@@ -104,3 +104,43 @@ func TestEachResponseGivesItsToolCallsIDsOfTheirOwn(t *testing.T) {
 		t.Fatalf("both responses gave their call the ID %q", calls[0].ID)
 	}
 }
+
+func TestDecodeStreamTypesProviderErrors(t *testing.T) {
+	for _, tc := range []struct {
+		frame     string
+		retryable bool
+	}{
+		{`{"error":{"code":429,"message":"Rate limit exceeded: free-models-per-min"}}`, true},
+		{`{"error":{"code":"rate_limit_exceeded","message":"slow down"}}`, true},
+		{`{"error":{"code":502,"message":"upstream overloaded"}}`, true},
+		{`{"error":{"code":400,"message":"bad request"}}`, false},
+	} {
+		_, err := (&Runtime{}).decodeStream(context.Background(), strings.NewReader("data: "+tc.frame+"\n\n"))
+		if err == nil || providers.IsRetryableGenerationError(err) != tc.retryable {
+			t.Fatalf("%s: err = %v, retryable = %v; want %v", tc.frame, err, providers.IsRetryableGenerationError(err), tc.retryable)
+		}
+	}
+}
+
+func TestDecodeStreamAcceptsGatewayToolCallQuirks(t *testing.T) {
+	frames := `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"a","function":{"name":"ls","arguments":""}}]}}]}` + "\n\n" +
+		`data: {"choices":[{"delta":{"tool_calls":[{"id":"b","function":{"name":"read","arguments":"{\"path\":"}}]}}]}` + "\n\n" +
+		`data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"\"x\"}"}}]}}]}` + "\n\n" +
+		`data: {"choices":[{"delta":{"tool_calls":[{"id":"c","function":{"name":"read","arguments":"{\"path\":\"y\"}"}}]},"finish_reason":"tool_calls"}]}` + "\n\n"
+	response, err := (&Runtime{}).decodeStream(context.Background(), strings.NewReader(frames))
+	if err != nil {
+		t.Fatalf("decodeStream() error = %v", err)
+	}
+	got := make([]string, 0, len(response.ToolCalls))
+	ids := map[string]bool{}
+	for _, call := range response.ToolCalls {
+		got = append(got, call.Name+" "+string(call.Arguments))
+		ids[call.ID] = true
+	}
+	if len(ids) != 3 {
+		t.Fatalf("tool call IDs = %v, want three distinct", ids)
+	}
+	if want := []string{"ls {}", `read {"path":"x"}`, `read {"path":"y"}`}; strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("tool calls = %q, want %q", got, want)
+	}
+}

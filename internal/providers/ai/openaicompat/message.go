@@ -101,7 +101,7 @@ func decodeToolCalls(value []chatCompletionToolCall) []providers.ToolCall {
 		result = append(result, providers.ToolCall{
 			ID:        strings.TrimSpace(item.ID),
 			Name:      name,
-			Arguments: compactJSONRaw(item.Function.Arguments),
+			Arguments: toolArguments(item.Function.Arguments),
 		})
 	}
 	return result
@@ -130,10 +130,10 @@ func namespaceToolCalls(calls []providers.ToolCall) []providers.ToolCall {
 func validateToolCalls(calls []providers.ToolCall) error {
 	for _, call := range calls {
 		if strings.TrimSpace(call.Name) == "" {
-			return fmt.Errorf("openaicompat: function call is missing a name")
+			return fmt.Errorf("openaicompat: function call is missing a name: %w", providers.ErrMalformedToolCall)
 		}
 		if !json.Valid(call.Arguments) {
-			return fmt.Errorf("openaicompat: invalid arguments for tool %q", call.Name)
+			return fmt.Errorf("openaicompat: invalid arguments for tool %q: %w", call.Name, providers.ErrMalformedToolCall)
 		}
 	}
 	return nil

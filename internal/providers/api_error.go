@@ -60,6 +60,19 @@ func NewStreamError(provider string, code int, message string) *APIError {
 	return &APIError{Provider: provider, Kind: statusErrorKind(code, message), Message: strings.TrimSpace(message)}
 }
 
+// OpenAIErrorStatus is the HTTP status an OpenAI-style error code stands for,
+// or 0 when it names none.
+func OpenAIErrorStatus(code string) int {
+	switch code {
+	case "rate_limit_exceeded":
+		return http.StatusTooManyRequests
+	case "server_error", "server_is_overloaded", "overloaded", "service_unavailable":
+		return http.StatusServiceUnavailable
+	default:
+		return 0
+	}
+}
+
 func statusErrorKind(status int, message string) ErrorKind {
 	switch {
 	case status == http.StatusTooManyRequests:

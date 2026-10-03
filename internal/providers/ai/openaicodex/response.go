@@ -24,7 +24,7 @@ func (r *Runtime) decodeResponse(raw []byte) (providers.Response, error) {
 // executing unfinished arguments or losing calls present only in final output.
 func (r *Runtime) completedResponse(response responsesResponse) (providers.Response, error) {
 	if response.Error != nil {
-		return providers.Response{}, fmt.Errorf("openai-codex: %s", textutil.FirstNonEmpty(response.Error.Message, response.Error.Code, "response failed"))
+		return providers.Response{}, responsesFailure(response.Error.Code, response.Error.Message, "response failed")
 	}
 	stop, err := responsesStopReason(response)
 	if err != nil {
@@ -62,10 +62,10 @@ func (r *Runtime) completedResponse(response responsesResponse) (providers.Respo
 				continue // cut off by the output limit
 			}
 			if name == "" || id == "" {
-				return providers.Response{}, fmt.Errorf("openai-codex: function call is missing name or call_id")
+				return providers.Response{}, fmt.Errorf("openai-codex: function call is missing name or call_id: %w", providers.ErrMalformedToolCall)
 			}
 			if !json.Valid(arguments) {
-				return providers.Response{}, fmt.Errorf("openai-codex: invalid arguments for tool %q", name)
+				return providers.Response{}, fmt.Errorf("openai-codex: invalid arguments for tool %q: %w", name, providers.ErrMalformedToolCall)
 			}
 			calls = append(calls, providers.ToolCall{ID: id, Name: name, Arguments: arguments})
 		}
@@ -79,6 +79,12 @@ func (r *Runtime) completedResponse(response responsesResponse) (providers.Respo
 		return providers.Response{}, fmt.Errorf("openai-codex: %w", providers.ErrEmptyResponse)
 	}
 	return providers.Response{Text: text, ToolCalls: calls, Model: r.Model, Provider: providers.TypeOpenAICodex, StopReason: stop, Reasoning: reasoning, Usage: response.Usage.toProviderUsage()}, nil
+}
+
+// responsesFailure is an error the Responses API reports in its body, typed by
+// its code so a rate limit or overload is retried.
+func responsesFailure(code string, message string, fallback string) error {
+	return providers.NewStreamError("openai-codex", providers.OpenAIErrorStatus(code), textutil.FirstNonEmpty(message, code, fallback))
 }
 
 func reasoningSummary(parts []responsesSummaryPart) string {
@@ -127,13 +133,13 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 			return fmt.Errorf("openai-codex: decode stream event: %w", err)
 		}
 		if chunk.Error != nil {
-			return fmt.Errorf("openai-codex: %s", textutil.FirstNonEmpty(chunk.Error.Message, chunk.Error.Code, "stream error"))
+			return responsesFailure(chunk.Error.Code, chunk.Error.Message, "stream error")
 		}
 		switch textutil.FirstNonEmpty(chunk.Type, event.Type) {
 		case "response.output_text.delta", "response.refusal.delta":
 			return providers.StreamText(ctx, chunk.Delta)
 		case "error":
-			return fmt.Errorf("openai-codex: %s", textutil.FirstNonEmpty(chunk.Message, chunk.Code, "stream error"))
+			return responsesFailure(chunk.Code, chunk.Message, "stream error")
 		case "response.failed", "response.cancelled":
 			// Some gateways omit response.status on terminal failure events.
 			chunk.Response.Status = strings.TrimPrefix(textutil.FirstNonEmpty(chunk.Type, event.Type), "response.")

@@ -318,7 +318,7 @@ func encodeToolCalls(toolCalls []providers.ToolCall) []chatCompletionToolCall {
 			Type: "function",
 			Function: chatCompletionToolFunctionCall{
 				Name:      strings.TrimSpace(toolCall.Name),
-				Arguments: string(compactJSONRaw(string(toolCall.Arguments))),
+				Arguments: string(toolArguments(string(toolCall.Arguments))),
 			},
 		})
 	}

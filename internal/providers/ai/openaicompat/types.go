@@ -77,9 +77,7 @@ type chatCompletionResponse struct {
 }
 
 type chatCompletionChunk struct {
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error,omitempty"`
+	Error   *chunkError `json:"error,omitempty"`
 	Choices []struct {
 		FinishReason string `json:"finish_reason"`
 		Delta        struct {
@@ -110,7 +108,7 @@ type chatCompletionUsage struct {
 }
 
 type chatCompletionToolCallDelta struct {
-	Index    int                            `json:"index"`
+	Index    *int                           `json:"index"`
 	ID       string                         `json:"id,omitempty"`
 	Type     string                         `json:"type,omitempty"`
 	Function chatCompletionToolFunctionCall `json:"function,omitempty"`

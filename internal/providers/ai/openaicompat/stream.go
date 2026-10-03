@@ -1,21 +1,23 @@
 package openaicompat
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.Response, error) {
 	var text strings.Builder
 	var reasoningContent strings.Builder
 	reasoningContentSeen := false
-	toolCalls := map[int]*streamToolCall{}
+	var toolCalls streamToolCalls
 	var usage providers.Usage
 	completed := false
 	finishReason := ""
@@ -30,7 +32,7 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 			return fmt.Errorf("openaicompat: decode stream chunk: %w", err)
 		}
 		if chunk.Error != nil {
-			return fmt.Errorf("openaicompat: stream error: %s", chunk.Error.Message)
+			return providers.NewStreamError("openaicompat", chunk.Error.status(), "stream error: "+chunk.Error.Message)
 		}
 		if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 {
 			usage = openAIUsage(chunk.Usage)
@@ -45,7 +47,7 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 
 		deltaChunk := chunk.Choices[0].Delta
 		for _, toolCall := range deltaChunk.ToolCalls {
-			mergeStreamToolCall(toolCalls, toolCall)
+			toolCalls.merge(toolCall)
 		}
 		if deltaChunk.ReasoningContent != nil {
 			reasoningContentSeen = true
@@ -78,22 +80,45 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 		value := reasoningContent.String()
 		responseReasoningContent = &value
 	}
-	return r.finishResponse(text.String(), responseReasoningContent, streamToolCalls(toolCalls), finishReason, usage)
+	return r.finishResponse(text.String(), responseReasoningContent, toolCalls.toolCalls(), finishReason, usage)
 }
 
 type streamToolCall struct {
+	index     int
 	id        string
 	name      string
 	arguments strings.Builder
 }
 
-func mergeStreamToolCall(calls map[int]*streamToolCall, delta chatCompletionToolCallDelta) {
-	call := calls[delta.Index]
-	if call == nil {
-		call = &streamToolCall{}
-		calls[delta.Index] = call
+// streamToolCalls gathers tool-call deltas by index. Some gateways leave the
+// index out or reuse one; a new id then starts a new call, after the others.
+type streamToolCalls struct {
+	calls   []*streamToolCall
+	byIndex map[int]*streamToolCall
+	last    *streamToolCall
+}
+
+func (s *streamToolCalls) merge(delta chatCompletionToolCallDelta) {
+	call := s.last
+	if delta.Index != nil {
+		call = s.byIndex[*delta.Index]
 	}
-	if id := strings.TrimSpace(delta.ID); id != "" {
+	id := strings.TrimSpace(delta.ID)
+	if call == nil || id != "" && call.id != "" && id != call.id {
+		call = &streamToolCall{index: s.nextIndex()}
+		if delta.Index != nil {
+			call.index = *delta.Index
+		}
+		s.calls = append(s.calls, call)
+	}
+	if delta.Index != nil {
+		if s.byIndex == nil {
+			s.byIndex = map[int]*streamToolCall{}
+		}
+		s.byIndex[*delta.Index] = call
+	}
+	s.last = call
+	if id != "" {
 		call.id = id
 	}
 	if name := strings.TrimSpace(delta.Function.Name); name != "" {
@@ -104,26 +129,44 @@ func mergeStreamToolCall(calls map[int]*streamToolCall, delta chatCompletionTool
 	}
 }
 
-func streamToolCalls(calls map[int]*streamToolCall) []providers.ToolCall {
-	if len(calls) == 0 {
+func (s *streamToolCalls) nextIndex() int {
+	next := 0
+	for _, call := range s.calls {
+		next = max(next, call.index+1)
+	}
+	return next
+}
+
+func (s *streamToolCalls) toolCalls() []providers.ToolCall {
+	if len(s.calls) == 0 {
 		return nil
 	}
-	out := make([]providers.ToolCall, 0, len(calls))
-	indices := make([]int, 0, len(calls))
-	for index := range calls {
-		indices = append(indices, index)
-	}
-	sort.Ints(indices)
-	for _, i := range indices {
-		call := calls[i]
-		if call == nil {
-			continue
-		}
+	slices.SortStableFunc(s.calls, func(a, b *streamToolCall) int { return cmp.Compare(a.index, b.index) })
+	out := make([]providers.ToolCall, 0, len(s.calls))
+	for _, call := range s.calls {
 		out = append(out, providers.ToolCall{
 			ID:        strings.TrimSpace(call.id),
 			Name:      strings.TrimSpace(call.name),
-			Arguments: compactJSONRaw(call.arguments.String()),
+			Arguments: toolArguments(call.arguments.String()),
 		})
 	}
 	return out
+}
+
+// chunkError is an error inside a stream; OpenRouter's code is the HTTP
+// status, OpenAI's a name such as "rate_limit_exceeded".
+type chunkError struct {
+	Code    json.RawMessage `json:"code"`
+	Type    string          `json:"type"`
+	Message string          `json:"message"`
+}
+
+func (e chunkError) status() int {
+	var status int
+	if json.Unmarshal(e.Code, &status) == nil {
+		return status
+	}
+	var name string
+	_ = json.Unmarshal(e.Code, &name)
+	return providers.OpenAIErrorStatus(textutil.FirstNonEmpty(name, e.Type))
 }

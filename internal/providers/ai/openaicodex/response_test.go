@@ -116,3 +116,21 @@ func TestStreamPropagatesCancellationAndSinkFailure(t *testing.T) {
 		t.Fatalf("sink error=%v", err)
 	}
 }
+
+func TestStreamTypesProviderErrors(t *testing.T) {
+	for _, tc := range []struct {
+		event     string
+		retryable bool
+	}{
+		{`{"type":"error","message":"overloaded","code":"server_is_overloaded"}`, true},
+		{`{"type":"error","error":{"message":"slow down","code":"rate_limit_exceeded"}}`, true},
+		{`{"type":"response.failed","response":{"status":"failed","error":{"code":"rate_limit_exceeded","message":"Rate limit reached"}}}`, true},
+		{`{"type":"response.failed","response":{"status":"failed","error":{"code":"server_error","message":"internal"}}}`, true},
+		{`{"type":"error","message":"bad input","code":"invalid_request_error"}`, false},
+	} {
+		_, err := (&Runtime{}).decodeStream(context.Background(), strings.NewReader("data: "+tc.event+"\n\n"))
+		if err == nil || providers.IsRetryableGenerationError(err) != tc.retryable {
+			t.Fatalf("%s: err = %v, retryable = %v; want %v", tc.event, err, providers.IsRetryableGenerationError(err), tc.retryable)
+		}
+	}
+}
