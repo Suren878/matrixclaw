@@ -16,18 +16,17 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	ID              string
-	Name            string
-	Enabled         bool
-	Transport       string
-	Command         string
-	Args            []string
-	Env             map[string]string
-	Endpoint        string
-	ToolPrefix      string
-	ReadOnly        bool
-	RequireApproval bool
-	Timeout         time.Duration
+	ID         string
+	Name       string
+	Enabled    bool
+	Transport  string
+	Command    string
+	Args       []string
+	Env        map[string]string
+	Endpoint   string
+	ToolPrefix string
+	ReadOnly   bool
+	Timeout    time.Duration
 }
 
 func NormalizeConfig(cfg Config) Config {

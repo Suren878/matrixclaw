@@ -100,9 +100,8 @@ Each server accepts:
 - `env`: extra environment variables for the stdio server process.
 - `endpoint`: streamable HTTP MCP endpoint.
 - `tool_prefix`: optional prefix override for generated tool IDs.
-- `read_only`: marks all tools from this server as read-only and safe.
-- `require_approval`: retained for config clarity; non-read-only MCP tools
-  require approval by default.
+- `read_only`: marks all tools from this server as read-only and safe; tools
+  of other servers ask for approval unless a permission rule allows them.
 - `timeout_seconds`: connect and tool-call timeout override.
 
 Invalid or incomplete server entries are ignored during config normalization.
@@ -117,6 +116,9 @@ conservatively:
   approval;
 - if `read_only` is true, tools are registered as read-only and do not require
   approval;
+- on the server with ID `browser`, only the tools that read the open page
+  (`browser_snapshot`, `browser_console_messages`, `browser_network_requests`)
+  skip approval; navigation can reach private hosts, so it asks;
 - tool calls and tool results are persisted in the normal matrixclaw session
   history;
 - stdio servers inherit the daemon environment plus `env` entries from config.

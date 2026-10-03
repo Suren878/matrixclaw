@@ -143,31 +143,29 @@ type MCPServerCreateRequest struct {
 }
 
 type MCPServerUpdate struct {
-	Name            *string  `json:"name,omitempty"`
-	Enabled         *bool    `json:"enabled,omitempty"`
-	Transport       *string  `json:"transport,omitempty"`
-	Command         *string  `json:"command,omitempty"`
-	Args            []string `json:"args,omitempty"`
-	Endpoint        *string  `json:"endpoint,omitempty"`
-	ToolPrefix      *string  `json:"tool_prefix,omitempty"`
-	ReadOnly        *bool    `json:"read_only,omitempty"`
-	RequireApproval *bool    `json:"require_approval,omitempty"`
-	TimeoutSeconds  *int     `json:"timeout_seconds,omitempty"`
+	Name           *string  `json:"name,omitempty"`
+	Enabled        *bool    `json:"enabled,omitempty"`
+	Transport      *string  `json:"transport,omitempty"`
+	Command        *string  `json:"command,omitempty"`
+	Args           []string `json:"args,omitempty"`
+	Endpoint       *string  `json:"endpoint,omitempty"`
+	ToolPrefix     *string  `json:"tool_prefix,omitempty"`
+	ReadOnly       *bool    `json:"read_only,omitempty"`
+	TimeoutSeconds *int     `json:"timeout_seconds,omitempty"`
 }
 
 type MCPServerConfig struct {
-	ID              string            `json:"id"`
-	Name            string            `json:"name,omitempty"`
-	Enabled         bool              `json:"enabled,omitempty"`
-	Transport       string            `json:"transport,omitempty"`
-	Command         string            `json:"command,omitempty"`
-	Args            []string          `json:"args,omitempty"`
-	Env             map[string]string `json:"env,omitempty"`
-	Endpoint        string            `json:"endpoint,omitempty"`
-	ToolPrefix      string            `json:"tool_prefix,omitempty"`
-	ReadOnly        bool              `json:"read_only,omitempty"`
-	RequireApproval bool              `json:"require_approval,omitempty"`
-	TimeoutSeconds  int               `json:"timeout_seconds,omitempty"`
+	ID             string            `json:"id"`
+	Name           string            `json:"name,omitempty"`
+	Enabled        bool              `json:"enabled,omitempty"`
+	Transport      string            `json:"transport,omitempty"`
+	Command        string            `json:"command,omitempty"`
+	Args           []string          `json:"args,omitempty"`
+	Env            map[string]string `json:"env,omitempty"`
+	Endpoint       string            `json:"endpoint,omitempty"`
+	ToolPrefix     string            `json:"tool_prefix,omitempty"`
+	ReadOnly       bool              `json:"read_only,omitempty"`
+	TimeoutSeconds int               `json:"timeout_seconds,omitempty"`
 }
 
 type BrowserConfig struct {

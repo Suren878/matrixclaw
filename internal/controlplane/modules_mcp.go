@@ -123,14 +123,13 @@ func (d *Dispatcher) createMCPServer(ctx context.Context, value string) (Result,
 		return Result{Handled: true, Text: "MCP server id is reserved for the Browser module: " + serverID}, nil
 	}
 	server := setup.MCPServerConfig{
-		ID:              serverID,
-		Name:            serverID,
-		Enabled:         false,
-		Transport:       "stdio",
-		Command:         serverID,
-		ToolPrefix:      serverID,
-		RequireApproval: true,
-		TimeoutSeconds:  30,
+		ID:             serverID,
+		Name:           serverID,
+		Enabled:        false,
+		Transport:      "stdio",
+		Command:        serverID,
+		ToolPrefix:     serverID,
+		TimeoutSeconds: 30,
 	}
 	resp, err := d.mcp.CreateMCPServer(ctx, server)
 	if err != nil {
@@ -179,7 +178,6 @@ func (d *Dispatcher) mcpServerEditForm(ctx context.Context, serverID string) (Re
 		{ID: "endpoint", Label: "Endpoint", Value: server.Endpoint, EditCommand: mcpServerCommand(server.ID, "field", "endpoint")},
 		{ID: "tool_prefix", Label: "Tool Prefix", Value: server.ToolPrefix, EditCommand: mcpServerCommand(server.ID, "field", "tool_prefix")},
 		{ID: "read_only", Label: "Read Only", Value: formatEnabled(server.ReadOnly), EditCommand: mcpServerCommand(server.ID, "field", "read_only")},
-		{ID: "require_approval", Label: "Require Approval", Value: formatEnabled(server.RequireApproval), EditCommand: mcpServerCommand(server.ID, "field", "require_approval")},
 		{ID: "timeout", Label: "Timeout Seconds", Value: formatInt(server.TimeoutSeconds), EditCommand: mcpServerCommand(server.ID, "field", "timeout")},
 	}
 	return Result{Handled: true, Form: &FormData{
@@ -386,8 +384,6 @@ func mcpServerFieldPromptText(server setup.MCPServerConfig, field string) (title
 		return "MCP Tool Prefix", server.ToolPrefix, server.ID
 	case "read_only":
 		return "Read Only", formatEnabled(server.ReadOnly), "yes or no"
-	case "require_approval":
-		return "Require Approval", formatEnabled(server.RequireApproval), "yes or no"
 	case "timeout":
 		return "Timeout Seconds", formatInt(server.TimeoutSeconds), "30"
 	default:
@@ -416,12 +412,6 @@ func mcpServerUpdateForField(field string, value string) (setup.MCPServerUpdate,
 			return setup.MCPServerUpdate{}, false
 		}
 		return setup.MCPServerUpdate{ReadOnly: &enabled}, true
-	case "require_approval":
-		enabled, ok := parseEnabledChoice(value)
-		if !ok {
-			return setup.MCPServerUpdate{}, false
-		}
-		return setup.MCPServerUpdate{RequireApproval: &enabled}, true
 	case "timeout":
 		timeout, err := strconv.Atoi(value)
 		if err != nil || timeout < 0 {

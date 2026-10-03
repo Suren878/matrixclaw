@@ -55,18 +55,17 @@ func bridgeConfig(cfg setup.MCPConfig) mcpbridge.Config {
 	out.Servers = make([]mcpbridge.ServerConfig, 0, len(cfg.Servers))
 	for _, server := range cfg.Servers {
 		out.Servers = append(out.Servers, mcpbridge.ServerConfig{
-			ID:              server.ID,
-			Name:            server.Name,
-			Enabled:         server.Enabled,
-			Transport:       server.Transport,
-			Command:         server.Command,
-			Args:            append([]string(nil), server.Args...),
-			Env:             copyMap(server.Env),
-			Endpoint:        server.Endpoint,
-			ToolPrefix:      server.ToolPrefix,
-			ReadOnly:        server.ReadOnly,
-			RequireApproval: server.RequireApproval,
-			Timeout:         time.Duration(server.TimeoutSeconds) * time.Second,
+			ID:         server.ID,
+			Name:       server.Name,
+			Enabled:    server.Enabled,
+			Transport:  server.Transport,
+			Command:    server.Command,
+			Args:       append([]string(nil), server.Args...),
+			Env:        copyMap(server.Env),
+			Endpoint:   server.Endpoint,
+			ToolPrefix: server.ToolPrefix,
+			ReadOnly:   server.ReadOnly,
+			Timeout:    time.Duration(server.TimeoutSeconds) * time.Second,
 		})
 	}
 	return out

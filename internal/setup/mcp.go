@@ -110,9 +110,6 @@ func (s *Service) UpdateMCPServer(serverID string, update MCPServerUpdate) (MCPC
 			if update.ReadOnly != nil {
 				cfg.Servers[i].ReadOnly = *update.ReadOnly
 			}
-			if update.RequireApproval != nil {
-				cfg.Servers[i].RequireApproval = *update.RequireApproval
-			}
 			if update.TimeoutSeconds != nil {
 				cfg.Servers[i].TimeoutSeconds = *update.TimeoutSeconds
 			}

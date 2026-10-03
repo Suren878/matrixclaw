@@ -369,17 +369,16 @@ func (r *Runtime) PlaywrightMCPServerConfig(provider setup.BrowserProviderOption
 	}
 	args := r.playwrightMCPServerArgs(provider)
 	return setup.MCPServerConfig{
-		ID:              "browser",
-		Name:            "Local Browser",
-		Enabled:         true,
-		Transport:       "stdio",
-		Command:         provider.RuntimePath,
-		Args:            args,
-		Env:             map[string]string{"PLAYWRIGHT_BROWSERS_PATH": r.playwrightBrowsersDir()},
-		ToolPrefix:      "browser",
-		ReadOnly:        false,
-		RequireApproval: true,
-		TimeoutSeconds:  120,
+		ID:             "browser",
+		Name:           "Local Browser",
+		Enabled:        true,
+		Transport:      "stdio",
+		Command:        provider.RuntimePath,
+		Args:           args,
+		Env:            map[string]string{"PLAYWRIGHT_BROWSERS_PATH": r.playwrightBrowsersDir()},
+		ToolPrefix:     "browser",
+		ReadOnly:       false,
+		TimeoutSeconds: 120,
 	}, true
 }
 
