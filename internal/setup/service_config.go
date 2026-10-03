@@ -129,7 +129,6 @@ func (s *Service) buildConfig(draft Draft) (Config, error) {
 func defaultDraft() Draft {
 	return Draft{
 		AssistantName:         "matrixclaw",
-		AssistantSystemPrompt: DefaultAssistantSystemPrompt(),
 		HTTPAddr:              defaultHTTPAddr(),
 		DBPath:                defaultDBPath(),
 		Timezone:              defaultTimezone(),

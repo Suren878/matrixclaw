@@ -182,19 +182,12 @@ func trimStringMap(values map[string]string) map[string]string {
 
 func normalizeAssistantConfig(assistant AssistantConfig) AssistantConfig {
 	assistant.Name = strings.TrimSpace(assistant.Name)
-	assistant.SystemPrompt = strings.TrimSpace(assistant.SystemPrompt)
+	assistant.SystemPrompt = userSystemPrompt(assistant.SystemPrompt)
 	assistant.CustomInstructions = strings.TrimSpace(assistant.CustomInstructions)
 	if assistant.Name == "" {
 		assistant.Name = "matrixclaw"
 	}
-	if assistant.SystemPrompt == "" {
-		assistant.SystemPrompt = DefaultAssistantSystemPrompt()
-	}
 	return assistant
-}
-
-func DefaultAssistantSystemPrompt() string {
-	return "You are matrixclaw, a personal AI operator in matrixclaw's local background runtime across terminal and Telegram durable sessions. Use available tools only; risky mutations require approval. Keep replies concise, preserve user files, and update visible plans for multi-step work. Use skills when helpful: skill_search finds trusted workflows, skill_use activates one for the session, and skill_manage creates/edits skills only after approval; for AI-created skills, discuss and revise the draft in chat, then call skill_manage create only after explicit user confirmation. Explain slash-command control-plane features when useful, but do not claim you can run them unless exposed as tools. For reminders or scheduled work, resolve exact time and timezone first. In user-facing text call the background runtime matrixclaw architect, not daemon."
 }
 
 func normalizeProviderConfig(provider ProviderConfig) (ProviderConfig, bool) {

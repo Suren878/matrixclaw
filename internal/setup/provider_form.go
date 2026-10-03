@@ -1,9 +1,10 @@
 package setup
 
 import (
+	"strings"
+
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
-	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 )

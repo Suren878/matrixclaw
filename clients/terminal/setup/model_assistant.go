@@ -6,7 +6,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	components "github.com/Suren878/matrixclaw/clients/terminal/ui/components"
-	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
 func (m *model) renderAssistantForm() string {
@@ -14,7 +13,6 @@ func (m *model) renderAssistantForm() string {
 		{Title: "Continue"},
 		{Title: "Name", Status: nonEmpty(m.draft.AssistantName, "matrixclaw")},
 		{Title: "User prompt", Status: assistantPromptStatus(m.draft.AssistantCustomPrompt)},
-		{Title: "Refresh project context"},
 	}
 	extraLines := []string{"", setupFooterStyle.Render("System prompt is managed by matrixclaw.")}
 	card := components.RenderListCard(m.commandFrame(), components.ListData{
@@ -34,7 +32,7 @@ func (m *model) updateAssistantForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	itemCount := 4
+	itemCount := 3
 	event := m.updateListSelection(keyMsg.String(), &m.formFocus, itemCount)
 	switch event.Kind {
 	case components.EventBack:
@@ -53,9 +51,6 @@ func (m *model) updateAssistantForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.openTextEditor(textEditAssistantName, "Assistant Name", "matrixclaw", m.draft.AssistantName, false)
 		case 2:
 			m.openTextEditor(textEditAssistantCustomPrompt, "User Prompt", "User instructions for every run", m.draft.AssistantCustomPrompt, false)
-		case 3:
-			m.draft.AssistantSystemPrompt = setup.InitializeAssistantSystemPromptForDraft(m.draft.AssistantSystemPrompt, m.draft)
-			m.formError = "project context refreshed"
 		}
 	}
 	return m, nil
@@ -68,7 +63,6 @@ func (m *model) handleAssistantFormSave() error {
 	if m.draft.AssistantName == "" {
 		m.draft.AssistantName = "matrixclaw"
 	}
-	m.draft.AssistantSystemPrompt = setup.InitializeAssistantSystemPromptForDraft(m.draft.AssistantSystemPrompt, m.draft)
 	return m.saveDraftAndReturn(screenChannelsList)
 }
 

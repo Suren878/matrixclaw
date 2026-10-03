@@ -123,9 +123,6 @@ func telegramStatus(enabled bool, token string, allowedUserID string) string {
 }
 
 func assistantStatus(assistant AssistantConfig) string {
-	if strings.TrimSpace(assistant.SystemPrompt) == "" {
-		return "Incomplete"
-	}
 	if strings.TrimSpace(assistant.CustomInstructions) != "" {
 		return "Configured · Custom"
 	}
@@ -133,9 +130,6 @@ func assistantStatus(assistant AssistantConfig) string {
 }
 
 func assistantDraftStatus(d Draft) string {
-	if strings.TrimSpace(d.AssistantSystemPrompt) == "" {
-		return "Incomplete"
-	}
 	if strings.TrimSpace(d.AssistantCustomPrompt) != "" {
 		return "Configured · Custom"
 	}
