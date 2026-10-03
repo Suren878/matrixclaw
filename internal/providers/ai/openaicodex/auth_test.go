@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
 func testJWT(exp time.Time, tag string) string {
@@ -83,5 +86,32 @@ func TestConcurrentResolveRefreshesOnceAndRewritesTheStore(t *testing.T) {
 	entries, _ := os.ReadDir(dir)
 	if len(entries) != 1 {
 		t.Fatalf("auth dir holds %d entries, want only the store", len(entries))
+	}
+}
+
+func TestGenerateReportsRateLimitsAsRetryable(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "openai-codex.json")
+	t.Setenv("MATRIXCLAW_CODEX_AUTH_FILE", path)
+	t.Setenv("CODEX_HOME", filepath.Join(dir, "codex"))
+	raw, _ := json.Marshal(tokenStore{Tokens: map[string]string{"access_token": testJWT(time.Now().Add(time.Hour), "a"), "refresh_token": "r"}})
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, status := range []int{http.StatusTooManyRequests, http.StatusBadGateway} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Retry-After", "2")
+			http.Error(w, `{"error":{"message":"slow down"}}`, status)
+		}))
+		runtime, err := New(context.Background(), Config{BaseURL: server.URL, Model: "gpt-5.4"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = runtime.Generate(context.Background(), providers.Request{Messages: []providers.Message{{Role: "user", Content: "hi"}}})
+		server.Close()
+		var apiErr *providers.APIError
+		if !errors.As(err, &apiErr) || apiErr.Status != status || apiErr.RetryAfter != 2*time.Second || !providers.IsRetryableGenerationError(err) {
+			t.Fatalf("%d: err=%v", status, err)
+		}
 	}
 }

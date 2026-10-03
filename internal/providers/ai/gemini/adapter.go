@@ -11,17 +11,11 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
 const skipThoughtSignatureValidator = "skip_thought_signature_validator"
-
-var transientRetryBackoffs = []time.Duration{
-	200 * time.Millisecond,
-	750 * time.Millisecond,
-}
 
 type Config struct {
 	ProviderID      string
@@ -117,10 +111,10 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 			return nil, fmt.Errorf("gemini: read models response: %w", readErr)
 		}
 		if res.StatusCode == http.StatusNotFound {
-			return nil, fmt.Errorf("gemini: model listing unavailable: %s", decodeGeminiError(res.StatusCode, body))
+			return nil, fmt.Errorf("gemini: model listing unavailable: status %d: %s", res.StatusCode, geminiErrorMessage(body))
 		}
 		if res.StatusCode < 200 || res.StatusCode >= 300 {
-			return nil, fmt.Errorf("gemini: %s", decodeGeminiError(res.StatusCode, body))
+			return nil, providers.NewAPIError("gemini", res.StatusCode, geminiErrorMessage(body), nil)
 		}
 
 		var payload geminiModelsResponse
@@ -159,55 +153,27 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 	if err != nil {
 		return providers.Response{}, fmt.Errorf("gemini: marshal request: %w", err)
 	}
-	for attempt := 0; ; attempt++ {
-		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, r.endpoint, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, r.endpoint, bytes.NewReader(body))
+	if err != nil {
+		return providers.Response{}, fmt.Errorf("gemini: build request: %w", err)
+	}
+	httpReq.Header.Set("x-goog-api-key", r.apiKey)
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "text/event-stream")
+
+	httpRes, err := r.client.Do(httpReq)
+	if err != nil {
+		return providers.Response{}, fmt.Errorf("gemini: request failed: %w", err)
+	}
+	defer func() { _ = httpRes.Body.Close() }()
+	if httpRes.StatusCode < 200 || httpRes.StatusCode >= 300 {
+		resBody, err := io.ReadAll(httpRes.Body)
 		if err != nil {
-			return providers.Response{}, fmt.Errorf("gemini: build request: %w", err)
+			return providers.Response{}, fmt.Errorf("gemini: read response: %w", err)
 		}
-		httpReq.Header.Set("x-goog-api-key", r.apiKey)
-		httpReq.Header.Set("Content-Type", "application/json")
-		httpReq.Header.Set("Accept", "text/event-stream")
-
-		httpRes, err := r.client.Do(httpReq)
-		if err != nil {
-			return providers.Response{}, fmt.Errorf("gemini: request failed: %w", err)
-		}
-		if httpRes.StatusCode < 200 || httpRes.StatusCode >= 300 {
-			resBody, err := io.ReadAll(httpRes.Body)
-			_ = httpRes.Body.Close()
-			if err != nil {
-				return providers.Response{}, fmt.Errorf("gemini: read response: %w", err)
-			}
-			if shouldRetryStatus(httpRes.StatusCode) && attempt < len(transientRetryBackoffs) {
-				if err := waitForRetry(ctx, transientRetryBackoffs[attempt]); err != nil {
-					return providers.Response{}, err
-				}
-				continue
-			}
-			return providers.Response{}, fmt.Errorf("gemini: %s", decodeGeminiError(httpRes.StatusCode, resBody))
-		}
-		response, err := r.decodeStream(ctx, httpRes.Body)
-		_ = httpRes.Body.Close()
-		return response, err
+		return providers.Response{}, providers.NewAPIError("gemini", httpRes.StatusCode, geminiErrorMessage(resBody), httpRes.Header)
 	}
-}
-
-func shouldRetryStatus(statusCode int) bool {
-	return statusCode >= 500 && statusCode <= 599
-}
-
-func waitForRetry(ctx context.Context, delay time.Duration) error {
-	if delay <= 0 {
-		return nil
-	}
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("gemini: retry canceled: %w", ctx.Err())
-	case <-timer.C:
-		return nil
-	}
+	return r.decodeStream(ctx, httpRes.Body)
 }
 
 func (r *Runtime) generatePayload(request providers.Request) generateContentRequest {
@@ -424,14 +390,14 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 	return r.reply(parts, stop, usage)
 }
 
-// streamError reports a mid-stream error chunk; like an HTTP 5xx, a server-side
-// failure is retryable while nothing has been generated.
+// streamError reports a mid-stream error chunk, classified like the HTTP
+// status it carries.
 func streamError(code int, status string, message string) error {
 	detail := strings.Join(strings.Fields(fmt.Sprintf("stream error %d %s %s", code, status, message)), " ")
-	if shouldRetryStatus(code) || status == "UNAVAILABLE" || status == "INTERNAL" {
-		return fmt.Errorf("gemini: %s: %w", detail, providers.ErrIncompleteResponse)
+	if code == 0 && (status == "UNAVAILABLE" || status == "INTERNAL") {
+		code = http.StatusServiceUnavailable
 	}
-	return fmt.Errorf("gemini: %s", detail)
+	return providers.NewStreamError("gemini", code, detail)
 }
 
 func (r *Runtime) reply(parts []geminiPart, stop providers.StopReason, usage geminiUsageMetadata) (providers.Response, error) {
@@ -587,14 +553,11 @@ func geminiUsage(usage geminiUsageMetadata) providers.Usage {
 	}
 }
 
-func decodeGeminiError(statusCode int, body []byte) string {
+// geminiErrorMessage is the error message of a response body, or the body itself.
+func geminiErrorMessage(body []byte) string {
 	var envelope geminiErrorEnvelope
 	if err := json.Unmarshal(body, &envelope); err == nil && strings.TrimSpace(envelope.Error.Message) != "" {
-		return fmt.Sprintf("status %d: %s", statusCode, strings.TrimSpace(envelope.Error.Message))
+		return strings.TrimSpace(envelope.Error.Message)
 	}
-	text := strings.TrimSpace(string(body))
-	if text == "" {
-		return fmt.Sprintf("status %d", statusCode)
-	}
-	return fmt.Sprintf("status %d: %s", statusCode, text)
+	return strings.TrimSpace(string(body))
 }

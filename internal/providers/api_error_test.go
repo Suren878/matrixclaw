@@ -1,9 +1,11 @@
-package agentcontext
+package providers
 
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"testing"
+	"time"
 )
 
 func TestContextLengthErrorsOfEveryProviderAreRecognised(t *testing.T) {
@@ -31,8 +33,40 @@ func TestContextLengthErrorsOfEveryProviderAreRecognised(t *testing.T) {
 		{"overloaded", errors.New("anthropic: status 529: overloaded_error: Overloaded"), false},
 		{"nil", nil, false},
 	} {
-		if got := IsContextLengthExceeded(tc.err); got != tc.want {
-			t.Errorf("%s: IsContextLengthExceeded = %t, want %t", tc.name, got, tc.want)
+		if got := IsContextOverflow(tc.err); got != tc.want {
+			t.Errorf("%s: IsContextOverflow = %t, want %t", tc.name, got, tc.want)
 		}
+	}
+}
+
+func TestAPIErrorKindFollowsStatusThenWording(t *testing.T) {
+	header := http.Header{"Retry-After": {"7"}}
+	for _, tc := range []struct {
+		status    int
+		message   string
+		kind      ErrorKind
+		retryable bool
+	}{
+		{429, "Rate limit reached", ErrorRateLimit, true},
+		{529, "overloaded_error: Overloaded", ErrorOverloaded, true},
+		{503, "", ErrorOverloaded, true},
+		{401, "invalid x-api-key", ErrorAuth, false},
+		{400, "prompt is too long: 208310 tokens > 200000 maximum", ErrorContextOverflow, false},
+		{413, "Request too large for model on tokens per minute (TPM)", ErrorInvalid, false},
+		{400, "unknown parameter", ErrorInvalid, false},
+	} {
+		err := NewAPIError("p", tc.status, tc.message, header)
+		if err.Kind != tc.kind || err.Retryable() != tc.retryable || IsRetryableGenerationError(fmt.Errorf("wrapped: %w", err)) != tc.retryable {
+			t.Errorf("%d %q: kind=%s retryable=%v, want %s %v", tc.status, tc.message, err.Kind, err.Retryable(), tc.kind, tc.retryable)
+		}
+		if err.RetryAfter != 7*time.Second {
+			t.Errorf("%d: retry after %s, want 7s", tc.status, err.RetryAfter)
+		}
+	}
+	if !IsContextOverflow(fmt.Errorf("x: %w", NewAPIError("p", 400, "context_length_exceeded", nil))) {
+		t.Error("typed overflow not recognised")
+	}
+	if IsContextOverflow(NewAPIError("p", 503, "maximum context length", nil)) {
+		t.Error("a typed server error was read from its wording")
 	}
 }

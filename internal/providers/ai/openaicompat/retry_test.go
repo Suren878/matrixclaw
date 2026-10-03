@@ -39,55 +39,31 @@ func TestGenerateAcceptsJSONWhenGatewayIgnoresStreamRequest(t *testing.T) {
 	}
 }
 
-func TestGenerateRetriesRateLimitButNotAuthenticationFailure(t *testing.T) {
-	for _, status := range []int{429, 401} {
-		t.Run(fmt.Sprint(status), func(t *testing.T) {
-			calls := 0
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				calls++
-				w.Header().Set("Content-Type", "application/json")
-				if calls == 1 {
-					w.Header().Set("Retry-After", "0")
-					w.WriteHeader(status)
-					_, _ = w.Write([]byte(`{"error":{"message":"rejected"}}`))
-					return
-				}
-				_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"Recovered"},"finish_reason":"stop"}]}`))
-			}))
-			defer server.Close()
-			runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: server.URL, Model: "test"})
-			if err != nil {
-				t.Fatal(err)
-			}
-			response, err := runtime.Generate(context.Background(), providers.Request{Messages: []providers.Message{{Role: "user", Content: "hello"}}})
-			if status == 429 {
-				if err != nil || response.Text != "Recovered" || calls != 2 {
-					t.Fatalf("response=%#v err=%v calls=%d", response, err, calls)
-				}
-			} else if err == nil || calls != 1 {
-				t.Fatalf("authentication error retried: err=%v calls=%d", err, calls)
-			}
-		})
-	}
-}
-
-func TestGenerateCancellationInterruptsRateLimitWait(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Retry-After", "10")
-		w.WriteHeader(429)
-		_, _ = w.Write([]byte(`{"error":{"message":"rate limited"}}`))
-		cancel()
-	}))
-	defer server.Close()
-	runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: server.URL, Model: "test"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	started := time.Now()
-	_, err = runtime.Generate(ctx, providers.Request{Messages: []providers.Message{{Role: "user", Content: "hello"}}})
-	if !errors.Is(err, context.Canceled) || time.Since(started) > time.Second {
-		t.Fatalf("cancellation was not honored: %v", err)
+func TestGenerateReportsTypedHTTPErrorsWithoutRetrying(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		kind   providers.ErrorKind
+	}{{429, providers.ErrorRateLimit}, {503, providers.ErrorOverloaded}, {401, providers.ErrorAuth}} {
+		calls := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Retry-After", "3")
+			w.WriteHeader(tc.status)
+			_, _ = w.Write([]byte(`{"error":{"message":"rejected"}}`))
+		}))
+		runtime, err := New(context.Background(), Config{APIKey: "test", BaseURL: server.URL, Model: "test"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = runtime.Generate(context.Background(), providers.Request{Messages: []providers.Message{{Role: "user", Content: "hello"}}})
+		server.Close()
+		var apiErr *providers.APIError
+		if !errors.As(err, &apiErr) || apiErr.Kind != tc.kind || apiErr.RetryAfter != 3*time.Second || calls != 1 {
+			t.Fatalf("%d: err=%v calls=%d", tc.status, err, calls)
+		}
+		if err.Error() != fmt.Sprintf("openaicompat: status %d: rejected", tc.status) {
+			t.Fatalf("%d: message %q", tc.status, err.Error())
+		}
 	}
 }

@@ -110,7 +110,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 		if err != nil {
 			return providers.Response{}, fmt.Errorf("openai-codex: read response: %w", err)
 		}
-		return providers.Response{}, fmt.Errorf("openai-codex: %s", decodeError(raw))
+		return providers.Response{}, providers.NewAPIError("openai-codex", res.StatusCode, decodeError(raw), res.Header)
 	}
 	if strings.Contains(strings.ToLower(res.Header.Get("Content-Type")), "application/json") {
 		raw, err := io.ReadAll(res.Body)

@@ -150,8 +150,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 		payload.Stream = true
 	}
 	response, err := r.send(ctx, payload)
-	var rejected *apiError
-	if errors.As(err, &rejected) && rejected.rejectsThinking() && stripThinking(payload.Messages) {
+	if rejectsThinking(err) && stripThinking(payload.Messages) {
 		// Until the prompt prefix is stable, a replayed signature can fail
 		// verification; the request is still valid without thinking.
 		return r.send(ctx, payload)
@@ -188,7 +187,7 @@ func (r *Runtime) send(ctx context.Context, payload anthropicRequest) (providers
 		if err != nil {
 			return providers.Response{}, fmt.Errorf("anthropic: read response: %w", err)
 		}
-		return providers.Response{}, anthropicResponseError(httpRes.StatusCode, resBody)
+		return providers.Response{}, anthropicResponseError(httpRes.StatusCode, resBody, httpRes.Header)
 	}
 	if payload.Stream {
 		return r.decodeStream(ctx, httpRes.Body)
@@ -278,35 +277,35 @@ type anthropicErrorEnvelope struct {
 	Error anthropicErrorDetail `json:"error"`
 }
 
-// apiError is an error reported by the API, in a response or a stream event.
-// Overload and server errors match ErrIncompleteResponse, so core retries them
-// while nothing has been output yet.
-type apiError struct {
-	message string
-	status  int
-	detail  anthropicErrorDetail
-}
-
-func (e *apiError) Error() string { return e.message }
-
-func (e *apiError) Unwrap() error {
-	if e.status == 529 || e.detail.Type == "overloaded_error" || e.detail.Type == "api_error" {
-		return providers.ErrIncompleteResponse
-	}
-	return nil
-}
-
 // rejectsThinking reports a bad request about replayed thinking or its signature.
-func (e *apiError) rejectsThinking() bool {
-	message := strings.ToLower(e.detail.Message)
-	return e.status == http.StatusBadRequest && e.detail.Type == "invalid_request_error" &&
-		(strings.Contains(message, "thinking") || strings.Contains(message, "signature"))
+func rejectsThinking(err error) bool {
+	var apiErr *providers.APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusBadRequest {
+		return false
+	}
+	message := strings.ToLower(apiErr.Message)
+	return strings.HasPrefix(message, "invalid_request_error") && (strings.Contains(message, "thinking") || strings.Contains(message, "signature"))
 }
 
-func anthropicResponseError(statusCode int, body []byte) error {
+func anthropicResponseError(statusCode int, body []byte, header http.Header) error {
 	var envelope anthropicErrorEnvelope
-	_ = json.Unmarshal(body, &envelope)
-	return &apiError{message: "anthropic: " + decodeAnthropicError(statusCode, body), status: statusCode, detail: envelope.Error}
+	message := strings.TrimSpace(string(body))
+	if err := json.Unmarshal(body, &envelope); err == nil && strings.TrimSpace(envelope.Error.Message) != "" {
+		message = envelope.Error.String()
+	}
+	return providers.NewAPIError("anthropic", statusCode, message, header)
+}
+
+// anthropicStreamError classifies an error event by the HTTP status its type stands for.
+func anthropicStreamError(detail anthropicErrorDetail) error {
+	code := map[string]int{
+		"overloaded_error":     529,
+		"api_error":            http.StatusInternalServerError,
+		"rate_limit_error":     http.StatusTooManyRequests,
+		"authentication_error": http.StatusUnauthorized,
+		"permission_error":     http.StatusForbidden,
+	}[detail.Type]
+	return providers.NewStreamError("anthropic", code, "stream error: "+detail.String())
 }
 
 func decodeAnthropicError(statusCode int, body []byte) string {

@@ -3,7 +3,6 @@ package openaicompat
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -175,8 +174,7 @@ func TestMaxTokensRejectionLearnsACapBelowTheSentValue(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sent := tc.sent
 			payload := chatCompletionRequest{MaxTokens: &sent}
-			body := []byte(fmt.Sprintf(`{"error":{"message":%q}}`, tc.message))
-			retry, capTokens, omit := maxTokensRejection(payload, http.StatusBadRequest, body)
+			retry, capTokens, omit := maxTokensRejection(payload, rejection{message: tc.message, text: strings.ToLower(tc.message)})
 			if retry != tc.wantRetry || capTokens != tc.wantCap || omit != tc.wantOmit {
 				t.Fatalf("maxTokensRejection=(%v,%v,%v), want (%v,%v,%v)", retry, capTokens, omit, tc.wantRetry, tc.wantCap, tc.wantOmit)
 			}

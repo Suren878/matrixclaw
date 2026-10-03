@@ -19,6 +19,10 @@ func IsRetryableGenerationError(err error) bool {
 	if errors.Is(err, context.Canceled) {
 		return false
 	}
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Retryable()
+	}
 	if errors.Is(err, ErrEmptyResponse) || errors.Is(err, ErrIncompleteResponse) || errors.Is(err, ErrMalformedToolCall) ||
 		errors.Is(err, ErrStreamIdle) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
 		return true

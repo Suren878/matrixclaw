@@ -590,6 +590,26 @@ func TestRetryableErrorBeforeOutputIsRetried(t *testing.T) {
 	}
 }
 
+func TestRateLimitWaitsForRetryAfterWithinTheCap(t *testing.T) {
+	for _, tc := range []struct {
+		retryAfter time.Duration
+		requests   int
+	}{{5 * time.Second, 2}, {10 * time.Minute, 1}} {
+		f := agenttest.NewFixture()
+		limited := &providers.APIError{Provider: "p", Status: 429, Kind: providers.ErrorRateLimit, RetryAfter: tc.retryAfter}
+		model := agenttest.NewScriptedModel(agenttest.Turn{Err: limited}, text("ok"))
+
+		run(t, f, model)
+
+		if len(model.Requests()) != tc.requests {
+			t.Fatalf("retry after %s: requests = %d, want %d", tc.retryAfter, len(model.Requests()), tc.requests)
+		}
+		if tc.requests == 2 && (len(f.Slept) != 1 || f.Slept[0] != tc.retryAfter) {
+			t.Fatalf("retry after %s: slept %v", tc.retryAfter, f.Slept)
+		}
+	}
+}
+
 func TestStopDuringRetryBackoffEndsTheWait(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.RealSleep = true

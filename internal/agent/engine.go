@@ -180,7 +180,7 @@ func (r *run) step(ctx context.Context) stepResult {
 	}
 	r.counters.Steps++
 	gen, err := r.generateWithRetry(ctx, request)
-	if err != nil && agentcontext.IsContextLengthExceeded(err) {
+	if err != nil && providers.IsContextOverflow(err) {
 		tokens := r.promptTokens(request)
 		r.learnLimit(tokens)
 		compacted, compactErr := r.compactHistory(ctx, nil, tokens, agentcontext.TailPercent/2)
@@ -194,7 +194,7 @@ func (r *run) step(ctx context.Context) stepResult {
 			if buildErr != nil {
 				return failedStep(buildErr)
 			}
-			if gen, err = r.generateWithRetry(ctx, retry); err != nil && agentcontext.IsContextLengthExceeded(err) {
+			if gen, err = r.generateWithRetry(ctx, retry); err != nil && providers.IsContextOverflow(err) {
 				err = fmt.Errorf("%w: %w", ErrContextExhausted, err)
 			}
 		}

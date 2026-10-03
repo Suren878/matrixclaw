@@ -11,15 +11,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
-
-var transientRetryBackoffs = []time.Duration{
-	200 * time.Millisecond,
-	750 * time.Millisecond,
-}
 
 func (r *Runtime) Generate(ctx context.Context, request providers.Request) (providers.Response, error) {
 	request = providers.NormalizeRequest(request, r.profile)
@@ -28,17 +22,12 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 		return providers.Response{}, errors.New("openaicompat: no messages")
 	}
 
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return providers.Response{}, fmt.Errorf("openaicompat: marshal request: %w", err)
-	}
-
-	retriedWithoutReasoning := false
-	retriedWithMaxCompletionTokens := false
-	retriedWithReasoningContent := false
-	retriedWithoutMaxTokens := false
-	retriedWithoutStreamOptions := false
-	for attempt := 0; ; attempt++ {
+	var applied [len(requestFixes)]bool
+	for {
+		body, err := json.Marshal(payload)
+		if err != nil {
+			return providers.Response{}, fmt.Errorf("openaicompat: marshal request: %w", err)
+		}
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, r.endpoint, bytes.NewReader(body))
 		if err != nil {
 			return providers.Response{}, fmt.Errorf("openaicompat: build request: %w", err)
@@ -62,75 +51,10 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 			if err != nil {
 				return providers.Response{}, fmt.Errorf("openaicompat: read response: %w", err)
 			}
-			if shouldRetryStatus(httpRes.StatusCode) && attempt < len(transientRetryBackoffs) {
-				delay := providers.RetryAfterDelay(httpRes.Header.Get("Retry-After"), time.Now(), transientRetryBackoffs[attempt])
-				if delay > 30*time.Second {
-					return providers.Response{}, fmt.Errorf("openaicompat: %s (retry after %s)", decodeOpenAIError(httpRes.StatusCode, resBody), delay)
-				}
-				if err := waitForRetry(ctx, delay); err != nil {
-					return providers.Response{}, err
-				}
+			if r.fixRequest(&payload, &applied, httpRes.StatusCode, resBody) {
 				continue
 			}
-			if r.quirks.RetryUnsupportedReasoningEffort && !retriedWithoutReasoning && shouldRetryWithoutReasoningEffort(payload, httpRes.StatusCode, resBody) {
-				payload.ReasoningEffort = ""
-				body, err = json.Marshal(payload)
-				if err != nil {
-					return providers.Response{}, fmt.Errorf("openaicompat: marshal request: %w", err)
-				}
-				retriedWithoutReasoning = true
-				attempt = -1
-				continue
-			}
-			if r.quirks.RetryMaxTokensField && !retriedWithMaxCompletionTokens && shouldRetryWithMaxCompletionTokens(payload, httpRes.StatusCode, resBody) {
-				payload.MaxCompletionTokens = payload.MaxTokens
-				payload.MaxTokens = nil
-				body, err = json.Marshal(payload)
-				if err != nil {
-					return providers.Response{}, fmt.Errorf("openaicompat: marshal request: %w", err)
-				}
-				retriedWithMaxCompletionTokens = true
-				attempt = -1
-				continue
-			}
-			if r.quirks.RetryWithoutStreamOptions && !retriedWithoutStreamOptions && shouldRetryWithoutStreamOptions(payload, httpRes.StatusCode, resBody) {
-				payload.StreamOptions = nil
-				body, err = json.Marshal(payload)
-				if err != nil {
-					return providers.Response{}, fmt.Errorf("openaicompat: marshal request: %w", err)
-				}
-				retriedWithoutStreamOptions = true
-				attempt = -1
-				continue
-			}
-			if r.quirks.RetryWithoutMaxTokens && !retriedWithoutMaxTokens {
-				if retry, capTokens, omit := maxTokensRejection(payload, httpRes.StatusCode, resBody); retry {
-					r.rememberMaxTokensRejection(capTokens, omit)
-					payload.MaxTokens = nil
-					payload.MaxCompletionTokens = nil
-					body, err = json.Marshal(payload)
-					if err != nil {
-						return providers.Response{}, fmt.Errorf("openaicompat: marshal request: %w", err)
-					}
-					retriedWithoutMaxTokens = true
-					attempt = -1
-					continue
-				}
-			}
-			if r.quirks.RetryAssistantReasoningContent && !retriedWithReasoningContent && shouldRetryWithReasoningContent(payload, httpRes.StatusCode, resBody) {
-				var changed bool
-				payload, changed = withMissingAssistantReasoningContent(payload)
-				if changed {
-					body, err = json.Marshal(payload)
-					if err != nil {
-						return providers.Response{}, fmt.Errorf("openaicompat: marshal request: %w", err)
-					}
-					retriedWithReasoningContent = true
-					attempt = -1
-					continue
-				}
-			}
-			return providers.Response{}, fmt.Errorf("openaicompat: %s", decodeOpenAIError(httpRes.StatusCode, resBody))
+			return providers.Response{}, providers.NewAPIError("openaicompat", httpRes.StatusCode, openAIErrorMessage(resBody), httpRes.Header)
 		}
 		defer func() { _ = httpRes.Body.Close() }()
 		if payload.Stream && !strings.Contains(strings.ToLower(httpRes.Header.Get("Content-Type")), "application/json") {
@@ -143,6 +67,40 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 		}
 		return r.decodeChatResponse(resBody)
 	}
+}
+
+// requestFix adapts a payload a gateway rejected with a 4xx and reports
+// whether it changed anything; each fix runs at most once per generation.
+type requestFix func(r *Runtime, payload *chatCompletionRequest, rejection rejection) bool
+
+// rejection is a gateway's 4xx: its error message, and the lower-cased
+// message and body to search for markers.
+type rejection struct {
+	message string
+	text    string
+}
+
+var requestFixes = [...]requestFix{
+	dropUnsupportedReasoningEffort,
+	switchToMaxCompletionTokens,
+	dropStreamOptions,
+	dropRejectedMaxTokens,
+	addMissingReasoningContent,
+}
+
+func (r *Runtime) fixRequest(payload *chatCompletionRequest, applied *[len(requestFixes)]bool, statusCode int, body []byte) bool {
+	if statusCode < 400 || statusCode >= 500 {
+		return false
+	}
+	message := openAIErrorMessage(body)
+	rejected := rejection{message: message, text: strings.ToLower(message + "\n" + string(body))}
+	for i, fix := range requestFixes {
+		if !applied[i] && fix(r, payload, rejected) {
+			applied[i] = true
+			return true
+		}
+	}
+	return false
 }
 
 func applyDefaultHeaders(req *http.Request, headers map[string]string) {
@@ -165,16 +123,14 @@ func reservedHeader(name string) bool {
 	}
 }
 
-func shouldRetryWithReasoningContent(payload chatCompletionRequest, statusCode int, body []byte) bool {
-	if statusCode < 400 || statusCode >= 500 {
+func addMissingReasoningContent(_ *Runtime, payload *chatCompletionRequest, rejected rejection) bool {
+	text := rejected.text
+	if !strings.Contains(text, "reasoning_content") || !strings.Contains(text, "must be passed back") && !strings.Contains(text, "thinking mode") {
 		return false
 	}
-	if _, changed := withMissingAssistantReasoningContent(payload); !changed {
-		return false
-	}
-	text := strings.ToLower(decodeOpenAIError(statusCode, body) + "\n" + string(body))
-	return strings.Contains(text, "reasoning_content") &&
-		(strings.Contains(text, "must be passed back") || strings.Contains(text, "thinking mode"))
+	fixed, changed := withMissingAssistantReasoningContent(*payload)
+	*payload = fixed
+	return changed
 }
 
 func withMissingAssistantReasoningContent(payload chatCompletionRequest) (chatCompletionRequest, bool) {
@@ -195,81 +151,67 @@ func withMissingAssistantReasoningContent(payload chatCompletionRequest) (chatCo
 	return out, changed
 }
 
-func shouldRetryWithoutReasoningEffort(payload chatCompletionRequest, statusCode int, body []byte) bool {
-	if strings.TrimSpace(payload.ReasoningEffort) == "" || statusCode < 400 || statusCode >= 500 {
+func dropUnsupportedReasoningEffort(_ *Runtime, payload *chatCompletionRequest, rejected rejection) bool {
+	text := rejected.text
+	if strings.TrimSpace(payload.ReasoningEffort) == "" || !strings.Contains(text, "reasoning") ||
+		!containsAny(text, "unsupported", "not supported", "unrecognized", "unknown parameter", "invalid parameter", "does not support") {
 		return false
 	}
-	text := strings.ToLower(decodeOpenAIError(statusCode, body) + "\n" + string(body))
-	if !strings.Contains(text, "reasoning_effort") && !strings.Contains(text, "reasoning effort") && !strings.Contains(text, "reasoning") {
+	payload.ReasoningEffort = ""
+	return true
+}
+
+func switchToMaxCompletionTokens(_ *Runtime, payload *chatCompletionRequest, rejected rejection) bool {
+	text := rejected.text
+	if payload.MaxTokens == nil || payload.MaxCompletionTokens != nil || !strings.Contains(text, "max_tokens") ||
+		!containsAny(text, "unsupported", "not supported", "not compatible", "incompatible", "invalid parameter") {
 		return false
 	}
-	for _, marker := range []string{
-		"unsupported",
-		"not supported",
-		"unrecognized",
-		"unknown parameter",
-		"invalid parameter",
-		"does not support",
-	} {
+	payload.MaxCompletionTokens, payload.MaxTokens = payload.MaxTokens, nil
+	return true
+}
+
+func dropStreamOptions(_ *Runtime, payload *chatCompletionRequest, rejected rejection) bool {
+	text := rejected.text
+	if payload.StreamOptions == nil || !strings.Contains(text, "stream_options") && !strings.Contains(text, "include_usage") {
+		return false
+	}
+	payload.StreamOptions = nil
+	return true
+}
+
+func dropRejectedMaxTokens(r *Runtime, payload *chatCompletionRequest, rejected rejection) bool {
+	retry, capTokens, omit := maxTokensRejection(*payload, rejected)
+	if !retry {
+		return false
+	}
+	r.rememberMaxTokensRejection(capTokens, omit)
+	payload.MaxTokens, payload.MaxCompletionTokens = nil, nil
+	return true
+}
+
+func containsAny(text string, markers ...string) bool {
+	for _, marker := range markers {
 		if strings.Contains(text, marker) {
 			return true
 		}
 	}
 	return false
-}
-
-func shouldRetryWithMaxCompletionTokens(payload chatCompletionRequest, statusCode int, body []byte) bool {
-	if payload.MaxTokens == nil || payload.MaxCompletionTokens != nil || statusCode < 400 || statusCode >= 500 {
-		return false
-	}
-	text := strings.ToLower(decodeOpenAIError(statusCode, body) + "\n" + string(body))
-	if !strings.Contains(text, "max_tokens") {
-		return false
-	}
-	for _, marker := range []string{
-		"unsupported",
-		"not supported",
-		"not compatible",
-		"incompatible",
-		"invalid parameter",
-	} {
-		if strings.Contains(text, marker) {
-			return true
-		}
-	}
-	return false
-}
-
-func shouldRetryWithoutStreamOptions(payload chatCompletionRequest, statusCode int, body []byte) bool {
-	if payload.StreamOptions == nil || statusCode < 400 || statusCode >= 500 {
-		return false
-	}
-	text := strings.ToLower(decodeOpenAIError(statusCode, body) + "\n" + string(body))
-	return strings.Contains(text, "stream_options") || strings.Contains(text, "include_usage")
 }
 
 // maxTokensRejection classifies a max_tokens/max_completion_tokens rejection:
 // a named upper bound to remember and retry under, or the field itself being
 // unsupported, which is remembered and omitted from now on.
-func maxTokensRejection(payload chatCompletionRequest, statusCode int, body []byte) (retry bool, capTokens int64, omit bool) {
-	sent := sentMaxTokens(payload)
-	if sent == 0 || statusCode < 400 || statusCode >= 500 {
+func maxTokensRejection(payload chatCompletionRequest, rejected rejection) (retry bool, capTokens int64, omit bool) {
+	sent, text := sentMaxTokens(payload), rejected.text
+	if sent == 0 || !strings.Contains(text, "max_tokens") && !strings.Contains(text, "max_completion_tokens") {
 		return false, 0, false
 	}
-	message := decodeOpenAIError(statusCode, body)
-	text := strings.ToLower(message + "\n" + string(body))
-	if !strings.Contains(text, "max_tokens") && !strings.Contains(text, "max_completion_tokens") {
-		return false, 0, false
+	if containsAny(text, "unsupported", "not supported", "unrecognized", "unknown parameter", "does not support") {
+		return true, 0, true
 	}
-	for _, marker := range []string{"unsupported", "not supported", "unrecognized", "unknown parameter", "does not support"} {
-		if strings.Contains(text, marker) {
-			return true, 0, true
-		}
-	}
-	for _, marker := range []string{"range", "exceed", "too large", "less than or equal", "at most", "maximum", "<="} {
-		if strings.Contains(text, marker) {
-			return true, largestIntBelow(stripStatusPrefix(message), sent), false
-		}
+	if containsAny(text, "range", "exceed", "too large", "less than or equal", "at most", "maximum", "<=") {
+		return true, largestIntBelow(rejected.message, sent), false
 	}
 	return false, 0, false
 }
@@ -302,32 +244,6 @@ func largestIntBelow(text string, ceiling int64) int64 {
 		}
 	}
 	return best
-}
-
-// stripStatusPrefix removes decodeOpenAIError's leading "status <code>: ".
-func stripStatusPrefix(message string) string {
-	if idx := strings.Index(message, ": "); idx != -1 {
-		return message[idx+2:]
-	}
-	return message
-}
-
-func shouldRetryStatus(statusCode int) bool {
-	return statusCode == http.StatusTooManyRequests || statusCode == http.StatusRequestTimeout || (statusCode >= 500 && statusCode <= 599)
-}
-
-func waitForRetry(ctx context.Context, delay time.Duration) error {
-	if delay <= 0 {
-		return nil
-	}
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("openaicompat: retry canceled: %w", ctx.Err())
-	case <-timer.C:
-		return nil
-	}
 }
 
 func (r *Runtime) chatPayload(ctx context.Context, request providers.Request) chatCompletionRequest {

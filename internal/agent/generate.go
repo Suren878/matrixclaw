@@ -43,6 +43,27 @@ func (r *run) recordStep(ctx context.Context, response providers.Response, stopR
 // retryBackoffs are the waits before each retry of a failed generation.
 var retryBackoffs = [...]time.Duration{200 * time.Millisecond, 750 * time.Millisecond}
 
+// maxRetryAfter caps the wait a provider may ask for; a longer one fails the
+// generation instead of stalling the run.
+const maxRetryAfter = time.Minute
+
+// retryDelay is the wait before retrying err on attempt, honouring the
+// provider's Retry-After; false means err is not retried.
+func retryDelay(err error, attempt int) (time.Duration, bool) {
+	if attempt >= len(retryBackoffs) || !providers.IsRetryableGenerationError(err) {
+		return 0, false
+	}
+	delay := retryBackoffs[attempt]
+	var apiErr *providers.APIError
+	if errors.As(err, &apiErr) && apiErr.RetryAfter > delay {
+		if apiErr.RetryAfter > maxRetryAfter {
+			return 0, false
+		}
+		delay = apiErr.RetryAfter
+	}
+	return delay, true
+}
+
 // summaryModel generates summaries with model and records every successful one
 // as a compact step of the run; a transient failure is retried like a main
 // generation.
@@ -57,10 +78,11 @@ func (m summaryModel) Generate(ctx context.Context, request providers.Request) (
 		if err == nil {
 			return response, m.r.recordStep(ctx, response, CompactStopReason, latency)
 		}
-		if ctx.Err() != nil || attempt >= len(retryBackoffs) || !providers.IsRetryableGenerationError(err) {
+		delay, retry := retryDelay(err, attempt)
+		if ctx.Err() != nil || !retry {
 			return response, err
 		}
-		if err := m.r.Sleep(ctx, retryBackoffs[attempt]); err != nil {
+		if err := m.r.Sleep(ctx, delay); err != nil {
 			return response, err
 		}
 	}
@@ -78,10 +100,14 @@ func (r *run) generateWithRetry(ctx context.Context, request providers.Request) 
 		if request.ToolChoice == providers.ToolChoiceNone && errors.Is(err, providers.ErrEmptyResponse) {
 			return gen, err
 		}
-		if err == nil || gen.saved || gen.assistant.Content != "" || ctx.Err() != nil || attempt >= len(retryBackoffs) || !providers.IsRetryableGenerationError(err) {
+		if err == nil || gen.saved || gen.assistant.Content != "" || ctx.Err() != nil {
 			return gen, err
 		}
-		if err := r.Sleep(ctx, retryBackoffs[attempt]); err != nil {
+		delay, retry := retryDelay(err, attempt)
+		if !retry {
+			return gen, err
+		}
+		if err := r.Sleep(ctx, delay); err != nil {
 			return gen, err
 		}
 	}

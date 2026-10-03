@@ -67,7 +67,7 @@ func TestBlockedPromptStopsAsContentFilter(t *testing.T) {
 	}
 }
 
-func TestStreamErrorChunkNamesItsStatusAndRetriesOnlyUnavailable(t *testing.T) {
+func TestStreamErrorChunkNamesItsStatusAndRetriesServerAndRateLimits(t *testing.T) {
 	for _, tc := range []struct {
 		chunk     string
 		want      []string
@@ -75,7 +75,8 @@ func TestStreamErrorChunkNamesItsStatusAndRetriesOnlyUnavailable(t *testing.T) {
 	}{
 		{`{"error":{"code":503,"status":"UNAVAILABLE","message":"The model is overloaded."}}`, []string{"503", "UNAVAILABLE", "overloaded"}, true},
 		{`{"error":{"code":500,"status":"INTERNAL"}}`, []string{"500", "INTERNAL"}, true},
-		{`{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"quota exceeded"}}`, []string{"429", "RESOURCE_EXHAUSTED", "quota exceeded"}, false},
+		{`{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"quota exceeded"}}`, []string{"429", "RESOURCE_EXHAUSTED", "quota exceeded"}, true},
+		{`{"error":{"code":400,"status":"INVALID_ARGUMENT","message":"bad schema"}}`, []string{"400", "bad schema"}, false},
 	} {
 		_, err := (&Runtime{}).decodeStream(context.Background(), strings.NewReader("data: "+tc.chunk+"\n\n"))
 		if err == nil || providers.IsRetryableGenerationError(err) != tc.retryable {

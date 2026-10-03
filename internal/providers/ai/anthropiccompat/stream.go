@@ -82,7 +82,7 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 			return fmt.Errorf("anthropic: decode stream chunk: %w", err)
 		}
 		if chunk.Error != nil {
-			return &apiError{message: "anthropic: stream error: " + chunk.Error.String(), detail: *chunk.Error}
+			return anthropicStreamError(*chunk.Error)
 		}
 		eventType := event.Type
 		if eventType == "" {

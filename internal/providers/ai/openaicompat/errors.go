@@ -12,15 +12,18 @@ type openAIErrorEnvelope struct {
 	} `json:"error"`
 }
 
-func decodeOpenAIError(statusCode int, body []byte) string {
+// openAIErrorMessage is the error message of a response body, or the body itself.
+func openAIErrorMessage(body []byte) string {
 	var envelope openAIErrorEnvelope
 	if err := json.Unmarshal(body, &envelope); err == nil && strings.TrimSpace(envelope.Error.Message) != "" {
-		return fmt.Sprintf("status %d: %s", statusCode, strings.TrimSpace(envelope.Error.Message))
+		return strings.TrimSpace(envelope.Error.Message)
 	}
+	return strings.TrimSpace(string(body))
+}
 
-	text := strings.TrimSpace(string(body))
-	if text == "" {
-		return fmt.Sprintf("status %d", statusCode)
+func decodeOpenAIError(statusCode int, body []byte) string {
+	if message := openAIErrorMessage(body); message != "" {
+		return fmt.Sprintf("status %d: %s", statusCode, message)
 	}
-	return fmt.Sprintf("status %d: %s", statusCode, text)
+	return fmt.Sprintf("status %d", statusCode)
 }
