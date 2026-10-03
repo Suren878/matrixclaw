@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -78,7 +79,7 @@ func TestSubagentTasksMoveIntoTheTasksTable(t *testing.T) {
 		if err != nil || len(active) != 1 || active[0].ID != "running" || active[0].DeliveredAt != nil {
 			t.Fatalf("open %d: active = %+v, %v", reopen, active, err)
 		}
-		if _, err := st.GetTask(ctx, "orphan"); err != core.ErrNotFound {
+		if _, err := st.GetTask(ctx, "orphan"); !errors.Is(err, core.ErrNotFound) {
 			t.Fatalf("open %d: orphan err = %v", reopen, err)
 		}
 		_ = st.Close()
@@ -198,7 +199,7 @@ func TestShellTasksFinishOnceAndBecomeEventsUntilDelivered(t *testing.T) {
 	if events, err := st.ListTasks(ctx, core.TaskFilter{SessionID: "s1", Undelivered: true}); err != nil || len(events) != 0 {
 		t.Fatalf("events after delivery = %+v, %v", events, err)
 	}
-	if _, err := st.GetTask(ctx, "task_gone"); err != core.ErrNotFound {
+	if _, err := st.GetTask(ctx, "task_gone"); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("missing task err = %v", err)
 	}
 }

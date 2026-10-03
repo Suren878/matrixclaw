@@ -116,7 +116,7 @@ func TestAwaitedTaskFinishingWakesTheRun(t *testing.T) {
 	if got := s.woken(t); !strings.Contains(got, "Background task "+taskID+" was stopped") {
 		t.Fatalf("the woken request sends %q", got)
 	}
-	if _, err := db.GetRunWakeup(context.Background(), s.run.ID); err != core.ErrNotFound {
+	if _, err := db.GetRunWakeup(context.Background(), s.run.ID); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("wakeup after waking: %v", err)
 	}
 }
@@ -306,7 +306,7 @@ func TestCancelingAWaitingRunStopsItsTasksWithoutWakingTheSession(t *testing.T) 
 	if task, err := db.GetTask(ctx, started.TaskID); err != nil || task.Status != core.TaskStatusCanceled {
 		t.Fatalf("awaited task = %+v, %v", task, err)
 	}
-	if _, err := db.GetRunWakeup(ctx, run.ID); err != core.ErrNotFound {
+	if _, err := db.GetRunWakeup(ctx, run.ID); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("wakeup after cancel: %v", err)
 	}
 	if runs, err := db.ListSessionRuns(ctx, session.ID, 0); err != nil || len(runs) != 1 {
@@ -394,7 +394,7 @@ func TestWakeupStaysUntilItsRunExecutes(t *testing.T) {
 	if err := app.ExecuteRun(ctx, run.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.GetRunWakeup(ctx, run.ID); err != core.ErrNotFound {
+	if _, err := db.GetRunWakeup(ctx, run.ID); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("wakeup after the run executed: %v", err)
 	}
 }

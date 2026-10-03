@@ -66,6 +66,9 @@ func TestLatestBoundaryLookupUsesTheBoundaryIndex(t *testing.T) {
 		}
 		plan = append(plan, detail)
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
 	if len(plan) != 1 || !strings.Contains(plan[0], "idx_messages_boundaries") {
 		t.Fatalf("query plan = %q", plan)
 	}

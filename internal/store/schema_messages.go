@@ -39,12 +39,12 @@ func backfillMessageSeq(db *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("store: list unsequenced messages: %w", err)
 	}
+	defer func() { _ = rows.Close() }()
 	var pending []unsequenced
 	for rows.Next() {
 		var row unsequenced
 		var createdAt string
 		if err := rows.Scan(&row.rowid, &createdAt); err != nil {
-			_ = rows.Close()
 			return fmt.Errorf("store: scan unsequenced message: %w", err)
 		}
 		row.createdAt = mustParseTime(createdAt)
@@ -111,11 +111,11 @@ func indexUnsearchedMessages(db *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("store: list unsearched messages: %w", err)
 	}
+	defer func() { _ = rows.Close() }()
 	var pending []int64
 	for rows.Next() {
 		var seq int64
 		if err := rows.Scan(&seq); err != nil {
-			_ = rows.Close()
 			return fmt.Errorf("store: scan unsearched message: %w", err)
 		}
 		pending = append(pending, seq)

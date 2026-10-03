@@ -3,6 +3,7 @@ package core_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -425,7 +426,7 @@ func TestParentAwaitingABackgroundChildWakesAfterTheChildsApproval(t *testing.T)
 	if mutations != 1 {
 		t.Fatalf("mutations = %d", mutations)
 	}
-	if _, err := db.GetRunWakeup(context.Background(), run.ID); err != core.ErrNotFound {
+	if _, err := db.GetRunWakeup(context.Background(), run.ID); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("wakeup after the run completed: %v", err)
 	}
 }

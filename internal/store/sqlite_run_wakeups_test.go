@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -35,7 +36,7 @@ func TestRunWakeupsComeDueInOrder(t *testing.T) {
 	if err := st.DeleteRunWakeup(ctx, "r2"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.GetRunWakeup(ctx, "r2"); err != core.ErrNotFound {
+	if _, err := st.GetRunWakeup(ctx, "r2"); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("deleted wakeup err = %v", err)
 	}
 	if got, err := st.GetRunWakeup(ctx, "r3"); err != nil || got.TaskIDs != nil || got.SessionID != "s1" {

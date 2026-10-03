@@ -34,12 +34,12 @@ func migrateCompactionMarkers(db *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("store: list legacy context markers: %w", err)
 	}
+	defer func() { _ = rows.Close() }()
 	updates := map[string]string{}
 	for rows.Next() {
 		var id, content string
 		var seq int64
 		if err := rows.Scan(&id, &seq, &content); err != nil {
-			_ = rows.Close()
 			return fmt.Errorf("store: scan legacy context marker: %w", err)
 		}
 		if compaction, ok := legacyCompaction(seq, content); ok {
@@ -47,11 +47,7 @@ func migrateCompactionMarkers(db *sql.DB) error {
 		}
 	}
 	if err := rows.Err(); err != nil {
-		_ = rows.Close()
 		return fmt.Errorf("store: iterate legacy context markers: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return fmt.Errorf("store: close legacy context markers: %w", err)
 	}
 	for id, body := range updates {
 		if _, err := db.Exec(`UPDATE messages SET compaction_json = ? WHERE id = ?`, body, id); err != nil {

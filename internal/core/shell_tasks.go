@@ -274,7 +274,7 @@ func (c *Core) ReadTaskOutput(ctx context.Context, call tools.Call, read tools.T
 	var filter *regexp.Regexp
 	if strings.TrimSpace(read.Filter) != "" {
 		if filter, err = regexp.Compile(read.Filter); err != nil {
-			return tools.TaskOutput{}, fmt.Errorf("%w: filter: %v", ErrInvalidInput, err)
+			return tools.TaskOutput{}, fmt.Errorf("%w: filter: %w", ErrInvalidInput, err)
 		}
 	}
 	if task.FinishedAt == nil {

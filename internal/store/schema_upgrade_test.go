@@ -89,6 +89,9 @@ func TestTelegramGuestAndInlineAddressesBecomeReplyOnce(t *testing.T) {
 		}
 		once = append(once, id)
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
 	if strings.Join(once, ",") != "guest,inline" {
 		t.Fatalf("reply-once deliveries = %v", once)
 	}
