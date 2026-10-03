@@ -20,10 +20,6 @@ func findSetupProvider(items []setup.ProviderSetupItem, providerID string) (setu
 	return setup.ProviderSetupItem{}, false
 }
 
-func providerListInfo(provider setup.ProviderSetupItem) string {
-	return setup.ProviderCompactStatus(provider)
-}
-
 func providerKeyPrompt(provider setup.ProviderSetupItem) Result {
 	name := strings.TrimSpace(provider.Name)
 	if name == "" {

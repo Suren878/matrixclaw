@@ -278,6 +278,7 @@ func providerItem(p ProviderConfig, configured bool, active bool) ProviderSetupI
 		BaseURL:         effective.BaseURL,
 		BaseURLOptions:  policy.BaseURLOptions,
 		ReasoningEffort: effective.ReasoningEffort,
+		APIKeyPreview:   p.APIKeyPreview(),
 	}
 	if policy.Known {
 		item.CatalogID = policy.CatalogID
@@ -290,7 +291,6 @@ func providerItem(p ProviderConfig, configured bool, active bool) ProviderSetupI
 	item.Model = effective.Model
 	item.ContextWindow = effective.ContextWindow
 	item.ToolUseMode = effective.ToolUseMode
-	item.APIKeyPreview = p.APIKeyPreview()
 	item.Status = strings.Join(append([]string{"Configured", effective.Model}, activeLabel(active)...), " · ")
 	return item
 }

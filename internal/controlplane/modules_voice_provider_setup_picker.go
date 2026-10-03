@@ -42,11 +42,7 @@ func (d *Dispatcher) voiceModuleProviderSetup(ctx context.Context, moduleID stri
 			}
 			return result, nil
 		}
-		setupProvider, err := d.voiceSetupProvider(ctx, providerID)
-		if err != nil {
-			return Result{}, err
-		}
-		return d.voiceProviderSetupFormResult(ctx, moduleID, providerID, setupProvider, formFromProvider(setupProvider), "")
+		return d.voiceModuleProviderPicker(ctx, moduleID)
 	}
 	return d.voiceModuleProviderSetup(ctx, moduleID, "")
 }
@@ -136,14 +132,7 @@ func (d *Dispatcher) voiceModuleProviderForm(ctx context.Context, moduleID strin
 	if _, err := d.voiceModules.UpdateVoiceModule(ctx, moduleID, setup.VoiceModuleUpdate{ProviderID: providerID}); err != nil {
 		return Result{}, err
 	}
-	if setupProviderIDForVoiceProvider(providerID) == "" {
-		return d.voiceLocalProviderPicker(ctx, moduleID, providerID)
-	}
-	provider, err := d.voiceSetupProvider(ctx, providerID)
-	if err != nil {
-		return Result{}, err
-	}
-	return d.voiceProviderFormResult(ctx, moduleID, providerID, provider, formFromProvider(provider), "")
+	return d.voiceLocalProviderPicker(ctx, moduleID, providerID)
 }
 
 func (d *Dispatcher) voiceLocalProviderPicker(ctx context.Context, moduleID string, providerID string) (Result, error) {

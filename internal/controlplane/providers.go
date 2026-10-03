@@ -36,7 +36,9 @@ func (d *Dispatcher) handleProvider(ctx context.Context, externalKey string, arg
 	case "custom":
 		return d.handleCustomProvider(ctx, session, rest)
 	case "edit":
-		return d.handleProviderEdit(ctx, session, rest)
+		return d.handleProviderEdit(ctx, rest)
+	case "form":
+		return d.handleProviderForm(ctx, session, rest)
 	case "auth":
 		return d.handleOpenAICodexAuth(ctx, rest)
 	case "auth-complete":
@@ -52,7 +54,7 @@ func (d *Dispatcher) handleProvider(ctx context.Context, externalKey string, arg
 	if value != "" {
 		provider, ok := findSetupProvider(providers, value)
 		if ok {
-			return providerEditFormResult(provider, formFromProvider(provider), ""), nil
+			return openProviderForm(providerForm{Provider: provider}), nil
 		}
 		return d.useProvider(ctx, session, value)
 	}
@@ -91,43 +93,19 @@ func (d *Dispatcher) useProvider(ctx context.Context, session *core.Session, pro
 }
 
 func isOpenAICodexProvider(provider setup.ProviderSetupItem) bool {
-	policy := providerPolicy(provider)
-	return policy.AuthMode == providers.ProviderAuthOAuth &&
-		policy.RuntimeProviderType == providers.TypeOpenAICodex
-}
-
-func providerPolicy(provider setup.ProviderSetupItem) providers.ProviderPolicy {
-	return providers.PolicyForProvider(providerFormCatalogID(provider), providerFormType(provider))
+	policy := providers.PolicyForProvider(provider.ID, provider.Type)
+	return policy.AuthMode == providers.ProviderAuthOAuth && policy.RuntimeProviderType == providers.TypeOpenAICodex
 }
 
 func openAICodexAuthInfo() string {
 	status := openaicodex.CurrentAuthStatus()
 	if status.SignedIn {
-		if strings.TrimSpace(status.Source) != "" {
-			return "Signed in"
-		}
 		return "Signed in"
 	}
 	if status.Expired {
 		return "Expired"
 	}
 	return "Not signed in"
-}
-
-func isCustomSetupProvider(provider setup.ProviderSetupItem) bool {
-	if !provider.Configured {
-		return false
-	}
-	id := providers.NormalizeProviderID(provider.CatalogID)
-	if id == "" {
-		id = providers.NormalizeProviderID(provider.ID)
-	}
-	for _, entry := range providers.Catalog() {
-		if providers.NormalizeProviderID(entry.ID) == id {
-			return false
-		}
-	}
-	return true
 }
 
 func (d *Dispatcher) handleProviderKey(ctx context.Context, session *core.Session, args string) (Result, error) {

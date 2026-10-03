@@ -32,22 +32,6 @@ func (d *Dispatcher) handleVoiceModule(ctx context.Context, moduleID string, arg
 		return d.installAndSetVoiceModuleProvider(ctx, moduleID, rest)
 	case "provider-setup":
 		return d.voiceModuleProviderSetup(ctx, moduleID, rest)
-	case "provider-setup-form":
-		return d.voiceModuleProviderSetupFormFromToken(ctx, moduleID, rest)
-	case "provider-setup-field":
-		return d.voiceModuleProviderSetupField(ctx, moduleID, rest)
-	case "provider-setup-set":
-		return d.voiceModuleProviderSetupSet(ctx, moduleID, rest)
-	case "provider-setup-save":
-		return d.saveVoiceModuleProviderSetup(ctx, moduleID, rest)
-	case "provider-form":
-		return d.voiceModuleProviderFormFromToken(ctx, moduleID, rest)
-	case "provider-field":
-		return d.voiceModuleProviderField(ctx, moduleID, rest)
-	case "provider-set":
-		return d.voiceModuleProviderSet(ctx, moduleID, rest)
-	case "provider-save":
-		return d.saveVoiceModuleProvider(ctx, moduleID, rest)
 	case "provider-model":
 		return d.voiceLocalProviderModelPicker(ctx, moduleID, rest)
 	case "provider-language":

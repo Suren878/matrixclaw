@@ -8,7 +8,7 @@ import (
 )
 
 func (d *Dispatcher) handleOpenAICodexAuth(ctx context.Context, args string) (Result, error) {
-	providerID, err := decodeCustomProviderField(firstField(args))
+	providerID, err := decodeProviderID(firstField(args))
 	if err != nil {
 		return Result{}, err
 	}
@@ -46,7 +46,7 @@ func (d *Dispatcher) handleOpenAICodexAuth(ctx context.Context, args string) (Re
 
 func (d *Dispatcher) handleOpenAICodexAuthComplete(ctx context.Context, args string) (Result, error) {
 	providerID, rest := firstCommandToken(args)
-	providerID, err := decodeCustomProviderField(providerID)
+	providerID, err := decodeProviderID(providerID)
 	if err != nil {
 		return Result{}, err
 	}
