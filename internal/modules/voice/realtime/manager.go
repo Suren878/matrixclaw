@@ -8,17 +8,15 @@ import (
 	"time"
 )
 
-type ConfigSource func(context.Context) Config
-
 type Manager struct {
-	core         CoreBridge
-	config       Config
-	configSource ConfigSource
-	providersMu  sync.RWMutex
-	providers    map[string]Provider
-	mu           sync.RWMutex
-	sessions     map[string]*voiceSession
-	now          func() time.Time
+	core     CoreBridge
+	specs    []ProviderSpec
+	keys     keyChecks
+	configMu sync.RWMutex
+	config   Config
+	mu       sync.RWMutex
+	sessions map[string]*voiceSession
+	now      func() time.Time
 }
 
 type voiceSession struct {
@@ -28,69 +26,66 @@ type voiceSession struct {
 	systemInstruction string
 }
 
-func NewManager(coreService CoreBridge, cfg Config, providers ...Provider) *Manager {
-	m := &Manager{
-		core:      coreService,
-		config:    normalizeConfig(cfg),
-		providers: map[string]Provider{},
-		sessions:  map[string]*voiceSession{},
-		now:       time.Now,
+// NewManager serves realtime voice through specs; the first is the default.
+func NewManager(coreService CoreBridge, specs ...ProviderSpec) *Manager {
+	return &Manager{
+		core:     coreService,
+		specs:    specs,
+		sessions: map[string]*voiceSession{},
+		now:      time.Now,
 	}
-	m.RegisterProvider(providers...)
-	return m
 }
 
-func (m *Manager) SetConfigSource(source ConfigSource) *Manager {
-	if m != nil {
-		m.configSource = source
-	}
-	return m
+func (m *Manager) currentConfig() Config {
+	m.configMu.RLock()
+	defer m.configMu.RUnlock()
+	return m.config
 }
 
-func (m *Manager) RegisterProvider(providers ...Provider) {
-	if m == nil {
-		return
-	}
-	m.providersMu.Lock()
-	defer m.providersMu.Unlock()
-	if m.providers == nil {
-		m.providers = map[string]Provider{}
-	}
-	for _, provider := range providers {
-		if provider == nil {
-			continue
+func (m *Manager) setConfig(cfg Config) {
+	m.configMu.Lock()
+	m.config = cfg
+	m.configMu.Unlock()
+}
+
+func (m *Manager) spec(providerID string) (ProviderSpec, bool) {
+	providerID = normalizeID(providerID)
+	for _, spec := range m.specs {
+		if spec.ID == providerID {
+			return spec, true
 		}
-		descriptor := provider.Descriptor(context.Background())
-		id := normalizeID(descriptor.ID)
-		if id == "" {
-			continue
-		}
-		m.providers[id] = provider
 	}
+	return ProviderSpec{}, false
+}
+
+// activeSpec is the selected provider, or the default one.
+func (m *Manager) activeSpec(cfg Config) ProviderSpec {
+	if spec, ok := m.spec(cfg.ProviderID); ok {
+		return spec
+	}
+	if len(m.specs) > 0 {
+		return m.specs[0]
+	}
+	return ProviderSpec{}
 }
 
 func (m *Manager) Descriptor(ctx context.Context) ModuleDescriptor {
-	cfg := m.currentConfig(ctx)
-	providers := m.providerDescriptors(ctx)
-	providerID := normalizeID(cfg.ProviderID)
-	if providerID == "" && len(providers) > 0 {
-		providerID = normalizeID(providers[0].ID)
+	cfg := m.currentConfig()
+	providers := make([]ProviderDescriptor, 0, len(m.specs))
+	for _, spec := range m.specs {
+		providers = append(providers, m.providerDescriptor(ctx, spec, cfg.provider(spec)))
 	}
-	active := providerDescriptorByID(providers, providerID)
+	active := providerDescriptorByID(providers, m.activeSpec(cfg).ID)
 	status := "Disabled"
 	if cfg.Enabled {
 		status = active.Status
-		if strings.TrimSpace(status) == "" {
-			status = "Ready"
-		}
-	} else if active.Configured {
-		status = "Disabled"
 	}
 	return ModuleDescriptor{
 		ID:           ModuleID,
 		Title:        "Realtime Voice",
 		Enabled:      cfg.Enabled,
-		ProviderID:   providerID,
+		Ready:        cfg.Enabled && active.Configured,
+		ProviderID:   active.ID,
 		ProviderName: active.Name,
 		ModelID:      active.Config.ModelID,
 		Status:       status,
@@ -105,21 +100,24 @@ func (m *Manager) CreateSession(ctx context.Context, req SessionCreateRequest) (
 	if m == nil || m.core == nil {
 		return SessionInfo{}, fmt.Errorf("%w: realtime manager is not configured", ErrProviderUnavailable)
 	}
-	cfg := m.currentConfig(ctx)
+	cfg := m.currentConfig()
 	if !cfg.Enabled {
 		return SessionInfo{}, ErrDisabled
 	}
-	providerID := firstNonEmpty(req.ProviderID, cfg.ProviderID, ProviderGemini)
-	provider, descriptor, ok := m.provider(ctx, providerID)
-	if !ok || provider == nil {
-		return SessionInfo{}, fmt.Errorf("%w: %s", ErrProviderUnavailable, providerID)
+	spec := m.activeSpec(cfg)
+	if req.ProviderID != "" {
+		var ok bool
+		if spec, ok = m.spec(req.ProviderID); !ok {
+			return SessionInfo{}, fmt.Errorf("%w: %s", ErrProviderUnavailable, req.ProviderID)
+		}
 	}
-	modelID := firstNonEmpty(req.ModelID, descriptor.Config.ModelID)
+	providerCfg := cfg.provider(spec)
+	modelID := firstNonEmpty(req.ModelID, providerCfg.ModelID)
 	if modelID == "" {
 		return SessionInfo{}, fmt.Errorf("%w: realtime voice model is required", ErrInvalidRequest)
 	}
-	voiceID := firstNonEmpty(req.VoiceID, descriptor.Config.VoiceID)
-	language := firstNonEmpty(req.Language, descriptor.Config.Language)
+	voiceID := firstNonEmpty(req.VoiceID, providerCfg.VoiceID)
+	language := spec.NormalizeLanguage(firstNonEmpty(req.Language, providerCfg.Language))
 	inputAudio := normalizeAudioFormat(req.InputAudio, DefaultInputAudioFormat())
 	outputAudio := normalizeAudioFormat(req.OutputAudio, DefaultOutputAudioFormat())
 	if err := validateAudioFormat(inputAudio, DefaultInputAudioFormat(), "input_audio"); err != nil {
@@ -133,14 +131,14 @@ func (m *Manager) CreateSession(ctx context.Context, req SessionCreateRequest) (
 	if err != nil {
 		return SessionInfo{}, err
 	}
-	persistMode := normalizePersistMode(req.PersistMode, cfg.PersistMode)
+	persistMode := normalizePersistMode(req.PersistMode, PersistModeTurnsAndSummary)
 	now := m.now().UTC()
 	session := &voiceSession{
 		info: SessionInfo{
 			ID:            newID("voice"),
 			Status:        SessionStatusCreated,
-			ProviderID:    normalizeID(providerID),
-			ProviderName:  descriptor.Name,
+			ProviderID:    spec.ID,
+			ProviderName:  spec.Name,
 			ModelID:       modelID,
 			VoiceID:       voiceID,
 			Language:      language,

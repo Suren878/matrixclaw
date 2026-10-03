@@ -25,13 +25,6 @@ var (
 	ErrSessionNotFound     = errors.New("realtime voice session not found")
 )
 
-type Config struct {
-	Enabled     bool
-	ProviderID  string
-	MaxSessions int
-	PersistMode PersistMode
-}
-
 type AudioFormat struct {
 	Encoding     string `json:"encoding"`
 	SampleRateHz int    `json:"sample_rate_hz"`
@@ -76,6 +69,7 @@ type ModuleDescriptor struct {
 	ID           string                `json:"id"`
 	Title        string                `json:"title"`
 	Enabled      bool                  `json:"enabled"`
+	Ready        bool                  `json:"ready"`
 	ProviderID   string                `json:"provider_id"`
 	ProviderName string                `json:"provider_name,omitempty"`
 	ModelID      string                `json:"model_id,omitempty"`
@@ -105,8 +99,11 @@ type ProviderDescriptor struct {
 	Configured    bool                  `json:"configured"`
 	Config        ProviderConfigSummary `json:"config"`
 	DefaultModel  string                `json:"default_model,omitempty"`
+	DefaultVoice  string                `json:"default_voice,omitempty"`
+	KeyEnvs       []string              `json:"key_envs,omitempty"`
 	Models        []string              `json:"models,omitempty"`
 	Voices        []string              `json:"voices,omitempty"`
+	Languages     []Language            `json:"languages,omitempty"`
 	InputFormats  []AudioFormat         `json:"input_formats,omitempty"`
 	OutputFormats []AudioFormat         `json:"output_formats,omitempty"`
 }
@@ -249,11 +246,6 @@ type CoreBridge interface {
 	ExecuteTool(context.Context, core.ExecuteToolInput) (core.ExecuteToolResult, error)
 	CommitRealtimeVoiceTurn(context.Context, core.CommitRealtimeVoiceTurnInput) (core.CommitRealtimeVoiceTurnResult, error)
 	SubscribeEvents(context.Context, string) <-chan core.Event
-}
-
-type Provider interface {
-	Descriptor(context.Context) ProviderDescriptor
-	Connect(context.Context, ProviderConnectRequest) (ProviderConnection, error)
 }
 
 type ProviderConnectRequest struct {

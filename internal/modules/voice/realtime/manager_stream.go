@@ -38,10 +38,11 @@ func (m *Manager) ServeStream(ctx context.Context, sessionID string, stream Stre
 	}
 	defer m.forgetSession(sessionID)
 	info := m.markSessionStreaming(session)
-	provider, _, ok := m.provider(ctx, info.ProviderID)
-	if !ok || provider == nil {
+	spec, ok := m.spec(info.ProviderID)
+	if !ok {
 		return fmt.Errorf("%w: %s", ErrProviderUnavailable, info.ProviderID)
 	}
+	cfg := m.currentConfig()
 	coreSession, err := m.core.GetSession(ctx, info.CoreSessionID)
 	if err != nil {
 		return err
@@ -51,7 +52,10 @@ func (m *Manager) ServeStream(ctx context.Context, sessionID string, stream Stre
 	defer cancel()
 	defer func() { _ = stream.Close(nil) }()
 
-	conn, err := provider.Connect(streamCtx, ProviderConnectRequest{
+	session.mu.Lock()
+	instruction := spec.Instructions(cfg.Instructions, session.systemInstruction, info.Language)
+	session.mu.Unlock()
+	conn, err := connect(streamCtx, spec, cfg.provider(spec), ProviderConnectRequest{
 		VoiceSessionID:    info.ID,
 		SessionID:         info.CoreSessionID,
 		Client:            info.Client,
@@ -59,7 +63,7 @@ func (m *Manager) ServeStream(ctx context.Context, sessionID string, stream Stre
 		ModelID:           info.ModelID,
 		VoiceID:           info.VoiceID,
 		Language:          info.Language,
-		SystemInstruction: m.systemInstruction(session),
+		SystemInstruction: instruction,
 		InputAudio:        info.InputAudio,
 		OutputAudio:       info.OutputAudio,
 		Tools:             m.toolDeclarations(info.Client),

@@ -41,15 +41,6 @@ func audioMIMEType(format AudioFormat) string {
 	return "application/octet-stream"
 }
 
-func normalizeConfig(cfg Config) Config {
-	cfg.ProviderID = normalizeID(cfg.ProviderID)
-	if cfg.ProviderID == "" {
-		cfg.ProviderID = ProviderGemini
-	}
-	cfg.PersistMode = normalizePersistMode(cfg.PersistMode, PersistModeTurnsAndSummary)
-	return cfg
-}
-
 func normalizePersistMode(value PersistMode, fallback PersistMode) PersistMode {
 	switch PersistMode(strings.ToLower(strings.TrimSpace(string(value)))) {
 	case PersistModeNone:
@@ -69,7 +60,7 @@ func maxSessions(value int) int {
 		return 0
 	}
 	if value == 0 {
-		return 8
+		return defaultSessions
 	}
 	return value
 }

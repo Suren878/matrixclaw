@@ -3,6 +3,7 @@ package realtime
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -22,14 +23,13 @@ func (fakeCore) GetSession(context.Context, string) (core.Session, error) {
 
 func (fakeCore) ListToolSpecs() []tools.Spec { return nil }
 
-type failingProvider struct{}
-
-func (failingProvider) Descriptor(context.Context) ProviderDescriptor {
-	return ProviderDescriptor{ID: ProviderGemini, Config: ProviderConfigSummary{ModelID: "model"}}
-}
-
-func (failingProvider) Connect(context.Context, ProviderConnectRequest) (ProviderConnection, error) {
-	return nil, errors.New("provider down")
+var failingSpec = ProviderSpec{
+	ID:           ProviderGemini,
+	Name:         "Failing",
+	DefaultModel: "model",
+	Dial: func(ProviderConfig, string) (string, http.Header, error) {
+		return "", nil, errors.New("provider down")
+	},
 }
 
 type discardStream struct{}
@@ -42,7 +42,8 @@ func (discardStream) Write(context.Context, Event) error { return nil }
 func (discardStream) Close(error) error                  { return nil }
 
 func newTestManager(clock *time.Time) *Manager {
-	m := NewManager(fakeCore{}, Config{Enabled: true, MaxSessions: 1}, failingProvider{})
+	m := NewManager(fakeCore{}, failingSpec)
+	m.setConfig(Config{Enabled: true, MaxSessions: 1, Providers: map[string]ProviderConfig{ProviderGemini: {APIKey: "key"}}})
 	m.now = func() time.Time { return *clock }
 	return m
 }

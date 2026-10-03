@@ -52,7 +52,6 @@ type effectiveConfig struct {
 	Providers []ProviderSetupItem
 	Runtime   []ProviderConfig
 	Voice     []VoiceModuleDescriptor
-	Realtime  VoiceModuleDescriptor
 	Browser   BrowserModuleDescriptor
 	Daemon    DaemonConfig
 	Clients   ClientsConfig
@@ -65,7 +64,6 @@ func effectiveView(cfg Config) effectiveConfig {
 		Assistant: [2]string{cfg.Assistant.NameOrDefault(), cfg.Assistant.CustomInstructions},
 		Providers: ProviderItems(cfg),
 		Voice:     VoiceModuleDescriptors(cfg.Modules),
-		Realtime:  RealtimeVoiceModuleDescriptor(cfg.Modules),
 		Browser:   BrowserModuleFromConfig(cfg.Modules),
 		Daemon:    cfg.Daemon,
 		Clients:   cfg.Clients,
@@ -75,7 +73,7 @@ func effectiveView(cfg Config) effectiveConfig {
 		runtime, _ := provider.Runtime()
 		view.Runtime = append(view.Runtime, runtime)
 	}
-	view.Modules.TextToSpeech, view.Modules.SpeechToText, view.Modules.RealtimeVoice, view.Modules.Browser = VoiceModuleConfig{}, VoiceModuleConfig{}, VoiceModuleConfig{}, BrowserConfig{}
+	view.Modules.TextToSpeech, view.Modules.SpeechToText, view.Modules.Browser = VoiceModuleConfig{}, VoiceModuleConfig{}, BrowserConfig{}
 	return view
 }
 
@@ -127,7 +125,7 @@ func TestOldSetupFileRoundTripsWithoutLoss(t *testing.T) {
 	if stt := view.Voice[1].Config; stt.ModelID != "small" || stt.Threads != 4 || stt.BinaryPath != "whisper-cli" {
 		t.Fatalf("stt = %+v", stt)
 	}
-	if rt := view.Realtime.Config; rt.APIKey != "sk-rt-1234" || rt.VoiceID != "cedar" || rt.Language != "ru-RU" || rt.ModelID != "gpt-realtime-2.1" {
+	if rt := view.Modules.RealtimeVoice.Providers["openai_realtime"]; rt.APIKey != "sk-rt-1234" || rt.VoiceID != "cedar" || rt.Language != "ru-RU" || rt.ModelID != "gpt-realtime-2.1" {
 		t.Fatalf("realtime = %+v", rt)
 	}
 	if view.Browser.Config.BrowserPath != "/opt/chrome" || view.Browser.Config.RuntimeMode != "per_task" || view.Browser.ProviderID != BrowserProviderPlaywright {

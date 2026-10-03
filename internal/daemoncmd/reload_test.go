@@ -146,7 +146,7 @@ func TestMCPConfigChangedAfterSavedServerEdit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	changed := mcpConfigChanged(localruntime.New(t.TempDir()), bootstrapConfig{SetupService: service, ExternalAgents: cfg.Modules})
+	changed := mcpConfigChanged(localruntime.New(t.TempDir()), bootstrapConfig{SetupService: service, Setup: cfg})
 	if changed() {
 		t.Fatal("unchanged MCP settings reported as changed")
 	}

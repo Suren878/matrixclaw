@@ -177,10 +177,9 @@ func realtimeVoiceVoiceStatus(provider realtime.ProviderDescriptor) string {
 }
 
 func realtimeVoiceLanguageStatus(provider realtime.ProviderDescriptor, language string) string {
-	code := normalizeRealtimeVoiceLanguage(provider, language)
-	for _, option := range realtimeVoiceLanguageOptions(provider) {
-		if option.id == code {
-			return option.title
+	for _, option := range provider.Languages {
+		if strings.EqualFold(option.Code, strings.TrimSpace(language)) {
+			return option.Name
 		}
 	}
 	return firstNonEmptyTrimmed(strings.TrimSpace(language), "Auto")

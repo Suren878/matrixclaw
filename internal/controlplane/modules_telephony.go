@@ -140,7 +140,6 @@ func (d *Dispatcher) telephonyInfo(ctx context.Context) (Result, error) {
 		{Label: "Token", Value: telephonyTokenStatus(module)},
 		{Label: "Default Profile", Value: telephonyProfileStatus(module)},
 		{Label: "Phone Prompt", Value: telephonyPhonePromptStatus(module)},
-		{Label: "Realtime Module", Value: module.RealtimeModuleID},
 	}
 	if strings.TrimSpace(module.GatewayError) != "" {
 		rows = append(rows, InfoRow{Label: "Gateway Error", Value: module.GatewayError})

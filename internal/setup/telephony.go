@@ -37,16 +37,15 @@ func TelephonyModuleFromConfig(modules ModulesConfig) TelephonyModuleDescriptor 
 	descriptorConfig := cfg
 	descriptorConfig.GatewayToken = ""
 	return TelephonyModuleDescriptor{
-		ID:               TelephonyModuleID,
-		Title:            "Telephony",
-		Enabled:          cfg.Enabled,
-		Status:           status,
-		GatewayURL:       cfg.GatewayURL,
-		TokenConfigured:  strings.TrimSpace(cfg.GatewayToken) != "",
-		TokenPreview:     MaskSecret(cfg.GatewayToken),
-		DefaultProfile:   cfg.DefaultProfile,
-		RealtimeModuleID: VoiceModuleRealtime,
-		Config:           descriptorConfig,
+		ID:              TelephonyModuleID,
+		Title:           "Telephony",
+		Enabled:         cfg.Enabled,
+		Status:          status,
+		GatewayURL:      cfg.GatewayURL,
+		TokenConfigured: strings.TrimSpace(cfg.GatewayToken) != "",
+		TokenPreview:    MaskSecret(cfg.GatewayToken),
+		DefaultProfile:  cfg.DefaultProfile,
+		Config:          descriptorConfig,
 	}
 }
 

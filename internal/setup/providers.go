@@ -50,7 +50,7 @@ func normalizeConfig(cfg Config) Config {
 func normalizeModulesConfig(modules ModulesConfig) ModulesConfig {
 	modules.TextToSpeech = normalizeVoiceModuleConfig("tts", modules.TextToSpeech)
 	modules.SpeechToText = normalizeVoiceModuleConfig("stt", modules.SpeechToText)
-	modules.RealtimeVoice = normalizeVoiceModuleConfig("realtime_voice", modules.RealtimeVoice)
+	modules.RealtimeVoice = normalizeRealtimeVoiceConfig(modules.RealtimeVoice)
 	modules.Telephony = normalizeTelephonyConfig(modules.Telephony)
 	modules.MCP = normalizeMCPConfig(modules.MCP)
 	modules.Browser = storedBrowserConfig(modules.Browser)

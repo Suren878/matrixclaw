@@ -56,31 +56,6 @@ func (m *Manager) session(sessionID string) (*voiceSession, bool) {
 	return session, ok
 }
 
-func (m *Manager) provider(ctx context.Context, providerID string) (Provider, ProviderDescriptor, bool) {
-	providerID = normalizeID(providerID)
-	m.providersMu.RLock()
-	provider, ok := m.providers[providerID]
-	m.providersMu.RUnlock()
-	if !ok {
-		return nil, ProviderDescriptor{}, false
-	}
-	return provider, provider.Descriptor(ctx), true
-}
-
-func (m *Manager) providerDescriptors(ctx context.Context) []ProviderDescriptor {
-	m.providersMu.RLock()
-	providers := make([]Provider, 0, len(m.providers))
-	for _, provider := range m.providers {
-		providers = append(providers, provider)
-	}
-	m.providersMu.RUnlock()
-	out := make([]ProviderDescriptor, 0, len(providers))
-	for _, provider := range providers {
-		out = append(out, provider.Descriptor(ctx))
-	}
-	return out
-}
-
 func (m *Manager) markSessionStreaming(session *voiceSession) SessionInfo {
 	session.mu.Lock()
 	defer session.mu.Unlock()
@@ -118,22 +93,6 @@ func (m *Manager) pruneUnstreamedLocked(now time.Time) {
 			delete(m.sessions, id)
 		}
 	}
-}
-
-func (m *Manager) currentConfig(ctx context.Context) Config {
-	if m == nil {
-		return Config{}
-	}
-	if m.configSource != nil {
-		return normalizeConfig(m.configSource(ctx))
-	}
-	return normalizeConfig(m.config)
-}
-
-func (m *Manager) systemInstruction(session *voiceSession) string {
-	session.mu.Lock()
-	defer session.mu.Unlock()
-	return strings.TrimSpace(session.systemInstruction)
 }
 
 func (m *Manager) toolDeclarations(client string) []ToolDeclaration {

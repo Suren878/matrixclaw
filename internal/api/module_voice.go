@@ -8,6 +8,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
 	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
+	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
@@ -36,7 +37,7 @@ func (s *Server) handleVoiceModuleByID(w http.ResponseWriter, r *http.Request) {
 		writeErrorMessage(w, http.StatusBadRequest, "voice module id is required")
 		return
 	}
-	if moduleID == setup.VoiceModuleRealtime && suffix == "" {
+	if moduleID == realtime.ModuleID && suffix == "" {
 		s.handleRealtimeVoiceModule(w, r)
 		return
 	}

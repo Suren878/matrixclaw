@@ -16,6 +16,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
 	"github.com/Suren878/matrixclaw/internal/modules/geo"
+	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
@@ -32,6 +33,7 @@ type supervisor struct {
 	app           *core.Core
 	telegram      *telegramClientAdapter
 	moduleContext func() []string
+	realtime      *realtime.Manager
 
 	// reloadMu serializes applying the setup and swapping external agents.
 	reloadMu         sync.Mutex
@@ -87,6 +89,11 @@ func (s *supervisor) applyBootstrap(bootstrap bootstrapConfig) error {
 		s.app.SetSessionLLMs(bootstrap.SessionLLMs)
 		applyAssistantProfile(s.app, bootstrap.Assistant, s.moduleContext)
 	}
+	if s.realtime != nil {
+		if err := s.realtime.Apply(s.ctx, bootstrap.Setup); err != nil {
+			return err
+		}
+	}
 	return s.telegram.Apply(s.ctx, bootstrap)
 }
 
@@ -103,7 +110,7 @@ func (s *supervisor) Reload(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := s.applyExternalAgents(bootstrap.ExternalAgents); err != nil {
+	if err := s.applyExternalAgents(bootstrap.Setup.Modules); err != nil {
 		return err
 	}
 	return s.applyBootstrap(bootstrap)

@@ -9,12 +9,12 @@ import (
 )
 
 func TestSessionUpdateMessageUsesGARealtimeShape(t *testing.T) {
-	message := sessionUpdateMessage(
-		"gpt-realtime-2.1",
-		"marin",
-		"ru-RU",
-		"Speak clearly.",
-		[]realtime.ToolDeclaration{{
+	message := sessionUpdateMessage(realtime.ProviderConnectRequest{
+		ModelID:           "gpt-realtime-2.1",
+		VoiceID:           "marin",
+		Language:          "ru-RU",
+		SystemInstruction: "Speak clearly.",
+		Tools: []realtime.ToolDeclaration{{
 			Name:        "weather",
 			Description: "Read the weather.",
 			Parameters: json.RawMessage(`{
@@ -24,7 +24,7 @@ func TestSessionUpdateMessageUsesGARealtimeShape(t *testing.T) {
 				"$schema":"https://json-schema.org/draft/2020-12/schema"
 			}`),
 		}},
-	)
+	})
 
 	if got := message["type"]; got != "session.update" {
 		t.Fatalf("type = %v, want session.update", got)
@@ -177,7 +177,7 @@ func TestRealtimeURLSetsSelectedModel(t *testing.T) {
 	if !strings.Contains(got, "model=gpt-realtime-2.1") || !strings.Contains(got, "trace=1") {
 		t.Fatalf("URL = %q", got)
 	}
-	if _, err := realtimeURL("https://api.openai.com/v1/realtime", defaultModel); err == nil {
+	if _, err := realtimeURL("https://api.openai.com/v1/realtime", "gpt-realtime-2.1"); err == nil {
 		t.Fatal("expected non-WebSocket URL to fail")
 	}
 }

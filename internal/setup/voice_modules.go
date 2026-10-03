@@ -7,9 +7,8 @@ import (
 )
 
 const (
-	VoiceModuleTTS      = "tts"
-	VoiceModuleSTT      = "stt"
-	VoiceModuleRealtime = "realtime_voice"
+	VoiceModuleTTS = "tts"
+	VoiceModuleSTT = "stt"
 )
 
 func (s *Service) VoiceModules() ([]VoiceModuleDescriptor, error) {
@@ -50,17 +49,7 @@ func (s *Service) UpdateVoiceModule(id string, update VoiceModuleUpdate) ([]Voic
 			if current.Providers == nil {
 				current.Providers = map[string]VoiceProviderConfig{}
 			}
-			providerConfig := *update.ProviderConfig
-			if id == VoiceModuleRealtime && isCloudRealtimeVoiceProvider(providerID) {
-				existing := voiceProviderConfigByID(id, current, providerID)
-				if strings.TrimSpace(providerConfig.APIKey) == "" {
-					providerConfig.APIKey = existing.APIKey
-				}
-				if strings.TrimSpace(providerConfig.APIKeyEnv) == "" {
-					providerConfig.APIKeyEnv = existing.APIKeyEnv
-				}
-			}
-			current.Providers[providerID] = providerConfig
+			current.Providers[providerID] = *update.ProviderConfig
 		}
 		current = normalizeVoiceModuleConfig(id, current)
 		setVoiceModuleConfigByID(&cfg.Modules, id, current)
@@ -78,11 +67,6 @@ func VoiceModuleDescriptors(modules ModulesConfig) []VoiceModuleDescriptor {
 		voiceModuleDescriptor(VoiceModuleTTS, "Text to Speech", modules.TextToSpeech),
 		voiceModuleDescriptor(VoiceModuleSTT, "Speech to Text", modules.SpeechToText),
 	}
-}
-
-func RealtimeVoiceModuleDescriptor(modules ModulesConfig) VoiceModuleDescriptor {
-	modules = normalizeModulesConfig(modules)
-	return voiceModuleDescriptor(VoiceModuleRealtime, "Realtime Voice", modules.RealtimeVoice)
 }
 
 func voiceModuleDescriptor(id string, title string, cfg VoiceModuleConfig) VoiceModuleDescriptor {
@@ -148,26 +132,18 @@ func storedVoiceProviderConfig(moduleID string, providerID string, cfg VoiceProv
 	cfg.VoiceID = omitDefault(cfg.VoiceID, defaults.VoiceID)
 	cfg.Language = omitDefault(cfg.Language, defaults.Language)
 	cfg.BinaryPath = omitDefault(cfg.BinaryPath, defaults.BinaryPath)
-	if !isCloudRealtimeVoiceProvider(providerID) {
-		cfg.Endpoint = omitDefault(cfg.Endpoint, defaults.Endpoint)
-	}
+	cfg.Endpoint = omitDefault(cfg.Endpoint, defaults.Endpoint)
 	cfg.RuntimeMode = omitDefault(cfg.RuntimeMode, "per_task")
 	return cfg
 }
 
 // effectiveVoiceProviderConfig normalizes cfg and fills the provider's
-// defaults for what it leaves empty; a cloud provider's endpoint and key env
-// stay empty unless set, so the realtime env overrides apply.
+// defaults for what it leaves empty.
 func effectiveVoiceProviderConfig(moduleID string, providerID string, cfg VoiceProviderConfig) VoiceProviderConfig {
 	moduleID = normalizeVoiceModuleID(moduleID)
 	providerID = normalizeVoiceProviderID(providerID)
-	if moduleID == VoiceModuleRealtime && isCloudRealtimeVoiceProvider(providerID) {
-		cfg.APIKey = normalizeProviderAPIKey(cfg.APIKey)
-		cfg.APIKeyEnv = strings.TrimSpace(cfg.APIKeyEnv)
-	} else {
-		cfg.APIKey = ""
-		cfg.APIKeyEnv = ""
-	}
+	cfg.APIKey = ""
+	cfg.APIKeyEnv = ""
 	cfg.ModelID = strings.TrimSpace(cfg.ModelID)
 	cfg.VoiceID = strings.TrimSpace(cfg.VoiceID)
 	if moduleID == VoiceModuleTTS {
@@ -176,10 +152,6 @@ func effectiveVoiceProviderConfig(moduleID string, providerID string, cfg VoiceP
 		} else {
 			cfg.Language = normalizeVoiceLanguageCode(cfg.Language)
 		}
-	} else if moduleID == VoiceModuleRealtime && (providerID == "gemini_live" || providerID == "openai_realtime") {
-		cfg.Language = normalizeRealtimeVoiceLanguageCode(cfg.Language)
-	} else if moduleID == VoiceModuleRealtime && providerID == "grok_voice" {
-		cfg.Language = normalizeGrokVoiceLanguageCode(cfg.Language)
 	} else {
 		cfg.Language = strings.ToLower(strings.TrimSpace(cfg.Language))
 	}
@@ -191,9 +163,7 @@ func effectiveVoiceProviderConfig(moduleID string, providerID string, cfg VoiceP
 	cfg.VoiceID = cmp.Or(cfg.VoiceID, defaults.VoiceID)
 	cfg.Language = cmp.Or(cfg.Language, defaults.Language)
 	cfg.BinaryPath = cmp.Or(cfg.BinaryPath, defaults.BinaryPath)
-	if !isCloudRealtimeVoiceProvider(providerID) {
-		cfg.Endpoint = cmp.Or(cfg.Endpoint, defaults.Endpoint)
-	}
+	cfg.Endpoint = cmp.Or(cfg.Endpoint, defaults.Endpoint)
 	cfg.Threads = max(cfg.Threads, 0)
 	return cfg
 }
@@ -253,93 +223,6 @@ func normalizeSupertonicLanguageCode(language string) string {
 	}
 }
 
-func normalizeRealtimeVoiceLanguageCode(language string) string {
-	language = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(language, "_", "-")))
-	switch language {
-	case "", "auto", "automatic", "detect", "default":
-		return "auto"
-	case "ar", "ar-eg":
-		return "ar-EG"
-	case "bn", "bn-bd":
-		return "bn-BD"
-	case "nl", "nl-nl":
-		return "nl-NL"
-	case "en", "en-us":
-		return "en-US"
-	case "en-in":
-		return "en-IN"
-	case "fr", "fr-fr":
-		return "fr-FR"
-	case "de", "de-de":
-		return "de-DE"
-	case "hi", "hi-in":
-		return "hi-IN"
-	case "id", "id-id":
-		return "id-ID"
-	case "it", "it-it":
-		return "it-IT"
-	case "ja", "ja-jp":
-		return "ja-JP"
-	case "ko", "ko-kr":
-		return "ko-KR"
-	case "mr", "mr-in":
-		return "mr-IN"
-	case "pl", "pl-pl":
-		return "pl-PL"
-	case "pt", "pt-br":
-		return "pt-BR"
-	case "ro", "ro-ro":
-		return "ro-RO"
-	case "ru", "ru-ru":
-		return "ru-RU"
-	case "es", "es-us":
-		return "es-US"
-	case "ta", "ta-in":
-		return "ta-IN"
-	case "te", "te-in":
-		return "te-IN"
-	case "th", "th-th":
-		return "th-TH"
-	case "tr", "tr-tr":
-		return "tr-TR"
-	case "uk", "uk-ua":
-		return "uk-UA"
-	case "vi", "vi-vn":
-		return "vi-VN"
-	default:
-		return strings.TrimSpace(language)
-	}
-}
-
-func normalizeGrokVoiceLanguageCode(language string) string {
-	language = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(language, "_", "-")))
-	switch language {
-	case "", "auto", "automatic", "detect", "default":
-		return "auto"
-	case "en", "en-us", "en-gb", "bn", "bn-bd", "zh", "zh-cn", "fr", "fr-fr", "de", "de-de", "hi", "hi-in", "id", "id-id", "it", "it-it", "ja", "ja-jp", "ko", "ko-kr", "ru", "ru-ru", "tr", "tr-tr", "vi", "vi-vn":
-		if before, _, ok := strings.Cut(language, "-"); ok {
-			return before
-		}
-		return language
-	case "ar", "ar-eg":
-		return "ar-EG"
-	case "ar-sa":
-		return "ar-SA"
-	case "ar-ae":
-		return "ar-AE"
-	case "pt", "pt-br":
-		return "pt-BR"
-	case "pt-pt":
-		return "pt-PT"
-	case "es", "es-mx":
-		return "es-MX"
-	case "es-es":
-		return "es-ES"
-	default:
-		return strings.TrimSpace(language)
-	}
-}
-
 func defaultVoiceProviderConfig(providerID string) VoiceProviderConfig {
 	switch normalizeVoiceProviderID(providerID) {
 	case "piper":
@@ -363,28 +246,6 @@ func defaultVoiceProviderConfig(providerID string) VoiceProviderConfig {
 			RuntimeMode: "per_task",
 			BinaryPath:  "whisper-cli",
 		}
-	case "gemini_live":
-		return VoiceProviderConfig{
-			VoiceID:  "Puck",
-			Language: "auto",
-			Endpoint: "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent",
-		}
-	case "grok_voice":
-		return VoiceProviderConfig{
-			ModelID:   "grok-voice-latest",
-			VoiceID:   "eve",
-			Language:  "auto",
-			APIKeyEnv: "XAI_API_KEY",
-			Endpoint:  "wss://api.x.ai/v1/realtime",
-		}
-	case "openai_realtime":
-		return VoiceProviderConfig{
-			ModelID:   "gpt-realtime-2.1",
-			VoiceID:   "marin",
-			Language:  "auto",
-			APIKeyEnv: "OPENAI_API_KEY",
-			Endpoint:  "wss://api.openai.com/v1/realtime",
-		}
 	default:
 		return VoiceProviderConfig{}
 	}
@@ -396,8 +257,6 @@ func voiceModuleConfigByID(modules ModulesConfig, id string) VoiceModuleConfig {
 		return modules.TextToSpeech
 	case VoiceModuleSTT:
 		return modules.SpeechToText
-	case VoiceModuleRealtime:
-		return modules.RealtimeVoice
 	default:
 		return VoiceModuleConfig{}
 	}
@@ -409,14 +268,12 @@ func setVoiceModuleConfigByID(modules *ModulesConfig, id string, cfg VoiceModule
 		modules.TextToSpeech = cfg
 	case VoiceModuleSTT:
 		modules.SpeechToText = cfg
-	case VoiceModuleRealtime:
-		modules.RealtimeVoice = cfg
 	}
 }
 
 func normalizeVoiceModuleID(id string) string {
 	switch id = strings.TrimSpace(id); id {
-	case VoiceModuleTTS, VoiceModuleSTT, VoiceModuleRealtime:
+	case VoiceModuleTTS, VoiceModuleSTT:
 		return id
 	default:
 		return ""
@@ -433,8 +290,6 @@ func defaultVoiceProviderID(moduleID string) string {
 		return "piper"
 	case VoiceModuleSTT:
 		return "whispercpp"
-	case VoiceModuleRealtime:
-		return "gemini_live"
 	default:
 		return ""
 	}
@@ -488,23 +343,8 @@ func voiceProviders(moduleID string) []VoiceProviderOption {
 				{ID: "large-v3", Name: "Large v3", Size: "~3 GB", RAM: "~4 GB", Description: "Very heavy"},
 			}},
 		}
-	case VoiceModuleRealtime:
-		return []VoiceProviderOption{
-			{ID: "gemini_live", Name: "Gemini Live", Local: false, Status: "Cloud · API key required"},
-			{ID: "grok_voice", Name: "Grok Voice", Local: false, Status: "Cloud · API key required"},
-			{ID: "openai_realtime", Name: "OpenAI Realtime", Local: false, Status: "Cloud · API key required"},
-		}
 	default:
 		return nil
-	}
-}
-
-func isCloudRealtimeVoiceProvider(providerID string) bool {
-	switch normalizeVoiceProviderID(providerID) {
-	case "gemini_live", "grok_voice", "openai_realtime":
-		return true
-	default:
-		return false
 	}
 }
 
@@ -513,4 +353,29 @@ func voiceProviderRuntimeStatus(provider VoiceProviderOption) string {
 		return provider.Status
 	}
 	return "Local · not installed"
+}
+
+// normalizeRealtimeVoiceConfig trims the realtime voice settings; the realtime
+// module owns their providers and defaults.
+func normalizeRealtimeVoiceConfig(cfg VoiceModuleConfig) VoiceModuleConfig {
+	cfg.ProviderID = normalizeVoiceProviderID(cfg.ProviderID)
+	stored := map[string]VoiceProviderConfig{}
+	for providerID, provider := range cfg.Providers {
+		provider = VoiceProviderConfig{
+			APIKey:    normalizeProviderAPIKey(provider.APIKey),
+			APIKeyEnv: strings.TrimSpace(provider.APIKeyEnv),
+			ModelID:   strings.TrimSpace(provider.ModelID),
+			VoiceID:   strings.TrimSpace(provider.VoiceID),
+			Language:  strings.TrimSpace(provider.Language),
+			Endpoint:  strings.TrimSpace(provider.Endpoint),
+		}
+		if providerID = normalizeVoiceProviderID(providerID); providerID != "" && provider != (VoiceProviderConfig{}) {
+			stored[providerID] = provider
+		}
+	}
+	cfg.Providers = nil
+	if len(stored) > 0 {
+		cfg.Providers = stored
+	}
+	return cfg
 }

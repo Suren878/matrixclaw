@@ -130,16 +130,16 @@ func (d *Dispatcher) realtimeVoiceLanguagePicker(ctx context.Context, providerID
 	if strings.TrimSpace(provider.ID) == "" {
 		return d.realtimeVoiceSetupPicker(ctx, "")
 	}
-	current := normalizeRealtimeVoiceLanguage(provider, provider.Config.Language)
+	current := provider.Config.Language
 	picker := NewPickerData(PickerVoiceProvider, provider.Name+" Language").
 		Context(module.ID).
 		Select(realtimeVoiceCommand("setup", provider.ID))
-	for _, option := range realtimeVoiceLanguageOptions(provider) {
+	for _, language := range provider.Languages {
 		picker.Item(PickerItem{
-			ID:       option.id,
-			Title:    option.title,
-			Selected: option.id == current,
-			Command:  realtimeVoiceCommand("setup-set", "language", provider.ID, option.id),
+			ID:       language.Code,
+			Title:    language.Name,
+			Selected: language.Code == current,
+			Command:  realtimeVoiceCommand("setup-set", "language", provider.ID, language.Code),
 		})
 	}
 	return Result{Handled: true, Picker: picker.Ptr()}, nil
@@ -253,15 +253,15 @@ func realtimeVoiceSetupPrompt(field string, provider realtime.ProviderDescriptor
 	case "key", "api-key", "api_key":
 		return provider.Name + " API Key", realtimeVoiceAPIKeyPlaceholder(provider), "", true
 	case "key-env", "api-key-env", "api_key_env":
-		return provider.Name + " API Key Env", realtimeVoiceAPIKeyEnvPlaceholder(provider), cfg.APIKeyEnv, false
+		return provider.Name + " API Key Env", firstNonEmptyTrimmed(strings.Join(provider.KeyEnvs, " or "), "API_KEY"), cfg.APIKeyEnv, false
 	case "model", "model-id", "model_id":
 		return provider.Name + " Model", "select from provider catalog", cfg.ModelID, false
 	case "voice", "voice-id", "voice_id":
-		return provider.Name + " Voice", realtimeVoiceVoicePlaceholder(provider), cfg.VoiceID, false
+		return provider.Name + " Voice", provider.DefaultVoice, cfg.VoiceID, false
 	case "language", "language-code", "language_code":
 		return provider.Name + " Language", realtimeVoiceLanguagePlaceholder(provider), cfg.Language, false
 	case "endpoint", "url", "ws-url", "ws_url":
-		return provider.Name + " Endpoint", realtimeVoiceEndpointPlaceholder(provider), cfg.Endpoint, false
+		return provider.Name + " Endpoint", provider.Config.Endpoint, cfg.Endpoint, false
 	default:
 		return "", "", "", false
 	}

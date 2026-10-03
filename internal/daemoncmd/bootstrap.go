@@ -20,19 +20,20 @@ const (
 var ErrSetupRequired = errors.New("setup is required before starting the daemon")
 
 type bootstrapConfig struct {
-	Addr           string
-	DBPath         string
-	SessionLLMs    core.SessionLLMRegistry
-	Assistant      core.AssistantProfile
-	SetupService   *setup.Service
-	SetupPath      string
-	Timezone       string
-	APIToken       string
-	Telegram       telegramClientBootstrap
-	ExternalAgents setup.ModulesConfig
-	Budgets        core.RunBudgets
-	CompactModel   setup.CompactModelConfig
-	WindowCap      int
+	Addr         string
+	DBPath       string
+	SessionLLMs  core.SessionLLMRegistry
+	Assistant    core.AssistantProfile
+	SetupService *setup.Service
+	SetupPath    string
+	Timezone     string
+	APIToken     string
+	Telegram     telegramClientBootstrap
+	// Setup is setup.json as loaded at start.
+	Setup        setup.Config
+	Budgets      core.RunBudgets
+	CompactModel setup.CompactModelConfig
+	WindowCap    int
 	// ModelConcurrency bounds concurrent model requests; 0 keeps core's default.
 	ModelConcurrency int
 	// BackgroundTasks bounds a session's background commands; 0 keeps core's default.
@@ -109,7 +110,7 @@ func loadBootstrap() (bootstrapConfig, error) {
 			return bootstrapConfig{}, fmt.Errorf("load setup config %s: %w", service.Path(), err)
 		}
 		cfg.Telegram = telegramClient
-		cfg.ExternalAgents = setupCfg.Modules
+		cfg.Setup = setupCfg
 	}
 
 	if addr := strings.TrimSpace(os.Getenv("MATRIXCLAW_HTTP_ADDR")); addr != "" {

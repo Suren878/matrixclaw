@@ -256,7 +256,6 @@ type TelephonyModuleDescriptor struct {
 	TokenConfigured  bool            `json:"token_configured"`
 	TokenPreview     string          `json:"token_preview,omitempty"`
 	DefaultProfile   string          `json:"default_profile,omitempty"`
-	RealtimeModuleID string          `json:"realtime_module_id,omitempty"`
 	Config           TelephonyConfig `json:"config,omitempty"`
 }
 

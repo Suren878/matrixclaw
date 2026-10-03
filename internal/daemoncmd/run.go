@@ -23,6 +23,10 @@ import (
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
 	telephonymodule "github.com/Suren878/matrixclaw/internal/modules/telephony"
 	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
+	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
+	geminilive "github.com/Suren878/matrixclaw/internal/modules/voice/realtime/providers/gemini"
+	grokvoice "github.com/Suren878/matrixclaw/internal/modules/voice/realtime/providers/grok"
+	openairealtime "github.com/Suren878/matrixclaw/internal/modules/voice/realtime/providers/openai"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/setup"
@@ -67,7 +71,7 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	mcpModule, err := mcpmodule.New(ctx, mcpConfigWithBrowser(localRuntime, bootstrap.ExternalAgents))
+	mcpModule, err := mcpmodule.New(ctx, mcpConfigWithBrowser(localRuntime, bootstrap.Setup.Modules))
 	if err != nil {
 		log.Printf("matrixclawd mcp module disabled: %v", err)
 		mcpModule, _ = mcpmodule.New(ctx, setup.MCPConfig{})
@@ -96,7 +100,7 @@ func Run(ctx context.Context) error {
 	// supervisor.ApplyBootstrap runs, so the profile is set here too, via the
 	// same helper, ensuring module context is never missing.
 	applyAssistantProfile(app, bootstrap.Assistant, moduleRegistry.Context)
-	externalRegistry, externalRuntimes, err := builtins.BuildRegistry(bootstrap.ExternalAgents)
+	externalRegistry, externalRuntimes, err := builtins.BuildRegistry(bootstrap.Setup.Modules)
 	if err != nil {
 		return err
 	}
@@ -151,11 +155,13 @@ func Run(ctx context.Context) error {
 	server.SetSkillsService(skillsModule.Service())
 	server.SetSetupService(bootstrap.SetupService)
 	server.SetLocalVoice(localRuntime, voiceService)
-	server.SetRealtimeVoiceService(newRealtimeVoiceManager(bootstrap.SetupService, app))
+	realtimeVoice := realtime.NewManager(app, geminilive.Spec, grokvoice.Spec, openairealtime.Spec)
+	server.SetRealtimeVoiceService(realtimeVoice)
 	server.SetMCPChanged(mcpConfigChanged(localRuntime, bootstrap))
 	supervisor := newSupervisor(ctx, server, app, osmGeo)
+	supervisor.realtime = realtimeVoice
 	supervisor.SetModuleContext(moduleRegistry.Context)
-	supervisor.SetExternalAgents(sqliteStore, externalRuntimes, bootstrap.ExternalAgents.ExternalAgents)
+	supervisor.SetExternalAgents(sqliteStore, externalRuntimes, bootstrap.Setup.Modules.ExternalAgents)
 	defer func() {
 		// Ending the lifetime interrupts the executing runs and keeps them for
 		// recovery; they finish writing before external agents and the store close.
@@ -209,7 +215,7 @@ func Run(ctx context.Context) error {
 }
 
 func skillsConfigFromBootstrap(bootstrap bootstrapConfig) skills.Config {
-	cfg := bootstrap.ExternalAgents.Skills
+	cfg := bootstrap.Setup.Modules.Skills
 	return skills.Config{
 		DBPath:      bootstrap.DBPath,
 		Enabled:     cfg.IsEnabled(),
@@ -240,7 +246,7 @@ func mcpConfigWithBrowser(runtime *localruntime.Runtime, modules setup.ModulesCo
 // mcpConfigChanged reports whether the saved MCP and browser settings differ
 // from those the MCP module was built with at startup.
 func mcpConfigChanged(runtime *localruntime.Runtime, bootstrap bootstrapConfig) func() bool {
-	started := mcpConfigWithBrowser(runtime, bootstrap.ExternalAgents)
+	started := mcpConfigWithBrowser(runtime, bootstrap.Setup.Modules)
 	return func() bool {
 		cfg, err := bootstrap.SetupService.Load()
 		return err == nil && !reflect.DeepEqual(mcpConfigWithBrowser(runtime, cfg.Modules), started)

@@ -34,7 +34,9 @@ func (s *Server) handleRealtimeVoiceModule(w http.ResponseWriter, r *http.Reques
 		if !decodeJSONBody(w, r, &update) {
 			return
 		}
-		if _, err := s.setup.UpdateVoiceModule(setup.VoiceModuleRealtime, update); err != nil {
+		if _, err := s.setup.Update(func(cfg *setup.Config) error {
+			return s.realtimeVoice.Edit(&cfg.Modules.RealtimeVoice, update)
+		}); err != nil {
 			writeErrorMessage(w, http.StatusBadRequest, err.Error())
 			return
 		}

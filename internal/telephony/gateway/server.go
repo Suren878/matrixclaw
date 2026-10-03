@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -132,6 +131,7 @@ func (s *Server) probeMatrixclaw(ctx context.Context) error {
 	var payload struct {
 		Module struct {
 			Enabled bool   `json:"enabled"`
+			Ready   bool   `json:"ready"`
 			Status  string `json:"status"`
 		} `json:"module"`
 	}
@@ -141,7 +141,7 @@ func (s *Server) probeMatrixclaw(ctx context.Context) error {
 	if !payload.Module.Enabled {
 		return errors.New("realtime voice disabled")
 	}
-	if !strings.EqualFold(strings.TrimSpace(payload.Module.Status), "Ready") {
+	if !payload.Module.Ready {
 		return fmt.Errorf("realtime voice status is %s", payload.Module.Status)
 	}
 	return nil
