@@ -14,12 +14,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-type BashToolMessageItem struct{ *baseToolMessageItem }
-
-func NewBashToolMessageItem(sty *surfacestyles.Styles, toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult, canceled bool) ToolMessageItem {
-	return newBaseToolMessageItem(sty, toolCall, result, &BashToolRenderContext{}, canceled)
-}
-
 type BashToolRenderContext struct{}
 
 func (b *BashToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
@@ -97,18 +91,6 @@ func isExpectedNeutralBashResult(toolCall surfacemessage.ToolCall, result *surfa
 	var meta tools.BashResponseMetadata
 	_ = json.Unmarshal([]byte(result.Metadata), &meta)
 	return meta.ExitCode == 1 && strings.TrimSpace(meta.Output) == "" && tools.IsProcessProbeCommand(params.Command)
-}
-
-type TaskOutputToolMessageItem struct{ *baseToolMessageItem }
-
-type TaskKillToolMessageItem struct{ *baseToolMessageItem }
-
-func NewTaskOutputToolMessageItem(sty *surfacestyles.Styles, toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult, canceled bool) ToolMessageItem {
-	return newBaseToolMessageItem(sty, toolCall, result, &TaskOutputToolRenderContext{}, canceled)
-}
-
-func NewTaskKillToolMessageItem(sty *surfacestyles.Styles, toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult, canceled bool) ToolMessageItem {
-	return newBaseToolMessageItem(sty, toolCall, result, &TaskKillToolRenderContext{}, canceled)
 }
 
 type TaskOutputToolRenderContext struct{}

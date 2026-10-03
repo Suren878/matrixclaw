@@ -13,19 +13,6 @@ import (
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
 )
 
-type GenericToolMessageItem struct {
-	*baseToolMessageItem
-}
-
-func NewGenericToolMessageItem(
-	sty *surfacestyles.Styles,
-	toolCall surfacemessage.ToolCall,
-	result *surfacemessage.ToolResult,
-	canceled bool,
-) ToolMessageItem {
-	return newBaseToolMessageItem(sty, toolCall, result, &GenericToolRenderContext{}, canceled)
-}
-
 type GenericToolRenderContext struct{}
 
 func (g *GenericToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {

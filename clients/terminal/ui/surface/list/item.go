@@ -1,9 +1,5 @@
 package list
 
-import (
-	"strings"
-)
-
 // Item represents a single item in the lazy-loaded list.
 type Item interface {
 	// Render returns the string representation of the item for the given
@@ -32,21 +28,4 @@ type Highlightable interface {
 	SetHighlight(startLine, startCol, endLine, endCol int)
 	// Highlight returns the current highlight positions within the item.
 	Highlight() (startLine, startCol, endLine, endCol int)
-}
-
-// SpacerItem is a spacer item that adds vertical space in the list.
-type SpacerItem struct {
-	Height int
-}
-
-// NewSpacerItem creates a new [SpacerItem] with the specified height.
-func NewSpacerItem(height int) *SpacerItem {
-	return &SpacerItem{
-		Height: max(0, height-1),
-	}
-}
-
-// Render implements the Item interface for [SpacerItem].
-func (s *SpacerItem) Render(width int) string {
-	return strings.Repeat("\n", s.Height)
 }

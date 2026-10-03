@@ -57,25 +57,6 @@ func (r *Runtime) loadOrInitSnapshot(ctx context.Context) (core.ClientSnapshot, 
 	return r.loadSnapshot(ctx)
 }
 
-func (r *Runtime) createAndLoadSession(ctx context.Context, title string) (core.ClientSnapshot, error) {
-	client, err := r.daemon()
-	if err != nil {
-		return core.ClientSnapshot{}, err
-	}
-	session, err := client.CreateSession(ctx, title, r.config.WorkingDir)
-	if err != nil {
-		return core.ClientSnapshot{}, err
-	}
-	if _, err := client.UseSession(ctx, session.ID); err != nil {
-		return core.ClientSnapshot{}, err
-	}
-	return client.LoadSnapshot(ctx)
-}
-
 func defaultInitialSessionTitle() string {
 	return "Main"
-}
-
-func defaultNewSessionTitle() string {
-	return "New chat"
 }

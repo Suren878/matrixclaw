@@ -14,12 +14,11 @@ type ReadGroupMessageItem struct {
 	*cachedMessageItem
 	*focusableMessageItem
 
-	messageID        string
-	toolCalls        []surfacemessage.ToolCall
-	results          []surfacemessage.ToolResult
-	sty              *surfacestyles.Styles
-	expandedContents bool
-	status           ToolStatus
+	messageID string
+	toolCalls []surfacemessage.ToolCall
+	results   []surfacemessage.ToolResult
+	sty       *surfacestyles.Styles
+	status    ToolStatus
 }
 
 func NewReadGroupMessageItem(sty *surfacestyles.Styles, messageID string, toolCalls []surfacemessage.ToolCall, results []surfacemessage.ToolResult) *ReadGroupMessageItem {
@@ -37,12 +36,6 @@ func NewReadGroupMessageItem(sty *surfacestyles.Styles, messageID string, toolCa
 
 func (m *ReadGroupMessageItem) ID() string {
 	return m.messageID + ":read-group"
-}
-
-func (m *ReadGroupMessageItem) ToggleExpanded() bool {
-	m.expandedContents = !m.expandedContents
-	m.clearCache()
-	return m.expandedContents
 }
 
 func (m *ReadGroupMessageItem) RawRender(width int) string {

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
@@ -37,17 +36,6 @@ func New(styles *surfacestyles.Styles, version string) *Header {
 		styles:  styles,
 		version: version,
 	}
-}
-
-// Draw renders the terminal header into the provided screen area.
-func (h *Header) Draw(scr uv.Screen, area uv.Rectangle, data Data, compact bool, width int) {
-	if scr == nil {
-		return
-	}
-	if width <= 0 {
-		width = area.Dx()
-	}
-	uv.NewStyledString(h.View(width, compact, data)).Draw(scr, area)
 }
 
 // View renders the terminal header shell.

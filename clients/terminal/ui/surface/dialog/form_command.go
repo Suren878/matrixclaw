@@ -14,7 +14,6 @@ import (
 const FormCommandID = "form_command"
 
 type FormCommandData = controlplane.FormData
-type FormCommandField = controlplane.FormField
 
 type FormCommand struct {
 	data    FormCommandData

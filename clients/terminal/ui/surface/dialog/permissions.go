@@ -76,15 +76,7 @@ type Permissions struct {
 
 var _ Dialog = (*Permissions)(nil)
 
-type PermissionsOption func(*Permissions)
-
-func WithDiffMode(split bool) PermissionsOption {
-	return func(p *Permissions) {
-		p.diffSplitMode = &split
-	}
-}
-
-func NewPermissions(com *surfacecommon.Common, perm surfacepermission.PermissionRequest, opts ...PermissionsOption) *Permissions {
+func NewPermissions(com *surfacecommon.Common, perm surfacepermission.PermissionRequest) *Permissions {
 	h := help.New()
 	h.Styles = com.Styles.DialogHelpStyles()
 
@@ -101,7 +93,7 @@ func NewPermissions(com *surfacecommon.Common, perm surfacepermission.Permission
 		HalfPageDown: key.NewBinding(key.WithDisabled()),
 	}
 
-	p := &Permissions{
+	return &Permissions{
 		com:            com,
 		permission:     perm,
 		selectedOption: 0,
@@ -109,12 +101,6 @@ func NewPermissions(com *surfacecommon.Common, perm surfacepermission.Permission
 		help:           h,
 		keyMap:         km,
 	}
-
-	for _, opt := range opts {
-		opt(p)
-	}
-
-	return p
 }
 
 func (p *Permissions) calculateContentWidth(width int) int {

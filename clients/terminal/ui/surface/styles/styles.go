@@ -98,8 +98,7 @@ type Styles struct {
 	ResourceStatus         lipgloss.Style
 	ResourceAdditionalText lipgloss.Style
 
-	Markdown      ansi.StyleConfig
-	PlainMarkdown ansi.StyleConfig
+	Markdown ansi.StyleConfig
 
 	TextInput TextInputStyles
 	TextArea  TextAreaStyles

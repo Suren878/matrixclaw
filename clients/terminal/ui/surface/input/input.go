@@ -18,8 +18,6 @@ type SubmitMsg struct {
 
 type FocusMainMsg struct{}
 
-type NewSessionMsg struct{}
-
 type OpenCommandsMsg struct{}
 
 type OpenTodoMsg struct{}

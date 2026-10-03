@@ -145,7 +145,6 @@ func DefaultStyles() Styles {
 	}
 
 	s.Markdown = defaultMarkdownStyles(green)
-	s.PlainMarkdown = defaultPlainMarkdownStyles(bgBaseLighter, fgMuted, green)
 
 	s.Help = help.Styles{
 		ShortKey:       base.Foreground(fgMuted),

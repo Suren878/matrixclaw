@@ -2,7 +2,6 @@ package message
 
 import (
 	"slices"
-	"strings"
 	"time"
 )
 
@@ -179,82 +178,6 @@ func (m *Message) IsThinking() bool {
 	return m.ReasoningContent().Thinking != "" && m.Content().Text == "" && !m.IsFinished()
 }
 
-func (m *Message) AppendContent(delta string) {
-	for i, part := range m.Parts {
-		if c, ok := part.(TextContent); ok {
-			m.Parts[i] = TextContent{Text: c.Text + delta}
-			return
-		}
-	}
-	m.Parts = append(m.Parts, TextContent{Text: delta})
-}
-
-func (m *Message) FinishThinking() {
-	for i, part := range m.Parts {
-		if c, ok := part.(ReasoningContent); ok {
-			if c.FinishedAt == 0 {
-				c.FinishedAt = time.Now().Unix()
-				m.Parts[i] = c
-			}
-			return
-		}
-	}
-}
-
-func (m *Message) FinishToolCall(toolCallID string) {
-	for i, part := range m.Parts {
-		if c, ok := part.(ToolCall); ok && c.ID == toolCallID {
-			c.Finished = true
-			m.Parts[i] = c
-			return
-		}
-	}
-}
-
-func (m *Message) AppendToolCallInput(toolCallID string, inputDelta string) {
-	for i, part := range m.Parts {
-		if c, ok := part.(ToolCall); ok && c.ID == toolCallID {
-			c.Input += inputDelta
-			m.Parts[i] = c
-			return
-		}
-	}
-}
-
-func (m *Message) AddToolCall(tc ToolCall) {
-	for i, part := range m.Parts {
-		if c, ok := part.(ToolCall); ok && c.ID == tc.ID {
-			m.Parts[i] = tc
-			return
-		}
-	}
-	m.Parts = append(m.Parts, tc)
-}
-
-func (m *Message) SetToolCalls(tc []ToolCall) {
-	parts := make([]ContentPart, 0, len(m.Parts)+len(tc))
-	for _, part := range m.Parts {
-		if _, ok := part.(ToolCall); ok {
-			continue
-		}
-		parts = append(parts, part)
-	}
-	for _, item := range tc {
-		parts = append(parts, item)
-	}
-	m.Parts = parts
-}
-
-func (m *Message) AddToolResult(tr ToolResult) {
-	m.Parts = append(m.Parts, tr)
-}
-
-func (m *Message) SetToolResults(tr []ToolResult) {
-	for _, item := range tr {
-		m.Parts = append(m.Parts, item)
-	}
-}
-
 func (m *Message) Clone() Message {
 	clone := *m
 	clone.Parts = make([]ContentPart, len(m.Parts))
@@ -275,8 +198,4 @@ func (m *Message) AddFinish(reason FinishReason, message string, details string)
 		Message: message,
 		Details: details,
 	})
-}
-
-func (m *Message) HasRenderableText() bool {
-	return strings.TrimSpace(m.Content().Text) != "" || strings.TrimSpace(m.ReasoningContent().Thinking) != ""
 }

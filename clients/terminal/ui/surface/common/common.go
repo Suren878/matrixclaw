@@ -25,10 +25,3 @@ func CenterRect(area uv.Rectangle, width, height int) uv.Rectangle {
 	minY := centerY - height/2
 	return image.Rect(minX, minY, minX+width, minY+height)
 }
-
-// BottomLeftRect returns a rectangle positioned at the bottom-left of the area.
-func BottomLeftRect(area uv.Rectangle, width, height int) uv.Rectangle {
-	minX := area.Min.X
-	maxY := area.Max.Y
-	return image.Rect(minX, maxY-height, minX+width, maxY)
-}

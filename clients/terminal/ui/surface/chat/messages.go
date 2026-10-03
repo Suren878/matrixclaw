@@ -321,7 +321,6 @@ func extractAssistantMessageItems(sty *surfacestyles.Styles, msg *surfacemessage
 			}
 			items = append(items, NewToolMessageItem(
 				sty,
-				msg.ID,
 				part,
 				result,
 				msg.FinishReason() == surfacemessage.FinishReasonCanceled,
@@ -353,14 +352,6 @@ func newAssistantSegment(msg *surfacemessage.Message, index int) surfacemessage.
 		segment.ID = fmt.Sprintf("%s:part:%d", msg.ID, index)
 	}
 	return segment
-}
-
-func ShouldRenderAssistantMessage(msg *surfacemessage.Message) bool {
-	content := strings.TrimSpace(msg.Content().Text)
-	isError := msg.FinishReason() == surfacemessage.FinishReasonError
-	isCancelled := msg.FinishReason() == surfacemessage.FinishReasonCanceled
-	hasToolCalls := len(msg.ToolCalls()) > 0
-	return !hasToolCalls || content != "" || isError || isCancelled
 }
 
 func AssistantInfoID(messageID string) string {

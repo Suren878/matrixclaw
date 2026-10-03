@@ -29,12 +29,7 @@ const (
 type ToolMessageItem interface {
 	MessageItem
 	ToolCall() surfacemessage.ToolCall
-	SetToolCall(tc surfacemessage.ToolCall)
-	SetResult(res *surfacemessage.ToolResult)
-	MessageID() string
-	SetMessageID(id string)
 	SetStatus(status ToolStatus)
-	Status() ToolStatus
 }
 
 type ToolRenderOpts struct {
@@ -63,7 +58,6 @@ type baseToolMessageItem struct {
 	toolRenderer    ToolRenderer
 	toolCall        surfacemessage.ToolCall
 	result          *surfacemessage.ToolResult
-	messageID       string
 	status          ToolStatus
 	hasCappedWidth  bool
 	sty             *surfacestyles.Styles
@@ -108,40 +102,40 @@ func newBaseToolMessageItem(
 
 func NewToolMessageItem(
 	sty *surfacestyles.Styles,
-	messageID string,
 	toolCall surfacemessage.ToolCall,
 	result *surfacemessage.ToolResult,
 	canceled bool,
 ) ToolMessageItem {
-	var item ToolMessageItem
-	switch normalizedToolName(toolCall.Name) {
+	return newBaseToolMessageItem(sty, toolCall, result, toolRendererFor(toolCall.Name), canceled)
+}
+
+func toolRendererFor(name string) ToolRenderer {
+	switch normalizedToolName(name) {
 	case "bash":
-		item = NewBashToolMessageItem(sty, toolCall, result, canceled)
+		return &BashToolRenderContext{}
 	case "task_output":
-		item = NewTaskOutputToolMessageItem(sty, toolCall, result, canceled)
+		return &TaskOutputToolRenderContext{}
 	case "task_kill":
-		item = NewTaskKillToolMessageItem(sty, toolCall, result, canceled)
+		return &TaskKillToolRenderContext{}
 	case "read":
-		item = NewReadToolMessageItem(sty, toolCall, result, canceled)
+		return &ReadToolRenderContext{}
 	case "write":
-		item = NewWriteToolMessageItem(sty, toolCall, result, canceled)
+		return &WriteToolRenderContext{}
 	case "edit":
-		item = NewEditToolMessageItem(sty, toolCall, result, canceled)
+		return &EditToolRenderContext{}
 	case "multiedit":
-		item = NewMultiEditToolMessageItem(sty, toolCall, result, canceled)
+		return &MultiEditToolRenderContext{}
 	case "glob":
-		item = NewGlobToolMessageItem(sty, toolCall, result, canceled)
+		return &GlobToolRenderContext{}
 	case "grep":
-		item = NewGrepToolMessageItem(sty, toolCall, result, canceled)
+		return &GrepToolRenderContext{}
 	case "ls":
-		item = NewLSToolMessageItem(sty, toolCall, result, canceled)
+		return &LSToolRenderContext{}
 	case "agent":
-		item = NewAgentToolMessageItem(sty, toolCall, result, canceled)
+		return &AgentToolRenderContext{}
 	default:
-		item = NewGenericToolMessageItem(sty, toolCall, result, canceled)
+		return &GenericToolRenderContext{}
 	}
-	item.SetMessageID(messageID)
-	return item
 }
 
 func (t *baseToolMessageItem) ID() string { return t.toolCall.ID }
@@ -188,18 +182,7 @@ func (t *baseToolMessageItem) Render(width int) string {
 }
 
 func (t *baseToolMessageItem) ToolCall() surfacemessage.ToolCall { return t.toolCall }
-func (t *baseToolMessageItem) SetToolCall(tc surfacemessage.ToolCall) {
-	t.toolCall = tc
-	t.clearCache()
-}
-func (t *baseToolMessageItem) SetResult(res *surfacemessage.ToolResult) {
-	t.result = res
-	t.clearCache()
-}
-func (t *baseToolMessageItem) MessageID() string           { return t.messageID }
-func (t *baseToolMessageItem) SetMessageID(id string)      { t.messageID = id }
-func (t *baseToolMessageItem) SetStatus(status ToolStatus) { t.status = status; t.clearCache() }
-func (t *baseToolMessageItem) Status() ToolStatus          { return t.status }
+func (t *baseToolMessageItem) SetStatus(status ToolStatus)       { t.status = status; t.clearCache() }
 
 func (t *baseToolMessageItem) markerStyle() lipgloss.Style {
 	if normalizedToolName(t.toolCall.Name) == "bash" {

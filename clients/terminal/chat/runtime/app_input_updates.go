@@ -34,16 +34,6 @@ func (m *appModel) handleSubmit(msg surfaceinput.SubmitMsg) tea.Cmd {
 	return m.sendMessageCmd(msg.Content, msg.Attachments, mode)
 }
 
-func (m *appModel) handleNewSession() tea.Cmd {
-	if m.busy {
-		m.err = "agent is busy, please wait before starting a new session"
-		return nil
-	}
-	m.loading = true
-	m.err = ""
-	return m.createSessionCmd()
-}
-
 func (m *appModel) handleAttachFiles() {
 	if err := m.attachFilesFromEditorValue(); err != nil {
 		m.err = err.Error()

@@ -9,12 +9,6 @@ import (
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
 )
 
-type AgentToolMessageItem struct{ *baseToolMessageItem }
-
-func NewAgentToolMessageItem(sty *surfacestyles.Styles, toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult, canceled bool) ToolMessageItem {
-	return newBaseToolMessageItem(sty, toolCall, result, &AgentToolRenderContext{}, canceled)
-}
-
 type AgentToolRenderContext struct{}
 
 type agentRenderParams struct {

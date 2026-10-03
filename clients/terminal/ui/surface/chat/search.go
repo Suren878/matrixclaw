@@ -8,22 +8,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-type GlobToolMessageItem struct{ *baseToolMessageItem }
-type GrepToolMessageItem struct{ *baseToolMessageItem }
-type LSToolMessageItem struct{ *baseToolMessageItem }
-
-func NewGlobToolMessageItem(sty *surfacestyles.Styles, toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult, canceled bool) ToolMessageItem {
-	return newBaseToolMessageItem(sty, toolCall, result, &GlobToolRenderContext{}, canceled)
-}
-
-func NewGrepToolMessageItem(sty *surfacestyles.Styles, toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult, canceled bool) ToolMessageItem {
-	return newBaseToolMessageItem(sty, toolCall, result, &GrepToolRenderContext{}, canceled)
-}
-
-func NewLSToolMessageItem(sty *surfacestyles.Styles, toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult, canceled bool) ToolMessageItem {
-	return newBaseToolMessageItem(sty, toolCall, result, &LSToolRenderContext{}, canceled)
-}
-
 type GlobToolRenderContext struct{}
 type GrepToolRenderContext struct{}
 type LSToolRenderContext struct{}

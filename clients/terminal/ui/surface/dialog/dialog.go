@@ -179,22 +179,6 @@ func DrawCenter(scr uv.Screen, area uv.Rectangle, view string) {
 	DrawCenterCursor(scr, area, view, nil)
 }
 
-// DrawOnboarding draws the view bottom-left aligned in the area.
-func DrawOnboarding(scr uv.Screen, area uv.Rectangle, view string) {
-	DrawOnboardingCursor(scr, area, view, nil)
-}
-
-// DrawOnboardingCursor draws the view bottom-left aligned and offsets the cursor.
-func DrawOnboardingCursor(scr uv.Screen, area uv.Rectangle, view string, cur *uv.Cursor) {
-	width, height := lipgloss.Size(view)
-	bottomLeft := surfacecommon.BottomLeftRect(area, width, height)
-	if cur != nil {
-		cur.X += bottomLeft.Min.X
-		cur.Y += bottomLeft.Min.Y
-	}
-	uv.NewStyledString(view).Draw(scr, bottomLeft)
-}
-
 // Draw renders all open dialogs.
 func (d *Overlay) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 	var cur *uv.Cursor

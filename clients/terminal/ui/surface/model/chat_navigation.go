@@ -68,11 +68,6 @@ func (m *Chat) ScrollToIndex(index int) {
 	m.follow = m.AtBottom()
 }
 
-func (m *Chat) ScrollToTopAndAnimate() tea.Cmd {
-	m.ScrollToTop()
-	return m.RestartPausedVisibleAnimations()
-}
-
 func (m *Chat) ScrollToBottomAndAnimate() tea.Cmd {
 	m.ScrollToBottom()
 	return m.RestartPausedVisibleAnimations()
@@ -86,11 +81,6 @@ func (m *Chat) ScrollByAndAnimate(lines int) tea.Cmd {
 func (m *Chat) ScrollToSelectedAndAnimate() tea.Cmd {
 	m.ScrollToSelected()
 	return m.RestartPausedVisibleAnimations()
-}
-
-// SelectedIndex returns the currently selected item index.
-func (m *Chat) SelectedIndex() int {
-	return m.list.Selected()
 }
 
 // SelectedMessageID returns the selected message ID, if any.
@@ -208,68 +198,6 @@ func (m *Chat) SelectLast() {
 			return
 		}
 	}
-}
-
-// SelectFirstInView selects the first message currently in view.
-func (m *Chat) SelectFirstInView() {
-	startIdx, endIdx := m.list.VisibleItemIndices()
-	for i := startIdx; i <= endIdx; i++ {
-		if m.isSelectable(i) {
-			m.list.SetSelected(i)
-			return
-		}
-	}
-}
-
-// SelectLastInView selects the last message currently in view.
-func (m *Chat) SelectLastInView() {
-	startIdx, endIdx := m.list.VisibleItemIndices()
-	for i := endIdx; i >= startIdx; i-- {
-		if m.isSelectable(i) {
-			m.list.SetSelected(i)
-			return
-		}
-	}
-}
-
-// ClearMessages removes all messages from the chat list.
-func (m *Chat) ClearMessages() {
-	m.idInxMap = make(map[string]int)
-	m.pausedAnimations = make(map[string]struct{})
-	m.list.SetItems()
-	m.ClearMouse()
-}
-
-// RemoveMessage removes a message from the chat list by its ID.
-func (m *Chat) RemoveMessage(id string) {
-	idx, ok := m.idInxMap[id]
-	if !ok {
-		return
-	}
-
-	m.list.RemoveItem(idx)
-	delete(m.idInxMap, id)
-
-	for i := idx; i < m.list.Len(); i++ {
-		if item, ok := m.list.ItemAt(i).(chat.MessageItem); ok {
-			m.idInxMap[item.ID()] = i
-		}
-	}
-
-	delete(m.pausedAnimations, id)
-}
-
-// MessageItem returns the message item with the given ID, or nil if not found.
-func (m *Chat) MessageItem(id string) chat.MessageItem {
-	idx, ok := m.idInxMap[id]
-	if !ok {
-		return nil
-	}
-	item, ok := m.list.ItemAt(idx).(chat.MessageItem)
-	if !ok {
-		return nil
-	}
-	return item
 }
 
 // ToggleExpandedSelectedItem expands the selected message item if it is expandable.

@@ -69,13 +69,3 @@ func (m *appModel) sendMessageCmd(content string, attachments []surfaceeditor.At
 		}
 	}
 }
-
-func (m *appModel) createSessionCmd() tea.Cmd {
-	if m.rt == nil {
-		return nil
-	}
-	return func() tea.Msg {
-		snapshot, err := m.rt.createAndLoadSession(m.ctx, defaultNewSessionTitle())
-		return loadInitialMsg{snapshot: snapshot, err: err}
-	}
-}

@@ -26,12 +26,6 @@ func (a Attachment) IsImage() bool {
 	return strings.HasPrefix(a.MimeType, "image/")
 }
 
-func ContainsTextAttachment(attachments []Attachment) bool {
-	return slices.ContainsFunc(attachments, func(a Attachment) bool {
-		return a.IsText()
-	})
-}
-
 func ContainsMessageAttachment(attachments []Attachment) bool {
 	return slices.ContainsFunc(attachments, func(a Attachment) bool {
 		return a.IsText() || a.IsImage()

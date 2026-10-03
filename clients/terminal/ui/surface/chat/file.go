@@ -17,27 +17,6 @@ import (
 
 var numberedReadLinePrefix = regexp.MustCompile(`^\s*\d+\s`)
 
-type ReadToolMessageItem struct{ *baseToolMessageItem }
-type WriteToolMessageItem struct{ *baseToolMessageItem }
-type EditToolMessageItem struct{ *baseToolMessageItem }
-type MultiEditToolMessageItem struct{ *baseToolMessageItem }
-
-func NewReadToolMessageItem(sty *surfacestyles.Styles, toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult, canceled bool) ToolMessageItem {
-	return newBaseToolMessageItem(sty, toolCall, result, &ReadToolRenderContext{}, canceled)
-}
-
-func NewWriteToolMessageItem(sty *surfacestyles.Styles, toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult, canceled bool) ToolMessageItem {
-	return newBaseToolMessageItem(sty, toolCall, result, &WriteToolRenderContext{}, canceled)
-}
-
-func NewEditToolMessageItem(sty *surfacestyles.Styles, toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult, canceled bool) ToolMessageItem {
-	return newBaseToolMessageItem(sty, toolCall, result, &EditToolRenderContext{}, canceled)
-}
-
-func NewMultiEditToolMessageItem(sty *surfacestyles.Styles, toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult, canceled bool) ToolMessageItem {
-	return newBaseToolMessageItem(sty, toolCall, result, &MultiEditToolRenderContext{}, canceled)
-}
-
 type ReadToolRenderContext struct{}
 type WriteToolRenderContext struct{}
 type EditToolRenderContext struct{}

@@ -21,8 +21,6 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.handleSubmit(msg)
 	case surfaceinput.FocusMainMsg:
 		return m, m.setFocus(appFocusChat)
-	case surfaceinput.NewSessionMsg:
-		return m, m.handleNewSession()
 	case surfaceinput.OpenTodoMsg:
 		return m, m.toggleTodoPanel()
 	case surfaceinput.OpenCommandsMsg:

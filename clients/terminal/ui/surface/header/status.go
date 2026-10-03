@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
-	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
@@ -57,20 +56,6 @@ func NewStatus(styles *surfacestyles.Styles) *Status {
 		styles = &defaultStyles
 	}
 	return &Status{styles: styles}
-}
-
-// Draw renders the status/help shell into the provided screen area.
-func (s *Status) Draw(scr uv.Screen, area uv.Rectangle, data StatusData) {
-	if scr == nil {
-		return
-	}
-	helpView, infoView := s.Views(area.Dx(), data)
-	if helpView != "" {
-		uv.NewStyledString(helpView).Draw(scr, area)
-	}
-	if infoView != "" {
-		uv.NewStyledString(infoView).Draw(scr, area)
-	}
 }
 
 // Views renders the help layer and optional overlaid info line.

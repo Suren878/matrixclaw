@@ -38,24 +38,9 @@ func (l *List) Selected() int {
 	return l.selectedIdx
 }
 
-// IsSelectedFirst returns whether the first item is selected.
-func (l *List) IsSelectedFirst() bool {
-	return l.selectedIdx == 0
-}
-
-// IsSelectedLast returns whether the last item is selected.
-func (l *List) IsSelectedLast() bool {
-	return l.selectedIdx == len(l.items)-1
-}
-
 // SelectPrev selects the visually previous item.
 func (l *List) SelectPrev() bool {
-	if l.reverse {
-		if l.selectedIdx < len(l.items)-1 {
-			l.selectedIdx++
-			return true
-		}
-	} else if l.selectedIdx > 0 {
+	if l.selectedIdx > 0 {
 		l.selectedIdx--
 		return true
 	}
@@ -64,12 +49,7 @@ func (l *List) SelectPrev() bool {
 
 // SelectNext selects the visually next item.
 func (l *List) SelectNext() bool {
-	if l.reverse {
-		if l.selectedIdx > 0 {
-			l.selectedIdx--
-			return true
-		}
-	} else if l.selectedIdx < len(l.items)-1 {
+	if l.selectedIdx < len(l.items)-1 {
 		l.selectedIdx++
 		return true
 	}
@@ -94,50 +74,12 @@ func (l *List) SelectLast() bool {
 	return true
 }
 
-// WrapToStart wraps selection to the visual start.
-func (l *List) WrapToStart() bool {
-	if len(l.items) == 0 {
-		return false
-	}
-	if l.reverse {
-		l.selectedIdx = len(l.items) - 1
-	} else {
-		l.selectedIdx = 0
-	}
-	return true
-}
-
-// WrapToEnd wraps selection to the visual end.
-func (l *List) WrapToEnd() bool {
-	if len(l.items) == 0 {
-		return false
-	}
-	if l.reverse {
-		l.selectedIdx = 0
-	} else {
-		l.selectedIdx = len(l.items) - 1
-	}
-	return true
-}
-
 // SelectedItem returns the currently selected item.
 func (l *List) SelectedItem() Item {
 	if l.selectedIdx < 0 || l.selectedIdx >= len(l.items) {
 		return nil
 	}
 	return l.items[l.selectedIdx]
-}
-
-// SelectFirstInView selects the first item currently in view.
-func (l *List) SelectFirstInView() {
-	startIdx, _ := l.VisibleItemIndices()
-	l.selectedIdx = startIdx
-}
-
-// SelectLastInView selects the last item currently in view.
-func (l *List) SelectLastInView() {
-	_, endIdx := l.VisibleItemIndices()
-	l.selectedIdx = endIdx
 }
 
 // ItemAt returns the item at the given index.

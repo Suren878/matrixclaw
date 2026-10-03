@@ -17,9 +17,6 @@ type List struct {
 	// Gap between items (0 or less means no gap)
 	gap int
 
-	// show list in reverse order
-	reverse bool
-
 	// Focus and selection state
 	focused     bool
 	selectedIdx int // The current selected index -1 means no selection
@@ -104,11 +101,6 @@ func (l *List) AtBottom() bool {
 	}
 
 	return totalHeight-l.offsetLine <= l.height
-}
-
-// SetReverse shows the list in reverse order.
-func (l *List) SetReverse(reverse bool) {
-	l.reverse = reverse
 }
 
 // Width returns the width of the list viewport.
@@ -264,10 +256,6 @@ func (l *List) ScrollBy(lines int) {
 		return
 	}
 
-	if l.reverse {
-		lines = -lines
-	}
-
 	if lines > 0 {
 		if l.AtBottom() {
 			// Already at bottom
@@ -402,13 +390,6 @@ func (l *List) Render() string {
 		lines = lines[:l.height]
 	}
 
-	if l.reverse {
-		// Reverse the lines so the list renders bottom-to-top.
-		for i, j := 0, len(lines)-1; i < j; i, j = i+1, j-1 {
-			lines[i], lines[j] = lines[j], lines[i]
-		}
-	}
-
 	return strings.Join(lines, "\n")
 }
 
@@ -420,36 +401,5 @@ func (l *List) SetItems(items ...Item) {
 func (l *List) setItems(items ...Item) {
 	l.items = items
 	l.selectedIdx = min(l.selectedIdx, len(l.items)-1)
-	l.clampViewport()
-}
-
-// AppendItems appends items to the list.
-func (l *List) AppendItems(items ...Item) {
-	l.items = append(l.items, items...)
-}
-
-// RemoveItem removes the item at the given index from the list.
-func (l *List) RemoveItem(idx int) {
-	if idx < 0 || idx >= len(l.items) {
-		return
-	}
-
-	// Remove the item
-	l.items = append(l.items[:idx], l.items[idx+1:]...)
-
-	// Adjust selection if needed
-	if l.selectedIdx == idx {
-		l.selectedIdx = -1
-	} else if l.selectedIdx > idx {
-		l.selectedIdx--
-	}
-
-	// Adjust offset if needed
-	if l.offsetIdx > idx {
-		l.offsetIdx--
-	} else if l.offsetIdx == idx && l.offsetIdx >= len(l.items) {
-		l.offsetIdx = max(0, len(l.items)-1)
-		l.offsetLine = 0
-	}
 	l.clampViewport()
 }
