@@ -54,7 +54,6 @@ func (j coreJournal) Append(ctx context.Context, message transcript.Message) (in
 	if err != nil {
 		return 0, err
 	}
-	_ = j.c.touchSubagentTaskActivity(ctx, message.RunID, message.UpdatedAt)
 	return seq, nil
 }
 
@@ -63,7 +62,6 @@ func (j coreJournal) BeginStreaming(ctx context.Context, message transcript.Mess
 	if err != nil {
 		return 0, err
 	}
-	_ = j.c.touchSubagentTaskActivity(ctx, message.RunID, message.UpdatedAt)
 	return seq, nil
 }
 
@@ -71,7 +69,6 @@ func (j coreJournal) Stream(ctx context.Context, message transcript.Message) err
 	if err := j.c.updateMessageProgress(ctx, message); err != nil {
 		return err
 	}
-	_ = j.c.touchSubagentTaskActivity(ctx, message.RunID, message.UpdatedAt)
 	return nil
 }
 
@@ -79,7 +76,6 @@ func (j coreJournal) FinishStreaming(ctx context.Context, message transcript.Mes
 	if err := j.c.store.UpdateMessage(ctx, message); err != nil {
 		return err
 	}
-	_ = j.c.touchSubagentTaskActivity(ctx, message.RunID, message.UpdatedAt)
 	return nil
 }
 

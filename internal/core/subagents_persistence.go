@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"time"
 )
 
 type subagentTaskMutator func(*SubagentTask)
@@ -43,15 +42,6 @@ func (c *Core) markSubagentTaskWaitingApproval(ctx context.Context, task Subagen
 	return c.updateSubagentTaskRecordWith(ctx, task, func(task *SubagentTask) {
 		task.Status = TaskStatusWaitingApproval
 		task.UpdatedAt = c.now().UTC()
-	})
-}
-
-func (c *Core) touchSubagentTaskRecord(ctx context.Context, task SubagentTask, at time.Time) (SubagentTask, error) {
-	if at.IsZero() {
-		at = c.now().UTC()
-	}
-	return c.updateSubagentTaskRecordWith(ctx, task, func(task *SubagentTask) {
-		task.UpdatedAt = at.UTC()
 	})
 }
 

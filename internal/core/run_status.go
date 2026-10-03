@@ -55,7 +55,6 @@ func (c *Core) setRunStatus(ctx context.Context, run *Run, status RunStatus, err
 		RunID:     run.ID,
 		Payload:   *run,
 	})
-	_ = c.touchSubagentTaskActivity(ctx, run.ID, run.UpdatedAt)
 	return nil
 }
 

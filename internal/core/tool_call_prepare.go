@@ -117,7 +117,6 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 		RunID:      message.RunID,
 		SessionID:  sessionID,
 	})
-	_ = c.touchSubagentTaskActivity(ctx, message.RunID, message.UpdatedAt)
 	if err := c.saveRunCheckpoint(ctx, runID, RunCheckpointPhaseTool, toolCallID, toolName); err != nil {
 		return preparedToolCall{}, err
 	}

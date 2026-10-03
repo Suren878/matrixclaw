@@ -3,10 +3,7 @@ package core
 import (
 	"context"
 	"errors"
-	"time"
 )
-
-const subagentActivityHeartbeatInterval = 5 * time.Second
 
 func (c *Core) recordSubagentResultMessage(ctx context.Context, metadata any, resultMessageID string) error {
 	resultMessageID = normalizeText(resultMessageID)
@@ -34,28 +31,6 @@ func (c *Core) recordSubagentResultMessage(ctx context.Context, metadata any, re
 		task.ResultMessageID = resultMessageID
 		task.UpdatedAt = c.now().UTC()
 	})
-	return err
-}
-
-func (c *Core) touchSubagentTaskActivity(ctx context.Context, childRunID string, at time.Time) error {
-	childRunID = normalizeText(childRunID)
-	if childRunID == "" || c == nil || c.store == nil {
-		return nil
-	}
-	task, err := c.store.GetSubagentTaskByChildRun(ctx, childRunID)
-	if err != nil {
-		return nil
-	}
-	if taskStatusTerminal(task.Status) {
-		return nil
-	}
-	if at.IsZero() {
-		at = c.now().UTC()
-	}
-	if !task.UpdatedAt.IsZero() && at.Sub(task.UpdatedAt) < subagentActivityHeartbeatInterval {
-		return nil
-	}
-	_, err = c.touchSubagentTaskRecord(ctx, task, at)
 	return err
 }
 

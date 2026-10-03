@@ -311,7 +311,6 @@ func (c *Core) saveExternalAssistantProgress(ctx context.Context, assistant *tra
 		}
 		*saved = true
 		c.publishEvent(Event{Type: EventMessageCreated, SessionID: assistant.SessionID, RunID: assistant.RunID, Payload: *assistant})
-		_ = c.touchSubagentTaskActivity(ctx, assistant.RunID, now)
 		return nil
 	}
 	assistant.UpdatedAt = now
@@ -319,7 +318,6 @@ func (c *Core) saveExternalAssistantProgress(ctx context.Context, assistant *tra
 		return err
 	}
 	c.publishEvent(Event{Type: EventMessageUpdated, SessionID: assistant.SessionID, RunID: assistant.RunID, Payload: *assistant})
-	_ = c.touchSubagentTaskActivity(ctx, assistant.RunID, now)
 	return nil
 }
 
@@ -340,7 +338,6 @@ func (c *Core) touchExternalRunActivity(ctx context.Context, run *Run, at time.T
 		return err
 	}
 	c.publishEvent(Event{Type: EventRunUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: *run})
-	_ = c.touchSubagentTaskActivity(ctx, run.ID, at)
 	return nil
 }
 

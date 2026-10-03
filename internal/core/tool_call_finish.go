@@ -27,7 +27,6 @@ func (c *Core) finishToolCall(ctx context.Context, prepared preparedToolCall, in
 		return transcript.Message{}, nil, err
 	}
 	c.publishFinishedToolUpdate(prepared, resultMessage.ID, result)
-	_ = c.touchSubagentTaskActivity(ctx, prepared.RunID, resultMessage.UpdatedAt)
 	if err := c.saveFileVersionSnapshot(ctx, prepared, result, resultMessage.CreatedAt); err != nil {
 		return transcript.Message{}, nil, err
 	}
