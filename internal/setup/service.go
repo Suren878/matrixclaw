@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -15,6 +16,7 @@ import (
 )
 
 type Service struct {
+	mu               sync.Mutex
 	store            Store
 	now              func() time.Time
 	daemonManager    daemonManager
@@ -59,6 +61,24 @@ func (s *Service) Path() string {
 }
 
 func (s *Service) Load() (Config, error) {
+	return s.store.Load()
+}
+
+// update applies change to the saved config and saves it under the service
+// lock, so concurrent edits don't overwrite each other.
+func (s *Service) update(change func(*Config) error) (Config, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg, err := s.store.Load()
+	if err != nil {
+		return Config{}, err
+	}
+	if err := change(&cfg); err != nil {
+		return Config{}, err
+	}
+	if err := s.store.Save(cfg); err != nil {
+		return Config{}, err
+	}
 	return s.store.Load()
 }
 
@@ -396,29 +416,38 @@ func (s *Service) ConfigureProviderContext(ctx context.Context, providerID strin
 	if providerID == "" {
 		return ProviderSetupItem{}, errors.New("provider id is required")
 	}
-
-	draft, err := s.savedDraft()
+	savedID, err := s.configureProvider(ctx, providerID, update)
 	if err != nil {
 		return ProviderSetupItem{}, err
 	}
+	return s.providerSetupItem(savedID)
+}
+
+func (s *Service) configureProvider(ctx context.Context, providerID string, update ProviderSetupUpdate) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	draft, err := s.savedDraft()
+	if err != nil {
+		return "", err
+	}
 	provider, err := s.providerDraftForSetupUpdate(draft, providerID, update)
 	if err != nil {
-		return ProviderSetupItem{}, err
+		return "", err
 	}
 	wasConfigured := ProviderDraftConfigured(provider)
 	provider, err = applyProviderSetupUpdate(provider, update)
 	if err != nil {
-		return ProviderSetupItem{}, err
+		return "", err
 	}
 
 	draft = UpsertProviderDraft(draft, provider)
 	if draft.ActiveProviderID == "" || update.Active || !wasConfigured {
 		draft.ActiveProviderID = provider.ID
 	}
-	if _, err := s.SaveRuntimeConfigContext(ctx, draft); err != nil {
-		return ProviderSetupItem{}, err
+	if err := s.saveRuntimeConfig(ctx, draft); err != nil {
+		return "", err
 	}
-	return s.providerSetupItem(provider.ID)
+	return provider.ID, nil
 }
 
 func (s *Service) DeleteProviderContext(ctx context.Context, providerID string) error {
@@ -426,6 +455,8 @@ func (s *Service) DeleteProviderContext(ctx context.Context, providerID string) 
 	if providerID == "" {
 		return errors.New("provider id is required")
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	draft, err := s.savedDraft()
 	if err != nil {
 		return err
@@ -447,8 +478,7 @@ func (s *Service) DeleteProviderContext(ctx context.Context, providerID string) 
 			break
 		}
 	}
-	_, err = s.SaveRuntimeConfigContext(ctx, draft)
-	return err
+	return s.saveRuntimeConfig(ctx, draft)
 }
 
 func (s *Service) providerDraftForSetupUpdate(draft Draft, providerID string, update ProviderSetupUpdate) (ProviderDraft, error) {
@@ -482,23 +512,16 @@ func (s *Service) providerDraftForSetupUpdate(draft Draft, providerID string, up
 	}, nil
 }
 
-func (s *Service) SaveRuntimeConfigContext(ctx context.Context, draft Draft) (ApplyResult, error) {
-	cfg, telegramSummary, err := s.buildValidatedConfig(ctx, draft)
+// saveRuntimeConfig saves draft as the config; the caller holds s.mu.
+func (s *Service) saveRuntimeConfig(ctx context.Context, draft Draft) error {
+	cfg, _, err := s.buildValidatedConfig(ctx, draft)
 	if err != nil {
-		return ApplyResult{}, err
+		return err
 	}
 	if err := s.store.Save(cfg); err != nil {
-		return ApplyResult{}, err
+		return err
 	}
-	if err := s.store.ClearDraft(); err != nil {
-		return ApplyResult{}, err
-	}
-
-	return ApplyResult{
-		Config:  cfg,
-		Path:    s.store.Path(),
-		Summary: summaryWithRuntimeValidation(cfg, telegramSummary),
-	}, nil
+	return s.store.ClearDraft()
 }
 
 func (s *Service) ProviderModels(ctx context.Context, provider ProviderDraft) ([]string, error) {
@@ -716,11 +739,13 @@ func (s *Service) Apply(draft Draft) (ApplyResult, error) {
 }
 
 func (s *Service) ApplyContext(ctx context.Context, draft Draft) (ApplyResult, error) {
+	s.mu.Lock()
 	cfg, telegramSummary, err := s.buildValidatedConfig(ctx, draft)
-	if err != nil {
-		return ApplyResult{}, err
+	if err == nil {
+		err = s.store.Save(cfg)
 	}
-	if err := s.store.Save(cfg); err != nil {
+	s.mu.Unlock()
+	if err != nil {
 		return ApplyResult{}, err
 	}
 

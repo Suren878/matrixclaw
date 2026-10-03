@@ -2,7 +2,9 @@ package setup
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -13,7 +15,7 @@ func TestConfiguringAProviderKeepsTheRestOfTheConfig(t *testing.T) {
 	draft.AssistantName = "live"
 	draft.Providers = []ProviderDraft{{ID: "openai", CatalogID: "openai", Type: "openai-compatible", Name: "OpenAI", APIKey: "sk-test", BaseURL: "https://api.openai.com/v1", Model: "gpt-a"}}
 	draft.ActiveProviderID = "openai"
-	if _, err := service.SaveRuntimeConfigContext(context.Background(), draft); err != nil {
+	if err := service.saveRuntimeConfig(context.Background(), draft); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := store.Load()
@@ -48,5 +50,30 @@ func TestConfiguringAProviderKeepsTheRestOfTheConfig(t *testing.T) {
 	}
 	if got.Assistant.Name != "live" {
 		t.Fatalf("assistant name = %q, want the saved config's, not the abandoned draft's", got.Assistant.Name)
+	}
+}
+
+func TestConcurrentModuleUpdatesAreAllSaved(t *testing.T) {
+	store := NewFileStore(filepath.Join(t.TempDir(), "setup.json"))
+	if err := store.Save(Config{Version: CurrentVersion}); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(store)
+	const servers = 20
+	var wg sync.WaitGroup
+	for i := range servers {
+		wg.Go(func() {
+			if _, err := service.CreateMCPServer(MCPServerConfig{ID: fmt.Sprintf("server-%d", i), Command: "true"}); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	wg.Wait()
+	cfg, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(cfg.Modules.MCP.Servers); got != servers {
+		t.Fatalf("saved %d mcp servers, want %d", got, servers)
 	}
 }

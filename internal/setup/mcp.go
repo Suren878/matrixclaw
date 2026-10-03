@@ -14,24 +14,23 @@ func (s *Service) GetMCPConfig() (MCPConfig, error) {
 }
 
 func (s *Service) UpdateMCPConfig(update MCPConfigUpdate) (MCPConfig, error) {
-	cfg, err := s.Load()
+	return s.updateMCP(func(cfg *MCPConfig) error {
+		if update.Enabled != nil {
+			cfg.Enabled = *update.Enabled
+		}
+		return nil
+	})
+}
+
+func (s *Service) updateMCP(change func(*MCPConfig) error) (MCPConfig, error) {
+	cfg, err := s.update(func(cfg *Config) error { return change(&cfg.Modules.MCP) })
 	if err != nil {
 		return MCPConfig{}, err
 	}
-	if update.Enabled != nil {
-		cfg.Modules.MCP.Enabled = *update.Enabled
-	}
-	if err := s.store.Save(cfg); err != nil {
-		return MCPConfig{}, err
-	}
-	return s.GetMCPConfig()
+	return cfg.Modules.MCP, nil
 }
 
 func (s *Service) CreateMCPServer(server MCPServerConfig) (MCPConfig, error) {
-	cfg, err := s.Load()
-	if err != nil {
-		return MCPConfig{}, err
-	}
 	server = normalizeMCPServerForCreate(server)
 	if server.ID == "" {
 		return MCPConfig{}, fmt.Errorf("mcp server id is required")
@@ -39,19 +38,18 @@ func (s *Service) CreateMCPServer(server MCPServerConfig) (MCPConfig, error) {
 	if reservedExternalMCPServerID(server.ID) {
 		return MCPConfig{}, fmt.Errorf("mcp server id %q is reserved for the Browser module", server.ID)
 	}
-	cfg.Modules.MCP = normalizeMCPConfig(cfg.Modules.MCP)
-	if mcpServerConfigExists(cfg.Modules.MCP.Servers, server.ID) {
-		return MCPConfig{}, fmt.Errorf("mcp server already exists: %s", server.ID)
-	}
-	cfg.Modules.MCP.Servers = append(cfg.Modules.MCP.Servers, server)
-	cfg.Modules.MCP = normalizeMCPConfig(cfg.Modules.MCP)
-	if !mcpServerConfigExists(cfg.Modules.MCP.Servers, server.ID) {
-		return MCPConfig{}, fmt.Errorf("mcp server %s is incomplete", server.ID)
-	}
-	if err := s.store.Save(cfg); err != nil {
-		return MCPConfig{}, err
-	}
-	return s.GetMCPConfig()
+	return s.updateMCP(func(cfg *MCPConfig) error {
+		*cfg = normalizeMCPConfig(*cfg)
+		if mcpServerConfigExists(cfg.Servers, server.ID) {
+			return fmt.Errorf("mcp server already exists: %s", server.ID)
+		}
+		cfg.Servers = append(cfg.Servers, server)
+		*cfg = normalizeMCPConfig(*cfg)
+		if !mcpServerConfigExists(cfg.Servers, server.ID) {
+			return fmt.Errorf("mcp server %s is incomplete", server.ID)
+		}
+		return nil
+	})
 }
 
 func normalizeMCPServerForCreate(server MCPServerConfig) MCPServerConfig {
@@ -79,62 +77,53 @@ func normalizeMCPServerForCreate(server MCPServerConfig) MCPServerConfig {
 }
 
 func (s *Service) UpdateMCPServer(serverID string, update MCPServerUpdate) (MCPConfig, error) {
-	cfg, err := s.Load()
-	if err != nil {
-		return MCPConfig{}, err
-	}
 	id := normalizeMCPID(serverID)
 	if reservedExternalMCPServerID(id) {
 		return MCPConfig{}, fmt.Errorf("mcp server id %q is reserved for the Browser module", id)
 	}
-	for i := range cfg.Modules.MCP.Servers {
-		if cfg.Modules.MCP.Servers[i].ID != id {
-			continue
+	return s.updateMCP(func(cfg *MCPConfig) error {
+		for i := range cfg.Servers {
+			if cfg.Servers[i].ID != id {
+				continue
+			}
+			if update.Enabled != nil {
+				cfg.Servers[i].Enabled = *update.Enabled
+			}
+			if update.Name != nil {
+				cfg.Servers[i].Name = *update.Name
+			}
+			if update.Transport != nil {
+				cfg.Servers[i].Transport = *update.Transport
+			}
+			if update.Command != nil {
+				cfg.Servers[i].Command = *update.Command
+			}
+			if update.Args != nil {
+				cfg.Servers[i].Args = update.Args
+			}
+			if update.Endpoint != nil {
+				cfg.Servers[i].Endpoint = *update.Endpoint
+			}
+			if update.ToolPrefix != nil {
+				cfg.Servers[i].ToolPrefix = *update.ToolPrefix
+			}
+			if update.ReadOnly != nil {
+				cfg.Servers[i].ReadOnly = *update.ReadOnly
+			}
+			if update.RequireApproval != nil {
+				cfg.Servers[i].RequireApproval = *update.RequireApproval
+			}
+			if update.TimeoutSeconds != nil {
+				cfg.Servers[i].TimeoutSeconds = *update.TimeoutSeconds
+			}
+			*cfg = normalizeMCPConfig(*cfg)
+			return nil
 		}
-		if update.Enabled != nil {
-			cfg.Modules.MCP.Servers[i].Enabled = *update.Enabled
-		}
-		if update.Name != nil {
-			cfg.Modules.MCP.Servers[i].Name = *update.Name
-		}
-		if update.Transport != nil {
-			cfg.Modules.MCP.Servers[i].Transport = *update.Transport
-		}
-		if update.Command != nil {
-			cfg.Modules.MCP.Servers[i].Command = *update.Command
-		}
-		if update.Args != nil {
-			cfg.Modules.MCP.Servers[i].Args = update.Args
-		}
-		if update.Endpoint != nil {
-			cfg.Modules.MCP.Servers[i].Endpoint = *update.Endpoint
-		}
-		if update.ToolPrefix != nil {
-			cfg.Modules.MCP.Servers[i].ToolPrefix = *update.ToolPrefix
-		}
-		if update.ReadOnly != nil {
-			cfg.Modules.MCP.Servers[i].ReadOnly = *update.ReadOnly
-		}
-		if update.RequireApproval != nil {
-			cfg.Modules.MCP.Servers[i].RequireApproval = *update.RequireApproval
-		}
-		if update.TimeoutSeconds != nil {
-			cfg.Modules.MCP.Servers[i].TimeoutSeconds = *update.TimeoutSeconds
-		}
-		cfg.Modules.MCP = normalizeMCPConfig(cfg.Modules.MCP)
-		if err := s.store.Save(cfg); err != nil {
-			return MCPConfig{}, err
-		}
-		return s.GetMCPConfig()
-	}
-	return MCPConfig{}, fmt.Errorf("mcp server not found: %s", id)
+		return fmt.Errorf("mcp server not found: %s", id)
+	})
 }
 
 func (s *Service) DeleteMCPServer(serverID string) (MCPConfig, error) {
-	cfg, err := s.Load()
-	if err != nil {
-		return MCPConfig{}, err
-	}
 	id := normalizeMCPID(serverID)
 	if id == "" {
 		return MCPConfig{}, fmt.Errorf("mcp server id is required")
@@ -142,24 +131,20 @@ func (s *Service) DeleteMCPServer(serverID string) (MCPConfig, error) {
 	if reservedExternalMCPServerID(id) {
 		return MCPConfig{}, fmt.Errorf("mcp server id %q is reserved for the Browser module", id)
 	}
-	servers := make([]MCPServerConfig, 0, len(cfg.Modules.MCP.Servers))
-	deleted := false
-	for _, server := range cfg.Modules.MCP.Servers {
-		if normalizeMCPID(server.ID) == id {
-			deleted = true
-			continue
+	return s.updateMCP(func(cfg *MCPConfig) error {
+		servers := make([]MCPServerConfig, 0, len(cfg.Servers))
+		for _, server := range cfg.Servers {
+			if normalizeMCPID(server.ID) != id {
+				servers = append(servers, server)
+			}
 		}
-		servers = append(servers, server)
-	}
-	if !deleted {
-		return MCPConfig{}, fmt.Errorf("mcp server not found: %s", id)
-	}
-	cfg.Modules.MCP.Servers = servers
-	cfg.Modules.MCP = normalizeMCPConfig(cfg.Modules.MCP)
-	if err := s.store.Save(cfg); err != nil {
-		return MCPConfig{}, err
-	}
-	return s.GetMCPConfig()
+		if len(servers) == len(cfg.Servers) {
+			return fmt.Errorf("mcp server not found: %s", id)
+		}
+		cfg.Servers = servers
+		*cfg = normalizeMCPConfig(*cfg)
+		return nil
+	})
 }
 
 func mcpServerConfigExists(servers []MCPServerConfig, id string) bool {

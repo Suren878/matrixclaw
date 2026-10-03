@@ -26,52 +26,47 @@ func (s *Service) UpdateVoiceModule(id string, update VoiceModuleUpdate) ([]Voic
 	if id == "" {
 		return nil, fmt.Errorf("voice module id is required")
 	}
-	cfg, err := s.Load()
-	if err != nil {
-		return nil, err
-	}
-	current := voiceModuleConfigByID(cfg.Modules, id)
-	if update.Enabled != nil {
-		current.Enabled = *update.Enabled
-	}
-	if providerID := normalizeVoiceProviderID(update.ProviderID); providerID != "" {
-		if !voiceProviderExists(id, providerID) {
-			return nil, fmt.Errorf("voice provider %q is not available for %s", providerID, id)
+	cfg, err := s.update(func(cfg *Config) error {
+		current := voiceModuleConfigByID(cfg.Modules, id)
+		if update.Enabled != nil {
+			current.Enabled = *update.Enabled
 		}
-		current.ProviderID = providerID
-	}
-	if update.ProviderConfig != nil {
-		providerID := current.ProviderID
-		if update.ProviderID != "" {
-			providerID = normalizeVoiceProviderID(update.ProviderID)
-		}
-		if providerID == "" {
-			providerID = defaultVoiceProviderID(id)
-		}
-		if !voiceProviderExists(id, providerID) {
-			return nil, fmt.Errorf("voice provider %q is not available for %s", providerID, id)
-		}
-		if current.Providers == nil {
-			current.Providers = map[string]VoiceProviderConfig{}
-		}
-		providerConfig := *update.ProviderConfig
-		if id == VoiceModuleRealtime && isCloudRealtimeVoiceProvider(providerID) {
-			existing := voiceProviderConfigByID(id, current, providerID)
-			if strings.TrimSpace(providerConfig.APIKey) == "" {
-				providerConfig.APIKey = existing.APIKey
+		if providerID := normalizeVoiceProviderID(update.ProviderID); providerID != "" {
+			if !voiceProviderExists(id, providerID) {
+				return fmt.Errorf("voice provider %q is not available for %s", providerID, id)
 			}
-			if strings.TrimSpace(providerConfig.APIKeyEnv) == "" {
-				providerConfig.APIKeyEnv = existing.APIKeyEnv
-			}
+			current.ProviderID = providerID
 		}
-		current.Providers[providerID] = normalizeVoiceProviderConfig(id, providerID, providerConfig)
-	}
-	current = normalizeVoiceModuleConfig(id, current)
-	setVoiceModuleConfigByID(&cfg.Modules, id, current)
-	if err := s.store.Save(cfg); err != nil {
-		return nil, err
-	}
-	cfg, err = s.Load()
+		if update.ProviderConfig != nil {
+			providerID := current.ProviderID
+			if update.ProviderID != "" {
+				providerID = normalizeVoiceProviderID(update.ProviderID)
+			}
+			if providerID == "" {
+				providerID = defaultVoiceProviderID(id)
+			}
+			if !voiceProviderExists(id, providerID) {
+				return fmt.Errorf("voice provider %q is not available for %s", providerID, id)
+			}
+			if current.Providers == nil {
+				current.Providers = map[string]VoiceProviderConfig{}
+			}
+			providerConfig := *update.ProviderConfig
+			if id == VoiceModuleRealtime && isCloudRealtimeVoiceProvider(providerID) {
+				existing := voiceProviderConfigByID(id, current, providerID)
+				if strings.TrimSpace(providerConfig.APIKey) == "" {
+					providerConfig.APIKey = existing.APIKey
+				}
+				if strings.TrimSpace(providerConfig.APIKeyEnv) == "" {
+					providerConfig.APIKeyEnv = existing.APIKeyEnv
+				}
+			}
+			current.Providers[providerID] = normalizeVoiceProviderConfig(id, providerID, providerConfig)
+		}
+		current = normalizeVoiceModuleConfig(id, current)
+		setVoiceModuleConfigByID(&cfg.Modules, id, current)
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}

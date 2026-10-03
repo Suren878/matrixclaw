@@ -19,11 +19,18 @@ func (s *Service) BrowserModule() (BrowserModuleDescriptor, error) {
 }
 
 func (s *Service) UpdateBrowserModule(update BrowserModuleUpdate) (BrowserModuleDescriptor, error) {
-	cfg, err := s.Load()
+	cfg, err := s.update(func(cfg *Config) error {
+		cfg.Modules.Browser = applyBrowserModuleUpdate(cfg.Modules.Browser, update)
+		return nil
+	})
 	if err != nil {
 		return BrowserModuleDescriptor{}, err
 	}
-	current := normalizeBrowserConfig(cfg.Modules.Browser)
+	return BrowserModuleFromConfig(cfg.Modules), nil
+}
+
+func applyBrowserModuleUpdate(current BrowserConfig, update BrowserModuleUpdate) BrowserConfig {
+	current = normalizeBrowserConfig(current)
 	if update.Enabled != nil {
 		current.Enabled = *update.Enabled
 	}
@@ -42,11 +49,7 @@ func (s *Service) UpdateBrowserModule(update BrowserModuleUpdate) (BrowserModule
 			current.ProviderConfig.BrowserPath = next.BrowserPath
 		}
 	}
-	cfg.Modules.Browser = normalizeBrowserConfig(current)
-	if err := s.store.Save(cfg); err != nil {
-		return BrowserModuleDescriptor{}, err
-	}
-	return s.BrowserModule()
+	return normalizeBrowserConfig(current)
 }
 
 func BrowserModuleFromConfig(modules ModulesConfig) BrowserModuleDescriptor {

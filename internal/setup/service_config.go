@@ -162,22 +162,14 @@ func summaryWithRuntimeValidation(cfg Config, telegramSummary TelegramSummary) S
 }
 
 func (s *Service) EnsureDaemonAPIToken() (Config, error) {
-	cfg, err := s.Load()
-	if err != nil {
-		return Config{}, err
-	}
-	if strings.TrimSpace(cfg.Daemon.APIToken) != "" {
-		return cfg, nil
-	}
-	token, err := generateAPIToken()
-	if err != nil {
-		return Config{}, fmt.Errorf("generate api token: %w", err)
-	}
-	cfg.Daemon.APIToken = token
-	if err := s.store.Save(cfg); err != nil {
-		return Config{}, err
-	}
-	return s.Load()
+	return s.update(func(cfg *Config) error {
+		token, err := existingOrNewAPIToken(cfg.Daemon.APIToken)
+		if err != nil {
+			return fmt.Errorf("generate api token: %w", err)
+		}
+		cfg.Daemon.APIToken = token
+		return nil
+	})
 }
 
 func existingOrNewAPIToken(existing string) (string, error) {

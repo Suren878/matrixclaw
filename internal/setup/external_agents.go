@@ -18,27 +18,22 @@ func (s *Service) UpdateExternalAgent(id string, update ExternalAgentConfig) (Co
 	if id == "" {
 		return Config{}, fmt.Errorf("external agent id is required")
 	}
-	cfg, err := s.Load()
-	if err != nil {
-		return Config{}, err
-	}
-	if cfg.Modules.ExternalAgents == nil {
-		cfg.Modules.ExternalAgents = map[string]ExternalAgentConfig{}
-	}
-	current := cfg.Modules.ExternalAgents[id]
-	current.Enabled = update.Enabled
-	if strings.TrimSpace(update.Path) != "" {
-		current.Path = strings.TrimSpace(update.Path)
-	}
-	if !current.Enabled && strings.TrimSpace(current.Path) == "" {
-		delete(cfg.Modules.ExternalAgents, id)
-	} else {
-		cfg.Modules.ExternalAgents[id] = current
-	}
-	if err := s.store.Save(cfg); err != nil {
-		return Config{}, err
-	}
-	return s.Load()
+	return s.update(func(cfg *Config) error {
+		if cfg.Modules.ExternalAgents == nil {
+			cfg.Modules.ExternalAgents = map[string]ExternalAgentConfig{}
+		}
+		current := cfg.Modules.ExternalAgents[id]
+		current.Enabled = update.Enabled
+		if strings.TrimSpace(update.Path) != "" {
+			current.Path = strings.TrimSpace(update.Path)
+		}
+		if !current.Enabled && strings.TrimSpace(current.Path) == "" {
+			delete(cfg.Modules.ExternalAgents, id)
+		} else {
+			cfg.Modules.ExternalAgents[id] = current
+		}
+		return nil
+	})
 }
 
 func (cfg Config) ExternalAgentConfig(id string) ExternalAgentConfig {

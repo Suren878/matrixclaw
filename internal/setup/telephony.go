@@ -17,16 +17,15 @@ func (s *Service) TelephonyModule() (TelephonyModuleDescriptor, error) {
 }
 
 func (s *Service) UpdateTelephonyModule(update TelephonyModuleUpdate) (TelephonyModuleDescriptor, error) {
-	cfg, err := s.Load()
+	cfg, err := s.update(func(cfg *Config) error {
+		merged := mergeTelephonyConfig(cfg.Modules.Telephony, update)
+		if err := validateTelephonyConfig(merged); err != nil {
+			return err
+		}
+		cfg.Modules.Telephony = normalizeTelephonyConfig(merged)
+		return nil
+	})
 	if err != nil {
-		return TelephonyModuleDescriptor{}, err
-	}
-	merged := mergeTelephonyConfig(cfg.Modules.Telephony, update)
-	if err := validateTelephonyConfig(merged); err != nil {
-		return TelephonyModuleDescriptor{}, err
-	}
-	cfg.Modules.Telephony = normalizeTelephonyConfig(merged)
-	if err := s.store.Save(cfg); err != nil {
 		return TelephonyModuleDescriptor{}, err
 	}
 	return TelephonyModuleFromConfig(cfg.Modules), nil
