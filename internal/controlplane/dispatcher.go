@@ -156,7 +156,6 @@ type AutomationRuntime interface {
 
 type ServerRuntime interface {
 	ServerStatus(ctx context.Context) (core.ServerStatus, error)
-	RestartDaemon(ctx context.Context) error
 	StopDaemon(ctx context.Context) error
 }
 
@@ -334,7 +333,7 @@ func (d *Dispatcher) Handle(ctx context.Context, externalKey string, text string
 	case CommandStatus:
 		return d.handleStatus(ctx)
 	case CommandRestart:
-		return d.handleRestart(ctx, args)
+		return d.handleRestart(), nil
 	case CommandStop:
 		return d.handleStop(ctx, args)
 	default:

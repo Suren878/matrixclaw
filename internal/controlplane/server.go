@@ -38,27 +38,23 @@ func (d *Dispatcher) handleStatus(ctx context.Context) (Result, error) {
 	}, nil
 }
 
-func (d *Dispatcher) handleRestart(ctx context.Context, args string) (Result, error) {
+// handleRestart asks to confirm; clients run the confirmed restart themselves
+// so they can show its progress and the notice after it.
+func (d *Dispatcher) handleRestart() Result {
 	if d.server == nil {
-		return unsupportedRuntime("server"), nil
+		return unsupportedRuntime("server")
 	}
-	if !strings.EqualFold(strings.TrimSpace(args), "confirm") {
-		return Result{
-			Handled: true,
-			Confirm: &ConfirmData{
-				Message:        "Restart server daemon?",
-				ConfirmLabel:   "Restart",
-				CancelLabel:    "Close",
-				ConfirmCommand: restartConfirmCommand(),
-				CancelCommand:  serverCommand(),
-				ConfirmDanger:  true,
-			},
-		}, nil
+	return Result{
+		Handled: true,
+		Confirm: &ConfirmData{
+			Message:        "Restart server daemon?",
+			ConfirmLabel:   "Restart",
+			CancelLabel:    "Close",
+			ConfirmCommand: restartConfirmCommand(),
+			CancelCommand:  serverCommand(),
+			ConfirmDanger:  true,
+		},
 	}
-	if err := d.server.RestartDaemon(ctx); err != nil {
-		return Result{}, err
-	}
-	return Result{Handled: true, Text: "Server daemon restart requested."}, nil
 }
 
 func (d *Dispatcher) handleStop(ctx context.Context, args string) (Result, error) {

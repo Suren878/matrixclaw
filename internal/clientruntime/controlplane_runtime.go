@@ -239,14 +239,6 @@ func (r ControlplaneRuntime) ServerStatus(ctx context.Context) (core.ServerStatu
 	return client.ServerStatus(ctx)
 }
 
-func (r ControlplaneRuntime) RestartDaemon(ctx context.Context) error {
-	client, err := r.client("")
-	if err != nil {
-		return err
-	}
-	return client.RestartDaemon(ctx)
-}
-
 func (r ControlplaneRuntime) StopDaemon(ctx context.Context) error {
 	client, err := r.client("")
 	if err != nil {

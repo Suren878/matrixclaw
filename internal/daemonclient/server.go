@@ -25,11 +25,6 @@ func (c *Client) ServerStatus(ctx context.Context) (core.ServerStatus, error) {
 	return response.Status, nil
 }
 
-func (c *Client) RestartDaemon(ctx context.Context) error {
-	var response core.OKResponse
-	return c.doJSON(ctx, http.MethodPost, "/v1/admin/restart", nil, &response)
-}
-
 func (c *Client) StopDaemon(ctx context.Context) error {
 	var response core.OKResponse
 	return c.doJSON(ctx, http.MethodPost, "/v1/admin/stop", nil, &response)
