@@ -379,7 +379,7 @@ func (d *Dispatcher) handleLibrarySkillAction(ctx context.Context, section strin
 		return d.skillEditMenu(ctx, section, skillID)
 	case "remove":
 		if actionRest == "confirm" {
-			if err := d.skills.SkillAction(ctx, skillID, "remove"); err != nil {
+			if err := d.skills.RemoveSkill(ctx, skillID); err != nil {
 				return Result{Handled: true, Text: err.Error()}, nil
 			}
 			return d.skillsSectionPicker(ctx, section, "")

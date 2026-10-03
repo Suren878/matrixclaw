@@ -171,6 +171,7 @@ type SkillsRuntime interface {
 	GetSkill(ctx context.Context, id string) (skills.SkillDetail, error)
 	InstallSkill(ctx context.Context, path string) ([]skills.Skill, error)
 	SkillAction(ctx context.Context, id string, action string) error
+	RemoveSkill(ctx context.Context, id string) error
 	SessionSkills(ctx context.Context, sessionID string) ([]skills.Skill, error)
 	UseSkill(ctx context.Context, sessionID string, skillID string) (skills.SkillDetail, error)
 	UnloadSkill(ctx context.Context, sessionID string, skillID string) error

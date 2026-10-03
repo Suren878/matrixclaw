@@ -86,6 +86,10 @@ func (c *Client) SkillAction(ctx context.Context, id string, action string) erro
 	return c.doJSON(ctx, http.MethodPost, path, nil, nil)
 }
 
+func (c *Client) RemoveSkill(ctx context.Context, id string) error {
+	return c.doJSON(ctx, http.MethodDelete, "/v1/modules/skills/"+escapedPath(id), nil, nil)
+}
+
 func (c *Client) SessionSkills(ctx context.Context, sessionID string) ([]skills.Skill, error) {
 	var response skillsListResponse
 	path := "/v1/modules/skills/sessions/" + escapedPath(sessionID)

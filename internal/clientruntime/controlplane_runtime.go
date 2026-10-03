@@ -640,6 +640,22 @@ func (r ControlplaneRuntime) InstallSkill(ctx context.Context, path string) ([]s
 	return client.InstallSkill(ctx, path)
 }
 
+func (r ControlplaneRuntime) ListMemories(ctx context.Context, filter core.MemoryFilter) ([]core.MemoryEntry, error) {
+	client, err := r.client("")
+	if err != nil {
+		return nil, err
+	}
+	return client.ListMemories(ctx, filter)
+}
+
+func (r ControlplaneRuntime) RemoveSkill(ctx context.Context, id string) error {
+	client, err := r.client("")
+	if err != nil {
+		return err
+	}
+	return client.RemoveSkill(ctx, id)
+}
+
 func (r ControlplaneRuntime) SkillAction(ctx context.Context, id string, action string) error {
 	client, err := r.client("")
 	if err != nil {
