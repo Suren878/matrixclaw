@@ -40,9 +40,6 @@ func decodeCustomProviderFormToken(token string) (setup.ProviderFormState, error
 		return setup.ProviderFormState{}, err
 	}
 	parts := strings.Split(decoded, "\x1f")
-	if len(parts) == 5 {
-		parts = append(parts[:4], "", parts[4])
-	}
 	for len(parts) < 6 {
 		parts = append(parts, "")
 	}
