@@ -85,66 +85,29 @@ func (t *baseToolMessageItem) errorPreviewData() (surfacedialog.FilePreviewData,
 }
 
 func (t *baseToolMessageItem) subagentPreviewData() (surfacedialog.FilePreviewData, bool) {
-	if !isSubagentToolNameLocal(t.toolCall.Name) {
+	if normalizedToolName(t.toolCall.Name) != "agent" {
 		return surfacedialog.FilePreviewData{}, false
 	}
-	params := parseAgentParams(t.toolCall.Input)
-	metadata := parseSubagentTaskMetadata(t.result)
+	card := newAgentCard(t.toolCall, t.subagent, t.computeStatus())
 	var out strings.Builder
-	if name := firstNonEmptyLocal(metadata.AgentName, metadata.DisplayName, params.Description); name != "" {
-		_, _ = fmt.Fprintf(&out, "Name: %s\n", name)
+	for _, field := range [][2]string{{"Name", card.name}, {"Task", card.task}, {"Goal", card.goal}, {"Runtime", card.runtime}, {"Status", string(card.state)}} {
+		if field[1] != "" {
+			_, _ = fmt.Fprintf(&out, "%s: %s\n", field[0], field[1])
+		}
 	}
-	if task := firstNonEmptyLocal(metadata.DisplayName, params.Description); task != "" {
-		_, _ = fmt.Fprintf(&out, "Task: %s\n", task)
-	}
-	if goal := firstNonEmptyLocal(metadata.Goal, params.Prompt); goal != "" {
-		_, _ = fmt.Fprintf(&out, "Goal: %s\n", goal)
-	}
-	if runtime := firstNonEmptyLocal(metadata.Runtime, params.Runtime); runtime != "" {
-		_, _ = fmt.Fprintf(&out, "Runtime: %s\n", runtime)
-	}
-	if status := firstNonEmptyLocal(metadata.Status, subagentPreviewResultStatus(t.result)); status != "" {
-		_, _ = fmt.Fprintf(&out, "Status: %s\n", status)
-	}
-	if summary := strings.TrimSpace(metadata.Summary); summary != "" {
-		out.WriteString("\nSummary:\n")
-		out.WriteString(summary)
-		out.WriteString("\n")
-	}
-	if errText := strings.TrimSpace(metadata.Error); errText != "" {
-		out.WriteString("\nError:\n")
-		out.WriteString(errText)
-		out.WriteString("\n")
+	if t.subagent != nil {
+		for _, section := range [][2]string{{"Summary", t.subagent.Summary}, {"Error", t.subagent.Error}} {
+			if section[1] != "" {
+				_, _ = fmt.Fprintf(&out, "\n%s:\n%s\n", section[0], section[1])
+			}
+		}
 	}
 	if t.result != nil {
 		if content := strings.TrimSpace(t.result.Content); content != "" && !strings.Contains(out.String(), content) {
-			out.WriteString("\nResult:\n")
-			out.WriteString(content)
-			out.WriteString("\n")
+			_, _ = fmt.Fprintf(&out, "\nResult:\n%s\n", content)
 		}
 	}
-	content := strings.TrimSpace(out.String())
-	if content == "" {
-		content = "Subagent details are not available yet."
-	}
-	return surfacedialog.FilePreviewData{
-		Title:   "Subagent Details",
-		Content: content,
-	}, true
-}
-
-func subagentPreviewResultStatus(result *surfacemessage.ToolResult) string {
-	if result == nil {
-		return ""
-	}
-	switch normalizedToolName(result.Status) {
-	case "success":
-		return "completed"
-	case "error":
-		return "failed"
-	default:
-		return strings.TrimSpace(result.Status)
-	}
+	return surfacedialog.FilePreviewData{Title: "Subagent Details", Content: strings.TrimSpace(out.String())}, true
 }
 
 func (t *baseToolMessageItem) diffPreviewData() (surfacedialog.DiffPreviewData, bool) {

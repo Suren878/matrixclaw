@@ -56,7 +56,7 @@ func (m *appModel) denyingApproval() string {
 }
 
 func (m *appModel) approvalPending(approvalID string) bool {
-	for _, approval := range m.currentSnapshot().Approvals {
+	for _, approval := range m.state().Approvals() {
 		if approval.ID == approvalID {
 			return true
 		}
@@ -65,12 +65,9 @@ func (m *appModel) approvalPending(approvalID string) bool {
 }
 
 func (m *appModel) pendingApprovals() []surfacepermission.PermissionRequest {
-	if m.read == nil {
-		return nil
-	}
-	snapshot := m.currentSnapshot()
-	pending := make([]surfacepermission.PermissionRequest, 0, len(snapshot.Approvals))
-	for _, approval := range snapshot.Approvals {
+	approvals := m.state().Approvals()
+	pending := make([]surfacepermission.PermissionRequest, 0, len(approvals))
+	for _, approval := range approvals {
 		if _, suppressed := m.suppressedApprovals[approval.ID]; suppressed {
 			continue
 		}
@@ -90,7 +87,7 @@ func (m *appModel) pruneSuppressedApprovals() {
 		return
 	}
 	active := map[string]struct{}{}
-	for _, approval := range m.currentSnapshot().Approvals {
+	for _, approval := range m.state().Approvals() {
 		active[approval.ID] = struct{}{}
 	}
 	for id := range m.suppressedApprovals {
@@ -126,7 +123,7 @@ func (m *appModel) cancelRunCmd(runID string) tea.Cmd {
 }
 
 func (m *appModel) openCancelRunDialog() tea.Cmd {
-	run := m.currentRun()
+	run := m.state().Run()
 	if !runIsActive(run) || strings.TrimSpace(run.ID) == "" {
 		return nil
 	}

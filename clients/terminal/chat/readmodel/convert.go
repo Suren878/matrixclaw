@@ -1,4 +1,4 @@
-package viewmodel
+package readmodel
 
 import (
 	"encoding/json"
@@ -102,20 +102,6 @@ func imageName(image transcript.ImagePart) string {
 	return "image"
 }
 
-func ToSurfaceMessages(messages []transcript.Message) []surfacemessage.Message {
-	out := make([]surfacemessage.Message, 0, len(messages))
-	for _, message := range messages {
-		if message.Origin == transcript.OriginEngineModel {
-			continue
-		}
-		surface := ToSurfaceMessage(message)
-		if shouldKeepSurfaceMessage(surface) {
-			out = append(out, surface)
-		}
-	}
-	return out
-}
-
 func shouldKeepSurfaceMessage(message surfacemessage.Message) bool {
 	if strings.TrimSpace(message.Content().Text) != "" {
 		return true
@@ -132,7 +118,21 @@ func shouldKeepSurfaceMessage(message surfacemessage.Message) bool {
 	return message.Role == surfacemessage.User
 }
 
-func ToSurfacePermissionRequest(request core.PermissionRequest) surfacepermission.PermissionRequest {
+func permissionRequest(approval core.Approval) surfacepermission.PermissionRequest {
+	return toSurfacePermissionRequest(core.PermissionRequest{
+		ID:          approval.ID,
+		SessionID:   approval.SessionID,
+		ToolCallID:  approval.ToolCallRef,
+		ToolName:    approval.ToolName,
+		Description: approval.Description,
+		Action:      approval.Action,
+		Params:      approval.Params,
+		Path:        approval.Path,
+		Suggestion:  approval.Suggestion,
+	})
+}
+
+func toSurfacePermissionRequest(request core.PermissionRequest) surfacepermission.PermissionRequest {
 	return surfacepermission.PermissionRequest{
 		ID:          request.ID,
 		SessionID:   request.SessionID,
@@ -146,7 +146,7 @@ func ToSurfacePermissionRequest(request core.PermissionRequest) surfacepermissio
 	}
 }
 
-func ToSurfacePermissionNotification(notification core.PermissionNotification) surfacepermission.PermissionNotification {
+func permissionNotification(notification core.PermissionNotification) surfacepermission.PermissionNotification {
 	return surfacepermission.PermissionNotification{
 		ToolCallID: notification.ToolCallID,
 		Granted:    notification.Granted,

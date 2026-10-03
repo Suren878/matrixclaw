@@ -277,7 +277,14 @@ func BuildToolResultMap(messages []surfacemessage.Message) map[string]surfacemes
 	return resultMap
 }
 
-func ExtractMessageItems(sty *surfacestyles.Styles, msg *surfacemessage.Message, toolResults map[string]surfacemessage.ToolResult) []MessageItem {
+// ToolContext is what tool rows need beyond their message: results and the
+// children of agent calls, both by tool call ID.
+type ToolContext struct {
+	Results   map[string]surfacemessage.ToolResult
+	Subagents map[string]surfacemessage.Subagent
+}
+
+func ExtractMessageItems(sty *surfacestyles.Styles, msg *surfacemessage.Message, tools ToolContext) []MessageItem {
 	if IsContextClearedMessage(msg) {
 		return []MessageItem{NewContextClearedMessageItem(sty, msg)}
 	}
@@ -288,12 +295,12 @@ func ExtractMessageItems(sty *surfacestyles.Styles, msg *surfacemessage.Message,
 	case surfacemessage.User:
 		return []MessageItem{NewUserMessageItem(sty, msg)}
 	case surfacemessage.Assistant, surfacemessage.System:
-		return extractAssistantMessageItems(sty, msg, toolResults)
+		return extractAssistantMessageItems(sty, msg, tools)
 	}
 	return nil
 }
 
-func extractAssistantMessageItems(sty *surfacestyles.Styles, msg *surfacemessage.Message, toolResults map[string]surfacemessage.ToolResult) []MessageItem {
+func extractAssistantMessageItems(sty *surfacestyles.Styles, msg *surfacemessage.Message, tools ToolContext) []MessageItem {
 	var items []MessageItem
 	segment := newAssistantSegment(msg, 0)
 	segmentIndex := 0
@@ -316,15 +323,14 @@ func extractAssistantMessageItems(sty *surfacestyles.Styles, msg *surfacemessage
 		case surfacemessage.ToolCall:
 			flushSegment()
 			var result *surfacemessage.ToolResult
-			if tr, ok := toolResults[part.ID]; ok {
+			if tr, ok := tools.Results[part.ID]; ok {
 				result = &tr
 			}
-			items = append(items, NewToolMessageItem(
-				sty,
-				part,
-				result,
-				msg.FinishReason() == surfacemessage.FinishReasonCanceled,
-			))
+			var sub *surfacemessage.Subagent
+			if child, ok := tools.Subagents[part.ID]; ok {
+				sub = &child
+			}
+			items = append(items, NewToolMessageItem(sty, part, result, sub, msg.FinishReason() == surfacemessage.FinishReasonCanceled))
 		case surfacemessage.ToolResult:
 			continue
 		case surfacemessage.Finish:

@@ -8,7 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Suren878/matrixclaw/clients/terminal/chat/viewmodel"
+	"github.com/Suren878/matrixclaw/clients/terminal/chat/readmodel"
 	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
@@ -21,7 +21,7 @@ func newApprovalApp(t *testing.T, ids ...string) *appModel {
 	for _, id := range ids {
 		snapshot.Approvals = append(snapshot.Approvals, core.Approval{ID: id, SessionID: "session_1", ToolCallRef: "call_" + id, ToolName: "bash", State: core.ApprovalStatePending})
 	}
-	m.read = viewmodel.NewReadModel(snapshot)
+	m.read = readmodel.New(snapshot)
 	m.syncPermissionDialogCmd()
 	return m
 }

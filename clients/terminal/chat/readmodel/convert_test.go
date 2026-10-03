@@ -1,9 +1,10 @@
-package viewmodel
+package readmodel
 
 import (
 	"testing"
 
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
+	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -25,7 +26,7 @@ func TestSurfaceMessagesHideModelOnlyEngineNotes(t *testing.T) {
 		{ID: "n1", Role: transcript.MessageRoleSystem, Origin: transcript.OriginEngineModel, Content: modelOnly, Parts: transcript.NormalizeMessageParts(modelOnly, nil)},
 		{ID: "n2", Role: transcript.MessageRoleSystem, Origin: transcript.OriginEngine, Content: "Budget note: about 2 steps left.", Parts: transcript.NormalizeMessageParts("Budget note: about 2 steps left.", nil)},
 	}
-	out := ToSurfaceMessages(messages)
+	out := New(core.ClientSnapshot{SessionID: "s1", Messages: messages}).Messages()
 	if len(out) != 1 || out[0].ID != "n2" {
 		t.Fatalf("surface messages = %+v", out)
 	}

@@ -8,7 +8,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/Suren878/matrixclaw/clients/terminal/chat/viewmodel"
+	"github.com/Suren878/matrixclaw/clients/terminal/chat/readmodel"
 	surfaceheader "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/header"
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
@@ -55,15 +55,15 @@ func (m *appModel) workingStatusView() string {
 	if !m.busy {
 		return m.waitingSubagentsStatusView()
 	}
-	run := m.currentRun()
+	run := m.state().Run()
 	if !runIsActive(run) {
-		return m.workingStatusLine(m.currentSnapshot(), nil, "Waiting for model", "")
+		return m.workingStatusLine(m.state(), nil, "Waiting for model", "")
 	}
-	snapshot := m.currentSnapshot()
+	snapshot := m.state()
 	return m.workingStatusLine(snapshot, run, m.workingStatusPhase(), m.workingIdleElapsed())
 }
 
-func (m *appModel) workingStatusLine(snapshot viewmodel.Snapshot, run *core.Run, phase string, idle string) string {
+func (m *appModel) workingStatusLine(snapshot *readmodel.Model, run *core.Run, phase string, idle string) string {
 	_, model := m.currentSessionLLM()
 	model = cmp.Or(model, "model")
 	spinner := workingSpinnerFrames[m.spinnerFrame%len(workingSpinnerFrames)]
@@ -76,7 +76,7 @@ func (m *appModel) workingStatusLine(snapshot viewmodel.Snapshot, run *core.Run,
 		timing += ", idle " + idle
 	}
 	details := make([]string, 0, 2)
-	if detail := pendingInputsStatusText(snapshot.PendingInputs); detail != "" {
+	if detail := pendingInputsStatusText(snapshot.PendingInputs()); detail != "" {
 		details = append(details, detail)
 	}
 	if runIsActive(run) {
@@ -93,20 +93,20 @@ func (m *appModel) workingStatusLine(snapshot viewmodel.Snapshot, run *core.Run,
 }
 
 func (m *appModel) waitingSubagentsStatusView() string {
-	snapshot := m.currentSnapshot()
-	line := combinedWaitingStatusText(snapshot.PendingInputs, snapshot.Subagents)
+	snapshot := m.state()
+	line := combinedWaitingStatusText(snapshot.PendingInputs(), snapshot.Subagents())
 	if line == "" {
 		return ""
 	}
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(colorToHex(m.styles.Primary))).Render(line)
 }
 
-func combinedWaitingStatusText(inputs []core.SessionInput, tasks []core.SubagentTask) string {
+func combinedWaitingStatusText(inputs []core.SessionInput, subagents []surfacemessage.Subagent) string {
 	parts := make([]string, 0, 2)
 	if text := pendingInputsStatusText(inputs); text != "" {
 		parts = append(parts, text)
 	}
-	if text := activeSubagentsStatusText(tasks); text != "" {
+	if text := activeSubagentsStatusText(subagents); text != "" {
 		parts = append(parts, text)
 	}
 	return strings.Join(parts, " • ")
@@ -150,38 +150,30 @@ func pendingInputsStatusText(inputs []core.SessionInput) string {
 	}
 }
 
-func activeSubagentsStatusText(tasks []core.SubagentTask) string {
-	names := make([]string, 0, len(tasks))
-	for _, task := range tasks {
-		if !subagentTaskActive(task) {
-			continue
-		}
-		if name := subagentTaskDisplayName(task); name != "" {
-			names = append(names, name)
+func activeSubagentsStatusText(subagents []surfacemessage.Subagent) string {
+	names := make([]string, 0, len(subagents))
+	for _, sub := range subagents {
+		if sub.State.Active() {
+			names = append(names, sub.Name)
 		}
 	}
 	return activeSubagentNamesStatusText(names)
 }
 
-func activeSubagentsStatusTextForSnapshot(snapshot viewmodel.Snapshot, phase string) string {
+func activeSubagentsStatusTextForSnapshot(snapshot *readmodel.Model, phase string) string {
 	if strings.HasPrefix(strings.TrimSpace(phase), "Waiting for subagent:") {
 		return ""
 	}
 	currentRunID := ""
-	if snapshot.Run != nil {
-		currentRunID = strings.TrimSpace(snapshot.Run.ID)
+	if run := snapshot.Run(); run != nil {
+		currentRunID = strings.TrimSpace(run.ID)
 	}
-	names := make([]string, 0, len(snapshot.Subagents))
-	for _, task := range snapshot.Subagents {
-		if !subagentTaskActive(task) {
+	names := make([]string, 0, len(snapshot.Subagents()))
+	for _, sub := range snapshot.Subagents() {
+		if !sub.State.Active() || (sub.Blocking && currentRunID != "" && sub.ParentRunID != currentRunID) {
 			continue
 		}
-		if task.Mode == core.SubagentTaskModeBlocking && currentRunID != "" && strings.TrimSpace(task.ParentRunID) != currentRunID {
-			continue
-		}
-		if name := subagentTaskDisplayName(task); name != "" {
-			names = append(names, name)
-		}
+		names = append(names, sub.Name)
 	}
 	return activeSubagentNamesStatusText(names)
 }
@@ -193,24 +185,12 @@ func activeSubagentNamesStatusText(names []string) string {
 	return "Subagents: " + strings.Join(names, ", ")
 }
 
-func subagentTaskActive(task core.SubagentTask) bool {
-	switch task.Status {
-	case core.TaskStatusPending, core.TaskStatusRunning, core.TaskStatusWaitingApproval:
-		return true
-	default:
-		return false
-	}
-}
-
 func (m *appModel) workingStatusPhase() string {
-	if m.read == nil {
-		return "Waiting for model"
-	}
-	snapshot := m.currentSnapshot()
+	snapshot := m.state()
 	if activeRunWaitingForPermission(snapshot) {
 		return "Waiting for permission"
 	}
-	if snapshot.Run != nil && snapshot.Run.Status == core.RunStatusWaitingEvents {
+	if snapshot.Run() != nil && snapshot.Run().Status == core.RunStatusWaitingEvents {
 		return "Waiting for background tasks"
 	}
 	if update, ok := latestActiveToolUpdate(snapshot, core.ToolLifecycleRequested); ok {
@@ -219,12 +199,12 @@ func (m *appModel) workingStatusPhase() string {
 				return phase
 			}
 		}
-		return workingToolPhaseWithDetail(snapshot.Messages, update)
+		return workingToolPhaseWithDetail(snapshot.Messages(), update)
 	}
-	if snapshot.Run != nil && snapshot.Run.Status == core.RunStatusAccepted {
+	if snapshot.Run() != nil && snapshot.Run().Status == core.RunStatusAccepted {
 		return "Waiting for model"
 	}
-	if phase := modelOutputPhase(snapshot.Messages); phase != "" {
+	if phase := modelOutputPhase(snapshot.Messages()); phase != "" {
 		return phase
 	}
 	if phase := activeSubagentPhase(snapshot); phase != "" {
@@ -233,61 +213,39 @@ func (m *appModel) workingStatusPhase() string {
 	return "Waiting for model"
 }
 
-func activeRunWaitingForPermission(snapshot viewmodel.Snapshot) bool {
+func activeRunWaitingForPermission(snapshot *readmodel.Model) bool {
 	if update, ok := latestActiveToolUpdate(snapshot, core.ToolLifecycleWaitingApproval); ok && strings.TrimSpace(update.ToolCallID) != "" {
 		return true
 	}
-	return snapshot.Run != nil && snapshot.Run.Status == core.RunStatusWaitingApproval && len(snapshot.Approvals) > 0
+	return snapshot.Run() != nil && snapshot.Run().Status == core.RunStatusWaitingApproval && len(snapshot.Approvals()) > 0
 }
 
-func activeSubagentPhase(snapshot viewmodel.Snapshot) string {
-	if snapshot.Run == nil {
+func activeSubagentPhase(snapshot *readmodel.Model) string {
+	run := snapshot.Run()
+	if run == nil || strings.TrimSpace(run.ID) == "" {
 		return ""
 	}
-	runID := strings.TrimSpace(snapshot.Run.ID)
-	if runID == "" {
-		return ""
-	}
-	for i := len(snapshot.Subagents) - 1; i >= 0; i-- {
-		task := snapshot.Subagents[i]
-		if task.Mode != core.SubagentTaskModeBlocking {
+	subagents := snapshot.Subagents()
+	for i := len(subagents) - 1; i >= 0; i-- {
+		sub := subagents[i]
+		if !sub.Blocking || sub.ParentRunID != strings.TrimSpace(run.ID) {
 			continue
 		}
-		if strings.TrimSpace(task.ParentRunID) != runID {
-			continue
-		}
-		name := subagentTaskDisplayName(task)
-		switch task.Status {
-		case core.TaskStatusPending:
-			return "Starting subagent: " + name
-		case core.TaskStatusRunning:
-			return "Waiting for subagent: " + name
-		case core.TaskStatusWaitingApproval:
-			return "Subagent waiting for permission: " + name
+		switch sub.State {
+		case surfacemessage.SubagentPending:
+			return "Starting subagent: " + sub.Name
+		case surfacemessage.SubagentRunning:
+			return "Waiting for subagent: " + sub.Name
+		case surfacemessage.SubagentWaitingApproval:
+			return "Subagent waiting for permission: " + sub.Name
 		}
 	}
 	return ""
 }
 
-func subagentTaskDisplayName(task core.SubagentTask) string {
-	if name := strings.Join(strings.Fields(task.AgentName), " "); name != "" {
-		return name
-	}
-	if name := strings.Join(strings.Fields(task.DisplayName), " "); name != "" {
-		return name
-	}
-	if runtime := strings.TrimSpace(task.Runtime); runtime != "" {
-		return runtime
-	}
-	if id := strings.TrimSpace(task.ID); id != "" {
-		return id
-	}
-	return "subagent"
-}
-
-func latestActiveToolUpdate(snapshot viewmodel.Snapshot, state core.ToolLifecycleState) (core.ToolUpdate, bool) {
-	for i := len(snapshot.ToolUpdates) - 1; i >= 0; i-- {
-		update := snapshot.ToolUpdates[i]
+func latestActiveToolUpdate(snapshot *readmodel.Model, state core.ToolLifecycleState) (core.ToolUpdate, bool) {
+	for i := len(snapshot.ToolUpdates()) - 1; i >= 0; i-- {
+		update := snapshot.ToolUpdates()[i]
 		if update.State != state {
 			continue
 		}
@@ -299,11 +257,11 @@ func latestActiveToolUpdate(snapshot viewmodel.Snapshot, state core.ToolLifecycl
 	return core.ToolUpdate{}, false
 }
 
-func toolUpdateBelongsToCurrentRun(snapshot viewmodel.Snapshot, update core.ToolUpdate) bool {
-	if snapshot.Run == nil {
+func toolUpdateBelongsToCurrentRun(snapshot *readmodel.Model, update core.ToolUpdate) bool {
+	if snapshot.Run() == nil {
 		return true
 	}
-	currentRunID := strings.TrimSpace(snapshot.Run.ID)
+	currentRunID := strings.TrimSpace(snapshot.Run().ID)
 	updateRunID := strings.TrimSpace(update.RunID)
 	if currentRunID == "" {
 		return true
@@ -311,7 +269,7 @@ func toolUpdateBelongsToCurrentRun(snapshot viewmodel.Snapshot, update core.Tool
 	if updateRunID != "" {
 		return updateRunID == currentRunID
 	}
-	return toolCallMessageRunID(snapshot.Messages, update.ToolCallID) == currentRunID
+	return toolCallMessageRunID(snapshot.Messages(), update.ToolCallID) == currentRunID
 }
 
 func toolCallMessageRunID(messages []surfacemessage.Message, toolCallID string) string {
@@ -352,10 +310,7 @@ func modelOutputPhase(messages []surfacemessage.Message) string {
 }
 
 func (m *appModel) workingIdleElapsed() string {
-	if m.read == nil {
-		return ""
-	}
-	timing := m.currentSnapshot().Timing
+	timing := m.state().Timing()
 	if timing == nil || timing.LastEventAt.IsZero() {
 		return ""
 	}

@@ -8,7 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Suren878/matrixclaw/clients/terminal/chat/viewmodel"
+	"github.com/Suren878/matrixclaw/clients/terminal/chat/readmodel"
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
@@ -81,7 +81,7 @@ func (m *appModel) applySnapshot(snapshot core.ClientSnapshot) {
 	}
 	m.err = snapshotError(snapshot)
 	m.session = snapshot.SessionID
-	m.read = viewmodel.NewReadModel(snapshot)
+	m.read = readmodel.New(snapshot)
 	m.setBusy(runIsActive(snapshot.Run))
 	m.rebuildChat()
 }
@@ -109,14 +109,21 @@ func snapshotError(snapshot core.ClientSnapshot) string {
 	return strings.TrimSpace(snapshot.Run.Error)
 }
 
-func (m *appModel) currentRun() *core.Run {
-	return cloneRun(m.currentSnapshot().Run)
+// noSession stands in for the read model before the first snapshot.
+var noSession = readmodel.New(core.ClientSnapshot{})
+
+// state is the session's read model, empty before the first snapshot.
+func (m *appModel) state() *readmodel.Model {
+	if m.read == nil {
+		return noSession
+	}
+	return m.read
 }
 
 // currentSessionLLM is the session's provider and model; an external agent
 // session names only its model.
 func (m *appModel) currentSessionLLM() (string, string) {
-	session := m.currentSnapshot().Session
+	session := m.state().Session()
 	if session == nil {
 		return "", ""
 	}
@@ -139,12 +146,9 @@ func (m *appModel) workingTickCmd() tea.Cmd {
 
 // syncPromptHistory fills the prompt history newest first, so Up recalls the latest prompt.
 func (m *appModel) syncPromptHistory() {
-	if m.read == nil {
-		return
-	}
-	snapshot := m.read.Snapshot()
-	prompts := make([]string, 0, len(snapshot.Messages))
-	for _, msg := range slices.Backward(snapshot.Messages) {
+	messages := m.state().Messages()
+	prompts := make([]string, 0, len(messages))
+	for _, msg := range slices.Backward(messages) {
 		if msg.Role != surfacemessage.User {
 			continue
 		}
@@ -167,12 +171,4 @@ func runIsActive(run *core.Run) bool {
 	default:
 		return false
 	}
-}
-
-func cloneRun(run *core.Run) *core.Run {
-	if run == nil {
-		return nil
-	}
-	cloned := *run
-	return &cloned
 }

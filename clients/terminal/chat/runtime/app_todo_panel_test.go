@@ -9,7 +9,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Suren878/matrixclaw/clients/terminal/chat/viewmodel"
+	"github.com/Suren878/matrixclaw/clients/terminal/chat/readmodel"
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
@@ -19,7 +19,7 @@ func newTodoApp(t *testing.T, width int, list *todo.List) *appModel {
 	t.Helper()
 	m := newApp(context.Background(), nil)
 	m.width, m.height = width, 40
-	m.read = viewmodel.NewReadModel(core.ClientSnapshot{SessionID: "session_1", Todo: list})
+	m.read = readmodel.New(core.ClientSnapshot{SessionID: "session_1", Todo: list})
 	return m
 }
 

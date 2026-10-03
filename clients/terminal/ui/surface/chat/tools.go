@@ -35,6 +35,7 @@ type ToolMessageItem interface {
 type ToolRenderOpts struct {
 	ToolCall        surfacemessage.ToolCall
 	Result          *surfacemessage.ToolResult
+	Subagent        *surfacemessage.Subagent
 	Anim            *anim.Anim
 	ExpandedContent bool
 	IsSpinning      bool
@@ -72,6 +73,7 @@ type baseToolMessageItem struct {
 	render          toolRenderer
 	toolCall        surfacemessage.ToolCall
 	result          *surfacemessage.ToolResult
+	subagent        *surfacemessage.Subagent
 	status          ToolStatus
 	hasCappedWidth  bool
 	sty             *surfacestyles.Styles
@@ -114,17 +116,22 @@ func newBaseToolMessageItem(
 	return t
 }
 
+// NewToolMessageItem is the row of one tool call; sub is the child an agent
+// call started, nil for other tools.
 func NewToolMessageItem(
 	sty *surfacestyles.Styles,
 	toolCall surfacemessage.ToolCall,
 	result *surfacemessage.ToolResult,
+	sub *surfacemessage.Subagent,
 	canceled bool,
 ) ToolMessageItem {
 	render, ok := toolRenderers[normalizedToolName(toolCall.Name)]
 	if !ok {
 		render = renderGeneric
 	}
-	return newBaseToolMessageItem(sty, toolCall, result, render, canceled)
+	item := newBaseToolMessageItem(sty, toolCall, result, render, canceled)
+	item.subagent = sub
+	return item
 }
 
 func (t *baseToolMessageItem) ID() string { return t.toolCall.ID }
@@ -154,6 +161,7 @@ func (t *baseToolMessageItem) RawRender(width int) string {
 		content = t.render(t.sty, toolItemWidth, &ToolRenderOpts{
 			ToolCall:        t.toolCall,
 			Result:          t.result,
+			Subagent:        t.subagent,
 			Anim:            t.anim,
 			ExpandedContent: t.expandedContent,
 			IsSpinning:      t.isSpinning(),
@@ -181,12 +189,10 @@ func (t *baseToolMessageItem) markerStyle() lipgloss.Style {
 }
 
 func (t *baseToolMessageItem) computeStatus() ToolStatus {
+	if t.subagent != nil {
+		return subagentToolStatus(t.subagent.State)
+	}
 	if t.result != nil {
-		if isSubagentToolNameLocal(t.toolCall.Name) {
-			if status, ok := subagentToolStatusFromResult(t.result); ok {
-				return status
-			}
-		}
 		switch normalizedToolName(t.result.Status) {
 		case "error":
 			return ToolStatusError
@@ -207,7 +213,7 @@ func normalizedToolName(name string) string {
 }
 
 func (t *baseToolMessageItem) isSpinning() bool {
-	if isSubagentToolNameLocal(t.toolCall.Name) {
+	if normalizedToolName(t.toolCall.Name) == "agent" {
 		return t.computeStatus() == ToolStatusRunning
 	}
 	return !t.toolCall.Finished && t.status != ToolStatusCanceled

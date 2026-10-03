@@ -1,196 +1,135 @@
 package chat
 
 import (
+	"cmp"
 	"encoding/json"
 	"strings"
 
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
-	"github.com/Suren878/matrixclaw/clients/terminal/ui/surface/stringext"
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
 )
 
-type agentRenderParams struct {
+type agentParams struct {
 	Description string `json:"description"`
 	Prompt      string `json:"prompt"`
 	Runtime     string `json:"runtime"`
 }
 
+// agentCard is what an agent call shows: the child once the daemon reports it,
+// else what the call asked for.
+type agentCard struct {
+	name, task, goal, runtime string
+	state                     surfacemessage.SubagentState
+	detail                    string
+}
+
+func newAgentCard(call surfacemessage.ToolCall, sub *surfacemessage.Subagent, status ToolStatus) agentCard {
+	var params agentParams
+	_ = json.Unmarshal([]byte(call.Input), &params)
+	card := agentCard{
+		name:    cmp.Or(oneLine(params.Description), "subagent"),
+		task:    oneLine(params.Description),
+		goal:    oneLine(params.Prompt),
+		runtime: strings.TrimSpace(params.Runtime),
+		state:   subagentStateOf(status),
+	}
+	if sub != nil {
+		card.name, card.state = sub.Name, sub.State
+		card.task = cmp.Or(sub.Task, card.task)
+		card.goal = cmp.Or(sub.Goal, card.goal)
+		card.runtime = cmp.Or(sub.Runtime, card.runtime)
+		card.detail = cmp.Or(sub.Summary, sub.Error)
+	}
+	return card
+}
+
 func renderAgent(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
-	cappedWidth := cappedMessageWidth(width)
-	params := parseAgentParams(opts.ToolCall.Input)
-	return renderSubagentTool(sty, cappedWidth, opts, params)
-}
-
-func parseAgentParams(input string) agentRenderParams {
-	var params agentRenderParams
-	_ = json.Unmarshal([]byte(input), &params)
-	return params
-}
-
-type subagentTaskMetadata struct {
-	AgentName   string `json:"agent_name"`
-	DisplayName string `json:"display_name"`
-	Goal        string `json:"goal"`
-	Runtime     string `json:"runtime"`
-	Status      string `json:"status"`
-	Summary     string `json:"summary"`
-	Error       string `json:"error"`
-}
-
-func renderSubagentTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts, params agentRenderParams) string {
-	metadata := parseSubagentTaskMetadata(opts.Result)
-	agentName := strings.Join(strings.Fields(firstNonEmptyLocal(metadata.AgentName, metadata.DisplayName, params.Description, agentRuntimeLabel(params.Runtime))), " ")
-	taskLabel := strings.Join(strings.Fields(firstNonEmptyLocal(metadata.DisplayName, params.Description)), " ")
-	goal := strings.Join(strings.Fields(firstNonEmptyLocal(metadata.Goal, params.Prompt)), " ")
-	status := subagentRenderStatus(metadata.Status, opts)
-	header := toolHeader(sty, subagentRenderLabel(agentName, status), width, subagentTaskPreview(taskLabel, goal))
-	bodyText := subagentBodyText(opts, metadata, taskLabel, goal, status)
-	if bodyText == "" {
-		return header
-	}
-	bodyWidth := width - toolBodyLeftPaddingTotal
-	body := sty.Tool.Body.Render(toolOutputPlainContent(sty, bodyText, bodyWidth, opts.ExpandedContent))
-	return joinToolParts(header, body)
-}
-
-func subagentRenderStatus(metadataStatus string, opts *ToolRenderOpts) string {
-	status := strings.ToLower(strings.TrimSpace(metadataStatus))
-	if status != "" {
-		return status
-	}
-	if opts != nil && opts.IsPending() {
-		return "running"
-	}
-	if opts == nil {
-		return ""
-	}
-	switch opts.Status {
-	case ToolStatusError:
-		return "failed"
-	case ToolStatusCanceled:
-		return "canceled"
-	case ToolStatusAwaitingPermission:
-		return "waiting_approval"
-	case ToolStatusSuccess:
-		return "completed"
-	default:
-		return "running"
-	}
-}
-
-func subagentRenderLabel(agentName string, status string) string {
-	if strings.TrimSpace(agentName) == "" {
-		agentName = "subagent"
-	}
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "completed":
-		return "✓ " + agentName + " completed"
-	case "failed":
-		return "✕ " + agentName + " failed"
-	case "canceled":
-		return "✕ " + agentName + " canceled"
-	case "waiting_approval":
-		return "◇ " + agentName + " waiting for permission..."
-	case "pending":
-		return "◇ " + agentName + " starting..."
-	default:
-		return "◇ " + agentName + " working..."
-	}
-}
-
-func subagentTaskPreview(taskLabel string, goal string) string {
-	taskLabel = strings.Join(strings.Fields(taskLabel), " ")
-	goal = strings.Join(strings.Fields(goal), " ")
-	switch {
-	case taskLabel != "" && goal != "" && !strings.EqualFold(taskLabel, goal):
-		return taskLabel + " - " + goal
-	case taskLabel != "":
-		return taskLabel
-	default:
-		return goal
-	}
-}
-
-func subagentBodyText(opts *ToolRenderOpts, metadata subagentTaskMetadata, taskLabel string, goal string, status string) string {
-	lines := make([]string, 0, 5)
-	if opts != nil && opts.ExpandedContent {
-		if taskLabel != "" {
-			lines = append(lines, "Task: "+taskLabel)
+	width = cappedMessageWidth(width)
+	card := newAgentCard(opts.ToolCall, opts.Subagent, opts.Status)
+	header := toolHeader(sty, card.label(), width, card.preview())
+	lines := make([]string, 0, 3)
+	if opts.ExpandedContent {
+		if card.task != "" {
+			lines = append(lines, "Task: "+card.task)
 		}
-		if goal != "" && !strings.EqualFold(goal, taskLabel) {
-			lines = append(lines, "Goal: "+goal)
+		if card.goal != "" && !strings.EqualFold(card.goal, card.task) {
+			lines = append(lines, "Goal: "+card.goal)
 		}
 	}
-	detail := firstNonEmptyLocal(metadata.Summary, metadata.Error)
-	if detail == "" && opts != nil && opts.HasResult() && subagentTerminalRenderStatus(status) {
+	detail := card.detail
+	if detail == "" && opts.HasResult() && !card.state.Active() {
 		detail = strings.TrimSpace(opts.Result.Content)
 	}
 	if detail != "" {
 		lines = append(lines, detail)
 	}
-	return strings.TrimSpace(strings.Join(lines, "\n"))
+	if len(lines) == 0 {
+		return header
+	}
+	body := sty.Tool.Body.Render(toolOutputPlainContent(sty, strings.Join(lines, "\n"), width-toolBodyLeftPaddingTotal, opts.ExpandedContent))
+	return joinToolParts(header, body)
 }
 
-func subagentTerminalRenderStatus(status string) bool {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "completed", "failed", "canceled":
-		return true
+func (c agentCard) label() string {
+	switch c.state {
+	case surfacemessage.SubagentCompleted:
+		return "✓ " + c.name + " completed"
+	case surfacemessage.SubagentFailed:
+		return "✕ " + c.name + " failed"
+	case surfacemessage.SubagentCanceled:
+		return "✕ " + c.name + " canceled"
+	case surfacemessage.SubagentWaitingApproval:
+		return "◇ " + c.name + " waiting for permission..."
+	case surfacemessage.SubagentPending:
+		return "◇ " + c.name + " starting..."
 	default:
-		return false
+		return "◇ " + c.name + " working..."
 	}
 }
 
-func subagentToolStatusFromResult(result *surfacemessage.ToolResult) (ToolStatus, bool) {
-	metadata := parseSubagentTaskMetadata(result)
-	switch strings.ToLower(strings.TrimSpace(metadata.Status)) {
-	case "pending", "running":
-		return ToolStatusRunning, true
-	case "waiting_approval":
-		return ToolStatusAwaitingPermission, true
-	case "completed":
-		return ToolStatusSuccess, true
-	case "failed":
-		return ToolStatusError, true
-	case "canceled":
-		return ToolStatusCanceled, true
+func (c agentCard) preview() string {
+	switch {
+	case c.task != "" && c.goal != "" && !strings.EqualFold(c.task, c.goal):
+		return c.task + " - " + c.goal
+	case c.task != "":
+		return c.task
 	default:
-		return ToolStatusRunning, false
+		return c.goal
 	}
 }
 
-func isSubagentToolNameLocal(name string) bool {
-	return strings.ToLower(strings.TrimSpace(name)) == "agent"
-}
-
-func parseSubagentTaskMetadata(result *surfacemessage.ToolResult) subagentTaskMetadata {
-	if result == nil || strings.TrimSpace(result.Metadata) == "" {
-		return subagentTaskMetadata{}
-	}
-	var metadata subagentTaskMetadata
-	_ = json.Unmarshal([]byte(result.Metadata), &metadata)
-	return metadata
-}
-
-func firstNonEmptyLocal(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
-}
-
-func agentRuntimeLabel(runtime string) string {
-	switch strings.ToLower(strings.TrimSpace(runtime)) {
-	case "", "matrixclaw", "auto":
-		return "MatrixClaw"
-	case "codex", "codex-app", "openai-codex":
-		return "Codex"
-	case "claude", "claude-code", "claudecode":
-		return "Claude Code"
+// subagentStateOf is the child's state as far as the tool call shows it.
+func subagentStateOf(status ToolStatus) surfacemessage.SubagentState {
+	switch status {
+	case ToolStatusSuccess:
+		return surfacemessage.SubagentCompleted
+	case ToolStatusError:
+		return surfacemessage.SubagentFailed
+	case ToolStatusCanceled:
+		return surfacemessage.SubagentCanceled
+	case ToolStatusAwaitingPermission:
+		return surfacemessage.SubagentWaitingApproval
 	default:
-		runtime = strings.ReplaceAll(runtime, "_", " ")
-		runtime = strings.ReplaceAll(runtime, "-", " ")
-		return stringext.Capitalize(runtime)
+		return surfacemessage.SubagentRunning
 	}
+}
+
+// subagentToolStatus is the tool status an agent call shows for its child.
+func subagentToolStatus(state surfacemessage.SubagentState) ToolStatus {
+	switch state {
+	case surfacemessage.SubagentWaitingApproval:
+		return ToolStatusAwaitingPermission
+	case surfacemessage.SubagentCompleted:
+		return ToolStatusSuccess
+	case surfacemessage.SubagentFailed:
+		return ToolStatusError
+	case surfacemessage.SubagentCanceled:
+		return ToolStatusCanceled
+	default:
+		return ToolStatusRunning
+	}
+}
+
+func oneLine(text string) string {
+	return strings.Join(strings.Fields(text), " ")
 }

@@ -10,11 +10,11 @@ import (
 // contextUsageText is the header's context line: the daemon's measure of the
 // session's context, then the session's model and provider.
 func (m *appModel) contextUsageText() string {
-	snapshot := m.currentSnapshot()
-	if snapshot.Session == nil || snapshot.Context == nil {
+	snapshot := m.state()
+	if snapshot.Session() == nil || snapshot.Context() == nil {
 		return ""
 	}
-	parts := []string{formatHeaderContextUsage(*snapshot.Context)}
+	parts := []string{formatHeaderContextUsage(*snapshot.Context())}
 	provider, model := m.currentSessionLLM()
 	for _, part := range []string{model, provider} {
 		if part != "" {

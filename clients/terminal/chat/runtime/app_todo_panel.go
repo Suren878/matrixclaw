@@ -28,7 +28,7 @@ func (m *appModel) shouldShowTodoPanel() bool {
 	case todoPanelHidden:
 		return false
 	}
-	list := m.currentSnapshot().Todo
+	list := m.state().Todo()
 	return list != nil && len(todo.Open(list.Items)) > 0
 }
 
@@ -53,7 +53,7 @@ func (m *appModel) todoPanelView(width int, height int) string {
 	}
 	innerWidth := max(1, width-3)
 	lines := []string{"", m.todoPanelTitle(innerWidth), ""}
-	list := m.currentSnapshot().Todo
+	list := m.state().Todo()
 	if list == nil || len(list.Items) == 0 {
 		lines = append(lines, m.styles.Muted.Render("No todo list yet"))
 	} else {

@@ -8,7 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Suren878/matrixclaw/clients/terminal/chat/viewmodel"
+	"github.com/Suren878/matrixclaw/clients/terminal/chat/readmodel"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -21,7 +21,7 @@ func TestSpaceExpandsTheSelectedToolOutput(t *testing.T) {
 	output = append(output, "the last line")
 	m := newApp(context.Background(), nil)
 	m.width, m.height = 120, 200
-	m.read = viewmodel.NewReadModel(core.ClientSnapshot{SessionID: "session_1", Messages: []transcript.Message{
+	m.read = readmodel.New(core.ClientSnapshot{SessionID: "session_1", Messages: []transcript.Message{
 		{ID: "m1", SessionID: "session_1", Role: transcript.MessageRoleAssistant, Parts: []transcript.MessagePart{
 			{Kind: transcript.MessagePartKindToolCall, ToolCall: &transcript.ToolCallPart{ID: "call_1", Name: "bash", Input: `{"command":"make"}`, Finished: true}},
 		}},

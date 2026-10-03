@@ -6,7 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Suren878/matrixclaw/clients/terminal/chat/viewmodel"
+	"github.com/Suren878/matrixclaw/clients/terminal/chat/readmodel"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -124,7 +124,7 @@ func (m *appModel) handleSendMessageResult(msg sendMessageResultMsg) tea.Cmd {
 		return m.loadInitialCmd()
 	}
 	if m.read == nil {
-		m.read = viewmodel.NewReadModel(core.ClientSnapshot{
+		m.read = readmodel.New(core.ClientSnapshot{
 			SessionID: msg.result.SessionID,
 			Messages:  []transcript.Message{msg.result.UserMessage},
 			Run:       &msg.result.Run,

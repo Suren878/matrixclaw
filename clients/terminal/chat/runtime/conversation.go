@@ -1,154 +1,45 @@
 package runtime
 
 import (
-	"encoding/json"
+	"cmp"
+	"slices"
 	"strings"
 	"time"
 
-	"github.com/Suren878/matrixclaw/clients/terminal/chat/viewmodel"
+	"github.com/Suren878/matrixclaw/clients/terminal/chat/readmodel"
 	surfacechat "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/chat"
-	surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
-	surfacemodel "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/model"
 	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-func buildChatModel(sty *surfacestyles.Styles, snapshot viewmodel.Snapshot) *surfacemodel.Chat {
-	styles := ensureConversationStyles(sty)
-	chatModel := surfacemodel.NewChat(&surfacecommon.Common{Styles: styles})
-	chatModel.SetMessages(buildChatItems(styles, snapshot)...)
-	return chatModel
-}
-
-func ensureConversationStyles(sty *surfacestyles.Styles) *surfacestyles.Styles {
-	if sty != nil {
-		return sty
+// buildChatItems turns the read model's transcript, with the terminal's own
+// notes merged in by time, into chat rows.
+func buildChatItems(sty *surfacestyles.Styles, read *readmodel.Model, notes []surfacemessage.Message) []surfacechat.MessageItem {
+	messages := read.Messages()
+	if len(notes) > 0 {
+		messages = append(slices.Clone(messages), notes...)
+		slices.SortStableFunc(messages, func(a, b surfacemessage.Message) int { return cmp.Compare(a.CreatedAt, b.CreatedAt) })
 	}
-	defaultStyles := surfacestyles.DefaultStyles()
-	return &defaultStyles
-}
-
-func buildChatItems(sty *surfacestyles.Styles, snapshot viewmodel.Snapshot) []surfacechat.MessageItem {
-	styles := ensureConversationStyles(sty)
-	messages := append([]surfacemessage.Message(nil), snapshot.Messages...)
-	toolUpdates := indexToolUpdates(snapshot.ToolUpdates)
-	toolResults := surfacechat.BuildToolResultMap(messages)
-	mergeSubagentToolResults(toolResults, snapshot.Subagents)
-	mergeSubagentToolUpdates(toolUpdates, snapshot.Subagents)
-	items := buildConversationItems(styles, messages, toolResults, toolUpdates)
-	applyToolStatuses(items, pendingApprovalToolCalls(snapshot.Approvals), indexApprovalNotifications(snapshot.ApprovalNotifications), toolUpdates)
+	toolUpdates := indexToolUpdates(read.ToolUpdates())
+	tools := surfacechat.ToolContext{Results: surfacechat.BuildToolResultMap(messages), Subagents: map[string]surfacemessage.Subagent{}}
+	for _, sub := range read.Subagents() {
+		if sub.ParentToolCallID != "" {
+			tools.Subagents[sub.ParentToolCallID] = sub
+		}
+	}
+	items := buildConversationItems(sty, messages, tools, toolUpdates)
+	applyToolStatuses(items, pendingApprovalToolCalls(read.Approvals()), indexApprovalNotifications(read.ApprovalNotifications()), toolUpdates)
 	return items
 }
 
 func indexToolUpdates(updates []core.ToolUpdate) map[string]core.ToolUpdate {
 	index := make(map[string]core.ToolUpdate, len(updates))
 	for _, update := range updates {
-		if update.ToolCallID == "" {
-			continue
-		}
 		index[update.ToolCallID] = update
 	}
 	return index
-}
-
-func mergeSubagentToolResults(results map[string]surfacemessage.ToolResult, tasks []core.SubagentTask) {
-	for _, task := range tasks {
-		toolCallID := strings.TrimSpace(task.ParentToolCallID)
-		if toolCallID == "" {
-			continue
-		}
-		result := results[toolCallID]
-		result.ToolCallID = toolCallID
-		result.Name = "agent"
-		if metadata, err := json.Marshal(task); err == nil {
-			result.Metadata = string(metadata)
-		}
-		result.Status = subagentSurfaceResultStatus(task)
-		result.IsError = task.Status == core.TaskStatusFailed || task.Status == core.TaskStatusCanceled || strings.TrimSpace(task.Error) != ""
-		if strings.TrimSpace(result.Content) == "" || subagentTaskTerminal(task) {
-			result.Content = subagentSurfaceResultContent(task)
-		}
-		results[toolCallID] = result
-	}
-}
-
-func mergeSubagentToolUpdates(updates map[string]core.ToolUpdate, tasks []core.SubagentTask) {
-	for _, task := range tasks {
-		toolCallID := strings.TrimSpace(task.ParentToolCallID)
-		if toolCallID == "" {
-			continue
-		}
-		update := updates[toolCallID]
-		update.ToolCallID = toolCallID
-		update.ToolName = "agent"
-		update.State = subagentToolLifecycleState(task)
-		update.ResultStatus = subagentSurfaceResultStatus(task)
-		update.RunID = strings.TrimSpace(task.ParentRunID)
-		update.SessionID = strings.TrimSpace(task.ParentSessionID)
-		update.Error = strings.TrimSpace(task.Error)
-		updates[toolCallID] = update
-	}
-}
-
-func subagentSurfaceResultStatus(task core.SubagentTask) string {
-	if task.Status == core.TaskStatusFailed || task.Status == core.TaskStatusCanceled || strings.TrimSpace(task.Error) != "" {
-		return "error"
-	}
-	if task.Status == core.TaskStatusCompleted {
-		return "success"
-	}
-	return "neutral"
-}
-
-func subagentToolLifecycleState(task core.SubagentTask) core.ToolLifecycleState {
-	switch task.Status {
-	case core.TaskStatusWaitingApproval:
-		return core.ToolLifecycleWaitingApproval
-	case core.TaskStatusCompleted:
-		return core.ToolLifecycleCompleted
-	case core.TaskStatusFailed, core.TaskStatusCanceled:
-		return core.ToolLifecycleFailed
-	default:
-		return core.ToolLifecycleRequested
-	}
-}
-
-func subagentSurfaceResultContent(task core.SubagentTask) string {
-	name := strings.Join(strings.Fields(task.AgentName), " ")
-	if name == "" {
-		name = strings.Join(strings.Fields(task.DisplayName), " ")
-	}
-	if name == "" {
-		name = strings.TrimSpace(task.ID)
-	}
-	if name == "" {
-		name = "subagent"
-	}
-	switch task.Status {
-	case core.TaskStatusCompleted:
-		return strings.TrimSpace("Subagent " + name + " completed\n\n" + strings.TrimSpace(task.Summary))
-	case core.TaskStatusFailed:
-		return strings.TrimSpace("Subagent " + name + " failed\n\n" + strings.TrimSpace(firstNonEmptyRuntime(task.Error, task.Summary)))
-	case core.TaskStatusCanceled:
-		return strings.TrimSpace("Subagent " + name + " canceled\n\n" + strings.TrimSpace(firstNonEmptyRuntime(task.Error, task.Summary)))
-	default:
-		return "Subagent " + name + " is running."
-	}
-}
-
-func subagentTaskTerminal(task core.SubagentTask) bool {
-	return task.Status == core.TaskStatusCompleted || task.Status == core.TaskStatusFailed || task.Status == core.TaskStatusCanceled
-}
-
-func firstNonEmptyRuntime(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }
 
 func pendingApprovalToolCalls(approvals []surfacepermission.PermissionRequest) map[string]struct{} {
@@ -210,11 +101,11 @@ func applyToolStatuses(items []surfacechat.MessageItem, pendingApprovals map[str
 	}
 }
 
-func buildConversationItems(sty *surfacestyles.Styles, messages []surfacemessage.Message, toolResults map[string]surfacemessage.ToolResult, toolUpdates map[string]core.ToolUpdate) []surfacechat.MessageItem {
+func buildConversationItems(sty *surfacestyles.Styles, messages []surfacemessage.Message, tools surfacechat.ToolContext, toolUpdates map[string]core.ToolUpdate) []surfacechat.MessageItem {
 	items := make([]surfacechat.MessageItem, 0, len(messages))
 	var lastUserMessageTime time.Time
 	for i := 0; i < len(messages); {
-		if grouped, next, ok := buildReadGroupItem(sty, messages, i, toolResults, toolUpdates); ok {
+		if grouped, next, ok := buildReadGroupItem(sty, messages, i, tools.Results, toolUpdates); ok {
 			items = append(items, grouped)
 			i = next
 			continue
@@ -224,7 +115,7 @@ func buildConversationItems(sty *surfacestyles.Styles, messages []surfacemessage
 			lastUserMessageTime = time.Unix(msg.CreatedAt, 0)
 		}
 		before := len(items)
-		items = append(items, surfacechat.ExtractMessageItems(sty, msg, toolResults)...)
+		items = append(items, surfacechat.ExtractMessageItems(sty, msg, tools)...)
 		if msg.Role == surfacemessage.Assistant && len(items) > before {
 			finish := msg.FinishPart()
 			if finish != nil && finish.Reason == surfacemessage.FinishReasonEndTurn {

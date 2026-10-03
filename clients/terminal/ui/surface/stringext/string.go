@@ -2,14 +2,7 @@ package stringext
 
 import (
 	"strings"
-
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 )
-
-func Capitalize(text string) string {
-	return cases.Title(language.Und, cases.Compact).String(text)
-}
 
 // NormalizeSpace normalizes whitespace in the given content string.
 // It replaces Windows-style line endings with Unix-style line endings,

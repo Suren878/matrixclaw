@@ -9,7 +9,7 @@ import (
 	"charm.land/bubbles/v2/help"
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Suren878/matrixclaw/clients/terminal/chat/viewmodel"
+	"github.com/Suren878/matrixclaw/clients/terminal/chat/readmodel"
 	surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
 	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
 	surfaceeditor "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/editor"
@@ -147,7 +147,7 @@ type appModel struct {
 	loading  bool
 	err      string
 	session  string
-	read     *viewmodel.ReadModel
+	read     *readmodel.Model
 	chat     *surfacemodel.Chat
 	input    surfaceinput.Model
 	events   <-chan daemonclient.LiveEvent

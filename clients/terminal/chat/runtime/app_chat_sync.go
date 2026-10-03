@@ -1,11 +1,11 @@
 package runtime
 
 import (
-	"slices"
 	"strings"
 
+	surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
 	surfacelist "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/list"
-	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
+	surfacemodel "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/model"
 )
 
 func (m *appModel) rebuildChat() {
@@ -20,20 +20,8 @@ func (m *appModel) rebuildChat() {
 		follow = m.chat.Follow()
 		viewport = surfacemodelViewportSnapshot{snapshot: m.chat.SnapshotViewport(), ok: true}
 	}
-	snapshot := m.currentSnapshot()
-	if len(m.transientMessages) > 0 {
-		snapshot.Messages = append(append([]surfacemessage.Message(nil), snapshot.Messages...), m.transientMessages...)
-		slices.SortStableFunc(snapshot.Messages, func(a surfacemessage.Message, b surfacemessage.Message) int {
-			if a.CreatedAt < b.CreatedAt {
-				return -1
-			}
-			if a.CreatedAt > b.CreatedAt {
-				return 1
-			}
-			return 0
-		})
-	}
-	chatModel := buildChatModel(&m.styles, snapshot)
+	chatModel := surfacemodel.NewChat(&surfacecommon.Common{Styles: &m.styles})
+	chatModel.SetMessages(buildChatItems(&m.styles, m.read, m.transientMessages)...)
 	chatModel.Focus()
 	m.chat = chatModel
 	m.resizeChat()
