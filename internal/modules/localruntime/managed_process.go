@@ -58,7 +58,9 @@ func (r *Runtime) startManagedProcess(options managedProcessOptions) (*managedPr
 		cmd.Stderr = io.Discard
 	}
 	if err := cmd.Start(); err != nil {
-		_ = stdin.Close()
+		if stdin != nil {
+			_ = stdin.Close()
+		}
 		if logFile != nil {
 			_ = logFile.Close()
 		}
