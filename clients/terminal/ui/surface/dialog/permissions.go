@@ -35,16 +35,13 @@ const (
 )
 
 const (
-	toolNameBash         = "bash"
-	toolNameEdit         = "edit"
-	toolNameWrite        = "write"
-	toolNameMultiEdit    = "multiedit"
-	toolNameDownload     = "download"
-	toolNameFetch        = "fetch"
-	toolNameAgenticFetch = "agentic_fetch"
-	toolNameRead         = "read"
-	toolNameLS           = "ls"
-	toolNameSkillManage  = "skill_manage"
+	toolNameBash        = "bash"
+	toolNameEdit        = "edit"
+	toolNameWrite       = "write"
+	toolNameMultiEdit   = "multiedit"
+	toolNameRead        = "read"
+	toolNameLS          = "ls"
+	toolNameSkillManage = "skill_manage"
 )
 
 const horizontalScrollStep = 5

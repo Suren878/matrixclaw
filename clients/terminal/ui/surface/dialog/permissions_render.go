@@ -123,11 +123,6 @@ func (p *Permissions) renderHeader(contentWidth int) string {
 		if params, ok := surfacepermission.DecodeParams[tools.BashPermissionsParams](p.permission.Params); ok {
 			lines = append(lines, p.renderKeyValue("Desc", params.Description, contentWidth))
 		}
-	case toolNameDownload:
-		if params, ok := surfacepermission.DecodeParams[surfacepermission.DownloadPermissionsParams](p.permission.Params); ok {
-			lines = append(lines, p.renderKeyValue("URL", params.URL, contentWidth))
-			lines = append(lines, p.renderKeyValue("File", prettyPath(params.FilePath), contentWidth))
-		}
 	case toolNameEdit, toolNameWrite, toolNameMultiEdit, toolNameRead:
 		var filePath string
 		switch p.permission.ToolName {

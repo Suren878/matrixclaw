@@ -6,21 +6,6 @@ import (
 	"strings"
 )
 
-type DownloadPermissionsParams struct {
-	URL      string `json:"url"`
-	FilePath string `json:"file_path"`
-	Timeout  int    `json:"timeout,omitempty"`
-}
-
-type FetchPermissionsParams struct {
-	URL string `json:"url"`
-}
-
-type AgenticFetchPermissionsParams struct {
-	URL    string `json:"url,omitempty"`
-	Prompt string `json:"prompt"`
-}
-
 type ReadPermissionsParams struct {
 	FilePath string `json:"file_path"`
 	Offset   int    `json:"offset"`

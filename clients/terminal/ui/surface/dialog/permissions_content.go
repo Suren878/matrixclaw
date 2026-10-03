@@ -20,12 +20,6 @@ func (p *Permissions) renderContent(width int) string {
 		return p.renderWriteContent(width)
 	case toolNameMultiEdit:
 		return p.renderMultiEditContent(width)
-	case toolNameDownload:
-		return p.renderDownloadContent(width)
-	case toolNameFetch:
-		return p.renderFetchContent(width)
-	case toolNameAgenticFetch:
-		return p.renderAgenticFetchContent(width)
 	case toolNameRead:
 		return p.renderReadContent(width)
 	case toolNameLS:
@@ -96,45 +90,6 @@ func (p *Permissions) renderDiff(filePath, oldContent, newContent string, conten
 	}
 
 	return result
-}
-
-func (p *Permissions) renderDownloadContent(width int) string {
-	params, ok := surfacepermission.DecodeParams[surfacepermission.DownloadPermissionsParams](p.permission.Params)
-	if !ok {
-		return ""
-	}
-
-	content := fmt.Sprintf("URL: %s\nFile: %s", params.URL, prettyPath(params.FilePath))
-	if params.Timeout > 0 {
-		content += fmt.Sprintf("\nTimeout: %ds", params.Timeout)
-	}
-
-	return p.renderContentPanel(content, width)
-}
-
-func (p *Permissions) renderFetchContent(width int) string {
-	params, ok := surfacepermission.DecodeParams[surfacepermission.FetchPermissionsParams](p.permission.Params)
-	if !ok {
-		return ""
-	}
-
-	return p.renderContentPanel(params.URL, width)
-}
-
-func (p *Permissions) renderAgenticFetchContent(width int) string {
-	params, ok := surfacepermission.DecodeParams[surfacepermission.AgenticFetchPermissionsParams](p.permission.Params)
-	if !ok {
-		return ""
-	}
-
-	var content string
-	if params.URL != "" {
-		content = fmt.Sprintf("URL: %s\n\nPrompt: %s", params.URL, params.Prompt)
-	} else {
-		content = fmt.Sprintf("Prompt: %s", params.Prompt)
-	}
-
-	return p.renderContentPanel(content, width)
 }
 
 func (p *Permissions) renderReadContent(width int) string {
