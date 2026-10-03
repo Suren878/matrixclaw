@@ -200,3 +200,26 @@ func executeReadForTest(t *testing.T, path string, workingDir string) Result {
 	}
 	return result
 }
+
+func TestReadExecutorBlocksAgentLoginTokens(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
+	t.Setenv("CODEX_HOME", filepath.Join(dir, "codex"))
+	t.Setenv("HOME", dir)
+	for _, path := range []string{
+		filepath.Join(dir, "state", "matrixclaw", "auth", "openai-codex.json"),
+		filepath.Join(dir, "state", "matrixclaw", "auth", "other.json"),
+		filepath.Join(dir, "codex", "auth.json"),
+		filepath.Join(dir, ".claude", ".credentials.json"),
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(`{"tokens":{"refresh_token":"refresh-token-secret"}}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if result := executeReadForTest(t, path, dir); !result.IsError() || strings.Contains(result.Content, "refresh-token-secret") {
+			t.Fatalf("%s: result = %#v, want protected-file error", path, result)
+		}
+	}
+}

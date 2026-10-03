@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/xdg"
 )
 
 type FilesystemPathPolicy struct {
@@ -130,7 +132,22 @@ func isProtectedCredentialPath(path string) bool {
 			return true
 		}
 	}
+	for _, dir := range credentialDirs() {
+		if dir = comparableFilesystemPath(dir); dir != "" && strings.HasPrefix(path, dir+string(filepath.Separator)) {
+			return true
+		}
+	}
 	return false
+}
+
+// credentialDirs hold login tokens: matrixclaw's own (the Codex OAuth store)
+// and those of the agent CLIs it can import from or run.
+func credentialDirs() []string {
+	dirs := []string{filepath.Join(xdg.StateHome(), "matrixclaw", "auth")}
+	if dir := strings.TrimSpace(os.Getenv("MATRIXCLAW_AUTH_DIR")); dir != "" {
+		dirs = append(dirs, dir)
+	}
+	return dirs
 }
 
 func matrixclawCredentialPaths() []string {
@@ -145,6 +162,19 @@ func matrixclawCredentialPaths() []string {
 	if dataDir := matrixclawUserDataDir(); dataDir != "" {
 		root := filepath.Join(dataDir, "matrixclaw")
 		paths = append(paths, filepath.Join(root, "matrixclaw.json"), filepath.Join(root, "providers.json"))
+	}
+	if file := strings.TrimSpace(os.Getenv("MATRIXCLAW_CODEX_AUTH_FILE")); file != "" {
+		paths = append(paths, file)
+	}
+	codexHome := strings.TrimSpace(os.Getenv("CODEX_HOME"))
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		paths = append(paths, filepath.Join(home, ".claude", ".credentials.json"))
+		if codexHome == "" {
+			codexHome = filepath.Join(home, ".codex")
+		}
+	}
+	if codexHome != "" {
+		paths = append(paths, filepath.Join(codexHome, "auth.json"))
 	}
 	return paths
 }
