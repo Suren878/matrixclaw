@@ -22,16 +22,11 @@ func NewTextToSpeechTool(setupService setupLoader) tools.Executor {
 
 func (t *textToSpeechTool) Spec() tools.Spec {
 	return tools.Spec{
-		ID:           TextToSpeechToolID,
-		Name:         "Text to Speech",
-		Description:  "Generate spoken audio through Matrixclaw text-to-speech for the current client. Use this when the user asks for voice, spoken, audio, or TTS output.",
-		Risk:         tools.RiskSafe,
-		Effect:       tools.EffectMutation,
-		ApprovalMode: tools.ApprovalNever,
-		Namespace:    "module.voice",
-		Category:     tools.CategoryAutomation,
-		Profiles:     []tools.Profile{tools.ProfileAutomation, tools.ProfileCoding},
-		OutputKind:   tools.OutputAudio,
+		ID:          TextToSpeechToolID,
+		Description: "Generate spoken audio through Matrixclaw text-to-speech for the current client. Use this when the user asks for voice, spoken, audio, or TTS output.",
+		Effect:      tools.EffectMutation,
+		Namespace:   "module.voice",
+		Category:    tools.CategoryAutomation,
 		InputJSONSchema: json.RawMessage(`{
   "type": "object",
   "properties": {

@@ -33,15 +33,10 @@ func AgentToolExecutors(app *Core) []tools.Executor {
 func (t *agentTool) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              agentToolName,
-		Name:            "Agent",
 		Description:     "Run a child agent on a bounded task and get its result, or start it in the background.",
-		Risk:            tools.RiskSafe,
 		Effect:          tools.EffectMutation,
-		ApprovalMode:    tools.ApprovalNever,
 		Namespace:       "core.subagents",
 		Category:        tools.CategoryAutomation,
-		Profiles:        []tools.Profile{tools.ProfileCoding},
-		OutputKind:      tools.OutputText,
 		InputJSONSchema: agentToolSchema,
 	}
 }

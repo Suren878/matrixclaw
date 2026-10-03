@@ -52,16 +52,11 @@ func NewSendFileTool(store storageReader, deliveries deliveryCreator) tools.Exec
 
 func (t *sendFileTool) Spec() tools.Spec {
 	return tools.Spec{
-		ID:           sendFileToolID,
-		Name:         "Send File",
-		Description:  "Send a MatrixClaw storage file to the current Telegram chat as a document. Use when the user asks you to send, attach, or share a saved file. The file must already be in MatrixClaw storage; use storage_list, storage_save, or storage_save_temp first if needed.",
-		Risk:         tools.RiskApproval,
-		Effect:       tools.EffectMutation,
-		ApprovalMode: tools.ApprovalOnRequest,
-		Namespace:    "module.delivery",
-		Category:     tools.CategoryStorage,
-		Profiles:     []tools.Profile{tools.ProfileStorage},
-		OutputKind:   tools.OutputText,
+		ID:          sendFileToolID,
+		Description: "Send a MatrixClaw storage file to the current Telegram chat as a document. Use when the user asks you to send, attach, or share a saved file. The file must already be in MatrixClaw storage; use storage_list, storage_save, or storage_save_temp first if needed.",
+		Effect:      tools.EffectMutation,
+		Namespace:   "module.delivery",
+		Category:    tools.CategoryStorage,
 		InputJSONSchema: json.RawMessage(`{
   "type": "object",
   "properties": {

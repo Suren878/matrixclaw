@@ -101,15 +101,10 @@ func NewWebSearchExecutorWithService(web *WebService) tools.Executor {
 func (e *webFetchExecutor) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              webFetchToolName,
-		Name:            "WebFetch",
 		Description:     "Fetch a URL through compact web research artifacts; task mode returns extracted facts/result",
-		Risk:            tools.RiskSafe,
 		Effect:          tools.EffectReadOnly,
-		ApprovalMode:    tools.ApprovalNever,
 		Namespace:       namespaceCoreWeb,
 		Category:        tools.CategoryWeb,
-		Profiles:        []tools.Profile{tools.ProfileCoding, tools.ProfileWeb},
-		OutputKind:      tools.OutputWebContent,
 		InputJSONSchema: webFetchInputSchema,
 	}
 }
@@ -117,15 +112,10 @@ func (e *webFetchExecutor) Spec() tools.Spec {
 func (e *webSearchExecutor) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              webSearchToolName,
-		Name:            "WebSearch",
 		Description:     "Search the web and return titles, URLs, and descriptions",
-		Risk:            tools.RiskSafe,
 		Effect:          tools.EffectReadOnly,
-		ApprovalMode:    tools.ApprovalNever,
 		Namespace:       namespaceCoreWeb,
 		Category:        tools.CategoryWeb,
-		Profiles:        []tools.Profile{tools.ProfileCoding, tools.ProfileWeb},
-		OutputKind:      tools.OutputSearchResults,
 		InputJSONSchema: webSearchInputSchema,
 	}
 }

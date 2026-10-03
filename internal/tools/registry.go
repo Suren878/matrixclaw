@@ -40,13 +40,6 @@ func (e InvalidToolSpecError) Error() string {
 	return "invalid tool spec: " + e.Reason
 }
 
-type Policy struct {
-	Profiles   []Profile
-	Categories []Category
-	IncludeIDs []string
-	ExcludeIDs []string
-}
-
 func NewRegistry(executors ...Executor) *Registry {
 	registry := &Registry{
 		executors: map[string]registeredTool{},
@@ -96,10 +89,6 @@ func (r *Registry) Err() error {
 }
 
 func (r *Registry) List() []Spec {
-	return r.ListFor(Policy{})
-}
-
-func (r *Registry) ListFor(policy Policy) []Spec {
 	if r == nil {
 		return nil
 	}
@@ -107,11 +96,7 @@ func (r *Registry) ListFor(policy Policy) []Spec {
 	defer r.mu.RUnlock()
 	specs := make([]Spec, 0, len(r.executors))
 	for _, id := range r.order {
-		registered := r.executors[id]
-		if !policy.Allows(registered.spec) {
-			continue
-		}
-		specs = append(specs, cloneSpec(registered.spec))
+		specs = append(specs, cloneSpec(r.executors[id].spec))
 	}
 	return specs
 }
@@ -133,50 +118,6 @@ func (r *Registry) Execute(ctx context.Context, toolID string, call Call) (Resul
 	return result, err
 }
 
-func (r *Registry) View(policy Policy) *PolicyRegistry {
-	return &PolicyRegistry{
-		registry: r,
-		policy:   normalizePolicy(policy),
-	}
-}
-
-type PolicyRegistry struct {
-	registry *Registry
-	policy   Policy
-}
-
-func (r *PolicyRegistry) List() []Spec {
-	if r == nil || r.registry == nil {
-		return nil
-	}
-	return r.registry.ListFor(r.policy)
-}
-
-func (r *PolicyRegistry) Execute(ctx context.Context, toolID string, call Call) (Result, error) {
-	if r == nil || r.registry == nil {
-		return Result{}, fmt.Errorf("tool registry is not configured")
-	}
-	spec, ok := r.registry.Spec(toolID)
-	if !ok {
-		return Result{}, fmt.Errorf("unknown tool %q", strings.TrimSpace(toolID))
-	}
-	if !r.policy.Allows(spec) {
-		return Result{}, fmt.Errorf("tool %q is not enabled by the active tool policy", strings.TrimSpace(toolID))
-	}
-	return r.registry.Execute(ctx, toolID, call)
-}
-
-func (r *PolicyRegistry) Spec(toolID string) (Spec, bool) {
-	if r == nil || r.registry == nil {
-		return Spec{}, false
-	}
-	spec, ok := r.registry.Spec(toolID)
-	if !ok || !r.policy.Allows(spec) {
-		return Spec{}, false
-	}
-	return spec, true
-}
-
 func (r *Registry) Spec(toolID string) (Spec, bool) {
 	if r == nil {
 		return Spec{}, false
@@ -190,26 +131,6 @@ func (r *Registry) Spec(toolID string) (Spec, bool) {
 	return cloneSpec(registered.spec), true
 }
 
-func (p Policy) Allows(spec Spec) bool {
-	p = normalizePolicy(p)
-	id := normalizeToolID(spec.ID)
-	if slices.Contains(p.ExcludeIDs, id) {
-		return false
-	}
-	if len(p.IncludeIDs) > 0 && slices.Contains(p.IncludeIDs, id) {
-		return true
-	}
-	if len(p.Profiles) == 0 && len(p.Categories) == 0 && len(p.IncludeIDs) == 0 {
-		return true
-	}
-	for _, profile := range spec.Profiles {
-		if slices.Contains(p.Profiles, normalizeProfile(profile)) {
-			return true
-		}
-	}
-	return slices.Contains(p.Categories, normalizeCategory(spec.Category))
-}
-
 func normalizeToolID(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
@@ -219,10 +140,6 @@ func normalizeSpec(spec Spec) (Spec, error) {
 	if spec.ID == "" {
 		return Spec{}, InvalidToolSpecError{Reason: "id is required"}
 	}
-	spec.Name = strings.TrimSpace(spec.Name)
-	if spec.Name == "" {
-		return Spec{}, InvalidToolSpecError{Reason: fmt.Sprintf("%s: name is required", spec.ID)}
-	}
 	spec.Description = strings.TrimSpace(spec.Description)
 	if spec.Description == "" {
 		return Spec{}, InvalidToolSpecError{Reason: fmt.Sprintf("%s: description is required", spec.ID)}
@@ -231,83 +148,21 @@ func normalizeSpec(spec Spec) (Spec, error) {
 	if spec.Namespace == "" {
 		return Spec{}, InvalidToolSpecError{Reason: fmt.Sprintf("%s: namespace is required", spec.ID)}
 	}
-	spec.Risk = normalizeRiskLevel(spec.Risk)
-	if !knownRiskLevel(spec.Risk) {
-		return Spec{}, InvalidToolSpecError{Reason: fmt.Sprintf("%s: unknown risk %q", spec.ID, spec.Risk)}
-	}
 	spec.Effect = normalizeEffect(spec.Effect)
 	if spec.Effect == "" {
 		spec.Effect = EffectReadOnly
 	}
-	if !knownEffect(spec.Effect) {
+	if spec.Effect != EffectReadOnly && spec.Effect != EffectMutation {
 		return Spec{}, InvalidToolSpecError{Reason: fmt.Sprintf("%s: unknown effect %q", spec.ID, spec.Effect)}
 	}
-	spec.ApprovalMode = normalizeApprovalMode(spec.ApprovalMode)
-	if spec.ApprovalMode == "" {
-		if spec.Risk == RiskApproval {
-			spec.ApprovalMode = ApprovalOnRequest
-		} else {
-			spec.ApprovalMode = ApprovalNever
-		}
-	}
-	if !knownApprovalMode(spec.ApprovalMode) {
-		return Spec{}, InvalidToolSpecError{Reason: fmt.Sprintf("%s: unknown approval mode %q", spec.ID, spec.ApprovalMode)}
-	}
-	spec.PermissionParams = strings.TrimSpace(spec.PermissionParams)
 	spec.Category = normalizeCategory(spec.Category)
 	if !knownCategory(spec.Category) {
 		return Spec{}, InvalidToolSpecError{Reason: fmt.Sprintf("%s: unknown category %q", spec.ID, spec.Category)}
-	}
-	spec.OutputKind = normalizeOutputKind(spec.OutputKind)
-	if !knownOutputKind(spec.OutputKind) {
-		return Spec{}, InvalidToolSpecError{Reason: fmt.Sprintf("%s: unknown output kind %q", spec.ID, spec.OutputKind)}
-	}
-	spec.Profiles = normalizeProfiles(spec.Profiles)
-	if len(spec.Profiles) == 0 {
-		return Spec{}, InvalidToolSpecError{Reason: fmt.Sprintf("%s: at least one profile is required", spec.ID)}
-	}
-	for _, profile := range spec.Profiles {
-		if !knownProfile(profile) {
-			return Spec{}, InvalidToolSpecError{Reason: fmt.Sprintf("%s: unknown profile %q", spec.ID, profile)}
-		}
 	}
 	if len(spec.InputJSONSchema) == 0 {
 		return Spec{}, InvalidToolSpecError{Reason: fmt.Sprintf("%s: input schema is required", spec.ID)}
 	}
 	return spec, nil
-}
-
-func normalizePolicy(policy Policy) Policy {
-	policy.Profiles = normalizeProfiles(policy.Profiles)
-	policy.Categories = normalizeCategories(policy.Categories)
-	policy.IncludeIDs = normalizeToolIDs(policy.IncludeIDs)
-	policy.ExcludeIDs = normalizeToolIDs(policy.ExcludeIDs)
-	return policy
-}
-
-func normalizeToolIDs(values []string) []string {
-	return normalizeUnique(values, normalizeToolID)
-}
-
-func normalizeProfiles(values []Profile) []Profile {
-	return normalizeUnique(values, normalizeProfile)
-}
-
-func normalizeProfile(value Profile) Profile {
-	return Profile(strings.ToLower(strings.TrimSpace(string(value))))
-}
-
-func knownProfile(value Profile) bool {
-	switch value {
-	case ProfileReadOnly, ProfileCoding, ProfileAutomation, ProfileStorage, ProfileWeb, ProfileSkills:
-		return true
-	default:
-		return false
-	}
-}
-
-func normalizeCategories(values []Category) []Category {
-	return normalizeUnique(values, normalizeCategory)
 }
 
 func normalizeCategory(value Category) Category {
@@ -323,75 +178,13 @@ func knownCategory(value Category) bool {
 	}
 }
 
-func normalizeOutputKind(value OutputKind) OutputKind {
-	return OutputKind(strings.ToLower(strings.TrimSpace(string(value))))
-}
-
-func knownOutputKind(value OutputKind) bool {
-	switch value {
-	case OutputText, OutputFileContent, OutputFileTree, OutputSearchResults, OutputDiff, OutputJob, OutputAudio, OutputStorageEntry, OutputStorageList, OutputWebContent:
-		return true
-	default:
-		return false
-	}
-}
-
-func normalizeRiskLevel(value RiskLevel) RiskLevel {
-	return RiskLevel(strings.ToLower(strings.TrimSpace(string(value))))
-}
-
-func knownRiskLevel(value RiskLevel) bool {
-	switch value {
-	case RiskSafe, RiskApproval:
-		return true
-	default:
-		return false
-	}
-}
-
 func normalizeEffect(value Effect) Effect {
 	return Effect(strings.ToLower(strings.TrimSpace(string(value))))
 }
 
-func knownEffect(value Effect) bool {
-	switch value {
-	case EffectReadOnly, EffectMutation:
-		return true
-	default:
-		return false
-	}
-}
-
-func normalizeApprovalMode(value ApprovalMode) ApprovalMode {
-	return ApprovalMode(strings.ToLower(strings.TrimSpace(string(value))))
-}
-
-func knownApprovalMode(value ApprovalMode) bool {
-	switch value {
-	case ApprovalNever, ApprovalOnRequest:
-		return true
-	default:
-		return false
-	}
-}
-
 func cloneSpec(spec Spec) Spec {
-	spec.Profiles = slices.Clone(spec.Profiles)
 	if spec.InputJSONSchema != nil {
 		spec.InputJSONSchema = slices.Clone(spec.InputJSONSchema)
 	}
 	return spec
-}
-
-func normalizeUnique[T comparable](values []T, normalize func(T) T) []T {
-	out := make([]T, 0, len(values))
-	var zero T
-	for _, value := range values {
-		normalized := normalize(value)
-		if normalized == zero || slices.Contains(out, normalized) {
-			continue
-		}
-		out = append(out, normalized)
-	}
-	return out
 }

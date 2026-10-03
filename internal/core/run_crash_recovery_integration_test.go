@@ -131,16 +131,8 @@ func (t *recoveryTool) callCount() int {
 }
 
 func recoveryToolSpec(id string, effect tools.Effect) tools.Spec {
-	risk := tools.RiskSafe
-	approval := tools.ApprovalNever
-	if effect == tools.EffectMutation {
-		risk = tools.RiskApproval
-		approval = tools.ApprovalOnRequest
-	}
 	return tools.Spec{
-		ID: id, Name: id, Description: "recovery test tool", Risk: risk, Effect: effect,
-		ApprovalMode: approval, Namespace: "test.recovery", Category: tools.CategoryFilesystem,
-		Profiles: []tools.Profile{tools.ProfileCoding}, OutputKind: tools.OutputText,
+		ID: id, Description: "recovery test tool", Effect: effect, Namespace: "test.recovery", Category: tools.CategoryFilesystem,
 		InputJSONSchema: json.RawMessage(`{"type":"object"}`),
 	}
 }

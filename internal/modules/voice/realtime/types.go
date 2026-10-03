@@ -271,10 +271,9 @@ type ProviderConnectRequest struct {
 }
 
 type ToolDeclaration struct {
-	Name             string
-	Description      string
-	Parameters       json.RawMessage
-	RequiresApproval bool
+	Name        string
+	Description string
+	Parameters  json.RawMessage
 }
 
 type ProviderConnection interface {

@@ -35,15 +35,10 @@ func AwaitToolExecutors(app *Core) []tools.Executor {
 func (t *awaitTool) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              awaitToolName,
-		Name:            "Await",
 		Description:     "Wait for background tasks to finish instead of polling them. Ends your turn; you are woken when one of the tasks finishes, the user writes, or the timeout passes. Call it after the calls that start the tasks have returned: task ids come from their results, and in the same reply it may run before them.",
-		Risk:            tools.RiskSafe,
 		Effect:          tools.EffectReadOnly,
-		ApprovalMode:    tools.ApprovalNever,
 		Namespace:       "core.await",
 		Category:        tools.CategoryAutomation,
-		Profiles:        []tools.Profile{tools.ProfileCoding},
-		OutputKind:      tools.OutputText,
 		InputJSONSchema: awaitToolSchema,
 	}
 }

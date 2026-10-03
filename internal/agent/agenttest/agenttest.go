@@ -248,7 +248,7 @@ func (t *Tools) Specs(context.Context) []tools.Spec {
 	sort.Strings(names)
 	specs := make([]tools.Spec, 0, len(names))
 	for _, name := range names {
-		specs = append(specs, tools.Spec{ID: name, Name: name, Description: name})
+		specs = append(specs, tools.Spec{ID: name, Description: name})
 	}
 	return specs
 }

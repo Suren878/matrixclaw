@@ -2,7 +2,7 @@ package providers
 
 import "testing"
 
-func TestAnthropicProfilesUseNativeToolCalling(t *testing.T) {
+func TestAnthropicModelsCallToolsNatively(t *testing.T) {
 	for _, tc := range []struct{ providerID, modelID string }{
 		{"anthropic", "claude-sonnet-4-5"},
 		{"custom-anthropic-compatible", "glm-4.6"},

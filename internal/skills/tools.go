@@ -28,15 +28,10 @@ func ToolExecutors(service *Service) []tools.Executor {
 func (t *searchTool) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              "skill_search",
-		Name:            "Skill Search",
 		Description:     "Search trusted Matrixclaw skills by name, description, tags, category, and snippets.",
-		Risk:            tools.RiskSafe,
 		Effect:          tools.EffectReadOnly,
-		ApprovalMode:    tools.ApprovalNever,
 		Namespace:       "module.skills",
 		Category:        tools.CategorySkills,
-		Profiles:        []tools.Profile{tools.ProfileReadOnly, tools.ProfileCoding, tools.ProfileSkills},
-		OutputKind:      tools.OutputSearchResults,
 		InputJSONSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50}},"additionalProperties":false}`),
 	}
 }
@@ -58,15 +53,10 @@ func (t *searchTool) Execute(_ context.Context, call tools.Call) (tools.Result, 
 func (t *viewTool) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              "skill_view",
-		Name:            "Skill View",
 		Description:     "View a trusted Matrixclaw skill's metadata and full SKILL.md body without activating it.",
-		Risk:            tools.RiskSafe,
 		Effect:          tools.EffectReadOnly,
-		ApprovalMode:    tools.ApprovalNever,
 		Namespace:       "module.skills",
 		Category:        tools.CategorySkills,
-		Profiles:        []tools.Profile{tools.ProfileReadOnly, tools.ProfileCoding, tools.ProfileSkills},
-		OutputKind:      tools.OutputText,
 		InputJSONSchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"}},"required":["id"],"additionalProperties":false}`),
 	}
 }
@@ -91,15 +81,10 @@ func (t *viewTool) Execute(_ context.Context, call tools.Call) (tools.Result, er
 func (t *useTool) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              "skill_use",
-		Name:            "Skill Use",
 		Description:     "Activate a trusted Matrixclaw skill for this session and return its full instructions.",
-		Risk:            tools.RiskSafe,
 		Effect:          tools.EffectMutation,
-		ApprovalMode:    tools.ApprovalNever,
 		Namespace:       "module.skills",
 		Category:        tools.CategorySkills,
-		Profiles:        []tools.Profile{tools.ProfileCoding, tools.ProfileSkills},
-		OutputKind:      tools.OutputText,
 		InputJSONSchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"}},"required":["id"],"additionalProperties":false}`),
 	}
 }
@@ -120,18 +105,12 @@ func (t *useTool) Execute(_ context.Context, call tools.Call) (tools.Result, err
 
 func (t *manageTool) Spec() tools.Spec {
 	return tools.Spec{
-		ID:               "skill_manage",
-		Name:             "Skill Manage",
-		Description:      "Create, edit, patch, write files for, archive, restore, pin, unpin, trust, quarantine, disable, or remove Matrixclaw skills. Mutations require approval.",
-		Risk:             tools.RiskApproval,
-		Effect:           tools.EffectMutation,
-		ApprovalMode:     tools.ApprovalOnRequest,
-		PermissionParams: "skill_manage_permissions",
-		Namespace:        "module.skills",
-		Category:         tools.CategorySkills,
-		Profiles:         []tools.Profile{tools.ProfileCoding, tools.ProfileSkills},
-		OutputKind:       tools.OutputText,
-		InputJSONSchema:  json.RawMessage(`{"type":"object","properties":{"action":{"type":"string"},"id":{"type":"string"},"name":{"type":"string"},"description":{"type":"string"},"path":{"type":"string"},"content":{"type":"string"}},"required":["action"],"additionalProperties":false}`),
+		ID:              "skill_manage",
+		Description:     "Create, edit, patch, write files for, archive, restore, pin, unpin, trust, quarantine, disable, or remove Matrixclaw skills. Mutations require approval.",
+		Effect:          tools.EffectMutation,
+		Namespace:       "module.skills",
+		Category:        tools.CategorySkills,
+		InputJSONSchema: json.RawMessage(`{"type":"object","properties":{"action":{"type":"string"},"id":{"type":"string"},"name":{"type":"string"},"description":{"type":"string"},"path":{"type":"string"},"content":{"type":"string"}},"required":["action"],"additionalProperties":false}`),
 	}
 }
 

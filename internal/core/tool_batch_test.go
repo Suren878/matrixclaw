@@ -134,7 +134,6 @@ func TestDelegatedChildChangesTheParentsDirectoryWithoutDeadlock(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	edit := recoveryToolSpec("mutate_state", tools.EffectMutation)
-	edit.Risk, edit.ApprovalMode = tools.RiskSafe, tools.ApprovalNever
 	edits := 0
 	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), funcTool{spec: edit, fn: func(context.Context, tools.Call) (tools.Result, error) {
 		edits++

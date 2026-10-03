@@ -7,56 +7,20 @@ type Definition struct {
 	NewExecutor func() Executor
 }
 
-func (d Definition) Executor() Executor {
-	if d.NewExecutor == nil {
-		return nil
-	}
-	return d.NewExecutor()
-}
-
-func CoreDefinitions() []Definition {
-	return cloneDefinitions(coreDefinitions)
-}
-
-func CoreDefinitionsFor(policy Policy) []Definition {
-	policy = normalizePolicy(policy)
-	definitions := CoreDefinitions()
-	out := make([]Definition, 0, len(definitions))
-	for _, definition := range definitions {
-		if !policy.Allows(definition.Spec) {
-			continue
-		}
-		out = append(out, definition)
-	}
-	return out
-}
-
-func executorsFromDefinitions(definitions []Definition) []Executor {
-	executors := make([]Executor, 0, len(definitions))
-	for _, definition := range definitions {
-		if executor := definition.Executor(); executor != nil {
-			executors = append(executors, executor)
+// CoreExecutors returns the core tools that need no daemon services.
+func CoreExecutors() []Executor {
+	executors := make([]Executor, 0, len(coreDefinitions))
+	for _, definition := range coreDefinitions {
+		if definition.NewExecutor != nil {
+			executors = append(executors, definition.NewExecutor())
 		}
 	}
 	return executors
 }
 
-func cloneDefinitions(definitions []Definition) []Definition {
-	out := make([]Definition, 0, len(definitions))
-	for _, definition := range definitions {
-		definition.Spec = cloneSpec(definition.Spec)
-		out = append(out, definition)
-	}
-	return out
-}
-
 func coreDefinitionSpec(id string) Spec {
-	id = normalizeToolID(id)
-	if id == "multi_edit" {
-		id = multiEditToolName
-	}
 	for _, definition := range coreDefinitions {
-		if normalizeToolID(definition.Spec.ID) == id {
+		if definition.Spec.ID == id {
 			return cloneSpec(definition.Spec)
 		}
 	}
@@ -67,15 +31,10 @@ var coreDefinitions = []Definition{
 	{
 		Spec: Spec{
 			ID:              readToolName,
-			Name:            "Read",
 			Description:     "Read a file with line numbers",
-			Risk:            RiskSafe,
 			Effect:          EffectReadOnly,
-			ApprovalMode:    ApprovalNever,
 			Namespace:       namespaceCoreFilesystem,
 			Category:        CategoryFilesystem,
-			Profiles:        []Profile{ProfileReadOnly, ProfileCoding},
-			OutputKind:      OutputFileContent,
 			InputJSONSchema: readInputSchema,
 		},
 		NewExecutor: NewReadExecutor,
@@ -83,15 +42,10 @@ var coreDefinitions = []Definition{
 	{
 		Spec: Spec{
 			ID:              globToolName,
-			Name:            "Glob",
 			Description:     "Find files by path pattern",
-			Risk:            RiskSafe,
 			Effect:          EffectReadOnly,
-			ApprovalMode:    ApprovalNever,
 			Namespace:       namespaceCoreFilesystem,
 			Category:        CategoryFilesystem,
-			Profiles:        []Profile{ProfileReadOnly, ProfileCoding},
-			OutputKind:      OutputSearchResults,
 			InputJSONSchema: globInputSchema,
 		},
 		NewExecutor: NewGlobExecutor,
@@ -99,15 +53,10 @@ var coreDefinitions = []Definition{
 	{
 		Spec: Spec{
 			ID:              grepToolName,
-			Name:            "Grep",
 			Description:     "Search file contents by pattern",
-			Risk:            RiskSafe,
 			Effect:          EffectReadOnly,
-			ApprovalMode:    ApprovalNever,
 			Namespace:       namespaceCoreFilesystem,
 			Category:        CategoryFilesystem,
-			Profiles:        []Profile{ProfileReadOnly, ProfileCoding},
-			OutputKind:      OutputSearchResults,
 			InputJSONSchema: grepInputSchema,
 		},
 		NewExecutor: NewGrepExecutor,
@@ -115,115 +64,75 @@ var coreDefinitions = []Definition{
 	{
 		Spec: Spec{
 			ID:              lsToolName,
-			Name:            "LS",
 			Description:     "List files in a tree",
-			Risk:            RiskSafe,
 			Effect:          EffectReadOnly,
-			ApprovalMode:    ApprovalNever,
 			Namespace:       namespaceCoreFilesystem,
 			Category:        CategoryFilesystem,
-			Profiles:        []Profile{ProfileReadOnly, ProfileCoding},
-			OutputKind:      OutputFileTree,
 			InputJSONSchema: lsInputSchema,
 		},
 		NewExecutor: NewLSExecutor,
 	},
 	{
 		Spec: Spec{
-			ID:               writeToolName,
-			Name:             "Write",
-			Description:      "Create or replace a file",
-			Risk:             RiskApproval,
-			Effect:           EffectMutation,
-			ApprovalMode:     ApprovalOnRequest,
-			PermissionParams: "write_permissions",
-			Namespace:        namespaceCoreFilesystem,
-			Category:         CategoryFilesystem,
-			Profiles:         []Profile{ProfileCoding},
-			OutputKind:       OutputDiff,
-			InputJSONSchema:  writeInputSchema,
+			ID:              writeToolName,
+			Description:     "Create or replace a file",
+			Effect:          EffectMutation,
+			Namespace:       namespaceCoreFilesystem,
+			Category:        CategoryFilesystem,
+			InputJSONSchema: writeInputSchema,
 		},
 		NewExecutor: NewWriteExecutor,
 	},
 	{
 		Spec: Spec{
-			ID:               editToolName,
-			Name:             "Edit",
-			Description:      "Replace content inside an existing file",
-			Risk:             RiskApproval,
-			Effect:           EffectMutation,
-			ApprovalMode:     ApprovalOnRequest,
-			PermissionParams: "edit_permissions",
-			Namespace:        namespaceCoreFilesystem,
-			Category:         CategoryFilesystem,
-			Profiles:         []Profile{ProfileCoding},
-			OutputKind:       OutputDiff,
-			InputJSONSchema:  editInputSchema,
+			ID:              editToolName,
+			Description:     "Replace content inside an existing file",
+			Effect:          EffectMutation,
+			Namespace:       namespaceCoreFilesystem,
+			Category:        CategoryFilesystem,
+			InputJSONSchema: editInputSchema,
 		},
 		NewExecutor: NewEditExecutor,
 	},
 	{
 		Spec: Spec{
-			ID:               multiEditToolName,
-			Name:             "MultiEdit",
-			Description:      "Apply several edits to one file",
-			Risk:             RiskApproval,
-			Effect:           EffectMutation,
-			ApprovalMode:     ApprovalOnRequest,
-			PermissionParams: "multi_edit_permissions",
-			Namespace:        namespaceCoreFilesystem,
-			Category:         CategoryFilesystem,
-			Profiles:         []Profile{ProfileCoding},
-			OutputKind:       OutputDiff,
-			InputJSONSchema:  multiEditInputSchema,
+			ID:              multiEditToolName,
+			Description:     "Apply several edits to one file",
+			Effect:          EffectMutation,
+			Namespace:       namespaceCoreFilesystem,
+			Category:        CategoryFilesystem,
+			InputJSONSchema: multiEditInputSchema,
 		},
 		NewExecutor: NewMultiEditExecutor,
 	},
 	{
 		Spec: Spec{
-			ID:               bashToolName,
-			Name:             "Bash",
-			Description:      "Run a shell command",
-			Risk:             RiskApproval,
-			Effect:           EffectMutation,
-			ApprovalMode:     ApprovalOnRequest,
-			PermissionParams: "bash_permissions",
-			Namespace:        namespaceCoreShell,
-			Category:         CategoryShell,
-			Profiles:         []Profile{ProfileCoding},
-			OutputKind:       OutputText,
-			InputJSONSchema:  bashInputSchema,
+			ID:              bashToolName,
+			Description:     "Run a shell command",
+			Effect:          EffectMutation,
+			Namespace:       namespaceCoreShell,
+			Category:        CategoryShell,
+			InputJSONSchema: bashInputSchema,
 		},
 	},
 	{
 		Spec: Spec{
 			ID:              taskOutputToolName,
-			Name:            "TaskOutput",
 			Description:     "Read a background task's new output",
-			Risk:            RiskSafe,
 			Effect:          EffectReadOnly,
-			ApprovalMode:    ApprovalNever,
 			Namespace:       namespaceCoreShell,
 			Category:        CategoryShell,
-			Profiles:        []Profile{ProfileCoding},
-			OutputKind:      OutputJob,
 			InputJSONSchema: taskOutputInputSchema,
 		},
 	},
 	{
 		Spec: Spec{
-			ID:               taskKillToolName,
-			Name:             "TaskKill",
-			Description:      "Stop a background task",
-			Risk:             RiskApproval,
-			Effect:           EffectMutation,
-			ApprovalMode:     ApprovalOnRequest,
-			PermissionParams: "task_kill",
-			Namespace:        namespaceCoreShell,
-			Category:         CategoryShell,
-			Profiles:         []Profile{ProfileCoding},
-			OutputKind:       OutputJob,
-			InputJSONSchema:  taskKillInputSchema,
+			ID:              taskKillToolName,
+			Description:     "Stop a background task",
+			Effect:          EffectMutation,
+			Namespace:       namespaceCoreShell,
+			Category:        CategoryShell,
+			InputJSONSchema: taskKillInputSchema,
 		},
 	},
 }

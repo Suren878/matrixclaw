@@ -8,25 +8,11 @@ import (
 	"github.com/Suren878/matrixclaw/internal/permission"
 )
 
-type RiskLevel string
-
-const (
-	RiskSafe     RiskLevel = "safe"
-	RiskApproval RiskLevel = "approval"
-)
-
 type Effect string
 
 const (
 	EffectReadOnly Effect = "readonly"
 	EffectMutation Effect = "mutation"
-)
-
-type ApprovalMode string
-
-const (
-	ApprovalNever     ApprovalMode = "never"
-	ApprovalOnRequest ApprovalMode = "on_request"
 )
 
 type Category string
@@ -40,45 +26,15 @@ const (
 	CategorySkills     Category = "skills"
 )
 
-type Profile string
-
-const (
-	ProfileReadOnly   Profile = "readonly"
-	ProfileCoding     Profile = "coding"
-	ProfileAutomation Profile = "automation"
-	ProfileStorage    Profile = "storage"
-	ProfileWeb        Profile = "web"
-	ProfileSkills     Profile = "skills"
-)
-
-type OutputKind string
-
-const (
-	OutputText          OutputKind = "text"
-	OutputFileContent   OutputKind = "file_content"
-	OutputFileTree      OutputKind = "file_tree"
-	OutputSearchResults OutputKind = "search_results"
-	OutputDiff          OutputKind = "diff"
-	OutputJob           OutputKind = "job"
-	OutputAudio         OutputKind = "audio"
-	OutputStorageEntry  OutputKind = "storage_entry"
-	OutputStorageList   OutputKind = "storage_list"
-	OutputWebContent    OutputKind = "web_content"
-)
-
+// Spec describes a tool to the model and to the engine: Effect and Category
+// drive approvals and concurrency, Namespace groups a module's tools.
 type Spec struct {
-	ID               string          `json:"id"`
-	Name             string          `json:"name"`
-	Description      string          `json:"description,omitempty"`
-	Risk             RiskLevel       `json:"risk"`
-	Effect           Effect          `json:"effect,omitempty"`
-	ApprovalMode     ApprovalMode    `json:"approval_mode,omitempty"`
-	PermissionParams string          `json:"permission_params,omitempty"`
-	Namespace        string          `json:"namespace,omitempty"`
-	Category         Category        `json:"category,omitempty"`
-	Profiles         []Profile       `json:"profiles,omitempty"`
-	OutputKind       OutputKind      `json:"output_kind,omitempty"`
-	InputJSONSchema  json.RawMessage `json:"input_json_schema,omitempty"`
+	ID              string          `json:"id"`
+	Description     string          `json:"description,omitempty"`
+	Effect          Effect          `json:"effect,omitempty"`
+	Namespace       string          `json:"namespace,omitempty"`
+	Category        Category        `json:"category,omitempty"`
+	InputJSONSchema json.RawMessage `json:"input_json_schema,omitempty"`
 }
 
 type Call struct {
@@ -168,10 +124,6 @@ type Executor interface {
 
 func (s Spec) Mutates() bool {
 	return normalizeEffect(s.Effect) == EffectMutation
-}
-
-func (s Spec) RequiresApproval() bool {
-	return normalizeApprovalMode(s.ApprovalMode) == ApprovalOnRequest || normalizeRiskLevel(s.Risk) == RiskApproval
 }
 
 func (s Spec) IsFilesystemMutation() bool {

@@ -152,10 +152,9 @@ func (m *Manager) toolDeclarations(client string) []ToolDeclaration {
 			continue
 		}
 		out = append(out, ToolDeclaration{
-			Name:             name,
-			Description:      strings.TrimSpace(spec.Description),
-			Parameters:       spec.InputJSONSchema,
-			RequiresApproval: spec.RequiresApproval(),
+			Name:        name,
+			Description: strings.TrimSpace(spec.Description),
+			Parameters:  spec.InputJSONSchema,
 		})
 	}
 	return out

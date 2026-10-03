@@ -31,43 +31,28 @@ func (e *webResearchExecutor) Spec() tools.Spec {
 	case webResearchAskToolName:
 		return tools.Spec{
 			ID:              webResearchAskToolName,
-			Name:            "WebResearchAsk",
 			Description:     "Ask a follow-up question against a previous web_research session; reuses stored facts/artifacts before refetching",
-			Risk:            tools.RiskSafe,
 			Effect:          tools.EffectReadOnly,
-			ApprovalMode:    tools.ApprovalNever,
 			Namespace:       namespaceCoreWeb,
 			Category:        tools.CategoryWeb,
-			Profiles:        []tools.Profile{tools.ProfileCoding, tools.ProfileWeb},
-			OutputKind:      tools.OutputSearchResults,
 			InputJSONSchema: webResearchAskInputSchema,
 		}
 	case webResearchStatusToolName:
 		return tools.Spec{
 			ID:              webResearchStatusToolName,
-			Name:            "WebResearchStatus",
 			Description:     "Check status and compact results for a web_research session by research_id",
-			Risk:            tools.RiskSafe,
 			Effect:          tools.EffectReadOnly,
-			ApprovalMode:    tools.ApprovalNever,
 			Namespace:       namespaceCoreWeb,
 			Category:        tools.CategoryWeb,
-			Profiles:        []tools.Profile{tools.ProfileCoding, tools.ProfileWeb},
-			OutputKind:      tools.OutputJob,
 			InputJSONSchema: webResearchStatusInputSchema,
 		}
 	default:
 		return tools.Spec{
 			ID:              webResearchToolName,
-			Name:            "WebResearch",
 			Description:     "Research the web using search/fetch/browser fallback and return only compact facts, sources, warnings, next actions, and a research_id",
-			Risk:            tools.RiskSafe,
 			Effect:          tools.EffectReadOnly,
-			ApprovalMode:    tools.ApprovalNever,
 			Namespace:       namespaceCoreWeb,
 			Category:        tools.CategoryWeb,
-			Profiles:        []tools.Profile{tools.ProfileCoding, tools.ProfileWeb},
-			OutputKind:      tools.OutputSearchResults,
 			InputJSONSchema: webResearchInputSchema,
 		}
 	}

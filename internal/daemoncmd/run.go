@@ -121,7 +121,7 @@ func Run(ctx context.Context) error {
 		webtools.NewWebSearchExecutorWithService(webTools),
 	}
 	extraTools = append(extraTools, webtools.NewWebResearchExecutorsWithService(webTools)...)
-	toolRegistry := tools.NewCoreCodingRegistry(extraTools...)
+	toolRegistry := tools.NewRegistry(append(tools.CoreExecutors(), extraTools...)...)
 	if err := toolRegistry.Register(tools.NewShellExecutors(app)...); err != nil {
 		return err
 	}

@@ -32,15 +32,10 @@ type sessionSearchTool struct {
 func (t *sessionSearchTool) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              sessionSearchToolName,
-		Name:            "SessionSearch",
 		Description:     "Search previous Matrixclaw session messages and return matches grouped by session.",
-		Risk:            tools.RiskSafe,
 		Effect:          tools.EffectReadOnly,
-		ApprovalMode:    tools.ApprovalNever,
 		Namespace:       "core.memory",
 		Category:        tools.CategoryAutomation,
-		Profiles:        []tools.Profile{tools.ProfileReadOnly, tools.ProfileCoding, tools.ProfileAutomation},
-		OutputKind:      tools.OutputSearchResults,
 		InputJSONSchema: sessionSearchToolSchema,
 	}
 }
@@ -75,18 +70,12 @@ type memoryTool struct {
 
 func (t *memoryTool) Spec() tools.Spec {
 	return tools.Spec{
-		ID:               memoryToolName,
-		Name:             "Memory",
-		Description:      "List, add, replace, or remove persistent Matrixclaw memory. Mutations require approval.",
-		Risk:             tools.RiskApproval,
-		Effect:           tools.EffectMutation,
-		ApprovalMode:     tools.ApprovalOnRequest,
-		PermissionParams: "memory_permissions",
-		Namespace:        "core.memory",
-		Category:         tools.CategoryAutomation,
-		Profiles:         []tools.Profile{tools.ProfileCoding, tools.ProfileAutomation},
-		OutputKind:       tools.OutputText,
-		InputJSONSchema:  memoryToolSchema,
+		ID:              memoryToolName,
+		Description:     "List, add, replace, or remove persistent Matrixclaw memory. Mutations require approval.",
+		Effect:          tools.EffectMutation,
+		Namespace:       "core.memory",
+		Category:        tools.CategoryAutomation,
+		InputJSONSchema: memoryToolSchema,
 	}
 }
 

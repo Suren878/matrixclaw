@@ -21,7 +21,7 @@ func TestPermissionSubjectsNameResolvedPathsAndCommands(t *testing.T) {
 	if err := os.Symlink(real, filepath.Join(root, "link")); err != nil {
 		t.Fatal(err)
 	}
-	registry := NewCoreCodingRegistry(NewShellExecutors(nil)...)
+	registry := NewRegistry(append(CoreExecutors(), NewShellExecutors(nil)...)...)
 	for _, tc := range []struct {
 		tool string
 		args string

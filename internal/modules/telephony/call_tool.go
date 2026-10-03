@@ -26,16 +26,11 @@ type callResponse struct {
 
 func (t *callTool) Spec() tools.Spec {
 	return tools.Spec{
-		ID:           CallToolID,
-		Name:         "Telephony Call",
-		Description:  "Place a real outbound phone call through the configured MatrixClaw telephony gateway and delegate a concrete phone conversation objective. Use only when the user asks to call a phone number or explicitly delegates a phone conversation.",
-		Risk:         tools.RiskApproval,
-		Effect:       tools.EffectMutation,
-		ApprovalMode: tools.ApprovalOnRequest,
-		Namespace:    "module.telephony",
-		Category:     tools.CategoryAutomation,
-		Profiles:     []tools.Profile{tools.ProfileAutomation, tools.ProfileCoding},
-		OutputKind:   tools.OutputText,
+		ID:          CallToolID,
+		Description: "Place a real outbound phone call through the configured MatrixClaw telephony gateway and delegate a concrete phone conversation objective. Use only when the user asks to call a phone number or explicitly delegates a phone conversation.",
+		Effect:      tools.EffectMutation,
+		Namespace:   "module.telephony",
+		Category:    tools.CategoryAutomation,
 		InputJSONSchema: json.RawMessage(`{
   "type": "object",
   "properties": {

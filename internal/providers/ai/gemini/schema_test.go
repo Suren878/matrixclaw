@@ -75,13 +75,13 @@ func registeredToolDefinitions(t *testing.T) []providers.ToolDefinition {
 	t.Helper()
 	app := core.New(nil)
 	web := webtools.NewWebService(nil, nil)
-	registry := tools.NewCoreCodingRegistry(
+	registry := tools.NewRegistry(append(tools.CoreExecutors(),
 		automation.NewReminderTool(nil),
 		automation.NewScheduledAITaskTool(nil),
 		deliverymodule.NewSendFileTool(nil, nil),
 		webtools.NewWebFetchExecutorWithService(web),
 		webtools.NewWebSearchExecutorWithService(web),
-	)
+	)...)
 	storage, err := storagemodule.New(storagemodule.Config{Root: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)

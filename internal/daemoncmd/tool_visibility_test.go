@@ -66,15 +66,10 @@ type testTool struct {
 func (t testTool) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              t.id,
-		Name:            t.id,
 		Description:     t.id + " test tool",
-		Risk:            tools.RiskSafe,
 		Effect:          tools.EffectReadOnly,
-		ApprovalMode:    tools.ApprovalNever,
 		Namespace:       "test",
 		Category:        tools.CategoryAutomation,
-		Profiles:        []tools.Profile{tools.ProfileAutomation},
-		OutputKind:      tools.OutputText,
 		InputJSONSchema: []byte(`{"type":"object","additionalProperties":false}`),
 	}
 }

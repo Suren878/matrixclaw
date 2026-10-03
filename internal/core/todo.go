@@ -106,15 +106,10 @@ type todoTool struct {
 func (t *todoTool) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              todo.ToolName,
-		Name:            "TodoWrite",
 		Description:     "Replace this session's todo list. Use it for work of three or more steps: write the steps down, mark one in_progress before you start it and completed as soon as it is done. Send the whole list every time; an empty list clears it.",
-		Risk:            tools.RiskSafe,
 		Effect:          tools.EffectReadOnly,
-		ApprovalMode:    tools.ApprovalNever,
 		Namespace:       "core.todo",
 		Category:        tools.CategoryAutomation,
-		Profiles:        []tools.Profile{tools.ProfileReadOnly, tools.ProfileCoding, tools.ProfileAutomation},
-		OutputKind:      tools.OutputText,
 		InputJSONSchema: todoToolSchema,
 	}
 }

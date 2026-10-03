@@ -112,7 +112,7 @@ func permissionCore(t *testing.T) (*core.Core, *store.SQLiteStore, *commandTool,
 		}
 	}
 	bash := &commandTool{}
-	registry := tools.NewCoreReadOnlyRegistry(tools.NewWriteExecutor(), bash, webTool{}, researchTool{})
+	registry := tools.NewRegistry(append(tools.CoreExecutors(), bash, webTool{}, researchTool{})...)
 	app.WithTools(registry)
 	return app, db, bash, dir
 }
@@ -408,7 +408,7 @@ func (mcpTool) PermissionSubject(tools.Call) permission.Subject {
 func TestAddedRuleForAnMCPToolNamesThatTool(t *testing.T) {
 	t.Parallel()
 	app, db, _, dir := permissionCore(t)
-	app.WithTools(tools.NewCoreReadOnlyRegistry(mcpTool{}))
+	app.WithTools(tools.NewRegistry(append(tools.CoreExecutors(), mcpTool{})...))
 	session := permissionSession(t, db, "session_mcp", dir, core.PermissionModeDefault, "")
 	rule, err := app.AddPermissionRule(context.Background(), session.ID, core.PermissionRuleRequest{Tool: "mcp_github_create_issue", Effect: permission.Allow, Scope: permission.ScopeSession})
 	if err != nil || rule.String() != "mcp: github__create_issue" {

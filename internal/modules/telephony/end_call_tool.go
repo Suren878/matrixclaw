@@ -18,16 +18,11 @@ type endCallInput struct {
 
 func (t *endCallTool) Spec() tools.Spec {
 	return tools.Spec{
-		ID:           EndCallToolID,
-		Name:         "Telephony End Call",
-		Description:  "End the current active MatrixClaw telephony call after saying goodbye. Use only from an active phone conversation when the call objective is complete, impossible, refused, or repeatedly taken off-topic.",
-		Risk:         tools.RiskSafe,
-		Effect:       tools.EffectMutation,
-		ApprovalMode: tools.ApprovalNever,
-		Namespace:    "module.telephony",
-		Category:     tools.CategoryAutomation,
-		Profiles:     []tools.Profile{tools.ProfileAutomation, tools.ProfileCoding},
-		OutputKind:   tools.OutputText,
+		ID:          EndCallToolID,
+		Description: "End the current active MatrixClaw telephony call after saying goodbye. Use only from an active phone conversation when the call objective is complete, impossible, refused, or repeatedly taken off-topic.",
+		Effect:      tools.EffectMutation,
+		Namespace:   "module.telephony",
+		Category:    tools.CategoryAutomation,
 		InputJSONSchema: json.RawMessage(`{
   "type": "object",
   "properties": {

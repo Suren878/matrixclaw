@@ -145,37 +145,37 @@ type remoteToolExecutor struct {
 	session    *clientSession
 	remoteName string
 	spec       tools.Spec
+	// asks is set for a tool that needs approval unless a rule allows it.
+	asks bool
 }
 
 func newRemoteToolExecutor(server ServerConfig, session *clientSession, remoteTool *sdk.Tool) tools.Executor {
 	inputSchema := toolInputSchema(remoteTool.InputSchema)
 	name := strings.TrimSpace(remoteTool.Name)
-	effect, risk, approval := remoteToolPolicy(server, name)
+	effect := remoteToolEffect(server, name)
 	return &remoteToolExecutor{
 		server:     server,
 		session:    session,
 		remoteName: name,
+		asks:       effect == tools.EffectMutation,
 		spec: tools.Spec{
 			ID:              ToolID(server.ToolPrefix, name),
-			Name:            "MCP " + firstNonEmpty(server.Name, server.ID) + " " + name,
 			Description:     remoteToolDescription(server, remoteTool),
-			Risk:            risk,
 			Effect:          effect,
-			ApprovalMode:    approval,
 			Namespace:       "mcp." + server.ID,
 			Category:        tools.CategoryWeb,
-			Profiles:        []tools.Profile{tools.ProfileWeb, tools.ProfileCoding},
-			OutputKind:      tools.OutputText,
 			InputJSONSchema: inputSchema,
 		},
 	}
 }
 
-func remoteToolPolicy(server ServerConfig, remoteName string) (tools.Effect, tools.RiskLevel, tools.ApprovalMode) {
+// remoteToolEffect treats a remote tool as mutating, and so asking for
+// approval, unless its server is marked read-only or it only reads a page.
+func remoteToolEffect(server ServerConfig, remoteName string) tools.Effect {
 	if server.ReadOnly || server.ID == "browser" && browserReadsPageOnly(remoteName) {
-		return tools.EffectReadOnly, tools.RiskSafe, tools.ApprovalNever
+		return tools.EffectReadOnly
 	}
-	return tools.EffectMutation, tools.RiskApproval, tools.ApprovalOnRequest
+	return tools.EffectMutation
 }
 
 // browserReadsPageOnly names the browser tools that only inspect the open page.
@@ -197,7 +197,7 @@ func (e *remoteToolExecutor) Execute(ctx context.Context, call tools.Call) (tool
 	if e == nil || e.session == nil || e.session.session == nil {
 		return tools.Result{}, fmt.Errorf("mcp: remote session is not connected")
 	}
-	if e.spec.RequiresApproval() && !call.Approved {
+	if e.asks && !call.Approved {
 		return tools.Result{
 			Content: "Approval required before calling remote MCP tool " + e.remoteName,
 			Status:  tools.ResultStatusNeutral,

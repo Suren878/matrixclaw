@@ -247,15 +247,10 @@ func NewNearbyPlacesOSMExecutor(service *OSMService) Executor {
 func (e *reverseGeocodeOSMExecutor) Spec() Spec {
 	return Spec{
 		ID:              reverseGeocodeOSMToolName,
-		Name:            "ReverseGeocodeOSM",
 		Description:     "Resolve exact latitude/longitude coordinates to OpenStreetMap address components using Nominatim. Use this before text-based local search; keep coordinates authoritative.",
-		Risk:            RiskSafe,
 		Effect:          EffectReadOnly,
-		ApprovalMode:    ApprovalNever,
 		Namespace:       namespaceCoreWeb,
 		Category:        CategoryWeb,
-		Profiles:        []Profile{ProfileCoding, ProfileWeb},
-		OutputKind:      OutputWebContent,
 		InputJSONSchema: reverseGeocodeOSMInputSchema,
 	}
 }
@@ -278,15 +273,10 @@ func (e *reverseGeocodeOSMExecutor) Execute(ctx context.Context, call Call) (Res
 func (e *nearbyPlacesOSMExecutor) Spec() Spec {
 	return Spec{
 		ID:              nearbyPlacesOSMToolName,
-		Name:            "NearbyPlacesOSM",
 		Description:     "Find nearby food and drink places by exact coordinates using OpenStreetMap Overpass data. Use latitude/longitude and radius, not a guessed street or district.",
-		Risk:            RiskSafe,
 		Effect:          EffectReadOnly,
-		ApprovalMode:    ApprovalNever,
 		Namespace:       namespaceCoreWeb,
 		Category:        CategoryWeb,
-		Profiles:        []Profile{ProfileCoding, ProfileWeb},
-		OutputKind:      OutputSearchResults,
 		InputJSONSchema: nearbyPlacesOSMInputSchema,
 	}
 }

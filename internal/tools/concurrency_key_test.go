@@ -36,7 +36,7 @@ func (e keyedExecutor) Execute(context.Context, Call) (Result, error) {
 func (e keyedExecutor) ConcurrencyKey(call Call) string { return "own:" + call.WorkingDir }
 
 func TestRegistryConcurrencyKeyPrefersTheExecutorsOwnKey(t *testing.T) {
-	own := keyedExecutor{spec: Spec{ID: "own", Name: "Own", Description: "own key", Risk: RiskSafe, Namespace: "test", Effect: EffectMutation, Category: CategoryAutomation, Profiles: []Profile{ProfileCoding}, OutputKind: OutputText, InputJSONSchema: []byte(`{}`)}}
+	own := keyedExecutor{spec: Spec{ID: "own", Description: "own key", Namespace: "test", Effect: EffectMutation, Category: CategoryAutomation, InputJSONSchema: []byte(`{}`)}}
 	registry := NewRegistry(append(NewShellExecutors(nil), own)...)
 	if err := registry.Err(); err != nil {
 		t.Fatal(err)
