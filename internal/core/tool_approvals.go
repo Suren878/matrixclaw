@@ -205,6 +205,7 @@ func workingDirForApprovalResume(sessionWorkingDir string, spec tools.Spec, appr
 	return normalizeWorkingDir(approvalPath)
 }
 
+// replayApprovedTool runs a call made outside a run once it was granted.
 func (c *Core) replayApprovedTool(ctx context.Context, approval Approval) (ExecuteToolResult, error) {
 	session, err := c.store.GetSession(ctx, approval.SessionID)
 	if err != nil {
@@ -224,25 +225,13 @@ func (c *Core) replayApprovedTool(ctx context.Context, approval Approval) (Execu
 	if c.tools != nil {
 		spec, _ = c.tools.Spec(approval.ToolName)
 	}
-	client := ""
-	externalKey := ""
-	if strings.TrimSpace(approval.RunID) != "" {
-		if run, runErr := c.store.GetRun(ctx, approval.RunID); runErr == nil {
-			client = run.Client
-			externalKey = run.ExternalKey
-		}
-	}
-
 	return c.ExecuteTool(ctx, ExecuteToolInput{
-		SessionID:   approval.SessionID,
-		RunID:       approval.RunID,
-		ToolName:    approval.ToolName,
-		Client:      client,
-		ExternalKey: externalKey,
-		ToolCallID:  approval.ToolCallRef,
-		WorkingDir:  workingDirForApprovalResume(session.WorkingDir, spec, approval.Path),
-		Approved:    true,
-		Args:        args,
+		SessionID:  approval.SessionID,
+		ToolName:   approval.ToolName,
+		ToolCallID: approval.ToolCallRef,
+		WorkingDir: workingDirForApprovalResume(session.WorkingDir, spec, approval.Path),
+		Approved:   true,
+		Args:       args,
 	})
 }
 

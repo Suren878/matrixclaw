@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -13,9 +12,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/safego"
 )
-
-// errOrphanedRun fails a run found running with no executor where none was expected.
-var errOrphanedRun = errors.New("run was left running without an active executor; daemon restarted or the worker event stream was lost. Retry the task to start a fresh run")
 
 // DefaultModelConcurrency is how many model requests native runs make at once
 // unless the daemon configures another limit.
@@ -34,8 +30,8 @@ func (c *Core) WithModelConcurrency(n int) *Core {
 // ExecuteRun claims a run and executes it with its external agent or the native engine.
 func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
 	runID = normalizeText(runID)
-	runCtx, release, claimed := c.activeRunContext(ctx, runID)
-	if !claimed {
+	runCtx, release, registered := c.activeRunContext(ctx, runID)
+	if !registered {
 		return nil
 	}
 	kept := false
@@ -46,18 +42,24 @@ func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
 			c.rescheduleInterruptedRun(runID)
 		}
 	}()
-	ready, err := c.prepareClaimedRun(ctx, runID)
-	if err != nil || !ready {
-		return err
-	}
-	if handled, err := c.tryExecuteExternalAgentRun(ctx, runCtx, runID); handled || err != nil {
-		return err
-	}
-	run, session, runtime, ok, err := c.prepareNativeRun(ctx, runID)
+	claimed, ok, err := c.claim(ctx, runID)
 	if err != nil || !ok {
 		return err
 	}
-	task, engine, err := c.nativeEngine(ctx, run, session, runtime)
+	run := claimed.Run
+	session, err := c.store.GetSession(ctx, run.SessionID)
+	if err != nil {
+		return c.failRun(ctx, run, err)
+	}
+	if handled, err := c.tryExecuteExternalAgentRun(ctx, runCtx, claimed, session); handled || err != nil {
+		return err
+	}
+	session = c.decorateSessionLLM(session)
+	runtime, err := c.resolveSessionRuntime(ctx, session)
+	if err != nil {
+		return c.failRun(ctx, run, err)
+	}
+	task, engine, err := c.nativeEngine(ctx, claimed, session, runtime)
 	if err != nil {
 		return c.failRun(ctx, run, err)
 	}
@@ -111,36 +113,10 @@ func (c *Core) rescheduleInterruptedRun(runID string) {
 	}
 }
 
-// prepareNativeRun marks an accepted native run as running and resolves its model.
-func (c *Core) prepareNativeRun(ctx context.Context, runID string) (Run, Session, providers.Runtime, bool, error) {
-	run, err := c.store.GetRun(ctx, normalizeText(runID))
-	if err != nil {
-		return Run{}, Session{}, nil, false, err
-	}
-	if run.Status.Terminal() {
-		return Run{}, Session{}, nil, false, nil
-	}
-	if run.Status == RunStatusRunning {
-		return Run{}, Session{}, nil, false, c.failRun(ctx, run, errOrphanedRun)
-	}
-	session, err := c.store.GetSession(ctx, run.SessionID)
-	if err != nil {
-		return Run{}, Session{}, nil, false, c.failRun(ctx, run, err)
-	}
-	session = c.decorateSessionLLM(session)
-	runtime, err := c.resolveSessionRuntime(ctx, session)
-	if err != nil {
-		return Run{}, Session{}, nil, false, c.failRun(ctx, run, err)
-	}
-	if err := c.transition(ctx, &run, runChange{To: RunStatusRunning}); err != nil {
-		return Run{}, Session{}, nil, false, err
-	}
-	return run, session, runtime, true, nil
-}
-
 // nativeEngine builds the engine and task of one native run; the task resumes the
 // counters of the run's checkpoint, or else those the session's last run carried.
-func (c *Core) nativeEngine(ctx context.Context, run Run, session Session, runtime providers.Runtime) (agent.Task, *agent.Engine, error) {
+func (c *Core) nativeEngine(ctx context.Context, claimed claimedRun, session Session, runtime providers.Runtime) (agent.Task, *agent.Engine, error) {
+	run := claimed.Run
 	resume, err := c.resumeCounters(ctx, run.ID)
 	if err == nil && resume == (agent.Counters{}) {
 		resume, err = c.carriedCounters(ctx, session.ID)
@@ -198,6 +174,12 @@ func (c *Core) nativeEngine(ctx context.Context, run Run, session Session, runti
 	}
 	if compact, windowTokens := c.compactRuntime(ctx); compact != nil {
 		task.CompactModel, task.CompactWindowTokens = compact, windowTokens
+	}
+	if claimed.Recovering {
+		task.Recovering = true
+		if task.Interrupted, err = c.interruptedCalls(ctx, run, claimed.Batch); err != nil {
+			return agent.Task{}, nil, err
+		}
 	}
 	return task, engine, nil
 }

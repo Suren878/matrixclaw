@@ -11,9 +11,9 @@ func TestRunStatusEdges(t *testing.T) {
 	t.Parallel()
 	statuses := []RunStatus{RunStatusAccepted, RunStatusRunning, RunStatusWaitingApproval, RunStatusWaitingEvents, RunStatusCompleted, RunStatusFailed, RunStatusCanceled}
 	allowed := map[RunStatus][]RunStatus{
-		RunStatusAccepted:        {RunStatusRunning, RunStatusWaitingApproval, RunStatusFailed, RunStatusCanceled},
-		RunStatusRunning:         {RunStatusWaitingApproval, RunStatusWaitingEvents, RunStatusCompleted, RunStatusAccepted, RunStatusFailed, RunStatusCanceled},
-		RunStatusWaitingApproval: {RunStatusRunning, RunStatusAccepted, RunStatusFailed, RunStatusCanceled},
+		RunStatusAccepted:        {RunStatusRunning, RunStatusFailed, RunStatusCanceled},
+		RunStatusRunning:         {RunStatusWaitingApproval, RunStatusWaitingEvents, RunStatusCompleted, RunStatusFailed, RunStatusCanceled},
+		RunStatusWaitingApproval: {RunStatusRunning, RunStatusFailed, RunStatusCanceled},
 		RunStatusWaitingEvents:   {RunStatusRunning, RunStatusFailed, RunStatusCanceled},
 	}
 	for _, from := range statuses {

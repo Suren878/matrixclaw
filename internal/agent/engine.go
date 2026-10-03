@@ -85,6 +85,14 @@ func (e *Engine) Run(ctx context.Context, task Task) (outcome Outcome, err error
 	if ToolUseAllowed(task.Model) {
 		r.tools = toolDefinitions(e.cfg.Tools.Specs(ctx))
 	}
+	if task.Recovering {
+		if err := r.recover(ctx); err != nil {
+			if ctx.Err() != nil {
+				return Outcome{Status: StatusInterrupted}, nil
+			}
+			return Outcome{Status: StatusFailed, Err: err}, nil
+		}
+	}
 	for {
 		result := r.step(ctx)
 		if result.canceled || canceled(ctx) {

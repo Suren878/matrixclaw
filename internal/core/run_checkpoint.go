@@ -30,13 +30,6 @@ type RunCheckpointStore interface {
 	DeleteRunCheckpoint(ctx context.Context, runID string) error
 }
 
-// saveRunCheckpoint records a boundary outside a tool batch.
-func (c *Core) saveRunCheckpoint(ctx context.Context, runID string) error {
-	return c.updateRunCheckpoint(ctx, runID, func(checkpoint *RunCheckpoint) {
-		checkpoint.Batch = nil
-	})
-}
-
 // saveEngineCheckpoint stores the engine's batch together with its run
 // counters; while a native run is active only its engine calls it.
 func (c *Core) saveEngineCheckpoint(ctx context.Context, state agent.State) error {
@@ -112,12 +105,14 @@ func (c *Core) carryCounters(ctx context.Context, sessionID string, counters age
 	}
 }
 
+// markRunRecovery counts one more recovery of the run and returns its
+// checkpoint as it was, with the new count; the batch it names is dropped.
 func (c *Core) markRunRecovery(ctx context.Context, runID string) (RunCheckpoint, error) {
-	runID = normalizeText(runID)
 	checkpoint, err := c.store.GetRunCheckpoint(ctx, runID)
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return RunCheckpoint{}, err
 	}
+	batch := checkpoint.Batch
 	checkpoint.RunID = runID
 	checkpoint.Batch = nil
 	checkpoint.RecoveryCount++
@@ -125,6 +120,7 @@ func (c *Core) markRunRecovery(ctx context.Context, runID string) (RunCheckpoint
 	if err := c.store.SaveRunCheckpoint(ctx, checkpoint); err != nil {
 		return RunCheckpoint{}, err
 	}
+	checkpoint.Batch = batch
 	return checkpoint, nil
 }
 
@@ -146,9 +142,5 @@ func (c *Core) clearRunCheckpoint(ctx context.Context, runID string) {
 	_ = c.store.DeleteRunCheckpoint(ctx, normalizeText(runID))
 }
 
-func runCheckpointRecoveryPrompt(checkpoint RunCheckpoint) string {
-	if checkpoint.RecoveryCount <= 0 {
-		return ""
-	}
-	return "Recovery notice: the MatrixClaw daemon restarted while this run was active. Continue from the durable conversation and workspace state. Do not repeat a mutating action merely because its previous result is missing. Inspect the current state first, and only retry a mutation when an explicit recovery approval or clear evidence shows it is still required."
-}
+// runRecoveryNotice tells a recovered run that it was interrupted.
+const runRecoveryNotice = "Recovery notice: the MatrixClaw daemon restarted while this run was active. Continue from the durable conversation and workspace state. Do not repeat a mutating action merely because its previous result is missing. Inspect the current state first, and only retry a mutation when an explicit recovery approval or clear evidence shows it is still required."

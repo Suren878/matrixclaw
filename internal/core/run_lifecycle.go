@@ -14,12 +14,12 @@ import (
 )
 
 // runEdges are the status changes a run may make besides ending as failed or
-// canceled, which every run that has not ended may do. Recovery hands an
-// interrupted run back as accepted.
+// canceled, which every run that has not ended may do. An interrupted run stays
+// running until it executes again.
 var runEdges = map[RunStatus][]RunStatus{
-	RunStatusAccepted:        {RunStatusRunning, RunStatusWaitingApproval},
-	RunStatusRunning:         {RunStatusWaitingApproval, RunStatusWaitingEvents, RunStatusCompleted, RunStatusAccepted},
-	RunStatusWaitingApproval: {RunStatusRunning, RunStatusAccepted},
+	RunStatusAccepted:        {RunStatusRunning},
+	RunStatusRunning:         {RunStatusWaitingApproval, RunStatusWaitingEvents, RunStatusCompleted},
+	RunStatusWaitingApproval: {RunStatusRunning},
 	RunStatusWaitingEvents:   {RunStatusRunning},
 }
 
@@ -239,8 +239,8 @@ func (c *Core) writeOutcome(ctx context.Context, run Run, outcome agent.Outcome)
 	}
 }
 
-// applyInterruptedOutcome commits what the run reached before its context stopped,
-// or keeps it running with its reply sealed for recovery (reported as true).
+// applyInterruptedOutcome commits what the run reached before its context
+// stopped, or leaves it running, its reply sealed, for recovery (reported as true).
 func (c *Core) applyInterruptedOutcome(run Run, outcome agent.Outcome) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), runInterruptionPersistenceTimeout)
 	defer cancel()
@@ -268,14 +268,7 @@ func (c *Core) applyInterruptedOutcome(run Run, outcome agent.Outcome) (bool, er
 	case agent.StatusWaitingEvents:
 		return false, c.transition(ctx, &latest, runChange{To: RunStatusWaitingEvents, Await: outcome.Counters.Await})
 	}
-	if err := c.preserveRunForRecovery(ctx, latest, outcome.Assistant, outcome.AssistantSaved); err != nil {
-		return false, err
-	}
-	current, err := c.store.GetRun(ctx, latest.ID)
-	if err != nil {
-		return false, err
-	}
-	return !current.Status.Terminal(), nil
+	return true, c.sealInterruptedReply(ctx, outcome.Assistant, outcome.AssistantSaved)
 }
 
 // afterRun does what follows a run that no longer executes: an ended run

@@ -79,11 +79,9 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 	if toolCallID == "" {
 		toolCallID = c.newID("tool")
 	}
-	runID := normalizeText(input.RunID)
-	message := agent.ToolCallMessage(toolCallID, sessionID, runID, toolName, input.Args, false, c.now().UTC())
+	message := agent.ToolCallMessage(toolCallID, sessionID, "", toolName, input.Args, false, c.now().UTC())
 	prepared := preparedToolCall{
 		SessionID:  sessionID,
-		RunID:      runID,
 		ToolName:   toolName,
 		Spec:       spec,
 		ToolCallID: toolCallID,
@@ -96,9 +94,6 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 		return preparedToolCall{}, err
 	}
 	if !isNewCall {
-		if err := c.saveRunCheckpoint(ctx, runID); err != nil {
-			return preparedToolCall{}, err
-		}
 		return prepared, nil
 	}
 	if _, err := c.store.AppendMessage(ctx, message); err != nil {
@@ -117,9 +112,6 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 		RunID:      message.RunID,
 		SessionID:  sessionID,
 	})
-	if err := c.saveRunCheckpoint(ctx, runID); err != nil {
-		return preparedToolCall{}, err
-	}
 	return prepared, nil
 }
 

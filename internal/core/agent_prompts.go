@@ -64,8 +64,8 @@ func (p *corePrompts) System(ctx context.Context, history []transcript.Message) 
 // the run started.
 func (p *corePrompts) Context(ctx context.Context) string {
 	var sections []string
-	if checkpoint, ok, err := p.c.runCheckpoint(ctx, p.turn.RunID); err == nil && ok {
-		sections = append(sections, runCheckpointRecoveryPrompt(checkpoint))
+	if checkpoint, ok, err := p.c.runCheckpoint(ctx, p.turn.RunID); err == nil && ok && checkpoint.RecoveryCount > 0 {
+		sections = append(sections, runRecoveryNotice)
 	}
 	sections = append(sections, p.c.sessionTodoPrompt(ctx, p.turn.SessionID, append([]string{p.turn.RunID}, p.turn.Continues...)), p.c.runningTasksPrompt(ctx, p.turn.SessionID))
 	if p.turn.Subagent {

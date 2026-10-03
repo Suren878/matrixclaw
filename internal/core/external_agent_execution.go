@@ -22,43 +22,25 @@ const (
 	externalTruncationMarker       = "\n\n[MatrixClaw: output truncated; the external agent retains the full result]"
 )
 
-func (c *Core) tryExecuteExternalAgentRun(ctx context.Context, runCtx context.Context, runID string) (bool, error) {
+// tryExecuteExternalAgentRun executes a claimed run of an external agent's
+// session and reports whether the session was one.
+func (c *Core) tryExecuteExternalAgentRun(ctx context.Context, runCtx context.Context, claimed claimedRun, session Session) (bool, error) {
 	if c.externalStore == nil {
 		return false, nil
 	}
-
-	run, err := c.store.GetRun(ctx, normalizeText(runID))
-	if err != nil {
-		return false, err
-	}
-	if run.Status.Terminal() {
-		return true, nil
-	}
-	if run.Status == RunStatusRunning {
-		return true, c.failRun(ctx, run, errOrphanedRun)
-	}
-
-	session, err := c.store.GetSession(ctx, run.SessionID)
-	if err != nil {
-		return true, c.failRun(ctx, run, err)
-	}
+	run := claimed.Run
 	attachment, err := c.externalStore.GetExternalAgentSession(ctx, session.ID)
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return false, nil
-		}
 		return true, c.failRun(ctx, run, err)
 	}
 	runtime, err := c.externalRuntime(attachment.AgentID)
 	if err != nil {
 		return true, c.failRun(ctx, run, err)
 	}
-
-	if err := c.transition(ctx, &run, runChange{To: RunStatusRunning}); err != nil {
-		return true, err
-	}
-
-	return true, c.executeExternalAgentRun(ctx, runCtx, run, runtime, attachment)
+	return true, c.executeExternalAgentRun(ctx, runCtx, claimed, runtime, attachment)
 }
 
 func (c *Core) externalRuntime(agentID string) (externalagents.RuntimeAgent, error) {
@@ -73,21 +55,23 @@ func (c *Core) externalRuntime(agentID string) (externalagents.RuntimeAgent, err
 	return runtime, nil
 }
 
-func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Context, run Run, runtime externalagents.RuntimeAgent, attachment externalagents.SessionAttachment) error {
+func (c *Core) executeExternalAgentRun(ctx context.Context, runCtx context.Context, claimed claimedRun, runtime externalagents.RuntimeAgent, attachment externalagents.SessionAttachment) error {
+	run := claimed.Run
 	userMessage, err := c.findRunUserMessage(ctx, run)
 	if err != nil {
 		return c.failRun(ctx, run, err)
 	}
 	inputText := userMessage.Content
-	if checkpoint, ok, checkpointErr := c.runCheckpoint(ctx, run.ID); checkpointErr != nil {
-		return c.failRun(ctx, run, checkpointErr)
-	} else if ok {
-		if recoveryPrompt := runCheckpointRecoveryPrompt(checkpoint); recoveryPrompt != "" {
-			inputText = recoveryPrompt + "\n\nContinue the existing task from where it stopped. Inspect the workspace before making further changes. Original task for reference:\n" + userMessage.Content
+	if claimed.Recovering {
+		// The agent's own tools may have run; only it can say where it stopped.
+		messages, err := c.store.ListRunMessages(ctx, run.SessionID, run.ID)
+		if err == nil {
+			err = c.sealExternalReply(ctx, run.ID, messages)
 		}
-	}
-	if err := c.saveRunCheckpoint(ctx, run.ID); err != nil {
-		return c.failRun(ctx, run, err)
+		if err != nil {
+			return c.failRun(ctx, run, err)
+		}
+		inputText = runRecoveryNotice + "\n\nContinue the existing task from where it stopped. Inspect the workspace before making further changes. Original task for reference:\n" + userMessage.Content
 	}
 	externalSession := attachment.ExternalSession()
 	if strings.TrimSpace(externalSession.Model) == "" {
@@ -532,5 +516,5 @@ func (c *Core) finishExternalRunAfterContextStopped(run Run, assistant *transcri
 	if current.Status.Terminal() {
 		return nil
 	}
-	return c.preserveRunForRecovery(ctx, current, assistant, assistantSaved)
+	return c.sealInterruptedReply(ctx, assistant, assistantSaved)
 }

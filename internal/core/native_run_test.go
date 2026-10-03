@@ -238,9 +238,7 @@ func TestApprovedToolFailureIsReturnedToModelWithoutReplay(t *testing.T) {
 	})})
 	_, run := saveCrashRecoveryRun(t, db, "approved-failure", core.RunStatusRunning, false)
 	saveInterruptedToolCall(t, db, run, "approved-call", "mutate_state")
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	recoverRun(t, app, run.ID)
 	approvals, err := db.ListApprovals(context.Background(), run.SessionID, core.ApprovalStatePending)
 	if err != nil {
 		t.Fatal(err)

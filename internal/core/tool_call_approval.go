@@ -6,17 +6,13 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-// createPendingApproval records the approval a call outside an active engine
-// asked for and marks its run's checkpoint as waiting for it.
+// createPendingApproval records the approval a call made outside a run asked for.
 func (c *Core) createPendingApproval(ctx context.Context, prepared preparedToolCall, input ExecuteToolInput, result tools.Result, execErr error) (tools.Result, *Approval, bool, error) {
 	if result.Approval == nil || input.Approved {
 		return result, nil, false, execErr
 	}
 	approval, err := c.requestApproval(ctx, prepared, *result.Approval)
 	if err != nil {
-		return tools.Result{}, nil, false, err
-	}
-	if err := c.saveRunCheckpoint(ctx, prepared.RunID); err != nil {
 		return tools.Result{}, nil, false, err
 	}
 	return result, &approval, true, execErr

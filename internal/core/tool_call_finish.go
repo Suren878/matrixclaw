@@ -26,9 +26,6 @@ func (c *Core) finishToolCall(ctx context.Context, prepared preparedToolCall, in
 		return transcript.Message{}, nil, err
 	}
 	c.publishFinishedToolUpdate(prepared, resultMessage.ID, result)
-	if err := c.saveRunCheckpoint(ctx, prepared.RunID); err != nil {
-		return transcript.Message{}, nil, err
-	}
 	return toolCallMessage, resultMessage, nil
 }
 

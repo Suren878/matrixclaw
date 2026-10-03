@@ -81,9 +81,10 @@ type ToolUpdate struct {
 	Error           string             `json:"error,omitempty"`
 }
 
+// ExecuteToolInput is a tool call made outside any run (the API, voice, the
+// MCP server); a run's calls go through its engine.
 type ExecuteToolInput struct {
 	SessionID   string          `json:"session_id"`
-	RunID       string          `json:"run_id,omitempty"`
 	ToolName    string          `json:"tool_name"`
 	Client      string          `json:"client,omitempty"`
 	ExternalKey string          `json:"external_key,omitempty"`
