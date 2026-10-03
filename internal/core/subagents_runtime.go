@@ -94,31 +94,8 @@ func subagentTaskAgentName(task SubagentTask) string {
 }
 
 func (c *Core) createSubagentRun(ctx context.Context, session Session, prompt string) (Run, error) {
-	now := c.now().UTC()
-	run := Run{
-		ID:            c.newID("run"),
-		SessionID:     session.ID,
-		UserMessageID: c.newID("msg"),
-		Status:        RunStatusAccepted,
-		StartedAt:     now,
-		UpdatedAt:     now,
-	}
-	message := transcript.Message{
-		ID:        run.UserMessageID,
-		SessionID: session.ID,
-		RunID:     run.ID,
-		Role:      transcript.MessageRoleUser,
-		Content:   prompt,
-		Parts:     transcript.NormalizeMessageParts(prompt, nil),
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-	if err := c.store.AcceptMessage(ctx, message, run); err != nil {
-		return Run{}, err
-	}
-	c.publishEvent(Event{Type: EventMessageCreated, SessionID: session.ID, RunID: run.ID, Payload: message})
-	c.publishEvent(Event{Type: EventRunUpdated, SessionID: session.ID, RunID: run.ID, Payload: run})
-	return run, nil
+	result, err := c.createAcceptedRun(ctx, session, newRun{Text: prompt, Parts: transcript.NormalizeMessageParts(prompt, nil)})
+	return result.Run, err
 }
 
 func (c *Core) subagentRunSummary(ctx context.Context, sessionID string, runID string, execErr error) (string, bool) {

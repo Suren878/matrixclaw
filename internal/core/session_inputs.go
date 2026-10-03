@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -72,19 +73,40 @@ func (c *Core) sessionGate(sessionID string) *sessionGate {
 	return gate
 }
 
-func (c *Core) createAcceptedRun(ctx context.Context, session Session, text string, parts []transcript.MessagePart, client string, externalKey string, capabilities ClientCapabilities, deliveryAddress json.RawMessage, continuesRunID string, trigger RunTrigger) (AcceptRunResult, error) {
-	autoTitle := c.firstMessageAutoTitle(ctx, session, text)
+// newRun is a run to accept with its user message; empty IDs are generated.
+// With Deliver set, the run's reply is queued for the client at DeliveryAddress.
+type newRun struct {
+	RunID           string
+	MessageID       string
+	Text            string
+	Parts           []transcript.MessagePart
+	Client          string
+	ExternalKey     string
+	Capabilities    ClientCapabilities
+	Deliver         bool
+	DeliveryAddress json.RawMessage
+	ContinuesRunID  string
+	Trigger         RunTrigger
+}
+
+// clientRun is a run answering a client's message, delivered back to it.
+func clientRun(text string, parts []transcript.MessagePart, client string, externalKey string, capabilities ClientCapabilities, address json.RawMessage) newRun {
+	return newRun{Text: text, Parts: parts, Client: client, ExternalKey: externalKey, Capabilities: capabilities, Deliver: true, DeliveryAddress: address}
+}
+
+func (c *Core) createAcceptedRun(ctx context.Context, session Session, in newRun) (AcceptRunResult, error) {
+	autoTitle := c.firstMessageAutoTitle(ctx, session, in.Text)
 	now := c.now().UTC()
-	runID := c.newID("run")
-	messageID := c.newID("msg")
+	runID := cmp.Or(in.RunID, c.newID("run"))
+	messageID := cmp.Or(in.MessageID, c.newID("msg"))
 
 	message := transcript.Message{
 		ID:        messageID,
 		SessionID: session.ID,
 		RunID:     runID,
 		Role:      transcript.MessageRoleUser,
-		Content:   text,
-		Parts:     parts,
+		Content:   in.Text,
+		Parts:     in.Parts,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -92,22 +114,24 @@ func (c *Core) createAcceptedRun(ctx context.Context, session Session, text stri
 		ID:                 runID,
 		SessionID:          session.ID,
 		UserMessageID:      messageID,
-		Client:             normalizeText(client),
-		ExternalKey:        normalizeText(externalKey),
-		ClientCapabilities: capabilities,
-		ContinuesRunID:     normalizeText(continuesRunID),
-		Trigger:            trigger,
+		Client:             normalizeText(in.Client),
+		ExternalKey:        normalizeText(in.ExternalKey),
+		ClientCapabilities: in.Capabilities,
+		ContinuesRunID:     normalizeText(in.ContinuesRunID),
+		Trigger:            in.Trigger,
 		Status:             RunStatusAccepted,
 		StartedAt:          now,
 		UpdatedAt:          now,
 	}
-	delivery, hasDelivery, err := c.prepareSessionRunDelivery(run, text, parts, client, externalKey, deliveryAddress)
-	if err != nil {
-		return AcceptRunResult{}, err
-	}
 	var deliveries []ClientDelivery
-	if hasDelivery {
-		deliveries = append(deliveries, delivery)
+	if in.Deliver {
+		delivery, hasDelivery, err := c.prepareSessionRunDelivery(run, in.Text, in.Parts, in.Client, in.ExternalKey, in.DeliveryAddress)
+		if err != nil {
+			return AcceptRunResult{}, err
+		}
+		if hasDelivery {
+			deliveries = append(deliveries, delivery)
+		}
 	}
 	if err := c.store.AcceptMessage(ctx, message, run, deliveries...); err != nil {
 		return AcceptRunResult{}, err
@@ -226,7 +250,7 @@ func (c *Core) startNextPendingSessionInput(ctx context.Context, sessionID strin
 
 func (c *Core) consumeSessionInputAsRun(ctx context.Context, session Session, input SessionInput) (AcceptRunResult, error) {
 	parts := transcript.NormalizeMessageParts(input.Text, input.Parts)
-	result, err := c.createAcceptedRun(ctx, session, input.Text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress, "", "")
+	result, err := c.createAcceptedRun(ctx, session, clientRun(input.Text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress))
 	if err != nil {
 		return AcceptRunResult{}, err
 	}

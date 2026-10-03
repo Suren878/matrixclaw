@@ -52,7 +52,9 @@ func (c *Core) createContinueRun(ctx context.Context, session Session, input Han
 		return AcceptRunResult{}, fmt.Errorf("%w: the conversation no longer fits the model's context; clear it with /context clear or start a /new session", ErrInvalidInput)
 	}
 	parts := transcript.NormalizeMessageParts(continueRunText, nil)
-	return c.createAcceptedRun(ctx, session, continueRunText, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress, latest.ID, "")
+	run := clientRun(continueRunText, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress)
+	run.ContinuesRunID = latest.ID
+	return c.createAcceptedRun(ctx, session, run)
 }
 
 // continuedRuns lists the runs run continues, nearest first; the chain ends at a

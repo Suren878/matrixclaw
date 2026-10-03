@@ -56,7 +56,7 @@ func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptR
 			wakeRunID = active.ID
 		}
 	case errors.Is(err, ErrNotFound):
-		result, err = c.createAcceptedRun(ctx, session, text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress, "", "")
+		result, err = c.createAcceptedRun(ctx, session, clientRun(text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, input.DeliveryAddress))
 		if err != nil {
 			gate.Unlock()
 			return AcceptRunResult{}, err
@@ -134,43 +134,11 @@ func (c *Core) AcceptTriggeredRun(ctx context.Context, input HandleTriggeredRunI
 	if err != nil {
 		return AcceptRunResult{}, err
 	}
-	autoTitle := c.firstMessageAutoTitle(ctx, session, text)
-
 	runID := deterministicRunID(triggerID)
-	messageID := deterministicMessageID(triggerID)
-	if existing, err := c.store.GetRun(ctx, runID); err == nil {
-		message := transcript.Message{ID: existing.UserMessageID, SessionID: existing.SessionID, RunID: existing.ID, Role: transcript.MessageRoleUser, Content: text}
-		if stored, getErr := c.store.GetMessage(ctx, existing.UserMessageID); getErr == nil {
-			message = stored
-		}
-		return AcceptRunResult{SessionID: existing.SessionID, Status: AcceptRunStatusStarted, UserMessage: message, Run: existing}, nil
-	} else if !errors.Is(err, ErrNotFound) {
-		return AcceptRunResult{}, err
+	if result, ok, err := c.triggeredRun(ctx, runID, text); err != nil || ok {
+		return result, err
 	}
 
-	now := c.now().UTC()
-	message := transcript.Message{
-		ID:        messageID,
-		SessionID: session.ID,
-		RunID:     runID,
-		Role:      transcript.MessageRoleUser,
-		Content:   text,
-		Parts:     transcript.NormalizeMessageParts(text, nil),
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-	run := Run{
-		ID:                 runID,
-		SessionID:          session.ID,
-		UserMessageID:      messageID,
-		Client:             normalizeText(input.Client),
-		ExternalKey:        normalizeText(input.ExternalKey),
-		ClientCapabilities: input.ClientCapabilities,
-		Trigger:            RunTriggerAutomation,
-		Status:             RunStatusAccepted,
-		StartedAt:          now,
-		UpdatedAt:          now,
-	}
 	// A session busy with another run skips the trigger, as its fire fails.
 	gate := c.sessionGate(session.ID)
 	gate.Lock()
@@ -181,19 +149,24 @@ func (c *Core) AcceptTriggeredRun(ctx context.Context, input HandleTriggeredRunI
 		}
 		return AcceptRunResult{}, err
 	}
-	err = c.store.AcceptMessage(ctx, message, run)
+	result, err := c.createAcceptedRun(ctx, session, newRun{
+		RunID:        runID,
+		MessageID:    deterministicMessageID(triggerID),
+		Text:         text,
+		Parts:        transcript.NormalizeMessageParts(text, nil),
+		Client:       input.Client,
+		ExternalKey:  input.ExternalKey,
+		Capabilities: input.ClientCapabilities,
+		Trigger:      RunTriggerAutomation,
+	})
 	gate.Unlock()
 	if err != nil {
-		if existing, loadErr := c.store.GetRun(ctx, runID); loadErr == nil {
-			return AcceptRunResult{SessionID: existing.SessionID, Status: AcceptRunStatusStarted, UserMessage: message, Run: existing}, nil
+		if existing, ok, _ := c.triggeredRun(ctx, runID, text); ok {
+			return existing, nil
 		}
 		return AcceptRunResult{}, err
 	}
-	c.applyAutoSessionTitle(ctx, session, autoTitle)
-	c.publishEvent(Event{Type: EventMessageCreated, SessionID: session.ID, RunID: run.ID, Payload: message})
-	c.publishEvent(Event{Type: EventRunUpdated, SessionID: session.ID, RunID: run.ID, Payload: run})
-	result := AcceptRunResult{SessionID: session.ID, Status: AcceptRunStatusStarted, UserMessage: message, Run: run}
-	if err := c.startRun(ctx, run.ID); err != nil {
+	if err := c.startRun(ctx, result.Run.ID); err != nil {
 		return c.failAcceptedRun(ctx, result, err)
 	}
 	return result, nil
@@ -232,6 +205,22 @@ func (c *Core) startRun(ctx context.Context, runID string) error {
 		return err
 	}
 	return nil
+}
+
+// triggeredRun is the run a trigger already started, if any.
+func (c *Core) triggeredRun(ctx context.Context, runID string, text string) (AcceptRunResult, bool, error) {
+	existing, err := c.store.GetRun(ctx, runID)
+	if errors.Is(err, ErrNotFound) {
+		return AcceptRunResult{}, false, nil
+	}
+	if err != nil {
+		return AcceptRunResult{}, false, err
+	}
+	message := transcript.Message{ID: existing.UserMessageID, SessionID: existing.SessionID, RunID: existing.ID, Role: transcript.MessageRoleUser, Content: text}
+	if stored, getErr := c.store.GetMessage(ctx, existing.UserMessageID); getErr == nil {
+		message = stored
+	}
+	return AcceptRunResult{SessionID: existing.SessionID, Status: AcceptRunStatusStarted, UserMessage: message, Run: existing}, true, nil
 }
 
 func deterministicRunID(triggerID string) string {

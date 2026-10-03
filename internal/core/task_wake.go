@@ -130,7 +130,9 @@ func (c *Core) prepareWake(ctx context.Context, sessionID string, finished *Task
 		return nil, &wakeNotice{session: session, target: target, text: text}, nil
 	}
 	parts := transcript.NormalizeMessageParts(wakeRunText, nil)
-	result, err := c.createAcceptedRun(ctx, session, wakeRunText, parts, target.client, target.externalKey, target.capabilities, target.address, "", RunTriggerWake)
+	run := clientRun(wakeRunText, parts, target.client, target.externalKey, target.capabilities, target.address)
+	run.Trigger = RunTriggerWake
+	result, err := c.createAcceptedRun(ctx, session, run)
 	if err != nil {
 		return nil, nil, err
 	}
