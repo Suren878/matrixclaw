@@ -139,6 +139,8 @@ for the details and the as-built notes of each stage.
 - `internal/modules`: daemon modules for storage, voice, MCP, skills, delivery,
   telephony tools, and local runtimes.
 - `internal/tools`: built-in assistant tools.
+- `internal/webtools`: `web_search` (provider clients) and `web_fetch`
+  (SSRF-safe fetch, readability and markdown); no state of their own.
 - `internal/mcp`: MCP client/server bridge.
 - `internal/externalagents`: external-agent registry and adapters.
 - `scripts`: install, uninstall, release build, and optional voice runtime
