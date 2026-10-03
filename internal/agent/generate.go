@@ -40,8 +40,13 @@ func (r *run) recordStep(ctx context.Context, response providers.Response, stopR
 	})
 }
 
-// retryBackoffs are the waits before each retry of a failed generation.
-var retryBackoffs = [...]time.Duration{200 * time.Millisecond, 750 * time.Millisecond}
+// retryBackoffs are the waits before each retry of a failed generation;
+// limitBackoffs replace them when a rate-limited or overloaded provider gives
+// no Retry-After.
+var (
+	retryBackoffs = [...]time.Duration{200 * time.Millisecond, 750 * time.Millisecond}
+	limitBackoffs = [...]time.Duration{2 * time.Second, 8 * time.Second}
+)
 
 // maxRetryAfter caps the wait a provider may ask for; a longer one fails the
 // generation instead of stalling the run.
@@ -55,13 +60,17 @@ func retryDelay(err error, attempt int) (time.Duration, bool) {
 	}
 	delay := retryBackoffs[attempt]
 	var apiErr *providers.APIError
-	if errors.As(err, &apiErr) && apiErr.RetryAfter > delay {
-		if apiErr.RetryAfter > maxRetryAfter {
-			return 0, false
-		}
-		delay = apiErr.RetryAfter
+	if !errors.As(err, &apiErr) || !apiErr.Retryable() {
+		return delay, true
 	}
-	return delay, true
+	switch {
+	case apiErr.RetryAfter > maxRetryAfter:
+		return 0, false
+	case apiErr.RetryAfter > 0:
+		return max(delay, apiErr.RetryAfter), true
+	default:
+		return limitBackoffs[attempt], true
+	}
 }
 
 // summaryModel generates summaries with model and records every successful one

@@ -622,6 +622,18 @@ func TestRateLimitWaitsForRetryAfterWithinTheCap(t *testing.T) {
 	}
 }
 
+func TestRateLimitWithoutRetryAfterBacksOffForSeconds(t *testing.T) {
+	f := agenttest.NewFixture()
+	limited := &providers.APIError{Provider: "p", Status: 429, Kind: providers.ErrorRateLimit}
+	model := agenttest.NewScriptedModel(agenttest.Turn{Err: limited}, agenttest.Turn{Err: limited}, text("ok"))
+
+	run(t, f, model)
+
+	if len(model.Requests()) != 3 || len(f.Slept) != 2 || f.Slept[0] < time.Second || f.Slept[1] <= f.Slept[0] {
+		t.Fatalf("requests = %d slept = %v", len(model.Requests()), f.Slept)
+	}
+}
+
 func TestStopDuringRetryBackoffEndsTheWait(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.RealSleep = true
