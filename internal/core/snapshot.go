@@ -9,7 +9,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-const defaultClientSnapshotMessageLimit = 50
+const clientSnapshotMessageLimit = 50
 
 type ClientSnapshot struct {
 	SessionID             string                   `json:"session_id"`
@@ -67,7 +67,7 @@ func (c *Core) ClientSnapshot(ctx context.Context, client string, externalKey st
 	if err != nil {
 		return ClientSnapshot{}, err
 	}
-	messages, err := c.store.ListMessages(ctx, binding.SessionID, c.clientSnapshotMessageLimit())
+	messages, err := c.store.ListMessages(ctx, binding.SessionID, clientSnapshotMessageLimit)
 	if err != nil {
 		return ClientSnapshot{}, err
 	}
@@ -98,13 +98,6 @@ func (c *Core) ClientSnapshot(ctx context.Context, client string, externalKey st
 	timing := deriveRunTiming(run, approvals, messages, c.now().UTC())
 	snapshot.Timing = &timing
 	return snapshot, nil
-}
-
-func (c *Core) clientSnapshotMessageLimit() int {
-	if c == nil || c.historyLimit <= 0 {
-		return defaultClientSnapshotMessageLimit
-	}
-	return c.historyLimit
 }
 
 func deriveClientSnapshotToolState(approvals []Approval, messages []transcript.Message) ([]Approval, []ToolUpdate, []PermissionNotification) {

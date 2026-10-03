@@ -245,10 +245,8 @@ func (c *Core) uncappedWindowTokens(providerID string, modelID string) int {
 	modelID = strings.TrimSpace(modelID)
 	providerType := ""
 	if llms := c.sessionLLMs(); llms != nil && providerID != "" {
-		if manual, ok := llms.(SessionLLMContextWindowRegistry); ok {
-			if tokens, found := manual.ContextWindowTokens(providerID, modelID); found && tokens > 0 {
-				return tokens
-			}
+		if tokens, found := llms.ContextWindowTokens(providerID, modelID); found && tokens > 0 {
+			return tokens
 		}
 		if option, resolved, err := llms.Normalize(providerID, modelID); err == nil {
 			providerType = option.Type

@@ -32,7 +32,7 @@ func (c *Core) CreateSystemMessage(ctx context.Context, sessionID string, conten
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	if err := c.store.SaveMessage(ctx, message); err != nil {
+	if _, err := c.store.AppendMessage(ctx, message); err != nil {
 		return transcript.Message{}, err
 	}
 	c.publishEvent(Event{Type: EventMessageCreated, SessionID: sessionID, Payload: message})

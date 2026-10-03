@@ -17,9 +17,7 @@ func TestRunStopContinuationAndTriggerAreStored(t *testing.T) {
 	st := newTestStore(t)
 	createTestSession(t, st, "s1")
 	run := core.Run{ID: "r2", SessionID: "s1", UserMessageID: "m2", Trigger: core.RunTriggerAutomation, ContinuesRunID: "r1", Status: core.RunStatusRunning, StartedAt: testEpoch, UpdatedAt: testEpoch}
-	if err := st.CreateRun(ctx, run); err != nil {
-		t.Fatal(err)
-	}
+	acceptTestRun(t, st, run)
 	run.Status = core.RunStatusCompleted
 	run.StopReason = agent.StopBudgetExhausted
 	if err := st.UpdateRun(ctx, run); err != nil {

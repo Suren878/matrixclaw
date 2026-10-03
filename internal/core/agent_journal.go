@@ -58,7 +58,7 @@ func (j coreJournal) Append(ctx context.Context, message transcript.Message) (in
 }
 
 func (j coreJournal) BeginStreaming(ctx context.Context, message transcript.Message) (int64, error) {
-	seq, err := j.c.saveMessageProgress(ctx, message)
+	seq, err := j.c.store.SaveMessageProgress(ctx, message)
 	if err != nil {
 		return 0, err
 	}
@@ -66,7 +66,7 @@ func (j coreJournal) BeginStreaming(ctx context.Context, message transcript.Mess
 }
 
 func (j coreJournal) Stream(ctx context.Context, message transcript.Message) error {
-	if err := j.c.updateMessageProgress(ctx, message); err != nil {
+	if err := j.c.store.UpdateMessageProgress(ctx, message); err != nil {
 		return err
 	}
 	return nil

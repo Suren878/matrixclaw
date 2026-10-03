@@ -66,7 +66,8 @@ type recoveryLLMs struct {
 	runtime providers.Runtime
 }
 
-func (r recoveryLLMs) ActiveSelection() (string, string) { return "recovery-test", "test-model" }
+func (r recoveryLLMs) ActiveSelection() (string, string)              { return "recovery-test", "test-model" }
+func (r recoveryLLMs) ContextWindowTokens(string, string) (int, bool) { return 0, false }
 func (r recoveryLLMs) Providers() []core.SessionProviderOption {
 	return []core.SessionProviderOption{{ID: "recovery-test", Configured: true, DefaultModel: "test-model"}}
 }

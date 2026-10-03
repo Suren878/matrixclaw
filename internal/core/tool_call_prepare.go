@@ -101,7 +101,7 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 		}
 		return prepared, nil
 	}
-	if err := c.store.SaveMessage(ctx, message); err != nil {
+	if _, err := c.store.AppendMessage(ctx, message); err != nil {
 		return preparedToolCall{}, err
 	}
 	c.publishEvent(Event{

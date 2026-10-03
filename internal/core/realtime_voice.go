@@ -42,7 +42,7 @@ func (c *Core) CommitRealtimeVoiceTurn(ctx context.Context, input CommitRealtime
 	result := CommitRealtimeVoiceTurnResult{}
 	if userTranscript != "" {
 		message := realtimeVoiceTextMessage(c.newID("msg"), sessionID, transcript.MessageRoleUser, userTranscript, "", "", now)
-		if err := c.store.SaveMessage(ctx, message); err != nil {
+		if _, err := c.store.AppendMessage(ctx, message); err != nil {
 			return CommitRealtimeVoiceTurnResult{}, err
 		}
 		c.publishEvent(Event{Type: EventMessageCreated, SessionID: sessionID, Payload: message})
@@ -54,7 +54,7 @@ func (c *Core) CommitRealtimeVoiceTurn(ctx context.Context, input CommitRealtime
 			createdAt = now.Add(time.Nanosecond)
 		}
 		message := realtimeVoiceTextMessage(c.newID("msg"), sessionID, transcript.MessageRoleAssistant, assistantTranscript, normalizeText(input.ProviderID), normalizeText(input.ModelID), createdAt)
-		if err := c.store.SaveMessage(ctx, message); err != nil {
+		if _, err := c.store.AppendMessage(ctx, message); err != nil {
 			return CommitRealtimeVoiceTurnResult{}, err
 		}
 		c.publishEvent(Event{Type: EventMessageCreated, SessionID: sessionID, Payload: message})

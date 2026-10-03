@@ -9,12 +9,18 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/store"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func createTestRun(t *testing.T, st *store.SQLiteStore, sessionID string, runID string) {
 	t.Helper()
-	run := core.Run{ID: runID, SessionID: sessionID, UserMessageID: "msg_" + runID, Status: core.RunStatusCompleted, StartedAt: testEpoch, UpdatedAt: testEpoch}
-	if err := st.CreateRun(context.Background(), run); err != nil {
+	acceptTestRun(t, st, core.Run{ID: runID, SessionID: sessionID, UserMessageID: "msg_" + runID, Status: core.RunStatusCompleted, StartedAt: testEpoch, UpdatedAt: testEpoch})
+}
+
+func acceptTestRun(t *testing.T, st *store.SQLiteStore, run core.Run) {
+	t.Helper()
+	user := transcript.Message{ID: run.UserMessageID, SessionID: run.SessionID, RunID: run.ID, Role: transcript.MessageRoleUser, CreatedAt: run.StartedAt, UpdatedAt: run.StartedAt}
+	if err := st.AcceptMessage(context.Background(), user, run); err != nil {
 		t.Fatal(err)
 	}
 }

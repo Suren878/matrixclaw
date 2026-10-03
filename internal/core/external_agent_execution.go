@@ -306,7 +306,7 @@ func (c *Core) saveExternalAssistantProgress(ctx context.Context, assistant *tra
 	if !*saved {
 		assistant.CreatedAt = now
 		assistant.UpdatedAt = now
-		if _, err := c.saveMessageProgress(ctx, *assistant); err != nil {
+		if _, err := c.store.SaveMessageProgress(ctx, *assistant); err != nil {
 			return err
 		}
 		*saved = true
@@ -314,7 +314,7 @@ func (c *Core) saveExternalAssistantProgress(ctx context.Context, assistant *tra
 		return nil
 	}
 	assistant.UpdatedAt = now
-	if err := c.updateMessageProgress(ctx, *assistant); err != nil {
+	if err := c.store.UpdateMessageProgress(ctx, *assistant); err != nil {
 		return err
 	}
 	c.publishEvent(Event{Type: EventMessageUpdated, SessionID: assistant.SessionID, RunID: assistant.RunID, Payload: *assistant})

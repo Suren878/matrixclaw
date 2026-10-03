@@ -41,7 +41,7 @@ func (c *Core) saveToolResultMessage(ctx context.Context, prepared preparedToolC
 	if err != nil {
 		return nil, err
 	}
-	if err := c.store.SaveMessage(ctx, message); err != nil {
+	if _, err := c.store.AppendMessage(ctx, message); err != nil {
 		return nil, err
 	}
 	c.publishEvent(Event{Type: EventMessageCreated, SessionID: prepared.SessionID, RunID: message.RunID, Payload: message})

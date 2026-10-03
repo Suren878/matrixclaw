@@ -13,6 +13,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 // childPrompt is the delegated prompt of a child's request.
@@ -202,7 +203,8 @@ func TestCancelingARunStopsTheCommandsItStarted(t *testing.T) {
 	app, db, session, _ := newTaskCore(t)
 	now := runRecoveryTestTime()
 	for _, id := range []string{"run_one", "run_two"} {
-		if err := db.CreateRun(context.Background(), core.Run{ID: id, SessionID: session.ID, UserMessageID: "msg_" + id, Status: core.RunStatusRunning, StartedAt: now, UpdatedAt: now}); err != nil {
+		user := transcript.Message{ID: "msg_" + id, SessionID: session.ID, RunID: id, Role: transcript.MessageRoleUser, CreatedAt: now, UpdatedAt: now}
+		if err := db.AcceptMessage(context.Background(), user, core.Run{ID: id, SessionID: session.ID, UserMessageID: user.ID, Status: core.RunStatusRunning, StartedAt: now, UpdatedAt: now}); err != nil {
 			t.Fatal(err)
 		}
 	}

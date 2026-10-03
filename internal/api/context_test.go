@@ -13,7 +13,7 @@ import (
 
 func TestClearEndpointWritesABoundary(t *testing.T) {
 	server, st := newAPITestServer(t)
-	if err := st.SaveMessage(context.Background(), transcript.Message{ID: "m1", SessionID: "s1", Role: transcript.MessageRoleUser, Content: "hi", CreatedAt: apiTestEpoch}); err != nil {
+	if _, err := st.AppendMessage(context.Background(), transcript.Message{ID: "m1", SessionID: "s1", Role: transcript.MessageRoleUser, Content: "hi", CreatedAt: apiTestEpoch}); err != nil {
 		t.Fatal(err)
 	}
 

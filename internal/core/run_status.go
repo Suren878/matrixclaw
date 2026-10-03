@@ -86,7 +86,7 @@ func (c *Core) saveAssistantErrored(ctx context.Context, assistant *transcript.M
 	}
 	assistant.UpdatedAt = now
 	assistant.Parts = appendErrorFinishPart(assistant.Content, cause.Error())
-	if err := c.store.SaveMessage(ctx, *assistant); err != nil {
+	if _, err := c.store.AppendMessage(ctx, *assistant); err != nil {
 		return err
 	}
 	c.publishEvent(Event{
@@ -159,7 +159,7 @@ func (c *Core) finishCanceledAssistant(ctx context.Context, assistant *transcrip
 	}
 	assistant.UpdatedAt = now
 	assistant.Parts = appendCanceledFinishPart(assistant.Content, message)
-	if err := c.store.SaveMessage(ctx, *assistant); err != nil {
+	if _, err := c.store.AppendMessage(ctx, *assistant); err != nil {
 		return err
 	}
 	c.publishEvent(Event{

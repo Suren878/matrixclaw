@@ -43,9 +43,12 @@ type DeliveryStore interface {
 }
 
 type MessageStore interface {
-	SaveMessage(ctx context.Context, message transcript.Message) error
 	AppendMessage(ctx context.Context, message transcript.Message) (int64, error)
 	UpdateMessage(ctx context.Context, message transcript.Message) error
+	// SaveMessageProgress and UpdateMessageProgress write streaming snapshots
+	// without indexing them for search; the final UpdateMessage does that once.
+	SaveMessageProgress(ctx context.Context, message transcript.Message) (int64, error)
+	UpdateMessageProgress(ctx context.Context, message transcript.Message) error
 	GetMessage(ctx context.Context, messageID string) (transcript.Message, error)
 	HasToolResult(ctx context.Context, sessionID string, toolCallID string) (bool, error)
 	ListMessages(ctx context.Context, sessionID string, limit int) ([]transcript.Message, error)
@@ -54,7 +57,6 @@ type MessageStore interface {
 }
 
 type RunStore interface {
-	CreateRun(ctx context.Context, run Run) error
 	GetRun(ctx context.Context, runID string) (Run, error)
 	GetActiveRunBySession(ctx context.Context, sessionID string) (Run, error)
 	GetLatestRunBySession(ctx context.Context, sessionID string) (Run, error)
@@ -146,6 +148,7 @@ type Store interface {
 	MessageStore
 	RunStore
 	RunWakeupStore
+	RunCheckpointStore
 	SessionInputStore
 	UsageStore
 	SessionBudgetStore
@@ -178,9 +181,7 @@ type SessionLLMRegistry interface {
 	Normalize(providerID string, modelID string) (SessionProviderOption, string, error)
 	Models(ctx context.Context, providerID string) ([]string, error)
 	Resolve(ctx context.Context, providerID string, modelID string) (providers.Runtime, SessionProviderOption, string, error)
-}
-
-type SessionLLMContextWindowRegistry interface {
+	// ContextWindowTokens is the window the user set manually for the model, if any.
 	ContextWindowTokens(providerID string, modelID string) (int, bool)
 }
 

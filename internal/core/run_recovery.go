@@ -500,7 +500,7 @@ func (c *Core) preserveRunForRecovery(ctx context.Context, run Run, assistant *t
 			}
 			c.publishEvent(Event{Type: EventMessageUpdated, SessionID: assistant.SessionID, RunID: assistant.RunID, Payload: *assistant})
 		} else {
-			if err := c.store.SaveMessage(ctx, *assistant); err != nil {
+			if _, err := c.store.AppendMessage(ctx, *assistant); err != nil {
 				return err
 			}
 			c.publishEvent(Event{Type: EventMessageCreated, SessionID: assistant.SessionID, RunID: assistant.RunID, Payload: *assistant})

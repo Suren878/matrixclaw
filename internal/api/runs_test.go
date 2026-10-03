@@ -10,15 +10,15 @@ import (
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/store"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func TestRunStepsEndpointListsStepsInOrder(t *testing.T) {
 	server, st := newAPITestServer(t)
 	ctx := context.Background()
 	run := core.Run{ID: "r1", SessionID: "s1", UserMessageID: "u1", Status: core.RunStatusCompleted, StartedAt: apiTestEpoch, UpdatedAt: apiTestEpoch}
-	if err := st.CreateRun(ctx, run); err != nil {
-		t.Fatal(err)
-	}
+	acceptTestRun(t, st, run)
 	for _, reason := range []string{"tool_use", "end_turn"} {
 		if err := st.SaveRunStep(ctx, core.RunStep{RunID: "r1", StopReason: reason, PromptTokens: 10, CreatedAt: apiTestEpoch}); err != nil {
 			t.Fatal(err)
@@ -50,9 +50,7 @@ func TestRunProgressCountsBudgetStepsAndLiveBackgroundTasks(t *testing.T) {
 	server, st := newAPITestServer(t)
 	ctx := context.Background()
 	run := core.Run{ID: "r1", SessionID: "s1", UserMessageID: "u1", Status: core.RunStatusRunning, StartedAt: apiTestEpoch, UpdatedAt: apiTestEpoch}
-	if err := st.CreateRun(ctx, run); err != nil {
-		t.Fatal(err)
-	}
+	acceptTestRun(t, st, run)
 	for _, reason := range []string{"tool_use", "compact", "tool_use"} {
 		if err := st.SaveRunStep(ctx, core.RunStep{RunID: "r1", StopReason: reason, CreatedAt: apiTestEpoch}); err != nil {
 			t.Fatal(err)
@@ -83,9 +81,7 @@ func TestRunProgressCountsBudgetStepsAndLiveBackgroundTasks(t *testing.T) {
 func TestToolExecuteKeepsOutOfARunInProgress(t *testing.T) {
 	server, st := newAPITestServer(t)
 	run := core.Run{ID: "r1", SessionID: "s1", UserMessageID: "u1", Status: core.RunStatusWaitingApproval, StartedAt: apiTestEpoch, UpdatedAt: apiTestEpoch}
-	if err := st.CreateRun(context.Background(), run); err != nil {
-		t.Fatal(err)
-	}
+	acceptTestRun(t, st, run)
 
 	recorder := httptest.NewRecorder()
 	body := strings.NewReader(`{"session_id":"s1","run_id":"r1","tool_name":"read","args":{}}`)
@@ -96,5 +92,13 @@ func TestToolExecuteKeepsOutOfARunInProgress(t *testing.T) {
 	}
 	if _, err := st.GetRunCheckpoint(context.Background(), "r1"); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("checkpoint = %v, want none written", err)
+	}
+}
+
+func acceptTestRun(t *testing.T, st *store.SQLiteStore, run core.Run) {
+	t.Helper()
+	user := transcript.Message{ID: run.UserMessageID, SessionID: run.SessionID, RunID: run.ID, Role: transcript.MessageRoleUser, CreatedAt: run.StartedAt, UpdatedAt: run.StartedAt}
+	if err := st.AcceptMessage(context.Background(), user, run); err != nil {
+		t.Fatal(err)
 	}
 }

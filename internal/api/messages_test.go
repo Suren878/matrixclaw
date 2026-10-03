@@ -35,7 +35,7 @@ func TestListMessagesAfterSeq(t *testing.T) {
 	server, st := newAPITestServer(t)
 	for _, id := range []string{"m1", "m2", "m3"} {
 		message := transcript.Message{ID: id, SessionID: "s1", Role: transcript.MessageRoleUser, Content: id, CreatedAt: apiTestEpoch}
-		if err := st.SaveMessage(context.Background(), message); err != nil {
+		if _, err := st.AppendMessage(context.Background(), message); err != nil {
 			t.Fatal(err)
 		}
 	}

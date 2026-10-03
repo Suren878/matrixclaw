@@ -35,7 +35,6 @@ type Core struct {
 	events          *eventBus
 	now             func() time.Time
 	newID           func(prefix string) string
-	historyLimit    int
 	lifetime        context.Context
 	budgets         RunBudgets
 	sessionFiles    string
@@ -109,7 +108,6 @@ func New(store Store) *Core {
 		events:           newEventBus(),
 		now:              time.Now,
 		newID:            defaultID,
-		historyLimit:     50,
 		lifetime:         context.Background(),
 		budgets:          DefaultRunBudgets(),
 		modelSlots:       toolsched.NewSemaphore(DefaultModelConcurrency),
@@ -134,13 +132,6 @@ func (c *Core) WithAttachmentReader(reader agentcontext.AttachmentReader) *Core 
 func (c *Core) WithClock(now func() time.Time) *Core {
 	if now != nil {
 		c.now = now
-	}
-	return c
-}
-
-func (c *Core) WithIDGenerator(newID func(prefix string) string) *Core {
-	if newID != nil {
-		c.newID = newID
 	}
 	return c
 }
@@ -230,13 +221,6 @@ func (c *Core) WithSkillsContext(provider SkillsPromptContextProvider) *Core {
 func (c *Core) WithRuntimeStatusContext(provider RuntimeStatusContextProvider) *Core {
 	if provider != nil {
 		c.runtimeStatus = provider
-	}
-	return c
-}
-
-func (c *Core) WithHistoryLimit(limit int) *Core {
-	if limit > 0 {
-		c.historyLimit = limit
 	}
 	return c
 }

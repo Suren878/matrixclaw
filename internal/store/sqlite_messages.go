@@ -14,11 +14,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func (s *SQLiteStore) SaveMessage(ctx context.Context, message transcript.Message) error {
-	_, err := s.AppendMessage(ctx, message)
-	return err
-}
-
 // AppendMessage stores a message, indexes it for search and returns its seq.
 func (s *SQLiteStore) AppendMessage(ctx context.Context, message transcript.Message) (int64, error) {
 	seq, err := insertMessage(ctx, s.db, message)
@@ -168,13 +163,6 @@ func (s *SQLiteStore) queryMessages(ctx context.Context, query string, args ...a
 		return nil, fmt.Errorf("store: iterate messages: %w", err)
 	}
 	return messages, nil
-}
-
-func (s *SQLiteStore) CreateRun(ctx context.Context, run core.Run) error {
-	if err := insertRun(ctx, s.db, run); err != nil {
-		return fmt.Errorf("store: create run: %w", err)
-	}
-	return nil
 }
 
 func (s *SQLiteStore) GetRun(ctx context.Context, runID string) (core.Run, error) {

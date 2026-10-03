@@ -36,9 +36,7 @@ type RunCheckpoint struct {
 	UpdatedAt      time.Time        `json:"updated_at"`
 }
 
-// RunCheckpointStore is optional so lightweight in-memory Store
-// implementations remain compatible. The production SQLite store implements
-// it and persists execution boundaries used for crash recovery.
+// RunCheckpointStore keeps the execution boundaries crash recovery resumes from.
 type RunCheckpointStore interface {
 	SaveRunCheckpoint(ctx context.Context, checkpoint RunCheckpoint) error
 	GetRunCheckpoint(ctx context.Context, runID string) (RunCheckpoint, error)
@@ -73,22 +71,18 @@ func (c *Core) saveEngineCheckpoint(ctx context.Context, state agent.State) erro
 // updateRunCheckpoint applies update to the run's checkpoint and keeps every field
 // update leaves alone, such as the recovery count or the engine counters.
 func (c *Core) updateRunCheckpoint(ctx context.Context, runID string, update func(*RunCheckpoint)) error {
-	store, ok := c.store.(RunCheckpointStore)
-	if !ok {
-		return nil
-	}
 	runID = normalizeText(runID)
 	if runID == "" {
 		return nil
 	}
-	checkpoint, err := store.GetRunCheckpoint(ctx, runID)
+	checkpoint, err := c.store.GetRunCheckpoint(ctx, runID)
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return err
 	}
 	checkpoint.RunID = runID
 	update(&checkpoint)
 	checkpoint.UpdatedAt = c.now().UTC()
-	return store.SaveRunCheckpoint(ctx, checkpoint)
+	return c.store.SaveRunCheckpoint(ctx, checkpoint)
 }
 
 // resumeCounters reads the engine counters of the run's checkpoint; a checkpoint
@@ -137,12 +131,8 @@ func (c *Core) carryCounters(ctx context.Context, sessionID string, counters age
 }
 
 func (c *Core) markRunRecovery(ctx context.Context, runID string) (RunCheckpoint, error) {
-	store, ok := c.store.(RunCheckpointStore)
-	if !ok {
-		return RunCheckpoint{RunID: normalizeText(runID), Phase: RunCheckpointPhaseRecovering, RecoveryCount: 1, RecoveryReason: runRecoveryReasonDaemonRestart, UpdatedAt: c.now().UTC()}, nil
-	}
 	runID = normalizeText(runID)
-	checkpoint, err := store.GetRunCheckpoint(ctx, runID)
+	checkpoint, err := c.store.GetRunCheckpoint(ctx, runID)
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return RunCheckpoint{}, err
 	}
@@ -154,18 +144,14 @@ func (c *Core) markRunRecovery(ctx context.Context, runID string) (RunCheckpoint
 	checkpoint.RecoveryCount++
 	checkpoint.RecoveryReason = runRecoveryReasonDaemonRestart
 	checkpoint.UpdatedAt = c.now().UTC()
-	if err := store.SaveRunCheckpoint(ctx, checkpoint); err != nil {
+	if err := c.store.SaveRunCheckpoint(ctx, checkpoint); err != nil {
 		return RunCheckpoint{}, err
 	}
 	return checkpoint, nil
 }
 
 func (c *Core) runCheckpoint(ctx context.Context, runID string) (RunCheckpoint, bool, error) {
-	store, ok := c.store.(RunCheckpointStore)
-	if !ok {
-		return RunCheckpoint{}, false, nil
-	}
-	checkpoint, err := store.GetRunCheckpoint(ctx, normalizeText(runID))
+	checkpoint, err := c.store.GetRunCheckpoint(ctx, normalizeText(runID))
 	if errors.Is(err, ErrNotFound) {
 		return RunCheckpoint{}, false, nil
 	}
@@ -176,11 +162,10 @@ func (c *Core) runCheckpoint(ctx context.Context, runID string) (RunCheckpoint, 
 }
 
 func (c *Core) clearRunCheckpoint(ctx context.Context, runID string) {
-	store, ok := c.store.(RunCheckpointStore)
-	if !ok || strings.TrimSpace(runID) == "" {
+	if strings.TrimSpace(runID) == "" {
 		return
 	}
-	_ = store.DeleteRunCheckpoint(ctx, normalizeText(runID))
+	_ = c.store.DeleteRunCheckpoint(ctx, normalizeText(runID))
 }
 
 func runCheckpointRecoveryPrompt(checkpoint RunCheckpoint) string {

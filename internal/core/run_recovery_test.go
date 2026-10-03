@@ -27,7 +27,6 @@ func TestPersistedWorkflowCanRecoverOrphanedRunningRunInline(t *testing.T) {
 		CreatedAt: runRecoveryTestTime(),
 		UpdatedAt: runRecoveryTestTime(),
 	}
-	saveRunRecoveryTestMessage(t, sqliteStore, user)
 	run := core.Run{
 		ID:            "run_execute_orphan",
 		SessionID:     session.ID,
@@ -36,7 +35,7 @@ func TestPersistedWorkflowCanRecoverOrphanedRunningRunInline(t *testing.T) {
 		StartedAt:     runRecoveryTestTime(),
 		UpdatedAt:     runRecoveryTestTime(),
 	}
-	if err := sqliteStore.CreateRun(ctx, run); err != nil {
+	if err := sqliteStore.AcceptMessage(ctx, user, run); err != nil {
 		t.Fatalf("create run: %v", err)
 	}
 
@@ -90,7 +89,7 @@ func saveRunRecoveryTestSession(t *testing.T, sqliteStore *store.SQLiteStore, id
 
 func saveRunRecoveryTestMessage(t *testing.T, sqliteStore *store.SQLiteStore, message transcript.Message) {
 	t.Helper()
-	if err := sqliteStore.SaveMessage(context.Background(), message); err != nil {
+	if _, err := sqliteStore.AppendMessage(context.Background(), message); err != nil {
 		t.Fatalf("save message: %v", err)
 	}
 }

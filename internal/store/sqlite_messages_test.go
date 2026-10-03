@@ -49,7 +49,7 @@ func saveTestMessage(t *testing.T, st *store.SQLiteStore, message transcript.Mes
 	if message.Content == "" {
 		message.Content = message.ID
 	}
-	if err := st.SaveMessage(context.Background(), message); err != nil {
+	if _, err := st.AppendMessage(context.Background(), message); err != nil {
 		t.Fatal(err)
 	}
 }
