@@ -2,7 +2,6 @@ package telegram
 
 import (
 	"context"
-	"log"
 	"strconv"
 	"strings"
 
@@ -46,12 +45,7 @@ func (w *Worker) sendRunTypingIndicator(ctx context.Context, target chatTarget, 
 	w.chatActions[key] = now
 	w.mu.Unlock()
 
-	if err := w.api.SendChatAction(ctx, SendChatActionRequest{
-		ChatID: target.chatID,
-		Action: "typing",
-	}); err != nil && ctx.Err() == nil {
-		log.Printf("telegram: run typing indicator failed: %v", err)
-	}
+	w.sendTypingChatAction(ctx, target, "run")
 }
 
 func (w *Worker) clearRunTypingIndicator(key string) {

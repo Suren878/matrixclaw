@@ -300,11 +300,7 @@ func (w *Worker) sendTypingChatAction(ctx context.Context, target chatTarget, la
 	if err := w.api.SendChatAction(ctx, SendChatActionRequest{
 		ChatID: target.chatID,
 		Action: "typing",
-	}); err != nil {
-		label = strings.TrimSpace(label)
-		if label == "" {
-			label = "typing"
-		}
+	}); err != nil && ctx.Err() == nil {
 		log.Printf("telegram: %s typing indicator failed: %v", label, err)
 	}
 }
@@ -322,12 +318,7 @@ func (w *Worker) transcribeAndSendUserMessage(ctx context.Context, target chatTa
 	if upload == nil || len(upload.content) == 0 {
 		return nil
 	}
-	if err := w.api.SendChatAction(ctx, SendChatActionRequest{
-		ChatID: target.chatID,
-		Action: "typing",
-	}); err != nil {
-		log.Printf("telegram: typing indicator failed: %v", err)
-	}
+	w.sendTypingChatAction(ctx, target, "speech to text")
 	result, err := w.daemon(target.externalKey).SpeechToText(ctx, voicemodule.NewSpeechToTextRequest(upload.content, upload.name, upload.mimeType))
 	if err != nil {
 		return w.sendText(ctx, target, fmt.Sprintf("Speech to text failed: %v", err))
@@ -617,12 +608,7 @@ func (w *Worker) saveTemporaryTelegramUpload(ctx context.Context, target chatTar
 func (w *Worker) sendUserMessageParts(ctx context.Context, target chatTarget, text string, parts []transcript.MessagePart) error {
 	daemon := w.daemonFor(target, target.externalKey)
 	if target.isChat() {
-		if err := w.api.SendChatAction(ctx, SendChatActionRequest{
-			ChatID: target.chatID,
-			Action: "typing",
-		}); err != nil {
-			log.Printf("telegram: typing indicator failed: %v", err)
-		}
+		w.sendTypingChatAction(ctx, target, "message")
 	}
 
 	result, err := daemon.SendMessagePartsModeWithDelivery(ctx, "", text, parts, "", "", encodeDeliveryAddress(deliveryAddressFromTarget(target, 0)))
