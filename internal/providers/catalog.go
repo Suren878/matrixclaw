@@ -63,15 +63,6 @@ type Capabilities struct {
 	NormalizeModel  bool `json:"normalize_model,omitempty"`
 }
 
-func Catalog() []CatalogEntry {
-	specs := ProviderSpecs()
-	entries := make([]CatalogEntry, 0, len(specs))
-	for _, spec := range specs {
-		entries = append(entries, spec.Entry)
-	}
-	return entries
-}
-
 func NormalizeProviderID(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
@@ -82,10 +73,6 @@ func NormalizeModelID(providerID string, providerType string, modelID string) st
 		modelID = strings.TrimPrefix(modelID, "models/")
 	}
 	return modelID
-}
-
-func ProviderCapabilities(providerID string, providerType string) Capabilities {
-	return providerCapabilities(providerID, providerType)
 }
 
 func NormalizeReasoningEffort(value string) string {
@@ -100,10 +87,6 @@ func NormalizeReasoningEffort(value string) string {
 
 func ReasoningEfforts() []string {
 	return copyStrings(reasoningEfforts)
-}
-
-func ReasoningEffortsForProvider(providerID string, providerType string) []string {
-	return ReasoningEffortsForModel(providerID, providerType, "")
 }
 
 func ReasoningEffortsForModel(providerID string, providerType string, modelID string) []string {
