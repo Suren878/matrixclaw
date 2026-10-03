@@ -4,6 +4,8 @@ package modules
 import (
 	"context"
 	"errors"
+	"log"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -60,7 +62,9 @@ type Set struct {
 	base     []tools.Executor
 	modules  []Module
 	registry atomic.Pointer[tools.Registry]
-	applyMu  sync.Mutex
+	// refused are the module tools the registry turned down, by module id.
+	refused atomic.Pointer[map[string]string]
+	applyMu sync.Mutex
 }
 
 func NewSet(base []tools.Executor, modules ...Module) (*Set, error) {
@@ -75,6 +79,7 @@ func NewSet(base []tools.Executor, modules ...Module) (*Set, error) {
 
 // Apply applies cfg to every module and then offers the tools they offer
 // now. A module that fails keeps its previous state; the others still apply.
+// A tool whose id is taken is left out, logged and shown in its module's Status.
 func (s *Set) Apply(ctx context.Context, cfg setup.Config) error {
 	s.applyMu.Lock()
 	defer s.applyMu.Unlock()
@@ -85,12 +90,15 @@ func (s *Set) Apply(ctx context.Context, cfg setup.Config) error {
 		}
 	}
 	registry := tools.NewRegistry(s.base...)
+	refused := map[string]string{}
 	for _, module := range s.modules {
 		if err := registry.Register(module.Tools()...); err != nil {
-			errs = append(errs, err)
+			log.Printf("modules: %s tools left out: %v", module.ID(), err)
+			refused[module.ID()] = strings.ReplaceAll(err.Error(), "\n", "; ")
 		}
 	}
 	s.registry.Store(registry)
+	s.refused.Store(&refused)
 	return errors.Join(errs...)
 }
 
@@ -108,15 +116,18 @@ func (s *Set) Context() []string {
 func (s *Set) Statuses(ctx context.Context) []Status {
 	out := make([]Status, 0, len(s.modules))
 	for _, module := range s.modules {
-		out = append(out, status(ctx, module))
+		out = append(out, s.status(ctx, module))
 	}
 	return out
 }
 
-func status(ctx context.Context, module Module) Status {
+func (s *Set) status(ctx context.Context, module Module) Status {
 	status := module.Status(ctx)
 	for _, executor := range module.Tools() {
 		status.Tools = append(status.Tools, executor.Spec().ID)
+	}
+	if refused := s.refused.Load(); refused != nil && (*refused)[module.ID()] != "" {
+		status.Detail = strings.TrimPrefix(status.Detail+"; "+(*refused)[module.ID()], "; ")
 	}
 	_, status.Settings = module.(Configurable)
 	return status
@@ -137,7 +148,7 @@ func (s *Set) Configurable(id string) (Configurable, bool) {
 func (s *Set) Settings(ctx context.Context, id string) (Settings, bool) {
 	for _, module := range s.modules {
 		if configurable, ok := module.(Configurable); ok && module.ID() == id {
-			return Settings{Status: status(ctx, module), Items: configurable.Settings(ctx)}, true
+			return Settings{Status: s.status(ctx, module), Items: configurable.Settings(ctx)}, true
 		}
 	}
 	return Settings{}, false

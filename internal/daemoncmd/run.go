@@ -140,9 +140,10 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// A setup part that fails to apply must not keep the daemon, and with it
+	// the clients that could fix the setup, from starting.
 	if err := supervisor.ApplyBootstrap(bootstrap); err != nil {
-		_ = listener.Close()
-		return err
+		log.Printf("matrixclawd apply setup: %v", err)
 	}
 	errCh := make(chan error, 2)
 	safego.Go("daemon.httpServer", func() {

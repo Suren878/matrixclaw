@@ -3,6 +3,7 @@ package daemoncmd
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/url"
 	"os"
@@ -96,7 +97,7 @@ func loadBootstrap() (bootstrapConfig, error) {
 
 		if activeProvider, ok := setupCfg.ActiveProvider(); ok {
 			if runtimeProvider, ok := activeProvider.Runtime(); !ok {
-				return bootstrapConfig{}, fmt.Errorf("load setup config %s: %s API key is required; set api_key or %s", service.Path(), runtimeProvider.Name, textutil.FirstNonEmpty(runtimeProvider.APIKeyEnv, "the provider API key environment variable"))
+				log.Printf("matrixclawd: %s API key is missing, runs fail until api_key or %s is set", runtimeProvider.Name, textutil.FirstNonEmpty(runtimeProvider.APIKeyEnv, "the provider API key environment variable"))
 			}
 		}
 

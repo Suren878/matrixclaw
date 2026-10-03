@@ -178,3 +178,53 @@ func assertRunRecoverable(t *testing.T, dbPath string, runID string) {
 		t.Fatalf("run status after shutdown = %s, want it kept for recovery", run.Status)
 	}
 }
+
+func TestRunStartsAndReloadsWithoutTheActiveProviderKey(t *testing.T) {
+	dir := t.TempDir()
+	addr := freeLoopbackAddr(t)
+	setupPath := filepath.Join(dir, "setup.json")
+	err := setup.NewFileStore(setupPath).Save(setup.Config{
+		Version:          setup.CurrentVersion,
+		ActiveProviderID: "openai",
+		Providers:        []setup.ProviderConfig{{ID: "openai", Type: "openai", APIKeyEnv: "MATRIXCLAW_TEST_MISSING_KEY", Model: "gpt-5"}},
+		Daemon:           setup.DaemonConfig{HTTPAddr: addr, DBPath: filepath.Join(dir, "state", "matrixclaw.db"), APIToken: "test-token"},
+	})
+	if err != nil {
+		t.Fatalf("save setup: %v", err)
+	}
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "xdg-state"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "xdg-config"))
+	t.Setenv("MATRIXCLAW_SETUP_PATH", setupPath)
+	t.Setenv("MATRIXCLAW_HTTP_ADDR", "")
+	t.Setenv("MATRIXCLAW_DB_PATH", "")
+	t.Setenv("MATRIXCLAW_API_TOKEN", "")
+	t.Setenv("MATRIXCLAW_TEST_MISSING_KEY", "")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx) }()
+	defer func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(15 * time.Second):
+		}
+	}()
+	waitForDaemon(t, daemonclient.New("http://"+addr, "test", "test:1").WithAPIToken("test-token"), done)
+
+	req, err := http.NewRequest(http.MethodPost, "http://"+addr+"/v1/admin/reload", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("reload = %d %s", resp.StatusCode, body)
+	}
+}

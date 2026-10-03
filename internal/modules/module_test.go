@@ -3,6 +3,7 @@ package modules
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/setup"
@@ -80,15 +81,22 @@ func TestSetOffersModuleToolsAsModulesApply(t *testing.T) {
 	}
 }
 
-func TestSetReportsDuplicateTools(t *testing.T) {
-	set, err := NewSet([]tools.Executor{testTool{id: "same"}}, Static("dup", "Dup", "", testTool{id: "same"}))
+func TestSetKeepsTheFirstToolAndReportsADuplicateInStatus(t *testing.T) {
+	set, err := NewSet([]tools.Executor{testTool{id: "same"}}, Static("dup", "Dup", "", testTool{id: "same"}, testTool{id: "own"}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := set.Apply(context.Background(), setup.Config{}); err == nil {
-		t.Fatal("expected a duplicate tool error")
+	if err := set.Apply(context.Background(), setup.Config{}); err != nil {
+		t.Fatalf("apply failed on a duplicate tool: %v", err)
 	}
 	if _, ok := set.Spec("same"); !ok {
 		t.Fatal("base tool lost after a duplicate")
+	}
+	if _, ok := set.Spec("own"); !ok {
+		t.Fatal("the module's other tool is not offered")
+	}
+	status := set.Statuses(context.Background())[0]
+	if !strings.Contains(status.Detail, `duplicate tool id "same"`) {
+		t.Fatalf("status detail = %q", status.Detail)
 	}
 }
