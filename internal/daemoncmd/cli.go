@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 )
 
 func RunCLI(ctx context.Context, stdout io.Writer, binaryName string, args []string, run func(context.Context) error) int {
@@ -29,6 +32,8 @@ func RunCLI(ctx context.Context, stdout io.Writer, binaryName string, args []str
 	if run == nil {
 		run = Run
 	}
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	if err := run(ctx); err != nil {
 		_, _ = fmt.Fprintf(stdout, "%s: daemon: %v\n", binaryName, err)
 		return 1

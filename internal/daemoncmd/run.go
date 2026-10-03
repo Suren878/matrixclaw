@@ -3,6 +3,7 @@ package daemoncmd
 import (
 	"context"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -169,6 +170,7 @@ func Run(ctx context.Context) error {
 	httpServer := &http.Server{
 		Addr:              bootstrap.Addr,
 		Handler:           server.Handler(),
+		BaseContext:       func(net.Listener) context.Context { return ctx },
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		IdleTimeout:       2 * time.Minute,
