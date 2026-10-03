@@ -126,3 +126,10 @@ func collectEvents(events <-chan externalagents.Event) []externalagents.Event {
 	}
 	return out
 }
+
+func TestClaudePromptStartingWithDashIsNotAnOption(t *testing.T) {
+	args := claudePromptArgs(externalagents.ExternalSession{Model: "sonnet"}, "--permission-mode=bypassPermissions")
+	if len(args) < 2 || args[len(args)-2] != "--" || args[len(args)-1] != "--permission-mode=bypassPermissions" {
+		t.Fatalf("args = %q, want the prompt last, after --", args)
+	}
+}

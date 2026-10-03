@@ -388,7 +388,7 @@ func claudeAssistantText(raw json.RawMessage) string {
 }
 
 func claudePromptArgs(session externalagents.ExternalSession, text string) []string {
-	args := []string{"-p", text, "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
+	args := []string{"-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
 	if sessionID := claudeSessionID(session); sessionID != "" {
 		args = append(args, "--resume", sessionID)
 	}
@@ -398,7 +398,7 @@ func claudePromptArgs(session externalagents.ExternalSession, text string) []str
 	if mode := claudePermissionMode(session); mode != "" {
 		args = append(args, "--permission-mode", mode)
 	}
-	return args
+	return append(args, "--", text)
 }
 
 func claudePermissionMode(session externalagents.ExternalSession) string {
