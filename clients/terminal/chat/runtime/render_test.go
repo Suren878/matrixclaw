@@ -15,6 +15,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/daemonclient"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -176,4 +177,15 @@ func TestRenderCommandsDialog(t *testing.T) {
 		t.Fatal("ctrl+p did not open the commands dialog")
 	}
 	assertGolden(t, "commands_dialog", m.viewContent())
+}
+
+// deliver hands a live event to the app as its event stream would.
+func deliver(t *testing.T, m *appModel, eventType core.EventType, payload any) {
+	t.Helper()
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.lastEventID++
+	m.Update(liveEventMsg{streamID: m.streamID, event: daemonclient.LiveEvent{ID: m.lastEventID, Type: eventType, SessionID: "session_1", Payload: raw}})
 }

@@ -113,32 +113,14 @@ func (m *appModel) currentRun() *core.Run {
 	return cloneRun(m.currentSnapshot().Run)
 }
 
-func (m *appModel) currentModelLabel() string {
-	_, sessionModel := m.currentSessionLLM()
-	if sessionModel != "" {
-		return sessionModel
-	}
-	snapshot := m.currentSnapshot()
-	for i := len(snapshot.Messages) - 1; i >= 0; i-- {
-		if label := strings.TrimSpace(snapshot.Messages[i].Model); label != "" {
-			return label
-		}
-	}
-	if label := strings.TrimSpace(m.providerModel); label != "" {
-		return label
-	}
-	if label := strings.TrimSpace(m.providerName); label != "" {
-		return label
-	}
-	return ""
-}
-
+// currentSessionLLM is the session's provider and model; an external agent
+// session names only its model.
 func (m *appModel) currentSessionLLM() (string, string) {
 	session := m.currentSnapshot().Session
 	if session == nil {
 		return "", ""
 	}
-	if sessionIsExternalAgent(session) {
+	if core.CoreSessionIsExternalAgent(*session) {
 		return "", strings.TrimSpace(session.ModelID)
 	}
 	return strings.TrimSpace(session.ProviderID), strings.TrimSpace(session.ModelID)

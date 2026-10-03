@@ -22,10 +22,11 @@ func (m *appModel) openCommandsDialog() {
 }
 
 func (m *appModel) commandMenuState() commandmenu.State {
+	provider, model := m.currentSessionLLM()
 	return commandmenu.State{
 		SessionTitle:            m.currentSessionTitle(),
-		ProviderID:              m.currentProviderID(),
-		ModelID:                 m.currentModelLabel(),
+		ProviderID:              provider,
+		ModelID:                 model,
 		PermissionMode:          m.currentPermissionMode(),
 		Capabilities:            m.currentSessionCapabilities(),
 		ExternalEditorAvailable: strings.TrimSpace(os.Getenv("EDITOR")) != "",
@@ -68,13 +69,6 @@ func (m *appModel) currentSessionTitle() string {
 		}
 	}
 	return "matrixclaw"
-}
-
-func (m *appModel) currentProviderID() string {
-	if providerID, _ := m.currentSessionLLM(); providerID != "" {
-		return providerID
-	}
-	return strings.TrimSpace(m.providerName)
 }
 
 func resultTitle(text string) string {

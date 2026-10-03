@@ -213,6 +213,17 @@ func (s *State) Apply(event daemonclient.LiveEvent) error {
 		}
 		s.run = cloneRun(&run)
 		s.timing = nil
+	case core.EventContextUpdated:
+		usage, err := event.DecodeContextUsage()
+		if err != nil {
+			return err
+		}
+		next := core.ContextReport{SessionID: usage.SessionID}
+		if s.context != nil {
+			next = *s.context
+		}
+		next.TokenEstimate, next.WindowTokens = usage.TokenEstimate, usage.WindowTokens
+		s.context = &next
 	case core.EventTodoUpdated:
 		list, err := event.DecodeTodo()
 		if err != nil {

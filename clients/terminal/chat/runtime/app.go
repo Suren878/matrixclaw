@@ -159,8 +159,6 @@ type appModel struct {
 	transientMessages   []surfacemessage.Message
 	workingDir          string
 	version             string
-	providerName        string
-	providerModel       string
 	suppressedApprovals map[string]struct{}
 	focus               appFocus
 	busy                bool
@@ -185,15 +183,11 @@ func newApp(ctx context.Context, rt *Runtime) *appModel {
 	com := &surfacecommon.Common{Styles: &styles}
 	workingDir, _ := os.Getwd()
 	version := runtimeVersion("")
-	providerName := ""
-	providerModel := ""
 	if rt != nil {
 		if cfgWorkingDir := strings.TrimSpace(rt.config.WorkingDir); cfgWorkingDir != "" {
 			workingDir = cfgWorkingDir
 		}
 		version = runtimeVersion(rt.config.Version)
-		providerName = strings.TrimSpace(rt.config.Provider)
-		providerModel = strings.TrimSpace(rt.config.Model)
 	}
 	input := surfaceinput.New(com)
 	h := help.New()
@@ -211,8 +205,6 @@ func newApp(ctx context.Context, rt *Runtime) *appModel {
 		input:               input,
 		workingDir:          strings.TrimSpace(workingDir),
 		version:             version,
-		providerName:        providerName,
-		providerModel:       providerModel,
 		suppressedApprovals: map[string]struct{}{},
 		focus:               appFocusEditor,
 		busyInputMode:       core.BusyInputModeSteer,

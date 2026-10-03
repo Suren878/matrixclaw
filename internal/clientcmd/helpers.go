@@ -48,18 +48,3 @@ func redactSecrets(text string, secrets ...string) string {
 	}
 	return text
 }
-
-func activeProviderInfo(cfg appsetup.Config) (string, string) {
-	activeID := strings.TrimSpace(cfg.ActiveProviderID)
-	if activeID != "" {
-		for _, provider := range cfg.Providers {
-			if strings.TrimSpace(provider.ID) == activeID {
-				return strings.TrimSpace(provider.Name), strings.TrimSpace(provider.Model)
-			}
-		}
-	}
-	if len(cfg.Providers) == 0 {
-		return "", ""
-	}
-	return strings.TrimSpace(cfg.Providers[0].Name), strings.TrimSpace(cfg.Providers[0].Model)
-}

@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	tuiruntime "github.com/Suren878/matrixclaw/clients/terminal/chat/runtime"
-	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 	appsetup "github.com/Suren878/matrixclaw/internal/setup"
 )
@@ -33,20 +32,12 @@ func runTUICommand(stderr io.Writer, binaryName string, service *appsetup.Servic
 		_, _ = fmt.Fprintf(stderr, "%s: tui: %v\n", binaryName, err)
 		return 2
 	}
-	providerName, providerModel := activeProviderInfo(cfg)
 	if err := openTUI(context.Background(), tuiruntime.Config{
 		BaseURL:     daemonclient.BaseURL(cfg.Daemon.HTTPAddr),
 		APIToken:    cfg.Daemon.APIToken,
 		ClientName:  tuiruntime.DefaultClientName,
 		ExternalKey: tuiruntime.DefaultExternalKey,
 		WorkingDir:  workingDir,
-		Provider:    providerName,
-		Model:       providerModel,
-		Assistant: core.AssistantProfile{
-			Name:               cfg.Assistant.Name,
-			SystemPrompt:       cfg.Assistant.SystemPromptOrDefault(),
-			CustomInstructions: cfg.Assistant.CustomInstructions,
-		},
 	}); err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: tui: %v\n", binaryName, err)
 		return 1

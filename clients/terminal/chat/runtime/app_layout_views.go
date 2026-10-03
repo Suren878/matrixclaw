@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -63,10 +64,8 @@ func (m *appModel) workingStatusView() string {
 }
 
 func (m *appModel) workingStatusLine(snapshot viewmodel.Snapshot, run *core.Run, phase string, idle string) string {
-	model := m.currentModelLabel()
-	if model == "" {
-		model = "model"
-	}
+	_, model := m.currentSessionLLM()
+	model = cmp.Or(model, "model")
 	spinner := workingSpinnerFrames[m.spinnerFrame%len(workingSpinnerFrames)]
 	elapsed := "0s"
 	if run != nil && !run.StartedAt.IsZero() {

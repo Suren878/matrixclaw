@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/clientruntime"
-	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 )
 
@@ -21,9 +20,6 @@ type Config struct {
 	ExternalKey string
 	WorkingDir  string
 	Version     string
-	Provider    string
-	Model       string
-	Assistant   core.AssistantProfile
 }
 
 type Runtime struct {
@@ -56,9 +52,6 @@ func New(config Config) *Runtime {
 			ExternalKey: externalKey,
 			WorkingDir:  strings.TrimSpace(config.WorkingDir),
 			Version:     strings.TrimSpace(config.Version),
-			Provider:    strings.TrimSpace(config.Provider),
-			Model:       strings.TrimSpace(config.Model),
-			Assistant:   normalizeAssistantProfile(config.Assistant),
 		},
 		client: daemonclient.New(strings.TrimRight(strings.TrimSpace(config.BaseURL), "/"), clientName, externalKey).WithAPIToken(config.APIToken),
 	}
@@ -72,12 +65,4 @@ func New(config Config) *Runtime {
 		Owner: true,
 	}
 	return rt
-}
-
-func normalizeAssistantProfile(profile core.AssistantProfile) core.AssistantProfile {
-	return core.AssistantProfile{
-		Name:               strings.TrimSpace(profile.Name),
-		SystemPrompt:       strings.TrimSpace(profile.SystemPrompt),
-		CustomInstructions: strings.TrimSpace(profile.CustomInstructions),
-	}
 }
