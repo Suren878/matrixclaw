@@ -415,13 +415,9 @@ func setVoiceModuleConfigByID(modules *ModulesConfig, id string, cfg VoiceModule
 }
 
 func normalizeVoiceModuleID(id string) string {
-	switch strings.ToLower(strings.TrimSpace(id)) {
-	case "tts", "text-to-speech", "text_to_speech":
-		return VoiceModuleTTS
-	case "stt", "speech-to-text", "speech_to_text":
-		return VoiceModuleSTT
-	case "realtime", "realtime-voice", "realtime_voice", "live", "live-voice", "live_voice":
-		return VoiceModuleRealtime
+	switch id = strings.TrimSpace(id); id {
+	case VoiceModuleTTS, VoiceModuleSTT, VoiceModuleRealtime:
+		return id
 	default:
 		return ""
 	}

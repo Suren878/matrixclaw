@@ -104,18 +104,20 @@ func (d *Dispatcher) telephonyFieldPrompt(ctx context.Context, field string) (Re
 
 func (d *Dispatcher) telephonySetField(ctx context.Context, args string) (Result, error) {
 	field, value := firstCommandStep(args)
-	value = strings.TrimSpace(value)
+	input := clearableInput(value)
+	if input == nil {
+		return d.telephonyPicker(ctx)
+	}
 	update := setup.TelephonyModuleUpdate{}
 	switch normalizeTelephonyField(field) {
 	case "gateway-url":
-		update.GatewayURL = value
+		update.GatewayURL = input
 	case "profile":
-		update.DefaultProfile = value
+		update.DefaultProfile = input
 	case "phone-prompt":
-		update.PhonePrompt = value
+		update.PhonePrompt = input
 	case "token":
-		update.GatewayToken = value
-		update.ClearToken = value == "-"
+		update.GatewayToken = input
 	default:
 		return d.telephonyPicker(ctx)
 	}

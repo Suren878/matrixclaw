@@ -82,3 +82,15 @@ func customProviderID(name string) string {
 	}
 	return strings.Trim(string(out), "-")
 }
+
+// clearableInput reads a typed setting: empty changes nothing, "-" clears it.
+func clearableInput(value string) *string {
+	value = strings.TrimSpace(value)
+	switch value {
+	case "":
+		return nil
+	case "-":
+		value = ""
+	}
+	return &value
+}

@@ -264,13 +264,14 @@ type TelephonyModuleResponse struct {
 	Module TelephonyModuleDescriptor `json:"module"`
 }
 
+// TelephonyModuleUpdate changes the fields that are present; an empty value
+// clears the field.
 type TelephonyModuleUpdate struct {
-	Enabled        *bool  `json:"enabled,omitempty"`
-	GatewayURL     string `json:"gateway_url,omitempty"`
-	GatewayToken   string `json:"gateway_token,omitempty"`
-	DefaultProfile string `json:"default_profile,omitempty"`
-	PhonePrompt    string `json:"phone_prompt,omitempty"`
-	ClearToken     bool   `json:"clear_token,omitempty"`
+	Enabled        *bool   `json:"enabled,omitempty"`
+	GatewayURL     *string `json:"gateway_url,omitempty"`
+	GatewayToken   *string `json:"gateway_token,omitempty"`
+	DefaultProfile *string `json:"default_profile,omitempty"`
+	PhonePrompt    *string `json:"phone_prompt,omitempty"`
 }
 
 // WebSearchConfig stores the web search provider choice and credentials.
@@ -282,10 +283,23 @@ type WebSearchConfig struct {
 	BaseURL   string `json:"base_url,omitempty"`
 }
 
+// WebSearchConfigUpdate changes the fields that are present; an empty key or
+// base URL clears it.
+type WebSearchConfigUpdate struct {
+	Provider  *string `json:"provider,omitempty"`
+	TavilyKey *string `json:"tavily_key,omitempty"`
+	SerperKey *string `json:"serper_key,omitempty"`
+	BaseURL   *string `json:"base_url,omitempty"`
+}
+
+// WebSearchConfigResponse describes the web search settings; keys appear only
+// as masked previews.
 type WebSearchConfigResponse struct {
-	Config   WebSearchConfig `json:"config"`
-	Provider string          `json:"provider"`
-	Status   string          `json:"status"`
+	Provider         string `json:"provider"`
+	Status           string `json:"status"`
+	BaseURL          string `json:"base_url,omitempty"`
+	TavilyKeyPreview string `json:"tavily_key_preview,omitempty"`
+	SerperKeyPreview string `json:"serper_key_preview,omitempty"`
 }
 
 const (

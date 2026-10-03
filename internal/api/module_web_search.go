@@ -27,15 +27,11 @@ func (s *Server) getWebSearchConfig(w http.ResponseWriter, _ *http.Request) {
 		writeErrorMessage(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, setup.WebSearchConfigResponse{
-		Config:   cfg,
-		Provider: cfg.Provider,
-		Status:   setup.WebSearchConfigStatus(cfg),
-	})
+	writeJSON(w, http.StatusOK, setup.WebSearchResponse(cfg))
 }
 
 func (s *Server) updateWebSearchConfig(w http.ResponseWriter, r *http.Request) {
-	var update setup.WebSearchConfig
+	var update setup.WebSearchConfigUpdate
 	if !decodeJSONBody(w, r, &update) {
 		return
 	}
@@ -44,9 +40,5 @@ func (s *Server) updateWebSearchConfig(w http.ResponseWriter, r *http.Request) {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, setup.WebSearchConfigResponse{
-		Config:   cfg,
-		Provider: cfg.Provider,
-		Status:   setup.WebSearchConfigStatus(cfg),
-	})
+	writeJSON(w, http.StatusOK, setup.WebSearchResponse(cfg))
 }

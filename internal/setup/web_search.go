@@ -13,7 +13,7 @@ func (s *Service) GetWebSearchConfig() (WebSearchConfig, error) {
 	return normalizeWebSearchConfig(cfg.Modules.WebSearch), nil
 }
 
-func (s *Service) UpdateWebSearchConfig(update WebSearchConfig) (WebSearchConfig, error) {
+func (s *Service) UpdateWebSearchConfig(update WebSearchConfigUpdate) (WebSearchConfig, error) {
 	cfg, err := s.Update(func(cfg *Config) error {
 		merged := mergeWebSearchConfig(cfg.Modules.WebSearch, update)
 		if err := validateWebSearchConfig(merged); err != nil {
@@ -77,30 +77,25 @@ func normalizeWebSearchProvider(v string) string {
 	}
 }
 
-func mergeWebSearchConfig(existing, update WebSearchConfig) WebSearchConfig {
+func mergeWebSearchConfig(existing WebSearchConfig, update WebSearchConfigUpdate) WebSearchConfig {
 	merged := existing
-	if strings.TrimSpace(update.Provider) != "" {
-		merged.Provider = update.Provider
-	}
-	if strings.TrimSpace(update.TavilyKey) != "" {
-		merged.TavilyKey = update.TavilyKey
-	}
-	if strings.TrimSpace(update.SerperKey) != "" {
-		merged.SerperKey = update.SerperKey
-	}
-	if strings.TrimSpace(update.BaseURL) != "" {
-		merged.BaseURL = update.BaseURL
-	}
-	if update.TavilyKey == "-" {
-		merged.TavilyKey = ""
-	}
-	if update.SerperKey == "-" {
-		merged.SerperKey = ""
-	}
-	if update.BaseURL == "-" {
-		merged.BaseURL = ""
-	}
+	setIfPresent(&merged.Provider, update.Provider)
+	setIfPresent(&merged.TavilyKey, update.TavilyKey)
+	setIfPresent(&merged.SerperKey, update.SerperKey)
+	setIfPresent(&merged.BaseURL, update.BaseURL)
 	return merged
+}
+
+// WebSearchResponse describes cfg for clients without its keys.
+func WebSearchResponse(cfg WebSearchConfig) WebSearchConfigResponse {
+	cfg = normalizeWebSearchConfig(cfg)
+	return WebSearchConfigResponse{
+		Provider:         cfg.Provider,
+		Status:           WebSearchConfigStatus(cfg),
+		BaseURL:          cfg.BaseURL,
+		TavilyKeyPreview: MaskSecret(cfg.TavilyKey),
+		SerperKeyPreview: MaskSecret(cfg.SerperKey),
+	}
 }
 
 func validateWebSearchConfig(cfg WebSearchConfig) error {

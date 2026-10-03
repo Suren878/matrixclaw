@@ -63,31 +63,17 @@ func mergeTelephonyConfig(existing TelephonyConfig, update TelephonyModuleUpdate
 	if update.Enabled != nil {
 		merged.Enabled = *update.Enabled
 	}
-	if strings.TrimSpace(update.GatewayURL) != "" {
-		merged.GatewayURL = update.GatewayURL
-	}
-	if strings.TrimSpace(update.GatewayToken) != "" {
-		merged.GatewayToken = update.GatewayToken
-	}
-	if strings.TrimSpace(update.DefaultProfile) != "" {
-		merged.DefaultProfile = update.DefaultProfile
-	}
-	if strings.TrimSpace(update.PhonePrompt) != "" {
-		merged.PhonePrompt = update.PhonePrompt
-	}
-	if update.ClearToken || strings.TrimSpace(update.GatewayToken) == "-" {
-		merged.GatewayToken = ""
-	}
-	if strings.TrimSpace(update.GatewayURL) == "-" {
-		merged.GatewayURL = ""
-	}
-	if strings.TrimSpace(update.DefaultProfile) == "-" {
-		merged.DefaultProfile = ""
-	}
-	if strings.TrimSpace(update.PhonePrompt) == "-" {
-		merged.PhonePrompt = ""
-	}
+	setIfPresent(&merged.GatewayURL, update.GatewayURL)
+	setIfPresent(&merged.GatewayToken, update.GatewayToken)
+	setIfPresent(&merged.DefaultProfile, update.DefaultProfile)
+	setIfPresent(&merged.PhonePrompt, update.PhonePrompt)
 	return normalizeTelephonyConfig(merged)
+}
+
+func setIfPresent(field *string, value *string) {
+	if value != nil {
+		*field = *value
+	}
 }
 
 func validateTelephonyConfig(cfg TelephonyConfig) error {
