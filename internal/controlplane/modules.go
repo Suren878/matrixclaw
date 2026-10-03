@@ -72,6 +72,7 @@ func (d *Dispatcher) modulesPicker(ctx context.Context) (Result, error) {
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerModules, "Modules").
+			Command(modulesCommand()).
 			Row("agents", "External Agents", externalAgentsInfo, externalAgentsCommand()).
 			Row("skills", "Skills", skillsInfo, skillsCommand()).
 			Row("mcp", "External MCP", mcpInfo, mcpCommand()).

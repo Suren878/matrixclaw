@@ -73,7 +73,6 @@ func (d *Dispatcher) voiceModulePicker(ctx context.Context, moduleID string) (Re
 		providerInfo = "Turn on " + module.Title + " first"
 	}
 	picker := NewPickerData(voiceModulePickerKind(module.ID), module.Title).
-		Context(module.ID).
 		Back(modulesCommand()).
 		Row("enabled", module.Title, formatEnabled(module.Enabled), voiceModuleCommand(module.ID, "enabled"))
 	picker.Item(PickerItem{
@@ -88,7 +87,6 @@ func (d *Dispatcher) voiceModulePicker(ctx context.Context, moduleID string) (Re
 
 func (d *Dispatcher) sttModulePicker(module setup.VoiceModuleDescriptor) Result {
 	picker := NewPickerData(PickerSpeechToText, module.Title).
-		Context(module.ID).
 		Back(modulesCommand()).
 		Item(PickerItem{
 			ID:       "provider",
@@ -107,7 +105,6 @@ func (d *Dispatcher) sttModulePicker(module setup.VoiceModuleDescriptor) Result 
 
 func (d *Dispatcher) ttsModulePicker(module setup.VoiceModuleDescriptor) Result {
 	picker := NewPickerData(PickerTextToSpeech, module.Title).
-		Context(module.ID).
 		Back(modulesCommand()).
 		Item(PickerItem{
 			ID:       "provider",
@@ -156,7 +153,6 @@ func (d *Dispatcher) voiceModuleEnabledPicker(ctx context.Context, moduleID stri
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerVoiceProvider, module.Title).
-			Context(module.ID).
 			Meta("Module is " + strings.ToLower(formatEnabled(module.Enabled))).
 			Select(voiceModuleCommand(module.ID)).
 			Item(PickerItem{ID: "on", Title: "On", Info: module.Title, Selected: module.Enabled, Command: voiceModuleCommand(module.ID, "set-enabled", "on")}).

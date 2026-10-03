@@ -56,7 +56,7 @@ func (d *Dispatcher) externalAgentsPicker(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	picker := NewPickerData(PickerExternalAgents, "External Agents").Back(modulesCommand())
+	picker := NewPickerData(PickerExternalAgents, "External Agents").Command(externalAgentsCommand()).Back(modulesCommand())
 	for _, agent := range agents {
 		picker.Item(PickerItem{
 			ID:       agent.ID,
@@ -82,7 +82,6 @@ func (d *Dispatcher) externalAgentPicker(ctx context.Context, agentID string) (R
 		return Result{Handled: true, Text: "External agent not found: " + strings.TrimSpace(agentID)}, nil
 	}
 	picker := NewPickerData(PickerExternalAgent, externalAgentTitle(agent)).
-		Context(agent.ID).
 		Meta(externalAgentMeta(agent)).
 		Back(externalAgentsCommand())
 	addExternalAgentEditableItems(picker, agent)
@@ -104,7 +103,6 @@ func (d *Dispatcher) externalAgentEnabledPicker(ctx context.Context, agentID str
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerExternalAgent, externalAgentTitle(agent)).
-			Context(agent.ID).
 			Meta("Currently " + strings.ToLower(formatEnabled(agent.Enabled))).
 			Select(externalAgentCommand(agent.ID)).
 			Item(PickerItem{ID: "on", Title: "On", Selected: agent.Enabled, Command: externalAgentSetEnabledCommand(agent.ID, "on")}).
@@ -188,7 +186,6 @@ func (d *Dispatcher) updateExternalAgentPath(ctx context.Context, agentID string
 
 func externalAgentPickerData(agent core.ExternalAgentDescriptor) *PickerData {
 	picker := NewPickerData(PickerExternalAgent, externalAgentTitle(agent)).
-		Context(agent.ID).
 		Meta(externalAgentMeta(agent)).
 		Back(externalAgentsCommand())
 	addExternalAgentEditableItems(picker, agent)

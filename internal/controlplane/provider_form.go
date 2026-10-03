@@ -441,7 +441,7 @@ func (d *Dispatcher) providerSaved(ctx context.Context, session *core.Session, c
 	}
 	return Result{
 		Handled:        true,
-		Picker:         NewPickerData(PickerProvider, "Provider").Items(providerPickerItems(list, selectedSession, d.owner())...).Ptr(),
+		Picker:         NewPickerData(PickerProvider, "Provider").Command(providerCommand()).Items(providerPickerItems(list, selectedSession, d.owner())...).Ptr(),
 		ReloadSnapshot: true,
 	}, nil
 }

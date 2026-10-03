@@ -74,7 +74,7 @@ func (d *Dispatcher) handleContext(ctx context.Context, args string) (Result, er
 	}
 	return Result{
 		Handled: true,
-		Picker:  NewPickerData(PickerContext, "Context").Context(session.ID).Items(contextItems(report)...).Ptr(),
+		Picker:  NewPickerData(PickerContext, "Context").Items(contextItems(report)...).Ptr(),
 	}, nil
 }
 

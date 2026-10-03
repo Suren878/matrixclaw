@@ -1,6 +1,7 @@
 package controlplane
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -14,57 +15,57 @@ type MenuState struct {
 	Capabilities   core.SessionCapabilities
 }
 
-type CommandView struct {
-	ID       string
-	Command  string
-	Title    string
-	Status   string
-	Group    MenuItemGroup
-	Public   bool
-	Menu     bool
-	Disabled bool
+// Menu is the command menu of the terminal and of Telegram's /help: the
+// menu commands, the session's ones first, with their current state.
+func Menu(state MenuState) []PickerItem {
+	first := []CommandID{CommandSessions, CommandContext, CommandProvider, CommandPermissions}
+	titles := map[CommandID]string{CommandProvider: "Providers", CommandPermissions: "Permissions"}
+	var lead, rest []PickerItem
+	for _, spec := range Catalog() {
+		if !spec.Public || !spec.Menu || spec.ID == CommandNewSession || spec.ID == CommandMemory {
+			continue
+		}
+		item := PickerItem{ID: string(spec.ID), Title: spec.Title, Command: spec.Command}
+		if title, ok := titles[spec.ID]; ok {
+			item.Title = title
+		}
+		item.Info, item.Disabled = menuStatus(spec.ID, state)
+		if item.Disabled {
+			item.Command = ""
+		}
+		if index := slices.Index(first, spec.ID); index >= 0 {
+			lead = append(lead, item)
+		} else {
+			rest = append(rest, item)
+		}
+	}
+	slices.SortStableFunc(lead, func(a, b PickerItem) int {
+		return slices.Index(first, CommandID(a.ID)) - slices.Index(first, CommandID(b.ID))
+	})
+	return append(lead, rest...)
 }
 
-func BuildCommandView(state MenuState) []CommandView {
-	items := make([]CommandView, 0, len(Catalog()))
-	for _, spec := range Catalog() {
-		status := ""
-		disabled := false
-		switch spec.ID {
-		case CommandSessions:
-			status = strings.TrimSpace(state.SessionTitle)
-		case CommandProvider:
-			if !state.Capabilities.ProviderSelection && hasSessionCapabilities(state.Capabilities) {
-				status = "Matrixclaw only"
-				disabled = true
-			} else {
-				status = strings.TrimSpace(state.ProviderID)
-			}
-		case CommandPermissions:
-			if !state.Capabilities.PermissionMode && hasSessionCapabilities(state.Capabilities) {
-				status = "Matrixclaw only"
-				disabled = true
-			} else {
-				status = permissionModeStatus(state.PermissionMode)
-			}
-		case CommandTodo:
-			if !state.Capabilities.NativeTools && hasSessionCapabilities(state.Capabilities) {
-				status = "Matrixclaw only"
-				disabled = true
-			}
+func menuStatus(id CommandID, state MenuState) (string, bool) {
+	limited := hasSessionCapabilities(state.Capabilities)
+	switch id {
+	case CommandSessions:
+		return strings.TrimSpace(state.SessionTitle), false
+	case CommandProvider:
+		if limited && !state.Capabilities.ProviderSelection {
+			return "Matrixclaw only", true
 		}
-		items = append(items, CommandView{
-			ID:       string(spec.ID),
-			Command:  spec.Command,
-			Title:    spec.Title,
-			Status:   status,
-			Group:    spec.Group,
-			Public:   spec.Public,
-			Menu:     spec.Menu,
-			Disabled: disabled,
-		})
+		return strings.TrimSpace(state.ProviderID), false
+	case CommandPermissions:
+		if limited && !state.Capabilities.PermissionMode {
+			return "Matrixclaw only", true
+		}
+		return permissionModeStatus(state.PermissionMode), false
+	case CommandTodo:
+		if limited && !state.Capabilities.NativeTools {
+			return "Matrixclaw only", true
+		}
 	}
-	return items
+	return "", false
 }
 
 func hasSessionCapabilities(capabilities core.SessionCapabilities) bool {
@@ -74,22 +75,8 @@ func hasSessionCapabilities(capabilities core.SessionCapabilities) bool {
 		capabilities.ExternalAgent
 }
 
-func CommandMenuPicker(state MenuState) *PickerData {
-	picker := NewPickerData(PickerCommandMenu, "Menu")
-	for _, view := range CommandMenuView(SurfaceTelegram, state).Items {
-		item := PickerItem{
-			ID:       view.ID,
-			Title:    view.Title,
-			Info:     view.Info,
-			Command:  view.Command,
-			Disabled: view.Disabled,
-		}
-		if view.Disabled {
-			item.Command = ""
-		}
-		picker.Item(item)
-	}
-	return picker.Ptr()
+func commandMenuPicker() *PickerData {
+	return NewPickerData(PickerCommandMenu, "Menu").Command(helpCommand()).Items(Menu(MenuState{})...).Ptr()
 }
 
 func permissionModeStatus(mode core.PermissionMode) string {

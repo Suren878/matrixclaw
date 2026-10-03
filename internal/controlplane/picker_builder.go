@@ -10,8 +10,9 @@ func NewPickerData(kind PickerKind, title string) *PickerBuilder {
 	return &PickerBuilder{data: PickerData{Kind: kind, Title: title}}
 }
 
-func (b *PickerBuilder) Context(id string) *PickerBuilder {
-	b.data.ContextID = id
+// Command is the command that shows this picker again.
+func (b *PickerBuilder) Command(command string) *PickerBuilder {
+	b.data.Command = command
 	return b
 }
 
@@ -21,16 +22,14 @@ func (b *PickerBuilder) Meta(meta string) *PickerBuilder {
 }
 
 func (b *PickerBuilder) Back(command string) *PickerBuilder {
-	b.data.BackCommand = command
-	b.data.HasBack = true
+	b.data.Back = command
 	return b
 }
 
+// Select makes the picker a choice that runs closeCommand when dismissed.
 func (b *PickerBuilder) Select(closeCommand string) *PickerBuilder {
 	b.data.Popup = true
-	b.data.Select = true
-	b.data.CloseCommand = closeCommand
-	b.data.HasClose = true
+	b.data.Close = closeCommand
 	return b
 }
 
@@ -60,15 +59,7 @@ func (b *PickerBuilder) Static(id string, title string, info string) *PickerBuil
 	return b.Item(PickerItem{ID: id, Title: title, Info: info, Disabled: true})
 }
 
-func (b *PickerBuilder) Build() PickerData {
-	data := b.data
-	if len(data.Items) > 0 {
-		data.Items = append([]PickerItem(nil), data.Items...)
-	}
-	return data
-}
-
 func (b *PickerBuilder) Ptr() *PickerData {
-	data := b.Build()
+	data := b.data
 	return &data
 }

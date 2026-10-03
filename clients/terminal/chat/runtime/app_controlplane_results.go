@@ -135,35 +135,23 @@ func (m *appModel) controlplaneDialog(result controlplane.Result) surfacedialog.
 	}
 }
 
-func (m *appModel) controlplanePickerDialog(data controlplane.PickerData) surfacedialog.Dialog {
-	picker := data
-	view := controlplane.PickerView(picker, controlplane.PickerViewOptions{Surface: controlplane.SurfaceTerminal})
-	closeAction := m.controlplanePickerCloseAction(picker, view)
+func (m *appModel) controlplanePickerDialog(picker controlplane.PickerData) surfacedialog.Dialog {
+	closeAction := commandmenu.PickerCloseAction(picker)
 	if picker.Popup {
-		entries := commandmenu.PickerRows(view)
+		entries := commandmenu.PickerEntries(picker)
 		return surfacedialog.NewPicker(m.com, surfacedialog.PickerData{
 			ID:          surfacedialog.PickerID,
-			Title:       view.Title,
-			Meta:        strings.TrimSpace(view.Meta),
+			Title:       picker.Title,
+			Meta:        picker.Meta,
 			Legend:      popupPickerLegend(picker),
 			Filter:      surfacedialog.PickerNeedsFilter(entries),
 			Entries:     entries,
 			CloseAction: closeAction,
 		})
 	}
-	entries := m.controlplanePickerEntries(picker, view)
-	return surfacedialog.NewCommands(m.com, surfacedialog.CommandsData{
-		Title:       view.Title,
-		Meta:        strings.TrimSpace(view.Meta),
-		Legend:      view.Legend,
-		Entries:     entries,
-		CloseAction: closeAction,
-	})
-}
-
-func (m *appModel) controlplanePickerEntries(picker controlplane.PickerData, view controlplane.PickerViewData) []surfacedialog.PickerEntry {
-	entries := commandmenu.PickerEntries(view)
-	if m.controlplanePickerReturnsToCommands(picker, view) {
+	entries := commandmenu.PickerEntries(picker)
+	if m.dialog.fromMenu() && picker.Back == "" {
+		closeAction = surfacedialog.ActionOpenCommands{}
 		entries = append(entries, surfacedialog.PickerEntry{
 			ID:     "footer_back_commands",
 			Title:  "Back",
@@ -172,19 +160,13 @@ func (m *appModel) controlplanePickerEntries(picker controlplane.PickerData, vie
 			Action: surfacedialog.ActionOpenCommands{},
 		})
 	}
-	return entries
-}
-
-func (m *appModel) controlplanePickerCloseAction(picker controlplane.PickerData, view controlplane.PickerViewData) surfacedialog.Action {
-	if m.controlplanePickerReturnsToCommands(picker, view) {
-		return surfacedialog.ActionOpenCommands{}
-	}
-	action := commandmenu.PickerCloseAction(view)
-	return action
-}
-
-func (m *appModel) controlplanePickerReturnsToCommands(picker controlplane.PickerData, view controlplane.PickerViewData) bool {
-	return m.dialog.fromMenu() && !picker.Popup && view.Footer == nil
+	return surfacedialog.NewCommands(m.com, surfacedialog.CommandsData{
+		Title:       picker.Title,
+		Meta:        picker.Meta,
+		Legend:      commandmenu.PickerLegend(picker.Kind),
+		Entries:     entries,
+		CloseAction: closeAction,
+	})
 }
 
 func popupPickerLegend(picker controlplane.PickerData) string {

@@ -15,7 +15,6 @@ func (d *Dispatcher) voiceModuleProviderSetup(ctx context.Context, moduleID stri
 	providerID := firstField(args)
 	if providerID == "" {
 		picker := NewPickerData(PickerVoiceProvider, "Setup Provider").
-			Context(module.ID).
 			Back(voiceModuleCommand(module.ID))
 		for _, provider := range module.Providers {
 			picker.Item(PickerItem{
@@ -37,8 +36,7 @@ func (d *Dispatcher) voiceModuleProviderSetup(ctx context.Context, moduleID stri
 				return Result{}, err
 			}
 			if result.Picker != nil {
-				result.Picker.BackCommand = voiceModuleCommand(module.ID, "provider-setup")
-				result.Picker.HasBack = true
+				result.Picker.Back = voiceModuleCommand(module.ID, "provider-setup")
 			}
 			return result, nil
 		}
@@ -155,7 +153,6 @@ func (d *Dispatcher) voiceLocalProviderPickerWithProvider(module setup.VoiceModu
 	downloaded := voiceProviderDownloaded(provider)
 	downloadTitle, deleteTitle := voiceLocalFileActionTitles(module.ID)
 	picker := NewPickerData(PickerVoiceProvider, title).
-		Context(module.ID).
 		Meta(voiceLocalProviderMeta(module, provider)).
 		Back(voiceModuleCommand(module.ID, "provider"))
 	if module.ID == setup.VoiceModuleTTS {

@@ -248,17 +248,6 @@ func parseTags(value string) []string {
 	return out
 }
 
-func splitSkillPickerContext(value string) (string, string) {
-	section, id, ok := strings.Cut(strings.TrimSpace(value), ":")
-	if !ok {
-		return "installed", strings.TrimSpace(value)
-	}
-	if strings.TrimSpace(section) == "" {
-		section = "installed"
-	}
-	return strings.TrimSpace(section), strings.TrimSpace(id)
-}
-
 type skillDraftState struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`

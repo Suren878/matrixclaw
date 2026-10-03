@@ -19,7 +19,6 @@ func (d *Dispatcher) voiceLocalProviderThreadsPicker(ctx context.Context, module
 		threads int
 	}{{"auto", "Auto", 0}, {"2", "2 threads", 2}, {"4", "4 threads", 4}, {"8", "8 threads", 8}}
 	picker := NewPickerData(PickerVoiceProvider, "Threads").
-		Context(module.ID).
 		Back(voiceProviderSettingsBackCommand(module.ID, provider.ID))
 	for _, option := range options {
 		picker.Item(PickerItem{ID: option.id, Title: option.title, Selected: option.threads == provider.Config.Threads, Command: voiceModuleCommand(module.ID, "provider-set-local", provider.ID, "threads", option.id)})
@@ -36,7 +35,6 @@ func (d *Dispatcher) voiceLocalProviderRunModePicker(ctx context.Context, module
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerVoiceProvider, "Run Mode").
-			Context(module.ID).
 			Meta(voiceRunModeLabel(provider)).
 			Select(voiceProviderSettingsBackCommand(module.ID, provider.ID)).
 			Item(PickerItem{ID: "per-task", Title: voiceRunPerTaskTitle(provider), Selected: voiceRunModePerTaskSelected(provider), Command: voiceModuleCommand(module.ID, "provider-set-local", provider.ID, "runtime-mode", voiceRuntimeModePerTask)}).

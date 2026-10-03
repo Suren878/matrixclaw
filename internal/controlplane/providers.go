@@ -58,7 +58,7 @@ func (d *Dispatcher) handleProvider(ctx context.Context, args string) (Result, e
 
 	return Result{
 		Handled: true,
-		Picker:  NewPickerData(PickerProvider, "Provider").Items(providerPickerItems(providers, session, d.owner())...).Ptr(),
+		Picker:  NewPickerData(PickerProvider, "Provider").Command(providerCommand()).Items(providerPickerItems(providers, session, d.owner())...).Ptr(),
 	}, nil
 }
 

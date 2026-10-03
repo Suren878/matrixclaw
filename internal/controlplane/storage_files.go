@@ -40,7 +40,7 @@ func (d *Dispatcher) storageFilesPicker(ctx context.Context) (Result, error) {
 	}
 	return Result{
 		Handled: true,
-		Picker:  NewPickerData(PickerStorageFiles, "Stored Files").Back(storageCommand()).Items(items...).Ptr(),
+		Picker:  NewPickerData(PickerStorageFiles, "Stored Files").Command(storageFilesCommand()).Back(storageCommand()).Items(items...).Ptr(),
 	}, nil
 }
 
@@ -56,7 +56,6 @@ func (d *Dispatcher) storageFilePicker(ctx context.Context, storagePath string) 
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerStorageFile, "Storage File").
-			Context(read.File.Path).
 			Back(storageFilesCommand()).
 			Row("read", "Preview", storageFileTitle(read.File), storageReadCommand(read.File.Path)).
 			Danger("delete", "Delete", "", storageDeleteCommand(read.File.Path)).

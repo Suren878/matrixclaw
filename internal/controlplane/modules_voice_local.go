@@ -27,7 +27,6 @@ func (d *Dispatcher) voiceLocalProviderModelPicker(ctx context.Context, moduleID
 		}
 	}
 	picker := NewPickerData(PickerVoiceProvider, title).
-		Context(module.ID).
 		Back(voiceProviderSettingsBackCommand(module.ID, provider.ID))
 	models := provider.Models
 	if module.ID == setup.VoiceModuleTTS {
@@ -89,7 +88,6 @@ func (d *Dispatcher) voiceLocalProviderLanguagePicker(ctx context.Context, modul
 	if module.ID == setup.VoiceModuleTTS {
 		if provider.ID == "supertonic" {
 			picker := NewPickerData(PickerVoiceProvider, "Language").
-				Context(module.ID).
 				Back(voiceProviderSettingsBackCommand(module.ID, provider.ID))
 			current = normalizeSupertonicLanguageCode(provider.Config.Language)
 			for _, option := range supertonicLanguageOptions() {
@@ -99,7 +97,6 @@ func (d *Dispatcher) voiceLocalProviderLanguagePicker(ctx context.Context, modul
 		}
 		current = ttsLanguageCode(provider, provider.Config)
 		picker := NewPickerData(PickerVoiceProvider, "Add Voice").
-			Context(module.ID).
 			Back(voiceProviderSettingsBackCommand(module.ID, provider.ID))
 		for _, option := range voiceLanguageOptions(provider.Models) {
 			picker.Item(PickerItem{ID: option.id, Title: option.title, Info: option.info, Selected: option.id == current, Command: voiceModuleCommand(module.ID, "provider-model", provider.ID, option.id)})
@@ -107,7 +104,6 @@ func (d *Dispatcher) voiceLocalProviderLanguagePicker(ctx context.Context, modul
 		return Result{Handled: true, Picker: picker.Ptr()}, nil
 	}
 	picker := NewPickerData(PickerVoiceProvider, "Language").
-		Context(module.ID).
 		Back(voiceProviderSettingsBackCommand(module.ID, provider.ID))
 	for _, option := range whisperLanguageOptions() {
 		picker.Item(PickerItem{ID: option.id, Title: option.title, Selected: option.id == current, Command: voiceModuleCommand(module.ID, "provider-set-local", provider.ID, "language", option.id)})
@@ -132,7 +128,6 @@ func (d *Dispatcher) voiceInstalledLocalPicker(ctx context.Context, moduleID str
 		addTitle = "Add Model"
 	}
 	picker := NewPickerData(PickerVoiceProvider, title).
-		Context(module.ID).
 		Meta(activeLocalModelSummary(module.ID, provider)).
 		Back(voiceProviderSettingsBackCommand(module.ID, provider.ID))
 	if len(installed) == 0 {
@@ -171,7 +166,6 @@ func (d *Dispatcher) voiceInstalledLocalActionPicker(ctx context.Context, module
 	}
 	active := strings.EqualFold(activeLocalModelID(module.ID, provider), model.ID)
 	picker := NewPickerData(PickerVoiceProvider, firstNonEmptyTrimmed(model.Name, model.ID)).
-		Context(module.ID).
 		Meta(localModelActionMeta(module.ID, provider, model)).
 		Back(voiceModuleCommand(module.ID, "provider-installed", provider.ID))
 	picker.Item(PickerItem{

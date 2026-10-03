@@ -33,7 +33,7 @@ func (d *Dispatcher) tasksPicker(ctx context.Context) (Result, error) {
 	items = append(items, PickerItem{ID: "archive", Title: "Archive", Info: archiveInfo, Command: tasksArchiveCommand()})
 	return Result{
 		Handled: true,
-		Picker:  NewPickerData(PickerTasks, "Tasks").Items(items...).Ptr(),
+		Picker:  NewPickerData(PickerTasks, "Tasks").Command(tasksCommand()).Items(items...).Ptr(),
 	}, nil
 }
 
@@ -57,7 +57,7 @@ func (d *Dispatcher) tasksArchivePicker(ctx context.Context) (Result, error) {
 	}
 	return Result{
 		Handled: true,
-		Picker:  NewPickerData(PickerTaskArchive, "Task Archive").Back(tasksCommand()).Items(items...).Ptr(),
+		Picker:  NewPickerData(PickerTaskArchive, "Task Archive").Command(tasksArchiveCommand()).Back(tasksCommand()).Items(items...).Ptr(),
 	}, nil
 }
 
@@ -85,7 +85,6 @@ func (d *Dispatcher) taskActionsPicker(ctx context.Context, jobID string) (Resul
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerTaskActions, taskListTitle(job)).
-			Context(job.ID).
 			Back(tasksCommand()).
 			Items(items...).
 			Ptr(),

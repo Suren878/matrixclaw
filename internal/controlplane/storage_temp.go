@@ -40,7 +40,7 @@ func (d *Dispatcher) storageTempPicker(ctx context.Context) (Result, error) {
 	})
 	return Result{
 		Handled: true,
-		Picker:  NewPickerData(PickerStorageTemp, "Temporary Files").Back(storageCommand()).Items(items...).Ptr(),
+		Picker:  NewPickerData(PickerStorageTemp, "Temporary Files").Command(storageTempCommand()).Back(storageCommand()).Items(items...).Ptr(),
 	}, nil
 }
 
@@ -52,7 +52,6 @@ func (d *Dispatcher) storageTempFilePicker(ctx context.Context, tempPath string)
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerStorageTempFile, "Temporary File").
-			Context(tempPath).
 			Back(storageTempCommand()).
 			Row("promote", "Save", tempPath, storageTempPromoteCommand(tempPath)).
 			Danger("delete", "Delete", "", storageTempDeleteCommand(tempPath)).

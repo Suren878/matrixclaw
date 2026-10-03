@@ -35,7 +35,6 @@ func (d *Dispatcher) telephonyPicker(ctx context.Context) (Result, error) {
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerTelephony, module.Title).
-			Context(module.ID).
 			Back(modulesCommand()).
 			Row("enabled", "Enabled", formatEnabled(module.Enabled), telephonyCommand("enabled")).
 			Row("gateway", "Gateway URL", telephonyGatewayURLStatus(module), telephonyCommand("field", "gateway-url")).
@@ -55,7 +54,6 @@ func (d *Dispatcher) telephonyEnabledPicker(ctx context.Context) (Result, error)
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerTelephony, "Telephony Enabled").
-			Context(module.ID).
 			Meta(module.Status).
 			Select(telephonyCommand()).
 			Item(PickerItem{ID: "on", Title: "On", Info: "Use telephony gateway for calls", Selected: module.Enabled, Disabled: strings.TrimSpace(module.GatewayURL) == "", Command: telephonyCommand("set-enabled", "on")}).

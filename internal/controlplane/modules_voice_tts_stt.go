@@ -17,7 +17,6 @@ func voiceLocalTTSPicker(module setup.VoiceModuleDescriptor, provider setup.Voic
 		voiceInfo = voiceModelName(provider, active.ID)
 	}
 	picker := NewPickerData(PickerVoiceProvider, provider.Name).
-		Context(module.ID).
 		Meta("Local TTS").
 		Back(voiceProviderSettingsBackCommand(module.ID, provider.ID))
 	picker.Item(voiceLocalRuntimeEngineItem(module.ID, provider, presentation))
@@ -41,7 +40,6 @@ func voiceLocalSharedRuntimeTTSPicker(module setup.VoiceModuleDescriptor, provid
 	languageInfo := voiceLanguageStatus(provider.Config.Language)
 	voiceInfo := voiceModelName(provider, firstNonEmptyTrimmed(provider.Config.VoiceID, defaultVoice))
 	picker := NewPickerData(PickerVoiceProvider, provider.Name).
-		Context(module.ID).
 		Meta("Local TTS").
 		Back(voiceProviderSettingsBackCommand(module.ID, provider.ID))
 	picker.Item(voiceLocalRuntimeEngineItem(module.ID, provider, presentation))
@@ -69,7 +67,6 @@ func voiceLocalSTTPicker(module setup.VoiceModuleDescriptor, provider setup.Voic
 		modelInfo = voiceModelName(provider, active.ID)
 	}
 	picker := NewPickerData(PickerVoiceProvider, provider.Name).
-		Context(module.ID).
 		Meta("Local STT").
 		Back(voiceProviderSettingsBackCommand(module.ID, provider.ID))
 	picker.Item(voiceLocalRuntimeEngineItem(module.ID, provider, presentation))

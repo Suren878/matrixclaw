@@ -7,13 +7,11 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-
-	"github.com/Suren878/matrixclaw/internal/controlplane"
 )
 
 const (
-	callbackKindCommand controlplane.PickerKind = "confirm"
-	callbackKindDismiss controlplane.PickerKind = "dismiss"
+	callbackKindCommand = "confirm"
+	callbackKindDismiss = "dismiss"
 )
 
 func commandCallbackData(command string) string {
@@ -24,11 +22,12 @@ func commandCallbackData(command string) string {
 	return cbPicker + string(callbackKindCommand) + ":" + url.QueryEscape(command) + ":"
 }
 
-func pickerPageCallbackData(kind controlplane.PickerKind, contextID string, page int) string {
-	return cbPickerPage + string(kind) + ":" + url.QueryEscape(strings.TrimSpace(contextID)) + ":" + fmt.Sprint(page)
+// pickerPageCallbackData shows page of the picker that command shows.
+func pickerPageCallbackData(command string, page int) string {
+	return cbPickerPage + url.QueryEscape(strings.TrimSpace(command)) + ":" + fmt.Sprint(page)
 }
 
-func parsePickerCallbackData(data string) (controlplane.PickerKind, string, bool) {
+func parsePickerCallbackData(data string) (string, string, bool) {
 	payload := strings.TrimSpace(strings.TrimPrefix(data, cbPicker))
 	parts := strings.SplitN(payload, ":", 3)
 	if len(parts) != 3 {
@@ -38,24 +37,21 @@ func parsePickerCallbackData(data string) (controlplane.PickerKind, string, bool
 	if !ok {
 		return "", "", false
 	}
-	return controlplane.PickerKind(strings.TrimSpace(parts[0])), command, true
+	return strings.TrimSpace(parts[0]), command, true
 }
 
-func parsePickerPageCallbackData(data string) (controlplane.PickerKind, string, int, bool) {
+func parsePickerPageCallbackData(data string) (string, int, bool) {
 	payload := strings.TrimSpace(strings.TrimPrefix(data, cbPickerPage))
-	parts := strings.SplitN(payload, ":", 3)
-	if len(parts) != 3 {
-		return "", "", 0, false
-	}
-	page, err := strconv.Atoi(strings.TrimSpace(parts[2]))
-	if err != nil {
-		return "", "", 0, false
-	}
-	contextID, ok := unescapeCallbackPart(parts[1])
+	escaped, rawPage, ok := strings.Cut(payload, ":")
 	if !ok {
-		return "", "", 0, false
+		return "", 0, false
 	}
-	return controlplane.PickerKind(strings.TrimSpace(parts[0])), contextID, page, true
+	page, err := strconv.Atoi(strings.TrimSpace(rawPage))
+	if err != nil {
+		return "", 0, false
+	}
+	command, ok := unescapeCallbackPart(escaped)
+	return command, page, ok
 }
 
 func unescapeCallbackPart(value string) (string, bool) {

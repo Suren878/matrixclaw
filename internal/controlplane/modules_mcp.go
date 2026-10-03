@@ -59,6 +59,7 @@ func (d *Dispatcher) mcpPicker(ctx context.Context) (Result, error) {
 	}
 	servers := externalMCPServers(resp.Config.Servers)
 	picker := NewPickerData(PickerMCP, "External MCP Servers").
+		Command(mcpCommand()).
 		Back(modulesCommand()).
 		Row("enabled", "External MCP", formatEnabled(resp.Config.Enabled), mcpCommand("enabled")).
 		Action("add", "Add Server", "", mcpCommand("add"))
@@ -147,7 +148,6 @@ func (d *Dispatcher) mcpServerPicker(ctx context.Context, serverID string) (Resu
 		return Result{Handled: true, Text: "MCP server not found: " + strings.TrimSpace(serverID)}, nil
 	}
 	return Result{Handled: true, Picker: NewPickerData(PickerMCPServer, mcpServerTitle(server)).
-		Context(server.ID).
 		Meta(mcpServerInfoText(server)).
 		Back(mcpCommand()).
 		Row("enabled", "Enabled", formatEnabled(server.Enabled), mcpServerCommand(server.ID, "enabled")).
@@ -226,7 +226,6 @@ func (d *Dispatcher) mcpServerEnabledPicker(ctx context.Context, serverID string
 		return Result{Handled: true, Text: "MCP server not found: " + strings.TrimSpace(serverID)}, nil
 	}
 	return Result{Handled: true, Picker: NewPickerData(PickerMCPServer, mcpServerTitle(server)).
-		Context(server.ID).
 		Meta("Currently " + strings.ToLower(formatEnabled(server.Enabled))).
 		Select(mcpServerCommand(server.ID)).
 		Item(PickerItem{ID: "on", Title: "On", Selected: server.Enabled, Command: mcpServerCommand(server.ID, "set-enabled", "on")}).

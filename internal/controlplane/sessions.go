@@ -23,7 +23,7 @@ func (d *Dispatcher) handleSessions(ctx context.Context) (Result, error) {
 	if session != nil {
 		currentSessionID = session.ID
 	}
-	picker := NewPickerData(PickerSessions, "Sessions")
+	picker := NewPickerData(PickerSessions, "Sessions").Command(sessionsCommand())
 	picker.Item(PickerItem{
 		ID:      "new",
 		Title:   "New Session",
@@ -279,7 +279,6 @@ func (d *Dispatcher) sessionMenuPicker(session core.Session) *PickerData {
 		title = session.ID
 	}
 	picker := NewPickerData(PickerSessionActions, "Session: "+title).
-		Context(session.ID).
 		Back(sessionsCommand()).
 		Row("use", "Use", "Make active", sessionUseCommand(session.ID))
 	picker.Row("model", "Model", sessionModelInfo(session), sessionModelCommand(session.ID))
@@ -369,8 +368,8 @@ func (d *Dispatcher) handleSessionModel(ctx context.Context, sessionID string) (
 func sessionModelPicker(sessionID string, response core.SessionModelsResponse) *PickerData {
 	current := strings.TrimSpace(response.ModelID)
 	picker := NewPickerData(PickerSessionModels, "Model").
+		Command(sessionModelCommand(sessionID)).
 		Meta(current).
-		Context(sessionID).
 		Select(sessionMenuCommand(sessionID))
 	for _, modelID := range response.Models {
 		modelID = strings.TrimSpace(modelID)

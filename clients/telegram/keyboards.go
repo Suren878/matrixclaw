@@ -1,7 +1,6 @@
 package telegram
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/controlplane"
@@ -27,40 +26,6 @@ func approvalKeyboard(approval core.Approval, session bool, global bool) *Inline
 	return &InlineKeyboardMarkup{InlineKeyboard: rows}
 }
 
-func pickerKeyboardView(picker controlplane.PickerData, view controlplane.ResultView) *InlineKeyboardMarkup {
-	rows := make([][]InlineKeyboardButton, 0, len(view.Items)+1)
-	for _, item := range view.Items {
-		rows = append(rows, []InlineKeyboardButton{pickerButton(item)})
-	}
-	if view.Paging.Pages > 1 {
-		var nav []InlineKeyboardButton
-		if view.Paging.Page > 0 {
-			nav = append(nav, InlineKeyboardButton{Text: "‹ Prev", CallbackData: pickerPageCallbackData(picker.Kind, picker.ContextID, view.Paging.Page-1)})
-		}
-		nav = append(nav, InlineKeyboardButton{Text: fmt.Sprintf("%d/%d", view.Paging.Page+1, view.Paging.Pages), CallbackData: pickerPageCallbackData(picker.Kind, picker.ContextID, view.Paging.Page)})
-		if view.Paging.Page < view.Paging.Pages-1 {
-			nav = append(nav, InlineKeyboardButton{Text: "Next ›", CallbackData: pickerPageCallbackData(picker.Kind, picker.ContextID, view.Paging.Page+1)})
-		}
-		rows = append(rows, nav)
-	}
-	if view.Footer != nil && !view.Footer.Hidden {
-		rows = append(rows, []InlineKeyboardButton{footerButton(*view.Footer)})
-	}
-	return &InlineKeyboardMarkup{InlineKeyboard: rows}
-}
-
-func pickerButton(item controlplane.ResultViewItem) InlineKeyboardButton {
-	return clippedCommandButton(item.Label, item.Command)
-}
-
-func footerButton(footer controlplane.ResultViewFooter) InlineKeyboardButton {
-	label := strings.TrimSpace(footer.Label)
-	if label == "" {
-		label = "Close"
-	}
-	return commandButton("‹ "+label, footer.Command)
-}
-
 func formKeyboard(form controlplane.FormData) *InlineKeyboardMarkup {
 	rows := make([][]InlineKeyboardButton, 0, len(form.Fields)+1)
 	for _, field := range form.Fields {
@@ -84,19 +49,6 @@ func confirmKeyboard(confirm controlplane.ConfirmData) *InlineKeyboardMarkup {
 			{
 				commandButton("✅ "+firstNonEmpty(confirm.ConfirmLabel, "Confirm"), confirm.ConfirmCommand),
 				commandButton("✖️ "+firstNonEmpty(confirm.CancelLabel, "Close"), confirm.CancelCommand),
-			},
-		},
-	}
-}
-
-func infoKeyboard(footer *controlplane.ResultViewFooter) *InlineKeyboardMarkup {
-	if footer == nil || footer.Hidden {
-		return nil
-	}
-	return &InlineKeyboardMarkup{
-		InlineKeyboard: [][]InlineKeyboardButton{
-			{
-				footerButton(*footer),
 			},
 		},
 	}

@@ -61,7 +61,7 @@ func (d *Dispatcher) handleBackgroundTask(ctx context.Context, args string) (Res
 		if !backgroundTaskFinished(task) {
 			items = append(items, PickerItem{ID: "stop", Title: "Stop", Command: tasksCommand("bg", task.ID, "stop"), Role: PickerItemRoleDanger})
 		}
-		return Result{Handled: true, Picker: NewPickerData(PickerTaskActions, backgroundTaskTitle(task)).Context(task.ID).Back(tasksCommand()).Items(items...).Ptr()}, nil
+		return Result{Handled: true, Picker: NewPickerData(PickerTaskActions, backgroundTaskTitle(task)).Back(tasksCommand()).Items(items...).Ptr()}, nil
 	case "output":
 		info := backgroundTaskInfo(detail)
 		return Result{Handled: true, Info: &info}, nil

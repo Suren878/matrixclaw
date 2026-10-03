@@ -21,7 +21,6 @@ func (d *Dispatcher) voiceModuleProviderPicker(ctx context.Context, moduleID str
 		return d.voiceModuleEnabledPicker(ctx, moduleID)
 	}
 	picker := NewPickerData(PickerVoiceProvider, module.Title+" Provider").
-		Context(module.ID).
 		Meta("Currently " + module.ProviderName).
 		Back(voiceModuleCommand(module.ID))
 	for _, provider := range module.Providers {
@@ -48,7 +47,6 @@ func (d *Dispatcher) voiceModuleProviderSelectPicker(ctx context.Context, module
 		title = "STT Provider"
 	}
 	picker := NewPickerData(PickerVoiceProvider, title).
-		Context(module.ID).
 		Select(voiceModuleCommand(module.ID)).
 		Item(PickerItem{
 			ID:       "disabled",

@@ -19,17 +19,23 @@ type State struct {
 }
 
 func Entries(state State) []surfacedialog.PickerEntry {
-	menu := controlplane.CommandMenuView(controlplane.SurfaceTerminal, controlplane.MenuState{
+	items := controlplane.Menu(controlplane.MenuState{
 		SessionTitle:   state.SessionTitle,
 		ProviderID:     state.ProviderID,
 		ModelID:        state.ModelID,
 		PermissionMode: state.PermissionMode,
 		Capabilities:   state.Capabilities,
 	})
-
-	entries := make([]surfacedialog.PickerEntry, 0, 12)
-	for _, item := range menu.Items {
-		entries = append(entries, commandEntry(item))
+	entries := make([]surfacedialog.PickerEntry, 0, len(items)+2)
+	for _, item := range items {
+		entries = append(entries, surfacedialog.PickerEntry{
+			ID:       item.ID,
+			Title:    item.Title,
+			Status:   item.Info,
+			Tone:     components.RowToneNormal,
+			Disabled: item.Disabled,
+			Action:   surfacedialog.ActionRunControlplaneCommand{Command: item.Command},
+		})
 	}
 	if state.ExternalEditorAvailable {
 		entries = append(entries, surfacedialog.PickerEntry{ID: "open_external_editor", Title: "External Editor", Shortcut: "ctrl+o", Action: surfacedialog.ActionExternalEditor{}})
@@ -38,99 +44,74 @@ func Entries(state State) []surfacedialog.PickerEntry {
 	return entries
 }
 
-func commandEntry(item controlplane.ResultViewItem) surfacedialog.PickerEntry {
-	return surfacedialog.PickerEntry{
-		ID:       item.ID,
-		Title:    item.Title,
-		Status:   item.Info,
-		Tone:     components.RowToneNormal,
-		Disabled: item.Disabled,
-		Action:   surfacedialog.ActionRunControlplaneCommand{Command: item.Command},
-	}
-}
-
-func PickerEntries(view controlplane.PickerViewData) []surfacedialog.PickerEntry {
-	return pickerEntries(view, true)
-}
-
-func PickerRows(view controlplane.PickerViewData) []surfacedialog.PickerEntry {
-	return pickerEntries(view, false)
-}
-
-func pickerEntries(view controlplane.PickerViewData, includeFooter bool) []surfacedialog.PickerEntry {
-	entries := make([]surfacedialog.PickerEntry, 0, len(view.Items)+1)
-	for _, presented := range view.Items {
-		if presented.SeparatorBefore && len(entries) > 0 && entries[len(entries)-1].Kind != surfacedialog.ListEntryDivider && entries[len(entries)-1].Kind != surfacedialog.ListEntryHeader {
-			entries = append(entries, surfacedialog.PickerEntry{Kind: surfacedialog.ListEntryDivider, ID: "divider_" + presented.ID})
+// PickerEntries are a picker's rows, with a line above actions and danger
+// rows, and its Back button when it has one.
+func PickerEntries(picker controlplane.PickerData) []surfacedialog.PickerEntry {
+	entries := make([]surfacedialog.PickerEntry, 0, len(picker.Items)+1)
+	for _, item := range picker.Items {
+		if item.NeedsSeparator() && len(entries) > 0 {
+			entries = append(entries, surfacedialog.PickerEntry{Kind: surfacedialog.ListEntryDivider, ID: "divider_" + item.ID})
+		}
+		tone := components.RowToneNormal
+		if item.Selected {
+			tone = components.RowToneAccent
+		}
+		var action surfacedialog.Action = surfacedialog.ActionClose{}
+		if command := strings.TrimSpace(item.Command); command != "" {
+			action = surfacedialog.ActionRunControlplaneCommand{Command: command}
 		}
 		entries = append(entries, surfacedialog.PickerEntry{
-			ID:       presented.ID,
-			Title:    presented.Title,
-			Status:   presented.Info,
-			Search:   presented.Search,
+			ID:       item.ID,
+			Title:    firstNonEmpty(item.Title, item.ID),
+			Status:   strings.TrimSpace(item.Info),
+			Search:   firstNonEmpty(item.Search, item.Title+" "+item.Info),
 			Role:     components.RoleNormal,
-			Tone:     pickerEntryTone(presented),
-			Selected: presented.Selected || presented.Focused,
-			Disabled: presented.Disabled,
-			Action:   pickerItemAction(presented),
+			Tone:     tone,
+			Selected: item.Selected || item.Focused,
+			Disabled: item.Disabled,
+			Action:   action,
 		})
 	}
-	if includeFooter {
-		if footer := pickerFooterEntry(view.Footer); footer != nil {
-			entries = append(entries, *footer)
-		}
+	if picker.Back != "" {
+		entries = append(entries, surfacedialog.PickerEntry{
+			ID:     "footer_back",
+			Title:  "Back",
+			Role:   components.RoleBack,
+			Footer: true,
+			Action: surfacedialog.ActionRunControlplaneCommand{Command: picker.Back},
+		})
 	}
 	return entries
 }
 
-func pickerEntryTone(presented controlplane.ResultViewItem) components.RowTone {
-	if presented.Selected {
-		return components.RowToneAccent
-	}
-	return components.RowToneNormal
-}
-
-func pickerFooterEntry(footer *controlplane.ResultViewFooter) *surfacedialog.PickerEntry {
-	if footer == nil {
-		return nil
-	}
-	if footer.Hidden {
-		return nil
-	}
-	label := strings.TrimSpace(footer.Label)
-	if label == "" {
-		label = "Close"
-	}
-	role := components.RoleCancel
-	if footer.Kind == controlplane.FooterBack {
-		role = components.RoleBack
-	}
-	return &surfacedialog.PickerEntry{
-		ID:     "footer_" + string(footer.Kind),
-		Title:  label,
-		Role:   role,
-		Footer: true,
-		Action: footerAction(footer),
-	}
-}
-
-func pickerItemAction(item controlplane.ResultViewItem) surfacedialog.Action {
-	if strings.TrimSpace(item.Command) == "" {
-		return surfacedialog.ActionClose{}
-	}
-	return surfacedialog.ActionRunControlplaneCommand{Command: item.Command}
-}
-
-func PickerCloseAction(view controlplane.PickerViewData) surfacedialog.Action {
-	return footerAction(view.Footer)
-}
-
-func footerAction(footer *controlplane.ResultViewFooter) surfacedialog.Action {
-	if footer == nil {
-		return surfacedialog.ActionClose{}
-	}
-	if command := strings.TrimSpace(footer.Command); command != "" {
+// PickerCloseAction is what dismissing the picker does: go back, run its
+// close command, or just close.
+func PickerCloseAction(picker controlplane.PickerData) surfacedialog.Action {
+	if command := firstNonEmpty(picker.Back, picker.Close); command != "" {
 		return surfacedialog.ActionRunControlplaneCommand{Command: command}
 	}
 	return surfacedialog.ActionClose{}
+}
+
+// PickerLegend names the keys of a picker opened as a menu.
+func PickerLegend(kind controlplane.PickerKind) string {
+	switch kind {
+	case controlplane.PickerSessions:
+		return "enter open · esc back"
+	case controlplane.PickerSessionActions, controlplane.PickerProviderActions, controlplane.PickerContext, controlplane.PickerTasks, controlplane.PickerTaskActions, controlplane.PickerTaskArchive, controlplane.PickerServer:
+		return "enter run · esc back"
+	case controlplane.PickerPermissions:
+		return "enter apply · esc back"
+	default:
+		return "enter select · esc back"
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
 }

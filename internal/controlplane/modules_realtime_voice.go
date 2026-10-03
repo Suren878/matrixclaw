@@ -49,7 +49,6 @@ func (d *Dispatcher) realtimeVoicePicker(ctx context.Context) (Result, error) {
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerRealtimeVoice, module.Title).
-			Context(module.ID).
 			Back(modulesCommand()).
 			Item(PickerItem{
 				ID:       "provider",
@@ -72,7 +71,6 @@ func (d *Dispatcher) realtimeVoiceEnabledPicker(ctx context.Context) (Result, er
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerRealtimeVoice, module.Title).
-			Context(module.ID).
 			Meta("Module is " + strings.ToLower(formatEnabled(module.Enabled))).
 			Select(realtimeVoiceCommand()).
 			Item(PickerItem{ID: "on", Title: "On", Info: realtimeVoiceEnableInfo(module), Selected: module.Enabled, Disabled: !realtimeVoiceModuleReady(module), Command: realtimeVoiceCommand("set-enabled", "on")}).
@@ -112,7 +110,6 @@ func (d *Dispatcher) realtimeVoiceProviderPicker(ctx context.Context) (Result, e
 		return Result{}, err
 	}
 	picker := NewPickerData(PickerVoiceProvider, "Realtime Voice Provider").
-		Context(module.ID).
 		Select(realtimeVoiceCommand()).
 		Item(PickerItem{
 			ID:       "disabled",

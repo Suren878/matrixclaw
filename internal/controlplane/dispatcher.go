@@ -40,7 +40,7 @@ func (d *Dispatcher) Handle(ctx context.Context, text string) (Result, error) {
 
 	switch spec.ID {
 	case CommandHelp:
-		return Result{Handled: true, Picker: CommandMenuPicker(MenuState{})}, nil
+		return Result{Handled: true, Picker: commandMenuPicker()}, nil
 	case CommandNewSession:
 		return d.handleNewSession(ctx, args)
 	case CommandSessions:

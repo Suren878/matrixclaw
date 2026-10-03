@@ -59,7 +59,7 @@ func (d *Dispatcher) handlePermissions(ctx context.Context, args string) (Result
 // permissionsPicker offers the permission modes and lists the session's rules;
 // choosing a rule deletes it.
 func (d *Dispatcher) permissionsPicker(ctx context.Context, session core.Session) (Result, error) {
-	picker := NewPickerData(PickerPermissions, "Permissions").Context(session.ID).Select("").Items(permissionModeItems(session.PermissionMode)...)
+	picker := NewPickerData(PickerPermissions, "Permissions").Select("").Items(permissionModeItems(session.PermissionMode)...)
 	rules, err := d.daemon.SessionPermissionRules(ctx, session.ID)
 	if err != nil {
 		return Result{}, err

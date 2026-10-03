@@ -81,12 +81,8 @@ func (w *Worker) handlePickerCallback(ctx context.Context, target chatTarget, cq
 }
 
 func (w *Worker) handlePickerPageCallback(ctx context.Context, target chatTarget, cq *CallbackQuery) error {
-	kind, contextID, page, ok := parsePickerPageCallbackData(cq.Data)
-	if !ok {
-		return nil
-	}
-	command := controlplane.PickerPageCommand(kind, contextID)
-	if strings.TrimSpace(command) == "" {
+	command, page, ok := parsePickerPageCallbackData(cq.Data)
+	if !ok || strings.TrimSpace(command) == "" {
 		return nil
 	}
 	return w.dispatchCommandAndEditPage(ctx, target, cq.Message.MessageID, command, page)

@@ -5,10 +5,21 @@ import (
 	"strings"
 )
 
+// BotCommands are the commands a client lists by name: the menu ones and /help.
+func BotCommands() []CommandSpec {
+	var out []CommandSpec
+	for _, spec := range Catalog() {
+		if spec.Public && (spec.Menu || spec.ID == CommandHelp) {
+			out = append(out, spec)
+		}
+	}
+	return out
+}
+
 func HelpText() string {
 	lines := []string{"Commands:"}
-	for _, view := range CommandMenuView(SurfaceTelegramBotCommands, MenuState{}).Items {
-		lines = append(lines, view.Command+" - "+view.Title)
+	for _, spec := range BotCommands() {
+		lines = append(lines, spec.Command+" - "+spec.Title)
 	}
 	return strings.Join(lines, "\n")
 }

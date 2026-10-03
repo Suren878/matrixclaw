@@ -34,7 +34,6 @@ type CommandSpec struct {
 	Command string
 	Aliases []string
 	Title   string
-	Group   MenuItemGroup
 	Menu    bool
 	Public  bool
 }
@@ -45,18 +44,18 @@ var commandCatalog = []CommandSpec{
 	{ID: CommandSession, Command: "/session", Title: "Session commands"},
 	{ID: CommandProvider, Command: "/provider", Title: "Provider", Menu: true, Public: true},
 	{ID: CommandPermissions, Command: "/permissions", Aliases: []string{"mode"}, Title: "Permission Mode", Menu: true, Public: true},
-	{ID: CommandContext, Command: "/context", Title: "Context", Group: MenuItemGroupSecondary, Menu: true, Public: true},
+	{ID: CommandContext, Command: "/context", Title: "Context", Menu: true, Public: true},
 	{ID: CommandUsage, Command: "/usage", Title: "Token usage", Public: true},
 	{ID: CommandContinue, Command: "/continue", Title: "Continue the last run", Public: true},
 	{ID: CommandBudget, Command: "/budget", Title: "Run budget", Public: true},
 	{ID: CommandTodo, Command: "/todo", Title: "Todo", Menu: true, Public: true},
-	{ID: CommandMemory, Command: "/memory", Title: "Memory", Group: MenuItemGroupSecondary, Menu: true, Public: true},
+	{ID: CommandMemory, Command: "/memory", Title: "Memory", Menu: true, Public: true},
 	{ID: CommandSearch, Command: "/search", Title: "Search history", Public: true},
 	{ID: CommandSkills, Command: "/skills", Title: "Session skills", Menu: true, Public: true},
-	{ID: CommandModules, Command: "/modules", Title: "Modules", Group: MenuItemGroupSecondary, Menu: true, Public: true},
+	{ID: CommandModules, Command: "/modules", Title: "Modules", Menu: true, Public: true},
 	{ID: CommandRemind, Command: "/remind", Title: "Reminder", Public: true},
 	{ID: CommandTasks, Command: "/tasks", Title: "Tasks", Menu: true, Public: true},
-	{ID: CommandServer, Command: "/server", Title: "Server", Group: MenuItemGroupSecondary, Menu: true, Public: true},
+	{ID: CommandServer, Command: "/server", Title: "Server", Menu: true, Public: true},
 	{ID: CommandStatus, Command: "/status", Title: "Server Status", Public: true},
 	{ID: CommandRestart, Command: "/restart", Title: "Restart Daemon", Public: true},
 	{ID: CommandStop, Command: "/stop", Title: "Stop Daemon", Public: true},
@@ -125,26 +124,21 @@ const (
 	PickerWebSearchProvider PickerKind = "web_search_provider"
 )
 
+// PickerData is a list screen; clients render it as they see fit (Telegram
+// buttons, a terminal menu) from these fields alone.
 type PickerData struct {
-	Kind         PickerKind
-	ContextID    string
-	Title        string
-	Meta         string
-	BackCommand  string
-	CloseCommand string
-	HasBack      bool
-	HasClose     bool
-	Popup        bool
-	Select       bool
-	Items        []PickerItem
+	Kind  PickerKind
+	Title string
+	Meta  string
+	// Command shows the picker again (Telegram pages with it); empty when
+	// the picker cannot be repeated, and then it is shown unpaged.
+	Command string
+	Back    string // command of a Back button; empty for none
+	// Popup is a choice that closes once picked; Close runs on dismissal.
+	Popup bool
+	Close string
+	Items []PickerItem
 }
-
-type MenuItemGroup string
-
-const (
-	MenuItemGroupPrimary   MenuItemGroup = ""
-	MenuItemGroupSecondary MenuItemGroup = "secondary"
-)
 
 type PickerItemRole string
 
@@ -166,14 +160,7 @@ type PickerItem struct {
 	Role     PickerItemRole
 }
 
-func (item PickerItem) IsDanger() bool {
-	return item.Role == PickerItemRoleDanger
-}
-
-func (item PickerItem) IsAction() bool {
-	return item.Role == PickerItemRoleAction
-}
-
+// NeedsSeparator reports whether a list draws a line above item.
 func (item PickerItem) NeedsSeparator() bool {
 	switch item.Role {
 	case PickerItemRoleDanger, PickerItemRoleAction:

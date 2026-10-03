@@ -21,7 +21,6 @@ func (d *Dispatcher) realtimeVoiceSetupPicker(ctx context.Context, providerID st
 		return d.realtimeVoiceSetupProviderPicker(module), nil
 	}
 	picker := NewPickerData(PickerRealtimeVoice, provider.Name+" Setup").
-		Context(module.ID).
 		Back(realtimeVoiceCommand("setup")).
 		Row("key", "API Key", realtimeVoiceAPIKeyStatus(provider), realtimeVoiceCommand("setup-field", "key", provider.ID)).
 		Row("model", "Model", realtimeVoiceModelStatus(provider), realtimeVoiceCommand("model", provider.ID)).
@@ -34,7 +33,6 @@ func (d *Dispatcher) realtimeVoiceSetupPicker(ctx context.Context, providerID st
 
 func (d *Dispatcher) realtimeVoiceSetupProviderPicker(module realtime.ModuleDescriptor) Result {
 	picker := NewPickerData(PickerVoiceProvider, "Realtime Voice Provider").
-		Context(module.ID).
 		Back(realtimeVoiceCommand())
 	for _, provider := range module.Providers {
 		selected := module.Enabled && module.ProviderID == provider.ID
@@ -65,7 +63,6 @@ func (d *Dispatcher) realtimeVoiceModelPicker(ctx context.Context, providerID st
 	current := strings.TrimSpace(provider.Config.ModelID)
 	models := realtimeVoiceModelCandidates(provider)
 	picker := NewPickerData(PickerVoiceProvider, provider.Name+" Model").
-		Context(module.ID).
 		Select(realtimeVoiceCommand("setup", provider.ID))
 	if message := realtimeVoiceModelUnavailableMessage(provider, models); message != "" {
 		picker.Item(PickerItem{
@@ -99,7 +96,6 @@ func (d *Dispatcher) realtimeVoiceVoicePicker(ctx context.Context, providerID st
 	current := realtimeVoiceVoiceStatus(provider)
 	voices := realtimeVoiceVoiceCandidates(provider)
 	picker := NewPickerData(PickerVoiceProvider, provider.Name+" Voice").
-		Context(module.ID).
 		Select(realtimeVoiceCommand("setup", provider.ID))
 	if len(voices) == 0 {
 		picker.Item(PickerItem{
@@ -132,7 +128,6 @@ func (d *Dispatcher) realtimeVoiceLanguagePicker(ctx context.Context, providerID
 	}
 	current := provider.Config.Language
 	picker := NewPickerData(PickerVoiceProvider, provider.Name+" Language").
-		Context(module.ID).
 		Select(realtimeVoiceCommand("setup", provider.ID))
 	for _, language := range provider.Languages {
 		picker.Item(PickerItem{
@@ -156,7 +151,6 @@ func (d *Dispatcher) realtimeVoiceAdvancedPicker(ctx context.Context, providerID
 	}
 	cfg := provider.Config
 	picker := NewPickerData(PickerRealtimeVoice, provider.Name+" Advanced").
-		Context(module.ID).
 		Back(realtimeVoiceCommand("setup", provider.ID)).
 		Row("key-env", "API Key Env", realtimeVoiceAPIKeyEnvStatus(cfg.APIKeyEnv), realtimeVoiceCommand("setup-field", "key-env", provider.ID)).
 		Row("endpoint", "Endpoint", realtimeVoiceEndpointStatus(cfg.Endpoint), realtimeVoiceCommand("setup-field", "endpoint", provider.ID))

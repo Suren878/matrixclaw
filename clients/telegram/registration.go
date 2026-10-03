@@ -8,12 +8,12 @@ import (
 )
 
 func (w *Worker) registerCommands(ctx context.Context) {
-	menu := controlplane.CommandMenuView(controlplane.SurfaceTelegramBotCommands, controlplane.MenuState{})
-	commands := make([]BotCommand, len(menu.Items))
-	for index, item := range menu.Items {
+	specs := controlplane.BotCommands()
+	commands := make([]BotCommand, len(specs))
+	for index, spec := range specs {
 		commands[index] = BotCommand{
-			Command:     controlplane.CommandName(item.Command),
-			Description: item.Title,
+			Command:     controlplane.CommandName(spec.Command),
+			Description: spec.Title,
 		}
 	}
 	if err := w.api.SetMyCommands(ctx, SetMyCommandsRequest{Commands: commands}); err != nil {

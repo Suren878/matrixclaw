@@ -48,10 +48,10 @@ func (d *Dispatcher) currentSessionID(ctx context.Context) (string, error) {
 }
 
 func (d *Dispatcher) sessionSkillsPicker(ctx context.Context, sessionID string) (Result, error) {
-	return d.sessionSkillsPickerWithBack(ctx, sessionID, "Skills", "")
+	return d.sessionSkillsPickerWithBack(ctx, sessionID, "Skills", sessionSkillsCommand(), "")
 }
 
-func (d *Dispatcher) sessionSkillsPickerWithBack(ctx context.Context, sessionID string, title string, backCommand string) (Result, error) {
+func (d *Dispatcher) sessionSkillsPickerWithBack(ctx context.Context, sessionID string, title string, command string, backCommand string) (Result, error) {
 	available, err := d.daemon.ListSkills(ctx, skills.SearchOptions{Limit: 200})
 	if err != nil {
 		return Result{}, err
@@ -62,6 +62,7 @@ func (d *Dispatcher) sessionSkillsPickerWithBack(ctx context.Context, sessionID 
 	}
 	activeSet := skillIDSet(active)
 	picker := NewPickerData(PickerSessionSkills, title).
+		Command(command).
 		Meta(sessionSkillsMeta(active))
 	if strings.TrimSpace(backCommand) != "" {
 		picker.Back(backCommand)
@@ -95,7 +96,6 @@ func (d *Dispatcher) sessionSkillPicker(ctx context.Context, sessionID string, s
 	}
 	isActive := hasSkillID(active, detail.Skill.ID)
 	picker := NewPickerData(PickerSessionSkill, skillTitle(detail.Skill)).
-		Context(detail.Skill.ID).
 		Meta(sessionSkillInfo(detail.Skill, isActive)).
 		Back(sessionSkillsCommand()).
 		Row("view", "Preview", detail.Skill.Description, sessionSkillCommand(detail.Skill.ID, "view"))
@@ -195,7 +195,6 @@ func (d *Dispatcher) skillsRootPicker(ctx context.Context) (Result, error) {
 
 func (d *Dispatcher) skillAddPicker() Result {
 	picker := NewPickerData(PickerSkillsSection, "Add Skill").
-		Context("add").
 		Back(skillsCommand()).
 		Row("manual", "Manual Create", "Step-by-step editor", skillsCommand("create")).
 		Row("ai", "Create with AI", "Discuss in this chat, then review", skillsCommand("ai-create")).
@@ -208,7 +207,7 @@ func (d *Dispatcher) skillsUsagePicker(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	return d.sessionSkillsPickerWithBack(ctx, sessionID, "Usage Status", skillsCommand())
+	return d.sessionSkillsPickerWithBack(ctx, sessionID, "Usage Status", skillsCommand("usage"), skillsCommand())
 }
 
 func (d *Dispatcher) skillsSectionPicker(ctx context.Context, section string, query string) (Result, error) {
@@ -226,7 +225,7 @@ func (d *Dispatcher) skillsSectionPicker(ctx context.Context, section string, qu
 	items = filterSkillsSection(items, section)
 	title := skillsSectionTitle(section)
 	picker := NewPickerData(PickerSkillsSection, title).
-		Context(section).
+		Command(skillsSectionCommand(section, query)).
 		Meta(strings.TrimSpace(query)).
 		Back(skillsCommand())
 	for _, item := range items {
@@ -248,6 +247,13 @@ func (d *Dispatcher) skillsSectionPicker(ctx context.Context, section string, qu
 	return Result{Handled: true, Picker: picker.Ptr()}, nil
 }
 
+func skillsSectionCommand(section string, query string) string {
+	if section == "search" {
+		return skillsCommand("search", query)
+	}
+	return skillsCommand(section)
+}
+
 func (d *Dispatcher) skillPicker(ctx context.Context, section string, skillID string) (Result, error) {
 	detail, err := d.daemon.GetSkill(ctx, skillID)
 	if err != nil {
@@ -259,7 +265,6 @@ func (d *Dispatcher) skillPicker(ctx context.Context, section string, skillID st
 		back = skillsCommand()
 	}
 	picker := NewPickerData(PickerSkill, skillTitle(skill)).
-		Context(section+":"+skill.ID).
 		Meta(skillInfo(skill)).
 		Back(back).
 		Row("view", "Preview", skill.Description, skillsCommand(section, skill.ID, "view"))
@@ -286,7 +291,6 @@ func (d *Dispatcher) skillEditMenu(ctx context.Context, section string, skillID 
 		return Result{Handled: true, Text: err.Error()}, nil
 	}
 	picker := NewPickerData(PickerSkillsSection, "Edit "+skillTitle(detail.Skill)).
-		Context("edit").
 		Back(skillsCommand(section, skillID)).
 		Row("metadata", "Metadata", "Name, description, tags, category", skillsCommand(section, skillID, "edit-metadata")).
 		Row("instructions", "Instructions", "SKILL.md body", skillsCommand(section, skillID, "edit-body"))
@@ -301,7 +305,6 @@ func (d *Dispatcher) skillEnabledPicker(ctx context.Context, section string, ski
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerSkill, "Enabled").
-			Context(section + ":" + skillID).
 			Meta(skillTitle(detail.Skill)).
 			Select(skillsCommand(section, skillID)).
 			Item(PickerItem{ID: "on", Title: "On", Selected: detail.Skill.Enabled, Command: skillsCommand(section, skillID, "set-enabled", "on")}).

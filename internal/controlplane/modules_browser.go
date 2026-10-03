@@ -37,7 +37,6 @@ func (d *Dispatcher) browserModulePicker(ctx context.Context) (Result, error) {
 	if err == nil {
 		provider, _ := selectedBrowserProvider(module)
 		picker := NewPickerData(PickerBrowser, "Browser").
-			Context(module.ID).
 			Back(modulesCommand())
 		providerItem := PickerItem{
 			ID:       "provider",
@@ -71,7 +70,6 @@ func (d *Dispatcher) browserProviderSelectPicker(ctx context.Context) (Result, e
 		return Result{}, err
 	}
 	picker := NewPickerData(PickerBrowser, "Browser Provider").
-		Context(module.ID).
 		Select(browserCommand()).
 		Item(PickerItem{
 			ID:       "disabled",
@@ -124,7 +122,6 @@ func (d *Dispatcher) browserRunModePicker(ctx context.Context) (Result, error) {
 	return Result{
 		Handled: true,
 		Picker: NewPickerData(PickerBrowser, "Browser Runtime Mode").
-			Context(module.ID).
 			Meta(browserRunModeLabel(provider)).
 			Select(browserCommand()).
 			Item(PickerItem{ID: "per-task", Title: "Run Per Task", Selected: normalizeBrowserRunMode(provider.Config.RuntimeMode) == browserRuntimeModePerTask, Command: browserCommand("set-runtime-mode", browserRuntimeModePerTask)}).
