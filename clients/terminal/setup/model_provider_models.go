@@ -86,7 +86,7 @@ func (m *model) handleProviderModelsLoaded(msg providerModelsLoadedMsg) (tea.Mod
 		response.Message = "No models available"
 	}
 	if response.Status != setupcore.ProviderModelStatusOK {
-		if setupcore.ProviderModelCatalogAllowsManualInput(response) {
+		if response.ManualInput {
 			m.openProviderModelTextEditor(setupcore.ProviderModelCatalogManualMessage(response))
 		} else {
 			m.formError = setupcore.ProviderModelCatalogMessage(response)

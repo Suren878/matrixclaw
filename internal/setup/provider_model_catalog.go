@@ -18,10 +18,6 @@ func ProviderModelCatalogMessage(response ProviderModelsResponse) string {
 	}
 }
 
-func ProviderModelCatalogAllowsManualInput(response ProviderModelsResponse) bool {
-	return response.ManualInput
-}
-
 func ProviderModelCatalogManualMessage(response ProviderModelsResponse) string {
 	message := strings.TrimSpace(ProviderModelCatalogMessage(response))
 	if message == "" {

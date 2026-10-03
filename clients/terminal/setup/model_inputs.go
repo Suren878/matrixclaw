@@ -139,7 +139,7 @@ func (m *model) afterTextEditorApply(ctx context.Context) (bool, error) {
 	if response.Status != setup.ProviderModelStatusOK {
 		m.editingProvider.HasStoredAPIKey = true
 		m.editingProvider.StoredAPIKeyPreview = setup.MaskSecret(m.editingProvider.APIKey)
-		if setup.ProviderModelCatalogAllowsManualInput(response) {
+		if response.ManualInput {
 			m.openProviderModelTextEditor(setup.ProviderModelCatalogManualMessage(response))
 		} else {
 			m.formError = setup.ProviderModelCatalogMessage(response)

@@ -42,27 +42,6 @@ func WebSearchConfigStatus(cfg WebSearchConfig) string {
 	}
 }
 
-// WebSearchEnvVars returns environment variable pairs for the active provider credentials.
-func WebSearchEnvVars(cfg WebSearchConfig) map[string]string {
-	cfg = normalizeWebSearchConfig(cfg)
-	env := map[string]string{}
-	switch cfg.Provider {
-	case WebSearchProviderTavily:
-		if cfg.TavilyKey != "" {
-			env["TAVILY_API_KEY"] = cfg.TavilyKey
-		}
-	case WebSearchProviderSerper:
-		if cfg.SerperKey != "" {
-			env["SERPER_API_KEY"] = cfg.SerperKey
-		}
-	case WebSearchProviderSearXNG:
-		if cfg.BaseURL != "" {
-			env["SEARXNG_URL"] = cfg.BaseURL
-		}
-	}
-	return env
-}
-
 func normalizeWebSearchConfig(cfg WebSearchConfig) WebSearchConfig {
 	cfg.Provider = normalizeWebSearchProvider(cfg.Provider)
 	cfg.TavilyKey = strings.TrimSpace(cfg.TavilyKey)

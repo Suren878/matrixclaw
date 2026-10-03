@@ -131,7 +131,7 @@ func (d *Dispatcher) providerModelPicker(ctx context.Context, provider setup.Pro
 	}
 	if response.Status != setup.ProviderModelStatusOK {
 		message := setup.ProviderModelCatalogMessage(response)
-		if setup.ProviderModelCatalogAllowsManualInput(response) {
+		if response.ManualInput {
 			return providerEditManualModelPrompt(provider, data, token, setup.ProviderModelCatalogManualMessage(response))
 		}
 		return providerEditFormResult(provider, data, message)

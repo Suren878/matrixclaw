@@ -31,9 +31,11 @@ func TestCallerAudioGateOpensOnce(t *testing.T) {
 func TestCallerAudioGateTimeout(t *testing.T) {
 	gate := newCallerAudioGate(true, time.Millisecond)
 	defer gate.Stop()
+	opened := make(chan string, 1)
+	gate.SetOnOpen(func(reason string) { opened <- reason })
 
 	select {
-	case <-gate.Done():
+	case <-opened:
 	case <-time.After(250 * time.Millisecond):
 		t.Fatalf("caller audio gate did not open after timeout")
 	}

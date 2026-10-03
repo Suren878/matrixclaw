@@ -95,24 +95,6 @@ func ProviderFormSpecForDraft(provider ProviderDraft) ProviderFormSpec {
 	})
 }
 
-func ProviderFormSpecForSetupItem(item ProviderSetupItem) ProviderFormSpec {
-	return ProviderFormSpecFromInput(ProviderFormSpecInput{
-		ID:                  item.ID,
-		CatalogID:           item.CatalogID,
-		Name:                item.Name,
-		Type:                item.Type,
-		BaseURL:             item.BaseURL,
-		BaseURLOptions:      item.BaseURLOptions,
-		Model:               firstNonEmptyTrimmed(item.Model, item.DefaultModel),
-		ReasoningEffort:     item.ReasoningEffort,
-		ToolUseMode:         item.ToolUseMode,
-		HasStoredAPIKey:     strings.TrimSpace(item.APIKeyPreview) != "",
-		StoredAPIKeyPreview: item.APIKeyPreview,
-		Capabilities:        item.Capabilities,
-		CapabilitiesKnown:   item.Capabilities != (providers.Capabilities{}),
-	})
-}
-
 func ProviderFormSpecFromInput(input ProviderFormSpecInput) ProviderFormSpec {
 	providerID := providers.NormalizeProviderID(input.ID)
 	catalogID := providers.NormalizeProviderID(input.CatalogID)

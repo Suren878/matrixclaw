@@ -11,18 +11,13 @@ type callerAudioGate struct {
 	open     bool
 	reason   string
 	onOpen   func(string)
-	done     chan struct{}
 	timer    *time.Timer
 	stopOnce sync.Once
 }
 
 func newCallerAudioGate(enabled bool, timeout time.Duration) *callerAudioGate {
-	gate := &callerAudioGate{
-		open: !enabled,
-		done: make(chan struct{}),
-	}
+	gate := &callerAudioGate{open: !enabled}
 	if !enabled {
-		close(gate.done)
 		return gate
 	}
 	if timeout <= 0 {
@@ -45,15 +40,6 @@ func (g *callerAudioGate) Allow() bool {
 	return g.open
 }
 
-func (g *callerAudioGate) Done() <-chan struct{} {
-	if g == nil {
-		done := make(chan struct{})
-		close(done)
-		return done
-	}
-	return g.done
-}
-
 func (g *callerAudioGate) Open(reason string) bool {
 	if g == nil {
 		return false
@@ -70,7 +56,6 @@ func (g *callerAudioGate) Open(reason string) bool {
 	if g.timer != nil {
 		g.timer.Stop()
 	}
-	close(g.done)
 	g.mu.Unlock()
 	if onOpen != nil {
 		onOpen(reason)

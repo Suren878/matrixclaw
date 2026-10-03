@@ -9,12 +9,13 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/safego"
+	"github.com/Suren878/matrixclaw/internal/telephony/phone"
 )
 
 func (s *Server) startCall(parent context.Context, req createCallRequest) (CallSnapshot, error) {
 	_ = parent
 	s.pruneFinishedCalls(time.Now().UTC())
-	to := normalizePhone(req.To)
+	to := phone.Normalize(req.To)
 	if to == "" {
 		return CallSnapshot{}, errors.New("to is required")
 	}

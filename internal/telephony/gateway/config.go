@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/telephony/phone"
 )
 
 const (
@@ -91,7 +93,7 @@ func (c Config) InboundCallerAllowed(caller string) bool {
 	if len(c.InboundAllowed) == 0 {
 		return true
 	}
-	_, ok := c.InboundAllowed[normalizePhone(caller)]
+	_, ok := c.InboundAllowed[phone.Normalize(caller)]
 	return ok
 }
 
@@ -151,7 +153,7 @@ func allowedPhoneSet(raw string) map[string]struct{} {
 	for _, item := range strings.FieldsFunc(raw, func(r rune) bool {
 		return r == '\n' || r == '\r' || r == ',' || r == ';' || r == ' ' || r == '\t'
 	}) {
-		if phone := normalizePhone(item); phone != "" {
+		if phone := phone.Normalize(item); phone != "" {
 			out[phone] = struct{}{}
 		}
 	}

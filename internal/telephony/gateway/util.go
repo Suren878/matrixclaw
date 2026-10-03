@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/Suren878/matrixclaw/internal/telephony/phone"
 )
 
 func newID(prefix string) string {
@@ -16,10 +14,6 @@ func newID(prefix string) string {
 		return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
 	}
 	return prefix + "_" + hex.EncodeToString(b[:])
-}
-
-func normalizePhone(value string) string {
-	return phone.Normalize(value)
 }
 
 func safeARIID(value string) string {

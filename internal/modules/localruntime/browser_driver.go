@@ -399,15 +399,3 @@ func (r *Runtime) playwrightMCPServerArgsForPlatform(provider setup.BrowserProvi
 	}
 	return args
 }
-
-func (r *Runtime) ManagedPlaywrightMCPBinaryPathForTest() string {
-	return r.managedPlaywrightMCPBinaryPath()
-}
-
-func (r *Runtime) PlaywrightBrowsersDirForTest() string {
-	return r.playwrightBrowsersDir()
-}
-
-func (r *Runtime) ManagedPlaywrightMCPBrowsersJSONPathForTest() string {
-	return r.managedPlaywrightMCPBrowsersJSONPath()
-}

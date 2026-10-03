@@ -1,7 +1,6 @@
 package setup
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -79,14 +78,6 @@ func BrowserModuleFromConfig(modules ModulesConfig) BrowserModuleDescriptor {
 	}
 }
 
-func BrowserConfigStatus(cfg BrowserConfig) string {
-	cfg = normalizeBrowserConfig(cfg)
-	if !cfg.Enabled {
-		return "Disabled"
-	}
-	return "Enabled · " + browserProviderName(cfg.ProviderID)
-}
-
 func normalizeBrowserConfig(cfg BrowserConfig) BrowserConfig {
 	cfg.ProviderID = normalizeBrowserProviderID(cfg.ProviderID)
 	if cfg.ProviderID == "" {
@@ -121,15 +112,6 @@ func normalizeBrowserProviderID(value string) string {
 	}
 }
 
-func browserProviderName(providerID string) string {
-	switch normalizeBrowserProviderID(providerID) {
-	case BrowserProviderPlaywright:
-		return "Local Playwright"
-	default:
-		return "Browser"
-	}
-}
-
 func browserProviders(cfg BrowserConfig) []BrowserProviderOption {
 	cfg = normalizeBrowserConfig(cfg)
 	return []BrowserProviderOption{{
@@ -146,11 +128,4 @@ func browserProviders(cfg BrowserConfig) []BrowserProviderOption {
 		},
 		Config: cfg.ProviderConfig,
 	}}
-}
-
-func ValidateBrowserModule(module BrowserModuleDescriptor) error {
-	if normalizeBrowserProviderID(module.ProviderID) == "" {
-		return fmt.Errorf("unsupported browser provider %q", module.ProviderID)
-	}
-	return nil
 }
