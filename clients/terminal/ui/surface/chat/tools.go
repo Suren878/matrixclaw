@@ -42,7 +42,6 @@ type ToolRenderOpts struct {
 	Result          *surfacemessage.ToolResult
 	Anim            *anim.Anim
 	ExpandedContent bool
-	Compact         bool
 	IsSpinning      bool
 	Status          ToolStatus
 }
@@ -67,7 +66,6 @@ type baseToolMessageItem struct {
 	messageID       string
 	status          ToolStatus
 	hasCappedWidth  bool
-	isCompact       bool
 	sty             *surfacestyles.Styles
 	anim            *anim.Anim
 	expandedContent bool
@@ -146,11 +144,6 @@ func NewToolMessageItem(
 	return item
 }
 
-func (t *baseToolMessageItem) SetCompact(compact bool) {
-	t.isCompact = compact
-	t.clearCache()
-}
-
 func (t *baseToolMessageItem) ID() string { return t.toolCall.ID }
 
 func (t *baseToolMessageItem) StartAnimation() tea.Cmd {
@@ -180,7 +173,6 @@ func (t *baseToolMessageItem) RawRender(width int) string {
 			Result:          t.result,
 			Anim:            t.anim,
 			ExpandedContent: t.expandedContent,
-			Compact:         t.isCompact,
 			IsSpinning:      t.isSpinning(),
 			Status:          t.computeStatus(),
 		})
@@ -192,7 +184,7 @@ func (t *baseToolMessageItem) RawRender(width int) string {
 }
 
 func (t *baseToolMessageItem) Render(width int) string {
-	return renderUnifiedMessageLines(t.sty, t.RawRender(width), t.focused && !t.isCompact, t.markerStyle())
+	return renderUnifiedMessageLines(t.sty, t.RawRender(width), t.focused, t.markerStyle())
 }
 
 func (t *baseToolMessageItem) ToolCall() surfacemessage.ToolCall { return t.toolCall }

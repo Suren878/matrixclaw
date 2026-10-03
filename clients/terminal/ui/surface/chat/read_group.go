@@ -74,7 +74,7 @@ func (m *ReadGroupMessageItem) RawRender(width int) string {
 		headerParams = append(headerParams, root)
 		paths = relativeReadPaths(root, paths)
 	}
-	header := readHeader(m.sty, m.status, cappedWidth, false, headerParams...)
+	header := readHeader(m.sty, m.status, cappedWidth, headerParams...)
 	content = header
 	if pathsBlock := renderReadPathsBlock(m.sty, cappedWidth, paths...); pathsBlock != "" {
 		content = strings.Join([]string{header, pathsBlock}, "\n")

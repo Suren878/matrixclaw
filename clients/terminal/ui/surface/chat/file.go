@@ -75,7 +75,7 @@ func resultDisplayPath(result *surfacemessage.ToolResult, fallback string) strin
 func (v *ReadToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
-		return readHeader(sty, ToolStatusRunning, cappedWidth, opts.Compact, "")
+		return readHeader(sty, ToolStatusRunning, cappedWidth, "")
 	}
 
 	var params tools.ReadParams
@@ -89,10 +89,7 @@ func (v *ReadToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int,
 		toolParams = append(toolParams, "offset", fmt.Sprintf("%d", params.Offset))
 	}
 
-	header := readHeader(sty, opts.Status, cappedWidth, opts.Compact, toolParams...)
-	if opts.Compact {
-		return header
-	}
+	header := readHeader(sty, opts.Status, cappedWidth, toolParams...)
 	if earlyState, ok := toolEarlyStateContent(sty, opts, cappedWidth); ok {
 		return joinToolParts(header, earlyState)
 	}
@@ -109,7 +106,7 @@ func (v *ReadToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int,
 func (w *WriteToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
-		return pendingTool(sty, "Write", opts.Anim, opts.Compact)
+		return pendingTool(sty, "Write", opts.Anim)
 	}
 
 	var params tools.WriteParams
@@ -118,10 +115,7 @@ func (w *WriteToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int
 	}
 
 	file := resultDisplayPath(opts.Result, params.FilePath)
-	header := toolHeader(sty, opts.Status, "Write", cappedWidth, opts.Compact, file)
-	if opts.Compact {
-		return header
-	}
+	header := toolHeader(sty, opts.Status, "Write", cappedWidth, file)
 	if earlyState, ok := toolEarlyStateContent(sty, opts, cappedWidth); ok {
 		return joinToolParts(header, earlyState)
 	}
@@ -134,13 +128,13 @@ func (w *WriteToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int
 		return header
 	}
 
-	return toolDiffSummaryHeader(sty, opts.Status, "Write", file, meta.Additions, meta.Removals, "press enter for diff", cappedWidth, opts.Compact)
+	return toolDiffSummaryHeader(sty, opts.Status, "Write", file, meta.Additions, meta.Removals, "press enter for diff", cappedWidth)
 }
 
 func (e *EditToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
-		return pendingTool(sty, "Edit", opts.Anim, opts.Compact)
+		return pendingTool(sty, "Edit", opts.Anim)
 	}
 
 	var params tools.EditParams
@@ -149,10 +143,7 @@ func (e *EditToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int,
 	}
 
 	file := resultDisplayPath(opts.Result, params.FilePath)
-	header := toolHeader(sty, opts.Status, "Edit", cappedWidth, opts.Compact, file)
-	if opts.Compact {
-		return header
-	}
+	header := toolHeader(sty, opts.Status, "Edit", cappedWidth, file)
 	if earlyState, ok := toolEarlyStateContent(sty, opts, cappedWidth); ok {
 		return joinToolParts(header, earlyState)
 	}
@@ -165,12 +156,12 @@ func (e *EditToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int,
 		return header
 	}
 
-	return toolDiffSummaryHeader(sty, opts.Status, "Edit", file, meta.Additions, meta.Removals, "press enter for diff", cappedWidth, opts.Compact)
+	return toolDiffSummaryHeader(sty, opts.Status, "Edit", file, meta.Additions, meta.Removals, "press enter for diff", cappedWidth)
 }
 
 func (m *MultiEditToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
 	if opts.IsPending() {
-		return pendingTool(sty, "Multi-Edit", opts.Anim, opts.Compact)
+		return pendingTool(sty, "Multi-Edit", opts.Anim)
 	}
 
 	var params tools.MultiEditParams
@@ -184,10 +175,7 @@ func (m *MultiEditToolRenderContext) RenderTool(sty *surfacestyles.Styles, width
 		toolParams = append(toolParams, "edits", fmt.Sprintf("%d", len(params.Edits)))
 	}
 
-	header := toolHeader(sty, opts.Status, "Multi-Edit", width, opts.Compact, toolParams...)
-	if opts.Compact {
-		return header
-	}
+	header := toolHeader(sty, opts.Status, "Multi-Edit", width, toolParams...)
 	if earlyState, ok := toolEarlyStateContent(sty, opts, width); ok {
 		return joinToolParts(header, earlyState)
 	}
@@ -208,7 +196,7 @@ func (m *MultiEditToolRenderContext) RenderTool(sty *surfacestyles.Styles, width
 	if len(meta.EditsFailed) > 0 {
 		hint = fmt.Sprintf("%d/%d edits applied, press enter for diff", meta.EditsApplied, len(params.Edits))
 	}
-	return toolDiffSummaryHeader(sty, opts.Status, "Multi-Edit", file, meta.Additions, meta.Removals, hint, width, opts.Compact)
+	return toolDiffSummaryHeader(sty, opts.Status, "Multi-Edit", file, meta.Additions, meta.Removals, hint, width)
 }
 
 func prettyPath(path string) string {
@@ -242,12 +230,8 @@ func renderReadPathsBlock(sty *surfacestyles.Styles, width int, paths ...string)
 	return strings.Join(rendered, "\n")
 }
 
-func readHeader(sty *surfacestyles.Styles, _ ToolStatus, width int, nested bool, params ...string) string {
-	nameStyle := sty.Tool.NameNormal
-	if nested {
-		nameStyle = sty.Tool.NameNested
-	}
-	prefix := nameStyle.Render("Read") + " "
+func readHeader(sty *surfacestyles.Styles, _ ToolStatus, width int, params ...string) string {
+	prefix := sty.Tool.NameNormal.Render("Read") + " "
 	remainingWidth := width - lipgloss.Width(prefix)
 	return prefix + toolParamList(sty, params, remainingWidth)
 }

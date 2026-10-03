@@ -25,7 +25,7 @@ type BashToolRenderContext struct{}
 func (b *BashToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
-		return pendingTool(sty, "Run", opts.Anim, opts.Compact)
+		return pendingTool(sty, "Run", opts.Anim)
 	}
 
 	var params tools.BashParams
@@ -51,10 +51,7 @@ func (b *BashToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int,
 		toolParams = append(toolParams, "background", "true")
 	}
 
-	header := runHeader(sty, opts.Status, cappedWidth, opts.Compact, toolParams...)
-	if opts.Compact {
-		return header
-	}
+	header := runHeader(sty, opts.Status, cappedWidth, toolParams...)
 	if earlyState, ok := runEarlyStateContent(sty, opts, cappedWidth); ok {
 		return joinToolParts(header, earlyState)
 	}
@@ -87,8 +84,8 @@ func runEarlyStateContent(sty *surfacestyles.Styles, opts *ToolRenderOpts, width
 	}
 }
 
-func runHeader(sty *surfacestyles.Styles, status ToolStatus, width int, nested bool, params ...string) string {
-	return toolHeader(sty, status, "Run", width, nested, params...)
+func runHeader(sty *surfacestyles.Styles, status ToolStatus, width int, params ...string) string {
+	return toolHeader(sty, status, "Run", width, params...)
 }
 
 func isExpectedNeutralBashResult(toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult) bool {
@@ -129,7 +126,7 @@ func (j *TaskKillToolRenderContext) RenderTool(sty *surfacestyles.Styles, width 
 func renderTaskToolCall(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts, action string) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
-		return pendingTool(sty, "Task", opts.Anim, opts.Compact)
+		return pendingTool(sty, "Task", opts.Anim)
 	}
 
 	var params tools.TaskOutputParams
@@ -154,9 +151,6 @@ func renderTaskToolCall(sty *surfacestyles.Styles, width int, opts *ToolRenderOp
 
 func renderTaskTool(sty *surfacestyles.Styles, opts *ToolRenderOpts, width int, action, taskID, description, content string) string {
 	header := taskHeader(sty, opts.Status, action, taskID, description, width)
-	if opts.Compact {
-		return header
-	}
 	if earlyState, ok := toolEarlyStateContent(sty, opts, width); ok {
 		return joinToolParts(header, earlyState)
 	}

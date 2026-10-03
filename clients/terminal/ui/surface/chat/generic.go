@@ -41,19 +41,16 @@ func (g *GenericToolRenderContext) RenderTool(sty *surfacestyles.Styles, width i
 
 	if opts.IsPending() {
 		if paramsOK && len(toolParams) > 0 {
-			return pendingToolHeader(sty, name, cappedWidth, opts.Compact, opts.Anim, toolParams...)
+			return pendingToolHeader(sty, name, cappedWidth, opts.Anim, toolParams...)
 		}
-		return pendingTool(sty, name, opts.Anim, opts.Compact)
+		return pendingTool(sty, name, opts.Anim)
 	}
 
 	if !paramsOK {
 		return toolErrorContent(sty, &surfacemessage.ToolResult{Content: "Invalid parameters"}, cappedWidth)
 	}
 
-	header := toolHeader(sty, opts.Status, name, cappedWidth, opts.Compact, toolParams...)
-	if opts.Compact {
-		return header
-	}
+	header := toolHeader(sty, opts.Status, name, cappedWidth, toolParams...)
 
 	if earlyState, ok := toolEarlyStateContent(sty, opts, cappedWidth); ok {
 		return joinToolParts(header, earlyState)
@@ -87,8 +84,8 @@ func (g *GenericToolRenderContext) RenderTool(sty *surfacestyles.Styles, width i
 	return joinToolParts(header, body)
 }
 
-func pendingToolHeader(sty *surfacestyles.Styles, name string, width int, nested bool, anim *anim.Anim, params ...string) string {
-	header := toolHeader(sty, ToolStatusRunning, name, width, nested, params...)
+func pendingToolHeader(sty *surfacestyles.Styles, name string, width int, anim *anim.Anim, params ...string) string {
+	header := toolHeader(sty, ToolStatusRunning, name, width, params...)
 	if anim == nil {
 		return header
 	}

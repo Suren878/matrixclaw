@@ -103,7 +103,7 @@ func (c *CompactSummaryMessageItem) HandleKeyEvent(key tea.KeyPressMsg) (bool, t
 }
 
 func (c *CompactSummaryMessageItem) renderContent(width int) string {
-	parts := []string{toolNameStyle(c.sty, false).Render(c.kind.label())}
+	parts := []string{c.sty.Tool.NameNormal.Render(c.kind.label())}
 	if c.stats != "" {
 		parts = append(parts, c.sty.Tool.ParamMain.Render(c.stats))
 	}

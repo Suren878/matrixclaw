@@ -15,8 +15,8 @@ import (
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
 )
 
-func pendingTool(sty *surfacestyles.Styles, name string, anim *anim.Anim, nested bool) string {
-	toolName := toolNameStyle(sty, nested).Render(name)
+func pendingTool(sty *surfacestyles.Styles, name string, anim *anim.Anim) string {
+	toolName := sty.Tool.NameNormal.Render(name)
 
 	var animView string
 	if anim != nil {
@@ -26,13 +26,6 @@ func pendingTool(sty *surfacestyles.Styles, name string, anim *anim.Anim, nested
 		return fmt.Sprintf("%s %s", toolName, animView)
 	}
 	return toolName
-}
-
-func toolNameStyle(sty *surfacestyles.Styles, nested bool) lipgloss.Style {
-	if nested {
-		return sty.Tool.NameNested
-	}
-	return sty.Tool.NameNormal
 }
 
 func toolEarlyStateContent(sty *surfacestyles.Styles, opts *ToolRenderOpts, width int) (string, bool) {
@@ -114,8 +107,8 @@ func toolParamList(sty *surfacestyles.Styles, params []string, width int) string
 	return sty.Tool.ParamMain.Render(output)
 }
 
-func toolHeader(sty *surfacestyles.Styles, _ ToolStatus, name string, width int, nested bool, params ...string) string {
-	toolName := toolNameStyle(sty, nested).Render(name)
+func toolHeader(sty *surfacestyles.Styles, _ ToolStatus, name string, width int, params ...string) string {
+	toolName := sty.Tool.NameNormal.Render(name)
 	prefix := fmt.Sprintf("%s ", toolName)
 	prefixWidth := lipgloss.Width(prefix)
 	remainingWidth := width - prefixWidth
@@ -123,8 +116,8 @@ func toolHeader(sty *surfacestyles.Styles, _ ToolStatus, name string, width int,
 	return prefix + paramsStr
 }
 
-func toolDiffSummaryHeader(sty *surfacestyles.Styles, _ ToolStatus, name, file string, additions, removals int, hint string, width int, nested bool) string {
-	toolName := toolNameStyle(sty, nested).Render(name)
+func toolDiffSummaryHeader(sty *surfacestyles.Styles, _ ToolStatus, name, file string, additions, removals int, hint string, width int) string {
+	toolName := sty.Tool.NameNormal.Render(name)
 	path := sty.Tool.ParamMain.Render(file)
 	diff := fmt.Sprintf(
 		"(%s %s)",

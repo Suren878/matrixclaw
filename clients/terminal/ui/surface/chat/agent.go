@@ -51,10 +51,7 @@ func renderSubagentTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOp
 	taskLabel := strings.Join(strings.Fields(firstNonEmptyLocal(metadata.DisplayName, params.Description)), " ")
 	goal := strings.Join(strings.Fields(firstNonEmptyLocal(metadata.Goal, params.Prompt)), " ")
 	status := subagentRenderStatus(metadata.Status, opts)
-	header := toolHeader(sty, opts.Status, subagentRenderLabel(agentName, status), width, opts.Compact, subagentTaskPreview(taskLabel, goal))
-	if opts.Compact {
-		return header
-	}
+	header := toolHeader(sty, opts.Status, subagentRenderLabel(agentName, status), width, subagentTaskPreview(taskLabel, goal))
 	bodyText := subagentBodyText(opts, metadata, taskLabel, goal, status)
 	if bodyText == "" {
 		return header

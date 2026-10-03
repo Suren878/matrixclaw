@@ -215,7 +215,6 @@ type Styles struct {
 		IconCancelled lipgloss.Style
 
 		NameNormal lipgloss.Style
-		NameNested lipgloss.Style
 
 		ParamMain lipgloss.Style
 		ParamKey  lipgloss.Style

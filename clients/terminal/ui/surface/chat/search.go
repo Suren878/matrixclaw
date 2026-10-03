@@ -31,7 +31,7 @@ type LSToolRenderContext struct{}
 func (g *GlobToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
-		return pendingTool(sty, "Glob", opts.Anim, opts.Compact)
+		return pendingTool(sty, "Glob", opts.Anim)
 	}
 
 	var params tools.GlobParams
@@ -44,10 +44,7 @@ func (g *GlobToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int,
 		toolParams = append(toolParams, "path", path)
 	}
 
-	header := toolHeader(sty, opts.Status, "Glob", cappedWidth, opts.Compact, toolParams...)
-	if opts.Compact {
-		return header
-	}
+	header := toolHeader(sty, opts.Status, "Glob", cappedWidth, toolParams...)
 	if earlyState, ok := toolEarlyStateContent(sty, opts, cappedWidth); ok {
 		return joinToolParts(header, earlyState)
 	}
@@ -63,7 +60,7 @@ func (g *GlobToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int,
 func (g *GrepToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
-		return pendingTool(sty, "Grep", opts.Anim, opts.Compact)
+		return pendingTool(sty, "Grep", opts.Anim)
 	}
 
 	var params tools.GrepParams
@@ -82,10 +79,7 @@ func (g *GrepToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int,
 		toolParams = append(toolParams, "literal", "true")
 	}
 
-	header := toolHeader(sty, opts.Status, "Grep", cappedWidth, opts.Compact, toolParams...)
-	if opts.Compact {
-		return header
-	}
+	header := toolHeader(sty, opts.Status, "Grep", cappedWidth, toolParams...)
 	if earlyState, ok := toolEarlyStateContent(sty, opts, cappedWidth); ok {
 		return joinToolParts(header, earlyState)
 	}
@@ -101,7 +95,7 @@ func (g *GrepToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int,
 func (l *LSToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
-		return pendingTool(sty, "List", opts.Anim, opts.Compact)
+		return pendingTool(sty, "List", opts.Anim)
 	}
 
 	var params tools.LSParams
@@ -114,10 +108,7 @@ func (l *LSToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, o
 		path = "."
 	}
 
-	header := toolHeader(sty, opts.Status, "List", cappedWidth, opts.Compact, resultDisplayPath(opts.Result, path))
-	if opts.Compact {
-		return header
-	}
+	header := toolHeader(sty, opts.Status, "List", cappedWidth, resultDisplayPath(opts.Result, path))
 	if earlyState, ok := toolEarlyStateContent(sty, opts, cappedWidth); ok {
 		return joinToolParts(header, earlyState)
 	}
