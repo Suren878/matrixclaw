@@ -13,13 +13,11 @@ import (
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/agent/toolsched"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
-	"github.com/Suren878/matrixclaw/internal/work"
 )
 
 type Core struct {
 	mu              sync.RWMutex
 	store           Store
-	workStore       work.Store
 	runStarter      RunStarter
 	llms            SessionLLMRegistry
 	assistant       AssistantProfile
@@ -147,13 +145,6 @@ func (c *Core) WithLifetime(ctx context.Context) *Core {
 func (c *Core) WithRunStarter(starter RunStarter) *Core {
 	if starter != nil {
 		c.runStarter = starter
-	}
-	return c
-}
-
-func (c *Core) WithWorkStore(store work.Store) *Core {
-	if store != nil {
-		c.workStore = store
 	}
 	return c
 }

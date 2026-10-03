@@ -10,24 +10,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func TestBlockingSubagentWorkJobCarriesHeartbeat(t *testing.T) {
-	t.Parallel()
-	now := time.Now().UTC()
-	job := subagentWorkJob(SubagentTask{
-		ID:        "subagent-1",
-		Mode:      SubagentTaskModeBlocking,
-		Status:    TaskStatusRunning,
-		CreatedAt: now.Add(-time.Minute),
-		UpdatedAt: now,
-	})
-	if job.HeartbeatAt == nil || !job.HeartbeatAt.Equal(now) {
-		t.Fatalf("heartbeat = %v, want %v", job.HeartbeatAt, now)
-	}
-	if job.StartedAt == nil || job.Attempts != 1 {
-		t.Fatalf("started_at = %v attempts = %d, want active job metadata", job.StartedAt, job.Attempts)
-	}
-}
-
 func TestRunTimingUsesStreamingMessageUpdateAsLastEvent(t *testing.T) {
 	t.Parallel()
 	startedAt := time.Now().UTC().Add(-time.Minute)

@@ -10,7 +10,6 @@ func (c *Core) createSubagentTaskRecord(ctx context.Context, task SubagentTask) 
 	if err := c.store.CreateSubagentTask(ctx, task); err != nil {
 		return err
 	}
-	c.saveSubagentWorkJob(ctx, task)
 	c.publishSubagentTaskUpdated(task)
 	return nil
 }
@@ -19,7 +18,6 @@ func (c *Core) updateSubagentTaskRecord(ctx context.Context, task SubagentTask) 
 	if err := c.store.UpdateSubagentTask(ctx, task); err != nil {
 		return err
 	}
-	c.saveSubagentWorkJob(ctx, task)
 	c.publishSubagentTaskUpdated(task)
 	return nil
 }

@@ -13,10 +13,7 @@ const (
 	StatusCanceled  = "canceled"
 )
 
-const (
-	KindWebResearch = "web_research"
-	KindSubagent    = "subagent"
-)
+const KindWebResearch = "web_research"
 
 type Job struct {
 	ID             string     `json:"id"`

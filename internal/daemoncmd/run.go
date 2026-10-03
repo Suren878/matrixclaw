@@ -88,7 +88,6 @@ func Run(ctx context.Context) error {
 		WithModelConcurrency(bootstrap.ModelConcurrency).
 		WithBackgroundTaskLimit(bootstrap.BackgroundTasks).
 		WithBackgroundAgents(bootstrap.BackgroundAgents).
-		WithWorkStore(workStore).
 		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()}).
 		WithSkillsContext(skillsModule).
 		WithRuntimeStatusContext(&setupRuntimeStatusContext{setup: bootstrap.SetupService, runtime: localruntime.New("")})
