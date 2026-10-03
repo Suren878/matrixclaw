@@ -37,7 +37,7 @@ func (c *Core) setRunStatus(ctx context.Context, run *Run, status RunStatus, err
 	run.Status = status
 	run.Error = errText
 	run.UpdatedAt = c.now().UTC()
-	if subagentRunStatusTerminal(status) {
+	if status.Terminal() {
 		finishedAt := run.UpdatedAt
 		run.FinishedAt = &finishedAt
 	} else {
@@ -46,7 +46,7 @@ func (c *Core) setRunStatus(ctx context.Context, run *Run, status RunStatus, err
 	if err := c.store.UpdateRun(ctx, *run); err != nil {
 		return err
 	}
-	if subagentRunStatusTerminal(status) {
+	if status.Terminal() {
 		c.clearRunCheckpoint(ctx, run.ID)
 	}
 	c.publishEvent(Event{

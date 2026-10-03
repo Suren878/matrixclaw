@@ -16,8 +16,9 @@ const (
 	TaskStatusLost TaskStatus = "lost"
 )
 
-func taskStatusTerminal(status TaskStatus) bool {
-	return status == TaskStatusCompleted || status == TaskStatusFailed || status == TaskStatusCanceled || status == TaskStatusLost
+// Terminal reports whether the task has ended.
+func (s TaskStatus) Terminal() bool {
+	return s == TaskStatusCompleted || s == TaskStatusFailed || s == TaskStatusCanceled || s == TaskStatusLost
 }
 
 // TaskKind says what a background task runs.

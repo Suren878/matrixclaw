@@ -31,10 +31,10 @@ func (c *Core) tryExecuteExternalAgentRun(ctx context.Context, runCtx context.Co
 	if err != nil {
 		return false, err
 	}
-	switch run.Status {
-	case RunStatusCompleted, RunStatusFailed, RunStatusCanceled:
+	if run.Status.Terminal() {
 		return true, nil
-	case RunStatusRunning:
+	}
+	if run.Status == RunStatusRunning {
 		return true, c.failOrphanedRun(ctx, run)
 	}
 
@@ -594,7 +594,7 @@ func (c *Core) finishExternalRunAfterContextStopped(run Run, assistant *transcri
 	if current.Status == RunStatusCanceled {
 		return c.finishCanceledAssistant(ctx, assistant, assistantSaved)
 	}
-	if subagentRunStatusTerminal(current.Status) {
+	if current.Status.Terminal() {
 		return nil
 	}
 	return c.preserveRunForRecovery(ctx, current, assistant, assistantSaved)

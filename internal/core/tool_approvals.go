@@ -192,7 +192,7 @@ func (c *Core) passDecisionToSubagent(ctx context.Context, bridge subagentApprov
 	} else if !errors.Is(err, ErrNotFound) {
 		return err
 	}
-	if !taskStatusTerminal(task.Status) {
+	if !task.Status.Terminal() {
 		if task, err = c.markSubagentTaskRunning(ctx, task); err != nil {
 			return err
 		}
@@ -363,7 +363,7 @@ func (c *Core) bridgedCallWaitsForSubagent(ctx context.Context, approval Approva
 		return false, err
 	}
 	task, err := c.store.GetSubagentTask(ctx, bridge.TaskID)
-	if err == nil && taskStatusTerminal(task.Status) {
+	if err == nil && task.Status.Terminal() {
 		return false, nil
 	}
 	if err != nil && !errors.Is(err, ErrNotFound) {
@@ -376,7 +376,7 @@ func (c *Core) bridgedCallWaitsForSubagent(ctx context.Context, approval Approva
 	if err != nil {
 		return false, err
 	}
-	return !subagentRunStatusTerminal(run.Status), nil
+	return !run.Status.Terminal(), nil
 }
 
 // backgroundSubagentApproval reports whether the approval asks for a background

@@ -271,7 +271,7 @@ func (c *Core) finishOrBridgeSubagentTask(ctx context.Context, task SubagentTask
 			return AgentResult{}, err
 		}
 	}
-	if execErr == nil && !subagentRunStatusTerminal(run.Status) {
+	if execErr == nil && !run.Status.Terminal() {
 		if err := c.waitForSubagentStep(ctx, task); err != nil {
 			return AgentResult{}, err
 		}
@@ -316,7 +316,7 @@ func (c *Core) waitForSubagentStep(ctx context.Context, task SubagentTask) error
 		if err != nil {
 			return err
 		}
-		if subagentRunStatusTerminal(run.Status) {
+		if run.Status.Terminal() {
 			return nil
 		}
 		if run.Status == RunStatusWaitingApproval {
@@ -420,7 +420,7 @@ func (c *Core) resumeParentForSubagentStatus(ctx context.Context, task SubagentT
 	if err != nil {
 		return err
 	}
-	if subagentRunStatusTerminal(status) {
+	if status.Terminal() {
 		return c.resumeDecidedRun(ctx, task.ParentSessionID, task.ParentRunID)
 	}
 	if status == RunStatusWaitingApproval {
@@ -434,7 +434,7 @@ func (c *Core) subagentTaskTerminal(ctx context.Context, task SubagentTask) (boo
 	if err != nil {
 		return false, err
 	}
-	return subagentRunStatusTerminal(status), nil
+	return status.Terminal(), nil
 }
 
 func (c *Core) subagentTaskRunStatus(ctx context.Context, task SubagentTask) (RunStatus, error) {
@@ -443,10 +443,6 @@ func (c *Core) subagentTaskRunStatus(ctx context.Context, task SubagentTask) (Ru
 		return "", err
 	}
 	return run.Status, nil
-}
-
-func subagentRunStatusTerminal(status RunStatus) bool {
-	return status == RunStatusCompleted || status == RunStatusFailed || status == RunStatusCanceled
 }
 
 // mirrorPendingSubagentApproval asks the parent for the child's pending approval;
@@ -502,7 +498,7 @@ func (c *Core) mirrorPendingSubagentApproval(ctx context.Context, task SubagentT
 	if err != nil {
 		return true, err
 	}
-	if subagentRunStatusTerminal(run.Status) {
+	if run.Status.Terminal() {
 		return true, nil
 	}
 	return true, c.setRunStatus(ctx, &run, RunStatusWaitingApproval, "")

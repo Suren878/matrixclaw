@@ -63,7 +63,7 @@ func (c *Core) applyInterruptedOutcome(run Run, outcome agent.Outcome) (bool, er
 	if latest.Status == RunStatusCanceled {
 		return false, c.finishCanceledAssistant(ctx, outcome.Assistant, outcome.AssistantSaved)
 	}
-	if subagentRunStatusTerminal(latest.Status) {
+	if latest.Status.Terminal() {
 		return false, nil
 	}
 	switch outcome.Reached {
@@ -88,7 +88,7 @@ func (c *Core) applyInterruptedOutcome(run Run, outcome agent.Outcome) (bool, er
 	if err != nil {
 		return false, err
 	}
-	return !subagentRunStatusTerminal(current.Status), nil
+	return !current.Status.Terminal(), nil
 }
 
 func (c *Core) completeAssistantTurn(ctx context.Context, run *Run, sessionID string, assistant *transcript.Message, assistantSaved bool) error {

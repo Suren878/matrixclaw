@@ -47,7 +47,7 @@ func (c *Core) afterRunExecution(ctx context.Context, runID string) error {
 		return err
 	}
 	if task, err := c.store.GetSubagentTaskByChildRun(ctx, runID); err == nil {
-		if subagentRunStatusTerminal(run.Status) {
+		if run.Status.Terminal() {
 			if err := c.rejectChildApprovalCopies(ctx, task); err != nil {
 				return err
 			}
@@ -72,13 +72,13 @@ func (c *Core) afterRunExecution(ctx context.Context, runID string) error {
 		}
 		return err
 	}
-	if subagentRunStatusTerminal(run.Status) && isSubagentSession(session) {
+	if run.Status.Terminal() && isSubagentSession(session) {
 		// Nobody reads a child's background commands once it has finished.
 		if err := c.stopSessionTasks(ctx, session.ID, "its subagent finished"); err != nil {
 			return err
 		}
 	}
-	if subagentRunStatusTerminal(run.Status) {
+	if run.Status.Terminal() {
 		if err := c.queuePendingSteersForRun(ctx, session.ID, run.ID); err != nil {
 			return err
 		}
@@ -87,7 +87,7 @@ func (c *Core) afterRunExecution(ctx context.Context, runID string) error {
 			return err
 		}
 	}
-	if subagentRunStatusTerminal(run.Status) {
+	if run.Status.Terminal() {
 		return c.wakeSession(ctx, session.ID, nil)
 	}
 	return nil
@@ -98,15 +98,14 @@ func ignoreMissing(err error) bool {
 }
 
 func (c *Core) syncAsyncSubagentTaskAfterRun(ctx context.Context, task SubagentTask, run Run) error {
-	if taskStatusTerminal(task.Status) {
+	if task.Status.Terminal() {
 		return nil
 	}
-	switch run.Status {
-	case RunStatusWaitingApproval:
+	if run.Status == RunStatusWaitingApproval {
 		_, err := c.mirrorPendingSubagentApproval(ctx, task)
 		return err
-	case RunStatusCompleted, RunStatusFailed, RunStatusCanceled:
-	default:
+	}
+	if !run.Status.Terminal() {
 		return nil
 	}
 	summary, failed := c.subagentRunSummary(ctx, task.ChildSessionID, task.ChildRunID, nil)
@@ -133,8 +132,8 @@ func (c *Core) syncAsyncSubagentTaskAfterRun(ctx context.Context, task SubagentT
 }
 
 func (c *Core) syncBlockingSubagentTaskAfterRun(ctx context.Context, task SubagentTask, run Run) error {
-	switch run.Status {
-	case RunStatusWaitingApproval:
+	switch {
+	case run.Status == RunStatusWaitingApproval:
 		parentRunID := normalizeText(task.ParentRunID)
 		if parentRunID == "" {
 			return nil
@@ -151,8 +150,7 @@ func (c *Core) syncBlockingSubagentTaskAfterRun(ctx context.Context, task Subage
 		}
 		_, err = c.mirrorPendingSubagentApproval(ctx, task)
 		return err
-	case RunStatusCompleted, RunStatusFailed, RunStatusCanceled:
-	default:
+	case !run.Status.Terminal():
 		return nil
 	}
 	parentRunID := normalizeText(task.ParentRunID)
@@ -166,7 +164,7 @@ func (c *Core) syncBlockingSubagentTaskAfterRun(ctx context.Context, task Subage
 		}
 		return err
 	}
-	if subagentRunStatusTerminal(parentRun.Status) {
+	if parentRun.Status.Terminal() {
 		return nil
 	}
 	if c.runIsActive(parentRun.ID) {
@@ -218,7 +216,7 @@ func (c *Core) runWaitsForBlockingChild(ctx context.Context, sessionID string, r
 		if err != nil {
 			return false, err
 		}
-		if task.Mode != SubagentTaskModeBlocking || taskStatusTerminal(task.Status) {
+		if task.Mode != SubagentTaskModeBlocking || task.Status.Terminal() {
 			continue
 		}
 		terminal, err := c.subagentTaskTerminal(ctx, task)
@@ -266,7 +264,7 @@ func (c *Core) RecoverSubagentTasks(ctx context.Context) error {
 		}
 		switch task.Mode {
 		case SubagentTaskModeAsync:
-			if subagentRunStatusTerminal(run.Status) || run.Status == RunStatusWaitingApproval {
+			if run.Status.Terminal() || run.Status == RunStatusWaitingApproval {
 				if err := c.syncAsyncSubagentTaskAfterRun(ctx, task, run); err != nil {
 					return err
 				}
@@ -276,7 +274,7 @@ func (c *Core) RecoverSubagentTasks(ctx context.Context) error {
 				return err
 			}
 		case SubagentTaskModeBlocking:
-			if subagentRunStatusTerminal(run.Status) || run.Status == RunStatusWaitingApproval {
+			if run.Status.Terminal() || run.Status == RunStatusWaitingApproval {
 				if err := c.syncBlockingSubagentTaskAfterRun(ctx, task, run); err != nil {
 					return err
 				}

@@ -22,6 +22,11 @@ const (
 	RunStatusFailed        RunStatus = "failed"
 )
 
+// Terminal reports whether the run has ended.
+func (s RunStatus) Terminal() bool {
+	return s == RunStatusCompleted || s == RunStatusFailed || s == RunStatusCanceled
+}
+
 type RunTiming struct {
 	TotalMillis    int64     `json:"total_ms,omitempty"`
 	ModelMillis    int64     `json:"model_ms,omitempty"`

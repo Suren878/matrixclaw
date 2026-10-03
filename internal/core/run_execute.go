@@ -115,10 +115,10 @@ func (c *Core) prepareNativeRun(ctx context.Context, runID string) (Run, Session
 	if err != nil {
 		return Run{}, Session{}, nil, false, err
 	}
-	switch run.Status {
-	case RunStatusCompleted, RunStatusFailed, RunStatusCanceled:
+	if run.Status.Terminal() {
 		return Run{}, Session{}, nil, false, nil
-	case RunStatusRunning:
+	}
+	if run.Status == RunStatusRunning {
 		return Run{}, Session{}, nil, false, c.failOrphanedRun(ctx, run)
 	}
 	session, err := c.store.GetSession(ctx, run.SessionID)

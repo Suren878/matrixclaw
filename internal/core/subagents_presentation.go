@@ -96,7 +96,7 @@ func subagentTaskToolLifecycleState(task SubagentTask) ToolLifecycleState {
 	if subagentTaskFailed(task) {
 		return ToolLifecycleFailed
 	}
-	if taskStatusTerminal(task.Status) {
+	if task.Status.Terminal() {
 		return ToolLifecycleCompleted
 	}
 	if task.Status == TaskStatusWaitingApproval {
@@ -147,7 +147,7 @@ func backgroundAgentContent(result AgentResult) string {
 	task := result.Task
 	state := "started"
 	switch {
-	case result.Replayed && taskStatusTerminal(task.Status):
+	case result.Replayed && task.Status.Terminal():
 		state = "already finished"
 	case result.Replayed:
 		state = "already running"

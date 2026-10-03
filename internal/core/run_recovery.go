@@ -269,7 +269,7 @@ func (c *Core) recoverInterruptedTool(ctx context.Context, run Run, interrupted 
 				}
 				return recoveryToolWaitSubagent, nil
 			}
-			if childErr == nil && !subagentRunStatusTerminal(childRun.Status) {
+			if childErr == nil && !childRun.Status.Terminal() {
 				return recoveryToolWaitSubagent, nil
 			}
 		}
@@ -502,7 +502,7 @@ func (c *Core) preserveRunForRecovery(ctx context.Context, run Run, assistant *t
 	if err != nil {
 		return err
 	}
-	if subagentRunStatusTerminal(latest.Status) {
+	if latest.Status.Terminal() {
 		c.clearRunCheckpoint(ctx, run.ID)
 		return nil
 	}

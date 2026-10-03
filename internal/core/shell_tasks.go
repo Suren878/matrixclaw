@@ -374,7 +374,7 @@ func (c *Core) StopTask(ctx context.Context, call tools.Call, taskID string) (to
 // cancelTask ends a running task: a shell task's process group is stopped, a
 // subagent's run is canceled. A finished task is returned as it is.
 func (c *Core) cancelTask(ctx context.Context, task Task, reason string) (Task, error) {
-	if taskStatusTerminal(task.Status) {
+	if task.Status.Terminal() {
 		return task, nil
 	}
 	if task.Kind == TaskKindSubagent {

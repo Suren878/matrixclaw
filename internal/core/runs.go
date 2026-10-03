@@ -278,7 +278,7 @@ func (c *Core) CancelRun(ctx context.Context, runID string) (Run, error) {
 	if err != nil {
 		return Run{}, err
 	}
-	if subagentRunStatusTerminal(run.Status) {
+	if run.Status.Terminal() {
 		return run, nil
 	}
 	parked := (run.Status == RunStatusWaitingEvents || run.Status == RunStatusWaitingApproval) && !c.runIsActive(run.ID)
@@ -340,7 +340,7 @@ func (c *Core) cancelSubagentChildren(ctx context.Context, run Run) ([]string, e
 		if err != nil && !errors.Is(err, ErrNotFound) {
 			return nil, err
 		}
-		if err == nil && !subagentRunStatusTerminal(child.Status) {
+		if err == nil && !child.Status.Terminal() {
 			ids, err := c.cancelRunRecords(ctx, &child)
 			if err != nil {
 				return nil, err

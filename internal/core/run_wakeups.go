@@ -40,7 +40,7 @@ func (c *Core) wakeWaitingRun(ctx context.Context, sessionID string, runID strin
 		return err
 	}
 	switch {
-	case subagentRunStatusTerminal(run.Status):
+	case run.Status.Terminal():
 		return c.store.DeleteRunWakeup(ctx, runID)
 	case run.Status == RunStatusWaitingApproval:
 		return c.healApprovalPark(ctx, run)
