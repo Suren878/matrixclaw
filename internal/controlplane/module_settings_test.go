@@ -94,6 +94,14 @@ func TestTelephonySettingsEditAndValidate(t *testing.T) {
 func TestNonOwnersSeeModuleSettingsReadOnly(t *testing.T) {
 	daemon, service := newModulesDaemon(t, web.New())
 
+	list := daemon.runAs(core.RoleMember, "/modules")
+	if agents := list.Picker.Items[0]; agents.ID != "agents" || agents.Command != "" || !agents.Disabled {
+		t.Fatalf("member agents row = %+v", agents)
+	}
+	if mcp := daemon.runAs(core.RoleGuest, "/modules mcp add"); mcp.Text != ownerOnlySettings {
+		t.Fatalf("guest MCP = %+v", mcp)
+	}
+
 	page := daemon.runAs(core.RoleMember, "/modules web_search")
 	for _, item := range page.Picker.Items {
 		if item.Command != "" || !item.Disabled {

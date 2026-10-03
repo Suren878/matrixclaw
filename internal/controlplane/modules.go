@@ -11,6 +11,9 @@ import (
 
 func (d *Dispatcher) handleModules(ctx context.Context, args string) (Result, error) {
 	step, rest := firstCommandStep(args)
+	if !d.owner() && slices.Contains(ownerScreens, step) {
+		return Result{Handled: true, Text: ownerOnlySettings}, nil
+	}
 	switch step {
 	case "":
 		return d.modulesPicker(ctx)
@@ -31,6 +34,9 @@ func (d *Dispatcher) handleModules(ctx context.Context, args string) (Result, er
 // editors rather than settings.
 var clientScreens = []string{"storage", "skills", "mcp"}
 
+// ownerScreens are the client's screens that only edit the owner's settings.
+var ownerScreens = []string{"agents", "skills", "mcp"}
+
 // modulesPicker lists the external agents and every module with a screen,
 // with the daemon's status line.
 func (d *Dispatcher) modulesPicker(ctx context.Context) (Result, error) {
@@ -44,13 +50,22 @@ func (d *Dispatcher) modulesPicker(ctx context.Context) (Result, error) {
 	}
 	picker := NewPickerData(PickerModules, "Modules").
 		Command(modulesCommand()).
-		Row("agents", "External Agents", agentsInfo, externalAgentsCommand())
+		Item(d.moduleRow("agents", "External Agents", agentsInfo))
 	for _, status := range statuses {
 		if status.Settings || slices.Contains(clientScreens, status.ID) {
-			picker.Row(status.ID, status.Title, status.State, modulesCommand(status.ID))
+			picker.Item(d.moduleRow(status.ID, status.Title, status.State))
 		}
 	}
 	return Result{Handled: true, Picker: picker.Ptr()}, nil
+}
+
+// moduleRow opens a module; non-owners see the owner's screens as status only.
+func (d *Dispatcher) moduleRow(id string, title string, info string) PickerItem {
+	row := PickerItem{ID: id, Title: title, Info: info, Command: modulesCommand(id)}
+	if !d.owner() && slices.Contains(ownerScreens, id) {
+		row.Command, row.Disabled = "", true
+	}
+	return row
 }
 
 func externalAgentsModuleInfo(agents []core.ExternalAgentDescriptor) string {
