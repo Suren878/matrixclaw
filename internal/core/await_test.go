@@ -337,6 +337,24 @@ func TestCancelingARunWaitingForApprovalStartsTheQueuedMessage(t *testing.T) {
 	}
 }
 
+func TestCanceledRunRecordsFinishedAt(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithRunStarter(&recordingRunStarter{})
+	_, run := saveCrashRecoveryRun(t, db, "cancel-finished", core.RunStatusWaitingApproval, false)
+	ctx := context.Background()
+
+	if _, err := app.CancelRun(ctx, run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	stored, err := db.GetRun(ctx, run.ID)
+	if err != nil || stored.Status != core.RunStatusCanceled || stored.FinishedAt == nil {
+		t.Fatalf("canceled run = %+v, %v", stored, err)
+	}
+}
+
 type failingRunStarter struct{}
 
 func (failingRunStarter) StartRun(context.Context, string) error {

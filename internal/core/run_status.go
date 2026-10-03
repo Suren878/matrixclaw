@@ -37,7 +37,10 @@ func (c *Core) setRunStatus(ctx context.Context, run *Run, status RunStatus, err
 	run.Status = status
 	run.Error = errText
 	run.UpdatedAt = c.now().UTC()
-	if status != RunStatusCompleted && status != RunStatusFailed {
+	if subagentRunStatusTerminal(status) {
+		finishedAt := run.UpdatedAt
+		run.FinishedAt = &finishedAt
+	} else {
 		run.FinishedAt = nil
 	}
 	if err := c.store.UpdateRun(ctx, *run); err != nil {
