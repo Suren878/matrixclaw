@@ -17,8 +17,10 @@ import (
 )
 
 type Runtime struct {
-	Agent
-	stderr io.Writer
+	path    string
+	enabled bool
+	binary  *externalagents.BinaryProbe
+	stderr  io.Writer
 }
 
 type RuntimeOptions struct {
@@ -91,11 +93,10 @@ func (b *cappedBuffer) String() string {
 
 func NewRuntime(opts RuntimeOptions) *Runtime {
 	return &Runtime{
-		Agent: Agent{
-			Path:    opts.Path,
-			Enabled: opts.Enabled,
-		},
-		stderr: opts.Stderr,
+		path:    opts.Path,
+		enabled: opts.Enabled,
+		binary:  externalagents.NewBinaryProbe("claude", opts.Path),
+		stderr:  opts.Stderr,
 	}
 }
 
@@ -135,7 +136,7 @@ func (r *Runtime) Send(ctx context.Context, session externalagents.ExternalSessi
 	if text == "" {
 		return nil, fmt.Errorf("claudecode: input text is required")
 	}
-	resolved, err := LookupPath(r.Path)
+	resolved, err := externalagents.LookupBinary("claude", r.path)
 	if err != nil {
 		return nil, fmt.Errorf("claudecode: claude binary not found: %w", err)
 	}
@@ -444,11 +445,7 @@ func claudeSessionID(session externalagents.ExternalSession) string {
 }
 
 func defaultModel() string {
-	models := Agent{}.Models(context.Background())
-	if len(models) == 0 {
-		return ""
-	}
-	return models[0]
+	return models()[0]
 }
 
 func newClaudeThreadID() string {

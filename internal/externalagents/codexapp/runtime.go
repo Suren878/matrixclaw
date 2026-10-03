@@ -13,7 +13,9 @@ import (
 )
 
 type Runtime struct {
-	Agent
+	path    string
+	enabled bool
+	binary  *externalagents.BinaryProbe
 
 	mu          sync.Mutex
 	client      *Client
@@ -37,10 +39,9 @@ const (
 
 func NewRuntime(opts RuntimeOptions) *Runtime {
 	return &Runtime{
-		Agent: Agent{
-			Path:    opts.Path,
-			Enabled: opts.Enabled,
-		},
+		path:        opts.Path,
+		enabled:     opts.Enabled,
+		binary:      externalagents.NewBinaryProbe("codex", opts.Path),
 		client:      opts.Client,
 		ownsClient:  opts.Client == nil,
 		stderr:      opts.Stderr,
@@ -217,7 +218,7 @@ func (r *Runtime) ensureClient(ctx context.Context) (*Client, error) {
 		// the run context here kills the shared process as soon as that run
 		// finishes and makes the following session inherit a dead client.
 		client, err := Start(context.Background(), ProcessOptions{
-			Path:   r.Path,
+			Path:   r.path,
 			Stderr: r.stderr,
 		})
 		if err != nil {

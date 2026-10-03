@@ -85,12 +85,12 @@ on `codexapp` directly.
 ## Generic Interface Shape
 
 ```go
-type Agent interface {
+type RuntimeAgent interface {
     ID() string
     DisplayName() string
     Available(ctx context.Context) Availability
     StartSession(ctx context.Context, req StartSessionRequest) (ExternalSession, error)
-    ResumeSession(ctx context.Context, session ExternalSession) error
+    ResumeSession(ctx context.Context, session ExternalSession) (ExternalSession, error)
     Send(ctx context.Context, session ExternalSession, input Input) (<-chan Event, error)
     Interrupt(ctx context.Context, session ExternalSession) error
     Close() error
@@ -102,7 +102,7 @@ The registry should expose adapter discovery:
 ```go
 type Registry interface {
     List(ctx context.Context) []Descriptor
-    Get(id string) (Agent, bool)
+    Get(id string) (RuntimeAgent, bool)
 }
 ```
 
@@ -115,7 +115,6 @@ type Descriptor struct {
     DisplayName string
     Installed   bool
     Enabled     bool
-    AuthState   string
     Mode        string
     Path        string
     Version     string

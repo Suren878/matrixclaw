@@ -108,12 +108,6 @@ func TestClaudeStreamDeltaParsesTextAndThinking(t *testing.T) {
 	}
 }
 
-func TestClaudeAgentAdvertisesStreaming(t *testing.T) {
-	if !((Agent{}).Capabilities().StreamingEvents) {
-		t.Fatal("Claude Code agent must advertise streaming events")
-	}
-}
-
 func TestCappedBufferBoundsClaudeStderr(t *testing.T) {
 	buffer := &cappedBuffer{limit: 16}
 	input := strings.Repeat("x", 128)

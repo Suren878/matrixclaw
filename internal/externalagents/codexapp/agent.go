@@ -2,42 +2,22 @@ package codexapp
 
 import (
 	"context"
-	"errors"
+	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 )
 
 const AgentID = "codex-app"
 
-type Agent struct {
-	Path    string
-	Enabled bool
-}
-
-func (a Agent) ID() string {
+func (r *Runtime) ID() string {
 	return AgentID
 }
 
-func (a Agent) DisplayName() string {
+func (r *Runtime) DisplayName() string {
 	return "Codex"
 }
 
-func (a Agent) Aliases() []string {
-	return []string{"codex"}
-}
-
-func (a Agent) Capabilities() externalagents.Capabilities {
-	return externalagents.Capabilities{
-		StartSession:     true,
-		ResumeSession:    true,
-		StreamingEvents:  true,
-		ToolEvents:       true,
-		Interrupt:        true,
-		ConfigurablePath: true,
-	}
-}
-
-func (a Agent) Models(context.Context) []string {
+func (r *Runtime) Models(context.Context) []string {
 	return []string{
 		"gpt-5.4",
 		"gpt-5.4-mini",
@@ -46,23 +26,21 @@ func (a Agent) Models(context.Context) []string {
 	}
 }
 
-func (a Agent) Available(ctx context.Context) externalagents.Availability {
-	resolved, err := LookupPath(a.Path)
-	installed := err == nil
+func (r *Runtime) Available(ctx context.Context) externalagents.Availability {
+	resolved, version, err := r.binary.Probe(ctx)
 	detail := ""
-	if !installed {
+	if err != nil {
 		detail = "codex binary not found"
-		if errors.Is(err, errCodexAppBundlePath) {
+		if strings.Contains(err.Error(), ".app bundle") {
 			detail = err.Error()
 		}
 	}
 	return externalagents.Availability{
-		Installed: installed,
-		Enabled:   a.Enabled && installed,
-		AuthState: "unknown",
+		Installed: err == nil,
+		Enabled:   r.enabled && err == nil,
 		Mode:      "app-server",
 		Path:      resolved,
-		Version:   Version(ctx, a.Path),
+		Version:   version,
 		Detail:    detail,
 	}
 }

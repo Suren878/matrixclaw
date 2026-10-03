@@ -2,42 +2,26 @@ package claudecode
 
 import (
 	"context"
-	"errors"
+	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 )
 
 const AgentID = "claude-code"
 
-type Agent struct {
-	Path    string
-	Enabled bool
-}
-
-func (a Agent) ID() string {
+func (r *Runtime) ID() string {
 	return AgentID
 }
 
-func (a Agent) DisplayName() string {
+func (r *Runtime) DisplayName() string {
 	return "Claude Code"
 }
 
-func (a Agent) Aliases() []string {
-	return []string{"claude"}
+func (r *Runtime) Models(context.Context) []string {
+	return models()
 }
 
-func (a Agent) Capabilities() externalagents.Capabilities {
-	return externalagents.Capabilities{
-		StartSession:     true,
-		ResumeSession:    true,
-		StreamingEvents:  true,
-		ToolEvents:       false,
-		Interrupt:        false,
-		ConfigurablePath: true,
-	}
-}
-
-func (a Agent) Models(context.Context) []string {
+func models() []string {
 	return []string{
 		"sonnet",
 		"opus",
@@ -47,23 +31,21 @@ func (a Agent) Models(context.Context) []string {
 	}
 }
 
-func (a Agent) Available(ctx context.Context) externalagents.Availability {
-	resolved, err := LookupPath(a.Path)
-	installed := err == nil
+func (r *Runtime) Available(ctx context.Context) externalagents.Availability {
+	resolved, version, err := r.binary.Probe(ctx)
 	detail := ""
-	if !installed {
+	if err != nil {
 		detail = "claude binary not found"
-		if errors.Is(err, errClaudeAppBundlePath) {
+		if strings.Contains(err.Error(), ".app bundle") {
 			detail = err.Error()
 		}
 	}
 	return externalagents.Availability{
-		Installed: installed,
-		Enabled:   a.Enabled && installed,
-		AuthState: "unknown",
+		Installed: err == nil,
+		Enabled:   r.enabled && err == nil,
 		Mode:      "cli",
 		Path:      resolved,
-		Version:   Version(ctx, a.Path),
+		Version:   version,
 		Detail:    detail,
 	}
 }

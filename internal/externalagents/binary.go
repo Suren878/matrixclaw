@@ -1,42 +1,39 @@
-package claudecode
+package externalagents
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
-var errClaudeAppBundlePath = errors.New("claude CLI binary required; macOS .app bundle paths are not supported")
-
-func LookupPath(path string) (string, error) {
+// LookupBinary resolves an agent CLI from a configured path or name, then
+// from the usual global npm, nvm, asdf and Homebrew locations.
+func LookupBinary(name string, path string) (string, error) {
+	path = strings.TrimSpace(path)
 	if path == "" {
-		path = "claude"
+		path = name
 	}
+	bundleErr := fmt.Errorf("%s CLI binary required; macOS .app bundle paths are not supported", name)
 	if isMacOSAppBundlePath(path) {
-		return "", errClaudeAppBundlePath
+		return "", bundleErr
+	}
+	resolved, err := exec.LookPath(path)
+	if err == nil {
+		if isMacOSAppBundlePath(resolved) {
+			return "", bundleErr
+		}
+		return resolved, nil
 	}
 	if filepath.IsAbs(path) || strings.Contains(path, string(os.PathSeparator)) {
-		resolved, err := exec.LookPath(path)
-		if err != nil {
-			return "", err
-		}
-		if isMacOSAppBundlePath(resolved) {
-			return "", errClaudeAppBundlePath
-		}
-		return resolved, nil
+		return "", err
 	}
-	if resolved, err := exec.LookPath(path); err == nil {
-		if isMacOSAppBundlePath(resolved) {
-			return "", errClaudeAppBundlePath
-		}
-		return resolved, nil
-	}
-	for _, candidate := range claudeBinaryCandidates(path) {
+	for _, candidate := range binaryCandidates(path) {
 		if isMacOSAppBundlePath(candidate) {
 			continue
 		}
@@ -47,14 +44,38 @@ func LookupPath(path string) (string, error) {
 	return "", exec.ErrNotFound
 }
 
-func Version(ctx context.Context, path string) string {
-	resolved, err := LookupPath(path)
+// BinaryProbe remembers where an agent CLI was found and its version, so
+// listing agents spawns `--version` once rather than on every prompt build.
+type BinaryProbe struct {
+	name string
+	path string
+
+	mu      sync.Mutex
+	found   string
+	version string
+}
+
+func NewBinaryProbe(name string, path string) *BinaryProbe {
+	return &BinaryProbe{name: name, path: path}
+}
+
+// Probe returns the resolved binary and its version; a binary that is not
+// found yet is looked up again on the next call.
+func (p *BinaryProbe) Probe(ctx context.Context) (string, string, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.found != "" {
+		return p.found, p.version, nil
+	}
+	resolved, err := LookupBinary(p.name, p.path)
 	if err != nil {
-		return ""
+		return "", "", err
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
+	p.found, p.version = resolved, binaryVersion(ctx, resolved)
+	return p.found, p.version, nil
+}
+
+func binaryVersion(ctx context.Context, resolved string) string {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	output, err := exec.CommandContext(ctx, resolved, "--version").CombinedOutput()
@@ -71,8 +92,7 @@ func isMacOSAppBundlePath(path string) bool {
 	}
 	cleaned := filepath.Clean(path)
 	for {
-		base := filepath.Base(cleaned)
-		if strings.HasSuffix(strings.ToLower(base), ".app") {
+		if strings.HasSuffix(strings.ToLower(filepath.Base(cleaned)), ".app") {
 			return true
 		}
 		parent := filepath.Dir(cleaned)
@@ -83,13 +103,7 @@ func isMacOSAppBundlePath(path string) bool {
 	}
 }
 
-func claudeBinaryCandidates(name string) []string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		name = "claude"
-	}
-	home, _ := os.UserHomeDir()
-	home = strings.TrimSpace(home)
+func binaryCandidates(name string) []string {
 	candidates := []string{
 		filepath.Join("/usr/local/bin", name),
 		filepath.Join("/usr/bin", name),
@@ -97,7 +111,7 @@ func claudeBinaryCandidates(name string) []string {
 		filepath.Join("/snap/bin", name),
 		filepath.Join("/opt/homebrew/bin", name),
 	}
-	if home != "" {
+	if home, _ := os.UserHomeDir(); strings.TrimSpace(home) != "" {
 		candidates = append(candidates,
 			filepath.Join(home, ".local", "bin", name),
 			filepath.Join(home, ".npm-global", "bin", name),
@@ -115,18 +129,5 @@ func claudeBinaryCandidates(name string) []string {
 			candidates = append(candidates, matches...)
 		}
 	}
-	seen := map[string]struct{}{}
-	out := make([]string, 0, len(candidates))
-	for _, candidate := range candidates {
-		candidate = strings.TrimSpace(candidate)
-		if candidate == "" {
-			continue
-		}
-		if _, ok := seen[candidate]; ok {
-			continue
-		}
-		seen[candidate] = struct{}{}
-		out = append(out, candidate)
-	}
-	return out
+	return candidates
 }

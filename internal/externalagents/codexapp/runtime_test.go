@@ -132,9 +132,3 @@ func TestRuntimeInterruptSendsActiveTurnID(t *testing.T) {
 		t.Fatal("timed out waiting for interrupt request")
 	}
 }
-
-func TestAgentAdvertisesInterruptCapability(t *testing.T) {
-	if !((Agent{}).Capabilities().Interrupt) {
-		t.Fatal("Codex app agent must advertise interrupt support")
-	}
-}

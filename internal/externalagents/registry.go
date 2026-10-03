@@ -8,13 +8,13 @@ import (
 )
 
 type Registry struct {
-	agents  map[string]Agent
+	agents  map[string]RuntimeAgent
 	aliases map[string]string
 }
 
-func NewRegistry(agents ...Agent) (*Registry, error) {
+func NewRegistry(agents ...RuntimeAgent) (*Registry, error) {
 	registry := &Registry{
-		agents:  map[string]Agent{},
+		agents:  map[string]RuntimeAgent{},
 		aliases: map[string]string{},
 	}
 	for _, agent := range agents {
@@ -25,7 +25,8 @@ func NewRegistry(agents ...Agent) (*Registry, error) {
 	return registry, nil
 }
 
-func (r *Registry) Register(agent Agent) error {
+// Register adds agent under its ID and any extra names it answers to.
+func (r *Registry) Register(agent RuntimeAgent, aliases ...string) error {
 	if agent == nil {
 		return fmt.Errorf("externalagents: register nil agent")
 	}
@@ -39,23 +40,24 @@ func (r *Registry) Register(agent Agent) error {
 	if canonical, exists := r.aliases[id]; exists {
 		return fmt.Errorf("externalagents: agent id %q conflicts with alias for %q", id, canonical)
 	}
-	aliases := agentAliases(agent, id)
 	for _, alias := range aliases {
+		alias = normalizeID(alias)
+		if alias == "" || alias == id {
+			continue
+		}
 		if _, exists := r.agents[alias]; exists {
 			return fmt.Errorf("externalagents: alias %q conflicts with registered agent id", alias)
 		}
 		if canonical, exists := r.aliases[alias]; exists {
 			return fmt.Errorf("externalagents: duplicate alias %q for %q and %q", alias, canonical, id)
 		}
-	}
-	r.agents[id] = agent
-	for _, alias := range aliases {
 		r.aliases[alias] = id
 	}
+	r.agents[id] = agent
 	return nil
 }
 
-func (r *Registry) Get(id string) (Agent, bool) {
+func (r *Registry) Get(id string) (RuntimeAgent, bool) {
 	id, _ = r.CanonicalID(id)
 	agent, ok := r.agents[id]
 	return agent, ok
@@ -80,17 +82,15 @@ func (r *Registry) List(ctx context.Context) []Descriptor {
 	for id, agent := range r.agents {
 		availability := agent.Available(ctx)
 		out = append(out, Descriptor{
-			ID:           id,
-			Aliases:      agentAliases(agent, id),
-			DisplayName:  agent.DisplayName(),
-			Installed:    availability.Installed,
-			Enabled:      availability.Enabled,
-			AuthState:    availability.AuthState,
-			Mode:         availability.Mode,
-			Path:         availability.Path,
-			Version:      availability.Version,
-			Detail:       availability.Detail,
-			Capabilities: agentCapabilities(agent),
+			ID:          id,
+			Aliases:     r.aliasesOf(id),
+			DisplayName: agent.DisplayName(),
+			Installed:   availability.Installed,
+			Enabled:     availability.Enabled,
+			Mode:        availability.Mode,
+			Path:        availability.Path,
+			Version:     availability.Version,
+			Detail:      availability.Detail,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -99,41 +99,15 @@ func (r *Registry) List(ctx context.Context) []Descriptor {
 	return out
 }
 
-func agentAliases(agent Agent, canonicalID string) []string {
-	aliased, ok := agent.(AliasProvider)
-	if !ok {
-		return nil
-	}
-	canonicalID = normalizeID(canonicalID)
-	seen := map[string]struct{}{}
-	out := []string{}
-	for _, alias := range aliased.Aliases() {
-		alias = normalizeID(alias)
-		if alias == "" || alias == canonicalID {
-			continue
+func (r *Registry) aliasesOf(id string) []string {
+	var out []string
+	for alias, canonical := range r.aliases {
+		if canonical == id {
+			out = append(out, alias)
 		}
-		if _, exists := seen[alias]; exists {
-			continue
-		}
-		seen[alias] = struct{}{}
-		out = append(out, alias)
 	}
 	sort.Strings(out)
 	return out
-}
-
-func agentCapabilities(agent Agent) Capabilities {
-	if provider, ok := agent.(CapabilityProvider); ok {
-		return provider.Capabilities()
-	}
-	if _, ok := agent.(RuntimeAgent); ok {
-		return Capabilities{
-			StartSession:    true,
-			ResumeSession:   true,
-			StreamingEvents: true,
-		}
-	}
-	return Capabilities{}
 }
 
 func normalizeID(id string) string {

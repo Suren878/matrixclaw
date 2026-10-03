@@ -8,56 +8,33 @@ import (
 type Availability struct {
 	Installed bool
 	Enabled   bool
-	AuthState string
 	Mode      string
 	Path      string
 	Version   string
 	Detail    string
 }
 
-type Capabilities struct {
-	StartSession     bool `json:"start_session"`
-	ResumeSession    bool `json:"resume_session"`
-	StreamingEvents  bool `json:"streaming_events"`
-	ToolEvents       bool `json:"tool_events"`
-	Interrupt        bool `json:"interrupt"`
-	ConfigurablePath bool `json:"configurable_path"`
-}
-
 type Descriptor struct {
-	ID           string
-	Aliases      []string
-	DisplayName  string
-	Installed    bool
-	Enabled      bool
-	AuthState    string
-	Mode         string
-	Path         string
-	Version      string
-	Detail       string
-	Capabilities Capabilities
+	ID          string
+	Aliases     []string
+	DisplayName string
+	Installed   bool
+	Enabled     bool
+	Mode        string
+	Path        string
+	Version     string
+	Detail      string
 }
 
-type Agent interface {
-	ID() string
-	DisplayName() string
-	Available(ctx context.Context) Availability
-}
-
-type AliasProvider interface {
-	Aliases() []string
-}
-
-type CapabilityProvider interface {
-	Capabilities() Capabilities
-}
-
+// ModelProvider is implemented by agents that suggest models to pick from.
 type ModelProvider interface {
 	Models(ctx context.Context) []string
 }
 
 type RuntimeAgent interface {
-	Agent
+	ID() string
+	DisplayName() string
+	Available(ctx context.Context) Availability
 	StartSession(ctx context.Context, req StartSessionRequest) (ExternalSession, error)
 	ResumeSession(ctx context.Context, session ExternalSession) (ExternalSession, error)
 	Send(ctx context.Context, session ExternalSession, input Input) (<-chan Event, error)

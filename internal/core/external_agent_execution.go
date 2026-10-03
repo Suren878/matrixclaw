@@ -66,13 +66,9 @@ func (c *Core) externalRuntime(agentID string) (externalagents.RuntimeAgent, err
 	if registry == nil {
 		return nil, fmt.Errorf("%w: external agent registry unavailable", ErrExecutionUnavailable)
 	}
-	agent, ok := registry.Get(agentID)
+	runtime, ok := registry.Get(agentID)
 	if !ok {
 		return nil, fmt.Errorf("%w: external agent %q is not configured", ErrExecutionUnavailable, agentID)
-	}
-	runtime, ok := agent.(externalagents.RuntimeAgent)
-	if !ok {
-		return nil, fmt.Errorf("%w: external agent %q cannot execute runs", ErrExecutionUnavailable, agentID)
 	}
 	return runtime, nil
 }
