@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -21,11 +20,12 @@ func (s *SQLiteStore) CreateApproval(ctx context.Context, approval core.Approval
 		suggestion = string(body)
 	}
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO approvals(id, session_id, run_id, tool_call_ref, tool_name, description, action, params_json, path, state, reason, suggestion_json, requested_at, decided_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+INSERT INTO approvals(id, session_id, run_id, task_id, tool_call_ref, tool_name, description, action, params_json, path, state, reason, suggestion_json, requested_at, decided_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		approval.ID,
 		approval.SessionID,
 		approval.RunID,
+		approval.TaskID,
 		approval.ToolCallRef,
 		approval.ToolName,
 		approval.Description,
@@ -45,32 +45,14 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 }
 
 func (s *SQLiteStore) GetApproval(ctx context.Context, approvalID string) (core.Approval, error) {
-	row := s.db.QueryRowContext(ctx, `
-SELECT id, session_id, run_id, tool_call_ref, tool_name, description, action, params_json, path, state, reason, suggestion_json, requested_at, decided_at
-FROM approvals
-WHERE id = ?`, approvalID)
-
-	var approval core.Approval
-	var state string
-	var paramsJSON string
-	var suggestionJSON string
-	var requestedAt string
-	var decidedAt sql.NullString
-	if err := row.Scan(&approval.ID, &approval.SessionID, &approval.RunID, &approval.ToolCallRef, &approval.ToolName, &approval.Description, &approval.Action, &paramsJSON, &approval.Path, &state, &approval.Reason, &suggestionJSON, &requestedAt, &decidedAt); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return core.Approval{}, core.ErrNotFound
-		}
-		return core.Approval{}, fmt.Errorf("store: get approval: %w", err)
+	approvals, err := s.queryApprovals(ctx, approvalSelect+` WHERE a.id = ?`, approvalID)
+	if err != nil {
+		return core.Approval{}, err
 	}
-	approval.State = core.ApprovalState(state)
-	approval.Params = json.RawMessage(paramsJSON)
-	approval.Suggestion = decodeSuggestion(suggestionJSON)
-	approval.RequestedAt = mustParseTime(requestedAt)
-	if decidedAt.Valid {
-		parsed := mustParseTime(decidedAt.String)
-		approval.DecidedAt = &parsed
+	if len(approvals) == 0 {
+		return core.Approval{}, core.ErrNotFound
 	}
-	return approval, nil
+	return approvals[0], nil
 }
 
 func (s *SQLiteStore) UpdateApproval(ctx context.Context, approval core.Approval) error {
@@ -96,22 +78,26 @@ WHERE id = ?`,
 	return nil
 }
 
-const approvalColumns = `id, session_id, run_id, tool_call_ref, tool_name, description, action, params_json, path, state, reason, suggestion_json, requested_at, decided_at`
+// approvalSelect reads approvals with the name of the subagent that asked.
+const approvalSelect = `SELECT a.id, a.session_id, a.run_id, a.task_id, COALESCE(t.agent_name, ''), a.tool_call_ref, a.tool_name,
+a.description, a.action, a.params_json, a.path, a.state, a.reason, a.suggestion_json, a.requested_at, a.decided_at
+FROM approvals a LEFT JOIN tasks t ON t.id = a.task_id AND a.task_id <> ''`
 
-// ListApprovals lists the session's approvals in state (any when empty), newest first.
+// ListApprovals lists the approvals in state (any when empty) the session's
+// runs and its subagents asked for, newest first.
 func (s *SQLiteStore) ListApprovals(ctx context.Context, sessionID string, state core.ApprovalState) ([]core.Approval, error) {
-	query := `SELECT ` + approvalColumns + ` FROM approvals WHERE session_id = ?`
-	args := []any{sessionID}
+	query := approvalSelect + ` WHERE (a.session_id = ? OR a.task_id IN (SELECT id FROM tasks WHERE session_id = ? AND kind = 'subagent'))`
+	args := []any{sessionID, sessionID}
 	if state != "" {
-		query += ` AND state = ?`
+		query += ` AND a.state = ?`
 		args = append(args, string(state))
 	}
-	return s.queryApprovals(ctx, query+` ORDER BY requested_at DESC`, args...)
+	return s.queryApprovals(ctx, query+` ORDER BY a.requested_at DESC`, args...)
 }
 
 // ListRunApprovals lists the approvals the run asked for, newest first.
 func (s *SQLiteStore) ListRunApprovals(ctx context.Context, sessionID string, runID string) ([]core.Approval, error) {
-	return s.queryApprovals(ctx, `SELECT `+approvalColumns+` FROM approvals WHERE session_id = ? AND run_id = ? ORDER BY requested_at DESC`, sessionID, runID)
+	return s.queryApprovals(ctx, approvalSelect+` WHERE a.session_id = ? AND a.run_id = ? ORDER BY a.requested_at DESC`, sessionID, runID)
 }
 
 func (s *SQLiteStore) queryApprovals(ctx context.Context, query string, args ...any) ([]core.Approval, error) {
@@ -129,7 +115,7 @@ func (s *SQLiteStore) queryApprovals(ctx context.Context, query string, args ...
 		var suggestionJSON string
 		var requestedAt string
 		var decidedAt sql.NullString
-		if err := rows.Scan(&approval.ID, &approval.SessionID, &approval.RunID, &approval.ToolCallRef, &approval.ToolName, &approval.Description, &approval.Action, &paramsJSON, &approval.Path, &rawState, &approval.Reason, &suggestionJSON, &requestedAt, &decidedAt); err != nil {
+		if err := rows.Scan(&approval.ID, &approval.SessionID, &approval.RunID, &approval.TaskID, &approval.AgentName, &approval.ToolCallRef, &approval.ToolName, &approval.Description, &approval.Action, &paramsJSON, &approval.Path, &rawState, &approval.Reason, &suggestionJSON, &requestedAt, &decidedAt); err != nil {
 			return nil, fmt.Errorf("store: scan approval: %w", err)
 		}
 		approval.State = core.ApprovalState(rawState)

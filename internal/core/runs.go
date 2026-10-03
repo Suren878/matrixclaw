@@ -290,7 +290,7 @@ func (c *Core) CancelRun(ctx context.Context, runID string) (Run, error) {
 // any of them is stopped, so a stopped child is not kept for recovery, then stops
 // the commands they run in the background. It returns the ids of the runs to stop.
 func (c *Core) cancelRunRecords(ctx context.Context, run *Run) ([]string, error) {
-	children, err := c.cancelSubagentChildren(ctx, *run)
+	children, err := c.cancelSubagentChildren(ctx, *run, false)
 	if err != nil {
 		return nil, err
 	}
@@ -303,41 +303,36 @@ func (c *Core) cancelRunRecords(ctx context.Context, run *Run) ([]string, error)
 	return append([]string{run.ID}, children...), nil
 }
 
-// cancelSubagentChildren cancels the active subagent tasks the run started and
-// returns the ids of their runs to stop.
-func (c *Core) cancelSubagentChildren(ctx context.Context, run Run) ([]string, error) {
+// cancelSubagentChildren cancels the active subagent tasks the run started,
+// only its blocking ones with blockingOnly, and returns the ids of their runs
+// to stop. Each task ends delivered first, so its end is no event.
+func (c *Core) cancelSubagentChildren(ctx context.Context, run Run, blockingOnly bool) ([]string, error) {
 	tasks, err := c.store.ListTasks(ctx, TaskFilter{SessionID: run.SessionID, RunID: run.ID, Kind: TaskKindSubagent, Statuses: activeTaskStatuses()})
 	if err != nil {
 		return nil, err
 	}
 	var stopped []string
 	for _, task := range tasks {
+		if blockingOnly && task.Background {
+			continue
+		}
+		const summary = "Subagent canceled with its parent run."
+		if _, _, err := c.endSubagentTask(ctx, task, TaskEnd{Status: TaskStatusCanceled, Summary: summary, Error: summary, Delivered: true}); err != nil {
+			return nil, err
+		}
 		child, err := c.store.GetRun(ctx, task.ChildRunID)
 		if err != nil && !errors.Is(err, ErrNotFound) {
 			return nil, err
 		}
 		if err == nil && !child.Status.Terminal() {
 			ids, err := c.cancelRunRecords(ctx, &child)
-			if err != nil {
+			if err != nil && !errors.Is(err, ErrRunEnded) {
 				return nil, err
 			}
 			stopped = append(stopped, ids...)
 		}
-		const summary = "Subagent canceled with its parent run."
-		if _, err := c.finishSubagentTaskRecord(ctx, task, TaskStatusCanceled, summary, summary, false); err != nil {
-			return nil, err
-		}
 	}
 	return stopped, nil
-}
-
-// rejectChildApprovalCopies rejects the parent's copies of a subagent's
-// approvals once the subagent's run ended; the parent's call is not failed.
-func (c *Core) rejectChildApprovalCopies(ctx context.Context, task Task) error {
-	return c.rejectPendingApprovals(ctx, task.SessionID, false, "", func(approval Approval) bool {
-		bridge, bridged := decodeSubagentApprovalBridge(approval)
-		return bridged && bridge.ChildRunID == task.ChildRunID
-	})
 }
 
 // rejectPendingApprovals rejects the session's pending approvals that match;

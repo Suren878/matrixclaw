@@ -88,11 +88,27 @@ func (c *Core) transition(ctx context.Context, run *Run, change runChange) error
 	}
 	c.publishEvent(Event{Type: EventRunUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: *run})
 	if !change.To.Terminal() {
-		return nil
+		_, err := c.syncSubagentTask(ctx, *run)
+		return err
 	}
 	c.clearRunCheckpoint(ctx, run.ID)
 	if err := c.rejectPendingApprovals(ctx, run.SessionID, true, change.Err, func(approval Approval) bool { return approval.RunID == run.ID }); err != nil {
 		return err
+	}
+	_, err := c.syncSubagentTask(ctx, *run)
+	c.notifyRunEnd(run.ID)
+	if err != nil {
+		return err
+	}
+	if change.To == RunStatusFailed {
+		// A blocking child works for a call the failed run no longer waits for.
+		stopped, err := c.cancelSubagentChildren(ctx, *run, true)
+		for _, id := range stopped {
+			c.cancelActiveRun(id)
+		}
+		if err != nil {
+			return err
+		}
 	}
 	if change.To == RunStatusFailed && run.Trigger == RunTriggerWake {
 		return c.noticeFailedWakeRun(ctx, *run)
@@ -272,9 +288,6 @@ func (c *Core) afterRun(ctx context.Context, runID string) {
 		return
 	}
 	run, err := c.store.GetRun(ctx, runID)
-	if err == nil {
-		err = c.syncSubagentTask(ctx, run)
-	}
 	if err == nil {
 		switch {
 		case run.Status.Terminal():

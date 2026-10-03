@@ -76,8 +76,7 @@ func (in coreInbox) Consume(ctx context.Context, runID string, ids []string) err
 }
 
 // decided returns the run's decided approvals whose call has no result yet, oldest
-// first; a call's newest approval decides it. A bridged call resumes, whichever way
-// its child's approval was decided, only once the subagent is done.
+// first; a call's newest approval decides it.
 func (in coreInbox) decided(ctx context.Context, runID string) ([]agent.Input, error) {
 	approvals, err := in.c.store.ListRunApprovals(ctx, in.session.ID, runID)
 	if err != nil {
@@ -104,13 +103,6 @@ func (in coreInbox) decided(ctx context.Context, runID string) ([]agent.Input, e
 		if done {
 			continue
 		}
-		waiting, err := in.c.bridgedCallWaitsForSubagent(ctx, approval)
-		if err != nil {
-			return nil, err
-		}
-		if waiting {
-			continue
-		}
 		toolCall, err := in.c.sessionToolCallMessage(ctx, in.session.ID, callID)
 		if err != nil {
 			return nil, err
@@ -123,14 +115,13 @@ func (in coreInbox) decided(ctx context.Context, runID string) ([]agent.Input, e
 		if in.c.tools != nil {
 			spec, _ = in.c.tools.Spec(approval.ToolName)
 		}
-		_, bridged := decodeSubagentApprovalBridge(approval)
 		out = append(out, agent.Input{
 			Kind:       agent.InputDecided,
 			ToolCallID: callID,
 			ToolName:   approval.ToolName,
 			WorkingDir: workingDirForApprovalResume(in.session.WorkingDir, spec, approval.Path),
 			Args:       args,
-			Denied:     approval.State == ApprovalStateRejected && !bridged,
+			Denied:     approval.State == ApprovalStateRejected,
 			Reason:     approval.Reason,
 		})
 	}

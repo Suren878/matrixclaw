@@ -186,14 +186,14 @@ func (c *Core) prepareRunAfterCrash(ctx context.Context, run *Run) (bool, error)
 
 	// Every call of a batch in flight is settled: read-only ones and those the last
 	// batch checkpoint names not started are deferred for the resumed run, mutating
-	// ones ask again, asked ones keep waiting; a running child keeps the parent waiting.
+	// ones ask again, asked ones keep waiting.
 	notStarted := map[string]bool{}
 	if previous.Batch != nil {
 		for _, id := range previous.Batch.DeferredIDs {
 			notStarted[id] = true
 		}
 	}
-	waitApproval, waitSubagent := false, false
+	waitApproval := false
 	for _, interrupted := range incompleteToolCallsForRun(messages, run.ID) {
 		if notStarted[interrupted.Call.ID] {
 			if err := c.deferInterruptedCall(ctx, interrupted); err != nil {
@@ -205,15 +205,7 @@ func (c *Core) prepareRunAfterCrash(ctx context.Context, run *Run) (bool, error)
 		if err != nil {
 			return false, err
 		}
-		switch disposition {
-		case recoveryToolWaitApproval:
-			waitApproval = true
-		case recoveryToolWaitSubagent:
-			waitSubagent = true
-		}
-	}
-	if waitSubagent {
-		return false, nil
+		waitApproval = waitApproval || disposition == recoveryToolWaitApproval
 	}
 	if waitApproval {
 		if run.Status == RunStatusWaitingApproval {
@@ -244,43 +236,23 @@ type recoveryToolDisposition int
 const (
 	recoveryToolContinue recoveryToolDisposition = iota
 	recoveryToolWaitApproval
-	recoveryToolWaitSubagent
 )
 
 func (c *Core) recoverInterruptedTool(ctx context.Context, run Run, interrupted interruptedToolCall, approvals []Approval) (recoveryToolDisposition, error) {
 	call := interrupted.Call
 	if latest, ok := latestApprovalForToolCall(approvals, run.ID, call.ID); ok {
-		_, bridged := decodeSubagentApprovalBridge(latest)
-		switch {
-		case latest.State == ApprovalStatePending:
+		switch latest.State {
+		case ApprovalStatePending:
 			return recoveryToolWaitApproval, nil
-		case latest.State == ApprovalStateRejected && !bridged:
+		case ApprovalStateRejected:
 			// The resumed run reads the denial as the call's result.
 			return recoveryToolContinue, nil
 		}
 	}
-
-	if task, err := c.subagentTaskOfCall(ctx, run.SessionID, run.ID, call.ID); err == nil {
-		if !task.Background {
-			childRun, childErr := c.store.GetRun(ctx, task.ChildRunID)
-			if childErr != nil && !errors.Is(childErr, ErrNotFound) {
-				return recoveryToolContinue, childErr
-			}
-			if childErr == nil && childRun.Status == RunStatusWaitingApproval {
-				mirrored, err := c.mirrorPendingSubagentApproval(ctx, task)
-				switch {
-				case err != nil:
-					return recoveryToolContinue, err
-				case mirrored:
-					return recoveryToolWaitApproval, nil
-				}
-				return recoveryToolWaitSubagent, nil
-			}
-			if childErr == nil && !childRun.Status.Terminal() {
-				return recoveryToolWaitSubagent, nil
-			}
-		}
-		return recoveryToolContinue, c.replayInterruptedTool(ctx, run, interrupted)
+	// An agent call that started its child runs again and waits for it, or
+	// reports it, as a repeated agent call does.
+	if _, err := c.subagentTaskOfCall(ctx, run.SessionID, run.ID, call.ID); err == nil {
+		return recoveryToolContinue, c.deferInterruptedCall(ctx, interrupted)
 	} else if !errors.Is(err, ErrNotFound) {
 		return recoveryToolContinue, err
 	}
@@ -300,23 +272,6 @@ func (c *Core) recoverInterruptedTool(ctx context.Context, run Run, interrupted 
 		return recoveryToolContinue, err
 	}
 	return recoveryToolWaitApproval, nil
-}
-
-func (c *Core) replayInterruptedTool(ctx context.Context, run Run, interrupted interruptedToolCall) error {
-	result, err := c.ExecuteTool(ctx, ExecuteToolInput{
-		SessionID:   run.SessionID,
-		RunID:       run.ID,
-		ToolName:    interrupted.Call.Name,
-		Client:      run.Client,
-		ExternalKey: run.ExternalKey,
-		ToolCallID:  interrupted.Call.ID,
-		Approved:    true,
-		Args:        json.RawMessage(interrupted.Call.Input),
-	})
-	if err != nil && result.ToolResultMessage == nil {
-		return err
-	}
-	return nil
 }
 
 // deferInterruptedCall marks a call deferred, so the resumed run starts it

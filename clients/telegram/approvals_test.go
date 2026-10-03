@@ -306,3 +306,10 @@ func TestApprovalsDecidedOutsideTheOwnerChatAreRestricted(t *testing.T) {
 		}
 	}
 }
+
+func TestASubagentsApprovalNamesTheSubagent(t *testing.T) {
+	text := renderApprovalText(core.Approval{ToolName: "bash", AgentName: "Neo", Description: "run go test"})
+	if !strings.HasPrefix(text, "Subagent: Neo\nTool: bash") {
+		t.Fatalf("approval text = %q", text)
+	}
+}

@@ -80,26 +80,25 @@ func TestDecidingOneOfTwoAskingChildrenLeavesTheParentWaiting(t *testing.T) {
 	session, run := saveCrashRecoveryRun(t, db, "two_asking", core.RunStatusAccepted, false)
 	sessionIn(t, db, session, gitRepo(t), core.PermissionModeDefault)
 
-	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
-		t.Fatal(err)
-	}
-	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusWaitingApproval)
-	first, second := pendingApprovalFor(t, db, session.ID, "call-a"), pendingApprovalFor(t, db, session.ID, "call-b")
+	done := make(chan error, 1)
+	go func() { done <- app.ExecuteRun(context.Background(), run.ID) }()
+	first, second := waitPendingApproval(t, db, session.ID, "mutate-alpha"), waitPendingApproval(t, db, session.ID, "mutate-beta")
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusRunning)
 
 	if _, err := app.ResolveApproval(context.Background(), first.ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
 		t.Fatal(err)
 	}
-	starter.wait(t)
-	if got := starter.count(run.ID); got != 0 {
-		t.Fatalf("parent started %d times while its other child still asks", got)
-	}
-	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusWaitingApproval)
+	waitRunStatus(t, db, first.RunID, core.RunStatusCompleted)
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusRunning)
 
 	if _, err := app.ResolveApproval(context.Background(), second.ID, core.ApprovalResolveRequest{Approved: true}); err != nil {
 		t.Fatal(err)
 	}
-	waitRunStatus(t, db, run.ID, core.RunStatusCompleted)
+	if err := waitRecoveryError(t, done, "the parent"); err != nil {
+		t.Fatal(err)
+	}
 	starter.wait(t)
+	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
 	if a, b := storedToolResult(t, db, session.ID, "call-a"), storedToolResult(t, db, session.ID, "call-b"); a != "changed alpha" || b != "changed beta" {
 		t.Fatalf("results = %q, %q", a, b)
 	}

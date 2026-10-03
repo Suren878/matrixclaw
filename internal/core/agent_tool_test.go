@@ -344,8 +344,11 @@ func TestReadonlyChildsApprovalIsRefusedWithoutAskingTheParent(t *testing.T) {
 				t.Fatalf("the child read %q", childSaw)
 			}
 			approvals, err := db.ListApprovals(context.Background(), session.ID, "")
-			if err != nil || len(approvals) != 0 {
-				t.Fatalf("parent approvals = %+v, %v", approvals, err)
+			if err != nil || len(approvals) != 1 || approvals[0].State != core.ApprovalStateRejected || approvals[0].DecidedAt == nil || approvals[0].TaskID != task.ID {
+				t.Fatalf("parent approvals = %+v, %v; want the child's, refused", approvals, err)
+			}
+			if deliveries, err := db.ListClientDeliveries(context.Background(), core.ClientDeliveryFilter{Type: core.ClientDeliveryTypeApproval}); err != nil || len(deliveries) != 0 {
+				t.Fatalf("approval deliveries = %+v, %v", deliveries, err)
 			}
 		})
 	}

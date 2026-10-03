@@ -17,9 +17,13 @@ const (
 )
 
 type Approval struct {
-	ID          string          `json:"id"`
-	SessionID   string          `json:"session_id"`
-	RunID       string          `json:"run_id,omitempty"`
+	ID        string `json:"id"`
+	SessionID string `json:"session_id"`
+	RunID     string `json:"run_id,omitempty"`
+	// TaskID names the subagent task whose child asked, AgentName its name;
+	// the approval is listed and announced in the parent's session.
+	TaskID      string          `json:"task_id,omitempty"`
+	AgentName   string          `json:"agent_name,omitempty"`
 	ToolCallRef string          `json:"tool_call_id,omitempty"`
 	ToolName    string          `json:"tool_name,omitempty"`
 	Description string          `json:"description,omitempty"`
@@ -38,6 +42,8 @@ type Approval struct {
 type PermissionRequest struct {
 	ID          string                 `json:"id"`
 	SessionID   string                 `json:"session_id"`
+	TaskID      string                 `json:"task_id,omitempty"`
+	AgentName   string                 `json:"agent_name,omitempty"`
 	ToolCallID  string                 `json:"tool_call_id"`
 	ToolName    string                 `json:"tool_name"`
 	Description string                 `json:"description"`

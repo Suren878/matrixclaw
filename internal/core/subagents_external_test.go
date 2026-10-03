@@ -69,7 +69,7 @@ func TestReadonlyExternalChildNeverAsksAndCannotWrite(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			app.WithExternalAgents(registry, db).WithRunStarter(&recordingRunStarter{})
+			app.WithExternalAgents(registry, db).WithRunStarter(&executingRunStarter{app: app})
 			session, run := saveCrashRecoveryRun(t, db, "readonly_"+runtimeID, core.RunStatusRunning, false)
 			sessionIn(t, db, session, t.TempDir(), core.PermissionModeFullAuto)
 
@@ -104,7 +104,7 @@ func TestASlowExternalChildStartDoesNotHoldItsParent(t *testing.T) {
 	}
 	release := sync.OnceFunc(func() { close(runtime.hold) })
 	defer release()
-	app.WithExternalAgents(registry, db).WithRunStarter(&recordingRunStarter{})
+	app.WithExternalAgents(registry, db).WithRunStarter(&executingRunStarter{app: app})
 	session, run := saveCrashRecoveryRun(t, db, "slow_start", core.RunStatusRunning, false)
 	sessionIn(t, db, session, t.TempDir(), core.PermissionModeFullAuto)
 	done := make(chan error, 1)

@@ -121,3 +121,43 @@ func TestWakeupsOfRunsNotWaitingForEventsAreDroppedOnOpen(t *testing.T) {
 		t.Fatalf("wakeup of the run waiting for approval: %v", err)
 	}
 }
+
+func TestSubagentApprovalsLinkToTheirTaskAndBridgeCopiesGo(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "matrixclaw.db")
+	st := openTestStore(t, path)
+	createTestSession(t, st, "parent")
+	createTestSession(t, st, "child")
+	parent := core.Run{ID: "run_parent", SessionID: "parent", UserMessageID: "m_parent", Status: core.RunStatusWaitingApproval, StartedAt: testEpoch, UpdatedAt: testEpoch}
+	if err := st.AcceptMessage(ctx, transcript.Message{ID: "m_parent", SessionID: "parent", RunID: parent.ID, Role: transcript.MessageRoleUser, CreatedAt: testEpoch}, parent); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateTask(ctx, core.Task{ID: "task_1", Kind: core.TaskKindSubagent, SessionID: "parent", RunID: parent.ID, ParentToolCallID: "call-agent", AgentName: "Neo", ChildSessionID: "child", ChildRunID: "run_child", Status: core.TaskStatusWaitingApproval, StartedAt: testEpoch, UpdatedAt: testEpoch}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db := rawDB(t, path)
+	for _, stmt := range []string{
+		`DROP INDEX idx_approvals_task`,
+		`ALTER TABLE approvals DROP COLUMN task_id`,
+		`INSERT INTO approvals(id, session_id, run_id, tool_call_ref, tool_name, params_json, state, requested_at) VALUES
+			('child', 'child', 'run_child', 'call-mutate', 'mutate_state', '', 'pending', '2026-09-23T10:00:00Z'),
+			('copy', 'parent', 'run_parent', 'call-agent', 'agent', '{"source":"subagent_approval_bridge","task_id":"task_1","child_approval_id":"child","child_run_id":"run_child"}', 'pending', '2026-09-23T10:00:01Z')`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+
+	reopened := openTestStore(t, path)
+	t.Cleanup(func() { _ = reopened.Close() })
+	approvals, err := reopened.ListApprovals(ctx, "parent", core.ApprovalStatePending)
+	if err != nil || len(approvals) != 1 || approvals[0].ID != "child" || approvals[0].TaskID != "task_1" || approvals[0].AgentName != "Neo" {
+		t.Fatalf("parent's approvals = %+v, %v", approvals, err)
+	}
+	if run, err := reopened.GetRun(ctx, parent.ID); err != nil || run.Status != core.RunStatusRunning {
+		t.Fatalf("parent run = %+v, %v; want it left running for recovery", run, err)
+	}
+}

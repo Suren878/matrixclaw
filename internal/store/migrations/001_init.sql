@@ -158,6 +158,7 @@ CREATE TABLE IF NOT EXISTS approvals (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
     run_id TEXT NOT NULL DEFAULT '',
+    task_id TEXT NOT NULL DEFAULT '',
     tool_call_ref TEXT NOT NULL DEFAULT '',
     tool_name TEXT NOT NULL DEFAULT '',
     description TEXT NOT NULL DEFAULT '',

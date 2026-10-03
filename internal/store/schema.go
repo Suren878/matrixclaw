@@ -129,6 +129,9 @@ CREATE TABLE IF NOT EXISTS session_inputs (
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_approvals_session_run_state ON approvals(session_id, run_id, state)`); err != nil {
 		return fmt.Errorf("store: create approvals run index: %w", err)
 	}
+	if err := migrateApprovalTasks(db); err != nil {
+		return err
+	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id, hidden)`); err != nil {
 		return fmt.Errorf("store: create sessions parent index: %w", err)
 	}
@@ -261,4 +264,34 @@ func hasColumn(db *sql.DB, table string, column string) (bool, error) {
 		return false, fmt.Errorf("store: iterate %s schema: %w", table, err)
 	}
 	return false, nil
+}
+
+// migrateApprovalTasks links each subagent's approval to its task. The copies
+// older builds made of them in the parent session (params source
+// subagent_approval_bridge) are dropped, and a parent run parked on such a
+// copy is left running, so recovery resumes its agent call.
+func migrateApprovalTasks(db *sql.DB) error {
+	exists, err := hasColumn(db, "approvals", "task_id")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := db.Exec(`ALTER TABLE approvals ADD COLUMN task_id TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("store: add approvals.task_id: %w", err)
+		}
+		const bridge = `params_json LIKE '%"source":"subagent_approval_bridge"%'`
+		for _, stmt := range []string{
+			`UPDATE approvals SET task_id = COALESCE((SELECT t.id FROM tasks t WHERE t.kind = 'subagent' AND t.child_session_id = approvals.session_id), '') WHERE task_id = ''`,
+			`UPDATE runs SET status = 'running' WHERE status = 'waiting_approval' AND id IN (SELECT run_id FROM approvals WHERE ` + bridge + `)`,
+			`DELETE FROM approvals WHERE ` + bridge,
+		} {
+			if _, err := db.Exec(stmt); err != nil {
+				return fmt.Errorf("store: link approvals to subagent tasks: %w", err)
+			}
+		}
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_approvals_task ON approvals(task_id) WHERE task_id <> ''`); err != nil {
+		return fmt.Errorf("store: create approvals task index: %w", err)
+	}
+	return nil
 }

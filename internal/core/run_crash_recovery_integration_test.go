@@ -675,7 +675,7 @@ func TestRestartedParentWaitsForAllItsBlockingChildren(t *testing.T) {
 			app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 			defer cleanup()
 			app.WithSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "child done"}})
-			starter := &recordingRunStarter{}
+			starter := &executingRunStarter{app: app}
 			app.WithRunStarter(starter)
 			app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 			parentSession, parentRun := saveCrashRecoveryRun(t, sqliteStore, "parent", status, false)
@@ -696,19 +696,21 @@ func TestRestartedParentWaitsForAllItsBlockingChildren(t *testing.T) {
 				childRuns = append(childRuns, childRun)
 			}
 
-			if err := app.ExecuteRun(context.Background(), childRuns[0].ID); err != nil {
+			if err := app.RecoverActiveRuns(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			assertToolResultCount(t, sqliteStore, parentSession.ID, "tool_a", 1)
-			if starter.count(parentRun.ID) != 0 {
-				t.Fatal("the parent started while its other blocking child still ran")
-			}
-			if err := app.ExecuteRun(context.Background(), childRuns[1].ID); err != nil {
-				t.Fatal(err)
-			}
-			assertToolResultCount(t, sqliteStore, parentSession.ID, "tool_b", 1)
-			if starter.count(parentRun.ID) != 1 {
-				t.Fatalf("parent starts = %d, want 1 once both children finished", starter.count(parentRun.ID))
+			waitForRecoveryRunStatus(t, sqliteStore, parentRun.ID, core.RunStatusCompleted)
+			starter.wait(t)
+
+			for i, name := range []string{"a", "b"} {
+				assertToolResultCount(t, sqliteStore, parentSession.ID, "tool_"+name, 1)
+				if got := storedToolResult(t, sqliteStore, parentSession.ID, "tool_"+name); got != "child done" {
+					t.Fatalf("tool_%s result = %q", name, got)
+				}
+				assertRecoveryRunStatus(t, sqliteStore, childRuns[i].ID, core.RunStatusCompleted)
+				if got := starter.count(childRuns[i].ID); got != 1 {
+					t.Fatalf("child %s starts = %d, want 1", name, got)
+				}
 			}
 		})
 	}

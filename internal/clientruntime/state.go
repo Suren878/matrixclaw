@@ -248,6 +248,8 @@ func PermissionRequestFromApproval(approval core.Approval) core.PermissionReques
 	return core.PermissionRequest{
 		ID:          approval.ID,
 		SessionID:   approval.SessionID,
+		TaskID:      approval.TaskID,
+		AgentName:   approval.AgentName,
 		ToolCallID:  approval.ToolCallRef,
 		ToolName:    approval.ToolName,
 		Description: approval.Description,

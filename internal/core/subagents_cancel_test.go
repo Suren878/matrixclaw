@@ -117,8 +117,8 @@ func TestCancelParentCancelsItsBlockingSubagent(t *testing.T) {
 	}
 	assertRecoveryRunStatus(t, db, task.ChildRunID, core.RunStatusCanceled)
 	assertTaskStatus(t, task, core.TaskStatusCanceled)
-	if got := starter.count(task.ChildRunID) + starter.count(run.ID); got != 0 {
-		t.Fatalf("reschedules = %d, want 0", got)
+	if child, parent := starter.count(task.ChildRunID), starter.count(run.ID); child != 1 || parent != 0 {
+		t.Fatalf("schedules: child %d, parent %d; want the child's start only", child, parent)
 	}
 }
 
