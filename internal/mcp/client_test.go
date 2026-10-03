@@ -19,7 +19,7 @@ func TestBrowserToolsAskUnlessTheyOnlyReadThePage(t *testing.T) {
 		"browser_file_upload":      true,
 		"browser_click":            true,
 	} {
-		executor := newRemoteToolExecutor(server, &clientSession{session: &sdk.ClientSession{}}, &sdk.Tool{Name: name})
+		executor := newRemoteToolExecutor(server, &Session{session: &sdk.ClientSession{}}, &sdk.Tool{Name: name})
 		if executor.Spec().Mutates() != wantAsk {
 			t.Errorf("%s: mutates=%v, want %v", name, executor.Spec().Mutates(), wantAsk)
 		}

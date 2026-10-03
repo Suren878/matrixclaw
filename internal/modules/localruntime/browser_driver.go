@@ -75,7 +75,7 @@ func (r *Runtime) DecorateBrowserProvider(provider setup.BrowserProviderOption) 
 		provider.Status = "Local · run per task"
 	default:
 		provider.RuntimeState = RuntimeStopped
-		provider.RuntimeDetail = "Restart matrixclaw architect after enabling always running browser mode"
+		provider.RuntimeDetail = ""
 		provider.Status = "Local · installed"
 	}
 	return provider
@@ -104,8 +104,8 @@ func (r *Runtime) ApplyBrowserAction(ctx context.Context, provider setup.Browser
 			return provider, errors.New("browser runtime is not installed")
 		}
 	case ActionStop:
-		// The MCP command transport owns the server process. Reloading/stopping the
-		// daemon closes it; per-task mode uses an isolated browser profile.
+		// The MCP module owns the server process; per-task mode uses an
+		// isolated browser profile.
 	default:
 		return provider, fmt.Errorf("unsupported local browser action %q", action)
 	}

@@ -13,7 +13,6 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
-	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/store"
 )
@@ -138,31 +137,4 @@ func TestTelegramAdapterRestartsWorkerOnlyWhenItsConfigChanges(t *testing.T) {
 	if got := bot.cancelled.Load(); got != 1 {
 		t.Fatalf("changed config cancelled %d polls, want 1", got)
 	}
-}
-
-func TestMCPConfigChangedAfterSavedServerEdit(t *testing.T) {
-	service := testSetupService(t, setup.TelephonyConfig{})
-	cfg, err := service.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	changed := mcpConfigChanged(localruntime.New(t.TempDir()), bootstrapConfig{SetupService: service, Setup: cfg})
-	if changed() {
-		t.Fatal("unchanged MCP settings reported as changed")
-	}
-	if _, err := service.CreateMCPServer(setup.MCPServerConfig{ID: "docs", Name: "docs", Transport: "stdio", Command: "docs"}); err != nil {
-		t.Fatal(err)
-	}
-	if !changed() {
-		t.Fatal("added MCP server not reported as needing a restart")
-	}
-}
-
-func testSetupService(t *testing.T, telephony setup.TelephonyConfig) *setup.Service {
-	t.Helper()
-	store := setup.NewFileStore(filepath.Join(t.TempDir(), "setup.json"))
-	if err := store.Save(setup.Config{Modules: setup.ModulesConfig{Telephony: telephony}}); err != nil {
-		t.Fatalf("save setup: %v", err)
-	}
-	return setup.NewService(store)
 }

@@ -27,9 +27,7 @@ func (s *Server) getBrowserModule(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) writeBrowserModuleResponse(w http.ResponseWriter) {
-	module := s.modules.Browser.Descriptor()
-	module.RestartRequired = s.mcpRestartRequired()
-	writeJSON(w, http.StatusOK, setup.BrowserModuleResponse{Module: module})
+	writeJSON(w, http.StatusOK, setup.BrowserModuleResponse{Module: s.modules.Browser.Descriptor()})
 }
 
 func (s *Server) updateBrowserModule(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +67,10 @@ func (s *Server) handleBrowserProvider(w http.ResponseWriter, r *http.Request) {
 	updated, err := s.modules.Browser.Action(r.Context(), providerID, request)
 	if err != nil {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	// Installing or removing the runtime adds or drops the browser's MCP server.
+	if !s.reload(w, r.Context()) {
 		return
 	}
 	writeJSON(w, http.StatusOK, setup.BrowserProviderActionResponse{Provider: updated})

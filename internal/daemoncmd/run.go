@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
-	"reflect"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/api"
@@ -15,7 +14,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
 	"github.com/Suren878/matrixclaw/internal/modules/geo"
 	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
-	mcpmodule "github.com/Suren878/matrixclaw/internal/modules/mcp"
 	skillsmodule "github.com/Suren878/matrixclaw/internal/modules/skills"
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
@@ -24,7 +22,6 @@ import (
 	openairealtime "github.com/Suren878/matrixclaw/internal/modules/voice/realtime/providers/openai"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/safego"
-	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/skills"
 	"github.com/Suren878/matrixclaw/internal/store"
 )
@@ -63,11 +60,6 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	mcpModule, err := mcpmodule.New(ctx, mcpConfigWithBrowser(localRuntime, bootstrap.Setup.Modules))
-	if err != nil {
-		log.Printf("matrixclawd mcp module disabled: %v", err)
-		mcpModule, _ = mcpmodule.New(ctx, setup.MCPConfig{})
-	}
 	skillsModule, err := skillsmodule.New(skillsConfigFromBootstrap(bootstrap))
 	if err != nil {
 		return err
@@ -99,7 +91,6 @@ func Run(ctx context.Context) error {
 		runtime:    localRuntime,
 		storage:    storageModule,
 		skills:     skillsModule,
-		mcp:        mcpModule,
 		realtime:   realtimeVoice,
 		geo:        osmGeo,
 	})
@@ -119,7 +110,6 @@ func Run(ctx context.Context) error {
 	server.SetSetupService(bootstrap.SetupService)
 	server.SetModules(daemon.api)
 	server.SetRealtimeVoiceService(realtimeVoice)
-	server.SetMCPChanged(mcpConfigChanged(localRuntime, bootstrap))
 	supervisor := newSupervisor(ctx, server, app, osmGeo, daemon.set)
 	app.WithRuntimeStatusContext(supervisor)
 	supervisor.SetExternalAgents(sqliteStore, externalRuntimes, bootstrap.Setup.Modules.ExternalAgents)
@@ -188,44 +178,4 @@ func skillsConfigFromBootstrap(bootstrap bootstrapConfig) skills.Config {
 		AutoInvoke:  cfg.IsAutoInvoke(),
 		TrustPolicy: cfg.TrustPolicy,
 	}
-}
-
-func mcpConfigWithBrowser(runtime *localruntime.Runtime, modules setup.ModulesConfig) setup.MCPConfig {
-	cfg := modules.MCP
-	browserModule := setup.BrowserModuleFromConfig(modules)
-	if !browserModule.Enabled {
-		return cfg
-	}
-	for _, provider := range browserModule.Providers {
-		if provider.ID != browserModule.ProviderID {
-			continue
-		}
-		if server, ok := runtime.PlaywrightMCPServerConfig(provider); ok {
-			cfg.Enabled = true
-			cfg.Servers = appendOrReplaceMCPServer(cfg.Servers, server)
-		}
-		return cfg
-	}
-	return cfg
-}
-
-// mcpConfigChanged reports whether the saved MCP and browser settings differ
-// from those the MCP module was built with at startup.
-func mcpConfigChanged(runtime *localruntime.Runtime, bootstrap bootstrapConfig) func() bool {
-	started := mcpConfigWithBrowser(runtime, bootstrap.Setup.Modules)
-	return func() bool {
-		cfg, err := bootstrap.SetupService.Load()
-		return err == nil && !reflect.DeepEqual(mcpConfigWithBrowser(runtime, cfg.Modules), started)
-	}
-}
-
-func appendOrReplaceMCPServer(servers []setup.MCPServerConfig, server setup.MCPServerConfig) []setup.MCPServerConfig {
-	out := append([]setup.MCPServerConfig(nil), servers...)
-	for i := range out {
-		if out[i].ID == server.ID {
-			out[i] = server
-			return out
-		}
-	}
-	return append(out, server)
 }

@@ -31,7 +31,6 @@ type Server struct {
 	adminReload   func(context.Context) error
 	adminRestart  func(context.Context, core.AdminRestartRequest) error
 	adminStop     func(context.Context) error
-	mcpChanged    func() bool
 	apiToken      string
 	statusMu      sync.RWMutex
 	startedAt     time.Time
@@ -60,12 +59,6 @@ func (s *Server) SetAdminRestart(fn func(context.Context, core.AdminRestartReque
 
 func (s *Server) SetAdminStop(fn func(context.Context) error) {
 	s.adminStop = fn
-}
-
-// SetMCPChanged sets the check that the saved MCP settings differ from those
-// the daemon runs with.
-func (s *Server) SetMCPChanged(fn func() bool) {
-	s.mcpChanged = fn
 }
 
 func (s *Server) SetSetupService(service *setup.Service) {

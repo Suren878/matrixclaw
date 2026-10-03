@@ -38,7 +38,6 @@ type moduleDeps struct {
 	runtime    *localruntime.Runtime
 	storage    *localstorage.Module
 	skills     *skillsmodule.Module
-	mcp        *mcpmodule.Module
 	realtime   *realtime.Manager
 	geo        *geo.OSMService
 }
@@ -49,6 +48,7 @@ func buildModules(deps moduleDeps) (daemonModules, error) {
 	stt := voicemodule.New(setup.VoiceModuleSTT, deps.runtime)
 	telephony := telephonymodule.New()
 	browser := browsermodule.New(deps.runtime)
+	mcp := mcpmodule.New(browser.MCPServer)
 	app := deps.app
 	base := append(tools.CoreExecutors(),
 		automation.NewReminderTool(deps.automation),
@@ -69,7 +69,7 @@ func buildModules(deps moduleDeps) (daemonModules, error) {
 		deps.realtime,
 		telephony,
 		browser,
-		deps.mcp,
+		mcp,
 		deps.skills,
 	)
 	if err != nil {

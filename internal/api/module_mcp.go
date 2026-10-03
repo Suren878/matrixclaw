@@ -42,7 +42,7 @@ func (s *Server) updateMCPConfig(w http.ResponseWriter, r *http.Request) {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.writeMCPConfigResponse(w, cfg)
+	s.writeAppliedMCPConfig(w, r, cfg)
 }
 
 func (s *Server) handleMCPByID(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +92,7 @@ func (s *Server) createMCPServer(w http.ResponseWriter, r *http.Request) {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.writeMCPConfigResponse(w, cfg)
+	s.writeAppliedMCPConfig(w, r, cfg)
 }
 
 func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request, serverID string) {
@@ -105,7 +105,7 @@ func (s *Server) updateMCPServer(w http.ResponseWriter, r *http.Request, serverI
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.writeMCPConfigResponse(w, cfg)
+	s.writeAppliedMCPConfig(w, r, cfg)
 }
 
 func (s *Server) deleteMCPServer(w http.ResponseWriter, r *http.Request, serverID string) {
@@ -114,20 +114,22 @@ func (s *Server) deleteMCPServer(w http.ResponseWriter, r *http.Request, serverI
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.writeMCPConfigResponse(w, cfg)
+	s.writeAppliedMCPConfig(w, r, cfg)
 }
 
 func (s *Server) writeMCPConfigResponse(w http.ResponseWriter, cfg setup.MCPConfig) {
 	writeJSON(w, http.StatusOK, setup.MCPConfigResponse{
-		Config:          cfg,
-		Enabled:         cfg.Enabled,
-		Status:          setup.MCPConfigStatus(cfg),
-		RestartRequired: s.mcpRestartRequired(),
+		Config:  cfg,
+		Enabled: cfg.Enabled,
+		Status:  setup.MCPConfigStatus(cfg),
 	})
 }
 
-// mcpRestartRequired reports whether the saved MCP and browser settings differ
-// from those the daemon started with; they apply only on restart.
-func (s *Server) mcpRestartRequired() bool {
-	return s.mcpChanged != nil && s.mcpChanged()
+// writeAppliedMCPConfig applies an MCP edit to the running daemon and answers
+// with the saved settings.
+func (s *Server) writeAppliedMCPConfig(w http.ResponseWriter, r *http.Request, cfg setup.MCPConfig) {
+	if !s.reload(w, r.Context()) {
+		return
+	}
+	s.writeMCPConfigResponse(w, cfg)
 }

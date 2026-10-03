@@ -12,15 +12,12 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/Suren878/matrixclaw/internal/procsup"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-type ClientModule struct {
-	config   Config
-	sessions []*clientSession
-}
-
-type clientSession struct {
+// Session is a connection to one MCP server and the tools it offers.
+type Session struct {
 	server  ServerConfig
 	session *sdk.ClientSession
 	tools   []*sdk.Tool
@@ -28,68 +25,8 @@ type clientSession struct {
 	mu sync.Mutex
 }
 
-func NewClientModule(ctx context.Context, cfg Config) (*ClientModule, error) {
-	cfg = NormalizeConfig(cfg)
-	module := &ClientModule{config: cfg}
-	if !cfg.Enabled {
-		return module, nil
-	}
-	for _, server := range cfg.Servers {
-		if !server.Enabled {
-			continue
-		}
-		session, err := connectServer(ctx, server)
-		if err != nil {
-			return nil, err
-		}
-		module.sessions = append(module.sessions, session)
-	}
-	return module, nil
-}
-
-// Tools are the connected servers' tools.
-func (m *ClientModule) Tools() []tools.Executor {
-	out := []tools.Executor{}
-	for _, session := range m.sessions {
-		for _, remoteTool := range session.tools {
-			if remoteTool != nil {
-				out = append(out, newRemoteToolExecutor(session.server, session, remoteTool))
-			}
-		}
-	}
-	return out
-}
-
-func (m *ClientModule) Context() string {
-	if m == nil || len(m.sessions) == 0 {
-		return ""
-	}
-	count := 0
-	names := make([]string, 0, len(m.sessions))
-	for _, session := range m.sessions {
-		count += len(session.tools)
-		names = append(names, firstNonEmpty(session.server.Name, session.server.ID))
-	}
-	return fmt.Sprintf("MCP module:\n- Connected MCP servers: %s.\n- Remote MCP tools are available as matrixclaw tools prefixed with mcp_<server>_. Use them when they directly match the task.", strings.Join(names, ", ")) +
-		fmt.Sprintf("\n- Remote MCP tool count: %d.", count)
-}
-
-func (m *ClientModule) Close() error {
-	if m == nil {
-		return nil
-	}
-	var closeErr error
-	for _, session := range m.sessions {
-		if session != nil && session.session != nil {
-			if err := session.session.Close(); err != nil {
-				closeErr = err
-			}
-		}
-	}
-	return closeErr
-}
-
-func connectServer(ctx context.Context, cfg ServerConfig) (*clientSession, error) {
+// Connect starts or reaches the server and lists its tools.
+func Connect(ctx context.Context, cfg ServerConfig) (*Session, error) {
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = 15 * time.Second
@@ -110,7 +47,25 @@ func connectServer(ctx context.Context, cfg ServerConfig) (*clientSession, error
 		_ = session.Close()
 		return nil, fmt.Errorf("mcp: list tools for %s: %w", firstNonEmpty(cfg.Name, cfg.ID), err)
 	}
-	return &clientSession{server: cfg, session: session, tools: toolsResult.Tools}, nil
+	return &Session{server: cfg, session: session, tools: toolsResult.Tools}, nil
+}
+
+// Name is the server's display name.
+func (s *Session) Name() string { return firstNonEmpty(s.server.Name, s.server.ID) }
+
+// Tools are the server's tools as matrixclaw tools.
+func (s *Session) Tools() []tools.Executor {
+	out := make([]tools.Executor, 0, len(s.tools))
+	for _, remoteTool := range s.tools {
+		if remoteTool != nil {
+			out = append(out, newRemoteToolExecutor(s.server, s, remoteTool))
+		}
+	}
+	return out
+}
+
+func (s *Session) Close() error {
+	return s.session.Close()
 }
 
 func serverTransport(cfg ServerConfig) sdk.Transport {
@@ -119,6 +74,7 @@ func serverTransport(cfg ServerConfig) sdk.Transport {
 	}
 	cmd := exec.Command(cfg.Command, cfg.Args...)
 	cmd.Env = append(os.Environ(), envPairs(cfg.Env)...)
+	procsup.Prepare(cmd)
 	return &sdk.CommandTransport{Command: cmd}
 }
 
@@ -136,14 +92,14 @@ func envPairs(values map[string]string) []string {
 
 type remoteToolExecutor struct {
 	server     ServerConfig
-	session    *clientSession
+	session    *Session
 	remoteName string
 	spec       tools.Spec
 	// asks is set for a tool that needs approval unless a rule allows it.
 	asks bool
 }
 
-func newRemoteToolExecutor(server ServerConfig, session *clientSession, remoteTool *sdk.Tool) tools.Executor {
+func newRemoteToolExecutor(server ServerConfig, session *Session, remoteTool *sdk.Tool) tools.Executor {
 	inputSchema := toolInputSchema(remoteTool.InputSchema)
 	name := strings.TrimSpace(remoteTool.Name)
 	effect := remoteToolEffect(server, name)
