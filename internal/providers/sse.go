@@ -17,10 +17,14 @@ type SSEEvent struct {
 // the upstream keeps the HTTP connection open after that event.
 var ErrSSEComplete = errors.New("SSE complete")
 
+// maxSSELineBytes bounds one SSE line. A Codex response.completed event echoes
+// the instructions, the tools and the whole output on a single line.
+const maxSSELineBytes = 16 << 20
+
 // ScanSSE reads SSE frames from body and invokes handle for each event payload.
 func ScanSSE(ctx context.Context, body io.Reader, handle func(SSEEvent) error) error {
 	scanner := bufio.NewScanner(body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxSSELineBytes)
 
 	var eventType string
 	var data strings.Builder
