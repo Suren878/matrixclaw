@@ -9,10 +9,9 @@ type PickerViewItem struct {
 }
 
 type PickerPage struct {
-	Items    []PickerItem
-	Trailing []PickerItem
-	Page     int
-	Pages    int
+	Items []PickerItem
+	Page  int
+	Pages int
 }
 
 type PickerFooterAction struct {

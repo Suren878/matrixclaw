@@ -69,7 +69,6 @@ type BrowserModuleRuntime interface {
 type ProviderRuntime interface {
 	ListSetupProviders(ctx context.Context) ([]setup.ProviderSetupItem, error)
 	ConfigureSetupProvider(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) (setup.ProviderSetupItem, error)
-	ProviderModels(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) ([]string, error)
 	ProviderModelCatalog(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) (setup.ProviderModelsResponse, error)
 	DeleteSetupProvider(ctx context.Context, providerID string) error
 	UpdateSessionProvider(ctx context.Context, sessionID string, providerID string) (core.Session, error)

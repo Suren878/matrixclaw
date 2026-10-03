@@ -104,10 +104,6 @@ func (s *providerRuntimeStub) ConfigureSetupProvider(context.Context, string, se
 	return s.configured, nil
 }
 
-func (s *providerRuntimeStub) ProviderModels(context.Context, string, setup.ProviderSetupUpdate) ([]string, error) {
-	return nil, nil
-}
-
 func (s *providerRuntimeStub) ProviderModelCatalog(context.Context, string, setup.ProviderSetupUpdate) (setup.ProviderModelsResponse, error) {
 	return setup.ProviderModelsResponse{}, nil
 }

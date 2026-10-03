@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -24,7 +23,6 @@ type LiveEvent struct {
 	SessionID string          `json:"session_id"`
 	RunID     string          `json:"run_id,omitempty"`
 	Payload   json.RawMessage `json:"payload,omitempty"`
-	At        time.Time       `json:"at,omitempty"`
 }
 
 func (e LiveEvent) DecodeMessage() (transcript.Message, error) {
@@ -43,12 +41,6 @@ func (e LiveEvent) DecodeTodo() (todo.List, error) {
 	var list todo.List
 	err := json.Unmarshal(e.Payload, &list)
 	return list, err
-}
-
-func (e LiveEvent) DecodeApproval() (core.Approval, error) {
-	var approval core.Approval
-	err := json.Unmarshal(e.Payload, &approval)
-	return approval, err
 }
 
 func (e LiveEvent) DecodePermissionRequest() (core.PermissionRequest, error) {

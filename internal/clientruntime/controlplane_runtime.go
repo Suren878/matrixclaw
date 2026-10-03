@@ -215,14 +215,6 @@ func (r ControlplaneRuntime) ConfigureSetupProvider(ctx context.Context, provide
 	return client.ConfigureSetupProvider(ctx, providerID, update)
 }
 
-func (r ControlplaneRuntime) ProviderModels(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) ([]string, error) {
-	client, err := r.client("")
-	if err != nil {
-		return nil, err
-	}
-	return client.ProviderModels(ctx, providerID, update)
-}
-
 func (r ControlplaneRuntime) ProviderModelCatalog(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) (setup.ProviderModelsResponse, error) {
 	client, err := r.client("")
 	if err != nil {
@@ -530,14 +522,6 @@ func (r ControlplaneRuntime) ContinueSession(ctx context.Context, externalKey st
 		return core.AcceptRunResult{}, err
 	}
 	return client.ContinueSession(ctx, sessionID, r.WorkingDir)
-}
-
-func (r ControlplaneRuntime) SaveStorageFile(ctx context.Context, storagePath string, content []byte, title string, tags []string, mimeType string) (localstorage.Entry, error) {
-	client, err := r.client("")
-	if err != nil {
-		return localstorage.Entry{}, err
-	}
-	return client.SaveStorageFile(ctx, storagePath, content, title, tags, mimeType)
 }
 
 func (r ControlplaneRuntime) ListTemporaryStorageFiles(ctx context.Context, limit int) (localstorage.TempListResult, error) {

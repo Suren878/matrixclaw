@@ -208,10 +208,6 @@ func (c *Client) SendMessage(ctx context.Context, sessionID string, text string,
 	return c.SendMessagePartsMode(ctx, sessionID, text, nil, workingDir, "")
 }
 
-func (c *Client) SendMessageParts(ctx context.Context, sessionID string, text string, parts []transcript.MessagePart, workingDir string) (core.AcceptRunResult, error) {
-	return c.SendMessagePartsMode(ctx, sessionID, text, parts, workingDir, "")
-}
-
 func (c *Client) SendMessageMode(ctx context.Context, sessionID string, text string, workingDir string, busyMode core.BusyInputMode) (core.AcceptRunResult, error) {
 	return c.SendMessagePartsMode(ctx, sessionID, text, nil, workingDir, busyMode)
 }

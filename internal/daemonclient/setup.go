@@ -2,7 +2,6 @@ package daemonclient
 
 import (
 	"context"
-	"errors"
 	"net/http"
 
 	"github.com/Suren878/matrixclaw/internal/setup"
@@ -17,10 +16,6 @@ func (c *Client) ListSetupProviders(ctx context.Context) ([]setup.ProviderSetupI
 	return response.Providers, nil
 }
 
-func providerModelsResponseError(response setup.ProviderModelsResponse) error {
-	return errors.New(setup.ProviderModelCatalogMessage(response))
-}
-
 func (c *Client) ConfigureSetupProvider(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) (setup.ProviderSetupItem, error) {
 	var response setup.ProviderSetupResponse
 	path := "/v1/setup/providers/" + escapedPath(providerID) + "?" + c.clientQuery()
@@ -28,17 +23,6 @@ func (c *Client) ConfigureSetupProvider(ctx context.Context, providerID string, 
 		return setup.ProviderSetupItem{}, err
 	}
 	return response.Provider, nil
-}
-
-func (c *Client) ProviderModels(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) ([]string, error) {
-	response, err := c.ProviderModelCatalog(ctx, providerID, update)
-	if err != nil {
-		return nil, err
-	}
-	if response.Status != setup.ProviderModelStatusOK {
-		return nil, providerModelsResponseError(response)
-	}
-	return response.Models, nil
 }
 
 func (c *Client) ProviderModelCatalog(ctx context.Context, providerID string, update setup.ProviderSetupUpdate) (setup.ProviderModelsResponse, error) {
