@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"log"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -61,6 +64,28 @@ func dataDir(dbPath string) string {
 		dbPath = abs
 	}
 	return filepath.Dir(dbPath)
+}
+
+// removeWebResearchFiles deletes the page files the retired web research jobs
+// kept in <data dir>/web-research; a symlink or a file there is left alone.
+func removeWebResearchFiles(dbPath string) {
+	dir := filepath.Join(dataDir(dbPath), "web-research")
+	info, err := os.Lstat(dir)
+	if err != nil || !info.IsDir() {
+		return
+	}
+	files := 0
+	_ = filepath.WalkDir(dir, func(_ string, entry fs.DirEntry, err error) error {
+		if err == nil && !entry.IsDir() {
+			files++
+		}
+		return nil
+	})
+	if err := os.RemoveAll(dir); err != nil {
+		log.Printf("matrixclawd: remove retired web research files: %v", err)
+		return
+	}
+	log.Printf("matrixclawd: removed %s (%d retired web research files)", dir, files)
 }
 
 func defaultStorageRoot(dbPath string) string {

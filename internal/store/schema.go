@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS memories (
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_memories_scope_workdir_updated ON memories(scope, working_dir, updated_at DESC)`); err != nil {
 		return fmt.Errorf("store: create memories index: %w", err)
 	}
-	if err := dropPlanningTables(db); err != nil {
+	if err := dropRetiredTables(db); err != nil {
 		return err
 	}
 	if err := migrateSubagentTasks(db); err != nil {
@@ -187,9 +187,10 @@ CREATE TABLE IF NOT EXISTS session_todos (
 	return migrateMessageSearch(db)
 }
 
-// dropPlanningTables removes the Planning Mode tables that todo lists replaced.
-func dropPlanningTables(db *sql.DB) error {
-	for _, table := range []string{"plan_runs", "session_plan_items", "session_goals"} {
+// dropRetiredTables removes the Planning Mode tables that todo lists replaced
+// and the web research job tables (children before work_jobs).
+func dropRetiredTables(db *sql.DB) error {
+	for _, table := range []string{"plan_runs", "session_plan_items", "session_goals", "work_facts", "work_artifacts", "work_jobs"} {
 		if _, err := db.Exec(`DROP TABLE IF EXISTS ` + table); err != nil {
 			return fmt.Errorf("store: drop %s: %w", table, err)
 		}
