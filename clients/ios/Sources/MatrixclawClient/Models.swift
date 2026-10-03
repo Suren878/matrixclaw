@@ -325,16 +325,6 @@ public struct ToolUpdate: Codable, Equatable, Sendable {
     public var error: String?
 }
 
-public struct FileSnapshot: Codable, Identifiable, Equatable, Sendable {
-    public var id: String
-    public var sessionId: String
-    public var path: String
-    public var content: String
-    public var version: Int
-    public var createdAt: Date
-    public var updatedAt: Date
-}
-
 public struct ClientSnapshot: Codable, Equatable, Sendable {
     public var sessionId: String
     public var session: Session?
@@ -345,7 +335,6 @@ public struct ClientSnapshot: Codable, Equatable, Sendable {
     public var toolUpdates: [ToolUpdate]?
     public var approvals: [Approval]?
     public var approvalNotifications: [PermissionNotification]?
-    public var files: [FileSnapshot]?
 }
 
 public struct ContextReport: Codable, Equatable, Sendable {

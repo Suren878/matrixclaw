@@ -22,7 +22,6 @@ type StateSnapshot struct {
 	ToolUpdates           []core.ToolUpdate
 	Approvals             []core.PermissionRequest
 	ApprovalNotifications []core.PermissionNotification
-	Files                 []core.FileSnapshot
 	Subagents             []core.SubagentTask
 	PendingInputs         []core.SessionInput
 }
@@ -40,7 +39,6 @@ type State struct {
 	toolUpdates           map[string]core.ToolUpdate
 	approvals             map[string]core.PermissionRequest
 	approvalNotifications map[string]core.PermissionNotification
-	filesByPath           map[string][]core.FileSnapshot
 	subagents             map[string]core.SubagentTask
 	pendingInputs         map[string]core.SessionInput
 }
@@ -58,7 +56,6 @@ func NewState(snapshot core.ClientSnapshot) *State {
 		toolUpdates:           map[string]core.ToolUpdate{},
 		approvals:             map[string]core.PermissionRequest{},
 		approvalNotifications: map[string]core.PermissionNotification{},
-		filesByPath:           map[string][]core.FileSnapshot{},
 		subagents:             map[string]core.SubagentTask{},
 		pendingInputs:         map[string]core.SessionInput{},
 	}
@@ -77,9 +74,6 @@ func NewState(snapshot core.ClientSnapshot) *State {
 		if notification.ToolCallID != "" {
 			model.approvalNotifications[notification.ToolCallID] = notification
 		}
-	}
-	for _, file := range snapshot.Files {
-		model.filesByPath[file.Path] = append(model.filesByPath[file.Path], file)
 	}
 	for _, task := range snapshot.Subagents {
 		if task.ID != "" {
@@ -126,21 +120,6 @@ func (s *State) Snapshot() StateSnapshot {
 	sort.SliceStable(out.ApprovalNotifications, func(i, j int) bool {
 		return out.ApprovalNotifications[i].ToolCallID < out.ApprovalNotifications[j].ToolCallID
 	})
-	paths := make([]string, 0, len(s.filesByPath))
-	for path := range s.filesByPath {
-		paths = append(paths, path)
-	}
-	sort.Strings(paths)
-	for _, path := range paths {
-		versions := append([]core.FileSnapshot(nil), s.filesByPath[path]...)
-		sort.SliceStable(versions, func(i, j int) bool {
-			if versions[i].Version != versions[j].Version {
-				return versions[i].Version < versions[j].Version
-			}
-			return versions[i].ID < versions[j].ID
-		})
-		out.Files = append(out.Files, versions...)
-	}
 	for _, task := range s.subagents {
 		out.Subagents = append(out.Subagents, task)
 	}
@@ -240,18 +219,6 @@ func (s *State) Apply(event daemonclient.LiveEvent) error {
 			return err
 		}
 		s.todo = cloneTodo(&list)
-	case core.EventFileVersioned:
-		file, err := event.DecodeFileSnapshot()
-		if err != nil {
-			return err
-		}
-		versions := s.filesByPath[file.Path]
-		for _, existing := range versions {
-			if existing.ID == file.ID || (existing.Version == file.Version && existing.Path == file.Path) {
-				return nil
-			}
-		}
-		s.filesByPath[file.Path] = append(versions, file)
 	case core.EventSubagentUpdated:
 		task, err := event.DecodeSubagentTask()
 		if err != nil {

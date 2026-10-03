@@ -135,7 +135,6 @@ type PermissionRuleStore interface {
 
 type FileSnapshotStore interface {
 	CreateFileSnapshot(ctx context.Context, snapshot FileSnapshot) (FileSnapshot, error)
-	ListFileSnapshots(ctx context.Context, sessionID string) ([]FileSnapshot, error)
 }
 
 type Store interface {

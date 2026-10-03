@@ -192,32 +192,3 @@ VALUES(?, ?, ?, ?, ?, ?, ?)`,
 	}
 	return snapshot, nil
 }
-
-func (s *SQLiteStore) ListFileSnapshots(ctx context.Context, sessionID string) ([]core.FileSnapshot, error) {
-	rows, err := s.db.QueryContext(ctx, `
-SELECT id, session_id, path, content, version, created_at, updated_at
-FROM file_snapshots
-WHERE session_id = ?
-ORDER BY path ASC, version ASC, created_at ASC`, sessionID)
-	if err != nil {
-		return nil, fmt.Errorf("store: list file snapshots: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var snapshots []core.FileSnapshot
-	for rows.Next() {
-		var snapshot core.FileSnapshot
-		var createdAt string
-		var updatedAt string
-		if err := rows.Scan(&snapshot.ID, &snapshot.SessionID, &snapshot.Path, &snapshot.Content, &snapshot.Version, &createdAt, &updatedAt); err != nil {
-			return nil, fmt.Errorf("store: scan file snapshot: %w", err)
-		}
-		snapshot.CreatedAt = mustParseTime(createdAt)
-		snapshot.UpdatedAt = mustParseTime(updatedAt)
-		snapshots = append(snapshots, snapshot)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: iterate file snapshots: %w", err)
-	}
-	return snapshots, nil
-}

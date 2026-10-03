@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	surfacehistory "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/history"
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
@@ -153,26 +152,6 @@ func ToSurfacePermissionNotification(notification core.PermissionNotification) s
 		Granted:    notification.Granted,
 		Denied:     notification.Denied,
 	}
-}
-
-func ToSurfaceFile(file core.FileSnapshot) surfacehistory.File {
-	return surfacehistory.File{
-		ID:        file.ID,
-		SessionID: file.SessionID,
-		Path:      file.Path,
-		Content:   file.Content,
-		Version:   int64(file.Version),
-		CreatedAt: file.CreatedAt.Unix(),
-		UpdatedAt: file.UpdatedAt.Unix(),
-	}
-}
-
-func ToSurfaceFiles(files []core.FileSnapshot) []surfacehistory.File {
-	out := make([]surfacehistory.File, 0, len(files))
-	for _, file := range files {
-		out = append(out, ToSurfaceFile(file))
-	}
-	return out
 }
 
 func surfaceRole(role transcript.MessageRole) surfacemessage.MessageRole {

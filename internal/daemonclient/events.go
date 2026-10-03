@@ -63,12 +63,6 @@ func (e LiveEvent) DecodePermissionNotification() (core.PermissionNotification, 
 	return notification, err
 }
 
-func (e LiveEvent) DecodeFileSnapshot() (core.FileSnapshot, error) {
-	var fileSnapshot core.FileSnapshot
-	err := json.Unmarshal(e.Payload, &fileSnapshot)
-	return fileSnapshot, err
-}
-
 func (e LiveEvent) DecodeToolUpdate() (core.ToolUpdate, error) {
 	var update core.ToolUpdate
 	err := json.Unmarshal(e.Payload, &update)

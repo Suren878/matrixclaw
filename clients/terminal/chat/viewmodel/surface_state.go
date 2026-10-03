@@ -3,7 +3,6 @@ package viewmodel
 import (
 	"strings"
 
-	surfacehistory "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/history"
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacepermission "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/permission"
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
@@ -24,7 +23,6 @@ type Snapshot struct {
 	ToolUpdates           []core.ToolUpdate
 	Approvals             []surfacepermission.PermissionRequest
 	ApprovalNotifications []surfacepermission.PermissionNotification
-	Files                 []surfacehistory.File
 	Subagents             []core.SubagentTask
 	PendingInputs         []core.SessionInput
 }
@@ -64,7 +62,6 @@ func FromStateSnapshot(snapshot clientruntime.StateSnapshot) Snapshot {
 		Timing:        cloneTiming(snapshot.Timing),
 		Messages:      backfillAssistantMessageLLM(ToSurfaceMessages(snapshot.Messages), snapshot.Session),
 		ToolUpdates:   append([]core.ToolUpdate(nil), snapshot.ToolUpdates...),
-		Files:         ToSurfaceFiles(snapshot.Files),
 		Subagents:     append([]core.SubagentTask(nil), snapshot.Subagents...),
 		PendingInputs: append([]core.SessionInput(nil), snapshot.PendingInputs...),
 	}

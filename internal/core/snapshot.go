@@ -23,7 +23,6 @@ type ClientSnapshot struct {
 	ToolUpdates           []ToolUpdate             `json:"tool_updates,omitempty"`
 	Approvals             []Approval               `json:"approvals,omitempty"`
 	ApprovalNotifications []PermissionNotification `json:"approval_notifications,omitempty"`
-	Files                 []FileSnapshot           `json:"files,omitempty"`
 	Subagents             []SubagentTask           `json:"subagents,omitempty"`
 	PendingInputs         []SessionInput           `json:"pending_inputs,omitempty"`
 }
@@ -57,10 +56,6 @@ func (c *Core) ClientSnapshot(ctx context.Context, client string, externalKey st
 	if err != nil {
 		return ClientSnapshot{}, err
 	}
-	files, err := c.store.ListFileSnapshots(ctx, binding.SessionID)
-	if err != nil {
-		return ClientSnapshot{}, err
-	}
 	subagents, err := c.store.ListSubagentTasks(ctx, SubagentTaskFilter{
 		ParentSessionID: binding.SessionID,
 		Limit:           20,
@@ -81,7 +76,6 @@ func (c *Core) ClientSnapshot(ctx context.Context, client string, externalKey st
 		return ClientSnapshot{}, err
 	}
 
-	snapshot.Files = files
 	snapshot.Subagents = subagents
 	snapshot.PendingInputs = pendingInputs
 	snapshot.Messages = messages
