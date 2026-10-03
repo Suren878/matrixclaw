@@ -33,9 +33,12 @@ const (
 // Runtime manages local voice and browser runtimes; the daemon builds one and
 // closes it on shutdown, which stops the processes it started.
 type Runtime struct {
-	root   string
-	client *http.Client
-	procs  *procsup.Supervisor
+	// Offline keeps the bundled voice catalogs instead of fetching the
+	// online ones.
+	Offline bool
+	root    string
+	client  *http.Client
+	procs   *procsup.Supervisor
 }
 
 // New uses root for models, or the default local state dir when root is "".
@@ -53,8 +56,8 @@ func (r *Runtime) Close() error {
 	return nil
 }
 
-func (r *Runtime) DecorateVoiceModules(modules []setup.VoiceModuleDescriptor) []setup.VoiceModuleDescriptor {
-	out := append([]setup.VoiceModuleDescriptor(nil), modules...)
+func (r *Runtime) DecorateVoiceModules(modules []VoiceModule) []VoiceModule {
+	out := append([]VoiceModule(nil), modules...)
 	for i := range out {
 		for j := range out[i].Providers {
 			out[i].Providers[j] = r.DecorateVoiceProvider(out[i].ID, out[i].Providers[j])
@@ -71,18 +74,17 @@ func (r *Runtime) DecorateVoiceModules(modules []setup.VoiceModuleDescriptor) []
 	return out
 }
 
-func (r *Runtime) DecorateVoiceProvider(moduleID string, provider setup.VoiceProviderOption) setup.VoiceProviderOption {
+func (r *Runtime) DecorateVoiceProvider(moduleID string, provider VoiceProvider) VoiceProvider {
 	if !provider.Local {
 		return provider
 	}
 	if driver, ok := driverForProvider(provider.ID); ok {
-		provider.ActionIDs = driver.actionIDs()
 		return driver.decorate(r, moduleID, provider)
 	}
 	return decorateGenericLocalVoiceProvider(r, moduleID, provider)
 }
 
-func (r *Runtime) decorateVoiceModels(moduleID string, provider setup.VoiceProviderOption) setup.VoiceProviderOption {
+func (r *Runtime) decorateVoiceModels(moduleID string, provider VoiceProvider) VoiceProvider {
 	if !provider.Local || len(provider.Models) == 0 {
 		return provider
 	}
@@ -94,7 +96,7 @@ func (r *Runtime) decorateVoiceModels(moduleID string, provider setup.VoiceProvi
 	return provider
 }
 
-func installedVoiceModelCount(models []setup.VoiceModelOption) int {
+func installedVoiceModelCount(models []VoiceModel) int {
 	count := 0
 	for _, model := range models {
 		if model.Installed {
@@ -104,7 +106,7 @@ func installedVoiceModelCount(models []setup.VoiceModelOption) int {
 	return count
 }
 
-func (r *Runtime) VoiceModelInstalled(moduleID string, provider setup.VoiceProviderOption) (bool, string) {
+func (r *Runtime) VoiceModelInstalled(moduleID string, provider VoiceProvider) (bool, string) {
 	path := r.VoiceModelPath(moduleID, provider)
 	if path == "" {
 		return false, ""
@@ -112,14 +114,14 @@ func (r *Runtime) VoiceModelInstalled(moduleID string, provider setup.VoiceProvi
 	return voiceModelPathInstalled(provider, path), path
 }
 
-func (r *Runtime) VoiceRuntimeRSSBytes(provider setup.VoiceProviderOption) uint64 {
+func (r *Runtime) VoiceRuntimeRSSBytes(provider VoiceProvider) uint64 {
 	if process, ok := r.procs.Running(provider.ID); ok {
 		return process.RSS()
 	}
 	return 0
 }
 
-func (r *Runtime) VoiceModelInstalledForID(moduleID string, provider setup.VoiceProviderOption, modelID string) (bool, string) {
+func (r *Runtime) VoiceModelInstalledForID(moduleID string, provider VoiceProvider, modelID string) (bool, string) {
 	path := r.VoiceModelPathForID(moduleID, provider, modelID)
 	if path == "" {
 		return false, ""
@@ -127,7 +129,7 @@ func (r *Runtime) VoiceModelInstalledForID(moduleID string, provider setup.Voice
 	return voiceModelPathInstalled(provider, path), path
 }
 
-func voiceModelPathInstalled(provider setup.VoiceProviderOption, path string) bool {
+func voiceModelPathInstalled(provider VoiceProvider, path string) bool {
 	if driver, ok := driverForProvider(provider.ID); ok {
 		return driver.modelInstalled(path)
 	}
@@ -135,18 +137,18 @@ func voiceModelPathInstalled(provider setup.VoiceProviderOption, path string) bo
 	return err == nil && !info.IsDir() && info.Size() > 0
 }
 
-func (r *Runtime) VoiceModelPath(moduleID string, provider setup.VoiceProviderOption) string {
+func (r *Runtime) VoiceModelPath(moduleID string, provider VoiceProvider) string {
 	return r.VoiceModelPathForID(moduleID, provider, "")
 }
 
-func (r *Runtime) VoiceModelPathForID(moduleID string, provider setup.VoiceProviderOption, modelID string) string {
+func (r *Runtime) VoiceModelPathForID(moduleID string, provider VoiceProvider, modelID string) string {
 	if driver, ok := driverForProvider(provider.ID); ok {
 		return driver.modelPath(r, moduleID, provider, modelID)
 	}
 	return ""
 }
 
-func (r *Runtime) ApplyVoiceAction(ctx context.Context, moduleID string, provider setup.VoiceProviderOption, request setup.VoiceProviderActionRequest) (setup.VoiceProviderOption, error) {
+func (r *Runtime) ApplyVoiceAction(ctx context.Context, moduleID string, provider VoiceProvider, request VoiceActionRequest) (VoiceProvider, error) {
 	action := strings.ToLower(strings.TrimSpace(request.Action))
 	if !provider.Local {
 		return provider, errors.New("voice provider is not local")
@@ -174,7 +176,7 @@ func (r *Runtime) ApplyVoiceAction(ctx context.Context, moduleID string, provide
 	}
 }
 
-func (r *Runtime) installVoiceRuntime(ctx context.Context, moduleID string, provider setup.VoiceProviderOption) (setup.VoiceProviderOption, error) {
+func (r *Runtime) installVoiceRuntime(ctx context.Context, moduleID string, provider VoiceProvider) (VoiceProvider, error) {
 	driver, ok := driverForProvider(provider.ID)
 	if !ok {
 		return provider, fmt.Errorf("%s runtime installation is not implemented yet", provider.Name)
@@ -185,7 +187,7 @@ func (r *Runtime) installVoiceRuntime(ctx context.Context, moduleID string, prov
 	return r.DecorateVoiceProvider(moduleID, provider), nil
 }
 
-func (r *Runtime) deleteVoiceRuntime(moduleID string, provider setup.VoiceProviderOption) (setup.VoiceProviderOption, error) {
+func (r *Runtime) deleteVoiceRuntime(moduleID string, provider VoiceProvider) (VoiceProvider, error) {
 	driver, ok := driverForProvider(provider.ID)
 	if !ok {
 		return provider, fmt.Errorf("%s runtime deletion is not implemented yet", provider.Name)
@@ -196,7 +198,7 @@ func (r *Runtime) deleteVoiceRuntime(moduleID string, provider setup.VoiceProvid
 	return r.DecorateVoiceProvider(moduleID, provider), nil
 }
 
-func voiceProviderForActionTarget(provider setup.VoiceProviderOption, modelID string) setup.VoiceProviderOption {
+func voiceProviderForActionTarget(provider VoiceProvider, modelID string) VoiceProvider {
 	modelID = strings.TrimSpace(modelID)
 	if modelID == "" {
 		return provider
@@ -207,7 +209,7 @@ func voiceProviderForActionTarget(provider setup.VoiceProviderOption, modelID st
 	return provider
 }
 
-func (r *Runtime) downloadVoiceModel(ctx context.Context, moduleID string, provider setup.VoiceProviderOption) (setup.VoiceProviderOption, error) {
+func (r *Runtime) downloadVoiceModel(ctx context.Context, moduleID string, provider VoiceProvider) (VoiceProvider, error) {
 	target := r.VoiceModelPath(moduleID, provider)
 	if target == "" {
 		return provider, errors.New("local voice model path is empty")
@@ -227,7 +229,7 @@ func (r *Runtime) downloadVoiceModel(ctx context.Context, moduleID string, provi
 	return r.DecorateVoiceProvider(moduleID, provider), nil
 }
 
-func (r *Runtime) deleteVoiceModel(moduleID string, provider setup.VoiceProviderOption) (setup.VoiceProviderOption, error) {
+func (r *Runtime) deleteVoiceModel(moduleID string, provider VoiceProvider) (VoiceProvider, error) {
 	r.procs.Stop(provider.ID)
 	target := r.VoiceModelPath(moduleID, provider)
 	if target == "" {
@@ -246,7 +248,7 @@ func (r *Runtime) deleteVoiceModel(moduleID string, provider setup.VoiceProvider
 	return r.DecorateVoiceProvider(moduleID, provider), nil
 }
 
-func (r *Runtime) startVoiceRuntime(ctx context.Context, moduleID string, provider setup.VoiceProviderOption) (setup.VoiceProviderOption, error) {
+func (r *Runtime) startVoiceRuntime(ctx context.Context, moduleID string, provider VoiceProvider) (VoiceProvider, error) {
 	if !voiceProviderPersistentRuntimeAvailable(provider) {
 		return provider, fmt.Errorf("%s persistent runtime is not implemented yet", provider.Name)
 	}
@@ -269,7 +271,7 @@ func (r *Runtime) startVoiceRuntime(ctx context.Context, moduleID string, provid
 	return r.DecorateVoiceProvider(moduleID, provider), nil
 }
 
-func (r *Runtime) stopVoiceRuntime(moduleID string, provider setup.VoiceProviderOption) (setup.VoiceProviderOption, error) {
+func (r *Runtime) stopVoiceRuntime(moduleID string, provider VoiceProvider) (VoiceProvider, error) {
 	if !voiceProviderPersistentRuntimeAvailable(provider) {
 		return provider, fmt.Errorf("%s persistent runtime is not implemented yet", provider.Name)
 	}
@@ -285,19 +287,19 @@ func (r *Runtime) StopVoiceRuntime(providerID string) {
 	r.procs.Stop(providerID)
 }
 
-func (r *Runtime) voiceRuntimeRunning(provider setup.VoiceProviderOption) bool {
+func (r *Runtime) voiceRuntimeRunning(provider VoiceProvider) bool {
 	_, ok := r.procs.Running(provider.ID)
 	return ok
 }
 
-func (r *Runtime) VoiceBinaryPath(provider setup.VoiceProviderOption) (string, error) {
+func (r *Runtime) VoiceBinaryPath(provider VoiceProvider) (string, error) {
 	if driver, ok := driverForProvider(provider.ID); ok {
 		return driver.voiceBinaryPath(r, provider)
 	}
 	return "", fmt.Errorf("%s runtime is not installed", provider.Name)
 }
 
-func (r *Runtime) ManagedVoiceBinaryPath(provider setup.VoiceProviderOption) (string, error) {
+func (r *Runtime) ManagedVoiceBinaryPath(provider VoiceProvider) (string, error) {
 	if driver, ok := driverForProvider(provider.ID); ok {
 		return driver.managedBinaryPath(r, provider)
 	}
@@ -363,7 +365,7 @@ func runRuntimeCommandWithEnv(ctx context.Context, env []string, name string, ar
 	return nil
 }
 
-func (r *Runtime) PiperTextToSpeech(ctx context.Context, provider setup.VoiceProviderOption, text string) ([]byte, error) {
+func (r *Runtime) PiperTextToSpeech(ctx context.Context, provider VoiceProvider, text string) ([]byte, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, errors.New("text is required")
@@ -378,7 +380,7 @@ func (r *Runtime) PiperTextToSpeech(ctx context.Context, provider setup.VoicePro
 	return r.piperOneShotTextToSpeech(ctx, provider, text)
 }
 
-func (r *Runtime) SupertonicTextToSpeech(ctx context.Context, provider setup.VoiceProviderOption, text string) ([]byte, error) {
+func (r *Runtime) SupertonicTextToSpeech(ctx context.Context, provider VoiceProvider, text string) ([]byte, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, errors.New("text is required")
@@ -393,11 +395,11 @@ func (r *Runtime) SupertonicTextToSpeech(ctx context.Context, provider setup.Voi
 	return r.supertonicOneShotTextToSpeech(ctx, provider, text)
 }
 
-func voiceProviderRuntimeRunnable(provider setup.VoiceProviderOption) bool {
+func voiceProviderRuntimeRunnable(provider VoiceProvider) bool {
 	return voiceProviderRunsPerTask(provider) || strings.EqualFold(strings.TrimSpace(provider.RuntimeState), RuntimeRunning)
 }
 
-func voiceProviderRunsPerTask(provider setup.VoiceProviderOption) bool {
+func voiceProviderRunsPerTask(provider VoiceProvider) bool {
 	switch strings.ToLower(strings.TrimSpace(provider.Config.RuntimeMode)) {
 	case "always", "always_running", "persistent", "server":
 		return !voiceProviderPersistentRuntimeAvailable(provider)
@@ -406,7 +408,7 @@ func voiceProviderRunsPerTask(provider setup.VoiceProviderOption) bool {
 	}
 }
 
-func voiceProviderPersistentRuntimeAvailable(provider setup.VoiceProviderOption) bool {
+func voiceProviderPersistentRuntimeAvailable(provider VoiceProvider) bool {
 	return provider.ID == "piper" || provider.ID == "whispercpp" || provider.ID == "supertonic"
 }
 
@@ -484,7 +486,7 @@ type downloadItem struct {
 	Path string
 }
 
-func voiceDownloads(_ string, provider setup.VoiceProviderOption, modelPath string) ([]downloadItem, error) {
+func voiceDownloads(_ string, provider VoiceProvider, modelPath string) ([]downloadItem, error) {
 	if driver, ok := driverForProvider(provider.ID); ok {
 		return driver.downloads(provider, modelPath)
 	}

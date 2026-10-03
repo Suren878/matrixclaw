@@ -8,7 +8,6 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
-	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
 func (d *Dispatcher) handleModules(ctx context.Context, args string) (Result, error) {
@@ -20,8 +19,6 @@ func (d *Dispatcher) handleModules(ctx context.Context, args string) (Result, er
 		return d.handleExternalAgents(ctx, rest)
 	case "storage":
 		return d.handleStorage(ctx, rest)
-	case setup.VoiceModuleTTS, setup.VoiceModuleSTT:
-		return d.handleVoiceModule(ctx, step, rest)
 	case realtime.ModuleID:
 		return d.handleRealtimeVoiceModule(ctx, rest)
 	case "skills":
@@ -35,7 +32,7 @@ func (d *Dispatcher) handleModules(ctx context.Context, args string) (Result, er
 
 // clientScreens are the modules this client draws itself: collections and
 // editors rather than settings.
-var clientScreens = []string{"storage", setup.VoiceModuleTTS, setup.VoiceModuleSTT, realtime.ModuleID, "skills", "mcp"}
+var clientScreens = []string{"storage", realtime.ModuleID, "skills", "mcp"}
 
 // modulesPicker lists the external agents and every module with a screen,
 // with the daemon's status line.

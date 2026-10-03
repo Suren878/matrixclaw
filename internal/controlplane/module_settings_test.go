@@ -1,12 +1,15 @@
 package controlplane
 
 import (
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
 	"github.com/Suren878/matrixclaw/internal/modules/telephony"
+	"github.com/Suren878/matrixclaw/internal/modules/voice"
 	"github.com/Suren878/matrixclaw/internal/modules/web"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
@@ -102,5 +105,34 @@ func TestNonOwnersSeeModuleSettingsReadOnly(t *testing.T) {
 	}
 	if cfg, _ := service.Load(); cfg.Modules.WebSearch.BaseURL != "" {
 		t.Fatalf("web search = %+v", cfg.Modules.WebSearch)
+	}
+}
+
+func TestGroupedChoicesArePickedGroupFirst(t *testing.T) {
+	runtime := localruntime.New(filepath.Join(t.TempDir(), "state"))
+	runtime.Offline = true
+	daemon, _ := newModulesDaemon(t, voice.New(setup.VoiceModuleTTS, runtime))
+
+	page := daemon.run("/modules tts open piper")
+	if page.Picker == nil || page.Picker.Title != "Piper" || page.Picker.Back != "/modules tts" {
+		t.Fatalf("piper page = %+v", page.Picker)
+	}
+	groups := daemon.run("/modules tts open piper/voices/add")
+	if ids := pickerItemIDs(groups); !slices.Equal(ids, []string{"English", "Russian"}) || groups.Picker.Back != "/modules tts open piper/voices" {
+		t.Fatalf("groups = %+v", groups.Picker)
+	}
+	voices := daemon.run(groups.Picker.Items[1].Command)
+	if ids := pickerItemIDs(voices); !slices.Equal(ids, []string{"ru_RU-ruslan-medium"}) || voices.Picker.Title != "Add Voice: Russian" {
+		t.Fatalf("Russian voices = %+v", voices.Picker)
+	}
+	if command := voices.Picker.Items[0].Command; command != "/modules tts set piper/voices/add ru_RU-ruslan-medium" {
+		t.Fatalf("voice command = %q", command)
+	}
+	asked := daemon.run("/modules tts open provider")
+	if asked.Picker == nil || asked.Picker.Items[1].Command != "/modules tts confirm provider piper" {
+		t.Fatalf("provider choice = %+v", asked.Picker)
+	}
+	if confirm := daemon.run(asked.Picker.Items[1].Command); confirm.Confirm == nil || confirm.Confirm.Message != "Download the Piper engine?" || confirm.Confirm.ConfirmCommand != "/modules tts set provider piper" {
+		t.Fatalf("confirm = %+v", confirm)
 	}
 }

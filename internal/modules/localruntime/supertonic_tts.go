@@ -9,10 +9,9 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/procsup"
-	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
-func (r *Runtime) supertonicOneShotTextToSpeech(ctx context.Context, provider setup.VoiceProviderOption, text string) ([]byte, error) {
+func (r *Runtime) supertonicOneShotTextToSpeech(ctx context.Context, provider VoiceProvider, text string) ([]byte, error) {
 	binaryPath, err := r.VoiceBinaryPath(provider)
 	if err != nil {
 		return nil, err

@@ -2,7 +2,7 @@ package setup
 
 import (
 	"cmp"
-	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -10,81 +10,6 @@ const (
 	VoiceModuleTTS = "tts"
 	VoiceModuleSTT = "stt"
 )
-
-func (s *Service) UpdateVoiceModule(id string, update VoiceModuleUpdate) ([]VoiceModuleDescriptor, error) {
-	id = normalizeVoiceModuleID(id)
-	if id == "" {
-		return nil, fmt.Errorf("voice module id is required")
-	}
-	cfg, err := s.Update(func(cfg *Config) error {
-		current := voiceModuleConfigByID(cfg.Modules, id)
-		if update.Enabled != nil {
-			current.Enabled = *update.Enabled
-		}
-		if providerID := normalizeVoiceProviderID(update.ProviderID); providerID != "" {
-			if !voiceProviderExists(id, providerID) {
-				return fmt.Errorf("voice provider %q is not available for %s", providerID, id)
-			}
-			current.ProviderID = providerID
-		}
-		if update.ProviderConfig != nil {
-			providerID := current.ProviderID
-			if update.ProviderID != "" {
-				providerID = normalizeVoiceProviderID(update.ProviderID)
-			}
-			if providerID == "" {
-				providerID = defaultVoiceProviderID(id)
-			}
-			if !voiceProviderExists(id, providerID) {
-				return fmt.Errorf("voice provider %q is not available for %s", providerID, id)
-			}
-			if current.Providers == nil {
-				current.Providers = map[string]VoiceProviderConfig{}
-			}
-			current.Providers[providerID] = *update.ProviderConfig
-		}
-		current = normalizeVoiceModuleConfig(id, current)
-		setVoiceModuleConfigByID(&cfg.Modules, id, current)
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return VoiceModuleDescriptors(cfg.Modules), nil
-}
-
-func VoiceModuleDescriptors(modules ModulesConfig) []VoiceModuleDescriptor {
-	modules = normalizeModulesConfig(modules)
-	return []VoiceModuleDescriptor{
-		voiceModuleDescriptor(VoiceModuleTTS, "Text to Speech", modules.TextToSpeech),
-		voiceModuleDescriptor(VoiceModuleSTT, "Speech to Text", modules.SpeechToText),
-	}
-}
-
-func voiceModuleDescriptor(id string, title string, cfg VoiceModuleConfig) VoiceModuleDescriptor {
-	cfg = normalizeVoiceModuleConfig(id, cfg)
-	provider := voiceProviderByID(id, cfg.ProviderID)
-	providerConfig := voiceProviderConfigByID(id, cfg, provider.ID)
-	status := "Disabled"
-	if cfg.Enabled {
-		status = voiceProviderRuntimeStatus(provider)
-	}
-	providers := voiceProviders(id)
-	for i := range providers {
-		providers[i].Config = voiceProviderConfigByID(id, cfg, providers[i].ID)
-	}
-	return VoiceModuleDescriptor{
-		ID:           id,
-		Title:        title,
-		Enabled:      cfg.Enabled,
-		ProviderID:   provider.ID,
-		ProviderName: provider.Name,
-		Local:        provider.Local,
-		Status:       status,
-		Config:       providerConfig,
-		Providers:    providers,
-	}
-}
 
 // normalizeVoiceModuleConfig trims a stored voice module and keeps, per
 // provider, only the settings that differ from the provider's defaults.
@@ -111,14 +36,8 @@ func normalizeVoiceModuleConfig(moduleID string, cfg VoiceModuleConfig) VoiceMod
 	return cfg
 }
 
-// voiceProviderConfigByID is a provider's effective settings in module.
-func voiceProviderConfigByID(moduleID string, module VoiceModuleConfig, providerID string) VoiceProviderConfig {
-	providerID = normalizeVoiceProviderID(providerID)
-	return effectiveVoiceProviderConfig(moduleID, providerID, module.Providers[providerID])
-}
-
 func storedVoiceProviderConfig(moduleID string, providerID string, cfg VoiceProviderConfig) VoiceProviderConfig {
-	cfg = effectiveVoiceProviderConfig(moduleID, providerID, cfg)
+	cfg = EffectiveVoiceConfig(moduleID, providerID, cfg)
 	defaults := defaultVoiceProviderConfig(providerID)
 	cfg.ModelID = omitDefault(cfg.ModelID, defaults.ModelID)
 	cfg.VoiceID = omitDefault(cfg.VoiceID, defaults.VoiceID)
@@ -129,9 +48,9 @@ func storedVoiceProviderConfig(moduleID string, providerID string, cfg VoiceProv
 	return cfg
 }
 
-// effectiveVoiceProviderConfig normalizes cfg and fills the provider's
-// defaults for what it leaves empty.
-func effectiveVoiceProviderConfig(moduleID string, providerID string, cfg VoiceProviderConfig) VoiceProviderConfig {
+// EffectiveVoiceConfig is a local voice provider's settings with its
+// defaults filled and its language normalized.
+func EffectiveVoiceConfig(moduleID string, providerID string, cfg VoiceProviderConfig) VoiceProviderConfig {
 	moduleID = normalizeVoiceModuleID(moduleID)
 	providerID = normalizeVoiceProviderID(providerID)
 	cfg.APIKey = ""
@@ -140,9 +59,9 @@ func effectiveVoiceProviderConfig(moduleID string, providerID string, cfg VoiceP
 	cfg.VoiceID = strings.TrimSpace(cfg.VoiceID)
 	if moduleID == VoiceModuleTTS {
 		if providerID == "supertonic" {
-			cfg.Language = normalizeSupertonicLanguageCode(cfg.Language)
+			cfg.Language = NormalizeSupertonicLanguage(cfg.Language)
 		} else {
-			cfg.Language = normalizeVoiceLanguageCode(cfg.Language)
+			cfg.Language = NormalizeVoiceLanguage(cfg.Language)
 		}
 	} else {
 		cfg.Language = strings.ToLower(strings.TrimSpace(cfg.Language))
@@ -169,7 +88,8 @@ func normalizeVoiceRuntimeMode(mode string) string {
 	}
 }
 
-func normalizeVoiceLanguageCode(language string) string {
+// NormalizeVoiceLanguage is a Piper language code such as en_US; "" is any.
+func NormalizeVoiceLanguage(language string) string {
 	language = strings.TrimSpace(language)
 	if language == "" {
 		return ""
@@ -192,7 +112,8 @@ func normalizeVoiceLanguageCode(language string) string {
 	return language
 }
 
-func normalizeSupertonicLanguageCode(language string) string {
+// NormalizeSupertonicLanguage is a Supertonic language code; "auto" detects.
+func NormalizeSupertonicLanguage(language string) string {
 	language = strings.TrimSpace(language)
 	if language == "" {
 		return "auto"
@@ -207,12 +128,51 @@ func normalizeSupertonicLanguageCode(language string) string {
 	if before, _, ok := strings.Cut(language, "-"); ok {
 		language = before
 	}
-	switch language {
-	case "en", "ko", "ja", "ar", "bg", "cs", "da", "de", "el", "es", "et", "fi", "fr", "hi", "hr", "hu", "id", "it", "lt", "lv", "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "tr", "uk", "vi", "na":
-		return language
-	default:
-		return "auto"
+	for _, known := range SupertonicLanguages {
+		if known.Code == language {
+			return language
+		}
 	}
+	return "auto"
+}
+
+// Language is a language a voice engine speaks or understands.
+type Language struct{ Code, Name string }
+
+// SupertonicLanguages are the languages Supertonic speaks.
+var SupertonicLanguages = []Language{
+	{"auto", "Auto"}, {"na", "Fallback"}, {"ar", "Arabic"}, {"bg", "Bulgarian"}, {"cs", "Czech"},
+	{"da", "Danish"}, {"de", "German"}, {"el", "Greek"}, {"en", "English"}, {"es", "Spanish"},
+	{"et", "Estonian"}, {"fi", "Finnish"}, {"fr", "French"}, {"hi", "Hindi"}, {"hr", "Croatian"},
+	{"hu", "Hungarian"}, {"id", "Indonesian"}, {"it", "Italian"}, {"ja", "Japanese"}, {"ko", "Korean"},
+	{"lt", "Lithuanian"}, {"lv", "Latvian"}, {"nl", "Dutch"}, {"pl", "Polish"}, {"pt", "Portuguese"},
+	{"ro", "Romanian"}, {"ru", "Russian"}, {"sk", "Slovak"}, {"sl", "Slovenian"}, {"sv", "Swedish"},
+	{"tr", "Turkish"}, {"uk", "Ukrainian"}, {"vi", "Vietnamese"},
+}
+
+// WhisperLanguages are the languages whisper.cpp transcribes.
+var WhisperLanguages = []Language{
+	{"auto", "Auto"}, {"af", "Afrikaans"}, {"am", "Amharic"}, {"ar", "Arabic"}, {"as", "Assamese"},
+	{"az", "Azerbaijani"}, {"ba", "Bashkir"}, {"be", "Belarusian"}, {"bg", "Bulgarian"}, {"bn", "Bengali"},
+	{"bo", "Tibetan"}, {"br", "Breton"}, {"bs", "Bosnian"}, {"ca", "Catalan"}, {"cs", "Czech"},
+	{"cy", "Welsh"}, {"da", "Danish"}, {"de", "German"}, {"el", "Greek"}, {"en", "English"},
+	{"es", "Spanish"}, {"et", "Estonian"}, {"eu", "Basque"}, {"fa", "Persian"}, {"fi", "Finnish"},
+	{"fo", "Faroese"}, {"fr", "French"}, {"gl", "Galician"}, {"gu", "Gujarati"}, {"ha", "Hausa"},
+	{"haw", "Hawaiian"}, {"he", "Hebrew"}, {"hi", "Hindi"}, {"hr", "Croatian"}, {"ht", "Haitian Creole"},
+	{"hu", "Hungarian"}, {"hy", "Armenian"}, {"id", "Indonesian"}, {"is", "Icelandic"}, {"it", "Italian"},
+	{"ja", "Japanese"}, {"jw", "Javanese"}, {"ka", "Georgian"}, {"kk", "Kazakh"}, {"km", "Khmer"},
+	{"kn", "Kannada"}, {"ko", "Korean"}, {"la", "Latin"}, {"lb", "Luxembourgish"}, {"ln", "Lingala"},
+	{"lo", "Lao"}, {"lt", "Lithuanian"}, {"lv", "Latvian"}, {"mg", "Malagasy"}, {"mi", "Maori"},
+	{"mk", "Macedonian"}, {"ml", "Malayalam"}, {"mn", "Mongolian"}, {"mr", "Marathi"}, {"ms", "Malay"},
+	{"mt", "Maltese"}, {"my", "Myanmar"}, {"ne", "Nepali"}, {"nl", "Dutch"}, {"nn", "Norwegian Nynorsk"},
+	{"no", "Norwegian"}, {"oc", "Occitan"}, {"pa", "Punjabi"}, {"pl", "Polish"}, {"ps", "Pashto"},
+	{"pt", "Portuguese"}, {"ro", "Romanian"}, {"ru", "Russian"}, {"sa", "Sanskrit"}, {"sd", "Sindhi"},
+	{"si", "Sinhala"}, {"sk", "Slovak"}, {"sl", "Slovenian"}, {"sn", "Shona"}, {"so", "Somali"},
+	{"sq", "Albanian"}, {"sr", "Serbian"}, {"su", "Sundanese"}, {"sv", "Swedish"}, {"sw", "Swahili"},
+	{"ta", "Tamil"}, {"te", "Telugu"}, {"tg", "Tajik"}, {"th", "Thai"}, {"tk", "Turkmen"},
+	{"tl", "Tagalog"}, {"tr", "Turkish"}, {"tt", "Tatar"}, {"uk", "Ukrainian"}, {"ur", "Urdu"},
+	{"uz", "Uzbek"}, {"vi", "Vietnamese"}, {"yi", "Yiddish"}, {"yo", "Yoruba"}, {"yue", "Cantonese"},
+	{"zh", "Chinese"},
 }
 
 func defaultVoiceProviderConfig(providerID string) VoiceProviderConfig {
@@ -243,26 +203,6 @@ func defaultVoiceProviderConfig(providerID string) VoiceProviderConfig {
 	}
 }
 
-func voiceModuleConfigByID(modules ModulesConfig, id string) VoiceModuleConfig {
-	switch normalizeVoiceModuleID(id) {
-	case VoiceModuleTTS:
-		return modules.TextToSpeech
-	case VoiceModuleSTT:
-		return modules.SpeechToText
-	default:
-		return VoiceModuleConfig{}
-	}
-}
-
-func setVoiceModuleConfigByID(modules *ModulesConfig, id string, cfg VoiceModuleConfig) {
-	switch normalizeVoiceModuleID(id) {
-	case VoiceModuleTTS:
-		modules.TextToSpeech = cfg
-	case VoiceModuleSTT:
-		modules.SpeechToText = cfg
-	}
-}
-
 func normalizeVoiceModuleID(id string) string {
 	switch id = strings.TrimSpace(id); id {
 	case VoiceModuleTTS, VoiceModuleSTT:
@@ -276,75 +216,25 @@ func normalizeVoiceProviderID(id string) string {
 	return strings.ToLower(strings.TrimSpace(id))
 }
 
-func defaultVoiceProviderID(moduleID string) string {
-	switch normalizeVoiceModuleID(moduleID) {
-	case VoiceModuleTTS:
-		return "piper"
-	case VoiceModuleSTT:
-		return "whispercpp"
-	default:
-		return ""
-	}
-}
-
 func voiceProviderExists(moduleID string, providerID string) bool {
 	providerID = normalizeVoiceProviderID(providerID)
 	if providerID == "" {
 		return false
 	}
-	for _, provider := range voiceProviders(moduleID) {
-		if provider.ID == providerID {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(VoiceProviderIDs(moduleID), providerID)
 }
 
-func voiceProviderByID(moduleID string, providerID string) VoiceProviderOption {
-	providerID = normalizeVoiceProviderID(providerID)
-	for _, provider := range voiceProviders(moduleID) {
-		if provider.ID == providerID {
-			return provider
-		}
-	}
-	for _, provider := range voiceProviders(moduleID) {
-		if provider.ID == defaultVoiceProviderID(moduleID) {
-			return provider
-		}
-	}
-	return VoiceProviderOption{}
-}
-
-func voiceProviders(moduleID string) []VoiceProviderOption {
+// VoiceProviderIDs are the local providers of the TTS or STT module, the
+// default first.
+func VoiceProviderIDs(moduleID string) []string {
 	switch normalizeVoiceModuleID(moduleID) {
 	case VoiceModuleTTS:
-		return []VoiceProviderOption{
-			{ID: "piper", Name: "Piper", Local: true, Status: "Local · not installed", Models: []VoiceModelOption{
-				{ID: "en_US-lessac-medium", Name: "Lessac Medium", Size: "~60 MB", Description: "Fallback English voice", Default: true, LanguageCode: "en_US", LanguageName: "English", Quality: "medium"},
-				{ID: "ru_RU-ruslan-medium", Name: "Ruslan Medium", Size: "~60 MB", Description: "Fallback Russian voice", LanguageCode: "ru_RU", LanguageName: "Russian", Quality: "medium"},
-			}},
-			{ID: "supertonic", Name: "Supertonic 3", Local: true, Status: "Local · not installed"},
-		}
+		return []string{"piper", "supertonic"}
 	case VoiceModuleSTT:
-		return []VoiceProviderOption{
-			{ID: "whispercpp", Name: "Whisper.cpp", Local: true, Status: "Local · not downloaded", Models: []VoiceModelOption{
-				{ID: "tiny", Name: "Tiny", Size: "~39 MB", RAM: "~390 MB", Description: "Fastest, lowest accuracy"},
-				{ID: "base", Name: "Base", Size: "~142 MB", RAM: "~500 MB", Description: "Balanced default", Default: true},
-				{ID: "small", Name: "Small", Size: "~466 MB", RAM: "~1 GB", Description: "Better accuracy"},
-				{ID: "medium", Name: "Medium", Size: "~1.5 GB", RAM: "~2.6 GB", Description: "Heavy local model"},
-				{ID: "large-v3", Name: "Large v3", Size: "~3 GB", RAM: "~4 GB", Description: "Very heavy"},
-			}},
-		}
+		return []string{"whispercpp"}
 	default:
 		return nil
 	}
-}
-
-func voiceProviderRuntimeStatus(provider VoiceProviderOption) string {
-	if !provider.Local {
-		return provider.Status
-	}
-	return "Local · not installed"
 }
 
 // normalizeRealtimeVoiceConfig trims the realtime voice settings; the realtime

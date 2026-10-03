@@ -8,24 +8,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
 type whisperDriver struct{}
 
-func (whisperDriver) actionIDs() setup.VoiceProviderActionIDs {
-	return voiceProviderActionIDsWithModels()
-}
-
-func (whisperDriver) decorate(r *Runtime, moduleID string, provider setup.VoiceProviderOption) setup.VoiceProviderOption {
-	if models, ok := whisperCatalogModels(); ok && len(models) > 0 {
-		provider.Models = models
-		provider.CatalogStatus = "online"
-		provider.CatalogDetail = fmt.Sprintf("%d models", len(models))
-	} else {
-		provider.CatalogStatus = "fallback"
-		provider.CatalogDetail = "using bundled fallback models"
+func (whisperDriver) decorate(r *Runtime, moduleID string, provider VoiceProvider) VoiceProvider {
+	if !r.Offline {
+		if models, ok := whisperCatalogModels(); ok && len(models) > 0 {
+			provider.Models = models
+		}
 	}
 	provider, installed, _ := r.decorateProviderModelFiles(moduleID, provider)
 	if !installed {
@@ -60,7 +51,7 @@ func (whisperDriver) decorate(r *Runtime, moduleID string, provider setup.VoiceP
 	return provider
 }
 
-func (whisperDriver) modelPath(r *Runtime, _ string, provider setup.VoiceProviderOption, modelID string) string {
+func (whisperDriver) modelPath(r *Runtime, _ string, provider VoiceProvider, modelID string) string {
 	modelID = strings.TrimSpace(modelID)
 	if modelID == "" {
 		modelID = strings.TrimSpace(provider.Config.ModelID)
@@ -76,7 +67,7 @@ func (whisperDriver) modelInstalled(path string) bool {
 	return err == nil && !info.IsDir() && info.Size() > 0
 }
 
-func (whisperDriver) downloads(provider setup.VoiceProviderOption, modelPath string) ([]downloadItem, error) {
+func (whisperDriver) downloads(provider VoiceProvider, modelPath string) ([]downloadItem, error) {
 	url, err := whisperModelURL(provider.Config.ModelID)
 	if err != nil {
 		return nil, err
@@ -84,18 +75,18 @@ func (whisperDriver) downloads(provider setup.VoiceProviderOption, modelPath str
 	return []downloadItem{{URL: url, Path: modelPath}}, nil
 }
 
-func (whisperDriver) actionTarget(provider setup.VoiceProviderOption, modelID string) setup.VoiceProviderOption {
+func (whisperDriver) actionTarget(provider VoiceProvider, modelID string) VoiceProvider {
 	if modelID = strings.TrimSpace(modelID); modelID != "" {
 		provider.Config.ModelID = modelID
 	}
 	return provider
 }
 
-func (whisperDriver) installRuntime(ctx context.Context, r *Runtime, _ string, _ setup.VoiceProviderOption) error {
+func (whisperDriver) installRuntime(ctx context.Context, r *Runtime, _ string, _ VoiceProvider) error {
 	return r.installWhisperRuntime(ctx)
 }
 
-func (whisperDriver) deleteRuntime(r *Runtime, _ string, provider setup.VoiceProviderOption) error {
+func (whisperDriver) deleteRuntime(r *Runtime, _ string, provider VoiceProvider) error {
 	r.procs.Stop(provider.ID)
 	if err := os.RemoveAll(r.managedWhisperRuntimeDir()); err != nil {
 		return err
@@ -103,7 +94,7 @@ func (whisperDriver) deleteRuntime(r *Runtime, _ string, provider setup.VoicePro
 	return os.RemoveAll(filepath.Join(r.rootDir(), "voice", "stt", "whispercpp"))
 }
 
-func (whisperDriver) managedBinaryPath(r *Runtime, provider setup.VoiceProviderOption) (string, error) {
+func (whisperDriver) managedBinaryPath(r *Runtime, provider VoiceProvider) (string, error) {
 	value := strings.TrimSpace(provider.Config.BinaryPath)
 	if filepath.IsAbs(value) || strings.Contains(value, string(os.PathSeparator)) {
 		if info, err := os.Stat(value); err == nil && !info.IsDir() {
@@ -117,7 +108,7 @@ func (whisperDriver) managedBinaryPath(r *Runtime, provider setup.VoiceProviderO
 	return "", fmt.Errorf("%s runtime is not installed", provider.Name)
 }
 
-func (whisperDriver) voiceBinaryPath(r *Runtime, provider setup.VoiceProviderOption) (string, error) {
+func (whisperDriver) voiceBinaryPath(r *Runtime, provider VoiceProvider) (string, error) {
 	if path, err := r.ManagedVoiceBinaryPath(provider); err == nil {
 		return path, nil
 	}

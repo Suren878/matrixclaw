@@ -24,7 +24,7 @@ type WhisperSpeechInput struct {
 	Language string
 }
 
-func (r *Runtime) WhisperSpeechToText(ctx context.Context, provider setup.VoiceProviderOption, input WhisperSpeechInput) (string, error) {
+func (r *Runtime) WhisperSpeechToText(ctx context.Context, provider VoiceProvider, input WhisperSpeechInput) (string, error) {
 	if len(input.Content) == 0 {
 		return "", errors.New("audio content is required")
 	}
@@ -101,7 +101,7 @@ func whisperTextFromStdout(output string) string {
 	return strings.TrimSpace(strings.Join(out, " "))
 }
 
-func (r *Runtime) WhisperCLIPath(provider setup.VoiceProviderOption) (string, error) {
+func (r *Runtime) WhisperCLIPath(provider VoiceProvider) (string, error) {
 	configured := strings.TrimSpace(provider.Config.BinaryPath)
 	if configured != "" && filepath.Base(configured) != "whisper-server" {
 		if path, ok := executablePath(configured); ok {
@@ -122,7 +122,7 @@ func (r *Runtime) WhisperCLIPath(provider setup.VoiceProviderOption) (string, er
 	return "", fmt.Errorf("%s runtime is not installed", provider.Name)
 }
 
-func (r *Runtime) WhisperServerPath(provider setup.VoiceProviderOption) (string, error) {
+func (r *Runtime) WhisperServerPath(provider VoiceProvider) (string, error) {
 	configured := strings.TrimSpace(provider.Config.BinaryPath)
 	if configured != "" && filepath.Base(configured) == "whisper-server" {
 		if path, ok := executablePath(configured); ok {
@@ -140,7 +140,7 @@ func (r *Runtime) WhisperServerPath(provider setup.VoiceProviderOption) (string,
 	return "", fmt.Errorf("%s server runtime is not installed", provider.Name)
 }
 
-func (r *Runtime) whisperServerSpeechToText(ctx context.Context, provider setup.VoiceProviderOption, input WhisperSpeechInput) (string, error) {
+func (r *Runtime) whisperServerSpeechToText(ctx context.Context, provider VoiceProvider, input WhisperSpeechInput) (string, error) {
 	if _, err := r.server(ctx, setup.VoiceModuleSTT, provider); err != nil {
 		return "", err
 	}

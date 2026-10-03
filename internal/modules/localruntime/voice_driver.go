@@ -7,21 +7,18 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
 type voiceProviderDriver interface {
-	decorate(r *Runtime, moduleID string, provider setup.VoiceProviderOption) setup.VoiceProviderOption
-	actionIDs() setup.VoiceProviderActionIDs
-	modelPath(r *Runtime, moduleID string, provider setup.VoiceProviderOption, modelID string) string
+	decorate(r *Runtime, moduleID string, provider VoiceProvider) VoiceProvider
+	modelPath(r *Runtime, moduleID string, provider VoiceProvider, modelID string) string
 	modelInstalled(path string) bool
-	downloads(provider setup.VoiceProviderOption, modelPath string) ([]downloadItem, error)
-	actionTarget(provider setup.VoiceProviderOption, modelID string) setup.VoiceProviderOption
-	installRuntime(ctx context.Context, r *Runtime, moduleID string, provider setup.VoiceProviderOption) error
-	deleteRuntime(r *Runtime, moduleID string, provider setup.VoiceProviderOption) error
-	managedBinaryPath(r *Runtime, provider setup.VoiceProviderOption) (string, error)
-	voiceBinaryPath(r *Runtime, provider setup.VoiceProviderOption) (string, error)
+	downloads(provider VoiceProvider, modelPath string) ([]downloadItem, error)
+	actionTarget(provider VoiceProvider, modelID string) VoiceProvider
+	installRuntime(ctx context.Context, r *Runtime, moduleID string, provider VoiceProvider) error
+	deleteRuntime(r *Runtime, moduleID string, provider VoiceProvider) error
+	managedBinaryPath(r *Runtime, provider VoiceProvider) (string, error)
+	voiceBinaryPath(r *Runtime, provider VoiceProvider) (string, error)
 }
 
 func driverForProvider(providerID string) (voiceProviderDriver, bool) {
@@ -37,28 +34,7 @@ func driverForProvider(providerID string) (voiceProviderDriver, bool) {
 	}
 }
 
-func voiceProviderActionIDsWithModels() setup.VoiceProviderActionIDs {
-	return setup.VoiceProviderActionIDs{
-		InstallRuntime:           ActionInstallRuntime,
-		DeleteRuntime:            ActionDeleteRuntime,
-		DownloadModel:            ActionDownload,
-		DownloadModelWithRuntime: "download-with-runtime",
-		DeleteModel:              ActionDelete,
-		Start:                    ActionStart,
-		Stop:                     ActionStop,
-	}
-}
-
-func voiceProviderActionIDsRuntimeOnly() setup.VoiceProviderActionIDs {
-	return setup.VoiceProviderActionIDs{
-		InstallRuntime: ActionInstallRuntime,
-		DeleteRuntime:  ActionDeleteRuntime,
-		Start:          ActionStart,
-		Stop:           ActionStop,
-	}
-}
-
-func decorateGenericLocalVoiceProvider(r *Runtime, moduleID string, provider setup.VoiceProviderOption) setup.VoiceProviderOption {
+func decorateGenericLocalVoiceProvider(r *Runtime, moduleID string, provider VoiceProvider) VoiceProvider {
 	provider, installed, installedCount := r.decorateProviderModelFiles(moduleID, provider)
 	if installed {
 		provider.RuntimeState = RuntimeNotImplemented
@@ -76,7 +52,7 @@ func decorateGenericLocalVoiceProvider(r *Runtime, moduleID string, provider set
 	return provider
 }
 
-func decorateProviderModelRuntime(r *Runtime, moduleID string, provider setup.VoiceProviderOption, runtimeMissingDetail string) setup.VoiceProviderOption {
+func decorateProviderModelRuntime(r *Runtime, moduleID string, provider VoiceProvider, runtimeMissingDetail string) VoiceProvider {
 	provider, installed, installedCount := r.decorateProviderModelFiles(moduleID, provider)
 	if !installed {
 		provider.RuntimeState = RuntimeUnavailable
@@ -108,7 +84,7 @@ func decorateProviderModelRuntime(r *Runtime, moduleID string, provider setup.Vo
 	return provider
 }
 
-func (r *Runtime) decorateProviderModelFiles(moduleID string, provider setup.VoiceProviderOption) (setup.VoiceProviderOption, bool, int) {
+func (r *Runtime) decorateProviderModelFiles(moduleID string, provider VoiceProvider) (VoiceProvider, bool, int) {
 	provider = r.decorateVoiceModels(moduleID, provider)
 	provider.RuntimeRSS = r.VoiceRuntimeRSSBytes(provider)
 	if path, err := r.ManagedVoiceBinaryPath(provider); err == nil {
@@ -122,7 +98,7 @@ func (r *Runtime) decorateProviderModelFiles(moduleID string, provider setup.Voi
 	return provider, installed, installedVoiceModelCount(provider.Models)
 }
 
-func markProviderRuntimeUnavailable(provider setup.VoiceProviderOption, detail string) (setup.VoiceProviderOption, bool) {
+func markProviderRuntimeUnavailable(provider VoiceProvider, detail string) (VoiceProvider, bool) {
 	if strings.TrimSpace(detail) == "" {
 		return provider, false
 	}
@@ -132,7 +108,7 @@ func markProviderRuntimeUnavailable(provider setup.VoiceProviderOption, detail s
 	return provider, true
 }
 
-func localVoiceBinaryPath(provider setup.VoiceProviderOption, runtimeInstalled func() bool, managed func() string) (string, error) {
+func localVoiceBinaryPath(provider VoiceProvider, runtimeInstalled func() bool, managed func() string) (string, error) {
 	if runtimeInstalled != nil && !runtimeInstalled() {
 		return "", fmt.Errorf("%s runtime is not installed", provider.Name)
 	}
@@ -149,7 +125,7 @@ func localVoiceBinaryPath(provider setup.VoiceProviderOption, runtimeInstalled f
 	return "", fmt.Errorf("%s runtime is not installed", provider.Name)
 }
 
-func localManagedBinaryPath(provider setup.VoiceProviderOption, managed func() string) (string, error) {
+func localManagedBinaryPath(provider VoiceProvider, managed func() string) (string, error) {
 	value := strings.TrimSpace(provider.Config.BinaryPath)
 	if filepath.IsAbs(value) || strings.Contains(value, string(os.PathSeparator)) {
 		if info, err := os.Stat(value); err == nil && !info.IsDir() {

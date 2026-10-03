@@ -8,8 +8,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
 const piperVoicesCatalogURL = "https://huggingface.co/rhasspy/piper-voices/resolve/main/voices.json"
@@ -18,7 +16,7 @@ var piperCatalogCache struct {
 	sync.Mutex
 	expires   time.Time
 	failUntil time.Time
-	models    []setup.VoiceModelOption
+	models    []VoiceModel
 }
 
 type piperCatalogEntry struct {
@@ -37,11 +35,11 @@ type piperCatalogFile struct {
 	SizeBytes int64 `json:"size_bytes"`
 }
 
-func piperCatalogModels() ([]setup.VoiceModelOption, bool) {
+func piperCatalogModels() ([]VoiceModel, bool) {
 	now := time.Now()
 	piperCatalogCache.Lock()
 	if now.Before(piperCatalogCache.expires) && len(piperCatalogCache.models) > 0 {
-		models := append([]setup.VoiceModelOption(nil), piperCatalogCache.models...)
+		models := append([]VoiceModel(nil), piperCatalogCache.models...)
 		piperCatalogCache.Unlock()
 		return models, true
 	}
@@ -60,13 +58,13 @@ func piperCatalogModels() ([]setup.VoiceModelOption, bool) {
 	}
 
 	piperCatalogCache.Lock()
-	piperCatalogCache.models = append([]setup.VoiceModelOption(nil), models...)
+	piperCatalogCache.models = append([]VoiceModel(nil), models...)
 	piperCatalogCache.expires = now.Add(6 * time.Hour)
 	piperCatalogCache.Unlock()
 	return models, true
 }
 
-func fetchPiperCatalogModels() ([]setup.VoiceModelOption, error) {
+func fetchPiperCatalogModels() ([]VoiceModel, error) {
 	client := &http.Client{Timeout: 8 * time.Second}
 	response, err := client.Get(piperVoicesCatalogURL)
 	if err != nil {
@@ -81,7 +79,7 @@ func fetchPiperCatalogModels() ([]setup.VoiceModelOption, error) {
 	if err := json.NewDecoder(response.Body).Decode(&catalog); err != nil {
 		return nil, err
 	}
-	models := make([]setup.VoiceModelOption, 0, len(catalog))
+	models := make([]VoiceModel, 0, len(catalog))
 	for key, entry := range catalog {
 		model := piperCatalogModel(key, entry)
 		if strings.TrimSpace(model.ID) == "" {
@@ -101,10 +99,10 @@ func fetchPiperCatalogModels() ([]setup.VoiceModelOption, error) {
 	return models, nil
 }
 
-func piperCatalogModel(key string, entry piperCatalogEntry) setup.VoiceModelOption {
+func piperCatalogModel(key string, entry piperCatalogEntry) VoiceModel {
 	key = strings.TrimSpace(firstNonEmptyLocal(entry.Key, key))
 	if key == "" {
-		return setup.VoiceModelOption{}
+		return VoiceModel{}
 	}
 	quality := strings.TrimSpace(entry.Quality)
 	languageName := strings.TrimSpace(entry.Language.NameEnglish)
@@ -113,7 +111,7 @@ func piperCatalogModel(key string, entry piperCatalogEntry) setup.VoiceModelOpti
 	if name == "" {
 		name = key
 	}
-	return setup.VoiceModelOption{
+	return VoiceModel{
 		ID:           key,
 		Name:         titleWords(name) + " " + qualityLabel(quality),
 		Size:         formatVoiceModelSize(piperCatalogONNXSize(entry.Files)),
@@ -121,6 +119,7 @@ func piperCatalogModel(key string, entry piperCatalogEntry) setup.VoiceModelOpti
 		Default:      key == "en_US-lessac-medium",
 		LanguageCode: languageCode,
 		LanguageName: languageName,
+		Country:      strings.TrimSpace(entry.Language.CountryEnglish),
 		Quality:      quality,
 	}
 }

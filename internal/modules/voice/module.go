@@ -39,7 +39,7 @@ type Module struct {
 	id      string // setup.VoiceModuleTTS or setup.VoiceModuleSTT
 	runtime *localruntime.Runtime
 	mu      sync.RWMutex
-	module  setup.VoiceModuleDescriptor
+	module  localruntime.VoiceModule
 	applied bool
 }
 
@@ -52,8 +52,8 @@ func (m *Module) ID() string { return m.id }
 // Apply stores the module's settings and, when they changed, starts the
 // selected always-running runtime in the background and stops the others.
 func (m *Module) Apply(_ context.Context, cfg setup.Config) error {
-	var next setup.VoiceModuleDescriptor
-	for _, module := range setup.VoiceModuleDescriptors(cfg.Modules) {
+	var next localruntime.VoiceModule
+	for _, module := range localruntime.VoiceModules(cfg.Modules) {
 		if module.ID == m.id {
 			next = module
 		}
@@ -68,7 +68,9 @@ func (m *Module) Apply(_ context.Context, cfg setup.Config) error {
 	return nil
 }
 
-func (m *Module) reconcileRuntimes(module setup.VoiceModuleDescriptor) {
+// reconcileRuntimes starts the selected provider's runtime when it is always
+// running and stops the others.
+func (m *Module) reconcileRuntimes(module localruntime.VoiceModule) {
 	for _, provider := range module.Providers {
 		if !provider.Local {
 			continue
@@ -78,7 +80,7 @@ func (m *Module) reconcileRuntimes(module setup.VoiceModuleDescriptor) {
 			continue
 		}
 		safego.Go("voice.autostart", func() {
-			if _, err := m.runtime.ApplyVoiceAction(context.Background(), module.ID, provider, setup.VoiceProviderActionRequest{Action: localruntime.ActionStart}); err != nil {
+			if _, err := m.runtime.ApplyVoiceAction(context.Background(), module.ID, provider, localruntime.VoiceActionRequest{Action: localruntime.ActionStart}); err != nil {
 				log.Printf("%s %s runtime autostart failed: %s", module.ID, provider.ID, err)
 			}
 		})
@@ -96,19 +98,19 @@ func (m *Module) Context() string { return "" }
 
 func (m *Module) Close() error { return nil }
 
-func (m *Module) settings() setup.VoiceModuleDescriptor {
+func (m *Module) settings() localruntime.VoiceModule {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.module
 }
 
-// Descriptor is the module with the local runtime's install and run state.
-func (m *Module) Descriptor() setup.VoiceModuleDescriptor {
-	return m.runtime.DecorateVoiceModules([]setup.VoiceModuleDescriptor{m.settings()})[0]
+// descriptor is the module with the local runtime's install and run state.
+func (m *Module) descriptor() localruntime.VoiceModule {
+	return m.runtime.DecorateVoiceModules([]localruntime.VoiceModule{m.settings()})[0]
 }
 
 func (m *Module) Status(context.Context) modules.Status {
-	module := m.Descriptor()
+	module := m.descriptor()
 	provider, _ := providerByID(module, module.ProviderID)
 	installed := 0
 	for _, model := range provider.Models {
@@ -129,15 +131,6 @@ func (m *Module) Status(context.Context) modules.Status {
 			{Key: "installed_models", Label: "Installed models", Value: strconv.Itoa(installed)},
 		},
 	}
-}
-
-// Action runs a provider action (download, install, start, stop...).
-func (m *Module) Action(ctx context.Context, providerID string, request setup.VoiceProviderActionRequest) (setup.VoiceProviderOption, error) {
-	provider, ok := providerByID(m.settings(), providerID)
-	if !ok {
-		return setup.VoiceProviderOption{}, fmt.Errorf("%w: %s", ErrProviderUnavailable, providerID)
-	}
-	return m.runtime.ApplyVoiceAction(ctx, m.id, provider, request)
 }
 
 func (m *Module) TextToSpeech(ctx context.Context, req TextToSpeechRequest) (TextToSpeechResponse, error) {
@@ -196,10 +189,10 @@ func (m *Module) SpeechToText(ctx context.Context, req SpeechToTextRequest) (Spe
 }
 
 // activeProvider is the selected provider when the module is on and it can run.
-func (m *Module) activeProvider() (setup.VoiceModuleDescriptor, setup.VoiceProviderOption, error) {
-	module := m.Descriptor()
+func (m *Module) activeProvider() (localruntime.VoiceModule, localruntime.VoiceProvider, error) {
+	module := m.descriptor()
 	if !module.Enabled {
-		return module, setup.VoiceProviderOption{}, ErrModuleDisabled
+		return module, localruntime.VoiceProvider{}, ErrModuleDisabled
 	}
 	provider, ok := providerByID(module, module.ProviderID)
 	if !ok {
@@ -208,7 +201,7 @@ func (m *Module) activeProvider() (setup.VoiceModuleDescriptor, setup.VoiceProvi
 	return module, provider, ensureAvailable(provider)
 }
 
-func ensureAvailable(provider setup.VoiceProviderOption) error {
+func ensureAvailable(provider localruntime.VoiceProvider) error {
 	name := cmp.Or(provider.Name, provider.ID)
 	if !provider.Downloaded {
 		return fmt.Errorf("%w: %s is not installed", ErrProviderUnavailable, name)
@@ -219,13 +212,13 @@ func ensureAvailable(provider setup.VoiceProviderOption) error {
 	return nil
 }
 
-func providerByID(module setup.VoiceModuleDescriptor, providerID string) (setup.VoiceProviderOption, bool) {
+func providerByID(module localruntime.VoiceModule, providerID string) (localruntime.VoiceProvider, bool) {
 	for _, provider := range module.Providers {
 		if strings.EqualFold(provider.ID, providerID) {
 			return provider, true
 		}
 	}
-	return setup.VoiceProviderOption{}, false
+	return localruntime.VoiceProvider{}, false
 }
 
 func wavToMP3(ctx context.Context, content []byte) ([]byte, error) {

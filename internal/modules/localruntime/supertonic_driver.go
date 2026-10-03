@@ -8,25 +8,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
 type supertonicDriver struct{}
 
-func (supertonicDriver) actionIDs() setup.VoiceProviderActionIDs {
-	return voiceProviderActionIDsRuntimeOnly()
-}
-
-func (supertonicDriver) decorate(r *Runtime, _ string, provider setup.VoiceProviderOption) setup.VoiceProviderOption {
-	if models, ok := supertonicCatalogModels(); ok && len(models) > 0 {
-		provider.Models = models
-		provider.CatalogStatus = "online"
-		provider.CatalogDetail = fmt.Sprintf("%d voice styles · 31 languages", len(models))
-	} else {
-		provider.Models = models
-		provider.CatalogStatus = "fallback"
-		provider.CatalogDetail = "using default voice style"
+func (supertonicDriver) decorate(r *Runtime, _ string, provider VoiceProvider) VoiceProvider {
+	provider.Models = supertonicFallbackModels()
+	if !r.Offline {
+		provider.Models, _ = supertonicCatalogModels()
 	}
 	provider = ensureConfiguredSupertonicVoiceModel(provider)
 	provider.RuntimeRSS = r.VoiceRuntimeRSSBytes(provider)
@@ -60,7 +49,7 @@ func (supertonicDriver) decorate(r *Runtime, _ string, provider setup.VoiceProvi
 	return provider
 }
 
-func (supertonicDriver) modelPath(*Runtime, string, setup.VoiceProviderOption, string) string {
+func (supertonicDriver) modelPath(*Runtime, string, VoiceProvider, string) string {
 	return ""
 }
 
@@ -68,7 +57,7 @@ func (supertonicDriver) modelInstalled(string) bool {
 	return false
 }
 
-func (supertonicDriver) downloads(provider setup.VoiceProviderOption, modelPath string) ([]downloadItem, error) {
+func (supertonicDriver) downloads(provider VoiceProvider, modelPath string) ([]downloadItem, error) {
 	url, err := supertonicVoiceStyleURL(provider.Config.VoiceID)
 	if err != nil {
 		return nil, err
@@ -76,18 +65,18 @@ func (supertonicDriver) downloads(provider setup.VoiceProviderOption, modelPath 
 	return []downloadItem{{URL: url, Path: modelPath}}, nil
 }
 
-func (supertonicDriver) actionTarget(provider setup.VoiceProviderOption, modelID string) setup.VoiceProviderOption {
+func (supertonicDriver) actionTarget(provider VoiceProvider, modelID string) VoiceProvider {
 	if modelID = strings.TrimSpace(modelID); modelID != "" {
 		provider.Config.VoiceID = strings.ToUpper(modelID)
 	}
 	return provider
 }
 
-func (supertonicDriver) installRuntime(ctx context.Context, r *Runtime, _ string, _ setup.VoiceProviderOption) error {
+func (supertonicDriver) installRuntime(ctx context.Context, r *Runtime, _ string, _ VoiceProvider) error {
 	return r.installSupertonicRuntime(ctx)
 }
 
-func (supertonicDriver) deleteRuntime(r *Runtime, _ string, provider setup.VoiceProviderOption) error {
+func (supertonicDriver) deleteRuntime(r *Runtime, _ string, provider VoiceProvider) error {
 	r.procs.Stop(provider.ID)
 	if err := os.RemoveAll(filepath.Dir(filepath.Dir(r.managedSupertonicBinaryPath()))); err != nil {
 		return err
@@ -95,11 +84,11 @@ func (supertonicDriver) deleteRuntime(r *Runtime, _ string, provider setup.Voice
 	return os.RemoveAll(filepath.Join(r.runtimeDir(), "supertonic3"))
 }
 
-func (supertonicDriver) managedBinaryPath(r *Runtime, provider setup.VoiceProviderOption) (string, error) {
+func (supertonicDriver) managedBinaryPath(r *Runtime, provider VoiceProvider) (string, error) {
 	return localManagedBinaryPath(provider, r.managedSupertonicBinaryPath)
 }
 
-func (supertonicDriver) voiceBinaryPath(r *Runtime, provider setup.VoiceProviderOption) (string, error) {
+func (supertonicDriver) voiceBinaryPath(r *Runtime, provider VoiceProvider) (string, error) {
 	return localVoiceBinaryPath(provider, r.supertonicModelCacheComplete, r.managedSupertonicBinaryPath)
 }
 
@@ -187,7 +176,7 @@ func (r *Runtime) supertonicActiveCacheDir() string {
 	return r.supertonicModelCacheDir()
 }
 
-func (r *Runtime) supertonicEnv(provider setup.VoiceProviderOption) []string {
+func (r *Runtime) supertonicEnv(provider VoiceProvider) []string {
 	env := append([]string{}, os.Environ()...)
 	env = append(env, "SUPERTONIC_CACHE_DIR="+r.supertonicActiveCacheDir())
 	if provider.Config.Threads > 0 {
@@ -237,7 +226,7 @@ func (r *Runtime) installSupertonicRuntime(ctx context.Context) error {
 		}
 	}
 	if !r.supertonicModelCacheComplete() {
-		if err := runRuntimeCommandWithEnv(ctx, r.supertonicEnv(setup.VoiceProviderOption{}), r.managedSupertonicBinaryPath(), "download"); err != nil {
+		if err := runRuntimeCommandWithEnv(ctx, r.supertonicEnv(VoiceProvider{}), r.managedSupertonicBinaryPath(), "download"); err != nil {
 			return err
 		}
 	}
@@ -253,7 +242,7 @@ func (r *Runtime) installSupertonicRuntime(ctx context.Context) error {
 	return nil
 }
 
-func ensureConfiguredSupertonicVoiceModel(provider setup.VoiceProviderOption) setup.VoiceProviderOption {
+func ensureConfiguredSupertonicVoiceModel(provider VoiceProvider) VoiceProvider {
 	voiceID := strings.ToUpper(strings.TrimSpace(provider.Config.VoiceID))
 	if voiceID == "" {
 		return provider

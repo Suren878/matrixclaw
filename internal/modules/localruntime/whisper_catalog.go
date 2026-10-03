@@ -8,8 +8,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
 const whisperCatalogURL = "https://huggingface.co/api/models/ggerganov/whisper.cpp/tree/main"
@@ -18,7 +16,7 @@ var whisperCatalogCache struct {
 	sync.Mutex
 	expires   time.Time
 	failUntil time.Time
-	models    []setup.VoiceModelOption
+	models    []VoiceModel
 }
 
 type whisperCatalogEntry struct {
@@ -27,11 +25,11 @@ type whisperCatalogEntry struct {
 	Size int64  `json:"size"`
 }
 
-func whisperCatalogModels() ([]setup.VoiceModelOption, bool) {
+func whisperCatalogModels() ([]VoiceModel, bool) {
 	now := time.Now()
 	whisperCatalogCache.Lock()
 	if now.Before(whisperCatalogCache.expires) && len(whisperCatalogCache.models) > 0 {
-		models := append([]setup.VoiceModelOption(nil), whisperCatalogCache.models...)
+		models := append([]VoiceModel(nil), whisperCatalogCache.models...)
 		whisperCatalogCache.Unlock()
 		return models, true
 	}
@@ -50,13 +48,13 @@ func whisperCatalogModels() ([]setup.VoiceModelOption, bool) {
 	}
 
 	whisperCatalogCache.Lock()
-	whisperCatalogCache.models = append([]setup.VoiceModelOption(nil), models...)
+	whisperCatalogCache.models = append([]VoiceModel(nil), models...)
 	whisperCatalogCache.expires = now.Add(6 * time.Hour)
 	whisperCatalogCache.Unlock()
 	return models, true
 }
 
-func fetchWhisperCatalogModels() ([]setup.VoiceModelOption, error) {
+func fetchWhisperCatalogModels() ([]VoiceModel, error) {
 	client := &http.Client{Timeout: 8 * time.Second}
 	response, err := client.Get(whisperCatalogURL)
 	if err != nil {
@@ -70,7 +68,7 @@ func fetchWhisperCatalogModels() ([]setup.VoiceModelOption, error) {
 	if err := json.NewDecoder(response.Body).Decode(&entries); err != nil {
 		return nil, err
 	}
-	models := make([]setup.VoiceModelOption, 0, len(entries))
+	models := make([]VoiceModel, 0, len(entries))
 	for _, entry := range entries {
 		model := whisperCatalogModel(entry)
 		if strings.TrimSpace(model.ID) != "" {
@@ -87,16 +85,16 @@ func fetchWhisperCatalogModels() ([]setup.VoiceModelOption, error) {
 	return models, nil
 }
 
-func whisperCatalogModel(entry whisperCatalogEntry) setup.VoiceModelOption {
+func whisperCatalogModel(entry whisperCatalogEntry) VoiceModel {
 	path := strings.TrimSpace(entry.Path)
 	if entry.Type != "file" || !strings.HasPrefix(path, "ggml-") || !strings.HasSuffix(path, ".bin") {
-		return setup.VoiceModelOption{}
+		return VoiceModel{}
 	}
 	id := strings.TrimSuffix(strings.TrimPrefix(path, "ggml-"), ".bin")
 	if id == "" || strings.Contains(id, "/") {
-		return setup.VoiceModelOption{}
+		return VoiceModel{}
 	}
-	return setup.VoiceModelOption{
+	return VoiceModel{
 		ID:          id,
 		Name:        whisperModelName(id),
 		Size:        formatVoiceModelSize(entry.Size),

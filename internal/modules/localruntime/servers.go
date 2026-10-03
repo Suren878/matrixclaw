@@ -26,7 +26,7 @@ const (
 
 // server starts the provider's long-running process, or returns the one
 // already running with the same command.
-func (r *Runtime) server(ctx context.Context, moduleID string, provider setup.VoiceProviderOption) (*procsup.Process, error) {
+func (r *Runtime) server(ctx context.Context, moduleID string, provider VoiceProvider) (*procsup.Process, error) {
 	var spec procsup.Spec
 	var err error
 	switch provider.ID {
@@ -45,7 +45,7 @@ func (r *Runtime) server(ctx context.Context, moduleID string, provider setup.Vo
 	return r.procs.Start(ctx, spec)
 }
 
-func (r *Runtime) whisperServerSpec(moduleID string, provider setup.VoiceProviderOption) (procsup.Spec, error) {
+func (r *Runtime) whisperServerSpec(moduleID string, provider VoiceProvider) (procsup.Spec, error) {
 	if installed, _ := r.VoiceModelInstalled(moduleID, provider); !installed {
 		return procsup.Spec{}, fmt.Errorf("whisper.cpp model is not installed")
 	}
@@ -72,7 +72,7 @@ func (r *Runtime) whisperServerSpec(moduleID string, provider setup.VoiceProvide
 	}, nil
 }
 
-func (r *Runtime) supertonicServerSpec(provider setup.VoiceProviderOption) (procsup.Spec, error) {
+func (r *Runtime) supertonicServerSpec(provider VoiceProvider) (procsup.Spec, error) {
 	binary, err := r.VoiceBinaryPath(provider)
 	if err != nil {
 		return procsup.Spec{}, err
@@ -90,7 +90,7 @@ func (r *Runtime) supertonicServerSpec(provider setup.VoiceProviderOption) (proc
 	}, nil
 }
 
-func (r *Runtime) piperServerSpec(moduleID string, provider setup.VoiceProviderOption) (procsup.Spec, error) {
+func (r *Runtime) piperServerSpec(moduleID string, provider VoiceProvider) (procsup.Spec, error) {
 	if installed, _ := r.VoiceModelInstalled(moduleID, provider); !installed {
 		return procsup.Spec{}, fmt.Errorf("voice is not installed")
 	}
@@ -130,7 +130,7 @@ func (r *Runtime) httpProbe(url string, limit int) func(context.Context) error {
 	}
 }
 
-func serverEndpoint(provider setup.VoiceProviderOption, fallback string) string {
+func serverEndpoint(provider VoiceProvider, fallback string) string {
 	if endpoint := strings.TrimSpace(provider.Config.Endpoint); endpoint != "" {
 		return strings.TrimRight(endpoint, "/")
 	}
@@ -150,7 +150,7 @@ func endpointHostPort(endpoint string, defaultPort string) (string, string) {
 	return host, port
 }
 
-func (r *Runtime) supertonicServerTextToSpeech(ctx context.Context, provider setup.VoiceProviderOption, text string) ([]byte, error) {
+func (r *Runtime) supertonicServerTextToSpeech(ctx context.Context, provider VoiceProvider, text string) ([]byte, error) {
 	if _, err := r.server(ctx, setup.VoiceModuleTTS, provider); err != nil {
 		return nil, err
 	}

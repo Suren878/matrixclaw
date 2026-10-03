@@ -28,7 +28,7 @@ func TestPiperServerSynthesizesAndStopsOnClose(t *testing.T) {
 	if err := os.WriteFile(binary, []byte(fakePiper), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	provider := setup.VoiceProviderOption{ID: "piper", Name: "Piper", Local: true, Config: setup.VoiceProviderConfig{
+	provider := VoiceProvider{ID: "piper", Name: "Piper", Local: true, Config: setup.VoiceProviderConfig{
 		VoiceID: "en_US-test-medium", BinaryPath: binary, RuntimeMode: "always_running",
 	}}
 	model := r.VoiceModelPath(setup.VoiceModuleTTS, provider)

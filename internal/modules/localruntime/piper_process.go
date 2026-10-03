@@ -15,7 +15,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
-func (r *Runtime) piperPersistentTextToSpeech(ctx context.Context, provider setup.VoiceProviderOption, text string) ([]byte, error) {
+func (r *Runtime) piperPersistentTextToSpeech(ctx context.Context, provider VoiceProvider, text string) ([]byte, error) {
 	process, err := r.server(ctx, setup.VoiceModuleTTS, provider)
 	if err != nil {
 		return nil, err
@@ -117,11 +117,11 @@ func piperOutputReady(path string) bool {
 	return first.Size() == second.Size() && first.ModTime().Equal(second.ModTime())
 }
 
-func (r *Runtime) piperOutputDir(provider setup.VoiceProviderOption) string {
+func (r *Runtime) piperOutputDir(provider VoiceProvider) string {
 	return filepath.Join(r.runtimeDir(), "piper", strings.TrimSpace(provider.ID), "output")
 }
 
-func (r *Runtime) piperOneShotTextToSpeech(ctx context.Context, provider setup.VoiceProviderOption, text string) ([]byte, error) {
+func (r *Runtime) piperOneShotTextToSpeech(ctx context.Context, provider VoiceProvider, text string) ([]byte, error) {
 	modelPath := r.VoiceModelPath(setup.VoiceModuleTTS, provider)
 	if modelPath == "" {
 		return nil, fmt.Errorf("voice is not selected")

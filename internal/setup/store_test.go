@@ -51,7 +51,7 @@ type effectiveConfig struct {
 	Assistant [2]string
 	Providers []ProviderSetupItem
 	Runtime   []ProviderConfig
-	Voice     []VoiceModuleDescriptor
+	Voice     [2]VoiceProviderConfig
 	Browser   BrowserModuleDescriptor
 	Daemon    DaemonConfig
 	Clients   ClientsConfig
@@ -63,7 +63,7 @@ func effectiveView(cfg Config) effectiveConfig {
 		Active:    cfg.ActiveProviderID,
 		Assistant: [2]string{cfg.Assistant.NameOrDefault(), cfg.Assistant.CustomInstructions},
 		Providers: ProviderItems(cfg),
-		Voice:     VoiceModuleDescriptors(cfg.Modules),
+		Voice:     [2]VoiceProviderConfig{effectiveVoice(VoiceModuleTTS, cfg.Modules.TextToSpeech), effectiveVoice(VoiceModuleSTT, cfg.Modules.SpeechToText)},
 		Browser:   BrowserModuleFromConfig(cfg.Modules),
 		Daemon:    cfg.Daemon,
 		Clients:   cfg.Clients,
@@ -75,6 +75,10 @@ func effectiveView(cfg Config) effectiveConfig {
 	}
 	view.Modules.TextToSpeech, view.Modules.SpeechToText, view.Modules.Browser = VoiceModuleConfig{}, VoiceModuleConfig{}, BrowserConfig{}
 	return view
+}
+
+func effectiveVoice(moduleID string, module VoiceModuleConfig) VoiceProviderConfig {
+	return EffectiveVoiceConfig(moduleID, module.ProviderID, module.Providers[module.ProviderID])
 }
 
 func TestOldSetupFileRoundTripsWithoutLoss(t *testing.T) {
@@ -119,10 +123,10 @@ func TestOldSetupFileRoundTripsWithoutLoss(t *testing.T) {
 	if view.Daemon.Budgets.User.Steps != 500 || view.Daemon.Budgets.Automation.Tokens != 200000 || view.Daemon.CompactModel.Model != "gpt-5.4-mini" || view.Daemon.BackgroundAgents != 2 || view.Daemon.APIToken != "token-1234" || !view.Daemon.AutostartOnBoot {
 		t.Fatalf("daemon = %+v", view.Daemon)
 	}
-	if tts := view.Voice[0].Config; tts.VoiceID != "ru_RU-ruslan-medium" || tts.RuntimeMode != "always_running" || tts.BinaryPath != "piper" {
+	if tts := view.Voice[0]; tts.VoiceID != "ru_RU-ruslan-medium" || tts.RuntimeMode != "always_running" || tts.BinaryPath != "piper" {
 		t.Fatalf("tts = %+v", tts)
 	}
-	if stt := view.Voice[1].Config; stt.ModelID != "small" || stt.Threads != 4 || stt.BinaryPath != "whisper-cli" {
+	if stt := view.Voice[1]; stt.ModelID != "small" || stt.Threads != 4 || stt.BinaryPath != "whisper-cli" {
 		t.Fatalf("stt = %+v", stt)
 	}
 	if rt := view.Modules.RealtimeVoice.Providers["openai_realtime"]; rt.APIKey != "sk-rt-1234" || rt.VoiceID != "cedar" || rt.Language != "ru-RU" || rt.ModelID != "gpt-realtime-2.1" {

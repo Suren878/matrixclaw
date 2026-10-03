@@ -9,15 +9,13 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
 const supertonicVoiceStylesURL = "https://huggingface.co/api/models/Supertone/supertonic-3/tree/main/voice_styles"
 
 var supertonicCatalogCache struct {
 	sync.Mutex
-	models    []setup.VoiceModelOption
+	models    []VoiceModel
 	expires   time.Time
 	failUntil time.Time
 }
@@ -28,11 +26,11 @@ type supertonicTreeEntry struct {
 	Type string `json:"type"`
 }
 
-func supertonicCatalogModels() ([]setup.VoiceModelOption, bool) {
+func supertonicCatalogModels() ([]VoiceModel, bool) {
 	now := time.Now()
 	supertonicCatalogCache.Lock()
 	if now.Before(supertonicCatalogCache.expires) && len(supertonicCatalogCache.models) > 0 {
-		models := append([]setup.VoiceModelOption(nil), supertonicCatalogCache.models...)
+		models := append([]VoiceModel(nil), supertonicCatalogCache.models...)
 		supertonicCatalogCache.Unlock()
 		return models, true
 	}
@@ -51,13 +49,13 @@ func supertonicCatalogModels() ([]setup.VoiceModelOption, bool) {
 	}
 
 	supertonicCatalogCache.Lock()
-	supertonicCatalogCache.models = append([]setup.VoiceModelOption(nil), models...)
+	supertonicCatalogCache.models = append([]VoiceModel(nil), models...)
 	supertonicCatalogCache.expires = now.Add(6 * time.Hour)
 	supertonicCatalogCache.Unlock()
 	return models, true
 }
 
-func fetchSupertonicCatalogModels() ([]setup.VoiceModelOption, error) {
+func fetchSupertonicCatalogModels() ([]VoiceModel, error) {
 	client := &http.Client{Timeout: 20 * time.Second}
 	response, err := client.Get(supertonicVoiceStylesURL)
 	if err != nil {
@@ -71,7 +69,7 @@ func fetchSupertonicCatalogModels() ([]setup.VoiceModelOption, error) {
 	if err := json.NewDecoder(response.Body).Decode(&entries); err != nil {
 		return nil, err
 	}
-	models := make([]setup.VoiceModelOption, 0, len(entries))
+	models := make([]VoiceModel, 0, len(entries))
 	for _, entry := range entries {
 		if strings.ToLower(strings.TrimSpace(entry.Type)) != "file" || strings.ToLower(filepath.Ext(entry.Path)) != ".json" {
 			continue
@@ -94,11 +92,11 @@ func fetchSupertonicCatalogModels() ([]setup.VoiceModelOption, error) {
 	return models, nil
 }
 
-func supertonicFallbackModels() []setup.VoiceModelOption {
-	return []setup.VoiceModelOption{supertonicVoiceModel("M1", 0)}
+func supertonicFallbackModels() []VoiceModel {
+	return []VoiceModel{supertonicVoiceModel("M1", 0)}
 }
 
-func supertonicVoiceModel(id string, size int64) setup.VoiceModelOption {
+func supertonicVoiceModel(id string, size int64) VoiceModel {
 	id = strings.ToUpper(strings.TrimSpace(id))
 	name := id
 	switch {
@@ -107,7 +105,7 @@ func supertonicVoiceModel(id string, size int64) setup.VoiceModelOption {
 	case strings.HasPrefix(id, "F"):
 		name = "Female " + strings.TrimPrefix(id, "F")
 	}
-	model := setup.VoiceModelOption{
+	model := VoiceModel{
 		ID:          id,
 		Name:        name,
 		Size:        "~400 MB shared model",

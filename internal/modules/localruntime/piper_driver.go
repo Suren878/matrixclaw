@@ -7,24 +7,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
 type piperDriver struct{}
 
-func (piperDriver) actionIDs() setup.VoiceProviderActionIDs {
-	return voiceProviderActionIDsWithModels()
-}
-
-func (piperDriver) decorate(r *Runtime, moduleID string, provider setup.VoiceProviderOption) setup.VoiceProviderOption {
-	if models, ok := piperCatalogModels(); ok && len(models) > 0 {
-		provider.Models = models
-		provider.CatalogStatus = "online"
-		provider.CatalogDetail = fmt.Sprintf("%d voices", len(models))
-	} else {
-		provider.CatalogStatus = "fallback"
-		provider.CatalogDetail = "using bundled fallback voices"
+func (piperDriver) decorate(r *Runtime, moduleID string, provider VoiceProvider) VoiceProvider {
+	if !r.Offline {
+		if models, ok := piperCatalogModels(); ok && len(models) > 0 {
+			provider.Models = models
+		}
 	}
 	provider = ensureConfiguredPiperVoiceModel(provider)
 	runtimeDetail := ""
@@ -34,7 +25,7 @@ func (piperDriver) decorate(r *Runtime, moduleID string, provider setup.VoicePro
 	return decorateProviderModelRuntime(r, moduleID, provider, runtimeDetail)
 }
 
-func (piperDriver) modelPath(r *Runtime, _ string, provider setup.VoiceProviderOption, modelID string) string {
+func (piperDriver) modelPath(r *Runtime, _ string, provider VoiceProvider, modelID string) string {
 	voiceID := strings.TrimSpace(modelID)
 	if voiceID == "" {
 		voiceID = strings.TrimSpace(provider.Config.VoiceID)
@@ -54,7 +45,7 @@ func (piperDriver) modelInstalled(path string) bool {
 	return err == nil && !info.IsDir() && info.Size() > 0
 }
 
-func (piperDriver) downloads(provider setup.VoiceProviderOption, modelPath string) ([]downloadItem, error) {
+func (piperDriver) downloads(provider VoiceProvider, modelPath string) ([]downloadItem, error) {
 	url, err := piperVoiceURL(provider.Config.VoiceID)
 	if err != nil {
 		return nil, err
@@ -65,18 +56,18 @@ func (piperDriver) downloads(provider setup.VoiceProviderOption, modelPath strin
 	}, nil
 }
 
-func (piperDriver) actionTarget(provider setup.VoiceProviderOption, modelID string) setup.VoiceProviderOption {
+func (piperDriver) actionTarget(provider VoiceProvider, modelID string) VoiceProvider {
 	if modelID = strings.TrimSpace(modelID); modelID != "" {
 		provider.Config.VoiceID = modelID
 	}
 	return provider
 }
 
-func (piperDriver) installRuntime(ctx context.Context, r *Runtime, _ string, _ setup.VoiceProviderOption) error {
+func (piperDriver) installRuntime(ctx context.Context, r *Runtime, _ string, _ VoiceProvider) error {
 	return r.installPiperRuntime(ctx)
 }
 
-func (piperDriver) deleteRuntime(r *Runtime, _ string, provider setup.VoiceProviderOption) error {
+func (piperDriver) deleteRuntime(r *Runtime, _ string, provider VoiceProvider) error {
 	r.procs.Stop(provider.ID)
 	if err := os.RemoveAll(filepath.Dir(filepath.Dir(r.managedPiperBinaryPath()))); err != nil {
 		return err
@@ -84,11 +75,11 @@ func (piperDriver) deleteRuntime(r *Runtime, _ string, provider setup.VoiceProvi
 	return os.RemoveAll(filepath.Join(r.rootDir(), "voice", "tts", "piper"))
 }
 
-func (piperDriver) managedBinaryPath(r *Runtime, provider setup.VoiceProviderOption) (string, error) {
+func (piperDriver) managedBinaryPath(r *Runtime, provider VoiceProvider) (string, error) {
 	return localManagedBinaryPath(provider, r.managedPiperBinaryPath)
 }
 
-func (piperDriver) voiceBinaryPath(r *Runtime, provider setup.VoiceProviderOption) (string, error) {
+func (piperDriver) voiceBinaryPath(r *Runtime, provider VoiceProvider) (string, error) {
 	return localVoiceBinaryPath(provider, nil, r.managedPiperBinaryPath)
 }
 
@@ -137,7 +128,7 @@ func (r *Runtime) installPiperRuntime(ctx context.Context) error {
 	return nil
 }
 
-func ensureConfiguredPiperVoiceModel(provider setup.VoiceProviderOption) setup.VoiceProviderOption {
+func ensureConfiguredPiperVoiceModel(provider VoiceProvider) VoiceProvider {
 	voiceID := strings.TrimSpace(provider.Config.VoiceID)
 	if voiceID == "" {
 		return provider
@@ -147,7 +138,7 @@ func ensureConfiguredPiperVoiceModel(provider setup.VoiceProviderOption) setup.V
 			return provider
 		}
 	}
-	model := setup.VoiceModelOption{
+	model := VoiceModel{
 		ID:   voiceID,
 		Name: voiceID,
 	}
