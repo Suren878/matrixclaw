@@ -92,7 +92,7 @@ func (c *Core) transition(ctx context.Context, run *Run, change runChange) error
 		return err
 	}
 	c.clearRunCheckpoint(ctx, run.ID)
-	if err := c.rejectPendingApprovals(ctx, run.SessionID, true, change.Err, func(approval Approval) bool { return approval.RunID == run.ID }); err != nil {
+	if err := c.rejectRunApprovals(ctx, *run, change.Err); err != nil {
 		return err
 	}
 	_, err := c.syncSubagentTask(ctx, *run)

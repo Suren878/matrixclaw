@@ -335,18 +335,15 @@ func (c *Core) cancelSubagentChildren(ctx context.Context, run Run, blockingOnly
 	return stopped, nil
 }
 
-// rejectPendingApprovals rejects the session's pending approvals that match;
-// failCalls tells clients the calls that asked for them failed.
-func (c *Core) rejectPendingApprovals(ctx context.Context, sessionID string, failCalls bool, errText string, match func(Approval) bool) error {
-	if sessionID == "" {
-		return nil
-	}
-	approvals, err := c.store.ListApprovals(ctx, sessionID, ApprovalStatePending)
-	if err != nil && !errors.Is(err, ErrNotFound) {
+// rejectRunApprovals rejects the approvals an ended run leaves pending and
+// tells clients the calls that asked for them failed with errText.
+func (c *Core) rejectRunApprovals(ctx context.Context, run Run, errText string) error {
+	approvals, err := c.store.ListRunApprovals(ctx, run.SessionID, run.ID)
+	if err != nil {
 		return err
 	}
 	for _, approval := range approvals {
-		if !match(approval) {
+		if approval.State != ApprovalStatePending {
 			continue
 		}
 		approval.State = ApprovalStateRejected
@@ -355,33 +352,21 @@ func (c *Core) rejectPendingApprovals(ctx context.Context, sessionID string, fai
 		if err := c.store.UpdateApproval(ctx, approval); err != nil {
 			return err
 		}
+		audience, audienceRun := c.approvalAudience(ctx, approval)
 		c.publishEvent(Event{
 			Type:      EventApprovalResult,
-			SessionID: approval.SessionID,
-			RunID:     approval.RunID,
-			Payload: PermissionNotification{
-				ApprovalID: approval.ID,
-				ToolCallID: approval.ToolCallRef,
-				Granted:    false,
-				Denied:     true,
-			},
+			SessionID: audience,
+			RunID:     audienceRun,
+			Payload:   PermissionNotification{ApprovalID: approval.ID, ToolCallID: approval.ToolCallRef, Denied: true},
 		})
-		if !failCalls {
-			continue
-		}
-		c.publishEvent(Event{
-			Type:      EventToolUpdated,
-			SessionID: approval.SessionID,
-			RunID:     approval.RunID,
-			Payload: ToolUpdate{
-				ToolCallID: approval.ToolCallRef,
-				ToolName:   approval.ToolName,
-				State:      ToolLifecycleFailed,
-				RunID:      approval.RunID,
-				SessionID:  approval.SessionID,
-				ApprovalID: approval.ID,
-				Error:      errText,
-			},
+		c.publishToolUpdate(approval.SessionID, approval.RunID, ToolUpdate{
+			ToolCallID: approval.ToolCallRef,
+			ToolName:   approval.ToolName,
+			State:      ToolLifecycleFailed,
+			RunID:      approval.RunID,
+			SessionID:  approval.SessionID,
+			ApprovalID: approval.ID,
+			Error:      errText,
 		})
 	}
 	return nil
