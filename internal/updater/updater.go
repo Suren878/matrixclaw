@@ -9,9 +9,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/mod/semver"
 )
 
 const (
@@ -49,7 +50,7 @@ func (c Checker) Check(ctx context.Context, current string) (Update, bool, error
 	if latest == "" {
 		return Update{}, false, nil
 	}
-	if compareVersions(latest, current) <= 0 {
+	if semver.Compare(latest, current) <= 0 {
 		return Update{}, false, nil
 	}
 	return Update{
@@ -132,11 +133,7 @@ func (i Installer) downloadInstallScript(ctx context.Context, repo string, tag s
 	if baseURL == "" {
 		baseURL = "https://raw.githubusercontent.com"
 	}
-	ref := strings.TrimSpace(tag)
-	if ref == "" {
-		ref = "main"
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/"+repo+"/"+ref+"/scripts/install.sh", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/"+repo+"/"+tag+"/scripts/install.sh", nil)
 	if err != nil {
 		return "", err
 	}
@@ -185,59 +182,11 @@ func (i Installer) installDir() (string, error) {
 	return filepath.Dir(exe), nil
 }
 
+// normalizeVersion turns "0.1.19 (commit)" or "v0.1.19" into "v0.1.19".
 func normalizeVersion(value string) string {
-	value = strings.TrimSpace(value)
-	if before, _, ok := strings.Cut(value, " "); ok {
-		value = before
+	value, _, _ = strings.Cut(strings.TrimSpace(value), " ")
+	if value == "" || value == "dev" {
+		return value
 	}
-	if strings.HasPrefix(value, "matrixclaw ") {
-		value = strings.TrimSpace(strings.TrimPrefix(value, "matrixclaw "))
-	}
-	if value == "dev" {
-		return "dev"
-	}
-	if strings.HasPrefix(value, "v") {
-		return "v" + strings.TrimPrefix(value, "v")
-	}
-	if value == "" {
-		return ""
-	}
-	return "v" + value
-}
-
-func compareVersions(left string, right string) int {
-	l := versionParts(left)
-	r := versionParts(right)
-	for i := 0; i < len(l) || i < len(r); i++ {
-		var lv, rv int
-		if i < len(l) {
-			lv = l[i]
-		}
-		if i < len(r) {
-			rv = r[i]
-		}
-		if lv > rv {
-			return 1
-		}
-		if lv < rv {
-			return -1
-		}
-	}
-	return 0
-}
-
-func versionParts(value string) []int {
-	value = strings.TrimPrefix(normalizeVersion(value), "v")
-	value, _, _ = strings.Cut(value, "-")
-	fields := strings.Split(value, ".")
-	out := make([]int, 0, len(fields))
-	for _, field := range fields {
-		n, err := strconv.Atoi(strings.TrimSpace(field))
-		if err != nil {
-			out = append(out, 0)
-			continue
-		}
-		out = append(out, n)
-	}
-	return out
+	return "v" + strings.TrimPrefix(value, "v")
 }
