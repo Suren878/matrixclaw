@@ -32,8 +32,9 @@ func loadAssistant(t *testing.T, prompt string) AssistantConfig {
 func TestSavedBuiltInPromptIsNotAnOverride(t *testing.T) {
 	for _, stored := range []string{
 		"",
-		savedDefaultSystemPrompt,
-		savedDefaultSystemPrompt + "\n\nProject context:\n- project_root=/home/u/matrixclaw\n- approvals=write_shell_skill_manage_and_risky_tools_need_permission",
+		DefaultAssistantSystemPrompt,
+		"You are matrixclaw, a personal AI operator in matrixclaw's local background runtime. Keep replies concise, preserve user files, and update visible plans for multi-step work.",
+		"You are matrixclaw, a personal AI operator running through matrixclaw's local background runtime.\n\nProject context:\n- project_root=/home/u/matrixclaw\n- approvals=write_shell_skill_manage_and_risky_tools_need_permission",
 	} {
 		assistant := loadAssistant(t, stored)
 		if assistant.SystemPrompt != "" {
