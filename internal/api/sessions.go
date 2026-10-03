@@ -85,6 +85,13 @@ func (s *Server) handleSessionByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch r.Method {
+	case http.MethodGet:
+		session, err := s.core.GetSession(r.Context(), sessionID)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, core.SessionResponse{Session: session})
 	case http.MethodPatch:
 		var req core.RenameSessionRequest
 		if !decodeJSONBody(w, r, &req) {
@@ -107,7 +114,7 @@ func (s *Server) handleSessionByID(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	default:
-		writeMethodNotAllowed(w, http.MethodPatch, http.MethodDelete)
+		writeMethodNotAllowed(w, http.MethodGet, http.MethodPatch, http.MethodDelete)
 	}
 }
 

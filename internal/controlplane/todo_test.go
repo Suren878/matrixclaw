@@ -32,6 +32,11 @@ func (r *externalTodoRuntime) ListSessions(context.Context) ([]core.Session, err
 	return []core.Session{{ID: "s1", Title: "s1", Kind: core.SessionKindExternalAgent}}, nil
 }
 
+func (r *externalTodoRuntime) GetSession(ctx context.Context, id string) (core.Session, error) {
+	sessions, _ := r.ListSessions(ctx)
+	return sessionWithID(sessions, id)
+}
+
 func TestTodoCommandShowsTheList(t *testing.T) {
 	runtime := &todoRuntime{list: todo.List{SessionID: "s1", Items: []todo.Item{
 		{Content: "Fix the bug", Status: todo.Completed},

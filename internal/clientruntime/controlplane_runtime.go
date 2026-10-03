@@ -66,6 +66,18 @@ func (r ControlplaneRuntime) ListSessions(ctx context.Context) ([]core.Session, 
 	return client.ListSessions(ctx)
 }
 
+func (r ControlplaneRuntime) GetSession(ctx context.Context, sessionID string) (core.Session, error) {
+	client, err := r.client("")
+	if err != nil {
+		return core.Session{}, err
+	}
+	session, err := client.GetSession(ctx, sessionID)
+	if daemonclient.IsAPIStatus(err, http.StatusNotFound) {
+		return core.Session{}, core.ErrNotFound
+	}
+	return session, err
+}
+
 func (r ControlplaneRuntime) CreateSession(ctx context.Context, externalKey string, title string, workingDir string) (core.Session, error) {
 	return r.CreateSessionWithOptions(ctx, externalKey, core.CreateSessionRequest{
 		Title:      title,

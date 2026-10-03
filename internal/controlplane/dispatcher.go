@@ -23,6 +23,7 @@ type ClientRuntime interface {
 type SessionRuntime interface {
 	CurrentBinding(ctx context.Context, externalKey string) (core.ClientBinding, error)
 	ListSessions(ctx context.Context) ([]core.Session, error)
+	GetSession(ctx context.Context, sessionID string) (core.Session, error)
 	CreateSession(ctx context.Context, externalKey string, title string, workingDir string) (core.Session, error)
 	UseSession(ctx context.Context, externalKey string, sessionID string) (core.ClientBinding, error)
 	RenameSession(ctx context.Context, sessionID string, title string) (core.Session, error)

@@ -2,6 +2,7 @@ package controlplane
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -472,33 +473,25 @@ func (d *Dispatcher) currentSession(ctx context.Context, externalKey string) (st
 	if err != nil {
 		return "", nil, err
 	}
-	sessions, err := d.sessions.ListSessions(ctx)
+	if strings.TrimSpace(binding.SessionID) == "" {
+		return binding.SessionID, nil, nil
+	}
+	session, err := d.findSession(ctx, binding.SessionID)
+	if errors.Is(err, core.ErrNotFound) {
+		return binding.SessionID, nil, nil
+	}
 	if err != nil {
 		return "", nil, err
 	}
-	for i := range sessions {
-		if strings.TrimSpace(sessions[i].ID) == strings.TrimSpace(binding.SessionID) {
-			return binding.SessionID, &sessions[i], nil
-		}
-	}
-	return binding.SessionID, nil, nil
+	return binding.SessionID, &session, nil
 }
 
 func (d *Dispatcher) findSession(ctx context.Context, sessionID string) (core.Session, error) {
-	if d.sessions == nil {
+	sessionID = strings.TrimSpace(sessionID)
+	if d.sessions == nil || sessionID == "" {
 		return core.Session{}, core.ErrNotFound
 	}
-	sessions, err := d.sessions.ListSessions(ctx)
-	if err != nil {
-		return core.Session{}, err
-	}
-	sessionID = strings.TrimSpace(sessionID)
-	for _, session := range sessions {
-		if strings.TrimSpace(session.ID) == sessionID {
-			return session, nil
-		}
-	}
-	return core.Session{}, core.ErrNotFound
+	return d.sessions.GetSession(ctx, sessionID)
 }
 
 func (d *Dispatcher) rebindAfterDelete(ctx context.Context, externalKey string) (string, error) {

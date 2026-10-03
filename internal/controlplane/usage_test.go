@@ -22,6 +22,11 @@ func (r tokenReportRuntime) ListSessions(context.Context) ([]core.Session, error
 	return []core.Session{{ID: "s1", Title: "s1"}}, nil
 }
 
+func (r tokenReportRuntime) GetSession(ctx context.Context, id string) (core.Session, error) {
+	sessions, _ := r.ListSessions(ctx)
+	return sessionWithID(sessions, id)
+}
+
 func (r tokenReportRuntime) CreateSession(context.Context, string, string, string) (core.Session, error) {
 	return core.Session{}, core.ErrInvalidInput
 }
@@ -83,4 +88,13 @@ func TestContextInfoShowsCachedPromptTokens(t *testing.T) {
 			t.Errorf("context info=%+v, want line %q", result.Info, tc.want)
 		}
 	}
+}
+
+func sessionWithID(sessions []core.Session, id string) (core.Session, error) {
+	for _, session := range sessions {
+		if session.ID == id {
+			return session, nil
+		}
+	}
+	return core.Session{}, core.ErrNotFound
 }

@@ -78,6 +78,10 @@ func (r *boundSessionsRuntime) ListSessions(context.Context) ([]core.Session, er
 	return r.sessions, nil
 }
 
+func (r *boundSessionsRuntime) GetSession(ctx context.Context, id string) (core.Session, error) {
+	return sessionWithID(r.sessions, id)
+}
+
 func (r *boundSessionsRuntime) UseSession(_ context.Context, _ string, sessionID string) (core.ClientBinding, error) {
 	r.bound = sessionID
 	return core.ClientBinding{SessionID: sessionID}, nil
