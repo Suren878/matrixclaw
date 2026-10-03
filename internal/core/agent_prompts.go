@@ -78,6 +78,16 @@ func (p *corePrompts) Context(ctx context.Context) string {
 	return prompt.JoinSections(sections...)
 }
 
+// modelPrompt tells the model what it runs on; a session can switch models, so
+// earlier replies in the history may come from another one. A model switch
+// changes the system prompt, which no cached prefix survives anyway.
+func modelPrompt(model string) string {
+	if model == "" {
+		return ""
+	}
+	return "You are running on " + model + ". Earlier replies in this conversation may have come from other models; when asked which model you are, name this one."
+}
+
 func memoryChangedPrompt(memory string) string {
 	if memory == "" {
 		return "Memory changed during this run: every entry was removed."
@@ -87,7 +97,7 @@ func memoryChangedPrompt(memory string) string {
 
 // nativeSystemPrompt is the part of the prompt that stays fixed for a run.
 func (c *Core) nativeSystemPrompt(ctx context.Context, turn nativeTurn, assistant AssistantProfile, memory string, history []transcript.Message) string {
-	sections := []string{prompt.AssistantSystemPrompt(assistant.Name, assistant.SystemPrompt)}
+	sections := []string{prompt.AssistantSystemPrompt(assistant.Name, assistant.SystemPrompt), modelPrompt(turn.Model)}
 	workingDir := strings.TrimSpace(turn.WorkingDir)
 	if turn.Subagent {
 		sections = append(sections, subagentSystemPrompt(turn.Readonly))

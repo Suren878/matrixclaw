@@ -214,3 +214,27 @@ func TestSignedReasoningIsDroppedAfterAModelSwitch(t *testing.T) {
 		})
 	}
 }
+
+type labeledLLMs struct{ recoveryLLMs }
+
+func (l labeledLLMs) Resolve(context.Context, string, string) (providers.Runtime, core.SessionProviderOption, string, error) {
+	return l.runtime, core.SessionProviderOption{ID: "foresko", Label: "Foresko Inference", Configured: true}, "gemma-4-26B-A4B", nil
+}
+
+func TestTheModelIsToldWhichModelItRunsOn(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	var system string
+	app.WithSessionLLMs(labeledLLMs{recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		system = request.SystemPrompt
+		return providers.Response{Text: "Done", StopReason: providers.StopEndTurn}, nil
+	})}})
+	_, run := saveCrashRecoveryRun(t, db, "which-model", core.RunStatusAccepted, false)
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(system, "You are running on Foresko Inference, model gemma-4-26B-A4B.") {
+		t.Fatalf("system prompt does not name the model:\n%s", system)
+	}
+}

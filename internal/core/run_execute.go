@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log"
@@ -54,11 +55,11 @@ func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
 		return err
 	}
 	session = c.decorateSessionLLM(session)
-	runtime, err := c.resolveSessionRuntime(ctx, session)
+	runtime, model, err := c.resolveSessionRuntime(ctx, session)
 	if err != nil {
 		return c.failRun(ctx, run, err)
 	}
-	task, engine, err := c.nativeEngine(ctx, claimed, session, runtime)
+	task, engine, err := c.nativeEngine(ctx, claimed, session, runtime, model)
 	if err != nil {
 		return c.failRun(ctx, run, err)
 	}
@@ -114,7 +115,7 @@ func (c *Core) rescheduleInterruptedRun(runID string) {
 
 // nativeEngine builds the engine and task of one native run; the task resumes the
 // counters of the run's checkpoint, or else those the session's last run carried.
-func (c *Core) nativeEngine(ctx context.Context, claimed claimedRun, session Session, runtime providers.Runtime) (agent.Task, *agent.Engine, error) {
+func (c *Core) nativeEngine(ctx context.Context, claimed claimedRun, session Session, runtime providers.Runtime, model string) (agent.Task, *agent.Engine, error) {
 	run := claimed.Run
 	resume, err := c.resumeCounters(ctx, run.ID)
 	if err == nil && resume == (agent.Counters{}) {
@@ -144,6 +145,7 @@ func (c *Core) nativeEngine(ctx context.Context, claimed claimedRun, session Ses
 		Readonly:           readonly,
 		ClientCapabilities: run.ClientCapabilities,
 		ToolUse:            agent.ToolUseAllowed(runtime),
+		Model:              model,
 	}
 	engine := agent.New(agent.Config{
 		Journal:     coreJournal{c: c},
@@ -183,17 +185,19 @@ func (c *Core) nativeEngine(ctx context.Context, claimed claimedRun, session Ses
 	return task, engine, nil
 }
 
-func (c *Core) resolveSessionRuntime(ctx context.Context, session Session) (providers.Runtime, error) {
+// resolveSessionRuntime returns the session's model runtime and how to name
+// it to the model ("provider, model").
+func (c *Core) resolveSessionRuntime(ctx context.Context, session Session) (providers.Runtime, string, error) {
 	llms := c.sessionLLMs()
 	if llms == nil {
-		return nil, fmt.Errorf("%w: provider registry unavailable", ErrExecutionUnavailable)
+		return nil, "", fmt.Errorf("%w: provider registry unavailable", ErrExecutionUnavailable)
 	}
-	runtime, _, _, err := llms.Resolve(ctx, session.ProviderID, session.ModelID)
+	runtime, option, modelID, err := llms.Resolve(ctx, session.ProviderID, session.ModelID)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if runtime == nil {
-		return nil, fmt.Errorf("%w: provider not configured", ErrExecutionUnavailable)
+		return nil, "", fmt.Errorf("%w: provider not configured", ErrExecutionUnavailable)
 	}
-	return runtime, nil
+	return runtime, cmp.Or(option.Label, option.ID) + ", model " + modelID, nil
 }

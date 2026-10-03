@@ -103,7 +103,7 @@ func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSes
 	}
 	runtime, windowTokens := c.compactRuntime(ctx)
 	if runtime == nil {
-		if runtime, err = c.resolveSessionRuntime(ctx, session); err != nil {
+		if runtime, _, err = c.resolveSessionRuntime(ctx, session); err != nil {
 			return CompactSessionResult{}, err
 		}
 		windowTokens = c.sessionContextWindowTokens(session)
@@ -163,7 +163,7 @@ func (c *Core) contextReportForSession(ctx context.Context, session Session, win
 	report := c.contextReport(session.ID, window)
 	report.WindowTokens = c.sessionContextWindowTokens(session)
 	var model agent.Model
-	if runtime, err := c.resolveSessionRuntime(ctx, session); err == nil {
+	if runtime, _, err := c.resolveSessionRuntime(ctx, session); err == nil {
 		model = runtime
 	}
 	limit := agent.ContextLimit(model, report.WindowTokens, 0)

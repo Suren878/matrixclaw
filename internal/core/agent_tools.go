@@ -21,6 +21,8 @@ type nativeTurn struct {
 	Readonly           bool
 	ClientCapabilities ClientCapabilities
 	ToolUse            bool
+	// Model names the provider and model the run talks to.
+	Model string
 }
 
 // coreTools is the Tools port of one native run. authorized holds the verdict
