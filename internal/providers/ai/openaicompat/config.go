@@ -37,7 +37,6 @@ type Runtime struct {
 	promptCacheKey      bool
 	contentCacheControl bool
 	headers             map[string]string
-	quirks              providers.OpenAIChatRequestQuirks
 	profile             providers.RuntimeProfile
 	capabilities        providers.ModelCapabilities
 	maxTokensLimit      maxTokensLimitState
@@ -104,11 +103,10 @@ func New(_ context.Context, cfg Config) (providers.Runtime, error) {
 		metadataID:          firstNonEmptyString(cfg.ProviderID, cfg.CatalogID),
 		maxOutputTokens:     cfg.MaxOutputTokens,
 		reasoningEffort:     reasoningEffort,
-		useCompletionMax:    chatOptions.MaxTokensField == providers.OpenAIChatMaxCompletionTokens,
+		useCompletionMax:    chatOptions.MaxCompletionTokens,
 		promptCacheKey:      chatOptions.PromptCacheKey,
 		contentCacheControl: chatOptions.ContentCacheControl,
-		headers:             chatOptions.DefaultHeaders,
-		quirks:              chatOptions.RequestQuirks,
+		headers:             chatOptions.Headers,
 		profile:             profile,
 		capabilities:        providerProfile.Capabilities,
 	}, nil

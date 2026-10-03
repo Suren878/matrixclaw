@@ -5,91 +5,36 @@ import (
 	"strings"
 )
 
-type OpenAIChatMaxTokensField string
-
-const (
-	OpenAIChatMaxTokensAuto       OpenAIChatMaxTokensField = ""
-	OpenAIChatMaxTokens           OpenAIChatMaxTokensField = "max_tokens"
-	OpenAIChatMaxCompletionTokens OpenAIChatMaxTokensField = "max_completion_tokens"
-)
-
+// OpenAIChatOptions are what an OpenAI-compatible endpoint needs beyond the
+// standard chat completions request.
 type OpenAIChatOptions struct {
-	DefaultHeaders      map[string]string
-	MaxTokensField      OpenAIChatMaxTokensField
-	RequestQuirks       OpenAIChatRequestQuirks
+	Headers             map[string]string
+	MaxCompletionTokens bool // send max_completion_tokens instead of max_tokens
 	PromptCacheKey      bool // send prompt_cache_key; only OpenAI's own endpoint is known to accept it
 	ContentCacheControl bool // mark cache breakpoints in content parts; OpenRouter passes them to Claude models
 }
 
-type OpenAIChatRequestQuirks struct {
-	RetryUnsupportedReasoningEffort bool
-	RetryMaxTokensField             bool
-	RetryAssistantReasoningContent  bool
-	RetryWithoutMaxTokens           bool
-	RetryWithoutStreamOptions       bool
-}
-
 func ResolveOpenAIChatOptions(profile ProviderProfile, baseURL string, model string) OpenAIChatOptions {
-	options := cloneOpenAIChatOptions(profile.OpenAIChat)
-	if options.DefaultHeaders == nil {
-		options.DefaultHeaders = map[string]string{}
+	headers := copyStringMap(profile.ChatHeaders)
+	if headers == nil {
+		headers = map[string]string{}
 	}
-	if headerValue(options.DefaultHeaders, "User-Agent") == "" {
-		options.DefaultHeaders["User-Agent"] = "matrixclaw"
+	if headerValue(headers, "User-Agent") == "" {
+		headers["User-Agent"] = "matrixclaw"
 	}
-	if options.MaxTokensField == OpenAIChatMaxTokensAuto {
-		options.MaxTokensField = resolveOpenAIChatMaxTokensField(profile, baseURL, model)
+	openAIHost := openAICompatibleHost(baseURL, "api.openai.com")
+	return OpenAIChatOptions{
+		Headers:             headers,
+		MaxCompletionTokens: NormalizeProviderID(profile.ProviderID) == "openai" || openAIHost && strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "gpt-5"),
+		PromptCacheKey:      openAIHost,
+		ContentCacheControl: openAICompatibleHost(baseURL, "openrouter.ai") && claudeModel(model),
 	}
-	options.RequestQuirks = normalizeOpenAIChatRequestQuirks()
-	options.PromptCacheKey = openAICompatibleHost(baseURL, "api.openai.com")
-	options.ContentCacheControl = openAICompatibleHost(baseURL, "openrouter.ai") && claudeModel(model)
-	return options
 }
 
 // claudeModel reports whether a gateway model ID names an Anthropic Claude model.
 func claudeModel(model string) bool {
 	model = strings.ToLower(strings.TrimSpace(model))
 	return strings.HasPrefix(model, "anthropic/") || strings.Contains(model, "claude")
-}
-
-func cloneOpenAIChatOptions(options OpenAIChatOptions) OpenAIChatOptions {
-	return OpenAIChatOptions{
-		DefaultHeaders: copyStringMap(options.DefaultHeaders),
-		MaxTokensField: normalizeOpenAIChatMaxTokensField(options.MaxTokensField),
-		RequestQuirks:  normalizeOpenAIChatRequestQuirks(),
-	}
-}
-
-func normalizeOpenAIChatRequestQuirks() OpenAIChatRequestQuirks {
-	return OpenAIChatRequestQuirks{
-		RetryUnsupportedReasoningEffort: true,
-		RetryMaxTokensField:             true,
-		RetryAssistantReasoningContent:  true,
-		RetryWithoutMaxTokens:           true,
-		RetryWithoutStreamOptions:       true,
-	}
-}
-
-func normalizeOpenAIChatMaxTokensField(value OpenAIChatMaxTokensField) OpenAIChatMaxTokensField {
-	switch OpenAIChatMaxTokensField(strings.ToLower(strings.TrimSpace(string(value)))) {
-	case OpenAIChatMaxCompletionTokens:
-		return OpenAIChatMaxCompletionTokens
-	case OpenAIChatMaxTokens:
-		return OpenAIChatMaxTokens
-	default:
-		return OpenAIChatMaxTokensAuto
-	}
-}
-
-func resolveOpenAIChatMaxTokensField(profile ProviderProfile, baseURL string, model string) OpenAIChatMaxTokensField {
-	providerID := NormalizeProviderID(profile.ProviderID)
-	if providerID == "openai" {
-		return OpenAIChatMaxCompletionTokens
-	}
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "gpt-5") && openAICompatibleHost(baseURL, "api.openai.com") {
-		return OpenAIChatMaxCompletionTokens
-	}
-	return OpenAIChatMaxTokens
 }
 
 func openAICompatibleHost(rawURL string, host string) bool {

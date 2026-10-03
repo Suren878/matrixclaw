@@ -28,7 +28,7 @@ type ProviderSpec struct {
 	ModelsURL           string
 	PublicModelCatalog  bool
 	DisableHealthCheck  bool
-	OpenAIChat          OpenAIChatOptions
+	ChatHeaders         map[string]string // extra headers of an OpenAI-compatible chat endpoint
 }
 
 var providerSpecs []ProviderSpec

@@ -12,7 +12,7 @@ type ProviderProfile struct {
 	RuntimeProfile          RuntimeProfile
 	Capabilities            ModelCapabilities
 	SupportsReasoningEffort bool
-	OpenAIChat              OpenAIChatOptions
+	ChatHeaders             map[string]string
 }
 
 func ProfileForProvider(providerType string) ProviderProfile {
@@ -50,7 +50,7 @@ func ProfileForModel(providerID string, providerType string, modelID string) Pro
 		RuntimeProfile:          runtimeProfile,
 		Capabilities:            capabilities,
 		SupportsReasoningEffort: capabilities.ReasoningEffort,
-		OpenAIChat:              cloneOpenAIChatOptions(policy.OpenAIChat),
+		ChatHeaders:             copyStringMap(policy.ChatHeaders),
 	}
 	return profile
 }

@@ -17,7 +17,7 @@ type ProviderPolicy struct {
 	ModelsURL           string
 	PublicModelCatalog  bool
 	SupportsHealthCheck bool
-	OpenAIChat          OpenAIChatOptions
+	ChatHeaders         map[string]string
 	DefaultBaseURL      string
 	BaseURLOptions      []BaseURLOption
 	DefaultModel        string
@@ -47,7 +47,7 @@ func PolicyForProvider(providerID string, providerType string) ProviderPolicy {
 			ModelsURL:           spec.ModelsURL,
 			PublicModelCatalog:  spec.PublicModelCatalog,
 			SupportsHealthCheck: entry.Capabilities.ModelDiscovery && !spec.DisableHealthCheck,
-			OpenAIChat:          cloneOpenAIChatOptions(spec.OpenAIChat),
+			ChatHeaders:         copyStringMap(spec.ChatHeaders),
 			DefaultBaseURL:      entry.DefaultBaseURL,
 			BaseURLOptions:      append([]BaseURLOption(nil), entry.BaseURLOptions...),
 			DefaultModel:        entry.DefaultModel,

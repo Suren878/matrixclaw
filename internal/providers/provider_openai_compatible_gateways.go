@@ -21,21 +21,21 @@ func init() {
 	for i := range specs {
 		switch specs[i].Entry.ID {
 		case "ai-gateway":
-			specs[i].OpenAIChat.DefaultHeaders = map[string]string{
+			specs[i].ChatHeaders = map[string]string{
 				"HTTP-Referer": "https://github.com/Suren878/matrixclaw",
 				"X-Title":      "Matrixclaw",
 			}
 			specs[i].PublicModelCatalog = true
 		case "gmi":
-			specs[i].OpenAIChat.DefaultHeaders = map[string]string{
+			specs[i].ChatHeaders = map[string]string{
 				"User-Agent": "Matrixclaw",
 			}
 		case "kimi":
-			specs[i].OpenAIChat.DefaultHeaders = map[string]string{
+			specs[i].ChatHeaders = map[string]string{
 				"User-Agent": "Matrixclaw",
 			}
 		case "openrouter":
-			specs[i].OpenAIChat.DefaultHeaders = map[string]string{
+			specs[i].ChatHeaders = map[string]string{
 				"HTTP-Referer": "https://github.com/Suren878/matrixclaw",
 				"X-Title":      "Matrixclaw",
 			}

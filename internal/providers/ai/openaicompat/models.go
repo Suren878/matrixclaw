@@ -39,7 +39,7 @@ func ListModels(ctx context.Context, cfg Config) ([]string, error) {
 	}
 	req.Header.Set("Accept", "application/json")
 	chatOptions := providers.ResolveOpenAIChatOptions(cfg.Profile, baseURL, cfg.Model)
-	applyDefaultHeaders(req, chatOptions.DefaultHeaders)
+	applyDefaultHeaders(req, chatOptions.Headers)
 
 	res, err := client.Do(req)
 	if err != nil {

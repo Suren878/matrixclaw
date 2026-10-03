@@ -23,9 +23,6 @@ func init() {
 		Auth:                ProviderAuthAPIKey,
 		Transport:           ProviderTransportOpenAIChat,
 		RuntimeProviderType: TypeOpenAICompat,
-		OpenAIChat: OpenAIChatOptions{
-			MaxTokensField: OpenAIChatMaxCompletionTokens,
-		},
 	})
 	registerProvider(ProviderSpec{
 		Order: 20,
