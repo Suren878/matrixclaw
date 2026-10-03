@@ -55,7 +55,7 @@ func readContent(body []byte, contentType string, pageURL *url.URL) (pageContent
 	case mediaType == "text/html" || mediaType == "application/xhtml+xml":
 		return readHTML(body, contentType, pageURL)
 	case isTextMedia(mediaType):
-		reader, err := charset.NewReader(bytes.NewReader(body), contentType)
+		reader, err := textReader(body, contentType)
 		if err != nil {
 			return pageContent{}, fmt.Errorf("decode %s: %w", mediaType, err)
 		}
@@ -69,6 +69,16 @@ func readContent(body []byte, contentType string, pageURL *url.URL) (pageContent
 	}
 }
 
+// textReader decodes body by the charset its header declares. Without one, a
+// body that is valid UTF-8 is read as UTF-8: sniffing looks only at the first
+// KB and takes plain ASCII there for windows-1252.
+func textReader(body []byte, contentType string) (io.Reader, error) {
+	if _, params, _ := mime.ParseMediaType(contentType); params["charset"] == "" && utf8.Valid(body) {
+		return bytes.NewReader(bytes.TrimPrefix(body, []byte("\xef\xbb\xbf"))), nil
+	}
+	return charset.NewReader(bytes.NewReader(body), contentType)
+}
+
 func isTextMedia(mediaType string) bool {
 	return strings.HasPrefix(mediaType, "text/") ||
 		strings.HasSuffix(mediaType, "+json") || strings.HasSuffix(mediaType, "+xml") ||
@@ -77,7 +87,7 @@ func isTextMedia(mediaType string) bool {
 }
 
 func readHTML(body []byte, contentType string, pageURL *url.URL) (pageContent, error) {
-	reader, err := charset.NewReader(bytes.NewReader(body), contentType)
+	reader, err := textReader(body, contentType)
 	if err != nil {
 		return pageContent{}, fmt.Errorf("decode html: %w", err)
 	}

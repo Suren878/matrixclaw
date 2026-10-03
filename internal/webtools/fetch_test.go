@@ -221,3 +221,25 @@ func TestReadContentSaysWhenAPageNeedsJavaScript(t *testing.T) {
 		t.Fatalf("partial page = %+v", partial)
 	}
 }
+
+func TestReadContentTakesUndeclaredUTF8AsUTF8(t *testing.T) {
+	pad := strings.Repeat("a", 1100)
+	for _, tc := range []struct{ body, contentType string }{
+		{`{"pad":"` + pad + `","name":"Привет"}`, "application/json"},
+		{`<html><head><script>var pad = "` + pad + `";</script></head><body><p>Привет, мир.</p></body></html>`, "text/html"},
+		{pad + " Привет", "text/plain"},
+	} {
+		content, err := readContent([]byte(tc.body), tc.contentType, nil)
+		if err != nil || !strings.Contains(content.Text, "Привет") {
+			t.Fatalf("%s: text = %q, err = %v; want Привет", tc.contentType, tail(content.Text), err)
+		}
+	}
+	latin1 := append([]byte("caf"), 0xe9)
+	if content, err := readContent(latin1, "text/plain", nil); err != nil || content.Text != "café" {
+		t.Fatalf("windows-1252 text = %q, err = %v", content.Text, err)
+	}
+}
+
+func tail(text string) string {
+	return text[max(len(text)-40, 0):]
+}
