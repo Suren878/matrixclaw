@@ -137,10 +137,6 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	app.WithTools(newSetupAwareToolExecutor(toolRegistry, bootstrap.SetupService))
-	// Shell tasks do not survive a restart; this runs before any run can start new ones.
-	if err := app.RecoverTasks(ctx); err != nil {
-		log.Printf("matrixclawd background task recovery failed: %v", err)
-	}
 	lifetime, stopLifetime := context.WithCancel(ctx)
 	defer stopLifetime()
 	app.WithLifetime(lifetime)
@@ -189,18 +185,10 @@ func Run(ctx context.Context) error {
 	safego.Go("supervisor.deliverStartupNotifications", func() {
 		supervisor.DeliverPendingStartupNotifications(bootstrap)
 	})
-	safego.Go("core.recoverState", func() {
-		if err := app.RecoverActiveRuns(context.Background()); err != nil {
-			log.Printf("matrixclawd active run recovery failed: %v", err)
-		}
-		if err := app.RecoverSessionInputs(context.Background()); err != nil {
-			log.Printf("matrixclawd session input recovery failed: %v", err)
-		}
-		if err := app.RecoverSubagentTasks(context.Background()); err != nil {
-			log.Printf("matrixclawd subagent recovery failed: %v", err)
-		}
-		if err := app.RecoverTaskEvents(context.Background()); err != nil {
-			log.Printf("matrixclawd background task event recovery failed: %v", err)
+	// External agents are configured by now, so recovered runs find theirs.
+	safego.Go("core.recover", func() {
+		if err := app.Recover(context.Background()); err != nil {
+			log.Printf("matrixclawd recovery: %v", err)
 		}
 	})
 

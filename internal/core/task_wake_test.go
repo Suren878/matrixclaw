@@ -162,7 +162,7 @@ func TestStoppedTasksDoNotWakeAnIdleSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitTaskStatus(t, s.db, taskID, core.TaskStatusCanceled)
-	if err := s.app.RecoverTaskEvents(context.Background()); err != nil {
+	if err := s.app.Recover(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -231,7 +231,7 @@ func TestWakeRunTakesItsEventsBeforeItStarts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := app.RecoverTaskEvents(ctx); err != nil {
+	if err := app.Recover(ctx); err != nil {
 		t.Fatal(err)
 	}
 
@@ -311,12 +311,12 @@ func TestFailedWakeRunStopsTheChainWithOneNotice(t *testing.T) {
 	ctx := context.Background()
 
 	s.finishedTask(t, "task_a")
-	if err := s.app.RecoverTaskEvents(ctx); err != nil {
+	if err := s.app.Recover(ctx); err != nil {
 		t.Fatal(err)
 	}
 	s.starter.wait(t)
 	s.finishedTask(t, "task_b")
-	if err := s.app.RecoverTaskEvents(ctx); err != nil {
+	if err := s.app.Recover(ctx); err != nil {
 		t.Fatal(err)
 	}
 	s.starter.wait(t)
@@ -353,7 +353,7 @@ func TestWakeRunIsDeliveredToAChatNeverToAReplyOnceTarget(t *testing.T) {
 	ctx := context.Background()
 
 	s.finishedTask(t, "task_a")
-	if err := s.app.RecoverTaskEvents(ctx); err != nil {
+	if err := s.app.Recover(ctx); err != nil {
 		t.Fatal(err)
 	}
 	s.starter.wait(t)
@@ -394,7 +394,7 @@ func TestWakeChainCountsWakeRunsTheUserDidNotReach(t *testing.T) {
 			before := len(s.runs(t))
 
 			s.finishedTask(t, "task_a")
-			if err := s.app.RecoverTaskEvents(ctx); err != nil {
+			if err := s.app.Recover(ctx); err != nil {
 				t.Fatal(err)
 			}
 			s.starter.wait(t)

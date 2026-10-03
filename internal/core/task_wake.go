@@ -258,25 +258,6 @@ func (c *Core) sendWakeNotice(ctx context.Context, notice wakeNotice) error {
 	return err
 }
 
-// RecoverTaskEvents starts the runs that idle sessions owe to background work
-// finished before the daemon restarted.
-func (c *Core) RecoverTaskEvents(ctx context.Context) error {
-	events, err := c.store.ListTasks(ctx, TaskFilter{Undelivered: true})
-	if err != nil {
-		return err
-	}
-	seen := map[string]bool{}
-	var errs []error
-	for _, task := range events {
-		if seen[task.SessionID] {
-			continue
-		}
-		seen[task.SessionID] = true
-		errs = append(errs, c.wakeSession(ctx, task.SessionID, nil))
-	}
-	return errors.Join(errs...)
-}
-
 func ignoreNotFound(err error) error {
 	if errors.Is(err, ErrNotFound) {
 		return nil

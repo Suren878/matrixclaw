@@ -191,9 +191,9 @@ func (c *Core) sealInterruptedReply(ctx context.Context, reply *transcript.Messa
 	return c.sealReply(ctx, reply, saved)
 }
 
-// RecoverActiveRuns resumes each run the previous daemon left active: a parked
+// recoverRuns resumes each run the previous daemon left active: a parked
 // run once what it waits for is there, any other one through claim.
-func (c *Core) RecoverActiveRuns(ctx context.Context) error {
+func (c *Core) recoverRuns(ctx context.Context) error {
 	runs, err := c.store.ListActiveRuns(ctx)
 	if err != nil {
 		return err
@@ -210,6 +210,50 @@ func (c *Core) RecoverActiveRuns(ctx context.Context) error {
 		}
 		if err != nil {
 			errs = append(errs, fmt.Errorf("recover run %s: %w", run.ID, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// Recover resumes what the previous daemon left, once, at daemon start: its
+// shell tasks are lost; each run it left active resumes; a subagent task whose
+// child run ended is told; an idle session starts its next queued message, or
+// a run for background work that finished meanwhile.
+func (c *Core) Recover(ctx context.Context) error {
+	return errors.Join(c.recoverShellTasks(ctx), c.recoverRuns(ctx), c.recoverSubagentTasks(ctx), c.settleIdleSessions(ctx))
+}
+
+// settleIdleSessions starts what the sessions with queued messages or unseen
+// finished tasks owe them; sessions busy with a run are left to it.
+func (c *Core) settleIdleSessions(ctx context.Context) error {
+	inputs, err := c.store.ListPendingSessionInputs(ctx, "")
+	if err != nil {
+		return err
+	}
+	events, err := c.store.ListTasks(ctx, TaskFilter{Undelivered: true})
+	if err != nil {
+		return err
+	}
+	var sessions []string
+	for _, input := range inputs {
+		sessions = append(sessions, input.SessionID)
+	}
+	for _, task := range events {
+		sessions = append(sessions, task.SessionID)
+	}
+	var errs []error
+	seen := map[string]bool{}
+	for _, sessionID := range sessions {
+		if seen[sessionID] {
+			continue
+		}
+		seen[sessionID] = true
+		started, err := c.startNextPendingSessionInput(ctx, sessionID)
+		if err == nil && !started {
+			err = c.wakeSession(ctx, sessionID, nil)
+		}
+		if err != nil {
+			errs = append(errs, fmt.Errorf("session %s: %w", sessionID, err))
 		}
 	}
 	return errors.Join(errs...)

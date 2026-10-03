@@ -158,8 +158,8 @@ func TestRecoverRunningGenerationSkipsPartialAndCompletes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns: %v", err)
+	if err := app.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover: %v", err)
 	}
 	waitForRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusCompleted)
 
@@ -196,7 +196,7 @@ func TestEndingTheLifetimeKeepsExecutingRunsForRecovery(t *testing.T) {
 	app.WithLifetime(lifetime).WithSessionLLMs(recoveryLLMs{runtime: interruptedRuntime})
 	_, run := saveCrashRecoveryRun(t, sqliteStore, "lifetime_end", core.RunStatusAccepted, false)
 
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
+	if err := app.Recover(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	waitRecoverySignal(t, interruptedRuntime.started, "native generation start")
@@ -245,8 +245,8 @@ func TestGracefulExecutorStopPreservesAndRecoversNativeGeneration(t *testing.T) 
 	recoveredRuntime := &recoveryRuntime{text: "native resumed after restart"}
 	restarted := core.New(sqliteStore).
 		WithSessionLLMs(recoveryLLMs{runtime: recoveredRuntime})
-	if err := restarted.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns after graceful stop: %v", err)
+	if err := restarted.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover after graceful stop: %v", err)
 	}
 	waitForRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusCompleted)
 	request := recoveredRuntime.lastRequest()
@@ -310,7 +310,7 @@ func TestStartupRecoveryAndPersistedWorkflowRaceExecutesRunOnce(t *testing.T) {
 	}()
 	go func() {
 		<-start
-		errorsSeen <- app.RecoverActiveRuns(context.Background())
+		errorsSeen <- app.Recover(context.Background())
 	}()
 	close(start)
 	for i := 0; i < 2; i++ {
@@ -352,11 +352,11 @@ func TestRecoveryLeavesReadOnlyCallsInFlightToTheResumedRun(t *testing.T) {
 	}
 
 	recovered := make(chan error, 1)
-	go func() { recovered <- app.RecoverActiveRuns(context.Background()) }()
+	go func() { recovered <- app.Recover(context.Background()) }()
 	select {
 	case err := <-recovered:
 		if err != nil {
-			t.Fatalf("RecoverActiveRuns: %v", err)
+			t.Fatalf("Recover: %v", err)
 		}
 	case <-time.After(5 * time.Second):
 		close(slow.release)
@@ -440,8 +440,8 @@ func TestRecoverDeniedToolReturnsTheDenialToTheModel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns: %v", err)
+	if err := app.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover: %v", err)
 	}
 	if got := starter.count(run.ID); got != 1 {
 		t.Fatalf("recovered run schedules = %d, want 1", got)
@@ -484,8 +484,8 @@ func TestRecoveryLeavesDeferredCallsToTheResumedRun(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns: %v", err)
+	if err := app.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover: %v", err)
 	}
 	if inspect.callCount() != 0 {
 		t.Fatal("recovery replayed a deferred call")
@@ -647,8 +647,8 @@ func TestRecoverBlockingSubagentCompletesChildThenParentWithoutDuplicate(t *test
 		t.Fatal(err)
 	}
 
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns: %v", err)
+	if err := app.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover: %v", err)
 	}
 	waitForRecoveryRunStatus(t, sqliteStore, childRun.ID, core.RunStatusCompleted)
 	waitForRecoveryRunStatus(t, sqliteStore, parentRun.ID, core.RunStatusCompleted)
@@ -688,7 +688,7 @@ func TestRestartedParentWaitsForAllItsBlockingChildren(t *testing.T) {
 		childRuns = append(childRuns, childRun)
 	}
 
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
+	if err := app.Recover(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	waitForRecoveryRunStatus(t, sqliteStore, parentRun.ID, core.RunStatusCompleted)
@@ -807,8 +807,8 @@ func TestRecoverExternalAgentContinuesExistingSession(t *testing.T) {
 	}
 	saveRunRecoveryTestMessage(t, sqliteStore, partial)
 
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns: %v", err)
+	if err := app.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover: %v", err)
 	}
 	waitForRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusCompleted)
 	input := runtime.receivedInput()
@@ -861,8 +861,8 @@ func TestGracefulExecutorStopRecoversExternalSessionWithoutNativeToolReplay(t *t
 		t.Fatal(err)
 	}
 	restarted := core.New(sqliteStore).WithExternalAgents(recoveredRegistry, sqliteStore)
-	if err := restarted.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns external after graceful stop: %v", err)
+	if err := restarted.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover external after graceful stop: %v", err)
 	}
 	waitForRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusCompleted)
 	assertToolResultCount(t, sqliteStore, session.ID, "external_tool_in_flight", 0)
@@ -875,8 +875,8 @@ func TestGracefulExecutorStopRecoversExternalSessionWithoutNativeToolReplay(t *t
 // starter of a test that only records starts does not.
 func recoverRun(t *testing.T, app *core.Core, runID string) {
 	t.Helper()
-	if err := app.RecoverActiveRuns(context.Background()); err != nil {
-		t.Fatalf("RecoverActiveRuns: %v", err)
+	if err := app.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover: %v", err)
 	}
 	if err := app.ExecuteRun(context.Background(), runID); err != nil {
 		t.Fatalf("ExecuteRun: %v", err)

@@ -297,7 +297,7 @@ func TestCancelingAWaitingRunStopsItsTasksWithoutWakingTheSession(t *testing.T) 
 	if _, err := app.CancelRun(ctx, run.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := app.RecoverTaskEvents(ctx); err != nil {
+	if err := app.Recover(ctx); err != nil {
 		t.Fatal(err)
 	}
 	starter.wait(t)
@@ -399,10 +399,12 @@ func TestWakeupStaysUntilItsRunExecutes(t *testing.T) {
 	}
 }
 
-func TestLostTasksWakeNothingBeforeRunsCanStart(t *testing.T) {
+func TestRecoveryWakesAnIdleSessionOnceForWorkThatFinished(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)
 	app := core.New(db).WithSessionFiles(t.TempDir())
+	starter := &recordingRunStarter{}
+	app.WithRunStarter(starter)
 	session := permissionSession(t, db, "session_restart", t.TempDir(), core.PermissionModeDefault, "")
 	ctx := context.Background()
 	now := time.Now().UTC()
@@ -418,20 +420,16 @@ func TestLostTasksWakeNothingBeforeRunsCanStart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := app.RecoverTasks(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if runs, err := db.ListSessionRuns(ctx, session.ID, 0); err != nil || len(runs) != 0 {
-		t.Fatalf("runs before the run starter = %+v, %v", runs, err)
-	}
-	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
-	if err := app.RecoverTaskEvents(ctx); err != nil {
+	if err := app.Recover(ctx); err != nil {
 		t.Fatal(err)
 	}
 
-	if len(starter.ids) != 1 {
-		t.Fatalf("starts = %v", starter.ids)
+	if shell, err := db.GetTask(ctx, "task_shell"); err != nil || shell.Status != core.TaskStatusLost {
+		t.Fatalf("shell task = %+v, %v", shell, err)
+	}
+	runs, err := db.ListSessionRuns(ctx, session.ID, 0)
+	if err != nil || len(runs) != 1 || runs[0].Trigger != core.RunTriggerWake || len(starter.ids) != 1 {
+		t.Fatalf("runs = %+v, %v; starts = %v", runs, err, starter.ids)
 	}
 }
 
@@ -448,7 +446,7 @@ func (s wakeupFailingStore) GetRunWakeup(ctx context.Context, runID string) (cor
 	return s.SQLiteStore.GetRunWakeup(ctx, runID)
 }
 
-func TestRecoverActiveRunsGoesOnPastAFailedWake(t *testing.T) {
+func TestRecoveryGoesOnPastAFailedWake(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)
 	_, broken := saveCrashRecoveryRun(t, db, "wake-broken", core.RunStatusWaitingEvents, false)
@@ -457,7 +455,7 @@ func TestRecoverActiveRunsGoesOnPastAFailedWake(t *testing.T) {
 	starter := &recordingRunStarter{}
 	app.WithRunStarter(starter)
 
-	if err := app.RecoverActiveRuns(context.Background()); err == nil {
+	if err := app.Recover(context.Background()); err == nil {
 		t.Fatal("recovery hid the failed wake")
 	}
 
@@ -506,7 +504,7 @@ func TestAwaitedTaskReadElsewhereStillWakesTheRun(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := app.RecoverActiveRuns(ctx); err != nil {
+	if err := app.Recover(ctx); err != nil {
 		t.Fatal(err)
 	}
 

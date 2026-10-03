@@ -219,7 +219,7 @@ func waitProcessGone(t *testing.T, pid int) {
 	}
 }
 
-func TestRecoverTasksKillsLeftoversAndMarksThemLost(t *testing.T) {
+func TestRecoveryKillsLeftoverShellTasksAndMarksThemLost(t *testing.T) {
 	t.Parallel()
 	app, db, session, files := newTaskCore(t)
 	out, err := shelltask.CreateOutput(filepath.Join(files, session.ID, "tasks", "task_left.log"))
@@ -237,7 +237,7 @@ func TestRecoverTasksKillsLeftoversAndMarksThemLost(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := app.RecoverTasks(context.Background()); err != nil {
+	if err := app.Recover(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 

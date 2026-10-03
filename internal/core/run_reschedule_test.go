@@ -118,8 +118,8 @@ func TestRunInterruptedDuringToolReplaysItAndCompletes(t *testing.T) {
 				assertRecoveryRunStatus(t, db, run.ID, core.RunStatusRunning)
 				restarted := core.New(db)
 				configure(restarted)
-				if err := restarted.RecoverActiveRuns(context.Background()); err != nil {
-					t.Fatalf("RecoverActiveRuns: %v", err)
+				if err := restarted.Recover(context.Background()); err != nil {
+					t.Fatalf("Recover: %v", err)
 				}
 			}
 

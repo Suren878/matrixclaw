@@ -123,9 +123,9 @@ func (c *Core) syncSubagentTask(ctx context.Context, run Run) (Task, error) {
 	return task, err
 }
 
-// RecoverSubagentTasks ends the tasks whose child run ended before the daemon
+// recoverSubagentTasks ends the tasks whose child run ended before the daemon
 // stopped while the task was not told.
-func (c *Core) RecoverSubagentTasks(ctx context.Context) error {
+func (c *Core) recoverSubagentTasks(ctx context.Context) error {
 	active, err := c.store.ListTasks(ctx, TaskFilter{Kind: TaskKindSubagent, Statuses: activeTaskStatuses()})
 	if err != nil {
 		return err

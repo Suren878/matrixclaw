@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 
@@ -362,31 +361,6 @@ func (c *Core) queuePendingSteersForInactiveSession(ctx context.Context, session
 			return err
 		}
 		c.publishSessionInputUpdated(input)
-	}
-	return nil
-}
-
-func (c *Core) RecoverSessionInputs(ctx context.Context) error {
-	if c == nil || c.store == nil {
-		return nil
-	}
-	inputs, err := c.store.ListPendingSessionInputs(ctx, "")
-	if err != nil {
-		return err
-	}
-	seen := map[string]struct{}{}
-	for _, input := range inputs {
-		sessionID := normalizeText(input.SessionID)
-		if sessionID == "" {
-			continue
-		}
-		if _, ok := seen[sessionID]; ok {
-			continue
-		}
-		seen[sessionID] = struct{}{}
-		if _, err := c.startNextPendingSessionInput(ctx, sessionID); err != nil {
-			return fmt.Errorf("recover session input %s: %w", sessionID, err)
-		}
 	}
 	return nil
 }
