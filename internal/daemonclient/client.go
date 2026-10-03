@@ -53,6 +53,15 @@ type Client struct {
 	EventHTTPClient *http.Client
 }
 
+// BaseURL turns a daemon listen address such as 127.0.0.1:8080 into its URL.
+func BaseURL(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
+		return strings.TrimRight(addr, "/")
+	}
+	return "http://" + addr
+}
+
 func New(baseURL string, clientName string, externalKey string) *Client {
 	return &Client{
 		BaseURL:     strings.TrimRight(baseURL, "/"),

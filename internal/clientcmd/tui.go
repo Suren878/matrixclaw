@@ -2,30 +2,20 @@ package clientcmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	tuiruntime "github.com/Suren878/matrixclaw/clients/terminal/chat/runtime"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/daemonclient"
 	appsetup "github.com/Suren878/matrixclaw/internal/setup"
 )
 
 func runTUICommand(stderr io.Writer, binaryName string, service *appsetup.Service, args []string) int {
 	cfg, err := service.Load()
 	if err != nil {
-		if errors.Is(err, appsetup.ErrConfigNotFound) {
-			_, _ = fmt.Fprintf(stderr, "%s: setup not found at %s\n", binaryName, service.Path())
-			_, _ = fmt.Fprintf(stderr, "%s: run `%s setup` first\n", binaryName, binaryName)
-			return 1
-		}
-		if errors.Is(err, appsetup.ErrUnsupportedConfigVersion) {
-			_, _ = fmt.Fprintf(stderr, "%s: setup at %s uses an unsupported version\n", binaryName, service.Path())
-			_, _ = fmt.Fprintf(stderr, "%s: reopen `%s setup` to recreate the setup file\n", binaryName, binaryName)
-			return 1
-		}
-		_, _ = fmt.Fprintf(stderr, "%s: tui: %v\n", binaryName, err)
-		return 1
+		return handleSetupReadError(stderr, binaryName, service, "tui", err)
 	}
 	if _, err := ensureDaemon(context.Background(), service); err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: tui: ensure daemon: %v\n", binaryName, err)
@@ -34,14 +24,18 @@ func runTUICommand(stderr io.Writer, binaryName string, service *appsetup.Servic
 	if refreshed, err := service.Load(); err == nil {
 		cfg = refreshed
 	}
-	workingDir, err := resolveTUIWorkingDir(args)
+	if len(args) > 1 {
+		_, _ = fmt.Fprintf(stderr, "%s: tui: tui accepts at most one WORKDIR argument\n", binaryName)
+		return 2
+	}
+	workingDir, err := resolveWorkingDir(strings.Join(args, ""))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: tui: %v\n", binaryName, err)
 		return 2
 	}
 	providerName, providerModel := activeProviderInfo(cfg)
 	if err := openTUI(context.Background(), tuiruntime.Config{
-		BaseURL:     daemonBaseURL(cfg.Daemon.HTTPAddr),
+		BaseURL:     daemonclient.BaseURL(cfg.Daemon.HTTPAddr),
 		APIToken:    cfg.Daemon.APIToken,
 		ClientName:  tuiruntime.DefaultClientName,
 		ExternalKey: tuiruntime.DefaultExternalKey,

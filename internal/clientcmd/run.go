@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	tuiruntime "github.com/Suren878/matrixclaw/clients/terminal/chat/runtime"
 	terminalsetup "github.com/Suren878/matrixclaw/clients/terminal/setup"
@@ -40,7 +41,7 @@ var (
 )
 
 func configuredDaemonClient(cfg appsetup.Config) *daemonclient.Client {
-	return newDaemonClient(daemonBaseURL(cfg.Daemon.HTTPAddr)).WithAPIToken(cfg.Daemon.APIToken)
+	return newDaemonClient(daemonclient.BaseURL(cfg.Daemon.HTTPAddr)).WithAPIToken(cfg.Daemon.APIToken)
 }
 
 func Run(io IO, binaryName string, args []string) int {
@@ -141,20 +142,12 @@ func printUsage(w io.Writer, binaryName string) {
 	_, _ = fmt.Fprintf(w, "  %s tui [WORKDIR]    Open terminal chat for the current or given directory\n", binaryName)
 }
 
-func resolveTUIWorkingDir(args []string) (string, error) {
-	if len(args) > 1 {
-		return "", fmt.Errorf("tui accepts at most one WORKDIR argument")
-	}
-	value := ""
-	if len(args) == 1 {
-		value = args[0]
-	}
+// resolveWorkingDir returns the absolute directory value names, or the
+// current directory when value is empty.
+func resolveWorkingDir(value string) (string, error) {
+	value = strings.TrimSpace(value)
 	if value == "" {
-		wd, err := os.Getwd()
-		if err != nil {
-			return "", err
-		}
-		return wd, nil
+		return os.Getwd()
 	}
 	abs, err := filepath.Abs(filepath.Clean(value))
 	if err != nil {

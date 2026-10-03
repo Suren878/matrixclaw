@@ -13,6 +13,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/clients/telegram"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/daemonclient"
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -40,7 +41,7 @@ func (a *telegramClientAdapter) Apply(ctx context.Context, bootstrap bootstrapCo
 	cfg := telegram.Config{}
 	if boot.Enabled {
 		cfg = telegram.Config{
-			BaseURL:         daemonBaseURL(bootstrap.Addr),
+			BaseURL:         daemonclient.BaseURL(bootstrap.Addr),
 			APIToken:        bootstrap.APIToken,
 			BotToken:        boot.BotToken,
 			TelegramBaseURL: a.botAPIURL,

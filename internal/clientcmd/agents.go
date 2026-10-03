@@ -1,11 +1,11 @@
 package clientcmd
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -63,8 +63,8 @@ func runAgentStartCommand(stdout io.Writer, stderr io.Writer, binaryName string,
 		printAgentsUsage(stdout, binaryName)
 		return 2
 	}
-	agentID := normalizeAgentID(args[0])
-	workingDir, err := resolveAgentWorkingDir(args[1:])
+	agentID := strings.ToLower(strings.TrimSpace(args[0]))
+	workingDir, err := resolveWorkingDir(strings.Join(args[1:], ""))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: agents start: %v\n", binaryName, err)
 		return 2
@@ -80,13 +80,14 @@ func runAgentStartCommand(stdout io.Writer, stderr io.Writer, binaryName string,
 		_, _ = fmt.Fprintf(stderr, "%s: agents start: %v\n", binaryName, err)
 		return 1
 	}
-	if !externalAgentReady(agents, agentID) {
+	agent, ok := findExternalAgent(agents, agentID)
+	if !ok || !agent.Installed || !agent.Enabled {
 		_, _ = fmt.Fprintf(stderr, "%s: agents start: external agent %q is not enabled\n", binaryName, agentID)
 		return 1
 	}
 
 	session, err := client.CreateSessionWithRequest(context.Background(), core.CreateSessionRequest{
-		Title:           externalAgentSessionTitle(agents, agentID),
+		Title:           cmp.Or(strings.TrimSpace(agent.DisplayName), agentID),
 		Kind:            string(core.SessionKindExternalAgent),
 		RuntimeID:       string(core.SessionRuntimeExternalAgent),
 		WorkingDir:      workingDir,
@@ -101,65 +102,15 @@ func runAgentStartCommand(stdout io.Writer, stderr io.Writer, binaryName string,
 	return 0
 }
 
-func resolveAgentWorkingDir(args []string) (string, error) {
-	value := ""
-	if len(args) > 0 {
-		value = strings.TrimSpace(args[0])
-	}
-	if value == "" {
-		wd, err := os.Getwd()
-		if err != nil {
-			return "", err
-		}
-		return wd, nil
-	}
-	abs, err := filepath.Abs(filepath.Clean(value))
-	if err != nil {
-		return "", err
-	}
-	info, err := os.Stat(abs)
-	if err != nil {
-		return "", err
-	}
-	if !info.IsDir() {
-		return "", fmt.Errorf("WORKDIR is not a directory: %s", abs)
-	}
-	return abs, nil
-}
-
-func normalizeAgentID(value string) string {
-	return strings.ToLower(strings.TrimSpace(value))
-}
-
-func externalAgentReady(agents []core.ExternalAgentDescriptor, agentID string) bool {
+func findExternalAgent(agents []core.ExternalAgentDescriptor, agentID string) (core.ExternalAgentDescriptor, bool) {
 	for _, agent := range agents {
-		if externalAgentMatches(agent, agentID) {
-			return agent.Installed && agent.Enabled
+		if strings.EqualFold(agent.ID, agentID) || slices.ContainsFunc(agent.Aliases, func(alias string) bool {
+			return strings.EqualFold(alias, agentID)
+		}) {
+			return agent, true
 		}
 	}
-	return false
-}
-
-func externalAgentSessionTitle(agents []core.ExternalAgentDescriptor, agentID string) string {
-	for _, agent := range agents {
-		if externalAgentMatches(agent, agentID) && strings.TrimSpace(agent.DisplayName) != "" {
-			return strings.TrimSpace(agent.DisplayName)
-		}
-	}
-	return agentID
-}
-
-func externalAgentMatches(agent core.ExternalAgentDescriptor, agentID string) bool {
-	agentID = strings.ToLower(strings.TrimSpace(agentID))
-	if strings.EqualFold(strings.TrimSpace(agent.ID), agentID) {
-		return true
-	}
-	for _, alias := range agent.Aliases {
-		if strings.EqualFold(strings.TrimSpace(alias), agentID) {
-			return true
-		}
-	}
-	return false
+	return core.ExternalAgentDescriptor{}, false
 }
 
 func printAgentsUsage(w io.Writer, binaryName string) {

@@ -86,11 +86,3 @@ func appendModuleContext(systemPrompt string, contexts []string) string {
 	}
 	return systemPrompt + "\n\nEnabled modules:\n" + context
 }
-
-func daemonBaseURL(addr string) string {
-	addr = strings.TrimSpace(addr)
-	if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
-		return strings.TrimRight(addr, "/")
-	}
-	return "http://" + addr
-}

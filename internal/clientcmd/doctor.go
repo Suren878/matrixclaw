@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/daemonclient"
 	appsetup "github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/version"
@@ -26,7 +27,7 @@ func runDoctorCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 	_, _ = fmt.Fprintf(stdout, "%s: doctor: matrixclaw %s\n", binaryName, version.String())
 	_, _ = fmt.Fprintf(stdout, "%s: setup: %s\n", binaryName, service.Path())
 	_, _ = fmt.Fprintf(stdout, "%s: setup config version: ok (%d)\n", binaryName, appsetup.CurrentVersion)
-	_, _ = fmt.Fprintf(stdout, "%s: api: %s\n", binaryName, daemonBaseURL(cfg.Daemon.HTTPAddr))
+	_, _ = fmt.Fprintf(stdout, "%s: api: %s\n", binaryName, daemonclient.BaseURL(cfg.Daemon.HTTPAddr))
 	if strings.TrimSpace(cfg.Daemon.APIToken) == "" {
 		_, _ = fmt.Fprintf(stdout, "%s: ERROR api auth: missing setup daemon api_token\n", binaryName)
 		issues++

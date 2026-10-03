@@ -49,14 +49,6 @@ func redactSecrets(text string, secrets ...string) string {
 	return text
 }
 
-func daemonBaseURL(addr string) string {
-	addr = strings.TrimSpace(addr)
-	if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
-		return strings.TrimRight(addr, "/")
-	}
-	return "http://" + addr
-}
-
 func activeProviderInfo(cfg appsetup.Config) (string, string) {
 	activeID := strings.TrimSpace(cfg.ActiveProviderID)
 	if activeID != "" {
