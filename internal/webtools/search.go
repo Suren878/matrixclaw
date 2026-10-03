@@ -25,7 +25,7 @@ func (e webSearchExecutor) Execute(ctx context.Context, call tools.Call) (tools.
 
 	params.Query = strings.TrimSpace(params.Query)
 	if params.Query == "" {
-		return tools.Result{Content: "query is required", IsError: true}, nil
+		return tools.Result{Content: "query is required", Status: tools.ResultStatusError}, nil
 	}
 	if params.Limit <= 0 {
 		params.Limit = defaultWebSearchLimit
@@ -38,12 +38,12 @@ func (e webSearchExecutor) Execute(ctx context.Context, call tools.Call) (tools.
 	if e.config != nil {
 		var err error
 		if cfg, err = e.config(); err != nil {
-			return tools.Result{Content: fmt.Sprintf("web search failed: %v", err), IsError: true}, nil
+			return tools.Result{Content: fmt.Sprintf("web search failed: %v", err), Status: tools.ResultStatusError}, nil
 		}
 	}
 	results, provider, err := search(ctx, params.Query, params.Limit, cfg)
 	if err != nil {
-		return tools.Result{Content: fmt.Sprintf("web search failed: %v", err), IsError: true}, nil
+		return tools.Result{Content: fmt.Sprintf("web search failed: %v", err), Status: tools.ResultStatusError}, nil
 	}
 
 	content := formatSearchResults(params.Query, provider, results)

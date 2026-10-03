@@ -105,7 +105,7 @@ func (t *saveTool) Spec() tools.Spec {
 
 func (t *saveTool) Execute(_ context.Context, call tools.Call) (tools.Result, error) {
 	if t == nil || t.store == nil {
-		return tools.Result{Content: "Local storage is not configured.", IsError: true}, nil
+		return tools.Result{Content: "Local storage is not configured.", Status: tools.ResultStatusError}, nil
 	}
 	var input struct {
 		Path     string   `json:"path"`
@@ -115,11 +115,11 @@ func (t *saveTool) Execute(_ context.Context, call tools.Call) (tools.Result, er
 		MIMEType string   `json:"mime_type"`
 	}
 	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{Content: "Invalid storage_save arguments.", IsError: true}, nil
+		return tools.Result{Content: "Invalid storage_save arguments.", Status: tools.ResultStatusError}, nil
 	}
 	entry, err := t.store.Save(input.Path, input.Content, input.Title, input.Tags, input.MIMEType)
 	if err != nil {
-		return tools.Result{Content: fmt.Sprintf("Storage save failed: %s", err), IsError: true}, nil
+		return tools.Result{Content: fmt.Sprintf("Storage save failed: %s", err), Status: tools.ResultStatusError}, nil
 	}
 	return tools.Result{
 		Content:  fmt.Sprintf("Saved to storage: %s", entry.Path),
@@ -149,18 +149,18 @@ func (t *readTool) Spec() tools.Spec {
 
 func (t *readTool) Execute(_ context.Context, call tools.Call) (tools.Result, error) {
 	if t == nil || t.store == nil {
-		return tools.Result{Content: "Local storage is not configured.", IsError: true}, nil
+		return tools.Result{Content: "Local storage is not configured.", Status: tools.ResultStatusError}, nil
 	}
 	var input struct {
 		Path     string `json:"path"`
 		MaxBytes int64  `json:"max_bytes"`
 	}
 	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{Content: "Invalid storage_read arguments.", IsError: true}, nil
+		return tools.Result{Content: "Invalid storage_read arguments.", Status: tools.ResultStatusError}, nil
 	}
 	entry, content, err := t.store.Read(input.Path, input.MaxBytes)
 	if err != nil {
-		return tools.Result{Content: fmt.Sprintf("Storage read failed: %s", err), IsError: true}, nil
+		return tools.Result{Content: fmt.Sprintf("Storage read failed: %s", err), Status: tools.ResultStatusError}, nil
 	}
 	body := strings.TrimRight(content, "\n")
 	return tools.Result{
@@ -192,7 +192,7 @@ func (t *listTool) Spec() tools.Spec {
 
 func (t *listTool) Execute(_ context.Context, call tools.Call) (tools.Result, error) {
 	if t == nil || t.store == nil {
-		return tools.Result{Content: "Local storage is not configured.", IsError: true}, nil
+		return tools.Result{Content: "Local storage is not configured.", Status: tools.ResultStatusError}, nil
 	}
 	var input struct {
 		Prefix string `json:"prefix"`
@@ -201,12 +201,12 @@ func (t *listTool) Execute(_ context.Context, call tools.Call) (tools.Result, er
 	}
 	if len(call.Args) > 0 {
 		if err := json.Unmarshal(call.Args, &input); err != nil {
-			return tools.Result{Content: "Invalid storage_list arguments.", IsError: true}, nil
+			return tools.Result{Content: "Invalid storage_list arguments.", Status: tools.ResultStatusError}, nil
 		}
 	}
 	entries, err := t.store.List(input.Prefix, input.Query, input.Limit)
 	if err != nil {
-		return tools.Result{Content: fmt.Sprintf("Storage list failed: %s", err), IsError: true}, nil
+		return tools.Result{Content: fmt.Sprintf("Storage list failed: %s", err), Status: tools.ResultStatusError}, nil
 	}
 	if len(entries) == 0 {
 		return tools.Result{Content: "Storage is empty.", Metadata: entries, Status: tools.ResultStatusSuccess}, nil
@@ -252,7 +252,7 @@ func (t *updateMetadataTool) Spec() tools.Spec {
 
 func (t *updateMetadataTool) Execute(_ context.Context, call tools.Call) (tools.Result, error) {
 	if t == nil || t.store == nil {
-		return tools.Result{Content: "Local storage is not configured.", IsError: true}, nil
+		return tools.Result{Content: "Local storage is not configured.", Status: tools.ResultStatusError}, nil
 	}
 	var input struct {
 		Path     string   `json:"path"`
@@ -261,11 +261,11 @@ func (t *updateMetadataTool) Execute(_ context.Context, call tools.Call) (tools.
 		MIMEType string   `json:"mime_type"`
 	}
 	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{Content: "Invalid storage_update_metadata arguments.", IsError: true}, nil
+		return tools.Result{Content: "Invalid storage_update_metadata arguments.", Status: tools.ResultStatusError}, nil
 	}
 	entry, err := t.store.UpdateMetadata(input.Path, input.Title, input.Tags, input.MIMEType)
 	if err != nil {
-		return tools.Result{Content: fmt.Sprintf("Storage metadata update failed: %s", err), IsError: true}, nil
+		return tools.Result{Content: fmt.Sprintf("Storage metadata update failed: %s", err), Status: tools.ResultStatusError}, nil
 	}
 	return tools.Result{
 		Content:  fmt.Sprintf("Storage metadata updated: %s", entry.Path),
@@ -294,13 +294,13 @@ func (t *deleteTool) Spec() tools.Spec {
 
 func (t *deleteTool) Execute(_ context.Context, call tools.Call) (tools.Result, error) {
 	if t == nil || t.store == nil {
-		return tools.Result{Content: "Local storage is not configured.", IsError: true}, nil
+		return tools.Result{Content: "Local storage is not configured.", Status: tools.ResultStatusError}, nil
 	}
 	var input struct {
 		Path string `json:"path"`
 	}
 	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{Content: "Invalid storage_delete arguments.", IsError: true}, nil
+		return tools.Result{Content: "Invalid storage_delete arguments.", Status: tools.ResultStatusError}, nil
 	}
 	path := strings.TrimSpace(input.Path)
 	if !call.Approved {
@@ -317,7 +317,7 @@ func (t *deleteTool) Execute(_ context.Context, call tools.Call) (tools.Result, 
 	}
 	entry, err := t.store.Delete(path)
 	if err != nil {
-		return tools.Result{Content: fmt.Sprintf("Storage delete failed: %s", err), IsError: true}, nil
+		return tools.Result{Content: fmt.Sprintf("Storage delete failed: %s", err), Status: tools.ResultStatusError}, nil
 	}
 	return tools.Result{
 		Content:  fmt.Sprintf("Deleted from storage: %s", entry.Path),
@@ -347,18 +347,18 @@ func (t *saveTemporaryTool) Spec() tools.Spec {
 
 func (t *saveTemporaryTool) Execute(_ context.Context, call tools.Call) (tools.Result, error) {
 	if t == nil || t.store == nil {
-		return tools.Result{Content: "Local storage is not configured.", IsError: true}, nil
+		return tools.Result{Content: "Local storage is not configured.", Status: tools.ResultStatusError}, nil
 	}
 	var input struct {
 		TempPath string `json:"temp_path"`
 		DestPath string `json:"dest_path"`
 	}
 	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{Content: "Invalid storage_save_temp arguments.", IsError: true}, nil
+		return tools.Result{Content: "Invalid storage_save_temp arguments.", Status: tools.ResultStatusError}, nil
 	}
 	entry, err := t.store.CopyTemporary(input.TempPath, input.DestPath)
 	if err != nil {
-		return tools.Result{Content: fmt.Sprintf("Storage temporary save failed: %s", err), IsError: true}, nil
+		return tools.Result{Content: fmt.Sprintf("Storage temporary save failed: %s", err), Status: tools.ResultStatusError}, nil
 	}
 	return tools.Result{
 		Content:  fmt.Sprintf("Saved temporary file to storage: %s", entry.Path),

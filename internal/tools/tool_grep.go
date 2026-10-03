@@ -28,7 +28,7 @@ func (e *grepExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 		return Result{}, InvalidArgs(grepToolName, err)
 	}
 	if strings.TrimSpace(params.Pattern) == "" {
-		return Result{Content: "pattern is required", IsError: true}, nil
+		return Result{Content: "pattern is required", Status: ResultStatusError}, nil
 	}
 
 	policy, pathErr := resolveReadablePath(call.WorkingDir, params.Path)
@@ -40,7 +40,7 @@ func (e *grepExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 		return Result{
 			Content:  "Searching MatrixClaw credential files is blocked. Use provider or module status controls; secret values are never returned to model tools.",
 			Metadata: filesystemPathMetadata(policy),
-			IsError:  true,
+			Status:   ResultStatusError,
 		}, nil
 	}
 	pattern := params.Pattern

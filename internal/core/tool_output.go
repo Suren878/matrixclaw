@@ -48,7 +48,7 @@ func (c *Core) keepLargeOutput(sessionID string, result tools.Result) tools.Resu
 
 // toolFailure is the error result of a tool call that failed with err.
 func (c *Core) toolFailure(sessionID string, err error) tools.Result {
-	return c.keepLargeOutput(sessionID, tools.Result{Content: err.Error(), IsError: true})
+	return c.keepLargeOutput(sessionID, tools.Result{Content: err.Error(), Status: tools.ResultStatusError})
 }
 
 // toolOutputDir holds a session's kept tool outputs.

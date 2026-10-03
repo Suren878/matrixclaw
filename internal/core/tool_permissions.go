@@ -125,7 +125,7 @@ func realPath(path string) string {
 
 // blockedResult is what the model reads for a call a deny rule blocks.
 func blockedResult(rule permission.Rule) tools.Result {
-	return tools.Result{Content: "Blocked by rule " + rule.String(), Status: tools.ResultStatusError, IsError: true}
+	return tools.Result{Content: "Blocked by rule " + rule.String(), Status: tools.ResultStatusError}
 }
 
 // askedByRule requests approval for a call an ask rule catches, whether or not

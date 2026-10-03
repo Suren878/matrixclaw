@@ -27,7 +27,7 @@ func twoStepRun(t *testing.T, app *core.Core, db *store.SQLiteStore, suffix stri
 	session, run := saveCrashRecoveryRun(t, db, suffix, core.RunStatusAccepted, false)
 	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("change", tools.EffectReadOnly), fn: func(ctx context.Context, _ tools.Call) (tools.Result, error) {
 		if err := change(ctx, session.ID); err != nil {
-			return tools.Result{Content: err.Error(), IsError: true}, nil
+			return tools.Result{Content: err.Error(), Status: tools.ResultStatusError}, nil
 		}
 		return tools.Result{Content: "changed"}, nil
 	}}))

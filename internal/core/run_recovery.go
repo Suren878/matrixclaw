@@ -112,7 +112,6 @@ func (c *Core) settleInterrupted(ctx context.Context, run Run, call transcript.T
 		return agent.InterruptedCall{ToolCallID: call.ID, Settle: agent.SettleAnswer, Result: tools.Result{
 			Content: "The daemon restarted while this tool was active. Its completion state is unknown, and MatrixClaw did not replay the unavailable tool.",
 			Status:  tools.ResultStatusError,
-			IsError: true,
 		}}, nil
 	case !spec.Mutates():
 		return rerun, nil

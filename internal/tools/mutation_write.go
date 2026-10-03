@@ -19,7 +19,7 @@ func (e *writeExecutor) Execute(_ context.Context, call Call) (Result, error) {
 		return Result{}, InvalidArgs(writeToolName, err)
 	}
 	if strings.TrimSpace(params.FilePath) == "" {
-		return Result{Content: "file_path is required", IsError: true}, nil
+		return Result{Content: "file_path is required", Status: ResultStatusError}, nil
 	}
 	policy, errResult := resolveMutationPath(call.WorkingDir, params.FilePath)
 	if errResult != nil {

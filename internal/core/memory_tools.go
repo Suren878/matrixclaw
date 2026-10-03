@@ -142,7 +142,6 @@ func (t *memoryTool) Execute(ctx context.Context, call tools.Call) (tools.Result
 	default:
 		return tools.Result{
 			Content: "Unsupported memory action. Use list, add, replace, or remove.",
-			IsError: true,
 			Status:  tools.ResultStatusError,
 		}, nil
 	}
@@ -193,7 +192,6 @@ func memoryApprovalResult(input memoryToolInput) tools.Result {
 func memoryErrorResult(err error) tools.Result {
 	return tools.Result{
 		Content: err.Error(),
-		IsError: true,
 		Status:  tools.ResultStatusError,
 	}
 }

@@ -153,7 +153,7 @@ func (t chatSource) readGroup(sty *surfacestyles.Styles, start int) (surfacechat
 	for next < len(messages) && isStandaloneReadToolCall(messages[next]) {
 		call := messages[next].ToolCalls()[0]
 		result, ok := t.tools.Results[call.ID]
-		if !ok || result.IsError || result.Name != "read" {
+		if !ok || result.IsError() || result.Name != "read" {
 			break
 		}
 		calls, results = append(calls, call), append(results, result)

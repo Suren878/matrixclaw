@@ -113,12 +113,35 @@ type ToolResultPart struct {
 	Content    string          `json:"content"`
 	MIMEType   string          `json:"mime_type,omitempty"`
 	Metadata   json.RawMessage `json:"metadata,omitempty"`
-	Status     string          `json:"status,omitempty"`
-	IsError    bool            `json:"is_error,omitempty"`
+	// Status is success, error or neutral; empty is success.
+	Status string `json:"status,omitempty"`
 	// Guidance is user steering delivered with this result; Content carries it too.
 	Guidance []string `json:"guidance,omitempty"`
 	// OutputPath is the file holding the full output when Content was cut.
 	OutputPath string `json:"output_path,omitempty"`
+}
+
+// IsError reports whether the call failed.
+func (p ToolResultPart) IsError() bool {
+	return p.Status == "error"
+}
+
+// UnmarshalJSON reads a part written before status was the only status field:
+// is_error without a status is an error.
+func (p *ToolResultPart) UnmarshalJSON(data []byte) error {
+	type plain ToolResultPart
+	var legacy struct {
+		plain
+		IsError bool `json:"is_error"`
+	}
+	if err := json.Unmarshal(data, &legacy); err != nil {
+		return err
+	}
+	*p = ToolResultPart(legacy.plain)
+	if p.Status == "" && legacy.IsError {
+		p.Status = "error"
+	}
+	return nil
 }
 
 type FinishPart struct {

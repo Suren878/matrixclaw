@@ -51,7 +51,7 @@ func callHash(name string, args []byte, result tools.Result) string {
 	sum.Write(canonicalArgs(args))
 	sum.Write([]byte{0})
 	sum.Write([]byte(strings.TrimSpace(result.Content)))
-	if result.IsError {
+	if result.IsError() {
 		sum.Write([]byte{1})
 	}
 	return hex.EncodeToString(sum.Sum(nil)[:8])

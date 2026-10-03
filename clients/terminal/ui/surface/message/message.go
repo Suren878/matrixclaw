@@ -69,10 +69,12 @@ type ToolResult struct {
 	MIMEType   string `json:"mime_type"`
 	Metadata   string `json:"metadata"`
 	Status     string `json:"status"`
-	IsError    bool   `json:"is_error"`
 }
 
 func (ToolResult) isPart() {}
+
+// IsError reports whether the call failed.
+func (r ToolResult) IsError() bool { return r.Status == "error" }
 
 type Finish struct {
 	Reason  FinishReason `json:"reason"`

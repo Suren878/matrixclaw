@@ -57,11 +57,11 @@ func (t *ReminderTool) Execute(ctx context.Context, call tools.Call) (tools.Resu
 		Title string `json:"title"`
 	}
 	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{IsError: true, Content: "Invalid reminder arguments."}, nil
+		return tools.Result{Status: tools.ResultStatusError, Content: "Invalid reminder arguments."}, nil
 	}
 	runAt, err := time.Parse(time.RFC3339, strings.TrimSpace(input.RunAt))
 	if err != nil {
-		return tools.Result{IsError: true, Content: "run_at must be an RFC3339 timestamp."}, nil
+		return tools.Result{Status: tools.ResultStatusError, Content: "run_at must be an RFC3339 timestamp."}, nil
 	}
 	job, err := t.service.CreateJobForRun(ctx, call.RunID, CreateJobInput{
 		Kind:         JobKindReminder,
@@ -73,7 +73,7 @@ func (t *ReminderTool) Execute(ctx context.Context, call tools.Call) (tools.Resu
 	})
 	if err != nil {
 		if errors.Is(err, core.ErrInvalidInput) {
-			return tools.Result{IsError: true, Content: err.Error()}, nil
+			return tools.Result{Status: tools.ResultStatusError, Content: err.Error()}, nil
 		}
 		return tools.Result{}, err
 	}
@@ -107,10 +107,10 @@ func (t *ScheduledAITaskTool) Execute(ctx context.Context, call tools.Call) (too
 	}
 	var input scheduledAITaskToolInput
 	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{IsError: true, Content: "Invalid scheduled task arguments."}, nil
+		return tools.Result{Status: tools.ResultStatusError, Content: "Invalid scheduled task arguments."}, nil
 	}
 	create, result := t.validateScheduledAITaskInput(input, call.SessionID)
-	if result.IsError {
+	if result.IsError() {
 		return result, nil
 	}
 	if !call.Approved {
@@ -126,7 +126,7 @@ func (t *ScheduledAITaskTool) Execute(ctx context.Context, call tools.Call) (too
 	job, err := t.service.CreateJobForRun(ctx, call.RunID, create)
 	if err != nil {
 		if errors.Is(err, core.ErrInvalidInput) {
-			return tools.Result{IsError: true, Content: err.Error()}, nil
+			return tools.Result{Status: tools.ResultStatusError, Content: err.Error()}, nil
 		}
 		return tools.Result{}, err
 	}
@@ -152,7 +152,7 @@ func (t *ScheduledAITaskTool) validateScheduledAITaskInput(input scheduledAITask
 	case ScheduleModeOnce:
 		runAt, err := time.Parse(time.RFC3339, strings.TrimSpace(input.RunAt))
 		if err != nil {
-			return CreateJobInput{}, tools.Result{IsError: true, Content: "run_at must be an RFC3339 timestamp for once schedules."}
+			return CreateJobInput{}, tools.Result{Status: tools.ResultStatusError, Content: "run_at must be an RFC3339 timestamp for once schedules."}
 		}
 		create.ScheduleMode = ScheduleModeOnce
 		create.RunAt = &runAt
@@ -160,10 +160,10 @@ func (t *ScheduledAITaskTool) validateScheduledAITaskInput(input scheduledAITask
 		create.ScheduleMode = ScheduleModeCron
 		create.CronExpr = strings.TrimSpace(input.CronExpr)
 	default:
-		return CreateJobInput{}, tools.Result{IsError: true, Content: "schedule_mode must be once or cron."}
+		return CreateJobInput{}, tools.Result{Status: tools.ResultStatusError, Content: "schedule_mode must be once or cron."}
 	}
 	if _, err := t.service.buildJob(create); err != nil {
-		return CreateJobInput{}, tools.Result{IsError: true, Content: err.Error()}
+		return CreateJobInput{}, tools.Result{Status: tools.ResultStatusError, Content: err.Error()}
 	}
 	return create, tools.Result{}
 }

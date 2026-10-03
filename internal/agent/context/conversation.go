@@ -399,7 +399,7 @@ func toProviderMessages(ctx context.Context, message transcript.Message, reader 
 			Role:       string(message.Role),
 			Content:    content,
 			ToolCallID: strings.TrimSpace(part.ToolResult.ToolCallID),
-			IsError:    part.ToolResult.IsError,
+			IsError:    part.ToolResult.IsError(),
 		}}, nil
 	}
 

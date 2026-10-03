@@ -17,7 +17,7 @@ func (e *globExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 		return Result{}, InvalidArgs(globToolName, err)
 	}
 	if strings.TrimSpace(params.Pattern) == "" {
-		return Result{Content: "pattern is required", IsError: true}, nil
+		return Result{Content: "pattern is required", Status: ResultStatusError}, nil
 	}
 
 	policy, pathErr := resolveReadablePath(call.WorkingDir, params.Path)

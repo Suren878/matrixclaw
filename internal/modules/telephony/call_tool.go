@@ -47,7 +47,7 @@ func (t *callTool) Spec() tools.Spec {
 func (t *callTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
 	var input callInput
 	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{Content: "Invalid telephony_call arguments.", IsError: true, Status: tools.ResultStatusError}, nil
+		return tools.Result{Content: "Invalid telephony_call arguments.", Status: tools.ResultStatusError}, nil
 	}
 	input.To = phone.Normalize(input.To)
 	input.Objective = strings.TrimSpace(input.Objective)
@@ -55,7 +55,7 @@ func (t *callTool) Execute(ctx context.Context, call tools.Call) (tools.Result, 
 	input.Profile = strings.TrimSpace(input.Profile)
 	input.SystemInstruction = strings.TrimSpace(input.SystemInstruction)
 	if input.To == "" {
-		return tools.Result{Content: "Phone number is required.", IsError: true, Status: tools.ResultStatusError}, nil
+		return tools.Result{Content: "Phone number is required.", Status: tools.ResultStatusError}, nil
 	}
 	if !call.Approved {
 		return tools.Result{
@@ -71,7 +71,7 @@ func (t *callTool) Execute(ctx context.Context, call tools.Call) (tools.Result, 
 	}
 	cfg, gw := t.module.current()
 	if gw == nil {
-		return tools.Result{Content: "Telephony is not configured.", IsError: true, Status: tools.ResultStatusError}, nil
+		return tools.Result{Content: "Telephony is not configured.", Status: tools.ResultStatusError}, nil
 	}
 	telephonyCfg := cfg.Modules.Telephony
 	placed, err := gw.PlaceCall(ctx, map[string]any{
@@ -87,7 +87,7 @@ func (t *callTool) Execute(ctx context.Context, call tools.Call) (tools.Result, 
 		"origin_session_id":   call.SessionID,
 	})
 	if err != nil {
-		return tools.Result{Content: fmt.Sprintf("Telephony call failed: %s", err), IsError: true, Status: tools.ResultStatusError}, nil
+		return tools.Result{Content: fmt.Sprintf("Telephony call failed: %s", err), Status: tools.ResultStatusError}, nil
 	}
 	return tools.Result{
 		Content:  "Phone call started: " + input.To,

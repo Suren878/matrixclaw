@@ -180,7 +180,6 @@ func (e *remoteToolExecutor) Execute(ctx context.Context, call tools.Call) (tool
 	}
 	out := tools.Result{Content: content, Status: tools.ResultStatusSuccess}
 	if result != nil && result.IsError {
-		out.IsError = true
 		out.Status = tools.ResultStatusError
 	}
 	if result != nil && result.StructuredContent != nil {

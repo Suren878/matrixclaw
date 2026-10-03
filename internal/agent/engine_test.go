@@ -402,7 +402,7 @@ func TestUnknownToolIsReturnedAsErrorResult(t *testing.T) {
 		t.Fatal("rejected call not marked finished")
 	}
 	result, ok := f.Journal.Result("x1")
-	if !ok || !result.Parts[0].ToolResult.IsError || !strings.Contains(result.Content, `unknown tool "missing"`) {
+	if !ok || !result.Parts[0].ToolResult.IsError() || !strings.Contains(result.Content, `unknown tool "missing"`) {
 		t.Fatalf("result = %+v", result)
 	}
 	for _, kind := range f.Sink.Kinds() {
@@ -761,7 +761,7 @@ func TestDeniedCallGetsTheDenialAsItsResult(t *testing.T) {
 		if outcome.Status != agent.StatusCompleted || len(f.Tools.Calls) != 0 {
 			t.Fatalf("outcome = %+v calls = %+v", outcome, f.Tools.Calls)
 		}
-		if result, ok := f.Journal.Result("w1"); !ok || !result.Parts[0].ToolResult.IsError || result.Content != tc.want {
+		if result, ok := f.Journal.Result("w1"); !ok || !result.Parts[0].ToolResult.IsError() || result.Content != tc.want {
 			t.Fatalf("result = %+v", result)
 		}
 		if message, _ := f.Journal.Message("w1"); !message.Parts[0].ToolCall.Finished {

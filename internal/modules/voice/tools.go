@@ -39,18 +39,18 @@ func (t *textToSpeechTool) Execute(ctx context.Context, call tools.Call) (tools.
 		Text string `json:"text"`
 	}
 	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{Content: "Invalid text_to_speech arguments.", IsError: true, Status: tools.ResultStatusError}, nil
+		return tools.Result{Content: "Invalid text_to_speech arguments.", Status: tools.ResultStatusError}, nil
 	}
 	text := strings.TrimSpace(input.Text)
 	if text == "" {
-		return tools.Result{Content: "Text is required.", IsError: true, Status: tools.ResultStatusError}, nil
+		return tools.Result{Content: "Text is required.", Status: tools.ResultStatusError}, nil
 	}
 	response, err := t.module.TextToSpeech(ctx, TextToSpeechRequest{Text: text})
 	if err != nil {
 		if errors.Is(err, ErrModuleDisabled) {
-			return tools.Result{Content: "Text to speech is disabled.", IsError: true, Status: tools.ResultStatusError}, nil
+			return tools.Result{Content: "Text to speech is disabled.", Status: tools.ResultStatusError}, nil
 		}
-		return tools.Result{Content: fmt.Sprintf("Text to speech failed: %s", err), IsError: true, Status: tools.ResultStatusError}, nil
+		return tools.Result{Content: fmt.Sprintf("Text to speech failed: %s", err), Status: tools.ResultStatusError}, nil
 	}
 	return tools.Result{
 		Content:  "Speech audio generated.",

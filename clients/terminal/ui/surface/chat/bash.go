@@ -76,17 +76,6 @@ func runEarlyStateContent(sty *surfacestyles.Styles, opts *ToolRenderOpts, width
 	}
 }
 
-func isExpectedNeutralBashResult(toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult) bool {
-	if result == nil || normalizedToolName(toolCall.Name) != "bash" {
-		return false
-	}
-	var params tools.BashParams
-	_ = json.Unmarshal([]byte(toolCall.Input), &params)
-	var meta tools.BashResponseMetadata
-	_ = json.Unmarshal([]byte(result.Metadata), &meta)
-	return meta.ExitCode == 1 && strings.TrimSpace(meta.Output) == "" && tools.IsProcessProbeCommand(params.Command)
-}
-
 func renderTaskOutput(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
 	return renderTaskToolCall(sty, width, opts, "Output")
 }

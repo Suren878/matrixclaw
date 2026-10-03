@@ -17,13 +17,13 @@ const maxParallelCalls = 8
 const detachedWriteTimeout = 5 * time.Second
 
 // panicResult answers a call whose tool panicked.
-var panicResult = tools.Result{Content: "The tool failed unexpectedly; the daemon log has the details.", Status: tools.ResultStatusError, IsError: true}
+var panicResult = tools.Result{Content: "The tool failed unexpectedly; the daemon log has the details.", Status: tools.ResultStatusError}
 
 // canceledResult answers a call a canceled run did not finish.
-var canceledResult = tools.Result{Content: "Canceled by user.", Status: tools.ResultStatusError, IsError: true}
+var canceledResult = tools.Result{Content: "Canceled by user.", Status: tools.ResultStatusError}
 
 // failedResult answers a call a failed run did not finish.
-var failedResult = tools.Result{Content: "The run failed before this call finished.", Status: tools.ResultStatusError, IsError: true}
+var failedResult = tools.Result{Content: "The run failed before this call finished.", Status: tools.ResultStatusError}
 
 // callState is where a call of a batch stands.
 type callState int
@@ -135,7 +135,7 @@ func (b *batch) admit(ctx context.Context) error {
 			return err
 		}
 		if !decision.Allowed {
-			c.state, c.result = callRejected, tools.Result{Content: decision.Reason, IsError: true}
+			c.state, c.result = callRejected, tools.Result{Content: decision.Reason, Status: tools.ResultStatusError}
 			b.next++
 			continue
 		}

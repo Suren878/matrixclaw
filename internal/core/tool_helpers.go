@@ -20,7 +20,7 @@ func marshalJSONRaw(value any) (json.RawMessage, error) {
 }
 
 func errorText(result tools.Result) string {
-	if result.IsError {
+	if result.IsError() {
 		return strings.TrimSpace(result.Content)
 	}
 	return ""

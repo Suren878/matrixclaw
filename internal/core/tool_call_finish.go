@@ -43,7 +43,7 @@ func (c *Core) saveToolResultMessage(ctx context.Context, prepared preparedToolC
 
 func (c *Core) publishFinishedToolUpdate(prepared preparedToolCall, resultMessageID string, result tools.Result) {
 	toolState := ToolLifecycleCompleted
-	if result.IsError {
+	if result.IsError() {
 		toolState = ToolLifecycleFailed
 	}
 	c.publishToolUpdate(prepared.SessionID, prepared.RunID, ToolUpdate{

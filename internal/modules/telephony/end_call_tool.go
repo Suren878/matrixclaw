@@ -46,14 +46,14 @@ func (t *endCallTool) Execute(ctx context.Context, call tools.Call) (tools.Resul
 		callID = strings.TrimSpace(call.ExternalKey)
 	}
 	if callID == "" {
-		return tools.Result{Content: "No active telephony call id was provided.", IsError: true, Status: tools.ResultStatusError}, nil
+		return tools.Result{Content: "No active telephony call id was provided.", Status: tools.ResultStatusError}, nil
 	}
 	_, gw := t.module.current()
 	if gw == nil {
-		return tools.Result{Content: "Telephony is not configured.", IsError: true, Status: tools.ResultStatusError}, nil
+		return tools.Result{Content: "Telephony is not configured.", Status: tools.ResultStatusError}, nil
 	}
 	if err := gw.EndCall(ctx, callID); err != nil {
-		return tools.Result{Content: fmt.Sprintf("Telephony end call failed: %s", err), IsError: true, Status: tools.ResultStatusError}, nil
+		return tools.Result{Content: fmt.Sprintf("Telephony end call failed: %s", err), Status: tools.ResultStatusError}, nil
 	}
 	return tools.Result{Content: "Phone call ended.", Status: tools.ResultStatusSuccess}, nil
 }

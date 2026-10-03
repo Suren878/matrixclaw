@@ -12,7 +12,11 @@ func stepCallMessage(id string) transcript.Message {
 }
 
 func stepResultMessage(id string, content string, failed bool) transcript.Message {
-	return transcript.Message{Role: transcript.MessageRoleTool, Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindToolResult, ToolResult: &transcript.ToolResultPart{ToolCallID: id, Name: "read", Content: content, IsError: failed}}}}
+	status := "success"
+	if failed {
+		status = "error"
+	}
+	return transcript.Message{Role: transcript.MessageRoleTool, Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindToolResult, ToolResult: &transcript.ToolResultPart{ToolCallID: id, Name: "read", Content: content, Status: status}}}}
 }
 
 func TestToolStepIsReplayedAsOneAssistantMessage(t *testing.T) {

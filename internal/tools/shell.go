@@ -102,14 +102,14 @@ func (e *bashExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 		return Result{}, InvalidArgs(bashToolName, err)
 	}
 	if strings.TrimSpace(params.Command) == "" {
-		return Result{Content: "command is required", IsError: true}, nil
+		return Result{Content: "command is required", Status: ResultStatusError}, nil
 	}
 	if blockedManagedBrowserInstallCommand(params.Command) {
-		return Result{Content: managedBrowserSetupMessage, Status: ResultStatusError, IsError: true}, nil
+		return Result{Content: managedBrowserSetupMessage, Status: ResultStatusError}, nil
 	}
 	timeout, autoBackground, err := commandLimits(params)
 	if err != nil {
-		return Result{Content: err.Error(), Status: ResultStatusError, IsError: true}, nil
+		return Result{Content: err.Error(), Status: ResultStatusError}, nil
 	}
 	workingDir := resolvePath(call.WorkingDir, params.WorkingDir)
 	if !call.Approved {
@@ -155,7 +155,7 @@ func (e *bashExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 	}
 	if result.TimedOut {
 		content += fmt.Sprintf("\n\n(killed after its timeout of %s; run long commands with run_in_background)", timeout)
-		return Result{Content: strings.TrimSpace(content), Metadata: meta, Status: ResultStatusError, IsError: true}, nil
+		return Result{Content: strings.TrimSpace(content), Metadata: meta, Status: ResultStatusError}, nil
 	}
 	if result.ExitCode == 0 {
 		return Result{Content: content, Metadata: meta}, nil
@@ -164,7 +164,7 @@ func (e *bashExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 	if isExpectedEmptyProcessProbe(params.Command, meta.Output, result.ExitCode) {
 		status = ResultStatusNeutral
 	}
-	return Result{Content: content, Metadata: meta, Status: status, IsError: status == ResultStatusError}, nil
+	return Result{Content: content, Metadata: meta, Status: status}, nil
 }
 
 // commandLimits reads a call's timeout and auto-background delay in seconds;
@@ -200,11 +200,11 @@ func (e *taskOutputExecutor) Execute(ctx context.Context, call Call) (Result, er
 		return Result{}, InvalidArgs(taskOutputToolName, err)
 	}
 	if strings.TrimSpace(params.ID) == "" {
-		return Result{Content: "id is required", IsError: true}, nil
+		return Result{Content: "id is required", Status: ResultStatusError}, nil
 	}
 	wait := time.Duration(params.WaitSeconds) * time.Second
 	if params.WaitSeconds < 0 || wait > maxTaskWait {
-		return Result{Content: fmt.Sprintf("wait_seconds is at most %d", int(maxTaskWait/time.Second)), IsError: true}, nil
+		return Result{Content: fmt.Sprintf("wait_seconds is at most %d", int(maxTaskWait/time.Second)), Status: ResultStatusError}, nil
 	}
 	if e.tasks == nil {
 		return Result{}, errShellUnavailable
@@ -245,7 +245,7 @@ func (e *taskKillExecutor) Execute(ctx context.Context, call Call) (Result, erro
 	}
 	id := strings.TrimSpace(params.ID)
 	if id == "" {
-		return Result{Content: "id is required", IsError: true}, nil
+		return Result{Content: "id is required", Status: ResultStatusError}, nil
 	}
 	if !call.Approved {
 		return approvalResult(taskKillToolName, "kill", id, "Stop background task "+id, params), nil
@@ -264,10 +264,10 @@ func isExpectedEmptyProcessProbe(command string, output string, exitCode int) bo
 	if exitCode != 1 || strings.TrimSpace(output) != "" {
 		return false
 	}
-	return IsProcessProbeCommand(command)
+	return isProcessProbeCommand(command)
 }
 
-func IsProcessProbeCommand(command string) bool {
+func isProcessProbeCommand(command string) bool {
 	command = strings.ToLower(strings.TrimSpace(command))
 	switch {
 	case strings.Contains(command, "grep -v grep"):

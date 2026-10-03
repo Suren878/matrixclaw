@@ -50,7 +50,7 @@ func (webFetchExecutor) Execute(ctx context.Context, call tools.Call) (tools.Res
 	}
 	page, err := fetchPage(ctx, strings.TrimSpace(params.URL), call.Recheck)
 	if err != nil {
-		return tools.Result{Content: fmt.Sprintf("web_fetch failed for %s: %v", params.URL, err), Status: tools.ResultStatusError, IsError: true}, nil
+		return tools.Result{Content: fmt.Sprintf("web_fetch failed for %s: %v", params.URL, err), Status: tools.ResultStatusError}, nil
 	}
 	return tools.Result{Content: page.String()}, nil
 }

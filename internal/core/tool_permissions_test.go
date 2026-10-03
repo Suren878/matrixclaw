@@ -63,7 +63,7 @@ func (webTool) Execute(ctx context.Context, call tools.Call) (tools.Result, erro
 		return tools.Result{Content: "no recheck"}, nil
 	}
 	if err := call.Recheck(ctx, permission.Subject{Kind: permission.KindDomain, Value: "Evil.Example."}); err != nil {
-		return tools.Result{Content: err.Error(), IsError: true}, nil
+		return tools.Result{Content: err.Error(), Status: tools.ResultStatusError}, nil
 	}
 	return tools.Result{Content: "fetched"}, nil
 }

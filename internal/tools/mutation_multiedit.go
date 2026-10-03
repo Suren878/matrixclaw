@@ -18,10 +18,10 @@ func (e *multiEditExecutor) Execute(_ context.Context, call Call) (Result, error
 		return Result{}, InvalidArgs(multiEditToolName, err)
 	}
 	if strings.TrimSpace(params.FilePath) == "" {
-		return Result{Content: "file_path is required", IsError: true}, nil
+		return Result{Content: "file_path is required", Status: ResultStatusError}, nil
 	}
 	if len(params.Edits) == 0 {
-		return Result{Content: "edits is required", IsError: true}, nil
+		return Result{Content: "edits is required", Status: ResultStatusError}, nil
 	}
 	policy, pathErr := resolveMutationPath(call.WorkingDir, params.FilePath)
 	if pathErr != nil {
@@ -33,7 +33,7 @@ func (e *multiEditExecutor) Execute(_ context.Context, call Call) (Result, error
 		oldPreview, err := readApprovalContentPreview(path)
 		if err != nil {
 			if os.IsNotExist(err) {
-				return Result{Content: fmt.Sprintf("File not found: %s", path), IsError: true}, nil
+				return Result{Content: fmt.Sprintf("File not found: %s", path), Status: ResultStatusError}, nil
 			}
 			return Result{}, fmt.Errorf("multiedit: read file preview: %w", err)
 		}
@@ -69,7 +69,7 @@ func (e *multiEditExecutor) Execute(_ context.Context, call Call) (Result, error
 	oldContentBytes, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return Result{Content: fmt.Sprintf("File not found: %s", path), IsError: true}, nil
+			return Result{Content: fmt.Sprintf("File not found: %s", path), Status: ResultStatusError}, nil
 		}
 		return Result{}, fmt.Errorf("multiedit: read file: %w", err)
 	}

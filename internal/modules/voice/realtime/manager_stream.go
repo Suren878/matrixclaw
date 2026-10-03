@@ -306,14 +306,14 @@ func (s *streamState) handleCoreEvent(ctx context.Context, event core.Event) err
 			if content == "" {
 				content = strings.TrimSpace(message.Content)
 			}
-			if err := s.sendProviderToolResult(ctx, pending.ID, pending.Name, content, part.ToolResult.IsError); err != nil {
+			if err := s.sendProviderToolResult(ctx, pending.ID, pending.Name, content, part.ToolResult.IsError()); err != nil {
 				return err
 			}
 			if err := s.stream.Write(ctx, newEvent(s.info.ID, EventToolResult, ToolResultPayload{
 				ID:      pending.ID,
 				Name:    pending.Name,
 				Content: content,
-				IsError: part.ToolResult.IsError,
+				IsError: part.ToolResult.IsError(),
 			})); err != nil {
 				return err
 			}

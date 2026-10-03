@@ -110,7 +110,7 @@ func (r *run) resumeDecided(ctx context.Context) (bool, error) {
 // back with an error, so the model re-plans instead of running them.
 func (r *run) denyCall(ctx context.Context, req callRequest, reason string) error {
 	for _, held := range r.deferredCalls(req.id) {
-		if err := r.rejectCall(ctx, held, tools.Result{Content: fmt.Sprintf("Not run: an earlier call in this batch was denied (%s).", req.name), IsError: true}); err != nil {
+		if err := r.rejectCall(ctx, held, tools.Result{Content: fmt.Sprintf("Not run: an earlier call in this batch was denied (%s).", req.name), Status: tools.ResultStatusError}); err != nil {
 			return err
 		}
 	}

@@ -24,7 +24,7 @@ func (e *lsExecutor) Execute(_ context.Context, call Call) (Result, error) {
 	root := policy.Path
 	output, metadata, err := listDirectoryTree(root, params)
 	if err != nil {
-		return Result{Content: err.Error(), Metadata: filesystemPathMetadata(policy), IsError: true}, nil
+		return Result{Content: err.Error(), Metadata: filesystemPathMetadata(policy), Status: ResultStatusError}, nil
 	}
 	metadata.FilesystemPathMetadata = filesystemPathMetadata(policy)
 	return Result{

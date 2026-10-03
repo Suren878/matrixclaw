@@ -15,8 +15,12 @@ func todoCall(runID string, id string, items string) transcript.Message {
 }
 
 func todoResult(runID string, id string, failed bool) transcript.Message {
+	status := "success"
+	if failed {
+		status = "error"
+	}
 	return transcript.Message{ID: "r_" + id, RunID: runID, Role: transcript.MessageRoleTool, Parts: []transcript.MessagePart{{
-		Kind: transcript.MessagePartKindToolResult, ToolResult: &transcript.ToolResultPart{ToolCallID: id, Name: todo.ToolName, IsError: failed},
+		Kind: transcript.MessagePartKindToolResult, ToolResult: &transcript.ToolResultPart{ToolCallID: id, Name: todo.ToolName, Status: status},
 	}}}
 }
 

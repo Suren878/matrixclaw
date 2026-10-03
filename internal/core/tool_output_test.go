@@ -220,7 +220,7 @@ func TestLargeToolErrorIsKeptInASessionFile(t *testing.T) {
 		t.Fatalf("ExecuteTool = %+v", result)
 	}
 	part := result.ToolResultMessage.Parts[0].ToolResult
-	if !part.IsError {
+	if !part.IsError() {
 		t.Fatalf("result = %+v, want an error", part)
 	}
 	assertKeptOutput(t, root, part, big)

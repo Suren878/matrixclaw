@@ -69,7 +69,6 @@ func ToSurfaceMessage(message transcript.Message) surfacemessage.Message {
 					MIMEType:   part.ToolResult.MIMEType,
 					Metadata:   toJSONString(part.ToolResult.Metadata),
 					Status:     part.ToolResult.Status,
-					IsError:    part.ToolResult.IsError,
 				})
 			}
 		case transcript.MessagePartKindFinish:

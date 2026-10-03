@@ -19,7 +19,7 @@ func TestReadExecutorBlocksMatrixclawSetupCredentials(t *testing.T) {
 	t.Setenv("MATRIXCLAW_SETUP_PATH", setupPath)
 
 	result := executeReadForTest(t, setupPath, dir)
-	if !result.IsError {
+	if !result.IsError() {
 		t.Fatalf("result = %#v, want protected-file error", result)
 	}
 	if strings.Contains(result.Content, secret) {
@@ -40,7 +40,7 @@ func TestReadExecutorBlocksSetupSymlink(t *testing.T) {
 	t.Setenv("MATRIXCLAW_SETUP_PATH", setupPath)
 
 	result := executeReadForTest(t, linkPath, dir)
-	if !result.IsError {
+	if !result.IsError() {
 		t.Fatalf("result = %#v, want protected-file error", result)
 	}
 }
@@ -56,7 +56,7 @@ func TestReadExecutorBlocksDaemonEnvironmentCredentials(t *testing.T) {
 	t.Setenv("MATRIXCLAW_SETUP_PATH", setupPath)
 
 	result := executeReadForTest(t, envPath, dir)
-	if !result.IsError {
+	if !result.IsError() {
 		t.Fatalf("result = %#v, want protected-file error", result)
 	}
 	if strings.Contains(result.Content, secret) {
@@ -74,7 +74,7 @@ func TestReadExecutorBlocksSetupCredentialBackup(t *testing.T) {
 	t.Setenv("MATRIXCLAW_SETUP_PATH", setupPath)
 
 	result := executeReadForTest(t, backupPath, dir)
-	if !result.IsError {
+	if !result.IsError() {
 		t.Fatalf("result = %#v, want protected-file error", result)
 	}
 }
@@ -92,7 +92,7 @@ func TestReadExecutorBlocksLegacyMatrixclawCredentials(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", dataDir)
 
 	result := executeReadForTest(t, legacyPath, dir)
-	if !result.IsError {
+	if !result.IsError() {
 		t.Fatalf("result = %#v, want protected-file error", result)
 	}
 }
@@ -110,7 +110,7 @@ func TestReadExecutorBlocksLegacyProviderCredentials(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", dataDir)
 
 	result := executeReadForTest(t, providersPath, dir)
-	if !result.IsError {
+	if !result.IsError() {
 		t.Fatalf("result = %#v, want protected-file error", result)
 	}
 }
@@ -128,7 +128,7 @@ func TestReadExecutorAllowsUnrelatedSetupFile(t *testing.T) {
 	t.Setenv("MATRIXCLAW_SETUP_PATH", protectedPath)
 
 	result := executeReadForTest(t, projectPath, dir)
-	if result.IsError {
+	if result.IsError() {
 		t.Fatalf("result = %#v, want ordinary file content", result)
 	}
 	if !strings.Contains(result.Content, `"example":true`) {
@@ -156,7 +156,7 @@ func TestGrepExecutorSkipsMatrixclawSetupCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.IsError {
+	if result.IsError() {
 		t.Fatalf("result = %#v, want safe search results", result)
 	}
 	if strings.Contains(result.Content, secret) {
@@ -183,7 +183,7 @@ func TestGrepExecutorBlocksDirectCredentialSearch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.IsError {
+	if !result.IsError() {
 		t.Fatalf("result = %#v, want protected-file error", result)
 	}
 }

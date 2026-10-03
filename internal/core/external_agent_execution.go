@@ -396,7 +396,6 @@ func upsertExternalToolResult(assistant *transcript.Message, id string, name str
 			assistant.Parts[i].ToolResult.Name = name
 		}
 		if isError {
-			assistant.Parts[i].ToolResult.IsError = true
 			assistant.Parts[i].ToolResult.Status = "error"
 		} else if assistant.Parts[i].ToolResult.Status == "" {
 			assistant.Parts[i].ToolResult.Status = "success"
@@ -414,7 +413,6 @@ func upsertExternalToolResult(assistant *transcript.Message, id string, name str
 			Name:       name,
 			Content:    clipExternalPayload(content, contentLimit),
 			Status:     status,
-			IsError:    isError,
 		},
 	})
 }

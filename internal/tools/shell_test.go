@@ -47,7 +47,7 @@ func TestBashAppliesTimeoutAndAutoBackgroundDefaults(t *testing.T) {
 	result := runShellTool(t, tasks, "bash", `{"command":"go test ./..."}`)
 	runShellTool(t, tasks, "bash", `{"command":"make","timeout":3600,"auto_background_after":30,"run_in_background":true}`)
 
-	if result.Content != "ok" || result.IsError {
+	if result.Content != "ok" || result.IsError() {
 		t.Fatalf("result = %+v", result)
 	}
 	want := []Command{
@@ -59,7 +59,7 @@ func TestBashAppliesTimeoutAndAutoBackgroundDefaults(t *testing.T) {
 			t.Errorf("command %d = %+v, want %+v", i, tasks.commands[i], want[i])
 		}
 	}
-	if tooLong := runShellTool(t, tasks, "bash", `{"command":"make","timeout":3601}`); !tooLong.IsError || len(tasks.commands) != 2 {
+	if tooLong := runShellTool(t, tasks, "bash", `{"command":"make","timeout":3601}`); !tooLong.IsError() || len(tasks.commands) != 2 {
 		t.Fatalf("a timeout over an hour ran: %+v", tooLong)
 	}
 }
@@ -80,7 +80,7 @@ func TestBashReportsTheTaskACommandWentOnAs(t *testing.T) {
 
 func TestBashReportsTimeoutsAndCutOutput(t *testing.T) {
 	timedOut := runShellTool(t, &fakeShellTasks{result: CommandResult{Output: "partial", TimedOut: true, ExitCode: -1}}, "bash", `{"command":"sleep 99","timeout":5}`)
-	if !timedOut.IsError || !strings.Contains(timedOut.Content, "killed after its timeout of 5s") {
+	if !timedOut.IsError() || !strings.Contains(timedOut.Content, "killed after its timeout of 5s") {
 		t.Fatalf("timed out = %+v", timedOut)
 	}
 	cut := runShellTool(t, &fakeShellTasks{result: CommandResult{Output: "head", OutputPath: "/data/task_1.log"}}, "bash", `{"command":"seq 1 1000000"}`)
@@ -96,7 +96,7 @@ func TestTaskOutputShowsNewOutputAndStatus(t *testing.T) {
 	result := runShellTool(t, tasks, "task_output", `{"id":"task_1","wait_seconds":30,"filter":"FAIL"}`)
 
 	want := "[... 10 bytes of output dropped ...]\n\nFAIL x\n\n(task failed, exit code 1)\n\n(more output is waiting: call task_output again, or read /data/task_1.log)"
-	if result.Content != want || result.IsError {
+	if result.Content != want || result.IsError() {
 		t.Fatalf("content = %q", result.Content)
 	}
 	if read := tasks.reads[0]; read != (TaskRead{TaskID: "task_1", Wait: 30 * time.Second, Filter: "FAIL", Limit: maxToolOutput}) {

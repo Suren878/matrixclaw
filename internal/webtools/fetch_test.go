@@ -60,7 +60,7 @@ func TestWebFetchReturnsThePageAsMarkdown(t *testing.T) {
 		_, _ = w.Write([]byte(page))
 	})
 	result := fetch(t, publicHost+"/start")
-	if result.IsError || !strings.HasPrefix(result.Content, "# Новости\n"+publicHost+"/news/1\n\n") {
+	if result.IsError() || !strings.HasPrefix(result.Content, "# Новости\n"+publicHost+"/news/1\n\n") {
 		t.Fatalf("result = %+v", result)
 	}
 	for _, want := range []string{"Первый абзац статьи с [ссылкой](" + publicHost + "/more)", "Текст статьи."} {
@@ -80,7 +80,7 @@ func TestWebFetchReturnsPlainTextAsIs(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"ok": true}`))
 	})
-	if result := fetch(t, publicHost+"/api"); result.IsError || result.Content != publicHost+"/api\n\n{\"ok\": true}" {
+	if result := fetch(t, publicHost+"/api"); result.IsError() || result.Content != publicHost+"/api\n\n{\"ok\": true}" {
 		t.Fatalf("result = %+v", result)
 	}
 }
@@ -91,7 +91,7 @@ func TestWebFetchCapsTheText(t *testing.T) {
 		_, _ = w.Write([]byte(strings.Repeat("я", maxPageChars)))
 	})
 	result := fetch(t, publicHost+"/big")
-	if result.IsError || !strings.HasSuffix(result.Content, "[The page is longer; only its beginning was read.]") || len(result.Content) > maxPageChars+200 {
+	if result.IsError() || !strings.HasSuffix(result.Content, "[The page is longer; only its beginning was read.]") || len(result.Content) > maxPageChars+200 {
 		t.Fatalf("result is %d bytes, ends %q", len(result.Content), result.Content[len(result.Content)-80:])
 	}
 }
@@ -113,7 +113,7 @@ func TestWebFetchFailures(t *testing.T) {
 		"/inside": "unsafe redirect",
 		"/gone":   "server returned 404 Not Found",
 	} {
-		if result := fetch(t, publicHost+path); !result.IsError || !strings.Contains(result.Content, want) {
+		if result := fetch(t, publicHost+path); !result.IsError() || !strings.Contains(result.Content, want) {
 			t.Errorf("%s: result = %+v, want error with %q", path, result, want)
 		}
 	}
@@ -122,7 +122,7 @@ func TestWebFetchFailures(t *testing.T) {
 func TestWebFetchNeverConnectsToPrivateHosts(t *testing.T) {
 	dialed := serveAsPublic(t, func(http.ResponseWriter, *http.Request) {})
 	for _, target := range []string{"http://127.0.0.1:8080/admin", "http://169.254.169.254/latest/meta-data/", "http://[::1]/", "file:///etc/passwd"} {
-		if result := fetch(t, target); !result.IsError {
+		if result := fetch(t, target); !result.IsError() {
 			t.Errorf("%s: result = %+v", target, result)
 		}
 	}

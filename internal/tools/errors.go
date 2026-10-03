@@ -51,6 +51,5 @@ func invalidArgsResult(toolID string, err error) Result {
 	return Result{
 		Content: content,
 		Status:  ResultStatusError,
-		IsError: true,
 	}
 }

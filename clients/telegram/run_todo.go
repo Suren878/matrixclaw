@@ -16,7 +16,7 @@ func runTodo(messages []transcript.Message, runID string) ([]todo.Item, bool) {
 	for _, message := range messages {
 		for _, part := range message.Parts {
 			result := part.ToolResult
-			if strings.TrimSpace(message.RunID) == runID && result != nil && result.Name == todo.ToolName && !result.IsError && !strings.EqualFold(result.Status, "error") {
+			if strings.TrimSpace(message.RunID) == runID && result != nil && result.Name == todo.ToolName && !result.IsError() {
 				saved[result.ToolCallID] = true
 			}
 		}

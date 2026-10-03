@@ -40,7 +40,7 @@ func TestReadonlyChildrenRunTogetherWithReadOnlyTools(t *testing.T) {
 		case <-both:
 			return tools.Result{Content: "probed"}, nil
 		case <-time.After(5 * time.Second):
-			return tools.Result{Content: "the other child never ran alongside", IsError: true}, nil
+			return tools.Result{Content: "the other child never ran alongside", Status: tools.ResultStatusError}, nil
 		}
 	}}
 	edit := funcTool{spec: recoveryToolSpec("edit_file", tools.EffectMutation), fn: func(context.Context, tools.Call) (tools.Result, error) {

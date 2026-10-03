@@ -145,7 +145,7 @@ func deriveClientSnapshotToolState(approvals []Approval, messages []transcript.M
 			update.RunID = firstNonEmpty(update.RunID, strings.TrimSpace(message.RunID))
 			update.SessionID = firstNonEmpty(update.SessionID, strings.TrimSpace(message.SessionID))
 			update.ResultMessageID = strings.TrimSpace(message.ID)
-			update.ResultStatus = normalizeToolResultStatus(part.ToolResult.Status, part.ToolResult.IsError)
+			update.ResultStatus = normalizeToolResultStatus(part.ToolResult.Status)
 			if update.ResultStatus == "error" {
 				update.State = ToolLifecycleFailed
 				update.Error = strings.TrimSpace(part.ToolResult.Content)
@@ -242,16 +242,11 @@ func deriveClientSnapshotToolState(approvals []Approval, messages []transcript.M
 	return pendingApprovals, toolUpdates, notifications
 }
 
-func normalizeToolResultStatus(status string, isError bool) string {
-	status = strings.ToLower(strings.TrimSpace(status))
-	switch status {
-	case "success", "error", "neutral":
-		return status
+func normalizeToolResultStatus(status string) string {
+	if status == "" {
+		return "success"
 	}
-	if isError {
-		return "error"
-	}
-	return "success"
+	return status
 }
 
 func firstNonEmpty(value string, fallback string) string {

@@ -115,7 +115,7 @@ func (c *Core) awaitedTasks(ctx context.Context, sessionID string, ids []string)
 }
 
 func awaitError(text string) tools.Result {
-	return tools.Result{Content: text, Status: tools.ResultStatusError, IsError: true}
+	return tools.Result{Content: text, Status: tools.ResultStatusError}
 }
 
 var awaitToolSchema = json.RawMessage(`{

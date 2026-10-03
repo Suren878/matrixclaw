@@ -255,7 +255,7 @@ func TestPanickingToolBecomesAnErrorResult(t *testing.T) {
 	outcome := run(t, f, model)
 
 	result, ok := f.Journal.Result("c1")
-	if outcome.Status != agent.StatusCompleted || !ok || !result.Parts[0].ToolResult.IsError {
+	if outcome.Status != agent.StatusCompleted || !ok || !result.Parts[0].ToolResult.IsError() {
 		t.Fatalf("outcome = %+v result = %+v", outcome, result)
 	}
 }

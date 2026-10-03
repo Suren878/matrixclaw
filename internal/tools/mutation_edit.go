@@ -18,7 +18,7 @@ func (e *editExecutor) Execute(_ context.Context, call Call) (Result, error) {
 		return Result{}, InvalidArgs(editToolName, err)
 	}
 	if strings.TrimSpace(params.FilePath) == "" {
-		return Result{Content: "file_path is required", IsError: true}, nil
+		return Result{Content: "file_path is required", Status: ResultStatusError}, nil
 	}
 	policy, pathErr := resolveMutationPath(call.WorkingDir, params.FilePath)
 	if pathErr != nil {
@@ -30,7 +30,7 @@ func (e *editExecutor) Execute(_ context.Context, call Call) (Result, error) {
 		oldPreview, err := readApprovalContentPreview(path)
 		if err != nil {
 			if os.IsNotExist(err) {
-				return Result{Content: fmt.Sprintf("File not found: %s", path), IsError: true}, nil
+				return Result{Content: fmt.Sprintf("File not found: %s", path), Status: ResultStatusError}, nil
 			}
 			return Result{}, fmt.Errorf("edit: read file preview: %w", err)
 		}
@@ -59,7 +59,7 @@ func (e *editExecutor) Execute(_ context.Context, call Call) (Result, error) {
 	oldContentBytes, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return Result{Content: fmt.Sprintf("File not found: %s", path), IsError: true}, nil
+			return Result{Content: fmt.Sprintf("File not found: %s", path), Status: ResultStatusError}, nil
 		}
 		return Result{}, fmt.Errorf("edit: read file: %w", err)
 	}
@@ -103,7 +103,7 @@ func applyEdit(content string, oldString string, newString string, replaceAll bo
 		return newString, nil
 	}
 	if !strings.Contains(content, oldString) {
-		result := Result{Content: "old_string not found in file", IsError: true}
+		result := Result{Content: "old_string not found in file", Status: ResultStatusError}
 		return "", &result
 	}
 	if replaceAll {
@@ -112,7 +112,7 @@ func applyEdit(content string, oldString string, newString string, replaceAll bo
 	first := strings.Index(content, oldString)
 	last := strings.LastIndex(content, oldString)
 	if first != last {
-		result := Result{Content: "old_string appears multiple times in the file; set replace_all to true or provide more context", IsError: true}
+		result := Result{Content: "old_string appears multiple times in the file; set replace_all to true or provide more context", Status: ResultStatusError}
 		return "", &result
 	}
 	return content[:first] + newString + content[first+len(oldString):], nil

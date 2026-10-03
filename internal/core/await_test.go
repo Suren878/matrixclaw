@@ -234,7 +234,7 @@ func TestAwaitReportsTasksThatAlreadyFinished(t *testing.T) {
 		t.Fatalf("idle = %+v, %v", idle, err)
 	}
 	runless, err := await.Execute(context.Background(), tools.Call{SessionID: session.ID, Args: json.RawMessage(`{}`)})
-	if err != nil || !runless.IsError {
+	if err != nil || !runless.IsError() {
 		t.Fatalf("run-less = %+v, %v", runless, err)
 	}
 }

@@ -123,7 +123,7 @@ func (t *todoTool) ConcurrencyKey(call tools.Call) string {
 func (t *todoTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
 	items, err := todo.Parse(call.Args)
 	if err != nil {
-		return tools.Result{Content: "Todo list not saved: " + err.Error() + ".", IsError: true, Status: tools.ResultStatusError}, nil
+		return tools.Result{Content: "Todo list not saved: " + err.Error() + ".", Status: tools.ResultStatusError}, nil
 	}
 	if _, err := t.app.writeSessionTodo(ctx, normalizeText(call.SessionID), normalizeText(call.RunID), items); err != nil {
 		return tools.Result{}, err

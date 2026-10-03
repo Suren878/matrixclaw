@@ -26,7 +26,7 @@ func TestRecoveryRerunsAsksAndAnswersTheInterruptedCalls(t *testing.T) {
 	task.Interrupted = []agent.InterruptedCall{
 		{ToolCallID: "r1", Settle: agent.SettleRerun},
 		{ToolCallID: "w1", Settle: agent.SettleAsk, Request: tools.ApprovalRequest{Action: "retry_after_daemon_restart"}},
-		{ToolCallID: "u1", Settle: agent.SettleAnswer, Result: tools.Result{Content: "unknown after restart", IsError: true}},
+		{ToolCallID: "u1", Settle: agent.SettleAnswer, Result: tools.Result{Content: "unknown after restart", Status: tools.ResultStatusError}},
 	}
 
 	outcome, err := f.Engine().Run(t.Context(), task)

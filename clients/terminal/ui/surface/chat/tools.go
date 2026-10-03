@@ -193,15 +193,8 @@ func (t *baseToolMessageItem) computeStatus() ToolStatus {
 		return subagentToolStatus(t.subagent.State)
 	}
 	if t.result != nil {
-		switch normalizedToolName(t.result.Status) {
-		case "error":
+		if t.result.IsError() {
 			return ToolStatusError
-		case "success", "neutral":
-			return ToolStatusSuccess
-		default:
-			if t.result.IsError && !isExpectedNeutralBashResult(t.toolCall, t.result) {
-				return ToolStatusError
-			}
 		}
 		return ToolStatusSuccess
 	}

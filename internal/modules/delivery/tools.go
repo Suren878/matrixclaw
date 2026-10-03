@@ -74,25 +74,25 @@ func (t *sendFileTool) Spec() tools.Spec {
 
 func (t *sendFileTool) Execute(ctx context.Context, call tools.Call) (tools.Result, error) {
 	if t == nil || t.store == nil || t.deliveries == nil {
-		return tools.Result{Content: "File delivery is not configured.", IsError: true}, nil
+		return tools.Result{Content: "File delivery is not configured.", Status: tools.ResultStatusError}, nil
 	}
 	var input sendFileInput
 	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{Content: "Invalid send_file arguments.", IsError: true}, nil
+		return tools.Result{Content: "Invalid send_file arguments.", Status: tools.ResultStatusError}, nil
 	}
 	input.Path = strings.TrimSpace(input.Path)
 	if input.Path == "" {
-		return tools.Result{Content: "send_file requires path.", IsError: true}, nil
+		return tools.Result{Content: "send_file requires path.", Status: tools.ResultStatusError}, nil
 	}
 	client := strings.TrimSpace(call.Client)
 	externalKey := strings.TrimSpace(call.ExternalKey)
 	if !strings.EqualFold(client, "telegram") || externalKey == "" {
-		return tools.Result{Content: "send_file is available only from an active Telegram chat.", IsError: true}, nil
+		return tools.Result{Content: "send_file is available only from an active Telegram chat.", Status: tools.ResultStatusError}, nil
 	}
 
 	source, err := t.readSource(input)
 	if err != nil {
-		return tools.Result{Content: fmt.Sprintf("File delivery failed: %s", err), IsError: true}, nil
+		return tools.Result{Content: fmt.Sprintf("File delivery failed: %s", err), Status: tools.ResultStatusError}, nil
 	}
 	fileName := deliveryFileName(input.FileName, source)
 	mimeType := firstNonEmpty(strings.TrimSpace(input.MIMEType), source.MIMEType, "application/octet-stream")

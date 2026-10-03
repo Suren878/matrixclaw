@@ -60,14 +60,14 @@ func TestToolsTalkToTheGateway(t *testing.T) {
 	call, end := m.Tools()[0], m.Tools()[1]
 
 	result, err := call.Execute(context.Background(), tools.Call{Approved: true, Args: json.RawMessage(`{"to":"+1 555 0100","objective":"book"}`), SessionID: "s1"})
-	if err != nil || result.IsError {
+	if err != nil || result.IsError() {
 		t.Fatalf("call = %+v, %v", result, err)
 	}
 	if string(result.Metadata.(json.RawMessage)) != `{"id":"call_1"}` || body["profile"] != "main" || body["objective"] != "book" {
 		t.Fatalf("metadata %v body %v", result.Metadata, body)
 	}
 	result, err = end.Execute(context.Background(), tools.Call{Client: "telephony", ExternalKey: "call_1"})
-	if err != nil || result.IsError {
+	if err != nil || result.IsError() {
 		t.Fatalf("end = %+v, %v", result, err)
 	}
 	if len(requests) != 2 || requests[0] != "POST /v1/calls Bearer gw" || requests[1] != "DELETE /v1/calls/call_1 Bearer gw" {

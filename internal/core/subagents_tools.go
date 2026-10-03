@@ -90,7 +90,7 @@ func (t *agentTool) Execute(ctx context.Context, call tools.Call) (tools.Result,
 	if result.Task.Background {
 		return tools.Result{Content: backgroundAgentContent(result), Metadata: result.Task, Status: tools.ResultStatusNeutral}, nil
 	}
-	return tools.Result{Content: agentResultContent(result), Metadata: result.Task, IsError: result.IsError, Status: agentResultStatus(result)}, nil
+	return tools.Result{Content: agentResultContent(result), Metadata: result.Task, Status: agentResultStatus(result)}, nil
 }
 
 var agentToolSchema = json.RawMessage(`{

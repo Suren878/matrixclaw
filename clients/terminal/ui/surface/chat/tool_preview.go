@@ -111,7 +111,7 @@ func (t *baseToolMessageItem) subagentPreviewData() (surfacedialog.FilePreviewDa
 }
 
 func (t *baseToolMessageItem) diffPreviewData() (surfacedialog.DiffPreviewData, bool) {
-	if t.result == nil || t.result.IsError {
+	if t.result == nil || t.result.IsError() {
 		return surfacedialog.DiffPreviewData{}, false
 	}
 	change, ok := toolview.FileChangeOf(t.toolCall.Name, t.toolCall.Input, t.result.Metadata)
@@ -129,7 +129,7 @@ func (t *baseToolMessageItem) diffPreviewData() (surfacedialog.DiffPreviewData, 
 }
 
 func (t *baseToolMessageItem) filePreviewData() (surfacedialog.FilePreviewData, bool) {
-	if t.result == nil || t.result.IsError || t.toolCall.Name != "read" {
+	if t.result == nil || t.result.IsError() || t.toolCall.Name != "read" {
 		return surfacedialog.FilePreviewData{}, false
 	}
 

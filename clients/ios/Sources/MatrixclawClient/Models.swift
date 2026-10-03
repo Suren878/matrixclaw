@@ -201,7 +201,6 @@ public struct ToolResultPart: Codable, Equatable, Sendable {
     public var mimeType: String?
     public var metadata: JSONValue?
     public var status: String?
-    public var isError: Bool?
 }
 
 public struct FinishPart: Codable, Equatable, Sendable {

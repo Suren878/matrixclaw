@@ -67,7 +67,7 @@ func (w *Worker) renderVoiceToolResultUpdatesWithSender(messages []transcript.Me
 			if _, sent := state.voiceResults[key]; sent {
 				continue
 			}
-			if part.ToolResult.IsError {
+			if part.ToolResult.IsError() {
 				state.voiceResults[key] = 0
 				continue
 			}

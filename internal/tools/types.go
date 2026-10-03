@@ -90,11 +90,11 @@ const (
 )
 
 type Result struct {
-	Content     string           `json:"content"`
-	Metadata    any              `json:"metadata,omitempty"`
-	MIMEType    string           `json:"mime_type,omitempty"`
+	Content  string `json:"content"`
+	Metadata any    `json:"metadata,omitempty"`
+	MIMEType string `json:"mime_type,omitempty"`
+	// Status is how the call went; empty is success.
 	Status      ResultStatus     `json:"status,omitempty"`
-	IsError     bool             `json:"is_error,omitempty"`
 	Approval    *ApprovalRequest `json:"approval,omitempty"`
 	FileVersion *FileVersion     `json:"file_version,omitempty"`
 	// OutputPath is the file holding the full output when Content was cut.
@@ -112,6 +112,11 @@ type Result struct {
 type Await struct {
 	TaskIDs []string  `json:"task_ids,omitempty"`
 	Until   time.Time `json:"until"`
+}
+
+// IsError reports whether the call failed.
+func (r Result) IsError() bool {
+	return r.Status == ResultStatusError
 }
 
 type Executor interface {

@@ -59,7 +59,7 @@ func toolResultContent(result core.ExecuteToolResult, execErr error) (string, bo
 		if strings.TrimSpace(part.ToolResult.Content) != "" {
 			content = strings.TrimSpace(part.ToolResult.Content)
 		}
-		isError = part.ToolResult.IsError
+		isError = part.ToolResult.IsError()
 	}
 	if content == "" {
 		content = "ok"

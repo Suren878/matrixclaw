@@ -130,8 +130,7 @@ func (r *daemonToolRuntime) Execute(ctx context.Context, toolID string, call too
 	if result.Approval != nil {
 		return tools.Result{
 			Content: "matrixclaw approval required: " + result.Approval.Description,
-			Status:  tools.ResultStatusNeutral,
-			IsError: true,
+			Status:  tools.ResultStatusError,
 			Metadata: map[string]any{
 				"approval": result.Approval,
 			},

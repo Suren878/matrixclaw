@@ -15,7 +15,7 @@ func (e *readExecutor) Execute(_ context.Context, call Call) (Result, error) {
 		return Result{}, InvalidArgs(readToolName, err)
 	}
 	if strings.TrimSpace(params.FilePath) == "" {
-		return Result{Content: "file_path is required", IsError: true}, nil
+		return Result{Content: "file_path is required", Status: ResultStatusError}, nil
 	}
 
 	policy, pathErr := resolveReadablePath(call.WorkingDir, params.FilePath)
@@ -27,18 +27,18 @@ func (e *readExecutor) Execute(_ context.Context, call Call) (Result, error) {
 		return Result{
 			Content:  "Reading MatrixClaw credential files is blocked. Use provider or module status controls; secret values are never returned to model tools.",
 			Metadata: filesystemPathMetadata(policy),
-			IsError:  true,
+			Status:   ResultStatusError,
 		}, nil
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		return Result{Content: fmt.Sprintf("File not found: %s", path), Metadata: filesystemPathMetadata(policy), IsError: true}, nil
+		return Result{Content: fmt.Sprintf("File not found: %s", path), Metadata: filesystemPathMetadata(policy), Status: ResultStatusError}, nil
 	}
 	if info.IsDir() {
-		return Result{Content: fmt.Sprintf("Path is a directory, not a file: %s", path), Metadata: filesystemPathMetadata(policy), IsError: true}, nil
+		return Result{Content: fmt.Sprintf("Path is a directory, not a file: %s", path), Metadata: filesystemPathMetadata(policy), Status: ResultStatusError}, nil
 	}
 	if info.Size() > MaxReadBytes {
-		return Result{Content: fmt.Sprintf("File is too large (%d bytes)", info.Size()), Metadata: filesystemPathMetadata(policy), IsError: true}, nil
+		return Result{Content: fmt.Sprintf("File is too large (%d bytes)", info.Size()), Metadata: filesystemPathMetadata(policy), Status: ResultStatusError}, nil
 	}
 
 	limit := params.Limit

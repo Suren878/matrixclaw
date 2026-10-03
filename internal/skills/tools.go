@@ -44,7 +44,7 @@ func (t *searchTool) Execute(_ context.Context, call tools.Call) (tools.Result, 
 	_ = json.Unmarshal(call.Args, &input)
 	results, err := t.service.Search(input.Query, SearchOptions{Limit: input.Limit})
 	if err != nil {
-		return tools.Result{Content: "Skill search failed: " + err.Error(), IsError: true}, nil
+		return tools.Result{Content: "Skill search failed: " + err.Error(), Status: tools.ResultStatusError}, nil
 	}
 	raw, _ := json.MarshalIndent(results, "", "  ")
 	return tools.Result{Content: string(raw), Metadata: results, Status: tools.ResultStatusSuccess}, nil
@@ -66,14 +66,14 @@ func (t *viewTool) Execute(_ context.Context, call tools.Call) (tools.Result, er
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{Content: "Invalid skill_view arguments.", IsError: true}, nil
+		return tools.Result{Content: "Invalid skill_view arguments.", Status: tools.ResultStatusError}, nil
 	}
 	detail, err := t.service.View(input.ID)
 	if err != nil {
-		return tools.Result{Content: "Skill view failed: " + err.Error(), IsError: true}, nil
+		return tools.Result{Content: "Skill view failed: " + err.Error(), Status: tools.ResultStatusError}, nil
 	}
 	if detail.Skill.TrustState != TrustTrusted || detail.Skill.State != StateActive || !detail.Skill.Enabled {
-		return tools.Result{Content: "Skill is not trusted, enabled, and active.", IsError: true}, nil
+		return tools.Result{Content: "Skill is not trusted, enabled, and active.", Status: tools.ResultStatusError}, nil
 	}
 	return tools.Result{Content: formatSkillDetail(detail), Metadata: detail, Status: tools.ResultStatusSuccess}, nil
 }
@@ -94,11 +94,11 @@ func (t *useTool) Execute(_ context.Context, call tools.Call) (tools.Result, err
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{Content: "Invalid skill_use arguments.", IsError: true}, nil
+		return tools.Result{Content: "Invalid skill_use arguments.", Status: tools.ResultStatusError}, nil
 	}
 	detail, err := t.service.Use(call.SessionID, input.ID)
 	if err != nil {
-		return tools.Result{Content: "Skill use failed: " + err.Error(), IsError: true}, nil
+		return tools.Result{Content: "Skill use failed: " + err.Error(), Status: tools.ResultStatusError}, nil
 	}
 	return tools.Result{Content: formatSkillDetail(detail), Metadata: detail, Status: tools.ResultStatusSuccess}, nil
 }
@@ -117,7 +117,7 @@ func (t *manageTool) Spec() tools.Spec {
 func (t *manageTool) Execute(_ context.Context, call tools.Call) (tools.Result, error) {
 	var input tools.SkillManagePermissionsParams
 	if err := json.Unmarshal(call.Args, &input); err != nil {
-		return tools.Result{Content: "Invalid skill_manage arguments.", IsError: true}, nil
+		return tools.Result{Content: "Invalid skill_manage arguments.", Status: tools.ResultStatusError}, nil
 	}
 	action := strings.ToLower(strings.TrimSpace(input.Action))
 	if !call.Approved {
@@ -154,7 +154,7 @@ func (t *manageTool) Execute(_ context.Context, call tools.Call) (tools.Result, 
 	case "write_file", "edit", "patch", "remove_file":
 		return t.writeSupportFile(action, input)
 	default:
-		return tools.Result{Content: "Unsupported skill_manage action: " + action, IsError: true}, nil
+		return tools.Result{Content: "Unsupported skill_manage action: " + action, Status: tools.ResultStatusError}, nil
 	}
 }
 
@@ -210,7 +210,7 @@ func slugifySkillName(value string) string {
 func (t *manageTool) create(input tools.SkillManagePermissionsParams) (tools.Result, error) {
 	name := firstNonEmpty(input.Name, input.ID)
 	if strings.TrimSpace(name) == "" || strings.TrimSpace(input.Description) == "" {
-		return tools.Result{Content: "Skill create requires name and description.", IsError: true}, nil
+		return tools.Result{Content: "Skill create requires name and description.", Status: tools.ResultStatusError}, nil
 	}
 	body := strings.TrimSpace(input.Content)
 	if body == "" {
@@ -218,7 +218,7 @@ func (t *manageTool) create(input tools.SkillManagePermissionsParams) (tools.Res
 	}
 	skill, err := t.service.CreateDraft(name, input.Description, nil, body)
 	if err != nil {
-		return tools.Result{Content: err.Error(), IsError: true}, nil
+		return tools.Result{Content: err.Error(), Status: tools.ResultStatusError}, nil
 	}
 	return tools.Result{Content: "Created quarantined skill draft: " + skill.ID, Metadata: skill, Status: tools.ResultStatusSuccess}, nil
 }
@@ -226,27 +226,27 @@ func (t *manageTool) create(input tools.SkillManagePermissionsParams) (tools.Res
 func (t *manageTool) writeSupportFile(action string, input tools.SkillManagePermissionsParams) (tools.Result, error) {
 	detail, err := t.service.Get(input.ID)
 	if err != nil {
-		return tools.Result{Content: err.Error(), IsError: true}, nil
+		return tools.Result{Content: err.Error(), Status: tools.ResultStatusError}, nil
 	}
 	rel := filepath.Clean(strings.TrimSpace(input.Path))
 	if rel == "." || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
-		return tools.Result{Content: "Invalid skill support path.", IsError: true}, nil
+		return tools.Result{Content: "Invalid skill support path.", Status: tools.ResultStatusError}, nil
 	}
 	top := strings.Split(filepath.ToSlash(rel), "/")[0]
 	if top != "scripts" && top != "references" && top != "assets" && rel != "SKILL.md" {
-		return tools.Result{Content: "Skill files may only be under scripts/, references/, assets/, or SKILL.md.", IsError: true}, nil
+		return tools.Result{Content: "Skill files may only be under scripts/, references/, assets/, or SKILL.md.", Status: tools.ResultStatusError}, nil
 	}
 	target := filepath.Join(detail.Skill.Path, rel)
 	if action == "remove_file" {
 		if err := os.Remove(target); err != nil {
-			return tools.Result{Content: err.Error(), IsError: true}, nil
+			return tools.Result{Content: err.Error(), Status: tools.ResultStatusError}, nil
 		}
 	} else {
 		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-			return tools.Result{Content: err.Error(), IsError: true}, nil
+			return tools.Result{Content: err.Error(), Status: tools.ResultStatusError}, nil
 		}
 		if err := os.WriteFile(target, []byte(input.Content), 0o600); err != nil {
-			return tools.Result{Content: err.Error(), IsError: true}, nil
+			return tools.Result{Content: err.Error(), Status: tools.ResultStatusError}, nil
 		}
 	}
 	_, _ = t.service.db.Exec(`UPDATE skills SET patch_count = patch_count + 1, updated_at = ? WHERE id = ?`, formatTime(t.service.now().UTC()), detail.Skill.ID)
@@ -259,7 +259,7 @@ func formatSkillDetail(detail SkillDetail) string {
 
 func resultFromErr(success string, err error) tools.Result {
 	if err != nil {
-		return tools.Result{Content: err.Error(), IsError: true}
+		return tools.Result{Content: err.Error(), Status: tools.ResultStatusError}
 	}
 	return tools.Result{Content: success, Status: tools.ResultStatusSuccess}
 }

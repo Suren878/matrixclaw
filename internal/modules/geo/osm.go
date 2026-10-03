@@ -265,7 +265,7 @@ func (e *reverseGeocodeOSMExecutor) Execute(ctx context.Context, call tools.Call
 	}
 	result, err := e.service.ReverseGeocode(ctx, params)
 	if err != nil {
-		return tools.Result{Content: fmt.Sprintf("reverse_geocode_osm failed: %v", err), IsError: true}, nil
+		return tools.Result{Content: fmt.Sprintf("reverse_geocode_osm failed: %v", err), Status: tools.ResultStatusError}, nil
 	}
 	return tools.Result{
 		Content:  formatOSMReverseGeocode(result),
@@ -291,7 +291,7 @@ func (e *nearbyPlacesOSMExecutor) Execute(ctx context.Context, call tools.Call) 
 	}
 	result, err := e.service.NearbyPlaces(ctx, params)
 	if err != nil {
-		return tools.Result{Content: fmt.Sprintf("nearby_places_osm failed: %v", err), IsError: true}, nil
+		return tools.Result{Content: fmt.Sprintf("nearby_places_osm failed: %v", err), Status: tools.ResultStatusError}, nil
 	}
 	return tools.Result{
 		Content:  formatOSMNearbyPlaces(result),

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"cmp"
 	"encoding/json"
 	"strings"
 	"time"
@@ -52,7 +53,6 @@ func ToolResultMessage(id, sessionID, runID, callID, name string, result tools.R
 				MIMEType:   result.MIMEType,
 				Metadata:   metadata,
 				Status:     string(ToolResultStatus(result)),
-				IsError:    result.IsError,
 				OutputPath: result.OutputPath,
 			},
 		}},
@@ -67,18 +67,12 @@ func DenialResult(reason string) tools.Result {
 	if reason = strings.TrimSpace(reason); reason != "" {
 		content = "User denied: " + reason
 	}
-	return tools.Result{Content: content, Status: tools.ResultStatusError, IsError: true}
+	return tools.Result{Content: content, Status: tools.ResultStatusError}
 }
 
 // ToolResultStatus is the stored status of a tool result.
 func ToolResultStatus(result tools.Result) tools.ResultStatus {
-	if result.Status != "" {
-		return result.Status
-	}
-	if result.IsError {
-		return tools.ResultStatusError
-	}
-	return tools.ResultStatusSuccess
+	return cmp.Or(result.Status, tools.ResultStatusSuccess)
 }
 
 func normalizeToolContent(value string) string {

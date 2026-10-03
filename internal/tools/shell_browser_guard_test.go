@@ -70,7 +70,7 @@ func TestBashExecutorBlocksManagedBrowserInstallEvenWhenApproved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.IsError {
+	if !result.IsError() {
 		t.Fatalf("IsError = false, result = %#v", result)
 	}
 	if !strings.Contains(result.Content, "Managed Browser setup is only available through Modules") {
@@ -86,7 +86,7 @@ func TestBashExecutorBlocksManagedBrowserInstallBeforeApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.IsError || result.Approval != nil {
+	if !result.IsError() || result.Approval != nil {
 		t.Fatalf("result = %#v, want guard error without approval request", result)
 	}
 	if !strings.Contains(result.Content, "Modules -> Browser -> Install/Repair") {

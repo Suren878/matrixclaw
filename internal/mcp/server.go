@@ -62,7 +62,7 @@ func toolResultToMCP(result tools.Result) *sdk.CallToolResult {
 	}
 	out := &sdk.CallToolResult{
 		Content: []sdk.Content{&sdk.TextContent{Text: content}},
-		IsError: result.IsError || result.Status == tools.ResultStatusError,
+		IsError: result.IsError(),
 	}
 	structured := map[string]any{
 		"status": result.Status,
