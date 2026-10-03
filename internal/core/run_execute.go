@@ -10,6 +10,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/agent/toolsched"
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
 // DefaultModelConcurrency is how many model requests native runs make at once
@@ -74,6 +75,36 @@ func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
 	c.carryCounters(ctx, session.ID, outcome.Counters)
 	reschedule, err = c.applyOutcome(ctx, run, outcome)
 	return err
+}
+
+// goroutineStarter executes each run in a goroutine under the daemon lifetime.
+type goroutineStarter struct{ c *Core }
+
+func (s goroutineStarter) StartRun(_ context.Context, runID string) error {
+	c := s.c
+	c.mu.Lock()
+	if c.stopped {
+		c.mu.Unlock()
+		return fmt.Errorf("%w: the daemon is stopping", ErrExecutionUnavailable)
+	}
+	c.executing.Add(1)
+	c.mu.Unlock()
+	safego.Go("core.executeRun", func() {
+		defer c.executing.Done()
+		if err := c.ExecuteRun(c.lifetime, runID); err != nil {
+			log.Printf("core: run %s failed: %v", runID, err)
+		}
+	})
+	return nil
+}
+
+// WaitRuns stops starting runs and waits for the executing ones to return;
+// the daemon calls it after its lifetime ended, so they stop at once.
+func (c *Core) WaitRuns() {
+	c.mu.Lock()
+	c.stopped = true
+	c.mu.Unlock()
+	c.executing.Wait()
 }
 
 // rescheduleInterruptedRun hands a run kept for recovery back to the run starter

@@ -13,7 +13,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
-	"github.com/Suren878/matrixclaw/internal/orchestration"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -152,7 +151,6 @@ func TestRecoverRunningGenerationSkipsPartialAndCompletes(t *testing.T) {
 	defer cleanup()
 	runtime := &recoveryRuntime{text: "recovered answer"}
 	app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
-	app.WithRunStarter(orchestration.NewStub(app))
 
 	session, run := saveCrashRecoveryRun(t, sqliteStore, "generation", core.RunStatusRunning, false)
 	partial := transcript.Message{
@@ -197,6 +195,32 @@ func TestRecoverRunningGenerationSkipsPartialAndCompletes(t *testing.T) {
 	waitForRecoveryCheckpointGone(t, sqliteStore, run.ID)
 }
 
+func TestEndingTheLifetimeKeepsExecutingRunsForRecovery(t *testing.T) {
+	t.Parallel()
+	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	interruptedRuntime := &interruptibleRecoveryRuntime{started: make(chan struct{})}
+	lifetime, stopLifetime := context.WithCancel(context.Background())
+	app.WithLifetime(lifetime).WithSessionLLMs(recoveryLLMs{runtime: interruptedRuntime})
+	_, run := saveCrashRecoveryRun(t, sqliteStore, "lifetime_end", core.RunStatusAccepted, false)
+
+	if err := app.RecoverActiveRuns(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	waitRecoverySignal(t, interruptedRuntime.started, "native generation start")
+	stopLifetime()
+	app.WaitRuns()
+
+	assertRecoveryRunStatus(t, sqliteStore, run.ID, core.RunStatusRunning)
+	if _, err := sqliteStore.GetRunCheckpoint(context.Background(), run.ID); err != nil {
+		t.Fatalf("GetRunCheckpoint: %v", err)
+	}
+	idle, _ := saveCrashRecoveryRun(t, sqliteStore, "lifetime_idle", core.RunStatusCompleted, false)
+	if _, err := app.AcceptRun(context.Background(), core.HandleMessageInput{SessionID: idle.ID, Text: "more"}); !errors.Is(err, core.ErrExecutionUnavailable) {
+		t.Fatalf("AcceptRun after WaitRuns error = %v", err)
+	}
+}
+
 func TestGracefulExecutorStopPreservesAndRecoversNativeGeneration(t *testing.T) {
 	t.Parallel()
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
@@ -206,6 +230,7 @@ func TestGracefulExecutorStopPreservesAndRecoversNativeGeneration(t *testing.T) 
 
 	_, run := saveCrashRecoveryRun(t, sqliteStore, "graceful_native", core.RunStatusAccepted, false)
 	executionCtx, cancelExecution := context.WithCancel(context.Background())
+	app.WithLifetime(executionCtx)
 	executionDone := make(chan error, 1)
 	go func() { executionDone <- app.ExecuteRun(executionCtx, run.ID) }()
 	waitRecoverySignal(t, interruptedRuntime.started, "native generation start")
@@ -228,8 +253,6 @@ func TestGracefulExecutorStopPreservesAndRecoversNativeGeneration(t *testing.T) 
 	recoveredRuntime := &recoveryRuntime{text: "native resumed after restart"}
 	restarted := core.New(sqliteStore).
 		WithSessionLLMs(recoveryLLMs{runtime: recoveredRuntime})
-	// The stub must execute against the restarted Core, not the stopped one.
-	restarted.WithRunStarter(orchestration.NewStub(restarted))
 	if err := restarted.RecoverActiveRuns(context.Background()); err != nil {
 		t.Fatalf("RecoverActiveRuns after graceful stop: %v", err)
 	}
@@ -280,7 +303,6 @@ func TestStartupRecoveryAndPersistedWorkflowRaceExecutesRunOnce(t *testing.T) {
 	defer cleanup()
 	runtime := &recoveryRuntime{text: "single recovered answer"}
 	app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
-	app.WithRunStarter(orchestration.NewStub(app))
 
 	_, run := saveCrashRecoveryRun(t, sqliteStore, "startup_race", core.RunStatusRunning, false)
 	if err := sqliteStore.SaveRunCheckpoint(context.Background(), core.RunCheckpoint{
@@ -616,7 +638,6 @@ func TestRecoverBlockingSubagentCompletesChildThenParentWithoutDuplicate(t *test
 	defer cleanup()
 	runtime := &recoveryRuntime{text: "recovered completion"}
 	app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
-	app.WithRunStarter(orchestration.NewStub(app))
 	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 
 	parentSession, parentRun := saveCrashRecoveryRun(t, sqliteStore, "parent", core.RunStatusRunning, false)
@@ -780,7 +801,6 @@ func TestRecoverExternalAgentContinuesExistingSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	app.WithExternalAgents(registry, sqliteStore)
-	app.WithRunStarter(orchestration.NewStub(app))
 
 	session, run := saveCrashRecoveryRun(t, sqliteStore, "external", core.RunStatusRunning, false)
 	session.Kind = core.SessionKindExternalAgent
@@ -839,6 +859,7 @@ func TestGracefulExecutorStopRecoversExternalSessionWithoutNativeToolReplay(t *t
 	}
 
 	executionCtx, cancelExecution := context.WithCancel(context.Background())
+	app.WithLifetime(executionCtx)
 	executionDone := make(chan error, 1)
 	go func() { executionDone <- app.ExecuteRun(executionCtx, run.ID) }()
 	waitRecoverySignal(t, interruptedRuntime.started, "external generation start")
@@ -856,7 +877,6 @@ func TestGracefulExecutorStopRecoversExternalSessionWithoutNativeToolReplay(t *t
 		t.Fatal(err)
 	}
 	restarted := core.New(sqliteStore).WithExternalAgents(recoveredRegistry, sqliteStore)
-	restarted.WithRunStarter(orchestration.NewStub(restarted))
 	if err := restarted.RecoverActiveRuns(context.Background()); err != nil {
 		t.Fatalf("RecoverActiveRuns external after graceful stop: %v", err)
 	}

@@ -177,9 +177,6 @@ func (c *Core) startRun(ctx context.Context, runID string) error {
 	if runID == "" {
 		return fmt.Errorf("%w: run id is required", ErrInvalidInput)
 	}
-	if c.runStarter == nil {
-		return fmt.Errorf("%w: run starter not configured", ErrExecutionUnavailable)
-	}
 	now := c.now().UTC()
 	c.mu.Lock()
 	if c.activeRuns[runID] != nil {

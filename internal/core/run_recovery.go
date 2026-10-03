@@ -60,10 +60,9 @@ func (c *Core) RecoverActiveRuns(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// prepareInactiveRunForRecovery serializes startup recovery with workflow
-// activities for the same session. A persisted go-workflows activity may wake
-// before the daemon's startup recovery goroutine; whichever path arrives first
-// owns recovery and the other observes the freshly reloaded state.
+// prepareInactiveRunForRecovery readies a run the previous daemon left active
+// and reports whether to start it. It holds the session gate, as the API may
+// already be starting runs of the session.
 func (c *Core) prepareInactiveRunForRecovery(ctx context.Context, runID string) (bool, error) {
 	run, err := c.store.GetRun(ctx, normalizeText(runID))
 	if err != nil {
@@ -90,9 +89,9 @@ func (c *Core) prepareInactiveRunForRecovery(ctx context.Context, runID string) 
 	return c.prepareRunAfterCrash(ctx, &run)
 }
 
-// prepareClaimedRun lets a persisted workflow activity recover its own orphan
-// inline. This closes the startup race where the workflow worker can poll an
-// old activity before RecoverActiveRuns has reset the durable run to accepted.
+// prepareClaimedRun reports whether a run about to execute should: a run kept
+// running for recovery after an interruption is recovered first, a run waiting
+// for approvals executes once none is pending.
 func (c *Core) prepareClaimedRun(ctx context.Context, runID string) (bool, error) {
 	run, err := c.store.GetRun(ctx, normalizeText(runID))
 	if err != nil {

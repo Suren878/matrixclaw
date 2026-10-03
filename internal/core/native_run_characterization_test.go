@@ -12,7 +12,6 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/core"
-	"github.com/Suren878/matrixclaw/internal/orchestration"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -918,7 +917,6 @@ func runAsyncSubagentScenario(t *testing.T) asyncSubagentScenario {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	t.Cleanup(cleanup)
 	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
-	app.WithRunStarter(orchestration.NewStub(app))
 	var mu sync.Mutex
 	spawned := false
 	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {

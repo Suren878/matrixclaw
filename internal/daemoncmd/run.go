@@ -19,7 +19,6 @@ import (
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
 	telephonymodule "github.com/Suren878/matrixclaw/internal/modules/telephony"
 	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
-	goworkflows "github.com/Suren878/matrixclaw/internal/orchestration/go_workflows"
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/skills"
@@ -147,21 +146,14 @@ func Run(ctx context.Context) error {
 	if err := app.RecoverTasks(ctx); err != nil {
 		log.Printf("matrixclawd background task recovery failed: %v", err)
 	}
-	// The workflow worker executes persisted runs as soon as it starts, so it
-	// starts only once the core is fully wired and before anything accepts runs.
 	lifetime, stopLifetime := context.WithCancel(ctx)
-	defer stopLifetime()
-	app.WithLifetime(lifetime)
-	runStarter, err := goworkflows.NewForStore(bootstrap.DBPath, app)
-	if err != nil {
-		return err
-	}
 	defer func() {
-		// End the lifetime first so runs interrupted by closing the worker are not rescheduled.
+		// Ending the lifetime interrupts the executing runs and keeps them for
+		// recovery; they finish writing before the store closes.
 		stopLifetime()
-		_ = runStarter.Close()
+		app.WaitRuns()
 	}()
-	app.WithRunStarter(runStarter)
+	app.WithLifetime(lifetime)
 	safego.Go("core.runWakeups", func() { app.RunWakeups(lifetime) })
 	server := api.New(app)
 	server.SetAPIToken(bootstrap.APIToken)

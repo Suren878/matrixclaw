@@ -11,7 +11,6 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/core"
-	"github.com/Suren878/matrixclaw/internal/orchestration"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -135,7 +134,6 @@ func TestRecoveredRunKeepsItsBudgetCounters(t *testing.T) {
 	app.WithRunBudgets(core.RunBudgets{User: agent.Budget{Steps: 2}})
 	runtime := &recoveryRuntime{text: "Stopped after the restart."}
 	app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
-	app.WithRunStarter(orchestration.NewStub(app))
 	_, run := saveCrashRecoveryRun(t, db, "budget-recovery", core.RunStatusRunning, false)
 	if err := db.SaveRunCheckpoint(context.Background(), core.RunCheckpoint{
 		RunID: run.ID, EngineState: json.RawMessage(`{"steps":2}`), UpdatedAt: run.UpdatedAt,
@@ -163,7 +161,6 @@ func TestRecoveredRunKeepsItsRaisedOutputLimit(t *testing.T) {
 	defer cleanup()
 	runtime := &recoveryRuntime{text: "Finished after the restart."}
 	app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
-	app.WithRunStarter(orchestration.NewStub(app))
 	_, run := saveCrashRecoveryRun(t, db, "output-limit-recovery", core.RunStatusRunning, false)
 	if err := db.SaveRunCheckpoint(context.Background(), core.RunCheckpoint{
 		RunID: run.ID, EngineState: json.RawMessage(`{"output_limit":8000}`), UpdatedAt: run.UpdatedAt,

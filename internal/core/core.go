@@ -56,6 +56,10 @@ type Core struct {
 	backgroundTasks int
 	// backgroundAgents bounds the background subagents of one session.
 	backgroundAgents int
+	// executing counts the runs goroutineStarter started; once stopped it
+	// starts no more.
+	executing sync.WaitGroup
+	stopped   bool
 	// startingAgents are the children each parent session is starting, by
 	// name, and whether each runs in the background; guarded by mu.
 	startingAgents map[string]map[string]bool
@@ -95,7 +99,7 @@ type AssistantProfile struct {
 }
 
 func New(store Store) *Core {
-	return &Core{
+	c := &Core{
 		store:            store,
 		activeRuns:       map[string]*activeRun{},
 		scheduledRuns:    map[string]time.Time{},
@@ -111,6 +115,8 @@ func New(store Store) *Core {
 		modelSlots:       toolsched.NewSemaphore(DefaultModelConcurrency),
 		toolLocks:        toolsched.NewLocks(),
 	}
+	c.runStarter = goroutineStarter{c}
+	return c
 }
 
 // The With* builder methods below configure a Core during single-threaded

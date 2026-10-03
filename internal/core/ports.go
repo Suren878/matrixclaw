@@ -165,6 +165,8 @@ type Store interface {
 	FileSnapshotStore
 }
 
+// RunStarter starts the execution of an accepted run; by default the core
+// executes it in a goroutine of its own.
 type RunStarter interface {
 	StartRun(ctx context.Context, runID string) error
 }

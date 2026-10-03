@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/core"
-	"github.com/Suren878/matrixclaw/internal/orchestration"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
@@ -97,7 +96,6 @@ func TestRunInterruptedDuringToolReplaysItAndCompletes(t *testing.T) {
 					}
 					return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-inspect", Name: "inspect_state", Arguments: []byte(`{}`)}}}, nil
 				})})
-				app.WithRunStarter(orchestration.NewStub(app))
 			}
 			configure(app)
 			if restart {

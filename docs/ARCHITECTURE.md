@@ -60,9 +60,9 @@ restarting Telegram does not lose runs or approvals.
 
 ## Native Runs
 
-A run is accepted by `internal/core` and executed by the workflow worker
-(`internal/orchestration/go_workflows`), which calls `Core.ExecuteRun`. External
-agent sessions go to their adapter; native sessions build an
+A run is accepted by `internal/core` and executed in a goroutine of its own,
+which calls `Core.ExecuteRun`; runs left active by a restart are recovered by
+`Core.RecoverActiveRuns`. External agent sessions go to their adapter; native sessions build an
 `agent.Engine` and call `Engine.Run(ctx, Task)`, then apply its `Outcome`
 (`completed` with a stop reason, `waiting_approval`, `waiting_events`,
 `interrupted`, `canceled` or `failed`).
@@ -132,8 +132,6 @@ for the details and the as-built notes of each stage.
 - `internal/permission`: permission rules and bash command parsing.
 - `internal/shelltask`: background shell processes and their output files.
 - `internal/transcript`: message types.
-- `internal/orchestration`: run starter contract and the durable workflow
-  worker.
 - `internal/controlplane`: shared command semantics for terminal and Telegram.
 - `internal/store`: SQLite persistence.
 - `internal/providers`: provider adapters, provider catalog, model catalogs, and
