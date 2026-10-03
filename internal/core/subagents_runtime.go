@@ -129,17 +129,11 @@ func (c *Core) subagentRunSummary(ctx context.Context, sessionID string, runID s
 	if err != nil {
 		return "Subagent failed: " + err.Error(), true
 	}
-	switch run.Status {
-	case RunStatusCompleted:
-	case RunStatusWaitingApproval:
-		return "Subagent requested approval and cannot continue without user interaction in this version.", true
-	case RunStatusFailed, RunStatusCanceled:
+	if run.Status == RunStatusFailed || run.Status == RunStatusCanceled {
 		if strings.TrimSpace(run.Error) != "" {
 			return "Subagent failed: " + strings.TrimSpace(run.Error), true
 		}
 		return "Subagent failed with status " + string(run.Status) + ".", true
-	default:
-		return "Subagent stopped with status " + string(run.Status) + ".", true
 	}
 	messages, err := c.store.ListMessages(ctx, sessionID, 0)
 	if err != nil {
