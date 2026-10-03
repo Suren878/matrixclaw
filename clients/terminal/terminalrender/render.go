@@ -4,13 +4,16 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
 )
 
-// Configure normalizes terminal rendering for all Bubble Tea/Lip Gloss clients.
-func Configure() {
+// Configure detects the terminal colour profile once per process, advertises
+// truecolor to child renderers when it is available and routes Lip Gloss output
+// through the profile. Later calls return the same profile.
+var Configure = sync.OnceValue(func() colorprofile.Profile {
 	env := os.Environ()
 	profile := colorProfileFor(os.Stdout, env)
 	applyColorEnvironment(env, profile)
@@ -18,19 +21,8 @@ func Configure() {
 		Forward: os.Stdout,
 		Profile: profile,
 	}
-}
-
-// Environment returns terminal env vars for Bubble Tea without overstating the
-// terminal color capabilities. Bubble Tea v2 down-samples colors at the output
-// layer, so forcing truecolor here makes colors wrong in tmux/limited terminals.
-func Environment() []string {
-	env := os.Environ()
-	return normalizedEnvironment(env, colorProfileFor(os.Stdout, env))
-}
-
-func ColorProfile() colorprofile.Profile {
-	return colorProfileFor(os.Stdout, os.Environ())
-}
+	return profile
+})
 
 func colorProfileFor(output io.Writer, env []string) colorprofile.Profile {
 	if profile, ok := colorProfileOverride(env); ok {

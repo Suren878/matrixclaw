@@ -10,9 +10,9 @@ import (
 
 	tuiruntime "github.com/Suren878/matrixclaw/clients/terminal/chat/runtime"
 	terminalsetup "github.com/Suren878/matrixclaw/clients/terminal/setup"
+	"github.com/Suren878/matrixclaw/clients/terminal/terminalrender"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 	appsetup "github.com/Suren878/matrixclaw/internal/setup"
-	"github.com/Suren878/matrixclaw/internal/terminalrender"
 )
 
 type IO struct {

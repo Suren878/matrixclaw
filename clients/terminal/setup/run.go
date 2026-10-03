@@ -6,14 +6,14 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Suren878/matrixclaw/clients/terminal/terminalrender"
 	"github.com/Suren878/matrixclaw/internal/setup"
-	"github.com/Suren878/matrixclaw/internal/terminalrender"
 )
 
 var ErrAborted = errors.New("setup aborted")
 
 func Run(ctx context.Context, service *setup.Service) (setup.ApplyResult, error) {
-	terminalrender.Configure()
+	profile := terminalrender.Configure()
 
 	setupModel, err := newModel(service)
 	if err != nil {
@@ -23,8 +23,7 @@ func Run(ctx context.Context, service *setup.Service) (setup.ApplyResult, error)
 	program := tea.NewProgram(
 		setupModel,
 		tea.WithContext(ctx),
-		tea.WithEnvironment(terminalrender.Environment()),
-		tea.WithColorProfile(terminalrender.ColorProfile()),
+		tea.WithColorProfile(profile),
 	)
 	finalModel, err := program.Run()
 	if err != nil {
