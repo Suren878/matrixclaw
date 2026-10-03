@@ -10,7 +10,7 @@ func SummaryFromConfig(cfg Config) Summary {
 	active, _ := ActiveProviderConfig(cfg)
 	return Summary{
 		Assistant: AssistantSummary{
-			Name:   firstNonEmptyStatus(cfg.Assistant.Name, "matrixclaw"),
+			Name:   firstNonEmptyTrimmed(cfg.Assistant.Name, "matrixclaw"),
 			Status: assistantStatus(cfg.Assistant),
 		},
 		Provider: ProviderSummary{
@@ -58,7 +58,7 @@ func SummaryFromDraft(d Draft) Summary {
 
 	return Summary{
 		Assistant: AssistantSummary{
-			Name:   firstNonEmptyStatus(d.AssistantName, "matrixclaw"),
+			Name:   firstNonEmptyTrimmed(d.AssistantName, "matrixclaw"),
 			Status: assistantDraftStatus(d),
 		},
 		Provider: ProviderSummary{
@@ -136,17 +136,8 @@ func assistantDraftStatus(d Draft) string {
 	return "Configured"
 }
 
-func firstNonEmptyStatus(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
-}
-
 func currentDraftAPIKeyPreview(provider ProviderDraft) string {
-	if policy := providers.PolicyForProvider(firstNonEmptyStatus(provider.CatalogID, provider.ID), provider.Type); !policy.RequiresAPIKey {
+	if policy := providers.PolicyForProvider(firstNonEmptyTrimmed(provider.CatalogID, provider.ID), provider.Type); !policy.RequiresAPIKey {
 		return policy.AuthStatusLabel
 	}
 	if provider.HasStoredAPIKey {
@@ -163,7 +154,7 @@ func currentDraftAPIKeyPreview(provider ProviderDraft) string {
 }
 
 func providerConfigHasAPIKey(provider ProviderConfig) bool {
-	if !providers.PolicyForProvider(firstNonEmptyStatus(provider.CatalogID, provider.ID), provider.Type).RequiresAPIKey {
+	if !providers.PolicyForProvider(firstNonEmptyTrimmed(provider.CatalogID, provider.ID), provider.Type).RequiresAPIKey {
 		return strings.TrimSpace(provider.Model) != ""
 	}
 	_, ok := ResolvedProviderAPIKey(provider)
