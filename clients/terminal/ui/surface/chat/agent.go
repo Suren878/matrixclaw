@@ -9,15 +9,13 @@ import (
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
 )
 
-type AgentToolRenderContext struct{}
-
 type agentRenderParams struct {
 	Description string `json:"description"`
 	Prompt      string `json:"prompt"`
 	Runtime     string `json:"runtime"`
 }
 
-func (d *AgentToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
+func renderAgent(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	params := parseAgentParams(opts.ToolCall.Input)
 	return renderSubagentTool(sty, cappedWidth, opts, params)
@@ -45,7 +43,7 @@ func renderSubagentTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOp
 	taskLabel := strings.Join(strings.Fields(firstNonEmptyLocal(metadata.DisplayName, params.Description)), " ")
 	goal := strings.Join(strings.Fields(firstNonEmptyLocal(metadata.Goal, params.Prompt)), " ")
 	status := subagentRenderStatus(metadata.Status, opts)
-	header := toolHeader(sty, opts.Status, subagentRenderLabel(agentName, status), width, subagentTaskPreview(taskLabel, goal))
+	header := toolHeader(sty, subagentRenderLabel(agentName, status), width, subagentTaskPreview(taskLabel, goal))
 	bodyText := subagentBodyText(opts, metadata, taskLabel, goal, status)
 	if bodyText == "" {
 		return header

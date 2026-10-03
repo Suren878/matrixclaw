@@ -44,8 +44,6 @@ const (
 	toolNameSkillManage = "skill_manage"
 )
 
-const horizontalScrollStep = 5
-
 type permissionOption struct {
 	label  string
 	action PermissionAction
@@ -64,11 +62,7 @@ type Permissions struct {
 	lastView     string
 	lastViewRect image.Rectangle
 
-	diffSplitMode        *bool
-	defaultDiffSplitMode bool
-	diffXOffset          int
-	unifiedDiffContent   string
-	splitDiffContent     string
+	diff diffPane
 
 	help   help.Model
 	keyMap permissionsKeyMap

@@ -44,8 +44,6 @@ func (p *Permissions) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 	helpHeight := lipgloss.Height(helpView)
 	frameHeight := dialogStyle.GetVerticalFrameSize() + layoutSpacingLines
 
-	p.defaultDiffSplitMode = false
-
 	renderedContent := p.renderContent(contentWidth)
 	contentHeight := lipgloss.Height(renderedContent)
 

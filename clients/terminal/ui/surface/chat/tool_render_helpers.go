@@ -107,7 +107,7 @@ func toolParamList(sty *surfacestyles.Styles, params []string, width int) string
 	return sty.Tool.ParamMain.Render(output)
 }
 
-func toolHeader(sty *surfacestyles.Styles, _ ToolStatus, name string, width int, params ...string) string {
+func toolHeader(sty *surfacestyles.Styles, name string, width int, params ...string) string {
 	toolName := sty.Tool.NameNormal.Render(name)
 	prefix := fmt.Sprintf("%s ", toolName)
 	prefixWidth := lipgloss.Width(prefix)
@@ -116,7 +116,7 @@ func toolHeader(sty *surfacestyles.Styles, _ ToolStatus, name string, width int,
 	return prefix + paramsStr
 }
 
-func toolDiffSummaryHeader(sty *surfacestyles.Styles, _ ToolStatus, name, file string, additions, removals int, hint string, width int) string {
+func toolDiffSummaryHeader(sty *surfacestyles.Styles, name, file string, additions, removals int, hint string, width int) string {
 	toolName := sty.Tool.NameNormal.Render(name)
 	path := sty.Tool.ParamMain.Render(file)
 	diff := fmt.Sprintf(

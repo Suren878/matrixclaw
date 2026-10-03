@@ -14,9 +14,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-type BashToolRenderContext struct{}
-
-func (b *BashToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
+func renderBash(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
 		return pendingTool(sty, "Run", opts.Anim)
@@ -45,7 +43,7 @@ func (b *BashToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int,
 		toolParams = append(toolParams, "background", "true")
 	}
 
-	header := runHeader(sty, opts.Status, cappedWidth, toolParams...)
+	header := toolHeader(sty, "Run", cappedWidth, toolParams...)
 	if earlyState, ok := runEarlyStateContent(sty, opts, cappedWidth); ok {
 		return joinToolParts(header, earlyState)
 	}
@@ -78,10 +76,6 @@ func runEarlyStateContent(sty *surfacestyles.Styles, opts *ToolRenderOpts, width
 	}
 }
 
-func runHeader(sty *surfacestyles.Styles, status ToolStatus, width int, params ...string) string {
-	return toolHeader(sty, status, "Run", width, params...)
-}
-
 func isExpectedNeutralBashResult(toolCall surfacemessage.ToolCall, result *surfacemessage.ToolResult) bool {
 	if result == nil || normalizedToolName(toolCall.Name) != "bash" {
 		return false
@@ -93,15 +87,11 @@ func isExpectedNeutralBashResult(toolCall surfacemessage.ToolCall, result *surfa
 	return meta.ExitCode == 1 && strings.TrimSpace(meta.Output) == "" && tools.IsProcessProbeCommand(params.Command)
 }
 
-type TaskOutputToolRenderContext struct{}
-
-type TaskKillToolRenderContext struct{}
-
-func (j *TaskOutputToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
+func renderTaskOutput(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
 	return renderTaskToolCall(sty, width, opts, "Output")
 }
 
-func (j *TaskKillToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
+func renderTaskKill(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
 	return renderTaskToolCall(sty, width, opts, "Kill")
 }
 

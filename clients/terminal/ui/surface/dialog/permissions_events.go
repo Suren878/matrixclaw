@@ -36,8 +36,7 @@ func (p *Permissions) HandleMsg(msg tea.Msg) Action {
 			return p.respond(PermissionDenyWithReason)
 		case key.Matches(msg, p.keyMap.ToggleDiffMode):
 			if p.hasDiffView() {
-				newMode := !p.isSplitMode()
-				p.diffSplitMode = &newMode
+				p.diff.toggleMode()
 				p.viewportDirty = true
 			}
 		case key.Matches(msg, p.keyMap.ToggleFullscreen):
@@ -190,20 +189,13 @@ func (p *Permissions) hasDiffView() bool {
 	return false
 }
 
-func (p *Permissions) isSplitMode() bool {
-	if p.diffSplitMode != nil {
-		return *p.diffSplitMode
-	}
-	return p.defaultDiffSplitMode
-}
-
 func (p *Permissions) scrollLeft() {
-	p.diffXOffset = max(0, p.diffXOffset-horizontalScrollStep)
+	p.diff.scrollLeft()
 	p.viewportDirty = true
 }
 
 func (p *Permissions) scrollRight() {
-	p.diffXOffset += horizontalScrollStep
+	p.diff.scrollRight()
 	p.viewportDirty = true
 }
 

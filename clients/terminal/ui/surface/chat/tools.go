@@ -46,8 +46,22 @@ func (o *ToolRenderOpts) IsCanceled() bool     { return o.Status == ToolStatusCa
 func (o *ToolRenderOpts) HasResult() bool      { return o.Result != nil }
 func (o *ToolRenderOpts) HasEmptyResult() bool { return o.Result == nil || o.Result.Content == "" }
 
-type ToolRenderer interface {
-	RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string
+// toolRenderer draws one tool call at width.
+type toolRenderer func(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string
+
+// toolRenderers draws the tools that need more than renderGeneric.
+var toolRenderers = map[string]toolRenderer{
+	"bash":        renderBash,
+	"task_output": renderTaskOutput,
+	"task_kill":   renderTaskKill,
+	"read":        renderRead,
+	"write":       renderFileChange,
+	"edit":        renderFileChange,
+	"multiedit":   renderFileChange,
+	"glob":        renderListing,
+	"grep":        renderListing,
+	"ls":          renderListing,
+	"agent":       renderAgent,
 }
 
 type baseToolMessageItem struct {
@@ -55,7 +69,7 @@ type baseToolMessageItem struct {
 	*cachedMessageItem
 	*focusableMessageItem
 
-	toolRenderer    ToolRenderer
+	render          toolRenderer
 	toolCall        surfacemessage.ToolCall
 	result          *surfacemessage.ToolResult
 	status          ToolStatus
@@ -69,7 +83,7 @@ func newBaseToolMessageItem(
 	sty *surfacestyles.Styles,
 	toolCall surfacemessage.ToolCall,
 	result *surfacemessage.ToolResult,
-	toolRenderer ToolRenderer,
+	render toolRenderer,
 	canceled bool,
 ) *baseToolMessageItem {
 	hasCappedWidth := normalizedToolName(toolCall.Name) != "edit" && normalizedToolName(toolCall.Name) != "multiedit"
@@ -83,7 +97,7 @@ func newBaseToolMessageItem(
 		cachedMessageItem:        &cachedMessageItem{},
 		focusableMessageItem:     &focusableMessageItem{},
 		sty:                      sty,
-		toolRenderer:             toolRenderer,
+		render:                   render,
 		toolCall:                 toolCall,
 		result:                   result,
 		status:                   status,
@@ -106,36 +120,11 @@ func NewToolMessageItem(
 	result *surfacemessage.ToolResult,
 	canceled bool,
 ) ToolMessageItem {
-	return newBaseToolMessageItem(sty, toolCall, result, toolRendererFor(toolCall.Name), canceled)
-}
-
-func toolRendererFor(name string) ToolRenderer {
-	switch normalizedToolName(name) {
-	case "bash":
-		return &BashToolRenderContext{}
-	case "task_output":
-		return &TaskOutputToolRenderContext{}
-	case "task_kill":
-		return &TaskKillToolRenderContext{}
-	case "read":
-		return &ReadToolRenderContext{}
-	case "write":
-		return &WriteToolRenderContext{}
-	case "edit":
-		return &EditToolRenderContext{}
-	case "multiedit":
-		return &MultiEditToolRenderContext{}
-	case "glob":
-		return &GlobToolRenderContext{}
-	case "grep":
-		return &GrepToolRenderContext{}
-	case "ls":
-		return &LSToolRenderContext{}
-	case "agent":
-		return &AgentToolRenderContext{}
-	default:
-		return &GenericToolRenderContext{}
+	render, ok := toolRenderers[normalizedToolName(toolCall.Name)]
+	if !ok {
+		render = renderGeneric
 	}
+	return newBaseToolMessageItem(sty, toolCall, result, render, canceled)
 }
 
 func (t *baseToolMessageItem) ID() string { return t.toolCall.ID }
@@ -162,7 +151,7 @@ func (t *baseToolMessageItem) RawRender(width int) string {
 
 	content, height, ok := t.getCachedRender(toolItemWidth)
 	if !ok || t.isSpinning() {
-		content = t.toolRenderer.RenderTool(t.sty, toolItemWidth, &ToolRenderOpts{
+		content = t.render(t.sty, toolItemWidth, &ToolRenderOpts{
 			ToolCall:        t.toolCall,
 			Result:          t.result,
 			Anim:            t.anim,

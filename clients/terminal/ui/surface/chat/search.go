@@ -5,102 +5,27 @@ import (
 
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
-	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/toolview"
 )
 
-type GlobToolRenderContext struct{}
-type GrepToolRenderContext struct{}
-type LSToolRenderContext struct{}
-
-func (g *GlobToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
+// renderListing draws glob, grep and ls: the toolview header and the listing
+// as plain lines.
+func renderListing(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
+	view := toolview.Describe(opts.ToolCall.Name, opts.ToolCall.Input)
 	if opts.IsPending() {
-		return pendingTool(sty, "Glob", opts.Anim)
+		return pendingTool(sty, view.Title, opts.Anim)
 	}
-
-	var params tools.GlobParams
-	if err := json.Unmarshal([]byte(opts.ToolCall.Input), &params); err != nil {
+	if !json.Valid([]byte(opts.ToolCall.Input)) {
 		return toolErrorContent(sty, &surfacemessage.ToolResult{Content: "Invalid parameters"}, cappedWidth)
 	}
-
-	toolParams := []string{params.Pattern}
-	if path := resultDisplayPath(opts.Result, params.Path); path != "" && path != "." {
-		toolParams = append(toolParams, "path", path)
-	}
-
-	header := toolHeader(sty, opts.Status, "Glob", cappedWidth, toolParams...)
-	if earlyState, ok := toolEarlyStateContent(sty, opts, cappedWidth); ok {
-		return joinToolParts(header, earlyState)
-	}
-	if !opts.HasResult() || opts.Result.Content == "" {
-		return header
-	}
-
-	bodyWidth := cappedWidth - toolBodyLeftPaddingTotal
-	body := sty.Tool.Body.Render(toolOutputPlainContent(sty, opts.Result.Content, bodyWidth, opts.ExpandedContent))
-	return joinToolParts(header, body)
-}
-
-func (g *GrepToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
-	cappedWidth := cappedMessageWidth(width)
-	if opts.IsPending() {
-		return pendingTool(sty, "Grep", opts.Anim)
-	}
-
-	var params tools.GrepParams
-	if err := json.Unmarshal([]byte(opts.ToolCall.Input), &params); err != nil {
-		return toolErrorContent(sty, &surfacemessage.ToolResult{Content: "Invalid parameters"}, cappedWidth)
-	}
-
-	toolParams := []string{params.Pattern}
-	if path := resultDisplayPath(opts.Result, params.Path); path != "" && path != "." {
-		toolParams = append(toolParams, "path", path)
-	}
-	if params.Include != "" {
-		toolParams = append(toolParams, "include", params.Include)
-	}
-	if params.LiteralText {
-		toolParams = append(toolParams, "literal", "true")
-	}
-
-	header := toolHeader(sty, opts.Status, "Grep", cappedWidth, toolParams...)
+	header := toolHeader(sty, view.Title, cappedWidth, headerParams(view, nil)...)
 	if earlyState, ok := toolEarlyStateContent(sty, opts, cappedWidth); ok {
 		return joinToolParts(header, earlyState)
 	}
 	if opts.HasEmptyResult() {
 		return header
 	}
-
 	bodyWidth := cappedWidth - toolBodyLeftPaddingTotal
-	body := sty.Tool.Body.Render(toolOutputPlainContent(sty, opts.Result.Content, bodyWidth, opts.ExpandedContent))
-	return joinToolParts(header, body)
-}
-
-func (l *LSToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
-	cappedWidth := cappedMessageWidth(width)
-	if opts.IsPending() {
-		return pendingTool(sty, "List", opts.Anim)
-	}
-
-	var params tools.LSParams
-	if err := json.Unmarshal([]byte(opts.ToolCall.Input), &params); err != nil {
-		return toolErrorContent(sty, &surfacemessage.ToolResult{Content: "Invalid parameters"}, cappedWidth)
-	}
-
-	path := params.Path
-	if path == "" {
-		path = "."
-	}
-
-	header := toolHeader(sty, opts.Status, "List", cappedWidth, resultDisplayPath(opts.Result, path))
-	if earlyState, ok := toolEarlyStateContent(sty, opts, cappedWidth); ok {
-		return joinToolParts(header, earlyState)
-	}
-	if opts.HasEmptyResult() {
-		return header
-	}
-
-	bodyWidth := cappedWidth - toolBodyLeftPaddingTotal
-	body := sty.Tool.Body.Render(toolOutputPlainContent(sty, opts.Result.Content, bodyWidth, opts.ExpandedContent))
-	return joinToolParts(header, body)
+	return joinToolParts(header, sty.Tool.Body.Render(toolOutputPlainContent(sty, opts.Result.Content, bodyWidth, opts.ExpandedContent)))
 }

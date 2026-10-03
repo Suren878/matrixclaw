@@ -10,6 +10,7 @@ import (
 	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/toolview"
 )
 
 func (t *baseToolMessageItem) HandleKeyEvent(key tea.KeyPressMsg) (bool, tea.Cmd) {
@@ -150,65 +151,18 @@ func (t *baseToolMessageItem) diffPreviewData() (surfacedialog.DiffPreviewData, 
 	if t.result == nil || t.result.IsError {
 		return surfacedialog.DiffPreviewData{}, false
 	}
-
-	switch t.toolCall.Name {
-	case "write":
-		var params tools.WriteParams
-		var meta tools.WriteResponseMetadata
-		if err := json.Unmarshal([]byte(t.toolCall.Input), &params); err != nil {
-			return surfacedialog.DiffPreviewData{}, false
-		}
-		if err := json.Unmarshal([]byte(t.result.Metadata), &meta); err != nil {
-			return surfacedialog.DiffPreviewData{}, false
-		}
-		if meta.NewContent == "" {
-			meta.NewContent = params.Content
-		}
-		return surfacedialog.DiffPreviewData{
-			Title:      "Write Changes",
-			FilePath:   params.FilePath,
-			OldContent: meta.OldContent,
-			NewContent: meta.NewContent,
-			Additions:  meta.Additions,
-			Removals:   meta.Removals,
-		}, true
-	case "edit":
-		var params tools.EditParams
-		var meta tools.EditResponseMetadata
-		if err := json.Unmarshal([]byte(t.toolCall.Input), &params); err != nil {
-			return surfacedialog.DiffPreviewData{}, false
-		}
-		if err := json.Unmarshal([]byte(t.result.Metadata), &meta); err != nil {
-			return surfacedialog.DiffPreviewData{}, false
-		}
-		return surfacedialog.DiffPreviewData{
-			Title:      "Edit Changes",
-			FilePath:   params.FilePath,
-			OldContent: meta.OldContent,
-			NewContent: meta.NewContent,
-			Additions:  meta.Additions,
-			Removals:   meta.Removals,
-		}, true
-	case "multiedit":
-		var params tools.MultiEditParams
-		var meta tools.MultiEditResponseMetadata
-		if err := json.Unmarshal([]byte(t.toolCall.Input), &params); err != nil {
-			return surfacedialog.DiffPreviewData{}, false
-		}
-		if err := json.Unmarshal([]byte(t.result.Metadata), &meta); err != nil {
-			return surfacedialog.DiffPreviewData{}, false
-		}
-		return surfacedialog.DiffPreviewData{
-			Title:      "Multi-Edit Changes",
-			FilePath:   params.FilePath,
-			OldContent: meta.OldContent,
-			NewContent: meta.NewContent,
-			Additions:  meta.Additions,
-			Removals:   meta.Removals,
-		}, true
-	default:
+	change, ok := toolview.FileChangeOf(t.toolCall.Name, t.toolCall.Input, t.result.Metadata)
+	if !ok || !change.Done {
 		return surfacedialog.DiffPreviewData{}, false
 	}
+	return surfacedialog.DiffPreviewData{
+		Title:      toolview.Describe(t.toolCall.Name, "").Title + " Changes",
+		FilePath:   change.Path,
+		OldContent: change.Old,
+		NewContent: change.New,
+		Additions:  change.Additions,
+		Removals:   change.Removals,
+	}, true
 }
 
 func (t *baseToolMessageItem) filePreviewData() (surfacedialog.FilePreviewData, bool) {

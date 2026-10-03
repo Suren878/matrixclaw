@@ -10,9 +10,9 @@ import (
 	"github.com/Suren878/matrixclaw/internal/toolview"
 )
 
-type GenericToolRenderContext struct{}
-
-func (g *GenericToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
+// renderGeneric draws a tool by its toolview header and its result as JSON,
+// markdown or plain text.
+func renderGeneric(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	view := toolview.Describe(opts.ToolCall.Name, opts.ToolCall.Input)
 	name := view.Title
@@ -32,7 +32,7 @@ func (g *GenericToolRenderContext) RenderTool(sty *surfacestyles.Styles, width i
 		return toolErrorContent(sty, &surfacemessage.ToolResult{Content: "Invalid parameters"}, cappedWidth)
 	}
 
-	header := toolHeader(sty, opts.Status, name, cappedWidth, toolParams...)
+	header := toolHeader(sty, name, cappedWidth, toolParams...)
 
 	if earlyState, ok := toolEarlyStateContent(sty, opts, cappedWidth); ok {
 		return joinToolParts(header, earlyState)
@@ -67,7 +67,7 @@ func (g *GenericToolRenderContext) RenderTool(sty *surfacestyles.Styles, width i
 }
 
 func pendingToolHeader(sty *surfacestyles.Styles, name string, width int, anim *anim.Anim, params ...string) string {
-	header := toolHeader(sty, ToolStatusRunning, name, width, params...)
+	header := toolHeader(sty, name, width, params...)
 	if anim == nil {
 		return header
 	}

@@ -4,23 +4,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
 	"github.com/Suren878/matrixclaw/internal/tools"
+	"github.com/Suren878/matrixclaw/internal/toolview"
 )
 
 var numberedReadLinePrefix = regexp.MustCompile(`^\s*\d+\s`)
-
-type ReadToolRenderContext struct{}
-type WriteToolRenderContext struct{}
-type EditToolRenderContext struct{}
-type MultiEditToolRenderContext struct{}
 
 type filesystemPathMetadata struct {
 	FilePath      string `json:"file_path"`
@@ -51,10 +47,10 @@ func resultDisplayPath(result *surfacemessage.ToolResult, fallback string) strin
 	return metadataDisplayPath(result.Metadata, fallback)
 }
 
-func (v *ReadToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
+func renderRead(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
-		return readHeader(sty, ToolStatusRunning, cappedWidth, "")
+		return toolHeader(sty, "Read", cappedWidth, "")
 	}
 
 	var params tools.ReadParams
@@ -68,7 +64,7 @@ func (v *ReadToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int,
 		toolParams = append(toolParams, "offset", fmt.Sprintf("%d", params.Offset))
 	}
 
-	header := readHeader(sty, opts.Status, cappedWidth, toolParams...)
+	header := toolHeader(sty, "Read", cappedWidth, toolParams...)
 	if earlyState, ok := toolEarlyStateContent(sty, opts, cappedWidth); ok {
 		return joinToolParts(header, earlyState)
 	}
@@ -82,100 +78,43 @@ func (v *ReadToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int,
 	return header
 }
 
-func (w *WriteToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
-	cappedWidth := cappedMessageWidth(width)
+// renderFileChange draws write, edit and multiedit: the file and, once done,
+// its line delta and the hint to open the diff.
+func renderFileChange(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
+	width = cappedMessageWidth(width)
+	title := toolview.Describe(opts.ToolCall.Name, "").Title
 	if opts.IsPending() {
-		return pendingTool(sty, "Write", opts.Anim)
+		return pendingTool(sty, title, opts.Anim)
 	}
-
-	var params tools.WriteParams
-	if err := json.Unmarshal([]byte(opts.ToolCall.Input), &params); err != nil {
-		return toolErrorContent(sty, &surfacemessage.ToolResult{Content: "Invalid parameters"}, cappedWidth)
+	metadata := ""
+	if opts.Result != nil {
+		metadata = opts.Result.Metadata
 	}
-
-	file := resultDisplayPath(opts.Result, params.FilePath)
-	header := toolHeader(sty, opts.Status, "Write", cappedWidth, file)
-	if earlyState, ok := toolEarlyStateContent(sty, opts, cappedWidth); ok {
-		return joinToolParts(header, earlyState)
-	}
-	if !opts.HasResult() || params.Content == "" {
-		return header
-	}
-
-	var meta tools.WriteResponseMetadata
-	if err := json.Unmarshal([]byte(opts.Result.Metadata), &meta); err != nil {
-		return header
-	}
-
-	return toolDiffSummaryHeader(sty, opts.Status, "Write", file, meta.Additions, meta.Removals, "press enter for diff", cappedWidth)
-}
-
-func (e *EditToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
-	cappedWidth := cappedMessageWidth(width)
-	if opts.IsPending() {
-		return pendingTool(sty, "Edit", opts.Anim)
-	}
-
-	var params tools.EditParams
-	if err := json.Unmarshal([]byte(opts.ToolCall.Input), &params); err != nil {
-		return toolErrorContent(sty, &surfacemessage.ToolResult{Content: "Invalid parameters"}, cappedWidth)
-	}
-
-	file := resultDisplayPath(opts.Result, params.FilePath)
-	header := toolHeader(sty, opts.Status, "Edit", cappedWidth, file)
-	if earlyState, ok := toolEarlyStateContent(sty, opts, cappedWidth); ok {
-		return joinToolParts(header, earlyState)
-	}
-	if !opts.HasResult() {
-		return header
-	}
-
-	var meta tools.EditResponseMetadata
-	if err := json.Unmarshal([]byte(opts.Result.Metadata), &meta); err != nil {
-		return header
-	}
-
-	return toolDiffSummaryHeader(sty, opts.Status, "Edit", file, meta.Additions, meta.Removals, "press enter for diff", cappedWidth)
-}
-
-func (m *MultiEditToolRenderContext) RenderTool(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
-	if opts.IsPending() {
-		return pendingTool(sty, "Multi-Edit", opts.Anim)
-	}
-
-	var params tools.MultiEditParams
-	if err := json.Unmarshal([]byte(opts.ToolCall.Input), &params); err != nil {
+	change, ok := toolview.FileChangeOf(opts.ToolCall.Name, opts.ToolCall.Input, metadata)
+	if !ok {
 		return toolErrorContent(sty, &surfacemessage.ToolResult{Content: "Invalid parameters"}, width)
 	}
 
-	file := resultDisplayPath(opts.Result, params.FilePath)
-	toolParams := []string{file}
-	if len(params.Edits) > 0 {
-		toolParams = append(toolParams, "edits", fmt.Sprintf("%d", len(params.Edits)))
+	file := resultDisplayPath(opts.Result, change.Path)
+	params := []string{file}
+	if change.Edits > 0 {
+		params = append(params, "edits", strconv.Itoa(change.Edits))
 	}
-
-	header := toolHeader(sty, opts.Status, "Multi-Edit", width, toolParams...)
+	header := toolHeader(sty, title, width, params...)
 	if earlyState, ok := toolEarlyStateContent(sty, opts, width); ok {
 		return joinToolParts(header, earlyState)
 	}
-	if !opts.HasResult() {
+	if !change.Done {
 		return header
 	}
-
-	var meta tools.MultiEditResponseMetadata
-	if err := json.Unmarshal([]byte(opts.Result.Metadata), &meta); err != nil {
-		return header
-	}
-
-	editCount := len(params.Edits)
 	hint := "press enter for diff"
-	if editCount > 0 {
-		hint = fmt.Sprintf("%d edits, press enter for diff", editCount)
+	switch {
+	case change.EditsFailed > 0:
+		hint = fmt.Sprintf("%d/%d edits applied, press enter for diff", change.EditsApplied, change.Edits)
+	case change.Edits > 0:
+		hint = fmt.Sprintf("%d edits, press enter for diff", change.Edits)
 	}
-	if len(meta.EditsFailed) > 0 {
-		hint = fmt.Sprintf("%d/%d edits applied, press enter for diff", meta.EditsApplied, len(params.Edits))
-	}
-	return toolDiffSummaryHeader(sty, opts.Status, "Multi-Edit", file, meta.Additions, meta.Removals, hint, width)
+	return toolDiffSummaryHeader(sty, title, file, change.Additions, change.Removals, hint, width)
 }
 
 func prettyPath(path string) string {
@@ -207,12 +146,6 @@ func renderReadPathsBlock(sty *surfacestyles.Styles, width int, paths ...string)
 		rendered = append(rendered, sty.Tool.ContentLine.Render(line))
 	}
 	return strings.Join(rendered, "\n")
-}
-
-func readHeader(sty *surfacestyles.Styles, _ ToolStatus, width int, params ...string) string {
-	prefix := sty.Tool.NameNormal.Render("Read") + " "
-	remainingWidth := width - lipgloss.Width(prefix)
-	return prefix + toolParamList(sty, params, remainingWidth)
 }
 
 func resolveReadResult(path string, result surfacemessage.ToolResult) (string, string) {

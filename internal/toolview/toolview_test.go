@@ -41,3 +41,20 @@ func TestShortenCutsAtRunesWithAnEllipsis(t *testing.T) {
 		t.Fatalf("Shorten = %q", got)
 	}
 }
+
+func TestFileChangeOfReadsInputAndResult(t *testing.T) {
+	change, ok := FileChangeOf("multiedit", `{"file_path":"a.go","edits":[{},{},{}]}`, `{"additions":2,"removals":1,"old_content":"x","new_content":"y","edits_applied":2,"edits_failed":[{"index":2}]}`)
+	want := FileChange{Path: "a.go", Edits: 3, Done: true, Old: "x", New: "y", Additions: 2, Removals: 1, EditsApplied: 2, EditsFailed: 1}
+	if !ok || change != want {
+		t.Fatalf("change = %+v, want %+v", change, want)
+	}
+	if pending, ok := FileChangeOf("write", `{"file_path":"b.go","content":"z"}`, ""); !ok || pending.Done || pending.Path != "b.go" {
+		t.Fatalf("pending write = %+v", pending)
+	}
+	if written, _ := FileChangeOf("write", `{"file_path":"b.go","content":"z"}`, `{"additions":1}`); written.New != "z" {
+		t.Fatalf("write without new content in metadata = %+v", written)
+	}
+	if _, ok := FileChangeOf("bash", `{}`, ""); ok {
+		t.Fatal("bash is not a file change")
+	}
+}

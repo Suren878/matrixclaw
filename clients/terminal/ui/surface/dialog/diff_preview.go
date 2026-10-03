@@ -39,13 +39,8 @@ type DiffPreview struct {
 
 	viewport      viewport.Model
 	viewportDirty bool
-	viewportWidth int
 
-	diffSplitMode        *bool
-	defaultDiffSplitMode bool
-	diffXOffset          int
-	unifiedDiffContent   string
-	splitDiffContent     string
+	diff diffPane
 
 	help   help.Model
 	keyMap diffPreviewKeyMap
@@ -139,8 +134,7 @@ func (d *DiffPreview) HandleMsg(msg tea.Msg) Action {
 			return ActionClose{}
 		case key.Matches(msg, d.keyMap.ToggleDiffMode):
 			if d.hasStructuredDiff() {
-				newMode := !d.isSplitMode()
-				d.diffSplitMode = &newMode
+				d.diff.toggleMode()
 				d.viewportDirty = true
 			}
 		case key.Matches(msg, d.keyMap.ToggleFullscreen):
@@ -188,20 +182,13 @@ func (d *DiffPreview) hasStructuredDiff() bool {
 	return d.data.OldContent != "" || d.data.NewContent != ""
 }
 
-func (d *DiffPreview) isSplitMode() bool {
-	if d.diffSplitMode != nil {
-		return *d.diffSplitMode
-	}
-	return d.defaultDiffSplitMode
-}
-
 func (d *DiffPreview) scrollLeft() {
-	d.diffXOffset = max(0, d.diffXOffset-horizontalScrollStep)
+	d.diff.scrollLeft()
 	d.viewportDirty = true
 }
 
 func (d *DiffPreview) scrollRight() {
-	d.diffXOffset += horizontalScrollStep
+	d.diff.scrollRight()
 	d.viewportDirty = true
 }
 
@@ -231,8 +218,6 @@ func (d *DiffPreview) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 	helpHeight := lipgloss.Height(helpView)
 	frameHeight := dialogStyle.GetVerticalFrameSize() + 2
 
-	d.defaultDiffSplitMode = false
-
 	renderedContent := d.renderContent(contentWidth)
 	contentHeight := lipgloss.Height(renderedContent)
 	availableHeight := max(3, maxHeight-headerHeight-helpHeight-frameHeight)
@@ -252,7 +237,6 @@ func (d *DiffPreview) Draw(scr uv.Screen, area uv.Rectangle) *uv.Cursor {
 	d.viewport.SetHeight(availableHeight)
 	if d.viewportDirty {
 		d.viewport.SetContent(renderedContent)
-		d.viewportWidth = d.viewport.Width()
 		d.viewportDirty = false
 	}
 
@@ -299,31 +283,10 @@ func (d *DiffPreview) renderKeyValue(keyText, value string, width int) string {
 }
 
 func (d *DiffPreview) renderContent(contentWidth int) string {
-	if !d.viewportDirty {
-		if d.isSplitMode() && d.hasStructuredDiff() {
-			return d.splitDiffContent
-		}
-		if d.unifiedDiffContent != "" {
-			return d.unifiedDiffContent
-		}
+	if !d.hasStructuredDiff() {
+		return ""
 	}
-
-	if d.hasStructuredDiff() {
-		formatter := surfacecommon.DiffFormatter(d.com.Styles).
-			Before(prettyPath(d.data.FilePath), d.data.OldContent).
-			After(prettyPath(d.data.FilePath), d.data.NewContent).
-			XOffset(d.diffXOffset).
-			Width(contentWidth)
-		if d.isSplitMode() {
-			d.splitDiffContent = formatter.Split().String()
-			return d.splitDiffContent
-		}
-		d.unifiedDiffContent = formatter.Unified().String()
-		return d.unifiedDiffContent
-	}
-
-	d.unifiedDiffContent = ""
-	return d.unifiedDiffContent
+	return d.diff.render(d.com.Styles, d.data.FilePath, d.data.OldContent, d.data.NewContent, contentWidth)
 }
 
 func (d *DiffPreview) ShortHelp() []key.Binding {

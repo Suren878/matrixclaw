@@ -65,31 +65,7 @@ func (p *Permissions) renderMultiEditContent(contentWidth int) string {
 }
 
 func (p *Permissions) renderDiff(filePath, oldContent, newContent string, contentWidth int) string {
-	if !p.viewportDirty {
-		if p.isSplitMode() {
-			return p.splitDiffContent
-		}
-		return p.unifiedDiffContent
-	}
-
-	formatter := surfacecommon.DiffFormatter(p.com.Styles).
-		Before(prettyPath(filePath), oldContent).
-		After(prettyPath(filePath), newContent).
-		XOffset(p.diffXOffset).
-		Width(contentWidth)
-
-	var result string
-	if p.isSplitMode() {
-		formatter = formatter.Split()
-		p.splitDiffContent = formatter.String()
-		result = p.splitDiffContent
-	} else {
-		formatter = formatter.Unified()
-		p.unifiedDiffContent = formatter.String()
-		result = p.unifiedDiffContent
-	}
-
-	return result
+	return p.diff.render(p.com.Styles, filePath, oldContent, newContent, contentWidth)
 }
 
 func (p *Permissions) renderReadContent(width int) string {
