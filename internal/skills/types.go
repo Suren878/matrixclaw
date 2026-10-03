@@ -104,7 +104,3 @@ type PromptRequest struct {
 type UsageSummary struct {
 	Skills []Skill `json:"skills"`
 }
-
-type CuratorResult struct {
-	Archived []Skill `json:"archived"`
-}

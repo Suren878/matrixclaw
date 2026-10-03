@@ -38,7 +38,6 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		var req struct {
 			Path        string   `json:"path"`
-			TrustState  string   `json:"trust_state,omitempty"`
 			Name        string   `json:"name,omitempty"`
 			Description string   `json:"description,omitempty"`
 			Tags        []string `json:"tags,omitempty"`
@@ -56,7 +55,7 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusCreated, draft)
 			return
 		}
-		installed, err := s.skills.InstallPath(req.Path, skills.InstallOptions{Provenance: req.Path, TrustState: req.TrustState})
+		installed, err := s.skills.InstallPath(req.Path, skills.InstallOptions{Provenance: req.Path})
 		if err != nil {
 			writeErrorMessage(w, http.StatusBadRequest, err.Error())
 			return
@@ -95,15 +94,6 @@ func (s *Server) handleSkillByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, usage)
-		return
-	}
-	if raw == "curator" && r.Method == http.MethodPost {
-		result, err := s.skills.Curator()
-		if err != nil {
-			writeErrorMessage(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, result)
 		return
 	}
 	if strings.HasPrefix(raw, "sessions/") {

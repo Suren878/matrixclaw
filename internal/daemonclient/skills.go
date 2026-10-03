@@ -86,6 +86,15 @@ func (c *Client) SkillAction(ctx context.Context, id string, action string) erro
 	return c.doJSON(ctx, http.MethodPost, path, nil, nil)
 }
 
+// SkillUsage lists the skills by how often they were used.
+func (c *Client) SkillUsage(ctx context.Context) ([]skills.Skill, error) {
+	var response skills.UsageSummary
+	if err := c.doJSON(ctx, http.MethodGet, "/v1/modules/skills/usage", nil, &response); err != nil {
+		return nil, err
+	}
+	return response.Skills, nil
+}
+
 func (c *Client) RemoveSkill(ctx context.Context, id string) error {
 	return c.doJSON(ctx, http.MethodDelete, "/v1/modules/skills/"+escapedPath(id), nil, nil)
 }

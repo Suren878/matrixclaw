@@ -1,10 +1,13 @@
 package clientcmd
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/daemonclient"
 	appsetup "github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/skills"
 )
@@ -16,86 +19,79 @@ func runSkillsCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 	}
 	switch subcommand {
 	case "", "list":
-		return withSkillsService(stderr, binaryName, service, "skills list", func(svc *skills.Service) int {
-			items, err := svc.List(skills.SearchOptions{IncludeQuarantined: true, IncludeArchived: true, IncludeDisabled: true, Limit: 200})
+		return withSkillsDaemon(stderr, binaryName, service, "skills list", func(ctx context.Context, client *daemonclient.Client) error {
+			items, err := client.ListSkills(ctx, skills.SearchOptions{IncludeQuarantined: true, IncludeArchived: true, IncludeDisabled: true, Limit: 200})
 			if err != nil {
-				_, _ = fmt.Fprintf(stderr, "%s: skills list: %v\n", binaryName, err)
-				return 1
+				return err
 			}
 			printSkills(stdout, binaryName, items)
-			return 0
+			return nil
 		})
 	case "search":
 		query := strings.Join(args[1:], " ")
-		return withSkillsService(stderr, binaryName, service, "skills search", func(svc *skills.Service) int {
-			items, err := svc.Search(query, skills.SearchOptions{Limit: 50})
+		return withSkillsDaemon(stderr, binaryName, service, "skills search", func(ctx context.Context, client *daemonclient.Client) error {
+			items, err := client.SearchSkills(ctx, query, skills.SearchOptions{Limit: 50})
 			if err != nil {
-				_, _ = fmt.Fprintf(stderr, "%s: skills search: %v\n", binaryName, err)
-				return 1
+				return err
 			}
 			printSkills(stdout, binaryName, items)
-			return 0
+			return nil
 		})
 	case "show":
 		if len(args) < 2 {
 			_, _ = fmt.Fprintf(stderr, "%s: skills show: ID is required\n", binaryName)
 			return 2
 		}
-		return withSkillsService(stderr, binaryName, service, "skills show", func(svc *skills.Service) int {
-			detail, err := svc.Get(args[1])
+		return withSkillsDaemon(stderr, binaryName, service, "skills show", func(ctx context.Context, client *daemonclient.Client) error {
+			detail, err := client.GetSkill(ctx, args[1])
 			if err != nil {
-				_, _ = fmt.Fprintf(stderr, "%s: skills show: %v\n", binaryName, err)
-				return 1
+				return err
 			}
 			_, _ = fmt.Fprintf(stdout, "%s: skill %s [%s/%s] %s\n\n%s\n", binaryName, detail.Skill.ID, detail.Skill.TrustState, detail.Skill.State, detail.Skill.Description, detail.Body)
-			return 0
+			return nil
 		})
 	case "install":
 		if len(args) < 2 {
 			_, _ = fmt.Fprintf(stderr, "%s: skills install: PATH is required\n", binaryName)
 			return 2
 		}
-		return withSkillsService(stderr, binaryName, service, "skills install", func(svc *skills.Service) int {
-			items, err := svc.InstallPath(args[1], skills.InstallOptions{Provenance: args[1]})
+		return withSkillsDaemon(stderr, binaryName, service, "skills install", func(ctx context.Context, client *daemonclient.Client) error {
+			path, err := filepath.Abs(args[1])
 			if err != nil {
-				_, _ = fmt.Fprintf(stderr, "%s: skills install: %v\n", binaryName, err)
-				return 1
+				return err
+			}
+			items, err := client.InstallSkill(ctx, path)
+			if err != nil {
+				return err
 			}
 			printSkills(stdout, binaryName, items)
-			return 0
+			return nil
 		})
 	case "trust", "quarantine", "enable", "disable", "remove", "archive", "restore", "pin", "unpin":
 		if len(args) < 2 {
 			_, _ = fmt.Fprintf(stderr, "%s: skills %s: ID is required\n", binaryName, subcommand)
 			return 2
 		}
-		return withSkillsService(stderr, binaryName, service, "skills "+subcommand, func(svc *skills.Service) int {
-			if err := applySkillCLIAction(svc, subcommand, args[1]); err != nil {
-				_, _ = fmt.Fprintf(stderr, "%s: skills %s: %v\n", binaryName, subcommand, err)
-				return 1
+		return withSkillsDaemon(stderr, binaryName, service, "skills "+subcommand, func(ctx context.Context, client *daemonclient.Client) error {
+			var err error
+			if subcommand == "remove" {
+				err = client.RemoveSkill(ctx, args[1])
+			} else {
+				err = client.SkillAction(ctx, args[1], subcommand)
 			}
-			_, _ = fmt.Fprintf(stdout, "%s: %s %s\n", binaryName, subcommand, args[1])
-			return 0
+			if err == nil {
+				_, _ = fmt.Fprintf(stdout, "%s: %s %s\n", binaryName, subcommand, args[1])
+			}
+			return err
 		})
 	case "usage":
-		return withSkillsService(stderr, binaryName, service, "skills usage", func(svc *skills.Service) int {
-			usage, err := svc.Usage()
+		return withSkillsDaemon(stderr, binaryName, service, "skills usage", func(ctx context.Context, client *daemonclient.Client) error {
+			items, err := client.SkillUsage(ctx)
 			if err != nil {
-				_, _ = fmt.Fprintf(stderr, "%s: skills usage: %v\n", binaryName, err)
-				return 1
+				return err
 			}
-			printSkills(stdout, binaryName, usage.Skills)
-			return 0
-		})
-	case "curator":
-		return withSkillsService(stderr, binaryName, service, "skills curator", func(svc *skills.Service) int {
-			result, err := svc.Curator()
-			if err != nil {
-				_, _ = fmt.Fprintf(stderr, "%s: skills curator: %v\n", binaryName, err)
-				return 1
-			}
-			printSkills(stdout, binaryName, result.Archived)
-			return 0
+			printSkills(stdout, binaryName, items)
+			return nil
 		})
 	case "help", "-h", "--help":
 		printSkillsUsage(stdout, binaryName)
@@ -106,49 +102,22 @@ func runSkillsCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 	}
 }
 
-func withSkillsService(stderr io.Writer, binaryName string, service *appsetup.Service, contextLabel string, fn func(*skills.Service) int) int {
+// withSkillsDaemon runs fn against the daemon, which owns the skills library.
+func withSkillsDaemon(stderr io.Writer, binaryName string, service *appsetup.Service, contextLabel string, fn func(context.Context, *daemonclient.Client) error) int {
+	ctx := context.Background()
+	if _, err := ensureDaemon(ctx, service); err != nil {
+		_, _ = fmt.Fprintf(stderr, "%s: %s: ensure daemon: %v\n", binaryName, contextLabel, err)
+		return 1
+	}
 	cfg, err := service.Load()
 	if err != nil {
 		return handleSetupReadError(stderr, binaryName, service, contextLabel, err)
 	}
-	svc, err := skills.NewService(skills.Config{
-		DBPath:      cfg.Daemon.DBPath,
-		Enabled:     cfg.Modules.Skills.IsEnabled(),
-		AutoInvoke:  cfg.Modules.Skills.IsAutoInvoke(),
-		TrustPolicy: cfg.Modules.Skills.TrustPolicy,
-		SelfImprove: cfg.Modules.Skills.SelfImprove,
-	})
-	if err != nil {
+	if err := fn(ctx, configuredDaemonClient(cfg)); err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: %s: %v\n", binaryName, contextLabel, err)
 		return 1
 	}
-	defer func() { _ = svc.Close() }()
-	return fn(svc)
-}
-
-func applySkillCLIAction(svc *skills.Service, action string, id string) error {
-	switch action {
-	case "trust":
-		return svc.Trust(id)
-	case "quarantine":
-		return svc.Quarantine(id)
-	case "disable":
-		return svc.Disable(id)
-	case "enable":
-		return svc.SetEnabled(id, true)
-	case "remove":
-		return svc.Remove(id)
-	case "archive":
-		return svc.Archive(id)
-	case "restore":
-		return svc.Restore(id)
-	case "pin":
-		return svc.Pin(id, true)
-	case "unpin":
-		return svc.Pin(id, false)
-	default:
-		return fmt.Errorf("unknown action %s", action)
-	}
+	return 0
 }
 
 func printSkills(w io.Writer, binaryName string, items []skills.Skill) {
@@ -174,5 +143,4 @@ func printSkillsUsage(w io.Writer, binaryName string) {
 	_, _ = fmt.Fprintf(w, "  %s skills trust|quarantine|enable|disable|remove ID\n", binaryName)
 	_, _ = fmt.Fprintf(w, "  %s skills archive|restore|pin|unpin ID\n", binaryName)
 	_, _ = fmt.Fprintf(w, "  %s skills usage\n", binaryName)
-	_, _ = fmt.Fprintf(w, "  %s skills curator\n", binaryName)
 }

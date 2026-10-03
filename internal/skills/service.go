@@ -674,12 +674,6 @@ func (s *Service) Usage() (UsageSummary, error) {
 	return UsageSummary{Skills: skills}, err
 }
 
-func (s *Service) Curator() (CuratorResult, error) {
-	// Conservative v1: report candidates only; automatic archival is intentionally disabled
-	// unless a future agent-created marker is added.
-	return CuratorResult{}, nil
-}
-
 func (s *Service) getSkill(id string) (Skill, error) {
 	skills, err := s.querySkills(`SELECT `+skillColumns("")+` FROM skills WHERE id = ?`, id)
 	if err != nil {
