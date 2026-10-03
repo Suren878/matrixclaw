@@ -101,9 +101,20 @@ No fabricated events. Send / approve / cancel update nothing locally except
 `busy` and the editor; the daemon's `message.created`, `run.updated`,
 `approval.resolved` events drive the model. A snapshot load happens on start,
 reconnect, and controlplane results with `ReloadSnapshot` (session switch,
-`/new`, `/clear`, model changes); the stream is resubscribed from the event ID
-seen when the load was requested, so nothing in between is lost (all events
-are idempotent upserts).
+`/new`, `/clear`, model changes).
+
+The daemon replays from `?after=<id>` only out of a 256-event history shared by
+all sessions (streaming fills it in seconds, and a gap is not reported), so the
+terminal does not rely on replay. Instead: **subscribe first, then snapshot.**
+The stream for the bound session is opened (the subscription is registered once
+`ready` arrives), events received meanwhile are buffered, then the snapshot is
+loaded. `ClientSnapshot` gains `event_id`: the newest event ID published before
+the daemon started reading the snapshot (writes precede their events, so every
+event at or below it is already in the snapshot). Buffered and later events
+with `ID <= event_id` are dropped; newer ones are applied in order (they carry
+whole objects, so they converge). A test pins it: an event arriving between
+stream start and snapshot is applied exactly once, one already covered by the
+snapshot is not applied again.
 
 ### 4. `internal/toolview` (shared by the TUI and Telegram)
 
@@ -122,7 +133,8 @@ func FileChangeOf(name string, input, metadata json.RawMessage) (FileChange, boo
 ```
 
 One table (`var specs = map[string]spec{...}` plus the `mcp_browser_` prefix
-rule and a generic fallback). Telegram's `run_tools.go` becomes
+rule and a generic fallback); no `web_research*` entries (C3 removes them),
+`web_fetch` shows `url` only. Telegram's `run_tools.go` becomes
 `toolview.Describe` + its own 180-rune shortening; the TUI working line uses
 `Verb + Detail`; the generic renderer uses `Title + Detail + Params`.
 `FileChangeOf` is the only reader of write/edit/multiedit metadata (C2's
@@ -136,13 +148,20 @@ cached split/unified render). The 12 `*ToolRenderContext` types go.
 
 ### 5. Context from the daemon only
 
-Daemon: new event `session.updated` with payload
-`core.SessionUpdate{Session, Capabilities, Context ContextReport}`, published
-by a coalescing per-core notifier after events that change what the model sees
-(`run.updated`, terminal `tool.updated`, boundary `message.created`). One hook
-in `publishEvent`, so C1's run-transition rewrite does not conflict. This also
-refreshes an auto-titled session without a reload. iOS decodes unknown event
-types as `.unknown`; Telegram and the voice manager ignore it.
+Daemon: new event `context.updated`, payload
+`core.ContextUsage{SessionID, TokenEstimate, WindowTokens}`. It costs nothing to
+build: the engine already measures every step's prompt in `fitRequest`
+(provider-anchored), so after each main generation it emits
+`agent.EventContextMeasured` with the prompt plus output tokens the provider
+reported (else its own estimate) and the run's window; the core sink publishes
+it, skipping a value equal to the session's last one. At most one per step, no
+store reads, no history scan. `/compact` and `/clear` already reload the
+snapshot (full report). iOS decodes unknown event types as `.unknown`;
+Telegram and the voice manager ignore it. External-agent sessions keep the
+snapshot's report.
+
+Known limit: an auto-applied session title shows in the commands menu after the
+next snapshot load (it was refreshed by the per-run reload before).
 
 TUI: header = `Context: ~<TokenEstimate> / <WindowTokens> · model · provider`
 from the read model only. `app_usage.go` estimation,
@@ -177,7 +196,7 @@ lines removed, ~900 added.
    flag) for: empty session, transcript with user/assistant/bash/edit/read
    group/web_search/subagent rows, permission dialog, todo panel, working
    status, header. Baseline before any change.
-2. `feat(core)`: `session.updated` event + `daemonclient` decoder; core test.
+2. `feat(core)`: `context.updated` per step + snapshot `event_id`; decoders; tests.
 3. `refactor(terminal)`: context usage from the daemon only.
 4. `refactor`: `internal/toolview`; Telegram and the TUI working line use it.
 5. `refactor(terminal)`: renderer table, file-change helper, shared diff pane.
@@ -200,9 +219,8 @@ lines removed, ~900 added.
   state survives an event.
 - *Visual regressions*: goldens from step 1 must stay identical through steps
   5–10 except where a change is intended (then the diff is reviewed and noted).
-- *Daemon event cost/deadlocks*: the notifier runs off the publishing goroutine
-  and coalesces; core test asserts one `session.updated` after a burst, with the
-  new context estimate.
+- *Daemon event cost*: agent test asserts one `context.updated` per step with
+  the provider-reported size; core test asserts an unchanged value is skipped.
 - *User-visible wording*: Telegram progress lines take the shared verbs (e.g.
   "Fetching web page" instead of "Fetching page"); the header context number
   now moves at step ends rather than per streamed token.
