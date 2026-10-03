@@ -73,6 +73,9 @@ func (c *Client) authorize(req *http.Request) {
 	if c == nil || req == nil {
 		return
 	}
+	if c.Role != "" {
+		req.Header.Set(core.RoleHeader, string(c.Role))
+	}
 	token := strings.TrimSpace(c.APIToken)
 	if token == "" {
 		return

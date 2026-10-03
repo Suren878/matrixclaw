@@ -31,7 +31,7 @@ func (w *Worker) dispatchRestartCommandAndEdit(target chatTarget, messageID int6
 
 	restartCtx, cancel := context.WithTimeout(context.Background(), daemonHTTPTimeout)
 	defer cancel()
-	err := w.daemon("").RestartDaemonWithNotification(restartCtx, deliveryTargetForMessage(ClientName, target, messageID))
+	err := w.daemonFor(target, target.externalKey).RestartDaemonWithNotification(restartCtx, deliveryTargetForMessage(ClientName, target, messageID))
 
 	telegramCtx, cancel = context.WithTimeout(context.Background(), telegramHTTPTimeout)
 	defer cancel()

@@ -18,6 +18,8 @@ const (
 	telegramTargetInline targetKind = "inline"
 )
 
+// daemon is the daemon client for the worker's own work (deliveries, lookups);
+// it acts as a member, so it can do nothing only the owner may.
 func (w *Worker) daemon(externalKey string) *daemonclient.Client {
 	client := daemonclient.New(w.config.BaseURL, ClientName, externalKey).
 		WithAPIToken(w.config.APIToken).
@@ -26,15 +28,27 @@ func (w *Worker) daemon(externalKey string) *daemonclient.Client {
 			SupportsDocumentDelivery: true,
 		})
 	client.HTTPClient = w.daemonHTTP
+	client.Role = core.RoleMember
 	return client
 }
 
-// daemonFor is the daemon client that acts for target: outside the owner chat it
-// may not send into a session that runs tools without asking.
+// daemonFor is the daemon client that acts for target, with the role of the
+// chat Telegram reported the update from (never anything in its text).
 func (w *Worker) daemonFor(target chatTarget, externalKey string) *daemonclient.Client {
 	client := w.daemon(externalKey)
-	client.Restricted = !w.ownerChat(target)
+	client.Role = w.role(target)
 	return client
+}
+
+func (w *Worker) role(target chatTarget) core.Role {
+	switch {
+	case w.ownerChat(target):
+		return core.RoleOwner
+	case target.isChat():
+		return core.RoleMember
+	default:
+		return core.RoleGuest
+	}
 }
 
 func (w *Worker) allowMessage(message *Message) bool {

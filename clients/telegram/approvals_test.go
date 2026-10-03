@@ -30,14 +30,14 @@ func (a *approvalBotAPI) SendMessage(_ context.Context, request SendMessageReque
 }
 
 func TestDenyWithReasonSendsTheNextMessageAsTheReason(t *testing.T) {
-	var path string
+	var path, role string
 	var resolved core.ApprovalResolveRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || !strings.HasPrefix(r.URL.Path, "/v1/approvals/") {
 			http.Error(w, "unexpected request", http.StatusNotFound)
 			return
 		}
-		path = r.URL.Path
+		path, role = r.URL.Path, r.Header.Get(core.RoleHeader)
 		if err := json.NewDecoder(r.Body).Decode(&resolved); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -63,8 +63,8 @@ func TestDenyWithReasonSendsTheNextMessageAsTheReason(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if path != "/v1/approvals/approval_1/resolve" || resolved != (core.ApprovalResolveRequest{Reason: "not on production", Restricted: true}) {
-		t.Fatalf("resolved %s with %+v", path, resolved)
+	if path != "/v1/approvals/approval_1/resolve" || resolved != (core.ApprovalResolveRequest{Reason: "not on production"}) || role != string(core.RoleMember) {
+		t.Fatalf("resolved %s as %q with %+v", path, role, resolved)
 	}
 	if last := api.sent[len(api.sent)-1].Text; !strings.Contains(last, "Denied bash: not on production") {
 		t.Fatalf("reply = %q", last)
@@ -199,20 +199,18 @@ func TestReasonPromptLetsTheMessageThroughOnceTheApprovalIsDecidedElsewhere(t *t
 	}
 }
 
-func TestOnlyTheOwnerChatSendsUnrestricted(t *testing.T) {
+func TestOnlyTheOwnerChatSendsAsTheOwner(t *testing.T) {
 	for _, tc := range []struct {
-		target     chatTarget
-		restricted bool
+		target chatTarget
+		role   core.Role
 	}{
-		{chatTarget{kind: telegramTargetChat, chatID: 42, externalKey: "42"}, false},
-		{chatTarget{kind: telegramTargetChat, chatID: 7, externalKey: "7"}, true},
-		{chatTarget{kind: telegramTargetGuest, chatID: 42, guestQueryID: "q", externalKey: "guest:q"}, true},
+		{chatTarget{kind: telegramTargetChat, chatID: 42, externalKey: "42"}, core.RoleOwner},
+		{chatTarget{kind: telegramTargetChat, chatID: 7, externalKey: "7"}, core.RoleMember},
+		{chatTarget{kind: telegramTargetGuest, chatID: 42, guestQueryID: "q", externalKey: "guest:q"}, core.RoleGuest},
 	} {
-		var sent []core.HandleMessageInput
+		var sent []core.Role
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			var input core.HandleMessageInput
-			_ = json.NewDecoder(r.Body).Decode(&input)
-			sent = append(sent, input)
+			sent = append(sent, core.Role(r.Header.Get(core.RoleHeader)))
 			w.WriteHeader(http.StatusForbidden)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": core.ErrSessionRestricted.Error()})
 		}))
@@ -222,7 +220,7 @@ func TestOnlyTheOwnerChatSendsUnrestricted(t *testing.T) {
 		err := worker.sendUserMessage(context.Background(), tc.target, "hi")
 		server.Close()
 
-		if err != nil || len(sent) != 1 || sent[0].Restricted != tc.restricted {
+		if err != nil || len(sent) != 1 || sent[0] != tc.role {
 			t.Fatalf("%s %s: sent = %+v err = %v", tc.target.kind, tc.target.externalKey, sent, err)
 		}
 		if tc.target.isChat() && (len(api.sent) == 0 || !strings.Contains(api.sent[len(api.sent)-1].Text, "Only the owner")) {
@@ -288,11 +286,11 @@ func TestCancelingADenialReasonAsksForTheApprovalAgain(t *testing.T) {
 	}
 }
 
-func TestApprovalsDecidedOutsideTheOwnerChatAreRestricted(t *testing.T) {
+func TestApprovalsDecidedOutsideTheOwnerChatAreNotTheOwners(t *testing.T) {
 	for _, allowed := range []int64{7, 42} {
-		var resolved core.ApprovalResolveRequest
+		var role core.Role
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_ = json.NewDecoder(r.Body).Decode(&resolved)
+			role = core.Role(r.Header.Get(core.RoleHeader))
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(core.ApprovalResponse{Approval: core.Approval{ID: "a1", State: core.ApprovalStateApproved}})
 		}))
@@ -301,8 +299,8 @@ func TestApprovalsDecidedOutsideTheOwnerChatAreRestricted(t *testing.T) {
 		err := worker.handleCallbackQuery(context.Background(), &CallbackQuery{ID: "cq", From: &User{ID: allowed}, Message: &Message{MessageID: 7, Chat: Chat{ID: 42, Type: "private"}}, Data: cbApprovalSession + "a1"})
 		server.Close()
 
-		if err != nil || resolved.Restricted != (allowed != 42) {
-			t.Fatalf("owner %d: resolved = %+v, %v", allowed, resolved, err)
+		if err != nil || (role == core.RoleOwner) != (allowed == 42) {
+			t.Fatalf("owner %d: resolved as %q, %v", allowed, role, err)
 		}
 	}
 }

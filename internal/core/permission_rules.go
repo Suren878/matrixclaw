@@ -71,6 +71,11 @@ func (c *Core) AddPermissionRule(ctx context.Context, sessionID string, request 
 	return rule, nil
 }
 
+// GlobalPermissionRules lists the rules that apply to every session.
+func (c *Core) GlobalPermissionRules(ctx context.Context) ([]permission.Rule, error) {
+	return c.store.ListPermissionRules(ctx, nil)
+}
+
 // DeletePermissionRule removes a rule.
 func (c *Core) DeletePermissionRule(ctx context.Context, ruleID string) error {
 	return c.store.DeletePermissionRule(ctx, normalizeText(ruleID))

@@ -43,6 +43,7 @@ func (s *Server) handleMessageCreate(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
+	input.Restricted = roleOf(r) != core.RoleOwner
 	result, err := s.Core.AcceptRun(r.Context(), input)
 	if err != nil {
 		writeAcceptRunError(w, result, err)

@@ -50,9 +50,9 @@ type ApprovalResolveRequest struct {
 	Approved bool             `json:"approved"`
 	Reason   string           `json:"reason,omitempty"`
 	Always   permission.Scope `json:"always,omitempty"`
-	// Restricted marks a client acting for someone other than the owner, who
-	// may not keep a rule for every session.
-	Restricted bool `json:"restricted,omitempty"`
+	// Restricted marks a decision by someone other than the owner, who may
+	// not keep a rule for every session; the API sets it from the caller's role.
+	Restricted bool `json:"-"`
 }
 
 // PermissionRuleRequest adds a rule. Pattern is a path glob, a command prefix
@@ -75,6 +75,18 @@ type PermissionRuleResponse struct {
 type AdminRestartRequest struct {
 	Notification *ClientDeliveryTarget `json:"notification,omitempty"`
 }
+
+// Role is who a client acts for. A trusted local client (it holds the API
+// token) asserts it in RoleHeader; a request without it acts as the owner.
+type Role string
+
+const (
+	RoleOwner  Role = "owner"
+	RoleMember Role = "member" // someone else, in a chat of their own
+	RoleGuest  Role = "guest"  // someone else, in a chat that is not theirs
+)
+
+const RoleHeader = "X-Matrixclaw-Role"
 
 type OKResponse struct {
 	OK bool `json:"ok"`

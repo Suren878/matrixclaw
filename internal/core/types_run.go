@@ -148,8 +148,9 @@ type HandleMessageInput struct {
 	// guest query or inline message); the session never answers there on its own.
 	ReplyOnce        bool `json:"reply_once,omitempty"`
 	AllowAutoBindOne bool `json:"allow_auto_bind_one"`
-	// Restricted keeps the client out of sessions that RunsUnattended.
-	Restricted bool `json:"restricted,omitempty"`
+	// Restricted keeps the client out of sessions that RunsUnattended; the API
+	// sets it from the caller's role.
+	Restricted bool `json:"-"`
 	// Continue starts a run that continues the session's latest run; Text is ignored.
 	Continue bool `json:"continue,omitempty"`
 }
