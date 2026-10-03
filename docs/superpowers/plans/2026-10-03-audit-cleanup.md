@@ -19,7 +19,7 @@ fixes what we do with them.
 - Doc comments <= 4 lines, no history; tests only on observable behaviour.
 - Each commit passes `gofmt`, `go vet ./...`, `go test ./...`.
 
-## Phase A + B: bugs, dead code, legacy (one worker per area)
+## Phase A + B: bugs, dead code, legacy (one worker per area) — done
 
 Item numbers refer to the area's audit report.
 
@@ -42,7 +42,10 @@ Item numbers refer to the area's audit report.
 5. **terminal** (`audit/terminal.md`): bugs 1, 2, 3, 20; dead 5, 6, 7, 8, 9, 10,
    18, 21; simplify 16.
 
-## Phase C: structural rewrites (after A + B land, one at a time)
+## Phase C: structural rewrites — done
+
+Each item has a design note with an as-built section in
+`docs/superpowers/specs/2026-10-03-*.md`.
 
 1. One run state machine in core (`transition(run, to, cause)`), one task model
    for shell and subagent tasks, child results and approvals delivered through
