@@ -22,7 +22,7 @@ public enum SessionStatus: String, Codable, Sendable {
 
 public enum SessionRuntime: String, Codable, Sendable {
     case matrixclaw
-    case codex
+    case externalAgent = "external_agent"
 }
 
 public enum PermissionMode: String, Codable, Sendable {
