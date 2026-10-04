@@ -225,6 +225,51 @@ Design notes for each: `docs/superpowers/specs/2026-10-03-*.md`.
   the daemon (`context.updated`); the help line at the bottom is visible
   again. Telegram progress lines share the terminal's tool wording.
 
+### Fixes from the bug hunt
+
+- Security: `read` and `grep` refuse agent login tokens (the Codex OAuth
+  store, Codex CLI `auth.json`, Claude Code credentials). Bash allow rules no
+  longer let `cargo --config`, npm/pnpm `--script-shell`/`--node-options`,
+  `docker compose run` or `kubectl run` through, and deny/ask rules catch
+  options before the subcommand (`git -C . push`). Non-owners can't create
+  sessions with elevated modes, save model changes, run tools or realtime
+  voice in unattended sessions, or read MCP secrets or key previews. Edit
+  approvals on large files show the change itself.
+- Telegram: cancel a running task with `/cancel` or the status message's
+  Cancel button. Restarts no longer re-send a task's earlier messages or
+  leave a stale "Working" status. Inline requests that need approval ask in
+  the private chat, and inline requests during a running task are answered
+  when it ends. "Deny with reason" works for any session; open prompts expire
+  after 10 minutes. `/context compact` no longer fails after 15 s; long
+  choices page; code blocks survive message splits; `/budget` and `/todo`
+  show each value once; a new bot token is polled from its first update.
+- Runs: an approval answered from two places runs once; deleting a session
+  stops its run and subagents; a photo sent during a run reaches the model; a
+  reminder due while its session is busy fires once it is free; stopping the
+  daemon no longer breaks a session's self-waking; a call that finished as
+  the run was canceled keeps its result; a cancel or database error while a
+  run pauses no longer leaves the session stuck. Terminal clients no longer
+  pile up undelivered run deliveries. The model is told which provider and
+  model it runs on.
+- Daemon: it starts and stays reachable even when MCP tools clash or the
+  active provider's key is missing. MCP servers can't share a tool prefix;
+  switching one to http asks for the endpoint instead of deleting it; a
+  crashed MCP server (the browser too) restarts on the next call.
+- Providers and agents: mid-stream rate limits are retried; Kimi-style
+  reused tool-call IDs, empty tool arguments and index-less tool-call deltas
+  work; long Codex replies no longer fail at the end; a canceled run no longer
+  loses the ChatGPT login or breaks Codex until restart; Codex approval
+  requests are declined instead of hanging; Claude Code prompts starting with
+  "-" are sent as prompts.
+- Tools: `grep` skips huge and binary files and unreadable folders;
+  multi-line edits work on CRLF files; an empty `old_string` no longer wipes a
+  file; `web_fetch` reads undeclared UTF-8; `web_search` reports provider
+  failures; `matrixclaw skills install <GitHub URL>` works again.
+- Terminal: an approval or update prompt that pops up while typing no longer
+  takes the keys, and "always allow" needs Enter (Enter alone denies);
+  messages starting with a path are sent; the spinner stops when a run fails
+  at once; clicking request text doesn't answer an approval.
+
 ### Upgrade notes (breaking)
 
 - Update `matrixclawd` and `matrixclaw-telephony-gateway` together: their
