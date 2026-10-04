@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.2.0
 
 Native runs now use a new agent engine built for long tasks.
 
