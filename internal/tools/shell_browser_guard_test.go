@@ -93,7 +93,7 @@ func TestBashExecutorBlocksManagedBrowserInstallBeforeApproval(t *testing.T) {
 	if refused == nil || !refused.IsError() {
 		t.Fatalf("refused = %#v, want guard error without approval request", refused)
 	}
-	if !strings.Contains(refused.Content, "Modules -> Browser -> Install/Repair") {
+	if !strings.Contains(refused.Content, "Modules -> Browser -> Engine") {
 		t.Fatalf("content = %q, want Browser module setup guidance", refused.Content)
 	}
 }

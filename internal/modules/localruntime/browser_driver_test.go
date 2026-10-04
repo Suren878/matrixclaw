@@ -94,7 +94,7 @@ func TestDecorateBrowserProviderReportsStalePlaywrightBrowserRevision(t *testing
 	if decorated.Status != "Local · browser repair required" {
 		t.Fatalf("Status = %q, want Local · browser repair required", decorated.Status)
 	}
-	for _, want := range []string{"requires chromium-1224", "found chromium-1223", "Install/Repair"} {
+	for _, want := range []string{"requires chromium-1224", "found chromium-1223", "Modules → Browser → Engine"} {
 		if !strings.Contains(decorated.RuntimeDetail, want) {
 			t.Fatalf("RuntimeDetail missing %q:\n%s", want, decorated.RuntimeDetail)
 		}

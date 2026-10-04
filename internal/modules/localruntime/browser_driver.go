@@ -263,13 +263,13 @@ func (r *Runtime) playwrightMCPBrowserMissingDetail() string {
 	}
 	requiredDir := filepath.Join(r.playwrightBrowsersDir(), playwrightMCPChromiumBrowserName+"-"+required)
 	if info, err := os.Stat(requiredDir); err == nil && info.IsDir() {
-		return "Playwright Chromium executable is missing in chromium-" + required + ". Use Modules → Browser → Install/Repair."
+		return "Playwright Chromium executable is missing in chromium-" + required + ". Use Modules → Browser → Engine."
 	}
 	found := r.installedPlaywrightChromiumRevisions()
 	if len(found) == 0 {
-		return "Playwright Chromium is not installed; requires chromium-" + required + ". Use Modules → Browser → Install/Repair."
+		return "Playwright Chromium is not installed; requires chromium-" + required + ". Use Modules → Browser → Engine."
 	}
-	return fmt.Sprintf("Playwright browser revision mismatch: requires chromium-%s, found %s. Use Modules → Browser → Install/Repair.", required, strings.Join(found, ","))
+	return fmt.Sprintf("Playwright browser revision mismatch: requires chromium-%s, found %s. Use Modules → Browser → Engine.", required, strings.Join(found, ","))
 }
 
 func (r *Runtime) installedPlaywrightChromiumRevisions() []string {

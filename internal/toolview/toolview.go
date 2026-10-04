@@ -215,16 +215,16 @@ func coordinates(params map[string]any) string {
 }
 
 func browserVerb(action string) string {
-	switch action {
+	switch strings.TrimPrefix(action, "browser_") {
 	case "navigate", "goto", "open":
 		return "Opening page"
 	case "click":
 		return "Clicking in browser"
-	case "type", "fill":
+	case "type", "fill", "fill_form":
 		return "Typing in browser"
-	case "screenshot":
+	case "screenshot", "take_screenshot":
 		return "Taking browser screenshot"
-	case "wait":
+	case "wait", "wait_for":
 		return "Waiting in browser"
 	default:
 		return "Using browser"

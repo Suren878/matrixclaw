@@ -15,6 +15,8 @@ func TestDescribe(t *testing.T) {
 		{"agent", `{"description":"Scan","prompt":"scan","background":true}`, Call{Name: "agent", Title: "Agent", Verb: "Starting subagent", Detail: "Scan", Known: true}},
 		{"ls", `{}`, Call{Name: "ls", Title: "List", Verb: "Listing files", Detail: ".", Known: true}},
 		{"mcp_browser_click", `{"selector":"#go","ref":"e5"}`, Call{Name: "mcp_browser_click", Title: "Mcp Browser Click", Verb: "Clicking in browser", Detail: "#go", Known: true}},
+		{"mcp_browser_browser_navigate", `{"url":"https://example.com"}`, Call{Name: "mcp_browser_browser_navigate", Title: "Mcp Browser Browser Navigate", Verb: "Opening page", Detail: "https://example.com", Known: true}},
+		{"mcp_browser_browser_take_screenshot", `{}`, Call{Name: "mcp_browser_browser_take_screenshot", Title: "Mcp Browser Browser Take Screenshot", Verb: "Taking browser screenshot", Known: true}},
 		{"nearby_places_osm", `{"latitude":55.75,"longitude":37.6}`, Call{Name: "nearby_places_osm", Title: "Nearby Places", Verb: "Checking nearby places", Detail: "55.75, 37.6", Known: true}},
 		{"create_reminder", `{"title":"Call","run_at":"2026-10-03T09:00:00+03:00","text":"call mom"}`, Call{Name: "create_reminder", Title: "⏰ Reminder", Verb: "Creating reminder", Detail: "Call · 2026-10-03 09:00 +03:00", Known: true}},
 		{"lookup_thing", `{"urls":["a","b","c"],"path":"x","mode":"fast"}`, Call{Name: "lookup_thing", Title: "Lookup Thing", Verb: "Using lookup thing", Detail: "x", Params: []Param{{"mode", "fast"}}}},

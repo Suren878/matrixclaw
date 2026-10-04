@@ -9,7 +9,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/permission"
 )
 
-const managedBrowserSetupMessage = "the managed browser is installed only through Modules -> Browser -> Install/Repair"
+const managedBrowserSetupMessage = "the managed browser is installed only through Modules -> Browser -> Engine"
 
 // managedBrowserRuntime matches the managed browser's runtime directories,
 // written out or through $MATRIXCLAW_RUNTIME_DIR.
