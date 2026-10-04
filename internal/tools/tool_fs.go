@@ -179,6 +179,28 @@ func matrixclawCredentialPaths() []string {
 	return paths
 }
 
+// HoldsSecrets reports whether path is in a place where keys and login tokens
+// usually live (SSH, GPG, cloud and registry credentials), which a read-only
+// tool may touch only after the user agrees.
+func HoldsSecrets(path string) bool {
+	path = comparableFilesystemPath(path)
+	home, err := os.UserHomeDir()
+	if path == "" || err != nil || strings.TrimSpace(home) == "" {
+		return false
+	}
+	home = comparableFilesystemPath(home)
+	for _, rel := range []string{
+		".ssh", ".gnupg", ".aws", ".azure", ".kube", ".config/gcloud", ".config/gh",
+		".docker/config.json", ".netrc", ".git-credentials", ".npmrc", ".pypirc",
+	} {
+		place := filepath.Join(home, filepath.FromSlash(rel))
+		if path == place || strings.HasPrefix(path, place+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
 func matrixclawUserDataDir() string {
 	if configured := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); configured != "" {
 		return configured

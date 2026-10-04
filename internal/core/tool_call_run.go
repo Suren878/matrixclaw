@@ -28,6 +28,9 @@ func (c *Core) runToolCall(ctx context.Context, prepared preparedToolCall, input
 		if refused != nil {
 			return *refused, nil, nil
 		}
+		if check.secret {
+			request.Description += "\nThis path may hold secrets."
+		}
 		if check.verdict.Effect == permission.Ask {
 			request.Description += "\nAsked by rule " + check.verdict.Rule.String() + "."
 		} else if suggestion, ok := permission.Suggest(check.request, check.root); ok {

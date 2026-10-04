@@ -20,6 +20,7 @@ type callPermission struct {
 	request permission.Request
 	verdict permission.Verdict
 	ask     bool
+	secret  bool
 	root    string
 	rules   []permission.Rule
 	preset  []permission.Rule
@@ -66,7 +67,8 @@ func (c *Core) checkPermission(ctx context.Context, sessionID string, spec tools
 	preset := permission.Preset(string(NormalizePermissionMode(string(session.PermissionMode))), root)
 	verdict := permission.Evaluate(request, rules, preset)
 	check := callPermission{request: request, verdict: verdict, root: root, rules: rules, preset: preset}
-	check.ask = verdict.Effect == permission.Ask || verdict.Effect == "" && spec.Asks
+	check.secret = verdict.Effect == "" && spec.Effect == tools.EffectReadOnly && holdsSecrets(request.Subject)
+	check.ask = verdict.Effect == permission.Ask || verdict.Effect == "" && (spec.Asks || check.secret)
 	if check.ask && call.ToolCallID != "" {
 		granted, err := c.callGranted(ctx, sessionID, call.RunID, call.ToolCallID)
 		if err != nil {
@@ -155,4 +157,10 @@ func realPath(path string) string {
 // blockedResult is what the model reads for a call a deny rule blocks.
 func blockedResult(rule permission.Rule) tools.Result {
 	return tools.Result{Content: "Blocked by rule " + rule.String(), Status: tools.ResultStatusError}
+}
+
+// holdsSecrets reports whether a file or directory subject is where keys and
+// login tokens live, so a read-only call on it asks unless a rule decides.
+func holdsSecrets(subject permission.Subject) bool {
+	return (subject.Kind == permission.KindFile || subject.Kind == permission.KindDirectory) && tools.HoldsSecrets(subject.Value)
 }

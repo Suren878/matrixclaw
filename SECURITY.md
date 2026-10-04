@@ -24,8 +24,8 @@ API to untrusted networks.
   absent means owner). The daemon trusts it as it trusts the token. Only the
   owner can change settings, providers, MCP servers, skills, external agents,
   permission modes and global rules, or restart/stop the daemon. Members and
-  guests cannot use sessions that run unattended (`full_auto` or external
-  agent), guests keep no permission rules, and non-owners never see key
+  guests cannot create or use sessions that run unattended (`full_auto` or
+  external agent), guests keep no permission rules, and non-owners never see key
   previews or MCP secrets.
 
 ### Telegram
@@ -49,8 +49,12 @@ comes from the chat Telegram reports, never from message text.
   inside the working directory; `full_auto` allows every call no rule denies or
   asks for.
 - Read-only tools (`read`, `grep`, `glob`, `ls`, `web_search`, `web_fetch`) run
-  without asking and can reach any file your user can. Add `deny` rules to
-  fence paths you want kept from the model.
+  without asking and can reach any file your user can, except where keys and
+  login tokens usually live: `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`,
+  `~/.kube`, `~/.config/gcloud`, `~/.config/gh`, `~/.docker/config.json`,
+  `~/.netrc`, `~/.git-credentials`, `~/.npmrc` and `~/.pypirc`. There they ask
+  first unless a rule decides (`full_auto` allows them). `grep` skips hidden
+  folders when it searches a tree. Add `deny` rules to fence other paths.
 - After a crash, a mutating call that may have started is never re-run without
   a fresh approval.
 - Read-only subagents cannot run mutating tools.

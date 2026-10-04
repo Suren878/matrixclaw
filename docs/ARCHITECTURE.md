@@ -238,6 +238,8 @@ keyed locks, the model-request semaphore `daemon.model_concurrency`), `prompt`
   `sessions/<id>/tool-output/`, and the model gets head, tail and path.
 - `read` and `grep` refuse credential files (setup.json, `daemon.env`, the
   Codex OAuth store, Codex and Claude Code credentials).
+  A read-only call on a place where keys usually live (`tools.HoldsSecrets`:
+  `~/.ssh`, `~/.aws`, ...) asks when no rule decides.
 
 ## Web tools
 

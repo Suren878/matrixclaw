@@ -516,3 +516,37 @@ func TestMemoryListsWithoutAskingAndAsksToChange(t *testing.T) {
 		t.Fatalf("add = %+v", added)
 	}
 }
+
+func TestReadingWhereSecretsLiveAsksFirst(t *testing.T) {
+	app, db, _, dir := permissionCore(t)
+	t.Setenv("HOME", dir)
+	key := filepath.Join(dir, ".ssh", "id_ed25519")
+	if err := os.MkdirAll(filepath.Dir(key), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(key, []byte("PRIVATE KEY"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	session := permissionSession(t, db, "session_secrets", dir, core.PermissionModeAcceptEdits, "")
+	for _, call := range []struct{ tool, args string }{
+		{"read", `{"file_path":".ssh/id_ed25519"}`},
+		{"grep", `{"pattern":"KEY","path":".ssh"}`},
+	} {
+		pending := executeTool(t, app, session.ID, call.tool, call.args)
+		if pending.Approval == nil || pending.ToolResultMessage != nil || !strings.Contains(pending.Approval.Description, "may hold secrets") {
+			t.Fatalf("%s: result = %+v, want an approval request", call.tool, pending)
+		}
+	}
+	if got := resultText(executeTool(t, app, session.ID, "read", `{"file_path":"notes.txt"}`)); !strings.Contains(got, "public notes") {
+		t.Fatalf("ordinary read = %q", got)
+	}
+
+	saveRule(t, db, "rule_ssh", permission.Rule{Tool: "read", Pattern: filepath.Join(dir, ".ssh") + "/**", Effect: permission.Allow, SessionID: session.ID})
+	if got := resultText(executeTool(t, app, session.ID, "read", `{"file_path":".ssh/id_ed25519"}`)); !strings.Contains(got, "PRIVATE KEY") {
+		t.Fatalf("read under an allow rule = %q", got)
+	}
+	unattended := permissionSession(t, db, "session_secrets_auto", dir, core.PermissionModeFullAuto, "")
+	if got := resultText(executeTool(t, app, unattended.ID, "read", `{"file_path":".ssh/id_ed25519"}`)); !strings.Contains(got, "PRIVATE KEY") {
+		t.Fatalf("full_auto read = %q", got)
+	}
+}

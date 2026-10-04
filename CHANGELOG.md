@@ -109,7 +109,8 @@ Native runs now use a new agent engine built for long tasks.
   per tool call, and loads only new run messages by `seq` on each delivery.
 - Fixed module context (storage, MCP, skills) dropping out of the assistant
   prompt after a daemon reload.
-- The iOS package decodes unknown run statuses as `.unknown`. It also decodes
+- The iOS package decodes external agent sessions (`external_agent` runtime)
+  and unknown run statuses as `.unknown`. It also decodes
   stop reasons, continuations, run triggers and message origin.
 
 New `setup.json` keys under `daemon` (all optional; 0 or absent keeps the
@@ -188,8 +189,11 @@ default):
   `docker compose run` or `kubectl run` through, and deny/ask rules catch
   options before the subcommand (`git -C . push`). Non-owners can't create
   sessions with elevated modes, save model changes, run tools or realtime
-  voice in unattended sessions, or read MCP secrets or key previews. Edit
-  approvals on large files show the change itself.
+  voice in unattended sessions, create external agent sessions, or read MCP
+  secrets or key previews. Edit approvals on large files show the change
+  itself. `read`, `grep`, `glob` and `ls` ask before touching `~/.ssh`,
+  `~/.gnupg`, `~/.aws`, `~/.kube`, `~/.netrc`, `~/.git-credentials` and other
+  places where keys and login tokens live, unless a rule allows it.
 - Telegram: cancel a running task with `/cancel` or the status message's
   Cancel button. Restarts no longer re-send a task's earlier messages or
   leave a stale "Working" status. Inline requests that need approval ask in
