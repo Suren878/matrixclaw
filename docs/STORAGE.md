@@ -1,127 +1,110 @@
-# Storage And Telegram Files
+# Storage
 
-matrixclaw storage is a daemon module for files that should outlive a single
-chat turn. It is local-first: files are written under the daemon state directory,
-metadata is tracked locally, and clients work through the daemon API.
+Where matrixclaw keeps its data, and how the storage module handles files
+that should outlive a chat turn.
 
-## Local Root
+## Files and directories
 
-By default setup stores SQLite at:
+| Path (default) | What it is |
+|---|---|
+| `~/.config/matrixclaw/setup.json` | setup (`MATRIXCLAW_SETUP_PATH` moves it); written with mode 0600 |
+| `~/.config/matrixclaw/daemon.env` | environment for the user service, next to setup.json |
+| `~/.local/state/matrixclaw/matrixclaw.db` | SQLite database (`daemon.db_path` in setup.json, or `MATRIXCLAW_DB_PATH`, which wins) |
 
-```text
-~/.local/state/matrixclaw/matrixclaw.db
+Next to the database (the data directory):
+
+| Path | What it is |
+|---|---|
+| `matrixclawd.lock` | held by the running daemon; a second daemon on the same data exits |
+| `storage/` | storage module root (below) |
+| `sessions/<session id>/tool-output/` | full tool results too large for the model's context (the model gets head, tail and path) |
+| `sessions/<session id>/tasks/<task id>.log` | background command output, mode 0600, capped at 20 MB (keeps the first 1 MB and the newest part) |
+| `skills/` | skills library: `installed`, `quarantine`, `archive`, `plugins`, `drafts` |
+| `runtime/context-windows.json` | cached model context windows |
+
+Session directories are removed with their session; `/clear` removes the tool
+outputs of the cleared history.
+
+Under the XDG state directory (`$XDG_STATE_HOME`, else `~/.local/state`),
+independent of the database path:
+
+| Path | What it is |
+|---|---|
+| `matrixclaw/runtime/` | local voice and browser runtimes (`MATRIXCLAW_RUNTIME_DIR`) |
+| `matrixclaw/local/` | local voice models (`MATRIXCLAW_LOCAL_DIR`) |
+| `matrixclaw/auth/` | ChatGPT (Codex) login tokens (`MATRIXCLAW_AUTH_DIR`) |
+
+## Database
+
+`internal/store` opens SQLite with WAL, `synchronous = NORMAL`, foreign keys
+and a 5 s busy timeout. A daemon crash loses nothing; a power loss or OS crash
+can lose the last commits since the previous checkpoint.
+
+The schema is `internal/store/migrations/001_init.sql` plus idempotent upgrade
+steps in `internal/store/schema*.go`, applied on every open. Upgrades are
+one-way: an older binary cannot use an upgraded database. Back up before
+upgrading (the daemon may keep running):
+
+```bash
+sqlite3 ~/.local/state/matrixclaw/matrixclaw.db \
+  ".backup '$HOME/matrixclaw-backup.db'"
 ```
 
-The storage root is next to that database:
+Tables:
 
-```text
-~/.local/state/matrixclaw/storage/
-```
+| Area | Tables |
+|---|---|
+| Sessions | `sessions`, `messages` (ordered by `seq`), `message_fts` (search), `client_bindings`, `session_inputs` (queued and steer messages), `memories` |
+| Runs | `runs`, `run_steps` (one row per model generation), `run_checkpoints`, `run_wakeups` |
+| Approvals and rules | `approvals`, `permission_rules` |
+| Per-session engine state | `session_budgets`, `session_engine_state`, `session_todos` |
+| Background work | `tasks` (shell commands and subagents) |
+| Clients | `client_deliveries` |
+| Automation | `automation_jobs`, `automation_fires` |
+| External agents | `external_agent_sessions` |
+| Skills (`internal/skills`) | `skills`, `skill_fts`, `skill_sessions`, `skill_plugin_mcp_candidates` |
 
-If `MATRIXCLAW_DB_PATH` or setup points the daemon at a different database, the
-storage root moves next to that database. Storage metadata is kept under
-`.matrixclaw/` inside the storage root.
+## Storage module
 
-The same directory holds two more items:
+The storage root is `storage/` next to the database; its metadata lives in
+`storage/.matrixclaw/`. Clients reach it through the daemon API, the model
+through tools.
 
-- `sessions/<session id>/` stores per-session agent files. `tool-output/` has
-  full tool results too large for the model's context (the model gets the head,
-  the tail and the path). `tasks/<task id>.log` has background command output
-  (mode 0600, capped at 20 MB by keeping the first 1 MB and the newest part).
-  They are removed with the session; `/clear` removes the tool outputs of the
-  cleared history.
-- `matrixclawd.lock` is held by the running daemon, so a second daemon on the
-  same data exits.
+### Stored files
 
-## Stored Files
+Durable files with a relative path, title, MIME type, tags, size and
+timestamps. Manage them with `/modules storage` in the TUI or Telegram. Model
+tools: `storage_save`, `storage_list`, `storage_read` (text files),
+`storage_update_metadata`, and `storage_delete`, which asks for approval.
 
-Stored files are durable local files with metadata:
+### Temporary files
 
-- relative storage path
-- title
-- MIME type
-- tags
-- size and timestamps
+Uploads and attachments that may not be worth keeping, under
+`storage/temporary/`. Defaults: auto-cleanup on, 7-day TTL, 5 GB total cap.
+Keep one with `/modules storage` -> Temporary Files -> Save, or let the model
+call `storage_save_temp`; both copy it into stored files and remove the
+temporary entry.
 
-The daemon exposes storage through both client commands and assistant tools. In
-the TUI or Telegram:
+### Size limits
 
-```text
-/modules storage
-```
+Each stored or temporary file is limited to 25 MB; temporary files also obey
+the total cap. Large project files should stay in the workspace and be read by
+path.
 
-The assistant can save generated notes or user documents with `storage_save`,
-find them with `storage_list`, read text files with `storage_read`, update
-metadata, and request approval before deleting files.
+## Telegram uploads
 
-## Temporary Files
+Telegram files get a local storage path before the model sees them:
 
-Temporary files are for uploads and attachments that may not be worth keeping.
-They live under:
-
-```text
-~/.local/state/matrixclaw/storage/temporary/
-```
-
-Default cleanup settings:
-
-- auto-cleanup enabled
-- 7 day TTL
-- 5 GB temporary storage cap
-
-Temporary files can be promoted into durable storage from:
-
-```text
-/modules storage -> Temporary Files -> Save
-```
-
-The assistant can also promote a temporary attachment with `storage_save_temp`
-when the user asks to keep an uploaded image or file. Promotion copies the file
-into stored files and removes the temporary entry.
-
-## Telegram Upload Flow
-
-Telegram does not hand raw files directly to the model as anonymous blobs.
-matrixclaw gives them a local storage path first.
-
-Images:
-
-- Telegram photos and supported image documents (JPEG, PNG, GIF, and WebP) are
-  downloaded by the Telegram client.
-- The file is saved as a temporary storage file under `telegram/images/`.
-- The active session receives an image message part that references that
-  temporary storage path.
-- Other image formats, including SVG, are saved under `telegram/files/` instead.
-  Telegram reports that the format cannot be opened as an image and does not
-  start a model run for that file.
-
-Documents:
-
-- Non-image documents are saved as temporary files under `telegram/`.
-- Telegram replies with the temporary path and points the user to
-  `/modules storage -> Temporary Files`.
-- The user or assistant can save the file permanently when it matters.
-
-Voice and audio:
-
-- Telegram voice messages, audio files, and audio documents go through the
-  configured Speech to Text provider.
-- The transcription is sent back to Telegram and also sent into the active
-  session as the user message.
-
-Generated speech:
-
-- Telegram `/tts` and assistant TTS tool results are sent back as Telegram voice
-  messages.
-- Generated audio is archived in stored files under `telegram/audio/` with
-  `telegram`, `generated`, `audio`, and `tts` tags.
-
-## Size Limits
-
-Storage writes default to a 25 MB content limit. Temporary files use the same
-per-file limit and also obey the temporary storage cap. Telegram audio uploads
-are capped at 25 MB before STT.
-
-These limits keep a single-user daemon predictable on small machines. Large
-project files should stay in the project workspace and be referenced by path
-when a tool is allowed to read them.
+- **Images** (photos and JPEG, PNG, GIF or WebP documents) are saved as
+  temporary files under `telegram/images/`, and the session receives an image
+  part that references that path. Other image formats, SVG included, are saved
+  under `telegram/files/` with a notice that they cannot be opened as images;
+  no run starts for them.
+- **Documents** are saved as temporary files under `telegram/files/`; the reply
+  names the path and points to `/modules storage` -> Temporary Files.
+- **Voice and audio** (up to 25 MB) go through the configured speech-to-text
+  provider; the transcript is shown in Telegram and sent to the session as the
+  user's message.
+- **Generated speech** (`/tts` and the TTS tool) is sent back as a voice
+  message and archived in stored files under `telegram/audio/` with the tags
+  `telegram`, `generated`, `audio`, `tts`.

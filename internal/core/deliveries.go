@@ -11,8 +11,8 @@ const (
 	ClientDeliveryTypeDocument = "document"
 	// ClientDeliveryTypeNotice is a short text for the user outside any run.
 	ClientDeliveryTypeNotice = "notice"
-	// ClientDeliveryTypeApproval asks the user for a background subagent's
-	// approval outside the run that started it.
+	// ClientDeliveryTypeApproval asks the user for a subagent's approval
+	// outside the run that started it.
 	ClientDeliveryTypeApproval = "approval"
 )
 

@@ -1,182 +1,135 @@
 # Telegram
 
-The Telegram client is a daemon-connected MatrixClaw client. It does not own
-sessions; it binds a Telegram user or delivery target to daemon sessions and
-uses the shared control-plane command surface.
+The Telegram bot is a MatrixClaw client that runs inside the daemon
+(`matrixclawd`). It binds your Telegram chat to daemon sessions, so a session
+started in the terminal can be continued from Telegram and back.
 
-## Private Chat Sessions
+## Setup
 
-Normal Telegram usage is centered on the user's private bot chat.
+1. Create a bot with [@BotFather](https://t.me/BotFather) and copy its token.
+2. Find your numeric Telegram user ID (for example with @userinfobot).
+3. Run `matrixclaw setup`, open **Channels → Telegram** and set:
+
+| Field | `setup.json` key | Notes |
+|---|---|---|
+| Enabled | `clients.telegram.enabled` | |
+| Bot token | `clients.telegram.bot_token` | Checked with Telegram's `getMe` when you save. |
+| Allowed user id | `clients.telegram.allowed_user_id` | Required, numeric. The bot answers only this user. |
+| Provider setup | `clients.telegram.allow_provider_setup` | Off by default. When on, provider API keys can be entered from Telegram. |
+
+The daemon starts the bot when the config is saved; there is no separate
+process. It registers its command menu with Telegram on start. The worker keeps
+two small state files next to the database: `telegram-inline-cache.json` and
+`telegram-render-state.json`.
+
+## Who can use it
+
+- Only the allowed user is served, and only in the private chat with the bot.
+  Group messages are ignored.
+- The private chat is the **owner** chat. Only the owner can change settings
+  (`/modules` screens, provider, permission mode, global rules), start external
+  agent sessions, and restart or stop the daemon.
+- Inline and guest requests run with the restricted **guest** role: they keep no
+  permission rules and cannot use a session that runs tools without asking (an
+  external agent session or one in `full_auto`).
+
+## Commands
+
+The bot menu lists `/sessions`, `/provider`, `/permissions`, `/context`,
+`/todo`, `/memory`, `/skills`, `/modules`, `/tasks`, `/server`, `/help` and
+`/cancel`. These also work when typed:
 
 ```text
-/new [title]     create a MatrixClaw session
-/sessions        list, select, rename, or delete sessions
-/provider        select provider and model
-/permissions     approval mode (owner chat only) and permission rules
-/todo            show or clear the session's todo list
-/continue        continue the latest run with a fresh budget
-/budget          show or override the session's run budget
-/tasks           background tasks and scheduled AI tasks
-/modules         manage modules
+/new [title]   create a session            /usage     token usage
+/continue      continue a stopped run      /budget    show or override the run budget
+/search        search history              /remind    add a reminder
+/status        daemon status               /restart   restart the daemon (owner)
+/stop          stop the daemon (owner)     /tts text  speak text with the TTS module
 ```
 
-The owner chat is the private chat of `allowed_user_id`. Only it changes the
-permission mode, keeps global rules, or starts external agent sessions. Other
-chats cannot bind to or send into a session that runs tools without asking
-(an external agent session, or one in `full_auto`).
+The selected session is stored in the daemon as the chat's binding. If none is
+selected when you write, the bot shows the session list (or creates a session
+when there are none) and asks you to send the message again.
 
-Session selection is stored in the daemon binding for the Telegram external
-key. Private chat runs deliver drafts, a run status message, approval
-buttons, assistant messages, generated speech, and document deliveries back to
-the same chat.
-
-Selecting a configured provider switches the current session immediately. When
-that provider exposes more than one model, Telegram opens the model picker next
-so the default can be kept or another model can be selected.
-
-## Streaming Replies
-
-In private chats, generated text is shown with `sendMessageDraft`. The draft
-does not create a persistent first-character message. Once an assistant segment
-is complete, MatrixClaw sends the full formatted text with `sendMessage`.
-Intermediate assistant segments and the run status message are sent silently;
-the final answer's first chunk uses normal notifications. Telegram's silent
-messages may still appear in the notification tray, depending on the client.
-Approvals retain their normal notifications.
-
-Draft updates are throttled to the configured stream flush interval (800 ms
-by default), and an unchanged draft is refreshed every 15 seconds. A long draft
-shows a bounded preview; final delivery splits the entire answer into messages.
-Sending the final message dismisses the draft. An empty draft is not used as a
-cleanup operation because current Telegram clients show it as “Thinking…”.
-
-Groups and Bot API servers without draft support use an editable message.
-The first preview waits for 40 characters, a sentence boundary after at least
-12 characters, or 1.5 seconds. Subsequent updates edit that message. A short
-finished answer bypasses the buffer. This fallback sends its notification with
-the first buffered preview; message edits do not send a new notification.
-
-Preview flood-control responses defer the next preview without sleeping in the
-shared delivery loop. Preview failure does not suppress final delivery. Each
-successfully delivered chunk is recorded before returning an error, so retrying
-a later chunk does not resend the already confirmed prefix. These delivery IDs
-are in memory; exactly-once delivery across a worker restart or an ambiguous
-network failure is not guaranteed.
+Selecting a provider in `/provider` switches the current session at once; when
+the provider has more than one model, the model picker opens next.
 
 ## Runs
 
-- **Run status**: once a run calls a tool or waits, it gets one silent status
-  message, edited in place instead of one message per tool call. It shows the
-  state (working, waiting for approval, waiting for background work, done,
-  stopped at the budget or on a loop, failed, canceled), `step n/limit` from
-  `GET /v1/runs/{id}/progress`, the running tool and its subject ("Using bash:
-  go test ./..."; parallel calls add "(+N more)"), the session's running
-  background tasks and the todo list the run saved last. It is edited only
-  when its text changes and at most every 2 seconds; the state the run ends
-  in is always written. "Message is not modified" is ignored, a deleted or
-  uneditable message is replaced by a new one, and a flood wait defers the
-  chat's deliveries until `retry_after` passes. A plain answer without tools
-  gets no status message. The final answer, approvals, engine notes, errors
-  and generated speech remain separate messages; inline and guest targets
-  show no status message.
-- **Loading**: a run delivery keeps the run's messages and asks the daemon
-  only for those above a `seq` cursor (`GET /v1/messages?after_seq=`), which
-  sits below the first message that may still change (a call without a
-  result, a streaming reply, the run's last message). The first load of a run,
-  also after a worker restart, reads the latest 200 messages of the session.
-- **Engine notes**: budget and loop warnings and similar notes arrive as silent
-  `Note: …` messages. A run that stopped on its budget or on a loop ends with a
-  notice and a **Continue** button (`/continue`).
-- **Waiting**: a run parked by `await` shows "Waiting for background work" in
-  its status message, without the typing indicator.
-- **Messages during a run** steer it at its next step and wake a run that is
-  waiting for background tasks.
-- **Background work**: when background work finishes in an idle session, a
-  wake run starts and its reply goes to the chat of the newest run (never a
-  guest or inline target). After 20 wake runs in a row without a user message,
-  the chat gets one notice per finished task instead.
+- **Streaming.** In the private chat a reply streams as a Telegram draft and is
+  sent as a normal message when the segment is complete. Where drafts are not
+  supported, a message is sent once there is some text and then edited.
+  Intermediate segments are silent; the final answer notifies.
+- **Status message.** Once a run calls a tool or waits, it gets one silent
+  status message that is edited in place (at most every 2 s): the state
+  (working, waiting for approval, waiting for background work, done, stopped,
+  failed, canceled), `step n/limit`, the running tool ("Using bash: go test
+  ./..."; parallel calls add "(+N more)"), running background tasks and the
+  todo list. A plain answer without tools gets no status message.
+- **Cancel.** The status message has a **⛔ Cancel** button while the run is
+  active. `/cancel` cancels the running task of the chat's session and replies
+  "Nothing is running." when there is none. While the bot waits for a typed
+  answer (such as a denial reason), `/cancel` closes that prompt instead.
+- **Messages during a run** steer it ("Sent to the running task.") and wake a
+  run that is waiting for background work.
+- **Engine notes** (budget or loop warnings) arrive as silent `Note: …`
+  messages. A run that stopped on its budget or on a loop ends with a
+  **Continue** button, the same as `/continue`.
+- **Background work.** When background work finishes in an idle session, a wake
+  run starts and its reply goes to the chat that wrote last. After 20 wake runs
+  in a row without a message from you, the chat only gets a notice.
+- **Restarts.** The bot remembers which messages it sent for a run, so after a
+  daemon restart it edits them instead of sending the output again.
 
 ## Approvals
 
-An approval message offers **Allow**, **Always: session** and, in the owner
-chat, **Always: global** when the daemon suggests a rule (for example
-`bash: go test:*`), plus **Deny** and **Deny with reason**. Deny with reason
-asks for the reason in the next message (`/cancel` aborts). The model receives
-`User denied: <reason>` and continues. Guest and inline targets keep no rules.
-A subagent's approval (blocking or background) is asked in its parent's chat,
-headed with the subagent's name, while the parent's run keeps its own status.
+An approval message offers **Allow**, **Deny** and **Deny with reason**. When the
+daemon suggests a rule (for example `bash: go test:*`) it also offers
+**Always: session**, and in the owner chat **Always: global**. Deny with reason
+takes the next message as the reason (`/cancel` aborts); the model receives
+`User denied: <reason>` and continues. An open prompt expires after 10 minutes,
+after which your next message is an ordinary one.
 
-## Inline Mode
+A subagent's approval is asked in its parent's chat, headed with the
+subagent's name.
 
-Inline mode lets a user type the bot mention from another Telegram chat and
-pick one placeholder article. MatrixClaw answers by editing that inline
-message.
+## Inline mode
 
-Flow:
+Type the bot's username in any chat, then your request, and tap the result.
+The bot answers by editing that message.
 
-1. Telegram sends an `inline_query`.
-2. MatrixClaw returns one personal article result with a "Get answer" button.
-3. Telegram sends `chosen_inline_result` when possible, or the callback button
-   starts the run as a fallback.
-4. The worker sends the request into the user's active MatrixClaw session.
-5. Run delivery edits the inline message with progress and final text.
+- The request runs in your private chat's session, or the first visible session
+  that does not run tools unattended. With neither, it asks you to pick a
+  session in the private chat.
+- Approvals are asked in the private chat; the inline message says so.
+- If a task is already running, the inline message says so and is answered when
+  it ends.
+- Location shared with the inline query is added to the request. Speech from
+  `text_to_speech` is attached when the private chat is known; otherwise the
+  answer is text only.
 
-Inline requests use the private-chat binding when available. If there is no
-binding, the worker falls back to the first visible non-external-agent session.
-If neither exists, the inline message asks the user to select a session in the
-private chat.
+## Guest mode
 
-Inline location data is appended to the request when Telegram supplies it.
-Inline TTS tool results are uploaded through the user's private chat when that
-target is known; otherwise the inline message stays text-only.
+Telegram guest messages (`guest_message` updates) start a run that answers
+once, when it finishes. Guest answers are text only; `/tts` replies that guest
+mode supports text answers only.
 
-## Guest Mode
+## Files, images and location
 
-Guest mode uses Telegram `guest_message` updates. The worker creates a run with
-a `guest` delivery address and answers by `guest_query_id` when the run reaches
-a terminal state.
+| You send | What happens |
+|---|---|
+| Photo or image (JPEG, PNG, GIF, WebP; up to 8 MB) | Saved to temporary Storage and sent to the session with your caption ("Describe this image." without one). |
+| Other file (up to 25 MB) | Saved to temporary Storage under `telegram/files/`; the bot replies with the path. Keep or delete it from `/modules → Storage → Temporary Files`. |
+| Voice message or audio (up to 25 MB) | Transcribed by the STT module; the bot replies `Transcribed: <text>` and sends the text to the session. |
+| Location | Sent as a prompt with the coordinates and the street address from OpenStreetMap. |
 
-Guest mode is text-only for generated speech. `/tts` in a guest target returns a
-text message explaining that guest answers support text only.
+A message that asks for something "nearby" or "near me" (also in Russian) gets
+your location and a list of nearby places from OpenStreetMap added. Without a
+location shared in the last 30 minutes, the bot asks you to share one first.
 
-## Files And Images
+The assistant can send storage files back as documents with the `send_file`
+tool (up to 50 MB). Speech from `/tts` or the `text_to_speech` tool is sent as
+audio and a copy is saved to Storage under `telegram/audio/`.
 
-Telegram photos and image documents are downloaded by the Telegram client,
-stored as temporary Storage files, and sent to the active session as image parts
-that reference local storage paths.
-
-Non-image documents are saved as temporary Storage files under
-`telegram/files/`. Telegram replies with the temporary path and points the user
-to:
-
-```text
-/modules storage
-```
-
-Temporary files can be promoted to durable storage by the user or by assistant
-tools. See [Storage](STORAGE.md) for paths, limits, and cleanup rules.
-
-## Geolocation
-
-Location messages become text prompts built from the coordinates Telegram
-provides. Inline queries can also include location; MatrixClaw appends that
-location text to the inline request before starting the run.
-
-## Voice And Audio
-
-Telegram voice messages, audio files, and audio documents are downloaded and
-sent to the daemon STT API. The transcription is sent back as:
-
-```text
-Transcribed: <text>
-```
-
-The transcribed text is then sent into the active session as the user message.
-
-`/tts text` calls the daemon TTS API and sends the generated audio back to the
-Telegram target when that target supports audio. Assistant `text_to_speech`
-tool results are also delivered as Telegram voice/audio messages for chat
-targets. Generated audio is archived in Storage under `telegram/audio/`.
-
-See [Local Voice](VOICE.md) for providers, model paths, run modes, and audio
-limits.
+See [Storage](STORAGE.md) for storage paths and cleanup, and
+[Voice](VOICE.md) for TTS and STT setup.

@@ -12,20 +12,14 @@ steps. The model owns the list; clients show it.
 - `content` names the step in the imperative ("Run the tests");
   `active_form` names it while it is in progress ("Running the tests").
 - An empty `items` array clears the list. A list may hold 50 items; an
-  item's `content` and `active_form` up to 300 characters each, with runs of
+  item's `content` (required) and `active_form` up to 300 characters each, with runs of
   whitespace (newlines too) collapsed to one space.
 - An invalid list is not saved; the model gets an error result that says what
   to correct ("2 items are in_progress; only one may be in progress at a
   time").
 
-The tool never asks for approval and a replay after a daemon restart is
-harmless, since each call replaces the list.
-
-## Storage
-
-`session_todos` holds one row per session: the items as JSON,
-`chain_run_id` (the first run of the `/continue` chain that wrote the list),
-`updated_run_id` (the run that wrote it last) and `updated_at`. The row goes
+The tool never asks for approval. The list is stored per session (table
+`session_todos`, together with the run chain that wrote it) and is deleted
 with its session.
 
 ## What the model sees

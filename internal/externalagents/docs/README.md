@@ -1,286 +1,70 @@
-# External Agents Integration
+# External Agents: Package Boundary
 
-This folder documents the experimental external-agent integration shape.
-The goal is to let matrixclaw talk to tools like Codex app-server without
-turning those tools into normal LLM providers or spreading their protocol
-details through the core.
+User-facing setup, permissions and limits are in
+[`docs/EXTERNAL_AGENTS.md`](../../../docs/EXTERNAL_AGENTS.md). This folder is
+for contributors working on the adapters.
 
-The integration must stay removable. If the Codex direction stops being useful,
-the project should be able to delete the Codex adapter and keep normal
-assistant sessions, providers, TUI, Telegram, and storage working.
+MatrixClaw owns the session (transcript, runs, approvals, client bindings). An
+adapter owns the external runtime's thread and protocol and is attached to a
+session, never a source of truth. Adapters must stay removable without touching
+normal assistant sessions.
 
-## Principle
+## Layout
 
-matrixclaw owns the product session.
+| Path | Contents |
+| --- | --- |
+| `internal/externalagents` | Generic contract: `RuntimeAgent`, `Registry`, `Descriptor`, `Event` kinds, `AttachmentStore`, binary lookup (`binary.go`). |
+| `internal/externalagents/builtins` | The only place that names concrete adapters: `Factories()` and `BuildRegistry()` from `setup.ModulesConfig`. |
+| `internal/externalagents/codexapp` | Codex app-server adapter, see [codex-app.md](codex-app.md). |
+| `internal/externalagents/claudecode` | Claude Code adapter. |
+| `internal/core/external_agents.go` | Session creation, permission-mode mapping (`externalAgentPolicy`). |
+| `internal/core/external_agent_execution.go` | Runs a turn for a session with an attachment and writes normalized events into the transcript. |
+| `internal/store/sqlite_external_agents.go` | `external_agent_sessions` table (schema in `internal/store/migrations/001_init.sql`). |
 
-External agents own their own runtime thread.
+## Boundary Rules
 
-```text
-matrixclaw session
-  id: session_x
-  kind: external_agent
-  client surfaces: TUI / Telegram / future mobile
-  local journal: messages, files, run events, approvals
+- Adapter-specific code stays in its own package (`codexapp`, `claudecode`).
+  Only `builtins` imports them; core, setup, store, API and clients use the
+  generic interfaces in `internal/externalagents`.
+- Allowed generic touch points: the registry, the attachment store, session-kind
+  routing in core, descriptor rendering in setup/modules, the new-session
+  choice, and normalized event rendering.
+- Shared types use generic names (`external_agent_id`, `external_thread_id`,
+  `external_session_id`, `metadata_json`). Never add adapter-specific fields to
+  session, run or provider types, and never add a `SessionRuntime` constant per
+  tool: sessions use `kind=external_agent`, `runtime_id=external_agent`, and the
+  adapter is chosen by `external_agent_sessions.agent_id`.
+- Adapter state that has no generic field goes in `metadata_json`.
+- Normal builds and tests must pass without any agent CLI installed.
 
-external agent attachment
-  agent_id: codex-app
-  external_thread_id: Codex thread id
-  metadata_json: adapter-specific state
-```
+## Adding an Adapter
 
-The external agent is an attachment, not the source of truth. matrixclaw should
-store enough local history and metadata to show the session, recover from
-adapter failures, and detach the external agent later if needed.
+1. Implement `externalagents.RuntimeAgent` in a new package; implement
+   `ModelProvider` too if it can suggest models.
+2. Resolve the binary with `externalagents.LookupBinary` / `NewBinaryProbe` so
+   `Available` reports path, version and install state consistently.
+3. Add a `Factory` with its canonical ID and aliases in `builtins/registry.go`.
+4. Translate the runtime's output into the generic event kinds below. Keep raw
+   payloads only in `Event.Raw` / `RawMethod` for diagnostics.
+5. Map `StartSessionRequest.ApprovalPolicy` and `Sandbox` (Codex vocabulary,
+   produced by `externalAgentPolicy`) to the runtime's own permission settings.
 
-`sessions.runtime_id` is a broad runtime family, not a concrete app name:
+## Events
 
-```text
-matrixclaw       normal provider-backed assistant session
-external_agent   Codex / Claude Code / Kimi Code / OpenCode / future adapters
-```
+Adapters emit `turn.started`, `turn.heartbeat`, `message.delta`,
+`reasoning.delta`, `tool.started`, `tool.output.delta`, `tool.completed`,
+`diff.updated`, and end every turn with exactly one `turn.completed` or
+`turn.failed`. Core saves the `ExternalThreadID` / `ExternalSessionID` carried
+by `turn.started` to the attachment, so that is where a runtime reports a new
+or changed thread. `turn.heartbeat` only records activity. There is no approval
+event: adapters must not block waiting for a user decision.
 
-The concrete adapter is selected by `external_agent_sessions.agent_id`. Legacy
-values such as `runtime_id=codex` are accepted as aliases at API boundaries, but
-new code should create external-agent sessions with:
+## Claude Code Notes
 
-```json
-{
-  "kind": "external_agent",
-  "runtime_id": "external_agent",
-  "external_agent_id": "codex"
-}
-```
-
-Do not add a new `SessionRuntime*` constant for every tool. New tools belong in
-the external-agent registry as adapters.
-
-## Desired Package Layout
-
-```text
-internal/externalagents/
-  agent.go
-  registry.go
-  store.go
-  builtins/
-    registry.go
-  docs/
-    README.md
-    codex-app.md
-    removal-plan.md
-  codexapp/
-    client.go
-    process.go
-    types.go
-```
-
-The only Codex-specific package should be `codexapp`.
-
-The only daemon composition code that should know which concrete adapters exist
-is `internal/externalagents/builtins`. Add future adapters there as factories
-instead of teaching core, setup, TUI, or Telegram about each runtime.
-
-Core packages should depend on the generic `externalagents` interfaces, never
-on `codexapp` directly.
-
-## Generic Interface Shape
-
-```go
-type RuntimeAgent interface {
-    ID() string
-    DisplayName() string
-    Available(ctx context.Context) Availability
-    StartSession(ctx context.Context, req StartSessionRequest) (ExternalSession, error)
-    ResumeSession(ctx context.Context, session ExternalSession) (ExternalSession, error)
-    Send(ctx context.Context, session ExternalSession, input Input) (<-chan Event, error)
-    Interrupt(ctx context.Context, session ExternalSession) error
-    Close() error
-}
-```
-
-The registry should expose adapter discovery:
-
-```go
-type Registry interface {
-    List(ctx context.Context) []Descriptor
-    Get(id string) (RuntimeAgent, bool)
-}
-```
-
-`Descriptor` is what setup and UI should read:
-
-```go
-type Descriptor struct {
-    ID          string
-    Aliases     []string
-    DisplayName string
-    Installed   bool
-    Enabled     bool
-    Mode        string
-    Path        string
-    Version     string
-    Detail      string
-}
-```
-
-## Storage Shape
-
-Use a separate table. Do not add `codex_thread_id` columns to the main
-`sessions` table.
-
-```sql
-CREATE TABLE external_agent_sessions (
-    session_id TEXT PRIMARY KEY,
-    agent_id TEXT NOT NULL,
-    external_thread_id TEXT NOT NULL,
-    external_session_id TEXT,
-    cwd TEXT,
-    model TEXT,
-    metadata_json TEXT NOT NULL DEFAULT '{}',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-```
-
-Main session metadata only needs a generic kind:
-
-```text
-sessions.kind = assistant | external_agent
-sessions.runtime_id = matrixclaw | external_agent
-```
-
-If keeping the main sessions table untouched is easier during early
-experiments, store kind in metadata JSON first and migrate later.
-
-## Runtime Routing
-
-The runtime should have one generic branch:
-
-```go
-if session.Kind == "external_agent" {
-    return externalAgentRuntime.Send(...)
-}
-return assistantRuntime.Send(...)
-```
-
-No client should know whether the external agent is Codex, Claude Code,
-OpenCode, or something else. TUI and Telegram should render normalized
-matrixclaw events.
-
-## Event Normalization
-
-Adapters translate their native event stream into a small matrixclaw event set:
-
-```text
-message.delta
-reasoning.delta
-tool.started
-tool.output.delta
-tool.completed
-diff.updated
-approval.requested
-turn.started
-turn.completed
-turn.failed
-```
-
-The Codex adapter can keep raw JSON for diagnostics, but UI/runtime should use
-normalized events.
-
-## Setup Flow
-
-Setup should show a separate section:
-
-```text
-External Agents
-  Codex        Installed / Not installed    Enabled / Disabled
-  Claude Code  later
-  OpenCode     later
-```
-
-Codex setup should detect:
-
-```text
-codex binary exists
-app-server starts
-initialize succeeds
-auth is usable, if exposed by protocol
-```
-
-Setup should not import `codexapp`. It should ask the registry for descriptors.
-TUI management currently lives under:
-
-```text
-/modules -> External Agents
-```
-
-Enabled agents appear in the New Session picker. Disabled or missing agents are
-visible in Modules but cannot be used to create a session.
-
-## Session Creation Flow
-
-New session should offer:
-
-```text
-Assistant
-Codex
-Claude Code
-Kimi Code
-OpenCode
-```
-
-Assistant sessions use normal matrixclaw providers and tools.
-
-External-agent sessions use the common runtime path:
-
-```text
-matrixclaw session -> external agent attachment -> adapter thread/session -> turn/send
-```
-
-The UI may show friendly choices, but the core API should receive an
-`external_agent_id`. That keeps session creation stable as more adapters are
-added.
-
-## Current Experimental Status
-
-Implemented:
-
-```text
-internal/externalagents/codexapp
-generic externalagents registry
-generic externalagents runtime interface
-SQLite external_agent_sessions store
-core branch for sessions with external-agent attachments
-Codex app-server runtime bridge
-normalized message.delta / turn.completed / turn.failed events
-daemon bootstrap wiring for Codex app-server
-API endpoint to list external agents
-API endpoint to enable/disable external agents
-API/session creation flow for external-agent sessions
-controlplane session creation choices from enabled external-agent descriptors
-TUI Modules screen for external-agent status and enable/disable
-```
-
-It can:
-
-```text
-start codex app-server over stdio
-initialize
-thread/start
-thread/resume
-turn/start
-turn/steer
-receive notifications
-map Codex notifications to generic external-agent events
-execute an attached external-agent run through core
-run fake protocol tests
-run live initialize smoke test
-run live thread+turn smoke test
-```
-
-Not implemented yet:
-
-```text
-setup UI
-approval request handling
-tool/diff/approval event rendering beyond message/turn events
-```
+Each turn runs `claude -p --output-format stream-json --verbose
+--include-partial-messages [--resume <session>] [--model <m>]
+[--permission-mode <mode>] -- <text>` and parses the stream-json output.
+`StartSession` spawns nothing; the Claude session ID reported on the first turn
+is saved to the attachment and passed to `--resume` afterwards.
+`bypassPermissions` is never used because Claude refuses it when the daemon runs
+as root; `full_auto` maps to `auto` instead.

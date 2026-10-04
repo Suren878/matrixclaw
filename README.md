@@ -5,485 +5,258 @@
 ![Telegram](https://img.shields.io/badge/Telegram-client-26A5E4?logo=telegram&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
-**MatrixClaw is an always-on local AI assistant and AI coding agent runtime for
-Terminal and Telegram.**
+**MatrixClaw is an always-on, local-first AI assistant and coding-agent runtime
+for the terminal and Telegram.**
 
-MatrixClaw is an open-source, local-first OpenClaw alternative for users who
-want a self-hosted personal AI operator with durable sessions, SQLite memory,
-MCP tools, approvals, scheduled tasks, and Claude Code / Codex subagents.
-
-Start a task in the terminal, continue from Telegram, approve tool calls
-remotely, and return later without losing the session.
-
-`matrixclaw` is written in Go and runs as a small local daemon. It stores state
-in SQLite and gives your AI sessions a durable home outside any single app or
-chat window.
-
-The core owns the session: context, files, tool history, approvals, provider
-settings, model choice, usage records, todo lists, persistent memory,
-searchable history, and optional external-agent attachments. The Terminal TUI,
-Telegram bot, and future mobile clients are only interfaces connected to the
-same local runtime.
-
-`matrixclaw` is built for personal work first: development, research, files,
-remote checks, reminders, provider switching, visible todo lists, memory,
-subagents, and agent workflows where continuity and explicit control matter.
-
-It is useful if you want a self-hosted or local-first AI assistant that can keep
-state across clients, run approved tools, switch between LLM providers, delegate
-focused tasks to MatrixClaw/Codex/Claude Code subagents, and expose the same
-runtime through Terminal, Telegram, or MCP.
+A small Go daemon, `matrixclawd`, owns your AI sessions: context, files, tool
+history, approvals, provider and model choice, todo lists, memory, usage and
+scheduled tasks, all stored in local SQLite. The terminal TUI, the Telegram bot
+and other clients only render that state and send commands, so you can start a
+task in the terminal, approve a tool call from your phone and pick the session
+up again later without losing anything.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/8a3bdb40-1891-4a95-9bce-941ed48f4b72" alt="matrixclaw terminal demo">
 </p>
 
-## Why matrixclaw?
+## Features
 
-- **Small Go daemon:** about 26 MiB RAM while idle on the current Linux server,
-  with exact usage depending on OS, build, and active clients.
-- **One assistant, many clients:** begin a session in Terminal TUI and continue it in Telegram.
-- **Local-first state:** sessions, runs, approvals, files, todo lists, usage, and provider choices live in SQLite.
-- **Provider switching:** OpenAI-compatible APIs, OpenAI Codex subscription OAuth, Anthropic, Gemini, Chinese provider presets, and custom endpoints.
-- **External agents:** Codex app-server and Claude Code sessions attach to the same session model.
-- **Subagents:** MatrixClaw sessions can hand bounded tasks to hidden child
-  runs through the `agent` tool, in the foreground or the background, including
-  MatrixClaw, Codex, or Claude Code runtimes.
-- **Tools with approvals:** file and shell tools pause before risky changes;
-  allow, ask, and deny rules per session or globally decide which calls ask.
+- **One session, many clients.** Terminal TUI, Telegram bot, and any client of
+  the local HTTP API (an iOS Swift client package is included) share the same
+  sessions. Closing a client never ends a session.
+- **Many LLM providers.** OpenAI and OpenAI-compatible APIs, OpenAI Codex
+  subscription (OAuth), Anthropic, Gemini, Qwen, and presets for DeepSeek,
+  OpenRouter, Vercel AI Gateway, NVIDIA NIM, Hugging Face, NovitaAI, GMI Cloud,
+  StepFun, Ollama Cloud, Kilo Code, xAI / Grok, Z.AI / GLM, MiniMax, Kimi,
+  AiHubMix, plus custom endpoints. Provider and model are chosen per session.
+- **Tools with approvals.** File, shell, web and MCP tools pause before risky
+  actions; allow / ask / deny rules per session or globally decide what asks.
   A denial with a reason goes back to the model instead of failing the run.
-- **Long runs:** a native run keeps working through hundreds of tool calls
-  within a step, time, and token budget, summarises its own context, runs
-  independent tool calls in parallel, and runs long commands in the background.
-  A run that stops early can be resumed with `/continue`.
-- **Todo list:** the assistant tracks multi-step work with `todo_write`; a run that stops with open items is asked once to finish them or say why.
-- **Memory and search:** the assistant can save approved durable memories and search previous sessions with `memory` and `session_search`.
-- **Usage ledger:** provider token usage is recorded when available.
-- **Storage module:** Telegram uploads and generated files land in local storage, with temporary files promoted only when needed.
-- **Web and browser tools:** `web_search`, and `web_fetch` returning a page's main content as markdown (long pages kept in a session file); broad research runs in read-only subagents. Search providers: DuckDuckGo (free, no key), Tavily (1 000 req/mo free), Serper (2 500 req/mo free), SearXNG (self-hosted). Configure from `/modules` without restarting. When an MCP browser server is connected, MatrixClaw can also expose interactive browser tools for opening pages, clicking, typing, waiting, and screenshots.
-- **Voice modules:** Piper and Supertonic TTS plus Whisper.cpp STT run locally.
-  Realtime speech-to-speech is available through the daemon WebSocket gateway
-  with Gemini Live, Grok Voice, and OpenAI Realtime providers, and an optional
-  telephony gateway can bridge Asterisk/SIP calls into the same realtime layer.
-- **MCP module:** connect external MCP servers as assistant tools, or expose matrixclaw tools to MCP hosts.
-- **Automation-ready:** reminders, scheduled AI tasks, deliveries, and future agent workflows.
+- **Long runs.** A native run works through many tool calls within a step,
+  time and token budget, summarises its own context, runs independent tool
+  calls in parallel, and keeps long commands in the background. `/continue`
+  resumes a run that stopped early.
+- **Subagents.** The `agent` tool hands bounded tasks to child runs
+  (MatrixClaw, Codex or Claude Code), blocking or in the background.
+- **External agents.** Codex app-server and Claude Code sessions attach to the
+  same session model.
+- **Todo list, memory and search.** `todo_write` tracks multi-step work;
+  `memory` keeps approved durable notes; `session_search` searches past
+  conversations.
+- **Web and browser.** `web_search` (DuckDuckGo, Tavily, Serper, SearXNG) and
+  `web_fetch`; interactive browser tools through an MCP browser server.
+- **Voice.** Local TTS (Piper, Supertonic 3) and STT (Whisper.cpp), realtime
+  speech-to-speech (Gemini Live, Grok Voice, OpenAI Realtime), and an optional
+  Asterisk/SIP telephony gateway.
+- **MCP both ways.** Use MCP servers as tools, or expose MatrixClaw tools to
+  other MCP hosts.
+- **Automation.** Reminders and scheduled AI tasks, delivered to your clients.
+- **Usage ledger.** Token usage per generation (prompt, cache, output,
+  reasoning) in `/usage` and `/context`.
 
-## Common Use Cases
+## An alternative to OpenClaw, Claude Code, Codex and OpenCode
 
-- Run a local-first AI assistant with durable sessions, tool history, approvals,
-  memory, and searchable context.
-- Use a terminal AI TUI that can hand the same session to Telegram without
-  losing state.
-- Compare or switch between OpenAI-compatible APIs, Codex subscription OAuth,
-  Anthropic-compatible models, Gemini, and custom providers.
-- Delegate bounded work to native MatrixClaw subagents or external Codex and
-  Claude Code subagents.
-- Connect MCP servers as assistant tools, or expose MatrixClaw tools to other
-  MCP hosts.
-- Keep personal AI automation, scheduled tasks, voice, telephony gateway
-  configuration, storage, and provider usage in one local SQLite-backed runtime.
-
-## OpenClaw, Claude Code, Codex, and OpenCode alternative
-
-MatrixClaw is not just another terminal AI coding agent.
-
-OpenClaw focuses on self-hosted personal AI assistance across chat apps. Claude
-Code, Codex, and OpenCode focus on coding-agent workflows in the terminal or
-developer environment.
-
-MatrixClaw sits between them: an always-on local AI operator with a daemon,
-Terminal TUI, Telegram client, durable SQLite sessions, MCP tools, approvals,
-scheduled tasks, memory, and Claude Code / Codex subagents.
-
-Use MatrixClaw if you want:
-
-- an OpenClaw alternative with Terminal and Telegram access
-- a Claude Code or Codex companion that can orchestrate subagents
-- an OpenCode alternative focused on persistent sessions and automation
-- a local-first AI agent with SQLite memory and approvals
-- a self-hosted personal AI assistant that stays running between sessions
-
-## Daemon-first Architecture
-
-`matrixclaw` is daemon-first, not UI-first. The daemon owns the durable session,
-the SQLite database, approvals, runs, storage, modules, automation, and external
-agent attachments. Clients render state and send commands.
-
-This keeps the Terminal TUI and Telegram bot small:
-
-- exiting the TUI does not end the session
-- restarting Telegram does not lose history or approvals
-- provider/model choices and permissions stay attached to the session
-- local voice and storage modules are selected once and reused by all clients
-- MCP tools connect once in the daemon and flow through the same approval system
-- external agents can attach to a matrixclaw session without becoming normal LLM providers
-
-The daemon is also the memory boundary. Idle matrixclaw stays small, while
-optional heavy work such as Whisper.cpp can run only for the current request
-unless you explicitly choose an always-running local process.
-
-## Session handoff: terminal to Telegram and back
-
-Most AI tools keep the real conversation inside one UI process. That makes every
-other client feel like a separate product.
-
-`matrixclaw` keeps the session in the daemon instead. The Terminal TUI and
-Telegram bot are just clients connected to the same local runtime.
-
-```mermaid
-flowchart TD
-    TUI[Terminal TUI]
-    TG[Telegram Bot]
-    FC[Future Clients]
-
-    TUI --> D
-    TG --> D
-    FC --> D
-
-    D["matrixclawd<br/>Core AI Server"]
-
-    D --> S[Sessions / Runs]
-    D --> A[Approvals / ACL]
-    D --> F[Files / Deliveries]
-    D --> P[Todo lists]
-    D --> U[Usage / Search]
-
-    S --> B[Providers / Tools / Local SQLite]
-    A --> B
-    F --> B
-    P --> B
-    U --> B
-```
-
-A typical flow:
-
-1. Start a session in `matrixclaw tui`.
-2. Ask the assistant to inspect files or prepare a change.
-3. Review and approve tool actions from the terminal.
-4. Leave your machine and continue the same session in Telegram.
-5. Come back later and pick up the session in the TUI with the same context and history.
-
-The goal is not to replace your editor or host your work in the cloud. The goal
-is to give your own machine a small, durable AI operator that can be reached
-from more than one surface.
-
-## What's New
-
-Latest release highlights for `v0.1.19`:
-
-- Provider selection now opens the available model picker when a provider has
-  multiple models, including custom OpenAI-compatible endpoints.
-- Text-only models no longer receive unsupported image payloads; MatrixClaw
-  detects model image capability and leaves a readable attachment notice.
-- Slow OpenAI-compatible inference has a longer request window, and workflow
-  state is isolated from the primary SQLite database to avoid write contention.
-- MatrixClaw credential configs and backups are protected from model file tools
-  and excluded from accidental Git commits.
-- CI and release jobs now run the complete Go test suite, with regression tests
-  covering provider selection, images, timeouts, workflows, and credentials.
+OpenClaw focuses on a self-hosted personal assistant across chat apps. Claude
+Code, Codex and OpenCode focus on coding agents in the terminal. MatrixClaw sits
+between them: an always-on local daemon with a terminal TUI and a Telegram
+client, durable SQLite sessions, approvals, MCP tools, memory, scheduled tasks,
+and Claude Code / Codex as subagents. See the [FAQ](#faq) for a short
+comparison.
 
 ## Install
 
-Install the latest release:
+Linux and macOS (amd64, arm64):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/install.sh | bash
 ```
 
 The installer downloads the matching GitHub Release archive, installs
-`matrixclaw`, `matrixclawd`, and `matrixclaw-telephony-gateway` into
-`~/.local/bin`, prepares local config/state directories, and starts
+`matrixclaw`, `matrixclawd` and `matrixclaw-telephony-gateway` into
+`~/.local/bin`, creates the config and state directories, and starts
 `matrixclaw setup`.
 
-Local TTS/STT runtimes are optional because they install extra system packages
-and build native binaries. To prepare Piper, Supertonic, Whisper.cpp, and
-`ffmpeg` during install:
+Installer options (pass after `bash -s --`):
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/install.sh | bash -s -- --voice-runtime
-```
+| Option | Meaning |
+| --- | --- |
+| `--version TAG` | install a specific release (default: latest) |
+| `--install-dir DIR` | binary directory (default: `~/.local/bin`) |
+| `--no-setup` | do not start `matrixclaw setup` |
+| `--voice-runtime` | also install local Piper, Supertonic, Whisper.cpp and `ffmpeg` |
+| `--from-source` | build from the current source checkout instead of downloading |
 
-You can also install them later:
+The local voice runtime can also be installed later with
+`scripts/install_voice_runtime.sh` (see [Local Voice](docs/VOICE.md)). Release
+archives with `checksums.txt` are on the
+[Releases](https://github.com/Suren878/matrixclaw/releases) page.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/install_voice_runtime.sh | bash
-```
-
-On systems where packages are managed separately, install `git`, `cmake`, a C++
-compiler, Python 3 with venv support, and `ffmpeg`, then run:
-
-```bash
-scripts/install_voice_runtime.sh --no-system-deps
-```
-
-The voice runtime installer prepares local binaries only. Voices and STT models
-are selected and downloaded later from the module UI, so an open-source install
-can stay small until you choose local audio features.
-
-After setup is saved, run `matrixclaw` to open the terminal TUI. On a fresh
-machine, plain `matrixclaw` opens setup first and opens the TUI on later runs.
-
-When the TUI starts, it checks the latest GitHub Release. If a newer version is
-available, it asks before updating. A successful TUI update then asks whether to
-restart the daemon so the background service uses the new binary.
-
-Manual update:
+**Update.** The TUI checks for a newer release on start and asks before
+updating. Manually:
 
 ```bash
 matrixclaw update install
 matrixclaw service restart
 ```
 
-Uninstall keeps config and state by default:
+**Uninstall.** Binaries and the user service are removed; config and state are
+kept unless you add `--purge`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/uninstall.sh | bash
-```
-
-Remove config and state explicitly:
-
-```bash
 curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/uninstall.sh | bash -s -- --purge
 ```
 
-## What It Does
+### From source
 
-- Terminal setup and chat TUI for local operator work.
-- Telegram client for remote sessions, files, images, provider/model commands, and approvals.
-- Durable sessions, messages, runs, approvals, file snapshots, deliveries, and tool results.
-- OpenAI-compatible, OpenAI Codex subscription OAuth, Anthropic-compatible, Gemini, and custom provider adapters, including presets such as DeepSeek, Qwen / DashScope, Z.AI / GLM, Kimi, MiniMax, OpenRouter, Vercel AI Gateway, NVIDIA NIM, Hugging Face, NovitaAI, GMI Cloud, StepFun, Ollama Cloud, and Kilo Code.
-- Experimental external-agent sessions through Codex app-server and Claude Code.
-- Service-owned tool execution with approval previews before writes and shell actions, and permission rules for commands, paths, domains, and MCP tools.
-- Long native runs with run budgets, context summaries, parallel tool calls, background shell commands (`task_output`, `task_kill`, `await`), and `/continue`.
-- Todo lists for multi-step work: the model-facing `todo_write` tool, a TUI side panel, a Telegram status message, and `/todo`.
-- Token usage recorded per model generation (prompt, cache read/write, output, reasoning), surfaced in `/usage` and `/context`.
-- SQLite-backed durable memory and message search through `/memory`, `/search`, and assistant-facing `memory` / `session_search` tools.
-- Local storage module for temporary uploads, stored files, imports, previews, promotion, deletion, and cleanup settings.
-- Telegram image/document uploads stored as temporary files, with explicit save/delete controls.
-- Telegram voice and audio messages transcribed through the configured STT provider and sent into the active session as text.
-- Telegram `/tts` and assistant `text_to_speech` tool results sent back as voice messages and archived in storage.
-- Realtime speech-to-speech sessions over the daemon API. Gemini Live
-  (`gemini_live`), Grok Voice (`grok_voice`), and OpenAI Realtime
-  (`openai_realtime`) are available through MatrixClaw's provider-neutral
-  realtime protocol, so iOS, web, or SIP gateways can attach without speaking
-  provider-specific APIs.
-- Experimental telephony gateway preparation for Asterisk/SIP deployments. A
-  separate `matrixclaw-telephony-gateway` process bridges Asterisk
-  ARI/externalMedia and SIP/PJSIP calls into realtime voice sessions, exposes an
-  approval-gated `telephony_call` tool, supports inbound caller allowlists, and
-  can save transcripts, post-call reports, and temporary MP3 call recordings.
-- Web search with provider selection and per-provider credential storage (a provider switch takes effect without a daemon restart), and web_fetch with readable-content extraction.
-- MCP client module for stdio and streamable HTTP MCP servers, registering remote tools as matrixclaw tools.
-- MCP stdio server mode for exposing matrixclaw daemon tools to external MCP hosts.
-- SQLite-backed local state with reconnectable clients and session handoff.
-- Automation jobs for reminders and scheduled AI tasks.
-
-## Todo List
-
-For work of three or more steps the assistant keeps a todo list with the
-`todo_write` tool: each call replaces the whole list, and at most one item is
-`in_progress`. The list is stored per session and reaches the model in a
-context note whenever it changes, so the system prompt stays cacheable.
-
-When a run replies without tools while its list still has open items and
-budget remains, it is asked once to continue or explain why it stops. The TUI
-shows the list in a side panel (`ctrl+n`), Telegram in the run's status message,
-and `/todo` in both.
-
-See [Todo List](docs/TODO.md) for the details.
-
-## Commands
-
-```text
-matrixclaw                  open TUI when configured, otherwise setup
-matrixclaw setup            open setup
-matrixclaw status           print setup and service state
-matrixclaw doctor           diagnose setup, daemon, and providers
-matrixclaw version          print client and daemon build info
-matrixclaw update           check for and install newer releases
-matrixclaw providers        list setup provider catalog
-matrixclaw providers login openai-codex
-matrixclaw providers verify verify configured provider model access
-matrixclaw providers verify --catalogs
-matrixclaw agents           list external agent runtimes
-matrixclaw agents start     create an external agent session
-matrixclaw mcp serve --session SESSION_ID
-matrixclaw service status   print service state
-matrixclaw service restart  restart service
-matrixclaw service stop     stop service
-matrixclaw service logs     print recent service logs
-matrixclaw tui [WORKDIR]    open terminal chat for the current or given directory
-matrixclawd                 service binary used by systemd/direct launch
-```
-
-The setup file is the configured marker. First run `matrixclaw` or explicit
-`matrixclaw setup` writes it; later `matrixclaw` starts the daemon when needed
-and opens the terminal TUI. Exiting the TUI closes only the terminal client, not
-the background daemon.
-
-Commands that read setup report missing or unsupported setup on stderr and exit
-nonzero. Use `matrixclaw setup` to recreate setup explicitly.
-
-## MCP
-
-matrixclaw supports the Model Context Protocol as a daemon module.
-
-As an **MCP client**, `matrixclawd` can connect configured MCP servers and
-expose their remote tools to the assistant as normal matrixclaw tools. The first
-supported transports are stdio command servers and streamable HTTP endpoints.
-Remote tools are registered with prefixed IDs such as `mcp_browser_navigate`.
-
-With a browser MCP server such as Playwright enabled, MatrixClaw is not limited
-to text search and content extraction. The remote browser actions are registered
-as normal tools and can be used by the assistant for interactive page work:
-
-```text
-open / navigate URL
-click elements
-type into fields
-wait for page state
-take screenshots
-read rendered text or DOM snapshots
-```
-
-The exact tool IDs depend on the MCP server's own tool names. A browser server
-with remote tools named `navigate`, `click`, `type`, `screenshot`, and `wait`
-would appear as `mcp_browser_navigate`, `mcp_browser_click`,
-`mcp_browser_type`, `mcp_browser_screenshot`, and `mcp_browser_wait`. If the
-remote server already prefixes tool names, that prefix is preserved in the final
-MatrixClaw tool ID.
-Example `setup.json` fragment:
-
-
-```json
-{
-  "modules": {
-    "mcp": {
-      "enabled": true,
-      "servers": [
-        {
-          "id": "browser",
-          "enabled": true,
-          "transport": "stdio",
-          "command": "npx",
-          "args": ["-y", "@modelcontextprotocol/server-playwright"],
-          "read_only": false
-        }
-      ]
-    }
-  }
-}
-```
-
-As an **MCP server**, matrixclaw can expose its daemon tool registry to an
-external MCP host:
-
-```bash
-matrixclaw mcp serve --session SESSION_ID --workdir /path/to/project
-```
-
-External MCP tools are conservative by default: unless a configured server is
-marked `read_only`, its tools are treated as mutation tools and require
-matrixclaw approval before execution.
-
-See [MCP Module](docs/MCP.md) for configuration fields, safety rules, and
-current protocol limits.
-
-OpenAI Codex Subscription uses ChatGPT/Codex OAuth instead of an API key. Select
-`OpenAI Codex Subscription` in setup, authorize with:
-
-```bash
-matrixclaw providers login openai-codex
-```
-
-Then open the provider's `Model` picker. Matrixclaw loads the available Codex
-models from the Codex backend and stores the chosen model like any other session
-provider.
-
-Provider presets are backed by a registry in `internal/providers`: each provider
-declares its catalog metadata, auth mode, transport, runtime adapter, aliases,
-defaults, capabilities, and OpenAI-compatible wire quirks in one place. This
-keeps API-key providers, Codex OAuth, Anthropic, Gemini, OpenAI-compatible
-gateways, and custom endpoints on the same setup path instead of scattering
-provider-specific checks through the UI and runtime adapters. Model pickers load
-the provider catalog live when the provider exposes one. If a catalog requires
-credentials, the model picker is disabled until an API key or OAuth session is
-available. `matrixclaw providers verify --catalogs` checks configured providers
-and public catalogs in one pass, reporting whether a model list came from a
-configured key, public catalog, or live OAuth/backend catalog.
-
-## In-session controls
-
-The Terminal TUI and Telegram client share the same control-plane commands, so a
-command that changes session state in one client is visible from the other.
-These are client commands, not model tools.
-
-```text
-/new                         create a session
-/sessions                    list, select, rename, or delete sessions
-/provider                    select provider/model for the current session
-/permissions                 permission mode and allow/ask/deny rules
-/context                     inspect, compact, or clear the session context
-/usage                       show runs, steps, prompt/cache/output/reasoning tokens, cache hit rate
-/continue                    continue the latest run with a fresh budget
-/budget                      show or override the session's run budget
-/memory                      show durable assistant memory
-/todo                        show the todo list
-/todo clear                  empty the todo list after confirmation
-/search <query>              search stored message history
-/modules storage             manage local stored and temporary files
-/modules tts                 manage Text to Speech providers and voices
-/modules stt                 manage Speech to Text providers and models
-/modules agents              enable or disable external agent runtimes
-/remind                      create a one-time reminder
-/tasks                       background tasks of the session and scheduled AI tasks
-/server, /status, /restart, /stop   inspect, restart, or stop the local service
-```
-
-For multi-step work the assistant keeps the session's todo list with
-`todo_write`; `/todo` shows the same list.
-
-A message sent while a run is working steers that run at its next step; in the
-TUI `/queue` or `/busy` picks another mode. Canceling a run also stops the
-background commands and subagents it started.
-
-The assistant also receives memory tools: `session_search` searches stored
-conversation history across sessions, while `memory` can list memories and save,
-replace, or remove them after explicit approval. Saved memories are injected into
-future provider prompts as a compact `Memory:` block.
-
-## From Source
-
-Prerequisites:
-
-- Go 1.26+
-- Linux or another Unix-like development environment
-- Optional: systemd user services for autostart
+Requires Go 1.26+.
 
 ```bash
 git clone https://github.com/Suren878/matrixclaw.git
 cd matrixclaw
-
-go vet ./...
-
-mkdir -p ./bin
-go build -o ./bin/matrixclaw ./cmd/matrixclaw
-go build -o ./bin/matrixclawd ./cmd/matrixclawd
-
-./bin/matrixclaw
+./scripts/install.sh --from-source   # build and install into ~/.local/bin
+./scripts/build_release.sh           # or: build stamped binaries into ./bin
 ```
 
-For a local source install:
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [Testing](docs/TESTING.md) before
+sending changes.
+
+## Quick start
+
+1. Run `matrixclaw`. On a fresh machine it opens setup: pick a provider, enter
+   its API key (or sign in, see below), and optionally enable Telegram.
+2. Run `matrixclaw` again (or `matrixclaw tui [WORKDIR]`). It starts the daemon
+   when needed and opens the terminal chat for the current directory.
+3. Ask for something. Approve or deny tool calls as they come up.
+4. Open your Telegram bot and continue the same session with `/sessions`.
+
+Exiting the TUI closes only the terminal client; the daemon keeps running.
+`matrixclaw status` and `matrixclaw doctor` show what is configured and
+running.
+
+**OpenAI Codex subscription.** Select `OpenAI Codex Subscription` in setup,
+then sign in with your ChatGPT account and pick a model from the provider's
+model picker:
 
 ```bash
-./scripts/install.sh --from-source
+matrixclaw providers login openai-codex
 ```
 
-Release builds can stamp version metadata:
+Model pickers load the provider's live catalog when it has one.
+`matrixclaw providers verify --catalogs` checks configured providers and public
+catalogs in one pass.
 
-```bash
-./scripts/build_release.sh
+## Commands
+
+```text
+matrixclaw                      open the TUI when configured, otherwise setup
+matrixclaw setup                open setup
+matrixclaw tui [WORKDIR]        open terminal chat for the current or given directory
+matrixclaw status               print setup and service state
+matrixclaw doctor               diagnose setup, daemon and provider registry
+matrixclaw version              print client and daemon version
+matrixclaw update [check|install]
+matrixclaw service status|restart|stop|logs
+matrixclaw providers            list the provider catalog
+matrixclaw providers login openai-codex
+matrixclaw providers verify [--catalogs]
+matrixclaw agents               list external agent runtimes
+matrixclaw agents start AGENT [DIR]
+matrixclaw mcp serve --session SESSION_ID [--workdir DIR]
+matrixclaw skills list|search|show|install|trust|quarantine|enable|disable|remove|archive|restore|pin|unpin|usage
+matrixclawd                     the daemon (run by the user service)
 ```
+
+## In-session controls
+
+The TUI and Telegram share one command set, so a change made in one client is
+visible in the other. These are client commands, not model tools.
+
+```text
+/new                  create a session
+/sessions             list, select, rename or delete sessions
+/provider             provider and model for the current session
+/permissions          permission mode and allow/ask/deny rules
+/context              inspect, compact or clear the session context
+/usage                runs, steps and token usage
+/continue             continue the latest run with a fresh budget
+/budget               show or override the session's run budget
+/todo [clear]         show or clear the todo list
+/memory               durable assistant memory
+/search <query>       search stored message history
+/skills               skills enabled for this session
+/modules              storage, TTS, STT, realtime voice, web search, MCP, external agents, ...
+/remind               create a one-time reminder
+/tasks                background tasks and scheduled AI tasks
+/server, /status, /restart, /stop   inspect, restart or stop the daemon
+/help                 list commands
+```
+
+While a run is working, a new message steers it at its next step. In the TUI,
+`/queue <text>` queues a message instead, and `/busy queue|steer|interrupt`
+changes the default. Cancelling a run (`esc` in the TUI) also stops the
+background commands and subagents it started.
+
+TUI keys: `ctrl+p` commands, `ctrl+s` sessions, `ctrl+n` todo panel, `ctrl+o`
+external editor, `ctrl+j` newline, `ctrl+f` attach typed file paths, `ctrl+c`
+quit. Telegram-only features (file and voice uploads, `/tts`, inline and guest
+mode) are described in [Telegram](docs/TELEGRAM.md).
+
+## Feature guides
+
+**Subagents.** The `agent` tool takes `description`, `prompt`, and optional
+`background`, `isolation` (`shared` or `worktree`), `readonly`, `runtime`
+(`matrixclaw`, `codex`, `claude`, `auto`) and `model`. Children start from an
+isolated prompt, run a restricted tool set, and return only their result; their
+approval requests appear in the parent session.
+See [External Agents](docs/EXTERNAL_AGENTS.md#subagents).
+
+**External agents.** Codex app-server (`codex` binary) and Claude Code
+(`claude` binary) can back a whole session or a subagent. Enable them under
+`/modules` -> External Agents. See [External Agents](docs/EXTERNAL_AGENTS.md).
+
+**Todo list.** For work of three or more steps the assistant keeps a list with
+`todo_write`; a run that stops with open items is asked once to finish them or
+say why. See [Todo List](docs/TODO_LIST.md).
+
+**Web search.** `web_search` with DuckDuckGo (no key), Tavily, Serper or
+SearXNG, and `web_fetch` returning a page's main content as markdown. Switch
+providers in `/modules` without restarting. See [Web Search](docs/WEB_SEARCH.md).
+
+**Browser.** With a browser MCP server (for example Playwright) connected, the
+assistant can open pages, click, type, wait and take screenshots.
+See [Browser Module](docs/BROWSER.md).
+
+**MCP.** Connect stdio or streamable HTTP MCP servers; their tools register as
+`mcp_<server>_<tool>` and need approval unless the server is marked
+`read_only`. `matrixclaw mcp serve` exposes MatrixClaw tools to an MCP host.
+See [MCP Module](docs/MCP.md).
+
+**Local voice.** Piper and Supertonic 3 for TTS, Whisper.cpp for STT, set up
+from `/modules`. Engines run per task by default (near-zero idle memory) or stay
+warm. Telegram voice messages are transcribed into the session.
+See [Local Voice](docs/VOICE.md).
+
+**Realtime voice and telephony.** Clients open a realtime session over the
+daemon API and stream PCM audio through a provider-neutral WebSocket protocol
+(Gemini Live, Grok Voice, OpenAI Realtime). The optional
+`matrixclaw-telephony-gateway` bridges Asterisk ARI / SIP calls into the same
+layer and adds an approval-gated `telephony_call` tool. See
+[Local Voice](docs/VOICE.md).
+
+**Storage.** Telegram uploads and generated files land in local storage as
+temporary files until you save them. See [Storage](docs/STORAGE.md).
+
+## Configuration
+
+Setup is saved to `~/.config/matrixclaw/setup.json` (the OS user config
+directory; override with `MATRIXCLAW_SETUP_PATH`). State, including the SQLite
+database, lives in `~/.local/state/matrixclaw`. Edit setup with
+`matrixclaw setup` or from `/modules` and `/provider` inside a session; see
+[`setup.example.json`](setup.example.json) for the file layout.
+
+The daemon API listens on loopback (`127.0.0.1:8080` by default) and refuses a
+non-loopback bind unless `MATRIXCLAW_ALLOW_REMOTE_HTTP=1` is set.
 
 ## Architecture
 
@@ -491,414 +264,77 @@ Release builds can stamp version metadata:
 flowchart LR
     TUI[Terminal TUI] --> API[Daemon HTTP API]
     TG[Telegram client] --> API
-    API --> CORE[Core runtime]
+    IOS[Other API clients] --> API
+    API --> CP[Control plane]
+    CP --> CORE[Core: sessions, runs, approvals, tasks]
     CORE --> STORE[(SQLite)]
     CORE --> ENGINE[Agent engine]
     CORE --> AGENTS[External agents]
     ENGINE --> PROVIDERS[LLM providers]
-    ENGINE --> TOOLS[Tools / background tasks]
-    TOOLS --> APPROVALS[Permission rules / durable approvals]
-    APPROVALS --> STORE
-    CORE --> TODO[Todo lists]
-    CORE --> SEARCH[Search / Usage]
-    CORE --> MODULES[Storage / Voice / MCP / Automation modules]
-    TODO --> STORE
-    SEARCH --> STORE
-    MODULES --> STORE
+    ENGINE --> TOOLS[Tools]
+    CORE --> MODULES[Modules: storage, voice, web, MCP, skills, automation]
 ```
 
-Core rules:
-
-- clients render state; they do not own runtime truth
-- command semantics live in `internal/controlplane`
-- all real work becomes a persisted run
-- tool approvals are durable and restart-safe
-- provider and model selection are session data
-- todo lists are session data
-- search and token usage are read-only views over local SQLite state
-- storage, voice, MCP, and external agents are daemon modules behind the same local API
-- the native agent engine (`internal/agent`) reaches storage, tools, and
-  approvals only through ports that the core implements
-- providers and tools are replaceable adapter families
-
-## External Agents
-
-External agents are optional runtimes attached to matrixclaw sessions. They are
-not normal LLM providers. matrixclaw still owns the session, local history,
-client handoff, and normalized event display; the external agent owns its own
-thread or process protocol.
-
-Current built-in runtimes:
-
-- Codex app-server, detected from the `codex` binary.
-- Claude Code CLI, detected from the `claude` binary.
-
-Manage them from the TUI:
-
-```text
-/modules -> External Agents
-```
-
-The screen shows installed/enabled state, mode, resolved binary path, and
-version when available. Enabling Codex or Claude Code adds it to the New
-Session picker and makes it available as an external subagent runtime.
-External-agent options use the same shared controls as the rest of the TUI:
-`Path` opens the standard text prompt, and `Enabled` opens a small
-Enable/Disable picker.
-
-## Subagents
-
-MatrixClaw assistant sessions receive an `agent` tool for bounded child work.
-The parent model stays in charge of the user-facing session; the child session
-is hidden from the normal session list and the parent receives only the child's
-result.
-
-Subagents can run as native MatrixClaw child sessions or through enabled
-external agents. Built-in external subagent runtimes are Codex (`codex`) and
-Claude Code (`claude`). The main model sees the current subagent configuration in
-its system prompt, including which runtimes are available or disabled, so it can
-choose `matrixclaw` automatically when it is the only option or ask which
-runtime to use when multiple external subagents are enabled.
-
-The tool accepts:
-
-- `description` required: a short label
-- `prompt` required: everything the child needs
-- `background`: start the child as a background task; its result reaches the
-  parent as a message when it finishes (at most `daemon.background_agents`,
-  default 4, per session)
-- `isolation`: `shared` (the parent's directory, one writing child at a time)
-  or `worktree` (a git worktree of its own, so several run at once)
-- `readonly`: read-only tools only; read-only children run in parallel
-- `runtime`: `matrixclaw`, `codex`, `claude`, or `auto` (`matrixclaw` default)
-- `model` optional
-
-Subagent runs start with an isolated prompt built from the call's prompt. They
-do not inherit the parent chat history, todo list, skills prompt, or memory
-prompt. Child MatrixClaw runs use a restricted tool view: no `agent` or
-`await`, no `memory`, no TTS, and no other automation/storage/skills category
-tools; they keep their own todo list with `todo_write` and may run background
-commands, which stop when the child finishes. A blocking child's time does not
-count against the parent's budget.
-
-If a child run asks for a permission, the parent session shows the request; the
-child goes on with the decision, and the parent resumes once the child ends.
-
-## Local Voice
-
-Text to Speech supports Piper and Supertonic 3 as local providers.
-Speech to Text supports Whisper.cpp as a local provider. Voice models are
-downloaded from the module UI, while the local runtime binaries are prepared by:
-
-```bash
-scripts/install_voice_runtime.sh
-```
-
-The script installs/updates:
-
-- Piper in `~/.local/state/matrixclaw/runtime/piper-venv`
-- Supertonic in `~/.local/state/matrixclaw/runtime/supertonic-venv`
-- Whisper.cpp CLI and server in `~/.local/state/matrixclaw/runtime/whisper.cpp`
-- `ffmpeg` for STT input conversion and local TTS MP3 output
-
-Voice is part of the same daemon-first architecture as sessions and storage.
-Clients request speech through the daemon API, the daemon selects the active
-module/provider/model, and Terminal plus Telegram use the same module state.
-Generated Telegram TTS audio is saved into Storage under `telegram/audio/`.
-
-The TUI exposes voice as normal modules:
-
-```text
-/modules -> Text to Speech
-/modules -> Speech to Text
-/modules -> Realtime Voice
-```
-
-Each module has a provider picker, provider setup, and a status screen. The
-provider picker selects what the assistant should use; setup installs engines,
-downloads voices/models, chooses language/model/voice, and selects runtime mode.
-
-Local providers support two runtime modes:
-
-- **Run per task:** default mode for Piper, Supertonic, and
-  Whisper.cpp. The native runtime starts only for the current TTS/STT job, then
-  exits. This keeps idle memory near zero and is the best default for laptops
-  and small servers. Whisper.cpp still needs RAM while a transcription is
-  running; the selected model size controls that peak.
-- **Always running:** keeps a managed local process warm for lower startup
-  latency. Piper uses the local Piper process manager, Supertonic uses
-  `supertonic serve` on loopback, and Whisper.cpp uses `whisper-server` with
-  the local `/inference` endpoint.
-
-Piper voices are fetched from the online Piper voice catalog when available,
-with bundled English and Russian fallbacks. The setup flow is:
-
-```text
-/modules -> Text to Speech -> Piper
-```
-
-Choose `Engine` to install or delete the managed `piper-tts` runtime. Then open
-`Voice`, choose `Add Voice`, pick a language, download a voice, and make it the
-active voice. Piper engine installation and voice downloads stay separate so a
-small open-source install does not pull every voice by default. The status
-screen reports local model storage, runtime mode, and current process RAM.
-
-Supertonic 3 is the heavier local TTS option. Its `Engine` row installs the
-Python SDK with local server support and runs the official `supertonic download`
-command for the shared model. Voice styles M1-M5/F1-F5 are selected without
-separate per-voice downloads, and language can stay on `Auto` or be pinned to
-one of Supertonic's 31 supported language codes. In `Always running` mode,
-matrixclaw keeps `supertonic serve` on loopback and sends TTS requests to that
-local API. Supertonic can encode WAV, FLAC, and OGG/Vorbis natively; Matrixclaw
-converts local TTS output to MP3 through `ffmpeg` before returning it to clients.
-The temporary WAV files produced by local runtimes are removed immediately after
-the daemon reads them.
-
-Whisper.cpp models are fetched from the upstream Whisper.cpp model catalog when
-available, with bundled size tiers from `tiny` through `large-v3`. If the
-Whisper engine is not installed yet, choosing a model can build the engine and
-download the model in one flow. Language is `Auto` by default, and the TUI
-exposes Whisper's supported language codes from Afrikaans through Chinese
-instead of hard-coding only English/Russian:
-
-```text
-/modules -> Speech to Text -> Whisper.cpp
-```
-
-Open `Model`, download a model size, select the active model, then leave
-language on `Auto` or pin a specific spoken language. `Run Per Task` starts
-`whisper-cli` only for the current transcription; `Always Running` keeps
-`whisper-server` warm on loopback. The status screen reports local model storage
-and current process RAM.
-
-The STT API accepts voice JSON bodies up to 36 MB, which is roughly 25 MB of raw
-audio after base64 overhead.
-
-## Realtime Speech-to-Speech
-
-MatrixClaw also has a daemon-level realtime voice gateway for live
-speech-to-speech sessions. This is separate from the batch TTS/STT endpoints:
-clients create a realtime session, open a WebSocket, stream input audio frames,
-and receive assistant audio, transcripts, turn-final events, tool calls, and
-approval updates through the same connection.
-
-The client protocol is provider-neutral. Registered realtime providers include
-`gemini_live`, backed by Gemini Live / Gemini Native Audio; `grok_voice`, backed
-by xAI Grok Voice Agent API; and `openai_realtime`, backed by OpenAI Realtime
-API. The daemon owns the provider choice so iOS, web, desktop, or SIP/IP
-telephony clients do not need to know a provider's wire format.
-
-The same realtime layer is the integration point for phone calls. Telephony is
-kept in an optional gateway process so SIP, RTP, provider-specific trunks, and
-Asterisk configuration stay outside the main daemon, while MatrixClaw keeps the
-provider choice, prompts, approvals, transcripts, and session delivery.
-
-MVP audio format:
-
-- input: raw PCM S16LE, 16 kHz, mono, sent as base64 JSON frames
-- output: raw PCM S16LE, 24 kHz, mono, received as base64 JSON frames
-- persisted history: finalized user/assistant transcripts only; raw PCM frames
-  are not stored in chat history
-
-Relevant API endpoints:
-
-```text
-GET   /v1/modules/voice/realtime_voice
-GET   /v1/settings/realtime_voice
-POST  /v1/settings/realtime_voice
-POST  /v1/realtime-voice/sessions
-GET   /v1/realtime-voice/sessions/{id}
-GET   /v1/realtime-voice/sessions/{id}/stream
-DELETE /v1/realtime-voice/sessions/{id}
-```
-
-Configuration can live in `setup.json` under `modules.realtime_voice`, and can
-also be changed from the control plane:
-
-```text
-/modules realtime_voice
-/modules realtime_voice open provider
-/modules realtime_voice open gemini_live
-```
-
-The control plane stores the enabled flag, the selected provider and each
-provider's model, voice, language, endpoint and API key in `setup.json`; only
-values that differ from the provider's defaults are written:
-
-```json
-{
-  "modules": {
-    "realtime_voice": {
-      "enabled": true,
-      "provider_id": "grok_voice",
-      "providers": {
-        "grok_voice": {
-          "api_key_env": "MY_XAI_KEY",
-          "voice_id": "ara",
-          "language": "ru"
-        }
-      }
-    }
-  }
-}
-```
-
-The API key comes from `api_key`, else the variable named by `api_key_env`,
-else a configured LLM provider of the same vendor (`gemini`, `xai`, `openai`),
-else the vendor's usual variable (`GEMINI_API_KEY`/`GOOGLE_API_KEY`,
-`XAI_API_KEY`/`GROK_API_KEY`, `OPENAI_API_KEY`).
-
-OpenAI Realtime receives 24 kHz PCM. MatrixClaw keeps its provider-neutral
-16 kHz input contract and resamples client or telephony audio inside the
-provider adapter. OpenAI input transcription is enabled with
-`gpt-live-transcribe` so finalized conversation turns can be persisted.
-
-### Telephony Gateway Preparation
-
-Telephony support is prepared as an optional self-hosted gateway:
-`matrixclaw-telephony-gateway`. It is intended for Asterisk/SIP deployments and
-provider-specific PBX or SIP trunks. MatrixClaw does not require telephony for
-normal voice use.
-
-Current shape:
-
-- Asterisk handles SIP/PJSIP registration, trunks, inbound routing, and real
-  phone calls.
-- The gateway uses Asterisk ARI and `externalMedia` to bridge RTP audio into
-  MatrixClaw realtime voice sessions.
-- MatrixClaw exposes `telephony_call` as an approval-gated assistant tool when
-  the telephony module is enabled and configured.
-- Outbound calls can carry a concrete phone objective and a phone-specific
-  prompt.
-- Inbound calls are answered only for callers on the allowed caller list;
-  without a list every inbound call is rejected.
-- Final transcripts, post-call reports, and MP3 recordings can be saved into
-  MatrixClaw temporary storage under `call-records`.
-
-Useful gateway environment variables:
-
-```bash
-MATRIXCLAW_TELEPHONY_ADDR=127.0.0.1:8090
-MATRIXCLAW_TELEPHONY_TOKEN=...
-MATRIXCLAW_API_URL=http://127.0.0.1:8080
-MATRIXCLAW_API_TOKEN=...
-MATRIXCLAW_TELEPHONY_ARI_URL=http://127.0.0.1:18088/ari
-MATRIXCLAW_TELEPHONY_ARI_USER=matrixclaw
-MATRIXCLAW_TELEPHONY_ARI_PASSWORD=...
-MATRIXCLAW_TELEPHONY_ARI_APP=matrixclaw
-MATRIXCLAW_TELEPHONY_SIP_PROFILE=main
-MATRIXCLAW_TELEPHONY_CALLER_ID=...
-MATRIXCLAW_TELEPHONY_INBOUND_ENABLED=1
-MATRIXCLAW_TELEPHONY_INBOUND_ALLOWED_CALLERS=+15551234567,+442012345678
-MATRIXCLAW_TELEPHONY_RECORD_CALLS=1
-MATRIXCLAW_TELEPHONY_RECORDING_FORMAT=mp3
-```
-
-`MATRIXCLAW_TELEPHONY_INBOUND_ALLOWED_CALLERS` accepts numbers separated by
-newlines, spaces, commas, or semicolons; an empty list rejects every inbound
-call. The assistant's name, the user's custom instructions and the phone
-prompt (`modules.telephony.phone_prompt`) come from the daemon for every call;
-`MATRIXCLAW_TELEPHONY_INBOUND_GREETING` and `MATRIXCLAW_TELEPHONY_INBOUND_PROMPT`
-add the inbound greeting and instructions.
-
-Provider-specific SIP trunk services are deployment details. The intended
-boundary is Asterisk/SIP, so each user can bring their own telephony provider
-or skip telephony entirely.
-
-See [Architecture](docs/ARCHITECTURE.md), [Telegram](docs/TELEGRAM.md), and
-[External Agents](docs/EXTERNAL_AGENTS.md) for client/runtime boundaries.
-See [Local Voice](docs/VOICE.md), [Browser Module](docs/BROWSER.md), and
-[Storage and Telegram Files](docs/STORAGE.md) for local model/runtime paths, run
-modes, temporary-file lifecycle, and Telegram voice/file flow. See
-[MCP Module](docs/MCP.md) for MCP client/server setup.
-
-## Repository Map
-
-- [`cmd/matrixclaw`](cmd/matrixclaw): operator CLI and terminal entrypoint
-- [`cmd/matrixclawd`](cmd/matrixclawd): daemon composition root
-- [`cmd/matrixclaw-telephony-gateway`](cmd/matrixclaw-telephony-gateway): optional Asterisk/SIP to realtime voice bridge
-- [`clients/terminal`](clients/terminal): setup UI, terminal chat, widgets
-- [`clients/telegram`](clients/telegram): Telegram Bot API client
-- [`internal/core`](internal/core): sessions, runs, approvals, messages, events, background tasks
-- [`internal/agent`](internal/agent): native agent engine (budget, context, parallel tools, todo)
-- [`internal/permission`](internal/permission): permission rules and bash command parsing
-- [`internal/shelltask`](internal/shelltask): background shell processes and output files
-- [`internal/api`](internal/api): local HTTP API
-- [`internal/controlplane`](internal/controlplane): shared command surface
-- [`internal/store`](internal/store): SQLite persistence
-- [`internal/providers`](internal/providers): provider adapters and catalog
-- [`internal/externalagents`](internal/externalagents): external-agent registry, Codex app-server and Claude Code adapters
-- [`internal/mcp`](internal/mcp): MCP client/server bridge
-- [`internal/modules/mcp`](internal/modules/mcp): daemon MCP module
-- [`internal/modules/telephony`](internal/modules/telephony): telephony module and approval-gated call tool
-- [`internal/telephony`](internal/telephony): Asterisk ARI, RTP, realtime, and call recording gateway code
-- [`internal/tools`](internal/tools): builtin tools
-- [`docs`](docs): architecture, todo list, Telegram, MCP, local voice, and storage notes
-- [`scripts`](scripts): install, uninstall, and release-build scripts
-- [`packaging`](packaging): release and Homebrew packaging notes
-
-## Privacy And Security
-
-Local by default:
-
-- SQLite sessions, messages, runs, approvals, file snapshots, and bindings.
-- Provider setup metadata.
-- Tool approvals and execution records.
-- Local file reads, writes, and diffs before provider calls.
-
-Can leave your machine:
-
-- Prompts, selected context, tool results, and conversation history sent to the configured LLM provider.
-- External-agent prompts, working directories, and agent events sent through the configured external agent.
-- Realtime voice audio and transcripts sent to the configured realtime provider.
-- Telephony phone numbers, call audio, transcripts, and recordings sent through
-  the configured telephony gateway, SIP provider, and realtime voice provider.
-- Remote MCP tool arguments and results sent to configured MCP servers.
-- Telegram messages and buttons when the Telegram client is enabled.
-- Network traffic caused by tools you approve or run.
-- Any custom provider endpoint you configure.
-
-The daemon API is intended for local clients. By default `matrixclawd` refuses
-non-loopback HTTP binds unless `MATRIXCLAW_ALLOW_REMOTE_HTTP=1` is explicitly
-set.
-
-See [SECURITY.md](SECURITY.md) for security reporting and local-secret notes.
+- Clients render state; the daemon owns it. Command semantics live in
+  `internal/controlplane`.
+- All real work is a persisted run; approvals are durable and survive restarts.
+- Provider, model, permissions and todo list are session data.
+- The native agent engine (`internal/agent`) reaches storage, tools and
+  approvals only through ports the core implements.
+
+See [Architecture](docs/ARCHITECTURE.md) for the package map, run lifecycle,
+tool contract and API roles.
+
+## Documentation
+
+| Doc | Topic |
+| --- | --- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | daemon, core, runs, modules, API, package map |
+| [docs/TELEGRAM.md](docs/TELEGRAM.md) | Telegram client, approvals, inline and guest mode, files, voice |
+| [docs/EXTERNAL_AGENTS.md](docs/EXTERNAL_AGENTS.md) | Codex and Claude Code runtimes, subagents |
+| [docs/MCP.md](docs/MCP.md) | MCP client and server |
+| [docs/BROWSER.md](docs/BROWSER.md) | browser tools through MCP |
+| [docs/WEB_SEARCH.md](docs/WEB_SEARCH.md) | `web_search` and `web_fetch` |
+| [docs/VOICE.md](docs/VOICE.md) | local TTS/STT, realtime voice, telephony |
+| [docs/STORAGE.md](docs/STORAGE.md) | storage module and Telegram files |
+| [docs/TODO_LIST.md](docs/TODO_LIST.md) | todo list |
+| [docs/TESTING.md](docs/TESTING.md) | testing strategy |
+| [internal/externalagents/docs/README.md](internal/externalagents/docs/README.md) | external-agent integration internals |
+| [clients/ios/README.md](clients/ios/README.md) | iOS Swift client package |
+| [scripts/README.md](scripts/README.md), [packaging/README.md](packaging/README.md) | install scripts and packaging |
+| [CHANGELOG.md](CHANGELOG.md) | release notes |
+| [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md) | contributing, security reporting |
+
+## Privacy and security
+
+Sessions, messages, runs, approvals, files, memory and setup stay on your
+machine. What leaves it is what you configure: prompts, context and tool
+results sent to your LLM provider; prompts and events sent to Codex or Claude
+Code; audio and transcripts sent to the realtime provider and, for calls, your
+SIP provider; tool arguments sent to remote MCP servers; Telegram messages when
+the bot is enabled; and network traffic from tools you approve. See
+[SECURITY.md](SECURITY.md).
 
 ## FAQ
 
-### Is MatrixClaw an OpenClaw alternative?
+**Is MatrixClaw an OpenClaw alternative?** Yes: an open-source, local-first
+assistant that stays running and is reachable from the terminal and Telegram,
+with local state, approvals, MCP tools, memory, scheduled tasks and subagents.
 
-Yes. MatrixClaw is an open-source, local-first OpenClaw alternative for users
-who want an always-on AI assistant reachable from Terminal and Telegram, with
-local SQLite state, approvals, MCP tools, memory, scheduled tasks, and
-subagents.
+**Is it a Claude Code or Codex alternative?** Partly. Those are terminal coding
+agents. MatrixClaw is a persistent runtime that can use Claude Code or Codex as
+subagents or session runtimes while it keeps the session, memory, approvals,
+Telegram access and automation in one daemon.
 
-### Is MatrixClaw a Claude Code alternative?
-
-Partly. Claude Code is a terminal coding agent. MatrixClaw is a persistent local
-AI runtime that can use Claude Code as an external subagent while keeping the
-main session, memory, approvals, Telegram access, and automation in one daemon.
-
-### Is MatrixClaw a Codex alternative?
-
-Partly. Codex CLI is a command-line coding agent. MatrixClaw can use Codex as an
-external subagent, but its main goal is durable personal AI automation across
-Terminal, Telegram, MCP tools, memory, approvals, and scheduled tasks.
-
-### Is MatrixClaw an OpenCode alternative?
-
-MatrixClaw overlaps with OpenCode for terminal AI workflows, but focuses more on
-always-on personal automation, Telegram access, persistent sessions, approvals,
-and subagent orchestration.
+**Is it an OpenCode alternative?** It overlaps for terminal AI work, but
+focuses on always-on personal automation, Telegram access, durable sessions and
+subagent orchestration.
 
 ## Status
 
-`matrixclaw` is an early single-user local operator. It is a good fit for local
-developer machines, terminal-first usage, Telegram as a remote companion client,
-and experimenting with provider/tool orchestration without rewriting clients.
-
-It is not currently a hosted multi-tenant service, browser IDE replacement, or
-distributed worker platform.
+Early, self-hosted, built for one owner on a developer machine or small server.
+It is not a hosted multi-tenant service, a browser IDE or a distributed worker
+platform.
 
 ## License
 

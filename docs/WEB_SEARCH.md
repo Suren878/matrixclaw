@@ -1,133 +1,114 @@
-# Web Search
+# Web Tools
 
-matrixclaw gives the assistant two web tools: `web_search` finds pages and
-`web_fetch` reads one page. Research across many sources is the assistant
-searching and fetching itself, or handing independent questions to read-only
-`agent` children, which run in parallel and report back.
+The assistant has two web tools: `web_search` finds pages and `web_fetch` reads
+one page. Both are always available and read-only, so they run without
+approval unless a permission rule says otherwise. Research across many sources
+is the assistant searching and fetching itself, or handing independent
+questions to read-only `agent` children that run in parallel.
 
-DuckDuckGo works out of the box with no API key. Tavily, Serper, and SearXNG can
-be configured from Modules -> Web Search.
+For pages that need a real browser (JavaScript rendering, logins, clicking,
+forms, screenshots) use the [Browser module](BROWSER.md).
 
-## Tools
+## `web_search`
 
-### `web_search`
-
-```
-query  - search query
-limit  - 1-20, default 8
-```
-
-Returns titles, URLs, and short descriptions from the configured provider,
-falling back to DuckDuckGo when the provider fails.
-
-### `web_fetch`
-
-```
-url  - http or https URL
+```text
+query  search query (required)
+limit  number of results, 1-20, default 8
 ```
 
-Returns the page's main content as markdown, headed by its title and final URL
-(after redirects):
+Returns a numbered list of titles, URLs and short descriptions from the
+configured provider. A provider without its key or URL is skipped for
+DuckDuckGo; a provider that fails also falls back to DuckDuckGo, and the result
+starts with a note saying why.
+Serper returns at most 10 results per query. Requests time out after 15 s.
 
-- HTML goes through readability (the main article or document body, without
-  navigation, sidebars and footers) and is converted to markdown with absolute
-  links; when readability finds too little, the whole body is converted with
-  page chrome removed. Plain text, markdown, JSON and XML are returned as they
-  are. Bodies are decoded by their charset. Other content types are refused.
-- At most 5 MB is downloaded and 400,000 characters returned. A result above
-  about 8,000 tokens is kept in a file of the session, and the assistant gets
-  its beginning and end with the file's path to read or grep the rest.
-- A page that shows almost no text without JavaScript (scripts, tiny visible
-  text, and a `<noscript>` notice or several scripts) returns whatever text it
-  has plus a note to open it with browser tools. web_fetch never drives a
-  browser itself.
-- Private and internal addresses (localhost, RFC 1918 ranges, link-local, cloud
-  metadata endpoints) are refused before connecting, at every redirect, and
-  at dial time. `web_fetch` permission rules apply to the URL's host and to
-  every redirect.
+## `web_fetch`
 
-For interactive work (logging in, clicking through a flow, filling forms,
-screenshots) configure an MCP browser server and use its `mcp_browser_*` tools;
-see [Browser Module](BROWSER.md). Their actions follow the normal approvals.
+```text
+url  http or https URL (required)
+```
 
-## Providers
+Returns the page as markdown, headed by its title and final URL (after
+redirects).
 
-Configure from **Modules → Web Search** in the terminal TUI or Telegram.
-The active provider and its credentials are stored in
-`~/.config/matrixclaw/setup.json` and take effect immediately — no daemon
-restart needed.
+- **HTML** goes through readability (the main article, without navigation,
+  sidebars and footers) and is converted to markdown with absolute links. When
+  readability finds less than 250 characters, the whole body is converted with
+  page chrome removed.
+- **Text** (`text/*`, JSON, XML, JavaScript, NDJSON) is returned as it is,
+  decoded by its charset (undeclared UTF-8 is read as UTF-8). Other content
+  types, such as PDFs and images, are refused.
+- **Size.** At most 5 MB is downloaded and 400,000 characters returned; a cut
+  page ends with a note. A result above about 8,000 tokens is saved to a file in
+  the session, and the assistant gets its beginning and end plus the file path
+  to read or grep the rest.
+- **JavaScript-only pages.** A page with scripts and almost no visible text
+  returns what text it has plus a note to open it with the browser tools.
+  `web_fetch` never drives a browser itself.
+- **Limits.** 15 s timeout, at most 5 redirects, only 2xx responses are read.
+  The request goes out directly; proxy environment variables are not used.
 
-### DuckDuckGo
+### Safety
 
-- **Free, no account or API key required.**
-- Scrapes the DuckDuckGo HTML endpoint.
-- Used automatically when no other provider is configured.
-- Good for general queries; rate limits may apply under heavy use.
+- Only `http` and `https` URLs are accepted.
+- Private and internal addresses are refused before connecting, at every
+  redirect and again when dialing (against DNS rebinding): loopback, RFC 1918,
+  link-local, CGNAT, IPv6 unique-local and link-local, multicast and reserved
+  ranges, and cloud metadata hosts (`169.254.169.254`,
+  `metadata.google.internal`, `100.100.100.200`).
+- Permission rules for `web_fetch` match the URL's host, for example
+  `web_fetch: *.example.com`, and are checked again for every redirect target.
 
-### Tavily
+## Search providers
 
-- **Free tier: 1 000 requests/month.**
-- Designed for AI agents — returns clean excerpts rather than raw snippets.
-- Sign up at [app.tavily.com](https://app.tavily.com) to get an API key.
-- Keys start with `tvly-`.
-- Configure: **Modules → Web Search → Tavily → API Key**.
+Choose the provider in `/modules web_search` (**Modules → Web Search**) in the
+terminal or the Telegram owner chat. Changes apply at once, without a daemon
+restart. Only the owner can change them.
 
-### Serper
+| Provider | Cost | Needs | Results |
+|---|---|---|---|
+| DuckDuckGo (default) | Free | Nothing | DuckDuckGo HTML search |
+| Tavily | 1,000 requests/month free | API key (`tvly-…`) from [app.tavily.com](https://app.tavily.com) | Search API built for agents |
+| Serper | 2,500 requests/month free | API key from [serper.dev](https://serper.dev) | Google results |
+| SearXNG | Free | Your own instance | Results of the engines it aggregates |
 
-- **Free tier: 2 500 requests/month.**
-- Proxies Google Search results.
-- Sign up at [serper.dev](https://serper.dev) to get an API key.
-- Configure: **Modules → Web Search → Serper → API Key**.
+Picking a provider that still needs a key or URL opens that field first.
+Entering a key or URL switches to its provider. Each provider keeps its own
+value, so you can switch back and forth without re-entering keys. To clear a
+value, enter `-`; clearing the active provider's value switches back to
+DuckDuckGo.
+
+Stored in `setup.json` under `modules.web_search`:
+
+| Key | Value |
+|---|---|
+| `provider` | `ddg`, `tavily`, `serper` or `searxng` |
+| `tavily_key` | Tavily API key |
+| `serper_key` | Serper API key |
+| `base_url` | SearXNG base URL, must start with `http://` or `https://` |
+
+Clients see the keys only as masked previews, and non-owners only see whether a
+key is set.
 
 ### SearXNG
 
-- **Free, unlimited — self-hosted only.**
-- Privacy-preserving meta-search engine that aggregates results from many
-  sources simultaneously.
-- You run the instance; matrixclaw points at it.
-- Configure: **Modules → Web Search → SearXNG → Base URL**.
-
-#### Running SearXNG with Docker
+matrixclaw calls `<base_url>/search?format=json`, so the instance must allow the
+JSON format. With Docker:
 
 ```bash
-docker run -d \
-  --name searxng \
-  -p 8888:8080 \
-  -e SEARXNG_SECRET_KEY=$(openssl rand -hex 32) \
+docker run -d --name searxng -p 127.0.0.1:8888:8080 \
+  -e SEARXNG_SECRET_KEY="$(openssl rand -hex 32)" \
   searxng/searxng
 ```
 
-Then set Base URL to `http://localhost:8888`.
+The official image serves only HTML by default. Mount a `settings.yml` that
+enables JSON:
 
-> **Note:** The official SearXNG Docker image disables JSON output by default.
-> If searches return errors, mount a custom `settings.yml` that enables it:
->
-> ```yaml
-> search:
->   formats:
->     - html
->     - json
-> ```
+```yaml
+search:
+  formats:
+    - html
+    - json
+```
 
-## Provider comparison
-
-| Provider   | Cost          | Requires       | Results source          |
-|------------|---------------|----------------|-------------------------|
-| DuckDuckGo | Free          | Nothing        | DuckDuckGo              |
-| Tavily     | Free 1k/mo    | API key        | AI-optimized web index  |
-| Serper     | Free 2.5k/mo  | API key        | Google Search           |
-| SearXNG    | Free          | Self-hosted    | 70+ configurable sources|
-
-## Credential storage
-
-Each provider stores its credentials independently:
-
-- Tavily key → `modules.web_search.tavily_key`
-- Serper key → `modules.web_search.serper_key`
-- SearXNG URL → `modules.web_search.base_url`
-
-Switching providers does not clear the other provider's key. You can store
-both a Tavily and a Serper key and switch between them instantly.
-
-The module settings (`/v1/settings/web_search`) show the keys only as masked
-previews. To remove a stored key or URL, enter `-` in its prompt.
+Then set the base URL to `http://localhost:8888`.

@@ -1,243 +1,91 @@
-# Codex App-Server Connector
+# Codex App-Server Adapter
 
-`codexapp` is an experimental connector for the Codex CLI app-server protocol.
-It is intentionally isolated under:
+`internal/externalagents/codexapp` runs Codex through its experimental
+app-server protocol. Agent ID `codex-app`, alias `codex`. The adapter tolerates
+extra fields and loose shapes because the protocol may change (for example
+`thread.status` is decoded as `any`; the generated schema and the live server
+disagree on its type).
 
-```text
-internal/externalagents/codexapp
-```
-
-The connector is wired into the daemon as an optional external-agent runtime.
-It remains isolated from normal provider-backed assistant sessions.
-
-## Why App-Server
-
-Codex has several possible integration surfaces:
-
-```text
-codex exec                 one process per prompt
-codex exec resume          one process per prompt, but resumes a saved thread
-codex app-server           long-running JSON-RPC server
-codex interactive TUI      human UI, not a stable daemon protocol
-```
-
-For matrixclaw, `codex app-server` is the cleanest option because it exposes
-thread and turn methods directly:
-
-```text
-thread/start
-thread/resume
-turn/start
-turn/steer
-turn/interrupt
-thread/read
-thread/list
-model/list
-```
-
-It also streams notifications:
-
-```text
-thread/started
-turn/started
-item/agentMessage/delta
-item/reasoning/textDelta
-item/commandExecution/outputDelta
-item/fileChange/patchUpdated
-turn/diff/updated
-turn/completed
-error
-```
-
-## Process Model
-
-The first implementation starts Codex over stdio:
+## Process
 
 ```bash
 codex app-server --listen stdio://
 ```
 
-matrixclaw writes newline-delimited JSON-RPC messages to stdin and reads
-newline-delimited JSON-RPC messages from stdout.
+- One app-server process per runtime, shared by all Codex sessions. It is
+  started lazily on first use, detached from any single run's context, and
+  restarted on the next call if it has exited.
+- Transport: newline-delimited JSON-RPC over stdin/stdout. Stderr goes to the
+  daemon's stderr.
+- Handshake (30 s timeout): `initialize` with
+  `clientInfo: {name: "matrixclaw", version: "0"}` and
+  `capabilities: {experimentalApi: true}`, then the `initialized` notification.
 
-The connector does not use WebSocket yet. Stdio keeps the first bridge simple
-and private to the matrixclawd process.
+## Methods Used
 
-## Handshake
+| Method | When | Params sent |
+| --- | --- | --- |
+| `thread/start` | session created | `model`, `cwd`, `approvalPolicy`, `sandbox`, `config` (MatrixClaw session metadata) |
+| `thread/resume` | turn start reports `no rollout found for thread id` or `thread not found`; the turn is retried once | `threadId`, `model`, `cwd`, `approvalPolicy`, `sandbox` |
+| `turn/start` | each user message | `threadId`, `input: [{type: "text", text, text_elements: []}]`, `approvalPolicy`, `model` |
+| `turn/interrupt` | run canceled | `threadId`, `turnId` (the active turn) |
 
-The initial handshake is:
+`thread.id` is stored as `external_thread_id`, `thread.sessionId` as
+`external_session_id`. When the session has no policy, the adapter uses
+`approvalPolicy: never`, `sandbox: danger-full-access`. The user-facing
+permission mapping is in [docs/EXTERNAL_AGENTS.md](../../../docs/EXTERNAL_AGENTS.md#permissions).
 
-```json
-{
-  "id": "1",
-  "method": "initialize",
-  "params": {
-    "clientInfo": {
-      "name": "matrixclaw",
-      "title": "matrixclaw",
-      "version": "0"
-    },
-    "capabilities": {
-      "experimentalApi": true
-    }
-  }
-}
-```
+## Notifications
 
-Then the client sends:
+Only notifications for the current thread and turn are forwarded:
 
-```json
-{
-  "method": "initialized"
-}
-```
+| Codex notification | MatrixClaw event |
+| --- | --- |
+| `turn/started` | `turn.heartbeat` |
+| `item/agentMessage/delta` | `message.delta` |
+| `item/reasoning/textDelta`, `item/reasoning/summaryTextDelta` | `reasoning.delta` |
+| `item/started` / `item/completed` (tool items, see below) | `tool.started` / `tool.completed` |
+| `item/commandExecution/outputDelta`, `item/fileChange/outputDelta` | `tool.output.delta` |
+| `item/fileChange/patchUpdated` | `diff.updated` |
+| `thread/compacted` | `turn.heartbeat` ("context compacted") |
+| `error` with `willRetry` | `turn.heartbeat` |
+| `error` without `willRetry` | `turn.failed` |
+| `turn/completed` | `turn.completed` if status is `completed`; otherwise `turn.failed` (interrupted, failed, or unexpected status) |
 
-## Start Thread
+The adapter itself emits `turn.started` after `turn/start` succeeds, and
+`turn.failed` if the process or stream dies mid-turn. Other notifications are
+ignored.
 
-Creating a Codex-backed matrixclaw session starts a Codex thread:
+Tool items are mapped by `item.type`:
 
-```json
-{
-  "id": "2",
-  "method": "thread/start",
-  "params": {
-    "model": "gpt-5.4",
-    "cwd": "/path/to/project",
-    "approvalPolicy": "never",
-    "sandbox": "danger-full-access"
-  }
-}
-```
+| Codex item | Tool name |
+| --- | --- |
+| `commandExecution` | `bash` |
+| `fileChange` | `edit` |
+| `mcpToolCall` | `<server>.<tool>` |
+| `dynamicToolCall` | its tool name |
+| `collabAgentToolCall` | its tool name (`agent_task` if none) |
+| `webSearch` | `web_search` |
+| `imageView` | `view_image` |
+| `imageGeneration` | `image_generation` |
 
-The response contains:
+## Server Requests
 
-```text
-thread.id
-thread.sessionId
-model
-modelProvider
-cwd
-```
+MatrixClaw cannot ask the user mid-turn, so it answers every request at once:
 
-Store `thread.id` as `external_thread_id`.
+| Request | Answer |
+| --- | --- |
+| `item/commandExecution/requestApproval`, `item/fileChange/requestApproval` | `decision: decline` |
+| `execCommandApproval`, `applyPatchApproval` | `decision: denied` |
+| `mcpServer/elicitation/request` | `action: decline` |
+| anything else | JSON-RPC error `-32601` |
 
-## Start Turn
+## Models
 
-Each user message becomes a turn:
+`Models()` suggests `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex`,
+`gpt-5.3-codex-spark`. Any model name is passed through to Codex.
 
-```json
-{
-  "id": "3",
-  "method": "turn/start",
-  "params": {
-    "threadId": "thread_id_from_start",
-    "input": [
-      {
-        "type": "text",
-        "text": "Hello",
-        "text_elements": []
-      }
-    ]
-  }
-}
-```
+## Tests
 
-The response gives the turn id. The final answer arrives through notifications.
-
-## Resume Thread
-
-When matrixclawd restarts, it should resume an existing Codex thread:
-
-```json
-{
-  "id": "4",
-  "method": "thread/resume",
-  "params": {
-    "threadId": "saved_external_thread_id",
-    "cwd": "/path/to/project"
-  }
-}
-```
-
-The current app-server schema says thread resume can load by thread id, history,
-or path. Prefer thread id.
-
-## Approval Policy
-
-matrixclaw maps the session permission mode into Codex app-server policy:
-
-```text
-full-auto    -> approvalPolicy: never,      sandbox: danger-full-access
-accept-edits -> approvalPolicy: on-request, sandbox: workspace-write
-default      -> approvalPolicy: on-request, sandbox: read-only
-```
-
-The Codex adapter also has a trusted-local fallback when no policy is supplied:
-
-```text
-approvalPolicy: never
-sandbox: danger-full-access
-```
-
-The fallback is intentionally scoped to the optional Codex external-agent
-module. The Codex app-server sandbox depends on `bubblewrap`; on some hosts it
-fails before the model can even run safe commands such as `ls`.
-
-Later stages still need:
-
-```text
-approval request notifications
-matrixclaw approval UI
-```
-
-## Known Protocol Notes
-
-The generated TypeScript schema showed `thread.status` as a string-like shape,
-but the live app-server returned an object. The Go connector keeps status as
-`any` to avoid brittle decoding.
-
-The Codex app-server command is marked experimental by Codex CLI. Keep the
-adapter isolated and tolerate extra fields or shape changes wherever possible.
-
-## Current Bridge
-
-The runtime bridge is implemented in:
-
-```text
-internal/externalagents/codexapp/runtime.go
-```
-
-It exposes the generic `externalagents.RuntimeAgent` interface:
-
-```text
-StartSession
-ResumeSession
-Send
-Interrupt
-Close
-```
-
-`Send` calls `turn/start` and converts Codex notifications into generic
-external-agent events:
-
-```text
-item/agentMessage/delta -> message.delta
-item/reasoning/*Delta   -> reasoning.delta
-item/started            -> tool.started
-item/*/outputDelta      -> tool.output.delta
-item/completed          -> tool.completed
-item/fileChange/*       -> diff.updated / tool output
-turn/completed          -> turn.completed
-closed/error stream     -> turn.failed
-```
-
-The core can execute a run for a session that has an
-`external_agent_sessions` attachment. That branch lives in:
-
-```text
-internal/core/external_agent_execution.go
-```
-
-The daemon registers the Codex runtime during bootstrap. The API can list
-external agents and create external-agent sessions; setup UI wiring is still
-pending.
+`client_test.go` and `runtime_test.go` run against a fake JSON-RPC peer and need
+no Codex install.

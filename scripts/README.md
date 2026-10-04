@@ -1,48 +1,51 @@
 # Scripts
 
-This directory holds operational scripts only.
+Install, update, uninstall and build scripts. They install binaries and point
+to the next step; configuration belongs to `matrixclaw setup`.
 
-Scripts:
-- `install.sh`
-  Install release binaries into `~/.local/bin` and start `matrixclaw setup`.
-  Re-run it to replace the installed binaries with a newer release, or pass
-  `--version TAG` for a specific release. Use `--self-test` for shell-level
-  installer checks that do not download or install anything.
-  After setup is saved, plain `matrixclaw` opens the terminal TUI and starts
-  the daemon when needed. Use `--from-source` for local development installs.
-  Use `--voice-runtime` when the user explicitly wants local Piper,
-  Supertonic, Whisper.cpp, and ffmpeg dependencies installed during setup.
-- `install_voice_runtime.sh`
-  Install optional local voice runtime dependencies. It prepares Piper and
-  Supertonic in local Python venvs, builds Whisper.cpp CLI/server under
-  matrixclaw state, and installs `ffmpeg` through the host package manager when
-  available. It is idempotent and can be rerun after updates. Use `--piper`,
-  `--supertonic`, `--whisper`, or `--all` to choose runtime targets, and
-  `--no-system-deps` when system packages are managed outside the script.
-- `uninstall.sh`
-  Remove installed binaries and the user service. Keeps config and state unless
-  `--purge` is explicitly passed.
-- `build_release.sh`
-  Build `matrixclaw`, `matrixclawd`, and `matrixclaw-telephony-gateway` with
-  version, commit, and build date stamped through Go ldflags. By default it
-  writes local builds to `bin/`; GitHub release packaging writes archives to
-  `dist/`. Both directories are ignored and should not be committed.
+| Script | What it does |
+|---|---|
+| `install.sh` | Installs the release binaries (`matrixclaw`, `matrixclawd`, `matrixclaw-telephony-gateway`) into `~/.local/bin`, then runs `matrixclaw setup`. Re-run it to update. |
+| `install_voice_runtime.sh` | Installs optional local voice runtimes: Piper and Supertonic in Python venvs, a whisper.cpp CLI and server build, and `ffmpeg` through the system package manager. Idempotent. |
+| `uninstall.sh` | Removes the binaries and the user service; keeps config and state unless `--purge`. |
+| `build_release.sh` | Builds the three binaries with version, commit and date stamped through ldflags into `bin/` (`OUT_DIR` changes it). |
 
-Rule:
-- scripts install files and print the next setup step
-- scripts keep install/update/uninstall separate from runtime configuration
-- scripts do not become a second configuration model
-- scripts should build or invoke the canonical binaries `matrixclaw`,
-  `matrixclawd`, and `matrixclaw-telephony-gateway`
+## install.sh
 
-Voice runtime notes:
-- `install.sh --voice-runtime` calls `install_voice_runtime.sh` after installing
-  the release binaries.
-- voice runtime files default to `~/.local/state/matrixclaw/runtime`
-- voice model files are not downloaded by the scripts; choose Piper voices and
-  Whisper.cpp models later from `/modules tts` and `/modules stt`; Supertonic
-  downloads its shared model during runtime install
-- macOS voice runtime install requires Homebrew and Xcode Command Line Tools
-  (`xcode-select --install`)
-- `MATRIXCLAW_STATE_DIR`, `MATRIXCLAW_RUNTIME_DIR`, and
-  `MATRIXCLAW_WHISPER_CPP_REPO` can redirect the voice runtime install
+```text
+install.sh [--version TAG] [--install-dir DIR] [--no-setup] [--from-source] [--voice-runtime] [--self-test]
+```
+
+- `--version TAG` installs a specific release (default: latest).
+- `--from-source` builds from the local checkout instead of downloading.
+- `--voice-runtime` also runs `install_voice_runtime.sh --all`.
+- `--self-test` runs shell-level checks without downloading or installing.
+- Environment: `MATRIXCLAW_REPO`, `MATRIXCLAW_VERSION`,
+  `MATRIXCLAW_INSTALL_DIR`, `MATRIXCLAW_RUN_SETUP=0` (skip setup).
+
+After setup, plain `matrixclaw` opens the TUI and starts the daemon when
+needed.
+
+## install_voice_runtime.sh
+
+```text
+install_voice_runtime.sh [--piper] [--whisper] [--supertonic] [--all] [--no-system-deps] [--self-test]
+```
+
+- With no target flag it installs all three.
+- Runtimes go to `~/.local/state/matrixclaw/runtime`; `MATRIXCLAW_STATE_DIR`,
+  `MATRIXCLAW_RUNTIME_DIR` and `MATRIXCLAW_WHISPER_CPP_REPO` redirect it.
+- Voice models are not downloaded here: pick Piper voices and whisper.cpp
+  models later in `/modules tts` and `/modules stt`.
+- `--no-system-deps` skips the package manager (apt-get, dnf, pacman, or
+  Homebrew on macOS). macOS needs Homebrew and the Xcode Command Line Tools
+  (`xcode-select --install`).
+
+## uninstall.sh
+
+```text
+uninstall.sh [--purge] [--yes] [--install-dir DIR]
+```
+
+`--purge` also removes `~/.config/matrixclaw` and `~/.local/state/matrixclaw`
+(`MATRIXCLAW_CONFIG_DIR`, `MATRIXCLAW_STATE_DIR`); `--yes` skips its prompt.

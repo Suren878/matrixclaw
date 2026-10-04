@@ -1,161 +1,121 @@
 # External Agents
 
-External agents are optional runtimes attached to MatrixClaw sessions. They are
-not normal LLM providers: MatrixClaw still owns the product session, local
-history, client handoff, approvals, deliveries, and normalized event display.
-The external runtime owns its own process or thread protocol.
+An external agent is a coding-agent CLI that MatrixClaw runs inside one of its
+sessions. MatrixClaw keeps the session, transcript, client bindings and event
+display; the agent runs its own model, tools and sandbox. External agents are
+not LLM providers and do not use MatrixClaw's tools or permission rules.
 
-Current built-in adapters:
+Built-in adapters:
 
-- Codex app-server, detected from the `codex` binary.
-- Claude Code CLI, detected from the `claude` binary.
+| Agent | ID (aliases) | Runs |
+| --- | --- | --- |
+| Codex | `codex-app` (`codex`) | `codex app-server --listen stdio://`, one long-lived process |
+| Claude Code | `claude-code` (`claude`) | `claude -p --output-format stream-json ...`, one process per turn |
 
-Manage adapters from:
+## Setup
 
-```text
-/modules agents
-matrixclaw agents
-```
+1. Install the agent CLI and log in to it the way its vendor documents. The
+   daemon finds the binary on `PATH` or in the usual npm, nvm, asdf and Homebrew
+   locations. macOS `.app` bundle paths are not accepted; point at the CLI
+   binary.
+2. Enable it (owner only):
 
-Enabled adapters appear in the new-session picker and can also be used as
-external subagent runtimes by the `agent` tool.
+   ```text
+   /modules agents                        list, enable, disable, set path
+   /modules agents enable codex
+   /modules agents codex path /opt/codex/bin/codex
+   ```
 
-## Session Model
+   The settings are stored in setup config under
+   `modules.external_agents.<id>` as `enabled` and `path`. The API equivalent is
+   `PATCH /v1/external-agents/{id}` with `{"enabled": true, "path": "..."}`.
+3. Check status:
 
-MatrixClaw stores external-agent sessions with a generic session kind and a
-separate attachment:
+   ```bash
+   matrixclaw agents        # installed / enabled / not installed
+   ```
 
-```text
-sessions.kind       = external_agent
-sessions.runtime_id = external_agent
+An agent shows as enabled only when it is both enabled and installed.
 
-external_agent_sessions
-  session_id
-  agent_id
-  external_thread_id
-  external_session_id
-  cwd
-  model
-  metadata_json
-```
+## Starting a Session
 
-The concrete adapter is selected by `external_agent_sessions.agent_id`.
-Canonical built-in IDs are `codex-app` and `claude-code`; user-facing aliases
-such as `codex` and `claude` are accepted at command/API boundaries.
+- TUI or Telegram owner chat: `/new` and pick the agent. Only installed and
+  enabled agents are listed, and only for the owner.
+- CLI: `matrixclaw agents start codex [DIR]` creates a session in `DIR`
+  (default: current directory).
+- API: `POST /v1/sessions` with `"external_agent_id": "codex"` (or `"claude"`).
 
-New code should create external-agent sessions with `runtime_id:
-"external_agent"` and `external_agent_id` set to the adapter ID or alias.
-This keeps adapter details out of the main session table and lets the daemon
-resume or detach external runtimes without changing normal assistant sessions.
+Each message you send becomes one turn of the agent. Its replies, reasoning,
+tool calls and file changes appear in the normal transcript. Interrupting a
+run interrupts the agent's turn. When the daemon restarts, the next message
+resumes the same Codex thread or Claude Code session.
 
-## Adapter Boundary
+## Permissions
 
-The generic runtime interface is implemented under `internal/externalagents`.
-Adapter-specific protocol code stays in its own package, for example
-`internal/externalagents/codexapp`.
+A session created without a permission mode starts in `full_auto`. The session
+mode maps to the agent's own settings:
 
-Adapters provide:
+| Session mode | Codex `approvalPolicy` / `sandbox` | Claude Code `--permission-mode` |
+| --- | --- | --- |
+| `full_auto` | `never` / `danger-full-access` | `auto` |
+| `accept_edits` | `on-request` / `workspace-write` | `acceptEdits` |
+| `default` | `on-request` / `read-only` | `default` |
+| read-only subagent | `never` / `read-only` | `dontAsk` |
 
-- availability and descriptor metadata for setup and UI.
-- `StartSession` and `ResumeSession` for external runtime threads.
-- `Send`, `Interrupt`, and `Close` for turn execution.
-- normalized event streams for MatrixClaw clients.
+A mode change applies from the next turn. For Codex only the approval policy
+changes there; the sandbox changes when the daemon next resumes the thread.
 
-The daemon composition root registers built-in adapters through
-`internal/externalagents/builtins`. Core runtime packages should depend on the
-generic external-agent interfaces, not on a specific adapter package.
+MatrixClaw does not relay an agent's approval requests to you. Codex approval
+requests are declined automatically and the turn continues, so in `default` and
+`accept_edits` anything Codex would ask about is refused. Claude Code runs
+non-interactively and cannot ask either.
 
-## Event Normalization
+Security limits:
 
-External runtime events are translated into MatrixClaw event kinds such as:
-
-```text
-message.delta
-reasoning.delta
-tool.started
-tool.output.delta
-tool.completed
-diff.updated
-turn.started
-turn.completed
-turn.failed
-```
-
-Clients render these normalized events the same way they render normal
-MatrixClaw run events. Adapter raw protocol payloads may be kept for
-diagnostics, but UI and core code should not depend on them.
-
-## Codex App-Server
-
-The Codex adapter starts Codex over stdio:
-
-```bash
-codex app-server --listen stdio://
-```
-
-The connector speaks newline-delimited JSON-RPC. It initializes the server, then
-uses thread and turn methods such as:
-
-```text
-thread/start
-thread/resume
-turn/start
-turn/steer
-turn/interrupt
-thread/read
-thread/list
-model/list
-```
-
-MatrixClaw stores the Codex thread ID as `external_thread_id`. On daemon restart
-the adapter resumes by thread ID and continues routing normalized notifications
-back through the owning MatrixClaw session.
-
-Codex permission settings are mapped from the MatrixClaw session permission
-mode:
-
-```text
-full-auto     -> approvalPolicy: never,      sandbox: danger-full-access
-accept-edits  -> approvalPolicy: on-request, sandbox: workspace-write
-default       -> approvalPolicy: on-request, sandbox: read-only
-```
-
-An external agent session created without a mode starts in `full-auto`. Only
-the owner can start one, from the TUI or the Telegram owner chat. Other
-Telegram chats cannot bind to or send into it. The same restriction applies to
-any session in `full-auto`.
-
-MatrixClaw permission rules govern only MatrixClaw's own tools. A Codex or
-Claude Code session, or an external subagent, runs its own tools under the
-policy above.
+- In `full_auto` Codex runs without a sandbox and Claude Code in its
+  autonomous `auto` mode; both act as the daemon's OS user.
+- Only the owner can start an external-agent session, change its permission
+  mode, or bind to or send into one. Members, guests and other Telegram chats
+  are refused; the same applies to any session in `full_auto`.
+- MatrixClaw permission rules do not apply to an external agent's tools.
 
 ## Subagents
 
-MatrixClaw assistant sessions receive an `agent` tool for bounded child work.
-Child sessions are hidden from the normal session list, receive an isolated
-prompt built from the call's prompt, and return a compact summary to the parent
-run. An external child runs in `full-auto` (`approvalPolicy: never`,
-`sandbox: danger-full-access`) unless it is `readonly`. A `readonly` external
-child gets `approvalPolicy: never` and `sandbox: read-only`: Codex refuses
-writes without asking, and Claude Code runs
-in `dontAsk` mode, which denies every call that would prompt (edits and shell
-commands outside its read-only set) while reads still work. Tools a user's
-Claude Code `permissions.allow` rules pre-approve still run there. MatrixClaw
-refuses any approval a read-only child asks for ("read-only subagent cannot run
-<tool>") instead of asking the parent.
+Assistant sessions have an `agent` tool that hands a bounded task to a child
+agent. The child runs in a hidden session and the parent receives only its
+result. The system prompt tells the model which child runtimes are enabled.
 
-Allowed runtimes are:
+| Parameter | Meaning |
+| --- | --- |
+| `description` (required) | Short label for the task, 3-5 words. |
+| `prompt` (required) | Everything the child needs: goal, context, what to report. |
+| `background` | Start the child as a background task; its result reaches the parent as a message when it ends. At most `daemon.background_agents` (default 4) run per session. |
+| `isolation` | `shared` (default): the parent's directory, one writing child at a time. `worktree`: a git worktree of its own, so several run at once. |
+| `readonly` | Read-only tools only; read-only children run in parallel. |
+| `runtime` | `matrixclaw` (default), `codex`, `claude`, or `auto` (same as `matrixclaw`). |
+| `model` | Optional model for the child runtime. |
 
-```text
-matrixclaw
-codex
-claude
-auto
-```
+A native child starts from the call's prompt alone: it does not inherit the
+parent's history, todo list, skills or memory prompt. It keeps its own todo
+list (`todo_write`) and may run background commands, which stop when it
+finishes. It cannot use `agent`, `await`, `memory`, `session_search`,
+`text_to_speech`, or any other automation, storage or skill tools (reminders,
+scheduled tasks, calls, storage and file delivery, `skill_*`). Child runs have
+their own budget (`daemon.budgets.subagent`, default 100 steps and 1 h active
+time); a blocking child's time does not count against the parent's.
 
-`auto` defaults to the native MatrixClaw child runtime unless enabled external
-runtimes make another choice explicit. External-agent sessions cannot start
-subagents.
+When a child asks for an approval, the request appears in the parent's session
+and chat; the child continues with the decision.
 
-For implementation details and removal boundaries, see
-`internal/externalagents/docs/`.
+External children (`codex`, `claude`) need the agent enabled and run in
+`full_auto`. With `readonly: true` they use the read-only mapping above: Codex
+refuses writes without asking; Claude Code's `dontAsk` denies every call that
+would prompt (edits and shell commands outside its read-only set) while reads
+still work, and tools pre-approved by the user's Claude Code
+`permissions.allow` rules still run. MatrixClaw refuses any approval a
+read-only child asks for ("read-only subagent cannot run <tool>").
+
+Children and external-agent sessions cannot start subagents.
+
+Contributor notes on the adapter boundary live in
+[`internal/externalagents/docs`](../internal/externalagents/docs/README.md).
