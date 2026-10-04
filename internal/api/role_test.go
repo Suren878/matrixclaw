@@ -105,6 +105,12 @@ func TestOnlyTheOwnerCreatesASessionWithAPermissionMode(t *testing.T) {
 	if got := serveAs(server, core.RoleMember, "POST", "/v1/sessions", `{"title":"x","permission_mode":"accept_edits"}`); got.Code != http.StatusForbidden {
 		t.Fatalf("member accept_edits session: status %d %s, want 403", got.Code, got.Body.String())
 	}
+	if got := serveAs(server, core.RoleMember, "POST", "/v1/sessions", `{"title":"x","external_agent_id":"codex"}`); got.Code != http.StatusForbidden {
+		t.Fatalf("member external agent session: status %d %s, want 403", got.Code, got.Body.String())
+	}
+	if got := serveAs(server, core.RoleGuest, "POST", "/v1/sessions", `{"title":"x","runtime_id":"external_agent"}`); got.Code != http.StatusForbidden {
+		t.Fatalf("guest external agent session: status %d %s, want 403", got.Code, got.Body.String())
+	}
 	if got := serveAs(server, core.RoleMember, "POST", "/v1/sessions", `{"title":"x"}`); got.Code != http.StatusCreated {
 		t.Fatalf("member default session: status %d %s", got.Code, got.Body.String())
 	}

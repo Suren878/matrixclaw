@@ -87,6 +87,8 @@ type CreateSessionInput struct {
 	ExternalAgentID string
 	// Readonly starts an external agent that never asks and cannot write.
 	Readonly bool
+	// Restricted refuses a session that would run tools without asking.
+	Restricted bool
 }
 
 type RenameSessionInput struct {

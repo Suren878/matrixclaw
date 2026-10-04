@@ -27,6 +27,9 @@ func (c *Core) CreateSession(ctx context.Context, input CreateSessionInput) (Ses
 	if kind == SessionKindExternalAgent && rawPermissionMode == "" {
 		permissionMode = PermissionModeFullAuto
 	}
+	if input.Restricted && (kind == SessionKindExternalAgent || permissionMode != PermissionModeDefault) {
+		return Session{}, ErrOwnerOnly
+	}
 	if kind == SessionKindAssistant {
 		llms := c.sessionLLMs()
 		if llms != nil {
