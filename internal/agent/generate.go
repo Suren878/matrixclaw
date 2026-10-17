@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math/rand/v2"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -11,8 +13,6 @@ import (
 
 // ProgressFlushInterval is how often a streaming reply is written to the journal.
 const ProgressFlushInterval = 750 * time.Millisecond
-
-var errRunCanceled = errors.New("run canceled")
 
 // generation is one model call and the assistant message it streamed.
 type generation struct {
@@ -26,9 +26,9 @@ const CompactStopReason = "compact"
 
 // recordStep stores one successful generation as a run step and counts its tokens
 // against the run's budget.
-func (r *run) recordStep(ctx context.Context, response providers.Response, stopReason string, latency time.Duration) error {
+func (r *run) recordStep(ctx context.Context, response providers.Response, stopReason string, latency time.Duration) {
 	r.state.Tokens += response.Usage.PromptTokens + response.Usage.OutputTokens
-	return r.Journal.RecordStep(ctx, Step{
+	r.Journal.RecordStep(ctx, Step{
 		RunID:      r.task.RunID,
 		Model:      response.Model,
 		Provider:   response.Provider,
@@ -39,36 +39,63 @@ func (r *run) recordStep(ctx context.Context, response providers.Response, stopR
 	})
 }
 
-// retryBackoffs are the waits before each retry of a failed generation;
-// limitBackoffs replace them when a rate-limited or overloaded provider gives
-// no Retry-After.
-var (
-	retryBackoffs = [...]time.Duration{200 * time.Millisecond, 750 * time.Millisecond}
-	limitBackoffs = [...]time.Duration{2 * time.Second, 8 * time.Second}
+// A failed generation is tried up to maxAttempts times. The waits double from
+// retryBase, or from limitBase for a rate-limited or overloaded provider that
+// gave no Retry-After, with jitter; together they stay within maxRetryWait.
+const (
+	maxAttempts  = 6
+	maxRetryWait = 2 * time.Minute
+	retryBase    = time.Second
+	limitBase    = 2 * time.Second
 )
 
-// maxRetryAfter caps the wait a provider may ask for; a longer one fails the
-// generation instead of stalling the run.
-const maxRetryAfter = time.Minute
-
-// retryDelay is the wait before retrying err on attempt, honouring the
-// provider's Retry-After; false means err is not retried.
-func retryDelay(err error, attempt int) (time.Duration, bool) {
-	if attempt >= len(retryBackoffs) || !providers.IsRetryableGenerationError(err) {
+// retryDelay is the wait before retrying err after attempt failed attempts that
+// already waited waited; false means err is not retried. A malformed tool call
+// goes back to the model instead.
+func retryDelay(err error, attempt int, waited time.Duration) (time.Duration, bool) {
+	if attempt+1 >= maxAttempts || errors.Is(err, providers.ErrMalformedToolCall) || !providers.IsRetryableGenerationError(err) {
 		return 0, false
 	}
-	delay := retryBackoffs[attempt]
+	base := retryBase
 	var apiErr *providers.APIError
-	if !errors.As(err, &apiErr) || !apiErr.Retryable() {
-		return delay, true
+	limited := errors.As(err, &apiErr) && apiErr.Retryable()
+	if limited {
+		base = limitBase
 	}
-	switch {
-	case apiErr.RetryAfter > maxRetryAfter:
+	backoff := base << attempt
+	delay := backoff/2 + rand.N(backoff/2+1)
+	if limited && apiErr.RetryAfter > 0 {
+		delay = apiErr.RetryAfter
+	}
+	if waited+delay > maxRetryWait {
 		return 0, false
-	case apiErr.RetryAfter > 0:
-		return max(delay, apiErr.RetryAfter), true
-	default:
-		return limitBackoffs[attempt], true
+	}
+	return delay, true
+}
+
+// withRetry runs attempt until it succeeds or fails for good. Before each wait
+// settle, when set, cleans up after the failed attempt and may decline the retry.
+func (r *run) withRetry(ctx context.Context, attempt func() error, settle func(error) (bool, error)) error {
+	var waited time.Duration
+	for n := 0; ; n++ {
+		err := attempt()
+		delay, retry := retryDelay(err, n, waited)
+		if err == nil || !retry || ctx.Err() != nil {
+			return err
+		}
+		if settle != nil {
+			again, settleErr := settle(err)
+			if settleErr != nil {
+				return errors.Join(err, settleErr)
+			}
+			if !again {
+				return err
+			}
+		}
+		if err := r.Sleep(ctx, delay); err != nil {
+			return err
+		}
+		waited += delay
 	}
 }
 
@@ -81,44 +108,79 @@ type summaryModel struct {
 }
 
 func (m summaryModel) Generate(ctx context.Context, request providers.Request) (providers.Response, error) {
-	for attempt := 0; ; attempt++ {
-		response, latency, err := m.r.generateOnSlot(ctx, m.model, request)
+	var response providers.Response
+	err := m.r.withRetry(ctx, func() error {
+		var latency time.Duration
+		var err error
+		response, latency, err = m.r.generateOnSlot(ctx, m.model, request)
 		if err == nil {
-			return response, m.r.recordStep(ctx, response, CompactStopReason, latency)
+			m.r.recordStep(ctx, response, CompactStopReason, latency)
 		}
-		delay, retry := retryDelay(err, attempt)
-		if ctx.Err() != nil || !retry {
-			return response, err
-		}
-		if err := m.r.Sleep(ctx, delay); err != nil {
-			return response, err
-		}
-	}
+		return err
+	}, nil)
+	return response, err
 }
 
-// generateWithRetry retries only failures that happened before any output was shown;
-// a partial answer stays visible as failed instead of being replayed. An empty
-// final turn is not retried: it falls back to the stop note.
+// generateWithRetry generates the step's reply, retrying transient failures. A
+// reply that failed while streaming is sealed out of the conversation first, so
+// the model never reads it. An empty final turn is not retried: it falls back
+// to the stop note.
 func (r *run) generateWithRetry(ctx context.Context, request providers.Request) (generation, error) {
-	for attempt := 0; ; attempt++ {
-		gen, err := r.generate(ctx, request)
+	var gen generation
+	err := r.withRetry(ctx, func() error {
+		var err error
+		gen, err = r.generate(ctx, request)
 		if err == nil && sanitizeAssistantOutput(gen.response.Text) == "" && len(gen.response.ToolCalls) == 0 && !gen.response.StopReason.AllowsEmptyReply() {
 			err = providers.ErrEmptyResponse
 		}
+		return err
+	}, func(err error) (bool, error) {
 		if request.ToolChoice == providers.ToolChoiceNone && errors.Is(err, providers.ErrEmptyResponse) {
-			return gen, err
+			return false, nil
 		}
-		if err == nil || gen.saved || gen.assistant.Content != "" || ctx.Err() != nil {
-			return gen, err
-		}
-		delay, retry := retryDelay(err, attempt)
-		if !retry {
-			return gen, err
-		}
-		if err := r.Sleep(ctx, delay); err != nil {
-			return gen, err
-		}
+		return true, r.dropPartial(ctx, gen, fmt.Sprintf("Generation failed (%v); the reply was generated again.", err))
+	})
+	return gen, err
+}
+
+// dropPartial seals a reply that stopped while streaming with a note, so clients
+// keep it but no request replays it.
+func (r *run) dropPartial(ctx context.Context, gen generation, note string) error {
+	if !gen.saved {
+		return nil
 	}
+	return r.sealDropped(ctx, gen.assistant, note)
+}
+
+// sealDropped finishes message with a note that drops it from every request.
+func (r *run) sealDropped(ctx context.Context, message transcript.Message, note string) error {
+	message.Parts = append(transcript.NormalizeMessageParts(message.Content, message.Parts), transcript.MessagePart{
+		Kind:   transcript.MessagePartKindFinish,
+		Finish: &transcript.FinishPart{Reason: transcript.FinishReasonDaemonRestart, Message: note},
+	})
+	message.UpdatedAt = r.Now()
+	return r.history.finish(ctx, message)
+}
+
+// maxMalformed is how many replies in a row may carry a tool call the adapter
+// could not decode before the run fails.
+const maxMalformed = 3
+
+// malformedReply hands a reply whose tool call could not be decoded back to the
+// model: the streamed text is dropped and the model is told what was wrong.
+func (r *run) malformedReply(ctx context.Context, gen generation, err error) stepResult {
+	r.state.Malformed++
+	if err := r.dropPartial(ctx, gen, "This reply carried a malformed tool call; the model was asked to send it again."); err != nil {
+		return failedStep(err)
+	}
+	if err := r.appendEngineMessage(ctx, transcript.OriginEngineModel, malformedCallText(err)); err != nil {
+		return failedStep(err)
+	}
+	return stepResult{kind: stepContinue}
+}
+
+func malformedCallText(err error) string {
+	return "Your last reply was dropped: a tool call in it could not be decoded (" + err.Error() + "). Send the call again with a complete JSON object as its arguments; split very large content across several calls."
 }
 
 // generate streams one assistant turn, writing progress at most every flush interval.
@@ -164,17 +226,15 @@ func (r *run) generate(ctx context.Context, request providers.Request) (generati
 		}
 	}
 	streamCtx := providers.WithTextStream(ctx, func(delta string) error {
-		select {
-		case <-ctx.Done():
-			return errRunCanceled
-		default:
+		if ctx.Err() != nil {
+			return context.Cause(ctx)
 		}
 		add(sanitizer.Push(delta))
 		return flush(false)
 	})
 	response, latency, err := r.generateOnSlot(streamCtx, r.task.Model, request)
 	if err == nil {
-		err = r.recordStep(ctx, response, stepStopReason(response), latency)
+		r.recordStep(ctx, response, stepStopReason(response), latency)
 	}
 	add(sanitizer.Flush())
 	if flushErr := flush(true); flushErr != nil {

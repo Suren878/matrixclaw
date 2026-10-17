@@ -20,28 +20,31 @@ const (
 	loopStopRepeats = 5
 )
 
-// observeCall records a finished call and how often the same call with the
-// same result appears in the recent window; a call not seen there ends the
-// warned streak. Waiting on a task that is still running is not a repeat.
-func (c *RunState) observeCall(name string, args []byte, result tools.Result) {
+// observeCall records a finished call and how often the most repeated call with
+// the same result appears in the recent window, whatever the order of the calls
+// of a batch; the warning is re-armed once no call repeats that often. Waiting
+// on a task that is still running is not a repeat.
+func (s *RunState) observeCall(name string, args []byte, result tools.Result) {
 	if result.Await != nil || result.Waiting {
 		return
 	}
-	hash := callHash(name, args, result)
-	c.LoopRecent += hash
-	if len(c.LoopRecent) > loopWindow*len(hash) {
-		c.LoopRecent = c.LoopRecent[len(c.LoopRecent)-loopWindow*len(hash):]
+	window := append(strings.Split(s.LoopRecent, "\n"), callHash(name, args, result)+" "+name)
+	if s.LoopRecent == "" {
+		window = window[1:]
 	}
-	seen := 0
-	for i := 0; i < len(c.LoopRecent); i += len(hash) {
-		if c.LoopRecent[i:i+len(hash)] == hash {
-			seen++
+	window = window[max(0, len(window)-loopWindow):]
+	s.LoopRecent = strings.Join(window, "\n")
+	seen := make(map[string]int, len(window))
+	s.LoopRepeats = 0
+	for _, entry := range window {
+		hash, tool, _ := strings.Cut(entry, " ")
+		if seen[hash]++; seen[hash] >= s.LoopRepeats {
+			s.LoopTool, s.LoopRepeats = tool, seen[hash]
 		}
 	}
-	if seen == 1 {
-		c.LoopWarned = false
+	if s.LoopRepeats < loopWarnRepeats {
+		s.LoopWarned = false
 	}
-	c.LoopTool, c.LoopRepeats = name, seen
 }
 
 func callHash(name string, args []byte, result tools.Result) string {
@@ -57,12 +60,16 @@ func callHash(name string, args []byte, result tools.Result) string {
 	return hex.EncodeToString(sum.Sum(nil)[:8])
 }
 
-// canonicalArgs re-encodes JSON arguments with sorted keys, so a different layout
-// does not hide a repeated call.
+// canonicalArgs re-encodes JSON arguments with sorted keys and exact numbers, so
+// a different layout does not hide the same call; text that is not JSON stays
+// as it is.
 func canonicalArgs(args []byte) []byte {
 	args = bytes.TrimSpace(args)
 	if len(args) == 0 {
 		return []byte(`{}`)
+	}
+	if !json.Valid(args) {
+		return args
 	}
 	decoder := json.NewDecoder(bytes.NewReader(args))
 	decoder.UseNumber()

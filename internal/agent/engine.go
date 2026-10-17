@@ -110,10 +110,10 @@ func (e *Engine) Run(ctx context.Context, task Task) (outcome Outcome, err error
 
 type run struct {
 	Config
-	task     Task
-	history  *history
-	state    RunState
-	started  time.Time
+	task    Task
+	history *history
+	state   RunState
+	started time.Time
 	// delegated is the time this Run call only waited for delegated calls.
 	delegated  time.Duration
 	anchor     *promptAnchor
@@ -213,11 +213,15 @@ func (r *run) step(ctx context.Context) stepResult {
 		}
 	}
 	if err == nil {
+		r.state.Malformed = 0
 		r.anchorUsage(gen.response)
 		r.reportContext(sent, gen.response)
 	}
-	if final != "" && errors.Is(err, providers.ErrEmptyResponse) {
+	if final != "" && (errors.Is(err, providers.ErrEmptyResponse) || errors.Is(err, providers.ErrMalformedToolCall)) {
 		return finalTurn(gen, final)
+	}
+	if errors.Is(err, providers.ErrMalformedToolCall) && r.state.Malformed < maxMalformed && ctx.Err() == nil {
+		return r.malformedReply(ctx, gen, err)
 	}
 	if err != nil {
 		result := stepResult{kind: stepDone, assistant: &gen.assistant, saved: gen.saved, response: gen.response, err: err, markErrored: true}
@@ -241,6 +245,11 @@ func (r *run) handleResponse(ctx context.Context, gen generation) stepResult {
 	assistant := gen.assistant
 	if len(response.ToolCalls) > 0 {
 		r.state.Continuations = 0
+		// A cut may have dropped a call the adapter could not complete.
+		if response.StopReason == providers.StopMaxTokens {
+			r.raiseOutputLimit()
+			r.state.CallCut = true
+		}
 		if err := r.finishTurn(ctx, &assistant, gen.saved, response, transcript.FinishReasonToolCalls); err != nil {
 			return unfinishedTurn(ctx, gen, err)
 		}

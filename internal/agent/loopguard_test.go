@@ -173,3 +173,30 @@ func TestQuietWaitsForARunningTaskAreNotALoop(t *testing.T) {
 		t.Fatalf("outcome = %+v notes = %+v", outcome, engineNotes(f.Journal.Messages))
 	}
 }
+
+func TestRepeatedCallIsCaughtWhateverItsPlaceInTheBatch(t *testing.T) {
+	for _, repeatedFirst := range []bool{true, false} {
+		f := agenttest.NewFixture()
+		f.Tools.Funcs["status"] = statusTool
+		f.Tools.Funcs["read"] = counterTool()
+		turns := make([]agenttest.Turn, 0, 6)
+		for i := 1; i <= 5; i++ {
+			repeated, varying := call(fmt.Sprintf("s%d", i), "status"), call(fmt.Sprintf("r%d", i), "read")
+			if repeatedFirst {
+				turns = append(turns, calls(repeated, varying))
+			} else {
+				turns = append(turns, calls(varying, repeated))
+			}
+		}
+		model := agenttest.NewScriptedModel(append(turns, text("Stopping."))...)
+
+		outcome := run(t, f, model)
+
+		if outcome.StopReason != agent.StopLoopDetected || len(model.Requests()) != 6 {
+			t.Fatalf("repeated call first = %v: outcome = %+v requests = %d", repeatedFirst, outcome, len(model.Requests()))
+		}
+		if note := lastMessage(model.Requests()[3]); !strings.Contains(note.Content, "You are repeating status") {
+			t.Fatalf("repeated call first = %v: request 4 ends with %+v, want the loop warning", repeatedFirst, note)
+		}
+	}
+}

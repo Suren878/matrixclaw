@@ -12,35 +12,41 @@ import (
 // wrapUpShare is the used share of a limit at which the run is told to wrap up.
 const wrapUpShare = 0.8
 
-// steps: no-progress streak, output limit, low-yield summaries, elision, last
-// history edit, learned prompt room, whether open todo items were pointed out
-// and what the run awaits. It is checkpointed so a parked or restarted run
-// continues from it.
+// RunState is what a run has used and what the engine remembers between its
+// steps: budget use, the loop guard's window, output-limit cuts, summaries,
+// elision, learned prompt room, the notes already sent and what the run awaits.
+// It is checkpointed so a parked or restarted run continues from it.
 type RunState struct {
-	Steps         int           `json:"steps,omitempty"`
-	Tokens        int64         `json:"tokens,omitempty"`
-	Active        time.Duration `json:"active,omitempty"`
-	WrapUpSent    bool          `json:"wrap_up_sent,omitempty"`
-	LoopRecent    string        `json:"loop_recent,omitempty"`
-	LoopTool      string        `json:"loop_tool,omitempty"`
-	LoopRepeats   int           `json:"loop_repeats,omitempty"`
-	LoopWarned    bool          `json:"loop_warned,omitempty"`
-	Continuations int           `json:"continuations,omitempty"`
-	OutputLimit   int           `json:"output_limit,omitempty"`
-	LowYield      int           `json:"low_yield,omitempty"`
-	ElidedResults int64         `json:"elided_results,omitempty"`
-	ElidedImages  int64         `json:"elided_images,omitempty"`
-	HistoryEdit   int64         `json:"history_edit,omitempty"`
-	LearnedLimit  int           `json:"learned_limit,omitempty"`
-	TodoNudged    bool          `json:"todo_nudged,omitempty"`
+	Steps      int           `json:"steps,omitempty"`
+	Tokens     int64         `json:"tokens,omitempty"`
+	Active     time.Duration `json:"active,omitempty"`
+	WrapUpSent bool          `json:"wrap_up_sent,omitempty"`
+	// LoopRecent holds the loop guard's window, one "hash tool" line per call.
+	LoopRecent  string `json:"loop_recent,omitempty"`
+	LoopTool    string `json:"loop_tool,omitempty"`
+	LoopRepeats int    `json:"loop_repeats,omitempty"`
+	LoopWarned  bool   `json:"loop_warned,omitempty"`
+	// Continuations counts replies in a row cut by the output limit; CallCut is
+	// set until the model is told a cut dropped its tool call.
+	Continuations int  `json:"continuations,omitempty"`
+	CallCut       bool `json:"call_cut,omitempty"`
+	OutputLimit   int  `json:"output_limit,omitempty"`
+	// Malformed counts replies in a row whose tool call could not be decoded.
+	Malformed     int   `json:"malformed,omitempty"`
+	LowYield      int   `json:"low_yield,omitempty"`
+	ElidedResults int64 `json:"elided_results,omitempty"`
+	ElidedImages  int64 `json:"elided_images,omitempty"`
+	HistoryEdit   int64 `json:"history_edit,omitempty"`
+	LearnedLimit  int   `json:"learned_limit,omitempty"`
+	TodoNudged    bool  `json:"todo_nudged,omitempty"`
 	// Await is set while the run waits for what an await call asked for.
 	Await *tools.Await `json:"await,omitempty"`
 }
 
 // Carried is what the session's next run starts from: what the requests elide
 // and the last history edit, so its first request looks like the last one.
-func (c RunState) Carried() RunState {
-	return RunState{ElidedResults: c.ElidedResults, ElidedImages: c.ElidedImages, HistoryEdit: c.HistoryEdit}
+func (s RunState) Carried() RunState {
+	return RunState{ElidedResults: s.ElidedResults, ElidedImages: s.ElidedImages, HistoryEdit: s.HistoryEdit}
 }
 
 // active is the run's working time: what it had used before plus this Run
@@ -57,6 +63,15 @@ func (r *run) prepareStep(ctx context.Context) (StopReason, error) {
 	}
 	if reached := r.exhausted(); reached != "" {
 		return StopBudgetExhausted, r.appendEngineMessage(ctx, transcript.OriginEngineModel, budgetStopText(reached))
+	}
+	if r.outputExhausted() {
+		return StopBudgetExhausted, r.appendEngineMessage(ctx, transcript.OriginEngineModel, outputStopText())
+	}
+	if r.state.CallCut {
+		if err := r.appendEngineMessage(ctx, transcript.OriginEngineModel, droppedCallText); err != nil {
+			return "", err
+		}
+		r.state.CallCut = false
 	}
 	if r.state.LoopRepeats >= loopWarnRepeats && !r.state.LoopWarned {
 		if err := r.appendEngineMessage(ctx, transcript.OriginEngine, loopWarningText(r.state.LoopTool)); err != nil {

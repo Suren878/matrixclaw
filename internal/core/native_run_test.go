@@ -259,7 +259,7 @@ func TestApprovedToolFailureIsReturnedToModelWithoutReplay(t *testing.T) {
 	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
 }
 
-func TestModelFailuresAreBoundedAndDoNotReplayPartialOutput(t *testing.T) {
+func TestPermanentModelFailuresFailTheRunOnceAndKeepPartialOutput(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name      string
@@ -267,9 +267,8 @@ func TestModelFailuresAreBoundedAndDoNotReplayPartialOutput(t *testing.T) {
 		err       error
 		wantCalls int
 	}{
-		{"empty", "", providers.ErrEmptyResponse, 3},
 		{"permanent", "", errors.New("invalid API key"), 1},
-		{"partial", "Unfinished answer", providers.ErrIncompleteResponse, 1},
+		{"partial", "Unfinished answer", errors.New("invalid request"), 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			app, db, cleanup := newCrashRecoveryCore(t)
