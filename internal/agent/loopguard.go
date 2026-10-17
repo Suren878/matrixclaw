@@ -23,7 +23,7 @@ const (
 // observeCall records a finished call and how often the same call with the
 // same result appears in the recent window; a call not seen there ends the
 // warned streak. Waiting on a task that is still running is not a repeat.
-func (c *Counters) observeCall(name string, args []byte, result tools.Result) {
+func (c *RunState) observeCall(name string, args []byte, result tools.Result) {
 	if result.Await != nil || result.Waiting {
 		return
 	}

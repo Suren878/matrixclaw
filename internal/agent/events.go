@@ -33,7 +33,7 @@ func (r *run) drainEvents(ctx context.Context) error {
 // user wrote, which is journaled as a user message, or the wait timed out,
 // which the model is told. It reports whether the run still waits.
 func (r *run) resumeAwait(ctx context.Context) (bool, error) {
-	await := r.counters.Await
+	await := r.state.Await
 	if await == nil {
 		return false, nil
 	}
@@ -55,15 +55,15 @@ func (r *run) resumeAwait(ctx context.Context) (bool, error) {
 	}
 	switch {
 	case len(steers) > 0:
-		r.counters.Await = nil
+		r.state.Await = nil
 		return false, r.appendSteers(ctx, steers)
 	case finished:
-		r.counters.Await = nil
+		r.state.Await = nil
 		return false, nil
 	case r.Now().Before(await.Until):
 		return true, nil
 	default:
-		r.counters.Await = nil
+		r.state.Await = nil
 		return false, r.appendEngineMessage(ctx, transcript.OriginEngine, awaitTimeoutText(await.TaskIDs))
 	}
 }

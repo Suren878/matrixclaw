@@ -227,7 +227,7 @@ func TestSummaryIsSkippedWhenItWouldReplaceLittle(t *testing.T) {
 	if outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != "Done." || len(requests) != 2 || summaryCount(requests) != 0 {
 		t.Fatalf("outcome = %+v requests = %d summaries = %d", outcome, len(requests), summaryCount(requests))
 	}
-	if len(boundaries(f.Journal.Messages)) != 0 || f.Journal.States[len(f.Journal.States)-1].Counters.LowYield != 0 {
+	if len(boundaries(f.Journal.Messages)) != 0 || f.Journal.States[len(f.Journal.States)-1].RunState.LowYield != 0 {
 		t.Fatalf("boundaries = %+v states = %+v", boundaries(f.Journal.Messages), f.Journal.States)
 	}
 }
@@ -395,7 +395,7 @@ func TestSummarySavingsCountOnlyWhatTheElidedRequestHeld(t *testing.T) {
 	replies := seededRounds(f, 8, 20_000)
 	model := agenttest.NewScriptedModel(agenttest.Turn{Err: errors.New("context_length_exceeded")}, text("SUMMARY"), text("Done."))
 	task := f.Task(model)
-	task.Resume = agent.Counters{ElidedResults: replies[3] - 1}
+	task.Resume = agent.RunState{ElidedResults: replies[3] - 1}
 
 	outcome := runTask(t, f, task)
 

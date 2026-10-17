@@ -16,7 +16,7 @@ const wrapUpShare = 0.8
 // history edit, learned prompt room, whether open todo items were pointed out
 // and what the run awaits. It is checkpointed so a parked or restarted run
 // continues from it.
-type Counters struct {
+type RunState struct {
 	Steps         int           `json:"steps,omitempty"`
 	Tokens        int64         `json:"tokens,omitempty"`
 	Active        time.Duration `json:"active,omitempty"`
@@ -39,8 +39,8 @@ type Counters struct {
 
 // Carried is what the session's next run starts from: what the requests elide
 // and the last history edit, so its first request looks like the last one.
-func (c Counters) Carried() Counters {
-	return Counters{ElidedResults: c.ElidedResults, ElidedImages: c.ElidedImages, HistoryEdit: c.HistoryEdit}
+func (c RunState) Carried() RunState {
+	return RunState{ElidedResults: c.ElidedResults, ElidedImages: c.ElidedImages, HistoryEdit: c.HistoryEdit}
 }
 
 // active is the run's working time: what it had used before plus this Run
@@ -52,24 +52,24 @@ func (r *run) active() time.Duration {
 // prepareStep journals the engine notes due before this step's model call and
 // returns the stop reason when this step is the tool-less final turn.
 func (r *run) prepareStep(ctx context.Context) (StopReason, error) {
-	if r.counters.LoopRepeats >= loopStopRepeats {
-		return StopLoopDetected, r.appendEngineMessage(ctx, transcript.OriginEngineModel, loopStopText(r.counters.LoopTool))
+	if r.state.LoopRepeats >= loopStopRepeats {
+		return StopLoopDetected, r.appendEngineMessage(ctx, transcript.OriginEngineModel, loopStopText(r.state.LoopTool))
 	}
 	if reached := r.exhausted(); reached != "" {
 		return StopBudgetExhausted, r.appendEngineMessage(ctx, transcript.OriginEngineModel, budgetStopText(reached))
 	}
-	if r.counters.LoopRepeats >= loopWarnRepeats && !r.counters.LoopWarned {
-		if err := r.appendEngineMessage(ctx, transcript.OriginEngine, loopWarningText(r.counters.LoopTool)); err != nil {
+	if r.state.LoopRepeats >= loopWarnRepeats && !r.state.LoopWarned {
+		if err := r.appendEngineMessage(ctx, transcript.OriginEngine, loopWarningText(r.state.LoopTool)); err != nil {
 			return "", err
 		}
-		r.counters.LoopWarned = true
+		r.state.LoopWarned = true
 	}
-	if !r.counters.WrapUpSent {
+	if !r.state.WrapUpSent {
 		if left := r.remaining(); left != "" {
 			if err := r.appendEngineMessage(ctx, transcript.OriginEngine, wrapUpText(left)); err != nil {
 				return "", err
 			}
-			r.counters.WrapUpSent = true
+			r.state.WrapUpSent = true
 		}
 	}
 	return "", nil
@@ -79,11 +79,11 @@ func (r *run) prepareStep(ctx context.Context) (StopReason, error) {
 func (r *run) exhausted() string {
 	b := r.task.Budget
 	switch {
-	case b.Steps > 0 && r.counters.Steps >= b.Steps:
+	case b.Steps > 0 && r.state.Steps >= b.Steps:
 		return quantity(int64(b.Steps), "step")
 	case b.ActiveTime > 0 && r.active() >= b.ActiveTime:
 		return "active time of " + approxDuration(b.ActiveTime)
-	case b.Tokens > 0 && r.counters.Tokens >= b.Tokens:
+	case b.Tokens > 0 && r.state.Tokens >= b.Tokens:
 		return quantity(b.Tokens, "token")
 	default:
 		return ""
@@ -101,14 +101,14 @@ func (r *run) remaining() string {
 		}
 	}
 	if b.Steps > 0 {
-		consider(float64(r.counters.Steps)/float64(b.Steps), quantity(int64(b.Steps-r.counters.Steps), "step"))
+		consider(float64(r.state.Steps)/float64(b.Steps), quantity(int64(b.Steps-r.state.Steps), "step"))
 	}
 	if b.ActiveTime > 0 {
 		active := r.active()
 		consider(float64(active)/float64(b.ActiveTime), approxDuration(b.ActiveTime-active))
 	}
 	if b.Tokens > 0 {
-		consider(float64(r.counters.Tokens)/float64(b.Tokens), quantity(b.Tokens-r.counters.Tokens, "token"))
+		consider(float64(r.state.Tokens)/float64(b.Tokens), quantity(b.Tokens-r.state.Tokens, "token"))
 	}
 	return left
 }

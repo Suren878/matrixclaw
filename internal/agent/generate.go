@@ -28,7 +28,7 @@ const CompactStopReason = "compact"
 // recordStep stores one successful generation as a run step and counts its tokens
 // against the run's budget.
 func (r *run) recordStep(ctx context.Context, response providers.Response, stopReason string, latency time.Duration) error {
-	r.counters.Tokens += response.Usage.PromptTokens + response.Usage.OutputTokens
+	r.state.Tokens += response.Usage.PromptTokens + response.Usage.OutputTokens
 	return r.Journal.RecordStep(ctx, Step{
 		RunID:      r.task.RunID,
 		Model:      response.Model,

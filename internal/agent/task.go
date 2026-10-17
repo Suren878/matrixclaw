@@ -8,7 +8,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-// Task is one native run to execute. Resume holds the counters the run had
+// Task is one native run to execute. Resume holds the state the run had
 // reached before it was parked or interrupted; a new run starts from what the
 // session's previous run carried over.
 type Task struct {
@@ -25,7 +25,7 @@ type Task struct {
 	CompactModel        Model
 	CompactWindowTokens int
 	Budget              Budget
-	Resume              Counters
+	Resume              RunState
 	// Continues lists the runs this one continues, nearest first; what they keep
 	// verbatim past a summary stays kept.
 	Continues []string
@@ -78,7 +78,7 @@ const (
 // seal (canceled, interrupted) or the errored reply (failed with MarkErrored).
 // Reached is what the last step produced before an interruption; StopReason is set
 // whenever the run completed or reached completion, and for a context-exhausted failure.
-// Counters are the run's counters when it stopped.
+// RunState is the run's state when it stopped.
 type Outcome struct {
 	Status         Status
 	StopReason     StopReason
@@ -87,7 +87,7 @@ type Outcome struct {
 	Err            error
 	MarkErrored    bool
 	Reached        Status
-	Counters       Counters
+	RunState       RunState
 }
 
 // StopReason says why a completed run stopped.

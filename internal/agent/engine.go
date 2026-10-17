@@ -75,11 +75,11 @@ func (e *Engine) Run(ctx context.Context, task Task) (outcome Outcome, err error
 		}
 		return Outcome{Status: StatusFailed, Err: err}, nil
 	}
-	r := &run{Config: e.cfg, task: task, history: newHistory(e.cfg.Journal, e.cfg.Sink, window), counters: task.Resume, started: e.cfg.Now()}
-	defer func() { outcome.Counters = r.counters }()
+	r := &run{Config: e.cfg, task: task, history: newHistory(e.cfg.Journal, e.cfg.Sink, window), state: task.Resume, started: e.cfg.Now()}
+	defer func() { outcome.RunState = r.state }()
 	if window.Boundary != nil {
 		// A boundary edits the history even when no checkpoint recorded it.
-		r.counters.HistoryEdit = max(r.counters.HistoryEdit, window.Boundary.Seq)
+		r.state.HistoryEdit = max(r.state.HistoryEdit, window.Boundary.Seq)
 	}
 	r.system = withCustomInstructions(e.cfg.Prompts.System(ctx, window.Messages))
 	if ToolUseAllowed(task.Model) {
@@ -112,7 +112,7 @@ type run struct {
 	Config
 	task     Task
 	history  *history
-	counters Counters
+	state    RunState
 	started  time.Time
 	// delegated is the time this Run call only waited for delegated calls.
 	delegated  time.Duration
@@ -189,7 +189,7 @@ func (r *run) step(ctx context.Context) stepResult {
 	if err := r.checkpoint(ctx, PhaseModel, nil); err != nil {
 		return failedStep(err)
 	}
-	r.counters.Steps++
+	r.state.Steps++
 	sent := request
 	gen, err := r.generateWithRetry(ctx, request)
 	if err != nil && providers.IsContextOverflow(err) {
@@ -240,7 +240,7 @@ func (r *run) handleResponse(ctx context.Context, gen generation) stepResult {
 	response.Text = r.replyText(response)
 	assistant := gen.assistant
 	if len(response.ToolCalls) > 0 {
-		r.counters.Continuations = 0
+		r.state.Continuations = 0
 		if err := r.finishTurn(ctx, &assistant, gen.saved, response, transcript.FinishReasonToolCalls); err != nil {
 			return unfinishedTurn(ctx, gen, err)
 		}
@@ -279,7 +279,7 @@ func (r *run) replyText(response providers.Response) string {
 	if toolStep || response.StopReason != providers.StopMaxTokens {
 		text = strings.TrimRightFunc(text, unicode.IsSpace)
 	}
-	if toolStep || r.counters.Continuations == 0 {
+	if toolStep || r.state.Continuations == 0 {
 		text = strings.TrimLeftFunc(text, unicode.IsSpace)
 	}
 	return text
@@ -377,9 +377,9 @@ func canceled(ctx context.Context) bool {
 	return errors.Is(context.Cause(ctx), ErrCanceled)
 }
 
-// checkpoint records the durable phase together with the run's counters; only
+// checkpoint records the durable phase together with the run's state; only
 // the engine goroutine writes it.
 func (r *run) checkpoint(ctx context.Context, phase Phase, batch *ToolBatch) error {
-	r.counters.Active = r.active()
-	return r.Journal.Checkpoint(ctx, State{RunID: r.task.RunID, Phase: phase, Batch: batch, Counters: r.counters})
+	r.state.Active = r.active()
+	return r.Journal.Checkpoint(ctx, State{RunID: r.task.RunID, Phase: phase, Batch: batch, RunState: r.state})
 }

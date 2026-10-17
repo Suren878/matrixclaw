@@ -54,13 +54,13 @@ const (
 )
 
 // State is the checkpoint the engine writes before each model call, when it
-// starts calls of a tool batch and when the run parks; its Counters let a parked
+// starts calls of a tool batch and when the run parks; its RunState lets a parked
 // or restarted run keep its budget.
 type State struct {
 	RunID    string
 	Phase    Phase
 	Batch    *ToolBatch
-	Counters Counters
+	RunState RunState
 }
 
 // ToolBatch names the calls of the batch being run, in call order, and those

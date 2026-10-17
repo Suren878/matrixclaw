@@ -31,12 +31,12 @@ func (r *run) continueCutReply(ctx context.Context, gen generation, response pro
 		}
 		return stepResult{kind: stepContinue}
 	}
-	if r.counters.Continuations >= maxContinuations {
+	if r.state.Continuations >= maxContinuations {
 		reply := finalReply(gen.assistant, response)
 		return stepResult{kind: stepDone, assistant: &reply, saved: gen.saved, response: response, err: fmt.Errorf("reply cut by the output limit %d times in a row", maxContinuations+1), markErrored: true}
 	}
 	r.raiseOutputLimit()
-	r.counters.Continuations++
+	r.state.Continuations++
 	assistant := gen.assistant
 	if err := r.finishTurn(ctx, &assistant, gen.saved, response, transcript.FinishReasonMaxTokens); err != nil {
 		return unfinishedTurn(ctx, gen, err)
@@ -50,7 +50,7 @@ func (r *run) continueCutReply(ctx context.Context, gen generation, response pro
 // raiseOutputLimit doubles the model's output limit once, capped by its ceiling;
 // false when the limit is unknown, already raised or at the cap.
 func (r *run) raiseOutputLimit() bool {
-	if r.counters.OutputLimit > 0 {
+	if r.state.OutputLimit > 0 {
 		return false
 	}
 	limiter, ok := r.task.Model.(providers.OutputLimiter)
@@ -65,6 +65,6 @@ func (r *run) raiseOutputLimit() bool {
 	if raised <= current {
 		return false
 	}
-	r.counters.OutputLimit = int(raised)
+	r.state.OutputLimit = int(raised)
 	return true
 }

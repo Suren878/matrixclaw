@@ -19,9 +19,9 @@ type promptAnchor struct {
 // output limit the next request sends and a reserve, or less once a provider
 // overflow showed the window is smaller.
 func (r *run) contextLimit() int {
-	limit := ContextLimit(r.task.Model, r.task.WindowTokens, r.counters.OutputLimit)
-	if r.counters.LearnedLimit > 0 {
-		return min(limit, r.counters.LearnedLimit)
+	limit := ContextLimit(r.task.Model, r.task.WindowTokens, r.state.OutputLimit)
+	if r.state.LearnedLimit > 0 {
+		return min(limit, r.state.LearnedLimit)
 	}
 	return limit
 }
@@ -29,7 +29,7 @@ func (r *run) contextLimit() int {
 // learnLimit keeps the run's prompt room below a prompt of tokens the provider
 // rejected as over the model's window.
 func (r *run) learnLimit(tokens int) {
-	r.counters.LearnedLimit = min(r.contextLimit(), tokens*9/10)
+	r.state.LearnedLimit = min(r.contextLimit(), tokens*9/10)
 }
 
 // ContextLimit is the prompt room of model in a window of windowTokens: the
@@ -92,7 +92,7 @@ func (r *run) reportContext(request providers.Request, response providers.Respon
 
 // elision is what the run currently hides from its requests.
 func (r *run) elision() agentcontext.Elision {
-	return agentcontext.Elision{ResultsThroughSeq: r.counters.ElidedResults, ImagesThroughSeq: r.counters.ElidedImages}
+	return agentcontext.Elision{ResultsThroughSeq: r.state.ElidedResults, ImagesThroughSeq: r.state.ElidedImages}
 }
 
 // advanceElision moves the elision up to the history's current rounds and
@@ -103,7 +103,7 @@ func (r *run) advanceElision(force bool) bool {
 	if !moved {
 		return false
 	}
-	r.counters.ElidedResults, r.counters.ElidedImages = next.ResultsThroughSeq, next.ImagesThroughSeq
+	r.state.ElidedResults, r.state.ElidedImages = next.ResultsThroughSeq, next.ImagesThroughSeq
 	r.editedHistory()
 	return true
 }
@@ -114,7 +114,7 @@ func (r *run) advanceElision(force bool) bool {
 func (r *run) editedHistory() {
 	r.anchor = nil
 	if all := r.history.all(); len(all) > 0 {
-		r.counters.HistoryEdit = all[len(all)-1].Seq
+		r.state.HistoryEdit = all[len(all)-1].Seq
 	}
 }
 
@@ -139,7 +139,7 @@ func (r *run) fitRequest(ctx context.Context, final StopReason) (providers.Reque
 	if !agentcontext.SummaryDue(tokens, limit) {
 		return request, final, nil
 	}
-	if r.counters.LowYield >= lowYieldLimit {
+	if r.state.LowYield >= lowYieldLimit {
 		return r.exhaustedTurn(ctx, request, final)
 	}
 	var reuse *providers.Request

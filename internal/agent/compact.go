@@ -92,7 +92,7 @@ func (r *run) writeBoundary(ctx context.Context, previous *transcript.Compaction
 		TokensBefore:     before,
 	}
 	compaction.TokensAfter = max(0, rest-agentcontext.EstimateTextTokens(agentcontext.SummaryText(previous))+agentcontext.EstimateTextTokens(agentcontext.SummaryText(&compaction)))
-	r.counters.observeSummary(compaction.TokensBefore, compaction.TokensAfter)
+	r.state.observeSummary(compaction.TokensBefore, compaction.TokensAfter)
 	content := agentcontext.BoundaryLabel(compaction)
 	now := r.Now()
 	err := r.history.append(ctx, transcript.Message{
@@ -113,7 +113,7 @@ func (r *run) writeBoundary(ctx context.Context, previous *transcript.Compaction
 }
 
 // observeSummary counts the summaries in a row that saved under a tenth of the prompt.
-func (c *Counters) observeSummary(before, after int) {
+func (c *RunState) observeSummary(before, after int) {
 	if before > 0 && (before-after)*10 < before {
 		c.LowYield++
 		return

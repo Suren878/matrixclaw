@@ -232,7 +232,7 @@ func (b *batch) record(done toolsched.Done[callOutcome]) (bool, error) {
 	default:
 		c.state, c.result = callFinished, done.Value.result
 		if await := c.result.Await; await != nil {
-			b.r.counters.Await = &tools.Await{TaskIDs: slices.Clone(await.TaskIDs), Until: await.Until}
+			b.r.state.Await = &tools.Await{TaskIDs: slices.Clone(await.TaskIDs), Until: await.Until}
 		}
 	}
 	return false, nil

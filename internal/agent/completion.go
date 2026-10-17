@@ -14,15 +14,15 @@ import (
 // tools; the reply is kept and the next reply without tools completes the run.
 // A list that cannot be read holds nothing back. It reports whether it took over the step.
 func (r *run) nudgeOpenTodo(ctx context.Context, gen generation, response providers.Response) (stepResult, bool) {
-	if r.counters.TodoNudged || r.exhausted() != "" || !ToolUseAllowed(r.task.Model) {
+	if r.state.TodoNudged || r.exhausted() != "" || !ToolUseAllowed(r.task.Model) {
 		return stepResult{}, false
 	}
 	open, err := r.Todos.Open(ctx, r.task.SessionID, append([]string{r.task.RunID}, r.task.Continues...))
 	if err != nil || len(open) == 0 {
 		return stepResult{}, false
 	}
-	r.counters.TodoNudged = true
-	r.counters.Continuations = 0
+	r.state.TodoNudged = true
+	r.state.Continuations = 0
 	assistant := gen.assistant
 	if err := r.finishTurn(ctx, &assistant, gen.saved, response, transcript.FinishReasonEndTurn); err != nil {
 		return unfinishedTurn(ctx, gen, err), true

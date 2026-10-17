@@ -91,7 +91,7 @@ type SessionBudgetStore interface {
 	SaveSessionBudget(ctx context.Context, sessionID string, budget SessionBudget, updatedAt time.Time) error
 }
 
-// EngineStateStore keeps the engine counters a session's next run starts from.
+// EngineStateStore keeps the engine state a session's next run starts from.
 type EngineStateStore interface {
 	GetSessionEngineState(ctx context.Context, sessionID string) (json.RawMessage, error)
 	SaveSessionEngineState(ctx context.Context, sessionID string, state json.RawMessage, updatedAt time.Time) error
