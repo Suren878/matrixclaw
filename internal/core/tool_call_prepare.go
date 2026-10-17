@@ -21,9 +21,11 @@ type preparedToolCall struct {
 	Message    transcript.Message
 }
 
-// checkToolCall validates a tool call against its session before anything is written;
-// ErrInvalidInput errors are returned to the model, others fail the run.
-func (c *Core) checkToolCall(ctx context.Context, sessionID string, toolName string) (Session, tools.Spec, error) {
+// checkToolCall validates a tool call against its session before anything is
+// written; ErrInvalidInput errors are returned to the model, others fail the
+// run. A read-only subagent's call of bash gets bash's read-only spec.
+func (c *Core) checkToolCall(ctx context.Context, toolName string, call tools.Call) (Session, tools.Spec, error) {
+	sessionID := call.SessionID
 	if c.tools == nil {
 		return Session{}, tools.Spec{}, fmt.Errorf("%w: tools are not configured", ErrExecutionUnavailable)
 	}
@@ -57,14 +59,30 @@ func (c *Core) checkToolCall(ctx context.Context, sessionID string, toolName str
 			return Session{}, tools.Spec{}, err
 		}
 		if readonly {
-			return Session{}, tools.Spec{}, fmt.Errorf("%w: tool %q changes things, and this subagent is read-only", ErrInvalidInput, toolName)
+			return readOnlyCall(session, spec, call)
 		}
 	}
 	return session, spec, nil
 }
 
+// readOnlyCall is how a read-only subagent may call a mutating tool: only
+// through the tool's read-only spec, with arguments that change nothing.
+func readOnlyCall(session Session, spec tools.Spec, call tools.Call) (Session, tools.Spec, error) {
+	readOnly, ok := tools.ReadOnlySpec(spec)
+	if !ok {
+		return Session{}, tools.Spec{}, fmt.Errorf("%w: tool %q changes things, and this subagent is read-only", ErrInvalidInput, spec.ID)
+	}
+	if call.WorkingDir = normalizeWorkingDir(call.WorkingDir); call.WorkingDir == "" {
+		call.WorkingDir = session.WorkingDir
+	}
+	if err := tools.CheckReadOnlyCall(call); err != nil {
+		return Session{}, tools.Spec{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
+	}
+	return session, readOnly, nil
+}
+
 func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (preparedToolCall, error) {
-	session, spec, err := c.checkToolCall(ctx, input.SessionID, input.ToolName)
+	session, spec, err := c.checkToolCall(ctx, input.ToolName, tools.Call{SessionID: input.SessionID, WorkingDir: input.WorkingDir, Args: input.Args})
 	if err != nil {
 		return preparedToolCall{}, err
 	}

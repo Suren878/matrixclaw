@@ -149,3 +149,8 @@ const bashDescription = "Run a shell command with bash -c and return its combine
 	"A foreground command still running after auto_background_after seconds (default 120) moves to the background as a task; one running past timeout seconds (default 600, at most 3600) is killed, and so are processes a finished command left running. " +
 	"Start servers, watchers, builds and full test suites with run_in_background: true, then read them with task_output (or wait with await) and stop them with task_kill. " +
 	"Do not use bash to read, search or edit files: use read, grep, glob, ls, edit and write. Provider API keys are not in the environment."
+
+const readOnlyBashDescription = "Run a read-only shell command with bash -c and return its output and exit code. You are read-only, so only these commands run, joined with pipes, && or ;: " +
+	"git status, log, diff, show, blame, grep, ls-files, rev-parse; go list, vet, doc, env; ls, cat, head, tail, wc, rg, grep, find (without -exec or -delete), tree, jq, stat, diff, sort, cut, tr. " +
+	"Paths must stay inside the working directory; redirections to files, variables, substitutions and unquoted globs are refused. " +
+	"Each call is a fresh shell without a TTY. Prefer read, grep and glob for files; use this for git history and go tooling."

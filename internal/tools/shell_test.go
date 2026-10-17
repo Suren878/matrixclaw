@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -170,5 +172,44 @@ func TestTaskKillPreviewsThenStops(t *testing.T) {
 	stopped := runShellTool(t, tasks, "task_kill", `{"id":"task_1"}`)
 	if stopped.Content != "Task task_1 is canceled." || len(tasks.stopped) != 1 {
 		t.Fatalf("stopped = %+v", stopped)
+	}
+}
+
+func TestReadOnlyBashRunsOnlyReadsInsideTheWorkingDirectory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	work := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(home, ".ssh"), filepath.Join(work, "keys")); err != nil {
+		t.Fatal(err)
+	}
+	spec, ok := ReadOnlySpec(coreDefinitionSpec("bash"))
+	if !ok || spec.Mutates() || spec.Asks {
+		t.Fatalf("read-only bash spec = %+v, %v", spec, ok)
+	}
+	if _, ok := ReadOnlySpec(coreDefinitionSpec("write")); ok {
+		t.Fatal("write has a read-only variant")
+	}
+	for command, allowed := range map[string]bool{
+		"git log --oneline -5 && git diff":   true,
+		"rg -n TODO ./internal | head":       true,
+		"cat " + filepath.Join(work, "a.go"): true,
+		"go test ./...":                      false,
+		"cat /etc/passwd":                    false,
+		"cat ../other/a.go":                  false,
+		"cat ~/.ssh/id_rsa":                  false,
+		"cat keys/id_rsa":                    false,
+		"git --git-dir=/srv/repo.git log":    false,
+	} {
+		args, _ := json.Marshal(BashParams{Command: command})
+		if err := CheckReadOnlyCall(Call{WorkingDir: work, Args: args}); (err == nil) != allowed {
+			t.Errorf("%q: %v, want allowed %v", command, err, allowed)
+		}
+	}
+	args, _ := json.Marshal(BashParams{Command: "ls"})
+	if err := CheckReadOnlyCall(Call{WorkingDir: home, Args: args}); err == nil {
+		t.Error("read-only bash ran in the home directory")
 	}
 }

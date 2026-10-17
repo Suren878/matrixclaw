@@ -2,12 +2,15 @@ package core_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -587,5 +590,68 @@ func TestCompactionPrunesTheOutputOfEndedCommands(t *testing.T) {
 	out, err := app.ReadTaskOutput(ctx, taskCall(session), tools.TaskRead{TaskID: "task_ended", Limit: 100})
 	if err != nil || out.Status != "completed" || out.Text == "" {
 		t.Fatalf("output of a pruned task = %+v, %v", out, err)
+	}
+}
+
+type recordingShell struct {
+	mu       sync.Mutex
+	commands []string
+}
+
+func (s *recordingShell) RunCommand(_ context.Context, _ tools.Call, command tools.Command) (tools.CommandResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.commands = append(s.commands, command.Command)
+	return tools.CommandResult{Output: "ok\n"}, nil
+}
+
+func (s *recordingShell) ReadTaskOutput(context.Context, tools.Call, tools.TaskRead) (tools.TaskOutput, error) {
+	return tools.TaskOutput{}, nil
+}
+
+func (s *recordingShell) StopTask(context.Context, tools.Call, string) (tools.TaskInfo, error) {
+	return tools.TaskInfo{}, nil
+}
+
+func TestReadonlyChildRunsOnlyReadOnlyCommands(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	shell := &recordingShell{}
+	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), tools.NewShellExecutors(shell)...)...))
+	var childTools []providers.ToolDefinition
+	var results []string
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		seen := toolResults(request)
+		switch {
+		case childPrompt(request) != "" && len(seen) == 0:
+			childTools = request.Tools
+			return providers.Response{ToolCalls: []providers.ToolCall{
+				{ID: "child-log", Name: "bash", Arguments: json.RawMessage(`{"command":"git log --oneline -3"}`)},
+				{ID: "child-test", Name: "bash", Arguments: json.RawMessage(`{"command":"go test ./..."}`)},
+			}}, nil
+		case childPrompt(request) != "":
+			results = seen
+			return providers.Response{Text: "looked"}, nil
+		case len(seen) == 0:
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-a", Name: "agent", Arguments: json.RawMessage(`{"description":"Look","prompt":"look around","readonly":true}`)}}}, nil
+		default:
+			return providers.Response{Text: "Done."}, nil
+		}
+	})})
+	_, run := saveCrashRecoveryRun(t, db, "readonly_bash", core.RunStatusAccepted, false)
+
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if !slices.ContainsFunc(childTools, func(tool providers.ToolDefinition) bool { return tool.Name == "bash" }) {
+		t.Fatalf("the read-only child got no bash: %+v", childTools)
+	}
+	if len(shell.commands) != 1 || shell.commands[0] != "git log --oneline -3" {
+		t.Fatalf("commands run = %q", shell.commands)
+	}
+	if len(results) != 2 || !strings.HasPrefix(results[0], "child-log=ok") || !strings.Contains(results[1], "read-only") {
+		t.Fatalf("child results = %q", results)
 	}
 }

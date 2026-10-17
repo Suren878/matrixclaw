@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -334,4 +335,70 @@ func noMatch(command string, output string, exitCode int) bool {
 var probeCommands = map[string]bool{
 	"[": true, "egrep": true, "fgrep": true, "grep": true, "pgrep": true, "pidof": true,
 	"pkill": true, "rg": true, "test": true, "which": true, "zgrep": true,
+}
+
+// ReadOnlySpec is the spec a read-only subagent gets for a mutating tool it
+// may still call: bash that never asks and runs only read-only command lines
+// (CheckReadOnlyCall). ok is false for every other tool.
+func ReadOnlySpec(spec Spec) (Spec, bool) {
+	if spec.ID != bashToolName {
+		return Spec{}, false
+	}
+	spec.Effect, spec.Asks, spec.Description = EffectReadOnly, false, readOnlyBashDescription
+	return spec, true
+}
+
+// CheckReadOnlyCall refuses a call made under a ReadOnlySpec that may change
+// something or read outside the call's working directory, or where keys and
+// credentials are kept.
+func CheckReadOnlyCall(call Call) error {
+	var params BashParams
+	if err := json.Unmarshal(call.Args, &params); err != nil {
+		return InvalidArgs(bashToolName, err)
+	}
+	if err := permission.CheckReadOnly(params.Command); err != nil {
+		return fmt.Errorf("this subagent is read-only, and bash runs only read-only commands: %w", err)
+	}
+	if err := checkReadOnlyPaths(params, resolvePath(call.WorkingDir, params.WorkingDir)); err != nil {
+		return fmt.Errorf("this subagent is read-only, and bash reads only inside the working directory, never where keys are kept: %w; use read, grep or glob instead", err)
+	}
+	return nil
+}
+
+// checkReadOnlyPaths refuses a command line whose path arguments resolve
+// outside dir or to secrets, or that runs in or above the home directory,
+// where a search would reach them.
+func checkReadOnlyPaths(params BashParams, dir string) error {
+	root := comparableFilesystemPath(dir)
+	home, _ := os.UserHomeDir()
+	if home = comparableFilesystemPath(home); home != "" && pathWithin(root, home) {
+		return fmt.Errorf("%s holds the home directory", dir)
+	}
+	for _, words := range permission.ParseLine(params.Command).Commands {
+		for _, word := range words[1:] {
+			if _, value, ok := strings.Cut(word, "="); ok && strings.HasPrefix(word, "-") {
+				word = value
+			} else if strings.HasPrefix(word, "-") {
+				continue
+			}
+			if !strings.ContainsRune(word, '/') && !strings.HasPrefix(word, ".") && !strings.HasPrefix(word, "~") {
+				continue
+			}
+			path := word
+			switch {
+			case path == "~" || strings.HasPrefix(path, "~/"):
+				path = filepath.Join(home, strings.TrimPrefix(path, "~"))
+			case strings.HasPrefix(path, "~"):
+				return fmt.Errorf("%s is another user's home", word)
+			}
+			resolved := comparableFilesystemPath(resolvePath(dir, path))
+			if !pathWithin(root, resolved) {
+				return fmt.Errorf("%s is outside %s", word, dir)
+			}
+			if HoldsSecrets(resolved) || isProtectedCredentialPath(resolved) {
+				return fmt.Errorf("%s holds secrets", word)
+			}
+		}
+	}
+	return nil
 }

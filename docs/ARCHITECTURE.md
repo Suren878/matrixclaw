@@ -211,6 +211,10 @@ keyed locks, the model-request semaphore `daemon.model_concurrency`), `prompt`
 - Shutdown stops the background commands (`Core.StopShellTasks`); the next
   start marks their tasks `lost`. Compaction deletes the logs of ended tasks
   that no later message names.
+- A read-only subagent gets `bash` as a read-only tool that never asks
+  (`tools.ReadOnlySpec`): only plain lines of read-only commands
+  (`permission.CheckReadOnly`) whose paths stay inside its working directory,
+  away from secrets and not in or above the home directory, run.
 - Shell task: `running` → `completed`/`failed` by exit code, `canceled`, or
   `lost` after a restart. Subagent task follows its child run inside
   `transition`: `running` ⇄ `waiting_approval` → `completed`/`failed`/`canceled`.
