@@ -80,12 +80,22 @@ recovery), waits for them, then closes external agents and modules.
   `member`, `guest`; absent means owner). Every caller holds the token, so the
   daemon trusts the header as it trusts the token. Telegram sets it from the
   chat an update came from, never from message text.
-- `ownerOnly` routes: admin reload/restart/stop, the session permission mode,
-  and writes to setup providers, external agents, module settings, MCP, the
-  skills library and temporary-storage settings. Reads stay open. Global permission rules are owner-only,
-  guests keep no rules, and members and guests are refused (403) in sessions
-  that run unattended (`core.RunsUnattended`: full_auto or external agent).
-  Clients only hide what the daemon would refuse.
+- Every route in the table has a policy, enforced by one middleware
+  (`internal/api/role.go`; `policy_test.go` lists them): `open`; `owner`
+  (admin reload/restart/stop, the session permission mode, writes to setup
+  providers, external agents, module settings, MCP and the skills library,
+  storage deletes and temporary-storage cleanup and settings); or `session`,
+  for every write that acts in a session (named by the path, by the run, task,
+  approval or automation job it names, or by the JSON body's `session_id` or
+  client binding): members and guests are refused (403) there when the session
+  runs unattended (`core.RunsUnattended`: full_auto or external agent). Reads
+  stay open. Only the owner creates a session with an external agent or a
+  permission mode, global permission rules are owner-only, and guests keep no
+  rules. Core knows nothing of roles. Clients only hide what the daemon would
+  refuse.
+- `writeError` is the one error answer: the status of the first sentinel the
+  error wraps (`core.ErrNotFound` 404, `core.ErrInvalidInput` 400, ...), else
+  the status a handler gave it with `withStatus`, else 500.
 
 ## Live events and the terminal read model
 

@@ -3,6 +3,7 @@ package skills
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/url"
@@ -17,6 +18,9 @@ import (
 	"gopkg.in/yaml.v3"
 	_ "modernc.org/sqlite"
 )
+
+// ErrNotFound reports a skill the library does not hold.
+var ErrNotFound = errors.New("skill not found")
 
 type Service struct {
 	db      *sql.DB
@@ -678,7 +682,7 @@ func (s *Service) getSkill(id string) (Skill, error) {
 		return Skill{}, err
 	}
 	if len(skills) == 0 {
-		return Skill{}, fmt.Errorf("skill not found: %s", id)
+		return Skill{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	return skills[0], nil
 }
