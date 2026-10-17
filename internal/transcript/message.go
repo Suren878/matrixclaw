@@ -126,24 +126,6 @@ func (p ToolResultPart) IsError() bool {
 	return p.Status == "error"
 }
 
-// UnmarshalJSON reads a part written before status was the only status field:
-// is_error without a status is an error.
-func (p *ToolResultPart) UnmarshalJSON(data []byte) error {
-	type plain ToolResultPart
-	var legacy struct {
-		plain
-		IsError bool `json:"is_error"`
-	}
-	if err := json.Unmarshal(data, &legacy); err != nil {
-		return err
-	}
-	*p = ToolResultPart(legacy.plain)
-	if p.Status == "" && legacy.IsError {
-		p.Status = "error"
-	}
-	return nil
-}
-
 type FinishPart struct {
 	Reason  string          `json:"reason,omitempty"`
 	Message string          `json:"message,omitempty"`

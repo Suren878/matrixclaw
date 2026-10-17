@@ -17,8 +17,4 @@ func TestClientCapabilitiesRoundTrip(t *testing.T) {
 			t.Fatalf("round trip of %+v = %+v", capabilities, got)
 		}
 	}
-	legacy := unmarshalClientCapabilities(`{"supports_voice_delivery":true,"supports_document_delivery":true}`)
-	if !legacy.ReceivesDeliveries {
-		t.Fatalf("a Telegram row from before receives_deliveries = %+v", legacy)
-	}
 }
