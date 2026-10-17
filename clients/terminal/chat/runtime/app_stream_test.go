@@ -224,8 +224,7 @@ func TestAnEventStreamTheDaemonClosesIsReconnectedAndReloaded(t *testing.T) {
 	m := newApp(ctx, New(Config{BaseURL: server.URL}))
 
 	msgs := make(chan tea.Msg, 16)
-	var start func(tea.Cmd)
-	start = func(cmd tea.Cmd) {
+	start := func(cmd tea.Cmd) {
 		if cmd != nil {
 			go func() { msgs <- cmd() }()
 		}
