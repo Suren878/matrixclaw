@@ -191,6 +191,31 @@ keyed locks, the model-request semaphore `daemon.model_concurrency`), `prompt`
 (fixed texts and tool guidance), `todo` (items, validation, rendering),
 `agenttest` (scripted model and port fakes for tests).
 
+## Providers
+
+`internal/providers` holds the catalog (`ProviderSpec` per built-in provider,
+type defaults for custom ones), the adapters in `ai/*` (OpenAI-compatible
+chat, Codex Responses, Anthropic Messages, Gemini) and `factory`, which picks
+the adapter by provider type. `internal/sessionllm` keeps one runtime per
+provider and model.
+
+- Model metadata (window, output limit, tools, images, reasoning): the
+  provider's own live listing, kept by provider ID and listed model ID in
+  `runtime/context-windows.json`, then static rules, then 128k.
+  `SessionLLMRegistry.ContextWindow` applies a manual window only to the
+  provider's configured model.
+- Errors: adapters return `*providers.APIError` (status, `Kind`,
+  `RetryAfter` from `retry-after-ms`, `Retry-After` or the body);
+  `providers.ClassifyError` gives any error a kind: `rate_limit`,
+  `overloaded`, `transient` (retryable), `auth`, `quota`,
+  `context_overflow`, `permanent`.
+- A base URL on a loopback address needs no API key.
+- Codex OAuth: every refresh holds a flock on `<auth store>.lock`, since the
+  daemon and the CLI share the single-use refresh token; a 401 refreshes once
+  and retries, then fails with `providers.ErrReauthRequired`.
+- The stream idle timeout is 120 s, 5 min at high and 10 min at xhigh
+  reasoning effort.
+
 ## Tasks, subagents, await
 
 - Background work is one task model (`core.Task`, table `tasks`, one
