@@ -210,5 +210,6 @@ func cloneSpec(spec Spec) Spec {
 	if spec.InputJSONSchema != nil {
 		spec.InputJSONSchema = slices.Clone(spec.InputJSONSchema)
 	}
+	spec.CoveredBy = slices.Clone(spec.CoveredBy)
 	return spec
 }
