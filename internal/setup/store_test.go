@@ -16,7 +16,7 @@ const oldSetupFile = `{
   "active_provider_id": "openai",
   "assistant": {"name": "matrixclaw", "custom_instructions": "Be brief."},
   "providers": [
-    {"id": "openai", "name": "OpenAI", "type": "openai-compatible", "api_key": "sk-openai-1234", "api_key_env": "OPENAI_API_KEY", "base_url": "https://proxy.example/v1", "model": "gpt-5.4", "reasoning_effort": "high", "tool_use_mode": "native"},
+    {"id": "openai", "catalog_id": "openai", "name": "OpenAI", "type": "openai-compatible", "api_key": "sk-openai-1234", "api_key_env": "OPENAI_API_KEY", "base_url": "https://proxy.example/v1", "model": "gpt-5.4", "reasoning_effort": "high", "tool_use_mode": "native"},
     {"id": "qwen", "name": "Qwen / DashScope", "type": "openai-compatible", "api_key": "sk-qwen-1234", "api_key_env": "DASHSCOPE_API_KEY", "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "model": "qwen-plus", "reasoning_effort": "medium"},
     {"id": "anthropic", "name": "Anthropic", "type": "anthropic-compatible", "api_key": "sk-ant-1234", "api_key_env": "ANTHROPIC_API_KEY", "base_url": "https://api.anthropic.com/v1", "model": "claude-sonnet-4-5", "context_window": 150000, "max_output_tokens": 8000},
     {"id": "local-ai", "name": "Local AI", "type": "openai-compatible", "api_key": "sk-local-1234", "api_key_env": "OPENAI_COMPAT_API_KEY", "base_url": "http://127.0.0.1:8000/v1", "model": "qwen3", "tool_use_mode": "disabled"}
@@ -155,7 +155,7 @@ func TestOldSetupFileRoundTripsWithoutLoss(t *testing.T) {
 	}
 }
 
-func TestSetupFileFromAnOlderVersionFailsNamingTheKey(t *testing.T) {
+func TestVersion4SetupFileFailsNamingTheKey(t *testing.T) {
 	for _, tc := range []struct{ name, modules, want string }{
 		{"retired key", `{"web_search": {"provider": "tavily", "api_key": "tvly-1"}}`, `unknown keys modules.web_search.api_key`},
 		{"browser provider alias", `{"browser": {"provider_id": "local-playwright"}}`, `modules.browser.provider_id is "local-playwright", want one of ["playwright"]`},
@@ -166,7 +166,7 @@ func TestSetupFileFromAnOlderVersionFailsNamingTheKey(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "setup.json")
-			file := `{"version": 3, "daemon": {"http_addr": "127.0.0.1:7777", "db_path": "/tmp/m.db"}, "clients": {"telegram": {"enabled": false}}, "modules": ` + tc.modules + `}`
+			file := `{"version": 4, "daemon": {"http_addr": "127.0.0.1:7777", "db_path": "/tmp/m.db"}, "clients": {"telegram": {"enabled": false}}, "modules": ` + tc.modules + `}`
 			if err := os.WriteFile(path, []byte(file), 0o600); err != nil {
 				t.Fatal(err)
 			}
@@ -175,5 +175,92 @@ func TestSetupFileFromAnOlderVersionFailsNamingTheKey(t *testing.T) {
 				t.Fatalf("load error = %v, want it to name the file and %s", err, tc.want)
 			}
 		})
+	}
+}
+
+// v3SetupFile has every key and alias value v0.2.0 still read.
+const v3SetupFile = `{
+  "version": 3,
+  "completed_at": "2026-09-24T05:08:33Z",
+  "active_provider_id": "openai",
+  "providers": [{"id": "openai", "catalog_id": "openai", "type": "OpenAI-Compatible", "api_key": "sk-openai-1234", "model": "gpt-5.4", "tool_use_mode": "Native"}],
+  "daemon": {"http_addr": "127.0.0.1:7777", "db_path": "/var/lib/matrixclaw.db"},
+  "clients": {"terminal": {"enabled": true}, "telegram": {"enabled": false}},
+  "modules": {
+    "skills": {"trust_policy": "ask", "self_improve": "drafts"},
+    "web_search": {"provider": "Tavily", "api_key": "tvly-1234"},
+    "browser": {"enabled": true, "provider_id": "local-playwright", "provider_config": {"runtime_mode": "persistent"}},
+    "tts": {"enabled": true, "provider_id": "Piper", "providers": {
+      "piper": {"language": "english", "runtime_mode": "server"},
+      "supertonic": {"language": "EN"},
+      "espeak": {"voice_id": "x"}}},
+    "stt": {"providers": {"whispercpp": {"runtime_mode": "always"}}},
+    "external_agents": {"codex": {"enabled": true, "path": "/usr/bin/codex"}, "Claude-Code": {"enabled": true}},
+    "mcp": {"servers": [{"id": "web", "transport": "streamable-http", "endpoint": "http://127.0.0.1:9000"}]}
+  }
+}
+`
+
+func TestVersion3SetupFileIsConvertedOnce(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "setup.json")
+	if err := os.WriteFile(path, []byte(v3SetupFile), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := NewFileStore(path).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	modules := cfg.Modules
+	piper := modules.TextToSpeech.Providers["piper"]
+	if cfg.Version != 4 || cfg.Providers[0].Type != "" || cfg.Providers[0].ToolUseMode != "native" || modules.WebSearch.Provider != WebSearchProviderTavily ||
+		modules.WebSearch.TavilyKey != "tvly-1234" || modules.Browser.ProviderConfig.RuntimeMode != "always_running" || modules.TextToSpeech.ProviderID != "piper" ||
+		piper.Language != "en_US" || piper.RuntimeMode != "always_running" || modules.SpeechToText.Providers["whispercpp"].RuntimeMode != "always_running" ||
+		modules.ExternalAgents["codex-app"].Path != "/usr/bin/codex" || !modules.ExternalAgents["claude-code"].Enabled || modules.MCP.Servers[0].Transport != "http" {
+		t.Fatalf("converted config = %+v", cfg)
+	}
+	backup, err := os.ReadFile(path + ".pre-v4")
+	if err != nil || string(backup) != v3SetupFile {
+		t.Fatalf("backup = %q, %v", backup, err)
+	}
+	if info, err := os.Stat(path + ".pre-v4"); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("backup mode = %v, %v", info.Mode(), err)
+	}
+	saved, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, gone := range []string{"catalog_id", "completed_at", "terminal", "self_improve", "api_key\": \"tvly", "local-playwright", "persistent", "english", "streamable", "espeak", `"codex"`} {
+		if strings.Contains(string(saved), gone) {
+			t.Errorf("converted file still has %s", gone)
+		}
+	}
+	if err := os.WriteFile(path+".pre-v4", []byte("earlier"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewFileStore(path).Load(); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := os.ReadFile(path); string(again) != string(saved) {
+		t.Fatal("a version 4 file was rewritten on load")
+	}
+	if kept, _ := os.ReadFile(path + ".pre-v4"); string(kept) != "earlier" {
+		t.Fatal("the existing backup was replaced")
+	}
+}
+
+func TestVersion3SetupFileThatCannotConvertIsLeftAlone(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "setup.json")
+	file := strings.Replace(v3SetupFile, `"completed_at"`, `"wizard_state": {}, "completed_at"`, 1)
+	if err := os.WriteFile(path, []byte(file), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewFileStore(path).Load(); err == nil || !strings.Contains(err.Error(), "unknown keys wizard_state") {
+		t.Fatalf("load error = %v", err)
+	}
+	if after, _ := os.ReadFile(path); string(after) != file {
+		t.Fatal("the file changed")
+	}
+	if _, err := os.Stat(path + ".pre-v4"); !os.IsNotExist(err) {
+		t.Fatalf("backup written: %v", err)
 	}
 }

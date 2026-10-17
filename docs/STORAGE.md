@@ -7,7 +7,7 @@ that should outlive a chat turn.
 
 | Path (default) | What it is |
 |---|---|
-| `~/.config/matrixclaw/setup.json` | setup (`MATRIXCLAW_SETUP_PATH` moves it); written with mode 0600 |
+| `~/.config/matrixclaw/setup.json` | setup (`MATRIXCLAW_SETUP_PATH` moves it); written with mode 0600. A version 3 file from v0.2.0 is converted to version 4 on first load and the original kept as `setup.json.pre-v4` |
 | `~/.config/matrixclaw/daemon.env` | environment for the user service, next to setup.json |
 | `~/.local/state/matrixclaw/matrixclaw.db` | SQLite database (`daemon.db_path` in setup.json, or `MATRIXCLAW_DB_PATH`, which wins) |
 
@@ -73,7 +73,8 @@ the daemon first opens it (`internal/store/legacy_v02.go`):
    `web-research/` next to it are removed.
 
 To roll back, stop the daemon and copy `matrixclaw.db.pre-v1` over
-`matrixclaw.db` (removing `matrixclaw.db-wal` and `matrixclaw.db-shm`), then
+`matrixclaw.db` (removing `matrixclaw.db-wal` and `matrixclaw.db-shm`) and
+`setup.json.pre-v4` over `setup.json` (v0.2.0 refuses a version 4 file), then
 start the older binary. Delete the copy once the new version works. The next
 release drops the conversion, so a database older than v0.2.0 must be opened
 by this release first.

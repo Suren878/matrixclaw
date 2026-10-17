@@ -378,7 +378,10 @@ through read-only subagents.
   outside its closed list (provider type, tool use mode, runtime modes,
   browser and voice providers, external agent ids, web search provider, MCP
   transport), fails with an error naming the key. A file is never
-  reinterpreted on read; there are no value aliases.
+  reinterpreted on read; there are no value aliases. A version 3 file (v0.2.0)
+  is converted to version 4 once on load (`internal/setup/legacy_v3.go`): the
+  original is kept as `setup.json.pre-v4`, the keys v0.2.0 still wrote are
+  dropped and alias values become canonical.
 - Every edit is `Service.Update(func(*Config) error)`: load, change,
   canonicalize, `Config.Validate` (structure only: no network, no env), save
   atomically under one lock. Provider edits, the session model switch and
@@ -446,5 +449,6 @@ that takes a single reply (Telegram inline and guest). Restart notices are
 
 - Drop the session runtime aliases (`codex`, `assistant`, ...) in
   `internal/core/external_agents.go`, then the `sessions.runtime_id` column.
-- Delete `internal/store/legacy_v02.go` (the one-time v0.2 database
-  conversion) one release after it shipped.
+- Delete the one-time v0.2 conversions, `internal/store/legacy_v02.go` (the
+  database) and `internal/setup/legacy_v3.go` (setup.json), one release after
+  they shipped.

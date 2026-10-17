@@ -11,7 +11,7 @@ func loadAssistant(t *testing.T, prompt string) AssistantConfig {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "setup.json")
 	quoted, _ := json.Marshal(prompt)
-	data := []byte(`{"version":3,"assistant":{"system_prompt":` + string(quoted) + `}}`)
+	data := []byte(`{"version":4,"assistant":{"system_prompt":` + string(quoted) + `}}`)
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -202,7 +202,7 @@ func TestConcurrentModuleUpdatesAreAllSaved(t *testing.T) {
 
 func TestSkillsStayOnUnlessTurnedOff(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "setup.json")
-	if err := os.WriteFile(path, []byte(`{"version":3,"modules":{"skills":{"auto_invoke":false}}}`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"version":4,"modules":{"skills":{"auto_invoke":false}}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := NewFileStore(path).Load()

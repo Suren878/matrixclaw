@@ -4,7 +4,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
-const CurrentVersion = 3
+const CurrentVersion = 4
 
 type Config struct {
 	Version          int              `json:"version"`

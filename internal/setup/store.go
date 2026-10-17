@@ -32,6 +32,10 @@ func (s *FileStore) Load() (Config, error) {
 		return Config{}, err
 	}
 
+	data, err = s.upgradeV3(data)
+	if err != nil {
+		return Config{}, fmt.Errorf("%s: %w", s.path, err)
+	}
 	cfg, err := decodeConfig(data)
 	if err != nil {
 		return Config{}, fmt.Errorf("%s: %w", s.path, err)
