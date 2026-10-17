@@ -93,6 +93,10 @@ func TestParseLineMarksFlagsThatRunProgramsRisky(t *testing.T) {
 		`cargo test --config=build.rustc-wrapper=/tmp/evil`,
 		`npm test --script-shell=/tmp/evil`,
 		`pnpm test --node-options='--require /tmp/evil.js'`,
+		`go -C sub run .`,
+		`cargo +nightly run`,
+		`docker --context prod run alpine id`,
+		`pnpm --filter web exec rm x`,
 	} {
 		if got := ParseLine(line); !got.Risky {
 			t.Errorf("ParseLine(%q) is not risky", line)
@@ -111,6 +115,9 @@ func TestParseLineMarksFlagsThatRunProgramsRisky(t *testing.T) {
 		`find . -name '*.go' -type f`,
 		`make test`,
 		`cargo test --release`,
+		`go test -run run ./...`,
+		`go test -v -run TestRunExec ./internal/core`,
+		`docker --context prod ps`,
 	} {
 		if got := ParseLine(line); got.Risky {
 			t.Errorf("ParseLine(%q) is risky", line)

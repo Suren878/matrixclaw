@@ -161,16 +161,41 @@ func (l *Line) addCall(call *syntax.CallExpr) {
 	}
 }
 
-// runsCommand reports whether a command is one of the runners.
+// globalValueFlags are the options taking a separate value that may come before
+// a command's subcommand, such as "docker --context x run".
+var globalValueFlags = map[string][]string{
+	"go":      {"-C"},
+	"docker":  {"-c", "--context", "-H", "--host", "--config", "-l", "--log-level"},
+	"podman":  {"-c", "--connection", "--url", "--root", "--runroot"},
+	"kubectl": {"-n", "--namespace", "--context", "--kubeconfig", "-s", "--server", "--cluster", "--user"},
+}
+
+// runsCommand reports whether a command is one of the runners. The subcommand
+// is the first word that is neither an option nor a known option's value; after
+// an unknown option any later word counts, as it may have been that option's value.
 func runsCommand(words []string) bool {
 	command := filepath.Base(words[0])
 	if runners[command] {
 		return true
 	}
-	for _, word := range words[1:] {
-		if runners[command+" "+word] {
-			return true
+	for i := 1; i < len(words); i++ {
+		word := words[i]
+		if !strings.HasPrefix(word, "-") && !strings.HasPrefix(word, "+") {
+			return runners[command+" "+word]
 		}
+		if slices.Contains(globalValueFlags[command], word) {
+			i++
+			continue
+		}
+		if strings.Contains(word, "=") || strings.HasPrefix(word, "+") {
+			continue
+		}
+		for _, later := range words[i+1:] {
+			if runners[command+" "+later] {
+				return true
+			}
+		}
+		return false
 	}
 	return false
 }
