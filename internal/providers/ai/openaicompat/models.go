@@ -20,7 +20,7 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 		return nil, errors.New("openaicompat: base url is required")
 	}
 	modelsURL := strings.TrimRight(baseURL, "/") + "/models"
-	if apiKey == "" && !policy.PublicModelCatalog {
+	if apiKey == "" && !policy.PublicModelCatalog && !providers.IsLoopbackURL(baseURL) {
 		return nil, errors.New("openaicompat: api key is required")
 	}
 
@@ -130,7 +130,7 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 	if len(models) == 0 {
 		return nil, fmt.Errorf("openaicompat: no models available")
 	}
-	if baseURL != "" && apiKey != "" {
+	if baseURL != "" {
 		registerLocalContextWindows(ctx, cfg, client, baseURL, apiKey, models)
 	}
 	return models, nil

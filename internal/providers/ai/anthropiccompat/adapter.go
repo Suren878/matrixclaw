@@ -45,7 +45,9 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 	if err != nil {
 		return nil, fmt.Errorf("anthropic: build models request: %w", err)
 	}
-	req.Header.Set("x-api-key", apiKey)
+	if apiKey != "" {
+		req.Header.Set("x-api-key", apiKey)
+	}
 	req.Header.Set("anthropic-version", defaultAnthropicVersion)
 	req.Header.Set("Accept", "application/json")
 
@@ -122,7 +124,9 @@ func (r *Runtime) send(ctx context.Context, payload anthropicRequest) (providers
 	if err != nil {
 		return providers.Response{}, fmt.Errorf("anthropic: build request: %w", err)
 	}
-	httpReq.Header.Set("x-api-key", r.APIKey)
+	if r.APIKey != "" {
+		httpReq.Header.Set("x-api-key", r.APIKey)
+	}
 	httpReq.Header.Set("anthropic-version", defaultAnthropicVersion)
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json")

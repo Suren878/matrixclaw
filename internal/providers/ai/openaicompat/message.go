@@ -37,19 +37,12 @@ func openAIContentParts(message providers.Message) []chatCompletionContentPart {
 		parts = append(parts, chatCompletionContentPart{Type: "text", Text: content})
 	}
 	for _, image := range message.Images {
-		data := strings.TrimSpace(image.DataBase64)
-		if data == "" {
+		if strings.TrimSpace(image.DataBase64) == "" {
 			continue
 		}
-		mimeType := strings.TrimSpace(image.MIMEType)
-		if mimeType == "" {
-			mimeType = "image/jpeg"
-		}
 		parts = append(parts, chatCompletionContentPart{
-			Type: "image_url",
-			ImageURL: &chatCompletionContentImageURL{
-				URL: "data:" + mimeType + ";base64," + data,
-			},
+			Type:     "image_url",
+			ImageURL: &chatCompletionContentImageURL{URL: image.DataURL()},
 		})
 	}
 	return parts
@@ -125,18 +118,6 @@ func namespaceToolCalls(calls []providers.ToolCall) []providers.ToolCall {
 		calls[i].ID = id
 	}
 	return calls
-}
-
-func validateToolCalls(calls []providers.ToolCall) error {
-	for _, call := range calls {
-		if strings.TrimSpace(call.Name) == "" {
-			return fmt.Errorf("openaicompat: function call is missing a name: %w", providers.ErrMalformedToolCall)
-		}
-		if !json.Valid(call.Arguments) {
-			return fmt.Errorf("openaicompat: invalid arguments for tool %q: %w", call.Name, providers.ErrMalformedToolCall)
-		}
-	}
-	return nil
 }
 
 func openAIStopReason(reason string) providers.StopReason {

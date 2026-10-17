@@ -55,7 +55,9 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 		if err != nil {
 			return nil, fmt.Errorf("gemini: build models request: %w", err)
 		}
-		req.Header.Set("x-goog-api-key", apiKey)
+		if apiKey != "" {
+			req.Header.Set("x-goog-api-key", apiKey)
+		}
 		req.Header.Set("Accept", "application/json")
 
 		res, err := client.Do(req)
@@ -112,7 +114,9 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 	if err != nil {
 		return providers.Response{}, fmt.Errorf("gemini: build request: %w", err)
 	}
-	httpReq.Header.Set("x-goog-api-key", r.APIKey)
+	if r.APIKey != "" {
+		httpReq.Header.Set("x-goog-api-key", r.APIKey)
+	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "text/event-stream")
 
@@ -231,12 +235,8 @@ func encodeMessage(message providers.Message, toolNames map[string]string) gemin
 		if data == "" {
 			continue
 		}
-		mimeType := strings.TrimSpace(image.MIMEType)
-		if mimeType == "" {
-			mimeType = "image/jpeg"
-		}
 		parts = append(parts, geminiPart{InlineData: &geminiInlineData{
-			MIMEType: mimeType,
+			MIMEType: image.MediaType(),
 			Data:     data,
 		}})
 	}
@@ -364,16 +364,23 @@ func (r *Runtime) reply(parts []geminiPart, stop providers.StopReason, usage gem
 		if !part.Thought {
 			text.WriteString(part.Text)
 		}
-		if part.FunctionCall != nil && strings.TrimSpace(part.FunctionCall.Name) != "" {
+		if part.FunctionCall != nil {
 			if part.ThoughtSignature != "" && len(reasoning) == 0 {
 				reasoning = []providers.ReasoningBlock{{Signature: part.ThoughtSignature}}
+			}
+			args := part.FunctionCall.Args
+			if len(args) == 0 || string(args) == "null" {
+				args = json.RawMessage(`{}`)
 			}
 			toolCalls = append(toolCalls, providers.ToolCall{
 				ID:        fmt.Sprintf("gemini_%s_%d", responseID, i),
 				Name:      strings.TrimSpace(part.FunctionCall.Name),
-				Arguments: part.FunctionCall.Args,
+				Arguments: args,
 			})
 		}
+	}
+	if err := providers.CheckToolCalls("gemini", toolCalls); err != nil {
+		return providers.Response{}, err
 	}
 
 	reply := text.String()

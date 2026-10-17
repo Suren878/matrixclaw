@@ -362,15 +362,8 @@ func responsesContentParts(message providers.Message, textType string) []respons
 		parts = append(parts, responsesContentPart{Type: textType, Text: text})
 	}
 	for _, image := range message.Images {
-		if data := strings.TrimSpace(image.DataBase64); data != "" {
-			mimeType := strings.TrimSpace(image.MIMEType)
-			if mimeType == "" {
-				mimeType = "image/png"
-			}
-			parts = append(parts, responsesContentPart{
-				Type:     "input_image",
-				ImageURL: "data:" + mimeType + ";base64," + data,
-			})
+		if strings.TrimSpace(image.DataBase64) != "" {
+			parts = append(parts, responsesContentPart{Type: "input_image", ImageURL: image.DataURL()})
 		}
 	}
 	return parts

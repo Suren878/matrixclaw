@@ -40,7 +40,8 @@ func (p ProviderConfig) Effective() ProviderConfig {
 }
 
 // Runtime is the effective provider with its API key taken from the file or
-// the environment; ok is false when a required key is missing.
+// the environment; ok is false when a required key is missing. A server on a
+// loopback address needs no key.
 func (p ProviderConfig) Runtime() (ProviderConfig, bool) {
 	p = p.Effective()
 	if !p.policy().RequiresAPIKey {
@@ -48,7 +49,7 @@ func (p ProviderConfig) Runtime() (ProviderConfig, bool) {
 		return p, true
 	}
 	p.APIKey = cmp.Or(normalizeProviderAPIKey(p.APIKey), providerAPIKeyFromEnvName(p.APIKeyEnv))
-	return p, p.APIKey != ""
+	return p, p.APIKey != "" || providers.IsLoopbackURL(p.BaseURL)
 }
 
 // APIKeyPreview shows where the provider's key comes from without the key.

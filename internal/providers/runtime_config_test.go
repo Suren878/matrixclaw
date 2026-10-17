@@ -21,3 +21,14 @@ func TestDisabledToolUseTurnsToolCallingOff(t *testing.T) {
 		t.Fatalf("capabilities = %+v, want no tool use", base.Capabilities)
 	}
 }
+
+func TestIsLoopbackURL(t *testing.T) {
+	for raw, want := range map[string]bool{
+		"http://localhost:11434/v1": true, "http://127.0.0.1:1234/v1": true, "http://[::1]:8080": true,
+		"http://ollama.localhost/v1": true, "https://api.openai.com/v1": false, "http://192.168.1.5:1234/v1": false, "": false,
+	} {
+		if got := IsLoopbackURL(raw); got != want {
+			t.Errorf("IsLoopbackURL(%q) = %t, want %t", raw, got, want)
+		}
+	}
+}

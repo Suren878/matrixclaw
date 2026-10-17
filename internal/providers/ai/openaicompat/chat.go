@@ -31,7 +31,9 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 		if err != nil {
 			return providers.Response{}, fmt.Errorf("openaicompat: build request: %w", err)
 		}
-		httpReq.Header.Set("Authorization", "Bearer "+r.APIKey)
+		if r.APIKey != "" {
+			httpReq.Header.Set("Authorization", "Bearer "+r.APIKey)
+		}
 		httpReq.Header.Set("Content-Type", "application/json")
 		httpReq.Header.Set("Accept", "application/json")
 		applyDefaultHeaders(httpReq, r.headers)
@@ -366,7 +368,7 @@ func (r *Runtime) finishResponse(text string, reasoning *string, calls []provide
 	stop := openAIStopReason(finishReason)
 	if stop == providers.StopMaxTokens {
 		calls = completeToolCalls(calls)
-	} else if err := validateToolCalls(calls); err != nil {
+	} else if err := providers.CheckToolCalls("openaicompat", calls); err != nil {
 		return providers.Response{}, err
 	}
 	stop = providers.ResolveStopReason(stop, len(calls))

@@ -283,7 +283,7 @@ func (t *toolIDs) claim(base string) string {
 // a rejected image in history would fail every later request of the session.
 func imageBlock(img providers.ImageContent) anthropicBlock {
 	data := strings.TrimSpace(img.DataBase64)
-	mediaType, problem := checkImage(imageMediaType(img.MIMEType), data)
+	mediaType, problem := checkImage(img.MediaType(), data)
 	if problem != "" {
 		return anthropicBlock{Type: "text", Text: "[image omitted: " + problem + "]"}
 	}
@@ -294,8 +294,6 @@ func imageBlock(img providers.ImageContent) anthropicBlock {
 // png and gif) or why the image cannot be sent.
 func checkImage(mediaType string, data string) (string, string) {
 	switch mediaType {
-	case "":
-		return "", "missing media type"
 	case "image/jpeg", "image/png", "image/gif", "image/webp":
 	default:
 		return "", "unsupported media type " + mediaType
@@ -314,14 +312,6 @@ func checkImage(mediaType string, data string) (string, string) {
 		return "", fmt.Sprintf("%dx%d px exceeds %d px", config.Width, config.Height, maxImageSide)
 	}
 	return "image/" + format, ""
-}
-
-func imageMediaType(mimeType string) string {
-	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
-	if index := strings.IndexByte(mimeType, ';'); index >= 0 {
-		mimeType = strings.TrimSpace(mimeType[:index])
-	}
-	return mimeType
 }
 
 // markCacheBreakpoints caches the stable prefix and the conversation so far:

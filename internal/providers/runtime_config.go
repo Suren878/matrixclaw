@@ -3,7 +3,9 @@ package providers
 import (
 	"cmp"
 	"errors"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -63,15 +65,31 @@ func NewRuntimeBase(cfg RuntimeConfig, providerType string, defaultModel string)
 	}
 }
 
-// RequireKeyAndURL fails a base that lacks an API key or base URL.
+// RequireKeyAndURL fails a base that lacks a base URL, or an API key for a
+// server other than a local one.
 func (b *RuntimeBase) RequireKeyAndURL(adapter string) error {
-	if b.APIKey == "" {
-		return errors.New(adapter + ": api key is required")
-	}
 	if b.BaseURL == "" {
 		return errors.New(adapter + ": base url is required")
 	}
+	if b.APIKey == "" && !IsLoopbackURL(b.BaseURL) {
+		return errors.New(adapter + ": api key is required")
+	}
 	return nil
+}
+
+// IsLoopbackURL reports a base URL on this machine (localhost or a loopback
+// IP), where model servers usually take no API key.
+func IsLoopbackURL(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func (b *RuntimeBase) Identity() (string, string) {

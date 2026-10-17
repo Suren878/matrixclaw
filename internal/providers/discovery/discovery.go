@@ -29,7 +29,7 @@ func Models(ctx context.Context, input ModelDiscoveryInput) ([]string, error) {
 
 	providerID := strings.TrimSpace(input.ID)
 	policy := providers.PolicyForProvider(providerID, input.Type)
-	if strings.TrimSpace(input.APIKey) == "" && policy.RequiresAPIKey && !policy.PublicModelCatalog {
+	if strings.TrimSpace(input.APIKey) == "" && policy.RequiresAPIKey && !policy.PublicModelCatalog && !providers.IsLoopbackURL(input.BaseURL) {
 		return nil, errors.New("enter a valid API key first")
 	}
 
