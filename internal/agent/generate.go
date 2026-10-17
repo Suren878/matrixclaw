@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -157,27 +156,27 @@ func (r *run) generate(ctx context.Context, request providers.Request) (generati
 		lastFlush = now
 		return nil
 	}
-	sanitizer := newAssistantStreamSanitizer()
+	var sanitizer replySanitizer
+	add := func(text string) {
+		if text != "" {
+			gen.assistant.Content += text
+			dirty = true
+		}
+	}
 	streamCtx := providers.WithTextStream(ctx, func(delta string) error {
 		select {
 		case <-ctx.Done():
 			return errRunCanceled
 		default:
 		}
-		if !gen.saved && gen.assistant.Content == "" {
-			delta = strings.TrimPrefix(delta, "\n")
-		}
-		if delta = sanitizer.Push(delta); delta == "" {
-			return nil
-		}
-		gen.assistant.Content += delta
-		dirty = true
+		add(sanitizer.Push(delta))
 		return flush(false)
 	})
 	response, latency, err := r.generateOnSlot(streamCtx, r.task.Model, request)
 	if err == nil {
 		err = r.recordStep(ctx, response, stepStopReason(response), latency)
 	}
+	add(sanitizer.Flush())
 	if flushErr := flush(true); flushErr != nil {
 		err = errors.Join(err, flushErr)
 	}
