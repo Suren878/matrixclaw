@@ -57,6 +57,25 @@ func resolveReadablePath(workingDir string, value string) (FilesystemPathPolicy,
 	return policy, nil
 }
 
+// resolvedPath is value resolved against workingDir, or the cleaned value when
+// it cannot be made absolute.
+func resolvedPath(workingDir string, value string) string {
+	policy, err := ResolveFilesystemPath(workingDir, value)
+	if err != nil {
+		return filepath.Clean(value)
+	}
+	return policy.Path
+}
+
+// pathWithin reports whether path is root or below it.
+func pathWithin(root string, path string) bool {
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel))
+}
+
 // comparableFilesystemPath is path made absolute with symlinks resolved, or ""
 // for an empty path.
 func comparableFilesystemPath(path string) string {

@@ -86,7 +86,7 @@ func (e *taskOutputExecutor) Spec() Spec {
 func (e *bashExecutor) ConcurrencyKey(call Call) string {
 	var params BashParams
 	_ = json.Unmarshal(call.Args, &params)
-	return WorkingDirKey(resolvePath(call.WorkingDir, params.WorkingDir))
+	return WorkingDirKey(resolvedPath(call.WorkingDir, params.WorkingDir))
 }
 
 // ConcurrencyKey lets the reads of one task take turns, as each moves its cursor.
@@ -363,7 +363,7 @@ func CheckReadOnlyCall(call Call) error {
 	if err := permission.CheckReadOnly(params.Command); err != nil {
 		return fmt.Errorf("this subagent is read-only, and bash runs only read-only commands: %w", err)
 	}
-	if err := checkReadOnlyPaths(params, resolvePath(call.WorkingDir, params.WorkingDir)); err != nil {
+	if err := checkReadOnlyPaths(params, resolvedPath(call.WorkingDir, params.WorkingDir)); err != nil {
 		return fmt.Errorf("this subagent is read-only, and bash reads only inside the working directory, never where keys are kept: %w; use read, grep or glob instead", err)
 	}
 	return nil
@@ -395,7 +395,7 @@ func checkReadOnlyPaths(params BashParams, dir string) error {
 			case strings.HasPrefix(path, "~"):
 				return fmt.Errorf("%s is another user's home", word)
 			}
-			resolved := comparableFilesystemPath(resolvePath(dir, path))
+			resolved := comparableFilesystemPath(resolvedPath(dir, path))
 			if !pathWithin(root, resolved) {
 				return fmt.Errorf("%s is outside %s", word, dir)
 			}
