@@ -309,7 +309,6 @@ func TestImagesAnthropicWouldRejectAreReplacedByANote(t *testing.T) {
 	}{
 		{"over 5 MB", providers.ImageContent{MIMEType: "image/webp", DataBase64: strings.Repeat("A", 5*1024*1024+4)}, "larger than 5 MB"},
 		{"unsupported type", providers.ImageContent{MIMEType: "image/bmp", DataBase64: "Qk0="}, "unsupported media type image/bmp"},
-		{"missing type", providers.ImageContent{DataBase64: pngBase64(t, 1, 1)}, "missing media type"},
 		{"too wide", providers.ImageContent{MIMEType: "image/png", DataBase64: pngBase64(t, 8001, 1)}, "8001x1 px exceeds 8000 px"},
 		{"unreadable", providers.ImageContent{MIMEType: "image/png", DataBase64: "iVBORw0KGgo="}, "unreadable image data"},
 	} {

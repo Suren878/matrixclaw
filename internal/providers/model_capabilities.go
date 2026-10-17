@@ -2,22 +2,11 @@ package providers
 
 import "strings"
 
-type ReasoningMode string
-
-const (
-	ReasoningModeNone           ReasoningMode = ""
-	ReasoningModeOpenAIEffort   ReasoningMode = "openai_effort"
-	ReasoningModeGeminiThinking ReasoningMode = "gemini_thinking"
-)
-
+// ModelCapabilities is what a runtime's model accepts.
 type ModelCapabilities struct {
-	ToolCalling        bool
-	ParallelToolCalls  bool
-	ImageInput         bool
-	ReasoningEffort    bool
-	ReasoningMode      ReasoningMode
-	ReasoningWithTools bool
-	NormalizeModel     bool
+	ToolCalling     bool
+	ImageInput      bool
+	ReasoningEffort bool
 }
 
 type ModelCapabilityInput struct {
@@ -41,13 +30,9 @@ func ResolveModelCapabilities(input ModelCapabilityInput) ModelCapabilitySet {
 	policy := PolicyForProvider(providerID, providerType)
 	providerCapabilities := policy.Capabilities
 	runtimeCapabilities := ModelCapabilities{
-		ToolCalling:        metadata.ToolCalling,
-		ParallelToolCalls:  metadata.ParallelToolCalls,
-		ImageInput:         metadata.ImageInput,
-		ReasoningEffort:    metadata.ReasoningEffort,
-		ReasoningMode:      metadata.ReasoningMode,
-		ReasoningWithTools: metadata.ReasoningWithTools,
-		NormalizeModel:     providerCapabilities.NormalizeModel,
+		ToolCalling:     metadata.ToolCalling,
+		ImageInput:      metadata.ImageInput,
+		ReasoningEffort: metadata.ReasoningEffort,
 	}
 
 	return ModelCapabilitySet{
@@ -56,32 +41,6 @@ func ResolveModelCapabilities(input ModelCapabilityInput) ModelCapabilitySet {
 		ReasoningEfforts:       metadata.ReasoningEfforts,
 		DefaultReasoningEffort: metadata.DefaultReasoningEffort,
 	}
-}
-
-func runtimeCapabilitiesFromProvider(providerCapabilities Capabilities, providerType string) ModelCapabilities {
-	capabilities := ModelCapabilities{
-		ToolCalling:       providerCapabilities.ToolCalling,
-		ParallelToolCalls: providerCapabilities.ToolCalling,
-		ImageInput:        providerCapabilities.ImageInput,
-		ReasoningEffort:   providerCapabilities.ReasoningEffort,
-		NormalizeModel:    providerCapabilities.NormalizeModel,
-	}
-
-	switch providerType {
-	case TypeGemini:
-		capabilities.ReasoningMode = ReasoningModeGeminiThinking
-	case TypeOpenAICompat, TypeOpenAICodex:
-		if providerCapabilities.ReasoningEffort {
-			capabilities.ReasoningMode = ReasoningModeOpenAIEffort
-			capabilities.ReasoningWithTools = providerCapabilities.ToolCalling
-		}
-	}
-
-	if !capabilities.ToolCalling {
-		capabilities.ParallelToolCalls = false
-		capabilities.ReasoningWithTools = false
-	}
-	return capabilities
 }
 
 func providerCapabilitiesFromRuntime(providerCapabilities Capabilities, runtimeCapabilities ModelCapabilities) Capabilities {

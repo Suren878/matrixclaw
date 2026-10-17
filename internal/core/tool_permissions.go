@@ -26,16 +26,20 @@ type callPermission struct {
 	preset  []permission.Rule
 }
 
-// guard lets the call recheck the rules for subjects it reaches later.
+// guard lets the call recheck the rules for subjects it reaches later and
+// tells a search which paths below its directory the rules leave out.
 func (check callPermission) guard(call tools.Call) tools.Call {
 	call.Recheck = check.recheck
+	call.Skip = permission.SearchSkip(check.request, check.rules)
 	return call
 }
 
 // recheck refuses a subject the call reaches later, such as a redirect's host,
 // that a deny or ask rule catches.
 func (check callPermission) recheck(_ context.Context, subject permission.Subject) error {
-	verdict := permission.Evaluate(permission.Request{Tool: check.request.Tool, Subject: subject}, check.rules, check.preset)
+	request := check.request
+	request.Subject = subject
+	verdict := permission.Evaluate(request, check.rules, check.preset)
 	switch verdict.Effect {
 	case permission.Deny:
 		return fmt.Errorf("blocked by rule %s", verdict.Rule.String())
@@ -62,7 +66,7 @@ func (c *Core) checkPermission(ctx context.Context, sessionID string, spec tools
 	if call.WorkingDir == "" {
 		call.WorkingDir = session.WorkingDir
 	}
-	request := permission.Request{Tool: permissionTool(spec), Subject: c.tools.Subject(spec.ID, call)}
+	request := permission.Request{Tool: permissionTool(spec), CoveredBy: spec.CoveredBy, Subject: c.tools.Subject(spec.ID, call)}
 	root := realPath(cmp.Or(normalizeWorkingDir(session.WorkingDir), normalizeWorkingDir(call.WorkingDir)))
 	preset := permission.Preset(string(NormalizePermissionMode(string(session.PermissionMode))), root)
 	verdict := permission.Evaluate(request, rules, preset)

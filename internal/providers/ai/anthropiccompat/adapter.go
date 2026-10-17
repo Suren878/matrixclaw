@@ -45,7 +45,9 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 	if err != nil {
 		return nil, fmt.Errorf("anthropic: build models request: %w", err)
 	}
-	req.Header.Set("x-api-key", apiKey)
+	if apiKey != "" {
+		req.Header.Set("x-api-key", apiKey)
+	}
 	req.Header.Set("anthropic-version", defaultAnthropicVersion)
 	req.Header.Set("Accept", "application/json")
 
@@ -82,8 +84,7 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 	for _, item := range payload.Data {
 		if id := strings.TrimSpace(item.ID); id != "" {
 			metadata := providers.ModelMetadataRegistration{ContextWindow: item.MaxInputTokens, MaxOutputTokens: item.MaxTokens}
-			providers.RegisterModelMetadata(cfg.ProviderID, providers.TypeAnthropic, id, metadata)
-			providers.RegisterModelMetadata(cfg.CatalogID, providers.TypeAnthropic, id, metadata)
+			providers.RegisterModelMetadata(cfg.ProviderID, id, metadata)
 			models = append(models, id)
 		}
 	}
@@ -96,7 +97,7 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 func (r *Runtime) Generate(ctx context.Context, request providers.Request) (providers.Response, error) {
 	payload := anthropicRequest{
 		Model:     r.Model,
-		MaxTokens: providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.MaxOutputTokens, r.MetadataID, providers.TypeAnthropic, r.Model),
+		MaxTokens: providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.MaxOutputTokens, r.ProviderID, providers.TypeAnthropic, r.Model),
 	}
 	if err := encodeRequest(&payload, request); err != nil {
 		return providers.Response{}, err
@@ -123,7 +124,9 @@ func (r *Runtime) send(ctx context.Context, payload anthropicRequest) (providers
 	if err != nil {
 		return providers.Response{}, fmt.Errorf("anthropic: build request: %w", err)
 	}
-	httpReq.Header.Set("x-api-key", r.APIKey)
+	if r.APIKey != "" {
+		httpReq.Header.Set("x-api-key", r.APIKey)
+	}
 	httpReq.Header.Set("anthropic-version", defaultAnthropicVersion)
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json")
@@ -241,19 +244,12 @@ func anthropicResponseError(statusCode int, body []byte, header http.Header) err
 	if err := json.Unmarshal(body, &envelope); err == nil && strings.TrimSpace(envelope.Error.Message) != "" {
 		message = envelope.Error.String()
 	}
-	return providers.NewAPIError("anthropic", statusCode, message, header)
+	return providers.NewAPIError("anthropic", statusCode, envelope.Error.Type, message, header)
 }
 
-// anthropicStreamError classifies an error event by the HTTP status its type stands for.
+// anthropicStreamError classifies an error event by its type.
 func anthropicStreamError(detail anthropicErrorDetail) error {
-	code := map[string]int{
-		"overloaded_error":     529,
-		"api_error":            http.StatusInternalServerError,
-		"rate_limit_error":     http.StatusTooManyRequests,
-		"authentication_error": http.StatusUnauthorized,
-		"permission_error":     http.StatusForbidden,
-	}[detail.Type]
-	return providers.NewStreamError("anthropic", code, "stream error: "+detail.String())
+	return providers.NewStreamError("anthropic", 0, detail.Type, "stream error: "+detail.String())
 }
 
 func decodeAnthropicError(statusCode int, body []byte) string {

@@ -31,7 +31,9 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 		if err != nil {
 			return providers.Response{}, fmt.Errorf("openaicompat: build request: %w", err)
 		}
-		httpReq.Header.Set("Authorization", "Bearer "+r.APIKey)
+		if r.APIKey != "" {
+			httpReq.Header.Set("Authorization", "Bearer "+r.APIKey)
+		}
 		httpReq.Header.Set("Content-Type", "application/json")
 		httpReq.Header.Set("Accept", "application/json")
 		applyDefaultHeaders(httpReq, r.headers)
@@ -53,7 +55,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 			if r.fixRequest(&payload, &applied, httpRes.StatusCode, resBody) {
 				continue
 			}
-			return providers.Response{}, providers.NewAPIError("openaicompat", httpRes.StatusCode, openAIErrorMessage(resBody), httpRes.Header)
+			return providers.Response{}, responseError(httpRes, resBody)
 		}
 		defer func() { _ = httpRes.Body.Close() }()
 		if payload.Stream && !strings.Contains(strings.ToLower(httpRes.Header.Get("Content-Type")), "application/json") {
@@ -91,7 +93,7 @@ func (r *Runtime) fixRequest(payload *chatCompletionRequest, applied *[len(reque
 	if statusCode < 400 || statusCode >= 500 {
 		return false
 	}
-	message := openAIErrorMessage(body)
+	message := parseOpenAIError(body).Message
 	rejected := rejection{message: message, text: strings.ToLower(message + "\n" + string(body))}
 	for i, fix := range requestFixes {
 		if !applied[i] && fix(r, payload, rejected) {
@@ -270,7 +272,7 @@ func (r *Runtime) chatPayload(ctx context.Context, request providers.Request) ch
 		markContentCacheBreakpoints(payload.Messages)
 	}
 
-	maxTokens := providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.MaxOutputTokens, r.MetadataID, providers.TypeOpenAICompat, r.Model)
+	maxTokens := providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.MaxOutputTokens, r.ProviderID, providers.TypeOpenAICompat, r.Model)
 	if capTokens, omit := r.learnedMaxTokensLimit(); !omit {
 		if capTokens > 0 && capTokens < maxTokens {
 			maxTokens = capTokens
@@ -288,7 +290,7 @@ func (r *Runtime) chatPayload(ctx context.Context, request providers.Request) ch
 	if r.promptCacheKey {
 		payload.PromptCacheKey = strings.TrimSpace(request.CacheKey)
 	}
-	if r.reasoningEffort != "" && (len(payload.Tools) == 0 || r.Capabilities.ReasoningWithTools) {
+	if r.reasoningEffort != "" && (len(payload.Tools) == 0 || r.Capabilities.ToolCalling) {
 		payload.ReasoningEffort = r.reasoningEffort
 	}
 	if providers.TextStreamFromContext(ctx) != nil {
@@ -366,7 +368,7 @@ func (r *Runtime) finishResponse(text string, reasoning *string, calls []provide
 	stop := openAIStopReason(finishReason)
 	if stop == providers.StopMaxTokens {
 		calls = completeToolCalls(calls)
-	} else if err := validateToolCalls(calls); err != nil {
+	} else if err := providers.CheckToolCalls("openaicompat", calls); err != nil {
 		return providers.Response{}, err
 	}
 	stop = providers.ResolveStopReason(stop, len(calls))

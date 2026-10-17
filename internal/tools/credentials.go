@@ -22,12 +22,13 @@ func ProtectCredentials(sources ...func() []string) {
 }
 
 func isProtectedCredentialPath(path string) bool {
-	return protectedCredentials()(path)
+	path = comparableFilesystemPath(path)
+	return path != "" && protectedCredentials()(path)
 }
 
 // protectedCredentials resolves the protected places once, for a call that
-// checks many paths.
-func protectedCredentials() func(path string) bool {
+// checks many paths; the returned check takes a resolved path.
+func protectedCredentials() func(real string) bool {
 	credentials.mu.RLock()
 	sources := credentials.sources
 	credentials.mu.RUnlock()
@@ -39,14 +40,10 @@ func protectedCredentials() func(path string) bool {
 			}
 		}
 	}
-	return func(path string) bool {
-		path = comparableFilesystemPath(path)
-		if path == "" {
-			return false
-		}
+	return func(real string) bool {
 		for _, place := range places {
-			if path == place || strings.HasPrefix(path, place+string(filepath.Separator)) ||
-				filepath.Dir(path) == filepath.Dir(place) && strings.HasPrefix(filepath.Base(path), filepath.Base(place)+".") {
+			if real == place || strings.HasPrefix(real, place+string(filepath.Separator)) ||
+				filepath.Dir(real) == filepath.Dir(place) && strings.HasPrefix(filepath.Base(real), filepath.Base(place)+".") {
 				return true
 			}
 		}

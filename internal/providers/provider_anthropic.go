@@ -7,7 +7,6 @@ func init() {
 			ID:              "anthropic",
 			Name:            "Anthropic",
 			Type:            TypeAnthropic,
-			Implemented:     true,
 			RequiresBaseURL: true,
 			Capabilities:    Capabilities{ModelDiscovery: true, ToolCalling: true, ImageInput: true},
 			DefaultBaseURL:  "https://api.anthropic.com/v1",
@@ -15,7 +14,6 @@ func init() {
 			APIKeyEnv:       "ANTHROPIC_API_KEY",
 			Notes:           "Native Anthropic path with Messages API semantics.",
 		},
-		Auth:      ProviderAuthAPIKey,
-		Transport: ProviderTransportAnthropicMessage,
+		Auth: ProviderAuthAPIKey,
 	})
 }

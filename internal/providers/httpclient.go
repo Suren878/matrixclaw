@@ -23,6 +23,19 @@ func NewHTTPClient() *http.Client {
 	return newHTTPClient(defaultResponseHeaderTimeout, defaultStreamIdleTimeout)
 }
 
+// streamIdleTimeout is how long a model's stream may stay silent: at high
+// reasoning effort a model can think for minutes before its first event.
+func streamIdleTimeout(reasoningEffort string) time.Duration {
+	switch NormalizeReasoningEffort(reasoningEffort) {
+	case ReasoningEffortXHigh:
+		return 10 * time.Minute
+	case ReasoningEffortHigh:
+		return 5 * time.Minute
+	default:
+		return defaultStreamIdleTimeout
+	}
+}
+
 func newHTTPClient(headerTimeout time.Duration, idleTimeout time.Duration) *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.ResponseHeaderTimeout = headerTimeout

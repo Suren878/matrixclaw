@@ -7,7 +7,6 @@ func init() {
 			ID:              "qwen",
 			Name:            "Qwen / DashScope",
 			Type:            TypeOpenAICompat,
-			Implemented:     true,
 			RequiresBaseURL: true,
 			Capabilities:    Capabilities{ModelDiscovery: true, ToolCalling: true},
 			DefaultBaseURL:  "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
@@ -21,8 +20,7 @@ func init() {
 			APIKeyEnv:    "DASHSCOPE_API_KEY",
 			Notes:        "Alibaba Cloud Model Studio OpenAI-compatible endpoint. API keys are region-specific; select the endpoint matching the key region.",
 		},
-		Aliases:   []string{"dashscope", "alibaba", "alibaba-cloud", "qwen-dashscope"},
-		Auth:      ProviderAuthAPIKey,
-		Transport: ProviderTransportOpenAIChat,
+		Aliases: []string{"dashscope", "alibaba", "alibaba-cloud", "qwen-dashscope"},
+		Auth:    ProviderAuthAPIKey,
 	})
 }

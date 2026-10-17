@@ -230,7 +230,7 @@ func (c *Core) WithContextWindowCap(tokens int) *Core {
 }
 
 // modelContextWindowTokens is the window of a provider's model within the cap:
-// a manual setting first, then the model catalog, else the fallback.
+// the manual setting for the configured model, else the model catalog.
 func (c *Core) modelContextWindowTokens(providerID string, modelID string) int {
 	windowCap := c.windowCap
 	if windowCap <= 0 {
@@ -240,21 +240,10 @@ func (c *Core) modelContextWindowTokens(providerID string, modelID string) int {
 }
 
 func (c *Core) uncappedWindowTokens(providerID string, modelID string) int {
-	providerID = strings.TrimSpace(providerID)
-	modelID = strings.TrimSpace(modelID)
-	providerType := ""
-	if llms := c.sessionLLMs(); llms != nil && providerID != "" {
-		if tokens, found := llms.ContextWindowTokens(providerID, modelID); found && tokens > 0 {
-			return tokens
-		}
-		if option, resolved, err := llms.Normalize(providerID, modelID); err == nil {
-			providerType = option.Type
-			if strings.TrimSpace(resolved) != "" {
-				modelID = resolved
-			}
-		}
+	if llms := c.sessionLLMs(); llms != nil {
+		return llms.ContextWindow(strings.TrimSpace(providerID), strings.TrimSpace(modelID))
 	}
-	return providers.ResolveContextWindowTokens(providerID, providerType, modelID)
+	return providers.ResolveContextWindowTokens(providerID, "", modelID)
 }
 
 func (c *Core) estimateToolSchemaTokens() int {
