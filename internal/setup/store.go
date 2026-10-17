@@ -32,12 +32,13 @@ func (s *FileStore) Load() (Config, error) {
 		return Config{}, err
 	}
 
-	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return Config{}, err
+	data, err = s.upgradeV3(data)
+	if err != nil {
+		return Config{}, fmt.Errorf("%s: %w", s.path, err)
 	}
-	if cfg.Version != CurrentVersion {
-		return Config{}, fmt.Errorf("%w: got %d, want %d", ErrUnsupportedConfigVersion, cfg.Version, CurrentVersion)
+	cfg, err := decodeConfig(data)
+	if err != nil {
+		return Config{}, fmt.Errorf("%s: %w", s.path, err)
 	}
 	return normalizeConfig(cfg), nil
 }

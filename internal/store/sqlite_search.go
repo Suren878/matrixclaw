@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -106,4 +107,48 @@ func buildFTSQuery(query string) string {
 		}
 	}
 	return strings.Join(terms, " ")
+}
+
+// indexUnsearchedMessages indexes messages without a search row, such as
+// streamed snapshots whose final update never arrived.
+func indexUnsearchedMessages(db *sql.DB) error {
+	rows, err := db.Query(`SELECT seq FROM messages WHERE seq NOT IN (SELECT rowid FROM message_fts) ORDER BY seq`)
+	if err != nil {
+		return fmt.Errorf("store: list unsearched messages: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var pending []int64
+	for rows.Next() {
+		var seq int64
+		if err := rows.Scan(&seq); err != nil {
+			return fmt.Errorf("store: scan unsearched message: %w", err)
+		}
+		pending = append(pending, seq)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("store: iterate unsearched messages: %w", err)
+	}
+	if len(pending) == 0 {
+		return nil
+	}
+
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store: begin message search backfill: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, seq := range pending {
+		message, err := scanMessage(tx.QueryRowContext(ctx, `SELECT `+messageColumns+` FROM messages WHERE seq = ?`, seq))
+		if err != nil {
+			return fmt.Errorf("store: read message for search backfill: %w", err)
+		}
+		if err := upsertMessageSearch(ctx, tx, message); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: commit message search backfill: %w", err)
+	}
+	return nil
 }

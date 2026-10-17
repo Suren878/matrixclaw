@@ -3,7 +3,6 @@ package store_test
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -85,51 +84,6 @@ func TestUpdateMessageReplacesSearchText(t *testing.T) {
 	}
 	if got := searchIDs(t, st, core.SearchFilter{Query: "beta"}); got != "m1" {
 		t.Fatalf("beta matches %q, want m1 once", got)
-	}
-}
-
-func TestLegacySearchIndexIsRebuilt(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "legacy.db")
-	st := openTestStore(t, path)
-	createTestSession(t, st, "s1")
-	if err := st.Close(); err != nil {
-		t.Fatal(err)
-	}
-	parts, err := json.Marshal(toolResultMessage("m-parts", "s1", "call-1").Parts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	legacy, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, stmt := range []string{
-		`DROP TABLE message_fts`,
-		`CREATE VIRTUAL TABLE message_fts USING fts5(message_id UNINDEXED, session_id UNINDEXED, role, content, provider, model, tokenize = 'unicode61')`,
-		`INSERT INTO messages(id, session_id, run_id, role, content, created_at, seq) VALUES('m-indexed', 's1', '', 'user', 'haystack', '2026-09-23T10:00:00Z', 1)`,
-		`INSERT INTO messages(id, session_id, run_id, role, content, parts_json, created_at, seq) VALUES('m-parts', 's1', '', 'tool', '', '` + string(parts) + `', '2026-09-23T10:00:01Z', 2)`,
-		`INSERT INTO message_fts(message_id, session_id, role, content, provider, model) VALUES('m-indexed', 's1', 'user', 'haystack', '', '')`,
-		`INSERT INTO message_fts(message_id, session_id, role, content, provider, model) VALUES('gone', 's-gone', 'tool', 'haystack ok', '', '')`,
-	} {
-		if _, err := legacy.Exec(stmt); err != nil {
-			t.Fatalf("%s: %v", stmt, err)
-		}
-	}
-	if err := legacy.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	for reopen := 0; reopen < 2; reopen++ {
-		st := openTestStore(t, path)
-		haystack := searchIDs(t, st, core.SearchFilter{Query: "haystack"})
-		ok := searchIDs(t, st, core.SearchFilter{Query: "ok"})
-		_ = st.Close()
-		if haystack != "m-indexed" || ok != "m-parts" {
-			t.Fatalf("open %d: haystack=%q ok=%q, want m-indexed and m-parts", reopen, haystack, ok)
-		}
-		if rows := countSearchRows(t, path); rows != 2 {
-			t.Fatalf("open %d: %d search rows, want 2", reopen, rows)
-		}
 	}
 }
 

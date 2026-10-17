@@ -55,7 +55,6 @@ func Run(ctx context.Context) error {
 	}
 	defer func() { _ = automationStore.Close() }()
 
-	removeWebResearchFiles(bootstrap.DBPath)
 	localRuntime := localruntime.New("")
 	defer func() { _ = localRuntime.Close() }()
 	storageModule, err := localstorage.New(localstorage.Config{
