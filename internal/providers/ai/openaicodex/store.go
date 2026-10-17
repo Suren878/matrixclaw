@@ -52,10 +52,37 @@ func AuthStorePath() string {
 	if value := strings.TrimSpace(os.Getenv("MATRIXCLAW_CODEX_AUTH_FILE")); value != "" {
 		return value
 	}
+	return filepath.Join(authDir(), "openai-codex.json")
+}
+
+func authDir() string {
 	if dir := strings.TrimSpace(os.Getenv("MATRIXCLAW_AUTH_DIR")); dir != "" {
-		return filepath.Join(dir, "openai-codex.json")
+		return dir
 	}
-	return filepath.Join(xdg.StateHome(), "matrixclaw", "auth", "openai-codex.json")
+	return filepath.Join(xdg.StateHome(), "matrixclaw", "auth")
+}
+
+// CredentialPaths are where Codex login tokens live: matrixclaw's auth
+// directory and store, and the Codex CLI's auth.json.
+func CredentialPaths() []string {
+	paths := []string{authDir(), filepath.Join(xdg.StateHome(), "matrixclaw", "auth"), AuthStorePath()}
+	if file := codexCLIAuthPath(); file != "" {
+		paths = append(paths, file)
+	}
+	return paths
+}
+
+// codexCLIAuthPath is the Codex CLI's credential file, or "" without a home.
+func codexCLIAuthPath() string {
+	codexHome := strings.TrimSpace(os.Getenv("CODEX_HOME"))
+	if codexHome == "" {
+		home, err := os.UserHomeDir()
+		if err != nil || strings.TrimSpace(home) == "" {
+			return ""
+		}
+		codexHome = filepath.Join(home, ".codex")
+	}
+	return filepath.Join(codexHome, "auth.json")
 }
 
 func CurrentAuthStatus() AuthStatus {
@@ -126,15 +153,11 @@ func readMatrixclawCredentials() (Credentials, bool, error) {
 }
 
 func readCodexCLICredentials() (Credentials, bool) {
-	codexHome := strings.TrimSpace(os.Getenv("CODEX_HOME"))
-	if codexHome == "" {
-		home, err := os.UserHomeDir()
-		if err != nil || strings.TrimSpace(home) == "" {
-			return Credentials{}, false
-		}
-		codexHome = filepath.Join(home, ".codex")
+	path := codexCLIAuthPath()
+	if path == "" {
+		return Credentials{}, false
 	}
-	raw, err := os.ReadFile(filepath.Join(codexHome, "auth.json"))
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return Credentials{}, false
 	}

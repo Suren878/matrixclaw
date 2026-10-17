@@ -194,10 +194,10 @@ func grepCandidates(ctx context.Context, scope *searchScope, include string) ([]
 	if err != nil {
 		return nil, err
 	}
-	credentials := loadCredentialFiles()
+	isCredential := protectedCredentials()
 	var files []string
 	for _, file := range statRecent(scope.root, rels) {
-		if file.info.Mode().IsRegular() && file.info.Size() <= MaxReadBytes && !credentials.holds(scope.real(file.rel)) {
+		if file.info.Mode().IsRegular() && file.info.Size() <= MaxReadBytes && !isCredential(scope.real(file.rel)) {
 			files = append(files, filepath.Join(scope.root, filepath.FromSlash(file.rel)))
 		}
 	}

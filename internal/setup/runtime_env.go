@@ -26,6 +26,21 @@ func DaemonEnvironmentFilePath(setupPath string) string {
 	return filepath.Join(filepath.Dir(filepath.Clean(setupPath)), daemonEnvFileName)
 }
 
+// CredentialPaths are the files holding provider keys and tokens: setup.json
+// and daemon.env, both where this process keeps them and at the default
+// location.
+func CredentialPaths() []string {
+	var paths []string
+	if path, err := DefaultConfigPath(); err == nil {
+		paths = append(paths, path, DaemonEnvironmentFilePath(path))
+	}
+	if dir, err := os.UserConfigDir(); err == nil {
+		path := filepath.Join(dir, "matrixclaw", "setup.json")
+		paths = append(paths, path, DaemonEnvironmentFilePath(path))
+	}
+	return paths
+}
+
 func ImportDaemonEnvironmentFile(setupPath string, cfg Config) error {
 	values, err := loadDaemonEnvironmentFile(DaemonEnvironmentFilePath(setupPath))
 	if err != nil {

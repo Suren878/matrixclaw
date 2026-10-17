@@ -53,9 +53,6 @@ func TestFileChangeOfReadsInputAndResult(t *testing.T) {
 	if pending, ok := FileChangeOf("write", `{"file_path":"b.go","content":"z"}`, ""); !ok || pending.Done || pending.Path != "b.go" {
 		t.Fatalf("pending write = %+v", pending)
 	}
-	if written, _ := FileChangeOf("write", `{"file_path":"b.go","content":"z"}`, `{"additions":1}`); written.New != "z" {
-		t.Fatalf("write without new content in metadata = %+v", written)
-	}
 	if _, ok := FileChangeOf("bash", `{}`, ""); ok {
 		t.Fatal("bash is not a file change")
 	}

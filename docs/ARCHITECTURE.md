@@ -323,10 +323,41 @@ provider and model.
   repository skip `node_modules`, `vendor`, `dist` and similar). Hidden entries
   are searched only when the pattern or `include` names them. Results are
   ordered most recently modified first, then by path, and cut after sorting.
-- `read` and `grep` refuse credential files (setup.json, `daemon.env`, the
-  Codex OAuth store, Codex and Claude Code credentials).
-  A read-only call on a place where keys usually live (`tools.HoldsSecrets`:
-  `~/.ssh`, `~/.aws`, ...) asks when no rule decides.
+- `read`, `grep` and the file-changing tools refuse credential files: the
+  places their owners register at daemon start with `tools.ProtectCredentials`
+  (`setup`: setup.json and `daemon.env`; `openaicodex`: the auth directory and
+  the Codex CLI's auth.json; `claudecode`: the Claude Code login), everything
+  inside them and their backups. A read-only call on a place where keys
+  usually live (`tools.HoldsSecrets`: `~/.ssh`, `~/.aws`, ...) asks when no
+  rule decides.
+- Every tool path goes through `tools.ResolveFilesystemPath`: relative to the
+  call's working directory, symlinks resolved for permission rules and writes.
+
+### File tools
+
+- `read` pages a file: at most 2000 lines and about 24 KB a call, well under
+  the result cut, ending with the offset to read on. Lines over 2000
+  characters are cut; a file with a NUL byte in its first 8 KB is refused as
+  binary.
+- File state (`tools/file_ledger.go`): one in-memory ledger shared by `read`,
+  `write`, `edit` and `multiedit` holds, per session, the xxh3 hash of each
+  file the session read (any part) or wrote. Changing an existing file the
+  session has not seen, or that changed since, is refused, in the preview too,
+  so nobody is asked. New files need no read. The ledger is not persisted:
+  after a daemon restart the model reads a file again before changing it.
+  Calls without a session are not checked.
+- Edits (`tools/editmatch.go`) match byte for byte, then ignoring indentation
+  (the new text moves to the file's indentation), surrounding whitespace, and
+  whitespace with typographic quotes and dashes, then all of that with doubled
+  escapes (`\n`) undone. A fallback must find exactly one place; `replace_all`
+  is byte for byte only. CRLF line ends and a byte order mark are kept. A miss
+  shows the closest lines with their numbers; an edit whose new text is
+  already there answers neutral, as does a change that changes nothing.
+- Writes go to the symlink-resolved path through a temporary file and a
+  rename, keeping the file's mode. The result shows the changed lines
+  numbered like `read`; its metadata (`tools.FileChange`) keeps only the
+  changed regions, at most 16 KB a side, while an approval shows a file up to
+  64 KB whole.
 
 ## Web tools
 

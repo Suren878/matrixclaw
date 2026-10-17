@@ -8,7 +8,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	surfacedialog "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/dialog"
-	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/toolview"
 )
@@ -138,52 +137,9 @@ func (t *baseToolMessageItem) filePreviewData() (surfacedialog.FilePreviewData, 
 		return surfacedialog.FilePreviewData{}, false
 	}
 
-	path, content := resolveReadResult(params.FilePath, *t.result)
 	return surfacedialog.FilePreviewData{
 		Title:    "Read File",
-		FilePath: path,
-		Content:  readPreviewContent(*t.result, content, params.Offset+1),
+		FilePath: metadataDisplayPath(t.result.Metadata, params.FilePath),
+		Content:  readFileBody(t.result.Content),
 	}, true
-}
-
-func readPreviewContent(result surfacemessage.ToolResult, fallbackContent string, startLine int) string {
-	raw := strings.TrimSpace(result.Content)
-	if raw != "" {
-		return unwrapTaggedFileContentPreserveLineNumbers(raw)
-	}
-	return addReadPreviewLineNumbers(fallbackContent, startLine)
-}
-
-func unwrapTaggedFileContentPreserveLineNumbers(content string) string {
-	content = strings.TrimSpace(content)
-	if !strings.HasPrefix(content, "<file>") || !strings.HasSuffix(content, "</file>") {
-		return content
-	}
-	content = strings.TrimPrefix(content, "<file>")
-	content = strings.TrimSuffix(content, "</file>")
-	content = strings.TrimSpace(content)
-	lines := strings.Split(content, "\n")
-	for len(lines) > 0 && strings.HasPrefix(strings.TrimSpace(lines[len(lines)-1]), "(File has more lines.") {
-		lines = lines[:len(lines)-1]
-	}
-	return strings.TrimSpace(strings.Join(lines, "\n"))
-}
-
-func addReadPreviewLineNumbers(content string, startLine int) string {
-	content = strings.TrimRight(content, "\n")
-	if strings.TrimSpace(content) == "" {
-		return ""
-	}
-	if startLine < 1 {
-		startLine = 1
-	}
-	lines := strings.Split(content, "\n")
-	var out strings.Builder
-	for i, line := range lines {
-		_, _ = fmt.Fprintf(&out, "%6d\t%s", startLine+i, line)
-		if i != len(lines)-1 {
-			out.WriteByte('\n')
-		}
-	}
-	return out.String()
 }

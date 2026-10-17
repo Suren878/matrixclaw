@@ -117,7 +117,11 @@ func bashCommand(call Call) (BashParams, Command, error) {
 	if err != nil {
 		return params, Command{}, err
 	}
-	params.WorkingDir = resolvePath(call.WorkingDir, params.WorkingDir)
+	dir, err := ResolveFilesystemPath(call.WorkingDir, params.WorkingDir)
+	if err != nil {
+		return params, Command{}, fmt.Errorf("invalid working_dir: %w", err)
+	}
+	params.WorkingDir = dir.Path
 	return params, Command{
 		Command:        params.Command,
 		Description:    params.Description,

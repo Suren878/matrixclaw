@@ -60,7 +60,7 @@ func TestEditReplacesOneUniqueMatch(t *testing.T) {
 		params EditParams
 		want   string
 	}{
-		{EditParams{FilePath: path, OldString: "1", NewString: "2"}, "appears multiple times"},
+		{EditParams{FilePath: path, OldString: "1", NewString: "2"}, "matches 2 places"},
 		{EditParams{FilePath: path, OldString: "c :=", NewString: "d :="}, "old_string not found"},
 		{EditParams{FilePath: filepath.Join(dir, "missing.go"), OldString: "a", NewString: "b"}, "file not found"},
 		{EditParams{OldString: "a", NewString: "b"}, "file_path is required"},
@@ -70,7 +70,7 @@ func TestEditReplacesOneUniqueMatch(t *testing.T) {
 		}
 	}
 	result := runMutation(t, dir, "edit", EditParams{FilePath: "a.go", OldString: "a := 1", NewString: "a := 2"})
-	if result.IsError() || result.Content != "File edited: "+path || readFile(t, path) != "a := 2\nb := 1\n" {
+	if result.IsError() || !strings.HasPrefix(result.Content, "Edited "+path) || !strings.Contains(result.Content, "     1\ta := 2") || readFile(t, path) != "a := 2\nb := 1\n" {
 		t.Fatalf("result = %+v, file = %q", result, readFile(t, path))
 	}
 	runMutation(t, dir, "edit", EditParams{FilePath: path, OldString: ":= ", NewString: "= ", ReplaceAll: true})
@@ -90,7 +90,7 @@ func TestMultiEditAppliesAllOrNothing(t *testing.T) {
 		t.Fatalf("result = %+v, file = %q", result, readFile(t, path))
 	}
 	result = runMutation(t, dir, "multiedit", MultiEditParams{FilePath: path, Edits: []EditOperation{{OldString: "alpha", NewString: "gamma"}, {OldString: "gamma beta", NewString: "delta"}}})
-	if result.IsError() || result.Content != "Applied 2 edits to "+path || readFile(t, path) != "delta\n" {
+	if result.IsError() || !strings.HasPrefix(result.Content, "Edited "+path) || readFile(t, path) != "delta\n" {
 		t.Fatalf("result = %+v, file = %q", result, readFile(t, path))
 	}
 	if result := runMutation(t, dir, "multiedit", MultiEditParams{FilePath: path}); !result.IsError() || result.Content != "edits is required" {
@@ -105,13 +105,13 @@ func TestMutationRejectsMalformedArguments(t *testing.T) {
 	}
 }
 
-func TestCutPreviewKeepsTheLimitAndValidUTF8(t *testing.T) {
-	if got := cutPreview("short"); got != "short" {
+func TestCutTextKeepsTheLimitAndValidUTF8(t *testing.T) {
+	if got := cutText("short", approvalPreviewMaxBytes); got != "short" {
 		t.Fatalf("short = %q", got)
 	}
 	long := strings.Repeat("ж", approvalPreviewMaxBytes)
-	got := cutPreview(long)
-	if len(got) > approvalPreviewMaxBytes || !strings.Contains(got, "approval preview truncated") || !strings.HasPrefix(got, "жж") {
+	got := cutText(long, approvalPreviewMaxBytes)
+	if len(got) > approvalPreviewMaxBytes || !strings.Contains(got, "truncated") || !strings.HasPrefix(got, "жж") {
 		t.Fatalf("cut = %d bytes, tail %q", len(got), got[len(got)-80:])
 	}
 	if !utf8.ValidString(got) {
@@ -147,7 +147,7 @@ func TestMutationPreviewValidatesWithoutWriting(t *testing.T) {
 		t.Fatal("preview wrote the file")
 	}
 	_, refused = registry.Preview(context.Background(), "edit", Call{WorkingDir: dir, Args: json.RawMessage(`{"file_path":"a.txt","old_string":"absent","new_string":"x"}`)})
-	if refused == nil || !refused.IsError() || refused.Content != "old_string not found in file" {
+	if refused == nil || !refused.IsError() || !strings.HasPrefix(refused.Content, "old_string not found in file") {
 		t.Fatalf("refused = %+v", refused)
 	}
 	_, refused = registry.Preview(context.Background(), "write", Call{WorkingDir: dir, Args: json.RawMessage(`[]`)})
@@ -227,5 +227,134 @@ func TestEditRefusesEmptyOldStringOnAFileWithContent(t *testing.T) {
 	}
 	if result := runMutation(t, dir, "edit", EditParams{FilePath: empty, NewString: "first\n"}); result.IsError() || readFile(t, empty) != "first\n" {
 		t.Fatalf("empty file: result = %+v", result)
+	}
+}
+
+// sessionTools runs core tools as one session of a run would.
+type sessionTools struct {
+	t        *testing.T
+	registry *Registry
+	dir      string
+	session  string
+}
+
+func newSessionTools(t *testing.T) *sessionTools {
+	return &sessionTools{t: t, registry: NewRegistry(CoreExecutors()...), dir: t.TempDir(), session: "session-a"}
+}
+
+func (s *sessionTools) run(tool string, args any) Result {
+	s.t.Helper()
+	raw, err := json.Marshal(args)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	result, err := s.registry.Execute(context.Background(), tool, Call{SessionID: s.session, WorkingDir: s.dir, Args: raw})
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	return result
+}
+
+func TestChangesNeedAFreshReadOfAnExistingFile(t *testing.T) {
+	s := newSessionTools(t)
+	path := filepath.Join(s.dir, "a.go")
+	if err := os.WriteFile(path, []byte("a := 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	edit := EditParams{FilePath: "a.go", OldString: "a := 1", NewString: "a := 2"}
+	if result := s.run("edit", edit); !result.IsError() || !strings.Contains(result.Content, "has not been read") {
+		t.Fatalf("unread edit = %+v", result)
+	}
+	if result := s.run("write", WriteParams{FilePath: "a.go", Content: "x\n"}); !result.IsError() || !strings.Contains(result.Content, "has not been read") {
+		t.Fatalf("unread overwrite = %+v", result)
+	}
+	if _, refused := s.registry.Preview(context.Background(), "edit", Call{SessionID: s.session, WorkingDir: s.dir, Args: json.RawMessage(`{"file_path":"a.go","old_string":"a := 1","new_string":"a := 2"}`)}); refused == nil || !strings.Contains(refused.Content, "has not been read") {
+		t.Fatalf("unread preview = %+v", refused)
+	}
+
+	s.run("read", ReadParams{FilePath: "a.go"})
+	if result := s.run("edit", edit); result.IsError() {
+		t.Fatalf("edit after read = %+v", result)
+	}
+	if result := s.run("edit", EditParams{FilePath: "a.go", OldString: "a := 2", NewString: "a := 3"}); result.IsError() {
+		t.Fatalf("edit after own edit = %+v", result)
+	}
+
+	if err := os.WriteFile(path, []byte("a := 3\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if result := s.run("edit", EditParams{FilePath: "a.go", OldString: "a := 3", NewString: "a := 4"}); result.IsError() {
+		t.Fatalf("edit after rewrite with the same content = %+v", result)
+	}
+	if err := os.WriteFile(path, []byte("a := 4\nb := 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if result := s.run("edit", EditParams{FilePath: "a.go", OldString: "b := 1", NewString: "b := 2"}); !result.IsError() || !strings.Contains(result.Content, "changed after you last read it") {
+		t.Fatalf("stale edit = %+v", result)
+	}
+
+	s.session = "session-b"
+	if result := s.run("edit", EditParams{FilePath: "a.go", OldString: "b := 1", NewString: "b := 2"}); !result.IsError() || !strings.Contains(result.Content, "has not been read") {
+		t.Fatalf("other session = %+v", result)
+	}
+	if result := s.run("write", WriteParams{FilePath: "new/b.go", Content: "package b\n"}); result.IsError() || !strings.HasPrefix(result.Content, "Created ") {
+		t.Fatalf("new file = %+v", result)
+	}
+}
+
+func TestEditWritesThroughSymlinksAndKeepsTheMode(t *testing.T) {
+	s := newSessionTools(t)
+	target := filepath.Join(s.dir, "script.sh")
+	if err := os.WriteFile(target, []byte("echo one\n"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(s.dir, "link.sh")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	s.run("read", ReadParams{FilePath: "link.sh"})
+	if result := s.run("edit", EditParams{FilePath: "link.sh", OldString: "one", NewString: "two"}); result.IsError() {
+		t.Fatalf("edit = %+v", result)
+	}
+	info, err := os.Lstat(link)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("link replaced: %v, %v", info, err)
+	}
+	if info, err := os.Stat(target); err != nil || info.Mode().Perm() != 0o750 || readFile(t, target) != "echo two\n" {
+		t.Fatalf("target = %q, mode %v, err %v", readFile(t, target), info.Mode(), err)
+	}
+	entries, _ := os.ReadDir(s.dir)
+	if len(entries) != 2 {
+		t.Fatalf("leftover files: %v", entries)
+	}
+}
+
+func TestEditResultsAndMetadataStaySmall(t *testing.T) {
+	s := newSessionTools(t)
+	var body strings.Builder
+	for i := range 3000 {
+		fmt.Fprintf(&body, "line %d\n", i+1)
+	}
+	path := filepath.Join(s.dir, "big.txt")
+	if err := os.WriteFile(path, []byte(body.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s.run("read", ReadParams{FilePath: "big.txt"})
+	result := s.run("edit", EditParams{FilePath: "big.txt", OldString: "line 1500\n", NewString: "middle\n"})
+	change, ok := result.Metadata.(FileChange)
+	if result.IsError() || !ok || change.Additions != 1 || change.Removals != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+	if !strings.Contains(result.Content, "  1500\tmiddle") || !strings.Contains(result.Content, "  1497\tline 1497") {
+		t.Fatalf("snippet = %q", result.Content)
+	}
+	if len(change.OldContent) > 1024 || !strings.Contains(change.NewContent, "middle") || !strings.Contains(change.NewContent, "unchanged lines") {
+		t.Fatalf("metadata keeps the whole file: %d bytes", len(change.OldContent))
+	}
+	if result := s.run("edit", EditParams{FilePath: "big.txt", OldString: "line 1499\nmiddle\n", NewString: "line 1499\nmiddle\n"}); !result.IsError() {
+		t.Fatalf("no-op edit = %+v", result)
+	}
+	if result := s.run("write", WriteParams{FilePath: "big.txt", Content: readFile(t, path)}); result.Status != ResultStatusNeutral {
+		t.Fatalf("same content write = %+v", result)
 	}
 }

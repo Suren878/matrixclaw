@@ -3,6 +3,8 @@ package toolview
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 // FileChange is what a write, edit or multiedit call does to its file.
@@ -10,7 +12,8 @@ type FileChange struct {
 	Path string
 	// Edits is how many edits a multiedit asked for.
 	Edits int
-	// Done is set once the result's metadata describes the change.
+	// Done is set once the result's metadata describes the change; Old and
+	// New are its changed regions (tools.FileChange).
 	Done                bool
 	Old, New            string
 	Additions, Removals int
@@ -26,27 +29,18 @@ func FileChangeOf(name string, input string, metadata string) (FileChange, bool)
 	}
 	var params struct {
 		FilePath string            `json:"file_path"`
-		Content  string            `json:"content"`
 		Edits    []json.RawMessage `json:"edits"`
 	}
 	if err := json.Unmarshal([]byte(input), &params); err != nil {
 		return FileChange{}, false
 	}
 	change := FileChange{Path: params.FilePath, Edits: len(params.Edits)}
-	var meta struct {
-		Additions  int    `json:"additions"`
-		Removals   int    `json:"removals"`
-		OldContent string `json:"old_content"`
-		NewContent string `json:"new_content"`
-	}
+	var meta tools.FileChange
 	if json.Unmarshal([]byte(metadata), &meta) != nil {
 		return change, true
 	}
 	change.Done = true
 	change.Old, change.New = meta.OldContent, meta.NewContent
-	if change.New == "" {
-		change.New = params.Content
-	}
 	change.Additions, change.Removals = meta.Additions, meta.Removals
 	return change, true
 }
