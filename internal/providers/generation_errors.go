@@ -41,12 +41,6 @@ func ClassifyError(err error) (ErrorKind, time.Duration) {
 	return ErrorPermanent, 0
 }
 
-// IsRetryableGenerationError is for failures before any output or tool effects.
-func IsRetryableGenerationError(err error) bool {
-	kind, _ := ClassifyError(err)
-	return kind.Retryable()
-}
-
 // IsContextOverflow reports a request over the model window. Providers that
 // only describe it in an error event's text are recognised by its wording.
 func IsContextOverflow(err error) bool {

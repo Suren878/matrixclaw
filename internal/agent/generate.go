@@ -53,19 +53,18 @@ const (
 // already waited waited; false means err is not retried. A malformed tool call
 // goes back to the model instead.
 func retryDelay(err error, attempt int, waited time.Duration) (time.Duration, bool) {
-	if attempt+1 >= maxAttempts || errors.Is(err, providers.ErrMalformedToolCall) || !providers.IsRetryableGenerationError(err) {
+	kind, retryAfter := providers.ClassifyError(err)
+	if attempt+1 >= maxAttempts || errors.Is(err, providers.ErrMalformedToolCall) || !kind.Retryable() {
 		return 0, false
 	}
 	base := retryBase
-	var apiErr *providers.APIError
-	limited := errors.As(err, &apiErr) && apiErr.Retryable()
-	if limited {
+	if kind == providers.ErrorRateLimit || kind == providers.ErrorOverloaded {
 		base = limitBase
 	}
 	backoff := base << attempt
 	delay := backoff/2 + rand.N(backoff/2+1)
-	if limited && apiErr.RetryAfter > 0 {
-		delay = apiErr.RetryAfter
+	if retryAfter > 0 {
+		delay = retryAfter
 	}
 	if waited+delay > maxRetryWait {
 		return 0, false

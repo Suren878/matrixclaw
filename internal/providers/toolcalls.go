@@ -7,7 +7,7 @@ import (
 )
 
 // CheckToolCalls fails a reply with a tool call that has no name or whose
-// arguments are not valid JSON, so the generation is retried.
+// arguments are not valid JSON; the engine hands the error back to the model.
 func CheckToolCalls(adapter string, calls []ToolCall) error {
 	for _, call := range calls {
 		if strings.TrimSpace(call.Name) == "" {

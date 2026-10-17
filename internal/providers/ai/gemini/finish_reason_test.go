@@ -52,7 +52,7 @@ func TestFinishReasonBecomesStopReason(t *testing.T) {
 
 func TestMalformedFunctionCallIsRetryable(t *testing.T) {
 	_, err := generateAgainst(t, `{"candidates":[{"content":{"role":"model"},"finishReason":"MALFORMED_FUNCTION_CALL"}]}`)
-	if !errors.Is(err, providers.ErrMalformedToolCall) || !providers.IsRetryableGenerationError(err) {
+	if !errors.Is(err, providers.ErrMalformedToolCall) || !isRetryable(err) {
 		t.Fatalf("error=%v, want retryable ErrMalformedToolCall", err)
 	}
 }
