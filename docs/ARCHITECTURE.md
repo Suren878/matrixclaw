@@ -194,10 +194,23 @@ keyed locks, the model-request semaphore `daemon.model_concurrency`), `prompt`
 ## Tasks, subagents, await
 
 - Background work is one task model (`core.Task`, table `tasks`, one
-  `task.updated` event) with two kinds. `shell`: a command in its own process
-  group (`internal/shelltask`) with a size-capped output file; `bash` moves a
-  command still running after 120 s to the background. `subagent`: a child run
-  started by the `agent` tool.
+  `task.updated` event) with two kinds. `shell`: a command run with `bash -c`
+  in its own process group (`internal/shelltask`) with a size-capped output
+  file; `bash` moves a command still running after 120 s to the background.
+  `subagent`: a child run started by the `agent` tool.
+- Commands get the environment of a login shell, read once at the first
+  command (`shelltask.LoginEnvironment`), without API key variables and
+  `MATRIXCLAW_*` (`setup.ChildEnvironment`, with the setup applied now). MCP
+  stdio servers get the daemon's environment filtered the same way, plus
+  their `env`.
+- A finished foreground command's result always states its exit code (or its
+  timeout); output over 30 KB becomes its head and a longer tail, with the
+  path of the kept log, which core does not cut again. Processes it left in
+  its group are killed. Exit 1 with no output from a search, `test` or
+  process lookup is neutral, not an error.
+- Shutdown stops the background commands (`Core.StopShellTasks`); the next
+  start marks their tasks `lost`. Compaction deletes the logs of ended tasks
+  that no later message names.
 - Shell task: `running` → `completed`/`failed` by exit code, `canceled`, or
   `lost` after a restart. Subagent task follows its child run inside
   `transition`: `running` ⇄ `waiting_approval` → `completed`/`failed`/`canceled`.
@@ -233,6 +246,13 @@ keyed locks, the model-request semaphore `daemon.model_concurrency`), `prompt`
   show "Run <tool>" and the arguments. An ask rule adds "Asked by rule ...".
 - A mutating call that waits for approval is a barrier: later calls of the
   same reply wait, earlier ones run.
+- Bash lines are parsed (`permission.ParseLine`). A redirection to a file,
+  substitution, wrapper (`sudo`, `env`, `xargs`, `bash -c`), package runner
+  (`npx`, `pnpm exec`, `uv run`, `go run`, `docker run`, ...), a flag that runs
+  a program, or an in-place edit (`sed -i`, `perl -i`, awk that redirects)
+  makes a line risky: no pattern rule allows it, and it asks when a deny or
+  ask rule may catch it. The commands a wrapper or runner may run are matched
+  by deny and ask rules too, so `deny rm:*` denies `pnpm exec rm -rf x`.
 - `tools.Result.Status` (`success`/`error`/`neutral`, empty = success) is the
   only status field. Results over about 8k tokens go to
   `sessions/<id>/tool-output/`, and the model gets head, tail and path.

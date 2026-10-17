@@ -92,12 +92,12 @@ var (
 	bashInputSchema = rawSchema(`{
   "type": "object",
   "properties": {
-    "description": {"type": "string"},
-    "command": {"type": "string"},
-    "working_dir": {"type": "string"},
+    "command": {"type": "string", "description": "The command line to run."},
+    "description": {"type": "string", "description": "What the command does in 5-10 words, shown to the user, such as 'Run parser unit tests'."},
+    "working_dir": {"type": "string", "description": "Directory to run in: absolute, or relative to the working directory, which is the default."},
     "run_in_background": {"type": "boolean", "description": "Start the command as a background task and return its task id at once."},
-    "timeout": {"type": "integer", "minimum": 0, "maximum": 3600, "description": "Seconds before a foreground command is killed; default 600."},
-    "auto_background_after": {"type": "integer", "minimum": 0, "description": "Seconds after which a foreground command still running becomes a background task; default 120."}
+    "timeout": {"type": "integer", "minimum": 0, "description": "Seconds before a foreground command is killed; default 600, at most 3600. A value over 3600 is read as milliseconds."},
+    "auto_background_after": {"type": "integer", "minimum": 0, "description": "Seconds after which a foreground command still running moves to the background; default 120. A value over 3600 is read as milliseconds."}
   },
   "required": ["command"],
   "additionalProperties": false

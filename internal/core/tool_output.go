@@ -24,10 +24,11 @@ func (c *Core) WithSessionFiles(root string) *Core {
 }
 
 // keepLargeOutput writes a result too large for the model's context to a file of
-// the session and leaves the model its head and tail with the file's path.
+// the session and leaves the model its head and tail with the file's path. A
+// result that already names the file with its whole output is left as it is.
 func (c *Core) keepLargeOutput(sessionID string, result tools.Result) tools.Result {
 	tokens := agentcontext.EstimateTextTokens(result.Content)
-	if tokens <= agentcontext.LargeOutputTokens {
+	if tokens <= agentcontext.LargeOutputTokens || result.OutputPath != "" {
 		return result
 	}
 	excerpt := agentcontext.HeadTail(result.Content, agentcontext.LargeOutputTokens-200)
@@ -83,20 +84,13 @@ func (c *Core) writeToolOutput(sessionID string, content string) (string, error)
 	return path, nil
 }
 
-// pruneToolOutputs deletes the session's kept tool outputs except those the
-// messages after seq refer to; files still being written are left alone.
+// pruneToolOutputs deletes the session's kept tool outputs and command output
+// files except those the messages after seq refer to and those of tasks still
+// running; files still being written are left alone.
 func (c *Core) pruneToolOutputs(ctx context.Context, sessionID string, seq int64) error {
 	sessionDir, err := c.sessionDir(sessionID)
 	if err != nil {
 		return nil
-	}
-	dir := filepath.Join(sessionDir, toolOutputDir)
-	entries, err := os.ReadDir(dir)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
 	}
 	later, err := c.store.ListMessagesAfter(ctx, sessionID, seq, 0)
 	if err != nil {
@@ -110,14 +104,31 @@ func (c *Core) pruneToolOutputs(ctx context.Context, sessionID string, seq int64
 			}
 		}
 	}
+	running, err := c.store.ListTasks(ctx, TaskFilter{SessionID: sessionID, Statuses: activeTaskStatuses()})
+	if err != nil {
+		return err
+	}
+	for _, task := range running {
+		referenced[task.OutputPath] = true
+	}
 	var errs []error
-	for _, entry := range entries {
-		path := filepath.Join(dir, entry.Name())
-		if strings.HasPrefix(entry.Name(), ".") || referenced[path] {
+	for _, dir := range []string{filepath.Join(sessionDir, toolOutputDir), filepath.Join(sessionDir, taskOutputDir)} {
+		entries, err := os.ReadDir(dir)
+		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
-		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		if err != nil {
 			errs = append(errs, err)
+			continue
+		}
+		for _, entry := range entries {
+			path := filepath.Join(dir, entry.Name())
+			if strings.HasPrefix(entry.Name(), ".") || referenced[path] {
+				continue
+			}
+			if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				errs = append(errs, err)
+			}
 		}
 	}
 	return errors.Join(errs...)

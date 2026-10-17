@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -42,6 +43,13 @@ func (c *Core) WithBackgroundTaskLimit(n int) *Core {
 	return c
 }
 
+// WithCommandEnvironment sets the environment of shell commands, read for
+// every command.
+func (c *Core) WithCommandEnvironment(env func() []string) *Core {
+	c.commandEnv = env
+	return c
+}
+
 // RunCommand runs a bash call's command. A background command, or a foreground
 // one still running after its AutoBackground delay, goes on as a task of the
 // call's session while it runs fewer than its limit; a foreground one is
@@ -59,7 +67,11 @@ func (c *Core) RunCommand(ctx context.Context, call tools.Call, command tools.Co
 	if err != nil {
 		return tools.CommandResult{}, err
 	}
-	process, err := shelltask.Start(command.Command, command.WorkingDir, out)
+	var env []string
+	if c.commandEnv != nil {
+		env = c.commandEnv()
+	}
+	process, err := shelltask.Start(command.Command, command.WorkingDir, env, out)
 	if err != nil {
 		_ = out.Close()
 		_ = os.Remove(path)
@@ -86,7 +98,10 @@ func (c *Core) RunCommand(ctx context.Context, call tools.Call, command tools.Co
 		select {
 		case <-process.Exited():
 			process.WaitOutput(foregroundWaitDelay)
-			return c.finishedCommand(process, command, false)
+			// Nobody could stop what the command left running.
+			result, err := c.finishedCommand(process, command, false)
+			result.KilledLeftovers = process.KillLeftovers()
+			return result, err
 		case <-timeout.C:
 			_ = process.Stop(taskStopGrace)
 			process.WaitOutput(foregroundWaitDelay)
@@ -132,17 +147,17 @@ func (c *Core) sessionLiveTasksLocked(sessionID string) int {
 	return n
 }
 
-// finishedCommand reads a foreground command's output; the file is kept only
-// when the output is longer than the call may return.
+// finishedCommand reads a foreground command's output, its head and tail when
+// longer than the call may return; only then is the file kept.
 func (c *Core) finishedCommand(process *shelltask.Process, command tools.Command, timedOut bool) (tools.CommandResult, error) {
 	path := process.Output().Path()
 	result := tools.CommandResult{ExitCode: process.ExitCode(), TimedOut: timedOut, StartedAt: process.StartedAt(), EndedAt: c.now()}
-	chunk, err := shelltask.Read(path, 0, command.OutputLimit)
+	text, cut, err := shelltask.Excerpt(path, command.OutputLimit)
 	if err != nil {
 		return tools.CommandResult{}, err
 	}
-	result.Output = chunk.Text
-	if chunk.More {
+	result.Output = text
+	if cut {
 		result.OutputPath = path
 		return result, nil
 	}
@@ -299,6 +314,11 @@ func (c *Core) ReadTaskOutput(ctx context.Context, call tools.Call, read tools.T
 		return out, nil
 	}
 	chunk, err := shelltask.Read(task.OutputPath, task.OutputCursor, read.Limit)
+	if errors.Is(err, fs.ErrNotExist) {
+		// Compaction removed the output of a task that had ended.
+		out.Text = "(the output is no longer kept)"
+		return out, nil
+	}
 	if err != nil {
 		return tools.TaskOutput{}, err
 	}
@@ -428,6 +448,26 @@ func (c *Core) recoverShellTasks(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// StopShellTasks stops the background commands of this daemon, for its
+// shutdown, and waits until they ended; their tasks stay running in the store,
+// and the next start marks them lost.
+func (c *Core) StopShellTasks() {
+	c.tasksMu.Lock()
+	processes := make([]*shelltask.Process, 0, len(c.liveTasks))
+	for _, live := range c.liveTasks {
+		processes = append(processes, live.process)
+	}
+	c.tasksMu.Unlock()
+	for _, process := range processes {
+		if err := process.Stop(taskStopGrace); err != nil {
+			log.Printf("core: stop shell task %d: %v", process.PID(), err)
+		}
+	}
+	for _, process := range processes {
+		process.WaitOutput(foregroundWaitDelay)
+	}
 }
 
 // stopSessionTasks stops the commands and subagents a session runs when nobody

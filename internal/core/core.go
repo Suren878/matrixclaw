@@ -54,6 +54,8 @@ type Core struct {
 	liveTasks map[string]*liveTask
 	// backgroundTasks bounds the background commands one session runs.
 	backgroundTasks int
+	// commandEnv is the environment of shell commands; nil inherits the daemon's.
+	commandEnv func() []string
 	// backgroundAgents bounds the background subagents of one session.
 	backgroundAgents int
 	// executing counts the runs goroutineStarter started; once stopped it

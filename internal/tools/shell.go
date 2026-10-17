@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/permission"
 )
 
 const (
@@ -17,12 +20,14 @@ const (
 )
 
 // A foreground command is killed after its timeout, 10 minutes unless the call
-// names up to 60, and moves to the background after 2 minutes.
+// names up to 60, and moves to the background after 2 minutes. A call's
+// seconds over maxSeconds are read as milliseconds, as many models send them.
 const (
 	DefaultCommandTimeout = 10 * time.Minute
 	MaxCommandTimeout     = time.Hour
 	DefaultAutoBackground = 2 * time.Minute
 	maxTaskWait           = 10 * time.Minute
+	maxSeconds            = int(MaxCommandTimeout / time.Second)
 )
 
 var errShellUnavailable = errors.New("shell commands are not available in this daemon")
@@ -74,6 +79,13 @@ func (e *bashExecutor) Spec() Spec {
 
 func (e *taskOutputExecutor) Spec() Spec {
 	return coreDefinitionSpec(taskOutputToolName)
+}
+
+// ConcurrencyKey keys a command on the directory it runs in.
+func (e *bashExecutor) ConcurrencyKey(call Call) string {
+	var params BashParams
+	_ = json.Unmarshal(call.Args, &params)
+	return WorkingDirKey(resolvePath(call.WorkingDir, params.WorkingDir))
 }
 
 // ConcurrencyKey lets the reads of one task take turns, as each moves its cursor.
@@ -133,7 +145,6 @@ func (e *bashExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 	if e.tasks == nil {
 		return Result{}, errShellUnavailable
 	}
-	workingDir, timeout, autoBackground := command.WorkingDir, command.Timeout, command.AutoBackground
 	result, err := e.tasks.RunCommand(ctx, call, command)
 	if err != nil {
 		return Result{}, fmt.Errorf("bash: %w", err)
@@ -142,49 +153,81 @@ func (e *bashExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 		StartTime:        result.StartedAt.UnixMilli(),
 		EndTime:          result.EndedAt.UnixMilli(),
 		Description:      params.Description,
-		WorkingDirectory: workingDir,
+		WorkingDirectory: command.WorkingDir,
 	}
 	if result.TaskID != "" {
 		meta.Background, meta.TaskID = true, result.TaskID
-		return Result{Content: backgroundStartText(result.TaskID, params.RunInBackground, autoBackground), Metadata: meta}, nil
+		return Result{Content: backgroundStartText(result.TaskID, params.RunInBackground, command.AutoBackground), Metadata: meta}, nil
 	}
 	meta.Output = strings.TrimSpace(result.Output)
 	meta.ExitCode, meta.TimedOut, meta.OutputPath = result.ExitCode, result.TimedOut, result.OutputPath
-	content := meta.Output
-	if result.OutputPath != "" {
-		content += "\n\n(output truncated; the full output is in " + result.OutputPath + ")"
-	}
-	if result.TimedOut {
-		content += fmt.Sprintf("\n\n(killed after its timeout of %s; run long commands with run_in_background)", timeout)
-		return Result{Content: strings.TrimSpace(content), Metadata: meta, Status: ResultStatusError}, nil
-	}
-	if result.ExitCode == 0 {
-		return Result{Content: content, Metadata: meta}, nil
-	}
-	status := ResultStatusError
-	if isExpectedEmptyProcessProbe(params.Command, meta.Output, result.ExitCode) {
+	var status ResultStatus
+	switch {
+	case result.TimedOut || result.ExitCode != 0 && !noMatch(params.Command, meta.Output, result.ExitCode):
+		status = ResultStatusError
+	case result.ExitCode != 0:
 		status = ResultStatusNeutral
 	}
-	return Result{Content: content, Metadata: meta, Status: status}, nil
+	return Result{Content: commandText(meta.Output, result, command.Timeout), Metadata: meta, Status: status, OutputPath: result.OutputPath}, nil
 }
 
-// commandLimits reads a call's timeout and auto-background delay in seconds;
-// zero takes the defaults.
-func commandLimits(params BashParams) (time.Duration, time.Duration, error) {
-	timeout := time.Duration(params.Timeout) * time.Second
+// commandText is a finished command's output followed by how it ended, the
+// exit code always included, so that every model sees a failure.
+func commandText(output string, result CommandResult, timeout time.Duration) string {
+	parts := []string{output}
+	if output == "" {
+		parts[0] = "(no output)"
+	}
+	if result.OutputPath != "" {
+		parts = append(parts, "(output cut to its head and tail; the full output is in "+result.OutputPath+": read or grep it)")
+	}
 	switch {
-	case params.Timeout < 0 || timeout > MaxCommandTimeout:
-		return 0, 0, fmt.Errorf("timeout is in seconds, at most %d", int(MaxCommandTimeout/time.Second))
-	case params.AutoBackgroundAfter < 0:
-		return 0, 0, errors.New("auto_background_after is in seconds and must not be negative")
-	case timeout == 0:
+	case result.TimedOut:
+		parts = append(parts, fmt.Sprintf("Timed out after %ds and killed. Run long commands with run_in_background: true.", int(timeout/time.Second)))
+	case result.ExitCode < 0:
+		parts = append(parts, "Exit code: -1 (ended by a signal)")
+	default:
+		parts = append(parts, fmt.Sprintf("Exit code: %d", result.ExitCode))
+	}
+	if result.KilledLeftovers {
+		parts = append(parts, "Processes the command left running were killed; start servers and watchers with run_in_background: true.")
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+// commandLimits reads a call's timeout and auto-background delay; zero takes
+// the defaults.
+func commandLimits(params BashParams) (time.Duration, time.Duration, error) {
+	timeout, err := callSeconds("timeout", params.Timeout)
+	if err != nil {
+		return 0, 0, err
+	}
+	if timeout > MaxCommandTimeout {
+		return 0, 0, fmt.Errorf("timeout is in seconds, at most %d", maxSeconds)
+	}
+	autoBackground, err := callSeconds("auto_background_after", params.AutoBackgroundAfter)
+	if err != nil {
+		return 0, 0, err
+	}
+	if timeout == 0 {
 		timeout = DefaultCommandTimeout
 	}
-	autoBackground := time.Duration(params.AutoBackgroundAfter) * time.Second
 	if autoBackground == 0 {
 		autoBackground = DefaultAutoBackground
 	}
 	return timeout, autoBackground, nil
+}
+
+// callSeconds reads a duration a call gives in seconds; a value over
+// maxSeconds is taken as milliseconds.
+func callSeconds(name string, value int) (time.Duration, error) {
+	switch {
+	case value < 0:
+		return 0, fmt.Errorf("%s is in seconds and must not be negative", name)
+	case value > maxSeconds:
+		return time.Duration(value) * time.Millisecond, nil
+	}
+	return time.Duration(value) * time.Second, nil
 }
 
 func backgroundStartText(taskID string, requested bool, after time.Duration) string {
@@ -192,7 +235,7 @@ func backgroundStartText(taskID string, requested bool, after time.Duration) str
 	if requested {
 		return "Background task " + taskID + " started. " + how
 	}
-	return fmt.Sprintf("The command is still running after %s, so it went on as background task %s. %s", after, taskID, how)
+	return fmt.Sprintf("The command is still running after %ds, so it moved to the background as task %s. %s", int(after/time.Second), taskID, how)
 }
 
 func (e *taskOutputExecutor) Execute(ctx context.Context, call Call) (Result, error) {
@@ -272,27 +315,23 @@ func (e *taskKillExecutor) Execute(ctx context.Context, call Call) (Result, erro
 	return Result{Content: "Task " + id + " is " + info.Status + ".", Metadata: info}, nil
 }
 
-func isExpectedEmptyProcessProbe(command string, output string, exitCode int) bool {
-	if exitCode != 1 || strings.TrimSpace(output) != "" {
+// noMatch reports whether exit code 1 with no output only says that a
+// search, test or process lookup on the command line found nothing.
+func noMatch(command string, output string, exitCode int) bool {
+	if exitCode != 1 || output != "" {
 		return false
 	}
-	return isProcessProbeCommand(command)
+	for _, words := range permission.ParseLine(command).Commands {
+		name := filepath.Base(words[0])
+		if probeCommands[name] || name == "git" && len(words) > 1 && words[1] == "grep" {
+			return true
+		}
+	}
+	return false
 }
 
-func isProcessProbeCommand(command string) bool {
-	command = strings.ToLower(strings.TrimSpace(command))
-	switch {
-	case strings.Contains(command, "grep -v grep"):
-		return true
-	case strings.Contains(command, "pgrep"):
-		return true
-	case strings.Contains(command, "pidof"):
-		return true
-	case strings.Contains(command, "pkill"):
-		return true
-	case strings.Contains(command, "ps ") && strings.Contains(command, "grep"):
-		return true
-	default:
-		return false
-	}
+// probeCommands exit 1 when they find nothing.
+var probeCommands = map[string]bool{
+	"[": true, "egrep": true, "fgrep": true, "grep": true, "pgrep": true, "pidof": true,
+	"pkill": true, "rg": true, "test": true, "which": true, "zgrep": true,
 }
