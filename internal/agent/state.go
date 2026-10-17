@@ -39,6 +39,10 @@ type RunState struct {
 	HistoryEdit   int64 `json:"history_edit,omitempty"`
 	LearnedLimit  int   `json:"learned_limit,omitempty"`
 	TodoNudged    bool  `json:"todo_nudged,omitempty"`
+	// Unverified is set while files changed since the run's last successful
+	// build, test or lint command; VerifyNudged once the model was asked to check.
+	Unverified   bool `json:"unverified,omitempty"`
+	VerifyNudged bool `json:"verify_nudged,omitempty"`
 	// Await is set while the run waits for what an await call asked for.
 	Await *tools.Await `json:"await,omitempty"`
 }

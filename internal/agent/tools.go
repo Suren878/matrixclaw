@@ -218,7 +218,7 @@ func (r *run) answerCall(ctx context.Context, req callRequest, result tools.Resu
 	if _, err := r.appendResult(ctx, req, result); err != nil {
 		return err
 	}
-	r.state.observeCall(req.name, req.args, result)
+	r.observe(req, result)
 	return nil
 }
 
@@ -230,7 +230,7 @@ func (r *run) finishCall(ctx context.Context, req callRequest, result tools.Resu
 	if err != nil {
 		return err
 	}
-	r.state.observeCall(req.name, req.args, result)
+	r.observe(req, result)
 	r.Sink.Emit(Event{Kind: EventToolFinished, SessionID: r.task.SessionID, RunID: r.task.RunID, ToolCallID: req.id, ToolName: req.name, ResultMessageID: message.ID, Result: result})
 	return nil
 }
