@@ -9,17 +9,17 @@ import (
 )
 
 // oldSetupFile is shaped like a file older versions wrote: catalog defaults
-// copied into every provider and voice provider, catalog_id keys, and user
-// choices that differ from the defaults.
+// copied into every provider and voice provider, and user choices that differ
+// from the defaults.
 const oldSetupFile = `{
   "version": 3,
   "active_provider_id": "openai",
   "assistant": {"name": "matrixclaw", "custom_instructions": "Be brief."},
   "providers": [
-    {"id": "openai", "catalog_id": "openai", "name": "OpenAI", "type": "openai-compatible", "api_key": "sk-openai-1234", "api_key_env": "OPENAI_API_KEY", "base_url": "https://proxy.example/v1", "model": "gpt-5.4", "reasoning_effort": "high", "tool_use_mode": "native"},
-    {"id": "qwen", "catalog_id": "qwen", "name": "Qwen / DashScope", "type": "openai-compatible", "api_key": "sk-qwen-1234", "api_key_env": "DASHSCOPE_API_KEY", "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "model": "qwen-plus", "reasoning_effort": "medium"},
-    {"id": "anthropic", "catalog_id": "anthropic", "name": "Anthropic", "type": "anthropic-compatible", "api_key": "sk-ant-1234", "api_key_env": "ANTHROPIC_API_KEY", "base_url": "https://api.anthropic.com/v1", "model": "claude-sonnet-4-5", "context_window": 150000, "max_output_tokens": 8000},
-    {"id": "local-ai", "catalog_id": "local-ai", "name": "Local AI", "type": "openai-compatible", "api_key": "sk-local-1234", "api_key_env": "OPENAI_COMPAT_API_KEY", "base_url": "http://127.0.0.1:8000/v1", "model": "qwen3", "tool_use_mode": "disabled"}
+    {"id": "openai", "name": "OpenAI", "type": "openai-compatible", "api_key": "sk-openai-1234", "api_key_env": "OPENAI_API_KEY", "base_url": "https://proxy.example/v1", "model": "gpt-5.4", "reasoning_effort": "high", "tool_use_mode": "native"},
+    {"id": "qwen", "name": "Qwen / DashScope", "type": "openai-compatible", "api_key": "sk-qwen-1234", "api_key_env": "DASHSCOPE_API_KEY", "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "model": "qwen-plus", "reasoning_effort": "medium"},
+    {"id": "anthropic", "name": "Anthropic", "type": "anthropic-compatible", "api_key": "sk-ant-1234", "api_key_env": "ANTHROPIC_API_KEY", "base_url": "https://api.anthropic.com/v1", "model": "claude-sonnet-4-5", "context_window": 150000, "max_output_tokens": 8000},
+    {"id": "local-ai", "name": "Local AI", "type": "openai-compatible", "api_key": "sk-local-1234", "api_key_env": "OPENAI_COMPAT_API_KEY", "base_url": "http://127.0.0.1:8000/v1", "model": "qwen3", "tool_use_mode": "disabled"}
   ],
   "daemon": {
     "http_addr": "127.0.0.1:7777", "db_path": "/var/lib/matrixclaw.db", "timezone": "Europe/Berlin", "api_token": "token-1234", "autostart_on_boot": true,
@@ -148,9 +148,32 @@ func TestOldSetupFileRoundTripsWithoutLoss(t *testing.T) {
 			t.Errorf("saved file lost the user value %s", kept)
 		}
 	}
-	for _, dropped := range []string{`"catalog_id"`, `"name": "OpenAI"`, `"OPENAI_API_KEY"`, `"https://api.anthropic.com/v1"`, `"binary_path": "piper"`, `"whisper-cli"`, `"per_task"`, `"provider_id": "playwright"`, `"supertonic"`, `"name": "matrixclaw"`} {
+	for _, dropped := range []string{`"name": "OpenAI"`, `"OPENAI_API_KEY"`, `"https://api.anthropic.com/v1"`, `"binary_path": "piper"`, `"whisper-cli"`, `"per_task"`, `"provider_id": "playwright"`, `"supertonic"`, `"name": "matrixclaw"`} {
 		if strings.Contains(text, dropped) {
 			t.Errorf("saved file still repeats the default %s", dropped)
 		}
+	}
+}
+
+func TestSetupFileFromAnOlderVersionFailsNamingTheKey(t *testing.T) {
+	for _, tc := range []struct{ name, modules, want string }{
+		{"retired key", `{"web_search": {"provider": "tavily", "api_key": "tvly-1"}}`, `unknown keys modules.web_search.api_key`},
+		{"browser provider alias", `{"browser": {"provider_id": "local-playwright"}}`, `modules.browser.provider_id is "local-playwright", want one of ["playwright"]`},
+		{"runtime mode alias", `{"tts": {"providers": {"piper": {"runtime_mode": "persistent"}}}}`, `modules.tts.providers.piper.runtime_mode is "persistent"`},
+		{"external agent alias", `{"external_agents": {"codex": {"enabled": true}}}`, `modules.external_agents key is "codex", want one of ["claude-code" "codex-app"]`},
+		{"mcp transport alias", `{"mcp": {"servers": [{"id": "files", "transport": "streamable_http", "endpoint": "http://x"}]}}`, `modules.mcp.servers[0].transport is "streamable_http", want one of ["stdio" "http"]`},
+		{"piper language alias", `{"tts": {"providers": {"piper": {"language": "english"}}}}`, `modules.tts.providers.piper.language is "english", want a code such as "en_US"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "setup.json")
+			file := `{"version": 3, "daemon": {"http_addr": "127.0.0.1:7777", "db_path": "/tmp/m.db"}, "clients": {"telegram": {"enabled": false}}, "modules": ` + tc.modules + `}`
+			if err := os.WriteFile(path, []byte(file), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := NewFileStore(path).Load()
+			if err == nil || !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), path) {
+				t.Fatalf("load error = %v, want it to name the file and %s", err, tc.want)
+			}
+		})
 	}
 }

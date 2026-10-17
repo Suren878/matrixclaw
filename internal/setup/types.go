@@ -230,7 +230,6 @@ type TelephonyConfig struct {
 // WebSearchConfig stores the web search provider choice and credentials.
 type WebSearchConfig struct {
 	Provider  string `json:"provider,omitempty"`
-	APIKey    string `json:"api_key,omitempty"` // legacy field, migrated on read
 	TavilyKey string `json:"tavily_key,omitempty"`
 	SerperKey string `json:"serper_key,omitempty"`
 	BaseURL   string `json:"base_url,omitempty"`

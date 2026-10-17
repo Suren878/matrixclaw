@@ -45,11 +45,5 @@ func (cfg Config) ExternalAgentConfig(id string) ExternalAgentConfig {
 }
 
 func normalizeExternalAgentID(id string) string {
-	id = strings.ToLower(strings.TrimSpace(id))
-	switch id {
-	case "codex":
-		return "codex-app"
-	default:
-		return id
-	}
+	return strings.ToLower(strings.TrimSpace(id))
 }

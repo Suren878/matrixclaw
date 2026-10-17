@@ -256,6 +256,11 @@ through read-only subagents.
 
 `setup.json` is one typed `setup.Config` owned by `internal/setup`:
 
+- Loading is strict: a key the struct does not declare, or a stored value
+  outside its closed list (provider type, tool use mode, runtime modes,
+  browser and voice providers, external agent ids, web search provider, MCP
+  transport), fails with an error naming the key. A file is never
+  reinterpreted on read; there are no value aliases.
 - Every edit is `Service.Update(func(*Config) error)`: load, change,
   canonicalize, `Config.Validate` (structure only: no network, no env), save
   atomically under one lock. Provider edits, the session model switch and
@@ -321,11 +326,7 @@ that takes a single reply (Telegram inline and guest). Restart notices are
 
 ## Planned after v0.2.0
 
-- Collapse the `internal/store` migrations into a canonical `001_init.sql`
-  with `PRAGMA user_version`.
-- Drop read-time setup.json rewrites and persisted-value aliases (session
-  runtime `codex`, web search `api_key`, browser provider and runtime-mode
-  aliases).
-- Remove the `approvals.action` and `tasks.result_message_id` columns.
-- Drop the legacy client-capabilities read rule in
-  `internal/store/sqlite_client_capabilities.go`.
+- Drop the session runtime aliases (`codex`, `assistant`, ...) in
+  `internal/core/external_agents.go`, then the `sessions.runtime_id` column.
+- Delete `internal/store/legacy_v02.go` (the one-time v0.2 database
+  conversion) one release after it shipped.
