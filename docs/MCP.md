@@ -57,7 +57,7 @@ Or edit `setup.json` directly:
 | `enabled` | Whether to connect this server. |
 | `transport` | `stdio` (default) or `http` (streamable HTTP; `streamable_http` is accepted too). |
 | `command`, `args` | Program and arguments of a stdio server. |
-| `env` | Extra environment variables for a stdio server. It also inherits the daemon's environment. Not editable from `/modules`. |
+| `env` | Extra environment variables for a stdio server. It also inherits the daemon's environment without API key variables and `MATRIXCLAW_*`; name a key here to pass it. Not editable from `/modules`. |
 | `endpoint` | URL of an http server. |
 | `tool_prefix` | Prefix of the tool IDs; defaults to the ID. Must be unique. |
 | `read_only` | Treat every tool of this server as read-only (no approval). |

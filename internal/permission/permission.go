@@ -262,8 +262,9 @@ func Suggest(req Request, root string) (Suggestion, bool) {
 }
 
 // subcommandTools are the commands whose second word names a subcommand;
-// exactSubcommands are those that run programs or code they are given. Every
-// other command, interpreters included, is suggested as its exact line.
+// exactSubcommands are those whose next words change too much for a prefix.
+// Runners are risky and get no suggestion. Every other command, interpreters
+// included, is suggested as its exact line.
 var (
 	subcommandTools = map[string]bool{
 		"apt": true, "brew": true, "bundle": true, "cargo": true, "composer": true, "docker": true,
@@ -271,12 +272,7 @@ var (
 		"kubectl": true, "make": true, "mvn": true, "npm": true, "pip": true, "pip3": true, "pnpm": true,
 		"podman": true, "poetry": true, "rustup": true, "systemctl": true, "terraform": true, "uv": true, "yarn": true,
 	}
-	exactSubcommands = map[string]bool{
-		"bundle exec": true, "cargo run": true, "docker compose": true, "docker exec": true, "docker run": true,
-		"go run": true, "kubectl exec": true, "kubectl run": true, "npm exec": true, "pnpm dlx": true,
-		"pnpm exec": true, "podman compose": true, "podman exec": true, "podman run": true, "poetry run": true,
-		"uv run": true, "yarn dlx": true, "yarn exec": true,
-	}
+	exactSubcommands = map[string]bool{"docker compose": true, "podman compose": true}
 )
 
 // suggestCommand is a prefix for a command with a known subcommand and the exact

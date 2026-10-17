@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -46,21 +48,55 @@ func TestBashAppliesTimeoutAndAutoBackgroundDefaults(t *testing.T) {
 
 	result := runShellTool(t, tasks, "bash", `{"command":"go test ./..."}`)
 	runShellTool(t, tasks, "bash", `{"command":"make","timeout":3600,"auto_background_after":30,"run_in_background":true}`)
+	runShellTool(t, tasks, "bash", `{"command":"make","timeout":120000,"auto_background_after":30000}`)
 
-	if result.Content != "ok" || result.IsError() {
+	if result.Content != "ok\n\nExit code: 0" || result.IsError() {
 		t.Fatalf("result = %+v", result)
 	}
 	want := []Command{
 		{Command: "go test ./...", WorkingDir: "/work", Timeout: 10 * time.Minute, AutoBackground: 2 * time.Minute, OutputLimit: maxToolOutput},
 		{Command: "make", WorkingDir: "/work", Background: true, Timeout: time.Hour, AutoBackground: 30 * time.Second, OutputLimit: maxToolOutput},
+		{Command: "make", WorkingDir: "/work", Timeout: 2 * time.Minute, AutoBackground: 30 * time.Second, OutputLimit: maxToolOutput},
 	}
 	for i := range want {
 		if tasks.commands[i] != want[i] {
 			t.Errorf("command %d = %+v, want %+v", i, tasks.commands[i], want[i])
 		}
 	}
-	if tooLong := runShellTool(t, tasks, "bash", `{"command":"make","timeout":3601}`); !tooLong.IsError() || len(tasks.commands) != 2 {
+	if tooLong := runShellTool(t, tasks, "bash", `{"command":"make","timeout":3600001}`); !tooLong.IsError() || len(tasks.commands) != 3 {
 		t.Fatalf("a timeout over an hour ran: %+v", tooLong)
+	}
+}
+
+func TestBashStatesTheExitCodeOfEveryCommand(t *testing.T) {
+	for _, tc := range []struct {
+		command string
+		result  CommandResult
+		content string
+		status  ResultStatus
+	}{
+		{"go test ./...", CommandResult{Output: "ok\n"}, "ok\n\nExit code: 0", ""},
+		{"test -f missing", CommandResult{ExitCode: 1}, "(no output)\n\nExit code: 1", ResultStatusNeutral},
+		{"ps aux | grep '[s]erver'", CommandResult{ExitCode: 1}, "(no output)\n\nExit code: 1", ResultStatusNeutral},
+		{"git grep -n TODO", CommandResult{ExitCode: 1}, "(no output)\n\nExit code: 1", ResultStatusNeutral},
+		{"go vet ./...", CommandResult{ExitCode: 1}, "(no output)\n\nExit code: 1", ResultStatusError},
+		{"echo grep; false", CommandResult{Output: "grep\n", ExitCode: 1}, "grep\n\nExit code: 1", ResultStatusError},
+		{"kill -9 $$", CommandResult{ExitCode: -1}, "(no output)\n\nExit code: -1 (ended by a signal)", ResultStatusError},
+		{"npm run dev &", CommandResult{Output: "ready\n", KilledLeftovers: true}, "ready\n\nExit code: 0\n\nProcesses the command left running were killed; start servers and watchers with run_in_background: true.", ""},
+	} {
+		args, _ := json.Marshal(BashParams{Command: tc.command})
+		result := runShellTool(t, &fakeShellTasks{result: tc.result}, "bash", string(args))
+		if result.Content != tc.content || result.Status != tc.status {
+			t.Errorf("%q: content %q status %q, want %q %q", tc.command, result.Content, result.Status, tc.content, tc.status)
+		}
+	}
+}
+
+func TestBashKeysOnTheDirectoryItRunsIn(t *testing.T) {
+	registry := NewRegistry(NewShellExecutors(&fakeShellTasks{})...)
+	key := registry.ConcurrencyKey("bash", Call{WorkingDir: "/work", Args: json.RawMessage(`{"command":"make","working_dir":"sub"}`)})
+	if key != WorkingDirKey("/work/sub") {
+		t.Fatalf("key = %q", key)
 	}
 }
 
@@ -70,7 +106,7 @@ func TestBashReportsTheTaskACommandWentOnAs(t *testing.T) {
 	moved := runShellTool(t, tasks, "bash", `{"command":"npm test"}`)
 	started := runShellTool(t, tasks, "bash", `{"command":"npm run dev","run_in_background":true}`)
 
-	if !strings.Contains(moved.Content, "still running after 2m0s, so it went on as background task task_1") || moved.Metadata.(BashResponseMetadata).TaskID != "task_1" {
+	if !strings.Contains(moved.Content, "still running after 120s, so it moved to the background as task task_1") || moved.Metadata.(BashResponseMetadata).TaskID != "task_1" {
 		t.Fatalf("moved = %+v", moved)
 	}
 	if !strings.HasPrefix(started.Content, "Background task task_1 started.") {
@@ -80,12 +116,12 @@ func TestBashReportsTheTaskACommandWentOnAs(t *testing.T) {
 
 func TestBashReportsTimeoutsAndCutOutput(t *testing.T) {
 	timedOut := runShellTool(t, &fakeShellTasks{result: CommandResult{Output: "partial", TimedOut: true, ExitCode: -1}}, "bash", `{"command":"sleep 99","timeout":5}`)
-	if !timedOut.IsError() || !strings.Contains(timedOut.Content, "killed after its timeout of 5s") {
+	if !timedOut.IsError() || timedOut.Content != "partial\n\nTimed out after 5s and killed. Run long commands with run_in_background: true." {
 		t.Fatalf("timed out = %+v", timedOut)
 	}
-	cut := runShellTool(t, &fakeShellTasks{result: CommandResult{Output: "head", OutputPath: "/data/task_1.log"}}, "bash", `{"command":"seq 1 1000000"}`)
-	if cut.Content != "head\n\n(output truncated; the full output is in /data/task_1.log)" {
-		t.Fatalf("cut = %q", cut.Content)
+	cut := runShellTool(t, &fakeShellTasks{result: CommandResult{Output: "head\n[... 10 bytes of output left out ...]\ntail", OutputPath: "/data/task_1.log"}}, "bash", `{"command":"seq 1 1000000"}`)
+	if cut.OutputPath != "/data/task_1.log" || !strings.Contains(cut.Content, "full output is in /data/task_1.log") || !strings.HasSuffix(cut.Content, "Exit code: 0") {
+		t.Fatalf("cut = %+v", cut)
 	}
 }
 
@@ -136,5 +172,44 @@ func TestTaskKillPreviewsThenStops(t *testing.T) {
 	stopped := runShellTool(t, tasks, "task_kill", `{"id":"task_1"}`)
 	if stopped.Content != "Task task_1 is canceled." || len(tasks.stopped) != 1 {
 		t.Fatalf("stopped = %+v", stopped)
+	}
+}
+
+func TestReadOnlyBashRunsOnlyReadsInsideTheWorkingDirectory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	work := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(home, ".ssh"), filepath.Join(work, "keys")); err != nil {
+		t.Fatal(err)
+	}
+	spec, ok := ReadOnlySpec(coreDefinitionSpec("bash"))
+	if !ok || spec.Mutates() || spec.Asks {
+		t.Fatalf("read-only bash spec = %+v, %v", spec, ok)
+	}
+	if _, ok := ReadOnlySpec(coreDefinitionSpec("write")); ok {
+		t.Fatal("write has a read-only variant")
+	}
+	for command, allowed := range map[string]bool{
+		"git log --oneline -5 && git diff":   true,
+		"rg -n TODO ./internal | head":       true,
+		"cat " + filepath.Join(work, "a.go"): true,
+		"go test ./...":                      false,
+		"cat /etc/passwd":                    false,
+		"cat ../other/a.go":                  false,
+		"cat ~/.ssh/id_rsa":                  false,
+		"cat keys/id_rsa":                    false,
+		"git --git-dir=/srv/repo.git log":    false,
+	} {
+		args, _ := json.Marshal(BashParams{Command: command})
+		if err := CheckReadOnlyCall(Call{WorkingDir: work, Args: args}); (err == nil) != allowed {
+			t.Errorf("%q: %v, want allowed %v", command, err, allowed)
+		}
+	}
+	args, _ := json.Marshal(BashParams{Command: "ls"})
+	if err := CheckReadOnlyCall(Call{WorkingDir: home, Args: args}); err == nil {
+		t.Error("read-only bash ran in the home directory")
 	}
 }

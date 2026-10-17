@@ -207,3 +207,14 @@ func TestCrashedStdioServerIsReconnected(t *testing.T) {
 		t.Fatalf("status after Apply = %+v", status)
 	}
 }
+
+func TestStdioServersStartWithoutTheDaemonsKeys(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "sk-daemon")
+	cfg := withServers(true, setup.MCPServerConfig{ID: "local", Enabled: true, Command: "server", Env: map[string]string{"SERVER_TOKEN": "x"}})
+
+	servers := wantedServers(cfg, nil)
+
+	if len(servers) != 1 || slices.Contains(servers[0].Environ, "OPENAI_API_KEY=sk-daemon") || !slices.ContainsFunc(servers[0].Environ, func(pair string) bool { return strings.HasPrefix(pair, "PATH=") }) {
+		t.Fatalf("servers = %+v", servers)
+	}
+}

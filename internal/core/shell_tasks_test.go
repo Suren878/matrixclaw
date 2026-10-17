@@ -2,17 +2,22 @@ package core_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/shelltask"
 	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -70,11 +75,11 @@ func TestForegroundOutputPastTheLimitKeepsItsFile(t *testing.T) {
 	t.Parallel()
 	app, _, session, _ := newTaskCore(t)
 	command := foreground("seq 1 1000")
-	command.OutputLimit = 10
+	command.OutputLimit = 30
 
 	result, err := app.RunCommand(context.Background(), taskCall(session), command)
 
-	if err != nil || result.Output != "1\n2\n3\n4\n5\n" || result.OutputPath == "" {
+	if err != nil || !strings.HasPrefix(result.Output, "1\n2\n3\n4\n5\n[... ") || !strings.HasSuffix(result.Output, "\n999\n1000\n") || result.OutputPath == "" {
 		t.Fatalf("result = %+v, %v", result, err)
 	}
 	if tail, err := shelltask.Tail(result.OutputPath, 5); err != nil || tail != "1000\n" {
@@ -226,7 +231,7 @@ func TestRecoveryKillsLeftoverShellTasksAndMarksThemLost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	process, err := shelltask.Start("sleep 60", session.WorkingDir, out)
+	process, err := shelltask.Start("sleep 60", session.WorkingDir, nil, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,9 +257,8 @@ func TestRecoveryKillsLeftoverShellTasksAndMarksThemLost(t *testing.T) {
 	}
 }
 
-// systemd's stop signals the daemon's whole cgroup, so its background
-// commands end with it: the next start reports them lost, and no run is
-// started (and failed) for them meanwhile.
+// The daemon's stop ends its background commands: the next start reports them
+// lost, and no run is started (and failed) for them meanwhile.
 func TestACommandEndingWithTheDaemonIsLostAfterTheRestart(t *testing.T) {
 	t.Parallel()
 	app, db, session, files := newTaskCore(t)
@@ -273,8 +277,10 @@ func TestACommandEndingWithTheDaemonIsLostAfterTheRestart(t *testing.T) {
 
 	stop()
 	app.WaitRuns()
-	_ = syscall.Kill(-task.PID, syscall.SIGTERM)
-	waitProcessGone(t, task.PID)
+	app.StopShellTasks()
+	if err := syscall.Kill(-task.PID, 0); !errors.Is(err, syscall.ESRCH) {
+		t.Fatalf("the command's group outlived StopShellTasks: %v", err)
+	}
 	time.Sleep(100 * time.Millisecond)
 	if err := core.New(db).WithSessionFiles(files).Recover(context.Background()); err != nil {
 		t.Fatal(err)
@@ -515,4 +521,137 @@ func TestDeletingASessionStopsItsRun(t *testing.T) {
 		t.Fatal("the deleted session's run kept executing its tool")
 	}
 	<-done
+}
+
+func TestForegroundCommandKillsWhatItLeftRunning(t *testing.T) {
+	t.Parallel()
+	app, _, session, _ := newTaskCore(t)
+
+	result, err := app.RunCommand(context.Background(), taskCall(session), foreground("sleep 30 >/dev/null 2>&1 & echo $!"))
+
+	if err != nil || !result.KilledLeftovers {
+		t.Fatalf("result = %+v, %v", result, err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(result.Output))
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitProcessGone(t, pid)
+}
+
+func TestCommandsDoNotSeeProviderKeys(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "sk-provider-secret")
+	t.Setenv("MATRIXCLAW_API_TOKEN", "daemon-token")
+	app, _, session, _ := newTaskCore(t)
+	app.WithCommandEnvironment(func() []string { return setup.ChildEnvironment(setup.Config{}, os.Environ()) })
+
+	result, err := app.RunCommand(context.Background(), taskCall(session), foreground("env"))
+
+	if err != nil || !strings.Contains(result.Output, "PATH=") || strings.Contains(result.Output, "sk-provider-secret") || strings.Contains(result.Output, "daemon-token") {
+		t.Fatalf("env = %q, %v", result.Output, err)
+	}
+}
+
+func TestCompactionPrunesTheOutputOfEndedCommands(t *testing.T) {
+	t.Parallel()
+	app, db, session, files := newTaskCore(t)
+	ctx := context.Background()
+	// The ended task is stored as such: one ending now would wake the session.
+	endedLog := filepath.Join(files, session.ID, "tasks", "task_ended.log")
+	if err := os.MkdirAll(filepath.Dir(endedLog), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(endedLog, []byte("done\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	now, code := runRecoveryTestTime(), 0
+	if err := db.CreateTask(ctx, core.Task{ID: "task_ended", SessionID: session.ID, Kind: core.TaskKindShell, Status: core.TaskStatusRunning, Command: "echo done", Background: true, OutputPath: endedLog, StartedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.FinishTask(ctx, "task_ended", core.TaskEnd{Status: core.TaskStatusCompleted, ExitCode: &code, At: now}); err != nil {
+		t.Fatal(err)
+	}
+	running := foreground("sleep 30")
+	running.Background = true
+	runningTask, err := app.RunCommand(ctx, taskCall(session), running)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = app.StopTask(ctx, taskCall(session), runningTask.TaskID) })
+
+	if _, err := app.ClearContext(ctx, session.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := os.ReadDir(filepath.Join(files, session.ID, "tasks"))
+	if err != nil || len(entries) != 1 || entries[0].Name() != runningTask.TaskID+".log" {
+		t.Fatalf("kept task outputs = %v, %v", entries, err)
+	}
+	out, err := app.ReadTaskOutput(ctx, taskCall(session), tools.TaskRead{TaskID: "task_ended", Limit: 100})
+	if err != nil || out.Status != "completed" || out.Text == "" {
+		t.Fatalf("output of a pruned task = %+v, %v", out, err)
+	}
+}
+
+type recordingShell struct {
+	mu       sync.Mutex
+	commands []string
+}
+
+func (s *recordingShell) RunCommand(_ context.Context, _ tools.Call, command tools.Command) (tools.CommandResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.commands = append(s.commands, command.Command)
+	return tools.CommandResult{Output: "ok\n"}, nil
+}
+
+func (s *recordingShell) ReadTaskOutput(context.Context, tools.Call, tools.TaskRead) (tools.TaskOutput, error) {
+	return tools.TaskOutput{}, nil
+}
+
+func (s *recordingShell) StopTask(context.Context, tools.Call, string) (tools.TaskInfo, error) {
+	return tools.TaskInfo{}, nil
+}
+
+func TestReadonlyChildRunsOnlyReadOnlyCommands(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	shell := &recordingShell{}
+	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), tools.NewShellExecutors(shell)...)...))
+	var childTools []providers.ToolDefinition
+	var results []string
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		seen := toolResults(request)
+		switch {
+		case childPrompt(request) != "" && len(seen) == 0:
+			childTools = request.Tools
+			return providers.Response{ToolCalls: []providers.ToolCall{
+				{ID: "child-log", Name: "bash", Arguments: json.RawMessage(`{"command":"git log --oneline -3"}`)},
+				{ID: "child-test", Name: "bash", Arguments: json.RawMessage(`{"command":"go test ./..."}`)},
+			}}, nil
+		case childPrompt(request) != "":
+			results = seen
+			return providers.Response{Text: "looked"}, nil
+		case len(seen) == 0:
+			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-a", Name: "agent", Arguments: json.RawMessage(`{"description":"Look","prompt":"look around","readonly":true}`)}}}, nil
+		default:
+			return providers.Response{Text: "Done."}, nil
+		}
+	})})
+	_, run := saveCrashRecoveryRun(t, db, "readonly_bash", core.RunStatusAccepted, false)
+
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if !slices.ContainsFunc(childTools, func(tool providers.ToolDefinition) bool { return tool.Name == "bash" }) {
+		t.Fatalf("the read-only child got no bash: %+v", childTools)
+	}
+	if len(shell.commands) != 1 || shell.commands[0] != "git log --oneline -3" {
+		t.Fatalf("commands run = %q", shell.commands)
+	}
+	if len(results) != 2 || !strings.HasPrefix(results[0], "child-log=ok") || !strings.Contains(results[1], "read-only") {
+		t.Fatalf("child results = %q", results)
+	}
 }
