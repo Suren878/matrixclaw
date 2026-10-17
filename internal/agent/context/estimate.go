@@ -57,7 +57,7 @@ func EstimateMessageTokens(messages []transcript.Message) int {
 			case transcript.MessagePartKindToolResult:
 				if part.ToolResult != nil {
 					messageTotal += EstimateTextTokens(part.ToolResult.Name)
-					messageTotal += EstimateTextTokens(providerVisibleToolResultContent(part.ToolResult.Content))
+					messageTotal += EstimateTextTokens(part.ToolResult.Content)
 				}
 			}
 		}

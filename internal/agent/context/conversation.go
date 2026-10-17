@@ -298,18 +298,7 @@ func formatToolResultAsText(part transcript.ToolResultPart, fallbackContent stri
 	if content == "" {
 		content = "(empty result)"
 	}
-	content = providerVisibleToolResultContent(content)
 	return "Previous tool result from " + name + ":\n" + content
-}
-
-// providerVisibleToolResultContent is a result as the model sees it; results
-// written before large outputs went to files are cut to their head and tail.
-func providerVisibleToolResultContent(content string) string {
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return "(empty result)"
-	}
-	return HeadTail(content, LargeOutputTokens)
 }
 
 func toProviderMessages(ctx context.Context, message transcript.Message, reader AttachmentReader, allowImageInput bool) ([]providers.Message, error) {
@@ -394,7 +383,6 @@ func toProviderMessages(ctx context.Context, message transcript.Message, reader 
 		if strings.TrimSpace(content) == "" {
 			content = "(empty result)"
 		}
-		content = providerVisibleToolResultContent(content)
 		return []providers.Message{{
 			Role:       string(message.Role),
 			Content:    content,
