@@ -56,3 +56,10 @@ func TestMalformedFunctionCallIsRetryable(t *testing.T) {
 		t.Fatalf("error=%v, want retryable ErrMalformedToolCall", err)
 	}
 }
+
+func TestFunctionCallWithoutANameIsMalformed(t *testing.T) {
+	_, err := generateAgainst(t, `{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":" ","args":{}}}]},"finishReason":"STOP"}]}`)
+	if !errors.Is(err, providers.ErrMalformedToolCall) {
+		t.Fatalf("error=%v, want ErrMalformedToolCall", err)
+	}
+}

@@ -10,28 +10,26 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/providers/factory"
-	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 // modelsDiscoveryTimeout caps how long a remote model listing call may take.
 var modelsDiscoveryTimeout = 30 * time.Second
 
 type ModelDiscoveryInput struct {
-	ID        string
-	CatalogID string
-	Type      string
-	BaseURL   string
-	APIKey    string
-	Model     string
+	ID      string
+	Type    string
+	BaseURL string
+	APIKey  string
+	Model   string
 }
 
 func Models(ctx context.Context, input ModelDiscoveryInput) ([]string, error) {
 	ctx, cancel := context.WithTimeout(ctx, modelsDiscoveryTimeout)
 	defer cancel()
 
-	providerID := textutil.FirstNonEmpty(input.CatalogID, input.ID)
+	providerID := strings.TrimSpace(input.ID)
 	policy := providers.PolicyForProvider(providerID, input.Type)
-	if strings.TrimSpace(input.APIKey) == "" && policy.RequiresAPIKey && !policy.PublicModelCatalog {
+	if strings.TrimSpace(input.APIKey) == "" && policy.RequiresAPIKey && !policy.PublicModelCatalog && !providers.IsLoopbackURL(input.BaseURL) {
 		return nil, errors.New("enter a valid API key first")
 	}
 
@@ -73,7 +71,6 @@ func normalizedModels(providerID string, providerType string, models []string) [
 func fetchRemoteModels(ctx context.Context, input ModelDiscoveryInput) ([]string, error) {
 	cfg := providers.RuntimeConfig{
 		ProviderID: strings.TrimSpace(input.ID),
-		CatalogID:  strings.TrimSpace(input.CatalogID),
 		Type:       input.Type,
 		APIKey:     strings.TrimSpace(input.APIKey),
 		BaseURL:    strings.TrimSpace(input.BaseURL),

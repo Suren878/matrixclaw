@@ -64,7 +64,7 @@ func New(_ context.Context, cfg providers.RuntimeConfig) (providers.Runtime, err
 	if base.Capabilities.ReasoningEffort {
 		reasoningEffort = runtimeReasoningEffort(cfg.ReasoningEffort)
 	}
-	chatOptions := providers.ResolveOpenAIChatOptions(cfg.CatalogKey(), base.BaseURL, base.Model)
+	chatOptions := providers.ResolveOpenAIChatOptions(cfg.ProviderID, base.BaseURL, base.Model)
 	return &Runtime{
 		RuntimeBase:         base,
 		endpoint:            strings.TrimRight(base.BaseURL, "/") + "/chat/completions",
