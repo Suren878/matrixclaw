@@ -140,11 +140,19 @@ accepted ─▶ running ─▶ completed
 any status that has not ended ─▶ failed | canceled
 ```
 
-`transition` sets `finished_at`, saves or deletes the wakeup of a run waiting
-for events, clears the checkpoint on the end, seals the reply in the same write
-(`store.SealRun`; an ended run stays ended, `ErrRunEnded`), rejects an ended
-run's open approvals, syncs the subagent task the run works for, and publishes
-`run.updated`. A failed run cancels its blocking subagents.
+`transition` commits, then follows up. The commit checks the edge, sets
+`finished_at`, saves the wakeup of a run parking in `waiting_events` and seals
+the reply in the same write (`store.SealRun`; an ended run stays ended,
+`ErrRunEnded`); only its failure is returned. After it every step runs and
+their errors are joined and logged: drop a wakeup the run no longer has,
+publish `run.updated`, sync the subagent task the run works for, and for an
+ended run clear its checkpoint, reject its open approvals, cancel the blocking
+subagents of a failed run and tell the user of a failed wake run. Callers
+waiting for the end (a blocking `agent` call) are woken in any case.
+
+Session gates never nest: ending a subagent's run takes its parent session's
+gate (the finished task wakes the parent), so no subagent run ends while a
+gate is held.
 
 `afterRun` runs when the executor lets go of a run (or from `CancelRun` for a
 parked one): it starts the session's next queued message, wakes the session
@@ -157,7 +165,8 @@ without that cause and counts as an interrupt. Canceling a run also stops the
 shell tasks and subagents it started.
 
 **Recovery.** A run found `running` without an executor was interrupted.
-`claim` counts the recovery (more than 8 fails the run) and builds a plan for
+`claim` counts the recovery; the count resets once a step finishes, and more
+than 8 recoveries in a row without one fail the run. It builds a plan for
 every call left without a result (`agent.Task.Interrupted`, `Settle`): `rerun`
 read-only and deferred calls, `ask` again for a mutating call, `answer` an
 unknown tool with an error. A mutating call never reruns without a fresh
@@ -202,7 +211,8 @@ keyed locks, the model-request semaphore `daemon.model_concurrency`), `prompt`
   `task.updated` event) with two kinds. `shell`: a command in its own process
   group (`internal/shelltask`) with a size-capped output file; `bash` moves a
   command still running after 120 s to the background. `subagent`: a child run
-  started by the `agent` tool.
+  started by the `agent` tool. A child that cannot be started leaves no
+  session, run or worktree behind.
 - Shell task: `running` → `completed`/`failed` by exit code, `canceled`, or
   `lost` after a restart. Subagent task follows its child run inside
   `transition`: `running` ⇄ `waiting_approval` → `completed`/`failed`/`canceled`.

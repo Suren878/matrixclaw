@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"slices"
 	"strings"
 )
@@ -122,6 +123,23 @@ func (c *Core) syncSubagentTask(ctx context.Context, run Run) (Task, error) {
 		c.taskFinished(ctx, task)
 	}
 	return task, err
+}
+
+// discardSubagent undoes the start of a subagent whose task could not be
+// recorded, in reverse order: its session with its run, then its worktree.
+// Failures are only logged, as the start already failed.
+func (c *Core) discardSubagent(ctx context.Context, childSessionID string, isolation SubagentIsolation) {
+	child, err := c.store.GetSession(ctx, childSessionID)
+	if err == nil {
+		err = c.DeleteSession(context.WithoutCancel(ctx), child.ID)
+	}
+	if err != nil {
+		log.Printf("core: discard subagent session %q that did not start: %v", childSessionID, err)
+		return
+	}
+	if isolation == SubagentIsolationWorktree {
+		removeSubagentWorktree(child.WorkingDir)
+	}
 }
 
 // recoverSubagentTasks ends the tasks whose child run ended before the daemon
