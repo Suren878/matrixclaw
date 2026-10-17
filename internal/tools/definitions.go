@@ -27,6 +27,32 @@ func coreDefinitionSpec(id string) Spec {
 	return Spec{}
 }
 
+const (
+	globDescription = "Find files by path pattern; the fastest way to locate files by name. " +
+		"`*` matches within one path element, `**` any number of directories including none, `?` one character, " +
+		"`[abc]` one of a set and `{a,b}` alternatives. Examples: `**/*.go`, `src/**/*.{ts,tsx}`, `cmd/*/main.go`. " +
+		"The pattern is matched against paths relative to `path` (default: the working directory), so `*.go` finds only files directly in it " +
+		"and `**/*.go` finds them at any depth. Returns up to 100 absolute file paths, most recently modified first. " +
+		"Leaves out hidden entries unless the pattern names them (`.github/**`), git-ignored files and, outside a git repository, " +
+		"dependency and build directories such as node_modules; a pattern or path that starts inside one of them searches it. " +
+		"To search file contents use grep; to see a directory tree use ls."
+	grepDescription = "Search file contents with a regular expression in Go RE2 syntax (no lookaround or backreferences; " +
+		"escape literal braces and parentheses, as in `interface\\{\\}`), or for exact text with `literal_text`. " +
+		"Searches `path`, a directory or one file (default: the working directory). " +
+		"`include` limits the files: a glob without `/` matches file names at any depth (`*.go`, `*.{ts,tsx}`), " +
+		"one with `/` matches paths relative to `path` (`src/**/*.ts`). " +
+		"`output_mode` is `content` (default: matching lines with line numbers, grouped by file), `files_with_matches` (paths only) " +
+		"or `count` (matches per file). Files are ordered most recently modified first, then by path and line; " +
+		"at most `limit` results (default 100) are shown and the result says how many there are, continue with `offset`. " +
+		"Leaves out hidden entries unless `include` names them, git-ignored paths, binary files, files over 5 MB and credential files. " +
+		"Use this tool instead of grep or rg in bash."
+	lsDescription = "List a directory as a tree; directories end with `/`. Shows `depth` levels (default 3; 1 is only the directory's own entries) " +
+		"and at most 1000 entries, shallower levels first. Leaves out hidden entries, git-ignored paths and, outside a git repository, " +
+		"dependency and build directories such as node_modules. `ignore` globs leave out more: a glob without `/` matches names at any depth " +
+		"(`*.log`, `testdata`), one with `/` matches paths relative to `path`. For a file it gives its size. " +
+		"Use glob to find files by pattern and read to see a file."
+)
+
 var coreDefinitions = []Definition{
 	{
 		Spec: Spec{
@@ -42,8 +68,9 @@ var coreDefinitions = []Definition{
 	{
 		Spec: Spec{
 			ID:              globToolName,
-			Description:     "Find files by path pattern",
+			Description:     globDescription,
 			Effect:          EffectReadOnly,
+			CoveredBy:       []string{readToolName},
 			Namespace:       namespaceCoreFilesystem,
 			Category:        CategoryFilesystem,
 			InputJSONSchema: globInputSchema,
@@ -53,8 +80,9 @@ var coreDefinitions = []Definition{
 	{
 		Spec: Spec{
 			ID:              grepToolName,
-			Description:     "Search file contents by pattern",
+			Description:     grepDescription,
 			Effect:          EffectReadOnly,
+			CoveredBy:       []string{readToolName},
 			Namespace:       namespaceCoreFilesystem,
 			Category:        CategoryFilesystem,
 			InputJSONSchema: grepInputSchema,
@@ -64,8 +92,9 @@ var coreDefinitions = []Definition{
 	{
 		Spec: Spec{
 			ID:              lsToolName,
-			Description:     "List files in a tree",
+			Description:     lsDescription,
 			Effect:          EffectReadOnly,
+			CoveredBy:       []string{readToolName},
 			Namespace:       namespaceCoreFilesystem,
 			Category:        CategoryFilesystem,
 			InputJSONSchema: lsInputSchema,

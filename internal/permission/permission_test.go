@@ -95,10 +95,11 @@ func TestBashGuardRulesHoldWhateverAllows(t *testing.T) {
 	}
 }
 
-func TestSearchesMeetTheRulesOfWhatTheyReach(t *testing.T) {
-	search := func(tool, dir string) Request {
-		return Request{Tool: tool, Subject: Subject{Kind: KindDirectory, Value: dir}}
-	}
+func search(tool, dir string) Request {
+	return Request{Tool: tool, CoveredBy: []string{"read"}, Subject: Subject{Kind: KindDirectory, Value: dir}}
+}
+
+func TestSearchesMeetTheRulesOfTheirDirectory(t *testing.T) {
 	secrets := []Rule{rule(Deny, "read", "/home/u/secrets/**")}
 	for _, tc := range []struct {
 		name  string
@@ -106,21 +107,51 @@ func TestSearchesMeetTheRulesOfWhatTheyReach(t *testing.T) {
 		rules []Rule
 		want  Effect
 	}{
-		{"grep above the secrets", search("grep", "/home/u"), secrets, Deny},
-		{"glob from the root", search("glob", "/"), secrets, Deny},
+		{"grep above the secrets runs", search("grep", "/home/u"), secrets, ""},
+		{"glob from the root runs", search("glob", "/"), secrets, ""},
+		{"ls of the secrets", search("ls", "/home/u/secrets"), secrets, Deny},
 		{"ls inside the secrets", search("ls", "/home/u/secrets/sub"), secrets, Deny},
-		{"grep beside the secrets", search("grep", "/home/u/project"), secrets, ""},
-		{"a star element", search("grep", "/home/u"), []Rule{rule(Ask, "read", "/home/u/*.env")}, Ask},
-		{"a star element stays one level", search("grep", "/home/u/project"), []Rule{rule(Ask, "read", "/home/u/*.env")}, ""},
-		{"a double star reaches below", search("grep", "/home/u/project"), []Rule{rule(Deny, "read", "/home/u/**/.env")}, Deny},
-		{"an exact path", search("ls", "/home"), []Rule{rule(Deny, "*", "/home/u/.netrc")}, Deny},
+		{"an ask rule on the directory", search("grep", "/work"), []Rule{rule(Ask, "read", "/work/**")}, Ask},
 		{"read allows a search inside", search("grep", "/work/sub"), []Rule{rule(Allow, "read", "/work/**")}, Allow},
 		{"allow does not reach down", search("grep", "/"), []Rule{rule(Allow, "read", "/work/**")}, ""},
-		{"grep rules leave ls alone", search("ls", "/home/u"), []Rule{rule(Deny, "grep", "/home/u/secrets/**")}, ""},
+		{"grep rules leave ls alone", search("ls", "/home/u/secrets"), []Rule{rule(Deny, "grep", "/home/u/secrets/**")}, ""},
+		{"read rules cover only what names them", Request{Tool: "grep", Subject: Subject{Kind: KindDirectory, Value: "/home/u/secrets"}}, secrets, ""},
 	} {
 		if got := Evaluate(tc.req, tc.rules, nil); got.Effect != tc.want {
 			t.Errorf("%s: verdict = %q, want %q", tc.name, got.Effect, tc.want)
 		}
+	}
+}
+
+func TestSearchSkipLeavesOutWhatRulesGuard(t *testing.T) {
+	rules := []Rule{
+		rule(Deny, "read", "/home/u/secrets/**"),
+		rule(Ask, "*", "/home/u/**/.env"),
+		rule(Ask, "read", "/home/u/project/**"),
+		rule(Deny, "edit", "/home/u/project/a.go"),
+		rule(Allow, "read", "/home/u/open/**"),
+	}
+	skip := SearchSkip(search("grep", "/home/u/project"), rules)
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{"/home/u/project/a.go", false},
+		{"/home/u/project/app/.env", true},
+		{"/home/u/project/main.go", false},
+	} {
+		if got := skip(tc.path); got != tc.want {
+			t.Errorf("skip(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+	if skip := SearchSkip(search("grep", "/home/u"), rules); skip == nil || !skip("/home/u/secrets/key") || !skip("/home/u/project/x.go") || skip("/home/u/notes.txt") {
+		t.Error("a search above the guarded paths must leave them out and keep the rest")
+	}
+	if SearchSkip(search("grep", "/tmp"), []Rule{rule(Allow, "read", "/tmp/**")}) != nil {
+		t.Error("allow rules leave nothing out")
+	}
+	if SearchSkip(file("read", "/home/u/secrets/key"), rules) != nil {
+		t.Error("only searches skip")
 	}
 }
 

@@ -40,6 +40,7 @@ flowchart LR
 | `internal/transcript` | message, part, finish and origin types shared by core, store, api and agent |
 | `internal/tools` | tool contract and the built-in file, shell and task tools |
 | `internal/permission` | permission rules, subjects, bash parsing, mode presets |
+| `internal/glob` | the one glob matcher (`**`, classes, braces) and `.gitignore` rules, for path rules and the search tools |
 | `internal/shelltask` | background shell processes and their output files |
 | `internal/webtools` | `web_search` and `web_fetch` |
 | `internal/modules` | module lifecycle, settings contract, and the modules: `storage`, `delivery`, `geo`, `web`, `voice` (+ `voice/realtime`), `telephony`, `browser`, `mcp`, `skills`; `localruntime` holds local voice/browser runtimes |
@@ -220,7 +221,8 @@ keyed locks, the model-request semaphore `daemon.model_concurrency`), `prompt`
   `Spec.Asks` says whether a call no rule decides waits for the user.
 - Core alone decides (`core.checkPermission`): session and global rules, then
   the mode preset (`default`, `accept_edits`, `full_auto`); deny wins over ask
-  over allow. `permission.Builtin` (`memory: list` = allow) is in every preset
+  over allow. A rule names its tool or a tool listed in `Spec.CoveredBy`
+  (`read` rules cover `grep`, `glob` and `ls`). `permission.Builtin` (`memory: list` = allow) is in every preset
   and cannot be deleted; a stored ask/deny rule on `memory` still wins. The
   same check covers runs, the tools API, voice and the MCP server.
 - A call that asks runs only with a grant: its newest approval is approved and
@@ -236,6 +238,18 @@ keyed locks, the model-request semaphore `daemon.model_concurrency`), `prompt`
 - `tools.Result.Status` (`success`/`error`/`neutral`, empty = success) is the
   only status field. Results over about 8k tokens go to
   `sessions/<id>/tool-output/`, and the model gets head, tail and path.
+- A search (`grep`, `glob`, `ls`) meets the rules by its directory: a deny or
+  ask rule matching the directory decides the whole call. Below it, core passes
+  `Call.Skip` (`permission.SearchSkip`: the deny and ask rules that did not
+  match the directory) and the walkers drop matching paths, saying how many
+  they left out. Places that hold keys are dropped the same way unless the
+  search starts inside one.
+- Searches list files with `git ls-files -co --exclude-standard` inside a git
+  repository; otherwise, or when git lists nothing (an ignored directory named
+  in `path`), they walk the tree following `.gitignore` files (and outside a
+  repository skip `node_modules`, `vendor`, `dist` and similar). Hidden entries
+  are searched only when the pattern or `include` names them. Results are
+  ordered most recently modified first, then by path, and cut after sorting.
 - `read` and `grep` refuse credential files (setup.json, `daemon.env`, the
   Codex OAuth store, Codex and Claude Code credentials).
   A read-only call on a place where keys usually live (`tools.HoldsSecrets`:

@@ -438,6 +438,24 @@ func TestGrepDoesNotFollowALinkToADeniedFile(t *testing.T) {
 	}
 }
 
+func TestSearchesLeaveOutWhatRulesGuardInsteadOfFailing(t *testing.T) {
+	t.Parallel()
+	app, db, _, dir := permissionCore(t)
+	session := permissionSession(t, db, "session_search_rules", dir, core.PermissionModeFullAuto, "")
+	saveRule(t, db, "rule_secret", permission.Rule{Tool: "read", Pattern: filepath.Join(dir, "secret") + "/**", Effect: permission.Deny, SessionID: session.ID})
+
+	got := resultText(executeTool(t, app, session.ID, "grep", `{"pattern":"hunter2|public"}`))
+	if strings.Contains(got, "hunter2") || !strings.Contains(got, "notes.txt") || !strings.Contains(got, "left out") {
+		t.Fatalf("grep of the project = %q", got)
+	}
+	if got := resultText(executeTool(t, app, session.ID, "ls", `{}`)); strings.Contains(got, "secret") || !strings.Contains(got, "notes.txt") {
+		t.Fatalf("ls of the project = %q", got)
+	}
+	if got := resultText(executeTool(t, app, session.ID, "glob", `{"pattern":"**/*.txt","path":"secret"}`)); !strings.HasPrefix(got, "Blocked by rule") {
+		t.Fatalf("glob inside the denied directory = %q", got)
+	}
+}
+
 func TestRestrictedClientsReachNoUnattendedSession(t *testing.T) {
 	t.Parallel()
 	app, db, _, dir := permissionCore(t)
