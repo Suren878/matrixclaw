@@ -131,6 +131,11 @@ func (b *batch) admit(ctx context.Context) error {
 			return err
 		}
 		c := b.calls[b.next]
+		if c.req.invalid != "" {
+			c.state, c.result = callRejected, tools.Result{Content: c.req.invalid, Status: tools.ResultStatusError}
+			b.next++
+			continue
+		}
 		decision, err := b.r.Tools.Authorize(ctx, c.req.name, c.call)
 		if err != nil {
 			return err
@@ -232,7 +237,7 @@ func (b *batch) record(done toolsched.Done[callOutcome]) (bool, error) {
 	default:
 		c.state, c.result = callFinished, done.Value.result
 		if await := c.result.Await; await != nil {
-			b.r.counters.Await = &tools.Await{TaskIDs: slices.Clone(await.TaskIDs), Until: await.Until}
+			b.r.state.Await = &tools.Await{TaskIDs: slices.Clone(await.TaskIDs), Until: await.Until}
 		}
 	}
 	return false, nil

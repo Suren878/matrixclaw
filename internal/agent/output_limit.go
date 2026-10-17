@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -11,7 +10,7 @@ import (
 )
 
 // maxContinuations is how many replies in a row the output limit may cut before
-// the run fails.
+// the run's final turn.
 const maxContinuations = 3
 
 // unknownCeilingLimit caps a raised output limit when the model's ceiling is
@@ -20,26 +19,26 @@ const unknownCeilingLimit = 32768
 
 const continueText = "Your reply was cut by the output limit. Continue exactly where you stopped, without repeating what you already wrote."
 
-// continueCutReply keeps a reply cut by the output limit and asks the model to go
-// on, with the limit raised once where the model allows it: adapters drop a
-// truncated tool call, so a cut may hide one. A cut before any text is retried
-// only when the limit can still be raised.
+const droppedCallText = "Your last reply hit the output limit, so a tool call it was writing when it was cut was dropped. If you meant to make one, send it again smaller: split a large write into a short file plus edits, or into several files."
+
+// continueCutReply keeps a reply without tool calls cut by the output limit and
+// asks the model to go on, with the limit raised once where the model allows it.
+// Adapters drop a truncated tool call, so a cut with no text is retried with the
+// raised limit, or else the model is told its call was dropped. One cut too many
+// makes the next step the run's final turn.
 func (r *run) continueCutReply(ctx context.Context, gen generation, response providers.Response) stepResult {
+	r.state.Continuations++
+	raised := r.raiseOutputLimit()
 	if strings.TrimSpace(response.Text) == "" {
-		if !r.raiseOutputLimit() {
-			return failedStep(errors.New("reply cut by the output limit before any text"))
-		}
+		r.state.CallCut = r.state.CallCut || !raised
 		return stepResult{kind: stepContinue}
 	}
-	if r.counters.Continuations >= maxContinuations {
-		reply := finalReply(gen.assistant, response)
-		return stepResult{kind: stepDone, assistant: &reply, saved: gen.saved, response: response, err: fmt.Errorf("reply cut by the output limit %d times in a row", maxContinuations+1), markErrored: true}
-	}
-	r.raiseOutputLimit()
-	r.counters.Continuations++
 	assistant := gen.assistant
 	if err := r.finishTurn(ctx, &assistant, gen.saved, response, transcript.FinishReasonMaxTokens); err != nil {
 		return unfinishedTurn(ctx, gen, err)
+	}
+	if r.outputExhausted() {
+		return stepResult{kind: stepContinue}
 	}
 	if err := r.appendEngineMessage(ctx, transcript.OriginEngineModel, continueText); err != nil {
 		return failedStep(err)
@@ -47,10 +46,20 @@ func (r *run) continueCutReply(ctx context.Context, gen generation, response pro
 	return stepResult{kind: stepContinue}
 }
 
+// outputExhausted reports whether the output limit cut more replies in a row than
+// the run continues.
+func (r *run) outputExhausted() bool {
+	return r.state.Continuations > maxContinuations
+}
+
+func outputStopText() string {
+	return fmt.Sprintf("Your replies were cut by the output limit %d times in a row, so this run stops here. Do not call tools. Reply briefly: what is done, what remains, and how to continue.", maxContinuations+1)
+}
+
 // raiseOutputLimit doubles the model's output limit once, capped by its ceiling;
 // false when the limit is unknown, already raised or at the cap.
 func (r *run) raiseOutputLimit() bool {
-	if r.counters.OutputLimit > 0 {
+	if r.state.OutputLimit > 0 {
 		return false
 	}
 	limiter, ok := r.task.Model.(providers.OutputLimiter)
@@ -65,6 +74,6 @@ func (r *run) raiseOutputLimit() bool {
 	if raised <= current {
 		return false
 	}
-	r.counters.OutputLimit = int(raised)
+	r.state.OutputLimit = int(raised)
 	return true
 }

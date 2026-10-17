@@ -119,7 +119,7 @@ func TestStreamErrorEventsCarryTypeAndRetryability(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), tc.kind) || !strings.Contains(err.Error(), "Went wrong") {
 			t.Fatalf("%s: error = %v", tc.kind, err)
 		}
-		if providers.IsRetryableGenerationError(err) != tc.retryable {
+		if isRetryable(err) != tc.retryable {
 			t.Fatalf("%s: retryable = %v, want %v", tc.kind, !tc.retryable, tc.retryable)
 		}
 	}
@@ -136,7 +136,7 @@ func TestOverloadedStatusIsRetryable(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = runtime.Generate(context.Background(), providers.Request{Messages: []providers.Message{{Role: "user", Content: "Hi"}}})
-	if !providers.IsRetryableGenerationError(err) || !strings.Contains(err.Error(), "Overloaded") {
+	if !isRetryable(err) || !strings.Contains(err.Error(), "Overloaded") {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -165,4 +165,9 @@ type failIfRead struct{ t *testing.T }
 func (r failIfRead) Read([]byte) (int, error) {
 	r.t.Error("read beyond message_stop")
 	return 0, io.ErrUnexpectedEOF
+}
+
+func isRetryable(err error) bool {
+	kind, _ := providers.ClassifyError(err)
+	return kind.Retryable()
 }

@@ -66,7 +66,7 @@ func TestAPIErrorKindFollowsCodeThenStatusThenWording(t *testing.T) {
 	} {
 		err := NewAPIError("p", tc.status, tc.code, tc.message, header)
 		kind, wait := ClassifyError(fmt.Errorf("wrapped: %w", err))
-		if err.Kind != tc.kind || kind != tc.kind || err.Retryable() != tc.retryable || IsRetryableGenerationError(err) != tc.retryable {
+		if err.Kind != tc.kind || kind != tc.kind || err.Retryable() != tc.retryable || isRetryable(err) != tc.retryable {
 			t.Errorf("%d %s %q: kind=%s retryable=%v, want %s %v", tc.status, tc.code, tc.message, err.Kind, err.Retryable(), tc.kind, tc.retryable)
 		}
 		if err.RetryAfter != 7*time.Second || wait != 7*time.Second {

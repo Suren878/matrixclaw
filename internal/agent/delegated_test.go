@@ -26,8 +26,8 @@ func TestTimeSpentOnlyInDelegatedCallsIsNotActiveTime(t *testing.T) {
 
 	outcome := run(t, f, model)
 
-	if outcome.Status != agent.StatusCompleted || outcome.Counters.Active != time.Minute {
-		t.Fatalf("outcome = %+v, active %v", outcome, outcome.Counters.Active)
+	if outcome.Status != agent.StatusCompleted || outcome.RunState.Active != time.Minute {
+		t.Fatalf("outcome = %+v, active %v", outcome, outcome.RunState.Active)
 	}
 }
 
@@ -66,7 +66,7 @@ func TestTimeADelegatedCallRunsAlongsideTheRunsOwnCallsIsActiveTime(t *testing.T
 
 	outcome := run(t, f, model)
 
-	if outcome.Status != agent.StatusCompleted || outcome.Counters.Active != time.Minute {
-		t.Fatalf("outcome = %+v, active %v", outcome, outcome.Counters.Active)
+	if outcome.Status != agent.StatusCompleted || outcome.RunState.Active != time.Minute {
+		t.Fatalf("outcome = %+v, active %v", outcome, outcome.RunState.Active)
 	}
 }

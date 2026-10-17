@@ -114,7 +114,7 @@ func TestGenerateReportsRateLimitsAsRetryable(t *testing.T) {
 		_, err = runtime.Generate(context.Background(), providers.Request{Messages: []providers.Message{{Role: "user", Content: "hi"}}})
 		server.Close()
 		var apiErr *providers.APIError
-		if !errors.As(err, &apiErr) || apiErr.Status != status || apiErr.RetryAfter != 2*time.Second || !providers.IsRetryableGenerationError(err) {
+		if !errors.As(err, &apiErr) || apiErr.Status != status || apiErr.RetryAfter != 2*time.Second || !isRetryable(err) {
 			t.Fatalf("%d: err=%v", status, err)
 		}
 	}

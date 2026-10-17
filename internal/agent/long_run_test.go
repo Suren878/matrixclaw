@@ -131,7 +131,7 @@ func TestProviderOverflowTeachesTheRunTheRealWindow(t *testing.T) {
 	if len(chunkLimits) == 0 || slices.Contains(chunkLimits, 0) {
 		t.Fatalf("chunked summary output limits = %v", chunkLimits)
 	}
-	learned := f.Journal.States[len(f.Journal.States)-1].Counters.LearnedLimit
+	learned := f.Journal.States[len(f.Journal.States)-1].RunState.LearnedLimit
 	if learned <= 0 || learned >= real {
 		t.Fatalf("checkpointed learned limit = %d", learned)
 	}

@@ -61,14 +61,14 @@ func TestHTTPClientTimesOutOnlyOnSilence(t *testing.T) {
 		}
 		defer func() { _ = res.Body.Close() }()
 		_, err = io.ReadAll(res.Body)
-		if !errors.Is(err, ErrStreamIdle) || !IsRetryableGenerationError(err) {
+		if !errors.Is(err, ErrStreamIdle) || !isRetryable(err) {
 			t.Fatalf("err=%v, want retryable ErrStreamIdle", err)
 		}
 	})
 
 	t.Run("missing headers fail with retryable timeout", func(t *testing.T) {
 		_, err := client.Get(server.URL + "/no-headers")
-		if err == nil || !IsRetryableGenerationError(err) {
+		if err == nil || !isRetryable(err) {
 			t.Fatalf("err=%v, want retryable header timeout", err)
 		}
 	})
@@ -92,7 +92,7 @@ func TestHTTPClientTimesOutOnlyOnSilence(t *testing.T) {
 		if errors.Is(err, ErrStreamIdle) {
 			t.Fatalf("err=%v, want not ErrStreamIdle", err)
 		}
-		if IsRetryableGenerationError(err) {
+		if isRetryable(err) {
 			t.Fatalf("err=%v, want not retryable", err)
 		}
 	})
@@ -143,4 +143,9 @@ func TestHighReasoningEffortWaitsLongerForASilentStream(t *testing.T) {
 			t.Errorf("effort %q: idle %s, want %s", effort, got, want)
 		}
 	}
+}
+
+func isRetryable(err error) bool {
+	kind, _ := ClassifyError(err)
+	return kind.Retryable()
 }

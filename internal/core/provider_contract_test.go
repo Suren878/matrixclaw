@@ -13,7 +13,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func TestReplyCutFourTimesInARowFailsTheRun(t *testing.T) {
+func TestReplyCutFourTimesInARowEndsWithAFinalTurn(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
@@ -28,14 +28,16 @@ func TestReplyCutFourTimesInARowFailsTheRun(t *testing.T) {
 	})})
 	session, run := saveCrashRecoveryRun(t, db, "cut-four", core.RunStatusAccepted, false)
 
-	err := app.ExecuteRun(context.Background(), run.ID)
-
-	if err == nil || err.Error() != "reply cut by the output limit 4 times in a row" {
-		t.Fatalf("error = %v", err)
+	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
+		t.Fatal(err)
 	}
-	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusFailed)
-	if calls != 4 {
-		t.Fatalf("model calls = %d, want 4", calls)
+
+	stored, err := db.GetRun(context.Background(), run.ID)
+	if err != nil || stored.Status != core.RunStatusCompleted || stored.StopReason != agent.StopBudgetExhausted {
+		t.Fatalf("run = %+v err = %v", stored, err)
+	}
+	if calls != 5 {
+		t.Fatalf("model calls = %d, want 4 cut replies and the final turn", calls)
 	}
 	parts, notes := 0, 0
 	for _, message := range sessionMessages(t, db, session.ID) {
@@ -46,8 +48,8 @@ func TestReplyCutFourTimesInARowFailsTheRun(t *testing.T) {
 			notes++
 		}
 	}
-	if parts != 4 || notes != 3 {
-		t.Fatalf("kept parts = %d continuation notes = %d, want 4 and 3", parts, notes)
+	if parts != 5 || notes != 4 {
+		t.Fatalf("kept parts = %d notes = %d, want 5 and 3 continuations plus the stop note", parts, notes)
 	}
 }
 

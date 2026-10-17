@@ -222,7 +222,7 @@ func (c *Core) writeOutcome(ctx context.Context, run Run, outcome agent.Outcome)
 	case agent.StatusWaitingApproval:
 		return false, c.transition(ctx, &run, runChange{To: RunStatusWaitingApproval})
 	case agent.StatusWaitingEvents:
-		return false, c.transition(ctx, &run, runChange{To: RunStatusWaitingEvents, Await: outcome.Counters.Await})
+		return false, c.transition(ctx, &run, runChange{To: RunStatusWaitingEvents, Await: outcome.RunState.Await})
 	case agent.StatusCanceled:
 		return false, c.sealCanceledReply(ctx, outcome.Assistant, outcome.AssistantSaved)
 	case agent.StatusFailed:
@@ -267,7 +267,7 @@ func (c *Core) applyInterruptedOutcome(run Run, outcome agent.Outcome) (bool, er
 			return false, c.transition(ctx, &latest, runChange{To: RunStatusWaitingApproval})
 		}
 	case agent.StatusWaitingEvents:
-		return false, c.transition(ctx, &latest, runChange{To: RunStatusWaitingEvents, Await: outcome.Counters.Await})
+		return false, c.transition(ctx, &latest, runChange{To: RunStatusWaitingEvents, Await: outcome.RunState.Await})
 	}
 	return true, c.sealInterruptedReply(ctx, outcome.Assistant, outcome.AssistantSaved)
 }

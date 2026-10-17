@@ -69,20 +69,21 @@ func TestCutReplyKeepsTheWhitespaceAtTheCut(t *testing.T) {
 	}
 }
 
-func TestFourthCutInARowFailsTheRun(t *testing.T) {
+func TestFourthCutInARowEndsWithAFinalTurn(t *testing.T) {
 	f := agenttest.NewFixture()
-	model := agenttest.NewScriptedModel(cut("part 1"), cut("part 2"), cut("part 3"), cut("part 4"))
+	model := agenttest.NewScriptedModel(cut("part 1"), cut("part 2"), cut("part 3"), cut("part 4"), text("Wrote four parts; the rest remains."))
 
 	outcome := run(t, f, model)
 
-	if outcome.Status != agent.StatusFailed || !outcome.MarkErrored || outcome.Assistant == nil || outcome.Assistant.Content != "part 4" {
+	if outcome.Status != agent.StatusCompleted || outcome.StopReason != agent.StopBudgetExhausted || outcome.Assistant.Content != "Wrote four parts; the rest remains." {
 		t.Fatalf("outcome = %+v", outcome)
 	}
-	if outcome.Err == nil || outcome.Err.Error() != "reply cut by the output limit 4 times in a row" {
-		t.Fatalf("error = %v", outcome.Err)
+	requests := model.Requests()
+	if len(requests) != 5 || requests[4].ToolChoice != providers.ToolChoiceNone {
+		t.Fatalf("requests = %d, want a tool-less final turn after the fourth cut", len(requests))
 	}
-	if len(model.Requests()) != 4 || len(engineNotes(f.Journal.Messages)) != 3 {
-		t.Fatalf("requests = %d notes = %d", len(model.Requests()), len(engineNotes(f.Journal.Messages)))
+	if note := lastMessage(requests[4]); !strings.Contains(note.Content, "4 times in a row") {
+		t.Fatalf("final turn ends with %+v", note)
 	}
 }
 
@@ -160,19 +161,19 @@ func TestCutReplyWithTextRaisesTheLimitBeforeContinuing(t *testing.T) {
 	}
 }
 
-func TestEmptyCutFailsWhenTheLimitCannotBeRaised(t *testing.T) {
+func TestEmptyCutThatCannotRaiseTheLimitTellsTheModel(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		model func() agent.Model
 		want  int
 	}{
 		{"second empty cut", func() agent.Model {
-			return limitedModel{ScriptedModel: agenttest.NewScriptedModel(cut(""), cut("")), current: 4000}
-		}, 2},
-		{"no output limit", func() agent.Model { return agenttest.NewScriptedModel(cut("")) }, 1},
+			return limitedModel{ScriptedModel: agenttest.NewScriptedModel(cut(""), cut(""), text("Done.")), current: 4000}
+		}, 3},
+		{"no output limit", func() agent.Model { return agenttest.NewScriptedModel(cut(""), text("Done.")) }, 2},
 		{"unknown ceiling already reached", func() agent.Model {
-			return limitedModel{ScriptedModel: agenttest.NewScriptedModel(cut("")), current: 32768}
-		}, 1},
+			return limitedModel{ScriptedModel: agenttest.NewScriptedModel(cut(""), text("Done.")), current: 32768}
+		}, 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := agenttest.NewFixture()
@@ -180,14 +181,34 @@ func TestEmptyCutFailsWhenTheLimitCannotBeRaised(t *testing.T) {
 
 			outcome := run(t, f, model)
 
-			if outcome.Status != agent.StatusFailed || outcome.Err == nil || outcome.Err.Error() != "reply cut by the output limit before any text" {
-				t.Fatalf("outcome = %+v", outcome)
+			requests := model.(interface{ Requests() []providers.Request }).Requests()
+			if outcome.Status != agent.StatusCompleted || len(requests) != tc.want {
+				t.Fatalf("outcome = %+v requests = %d, want %d", outcome, len(requests), tc.want)
 			}
-			requests := len(model.(interface{ Requests() []providers.Request }).Requests())
-			if requests != tc.want {
-				t.Fatalf("requests = %d, want %d", requests, tc.want)
+			if note := lastMessage(requests[len(requests)-1]); !strings.Contains(note.Content, "was dropped") {
+				t.Fatalf("last request ends with %+v, want the dropped-call note", note)
 			}
 		})
+	}
+}
+
+func TestToolStepCutByTheLimitRaisesItAndNotesTheDroppedCall(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["read"] = readTool
+	cutCalls := agenttest.Turn{Response: providers.Response{ToolCalls: []providers.ToolCall{call("r1", "read")}, StopReason: providers.StopMaxTokens}}
+	model := limitedModel{ScriptedModel: agenttest.NewScriptedModel(cutCalls, text("Done.")), current: 4000}
+
+	outcome := run(t, f, model)
+
+	requests := model.Requests()
+	if outcome.Status != agent.StatusCompleted || len(f.Tools.Calls) != 1 || requests[1].MaxOutputTokens != 8000 {
+		t.Fatalf("outcome = %+v calls = %d limit = %d", outcome, len(f.Tools.Calls), requests[1].MaxOutputTokens)
+	}
+	if split := agenttest.SplitToolPair(requests[1]); split != "" {
+		t.Fatal(split)
+	}
+	if note := lastMessage(requests[1]); note.Role != "user" || !strings.Contains(note.Content, "was dropped") {
+		t.Fatalf("second request ends with %+v, want the dropped-call note after the results", note)
 	}
 }
 

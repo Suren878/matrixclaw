@@ -120,7 +120,7 @@ func TestResumedRunDoesNotRepeatAnUnchangedContextNote(t *testing.T) {
 	f.Tools.Funcs["read"] = readTool
 	run(t, f, agenttest.NewScriptedModel(calls(call("c1", "read")), text("First.")))
 	task := f.Task(agenttest.NewScriptedModel(text("Second.")))
-	task.Resume = f.Journal.States[len(f.Journal.States)-1].Counters
+	task.Resume = f.Journal.States[len(f.Journal.States)-1].RunState
 
 	runTask(t, f, task)
 

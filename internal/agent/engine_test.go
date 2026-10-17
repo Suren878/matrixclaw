@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -465,22 +466,119 @@ func TestEmptyRepliesAreRetriedTwiceAndRecorded(t *testing.T) {
 	if len(f.Journal.Steps) != 3 {
 		t.Fatalf("recorded steps = %d, want every generation (3)", len(f.Journal.Steps))
 	}
-	if fmt.Sprint(f.Slept) != "[200ms 750ms]" {
-		t.Fatalf("backoffs = %v", f.Slept)
+	if len(f.Slept) != 2 || f.Slept[0] < 500*time.Millisecond || f.Slept[0] > time.Second || f.Slept[1] < time.Second || f.Slept[1] > 2*time.Second {
+		t.Fatalf("backoffs = %v, want about 1s then 2s with jitter", f.Slept)
 	}
 }
 
-func TestPartialOutputIsNotRetried(t *testing.T) {
+func TestTransientFailuresGiveUpAfterSixAttempts(t *testing.T) {
 	f := agenttest.NewFixture()
-	model := agenttest.NewScriptedModel(agenttest.Turn{Stream: []string{"Unfinished"}, Err: providers.ErrIncompleteResponse})
+	turns := make([]agenttest.Turn, 7)
+	for i := range turns {
+		turns[i] = agenttest.Turn{Err: providers.ErrIncompleteResponse}
+	}
+	model := agenttest.NewScriptedModel(turns...)
 
 	outcome := run(t, f, model)
 
-	if outcome.Status != agent.StatusFailed || !outcome.MarkErrored || !outcome.AssistantSaved || outcome.Assistant.Content != "Unfinished" || !errors.Is(outcome.Err, providers.ErrIncompleteResponse) {
-		t.Fatalf("outcome = %+v", outcome)
+	if outcome.Status != agent.StatusFailed || !errors.Is(outcome.Err, providers.ErrIncompleteResponse) || len(model.Requests()) != 6 || len(f.Slept) != 5 {
+		t.Fatalf("outcome = %+v requests = %d slept = %v", outcome, len(model.Requests()), f.Slept)
 	}
-	if len(model.Requests()) != 1 {
-		t.Fatalf("requests = %d", len(model.Requests()))
+}
+
+func TestReplyFailingMidStreamIsSealedAndGeneratedAgain(t *testing.T) {
+	f := agenttest.NewFixture()
+	model := agenttest.NewScriptedModel(agenttest.Turn{Stream: []string{"Unfinished"}, Err: providers.ErrIncompleteResponse}, agenttest.Turn{Stream: []string{"Done."}, Response: providers.Response{Text: "Done."}})
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != "Done." || len(model.Requests()) != 2 {
+		t.Fatalf("outcome = %+v requests = %d", outcome, len(model.Requests()))
+	}
+	partial := f.Journal.Messages[1]
+	if partial.Content != "Unfinished" || !hasFinish(partial, transcript.FinishReasonDaemonRestart) {
+		t.Fatalf("partial = %+v, want it kept and sealed", partial)
+	}
+	if outcome.Assistant.ID == partial.ID {
+		t.Fatal("the retry wrote over the sealed partial")
+	}
+	follow := agenttest.NewScriptedModel(text("Next."))
+	f.Journal.Seed(transcript.Message{ID: "msg_user_2", SessionID: agenttest.SessionID, RunID: agenttest.RunID, Role: transcript.MessageRoleUser, Content: "again", Parts: transcript.NormalizeMessageParts("again", nil)})
+	run(t, f, follow)
+	for _, message := range follow.Requests()[0].Messages {
+		if strings.Contains(message.Content, "Unfinished") {
+			t.Fatalf("a later request replays the sealed partial: %+v", message)
+		}
+	}
+}
+
+func TestPartialOutputThatCannotBeRetriedFailsTheRun(t *testing.T) {
+	f := agenttest.NewFixture()
+	model := agenttest.NewScriptedModel(agenttest.Turn{Stream: []string{"Unfinished"}, Err: errors.New("bad request")})
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusFailed || !outcome.MarkErrored || !outcome.AssistantSaved || outcome.Assistant.Content != "Unfinished" || len(model.Requests()) != 1 {
+		t.Fatalf("outcome = %+v requests = %d", outcome, len(model.Requests()))
+	}
+}
+
+func TestMalformedToolCallGoesBackToTheModel(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["read"] = readTool
+	malformed := agenttest.Turn{Stream: []string{"Reading"}, Err: fmt.Errorf("anthropic: tool call \"read\" has malformed input JSON: %w", providers.ErrMalformedToolCall)}
+	model := agenttest.NewScriptedModel(malformed, calls(call("r1", "read")), text("Done."))
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != "Done." || len(f.Tools.Calls) != 1 || len(f.Slept) != 0 {
+		t.Fatalf("outcome = %+v calls = %d slept = %v", outcome, len(f.Tools.Calls), f.Slept)
+	}
+	if note := lastMessage(model.Requests()[1]); note.Role != "user" || !strings.Contains(note.Content, "malformed input JSON") {
+		t.Fatalf("second request ends with %+v, want the decoding error", note)
+	}
+	if partial := f.Journal.Messages[1]; !hasFinish(partial, transcript.FinishReasonDaemonRestart) {
+		t.Fatalf("partial = %+v, want it sealed", partial)
+	}
+}
+
+func TestRepeatedMalformedToolCallsFailTheRun(t *testing.T) {
+	f := agenttest.NewFixture()
+	malformed := agenttest.Turn{Err: providers.ErrMalformedToolCall}
+	model := agenttest.NewScriptedModel(malformed, malformed, malformed, malformed)
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusFailed || !errors.Is(outcome.Err, providers.ErrMalformedToolCall) || len(model.Requests()) != 4 {
+		t.Fatalf("outcome = %+v requests = %d", outcome, len(model.Requests()))
+	}
+}
+
+func TestToolCallWithInvalidArgumentsIsAnsweredWithAnError(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["read"] = readTool
+	bad := providers.ToolCall{ID: "r1", Name: "read", Arguments: []byte(`{"path": "a.go`)}
+	model := agenttest.NewScriptedModel(calls(bad, call("r2", "read")), text("Done."))
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted || len(f.Tools.Calls) != 1 || f.Tools.Calls[0].ToolCallID != "r2" {
+		t.Fatalf("outcome = %+v calls = %+v", outcome, f.Tools.Calls)
+	}
+	result, ok := f.Journal.Result("r1")
+	if !ok || !result.Parts[0].ToolResult.IsError() || !strings.Contains(result.Content, `{"path": "a.go`) {
+		t.Fatalf("result = %+v, want an error quoting the arguments", result)
+	}
+	second := model.Requests()[1]
+	if split := agenttest.SplitToolPair(second); split != "" {
+		t.Fatal(split)
+	}
+	for _, message := range second.Messages {
+		for _, toolCall := range message.ToolCalls {
+			if !json.Valid(toolCall.Arguments) {
+				t.Fatalf("request replays invalid arguments %q", toolCall.Arguments)
+			}
+		}
 	}
 }
 
@@ -706,7 +804,7 @@ func TestCancelWhileStreamingSealsThePartialReply(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if streamErr == nil || streamErr.Error() != "run canceled" || attempts != 1 {
+	if !errors.Is(streamErr, agent.ErrCanceled) || attempts != 1 {
 		t.Fatalf("stream error = %v attempts = %d", streamErr, attempts)
 	}
 	if outcome.Status != agent.StatusCanceled || !outcome.AssistantSaved || outcome.Assistant.Content != "Partial" {

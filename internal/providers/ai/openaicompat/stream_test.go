@@ -116,8 +116,8 @@ func TestDecodeStreamTypesProviderErrors(t *testing.T) {
 		{`{"error":{"code":400,"message":"bad request"}}`, false},
 	} {
 		_, err := (&Runtime{}).decodeStream(context.Background(), strings.NewReader("data: "+tc.frame+"\n\n"))
-		if err == nil || providers.IsRetryableGenerationError(err) != tc.retryable {
-			t.Fatalf("%s: err = %v, retryable = %v; want %v", tc.frame, err, providers.IsRetryableGenerationError(err), tc.retryable)
+		if err == nil || isRetryable(err) != tc.retryable {
+			t.Fatalf("%s: err = %v, retryable = %v; want %v", tc.frame, err, isRetryable(err), tc.retryable)
 		}
 	}
 }
@@ -143,4 +143,9 @@ func TestDecodeStreamAcceptsGatewayToolCallQuirks(t *testing.T) {
 	if want := []string{"ls {}", `read {"path":"x"}`, `read {"path":"y"}`}; strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("tool calls = %q, want %q", got, want)
 	}
+}
+
+func isRetryable(err error) bool {
+	kind, _ := providers.ClassifyError(err)
+	return kind.Retryable()
 }

@@ -129,8 +129,13 @@ func TestStreamTypesProviderErrors(t *testing.T) {
 		{`{"type":"error","message":"bad input","code":"invalid_request_error"}`, false},
 	} {
 		_, err := (&Runtime{}).decodeStream(context.Background(), strings.NewReader("data: "+tc.event+"\n\n"))
-		if err == nil || providers.IsRetryableGenerationError(err) != tc.retryable {
-			t.Fatalf("%s: err = %v, retryable = %v; want %v", tc.event, err, providers.IsRetryableGenerationError(err), tc.retryable)
+		if err == nil || isRetryable(err) != tc.retryable {
+			t.Fatalf("%s: err = %v, retryable = %v; want %v", tc.event, err, isRetryable(err), tc.retryable)
 		}
 	}
+}
+
+func isRetryable(err error) bool {
+	kind, _ := providers.ClassifyError(err)
+	return kind.Retryable()
 }

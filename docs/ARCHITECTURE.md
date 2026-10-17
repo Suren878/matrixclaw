@@ -166,9 +166,8 @@ run). External-agent runs keep their own recovery in core.
 
 `internal/agent` is the loop: steps, budget (steps, active time, tokens) and a
 final turn without tools, loop guard, output-limit continuation, completion
-check for open todo items, context notes, summaries. It knows nothing of
-SQLite, HTTP or clients and talks to core through ports
-(`internal/agent/ports.go`):
+checks, context notes, summaries. It knows nothing of SQLite, HTTP or clients
+and talks to core through ports (`internal/agent/ports.go`):
 
 | Port | Core adapter | Purpose |
 |---|---|---|
@@ -180,6 +179,31 @@ SQLite, HTTP or clients and talks to core through ports
 | `Sink` | `coreSink` | live events to clients |
 | `Prompts` | `corePrompts` | fixed system prompt per run; changing state as a context note |
 | `Todos` | `coreTodos` | open todo items of the run's `/continue` chain |
+
+What the engine remembers between steps (`agent.RunState`) is checkpointed with
+the phase, so a parked or restarted run keeps it. How a step can go wrong:
+
+- **Generation failures** go through one `withRetry`, shared with summaries:
+  up to 6 attempts, doubling jittered waits (from 2 s for rate limits),
+  Retry-After honoured, at most 2 minutes of waiting in all. A reply that fails
+  while streaming is sealed (finish reason `daemon_restart`, never replayed) and
+  generated again. A malformed tool call goes back to the model as a note (three
+  in a row fail the run); a call whose arguments are not JSON is journaled with
+  `{}` and answered with an error.
+- **Output limit:** a cut reply is kept and continued, with the limit raised
+  once; a cut tool step runs its complete calls and tells the model a cut call
+  was dropped. The fourth cut in a row turns the next step into the final turn (stop reason
+  `budget_exhausted`).
+- **Loop guard:** the most repeated (tool, arguments, result) among the last 20
+  calls warns at 3 and stops the run at 5, whatever the order inside a batch.
+- **Completion checks:** a reply without tools is held back once while the
+  run's todo list has open items, and once when the run changed files (edit
+  tools, or a bash command that writes files) after its last successful
+  build, test, lint or type-check command; only while budget remains and the
+  run has bash.
+- **Reasoning text:** a reasoning block the reply opens with, or a closed one
+  starting a later line, is stripped as the reply streams; code fences are left
+  alone.
 
 While a native run is active the engine is the only writer of its session's
 transcript; everything else reaches it through the inbox. Messages are ordered
