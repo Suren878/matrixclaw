@@ -37,7 +37,7 @@ func registerLocalContextWindows(ctx context.Context, cfg providers.RuntimeConfi
 }
 
 func shouldProbeLocalContext(cfg providers.RuntimeConfig, baseURL string) bool {
-	hint := strings.ToLower(strings.TrimSpace(cfg.ProviderID + " " + cfg.CatalogID + " " + baseURL))
+	hint := strings.ToLower(strings.TrimSpace(cfg.ProviderID + " " + baseURL))
 	if strings.Contains(hint, "ollama") || strings.Contains(hint, "lm-studio") || strings.Contains(hint, "lmstudio") || strings.Contains(hint, "llama.cpp") || strings.Contains(hint, "local") {
 		return true
 	}
@@ -161,8 +161,7 @@ func registerDiscoveredContextWindow(cfg providers.RuntimeConfig, model string, 
 	if tokens <= 0 {
 		return
 	}
-	providers.RegisterContextWindowTokens(cfg.ProviderID, providers.TypeOpenAICompat, model, tokens)
-	providers.RegisterContextWindowTokens(cfg.CatalogID, providers.TypeOpenAICompat, model, tokens)
+	providers.RegisterContextWindowTokens(cfg.ProviderID, model, tokens)
 }
 
 func parseOllamaNumCtx(parameters string) int {

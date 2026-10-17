@@ -7,7 +7,6 @@ func init() {
 			ID:              "gemini",
 			Name:            "Google Gemini",
 			Type:            TypeGemini,
-			Implemented:     true,
 			RequiresBaseURL: true,
 			Capabilities: Capabilities{
 				ModelDiscovery: true,
@@ -20,8 +19,7 @@ func init() {
 			APIKeyEnv:      "GEMINI_API_KEY",
 			Notes:          "Uses Google's native Gemini generateContent API.",
 		},
-		Aliases:   []string{"google-gemini"},
-		Auth:      ProviderAuthAPIKey,
-		Transport: ProviderTransportGeminiNative,
+		Aliases: []string{"google-gemini"},
+		Auth:    ProviderAuthAPIKey,
 	})
 }

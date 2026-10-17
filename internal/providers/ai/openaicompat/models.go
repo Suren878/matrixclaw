@@ -15,14 +15,11 @@ import (
 func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, error) {
 	base := providers.NewRuntimeBase(cfg, providers.TypeOpenAICompat, "")
 	client, apiKey, baseURL := base.Client, base.APIKey, base.BaseURL
-	policy := providers.PolicyForProvider(cfg.CatalogKey(), providers.TypeOpenAICompat)
-	modelsURL := strings.TrimSpace(policy.ModelsURL)
-	if modelsURL == "" {
-		if baseURL == "" {
-			return nil, errors.New("openaicompat: base url is required")
-		}
-		modelsURL = strings.TrimRight(baseURL, "/") + "/models"
+	policy := providers.PolicyForProvider(cfg.ProviderID, providers.TypeOpenAICompat)
+	if baseURL == "" {
+		return nil, errors.New("openaicompat: base url is required")
 	}
+	modelsURL := strings.TrimRight(baseURL, "/") + "/models"
 	if apiKey == "" && !policy.PublicModelCatalog {
 		return nil, errors.New("openaicompat: api key is required")
 	}
@@ -35,7 +32,7 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	req.Header.Set("Accept", "application/json")
-	chatOptions := providers.ResolveOpenAIChatOptions(cfg.CatalogKey(), baseURL, base.Model)
+	chatOptions := providers.ResolveOpenAIChatOptions(cfg.ProviderID, baseURL, base.Model)
 	applyDefaultHeaders(req, chatOptions.Headers)
 
 	res, err := client.Do(req)
@@ -126,8 +123,7 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 				metadata.ToolCalling = &toolCalling
 				metadata.ReasoningEffort = &reasoningEffort
 			}
-			providers.RegisterModelMetadata(cfg.ProviderID, providers.TypeOpenAICompat, id, metadata)
-			providers.RegisterModelMetadata(cfg.CatalogID, providers.TypeOpenAICompat, id, metadata)
+			providers.RegisterModelMetadata(cfg.ProviderID, id, metadata)
 			models = append(models, id)
 		}
 	}

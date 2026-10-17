@@ -270,7 +270,7 @@ func (r *Runtime) chatPayload(ctx context.Context, request providers.Request) ch
 		markContentCacheBreakpoints(payload.Messages)
 	}
 
-	maxTokens := providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.MaxOutputTokens, r.MetadataID, providers.TypeOpenAICompat, r.Model)
+	maxTokens := providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.MaxOutputTokens, r.ProviderID, providers.TypeOpenAICompat, r.Model)
 	if capTokens, omit := r.learnedMaxTokensLimit(); !omit {
 		if capTokens > 0 && capTokens < maxTokens {
 			maxTokens = capTokens
@@ -288,7 +288,7 @@ func (r *Runtime) chatPayload(ctx context.Context, request providers.Request) ch
 	if r.promptCacheKey {
 		payload.PromptCacheKey = strings.TrimSpace(request.CacheKey)
 	}
-	if r.reasoningEffort != "" && (len(payload.Tools) == 0 || r.Capabilities.ReasoningWithTools) {
+	if r.reasoningEffort != "" && (len(payload.Tools) == 0 || r.Capabilities.ToolCalling) {
 		payload.ReasoningEffort = r.reasoningEffort
 	}
 	if providers.TextStreamFromContext(ctx) != nil {

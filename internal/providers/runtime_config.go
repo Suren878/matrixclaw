@@ -7,10 +7,10 @@ import (
 	"strings"
 )
 
-// RuntimeConfig is what every adapter is built from.
+// RuntimeConfig is what every adapter is built from. ProviderID is the
+// configured provider's canonical id; learned model metadata is kept under it.
 type RuntimeConfig struct {
 	ProviderID      string
-	CatalogID       string
 	Type            string
 	APIKey          string
 	BaseURL         string
@@ -21,11 +21,6 @@ type RuntimeConfig struct {
 	HTTPClient      *http.Client
 }
 
-// CatalogKey names the catalog entry the provider was set up from.
-func (c RuntimeConfig) CatalogKey() string {
-	return cmp.Or(strings.TrimSpace(c.CatalogID), strings.TrimSpace(c.ProviderID))
-}
-
 // RuntimeBase is the state every adapter keeps and the answers it gives the
 // same way; adapters embed it.
 type RuntimeBase struct {
@@ -34,25 +29,23 @@ type RuntimeBase struct {
 	BaseURL         string
 	Model           string
 	MaxOutputTokens int64
-	// MetadataID is the provider ID learned model metadata is kept under.
-	MetadataID   string
-	ProviderType string
-	Capabilities ModelCapabilities
+	ProviderID      string
+	ProviderType    string
+	Capabilities    ModelCapabilities
 }
 
 // NewRuntimeBase trims cfg, applies the adapter's defaults and resolves the
 // model's capabilities; a user who disabled tool use gets no tool calling.
 func NewRuntimeBase(cfg RuntimeConfig, providerType string, defaultModel string) RuntimeBase {
 	model := cmp.Or(strings.TrimSpace(cfg.Model), defaultModel)
+	providerID := NormalizeProviderID(cfg.ProviderID)
 	capabilities := ResolveModelCapabilities(ModelCapabilityInput{
-		ProviderID:   cfg.CatalogKey(),
+		ProviderID:   providerID,
 		ProviderType: providerType,
 		ModelID:      model,
 	}).RuntimeCapabilities
 	if NormalizeOptionalToolUseMode(cfg.ToolUseMode) == ToolUseDisabled {
 		capabilities.ToolCalling = false
-		capabilities.ParallelToolCalls = false
-		capabilities.ReasoningWithTools = false
 	}
 	client := cfg.HTTPClient
 	if client == nil {
@@ -64,7 +57,7 @@ func NewRuntimeBase(cfg RuntimeConfig, providerType string, defaultModel string)
 		BaseURL:         strings.TrimSpace(cfg.BaseURL),
 		Model:           model,
 		MaxOutputTokens: cfg.MaxOutputTokens,
-		MetadataID:      cmp.Or(strings.TrimSpace(cfg.ProviderID), strings.TrimSpace(cfg.CatalogID)),
+		ProviderID:      providerID,
 		ProviderType:    providerType,
 		Capabilities:    capabilities,
 	}
@@ -92,6 +85,6 @@ func (b *RuntimeBase) ModelCapabilities() ModelCapabilities {
 // CatalogOutputLimits is OutputLimits for an adapter that sends the configured
 // or catalog limit as is.
 func (b *RuntimeBase) CatalogOutputLimits() (int64, int64) {
-	current := ResolveMaxOutputTokens(0, b.MaxOutputTokens, b.MetadataID, b.ProviderType, b.Model)
-	return current, int64(ResolveModelMetadata(b.MetadataID, b.ProviderType, b.Model).MaxOutputTokens)
+	current := ResolveMaxOutputTokens(0, b.MaxOutputTokens, b.ProviderID, b.ProviderType, b.Model)
+	return current, int64(ResolveModelMetadata(b.ProviderID, b.ProviderType, b.Model).MaxOutputTokens)
 }

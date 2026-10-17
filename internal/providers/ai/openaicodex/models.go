@@ -1,6 +1,7 @@
 package openaicodex
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -40,7 +41,7 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return nil, fmt.Errorf("openai-codex: %s", decodeError(raw))
 	}
-	models, err := decodeModels(raw)
+	models, err := decodeModels(cmp.Or(cfg.ProviderID, providerID), raw)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +51,7 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 	return models, nil
 }
 
-func decodeModels(raw []byte) ([]string, error) {
+func decodeModels(providerID string, raw []byte) ([]string, error) {
 	var payload struct {
 		Data   []modelItem `json:"data"`
 		Models []modelItem `json:"models"`
@@ -65,13 +66,13 @@ func decodeModels(raw []byte) ([]string, error) {
 	values := make([]string, 0, len(payload.Data)+len(payload.Models))
 	for _, item := range payload.Data {
 		if id := item.modelID(); id != "" {
-			providers.RegisterContextWindowTokens("openai-codex", providers.TypeOpenAICodex, id, item.contextWindowTokens())
+			providers.RegisterContextWindowTokens(providerID, id, item.contextWindowTokens())
 			values = append(values, id)
 		}
 	}
 	for _, item := range payload.Models {
 		if id := item.modelID(); id != "" {
-			providers.RegisterContextWindowTokens("openai-codex", providers.TypeOpenAICodex, id, item.contextWindowTokens())
+			providers.RegisterContextWindowTokens(providerID, id, item.contextWindowTokens())
 			values = append(values, id)
 		}
 	}

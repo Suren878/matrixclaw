@@ -3,8 +3,8 @@ package providers
 import "testing"
 
 func TestResolveMaxOutputTokensOrder(t *testing.T) {
-	RegisterModelMetadata("maxout-test", TypeOpenAICompat, "small-output-model", ModelMetadataRegistration{MaxOutputTokens: 8192})
-	RegisterModelMetadata("maxout-test", TypeOpenAICompat, "large-output-model", ModelMetadataRegistration{MaxOutputTokens: 128000})
+	RegisterModelMetadata("maxout-test", "small-output-model", ModelMetadataRegistration{MaxOutputTokens: 8192})
+	RegisterModelMetadata("maxout-test", "large-output-model", ModelMetadataRegistration{MaxOutputTokens: 128000})
 	for _, tc := range []struct {
 		name       string
 		requested  int

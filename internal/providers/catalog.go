@@ -36,10 +36,8 @@ var openAIReasoningEfforts = []string{
 
 type CatalogEntry struct {
 	ID              string          `json:"id"`
-	CatalogID       string          `json:"catalog_id,omitempty"`
 	Name            string          `json:"name"`
 	Type            string          `json:"type"`
-	Implemented     bool            `json:"implemented"`
 	RequiresBaseURL bool            `json:"requires_base_url"`
 	Capabilities    Capabilities    `json:"capabilities"`
 	DefaultBaseURL  string          `json:"default_base_url,omitempty"`

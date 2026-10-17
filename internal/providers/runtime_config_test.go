@@ -17,7 +17,7 @@ func TestAnthropicModelsCallToolsNatively(t *testing.T) {
 
 func TestDisabledToolUseTurnsToolCallingOff(t *testing.T) {
 	base := NewRuntimeBase(RuntimeConfig{ProviderID: "anthropic", ToolUseMode: ToolUseDisabled}, TypeAnthropic, DefaultAnthropicModel)
-	if base.Capabilities.ToolCalling || base.Capabilities.ParallelToolCalls || base.Capabilities.ReasoningWithTools {
+	if base.Capabilities.ToolCalling {
 		t.Fatalf("capabilities = %+v, want no tool use", base.Capabilities)
 	}
 }

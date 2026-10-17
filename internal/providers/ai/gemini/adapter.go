@@ -82,8 +82,7 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 			if supportsGenerateContent(item.SupportedGenerationMethods) {
 				if name := strings.TrimSpace(item.Name); name != "" {
 					metadata := providers.ModelMetadataRegistration{ContextWindow: item.InputTokenLimit, MaxOutputTokens: item.OutputTokenLimit}
-					providers.RegisterModelMetadata(cfg.ProviderID, providers.TypeGemini, name, metadata)
-					providers.RegisterModelMetadata(cfg.CatalogID, providers.TypeGemini, name, metadata)
+					providers.RegisterModelMetadata(cfg.ProviderID, providers.NormalizeModelID(cfg.ProviderID, providers.TypeGemini, name), metadata)
 					models = append(models, name)
 				}
 			}
@@ -136,7 +135,7 @@ func (r *Runtime) generatePayload(request providers.Request) generateContentRequ
 	payload := generateContentRequest{
 		Contents: make([]geminiContent, 0, len(request.Messages)),
 		GenerationConfig: &generationConfig{
-			MaxOutputTokens: providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.MaxOutputTokens, r.MetadataID, providers.TypeGemini, r.Model),
+			MaxOutputTokens: providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.MaxOutputTokens, r.ProviderID, providers.TypeGemini, r.Model),
 		},
 	}
 	if systemPrompt := strings.TrimSpace(request.SystemPrompt); systemPrompt != "" {

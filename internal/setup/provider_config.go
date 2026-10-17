@@ -83,9 +83,6 @@ func (p ProviderConfig) validate() error {
 		return errors.New("provider id is required")
 	}
 	policy := p.policy()
-	if policy.Known && !policy.Implemented {
-		return fmt.Errorf("provider %q is listed but not implemented yet", policy.Name)
-	}
 	if !policy.Known {
 		if !isCustomProviderType(p.Type) {
 			return fmt.Errorf("unsupported custom provider type %q", p.Type)
@@ -118,9 +115,6 @@ func NewProviderConfig(providerID string, providerType string, name string) (Pro
 		return ProviderConfig{}, errors.New("provider id is required")
 	}
 	if policy := providers.PolicyForProvider(providerID, ""); policy.Known {
-		if !policy.Implemented {
-			return ProviderConfig{}, fmt.Errorf("provider %q is listed but not implemented yet", policy.Name)
-		}
 		return ProviderConfig{ID: policy.CatalogID}, nil
 	}
 	providerType = providers.NormalizeOptionalProviderType(providerType)
@@ -255,9 +249,7 @@ func ProviderItems(cfg Config) []ProviderSetupItem {
 		add(provider, true, false)
 	}
 	for _, spec := range providers.ProviderSpecs() {
-		if spec.Entry.Implemented {
-			add(ProviderConfig{ID: spec.Entry.ID}, false, false)
-		}
+		add(ProviderConfig{ID: spec.Entry.ID}, false, false)
 	}
 	return items
 }

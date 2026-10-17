@@ -2,6 +2,7 @@ package openaicodex
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,15 +15,16 @@ import (
 	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
+// providerID is the catalog id of the Codex subscription provider.
+const providerID = "openai-codex"
+
 type Runtime struct {
 	providers.RuntimeBase
 	reasoningEffort string
 }
 
 func New(_ context.Context, cfg providers.RuntimeConfig) (providers.Runtime, error) {
-	if cfg.CatalogKey() == "" {
-		cfg.CatalogID = "openai-codex"
-	}
+	cfg.ProviderID = cmp.Or(cfg.ProviderID, providerID)
 	cfg.BaseURL = strings.TrimRight(textutil.FirstNonEmpty(cfg.BaseURL, DefaultBaseURL), "/")
 	base := providers.NewRuntimeBase(cfg, providers.TypeOpenAICodex, providers.DefaultOpenAICodexModel)
 	reasoningEffort := ""
@@ -184,7 +186,7 @@ func (r *Runtime) responsesPayload(request providers.Request) responsesRequest {
 		Model:             r.Model,
 		Input:             make([]responsesItem, 0, len(request.Messages)),
 		Tools:             encodeResponsesTools(request.Tools),
-		ParallelToolCalls: r.Capabilities.ParallelToolCalls,
+		ParallelToolCalls: r.Capabilities.ToolCalling,
 		Store:             false,
 		PromptCacheKey:    strings.TrimSpace(request.CacheKey),
 		Stream:            true,
@@ -193,7 +195,7 @@ func (r *Runtime) responsesPayload(request providers.Request) responsesRequest {
 	if request.ToolChoice == providers.ToolChoiceNone && len(payload.Tools) > 0 {
 		payload.ToolChoice = string(providers.ToolChoiceNone)
 	}
-	if r.reasoningEffort != "" && (len(payload.Tools) == 0 || r.Capabilities.ReasoningWithTools) {
+	if r.reasoningEffort != "" && (len(payload.Tools) == 0 || r.Capabilities.ToolCalling) {
 		payload.Reasoning = &responsesReasoning{Effort: r.reasoningEffort}
 		payload.Include = []string{"reasoning.encrypted_content"}
 	}

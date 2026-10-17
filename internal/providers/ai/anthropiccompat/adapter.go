@@ -82,8 +82,7 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 	for _, item := range payload.Data {
 		if id := strings.TrimSpace(item.ID); id != "" {
 			metadata := providers.ModelMetadataRegistration{ContextWindow: item.MaxInputTokens, MaxOutputTokens: item.MaxTokens}
-			providers.RegisterModelMetadata(cfg.ProviderID, providers.TypeAnthropic, id, metadata)
-			providers.RegisterModelMetadata(cfg.CatalogID, providers.TypeAnthropic, id, metadata)
+			providers.RegisterModelMetadata(cfg.ProviderID, id, metadata)
 			models = append(models, id)
 		}
 	}
@@ -96,7 +95,7 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 func (r *Runtime) Generate(ctx context.Context, request providers.Request) (providers.Response, error) {
 	payload := anthropicRequest{
 		Model:     r.Model,
-		MaxTokens: providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.MaxOutputTokens, r.MetadataID, providers.TypeAnthropic, r.Model),
+		MaxTokens: providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.MaxOutputTokens, r.ProviderID, providers.TypeAnthropic, r.Model),
 	}
 	if err := encodeRequest(&payload, request); err != nil {
 		return providers.Response{}, err

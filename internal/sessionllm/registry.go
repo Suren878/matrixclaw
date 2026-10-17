@@ -29,7 +29,6 @@ type Registry struct {
 
 type ProviderSpec struct {
 	ID              string
-	CatalogID       string
 	Name            string
 	Type            string
 	APIKey          string
@@ -54,10 +53,9 @@ func New(activeProviderID string, providerSpecs []ProviderSpec) *Registry {
 			continue
 		}
 		provider.ID = id
-		provider.CatalogID = providers.NormalizeProviderID(provider.CatalogID)
 		provider.Type = providers.NormalizeOptionalProviderType(provider.Type)
 		provider.Model = strings.TrimSpace(provider.Model)
-		reg.providers[id] = provider
+		reg.providers[providers.CanonicalProviderID(id)] = provider
 		reg.order = append(reg.order, id)
 	}
 	if reg.activeID == "" && len(reg.order) > 0 {
@@ -114,7 +112,7 @@ func (r *Registry) Normalize(providerID string, modelID string) (core.SessionPro
 	if resolvedModel == "" {
 		resolvedModel = strings.TrimSpace(cfg.Model)
 	}
-	resolvedModel = providers.NormalizeModelID(cfg.CatalogID, cfg.Type, resolvedModel)
+	resolvedModel = providers.NormalizeModelID(cfg.ID, cfg.Type, resolvedModel)
 	if resolvedModel == "" {
 		return core.SessionProviderOption{}, "", fmt.Errorf("provider %q has no model", cfg.ID)
 	}
@@ -130,12 +128,11 @@ func (r *Registry) Models(ctx context.Context, providerID string) ([]string, err
 		return nil, fmt.Errorf("%w: %q", ErrProviderNotConfigured, strings.TrimSpace(providerID))
 	}
 	models, err := discovery.Models(ctx, discovery.ModelDiscoveryInput{
-		ID:        cfg.ID,
-		CatalogID: cfg.CatalogID,
-		Type:      cfg.Type,
-		BaseURL:   cfg.BaseURL,
-		APIKey:    cfg.APIKey,
-		Model:     cfg.Model,
+		ID:      cfg.ID,
+		Type:    cfg.Type,
+		BaseURL: cfg.BaseURL,
+		APIKey:  cfg.APIKey,
+		Model:   cfg.Model,
 	})
 	if err != nil {
 		return nil, err
@@ -189,33 +186,13 @@ func (r *Registry) resolveProvider(providerID string) (ProviderSpec, bool) {
 }
 
 func (r *Registry) lookup(providerID string) (ProviderSpec, bool) {
-	providerID = strings.TrimSpace(providerID)
-	cfg, ok := r.providers[providerID]
-	if ok {
-		return cfg, true
-	}
-	canonicalID := providers.CanonicalProviderID(providerID)
-	if canonicalID == "" || canonicalID == providerID {
-		return ProviderSpec{}, false
-	}
-	for _, id := range r.order {
-		cfg, ok := r.providers[id]
-		if !ok {
-			continue
-		}
-		for _, candidate := range []string{cfg.ID, cfg.CatalogID} {
-			if providers.CanonicalProviderID(candidate) == canonicalID {
-				return cfg, true
-			}
-		}
-	}
-	return ProviderSpec{}, false
+	cfg, ok := r.providers[providers.CanonicalProviderID(providerID)]
+	return cfg, ok
 }
 
 func runtimeConfigWithModel(provider ProviderSpec, model string) providers.RuntimeConfig {
 	return providers.RuntimeConfig{
 		ProviderID:      provider.ID,
-		CatalogID:       provider.CatalogID,
 		Type:            provider.Type,
 		APIKey:          provider.APIKey,
 		BaseURL:         provider.BaseURL,
