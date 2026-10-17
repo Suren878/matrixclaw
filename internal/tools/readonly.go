@@ -1,34 +1,20 @@
 package tools
 
-// MaxReadBytes is the largest file the read tool opens.
+// MaxReadBytes is the largest file grep searches.
 const MaxReadBytes = 5 * 1024 * 1024
 
 const (
 	namespaceCoreFilesystem = "core.filesystem"
 	namespaceCoreShell      = "core.shell"
 	namespaceCoreWeb        = "core.web"
-	readToolName            = "read"
 	globToolName            = "glob"
 	grepToolName            = "grep"
 	lsToolName              = "ls"
-	defaultReadLimit        = 2000
 	defaultSearchLimit      = 100
 	defaultListDepth        = 3
 	maxListEntries          = 1000
 	maxRenderedLineWidth    = 500
 )
-
-type ReadParams struct {
-	FilePath string `json:"file_path"`
-	Offset   int    `json:"offset,omitempty"`
-	Limit    int    `json:"limit,omitempty"`
-}
-
-type ReadResponseMetadata struct {
-	FilesystemPathMetadata
-	FilePath string `json:"file_path"`
-	Content  string `json:"content"`
-}
 
 type GlobParams struct {
 	Pattern string `json:"pattern"`
@@ -80,19 +66,13 @@ type TreeNode struct {
 	Children []*TreeNode `json:"children,omitempty"`
 }
 
-type readExecutor struct{}
 type globExecutor struct{}
 type grepExecutor struct{}
 type lsExecutor struct{}
 
-func NewReadExecutor() Executor { return &readExecutor{} }
 func NewGlobExecutor() Executor { return &globExecutor{} }
 func NewGrepExecutor() Executor { return &grepExecutor{} }
 func NewLSExecutor() Executor   { return &lsExecutor{} }
-
-func (e *readExecutor) Spec() Spec {
-	return coreDefinitionSpec(readToolName)
-}
 
 func (e *globExecutor) Spec() Spec {
 	return coreDefinitionSpec(globToolName)

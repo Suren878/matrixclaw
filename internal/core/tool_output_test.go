@@ -180,28 +180,6 @@ func TestSmallToolOutputStaysInline(t *testing.T) {
 	}
 }
 
-func TestOutputTooLargeForReadPointsToGrep(t *testing.T) {
-	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
-	defer cleanup()
-	root := t.TempDir()
-	huge := strings.Repeat("output line\n", 500_000)
-	app.WithSessionFiles(root)
-	app.WithTools(tools.NewRegistry(outputTool{spec: recoveryToolSpec("dump", tools.EffectReadOnly), content: huge}))
-	session, _ := saveCrashRecoveryRun(t, db, "huge_output", core.RunStatusCompleted, false)
-
-	result, err := app.ExecuteTool(context.Background(), core.ExecuteToolInput{SessionID: session.ID, ToolName: "dump", Args: json.RawMessage(`{}`)})
-
-	if err != nil || result.ToolResultMessage == nil {
-		t.Fatalf("ExecuteTool = %+v err = %v", result, err)
-	}
-	part := result.ToolResultMessage.Parts[0].ToolResult
-	pointer, _, _ := strings.Cut(part.Content, "\n")
-	if part.OutputPath == "" || !strings.Contains(pointer, "grep") || strings.Contains(pointer, "read it") {
-		t.Fatalf("pointer = %q", pointer)
-	}
-}
-
 func TestLargeToolErrorIsKeptInASessionFile(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)

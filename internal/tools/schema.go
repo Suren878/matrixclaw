@@ -10,9 +10,9 @@ var (
 	readInputSchema = rawSchema(`{
   "type": "object",
   "properties": {
-    "file_path": {"type": "string"},
-    "offset": {"type": "integer", "minimum": 0},
-    "limit": {"type": "integer", "minimum": 1}
+    "file_path": {"type": "string", "description": "Absolute path, or relative to the working directory."},
+    "offset": {"type": "integer", "minimum": 0, "description": "Number of lines to skip (0 = start). To start at line N pass N-1; to read on, pass the offset the previous result names."},
+    "limit": {"type": "integer", "minimum": 1, "description": "Maximum lines to return (default 2000; a page also stops at about 24 KB)."}
   },
   "required": ["file_path"],
   "additionalProperties": false
@@ -49,8 +49,8 @@ var (
 	writeInputSchema = rawSchema(`{
   "type": "object",
   "properties": {
-    "file_path": {"type": "string"},
-    "content": {"type": "string"}
+    "file_path": {"type": "string", "description": "Absolute path, or relative to the working directory."},
+    "content": {"type": "string", "description": "The complete new content of the file."}
   },
   "required": ["file_path", "content"],
   "additionalProperties": false
@@ -58,9 +58,9 @@ var (
 	editOperationSchema = `{
     "type": "object",
     "properties": {
-      "old_string": {"type": "string"},
-      "new_string": {"type": "string"},
-      "replace_all": {"type": "boolean"}
+      "old_string": {"type": "string", "description": "Text to replace, as in the file at this point of the edits."},
+      "new_string": {"type": "string", "description": "Replacement text; must differ from old_string."},
+      "replace_all": {"type": "boolean", "description": "Replace every occurrence instead of exactly one."}
     },
     "required": ["old_string", "new_string"],
     "additionalProperties": false
@@ -68,10 +68,10 @@ var (
 	editInputSchema = rawSchema(`{
   "type": "object",
   "properties": {
-    "file_path": {"type": "string"},
-    "old_string": {"type": "string"},
-    "new_string": {"type": "string"},
-    "replace_all": {"type": "boolean"}
+    "file_path": {"type": "string", "description": "Absolute path, or relative to the working directory."},
+    "old_string": {"type": "string", "description": "Exact text to replace, copied from read output without the line-number prefix. Empty only to fill an empty file."},
+    "new_string": {"type": "string", "description": "Replacement text; must differ from old_string."},
+    "replace_all": {"type": "boolean", "description": "Replace every occurrence (for example renaming a variable within the file); matches byte for byte only."}
   },
   "required": ["file_path", "old_string", "new_string"],
   "additionalProperties": false
@@ -79,9 +79,10 @@ var (
 	multiEditInputSchema = rawSchema(`{
   "type": "object",
   "properties": {
-    "file_path": {"type": "string"},
+    "file_path": {"type": "string", "description": "Absolute path, or relative to the working directory."},
     "edits": {
       "type": "array",
+      "description": "Replacements applied in order, each to the result of the one before.",
       "items": ` + editOperationSchema + `,
       "minItems": 1
     }

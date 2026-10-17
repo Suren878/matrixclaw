@@ -119,7 +119,8 @@ func (r *Registry) Execute(ctx context.Context, toolID string, call Call) (Resul
 }
 
 // Preview is the approval a call of the tool shows: the tool's own preview, or
-// else the call's arguments. An error from the tool is the call's error result.
+// else the call's arguments. An error from the tool is the call's result:
+// neutral for a change that would change nothing, else an error.
 func (r *Registry) Preview(ctx context.Context, toolID string, call Call) (ApprovalRequest, *Result) {
 	r.mu.RLock()
 	registered, ok := r.executors[normalizeToolID(toolID)]
@@ -132,10 +133,13 @@ func (r *Registry) Preview(ctx context.Context, toolID string, call Call) (Appro
 		return ApprovalRequest{Description: "Run " + registered.spec.ID, Params: call.Args}, nil
 	}
 	request, err := previewer.Preview(ctx, call)
+	var unchanged unchangedError
 	switch {
 	case errors.Is(err, ErrInvalidArgs):
 		result := invalidArgsResult(toolID, err)
 		return ApprovalRequest{}, &result
+	case errors.As(err, &unchanged):
+		return ApprovalRequest{}, &Result{Content: unchanged.reason, Status: ResultStatusNeutral}
 	case err != nil:
 		return ApprovalRequest{}, &Result{Content: err.Error(), Status: ResultStatusError}
 	}
