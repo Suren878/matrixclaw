@@ -148,7 +148,7 @@ func TestActiveTimeBudgetCountsTheRunsWorkingTime(t *testing.T) {
 	}
 }
 
-func TestResumedCountersKeepTheBudget(t *testing.T) {
+func TestResumedStateKeepsTheBudget(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["wait"] = func(tools.Call) tools.Result {
 		f.Clock = f.Clock.Add(10 * time.Minute)
@@ -157,7 +157,7 @@ func TestResumedCountersKeepTheBudget(t *testing.T) {
 	model := agenttest.NewScriptedModel(calls(call("w1", "wait")), text("Out of time."))
 	task := f.Task(model)
 	task.Budget = agent.Budget{Steps: 10, ActiveTime: 25 * time.Minute}
-	task.Resume = agent.Counters{Steps: 4, Active: 20 * time.Minute}
+	task.Resume = agent.RunState{Steps: 4, Active: 20 * time.Minute}
 
 	outcome := runTask(t, f, task)
 
@@ -165,9 +165,9 @@ func TestResumedCountersKeepTheBudget(t *testing.T) {
 	if outcome.StopReason != agent.StopBudgetExhausted || len(requests) != 2 || requests[1].ToolChoice != providers.ToolChoiceNone {
 		t.Fatalf("outcome = %+v requests = %d", outcome, len(requests))
 	}
-	last := f.Journal.States[len(f.Journal.States)-1].Counters
+	last := f.Journal.States[len(f.Journal.States)-1].RunState
 	if last.Steps != 5 || last.Active != 30*time.Minute || !last.WrapUpSent {
-		t.Fatalf("last checkpoint counters = %+v", last)
+		t.Fatalf("last checkpoint state = %+v", last)
 	}
 }
 
@@ -254,7 +254,7 @@ func TestRestartedFinalTurnDoesNotRepeatTheStopNote(t *testing.T) {
 	}
 
 	task.Model = agenttest.NewScriptedModel(text("Read one file."))
-	task.Resume = f.Journal.States[len(f.Journal.States)-1].Counters
+	task.Resume = f.Journal.States[len(f.Journal.States)-1].RunState
 	outcome := runTask(t, f, task)
 
 	if outcome.StopReason != agent.StopBudgetExhausted || len(engineNotes(f.Journal.Messages)) != 1 {
@@ -277,7 +277,7 @@ func TestFinalTurnCutByARestartDoesNotRepeatTheStopNote(t *testing.T) {
 	})
 
 	task.Model = agenttest.NewScriptedModel(text("Read one file."))
-	task.Resume = f.Journal.States[len(f.Journal.States)-1].Counters
+	task.Resume = f.Journal.States[len(f.Journal.States)-1].RunState
 	outcome := runTask(t, f, task)
 
 	if outcome.StopReason != agent.StopBudgetExhausted || len(engineNotes(f.Journal.Messages)) != 1 {
@@ -285,7 +285,7 @@ func TestFinalTurnCutByARestartDoesNotRepeatTheStopNote(t *testing.T) {
 	}
 }
 
-func TestCheckpointsCarryTheRunCounters(t *testing.T) {
+func TestCheckpointsCarryTheRunState(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["read"] = readTool
 	model := agenttest.NewScriptedModel(
@@ -298,7 +298,7 @@ func TestCheckpointsCarryTheRunCounters(t *testing.T) {
 	if got := phases(f.Journal.States); got != "model,tool_batch:c1,model" {
 		t.Fatalf("checkpoints = %s", got)
 	}
-	if tool := f.Journal.States[1].Counters; tool.Steps != 1 || tool.Tokens != 15 {
-		t.Fatalf("tool checkpoint counters = %+v", tool)
+	if tool := f.Journal.States[1].RunState; tool.Steps != 1 || tool.Tokens != 15 {
+		t.Fatalf("tool checkpoint state = %+v", tool)
 	}
 }

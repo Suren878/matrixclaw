@@ -3,56 +3,31 @@ package providers
 import "sort"
 
 type ProviderAuthMode string
-type ProviderTransport string
 
 const (
-	ProviderAuthAPIKey   ProviderAuthMode = "api_key"
-	ProviderAuthOAuth    ProviderAuthMode = "oauth"
-	ProviderAuthExternal ProviderAuthMode = "external"
-)
-
-const (
-	ProviderTransportOpenAIChat       ProviderTransport = "openai_chat"
-	ProviderTransportOpenAIResponses  ProviderTransport = "openai_responses"
-	ProviderTransportAnthropicMessage ProviderTransport = "anthropic_messages"
-	ProviderTransportGeminiNative     ProviderTransport = "gemini_native"
+	ProviderAuthAPIKey ProviderAuthMode = "api_key"
+	ProviderAuthOAuth  ProviderAuthMode = "oauth"
 )
 
 type ProviderSpec struct {
-	Order               int
-	Entry               CatalogEntry
-	Aliases             []string
-	Auth                ProviderAuthMode
-	Transport           ProviderTransport
-	RuntimeProviderType string
-	ModelsURL           string
-	PublicModelCatalog  bool
-	ChatHeaders         map[string]string // extra headers of an OpenAI-compatible chat endpoint
+	Order              int
+	Entry              CatalogEntry
+	Aliases            []string
+	Auth               ProviderAuthMode
+	PublicModelCatalog bool
+	ChatHeaders        map[string]string // extra headers of an OpenAI-compatible chat endpoint
 }
 
 var providerSpecs []ProviderSpec
 
 func registerProvider(spec ProviderSpec) {
 	spec.Entry.ID = NormalizeProviderID(spec.Entry.ID)
-	spec.Entry.CatalogID = NormalizeProviderID(spec.Entry.CatalogID)
 	spec.Entry.Type = NormalizeProviderType(spec.Entry.Type)
-	if spec.Entry.CatalogID == "" {
-		spec.Entry.CatalogID = spec.Entry.ID
-	}
 	if spec.Entry.ID == "" || spec.Entry.Name == "" || spec.Entry.Type == "" {
 		panic("providers: provider spec requires id, name, and type")
 	}
 	if spec.Auth == "" {
 		spec.Auth = ProviderAuthAPIKey
-	}
-	if spec.Transport == "" {
-		spec.Transport = defaultProviderTransport(spec.Entry.Type)
-	}
-	if spec.Transport == ProviderTransportOpenAIResponses && spec.RuntimeProviderType == "" {
-		panic("providers: openai_responses transport requires explicit runtime provider type")
-	}
-	if spec.RuntimeProviderType == "" {
-		spec.RuntimeProviderType = RuntimeProviderTypeForTransport(spec.Transport, spec.Entry.Type)
 	}
 	ids := append([]string{spec.Entry.ID}, spec.Aliases...)
 	for _, existing := range providerSpecs {
@@ -100,28 +75,4 @@ func ProviderSpecByID(providerID string) (ProviderSpec, bool) {
 		}
 	}
 	return ProviderSpec{}, false
-}
-
-func RuntimeProviderTypeForTransport(transport ProviderTransport, providerType string) string {
-	switch transport {
-	case ProviderTransportAnthropicMessage:
-		return TypeAnthropic
-	case ProviderTransportGeminiNative:
-		return TypeGemini
-	default:
-		return NormalizeProviderType(providerType)
-	}
-}
-
-func defaultProviderTransport(providerType string) ProviderTransport {
-	switch NormalizeProviderType(providerType) {
-	case TypeOpenAICodex:
-		return ProviderTransportOpenAIResponses
-	case TypeAnthropic:
-		return ProviderTransportAnthropicMessage
-	case TypeGemini:
-		return ProviderTransportGeminiNative
-	default:
-		return ProviderTransportOpenAIChat
-	}
 }

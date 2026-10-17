@@ -9,182 +9,29 @@ import (
 	"testing"
 )
 
-func TestReadExecutorBlocksMatrixclawSetupCredentials(t *testing.T) {
-	dir := t.TempDir()
-	setupPath := filepath.Join(dir, "setup.json")
-	secret := "private-provider-key"
-	if err := os.WriteFile(setupPath, []byte(`{"api_key":"`+secret+`"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("MATRIXCLAW_SETUP_PATH", setupPath)
+const credentialSecret = "private-provider-key"
 
-	result := executeReadForTest(t, setupPath, dir)
-	if !result.IsError() {
-		t.Fatalf("result = %#v, want protected-file error", result)
-	}
-	if strings.Contains(result.Content, secret) {
-		t.Fatalf("protected credential leaked in result: %q", result.Content)
-	}
+// protectForTest registers places as credentials for the test only.
+func protectForTest(t *testing.T, places ...string) {
+	t.Helper()
+	credentials.mu.Lock()
+	saved := credentials.sources
+	credentials.mu.Unlock()
+	ProtectCredentials(func() []string { return places })
+	t.Cleanup(func() {
+		credentials.mu.Lock()
+		credentials.sources = saved
+		credentials.mu.Unlock()
+	})
 }
 
-func TestReadExecutorBlocksSetupSymlink(t *testing.T) {
-	dir := t.TempDir()
-	setupPath := filepath.Join(dir, "setup.json")
-	if err := os.WriteFile(setupPath, []byte(`{"api_key":"private-provider-key"}`), 0o600); err != nil {
+func writeSecret(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	linkPath := filepath.Join(dir, "provider.json")
-	if err := os.Symlink(setupPath, linkPath); err != nil {
+	if err := os.WriteFile(path, []byte(`{"api_key":"`+credentialSecret+`"}`), 0o600); err != nil {
 		t.Fatal(err)
-	}
-	t.Setenv("MATRIXCLAW_SETUP_PATH", setupPath)
-
-	result := executeReadForTest(t, linkPath, dir)
-	if !result.IsError() {
-		t.Fatalf("result = %#v, want protected-file error", result)
-	}
-}
-
-func TestReadExecutorBlocksDaemonEnvironmentCredentials(t *testing.T) {
-	dir := t.TempDir()
-	setupPath := filepath.Join(dir, "setup.json")
-	envPath := filepath.Join(dir, "daemon.env")
-	secret := "private-provider-key"
-	if err := os.WriteFile(envPath, []byte("PRIVATE_PROVIDER_API_KEY="+secret), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("MATRIXCLAW_SETUP_PATH", setupPath)
-
-	result := executeReadForTest(t, envPath, dir)
-	if !result.IsError() {
-		t.Fatalf("result = %#v, want protected-file error", result)
-	}
-	if strings.Contains(result.Content, secret) {
-		t.Fatalf("protected credential leaked in result: %q", result.Content)
-	}
-}
-
-func TestReadExecutorBlocksSetupCredentialBackup(t *testing.T) {
-	dir := t.TempDir()
-	setupPath := filepath.Join(dir, "setup.json")
-	backupPath := setupPath + ".before-upgrade"
-	if err := os.WriteFile(backupPath, []byte(`{"api_key":"private-provider-key"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("MATRIXCLAW_SETUP_PATH", setupPath)
-
-	result := executeReadForTest(t, backupPath, dir)
-	if !result.IsError() {
-		t.Fatalf("result = %#v, want protected-file error", result)
-	}
-}
-
-func TestReadExecutorBlocksLegacyMatrixclawCredentials(t *testing.T) {
-	dir := t.TempDir()
-	dataDir := filepath.Join(dir, "share")
-	legacyPath := filepath.Join(dataDir, "matrixclaw", "matrixclaw.json")
-	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(legacyPath, []byte(`{"daemon":{"clients":{"telegram":{"bot_token":"private-bot-token"}}}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("XDG_DATA_HOME", dataDir)
-
-	result := executeReadForTest(t, legacyPath, dir)
-	if !result.IsError() {
-		t.Fatalf("result = %#v, want protected-file error", result)
-	}
-}
-
-func TestReadExecutorBlocksLegacyProviderCredentials(t *testing.T) {
-	dir := t.TempDir()
-	dataDir := filepath.Join(dir, "share")
-	providersPath := filepath.Join(dataDir, "matrixclaw", "providers.json")
-	if err := os.MkdirAll(filepath.Dir(providersPath), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(providersPath, []byte(`[{"api_key":"private-provider-key"}]`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("XDG_DATA_HOME", dataDir)
-
-	result := executeReadForTest(t, providersPath, dir)
-	if !result.IsError() {
-		t.Fatalf("result = %#v, want protected-file error", result)
-	}
-}
-
-func TestReadExecutorAllowsUnrelatedSetupFile(t *testing.T) {
-	dir := t.TempDir()
-	protectedPath := filepath.Join(dir, "private", "setup.json")
-	projectPath := filepath.Join(dir, "project", "setup.json")
-	if err := os.MkdirAll(filepath.Dir(projectPath), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(projectPath, []byte(`{"example":true}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("MATRIXCLAW_SETUP_PATH", protectedPath)
-
-	result := executeReadForTest(t, projectPath, dir)
-	if result.IsError() {
-		t.Fatalf("result = %#v, want ordinary file content", result)
-	}
-	if !strings.Contains(result.Content, `"example":true`) {
-		t.Fatalf("content = %q, want ordinary setup content", result.Content)
-	}
-}
-
-func TestGrepExecutorSkipsMatrixclawSetupCredentials(t *testing.T) {
-	dir := t.TempDir()
-	setupPath := filepath.Join(dir, "setup.json")
-	secret := "private-provider-key"
-	if err := os.WriteFile(setupPath, []byte(`{"api_key":"`+secret+`"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "public.txt"), []byte("public-marker"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("MATRIXCLAW_SETUP_PATH", setupPath)
-
-	args, err := json.Marshal(GrepParams{Pattern: "private-provider-key|public-marker", Path: dir})
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := NewGrepExecutor().Execute(context.Background(), Call{WorkingDir: dir, Args: args})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.IsError() {
-		t.Fatalf("result = %#v, want safe search results", result)
-	}
-	if strings.Contains(result.Content, secret) {
-		t.Fatalf("protected credential leaked in grep result: %q", result.Content)
-	}
-	if !strings.Contains(result.Content, "public-marker") {
-		t.Fatalf("content = %q, want public match", result.Content)
-	}
-}
-
-func TestGrepExecutorBlocksDirectCredentialSearch(t *testing.T) {
-	dir := t.TempDir()
-	setupPath := filepath.Join(dir, "setup.json")
-	if err := os.WriteFile(setupPath, []byte(`{"api_key":"private-provider-key"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("MATRIXCLAW_SETUP_PATH", setupPath)
-
-	args, err := json.Marshal(GrepParams{Pattern: "api_key", Path: setupPath})
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := NewGrepExecutor().Execute(context.Background(), Call{WorkingDir: dir, Args: args})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsError() {
-		t.Fatalf("result = %#v, want protected-file error", result)
 	}
 }
 
@@ -194,32 +41,67 @@ func executeReadForTest(t *testing.T, path string, workingDir string) Result {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := NewReadExecutor().Execute(context.Background(), Call{WorkingDir: workingDir, Args: args})
+	result, err := NewRegistry(CoreExecutors()...).Execute(context.Background(), readToolName, Call{WorkingDir: workingDir, Args: args})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return result
 }
 
-func TestReadExecutorBlocksAgentLoginTokens(t *testing.T) {
+func TestReadRefusesRegisteredCredentials(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
-	t.Setenv("CODEX_HOME", filepath.Join(dir, "codex"))
-	t.Setenv("HOME", dir)
+	setupPath := filepath.Join(dir, "config", "setup.json")
+	authDir := filepath.Join(dir, "auth")
+	protectForTest(t, setupPath, authDir)
+	link := filepath.Join(dir, "provider.json")
+	writeSecret(t, setupPath)
+	if err := os.Symlink(setupPath, link); err != nil {
+		t.Fatal(err)
+	}
 	for _, path := range []string{
-		filepath.Join(dir, "state", "matrixclaw", "auth", "openai-codex.json"),
-		filepath.Join(dir, "state", "matrixclaw", "auth", "other.json"),
-		filepath.Join(dir, "codex", "auth.json"),
-		filepath.Join(dir, ".claude", ".credentials.json"),
+		setupPath,
+		setupPath + ".before-upgrade",
+		link,
+		filepath.Join(authDir, "openai-codex.json"),
 	} {
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			t.Fatal(err)
+		writeSecret(t, path)
+		if result := executeReadForTest(t, path, dir); !result.IsError() || strings.Contains(result.Content, credentialSecret) {
+			t.Fatalf("%s: result = %#v, want a refusal", path, result)
 		}
-		if err := os.WriteFile(path, []byte(`{"tokens":{"refresh_token":"refresh-token-secret"}}`), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if result := executeReadForTest(t, path, dir); !result.IsError() || strings.Contains(result.Content, "refresh-token-secret") {
-			t.Fatalf("%s: result = %#v, want protected-file error", path, result)
-		}
+	}
+	if result := runMutation(t, dir, "write", WriteParams{FilePath: filepath.Join(authDir, "new.json"), Content: "{}"}); !result.IsError() {
+		t.Fatalf("write into credentials: %#v", result)
+	}
+}
+
+func TestReadAllowsAFileNamedLikeACredential(t *testing.T) {
+	dir := t.TempDir()
+	protectForTest(t, filepath.Join(dir, "private", "setup.json"))
+	projectPath := filepath.Join(dir, "project", "setup.json")
+	if err := os.MkdirAll(filepath.Dir(projectPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(projectPath, []byte(`{"example":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if result := executeReadForTest(t, projectPath, dir); result.IsError() || !strings.Contains(result.Content, `"example":true`) {
+		t.Fatalf("result = %#v, want the file", result)
+	}
+}
+
+func TestGrepSkipsAndRefusesCredentials(t *testing.T) {
+	dir := t.TempDir()
+	setupPath := filepath.Join(dir, "setup.json")
+	writeSecret(t, setupPath)
+	protectForTest(t, setupPath)
+	if err := os.WriteFile(filepath.Join(dir, "public.txt"), []byte("public-marker"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result := runSearchTool(t, NewGrepExecutor(), dir, GrepParams{Pattern: credentialSecret + "|public-marker", Path: dir})
+	if result.IsError() || strings.Contains(result.Content, credentialSecret) || !strings.Contains(result.Content, "public-marker") {
+		t.Fatalf("search = %#v, want the public match only", result)
+	}
+	if result := runSearchTool(t, NewGrepExecutor(), dir, GrepParams{Pattern: "api_key", Path: setupPath}); !result.IsError() {
+		t.Fatalf("direct search = %#v, want a refusal", result)
 	}
 }

@@ -15,15 +15,12 @@ import (
 func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, error) {
 	base := providers.NewRuntimeBase(cfg, providers.TypeOpenAICompat, "")
 	client, apiKey, baseURL := base.Client, base.APIKey, base.BaseURL
-	policy := providers.PolicyForProvider(cfg.CatalogKey(), providers.TypeOpenAICompat)
-	modelsURL := strings.TrimSpace(policy.ModelsURL)
-	if modelsURL == "" {
-		if baseURL == "" {
-			return nil, errors.New("openaicompat: base url is required")
-		}
-		modelsURL = strings.TrimRight(baseURL, "/") + "/models"
+	policy := providers.PolicyForProvider(cfg.ProviderID, providers.TypeOpenAICompat)
+	if baseURL == "" {
+		return nil, errors.New("openaicompat: base url is required")
 	}
-	if apiKey == "" && !policy.PublicModelCatalog {
+	modelsURL := strings.TrimRight(baseURL, "/") + "/models"
+	if apiKey == "" && !policy.PublicModelCatalog && !providers.IsLoopbackURL(baseURL) {
 		return nil, errors.New("openaicompat: api key is required")
 	}
 
@@ -35,7 +32,7 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	req.Header.Set("Accept", "application/json")
-	chatOptions := providers.ResolveOpenAIChatOptions(cfg.CatalogKey(), baseURL, base.Model)
+	chatOptions := providers.ResolveOpenAIChatOptions(cfg.ProviderID, baseURL, base.Model)
 	applyDefaultHeaders(req, chatOptions.Headers)
 
 	res, err := client.Do(req)
@@ -50,10 +47,10 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 	}
 
 	if res.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("openaicompat: model listing unavailable: %s", decodeOpenAIError(res.StatusCode, body))
+		return nil, fmt.Errorf("model listing unavailable: %w", responseError(res, body))
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return nil, fmt.Errorf("openaicompat: %s", decodeOpenAIError(res.StatusCode, body))
+		return nil, responseError(res, body)
 	}
 
 	var payload struct {
@@ -126,15 +123,14 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 				metadata.ToolCalling = &toolCalling
 				metadata.ReasoningEffort = &reasoningEffort
 			}
-			providers.RegisterModelMetadata(cfg.ProviderID, providers.TypeOpenAICompat, id, metadata)
-			providers.RegisterModelMetadata(cfg.CatalogID, providers.TypeOpenAICompat, id, metadata)
+			providers.RegisterModelMetadata(cfg.ProviderID, id, metadata)
 			models = append(models, id)
 		}
 	}
 	if len(models) == 0 {
 		return nil, fmt.Errorf("openaicompat: no models available")
 	}
-	if baseURL != "" && apiKey != "" {
+	if baseURL != "" {
 		registerLocalContextWindows(ctx, cfg, client, baseURL, apiKey, models)
 	}
 	return models, nil

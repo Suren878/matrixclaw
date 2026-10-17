@@ -77,7 +77,7 @@ type chatCompletionResponse struct {
 }
 
 type chatCompletionChunk struct {
-	Error   *chunkError `json:"error,omitempty"`
+	Error   *openAIError `json:"error,omitempty"`
 	Choices []struct {
 		FinishReason string `json:"finish_reason"`
 		Delta        struct {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -136,7 +137,11 @@ func serverTransport(cfg ServerConfig) sdk.Transport {
 		return &sdk.StreamableClientTransport{Endpoint: cfg.Endpoint}
 	}
 	cmd := exec.Command(cfg.Command, cfg.Args...)
-	cmd.Env = append(os.Environ(), envPairs(cfg.Env)...)
+	environ := cfg.Environ
+	if environ == nil {
+		environ = os.Environ()
+	}
+	cmd.Env = append(slices.Clone(environ), envPairs(cfg.Env)...)
 	procsup.Prepare(cmd)
 	return &sdk.CommandTransport{Command: cmd}
 }

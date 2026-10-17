@@ -18,13 +18,16 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	ID         string
-	Name       string
-	Enabled    bool
-	Transport  string
-	Command    string
-	Args       []string
-	Env        map[string]string
+	ID        string
+	Name      string
+	Enabled   bool
+	Transport string
+	Command   string
+	Args      []string
+	Env       map[string]string
+	// Environ is the environment of a stdio server before Env; nil inherits
+	// the daemon's.
+	Environ    []string
 	Endpoint   string
 	ToolPrefix string
 	ReadOnly   bool

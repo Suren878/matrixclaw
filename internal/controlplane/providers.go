@@ -91,7 +91,7 @@ func (d *Dispatcher) useProvider(ctx context.Context, session *core.Session, pro
 
 func isOpenAICodexProvider(provider setup.ProviderSetupItem) bool {
 	policy := providers.PolicyForProvider(provider.ID, provider.Type)
-	return policy.AuthMode == providers.ProviderAuthOAuth && policy.RuntimeProviderType == providers.TypeOpenAICodex
+	return policy.AuthMode == providers.ProviderAuthOAuth && policy.Type == providers.TypeOpenAICodex
 }
 
 func openAICodexAuthInfo() string {

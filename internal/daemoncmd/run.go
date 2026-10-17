@@ -5,7 +5,9 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/api"
@@ -22,6 +24,8 @@ import (
 	openairealtime "github.com/Suren878/matrixclaw/internal/modules/voice/realtime/providers/openai"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/safego"
+	"github.com/Suren878/matrixclaw/internal/setup"
+	"github.com/Suren878/matrixclaw/internal/shelltask"
 	"github.com/Suren878/matrixclaw/internal/skills"
 	"github.com/Suren878/matrixclaw/internal/store"
 )
@@ -116,13 +120,15 @@ func Run(ctx context.Context) error {
 		APIToken:   bootstrap.APIToken,
 	})
 	app.WithRuntimeStatusContext(supervisor)
+	app.WithCommandEnvironment(commandEnvironment(bootstrap.Setup, supervisor.appliedConfig))
 	supervisor.SetExternalAgents(sqliteStore, externalRuntimes, bootstrap.Setup.Modules.ExternalAgents)
 	defer func() {
 		// Ending the lifetime interrupts the executing runs and keeps them for
-		// recovery; they finish writing before modules, external agents and
-		// the store close.
+		// recovery; they finish writing, and background commands are stopped,
+		// before modules, external agents and the store close.
 		stopLifetime()
 		app.WaitRuns()
+		app.StopShellTasks()
 		supervisor.CloseExternalAgents()
 		_ = daemon.set.Close()
 	}()
@@ -185,4 +191,23 @@ func skillsConfigFromBootstrap(bootstrap bootstrapConfig) skills.Config {
 		AutoInvoke:  cfg.IsAutoInvoke(),
 		TrustPolicy: cfg.TrustPolicy,
 	}
+}
+
+// loginShellTimeout bounds the one login shell that reads the profile's
+// environment for commands.
+const loginShellTimeout = 10 * time.Second
+
+// commandEnvironment is the environment of the agent's shell commands: the
+// login environment, read once at the first command, without the keys and
+// daemon variables of the setup applied at that time.
+func commandEnvironment(boot setup.Config, applied func() setup.Config) func() []string {
+	login := sync.OnceValue(func() []string {
+		env, err := shelltask.LoginEnvironment(setup.ChildEnvironment(boot, os.Environ()), loginShellTimeout)
+		if err != nil {
+			log.Printf("matrixclawd: read the login shell environment, commands get the daemon's: %v", err)
+			return os.Environ()
+		}
+		return env
+	})
+	return func() []string { return setup.ChildEnvironment(applied(), login()) }
 }

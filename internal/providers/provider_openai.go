@@ -7,7 +7,6 @@ func init() {
 			ID:              "openai",
 			Name:            "OpenAI",
 			Type:            TypeOpenAICompat,
-			Implemented:     true,
 			RequiresBaseURL: true,
 			Capabilities: Capabilities{
 				ModelDiscovery:  true,
@@ -20,9 +19,7 @@ func init() {
 			APIKeyEnv:      "OPENAI_API_KEY",
 			Notes:          "Standard OpenAI endpoint through the generic OpenAI-compatible path.",
 		},
-		Auth:                ProviderAuthAPIKey,
-		Transport:           ProviderTransportOpenAIChat,
-		RuntimeProviderType: TypeOpenAICompat,
+		Auth: ProviderAuthAPIKey,
 	})
 	registerProvider(ProviderSpec{
 		Order: 20,
@@ -30,7 +27,6 @@ func init() {
 			ID:              "openai-codex",
 			Name:            "OpenAI Codex Subscription",
 			Type:            TypeOpenAICodex,
-			Implemented:     true,
 			RequiresBaseURL: false,
 			Capabilities: Capabilities{
 				ModelDiscovery:  true,
@@ -42,8 +38,6 @@ func init() {
 			DefaultModel:   DefaultOpenAICodexModel,
 			Notes:          "Uses ChatGPT/Codex subscription OAuth through the Codex backend, not OpenAI API-key billing.",
 		},
-		Auth:                ProviderAuthOAuth,
-		Transport:           ProviderTransportOpenAIResponses,
-		RuntimeProviderType: TypeOpenAICodex,
+		Auth: ProviderAuthOAuth,
 	})
 }

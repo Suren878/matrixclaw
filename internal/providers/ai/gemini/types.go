@@ -98,5 +98,9 @@ type geminiModelsResponse struct {
 type geminiErrorEnvelope struct {
 	Error struct {
 		Message string `json:"message"`
+		Status  string `json:"status"`
+		Details []struct {
+			RetryDelay string `json:"retryDelay"`
+		} `json:"details"`
 	} `json:"error"`
 }

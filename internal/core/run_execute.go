@@ -71,7 +71,7 @@ func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
 	if err != nil {
 		return err
 	}
-	c.carryCounters(ctx, session.ID, outcome.Counters)
+	c.carryState(ctx, session.ID, outcome.RunState)
 	kept, err = c.applyOutcome(ctx, run, outcome)
 	return err
 }
@@ -118,12 +118,12 @@ func (c *Core) rescheduleInterruptedRun(runID string) {
 }
 
 // nativeEngine builds the engine and task of one native run; the task resumes the
-// counters of the run's checkpoint, or else those the session's last run carried.
+// state of the run's checkpoint, or else what the session's last run carried.
 func (c *Core) nativeEngine(ctx context.Context, claimed claimedRun, session Session, runtime providers.Runtime, model string) (agent.Task, *agent.Engine, error) {
 	run := claimed.Run
-	resume, err := c.resumeCounters(ctx, run.ID)
-	if err == nil && resume == (agent.Counters{}) {
-		resume, err = c.carriedCounters(ctx, session.ID)
+	resume, err := c.resumeState(ctx, run.ID)
+	if err == nil && resume == (agent.RunState{}) {
+		resume, err = c.carriedState(ctx, session.ID)
 	}
 	if err != nil {
 		return agent.Task{}, nil, err

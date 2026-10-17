@@ -218,7 +218,7 @@ func (f providerForm) fields() []providerFormField {
 		if f.Update.APIKey != nil {
 			key = setup.MaskSecret(*f.Update.APIKey)
 		}
-		fields = append(fields, providerFormField{id: "key", label: "API key", value: key, required: true})
+		fields = append(fields, providerFormField{id: "key", label: "API key", value: key, required: !providers.IsLoopbackURL(f.baseURL())})
 	}
 	model := providerFormField{id: "model", label: "Model", value: f.model(), required: true}
 	if f.modelNeedsKey() {

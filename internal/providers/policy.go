@@ -1,26 +1,24 @@
 package providers
 
+// ProviderPolicy is the catalog entry of a built-in provider, or the type
+// defaults of a custom one. CatalogID is the canonical id an alias stands for.
 type ProviderPolicy struct {
-	CatalogID           string
-	Known               bool
-	Implemented         bool
-	Name                string
-	Type                string
-	AuthMode            ProviderAuthMode
-	RequiresAPIKey      bool
-	AuthStatusLabel     string
-	Transport           ProviderTransport
-	RuntimeProviderType string
-	RequiresBaseURL     bool
-	Capabilities        Capabilities
-	ModelsURL           string
-	PublicModelCatalog  bool
-	ChatHeaders         map[string]string
-	DefaultBaseURL      string
-	BaseURLOptions      []BaseURLOption
-	DefaultModel        string
-	APIKeyEnv           string
-	Notes               string
+	CatalogID          string
+	Known              bool
+	Name               string
+	Type               string
+	AuthMode           ProviderAuthMode
+	RequiresAPIKey     bool
+	AuthStatusLabel    string
+	RequiresBaseURL    bool
+	Capabilities       Capabilities
+	PublicModelCatalog bool
+	ChatHeaders        map[string]string
+	DefaultBaseURL     string
+	BaseURLOptions     []BaseURLOption
+	DefaultModel       string
+	APIKeyEnv          string
+	Notes              string
 }
 
 func PolicyForProvider(providerID string, providerType string) ProviderPolicy {
@@ -29,42 +27,35 @@ func PolicyForProvider(providerID string, providerType string) ProviderPolicy {
 		entry := spec.Entry
 		authMode := spec.Auth
 		return ProviderPolicy{
-			CatalogID:           entry.ID,
-			Known:               true,
-			Implemented:         entry.Implemented,
-			Name:                entry.Name,
-			Type:                entry.Type,
-			AuthMode:            authMode,
-			RequiresAPIKey:      authModeRequiresAPIKey(authMode),
-			AuthStatusLabel:     authModeStatusLabel(authMode),
-			Transport:           spec.Transport,
-			RuntimeProviderType: spec.RuntimeProviderType,
-			RequiresBaseURL:     entry.RequiresBaseURL,
-			Capabilities:        entry.Capabilities,
-			ModelsURL:           spec.ModelsURL,
-			PublicModelCatalog:  spec.PublicModelCatalog,
-			ChatHeaders:         copyStringMap(spec.ChatHeaders),
-			DefaultBaseURL:      entry.DefaultBaseURL,
-			BaseURLOptions:      append([]BaseURLOption(nil), entry.BaseURLOptions...),
-			DefaultModel:        entry.DefaultModel,
-			APIKeyEnv:           entry.APIKeyEnv,
-			Notes:               entry.Notes,
+			CatalogID:          entry.ID,
+			Known:              true,
+			Name:               entry.Name,
+			Type:               entry.Type,
+			AuthMode:           authMode,
+			RequiresAPIKey:     authMode == ProviderAuthAPIKey,
+			AuthStatusLabel:    authModeStatusLabel(authMode),
+			RequiresBaseURL:    entry.RequiresBaseURL,
+			Capabilities:       entry.Capabilities,
+			PublicModelCatalog: spec.PublicModelCatalog,
+			ChatHeaders:        copyStringMap(spec.ChatHeaders),
+			DefaultBaseURL:     entry.DefaultBaseURL,
+			BaseURLOptions:     append([]BaseURLOption(nil), entry.BaseURLOptions...),
+			DefaultModel:       entry.DefaultModel,
+			APIKeyEnv:          entry.APIKeyEnv,
+			Notes:              entry.Notes,
 		}
 	}
 
 	normalizedType := NormalizeOptionalProviderType(providerType)
 	authMode := defaultProviderAuthMode(normalizedType)
-	transport := defaultProviderTransport(normalizedType)
 	return ProviderPolicy{
-		CatalogID:           requestedID,
-		Type:                normalizedType,
-		AuthMode:            authMode,
-		RequiresAPIKey:      authModeRequiresAPIKey(authMode),
-		AuthStatusLabel:     authModeStatusLabel(authMode),
-		Transport:           transport,
-		RuntimeProviderType: RuntimeProviderTypeForTransport(transport, normalizedType),
-		RequiresBaseURL:     normalizedType != "",
-		Capabilities:        defaultCapabilitiesForCustomProviderType(normalizedType),
+		CatalogID:       requestedID,
+		Type:            normalizedType,
+		AuthMode:        authMode,
+		RequiresAPIKey:  authMode == ProviderAuthAPIKey,
+		AuthStatusLabel: authModeStatusLabel(authMode),
+		RequiresBaseURL: normalizedType != "",
+		Capabilities:    defaultCapabilitiesForCustomProviderType(normalizedType),
 	}
 }
 
@@ -83,22 +74,9 @@ func defaultProviderAuthMode(providerType string) ProviderAuthMode {
 	return ProviderAuthAPIKey
 }
 
-func authModeRequiresAPIKey(authMode ProviderAuthMode) bool {
-	switch authMode {
-	case ProviderAuthOAuth, ProviderAuthExternal:
-		return false
-	default:
-		return true
-	}
-}
-
 func authModeStatusLabel(authMode ProviderAuthMode) string {
-	switch authMode {
-	case ProviderAuthOAuth:
+	if authMode == ProviderAuthOAuth {
 		return "OAuth"
-	case ProviderAuthExternal:
-		return "External"
-	default:
-		return ""
 	}
+	return ""
 }

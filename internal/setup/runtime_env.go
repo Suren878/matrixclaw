@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
 const daemonEnvFileName = "daemon.env"
@@ -22,6 +24,21 @@ func DaemonEnvironmentFilePath(setupPath string) string {
 		return daemonEnvFileName
 	}
 	return filepath.Join(filepath.Dir(filepath.Clean(setupPath)), daemonEnvFileName)
+}
+
+// CredentialPaths are the files holding provider keys and tokens: setup.json
+// and daemon.env, both where this process keeps them and at the default
+// location.
+func CredentialPaths() []string {
+	var paths []string
+	if path, err := DefaultConfigPath(); err == nil {
+		paths = append(paths, path, DaemonEnvironmentFilePath(path))
+	}
+	if dir, err := os.UserConfigDir(); err == nil {
+		path := filepath.Join(dir, "matrixclaw", "setup.json")
+		paths = append(paths, path, DaemonEnvironmentFilePath(path))
+	}
+	return paths
 }
 
 func ImportDaemonEnvironmentFile(setupPath string, cfg Config) error {
@@ -97,6 +114,43 @@ func daemonEnvironmentNames(cfg Config) []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// ChildEnvironment is environ without what the commands and servers the daemon
+// starts for the agent must not see: API key variables (of configured, voice
+// and catalog providers, daemon.env, any *_API_KEY) and every MATRIXCLAW_* one.
+func ChildEnvironment(cfg Config, environ []string) []string {
+	hidden := secretEnvironmentNames(cfg)
+	out := make([]string, 0, len(environ))
+	for _, pair := range environ {
+		name, _, _ := strings.Cut(pair, "=")
+		upper := strings.ToUpper(name)
+		if hidden[name] || strings.HasSuffix(upper, "_API_KEY") || strings.HasPrefix(upper, "MATRIXCLAW_") {
+			continue
+		}
+		out = append(out, pair)
+	}
+	return out
+}
+
+func secretEnvironmentNames(cfg Config) map[string]bool {
+	hidden := map[string]bool{}
+	for _, name := range daemonEnvironmentNames(cfg) {
+		hidden[name] = true
+	}
+	for _, provider := range cfg.Providers {
+		hidden[provider.Effective().APIKeyEnv] = true
+	}
+	for _, voice := range []VoiceModuleConfig{cfg.Modules.TextToSpeech, cfg.Modules.SpeechToText, cfg.Modules.RealtimeVoice} {
+		for _, provider := range voice.Providers {
+			hidden[strings.TrimSpace(provider.APIKeyEnv)] = true
+		}
+	}
+	for _, spec := range providers.ProviderSpecs() {
+		hidden[spec.Entry.APIKeyEnv] = true
+	}
+	delete(hidden, "")
+	return hidden
 }
 
 func daemonEnvironmentValues(names []string, existing map[string]string) (map[string]string, []string) {

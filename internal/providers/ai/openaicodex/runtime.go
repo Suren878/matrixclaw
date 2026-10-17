@@ -2,6 +2,7 @@ package openaicodex
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,10 +10,14 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/textutil"
 )
+
+// providerID is the catalog id of the Codex subscription provider.
+const providerID = "openai-codex"
 
 type Runtime struct {
 	providers.RuntimeBase
@@ -20,9 +25,7 @@ type Runtime struct {
 }
 
 func New(_ context.Context, cfg providers.RuntimeConfig) (providers.Runtime, error) {
-	if cfg.CatalogKey() == "" {
-		cfg.CatalogID = "openai-codex"
-	}
+	cfg.ProviderID = cmp.Or(cfg.ProviderID, providerID)
 	cfg.BaseURL = strings.TrimRight(textutil.FirstNonEmpty(cfg.BaseURL, DefaultBaseURL), "/")
 	base := providers.NewRuntimeBase(cfg, providers.TypeOpenAICodex, providers.DefaultOpenAICodexModel)
 	reasoningEffort := ""
@@ -44,29 +47,19 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 	if err != nil {
 		return providers.Response{}, fmt.Errorf("openai-codex: marshal request: %w", err)
 	}
-	creds, err := ResolveCredentials(ctx, r.Client, r.BaseURL)
+	res, err := send(ctx, r.Client, r.BaseURL, func(creds Credentials) (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(creds.BaseURL, "/")+"/responses?client_version="+codexClientVersion, bytes.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("openai-codex: build request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "text/event-stream")
+		return req, nil
+	})
 	if err != nil {
 		return providers.Response{}, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(creds.BaseURL, "/")+"/responses?client_version="+codexClientVersion, bytes.NewReader(body))
-	if err != nil {
-		return providers.Response{}, fmt.Errorf("openai-codex: build request: %w", err)
-	}
-	setCodexHeaders(req, creds.AccessToken)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "text/event-stream")
-	res, err := r.Client.Do(req)
-	if err != nil {
-		return providers.Response{}, fmt.Errorf("openai-codex: request failed: %w", err)
-	}
 	defer func() { _ = res.Body.Close() }()
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		raw, err := io.ReadAll(res.Body)
-		if err != nil {
-			return providers.Response{}, fmt.Errorf("openai-codex: read response: %w", err)
-		}
-		return providers.Response{}, providers.NewAPIError("openai-codex", res.StatusCode, decodeError(raw), res.Header)
-	}
 	if strings.Contains(strings.ToLower(res.Header.Get("Content-Type")), "application/json") {
 		raw, err := io.ReadAll(res.Body)
 		if err != nil {
@@ -75,6 +68,90 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 		return r.decodeResponse(raw)
 	}
 	return r.decodeStream(ctx, res.Body)
+}
+
+// send does the request build makes with current credentials. A 401 renews
+// them once and sends again; any other non-2xx status is an *APIError.
+func send(ctx context.Context, client *http.Client, baseURL string, build func(Credentials) (*http.Request, error)) (*http.Response, error) {
+	creds, err := ResolveCredentials(ctx, client, baseURL)
+	if err != nil {
+		return nil, err
+	}
+	for retried := false; ; retried = true {
+		req, err := build(creds)
+		if err != nil {
+			return nil, err
+		}
+		setCodexHeaders(req, creds.AccessToken)
+		res, err := client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("openai-codex: request failed: %w", err)
+		}
+		if res.StatusCode >= 200 && res.StatusCode < 300 {
+			return res, nil
+		}
+		raw, err := io.ReadAll(res.Body)
+		_ = res.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("openai-codex: read response: %w", err)
+		}
+		parsed := parseError(raw)
+		if res.StatusCode != http.StatusUnauthorized {
+			apiErr := providers.NewAPIError(providerID, res.StatusCode, parsed.Code, parsed.Message, res.Header)
+			apiErr.RetryAfter = max(apiErr.RetryAfter, parsed.RetryAfter)
+			return nil, apiErr
+		}
+		if retried {
+			return nil, reauthRequired("the backend rejected renewed credentials: " + parsed.Message)
+		}
+		if creds, err = refreshRejected(ctx, client, creds); err != nil {
+			return nil, err
+		}
+	}
+}
+
+func setCodexHeaders(req *http.Request, accessToken string) {
+	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(accessToken))
+	req.Header.Set("User-Agent", "codex_cli_rs/0.0.0 (Matrixclaw)")
+	req.Header.Set("originator", "codex_cli_rs")
+	if accountID := jwtChatGPTAccountID(accessToken); accountID != "" {
+		req.Header.Set("ChatGPT-Account-ID", accountID)
+	}
+}
+
+// codexError is an error body: OpenAI style, OAuth style or a bare message.
+// RetryAfter is when a plan's usage limit resets.
+type codexError struct {
+	Code       string
+	Message    string
+	RetryAfter time.Duration
+}
+
+func parseError(raw []byte) codexError {
+	var payload struct {
+		Error *struct {
+			Type            string      `json:"type"`
+			Code            string      `json:"code"`
+			Message         string      `json:"message"`
+			ResetsInSeconds json.Number `json:"resets_in_seconds"`
+		} `json:"error"`
+		ErrorDescription string `json:"error_description"`
+		Message          string `json:"message"`
+		Detail           string `json:"detail"`
+	}
+	if err := json.Unmarshal(raw, &payload); err == nil {
+		if e := payload.Error; e != nil && strings.TrimSpace(e.Message) != "" {
+			return codexError{
+				Code:       textutil.FirstNonEmpty(e.Code, e.Type),
+				Message:    strings.TrimSpace(e.Message),
+				RetryAfter: providers.ParseRetryDelay(e.ResetsInSeconds.String()),
+			}
+		}
+		if message := textutil.FirstNonEmpty(payload.ErrorDescription, payload.Message, payload.Detail); message != "" {
+			return codexError{Message: message}
+		}
+	}
+	return codexError{Message: textutil.FirstNonEmpty(strings.TrimSpace(string(raw)), "unknown error")}
 }
 
 type responsesRequest struct {
@@ -184,7 +261,7 @@ func (r *Runtime) responsesPayload(request providers.Request) responsesRequest {
 		Model:             r.Model,
 		Input:             make([]responsesItem, 0, len(request.Messages)),
 		Tools:             encodeResponsesTools(request.Tools),
-		ParallelToolCalls: r.Capabilities.ParallelToolCalls,
+		ParallelToolCalls: r.Capabilities.ToolCalling,
 		Store:             false,
 		PromptCacheKey:    strings.TrimSpace(request.CacheKey),
 		Stream:            true,
@@ -193,7 +270,7 @@ func (r *Runtime) responsesPayload(request providers.Request) responsesRequest {
 	if request.ToolChoice == providers.ToolChoiceNone && len(payload.Tools) > 0 {
 		payload.ToolChoice = string(providers.ToolChoiceNone)
 	}
-	if r.reasoningEffort != "" && (len(payload.Tools) == 0 || r.Capabilities.ReasoningWithTools) {
+	if r.reasoningEffort != "" && (len(payload.Tools) == 0 || r.Capabilities.ToolCalling) {
 		payload.Reasoning = &responsesReasoning{Effort: r.reasoningEffort}
 		payload.Include = []string{"reasoning.encrypted_content"}
 	}
@@ -285,15 +362,8 @@ func responsesContentParts(message providers.Message, textType string) []respons
 		parts = append(parts, responsesContentPart{Type: textType, Text: text})
 	}
 	for _, image := range message.Images {
-		if data := strings.TrimSpace(image.DataBase64); data != "" {
-			mimeType := strings.TrimSpace(image.MIMEType)
-			if mimeType == "" {
-				mimeType = "image/png"
-			}
-			parts = append(parts, responsesContentPart{
-				Type:     "input_image",
-				ImageURL: "data:" + mimeType + ";base64," + data,
-			})
+		if strings.TrimSpace(image.DataBase64) != "" {
+			parts = append(parts, responsesContentPart{Type: "input_image", ImageURL: image.DataURL()})
 		}
 	}
 	return parts

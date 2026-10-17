@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
-	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.Response, error) {
@@ -32,7 +31,7 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 			return fmt.Errorf("openaicompat: decode stream chunk: %w", err)
 		}
 		if chunk.Error != nil {
-			return providers.NewStreamError("openaicompat", chunk.Error.status(), "stream error: "+chunk.Error.Message)
+			return providers.NewStreamError("openaicompat", chunk.Error.status(), chunk.Error.name(), "stream error: "+chunk.Error.Message)
 		}
 		if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 {
 			usage = openAIUsage(chunk.Usage)
@@ -151,22 +150,4 @@ func (s *streamToolCalls) toolCalls() []providers.ToolCall {
 		})
 	}
 	return out
-}
-
-// chunkError is an error inside a stream; OpenRouter's code is the HTTP
-// status, OpenAI's a name such as "rate_limit_exceeded".
-type chunkError struct {
-	Code    json.RawMessage `json:"code"`
-	Type    string          `json:"type"`
-	Message string          `json:"message"`
-}
-
-func (e chunkError) status() int {
-	var status int
-	if json.Unmarshal(e.Code, &status) == nil {
-		return status
-	}
-	var name string
-	_ = json.Unmarshal(e.Code, &name)
-	return providers.OpenAIErrorStatus(textutil.FirstNonEmpty(name, e.Type))
 }

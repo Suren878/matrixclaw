@@ -84,8 +84,8 @@ func TestOldBulkyResultsAreElidedAtSixtyPercentAndStayElided(t *testing.T) {
 	if stored, _ := f.Journal.Result("read1"); !strings.HasPrefix(stored.Content, "read1 x") {
 		t.Fatalf("journal result = %.40q, want the full output kept", stored.Content)
 	}
-	if last := f.Journal.States[len(f.Journal.States)-1].Counters; last.ElidedResults == 0 {
-		t.Fatalf("counters = %+v, want the elision checkpointed", last)
+	if last := f.Journal.States[len(f.Journal.States)-1].RunState; last.ElidedResults == 0 {
+		t.Fatalf("state = %+v, want the elision checkpointed", last)
 	}
 }
 
@@ -296,7 +296,7 @@ func TestTheElisionIsCheckpointedBeforeTheModelCall(t *testing.T) {
 	var elided []int64
 	model := agenttest.ModelFunc(func(ctx context.Context, request providers.Request) (providers.Response, error) {
 		if strings.HasPrefix(toolContent(request, "read1"), "[output of read() hidden") {
-			elided = append(elided, f.Journal.States[len(f.Journal.States)-1].Counters.ElidedResults)
+			elided = append(elided, f.Journal.States[len(f.Journal.States)-1].RunState.ElidedResults)
 		}
 		return scripted.Generate(ctx, request)
 	})
@@ -334,8 +334,8 @@ func TestElisionThatHidesNothingLeavesTheRequestsAlone(t *testing.T) {
 			t.Fatalf("request %d changed the prefix of request %d", i+1, i)
 		}
 	}
-	if last := f.Journal.States[len(f.Journal.States)-1].Counters; last.HistoryEdit != 0 {
-		t.Fatalf("counters = %+v, want no history edit", last)
+	if last := f.Journal.States[len(f.Journal.States)-1].RunState; last.HistoryEdit != 0 {
+		t.Fatalf("state = %+v, want no history edit", last)
 	}
 }
 
@@ -345,7 +345,7 @@ func TestSignedReasoningBeforeTheNewestBoundaryIsNotReplayed(t *testing.T) {
 	if outcome := run(t, f, agenttest.NewScriptedModel(append(signedSteps(1, "read"), text("Read."))...)); outcome.Status != agent.StatusCompleted {
 		t.Fatalf("first outcome = %+v", outcome)
 	}
-	// A boundary written without the counters that record it, as by a crash
+	// A boundary written without the state that records it, as by a crash
 	// right after it or by a manual compaction, still edits the history.
 	user, _ := f.Journal.Message("msg_user")
 	f.Journal.Seed(transcript.Message{ID: "msg_boundary", SessionID: agenttest.SessionID, Role: transcript.MessageRoleSystem, Content: "Context compacted.",

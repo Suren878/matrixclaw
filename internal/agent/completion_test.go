@@ -46,8 +46,8 @@ func TestOpenTodoItemsKeepTheRunGoingOnce(t *testing.T) {
 	if notes := engineNotes(f.Journal.Messages); len(notes) != 1 || notes[0].Origin != transcript.OriginEngineModel {
 		t.Fatalf("engine notes = %+v", notes)
 	}
-	if !outcome.Counters.TodoNudged {
-		t.Fatalf("counters = %+v, want the nudge recorded", outcome.Counters)
+	if !outcome.RunState.TodoNudged {
+		t.Fatalf("state = %+v, want the nudge recorded", outcome.RunState)
 	}
 }
 
@@ -73,7 +73,7 @@ func TestReplyCompletesTheRunWithoutOpenTodoItems(t *testing.T) {
 func TestOpenTodoItemsDoNotHoldARunWithoutBudgetOrAfterTheNudge(t *testing.T) {
 	for name, adjust := range map[string]func(*agent.Task){
 		"budget spent":         func(task *agent.Task) { task.Budget = agent.Budget{Steps: 1} },
-		"nudged before a park": func(task *agent.Task) { task.Resume = agent.Counters{TodoNudged: true} },
+		"nudged before a park": func(task *agent.Task) { task.Resume = agent.RunState{TodoNudged: true} },
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := agenttest.NewFixture()

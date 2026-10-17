@@ -83,7 +83,6 @@ func (j coreJournal) Checkpoint(ctx context.Context, state agent.State) error {
 	return j.c.saveEngineCheckpoint(ctx, state)
 }
 
-func (j coreJournal) RecordStep(ctx context.Context, step agent.Step) error {
+func (j coreJournal) RecordStep(ctx context.Context, step agent.Step) {
 	j.c.recordRunStep(ctx, step)
-	return nil
 }

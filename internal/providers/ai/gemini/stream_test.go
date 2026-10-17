@@ -79,7 +79,7 @@ func TestStreamErrorChunkNamesItsStatusAndRetriesServerAndRateLimits(t *testing.
 		{`{"error":{"code":400,"status":"INVALID_ARGUMENT","message":"bad schema"}}`, []string{"400", "bad schema"}, false},
 	} {
 		_, err := (&Runtime{}).decodeStream(context.Background(), strings.NewReader("data: "+tc.chunk+"\n\n"))
-		if err == nil || providers.IsRetryableGenerationError(err) != tc.retryable {
+		if err == nil || isRetryable(err) != tc.retryable {
 			t.Fatalf("%s: error=%v, want retryable=%v", tc.chunk, err, tc.retryable)
 		}
 		for _, want := range tc.want {
@@ -109,4 +109,9 @@ func TestStreamAssemblesTextAndSignedCallFromSeparateChunks(t *testing.T) {
 	if len(response.Reasoning) != 1 || response.Reasoning[0].Signature != "sig-a" {
 		t.Fatalf("reasoning=%+v", response.Reasoning)
 	}
+}
+
+func isRetryable(err error) bool {
+	kind, _ := providers.ClassifyError(err)
+	return kind.Retryable()
 }

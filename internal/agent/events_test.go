@@ -70,7 +70,7 @@ func awaitTool(f *agenttest.Fixture, taskIDs ...string) agenttest.ToolFunc {
 	}
 }
 
-func resume(t *testing.T, f *agenttest.Fixture, model agent.Model, counters agent.Counters) agent.Outcome {
+func resume(t *testing.T, f *agenttest.Fixture, model agent.Model, counters agent.RunState) agent.Outcome {
 	t.Helper()
 	task := f.Task(model)
 	task.Resume = counters
@@ -87,22 +87,22 @@ func TestAwaitParksTheRunUntilAnAwaitedTaskFinishes(t *testing.T) {
 	model := agenttest.NewScriptedModel(calls(call("w1", "await")), text("Tests passed."))
 
 	parked := run(t, f, model)
-	if parked.Status != agent.StatusWaitingEvents || parked.Counters.Await == nil || parked.Counters.Await.TaskIDs[0] != "task_a" {
+	if parked.Status != agent.StatusWaitingEvents || parked.RunState.Await == nil || parked.RunState.Await.TaskIDs[0] != "task_a" {
 		t.Fatalf("parked = %+v", parked)
 	}
-	if last := f.Journal.States[len(f.Journal.States)-1]; last.Counters.Await == nil {
+	if last := f.Journal.States[len(f.Journal.States)-1]; last.RunState.Await == nil {
 		t.Fatalf("the park checkpoint lacks the await: %+v", last)
 	}
 
 	f.Inbox.Events = []agent.Input{{Kind: agent.InputEvent, ID: "task_b", Text: "Background task task_b finished with exit code 0."}}
-	still := resume(t, f, model, parked.Counters)
+	still := resume(t, f, model, parked.RunState)
 	if still.Status != agent.StatusWaitingEvents || len(model.Requests()) != 1 || len(f.Inbox.Events) != 1 {
 		t.Fatalf("an unawaited task woke the run: %+v, requests %d", still, len(model.Requests()))
 	}
 
 	f.Inbox.Events = append(f.Inbox.Events, agent.Input{Kind: agent.InputEvent, ID: "task_a", Text: "Background task task_a finished with exit code 0."})
-	done := resume(t, f, model, still.Counters)
-	if done.Status != agent.StatusCompleted || done.Assistant.Content != "Tests passed." || done.Counters.Await != nil || len(f.Inbox.Events) != 0 {
+	done := resume(t, f, model, still.RunState)
+	if done.Status != agent.StatusCompleted || done.Assistant.Content != "Tests passed." || done.RunState.Await != nil || len(f.Inbox.Events) != 0 {
 		t.Fatalf("done = %+v, events left %+v", done, f.Inbox.Events)
 	}
 	last := model.Requests()[1].Messages
@@ -118,9 +118,9 @@ func TestAnAwaitedTaskThatEndedWithoutAnEventWakesTheRun(t *testing.T) {
 	parked := run(t, f, model)
 
 	f.Inbox.Ended = []string{"task_a"}
-	done := resume(t, f, model, parked.Counters)
+	done := resume(t, f, model, parked.RunState)
 
-	if done.Status != agent.StatusCompleted || done.Counters.Await != nil {
+	if done.Status != agent.StatusCompleted || done.RunState.Await != nil {
 		t.Fatalf("done = %+v", done)
 	}
 }
@@ -132,7 +132,7 @@ func TestUserInputWakesAnAwaitingRun(t *testing.T) {
 	parked := run(t, f, model)
 
 	f.Inbox.Steers = []string{"stop waiting and cancel the build"}
-	done := resume(t, f, model, parked.Counters)
+	done := resume(t, f, model, parked.RunState)
 
 	if done.Status != agent.StatusCompleted || len(f.Inbox.Steers) != 0 {
 		t.Fatalf("done = %+v, steers left %v", done, f.Inbox.Steers)
@@ -154,8 +154,8 @@ func TestAwaitTimesOutAndTellsTheModel(t *testing.T) {
 	model := agenttest.NewScriptedModel(calls(call("w1", "await")), text("Still building; I will check later."))
 	parked := run(t, f, model)
 
-	f.Clock = parked.Counters.Await.Until
-	done := resume(t, f, model, parked.Counters)
+	f.Clock = parked.RunState.Await.Until
+	done := resume(t, f, model, parked.RunState)
 
 	if done.Status != agent.StatusCompleted {
 		t.Fatalf("done = %+v", done)
@@ -171,15 +171,15 @@ func TestTimeParkedInAwaitIsNotActiveTime(t *testing.T) {
 	f.Tools.Funcs["await"] = awaitTool(f, "task_a")
 	model := agenttest.NewScriptedModel(calls(call("w1", "await")), text("Done."))
 	parked := run(t, f, model)
-	if parked.Counters.Active != time.Minute {
-		t.Fatalf("active before parking = %v", parked.Counters.Active)
+	if parked.RunState.Active != time.Minute {
+		t.Fatalf("active before parking = %v", parked.RunState.Active)
 	}
 
 	f.Clock = f.Clock.Add(5 * time.Minute)
 	f.Inbox.Events = []agent.Input{{Kind: agent.InputEvent, ID: "task_a", Text: "Background task task_a finished with exit code 0."}}
-	done := resume(t, f, model, parked.Counters)
+	done := resume(t, f, model, parked.RunState)
 
-	if done.Counters.Active != time.Minute {
-		t.Fatalf("active after five parked minutes = %v", done.Counters.Active)
+	if done.RunState.Active != time.Minute {
+		t.Fatalf("active after five parked minutes = %v", done.RunState.Active)
 	}
 }

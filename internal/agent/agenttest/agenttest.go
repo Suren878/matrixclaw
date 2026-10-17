@@ -70,8 +70,7 @@ func (f ModelFunc) Generate(ctx context.Context, req providers.Request) (provide
 
 // Journal keeps the transcript in memory, loads it like core — the newest boundary
 // and the messages after it — and counts streaming writes. Like the store it rejects
-// duplicate IDs and fails writes on a stopped context; RecordStep never fails, as core
-// only logs a failed step write. OnAppend and OnCheckpoint run first and can fail a write.
+// duplicate IDs and fails writes on a stopped context. OnAppend and OnCheckpoint run first and can fail a write.
 type Journal struct {
 	Messages     []transcript.Message
 	States       []agent.State
@@ -192,9 +191,8 @@ func (j *Journal) Checkpoint(ctx context.Context, state agent.State) error {
 	return nil
 }
 
-func (j *Journal) RecordStep(_ context.Context, step agent.Step) error {
+func (j *Journal) RecordStep(_ context.Context, step agent.Step) {
 	j.Steps = append(j.Steps, step)
-	return nil
 }
 
 func (j *Journal) insert(msg transcript.Message) (int64, error) {

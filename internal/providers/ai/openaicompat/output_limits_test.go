@@ -9,8 +9,8 @@ import (
 var _ providers.OutputLimiter = (*Runtime)(nil)
 
 func TestOutputLimitsFollowConfigCatalogAndLearnedCaps(t *testing.T) {
-	providers.RegisterModelMetadata("openai-limits", providers.TypeOpenAICompat, "openai-limits-model", providers.ModelMetadataRegistration{MaxOutputTokens: 6000})
-	r := &Runtime{RuntimeBase: providers.RuntimeBase{Model: "openai-limits-model", MetadataID: "openai-limits", MaxOutputTokens: 4000, ProviderType: providers.TypeOpenAICompat}}
+	providers.RegisterModelMetadata("openai-limits", "openai-limits-model", providers.ModelMetadataRegistration{MaxOutputTokens: 6000})
+	r := &Runtime{RuntimeBase: providers.RuntimeBase{Model: "openai-limits-model", ProviderID: "openai-limits", MaxOutputTokens: 4000, ProviderType: providers.TypeOpenAICompat}}
 	if current, ceiling := r.OutputLimits(); current != 4000 || ceiling != 6000 {
 		t.Fatalf("limits = %d/%d, want 4000/6000", current, ceiling)
 	}

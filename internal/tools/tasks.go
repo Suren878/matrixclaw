@@ -16,7 +16,7 @@ type ShellTasks interface {
 // Command is a shell command to run for a call. Background starts it as a
 // background task at once; otherwise Timeout kills it and, when shorter than
 // Timeout, AutoBackground moves it to the background while it still runs.
-// OutputLimit caps the output a finished command returns.
+// OutputLimit caps the output a finished command returns, head and tail.
 type Command struct {
 	Command        string
 	Description    string
@@ -28,15 +28,18 @@ type Command struct {
 }
 
 // CommandResult is how a command ended, or the task it went on as (TaskID).
-// OutputPath names the file holding the whole output when Output was cut.
+// OutputPath names the file holding the whole output when Output was cut to
+// its head and tail. KilledLeftovers is set when processes the command left
+// running were killed after it ended.
 type CommandResult struct {
-	TaskID     string
-	Output     string
-	OutputPath string
-	ExitCode   int
-	TimedOut   bool
-	StartedAt  time.Time
-	EndedAt    time.Time
+	TaskID          string
+	Output          string
+	OutputPath      string
+	ExitCode        int
+	TimedOut        bool
+	KilledLeftovers bool
+	StartedAt       time.Time
+	EndedAt         time.Time
 }
 
 // TaskRead asks for a task's output since the last read, waiting up to Wait

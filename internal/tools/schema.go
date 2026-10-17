@@ -10,9 +10,9 @@ var (
 	readInputSchema = rawSchema(`{
   "type": "object",
   "properties": {
-    "file_path": {"type": "string"},
-    "offset": {"type": "integer", "minimum": 0},
-    "limit": {"type": "integer", "minimum": 1}
+    "file_path": {"type": "string", "description": "Absolute path, or relative to the working directory."},
+    "offset": {"type": "integer", "minimum": 0, "description": "Number of lines to skip (0 = start). To start at line N pass N-1; to read on, pass the offset the previous result names."},
+    "limit": {"type": "integer", "minimum": 1, "description": "Maximum lines to return (default 2000; a page also stops at about 24 KB)."}
   },
   "required": ["file_path"],
   "additionalProperties": false
@@ -20,8 +20,8 @@ var (
 	globInputSchema = rawSchema(`{
   "type": "object",
   "properties": {
-    "pattern": {"type": "string"},
-    "path": {"type": "string"}
+    "pattern": {"type": "string", "description": "Glob matched against paths relative to path, e.g. **/*_test.go or src/**/*.{ts,tsx}."},
+    "path": {"type": "string", "description": "Directory to search, absolute or relative to the working directory; default the working directory."}
   },
   "required": ["pattern"],
   "additionalProperties": false
@@ -29,10 +29,15 @@ var (
 	grepInputSchema = rawSchema(`{
   "type": "object",
   "properties": {
-    "pattern": {"type": "string"},
-    "path": {"type": "string"},
-    "include": {"type": "string"},
-    "literal_text": {"type": "boolean"}
+    "pattern": {"type": "string", "description": "Go RE2 regular expression, or the exact text when literal_text is true."},
+    "path": {"type": "string", "description": "File or directory to search; default the working directory."},
+    "include": {"type": "string", "description": "Glob limiting the files searched: *.go or *.{ts,tsx} match names at any depth, src/**/*.ts matches paths relative to path."},
+    "literal_text": {"type": "boolean", "description": "Search for pattern as plain text, with no regular expression syntax."},
+    "case_insensitive": {"type": "boolean", "description": "Ignore letter case."},
+    "context": {"type": "integer", "minimum": 0, "maximum": 10, "description": "Lines to show before and after each match in content mode."},
+    "output_mode": {"type": "string", "enum": ["content", "files_with_matches", "count"], "description": "content (default) shows matching lines, files_with_matches only file paths, count matches per file."},
+    "limit": {"type": "integer", "minimum": 1, "maximum": 1000, "description": "Most results to show: matching lines in content mode, files otherwise; default 100."},
+    "offset": {"type": "integer", "minimum": 0, "description": "Results to skip, to page past a truncated result."}
   },
   "required": ["pattern"],
   "additionalProperties": false
@@ -40,17 +45,17 @@ var (
 	lsInputSchema = rawSchema(`{
   "type": "object",
   "properties": {
-    "path": {"type": "string"},
-    "ignore": {"type": "array", "items": {"type": "string"}},
-    "depth": {"type": "integer", "minimum": 0}
+    "path": {"type": "string", "description": "Directory to list; default the working directory."},
+    "ignore": {"type": "array", "items": {"type": "string"}, "description": "Globs to leave out, e.g. *.log or testdata; a glob with / matches paths relative to path."},
+    "depth": {"type": "integer", "minimum": 1, "description": "Levels to show; default 3, 1 lists only the directory's own entries."}
   },
   "additionalProperties": false
 }`)
 	writeInputSchema = rawSchema(`{
   "type": "object",
   "properties": {
-    "file_path": {"type": "string"},
-    "content": {"type": "string"}
+    "file_path": {"type": "string", "description": "Absolute path, or relative to the working directory."},
+    "content": {"type": "string", "description": "The complete new content of the file."}
   },
   "required": ["file_path", "content"],
   "additionalProperties": false
@@ -58,9 +63,9 @@ var (
 	editOperationSchema = `{
     "type": "object",
     "properties": {
-      "old_string": {"type": "string"},
-      "new_string": {"type": "string"},
-      "replace_all": {"type": "boolean"}
+      "old_string": {"type": "string", "description": "Text to replace, as in the file at this point of the edits."},
+      "new_string": {"type": "string", "description": "Replacement text; must differ from old_string."},
+      "replace_all": {"type": "boolean", "description": "Replace every occurrence instead of exactly one."}
     },
     "required": ["old_string", "new_string"],
     "additionalProperties": false
@@ -68,10 +73,10 @@ var (
 	editInputSchema = rawSchema(`{
   "type": "object",
   "properties": {
-    "file_path": {"type": "string"},
-    "old_string": {"type": "string"},
-    "new_string": {"type": "string"},
-    "replace_all": {"type": "boolean"}
+    "file_path": {"type": "string", "description": "Absolute path, or relative to the working directory."},
+    "old_string": {"type": "string", "description": "Exact text to replace, copied from read output without the line-number prefix. Empty only to fill an empty file."},
+    "new_string": {"type": "string", "description": "Replacement text; must differ from old_string."},
+    "replace_all": {"type": "boolean", "description": "Replace every occurrence (for example renaming a variable within the file); matches byte for byte only."}
   },
   "required": ["file_path", "old_string", "new_string"],
   "additionalProperties": false
@@ -79,9 +84,10 @@ var (
 	multiEditInputSchema = rawSchema(`{
   "type": "object",
   "properties": {
-    "file_path": {"type": "string"},
+    "file_path": {"type": "string", "description": "Absolute path, or relative to the working directory."},
     "edits": {
       "type": "array",
+      "description": "Replacements applied in order, each to the result of the one before.",
       "items": ` + editOperationSchema + `,
       "minItems": 1
     }
@@ -92,12 +98,12 @@ var (
 	bashInputSchema = rawSchema(`{
   "type": "object",
   "properties": {
-    "description": {"type": "string"},
-    "command": {"type": "string"},
-    "working_dir": {"type": "string"},
+    "command": {"type": "string", "description": "The command line to run."},
+    "description": {"type": "string", "description": "What the command does in 5-10 words, shown to the user, such as 'Run parser unit tests'."},
+    "working_dir": {"type": "string", "description": "Directory to run in: absolute, or relative to the working directory, which is the default."},
     "run_in_background": {"type": "boolean", "description": "Start the command as a background task and return its task id at once."},
-    "timeout": {"type": "integer", "minimum": 0, "maximum": 3600, "description": "Seconds before a foreground command is killed; default 600."},
-    "auto_background_after": {"type": "integer", "minimum": 0, "description": "Seconds after which a foreground command still running becomes a background task; default 120."}
+    "timeout": {"type": "integer", "minimum": 0, "description": "Seconds before a foreground command is killed; default 600, at most 3600. A value over 3600 is read as milliseconds."},
+    "auto_background_after": {"type": "integer", "minimum": 0, "description": "Seconds after which a foreground command still running moves to the background; default 120. A value over 3600 is read as milliseconds."}
   },
   "required": ["command"],
   "additionalProperties": false
