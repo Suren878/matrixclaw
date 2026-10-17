@@ -52,7 +52,10 @@ func drainEvents(events <-chan core.Event) []core.Event {
 	var out []core.Event
 	for {
 		select {
-		case event := <-events:
+		case event, ok := <-events:
+			if !ok {
+				return out
+			}
 			out = append(out, event)
 		default:
 			return out

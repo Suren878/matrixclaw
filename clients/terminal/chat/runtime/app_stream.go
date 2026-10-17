@@ -118,7 +118,8 @@ func (m *appModel) handleSnapshot(msg snapshotMsg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// streamFailed shows err, if any, and once a session was shown tries again.
+// streamFailed shows err, if any, and tries again once a session was shown
+// or when the daemon ended the stream (it does so for a client that fell behind).
 func (m *appModel) streamFailed(err error) tea.Cmd {
 	m.loading = false
 	m.setBusy(false)
@@ -126,7 +127,7 @@ func (m *appModel) streamFailed(err error) tea.Cmd {
 		m.showError(err.Error())
 	}
 	m.stopStream()
-	if m.read == nil {
+	if err != nil && m.read == nil {
 		return nil
 	}
 	return tea.Tick(reconnectDelay, func(time.Time) tea.Msg { return reconnectMsg{} })

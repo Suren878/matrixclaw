@@ -93,11 +93,16 @@ recovery), waits for them, then closes external agents and modules.
   `run.updated`, `tool.updated`, `approval.requested|resolved`,
   `input.updated`, `task.updated`, `todo.updated`, `context.updated` (context
   size the engine measured after each step). Replay with `?after=` covers only
-  a 256-event history shared by all sessions.
+  a 256-event ring shared by all sessions.
+- Each subscriber gets events in ID order. One that falls 512 events behind
+  is closed, never skipped silently; its client reconnects and reloads. An
+  event that cannot be encoded is logged and ends the stream the same way. An
+  open stream sends a `: ping` comment every 20 s.
 - So the terminal subscribes first, then loads `GET /v1/snapshot`, and drops
   events at or below the snapshot's `event_id`. After that it changes only
-  through events (`clients/terminal/chat/readmodel`), reloading on reconnect,
-  session switch and commands that ask for it (`ReloadSnapshot`).
+  through events (`clients/terminal/chat/readmodel`), reloading on reconnect
+  (also after the daemon closed the stream), session switch and commands that
+  ask for it (`ReloadSnapshot`).
 - Chat rows are reconciled by ID and revision, so expanded output stays
   expanded. Context usage in the header comes only from the daemon.
 - `internal/toolview` (`Describe`, `FileChangeOf`) gives a tool call's title,

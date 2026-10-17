@@ -196,3 +196,55 @@ func TestIdleTimeCountsFromTheLastLiveEvent(t *testing.T) {
 		t.Fatalf("no idle time 15s after the last event: %q", line)
 	}
 }
+
+func TestAnEventStreamTheDaemonClosesIsReconnectedAndReloaded(t *testing.T) {
+	var streams atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/bindings/current":
+			_ = json.NewEncoder(w).Encode(core.ClientBindingResponse{Binding: core.ClientBinding{SessionID: "session_1"}})
+		case "/v1/snapshot":
+			_ = json.NewEncoder(w).Encode(core.ClientSnapshotResponse{Snapshot: core.ClientSnapshot{SessionID: "session_1"}})
+		case "/v1/events":
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("event: ready\ndata: {}\n\n: ping\n\n"))
+			w.(http.Flusher).Flush()
+			// The daemon ends the first stream, as it does for a subscriber
+			// that fell behind; the next one stays open.
+			if streams.Add(1) > 1 {
+				<-r.Context().Done()
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	m := newApp(ctx, New(Config{BaseURL: server.URL}))
+
+	msgs := make(chan tea.Msg, 16)
+	var start func(tea.Cmd)
+	start = func(cmd tea.Cmd) {
+		if cmd != nil {
+			go func() { msgs <- cmd() }()
+		}
+	}
+	start(m.reload())
+	deadline := time.After(5 * time.Second)
+	for streams.Load() < 2 || !m.stream.loaded || m.read == nil {
+		select {
+		case msg := <-msgs:
+			if batch, ok := msg.(tea.BatchMsg); ok {
+				for _, cmd := range batch {
+					start(cmd)
+				}
+				continue
+			}
+			_, next := m.Update(msg)
+			start(next)
+		case <-deadline:
+			t.Fatalf("streams = %d, loaded = %v: no reload after the stream closed", streams.Load(), m.stream.loaded)
+		}
+	}
+}

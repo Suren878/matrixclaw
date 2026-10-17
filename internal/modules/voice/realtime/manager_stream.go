@@ -115,7 +115,15 @@ func (m *Manager) ServeStream(ctx context.Context, sessionID string, stream Stre
 			if err := state.handleProviderOutput(streamCtx, item.output); err != nil {
 				return err
 			}
-		case event := <-coreCh:
+		case event, ok := <-coreCh:
+			if !ok {
+				if streamCtx.Err() != nil {
+					return nil
+				}
+				// The bus closed a subscriber that fell behind; follow on.
+				coreCh = m.core.SubscribeEvents(streamCtx, info.CoreSessionID)
+				continue
+			}
 			if err := state.handleCoreEvent(streamCtx, event); err != nil {
 				return err
 			}
