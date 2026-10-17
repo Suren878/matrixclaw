@@ -68,10 +68,10 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 			return nil, fmt.Errorf("gemini: read models response: %w", readErr)
 		}
 		if res.StatusCode == http.StatusNotFound {
-			return nil, fmt.Errorf("gemini: model listing unavailable: status %d: %s", res.StatusCode, geminiErrorMessage(body))
+			return nil, fmt.Errorf("model listing unavailable: %w", responseError(res, body))
 		}
 		if res.StatusCode < 200 || res.StatusCode >= 300 {
-			return nil, providers.NewAPIError("gemini", res.StatusCode, geminiErrorMessage(body), nil)
+			return nil, responseError(res, body)
 		}
 
 		var payload geminiModelsResponse
@@ -127,7 +127,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 		if err != nil {
 			return providers.Response{}, fmt.Errorf("gemini: read response: %w", err)
 		}
-		return providers.Response{}, providers.NewAPIError("gemini", httpRes.StatusCode, geminiErrorMessage(resBody), httpRes.Header)
+		return providers.Response{}, responseError(httpRes, resBody)
 	}
 	return r.decodeStream(ctx, httpRes.Body)
 }
@@ -350,10 +350,7 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 // status it carries.
 func streamError(code int, status string, message string) error {
 	detail := strings.Join(strings.Fields(fmt.Sprintf("stream error %d %s %s", code, status, message)), " ")
-	if code == 0 && (status == "UNAVAILABLE" || status == "INTERNAL") {
-		code = http.StatusServiceUnavailable
-	}
-	return providers.NewStreamError("gemini", code, detail)
+	return providers.NewStreamError("gemini", code, status, detail)
 }
 
 func (r *Runtime) reply(parts []geminiPart, stop providers.StopReason, usage geminiUsageMetadata) (providers.Response, error) {
@@ -469,10 +466,19 @@ func geminiUsage(usage geminiUsageMetadata) providers.Usage {
 }
 
 // geminiErrorMessage is the error message of a response body, or the body itself.
-func geminiErrorMessage(body []byte) string {
+// responseError classifies an error response by its status name; a quota
+// error's RetryInfo becomes RetryAfter when the header names no wait.
+func responseError(res *http.Response, body []byte) *providers.APIError {
 	var envelope geminiErrorEnvelope
+	message := strings.TrimSpace(string(body))
 	if err := json.Unmarshal(body, &envelope); err == nil && strings.TrimSpace(envelope.Error.Message) != "" {
-		return strings.TrimSpace(envelope.Error.Message)
+		message = strings.TrimSpace(envelope.Error.Message)
 	}
-	return strings.TrimSpace(string(body))
+	apiErr := providers.NewAPIError("gemini", res.StatusCode, envelope.Error.Status, message, res.Header)
+	for _, detail := range envelope.Error.Details {
+		if delay := providers.ParseRetryDelay(detail.RetryDelay); delay > 0 && apiErr.RetryAfter == 0 {
+			apiErr.RetryAfter = delay
+		}
+	}
+	return apiErr
 }

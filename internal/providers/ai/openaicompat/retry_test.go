@@ -67,3 +67,22 @@ func TestGenerateReportsTypedHTTPErrorsWithoutRetrying(t *testing.T) {
 		}
 	}
 }
+
+func TestGenerateReadsQuotaCodeAndRetryAfterMs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Retry-After-Ms", "250")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":{"message":"You exceeded your current quota.","type":"insufficient_quota","code":"insufficient_quota"}}`))
+	}))
+	defer server.Close()
+	runtime, err := New(context.Background(), providers.RuntimeConfig{APIKey: "test", BaseURL: server.URL, Model: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = runtime.Generate(context.Background(), providers.Request{Messages: []providers.Message{{Role: "user", Content: "hello"}}})
+	kind, wait := providers.ClassifyError(err)
+	if kind != providers.ErrorQuota || wait != 250*time.Millisecond {
+		t.Fatalf("kind=%s wait=%s err=%v", kind, wait, err)
+	}
+}

@@ -1,8 +1,11 @@
 package providers
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"testing"
 	"time"
@@ -39,34 +42,60 @@ func TestContextLengthErrorsOfEveryProviderAreRecognised(t *testing.T) {
 	}
 }
 
-func TestAPIErrorKindFollowsStatusThenWording(t *testing.T) {
+func TestAPIErrorKindFollowsCodeThenStatusThenWording(t *testing.T) {
 	header := http.Header{"Retry-After": {"7"}}
 	for _, tc := range []struct {
 		status    int
+		code      string
 		message   string
 		kind      ErrorKind
 		retryable bool
 	}{
-		{429, "Rate limit reached", ErrorRateLimit, true},
-		{529, "overloaded_error: Overloaded", ErrorOverloaded, true},
-		{503, "", ErrorOverloaded, true},
-		{401, "invalid x-api-key", ErrorAuth, false},
-		{400, "prompt is too long: 208310 tokens > 200000 maximum", ErrorContextOverflow, false},
-		{413, "Request too large for model on tokens per minute (TPM)", ErrorInvalid, false},
-		{400, "unknown parameter", ErrorInvalid, false},
+		{429, "", "Rate limit reached", ErrorRateLimit, true},
+		{529, "", "overloaded_error: Overloaded", ErrorOverloaded, true},
+		{503, "", "", ErrorOverloaded, true},
+		{401, "", "invalid x-api-key", ErrorAuth, false},
+		{400, "", "prompt is too long: 208310 tokens > 200000 maximum", ErrorContextOverflow, false},
+		{413, "", "Request too large for model on tokens per minute (TPM)", ErrorPermanent, false},
+		{400, "", "unknown parameter", ErrorPermanent, false},
+		{429, "insufficient_quota", "You exceeded your current quota, please check your plan and billing details.", ErrorQuota, false},
+		{429, "usage_limit_reached", "The usage limit has been reached", ErrorQuota, false},
+		{429, "RESOURCE_EXHAUSTED", "You exceeded your current quota, please check your plan and billing details.", ErrorRateLimit, true},
+		{402, "", "Insufficient Balance", ErrorQuota, false},
+		{400, "invalid_request_error", "Your credit balance is too low to access the Anthropic API.", ErrorQuota, false},
 	} {
-		err := NewAPIError("p", tc.status, tc.message, header)
-		if err.Kind != tc.kind || err.Retryable() != tc.retryable || IsRetryableGenerationError(fmt.Errorf("wrapped: %w", err)) != tc.retryable {
-			t.Errorf("%d %q: kind=%s retryable=%v, want %s %v", tc.status, tc.message, err.Kind, err.Retryable(), tc.kind, tc.retryable)
+		err := NewAPIError("p", tc.status, tc.code, tc.message, header)
+		kind, wait := ClassifyError(fmt.Errorf("wrapped: %w", err))
+		if err.Kind != tc.kind || kind != tc.kind || err.Retryable() != tc.retryable || IsRetryableGenerationError(err) != tc.retryable {
+			t.Errorf("%d %s %q: kind=%s retryable=%v, want %s %v", tc.status, tc.code, tc.message, err.Kind, err.Retryable(), tc.kind, tc.retryable)
 		}
-		if err.RetryAfter != 7*time.Second {
+		if err.RetryAfter != 7*time.Second || wait != 7*time.Second {
 			t.Errorf("%d: retry after %s, want 7s", tc.status, err.RetryAfter)
 		}
 	}
-	if !IsContextOverflow(fmt.Errorf("x: %w", NewAPIError("p", 400, "context_length_exceeded", nil))) {
+	if !IsContextOverflow(fmt.Errorf("x: %w", NewAPIError("p", 400, "", "context_length_exceeded", nil))) {
 		t.Error("typed overflow not recognised")
 	}
-	if IsContextOverflow(NewAPIError("p", 503, "maximum context length", nil)) {
+	if IsContextOverflow(NewAPIError("p", 503, "", "maximum context length", nil)) {
 		t.Error("a typed server error was read from its wording")
+	}
+}
+
+func TestClassifyErrorSeparatesTransientFromPermanent(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		want ErrorKind
+	}{
+		{fmt.Errorf("x: %w", ErrStreamIdle), ErrorTransient},
+		{fmt.Errorf("x: %w", io.ErrUnexpectedEOF), ErrorTransient},
+		{&net.OpError{Op: "dial", Err: errors.New("connection refused")}, ErrorTransient},
+		{fmt.Errorf("codex: %w", ErrReauthRequired), ErrorAuth},
+		{fmt.Errorf("x: %w", context.Canceled), ErrorPermanent},
+		{errors.New("bad config"), ErrorPermanent},
+		{nil, ""},
+	} {
+		if got, _ := ClassifyError(tc.err); got != tc.want {
+			t.Errorf("%v: %s, want %s", tc.err, got, tc.want)
+		}
 	}
 }

@@ -53,7 +53,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 			if r.fixRequest(&payload, &applied, httpRes.StatusCode, resBody) {
 				continue
 			}
-			return providers.Response{}, providers.NewAPIError("openaicompat", httpRes.StatusCode, openAIErrorMessage(resBody), httpRes.Header)
+			return providers.Response{}, responseError(httpRes, resBody)
 		}
 		defer func() { _ = httpRes.Body.Close() }()
 		if payload.Stream && !strings.Contains(strings.ToLower(httpRes.Header.Get("Content-Type")), "application/json") {
@@ -91,7 +91,7 @@ func (r *Runtime) fixRequest(payload *chatCompletionRequest, applied *[len(reque
 	if statusCode < 400 || statusCode >= 500 {
 		return false
 	}
-	message := openAIErrorMessage(body)
+	message := parseOpenAIError(body).Message
 	rejected := rejection{message: message, text: strings.ToLower(message + "\n" + string(body))}
 	for i, fix := range requestFixes {
 		if !applied[i] && fix(r, payload, rejected) {

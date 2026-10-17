@@ -241,19 +241,12 @@ func anthropicResponseError(statusCode int, body []byte, header http.Header) err
 	if err := json.Unmarshal(body, &envelope); err == nil && strings.TrimSpace(envelope.Error.Message) != "" {
 		message = envelope.Error.String()
 	}
-	return providers.NewAPIError("anthropic", statusCode, message, header)
+	return providers.NewAPIError("anthropic", statusCode, envelope.Error.Type, message, header)
 }
 
-// anthropicStreamError classifies an error event by the HTTP status its type stands for.
+// anthropicStreamError classifies an error event by its type.
 func anthropicStreamError(detail anthropicErrorDetail) error {
-	code := map[string]int{
-		"overloaded_error":     529,
-		"api_error":            http.StatusInternalServerError,
-		"rate_limit_error":     http.StatusTooManyRequests,
-		"authentication_error": http.StatusUnauthorized,
-		"permission_error":     http.StatusForbidden,
-	}[detail.Type]
-	return providers.NewStreamError("anthropic", code, "stream error: "+detail.String())
+	return providers.NewStreamError("anthropic", 0, detail.Type, "stream error: "+detail.String())
 }
 
 func decodeAnthropicError(statusCode int, body []byte) string {

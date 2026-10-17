@@ -50,10 +50,10 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 	}
 
 	if res.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("openaicompat: model listing unavailable: %s", decodeOpenAIError(res.StatusCode, body))
+		return nil, fmt.Errorf("model listing unavailable: %w", responseError(res, body))
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return nil, fmt.Errorf("openaicompat: %s", decodeOpenAIError(res.StatusCode, body))
+		return nil, responseError(res, body)
 	}
 
 	var payload struct {
