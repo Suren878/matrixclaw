@@ -244,12 +244,11 @@ func ProviderModelCatalog(ctx context.Context, provider ProviderConfig) Provider
 	}
 	source := providerModelCatalogSource(policy, runtime.APIKey)
 	models, err := providerdiscovery.Models(ctx, providerdiscovery.ModelDiscoveryInput{
-		ID:        runtime.ID,
-		CatalogID: runtime.ID,
-		Type:      runtime.Type,
-		BaseURL:   runtime.BaseURL,
-		APIKey:    runtime.APIKey,
-		Model:     runtime.Model,
+		ID:      runtime.ID,
+		Type:    runtime.Type,
+		BaseURL: runtime.BaseURL,
+		APIKey:  runtime.APIKey,
+		Model:   runtime.Model,
 	})
 	if err != nil {
 		status := ProviderModelStatusUnavailable

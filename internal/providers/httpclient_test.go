@@ -135,3 +135,12 @@ func TestIdleTimerExcludesConsumerProcessingTime(t *testing.T) {
 		t.Fatalf("final read err=%v, want io.EOF", err)
 	}
 }
+
+func TestHighReasoningEffortWaitsLongerForASilentStream(t *testing.T) {
+	for effort, want := range map[string]time.Duration{"": defaultStreamIdleTimeout, "medium": defaultStreamIdleTimeout, "high": 5 * time.Minute, "xhigh": 10 * time.Minute} {
+		base := NewRuntimeBase(RuntimeConfig{ReasoningEffort: effort}, TypeOpenAICodex, DefaultOpenAICodexModel)
+		if got := base.Client.Transport.(idleTimeoutTransport).idle; got != want {
+			t.Errorf("effort %q: idle %s, want %s", effort, got, want)
+		}
+	}
+}

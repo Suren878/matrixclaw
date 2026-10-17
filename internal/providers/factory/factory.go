@@ -28,7 +28,7 @@ var adapters = map[string]Adapter{
 // AdapterFor picks the adapter that speaks to cfg's provider.
 func AdapterFor(cfg providers.RuntimeConfig) (Adapter, error) {
 	providerType := providers.NormalizeOptionalProviderType(cfg.Type)
-	adapter, ok := adapters[providers.PolicyForProvider(cfg.CatalogKey(), providerType).RuntimeProviderType]
+	adapter, ok := adapters[providers.PolicyForProvider(cfg.ProviderID, providerType).Type]
 	if providerType == "" || !ok {
 		return Adapter{}, fmt.Errorf("unsupported provider type %q", strings.TrimSpace(cfg.Type))
 	}

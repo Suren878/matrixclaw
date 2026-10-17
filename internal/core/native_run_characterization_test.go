@@ -46,7 +46,7 @@ type windowLLMs struct {
 	window int
 }
 
-func (w windowLLMs) ContextWindowTokens(string, string) (int, bool) { return w.window, true }
+func (w windowLLMs) ContextWindow(string, string) int { return w.window }
 
 func drainEvents(events <-chan core.Event) []core.Event {
 	var out []core.Event

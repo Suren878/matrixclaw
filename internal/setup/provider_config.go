@@ -40,7 +40,8 @@ func (p ProviderConfig) Effective() ProviderConfig {
 }
 
 // Runtime is the effective provider with its API key taken from the file or
-// the environment; ok is false when a required key is missing.
+// the environment; ok is false when a required key is missing. A server on a
+// loopback address needs no key.
 func (p ProviderConfig) Runtime() (ProviderConfig, bool) {
 	p = p.Effective()
 	if !p.policy().RequiresAPIKey {
@@ -48,7 +49,7 @@ func (p ProviderConfig) Runtime() (ProviderConfig, bool) {
 		return p, true
 	}
 	p.APIKey = cmp.Or(normalizeProviderAPIKey(p.APIKey), providerAPIKeyFromEnvName(p.APIKeyEnv))
-	return p, p.APIKey != ""
+	return p, p.APIKey != "" || providers.IsLoopbackURL(p.BaseURL)
 }
 
 // APIKeyPreview shows where the provider's key comes from without the key.
@@ -83,9 +84,6 @@ func (p ProviderConfig) validate() error {
 		return errors.New("provider id is required")
 	}
 	policy := p.policy()
-	if policy.Known && !policy.Implemented {
-		return fmt.Errorf("provider %q is listed but not implemented yet", policy.Name)
-	}
 	if !policy.Known {
 		if !isCustomProviderType(p.Type) {
 			return fmt.Errorf("unsupported custom provider type %q", p.Type)
@@ -118,9 +116,6 @@ func NewProviderConfig(providerID string, providerType string, name string) (Pro
 		return ProviderConfig{}, errors.New("provider id is required")
 	}
 	if policy := providers.PolicyForProvider(providerID, ""); policy.Known {
-		if !policy.Implemented {
-			return ProviderConfig{}, fmt.Errorf("provider %q is listed but not implemented yet", policy.Name)
-		}
 		return ProviderConfig{ID: policy.CatalogID}, nil
 	}
 	providerType = providers.NormalizeOptionalProviderType(providerType)
@@ -255,9 +250,7 @@ func ProviderItems(cfg Config) []ProviderSetupItem {
 		add(provider, true, false)
 	}
 	for _, spec := range providers.ProviderSpecs() {
-		if spec.Entry.Implemented {
-			add(ProviderConfig{ID: spec.Entry.ID}, false, false)
-		}
+		add(ProviderConfig{ID: spec.Entry.ID}, false, false)
 	}
 	return items
 }

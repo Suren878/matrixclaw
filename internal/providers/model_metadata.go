@@ -19,17 +19,12 @@ type ModelMetadata struct {
 	ContextWindow          int                 `json:"context_window,omitempty"`
 	MaxOutputTokens        int                 `json:"max_output_tokens,omitempty"`
 	ToolCalling            bool                `json:"tool_calling,omitempty"`
-	ParallelToolCalls      bool                `json:"parallel_tool_calls,omitempty"`
 	ImageInput             bool                `json:"image_input,omitempty"`
 	ReasoningEffort        bool                `json:"reasoning_effort,omitempty"`
-	ReasoningMode          ReasoningMode       `json:"reasoning_mode,omitempty"`
-	ReasoningWithTools     bool                `json:"reasoning_with_tools,omitempty"`
 	ReasoningEfforts       []string            `json:"reasoning_efforts,omitempty"`
 	DefaultReasoningEffort string              `json:"default_reasoning_effort,omitempty"`
 	SupportedParameters    []string            `json:"supported_parameters,omitempty"`
 	Source                 ModelMetadataSource `json:"source,omitempty"`
-	ContextSource          ModelMetadataSource `json:"context_source,omitempty"`
-	CapabilitySource       ModelMetadataSource `json:"capability_source,omitempty"`
 }
 
 // ModelMetadataRegistration is what a live listing reports for one model; nil
@@ -44,101 +39,93 @@ type ModelMetadataRegistration struct {
 	SupportedParameters []string `json:"supported_parameters,omitempty"`
 }
 
-var modelMetadataOverrides = struct {
+// learnedMetadata is what live listings reported, by provider ID and then by
+// the model ID as listed (vendor prefix kept, lower case): one provider's
+// listing never answers for another's model of the same name.
+var learnedMetadata = struct {
 	sync.RWMutex
-	values map[string]ModelMetadataRegistration
-}{values: map[string]ModelMetadataRegistration{}}
+	values map[string]map[string]ModelMetadataRegistration
+}{values: map[string]map[string]ModelMetadataRegistration{}}
 
-func RegisterModelMetadata(providerID string, providerType string, modelID string, metadata ModelMetadataRegistration) {
-	if !modelMetadataKnown(metadata) {
-		return
-	}
-	modelMetadataOverrides.Lock()
-	defer modelMetadataOverrides.Unlock()
-	for _, key := range contextWindowKeys(providerID, providerType, modelID) {
-		if key != "" {
-			modelMetadataOverrides.values[key] = mergeModelMetadata(modelMetadataOverrides.values[key], metadata)
-		}
-	}
+func learnedModelKey(modelID string) string {
+	return strings.ToLower(strings.TrimSpace(modelID))
 }
 
+// RegisterModelMetadata records what providerID's live listing reported for modelID.
+func RegisterModelMetadata(providerID string, modelID string, metadata ModelMetadataRegistration) {
+	providerID, modelID = NormalizeProviderID(providerID), learnedModelKey(modelID)
+	if providerID == "" || modelID == "" || !modelMetadataKnown(metadata) {
+		return
+	}
+	learnedMetadata.Lock()
+	defer learnedMetadata.Unlock()
+	models := learnedMetadata.values[providerID]
+	if models == nil {
+		models = map[string]ModelMetadataRegistration{}
+		learnedMetadata.values[providerID] = models
+	}
+	models[modelID] = mergeModelMetadata(models[modelID], metadata)
+}
+
+func lookupLearnedMetadata(providerID string, modelID string) (ModelMetadataRegistration, bool) {
+	learnedMetadata.RLock()
+	defer learnedMetadata.RUnlock()
+	metadata, ok := learnedMetadata.values[NormalizeProviderID(providerID)][learnedModelKey(modelID)]
+	return metadata, ok
+}
+
+// ResolveModelMetadata is what a provider's model can do: the provider's live
+// listing first, then the static rules for its type, then the fallback.
 func ResolveModelMetadata(providerID string, providerType string, modelID string) ModelMetadata {
 	providerID = NormalizeProviderID(providerID)
 	providerType = NormalizeProviderType(providerType)
-	modelID = strings.TrimSpace(modelID)
-	normalizedModelID := NormalizeModelID(providerID, providerType, modelID)
+	modelID = NormalizeModelID(providerID, providerType, modelID)
 
 	policy := PolicyForProvider(providerID, providerType)
-	providerCapabilities := policy.Capabilities
-	runtimeCapabilities := runtimeCapabilitiesFromProvider(providerCapabilities, policy.RuntimeProviderType)
-	runtimeCapabilities.ImageInput = resolveStaticImageInput(providerID, policy.RuntimeProviderType, normalizedModelID, providerCapabilities.ImageInput)
-
-	liveMetadata, liveOK := lookupCachedModelMetadata(providerID, providerType, normalizedModelID)
-	if liveOK {
-		runtimeCapabilities = applyCachedCapabilities(runtimeCapabilities, liveMetadata, policy.RuntimeProviderType)
+	capabilities := ModelCapabilities{
+		ToolCalling:     policy.Capabilities.ToolCalling,
+		ImageInput:      resolveStaticImageInput(providerID, policy.Type, modelID, policy.Capabilities.ImageInput),
+		ReasoningEffort: policy.Capabilities.ReasoningEffort,
+	}
+	learned, learnedOK := lookupLearnedMetadata(providerID, modelID)
+	if learnedOK {
+		capabilities = applyLearnedCapabilities(capabilities, learned)
 	}
 
-	reasoningEfforts := cleanReasoningEfforts(liveMetadata.ReasoningEfforts)
+	reasoningEfforts := cleanReasoningEfforts(learned.ReasoningEfforts)
 	if len(reasoningEfforts) == 0 {
-		reasoningEfforts = reasoningEffortsForProviderModel(providerID, normalizedModelID, runtimeCapabilities)
+		reasoningEfforts = reasoningEffortsForProviderModel(providerID, modelID, capabilities)
 	}
-	if runtimeCapabilities.ReasoningEffort && len(reasoningEfforts) == 0 {
-		runtimeCapabilities.ReasoningEffort = false
-		runtimeCapabilities.ReasoningMode = ReasoningModeNone
-		runtimeCapabilities.ReasoningWithTools = false
+	if len(reasoningEfforts) == 0 {
+		capabilities.ReasoningEffort = false
 	}
 	defaultReasoning := ""
 	if len(reasoningEfforts) > 0 {
 		defaultReasoning = DefaultReasoningEffort
 	}
 
-	contextWindow := liveMetadata.ContextWindow
-	var contextSource ModelMetadataSource
-	if contextWindow > 0 {
-		contextSource = ModelMetadataSourceLiveCatalog
-	} else {
-		contextWindow, contextSource = resolveStaticContextWindowTokens(providerID, policy.RuntimeProviderType, normalizedModelID)
+	source := ModelMetadataSourceLiveCatalog
+	contextWindow := learned.ContextWindow
+	if contextWindow <= 0 {
+		var staticSource ModelMetadataSource
+		contextWindow, staticSource = resolveStaticContextWindowTokens(providerID, policy.Type, modelID)
+		if !learnedOK {
+			source = staticSource
+		}
 	}
-
-	capabilitySource := ModelMetadataSourceStaticRule
-	if liveOK && (liveMetadata.ToolCalling != nil || liveMetadata.ImageInput != nil || liveMetadata.ReasoningEffort != nil || len(liveMetadata.ReasoningEfforts) > 0 || len(liveMetadata.SupportedParameters) > 0) {
-		capabilitySource = ModelMetadataSourceLiveCatalog
-	}
-	source := metadataSource(contextSource, capabilitySource, liveOK)
 
 	return ModelMetadata{
-		ID:                     normalizedModelID,
+		ID:                     modelID,
 		ContextWindow:          contextWindow,
-		MaxOutputTokens:        liveMetadata.MaxOutputTokens,
-		ToolCalling:            runtimeCapabilities.ToolCalling,
-		ParallelToolCalls:      runtimeCapabilities.ParallelToolCalls,
-		ImageInput:             runtimeCapabilities.ImageInput,
-		ReasoningEffort:        runtimeCapabilities.ReasoningEffort,
-		ReasoningMode:          runtimeCapabilities.ReasoningMode,
-		ReasoningWithTools:     runtimeCapabilities.ReasoningWithTools,
+		MaxOutputTokens:        learned.MaxOutputTokens,
+		ToolCalling:            capabilities.ToolCalling,
+		ImageInput:             capabilities.ImageInput,
+		ReasoningEffort:        capabilities.ReasoningEffort,
 		ReasoningEfforts:       reasoningEfforts,
 		DefaultReasoningEffort: defaultReasoning,
-		SupportedParameters:    copyStrings(liveMetadata.SupportedParameters),
+		SupportedParameters:    copyStrings(learned.SupportedParameters),
 		Source:                 source,
-		ContextSource:          contextSource,
-		CapabilitySource:       capabilitySource,
 	}
-}
-
-func lookupCachedModelMetadata(providerID string, providerType string, modelID string) (ModelMetadataRegistration, bool) {
-	var out ModelMetadataRegistration
-	found := false
-	for _, key := range contextWindowKeys(providerID, providerType, modelID) {
-		modelMetadataOverrides.RLock()
-		metadata, ok := modelMetadataOverrides.values[key]
-		modelMetadataOverrides.RUnlock()
-		if !ok {
-			continue
-		}
-		out = mergeModelMetadata(out, metadata)
-		found = true
-	}
-	return out, found
 }
 
 func mergeModelMetadata(existing ModelMetadataRegistration, next ModelMetadataRegistration) ModelMetadataRegistration {
@@ -179,50 +166,17 @@ func modelMetadataKnown(metadata ModelMetadataRegistration) bool {
 		len(metadata.SupportedParameters) > 0
 }
 
-func applyCachedCapabilities(capabilities ModelCapabilities, metadata ModelMetadataRegistration, providerType string) ModelCapabilities {
+func applyLearnedCapabilities(capabilities ModelCapabilities, metadata ModelMetadataRegistration) ModelCapabilities {
 	if metadata.ToolCalling != nil {
 		capabilities.ToolCalling = *metadata.ToolCalling
-		capabilities.ParallelToolCalls = *metadata.ToolCalling
 	}
 	if metadata.ImageInput != nil {
 		capabilities.ImageInput = *metadata.ImageInput
 	}
 	if metadata.ReasoningEffort != nil {
 		capabilities.ReasoningEffort = *metadata.ReasoningEffort
-		if *metadata.ReasoningEffort {
-			capabilities.ReasoningMode = reasoningModeForProvider(providerType)
-			capabilities.ReasoningWithTools = capabilities.ToolCalling
-		} else {
-			capabilities.ReasoningMode = ReasoningModeNone
-			capabilities.ReasoningWithTools = false
-		}
-	}
-	if !capabilities.ToolCalling {
-		capabilities.ParallelToolCalls = false
-		capabilities.ReasoningWithTools = false
 	}
 	return capabilities
-}
-
-func reasoningModeForProvider(providerType string) ReasoningMode {
-	switch NormalizeProviderType(providerType) {
-	case TypeGemini:
-		return ReasoningModeGeminiThinking
-	case TypeOpenAICompat, TypeOpenAICodex:
-		return ReasoningModeOpenAIEffort
-	default:
-		return ReasoningModeNone
-	}
-}
-
-func metadataSource(contextSource ModelMetadataSource, capabilitySource ModelMetadataSource, liveOK bool) ModelMetadataSource {
-	if liveOK || contextSource == ModelMetadataSourceLiveCatalog || capabilitySource == ModelMetadataSourceLiveCatalog {
-		return ModelMetadataSourceLiveCatalog
-	}
-	if contextSource == ModelMetadataSourceFallback {
-		return ModelMetadataSourceFallback
-	}
-	return ModelMetadataSourceStaticRule
 }
 
 func cleanReasoningEfforts(values []string) []string {

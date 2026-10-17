@@ -65,10 +65,11 @@ type contextWindowPattern struct {
 }
 
 // RegisterContextWindowTokens records a context window a live listing reported.
-func RegisterContextWindowTokens(providerID string, providerType string, modelID string, tokens int) {
-	RegisterModelMetadata(providerID, providerType, modelID, ModelMetadataRegistration{ContextWindow: tokens})
+func RegisterContextWindowTokens(providerID string, modelID string, tokens int) {
+	RegisterModelMetadata(providerID, modelID, ModelMetadataRegistration{ContextWindow: tokens})
 }
 
+// ResolveContextWindowTokens is the catalog window of a provider's model.
 func ResolveContextWindowTokens(providerID string, providerType string, modelID string) int {
 	return ResolveModelMetadata(providerID, providerType, modelID).ContextWindow
 }
@@ -92,41 +93,7 @@ func resolveStaticContextWindowTokens(providerID string, providerType string, mo
 	return DefaultFallbackContextWindowTokens, ModelMetadataSourceFallback
 }
 
-func contextWindowKeys(providerID string, providerType string, modelID string) []string {
-	model := normalizeContextModelID(modelID)
-	if model == "" {
-		return nil
-	}
-	providerID = NormalizeProviderID(providerID)
-	providerType = NormalizeOptionalProviderType(providerType)
-	keys := make([]string, 0, 2)
-	if providerID != "" {
-		keys = append(keys, contextWindowProviderKey(providerID, model))
-	}
-	if providerType != "" {
-		keys = append(keys, contextWindowTypeKey(providerType, model))
-	}
-	return keys
-}
-
-func contextWindowProviderKey(providerID string, modelID string) string {
-	providerID = NormalizeProviderID(providerID)
-	modelID = normalizeContextModelID(modelID)
-	if providerID == "" || modelID == "" {
-		return ""
-	}
-	return providerID + "\x00" + modelID
-}
-
-func contextWindowTypeKey(providerType string, modelID string) string {
-	providerType = NormalizeOptionalProviderType(providerType)
-	modelID = normalizeContextModelID(modelID)
-	if providerType == "" || modelID == "" {
-		return ""
-	}
-	return "type:" + providerType + "\x00" + modelID
-}
-
+// normalizeContextModelID drops the vendor prefix for the static rules only.
 func normalizeContextModelID(modelID string) string {
 	model := strings.ToLower(strings.TrimSpace(modelID))
 	if model == "" {

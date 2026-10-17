@@ -20,7 +20,7 @@ Next to the database (the data directory):
 | `sessions/<session id>/tool-output/` | full tool results too large for the model's context (the model gets head, tail and path) |
 | `sessions/<session id>/tasks/<task id>.log` | background command output, mode 0600, capped at 20 MB (keeps the first 1 MB and the newest part) |
 | `skills/` | skills library: `installed`, `quarantine`, `archive`, `plugins`, `drafts` |
-| `runtime/context-windows.json` | cached model context windows |
+| `runtime/context-windows.json` | model metadata learned from provider listings, by provider |
 
 Session directories are removed with their session; `/clear` removes the tool
 outputs of the cleared history.
@@ -32,7 +32,7 @@ independent of the database path:
 |---|---|
 | `matrixclaw/runtime/` | local voice and browser runtimes (`MATRIXCLAW_RUNTIME_DIR`) |
 | `matrixclaw/local/` | local voice models (`MATRIXCLAW_LOCAL_DIR`) |
-| `matrixclaw/auth/` | ChatGPT (Codex) login tokens (`MATRIXCLAW_AUTH_DIR`) |
+| `matrixclaw/auth/` | ChatGPT (Codex) login tokens and their refresh lock (`MATRIXCLAW_AUTH_DIR`) |
 
 ## Database
 
