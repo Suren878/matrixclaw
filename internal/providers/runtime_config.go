@@ -49,7 +49,7 @@ func NewRuntimeBase(cfg RuntimeConfig, providerType string, defaultModel string)
 	}
 	client := cfg.HTTPClient
 	if client == nil {
-		client = NewHTTPClient()
+		client = newHTTPClient(defaultResponseHeaderTimeout, streamIdleTimeout(cfg.ReasoningEffort))
 	}
 	return RuntimeBase{
 		Client:          client,

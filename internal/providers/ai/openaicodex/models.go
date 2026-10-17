@@ -19,27 +19,21 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 		client = providers.NewHTTPClient()
 	}
 	baseURL := strings.TrimRight(textutil.FirstNonEmpty(cfg.BaseURL, DefaultBaseURL), "/")
-	creds, err := ResolveCredentials(ctx, client, baseURL)
+	res, err := send(ctx, client, baseURL, func(creds Credentials) (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(creds.BaseURL, "/")+"/models?client_version="+codexClientVersion, nil)
+		if err != nil {
+			return nil, fmt.Errorf("openai-codex: build models request: %w", err)
+		}
+		req.Header.Set("Accept", "application/json")
+		return req, nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(creds.BaseURL, "/")+"/models?client_version="+codexClientVersion, nil)
-	if err != nil {
-		return nil, fmt.Errorf("openai-codex: build models request: %w", err)
-	}
-	setCodexHeaders(req, creds.AccessToken)
-	req.Header.Set("Accept", "application/json")
-	res, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("openai-codex: models request failed: %w", err)
 	}
 	defer func() { _ = res.Body.Close() }()
 	raw, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, fmt.Errorf("openai-codex: read models response: %w", err)
-	}
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return nil, fmt.Errorf("openai-codex: %s", decodeError(raw))
 	}
 	models, err := decodeModels(cmp.Or(cfg.ProviderID, providerID), raw)
 	if err != nil {
