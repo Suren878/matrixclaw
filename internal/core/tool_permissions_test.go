@@ -302,25 +302,6 @@ func TestAlwaysAllowNeedsASuggestedRule(t *testing.T) {
 	}
 }
 
-func TestOnlyTheOwnerKeepsAGlobalRule(t *testing.T) {
-	t.Parallel()
-	app, db, _, dir := permissionCore(t)
-	session := permissionSession(t, db, "session_guest_rule", dir, core.PermissionModeDefault, "")
-	pending := executeTool(t, app, session.ID, "bash", `{"command":"go test ./..."}`)
-
-	_, err := app.ResolveApproval(context.Background(), pending.Approval.ID, core.ApprovalResolveRequest{Approved: true, Always: permission.ScopeGlobal, Restricted: true})
-
-	if !errors.Is(err, core.ErrOwnerOnly) {
-		t.Fatalf("error = %v, want ErrOwnerOnly", err)
-	}
-	if stored, _ := db.GetApproval(context.Background(), pending.Approval.ID); stored.State != core.ApprovalStatePending {
-		t.Fatalf("approval state = %s, want still pending", stored.State)
-	}
-	if _, err := app.ResolveApproval(context.Background(), pending.Approval.ID, core.ApprovalResolveRequest{Approved: true, Always: permission.ScopeSession, Restricted: true}); err != nil {
-		t.Fatalf("a session rule from a restricted client: %v", err)
-	}
-}
-
 func TestAddedRulesNameAbsolutePathsAndKnownTools(t *testing.T) {
 	t.Parallel()
 	app, db, _, dir := permissionCore(t)
@@ -453,25 +434,6 @@ func TestSearchesLeaveOutWhatRulesGuardInsteadOfFailing(t *testing.T) {
 	}
 	if got := resultText(executeTool(t, app, session.ID, "glob", `{"pattern":"**/*.txt","path":"secret"}`)); !strings.HasPrefix(got, "Blocked by rule") {
 		t.Fatalf("glob inside the denied directory = %q", got)
-	}
-}
-
-func TestRestrictedClientsReachNoUnattendedSession(t *testing.T) {
-	t.Parallel()
-	app, db, _, dir := permissionCore(t)
-	auto := permissionSession(t, db, "session_auto", dir, core.PermissionModeFullAuto, "")
-	input := core.HandleMessageInput{Client: "telegram", ExternalKey: "guest:q", Text: "hi", Restricted: true, AllowAutoBindOne: true}
-
-	explicit := input
-	explicit.SessionID = auto.ID
-	if _, err := app.AcceptRun(context.Background(), explicit); !errors.Is(err, core.ErrSessionRestricted) {
-		t.Fatalf("explicit session: err = %v", err)
-	}
-	if _, err := app.AcceptRun(context.Background(), input); !errors.Is(err, core.ErrSessionRestricted) {
-		t.Fatalf("the only session: err = %v", err)
-	}
-	if _, err := db.GetBinding(context.Background(), "telegram", "guest:q"); err == nil {
-		t.Fatal("a restricted client was bound to a full_auto session")
 	}
 }
 

@@ -11,7 +11,7 @@ import (
 func (s *Server) handleSetupProviders(w http.ResponseWriter, r *http.Request) {
 	providers, err := s.Setup.ProviderItems()
 	if err != nil {
-		writeErrorMessage(w, http.StatusInternalServerError, err.Error())
+		writeError(w, err)
 		return
 	}
 	if !s.allowProviderSetup(r) {
@@ -30,7 +30,7 @@ func (s *Server) handleSetupProviderModels(w http.ResponseWriter, r *http.Reques
 	}
 	models, err := s.Setup.ProviderModelCatalogFor(r.Context(), r.PathValue("id"), update)
 	if err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+		writeError(w, withStatus(http.StatusBadRequest, err))
 		return
 	}
 	writeJSON(w, http.StatusOK, models)
@@ -41,7 +41,7 @@ func (s *Server) handleSetupProviderDelete(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := s.Setup.DeleteProvider(r.PathValue("id")); err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+		writeError(w, withStatus(http.StatusBadRequest, err))
 		return
 	}
 	if !s.reload(w, r.Context()) {
@@ -60,14 +60,14 @@ func (s *Server) handleSetupProviderUpdate(w http.ResponseWriter, r *http.Reques
 	}
 	item, err := s.Setup.ConfigureProvider(r.PathValue("id"), update)
 	if err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+		writeError(w, withStatus(http.StatusBadRequest, err))
 		return
 	}
 	if !s.reload(w, r.Context()) {
 		return
 	}
 	if err := s.ensureSessionProviderLoaded(item.ID); err != nil {
-		writeErrorMessage(w, http.StatusInternalServerError, err.Error())
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, setup.ProviderSetupResponse{Provider: item})

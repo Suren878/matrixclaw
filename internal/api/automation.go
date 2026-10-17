@@ -2,14 +2,16 @@ package api
 
 import (
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/automation"
 )
 
 func (s *Server) handleAutomationJobs(w http.ResponseWriter, r *http.Request) {
-	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	limit, ok := queryInt(w, r, "limit", 0)
+	if !ok {
+		return
+	}
 	jobs, err := s.Automation.ListJobs(r.Context(), automation.JobFilter{
 		Status:    automation.JobStatus(strings.TrimSpace(r.URL.Query().Get("status"))),
 		SessionID: strings.TrimSpace(r.URL.Query().Get("session_id")),

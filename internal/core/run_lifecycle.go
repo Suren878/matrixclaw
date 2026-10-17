@@ -43,15 +43,29 @@ type runChange struct {
 	ReplySaved bool
 }
 
-// transition is the only writer of a run's status. It checks the edge, keeps
-// FinishedAt, the wakeup of a parked run and the checkpoint, seals the reply in
-// the same write, rejects the approvals an ended run leaves and publishes the
-// change. A run that ended meanwhile stays ended (ErrRunEnded).
+// transition is the only writer of a run's status. It commits the change
+// (edge check, FinishedAt, the wakeup of a parked run, the reply sealed in the
+// same write) and then does what follows it. A run that ended meanwhile stays
+// ended (ErrRunEnded). Only a failed commit is returned: once the status is
+// written, every follow-up step runs and their errors are logged.
 func (c *Core) transition(ctx context.Context, run *Run, change runChange) error {
-	if !run.Status.canBecome(change.To) {
-		return fmt.Errorf("core: run %s cannot go from %s to %s", run.ID, run.Status, change.To)
-	}
 	from := run.Status
+	reply, created, err := c.commitRun(ctx, run, change)
+	if err != nil {
+		return err
+	}
+	if err := c.afterCommit(ctx, *run, from, change, reply, created); err != nil {
+		log.Printf("core: after run %s became %s: %v", run.ID, run.Status, err)
+	}
+	return nil
+}
+
+// commitRun writes the change and, on success, applies it to run; it returns
+// the sealed reply and whether it is new.
+func (c *Core) commitRun(ctx context.Context, run *Run, change runChange) (*transcript.Message, bool, error) {
+	if !run.Status.canBecome(change.To) {
+		return nil, false, fmt.Errorf("core: run %s cannot go from %s to %s", run.ID, run.Status, change.To)
+	}
 	now := c.now().UTC()
 	next := *run
 	next.Status, next.Error, next.UpdatedAt, next.FinishedAt = change.To, change.Err, now, nil
@@ -63,58 +77,77 @@ func (c *Core) transition(ctx context.Context, run *Run, change runChange) error
 	}
 	if change.To == RunStatusWaitingEvents {
 		if change.Await == nil {
-			return errors.New("core: a run waiting for events has nothing to wait for")
+			return nil, false, errors.New("core: a run waiting for events has nothing to wait for")
 		}
 		wakeup := RunWakeup{RunID: run.ID, SessionID: run.SessionID, WakeAt: change.Await.Until, TaskIDs: change.Await.TaskIDs}
 		if err := c.store.SaveRunWakeup(ctx, wakeup); err != nil {
-			return err
+			return nil, false, err
 		}
 	}
 	reply, created := c.stampReply(change.Reply, change.ReplySaved, now)
 	if err := c.store.SealRun(ctx, next, reply, change.ReplySaved); err != nil {
-		if change.To == RunStatusWaitingEvents && from != RunStatusWaitingEvents {
-			_ = c.store.DeleteRunWakeup(ctx, run.ID)
+		if change.To == RunStatusWaitingEvents && run.Status != RunStatusWaitingEvents {
+			if delErr := c.store.DeleteRunWakeup(ctx, run.ID); delErr != nil {
+				err = errors.Join(err, fmt.Errorf("drop the wakeup: %w", delErr))
+			}
 		}
-		return err
+		return nil, false, err
 	}
 	*run = next
+	return reply, created, nil
+}
+
+// afterCommit does what follows a committed change: it drops a wakeup the run
+// no longer has, publishes the change, keeps the subagent task in step and,
+// for an ended run, clears its checkpoint, rejects the approvals it leaves,
+// stops the blocking children of a failed run and tells the user of a failed
+// wake run. Callers waiting for the run's end are woken in any case.
+//
+// Session gates never nest. Ending a subagent's run takes its parent session's
+// gate (taskFinished wakes the parent), so no subagent run ends under a gate.
+func (c *Core) afterCommit(ctx context.Context, run Run, from RunStatus, change runChange, reply *transcript.Message, created bool) error {
+	ended := run.Status.Terminal()
+	if ended {
+		defer c.notifyRunEnd(run.ID)
+	}
+	var errs []error
 	// An ended run may have parked after the caller read it.
-	if change.To != RunStatusWaitingEvents && (from == RunStatusWaitingEvents || change.To.Terminal()) {
+	if run.Status != RunStatusWaitingEvents && (from == RunStatusWaitingEvents || ended) {
 		if err := c.store.DeleteRunWakeup(ctx, run.ID); err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("drop the wakeup: %w", err))
 		}
 	}
 	if reply != nil {
 		c.publishEvent(Event{Type: replyEvent(created), SessionID: reply.SessionID, RunID: reply.RunID, Payload: *reply})
 	}
-	c.publishEvent(Event{Type: EventRunUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: *run})
-	if !change.To.Terminal() {
-		_, err := c.syncSubagentTask(ctx, *run)
-		return err
+	c.publishEvent(Event{Type: EventRunUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: run})
+	if ended {
+		if err := c.store.DeleteRunCheckpoint(ctx, run.ID); err != nil {
+			errs = append(errs, fmt.Errorf("clear the checkpoint: %w", err))
+		}
+		if err := c.rejectRunApprovals(ctx, run, change.Err); err != nil {
+			errs = append(errs, fmt.Errorf("reject open approvals: %w", err))
+		}
 	}
-	c.clearRunCheckpoint(ctx, run.ID)
-	if err := c.rejectRunApprovals(ctx, *run, change.Err); err != nil {
-		return err
+	if _, err := c.syncSubagentTask(ctx, run); err != nil {
+		errs = append(errs, fmt.Errorf("sync the subagent task: %w", err))
 	}
-	_, err := c.syncSubagentTask(ctx, *run)
-	c.notifyRunEnd(run.ID)
-	if err != nil {
-		return err
-	}
-	if change.To == RunStatusFailed {
+	if run.Status == RunStatusFailed {
 		// A blocking child works for a call the failed run no longer waits for.
-		stopped, err := c.cancelSubagentChildren(ctx, *run, true)
+		stopped, err := c.cancelSubagentChildren(ctx, run, true)
 		for _, id := range stopped {
 			c.cancelActiveRun(id)
 		}
 		if err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("cancel blocking subagents: %w", err))
+		}
+		if run.Trigger == RunTriggerWake {
+			if err := c.noticeFailedWakeRun(ctx, run); err != nil {
+				errs = append(errs, fmt.Errorf("notice the failed wake run: %w", err))
+			}
 		}
 	}
-	if change.To == RunStatusFailed && run.Trigger == RunTriggerWake {
-		return c.noticeFailedWakeRun(ctx, *run)
-	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // stampReply sets the reply's times and reports whether it is new.
