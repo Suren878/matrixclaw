@@ -140,12 +140,18 @@ func (r *Registry) Models(ctx context.Context, providerID string) ([]string, err
 	return models, nil
 }
 
-func (r *Registry) ContextWindowTokens(providerID string, modelID string) (int, bool) {
-	cfg, ok := r.resolveProvider(providerID)
-	if !ok || cfg.ContextWindow <= 0 {
-		return 0, false
+// ContextWindow is the window of a provider's model: the manual setting when
+// the model is the one the provider is configured with, else the catalog.
+func (r *Registry) ContextWindow(providerID string, modelID string) int {
+	option, model, err := r.Normalize(providerID, modelID)
+	if err != nil || option.ID == "" {
+		return providers.ResolveContextWindowTokens(providerID, "", modelID)
 	}
-	return cfg.ContextWindow, true
+	cfg, _ := r.resolveProvider(option.ID)
+	if cfg.ContextWindow > 0 && model == providers.NormalizeModelID(cfg.ID, cfg.Type, cfg.Model) {
+		return cfg.ContextWindow
+	}
+	return providers.ResolveContextWindowTokens(cfg.ID, cfg.Type, model)
 }
 
 func (r *Registry) Resolve(ctx context.Context, providerID string, modelID string) (providers.Runtime, core.SessionProviderOption, string, error) {
@@ -159,21 +165,18 @@ func (r *Registry) Resolve(ctx context.Context, providerID string, modelID strin
 	cfg, _ := r.resolveProvider(option.ID)
 	cacheKey := option.ID + "\x00" + resolvedModel
 
+	// Building a runtime does no I/O, so it happens under the lock: two
+	// sessions resolving the same model share one runtime and its learned state.
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	if runtime, ok := r.runtimes[cacheKey]; ok {
-		r.mu.Unlock()
 		return runtime, option, resolvedModel, nil
 	}
-	r.mu.Unlock()
-
 	runtime, err := providerfactory.NewRuntime(ctx, runtimeConfigWithModel(cfg, resolvedModel))
 	if err != nil {
 		return nil, core.SessionProviderOption{}, "", err
 	}
-
-	r.mu.Lock()
 	r.runtimes[cacheKey] = runtime
-	r.mu.Unlock()
 	return runtime, option, resolvedModel, nil
 }
 
