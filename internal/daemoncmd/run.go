@@ -71,6 +71,7 @@ func Run(ctx context.Context) error {
 		WithSessionFiles(sessionFilesRoot(bootstrap.DBPath)).
 		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()}).
 		WithSkillsContext(skillsModule).
+		WithSkillLearning(skillsModule).
 		WithPromptEnvironment(promptEnvironment(bootstrap)).
 		WithWorktrees(filepath.Join(dataDir(bootstrap.DBPath), "worktrees"))
 	if bootstrap.Setup.Daemon.Checkpoints.On() {

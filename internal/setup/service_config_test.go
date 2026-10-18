@@ -214,6 +214,43 @@ func TestSkillsStayOnUnlessTurnedOff(t *testing.T) {
 	}
 }
 
+func TestSkillsReviewFollowsTheSkillsModule(t *testing.T) {
+	for _, tc := range []struct {
+		json string
+		want bool
+	}{
+		{`{}`, true},
+		{`{"enabled":false}`, false},
+		{`{"enabled":false,"review":{"enabled":true}}`, false},
+		{`{"review":{"enabled":false}}`, false},
+		{`{"review":{"min_tool_steps":3,"interval_hours":1}}`, true},
+	} {
+		path := filepath.Join(t.TempDir(), "setup.json")
+		if err := os.WriteFile(path, []byte(`{"version":4,"modules":{"skills":`+tc.json+`}}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := NewFileStore(path).Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := cfg.Modules.Skills.IsReviewEnabled(); got != tc.want {
+			t.Errorf("%s: review enabled = %t, want %t", tc.json, got, tc.want)
+		}
+	}
+}
+
+func TestSkillsReviewRejectsBadSettings(t *testing.T) {
+	for _, review := range []string{`{"min_tool_steps":-1}`, `{"interval_hours":-2}`, `{"min_tool_calls":5}`} {
+		path := filepath.Join(t.TempDir(), "setup.json")
+		if err := os.WriteFile(path, []byte(`{"version":4,"modules":{"skills":{"review":`+review+`}}}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := NewFileStore(path).Load(); err == nil {
+			t.Errorf("%s loaded without error", review)
+		}
+	}
+}
+
 func ptr[T any](value T) *T {
 	return &value
 }

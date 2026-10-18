@@ -62,8 +62,8 @@ type Core struct {
 	commandEnv func() []string
 	// hooks runs the user's hooks and the checks after edits; nil runs none.
 	hooks *hooks.Runner
-	// executing counts the runs goroutineStarter started; once stopped it
-	// starts no more.
+	// executing counts the runs goroutineStarter started and the session
+	// reviews; once stopped it starts no more.
 	executing sync.WaitGroup
 	stopped   bool
 	// startingAgents are the children each parent session is starting, by
@@ -76,6 +76,8 @@ type Core struct {
 	checkpoints *checkpoint.Store
 	// checkpointFailures holds the snapshot failures already logged.
 	checkpointFailures sync.Map
+	// reviews are the background reviews of idle sessions.
+	reviews sessionReviews
 }
 
 type SkillsPromptContextRequest struct {

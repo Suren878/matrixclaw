@@ -138,6 +138,9 @@ func checkStoredValues(cfg Config) error {
 	for i, server := range modules.MCP.Servers {
 		check("modules.mcp.servers["+strconv.Itoa(i)+"].transport", server.Transport, "stdio", "http")
 	}
+	if review := modules.Skills.Review; review.MinToolSteps < 0 || review.IntervalHours < 0 {
+		problems = append(problems, errors.New("modules.skills.review: min_tool_steps and interval_hours must not be negative"))
+	}
 	for i, hook := range cfg.Hooks {
 		if err := hook.Validate(); err != nil {
 			problems = append(problems, fmt.Errorf("hooks[%d]: %w", i, err))

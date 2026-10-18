@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"sync/atomic"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/modules"
@@ -16,7 +17,14 @@ import (
 type Module struct {
 	service *coreskills.Service
 	enabled atomic.Bool
+	review  atomic.Pointer[core.SessionReviewSettings]
 }
+
+// Session review defaults, unless setup.json sets them.
+const (
+	defaultReviewToolSteps = 10
+	defaultReviewInterval  = 6 * time.Hour
+)
 
 // New opens the library at root on the store's database; it is off until
 // the first Apply.
@@ -25,7 +33,9 @@ func New(db *sql.DB, root string) (*Module, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Module{service: service}, nil
+	module := &Module{service: service}
+	module.review.Store(&core.SessionReviewSettings{})
+	return module, nil
 }
 
 func (m *Module) ID() string { return "skills" }
@@ -39,6 +49,18 @@ func (m *Module) Apply(_ context.Context, cfg setup.Config) error {
 		GitEnv:      setup.ChildEnvironment(cfg, os.Environ()),
 	})
 	m.enabled.Store(skills.IsEnabled())
+	review := core.SessionReviewSettings{
+		Enabled:      skills.IsReviewEnabled(),
+		MinToolSteps: defaultReviewToolSteps,
+		Interval:     defaultReviewInterval,
+	}
+	if steps := skills.Review.MinToolSteps; steps > 0 {
+		review.MinToolSteps = steps
+	}
+	if hours := skills.Review.IntervalHours; hours > 0 {
+		review.Interval = time.Duration(hours) * time.Hour
+	}
+	m.review.Store(&review)
 	return nil
 }
 
@@ -80,4 +102,37 @@ func (m *Module) SkillsPromptContext(ctx context.Context, req core.SkillsPromptC
 		WorkingDir: req.WorkingDir,
 		Messages:   messages,
 	})
+}
+
+// ReviewSettings are the session review's settings from setup.json.
+func (m *Module) ReviewSettings() core.SessionReviewSettings {
+	return *m.review.Load()
+}
+
+// ReviewedSkills are the skills the session activated, with their instructions.
+func (m *Module) ReviewedSkills(ctx context.Context, sessionID string) ([]core.ReviewedSkill, error) {
+	active, err := m.service.SessionSkills(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	reviewed := make([]core.ReviewedSkill, 0, len(active))
+	for _, skill := range active {
+		detail, err := m.service.Get(ctx, skill.ID)
+		if err != nil {
+			return nil, err
+		}
+		reviewed = append(reviewed, core.ReviewedSkill{ID: skill.ID, Name: skill.Name, Description: skill.Description, Body: detail.Body})
+	}
+	return reviewed, nil
+}
+
+// DraftProposal files a session review's skill as a quarantined draft tagged
+// learned, and update-of-<id> when it rewrites a skill.
+func (m *Module) DraftProposal(ctx context.Context, proposal core.SkillProposal) (string, error) {
+	tags := []string{"learned"}
+	if proposal.Updates != "" {
+		tags = append(tags, "update-of-"+proposal.Updates)
+	}
+	draft, err := m.service.CreateDraft(ctx, proposal.Name, proposal.Description, tags, proposal.Body)
+	return draft.ID, err
 }

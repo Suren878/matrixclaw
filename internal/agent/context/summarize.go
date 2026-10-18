@@ -3,6 +3,7 @@ package agentcontext
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -128,6 +129,31 @@ func summaryChunks(previous string, messages []transcript.Message, chunkTokens i
 		}
 	}
 	return packChunks(pieces, chunkTokens, "\n\n")
+}
+
+// TranscriptTail renders the newest message groups that fit in about
+// maxTokens as summaries render history, oldest first.
+func TranscriptTail(messages []transcript.Message, maxTokens int) string {
+	groups := messageGroups(messages)
+	var pieces []string
+	used := 0
+	for i := len(groups) - 1; i >= 0; i-- {
+		text := groupText(groups[i])
+		if text == "" {
+			continue
+		}
+		tokens := EstimateTextTokens(text)
+		if used+tokens > maxTokens {
+			if used == 0 {
+				pieces = append(pieces, trimToTokens(text, maxTokens))
+			}
+			break
+		}
+		pieces = append(pieces, text)
+		used += tokens
+	}
+	slices.Reverse(pieces)
+	return strings.Join(pieces, "\n\n")
 }
 
 // packChunks joins pieces in order into chunks of about chunkTokens; a piece
