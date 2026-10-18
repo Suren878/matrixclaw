@@ -43,7 +43,7 @@ can lose the last commits since the previous checkpoint.
 
 The schema is `internal/store/migrations/001_init.sql` followed by the
 numbered migrations listed in `internal/store/schema.go` (`002` adds
-`file_checkpoints`; `004` drops `sessions.runtime_id`, which repeated
+`file_checkpoints`; `003` drops `sessions.runtime_id`, which repeated
 `kind`, and `external_agent_sessions.approval_policy` and `sandbox`, since an
 external agent's permissions follow its session); the database records in
 `PRAGMA user_version` how many migrations it has applied. Each migration is applied once and in order, to a new

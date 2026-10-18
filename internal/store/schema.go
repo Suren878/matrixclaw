@@ -13,7 +13,7 @@ var initSchemaSQL string
 //go:embed migrations/002_file_checkpoints.sql
 var fileCheckpointsSQL string
 
-//go:embed migrations/004_session_kind.sql
+//go:embed migrations/003_session_kind.sql
 var sessionKindSQL string
 
 // migrations are applied in order; a database at user_version n has applied
