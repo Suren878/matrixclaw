@@ -2,9 +2,12 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -132,9 +135,11 @@ func TestSummaryRetriesATransientFailure(t *testing.T) {
 	}
 }
 
-// talkingCall is a tool step whose reply also says replyRunes of text.
+// talkingCall is a tool step whose reply also says replyRunes of text, its own
+// for each call.
 func talkingCall(replyRunes int, toolCall providers.ToolCall) agenttest.Turn {
-	return agenttest.Turn{Response: providers.Response{Text: strings.Repeat("t", replyRunes), ToolCalls: []providers.ToolCall{toolCall}}}
+	reply := toolCall.ID + strings.Repeat("t", replyRunes-len(toolCall.ID))
+	return agenttest.Turn{Response: providers.Response{Text: reply, ToolCalls: []providers.ToolCall{toolCall}}}
 }
 
 func TestSummaryKeepsTheAssignmentStepsAndWholeToolSteps(t *testing.T) {
@@ -467,5 +472,87 @@ func TestElisionThenSummaryKeepsTheRequestOrderAndPrefix(t *testing.T) {
 		if request.SystemPrompt != requests[0].SystemPrompt || !reflect.DeepEqual(request.Tools, requests[0].Tools) {
 			t.Fatal("the system prompt or tools changed during the run")
 		}
+	}
+}
+
+func TestManualCompactKeepsTheLatestRequestAndRecordsItsUsage(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.WithHistory(pastTurn(4_000)...)
+	model := agenttest.NewScriptedModel(agenttest.Turn{Response: providers.Response{Text: "SUMMARY", Usage: providers.Usage{PromptTokens: 900, OutputTokens: 40}}})
+
+	boundary, err := f.Engine().Compact(context.Background(), agent.CompactRequest{SessionID: agenttest.SessionID, RunID: agenttest.RunID, Model: model, BaseTokens: 100})
+
+	user, _ := f.Journal.Message("msg_user")
+	c := boundary.Compaction
+	if err != nil || c == nil || c.Summary != "SUMMARY" || c.CoversThroughSeq != user.Seq || c.RunID != agenttest.RunID || c.TokensBefore <= c.TokensAfter {
+		t.Fatalf("boundary = %+v err = %v", boundary, err)
+	}
+	if len(c.Kept) != 1 || c.Kept[0] != "User: do the task" {
+		t.Fatalf("kept = %q, want the latest request", c.Kept)
+	}
+	if len(f.Journal.Steps) != 1 || f.Journal.Steps[0].RunID != agenttest.RunID || f.Journal.Steps[0].StopReason != agent.CompactStopReason || f.Journal.Steps[0].Usage.PromptTokens != 900 {
+		t.Fatalf("steps = %+v", f.Journal.Steps)
+	}
+	next := agenttest.NewScriptedModel(text("Done."))
+	run(t, f, next)
+	if first := next.Requests()[0].Messages; len(first) != 1 || !strings.Contains(first[0].Content, "SUMMARY") || !strings.Contains(first[0].Content, "do the task") {
+		t.Fatalf("next request = %+v", first)
+	}
+}
+
+func TestManualCompactWithNothingToSummariseWritesNothing(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Journal.Messages, f.Journal.Steps = nil, nil
+
+	_, err := f.Engine().Compact(context.Background(), agent.CompactRequest{SessionID: agenttest.SessionID, Model: agenttest.NewScriptedModel()})
+
+	if !errors.Is(err, agentcontext.ErrNothingToSummarise) || len(f.Journal.Messages) != 0 {
+		t.Fatalf("err = %v messages = %+v", err, f.Journal.Messages)
+	}
+}
+
+// editStep is an edit-tool call on path and its result.
+func editStep(id, tool, path string, failed bool) []transcript.Message {
+	input, _ := json.Marshal(map[string]string{"file_path": path})
+	result := &transcript.ToolResultPart{ToolCallID: id, Name: tool, Content: "done"}
+	if failed {
+		result.Status = string(tools.ResultStatusError)
+	}
+	return []transcript.Message{
+		{ID: id, SessionID: agenttest.SessionID, RunID: "run_0", Role: transcript.MessageRoleAssistant, Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindToolCall, ToolCall: &transcript.ToolCallPart{ID: id, Name: tool, Input: string(input)}}}},
+		{ID: id + "_result", SessionID: agenttest.SessionID, RunID: "run_0", Role: transcript.MessageRoleTool, Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindToolResult, ToolResult: result}}},
+	}
+}
+
+func TestSummaryReattachesTheFilesEditedLast(t *testing.T) {
+	dir := t.TempDir()
+	for name, body := range map[string]string{"old.go": "package old", "new.go": "package fresh // now", "failed.go": "package failed"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var history []transcript.Message
+	history = append(history, editStep("e1", "write", "old.go", false)...)
+	history = append(history, editStep("e2", "write", filepath.Join(dir, "gone.go"), false)...)
+	history = append(history, editStep("e3", "edit", "failed.go", true)...)
+	history = append(history, editStep("e4", "edit", filepath.Join(dir, "new.go"), false)...)
+	f := agenttest.NewFixture()
+	f.WithHistory(history...)
+	model := agenttest.NewScriptedModel(text("SUMMARY"))
+
+	if _, err := f.Engine().Compact(context.Background(), agent.CompactRequest{SessionID: agenttest.SessionID, RunID: agenttest.RunID, WorkingDir: dir, Model: model}); err != nil {
+		t.Fatal(err)
+	}
+
+	note := f.Journal.Messages[len(f.Journal.Messages)-1]
+	if note.Origin != transcript.OriginEngineModel || f.Journal.Messages[len(f.Journal.Messages)-2].Compaction == nil {
+		t.Fatalf("last messages = %+v, want the boundary and then the note", f.Journal.Messages[len(f.Journal.Messages)-2:])
+	}
+	fresh, old := strings.Index(note.Content, "package fresh // now"), strings.Index(note.Content, "package old")
+	if fresh < 0 || old < fresh || !strings.Contains(note.Content, filepath.Join(dir, "new.go")) {
+		t.Fatalf("note = %q, want new.go, then old.go", note.Content)
+	}
+	if strings.Contains(note.Content, "gone.go") || strings.Contains(note.Content, "package failed") {
+		t.Fatalf("note = %q, want no missing file and no failed edit", note.Content)
 	}
 }

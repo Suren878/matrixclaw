@@ -72,3 +72,26 @@ func TestUnavailableCompactModelIsLoggedOnce(t *testing.T) {
 		t.Fatalf("logged %d times:\n%s", count, logs.String())
 	}
 }
+
+func TestManualCompactRecordsUsageAndKeepsTheLatestRequest(t *testing.T) {
+	t.Parallel()
+	app, db, cleanup := newCrashRecoveryCore(t)
+	defer cleanup()
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+		return providers.Response{Text: "SUMMARY", Usage: providers.Usage{PromptTokens: 700, OutputTokens: 30}}, nil
+	})})
+	session, run := saveCrashRecoveryRun(t, db, "usage", core.RunStatusCompleted, false)
+
+	result, err := app.CompactSession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if c := result.Message.Compaction; c == nil || len(c.Kept) != 1 || c.Kept[0] != "User: original task usage" {
+		t.Fatalf("boundary = %+v", result.Message.Compaction)
+	}
+	steps, err := db.ListRunSteps(context.Background(), run.ID)
+	if err != nil || len(steps) != 1 || steps[0].StopReason != "compact" || steps[0].PromptTokens != 700 {
+		t.Fatalf("steps = %+v err = %v", steps, err)
+	}
+}

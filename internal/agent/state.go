@@ -21,11 +21,14 @@ type RunState struct {
 	Tokens     int64         `json:"tokens,omitempty"`
 	Active     time.Duration `json:"active,omitempty"`
 	WrapUpSent bool          `json:"wrap_up_sent,omitempty"`
-	// LoopRecent holds the loop guard's window, one "hash tool" line per call.
-	LoopRecent  string `json:"loop_recent,omitempty"`
-	LoopTool    string `json:"loop_tool,omitempty"`
-	LoopRepeats int    `json:"loop_repeats,omitempty"`
-	LoopWarned  bool   `json:"loop_warned,omitempty"`
+	// LoopRecent and LoopReplies hold the loop guard's windows of calls and
+	// long replies; LoopKind, LoopTool and LoopRepeats are what it saw.
+	LoopRecent  string   `json:"loop_recent,omitempty"`
+	LoopReplies string   `json:"loop_replies,omitempty"`
+	LoopKind    LoopKind `json:"loop_kind,omitempty"`
+	LoopTool    string   `json:"loop_tool,omitempty"`
+	LoopRepeats int      `json:"loop_repeats,omitempty"`
+	LoopWarned  bool     `json:"loop_warned,omitempty"`
 	// Continuations counts replies in a row cut by the output limit; CallCut is
 	// set until the model is told a cut dropped its tool call.
 	Continuations int  `json:"continuations,omitempty"`
@@ -65,7 +68,7 @@ func (r *run) active() time.Duration {
 // returns the stop reason when this step is the tool-less final turn.
 func (r *run) prepareStep(ctx context.Context) (StopReason, error) {
 	if r.state.LoopRepeats >= loopStopRepeats {
-		return StopLoopDetected, r.appendEngineMessage(ctx, transcript.OriginEngineModel, loopStopText(r.state.LoopTool))
+		return StopLoopDetected, r.appendEngineMessage(ctx, transcript.OriginEngineModel, r.state.loopStopText())
 	}
 	if reached := r.exhausted(); reached != "" {
 		return StopBudgetExhausted, r.appendEngineMessage(ctx, transcript.OriginEngineModel, budgetStopText(reached))
@@ -80,7 +83,7 @@ func (r *run) prepareStep(ctx context.Context) (StopReason, error) {
 		r.state.CallCut = false
 	}
 	if r.state.LoopRepeats >= loopWarnRepeats && !r.state.LoopWarned {
-		if err := r.appendEngineMessage(ctx, transcript.OriginEngine, loopWarningText(r.state.LoopTool)); err != nil {
+		if err := r.appendEngineMessage(ctx, transcript.OriginEngine, r.state.loopWarningText()); err != nil {
 			return "", err
 		}
 		r.state.LoopWarned = true

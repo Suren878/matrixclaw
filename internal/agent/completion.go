@@ -46,7 +46,7 @@ func (r *run) openTodoNote(ctx context.Context) string {
 	if r.state.TodoNudged {
 		return ""
 	}
-	open, err := r.Todos.Open(ctx, r.task.SessionID, append([]string{r.task.RunID}, r.task.Continues...))
+	open, err := r.Todos.Open(ctx, r.task.SessionID, r.chain())
 	if err != nil || len(open) == 0 {
 		return ""
 	}
