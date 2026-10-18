@@ -3,7 +3,6 @@ package api
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -11,14 +10,13 @@ import (
 )
 
 func (s *Server) handleClientDeliveries(w http.ResponseWriter, r *http.Request) {
-	limit := 20
-	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil || parsed < 1 {
-			writeErrorMessage(w, http.StatusBadRequest, "invalid limit")
-			return
-		}
-		limit = parsed
+	limit, ok := queryInt(w, r, "limit", 20)
+	if !ok {
+		return
+	}
+	if limit < 1 {
+		writeErrorMessage(w, http.StatusBadRequest, "invalid limit")
+		return
 	}
 	var createdAfter time.Time
 	if raw := strings.TrimSpace(r.URL.Query().Get("created_after")); raw != "" {

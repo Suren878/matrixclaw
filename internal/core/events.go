@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -42,103 +43,104 @@ type Event struct {
 	At        time.Time `json:"at"`
 }
 
+// eventBus fans events out to subscribers in publish order. A subscriber
+// that falls a full buffer behind is closed rather than skipped, so its client
+// reconnects and reloads instead of missing events silently.
 type eventBus struct {
-	mu          sync.RWMutex
-	nextID      int
-	nextEventID uint64
+	mu          sync.Mutex
+	nextSub     int
+	lastEventID uint64
 	subscribers map[int]eventSubscription
-	history     []Event
+	// history is a ring: the event with ID n is at n % eventHistoryLimit.
+	history [eventHistoryLimit]Event
 }
 
 type eventSubscription struct {
 	sessionID string
 	ch        chan Event
-	done      <-chan struct{}
+}
+
+func (s eventSubscription) wants(event Event) bool {
+	return s.sessionID == "" || s.sessionID == event.SessionID
 }
 
 const eventHistoryLimit = 256
 const eventChannelBuffer = 512
 
 func newEventBus() *eventBus {
-	return &eventBus{
-		subscribers: map[int]eventSubscription{},
-	}
+	return &eventBus{subscribers: map[int]eventSubscription{}}
 }
 
 func (b *eventBus) Subscribe(ctx context.Context, sessionID string) <-chan Event {
 	return b.SubscribeAfter(ctx, sessionID, 0)
 }
 
+// SubscribeAfter streams the session's events (every session's for an empty
+// sessionID), first those after afterID still in the history. The channel
+// closes when ctx ends or the subscriber falls behind.
 func (b *eventBus) SubscribeAfter(ctx context.Context, sessionID string, afterID uint64) <-chan Event {
-	out := make(chan Event, eventChannelBuffer)
-	sessionID = strings.TrimSpace(sessionID)
+	sub := eventSubscription{sessionID: strings.TrimSpace(sessionID), ch: make(chan Event, eventChannelBuffer)}
 
 	b.mu.Lock()
-	id := b.nextID
-	b.nextID++
-	var replay []Event
+	id := b.nextSub
+	b.nextSub++
 	if afterID > 0 {
-		for _, event := range b.history {
-			if event.ID <= afterID {
-				continue
+		oldest := uint64(1)
+		if b.lastEventID > eventHistoryLimit {
+			oldest = b.lastEventID - eventHistoryLimit + 1
+		}
+		for n := max(afterID+1, oldest); n <= b.lastEventID; n++ {
+			if event := b.history[n%eventHistoryLimit]; sub.wants(event) {
+				sub.ch <- event
 			}
-			if sessionID != "" && sessionID != event.SessionID {
-				continue
-			}
-			replay = append(replay, event)
 		}
 	}
-	b.subscribers[id] = eventSubscription{
-		sessionID: sessionID,
-		ch:        out,
-		done:      ctx.Done(),
-	}
-	for _, event := range replay {
-		out <- event
-	}
+	b.subscribers[id] = sub
 	b.mu.Unlock()
 
 	safego.Go("core.eventBus.cleanup", func() {
 		<-ctx.Done()
 		b.mu.Lock()
-		delete(b.subscribers, id)
+		b.drop(id)
 		b.mu.Unlock()
 	})
-
-	return out
+	return sub.ch
 }
 
+// Publish numbers the event and hands it to every subscriber under one lock,
+// so each sees events in ID order.
 func (b *eventBus) Publish(event Event) {
 	b.mu.Lock()
-	b.nextEventID++
-	event.ID = b.nextEventID
-	b.history = append(b.history, event)
-	if len(b.history) > eventHistoryLimit {
-		b.history = append([]Event(nil), b.history[len(b.history)-eventHistoryLimit:]...)
-	}
-	subs := make([]eventSubscription, 0, len(b.subscribers))
-	for _, sub := range b.subscribers {
-		if sub.sessionID != "" && sub.sessionID != event.SessionID {
+	defer b.mu.Unlock()
+	b.lastEventID++
+	event.ID = b.lastEventID
+	b.history[event.ID%eventHistoryLimit] = event
+	for id, sub := range b.subscribers {
+		if !sub.wants(event) {
 			continue
 		}
-		subs = append(subs, sub)
-	}
-	b.mu.Unlock()
-
-	for _, sub := range subs {
 		select {
 		case sub.ch <- event:
-		case <-sub.done:
 		default:
+			log.Printf("core: event subscriber of session %q fell %d events behind; closing it", sub.sessionID, eventChannelBuffer)
+			b.drop(id)
 		}
+	}
+}
+
+// drop closes a subscription once; the caller holds b.mu.
+func (b *eventBus) drop(id int) {
+	if sub, ok := b.subscribers[id]; ok {
+		delete(b.subscribers, id)
+		close(sub.ch)
 	}
 }
 
 // LastID is the ID of the newest published event, 0 before the first.
 func (b *eventBus) LastID() uint64 {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-	return b.nextEventID
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.lastEventID
 }
 
 func (c *Core) SubscribeEvents(ctx context.Context, sessionID string) <-chan Event {
