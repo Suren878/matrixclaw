@@ -2,7 +2,7 @@ package daemoncmd
 
 import (
 	"context"
-	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -83,29 +83,53 @@ func buildModules(deps moduleDeps) (daemonModules, error) {
 	return daemonModules{set: set, api: api.Modules{Set: set, TTS: tts, STT: stt}}, nil
 }
 
-// RuntimeStatusPromptContext is the model's note on module state. It leaves
-// out state text that changes while a module runs, so the note stays stable.
+// RuntimeStatusPromptContext is the model's note on module state: modules this
+// run can use, those enabled without tools here or not ready, and those off,
+// with facts only for enabled ones. It leaves out state text that changes while
+// a module runs, so the note stays stable.
 func (s *supervisor) RuntimeStatusPromptContext(ctx context.Context, req core.RuntimeStatusContextRequest) string {
 	visible := map[string]bool{}
 	for _, id := range req.ToolIDs {
 		visible[strings.ToLower(strings.TrimSpace(id))] = true
 	}
-	lines := []string{"Current runtime status (as of this note; a newer note replaces it):"}
+	var usable, idle, unready, off []string
 	for _, status := range s.modules.Statuses(ctx) {
-		parts := []string{fmt.Sprintf("enabled=%t", status.Enabled), fmt.Sprintf("ready=%t", status.Ready)}
-		for _, fact := range status.Facts {
-			parts = append(parts, fact.Key+"="+fact.Value)
+		if !status.Enabled {
+			off = append(off, status.ID)
+			continue
 		}
-		usable := 0
-		for _, id := range status.Tools {
-			if visible[strings.ToLower(id)] {
-				usable++
+		name := status.ID
+		if len(status.Facts) > 0 {
+			facts := make([]string, 0, len(status.Facts))
+			for _, fact := range status.Facts {
+				facts = append(facts, fact.Key+"="+fact.Value)
 			}
+			name += " (" + strings.Join(facts, ", ") + ")"
 		}
-		parts = append(parts, fmt.Sprintf("tools=%d", usable))
-		lines = append(lines, status.ID+": "+strings.Join(parts, "; "))
+		switch {
+		case !status.Ready:
+			unready = append(unready, name)
+		case slices.ContainsFunc(status.Tools, func(id string) bool { return visible[strings.ToLower(id)] }):
+			usable = append(usable, name)
+		default:
+			idle = append(idle, name)
+		}
 	}
-	return strings.Join(append(lines, externalAgentsStatusLine(s.appliedConfig().Modules.ExternalAgents)), "\n")
+	lines := []string{"Modules (as of this note; a newer note replaces it):"}
+	for _, group := range []struct {
+		label string
+		ids   []string
+	}{
+		{"ready, with tools in this run", usable},
+		{"enabled, no tools in this run", idle},
+		{"enabled but not ready", unready},
+		{"off (the owner turns them on with /modules)", off},
+	} {
+		if len(group.ids) > 0 {
+			lines = append(lines, "- "+group.label+": "+strings.Join(group.ids, "; "))
+		}
+	}
+	return strings.Join(append(lines, "- "+externalAgentsStatusLine(s.appliedConfig().Modules.ExternalAgents)), "\n")
 }
 
 func externalAgentsStatusLine(configs map[string]setup.ExternalAgentConfig) string {

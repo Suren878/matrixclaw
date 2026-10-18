@@ -551,7 +551,9 @@ Close() error
   change; MCP reconnects only changed servers, and one failing server does not
   disable the others.
 - `GET /v1/modules` lists statuses; the model's runtime note is built from
-  them (without `state`, so it stays stable).
+  them (without `state`, so it stays stable): modules grouped as usable in
+  this run, enabled without tools here, not ready, and off, with facts only
+  for enabled ones.
 - A module with settings implements `modules.Configurable`: `Settings` returns
   typed items (toggle, choice, text, secret, action, page, info) and `Change`
   runs a change (install an engine, download a model) and returns the

@@ -25,7 +25,7 @@ func TestStatusNoteFollowsAppliedModules(t *testing.T) {
 		t.Fatal(err)
 	}
 	note := s.RuntimeStatusPromptContext(context.Background(), core.RuntimeStatusContextRequest{ToolIDs: []string{"telephony_call"}})
-	for _, want := range []string{"telephony: enabled=true; ready=true; gateway_configured=yes; token_configured=no; tools=1", "storage: enabled=true; ready=true; tools=0", "external_agents: codex-app=enabled"} {
+	for _, want := range []string{"- ready, with tools in this run: telephony (gateway_configured=yes, token_configured=no)", "- enabled, no tools in this run: storage", "- external_agents: codex-app=enabled"} {
 		if !strings.Contains(note, want) {
 			t.Errorf("note lacks %q:\n%s", want, note)
 		}
