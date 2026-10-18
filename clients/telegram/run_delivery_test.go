@@ -25,6 +25,7 @@ type runDaemon struct {
 	progress  core.RunProgress
 	messages  []transcript.Message
 	approvals []core.Approval
+	goal      *core.SessionGoal
 	served    int
 	acked     bool
 	canceled  int
@@ -96,6 +97,8 @@ func (d *runDaemon) serve(w http.ResponseWriter, r *http.Request) {
 		write(core.RunProgressResponse{Progress: d.progress})
 	case r.URL.Path == "/v1/runs/"+d.run.ID:
 		write(core.RunResponse{Run: d.run})
+	case r.URL.Path == "/v1/sessions/"+d.run.SessionID+"/goal":
+		write(core.GoalResponse{Goal: d.goal})
 	case r.URL.Path == "/v1/approvals":
 		write(core.ApprovalsResponse{Approvals: d.approvals})
 	case r.URL.Path == "/v1/messages":

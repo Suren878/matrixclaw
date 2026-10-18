@@ -46,8 +46,9 @@ The schema is `internal/store/migrations/001_init.sql` followed by the
 numbered migrations listed in `internal/store/schema.go` (`002` adds
 `file_checkpoints`; `003` drops `sessions.runtime_id`, which repeated
 `kind`, and `external_agent_sessions.approval_policy` and `sandbox`, since an
-external agent's permissions follow its session; `005` adds the subagent
-columns `tasks.agent_json`, `output_schema` and `worktree_base`); the database records in
+external agent's permissions follow its session; `004` adds
+`session_goals`; `005` adds the subagent columns `tasks.agent_json`,
+`output_schema` and `worktree_base`); the database records in
 `PRAGMA user_version` how many migrations it has applied. Each migration is applied once and in order, to a new
 database too. A database newer than the binary is refused.
 Upgrades are one-way. Back up before upgrading (the daemon may keep running):
@@ -92,7 +93,7 @@ Tables:
 | Sessions | `sessions`, `messages` (ordered by `seq`), `message_fts` (search), `client_bindings`, `session_inputs` (queued and steer messages), `memories` |
 | Runs | `runs`, `run_steps` (one row per model generation), `run_checkpoints`, `run_wakeups` |
 | Approvals and rules | `approvals`, `permission_rules` |
-| Per-session engine state | `session_budgets`, `session_engine_state`, `session_todos` |
+| Per-session engine state | `session_budgets`, `session_engine_state`, `session_todos`, `session_goals` |
 | Background work | `tasks` (shell commands and subagents) |
 | Clients | `client_deliveries` |
 | Automation | `automation_jobs`, `automation_fires` |

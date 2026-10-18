@@ -11,8 +11,9 @@ import (
 
 // checkCompletion keeps the run going when it replies without tools while work
 // is left: open items on its chain's todo list, files it changed without a
-// successful check since, or a Stop hook that blocks. The first two speak once
-// per run, Stop hooks up to stopHookLimit times, and only while budget remains
+// successful check since, a failing goal check, or a Stop hook that blocks. The
+// first two speak once per run, goal checks up to goalHoldLimit times and Stop
+// hooks up to stopHookLimit times, and only while budget remains
 // and the model can use tools; the reply is kept and the next reply without
 // tools completes the run. It reports whether it took over the step.
 func (r *run) checkCompletion(ctx context.Context, gen generation, response providers.Response) (stepResult, bool) {
@@ -22,6 +23,12 @@ func (r *run) checkCompletion(ctx context.Context, gen generation, response prov
 	note := r.openTodoNote(ctx)
 	if note == "" {
 		note = r.verifyNote()
+	}
+	if note == "" {
+		var err error
+		if note, err = r.goalNote(ctx); err != nil {
+			return failedStep(err), true
+		}
 	}
 	if note == "" {
 		note = r.stopHookNote(ctx, response.Text)
@@ -62,6 +69,27 @@ func (r *run) verifyNote() string {
 	}
 	r.state.VerifyNudged = true
 	return "You changed files after the last successful build, test or lint command of this run. Run the checks that cover your changes now; if they cannot run here, say why in your reply."
+}
+
+// goalHoldLimit is how many replies of a run failing goal checks may hold back.
+const goalHoldLimit = 5
+
+// goalNote runs the session goal's check through the Verifier and returns the
+// note that holds the reply back; a note that does not hold is journaled for
+// the user. A check that cannot run holds nothing back.
+func (r *run) goalNote(ctx context.Context) (string, error) {
+	if r.Verifier == nil || r.state.GoalHolds >= goalHoldLimit {
+		return "", nil
+	}
+	verdict, err := r.Verifier.Verify(ctx, r.task.SessionID, r.task.RunID)
+	if err != nil || verdict.Note == "" {
+		return "", nil
+	}
+	if verdict.Hold {
+		r.state.GoalHolds++
+		return verdict.Note, nil
+	}
+	return "", r.appendEngineMessage(ctx, transcript.OriginEngine, verdict.Note)
 }
 
 func (r *run) hasTool(name string) bool {

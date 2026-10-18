@@ -159,9 +159,13 @@ func (c *Core) sessionEngine() *agent.Engine {
 
 // sessionTurn is the turn a run of the session gets on runtime, named model to
 // the model, with the profile of the subagent task it works for; the caller
-// adds what belongs to the run. On an error the turn has no profile.
+// adds what belongs to the run.
 func (c *Core) sessionTurn(ctx context.Context, session Session, runtime agent.Model, model string) (nativeTurn, error) {
 	task, _, err := c.subagentTaskOf(ctx, session.ID)
+	if err != nil {
+		return nativeTurn{}, err
+	}
+	_, goal, err := c.activeGoal(ctx, session.ID)
 	return nativeTurn{
 		SessionID:    session.ID,
 		WorkingDir:   session.WorkingDir,
@@ -169,6 +173,7 @@ func (c *Core) sessionTurn(ctx context.Context, session Session, runtime agent.M
 		Readonly:     task.Readonly,
 		Agent:        task.Agent,
 		OutputSchema: task.OutputSchema,
+		Goal:         goal,
 		ToolUse:      agent.ToolUseAllowed(runtime),
 		Model:        model,
 		Plan:         NormalizePermissionMode(string(session.PermissionMode)) == PermissionModePlan,

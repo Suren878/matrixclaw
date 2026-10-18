@@ -21,8 +21,10 @@ type nativeTurn struct {
 	Readonly   bool
 	// Agent is a subagent's profile and OutputSchema the schema its final
 	// answer must match, if any.
-	Agent              AgentProfile
-	OutputSchema       json.RawMessage
+	Agent        AgentProfile
+	OutputSchema json.RawMessage
+	// Goal is set when the session had an active goal as the run started.
+	Goal               bool
 	ClientCapabilities ClientCapabilities
 	ToolUse            bool
 	// Model names the provider and model the run talks to.
@@ -127,7 +129,7 @@ func (c *Core) nativeToolSpecs(turn nativeTurn) []tools.Spec {
 	specs := c.tools.List()
 	out := make([]tools.Spec, 0, len(specs))
 	for _, spec := range specs {
-		if turn.Subagent && (!subagentToolAllowed(spec) || !turn.Agent.allows(spec.ID)) {
+		if turn.Subagent && (!subagentToolAllowed(spec) || !turn.Agent.allows(spec.ID)) || goalTools[spec.ID] && !turn.Goal {
 			continue
 		}
 		switch spec.ID {

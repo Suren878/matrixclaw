@@ -48,6 +48,8 @@ type RunState struct {
 	VerifyNudged bool `json:"verify_nudged,omitempty"`
 	// StopHooks counts the replies Stop hooks held back.
 	StopHooks int `json:"stop_hooks,omitempty"`
+	// GoalHolds counts the replies a failed goal check held back.
+	GoalHolds int `json:"goal_holds,omitempty"`
 	// Await is set while the run waits for what an await call asked for.
 	Await *tools.Await `json:"await,omitempty"`
 }

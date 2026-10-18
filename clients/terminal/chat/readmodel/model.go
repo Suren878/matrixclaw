@@ -26,6 +26,7 @@ type Model struct {
 	capabilities *core.SessionCapabilities
 	context      *core.ContextReport
 	todo         *todo.List
+	goal         *core.SessionGoal
 	run          *core.Run
 	// lastEventAt is when the session last showed activity, by daemon clock.
 	lastEventAt time.Time
@@ -72,6 +73,7 @@ func New(snapshot core.ClientSnapshot) *Model {
 		capabilities:    snapshot.Capabilities,
 		context:         snapshot.Context,
 		todo:            snapshot.Todo,
+		goal:            snapshot.Goal,
 		run:             snapshot.Run,
 		entries:         map[string]*entry{},
 		resultRevs:      map[string]uint64{},
@@ -176,6 +178,12 @@ func (m *Model) Apply(event daemonclient.LiveEvent) error {
 			return err
 		}
 		m.todo = &list
+	case core.EventGoalUpdated:
+		response, err := event.DecodeGoal()
+		if err != nil {
+			return err
+		}
+		m.goal = response.Goal
 	case core.EventContextUpdated:
 		usage, err := event.DecodeContextUsage()
 		if err != nil {
@@ -209,6 +217,7 @@ func (m *Model) SessionID() string                  { return m.sessionID }
 func (m *Model) Session() *core.Session             { return m.session }
 func (m *Model) Context() *core.ContextReport       { return m.context }
 func (m *Model) Todo() *todo.List                   { return m.todo }
+func (m *Model) Goal() *core.SessionGoal            { return m.goal }
 func (m *Model) Run() *core.Run                     { return m.run }
 func (m *Model) LastEventAt() time.Time             { return m.lastEventAt }
 func (m *Model) ToolUpdates() []core.ToolUpdate     { return m.toolUpdateList }
