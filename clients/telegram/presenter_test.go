@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -80,5 +81,22 @@ func TestLongButtonDataResolvesAfterARestart(t *testing.T) {
 	restarted := newWorker(Config{CallbackCachePath: path}, nil)
 	if got := parsePickerCallbackData(restarted.resolveCallbackData(ref)); got != command {
 		t.Fatalf("after a restart the button runs %q, want %q", got, command)
+	}
+}
+
+func TestATextToEditIsShownAndTakesTheNextMessage(t *testing.T) {
+	worker := newWorker(Config{}, &approvalBotAPI{})
+	target := chatTarget{kind: telegramTargetChat, chatID: 42, externalKey: "42"}
+	prompt := controlplane.PromptData{Title: "Edit Review", Value: "Read the diff twice.", Submit: "/modules skills save-body library review", Multiline: true}
+
+	if err := worker.renderCommandResult(context.Background(), target, controlplane.Result{Screen: prompt}); err != nil {
+		t.Fatal(err)
+	}
+
+	if text := presentCommandResult(controlplane.Result{Screen: prompt}, 0).Text; !strings.Contains(text, "Edit Review") || !strings.Contains(text, "Read the diff twice.") {
+		t.Fatalf("text to edit shown as %q", text)
+	}
+	if pending, ok := worker.takePrompt("42"); !ok || pending.Submit != prompt.Submit {
+		t.Fatalf("pending prompt = %+v, %v", pending, ok)
 	}
 }
