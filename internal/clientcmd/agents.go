@@ -89,7 +89,6 @@ func runAgentStartCommand(stdout io.Writer, stderr io.Writer, binaryName string,
 	session, err := client.CreateSessionWithRequest(context.Background(), core.CreateSessionRequest{
 		Title:           cmp.Or(strings.TrimSpace(agent.DisplayName), agentID),
 		Kind:            string(core.SessionKindExternalAgent),
-		RuntimeID:       string(core.SessionRuntimeExternalAgent),
 		WorkingDir:      workingDir,
 		PermissionMode:  string(core.PermissionModeFullAuto),
 		ExternalAgentID: agentID,

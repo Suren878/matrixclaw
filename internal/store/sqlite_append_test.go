@@ -20,7 +20,7 @@ func TestMessageInsertsReturnTheirSeq(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
 	if err := st.CreateSession(ctx, core.Session{
-		ID: "s1", Title: "s1", Kind: core.SessionKindAssistant, RuntimeID: core.SessionRuntimeMatrixClaw,
+		ID: "s1", Title: "s1", Kind: core.SessionKindAssistant,
 		PermissionMode: core.PermissionModeDefault, Status: core.SessionStatusActive, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)

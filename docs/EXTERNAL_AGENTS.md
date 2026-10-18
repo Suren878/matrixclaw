@@ -43,7 +43,8 @@ An agent shows as enabled only when it is both enabled and installed.
   enabled agents are listed, and only for the owner.
 - CLI: `matrixclaw agents start codex [DIR]` creates a session in `DIR`
   (default: current directory).
-- API: `POST /v1/sessions` with `"external_agent_id": "codex"` (or `"claude"`).
+- API: `POST /v1/sessions` with `"external_agent_id": "codex"` (or `"claude"`);
+  the session gets `"kind": "external_agent"`.
 
 Each message you send becomes one turn of the agent. Its replies, reasoning,
 tool calls and file changes appear in the normal transcript. Interrupting a
@@ -62,8 +63,11 @@ mode maps to the agent's own settings:
 | `default` | `on-request` / `read-only` | `default` |
 | read-only subagent | `never` / `read-only` | `dontAsk` |
 
-A mode change applies from the next turn. For Codex only the approval policy
-changes there; the sandbox changes when the daemon next resumes the thread.
+Core passes the session's mode, and whether it is a read-only subagent, to the
+adapter on every turn; each adapter maps them as above, and nothing of it is
+stored per agent. A mode change applies from the next turn. For Codex only the
+approval policy changes there; the sandbox changes when the daemon next resumes
+the thread. A read-only subagent stays read-only whatever its mode.
 
 MatrixClaw does not relay an agent's approval requests to you. Codex approval
 requests are declined automatically and the turn continues, so in `default` and

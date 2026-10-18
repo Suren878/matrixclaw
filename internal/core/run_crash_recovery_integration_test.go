@@ -757,8 +757,9 @@ type interruptibleExternalRuntime struct {
 	interrupts int
 }
 
-func (r *interruptibleExternalRuntime) ID() string          { return "recovery-external" }
-func (r *interruptibleExternalRuntime) DisplayName() string { return "Interruptible External" }
+func (r *interruptibleExternalRuntime) ID() string                      { return "recovery-external" }
+func (r *interruptibleExternalRuntime) DisplayName() string             { return "Interruptible External" }
+func (r *interruptibleExternalRuntime) Models(context.Context) []string { return nil }
 func (r *interruptibleExternalRuntime) Available(context.Context) externalagents.Availability {
 	return externalagents.Availability{Installed: true, Enabled: true}
 }
@@ -783,8 +784,9 @@ func (r *interruptibleExternalRuntime) Interrupt(context.Context, externalagents
 }
 func (r *interruptibleExternalRuntime) Close() error { return nil }
 
-func (r *recoveryExternalRuntime) ID() string          { return "recovery-external" }
-func (r *recoveryExternalRuntime) DisplayName() string { return "Recovery External" }
+func (r *recoveryExternalRuntime) ID() string                      { return "recovery-external" }
+func (r *recoveryExternalRuntime) DisplayName() string             { return "Recovery External" }
+func (r *recoveryExternalRuntime) Models(context.Context) []string { return nil }
 func (r *recoveryExternalRuntime) Available(context.Context) externalagents.Availability {
 	return externalagents.Availability{Installed: true, Enabled: true}
 }
@@ -827,7 +829,6 @@ func TestRecoverExternalAgentContinuesExistingSession(t *testing.T) {
 
 	session, run := saveCrashRecoveryRun(t, sqliteStore, "external", core.RunStatusRunning, false)
 	session.Kind = core.SessionKindExternalAgent
-	session.RuntimeID = core.SessionRuntimeExternalAgent
 	session.ExternalAgentID = runtime.ID()
 	if err := sqliteStore.UpdateSession(context.Background(), session); err != nil {
 		t.Fatal(err)
@@ -869,7 +870,6 @@ func TestGracefulExecutorStopRecoversExternalSessionWithoutNativeToolReplay(t *t
 
 	session, run := saveCrashRecoveryRun(t, sqliteStore, "graceful_external", core.RunStatusAccepted, false)
 	session.Kind = core.SessionKindExternalAgent
-	session.RuntimeID = core.SessionRuntimeExternalAgent
 	session.ExternalAgentID = interruptedRuntime.ID()
 	if err := sqliteStore.UpdateSession(context.Background(), session); err != nil {
 		t.Fatal(err)
@@ -935,8 +935,7 @@ func saveCrashRecoveryRun(t *testing.T, sqliteStore *store.SQLiteStore, suffix s
 	t.Helper()
 	now := runRecoveryTestTime()
 	session := core.Session{
-		ID: "session_" + suffix, Title: suffix, Kind: core.SessionKindAssistant,
-		RuntimeID: core.SessionRuntimeMatrixClaw, Hidden: hidden,
+		ID: "session_" + suffix, Title: suffix, Kind: core.SessionKindAssistant, Hidden: hidden,
 		ProviderID: "recovery-test", ModelID: "test-model", PermissionMode: core.PermissionModeDefault,
 		Status: core.SessionStatusActive, CreatedAt: now, UpdatedAt: now,
 	}

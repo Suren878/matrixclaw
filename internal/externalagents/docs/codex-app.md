@@ -25,15 +25,31 @@ codex app-server --listen stdio://
 
 | Method | When | Params sent |
 | --- | --- | --- |
-| `thread/start` | session created | `model`, `cwd`, `approvalPolicy`, `sandbox`, `config` (MatrixClaw session metadata) |
+| `thread/start` | session created | `model`, `cwd`, `approvalPolicy`, `sandbox` |
 | `thread/resume` | turn start reports `no rollout found for thread id` or `thread not found`; the turn is retried once | `threadId`, `model`, `cwd`, `approvalPolicy`, `sandbox` |
 | `turn/start` | each user message | `threadId`, `input: [{type: "text", text, text_elements: []}]`, `approvalPolicy`, `model` |
 | `turn/interrupt` | run canceled | `threadId`, `turnId` (the active turn) |
 
 `thread.id` is stored as `external_thread_id`, `thread.sessionId` as
-`external_session_id`. When the session has no policy, the adapter uses
-`approvalPolicy: never`, `sandbox: danger-full-access`. The user-facing
-permission mapping is in [docs/EXTERNAL_AGENTS.md](../../../docs/EXTERNAL_AGENTS.md#permissions).
+`external_session_id`. `approvalPolicy` and `sandbox` come from the session's
+`Permissions` (`codexPolicy`); the mapping is in
+[docs/EXTERNAL_AGENTS.md](../../../docs/EXTERNAL_AGENTS.md#permissions).
+
+## Client
+
+- The read loop decodes each line and puts a notification straight into its
+  turn's queue (`TurnSubscription`), coalescing text deltas and patch
+  snapshots; it never waits for a consumer. Notifications of a turn nobody
+  subscribed to yet (they can arrive before the `turn/start` reply) wait in a
+  backlog that the subscription takes over; a backlog untouched for a minute
+  is dropped, so late events of finished turns do not pile up.
+- Params of a known notification that do not decode become a `DecodeFailure`
+  for the turn whose IDs could be read (else every turn of the thread, else
+  every turn), and the turn fails naming the method instead of waiting for an
+  end it would never see.
+- Every write has a 30 s deadline (or the caller's earlier one). A write that
+  fails may have sent part of a line, so it closes the connection; the next
+  call restarts the app-server.
 
 ## Notifications
 

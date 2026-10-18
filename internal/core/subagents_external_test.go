@@ -19,10 +19,12 @@ type childExternalRuntime struct {
 	hold     chan struct{}
 	mu       sync.Mutex
 	requests []externalagents.StartSessionRequest
+	sent     []externalagents.Permissions
 }
 
-func (r *childExternalRuntime) ID() string          { return r.id }
-func (r *childExternalRuntime) DisplayName() string { return r.id }
+func (r *childExternalRuntime) ID() string                      { return r.id }
+func (r *childExternalRuntime) DisplayName() string             { return r.id }
+func (r *childExternalRuntime) Models(context.Context) []string { return nil }
 func (r *childExternalRuntime) Available(context.Context) externalagents.Availability {
 	return externalagents.Availability{Installed: true, Enabled: true}
 }
@@ -34,12 +36,15 @@ func (r *childExternalRuntime) StartSession(_ context.Context, req externalagent
 	r.mu.Lock()
 	r.requests = append(r.requests, req)
 	r.mu.Unlock()
-	return externalagents.ExternalSession{AgentID: r.id, ExternalThreadID: "thread-child", ApprovalPolicy: req.ApprovalPolicy, Sandbox: req.Sandbox}, nil
+	return externalagents.ExternalSession{AgentID: r.id, ExternalThreadID: "thread-child"}, nil
 }
 func (r *childExternalRuntime) ResumeSession(_ context.Context, session externalagents.ExternalSession) (externalagents.ExternalSession, error) {
 	return session, nil
 }
-func (r *childExternalRuntime) Send(context.Context, externalagents.ExternalSession, externalagents.Input) (<-chan externalagents.Event, error) {
+func (r *childExternalRuntime) Send(_ context.Context, session externalagents.ExternalSession, _ externalagents.Input) (<-chan externalagents.Event, error) {
+	r.mu.Lock()
+	r.sent = append(r.sent, session.Permissions)
+	r.mu.Unlock()
 	events := make(chan externalagents.Event, 2)
 	events <- externalagents.Event{Kind: externalagents.EventMessageDelta, Text: "external child done", At: time.Now().UTC()}
 	events <- externalagents.Event{Kind: externalagents.EventTurnCompleted, At: time.Now().UTC()}
@@ -57,6 +62,12 @@ func (r *childExternalRuntime) started() []externalagents.StartSessionRequest {
 	return append([]externalagents.StartSessionRequest(nil), r.requests...)
 }
 
+func (r *childExternalRuntime) sentPermissions() []externalagents.Permissions {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]externalagents.Permissions(nil), r.sent...)
+}
+
 func TestReadonlyExternalChildNeverAsksAndCannotWrite(t *testing.T) {
 	t.Parallel()
 	for _, runtimeID := range []string{"codex", "claude"} {
@@ -69,7 +80,8 @@ func TestReadonlyExternalChildNeverAsksAndCannotWrite(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			app.WithExternalAgents(registry, db).WithRunStarter(&executingRunStarter{app: app})
+			starter := &executingRunStarter{app: app}
+			app.WithExternalAgents(registry, db).WithRunStarter(starter)
 			session, run := saveCrashRecoveryRun(t, db, "readonly_"+runtimeID, core.RunStatusRunning, false)
 			sessionIn(t, db, session, t.TempDir(), core.PermissionModeFullAuto)
 
@@ -77,17 +89,23 @@ func TestReadonlyExternalChildNeverAsksAndCannotWrite(t *testing.T) {
 			if err != nil || result.Summary != "external child done" {
 				t.Fatalf("result = %+v, %v", result, err)
 			}
-
-			started := runtime.started()
-			if len(started) != 1 || started[0].ApprovalPolicy != "never" || started[0].Sandbox != "read-only" {
+			if started := runtime.started(); len(started) != 1 || !started[0].Permissions.Readonly {
 				t.Fatalf("started sessions = %+v", started)
 			}
-			if _, err := app.UpdateSessionPermissionMode(context.Background(), core.UpdateSessionPermissionModeInput{SessionID: result.Task.ChildSessionID, PermissionMode: core.PermissionModeFullAuto}); err != nil {
+
+			// A later mode does not lift read-only.
+			child := result.Task.ChildSessionID
+			if _, err := app.UpdateSessionPermissionMode(context.Background(), core.UpdateSessionPermissionModeInput{SessionID: child, PermissionMode: core.PermissionModeAcceptEdits}); err != nil {
 				t.Fatal(err)
 			}
-			attachment, err := db.GetExternalAgentSession(context.Background(), result.Task.ChildSessionID)
-			if err != nil || attachment.ApprovalPolicy != "never" || attachment.Sandbox != "read-only" {
-				t.Fatalf("attachment = %+v, %v", attachment, err)
+			if _, err := app.AcceptRun(context.Background(), core.HandleMessageInput{SessionID: child, Text: "go on"}); err != nil {
+				t.Fatal(err)
+			}
+			starter.running.Wait()
+			sent := runtime.sentPermissions()
+			want := externalagents.Permissions{Mode: string(core.PermissionModeAcceptEdits), Readonly: true}
+			if len(sent) != 2 || !sent[0].Readonly || sent[1] != want {
+				t.Fatalf("sent permissions = %+v, want read-only throughout, then %+v", sent, want)
 			}
 		})
 	}

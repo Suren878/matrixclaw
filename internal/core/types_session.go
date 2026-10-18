@@ -20,18 +20,10 @@ const (
 	SessionKindExternalAgent SessionKind = "external_agent"
 )
 
-type SessionRuntime string
-
-const (
-	SessionRuntimeMatrixClaw    SessionRuntime = "matrixclaw"
-	SessionRuntimeExternalAgent SessionRuntime = "external_agent"
-)
-
 type Session struct {
 	ID                string         `json:"id"`
 	Title             string         `json:"title"`
 	Kind              SessionKind    `json:"kind"`
-	RuntimeID         SessionRuntime `json:"runtime_id,omitempty"`
 	ParentSessionID   string         `json:"parent_session_id,omitempty"`
 	Hidden            bool           `json:"hidden,omitempty"`
 	WorkingDir        string         `json:"working_dir,omitempty"`
@@ -59,7 +51,7 @@ type SessionCapabilities struct {
 }
 
 func CapabilitiesForSession(session Session) SessionCapabilities {
-	if NormalizeSessionRuntime(session.RuntimeID) == SessionRuntimeExternalAgent || NormalizeSessionKind(session.Kind) == SessionKindExternalAgent {
+	if CoreSessionIsExternalAgent(session) {
 		return SessionCapabilities{ExternalAgent: true}
 	}
 	return SessionCapabilities{
@@ -75,9 +67,9 @@ type SessionListFilter struct {
 }
 
 type CreateSessionInput struct {
-	Title           string
+	Title string
+	// Kind is assistant or external_agent; an ExternalAgentID implies the latter.
 	Kind            SessionKind
-	RuntimeID       SessionRuntime
 	ParentSessionID string
 	Hidden          bool
 	WorkingDir      string

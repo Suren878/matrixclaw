@@ -24,7 +24,7 @@ func TestHeaderShowsTheDaemonsContextMeasure(t *testing.T) {
 
 func TestExternalAgentHeaderNamesOnlyTheModel(t *testing.T) {
 	session := renderSession()
-	session.RuntimeID, session.ModelID = core.SessionRuntimeExternalAgent, "codex-mini"
+	session.Kind, session.ModelID = core.SessionKindExternalAgent, "codex-mini"
 	_, screen := renderApp(t, 100, 20, core.ClientSnapshot{SessionID: "session_1", Session: session, Context: renderContext()})
 	header := strings.SplitN(ansi.Strip(screen), "\n", 2)[0]
 	if !strings.HasSuffix(strings.TrimSpace(header), "· codex-mini") || strings.Contains(header, "openrouter") {
