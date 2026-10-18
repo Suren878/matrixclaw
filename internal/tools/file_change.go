@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/aymanbagabas/go-udiff"
 )
 
@@ -109,10 +110,7 @@ func changeSnippet(diff udiff.UnifiedDiff) string {
 
 // clipLine cuts a line shown in a snippet or hint to snippetLineRunes.
 func clipLine(line string) string {
-	if utf8.RuneCountInString(line) <= snippetLineRunes {
-		return line
-	}
-	return string([]rune(line)[:snippetLineRunes]) + "…"
+	return textutil.Clip(line, snippetLineRunes, "…")
 }
 
 // changedRegions is both sides reduced to the windows around their edits.

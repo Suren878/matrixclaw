@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 const finishedCallRetention = 24 * time.Hour
@@ -132,19 +134,7 @@ func formatTranscript(turns []CallTranscriptTurn) string {
 	if len(lines) == 0 {
 		return ""
 	}
-	return clipText(strings.Join(lines, "\n"), 20000)
-}
-
-func clipText(value string, maxRunes int) string {
-	value = strings.TrimSpace(value)
-	if maxRunes <= 0 {
-		return value
-	}
-	runes := []rune(value)
-	if len(runes) <= maxRunes {
-		return value
-	}
-	return strings.TrimSpace(string(runes[:maxRunes])) + "\n[transcript truncated]"
+	return textutil.Clip(strings.TrimSpace(strings.Join(lines, "\n")), 20000, "\n[transcript truncated]")
 }
 
 func callID(call *Call) string {

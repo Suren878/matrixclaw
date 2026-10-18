@@ -35,13 +35,13 @@ func TestUndoConfirmsAndRestoresTheLastRunsFirstCheckpoint(t *testing.T) {
 	daemon, restored := checkpointDaemon(t)
 
 	result := daemon.run("/undo")
-	if result.Confirm == nil || result.Confirm.ConfirmCommand != "/undo confirm c2" {
+	if screenOf[ConfirmData](t, result).ConfirmCommand != "/undo confirm c2" {
 		t.Fatalf("undo = %+v", result)
 	}
 	if len(*restored) != 0 {
 		t.Fatal("undo restored before the confirmation")
 	}
-	result = daemon.run(result.Confirm.ConfirmCommand)
+	result = daemon.run(screenOf[ConfirmData](t, result).ConfirmCommand)
 	if len(*restored) != 1 || (*restored)[0] != "c2" || !result.ReloadSnapshot {
 		t.Fatalf("confirm = %+v, restored %v", result, *restored)
 	}
@@ -50,12 +50,12 @@ func TestUndoConfirmsAndRestoresTheLastRunsFirstCheckpoint(t *testing.T) {
 func TestRewindPicksAnyCheckpoint(t *testing.T) {
 	daemon, restored := checkpointDaemon(t)
 
-	picker := daemon.run("/rewind").Picker
-	if picker == nil || picker.Kind != PickerCheckpoints || len(picker.Items) != 3 {
+	picker := screenOf[PickerData](t, daemon.run("/rewind"))
+	if picker.Kind != PickerCheckpoints || len(picker.Items) != 3 {
 		t.Fatalf("picker = %+v", picker)
 	}
-	confirm := daemon.run(picker.Items[2].Command).Confirm
-	if confirm == nil || confirm.ConfirmCommand != "/rewind confirm c1" {
+	confirm := screenOf[ConfirmData](t, daemon.run(picker.Items[2].Command))
+	if confirm.ConfirmCommand != "/rewind confirm c1" {
 		t.Fatalf("confirm = %+v", confirm)
 	}
 	daemon.run(confirm.ConfirmCommand)
@@ -67,7 +67,7 @@ func TestRewindPicksAnyCheckpoint(t *testing.T) {
 func TestOnlyTheOwnerRestoresFiles(t *testing.T) {
 	daemon, restored := checkpointDaemon(t)
 	for _, command := range []string{"/undo", "/rewind confirm c1"} {
-		if result := daemon.runAs(core.RoleMember, command); result.Confirm != nil || result.Picker != nil {
+		if result := daemon.runAs(core.RoleMember, command); isScreen[ConfirmData](result) || isScreen[PickerData](result) {
 			t.Fatalf("%s as member = %+v", command, result)
 		}
 	}

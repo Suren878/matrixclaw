@@ -49,7 +49,7 @@ func (m *appModel) denyingApproval() string {
 	if !ok {
 		return ""
 	}
-	approvalID, _ := controlplane.DeniedApproval(prompt.SubmitCommandPrefix())
+	approvalID, _ := controlplane.DeniedApproval(prompt.Submit())
 	return approvalID
 }
 

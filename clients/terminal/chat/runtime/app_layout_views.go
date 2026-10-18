@@ -13,6 +13,7 @@ import (
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	surfacestyles "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/styles"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/toolview"
 )
 
@@ -329,7 +330,7 @@ func workingToolPhaseWithDetail(messages []surfacemessage.Message, update core.T
 	if call.Detail == "" {
 		return call.Verb
 	}
-	return call.Verb + ": " + toolview.Shorten(call.Detail, 80)
+	return call.Verb + ": " + textutil.Clip(call.Detail, 80, "…")
 }
 
 func activeToolCall(messages []surfacemessage.Message, toolCallID string) (surfacemessage.ToolCall, bool) {

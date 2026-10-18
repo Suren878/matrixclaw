@@ -18,22 +18,20 @@ type commandPresentation struct {
 func presentCommandResult(result controlplane.Result, page int) commandPresentation {
 	var text string
 	var markup *InlineKeyboardMarkup
-	switch {
-	case result.Picker != nil:
-		text, markup = presentPicker(*result.Picker, page)
-	case result.Form != nil:
-		text, markup = formText(*result.Form), formKeyboard(*result.Form)
-	case result.Prompt != nil:
-		text = textutil.FirstNonEmpty(result.Prompt.Title, "Send the new value.") + "\n/close to close"
-	case result.TextEdit != nil:
-		text = strings.TrimSpace(result.TextEdit.Value)
-	case result.Confirm != nil:
-		text, markup = confirmText(*result.Confirm), confirmKeyboard(*result.Confirm)
-	case result.Info != nil:
-		text = infoText(*result.Info)
-		markup = &InlineKeyboardMarkup{InlineKeyboard: [][]InlineKeyboardButton{{commandButton("‹ Close", result.Info.CloseCommand)}}}
-	default:
-		text = strings.TrimSpace(result.Text)
+	switch screen := result.Screen.(type) {
+	case controlplane.PickerData:
+		text, markup = presentPicker(screen, page)
+	case controlplane.FormData:
+		text, markup = formText(screen), formKeyboard(screen)
+	case controlplane.PromptData:
+		text = promptText(screen)
+	case controlplane.ConfirmData:
+		text, markup = confirmText(screen), confirmKeyboard(screen)
+	case controlplane.InfoData:
+		text = infoText(screen)
+		markup = &InlineKeyboardMarkup{InlineKeyboard: [][]InlineKeyboardButton{{commandButton("‹ Close", screen.CloseCommand)}}}
+	case controlplane.TextData:
+		text = strings.TrimSpace(screen.Text)
 	}
 	return commandPresentation{Text: telegramPersonaText(text), ReplyMarkup: markup}
 }
@@ -132,6 +130,16 @@ func pickerItemPrefix(kind controlplane.PickerKind, item controlplane.PickerItem
 		return map[string]string{"status": "📊 ", "restart": "🔄 "}[item.ID]
 	}
 	return ""
+}
+
+// promptText asks for the chat's next message; a text to edit is shown so it
+// can be copied and sent back changed.
+func promptText(prompt controlplane.PromptData) string {
+	text := textutil.FirstNonEmpty(prompt.Title, "Send the new value.")
+	if value := strings.TrimSpace(prompt.Value); prompt.Multiline && value != "" {
+		text += "\n\n" + value + "\n"
+	}
+	return text + "\n/close to close"
 }
 
 func formText(form controlplane.FormData) string {

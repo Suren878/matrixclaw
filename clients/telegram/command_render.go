@@ -12,10 +12,10 @@ func (w *Worker) renderCommandResult(ctx context.Context, target chatTarget, res
 
 func (w *Worker) renderCommandResultPage(ctx context.Context, target chatTarget, editMessageID int64, result controlplane.Result, page int) error {
 	presentation := presentCommandResult(result, page)
-	if result.Prompt == nil {
-		w.replacePrompt(ctx, target, nil)
+	if prompt, ok := result.Screen.(controlplane.PromptData); ok {
+		w.replacePrompt(ctx, target, &pendingPrompt{PromptData: prompt})
 	} else {
-		w.replacePrompt(ctx, target, &pendingPrompt{PromptData: *result.Prompt})
+		w.replacePrompt(ctx, target, nil)
 	}
 	return w.editOrSend(ctx, target, editMessageID, presentation.Text, presentation.ReplyMarkup)
 }

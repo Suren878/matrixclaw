@@ -63,15 +63,17 @@ func (w *Worker) handleTextMessage(ctx context.Context, message *Message) error 
 	if handled, err := w.handlePendingPrompt(ctx, target, text); handled || err != nil {
 		return err
 	}
-	if isDaemonRestartCommand(text) {
+	if controlplane.RestartRequested(text) {
 		return w.dispatchRestartCommandAndEdit(target, 0)
 	}
 	if isCancelRunCommand(text) && target.isChat() {
 		return w.cancelSessionRun(ctx, target)
 	}
-	if result, err := w.dispatcher(target).Handle(ctx, text); err != nil {
-		return w.sendText(ctx, target, fmt.Sprintf("Command failed: %v", err))
-	} else if result.Handled {
+	if _, _, ok := controlplane.Parse(text); ok {
+		result, err := w.dispatcher(target).Handle(ctx, text)
+		if err != nil {
+			return w.sendText(ctx, target, fmt.Sprintf("Command failed: %v", err))
+		}
 		return w.renderCommandResult(ctx, target, result)
 	}
 	if textNeedsTelegramLocation(text) {
@@ -614,7 +616,12 @@ func (w *Worker) sendUserMessageParts(ctx context.Context, target chatTarget, te
 		w.sendTypingChatAction(ctx, target, "message")
 	}
 
-	result, err := daemon.SendMessagePartsModeWithDelivery(ctx, "", text, parts, "", "", encodeDeliveryAddress(deliveryAddressFromTarget(target, 0)), target.repliesOnce())
+	result, err := daemon.Send(ctx, core.HandleMessageInput{
+		Text:            text,
+		Parts:           parts,
+		DeliveryAddress: encodeDeliveryAddress(deliveryAddressFromTarget(target, 0)),
+		ReplyOnce:       target.repliesOnce(),
+	})
 	if err != nil {
 		if daemonclient.IsAPIStatus(err, http.StatusConflict) {
 			return w.handleSessionSelectionRequired(ctx, target)
@@ -714,13 +721,13 @@ func (w *Worker) handleSessionSelectionRequired(ctx context.Context, target chat
 		return w.sendText(ctx, target, fmt.Sprintf("Load sessions failed: %v", err))
 	}
 	if len(sessions) == 0 {
-		result, err := w.dispatcher(target).Handle(ctx, catalogCommand(controlplane.CommandNewSession, ""))
+		result, err := w.dispatcher(target).Handle(ctx, controlplane.CommandText(controlplane.CommandNewSession))
 		if err != nil {
 			return w.sendText(ctx, target, fmt.Sprintf("Create session failed: %v", err))
 		}
 		return w.renderCommandResult(ctx, target, withSessionSelectionPrompt(result))
 	}
-	result, err := w.dispatcher(target).Handle(ctx, catalogCommand(controlplane.CommandSessions, ""))
+	result, err := w.dispatcher(target).Handle(ctx, controlplane.CommandText(controlplane.CommandSessions))
 	if err != nil {
 		return w.sendText(ctx, target, fmt.Sprintf("Load sessions failed: %v", err))
 	}
@@ -729,14 +736,12 @@ func (w *Worker) handleSessionSelectionRequired(ctx context.Context, target chat
 
 func withSessionSelectionPrompt(result controlplane.Result) controlplane.Result {
 	message := "Choose a session or create a new one, then send your message again."
-	if result.Picker == nil {
-		result.Text = message
+	picker, ok := result.Screen.(controlplane.PickerData)
+	if !ok {
+		result.Screen = controlplane.TextData{Text: message}
 		return result
 	}
-	title := strings.TrimSpace(result.Picker.Title)
-	if title == "" {
-		title = "Sessions"
-	}
-	result.Picker.Title = message + "\n\n" + title
+	picker.Title = message + "\n\n" + textutil.FirstNonEmpty(picker.Title, "Sessions")
+	result.Screen = picker
 	return result
 }

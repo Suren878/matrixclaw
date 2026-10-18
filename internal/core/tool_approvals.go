@@ -11,6 +11,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/permission"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -137,12 +138,7 @@ func (c *Core) recordApprovalDecision(ctx context.Context, approval Approval, de
 const maxApprovalReasonRunes = 2000
 
 func approvalReason(reason string) string {
-	reason = strings.TrimSpace(reason)
-	runes := []rune(reason)
-	if len(runes) <= maxApprovalReasonRunes {
-		return reason
-	}
-	return strings.TrimSpace(string(runes[:maxApprovalReasonRunes-1])) + "…"
+	return textutil.Clip(strings.TrimSpace(reason), maxApprovalReasonRunes, "…")
 }
 
 // resumeDecidedRun starts a parked run once none of its approvals is pending. A run

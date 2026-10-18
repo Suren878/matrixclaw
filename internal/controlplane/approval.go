@@ -2,8 +2,6 @@ package controlplane
 
 import (
 	"context"
-	"strings"
-	"unicode"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/textutil"
@@ -11,24 +9,24 @@ import (
 
 const approvalUsage = "Usage: /approval deny <approval id> [reason]"
 
+var approvalDeny = valueVerb(CommandApproval, "deny", 1)
+
 // DenyWithReasonPrompt asks for the reason a client sends with a denial.
 func DenyWithReasonPrompt(approvalID string) PromptData {
 	return PromptData{
-		Title:               "Why deny it?",
-		Placeholder:         "Reason the agent reads (optional)",
-		SubmitCommandPrefix: controlplaneCommand("approval", "deny", approvalID) + " ",
+		Title:       "Why deny it?",
+		Placeholder: "Reason the agent reads (optional)",
+		Submit:      approvalDeny.command(approvalID),
 	}
 }
 
 // handleApproval answers "/approval deny <id> [reason]": the call is denied and
 // the model reads the reason as its result.
-func (d *Dispatcher) handleApproval(ctx context.Context, args string) (Result, error) {
-	action, rest := cutWord(args)
-	approvalID, reason := cutWord(rest)
-	if !strings.EqualFold(action, "deny") || approvalID == "" {
-		return Result{Handled: true, Text: approvalUsage}, nil
+func (d *Dispatcher) handleApproval(ctx context.Context, r Route) (Result, error) {
+	if !r.Is(approvalDeny) || r.arg(0) == "" {
+		return textResult(approvalUsage), nil
 	}
-	approval, err := d.daemon.ResolveApproval(ctx, approvalID, core.ApprovalResolveRequest{Reason: reason})
+	approval, err := d.daemon.ResolveApproval(ctx, r.arg(0), core.ApprovalResolveRequest{Reason: r.Value})
 	if err != nil {
 		return Result{}, err
 	}
@@ -36,27 +34,15 @@ func (d *Dispatcher) handleApproval(ctx context.Context, args string) (Result, e
 	if approval.Reason != "" {
 		text += ": " + approval.Reason
 	}
-	return Result{Handled: true, Text: text, ReloadSnapshot: true}, nil
+	return Result{Screen: TextData{Text: text}, ReloadSnapshot: true}, nil
 }
 
 // DeniedApproval returns the approval that a "/approval deny <id> [reason]"
-// command, or the prefix its prompt submits, denies.
+// command, or the command its prompt submits, denies.
 func DeniedApproval(command string) (string, bool) {
-	name, rest := cutWord(command)
-	action, rest := cutWord(rest)
-	approvalID, _ := cutWord(rest)
-	if !strings.EqualFold(name, controlplaneCommand("approval")) || !strings.EqualFold(action, "deny") || approvalID == "" {
+	route, ok := DecodeRoute(command)
+	if !ok || !route.Is(approvalDeny) || route.arg(0) == "" {
 		return "", false
 	}
-	return approvalID, true
-}
-
-// cutWord splits text into its first word and the trimmed rest.
-func cutWord(text string) (string, string) {
-	text = strings.TrimSpace(text)
-	end := strings.IndexFunc(text, unicode.IsSpace)
-	if end < 0 {
-		return text, ""
-	}
-	return text[:end], strings.TrimSpace(text[end:])
+	return route.arg(0), true
 }

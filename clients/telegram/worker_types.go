@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/modules/geo"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -18,6 +19,8 @@ type Config struct {
 	TelegramBaseURL string
 	AllowedUserID   int64
 	InlineCachePath string
+	// CallbackCachePath keeps the long button data behind short references.
+	CallbackCachePath string
 	// RenderStatePath keeps which Telegram messages show each run in delivery.
 	RenderStatePath         string
 	Geo                     *geo.OSMService
@@ -38,10 +41,11 @@ type Worker struct {
 	states           map[string]*runDeliveryState
 	savedStates      []byte // the render states last written, guarded by delivery
 	prompts          map[string]pendingPrompt
-	callbacks        *recentMap[string]   // long callback data by short ref
-	inline           *recentMap[string]   // inline query text by button token
-	inlineRuns       *recentMap[struct{}] // inline messages that already started a run
-	messages         *recentMap[struct{}] // handled updates, for dedupe
+	dispatchers      *recentMap[*controlplane.Dispatcher] // by chat and role
+	callbacks        *refStore                            // long callback data by short ref
+	inline           *refStore                            // inline query text by button token
+	inlineRuns       *recentMap[struct{}]                 // inline messages that already started a run
+	messages         *recentMap[struct{}]                 // handled updates, for dedupe
 	locations        map[string]telegramLocationContext
 	pendingLocations map[string]pendingLocationRequest
 	chatActions      map[string]time.Time

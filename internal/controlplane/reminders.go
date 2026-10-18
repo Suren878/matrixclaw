@@ -7,21 +7,24 @@ import (
 	"github.com/Suren878/matrixclaw/internal/automation"
 )
 
-func (d *Dispatcher) handleRemind(ctx context.Context, args string) (Result, error) {
-	args = strings.TrimSpace(args)
+// The time and message are the value of /remind.
+var _ = valueVerb(CommandRemind, "", 0)
+
+func (d *Dispatcher) handleRemind(ctx context.Context, r Route) (Result, error) {
+	args := r.Value
 	if args == "" {
-		return Result{Handled: true, Text: "Usage:\n/remind in 10m -- message\n/remind 2026-04-26 16:00 -- message"}, nil
+		return textResult("Usage:\n/remind in 10m -- message\n/remind 2026-04-26 16:00 -- message"), nil
 	}
 	runAt, prompt, err := parseReminderArgs(d.now(), args)
 	if err != nil {
-		return Result{Handled: true, Text: err.Error()}, nil
+		return textResult(err.Error()), nil
 	}
 	binding, err := d.currentBinding(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 	if strings.TrimSpace(binding.SessionID) == "" {
-		return Result{Handled: true, Text: "Choose a session or create a new one before creating reminders."}, nil
+		return textResult("Choose a session or create a new one before creating reminders."), nil
 	}
 	job, err := d.daemon.CreateAutomationJob(ctx, automation.CreateJobInput{
 		Kind:               automation.JobKindReminder,
@@ -36,5 +39,5 @@ func (d *Dispatcher) handleRemind(ctx context.Context, args string) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Handled: true, Text: "⏰ Reminder scheduled: " + formatAutomationJob(job)}, nil
+	return textResult("⏰ Reminder scheduled: " + formatAutomationJob(job)), nil
 }

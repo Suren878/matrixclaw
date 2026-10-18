@@ -25,18 +25,18 @@ func TestStoredFilesPreviewAndDelete(t *testing.T) {
 	if ids := pickerItemIDs(files); len(ids) != 2 || ids[0] != "file:notes/a.md" || ids[1] != "clear" {
 		t.Fatalf("files = %v", ids)
 	}
-	file := daemon.run(files.Picker.Items[0].Command)
-	if file.Picker == nil || len(file.Picker.Items) != 2 {
+	file := daemon.run(screenOf[PickerData](t, files).Items[0].Command)
+	if !isScreen[PickerData](file) || len(screenOf[PickerData](t, file).Items) != 2 {
 		t.Fatalf("file = %+v", file)
 	}
-	if preview := daemon.run(file.Picker.Items[0].Command); preview.Info == nil || preview.Info.Text != "# Notes" {
+	if preview := daemon.run(screenOf[PickerData](t, file).Items[0].Command); screenOf[InfoData](t, preview).Text != "# Notes" {
 		t.Fatalf("preview = %+v", preview)
 	}
-	asked := daemon.run(file.Picker.Items[1].Command)
-	if asked.Confirm == nil {
+	asked := daemon.run(screenOf[PickerData](t, file).Items[1].Command)
+	if !isScreen[ConfirmData](asked) {
 		t.Fatalf("delete = %+v", asked)
 	}
-	daemon.run(asked.Confirm.ConfirmCommand)
+	daemon.run(screenOf[ConfirmData](t, asked).ConfirmCommand)
 	if list, _ := store.List("", "", 10); len(list) != 0 {
 		t.Fatalf("files after delete = %+v", list)
 	}
@@ -49,14 +49,14 @@ func TestTemporaryFilesCleanupAfterConfirmation(t *testing.T) {
 	}
 
 	temp := daemon.run("/modules storage temp")
-	if temp.Picker == nil || len(temp.Picker.Items) == 0 {
+	if !isScreen[PickerData](temp) || len(screenOf[PickerData](t, temp).Items) == 0 {
 		t.Fatalf("temp = %+v", temp)
 	}
 	asked := daemon.run("/modules storage temp-cleanup")
-	if asked.Confirm == nil {
+	if !isScreen[ConfirmData](asked) {
 		t.Fatalf("cleanup = %+v", asked)
 	}
-	if result := daemon.run(asked.Confirm.ConfirmCommand); result.Text == "" && result.Picker == nil {
+	if result := daemon.run(screenOf[ConfirmData](t, asked).ConfirmCommand); result.Text() == "" && !isScreen[PickerData](result) {
 		t.Fatalf("cleanup result = %+v", result)
 	}
 }

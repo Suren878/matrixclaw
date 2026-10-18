@@ -13,7 +13,7 @@ func TestMemoryCommandListsDaemonMemories(t *testing.T) {
 		return core.MemoryResponse{Memories: []core.MemoryEntry{{Scope: core.MemoryScopeGlobal, Key: "lang", Content: "Go"}}}
 	})
 
-	if result := daemon.run("/memory"); result.Info == nil || !strings.Contains(result.Info.Text, "global/lang: Go") {
+	if result := daemon.run("/memory"); !isScreen[InfoData](result) || !strings.Contains(screenOf[InfoData](t, result).Text, "global/lang: Go") {
 		t.Fatalf("result = %+v, want memory info with the daemon entry", result)
 	}
 }

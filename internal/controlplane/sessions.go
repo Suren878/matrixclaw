@@ -11,6 +11,20 @@ import (
 	"github.com/Suren878/matrixclaw/internal/permission"
 )
 
+var (
+	newSessionRoot       = valueVerb(CommandNewSession, "", 0)
+	sessionsRoot         = verb(CommandSessions, "", 0)
+	sessionNew           = valueVerb(CommandSession, "new", 1)
+	sessionMenu          = verb(CommandSession, "menu", 1)
+	sessionUse           = verb(CommandSession, "use", 1)
+	sessionCurrent       = verb(CommandSession, "current", 0)
+	sessionRename        = valueVerb(CommandSession, "rename", 1)
+	sessionModel         = verb(CommandSession, "model", 1)
+	sessionSetModel      = verb(CommandSession, "set-model", 2)
+	sessionDelete        = verb(CommandSession, "delete", 1)
+	sessionDeleteConfirm = verb(CommandSession, "delete-confirmed", 1)
+)
+
 func (d *Dispatcher) handleSessions(ctx context.Context) (Result, error) {
 	currentSessionID, session, err := d.currentSession(ctx)
 	if err != nil {
@@ -23,11 +37,11 @@ func (d *Dispatcher) handleSessions(ctx context.Context) (Result, error) {
 	if session != nil {
 		currentSessionID = session.ID
 	}
-	picker := NewPickerData(PickerSessions, "Sessions").Command(sessionsCommand())
+	picker := NewPickerData(PickerSessions, "Sessions").Command(sessionsRoot.command())
 	picker.Item(PickerItem{
 		ID:      "new",
 		Title:   "New Session",
-		Command: newSessionCommand(),
+		Command: newSessionRoot.command(),
 		Role:    PickerItemRoleAction,
 	})
 	for _, session := range sessions {
@@ -45,12 +59,11 @@ func (d *Dispatcher) handleSessions(ctx context.Context) (Result, error) {
 			Title:    title,
 			Info:     info,
 			Selected: selected,
-			Command:  sessionMenuCommand(session.ID),
+			Command:  sessionMenu.command(session.ID),
 		})
 	}
 	return Result{
-		Handled: true,
-		Picker:  picker.Ptr(),
+		Screen: picker.Build(),
 	}, nil
 }
 
@@ -64,18 +77,17 @@ func joinSessionInfo(parts ...string) string {
 	return strings.Join(values, " · ")
 }
 
-func (d *Dispatcher) handleNewSession(ctx context.Context, args string) (Result, error) {
-	args = strings.TrimSpace(args)
-	if args == "" {
+func (d *Dispatcher) handleNewSession(ctx context.Context, r Route) (Result, error) {
+	if r.Value == "" {
 		return d.sessionRuntimePicker(ctx)
 	}
-	return d.createSession(ctx, "", args)
+	return d.createSession(ctx, "", r.Value)
 }
 
 func (d *Dispatcher) sessionRuntimePicker(ctx context.Context) (Result, error) {
 	picker := NewPickerData(PickerSessionRuntime, "New Session").
-		Back(sessionsCommand()).
-		Row("matrixclaw", "Matrixclaw", "Built-in", sessionNewCommand("matrixclaw"))
+		Back(sessionsRoot.command()).
+		Row("matrixclaw", "Matrixclaw", "Built-in", sessionNew.command("matrixclaw"))
 	if d.owner() {
 		agents, err := d.daemon.ListExternalAgents(ctx)
 		if err != nil {
@@ -85,12 +97,11 @@ func (d *Dispatcher) sessionRuntimePicker(ctx context.Context) (Result, error) {
 			if !agent.Installed || !agent.Enabled {
 				continue
 			}
-			picker.Row(agent.ID, externalAgentTitle(agent), externalAgentSessionRuntimeInfo(agent), sessionNewCommand(agent.ID))
+			picker.Row(agent.ID, externalAgentTitle(agent), externalAgentSessionRuntimeInfo(agent), sessionNew.command(agent.ID))
 		}
 	}
 	return Result{
-		Handled: true,
-		Picker:  picker.Ptr(),
+		Screen: picker.Build(),
 	}, nil
 }
 
@@ -98,28 +109,30 @@ func externalAgentSessionRuntimeInfo(agent core.ExternalAgentDescriptor) string 
 	return "External"
 }
 
-func (d *Dispatcher) handleSession(ctx context.Context, args string) (Result, error) {
-	args = strings.TrimSpace(args)
-	if args == "" {
+func (d *Dispatcher) handleSession(ctx context.Context, r Route) (Result, error) {
+	sessionID := r.arg(0)
+	switch r.Verb {
+	case sessionCurrent:
+		return d.handleCurrent(ctx)
+	case sessionNew:
+		agentID, ok := parseSessionTarget(sessionID)
+		if !ok {
+			return d.sessionRuntimePicker(ctx)
+		}
+		return d.createSession(ctx, agentID, r.Value)
+	}
+	if sessionID == "" {
+		if r.Value != "" {
+			return textResult("Usage:\n/session\n/session menu <id>\n/session use <id>\n/session rename <id> [title]\n/session delete <id>\n/session current"), nil
+		}
 		return d.handleSessions(ctx)
 	}
-	step, rest := firstCommandStep(args)
-	switch step {
-	case "new":
-		return d.handleSessionNew(ctx, rest)
-	case "menu":
-		sessionID, _ := firstCommandToken(rest)
-		if sessionID == "" {
-			return Result{Handled: true, Text: "Usage: /session menu <id>"}, nil
-		}
+	switch r.Verb {
+	case sessionMenu:
 		return d.handleSessionMenu(ctx, sessionID)
-	case "use":
-		sessionID, _ := firstCommandToken(rest)
-		if sessionID == "" {
-			return Result{Handled: true, Text: "Usage: /session use <id>"}, nil
-		}
+	case sessionUse:
 		if target, err := d.findSession(ctx, sessionID); err == nil && !d.mayUse(target) {
-			return Result{Handled: true, Text: unattendedRefusal}, nil
+			return textResult(unattendedRefusal), nil
 		}
 		binding, err := d.daemon.UseSession(ctx, sessionID)
 		if err != nil {
@@ -133,59 +146,22 @@ func (d *Dispatcher) handleSession(ctx context.Context, args string) (Result, er
 		if session != nil {
 			text = "Current session: " + formatSessionLabel(*session, true)
 		}
-		return Result{
-			Handled:        true,
-			Text:           text,
-			ReloadSnapshot: true,
-		}, nil
-	case "current":
-		return d.handleCurrent(ctx)
-	case "rename":
-		sessionID, title := firstCommandToken(rest)
-		if sessionID == "" {
-			return Result{Handled: true, Text: "Usage: /session rename <id> [title]"}, nil
-		}
-		return d.handleSessionRename(ctx, sessionID, title)
-	case "model":
-		sessionID, _ := firstCommandToken(rest)
-		if sessionID == "" {
-			return Result{Handled: true, Text: "Usage: /session model <id>"}, nil
-		}
+		return Result{Screen: TextData{Text: text}, ReloadSnapshot: true}, nil
+	case sessionRename:
+		return d.handleSessionRename(ctx, sessionID, r.Value)
+	case sessionModel:
 		return d.handleSessionModel(ctx, sessionID)
-	case "set-model":
-		sessionID, modelID := firstCommandToken(rest)
-		if sessionID == "" || strings.TrimSpace(modelID) == "" {
-			return Result{Handled: true, Text: "Usage: /session set-model <id> <model>"}, nil
+	case sessionSetModel:
+		if r.arg(1) == "" {
+			return textResult("Usage: /session set-model <id> <model>"), nil
 		}
-		return d.handleSessionSetModel(ctx, sessionID, modelID)
-	case "delete":
-		sessionID, _ := firstCommandToken(rest)
-		if sessionID == "" {
-			return Result{Handled: true, Text: "Usage: /session delete <id>"}, nil
-		}
+		return d.handleSessionSetModel(ctx, sessionID, r.arg(1))
+	case sessionDelete:
 		return d.handleSessionDelete(sessionID), nil
-	case "delete-confirmed":
-		sessionID, _ := firstCommandToken(rest)
-		if sessionID == "" {
-			return Result{Handled: true, Text: "Usage: /session delete-confirmed <id>"}, nil
-		}
+	case sessionDeleteConfirm:
 		return d.handleSessionDeleteConfirmed(ctx, sessionID)
-	default:
-		return Result{Handled: true, Text: "Usage:\n/session\n/session menu <id>\n/session use <id>\n/session rename <id> [title]\n/session delete <id>\n/session current"}, nil
 	}
-}
-
-func (d *Dispatcher) handleSessionNew(ctx context.Context, args string) (Result, error) {
-	args = strings.TrimSpace(args)
-	if args == "" {
-		return d.sessionRuntimePicker(ctx)
-	}
-	runtimeValue, title, _ := strings.Cut(args, " ")
-	agentID, ok := parseSessionTarget(runtimeValue)
-	if !ok {
-		return Result{Handled: true, Text: "Usage: /session new matrixclaw|AGENT [title]"}, nil
-	}
-	return d.createSession(ctx, agentID, strings.TrimSpace(title))
+	return d.handleSessions(ctx)
 }
 
 // owner reports whether this client acts for the owner: the only one that may
@@ -221,7 +197,7 @@ const unattendedRefusal = "Only the owner can use a session that runs tools with
 // native one when agentID is empty, and makes it current.
 func (d *Dispatcher) createSession(ctx context.Context, agentID string, title string) (Result, error) {
 	if agentID != "" && !d.owner() {
-		return Result{Handled: true, Text: "Only the owner can start an external agent session."}, nil
+		return textResult("Only the owner can start an external agent session."), nil
 	}
 	if title = strings.TrimSpace(title); title == "" {
 		title = d.defaultSessionTitle()
@@ -243,8 +219,7 @@ func (d *Dispatcher) createSession(ctx context.Context, agentID string, title st
 		return Result{}, err
 	}
 	return Result{
-		Handled:        true,
-		Text:           "Current session: " + formatSessionLabel(session, true),
+		Screen:         TextData{Text: "Current session: " + formatSessionLabel(session, true)},
 		ReloadSnapshot: true,
 	}, nil
 }
@@ -268,21 +243,21 @@ func (d *Dispatcher) handleSessionMenu(ctx context.Context, sessionID string) (R
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Handled: true, Picker: d.sessionMenuPicker(session)}, nil
+	return Result{Screen: d.sessionMenuPicker(session)}, nil
 }
 
-func (d *Dispatcher) sessionMenuPicker(session core.Session) *PickerData {
+func (d *Dispatcher) sessionMenuPicker(session core.Session) PickerData {
 	title := strings.TrimSpace(session.Title)
 	if title == "" {
 		title = session.ID
 	}
 	picker := NewPickerData(PickerSessionActions, "Session: "+title).
-		Back(sessionsCommand()).
-		Row("use", "Use", "Make active", sessionUseCommand(session.ID))
-	picker.Row("model", "Model", sessionModelInfo(session), sessionModelCommand(session.ID))
-	picker.Row("rename", "Rename", title, sessionRenameCommand(session.ID)).
-		Danger("delete", "Delete", "Permanent", sessionDeleteCommand(session.ID))
-	return picker.Ptr()
+		Back(sessionsRoot.command()).
+		Row("use", "Use", "Make active", sessionUse.command(session.ID)).
+		Row("model", "Model", sessionModelInfo(session), sessionModel.command(session.ID)).
+		Row("rename", "Rename", title, sessionRename.command(session.ID)).
+		Danger("delete", "Delete", "Permanent", sessionDelete.command(session.ID))
+	return picker.Build()
 }
 
 func sessionModelInfo(session core.Session) string {
@@ -326,13 +301,12 @@ func (d *Dispatcher) handleSessionRename(ctx context.Context, sessionID string, 
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return Result{
-			Handled: true,
-			Prompt: &PromptData{
-				Title:               "Rename Session",
-				Placeholder:         "New session title",
-				Value:               strings.TrimSpace(session.Title),
-				SubmitCommandPrefix: sessionRenameCommandPrefix(session.ID),
-				CancelCommand:       sessionMenuCommand(session.ID),
+			Screen: PromptData{
+				Title:         "Rename Session",
+				Placeholder:   "New session title",
+				Value:         strings.TrimSpace(session.Title),
+				Submit:        sessionRename.command(session.ID),
+				CancelCommand: sessionMenu.command(session.ID),
 			},
 		}, nil
 	}
@@ -341,8 +315,7 @@ func (d *Dispatcher) handleSessionRename(ctx context.Context, sessionID string, 
 		return Result{}, err
 	}
 	return Result{
-		Handled:        true,
-		Text:           "Renamed session to " + formatSessionLabel(renamed, false),
+		Screen:         TextData{Text: "Renamed session to " + formatSessionLabel(renamed, false)},
 		ReloadSnapshot: true,
 	}, nil
 }
@@ -358,17 +331,17 @@ func (d *Dispatcher) handleSessionModel(ctx context.Context, sessionID string) (
 	}
 	picker := sessionModelPicker(session.ID, response)
 	if len(picker.Items) == 0 {
-		return Result{Handled: true, Text: "No models are available for this session."}, nil
+		return textResult("No models are available for this session."), nil
 	}
-	return Result{Handled: true, Picker: picker}, nil
+	return Result{Screen: picker}, nil
 }
 
-func sessionModelPicker(sessionID string, response core.SessionModelsResponse) *PickerData {
+func sessionModelPicker(sessionID string, response core.SessionModelsResponse) PickerData {
 	current := strings.TrimSpace(response.ModelID)
 	picker := NewPickerData(PickerSessionModels, "Model").
-		Command(sessionModelCommand(sessionID)).
+		Command(sessionModel.command(sessionID)).
 		Meta(current).
-		Select(sessionMenuCommand(sessionID))
+		Select(sessionMenu.command(sessionID))
 	for _, modelID := range response.Models {
 		modelID = strings.TrimSpace(modelID)
 		if modelID == "" {
@@ -378,10 +351,10 @@ func sessionModelPicker(sessionID string, response core.SessionModelsResponse) *
 			ID:       modelID,
 			Title:    modelID,
 			Selected: modelID == current,
-			Command:  sessionSetModelCommand(sessionID, modelID),
+			Command:  sessionSetModel.command(sessionID, modelID),
 		})
 	}
-	return picker.Ptr()
+	return picker.Build()
 }
 
 func (d *Dispatcher) handleSessionSetModel(ctx context.Context, sessionID string, modelID string) (Result, error) {
@@ -390,17 +363,14 @@ func (d *Dispatcher) handleSessionSetModel(ctx context.Context, sessionID string
 		return Result{}, err
 	}
 	return Result{
-		Handled:        true,
-		ReloadSnapshot: true,
-		Picker:         d.sessionMenuPicker(session),
+		Screen: d.sessionMenuPicker(session), ReloadSnapshot: true,
 	}, nil
 }
 
 func (d *Dispatcher) handleSessionDelete(sessionID string) Result {
 	sessionID = strings.TrimSpace(sessionID)
 	return Result{
-		Handled: true,
-		Confirm: deleteConfirmData("This removes the session history permanently.", sessionDeleteConfirmedCommand(sessionID), sessionMenuCommand(sessionID)),
+		Screen: deleteConfirmData("This removes the session history permanently.", sessionDeleteConfirm.command(sessionID), sessionMenu.command(sessionID)),
 	}
 }
 
@@ -428,8 +398,7 @@ func (d *Dispatcher) handleSessionDeleteConfirmed(ctx context.Context, sessionID
 		}
 	}
 	return Result{
-		Handled:        true,
-		Text:           text,
+		Screen:         TextData{Text: text},
 		ReloadSnapshot: true,
 	}, nil
 }
@@ -440,7 +409,7 @@ func (d *Dispatcher) handleCurrent(ctx context.Context) (Result, error) {
 		return Result{}, err
 	}
 	if session == nil {
-		return Result{Handled: true, Text: "No active session. Use /new or /sessions."}, nil
+		return textResult("No active session. Use /new or /sessions."), nil
 	}
 	lines := []string{
 		"Current session: " + formatSessionLabel(*session, true),
@@ -453,8 +422,7 @@ func (d *Dispatcher) handleCurrent(ctx context.Context) (Result, error) {
 		lines = append(lines, "Model: "+strings.TrimSpace(session.ModelID))
 	}
 	return Result{
-		Handled: true,
-		Text:    strings.Join(lines, "\n"),
+		Screen: TextData{Text: strings.Join(lines, "\n")},
 	}, nil
 }
 
@@ -515,7 +483,7 @@ func (d *Dispatcher) rebindAfterDelete(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return result.Text, nil
+	return result.Text(), nil
 }
 
 func (d *Dispatcher) defaultSessionTitle() string {

@@ -3,7 +3,6 @@ package controlplane
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -11,40 +10,45 @@ import (
 
 const todoUsage = "Usage: /todo, /todo clear"
 
-func (d *Dispatcher) handleTodo(ctx context.Context, args string) (Result, error) {
+var (
+	todoRoot         = verb(CommandTodo, "", 0)
+	todoClear        = verb(CommandTodo, "clear", 0)
+	todoClearConfirm = verb(CommandTodo, "clear confirm", 0)
+)
+
+func (d *Dispatcher) handleTodo(ctx context.Context, r Route) (Result, error) {
 	_, session, err := d.currentSession(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 	if session == nil {
-		return Result{Handled: true, Text: "Select or create a session first."}, nil
+		return textResult("Select or create a session first."), nil
 	}
 	if !core.CapabilitiesForSession(*session).NativeTools {
-		return Result{Handled: true, Text: "Todo lists are kept by Matrixclaw sessions only."}, nil
+		return textResult("Todo lists are kept by Matrixclaw sessions only."), nil
 	}
-	switch strings.ToLower(strings.TrimSpace(args)) {
-	case "":
+	switch {
+	case r.Value != "":
+		return textResult(todoUsage), nil
+	case r.Is(todoRoot):
 		list, err := d.daemon.SessionTodo(ctx, session.ID)
 		if err != nil {
 			return Result{}, err
 		}
-		info := todoInfoData(list)
-		return Result{Handled: true, Info: &info}, nil
-	case "clear":
-		return Result{Handled: true, Confirm: &ConfirmData{
+		return Result{Screen: todoInfoData(list)}, nil
+	case r.Is(todoClear):
+		return Result{Screen: ConfirmData{
 			Message:        "Clear the todo list?",
 			ConfirmLabel:   "Clear",
 			CancelLabel:    "Close",
-			ConfirmCommand: "/todo clear confirm",
-			CancelCommand:  "/todo",
+			ConfirmCommand: todoClearConfirm.command(),
+			CancelCommand:  todoRoot.command(),
 		}}, nil
-	case "clear confirm":
+	default:
 		if _, err := d.daemon.ClearSessionTodo(ctx, session.ID); err != nil {
 			return Result{}, err
 		}
-		return Result{Handled: true, Text: "Todo list cleared.", ReloadSnapshot: true}, nil
-	default:
-		return Result{Handled: true, Text: todoUsage}, nil
+		return Result{Screen: TextData{Text: "Todo list cleared."}, ReloadSnapshot: true}, nil
 	}
 }
 

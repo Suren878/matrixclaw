@@ -51,8 +51,8 @@ func NewPromptCommand(com *surfacecommon.Common, data PromptCommandData) *Prompt
 
 func (*PromptCommand) ID() string { return PromptCommandID }
 
-// SubmitCommandPrefix is the command the prompt's answer is appended to.
-func (d *PromptCommand) SubmitCommandPrefix() string { return d.data.SubmitCommandPrefix }
+// Submit is the command the prompt's answer goes to.
+func (d *PromptCommand) Submit() string { return d.data.Submit }
 
 func (d *PromptCommand) HandleMsg(msg tea.Msg) Action {
 	if _, ok := msg.(loadingTickMsg); ok {
@@ -71,7 +71,7 @@ func (d *PromptCommand) HandleMsg(msg tea.Msg) Action {
 			}
 			return ActionClose{}
 		case key.Matches(keyMsg, d.keyMap.Submit):
-			return ActionRunControlplaneCommand{Command: d.data.SubmitCommandPrefix + strings.TrimSpace(d.input.Value())}
+			return ActionAnswerControlplanePrompt{Submit: d.data.Submit, Answer: d.input.Value()}
 		}
 	}
 	cmd := d.input.Update(msg)

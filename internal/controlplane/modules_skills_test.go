@@ -30,11 +30,9 @@ func skillsDaemon(t *testing.T) (*apiDaemon, *skills.Service, skills.Skill) {
 }
 
 func pickerItemIDs(result Result) []string {
-	if result.Picker == nil {
-		return nil
-	}
+	picker, _ := result.Screen.(PickerData)
 	var ids []string
-	for _, item := range result.Picker.Items {
+	for _, item := range picker.Items {
 		ids = append(ids, item.ID)
 	}
 	return ids
@@ -47,35 +45,35 @@ func TestSkillsReviewTrustUseAndRemove(t *testing.T) {
 	if ids := pickerItemIDs(root); len(ids) != 4 || ids[2] != "review" {
 		t.Fatalf("skills root = %v, want library, add, review, usage", ids)
 	}
-	review := daemon.run("/modules skills review")
+	review := daemon.run("/modules skills section review")
 	if ids := pickerItemIDs(review); len(ids) != 1 || ids[0] != draft.ID {
 		t.Fatalf("review queue = %v", ids)
 	}
 
-	trusted := daemon.run("/modules skills review " + draft.ID + " trust-enable")
-	if trusted.Picker == nil || trusted.Picker.Title != "Review" {
+	trusted := daemon.run("/modules skills action review " + draft.ID + " trust-enable")
+	if screenOf[PickerData](t, trusted).Title != "Review" {
 		t.Fatalf("trust-enable = %+v", trusted)
 	}
 	if detail, _ := service.Get(context.Background(), draft.ID); detail.Skill.TrustState != skills.TrustTrusted || !detail.Skill.Enabled {
 		t.Fatalf("skill after trust-enable = %+v", detail.Skill)
 	}
 
-	daemon.run("/skills " + draft.ID + " use")
+	daemon.run("/skills use " + draft.ID)
 	if active, _ := service.SessionSkills(context.Background(), "s1"); len(active) != 1 {
 		t.Fatalf("session skills = %+v", active)
 	}
 
-	daemon.run("/modules skills library " + draft.ID + " set-enabled off")
+	daemon.run("/modules skills set-enabled library " + draft.ID + " off")
 	if detail, _ := service.Get(context.Background(), draft.ID); detail.Skill.Enabled {
 		t.Fatal("skill still enabled")
 	}
 
-	asked := daemon.run("/modules skills library " + draft.ID + " remove")
-	if asked.Confirm == nil {
+	asked := daemon.run("/modules skills action library " + draft.ID + " remove")
+	if !isScreen[ConfirmData](asked) {
 		t.Fatalf("remove = %+v, want a confirmation", asked)
 	}
-	removed := daemon.run(asked.Confirm.ConfirmCommand)
-	if _, err := service.Get(context.Background(), draft.ID); err == nil || removed.Picker == nil {
+	removed := daemon.run(screenOf[ConfirmData](t, asked).ConfirmCommand)
+	if _, err := service.Get(context.Background(), draft.ID); err == nil || !isScreen[PickerData](removed) {
 		t.Fatalf("after remove: picker %+v, skill still there", removed)
 	}
 }
@@ -83,9 +81,9 @@ func TestSkillsReviewTrustUseAndRemove(t *testing.T) {
 func TestSkillLibraryWritesAreTheOwners(t *testing.T) {
 	daemon, service, draft := skillsDaemon(t)
 
-	result := daemon.runAs(core.RoleMember, "/modules skills review "+draft.ID+" trust-enable")
+	result := daemon.runAs(core.RoleMember, "/modules skills action review "+draft.ID+" trust-enable")
 
-	if detail, _ := service.Get(context.Background(), draft.ID); detail.Skill.TrustState == skills.TrustTrusted || result.Text == "" {
+	if detail, _ := service.Get(context.Background(), draft.ID); detail.Skill.TrustState == skills.TrustTrusted || result.Text() == "" {
 		t.Fatalf("member trusted a skill: %+v", result)
 	}
 }

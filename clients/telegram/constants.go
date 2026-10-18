@@ -12,6 +12,7 @@ const (
 	telegramHTTPTimeout    = 45 * time.Second
 	defaultButtonTextLimit = 64
 	recentCallbackLimit    = 1024
+	recentDispatcherLimit  = 256
 	recentInlineLimit      = 512
 	recentMessageLimit     = 2048
 	ClientName             = "telegram"

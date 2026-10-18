@@ -25,10 +25,7 @@ func (r *Runtime) sendMessageMode(ctx context.Context, sessionID string, text st
 	if err != nil {
 		return core.AcceptRunResult{}, err
 	}
-	if len(payload.parts) > 0 {
-		return client.SendMessagePartsMode(ctx, sessionID, payload.content, payload.parts, r.config.WorkingDir, busyMode)
-	}
-	return client.SendMessageMode(ctx, sessionID, payload.content, r.config.WorkingDir, busyMode)
+	return client.Send(ctx, core.HandleMessageInput{SessionID: sessionID, Text: payload.content, Parts: payload.parts, WorkingDir: r.config.WorkingDir, BusyMode: busyMode})
 }
 
 func (r *Runtime) cancelRun(ctx context.Context, runID string) (core.Run, error) {

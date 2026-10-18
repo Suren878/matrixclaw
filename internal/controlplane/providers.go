@@ -11,76 +11,75 @@ import (
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
-func (d *Dispatcher) handleProvider(ctx context.Context, args string) (Result, error) {
+var (
+	providerRoot         = valueVerb(CommandProvider, "", 0)
+	providerUse          = verb(CommandProvider, "use", 1)
+	providerEdit         = verb(CommandProvider, "edit", 1)
+	providerCustom       = verb(CommandProvider, "custom", 0)
+	providerCustomNew    = verb(CommandProvider, "custom new", 1)
+	providerCustomDelete = verb(CommandProvider, "custom delete", 1)
+	providerCustomDrop   = verb(CommandProvider, "custom delete-confirm", 1)
+	providerFormShow     = verb(CommandProvider, "form", 1)
+	providerFormEdit     = verb(CommandProvider, "form-field", 2)
+	providerFormSet      = valueVerb(CommandProvider, "form-set", 2)
+	providerFormSave     = verb(CommandProvider, "form-save", 1)
+	providerAuth         = verb(CommandProvider, "auth", 1)
+	providerAuthComplete = verb(CommandProvider, "auth-complete", 1)
+)
+
+func (d *Dispatcher) handleProvider(ctx context.Context, r Route) (Result, error) {
 	_, session, err := d.currentSession(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 	if session == nil {
-		return Result{Handled: true, Text: "No active session. Use /new or /sessions."}, nil
+		return textResult("No active session. Use /new or /sessions."), nil
 	}
 	if core.CoreSessionIsExternalAgent(*session) {
-		return Result{Handled: true, Text: "This session uses " + sessionRuntimeLabel(*session) + ". Provider selection is available for MatrixClaw sessions only."}, nil
+		return textResult("This session uses " + sessionRuntimeLabel(*session) + ". Provider selection is available for MatrixClaw sessions only."), nil
 	}
-	value := strings.TrimSpace(args)
-	step, rest := firstCommandStep(value)
-	if !d.owner() && step != "" && step != "use" {
-		return Result{Handled: true, Text: ownerOnlySettings}, nil
+	if !d.owner() && !r.Is(providerUse) && (!r.Is(providerRoot) || r.Value != "") {
+		return textResult(ownerOnlySettings), nil
 	}
-	switch step {
-	case "key":
-		return d.handleProviderKey(ctx, session, rest)
-	case "custom":
-		return d.handleCustomProvider(ctx, session, rest)
-	case "edit":
-		return d.handleProviderEdit(ctx, rest)
-	case "form":
-		return d.handleProviderForm(ctx, session, rest)
-	case "auth":
-		return d.handleOpenAICodexAuth(ctx, rest)
-	case "auth-complete":
-		return d.handleOpenAICodexAuthComplete(ctx, rest)
-	case "use":
-		return d.useProvider(ctx, session, rest)
+	switch r.Verb {
+	case providerUse:
+		return d.useProvider(ctx, session, r.arg(0))
+	case providerEdit:
+		return d.handleProviderEdit(ctx, r.arg(0))
+	case providerCustom:
+		return customProviderTypePicker(), nil
+	case providerCustomNew:
+		return d.openCustomProviderForm(r.arg(0)), nil
+	case providerCustomDelete:
+		return d.customProviderDeleteConfirm(ctx, r.arg(0))
+	case providerCustomDrop:
+		return d.deleteCustomProvider(ctx, r.arg(0))
+	case providerFormShow, providerFormEdit, providerFormSet, providerFormSave:
+		return d.handleProviderForm(ctx, session, r)
+	case providerAuth:
+		return d.handleOpenAICodexAuth(ctx, r.arg(0))
+	case providerAuthComplete:
+		return d.handleOpenAICodexAuthComplete(ctx, r.arg(0))
 	}
-
 	providers, err := d.daemon.ListSetupProviders(ctx)
 	if err != nil {
 		return Result{}, err
 	}
-	if value != "" {
-		provider, ok := findSetupProvider(providers, value)
-		if ok && d.owner() {
-			return openProviderForm(providerForm{Provider: provider}), nil
+	if r.Value != "" {
+		if provider, ok := findSetupProvider(providers, r.Value); ok {
+			return d.openProviderForm(providerForm{Provider: provider}), nil
 		}
-		return d.useProvider(ctx, session, value)
+		return d.useProvider(ctx, session, r.Value)
 	}
-
 	return Result{
-		Handled: true,
-		Picker:  NewPickerData(PickerProvider, "Provider").Command(providerCommand()).Items(providerPickerItems(providers, session, d.owner())...).Ptr(),
+		Screen: NewPickerData(PickerProvider, "Provider").Command(providerRoot.command()).Items(providerPickerItems(providers, session, d.owner())...).Build(),
 	}, nil
-}
-
-func firstCommandStep(value string) (string, string) {
-	token, rest := firstCommandToken(value)
-	return strings.ToLower(token), rest
-}
-
-func firstCommandToken(value string) (string, string) {
-	value = strings.TrimSpace(value)
-	fields := strings.Fields(value)
-	if len(fields) == 0 {
-		return "", ""
-	}
-	token := strings.TrimSpace(fields[0])
-	return token, strings.TrimSpace(strings.TrimPrefix(value, token))
 }
 
 func (d *Dispatcher) useProvider(ctx context.Context, session *core.Session, providerID string) (Result, error) {
 	providerID = strings.TrimSpace(providerID)
 	if providerID == "" {
-		return Result{Handled: true, Text: "Provider id is required."}, nil
+		return textResult("Provider id is required."), nil
 	}
 	updated, err := d.daemon.UpdateSessionProvider(ctx, session.ID, providerID)
 	if err != nil {
@@ -105,45 +104,6 @@ func openAICodexAuthInfo() string {
 	return "Not signed in"
 }
 
-func (d *Dispatcher) handleProviderKey(ctx context.Context, session *core.Session, args string) (Result, error) {
-	providerID, apiKey, ok := strings.Cut(strings.TrimSpace(args), " ")
-	providerID = strings.TrimSpace(providerID)
-	apiKey = strings.TrimSpace(apiKey)
-	if providerID == "" {
-		return Result{Handled: true, Text: "Provider id is required."}, nil
-	}
-	providers, err := d.daemon.ListSetupProviders(ctx)
-	if err != nil {
-		return Result{}, err
-	}
-	provider, found := findSetupProvider(providers, providerID)
-	if !found {
-		return Result{Handled: true, Text: "Unknown provider: " + providerID}, nil
-	}
-	if apiKey == "" || !ok {
-		return providerKeyPrompt(provider), nil
-	}
-	configured, err := d.daemon.ConfigureSetupProvider(ctx, providerID, setup.ProviderSetupUpdate{
-		APIKey: &apiKey,
-		Active: true,
-	})
-	if err != nil {
-		return Result{}, err
-	}
-	if session != nil {
-		updated, updateErr := d.daemon.UpdateSessionProvider(ctx, session.ID, configured.ID)
-		if updateErr == nil {
-			return d.providerSelectedResult(ctx, updated)
-		}
-	}
-	text := fmt.Sprintf("✅ Provider configured: %s", configured.Name)
-	return Result{
-		Handled:        true,
-		Text:           text,
-		ReloadSnapshot: true,
-	}, nil
-}
-
 func (d *Dispatcher) providerSelectedResult(ctx context.Context, session core.Session) (Result, error) {
 	text := fmt.Sprintf("✅ Provider selected: %s · %s", session.ProviderID, session.ModelID)
 	if _, err := d.daemon.CreateSystemMessage(ctx, session.ID, text); err != nil {
@@ -155,15 +115,13 @@ func (d *Dispatcher) providerSelectedResult(ctx context.Context, session core.Se
 		if len(picker.Items) > 1 {
 			picker.Meta = text + "\nChoose a model."
 			return Result{
-				Handled:        true,
-				Picker:         picker,
+				Screen:         picker,
 				ReloadSnapshot: true,
 			}, nil
 		}
 	}
 	return Result{
-		Handled:        true,
-		Text:           text,
+		Screen:         TextData{Text: text},
 		ReloadSnapshot: true,
 	}, nil
 }

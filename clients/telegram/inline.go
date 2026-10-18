@@ -4,15 +4,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 const inlineCallbackPrefix = "inline:"
@@ -140,16 +139,12 @@ func (w *Worker) startInlineUserMessage(ctx context.Context, target chatTarget, 
 
 func (w *Worker) sendInlineUserMessageInSession(ctx context.Context, target chatTarget, text string, sessionID string) error {
 	daemon := w.daemonFor(target, target.externalKey)
-	result, err := daemon.SendMessagePartsModeWithDelivery(
-		ctx,
-		strings.TrimSpace(sessionID),
-		inlineRunPrompt(text),
-		nil,
-		"",
-		"",
-		encodeDeliveryAddress(deliveryAddressFromTarget(target, 0)),
-		target.repliesOnce(),
-	)
+	result, err := daemon.Send(ctx, core.HandleMessageInput{
+		SessionID:       sessionID,
+		Text:            inlineRunPrompt(text),
+		DeliveryAddress: encodeDeliveryAddress(deliveryAddressFromTarget(target, 0)),
+		ReplyOnce:       target.repliesOnce(),
+	})
 	if err != nil {
 		return err
 	}
@@ -221,36 +216,12 @@ func targetFromChosenInlineResult(chosen *ChosenInlineResult) chatTarget {
 func (w *Worker) rememberInlineRequest(queryID string, text string) string {
 	text = strings.TrimSpace(text)
 	token := inlineRequestToken(queryID, text)
-	w.mu.Lock()
 	w.inline.put(token, text)
-	snapshot := w.inline.snapshot()
-	w.mu.Unlock()
-	if err := writeInlineRequestCache(w.config.InlineCachePath, snapshot); err != nil {
-		log.Printf("telegram: persist inline request cache failed: %v", err)
-	}
 	return inlineCallbackPrefix + token
 }
 
 func (w *Worker) inlineRequestText(token string) string {
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return ""
-	}
-	w.mu.Lock()
-	text, ok := w.inline.get(token)
-	w.mu.Unlock()
-	if ok {
-		return text
-	}
-
-	cached := readInlineRequestCache(w.config.InlineCachePath)
-	text = strings.TrimSpace(cached[token])
-	if text == "" {
-		return ""
-	}
-	w.mu.Lock()
-	w.inline.put(token, text)
-	w.mu.Unlock()
+	text, _ := w.inline.get(strings.TrimSpace(token))
 	return text
 }
 
@@ -313,54 +284,6 @@ func inlineTextWithLocation(text string, location *Location) string {
 	return text + "\n\n" + locationText
 }
 
-func copyInlineRequests(source map[string]string) map[string]string {
-	if len(source) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(source))
-	for token, text := range source {
-		token = strings.TrimSpace(token)
-		text = strings.TrimSpace(text)
-		if token != "" && text != "" {
-			out[token] = text
-		}
-	}
-	return out
-}
-
-func readInlineRequestCache(path string) map[string]string {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return nil
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	var payload struct {
-		Requests map[string]string `json:"requests"`
-	}
-	if err := json.Unmarshal(data, &payload); err != nil {
-		return nil
-	}
-	return copyInlineRequests(payload.Requests)
-}
-
-func writeInlineRequestCache(path string, requests map[string]string) error {
-	path = strings.TrimSpace(path)
-	if path == "" || len(requests) == 0 {
-		return nil
-	}
-	payload := struct {
-		Requests map[string]string `json:"requests"`
-	}{Requests: requests}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	return writeFileAtomic(path, data)
-}
-
 func telegramUserID(user *User) int64 {
 	if user == nil {
 		return 0
@@ -382,10 +305,5 @@ func inlinePlaceholderText(query string) string {
 }
 
 func clipInlineDescription(text string) string {
-	text = strings.Join(strings.Fields(text), " ")
-	runes := []rune(text)
-	if len(runes) <= 96 {
-		return text
-	}
-	return strings.TrimSpace(string(runes[:93])) + "..."
+	return textutil.Clip(strings.Join(strings.Fields(text), " "), 96, "...")
 }

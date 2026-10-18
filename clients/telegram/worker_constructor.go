@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/modules/geo"
 )
 
@@ -45,8 +46,9 @@ func newWorker(cfg Config, api BotAPI) *Worker {
 		states:           states,
 		savedStates:      savedStates,
 		prompts:          map[string]pendingPrompt{},
-		callbacks:        newRecentMap[string](recentCallbackLimit),
-		inline:           newRecentMap[string](recentInlineLimit),
+		dispatchers:      newRecentMap[*controlplane.Dispatcher](recentDispatcherLimit),
+		callbacks:        newRefStore(cfg.CallbackCachePath, recentCallbackLimit),
+		inline:           newRefStore(cfg.InlineCachePath, recentInlineLimit),
 		inlineRuns:       newRecentMap[struct{}](recentInlineLimit),
 		messages:         newRecentMap[struct{}](recentMessageLimit),
 		locations:        map[string]telegramLocationContext{},

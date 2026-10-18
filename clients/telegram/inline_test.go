@@ -23,15 +23,12 @@ func TestInlineRequestCacheKeepsOnlyRecentRequests(t *testing.T) {
 			first = last
 		}
 	}
-	cached := readInlineRequestCache(path)
-	if len(cached) != recentInlineLimit {
-		t.Fatalf("cache holds %d requests, want %d", len(cached), recentInlineLimit)
-	}
-	if worker.inlineRequestText(first) != "" {
+	restarted := newWorker(Config{InlineCachePath: path}, nil)
+	if restarted.inlineRequestText(first) != "" {
 		t.Fatal("oldest request still remembered")
 	}
-	if got := worker.inlineRequestText(last); got != fmt.Sprintf("text %d", recentInlineLimit+9) {
-		t.Fatalf("newest request = %q", got)
+	if got := restarted.inlineRequestText(last); got != fmt.Sprintf("text %d", recentInlineLimit+9) {
+		t.Fatalf("newest request after a restart = %q", got)
 	}
 }
 

@@ -11,81 +11,82 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
-func (d *Dispatcher) handleContext(ctx context.Context, args string) (Result, error) {
+var (
+	contextRoot           = verb(CommandContext, "", 0)
+	contextInfo           = verb(CommandContext, "info", 0)
+	contextClear          = verb(CommandContext, "clear", 0)
+	contextClearConfirm   = verb(CommandContext, "clear confirm", 0)
+	contextCompact        = verb(CommandContext, "compact", 0)
+	contextCompactConfirm = verb(CommandContext, "compact confirm", 0)
+)
+
+// CompactRequested reports whether command compacts the context now, which
+// may outlast a client's usual wait.
+func CompactRequested(command string) bool {
+	route, ok := DecodeRoute(command)
+	return ok && route.Is(contextCompactConfirm)
+}
+
+func (d *Dispatcher) handleContext(ctx context.Context, r Route) (Result, error) {
 	_, session, err := d.currentSession(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 	if session == nil {
-		return Result{Handled: true, Text: "Select or create a session first."}, nil
+		return textResult("Select or create a session first."), nil
 	}
-
-	args = strings.TrimSpace(args)
-	switch strings.ToLower(args) {
-	case "info":
+	switch r.Verb {
+	case contextInfo:
 		report, err := d.daemon.SessionContext(ctx, session.ID)
 		if err != nil {
 			return Result{}, err
 		}
-		info := contextInfoData(report)
-		return Result{Handled: true, Info: &info}, nil
-	case "clear":
-		return Result{
-			Handled: true,
-			Confirm: &ConfirmData{
-				Message:        "Clear context now?",
-				ConfirmLabel:   "Clear",
-				CancelLabel:    "Close",
-				ConfirmCommand: contextClearConfirmCommand(),
-				CancelCommand:  contextCommand(),
-				ConfirmDanger:  true,
-			},
-		}, nil
-	case "clear confirm":
+		return Result{Screen: contextInfoData(report)}, nil
+	case contextClear:
+		return Result{Screen: ConfirmData{
+			Message:        "Clear context now?",
+			ConfirmLabel:   "Clear",
+			CancelLabel:    "Close",
+			ConfirmCommand: contextClearConfirm.command(),
+			CancelCommand:  contextRoot.command(),
+			ConfirmDanger:  true,
+		}}, nil
+	case contextClearConfirm:
 		if _, err := d.daemon.ClearContext(ctx, session.ID); err != nil {
 			return Result{}, err
 		}
-		return Result{Handled: true, Text: "Context cleared.", ReloadSnapshot: true}, nil
-	case "compact":
-		return Result{
-			Handled: true,
-			Confirm: &ConfirmData{
-				Message:        "Compact context now?",
-				ConfirmLabel:   "Compact",
-				CancelLabel:    "Close",
-				ConfirmCommand: contextCompactConfirmCommand(),
-				CancelCommand:  contextCommand(),
-			},
-		}, nil
-	case "compact confirm":
+		return Result{Screen: TextData{Text: "Context cleared."}, ReloadSnapshot: true}, nil
+	case contextCompact:
+		return Result{Screen: ConfirmData{
+			Message:        "Compact context now?",
+			ConfirmLabel:   "Compact",
+			CancelLabel:    "Close",
+			ConfirmCommand: contextCompactConfirm.command(),
+			CancelCommand:  contextRoot.command(),
+		}}, nil
+	case contextCompactConfirm:
 		result, err := d.daemon.CompactSession(ctx, session.ID)
 		if errors.Is(err, core.ErrInvalidInput) {
-			return Result{Handled: true, Text: "Nothing to compact yet."}, nil
+			return textResult("Nothing to compact yet."), nil
 		}
 		if err != nil {
 			return Result{}, err
 		}
-		return Result{Handled: true, Text: result.Message.Content, ReloadSnapshot: true}, nil
+		return Result{Screen: TextData{Text: result.Message.Content}, ReloadSnapshot: true}, nil
 	}
-
 	report, err := d.daemon.SessionContext(ctx, session.ID)
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{
-		Handled: true,
-		Picker:  NewPickerData(PickerContext, "Context").Items(contextItems(report)...).Ptr(),
-	}, nil
+	return Result{Screen: NewPickerData(PickerContext, "Context").Items(contextItems(report)...).Build()}, nil
 }
 
 func contextItems(report core.ContextReport) []PickerItem {
-	info := contextTokenLabel(report)
-	items := []PickerItem{
-		{ID: "clear", Title: "Clear context", Command: contextClearCommand(), Role: PickerItemRoleDanger},
-		{ID: "compact", Title: "Compact", Command: contextCompactCommand()},
-		{ID: "info", Title: "Usage", Info: info, Command: contextInfoCommand()},
+	return []PickerItem{
+		{ID: "clear", Title: "Clear context", Command: contextClear.command(), Role: PickerItemRoleDanger},
+		{ID: "compact", Title: "Compact", Command: contextCompact.command()},
+		{ID: "info", Title: "Usage", Info: contextTokenLabel(report), Command: contextInfo.command()},
 	}
-	return items
 }
 
 func contextInfoData(report core.ContextReport) InfoData {

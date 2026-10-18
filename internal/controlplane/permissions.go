@@ -16,41 +16,50 @@ const permissionsUsage = "Usage: /permissions default|accept_edits|full_auto|pla
 const planUsage = "Usage: /plan switches this session to plan mode: the agent explores with read-only tools and asks you to approve its plan; " +
 	"approving switches the session to accept_edits and the agent carries the plan out. Describe the task in your next message."
 
+// Text after /plan only gets the usage.
+var _ = valueVerb(CommandPlan, "", 0)
+
+var (
+	permissionsRoot   = valueVerb(CommandPermissions, "", 0)
+	permissionsAdd    = valueVerb(CommandPermissions, "add", 0)
+	permissionsDelete = verb(CommandPermissions, "delete", 1)
+	permissionsDrop   = verb(CommandPermissions, "delete-confirm", 1)
+)
+
 // handlePlan switches the session to plan mode, as /permissions plan does.
-func (d *Dispatcher) handlePlan(ctx context.Context, args string) (Result, error) {
-	if args != "" {
-		return Result{Handled: true, Text: planUsage}, nil
+func (d *Dispatcher) handlePlan(ctx context.Context, r Route) (Result, error) {
+	if r.Value != "" {
+		return textResult(planUsage), nil
 	}
-	return d.handlePermissions(ctx, string(core.PermissionModePlan))
+	return d.handlePermissions(ctx, Route{Verb: permissionsRoot, Value: string(core.PermissionModePlan)})
 }
 
-func (d *Dispatcher) handlePermissions(ctx context.Context, args string) (Result, error) {
+func (d *Dispatcher) handlePermissions(ctx context.Context, r Route) (Result, error) {
 	_, session, err := d.currentSession(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 	if session == nil {
-		return Result{Handled: true, Text: "Select or create a session first."}, nil
+		return textResult("Select or create a session first."), nil
 	}
 	if !core.CapabilitiesForSession(*session).PermissionMode {
-		return Result{Handled: true, Text: "Permission Mode is available for Matrixclaw sessions only."}, nil
+		return textResult("Permission Mode is available for Matrixclaw sessions only."), nil
 	}
 
-	action, rest := cutWord(args)
-	switch strings.ToLower(action) {
-	case "":
+	switch {
+	case r.Is(permissionsAdd):
+		return d.addPermissionRule(ctx, *session, r.Value)
+	case r.Is(permissionsDelete), r.Is(permissionsDrop):
+		return d.deletePermissionRule(ctx, *session, r.arg(0), r.Is(permissionsDrop))
+	case r.Value == "":
 		return d.permissionsPicker(ctx, *session)
-	case "add":
-		return d.addPermissionRule(ctx, *session, rest)
-	case "delete":
-		return d.deletePermissionRule(ctx, *session, rest)
 	}
-	mode, ok := parsePermissionMode(args)
+	mode, ok := parsePermissionMode(r.Value)
 	if !ok {
-		return Result{Handled: true, Text: permissionsUsage}, nil
+		return textResult(permissionsUsage), nil
 	}
 	if !d.owner() {
-		return Result{Handled: true, Text: "Only the owner can switch the permission mode."}, nil
+		return textResult("Only the owner can switch the permission mode."), nil
 	}
 	updated, err := d.daemon.UpdateSessionPermissionMode(ctx, session.ID, mode)
 	if err != nil {
@@ -61,8 +70,7 @@ func (d *Dispatcher) handlePermissions(ctx context.Context, args string) (Result
 		return Result{}, err
 	}
 	return Result{
-		Handled:        true,
-		Text:           text,
+		Screen:         TextData{Text: text},
 		ReloadSnapshot: true,
 	}, nil
 }
@@ -76,9 +84,9 @@ func (d *Dispatcher) permissionsPicker(ctx context.Context, session core.Session
 		return Result{}, err
 	}
 	for _, rule := range rules {
-		picker.Danger(rule.ID, string(rule.Effect)+" "+rule.String(), ruleScopeLabel(rule, session.ID), permissionsCommand("delete", rule.ID))
+		picker.Danger(rule.ID, string(rule.Effect)+" "+rule.String(), ruleScopeLabel(rule, session.ID), permissionsDelete.command(rule.ID))
 	}
-	return Result{Handled: true, Picker: picker.Ptr()}, nil
+	return Result{Screen: picker.Build()}, nil
 }
 
 func ruleScopeLabel(rule permission.Rule, sessionID string) string {
@@ -96,7 +104,7 @@ func ruleScopeLabel(rule permission.Rule, sessionID string) string {
 func (d *Dispatcher) addPermissionRule(ctx context.Context, session core.Session, args string) (Result, error) {
 	fields := strings.Fields(args)
 	if len(fields) < 2 || !permission.Effect(strings.ToLower(fields[0])).Valid() {
-		return Result{Handled: true, Text: permissionsUsage}, nil
+		return textResult(permissionsUsage), nil
 	}
 	request := core.PermissionRuleRequest{Effect: permission.Effect(strings.ToLower(fields[0])), Tool: fields[1], Scope: permission.ScopeSession}
 	pattern := fields[2:]
@@ -105,13 +113,13 @@ func (d *Dispatcher) addPermissionRule(ctx context.Context, session core.Session
 	}
 	request.Pattern = strings.Join(pattern, " ")
 	if !d.managesRules(request.Scope) {
-		return Result{Handled: true, Text: rulesRefusal(request.Scope)}, nil
+		return textResult(rulesRefusal(request.Scope)), nil
 	}
 	rule, err := d.daemon.AddPermissionRule(ctx, session.ID, request)
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Handled: true, Text: "✅ Rule added: " + string(rule.Effect) + " " + rule.String() + " (" + ruleScopeLabel(rule, session.ID) + ")"}, nil
+	return textResult("✅ Rule added: " + string(rule.Effect) + " " + rule.String() + " (" + ruleScopeLabel(rule, session.ID) + ")"), nil
 }
 
 func rulesRefusal(scope permission.Scope) string {
@@ -122,8 +130,7 @@ func rulesRefusal(scope permission.Scope) string {
 }
 
 // deletePermissionRule asks first, then deletes one of the session's rules.
-func (d *Dispatcher) deletePermissionRule(ctx context.Context, session core.Session, args string) (Result, error) {
-	ruleID, confirm := cutWord(args)
+func (d *Dispatcher) deletePermissionRule(ctx context.Context, session core.Session, ruleID string, confirmed bool) (Result, error) {
 	rules, err := d.daemon.SessionPermissionRules(ctx, session.ID)
 	if err != nil {
 		return Result{}, err
@@ -135,26 +142,26 @@ func (d *Dispatcher) deletePermissionRule(ctx context.Context, session core.Sess
 		}
 	}
 	if rule.ID == "" {
-		return Result{Handled: true, Text: "No such rule for this session."}, nil
+		return textResult("No such rule for this session."), nil
 	}
 	if !d.managesRules(rule.Scope) {
-		return Result{Handled: true, Text: rulesRefusal(rule.Scope)}, nil
+		return textResult(rulesRefusal(rule.Scope)), nil
 	}
 	label := string(rule.Effect) + " " + rule.String()
-	if confirm != "confirm" {
-		return Result{Handled: true, Confirm: &ConfirmData{
+	if !confirmed {
+		return Result{Screen: ConfirmData{
 			Title:          "Delete rule",
 			Message:        "Delete " + label + " (" + ruleScopeLabel(rule, session.ID) + ")?",
 			ConfirmLabel:   "Delete",
-			ConfirmCommand: permissionsCommand("delete", rule.ID, "confirm"),
-			CancelCommand:  permissionsCommand(),
+			ConfirmCommand: permissionsDrop.command(rule.ID),
+			CancelCommand:  permissionsRoot.command(),
 			ConfirmDanger:  true,
 		}}, nil
 	}
 	if err := d.daemon.DeletePermissionRule(ctx, rule.ID); err != nil {
 		return Result{}, err
 	}
-	return Result{Handled: true, Text: "🗑️ Rule deleted: " + label}, nil
+	return textResult("🗑️ Rule deleted: " + label), nil
 }
 
 func permissionModeItems(current core.PermissionMode) []PickerItem {
@@ -173,7 +180,7 @@ func permissionModeItems(current core.PermissionMode) []PickerItem {
 		items = append(items, PickerItem{
 			ID:       string(mode.mode),
 			Title:    mode.title,
-			Command:  permissionsCommand(string(mode.mode)),
+			Command:  permissionsRoot.commandValue(string(mode.mode)),
 			Selected: current == mode.mode,
 		})
 	}
