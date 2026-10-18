@@ -34,7 +34,7 @@ type sessionSearchTool struct {
 func (t *sessionSearchTool) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              sessionSearchToolName,
-		Description:     "Search previous Matrixclaw session messages and return matches grouped by session.",
+		Description:     "Search the messages of earlier sessions with the user; matches come back grouped by session. Use it when the user refers to an earlier conversation (\"like last time\", \"the bug we discussed\") or when past decisions matter to the task.",
 		Effect:          tools.EffectReadOnly,
 		Namespace:       "core.memory",
 		Category:        tools.CategoryAutomation,
@@ -73,7 +73,7 @@ type memoryTool struct {
 func (t *memoryTool) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              memoryToolName,
-		Description:     "List, add, replace, or remove persistent Matrixclaw memory. Mutations require approval.",
+		Description:     "Persistent notes shown to you at the start of every later run. Save durable facts that will matter again: the user's preferences, project conventions, build and test commands, decisions and their reasons. Do not save task progress, secrets, or what the repository's own docs already say. action is list (the default; never asks), add, replace or remove; replace and remove need the id from list. Changes wait for the user's approval.",
 		Effect:          tools.EffectMutation,
 		Asks:            true,
 		Namespace:       "core.memory",
@@ -258,9 +258,9 @@ var (
 	sessionSearchToolSchema = json.RawMessage(`{
   "type": "object",
   "properties": {
-    "query": {"type": "string", "description": "Text to search for in previous session messages."},
-    "session_id": {"type": "string", "description": "Optional session id to restrict the search."},
-    "limit": {"type": "integer", "minimum": 1, "maximum": 20}
+    "query": {"type": "string", "description": "Words to search for in earlier messages."},
+    "session_id": {"type": "string", "description": "Search only this session."},
+    "limit": {"type": "integer", "minimum": 1, "maximum": 20, "description": "Maximum matches to return."}
   },
   "required": ["query"],
   "additionalProperties": false
@@ -269,13 +269,13 @@ var (
 	memoryToolSchema = json.RawMessage(`{
   "type": "object",
   "properties": {
-    "action": {"type": "string", "enum": ["list", "add", "replace", "remove"]},
-    "id": {"type": "string", "description": "Memory id for replace/remove."},
-    "scope": {"type": "string", "enum": ["global", "user", "project"]},
-    "key": {"type": "string", "description": "Optional short label for the memory."},
-    "content": {"type": "string", "description": "Memory content for add/replace."},
-    "working_dir": {"type": "string", "description": "Project root for project-scoped memory."},
-    "limit": {"type": "integer", "minimum": 1, "maximum": 50}
+    "action": {"type": "string", "enum": ["list", "add", "replace", "remove"], "description": "What to do; list when omitted."},
+    "id": {"type": "string", "description": "The entry to replace or remove, as list shows it."},
+    "scope": {"type": "string", "enum": ["global", "user", "project"], "description": "user: about the user; project: only for runs in one working directory; global: everything else."},
+    "key": {"type": "string", "description": "A short label for the entry."},
+    "content": {"type": "string", "description": "The note itself, for add and replace: one self-contained fact."},
+    "working_dir": {"type": "string", "description": "The project directory of a project entry; defaults to the current working directory."},
+    "limit": {"type": "integer", "minimum": 1, "maximum": 50, "description": "Maximum entries list returns."}
   },
   "additionalProperties": false
 }`)
