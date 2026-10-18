@@ -39,6 +39,7 @@ flowchart LR
 | `internal/agent` | the native agent engine (below) |
 | `internal/transcript` | message, part, finish and origin types shared by core, store, api and agent |
 | `internal/tools` | tool contract and the built-in file, shell and task tools |
+| `internal/checkpoint` | file checkpoints: shadow git snapshots of working directories, diff, restore (see [CHECKPOINTS.md](CHECKPOINTS.md)) |
 | `internal/permission` | permission rules, subjects, bash parsing, mode presets |
 | `internal/glob` | the one glob matcher (`**`, classes, braces) and `.gitignore` rules, for path rules and the search tools |
 | `internal/shelltask` | background shell processes and their output files |
@@ -85,7 +86,8 @@ recovery), waits for them, then closes external agents and modules.
   (`internal/api/role.go`; `policy_test.go` lists them): `open`; `owner`
   (admin reload/restart/stop, the session permission mode, writes to setup
   providers, external agents, module settings, MCP and the skills library,
-  storage deletes and temporary-storage cleanup and settings); or `session`,
+  storage deletes, temporary-storage cleanup and settings, file checkpoint
+  restores); or `session`,
   for every write that acts in a session (named by the path, by the run, task,
   approval or automation job it names, or by the JSON body's `session_id` or
   client binding): members and guests are refused (403) there when the session
@@ -424,6 +426,17 @@ provider and model.
   numbered like `read`; its metadata (`tools.FileChange`) keeps only the
   changed regions, at most 16 KB a side, while an approval shows a file up to
   64 KB whole.
+
+### File checkpoints
+
+Before the first call of a tool batch that may change files (file and shell
+mutations, a child agent in the shared directory), core snapshots the
+session's working directory into a shadow git repository under the data
+directory (`internal/checkpoint`) and records it in `file_checkpoints`.
+`/undo` and `/rewind` restore a checkpoint and leave the model a note naming
+the restored files; `checkpoint_diff` shows the model its whole change. Off
+with `daemon.checkpoints.enabled: false`. Details in
+[CHECKPOINTS.md](CHECKPOINTS.md).
 
 ## Web tools
 

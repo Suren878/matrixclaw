@@ -264,3 +264,38 @@ func TestVersion3SetupFileThatCannotConvertIsLeftAlone(t *testing.T) {
 		t.Fatalf("backup written: %v", err)
 	}
 }
+
+func TestDaemonCheckpointsSwitch(t *testing.T) {
+	for _, tc := range []struct {
+		name, checkpoints string
+		on                bool
+		wantErr           string
+	}{
+		{"absent", ``, true, ""},
+		{"off", `, "checkpoints": {"enabled": false}`, false, ""},
+		{"on", `, "checkpoints": {"enabled": true}`, true, ""},
+		{"not a bool", `, "checkpoints": {"enabled": "no"}`, false, "enabled"},
+		{"unknown key", `, "checkpoints": {"keep": 5}`, false, "unknown keys daemon.checkpoints.keep"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "setup.json")
+			file := `{"version": 4, "daemon": {"http_addr": "127.0.0.1:7777", "db_path": "/tmp/m.db"` + tc.checkpoints + `}, "clients": {"telegram": {"enabled": false}}}`
+			if err := os.WriteFile(path, []byte(file), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := NewFileStore(path).Load()
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("load error = %v, want %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := cfg.Daemon.Checkpoints.On(); got != tc.on {
+				t.Fatalf("On() = %v, want %v", got, tc.on)
+			}
+		})
+	}
+}

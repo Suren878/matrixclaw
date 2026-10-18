@@ -12,6 +12,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/api"
 	"github.com/Suren878/matrixclaw/internal/automation"
+	"github.com/Suren878/matrixclaw/internal/checkpoint"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
 	"github.com/Suren878/matrixclaw/internal/modules/geo"
@@ -80,6 +81,9 @@ func Run(ctx context.Context) error {
 		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()}).
 		WithSkillsContext(skillsModule).
 		WithPromptEnvironment(promptEnvironment(bootstrap))
+	if bootstrap.Setup.Daemon.Checkpoints.On() {
+		app.WithCheckpoints(checkpoint.New(filepath.Join(dataDir(bootstrap.DBPath), "checkpoints")))
+	}
 	externalRegistry, externalRuntimes, err := builtins.BuildRegistry(bootstrap.Setup.Modules)
 	if err != nil {
 		return err

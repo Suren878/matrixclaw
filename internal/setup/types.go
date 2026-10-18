@@ -58,6 +58,19 @@ type DaemonConfig struct {
 	// BackgroundAgents bounds the background subagents one session runs at
 	// once; 0 keeps the default of 4.
 	BackgroundAgents int `json:"background_agents,omitempty"`
+	// Checkpoints controls the file checkpoints taken before tool batches.
+	Checkpoints CheckpointsConfig `json:"checkpoints,omitzero"`
+}
+
+// CheckpointsConfig controls file checkpoints (docs/CHECKPOINTS.md); they are
+// on unless Enabled is false.
+type CheckpointsConfig struct {
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+// On reports whether file checkpoints are taken.
+func (c CheckpointsConfig) On() bool {
+	return c.Enabled == nil || *c.Enabled
 }
 
 // RunBudgetsConfig overrides the built-in run budget per trigger.

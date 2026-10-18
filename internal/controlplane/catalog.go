@@ -27,6 +27,8 @@ const (
 	CommandStop        CommandID = "stop"
 	CommandHelp        CommandID = "help"
 	CommandApproval    CommandID = "approval"
+	CommandUndo        CommandID = "undo"
+	CommandRewind      CommandID = "rewind"
 )
 
 type CommandSpec struct {
@@ -48,6 +50,8 @@ var commandCatalog = []CommandSpec{
 	{ID: CommandUsage, Command: "/usage", Title: "Token usage", Public: true},
 	{ID: CommandContinue, Command: "/continue", Title: "Continue the last run", Public: true},
 	{ID: CommandBudget, Command: "/budget", Title: "Run budget", Public: true},
+	{ID: CommandUndo, Command: "/undo", Title: "Undo the last run's file changes", Public: true},
+	{ID: CommandRewind, Command: "/rewind", Title: "Rewind files to a checkpoint", Public: true},
 	{ID: CommandTodo, Command: "/todo", Title: "Todo", Menu: true, Public: true},
 	{ID: CommandMemory, Command: "/memory", Title: "Memory", Menu: true, Public: true},
 	{ID: CommandSearch, Command: "/search", Title: "Search history", Public: true},
@@ -115,6 +119,7 @@ const (
 	PickerTaskActions     PickerKind = "task_actions"
 	PickerTaskArchive     PickerKind = "task_archive"
 	PickerServer          PickerKind = "server"
+	PickerCheckpoints     PickerKind = "checkpoints"
 )
 
 // PickerData is a list screen; clients render it as they see fit (Telegram

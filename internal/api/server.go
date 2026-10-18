@@ -158,6 +158,8 @@ func (s *Server) routeTable() []route {
 		{"POST /v1/sessions/{id}/compact", sessionInPath, s.handleSessionCompact},
 		{"POST /v1/sessions/{id}/clear", sessionInPath, s.handleSessionClear},
 		{"POST /v1/sessions/{id}/system-message", sessionInPath, s.handleSessionSystemMessage},
+		{"GET /v1/sessions/{id}/checkpoints", open, s.handleSessionCheckpoints},
+		{"POST /v1/sessions/{id}/checkpoints/{checkpoint}/restore", owner, s.handleSessionCheckpointRestore},
 		{"GET /v1/bindings/current", open, s.handleCurrentBinding},
 		{"POST /v1/bindings/use", sessionInBody, s.handleUseBinding},
 		{"GET /v1/snapshot", open, s.handleSnapshot},
