@@ -117,14 +117,7 @@ func (t *baseToolMessageItem) diffPreviewData() (surfacedialog.DiffPreviewData, 
 	if !ok || !change.Done {
 		return surfacedialog.DiffPreviewData{}, false
 	}
-	return surfacedialog.DiffPreviewData{
-		Title:      toolview.Describe(t.toolCall.Name, "").Title + " Changes",
-		FilePath:   change.Path,
-		OldContent: change.Old,
-		NewContent: change.New,
-		Additions:  change.Additions,
-		Removals:   change.Removals,
-	}, true
+	return surfacedialog.NewDiffPreviewData(toolview.Describe(t.toolCall.Name, "").Title+" Changes", change.Files...), true
 }
 
 func (t *baseToolMessageItem) filePreviewData() (surfacedialog.FilePreviewData, bool) {

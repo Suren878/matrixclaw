@@ -181,23 +181,37 @@ func (e *patchExecutor) Spec() Spec {
 	return coreDefinitionSpec(applyPatchToolName)
 }
 
-// PermissionSubjects is every file the patch names, moves included; a patch
-// that does not parse names none, so only rules for the whole tool apply.
-func (e *patchExecutor) PermissionSubjects(call Call) []permission.Subject {
-	hunks, err := patchHunks(call)
+// PatchPaths are the files a patch names, as written and in order, moves
+// included; nil when it does not parse.
+func PatchPaths(patch string) []string {
+	hunks, err := parsePatch(patch)
 	if err != nil {
+		return nil
+	}
+	var paths []string
+	for _, hunk := range hunks {
+		for _, path := range []string{hunk.path, hunk.moveTo} {
+			if path != "" && !slices.Contains(paths, path) {
+				paths = append(paths, path)
+			}
+		}
+	}
+	return paths
+}
+
+// PermissionSubjects is every file the patch names; a patch that does not
+// parse names none, so only rules for the whole tool apply.
+func (e *patchExecutor) PermissionSubjects(call Call) []permission.Subject {
+	var params ApplyPatchParams
+	_ = json.Unmarshal(call.Args, &params)
+	paths := PatchPaths(params.Input)
+	if len(paths) == 0 {
 		return []permission.Subject{{}}
 	}
 	var subjects []permission.Subject
-	for _, hunk := range hunks {
-		for _, path := range []string{hunk.path, hunk.moveTo} {
-			if path == "" {
-				continue
-			}
-			subject := pathSubject(permission.KindFile, call.WorkingDir, path)
-			if !slices.Contains(subjects, subject) {
-				subjects = append(subjects, subject)
-			}
+	for _, path := range paths {
+		if subject := pathSubject(permission.KindFile, call.WorkingDir, path); !slices.Contains(subjects, subject) {
+			subjects = append(subjects, subject)
 		}
 	}
 	return subjects

@@ -75,8 +75,9 @@ func renderRead(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) stri
 	return header
 }
 
-// renderFileChange draws write, edit and multiedit: the file and, once done,
-// its line delta and the hint to open the diff.
+// renderFileChange draws write, edit, multiedit and apply_patch: the file (or
+// how many a patch names) and, once done, the line delta and the hint to open
+// the diff.
 func renderFileChange(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts) string {
 	width = cappedMessageWidth(width)
 	title := toolview.Describe(opts.ToolCall.Name, "").Title
@@ -92,7 +93,14 @@ func renderFileChange(sty *surfacestyles.Styles, width int, opts *ToolRenderOpts
 		return toolErrorContent(sty, &surfacemessage.ToolResult{Content: "Invalid parameters"}, width)
 	}
 
-	file := resultDisplayPath(opts.Result, change.Path)
+	var file string
+	switch len(change.Paths) {
+	case 0:
+	case 1:
+		file = resultDisplayPath(opts.Result, change.Paths[0])
+	default:
+		file = fmt.Sprintf("%d files", len(change.Paths))
+	}
 	params := []string{file}
 	if change.Edits > 0 {
 		params = append(params, "edits", strconv.Itoa(change.Edits))

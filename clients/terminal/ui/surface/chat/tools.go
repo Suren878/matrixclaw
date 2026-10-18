@@ -59,6 +59,7 @@ var toolRenderers = map[string]toolRenderer{
 	"write":       renderFileChange,
 	"edit":        renderFileChange,
 	"multiedit":   renderFileChange,
+	"apply_patch": renderFileChange,
 	"glob":        renderListing,
 	"grep":        renderListing,
 	"ls":          renderListing,
@@ -88,7 +89,8 @@ func newBaseToolMessageItem(
 	render toolRenderer,
 	canceled bool,
 ) *baseToolMessageItem {
-	hasCappedWidth := normalizedToolName(toolCall.Name) != "edit" && normalizedToolName(toolCall.Name) != "multiedit"
+	name := normalizedToolName(toolCall.Name)
+	hasCappedWidth := name != "edit" && name != "multiedit" && name != "apply_patch"
 	status := ToolStatusRunning
 	if canceled {
 		status = ToolStatusCanceled

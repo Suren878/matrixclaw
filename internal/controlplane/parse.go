@@ -5,11 +5,12 @@ import (
 	"strings"
 )
 
-// BotCommands are the commands a client lists by name: the menu ones and /help.
+// BotCommands are the commands a client lists by name: the menu ones, /plan
+// and /help.
 func BotCommands() []CommandSpec {
 	var out []CommandSpec
 	for _, spec := range Catalog() {
-		if spec.Public && (spec.Menu || spec.ID == CommandHelp) {
+		if spec.Public && (spec.Menu || spec.ID == CommandHelp || spec.ID == CommandPlan) {
 			out = append(out, spec)
 		}
 	}
