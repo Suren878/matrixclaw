@@ -129,7 +129,7 @@ func (c *Core) permitCall(ctx context.Context, name string, spec tools.Spec, cal
 		return check, err
 	}
 	scope := hookScope(check.session, call.RunID, call.WorkingDir)
-	decision := c.hooks.PreToolUse(ctx, scope, hooks.ToolCall{ID: call.ToolCallID, Name: name, Input: call.Args, File: subjectFile(check.request.Subject)})
+	decision := c.hooks.PreToolUse(ctx, scope, hooks.ToolCall{ID: call.ToolCallID, Name: name, Input: call.Args, Files: subjectFiles(check.subjects)})
 	if decision.Input != nil {
 		call.Args = decision.Input
 		if _, _, err := c.checkToolCall(ctx, name, call); err != nil {

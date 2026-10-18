@@ -16,12 +16,13 @@ import (
 const (
 	// diagnosticsTimeout bounds one check after an edit.
 	diagnosticsTimeout = 20 * time.Second
+	maxDiagnosedFiles  = 5
 	maxDiagnosticLines = 30
 	maxDiagnosticWidth = 500
 )
 
-// editTools are the tools after whose successful calls the edited file is checked.
-var editTools = map[string]bool{"write": true, "edit": true, "multiedit": true}
+// editTools are the tools after whose successful calls the edited files are checked.
+var editTools = map[string]bool{"write": true, "edit": true, "multiedit": true, "apply_patch": true}
 
 // check is a built-in check: command runs next to marker, the nearest such file
 // from the edited file's directory up (skipped when there is none), or in the
@@ -55,43 +56,56 @@ cargo check --quiet --message-format short 2>&1 | grep -v ': warning'`},
 const tscCheck = `if [ -x node_modules/.bin/tsc ]; then tsc=node_modules/.bin/tsc; elif command -v tsc >/dev/null; then tsc=tsc; else exit 0; fi
 "$tsc" --noEmit --pretty false -p . 2>&1`
 
-// diagnose checks the file a successful edit changed and reports the errors
-// that mention it, "" when there are none or no check applies. It never fails.
+// diagnose checks the files a successful edit changed, the first
+// maxDiagnosedFiles of them within one diagnosticsTimeout, and reports the
+// errors that mention them, "" when there are none or no check applies. It
+// never fails.
 func (r *Runner) diagnose(ctx context.Context, scope Scope, call ToolCall) string {
 	cfg := r.config().Diagnostics
-	if cfg.Disabled || !editTools[call.Name] || call.File == "" {
+	if cfg.Disabled || !editTools[call.Name] || len(call.Files) == 0 {
 		return ""
 	}
-	ext := strings.ToLower(filepath.Ext(call.File))
+	ctx, cancel := context.WithTimeout(ctx, diagnosticsTimeout)
+	defer cancel()
+	var lines []string
+	for _, file := range call.Files[:min(len(call.Files), maxDiagnosedFiles)] {
+		lines = append(lines, r.diagnoseFile(ctx, scope, call, file)...)
+	}
+	return report(lines)
+}
+
+// diagnoseFile runs the check for file's language and keeps the lines naming it.
+func (r *Runner) diagnoseFile(ctx context.Context, scope Scope, call ToolCall, file string) []string {
+	cfg := r.config().Diagnostics
+	ext := strings.ToLower(filepath.Ext(file))
 	command, custom := cfg.Commands[ext]
 	dir := scope.WorkingDir
 	switch {
 	case custom:
 	case ext == ".json":
-		return report(jsonErrors(call.File))
+		return jsonErrors(file)
 	default:
 		builtin, ok := builtinChecks[ext]
 		if !ok {
-			return ""
+			return nil
 		}
-		if dir = checkDir(call.File, builtin.marker); dir == "" {
-			return ""
+		if dir = checkDir(file, builtin.marker); dir == "" {
+			return nil
 		}
 		command = builtin.command
 	}
 	if strings.TrimSpace(command) == "" {
-		return ""
+		return nil
 	}
-	ctx, cancel := context.WithTimeout(ctx, diagnosticsTimeout)
-	defer cancel()
+	call.Files = []string{file}
 	ran, err := shelltask.Run(ctx, command, dir, r.environ(scope, scope.WorkingDir, call), nil, outputLimit)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			r.logf("diagnostics %s: timed out after %s", call.File, diagnosticsTimeout)
+			r.logf("diagnostics %s: timed out after %s", file, diagnosticsTimeout)
 		}
-		return ""
+		return nil
 	}
-	return report(mentioning(string(ran.Stdout)+"\n"+string(ran.Stderr), call.File))
+	return mentioning(string(ran.Stdout)+"\n"+string(ran.Stderr), file)
 }
 
 // checkDir is where a check with marker runs for file; "" when marker is not found.

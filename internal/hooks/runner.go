@@ -62,13 +62,13 @@ type Scope struct {
 	PermissionMode string
 }
 
-// ToolCall is the call a tool hook runs for; File is the resolved path a file
-// tool targets.
+// ToolCall is the call a tool hook runs for; Files are the resolved paths a
+// file tool targets (several for apply_patch).
 type ToolCall struct {
 	ID    string
 	Name  string
 	Input json.RawMessage
-	File  string
+	Files []string
 }
 
 // ToolDecision is what the PreToolUse hooks of a call decided: Permission is
@@ -345,8 +345,8 @@ func (r *Runner) environ(scope Scope, projectDir string, call ToolCall) []string
 	if call.Name != "" {
 		env = append(env, "MATRIXCLAW_TOOL="+call.Name)
 	}
-	if call.File != "" {
-		env = append(env, "MATRIXCLAW_FILE="+call.File)
+	if len(call.Files) > 0 {
+		env = append(env, "MATRIXCLAW_FILE="+call.Files[0])
 	}
 	return env
 }
