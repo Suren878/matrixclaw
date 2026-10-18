@@ -435,7 +435,9 @@ type Fixture struct {
 	// compete for model requests and concurrency keys.
 	ModelSlots *toolsched.Semaphore
 	Locks      *toolsched.Locks
-	ids        int
+	// Hooks, when set, runs the run's hooks.
+	Hooks agent.Hooks
+	ids   int
 }
 
 // NewFixture returns fakes with the run's user message already journaled.
@@ -489,6 +491,7 @@ func (f *Fixture) Engine() *agent.Engine {
 		Sink:       f.Sink,
 		Prompts:    f.Prompts,
 		Todos:      f.Todos,
+		Hooks:      f.Hooks,
 		Now:        now,
 		Sleep:      sleep,
 		ModelSlots: f.ModelSlots,

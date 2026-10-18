@@ -15,6 +15,7 @@ const (
 	CommandContinue    CommandID = "continue"
 	CommandBudget      CommandID = "budget"
 	CommandTodo        CommandID = "todo"
+	CommandHooks       CommandID = "hooks"
 	CommandMemory      CommandID = "memory"
 	CommandSearch      CommandID = "search"
 	CommandSkills      CommandID = "skills"
@@ -53,6 +54,7 @@ var commandCatalog = []CommandSpec{
 	{ID: CommandUndo, Command: "/undo", Title: "Undo the last run's file changes", Public: true},
 	{ID: CommandRewind, Command: "/rewind", Title: "Rewind files to a checkpoint", Public: true},
 	{ID: CommandTodo, Command: "/todo", Title: "Todo", Menu: true, Public: true},
+	{ID: CommandHooks, Command: "/hooks", Title: "Hooks", Public: true},
 	{ID: CommandMemory, Command: "/memory", Title: "Memory", Menu: true, Public: true},
 	{ID: CommandSearch, Command: "/search", Title: "Search history", Public: true},
 	{ID: CommandSkills, Command: "/skills", Title: "Session skills", Menu: true, Public: true},

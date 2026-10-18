@@ -49,6 +49,8 @@ var routePolicies = map[string]string{
 	"PUT /v1/sessions/{id}/budget":                            "session(id)",
 	"GET /v1/sessions/{id}/todo":                              "open",
 	"DELETE /v1/sessions/{id}/todo":                           "session(id)",
+	"GET /v1/sessions/{id}/hooks":                             "open",
+	"POST /v1/sessions/{id}/hooks/trust":                      "owner",
 	"GET /v1/sessions/{id}/tasks":                             "open",
 	"POST /v1/sessions/{id}/compact":                          "session(id)",
 	"POST /v1/sessions/{id}/clear":                            "session(id)",

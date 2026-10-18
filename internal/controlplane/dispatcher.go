@@ -67,6 +67,8 @@ func (d *Dispatcher) Handle(ctx context.Context, text string) (Result, error) {
 		return d.handleRewind(ctx, args)
 	case CommandTodo:
 		return d.handleTodo(ctx, args)
+	case CommandHooks:
+		return d.handleHooks(ctx, args)
 	case CommandMemory:
 		return d.handleMemory(ctx, args)
 	case CommandSearch:

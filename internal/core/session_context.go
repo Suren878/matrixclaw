@@ -103,6 +103,7 @@ func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSes
 	if len(window.Messages) == 0 {
 		return CompactSessionResult{}, errNothingToCompact
 	}
+	c.preCompact(ctx, session, "manual")
 	runtime, model, err := c.resolveSessionRuntime(ctx, session)
 	if err != nil {
 		return CompactSessionResult{}, err

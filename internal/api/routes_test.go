@@ -52,6 +52,8 @@ var clientRoutes = []struct {
 	{"PUT", "/v1/sessions/s1/budget", "PUT /v1/sessions/{id}/budget"},
 	{"GET", "/v1/sessions/s1/todo", "GET /v1/sessions/{id}/todo"},
 	{"DELETE", "/v1/sessions/s1/todo", "DELETE /v1/sessions/{id}/todo"},
+	{"GET", "/v1/sessions/s1/hooks", "GET /v1/sessions/{id}/hooks"},
+	{"POST", "/v1/sessions/s1/hooks/trust", "POST /v1/sessions/{id}/hooks/trust"},
 	{"GET", "/v1/sessions/s1/tasks", "GET /v1/sessions/{id}/tasks"},
 	{"POST", "/v1/sessions/s1/compact", "POST /v1/sessions/{id}/compact"},
 	{"POST", "/v1/sessions/s1/clear", "POST /v1/sessions/{id}/clear"},

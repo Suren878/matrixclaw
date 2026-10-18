@@ -154,6 +154,8 @@ func (s *Server) routeTable() []route {
 		{"PUT /v1/sessions/{id}/budget", sessionInPath, s.handleSessionBudgetUpdate},
 		{"GET /v1/sessions/{id}/todo", open, s.handleSessionTodo},
 		{"DELETE /v1/sessions/{id}/todo", sessionInPath, s.handleSessionTodoClear},
+		{"GET /v1/sessions/{id}/hooks", open, s.handleSessionHooks},
+		{"POST /v1/sessions/{id}/hooks/trust", owner, s.handleSessionHooksTrust},
 		{"GET /v1/sessions/{id}/tasks", open, s.handleSessionTasks},
 		{"POST /v1/sessions/{id}/compact", sessionInPath, s.handleSessionCompact},
 		{"POST /v1/sessions/{id}/clear", sessionInPath, s.handleSessionClear},

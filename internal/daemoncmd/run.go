@@ -15,6 +15,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/checkpoint"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
+	"github.com/Suren878/matrixclaw/internal/hooks"
 	"github.com/Suren878/matrixclaw/internal/modules/geo"
 	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
 	skillsmodule "github.com/Suren878/matrixclaw/internal/modules/skills"
@@ -29,6 +30,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/shelltask"
 	"github.com/Suren878/matrixclaw/internal/skills"
 	"github.com/Suren878/matrixclaw/internal/store"
+	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 func Run(ctx context.Context) error {
@@ -125,7 +127,15 @@ func Run(ctx context.Context) error {
 		APIToken:   bootstrap.APIToken,
 	})
 	app.WithRuntimeStatusContext(supervisor)
-	app.WithCommandEnvironment(commandEnvironment(bootstrap.Setup, supervisor.appliedConfig))
+	commandEnv := commandEnvironment(bootstrap.Setup, supervisor.appliedConfig)
+	app.WithCommandEnvironment(commandEnv)
+	// The agent's file tools may not trust a project's hooks for the owner.
+	hooksTrust := filepath.Join(dataDir(bootstrap.DBPath), "hooks-trust.json")
+	tools.ProtectCredentials(func() []string { return []string{hooksTrust} })
+	app.WithHooks(hooks.NewRunner(commandEnv, func() hooks.Config {
+		cfg := supervisor.appliedConfig()
+		return hooks.Config{Hooks: cfg.Hooks, Diagnostics: cfg.Diagnostics}
+	}, hooksTrust))
 	supervisor.SetExternalAgents(sqliteStore, externalRuntimes, bootstrap.Setup.Modules.ExternalAgents)
 	defer func() {
 		// Ending the lifetime interrupts the executing runs and keeps them for
