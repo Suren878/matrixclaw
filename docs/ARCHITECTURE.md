@@ -42,6 +42,7 @@ flowchart LR
 | `internal/permission` | permission rules, subjects, bash parsing, mode presets |
 | `internal/glob` | the one glob matcher (`**`, classes, braces) and `.gitignore` rules, for path rules and the search tools |
 | `internal/shelltask` | background shell processes and their output files |
+| `internal/hooks` | user hooks (Claude Code protocol) and the checks after edits (see [HOOKS.md](HOOKS.md)) |
 | `internal/webtools` | `web_search` and `web_fetch` |
 | `internal/modules` | module lifecycle, settings contract, and the modules: `storage`, `delivery`, `geo`, `web`, `voice` (+ `voice/realtime`), `telephony`, `browser`, `mcp`, `skills`; `localruntime` holds local voice/browser runtimes |
 | `internal/procsup` | supervised local helper processes |
@@ -85,7 +86,8 @@ recovery), waits for them, then closes external agents and modules.
   (`internal/api/role.go`; `policy_test.go` lists them): `open`; `owner`
   (admin reload/restart/stop, the session permission mode, writes to setup
   providers, external agents, module settings, MCP and the skills library,
-  storage deletes and temporary-storage cleanup and settings); or `session`,
+  storage deletes and temporary-storage cleanup and settings, trusting a
+  project's hooks); or `session`,
   for every write that acts in a session (named by the path, by the run, task,
   approval or automation job it names, or by the JSON body's `session_id` or
   client binding): members and guests are refused (403) there when the session
@@ -203,6 +205,7 @@ and talks to core through ports (`internal/agent/ports.go`):
 | `Sink` | `coreSink` | live events to clients |
 | `Prompts` | `corePrompts` | fixed system prompt per run; changing state as a context note |
 | `Todos` | `coreTodos` | open todo items of the run's `/continue` chain |
+| `Hooks` | `coreHooks` | SessionStart context, Stop/SubagentStop verdict, PreCompact; nil without hooks |
 
 What the engine remembers between steps (`agent.RunState`) is checkpointed with
 the phase, so a parked or restarted run keeps it. How a step can go wrong:
@@ -224,7 +227,8 @@ the phase, so a parked or restarted run keeps it. How a step can go wrong:
   run's todo list has open items, and once when the run changed files (edit
   tools, or a bash command that writes files) after its last successful
   build, test, lint or type-check command; only while budget remains and the
-  run has bash.
+  run has bash. Then the Stop hooks (SubagentStop in a child run) may hold it
+  back with a reason, at most 5 times a run (`RunState.StopHooks`).
 - **Reasoning text:** a reasoning block the reply opens with, or a closed one
   starting a later line, is stripped as the reply streams; code fences are left
   alone.
@@ -316,6 +320,11 @@ provider and model.
   (`read` rules cover `grep`, `glob` and `ls`). `permission.Builtin` (`memory: list` = allow) is in every preset
   and cannot be deleted; a stored ask/deny rule on `memory` still wins. The
   same check covers runs, the tools API, voice and the MCP server.
+- PreToolUse hooks (`core.permitCall`) are one more rule source below the
+  stored deny rules: they run only for a call no deny rule blocks and may block
+  it, make it ask or allow it (over ask rules and the preset). Arguments they
+  rewrite pass the call's checks and meet the rules again. A call that waits
+  for approval meets its hooks again when it runs after the grant.
 - A call that asks runs only with a grant: its newest approval is approved and
   it has no result yet, read from the store per run, so a grant runs it once.
   Executors never see approvals.
@@ -351,7 +360,8 @@ provider and model.
 - `read`, `grep` and the file-changing tools refuse credential files: the
   places their owners register at daemon start with `tools.ProtectCredentials`
   (`setup`: setup.json and `daemon.env`; `openaicodex`: the auth directory and
-  the Codex CLI's auth.json; `claudecode`: the Claude Code login), everything
+  the Codex CLI's auth.json; `claudecode`: the Claude Code login; the daemon:
+  `hooks-trust.json`), everything
   inside them and their backups. A read-only call on a place where keys
   usually live (`tools.HoldsSecrets`: `~/.ssh`, `~/.aws`, ...) asks when no
   rule decides.
@@ -383,6 +393,11 @@ provider and model.
   numbered like `read`; its metadata (`tools.FileChange`) keeps only the
   changed regions, at most 16 KB a side, while an approval shows a file up to
   64 KB whole.
+- After a successful `edit`, `multiedit` or `write`, the file is checked
+  (`internal/hooks/diagnostics.go`: gofmt and go vet, tsc, Python compile,
+  cargo check, JSON parse; overridable in setup.json `diagnostics`) for up to
+  20 s under the call's directory key, and up to 30 lines that name the file
+  end the result as "Diagnostics after edit:". The edit is never undone.
 
 ## Web tools
 
