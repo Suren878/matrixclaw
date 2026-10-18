@@ -69,6 +69,8 @@ var routePolicies = map[string]string{
 	"POST /v1/messages":                                       "session(body)",
 	"GET /v1/search":                                          "open",
 	"GET /v1/memory":                                          "open",
+	"POST /v1/memory/{id}/approve":                            "owner",
+	"DELETE /v1/memory/{id}":                                  "owner",
 
 	"GET /v1/runs/{id}":                            "open",
 	"GET /v1/runs/{id}/steps":                      "open",

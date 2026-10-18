@@ -72,6 +72,9 @@ var clientRoutes = []struct {
 	{"POST", "/v1/messages", "POST /v1/messages"},
 	{"GET", "/v1/search?q=x", "GET /v1/search"},
 	{"GET", "/v1/memory?scope=user", "GET /v1/memory"},
+	{"GET", "/v1/memory?pending=true", "GET /v1/memory"},
+	{"POST", "/v1/memory/m1/approve", "POST /v1/memory/{id}/approve"},
+	{"DELETE", "/v1/memory/m1", "DELETE /v1/memory/{id}"},
 
 	// Runs, tasks, approvals, rules, tools.
 	{"GET", "/v1/runs/r1", "GET /v1/runs/{id}"},

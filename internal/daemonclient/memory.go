@@ -18,6 +18,9 @@ func (c *Client) ListMemories(ctx context.Context, filter core.MemoryFilter) ([]
 	if strings.TrimSpace(filter.WorkingDir) != "" {
 		values.Set("working_dir", strings.TrimSpace(filter.WorkingDir))
 	}
+	if filter.Pending {
+		values.Set("pending", "true")
+	}
 	if filter.Limit > 0 {
 		values.Set("limit", strconv.Itoa(filter.Limit))
 	}
@@ -30,4 +33,13 @@ func (c *Client) ListMemories(ctx context.Context, filter core.MemoryFilter) ([]
 		return nil, err
 	}
 	return response.Memories, nil
+}
+
+// ApproveMemory approves a memory entry a session review suggested.
+func (c *Client) ApproveMemory(ctx context.Context, id string) error {
+	return c.doJSON(ctx, http.MethodPost, "/v1/memory/"+escapedPath(id)+"/approve", nil, nil)
+}
+
+func (c *Client) DeleteMemory(ctx context.Context, id string) error {
+	return c.doJSON(ctx, http.MethodDelete, "/v1/memory/"+escapedPath(id), nil, nil)
 }

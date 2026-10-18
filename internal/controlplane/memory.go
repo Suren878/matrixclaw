@@ -9,6 +9,9 @@ import (
 )
 
 func (d *Dispatcher) handleMemory(ctx context.Context, args string) (Result, error) {
+	if step, rest := firstCommandStep(args); step == "pending" {
+		return d.handleMemorySuggestions(ctx, rest)
+	}
 	filter := core.MemoryFilter{
 		Scope:      memoryScopeArg(args),
 		WorkingDir: d.workingDir,

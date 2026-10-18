@@ -126,6 +126,7 @@ const (
 	PickerTaskArchive     PickerKind = "task_archive"
 	PickerServer          PickerKind = "server"
 	PickerCheckpoints     PickerKind = "checkpoints"
+	PickerMemoryPending   PickerKind = "memory_pending"
 )
 
 // PickerData is a list screen; clients render it as they see fit (Telegram

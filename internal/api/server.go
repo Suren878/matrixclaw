@@ -174,6 +174,8 @@ func (s *Server) routeTable() []route {
 		{"POST /v1/messages", sessionInBody, s.handleMessageCreate},
 		{"GET /v1/search", open, s.handleSearch},
 		{"GET /v1/memory", open, s.handleMemory},
+		{"POST /v1/memory/{id}/approve", owner, s.handleMemoryApprove},
+		{"DELETE /v1/memory/{id}", owner, s.handleMemoryDelete},
 
 		{"GET /v1/runs/{id}", open, s.handleRun},
 		{"GET /v1/runs/{id}/steps", open, s.handleRunSteps},

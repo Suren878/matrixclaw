@@ -87,6 +87,23 @@ func (c *Core) UpdateMemory(ctx context.Context, entry MemoryEntry) (MemoryEntry
 	return existing, nil
 }
 
+// ApproveMemory turns a suggested entry into one that runs see.
+func (c *Core) ApproveMemory(ctx context.Context, id string) (MemoryEntry, error) {
+	entry, err := c.store.GetMemory(ctx, strings.TrimSpace(id))
+	if err != nil {
+		return MemoryEntry{}, err
+	}
+	if !entry.Pending {
+		return entry, nil
+	}
+	entry.Pending = false
+	entry.UpdatedAt = c.now().UTC()
+	if err := c.store.UpdateMemory(ctx, entry); err != nil {
+		return MemoryEntry{}, err
+	}
+	return entry, nil
+}
+
 func (c *Core) DeleteMemory(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
