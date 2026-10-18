@@ -49,6 +49,10 @@ var routePolicies = map[string]string{
 	"PUT /v1/sessions/{id}/budget":                            "session(id)",
 	"GET /v1/sessions/{id}/todo":                              "open",
 	"DELETE /v1/sessions/{id}/todo":                           "session(id)",
+	"GET /v1/sessions/{id}/goal":                              "open",
+	"PUT /v1/sessions/{id}/goal":                              "session(id)",
+	"DELETE /v1/sessions/{id}/goal":                           "session(id)",
+	"POST /v1/sessions/{id}/goal/{action}":                    "session(id)",
 	"GET /v1/sessions/{id}/hooks":                             "open",
 	"POST /v1/sessions/{id}/hooks/trust":                      "owner",
 	"GET /v1/sessions/{id}/tasks":                             "open",
@@ -203,5 +207,13 @@ func TestErrorsAnswerTheirSentinelsStatus(t *testing.T) {
 		if got := serveAs(server, core.RoleOwner, tc.method, tc.path, ""); got.Code != tc.want {
 			t.Errorf("%s %s: status %d %s, want %d", tc.method, tc.path, got.Code, got.Body.String(), tc.want)
 		}
+	}
+}
+
+func TestOnlyTheOwnerSetsAGoalCheckCommand(t *testing.T) {
+	server, _ := newAPITestServer(t)
+	got := serveAs(server, core.RoleMember, "PUT", "/v1/sessions/s1/goal", `{"objective":"Make it green","check_command":"make test"}`)
+	if got.Code != http.StatusForbidden {
+		t.Fatalf("member check command: status %d %s, want 403", got.Code, got.Body.String())
 	}
 }

@@ -202,3 +202,9 @@ func readSSELoop(ctx context.Context, body io.Reader, events chan<- LiveEvent, e
 		}
 	}
 }
+
+func (e LiveEvent) DecodeGoal() (core.GoalResponse, error) {
+	var response core.GoalResponse
+	err := json.Unmarshal(e.Payload, &response)
+	return response, err
+}
