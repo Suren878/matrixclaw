@@ -48,13 +48,14 @@ func (p AgentProfile) allows(toolID string) bool {
 // builtinAgentProfiles are the types every parent may start; review and
 // verify name checkpoint_diff only when the daemon has it.
 func builtinAgentProfiles(checkpointDiff bool) []AgentProfile {
-	inspect := []string{"read", "grep", "glob", "ls", "bash"}
+	search := []string{"read", "grep", "glob", "ls", "repo_map", "bash"}
+	inspect := slices.Clone(search)
 	if checkpointDiff {
 		inspect = append(inspect, checkpointDiffToolName)
 	}
 	return []AgentProfile{
 		{Name: defaultAgentType, Description: "every child tool; implementation slices and anything else", Source: builtinAgentSource},
-		{Name: "explore", Description: "read-only search: finds files and symbols, reports paths with line numbers", Prompt: prompt.ExploreAgent, Tools: []string{"read", "grep", "glob", "ls", "bash"}, Readonly: true, LeanContext: true, Source: builtinAgentSource},
+		{Name: "explore", Description: "read-only search: finds files and symbols, reports paths with line numbers", Prompt: prompt.ExploreAgent, Tools: search, Readonly: true, LeanContext: true, Source: builtinAgentSource},
 		{Name: "plan", Description: "read-only: returns a numbered implementation plan with files and risks", Prompt: prompt.PlanAgent, Tools: inspect, Readonly: true, Source: builtinAgentSource},
 		{Name: "review", Description: "read-only: reviews a diff and reports findings by severity", Prompt: prompt.ReviewAgent(checkpointDiff), Tools: inspect, Readonly: true, Source: builtinAgentSource},
 		{Name: "verify", Description: "runs builds, tests and linters without editing files; reports failures with minimal repros", Prompt: prompt.VerifyAgent, Tools: append(slices.Clone(inspect), "task_output", "task_kill", "todo_write"), Source: builtinAgentSource},
