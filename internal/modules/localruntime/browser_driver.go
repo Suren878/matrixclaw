@@ -113,12 +113,7 @@ func (r *Runtime) ApplyBrowserAction(ctx context.Context, provider setup.Browser
 }
 
 func browserProviderRunsPerTask(provider setup.BrowserProviderOption) bool {
-	switch strings.ToLower(strings.TrimSpace(provider.Config.RuntimeMode)) {
-	case "always", "always_running", "persistent", "server":
-		return false
-	default:
-		return true
-	}
+	return provider.Config.RuntimeMode != "always_running"
 }
 
 func (r *Runtime) installPlaywrightBrowserRuntime(ctx context.Context) error {

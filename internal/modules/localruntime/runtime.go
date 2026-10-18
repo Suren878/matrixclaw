@@ -401,12 +401,7 @@ func voiceProviderRuntimeRunnable(provider VoiceProvider) bool {
 }
 
 func voiceProviderRunsPerTask(provider VoiceProvider) bool {
-	switch strings.ToLower(strings.TrimSpace(provider.Config.RuntimeMode)) {
-	case "always", "always_running", "persistent", "server":
-		return !voiceProviderPersistentRuntimeAvailable(provider)
-	default:
-		return true
-	}
+	return provider.Config.RuntimeMode != "always_running" || !voiceProviderPersistentRuntimeAvailable(provider)
 }
 
 func voiceProviderPersistentRuntimeAvailable(provider VoiceProvider) bool {
