@@ -42,6 +42,7 @@ flowchart LR
 | `internal/checkpoint` | file checkpoints: shadow git snapshots of working directories, diff, restore (see [CHECKPOINTS.md](CHECKPOINTS.md)) |
 | `internal/permission` | permission rules, subjects, bash parsing, mode presets |
 | `internal/glob` | the one glob matcher (`**`, classes, braces) and `.gitignore` rules, for path rules and the search tools |
+| `internal/repomap` | ranked map of a code base's definitions (Go parser, chroma lexers, PageRank) for the `repo_map` tool (see [REPO_MAP.md](REPO_MAP.md)) |
 | `internal/shelltask` | background shell processes and their output files |
 | `internal/hooks` | user hooks (Claude Code protocol) and the checks after edits (see [HOOKS.md](HOOKS.md)) |
 | `internal/webtools` | `web_search` and `web_fetch` |
@@ -360,7 +361,7 @@ provider and model.
   the mode preset (`default`, `accept_edits`, `full_auto`, `plan`); deny wins
   over ask over allow, and a preset's deny rule over stored allow rules. A
   rule names its tool or a tool listed in `Spec.CoveredBy` (`read` rules cover
-  `grep`, `glob` and `ls`; `edit` rules cover `apply_patch`).
+  `grep`, `glob`, `ls` and `repo_map`; `edit` rules cover `apply_patch`).
   `permission.Builtin` (`memory: list` = allow) is in every preset and cannot
   be deleted; a stored ask/deny rule on `memory` still wins. The same check
   covers runs, the tools API, voice and the MCP server.
@@ -409,12 +410,12 @@ provider and model.
 - `tools.Result.Status` (`success`/`error`/`neutral`, empty = success) is the
   only status field. Results over about 8k tokens go to
   `sessions/<id>/tool-output/`, and the model gets head, tail and path.
-- A search (`grep`, `glob`, `ls`) meets the rules by its directory: a deny or
-  ask rule matching the directory decides the whole call. Below it, core passes
-  `Call.Skip` (`permission.SearchSkip`: the deny and ask rules that did not
-  match the directory) and the walkers drop matching paths, saying how many
-  they left out. Places that hold keys are dropped the same way unless the
-  search starts inside one.
+- A search (`grep`, `glob`, `ls`, `repo_map`) meets the rules by its
+  directory: a deny or ask rule matching the directory decides the whole call.
+  Below it, core passes `Call.Skip` (`permission.SearchSkip`: the deny and ask
+  rules that did not match the directory) and the walkers drop matching paths,
+  saying how many they left out. Places that hold keys are dropped the same
+  way unless the search starts inside one.
 - Searches list files with `git ls-files -co --exclude-standard` inside a git
   repository; otherwise, or when git lists nothing (an ignored directory named
   in `path`), they walk the tree following `.gitignore` files (and outside a
@@ -438,6 +439,11 @@ provider and model.
   the result cut, ending with the offset to read on. Lines over 2000
   characters are cut; a file with a NUL byte in its first 8 KB is refused as
   binary.
+- `repo_map` lists the files as the searches do and shows the definitions
+  the rest of the code uses most, ranked by PageRank as Aider's repo map, in
+  about 2048 tokens; `focus_files` and `focus_symbols` steer the ranking.
+  Tags are cached in memory per file by size and modification time
+  ([REPO_MAP.md](REPO_MAP.md)).
 - File state (`tools/file_ledger.go`): one in-memory ledger shared by `read`
   and the file-changing tools holds, per session, the xxh3 hash of each
   file the session read (any part) or wrote. Changing an existing file the

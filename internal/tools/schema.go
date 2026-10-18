@@ -51,6 +51,16 @@ var (
   },
   "additionalProperties": false
 }`)
+	repoMapInputSchema = rawSchema(`{
+  "type": "object",
+  "properties": {
+    "path": {"type": "string", "description": "Directory to map; default the working directory."},
+    "focus_files": {"type": "array", "items": {"type": "string"}, "description": "Files you are working on, absolute or relative to the working directory; what they use ranks higher and they are left out of the map."},
+    "focus_symbols": {"type": "array", "items": {"type": "string"}, "description": "Identifiers the task names, e.g. a function or type to change; their definitions and users rank higher."},
+    "max_tokens": {"type": "integer", "minimum": 1024, "maximum": 4096, "description": "Size of the map in tokens; default 2048."}
+  },
+  "additionalProperties": false
+}`)
 	writeInputSchema = rawSchema(`{
   "type": "object",
   "properties": {

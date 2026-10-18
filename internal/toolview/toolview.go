@@ -58,6 +58,7 @@ var specs = map[string]spec{
 	"glob":                     {title: "Glob", verb: "Searching files", primary: []string{"pattern"}, extra: []string{"path"}},
 	"grep":                     {title: "Grep", verb: "Searching files", primary: []string{"pattern"}, extra: []string{"path", "include", "literal_text"}},
 	"ls":                       {title: "List", verb: "Listing files", detail: func(params map[string]any) string { return cmp.Or(Value(params, "path"), ".") }},
+	"repo_map":                 {title: "Repo Map", verb: "Mapping repository", extra: []string{"focus_files", "focus_symbols"}, detail: func(params map[string]any) string { return cmp.Or(Value(params, "path"), ".") }},
 	"web_search":               {title: "Search Web", verb: "Searching web", primary: []string{"query"}, extra: []string{"limit"}},
 	"web_fetch":                {title: "Fetch Web Page", verb: "Fetching web page", primary: []string{"url"}},
 	"session_search":           {title: "Search Sessions", verb: "Searching sessions", primary: []string{"query"}, extra: []string{"session_id", "limit"}},
