@@ -176,8 +176,12 @@ func (s *Set) Preview(ctx context.Context, toolID string, call tools.Call) (tool
 	return s.registry.Load().Preview(ctx, toolID, call)
 }
 
-func (s *Set) Subject(toolID string, call tools.Call) permission.Subject {
-	return s.registry.Load().Subject(toolID, call)
+func (s *Set) Subjects(toolID string, call tools.Call) []permission.Subject {
+	return s.registry.Load().Subjects(toolID, call)
+}
+
+func (s *Set) ReadsOnly(toolID string, call tools.Call) bool {
+	return s.registry.Load().ReadsOnly(toolID, call)
 }
 
 func (s *Set) ConcurrencyKey(toolID string, call tools.Call) string {

@@ -33,8 +33,8 @@ func (c *Core) runToolCall(ctx context.Context, prepared preparedToolCall, input
 		}
 		if check.verdict.Effect == permission.Ask {
 			request.Description += "\nAsked by rule " + check.verdict.Rule.String() + "."
-		} else if suggestion, ok := permission.Suggest(check.request, check.root); ok {
-			request.Suggestion = &suggestion
+		} else {
+			request.Suggestion = check.suggestion()
 		}
 		return tools.Result{}, &request, nil
 	}

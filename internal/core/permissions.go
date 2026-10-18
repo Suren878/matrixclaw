@@ -8,6 +8,8 @@ func NormalizePermissionMode(mode string) PermissionMode {
 		return PermissionModeAcceptEdits
 	case PermissionModeFullAuto:
 		return PermissionModeFullAuto
+	case PermissionModePlan:
+		return PermissionModePlan
 	default:
 		return PermissionModeDefault
 	}

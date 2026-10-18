@@ -108,6 +108,12 @@ func (t *memoryTool) PermissionSubject(call tools.Call) permission.Subject {
 	return permission.Subject{Kind: permission.KindName, Value: input.Action}
 }
 
+// ReadsOnly reports whether the call only lists memory.
+func (t *memoryTool) ReadsOnly(call tools.Call) bool {
+	input, err := readMemoryInput(call)
+	return err == nil && input.Action == "list"
+}
+
 func (t *memoryTool) Preview(_ context.Context, call tools.Call) (tools.ApprovalRequest, error) {
 	input, err := readMemoryInput(call)
 	description := "Update Matrixclaw memory"

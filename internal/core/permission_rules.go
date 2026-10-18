@@ -53,7 +53,7 @@ func (c *Core) AddPermissionRule(ctx context.Context, sessionID string, request 
 		rule.Tool = permissionTool(spec)
 		switch {
 		case rule.Tool == "mcp":
-			if rule.Pattern = c.tools.Subject(spec.ID, tools.Call{}).Value; rule.Pattern == "" {
+			if rule.Pattern = c.tools.Subjects(spec.ID, tools.Call{})[0].Value; rule.Pattern == "" {
 				return permission.Rule{}, fmt.Errorf("%w: MCP tool %q names no server tool", ErrInvalidInput, spec.ID)
 			}
 		case spec.Category == tools.CategoryFilesystem:

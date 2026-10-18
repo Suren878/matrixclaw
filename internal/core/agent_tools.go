@@ -23,6 +23,10 @@ type nativeTurn struct {
 	ToolUse            bool
 	// Model names the provider and model the run talks to.
 	Model string
+	// Plan is set while the session is in plan mode; PatchEdits when the
+	// model gets apply_patch instead of edit and multiedit.
+	Plan       bool
+	PatchEdits bool
 }
 
 // coreTools is the Tools port of one native run. authorized holds the verdict
@@ -107,6 +111,8 @@ func (t coreTools) Execute(ctx context.Context, name string, call tools.Call) (t
 }
 
 // nativeToolSpecs lists the tools a native run may see; nil without a registry.
+// One edit tool family is offered, the one the model was trained on, and
+// exit_plan_mode only in plan mode.
 func (c *Core) nativeToolSpecs(turn nativeTurn) []tools.Spec {
 	if c.tools == nil {
 		return nil
@@ -116,6 +122,20 @@ func (c *Core) nativeToolSpecs(turn nativeTurn) []tools.Spec {
 	for _, spec := range specs {
 		if turn.Subagent && !subagentToolAllowed(spec) {
 			continue
+		}
+		switch spec.ID {
+		case "edit", "multiedit":
+			if turn.PatchEdits {
+				continue
+			}
+		case "apply_patch":
+			if !turn.PatchEdits {
+				continue
+			}
+		case exitPlanModeToolName:
+			if !turn.Plan {
+				continue
+			}
 		}
 		if turn.Readonly && spec.Mutates() {
 			readOnly, ok := tools.ReadOnlySpec(spec)
