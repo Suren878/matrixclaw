@@ -26,7 +26,6 @@ func (s *Server) handleApprovalResolve(w http.ResponseWriter, r *http.Request) {
 		writeError(w, core.ErrOwnerOnly)
 		return
 	}
-	req.Restricted = roleOf(r) != core.RoleOwner
 	approval, err := s.Core.ResolveApproval(r.Context(), r.PathValue("id"), req)
 	if err != nil {
 		writeError(w, err)

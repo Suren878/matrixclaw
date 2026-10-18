@@ -28,10 +28,12 @@ type claimedRun struct {
 	Batch      *agent.ToolBatch
 }
 
-// claim readies a run for execution under its session gate and reports whether
-// to execute it: an ended run, and one still waiting for approval, stay as they
-// are; a run found running has no executor, so it was interrupted and is
-// recovered, at most maxRunRecoveryAttempts times. Others become running.
+// claim readies a run for execution and reports whether to execute it: an
+// ended run, and one still waiting for approval, stay as they are; a run found
+// running has no executor, so it was interrupted and is recovered, at most
+// maxRunRecoveryAttempts times in a row without a finished step. Others become
+// running. A run past that limit fails after the session gate is released, as
+// ending a subagent's run takes its parent session's gate.
 func (c *Core) claim(ctx context.Context, runID string) (claimedRun, bool, error) {
 	run, err := c.store.GetRun(ctx, runID)
 	if err != nil {
@@ -39,30 +41,42 @@ func (c *Core) claim(ctx context.Context, runID string) (claimedRun, bool, error
 	}
 	gate := c.sessionGate(run.SessionID)
 	gate.Lock()
-	defer gate.Unlock()
-	if run, err = c.store.GetRun(ctx, runID); err != nil || run.Status.Terminal() {
-		return claimedRun{}, false, err
+	claimed, ok, recoveries, err := c.claimGated(ctx, runID)
+	gate.Unlock()
+	if err != nil || recoveries <= maxRunRecoveryAttempts {
+		return claimed, ok, err
+	}
+	err = c.transition(ctx, &claimed.Run, runChange{To: RunStatusFailed, Err: fmt.Sprintf("run stopped after %d daemon-restart recovery attempts", recoveries-1)})
+	if errors.Is(err, ErrRunEnded) {
+		err = nil
+	}
+	return claimedRun{}, false, err
+}
+
+// claimGated is claim under the session gate; recoveries is the recovery
+// count of a run found running.
+func (c *Core) claimGated(ctx context.Context, runID string) (claimedRun, bool, int, error) {
+	run, err := c.store.GetRun(ctx, runID)
+	if err != nil || run.Status.Terminal() {
+		return claimedRun{}, false, 0, err
 	}
 	if run.Status == RunStatusWaitingApproval {
 		if pending, err := c.runHasPendingApprovals(ctx, run.SessionID, run.ID); err != nil || pending {
-			return claimedRun{}, false, err
+			return claimedRun{}, false, 0, err
 		}
 	}
 	if run.Status != RunStatusRunning {
 		err := c.transition(ctx, &run, runChange{To: RunStatusRunning})
 		if errors.Is(err, ErrRunEnded) {
-			return claimedRun{}, false, nil
+			return claimedRun{}, false, 0, nil
 		}
-		return claimedRun{Run: run}, err == nil, err
+		return claimedRun{Run: run}, err == nil, 0, err
 	}
 	checkpoint, err := c.markRunRecovery(ctx, run.ID)
 	if err != nil {
-		return claimedRun{}, false, err
+		return claimedRun{}, false, 0, err
 	}
-	if checkpoint.RecoveryCount > maxRunRecoveryAttempts {
-		return claimedRun{}, false, c.transition(ctx, &run, runChange{To: RunStatusFailed, Err: fmt.Sprintf("run stopped after %d daemon-restart recovery attempts", checkpoint.RecoveryCount-1)})
-	}
-	return claimedRun{Run: run, Recovering: true, Batch: checkpoint.Batch}, true, nil
+	return claimedRun{Run: run, Recovering: true, Batch: checkpoint.Batch}, true, checkpoint.RecoveryCount, nil
 }
 
 // interruptedCalls says how a recovered run settles each of its calls without

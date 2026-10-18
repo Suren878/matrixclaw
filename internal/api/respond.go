@@ -6,8 +6,15 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/modules"
+	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
+	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
+	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
+	"github.com/Suren878/matrixclaw/internal/skills"
 )
 
 const (
@@ -75,8 +82,85 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 	return true
 }
 
+// queryInt reads an integer query parameter, fallback when absent; it
+// answers 400 and returns false for one that is not a number.
+func queryInt(w http.ResponseWriter, r *http.Request, name string, fallback int) (int, bool) {
+	raw := strings.TrimSpace(r.URL.Query().Get(name))
+	if raw == "" {
+		return fallback, true
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		writeErrorMessage(w, http.StatusBadRequest, "invalid "+name)
+		return 0, false
+	}
+	return value, true
+}
+
+// errBodyTooLarge reports a request body over the route's limit.
+var errBodyTooLarge = errors.New("request body too large")
+
+// errorStatuses maps sentinel errors to the status they answer; the first
+// match wins.
+var errorStatuses = []struct {
+	err    error
+	status int
+}{
+	{core.ErrInvalidInput, http.StatusBadRequest},
+	{core.ErrNotFound, http.StatusNotFound},
+	{core.ErrBindingNotFound, http.StatusNotFound},
+	{core.ErrSessionSelectionRequired, http.StatusConflict},
+	{core.ErrRunActive, http.StatusConflict},
+	{core.ErrSessionRestricted, http.StatusForbidden},
+	{core.ErrOwnerOnly, http.StatusForbidden},
+	{core.ErrExecutionUnavailable, http.StatusServiceUnavailable},
+	{errBodyTooLarge, http.StatusRequestEntityTooLarge},
+	{localstorage.ErrInvalidPath, http.StatusBadRequest},
+	{localstorage.ErrNotFound, http.StatusNotFound},
+	{skills.ErrNotFound, http.StatusNotFound},
+	{modules.ErrUnknownSetting, http.StatusNotFound},
+	{modules.ErrInvalidSetting, http.StatusBadRequest},
+	{voicemodule.ErrInvalidRequest, http.StatusBadRequest},
+	{voicemodule.ErrUnsupportedProvider, http.StatusBadRequest},
+	{voicemodule.ErrModuleDisabled, http.StatusConflict},
+	{voicemodule.ErrProviderUnavailable, http.StatusConflict},
+	{realtime.ErrInvalidRequest, http.StatusBadRequest},
+	{realtime.ErrSessionNotFound, http.StatusNotFound},
+	{realtime.ErrDisabled, http.StatusConflict},
+	{realtime.ErrProviderUnavailable, http.StatusConflict},
+}
+
+// statusError carries the status to answer when no sentinel matches.
+type statusError struct {
+	status int
+	err    error
+}
+
+func (e statusError) Error() string { return e.err.Error() }
+func (e statusError) Unwrap() error { return e.err }
+
+// withStatus answers err with status unless a sentinel in it says otherwise.
+func withStatus(status int, err error) error {
+	return statusError{status: status, err: err}
+}
+
+// writeError is the one error answer: the status of the first sentinel err
+// wraps, else the one withStatus gave it, else 500.
 func writeError(w http.ResponseWriter, err error) {
-	writeErrorMessage(w, statusForCoreError(err), err.Error())
+	writeErrorMessage(w, statusOf(err), err.Error())
+}
+
+func statusOf(err error) int {
+	for _, entry := range errorStatuses {
+		if errors.Is(err, entry.err) {
+			return entry.status
+		}
+	}
+	var carried statusError
+	if errors.As(err, &carried) {
+		return carried.status
+	}
+	return http.StatusInternalServerError
 }
 
 func writeAcceptRunError(w http.ResponseWriter, result core.AcceptRunResult, err error) {
@@ -91,21 +175,4 @@ func writeAcceptRunError(w http.ResponseWriter, result core.AcceptRunResult, err
 		UserMessage: result.UserMessage,
 		Run:         result.Run,
 	})
-}
-
-func statusForCoreError(err error) int {
-	switch {
-	case errors.Is(err, core.ErrInvalidInput):
-		return http.StatusBadRequest
-	case errors.Is(err, core.ErrBindingNotFound), errors.Is(err, core.ErrNotFound):
-		return http.StatusNotFound
-	case errors.Is(err, core.ErrSessionSelectionRequired):
-		return http.StatusConflict
-	case errors.Is(err, core.ErrRunActive):
-		return http.StatusConflict
-	case errors.Is(err, core.ErrSessionRestricted), errors.Is(err, core.ErrOwnerOnly):
-		return http.StatusForbidden
-	default:
-		return http.StatusInternalServerError
-	}
 }

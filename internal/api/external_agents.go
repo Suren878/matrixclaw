@@ -36,7 +36,7 @@ func (s *Server) handleExternalAgentUpdate(w http.ResponseWriter, r *http.Reques
 		Enabled: cfg.Enabled,
 		Path:    cfg.Path,
 	}); err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+		writeError(w, withStatus(http.StatusBadRequest, err))
 		return
 	}
 	if !s.reload(w, r.Context()) {

@@ -1,7 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -35,34 +39,107 @@ func roleOf(r *http.Request) core.Role {
 	return core.RoleOwner
 }
 
-// ownerOnly refuses a route to anyone but the owner: settings, permission
-// modes and the daemon itself.
-func ownerOnly(handler http.HandlerFunc) http.HandlerFunc {
+// policy says who may use a route: anyone (open), only the owner (owner), or
+// anyone except in a session that runs tools without asking
+// (core.RunsUnattended), which only the owner may act in (session).
+type policy struct {
+	name      string
+	ownerOnly bool
+	// session finds the session a request acts in; "" when it names none.
+	session func(*Server, *http.Request) (string, error)
+}
+
+var (
+	open  = policy{name: "open"}
+	owner = policy{name: "owner", ownerOnly: true}
+	// The session is the path's {id}, or that of the run, task, approval or
+	// automation job it names, or the one the JSON body names (session_id, or
+	// the client's binding).
+	sessionInPath = policy{name: "session(id)", session: func(_ *Server, r *http.Request) (string, error) {
+		return r.PathValue("id"), nil
+	}}
+	sessionOfRun = policy{name: "session(run)", session: func(s *Server, r *http.Request) (string, error) {
+		run, err := s.Core.GetRun(r.Context(), r.PathValue("id"))
+		return run.SessionID, err
+	}}
+	sessionOfTask = policy{name: "session(task)", session: func(s *Server, r *http.Request) (string, error) {
+		detail, err := s.Core.TaskDetail(r.Context(), r.PathValue("id"))
+		return detail.Task.SessionID, err
+	}}
+	sessionOfApproval = policy{name: "session(approval)", session: func(s *Server, r *http.Request) (string, error) {
+		approval, err := s.Core.GetApproval(r.Context(), r.PathValue("id"))
+		return approval.SessionID, err
+	}}
+	sessionOfJob = policy{name: "session(job)", session: func(s *Server, r *http.Request) (string, error) {
+		job, err := s.Automation.GetJob(r.Context(), r.PathValue("id"))
+		return job.SessionID, err
+	}}
+	sessionInBody = policy{name: "session(body)", session: bodySession}
+)
+
+// authorize enforces the route's policy; the owner passes every one.
+func (s *Server) authorize(p policy, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if roleOf(r) != core.RoleOwner {
+		if roleOf(r) == core.RoleOwner {
+			next(w, r)
+			return
+		}
+		if p.ownerOnly {
 			writeError(w, core.ErrOwnerOnly)
 			return
 		}
-		handler(w, r)
+		if p.session != nil {
+			if err := s.refuseUnattended(r, p.session); err != nil {
+				writeError(w, err)
+				return
+			}
+		}
+		next(w, r)
 	}
 }
 
-// mayUseSession answers 403 and returns false when a non-owner targets a
-// session that runs tools without asking.
-func (s *Server) mayUseSession(w http.ResponseWriter, r *http.Request, sessionID string) bool {
-	if roleOf(r) == core.RoleOwner {
-		return true
+// refuseUnattended answers core.ErrSessionRestricted for a request that acts
+// in a session that RunsUnattended. A session that cannot be found is left to
+// the handler, which answers as it would for anyone.
+func (s *Server) refuseUnattended(r *http.Request, find func(*Server, *http.Request) (string, error)) error {
+	id, err := find(s, r)
+	if err == nil && id != "" {
+		var session core.Session
+		if session, err = s.Core.GetSession(r.Context(), id); err == nil && core.RunsUnattended(session) {
+			return core.ErrSessionRestricted
+		}
 	}
-	session, err := s.Core.GetSession(r.Context(), sessionID)
+	if errors.Is(err, core.ErrNotFound) || errors.Is(err, core.ErrBindingNotFound) || errors.Is(err, core.ErrSessionSelectionRequired) {
+		return nil
+	}
+	return err
+}
+
+// bodySession is the session a JSON body names: its session_id, or else the
+// binding of its client (and the only session when it allows auto-binding).
+// The body is put back for the handler; one it cannot decode names none.
+func bodySession(s *Server, r *http.Request) (string, error) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, defaultJSONBodyLimitBytes+1))
+	r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(body), r.Body))
 	if err != nil {
-		writeError(w, err)
-		return false
+		return "", err
 	}
-	if core.RunsUnattended(session) {
-		writeError(w, core.ErrSessionRestricted)
-		return false
+	if int64(len(body)) > defaultJSONBodyLimitBytes {
+		return "", errBodyTooLarge
 	}
-	return true
+	var target struct {
+		SessionID        string `json:"session_id"`
+		Client           string `json:"client"`
+		ExternalKey      string `json:"external_key"`
+		AllowAutoBindOne bool   `json:"allow_auto_bind_one"`
+	}
+	if len(body) == 0 || json.Unmarshal(body, &target) != nil {
+		return "", nil
+	}
+	session, err := s.Core.MessageSession(r.Context(), core.HandleMessageInput{
+		SessionID: target.SessionID, Client: target.Client, ExternalKey: target.ExternalKey, AllowAutoBindOne: target.AllowAutoBindOne,
+	})
+	return session.ID, err
 }
 
 // keepsRules reports whether the caller may add or remove a rule of scope:

@@ -11,7 +11,7 @@ import (
 func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 	cfg, err := s.Setup.GetMCPConfig()
 	if err != nil {
-		writeErrorMessage(w, http.StatusInternalServerError, err.Error())
+		writeError(w, err)
 		return
 	}
 	if roleOf(r) != core.RoleOwner {
@@ -42,7 +42,7 @@ func (s *Server) handleMCPUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg, err := s.Setup.UpdateMCPConfig(update)
 	if err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+		writeError(w, withStatus(http.StatusBadRequest, err))
 		return
 	}
 	s.writeAppliedMCPConfig(w, r, cfg)
@@ -55,7 +55,7 @@ func (s *Server) handleMCPServerCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg, err := s.Setup.CreateMCPServer(request.Server)
 	if err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+		writeError(w, withStatus(http.StatusBadRequest, err))
 		return
 	}
 	s.writeAppliedMCPConfig(w, r, cfg)
@@ -69,7 +69,7 @@ func (s *Server) handleMCPServerUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg, err := s.Setup.UpdateMCPServer(serverID, update)
 	if err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+		writeError(w, withStatus(http.StatusBadRequest, err))
 		return
 	}
 	s.writeAppliedMCPConfig(w, r, cfg)
@@ -78,7 +78,7 @@ func (s *Server) handleMCPServerUpdate(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleMCPServerDelete(w http.ResponseWriter, r *http.Request) {
 	cfg, err := s.Setup.DeleteMCPServer(r.PathValue("id"))
 	if err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+		writeError(w, withStatus(http.StatusBadRequest, err))
 		return
 	}
 	s.writeAppliedMCPConfig(w, r, cfg)

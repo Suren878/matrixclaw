@@ -10,14 +10,9 @@ import (
 
 func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.URL.Query().Get("session_id")
-	limit := 50
-	if rawLimit := r.URL.Query().Get("limit"); rawLimit != "" {
-		parsed, err := strconv.Atoi(rawLimit)
-		if err != nil {
-			writeErrorMessage(w, http.StatusBadRequest, "invalid limit")
-			return
-		}
-		limit = parsed
+	limit, ok := queryInt(w, r, "limit", 50)
+	if !ok {
+		return
 	}
 	var messages []transcript.Message
 	var err error
@@ -43,7 +38,6 @@ func (s *Server) handleMessageCreate(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	input.Restricted = roleOf(r) != core.RoleOwner
 	result, err := s.Core.AcceptRun(r.Context(), input)
 	if err != nil {
 		writeAcceptRunError(w, result, err)

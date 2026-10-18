@@ -133,7 +133,11 @@ func (c *Core) startSubagent(ctx context.Context, parent Session, input AgentInp
 		_ = c.endSubagentStart(ctx, parent.ID, agentName, nil)
 		return Task{}, Run{}, err
 	}
-	return task, run, c.endSubagentStart(ctx, parent.ID, agentName, &task)
+	if err := c.endSubagentStart(ctx, parent.ID, agentName, &task); err != nil {
+		c.discardSubagent(ctx, task.ChildSessionID, task.Isolation)
+		return Task{}, Run{}, err
+	}
+	return task, run, nil
 }
 
 // reserveSubagent names a child its parent starts and takes a background slot
@@ -213,10 +217,14 @@ func (c *Core) createSubagent(ctx context.Context, parent Session, input AgentIn
 	}
 	child, err := c.createSubagentSession(ctx, parent, runtime, input.Model, workingDir, agentName, input.Readonly)
 	if err != nil {
+		if isolation == SubagentIsolationWorktree {
+			removeSubagentWorktree(workingDir)
+		}
 		return Task{}, Run{}, err
 	}
 	run, err := c.createSubagentRun(ctx, child, subagentUserPrompt(prompt, workingDir, isolation, input.Readonly))
 	if err != nil {
+		c.discardSubagent(ctx, child.ID, isolation)
 		return Task{}, Run{}, err
 	}
 	now := c.now().UTC()

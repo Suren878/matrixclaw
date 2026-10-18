@@ -16,7 +16,8 @@ type RunCheckpoint struct {
 	RunID string `json:"run_id"`
 	// Batch is set in the engine's tool_batch phase.
 	Batch *agent.ToolBatch `json:"tool_batch,omitempty"`
-	// RecoveryCount counts the daemon restarts the run was recovered from.
+	// RecoveryCount counts the daemon restarts the run was recovered from
+	// since it last finished a step.
 	RecoveryCount int             `json:"recovery_count,omitempty"`
 	EngineState   json.RawMessage `json:"engine_state,omitempty"`
 	UpdatedAt     time.Time       `json:"updated_at"`
@@ -30,13 +31,18 @@ type RunCheckpointStore interface {
 }
 
 // saveEngineCheckpoint stores the engine's batch together with its run
-// state; while a native run is active only its engine calls it.
+// state; while a native run is active only its engine calls it. A model
+// phase after a tool batch means a step finished, which resets the recovery
+// count: only restarts in a row without progress stop a run.
 func (c *Core) saveEngineCheckpoint(ctx context.Context, state agent.State) error {
 	engine, err := json.Marshal(state.RunState)
 	if err != nil {
 		return err
 	}
 	return c.updateRunCheckpoint(ctx, state.RunID, func(checkpoint *RunCheckpoint) {
+		if state.Phase == agent.PhaseModel && checkpoint.Batch != nil {
+			checkpoint.RecoveryCount = 0
+		}
 		checkpoint.Batch = state.Batch
 		checkpoint.EngineState = engine
 	})
@@ -131,13 +137,6 @@ func (c *Core) runCheckpoint(ctx context.Context, runID string) (RunCheckpoint, 
 		return RunCheckpoint{}, false, err
 	}
 	return checkpoint, true, nil
-}
-
-func (c *Core) clearRunCheckpoint(ctx context.Context, runID string) {
-	if runID == "" {
-		return
-	}
-	_ = c.store.DeleteRunCheckpoint(ctx, runID)
 }
 
 // runRecoveryNotice tells a recovered run that it was interrupted.

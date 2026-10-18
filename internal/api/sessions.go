@@ -21,7 +21,7 @@ func (s *Server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	session, err := s.Core.CreateSession(r.Context(), core.CreateSessionInput{
+	input := core.CreateSessionInput{
 		Title:           req.Title,
 		Kind:            core.SessionKind(req.Kind),
 		RuntimeID:       core.SessionRuntime(req.RuntimeID),
@@ -30,8 +30,13 @@ func (s *Server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 		ModelID:         req.ModelID,
 		PermissionMode:  core.PermissionMode(req.PermissionMode),
 		ExternalAgentID: req.ExternalAgentID,
-		Restricted:      roleOf(r) != core.RoleOwner,
-	})
+	}
+	// Only the owner starts a session that does not ask before every change.
+	if kind, mode := input.KindAndMode(); roleOf(r) != core.RoleOwner && (kind == core.SessionKindExternalAgent || mode != core.PermissionModeDefault) {
+		writeError(w, core.ErrOwnerOnly)
+		return
+	}
+	session, err := s.Core.CreateSession(r.Context(), input)
 	if err != nil {
 		writeError(w, err)
 		return

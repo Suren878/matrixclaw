@@ -3,14 +3,12 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 	"github.com/coder/websocket"
 )
@@ -26,10 +24,9 @@ func (s *Server) handleRealtimeVoiceSessionCreate(w http.ResponseWriter, r *http
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	req.Restricted = roleOf(r) != core.RoleOwner
 	session, err := s.Realtime.CreateSession(r.Context(), req)
 	if err != nil {
-		writeRealtimeVoiceError(w, err)
+		writeError(w, withStatus(http.StatusBadGateway, err))
 		return
 	}
 	writeJSON(w, http.StatusCreated, realtime.SessionCreateResponse{Session: session})
@@ -38,7 +35,7 @@ func (s *Server) handleRealtimeVoiceSessionCreate(w http.ResponseWriter, r *http
 func (s *Server) handleRealtimeVoiceSession(w http.ResponseWriter, r *http.Request) {
 	session, err := s.Realtime.Session(r.Context(), r.PathValue("id"))
 	if err != nil {
-		writeRealtimeVoiceError(w, err)
+		writeError(w, withStatus(http.StatusBadGateway, err))
 		return
 	}
 	writeJSON(w, http.StatusOK, realtime.SessionResponse{Session: session})
@@ -47,7 +44,7 @@ func (s *Server) handleRealtimeVoiceSession(w http.ResponseWriter, r *http.Reque
 func (s *Server) handleRealtimeVoiceSessionClose(w http.ResponseWriter, r *http.Request) {
 	session, err := s.Realtime.CloseSession(r.Context(), r.PathValue("id"))
 	if err != nil {
-		writeRealtimeVoiceError(w, err)
+		writeError(w, withStatus(http.StatusBadGateway, err))
 		return
 	}
 	writeJSON(w, http.StatusOK, realtime.SessionResponse{Session: session})
@@ -112,21 +109,4 @@ func (s *realtimeWebSocketStream) Close(reason error) error {
 		}
 	}
 	return s.conn.Close(status, message)
-}
-
-func writeRealtimeVoiceError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, realtime.ErrDisabled):
-		writeErrorMessage(w, http.StatusConflict, err.Error())
-	case errors.Is(err, realtime.ErrInvalidRequest):
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, realtime.ErrSessionNotFound):
-		writeErrorMessage(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, realtime.ErrProviderUnavailable):
-		writeErrorMessage(w, http.StatusConflict, err.Error())
-	case errors.Is(err, core.ErrSessionRestricted):
-		writeErrorMessage(w, http.StatusForbidden, err.Error())
-	default:
-		writeErrorMessage(w, http.StatusBadGateway, err.Error())
-	}
 }
