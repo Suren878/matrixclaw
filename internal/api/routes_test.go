@@ -116,7 +116,6 @@ var clientRoutes = []struct {
 	{"GET", "/v1/modules/skills/team%2Freview", "GET /v1/modules/skills/{id}"},
 	{"GET", "/v1/modules/skills/usage", "GET /v1/modules/skills/{id}"},
 	{"PATCH", "/v1/modules/skills/review", "PATCH /v1/modules/skills/{id}"},
-	{"DELETE", "/v1/modules/skills/review", "DELETE /v1/modules/skills/{id}"},
 	{"PUT", "/v1/modules/skills/review/body", "PUT /v1/modules/skills/{id}/body"},
 	{"POST", "/v1/modules/skills/review/trust", "POST /v1/modules/skills/{id}/{action}"},
 	{"GET", "/v1/sessions/s1/skills", "GET /v1/sessions/{id}/skills"},

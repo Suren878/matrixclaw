@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
@@ -8,11 +9,10 @@ import (
 
 var explicitSkillRef = regexp.MustCompile(`(?:^|\s)([$/])([A-Za-z0-9][A-Za-z0-9_-]*)\b`)
 
-func (s *Service) PromptContext(req PromptRequest) string {
-	if s == nil || !s.enabled {
-		return ""
-	}
-	available, err := s.Search("", SearchOptions{Limit: 12})
+// PromptContext lists the trusted skills for the system prompt, with the full
+// instructions of the ones the session activated or the user names.
+func (s *Service) PromptContext(ctx context.Context, req PromptRequest) string {
+	available, err := s.Search(ctx, "", SearchOptions{Limit: 12})
 	if err != nil || len(available) == 0 {
 		return ""
 	}
@@ -21,11 +21,11 @@ func (s *Service) PromptContext(req PromptRequest) string {
 		lines = append(lines, fmt.Sprintf("- %s: %s", skill.ID, skill.Description))
 	}
 
-	fullIDs := s.promptSkillIDs(req, available)
+	fullIDs := s.promptSkillIDs(ctx, req, available)
 	if len(fullIDs) > 0 {
 		lines = append(lines, "", "Loaded skill instructions:")
 		for _, id := range fullIDs {
-			detail, err := s.Get(id)
+			detail, err := s.Get(ctx, id)
 			if err != nil || detail.Skill.TrustState != TrustTrusted || detail.Skill.State != StateActive {
 				continue
 			}
@@ -37,7 +37,7 @@ func (s *Service) PromptContext(req PromptRequest) string {
 	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
-func (s *Service) promptSkillIDs(req PromptRequest, available []Skill) []string {
+func (s *Service) promptSkillIDs(ctx context.Context, req PromptRequest, available []Skill) []string {
 	seen := map[string]struct{}{}
 	var ids []string
 	add := func(id string) {
@@ -48,7 +48,8 @@ func (s *Service) promptSkillIDs(req PromptRequest, available []Skill) []string 
 		seen[id] = struct{}{}
 		ids = append(ids, id)
 	}
-	for _, skill := range s.sessionSkills(req.SessionID) {
+	active, _ := s.SessionSkills(ctx, req.SessionID)
+	for _, skill := range active {
 		add(skill.ID)
 	}
 	latest := latestUserText(req.Messages)
@@ -57,7 +58,7 @@ func (s *Service) promptSkillIDs(req PromptRequest, available []Skill) []string 
 			add(match[2])
 		}
 	}
-	if s.cfg.AutoInvoke && len(ids) == 0 {
+	if s.currentSettings().AutoInvoke && len(ids) == 0 {
 		lower := strings.ToLower(latest)
 		for _, skill := range available {
 			if skill.ID != "" && strings.Contains(lower, strings.ToLower(skill.ID)) {
@@ -79,12 +80,4 @@ func latestUserText(messages []PromptMessage) string {
 		return ""
 	}
 	return strings.TrimSpace(messages[len(messages)-1].Content)
-}
-
-func (s *Service) sessionSkills(sessionID string) []Skill {
-	skills, err := s.SessionSkills(sessionID)
-	if err != nil {
-		return nil
-	}
-	return skills
 }

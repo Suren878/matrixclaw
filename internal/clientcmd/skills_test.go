@@ -48,7 +48,7 @@ func TestSkillsCommandUsesTheDaemon(t *testing.T) {
 	if code := runSkillsCommand(&stdout, &stderr, "matrixclaw", service, []string{"install", "skills/demo"}); code != 0 {
 		t.Fatalf("install exit=%d stderr=%s", code, stderr.String())
 	}
-	if len(calls) != 2 || calls[0] != "DELETE /v1/modules/skills/demo" || calls[1] != "POST /v1/modules/skills" {
+	if len(calls) != 2 || calls[0] != "POST /v1/modules/skills/demo/remove" || calls[1] != "POST /v1/modules/skills" {
 		t.Fatalf("daemon calls = %v", calls)
 	}
 	if !filepath.IsAbs(installPath) {

@@ -19,11 +19,10 @@ func TestSkillsLibraryAndSessionSkillsOverTheClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	service, err := skills.NewService(skills.Config{DBPath: dbPath, Enabled: true})
+	service, err := skills.NewService(st.DB(), filepath.Join(dir, "skills"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = service.Close() })
 	server := httptest.NewServer(New(Deps{Skills: service}).Handler())
 	t.Cleanup(server.Close)
 	client := daemonclient.New(server.URL, "test", "key")
@@ -40,7 +39,7 @@ func TestSkillsLibraryAndSessionSkillsOverTheClient(t *testing.T) {
 	if err != nil || detail.Body == "" {
 		t.Fatalf("detail = %+v, %v", detail, err)
 	}
-	for _, action := range []string{"trust", "enable", "pin"} {
+	for _, action := range []skills.Action{skills.ActionTrust, skills.ActionEnable, skills.ActionPin} {
 		if err := client.SkillAction(ctx, draft.ID, action); err != nil {
 			t.Fatal(action, err)
 		}
@@ -69,7 +68,7 @@ func TestSkillsLibraryAndSessionSkillsOverTheClient(t *testing.T) {
 		t.Fatalf("session skills after unload = %+v", active)
 	}
 
-	if err := client.RemoveSkill(ctx, draft.ID); err != nil {
+	if err := client.SkillAction(ctx, draft.ID, skills.ActionRemove); err != nil {
 		t.Fatal(err)
 	}
 	if listed, _ := client.ListSkills(ctx, skills.SearchOptions{IncludeQuarantined: true, IncludeDisabled: true, IncludeArchived: true}); len(listed) != 0 {

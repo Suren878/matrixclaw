@@ -28,7 +28,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/shelltask"
-	"github.com/Suren878/matrixclaw/internal/skills"
 	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
@@ -66,7 +65,7 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	skillsModule, err := skillsmodule.New(skillsConfigFromBootstrap(bootstrap))
+	skillsModule, err := skillsmodule.New(sqliteStore.DB(), filepath.Join(dataDir(bootstrap.DBPath), "skills"))
 	if err != nil {
 		return err
 	}
@@ -195,16 +194,6 @@ func Run(ctx context.Context) error {
 		return httpServer.Shutdown(shutdownCtx)
 	case err := <-errCh:
 		return err
-	}
-}
-
-func skillsConfigFromBootstrap(bootstrap bootstrapConfig) skills.Config {
-	cfg := bootstrap.Setup.Modules.Skills
-	return skills.Config{
-		DBPath:      bootstrap.DBPath,
-		Enabled:     cfg.IsEnabled(),
-		AutoInvoke:  cfg.IsAutoInvoke(),
-		TrustPolicy: cfg.TrustPolicy,
 	}
 }
 
