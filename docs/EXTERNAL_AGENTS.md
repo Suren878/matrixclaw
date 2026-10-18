@@ -95,10 +95,11 @@ runtimes are available; the `runtime` parameter offers only those.
 | `description` (required) | Short label for the task, 3-5 words. |
 | `prompt` (required) | Everything the child needs: goal, paths and findings, constraints, what done means, what to report. |
 | `background` | Start the child as a background task; its result reaches the parent as a message when it ends. At most `daemon.background_agents` (default 4) run per session. |
-| `isolation` | `shared` (default): the parent's directory, one writing child at a time. `worktree`: a git worktree of its own from the last commit, so several run at once; the child reports its path and the parent applies its changes. |
+| `isolation` | `shared` (default): the parent's directory, one writing child at a time. `worktree`: a git worktree and branch of its own from the parent's current files, so several run at once; the parent merges it with `worktree_merge`. |
 | `readonly` | Read-only tools only; read-only children run in parallel. |
 | `runtime` | `matrixclaw` (default) or an available external runtime such as `codex` or `claude`. |
-| `model` | Model for the child; the parent's model when omitted. |
+| `model` | Model for the child; its type's model, else the parent's, when omitted. |
+| `agent_type`, `output_schema` | The child's profile and the schema of its report; native runtime only. See [SUBAGENTS.md](SUBAGENTS.md). |
 
 A native child starts from the call's prompt alone: it does not inherit the
 parent's history, todo list, skills or memory prompt. It gets the same coding

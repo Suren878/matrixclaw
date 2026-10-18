@@ -211,11 +211,13 @@ mode) are described in [Telegram](docs/TELEGRAM.md).
 ## Feature guides
 
 **Subagents.** The `agent` tool takes `description`, `prompt`, and optional
-`background`, `isolation` (`shared` or `worktree`), `readonly`, `runtime`
-(`matrixclaw`, `codex`, `claude`, `auto`) and `model`. Children start from an
-isolated prompt, run a restricted tool set, and return only their result; their
-approval requests appear in the parent session.
-See [External Agents](docs/EXTERNAL_AGENTS.md#subagents).
+`agent_type` (`general`, `explore`, `plan`, `review`, `verify` or your own
+agent files), `background`, `isolation` (`shared` or `worktree`), `readonly`,
+`runtime`, `model` and `output_schema`. Children start from an isolated
+prompt, run a restricted tool set, and return only their result; their
+approval requests appear in the parent session. Worktree children work on
+their own branch and are merged with `worktree_merge`. See
+[Subagents](docs/SUBAGENTS.md) and [External Agents](docs/EXTERNAL_AGENTS.md#subagents).
 
 **External agents.** Codex app-server (`codex` binary) and Claude Code
 (`claude` binary) can back a whole session or a subagent. Enable them under
@@ -297,6 +299,7 @@ tool contract and API roles.
 | --- | --- |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | daemon, core, runs, modules, API, package map |
 | [docs/TELEGRAM.md](docs/TELEGRAM.md) | Telegram client, approvals, inline and guest mode, files, voice |
+| [docs/SUBAGENTS.md](docs/SUBAGENTS.md) | agent types, agent files, output schema, worktree children |
 | [docs/EXTERNAL_AGENTS.md](docs/EXTERNAL_AGENTS.md) | Codex and Claude Code runtimes, subagents |
 | [docs/MCP.md](docs/MCP.md) | MCP client and server |
 | [docs/BROWSER.md](docs/BROWSER.md) | browser tools through MCP |
