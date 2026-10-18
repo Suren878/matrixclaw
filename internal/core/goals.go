@@ -184,8 +184,13 @@ func (c *Core) settleGoalLocked(ctx context.Context, run Run) (*wakeNotice, erro
 	if errors.Is(err, ErrNotFound) {
 		return nil, nil
 	}
-	if err != nil || goal.Status != GoalActive || !run.Status.Terminal() || run.ID == goal.LastRunID || run.StartedAt.Before(goal.CreatedAt) {
+	if err != nil || !run.Status.Terminal() || run.ID == goal.LastRunID || run.StartedAt.Before(goal.CreatedAt) {
 		return nil, err
+	}
+	// A run that completed or blocked the goal itself still counts against it.
+	active := goal.Status == GoalActive
+	if !active && run.Trigger != RunTriggerGoal {
+		return nil, nil
 	}
 	goal.LastRunID, goal.LastStop = run.ID, runEndText(run)
 	if run.Trigger == RunTriggerGoal {
@@ -197,6 +202,7 @@ func (c *Core) settleGoalLocked(ctx context.Context, run Run) (*wakeNotice, erro
 		goal.TokensUsed += tokens
 	}
 	switch {
+	case !active:
 	case run.Status == RunStatusCanceled:
 		goal.Status, goal.Reason = GoalPaused, "a run was canceled"
 	case run.Status == RunStatusFailed:
@@ -207,7 +213,7 @@ func (c *Core) settleGoalLocked(ctx context.Context, run Run) (*wakeNotice, erro
 		goal.Status, goal.Reason = GoalPaused, fmt.Sprintf("it used its budget of %d tokens", goal.TokenBudget)
 	}
 	goal.UpdatedAt = c.now().UTC()
-	if err := c.saveGoal(ctx, goal); err != nil || goal.Status == GoalActive {
+	if err := c.saveGoal(ctx, goal); err != nil || !active || goal.Status == GoalActive {
 		return nil, err
 	}
 	return c.goalNotice(ctx, goal, "The goal is paused: "+goal.Reason+". Send /goal resume to go on.")
