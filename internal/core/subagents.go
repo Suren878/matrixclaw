@@ -108,7 +108,18 @@ func (c *Core) awaitSubagent(ctx context.Context, task Task) (AgentResult, error
 		return AgentResult{}, err
 	}
 	if !task.Status.Terminal() {
-		return AgentResult{}, fmt.Errorf("subagent task %s did not end with its run", task.ID)
+		// The run's end is committed before afterCommit syncs its task, so a
+		// waiter that read the ended run first ends the task itself.
+		run, err := c.store.GetRun(ctx, task.ChildRunID)
+		if err != nil {
+			return AgentResult{}, err
+		}
+		if task, err = c.syncSubagentTask(ctx, run); err != nil {
+			return AgentResult{}, err
+		}
+		if !task.Status.Terminal() {
+			return AgentResult{}, fmt.Errorf("subagent task %s did not end with its run", task.ID)
+		}
 	}
 	return AgentResult{Task: task, Summary: task.Summary, IsError: task.Status != TaskStatusCompleted}, nil
 }
