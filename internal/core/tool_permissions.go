@@ -15,19 +15,21 @@ import (
 )
 
 // callPermission is how the permission rules and the PreToolUse hooks see one
-// call and treat it; ask is set when the call waits for approval; root is the
-// working directory suggestions stay inside.
+// call and treat it; subjects are all the call reaches (request names the
+// first); ask is set when the call waits for approval; root is the working
+// directory suggestions stay inside.
 type callPermission struct {
-	request permission.Request
-	verdict permission.Verdict
-	ask     bool
-	granted bool
-	secret  bool
-	root    string
-	rules   []permission.Rule
-	preset  []permission.Rule
-	session Session
-	hook    hookVerdict
+	request  permission.Request
+	subjects []permission.Subject
+	verdict  permission.Verdict
+	ask      bool
+	granted  bool
+	secret   bool
+	root     string
+	rules    []permission.Rule
+	preset   []permission.Rule
+	session  Session
+	hook     hookVerdict
 }
 
 // hookVerdict is what the call's PreToolUse hooks decided: why they block or
@@ -58,6 +60,8 @@ func (check callPermission) guard(call tools.Call) tools.Call {
 // refusal is what the model reads for a call a deny rule or a hook blocks.
 func (check callPermission) refusal() (string, bool) {
 	switch {
+	case check.verdict.Effect == permission.Deny && check.verdict.Rule.ID == permission.PlanRuleID:
+		return planModeBlocked, true
 	case check.verdict.Effect == permission.Deny:
 		return "Blocked by rule " + check.verdict.Rule.String(), true
 	case check.hook.blocked != "":
@@ -98,11 +102,12 @@ func (c *Core) checkPermission(ctx context.Context, sessionID string, spec tools
 	if call.WorkingDir == "" {
 		call.WorkingDir = session.WorkingDir
 	}
-	request := permission.Request{Tool: permissionTool(spec), CoveredBy: spec.CoveredBy, Subject: c.tools.Subject(spec.ID, call)}
+	subjects := c.tools.Subjects(spec.ID, call)
+	request := permission.Request{Tool: permissionTool(spec), CoveredBy: spec.CoveredBy, Subject: subjects[0], ReadOnly: !spec.Mutates() || c.tools.ReadsOnly(spec.ID, call)}
 	root := realPath(cmp.Or(normalizeWorkingDir(session.WorkingDir), normalizeWorkingDir(call.WorkingDir)))
 	preset := permission.Preset(string(NormalizePermissionMode(string(session.PermissionMode))), root)
-	verdict := permission.Evaluate(request, rules, preset)
-	check := callPermission{request: request, verdict: verdict, root: root, rules: rules, preset: preset, session: session}
+	verdict := permission.EvaluateEach(request, subjects, rules, preset)
+	check := callPermission{request: request, subjects: subjects, verdict: verdict, root: root, rules: rules, preset: preset, session: session}
 	check.secret = verdict.Effect == "" && spec.Effect == tools.EffectReadOnly && holdsSecrets(request.Subject)
 	check.ask = verdict.Effect == permission.Ask || verdict.Effect == "" && (spec.Asks || check.secret)
 	if check.ask && call.ToolCallID != "" {
@@ -182,7 +187,17 @@ func (c *Core) suggestRule(ctx context.Context, sessionID string, toolName strin
 	if err != nil {
 		return nil
 	}
-	suggestion, ok := permission.Suggest(check.request, check.root)
+	return check.suggestion()
+}
+
+// suggestion is the rule an "Always allow" answer to the call keeps; nil when
+// none can be named, and for exit_plan_mode, whose approval is the user's
+// review of one plan.
+func (check callPermission) suggestion() *permission.Suggestion {
+	if check.request.Tool == exitPlanModeToolName {
+		return nil
+	}
+	suggestion, ok := permission.SuggestEach(check.request, check.subjects, check.root)
 	if !ok {
 		return nil
 	}

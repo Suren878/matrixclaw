@@ -39,6 +39,7 @@ const (
 	toolNameEdit        = "edit"
 	toolNameWrite       = "write"
 	toolNameMultiEdit   = "multiedit"
+	toolNameApplyPatch  = "apply_patch"
 	toolNameRead        = "read"
 	toolNameLS          = "ls"
 	toolNameSkillManage = "skill_manage"

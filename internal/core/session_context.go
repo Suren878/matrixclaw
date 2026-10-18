@@ -12,6 +12,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/agent"
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -168,6 +169,8 @@ func (c *Core) sessionTurn(ctx context.Context, session Session, runtime agent.M
 		Readonly:   readonly,
 		ToolUse:    agent.ToolUseAllowed(runtime),
 		Model:      model,
+		Plan:       NormalizePermissionMode(string(session.PermissionMode)) == PermissionModePlan,
+		PatchEdits: tools.PrefersApplyPatch(session.ModelID),
 	}, err
 }
 

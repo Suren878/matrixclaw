@@ -60,15 +60,33 @@ const (
 	readDescription = `Read a text file. Each line comes back prefixed with its line number and a tab; the prefix is not part of the file, so never copy it into edit strings. ` +
 		`One call returns at most 2000 lines and about 24 KB; when more follows, the result ends with the offset to pass next. Lines over 2000 characters are cut. ` +
 		`For a long file, locate the part you need with grep first and read it with offset and limit. Binary files are refused. ` +
-		`Read a file before you change it with write, edit or multiedit; read several files in one reply when you need them. For directories use ls.`
+		`Read a file before you change it; read several files in one reply when you need them. For directories use ls.`
 	writeDescription = `Create a file, or replace an existing one completely, with content. Missing parent directories are created. ` +
 		`An existing file must have been read in this session and not changed since, or the call is refused. ` +
-		`To change part of a file use edit or multiedit instead: they send only the changed text and cannot drop the rest by accident. ` +
+		`To change part of a file use your edit tool instead: it sends only the changed text and cannot drop the rest by accident. ` +
 		`Do not create documentation or README files unless asked.`
 	editDescription = `Replace a piece of text in an existing file. old_string should be copied from read output exactly (indentation, whitespace and line breaks, without the line-number prefix) ` +
 		`and must occur exactly once unless replace_all is true; include enough surrounding lines to make it unique. new_string must differ from old_string. ` +
 		`If old_string is not found byte for byte, a match ignoring indentation or surrounding whitespace is tried, and the result says so; a miss shows the closest lines. ` +
 		`The file must have been read in this session and not changed since. The result shows the changed lines with their line numbers, so there is no need to read the file again to check. Use write to create files.`
+	applyPatchDescription = "Edit files with a patch: add, update, move and delete any number of files in one atomic call. " +
+		"`input` is the whole patch:\n" +
+		"*** Begin Patch\n" +
+		"*** Add File: path/new.py\n" +
+		"+every line of the new file starts with +\n" +
+		"*** Update File: path/old.py\n" +
+		"*** Move to: path/renamed.py   (optional)\n" +
+		"@@ def handler():   (a line just above the change, to find the place; @@ alone when not needed)\n" +
+		" unchanged line (starts with a space)\n" +
+		"-removed line\n" +
+		"+added line\n" +
+		"*** Delete File: path/obsolete.py\n" +
+		"*** End Patch\n" +
+		"Give about 3 unchanged lines before and after each change; add another @@ line when they are not unique. " +
+		"Chunks of one file follow the file's order. Paths are relative to the working directory or absolute. " +
+		"Lines are matched exactly, then ignoring surrounding whitespace and quote or dash style. " +
+		"Nothing is written unless every section applies. A file you update, move, delete or replace must have been read in this session and not changed since. " +
+		"The result shows the changed lines with their line numbers."
 	multiEditDescription = `Apply several replacements to one file in one atomic call: edits apply in order, each to the result of the one before, and if any edit fails nothing is written. ` +
 		`Each edit follows the rules of edit. Prefer this to several edit calls on the same file.`
 )
@@ -156,6 +174,19 @@ var coreDefinitions = []Definition{
 			InputJSONSchema: multiEditInputSchema,
 		},
 		newFileExecutor: newMultiEditExecutor,
+	},
+	{
+		Spec: Spec{
+			ID:              applyPatchToolName,
+			Description:     applyPatchDescription,
+			Effect:          EffectMutation,
+			Asks:            true,
+			CoveredBy:       []string{editToolName},
+			Namespace:       namespaceCoreFilesystem,
+			Category:        CategoryFilesystem,
+			InputJSONSchema: applyPatchInputSchema,
+		},
+		newFileExecutor: newApplyPatchExecutor,
 	},
 	{
 		Spec: Spec{

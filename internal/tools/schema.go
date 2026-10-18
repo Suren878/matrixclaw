@@ -81,6 +81,14 @@ var (
   "required": ["file_path", "old_string", "new_string"],
   "additionalProperties": false
 }`)
+	applyPatchInputSchema = rawSchema(`{
+  "type": "object",
+  "properties": {
+    "input": {"type": "string", "description": "The whole patch, from *** Begin Patch to *** End Patch."}
+  },
+  "required": ["input"],
+  "additionalProperties": false
+}`)
 	multiEditInputSchema = rawSchema(`{
   "type": "object",
   "properties": {

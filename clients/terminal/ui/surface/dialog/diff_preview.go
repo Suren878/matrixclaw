@@ -12,17 +12,26 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 
 	surfacecommon "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/common"
+	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 const DiffPreviewID = "diff_preview"
 
 type DiffPreviewData struct {
-	Title      string
-	FilePath   string
-	OldContent string
-	NewContent string
-	Additions  int
-	Removals   int
+	Title     string
+	Files     []FileDiff
+	Additions int
+	Removals  int
+}
+
+// NewDiffPreviewData is the preview of tool file changes with their line totals.
+func NewDiffPreviewData(title string, changes ...tools.FileChange) DiffPreviewData {
+	data := DiffPreviewData{Title: title, Files: fileDiffs(changes...)}
+	for _, change := range changes {
+		data.Additions += change.Additions
+		data.Removals += change.Removals
+	}
+	return data
 }
 
 type ActionOpenDiffPreview struct {
@@ -179,7 +188,12 @@ func (d *DiffPreview) HandleMsg(msg tea.Msg) Action {
 }
 
 func (d *DiffPreview) hasStructuredDiff() bool {
-	return d.data.OldContent != "" || d.data.NewContent != ""
+	for _, file := range d.data.Files {
+		if file.OldContent != "" || file.NewContent != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *DiffPreview) scrollLeft() {
@@ -264,8 +278,12 @@ func (d *DiffPreview) renderHeader(contentWidth int) string {
 	title = t.Dialog.Title.Render(title)
 
 	lines := []string{title}
-	if path := strings.TrimSpace(d.data.FilePath); path != "" {
-		lines = append(lines, d.renderKeyValue("Path", prettyPath(path), contentWidth))
+	switch len(d.data.Files) {
+	case 0:
+	case 1:
+		lines = append(lines, d.renderKeyValue("Path", d.data.Files[0].Path, contentWidth))
+	default:
+		lines = append(lines, d.renderKeyValue("Files", fmt.Sprint(len(d.data.Files)), contentWidth))
 	}
 	lines = append(lines, d.renderKeyValue("Delta", d.renderDelta(), contentWidth))
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
@@ -286,7 +304,7 @@ func (d *DiffPreview) renderContent(contentWidth int) string {
 	if !d.hasStructuredDiff() {
 		return ""
 	}
-	return d.diff.render(d.com.Styles, d.data.FilePath, d.data.OldContent, d.data.NewContent, contentWidth)
+	return d.diff.render(d.com.Styles, d.data.Files, contentWidth)
 }
 
 func (d *DiffPreview) ShortHelp() []key.Binding {

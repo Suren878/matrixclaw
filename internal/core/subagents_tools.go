@@ -58,6 +58,11 @@ func agentCallWritesSharedDir(input agentToolInput) bool {
 	return !input.Background && !input.Readonly && normalizeSubagentIsolation(input.Isolation) == SubagentIsolationShared
 }
 
+// ReadsOnly reports whether the call's child gets read-only tools.
+func (t *agentTool) ReadsOnly(call tools.Call) bool {
+	return parseAgentInput(call.Args).Readonly
+}
+
 func parseAgentInput(args json.RawMessage) agentToolInput {
 	var input agentToolInput
 	_ = json.Unmarshal(args, &input)

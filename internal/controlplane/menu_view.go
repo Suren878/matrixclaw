@@ -85,6 +85,8 @@ func permissionModeStatus(mode core.PermissionMode) string {
 		return "Edits only"
 	case core.PermissionModeFullAuto:
 		return "Full auto"
+	case core.PermissionModePlan:
+		return "Plan"
 	default:
 		return "Ask first"
 	}
