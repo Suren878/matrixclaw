@@ -75,7 +75,7 @@ func (e *Engine) Run(ctx context.Context, task Task) (outcome Outcome, err error
 		}
 		return Outcome{Status: StatusFailed, Err: err}, nil
 	}
-	r := &run{Config: e.cfg, task: task, history: newHistory(e.cfg.Journal, e.cfg.Sink, window), state: task.Resume, started: e.cfg.Now()}
+	r := e.newRun(task, window)
 	defer func() { outcome.RunState = r.state }()
 	if window.Boundary != nil {
 		// A boundary edits the history even when no checkpoint recorded it.
@@ -122,6 +122,11 @@ type run struct {
 	// prefix.
 	system string
 	tools  []providers.ToolDefinition
+	images *agentcontext.ImageCache
+}
+
+func (e *Engine) newRun(task Task, window Window) *run {
+	return &run{Config: e.cfg, task: task, history: newHistory(e.cfg.Journal, e.cfg.Sink, window), state: task.Resume, started: e.cfg.Now(), images: agentcontext.NewImageCache(e.cfg.Attachments)}
 }
 
 type stepKind int
@@ -242,6 +247,7 @@ func (r *run) step(ctx context.Context) stepResult {
 func (r *run) handleResponse(ctx context.Context, gen generation) stepResult {
 	response := gen.response
 	response.Text = r.replyText(response)
+	r.state.observeReply(response.Text)
 	assistant := gen.assistant
 	if len(response.ToolCalls) > 0 {
 		r.state.Continuations = 0

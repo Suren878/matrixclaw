@@ -56,10 +56,9 @@ func (r *run) buildRequest(ctx context.Context, final StopReason) (providers.Req
 	summary := agentcontext.SummaryMessages(compaction)
 	if !ToolUseAllowed(r.task.Model) {
 		request.Messages = append(summary, agentcontext.TextOnlyConversation(messages)...)
-		request.Messages = providers.NormalizeMessages(request.Messages, providers.ToolUseDisabled)
 		return request, nil
 	}
-	conversation, err := agentcontext.Conversation(ctx, messages, r.Attachments, ImageInputAllowed(r.task.Model), modelIdentity(r.task.Model))
+	conversation, err := agentcontext.Conversation(ctx, messages, r.images, ImageInputAllowed(r.task.Model), modelIdentity(r.task.Model))
 	if err != nil {
 		return providers.Request{}, err
 	}
@@ -81,10 +80,12 @@ func withCustomInstructions(system string, custom string) string {
 	}
 }
 
-// sent is messages as the run's requests carry them: elided, and without the
-// reasoning signed before the last history edit.
+// sent is messages as the run's requests carry them: elided, each tool round's
+// results within their share of the window, and without the reasoning signed
+// before the last history edit.
 func (r *run) sent(messages []transcript.Message) []transcript.Message {
-	return agentcontext.WithoutSignedReasoning(agentcontext.Elide(messages, r.elision()), r.state.HistoryEdit)
+	capped := agentcontext.CapRoundResults(agentcontext.Elide(messages, r.elision()), r.contextLimit())
+	return agentcontext.WithoutSignedReasoning(capped, r.state.HistoryEdit)
 }
 
 func toolDefinitions(specs []tools.Spec) []providers.ToolDefinition {
