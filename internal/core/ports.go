@@ -91,7 +91,7 @@ type SessionBudgetStore interface {
 	SaveSessionBudget(ctx context.Context, sessionID string, budget SessionBudget, updatedAt time.Time) error
 }
 
-// EngineStateStore keeps the engine counters a session's next run starts from.
+// EngineStateStore keeps the engine state a session's next run starts from.
 type EngineStateStore interface {
 	GetSessionEngineState(ctx context.Context, sessionID string) (json.RawMessage, error)
 	SaveSessionEngineState(ctx context.Context, sessionID string, state json.RawMessage, updatedAt time.Time) error
@@ -174,8 +174,9 @@ type SessionLLMRegistry interface {
 	Normalize(providerID string, modelID string) (SessionProviderOption, string, error)
 	Models(ctx context.Context, providerID string) ([]string, error)
 	Resolve(ctx context.Context, providerID string, modelID string) (providers.Runtime, SessionProviderOption, string, error)
-	// ContextWindowTokens is the window the user set manually for the model, if any.
-	ContextWindowTokens(providerID string, modelID string) (int, bool)
+	// ContextWindow is the model's window: the manual setting for the provider's
+	// configured model, else the model catalog.
+	ContextWindow(providerID string, modelID string) int
 }
 
 // TaskStore keeps the shell and subagent tasks of sessions. FinishTask ends a

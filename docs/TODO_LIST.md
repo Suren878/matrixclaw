@@ -54,6 +54,8 @@ Continue with them, or update the list with todo_write and explain why you are s
 
 The next reply without tools completes the run. A list left by an unrelated
 earlier run never holds a run back; neither does a list that cannot be read.
+The same check asks once more, after the todo list, when the run changed files
+without a successful build, test or lint command since.
 
 ## Clients
 

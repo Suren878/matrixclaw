@@ -40,51 +40,17 @@ func CheckSQLite(path string) (Diagnostics, error) {
 		return Diagnostics{Path: cleanPath, Exists: true}, err
 	}
 
-	ready, err := canonicalSchemaReady(db)
+	version, err := userVersion(db)
 	if err != nil {
 		return Diagnostics{Path: cleanPath, Exists: true}, err
 	}
 	diag := Diagnostics{
 		Path:        cleanPath,
 		Exists:      true,
-		SchemaReady: ready,
+		SchemaReady: version == schemaVersion,
 	}
-	if !ready {
-		return diag, fmt.Errorf("store: sqlite canonical schema is incomplete")
+	if !diag.SchemaReady {
+		return diag, fmt.Errorf("store: database schema version %d, want %d (the daemon migrates it on start)", version, schemaVersion)
 	}
 	return diag, nil
-}
-
-func canonicalSchemaReady(db *sql.DB) (bool, error) {
-	requiredTables := []string{
-		"sessions",
-		"tasks",
-		"client_bindings",
-		"messages",
-		"memories",
-		"runs",
-		"run_checkpoints",
-		"run_wakeups",
-		"session_inputs",
-		"run_steps",
-		"approvals",
-		"client_deliveries",
-		"automation_jobs",
-		"automation_fires",
-		"external_agent_sessions",
-		"session_budgets",
-		"session_engine_state",
-		"session_todos",
-		"permission_rules",
-	}
-	for _, table := range requiredTables {
-		var exists int
-		if err := db.QueryRow(`SELECT COUNT(1) FROM sqlite_schema WHERE type = 'table' AND name = ?`, table).Scan(&exists); err != nil {
-			return false, err
-		}
-		if exists == 0 {
-			return false, nil
-		}
-	}
-	return true, nil
 }

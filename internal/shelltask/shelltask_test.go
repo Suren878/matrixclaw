@@ -2,8 +2,10 @@ package shelltask_test
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -110,7 +112,7 @@ func TestReadingInOrderGetsPastAHeadCutMidCharacter(t *testing.T) {
 
 func TestProcessRunsInItsOwnGroupAndReportsItsExitCode(t *testing.T) {
 	out := newOutput(t)
-	p, err := shelltask.Start("echo out; echo err >&2; exit 3", t.TempDir(), out)
+	p, err := shelltask.Start("echo out; echo err >&2; exit 3", t.TempDir(), nil, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +129,7 @@ func TestProcessRunsInItsOwnGroupAndReportsItsExitCode(t *testing.T) {
 func startReady(t *testing.T, command string) *shelltask.Process {
 	t.Helper()
 	out := newOutput(t)
-	p, err := shelltask.Start(command, t.TempDir(), out)
+	p, err := shelltask.Start(command, t.TempDir(), nil, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +194,7 @@ func TestStopKillsACommandThatIgnoresTERM(t *testing.T) {
 
 func TestKillLeftoverChecksTheLeaderWithoutPS(t *testing.T) {
 	out := newOutput(t)
-	p, err := shelltask.Start("sleep 60", t.TempDir(), out)
+	p, err := shelltask.Start("sleep 60", t.TempDir(), nil, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +231,7 @@ func TestKillLeftoverChecksTheLeaderWithoutPS(t *testing.T) {
 
 func TestKillLeftoverLeavesALeaderlessGroupAlone(t *testing.T) {
 	out := newOutput(t)
-	p, err := shelltask.Start("sleep 60 & exit 0", t.TempDir(), out)
+	p, err := shelltask.Start("sleep 60 & exit 0", t.TempDir(), nil, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +308,7 @@ func TestAFailedCompactionLosesNoCount(t *testing.T) {
 
 func TestDoneWaitsForCommandsTheShellLeftRunning(t *testing.T) {
 	out := newOutput(t)
-	p, err := shelltask.Start("(sleep 0.5; echo late) & echo early", t.TempDir(), out)
+	p, err := shelltask.Start("(sleep 0.5; echo late) & echo early", t.TempDir(), nil, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +331,7 @@ func TestDoneWaitsForCommandsTheShellLeftRunning(t *testing.T) {
 
 func TestWaitOutputStopsReadingAfterTheDelay(t *testing.T) {
 	out := newOutput(t)
-	p, err := shelltask.Start("(sleep 30; echo late) & echo early", t.TempDir(), out)
+	p, err := shelltask.Start("(sleep 30; echo late) & echo early", t.TempDir(), nil, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -340,5 +342,79 @@ func TestWaitOutputStopsReadingAfterTheDelay(t *testing.T) {
 	waitDone(t, p)
 	if chunk, err := shelltask.Read(out.Path(), 0, 100); err != nil || chunk.Text != "early\n" {
 		t.Fatalf("output = %+v, %v", chunk, err)
+	}
+}
+
+func TestProcessGetsOnlyTheEnvironmentItIsGiven(t *testing.T) {
+	t.Setenv("SHELLTASK_TEST_SECRET", "sk-leak")
+	out := newOutput(t)
+	p, err := shelltask.Start("env", t.TempDir(), []string{"PATH=" + os.Getenv("PATH"), "VISIBLE=yes"}, out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitDone(t, p)
+	chunk, err := shelltask.Read(out.Path(), 0, 1<<16)
+	if err != nil || !strings.Contains(chunk.Text, "VISIBLE=yes") || strings.Contains(chunk.Text, "sk-leak") {
+		t.Fatalf("env output = %q, %v", chunk.Text, err)
+	}
+}
+
+func TestKillLeftoversEndsWhatTheShellLeftRunning(t *testing.T) {
+	out := newOutput(t)
+	p, err := shelltask.Start("sleep 60 >/dev/null 2>&1 & echo started", t.TempDir(), nil, out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = shelltask.KillGroup(p.PID()) })
+	p.WaitOutput(time.Second)
+
+	if !p.KillLeftovers() {
+		t.Fatal("the leftover sleep was not found")
+	}
+	for deadline := time.Now().Add(10 * time.Second); syscall.Kill(-p.PID(), 0) == nil; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the leftover group still runs")
+		}
+	}
+	if p.KillLeftovers() {
+		t.Fatal("a second kill found leftovers")
+	}
+}
+
+func TestExcerptKeepsHeadAndLongerTailOfLongOutput(t *testing.T) {
+	out := newOutput(t)
+	var text strings.Builder
+	for i := range 1000 {
+		fmt.Fprintf(&text, "line %04d\n", i)
+	}
+	if _, err := out.Write([]byte(text.String())); err != nil {
+		t.Fatal(err)
+	}
+
+	whole, cut, err := shelltask.Excerpt(out.Path(), 20000)
+	if err != nil || cut || whole != text.String() {
+		t.Fatalf("short excerpt cut=%v err=%v", cut, err)
+	}
+	excerpt, cut, err := shelltask.Excerpt(out.Path(), 300)
+	if err != nil || !cut {
+		t.Fatalf("cut=%v err=%v", cut, err)
+	}
+	want := "line 0000\nline 0001\nline 0002\nline 0003\nline 0004\nline 0005\nline 0006\nline 0007\nline 0008\nline 0009\n[... 9700 bytes of output left out ...]\n"
+	if !strings.HasPrefix(excerpt, want) || !strings.HasSuffix(excerpt, "line 0999\n") || len(excerpt) > 300+len("\n[... 9700 bytes of output left out ...]\n") {
+		t.Fatalf("excerpt = %q", excerpt)
+	}
+}
+
+func TestLoginEnvironmentReadsWhatTheProfileExports(t *testing.T) {
+	home := t.TempDir()
+	profile := "echo welcome\nexport PROFILE_ADDED=1\n"
+	if err := os.WriteFile(filepath.Join(home, ".bash_profile"), []byte(profile), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	env, err := shelltask.LoginEnvironment([]string{"HOME=" + home, "PATH=" + os.Getenv("PATH"), "KEPT=x"}, 10*time.Second)
+
+	if err != nil || !slices.Contains(env, "PROFILE_ADDED=1") || !slices.Contains(env, "KEPT=x") || slices.ContainsFunc(env, func(pair string) bool { return strings.HasPrefix(pair, "SHLVL=") }) {
+		t.Fatalf("env = %q, %v", env, err)
 	}
 }

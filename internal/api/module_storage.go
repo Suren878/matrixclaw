@@ -1,9 +1,7 @@
 package api
 
 import (
-	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
@@ -26,10 +24,13 @@ type storageStore interface {
 }
 
 func (s *Server) handleStorageFiles(w http.ResponseWriter, r *http.Request) {
-	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	limit, ok := queryInt(w, r, "limit", 0)
+	if !ok {
+		return
+	}
 	entries, err := s.Storage.List(r.URL.Query().Get("prefix"), r.URL.Query().Get("query"), limit)
 	if err != nil {
-		writeStorageError(w, err)
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, localstorage.ListResult{
@@ -49,7 +50,7 @@ func (s *Server) handleStorageFileCreate(w http.ResponseWriter, r *http.Request)
 	}
 	entry, err := s.Storage.SaveBytes(req.Path, content, req.Title, req.Tags, req.MIMEType)
 	if err != nil {
-		writeStorageError(w, err)
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, localstorage.FileResponse{File: entry})
@@ -60,7 +61,7 @@ func (s *Server) handleStorageFile(w http.ResponseWriter, r *http.Request) {
 	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("encoding")), "base64") {
 		entry, content, err := s.Storage.ReadBytes(storagePath, storageReadLimitBytes)
 		if err != nil {
-			writeStorageError(w, err)
+			writeError(w, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, localstorage.NewReadBytesResponse(entry, content))
@@ -68,7 +69,7 @@ func (s *Server) handleStorageFile(w http.ResponseWriter, r *http.Request) {
 	}
 	entry, content, err := s.Storage.Read(storagePath, storageReadLimitBytes)
 	if err != nil {
-		writeStorageError(w, err)
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, localstorage.ReadResult{File: entry, Content: content})
@@ -77,17 +78,20 @@ func (s *Server) handleStorageFile(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStorageFileDelete(w http.ResponseWriter, r *http.Request) {
 	entry, err := s.Storage.Delete(r.PathValue("path"))
 	if err != nil {
-		writeStorageError(w, err)
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, localstorage.FileResponse{File: entry})
 }
 
 func (s *Server) handleStorageTemp(w http.ResponseWriter, r *http.Request) {
-	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	limit, ok := queryInt(w, r, "limit", 0)
+	if !ok {
+		return
+	}
 	result, err := s.Storage.ListTemporary(limit)
 	if err != nil {
-		writeStorageError(w, err)
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
@@ -104,7 +108,7 @@ func (s *Server) handleStorageTempCreate(w http.ResponseWriter, r *http.Request)
 	}
 	entry, err := s.Storage.SaveTemporary(req.Path, content, req.Title, req.Tags, req.MIMEType)
 	if err != nil {
-		writeStorageError(w, err)
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, localstorage.TempFileResponse{File: entry})
@@ -113,7 +117,7 @@ func (s *Server) handleStorageTempCreate(w http.ResponseWriter, r *http.Request)
 func (s *Server) handleStorageTempCleanup(w http.ResponseWriter, _ *http.Request) {
 	result, err := s.Storage.CleanupTemporary()
 	if err != nil {
-		writeStorageError(w, err)
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, localstorage.CleanupResponse{Cleanup: result})
@@ -126,7 +130,7 @@ func (s *Server) handleStorageTempSettings(w http.ResponseWriter, r *http.Reques
 	}
 	settings, err := s.Storage.UpdateTemporarySettings(req.AutoCleanup, req.TTLDays, req.MaxGB)
 	if err != nil {
-		writeStorageError(w, err)
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, localstorage.TempSettingsResponse{Settings: settings})
@@ -139,7 +143,7 @@ func (s *Server) handleStorageTempPromote(w http.ResponseWriter, r *http.Request
 	}
 	entry, err := s.Storage.PromoteTemporary(r.PathValue("path"), req.DestPath)
 	if err != nil {
-		writeStorageError(w, err)
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, localstorage.FileResponse{File: entry})
@@ -148,7 +152,7 @@ func (s *Server) handleStorageTempPromote(w http.ResponseWriter, r *http.Request
 func (s *Server) handleStorageTempFile(w http.ResponseWriter, r *http.Request) {
 	entry, content, err := s.Storage.ReadTemporaryBytes(r.PathValue("path"))
 	if err != nil {
-		writeStorageError(w, err)
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, localstorage.NewTempReadBytesResponse(entry, content))
@@ -157,7 +161,7 @@ func (s *Server) handleStorageTempFile(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStorageTempDelete(w http.ResponseWriter, r *http.Request) {
 	entry, err := s.Storage.DeleteTemporary(r.PathValue("path"))
 	if err != nil {
-		writeStorageError(w, err)
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, localstorage.TempFileResponse{File: entry})
@@ -179,15 +183,4 @@ func storageSaveContent(w http.ResponseWriter, req localstorage.FileSaveRequest)
 		return nil, false
 	}
 	return content, true
-}
-
-func writeStorageError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, localstorage.ErrInvalidPath):
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, localstorage.ErrNotFound):
-		writeErrorMessage(w, http.StatusNotFound, err.Error())
-	default:
-		writeErrorMessage(w, http.StatusInternalServerError, err.Error())
-	}
 }

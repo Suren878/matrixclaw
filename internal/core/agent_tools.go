@@ -53,7 +53,7 @@ func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) 
 	if _, err := t.c.isNewToolCallMessage(ctx, call.SessionID, call.ToolCallID); err != nil {
 		return agent.Decision{}, err
 	}
-	session, spec, err := t.c.checkToolCall(ctx, call.SessionID, name)
+	session, spec, err := t.c.checkToolCall(ctx, name, call)
 	if errors.Is(err, ErrInvalidInput) {
 		return agent.Decision{Reason: err.Error()}, nil
 	}
@@ -84,7 +84,7 @@ func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) 
 }
 
 func (t coreTools) Execute(ctx context.Context, name string, call tools.Call) (tools.Result, *tools.ApprovalRequest, error) {
-	session, spec, err := t.c.checkToolCall(ctx, call.SessionID, name)
+	session, spec, err := t.c.checkToolCall(ctx, name, call)
 	if err != nil {
 		return tools.Result{}, nil, err
 	}
@@ -114,8 +114,15 @@ func (c *Core) nativeToolSpecs(turn nativeTurn) []tools.Spec {
 	specs := c.tools.List()
 	out := make([]tools.Spec, 0, len(specs))
 	for _, spec := range specs {
-		if turn.Subagent && !subagentToolAllowed(spec) || turn.Readonly && spec.Mutates() {
+		if turn.Subagent && !subagentToolAllowed(spec) {
 			continue
+		}
+		if turn.Readonly && spec.Mutates() {
+			readOnly, ok := tools.ReadOnlySpec(spec)
+			if !ok {
+				continue
+			}
+			spec = readOnly
 		}
 		if spec.ID == "text_to_speech" && !clientSupportsVoiceDelivery(turn.ClientCapabilities) {
 			continue

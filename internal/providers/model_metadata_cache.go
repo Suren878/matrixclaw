@@ -2,14 +2,16 @@ package providers
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 )
 
+// modelMetadataCacheFile keeps learned metadata by provider ID, then model ID.
 type modelMetadataCacheFile struct {
-	ModelMetadata map[string]ModelMetadataRegistration `json:"model_metadata,omitempty"`
+	Models map[string]map[string]ModelMetadataRegistration `json:"models,omitempty"`
 }
 
 var modelMetadataCache struct {
@@ -35,11 +37,9 @@ func UseModelMetadataCache(path string) {
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return
 	}
-	modelMetadataOverrides.Lock()
-	defer modelMetadataOverrides.Unlock()
-	for key, value := range payload.ModelMetadata {
-		if strings.TrimSpace(key) != "" {
-			modelMetadataOverrides.values[key] = mergeModelMetadata(modelMetadataOverrides.values[key], value)
+	for providerID, models := range payload.Models {
+		for modelID, value := range models {
+			RegisterModelMetadata(providerID, modelID, value)
 		}
 	}
 }
@@ -52,15 +52,15 @@ func SaveModelMetadata() {
 	if path == "" {
 		return
 	}
-	payload := modelMetadataCacheFile{ModelMetadata: map[string]ModelMetadataRegistration{}}
-	modelMetadataOverrides.RLock()
-	for key, value := range modelMetadataOverrides.values {
-		if strings.TrimSpace(key) != "" && modelMetadataKnown(value) {
-			payload.ModelMetadata[key] = value
+	payload := modelMetadataCacheFile{Models: map[string]map[string]ModelMetadataRegistration{}}
+	learnedMetadata.RLock()
+	for providerID, models := range learnedMetadata.values {
+		if len(models) > 0 {
+			payload.Models[providerID] = maps.Clone(models)
 		}
 	}
-	modelMetadataOverrides.RUnlock()
-	if len(payload.ModelMetadata) == 0 {
+	learnedMetadata.RUnlock()
+	if len(payload.Models) == 0 {
 		return
 	}
 	raw, err := json.MarshalIndent(payload, "", "  ")

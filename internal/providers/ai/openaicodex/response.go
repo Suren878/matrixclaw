@@ -84,7 +84,7 @@ func (r *Runtime) completedResponse(response responsesResponse) (providers.Respo
 // responsesFailure is an error the Responses API reports in its body, typed by
 // its code so a rate limit or overload is retried.
 func responsesFailure(code string, message string, fallback string) error {
-	return providers.NewStreamError("openai-codex", providers.OpenAIErrorStatus(code), textutil.FirstNonEmpty(message, code, fallback))
+	return providers.NewStreamError("openai-codex", 0, code, textutil.FirstNonEmpty(message, code, fallback))
 }
 
 func reasoningSummary(parts []responsesSummaryPart) string {

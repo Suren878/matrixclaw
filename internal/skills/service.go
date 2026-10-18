@@ -3,6 +3,7 @@ package skills
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/url"
@@ -17,6 +18,9 @@ import (
 	"gopkg.in/yaml.v3"
 	_ "modernc.org/sqlite"
 )
+
+// ErrNotFound reports a skill the library does not hold.
+var ErrNotFound = errors.New("skill not found")
 
 type Service struct {
 	db      *sql.DB
@@ -80,88 +84,12 @@ func (s *Service) Close() error {
 	return s.db.Close()
 }
 
+// bootstrap configures the connection; the store creates the skills tables.
 func (s *Service) bootstrap() error {
-	stmts := []string{
-		`PRAGMA foreign_keys = ON`,
-		`PRAGMA busy_timeout = 5000`,
-		`CREATE TABLE IF NOT EXISTS skills (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL,
-			description TEXT NOT NULL,
-			version TEXT NOT NULL DEFAULT '',
-			author TEXT NOT NULL DEFAULT '',
-			authors_json TEXT NOT NULL DEFAULT '[]',
-			license TEXT NOT NULL DEFAULT '',
-			tags_json TEXT NOT NULL DEFAULT '[]',
-			platforms_json TEXT NOT NULL DEFAULT '[]',
-			category TEXT NOT NULL DEFAULT '',
-			path TEXT NOT NULL,
-			source TEXT NOT NULL DEFAULT '',
-			provenance TEXT NOT NULL DEFAULT '',
-			hash TEXT NOT NULL DEFAULT '',
-			trust_state TEXT NOT NULL,
-			state TEXT NOT NULL,
-			enabled INTEGER NOT NULL DEFAULT 1,
-			pinned INTEGER NOT NULL DEFAULT 0,
-			use_count INTEGER NOT NULL DEFAULT 0,
-			view_count INTEGER NOT NULL DEFAULT 0,
-			patch_count INTEGER NOT NULL DEFAULT 0,
-			installed_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL,
-			last_activity_at TEXT NOT NULL DEFAULT ''
-		)`,
-		`CREATE VIRTUAL TABLE IF NOT EXISTS skill_fts USING fts5(id UNINDEXED, name, description, tags, category, body)`,
-		`CREATE TABLE IF NOT EXISTS skill_sessions (
-			session_id TEXT NOT NULL,
-			skill_id TEXT NOT NULL,
-			activated_at TEXT NOT NULL,
-			PRIMARY KEY(session_id, skill_id)
-		)`,
-		`CREATE TABLE IF NOT EXISTS skill_plugin_mcp_candidates (
-			id TEXT PRIMARY KEY,
-			plugin_path TEXT NOT NULL,
-			config_json TEXT NOT NULL,
-			enabled INTEGER NOT NULL DEFAULT 0,
-			created_at TEXT NOT NULL
-		)`,
-	}
-	for _, stmt := range stmts {
+	for _, stmt := range []string{`PRAGMA foreign_keys = ON`, `PRAGMA busy_timeout = 5000`} {
 		if _, err := s.db.Exec(stmt); err != nil {
 			return err
 		}
-	}
-	if err := s.ensureSkillSchema(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (s *Service) ensureSkillSchema() error {
-	hasEnabled := false
-	rows, err := s.db.Query(`PRAGMA table_info(skills)`)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var cid int
-		var name, typ string
-		var notNull int
-		var defaultValue any
-		var pk int
-		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
-			return err
-		}
-		if name == "enabled" {
-			hasEnabled = true
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	if !hasEnabled {
-		_, err := s.db.Exec(`ALTER TABLE skills ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`)
-		return err
 	}
 	return nil
 }
@@ -678,7 +606,7 @@ func (s *Service) getSkill(id string) (Skill, error) {
 		return Skill{}, err
 	}
 	if len(skills) == 0 {
-		return Skill{}, fmt.Errorf("skill not found: %s", id)
+		return Skill{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	return skills[0], nil
 }

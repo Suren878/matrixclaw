@@ -2,33 +2,12 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/permission"
 )
-
-func migratePermissionRules(db *sql.DB) error {
-	if _, err := db.Exec(`
-CREATE TABLE IF NOT EXISTS permission_rules (
-    id TEXT PRIMARY KEY,
-    tool TEXT NOT NULL,
-    pattern TEXT NOT NULL DEFAULT '',
-    effect TEXT NOT NULL,
-    scope TEXT NOT NULL,
-    session_id TEXT,
-    created_at TEXT NOT NULL,
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-)`); err != nil {
-		return fmt.Errorf("store: create permission rules table: %w", err)
-	}
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_permission_rules_session ON permission_rules(session_id)`); err != nil {
-		return fmt.Errorf("store: create permission rules session index: %w", err)
-	}
-	return nil
-}
 
 // CreatePermissionRule stores a rule; a global rule belongs to no session.
 func (s *SQLiteStore) CreatePermissionRule(ctx context.Context, rule permission.Rule) error {

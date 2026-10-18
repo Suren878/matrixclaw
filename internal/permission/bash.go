@@ -2,6 +2,7 @@ package permission
 
 import (
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -11,7 +12,10 @@ import (
 // Line is a parsed bash command line: the words of every simple command (those in
 // substitutions too; a word that is not plain text is ""), and Risky when no
 // pattern rule may allow it: it writes files, assigns, substitutes, expands
-// braces or globs, runs a wrapper or a flag that runs a program, or does not parse.
+// braces or globs, runs a wrapper, a runner or a flag that runs a program, edits
+// files in place, or does not parse. The command a wrapper, runner or such flag
+// may run is listed too, as every tail of its words from a word that is not an
+// option, so deny and ask rules on it still apply.
 type Line struct {
 	Commands [][]string
 	Risky    bool
@@ -31,6 +35,16 @@ var wrappers = map[string]bool{
 	"sudo": true, "systemd-run": true, "taskset": true, "time": true, "timeout": true, "tmux": true,
 	"torsocks": true, "trap": true, "unbuffer": true, "unshare": true, "valgrind": true, "watch": true,
 	"xargs": true, "zsh": true,
+}
+
+// runners run a program they name, often one fetched for the call: keyed by
+// command, or "command subcommand" with the subcommand anywhere after it.
+var runners = map[string]bool{
+	"bunx": true, "npx": true, "pnpx": true, "uvx": true,
+	"bun x": true, "bundle exec": true, "cargo run": true, "docker exec": true, "docker run": true,
+	"go run": true, "kubectl exec": true, "kubectl run": true, "npm exec": true, "pipx run": true,
+	"pnpm dlx": true, "pnpm exec": true, "podman exec": true, "podman run": true, "poetry run": true,
+	"uv run": true, "yarn dlx": true, "yarn exec": true,
 }
 
 // flagSet names the flags of one command that run another program or write a
@@ -70,7 +84,19 @@ var programFlags = map[string]flagSet{
 	"wget":      {letters: "O"},
 	"make":      {letters: "E"},
 	"printf":    {letters: "v"},
+	"tree":      {letters: "o"},
+	"file":      {letters: "C"},
+	"sed":       {names: []string{"in-place"}, letters: "i"},
+	"perl":      {letters: "i"},
+	"awk":       {names: []string{"include", "file", "exec", "load"}, letters: "ifEl"},
+	"gawk":      {names: []string{"include", "file", "exec", "load"}, letters: "ifEl"},
+	"mawk":      {letters: "f"},
+	"nawk":      {letters: "f"},
 }
+
+// awkEffects matches awk program text that writes a file or runs a command:
+// print redirected to a file or pipe, a command piped to getline, system().
+var awkEffects = regexp.MustCompile(`\bprintf?\b[^;{}]*[>|]|\|\s*getline|\bsystem\s*\(`)
 
 // maxLineBytes bounds the lines ParseLine parses: the parser recurses once per
 // nesting level, and deep enough nesting overflows the goroutine stack.
@@ -125,10 +151,97 @@ func (l *Line) addCall(call *syntax.CallExpr) {
 		}
 		words = append(words, word)
 	}
-	if !plainCommand(call.Args[0]) || wrappers[filepath.Base(words[0])] || runsProgram(words) {
+	l.Commands = append(l.Commands, words)
+	if !plainCommand(call.Args[0]) {
 		l.Risky = true
 	}
-	l.Commands = append(l.Commands, words)
+	if wrappers[filepath.Base(words[0])] || runsCommand(words) || runsProgram(words) || awkWrites(words) {
+		l.Risky = true
+		l.Commands = append(l.Commands, innerCommands(words)...)
+	}
+}
+
+// globalValueFlags are the options taking a separate value that may come before
+// a command's subcommand, such as "docker --context x run".
+var globalValueFlags = map[string][]string{
+	"go":      {"-C"},
+	"docker":  {"-c", "--context", "-H", "--host", "--config", "-l", "--log-level"},
+	"podman":  {"-c", "--connection", "--url", "--root", "--runroot"},
+	"kubectl": {"-n", "--namespace", "--context", "--kubeconfig", "-s", "--server", "--cluster", "--user"},
+}
+
+// runsCommand reports whether a command is one of the runners. The subcommand
+// is the first word that is neither an option nor a known option's value; after
+// an unknown option any later word counts, as it may have been that option's value.
+func runsCommand(words []string) bool {
+	command := filepath.Base(words[0])
+	if runners[command] {
+		return true
+	}
+	for i := 1; i < len(words); i++ {
+		word := words[i]
+		if !strings.HasPrefix(word, "-") && !strings.HasPrefix(word, "+") {
+			return runners[command+" "+word]
+		}
+		if slices.Contains(globalValueFlags[command], word) {
+			i++
+			continue
+		}
+		if strings.Contains(word, "=") || strings.HasPrefix(word, "+") {
+			continue
+		}
+		for _, later := range words[i+1:] {
+			if runners[command+" "+later] {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// innerCommands are the commands a wrapper or runner may run: every tail of
+// its words that starts with a word that is neither an option nor an
+// assignment, and the commands of a script given to a shell's -c or to eval.
+func innerCommands(words []string) [][]string {
+	var inner [][]string
+	if script, ok := shellScript(words); ok {
+		inner = append(inner, ParseLine(script).Commands...)
+	}
+	for i := 1; i < len(words); i++ {
+		if word := words[i]; word != "" && !strings.HasPrefix(word, "-") && !strings.Contains(word, "=") {
+			inner = append(inner, words[i:])
+		}
+	}
+	return inner
+}
+
+// shellScript is the script a shell runs with -c, or eval with its arguments.
+func shellScript(words []string) (string, bool) {
+	switch filepath.Base(words[0]) {
+	case "eval":
+		return strings.Join(words[1:], " "), len(words) > 1
+	case "bash", "sh", "dash", "zsh", "ksh", "fish":
+	default:
+		return "", false
+	}
+	for i, word := range words[1 : len(words)-1] {
+		if strings.HasPrefix(word, "-") && !strings.HasPrefix(word, "--") && strings.Contains(word, "c") {
+			return words[i+2], true
+		}
+	}
+	return "", false
+}
+
+// awkWrites reports whether an awk program on the command line writes a file
+// or runs a command.
+func awkWrites(words []string) bool {
+	switch filepath.Base(words[0]) {
+	case "awk", "gawk", "mawk", "nawk":
+	default:
+		return false
+	}
+	return slices.ContainsFunc(words[1:], awkEffects.MatchString)
 }
 
 // plainCommand reports whether a command name is unquoted text without escapes,

@@ -66,7 +66,7 @@ func autonomySection(tools Tools, subagent bool) string {
 }
 
 func verifySection(tools Tools) string {
-	if !tools.Has("bash") {
+	if !tools.Has("bash", "edit") {
 		return ""
 	}
 	return `Verifying your work:
@@ -89,14 +89,19 @@ func changesSection(tools Tools) string {
 
 func toolsSection(tools Tools) string {
 	lines := []string{"Using tools:"}
+	// Without edit the run's bash is the read-only one: no builds, no servers.
+	writes := tools.Has("edit")
 	if tools.Has("bash") {
+		use := " Use bash for builds, tests, git, package managers and running programs."
+		if !writes {
+			use = " Use bash for read-only commands such as git log, git diff or go list."
+		}
 		if dedicated := dedicatedTools(tools); dedicated != "" {
-			lines = append(lines, "- Use the dedicated tools, not shell equivalents: "+dedicated+". Use bash for builds, tests, git, package managers and running programs.")
+			lines = append(lines, "- Use the dedicated tools, not shell equivalents: "+dedicated+"."+use)
 		}
 	}
 	lines = append(lines, "- Calls in one reply run at the same time and may finish in any order; their results come back in the order you made them. Put independent reads and searches in one reply; a call that needs another call's result goes in a later reply.")
-	if tools.Has("bash") {
-		lines = append(lines, "- Shell commands run with bash -lc without a terminal, and stdin is closed. Each call starts fresh in the working directory, so cd and exported variables do not carry over: use working_dir or absolute paths. Use non-interactive forms (--yes, CI=1, git --no-pager, git commit -m) and never open editors, pagers or interactive modes such as git rebase -i or git add -p.")
+	if tools.Has("bash") && writes {
 		lines = append(lines, backgroundLine(tools))
 	}
 	lines = append(lines,
@@ -140,7 +145,7 @@ func backgroundLine(tools Tools) string {
 }
 
 func gitSection(tools Tools, subagent bool) string {
-	if !tools.Has("bash") {
+	if !tools.Has("bash", "edit") {
 		return ""
 	}
 	blocked := "stop and ask"

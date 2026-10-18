@@ -146,7 +146,6 @@ func sessionProviderSpecsFromSetup(cfg setup.Config) []sessionllm.ProviderSpec {
 		runtimeProvider, _ := provider.Runtime()
 		specs = append(specs, sessionllm.ProviderSpec{
 			ID:              runtimeProvider.ID,
-			CatalogID:       runtimeProvider.ID,
 			Name:            runtimeProvider.Name,
 			Type:            runtimeProvider.Type,
 			APIKey:          runtimeProvider.APIKey,

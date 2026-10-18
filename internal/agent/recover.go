@@ -55,12 +55,7 @@ func (r *run) sealInterruptedReply(ctx context.Context) error {
 		if message.Role != transcript.MessageRoleAssistant || transcript.HasFinishReason(message, "") || hasToolParts(message) || strings.TrimSpace(message.Content) == "" {
 			return nil
 		}
-		message.Parts = append(transcript.NormalizeMessageParts(message.Content, message.Parts), transcript.MessagePart{
-			Kind:   transcript.MessagePartKindFinish,
-			Finish: &transcript.FinishPart{Reason: transcript.FinishReasonDaemonRestart, Message: "Generation was interrupted by a daemon restart; a recovered continuation follows."},
-		})
-		message.UpdatedAt = r.Now()
-		return r.history.finish(ctx, message)
+		return r.sealDropped(ctx, message, "Generation was interrupted by a daemon restart; a recovered continuation follows.")
 	}
 	return nil
 }

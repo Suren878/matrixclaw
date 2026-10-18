@@ -9,6 +9,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/api"
 	"github.com/Suren878/matrixclaw/internal/automation"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/externalagents/claudecode"
 	"github.com/Suren878/matrixclaw/internal/modules"
 	browsermodule "github.com/Suren878/matrixclaw/internal/modules/browser"
 	deliverymodule "github.com/Suren878/matrixclaw/internal/modules/delivery"
@@ -21,6 +22,7 @@ import (
 	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
 	webmodule "github.com/Suren878/matrixclaw/internal/modules/web"
+	"github.com/Suren878/matrixclaw/internal/providers/ai/openaicodex"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
@@ -50,6 +52,7 @@ func buildModules(deps moduleDeps) (daemonModules, error) {
 	browser := browsermodule.New(deps.runtime)
 	mcp := mcpmodule.New(browser.MCPServer)
 	app := deps.app
+	tools.ProtectCredentials(setup.CredentialPaths, openaicodex.CredentialPaths, claudecode.CredentialPaths)
 	base := append(tools.CoreExecutors(),
 		automation.NewReminderTool(deps.automation),
 		automation.NewScheduledAITaskTool(deps.automation),

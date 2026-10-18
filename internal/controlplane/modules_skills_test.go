@@ -7,10 +7,17 @@ import (
 	"github.com/Suren878/matrixclaw/internal/api"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/skills"
+	"github.com/Suren878/matrixclaw/internal/store"
 )
 
 func skillsDaemon(t *testing.T) (*apiDaemon, *skills.Service, skills.Skill) {
-	service, err := skills.NewService(skills.Config{DBPath: filepath.Join(t.TempDir(), "skills.db"), Enabled: true})
+	dbPath := filepath.Join(t.TempDir(), "matrixclaw.db")
+	st, err := store.NewSQLite(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	service, err := skills.NewService(skills.Config{DBPath: dbPath, Enabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}

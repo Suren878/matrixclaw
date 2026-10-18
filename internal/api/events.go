@@ -3,9 +3,12 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 )
@@ -38,33 +41,53 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 
 	events := s.Core.SubscribeEventsAfter(r.Context(), sessionID, afterID)
-	writeSSE(w, "ready", eventReadyResponse{SessionID: sessionID, AfterID: afterID})
+	if writeSSE(w, "ready", eventReadyResponse{SessionID: sessionID, AfterID: afterID}) != nil {
+		return
+	}
 	flusher.Flush()
 
+	// The stream ends when the bus closes it (the subscriber fell behind) or an
+	// event cannot be written; the client then reconnects and reloads.
+	keepalive := time.NewTicker(sseKeepalive)
+	defer keepalive.Stop()
 	for {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-keepalive.C:
+			if _, err := io.WriteString(w, ": ping\n\n"); err != nil {
+				return
+			}
 		case event, ok := <-events:
 			if !ok {
 				return
 			}
-			writeSSE(w, string(event.Type), event)
-			flusher.Flush()
+			if writeSSE(w, string(event.Type), event) != nil {
+				return
+			}
 		}
+		flusher.Flush()
 	}
 }
 
-func writeSSE(w http.ResponseWriter, eventType string, payload any) {
+// sseKeepalive is how often the event stream sends a comment line, so proxies
+// and clients see it alive while no event comes.
+const sseKeepalive = 20 * time.Second
+
+// writeSSE writes one event; one that cannot be encoded is logged and ends
+// the stream, so the client reloads instead of missing it.
+func writeSSE(w io.Writer, eventType string, payload any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
-		body, _ = json.Marshal(core.Event{Type: core.EventMessageUpdated, Payload: core.ErrorResponse{Error: err.Error()}})
+		log.Printf("api: encode %s event: %v", eventType, err)
+		return err
 	}
+	var id string
 	if event, ok := payload.(core.Event); ok && event.ID > 0 {
-		_, _ = fmt.Fprintf(w, "id: %d\n", event.ID)
+		id = fmt.Sprintf("id: %d\n", event.ID)
 	}
-	_, _ = fmt.Fprintf(w, "event: %s\n", eventType)
-	_, _ = fmt.Fprintf(w, "data: %s\n\n", body)
+	_, err = fmt.Fprintf(w, "%sevent: %s\ndata: %s\n\n", id, eventType, body)
+	return err
 }
 
 func parseSSEAfterID(r *http.Request) (uint64, error) {

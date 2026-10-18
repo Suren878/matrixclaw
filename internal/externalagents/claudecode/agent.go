@@ -2,12 +2,23 @@ package claudecode
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 )
 
 const AgentID = "claude-code"
+
+// CredentialPaths is where the Claude Code CLI keeps its login.
+func CredentialPaths() []string {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return nil
+	}
+	return []string{filepath.Join(home, ".claude", ".credentials.json")}
+}
 
 func (r *Runtime) ID() string {
 	return AgentID

@@ -40,6 +40,7 @@ flowchart LR
 | `internal/transcript` | message, part, finish and origin types shared by core, store, api and agent |
 | `internal/tools` | tool contract and the built-in file, shell and task tools |
 | `internal/permission` | permission rules, subjects, bash parsing, mode presets |
+| `internal/glob` | the one glob matcher (`**`, classes, braces) and `.gitignore` rules, for path rules and the search tools |
 | `internal/shelltask` | background shell processes and their output files |
 | `internal/webtools` | `web_search` and `web_fetch` |
 | `internal/modules` | module lifecycle, settings contract, and the modules: `storage`, `delivery`, `geo`, `web`, `voice` (+ `voice/realtime`), `telephony`, `browser`, `mcp`, `skills`; `localruntime` holds local voice/browser runtimes |
@@ -80,12 +81,22 @@ recovery), waits for them, then closes external agents and modules.
   `member`, `guest`; absent means owner). Every caller holds the token, so the
   daemon trusts the header as it trusts the token. Telegram sets it from the
   chat an update came from, never from message text.
-- `ownerOnly` routes: admin reload/restart/stop, the session permission mode,
-  and writes to setup providers, external agents, module settings, MCP, the
-  skills library and temporary-storage settings. Reads stay open. Global permission rules are owner-only,
-  guests keep no rules, and members and guests are refused (403) in sessions
-  that run unattended (`core.RunsUnattended`: full_auto or external agent).
-  Clients only hide what the daemon would refuse.
+- Every route in the table has a policy, enforced by one middleware
+  (`internal/api/role.go`; `policy_test.go` lists them): `open`; `owner`
+  (admin reload/restart/stop, the session permission mode, writes to setup
+  providers, external agents, module settings, MCP and the skills library,
+  storage deletes and temporary-storage cleanup and settings); or `session`,
+  for every write that acts in a session (named by the path, by the run, task,
+  approval or automation job it names, or by the JSON body's `session_id` or
+  client binding): members and guests are refused (403) there when the session
+  runs unattended (`core.RunsUnattended`: full_auto or external agent). Reads
+  stay open. Only the owner creates a session with an external agent or a
+  permission mode, global permission rules are owner-only, and guests keep no
+  rules. Core knows nothing of roles. Clients only hide what the daemon would
+  refuse.
+- `writeError` is the one error answer: the status of the first sentinel the
+  error wraps (`core.ErrNotFound` 404, `core.ErrInvalidInput` 400, ...), else
+  the status a handler gave it with `withStatus`, else 500.
 
 ## Live events and the terminal read model
 
@@ -93,11 +104,16 @@ recovery), waits for them, then closes external agents and modules.
   `run.updated`, `tool.updated`, `approval.requested|resolved`,
   `input.updated`, `task.updated`, `todo.updated`, `context.updated` (context
   size the engine measured after each step). Replay with `?after=` covers only
-  a 256-event history shared by all sessions.
+  a 256-event ring shared by all sessions.
+- Each subscriber gets events in ID order. One that falls 512 events behind
+  is closed, never skipped silently; its client reconnects and reloads. An
+  event that cannot be encoded is logged and ends the stream the same way. An
+  open stream sends a `: ping` comment every 20 s.
 - So the terminal subscribes first, then loads `GET /v1/snapshot`, and drops
   events at or below the snapshot's `event_id`. After that it changes only
-  through events (`clients/terminal/chat/readmodel`), reloading on reconnect,
-  session switch and commands that ask for it (`ReloadSnapshot`).
+  through events (`clients/terminal/chat/readmodel`), reloading on reconnect
+  (also after the daemon closed the stream), session switch and commands that
+  ask for it (`ReloadSnapshot`).
 - Chat rows are reconciled by ID and revision, so expanded output stays
   expanded. Context usage in the header comes only from the daemon.
 - `internal/toolview` (`Describe`, `FileChangeOf`) gives a tool call's title,
@@ -135,11 +151,19 @@ accepted ─▶ running ─▶ completed
 any status that has not ended ─▶ failed | canceled
 ```
 
-`transition` sets `finished_at`, saves or deletes the wakeup of a run waiting
-for events, clears the checkpoint on the end, seals the reply in the same write
-(`store.SealRun`; an ended run stays ended, `ErrRunEnded`), rejects an ended
-run's open approvals, syncs the subagent task the run works for, and publishes
-`run.updated`. A failed run cancels its blocking subagents.
+`transition` commits, then follows up. The commit checks the edge, sets
+`finished_at`, saves the wakeup of a run parking in `waiting_events` and seals
+the reply in the same write (`store.SealRun`; an ended run stays ended,
+`ErrRunEnded`); only its failure is returned. After it every step runs and
+their errors are joined and logged: drop a wakeup the run no longer has,
+publish `run.updated`, sync the subagent task the run works for, and for an
+ended run clear its checkpoint, reject its open approvals, cancel the blocking
+subagents of a failed run and tell the user of a failed wake run. Callers
+waiting for the end (a blocking `agent` call) are woken in any case.
+
+Session gates never nest: ending a subagent's run takes its parent session's
+gate (the finished task wakes the parent), so no subagent run ends while a
+gate is held.
 
 `afterRun` runs when the executor lets go of a run (or from `CancelRun` for a
 parked one): it starts the session's next queued message, wakes the session
@@ -152,7 +176,8 @@ without that cause and counts as an interrupt. Canceling a run also stops the
 shell tasks and subagents it started.
 
 **Recovery.** A run found `running` without an executor was interrupted.
-`claim` counts the recovery (more than 8 fails the run) and builds a plan for
+`claim` counts the recovery; the count resets once a step finishes, and more
+than 8 recoveries in a row without one fail the run. It builds a plan for
 every call left without a result (`agent.Task.Interrupted`, `Settle`): `rerun`
 read-only and deferred calls, `ask` again for a mutating call, `answer` an
 unknown tool with an error. A mutating call never reruns without a fresh
@@ -165,9 +190,8 @@ run). External-agent runs keep their own recovery in core.
 
 `internal/agent` is the loop: steps, budget (steps, active time, tokens) and a
 final turn without tools, loop guard, output-limit continuation, completion
-check for open todo items, context notes, summaries. It knows nothing of
-SQLite, HTTP or clients and talks to core through ports
-(`internal/agent/ports.go`):
+checks, context notes, summaries. It knows nothing of SQLite, HTTP or clients
+and talks to core through ports (`internal/agent/ports.go`):
 
 | Port | Core adapter | Purpose |
 |---|---|---|
@@ -179,6 +203,31 @@ SQLite, HTTP or clients and talks to core through ports
 | `Sink` | `coreSink` | live events to clients |
 | `Prompts` | `corePrompts` | fixed system prompt per run; changing state as a context note |
 | `Todos` | `coreTodos` | open todo items of the run's `/continue` chain |
+
+What the engine remembers between steps (`agent.RunState`) is checkpointed with
+the phase, so a parked or restarted run keeps it. How a step can go wrong:
+
+- **Generation failures** go through one `withRetry`, shared with summaries:
+  up to 6 attempts, doubling jittered waits (from 2 s for rate limits),
+  Retry-After honoured, at most 2 minutes of waiting in all. A reply that fails
+  while streaming is sealed (finish reason `daemon_restart`, never replayed) and
+  generated again. A malformed tool call goes back to the model as a note (three
+  in a row fail the run); a call whose arguments are not JSON is journaled with
+  `{}` and answered with an error.
+- **Output limit:** a cut reply is kept and continued, with the limit raised
+  once; a cut tool step runs its complete calls and tells the model a cut call
+  was dropped. The fourth cut in a row turns the next step into the final turn (stop reason
+  `budget_exhausted`).
+- **Loop guard:** the most repeated (tool, arguments, result) among the last 20
+  calls warns at 3 and stops the run at 5, whatever the order inside a batch.
+- **Completion checks:** a reply without tools is held back once while the
+  run's todo list has open items, and once when the run changed files (edit
+  tools, or a bash command that writes files) after its last successful
+  build, test, lint or type-check command; only while budget remains and the
+  run has bash.
+- **Reasoning text:** a reasoning block the reply opens with, or a closed one
+  starting a later line, is stripped as the reply streams; code fences are left
+  alone.
 
 While a native run is active the engine is the only writer of its session's
 transcript; everything else reaches it through the inbox. Messages are ordered
@@ -205,9 +254,10 @@ changes), so the cached prefix survives between runs.
   the project instructions. Other runs get the chat persona and the general
   tool discipline. A user `assistant.system_prompt` replaces the persona.
 - Every text names only tools the run has (`prompt.Tools`), so a read-only
-  child is never told about bash or edits. Children get the same manual with
-  a subagent section instead of the parent's question and final-reply rules;
-  the parent gets the agent-tool guidance with the runtimes available now.
+  child (read-only bash, no edit tools) is never told to edit, build or
+  commit. Children get the same manual with a subagent section instead of
+  the parent's question and final-reply rules; the parent gets the
+  agent-tool guidance with the runtimes available now.
 - Project instructions (`internal/workspace`): `AGENTS.md` next to
   setup.json, then, from the top down to the working directory, the first of
   `AGENTS.md`/`CLAUDE.md` in each directory plus `.matrixclaw/instructions.md`.
@@ -218,13 +268,56 @@ changes), so the cached prefix survives between runs.
   starts: the date in `daemon.timezone`, the client, the permission mode and,
   for coding runs, the git branch, status (20 lines) and last 5 commits.
 
+## Providers
+
+`internal/providers` holds the catalog (`ProviderSpec` per built-in provider,
+type defaults for custom ones), the adapters in `ai/*` (OpenAI-compatible
+chat, Codex Responses, Anthropic Messages, Gemini) and `factory`, which picks
+the adapter by provider type. `internal/sessionllm` keeps one runtime per
+provider and model.
+
+- Model metadata (window, output limit, tools, images, reasoning): the
+  provider's own live listing, kept by provider ID and listed model ID in
+  `runtime/context-windows.json`, then static rules, then 128k.
+  `SessionLLMRegistry.ContextWindow` applies a manual window only to the
+  provider's configured model.
+- Errors: adapters return `*providers.APIError` (status, `Kind`,
+  `RetryAfter` from `retry-after-ms`, `Retry-After` or the body);
+  `providers.ClassifyError` gives any error a kind: `rate_limit`,
+  `overloaded`, `transient` (retryable), `auth`, `quota`,
+  `context_overflow`, `permanent`.
+- A base URL on a loopback address needs no API key.
+- Codex OAuth: every refresh holds a flock on `<auth store>.lock`, since the
+  daemon and the CLI share the single-use refresh token; a 401 refreshes once
+  and retries, then fails with `providers.ErrReauthRequired`.
+- The stream idle timeout is 120 s, 5 min at high and 10 min at xhigh
+  reasoning effort.
+
 ## Tasks, subagents, await
 
 - Background work is one task model (`core.Task`, table `tasks`, one
-  `task.updated` event) with two kinds. `shell`: a command in its own process
-  group (`internal/shelltask`) with a size-capped output file; `bash` moves a
-  command still running after 120 s to the background. `subagent`: a child run
-  started by the `agent` tool.
+  `task.updated` event) with two kinds. `shell`: a command run with `bash -c`
+  in its own process group (`internal/shelltask`) with a size-capped output
+  file; `bash` moves a command still running after 120 s to the background.
+  `subagent`: a child run started by the `agent` tool. A child that cannot be
+  started leaves no session, run or worktree behind.
+- Commands get the environment of a login shell, read once at the first
+  command (`shelltask.LoginEnvironment`), without API key variables and
+  `MATRIXCLAW_*` (`setup.ChildEnvironment`, with the setup applied now). MCP
+  stdio servers get the daemon's environment filtered the same way, plus
+  their `env`.
+- A finished foreground command's result always states its exit code (or its
+  timeout); output over 30 KB becomes its head and a longer tail, with the
+  path of the kept log, which core does not cut again. Processes it left in
+  its group are killed. Exit 1 with no output from a search, `test` or
+  process lookup is neutral, not an error.
+- Shutdown stops the background commands (`Core.StopShellTasks`); the next
+  start marks their tasks `lost`. Compaction deletes the logs of ended tasks
+  that no later message names.
+- A read-only subagent gets `bash` as a read-only tool that never asks
+  (`tools.ReadOnlySpec`): only plain lines of read-only commands
+  (`permission.CheckReadOnly`) whose paths stay inside its working directory,
+  away from secrets and not in or above the home directory, run.
 - Shell task: `running` → `completed`/`failed` by exit code, `canceled`, or
   `lost` after a restart. Subagent task follows its child run inside
   `transition`: `running` ⇄ `waiting_approval` → `completed`/`failed`/`canceled`.
@@ -247,7 +340,8 @@ changes), so the cached prefix survives between runs.
   `Spec.Asks` says whether a call no rule decides waits for the user.
 - Core alone decides (`core.checkPermission`): session and global rules, then
   the mode preset (`default`, `accept_edits`, `full_auto`); deny wins over ask
-  over allow. `permission.Builtin` (`memory: list` = allow) is in every preset
+  over allow. A rule names its tool or a tool listed in `Spec.CoveredBy`
+  (`read` rules cover `grep`, `glob` and `ls`). `permission.Builtin` (`memory: list` = allow) is in every preset
   and cannot be deleted; a stored ask/deny rule on `memory` still wins. The
   same check covers runs, the tools API, voice and the MCP server.
 - A call that asks runs only with a grant: its newest approval is approved and
@@ -260,13 +354,63 @@ changes), so the cached prefix survives between runs.
   show "Run <tool>" and the arguments. An ask rule adds "Asked by rule ...".
 - A mutating call that waits for approval is a barrier: later calls of the
   same reply wait, earlier ones run.
+- Bash lines are parsed (`permission.ParseLine`). A redirection to a file,
+  substitution, wrapper (`sudo`, `env`, `xargs`, `bash -c`), package runner
+  (`npx`, `pnpm exec`, `uv run`, `go run`, `docker run`, ...), a flag that runs
+  a program, or an in-place edit (`sed -i`, `perl -i`, awk that redirects)
+  makes a line risky: no pattern rule allows it, and it asks when a deny or
+  ask rule may catch it. The commands a wrapper or runner may run are matched
+  by deny and ask rules too, so `deny rm:*` denies `pnpm exec rm -rf x`.
 - `tools.Result.Status` (`success`/`error`/`neutral`, empty = success) is the
   only status field. Results over about 8k tokens go to
   `sessions/<id>/tool-output/`, and the model gets head, tail and path.
-- `read` and `grep` refuse credential files (setup.json, `daemon.env`, the
-  Codex OAuth store, Codex and Claude Code credentials).
-  A read-only call on a place where keys usually live (`tools.HoldsSecrets`:
-  `~/.ssh`, `~/.aws`, ...) asks when no rule decides.
+- A search (`grep`, `glob`, `ls`) meets the rules by its directory: a deny or
+  ask rule matching the directory decides the whole call. Below it, core passes
+  `Call.Skip` (`permission.SearchSkip`: the deny and ask rules that did not
+  match the directory) and the walkers drop matching paths, saying how many
+  they left out. Places that hold keys are dropped the same way unless the
+  search starts inside one.
+- Searches list files with `git ls-files -co --exclude-standard` inside a git
+  repository; otherwise, or when git lists nothing (an ignored directory named
+  in `path`), they walk the tree following `.gitignore` files (and outside a
+  repository skip `node_modules`, `vendor`, `dist` and similar). Hidden entries
+  are searched only when the pattern or `include` names them. Results are
+  ordered most recently modified first, then by path, and cut after sorting.
+- `read`, `grep` and the file-changing tools refuse credential files: the
+  places their owners register at daemon start with `tools.ProtectCredentials`
+  (`setup`: setup.json and `daemon.env`; `openaicodex`: the auth directory and
+  the Codex CLI's auth.json; `claudecode`: the Claude Code login), everything
+  inside them and their backups. A read-only call on a place where keys
+  usually live (`tools.HoldsSecrets`: `~/.ssh`, `~/.aws`, ...) asks when no
+  rule decides.
+- Every tool path goes through `tools.ResolveFilesystemPath`: relative to the
+  call's working directory, symlinks resolved for permission rules and writes.
+
+### File tools
+
+- `read` pages a file: at most 2000 lines and about 24 KB a call, well under
+  the result cut, ending with the offset to read on. Lines over 2000
+  characters are cut; a file with a NUL byte in its first 8 KB is refused as
+  binary.
+- File state (`tools/file_ledger.go`): one in-memory ledger shared by `read`,
+  `write`, `edit` and `multiedit` holds, per session, the xxh3 hash of each
+  file the session read (any part) or wrote. Changing an existing file the
+  session has not seen, or that changed since, is refused, in the preview too,
+  so nobody is asked. New files need no read. The ledger is not persisted:
+  after a daemon restart the model reads a file again before changing it.
+  Calls without a session are not checked.
+- Edits (`tools/editmatch.go`) match byte for byte, then ignoring indentation
+  (the new text moves to the file's indentation), surrounding whitespace, and
+  whitespace with typographic quotes and dashes, then all of that with doubled
+  escapes (`\n`) undone. A fallback must find exactly one place; `replace_all`
+  is byte for byte only. CRLF line ends and a byte order mark are kept. A miss
+  shows the closest lines with their numbers; an edit whose new text is
+  already there answers neutral, as does a change that changes nothing.
+- Writes go to the symlink-resolved path through a temporary file and a
+  rename, keeping the file's mode. The result shows the changed lines
+  numbered like `read`; its metadata (`tools.FileChange`) keeps only the
+  changed regions, at most 16 KB a side, while an approval shows a file up to
+  64 KB whole.
 
 ## Web tools
 
@@ -283,6 +427,14 @@ through read-only subagents.
 
 `setup.json` is one typed `setup.Config` owned by `internal/setup`:
 
+- Loading is strict: a key the struct does not declare, or a stored value
+  outside its closed list (provider type, tool use mode, runtime modes,
+  browser and voice providers, external agent ids, web search provider, MCP
+  transport), fails with an error naming the key. A file is never
+  reinterpreted on read; there are no value aliases. A version 3 file (v0.2.0)
+  is converted to version 4 once on load (`internal/setup/legacy_v3.go`): the
+  original is kept as `setup.json.pre-v4`, the keys v0.2.0 still wrote are
+  dropped and alias values become canonical.
 - Every edit is `Service.Update(func(*Config) error)`: load, change,
   canonicalize, `Config.Validate` (structure only: no network, no env), save
   atomically under one lock. Provider edits, the session model switch and
@@ -347,11 +499,8 @@ that takes a single reply (Telegram inline and guest). Restart notices are
 
 ## Planned after v0.2.0
 
-- Collapse the `internal/store` migrations into a canonical `001_init.sql`
-  with `PRAGMA user_version`.
-- Drop read-time setup.json rewrites and persisted-value aliases (session
-  runtime `codex`, web search `api_key`, browser provider and runtime-mode
-  aliases).
-- Remove the `approvals.action` and `tasks.result_message_id` columns.
-- Drop the legacy client-capabilities read rule in
-  `internal/store/sqlite_client_capabilities.go`.
+- Drop the session runtime aliases (`codex`, `assistant`, ...) in
+  `internal/core/external_agents.go`, then the `sessions.runtime_id` column.
+- Delete the one-time v0.2 conversions, `internal/store/legacy_v02.go` (the
+  database) and `internal/setup/legacy_v3.go` (setup.json), one release after
+  they shipped.

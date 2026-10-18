@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
@@ -14,12 +13,14 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-// callRequest is one tool call the engine is about to run.
+// callRequest is one tool call the engine is about to run; invalid, when set,
+// answers it instead, as its arguments were not JSON.
 type callRequest struct {
 	id         string
 	name       string
 	args       json.RawMessage
 	workingDir string
+	invalid    string
 }
 
 // executeBatch runs the response's tool calls as one batch.
@@ -33,10 +34,16 @@ func (r *run) executeBatch(ctx context.Context, response providers.Response) (bo
 
 // batchRequests turns the response's tool calls into requests, skipping repeats
 // of a call already answered; a call ID reused for another call fails the run.
+// Arguments that are not JSON are journaled as {} and answered with an error.
 func (r *run) batchRequests(response providers.Response) ([]callRequest, error) {
 	seen := make(map[string]providers.ToolCall)
 	var requests []callRequest
 	for _, toolCall := range response.ToolCalls {
+		invalid := ""
+		if args := bytes.TrimSpace(toolCall.Arguments); len(args) > 0 && !json.Valid(args) {
+			invalid = invalidArgsText(args)
+			toolCall.Arguments = json.RawMessage(`{}`)
+		}
 		id := strings.TrimSpace(toolCall.ID)
 		if id != "" {
 			if prior, ok := seen[id]; ok {
@@ -67,7 +74,7 @@ func (r *run) batchRequests(response providers.Response) ([]callRequest, error) 
 		if id == "" {
 			id = r.NewID("tool")
 		}
-		requests = append(requests, callRequest{id: id, name: name, args: toolCall.Arguments, workingDir: r.task.WorkingDir})
+		requests = append(requests, callRequest{id: id, name: name, args: toolCall.Arguments, workingDir: r.task.WorkingDir, invalid: invalid})
 	}
 	return requests, nil
 }
@@ -211,7 +218,7 @@ func (r *run) answerCall(ctx context.Context, req callRequest, result tools.Resu
 	if _, err := r.appendResult(ctx, req, result); err != nil {
 		return err
 	}
-	r.counters.observeCall(req.name, req.args, result)
+	r.observe(req, result)
 	return nil
 }
 
@@ -223,7 +230,7 @@ func (r *run) finishCall(ctx context.Context, req callRequest, result tools.Resu
 	if err != nil {
 		return err
 	}
-	r.counters.observeCall(req.name, req.args, result)
+	r.observe(req, result)
 	r.Sink.Emit(Event{Kind: EventToolFinished, SessionID: r.task.SessionID, RunID: r.task.RunID, ToolCallID: req.id, ToolName: req.name, ResultMessageID: message.ID, Result: result})
 	return nil
 }
@@ -262,27 +269,17 @@ func (r *run) callMessage(req callRequest, finished bool) transcript.Message {
 }
 
 func sameRequestedTool(name string, arguments []byte, call providers.ToolCall) bool {
-	if strings.TrimSpace(name) != strings.TrimSpace(call.Name) {
-		return false
+	return strings.TrimSpace(name) == strings.TrimSpace(call.Name) && bytes.Equal(canonicalArgs(arguments), canonicalArgs(call.Arguments))
+}
+
+// invalidArgsText answers a call whose arguments are not JSON, quoting their start.
+func invalidArgsText(args []byte) string {
+	const quoted = 200
+	text := []rune(string(args))
+	if len(text) > quoted {
+		text = append(text[:quoted], '…')
 	}
-	var left, right any
-	if len(arguments) == 0 {
-		arguments = []byte(`{}`)
-	}
-	if len(call.Arguments) == 0 {
-		call.Arguments = []byte(`{}`)
-	}
-	if !json.Valid(arguments) || !json.Valid(call.Arguments) {
-		return strings.TrimSpace(string(arguments)) == strings.TrimSpace(string(call.Arguments))
-	}
-	leftDecoder := json.NewDecoder(bytes.NewReader(arguments))
-	rightDecoder := json.NewDecoder(bytes.NewReader(call.Arguments))
-	leftDecoder.UseNumber()
-	rightDecoder.UseNumber()
-	if leftDecoder.Decode(&left) != nil || rightDecoder.Decode(&right) != nil {
-		return false
-	}
-	return reflect.DeepEqual(left, right)
+	return "Invalid arguments: not valid JSON, so the call did not run. Send it again with a JSON object as its arguments. Received: " + string(text)
 }
 
 func appendUserGuidanceToToolResult(message *transcript.Message, text string) {

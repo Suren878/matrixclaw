@@ -16,7 +16,8 @@ type RunCheckpoint struct {
 	RunID string `json:"run_id"`
 	// Batch is set in the engine's tool_batch phase.
 	Batch *agent.ToolBatch `json:"tool_batch,omitempty"`
-	// RecoveryCount counts the daemon restarts the run was recovered from.
+	// RecoveryCount counts the daemon restarts the run was recovered from
+	// since it last finished a step.
 	RecoveryCount int             `json:"recovery_count,omitempty"`
 	EngineState   json.RawMessage `json:"engine_state,omitempty"`
 	UpdatedAt     time.Time       `json:"updated_at"`
@@ -30,20 +31,25 @@ type RunCheckpointStore interface {
 }
 
 // saveEngineCheckpoint stores the engine's batch together with its run
-// counters; while a native run is active only its engine calls it.
+// state; while a native run is active only its engine calls it. A model
+// phase after a tool batch means a step finished, which resets the recovery
+// count: only restarts in a row without progress stop a run.
 func (c *Core) saveEngineCheckpoint(ctx context.Context, state agent.State) error {
-	counters, err := json.Marshal(state.Counters)
+	engine, err := json.Marshal(state.RunState)
 	if err != nil {
 		return err
 	}
 	return c.updateRunCheckpoint(ctx, state.RunID, func(checkpoint *RunCheckpoint) {
+		if state.Phase == agent.PhaseModel && checkpoint.Batch != nil {
+			checkpoint.RecoveryCount = 0
+		}
 		checkpoint.Batch = state.Batch
-		checkpoint.EngineState = counters
+		checkpoint.EngineState = engine
 	})
 }
 
 // updateRunCheckpoint applies update to the run's checkpoint and keeps every field
-// update leaves alone, such as the recovery count or the engine counters.
+// update leaves alone, such as the recovery count or the engine state.
 func (c *Core) updateRunCheckpoint(ctx context.Context, runID string, update func(*RunCheckpoint)) error {
 	if runID == "" {
 		return nil
@@ -58,48 +64,48 @@ func (c *Core) updateRunCheckpoint(ctx context.Context, runID string, update fun
 	return c.store.SaveRunCheckpoint(ctx, checkpoint)
 }
 
-// resumeCounters reads the engine counters of the run's checkpoint; a checkpoint
-// without readable counters starts the budget from zero.
-func (c *Core) resumeCounters(ctx context.Context, runID string) (agent.Counters, error) {
+// resumeState reads the engine state of the run's checkpoint; a checkpoint
+// without a readable one starts the budget from zero.
+func (c *Core) resumeState(ctx context.Context, runID string) (agent.RunState, error) {
 	checkpoint, ok, err := c.runCheckpoint(ctx, runID)
 	if err != nil || !ok || len(checkpoint.EngineState) == 0 {
-		return agent.Counters{}, err
+		return agent.RunState{}, err
 	}
-	var counters agent.Counters
-	if err := json.Unmarshal(checkpoint.EngineState, &counters); err != nil {
-		log.Printf("core: run %q has unreadable budget counters, starting from zero: %v", runID, err)
-		return agent.Counters{}, nil
+	var state agent.RunState
+	if err := json.Unmarshal(checkpoint.EngineState, &state); err != nil {
+		log.Printf("core: run %q has unreadable engine state, starting from zero: %v", runID, err)
+		return agent.RunState{}, nil
 	}
-	return counters, nil
+	return state, nil
 }
 
-// carriedCounters are the counters the session's previous run left for the
+// carriedState is the state the session's previous run left for the
 // next one; unreadable ones start from zero.
-func (c *Core) carriedCounters(ctx context.Context, sessionID string) (agent.Counters, error) {
-	state, err := c.store.GetSessionEngineState(ctx, sessionID)
-	if err != nil || len(state) == 0 {
-		return agent.Counters{}, err
+func (c *Core) carriedState(ctx context.Context, sessionID string) (agent.RunState, error) {
+	stored, err := c.store.GetSessionEngineState(ctx, sessionID)
+	if err != nil || len(stored) == 0 {
+		return agent.RunState{}, err
 	}
-	var counters agent.Counters
-	if err := json.Unmarshal(state, &counters); err != nil {
-		log.Printf("core: session %q has unreadable carried counters, starting from zero: %v", sessionID, err)
-		return agent.Counters{}, nil
+	var state agent.RunState
+	if err := json.Unmarshal(stored, &state); err != nil {
+		log.Printf("core: session %q has unreadable carried state, starting from zero: %v", sessionID, err)
+		return agent.RunState{}, nil
 	}
-	return counters, nil
+	return state, nil
 }
 
-// carryCounters keeps what a run's counters carry over to the session's next run.
-func (c *Core) carryCounters(ctx context.Context, sessionID string, counters agent.Counters) {
-	carried := counters.Carried()
-	if carried == (agent.Counters{}) {
+// carryState keeps what a run's state carries over to the session's next run.
+func (c *Core) carryState(ctx context.Context, sessionID string, state agent.RunState) {
+	carried := state.Carried()
+	if carried == (agent.RunState{}) {
 		return
 	}
-	state, err := json.Marshal(carried)
+	stored, err := json.Marshal(carried)
 	if err == nil {
-		err = c.store.SaveSessionEngineState(ctx, sessionID, state, c.now().UTC())
+		err = c.store.SaveSessionEngineState(ctx, sessionID, stored, c.now().UTC())
 	}
 	if err != nil {
-		log.Printf("core: keep carried counters of session %q: %v", sessionID, err)
+		log.Printf("core: keep carried state of session %q: %v", sessionID, err)
 	}
 }
 
@@ -131,13 +137,6 @@ func (c *Core) runCheckpoint(ctx context.Context, runID string) (RunCheckpoint, 
 		return RunCheckpoint{}, false, err
 	}
 	return checkpoint, true, nil
-}
-
-func (c *Core) clearRunCheckpoint(ctx context.Context, runID string) {
-	if runID == "" {
-		return
-	}
-	_ = c.store.DeleteRunCheckpoint(ctx, runID)
 }
 
 // runRecoveryNotice tells a recovered run that it was interrupted.

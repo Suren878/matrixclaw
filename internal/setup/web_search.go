@@ -4,8 +4,7 @@ import (
 	"strings"
 )
 
-// normalizeWebSearchConfig trims the web search settings and moves a key
-// saved by older versions to its provider's field.
+// normalizeWebSearchConfig trims the web search settings.
 func normalizeWebSearchConfig(cfg WebSearchConfig) WebSearchConfig {
 	if strings.TrimSpace(cfg.Provider) != "" {
 		cfg.Provider = normalizeWebSearchProvider(cfg.Provider)
@@ -13,20 +12,6 @@ func normalizeWebSearchConfig(cfg WebSearchConfig) WebSearchConfig {
 	cfg.TavilyKey = strings.TrimSpace(cfg.TavilyKey)
 	cfg.SerperKey = strings.TrimSpace(cfg.SerperKey)
 	cfg.BaseURL = strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
-	// Migrate legacy api_key to the provider-specific field.
-	if legacy := strings.TrimSpace(cfg.APIKey); legacy != "" {
-		switch cfg.Provider {
-		case WebSearchProviderTavily:
-			if cfg.TavilyKey == "" {
-				cfg.TavilyKey = legacy
-			}
-		case WebSearchProviderSerper:
-			if cfg.SerperKey == "" {
-				cfg.SerperKey = legacy
-			}
-		}
-		cfg.APIKey = ""
-	}
 	return cfg
 }
 

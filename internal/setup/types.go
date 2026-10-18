@@ -4,7 +4,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
-const CurrentVersion = 3
+const CurrentVersion = 4
 
 type Config struct {
 	Version          int              `json:"version"`
@@ -230,7 +230,6 @@ type TelephonyConfig struct {
 // WebSearchConfig stores the web search provider choice and credentials.
 type WebSearchConfig struct {
 	Provider  string `json:"provider,omitempty"`
-	APIKey    string `json:"api_key,omitempty"` // legacy field, migrated on read
 	TavilyKey string `json:"tavily_key,omitempty"`
 	SerperKey string `json:"serper_key,omitempty"`
 	BaseURL   string `json:"base_url,omitempty"`

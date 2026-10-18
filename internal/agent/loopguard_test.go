@@ -108,9 +108,9 @@ func TestLoopStreakIsCheckpointed(t *testing.T) {
 
 	run(t, f, model)
 
-	last := f.Journal.States[len(f.Journal.States)-1].Counters
+	last := f.Journal.States[len(f.Journal.States)-1].RunState
 	if last.LoopTool != "status" || last.LoopRepeats != 3 || !last.LoopWarned {
-		t.Fatalf("last checkpoint counters = %+v", last)
+		t.Fatalf("last checkpoint state = %+v", last)
 	}
 }
 
@@ -133,9 +133,9 @@ func TestRejectedCallStreakSurvivesAnApprovalPark(t *testing.T) {
 
 	outcome := run(t, f, model)
 
-	last := f.Journal.States[len(f.Journal.States)-1].Counters
+	last := f.Journal.States[len(f.Journal.States)-1].RunState
 	if outcome.Status != agent.StatusWaitingApproval || last.LoopTool != "ghost" || last.LoopRepeats != 1 {
-		t.Fatalf("outcome = %+v last checkpoint counters = %+v", outcome, last)
+		t.Fatalf("outcome = %+v last checkpoint state = %+v", outcome, last)
 	}
 }
 
@@ -146,8 +146,8 @@ func TestRepeatedAwaitsOnALongTaskAreNotALoop(t *testing.T) {
 
 	outcome := run(t, f, model)
 	for outcome.Status == agent.StatusWaitingEvents {
-		f.Clock = outcome.Counters.Await.Until
-		outcome = resume(t, f, model, outcome.Counters)
+		f.Clock = outcome.RunState.Await.Until
+		outcome = resume(t, f, model, outcome.RunState)
 	}
 
 	if outcome.StopReason != agent.StopDone || outcome.Assistant.Content != "Still building." {
@@ -171,5 +171,32 @@ func TestQuietWaitsForARunningTaskAreNotALoop(t *testing.T) {
 
 	if outcome.StopReason != agent.StopDone || len(engineNotes(f.Journal.Messages)) != 0 {
 		t.Fatalf("outcome = %+v notes = %+v", outcome, engineNotes(f.Journal.Messages))
+	}
+}
+
+func TestRepeatedCallIsCaughtWhateverItsPlaceInTheBatch(t *testing.T) {
+	for _, repeatedFirst := range []bool{true, false} {
+		f := agenttest.NewFixture()
+		f.Tools.Funcs["status"] = statusTool
+		f.Tools.Funcs["read"] = counterTool()
+		turns := make([]agenttest.Turn, 0, 6)
+		for i := 1; i <= 5; i++ {
+			repeated, varying := call(fmt.Sprintf("s%d", i), "status"), call(fmt.Sprintf("r%d", i), "read")
+			if repeatedFirst {
+				turns = append(turns, calls(repeated, varying))
+			} else {
+				turns = append(turns, calls(varying, repeated))
+			}
+		}
+		model := agenttest.NewScriptedModel(append(turns, text("Stopping."))...)
+
+		outcome := run(t, f, model)
+
+		if outcome.StopReason != agent.StopLoopDetected || len(model.Requests()) != 6 {
+			t.Fatalf("repeated call first = %v: outcome = %+v requests = %d", repeatedFirst, outcome, len(model.Requests()))
+		}
+		if note := lastMessage(model.Requests()[3]); !strings.Contains(note.Content, "You are repeating status") {
+			t.Fatalf("repeated call first = %v: request 4 ends with %+v, want the loop warning", repeatedFirst, note)
+		}
 	}
 }

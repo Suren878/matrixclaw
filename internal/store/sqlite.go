@@ -38,7 +38,7 @@ func NewSQLite(path string) (*SQLiteStore, error) {
 	db.SetMaxIdleConns(1)
 
 	store := &SQLiteStore{db: db}
-	if err := store.bootstrap(); err != nil {
+	if err := store.bootstrap(cleanPath); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -62,7 +62,7 @@ func secureSQLiteFiles(path string) error {
 	return nil
 }
 
-func (s *SQLiteStore) bootstrap() error {
+func (s *SQLiteStore) bootstrap(path string) error {
 	pragmas := []string{
 		`PRAGMA foreign_keys = ON`,
 		`PRAGMA journal_mode = WAL`,
@@ -74,8 +74,8 @@ func (s *SQLiteStore) bootstrap() error {
 			return fmt.Errorf("store: bootstrap pragma %q: %w", stmt, err)
 		}
 	}
-	if err := applyCanonicalSchema(s.db); err != nil {
+	if err := migrate(s.db, path); err != nil {
 		return err
 	}
-	return nil
+	return indexUnsearchedMessages(s.db)
 }

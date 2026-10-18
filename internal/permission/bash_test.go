@@ -24,10 +24,12 @@ func TestParseLineFindsEverySimpleCommand(t *testing.T) {
 		{"GOFLAGS=-x go build", [][]string{{"go", "build"}}, true},
 		{"echo $(rm -rf /)", [][]string{{"echo", ""}, {"rm", "-rf", "/"}}, true},
 		{"diff <(ls a) b", [][]string{{"diff", "", "b"}, {"ls", "a"}}, true},
-		{`find . -name x -exec rm {} \;`, [][]string{{"find", ".", "-name", "x", "-exec", "rm", "{}", ";"}}, true},
-		{"go build -toolexec=/tmp/x ./...", [][]string{{"go", "build", "-toolexec=/tmp/x", "./..."}}, true},
-		{"sudo ls", [][]string{{"sudo", "ls"}}, true},
-		{"xargs rm < files", [][]string{{"xargs", "rm"}}, true},
+		{`find . -name x -exec rm {} \;`, [][]string{{"find", ".", "-name", "x", "-exec", "rm", "{}", ";"}, {".", "-name", "x", "-exec", "rm", "{}", ";"}, {"x", "-exec", "rm", "{}", ";"}, {"rm", "{}", ";"}, {"{}", ";"}, {";"}}, true},
+		{"go build -toolexec=/tmp/x ./...", [][]string{{"go", "build", "-toolexec=/tmp/x", "./..."}, {"build", "-toolexec=/tmp/x", "./..."}, {"./..."}}, true},
+		{"sudo ls", [][]string{{"sudo", "ls"}, {"ls"}}, true},
+		{"xargs rm < files", [][]string{{"xargs", "rm"}, {"rm"}}, true},
+		{"sh -c 'ls a'", [][]string{{"sh", "-c", "ls a"}, {"ls", "a"}, {"ls a"}}, true},
+		{"pnpm exec rm x", [][]string{{"pnpm", "exec", "rm", "x"}, {"exec", "rm", "x"}, {"rm", "x"}, {"x"}}, true},
 		{"ls $HOME", [][]string{{"ls", ""}}, true},
 		{"export X=1", nil, true},
 		{"f() { rm -rf /; }", [][]string{{"rm", "-rf", "/"}}, true},
@@ -91,6 +93,10 @@ func TestParseLineMarksFlagsThatRunProgramsRisky(t *testing.T) {
 		`cargo test --config=build.rustc-wrapper=/tmp/evil`,
 		`npm test --script-shell=/tmp/evil`,
 		`pnpm test --node-options='--require /tmp/evil.js'`,
+		`go -C sub run .`,
+		`cargo +nightly run`,
+		`docker --context prod run alpine id`,
+		`pnpm --filter web exec rm x`,
 	} {
 		if got := ParseLine(line); !got.Risky {
 			t.Errorf("ParseLine(%q) is not risky", line)
@@ -109,6 +115,9 @@ func TestParseLineMarksFlagsThatRunProgramsRisky(t *testing.T) {
 		`find . -name '*.go' -type f`,
 		`make test`,
 		`cargo test --release`,
+		`go test -run run ./...`,
+		`go test -v -run TestRunExec ./internal/core`,
+		`docker --context prod ps`,
 	} {
 		if got := ParseLine(line); got.Risky {
 			t.Errorf("ParseLine(%q) is risky", line)

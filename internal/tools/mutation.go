@@ -41,63 +41,79 @@ type EditOperation struct {
 	ReplaceAll bool   `json:"replace_all,omitempty"`
 }
 
-// FileChange is what write, edit and multiedit do to one file: the result's
-// metadata and, reduced by preview, what their approval shows.
-type FileChange struct {
-	Path       string `json:"file_path"`
-	OldContent string `json:"old_content,omitempty"`
-	NewContent string `json:"new_content,omitempty"`
-	Additions  int    `json:"additions"`
-	Removals   int    `json:"removals"`
-}
+// unchangedError is a call that would leave its file as it is; it answers the
+// call as neutral rather than failed.
+type unchangedError struct{ reason string }
 
-// fileMutation is one call of a file tool: write may create the file (and its
-// directory); apply turns the old content into the new one.
+func (e unchangedError) Error() string { return e.reason }
+
+// fileMutation is one call of a file tool on path, a real path: write may
+// create the file and its directory; apply turns the old content into the new
+// one and notes how its edits matched.
 type fileMutation struct {
 	path   string
 	create bool
-	apply  func(old string) (string, error)
+	apply  func(old string) (string, []string, error)
+}
+
+// mutationOutcome is a change of one file, planned or done.
+type mutationOutcome struct {
+	path      string
+	old, next string
+	existed   bool
+	notes     []string
+	diff      udiff.UnifiedDiff
 }
 
 // mutationExecutor is write, edit or multiedit; plan reads a call's arguments.
 type mutationExecutor struct {
-	tool string
-	plan func(args json.RawMessage) (file string, m fileMutation, err error)
-	// describe is the approval's description, done the result's content.
+	tool  string
+	files *fileLedger
+	plan  func(args json.RawMessage) (file string, m fileMutation, err error)
+	// describe is the approval's description, report the result's content.
 	describe func(path string) string
-	done     func(path string, args json.RawMessage) string
+	report   func(o mutationOutcome) string
 }
 
-func NewWriteExecutor() Executor {
+func newWriteExecutor(files *fileLedger) Executor {
 	return &mutationExecutor{
-		tool: writeToolName,
+		tool:  writeToolName,
+		files: files,
 		plan: func(args json.RawMessage) (string, fileMutation, error) {
 			var params WriteParams
 			err := json.Unmarshal(args, &params)
-			return params.FilePath, fileMutation{create: true, apply: func(string) (string, error) { return params.Content, nil }}, err
+			return params.FilePath, fileMutation{create: true, apply: func(string) (string, []string, error) { return params.Content, nil, nil }}, err
 		},
 		describe: func(path string) string { return "Create or replace " + path },
-		done:     func(path string, _ json.RawMessage) string { return "File written: " + path },
+		report: func(o mutationOutcome) string {
+			if !o.existed {
+				return fmt.Sprintf("Created %s (%d lines).", o.path, countLines(o.next))
+			}
+			additions, removals := diffCounts(o.diff)
+			return fmt.Sprintf("Overwrote %s (+%d -%d lines).", o.path, additions, removals)
+		},
 	}
 }
 
-func NewEditExecutor() Executor {
+func newEditExecutor(files *fileLedger) Executor {
 	return &mutationExecutor{
-		tool: editToolName,
+		tool:  editToolName,
+		files: files,
 		plan: func(args json.RawMessage) (string, fileMutation, error) {
 			var params EditParams
 			err := json.Unmarshal(args, &params)
 			edits := []EditOperation{{OldString: params.OldString, NewString: params.NewString, ReplaceAll: params.ReplaceAll}}
-			return params.FilePath, fileMutation{apply: func(old string) (string, error) { return applyEdits(old, edits) }}, err
+			return params.FilePath, fileMutation{apply: func(old string) (string, []string, error) { return applyEdits(old, edits) }}, err
 		},
 		describe: func(path string) string { return "Edit " + path },
-		done:     func(path string, _ json.RawMessage) string { return "File edited: " + path },
+		report:   func(o mutationOutcome) string { return editReport("Edited "+o.path, o) },
 	}
 }
 
-func NewMultiEditExecutor() Executor {
+func newMultiEditExecutor(files *fileLedger) Executor {
 	return &mutationExecutor{
-		tool: multiEditToolName,
+		tool:  multiEditToolName,
+		files: files,
 		plan: func(args json.RawMessage) (string, fileMutation, error) {
 			var params MultiEditParams
 			if err := json.Unmarshal(args, &params); err != nil {
@@ -106,15 +122,31 @@ func NewMultiEditExecutor() Executor {
 			if len(params.Edits) == 0 {
 				return params.FilePath, fileMutation{}, errors.New("edits is required")
 			}
-			return params.FilePath, fileMutation{apply: func(old string) (string, error) { return applyEdits(old, params.Edits) }}, nil
+			return params.FilePath, fileMutation{apply: func(old string) (string, []string, error) { return applyEdits(old, params.Edits) }}, nil
 		},
 		describe: func(path string) string { return "Apply multiple edits to " + path },
-		done: func(path string, args json.RawMessage) string {
-			var params MultiEditParams
-			_ = json.Unmarshal(args, &params)
-			return fmt.Sprintf("Applied %d edits to %s", len(params.Edits), path)
-		},
+		report:   func(o mutationOutcome) string { return editReport("Edited "+o.path+" (multiedit)", o) },
 	}
+}
+
+// editReport is an edit's result: what changed, how edits matched when not
+// byte for byte, and the changed lines as they read now.
+func editReport(title string, o mutationOutcome) string {
+	additions, removals := diffCounts(o.diff)
+	var out strings.Builder
+	fmt.Fprintf(&out, "%s (+%d -%d lines).\n", title, additions, removals)
+	for _, note := range o.notes {
+		out.WriteString(note + ".\n")
+	}
+	out.WriteString(changeSnippet(o.diff))
+	return out.String()
+}
+
+func countLines(text string) int {
+	if text == "" {
+		return 0
+	}
+	return strings.Count(strings.TrimSuffix(text, "\n"), "\n") + 1
 }
 
 func (e *mutationExecutor) Spec() Spec {
@@ -123,30 +155,46 @@ func (e *mutationExecutor) Spec() Spec {
 
 // Preview applies the call to the file as it is now, without writing it.
 func (e *mutationExecutor) Preview(_ context.Context, call Call) (ApprovalRequest, error) {
-	m, err := e.mutation(call)
+	o, err := e.run(call, false)
 	if err != nil {
 		return ApprovalRequest{}, err
 	}
-	change, err := mutateFile(m, false)
-	if err != nil {
-		return ApprovalRequest{}, err
-	}
-	return ApprovalRequest{Description: e.describe(change.Path), Path: change.Path, Params: change.preview()}, nil
+	change := newFileChange(o.path, o.old, o.next, o.diff, approvalPreviewMaxBytes, approvalPreviewMaxBytes)
+	return ApprovalRequest{Description: e.describe(o.path), Path: o.path, Params: change}, nil
 }
 
 func (e *mutationExecutor) Execute(_ context.Context, call Call) (Result, error) {
-	m, err := e.mutation(call)
+	o, err := e.run(call, true)
 	if err != nil {
 		return failure(err)
 	}
-	change, err := mutateFile(m, true)
-	if err != nil {
-		return failure(err)
-	}
-	return Result{Content: e.done(change.Path, call.Args), Metadata: change}, nil
+	return Result{Content: e.report(o), Metadata: newFileChange(o.path, o.old, o.next, o.diff, 0, resultChangeMaxBytes)}, nil
 }
 
-// mutation plans a call against its file, resolved in the call's working directory.
+// failure answers a call whose arguments or file do not allow the change; bad
+// JSON goes to the registry, which explains the schema.
+func failure(err error) (Result, error) {
+	var unchanged unchangedError
+	switch {
+	case errors.Is(err, ErrInvalidArgs):
+		return Result{}, err
+	case errors.As(err, &unchanged):
+		return Result{Content: unchanged.reason, Status: ResultStatusNeutral}, nil
+	}
+	return Result{Content: err.Error(), Status: ResultStatusError}, nil
+}
+
+// run plans the call against its file and, with commit, writes the result.
+func (e *mutationExecutor) run(call Call, commit bool) (mutationOutcome, error) {
+	m, err := e.mutation(call)
+	if err != nil {
+		return mutationOutcome{}, err
+	}
+	return mutateFile(m, call.SessionID, e.files, commit)
+}
+
+// mutation reads a call's arguments and resolves its file, symlinks included,
+// in the call's working directory.
 func (e *mutationExecutor) mutation(call Call) (fileMutation, error) {
 	file, m, err := e.plan(call.Args)
 	var syntax *json.SyntaxError
@@ -163,112 +211,101 @@ func (e *mutationExecutor) mutation(call Call) (fileMutation, error) {
 	if err != nil {
 		return fileMutation{}, fmt.Errorf("invalid path: %w", err)
 	}
-	m.path = policy.Path
+	if isProtectedCredentialPath(policy.RealPath) {
+		return fileMutation{}, errors.New("changing MatrixClaw credential files is blocked; use the setup and provider controls")
+	}
+	m.path = policy.RealPath
 	return m, nil
 }
 
-// failure answers a call whose arguments or file do not allow the change; bad
-// JSON goes to the registry, which explains the schema.
-func failure(err error) (Result, error) {
-	if errors.Is(err, ErrInvalidArgs) {
-		return Result{}, err
-	}
-	return Result{Content: err.Error(), Status: ResultStatusError}, nil
-}
-
-// mutateFile reads m's file and applies m to it; commit also writes the result.
-func mutateFile(m fileMutation, commit bool) (FileChange, error) {
-	old, err := os.ReadFile(m.path)
+// mutateFile applies m to its file as it is now. An existing file must be one
+// the session has seen as it is (files); commit writes the result atomically
+// and records it as seen.
+func mutateFile(m fileMutation, session string, files *fileLedger, commit bool) (mutationOutcome, error) {
+	info, err := os.Stat(m.path)
+	var old []byte
 	switch {
-	case err == nil, m.create && os.IsNotExist(err):
-	case os.IsNotExist(err):
-		return FileChange{}, fmt.Errorf("file not found: %s", m.path)
+	case err == nil && info.IsDir():
+		return mutationOutcome{}, fmt.Errorf("%s is a directory", m.path)
+	case err == nil && !info.Mode().IsRegular():
+		return mutationOutcome{}, fmt.Errorf("%s is not a regular file", m.path)
+	case err == nil:
+		if old, err = os.ReadFile(m.path); err != nil {
+			return mutationOutcome{}, fmt.Errorf("read %s: %w", m.path, err)
+		}
+		if err := files.check(session, m.path, old); err != nil {
+			return mutationOutcome{}, err
+		}
+	case errors.Is(err, os.ErrNotExist) && m.create:
+		if err := checkCreatable(filepath.Dir(m.path)); err != nil {
+			return mutationOutcome{}, err
+		}
+	case errors.Is(err, os.ErrNotExist):
+		return mutationOutcome{}, fmt.Errorf("file not found: %s", m.path)
 	default:
-		return FileChange{}, fmt.Errorf("read %s: %w", m.path, err)
+		return mutationOutcome{}, fmt.Errorf("inspect %s: %w", m.path, err)
 	}
-	next, err := m.apply(string(old))
+	existed := info != nil
+	next, notes, err := m.apply(string(old))
 	if err != nil {
-		return FileChange{}, err
+		return mutationOutcome{}, err
 	}
-	change := FileChange{Path: m.path, OldContent: string(old), NewContent: next}
-	change.Additions, change.Removals = diffCounts(change.OldContent, next)
+	if existed && next == string(old) {
+		return mutationOutcome{}, unchangedError{reason: m.path + " already has this content; nothing changed."}
+	}
+	o := mutationOutcome{path: m.path, old: string(old), next: next, existed: existed, notes: notes, diff: lineDiff(string(old), next)}
 	if !commit {
-		return change, nil
+		return o, nil
 	}
-	if m.create {
-		if err := os.MkdirAll(filepath.Dir(m.path), 0o755); err != nil {
-			return FileChange{}, fmt.Errorf("create dir: %w", err)
-		}
+	mode := os.FileMode(0o644)
+	if existed {
+		mode = info.Mode().Perm()
+	} else if err := os.MkdirAll(filepath.Dir(m.path), 0o755); err != nil {
+		return mutationOutcome{}, fmt.Errorf("create dir: %w", err)
 	}
-	if err := ensureMutationWriteTarget(m.path, m.create); err != nil {
-		return FileChange{}, fmt.Errorf("validate target: %w", err)
+	if err := writeFileAtomic(m.path, []byte(next), mode); err != nil {
+		return mutationOutcome{}, fmt.Errorf("write %s: %w", m.path, err)
 	}
-	if err := os.WriteFile(m.path, []byte(next), 0o644); err != nil {
-		return FileChange{}, fmt.Errorf("write %s: %w", m.path, err)
-	}
-	return change, nil
+	files.saw(session, m.path, versionOf([]byte(next)))
+	return o, nil
 }
 
-// applyEdits applies edits in order; any that does not apply fails them all.
-func applyEdits(content string, edits []EditOperation) (string, error) {
-	for i, edit := range edits {
-		next, err := applyEdit(content, edit)
-		if err != nil && len(edits) > 1 {
-			return "", fmt.Errorf("edit %d: %w", i+1, err)
+// checkCreatable reports why a file cannot be created in dir: its nearest
+// existing ancestor must be a directory.
+func checkCreatable(dir string) error {
+	for {
+		info, err := os.Stat(dir)
+		switch {
+		case err == nil && !info.IsDir():
+			return fmt.Errorf("%s is not a directory", dir)
+		case err == nil:
+			return nil
+		case !errors.Is(err, os.ErrNotExist):
+			return fmt.Errorf("inspect %s: %w", dir, err)
 		}
-		if err != nil {
-			return "", err
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return nil
 		}
-		content = next
+		dir = parent
 	}
-	return content, nil
 }
 
-func applyEdit(content string, edit EditOperation) (string, error) {
-	if edit.OldString == "" {
-		if content != "" {
-			return "", errors.New("old_string is empty; quote the text to replace, or use write to replace the whole file")
-		}
-		return edit.NewString, nil
-	}
-	// read shows CRLF lines without their CR, so a multi-line old_string
-	// quoted from it matches the file once its line ends are put back.
-	if !strings.Contains(content, edit.OldString) && strings.Contains(content, "\r\n") {
-		edit.OldString, edit.NewString = crlfLines(edit.OldString), crlfLines(edit.NewString)
-	}
-	switch count := strings.Count(content, edit.OldString); {
-	case count == 0:
-		return "", errors.New("old_string not found in file")
-	case edit.ReplaceAll:
-		return strings.ReplaceAll(content, edit.OldString, edit.NewString), nil
-	case count > 1:
-		return "", errors.New("old_string appears multiple times in the file; set replace_all to true or provide more context")
-	}
-	return strings.Replace(content, edit.OldString, edit.NewString, 1), nil
-}
-
-func crlfLines(text string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\n", "\r\n")
-}
-
-// diffCounts counts the lines a unified diff of the change adds and removes.
-func diffCounts(oldContent string, newContent string) (int, int) {
-	oldContent = strings.ReplaceAll(oldContent, "\r\n", "\n")
-	newContent = strings.ReplaceAll(newContent, "\r\n", "\n")
-	unified, err := udiff.ToUnifiedDiff("a", "b", oldContent, udiff.Lines(oldContent, newContent), 0)
+// writeFileAtomic replaces path with content through a temporary file in the
+// same directory, so a reader never sees a half-written file.
+func writeFileAtomic(path string, content []byte, mode os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
 	if err != nil {
-		return 0, 0
+		return err
 	}
-	additions, removals := 0, 0
-	for _, hunk := range unified.Hunks {
-		for _, line := range hunk.Lines {
-			switch line.Kind {
-			case udiff.Insert:
-				additions++
-			case udiff.Delete:
-				removals++
-			}
-		}
+	_, writeErr := tmp.Write(content)
+	if err := errors.Join(writeErr, tmp.Chmod(mode), tmp.Close()); err != nil {
+		_ = os.Remove(tmp.Name())
+		return err
 	}
-	return additions, removals
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	return nil
 }

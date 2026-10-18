@@ -270,6 +270,57 @@ func Tail(path string, limit int) (string, error) {
 	return string(buf), nil
 }
 
+// Excerpt returns the output at path whole when it fits in limit bytes, and
+// otherwise its head, a line naming how many bytes are left out, and its tail,
+// which gets two thirds of the room as failures are usually reported last.
+// Both parts end or start at a line break when one is near.
+func Excerpt(path string, limit int) (string, bool, error) {
+	whole, err := Read(path, 0, limit)
+	if err != nil || !whole.More {
+		return whole.Text, false, err
+	}
+	head := whole.Text[:min(limit/3, len(whole.Text))]
+	head = head[:len(completeRunes([]byte(head), true))]
+	if i := strings.LastIndexByte(head, '\n'); i >= len(head)*3/4 {
+		head = head[:i+1]
+	}
+	tail, err := tailFromLine(path, limit-limit/3)
+	if err != nil {
+		return "", false, err
+	}
+	total, err := outputTotal(path)
+	if err != nil {
+		return "", false, err
+	}
+	omitted := max(total-int64(len(head)+len(tail)), 0)
+	return fmt.Sprintf("%s\n[... %d bytes of output left out ...]\n%s", strings.TrimSuffix(head, "\n"), omitted, tail), true, nil
+}
+
+// tailFromLine is the last limit bytes of the output at path, from the start
+// of a line when one starts in their first quarter.
+func tailFromLine(path string, limit int) (string, error) {
+	// One more byte shows whether the tail starts right after a line break.
+	tail, err := Tail(path, limit+1)
+	if err != nil {
+		return "", err
+	}
+	if i := strings.IndexByte(tail, '\n'); i >= 0 && i < len(tail)/4 {
+		return tail[i+1:], nil
+	}
+	return Tail(path, limit)
+}
+
+// outputTotal is how many bytes the command wrote to the output at path.
+func outputTotal(path string) (int64, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = file.Close() }()
+	l, err := readLayout(file)
+	return l.total(), err
+}
+
 // completeRunes drops a character cut at the end of buf when more follows.
 func completeRunes(buf []byte, more bool) []byte {
 	if !more {

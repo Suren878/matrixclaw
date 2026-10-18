@@ -17,9 +17,14 @@ type sqlExecer interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
+// sqlQueryer is satisfied by *sql.DB, *sql.Conn and *sql.Tx.
+type sqlQueryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
 // queryAll runs query and scans every row into a non-nil slice; what names
 // the rows in errors.
-func queryAll[T any](ctx context.Context, db *sql.DB, what string, scan func(rowScanner) (T, error), query string, args ...any) ([]T, error) {
+func queryAll[T any](ctx context.Context, db sqlQueryer, what string, scan func(rowScanner) (T, error), query string, args ...any) ([]T, error) {
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("store: list %s: %w", what, err)

@@ -7,7 +7,7 @@ that should outlive a chat turn.
 
 | Path (default) | What it is |
 |---|---|
-| `~/.config/matrixclaw/setup.json` | setup (`MATRIXCLAW_SETUP_PATH` moves it); written with mode 0600 |
+| `~/.config/matrixclaw/setup.json` | setup (`MATRIXCLAW_SETUP_PATH` moves it); written with mode 0600. A version 3 file from v0.2.0 is converted to version 4 on first load and the original kept as `setup.json.pre-v4` |
 | `~/.config/matrixclaw/daemon.env` | environment for the user service, next to setup.json |
 | `~/.local/state/matrixclaw/matrixclaw.db` | SQLite database (`daemon.db_path` in setup.json, or `MATRIXCLAW_DB_PATH`, which wins) |
 
@@ -20,7 +20,7 @@ Next to the database (the data directory):
 | `sessions/<session id>/tool-output/` | full tool results too large for the model's context (the model gets head, tail and path) |
 | `sessions/<session id>/tasks/<task id>.log` | background command output, mode 0600, capped at 20 MB (keeps the first 1 MB and the newest part) |
 | `skills/` | skills library: `installed`, `quarantine`, `archive`, `plugins`, `drafts` |
-| `runtime/context-windows.json` | cached model context windows |
+| `runtime/context-windows.json` | model metadata learned from provider listings, by provider |
 
 Session directories are removed with their session; `/clear` removes the tool
 outputs of the cleared history.
@@ -32,7 +32,7 @@ independent of the database path:
 |---|---|
 | `matrixclaw/runtime/` | local voice and browser runtimes (`MATRIXCLAW_RUNTIME_DIR`) |
 | `matrixclaw/local/` | local voice models (`MATRIXCLAW_LOCAL_DIR`) |
-| `matrixclaw/auth/` | ChatGPT (Codex) login tokens (`MATRIXCLAW_AUTH_DIR`) |
+| `matrixclaw/auth/` | ChatGPT (Codex) login tokens and their refresh lock (`MATRIXCLAW_AUTH_DIR`) |
 
 ## Database
 
@@ -40,15 +40,44 @@ independent of the database path:
 and a 5 s busy timeout. A daemon crash loses nothing; a power loss or OS crash
 can lose the last commits since the previous checkpoint.
 
-The schema is `internal/store/migrations/001_init.sql` plus idempotent upgrade
-steps in `internal/store/schema*.go`, applied on every open. Upgrades are
-one-way: an older binary cannot use an upgraded database. Back up before
-upgrading (the daemon may keep running):
+The schema is `internal/store/migrations/001_init.sql`; the database records
+its version in `PRAGMA user_version` (1 today). A new database gets the whole
+schema; later changes are numbered migrations in `internal/store/schema.go`,
+each applied once and in order. A database newer than the binary is refused.
+Upgrades are one-way. Back up before upgrading (the daemon may keep running):
 
 ```bash
 sqlite3 ~/.local/state/matrixclaw/matrixclaw.db \
   ".backup '$HOME/matrixclaw-backup.db'"
 ```
+
+### Converting a v0.2.0 database
+
+A database from v0.2.0 or earlier (user_version 0) is converted once, when
+the daemon first opens it (`internal/store/legacy_v02.go`):
+
+1. The database is copied to `matrixclaw.db.pre-v1` next to it (an existing
+   copy from an interrupted conversion is kept).
+2. The upgrade steps v0.2.0 ran on every start run one last time, so any
+   v0.1.x database reaches the v0.2.0 shape.
+3. In one transaction every table is rebuilt as `001_init.sql` declares it.
+   Tables and columns the schema no longer has are dropped: the go-workflows
+   tables (`history`, `instances`, `activities`, `attributes`,
+   `pending_events`, `schema_migrations`), `web_research_*`, the unused
+   `run_checkpoints` columns, `approvals.action` and
+   `tasks.result_message_id`. Rows that only older code could read are
+   rewritten (client capabilities without `receives_deliveries`, tool results
+   with `is_error`, tool results too large for the model's context are cut to
+   their head and tail). The version becomes 1.
+4. The database is compacted, and `matrixclaw-workflows.db*` and
+   `web-research/` next to it are removed.
+
+To roll back, stop the daemon and copy `matrixclaw.db.pre-v1` over
+`matrixclaw.db` (removing `matrixclaw.db-wal` and `matrixclaw.db-shm`) and
+`setup.json.pre-v4` over `setup.json` (v0.2.0 refuses a version 4 file), then
+start the older binary. Delete the copy once the new version works. The next
+release drops the conversion, so a database older than v0.2.0 must be opened
+by this release first.
 
 Tables:
 
@@ -62,7 +91,7 @@ Tables:
 | Clients | `client_deliveries` |
 | Automation | `automation_jobs`, `automation_fires` |
 | External agents | `external_agent_sessions` |
-| Skills (`internal/skills`) | `skills`, `skill_fts`, `skill_sessions`, `skill_plugin_mcp_candidates` |
+| Skills | `skills`, `skill_fts`, `skill_sessions`, `skill_plugin_mcp_candidates` |
 
 ## Storage module
 

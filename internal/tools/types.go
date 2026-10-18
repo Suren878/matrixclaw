@@ -33,7 +33,9 @@ type Spec struct {
 	Description string `json:"description,omitempty"`
 	Effect      Effect `json:"effect,omitempty"`
 	// Asks makes a call no permission rule decides wait for the user's approval.
-	Asks            bool            `json:"asks,omitempty"`
+	Asks bool `json:"asks,omitempty"`
+	// CoveredBy names other tools whose permission rules also apply to this one.
+	CoveredBy       []string        `json:"covered_by,omitempty"`
 	Namespace       string          `json:"namespace,omitempty"`
 	Category        Category        `json:"category,omitempty"`
 	InputJSONSchema json.RawMessage `json:"input_json_schema,omitempty"`
@@ -50,6 +52,9 @@ type Call struct {
 	// Recheck applies the permission rules to another subject the call reaches,
 	// such as a redirect's host; nil when no rules apply.
 	Recheck func(context.Context, permission.Subject) error `json:"-"`
+	// Skip reports whether a search leaves out a path (absolute, symlinks
+	// resolved) that the permission rules guard; nil when none do.
+	Skip func(path string) bool `json:"-"`
 }
 
 // ApprovalRequest is what the user sees before a call runs: what it does, the

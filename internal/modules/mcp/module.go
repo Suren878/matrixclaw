@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"maps"
+	"os"
 	"reflect"
 	"slices"
 	"strings"
@@ -134,6 +135,8 @@ func wantedServers(cfg setup.Config, extra ExtraServer) []mcpbridge.ServerConfig
 			servers = append(servers, server)
 		}
 	}
+	// Servers see no API keys of the daemon unless their Env names them.
+	environ := setup.ChildEnvironment(cfg, os.Environ())
 	out := []mcpbridge.ServerConfig{}
 	for _, server := range servers {
 		if !server.Enabled {
@@ -147,6 +150,7 @@ func wantedServers(cfg setup.Config, extra ExtraServer) []mcpbridge.ServerConfig
 			Command:    server.Command,
 			Args:       slices.Clone(server.Args),
 			Env:        maps.Clone(server.Env),
+			Environ:    environ,
 			Endpoint:   server.Endpoint,
 			ToolPrefix: server.ToolPrefix,
 			ReadOnly:   server.ReadOnly,

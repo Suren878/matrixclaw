@@ -68,15 +68,10 @@ func normalizeModulesConfig(modules ModulesConfig) ModulesConfig {
 	normalized := make(map[string]ExternalAgentConfig, len(modules.ExternalAgents))
 	for _, rawID := range ids {
 		cfg := modules.ExternalAgents[rawID]
-		id := normalizeExternalAgentID(rawID)
-		if id == "" {
-			continue
+		if id := normalizeExternalAgentID(rawID); id != "" {
+			cfg.Path = strings.TrimSpace(cfg.Path)
+			normalized[id] = cfg
 		}
-		cfg.Path = strings.TrimSpace(cfg.Path)
-		if _, exists := normalized[id]; exists && id != strings.ToLower(strings.TrimSpace(rawID)) {
-			continue
-		}
-		normalized[id] = cfg
 	}
 	if len(normalized) == 0 {
 		modules.ExternalAgents = nil
@@ -147,12 +142,10 @@ func slugID(value string) string {
 // NormalizeMCPTransport is "http" for the streamable HTTP transport and
 // "stdio" for anything else.
 func NormalizeMCPTransport(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "http", "streamable_http", "streamable-http":
+	if strings.ToLower(strings.TrimSpace(value)) == "http" {
 		return "http"
-	default:
-		return "stdio"
 	}
+	return "stdio"
 }
 
 func trimStringMap(values map[string]string) map[string]string {

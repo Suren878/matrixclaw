@@ -35,6 +35,7 @@ func (w Window) Compaction() *transcript.Compaction {
 // Journal persists one session's transcript; during a run the engine is its only writer.
 // BeginStreaming/Stream use the fast progress path; FinishStreaming is the durable
 // update of an in-flight assistant message and the only update of a written message.
+// RecordStep is usage accounting: the adapter logs a failed write, the run goes on.
 type Journal interface {
 	Load(ctx context.Context, sessionID string) (Window, error)
 	Append(ctx context.Context, msg transcript.Message) (seq int64, err error)
@@ -42,7 +43,7 @@ type Journal interface {
 	Stream(ctx context.Context, msg transcript.Message) error
 	FinishStreaming(ctx context.Context, msg transcript.Message) error
 	Checkpoint(ctx context.Context, state State) error
-	RecordStep(ctx context.Context, step Step) error
+	RecordStep(ctx context.Context, step Step)
 }
 
 // Phase is the durable execution boundary a run last reached.
@@ -54,13 +55,13 @@ const (
 )
 
 // State is the checkpoint the engine writes before each model call, when it
-// starts calls of a tool batch and when the run parks; its Counters let a parked
+// starts calls of a tool batch and when the run parks; its RunState lets a parked
 // or restarted run keep its budget.
 type State struct {
 	RunID    string
 	Phase    Phase
 	Batch    *ToolBatch
-	Counters Counters
+	RunState RunState
 }
 
 // ToolBatch names the calls of the batch being run, in call order, and those

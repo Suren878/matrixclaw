@@ -26,6 +26,17 @@ func openTestStore(t *testing.T, path string) *store.SQLiteStore {
 	return st
 }
 
+// rawDB opens the database file behind the store, closing the store first.
+func rawDB(t *testing.T, path string) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
 func newTestStore(t *testing.T) *store.SQLiteStore {
 	t.Helper()
 	st := openTestStore(t, filepath.Join(t.TempDir(), "matrixclaw.db"))
@@ -91,59 +102,6 @@ func TestMessagesAreOrderedByInsertionSeq(t *testing.T) {
 				t.Fatalf("limit %d: ids=%v seqs=%v, want %v with increasing seq", tc.limit, ids, seqs, tc.want)
 			}
 		}
-	}
-}
-
-func TestLegacyMessagesGetSeqInCreatedAtOrder(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "legacy.db")
-	legacy, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, stmt := range []string{
-		`CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'assistant', runtime_id TEXT NOT NULL DEFAULT 'matrixclaw', parent_session_id TEXT NOT NULL DEFAULT '', hidden INTEGER NOT NULL DEFAULT 0, working_dir TEXT NOT NULL DEFAULT '', provider_id TEXT NOT NULL DEFAULT '', model_id TEXT NOT NULL DEFAULT '', permission_mode TEXT NOT NULL DEFAULT 'default', status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
-		`CREATE TABLE messages (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, run_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, parts_json TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '', provider TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT '', FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE)`,
-		`CREATE INDEX idx_messages_session_created_at ON messages(session_id, created_at)`,
-		`INSERT INTO sessions(id, title, status, created_at, updated_at) VALUES('s1', 's1', 'active', '2026-09-23T10:00:00Z', '2026-09-23T10:00:00Z')`,
-		`INSERT INTO messages(id, session_id, run_id, role, content, created_at) VALUES('late', 's1', '', 'user', 'late', '2026-09-23T10:00:00.5Z')`,
-		`INSERT INTO messages(id, session_id, run_id, role, content, created_at) VALUES('early', 's1', '', 'user', 'early', '2026-09-23T10:00:00Z')`,
-		`INSERT INTO messages(id, session_id, run_id, role, content, created_at) VALUES('tie-a', 's1', '', 'user', 'tie-a', '2026-09-23T10:00:01Z')`,
-		`INSERT INTO messages(id, session_id, run_id, role, content, created_at) VALUES('tie-b', 's1', '', 'user', 'tie-b', '2026-09-23T10:00:01Z')`,
-	} {
-		if _, err := legacy.Exec(stmt); err != nil {
-			t.Fatalf("%s: %v", stmt, err)
-		}
-	}
-	if err := legacy.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	wantIDs := []string{"early", "late", "tie-a", "tie-b"}
-	wantSeqs := []int64{1, 2, 3, 4}
-	for reopen := 0; reopen < 2; reopen++ {
-		st := openTestStore(t, path)
-		messages, err := st.ListMessages(context.Background(), "s1", 0)
-		_ = st.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-		ids, seqs := messageIDsAndSeqs(messages)
-		for i := range wantIDs {
-			if len(ids) != len(wantIDs) || ids[i] != wantIDs[i] || seqs[i] != wantSeqs[i] {
-				t.Fatalf("open %d: ids=%v seqs=%v, want %v %v", reopen, ids, seqs, wantIDs, wantSeqs)
-			}
-		}
-	}
-
-	st := openTestStore(t, path)
-	defer func() { _ = st.Close() }()
-	saveTestMessage(t, st, transcript.Message{ID: "new", SessionID: "s1", CreatedAt: testEpoch})
-	messages, err := st.ListMessages(context.Background(), "s1", 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(messages) != 1 || messages[0].ID != "new" || messages[0].Seq != 5 {
-		t.Fatalf("new message=%+v, want id new seq 5", messages)
 	}
 }
 
@@ -285,5 +243,38 @@ func TestLatestCompactionIsTheNewestBoundaryOfTheSession(t *testing.T) {
 	plain, err := st.GetMessage(ctx, "m2")
 	if err != nil || plain.Compaction != nil {
 		t.Fatalf("plain message = %+v err = %v", plain, err)
+	}
+}
+
+func TestLatestBoundaryLookupUsesTheBoundaryIndex(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "matrixclaw.db")
+	st := openTestStore(t, path)
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	rows, err := db.Query(`EXPLAIN QUERY PLAN SELECT id FROM messages WHERE session_id = ? AND compaction_json <> '' ORDER BY seq DESC LIMIT 1`, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	var plan []string
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(plan) != 1 || !strings.Contains(plan[0], "idx_messages_boundaries") {
+		t.Fatalf("query plan = %q", plan)
 	}
 }

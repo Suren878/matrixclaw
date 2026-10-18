@@ -1,7 +1,6 @@
 package setup
 
 import (
-	"cmp"
 	"strings"
 )
 
@@ -39,7 +38,7 @@ func BrowserModuleFromConfig(modules ModulesConfig) BrowserModuleDescriptor {
 
 // normalizeBrowserConfig is the browser module with its defaults filled.
 func normalizeBrowserConfig(cfg BrowserConfig) BrowserConfig {
-	cfg.ProviderID = cmp.Or(normalizeBrowserProviderID(cfg.ProviderID), BrowserProviderPlaywright)
+	cfg.ProviderID = BrowserProviderPlaywright
 	cfg.ProviderConfig = normalizeBrowserProviderConfig(cfg.ProviderConfig)
 	return cfg
 }
@@ -60,22 +59,13 @@ func normalizeBrowserProviderConfig(cfg BrowserProviderConfig) BrowserProviderCo
 	return cfg
 }
 
+// normalizeRuntimeMode is a browser or voice runtime mode: always_running,
+// else per_task.
 func normalizeRuntimeMode(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "always", "always_running", "persistent", "server":
+	if strings.ToLower(strings.TrimSpace(value)) == "always_running" {
 		return "always_running"
-	default:
-		return "per_task"
 	}
-}
-
-func normalizeBrowserProviderID(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", BrowserProviderPlaywright, "local-playwright", "local_playwright":
-		return BrowserProviderPlaywright
-	default:
-		return ""
-	}
+	return "per_task"
 }
 
 func browserProviders(cfg BrowserConfig) []BrowserProviderOption {

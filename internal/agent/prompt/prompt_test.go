@@ -17,7 +17,7 @@ var update = flag.Bool("update", false, "rewrite the golden files")
 var (
 	parentTools   = NewTools("read", "glob", "grep", "ls", "write", "edit", "multiedit", "bash", "task_output", "task_kill", "todo_write", "await", "agent", "web_fetch", "web_search")
 	writerTools   = NewTools("read", "glob", "grep", "ls", "write", "edit", "multiedit", "bash", "task_output", "task_kill", "todo_write", "web_fetch", "web_search")
-	readonlyTools = NewTools("read", "glob", "grep", "ls", "todo_write", "web_fetch", "web_search")
+	readonlyTools = NewTools("read", "glob", "grep", "ls", "bash", "task_output", "todo_write", "web_fetch", "web_search")
 )
 
 // golden compares got with testdata/name.golden; -update rewrites it. The

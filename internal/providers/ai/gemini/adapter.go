@@ -55,7 +55,9 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 		if err != nil {
 			return nil, fmt.Errorf("gemini: build models request: %w", err)
 		}
-		req.Header.Set("x-goog-api-key", apiKey)
+		if apiKey != "" {
+			req.Header.Set("x-goog-api-key", apiKey)
+		}
 		req.Header.Set("Accept", "application/json")
 
 		res, err := client.Do(req)
@@ -68,10 +70,10 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 			return nil, fmt.Errorf("gemini: read models response: %w", readErr)
 		}
 		if res.StatusCode == http.StatusNotFound {
-			return nil, fmt.Errorf("gemini: model listing unavailable: status %d: %s", res.StatusCode, geminiErrorMessage(body))
+			return nil, fmt.Errorf("model listing unavailable: %w", responseError(res, body))
 		}
 		if res.StatusCode < 200 || res.StatusCode >= 300 {
-			return nil, providers.NewAPIError("gemini", res.StatusCode, geminiErrorMessage(body), nil)
+			return nil, responseError(res, body)
 		}
 
 		var payload geminiModelsResponse
@@ -82,8 +84,7 @@ func ListModels(ctx context.Context, cfg providers.RuntimeConfig) ([]string, err
 			if supportsGenerateContent(item.SupportedGenerationMethods) {
 				if name := strings.TrimSpace(item.Name); name != "" {
 					metadata := providers.ModelMetadataRegistration{ContextWindow: item.InputTokenLimit, MaxOutputTokens: item.OutputTokenLimit}
-					providers.RegisterModelMetadata(cfg.ProviderID, providers.TypeGemini, name, metadata)
-					providers.RegisterModelMetadata(cfg.CatalogID, providers.TypeGemini, name, metadata)
+					providers.RegisterModelMetadata(cfg.ProviderID, providers.NormalizeModelID(cfg.ProviderID, providers.TypeGemini, name), metadata)
 					models = append(models, name)
 				}
 			}
@@ -113,7 +114,9 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 	if err != nil {
 		return providers.Response{}, fmt.Errorf("gemini: build request: %w", err)
 	}
-	httpReq.Header.Set("x-goog-api-key", r.APIKey)
+	if r.APIKey != "" {
+		httpReq.Header.Set("x-goog-api-key", r.APIKey)
+	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "text/event-stream")
 
@@ -127,7 +130,7 @@ func (r *Runtime) Generate(ctx context.Context, request providers.Request) (prov
 		if err != nil {
 			return providers.Response{}, fmt.Errorf("gemini: read response: %w", err)
 		}
-		return providers.Response{}, providers.NewAPIError("gemini", httpRes.StatusCode, geminiErrorMessage(resBody), httpRes.Header)
+		return providers.Response{}, responseError(httpRes, resBody)
 	}
 	return r.decodeStream(ctx, httpRes.Body)
 }
@@ -136,7 +139,7 @@ func (r *Runtime) generatePayload(request providers.Request) generateContentRequ
 	payload := generateContentRequest{
 		Contents: make([]geminiContent, 0, len(request.Messages)),
 		GenerationConfig: &generationConfig{
-			MaxOutputTokens: providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.MaxOutputTokens, r.MetadataID, providers.TypeGemini, r.Model),
+			MaxOutputTokens: providers.ResolveMaxOutputTokens(request.MaxOutputTokens, r.MaxOutputTokens, r.ProviderID, providers.TypeGemini, r.Model),
 		},
 	}
 	if systemPrompt := strings.TrimSpace(request.SystemPrompt); systemPrompt != "" {
@@ -232,12 +235,8 @@ func encodeMessage(message providers.Message, toolNames map[string]string) gemin
 		if data == "" {
 			continue
 		}
-		mimeType := strings.TrimSpace(image.MIMEType)
-		if mimeType == "" {
-			mimeType = "image/jpeg"
-		}
 		parts = append(parts, geminiPart{InlineData: &geminiInlineData{
-			MIMEType: mimeType,
+			MIMEType: image.MediaType(),
 			Data:     data,
 		}})
 	}
@@ -350,10 +349,7 @@ func (r *Runtime) decodeStream(ctx context.Context, body io.Reader) (providers.R
 // status it carries.
 func streamError(code int, status string, message string) error {
 	detail := strings.Join(strings.Fields(fmt.Sprintf("stream error %d %s %s", code, status, message)), " ")
-	if code == 0 && (status == "UNAVAILABLE" || status == "INTERNAL") {
-		code = http.StatusServiceUnavailable
-	}
-	return providers.NewStreamError("gemini", code, detail)
+	return providers.NewStreamError("gemini", code, status, detail)
 }
 
 func (r *Runtime) reply(parts []geminiPart, stop providers.StopReason, usage geminiUsageMetadata) (providers.Response, error) {
@@ -368,16 +364,23 @@ func (r *Runtime) reply(parts []geminiPart, stop providers.StopReason, usage gem
 		if !part.Thought {
 			text.WriteString(part.Text)
 		}
-		if part.FunctionCall != nil && strings.TrimSpace(part.FunctionCall.Name) != "" {
+		if part.FunctionCall != nil {
 			if part.ThoughtSignature != "" && len(reasoning) == 0 {
 				reasoning = []providers.ReasoningBlock{{Signature: part.ThoughtSignature}}
+			}
+			args := part.FunctionCall.Args
+			if len(args) == 0 || string(args) == "null" {
+				args = json.RawMessage(`{}`)
 			}
 			toolCalls = append(toolCalls, providers.ToolCall{
 				ID:        fmt.Sprintf("gemini_%s_%d", responseID, i),
 				Name:      strings.TrimSpace(part.FunctionCall.Name),
-				Arguments: part.FunctionCall.Args,
+				Arguments: args,
 			})
 		}
+	}
+	if err := providers.CheckToolCalls("gemini", toolCalls); err != nil {
+		return providers.Response{}, err
 	}
 
 	reply := text.String()
@@ -469,10 +472,19 @@ func geminiUsage(usage geminiUsageMetadata) providers.Usage {
 }
 
 // geminiErrorMessage is the error message of a response body, or the body itself.
-func geminiErrorMessage(body []byte) string {
+// responseError classifies an error response by its status name; a quota
+// error's RetryInfo becomes RetryAfter when the header names no wait.
+func responseError(res *http.Response, body []byte) *providers.APIError {
 	var envelope geminiErrorEnvelope
+	message := strings.TrimSpace(string(body))
 	if err := json.Unmarshal(body, &envelope); err == nil && strings.TrimSpace(envelope.Error.Message) != "" {
-		return strings.TrimSpace(envelope.Error.Message)
+		message = strings.TrimSpace(envelope.Error.Message)
 	}
-	return strings.TrimSpace(string(body))
+	apiErr := providers.NewAPIError("gemini", res.StatusCode, envelope.Error.Status, message, res.Header)
+	for _, detail := range envelope.Error.Details {
+		if delay := providers.ParseRetryDelay(detail.RetryDelay); delay > 0 && apiErr.RetryAfter == 0 {
+			apiErr.RetryAfter = delay
+		}
+	}
+	return apiErr
 }

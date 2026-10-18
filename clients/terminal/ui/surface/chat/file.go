@@ -3,7 +3,6 @@ package chat
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -16,13 +15,11 @@ import (
 	"github.com/Suren878/matrixclaw/internal/toolview"
 )
 
-var numberedReadLinePrefix = regexp.MustCompile(`^\s*\d+\s`)
-
+// filesystemPathMetadata is the path a file tool's result names: resolved_path
+// for read, file_path for a file change.
 type filesystemPathMetadata struct {
-	FilePath      string `json:"file_path"`
-	RequestedPath string `json:"requested_path"`
-	ResolvedPath  string `json:"resolved_path"`
-	WorkingDir    string `json:"working_dir"`
+	FilePath     string `json:"file_path"`
+	ResolvedPath string `json:"resolved_path"`
 }
 
 func metadataDisplayPath(raw string, fallback string) string {
@@ -146,44 +143,17 @@ func renderReadPathsBlock(sty *surfacestyles.Styles, width int, paths ...string)
 	return strings.Join(rendered, "\n")
 }
 
-func resolveReadResult(path string, result surfacemessage.ToolResult) (string, string) {
-	content := strings.TrimSpace(result.Content)
-	path = metadataDisplayPath(result.Metadata, path)
-
-	var meta tools.ReadResponseMetadata
-	if err := json.Unmarshal([]byte(result.Metadata), &meta); err == nil {
-		if strings.TrimSpace(meta.Content) != "" {
-			content = meta.Content
-		}
+// readFileBody is the numbered lines of a read result, without the file tags
+// and the paging note.
+func readFileBody(content string) string {
+	body, ok := strings.CutPrefix(strings.TrimSpace(content), "<file>")
+	if !ok {
+		return strings.TrimSpace(content)
 	}
-
-	if wrapped := unwrapTaggedFileContent(content); wrapped != "" {
-		content = wrapped
+	if end := strings.LastIndex(body, "</file>"); end >= 0 {
+		body = body[:end]
 	}
-
-	return path, content
-}
-
-func unwrapTaggedFileContent(content string) string {
-	content = strings.TrimSpace(content)
-	if !strings.HasPrefix(content, "<file>") || !strings.HasSuffix(content, "</file>") {
-		return content
-	}
-
-	content = strings.TrimPrefix(content, "<file>")
-	content = strings.TrimSuffix(content, "</file>")
-	content = strings.TrimSpace(content)
-	lines := strings.Split(content, "\n")
-
-	for i, line := range lines {
-		lines[i] = numberedReadLinePrefix.ReplaceAllString(line, "")
-	}
-
-	for len(lines) > 0 && strings.HasPrefix(strings.TrimSpace(lines[len(lines)-1]), "(File has more lines.") {
-		lines = lines[:len(lines)-1]
-	}
-
-	return strings.TrimSpace(strings.Join(lines, "\n"))
+	return strings.Trim(body, "\n")
 }
 
 func commonReadRoot(paths []string) string {

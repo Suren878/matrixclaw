@@ -48,7 +48,7 @@ func (r *run) buildRequest(ctx context.Context, final StopReason) (providers.Req
 	request := providers.Request{
 		SystemPrompt:    r.system,
 		CacheKey:        r.task.SessionID,
-		MaxOutputTokens: r.counters.OutputLimit,
+		MaxOutputTokens: r.state.OutputLimit,
 	}
 	if final != "" {
 		request.ToolChoice = providers.ToolChoiceNone
@@ -84,7 +84,7 @@ func withCustomInstructions(system string, custom string) string {
 // sent is messages as the run's requests carry them: elided, and without the
 // reasoning signed before the last history edit.
 func (r *run) sent(messages []transcript.Message) []transcript.Message {
-	return agentcontext.WithoutSignedReasoning(agentcontext.Elide(messages, r.elision()), r.counters.HistoryEdit)
+	return agentcontext.WithoutSignedReasoning(agentcontext.Elide(messages, r.elision()), r.state.HistoryEdit)
 }
 
 func toolDefinitions(specs []tools.Spec) []providers.ToolDefinition {

@@ -68,7 +68,7 @@ func EffectiveVoiceConfig(moduleID string, providerID string, cfg VoiceProviderC
 	}
 	cfg.BinaryPath = strings.TrimSpace(cfg.BinaryPath)
 	cfg.Endpoint = strings.TrimSpace(cfg.Endpoint)
-	cfg.RuntimeMode = normalizeVoiceRuntimeMode(cfg.RuntimeMode)
+	cfg.RuntimeMode = normalizeRuntimeMode(cfg.RuntimeMode)
 	defaults := defaultVoiceProviderConfig(providerID)
 	cfg.ModelID = cmp.Or(cfg.ModelID, defaults.ModelID)
 	cfg.VoiceID = cmp.Or(cfg.VoiceID, defaults.VoiceID)
@@ -77,15 +77,6 @@ func EffectiveVoiceConfig(moduleID string, providerID string, cfg VoiceProviderC
 	cfg.Endpoint = cmp.Or(cfg.Endpoint, defaults.Endpoint)
 	cfg.Threads = max(cfg.Threads, 0)
 	return cfg
-}
-
-func normalizeVoiceRuntimeMode(mode string) string {
-	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "always", "always_running", "persistent", "server":
-		return "always_running"
-	default:
-		return "per_task"
-	}
 }
 
 // NormalizeVoiceLanguage is a Piper language code such as en_US; "" is any.
@@ -97,9 +88,9 @@ func NormalizeVoiceLanguage(language string) string {
 	switch strings.ToLower(language) {
 	case "auto":
 		return ""
-	case "en", "english":
+	case "en":
 		return "en_US"
-	case "ru", "russian":
+	case "ru":
 		return "ru_RU"
 	}
 	if before, after, ok := strings.Cut(language, "_"); ok {

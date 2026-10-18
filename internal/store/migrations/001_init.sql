@@ -14,6 +14,173 @@ CREATE TABLE IF NOT EXISTS sessions (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS messages (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    seq INTEGER NOT NULL DEFAULT 0,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    parts_json TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    origin TEXT NOT NULL DEFAULT '',
+    compaction_json TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(role, content, provider, model, tokenize = 'unicode61');
+
+CREATE TABLE IF NOT EXISTS client_bindings (
+    client TEXT NOT NULL,
+    external_key TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (client, external_key),
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS session_inputs (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    target_run_id TEXT NOT NULL DEFAULT '',
+    mode TEXT NOT NULL,
+    status TEXT NOT NULL,
+    text TEXT NOT NULL DEFAULT '',
+    parts_json TEXT NOT NULL DEFAULT '',
+    client TEXT NOT NULL DEFAULT '',
+    external_key TEXT NOT NULL DEFAULT '',
+    client_capabilities_json TEXT NOT NULL DEFAULT '',
+    delivery_address_json TEXT NOT NULL DEFAULT '',
+    reply_once INTEGER NOT NULL DEFAULT 0,
+    working_dir TEXT NOT NULL DEFAULT '',
+    consumed_run_id TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    consumed_at TEXT,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS memories (
+    id TEXT PRIMARY KEY,
+    scope TEXT NOT NULL,
+    key TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL,
+    working_dir TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS runs (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    user_message_id TEXT NOT NULL,
+    client TEXT NOT NULL DEFAULT '',
+    external_key TEXT NOT NULL DEFAULT '',
+    client_capabilities_json TEXT NOT NULL DEFAULT '',
+    trigger_kind TEXT NOT NULL DEFAULT '',
+    continues_run_id TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL,
+    stop_reason TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '',
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS run_steps (
+    run_id TEXT NOT NULL,
+    step INTEGER NOT NULL,
+    model TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+    stop_reason TEXT NOT NULL DEFAULT '',
+    latency_ms INTEGER NOT NULL DEFAULT 0,
+    tool_calls INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (run_id, step),
+    FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS run_checkpoints (
+    run_id TEXT PRIMARY KEY,
+    recovery_count INTEGER NOT NULL DEFAULT 0,
+    engine_state TEXT NOT NULL DEFAULT '',
+    tool_batch TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS run_wakeups (
+    run_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    wake_at INTEGER NOT NULL,
+    task_ids_json TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS approvals (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    run_id TEXT NOT NULL DEFAULT '',
+    task_id TEXT NOT NULL DEFAULT '',
+    tool_call_ref TEXT NOT NULL DEFAULT '',
+    tool_name TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    params_json TEXT NOT NULL DEFAULT '',
+    path TEXT NOT NULL DEFAULT '',
+    suggestion_json TEXT NOT NULL DEFAULT '',
+    state TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    requested_at TEXT NOT NULL,
+    decided_at TEXT,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS permission_rules (
+    id TEXT PRIMARY KEY,
+    tool TEXT NOT NULL,
+    pattern TEXT NOT NULL DEFAULT '',
+    effect TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    session_id TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS session_budgets (
+    session_id TEXT PRIMARY KEY,
+    steps INTEGER,
+    active_seconds INTEGER,
+    tokens INTEGER,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS session_engine_state (
+    session_id TEXT PRIMARY KEY,
+    engine_state TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS session_todos (
+    session_id TEXT PRIMARY KEY,
+    items_json TEXT NOT NULL,
+    chain_run_id TEXT NOT NULL DEFAULT '',
+    updated_run_id TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
@@ -41,133 +208,11 @@ CREATE TABLE IF NOT EXISTS tasks (
     child_run_id TEXT NOT NULL DEFAULT '',
     summary TEXT NOT NULL DEFAULT '',
     error TEXT NOT NULL DEFAULT '',
-    result_message_id TEXT NOT NULL DEFAULT '',
     delivered_at TEXT,
     delivered_run_id TEXT NOT NULL DEFAULT '',
     started_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     finished_at TEXT,
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS client_bindings (
-    client TEXT NOT NULL,
-    external_key TEXT NOT NULL,
-    session_id TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    PRIMARY KEY (client, external_key),
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS messages (
-    id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    run_id TEXT NOT NULL,
-    role TEXT NOT NULL,
-    content TEXT NOT NULL,
-    parts_json TEXT NOT NULL DEFAULT '',
-    model TEXT NOT NULL DEFAULT '',
-    provider TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL DEFAULT '',
-    seq INTEGER NOT NULL DEFAULT 0,
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS memories (
-    id TEXT PRIMARY KEY,
-    scope TEXT NOT NULL,
-    key TEXT NOT NULL DEFAULT '',
-    content TEXT NOT NULL,
-    working_dir TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS runs (
-    id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    user_message_id TEXT NOT NULL,
-    client TEXT NOT NULL DEFAULT '',
-    external_key TEXT NOT NULL DEFAULT '',
-    client_capabilities_json TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL,
-    error TEXT NOT NULL DEFAULT '',
-    started_at TEXT NOT NULL,
-    finished_at TEXT,
-    updated_at TEXT NOT NULL,
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS run_checkpoints (
-    run_id TEXT PRIMARY KEY,
-    recovery_count INTEGER NOT NULL DEFAULT 0,
-    updated_at TEXT NOT NULL,
-    FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS run_wakeups (
-    run_id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    wake_at INTEGER NOT NULL,
-    task_ids_json TEXT NOT NULL DEFAULT '',
-    FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS session_inputs (
-    id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    target_run_id TEXT NOT NULL DEFAULT '',
-    mode TEXT NOT NULL,
-    status TEXT NOT NULL,
-    text TEXT NOT NULL DEFAULT '',
-    parts_json TEXT NOT NULL DEFAULT '',
-    client TEXT NOT NULL DEFAULT '',
-    external_key TEXT NOT NULL DEFAULT '',
-    client_capabilities_json TEXT NOT NULL DEFAULT '',
-    delivery_address_json TEXT NOT NULL DEFAULT '',
-    reply_once INTEGER NOT NULL DEFAULT 0,
-    working_dir TEXT NOT NULL DEFAULT '',
-    consumed_run_id TEXT NOT NULL DEFAULT '',
-    error TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    consumed_at TEXT,
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS run_steps (
-    run_id TEXT NOT NULL,
-    step INTEGER NOT NULL,
-    model TEXT NOT NULL DEFAULT '',
-    provider TEXT NOT NULL DEFAULT '',
-    prompt_tokens INTEGER NOT NULL DEFAULT 0,
-    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
-    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
-    output_tokens INTEGER NOT NULL DEFAULT 0,
-    reasoning_tokens INTEGER NOT NULL DEFAULT 0,
-    stop_reason TEXT NOT NULL DEFAULT '',
-    latency_ms INTEGER NOT NULL DEFAULT 0,
-    tool_calls INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL,
-    PRIMARY KEY (run_id, step),
-    FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS approvals (
-    id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    run_id TEXT NOT NULL DEFAULT '',
-    task_id TEXT NOT NULL DEFAULT '',
-    tool_call_ref TEXT NOT NULL DEFAULT '',
-    tool_name TEXT NOT NULL DEFAULT '',
-    description TEXT NOT NULL DEFAULT '',
-    action TEXT NOT NULL DEFAULT '',
-    params_json TEXT NOT NULL DEFAULT '',
-    path TEXT NOT NULL DEFAULT '',
-    state TEXT NOT NULL,
-    requested_at TEXT NOT NULL,
-    decided_at TEXT,
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
@@ -242,44 +287,73 @@ CREATE TABLE IF NOT EXISTS external_agent_sessions (
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_tasks_session_status
-    ON tasks(session_id, status);
+CREATE TABLE IF NOT EXISTS skills (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    version TEXT NOT NULL DEFAULT '',
+    author TEXT NOT NULL DEFAULT '',
+    authors_json TEXT NOT NULL DEFAULT '[]',
+    license TEXT NOT NULL DEFAULT '',
+    tags_json TEXT NOT NULL DEFAULT '[]',
+    platforms_json TEXT NOT NULL DEFAULT '[]',
+    category TEXT NOT NULL DEFAULT '',
+    path TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT '',
+    provenance TEXT NOT NULL DEFAULT '',
+    hash TEXT NOT NULL DEFAULT '',
+    trust_state TEXT NOT NULL,
+    state TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    use_count INTEGER NOT NULL DEFAULT 0,
+    view_count INTEGER NOT NULL DEFAULT 0,
+    patch_count INTEGER NOT NULL DEFAULT 0,
+    installed_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    last_activity_at TEXT NOT NULL DEFAULT ''
+);
 
-CREATE INDEX IF NOT EXISTS idx_tasks_parent_call
-    ON tasks(session_id, run_id, parent_tool_call_id);
+CREATE VIRTUAL TABLE IF NOT EXISTS skill_fts USING fts5(id UNINDEXED, name, description, tags, category, body);
 
-CREATE INDEX IF NOT EXISTS idx_tasks_child_run
-    ON tasks(child_run_id);
+CREATE TABLE IF NOT EXISTS skill_sessions (
+    session_id TEXT NOT NULL,
+    skill_id TEXT NOT NULL,
+    activated_at TEXT NOT NULL,
+    PRIMARY KEY (session_id, skill_id)
+);
 
-CREATE INDEX IF NOT EXISTS idx_tasks_child_session
-    ON tasks(child_session_id);
+CREATE TABLE IF NOT EXISTS skill_plugin_mcp_candidates (
+    id TEXT PRIMARY KEY,
+    plugin_path TEXT NOT NULL,
+    config_json TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
 
-CREATE INDEX IF NOT EXISTS idx_run_wakeups_wake_at
-    ON run_wakeups(wake_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id, hidden);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_seq ON messages(seq);
+CREATE INDEX IF NOT EXISTS idx_messages_session_seq ON messages(session_id, seq);
+CREATE INDEX IF NOT EXISTS idx_messages_session_run ON messages(session_id, run_id, seq);
+CREATE INDEX IF NOT EXISTS idx_messages_boundaries ON messages(session_id, seq) WHERE compaction_json <> '';
+CREATE INDEX IF NOT EXISTS idx_session_inputs_session_status_created ON session_inputs(session_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_session_inputs_target_run ON session_inputs(target_run_id, mode, status);
+CREATE INDEX IF NOT EXISTS idx_memories_scope_workdir_updated ON memories(scope, working_dir, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_runs_session_started_at ON runs(session_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_run_wakeups_wake_at ON run_wakeups(wake_at);
+CREATE INDEX IF NOT EXISTS idx_approvals_session_run_state ON approvals(session_id, run_id, state);
+CREATE INDEX IF NOT EXISTS idx_approvals_task ON approvals(task_id) WHERE task_id <> '';
+CREATE INDEX IF NOT EXISTS idx_permission_rules_session ON permission_rules(session_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_session_status ON tasks(session_id, status);
+CREATE INDEX IF NOT EXISTS idx_tasks_parent_call ON tasks(session_id, run_id, parent_tool_call_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_child_run ON tasks(child_run_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_child_session ON tasks(child_session_id);
+CREATE INDEX IF NOT EXISTS idx_client_deliveries_status ON client_deliveries(client, type, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_client_deliveries_session ON client_deliveries(session_id, run_id, task_id);
+CREATE INDEX IF NOT EXISTS idx_automation_jobs_due ON automation_jobs(status, next_due_at);
+CREATE INDEX IF NOT EXISTS idx_automation_fires_job ON automation_fires(job_id, scheduled_for);
+CREATE INDEX IF NOT EXISTS idx_external_agent_sessions_agent ON external_agent_sessions(agent_id, external_thread_id);
 
-CREATE INDEX IF NOT EXISTS idx_runs_session_started_at
-    ON runs(session_id, started_at);
-
-CREATE INDEX IF NOT EXISTS idx_session_inputs_session_status_created
-    ON session_inputs(session_id, status, created_at);
-
-CREATE INDEX IF NOT EXISTS idx_session_inputs_target_run
-    ON session_inputs(target_run_id, mode, status);
-
-CREATE INDEX IF NOT EXISTS idx_memories_scope_workdir_updated
-    ON memories(scope, working_dir, updated_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_client_deliveries_status
-    ON client_deliveries(client, type, status, created_at);
-
-CREATE INDEX IF NOT EXISTS idx_client_deliveries_session
-    ON client_deliveries(session_id, run_id, task_id);
-
-CREATE INDEX IF NOT EXISTS idx_automation_jobs_due
-    ON automation_jobs(status, next_due_at);
-
-CREATE INDEX IF NOT EXISTS idx_automation_fires_job
-    ON automation_fires(job_id, scheduled_for);
-
-CREATE INDEX IF NOT EXISTS idx_external_agent_sessions_agent
-    ON external_agent_sessions(agent_id, external_thread_id);
+CREATE TRIGGER IF NOT EXISTS messages_search_delete AFTER DELETE ON messages BEGIN
+    DELETE FROM message_fts WHERE rowid = old.seq;
+END;

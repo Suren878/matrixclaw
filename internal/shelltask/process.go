@@ -30,16 +30,18 @@ type Leader struct {
 	Start  string
 }
 
-// Start runs command with bash -lc in dir, in a process group of its own, its
-// stdout and stderr going to out until every process that has them, the shell
-// and the commands it left running, closed them.
-func Start(command, dir string, out *Output) (*Process, error) {
+// Start runs command with bash -c in dir and env (nil inherits the daemon's),
+// in a process group of its own and with stdin from /dev/null, its stdout and
+// stderr going to out until every process that has them, the shell and the
+// commands it left running, closed them.
+func Start(command, dir string, env []string, out *Output) (*Process, error) {
 	reader, writer, err := os.Pipe()
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command("bash", "-lc", command)
+	cmd := exec.Command("bash", "-c", command)
 	cmd.Dir = dir
+	cmd.Env = env
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Stdout, cmd.Stderr = writer, writer
 	p := &Process{cmd: cmd, out: out, reader: reader, exited: make(chan struct{}), done: make(chan struct{}), exitCode: -1, startedAt: time.Now()}
@@ -114,6 +116,13 @@ func (p *Process) WaitOutput(delay time.Duration) {
 	}
 	_ = p.reader.SetReadDeadline(time.Now())
 	<-p.done
+}
+
+// KillLeftovers kills the processes the shell left running in its group once
+// it exited, and reports whether there were any.
+func (p *Process) KillLeftovers() bool {
+	<-p.exited
+	return syscall.Kill(-p.PID(), syscall.SIGKILL) == nil
 }
 
 // Done is closed once the process exited and its output is closed.
