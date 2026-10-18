@@ -195,4 +195,5 @@ type TaskStore interface {
 	SetTaskStatus(ctx context.Context, taskID string, status TaskStatus, at time.Time) error
 	SetTaskCursor(ctx context.Context, taskID string, cursor int64) error
 	MarkTasksDelivered(ctx context.Context, taskIDs []string, runID string, at time.Time) error
+	ClearTaskWorktree(ctx context.Context, taskID string, at time.Time) error
 }

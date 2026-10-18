@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -34,22 +35,48 @@ WHERE delivered_at IS NULL AND id IN (`+strings.Join(placeholders, ", ")+`)`, ar
 
 const taskColumns = `id, session_id, run_id, parent_tool_call_id, kind, status, command_or_goal, description, working_dir,
 background, agent_name, runtime, model, isolation, readonly, pid, pgid, leader_start, boot_id, output_path, exit_code, output_cursor,
-child_session_id, child_run_id, summary, error, delivered_at, delivered_run_id, started_at, updated_at, finished_at`
+child_session_id, child_run_id, summary, error, delivered_at, delivered_run_id, started_at, updated_at, finished_at,
+agent_json, output_schema, worktree_base`
 
 func (s *SQLiteStore) CreateTask(ctx context.Context, task core.Task) error {
-	_, err := s.db.ExecContext(ctx, `
+	agent, err := encodeTaskAgent(task.Agent)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
 INSERT INTO tasks(id, session_id, run_id, parent_tool_call_id, kind, status, command_or_goal, description, working_dir,
     background, agent_name, runtime, model, isolation, readonly, pid, pgid, leader_start, boot_id, output_path, exit_code, output_cursor,
-    child_session_id, child_run_id, summary, error, started_at, updated_at, finished_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    child_session_id, child_run_id, summary, error, started_at, updated_at, finished_at, agent_json, output_schema, worktree_base)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		task.ID, task.SessionID, task.RunID, task.ParentToolCallID, string(task.Kind), string(task.Status), task.Command,
 		task.Description, task.WorkingDir, task.Background, strings.Join(strings.Fields(task.AgentName), " "), task.Runtime, task.Model,
 		string(task.Isolation), task.Readonly, task.PID, task.PGID, task.LeaderStart, task.BootID, task.OutputPath,
 		task.ExitCode, task.OutputCursor, task.ChildSessionID, task.ChildRunID, task.Summary, task.Error,
 		formatTime(task.StartedAt), formatTime(task.UpdatedAt), nullableTime(task.FinishedAt),
+		agent, string(task.OutputSchema), task.WorktreeBase,
 	)
 	if err != nil {
 		return fmt.Errorf("store: create task: %w", err)
+	}
+	return nil
+}
+
+// encodeTaskAgent is the stored form of a subagent's profile; "" for none.
+func encodeTaskAgent(agent core.AgentProfile) (string, error) {
+	if agent.Name == "" {
+		return "", nil
+	}
+	raw, err := json.Marshal(agent)
+	if err != nil {
+		return "", fmt.Errorf("store: encode task agent: %w", err)
+	}
+	return string(raw), nil
+}
+
+// ClearTaskWorktree records that a worktree subagent's worktree is gone.
+func (s *SQLiteStore) ClearTaskWorktree(ctx context.Context, taskID string, at time.Time) error {
+	if _, err := s.db.ExecContext(ctx, `UPDATE tasks SET worktree_base = '', updated_at = ? WHERE id = ?`, formatTime(at), taskID); err != nil {
+		return fmt.Errorf("store: clear task worktree: %w", err)
 	}
 	return nil
 }
@@ -136,15 +163,24 @@ func (s *SQLiteStore) SetTaskCursor(ctx context.Context, taskID string, cursor i
 
 func scanTask(scanner rowScanner) (core.Task, error) {
 	var task core.Task
-	var kind, status, isolation, startedAt, updatedAt string
+	var kind, status, isolation, startedAt, updatedAt, agent, outputSchema string
 	var exitCode sql.NullInt64
 	var deliveredAt, finishedAt sql.NullString
 	if err := scanner.Scan(&task.ID, &task.SessionID, &task.RunID, &task.ParentToolCallID, &kind, &status, &task.Command,
 		&task.Description, &task.WorkingDir, &task.Background, &task.AgentName, &task.Runtime, &task.Model, &isolation, &task.Readonly,
 		&task.PID, &task.PGID, &task.LeaderStart, &task.BootID, &task.OutputPath, &exitCode, &task.OutputCursor,
 		&task.ChildSessionID, &task.ChildRunID, &task.Summary, &task.Error,
-		&deliveredAt, &task.DeliveredRunID, &startedAt, &updatedAt, &finishedAt); err != nil {
+		&deliveredAt, &task.DeliveredRunID, &startedAt, &updatedAt, &finishedAt,
+		&agent, &outputSchema, &task.WorktreeBase); err != nil {
 		return core.Task{}, err
+	}
+	if agent != "" {
+		if err := json.Unmarshal([]byte(agent), &task.Agent); err != nil {
+			return core.Task{}, fmt.Errorf("decode task agent: %w", err)
+		}
+	}
+	if outputSchema != "" {
+		task.OutputSchema = json.RawMessage(outputSchema)
 	}
 	task.Kind = core.TaskKind(kind)
 	task.Status = core.TaskStatus(status)

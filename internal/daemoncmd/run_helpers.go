@@ -75,7 +75,7 @@ func sessionFilesRoot(dbPath string) string {
 }
 
 // promptEnvironment is where native runs are told they work: the daemon
-// timezone and the user's AGENTS.md next to setup.json.
+// timezone, and the user's AGENTS.md and agents directory next to setup.json.
 func promptEnvironment(bootstrap bootstrapConfig) core.PromptEnvironment {
 	env := core.PromptEnvironment{}
 	if location, err := time.LoadLocation(bootstrap.Timezone); err == nil {
@@ -83,6 +83,7 @@ func promptEnvironment(bootstrap bootstrapConfig) core.PromptEnvironment {
 	}
 	if bootstrap.SetupService != nil {
 		env.UserInstructions = filepath.Join(filepath.Dir(bootstrap.SetupService.Path()), "AGENTS.md")
+		env.AgentsDir = filepath.Join(filepath.Dir(bootstrap.SetupService.Path()), "agents")
 	}
 	return env
 }

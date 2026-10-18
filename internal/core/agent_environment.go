@@ -10,10 +10,12 @@ import (
 )
 
 // PromptEnvironment is what native runs are told about the daemon's place:
-// the timezone their clock reads in and the user's global instruction file.
+// the timezone their clock reads in, the user's global instruction file and
+// the directory of the user's agent files.
 type PromptEnvironment struct {
 	Timezone         *time.Location
 	UserInstructions string
+	AgentsDir        string
 }
 
 // WithPromptEnvironment sets the timezone and global instruction file of
@@ -46,7 +48,7 @@ func (c *Core) readRunFacts(ctx context.Context, turn nativeTurn) runFacts {
 	if run, err := c.store.GetRun(ctx, turn.RunID); err == nil && !turn.Subagent {
 		facts.context.Client = run.Client
 	}
-	facts.coding = turn.ToolUse && turn.WorkingDir != "" && !c.runRepliesOnce(ctx, turn.RunID)
+	facts.coding = c.codingRun(ctx, turn)
 	if !facts.coding {
 		return facts
 	}
@@ -56,7 +58,28 @@ func (c *Core) readRunFacts(ctx context.Context, turn nativeTurn) runFacts {
 	}
 	home, _ := os.UserHomeDir()
 	facts.instructions = workspace.Instructions(turn.WorkingDir, facts.gitRoot, home, c.promptEnv.UserInstructions)
+	if turn.Agent.LeanContext && instructionsSize(facts.instructions) > leanInstructionsBytes {
+		facts.instructions = nil
+	}
 	return facts
+}
+
+// leanInstructionsBytes is the most project instructions a LeanContext
+// child still gets.
+const leanInstructionsBytes = 2048
+
+func instructionsSize(files []workspace.InstructionFile) int {
+	size := 0
+	for _, file := range files {
+		size += len(file.Content)
+	}
+	return size
+}
+
+// codingRun reports whether the turn's run gets the coding manual: it has
+// tools and a working directory and does not answer a reply-once address.
+func (c *Core) codingRun(ctx context.Context, turn nativeTurn) bool {
+	return turn.ToolUse && turn.WorkingDir != "" && !c.runRepliesOnce(ctx, turn.RunID)
 }
 
 // runRepliesOnce reports whether the run answers a reply-once address (a

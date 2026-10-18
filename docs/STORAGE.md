@@ -22,6 +22,7 @@ Next to the database (the data directory):
 | `skills/` | skills library: `installed`, `quarantine`, `archive`, `plugins`, `drafts` |
 | `runtime/context-windows.json` | model metadata learned from provider listings, by provider |
 | `checkpoints/<hash>/` | shadow git repository of one work tree, holding its file checkpoints ([CHECKPOINTS.md](CHECKPOINTS.md)) |
+| `worktrees/<repo>-<hash>/<task id>/` | git worktree of a worktree subagent, on branch `mc/<task id>`, kept until merged, discarded or 7 days after its task ended ([SUBAGENTS.md](SUBAGENTS.md)) |
 
 Session directories are removed with their session; `/clear` removes the tool
 outputs of the cleared history.
@@ -46,7 +47,8 @@ numbered migrations listed in `internal/store/schema.go` (`002` adds
 `file_checkpoints`; `003` drops `sessions.runtime_id`, which repeated
 `kind`, and `external_agent_sessions.approval_policy` and `sandbox`, since an
 external agent's permissions follow its session; `004` adds
-`session_goals`); the database records in
+`session_goals`; `005` adds the subagent columns `tasks.agent_json`,
+`output_schema` and `worktree_base`); the database records in
 `PRAGMA user_version` how many migrations it has applied. Each migration is applied once and in order, to a new
 database too. A database newer than the binary is refused.
 Upgrades are one-way. Back up before upgrading (the daemon may keep running):

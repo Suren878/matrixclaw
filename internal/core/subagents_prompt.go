@@ -12,29 +12,43 @@ import (
 )
 
 // subagentsPrompt is the parent's guidance for the agent tool with the
-// runtimes it may pick now.
-func (c *Core) subagentsPrompt(ctx context.Context, coding bool) string {
+// runtimes and agent types it may pick now; a coding parent may pick the
+// user's agent types too.
+func (c *Core) subagentsPrompt(ctx context.Context, coding bool, workingDir string) string {
 	runtimes := c.subagentRuntimeInfo(ctx)
 	var external []string
 	for _, runtime := range runtimes[1:] { // the native runtime comes first
 		external = append(external, runtime.PromptLine())
 	}
-	return prompt.Subagents(coding, availableSubagentRuntimeIDs(runtimes), external, c.backgroundAgents, c.budgets.Subagent.Steps)
+	var types []prompt.AgentType
+	for _, profile := range c.agentProfiles(workingDir, coding) {
+		types = append(types, prompt.AgentType{Name: profile.Name, Description: profile.Description})
+	}
+	return prompt.Subagents(prompt.SubagentsInfo{
+		Coding:     coding,
+		Runtimes:   availableSubagentRuntimeIDs(runtimes),
+		External:   external,
+		Types:      types,
+		Background: c.backgroundAgents,
+		Steps:      c.budgets.Subagent.Steps,
+	})
 }
 
-// agentToolSpec limits the agent tool's runtime choices to the runtimes
-// available now.
-func (c *Core) agentToolSpec(ctx context.Context, spec tools.Spec) tools.Spec {
+// agentToolSpec limits the agent tool's runtime and agent type choices to
+// those the turn may pick now.
+func (c *Core) agentToolSpec(ctx context.Context, spec tools.Spec, turn nativeTurn) tools.Spec {
 	var schema map[string]any
 	if err := json.Unmarshal(spec.InputJSONSchema, &schema); err != nil {
 		return spec
 	}
 	properties, _ := schema["properties"].(map[string]any)
 	runtime, _ := properties["runtime"].(map[string]any)
-	if runtime == nil {
+	agentType, _ := properties["agent_type"].(map[string]any)
+	if runtime == nil || agentType == nil {
 		return spec
 	}
 	runtime["enum"] = availableSubagentRuntimeIDs(c.subagentRuntimeInfo(ctx))
+	agentType["enum"] = agentTypeNames(c.agentProfiles(turn.WorkingDir, c.codingRun(ctx, turn)))
 	if raw, err := json.Marshal(schema); err == nil {
 		spec.InputJSONSchema = raw
 	}

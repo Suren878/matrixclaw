@@ -50,17 +50,23 @@ func (c *Core) checkToolCall(ctx context.Context, toolName string, call tools.Ca
 	if !isSubagentSession(session) {
 		return session, spec, nil
 	}
-	if !subagentToolAllowed(spec) {
-		return Session{}, tools.Spec{}, fmt.Errorf("%w: tool %q is not available to child subagents", ErrInvalidInput, toolName)
+	task, _, err := c.subagentTaskOf(ctx, session.ID)
+	if err != nil {
+		return Session{}, tools.Spec{}, err
 	}
-	if spec.Mutates() {
-		readonly, err := c.readonlySubagent(ctx, session.ID)
-		if err != nil {
-			return Session{}, tools.Spec{}, err
+	if !subagentToolAllowed(spec) || !task.Agent.allows(spec.ID) {
+		return Session{}, tools.Spec{}, fmt.Errorf("%w: tool %q is not available to this subagent", ErrInvalidInput, toolName)
+	}
+	if call.WorkingDir = normalizeWorkingDir(call.WorkingDir); call.WorkingDir == "" {
+		call.WorkingDir = session.WorkingDir
+	}
+	if task.Isolation == SubagentIsolationWorktree && task.WorkingDir != "" {
+		if err := tools.CheckConfinedCall(spec, call, c.tools.Subjects(spec.ID, call), !c.tools.ReadsOnly(spec.ID, call), task.WorkingDir); err != nil {
+			return Session{}, tools.Spec{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 		}
-		if readonly {
-			return readOnlyCall(session, spec, call)
-		}
+	}
+	if spec.Mutates() && task.Readonly {
+		return readOnlyCall(session, spec, call)
 	}
 	return session, spec, nil
 }
@@ -71,9 +77,6 @@ func readOnlyCall(session Session, spec tools.Spec, call tools.Call) (Session, t
 	readOnly, ok := tools.ReadOnlySpec(spec)
 	if !ok {
 		return Session{}, tools.Spec{}, fmt.Errorf("%w: tool %q changes things, and this subagent is read-only", ErrInvalidInput, spec.ID)
-	}
-	if call.WorkingDir = normalizeWorkingDir(call.WorkingDir); call.WorkingDir == "" {
-		call.WorkingDir = session.WorkingDir
 	}
 	if err := tools.CheckReadOnlyCall(call); err != nil {
 		return Session{}, tools.Spec{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)

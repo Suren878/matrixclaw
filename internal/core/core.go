@@ -49,6 +49,10 @@ type Core struct {
 	// so the failure is logged once.
 	compactUnavailable atomic.Bool
 
+	// agentFileErrors holds the agent file errors already logged.
+	agentFileErrors sync.Map
+	// worktrees holds the git worktrees of worktree subagents.
+	worktrees string
 	// badBoundaries holds the IDs of unreadable boundaries already logged.
 	badBoundaries sync.Map
 	// contextUsage is the ContextUsage last announced per session ID.

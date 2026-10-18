@@ -378,7 +378,23 @@ func checkReadOnlyPaths(params BashParams, dir string) error {
 	if home = comparableFilesystemPath(home); home != "" && pathWithin(root, home) {
 		return fmt.Errorf("%s holds the home directory", dir)
 	}
-	for _, words := range permission.ParseLine(params.Command).Commands {
+	return commandPaths(params.Command, dir, func(word, resolved string) error {
+		if !pathWithin(root, resolved) {
+			return fmt.Errorf("%s is outside %s", word, dir)
+		}
+		if HoldsSecrets(resolved) || isProtectedCredentialPath(resolved) {
+			return fmt.Errorf("%s holds secrets", word)
+		}
+		return nil
+	})
+}
+
+// commandPaths calls fn with every path argument of a command line (a word
+// with a slash, or starting with . or ~) as written and resolved against dir,
+// comparable; it stops at fn's first error.
+func commandPaths(command string, dir string, fn func(word, resolved string) error) error {
+	home, _ := os.UserHomeDir()
+	for _, words := range permission.ParseLine(command).Commands {
 		for _, word := range words[1:] {
 			if _, value, ok := strings.Cut(word, "="); ok && strings.HasPrefix(word, "-") {
 				word = value
@@ -395,12 +411,8 @@ func checkReadOnlyPaths(params BashParams, dir string) error {
 			case strings.HasPrefix(path, "~"):
 				return fmt.Errorf("%s is another user's home", word)
 			}
-			resolved := comparableFilesystemPath(resolvedPath(dir, path))
-			if !pathWithin(root, resolved) {
-				return fmt.Errorf("%s is outside %s", word, dir)
-			}
-			if HoldsSecrets(resolved) || isProtectedCredentialPath(resolved) {
-				return fmt.Errorf("%s holds secrets", word)
+			if err := fn(word, comparableFilesystemPath(resolvedPath(dir, path))); err != nil {
+				return err
 			}
 		}
 	}

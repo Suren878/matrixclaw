@@ -289,7 +289,8 @@ func TestAgentToolOffersOnlyAvailableRuntimes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(request.Tools) != 1 {
+	i := slices.IndexFunc(request.Tools, func(tool providers.ToolDefinition) bool { return tool.Name == "agent" })
+	if i < 0 {
 		t.Fatalf("tools = %+v", request.Tools)
 	}
 	var schema struct {
@@ -297,13 +298,19 @@ func TestAgentToolOffersOnlyAvailableRuntimes(t *testing.T) {
 			Runtime struct {
 				Enum []string `json:"enum"`
 			} `json:"runtime"`
+			AgentType struct {
+				Enum []string `json:"enum"`
+			} `json:"agent_type"`
 		} `json:"properties"`
 	}
-	if err := json.Unmarshal(request.Tools[0].InputSchema, &schema); err != nil {
+	if err := json.Unmarshal(request.Tools[i].InputSchema, &schema); err != nil {
 		t.Fatal(err)
 	}
 	if got := schema.Properties.Runtime.Enum; len(got) != 1 || got[0] != "matrixclaw" {
 		t.Fatalf("runtime enum = %v, want only the native runtime", got)
+	}
+	if got := strings.Join(schema.Properties.AgentType.Enum, ","); got != "general,explore,plan,review,verify" {
+		t.Fatalf("agent types = %s, want the builtins", got)
 	}
 }
 

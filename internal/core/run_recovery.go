@@ -228,10 +228,11 @@ func (c *Core) recoverRuns(ctx context.Context) error {
 
 // Recover resumes what the previous daemon left, once, at daemon start: its
 // shell tasks are lost; each run it left active resumes; a subagent task whose
-// child run ended is told; an idle session starts its next queued message, a
-// run for background work that finished meanwhile, or its goal's next run.
+// child run ended is told; worktrees no task keeps are removed; an idle
+// session starts its next queued message, a run for background work that
+// finished meanwhile, or its goal's next run.
 func (c *Core) Recover(ctx context.Context) error {
-	return errors.Join(c.recoverShellTasks(ctx), c.recoverRuns(ctx), c.recoverSubagentTasks(ctx), c.settleIdleSessions(ctx))
+	return errors.Join(c.recoverShellTasks(ctx), c.recoverRuns(ctx), c.recoverSubagentTasks(ctx), c.pruneSubagentWorktrees(ctx), c.settleIdleSessions(ctx))
 }
 
 // settleIdleSessions starts what the sessions with queued messages, unseen

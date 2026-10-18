@@ -188,8 +188,9 @@ read-only and deferred calls, `ask` again for a mutating call, `answer` an
 unknown tool with an error. A mutating call never reruns without a fresh
 approval. `Core.Recover`, called once at daemon start, marks leftover shell
 tasks `lost`, resumes each active run once, syncs subagent tasks whose child
-run already ended, and settles idle sessions (next queued message, a wake
-run or the next run of an active goal). External-agent runs keep their own recovery in core.
+run already ended, prunes worktrees no subagent task keeps, and settles idle
+sessions (next queued message, a wake run or the next run of an active goal).
+External-agent runs keep their own recovery in core.
 
 ## Agent engine
 
@@ -208,7 +209,7 @@ and talks to core through ports (`internal/agent/ports.go`):
 | `Sink` | `coreSink` | live events to clients |
 | `Prompts` | `corePrompts` | fixed system prompt per run; changing state as a context note |
 | `Todos` | `coreTodos` | open todo items of the run's `/continue` chain |
-| `Hooks` | `coreHooks` | SessionStart context, Stop/SubagentStop verdict, PreCompact; nil without hooks |
+| `Hooks` | `coreHooks` | SessionStart context, Stop/SubagentStop verdict (and a child's output_schema check), PreCompact; nil without either |
 | `Verifier` | `coreVerifier` | the session goal's check command when a run would end |
 
 What the engine remembers between steps (`agent.RunState`) is checkpointed with
@@ -280,8 +281,9 @@ changes), so the cached prefix survives between runs.
 - Every text names only tools the run has (`prompt.Tools`), so a read-only
   child (read-only bash, no edit tools) is never told to edit, build or
   commit. Children get the same manual with a subagent section instead of
-  the parent's question and final-reply rules; the parent gets the
-  agent-tool guidance with the runtimes available now.
+  the parent's question and final-reply rules, plus their agent type's
+  prompt; the parent gets the agent-tool guidance with the runtimes and
+  agent types available now and how to fan out to worktree children.
 - Project instructions (`internal/workspace`): `AGENTS.md` next to
   setup.json, then, from the top down to the working directory, the first of
   `AGENTS.md`/`CLAUDE.md` in each directory plus `.matrixclaw/instructions.md`.
@@ -350,6 +352,16 @@ provider and model.
   its time there is not counted. A background call returns the task; its end
   is an event for the parent session. A replayed call finds its task by
   `(run_id, parent_tool_call_id)`.
+- `agent_type` picks the child's `core.AgentProfile` (builtin `general`,
+  `explore`, `plan`, `review`, `verify`, or the user's and the project's agent
+  files, offered to coding runs only): prompt, tool allowlist, read-only,
+  model, step budget; it is stored with the task. `output_schema` is checked
+  when the child would stop (one correction) and when its task ends.
+  `agent_steer` sends a running background child a steer. Worktree children
+  start from the parent's current files on branch `mc/<task>` under
+  `$DATA/worktrees`, stay confined to their worktree, are committed and
+  described when they end, and are merged with `worktree_merge` or dropped
+  with `worktree_discard`. See [SUBAGENTS.md](SUBAGENTS.md).
 - A child's approval is its own (`approvals.task_id`), listed and announced in
   the parent's session and sent as an approval delivery to the parent's chat.
   A read-only child's approval is stored already rejected, without asking.

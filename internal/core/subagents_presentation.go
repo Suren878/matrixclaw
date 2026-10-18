@@ -29,17 +29,20 @@ func subagentTaskRuntimeLabel(runtime SubagentRuntime, child Session) string {
 }
 
 // subagentUserPrompt is a child's assignment: the parent's prompt, where it
-// works and what it may change.
-func subagentUserPrompt(prompt string, workingDir string, isolation SubagentIsolation, readonly bool) string {
+// works, what it may change and the form of its answer.
+func subagentUserPrompt(prompt string, workingDir string, task Task) string {
 	lines := []string{"Delegated task:", strings.TrimSpace(prompt)}
 	if workingDir = strings.TrimSpace(workingDir); workingDir != "" {
 		lines = append(lines, "", "Working directory:", workingDir)
 	}
 	switch {
-	case readonly:
+	case task.Readonly:
 		lines = append(lines, "", "Read-only: inspect and report; do not change files.")
-	case isolation == SubagentIsolationWorktree:
-		lines = append(lines, "", "This is your own git worktree, started from the parent's last commit. Keep your changes inside it and give its path in your report; the parent brings the changes over.")
+	case task.Isolation == SubagentIsolationWorktree:
+		lines = append(lines, "", fmt.Sprintf("This is your own git worktree (%s) on branch %s, started from the parent's files including their uncommitted changes. Keep every change inside it. What you change is committed to the branch when you finish, and the parent merges it.", task.WorkingDir, subagentBranch(task.ID)))
+	}
+	if len(task.OutputSchema) > 0 {
+		lines = append(lines, "", outputSchemaPrompt(task.OutputSchema))
 	}
 	return strings.Join(lines, "\n")
 }

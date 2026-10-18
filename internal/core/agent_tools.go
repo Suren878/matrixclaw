@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 
@@ -18,6 +19,10 @@ type nativeTurn struct {
 	WorkingDir string
 	Subagent   bool
 	Readonly   bool
+	// Agent is a subagent's profile and OutputSchema the schema its final
+	// answer must match, if any.
+	Agent        AgentProfile
+	OutputSchema json.RawMessage
 	// Goal is set when the session had an active goal as the run started.
 	Goal               bool
 	ClientCapabilities ClientCapabilities
@@ -43,7 +48,7 @@ func (t coreTools) Specs(ctx context.Context) []tools.Spec {
 	specs := t.c.nativeToolSpecs(t.turn)
 	for i := range specs {
 		if specs[i].ID == agentToolName {
-			specs[i] = t.c.agentToolSpec(ctx, specs[i])
+			specs[i] = t.c.agentToolSpec(ctx, specs[i], t.turn)
 		}
 	}
 	return specs
@@ -85,9 +90,8 @@ func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) 
 	t.checkpointBatch(ctx, spec, call)
 	decision := agent.Decision{Allowed: true, Barrier: spec.Mutates() && check.ask, Key: t.c.tools.ConcurrencyKey(spec.ID, call)}
 	if spec.ID == agentToolName {
-		input := parseAgentInput(call.Args)
-		decision.Barrier = agentCallWritesSharedDir(input)
-		decision.Delegated = !input.Background
+		decision.Barrier = t.c.agentCallWritesSharedDir(call)
+		decision.Delegated = !parseAgentInput(call.Args).Background
 	}
 	return decision, nil
 }
@@ -125,7 +129,7 @@ func (c *Core) nativeToolSpecs(turn nativeTurn) []tools.Spec {
 	specs := c.tools.List()
 	out := make([]tools.Spec, 0, len(specs))
 	for _, spec := range specs {
-		if turn.Subagent && !subagentToolAllowed(spec) || goalTools[spec.ID] && !turn.Goal {
+		if turn.Subagent && (!subagentToolAllowed(spec) || !turn.Agent.allows(spec.ID)) || goalTools[spec.ID] && !turn.Goal {
 			continue
 		}
 		switch spec.ID {

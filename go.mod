@@ -18,6 +18,7 @@ require (
 	github.com/clipperhouse/displaywidth v0.11.0
 	github.com/clipperhouse/uax29/v2 v2.7.0
 	github.com/coder/websocket v1.8.15
+	github.com/google/jsonschema-go v0.4.2
 	github.com/lucasb-eyer/go-colorful v1.4.0
 	github.com/modelcontextprotocol/go-sdk v1.4.1
 	github.com/rivo/uniseg v0.4.7
@@ -53,7 +54,6 @@ require (
 	github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c // indirect
 	github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f // indirect
 	github.com/gomarkdown/markdown v0.0.0-20260411013819-759bbc3e3207 // indirect
-	github.com/google/jsonschema-go v0.4.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/itlightning/dateparse v0.2.1 // indirect
