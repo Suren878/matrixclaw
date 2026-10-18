@@ -566,7 +566,7 @@ func (w *workspace) remove(p string) error {
 // missing turns git's error for an absent object into ErrMissing.
 func (w *workspace) missing(err error) error {
 	if strings.Contains(err.Error(), "bad object") || strings.Contains(err.Error(), "not a tree object") {
-		return fmt.Errorf("%w: %v", ErrMissing, err)
+		return fmt.Errorf("%w: %w", ErrMissing, err)
 	}
 	return err
 }

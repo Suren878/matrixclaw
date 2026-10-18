@@ -200,7 +200,7 @@ func (c *Core) RestoreFileCheckpoint(ctx context.Context, sessionID, checkpointI
 	}
 	changes, err := c.checkpoints.Restore(ctx, cp.WorkingDir, cp.Tree)
 	if errors.Is(err, checkpoint.ErrMissing) {
-		return FileCheckpointRestoreResponse{}, fmt.Errorf("%w: %v", ErrNotFound, err)
+		return FileCheckpointRestoreResponse{}, fmt.Errorf("%w: %w", ErrNotFound, err)
 	}
 	if err != nil {
 		return FileCheckpointRestoreResponse{}, err
