@@ -1,5 +1,5 @@
-// Package procsup runs long-lived local helper processes (voice servers), one
-// per key, and stops them with the daemon.
+// Package procsup runs long-lived local helper processes (voice and language
+// servers), one per key, and stops them with the daemon.
 package procsup
 
 import (
@@ -26,12 +26,13 @@ const (
 // Spec describes a process; two specs with the same command, environment and
 // stdin mode run the same process.
 type Spec struct {
-	Key   string
-	Path  string
-	Args  []string
-	Env   []string // nil inherits the daemon's environment
-	Stdin bool     // keep a stdin pipe
-	Log   string   // stderr log file name in the supervisor's log dir; "" discards
+	Key    string
+	Path   string
+	Args   []string
+	Env    []string // nil inherits the daemon's environment
+	Stdin  bool     // keep a stdin pipe
+	Stdout bool     // keep a stdout pipe
+	Log    string   // stderr log file name in the supervisor's log dir; "" discards
 	// Ready is one readiness probe; the supervisor repeats it until it passes,
 	// the process exits or ReadyTimeout ends. Nil means started is ready.
 	Ready        func(ctx context.Context) error
@@ -39,7 +40,7 @@ type Spec struct {
 }
 
 func (s Spec) sameProcess(other Spec) bool {
-	return s.Path == other.Path && slices.Equal(s.Args, other.Args) && slices.Equal(s.Env, other.Env) && s.Stdin == other.Stdin
+	return s.Path == other.Path && slices.Equal(s.Args, other.Args) && slices.Equal(s.Env, other.Env) && s.Stdin == other.Stdin && s.Stdout == other.Stdout
 }
 
 type Supervisor struct {
@@ -141,6 +142,13 @@ func (s *Supervisor) spawn(spec Spec) (*Process, error) {
 		}
 		p.stdin = stdin
 	}
+	if spec.Stdout {
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return nil, err
+		}
+		p.stdout = stdout
+	}
 	logFile := s.openLog(spec.Log)
 	if logFile != nil {
 		cmd.Stderr = logFile
@@ -178,6 +186,7 @@ type Process struct {
 	spec     Spec
 	cmd      *exec.Cmd
 	stdin    io.WriteCloser
+	stdout   io.Reader
 	done     chan struct{}
 	ready    chan struct{}
 	readyErr error
@@ -192,6 +201,9 @@ func (p *Process) Running() bool {
 		return true
 	}
 }
+
+// Stdout is the process's stdout pipe (Spec.Stdout); it ends when the process exits.
+func (p *Process) Stdout() io.Reader { return p.stdout }
 
 func (p *Process) PID() int { return p.cmd.Process.Pid }
 
