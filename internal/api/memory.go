@@ -2,13 +2,15 @@ package api
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
 func (s *Server) handleMemory(w http.ResponseWriter, r *http.Request) {
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	limit, ok := queryInt(w, r, "limit", 0)
+	if !ok {
+		return
+	}
 	entries, err := s.Core.ListMemories(r.Context(), core.MemoryFilter{
 		Scope:      core.MemoryScope(r.URL.Query().Get("scope")),
 		WorkingDir: r.URL.Query().Get("working_dir"),

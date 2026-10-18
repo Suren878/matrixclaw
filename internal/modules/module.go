@@ -23,8 +23,6 @@ type Module interface {
 	Apply(ctx context.Context, cfg setup.Config) error
 	// Tools are the tools the module offers now; none while it is off.
 	Tools() []tools.Executor
-	// Context is a system prompt paragraph about the module, "" for none.
-	Context() string
 	// Status describes the module without network calls beyond cached ones.
 	Status(ctx context.Context) Status
 	Close() error
@@ -103,16 +101,6 @@ func (s *Set) Apply(ctx context.Context, cfg setup.Config) error {
 }
 
 // Context is the modules' system prompt paragraphs.
-func (s *Set) Context() []string {
-	out := []string{}
-	for _, module := range s.modules {
-		if context := module.Context(); context != "" {
-			out = append(out, context)
-		}
-	}
-	return out
-}
-
 func (s *Set) Statuses(ctx context.Context) []Status {
 	out := make([]Status, 0, len(s.modules))
 	for _, module := range s.modules {
@@ -189,19 +177,18 @@ func (s *Set) ConcurrencyKey(toolID string, call tools.Call) string {
 }
 
 // Static is a module with fixed tools and no settings.
-func Static(id string, title string, context string, executors ...tools.Executor) Module {
-	return &static{id: id, title: title, context: context, tools: executors}
+func Static(id string, title string, executors ...tools.Executor) Module {
+	return &static{id: id, title: title, tools: executors}
 }
 
 type static struct {
-	id, title, context string
-	tools              []tools.Executor
+	id, title string
+	tools     []tools.Executor
 }
 
 func (m *static) ID() string                                { return m.id }
 func (m *static) Apply(context.Context, setup.Config) error { return nil }
 func (m *static) Tools() []tools.Executor                   { return m.tools }
-func (m *static) Context() string                           { return m.context }
 func (m *static) Close() error                              { return nil }
 
 func (m *static) Status(context.Context) Status {

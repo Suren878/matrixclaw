@@ -1,0 +1,69 @@
+package core
+
+import (
+	"context"
+	"os"
+	"time"
+
+	"github.com/Suren878/matrixclaw/internal/agent/prompt"
+	"github.com/Suren878/matrixclaw/internal/workspace"
+)
+
+// PromptEnvironment is what native runs are told about the daemon's place:
+// the timezone their clock reads in and the user's global instruction file.
+type PromptEnvironment struct {
+	Timezone         *time.Location
+	UserInstructions string
+}
+
+// WithPromptEnvironment sets the timezone and global instruction file of
+// native run prompts; without a timezone the clock reads in UTC.
+func (c *Core) WithPromptEnvironment(env PromptEnvironment) *Core {
+	c.promptEnv = env
+	return c
+}
+
+// runFacts is what a native run is told about where it works, read once
+// when it starts.
+type runFacts struct {
+	// coding is a run with tools in a working directory that answers more
+	// than one reply-once chat message; it gets the coding manual.
+	coding       bool
+	gitRoot      string
+	instructions []workspace.InstructionFile
+	context      prompt.RunContext
+}
+
+func (c *Core) readRunFacts(ctx context.Context, turn nativeTurn) runFacts {
+	location := c.promptEnv.Timezone
+	if location == nil {
+		location = time.UTC
+	}
+	facts := runFacts{context: prompt.RunContext{Now: c.now().In(location)}}
+	if session, err := c.store.GetSession(ctx, turn.SessionID); err == nil && !turn.Readonly {
+		facts.context.PermissionMode = string(NormalizePermissionMode(string(session.PermissionMode)))
+	}
+	if run, err := c.store.GetRun(ctx, turn.RunID); err == nil && !turn.Subagent {
+		facts.context.Client = run.Client
+	}
+	facts.coding = turn.ToolUse && turn.WorkingDir != "" && !c.runRepliesOnce(ctx, turn.RunID)
+	if !facts.coding {
+		return facts
+	}
+	if git, ok := workspace.ReadGit(ctx, turn.WorkingDir); ok {
+		facts.gitRoot = git.Root
+		facts.context.Git = &git
+	}
+	home, _ := os.UserHomeDir()
+	facts.instructions = workspace.Instructions(turn.WorkingDir, facts.gitRoot, home, c.promptEnv.UserInstructions)
+	return facts
+}
+
+// runRepliesOnce reports whether the run answers a reply-once address (a
+// Telegram guest query or inline message): a chat answer, often for someone
+// other than the owner, which gets neither the coding manual nor the
+// project's instruction files.
+func (c *Core) runRepliesOnce(ctx context.Context, runID string) bool {
+	deliveries, err := c.store.ListClientDeliveries(ctx, ClientDeliveryFilter{RunID: runID, Type: ClientDeliveryTypeRun, Limit: 1})
+	return err == nil && len(deliveries) > 0 && deliveries[0].ReplyOnce
+}

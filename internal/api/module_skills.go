@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/skills"
@@ -12,7 +11,10 @@ import (
 // order=usage.
 func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
-	limit, _ := strconv.Atoi(strings.TrimSpace(query.Get("limit")))
+	limit, ok := queryInt(w, r, "limit", 0)
+	if !ok {
+		return
+	}
 	opts := skills.SearchOptions{
 		Limit:              limit,
 		IncludeQuarantined: query.Get("include_quarantined") == "1",
@@ -30,7 +32,7 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 		result, err = s.Skills.List(opts)
 	}
 	if err != nil {
-		writeErrorMessage(w, http.StatusInternalServerError, err.Error())
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, skills.SkillsResponse{Skills: result})
@@ -43,7 +45,7 @@ func (s *Server) handleSkillInstall(w http.ResponseWriter, r *http.Request) {
 	}
 	installed, err := s.Skills.InstallPath(req.Path, skills.InstallOptions{Provenance: req.Path})
 	if err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+		writeError(w, withStatus(http.StatusBadRequest, err))
 		return
 	}
 	writeJSON(w, http.StatusCreated, skills.SkillsResponse{Skills: installed})
@@ -56,7 +58,7 @@ func (s *Server) handleSkillDraft(w http.ResponseWriter, r *http.Request) {
 	}
 	draft, err := s.Skills.CreateDraft(req.Name, req.Description, req.Tags, req.Body)
 	if err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+		writeError(w, withStatus(http.StatusBadRequest, err))
 		return
 	}
 	writeJSON(w, http.StatusCreated, draft)
@@ -65,7 +67,7 @@ func (s *Server) handleSkillDraft(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSkill(w http.ResponseWriter, r *http.Request) {
 	detail, err := s.Skills.Get(r.PathValue("id"))
 	if err != nil {
-		writeErrorMessage(w, http.StatusNotFound, err.Error())
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, detail)
@@ -78,7 +80,7 @@ func (s *Server) handleSkillUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	updated, err := s.Skills.UpdateMetadata(r.PathValue("id"), req)
 	if err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+		writeError(w, withStatus(http.StatusBadRequest, err))
 		return
 	}
 	writeJSON(w, http.StatusOK, updated)
@@ -126,7 +128,7 @@ func (s *Server) handleSkillAction(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSessionSkills(w http.ResponseWriter, r *http.Request) {
 	items, err := s.Skills.SessionSkills(r.PathValue("id"))
 	if err != nil {
-		writeErrorMessage(w, http.StatusInternalServerError, err.Error())
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, skills.SkillsResponse{Skills: items})
@@ -135,7 +137,7 @@ func (s *Server) handleSessionSkills(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSessionSkillUse(w http.ResponseWriter, r *http.Request) {
 	detail, err := s.Skills.Use(r.PathValue("id"), r.PathValue("skill"))
 	if err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+		writeError(w, withStatus(http.StatusBadRequest, err))
 		return
 	}
 	writeJSON(w, http.StatusOK, detail)
@@ -147,7 +149,7 @@ func (s *Server) handleSessionSkillUnload(w http.ResponseWriter, r *http.Request
 
 func writeSkillResult(w http.ResponseWriter, err error) {
 	if err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+		writeError(w, withStatus(http.StatusBadRequest, err))
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

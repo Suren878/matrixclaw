@@ -2,52 +2,22 @@ package core
 
 import (
 	"context"
-	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/agent/prompt"
 	"github.com/Suren878/matrixclaw/internal/transcript"
+	"github.com/Suren878/matrixclaw/internal/workspace"
 )
 
-func (c *Core) webPromptAvailable() bool {
-	if c == nil || c.tools == nil {
-		return false
-	}
-	_, ok := c.tools.Spec("web_fetch")
-	return ok
-}
-
-func (c *Core) fileDeliveryPromptAvailable() bool {
-	if c == nil || c.tools == nil {
-		return false
-	}
-	_, ok := c.tools.Spec("send_file")
-	return ok
-}
-
-func (c *Core) telephonyCallPromptAvailable() bool {
-	if c == nil || c.tools == nil {
-		return false
-	}
-	_, ok := c.tools.Spec("telephony_call")
-	return ok
-}
-
-func (c *Core) agentPromptAvailable() bool {
-	if c == nil || c.tools == nil {
-		return false
-	}
-	_, ok := c.tools.Spec(agentToolName)
-	return ok
-}
-
 // corePrompts is the Prompts port of one native run; memory is the memory text
-// the run's system prompt was built with and toolIDs the tools listed with it,
-// which the engine keeps for the whole run.
+// the run's system prompt was built with, toolIDs the tools listed with it and
+// runContext the state the run started in, which the engine keeps for the
+// whole run.
 type corePrompts struct {
-	c       *Core
-	turn    nativeTurn
-	memory  string
-	toolIDs []string
+	c          *Core
+	turn       nativeTurn
+	memory     string
+	toolIDs    []string
+	runContext string
 }
 
 func (p *corePrompts) System(ctx context.Context, history []transcript.Message) (string, string) {
@@ -56,14 +26,17 @@ func (p *corePrompts) System(ctx context.Context, history []transcript.Message) 
 		p.memory = p.c.MemoryPromptContext(ctx, p.turn.WorkingDir)
 	}
 	p.toolIDs = p.c.nativeStatusToolIDs(p.turn)
-	return p.c.nativeSystemPrompt(ctx, p.turn, assistant, p.memory, history), assistant.CustomInstructions
+	facts := p.c.readRunFacts(ctx, p.turn)
+	p.runContext = facts.context.Text()
+	return p.c.nativeSystemPrompt(ctx, p.turn, assistant, prompt.NewTools(p.toolIDs...), facts, p.memory, history), assistant.CustomInstructions
 }
 
-// Context is what changes during a run: the recovery notice, the todo list,
-// the background tasks still running, runtime status and memory written since
-// the run started.
+// Context is what changes between and during runs: the state the run started
+// in (clock, client, permission mode, git), the recovery notice, the todo
+// list, the background tasks still running, runtime status and memory
+// written since the run started.
 func (p *corePrompts) Context(ctx context.Context) string {
-	var sections []string
+	sections := []string{p.runContext}
 	if checkpoint, ok, err := p.c.runCheckpoint(ctx, p.turn.RunID); err == nil && ok && checkpoint.RecoveryCount > 0 {
 		sections = append(sections, runRecoveryNotice)
 	}
@@ -96,40 +69,47 @@ func memoryChangedPrompt(memory string) string {
 }
 
 // nativeSystemPrompt is the part of the prompt that stays fixed for a run.
-func (c *Core) nativeSystemPrompt(ctx context.Context, turn nativeTurn, assistant AssistantProfile, memory string, history []transcript.Message) string {
-	sections := []string{prompt.AssistantSystemPrompt(assistant.Name, assistant.SystemPrompt), modelPrompt(turn.Model)}
-	workingDir := strings.TrimSpace(turn.WorkingDir)
+// Sections that change least come first, so a changed prompt keeps the
+// longest cacheable prefix.
+func (c *Core) nativeSystemPrompt(ctx context.Context, turn nativeTurn, assistant AssistantProfile, tools prompt.Tools, facts runFacts, memory string, history []transcript.Message) string {
+	var sections []string
 	if turn.Subagent {
-		sections = append(sections, subagentSystemPrompt(turn.Readonly))
-		if workingDir != "" {
-			sections = append(sections, prompt.ProjectRoot(workingDir))
-		}
-		return prompt.JoinSections(sections...)
+		sections = append(sections, prompt.SubagentPersona(facts.coding, turn.Readonly))
+	} else {
+		sections = append(sections, prompt.Persona(assistant.Name, assistant.SystemPrompt, facts.coding))
 	}
-	if turn.ToolUse && clientSupportsVoiceDelivery(turn.ClientCapabilities) {
+	switch {
+	case facts.coding:
+		sections = append(sections, prompt.CodingGuidance(tools, turn.Subagent))
+	case turn.ToolUse:
+		sections = append(sections, prompt.ToolUseDiscipline(tools, turn.Subagent))
+	}
+	if turn.Subagent {
+		sections = append(sections, prompt.SubagentMode(tools, turn.Readonly))
+	} else {
+		sections = append(sections, prompt.LanguageGuidance())
+	}
+	if facts.coding {
+		sections = append(sections, prompt.Environment(turn.WorkingDir, facts.gitRoot, workspace.Platform()), prompt.ProjectInstructions(facts.instructions))
+	}
+	if tools.Has("web_fetch") {
+		sections = append(sections, prompt.WebGuidance(tools))
+	}
+	if tools.Has(agentToolName) {
+		sections = append(sections, c.subagentsPrompt(ctx, facts.coding))
+	}
+	if tools.Has("text_to_speech") {
 		sections = append(sections, prompt.VoiceOutputGuidance())
 	}
-	if turn.ToolUse && clientSupportsDocumentDelivery(turn.ClientCapabilities) && c.fileDeliveryPromptAvailable() {
+	if tools.Has("send_file") {
 		sections = append(sections, prompt.FileDeliveryGuidance())
 	}
-	if turn.ToolUse && c.telephonyCallPromptAvailable() {
+	if tools.Has("telephony_call") {
 		sections = append(sections, prompt.TelephonyCallGuidance())
 	}
-	if turn.ToolUse {
-		sections = append(sections, prompt.ToolUseDiscipline())
-	}
-	if workingDir != "" {
-		sections = append(sections, prompt.ProjectRoot(workingDir))
-	}
-	if turn.ToolUse && c.webPromptAvailable() {
-		sections = append(sections, prompt.WebGuidance())
-	}
-	if c.agentPromptAvailable() {
-		sections = append(sections, c.agentGuidancePrompt(ctx))
-	}
-	sections = append(sections, memory)
-	if skillsPrompt := c.nativeSkillsPrompt(ctx, turn, history); skillsPrompt != "" {
-		sections = append(sections, skillsPrompt)
+	sections = append(sections, modelPrompt(turn.Model), memory)
+	if !turn.Subagent {
+		sections = append(sections, c.nativeSkillsPrompt(ctx, turn, history))
 	}
 	return prompt.JoinSections(sections...)
 }

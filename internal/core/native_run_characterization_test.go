@@ -52,7 +52,10 @@ func drainEvents(events <-chan core.Event) []core.Event {
 	var out []core.Event
 	for {
 		select {
-		case event := <-events:
+		case event, ok := <-events:
+			if !ok {
+				return out
+			}
 			out = append(out, event)
 		default:
 			return out
@@ -130,6 +133,7 @@ func TestNativeToolRoundPublishesEventsInOrder(t *testing.T) {
 	}
 	want := []string{
 		"run.updated running",
+		"message.created system/text", // the context note with the run context
 		"message.created assistant/text",
 		"message.updated assistant/text,finish",
 		"message.created assistant/tool_call",
@@ -830,7 +834,7 @@ func TestNativeRunSeesOnlyTheNewestBoundaryAndLaterMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(seen.Messages) != 2 || !strings.Contains(seen.Messages[0].Content, "EARLIER WORK") || seen.Messages[1].Content != "original task window" {
+	if len(seen.Messages) != 3 || !strings.Contains(seen.Messages[0].Content, "EARLIER WORK") || seen.Messages[1].Content != "original task window" || !strings.HasPrefix(seen.Messages[2].Content, "Context update") {
 		t.Fatalf("request messages = %+v", seen.Messages)
 	}
 }
@@ -919,6 +923,8 @@ type asyncSubagentScenario struct {
 	events  []core.Event
 }
 
+// runAsyncSubagentScenario lets a parent start a background subagent and end
+// before the child answers, so the child's end wakes the idle parent session.
 func runAsyncSubagentScenario(t *testing.T) asyncSubagentScenario {
 	t.Helper()
 	app, db, cleanup := newCrashRecoveryCore(t)
@@ -926,12 +932,18 @@ func runAsyncSubagentScenario(t *testing.T) asyncSubagentScenario {
 	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	var mu sync.Mutex
 	spawned := false
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
-		mu.Lock()
-		defer mu.Unlock()
+	parentEnded := make(chan struct{})
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, request providers.Request) (providers.Response, error) {
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
+			select {
+			case <-parentEnded:
+			case <-ctx.Done():
+				return providers.Response{}, ctx.Err()
+			}
 			return providers.Response{Text: "child async result"}, nil
 		}
+		mu.Lock()
+		defer mu.Unlock()
 		for _, message := range request.Messages {
 			if message.Role == "user" && strings.HasPrefix(message.Content, "Subagent ") && strings.Contains(message.Content, "finished: completed.") {
 				return providers.Response{Text: "Synthesized."}, nil
@@ -952,22 +964,24 @@ func runAsyncSubagentScenario(t *testing.T) asyncSubagentScenario {
 		t.Fatal(err)
 	}
 	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
+	close(parentEnded)
 
-	deadline := time.Now().Add(10 * time.Second)
+	var seen []core.Event
+	timeout := time.After(30 * time.Second)
 	for {
-		runs, err := db.ListSessionRuns(context.Background(), session.ID, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if runs[0].Trigger == core.RunTriggerWake && runs[0].Status == core.RunStatusCompleted {
-			break
-		}
-		if time.Now().After(deadline) {
+		select {
+		case event, ok := <-events:
+			if !ok {
+				t.Fatal("the event stream closed")
+			}
+			seen = append(seen, event)
+			if wake, ok := event.Payload.(core.Run); ok && event.Type == core.EventRunUpdated && wake.Trigger == core.RunTriggerWake && wake.Status == core.RunStatusCompleted {
+				return asyncSubagentScenario{db: db, session: session, run: run, events: append(seen, drainEvents(events)...)}
+			}
+		case <-timeout:
 			t.Fatal("subagent completion follow-up run did not complete")
 		}
-		time.Sleep(20 * time.Millisecond)
 	}
-	return asyncSubagentScenario{db: db, session: session, run: run, events: drainEvents(events)}
 }
 
 func TestAsyncSubagentCompletionStartsParentFollowUpRun(t *testing.T) {

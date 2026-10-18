@@ -12,7 +12,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/agent/toolsched"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/safego"
-	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 // DefaultModelConcurrency is how many model requests native runs make at once
@@ -137,23 +136,11 @@ func (c *Core) nativeEngine(ctx context.Context, claimed claimedRun, session Ses
 	if err != nil {
 		return agent.Task{}, nil, err
 	}
-	readonly, err := c.readonlySubagent(ctx, session.ID)
+	turn, err := c.sessionTurn(ctx, session, runtime, model)
 	if err != nil {
 		return agent.Task{}, nil, err
 	}
-	turn := nativeTurn{
-		RunID:              run.ID,
-		Continues:          continues,
-		SessionID:          session.ID,
-		WorkingDir:         session.WorkingDir,
-		Subagent:           isSubagentSession(session),
-		Readonly:           readonly,
-		ClientCapabilities: run.ClientCapabilities,
-		ToolUse:            agent.ToolUseAllowed(runtime),
-		Model:              model,
-		Plan:               session.PermissionMode == PermissionModePlan,
-		PatchEdits:         tools.PrefersApplyPatch(session.ModelID),
-	}
+	turn.RunID, turn.Continues, turn.ClientCapabilities = run.ID, continues, run.ClientCapabilities
 	engine := agent.New(agent.Config{
 		Journal:     coreJournal{c: c},
 		Tools:       coreTools{c: c, turn: turn, authorized: &sync.Map{}},

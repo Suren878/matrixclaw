@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func TestRunStatusEdges(t *testing.T) {
@@ -102,5 +104,46 @@ func TestAWaiterThatStopsIsForgotten(t *testing.T) {
 	}
 	if n := c.runEndWaiters(); n != 0 {
 		t.Fatalf("waiters left = %d", n)
+	}
+}
+
+// failingFollowUpStore commits run changes but fails the steps after them.
+type failingFollowUpStore struct {
+	runStatusStore
+}
+
+func (failingFollowUpStore) SealRun(context.Context, Run, *transcript.Message, bool) error {
+	return nil
+}
+func (failingFollowUpStore) DeleteRunWakeup(context.Context, string) error { return nil }
+func (failingFollowUpStore) DeleteRunCheckpoint(context.Context, string) error {
+	return errors.New("disk full")
+}
+func (failingFollowUpStore) ListRunApprovals(context.Context, string, string) ([]Approval, error) {
+	return nil, errors.New("disk full")
+}
+func (failingFollowUpStore) ListTasks(context.Context, TaskFilter) ([]Task, error) { return nil, nil }
+
+func TestARunEndWakesItsWaitersWhenTheStepsAfterItFail(t *testing.T) {
+	t.Parallel()
+	c := New(failingFollowUpStore{runStatusStore{status: RunStatusRunning}})
+	done := make(chan error, 1)
+	go func() { done <- c.waitRunEnd(context.Background(), "run_child") }()
+	for c.runEndWaiters() < 1 {
+		time.Sleep(time.Millisecond)
+	}
+
+	run := Run{ID: "run_child", SessionID: "session_child", Status: RunStatusRunning}
+	if err := c.transition(context.Background(), &run, runChange{To: RunStatusFailed, Err: "boom"}); err != nil {
+		t.Fatalf("transition = %v, want the committed change to stand", err)
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the waiter was not woken")
 	}
 }

@@ -27,8 +27,8 @@ two small state files next to the database: `telegram-inline-cache.json` and
 - Only the allowed user is served, and only in the private chat with the bot.
   Group messages are ignored.
 - The private chat is the **owner** chat. Only the owner can change settings
-  (`/modules` screens, provider, permission mode, global rules), start external
-  agent sessions, and restart or stop the daemon.
+  (`/modules` screens, provider, permission mode, global rules), delete stored
+  files, start external agent sessions, and restart or stop the daemon.
 - Inline and guest requests run with the restricted **guest** role: they keep no
   permission rules and cannot use a session that runs tools without asking (an
   external agent session or one in `full_auto`).

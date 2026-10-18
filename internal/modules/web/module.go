@@ -38,8 +38,6 @@ func (m *Module) searchConfig() (webtools.SearchConfig, error) {
 
 func (m *Module) Tools() []tools.Executor { return m.tools }
 
-func (m *Module) Context() string { return "" }
-
 func (m *Module) Close() error { return nil }
 
 func (m *Module) Status(context.Context) modules.Status {

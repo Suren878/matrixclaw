@@ -107,7 +107,7 @@ type todoTool struct {
 func (t *todoTool) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              todo.ToolName,
-		Description:     "Replace this session's todo list. Use it for work of three or more steps: write the steps down, mark one in_progress before you start it and completed as soon as it is done. Send the whole list every time; an empty list clears it.",
+		Description:     "Create and keep your plan for multi-step work. Use it when a task has three or more distinct steps, when the user gives several tasks at once, or when new requirements arrive mid-task; skip it for a single trivial step. Send the complete list on every call. Keep exactly one item in_progress while you work. Mark an item completed right after finishing it, and only when it is fully done and verified, not while tests fail or the work is partial. Add steps you discover and remove ones that no longer apply. The current list is shown back to you in context updates; an empty list clears it.",
 		Effect:          tools.EffectReadOnly,
 		Namespace:       "core.todo",
 		Category:        tools.CategoryAutomation,

@@ -84,7 +84,19 @@ func generateSummary(ctx context.Context, generator Generator, outputTokens int,
 
 // SummaryInstruction ends the run's own request when it asks for the summary
 // that replaces the older part of the conversation.
-const SummaryInstruction = "Summarise the conversation so far for yourself: the older messages will be replaced by this summary, the most recent ones stay visible. Do not call tools. Use these sections: Goal, Decisions, Files changed, Errors and fixes, Current state, Next step. Be concise and factual; leave out raw tool output, secrets and long code blocks."
+const SummaryInstruction = "Summarise the conversation so far for yourself: the older messages will be replaced by this summary, the most recent ones stay visible. Do not call tools. Use these sections:\n" + summarySections + "\nBe concise and factual; leave out raw tool output, secrets and long code blocks."
+
+// summarySections are the parts every summary has, so a long coding task keeps
+// what is done, which checks pass and what is not committed yet.
+const summarySections = `Goal: what the user wants and the constraints they gave; the latest request is the active task.
+Work state: Completed (done and verified), Active (in progress), Blocked (and on what).
+Decisions: choices already made and why.
+Relevant files: files, modules, commands and services changed or investigated, and why each matters.
+Errors and fixes: failures seen and how they were resolved, or why they remain.
+Tests: which build, test and lint commands pass now and which fail.
+Version control: the branch and the changes not committed yet, if known.
+Open todo: the items still open on the todo list.
+Next step: the immediate next action.`
 
 // SummaryReply is the text of a summary reply; a cut, filtered or empty one fails.
 func SummaryReply(response providers.Response) (string, error) {
@@ -99,17 +111,8 @@ func SummaryReply(response providers.Response) (string, error) {
 }
 
 func summarySystemPrompt() string {
-	return strings.TrimSpace(`You compact matrixclaw chat histories into durable working context for future assistant turns.
-
-Write a concise, factual summary with these sections:
-Goal: what the user wants and the constraints they gave.
-Decisions: choices already made and why.
-Files changed: files, modules, commands and services changed or investigated.
-Errors and fixes: failures seen and how they were resolved, or why they remain.
-Current state: what is done and verified, what is in progress.
-Next step: the immediate next action.
-
-Leave out greetings, speculation, duplicated logs, raw tool dumps, secrets, API keys, OAuth tokens and long code or output blocks. Summarise a tool call together with its result. Reply in English.`)
+	return "You compact matrixclaw chat histories into durable working context for future assistant turns.\n\nWrite a concise, factual summary with these sections:\n" + summarySections +
+		"\n\nLeave out greetings, speculation, duplicated logs, raw tool dumps, secrets, API keys, OAuth tokens and long code or output blocks. Summarise a tool call together with its result. Reply in English."
 }
 
 // summaryChunks renders the previous summary and the message groups as text and

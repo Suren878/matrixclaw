@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
-	"github.com/Suren878/matrixclaw/internal/agent/prompt"
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -78,7 +80,8 @@ func (c *Core) SessionContext(ctx context.Context, sessionID string) (ContextRep
 }
 
 // CompactSession summarises what the model sees of the session into a boundary
-// that covers all of it.
+// that covers all of it, the way a run does when its context fills up; usage
+// is recorded on the session's latest run, whose request stays verbatim.
 func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSessionResult, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
@@ -101,34 +104,36 @@ func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSes
 	if len(window.Messages) == 0 {
 		return CompactSessionResult{}, errNothingToCompact
 	}
-	runtime, windowTokens := c.compactRuntime(ctx)
-	if runtime == nil {
-		if runtime, _, err = c.resolveSessionRuntime(ctx, session); err != nil {
-			return CompactSessionResult{}, err
-		}
-		windowTokens = c.sessionContextWindowTokens(session)
-	}
-	previous := window.Compaction()
-	base := c.contextBaseTokens()
-	limit := agent.ContextLimit(runtime, windowTokens, 0)
-	summary, err := agentcontext.Summarize(ctx, runtime, agentcontext.SummaryInput{
-		Previous:    agentcontext.SummaryText(previous),
-		Messages:    window.Messages,
-		ChunkTokens: limit / 2,
-	})
-	if errors.Is(err, agentcontext.ErrNothingToSummarise) {
-		return CompactSessionResult{}, errNothingToCompact
-	}
+	runtime, model, err := c.resolveSessionRuntime(ctx, session)
 	if err != nil {
 		return CompactSessionResult{}, err
 	}
-	compaction := transcript.Compaction{
-		Summary:          summary,
-		CoversThroughSeq: window.Messages[len(window.Messages)-1].Seq,
-		TokensBefore:     agentcontext.SessionTokens(base, previous, window.Messages),
+	turn, err := c.sessionTurn(ctx, session, runtime, model)
+	if err != nil {
+		return CompactSessionResult{}, err
 	}
-	compaction.TokensAfter = agentcontext.SessionTokens(base, &compaction, nil)
-	message, err := c.appendBoundary(ctx, session.ID, agentcontext.BoundaryLabel(compaction), compaction)
+	request := agent.CompactRequest{
+		SessionID:    session.ID,
+		WorkingDir:   session.WorkingDir,
+		Model:        runtime,
+		WindowTokens: c.sessionContextWindowTokens(session),
+		BaseTokens:   c.contextBase(ctx, turn, window.Messages).tokens(),
+	}
+	if latest, err := c.store.GetLatestRunBySession(ctx, session.ID); err == nil {
+		request.RunID = latest.ID
+		if request.Continues, err = c.continuedRuns(ctx, latest); err != nil {
+			return CompactSessionResult{}, err
+		}
+	} else if !errors.Is(err, ErrNotFound) {
+		return CompactSessionResult{}, err
+	}
+	if compact, windowTokens := c.compactRuntime(ctx); compact != nil {
+		request.CompactModel, request.CompactWindowTokens = compact, windowTokens
+	}
+	message, err := c.sessionEngine().Compact(ctx, request)
+	if errors.Is(err, agentcontext.ErrNothingToSummarise) {
+		return CompactSessionResult{}, errNothingToCompact
+	}
 	if err != nil {
 		return CompactSessionResult{}, err
 	}
@@ -137,6 +142,35 @@ func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSes
 		return CompactSessionResult{}, err
 	}
 	return CompactSessionResult{Message: message, Context: c.contextReportForSession(ctx, session, next)}, nil
+}
+
+// sessionEngine writes a session's context outside a run: /compact and /clear.
+func (c *Core) sessionEngine() *agent.Engine {
+	return agent.New(agent.Config{
+		Journal:     coreJournal{c: c},
+		Sink:        coreSink{c: c},
+		Attachments: c.attachments,
+		Now:         func() time.Time { return c.now().UTC() },
+		NewID:       c.newID,
+		ModelSlots:  c.modelSlots,
+	})
+}
+
+// sessionTurn is the turn a run of the session gets on runtime, named model to
+// the model; the caller adds what belongs to the run. On an error the turn is
+// not read-only.
+func (c *Core) sessionTurn(ctx context.Context, session Session, runtime agent.Model, model string) (nativeTurn, error) {
+	readonly, err := c.readonlySubagent(ctx, session.ID)
+	return nativeTurn{
+		SessionID:  session.ID,
+		WorkingDir: session.WorkingDir,
+		Subagent:   isSubagentSession(session),
+		Readonly:   readonly,
+		ToolUse:    agent.ToolUseAllowed(runtime),
+		Model:      model,
+		Plan:       NormalizePermissionMode(string(session.PermissionMode)) == PermissionModePlan,
+		PatchEdits: tools.PrefersApplyPatch(session.ModelID),
+	}, err
 }
 
 // sessionRunActive reports whether the session has an unfinished run, including
@@ -149,23 +183,44 @@ func (c *Core) sessionRunActive(ctx context.Context, sessionID string) (bool, er
 	return err == nil, err
 }
 
-// contextBaseTokens estimates the parts of every request that are not history.
-func (c *Core) contextBaseTokens() int {
-	assistant := c.assistantProfile()
-	return agentcontext.EstimateTextTokens(prompt.AssistantSystemPrompt(assistant.Name, assistant.SystemPrompt)) +
-		agentcontext.EstimateTextTokens(assistant.CustomInstructions) +
-		c.estimateToolSchemaTokens()
+// contextBase is what a run's every request sends besides the history: its
+// system prompt, custom instructions and tools.
+type contextBase struct {
+	system, custom, tools int
+}
+
+func (b contextBase) tokens() int {
+	return b.system + b.custom + b.tools
+}
+
+// contextBase estimates the fixed part of the requests of a run of turn over
+// history, from the prompts and tools such a run gets.
+func (c *Core) contextBase(ctx context.Context, turn nativeTurn, history []transcript.Message) contextBase {
+	system, custom := (&corePrompts{c: c, turn: turn}).System(ctx, history)
+	base := contextBase{system: agentcontext.EstimateTextTokens(system), custom: agentcontext.EstimateTextTokens(custom)}
+	if turn.ToolUse {
+		for _, spec := range (coreTools{c: c, turn: turn}).Specs(ctx) {
+			base.tools += agentcontext.EstimateTextTokens(spec.ID) + agentcontext.EstimateTextTokens(spec.Description) + agentcontext.EstimateTextTokens(string(spec.InputJSONSchema))
+		}
+	}
+	return base
 }
 
 // contextReportForSession reports the session's context against the prompt room
-// its runs get; without a resolvable model, the default output limit applies.
+// its runs get, with the prompts and tools a run would get now; without a
+// resolvable model, the default output limit applies.
 func (c *Core) contextReportForSession(ctx context.Context, session Session, window agent.Window) ContextReport {
-	report := c.contextReport(session.ID, window)
-	report.WindowTokens = c.sessionContextWindowTokens(session)
 	var model agent.Model
-	if runtime, _, err := c.resolveSessionRuntime(ctx, session); err == nil {
+	runtime, label, err := c.resolveSessionRuntime(ctx, session)
+	if err == nil {
 		model = runtime
 	}
+	turn, err := c.sessionTurn(ctx, session, model, label)
+	if err != nil {
+		log.Printf("core: context of session %q: %v", session.ID, err)
+	}
+	report := c.contextReport(session.ID, c.contextBase(ctx, turn, window.Messages), window)
+	report.WindowTokens = c.sessionContextWindowTokens(session)
 	limit := agent.ContextLimit(model, report.WindowTokens, 0)
 	if agentcontext.SummaryDue(report.TokenEstimate, limit) {
 		report.Compact = ContextCompact{Recommended: true, Reason: fmt.Sprintf("estimated context has reached %d%% of the model's usable window; compact before continuing", agentcontext.SummaryPercent)}
@@ -173,16 +228,13 @@ func (c *Core) contextReportForSession(ctx context.Context, session Session, win
 	return report
 }
 
-func (c *Core) contextReport(sessionID string, window agent.Window) ContextReport {
-	assistant := c.assistantProfile()
-	systemPrompt := prompt.AssistantSystemPrompt(assistant.Name, assistant.SystemPrompt)
-	customInstructions := strings.TrimSpace(assistant.CustomInstructions)
+func (c *Core) contextReport(sessionID string, base contextBase, window agent.Window) ContextReport {
 	blocks := make([]ContextBlock, 0, 5)
-	if systemPrompt != "" {
-		blocks = append(blocks, ContextBlock{ID: "system", Kind: ContextBlockSystemPrompt, Source: "assistant_profile", TokenEstimate: agentcontext.EstimateTextTokens(systemPrompt), Included: true, CacheStability: "stable"})
+	if base.system > 0 {
+		blocks = append(blocks, ContextBlock{ID: "system", Kind: ContextBlockSystemPrompt, Source: "run_prompt", TokenEstimate: base.system, Included: true, CacheStability: "stable"})
 	}
-	if customInstructions != "" {
-		blocks = append(blocks, ContextBlock{ID: "custom_instructions", Kind: ContextBlockCustomInstructions, Source: "assistant_profile", TokenEstimate: agentcontext.EstimateTextTokens(customInstructions), Included: true, CacheStability: "stable"})
+	if base.custom > 0 {
+		blocks = append(blocks, ContextBlock{ID: "custom_instructions", Kind: ContextBlockCustomInstructions, Source: "assistant_profile", TokenEstimate: base.custom, Included: true, CacheStability: "stable"})
 	}
 	if compaction := window.Compaction(); compaction != nil {
 		block := ContextBlock{ID: "compact_summary", Kind: ContextBlockCompactSummary, Source: "session_compact", TokenEstimate: agentcontext.EstimateTextTokens(agentcontext.SummaryText(compaction)), Included: true, CacheStability: "stable"}
@@ -194,8 +246,8 @@ func (c *Core) contextReport(sessionID string, window agent.Window) ContextRepor
 	if len(window.Messages) > 0 {
 		blocks = append(blocks, ContextBlock{ID: "messages", Kind: ContextBlockMessages, Source: "session_history", TokenEstimate: agentcontext.EstimateMessageTokens(window.Messages), Included: true, CacheStability: "dynamic"})
 	}
-	if estimate := c.estimateToolSchemaTokens(); estimate > 0 {
-		blocks = append(blocks, ContextBlock{ID: "tools", Kind: ContextBlockToolSchemas, Source: "tool_registry", TokenEstimate: estimate, Included: true, CacheStability: "stable"})
+	if base.tools > 0 {
+		blocks = append(blocks, ContextBlock{ID: "tools", Kind: ContextBlockToolSchemas, Source: "tool_registry", TokenEstimate: base.tools, Included: true, CacheStability: "stable"})
 	}
 	total := 0
 	for _, block := range blocks {
@@ -244,19 +296,6 @@ func (c *Core) uncappedWindowTokens(providerID string, modelID string) int {
 		return llms.ContextWindow(strings.TrimSpace(providerID), strings.TrimSpace(modelID))
 	}
 	return providers.ResolveContextWindowTokens(providerID, "", modelID)
-}
-
-func (c *Core) estimateToolSchemaTokens() int {
-	if c.tools == nil {
-		return 0
-	}
-	total := 0
-	for _, tool := range c.tools.List() {
-		total += agentcontext.EstimateTextTokens(tool.ID)
-		total += agentcontext.EstimateTextTokens(tool.Description)
-		total += agentcontext.EstimateTextTokens(string(tool.InputJSONSchema))
-	}
-	return total
 }
 
 func latestProviderUsage(messages []transcript.Message) *providers.Usage {

@@ -33,7 +33,7 @@ func AgentToolExecutors(app *Core) []tools.Executor {
 func (t *agentTool) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              agentToolName,
-		Description:     "Run a child agent on a bounded task and get its result, or start it in the background.",
+		Description:     "Start a child agent on a self-contained task. The child sees none of this conversation, so prompt must hold the goal, the relevant paths and findings, the constraints, what done means and what to report back. By default the call waits and returns the child's final report. readonly: true gives the child read-only tools for research and review; read-only children in one reply run in parallel. A writing child works in your directory (isolation shared; blocking writers take turns) or in its own git worktree started from the last commit (isolation worktree; several run at once and you bring their changes over). background: true returns a task id at once; the report arrives later as a message, and await waits for it.",
 		Effect:          tools.EffectMutation,
 		Namespace:       "core.subagents",
 		Category:        tools.CategoryAutomation,
@@ -101,13 +101,13 @@ func (t *agentTool) Execute(ctx context.Context, call tools.Call) (tools.Result,
 var agentToolSchema = json.RawMessage(`{
   "type": "object",
   "properties": {
-    "description": {"type": "string", "description": "A short label for the task, 3-5 words."},
-    "prompt": {"type": "string", "description": "Everything the child needs: the goal, the context and what to report back."},
-    "background": {"type": "boolean", "description": "Start the child as a background task and go on; its result arrives as a message when it finishes."},
-    "isolation": {"type": "string", "enum": ["shared", "worktree"], "description": "shared works in your directory, one writing child at a time; worktree gives the child its own git worktree, so several run at once."},
-    "readonly": {"type": "boolean", "description": "Give the child read-only tools; read-only children run in parallel."},
-    "runtime": {"type": "string", "enum": ["matrixclaw", "codex", "claude", "auto"], "description": "Child runtime. Defaults to matrixclaw."},
-    "model": {"type": "string", "description": "Optional model for the child runtime."}
+    "description": {"type": "string", "description": "A short label for the task, 3-5 words, shown to the user."},
+    "prompt": {"type": "string", "description": "The complete brief: goal, relevant paths and findings, constraints, what done means and what to report back. The child sees nothing else."},
+    "background": {"type": "boolean", "description": "Return a task id at once and keep working; the child's report arrives as a message when it finishes."},
+    "isolation": {"type": "string", "enum": ["shared", "worktree"], "description": "For a writing child: shared (default) works in your directory, one blocking writer at a time; worktree gives it its own git worktree from the last commit, so several run at once."},
+    "readonly": {"type": "boolean", "description": "Give the child read-only tools, for research and review; read-only children run in parallel."},
+    "runtime": {"type": "string", "enum": ["matrixclaw"], "description": "Child runtime; omit for the native matrixclaw runtime."},
+    "model": {"type": "string", "description": "Model for the child; omit to use your own model."}
   },
   "required": ["description", "prompt"],
   "additionalProperties": false

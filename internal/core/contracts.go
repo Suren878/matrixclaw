@@ -50,9 +50,6 @@ type ApprovalResolveRequest struct {
 	Approved bool             `json:"approved"`
 	Reason   string           `json:"reason,omitempty"`
 	Always   permission.Scope `json:"always,omitempty"`
-	// Restricted marks a decision by someone other than the owner, who may
-	// not keep a rule for every session; the API sets it from the caller's role.
-	Restricted bool `json:"-"`
 }
 
 // PermissionRuleRequest adds a rule. Pattern is a path glob, a command prefix

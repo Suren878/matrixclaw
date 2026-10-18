@@ -30,11 +30,11 @@ func ToolExecutors(service *Service) []tools.Executor {
 func (t *searchTool) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              "skill_search",
-		Description:     "Search trusted Matrixclaw skills by name, description, tags, category, and snippets.",
+		Description:     "Search the trusted skills (reusable workflows the user keeps) by name, description, tags, category and content. Use it when a task looks like something a skill may cover; an empty query lists them.",
 		Effect:          tools.EffectReadOnly,
 		Namespace:       "module.skills",
 		Category:        tools.CategorySkills,
-		InputJSONSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50}},"additionalProperties":false}`),
+		InputJSONSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string","description":"Words to match; empty lists all trusted skills."},"limit":{"type":"integer","minimum":1,"maximum":50,"description":"Maximum skills to return."}},"additionalProperties":false}`),
 	}
 }
 
@@ -55,11 +55,11 @@ func (t *searchTool) Execute(_ context.Context, call tools.Call) (tools.Result, 
 func (t *viewTool) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              "skill_view",
-		Description:     "View a trusted Matrixclaw skill's metadata and full SKILL.md body without activating it.",
+		Description:     "Show a trusted skill's metadata and full SKILL.md without activating it, to decide whether it fits.",
 		Effect:          tools.EffectReadOnly,
 		Namespace:       "module.skills",
 		Category:        tools.CategorySkills,
-		InputJSONSchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"}},"required":["id"],"additionalProperties":false}`),
+		InputJSONSchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","description":"Skill id, as skill_search lists it."}},"required":["id"],"additionalProperties":false}`),
 	}
 }
 
@@ -83,11 +83,11 @@ func (t *viewTool) Execute(_ context.Context, call tools.Call) (tools.Result, er
 func (t *useTool) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              "skill_use",
-		Description:     "Activate a trusted Matrixclaw skill for this session and return its full instructions.",
+		Description:     "Activate a trusted skill for this session and return its full instructions; follow them for the rest of the task. Active skills are also loaded into later runs of the session.",
 		Effect:          tools.EffectMutation,
 		Namespace:       "module.skills",
 		Category:        tools.CategorySkills,
-		InputJSONSchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"}},"required":["id"],"additionalProperties":false}`),
+		InputJSONSchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","description":"Skill id, as skill_search lists it."}},"required":["id"],"additionalProperties":false}`),
 	}
 }
 
@@ -108,12 +108,12 @@ func (t *useTool) Execute(_ context.Context, call tools.Call) (tools.Result, err
 func (t *manageTool) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              "skill_manage",
-		Description:     "Create, edit, patch, write files for, archive, restore, pin, unpin, trust, quarantine, disable, or remove Matrixclaw skills. Mutations require approval.",
+		Description:     "Create and maintain skills; every call waits for the user's approval. create makes a quarantined draft from name, description and content (the SKILL.md body); for a skill you propose yourself, show and revise the draft in chat first and call create only after the user confirms. write_file, edit and patch replace a file of skill id with content, and remove_file deletes one; path is SKILL.md or lies under scripts/, references/ or assets/. archive, restore, pin, unpin, trust, quarantine, disable and remove act on skill id. A quarantined skill stays inactive until trusted.",
 		Effect:          tools.EffectMutation,
 		Asks:            true,
 		Namespace:       "module.skills",
 		Category:        tools.CategorySkills,
-		InputJSONSchema: json.RawMessage(`{"type":"object","properties":{"action":{"type":"string"},"id":{"type":"string"},"name":{"type":"string"},"description":{"type":"string"},"path":{"type":"string"},"content":{"type":"string"}},"required":["action"],"additionalProperties":false}`),
+		InputJSONSchema: json.RawMessage(`{"type":"object","properties":{"action":{"type":"string","enum":["create","write_file","edit","patch","remove_file","archive","restore","pin","unpin","trust","quarantine","disable","remove"]},"id":{"type":"string","description":"The skill to act on."},"name":{"type":"string","description":"Name of a new skill (create)."},"description":{"type":"string","description":"One line saying when to use a new skill (create)."},"path":{"type":"string","description":"File inside the skill: SKILL.md, or under scripts/, references/ or assets/."},"content":{"type":"string","description":"SKILL.md body for create, or the whole new file content for write_file, edit and patch."}},"required":["action"],"additionalProperties":false}`),
 	}
 }
 

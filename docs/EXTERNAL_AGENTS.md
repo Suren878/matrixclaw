@@ -83,20 +83,23 @@ Security limits:
 
 Assistant sessions have an `agent` tool that hands a bounded task to a child
 agent. The child runs in a hidden session and the parent receives only its
-result. The system prompt tells the model which child runtimes are enabled.
+result. The system prompt tells the model when to delegate and which child
+runtimes are available; the `runtime` parameter offers only those.
 
 | Parameter | Meaning |
 | --- | --- |
 | `description` (required) | Short label for the task, 3-5 words. |
-| `prompt` (required) | Everything the child needs: goal, context, what to report. |
+| `prompt` (required) | Everything the child needs: goal, paths and findings, constraints, what done means, what to report. |
 | `background` | Start the child as a background task; its result reaches the parent as a message when it ends. At most `daemon.background_agents` (default 4) run per session. |
-| `isolation` | `shared` (default): the parent's directory, one writing child at a time. `worktree`: a git worktree of its own, so several run at once. |
+| `isolation` | `shared` (default): the parent's directory, one writing child at a time. `worktree`: a git worktree of its own from the last commit, so several run at once; the child reports its path and the parent applies its changes. |
 | `readonly` | Read-only tools only; read-only children run in parallel. |
-| `runtime` | `matrixclaw` (default), `codex`, `claude`, or `auto` (same as `matrixclaw`). |
-| `model` | Optional model for the child runtime. |
+| `runtime` | `matrixclaw` (default) or an available external runtime such as `codex` or `claude`. |
+| `model` | Model for the child; the parent's model when omitted. |
 
 A native child starts from the call's prompt alone: it does not inherit the
-parent's history, todo list, skills or memory prompt. It keeps its own todo
+parent's history, todo list, skills or memory prompt. It gets the same coding
+manual, environment block and project instructions as the parent, limited to
+the tools it has. It keeps its own todo
 list (`todo_write`) and may run background commands, which stop when it
 finishes. It cannot use `agent`, `await`, `memory`, `session_search`,
 `text_to_speech`, or any other automation, storage or skill tools (reminders,

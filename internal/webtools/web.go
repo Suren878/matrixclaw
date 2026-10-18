@@ -66,7 +66,7 @@ func NewSearchTool(config func() (SearchConfig, error)) tools.Executor {
 func (webFetchExecutor) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              webFetchToolName,
-		Description:     "Fetch a public http(s) URL and return its main content as markdown",
+		Description:     "Fetch a public http(s) URL and return its main content as markdown. It runs no JavaScript and refuses private and loopback addresses; a long page comes back as an excerpt plus the path of a file holding all of it. Use it for documentation, issues and pages the user names; use browser tools, when you have them, for pages that need JavaScript or a login.",
 		Effect:          tools.EffectReadOnly,
 		Namespace:       namespaceCoreWeb,
 		Category:        tools.CategoryWeb,
@@ -77,7 +77,7 @@ func (webFetchExecutor) Spec() tools.Spec {
 func (webSearchExecutor) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              webSearchToolName,
-		Description:     "Search the web and return titles, URLs, and descriptions",
+		Description:     "Search the web; returns titles, URLs and snippets. Then web_fetch the one or two most relevant results instead of answering from snippets. Put the year in queries about recent releases or events.",
 		Effect:          tools.EffectReadOnly,
 		Namespace:       namespaceCoreWeb,
 		Category:        tools.CategoryWeb,
