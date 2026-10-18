@@ -21,6 +21,7 @@ Next to the database (the data directory):
 | `sessions/<session id>/tasks/<task id>.log` | background command output, mode 0600, capped at 20 MB (keeps the first 1 MB and the newest part) |
 | `skills/` | skills library: `installed`, `quarantine`, `archive`, `plugins`, `drafts` |
 | `runtime/context-windows.json` | model metadata learned from provider listings, by provider |
+| `checkpoints/<hash>/` | shadow git repository of one work tree, holding its file checkpoints ([CHECKPOINTS.md](CHECKPOINTS.md)) |
 
 Session directories are removed with their session; `/clear` removes the tool
 outputs of the cleared history.
@@ -40,10 +41,11 @@ independent of the database path:
 and a 5 s busy timeout. A daemon crash loses nothing; a power loss or OS crash
 can lose the last commits since the previous checkpoint.
 
-The schema is `internal/store/migrations/001_init.sql`; the database records
-its version in `PRAGMA user_version` (1 today). A new database gets the whole
-schema; later changes are numbered migrations in `internal/store/schema.go`,
-each applied once and in order. A database newer than the binary is refused.
+The schema is `internal/store/migrations/001_init.sql` followed by the
+numbered migrations listed in `internal/store/schema.go` (`002` adds
+`file_checkpoints`); the database records its version in `PRAGMA
+user_version` (2 today). Each migration is applied once and in order, to a new
+database too. A database newer than the binary is refused.
 Upgrades are one-way. Back up before upgrading (the daemon may keep running):
 
 ```bash

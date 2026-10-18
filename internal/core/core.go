@@ -9,6 +9,7 @@ import (
 
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/agent/toolsched"
+	"github.com/Suren878/matrixclaw/internal/checkpoint"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/ids"
 )
@@ -67,6 +68,11 @@ type Core struct {
 	startingAgents map[string]map[string]bool
 	// runEnds are the callers waiting for each run to end; guarded by mu.
 	runEnds map[string][]chan struct{}
+	// checkpoints snapshots working directories before tool batches that
+	// change files; nil when file checkpoints are off.
+	checkpoints *checkpoint.Store
+	// checkpointFailures holds the snapshot failures already logged.
+	checkpointFailures sync.Map
 }
 
 type SkillsPromptContextRequest struct {

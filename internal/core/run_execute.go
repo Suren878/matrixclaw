@@ -151,9 +151,10 @@ func (c *Core) nativeEngine(ctx context.Context, claimed claimedRun, session Ses
 		ToolUse:            agent.ToolUseAllowed(runtime),
 		Model:              model,
 	}
+	batch := &batchSnapshot{}
 	engine := agent.New(agent.Config{
-		Journal:     coreJournal{c: c},
-		Tools:       coreTools{c: c, turn: turn, authorized: &sync.Map{}},
+		Journal:     coreJournal{c: c, batch: batch},
+		Tools:       coreTools{c: c, turn: turn, authorized: &sync.Map{}, batch: batch},
 		Approvals:   coreApprovals{c: c, sessionID: session.ID},
 		Inbox:       coreInbox{c: c, session: session},
 		Sink:        coreSink{c: c},

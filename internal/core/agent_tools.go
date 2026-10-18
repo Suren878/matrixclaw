@@ -31,6 +31,7 @@ type coreTools struct {
 	c          *Core
 	turn       nativeTurn
 	authorized *sync.Map
+	batch      *batchSnapshot
 }
 
 func (t coreTools) Specs(ctx context.Context) []tools.Spec {
@@ -46,7 +47,8 @@ func (t coreTools) Specs(ctx context.Context) []tools.Spec {
 // Authorize rejects invalid calls and those a deny rule blocks; Execute acts on
 // the verdict it kept for the call. A mutating call that waits for approval is
 // a barrier, and so is a child writing the parent's directory. A blocking
-// child's time is its own.
+// child's time is its own. The batch's first call that may change files takes
+// its file checkpoint before any call of the batch starts.
 func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) (agent.Decision, error) {
 	// A call ID owned by another session fails the run with a clear error instead of
 	// a primary-key conflict on the first journal write.
@@ -74,6 +76,7 @@ func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) 
 	if call.ToolCallID != "" {
 		t.authorized.Store(call.ToolCallID, check)
 	}
+	t.checkpointBatch(ctx, spec, call)
 	decision := agent.Decision{Allowed: true, Barrier: spec.Mutates() && check.ask, Key: t.c.tools.ConcurrencyKey(spec.ID, call)}
 	if spec.ID == agentToolName {
 		input := parseAgentInput(call.Args)
