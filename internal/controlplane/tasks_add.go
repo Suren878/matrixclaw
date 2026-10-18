@@ -28,13 +28,14 @@ func (d *Dispatcher) handleTaskAdd(ctx context.Context, args string) (Result, er
 			return Result{Handled: true, Text: err.Error()}, nil
 		}
 		job, err := d.daemon.CreateAutomationJob(ctx, automation.CreateJobInput{
-			Kind:         automation.JobKindAITask,
-			SessionID:    binding.SessionID,
-			Client:       d.daemon.ClientName,
-			ExternalKey:  d.daemon.ExternalKey,
-			ScheduleMode: automation.ScheduleModeOnce,
-			RunAt:        &runAt,
-			Prompt:       prompt,
+			Kind:               automation.JobKindAITask,
+			SessionID:          binding.SessionID,
+			Client:             d.daemon.ClientName,
+			ExternalKey:        d.daemon.ExternalKey,
+			ClientCapabilities: d.daemon.Capabilities,
+			ScheduleMode:       automation.ScheduleModeOnce,
+			RunAt:              &runAt,
+			Prompt:             prompt,
 		})
 		if err != nil {
 			return Result{}, err
@@ -47,13 +48,14 @@ func (d *Dispatcher) handleTaskAdd(ctx context.Context, args string) (Result, er
 			return Result{Handled: true, Text: "Usage: /tasks add cron \"0 10 1 * *\" -- prompt"}, nil
 		}
 		job, err := d.daemon.CreateAutomationJob(ctx, automation.CreateJobInput{
-			Kind:         automation.JobKindAITask,
-			SessionID:    binding.SessionID,
-			Client:       d.daemon.ClientName,
-			ExternalKey:  d.daemon.ExternalKey,
-			ScheduleMode: automation.ScheduleModeCron,
-			CronExpr:     cronExpr,
-			Prompt:       prompt,
+			Kind:               automation.JobKindAITask,
+			SessionID:          binding.SessionID,
+			Client:             d.daemon.ClientName,
+			ExternalKey:        d.daemon.ExternalKey,
+			ClientCapabilities: d.daemon.Capabilities,
+			ScheduleMode:       automation.ScheduleModeCron,
+			CronExpr:           cronExpr,
+			Prompt:             prompt,
 		})
 		if err != nil {
 			return Result{}, err

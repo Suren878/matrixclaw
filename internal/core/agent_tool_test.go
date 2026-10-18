@@ -141,7 +141,8 @@ func TestBackgroundChildrenAreLimitedPerSession(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithBackgroundAgents(1).WithRunStarter(&recordingRunStarter{})
+	app.SetTuning(core.Tuning{BackgroundAgents: 1})
+	app.WithRunStarter(&recordingRunStarter{})
 	session, run := saveCrashRecoveryRun(t, db, "limit", core.RunStatusRunning, false)
 	start := func(callID string) (core.AgentResult, error) {
 		return app.RunAgent(context.Background(), core.AgentInput{ParentSessionID: session.ID, ParentRunID: run.ID, ParentToolCallID: callID, Description: "Scan", Prompt: "scan the tree", Background: true})
@@ -164,7 +165,8 @@ func TestBackgroundChildrenStartedTogetherKeepTheLimit(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithBackgroundAgents(2).WithRunStarter(&recordingRunStarter{})
+	app.SetTuning(core.Tuning{BackgroundAgents: 2})
+	app.WithRunStarter(&recordingRunStarter{})
 	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	var results []string
 	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {

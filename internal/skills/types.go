@@ -1,24 +1,51 @@
 package skills
 
-import "time"
+import (
+	"slices"
+	"strings"
+	"time"
+)
 
 const (
 	TrustTrusted    = "trusted"
 	TrustQuarantine = "quarantine"
-	TrustDisabled   = "disabled"
 
 	StateActive   = "active"
 	StateArchived = "archived"
-
-	DefaultTrustPolicy = "quarantine"
 )
 
-type Config struct {
-	DBPath      string
-	Root        string
-	Enabled     bool
-	AutoInvoke  bool
+// Action changes a skill's trust, state or place in the library.
+type Action string
+
+const (
+	ActionTrust      Action = "trust"
+	ActionQuarantine Action = "quarantine"
+	ActionEnable     Action = "enable"
+	ActionDisable    Action = "disable"
+	ActionArchive    Action = "archive"
+	ActionRestore    Action = "restore"
+	ActionPin        Action = "pin"
+	ActionUnpin      Action = "unpin"
+	ActionRemove     Action = "remove"
+)
+
+// Actions lists every Action.
+var Actions = []Action{ActionTrust, ActionQuarantine, ActionEnable, ActionDisable, ActionArchive, ActionRestore, ActionPin, ActionUnpin, ActionRemove}
+
+// ParseAction reads an Action by name, ignoring case and spaces.
+func ParseAction(name string) (Action, bool) {
+	action := Action(strings.ToLower(strings.TrimSpace(name)))
+	return action, slices.Contains(Actions, action)
+}
+
+// Settings are the library's settings from setup.json.
+type Settings struct {
+	AutoInvoke bool
+	// TrustPolicy "trusted" trusts installed skills; anything else
+	// quarantines them.
 	TrustPolicy string
+	// GitEnv is the environment of git clone: no daemon keys.
+	GitEnv []string
 }
 
 type Document struct {
@@ -72,12 +99,6 @@ type MetadataUpdate struct {
 	Description string   `json:"description,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
 	Category    string   `json:"category,omitempty"`
-}
-
-type InstallOptions struct {
-	Provenance string
-	Source     string
-	TrustState string
 }
 
 type SearchOptions struct {

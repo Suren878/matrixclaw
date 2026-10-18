@@ -1,327 +1,67 @@
 package skills
 
 import (
+	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
-	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/textutil"
 	"gopkg.in/yaml.v3"
-	_ "modernc.org/sqlite"
 )
 
 // ErrNotFound reports a skill the library does not hold.
 var ErrNotFound = errors.New("skill not found")
 
+// Service is the skills library: skill directories under root, their rows in
+// the store's database.
 type Service struct {
-	db      *sql.DB
-	root    string
-	cfg     Config
-	now     func() time.Time
-	closer  bool
-	enabled bool
+	db       *sql.DB
+	root     string
+	now      func() time.Time
+	settings atomic.Pointer[Settings]
 }
 
-func NewService(cfg Config) (*Service, error) {
-	cfg = normalizeConfig(cfg)
-	if cfg.DBPath == "" {
-		return nil, fmt.Errorf("skills db path is required")
+// NewService opens the library at root on the store's database.
+func NewService(db *sql.DB, root string) (*Service, error) {
+	if db == nil || strings.TrimSpace(root) == "" {
+		return nil, errors.New("skills: database and root are required")
 	}
-	if err := ensureSkillDirs(cfg.Root); err != nil {
-		return nil, err
+	root = filepath.Clean(root)
+	for _, dir := range []string{"installed", "quarantine", "drafts"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o700); err != nil {
+			return nil, err
+		}
 	}
-	db, err := sql.Open("sqlite", filepath.Clean(cfg.DBPath))
-	if err != nil {
-		return nil, err
-	}
-	// Skill metadata is local daemon state. A single SQLite connection keeps
-	// writes serialized and matches the rest of MatrixClaw's personal-store model.
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
-	service := &Service{db: db, root: cfg.Root, cfg: cfg, now: time.Now, closer: true, enabled: cfg.Enabled}
-	if err := service.bootstrap(); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
+	service := &Service{db: db, root: root, now: time.Now}
+	service.Configure(Settings{})
 	return service, nil
 }
 
-func normalizeConfig(cfg Config) Config {
-	cfg.DBPath = strings.TrimSpace(cfg.DBPath)
-	cfg.Root = strings.TrimSpace(cfg.Root)
-	if cfg.Root == "" && cfg.DBPath != "" {
-		cfg.Root = filepath.Join(filepath.Dir(filepath.Clean(cfg.DBPath)), "skills")
-	}
-	cfg.Root = filepath.Clean(cfg.Root)
-	if cfg.TrustPolicy == "" {
-		cfg.TrustPolicy = DefaultTrustPolicy
-	}
-	return cfg
+// Configure applies the settings from setup.json; it is safe at any time.
+func (s *Service) Configure(settings Settings) {
+	s.settings.Store(&settings)
 }
 
-func ensureSkillDirs(root string) error {
-	for _, dir := range []string{"installed", "quarantine", "archive", "plugins", "drafts"} {
-		if err := os.MkdirAll(filepath.Join(root, dir), 0o700); err != nil {
-			return err
-		}
-	}
-	return nil
+func (s *Service) currentSettings() Settings {
+	return *s.settings.Load()
 }
 
-func (s *Service) Close() error {
-	if s == nil || s.db == nil || !s.closer {
-		return nil
-	}
-	return s.db.Close()
+// List lists skills without a query.
+func (s *Service) List(ctx context.Context, opts SearchOptions) ([]Skill, error) {
+	return s.Search(ctx, "", opts)
 }
 
-// bootstrap configures the connection; the store creates the skills tables.
-func (s *Service) bootstrap() error {
-	for _, stmt := range []string{`PRAGMA foreign_keys = ON`, `PRAGMA busy_timeout = 5000`} {
-		if _, err := s.db.Exec(stmt); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *Service) InstallPath(path string, opts InstallOptions) ([]Skill, error) {
-	path = strings.TrimSpace(path)
-	if isGitHubURL(path) {
-		return s.installGitHubURL(path, opts)
-	}
-	path = filepath.Clean(path)
-	if _, err := os.Stat(filepath.Join(path, "SKILL.md")); err == nil {
-		skill, err := s.InstallLocal(path, opts)
-		if err != nil {
-			return nil, err
-		}
-		return []Skill{skill}, nil
-	}
-	for _, manifest := range []string{filepath.Join(path, ".codex-plugin", "plugin.json"), filepath.Join(path, ".claude-plugin", "plugin.json")} {
-		if _, err := os.Stat(manifest); err == nil {
-			return s.installPlugin(path, manifest, opts)
-		}
-	}
-	return s.installHermesTree(path, opts)
-}
-
-func isGitHubURL(value string) bool {
-	parsed, err := url.Parse(strings.TrimSpace(value))
-	return err == nil && (parsed.Scheme == "https" || parsed.Scheme == "http") && strings.EqualFold(parsed.Host, "github.com")
-}
-
-func (s *Service) installGitHubURL(rawURL string, opts InstallOptions) ([]Skill, error) {
-	parsed, err := url.Parse(strings.TrimSpace(rawURL))
-	if err != nil {
-		return nil, err
-	}
-	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
-	if len(parts) < 2 {
-		return nil, fmt.Errorf("github URL must include owner and repository")
-	}
-	owner, repo := parts[0], strings.TrimSuffix(parts[1], ".git")
-	repoURL := "https://github.com/" + owner + "/" + repo + ".git"
-	ref := ""
-	subpath := ""
-	if len(parts) >= 4 && parts[2] == "tree" {
-		ref = parts[3]
-		if len(parts) > 4 {
-			subpath = filepath.Join(parts[4:]...)
-		}
-	}
-	tmp, err := os.MkdirTemp(filepath.Join(s.root, "quarantine"), "github-*")
-	if err != nil {
-		return nil, err
-	}
-	args := []string{"clone", "--depth", "1"}
-	if ref != "" {
-		args = append(args, "--branch", ref)
-	}
-	args = append(args, repoURL, tmp)
-	cmd := exec.Command("git", args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		_ = os.RemoveAll(tmp)
-		return nil, fmt.Errorf("clone github skill source: %w: %s", err, strings.TrimSpace(string(output)))
-	}
-	defer func() { _ = os.RemoveAll(tmp) }()
-	importRoot := tmp
-	if subpath != "" {
-		importRoot = filepath.Join(tmp, subpath)
-	}
-	if opts.Provenance == "" {
-		opts.Provenance = rawURL
-	}
-	if opts.Source == "" {
-		opts.Source = "github"
-	}
-	return s.InstallPath(importRoot, opts)
-}
-
-func (s *Service) InstallLocal(source string, opts InstallOptions) (Skill, error) {
-	if s == nil {
-		return Skill{}, fmt.Errorf("skills service is not configured")
-	}
-	source = filepath.Clean(strings.TrimSpace(source))
-	if err := ValidateSkillBundle(source); err != nil {
-		return Skill{}, err
-	}
-	doc, err := ParseSkillFile(filepath.Join(source, "SKILL.md"))
-	if err != nil {
-		return Skill{}, err
-	}
-	hash, err := hashFiles(source)
-	if err != nil {
-		return Skill{}, err
-	}
-	trust := normalizeTrust(textutil.FirstNonEmpty(opts.TrustState, s.initialTrustState()))
-	id := NormalizeID(doc.Name)
-	if exists, _ := s.Exists(id); exists {
-		id = id + "-" + hash[:8]
-	}
-	bucket := trustBucket(trust)
-	target := filepath.Join(s.root, bucket, id)
-	if err := os.RemoveAll(target); err != nil {
-		return Skill{}, err
-	}
-	if err := copyDir(source, target); err != nil {
-		return Skill{}, err
-	}
-	now := s.now().UTC()
-	skill := Skill{
-		ID:          id,
-		Name:        doc.Name,
-		Description: doc.Description,
-		Version:     doc.Version,
-		Author:      doc.Author,
-		Authors:     doc.Authors,
-		License:     doc.License,
-		Tags:        doc.Tags,
-		Platforms:   doc.Platforms,
-		Category:    doc.Category,
-		Path:        target,
-		Source:      textutil.FirstNonEmpty(opts.Source, "local"),
-		Provenance:  opts.Provenance,
-		Hash:        hash,
-		TrustState:  trust,
-		State:       StateActive,
-		Enabled:     trust == TrustTrusted,
-		InstalledAt: now,
-		UpdatedAt:   now,
-	}
-	if err := s.upsertSkill(skill, doc.Body); err != nil {
-		return Skill{}, err
-	}
-	return skill, nil
-}
-
-func (s *Service) initialTrustState() string {
-	if strings.EqualFold(s.cfg.TrustPolicy, TrustTrusted) {
-		return TrustTrusted
-	}
-	return TrustQuarantine
-}
-
-func normalizeTrust(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case TrustTrusted:
-		return TrustTrusted
-	case TrustDisabled:
-		return TrustDisabled
-	default:
-		return TrustQuarantine
-	}
-}
-
-func trustBucket(trust string) string {
-	if trust == TrustTrusted {
-		return "installed"
-	}
-	return "quarantine"
-}
-
-func (s *Service) Exists(id string) (bool, error) {
-	var exists int
-	err := s.db.QueryRow(`SELECT 1 FROM skills WHERE id = ?`, NormalizeID(id)).Scan(&exists)
-	if err == sql.ErrNoRows {
-		return false, nil
-	}
-	return err == nil, err
-}
-
-func (s *Service) upsertSkill(skill Skill, body string) error {
-	authors, _ := json.Marshal(skill.Authors)
-	tags, _ := json.Marshal(skill.Tags)
-	platforms, _ := json.Marshal(skill.Platforms)
-	_, err := s.db.Exec(`INSERT INTO skills (
-		id, name, description, version, author, authors_json, license, tags_json, platforms_json, category,
-		path, source, provenance, hash, trust_state, state, enabled, pinned, installed_at, updated_at, last_activity_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	ON CONFLICT(id) DO UPDATE SET
-		name=excluded.name, description=excluded.description, version=excluded.version, author=excluded.author,
-		authors_json=excluded.authors_json, license=excluded.license, tags_json=excluded.tags_json,
-		platforms_json=excluded.platforms_json, category=excluded.category, path=excluded.path,
-		source=excluded.source, provenance=excluded.provenance, hash=excluded.hash,
-		trust_state=excluded.trust_state, state=excluded.state, enabled=excluded.enabled, updated_at=excluded.updated_at`,
-		skill.ID, skill.Name, skill.Description, skill.Version, skill.Author, string(authors), skill.License, string(tags), string(platforms), skill.Category,
-		skill.Path, skill.Source, skill.Provenance, skill.Hash, skill.TrustState, skill.State, boolInt(skill.Enabled), boolInt(skill.Pinned), formatTime(skill.InstalledAt), formatTime(skill.UpdatedAt), formatTime(skill.LastActivityAt))
-	if err != nil {
-		return err
-	}
-	_, _ = s.db.Exec(`DELETE FROM skill_fts WHERE id = ?`, skill.ID)
-	_, err = s.db.Exec(`INSERT INTO skill_fts(id, name, description, tags, category, body) VALUES (?, ?, ?, ?, ?, ?)`,
-		skill.ID, skill.Name, skill.Description, strings.Join(skill.Tags, " "), skill.Category, body)
-	return err
-}
-
-func (s *Service) Search(query string, opts SearchOptions) ([]Skill, error) {
-	limit := opts.Limit
-	if limit <= 0 || limit > 50 {
-		limit = 20
-	}
-	where := []string{"1=1"}
-	args := []any{}
-	if !opts.IncludeQuarantined {
-		where = append(where, "trust_state = ?")
-		args = append(args, TrustTrusted)
-	}
-	if !opts.IncludeArchived {
-		where = append(where, "state = ?")
-		args = append(args, StateActive)
-	}
-	if !opts.IncludeDisabled {
-		where = append(where, "enabled = 1")
-	}
-	query = strings.TrimSpace(query)
-	if query == "" {
-		args = append(args, limit)
-		return s.querySkills(`SELECT `+skillColumns("")+` FROM skills WHERE `+strings.Join(where, " AND ")+` ORDER BY pinned DESC, name LIMIT ?`, args...)
-	}
-	match := ftsQuery(query)
-	if match == "" {
-		return nil, nil
-	}
-	args = append([]any{match}, args...)
-	args = append(args, limit)
-	return s.querySkills(`SELECT `+skillColumns("s")+` FROM skill_fts f JOIN skills s ON s.id = f.id WHERE skill_fts MATCH ? AND `+strings.Join(where, " AND ")+` ORDER BY rank, s.pinned DESC, s.name LIMIT ?`, args...)
-}
-
-func (s *Service) List(opts SearchOptions) ([]Skill, error) {
-	return s.Search("", opts)
-}
-
-func (s *Service) Get(id string) (SkillDetail, error) {
-	skill, err := s.getSkill(NormalizeID(id))
+// Get returns a skill and its SKILL.md body.
+func (s *Service) Get(ctx context.Context, id string) (SkillDetail, error) {
+	skill, err := s.getSkill(ctx, NormalizeID(id))
 	if err != nil {
 		return SkillDetail{}, err
 	}
@@ -332,147 +72,138 @@ func (s *Service) Get(id string) (SkillDetail, error) {
 	return SkillDetail{Skill: skill, Body: doc.Body}, nil
 }
 
-func (s *Service) View(id string) (SkillDetail, error) {
-	detail, err := s.Get(id)
+// View is Get counted as a view.
+func (s *Service) View(ctx context.Context, id string) (SkillDetail, error) {
+	detail, err := s.Get(ctx, id)
 	if err != nil {
 		return SkillDetail{}, err
 	}
 	now := s.now().UTC()
-	_, _ = s.db.Exec(`UPDATE skills SET view_count = view_count + 1, last_activity_at = ? WHERE id = ?`, formatTime(now), detail.Skill.ID)
+	s.countActivity(ctx, detail.Skill.ID, "view_count", now)
 	detail.Skill.ViewCount++
 	detail.Skill.LastActivityAt = now
 	return detail, nil
 }
 
-func (s *Service) Use(sessionID string, id string) (SkillDetail, error) {
-	detail, err := s.Get(id)
+// Use activates a trusted, enabled, active skill for the session.
+func (s *Service) Use(ctx context.Context, sessionID string, id string) (SkillDetail, error) {
+	detail, err := s.Get(ctx, id)
 	if err != nil {
 		return SkillDetail{}, err
 	}
-	if detail.Skill.TrustState != TrustTrusted || detail.Skill.State != StateActive || !detail.Skill.Enabled {
+	if !usable(detail.Skill) {
 		return SkillDetail{}, fmt.Errorf("skill %s is not trusted and active", detail.Skill.ID)
 	}
 	now := s.now().UTC()
-	_, _ = s.db.Exec(`UPDATE skills SET use_count = use_count + 1, last_activity_at = ? WHERE id = ?`, formatTime(now), detail.Skill.ID)
-	if strings.TrimSpace(sessionID) != "" {
-		_, _ = s.db.Exec(`INSERT OR REPLACE INTO skill_sessions(session_id, skill_id, activated_at) VALUES (?, ?, ?)`, strings.TrimSpace(sessionID), detail.Skill.ID, formatTime(now))
+	s.countActivity(ctx, detail.Skill.ID, "use_count", now)
+	if sessionID = strings.TrimSpace(sessionID); sessionID != "" {
+		if err := s.activate(ctx, sessionID, detail.Skill.ID, now); err != nil {
+			return SkillDetail{}, err
+		}
 	}
 	detail.Skill.UseCount++
 	detail.Skill.LastActivityAt = now
 	return detail, nil
 }
 
-func (s *Service) Trust(id string) error {
-	if err := s.setTrustState(id, TrustTrusted); err != nil {
-		return err
-	}
-	return s.SetEnabled(id, true)
-}
-
-func (s *Service) Quarantine(id string) error {
-	if err := s.setTrustState(id, TrustQuarantine); err != nil {
-		return err
-	}
-	return s.SetEnabled(id, false)
-}
-
-func (s *Service) Disable(id string) error {
-	return s.SetEnabled(id, false)
-}
-
-func (s *Service) setTrustState(id string, trust string) error {
-	skill, err := s.getSkill(NormalizeID(id))
-	if err != nil {
-		return err
-	}
-	target := filepath.Join(s.root, trustBucket(trust), skill.ID)
-	if filepath.Clean(skill.Path) != filepath.Clean(target) {
-		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-			return err
-		}
-		if err := os.Rename(skill.Path, target); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		skill.Path = target
-	}
-	_, err = s.db.Exec(`UPDATE skills SET trust_state = ?, path = ?, updated_at = ? WHERE id = ?`, trust, skill.Path, formatTime(s.now().UTC()), skill.ID)
-	return err
-}
-
-func (s *Service) Archive(id string) error {
-	return s.setState(id, StateArchived)
-}
-
-func (s *Service) Restore(id string) error {
-	return s.setState(id, StateActive)
-}
-
-func (s *Service) setState(id string, state string) error {
-	_, err := s.db.Exec(`UPDATE skills SET state = ?, updated_at = ? WHERE id = ?`, state, formatTime(s.now().UTC()), NormalizeID(id))
-	return err
-}
-
-func (s *Service) Pin(id string, pinned bool) error {
-	_, err := s.db.Exec(`UPDATE skills SET pinned = ?, updated_at = ? WHERE id = ?`, boolInt(pinned), formatTime(s.now().UTC()), NormalizeID(id))
-	return err
-}
-
-func (s *Service) SetEnabled(id string, enabled bool) error {
-	_, err := s.db.Exec(`UPDATE skills SET enabled = ?, updated_at = ? WHERE id = ?`, boolInt(enabled), formatTime(s.now().UTC()), NormalizeID(id))
-	if !enabled {
-		_, _ = s.db.Exec(`DELETE FROM skill_sessions WHERE skill_id = ?`, NormalizeID(id))
-	}
-	return err
-}
-
-func (s *Service) SessionSkills(sessionID string) ([]Skill, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return nil, nil
-	}
-	return s.querySkills(`SELECT `+skillColumns("s")+` FROM skill_sessions ss JOIN skills s ON s.id = ss.skill_id WHERE ss.session_id = ? AND s.trust_state = ? AND s.state = ? AND s.enabled = 1 ORDER BY ss.activated_at`, sessionID, TrustTrusted, StateActive)
-}
-
-func (s *Service) Unload(sessionID string, id string) error {
+// Unload deactivates a skill for the session.
+func (s *Service) Unload(ctx context.Context, sessionID string, id string) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return nil
 	}
-	_, err := s.db.Exec(`DELETE FROM skill_sessions WHERE session_id = ? AND skill_id = ?`, sessionID, NormalizeID(id))
-	return err
+	return s.deactivate(ctx, sessionID, NormalizeID(id))
 }
 
-func (s *Service) CreateDraft(name string, description string, tags []string, body string) (Skill, error) {
+// Apply runs a library action on the skill id.
+func (s *Service) Apply(ctx context.Context, id string, action Action) error {
+	id = NormalizeID(id)
+	switch action {
+	case ActionTrust:
+		return s.setTrust(ctx, id, TrustTrusted, true)
+	case ActionQuarantine:
+		return s.setTrust(ctx, id, TrustQuarantine, false)
+	case ActionEnable:
+		return s.updateSkill(ctx, id, `enabled = 1`)
+	case ActionDisable:
+		if err := s.updateSkill(ctx, id, `enabled = 0`); err != nil {
+			return err
+		}
+		return s.deactivate(ctx, "", id)
+	case ActionArchive:
+		return s.updateSkill(ctx, id, `state = ?`, StateArchived)
+	case ActionRestore:
+		return s.updateSkill(ctx, id, `state = ?`, StateActive)
+	case ActionPin:
+		return s.updateSkill(ctx, id, `pinned = 1`)
+	case ActionUnpin:
+		return s.updateSkill(ctx, id, `pinned = 0`)
+	case ActionRemove:
+		return s.remove(ctx, id)
+	default:
+		return fmt.Errorf("unknown skill action %q", action)
+	}
+}
+
+// setTrust moves the skill's directory to the trust state's bucket; a skill
+// leaving trust is disabled and unloaded everywhere.
+func (s *Service) setTrust(ctx context.Context, id string, trust string, enabled bool) error {
+	skill, err := s.getSkill(ctx, id)
+	if err != nil {
+		return err
+	}
+	target := filepath.Join(s.root, trustBucket(trust), skill.ID)
+	if filepath.Clean(skill.Path) != target {
+		if err := os.Rename(skill.Path, target); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	if err := s.updateSkill(ctx, skill.ID, `trust_state = ?, path = ?, enabled = ?`, trust, target, boolInt(enabled)); err != nil {
+		return err
+	}
+	if enabled {
+		return nil
+	}
+	return s.deactivate(ctx, "", skill.ID)
+}
+
+func (s *Service) remove(ctx context.Context, id string) error {
+	skill, err := s.getSkill(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := os.RemoveAll(skill.Path); err != nil {
+		return err
+	}
+	return s.deleteSkill(ctx, skill.ID)
+}
+
+// CreateDraft writes a quarantined, disabled skill under drafts/.
+func (s *Service) CreateDraft(ctx context.Context, name string, description string, tags []string, body string) (Skill, error) {
 	name = strings.TrimSpace(name)
 	description = strings.TrimSpace(description)
 	body = strings.TrimSpace(body)
 	if name == "" || description == "" {
-		return Skill{}, fmt.Errorf("skill draft requires name and description")
+		return Skill{}, errors.New("skill draft requires name and description")
 	}
 	if body == "" {
 		body = "Describe when to use this skill and the steps to follow."
 	}
-	cleanTags := textutil.UniqueNonBlank(tags...)
 	id := NormalizeID(name)
-	if id == "" {
-		return Skill{}, fmt.Errorf("skill draft requires a valid name")
-	}
-	if exists, _ := s.Exists(id); exists {
+	if exists, err := s.exists(ctx, id); err != nil {
+		return Skill{}, err
+	} else if exists {
 		id = id + "-" + s.now().UTC().Format("20060102150405")
 	}
 	target := filepath.Join(s.root, "drafts", id)
 	if err := os.MkdirAll(target, 0o700); err != nil {
 		return Skill{}, err
 	}
-	content := skillMarkdown(name, description, cleanTags, body)
-	if err := os.WriteFile(filepath.Join(target, "SKILL.md"), []byte(content), 0o600); err != nil {
-		return Skill{}, err
+	metadata := map[string]any{"name": name, "description": description}
+	if tags = textutil.UniqueNonBlank(tags...); len(tags) > 0 {
+		metadata["tags"] = tags
 	}
-	doc, err := ParseSkillFile(filepath.Join(target, "SKILL.md"))
-	if err != nil {
-		return Skill{}, err
-	}
-	hash, err := hashFiles(target)
+	doc, hash, err := writeSkillFile(target, metadata, body)
 	if err != nil {
 		return Skill{}, err
 	}
@@ -489,262 +220,151 @@ func (s *Service) CreateDraft(name string, description string, tags []string, bo
 		Hash:        hash,
 		TrustState:  TrustQuarantine,
 		State:       StateActive,
-		Enabled:     false,
 		InstalledAt: now,
 		UpdatedAt:   now,
 	}
-	if err := s.upsertSkill(skill, doc.Body); err != nil {
+	if err := s.upsertSkill(ctx, skill, doc.Body); err != nil {
 		return Skill{}, err
 	}
 	return skill, nil
 }
 
-func (s *Service) UpdateMetadata(id string, update MetadataUpdate) (Skill, error) {
-	detail, err := s.Get(id)
-	if err != nil {
-		return Skill{}, err
-	}
-	doc, err := ParseSkillFile(filepath.Join(detail.Skill.Path, "SKILL.md"))
+// UpdateMetadata rewrites the SKILL.md frontmatter fields that are set.
+func (s *Service) UpdateMetadata(ctx context.Context, id string, update MetadataUpdate) (Skill, error) {
+	detail, doc, err := s.skillFile(ctx, id)
 	if err != nil {
 		return Skill{}, err
 	}
 	metadata := doc.Metadata
-	if strings.TrimSpace(update.Name) != "" {
-		metadata["name"] = strings.TrimSpace(update.Name)
+	if value := strings.TrimSpace(update.Name); value != "" {
+		metadata["name"] = value
 	}
-	if strings.TrimSpace(update.Description) != "" {
-		metadata["description"] = strings.TrimSpace(update.Description)
+	if value := strings.TrimSpace(update.Description); value != "" {
+		metadata["description"] = value
 	}
 	if update.Tags != nil {
 		metadata["tags"] = textutil.UniqueNonBlank(update.Tags...)
 	}
-	if strings.TrimSpace(update.Category) != "" {
-		metadata["category"] = strings.TrimSpace(update.Category)
+	if value := strings.TrimSpace(update.Category); value != "" {
+		metadata["category"] = value
 	}
-	rawMetadata, err := yaml.Marshal(metadata)
+	parsed, hash, err := writeSkillFile(detail.Path, metadata, doc.Body)
 	if err != nil {
 		return Skill{}, err
 	}
-	content := "---\n" + strings.TrimSpace(string(rawMetadata)) + "\n---\n" + strings.TrimSpace(doc.Body) + "\n"
-	if err := os.WriteFile(filepath.Join(detail.Skill.Path, "SKILL.md"), []byte(content), 0o600); err != nil {
-		return Skill{}, err
-	}
-	parsed, err := ParseSkillFile(filepath.Join(detail.Skill.Path, "SKILL.md"))
-	if err != nil {
-		return Skill{}, err
-	}
-	hash, err := hashFiles(detail.Skill.Path)
-	if err != nil {
-		return Skill{}, err
-	}
-	skill := detail.Skill
+	skill := detail
 	skill.Name = parsed.Name
 	skill.Description = parsed.Description
 	skill.Tags = parsed.Tags
 	skill.Category = parsed.Category
 	skill.Hash = hash
 	skill.UpdatedAt = s.now().UTC()
-	if err := s.upsertSkill(skill, parsed.Body); err != nil {
+	if err := s.upsertSkill(ctx, skill, parsed.Body); err != nil {
 		return Skill{}, err
 	}
 	return skill, nil
 }
 
-func (s *Service) UpdateBody(id string, body string) error {
+// UpdateBody replaces the instructions of SKILL.md.
+func (s *Service) UpdateBody(ctx context.Context, id string, body string) error {
 	body = strings.TrimSpace(body)
 	if body == "" {
-		return fmt.Errorf("skill body must not be empty")
+		return errors.New("skill body must not be empty")
 	}
-	detail, err := s.Get(id)
+	skill, doc, err := s.skillFile(ctx, id)
 	if err != nil {
 		return err
 	}
-	doc, err := ParseSkillFile(filepath.Join(detail.Skill.Path, "SKILL.md"))
+	parsed, hash, err := writeSkillFile(skill.Path, doc.Metadata, body)
 	if err != nil {
 		return err
 	}
-	rawMetadata, err := yaml.Marshal(doc.Metadata)
-	if err != nil {
-		return err
-	}
-	content := "---\n" + strings.TrimSpace(string(rawMetadata)) + "\n---\n" + body + "\n"
-	if err := os.WriteFile(filepath.Join(detail.Skill.Path, "SKILL.md"), []byte(content), 0o600); err != nil {
-		return err
-	}
-	hash, err := hashFiles(detail.Skill.Path)
-	if err != nil {
-		return err
-	}
-	skill := detail.Skill
 	skill.Hash = hash
 	skill.UpdatedAt = s.now().UTC()
-	return s.upsertSkill(skill, body)
+	return s.upsertSkill(ctx, skill, parsed.Body)
 }
 
-func (s *Service) Remove(id string) error {
-	skill, err := s.getSkill(NormalizeID(id))
+// WriteFile writes (or with remove deletes) a file of the skill: SKILL.md or
+// one under scripts/, references/ or assets/.
+func (s *Service) WriteFile(ctx context.Context, id string, rel string, content string, remove bool) error {
+	skill, err := s.getSkill(ctx, NormalizeID(id))
 	if err != nil {
 		return err
 	}
-	if err := os.RemoveAll(skill.Path); err != nil {
+	rel, err = supportFilePath(rel)
+	if err != nil {
 		return err
 	}
-	_, _ = s.db.Exec(`DELETE FROM skill_fts WHERE id = ?`, skill.ID)
-	_, _ = s.db.Exec(`DELETE FROM skill_sessions WHERE skill_id = ?`, skill.ID)
-	_, err = s.db.Exec(`DELETE FROM skills WHERE id = ?`, skill.ID)
-	return err
-}
-
-// Usage lists every skill, most used first.
-func (s *Service) Usage() ([]Skill, error) {
-	return s.querySkills(`SELECT ` + skillColumns("") + ` FROM skills ORDER BY use_count DESC, view_count DESC, name`)
-}
-
-func (s *Service) getSkill(id string) (Skill, error) {
-	skills, err := s.querySkills(`SELECT `+skillColumns("")+` FROM skills WHERE id = ?`, id)
+	dir, err := os.OpenRoot(skill.Path)
 	if err != nil {
-		return Skill{}, err
+		return err
 	}
-	if len(skills) == 0 {
-		return Skill{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+	defer func() { _ = dir.Close() }()
+	if remove {
+		err = dir.Remove(rel)
+	} else if err = dir.MkdirAll(filepath.Dir(rel), 0o700); err == nil {
+		err = dir.WriteFile(rel, []byte(content), 0o600)
 	}
-	return skills[0], nil
-}
-
-func (s *Service) querySkills(query string, args ...any) ([]Skill, error) {
-	rows, err := s.db.Query(query, args...)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer func() { _ = rows.Close() }()
-	var skills []Skill
-	for rows.Next() {
-		skill, err := scanSkill(rows)
-		if err != nil {
-			return nil, err
-		}
-		skills = append(skills, skill)
-	}
-	return skills, rows.Err()
+	s.countActivity(ctx, skill.ID, "patch_count", s.now().UTC())
+	return nil
 }
 
-type skillScanner interface {
-	Scan(dest ...any) error
+// supportFilePath cleans a path inside a skill and refuses one outside
+// SKILL.md and the support directories.
+func supportFilePath(rel string) (string, error) {
+	rel = filepath.Clean(strings.TrimSpace(rel))
+	if rel == "SKILL.md" {
+		return rel, nil
+	}
+	if !filepath.IsLocal(rel) {
+		return "", fmt.Errorf("invalid skill file path %q", rel)
+	}
+	top, _, _ := strings.Cut(filepath.ToSlash(rel), "/")
+	if !strings.Contains(filepath.ToSlash(rel), "/") || !slices.Contains(validSupportDirs, top) {
+		return "", errors.New("skill files may only be SKILL.md or under scripts/, references/ or assets/")
+	}
+	return rel, nil
 }
 
-func scanSkill(row skillScanner) (Skill, error) {
-	var skill Skill
-	var authorsJSON, tagsJSON, platformsJSON string
-	var enabled, pinned int
-	var installed, updated, activity string
-	err := row.Scan(&skill.ID, &skill.Name, &skill.Description, &skill.Version, &skill.Author, &authorsJSON, &skill.License, &tagsJSON, &platformsJSON, &skill.Category, &skill.Path, &skill.Source, &skill.Provenance, &skill.Hash, &skill.TrustState, &skill.State, &enabled, &pinned, &skill.UseCount, &skill.ViewCount, &skill.PatchCount, &installed, &updated, &activity)
+func (s *Service) skillFile(ctx context.Context, id string) (Skill, Document, error) {
+	skill, err := s.getSkill(ctx, NormalizeID(id))
 	if err != nil {
-		return Skill{}, err
+		return Skill{}, Document{}, err
 	}
-	_ = json.Unmarshal([]byte(authorsJSON), &skill.Authors)
-	_ = json.Unmarshal([]byte(tagsJSON), &skill.Tags)
-	_ = json.Unmarshal([]byte(platformsJSON), &skill.Platforms)
-	skill.Enabled = enabled != 0
-	skill.Pinned = pinned != 0
-	skill.InstalledAt = parseTime(installed)
-	skill.UpdatedAt = parseTime(updated)
-	skill.LastActivityAt = parseTime(activity)
-	return skill, nil
+	doc, err := ParseSkillFile(filepath.Join(skill.Path, "SKILL.md"))
+	return skill, doc, err
 }
 
-func skillColumns(prefix string) string {
-	columns := []string{
-		"id", "name", "description", "version", "author", "authors_json", "license", "tags_json", "platforms_json", "category",
-		"path", "source", "provenance", "hash", "trust_state", "state", "enabled", "pinned",
-		"use_count", "view_count", "patch_count", "installed_at", "updated_at", "last_activity_at",
+// writeSkillFile writes SKILL.md in dir and returns it parsed back and the
+// hash of the skill's files.
+func writeSkillFile(dir string, metadata map[string]any, body string) (Document, string, error) {
+	raw, err := yaml.Marshal(metadata)
+	if err != nil {
+		return Document{}, "", err
 	}
-	if strings.TrimSpace(prefix) == "" {
-		return strings.Join(columns, ", ")
+	content := "---\n" + strings.TrimSpace(string(raw)) + "\n---\n" + strings.TrimSpace(body) + "\n"
+	path := filepath.Join(dir, "SKILL.md")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		return Document{}, "", err
 	}
-	out := make([]string, 0, len(columns))
-	for _, column := range columns {
-		out = append(out, prefix+"."+column)
+	doc, err := ParseSkillFile(path)
+	if err != nil {
+		return Document{}, "", err
 	}
-	return strings.Join(out, ", ")
+	hash, err := hashFiles(dir)
+	return doc, hash, err
 }
 
-func skillMarkdown(name string, description string, tags []string, body string) string {
-	metadata := map[string]any{
-		"name":        strings.TrimSpace(name),
-		"description": strings.TrimSpace(description),
-	}
-	if len(tags) > 0 {
-		metadata["tags"] = tags
-	}
-	raw, _ := yaml.Marshal(metadata)
-	return "---\n" + strings.TrimSpace(string(raw)) + "\n---\n" + strings.TrimSpace(body) + "\n"
+func usable(skill Skill) bool {
+	return skill.TrustState == TrustTrusted && skill.State == StateActive && skill.Enabled
 }
 
-func copyDir(source string, target string) error {
-	return filepath.WalkDir(source, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(source, path)
-		if err != nil {
-			return err
-		}
-		dest := filepath.Join(target, rel)
-		if entry.IsDir() {
-			return os.MkdirAll(dest, 0o700)
-		}
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(dest, raw, 0o600)
-	})
-}
-
-func ftsQuery(query string) string {
-	parts := strings.Fields(strings.ToLower(query))
-	cleaned := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.Trim(part, `"':;,.!?()[]{}<>`)
-		part = cleanFTSTerm(part)
-		if part != "" {
-			cleaned = append(cleaned, part+"*")
-		}
+func trustBucket(trust string) string {
+	if trust == TrustTrusted {
+		return "installed"
 	}
-	sort.Strings(cleaned)
-	return strings.Join(cleaned, " ")
-}
-
-func cleanFTSTerm(value string) string {
-	var b strings.Builder
-	for _, r := range value {
-		switch {
-		case r >= 'a' && r <= 'z':
-			b.WriteRune(r)
-		case r >= '0' && r <= '9':
-			b.WriteRune(r)
-		case r == '_' || r == '-':
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
-}
-
-func boolInt(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
-}
-
-func formatTime(value time.Time) string {
-	if value.IsZero() {
-		return ""
-	}
-	return value.UTC().Format(time.RFC3339Nano)
-}
-
-func parseTime(value string) time.Time {
-	t, _ := time.Parse(time.RFC3339Nano, strings.TrimSpace(value))
-	return t
+	return "quarantine"
 }

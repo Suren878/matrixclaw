@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/automation"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
@@ -30,11 +31,12 @@ const (
 )
 
 type supervisor struct {
-	ctx      context.Context
-	app      *core.Core
-	telegram *telegramClientAdapter
-	modules  *modules.Set
-	applied  atomic.Pointer[setup.Config]
+	ctx        context.Context
+	app        *core.Core
+	automation *automation.Service
+	telegram   *telegramClientAdapter
+	modules    *modules.Set
+	applied    atomic.Pointer[setup.Config]
 
 	// reloadMu serializes applying the setup and swapping external agents.
 	reloadMu         sync.Mutex
@@ -46,12 +48,13 @@ type supervisor struct {
 	restarting bool
 }
 
-func newSupervisor(ctx context.Context, app *core.Core, geo *geo.OSMService, set *modules.Set) *supervisor {
+func newSupervisor(ctx context.Context, app *core.Core, jobs *automation.Service, geo *geo.OSMService, set *modules.Set) *supervisor {
 	return &supervisor{
-		ctx:      ctx,
-		app:      app,
-		modules:  set,
-		telegram: &telegramClientAdapter{geo: geo},
+		ctx:        ctx,
+		app:        app,
+		automation: jobs,
+		modules:    set,
+		telegram:   &telegramClientAdapter{geo: geo},
 	}
 }
 
@@ -75,6 +78,10 @@ func (s *supervisor) applyBootstrap(bootstrap bootstrapConfig) error {
 	if s.app != nil {
 		s.app.SetSessionLLMs(bootstrap.SessionLLMs)
 		s.app.SetAssistantProfile(bootstrap.Assistant)
+		s.app.SetTuning(bootstrap.Tuning)
+	}
+	if s.automation != nil {
+		s.automation.Configure(automation.Settings{Timezone: bootstrap.Timezone, Targets: automationDeliveryTargets(bootstrap)})
 	}
 	if err := s.telegram.Apply(s.ctx, bootstrap); err != nil {
 		errs = append(errs, err)

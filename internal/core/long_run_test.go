@@ -28,7 +28,7 @@ func TestLongNativeRunCompactsKeepsLargeOutputsAndCompletes(t *testing.T) {
 	now := runRecoveryTestTime()
 	app.WithClock(func() time.Time { return now })
 	defaults := core.DefaultRunBudgets()
-	app.WithRunBudgets(core.RunBudgets{User: agent.Budget{Steps: steps + 10}, Subagent: defaults.Subagent, Automation: defaults.Automation})
+	app.SetTuning(core.Tuning{Budgets: core.RunBudgets{User: agent.Budget{Steps: steps + 10}, Subagent: defaults.Subagent, Automation: defaults.Automation}})
 	files := t.TempDir()
 	app.WithSessionFiles(files)
 	// Outputs grow to ~6k tokens; every 40th is ~15k tokens and goes to a file.

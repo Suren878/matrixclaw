@@ -77,7 +77,7 @@ func TestBudgetCountersSurviveAnApprovalPark(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithRunBudgets(core.RunBudgets{User: agent.Budget{Steps: 2}})
+	app.SetTuning(core.Tuning{Budgets: core.RunBudgets{User: agent.Budget{Steps: 2}}})
 	mutations := 0
 	mutate, _ := approvalTools(&mutations)
 	app.WithTools(tools.NewRegistry(mutate, changingTool("inspect_state")))
@@ -131,7 +131,7 @@ func TestRecoveredRunKeepsItsBudgetCounters(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithRunBudgets(core.RunBudgets{User: agent.Budget{Steps: 2}})
+	app.SetTuning(core.Tuning{Budgets: core.RunBudgets{User: agent.Budget{Steps: 2}}})
 	runtime := &recoveryRuntime{text: "Stopped after the restart."}
 	app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
 	_, run := saveCrashRecoveryRun(t, db, "budget-recovery", core.RunStatusRunning, false)
@@ -192,7 +192,7 @@ func TestRunBudgetFollowsTheTrigger(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			app, db, cleanup := newCrashRecoveryCore(t)
 			defer cleanup()
-			app.WithRunBudgets(budgets)
+			app.SetTuning(core.Tuning{Budgets: budgets})
 			app.WithRunStarter(&recordingRunStarter{})
 			app.WithTools(tools.NewRegistry(changingTool("inspect_state")))
 			withTools := 0
@@ -265,7 +265,7 @@ func TestSubagentStoppedAtItsBudgetReportsAPartialResult(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithRunBudgets(core.RunBudgets{User: agent.Budget{Steps: 5}, Subagent: agent.Budget{Steps: 1}})
+	app.SetTuning(core.Tuning{Budgets: core.RunBudgets{User: agent.Budget{Steps: 5}, Subagent: agent.Budget{Steps: 1}}})
 	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), changingTool("inspect_state"))...))
 	parentCalls := 0
 	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {

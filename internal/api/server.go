@@ -218,7 +218,6 @@ func (s *Server) routeTable() []route {
 		{"POST /v1/modules/skills/drafts", owner, s.handleSkillDraft},
 		{"GET /v1/modules/skills/{id}", open, s.handleSkill},
 		{"PATCH /v1/modules/skills/{id}", owner, s.handleSkillUpdate},
-		{"DELETE /v1/modules/skills/{id}", owner, s.handleSkillDelete},
 		{"PUT /v1/modules/skills/{id}/body", owner, s.handleSkillBody},
 		{"POST /v1/modules/skills/{id}/{action}", owner, s.handleSkillAction},
 		{"GET /v1/sessions/{id}/skills", open, s.handleSessionSkills},

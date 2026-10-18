@@ -430,7 +430,7 @@ func TestSessionTasksListsBackgroundTasksPastManyOthers(t *testing.T) {
 func TestSessionRunsAtMostItsLimitOfBackgroundCommands(t *testing.T) {
 	t.Parallel()
 	app, _, session, _ := newTaskCore(t)
-	app.WithBackgroundTaskLimit(1)
+	app.SetTuning(core.Tuning{BackgroundTasks: 1})
 	command := foreground("sleep 30")
 	command.Background = true
 	first, err := app.RunCommand(context.Background(), taskCall(session), command)

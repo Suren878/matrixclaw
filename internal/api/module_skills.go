@@ -25,11 +25,11 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 	var err error
 	switch {
 	case query.Get("order") == "usage":
-		result, err = s.Skills.Usage()
+		result, err = s.Skills.Usage(r.Context())
 	case strings.TrimSpace(query.Get("query")) != "":
-		result, err = s.Skills.Search(strings.TrimSpace(query.Get("query")), opts)
+		result, err = s.Skills.Search(r.Context(), strings.TrimSpace(query.Get("query")), opts)
 	default:
-		result, err = s.Skills.List(opts)
+		result, err = s.Skills.List(r.Context(), opts)
 	}
 	if err != nil {
 		writeError(w, err)
@@ -43,7 +43,7 @@ func (s *Server) handleSkillInstall(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	installed, err := s.Skills.InstallPath(req.Path, skills.InstallOptions{Provenance: req.Path})
+	installed, err := s.Skills.InstallPath(r.Context(), req.Path)
 	if err != nil {
 		writeError(w, withStatus(http.StatusBadRequest, err))
 		return
@@ -56,7 +56,7 @@ func (s *Server) handleSkillDraft(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	draft, err := s.Skills.CreateDraft(req.Name, req.Description, req.Tags, req.Body)
+	draft, err := s.Skills.CreateDraft(r.Context(), req.Name, req.Description, req.Tags, req.Body)
 	if err != nil {
 		writeError(w, withStatus(http.StatusBadRequest, err))
 		return
@@ -65,7 +65,7 @@ func (s *Server) handleSkillDraft(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSkill(w http.ResponseWriter, r *http.Request) {
-	detail, err := s.Skills.Get(r.PathValue("id"))
+	detail, err := s.Skills.Get(r.Context(), r.PathValue("id"))
 	if err != nil {
 		writeError(w, err)
 		return
@@ -78,7 +78,7 @@ func (s *Server) handleSkillUpdate(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	updated, err := s.Skills.UpdateMetadata(r.PathValue("id"), req)
+	updated, err := s.Skills.UpdateMetadata(r.Context(), r.PathValue("id"), req)
 	if err != nil {
 		writeError(w, withStatus(http.StatusBadRequest, err))
 		return
@@ -91,42 +91,20 @@ func (s *Server) handleSkillBody(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	writeSkillResult(w, s.Skills.UpdateBody(r.PathValue("id"), req.Body))
-}
-
-func (s *Server) handleSkillDelete(w http.ResponseWriter, r *http.Request) {
-	writeSkillResult(w, s.Skills.Remove(r.PathValue("id")))
+	writeSkillResult(w, s.Skills.UpdateBody(r.Context(), r.PathValue("id"), req.Body))
 }
 
 func (s *Server) handleSkillAction(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	var err error
-	switch r.PathValue("action") {
-	case "trust":
-		err = s.Skills.Trust(id)
-	case "quarantine":
-		err = s.Skills.Quarantine(id)
-	case "disable":
-		err = s.Skills.Disable(id)
-	case "enable":
-		err = s.Skills.SetEnabled(id, true)
-	case "archive":
-		err = s.Skills.Archive(id)
-	case "restore":
-		err = s.Skills.Restore(id)
-	case "pin":
-		err = s.Skills.Pin(id, true)
-	case "unpin":
-		err = s.Skills.Pin(id, false)
-	default:
+	action, ok := skills.ParseAction(r.PathValue("action"))
+	if !ok {
 		writeNotFound(w)
 		return
 	}
-	writeSkillResult(w, err)
+	writeSkillResult(w, s.Skills.Apply(r.Context(), r.PathValue("id"), action))
 }
 
 func (s *Server) handleSessionSkills(w http.ResponseWriter, r *http.Request) {
-	items, err := s.Skills.SessionSkills(r.PathValue("id"))
+	items, err := s.Skills.SessionSkills(r.Context(), r.PathValue("id"))
 	if err != nil {
 		writeError(w, err)
 		return
@@ -135,7 +113,7 @@ func (s *Server) handleSessionSkills(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSessionSkillUse(w http.ResponseWriter, r *http.Request) {
-	detail, err := s.Skills.Use(r.PathValue("id"), r.PathValue("skill"))
+	detail, err := s.Skills.Use(r.Context(), r.PathValue("id"), r.PathValue("skill"))
 	if err != nil {
 		writeError(w, withStatus(http.StatusBadRequest, err))
 		return
@@ -144,7 +122,7 @@ func (s *Server) handleSessionSkillUse(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSessionSkillUnload(w http.ResponseWriter, r *http.Request) {
-	writeSkillResult(w, s.Skills.Unload(r.PathValue("id"), r.PathValue("skill")))
+	writeSkillResult(w, s.Skills.Unload(r.Context(), r.PathValue("id"), r.PathValue("skill")))
 }
 
 func writeSkillResult(w http.ResponseWriter, err error) {

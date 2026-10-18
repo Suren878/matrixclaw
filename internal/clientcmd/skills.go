@@ -67,23 +67,6 @@ func runSkillsCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 			printSkills(stdout, binaryName, items)
 			return nil
 		})
-	case "trust", "quarantine", "enable", "disable", "remove", "archive", "restore", "pin", "unpin":
-		if len(args) < 2 {
-			_, _ = fmt.Fprintf(stderr, "%s: skills %s: ID is required\n", binaryName, subcommand)
-			return 2
-		}
-		return withSkillsDaemon(stderr, binaryName, service, "skills "+subcommand, func(ctx context.Context, client *daemonclient.Client) error {
-			var err error
-			if subcommand == "remove" {
-				err = client.RemoveSkill(ctx, args[1])
-			} else {
-				err = client.SkillAction(ctx, args[1], subcommand)
-			}
-			if err == nil {
-				_, _ = fmt.Fprintf(stdout, "%s: %s %s\n", binaryName, subcommand, args[1])
-			}
-			return err
-		})
 	case "usage":
 		return withSkillsDaemon(stderr, binaryName, service, "skills usage", func(ctx context.Context, client *daemonclient.Client) error {
 			items, err := client.SkillUsage(ctx)
@@ -96,10 +79,23 @@ func runSkillsCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 	case "help", "-h", "--help":
 		printSkillsUsage(stdout, binaryName)
 		return 0
-	default:
+	}
+	action, ok := skills.ParseAction(subcommand)
+	if !ok {
 		printSkillsUsage(stdout, binaryName)
 		return 2
 	}
+	if len(args) < 2 {
+		_, _ = fmt.Fprintf(stderr, "%s: skills %s: ID is required\n", binaryName, action)
+		return 2
+	}
+	return withSkillsDaemon(stderr, binaryName, service, "skills "+string(action), func(ctx context.Context, client *daemonclient.Client) error {
+		if err := client.SkillAction(ctx, args[1], action); err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintf(stdout, "%s: %s %s\n", binaryName, action, args[1])
+		return nil
+	})
 }
 
 // withSkillsDaemon runs fn against the daemon, which owns the skills library.
@@ -149,7 +145,10 @@ func printSkillsUsage(w io.Writer, binaryName string) {
 	_, _ = fmt.Fprintf(w, "  %s skills search QUERY\n", binaryName)
 	_, _ = fmt.Fprintf(w, "  %s skills show ID\n", binaryName)
 	_, _ = fmt.Fprintf(w, "  %s skills install PATH\n", binaryName)
-	_, _ = fmt.Fprintf(w, "  %s skills trust|quarantine|enable|disable|remove ID\n", binaryName)
-	_, _ = fmt.Fprintf(w, "  %s skills archive|restore|pin|unpin ID\n", binaryName)
+	actions := make([]string, 0, len(skills.Actions))
+	for _, action := range skills.Actions {
+		actions = append(actions, string(action))
+	}
+	_, _ = fmt.Fprintf(w, "  %s skills %s ID\n", binaryName, strings.Join(actions, "|"))
 	_, _ = fmt.Fprintf(w, "  %s skills usage\n", binaryName)
 }

@@ -28,7 +28,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/shelltask"
-	"github.com/Suren878/matrixclaw/internal/skills"
 	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
@@ -52,11 +51,6 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = sqliteStore.Close() }()
-	automationStore, err := automation.NewSQLiteStore(bootstrap.DBPath)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = automationStore.Close() }()
 
 	localRuntime := localruntime.New("")
 	defer func() { _ = localRuntime.Close() }()
@@ -66,20 +60,14 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	skillsModule, err := skillsmodule.New(skillsConfigFromBootstrap(bootstrap))
+	skillsModule, err := skillsmodule.New(sqliteStore.DB(), filepath.Join(dataDir(bootstrap.DBPath), "skills"))
 	if err != nil {
 		return err
 	}
 
 	app := core.New(sqliteStore).
 		WithSessionLLMs(bootstrap.SessionLLMs).
-		WithRunBudgets(bootstrap.Budgets).
 		WithSessionFiles(sessionFilesRoot(bootstrap.DBPath)).
-		WithCompactModel(bootstrap.CompactModel.Provider, bootstrap.CompactModel.Model).
-		WithContextWindowCap(bootstrap.WindowCap).
-		WithModelConcurrency(bootstrap.ModelConcurrency).
-		WithBackgroundTaskLimit(bootstrap.BackgroundTasks).
-		WithBackgroundAgents(bootstrap.BackgroundAgents).
 		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()}).
 		WithSkillsContext(skillsModule).
 		WithPromptEnvironment(promptEnvironment(bootstrap)).
@@ -92,8 +80,7 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	app.WithExternalAgents(externalRegistry, sqliteStore)
-	automationService := automation.NewService(automationStore, app, bootstrap.Timezone).
-		WithDeliveryTargets(automationDeliveryTargets(bootstrap))
+	automationService := automation.NewService(automation.NewSQLiteStore(sqliteStore.DB()), app)
 	osmGeo := geo.NewOSMServiceFromEnv()
 	realtimeVoice := realtime.NewManager(app, geminilive.Spec, grokvoice.Spec, openairealtime.Spec)
 	daemon, err := buildModules(moduleDeps{
@@ -112,8 +99,7 @@ func Run(ctx context.Context) error {
 	lifetime, stopLifetime := context.WithCancel(ctx)
 	defer stopLifetime()
 	app.WithLifetime(lifetime)
-	safego.Go("core.runWakeups", func() { app.RunWakeups(lifetime) })
-	supervisor := newSupervisor(ctx, app, osmGeo, daemon.set)
+	supervisor := newSupervisor(ctx, app, automationService, osmGeo, daemon.set)
 	server := api.New(api.Deps{
 		Core:       app,
 		Automation: automationService,
@@ -166,6 +152,7 @@ func Run(ctx context.Context) error {
 	if err := supervisor.ApplyBootstrap(bootstrap); err != nil {
 		log.Printf("matrixclawd apply setup: %v", err)
 	}
+	safego.Go("core.runWakeups", func() { app.RunWakeups(lifetime) })
 	errCh := make(chan error, 2)
 	safego.Go("daemon.httpServer", func() {
 		err := httpServer.Serve(listener)
@@ -196,16 +183,6 @@ func Run(ctx context.Context) error {
 		return httpServer.Shutdown(shutdownCtx)
 	case err := <-errCh:
 		return err
-	}
-}
-
-func skillsConfigFromBootstrap(bootstrap bootstrapConfig) skills.Config {
-	cfg := bootstrap.Setup.Modules.Skills
-	return skills.Config{
-		DBPath:      bootstrap.DBPath,
-		Enabled:     cfg.IsEnabled(),
-		AutoInvoke:  cfg.IsAutoInvoke(),
-		TrustPolicy: cfg.TrustPolicy,
 	}
 }
 

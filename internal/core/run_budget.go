@@ -24,21 +24,16 @@ func DefaultRunBudgets() RunBudgets {
 	}
 }
 
-// WithRunBudgets sets the default run budgets per trigger.
-func (c *Core) WithRunBudgets(budgets RunBudgets) *Core {
-	c.budgets = budgets
-	return c
-}
-
 // defaultRunBudget is the daemon default for what started the run.
 func (c *Core) defaultRunBudget(run Run, session Session) agent.Budget {
+	budgets := c.Tuning().Budgets
 	switch {
 	case isSubagentSession(session):
-		return c.budgets.Subagent
+		return budgets.Subagent
 	case run.Trigger == RunTriggerAutomation || run.Trigger == RunTriggerWake:
-		return c.budgets.Automation
+		return budgets.Automation
 	default:
-		return c.budgets.User
+		return budgets.User
 	}
 }
 
