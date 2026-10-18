@@ -61,7 +61,7 @@ func (d *Dispatcher) settingsPage(moduleID string, settings modules.Settings, pa
 	for _, item := range items {
 		picker.Item(d.settingsRow(moduleID, append(append([]string(nil), path...), item.Key), item))
 	}
-	return Result{Handled: true, Picker: picker.Ptr()}
+	return Result{Screen: picker.Build()}
 }
 
 func (d *Dispatcher) settingsRow(moduleID string, path []string, item modules.Item) PickerItem {
@@ -135,22 +135,22 @@ func (d *Dispatcher) openSetting(moduleID string, settings modules.Settings, pat
 		for _, fact := range item.Facts {
 			rows = append(rows, InfoRow{Label: fact.Label, Value: fact.Value})
 		}
-		return Result{Handled: true, Info: &InfoData{Title: item.Label, Rows: rows}}
+		return Result{Screen: InfoData{Title: item.Label, Rows: rows}}
 	case modules.ItemToggle:
 		if !editable {
 			break
 		}
-		return Result{Handled: true, Picker: NewPickerData(PickerModule, item.Label).
+		return Result{Screen: NewPickerData(PickerModule, item.Label).
 			Meta(message).
 			Select(parent).
 			Item(PickerItem{ID: "on", Title: "On", Selected: item.Value == "on", Command: settingsCommand(moduleID, "set", path, "on")}).
 			Item(PickerItem{ID: "off", Title: "Off", Selected: item.Value == "off", Command: settingsCommand(moduleID, "set", path, "off")}).
-			Ptr()}
+			Build()}
 	case modules.ItemChoice:
 		if !editable {
 			break
 		}
-		return Result{Handled: true, Picker: d.choicePicker(moduleID, path, item, group, message, parent)}
+		return Result{Screen: d.choicePicker(moduleID, path, item, group, message, parent)}
 	case modules.ItemText, modules.ItemSecret:
 		if !editable {
 			break
@@ -159,7 +159,7 @@ func (d *Dispatcher) openSetting(moduleID string, settings modules.Settings, pat
 		if item.Kind == modules.ItemSecret && item.Display != "" && item.Display != "Not set" {
 			placeholder = item.Display
 		}
-		return Result{Handled: true, Prompt: &PromptData{
+		return Result{Screen: PromptData{
 			Title:               strings.Join(textutil.NonBlank(message, item.Label), "\n"),
 			Placeholder:         placeholder + " · - to clear",
 			Value:               item.Value,
@@ -177,7 +177,7 @@ func (d *Dispatcher) openSetting(moduleID string, settings modules.Settings, pat
 
 // choicePicker lists a choice's options; grouped options are picked group
 // first.
-func (d *Dispatcher) choicePicker(moduleID string, path []string, item modules.Item, group string, message string, parent string) *PickerData {
+func (d *Dispatcher) choicePicker(moduleID string, path []string, item modules.Item, group string, message string, parent string) PickerData {
 	grouped := false
 	for _, option := range item.Options {
 		grouped = grouped || option.Group != ""
@@ -196,7 +196,7 @@ func (d *Dispatcher) choicePicker(moduleID string, path []string, item modules.I
 				picker.Item(PickerItem{ID: option.Group, Title: option.Group, Command: settingsOpenCommand(moduleID, path) + " " + option.Group})
 			}
 		}
-		return picker.Ptr()
+		return picker.Build()
 	}
 	if grouped {
 		picker.Command(settingsOpenCommand(moduleID, path) + " " + group).Back(settingsOpenCommand(moduleID, path))
@@ -220,7 +220,7 @@ func (d *Dispatcher) choicePicker(moduleID string, path []string, item modules.I
 			Command:  settingsCommand(moduleID, verb, path, option.Value),
 		})
 	}
-	return picker.Ptr()
+	return picker.Build()
 }
 
 func (d *Dispatcher) confirmModuleSetting(ctx context.Context, moduleID string, path []string, value string) (Result, error) {
@@ -249,7 +249,7 @@ func (d *Dispatcher) confirmSetting(moduleID string, path []string, question str
 	if danger {
 		label = "Delete"
 	}
-	return Result{Handled: true, Confirm: &ConfirmData{
+	return Result{Screen: ConfirmData{
 		Message:        question,
 		ConfirmLabel:   label,
 		CancelLabel:    "Close",

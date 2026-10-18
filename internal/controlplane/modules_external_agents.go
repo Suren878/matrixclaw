@@ -21,13 +21,13 @@ func (d *Dispatcher) handleExternalAgents(ctx context.Context, args string) (Res
 	case "enable":
 		agentID, _ := firstCommandToken(rest)
 		if agentID == "" {
-			return Result{Handled: true, Text: "Usage: /modules agents enable <agent>"}, nil
+			return textResult("Usage: /modules agents enable <agent>"), nil
 		}
 		return d.updateExternalAgentEnabled(ctx, agentID, true)
 	case "disable":
 		agentID, _ := firstCommandToken(rest)
 		if agentID == "" {
-			return Result{Handled: true, Text: "Usage: /modules agents disable <agent>"}, nil
+			return textResult("Usage: /modules agents disable <agent>"), nil
 		}
 		return d.updateExternalAgentEnabled(ctx, agentID, false)
 	default:
@@ -70,7 +70,7 @@ func (d *Dispatcher) externalAgentsPicker(ctx context.Context) (Result, error) {
 	if len(agents) == 0 {
 		picker.Static("empty", "No external agents", "No runtimes registered")
 	}
-	return Result{Handled: true, Picker: picker.Ptr()}, nil
+	return Result{Screen: picker.Build()}, nil
 }
 
 func (d *Dispatcher) externalAgentPicker(ctx context.Context, agentID string) (Result, error) {
@@ -80,7 +80,7 @@ func (d *Dispatcher) externalAgentPicker(ctx context.Context, agentID string) (R
 	}
 	agent, ok := findExternalAgent(agents, agentID)
 	if !ok {
-		return Result{Handled: true, Text: "External agent not found: " + strings.TrimSpace(agentID)}, nil
+		return textResult("External agent not found: " + strings.TrimSpace(agentID)), nil
 	}
 	picker := NewPickerData(PickerExternalAgent, externalAgentTitle(agent)).
 		Meta(externalAgentMeta(agent)).
@@ -89,7 +89,7 @@ func (d *Dispatcher) externalAgentPicker(ctx context.Context, agentID string) (R
 	if agent.Enabled {
 		picker.Action("new", "New Session", "Create session using "+agent.DisplayName, externalAgentNewSessionCommand(agent.ID))
 	}
-	return Result{Handled: true, Picker: picker.Ptr()}, nil
+	return Result{Screen: picker.Build()}, nil
 }
 
 func (d *Dispatcher) externalAgentEnabledPicker(ctx context.Context, agentID string) (Result, error) {
@@ -99,16 +99,15 @@ func (d *Dispatcher) externalAgentEnabledPicker(ctx context.Context, agentID str
 	}
 	agent, ok := findExternalAgent(agents, agentID)
 	if !ok {
-		return Result{Handled: true, Text: "External agent not found: " + strings.TrimSpace(agentID)}, nil
+		return textResult("External agent not found: " + strings.TrimSpace(agentID)), nil
 	}
 	return Result{
-		Handled: true,
-		Picker: NewPickerData(PickerExternalAgent, externalAgentTitle(agent)).
+		Screen: NewPickerData(PickerExternalAgent, externalAgentTitle(agent)).
 			Meta("Currently " + strings.ToLower(formatEnabled(agent.Enabled))).
 			Select(externalAgentCommand(agent.ID)).
 			Item(PickerItem{ID: "on", Title: "On", Selected: agent.Enabled, Command: externalAgentSetEnabledCommand(agent.ID, "on")}).
 			Item(PickerItem{ID: "off", Title: "Off", Selected: !agent.Enabled, Command: externalAgentSetEnabledCommand(agent.ID, "off")}).
-			Ptr(),
+			Build(),
 	}, nil
 }
 
@@ -130,16 +129,10 @@ func (d *Dispatcher) updateExternalAgentEnabled(ctx context.Context, agentID str
 	}
 	agent, ok := findExternalAgent(agents, agentID)
 	if !ok {
-		return Result{Handled: true, Text: "External agent updated."}, nil
-	}
-	action := "disabled"
-	if agent.Enabled {
-		action = "enabled"
+		return textResult("External agent updated."), nil
 	}
 	return Result{
-		Handled: true,
-		Text:    agent.DisplayName + " " + action + ".",
-		Picker:  externalAgentPickerData(agent),
+		Screen: externalAgentPickerData(agent),
 	}, nil
 }
 
@@ -150,9 +143,9 @@ func (d *Dispatcher) externalAgentPathPrompt(ctx context.Context, agentID string
 	}
 	agent, ok := findExternalAgent(agents, agentID)
 	if !ok {
-		return Result{Handled: true, Text: "External agent not found: " + strings.TrimSpace(agentID)}, nil
+		return textResult("External agent not found: " + strings.TrimSpace(agentID)), nil
 	}
-	return Result{Handled: true, Prompt: &PromptData{
+	return Result{Screen: PromptData{
 		Title:               externalAgentTitle(agent) + " Path",
 		Placeholder:         "codex binary path",
 		Value:               strings.TrimSpace(agent.Path),
@@ -168,7 +161,7 @@ func (d *Dispatcher) updateExternalAgentPath(ctx context.Context, agentID string
 	}
 	agent, ok := findExternalAgent(agents, agentID)
 	if !ok {
-		return Result{Handled: true, Text: "External agent not found: " + strings.TrimSpace(agentID)}, nil
+		return textResult("External agent not found: " + strings.TrimSpace(agentID)), nil
 	}
 	agents, err = d.daemon.UpdateExternalAgent(ctx, agent.ID, core.UpdateExternalAgentRequest{Path: strings.TrimSpace(path)})
 	if err != nil {
@@ -176,16 +169,14 @@ func (d *Dispatcher) updateExternalAgentPath(ctx context.Context, agentID string
 	}
 	agent, ok = findExternalAgent(agents, agent.ID)
 	if !ok {
-		return Result{Handled: true, Text: "External agent path updated."}, nil
+		return textResult("External agent path updated."), nil
 	}
 	return Result{
-		Handled: true,
-		Text:    agent.DisplayName + " path updated.",
-		Picker:  externalAgentPickerData(agent),
+		Screen: externalAgentPickerData(agent),
 	}, nil
 }
 
-func externalAgentPickerData(agent core.ExternalAgentDescriptor) *PickerData {
+func externalAgentPickerData(agent core.ExternalAgentDescriptor) PickerData {
 	picker := NewPickerData(PickerExternalAgent, externalAgentTitle(agent)).
 		Meta(externalAgentMeta(agent)).
 		Back(externalAgentsCommand())
@@ -193,7 +184,7 @@ func externalAgentPickerData(agent core.ExternalAgentDescriptor) *PickerData {
 	if agent.Enabled {
 		picker.Action("new", "New Session", "Create session using "+agent.DisplayName, externalAgentNewSessionCommand(agent.ID))
 	}
-	return picker.Ptr()
+	return picker.Build()
 }
 
 func addExternalAgentEditableItems(picker *PickerBuilder, agent core.ExternalAgentDescriptor) {

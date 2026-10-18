@@ -34,7 +34,7 @@ func TestResultsOfAMenuCommandLeadBackToTheMenu(t *testing.T) {
 	m := menuApp(t)
 	m.Update(tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl})
 
-	runCommand(m, "/todo", controlplane.Result{Text: "Todo\nnothing yet"})
+	runCommand(m, "/todo", controlplane.Result{Screen: controlplane.TextData{Text: "Todo\nnothing yet"}})
 	if top := m.dialog.DialogLast(); top == nil || top.ID() != surfacedialog.InfoID {
 		t.Fatalf("result dialog = %v", top)
 	}
@@ -52,7 +52,7 @@ func TestResultsOfAMenuCommandLeadBackToTheMenu(t *testing.T) {
 func TestResultsOfATypedCommandCloseToTheChat(t *testing.T) {
 	m := menuApp(t)
 
-	m.Update(controlplaneResultMsg{command: "/todo", seq: m.dialog.seq, result: controlplane.Result{Text: "Todo\nnothing yet"}})
+	m.Update(controlplaneResultMsg{command: "/todo", seq: m.dialog.seq, result: controlplane.Result{Screen: controlplane.TextData{Text: "Todo\nnothing yet"}}})
 	if top := m.dialog.DialogLast(); top == nil || top.ID() != surfacedialog.InfoID {
 		t.Fatalf("result dialog = %v", top)
 	}
@@ -67,7 +67,7 @@ func TestAPickerOpenedFromTheMenuOffersTheWayBack(t *testing.T) {
 	m := menuApp(t)
 	m.Update(tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl})
 
-	runCommand(m, "/sessions", controlplane.Result{Picker: &controlplane.PickerData{Title: "Sessions", Items: []controlplane.PickerItem{{ID: "s1", Title: "Main", Command: "/sessions use s1"}}}})
+	runCommand(m, "/sessions", controlplane.Result{Screen: controlplane.PickerData{Title: "Sessions", Items: []controlplane.PickerItem{{ID: "s1", Title: "Main", Command: "/sessions use s1"}}}})
 	if !strings.Contains(ansi.Strip(m.viewContent()), "Back") {
 		t.Fatalf("picker lacks Back:\n%s", ansi.Strip(m.viewContent()))
 	}
@@ -81,7 +81,7 @@ func TestAPickerOpenedFromTheMenuOffersTheWayBack(t *testing.T) {
 func TestACommandsResultTextIsNotShownAsAnError(t *testing.T) {
 	m := menuApp(t)
 
-	m.Update(controlplaneResultMsg{command: "/new", seq: m.dialog.seq, result: controlplane.Result{Text: "Started a new session.", ReloadSnapshot: true}})
+	m.Update(controlplaneResultMsg{command: "/new", seq: m.dialog.seq, result: controlplane.Result{Screen: controlplane.TextData{Text: "Started a new session."}, ReloadSnapshot: true}})
 
 	screen := ansi.Strip(m.viewContent())
 	if !strings.Contains(screen, "Started a new session.") || strings.Contains(screen, "ERROR") {

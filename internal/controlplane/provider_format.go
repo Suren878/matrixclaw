@@ -26,8 +26,7 @@ func providerKeyPrompt(provider setup.ProviderSetupItem) Result {
 		name = strings.TrimSpace(provider.ID)
 	}
 	return Result{
-		Handled: true,
-		Prompt: &PromptData{
+		Screen: PromptData{
 			Title:               "API key for " + name,
 			Placeholder:         "Paste API key",
 			SubmitCommandPrefix: providerKeyCommandPrefix(provider.ID),

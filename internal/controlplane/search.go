@@ -11,7 +11,7 @@ import (
 func (d *Dispatcher) handleSearch(ctx context.Context, args string) (Result, error) {
 	query := strings.TrimSpace(args)
 	if query == "" {
-		return Result{Handled: true, Text: "Usage: /search <query>"}, nil
+		return textResult("Usage: /search <query>"), nil
 	}
 	_, session, err := d.currentSession(ctx)
 	if err != nil {
@@ -26,7 +26,7 @@ func (d *Dispatcher) handleSearch(ctx context.Context, args string) (Result, err
 		return Result{}, err
 	}
 	info := searchInfoData(report)
-	return Result{Handled: true, Info: &info}, nil
+	return Result{Screen: *&info}, nil
 }
 
 func searchInfoData(report core.SearchReport) InfoData {

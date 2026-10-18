@@ -22,7 +22,7 @@ func TestContinueCommandContinuesTheCurrentSession(t *testing.T) {
 
 	result := daemon.run("/continue")
 
-	if result.Text != "Continuing the last run." || len(*continued) != 1 {
+	if result.Text() != "Continuing the last run." || len(*continued) != 1 {
 		t.Fatalf("result = %+v continued = %+v", result, *continued)
 	}
 	if input := (*continued)[0]; !input.Continue || input.SessionID != "s1" || input.ExternalKey != "key" {

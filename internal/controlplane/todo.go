@@ -17,10 +17,10 @@ func (d *Dispatcher) handleTodo(ctx context.Context, args string) (Result, error
 		return Result{}, err
 	}
 	if session == nil {
-		return Result{Handled: true, Text: "Select or create a session first."}, nil
+		return textResult("Select or create a session first."), nil
 	}
 	if !core.CapabilitiesForSession(*session).NativeTools {
-		return Result{Handled: true, Text: "Todo lists are kept by Matrixclaw sessions only."}, nil
+		return textResult("Todo lists are kept by Matrixclaw sessions only."), nil
 	}
 	switch strings.ToLower(strings.TrimSpace(args)) {
 	case "":
@@ -29,9 +29,9 @@ func (d *Dispatcher) handleTodo(ctx context.Context, args string) (Result, error
 			return Result{}, err
 		}
 		info := todoInfoData(list)
-		return Result{Handled: true, Info: &info}, nil
+		return Result{Screen: *&info}, nil
 	case "clear":
-		return Result{Handled: true, Confirm: &ConfirmData{
+		return Result{Screen: ConfirmData{
 			Message:        "Clear the todo list?",
 			ConfirmLabel:   "Clear",
 			CancelLabel:    "Close",
@@ -42,9 +42,9 @@ func (d *Dispatcher) handleTodo(ctx context.Context, args string) (Result, error
 		if _, err := d.daemon.ClearSessionTodo(ctx, session.ID); err != nil {
 			return Result{}, err
 		}
-		return Result{Handled: true, Text: "Todo list cleared.", ReloadSnapshot: true}, nil
+		return Result{Screen: TextData{Text: "Todo list cleared."}, ReloadSnapshot: true}, nil
 	default:
-		return Result{Handled: true, Text: todoUsage}, nil
+		return textResult(todoUsage), nil
 	}
 }
 

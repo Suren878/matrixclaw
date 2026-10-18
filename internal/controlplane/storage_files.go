@@ -39,8 +39,7 @@ func (d *Dispatcher) storageFilesPicker(ctx context.Context) (Result, error) {
 		})
 	}
 	return Result{
-		Handled: true,
-		Picker:  NewPickerData(PickerStorageFiles, "Stored Files").Command(storageFilesCommand()).Back(storageCommand()).Items(items...).Ptr(),
+		Screen: NewPickerData(PickerStorageFiles, "Stored Files").Command(storageFilesCommand()).Back(storageCommand()).Items(items...).Build(),
 	}, nil
 }
 
@@ -54,12 +53,11 @@ func (d *Dispatcher) storageFilePicker(ctx context.Context, storagePath string) 
 		return Result{}, err
 	}
 	return Result{
-		Handled: true,
-		Picker: NewPickerData(PickerStorageFile, "Storage File").
+		Screen: NewPickerData(PickerStorageFile, "Storage File").
 			Back(storageFilesCommand()).
 			Row("read", "Preview", storageFileTitle(read.File), storageReadCommand(read.File.Path)).
 			Danger("delete", "Delete", "", storageDeleteCommand(read.File.Path)).
-			Ptr(),
+			Build(),
 	}, nil
 }
 
@@ -73,8 +71,7 @@ func (d *Dispatcher) storageRead(ctx context.Context, storagePath string) (Resul
 		content = content[:4000] + "\n..."
 	}
 	return Result{
-		Handled: true,
-		Info: &InfoData{
+		Screen: InfoData{
 			Title: storageFileTitle(read.File),
 			Text:  content,
 		},
@@ -84,11 +81,10 @@ func (d *Dispatcher) storageRead(ctx context.Context, storagePath string) (Resul
 func (d *Dispatcher) storageDeleteConfirm(storagePath string) Result {
 	storagePath = strings.TrimSpace(storagePath)
 	if storagePath == "" {
-		return Result{Handled: true, Text: "Storage path is required."}
+		return textResult("Storage path is required.")
 	}
 	return Result{
-		Handled: true,
-		Confirm: deleteConfirmData("Delete "+storagePath+"?", storageDeleteConfirmCommand(storagePath), storageFileCommand(storagePath)),
+		Screen: deleteConfirmData("Delete "+storagePath+"?", storageDeleteConfirmCommand(storagePath), storageFileCommand(storagePath)),
 	}
 }
 
@@ -101,8 +97,7 @@ func (d *Dispatcher) storageDelete(ctx context.Context, storagePath string) (Res
 
 func (d *Dispatcher) storageClearConfirm() Result {
 	return Result{
-		Handled: true,
-		Confirm: deleteConfirmData("Delete all files?", storageClearConfirmCommand(), storageFilesCommand()),
+		Screen: deleteConfirmData("Delete all files?", storageClearConfirmCommand(), storageFilesCommand()),
 	}
 }
 
@@ -133,10 +128,7 @@ func (d *Dispatcher) storageClear(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	if result.Picker != nil {
-		result.Picker.Meta = fmt.Sprintf("Deleted %d files · freed %s", deleted, formatStorageSize(freed))
-	}
-	return result, nil
+	return result.withPickerMeta(fmt.Sprintf("Deleted %d files · freed %s", deleted, formatStorageSize(freed))), nil
 }
 
 func storageFileTitle(file localstorage.Entry) string {

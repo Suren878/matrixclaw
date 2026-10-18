@@ -12,13 +12,13 @@ func (d *Dispatcher) handleContinue(ctx context.Context) (Result, error) {
 		return Result{}, err
 	}
 	if sessionID == "" {
-		return Result{Handled: true, Text: "Select or create a session first."}, nil
+		return textResult("Select or create a session first."), nil
 	}
 	if session != nil && !d.mayUse(*session) {
-		return Result{Handled: true, Text: unattendedRefusal}, nil
+		return textResult(unattendedRefusal), nil
 	}
 	if _, err := d.daemon.Send(ctx, core.HandleMessageInput{SessionID: sessionID, WorkingDir: d.workingDir, Continue: true}); err != nil {
 		return Result{}, err
 	}
-	return Result{Handled: true, Text: "Continuing the last run."}, nil
+	return textResult("Continuing the last run."), nil
 }

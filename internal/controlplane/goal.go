@@ -18,14 +18,14 @@ func (d *Dispatcher) handleGoal(ctx context.Context, args string) (Result, error
 		return Result{}, err
 	}
 	if session == nil {
-		return Result{Handled: true, Text: "Select or create a session first."}, nil
+		return textResult("Select or create a session first."), nil
 	}
 	if !core.CapabilitiesForSession(*session).NativeTools {
-		return Result{Handled: true, Text: "Goals are kept by Matrixclaw sessions only."}, nil
+		return textResult("Goals are kept by Matrixclaw sessions only."), nil
 	}
 	args = strings.TrimSpace(args)
 	if args != "" && !d.mayUse(*session) {
-		return Result{Handled: true, Text: unattendedRefusal}, nil
+		return textResult(unattendedRefusal), nil
 	}
 	switch strings.ToLower(args) {
 	case "":
@@ -34,15 +34,15 @@ func (d *Dispatcher) handleGoal(ctx context.Context, args string) (Result, error
 			return Result{}, err
 		}
 		info := goalInfoData(goal)
-		return Result{Handled: true, Info: &info}, nil
+		return Result{Screen: *&info}, nil
 	case "pause", "resume":
 		goal, err := d.daemon.ChangeSessionGoal(ctx, session.ID, core.GoalAction(strings.ToLower(args)))
 		if err != nil {
 			return Result{}, err
 		}
-		return Result{Handled: true, Text: "Goal " + string(goal.Status) + ".", ReloadSnapshot: true}, nil
+		return Result{Screen: TextData{Text: "Goal " + string(goal.Status) + "."}, ReloadSnapshot: true}, nil
 	case "clear":
-		return Result{Handled: true, Confirm: &ConfirmData{
+		return Result{Screen: ConfirmData{
 			Message:        "Clear the session goal?",
 			ConfirmLabel:   "Clear",
 			CancelLabel:    "Close",
@@ -53,20 +53,20 @@ func (d *Dispatcher) handleGoal(ctx context.Context, args string) (Result, error
 		if err := d.daemon.ClearSessionGoal(ctx, session.ID); err != nil {
 			return Result{}, err
 		}
-		return Result{Handled: true, Text: "Goal cleared.", ReloadSnapshot: true}, nil
+		return Result{Screen: TextData{Text: "Goal cleared."}, ReloadSnapshot: true}, nil
 	}
 	input, ok := parseGoalInput(args)
 	if !ok {
-		return Result{Handled: true, Text: goalUsage}, nil
+		return textResult(goalUsage), nil
 	}
 	if input.CheckCommand != "" && !d.owner() {
-		return Result{Handled: true, Text: "Only the owner can set a check command: it runs without asking."}, nil
+		return textResult("Only the owner can set a check command: it runs without asking."), nil
 	}
 	goal, err := d.daemon.SetSessionGoal(ctx, session.ID, input)
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Handled: true, Text: fmt.Sprintf("Goal set; the session works on it for up to %d runs.", goal.MaxRuns), ReloadSnapshot: true}, nil
+	return Result{Screen: TextData{Text: fmt.Sprintf("Goal set; the session works on it for up to %d runs.", goal.MaxRuns)}, ReloadSnapshot: true}, nil
 }
 
 // goalFlags are the options after a goal's objective.

@@ -20,17 +20,17 @@ func (d *Dispatcher) handleCustomProvider(ctx context.Context, session *core.Ses
 	switch strings.ToLower(strings.TrimSpace(fields[0])) {
 	case "edit":
 		if len(fields) < 2 {
-			return Result{Handled: true, Text: "Provider id is required."}, nil
+			return textResult("Provider id is required."), nil
 		}
 		return d.handleProviderEdit(ctx, fields[1])
 	case "delete":
 		if len(fields) < 2 {
-			return Result{Handled: true, Text: "Provider id is required."}, nil
+			return textResult("Provider id is required."), nil
 		}
 		return d.customProviderDeleteConfirm(ctx, fields[1])
 	case "delete-confirm":
 		if len(fields) < 2 {
-			return Result{Handled: true, Text: "Provider id is required."}, nil
+			return textResult("Provider id is required."), nil
 		}
 		return d.deleteCustomProvider(ctx, fields[1])
 	default:
@@ -40,11 +40,10 @@ func (d *Dispatcher) handleCustomProvider(ctx context.Context, session *core.Ses
 
 func customProviderTypePicker() Result {
 	return Result{
-		Handled: true,
-		Picker: NewPickerData(PickerProviderCustom, "Custom Provider").
+		Screen: NewPickerData(PickerProviderCustom, "Custom Provider").
 			Back(providerCommand()).
 			Row("openai", "OpenAI Compatible", "", customProviderCommand("openai")).
 			Row("anthropic", "Anthropic Compatible", "", customProviderCommand("anthropic")).
-			Ptr(),
+			Build(),
 	}
 }

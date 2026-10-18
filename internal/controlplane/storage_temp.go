@@ -39,8 +39,7 @@ func (d *Dispatcher) storageTempPicker(ctx context.Context) (Result, error) {
 		Role:    PickerItemRoleAction,
 	})
 	return Result{
-		Handled: true,
-		Picker:  NewPickerData(PickerStorageTemp, "Temporary Files").Command(storageTempCommand()).Back(storageCommand()).Items(items...).Ptr(),
+		Screen: NewPickerData(PickerStorageTemp, "Temporary Files").Command(storageTempCommand()).Back(storageCommand()).Items(items...).Build(),
 	}, nil
 }
 
@@ -50,12 +49,11 @@ func (d *Dispatcher) storageTempFilePicker(ctx context.Context, tempPath string)
 		return d.storageTempPicker(ctx)
 	}
 	return Result{
-		Handled: true,
-		Picker: NewPickerData(PickerStorageTempFile, "Temporary File").
+		Screen: NewPickerData(PickerStorageTempFile, "Temporary File").
 			Back(storageTempCommand()).
 			Row("promote", "Save", tempPath, storageTempPromoteCommand(tempPath)).
 			Danger("delete", "Delete", "", storageTempDeleteCommand(tempPath)).
-			Ptr(),
+			Build(),
 	}, nil
 }
 
@@ -64,17 +62,16 @@ func (d *Dispatcher) storageTempPromote(ctx context.Context, tempPath string) (R
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Handled: true, Text: "Saved to storage: " + entry.Path}, nil
+	return textResult("Saved to storage: " + entry.Path), nil
 }
 
 func (d *Dispatcher) storageTempDeleteConfirm(tempPath string) Result {
 	tempPath = strings.TrimSpace(tempPath)
 	if tempPath == "" {
-		return Result{Handled: true, Text: "Temporary file path is required."}
+		return textResult("Temporary file path is required.")
 	}
 	return Result{
-		Handled: true,
-		Confirm: deleteConfirmData("Delete temporary file "+tempPath+"?", storageTempDeleteConfirmCommand(tempPath), storageTempFileCommand(tempPath)),
+		Screen: deleteConfirmData("Delete temporary file "+tempPath+"?", storageTempDeleteConfirmCommand(tempPath), storageTempFileCommand(tempPath)),
 	}
 }
 
@@ -83,13 +80,12 @@ func (d *Dispatcher) storageTempDelete(ctx context.Context, tempPath string) (Re
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Handled: true, Text: "Deleted temporary file: " + entry.Path}, nil
+	return textResult("Deleted temporary file: " + entry.Path), nil
 }
 
 func (d *Dispatcher) storageTempCleanup() (Result, error) {
 	return Result{
-		Handled: true,
-		Confirm: deleteConfirmData("Delete all temporary files?", storageTempCleanupConfirmCommand(), storageTempCleanupSettingsCommand()),
+		Screen: deleteConfirmData("Delete all temporary files?", storageTempCleanupConfirmCommand(), storageTempCleanupSettingsCommand()),
 	}, nil
 }
 
@@ -102,10 +98,7 @@ func (d *Dispatcher) storageTempCleanupConfirmed(ctx context.Context) (Result, e
 	if err != nil {
 		return Result{}, err
 	}
-	if next.Picker != nil {
-		next.Picker.Meta = fmt.Sprintf("Deleted %d files · freed %s", result.DeletedFiles, formatStorageSize(result.FreedBytes))
-	}
-	return next, nil
+	return next.withPickerMeta(fmt.Sprintf("Deleted %d files · freed %s", result.DeletedFiles, formatStorageSize(result.FreedBytes))), nil
 }
 
 func (d *Dispatcher) storageTempCleanupSettings(ctx context.Context) (Result, error) {
@@ -115,14 +108,13 @@ func (d *Dispatcher) storageTempCleanupSettings(ctx context.Context) (Result, er
 	}
 	settings := result.Settings
 	return Result{
-		Handled: true,
-		Picker: NewPickerData(PickerStorageCleanup, "Cleanup Settings").
+		Screen: NewPickerData(PickerStorageCleanup, "Cleanup Settings").
 			Back(storageTempCommand()).
 			Row("toggle", "Auto Cleanup", formatEnabled(settings.AutoCleanup), storageTempCleanupModeCommand()).
 			Row("days", "Retention", formatTempRetention(settings), storageTempDaysCommand()).
 			Row("max", "Max Size", formatStorageGB(settings.MaxBytes), storageTempMaxCommand()).
 			Action("cleanup", "Cleanup Now", formatTempCleanupImpact(settings), storageTempCleanupCommand()).
-			Ptr(),
+			Build(),
 	}, nil
 }
 
@@ -133,12 +125,11 @@ func (d *Dispatcher) storageTempCleanupModePicker(ctx context.Context) (Result, 
 	}
 	current := result.Settings.AutoCleanup
 	return Result{
-		Handled: true,
-		Picker: NewPickerData(PickerStorageCleanup, "Auto Cleanup").
+		Screen: NewPickerData(PickerStorageCleanup, "Auto Cleanup").
 			Select(storageTempCleanupSettingsCommand()).
 			Item(PickerItem{ID: "on", Title: "On", Selected: current, Command: storageTempToggleCommand("on")}).
 			Item(PickerItem{ID: "off", Title: "Off", Selected: !current, Command: storageTempToggleCommand("off")}).
-			Ptr(),
+			Build(),
 	}, nil
 }
 
@@ -166,7 +157,7 @@ func (d *Dispatcher) storageTempToggle(ctx context.Context, value string) (Resul
 func (d *Dispatcher) storageTempDays(ctx context.Context, raw string) (Result, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return Result{Handled: true, Prompt: &PromptData{
+		return Result{Screen: PromptData{
 			Title:               "Delete Temporary Files After",
 			Placeholder:         "7",
 			SubmitCommandPrefix: storageTempDaysCommandPrefix(),
@@ -175,7 +166,7 @@ func (d *Dispatcher) storageTempDays(ctx context.Context, raw string) (Result, e
 	}
 	days, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || days <= 0 {
-		return Result{Handled: true, Text: "Days must be a positive number."}, nil
+		return textResult("Days must be a positive number."), nil
 	}
 	if _, err := d.daemon.UpdateTemporaryStorageSettings(ctx, nil, days, 0); err != nil {
 		return Result{}, err
@@ -186,7 +177,7 @@ func (d *Dispatcher) storageTempDays(ctx context.Context, raw string) (Result, e
 func (d *Dispatcher) storageTempMax(ctx context.Context, raw string) (Result, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return Result{Handled: true, Prompt: &PromptData{
+		return Result{Screen: PromptData{
 			Title:               "Temporary Files Max Size",
 			Placeholder:         "0.1",
 			SubmitCommandPrefix: storageTempMaxCommandPrefix(),
@@ -195,7 +186,7 @@ func (d *Dispatcher) storageTempMax(ctx context.Context, raw string) (Result, er
 	}
 	gb, err := strconv.ParseFloat(raw, 64)
 	if err != nil || gb <= 0 {
-		return Result{Handled: true, Text: "Max size must be a positive number of GB."}, nil
+		return textResult("Max size must be a positive number of GB."), nil
 	}
 	if _, err := d.daemon.UpdateTemporaryStorageSettings(ctx, nil, 0, gb); err != nil {
 		return Result{}, err

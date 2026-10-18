@@ -49,12 +49,12 @@ func TestTasksListsTheSessionsBackgroundTasks(t *testing.T) {
 
 	result := daemon.run("/tasks")
 
-	if result.Picker == nil || len(result.Picker.Items) != 3 {
+	if !isScreen[PickerData](result) || len(screenOf[PickerData](t, result).Items) != 3 {
 		t.Fatalf("result = %+v", result)
 	}
-	first, second := result.Picker.Items[0], result.Picker.Items[1]
-	if first.Title != "npm run dev" || first.Info != "running" || first.Command != "/tasks bg task_dev" || second.Info != "failed, exit 1" || result.Picker.Items[2].ID != "archive" {
-		t.Fatalf("items = %+v", result.Picker.Items)
+	first, second := screenOf[PickerData](t, result).Items[0], screenOf[PickerData](t, result).Items[1]
+	if first.Title != "npm run dev" || first.Info != "running" || first.Command != "/tasks bg task_dev" || second.Info != "failed, exit 1" || screenOf[PickerData](t, result).Items[2].ID != "archive" {
+		t.Fatalf("items = %+v", screenOf[PickerData](t, result).Items)
 	}
 }
 
@@ -62,24 +62,24 @@ func TestBackgroundTaskShowsOutputAndStopsAfterConfirmation(t *testing.T) {
 	daemon, canceled := backgroundTaskDaemon(t)
 
 	actions := daemon.run("/tasks bg task_dev")
-	if actions.Picker == nil || len(actions.Picker.Items) != 2 || actions.Picker.Items[1].Command != "/tasks bg task_dev stop" {
+	if !isScreen[PickerData](actions) || len(screenOf[PickerData](t, actions).Items) != 2 || screenOf[PickerData](t, actions).Items[1].Command != "/tasks bg task_dev stop" {
 		t.Fatalf("actions = %+v", actions)
 	}
-	if output := daemon.run("/tasks bg task_dev output"); output.Info == nil || output.Info.Text != "listening on :3000" {
+	if output := daemon.run("/tasks bg task_dev output"); screenOf[InfoData](t, output).Text != "listening on :3000" {
 		t.Fatalf("output = %+v", output)
 	}
 	asked := daemon.run("/tasks bg task_dev stop")
-	if asked.Confirm == nil || len(*canceled) != 0 {
+	if !isScreen[ConfirmData](asked) || len(*canceled) != 0 {
 		t.Fatalf("asked = %+v", asked)
 	}
-	if stopped := daemon.run(asked.Confirm.ConfirmCommand); !strings.Contains(stopped.Text, "canceled") || len(*canceled) != 1 || (*canceled)[0] != "task_dev" {
+	if stopped := daemon.run(screenOf[ConfirmData](t, asked).ConfirmCommand); !strings.Contains(stopped.Text(), "canceled") || len(*canceled) != 1 || (*canceled)[0] != "task_dev" {
 		t.Fatalf("stopped = %+v, canceled %v", stopped, *canceled)
 	}
 
-	if finished := daemon.run("/tasks bg task_test"); finished.Picker == nil || len(finished.Picker.Items) != 1 {
+	if finished := daemon.run("/tasks bg task_test"); !isScreen[PickerData](finished) || len(screenOf[PickerData](t, finished).Items) != 1 {
 		t.Fatalf("a finished task offers %+v", finished)
 	}
-	if other := daemon.run("/tasks bg task_other stop confirm"); other.Text != "Task not found." || len(*canceled) != 1 {
+	if other := daemon.run("/tasks bg task_other stop confirm"); other.Text() != "Task not found." || len(*canceled) != 1 {
 		t.Fatalf("another session's task = %+v", other)
 	}
 }

@@ -69,9 +69,11 @@ func (w *Worker) handleTextMessage(ctx context.Context, message *Message) error 
 	if isCancelRunCommand(text) && target.isChat() {
 		return w.cancelSessionRun(ctx, target)
 	}
-	if result, err := w.dispatcher(target).Handle(ctx, text); err != nil {
-		return w.sendText(ctx, target, fmt.Sprintf("Command failed: %v", err))
-	} else if result.Handled {
+	if _, _, ok := controlplane.Parse(text); ok {
+		result, err := w.dispatcher(target).Handle(ctx, text)
+		if err != nil {
+			return w.sendText(ctx, target, fmt.Sprintf("Command failed: %v", err))
+		}
 		return w.renderCommandResult(ctx, target, result)
 	}
 	if textNeedsTelegramLocation(text) {
@@ -734,14 +736,12 @@ func (w *Worker) handleSessionSelectionRequired(ctx context.Context, target chat
 
 func withSessionSelectionPrompt(result controlplane.Result) controlplane.Result {
 	message := "Choose a session or create a new one, then send your message again."
-	if result.Picker == nil {
-		result.Text = message
+	picker, ok := result.Screen.(controlplane.PickerData)
+	if !ok {
+		result.Screen = controlplane.TextData{Text: message}
 		return result
 	}
-	title := strings.TrimSpace(result.Picker.Title)
-	if title == "" {
-		title = "Sessions"
-	}
-	result.Picker.Title = message + "\n\n" + title
+	picker.Title = message + "\n\n" + textutil.FirstNonEmpty(picker.Title, "Sessions")
+	result.Screen = picker
 	return result
 }

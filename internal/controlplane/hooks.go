@@ -17,10 +17,10 @@ func (d *Dispatcher) handleHooks(ctx context.Context, args string) (Result, erro
 		return Result{}, err
 	}
 	if session == nil {
-		return Result{Handled: true, Text: "Select or create a session first."}, nil
+		return textResult("Select or create a session first."), nil
 	}
 	if !core.CapabilitiesForSession(*session).NativeTools {
-		return Result{Handled: true, Text: "Hooks run in Matrixclaw sessions only."}, nil
+		return textResult("Hooks run in Matrixclaw sessions only."), nil
 	}
 	fields := strings.Fields(args)
 	if len(fields) == 0 {
@@ -28,20 +28,20 @@ func (d *Dispatcher) handleHooks(ctx context.Context, args string) (Result, erro
 		if err != nil {
 			return Result{}, err
 		}
-		return Result{Handled: true, Info: &InfoData{Title: "Hooks", Text: hooksText(listing)}}, nil
+		return Result{Screen: InfoData{Title: "Hooks", Text: hooksText(listing)}}, nil
 	}
 	if strings.ToLower(fields[0]) != "trust" || len(fields) > 2 {
-		return Result{Handled: true, Text: hooksUsage}, nil
+		return textResult(hooksUsage), nil
 	}
 	if !d.owner() {
-		return Result{Handled: true, Text: "Only the owner can trust a project's hooks."}, nil
+		return textResult("Only the owner can trust a project's hooks."), nil
 	}
 	if len(fields) == 2 {
 		listing, err := d.daemon.TrustSessionHooks(ctx, session.ID, fields[1])
 		if err != nil {
 			return Result{}, err
 		}
-		return Result{Handled: true, Info: &InfoData{Title: "Hooks", Text: "Trusted. Its hooks run until the file changes.\n\n" + hooksText(listing)}}, nil
+		return Result{Screen: InfoData{Title: "Hooks", Text: "Trusted. Its hooks run until the file changes.\n\n" + hooksText(listing)}}, nil
 	}
 	listing, err := d.daemon.SessionHooks(ctx, session.ID)
 	if err != nil {
@@ -50,13 +50,13 @@ func (d *Dispatcher) handleHooks(ctx context.Context, args string) (Result, erro
 	project := listing.Project
 	switch {
 	case project == nil:
-		return Result{Handled: true, Text: "This session's project has no " + hooks.ProjectFile + "."}, nil
+		return textResult("This session's project has no " + hooks.ProjectFile + "."), nil
 	case project.Error != "":
-		return Result{Handled: true, Text: project.Path + " is invalid: " + project.Error}, nil
+		return textResult(project.Path + " is invalid: " + project.Error), nil
 	case project.Trusted:
-		return Result{Handled: true, Text: project.Path + " is already trusted."}, nil
+		return textResult(project.Path + " is already trusted."), nil
 	}
-	return Result{Handled: true, Confirm: &ConfirmData{
+	return Result{Screen: ConfirmData{
 		Title:          "Trust project hooks",
 		Message:        "Run these commands of " + project.Path + " in this project's sessions?\n\n" + hookLines(project.Hooks),
 		ConfirmLabel:   "Trust",

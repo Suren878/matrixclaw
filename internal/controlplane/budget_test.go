@@ -30,8 +30,8 @@ func TestBudgetCommandShowsTheEffectiveBudget(t *testing.T) {
 	result := daemon.run("/budget")
 
 	want := "Steps: 32 (default)\nActive time: 4h (default)\nTokens: unlimited (default)"
-	if result.Info == nil || !strings.HasPrefix(result.Info.Text, want) || len(*saved) != 0 {
-		t.Fatalf("info = %+v, want text starting with:\n%s", result.Info, want)
+	if !isScreen[InfoData](result) || !strings.HasPrefix(screenOf[InfoData](t, result).Text, want) || len(*saved) != 0 {
+		t.Fatalf("info = %+v, want text starting with:\n%s", screenOf[InfoData](t, result), want)
 	}
 }
 
@@ -52,7 +52,7 @@ func TestBudgetCommandChangesOneLimit(t *testing.T) {
 
 		result := daemon.run(tc.command)
 
-		if result.Info == nil || len(*saved) != 1 || !tc.check((*saved)[0]) {
+		if !isScreen[InfoData](result) || len(*saved) != 1 || !tc.check((*saved)[0]) {
 			t.Errorf("%s: result = %+v saved = %+v", tc.command, result, *saved)
 		}
 	}
@@ -62,7 +62,7 @@ func TestBudgetCommandRejectsBadInput(t *testing.T) {
 	for _, command := range []string{"/budget steps 0", "/budget time soon", "/budget speed 3"} {
 		daemon, saved := budgetDaemon(t, core.SessionBudgetReport{})
 
-		if result := daemon.run(command); result.Text != budgetUsage || len(*saved) != 0 {
+		if result := daemon.run(command); result.Text() != budgetUsage || len(*saved) != 0 {
 			t.Errorf("%s: result = %+v saved = %+v", command, result, *saved)
 		}
 	}

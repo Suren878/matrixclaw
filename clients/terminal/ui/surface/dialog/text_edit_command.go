@@ -14,7 +14,7 @@ import (
 
 const TextEditCommandID = "text_edit_command"
 
-type TextEditCommandData = controlplane.TextEditData
+type TextEditCommandData = controlplane.PromptData
 
 type TextEditCommand struct {
 	data      TextEditCommandData

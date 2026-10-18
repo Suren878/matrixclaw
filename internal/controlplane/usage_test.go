@@ -19,8 +19,8 @@ func TestUsageCommandShowsStepsAndCacheTokens(t *testing.T) {
 	result := daemon.run("/usage")
 
 	want := "Runs: 2\nSteps: 5\nPrompt: 12k tokens\nCache read: 9.0k tokens\nCache write: 1.5k tokens\nCache hit: 75%\nOutput: 800 tokens\nReasoning: 200 tokens"
-	if result.Info == nil || result.Info.Text != want || len(result.Info.Rows) != 8 {
-		t.Fatalf("usage result=%+v, want text:\n%s", result.Info, want)
+	if screenOf[InfoData](t, result).Text != want || len(screenOf[InfoData](t, result).Rows) != 8 {
+		t.Fatalf("usage result=%+v, want text:\n%s", screenOf[InfoData](t, result), want)
 	}
 }
 
@@ -38,8 +38,8 @@ func TestContextInfoShowsCachedPromptTokens(t *testing.T) {
 			return core.SessionContextResponse{Context: core.ContextReport{SessionID: "s1", LastProviderUsage: &usage}}
 		})
 
-		if result := daemon.run("/context info"); result.Info == nil || !strings.Contains(result.Info.Text, tc.want) {
-			t.Errorf("context info=%+v, want line %q", result.Info, tc.want)
+		if result := daemon.run("/context info"); !isScreen[InfoData](result) || !strings.Contains(screenOf[InfoData](t, result).Text, tc.want) {
+			t.Errorf("context info=%+v, want line %q", screenOf[InfoData](t, result), tc.want)
 		}
 	}
 }

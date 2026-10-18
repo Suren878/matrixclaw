@@ -8,16 +8,30 @@ import (
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 )
 
+// Result is what a command shows, one screen or none, and whether the client
+// reloads its snapshot because the command changed session state.
 type Result struct {
-	Handled        bool
-	Text           string
+	Screen         Screen
 	ReloadSnapshot bool
-	Picker         *PickerData
-	Form           *FormData
-	Prompt         *PromptData
-	TextEdit       *TextEditData
-	Confirm        *ConfirmData
-	Info           *InfoData
+}
+
+func textResult(text string) Result {
+	return Result{Screen: TextData{Text: text}}
+}
+
+// Text is the text of a TextData screen, "" for any other.
+func (r Result) Text() string {
+	text, _ := r.Screen.(TextData)
+	return text.Text
+}
+
+// withPickerMeta sets the meta line of a picker screen.
+func (r Result) withPickerMeta(meta string) Result {
+	if picker, ok := r.Screen.(PickerData); ok {
+		picker.Meta = meta
+		r.Screen = picker
+	}
+	return r
 }
 
 // Dispatcher runs slash commands against the daemon for one client: its
@@ -40,7 +54,7 @@ func (d *Dispatcher) Handle(ctx context.Context, text string) (Result, error) {
 
 	switch spec.ID {
 	case CommandHelp:
-		return Result{Handled: true, Picker: commandMenuPicker()}, nil
+		return Result{Screen: commandMenuPicker()}, nil
 	case CommandNewSession:
 		return d.handleNewSession(ctx, args)
 	case CommandSessions:
@@ -94,6 +108,6 @@ func (d *Dispatcher) Handle(ctx context.Context, text string) (Result, error) {
 	case CommandStop:
 		return d.handleStop(ctx, args)
 	default:
-		return Result{Handled: true, Text: "Unknown command.\n\n" + HelpText()}, nil
+		return textResult("Unknown command.\n\n" + HelpText()), nil
 	}
 }

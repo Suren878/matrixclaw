@@ -49,10 +49,10 @@ func TestSavedProviderFormSelectsTheProviderInTheSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Picker == nil {
+	if !isScreen[PickerData](result) {
 		t.Fatal("saving returned no provider picker")
 	}
-	for _, item := range result.Picker.Items {
+	for _, item := range screenOf[PickerData](t, result).Items {
 		if item.ID == "custom-cloud" {
 			if !item.Selected || item.Info != "custom-model" {
 				t.Fatalf("saved provider item = %+v", item)
@@ -106,7 +106,7 @@ func TestCustomProviderFormNeverPutsTheKeyInCommands(t *testing.T) {
 		t.Fatalf("saved %q %+v", runtime.lastID, update)
 	}
 	expired, _ := dispatcher.handleProviderForm(ctx, nil, formID)
-	if !strings.Contains(expired.Text, "expired") {
+	if !strings.Contains(expired.Text(), "expired") {
 		t.Fatalf("form still open after save: %+v", expired)
 	}
 }
@@ -132,29 +132,28 @@ func TestProviderFormStoreExpiresAndStaysBounded(t *testing.T) {
 
 func formIDOf(t *testing.T, result Result) string {
 	t.Helper()
-	if result.Form == nil {
+	if !isScreen[FormData](result) {
 		t.Fatalf("not a form: %+v", result)
 	}
-	fields := strings.Fields(result.Form.SubmitCommand)
+	fields := strings.Fields(screenOf[FormData](t, result).SubmitCommand)
 	if len(fields) != 4 || fields[1] != "form" {
-		t.Fatalf("submit command = %q", result.Form.SubmitCommand)
+		t.Fatalf("submit command = %q", screenOf[FormData](t, result).SubmitCommand)
 	}
 	return fields[2]
 }
 
 func resultStrings(result Result) []string {
-	out := []string{result.Text}
-	if result.Form != nil {
-		out = append(out, result.Form.SubmitCommand, result.Form.CancelCommand)
-		for _, field := range result.Form.Fields {
+	out := []string{result.Text()}
+	switch screen := result.Screen.(type) {
+	case FormData:
+		out = append(out, screen.SubmitCommand, screen.CancelCommand)
+		for _, field := range screen.Fields {
 			out = append(out, field.Value, field.EditCommand)
 		}
-	}
-	if result.Prompt != nil {
-		out = append(out, result.Prompt.Value, result.Prompt.SubmitCommandPrefix, result.Prompt.CancelCommand, result.Prompt.Placeholder)
-	}
-	if result.Picker != nil {
-		for _, item := range result.Picker.Items {
+	case PromptData:
+		out = append(out, screen.Value, screen.SubmitCommandPrefix, screen.CancelCommand, screen.Placeholder)
+	case PickerData:
+		for _, item := range screen.Items {
 			out = append(out, item.Command, item.Info)
 		}
 	}
@@ -210,16 +209,16 @@ func TestUseProviderOffersModelPickerWhenCatalogHasMultipleModels(t *testing.T) 
 	if err != nil {
 		t.Fatalf("useProvider: %v", err)
 	}
-	if result.Picker == nil {
+	if !isScreen[PickerData](result) {
 		t.Fatal("useProvider returned no model picker")
 	}
-	if result.Picker.Kind != PickerSessionModels {
-		t.Fatalf("picker kind = %q, want %q", result.Picker.Kind, PickerSessionModels)
+	if screenOf[PickerData](t, result).Kind != PickerSessionModels {
+		t.Fatalf("picker kind = %q, want %q", screenOf[PickerData](t, result).Kind, PickerSessionModels)
 	}
-	if len(result.Picker.Items) != 2 {
-		t.Fatalf("model count = %d, want 2", len(result.Picker.Items))
+	if len(screenOf[PickerData](t, result).Items) != 2 {
+		t.Fatalf("model count = %d, want 2", len(screenOf[PickerData](t, result).Items))
 	}
-	if got := result.Picker.Items[0].Command; got != "/session set-model session-1 gemma-4-26B-A4B" {
+	if got := screenOf[PickerData](t, result).Items[0].Command; got != "/session set-model session-1 gemma-4-26B-A4B" {
 		t.Fatalf("Gemma command = %q", got)
 	}
 }
@@ -234,10 +233,10 @@ func TestUseProviderKeepsConfirmationWhenCatalogHasOneModel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("useProvider: %v", err)
 	}
-	if result.Picker != nil {
+	if isScreen[PickerData](result) {
 		t.Fatal("single-model provider unexpectedly returned a picker")
 	}
-	if result.Text != "✅ Provider selected: foresko · qwen3.8" {
-		t.Fatalf("confirmation = %q", result.Text)
+	if result.Text() != "✅ Provider selected: foresko · qwen3.8" {
+		t.Fatalf("confirmation = %q", result.Text())
 	}
 }

@@ -26,7 +26,7 @@ func (d *Dispatcher) handleApproval(ctx context.Context, args string) (Result, e
 	action, rest := cutWord(args)
 	approvalID, reason := cutWord(rest)
 	if !strings.EqualFold(action, "deny") || approvalID == "" {
-		return Result{Handled: true, Text: approvalUsage}, nil
+		return textResult(approvalUsage), nil
 	}
 	approval, err := d.daemon.ResolveApproval(ctx, approvalID, core.ApprovalResolveRequest{Reason: reason})
 	if err != nil {
@@ -36,7 +36,7 @@ func (d *Dispatcher) handleApproval(ctx context.Context, args string) (Result, e
 	if approval.Reason != "" {
 		text += ": " + approval.Reason
 	}
-	return Result{Handled: true, Text: text, ReloadSnapshot: true}, nil
+	return Result{Screen: TextData{Text: text}, ReloadSnapshot: true}, nil
 }
 
 // DeniedApproval returns the approval that a "/approval deny <id> [reason]"

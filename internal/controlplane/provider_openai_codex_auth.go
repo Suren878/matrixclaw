@@ -13,7 +13,7 @@ func (d *Dispatcher) handleOpenAICodexAuth(ctx context.Context, args string) (Re
 		return Result{}, err
 	}
 	if strings.TrimSpace(providerID) == "" {
-		return Result{Handled: true, Text: "Provider id is required."}, nil
+		return textResult("Provider id is required."), nil
 	}
 	providers, err := d.daemon.ListSetupProviders(ctx)
 	if err != nil {
@@ -21,10 +21,10 @@ func (d *Dispatcher) handleOpenAICodexAuth(ctx context.Context, args string) (Re
 	}
 	provider, found := findSetupProvider(providers, providerID)
 	if !found {
-		return Result{Handled: true, Text: "Unknown provider: " + providerID}, nil
+		return textResult("Unknown provider: " + providerID), nil
 	}
 	if !isOpenAICodexProvider(provider) {
-		return Result{Handled: true, Text: "Authorization is only available for OpenAI Codex Subscription."}, nil
+		return textResult("Authorization is only available for OpenAI Codex Subscription."), nil
 	}
 	device, err := openaicodex.StartDeviceLogin(ctx, nil)
 	if err != nil {
@@ -35,12 +35,11 @@ func (d *Dispatcher) handleOpenAICodexAuth(ctx context.Context, args string) (Re
 		return Result{}, err
 	}
 	return Result{
-		Handled: true,
-		Picker: NewPickerData(PickerProviderActions, "OpenAI Codex Authorization").
+		Screen: NewPickerData(PickerProviderActions, "OpenAI Codex Authorization").
 			Meta("Open "+device.VerifyURL+" · Code "+device.UserCode).
 			Back(providerEditCommand(provider.ID)).
 			Row("complete", "Complete sign-in", "After approving in browser", providerCommand("auth-complete", providerEncodedID(provider.ID), token)).
-			Ptr(),
+			Build(),
 	}, nil
 }
 
@@ -52,7 +51,7 @@ func (d *Dispatcher) handleOpenAICodexAuthComplete(ctx context.Context, args str
 	}
 	token := firstField(rest)
 	if strings.TrimSpace(providerID) == "" || strings.TrimSpace(token) == "" {
-		return Result{Handled: true, Text: "OpenAI Codex sign-in session is missing."}, nil
+		return textResult("OpenAI Codex sign-in session is missing."), nil
 	}
 	providers, err := d.daemon.ListSetupProviders(ctx)
 	if err != nil {
@@ -60,10 +59,10 @@ func (d *Dispatcher) handleOpenAICodexAuthComplete(ctx context.Context, args str
 	}
 	provider, found := findSetupProvider(providers, providerID)
 	if !found {
-		return Result{Handled: true, Text: "Unknown provider: " + providerID}, nil
+		return textResult("Unknown provider: " + providerID), nil
 	}
 	if !isOpenAICodexProvider(provider) {
-		return Result{Handled: true, Text: "Authorization is only available for OpenAI Codex Subscription."}, nil
+		return textResult("Authorization is only available for OpenAI Codex Subscription."), nil
 	}
 	device, err := openaicodex.DecodeLoginDevice(token)
 	if err != nil {
@@ -73,8 +72,7 @@ func (d *Dispatcher) handleOpenAICodexAuthComplete(ctx context.Context, args str
 		return Result{}, err
 	}
 	return Result{
-		Handled: true,
-		Info: &InfoData{
+		Screen: InfoData{
 			Title: "OpenAI Codex Authorization",
 			Text:  "Login successful.",
 		},

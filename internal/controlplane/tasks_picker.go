@@ -32,8 +32,7 @@ func (d *Dispatcher) tasksPicker(ctx context.Context) (Result, error) {
 	}
 	items = append(items, PickerItem{ID: "archive", Title: "Archive", Info: archiveInfo, Command: tasksArchiveCommand()})
 	return Result{
-		Handled: true,
-		Picker:  NewPickerData(PickerTasks, "Tasks").Command(tasksCommand()).Items(items...).Ptr(),
+		Screen: NewPickerData(PickerTasks, "Tasks").Command(tasksCommand()).Items(items...).Build(),
 	}, nil
 }
 
@@ -56,8 +55,7 @@ func (d *Dispatcher) tasksArchivePicker(ctx context.Context) (Result, error) {
 		items = append(items, PickerItem{ID: "delete_closed", Title: "Delete Completed", Command: tasksDeleteClosedCommand(), Role: PickerItemRoleDanger})
 	}
 	return Result{
-		Handled: true,
-		Picker:  NewPickerData(PickerTaskArchive, "Task Archive").Command(tasksArchiveCommand()).Back(tasksCommand()).Items(items...).Ptr(),
+		Screen: NewPickerData(PickerTaskArchive, "Task Archive").Command(tasksArchiveCommand()).Back(tasksCommand()).Items(items...).Build(),
 	}, nil
 }
 
@@ -68,7 +66,7 @@ func (d *Dispatcher) taskActionsPicker(ctx context.Context, jobID string) (Resul
 	}
 	job, ok := findAutomationJob(jobs, jobID)
 	if !ok {
-		return Result{Handled: true, Text: "Task not found."}, nil
+		return textResult("Task not found."), nil
 	}
 	items := []PickerItem{}
 	if job.Status == automation.JobStatusActive {
@@ -83,11 +81,10 @@ func (d *Dispatcher) taskActionsPicker(ctx context.Context, jobID string) (Resul
 		)
 	}
 	return Result{
-		Handled: true,
-		Picker: NewPickerData(PickerTaskActions, taskListTitle(job)).
+		Screen: NewPickerData(PickerTaskActions, taskListTitle(job)).
 			Back(tasksCommand()).
 			Items(items...).
-			Ptr(),
+			Build(),
 	}, nil
 }
 
@@ -104,5 +101,5 @@ func (d *Dispatcher) deleteClosedTasks(ctx context.Context) (Result, error) {
 		}
 		deleted++
 	}
-	return Result{Handled: true, Text: fmt.Sprintf("Deleted closed tasks: %d", deleted)}, nil
+	return textResult(fmt.Sprintf("Deleted closed tasks: %d", deleted)), nil
 }

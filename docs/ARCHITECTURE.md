@@ -126,7 +126,8 @@ recovery), waits for them, then closes external agents and modules.
 
 `internal/controlplane` turns slash commands into screens. A `Dispatcher` holds
 one `*daemonclient.Client` (client name, external key, role) and answers with a
-`Result`: text, picker, form, prompt, text edit, confirm or info. Clients render
+`Result`: one `Screen` (text, picker, form, prompt, confirm or info; a
+multiline prompt is a text to edit) and whether to reload the snapshot. Clients render
 pickers themselves (Telegram buttons and paging, terminal menus); a picker
 carries the command that shows it again. Module settings are drawn by one
 generic screen, `/modules <id> [open|confirm|set] <path>`; external agents,

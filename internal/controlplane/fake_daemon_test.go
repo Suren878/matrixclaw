@@ -146,3 +146,18 @@ func decode[T any](r *http.Request) T {
 	_ = json.NewDecoder(r.Body).Decode(&value)
 	return value
 }
+
+func isScreen[T Screen](result Result) bool {
+	_, ok := result.Screen.(T)
+	return ok
+}
+
+// screenOf is the result's screen of type T; the test fails on any other.
+func screenOf[T Screen](t *testing.T, result Result) T {
+	t.Helper()
+	screen, ok := result.Screen.(T)
+	if !ok {
+		t.Fatalf("screen = %#v, want %T", result.Screen, screen)
+	}
+	return screen
+}

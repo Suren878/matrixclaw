@@ -17,7 +17,7 @@ func (d *Dispatcher) handleBudget(ctx context.Context, args string) (Result, err
 		return Result{}, err
 	}
 	if sessionID == "" {
-		return Result{Handled: true, Text: "Select or create a session first."}, nil
+		return textResult("Select or create a session first."), nil
 	}
 	report, err := d.daemon.SessionBudget(ctx, sessionID)
 	if err != nil {
@@ -26,14 +26,14 @@ func (d *Dispatcher) handleBudget(ctx context.Context, args string) (Result, err
 	if fields := strings.Fields(strings.ToLower(args)); len(fields) > 0 {
 		override, ok := budgetOverride(report.Override, fields)
 		if !ok {
-			return Result{Handled: true, Text: budgetUsage}, nil
+			return textResult(budgetUsage), nil
 		}
 		if report, err = d.daemon.UpdateSessionBudget(ctx, sessionID, override); err != nil {
 			return Result{}, err
 		}
 	}
 	info := budgetInfoData(report)
-	return Result{Handled: true, Info: &info}, nil
+	return Result{Screen: *&info}, nil
 }
 
 // budgetOverride applies one /budget change to the session's overrides.

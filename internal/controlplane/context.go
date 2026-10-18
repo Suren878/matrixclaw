@@ -17,7 +17,7 @@ func (d *Dispatcher) handleContext(ctx context.Context, args string) (Result, er
 		return Result{}, err
 	}
 	if session == nil {
-		return Result{Handled: true, Text: "Select or create a session first."}, nil
+		return textResult("Select or create a session first."), nil
 	}
 
 	args = strings.TrimSpace(args)
@@ -28,11 +28,10 @@ func (d *Dispatcher) handleContext(ctx context.Context, args string) (Result, er
 			return Result{}, err
 		}
 		info := contextInfoData(report)
-		return Result{Handled: true, Info: &info}, nil
+		return Result{Screen: *&info}, nil
 	case "clear":
 		return Result{
-			Handled: true,
-			Confirm: &ConfirmData{
+			Screen: ConfirmData{
 				Message:        "Clear context now?",
 				ConfirmLabel:   "Clear",
 				CancelLabel:    "Close",
@@ -45,11 +44,10 @@ func (d *Dispatcher) handleContext(ctx context.Context, args string) (Result, er
 		if _, err := d.daemon.ClearContext(ctx, session.ID); err != nil {
 			return Result{}, err
 		}
-		return Result{Handled: true, Text: "Context cleared.", ReloadSnapshot: true}, nil
+		return Result{Screen: TextData{Text: "Context cleared."}, ReloadSnapshot: true}, nil
 	case "compact":
 		return Result{
-			Handled: true,
-			Confirm: &ConfirmData{
+			Screen: ConfirmData{
 				Message:        "Compact context now?",
 				ConfirmLabel:   "Compact",
 				CancelLabel:    "Close",
@@ -60,12 +58,12 @@ func (d *Dispatcher) handleContext(ctx context.Context, args string) (Result, er
 	case "compact confirm":
 		result, err := d.daemon.CompactSession(ctx, session.ID)
 		if errors.Is(err, core.ErrInvalidInput) {
-			return Result{Handled: true, Text: "Nothing to compact yet."}, nil
+			return textResult("Nothing to compact yet."), nil
 		}
 		if err != nil {
 			return Result{}, err
 		}
-		return Result{Handled: true, Text: result.Message.Content, ReloadSnapshot: true}, nil
+		return Result{Screen: TextData{Text: result.Message.Content}, ReloadSnapshot: true}, nil
 	}
 
 	report, err := d.daemon.SessionContext(ctx, session.ID)
@@ -73,8 +71,7 @@ func (d *Dispatcher) handleContext(ctx context.Context, args string) (Result, er
 		return Result{}, err
 	}
 	return Result{
-		Handled: true,
-		Picker:  NewPickerData(PickerContext, "Context").Items(contextItems(report)...).Ptr(),
+		Screen: NewPickerData(PickerContext, "Context").Items(contextItems(report)...).Build(),
 	}, nil
 }
 

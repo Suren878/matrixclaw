@@ -76,7 +76,7 @@ func (d *Dispatcher) mcpPicker(ctx context.Context) (Result, error) {
 	if len(servers) == 0 {
 		picker.Static("empty", "No external MCP servers", "Add a server or install a plugin.")
 	}
-	return Result{Handled: true, Picker: picker.Ptr()}, nil
+	return Result{Screen: picker.Build()}, nil
 }
 
 func (d *Dispatcher) mcpEnabledPicker(ctx context.Context) (Result, error) {
@@ -84,12 +84,12 @@ func (d *Dispatcher) mcpEnabledPicker(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Handled: true, Picker: NewPickerData(PickerMCP, "External MCP").
+	return Result{Screen: NewPickerData(PickerMCP, "External MCP").
 		Meta("Currently " + strings.ToLower(formatEnabled(resp.Config.Enabled))).
 		Select(mcpCommand()).
 		Item(PickerItem{ID: "on", Title: "On", Selected: resp.Config.Enabled, Command: mcpCommand("set-enabled", "on")}).
 		Item(PickerItem{ID: "off", Title: "Off", Selected: !resp.Config.Enabled, Command: mcpCommand("set-enabled", "off")}).
-		Ptr()}, nil
+		Build()}, nil
 }
 
 func (d *Dispatcher) setMCPEnabled(ctx context.Context, value string) (Result, error) {
@@ -98,13 +98,13 @@ func (d *Dispatcher) setMCPEnabled(ctx context.Context, value string) (Result, e
 		return d.mcpEnabledPicker(ctx)
 	}
 	if _, err := d.daemon.UpdateMCPConfig(ctx, setup.MCPConfigUpdate{Enabled: &enabled}); err != nil {
-		return Result{Handled: true, Text: err.Error()}, nil
+		return textResult(err.Error()), nil
 	}
 	return d.mcpPicker(ctx)
 }
 
 func (d *Dispatcher) mcpServerAddPrompt() Result {
-	return Result{Handled: true, Prompt: &PromptData{
+	return Result{Screen: PromptData{
 		Title:               "MCP Server ID",
 		Placeholder:         "docs",
 		SubmitCommandPrefix: mcpCommand("create") + " ",
@@ -118,7 +118,7 @@ func (d *Dispatcher) createMCPServer(ctx context.Context, value string) (Result,
 		return d.mcpServerAddPrompt(), nil
 	}
 	if isManagedMCPServerID(serverID) {
-		return Result{Handled: true, Text: "MCP server id is reserved for the Browser module: " + serverID}, nil
+		return textResult("MCP server id is reserved for the Browser module: " + serverID), nil
 	}
 	server := setup.MCPServerConfig{
 		ID:             serverID,
@@ -131,7 +131,7 @@ func (d *Dispatcher) createMCPServer(ctx context.Context, value string) (Result,
 	}
 	resp, err := d.daemon.CreateMCPServer(ctx, server)
 	if err != nil {
-		return Result{Handled: true, Text: err.Error()}, nil
+		return textResult(err.Error()), nil
 	}
 	if created, ok := findExternalMCPServer(resp.Config.Servers, serverID); ok {
 		return d.mcpServerEditForm(ctx, created.ID)
@@ -146,16 +146,16 @@ func (d *Dispatcher) mcpServerPicker(ctx context.Context, serverID string) (Resu
 	}
 	server, ok := findExternalMCPServer(resp.Config.Servers, serverID)
 	if !ok {
-		return Result{Handled: true, Text: "MCP server not found: " + strings.TrimSpace(serverID)}, nil
+		return textResult("MCP server not found: " + strings.TrimSpace(serverID)), nil
 	}
-	return Result{Handled: true, Picker: NewPickerData(PickerMCPServer, mcpServerTitle(server)).
+	return Result{Screen: NewPickerData(PickerMCPServer, mcpServerTitle(server)).
 		Meta(mcpServerInfoText(server)).
 		Back(mcpCommand()).
 		Row("enabled", "Enabled", formatEnabled(server.Enabled), mcpServerCommand(server.ID, "enabled")).
 		Row("info", "Details", mcpServerTarget(server), mcpServerCommand(server.ID, "info")).
 		Action("edit", "Edit Config", "", mcpServerCommand(server.ID, "edit")).
 		Danger("delete", "Delete Server", "", mcpServerCommand(server.ID, "delete")).
-		Ptr()}, nil
+		Build()}, nil
 }
 
 func (d *Dispatcher) mcpServerEditForm(ctx context.Context, serverID string) (Result, error) {
@@ -165,7 +165,7 @@ func (d *Dispatcher) mcpServerEditForm(ctx context.Context, serverID string) (Re
 	}
 	server, ok := findExternalMCPServer(resp.Config.Servers, serverID)
 	if !ok {
-		return Result{Handled: true, Text: "MCP server not found: " + strings.TrimSpace(serverID)}, nil
+		return textResult("MCP server not found: " + strings.TrimSpace(serverID)), nil
 	}
 	fields := []FormField{
 		{ID: "name", Label: "Name", Value: server.Name, EditCommand: mcpServerCommand(server.ID, "field", "name")},
@@ -177,7 +177,7 @@ func (d *Dispatcher) mcpServerEditForm(ctx context.Context, serverID string) (Re
 		{ID: "read_only", Label: "Read Only", Value: formatEnabled(server.ReadOnly), EditCommand: mcpServerCommand(server.ID, "field", "read_only")},
 		{ID: "timeout", Label: "Timeout Seconds", Value: formatInt(server.TimeoutSeconds), EditCommand: mcpServerCommand(server.ID, "field", "timeout")},
 	}
-	return Result{Handled: true, Form: &FormData{
+	return Result{Screen: FormData{
 		Title:         "Edit " + mcpServerTitle(server),
 		Fields:        fields,
 		SubmitLabel:   "Done",
@@ -194,10 +194,10 @@ func (d *Dispatcher) mcpServerFieldPrompt(ctx context.Context, serverID string, 
 	}
 	server, ok := findExternalMCPServer(resp.Config.Servers, serverID)
 	if !ok {
-		return Result{Handled: true, Text: "MCP server not found: " + strings.TrimSpace(serverID)}, nil
+		return textResult("MCP server not found: " + strings.TrimSpace(serverID)), nil
 	}
 	title, value, placeholder := mcpServerFieldPromptText(server, field)
-	return Result{Handled: true, Prompt: &PromptData{
+	return Result{Screen: PromptData{
 		Title:               title,
 		Placeholder:         placeholder,
 		Value:               value,
@@ -217,7 +217,7 @@ func (d *Dispatcher) setMCPServerField(ctx context.Context, serverID string, fie
 		return d.mcpServerEditForm(ctx, serverID)
 	}
 	if _, err := d.daemon.UpdateMCPServer(ctx, serverID, update); err != nil {
-		return Result{Handled: true, Text: err.Error()}, nil
+		return textResult(err.Error()), nil
 	}
 	return d.mcpServerEditForm(ctx, serverID)
 }
@@ -242,7 +242,7 @@ func (d *Dispatcher) mcpServerTargetPrompt(ctx context.Context, serverID string,
 		field = "endpoint"
 	}
 	if title, current, placeholder := mcpServerFieldPromptText(server, field); current == "" {
-		return Result{Handled: true, Prompt: &PromptData{
+		return Result{Screen: PromptData{
 			Title:               title,
 			Placeholder:         placeholder,
 			SubmitCommandPrefix: mcpServerCommand(server.ID, "set", "transport", transport) + " ",
@@ -259,14 +259,14 @@ func (d *Dispatcher) mcpServerEnabledPicker(ctx context.Context, serverID string
 	}
 	server, ok := findExternalMCPServer(resp.Config.Servers, serverID)
 	if !ok {
-		return Result{Handled: true, Text: "MCP server not found: " + strings.TrimSpace(serverID)}, nil
+		return textResult("MCP server not found: " + strings.TrimSpace(serverID)), nil
 	}
-	return Result{Handled: true, Picker: NewPickerData(PickerMCPServer, mcpServerTitle(server)).
+	return Result{Screen: NewPickerData(PickerMCPServer, mcpServerTitle(server)).
 		Meta("Currently " + strings.ToLower(formatEnabled(server.Enabled))).
 		Select(mcpServerCommand(server.ID)).
 		Item(PickerItem{ID: "on", Title: "On", Selected: server.Enabled, Command: mcpServerCommand(server.ID, "set-enabled", "on")}).
 		Item(PickerItem{ID: "off", Title: "Off", Selected: !server.Enabled, Command: mcpServerCommand(server.ID, "set-enabled", "off")}).
-		Ptr()}, nil
+		Build()}, nil
 }
 
 func (d *Dispatcher) setMCPServerEnabled(ctx context.Context, serverID string, value string) (Result, error) {
@@ -275,7 +275,7 @@ func (d *Dispatcher) setMCPServerEnabled(ctx context.Context, serverID string, v
 		return d.mcpServerEnabledPicker(ctx, serverID)
 	}
 	if _, err := d.daemon.UpdateMCPServer(ctx, serverID, setup.MCPServerUpdate{Enabled: &enabled}); err != nil {
-		return Result{Handled: true, Text: err.Error()}, nil
+		return textResult(err.Error()), nil
 	}
 	return d.mcpServerPicker(ctx, serverID)
 }
@@ -287,9 +287,9 @@ func (d *Dispatcher) mcpServerDeleteConfirm(ctx context.Context, serverID string
 	}
 	server, ok := findExternalMCPServer(resp.Config.Servers, serverID)
 	if !ok {
-		return Result{Handled: true, Text: "MCP server not found: " + strings.TrimSpace(serverID)}, nil
+		return textResult("MCP server not found: " + strings.TrimSpace(serverID)), nil
 	}
-	return Result{Handled: true, Confirm: &ConfirmData{
+	return Result{Screen: ConfirmData{
 		Title:          "Delete MCP Server",
 		Message:        "Delete external MCP server " + mcpServerTitle(server) + "?",
 		ConfirmLabel:   "Delete",
@@ -302,7 +302,7 @@ func (d *Dispatcher) mcpServerDeleteConfirm(ctx context.Context, serverID string
 
 func (d *Dispatcher) deleteMCPServer(ctx context.Context, serverID string) (Result, error) {
 	if _, err := d.daemon.DeleteMCPServer(ctx, serverID); err != nil {
-		return Result{Handled: true, Text: err.Error()}, nil
+		return textResult(err.Error()), nil
 	}
 	return d.mcpPicker(ctx)
 }
@@ -314,9 +314,9 @@ func (d *Dispatcher) mcpServerInfo(ctx context.Context, serverID string) (Result
 	}
 	server, ok := findExternalMCPServer(resp.Config.Servers, serverID)
 	if !ok {
-		return Result{Handled: true, Text: "MCP server not found: " + strings.TrimSpace(serverID)}, nil
+		return textResult("MCP server not found: " + strings.TrimSpace(serverID)), nil
 	}
-	return Result{Handled: true, Info: &InfoData{
+	return Result{Screen: InfoData{
 		Title: mcpServerTitle(server),
 		Rows: []InfoRow{
 			{Label: "ID", Value: server.ID},

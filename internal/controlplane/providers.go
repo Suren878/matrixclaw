@@ -17,15 +17,15 @@ func (d *Dispatcher) handleProvider(ctx context.Context, args string) (Result, e
 		return Result{}, err
 	}
 	if session == nil {
-		return Result{Handled: true, Text: "No active session. Use /new or /sessions."}, nil
+		return textResult("No active session. Use /new or /sessions."), nil
 	}
 	if core.CoreSessionIsExternalAgent(*session) {
-		return Result{Handled: true, Text: "This session uses " + sessionRuntimeLabel(*session) + ". Provider selection is available for MatrixClaw sessions only."}, nil
+		return textResult("This session uses " + sessionRuntimeLabel(*session) + ". Provider selection is available for MatrixClaw sessions only."), nil
 	}
 	value := strings.TrimSpace(args)
 	step, rest := firstCommandStep(value)
 	if !d.owner() && step != "" && step != "use" {
-		return Result{Handled: true, Text: ownerOnlySettings}, nil
+		return textResult(ownerOnlySettings), nil
 	}
 	switch step {
 	case "key":
@@ -57,8 +57,7 @@ func (d *Dispatcher) handleProvider(ctx context.Context, args string) (Result, e
 	}
 
 	return Result{
-		Handled: true,
-		Picker:  NewPickerData(PickerProvider, "Provider").Command(providerCommand()).Items(providerPickerItems(providers, session, d.owner())...).Ptr(),
+		Screen: NewPickerData(PickerProvider, "Provider").Command(providerCommand()).Items(providerPickerItems(providers, session, d.owner())...).Build(),
 	}, nil
 }
 
@@ -80,7 +79,7 @@ func firstCommandToken(value string) (string, string) {
 func (d *Dispatcher) useProvider(ctx context.Context, session *core.Session, providerID string) (Result, error) {
 	providerID = strings.TrimSpace(providerID)
 	if providerID == "" {
-		return Result{Handled: true, Text: "Provider id is required."}, nil
+		return textResult("Provider id is required."), nil
 	}
 	updated, err := d.daemon.UpdateSessionProvider(ctx, session.ID, providerID)
 	if err != nil {
@@ -110,7 +109,7 @@ func (d *Dispatcher) handleProviderKey(ctx context.Context, session *core.Sessio
 	providerID = strings.TrimSpace(providerID)
 	apiKey = strings.TrimSpace(apiKey)
 	if providerID == "" {
-		return Result{Handled: true, Text: "Provider id is required."}, nil
+		return textResult("Provider id is required."), nil
 	}
 	providers, err := d.daemon.ListSetupProviders(ctx)
 	if err != nil {
@@ -118,7 +117,7 @@ func (d *Dispatcher) handleProviderKey(ctx context.Context, session *core.Sessio
 	}
 	provider, found := findSetupProvider(providers, providerID)
 	if !found {
-		return Result{Handled: true, Text: "Unknown provider: " + providerID}, nil
+		return textResult("Unknown provider: " + providerID), nil
 	}
 	if apiKey == "" || !ok {
 		return providerKeyPrompt(provider), nil
@@ -138,8 +137,7 @@ func (d *Dispatcher) handleProviderKey(ctx context.Context, session *core.Sessio
 	}
 	text := fmt.Sprintf("✅ Provider configured: %s", configured.Name)
 	return Result{
-		Handled:        true,
-		Text:           text,
+		Screen:         TextData{Text: text},
 		ReloadSnapshot: true,
 	}, nil
 }
@@ -155,15 +153,13 @@ func (d *Dispatcher) providerSelectedResult(ctx context.Context, session core.Se
 		if len(picker.Items) > 1 {
 			picker.Meta = text + "\nChoose a model."
 			return Result{
-				Handled:        true,
-				Picker:         picker,
+				Screen:         picker,
 				ReloadSnapshot: true,
 			}, nil
 		}
 	}
 	return Result{
-		Handled:        true,
-		Text:           text,
+		Screen:         TextData{Text: text},
 		ReloadSnapshot: true,
 	}, nil
 }

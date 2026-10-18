@@ -16,7 +16,7 @@ func (d *Dispatcher) handleServer() Result {
 		picker.Row("restart", "Restart", "", restartCommand()).
 			Row("stop", "Stop", "", stopCommand())
 	}
-	return Result{Handled: true, Picker: picker.Ptr()}
+	return Result{Screen: picker.Build()}
 }
 
 func (d *Dispatcher) handleStatus(ctx context.Context) (Result, error) {
@@ -25,9 +25,7 @@ func (d *Dispatcher) handleStatus(ctx context.Context) (Result, error) {
 		return Result{}, err
 	}
 	return Result{
-		Handled: true,
-		Text:    FormatServerStatus(status),
-		Info: &InfoData{
+		Screen: InfoData{
 			Title: "Server Status",
 			Rows:  FormatServerStatusRows(status),
 		},
@@ -38,11 +36,10 @@ func (d *Dispatcher) handleStatus(ctx context.Context) (Result, error) {
 // so they can show its progress and the notice after it.
 func (d *Dispatcher) handleRestart() Result {
 	if !d.owner() {
-		return Result{Handled: true, Text: "Only the owner can restart the daemon."}
+		return textResult("Only the owner can restart the daemon.")
 	}
 	return Result{
-		Handled: true,
-		Confirm: &ConfirmData{
+		Screen: ConfirmData{
 			Message:        "Restart server daemon?",
 			ConfirmLabel:   "Restart",
 			CancelLabel:    "Close",
@@ -55,12 +52,11 @@ func (d *Dispatcher) handleRestart() Result {
 
 func (d *Dispatcher) handleStop(ctx context.Context, args string) (Result, error) {
 	if !d.owner() {
-		return Result{Handled: true, Text: "Only the owner can stop the daemon."}, nil
+		return textResult("Only the owner can stop the daemon."), nil
 	}
 	if !strings.EqualFold(strings.TrimSpace(args), "confirm") {
 		return Result{
-			Handled: true,
-			Confirm: &ConfirmData{
+			Screen: ConfirmData{
 				Message:        "Stop server daemon?",
 				ConfirmLabel:   "Stop",
 				CancelLabel:    "Close",
@@ -73,7 +69,7 @@ func (d *Dispatcher) handleStop(ctx context.Context, args string) (Result, error
 	if err := d.daemon.StopDaemon(ctx); err != nil {
 		return Result{}, err
 	}
-	return Result{Handled: true, Text: "Server daemon stop requested."}, nil
+	return textResult("Server daemon stop requested."), nil
 }
 
 func FormatServerStatus(status core.ServerStatus) string {

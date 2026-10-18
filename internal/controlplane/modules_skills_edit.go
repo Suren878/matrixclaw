@@ -12,14 +12,15 @@ import (
 func (d *Dispatcher) skillBodyEditor(ctx context.Context, section string, skillID string) (Result, error) {
 	detail, err := d.daemon.GetSkill(ctx, skillID)
 	if err != nil {
-		return Result{Handled: true, Text: err.Error()}, nil
+		return textResult(err.Error()), nil
 	}
-	return Result{Handled: true, TextEdit: &TextEditData{
+	return Result{Screen: PromptData{
 		Title:               "Edit " + skillTitle(detail.Skill),
 		Placeholder:         "Skill instructions",
 		Value:               detail.Body,
 		SubmitCommandPrefix: skillsCommandPrefix(section, skillID, "save-body"),
 		CancelCommand:       skillsCommand(section, skillID, "edit"),
+		Multiline:           true,
 	}}, nil
 }
 
@@ -33,8 +34,7 @@ func (d *Dispatcher) skillView(ctx context.Context, skillID string, _ string) (R
 		body = body[:4000] + "\n..."
 	}
 	return Result{
-		Handled: true,
-		Info: &InfoData{
+		Screen: InfoData{
 			Title: skillTitle(detail.Skill),
 			Text:  body,
 		},
@@ -42,7 +42,7 @@ func (d *Dispatcher) skillView(ctx context.Context, skillID string, _ string) (R
 }
 
 func (d *Dispatcher) skillSearchPrompt() Result {
-	return Result{Handled: true, Prompt: &PromptData{
+	return Result{Screen: PromptData{
 		Title:               "Search Skills",
 		Placeholder:         "deploy, review, docs",
 		SubmitCommandPrefix: skillSearchCommandPrefix(),
@@ -51,7 +51,7 @@ func (d *Dispatcher) skillSearchPrompt() Result {
 }
 
 func (d *Dispatcher) skillInstallPrompt() Result {
-	return Result{Handled: true, Prompt: &PromptData{
+	return Result{Screen: PromptData{
 		Title:               "Skill or Plugin Path",
 		Placeholder:         "/path/to/skill-or-plugin",
 		SubmitCommandPrefix: skillInstallCommandPrefix(),
@@ -60,7 +60,7 @@ func (d *Dispatcher) skillInstallPrompt() Result {
 }
 
 func (d *Dispatcher) skillAICreatePrompt() Result {
-	return Result{Handled: true, Prompt: &PromptData{
+	return Result{Screen: PromptData{
 		Title:               "Describe Skill",
 		Placeholder:         "When should this skill be used?",
 		SubmitCommandPrefix: skillsCommandPrefix("ai-create"),
@@ -69,7 +69,7 @@ func (d *Dispatcher) skillAICreatePrompt() Result {
 }
 
 func (d *Dispatcher) skillCreateNamePrompt() Result {
-	return Result{Handled: true, Prompt: &PromptData{
+	return Result{Screen: PromptData{
 		Title:               "Skill Name",
 		Placeholder:         "Matrix UI Editing",
 		SubmitCommandPrefix: skillsCommandPrefix("create-name"),
@@ -79,7 +79,7 @@ func (d *Dispatcher) skillCreateNamePrompt() Result {
 
 func (d *Dispatcher) skillCreateDescriptionPrompt(name string) Result {
 	state := skillDraftState{Name: strings.TrimSpace(name)}
-	return Result{Handled: true, Prompt: &PromptData{
+	return Result{Screen: PromptData{
 		Title:               "Skill Description",
 		Placeholder:         "When this skill should be used",
 		SubmitCommandPrefix: skillsCommandPrefix("create-description", encodeSkillDraftState(state)),
@@ -91,10 +91,10 @@ func (d *Dispatcher) skillCreateTagsPrompt(rest string) (Result, error) {
 	token, description := firstCommandToken(rest)
 	state, ok := decodeSkillDraftState(token)
 	if !ok {
-		return Result{Handled: true, Text: "Invalid skill draft state."}, nil
+		return textResult("Invalid skill draft state."), nil
 	}
 	state.Description = strings.TrimSpace(description)
-	return Result{Handled: true, Prompt: &PromptData{
+	return Result{Screen: PromptData{
 		Title:               "Skill Tags",
 		Placeholder:         "ui, matrix, review",
 		SubmitCommandPrefix: skillsCommandPrefix("create-tags", encodeSkillDraftState(state)),
@@ -106,25 +106,26 @@ func (d *Dispatcher) skillCreateBodyEditor(rest string) (Result, error) {
 	token, tags := firstCommandToken(rest)
 	state, ok := decodeSkillDraftState(token)
 	if !ok {
-		return Result{Handled: true, Text: "Invalid skill draft state."}, nil
+		return textResult("Invalid skill draft state."), nil
 	}
 	state.Tags = parseTags(tags)
-	return Result{Handled: true, TextEdit: &TextEditData{
+	return Result{Screen: PromptData{
 		Title:               "Skill Instructions",
 		Placeholder:         "Write the reusable instructions for this skill",
 		Value:               defaultSkillDraftBody(state),
 		SubmitCommandPrefix: skillsCommandPrefix("create-save", encodeSkillDraftState(state)),
 		CancelCommand:       skillsCommand("add"),
+		Multiline:           true,
 	}}, nil
 }
 
 func (d *Dispatcher) skillEditPrompt(ctx context.Context, section string, skillID string) (Result, error) {
 	detail, err := d.daemon.GetSkill(ctx, skillID)
 	if err != nil {
-		return Result{Handled: true, Text: err.Error()}, nil
+		return textResult(err.Error()), nil
 	}
 	value := strings.Join([]string{detail.Skill.Name, detail.Skill.Description, strings.Join(detail.Skill.Tags, ","), detail.Skill.Category}, " | ")
-	return Result{Handled: true, Prompt: &PromptData{
+	return Result{Screen: PromptData{
 		Title:               "Edit Skill Metadata",
 		Placeholder:         "name | description | tag1,tag2 | category",
 		Value:               value,
@@ -140,27 +141,24 @@ func (d *Dispatcher) skillInstall(ctx context.Context, path string) (Result, err
 	}
 	installed, err := d.daemon.InstallSkill(ctx, path)
 	if err != nil {
-		return Result{Handled: true, Text: err.Error()}, nil
+		return textResult(err.Error()), nil
 	}
 	result, err := d.skillsSectionPicker(ctx, "review", "")
 	if err != nil {
 		return Result{}, err
 	}
-	if result.Picker != nil {
-		result.Picker.Meta = fmt.Sprintf("Installed %d skill(s). Review before use.", len(installed))
-	}
-	return result, nil
+	return result.withPickerMeta(fmt.Sprintf("Installed %d skill(s). Review before use.", len(installed))), nil
 }
 
 func (d *Dispatcher) skillCreateSave(ctx context.Context, rest string) (Result, error) {
 	token, body := firstCommandToken(rest)
 	state, ok := decodeSkillDraftState(token)
 	if !ok {
-		return Result{Handled: true, Text: "Invalid skill draft state."}, nil
+		return textResult("Invalid skill draft state."), nil
 	}
 	draft, err := d.daemon.CreateSkillDraft(ctx, skills.DraftRequest{Name: state.Name, Description: state.Description, Tags: state.Tags, Body: body})
 	if err != nil {
-		return Result{Handled: true, Text: err.Error()}, nil
+		return textResult(err.Error()), nil
 	}
 	return d.skillPicker(ctx, "review", draft.ID)
 }
@@ -171,10 +169,10 @@ func (d *Dispatcher) skillAICreate(ctx context.Context, description string) (Res
 		return Result{}, err
 	}
 	if strings.TrimSpace(sessionID) == "" {
-		return Result{Handled: true, Text: "Open or create a chat session before creating a skill with AI."}, nil
+		return textResult("Open or create a chat session before creating a skill with AI."), nil
 	}
 	if session != nil && !d.mayUse(*session) {
-		return Result{Handled: true, Text: unattendedRefusal}, nil
+		return textResult(unattendedRefusal), nil
 	}
 	content := strings.Join([]string{
 		"AI-assisted Matrixclaw skill creation is active.",
@@ -198,8 +196,7 @@ func (d *Dispatcher) skillAICreate(ctx context.Context, description string) (Res
 		return Result{}, err
 	}
 	return Result{
-		Handled:        true,
-		Text:           "AI skill creation started.",
+		Screen:         TextData{Text: "AI skill creation started."},
 		ReloadSnapshot: true,
 	}, nil
 }
@@ -207,14 +204,13 @@ func (d *Dispatcher) skillAICreate(ctx context.Context, description string) (Res
 func (d *Dispatcher) skillEdit(ctx context.Context, section string, skillID string, value string) (Result, error) {
 	name, description, tags, category := parseSkillMetadataInput(value)
 	if _, err := d.daemon.UpdateSkillMetadata(ctx, skillID, skills.MetadataUpdate{Name: name, Description: description, Tags: tags, Category: category}); err != nil {
-		return Result{Handled: true, Text: err.Error()}, nil
+		return textResult(err.Error()), nil
 	}
 	return d.skillEditMenu(ctx, section, skillID)
 }
 
 func (d *Dispatcher) skillRemoveConfirm(section string, skillID string) Result {
 	return Result{
-		Handled: true,
-		Confirm: deleteConfirmData("Remove skill "+strings.TrimSpace(skillID)+"?", skillsCommand(section, skillID, "remove", "confirm"), skillsCommand(section, skillID)),
+		Screen: deleteConfirmData("Remove skill "+strings.TrimSpace(skillID)+"?", skillsCommand(section, skillID, "remove", "confirm"), skillsCommand(section, skillID)),
 	}
 }

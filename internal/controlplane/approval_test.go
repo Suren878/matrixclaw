@@ -31,7 +31,7 @@ func TestApprovalDenyCarriesTheReason(t *testing.T) {
 	if (*requests)[0] != (core.ApprovalResolveRequest{Reason: "use  the staging db"}) {
 		t.Fatalf("request = %+v", (*requests)[0])
 	}
-	if result.Text != "❌ Denied bash: use  the staging db" || !result.ReloadSnapshot {
+	if result.Text() != "❌ Denied bash: use  the staging db" || !result.ReloadSnapshot {
 		t.Fatalf("result = %+v", result)
 	}
 }
@@ -42,7 +42,7 @@ func TestApprovalRejectsOtherAnswers(t *testing.T) {
 
 		result := daemon.run(command)
 
-		if result.Text != approvalUsage || len(*ids) != 0 {
+		if result.Text() != approvalUsage || len(*ids) != 0 {
 			t.Errorf("%s: result = %+v ids = %v", command, result, *ids)
 		}
 	}

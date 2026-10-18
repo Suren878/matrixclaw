@@ -274,8 +274,7 @@ func providerFormResult(formID string, form providerForm, message string) Result
 		fields = append(fields, FormField{ID: field.id, Label: field.label, Value: value, EditCommand: edit, Disabled: field.disabled})
 	}
 	return Result{
-		Handled: true,
-		Form: &FormData{
+		Screen: FormData{
 			Title:         form.title(),
 			Fields:        fields,
 			SubmitLabel:   "Save",
@@ -291,7 +290,7 @@ func (d *Dispatcher) handleProviderForm(ctx context.Context, session *core.Sessi
 	formID, rest := firstCommandToken(args)
 	form, ok := providerForms.get(formID)
 	if !ok {
-		return Result{Handled: true, Text: "This provider form has expired. Open it again with /provider."}, nil
+		return textResult("This provider form has expired. Open it again with /provider."), nil
 	}
 	step, rest := firstCommandStep(rest)
 	switch step {
@@ -311,7 +310,7 @@ func (d *Dispatcher) providerFormField(ctx context.Context, formID string, form 
 	back := providerFormCommand(formID)
 	set := func(value string) string { return providerFormCommand(formID, "set", field, value) }
 	picker := func(title string, items []PickerItem) Result {
-		return Result{Handled: true, Picker: NewPickerData(PickerProviderCustom, form.title()+": "+title).Select(back).Items(items...).Ptr()}
+		return Result{Screen: NewPickerData(PickerProviderCustom, form.title()+": "+title).Select(back).Items(items...).Build()}
 	}
 	switch field {
 	case "base":
@@ -367,8 +366,7 @@ func providerFieldPrompt(formID string, form providerForm, field string, placeho
 		return providerFormResult(formID, form, "")
 	}
 	return Result{
-		Handled: true,
-		Prompt: &PromptData{
+		Screen: PromptData{
 			Title:               form.title() + ": " + title,
 			Placeholder:         placeholder,
 			Value:               value,
@@ -395,8 +393,7 @@ func (d *Dispatcher) providerModelPicker(ctx context.Context, formID string, for
 		items = append(items, PickerItem{ID: modelID, Title: modelID, Selected: modelID == form.model(), Command: providerFormCommand(formID, "set", "model", modelID)})
 	}
 	return Result{
-		Handled: true,
-		Picker:  NewPickerData(PickerProviderCustom, "Model").Select(providerFormCommand(formID)).Items(items...).Ptr(),
+		Screen: NewPickerData(PickerProviderCustom, "Model").Select(providerFormCommand(formID)).Items(items...).Build(),
 	}, nil
 }
 
@@ -434,8 +431,7 @@ func (d *Dispatcher) providerSaved(ctx context.Context, session *core.Session, c
 		return Result{}, err
 	}
 	return Result{
-		Handled:        true,
-		Picker:         NewPickerData(PickerProvider, "Provider").Command(providerCommand()).Items(providerPickerItems(list, selectedSession, d.owner())...).Ptr(),
+		Screen:         NewPickerData(PickerProvider, "Provider").Command(providerCommand()).Items(providerPickerItems(list, selectedSession, d.owner())...).Build(),
 		ReloadSnapshot: true,
 	}, nil
 }

@@ -25,7 +25,8 @@ func (w *Worker) dispatchCommandAndEditPage(ctx context.Context, target chatTarg
 }
 
 func controlplaneResultIsCommandMenu(result controlplane.Result) bool {
-	return result.Picker != nil && result.Picker.Kind == controlplane.PickerCommandMenu
+	picker, ok := result.Screen.(controlplane.PickerData)
+	return ok && picker.Kind == controlplane.PickerCommandMenu
 }
 
 func catalogCommand(id controlplane.CommandID, args string) string {

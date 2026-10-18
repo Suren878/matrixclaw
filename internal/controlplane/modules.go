@@ -12,7 +12,7 @@ import (
 func (d *Dispatcher) handleModules(ctx context.Context, args string) (Result, error) {
 	step, rest := firstCommandStep(args)
 	if !d.owner() && slices.Contains(ownerScreens, step) {
-		return Result{Handled: true, Text: ownerOnlySettings}, nil
+		return textResult(ownerOnlySettings), nil
 	}
 	switch step {
 	case "":
@@ -56,7 +56,7 @@ func (d *Dispatcher) modulesPicker(ctx context.Context) (Result, error) {
 			picker.Item(d.moduleRow(status.ID, status.Title, status.State))
 		}
 	}
-	return Result{Handled: true, Picker: picker.Ptr()}, nil
+	return Result{Screen: picker.Build()}, nil
 }
 
 // moduleRow opens a module; non-owners see the owner's screens as status only.

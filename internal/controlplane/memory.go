@@ -19,7 +19,7 @@ func (d *Dispatcher) handleMemory(ctx context.Context, args string) (Result, err
 		return Result{}, err
 	}
 	info := memoryInfoData(entries)
-	return Result{Handled: true, Info: &info}, nil
+	return Result{Screen: *&info}, nil
 }
 
 func memoryScopeArg(args string) core.MemoryScope {

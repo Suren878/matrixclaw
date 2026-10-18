@@ -41,11 +41,11 @@ func TestOnlyTheOwnerCreatesExternalAgentSessions(t *testing.T) {
 
 		created := daemon.runAs(role, "/session new claude review")
 		picker := daemon.runAs(role, "/session new")
-		if picker.Picker == nil {
+		if !isScreen[PickerData](picker) {
 			t.Fatalf("picker = %+v", picker)
 		}
 		var offered []string
-		for _, item := range picker.Picker.Items {
+		for _, item := range screenOf[PickerData](t, picker).Items {
 			offered = append(offered, item.ID)
 		}
 		daemon.runAs(role, "/session new matrixclaw")
@@ -57,13 +57,13 @@ func TestOnlyTheOwnerCreatesExternalAgentSessions(t *testing.T) {
 			}
 		}
 		if owner != (agentSessions == 1) || len(daemon.created) != agentSessions+1 {
-			t.Fatalf("%s: created = %+v (%q)", role, daemon.created, created.Text)
+			t.Fatalf("%s: created = %+v (%q)", role, daemon.created, created.Text())
 		}
 		if owner != strings.Contains(strings.Join(offered, " "), "claude") {
 			t.Fatalf("%s: picker offers %v", role, offered)
 		}
-		if !owner && created.Text != "Only the owner can start an external agent session." {
-			t.Fatalf("non-owner reply = %q", created.Text)
+		if !owner && created.Text() != "Only the owner can start an external agent session." {
+			t.Fatalf("non-owner reply = %q", created.Text())
 		}
 		if daemon.bound != "s_new" {
 			t.Fatalf("%s: the new session is not bound: %q", role, daemon.bound)
@@ -85,10 +85,10 @@ func TestOnlyTheOwnerReachesSessionsThatRunUnattended(t *testing.T) {
 			used := daemon.runAs(role, "/session use "+session.ID)
 			reachable := role == core.RoleOwner || session.ID == "plain"
 			if reachable != (daemon.bound == session.ID) {
-				t.Fatalf("%s %s: bound = %q (%q)", role, session.ID, daemon.bound, used.Text)
+				t.Fatalf("%s %s: bound = %q (%q)", role, session.ID, daemon.bound, used.Text())
 			}
-			if !reachable && used.Text != unattendedRefusal {
-				t.Fatalf("%s %s: reply = %q", role, session.ID, used.Text)
+			if !reachable && used.Text() != unattendedRefusal {
+				t.Fatalf("%s %s: reply = %q", role, session.ID, used.Text())
 			}
 
 			daemon.bound = session.ID
