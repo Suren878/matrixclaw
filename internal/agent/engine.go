@@ -16,13 +16,13 @@ import (
 
 // Config wires the ports of one run.
 type Config struct {
-	Journal     Journal
-	Tools       Tools
-	Approvals   Approvals
-	Inbox       Inbox
-	Sink        Sink
-	Prompts     Prompts
-	Todos       Todos
+	Journal   Journal
+	Tools     Tools
+	Approvals Approvals
+	Inbox     Inbox
+	Sink      Sink
+	Prompts   Prompts
+	Todos     Todos
 	// Hooks runs the user's hooks; nil runs none.
 	Hooks       Hooks
 	Attachments agentcontext.AttachmentReader
