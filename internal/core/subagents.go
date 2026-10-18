@@ -12,16 +12,6 @@ import (
 // at once unless the daemon configures another limit.
 const DefaultBackgroundAgents = 4
 
-// WithBackgroundAgents bounds the background subagents one session runs at
-// once; 0 or less keeps the default.
-func (c *Core) WithBackgroundAgents(n int) *Core {
-	if n <= 0 {
-		n = DefaultBackgroundAgents
-	}
-	c.backgroundAgents = n
-	return c
-}
-
 // AgentInput is one agent tool call: a child agent on a bounded task.
 type AgentInput struct {
 	ParentSessionID  string
@@ -161,8 +151,8 @@ func (c *Core) reserveSubagent(ctx context.Context, parentID string, background 
 				count++
 			}
 		}
-		if count >= c.backgroundAgents {
-			return "", fmt.Errorf("%w: at most %d background subagents run at once in a session; await one of them first", ErrInvalidInput, c.backgroundAgents)
+		if limit := c.Tuning().BackgroundAgents; count >= limit {
+			return "", fmt.Errorf("%w: at most %d background subagents run at once in a session; await one of them first", ErrInvalidInput, limit)
 		}
 	}
 	name, err := c.assignSubagentAgentName(ctx, parentID, starting)

@@ -26,7 +26,8 @@ func TestContextWindowCapBoundsRunsAndTheContextReport(t *testing.T) {
 			app, db, cleanup := newCrashRecoveryCore(t)
 			defer cleanup()
 			summaries := 0
-			app.WithContextWindowCap(tc.cap).WithSessionLLMs(windowLLMs{window: 1_000_000, recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+			app.SetTuning(core.Tuning{WindowCap: tc.cap})
+			app.WithSessionLLMs(windowLLMs{window: 1_000_000, recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 				if strings.HasPrefix(request.SystemPrompt, "You compact matrixclaw chat histories") {
 					summaries++
 					return providers.Response{Text: "SUMMARY"}, nil

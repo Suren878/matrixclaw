@@ -34,11 +34,8 @@ type Core struct {
 	now             func() time.Time
 	newID           func(prefix string) string
 	lifetime        context.Context
-	budgets         RunBudgets
+	effectiveTuning atomic.Pointer[Tuning]
 	sessionFiles    string
-	compactProvider string
-	compactModel    string
-	windowCap       int
 	// promptEnv is where native runs are told they work.
 	promptEnv PromptEnvironment
 	// modelSlots bounds the model requests of all native runs at once.
@@ -56,14 +53,10 @@ type Core struct {
 	// liveTasks are the shell tasks this daemon started that still run.
 	tasksMu   sync.Mutex
 	liveTasks map[string]*liveTask
-	// backgroundTasks bounds the background commands one session runs.
-	backgroundTasks int
 	// commandEnv is the environment of shell commands; nil inherits the daemon's.
 	commandEnv func() []string
 	// hooks runs the user's hooks and the checks after edits; nil runs none.
 	hooks *hooks.Runner
-	// backgroundAgents bounds the background subagents of one session.
-	backgroundAgents int
 	// executing counts the runs goroutineStarter started; once stopped it
 	// starts no more.
 	executing sync.WaitGroup
@@ -115,23 +108,21 @@ type AssistantProfile struct {
 
 func New(store Store) *Core {
 	c := &Core{
-		store:            store,
-		activeRuns:       map[string]*activeRun{},
-		scheduledRuns:    map[string]time.Time{},
-		sessionGates:     map[string]*sessionGate{},
-		liveTasks:        map[string]*liveTask{},
-		runEnds:          map[string][]chan struct{}{},
-		backgroundTasks:  DefaultBackgroundTasks,
-		backgroundAgents: DefaultBackgroundAgents,
-		events:           newEventBus(),
-		now:              time.Now,
-		newID:            ids.New,
-		lifetime:         context.Background(),
-		budgets:          DefaultRunBudgets(),
-		modelSlots:       toolsched.NewSemaphore(DefaultModelConcurrency),
-		toolLocks:        toolsched.NewLocks(),
+		store:         store,
+		activeRuns:    map[string]*activeRun{},
+		scheduledRuns: map[string]time.Time{},
+		sessionGates:  map[string]*sessionGate{},
+		liveTasks:     map[string]*liveTask{},
+		runEnds:       map[string][]chan struct{}{},
+		events:        newEventBus(),
+		now:           time.Now,
+		newID:         ids.New,
+		lifetime:      context.Background(),
+		modelSlots:    toolsched.NewSemaphore(DefaultModelConcurrency),
+		toolLocks:     toolsched.NewLocks(),
 	}
 	c.runStarter = goroutineStarter{c}
+	c.SetTuning(Tuning{})
 	return c
 }
 
@@ -140,8 +131,8 @@ func New(store Store) *Core {
 // they mutate Core fields without holding c.mu and therefore MUST NOT be called
 // after any run has started or after the Core is shared across goroutines —
 // doing so races with the agent loop reading those fields. Post-construction
-// mutation must go through the locked Set* methods (SetSessionLLMs,
-// SetAssistantProfile, SetExternalAgents).
+// mutation must go through the Set* methods (SetSessionLLMs,
+// SetAssistantProfile, SetExternalAgents, SetTuning).
 func (c *Core) WithAttachmentReader(reader agentcontext.AttachmentReader) *Core {
 	if reader != nil {
 		c.attachments = reader

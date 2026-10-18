@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestSemaphoreLetsInAtMostNHolders(t *testing.T) {
@@ -54,5 +55,30 @@ func TestNilSemaphoreNeverBlocks(t *testing.T) {
 	}
 	if NewSemaphore(0) != nil {
 		t.Fatal("NewSemaphore(0) is not the unbounded nil semaphore")
+	}
+}
+
+func TestSemaphoreResizeLetsWaitersInAndShrinksForNewHolders(t *testing.T) {
+	s := NewSemaphore(1)
+	first, err := s.Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	waiter := make(chan error)
+	go func() {
+		_, err := s.Acquire(context.Background())
+		waiter <- err
+	}()
+	s.Resize(2)
+	if err := <-waiter; err != nil {
+		t.Fatalf("waiter after growing: %v", err)
+	}
+
+	s.Resize(1)
+	first()
+	full, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := s.Acquire(full); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("holder over the shrunk limit err = %v, want it kept out", err)
 	}
 }

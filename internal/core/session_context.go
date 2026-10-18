@@ -275,21 +275,10 @@ func (c *Core) sessionContextWindowTokens(session Session) int {
 // configures another cap.
 const DefaultContextWindowCap = 200_000
 
-// WithContextWindowCap bounds the window runs and /context assume for any
-// model; 0 or less keeps the default cap.
-func (c *Core) WithContextWindowCap(tokens int) *Core {
-	c.windowCap = tokens
-	return c
-}
-
 // modelContextWindowTokens is the window of a provider's model within the cap:
 // the manual setting for the configured model, else the model catalog.
 func (c *Core) modelContextWindowTokens(providerID string, modelID string) int {
-	windowCap := c.windowCap
-	if windowCap <= 0 {
-		windowCap = DefaultContextWindowCap
-	}
-	return min(c.uncappedWindowTokens(providerID, modelID), windowCap)
+	return min(c.uncappedWindowTokens(providerID, modelID), c.Tuning().WindowCap)
 }
 
 func (c *Core) uncappedWindowTokens(providerID string, modelID string) int {

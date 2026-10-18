@@ -19,7 +19,7 @@ func (c *Core) subagentsPrompt(ctx context.Context, coding bool) string {
 	for _, runtime := range runtimes[1:] { // the native runtime comes first
 		external = append(external, runtime.PromptLine())
 	}
-	return prompt.Subagents(coding, availableSubagentRuntimeIDs(runtimes), external, c.backgroundAgents, c.budgets.Subagent.Steps)
+	return prompt.Subagents(coding, availableSubagentRuntimeIDs(runtimes), external, c.Tuning().BackgroundAgents, c.Tuning().Budgets.Subagent.Steps)
 }
 
 // agentToolSpec limits the agent tool's runtime choices to the runtimes

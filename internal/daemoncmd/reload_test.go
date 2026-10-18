@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/automation"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/setup"
@@ -34,7 +35,7 @@ func TestReloadKeepsExternalAgentsWhenTheirConfigIsUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = sqliteStore.Close() }()
-	s := newSupervisor(context.Background(), core.New(sqliteStore), nil, nil)
+	s := newSupervisor(context.Background(), core.New(sqliteStore), nil, nil, nil)
 	runtime := &closeCountingRuntime{}
 	cfg := map[string]setup.ExternalAgentConfig{"codex": {Enabled: true}}
 	s.SetExternalAgents(sqliteStore, []externalagents.RuntimeAgent{runtime}, cfg)
@@ -188,7 +189,7 @@ func TestRestartNoticeIsHeldUntilTheNextStart(t *testing.T) {
 	}
 	defer func() { _ = sqliteStore.Close() }()
 	app := core.New(sqliteStore)
-	s := newSupervisor(ctx, app, nil, nil)
+	s := newSupervisor(ctx, app, nil, nil, nil)
 	saved, err := s.saveRestartDelivery(ctx, core.AdminRestartRequest{Notification: &core.ClientDeliveryTarget{Client: "telegram", ExternalKey: "7", Address: []byte(`{"kind":"chat","chat_id":7,"message_id":3}`)}})
 	if err != nil {
 		t.Fatal(err)
@@ -209,5 +210,121 @@ func TestRestartNoticeIsHeldUntilTheNextStart(t *testing.T) {
 	released := pending()
 	if len(released) != 1 || released[0].Type != core.ClientDeliveryTypeNotice || released[0].Summary != daemonRestartText || string(released[0].Payload) != `{"replace":true}` {
 		t.Fatalf("released = %+v", released)
+	}
+}
+
+type idleRunStarter struct{}
+
+func (idleRunStarter) StartRun(context.Context, string) error { return nil }
+
+func TestReloadReappliesRunLimitsAndAutomationSettings(t *testing.T) {
+	_, botAPI := newFakeBotAPI(t)
+	dir := t.TempDir()
+	setupPath := filepath.Join(dir, "setup.json")
+	dbPath := filepath.Join(dir, "matrixclaw.db")
+	for name, value := range map[string]string{
+		"HOME": dir, "XDG_STATE_HOME": filepath.Join(dir, "xdg-state"), "XDG_CONFIG_HOME": filepath.Join(dir, "xdg-config"),
+		"MATRIXCLAW_SETUP_PATH": setupPath, "MATRIXCLAW_HTTP_ADDR": "", "MATRIXCLAW_DB_PATH": "", "MATRIXCLAW_API_TOKEN": "", "MATRIXCLAW_TIMEZONE": "",
+	} {
+		t.Setenv(name, value)
+	}
+	save := func(cfg setup.Config) {
+		t.Helper()
+		cfg.Version = setup.CurrentVersion
+		cfg.Daemon.DBPath, cfg.Daemon.APIToken, cfg.Daemon.HTTPAddr = dbPath, "test-token", strings.TrimPrefix(botAPI.URL, "http://")
+		if err := setup.NewFileStore(setupPath).Save(cfg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := context.Background()
+	sqliteStore, err := store.NewSQLite(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+	app := core.New(sqliteStore).WithRunStarter(idleRunStarter{})
+	jobs := automation.NewService(automation.NewSQLiteStore(sqliteStore.DB()), app)
+	s := newSupervisor(ctx, app, jobs, nil, nil)
+	s.telegram.botAPIURL = botAPI.URL
+	defer func() {
+		s.telegram.mu.Lock()
+		s.telegram.stopWorker()
+		s.telegram.mu.Unlock()
+	}()
+	defaults := core.New(sqliteStore).Tuning()
+	// fire runs a new job at once in a session of its own, since a session
+	// takes one triggered run at a time.
+	fire := func() (automation.Job, []core.ClientDelivery) {
+		t.Helper()
+		now := time.Now().UTC()
+		session := core.Session{ID: "s" + now.Format("150405.000000000"), Kind: core.SessionKindAssistant, Status: core.SessionStatusActive, CreatedAt: now, UpdatedAt: now}
+		if err := sqliteStore.CreateSession(ctx, session); err != nil {
+			t.Fatal(err)
+		}
+		runAt := now.Add(time.Hour)
+		job, err := jobs.CreateJob(ctx, automation.CreateJobInput{SessionID: session.ID, ScheduleMode: automation.ScheduleModeOnce, RunAt: &runAt, Prompt: "check the backups"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := jobs.RunNow(ctx, job.ID); err != nil {
+			t.Fatal(err)
+		}
+		deliveries, err := app.ListClientDeliveries(ctx, core.ClientDeliveryFilter{TaskID: job.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return job, deliveries
+	}
+
+	save(setup.Config{Daemon: setup.DaemonConfig{Timezone: "UTC"}})
+	if err := s.Reload(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if job, deliveries := fire(); job.Timezone != "UTC" || len(deliveries) != 0 {
+		t.Fatalf("before: timezone %q, deliveries %+v", job.Timezone, deliveries)
+	}
+
+	save(setup.Config{
+		Daemon: setup.DaemonConfig{
+			Timezone:         "Asia/Almaty",
+			Budgets:          setup.RunBudgetsConfig{User: setup.RunBudgetConfig{Steps: 7}},
+			CompactModel:     setup.CompactModelConfig{Provider: "cheap", Model: "small"},
+			ContextWindowCap: 64_000,
+			ModelConcurrency: 2,
+			BackgroundTasks:  3,
+			BackgroundAgents: 1,
+		},
+		Clients: setup.ClientsConfig{Telegram: setup.TelegramConfig{Enabled: true, BotToken: "123:test", AllowedUserID: "42"}},
+	})
+	if err := s.Reload(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got := app.Tuning()
+	if got.Budgets.User.Steps != 7 || got.Budgets.Subagent != defaults.Budgets.Subagent {
+		t.Errorf("budgets = %+v", got.Budgets)
+	}
+	if got.CompactProvider != "cheap" || got.CompactModel != "small" {
+		t.Errorf("compact model = %s/%s", got.CompactProvider, got.CompactModel)
+	}
+	if got.WindowCap != 64_000 || got.ModelConcurrency != 2 || got.BackgroundTasks != 3 || got.BackgroundAgents != 1 {
+		t.Errorf("limits = %+v", got)
+	}
+	job, deliveries := fire()
+	if job.Timezone != "Asia/Almaty" {
+		t.Errorf("timezone of a new job = %q", job.Timezone)
+	}
+	if len(deliveries) != 1 || deliveries[0].Client != "telegram" || deliveries[0].ExternalKey != "42" {
+		t.Errorf("deliveries once Telegram is on = %+v", deliveries)
+	}
+
+	save(setup.Config{Daemon: setup.DaemonConfig{Timezone: "UTC"}})
+	if err := s.Reload(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := app.Tuning(); got != defaults {
+		t.Errorf("tuning after the settings are removed = %+v, want %+v", got, defaults)
+	}
+	if job, deliveries := fire(); job.Timezone != "UTC" || len(deliveries) != 0 {
+		t.Errorf("after: timezone %q, deliveries %+v", job.Timezone, deliveries)
 	}
 }

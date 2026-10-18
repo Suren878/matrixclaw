@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
-	"github.com/Suren878/matrixclaw/internal/agent/toolsched"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/safego"
 )
@@ -17,16 +16,6 @@ import (
 // DefaultModelConcurrency is how many model requests native runs make at once
 // unless the daemon configures another limit.
 const DefaultModelConcurrency = 4
-
-// WithModelConcurrency bounds the model requests all native runs, subagents
-// included, make at once; 0 or less keeps the default.
-func (c *Core) WithModelConcurrency(n int) *Core {
-	if n <= 0 {
-		n = DefaultModelConcurrency
-	}
-	c.modelSlots = toolsched.NewSemaphore(n)
-	return c
-}
 
 // ExecuteRun claims a run and executes it with its external agent or the native engine.
 func (c *Core) ExecuteRun(ctx context.Context, runID string) error {

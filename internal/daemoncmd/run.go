@@ -67,13 +67,7 @@ func Run(ctx context.Context) error {
 
 	app := core.New(sqliteStore).
 		WithSessionLLMs(bootstrap.SessionLLMs).
-		WithRunBudgets(bootstrap.Budgets).
 		WithSessionFiles(sessionFilesRoot(bootstrap.DBPath)).
-		WithCompactModel(bootstrap.CompactModel.Provider, bootstrap.CompactModel.Model).
-		WithContextWindowCap(bootstrap.WindowCap).
-		WithModelConcurrency(bootstrap.ModelConcurrency).
-		WithBackgroundTaskLimit(bootstrap.BackgroundTasks).
-		WithBackgroundAgents(bootstrap.BackgroundAgents).
 		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()}).
 		WithSkillsContext(skillsModule).
 		WithPromptEnvironment(promptEnvironment(bootstrap))
@@ -86,7 +80,6 @@ func Run(ctx context.Context) error {
 	}
 	app.WithExternalAgents(externalRegistry, sqliteStore)
 	automationService := automation.NewService(automation.NewSQLiteStore(sqliteStore.DB()), app)
-	automationService.Configure(automation.Settings{Timezone: bootstrap.Timezone, Targets: automationDeliveryTargets(bootstrap)})
 	osmGeo := geo.NewOSMServiceFromEnv()
 	realtimeVoice := realtime.NewManager(app, geminilive.Spec, grokvoice.Spec, openairealtime.Spec)
 	daemon, err := buildModules(moduleDeps{
@@ -105,8 +98,7 @@ func Run(ctx context.Context) error {
 	lifetime, stopLifetime := context.WithCancel(ctx)
 	defer stopLifetime()
 	app.WithLifetime(lifetime)
-	safego.Go("core.runWakeups", func() { app.RunWakeups(lifetime) })
-	supervisor := newSupervisor(ctx, app, osmGeo, daemon.set)
+	supervisor := newSupervisor(ctx, app, automationService, osmGeo, daemon.set)
 	server := api.New(api.Deps{
 		Core:       app,
 		Automation: automationService,
@@ -159,6 +151,7 @@ func Run(ctx context.Context) error {
 	if err := supervisor.ApplyBootstrap(bootstrap); err != nil {
 		log.Printf("matrixclawd apply setup: %v", err)
 	}
+	safego.Go("core.runWakeups", func() { app.RunWakeups(lifetime) })
 	errCh := make(chan error, 2)
 	safego.Go("daemon.httpServer", func() {
 		err := httpServer.Serve(listener)

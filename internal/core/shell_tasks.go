@@ -33,16 +33,6 @@ const foregroundWaitDelay = 2 * time.Second
 // once unless the daemon configures another limit.
 const DefaultBackgroundTasks = 8
 
-// WithBackgroundTaskLimit bounds the background commands one session runs at
-// once; 0 or less keeps the default.
-func (c *Core) WithBackgroundTaskLimit(n int) *Core {
-	if n <= 0 {
-		n = DefaultBackgroundTasks
-	}
-	c.backgroundTasks = n
-	return c
-}
-
 // WithCommandEnvironment sets the environment of shell commands, read for
 // every command.
 func (c *Core) WithCommandEnvironment(env func() []string) *Core {
@@ -128,13 +118,13 @@ func (c *Core) RunCommand(ctx context.Context, call tools.Call, command tools.Co
 var errBackgroundTasksFull = fmt.Errorf("%w: too many background commands", ErrInvalidInput)
 
 func (c *Core) backgroundTasksFullError() error {
-	return fmt.Errorf("%w: this session already runs %d background commands; wait for one (await, task_output with wait_seconds) or stop one with task_kill first", errBackgroundTasksFull, c.backgroundTasks)
+	return fmt.Errorf("%w: this session already runs %d background commands; wait for one (await, task_output with wait_seconds) or stop one with task_kill first", errBackgroundTasksFull, c.Tuning().BackgroundTasks)
 }
 
 func (c *Core) backgroundTasksFull(sessionID string) bool {
 	c.tasksMu.Lock()
 	defer c.tasksMu.Unlock()
-	return c.sessionLiveTasksLocked(sessionID) >= c.backgroundTasks
+	return c.sessionLiveTasksLocked(sessionID) >= c.Tuning().BackgroundTasks
 }
 
 func (c *Core) sessionLiveTasksLocked(sessionID string) int {
@@ -193,7 +183,7 @@ func (c *Core) adoptCommand(ctx context.Context, call tools.Call, command tools.
 	}
 	live := &liveTask{sessionID: call.SessionID, process: process, recorded: make(chan struct{})}
 	c.tasksMu.Lock()
-	if c.sessionLiveTasksLocked(call.SessionID) >= c.backgroundTasks {
+	if c.sessionLiveTasksLocked(call.SessionID) >= c.Tuning().BackgroundTasks {
 		c.tasksMu.Unlock()
 		return tools.CommandResult{}, c.backgroundTasksFullError()
 	}
