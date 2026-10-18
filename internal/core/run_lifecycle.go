@@ -50,6 +50,11 @@ type runChange struct {
 // written, every follow-up step runs and their errors are logged.
 func (c *Core) transition(ctx context.Context, run *Run, change runChange) error {
 	from := run.Status
+	if change.To.Terminal() {
+		// Callers waiting for the end wait for its follow-up too.
+		c.beginRunEnd(run.ID)
+		defer c.endRunEnd(run.ID)
+	}
 	reply, created, err := c.commitRun(ctx, run, change)
 	if err != nil {
 		return err
@@ -101,15 +106,12 @@ func (c *Core) commitRun(ctx context.Context, run *Run, change runChange) (*tran
 // no longer has, publishes the change, keeps the subagent task in step and,
 // for an ended run, clears its checkpoint, rejects the approvals it leaves,
 // stops the blocking children of a failed run and tells the user of a failed
-// wake run. Callers waiting for the run's end are woken in any case.
+// wake run.
 //
 // Session gates never nest. Ending a subagent's run takes its parent session's
 // gate (taskFinished wakes the parent), so no subagent run ends under a gate.
 func (c *Core) afterCommit(ctx context.Context, run Run, from RunStatus, change runChange, reply *transcript.Message, created bool) error {
 	ended := run.Status.Terminal()
-	if ended {
-		defer c.notifyRunEnd(run.ID)
-	}
 	var errs []error
 	// An ended run may have parked after the caller read it.
 	if run.Status != RunStatusWaitingEvents && (from == RunStatusWaitingEvents || ended) {

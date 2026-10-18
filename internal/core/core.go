@@ -75,8 +75,10 @@ type Core struct {
 	// startingAgents are the children each parent session is starting, by
 	// name, and whether each runs in the background; guarded by mu.
 	startingAgents map[string]map[string]bool
-	// runEnds are the callers waiting for each run to end; guarded by mu.
-	runEnds map[string][]chan struct{}
+	// runEnds are the callers waiting for each run to end, and runsEnding
+	// counts each run's ending transitions not followed up yet; guarded by mu.
+	runEnds    map[string][]chan struct{}
+	runsEnding map[string]int
 	// checkpoints snapshots working directories before tool batches that
 	// change files; nil when file checkpoints are off.
 	checkpoints *checkpoint.Store
@@ -125,6 +127,7 @@ func New(store Store) *Core {
 		sessionGates:     map[string]*sessionGate{},
 		liveTasks:        map[string]*liveTask{},
 		runEnds:          map[string][]chan struct{}{},
+		runsEnding:       map[string]int{},
 		backgroundTasks:  DefaultBackgroundTasks,
 		backgroundAgents: DefaultBackgroundAgents,
 		events:           newEventBus(),
