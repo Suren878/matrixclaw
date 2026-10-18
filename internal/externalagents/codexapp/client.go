@@ -16,10 +16,11 @@ import (
 	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
+// Conn is the app-server's stdio; writes take a deadline so a wedged server
+// fails the write instead of stalling its caller.
 type Conn interface {
-	io.Reader
-	io.Writer
-	io.Closer
+	io.ReadWriteCloser
+	SetWriteDeadline(t time.Time) error
 }
 
 type connErrorProvider interface {
@@ -32,7 +33,6 @@ type stdoutClosedErrorProvider interface {
 
 type Client struct {
 	conn Conn
-	enc  *json.Encoder
 
 	writeMu sync.Mutex
 	nextID  atomic.Uint64
@@ -40,16 +40,15 @@ type Client struct {
 	pendingMu sync.Mutex
 	pending   map[string]chan rpcReply
 
-	events chan Notification
-	done   chan struct{}
-	errMu  sync.Mutex
-	err    error
+	done  chan struct{}
+	errMu sync.Mutex
+	err   error
 
 	routeMu     sync.Mutex
-	turnSubs    map[turnKey]map[*turnSubscription]struct{}
-	turnBacklog map[turnKey][]Notification
-	routeDone   chan struct{}
+	turnSubs    map[turnKey]*TurnSubscription
+	turnBacklog map[turnKey]*turnBacklog
 	routeClosed bool
+	now         func() time.Time
 }
 
 type turnKey struct {
@@ -57,19 +56,29 @@ type turnKey struct {
 	turnID   string
 }
 
+// turnBacklog holds a turn's notifications that arrived before its
+// subscription (between turn/start and SubscribeTurn).
+type turnBacklog struct {
+	events []Notification
+	last   time.Time
+}
+
 const (
-	turnBacklogLimit       = 256
-	turnSubscriptionBuffer = 64
+	turnBacklogLimit = 256
+	// turnBacklogTTL is how long a turn nobody subscribed to keeps its backlog.
+	turnBacklogTTL = time.Minute
+	writeTimeout   = 30 * time.Second
 )
 
-type turnSubscription struct {
-	events    chan Notification
-	done      chan struct{}
-	wake      chan struct{}
-	mu        sync.Mutex
-	pending   []Notification
-	closed    bool
-	closeOnce sync.Once
+// TurnSubscription is one turn's queue, filled by the read loop and drained
+// by Next.
+type TurnSubscription struct {
+	client  *Client
+	key     turnKey
+	mu      sync.Mutex
+	pending []Notification
+	closed  bool
+	wake    chan struct{}
 }
 
 type rpcRequest struct {
@@ -105,18 +114,14 @@ type rpcReply struct {
 
 func NewClient(conn Conn) *Client {
 	c := &Client{
-		conn:    conn,
-		enc:     json.NewEncoder(conn),
-		pending: map[string]chan rpcReply{},
-		events:  make(chan Notification, 128),
-		done:    make(chan struct{}),
-
-		turnSubs:    map[turnKey]map[*turnSubscription]struct{}{},
-		turnBacklog: map[turnKey][]Notification{},
-		routeDone:   make(chan struct{}),
+		conn:        conn,
+		pending:     map[string]chan rpcReply{},
+		done:        make(chan struct{}),
+		turnSubs:    map[turnKey]*TurnSubscription{},
+		turnBacklog: map[turnKey]*turnBacklog{},
+		now:         time.Now,
 	}
-	safego.Go("codexapp.eventRouter", c.routeEvents)
-	safego.Go("codexapp.readLoop", func() { c.readLoop() })
+	safego.Go("codexapp.readLoop", c.readLoop)
 	return c
 }
 
@@ -151,14 +156,6 @@ func (c *Client) StartTurn(ctx context.Context, params TurnStartParams) (TurnSta
 	var out TurnStartResponse
 	if err := c.Call(ctx, "turn/start", params, &out); err != nil {
 		return TurnStartResponse{}, err
-	}
-	return out, nil
-}
-
-func (c *Client) SteerTurn(ctx context.Context, params TurnSteerParams) (TurnSteerResponse, error) {
-	var out TurnSteerResponse
-	if err := c.Call(ctx, "turn/steer", params, &out); err != nil {
-		return TurnSteerResponse{}, err
 	}
 	return out, nil
 }
@@ -209,62 +206,26 @@ func (c *Client) Notify(ctx context.Context, method string, params any) error {
 	return c.write(ctx, rpcRequest{Method: method, Params: params})
 }
 
-func (c *Client) SubscribeTurn(ctx context.Context, threadID, turnID string) (<-chan Notification, func()) {
+// SubscribeTurn starts the turn's queue with what arrived for it so far.
+// Close the subscription when done with the turn.
+func (c *Client) SubscribeTurn(threadID, turnID string) *TurnSubscription {
 	key := turnKey{threadID: threadID, turnID: turnID}
-	sub := &turnSubscription{
-		events: make(chan Notification, turnSubscriptionBuffer),
-		done:   make(chan struct{}),
-		wake:   make(chan struct{}, 1),
-	}
-
+	sub := &TurnSubscription{client: c, key: key, wake: make(chan struct{}, 1)}
 	c.routeMu.Lock()
+	defer c.routeMu.Unlock()
 	if c.routeClosed {
-		c.routeMu.Unlock()
-		sub.close()
-		close(sub.events)
-		return sub.events, func() {}
+		sub.closed = true
+		return sub
 	}
-	if c.turnSubs == nil {
-		c.turnSubs = map[turnKey]map[*turnSubscription]struct{}{}
+	if backlog := c.turnBacklog[key]; backlog != nil {
+		sub.pending = backlog.events
+		delete(c.turnBacklog, key)
 	}
-	if c.turnBacklog == nil {
-		c.turnBacklog = map[turnKey][]Notification{}
+	if previous := c.turnSubs[key]; previous != nil {
+		previous.end()
 	}
-	backlog := c.turnBacklog[key]
-	delete(c.turnBacklog, key)
-	for _, event := range backlog {
-		sub.pending = appendTurnNotification(sub.pending, event, turnBacklogLimit)
-	}
-
-	subs := c.turnSubs[key]
-	if subs == nil {
-		subs = map[*turnSubscription]struct{}{}
-		c.turnSubs[key] = subs
-	}
-	subs[sub] = struct{}{}
-	c.routeMu.Unlock()
-
-	safego.Go("codexapp.turnSubscription", func() {
-		sub.run()
-	})
-
-	var once sync.Once
-	unsubscribe := func() {
-		once.Do(func() {
-			c.unsubscribeTurn(key, sub)
-		})
-	}
-	if ctx != nil && ctx.Done() != nil {
-		safego.Go("codexapp.turnSubscriptionCancel", func() {
-			select {
-			case <-ctx.Done():
-				unsubscribe()
-			case <-sub.done:
-			case <-c.routeDone:
-			}
-		})
-	}
-	return sub.events, unsubscribe
+	c.turnSubs[key] = sub
+	return sub
 }
 
 func (c *Client) Close() error {
@@ -277,31 +238,38 @@ func (c *Client) Err() error {
 	return c.err
 }
 
+// write sends one message under writeTimeout (or ctx's earlier deadline). A
+// failed write may have sent part of a line, so it closes the connection.
 func (c *Client) write(ctx context.Context, req any) error {
-	done := make(chan error, 1)
-	safego.Go("codexapp.write", func() {
-		if !safego.Run("codexapp.write", func() {
-			c.writeMu.Lock()
-			defer c.writeMu.Unlock()
-			done <- c.enc.Encode(req)
-		}) {
-			done <- fmt.Errorf("codex app-server write panicked")
-		}
-	})
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case err := <-done:
-		if err != nil {
-			return fmt.Errorf("write codex app-server request: %w", err)
-		}
-		return nil
+	data, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("encode codex app-server request: %w", err)
 	}
+	data = append(data, '\n')
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	deadline := c.now().Add(writeTimeout)
+	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
+		deadline = ctxDeadline
+	}
+	if err := c.conn.SetWriteDeadline(deadline); err != nil {
+		return fmt.Errorf("write codex app-server request: %w", err)
+	}
+	if _, err := c.conn.Write(data); err != nil {
+		err = fmt.Errorf("write codex app-server request: %w", err)
+		c.setErr(err)
+		_ = c.conn.Close()
+		return err
+	}
+	return nil
 }
 
 func (c *Client) readLoop() {
-	defer close(c.events)
 	defer close(c.done)
+	defer c.closeTurnSubscriptions()
 	defer func() {
 		c.failPending(c.Err())
 	}()
@@ -321,25 +289,19 @@ func (c *Client) readLoopMessages() error {
 	scanner := bufio.NewScanner(c.conn)
 	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	for scanner.Scan() {
-		line := append([]byte(nil), scanner.Bytes()...)
 		var msg rpcIncoming
-		if err := json.Unmarshal(line, &msg); err != nil {
+		if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
 			return fmt.Errorf("decode codex app-server message: %w", err)
 		}
-		if len(msg.ID) > 0 && msg.Method != "" {
+		switch {
+		case len(msg.ID) > 0 && msg.Method != "":
 			c.answerServerRequest(msg)
-			continue
-		}
-		if len(msg.ID) > 0 {
+		case len(msg.ID) > 0:
 			if err := c.handleReply(msg); err != nil {
 				return err
 			}
-			continue
-		}
-		if msg.Method != "" {
-			if err := c.handleNotification(msg, line); err != nil {
-				return err
-			}
+		case msg.Method != "":
+			c.route(decodeNotification(msg.Method, msg.Params))
 		}
 	}
 	if err := scanner.Err(); err != nil && !errors.Is(err, io.ErrClosedPipe) && !errors.Is(err, os.ErrClosed) {
@@ -379,6 +341,7 @@ func (c *Client) handleReply(msg rpcIncoming) error {
 // answerServerRequest declines every approval codex asks for: matrixclaw has no
 // way to ask the user mid-turn, so codex reports the item as declined and the
 // turn goes on. Anything else gets method-not-found so codex never waits.
+// The answer is written off the read loop, which must keep reading meanwhile.
 func (c *Client) answerServerRequest(msg rpcIncoming) {
 	resp := rpcResponse{ID: msg.ID}
 	switch msg.Method {
@@ -392,88 +355,88 @@ func (c *Client) answerServerRequest(msg rpcIncoming) {
 		resp.Error = &rpcError{Code: -32601, Message: "matrixclaw does not support " + msg.Method}
 	}
 	safego.Go("codexapp.answerServerRequest", func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := c.write(ctx, resp); err != nil {
-			c.setErr(err)
-			_ = c.conn.Close()
-		}
+		_ = c.write(context.Background(), resp)
 	})
 }
 
-func (c *Client) handleNotification(msg rpcIncoming, raw []byte) error {
-	notification := Notification{
-		Method: msg.Method,
-		Params: decodeNotificationParams(msg.Method, msg.Params),
-		Raw:    raw,
-	}
-	// Applying backpressure to the app-server pipe is safe here: the router only
-	// enqueues into per-turn subscriptions and never waits for a slow consumer.
-	// Dropping or failing on a full transient buffer can lose turn/completed and
-	// strand an otherwise healthy run forever.
-	select {
-	case c.events <- notification:
-		return nil
-	case <-c.routeDone:
-		if err := c.Err(); err != nil {
-			return err
-		}
-		return io.ErrClosedPipe
-	}
-}
-
-func (c *Client) routeEvents() {
-	defer close(c.routeDone)
-	defer c.closeTurnSubscriptions()
-	if !safego.Run("codexapp.eventRouter", c.routeEventsLoop) {
-		c.setErr(fmt.Errorf("codex app-server event router panicked"))
-	}
-}
-
-func (c *Client) routeEventsLoop() {
-	for event := range c.events {
-		c.routeNotification(event)
-	}
-}
-
-func (c *Client) routeNotification(event Notification) {
-	key, ok := notificationTurnKey(event)
-	if !ok {
-		return
-	}
+// route puts a notification in its turn's queue, or in the turn's backlog
+// while nobody subscribed. A notification the client could not decode goes
+// to every turn it may belong to.
+func (c *Client) route(event Notification) {
 	c.routeMu.Lock()
 	defer c.routeMu.Unlock()
 	if c.routeClosed {
 		return
 	}
-	subs := c.turnSubs[key]
-	if len(subs) == 0 {
-		c.turnBacklog[key] = appendTurnNotification(c.turnBacklog[key], event, turnBacklogLimit)
+	if failure, ok := event.Params.(DecodeFailure); ok && failure.TurnID == "" {
+		for key, sub := range c.turnSubs {
+			if failure.ThreadID == "" || failure.ThreadID == key.threadID {
+				sub.enqueue(event)
+			}
+		}
 		return
 	}
-	for sub := range subs {
-		sub.enqueue(event)
+	key, ok := notificationTurnKey(event)
+	if !ok {
+		return
 	}
+	if sub := c.turnSubs[key]; sub != nil {
+		sub.enqueue(event)
+		return
+	}
+	now := c.now()
+	for other, backlog := range c.turnBacklog {
+		if now.Sub(backlog.last) > turnBacklogTTL {
+			delete(c.turnBacklog, other)
+		}
+	}
+	backlog := c.turnBacklog[key]
+	if backlog == nil {
+		backlog = &turnBacklog{}
+		c.turnBacklog[key] = backlog
+	}
+	backlog.events = appendTurnNotification(backlog.events, event, turnBacklogLimit)
+	backlog.last = now
 }
 
-func (s *turnSubscription) run() {
-	defer close(s.events)
+// Close ends the subscription and forgets its turn; later notifications of
+// the turn are backlogged until turnBacklogTTL drops them.
+func (s *TurnSubscription) Close() {
+	c := s.client
+	c.routeMu.Lock()
+	if c.turnSubs[s.key] == s {
+		delete(c.turnSubs, s.key)
+	}
+	c.routeMu.Unlock()
+	s.end()
+}
+
+// Next returns the turn's next notification; false once the subscription
+// ended and is drained, or ctx is done.
+func (s *TurnSubscription) Next(ctx context.Context) (Notification, bool) {
 	for {
-		if event, ok := s.next(); ok {
-			if !s.send(event) {
-				return
-			}
-			continue
+		s.mu.Lock()
+		if len(s.pending) > 0 {
+			event := s.pending[0]
+			s.pending[0] = Notification{}
+			s.pending = s.pending[1:]
+			s.mu.Unlock()
+			return event, true
+		}
+		closed := s.closed
+		s.mu.Unlock()
+		if closed {
+			return Notification{}, false
 		}
 		select {
-		case <-s.done:
-			return
+		case <-ctx.Done():
+			return Notification{}, false
 		case <-s.wake:
 		}
 	}
 }
 
-func (s *turnSubscription) enqueue(event Notification) {
+func (s *TurnSubscription) enqueue(event Notification) {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -481,50 +444,30 @@ func (s *turnSubscription) enqueue(event Notification) {
 	}
 	s.pending = appendTurnNotification(s.pending, event, turnBacklogLimit)
 	s.mu.Unlock()
+	s.signal()
+}
+
+// end stops the queue; what is queued can still be read.
+func (s *TurnSubscription) end() {
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
+	s.signal()
+}
+
+func (s *TurnSubscription) signal() {
 	select {
 	case s.wake <- struct{}{}:
 	default:
 	}
 }
 
-func (s *turnSubscription) next() (Notification, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if len(s.pending) == 0 {
-		return Notification{}, false
-	}
-	event := s.pending[0]
-	s.pending[0] = Notification{}
-	s.pending = s.pending[1:]
-	return event, true
-}
-
-func (s *turnSubscription) send(event Notification) bool {
-	select {
-	case <-s.done:
-		return false
-	case s.events <- event:
-		return true
-	}
-}
-
-func (s *turnSubscription) close() {
-	s.closeOnce.Do(func() {
-		s.mu.Lock()
-		s.closed = true
-		s.pending = nil
-		s.mu.Unlock()
-		close(s.done)
-	})
-}
-
 // appendTurnNotification keeps control events lossless while bounding the
 // common high-volume case. Consecutive text deltas for the same item are
 // coalesced, and stale patch snapshots are replaced after the soft limit. The
 // limit is deliberately soft: an unusual sequence of non-coalescible control
-// events is retained instead of losing a terminal event or killing the router.
+// events is retained instead of losing a terminal event.
 func appendTurnNotification(queue []Notification, event Notification, softLimit int) []Notification {
-	event = compactTurnNotification(event)
 	if len(queue) > 0 {
 		if merged, ok := mergeTurnNotifications(queue[len(queue)-1], event); ok {
 			queue[len(queue)-1] = merged
@@ -539,16 +482,6 @@ func appendTurnNotification(queue []Notification, event Notification, softLimit 
 	return append(queue, event)
 }
 
-func compactTurnNotification(event Notification) Notification {
-	switch event.Params.(type) {
-	case AgentMessageDelta, ReasoningTextDelta, ToolOutputDelta, FileChangePatchUpdated:
-		// Raw duplicates the decoded delta and can dominate memory during a long
-		// turn. Structured params contain everything the runtime consumes.
-		event.Raw = nil
-	}
-	return event
-}
-
 func mergeTurnNotifications(previous Notification, next Notification) (Notification, bool) {
 	if previous.Method != next.Method {
 		return Notification{}, false
@@ -561,7 +494,6 @@ func mergeTurnNotifications(previous Notification, next Notification) (Notificat
 		}
 		left.Delta += right.Delta
 		previous.Params = left
-		previous.Raw = nil
 		return previous, true
 	case ReasoningTextDelta:
 		right, ok := next.Params.(ReasoningTextDelta)
@@ -570,7 +502,6 @@ func mergeTurnNotifications(previous Notification, next Notification) (Notificat
 		}
 		left.Delta += right.Delta
 		previous.Params = left
-		previous.Raw = nil
 		return previous, true
 	case ToolOutputDelta:
 		right, ok := next.Params.(ToolOutputDelta)
@@ -579,14 +510,12 @@ func mergeTurnNotifications(previous Notification, next Notification) (Notificat
 		}
 		left.Delta += right.Delta
 		previous.Params = left
-		previous.Raw = nil
 		return previous, true
 	case FileChangePatchUpdated:
 		right, ok := next.Params.(FileChangePatchUpdated)
 		if !ok || left.ThreadID != right.ThreadID || left.TurnID != right.TurnID || left.ItemID != right.ItemID {
 			return Notification{}, false
 		}
-		next.Raw = nil
 		return next, true
 	}
 	return Notification{}, false
@@ -611,117 +540,92 @@ func replaceTurnSnapshot(queue []Notification, event Notification) bool {
 }
 
 func notificationTurnKey(event Notification) (turnKey, bool) {
+	var key turnKey
 	switch params := event.Params.(type) {
 	case ItemNotification:
-		return turnKey{threadID: params.ThreadID, turnID: params.TurnID}, params.ThreadID != "" && params.TurnID != ""
+		key = turnKey{params.ThreadID, params.TurnID}
 	case AgentMessageDelta:
-		return turnKey{threadID: params.ThreadID, turnID: params.TurnID}, params.ThreadID != "" && params.TurnID != ""
+		key = turnKey{params.ThreadID, params.TurnID}
 	case ReasoningTextDelta:
-		return turnKey{threadID: params.ThreadID, turnID: params.TurnID}, params.ThreadID != "" && params.TurnID != ""
+		key = turnKey{params.ThreadID, params.TurnID}
 	case ToolOutputDelta:
-		return turnKey{threadID: params.ThreadID, turnID: params.TurnID}, params.ThreadID != "" && params.TurnID != ""
+		key = turnKey{params.ThreadID, params.TurnID}
 	case FileChangePatchUpdated:
-		return turnKey{threadID: params.ThreadID, turnID: params.TurnID}, params.ThreadID != "" && params.TurnID != ""
+		key = turnKey{params.ThreadID, params.TurnID}
 	case TurnCompleted:
-		return turnKey{threadID: params.ThreadID, turnID: params.Turn.ID}, params.ThreadID != "" && params.Turn.ID != ""
+		key = turnKey{params.ThreadID, params.Turn.ID}
 	case TurnStarted:
-		return turnKey{threadID: params.ThreadID, turnID: params.Turn.ID}, params.ThreadID != "" && params.Turn.ID != ""
+		key = turnKey{params.ThreadID, params.Turn.ID}
 	case ErrorNotification:
-		return turnKey{threadID: params.ThreadID, turnID: params.TurnID}, params.ThreadID != "" && params.TurnID != ""
+		key = turnKey{params.ThreadID, params.TurnID}
 	case ContextCompactedNotification:
-		return turnKey{threadID: params.ThreadID, turnID: params.TurnID}, params.ThreadID != "" && params.TurnID != ""
+		key = turnKey{params.ThreadID, params.TurnID}
+	case DecodeFailure:
+		key = turnKey{params.ThreadID, params.TurnID}
 	default:
 		return turnKey{}, false
 	}
-}
-
-func (c *Client) unsubscribeTurn(key turnKey, sub *turnSubscription) {
-	c.routeMu.Lock()
-	if subs := c.turnSubs[key]; subs != nil {
-		if _, ok := subs[sub]; ok {
-			delete(subs, sub)
-			if len(subs) == 0 {
-				delete(c.turnSubs, key)
-			}
-			c.routeMu.Unlock()
-			sub.close()
-			return
-		}
-	}
-	c.routeMu.Unlock()
-	sub.close()
+	return key, key.threadID != "" && key.turnID != ""
 }
 
 func (c *Client) closeTurnSubscriptions() {
 	c.routeMu.Lock()
-	if c.routeClosed {
-		c.routeMu.Unlock()
-		return
-	}
 	c.routeClosed = true
-	var subs []*turnSubscription
-	for _, byTurn := range c.turnSubs {
-		for sub := range byTurn {
-			subs = append(subs, sub)
-		}
-	}
-	c.turnSubs = map[turnKey]map[*turnSubscription]struct{}{}
-	c.turnBacklog = map[turnKey][]Notification{}
+	subs := c.turnSubs
+	c.turnSubs = map[turnKey]*TurnSubscription{}
+	c.turnBacklog = map[turnKey]*turnBacklog{}
 	c.routeMu.Unlock()
 	for _, sub := range subs {
-		sub.close()
+		sub.end()
 	}
 }
 
-func decodeNotificationParams(method string, raw json.RawMessage) any {
+// decodeNotification decodes the params of the notifications the runtime
+// reads. Params it cannot decode become a DecodeFailure for their turn, so
+// the turn fails instead of waiting for an end it would never see.
+func decodeNotification(method string, raw json.RawMessage) Notification {
 	switch method {
 	case "item/started", "item/completed":
-		var params ItemNotification
-		if json.Unmarshal(raw, &params) == nil {
-			return params
-		}
+		return decodeParams[ItemNotification](method, raw)
 	case "item/agentMessage/delta":
-		var params AgentMessageDelta
-		if json.Unmarshal(raw, &params) == nil {
-			return params
-		}
+		return decodeParams[AgentMessageDelta](method, raw)
 	case "item/reasoning/textDelta", "item/reasoning/summaryTextDelta":
-		var params ReasoningTextDelta
-		if json.Unmarshal(raw, &params) == nil {
-			return params
-		}
+		return decodeParams[ReasoningTextDelta](method, raw)
 	case "item/commandExecution/outputDelta", "item/fileChange/outputDelta":
-		var params ToolOutputDelta
-		if json.Unmarshal(raw, &params) == nil {
-			return params
-		}
+		return decodeParams[ToolOutputDelta](method, raw)
 	case "item/fileChange/patchUpdated":
-		var params FileChangePatchUpdated
-		if json.Unmarshal(raw, &params) == nil {
-			return params
-		}
+		return decodeParams[FileChangePatchUpdated](method, raw)
 	case "turn/completed":
-		var params TurnCompleted
-		if json.Unmarshal(raw, &params) == nil {
-			return params
-		}
+		return decodeParams[TurnCompleted](method, raw)
 	case "turn/started":
-		var params TurnStarted
-		if json.Unmarshal(raw, &params) == nil {
-			return params
-		}
+		return decodeParams[TurnStarted](method, raw)
 	case "error":
-		var params ErrorNotification
-		if json.Unmarshal(raw, &params) == nil {
-			return params
-		}
+		return decodeParams[ErrorNotification](method, raw)
 	case "thread/compacted":
-		var params ContextCompactedNotification
-		if json.Unmarshal(raw, &params) == nil {
-			return params
-		}
+		return decodeParams[ContextCompactedNotification](method, raw)
+	default:
+		return Notification{Method: method, Params: raw}
 	}
-	return raw
+}
+
+func decodeParams[T any](method string, raw json.RawMessage) Notification {
+	var params T
+	if err := json.Unmarshal(raw, &params); err != nil {
+		var ids struct {
+			ThreadID string `json:"threadId"`
+			TurnID   string `json:"turnId"`
+			Turn     struct {
+				ID string `json:"id"`
+			} `json:"turn"`
+		}
+		_ = json.Unmarshal(raw, &ids)
+		turnID := ids.TurnID
+		if turnID == "" {
+			turnID = ids.Turn.ID
+		}
+		return Notification{Method: method, Params: DecodeFailure{ThreadID: ids.ThreadID, TurnID: turnID, Err: err}}
+	}
+	return Notification{Method: method, Params: params}
 }
 
 func decodeID(raw json.RawMessage) (string, error) {

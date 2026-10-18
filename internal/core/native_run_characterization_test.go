@@ -698,7 +698,7 @@ func saveNativeRunWithHistory(t *testing.T, db *store.SQLiteStore, suffix string
 	ctx := context.Background()
 	now := runRecoveryTestTime()
 	session := core.Session{
-		ID: "session_" + suffix, Title: suffix, Kind: core.SessionKindAssistant, RuntimeID: core.SessionRuntimeMatrixClaw,
+		ID: "session_" + suffix, Title: suffix, Kind: core.SessionKindAssistant,
 		ProviderID: "recovery-test", ModelID: "test-model", PermissionMode: core.PermissionModeDefault,
 		Status: core.SessionStatusActive, CreatedAt: now, UpdatedAt: now,
 	}

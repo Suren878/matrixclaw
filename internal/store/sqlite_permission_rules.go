@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -41,13 +43,22 @@ func (s *SQLiteStore) DeletePermissionRule(ctx context.Context, ruleID string) e
 	return nil
 }
 
+// GetPermissionRule returns a rule; ErrNotFound when no rule has the ID.
+func (s *SQLiteStore) GetPermissionRule(ctx context.Context, ruleID string) (permission.Rule, error) {
+	rule, err := scanPermissionRule(s.db.QueryRowContext(ctx, `SELECT `+permissionRuleColumns+` FROM permission_rules WHERE id = ?`, ruleID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return permission.Rule{}, core.ErrNotFound
+	}
+	if err != nil {
+		return permission.Rule{}, fmt.Errorf("store: get permission rule: %w", err)
+	}
+	return rule, nil
+}
+
 // ListPermissionRules returns the global rules and the rules of the given
 // sessions, oldest first.
 func (s *SQLiteStore) ListPermissionRules(ctx context.Context, sessionIDs []string) ([]permission.Rule, error) {
-	query := `
-SELECT id, tool, pattern, effect, scope, COALESCE(session_id, ''), created_at
-FROM permission_rules
-WHERE session_id IS NULL`
+	query := `SELECT ` + permissionRuleColumns + ` FROM permission_rules WHERE session_id IS NULL`
 	args := make([]any, 0, len(sessionIDs))
 	if len(sessionIDs) > 0 {
 		query += ` OR session_id IN (?` + strings.Repeat(`, ?`, len(sessionIDs)-1) + `)`
@@ -56,15 +67,19 @@ WHERE session_id IS NULL`
 		}
 	}
 	query += ` ORDER BY created_at, id`
-	return queryAll(ctx, s.db, "permission rules", func(row rowScanner) (permission.Rule, error) {
-		var rule permission.Rule
-		var effect, scope, createdAt string
-		if err := row.Scan(&rule.ID, &rule.Tool, &rule.Pattern, &effect, &scope, &rule.SessionID, &createdAt); err != nil {
-			return permission.Rule{}, err
-		}
-		rule.Effect = permission.Effect(effect)
-		rule.Scope = permission.Scope(scope)
-		rule.CreatedAt = mustParseTime(createdAt)
-		return rule, nil
-	}, query, args...)
+	return queryAll(ctx, s.db, "permission rules", scanPermissionRule, query, args...)
+}
+
+const permissionRuleColumns = `id, tool, pattern, effect, scope, COALESCE(session_id, ''), created_at`
+
+func scanPermissionRule(row rowScanner) (permission.Rule, error) {
+	var rule permission.Rule
+	var effect, scope, createdAt string
+	if err := row.Scan(&rule.ID, &rule.Tool, &rule.Pattern, &effect, &scope, &rule.SessionID, &createdAt); err != nil {
+		return permission.Rule{}, err
+	}
+	rule.Effect = permission.Effect(effect)
+	rule.Scope = permission.Scope(scope)
+	rule.CreatedAt = mustParseTime(createdAt)
+	return rule, nil
 }

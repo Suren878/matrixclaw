@@ -43,6 +43,13 @@ func TestPermissionRulesOfSessionsAndGlobal(t *testing.T) {
 		t.Fatalf("stored rules = %+v", rules)
 	}
 
+	if rule, err := st.GetPermissionRule(ctx, "r-child"); err != nil || rule.SessionID != "child" || rule.Scope != permission.ScopeSession || rule.Tool != "edit" {
+		t.Fatalf("GetPermissionRule(r-child) = %+v, %v", rule, err)
+	}
+	if rule, err := st.GetPermissionRule(ctx, "r-global"); err != nil || rule.SessionID != "" || rule.Scope != permission.ScopeGlobal {
+		t.Fatalf("GetPermissionRule(r-global) = %+v, %v", rule, err)
+	}
+
 	if err := st.DeleteSession(ctx, "parent"); err != nil {
 		t.Fatal(err)
 	}
@@ -51,6 +58,9 @@ func TestPermissionRulesOfSessionsAndGlobal(t *testing.T) {
 	}
 	if err := st.DeletePermissionRule(ctx, "r-global"); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("second delete error = %v, want ErrNotFound", err)
+	}
+	if _, err := st.GetPermissionRule(ctx, "r-global"); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("get of a deleted rule error = %v, want ErrNotFound", err)
 	}
 	rules, err = st.ListPermissionRules(ctx, []string{"child", "parent"})
 	if err != nil || len(rules) != 1 || rules[0].ID != "r-child" {

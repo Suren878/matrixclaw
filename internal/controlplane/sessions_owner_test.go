@@ -21,7 +21,7 @@ func newAgentSessionsDaemon(t *testing.T) *agentSessionsDaemon {
 	d.on("POST /v1/sessions", func(r *http.Request) any {
 		request := decode[core.CreateSessionRequest](r)
 		d.created = append(d.created, request)
-		session := core.Session{ID: "s_new", Title: request.Title, RuntimeID: core.SessionRuntime(request.RuntimeID)}
+		session := core.Session{ID: "s_new", Title: request.Title, Kind: core.SessionKind(request.Kind)}
 		d.sessions = append(d.sessions, session)
 		return core.SessionResponse{Session: session}
 	}).on("GET /v1/external-agents", func(*http.Request) any {
@@ -52,7 +52,7 @@ func TestOnlyTheOwnerCreatesExternalAgentSessions(t *testing.T) {
 
 		agentSessions := 0
 		for _, request := range daemon.created {
-			if request.RuntimeID == string(core.SessionRuntimeExternalAgent) {
+			if request.Kind == string(core.SessionKindExternalAgent) {
 				agentSessions++
 			}
 		}
@@ -73,9 +73,9 @@ func TestOnlyTheOwnerCreatesExternalAgentSessions(t *testing.T) {
 
 func TestOnlyTheOwnerReachesSessionsThatRunUnattended(t *testing.T) {
 	sessions := []core.Session{
-		{ID: "agent", Title: "agent", RuntimeID: core.SessionRuntimeExternalAgent, PermissionMode: core.PermissionModeFullAuto},
-		{ID: "auto", Title: "auto", RuntimeID: core.SessionRuntimeMatrixClaw, PermissionMode: core.PermissionModeFullAuto},
-		{ID: "plain", Title: "plain", RuntimeID: core.SessionRuntimeMatrixClaw, PermissionMode: core.PermissionModeDefault},
+		{ID: "agent", Title: "agent", Kind: core.SessionKindExternalAgent, PermissionMode: core.PermissionModeFullAuto},
+		{ID: "auto", Title: "auto", PermissionMode: core.PermissionModeFullAuto},
+		{ID: "plain", Title: "plain", PermissionMode: core.PermissionModeDefault},
 	}
 	for _, role := range []core.Role{core.RoleMember, core.RoleOwner} {
 		for _, session := range sessions {

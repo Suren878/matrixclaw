@@ -74,7 +74,6 @@ func saveRunRecoveryTestSession(t *testing.T, sqliteStore *store.SQLiteStore, id
 		ID:             id,
 		Title:          title,
 		Kind:           core.SessionKindAssistant,
-		RuntimeID:      core.SessionRuntimeMatrixClaw,
 		WorkingDir:     workingDir,
 		PermissionMode: core.PermissionModeDefault,
 		Status:         core.SessionStatusActive,

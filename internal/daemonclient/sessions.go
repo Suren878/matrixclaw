@@ -83,7 +83,6 @@ func (c *Client) CreateSessionWithRequest(ctx context.Context, request core.Crea
 	var response core.SessionResponse
 	request.Title = strings.TrimSpace(request.Title)
 	request.Kind = strings.TrimSpace(request.Kind)
-	request.RuntimeID = strings.TrimSpace(request.RuntimeID)
 	request.WorkingDir = strings.TrimSpace(request.WorkingDir)
 	request.ProviderID = strings.TrimSpace(request.ProviderID)
 	request.ModelID = strings.TrimSpace(request.ModelID)

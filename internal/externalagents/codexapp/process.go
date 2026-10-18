@@ -31,9 +31,13 @@ func Start(ctx context.Context, opts ProcessOptions) (*Client, error) {
 	}
 
 	cmd := exec.CommandContext(ctx, path, args...)
-	stdin, err := cmd.StdinPipe()
+	pipe, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, fmt.Errorf("open codex app-server stdin: %w", err)
+	}
+	stdin, ok := pipe.(deadlineWriter)
+	if !ok {
+		return nil, fmt.Errorf("codex app-server stdin takes no write deadline")
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -58,9 +62,14 @@ func Start(ctx context.Context, opts ProcessOptions) (*Client, error) {
 	return NewClient(conn), nil
 }
 
+type deadlineWriter interface {
+	io.WriteCloser
+	SetWriteDeadline(t time.Time) error
+}
+
 type processConn struct {
 	reader   io.ReadCloser
-	writer   io.WriteCloser
+	writer   deadlineWriter
 	cmd      *exec.Cmd
 	waitDone chan struct{}
 
@@ -77,6 +86,10 @@ func (c *processConn) Read(p []byte) (int, error) {
 
 func (c *processConn) Write(p []byte) (int, error) {
 	return c.writer.Write(p)
+}
+
+func (c *processConn) SetWriteDeadline(t time.Time) error {
+	return c.writer.SetWriteDeadline(t)
 }
 
 func (c *processConn) Close() error {

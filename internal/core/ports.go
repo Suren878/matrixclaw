@@ -126,6 +126,7 @@ type ApprovalStore interface {
 // PermissionRuleStore keeps permission rules; global rules belong to no session.
 type PermissionRuleStore interface {
 	CreatePermissionRule(ctx context.Context, rule permission.Rule) error
+	GetPermissionRule(ctx context.Context, ruleID string) (permission.Rule, error)
 	DeletePermissionRule(ctx context.Context, ruleID string) error
 	ListPermissionRules(ctx context.Context, sessionIDs []string) ([]permission.Rule, error)
 }

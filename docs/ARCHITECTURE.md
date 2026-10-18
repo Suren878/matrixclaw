@@ -49,7 +49,7 @@ flowchart LR
 | `internal/procsup` | supervised local helper processes |
 | `internal/providers` | provider adapters (`ai/*`), catalog, model metadata, wire quirks |
 | `internal/sessionllm` | the provider runtimes sessions pick from |
-| `internal/externalagents` | external agent registry and adapters (`claudecode`, `codexapp`) |
+| `internal/externalagents` | external agent registry, adapters (`claudecode`, `codexapp`) and the reply builder (`reply`) |
 | `internal/mcp` | MCP client and the `matrixclaw mcp serve` stdio server |
 | `internal/automation` | reminders and scheduled AI tasks |
 | `internal/skills` | skills library (files plus its own tables) |
@@ -90,8 +90,8 @@ recovery), waits for them, then closes external agents and modules.
   storage deletes, temporary-storage cleanup and settings, file checkpoint
   restores, trusting a project's hooks); or `session`,
   for every write that acts in a session (named by the path, by the run, task,
-  approval or automation job it names, or by the JSON body's `session_id` or
-  client binding): members and guests are refused (403) there when the session
+  approval, automation job or permission rule it names, or by the JSON body's
+  `session_id` or client binding): members and guests are refused (403) there when the session
   runs unattended (`core.RunsUnattended`: full_auto or external agent). Reads
   stay open. Only the owner creates a session with an external agent or a
   permission mode, global permission rules are owner-only, and guests keep no
@@ -580,8 +580,6 @@ that takes a single reply (Telegram inline and guest). Restart notices are
 
 ## Planned after v0.2.0
 
-- Drop the session runtime aliases (`codex`, `assistant`, ...) in
-  `internal/core/external_agents.go`, then the `sessions.runtime_id` column.
 - Delete the one-time v0.2 conversions, `internal/store/legacy_v02.go` (the
   database) and `internal/setup/legacy_v3.go` (setup.json), one release after
   they shipped.

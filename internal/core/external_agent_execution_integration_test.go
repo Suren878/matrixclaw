@@ -18,8 +18,9 @@ type burstExternalRuntime struct {
 	toolDeltas    int
 }
 
-func (r *burstExternalRuntime) ID() string          { return "burst-test" }
-func (r *burstExternalRuntime) DisplayName() string { return "Burst Test" }
+func (r *burstExternalRuntime) ID() string                      { return "burst-test" }
+func (r *burstExternalRuntime) DisplayName() string             { return "Burst Test" }
+func (r *burstExternalRuntime) Models(context.Context) []string { return nil }
 func (r *burstExternalRuntime) Available(context.Context) externalagents.Availability {
 	return externalagents.Availability{Installed: true, Enabled: true}
 }
@@ -68,8 +69,7 @@ func TestExternalAgentBurstPersistsCoalescedProgress(t *testing.T) {
 	now := time.Now().UTC()
 	app := core.New(sqliteStore).WithExternalAgents(registry, sqliteStore).WithClock(func() time.Time { return now })
 	session := core.Session{
-		ID: "session-burst", Title: "Burst", Kind: core.SessionKindExternalAgent,
-		RuntimeID: core.SessionRuntimeExternalAgent, Status: core.SessionStatusActive,
+		ID: "session-burst", Title: "Burst", Kind: core.SessionKindExternalAgent, Status: core.SessionStatusActive,
 		WorkingDir: t.TempDir(), CreatedAt: now, UpdatedAt: now,
 	}
 	if err := sqliteStore.CreateSession(ctx, session); err != nil {
@@ -190,7 +190,7 @@ func TestCancelingAnExternalRunInterruptsItsAgentAndSealsTheReply(t *testing.T) 
 	}
 	app := core.New(db).WithExternalAgents(registry, db)
 	now := time.Now().UTC()
-	session := core.Session{ID: "session-hang", Title: "Hang", Kind: core.SessionKindExternalAgent, RuntimeID: core.SessionRuntimeExternalAgent, Status: core.SessionStatusActive, WorkingDir: t.TempDir(), CreatedAt: now, UpdatedAt: now}
+	session := core.Session{ID: "session-hang", Title: "Hang", Kind: core.SessionKindExternalAgent, Status: core.SessionStatusActive, WorkingDir: t.TempDir(), CreatedAt: now, UpdatedAt: now}
 	if err := db.CreateSession(ctx, session); err != nil {
 		t.Fatal(err)
 	}

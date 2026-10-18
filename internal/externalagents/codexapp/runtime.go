@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
+	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/safego"
-	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 type Runtime struct {
@@ -33,11 +33,7 @@ type RuntimeOptions struct {
 	Client  *Client
 }
 
-const (
-	defaultApprovalPolicy = "never"
-	defaultSandbox        = "danger-full-access"
-	initializeTimeout     = 30 * time.Second
-)
+const initializeTimeout = 30 * time.Second
 
 func NewRuntime(opts RuntimeOptions) *Runtime {
 	return &Runtime{
@@ -56,14 +52,12 @@ func (r *Runtime) StartSession(ctx context.Context, req externalagents.StartSess
 	if err != nil {
 		return externalagents.ExternalSession{}, err
 	}
+	approvalPolicy, sandbox := codexPolicy(req.Permissions)
 	resp, err := client.StartThread(ctx, ThreadStartParams{
-		Model:                 strings.TrimSpace(req.Model),
-		CWD:                   strings.TrimSpace(req.CWD),
-		ApprovalPolicy:        textutil.FirstNonEmpty(req.ApprovalPolicy, defaultApprovalPolicy),
-		Sandbox:               textutil.FirstNonEmpty(req.Sandbox, defaultSandbox),
-		BaseInstructions:      req.BaseInstructions,
-		DeveloperInstructions: req.DeveloperInstructions,
-		Config:                req.Metadata,
+		Model:          strings.TrimSpace(req.Model),
+		CWD:            strings.TrimSpace(req.CWD),
+		ApprovalPolicy: approvalPolicy,
+		Sandbox:        sandbox,
 	})
 	if err != nil {
 		return externalagents.ExternalSession{}, err
@@ -74,8 +68,7 @@ func (r *Runtime) StartSession(ctx context.Context, req externalagents.StartSess
 		ExternalSessionID: resp.Thread.SessionID,
 		CWD:               resp.CWD,
 		Model:             resp.Model,
-		ApprovalPolicy:    textutil.FirstNonEmpty(req.ApprovalPolicy, defaultApprovalPolicy),
-		Sandbox:           textutil.FirstNonEmpty(req.Sandbox, defaultSandbox),
+		Permissions:       req.Permissions,
 		Metadata:          map[string]any{"mode": "app-server"},
 	}, nil
 }
@@ -88,12 +81,13 @@ func (r *Runtime) ResumeSession(ctx context.Context, session externalagents.Exte
 	if err != nil {
 		return externalagents.ExternalSession{}, err
 	}
+	approvalPolicy, sandbox := codexPolicy(session.Permissions)
 	resp, err := client.ResumeThread(ctx, ThreadResumeParams{
 		ThreadID:       session.ExternalThreadID,
 		Model:          session.Model,
 		CWD:            session.CWD,
-		ApprovalPolicy: textutil.FirstNonEmpty(session.ApprovalPolicy, defaultApprovalPolicy),
-		Sandbox:        textutil.FirstNonEmpty(session.Sandbox, defaultSandbox),
+		ApprovalPolicy: approvalPolicy,
+		Sandbox:        sandbox,
 	})
 	if err != nil {
 		return externalagents.ExternalSession{}, err
@@ -103,12 +97,25 @@ func (r *Runtime) ResumeSession(ctx context.Context, session externalagents.Exte
 	session.ExternalSessionID = resp.Thread.SessionID
 	session.CWD = resp.CWD
 	session.Model = resp.Model
-	session.ApprovalPolicy = textutil.FirstNonEmpty(session.ApprovalPolicy, defaultApprovalPolicy)
-	session.Sandbox = textutil.FirstNonEmpty(session.Sandbox, defaultSandbox)
 	if session.Metadata == nil {
 		session.Metadata = map[string]any{"mode": "app-server"}
 	}
 	return session, nil
+}
+
+// codexPolicy is codex's approval policy and sandbox for permissions. Codex
+// asks on-request and the client declines every ask (answerServerRequest).
+func codexPolicy(permissions externalagents.Permissions) (approvalPolicy string, sandbox string) {
+	switch {
+	case permissions.Readonly:
+		return "never", "read-only"
+	case permissions.Mode == permission.ModeFullAuto:
+		return "never", "danger-full-access"
+	case permissions.Mode == permission.ModeAcceptEdits:
+		return "on-request", "workspace-write"
+	default:
+		return "on-request", "read-only"
+	}
 }
 
 func (r *Runtime) Send(ctx context.Context, session externalagents.ExternalSession, input externalagents.Input) (<-chan externalagents.Event, error) {
@@ -148,10 +155,11 @@ func (r *Runtime) Send(ctx context.Context, session externalagents.ExternalSessi
 }
 
 func turnStartParams(session externalagents.ExternalSession, text string) TurnStartParams {
+	approvalPolicy, _ := codexPolicy(session.Permissions)
 	return TurnStartParams{
 		ThreadID:       session.ExternalThreadID,
 		Input:          []UserInput{TextInput(text)},
-		ApprovalPolicy: textutil.FirstNonEmpty(session.ApprovalPolicy, defaultApprovalPolicy),
+		ApprovalPolicy: approvalPolicy,
 		Model:          strings.TrimSpace(session.Model),
 	}
 }
@@ -321,35 +329,34 @@ func (r *Runtime) forwardTurnEventsLoop(ctx context.Context, out chan<- external
 		})
 		return
 	}
-	events, unsubscribe := client.SubscribeTurn(ctx, threadID, turnID)
-	defer unsubscribe()
+	sub := client.SubscribeTurn(threadID, turnID)
+	defer sub.Close()
 	for {
-		select {
-		case <-ctx.Done():
+		event, ok := sub.Next(ctx)
+		if !ok {
+			if ctx.Err() != nil {
+				return
+			}
+			if err := client.Err(); err != nil {
+				sendRuntimeEvent(ctx, out, externalagents.Event{
+					Kind:             externalagents.EventTurnFailed,
+					AgentID:          AgentID,
+					ExternalThreadID: threadID,
+					ExternalTurnID:   turnID,
+					Error:            err.Error(),
+					At:               time.Now().UTC(),
+				})
+			}
 			return
-		case event, ok := <-events:
-			if !ok {
-				if err := client.Err(); err != nil {
-					sendRuntimeEvent(ctx, out, externalagents.Event{
-						Kind:             externalagents.EventTurnFailed,
-						AgentID:          AgentID,
-						ExternalThreadID: threadID,
-						ExternalTurnID:   turnID,
-						Error:            err.Error(),
-						At:               time.Now().UTC(),
-					})
-				}
+		}
+		normalized, done := normalizeNotification(event, threadID, turnID)
+		for _, item := range normalized {
+			if !sendRuntimeEvent(ctx, out, item) {
 				return
 			}
-			normalized, done := normalizeNotification(event, threadID, turnID)
-			for _, item := range normalized {
-				if !sendRuntimeEvent(ctx, out, item) {
-					return
-				}
-			}
-			if done {
-				return
-			}
+		}
+		if done {
+			return
 		}
 	}
 }
@@ -375,8 +382,6 @@ func normalizeNotification(event Notification, threadID string, turnID string) (
 			AgentID:          AgentID,
 			ExternalThreadID: params.ThreadID,
 			ExternalTurnID:   params.Turn.ID,
-			RawMethod:        event.Method,
-			Raw:              event.Raw,
 			At:               now,
 		}}, false
 	case ErrorNotification:
@@ -394,8 +399,6 @@ func normalizeNotification(event Notification, threadID string, turnID string) (
 				ExternalThreadID: params.ThreadID,
 				ExternalTurnID:   params.TurnID,
 				Text:             errText,
-				RawMethod:        event.Method,
-				Raw:              event.Raw,
 				At:               now,
 			}}, false
 		}
@@ -408,8 +411,6 @@ func normalizeNotification(event Notification, threadID string, turnID string) (
 			ExternalThreadID: params.ThreadID,
 			ExternalTurnID:   params.TurnID,
 			Error:            errText,
-			RawMethod:        event.Method,
-			Raw:              event.Raw,
 			At:               now,
 		}}, true
 	case ContextCompactedNotification:
@@ -422,8 +423,6 @@ func normalizeNotification(event Notification, threadID string, turnID string) (
 			ExternalThreadID: params.ThreadID,
 			ExternalTurnID:   params.TurnID,
 			Text:             "context compacted",
-			RawMethod:        event.Method,
-			Raw:              event.Raw,
 			At:               now,
 		}}, false
 	case ItemNotification:
@@ -449,8 +448,6 @@ func normalizeNotification(event Notification, threadID string, turnID string) (
 			ToolInput:        tool.Input,
 			Text:             tool.Output,
 			Error:            tool.Error,
-			RawMethod:        event.Method,
-			Raw:              event.Raw,
 			At:               now,
 		}}, false
 	case AgentMessageDelta:
@@ -464,8 +461,6 @@ func normalizeNotification(event Notification, threadID string, turnID string) (
 			ExternalTurnID:   params.TurnID,
 			ItemID:           params.ItemID,
 			Text:             params.Delta,
-			RawMethod:        event.Method,
-			Raw:              event.Raw,
 			At:               now,
 		}}, false
 	case ReasoningTextDelta:
@@ -479,8 +474,6 @@ func normalizeNotification(event Notification, threadID string, turnID string) (
 			ExternalTurnID:   params.TurnID,
 			ItemID:           params.ItemID,
 			Text:             params.Delta,
-			RawMethod:        event.Method,
-			Raw:              event.Raw,
 			At:               now,
 		}}, false
 	case ToolOutputDelta:
@@ -494,8 +487,6 @@ func normalizeNotification(event Notification, threadID string, turnID string) (
 			ExternalTurnID:   params.TurnID,
 			ItemID:           params.ItemID,
 			Text:             params.Delta,
-			RawMethod:        event.Method,
-			Raw:              event.Raw,
 			At:               now,
 		}}, false
 	case FileChangePatchUpdated:
@@ -511,10 +502,17 @@ func normalizeNotification(event Notification, threadID string, turnID string) (
 			ItemID:           params.ItemID,
 			ToolName:         "edit",
 			Text:             text,
-			RawMethod:        event.Method,
-			Raw:              event.Raw,
 			At:               now,
 		}}, false
+	case DecodeFailure:
+		return []externalagents.Event{{
+			Kind:             externalagents.EventTurnFailed,
+			AgentID:          AgentID,
+			ExternalThreadID: threadID,
+			ExternalTurnID:   turnID,
+			Error:            fmt.Sprintf("codex app-server sent a %s this matrixclaw cannot read: %v", event.Method, params.Err),
+			At:               now,
+		}}, true
 	case TurnCompleted:
 		if params.ThreadID != threadID || params.Turn.ID != turnID {
 			return nil, false
@@ -526,8 +524,6 @@ func normalizeNotification(event Notification, threadID string, turnID string) (
 			ExternalThreadID: params.ThreadID,
 			ExternalTurnID:   params.Turn.ID,
 			Error:            errText,
-			RawMethod:        event.Method,
-			Raw:              event.Raw,
 			At:               now,
 		}}, true
 	default:

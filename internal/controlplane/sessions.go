@@ -69,7 +69,7 @@ func (d *Dispatcher) handleNewSession(ctx context.Context, args string) (Result,
 	if args == "" {
 		return d.sessionRuntimePicker(ctx)
 	}
-	return d.createSession(ctx, sessionTarget{runtimeID: core.SessionRuntimeMatrixClaw}, args)
+	return d.createSession(ctx, "", args)
 }
 
 func (d *Dispatcher) sessionRuntimePicker(ctx context.Context) (Result, error) {
@@ -181,16 +181,11 @@ func (d *Dispatcher) handleSessionNew(ctx context.Context, args string) (Result,
 		return d.sessionRuntimePicker(ctx)
 	}
 	runtimeValue, title, _ := strings.Cut(args, " ")
-	target := parseSessionTarget(runtimeValue)
-	if target.runtimeID == "" {
+	agentID, ok := parseSessionTarget(runtimeValue)
+	if !ok {
 		return Result{Handled: true, Text: "Usage: /session new matrixclaw|AGENT [title]"}, nil
 	}
-	return d.createSession(ctx, target, strings.TrimSpace(title))
-}
-
-type sessionTarget struct {
-	runtimeID       core.SessionRuntime
-	externalAgentID string
+	return d.createSession(ctx, agentID, strings.TrimSpace(title))
 }
 
 // owner reports whether this client acts for the owner: the only one that may
@@ -222,9 +217,10 @@ const ownerOnlySettings = "Only the owner can change settings."
 
 const unattendedRefusal = "Only the owner can use a session that runs tools without asking (external agent or full_auto)."
 
-func (d *Dispatcher) createSession(ctx context.Context, target sessionTarget, title string) (Result, error) {
-	runtimeID := core.NormalizeSessionRuntime(target.runtimeID)
-	if runtimeID == core.SessionRuntimeExternalAgent && !d.owner() {
+// createSession starts a session run by the external agent agentID, or a
+// native one when agentID is empty, and makes it current.
+func (d *Dispatcher) createSession(ctx context.Context, agentID string, title string) (Result, error) {
+	if agentID != "" && !d.owner() {
 		return Result{Handled: true, Text: "Only the owner can start an external agent session."}, nil
 	}
 	if title = strings.TrimSpace(title); title == "" {
@@ -232,12 +228,12 @@ func (d *Dispatcher) createSession(ctx context.Context, target sessionTarget, ti
 	}
 	request := core.CreateSessionRequest{
 		Title:      title,
-		RuntimeID:  string(runtimeID),
 		WorkingDir: d.workingDir,
 	}
-	if runtimeID == core.SessionRuntimeExternalAgent {
+	if agentID != "" {
+		request.Kind = string(core.SessionKindExternalAgent)
 		request.PermissionMode = string(core.PermissionModeFullAuto)
-		request.ExternalAgentID = target.externalAgentID
+		request.ExternalAgentID = agentID
 	}
 	session, err := d.daemon.CreateSessionWithRequest(ctx, request)
 	if err == nil {
@@ -253,15 +249,17 @@ func (d *Dispatcher) createSession(ctx context.Context, target sessionTarget, ti
 	}, nil
 }
 
-func parseSessionTarget(value string) sessionTarget {
+// parseSessionTarget is the external agent a /session new names: none for
+// the built-in runtime; false when it names nothing.
+func parseSessionTarget(value string) (string, bool) {
 	value = strings.ToLower(strings.TrimSpace(value))
 	switch value {
 	case "matrixclaw", "matrix", "default", "assistant", "core":
-		return sessionTarget{runtimeID: core.SessionRuntimeMatrixClaw}
+		return "", true
 	case "":
-		return sessionTarget{}
+		return "", false
 	default:
-		return sessionTarget{runtimeID: core.SessionRuntimeExternalAgent, externalAgentID: value}
+		return value, true
 	}
 }
 
@@ -306,8 +304,8 @@ func sessionListInfo(session core.Session) string {
 }
 
 func sessionRuntimeLabel(session core.Session) string {
-	switch core.NormalizeSessionRuntime(session.RuntimeID) {
-	case core.SessionRuntimeExternalAgent:
+	switch session.Kind {
+	case core.SessionKindExternalAgent:
 		if name := strings.TrimSpace(session.ExternalAgentName); name != "" {
 			return name
 		}
@@ -513,7 +511,7 @@ func (d *Dispatcher) rebindAfterDelete(ctx context.Context) (string, error) {
 		}
 		return "Current session: " + formatSessionLabel(session, true), nil
 	}
-	result, err := d.createSession(ctx, sessionTarget{runtimeID: core.SessionRuntimeMatrixClaw}, d.initialSessionTitle())
+	result, err := d.createSession(ctx, "", d.initialSessionTitle())
 	if err != nil {
 		return "", err
 	}
