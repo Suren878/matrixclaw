@@ -113,9 +113,20 @@ func (t coreTools) Execute(ctx context.Context, name string, call tools.Call) (t
 	return result, ask, nil
 }
 
+// lspToolName is offered only where a language server serves the project.
+const lspToolName = "lsp"
+
+// WithLSP sets what says whether a language server serves a project in a
+// working directory; without it the lsp tool is never offered.
+func (c *Core) WithLSP(available func(workingDir string) bool) *Core {
+	c.lspAvailable = available
+	return c
+}
+
 // nativeToolSpecs lists the tools a native run may see; nil without a registry.
-// One edit tool family is offered, the one the model was trained on, and
-// exit_plan_mode only in plan mode.
+// One edit tool family is offered, the one the model was trained on,
+// exit_plan_mode only in plan mode and lsp only where a server serves the
+// project.
 func (c *Core) nativeToolSpecs(turn nativeTurn) []tools.Spec {
 	if c.tools == nil {
 		return nil
@@ -137,6 +148,10 @@ func (c *Core) nativeToolSpecs(turn nativeTurn) []tools.Spec {
 			}
 		case exitPlanModeToolName:
 			if !turn.Plan {
+				continue
+			}
+		case lspToolName:
+			if c.lspAvailable == nil || !c.lspAvailable(turn.WorkingDir) {
 				continue
 			}
 		}

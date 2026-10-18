@@ -28,6 +28,7 @@ type Core struct {
 	scheduledRuns   map[string]time.Time
 	sessionGates    map[string]*sessionGate
 	tools           ToolExecutor
+	lspAvailable    func(workingDir string) bool
 	skillsContext   SkillsPromptContextProvider
 	runtimeStatus   RuntimeStatusContextProvider
 	events          *eventBus

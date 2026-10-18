@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/lsp"
 )
 
 // testRunner runs hooks with the daemon's environment and keeps what it logs.
@@ -19,7 +21,7 @@ func testRunner(t *testing.T, cfg Config) (*Runner, *[]string) {
 	t.Helper()
 	var mu sync.Mutex
 	var logged []string
-	runner := NewRunner(nil, func() Config { return cfg }, filepath.Join(t.TempDir(), "hooks-trust.json"))
+	runner := NewRunner(nil, func() Config { return cfg }, filepath.Join(t.TempDir(), "hooks-trust.json"), nil)
 	runner.logf = func(format string, args ...any) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -361,5 +363,55 @@ func TestMentioningKeepsLinesNamingTheFile(t *testing.T) {
 	}
 	if got := mentioning("src/a.ts(4,2): error TS2304: Cannot find name 'x'.", "/app/src/a.ts"); len(got) != 1 {
 		t.Fatalf("tsc line not kept: %q", got)
+	}
+}
+
+func TestDiagnosticsUseTheLanguageServerAndReportBrokenCallers(t *testing.T) {
+	if _, err := exec.LookPath("gopls"); err != nil {
+		t.Skip("gopls is not installed")
+	}
+	file := goModule(t)
+	dir := filepath.Dir(file)
+	if err := os.MkdirAll(filepath.Join(dir, "c"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	caller := filepath.Join(dir, "c", "c.go")
+	if err := os.WriteFile(caller, []byte("package c\n\nimport \"example.com/m\"\n\nfunc C() int { return m.A() }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{}
+	servers := lsp.NewManager(t.TempDir(), nil, func() lsp.Config { return cfg.Diagnostics.LSP })
+	defer servers.Close()
+	runner := NewRunner(nil, func() Config { return cfg }, filepath.Join(t.TempDir(), "hooks-trust.json"), servers)
+	scope := testScope(t)
+	if told := runner.PostToolUse(context.Background(), scope, editCall(file), ToolResponse{Status: "success"}); told != "" {
+		t.Fatalf("a clean file got %q", told)
+	}
+
+	data := filepath.Join(dir, "data.json")
+	if err := os.WriteFile(data, []byte(`{"a": }`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("package m\n\nfunc A(x int) int { return \"x\" }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	told := runner.PostToolUse(context.Background(), scope, ToolCall{Name: "apply_patch", Files: []string{file, data}}, ToolResponse{Status: "success"})
+	t.Logf("checked in %s:\n%s", time.Since(start), told)
+	for _, want := range []string{
+		"Diagnostics after edit:\n" + file + ":3:28: cannot use \"x\"",
+		"\n" + data + ":1:7: invalid character",
+		"\nErrors in other files:\n",
+		"\n" + filepath.Join(dir, "b.go") + ":3:25: not enough arguments in call to A",
+		"\n" + caller + ":5:27: not enough arguments in call to m.A",
+	} {
+		if !strings.Contains(told, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+
+	cfg.Diagnostics.Commands = map[string]string{".go": `echo "$MATRIXCLAW_FILE:1:1: own check"`}
+	if told := runner.PostToolUse(context.Background(), scope, editCall(file), ToolResponse{Status: "success"}); told != "Diagnostics after edit:\n"+file+":1:1: own check" {
+		t.Fatalf("an extension's own command did not replace the server: %q", told)
 	}
 }

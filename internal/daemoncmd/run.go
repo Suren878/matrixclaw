@@ -16,6 +16,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
 	"github.com/Suren878/matrixclaw/internal/hooks"
+	"github.com/Suren878/matrixclaw/internal/lsp"
 	"github.com/Suren878/matrixclaw/internal/modules/geo"
 	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
 	skillsmodule "github.com/Suren878/matrixclaw/internal/modules/skills"
@@ -95,6 +96,13 @@ func Run(ctx context.Context) error {
 		WithDeliveryTargets(automationDeliveryTargets(bootstrap))
 	osmGeo := geo.NewOSMServiceFromEnv()
 	realtimeVoice := realtime.NewManager(app, geminilive.Spec, grokvoice.Spec, openairealtime.Spec)
+	// Commands and language servers follow the setup the supervisor applies;
+	// it is built after the modules, which offer the lsp tool.
+	var appliedConfig func() setup.Config
+	commandEnv := commandEnvironment(bootstrap.Setup, func() setup.Config { return appliedConfig() })
+	servers := lsp.NewManager(filepath.Join(dataDir(bootstrap.DBPath), "lsp"), commandEnv, func() lsp.Config {
+		return appliedConfig().Diagnostics.LSP
+	})
 	daemon, err := buildModules(moduleDeps{
 		app:        app,
 		automation: automationService,
@@ -103,6 +111,7 @@ func Run(ctx context.Context) error {
 		skills:     skillsModule,
 		realtime:   realtimeVoice,
 		geo:        osmGeo,
+		servers:    servers,
 	})
 	if err != nil {
 		return err
@@ -113,6 +122,7 @@ func Run(ctx context.Context) error {
 	app.WithLifetime(lifetime)
 	safego.Go("core.runWakeups", func() { app.RunWakeups(lifetime) })
 	supervisor := newSupervisor(ctx, app, osmGeo, daemon.set)
+	appliedConfig = supervisor.appliedConfig
 	server := api.New(api.Deps{
 		Core:       app,
 		Automation: automationService,
@@ -127,7 +137,6 @@ func Run(ctx context.Context) error {
 		APIToken:   bootstrap.APIToken,
 	})
 	app.WithRuntimeStatusContext(supervisor)
-	commandEnv := commandEnvironment(bootstrap.Setup, supervisor.appliedConfig)
 	app.WithCommandEnvironment(commandEnv)
 	// The agent's file tools may not trust a project's hooks for the owner.
 	hooksTrust := filepath.Join(dataDir(bootstrap.DBPath), "hooks-trust.json")
@@ -135,7 +144,8 @@ func Run(ctx context.Context) error {
 	app.WithHooks(hooks.NewRunner(commandEnv, func() hooks.Config {
 		cfg := supervisor.appliedConfig()
 		return hooks.Config{Hooks: cfg.Hooks, Diagnostics: cfg.Diagnostics}
-	}, hooksTrust))
+	}, hooksTrust, servers))
+	app.WithLSP(servers.Available)
 	supervisor.SetExternalAgents(sqliteStore, externalRuntimes, bootstrap.Setup.Modules.ExternalAgents)
 	defer func() {
 		// Ending the lifetime interrupts the executing runs and keeps them for
@@ -144,6 +154,7 @@ func Run(ctx context.Context) error {
 		stopLifetime()
 		app.WaitRuns()
 		app.StopShellTasks()
+		servers.Close()
 		supervisor.CloseExternalAgents()
 		_ = daemon.set.Close()
 	}()

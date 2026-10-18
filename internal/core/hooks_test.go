@@ -13,7 +13,7 @@ import (
 
 func withHooks(t *testing.T, app *core.Core, list ...hooks.Hook) {
 	t.Helper()
-	app.WithHooks(hooks.NewRunner(nil, func() hooks.Config { return hooks.Config{Hooks: list} }, filepath.Join(t.TempDir(), "hooks-trust.json")))
+	app.WithHooks(hooks.NewRunner(nil, func() hooks.Config { return hooks.Config{Hooks: list} }, filepath.Join(t.TempDir(), "hooks-trust.json"), nil))
 }
 
 func TestPreToolUseHookCannotOverrideADenyRule(t *testing.T) {
