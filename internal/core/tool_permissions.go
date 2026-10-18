@@ -21,11 +21,11 @@ type callPermission struct {
 	request  permission.Request
 	subjects []permission.Subject
 	verdict  permission.Verdict
-	ask     bool
-	secret  bool
-	root    string
-	rules   []permission.Rule
-	preset  []permission.Rule
+	ask      bool
+	secret   bool
+	root     string
+	rules    []permission.Rule
+	preset   []permission.Rule
 }
 
 // guard lets the call recheck the rules for subjects it reaches later and
