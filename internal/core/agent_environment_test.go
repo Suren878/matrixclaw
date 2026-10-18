@@ -23,7 +23,7 @@ func runInDir(t *testing.T, app *core.Core, db *store.SQLiteStore, suffix string
 	ctx := context.Background()
 	now := runRecoveryTestTime()
 	session := core.Session{
-		ID: "session_" + suffix, Title: suffix, Kind: core.SessionKindAssistant, RuntimeID: core.SessionRuntimeMatrixClaw,
+		ID: "session_" + suffix, Title: suffix, Kind: core.SessionKindAssistant,
 		WorkingDir: dir, ProviderID: "recovery-test", ModelID: "test-model", PermissionMode: core.PermissionModeAcceptEdits,
 		Status: core.SessionStatusActive, CreatedAt: now, UpdatedAt: now,
 	}

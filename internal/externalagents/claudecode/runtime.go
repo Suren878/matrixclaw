@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
+	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/textutil"
 )
@@ -57,11 +58,7 @@ type streamAssistantMessage struct {
 	} `json:"content"`
 }
 
-const (
-	defaultApprovalPolicy = "never"
-	defaultSandbox        = "danger-full-access"
-	claudeStderrLimit     = 256 * 1024
-)
+const claudeStderrLimit = 256 * 1024
 
 type cappedBuffer struct {
 	buffer    bytes.Buffer
@@ -113,19 +110,16 @@ func (r *Runtime) StartSession(_ context.Context, req externalagents.StartSessio
 		model = defaultModel()
 	}
 	return externalagents.ExternalSession{
-		AgentID:        AgentID,
-		CWD:            cwd,
-		Model:          model,
-		ApprovalPolicy: textutil.FirstNonEmpty(req.ApprovalPolicy, defaultApprovalPolicy),
-		Sandbox:        textutil.FirstNonEmpty(req.Sandbox, defaultSandbox),
-		Metadata:       map[string]any{"mode": "cli"},
+		AgentID:     AgentID,
+		CWD:         cwd,
+		Model:       model,
+		Permissions: req.Permissions,
+		Metadata:    map[string]any{"mode": "cli"},
 	}, nil
 }
 
 func (r *Runtime) ResumeSession(_ context.Context, session externalagents.ExternalSession) (externalagents.ExternalSession, error) {
 	session.AgentID = AgentID
-	session.ApprovalPolicy = textutil.FirstNonEmpty(session.ApprovalPolicy, defaultApprovalPolicy)
-	session.Sandbox = textutil.FirstNonEmpty(session.Sandbox, defaultSandbox)
 	if session.Metadata == nil {
 		session.Metadata = map[string]any{"mode": "cli"}
 	}
@@ -150,8 +144,9 @@ func (r *Runtime) Send(ctx context.Context, session externalagents.ExternalSessi
 	return out, nil
 }
 
+// Interrupt has nothing to do: canceling the turn's context kills the CLI.
 func (r *Runtime) Interrupt(context.Context, externalagents.ExternalSession) error {
-	return fmt.Errorf("claudecode: interrupt is not implemented")
+	return nil
 }
 
 func (r *Runtime) Close() error {
@@ -395,24 +390,19 @@ func claudePromptArgs(session externalagents.ExternalSession, text string) []str
 	if model := strings.TrimSpace(session.Model); model != "" {
 		args = append(args, "--model", model)
 	}
-	if mode := claudePermissionMode(session); mode != "" {
-		args = append(args, "--permission-mode", mode)
-	}
-	return append(args, "--", text)
+	return append(args, "--permission-mode", claudePermissionMode(session.Permissions), "--", text)
 }
 
-func claudePermissionMode(session externalagents.ExternalSession) string {
-	approvalPolicy := strings.ToLower(strings.TrimSpace(session.ApprovalPolicy))
-	sandbox := strings.ToLower(strings.TrimSpace(session.Sandbox))
+// claudePermissionMode is the --permission-mode for the session's
+// permissions. Claude refuses bypassPermissions when the daemon runs as root,
+// so full_auto is Claude's own autonomous mode, auto.
+func claudePermissionMode(permissions externalagents.Permissions) string {
 	switch {
-	case sandbox == "danger-full-access":
-		// Claude refuses bypassPermissions when the daemon runs as root. `auto`
-		// is the supported autonomous mode and keeps the worker usable without
-		// passing the root-forbidden --dangerously-skip-permissions path.
-		return "auto"
-	case approvalPolicy == "never":
+	case permissions.Readonly:
 		return "dontAsk"
-	case approvalPolicy == "on-request" && sandbox == "workspace-write":
+	case permissions.Mode == permission.ModeFullAuto:
+		return "auto"
+	case permissions.Mode == permission.ModeAcceptEdits:
 		return "acceptEdits"
 	default:
 		return "default"

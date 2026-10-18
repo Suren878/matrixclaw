@@ -126,6 +126,7 @@ type ApprovalStore interface {
 // PermissionRuleStore keeps permission rules; global rules belong to no session.
 type PermissionRuleStore interface {
 	CreatePermissionRule(ctx context.Context, rule permission.Rule) error
+	GetPermissionRule(ctx context.Context, ruleID string) (permission.Rule, error)
 	DeletePermissionRule(ctx context.Context, ruleID string) error
 	ListPermissionRules(ctx context.Context, sessionIDs []string) ([]permission.Rule, error)
 }
@@ -164,8 +165,10 @@ type ToolExecutor interface {
 	Execute(ctx context.Context, toolID string, call tools.Call) (tools.Result, error)
 	// Preview is the approval a call shows, or the result that answers it instead.
 	Preview(ctx context.Context, toolID string, call tools.Call) (tools.ApprovalRequest, *tools.Result)
-	// Subject is what permission rules match of a call.
-	Subject(toolID string, call tools.Call) permission.Subject
+	// Subjects is every subject permission rules match of a call.
+	Subjects(toolID string, call tools.Call) []permission.Subject
+	// ReadsOnly reports whether a call changes nothing.
+	ReadsOnly(toolID string, call tools.Call) bool
 	// ConcurrencyKey names what the call must not share with a concurrent call.
 	ConcurrencyKey(toolID string, call tools.Call) string
 }

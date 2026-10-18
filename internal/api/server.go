@@ -183,7 +183,7 @@ func (s *Server) routeTable() []route {
 		{"POST /v1/tasks/{id}/cancel", sessionOfTask, s.handleTaskCancel},
 		{"GET /v1/approvals", open, s.handleApprovals},
 		{"POST /v1/approvals/{id}/resolve", sessionOfApproval, s.handleApprovalResolve},
-		{"DELETE /v1/permission-rules/{id}", open, s.handlePermissionRuleDelete},
+		{"DELETE /v1/permission-rules/{id}", sessionOfRule, s.handlePermissionRuleDelete},
 		{"GET /v1/tools", open, s.handleTools},
 		{"POST /v1/tools/execute", sessionInBody, s.handleToolExecute},
 

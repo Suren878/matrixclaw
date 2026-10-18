@@ -257,3 +257,60 @@ func TestSuggestNamesTheNarrowRule(t *testing.T) {
 		}
 	}
 }
+
+func TestPlanModeDeniesEveryChangeAndRunsReadOnlyBash(t *testing.T) {
+	plan := Preset(ModePlan, "/work")
+	readOnly := func(req Request) Request { req.ReadOnly = true; return req }
+	for _, tc := range []struct {
+		name  string
+		req   Request
+		rules []Rule
+		want  Effect
+	}{
+		{"edit", file("edit", "/work/a.go"), nil, Deny},
+		{"a mutating command", command("go test ./..."), nil, Deny},
+		{"over an allow rule", command("go test ./..."), []Rule{rule(Allow, "bash", "")}, Deny},
+		{"a read-only command", readOnly(command("git log")), nil, Allow},
+		{"a read-only command a rule asks for", readOnly(command("git log")), []Rule{rule(Ask, "bash", "git log:*")}, Ask},
+		{"read keeps its default", readOnly(file("read", "/work/a.go")), nil, ""},
+		{"todo_write keeps its default", readOnly(Request{Tool: "todo_write"}), nil, ""},
+		{"memory list", readOnly(Request{Tool: "memory", Subject: Subject{Kind: KindName, Value: "list"}}), nil, Allow},
+		{"memory add", Request{Tool: "memory", Subject: Subject{Kind: KindName, Value: "add"}}, nil, Deny},
+	} {
+		got := Evaluate(tc.req, tc.rules, plan)
+		if got.Effect != tc.want {
+			t.Errorf("%s: verdict = %s by %q, want %s", tc.name, got.Effect, got.Rule.String(), tc.want)
+		}
+		if tc.want == Deny && tc.rules == nil && got.Rule.ID != PlanRuleID {
+			t.Errorf("%s: denied by %+v, want the plan rule", tc.name, got.Rule)
+		}
+	}
+}
+
+func TestEvaluateEachNeedsEverySubjectAllowed(t *testing.T) {
+	a, b := Subject{Kind: KindFile, Value: "/work/a.go"}, Subject{Kind: KindFile, Value: "/etc/b.conf"}
+	req := Request{Tool: "apply_patch", CoveredBy: []string{"edit"}}
+	edits := Preset(ModeAcceptEdits, "/work")
+	for _, tc := range []struct {
+		name     string
+		subjects []Subject
+		rules    []Rule
+		want     Effect
+	}{
+		{"all inside", []Subject{a}, nil, Allow},
+		{"one outside", []Subject{a, b}, nil, ""},
+		{"one denied", []Subject{a, b}, []Rule{rule(Deny, "edit", "/etc/**")}, Deny},
+		{"one asked", []Subject{a, b}, []Rule{rule(Ask, "edit", "/work/**"), rule(Allow, "edit", "/etc/**")}, Ask},
+		{"all allowed", []Subject{a, b}, []Rule{rule(Allow, "apply_patch", "/etc/**")}, Allow},
+	} {
+		if got := EvaluateEach(req, tc.subjects, tc.rules, edits); got.Effect != tc.want {
+			t.Errorf("%s: verdict = %s, want %s", tc.name, got.Effect, tc.want)
+		}
+	}
+	if _, ok := SuggestEach(req, []Subject{a, b}, "/work"); ok {
+		t.Error("files in two places suggested one rule")
+	}
+	if got, ok := SuggestEach(req, []Subject{a, {Kind: KindFile, Value: "/work/c.go"}}, "/work"); !ok || got.String() != "apply_patch: /work/**" {
+		t.Errorf("suggestion = %v, %v", got, ok)
+	}
+}

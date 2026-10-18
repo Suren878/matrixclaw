@@ -100,7 +100,7 @@ func permissionSession(t *testing.T, db *store.SQLiteStore, id string, dir strin
 	t.Helper()
 	now := runRecoveryTestTime()
 	session := core.Session{
-		ID: id, Title: id, Kind: core.SessionKindAssistant, RuntimeID: core.SessionRuntimeMatrixClaw,
+		ID: id, Title: id, Kind: core.SessionKindAssistant,
 		WorkingDir: dir, PermissionMode: mode, ParentSessionID: parentID, Hidden: parentID != "",
 		ProviderID: "recovery-test", ModelID: "test-model", Status: core.SessionStatusActive, CreatedAt: now, UpdatedAt: now,
 	}

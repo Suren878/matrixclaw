@@ -14,7 +14,7 @@ import (
 // edit tools change files.
 const bashTool = "bash"
 
-var editTools = map[string]bool{"write": true, "edit": true, "multiedit": true}
+var editTools = map[string]bool{"write": true, "edit": true, "multiedit": true, "apply_patch": true}
 
 // docExtensions name files whose changes need no build or test run.
 var docExtensions = map[string]bool{".md": true, ".markdown": true, ".mdx": true, ".txt": true, ".rst": true, ".adoc": true}

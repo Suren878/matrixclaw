@@ -40,7 +40,9 @@ func NormalizeConfig(cfg Config) Config {
 	for _, server := range cfg.Servers {
 		server.ID = SanitizeToolPart(server.ID)
 		server.Name = strings.TrimSpace(server.Name)
-		server.Transport = normalizeTransport(server.Transport)
+		if server.Transport != TransportHTTP {
+			server.Transport = TransportStdio
+		}
 		server.Command = strings.TrimSpace(server.Command)
 		server.Endpoint = strings.TrimRight(strings.TrimSpace(server.Endpoint), "/")
 		server.ToolPrefix = SanitizeToolPart(server.ToolPrefix)
@@ -67,15 +69,6 @@ func NormalizeConfig(cfg Config) Config {
 	}
 	cfg.Servers = servers
 	return cfg
-}
-
-func normalizeTransport(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case TransportHTTP, "streamable_http", "streamable-http":
-		return TransportHTTP
-	default:
-		return TransportStdio
-	}
 }
 
 func trimMap(values map[string]string) map[string]string {

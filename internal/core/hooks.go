@@ -34,12 +34,15 @@ func hookScope(session Session, runID string, workingDir string) hooks.Scope {
 	}
 }
 
-// subjectFile is the file a call targets, "" when it targets none.
-func subjectFile(subject permission.Subject) string {
-	if subject.Kind == permission.KindFile {
-		return subject.Value
+// subjectFiles are the files a call targets.
+func subjectFiles(subjects []permission.Subject) []string {
+	var files []string
+	for _, subject := range subjects {
+		if subject.Kind == permission.KindFile {
+			files = append(files, subject.Value)
+		}
 	}
-	return ""
+	return files
 }
 
 // afterToolUse ends a call's result with what its PreToolUse hooks added and
@@ -50,7 +53,7 @@ func (c *Core) afterToolUse(ctx context.Context, check callPermission, call tool
 	if c.hooks != nil && !result.IsError() {
 		response := hooks.ToolResponse{Content: result.Content, Status: string(agent.ToolResultStatus(result))}
 		scope := hookScope(check.session, call.RunID, call.WorkingDir)
-		added = append(added, c.hooks.PostToolUse(ctx, scope, hooks.ToolCall{ID: call.ToolCallID, Name: name, Input: call.Args, File: subjectFile(check.request.Subject)}, response))
+		added = append(added, c.hooks.PostToolUse(ctx, scope, hooks.ToolCall{ID: call.ToolCallID, Name: name, Input: call.Args, Files: subjectFiles(check.subjects)}, response))
 	}
 	for _, text := range added {
 		if text != "" {

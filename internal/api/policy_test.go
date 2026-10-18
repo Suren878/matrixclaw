@@ -78,7 +78,7 @@ var routePolicies = map[string]string{
 	"POST /v1/tasks/{id}/cancel":                   "session(task)",
 	"GET /v1/approvals":                            "open",
 	"POST /v1/approvals/{id}/resolve":              "session(approval)",
-	"DELETE /v1/permission-rules/{id}":             "open",
+	"DELETE /v1/permission-rules/{id}":             "session(rule)",
 	"GET /v1/tools":                                "open",
 	"POST /v1/tools/execute":                       "session(body)",
 	"GET /v1/modules":                              "open",

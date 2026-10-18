@@ -21,73 +21,6 @@ type ExternalAgentDescriptor struct {
 	Detail      string   `json:"detail,omitempty"`
 }
 
-const (
-	legacyCodexRuntime    SessionRuntime = "codex"
-	legacyCodexAppRuntime SessionRuntime = "codex-app"
-)
-
-func NormalizeSessionKind(kind SessionKind) SessionKind {
-	switch SessionKind(strings.TrimSpace(string(kind))) {
-	case "", SessionKindAssistant:
-		return SessionKindAssistant
-	case SessionKindExternalAgent:
-		return SessionKindExternalAgent
-	default:
-		return SessionKindAssistant
-	}
-}
-
-func NormalizeSessionRuntime(runtimeID SessionRuntime) SessionRuntime {
-	switch SessionRuntime(strings.ToLower(strings.TrimSpace(string(runtimeID)))) {
-	case "", SessionRuntimeMatrixClaw, "assistant", "native", "core":
-		return SessionRuntimeMatrixClaw
-	case SessionRuntimeExternalAgent, "external", "agent", legacyCodexRuntime, legacyCodexAppRuntime:
-		return SessionRuntimeExternalAgent
-	default:
-		return SessionRuntime(strings.ToLower(strings.TrimSpace(string(runtimeID))))
-	}
-}
-
-func sessionRuntimeForCreate(runtimeID SessionRuntime, kind SessionKind, externalAgentID string) SessionRuntime {
-	rawRuntimeID := strings.ToLower(strings.TrimSpace(string(runtimeID)))
-	if strings.TrimSpace(externalAgentID) != "" {
-		return SessionRuntimeExternalAgent
-	}
-	switch rawRuntimeID {
-	case string(legacyCodexRuntime), string(legacyCodexAppRuntime):
-		return SessionRuntimeExternalAgent
-	}
-	runtimeID = NormalizeSessionRuntime(runtimeID)
-	if runtimeID != SessionRuntimeMatrixClaw {
-		return SessionRuntimeExternalAgent
-	}
-	if NormalizeSessionKind(kind) == SessionKindExternalAgent {
-		return SessionRuntimeExternalAgent
-	}
-	return SessionRuntimeMatrixClaw
-}
-
-func sessionKindForRuntime(runtimeID SessionRuntime) SessionKind {
-	if NormalizeSessionRuntime(runtimeID) == SessionRuntimeMatrixClaw {
-		return SessionKindAssistant
-	}
-	return SessionKindExternalAgent
-}
-
-func externalAgentIDForRuntime(runtimeID SessionRuntime, explicit string) string {
-	explicit = strings.TrimSpace(explicit)
-	if explicit != "" {
-		return explicit
-	}
-	rawRuntimeID := strings.ToLower(strings.TrimSpace(string(runtimeID)))
-	switch rawRuntimeID {
-	case "", string(SessionRuntimeMatrixClaw), string(SessionRuntimeExternalAgent), "external", "agent", "assistant", "native", "core":
-		return ""
-	default:
-		return rawRuntimeID
-	}
-}
-
 func (c *Core) ExternalAgents(ctx context.Context) []ExternalAgentDescriptor {
 	registry := c.externalAgentRegistry()
 	if registry == nil {
@@ -113,7 +46,7 @@ func (c *Core) createExternalAgentAttachment(ctx context.Context, session Sessio
 	if c.externalStore == nil {
 		return fmt.Errorf("%w: external agent store unavailable", ErrExecutionUnavailable)
 	}
-	agentID := externalAgentIDForRuntime(input.RuntimeID, input.ExternalAgentID)
+	agentID := strings.TrimSpace(input.ExternalAgentID)
 	if agentID == "" {
 		return fmt.Errorf("%w: external_agent_id is required", ErrInvalidInput)
 	}
@@ -132,16 +65,10 @@ func (c *Core) createExternalAgentAttachment(ctx context.Context, session Sessio
 	if !availability.Enabled {
 		return fmt.Errorf("%w: external agent %q is not enabled", ErrExecutionUnavailable, agentID)
 	}
-	approvalPolicy, sandbox := externalAgentPolicy(session.PermissionMode, input.Readonly)
 	externalSession, err := runtime.StartSession(ctx, externalagents.StartSessionRequest{
-		CWD:            session.WorkingDir,
-		Model:          input.ModelID,
-		ApprovalPolicy: approvalPolicy,
-		Sandbox:        sandbox,
-		Metadata: map[string]any{
-			"matrixclaw_session_id": session.ID,
-			"matrixclaw_runtime_id": session.RuntimeID,
-		},
+		CWD:         session.WorkingDir,
+		Model:       input.ModelID,
+		Permissions: externalagents.Permissions{Mode: string(session.PermissionMode), Readonly: input.Readonly},
 	})
 	if err != nil {
 		return err
@@ -157,8 +84,6 @@ func (c *Core) createExternalAgentAttachment(ctx context.Context, session Sessio
 		ExternalSessionID: externalSession.ExternalSessionID,
 		CWD:               externalSession.CWD,
 		Model:             externalSession.Model,
-		ApprovalPolicy:    approvalPolicy,
-		Sandbox:           sandbox,
 		MetadataJSON:      metadataJSON,
 		CreatedAt:         session.CreatedAt,
 		UpdatedAt:         session.UpdatedAt,
@@ -177,20 +102,4 @@ func externalAgentMetadataJSON(metadata map[string]any) (string, error) {
 		return "", fmt.Errorf("%w: external agent metadata: %w", ErrInvalidInput, err)
 	}
 	return string(data), nil
-}
-
-// externalAgentPolicy is the approval policy and sandbox an external agent
-// runs with; a read-only one is refused every change without being asked.
-func externalAgentPolicy(mode PermissionMode, readonly bool) (string, string) {
-	if readonly {
-		return "never", "read-only"
-	}
-	switch NormalizePermissionMode(string(mode)) {
-	case PermissionModeFullAuto:
-		return "never", "danger-full-access"
-	case PermissionModeAcceptEdits:
-		return "on-request", "workspace-write"
-	default:
-		return "on-request", "read-only"
-	}
 }

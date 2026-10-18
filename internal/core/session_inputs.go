@@ -188,8 +188,7 @@ func (c *Core) createPendingSessionInput(ctx context.Context, session Session, a
 }
 
 func sessionAcceptsNativeSteer(session Session) bool {
-	return NormalizeSessionRuntime(session.RuntimeID) != SessionRuntimeExternalAgent &&
-		NormalizeSessionKind(session.Kind) != SessionKindExternalAgent
+	return !CoreSessionIsExternalAgent(session)
 }
 
 func (c *Core) publishSessionInputUpdated(input SessionInput) {

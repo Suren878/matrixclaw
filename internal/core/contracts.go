@@ -11,7 +11,6 @@ import (
 type CreateSessionRequest struct {
 	Title           string `json:"title"`
 	Kind            string `json:"kind,omitempty"`
-	RuntimeID       string `json:"runtime_id,omitempty"`
 	WorkingDir      string `json:"working_dir"`
 	ProviderID      string `json:"provider_id,omitempty"`
 	ModelID         string `json:"model_id,omitempty"`

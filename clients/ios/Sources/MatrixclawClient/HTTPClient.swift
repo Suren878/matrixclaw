@@ -59,12 +59,10 @@ public final class MatrixclawAPIClient: @unchecked Sendable {
     public func createSession(
         title: String,
         workingDir: String? = nil,
-        runtimeId: SessionRuntime? = nil,
         permissionMode: PermissionMode? = nil
     ) async throws -> Session {
         let body = CreateSessionRequest(
             title: title,
-            runtimeId: runtimeId,
             workingDir: workingDir ?? "",
             permissionMode: permissionMode
         )
@@ -316,7 +314,6 @@ struct OKResponse: Codable {
 
 struct CreateSessionRequest: Encodable {
     var title: String
-    var runtimeId: SessionRuntime?
     var workingDir: String
     var permissionMode: PermissionMode?
 }

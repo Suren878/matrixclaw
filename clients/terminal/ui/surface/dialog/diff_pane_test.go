@@ -33,7 +33,7 @@ func TestDiffDialogsToggleBetweenUnifiedAndSplit(t *testing.T) {
 	com := surfacecommon.DefaultCommon()
 	dialogs := map[string]Dialog{
 		"permission": NewPermissions(com, surfacepermission.PermissionRequest{ID: "a1", ToolName: "edit", Params: tools.FileChange{Path: "parse.go", OldContent: "n := 1\n", NewContent: "n := 2\n"}}),
-		"preview":    NewDiffPreview(com, DiffPreviewData{Title: "Edit Changes", FilePath: "parse.go", OldContent: "n := 1\n", NewContent: "n := 2\n", Additions: 1, Removals: 1}),
+		"preview":    NewDiffPreview(com, NewDiffPreviewData("Edit Changes", tools.FileChange{Path: "parse.go", OldContent: "n := 1\n", NewContent: "n := 2\n", Additions: 1, Removals: 1})),
 	}
 	for name, d := range dialogs {
 		if screen := drawDialog(d); !strings.Contains(screen, "n := 2") || splitShown(screen) {
@@ -42,6 +42,19 @@ func TestDiffDialogsToggleBetweenUnifiedAndSplit(t *testing.T) {
 		d.HandleMsg(tea.KeyPressMsg{Code: 't', Text: "t"})
 		if screen := drawDialog(d); !splitShown(screen) {
 			t.Fatalf("%s: t did not split the diff:\n%s", name, screen)
+		}
+	}
+}
+
+func TestPatchApprovalShowsEveryFile(t *testing.T) {
+	patch := tools.PatchChange{Files: []tools.FileChange{
+		{Path: "parse.go", OldContent: "n := 1\n", NewContent: "n := 2\n"},
+		{Path: "lex.go", MovedFrom: "scan.go", OldContent: "m := 1\n", NewContent: "m := 3\n"},
+	}}
+	screen := drawDialog(NewPermissions(surfacecommon.DefaultCommon(), surfacepermission.PermissionRequest{ID: "a1", ToolName: "apply_patch", Params: patch}))
+	for _, want := range []string{"n := 2", "m := 3", "scan.go → lex.go"} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("approval misses %q:\n%s", want, screen)
 		}
 	}
 }

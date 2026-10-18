@@ -125,6 +125,10 @@ func (p *Permissions) renderHeader(contentWidth int) string {
 		if params, ok := surfacepermission.DecodeParams[tools.BashParams](p.permission.Params); ok {
 			lines = append(lines, p.renderKeyValue("Desc", params.Description, contentWidth))
 		}
+	case toolNameApplyPatch:
+		if changes, ok := p.fileChanges(); ok {
+			lines = append(lines, p.renderKeyValue("Files", fmt.Sprint(len(changes)), contentWidth))
+		}
 	case toolNameEdit, toolNameWrite, toolNameMultiEdit, toolNameRead:
 		var filePath string
 		switch p.permission.ToolName {

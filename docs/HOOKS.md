@@ -78,7 +78,7 @@ file either. Scripts a trusted file calls are not covered by its hash.
   commands (the login shell's, without API keys and `MATRIXCLAW_*`) plus:
   - `MATRIXCLAW_SESSION_ID`
   - `MATRIXCLAW_TOOL`: the tool name (tool events)
-  - `MATRIXCLAW_FILE`: the resolved path a file tool targets
+  - `MATRIXCLAW_FILE`: the resolved path a file tool targets (the first one for `apply_patch`)
   - `CLAUDE_PROJECT_DIR`: the project directory (the directory holding
     `.matrixclaw/` for project hooks, else the working directory)
 - Hooks of an event run one after another: setup.json's first, then the
@@ -206,9 +206,9 @@ Desktop notification when an approval waits:
 
 ## Diagnostics after edits
 
-After a successful `edit`, `multiedit` or `write` (not one that changed
-nothing), the edited file is checked and up to 30 lines that name it are
-appended to the result:
+After a successful `edit`, `multiedit`, `write` or `apply_patch` (not one
+that changed nothing), the edited files (the first five of a patch) are
+checked and up to 30 lines that name them are appended to the result:
 
 ```text
 Diagnostics after edit:
@@ -225,7 +225,7 @@ Built-in checks, each skipped when its tool is not installed:
 | `.rs` | `cargo check --message-format short`, errors only | the nearest directory with `Cargo.toml` |
 | `.json` | parsed in the daemon (tsconfig, jsconfig and `.vscode` files are skipped, they allow comments) | |
 
-A check runs for at most 20 seconds, under the call's working-directory key,
+The checks of one call run for at most 20 seconds together, under the call's working-directory key,
 so edits in one directory do not check concurrently. Only lines naming the
 edited file (by absolute path or a path relative to a directory above it) and
 the indented lines after them are kept; errors in other files are not reported.

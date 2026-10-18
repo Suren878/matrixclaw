@@ -49,7 +49,7 @@ flowchart LR
 | `internal/procsup` | supervised local helper processes |
 | `internal/providers` | provider adapters (`ai/*`), catalog, model metadata, wire quirks |
 | `internal/sessionllm` | the provider runtimes sessions pick from |
-| `internal/externalagents` | external agent registry and adapters (`claudecode`, `codexapp`) |
+| `internal/externalagents` | external agent registry, adapters (`claudecode`, `codexapp`) and the reply builder (`reply`) |
 | `internal/mcp` | MCP client and the `matrixclaw mcp serve` stdio server |
 | `internal/automation` | reminders and scheduled AI tasks |
 | `internal/skills` | skills library (files plus its own tables) |
@@ -90,8 +90,8 @@ recovery), waits for them, then closes external agents and modules.
   storage deletes, temporary-storage cleanup and settings, file checkpoint
   restores, trusting a project's hooks); or `session`,
   for every write that acts in a session (named by the path, by the run, task,
-  approval or automation job it names, or by the JSON body's `session_id` or
-  client binding): members and guests are refused (403) there when the session
+  approval, automation job or permission rule it names, or by the JSON body's
+  `session_id` or client binding): members and guests are refused (403) there when the session
   runs unattended (`core.RunsUnattended`: full_auto or external agent). Reads
   stay open. Only the owner creates a session with an external agent or a
   permission mode, global permission rules and a goal's check command are
@@ -363,11 +363,33 @@ provider and model.
   (`readonly`/`mutation`) drives concurrency, read-only subagents and recovery;
   `Spec.Asks` says whether a call no rule decides waits for the user.
 - Core alone decides (`core.checkPermission`): session and global rules, then
-  the mode preset (`default`, `accept_edits`, `full_auto`); deny wins over ask
-  over allow. A rule names its tool or a tool listed in `Spec.CoveredBy`
-  (`read` rules cover `grep`, `glob` and `ls`). `permission.Builtin` (`memory: list` = allow) is in every preset
-  and cannot be deleted; a stored ask/deny rule on `memory` still wins. The
-  same check covers runs, the tools API, voice and the MCP server.
+  the mode preset (`default`, `accept_edits`, `full_auto`, `plan`); deny wins
+  over ask over allow, and a preset's deny rule over stored allow rules. A
+  rule names its tool or a tool listed in `Spec.CoveredBy` (`read` rules cover
+  `grep`, `glob` and `ls`; `edit` rules cover `apply_patch`).
+  `permission.Builtin` (`memory: list` = allow) is in every preset and cannot
+  be deleted; a stored ask/deny rule on `memory` still wins. The same check
+  covers runs, the tools API, voice and the MCP server.
+- A call that reaches several subjects (`tools.SubjectsProvider`: each file of
+  a patch) meets the rules for each (`permission.EvaluateEach`): any deny
+  blocks it, any ask asks, and it is allowed only when every subject is; an
+  "Always allow" is offered only when every subject suggests the same rule.
+- Plan mode: the `plan` preset denies every call that may change something
+  and runs read-only bash without asking. A call changes nothing when its
+  tool is read-only or the tool says so for this call
+  (`tools.ReadOnlyCaller`: bash passing the read-only subagent's check, an
+  `agent` call with `readonly`, `memory` list). `todo_write` and searches run
+  as usual. `exit_plan_mode {plan}`, offered only in plan mode, always asks:
+  the approval shows the plan, approving switches the session to
+  `accept_edits` and the same run carries on (whatever mode the session had
+  before: approving a plan approves its edits, never more, and a member may
+  answer an approval while only the owner switches modes), and a rejection's
+  reason goes back to the model, which stays in plan mode. It offers no
+  "Always allow". Enter with `/plan`, `/permissions plan`, the mode picker or
+  `PATCH /v1/sessions/{id}/permissions` (owner only). Subagents inherit the
+  mode; the engine fixes its tool list when a run starts or resumes, so
+  `/plan` during a run blocks changes at once and offers `exit_plan_mode` from
+  the next start or resume.
 - PreToolUse hooks (`core.permitCall`) are one more rule source below the
   stored deny rules: they run only for a call no deny rule blocks and may block
   it, make it ask or allow it (over ask rules and the preset). Arguments they
@@ -422,8 +444,8 @@ provider and model.
   the result cut, ending with the offset to read on. Lines over 2000
   characters are cut; a file with a NUL byte in its first 8 KB is refused as
   binary.
-- File state (`tools/file_ledger.go`): one in-memory ledger shared by `read`,
-  `write`, `edit` and `multiedit` holds, per session, the xxh3 hash of each
+- File state (`tools/file_ledger.go`): one in-memory ledger shared by `read`
+  and the file-changing tools holds, per session, the xxh3 hash of each
   file the session read (any part) or wrote. Changing an existing file the
   session has not seen, or that changed since, is refused, in the preview too,
   so nobody is asked. New files need no read. The ledger is not persisted:
@@ -436,6 +458,23 @@ provider and model.
   is byte for byte only. CRLF line ends and a byte order mark are kept. A miss
   shows the closest lines with their numbers; an edit whose new text is
   already there answers neutral, as does a change that changes nothing.
+- `apply_patch {input}` takes Codex's patch format (`*** Begin Patch`, `***
+  Add File:`, `*** Update File:` with an optional `*** Move to:`, `*** Delete
+  File:`, `@@` context lines, ` `/`-`/`+` lines, `*** End Patch`), parsed
+  leniently: whitespace around markers, a heredoc wrapper and blank lines
+  between sections are tolerated (`tools/apply_patch_parse.go`). An update's
+  chunks are sought in file order, an `@@` line first and the old lines after
+  it, exactly, then ignoring trailing and surrounding whitespace, then quote
+  and dash style (loosely matched lines take the file's indentation); old
+  lines ending with an empty line are sought again without it. The whole
+  patch is applied in memory first, every file checked against the ledger and
+  the credential guard; nothing is written unless all of it applies, and a
+  failed write puts back the files written before it. The approval and the
+  result's metadata are a `tools.PatchChange`, one `FileChange` per file.
+- Models trained on `apply_patch` (`tools.PrefersApplyPatch`: a model id with
+  `codex`, or with `gpt-` but neither `gpt-4` nor `oss`) get it instead of
+  `edit` and `multiedit` (`core.nativeToolSpecs`); every other model gets
+  those two. `write` is offered to both.
 - Writes go to the symlink-resolved path through a temporary file and a
   rename, keeping the file's mode. The result shows the changed lines
   numbered like `read`; its metadata (`tools.FileChange`) keeps only the
@@ -518,7 +557,9 @@ Close() error
   change; MCP reconnects only changed servers, and one failing server does not
   disable the others.
 - `GET /v1/modules` lists statuses; the model's runtime note is built from
-  them (without `state`, so it stays stable).
+  them (without `state`, so it stays stable): modules grouped as usable in
+  this run, enabled without tools here, not ready, and off, with facts only
+  for enabled ones.
 - A module with settings implements `modules.Configurable`: `Settings` returns
   typed items (toggle, choice, text, secret, action, page, info) and `Change`
   runs a change (install an engine, download a model) and returns the
@@ -545,8 +586,6 @@ that takes a single reply (Telegram inline and guest). Restart notices are
 
 ## Planned after v0.2.0
 
-- Drop the session runtime aliases (`codex`, `assistant`, ...) in
-  `internal/core/external_agents.go`, then the `sessions.runtime_id` column.
 - Delete the one-time v0.2 conversions, `internal/store/legacy_v02.go` (the
   database) and `internal/setup/legacy_v3.go` (setup.json), one release after
   they shipped.

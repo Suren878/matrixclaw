@@ -31,21 +31,17 @@ INSERT INTO external_agent_sessions(
     external_session_id,
     cwd,
     model,
-    approval_policy,
-    sandbox,
     metadata_json,
     created_at,
     updated_at
 )
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(session_id) DO UPDATE SET
     agent_id = excluded.agent_id,
     external_thread_id = excluded.external_thread_id,
     external_session_id = excluded.external_session_id,
     cwd = excluded.cwd,
     model = excluded.model,
-    approval_policy = excluded.approval_policy,
-    sandbox = excluded.sandbox,
     metadata_json = excluded.metadata_json,
     updated_at = excluded.updated_at`,
 		attachment.SessionID,
@@ -54,8 +50,6 @@ ON CONFLICT(session_id) DO UPDATE SET
 		attachment.ExternalSessionID,
 		attachment.CWD,
 		attachment.Model,
-		attachment.ApprovalPolicy,
-		attachment.Sandbox,
 		attachment.MetadataJSON,
 		formatTime(attachment.CreatedAt),
 		formatTime(attachment.UpdatedAt),
@@ -68,7 +62,7 @@ ON CONFLICT(session_id) DO UPDATE SET
 
 func (s *SQLiteStore) GetExternalAgentSession(ctx context.Context, sessionID string) (externalagents.SessionAttachment, error) {
 	row := s.db.QueryRowContext(ctx, `
-SELECT session_id, agent_id, external_thread_id, external_session_id, cwd, model, approval_policy, sandbox, metadata_json, created_at, updated_at
+SELECT session_id, agent_id, external_thread_id, external_session_id, cwd, model, metadata_json, created_at, updated_at
 FROM external_agent_sessions
 WHERE session_id = ?`, sessionID)
 
@@ -82,8 +76,6 @@ WHERE session_id = ?`, sessionID)
 		&attachment.ExternalSessionID,
 		&attachment.CWD,
 		&attachment.Model,
-		&attachment.ApprovalPolicy,
-		&attachment.Sandbox,
 		&attachment.MetadataJSON,
 		&createdAt,
 		&updatedAt,
