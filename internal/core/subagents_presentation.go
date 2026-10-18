@@ -39,24 +39,7 @@ func subagentUserPrompt(prompt string, workingDir string, isolation SubagentIsol
 	case readonly:
 		lines = append(lines, "", "Read-only: inspect and report; do not change files.")
 	case isolation == SubagentIsolationWorktree:
-		lines = append(lines, "", "This is your own git worktree; keep your changes inside it. The parent merges them.")
-	}
-	lines = append(lines, "", "Return a concise result for the parent agent. Include important files, findings, errors, and verification output. Do not ask the user questions.")
-	return strings.Join(lines, "\n")
-}
-
-func subagentSystemPrompt(readonly bool) string {
-	lines := []string{
-		"Subagent mode:",
-		"- You are a child agent working for a parent Matrixclaw agent.",
-		"- Complete only the delegated task from the user message.",
-		"- Track multi-step work with todo_write.",
-		"- Commands you start in the background are stopped when you finish.",
-		"- Do not ask the user for input or approval.",
-		"- Return a concise summary for the parent agent, listing important files, findings, errors, and verification output.",
-	}
-	if readonly {
-		lines = append(lines, "- You have read-only tools: inspect, do not change anything.")
+		lines = append(lines, "", "This is your own git worktree, started from the parent's last commit. Keep your changes inside it and give its path in your report; the parent brings the changes over.")
 	}
 	return strings.Join(lines, "\n")
 }

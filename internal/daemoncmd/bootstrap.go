@@ -104,7 +104,7 @@ func loadBootstrap() (bootstrapConfig, error) {
 		cfg.SessionLLMs = sessionllm.New(setupCfg.ActiveProviderID, sessionProviderSpecsFromSetup(setupCfg))
 		cfg.Assistant = core.AssistantProfile{
 			Name:               setupCfg.Assistant.NameOrDefault(),
-			SystemPrompt:       setupCfg.Assistant.SystemPromptOrDefault(),
+			SystemPrompt:       setupCfg.Assistant.SystemPrompt,
 			CustomInstructions: setupCfg.Assistant.CustomInstructions,
 		}
 		telegramClient, err := telegramBootstrapFromSetup(setupCfg.Clients.Telegram)

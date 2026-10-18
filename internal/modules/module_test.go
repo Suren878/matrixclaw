@@ -34,14 +34,13 @@ func (m *switchable) Tools() []tools.Executor {
 	}
 	return []tools.Executor{testTool{id: "module_tool"}}
 }
-func (m *switchable) Context() string { return "switchable context" }
 func (m *switchable) Status(context.Context) Status {
 	return Status{ID: m.ID(), Enabled: m.on}
 }
 func (m *switchable) Close() error { return nil }
 
 func TestSetOffersModuleToolsAsModulesApply(t *testing.T) {
-	set, err := NewSet([]tools.Executor{testTool{id: "base_tool"}}, &switchable{}, Static("static", "Static", "", testTool{id: "static_tool"}))
+	set, err := NewSet([]tools.Executor{testTool{id: "base_tool"}}, &switchable{}, Static("static", "Static", testTool{id: "static_tool"}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,9 +69,6 @@ func TestSetOffersModuleToolsAsModulesApply(t *testing.T) {
 	if len(statuses) != 2 || len(statuses[0].Tools) != 1 || statuses[0].Tools[0] != "module_tool" || !statuses[1].Ready {
 		t.Fatalf("statuses = %+v", statuses)
 	}
-	if got := set.Context(); len(got) != 1 || got[0] != "switchable context" {
-		t.Fatalf("context = %v", got)
-	}
 	if err := set.Apply(ctx, setup.Config{}); err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +78,7 @@ func TestSetOffersModuleToolsAsModulesApply(t *testing.T) {
 }
 
 func TestSetKeepsTheFirstToolAndReportsADuplicateInStatus(t *testing.T) {
-	set, err := NewSet([]tools.Executor{testTool{id: "same"}}, Static("dup", "Dup", "", testTool{id: "same"}, testTool{id: "own"}))
+	set, err := NewSet([]tools.Executor{testTool{id: "same"}}, Static("dup", "Dup", testTool{id: "same"}, testTool{id: "own"}))
 	if err != nil {
 		t.Fatal(err)
 	}

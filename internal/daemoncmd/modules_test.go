@@ -12,7 +12,7 @@ import (
 )
 
 func TestStatusNoteFollowsAppliedModules(t *testing.T) {
-	set, err := modules.NewSet(nil, telephonymodule.New(), modules.Static("storage", "Storage", ""))
+	set, err := modules.NewSet(nil, telephonymodule.New(), modules.Static("storage", "Storage"))
 	if err != nil {
 		t.Fatal(err)
 	}

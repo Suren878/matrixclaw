@@ -35,8 +35,6 @@ func (m *Module) Apply(_ context.Context, cfg setup.Config) error {
 
 func (m *Module) Tools() []tools.Executor { return nil }
 
-func (m *Module) Context() string { return "" }
-
 func (m *Module) Close() error { return nil }
 
 // Descriptor is the module with the runtime's install state.

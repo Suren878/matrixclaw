@@ -56,8 +56,6 @@ func (m *Module) Tools() []tools.Executor {
 	return []tools.Executor{&callTool{module: m}, &endCallTool{module: m}}
 }
 
-func (m *Module) Context() string { return "" }
-
 func (m *Module) Close() error { return nil }
 
 func (m *Module) Status(context.Context) modules.Status {

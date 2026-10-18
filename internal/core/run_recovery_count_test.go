@@ -86,8 +86,9 @@ func TestASubagentWhoseTaskCannotBeRecordedLeavesNoSessionBehind(t *testing.T) {
 	app.WithRunStarter(&recordingRunStarter{})
 	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	var spawnResult string
+	calls := 0
 	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
-		if len(request.Messages) > 1 {
+		if calls++; calls > 1 {
 			spawnResult = request.Messages[len(request.Messages)-1].Content
 			return providers.Response{Text: "Could not delegate."}, nil
 		}

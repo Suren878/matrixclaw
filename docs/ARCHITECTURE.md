@@ -253,6 +253,34 @@ keyed locks, the model-request semaphore `daemon.model_concurrency`), `prompt`
 (fixed texts and tool guidance), `todo` (items, validation, rendering),
 `agenttest` (scripted model and port fakes for tests).
 
+### System prompt
+
+`corePrompts.System` builds the prompt once per run; `Context` sends what
+changes as a context note (a user-role message appended only when its text
+changes), so the cached prefix survives between runs.
+
+- A run is a coding run when it has tools and a working directory and does
+  not answer a reply-once address (Telegram guest query or inline message).
+  It gets the coding persona and operating manual (`prompt.CodingGuidance`:
+  autonomy, verification, code changes, tools, git safety, todo, final
+  reply), an environment block (working directory, git root, platform) and
+  the project instructions. Other runs get the chat persona and the general
+  tool discipline. A user `assistant.system_prompt` replaces the persona.
+- Every text names only tools the run has (`prompt.Tools`), so a read-only
+  child (read-only bash, no edit tools) is never told to edit, build or
+  commit. Children get the same manual with a subagent section instead of
+  the parent's question and final-reply rules; the parent gets the
+  agent-tool guidance with the runtimes available now.
+- Project instructions (`internal/workspace`): `AGENTS.md` next to
+  setup.json, then, from the top down to the working directory, the first of
+  `AGENTS.md`/`CLAUDE.md` in each directory plus `.matrixclaw/instructions.md`.
+  The top is the home directory when the working directory lies under it,
+  else the git root, else the working directory. 32 KiB in total; later files
+  are cut or left out with a note.
+- The context note starts with the run context, read once when the run
+  starts: the date in `daemon.timezone`, the client, the permission mode and,
+  for coding runs, the git branch, status (20 lines) and last 5 commits.
+
 ## Providers
 
 `internal/providers` holds the catalog (`ProviderSpec` per built-in provider,
@@ -443,7 +471,6 @@ MCP and skills implement `modules.Module`:
 ID() string
 Apply(ctx, setup.Config) error // at start and after every setup change; cheap when unchanged
 Tools() []tools.Executor       // offered now; none while off or unconfigured
-Context() string               // system prompt paragraph
 Status(ctx) Status             // enabled, ready, state, facts; no network I/O
 Close() error
 ```
@@ -453,8 +480,8 @@ Close() error
   current tools, in a registry swapped atomically after each `Apply`.
 - `supervisor.Reload` (`POST /v1/admin/reload`, the wizard, every API handler
   after a setup write) loads setup.json and, under one lock, applies external
-  agents, the module set, session LLMs, the assistant profile with module
-  paragraphs, and Telegram. Each part does nothing when its settings did not
+  agents, the module set, session LLMs, the assistant profile, and
+  Telegram. Each part does nothing when its settings did not
   change; MCP reconnects only changed servers, and one failing server does not
   disable the others.
 - `GET /v1/modules` lists statuses; the model's runtime note is built from

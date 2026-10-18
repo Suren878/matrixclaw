@@ -37,7 +37,7 @@ func (t coreTools) Specs(ctx context.Context) []tools.Spec {
 	specs := t.c.nativeToolSpecs(t.turn)
 	for i := range specs {
 		if specs[i].ID == agentToolName {
-			specs[i].Description = t.c.agentToolDescription(ctx, specs[i].Description)
+			specs[i] = t.c.agentToolSpec(ctx, specs[i])
 		}
 	}
 	return specs

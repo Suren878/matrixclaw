@@ -210,9 +210,10 @@ func TestAPhotoSteeredIntoABusyRunReachesTheModel(t *testing.T) {
 		return tools.Result{Content: "inspected"}, nil
 	}}))
 	var last providers.Request
+	calls := 0
 	app.WithSessionLLMs(recoveryLLMs{runtime: visionRuntime{func(_ context.Context, request providers.Request) (providers.Response, error) {
 		last = request
-		if len(request.Messages) == 1 {
+		if calls++; calls == 1 {
 			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-img", Name: "inspect_state", Arguments: []byte(`{}`)}}}, nil
 		}
 		return providers.Response{Text: "A cat."}, nil

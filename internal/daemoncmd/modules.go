@@ -63,9 +63,9 @@ func buildModules(deps moduleDeps) (daemonModules, error) {
 	base = append(base, core.MemoryToolExecutors(app)...)
 	base = append(base, core.AgentToolExecutors(app)...)
 	set, err := modules.NewSet(base,
-		modules.Static("storage", "Storage", deps.storage.Context(), deps.storage.Tools()...),
-		modules.Static("delivery", "File delivery", "", deliverymodule.NewSendFileTool(deps.storage.Store(), app)),
-		modules.Static("geo", "Maps", "", geo.NewOSMGeoExecutors(deps.geo)...),
+		modules.Static("storage", "Storage", deps.storage.Tools()...),
+		modules.Static("delivery", "File delivery", deliverymodule.NewSendFileTool(deps.storage.Store(), app)),
+		modules.Static("geo", "Maps", geo.NewOSMGeoExecutors(deps.geo)...),
 		webmodule.New(),
 		tts,
 		stt,

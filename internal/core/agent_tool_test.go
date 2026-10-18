@@ -273,15 +273,14 @@ func TestAFinishedChildsBackgroundCommandsStop(t *testing.T) {
 	waitProcessGone(t, tasks[0].PID)
 }
 
-func TestParentPromptExplainsTheAgentTool(t *testing.T) {
+func TestAgentToolOffersOnlyAvailableRuntimes(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithBackgroundAgents(2)
 	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
-	var system string
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
-		system = request.SystemPrompt
+	var request providers.Request
+	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, seen providers.Request) (providers.Response, error) {
+		request = seen
 		return providers.Response{Text: "Hi."}, nil
 	})})
 	_, run := saveCrashRecoveryRun(t, db, "guidance", core.RunStatusAccepted, false)
@@ -290,10 +289,21 @@ func TestParentPromptExplainsTheAgentTool(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, want := range []string{"The agent tool runs a child agent", "readonly:true", "isolation worktree", "At most 2 background children", "Runtime IDs available for the agent tool: matrixclaw."} {
-		if !strings.Contains(system, want) {
-			t.Fatalf("system prompt lacks %q:\n%s", want, system)
-		}
+	if len(request.Tools) != 1 {
+		t.Fatalf("tools = %+v", request.Tools)
+	}
+	var schema struct {
+		Properties struct {
+			Runtime struct {
+				Enum []string `json:"enum"`
+			} `json:"runtime"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(request.Tools[0].InputSchema, &schema); err != nil {
+		t.Fatal(err)
+	}
+	if got := schema.Properties.Runtime.Enum; len(got) != 1 || got[0] != "matrixclaw" {
+		t.Fatalf("runtime enum = %v, want only the native runtime", got)
 	}
 }
 

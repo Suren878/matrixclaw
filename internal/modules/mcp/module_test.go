@@ -97,7 +97,7 @@ func TestApplyConnectsChangedServersOnly(t *testing.T) {
 	if err := m.Apply(ctx, withServers(false, docs)); err != nil {
 		t.Fatal(err)
 	}
-	if ids := toolIDs(m); len(ids) != 0 || m.Context() != "" {
+	if ids := toolIDs(m); len(ids) != 0 {
 		t.Fatalf("disabled MCP still offers %v", ids)
 	}
 }
