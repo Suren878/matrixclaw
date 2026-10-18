@@ -258,8 +258,7 @@ func TestMutatingApprovalDefersTheRestOfTheBatch(t *testing.T) {
 		}
 	}
 
-	f.Approvals.Open = false
-	f.Inbox.Decided = []agent.Input{{Kind: agent.InputDecided, ToolCallID: "w1", ToolName: "write", WorkingDir: "/work", Args: []byte(`{}`)}}
+	f.Inbox.Grant("w1")
 	outcome = run(t, f, model)
 
 	if outcome.Status != agent.StatusWaitingApproval || len(f.Approvals.Requests) != 2 || f.Approvals.Requests[1].ToolCallID != "w2" {
@@ -275,8 +274,7 @@ func TestMutatingApprovalDefersTheRestOfTheBatch(t *testing.T) {
 		t.Fatalf("model called %d times while a barrier was open", len(model.Requests()))
 	}
 
-	f.Approvals.Open = false
-	f.Inbox.Decided = append(f.Inbox.Decided, agent.Input{Kind: agent.InputDecided, ToolCallID: "w2", ToolName: "write", WorkingDir: "/work", Args: []byte(`{}`)})
+	f.Inbox.Grant("w2")
 	outcome = run(t, f, model)
 
 	if outcome.Status != agent.StatusCompleted || len(model.Requests()) != 2 {
@@ -307,8 +305,7 @@ func TestBatchCheckpointsNameTheCallsAndTheDeferredOnes(t *testing.T) {
 		t.Fatalf("checkpoints = %s", got)
 	}
 
-	f.Approvals.Open = false
-	f.Inbox.Decided = []agent.Input{{Kind: agent.InputDecided, ToolCallID: "w1", ToolName: "write", WorkingDir: "/work", Args: []byte(`{}`)}}
+	f.Inbox.Grant("w1")
 	run(t, f, model)
 
 	if got := phases(f.Journal.States[3:]); got != "tool_batch:w1,tool_batch:r2,model" {
@@ -325,8 +322,7 @@ func TestDeniedBarrierAnswersTheCallsItHeldBack(t *testing.T) {
 	model := agenttest.NewScriptedModel(calls(call("r1", "read"), call("w1", "write"), call("r2", "read"), call("w2", "write")), text("Done."))
 	run(t, f, model)
 
-	f.Approvals.Open = false
-	f.Inbox.Decided = []agent.Input{{Kind: agent.InputDecided, ToolCallID: "w1", ToolName: "write", WorkingDir: "/work", Args: []byte(`{}`), Denied: true, Reason: "not yet"}}
+	f.Inbox.Deny("w1", "not yet")
 	outcome := run(t, f, model)
 
 	if outcome.Status != agent.StatusCompleted || len(model.Requests()) != 2 {
@@ -351,9 +347,7 @@ func TestResolvedApprovalContinuesTheSameRun(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["write"] = writeTool
 	f.Tools.Asks["write"] = true
-	f.Approvals.Grant = func(p agent.Pending) {
-		f.Inbox.Decided = append(f.Inbox.Decided, agent.Input{Kind: agent.InputDecided, ToolCallID: p.ToolCallID, ToolName: p.ToolName, WorkingDir: "/work", Args: []byte(`{}`)})
-	}
+	f.Approvals.AutoGrant = true
 	model := agenttest.NewScriptedModel(calls(call("w1", "write")), text("Done."))
 
 	outcome := run(t, f, model)
@@ -374,7 +368,7 @@ func TestGrantedApprovalIsExecutedBeforeTheNextModelCall(t *testing.T) {
 	f.Tools.Funcs["write"] = writeTool
 	f.Tools.Asks["write"] = true
 	f.Journal.Seed(agent.ToolCallMessage("w1", agenttest.SessionID, agenttest.RunID, "write", []byte(`{}`), false, f.Clock))
-	f.Inbox.Decided = []agent.Input{{Kind: agent.InputDecided, ToolCallID: "w1", ToolName: "write", WorkingDir: "/work", Args: []byte(`{}`)}}
+	f.Inbox.Grant("w1")
 	model := agenttest.NewScriptedModel(text("Done."))
 
 	outcome := run(t, f, model)
@@ -416,14 +410,14 @@ func TestUnknownToolIsReturnedAsErrorResult(t *testing.T) {
 func TestSteerIsAppendedToTheNextToolResult(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["read"] = readTool
-	f.Inbox.Steers = []string{"check the logs"}
+	f.Inbox.SteerTexts = []string{"check the logs"}
 	model := agenttest.NewScriptedModel(calls(call("r1", "read")), text("Done."))
 
 	run(t, f, model)
 
 	result, _ := f.Journal.Result("r1")
-	if result.Content != "file body\n\nUser guidance: check the logs" || len(f.Inbox.Steers) != 0 {
-		t.Fatalf("result = %q steers left = %v", result.Content, f.Inbox.Steers)
+	if result.Content != "file body\n\nUser guidance: check the logs" || len(f.Inbox.SteerTexts) != 0 {
+		t.Fatalf("result = %q steers left = %v", result.Content, f.Inbox.SteerTexts)
 	}
 	if guidance := result.Parts[0].ToolResult.Guidance; len(guidance) != 1 || guidance[0] != "check the logs" {
 		t.Fatalf("recorded guidance = %q", guidance)
@@ -436,7 +430,7 @@ func TestSteerIsAppendedToTheNextToolResult(t *testing.T) {
 func TestSteerStaysPendingWhenItsToolResultIsNotWritten(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Tools.Funcs["read"] = readTool
-	f.Inbox.Steers = []string{"check the logs"}
+	f.Inbox.SteerTexts = []string{"check the logs"}
 	f.Journal.OnAppend = func(msg transcript.Message) error {
 		if msg.Role == transcript.MessageRoleTool {
 			return errors.New("disk full")
@@ -449,8 +443,8 @@ func TestSteerStaysPendingWhenItsToolResultIsNotWritten(t *testing.T) {
 	if outcome.Status != agent.StatusFailed {
 		t.Fatalf("outcome = %+v", outcome)
 	}
-	if len(f.Inbox.Steers) != 1 || f.Inbox.Steers[0] != "check the logs" {
-		t.Fatalf("steers left = %v, want the unwritten steer still pending", f.Inbox.Steers)
+	if len(f.Inbox.SteerTexts) != 1 || f.Inbox.SteerTexts[0] != "check the logs" {
+		t.Fatalf("steers left = %v, want the unwritten steer still pending", f.Inbox.SteerTexts)
 	}
 }
 
@@ -625,7 +619,7 @@ func TestStoppedContextReturnsInterruptedWithTheReachedReply(t *testing.T) {
 
 	outcome, err := f.Engine().Run(ctx, f.Task(model))
 
-	if err != nil || outcome.Status != agent.StatusInterrupted || outcome.Reached != agent.StatusCompleted || outcome.Assistant.Content != "late answer" {
+	if err != nil || !outcome.Interrupted || outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != "late answer" {
 		t.Fatalf("outcome = %+v err = %v", outcome, err)
 	}
 }
@@ -655,7 +649,7 @@ func TestCancelAfterToolCallsGenerationKeepsTheStreamedPreview(t *testing.T) {
 
 	outcome, err := f.Engine().Run(ctx, f.Task(model))
 
-	if err != nil || outcome.Status != agent.StatusInterrupted || outcome.Assistant == nil || !outcome.AssistantSaved || outcome.Assistant.Content != "Checking" {
+	if err != nil || !outcome.Interrupted || outcome.Status != "" || outcome.Assistant == nil || !outcome.AssistantSaved || outcome.Assistant.Content != "Checking" {
 		t.Fatalf("outcome = %+v err = %v, want the streamed preview to seal", outcome, err)
 	}
 	if len(f.Tools.Calls) != 0 {
@@ -776,7 +770,7 @@ func TestStopDuringRetryBackoffEndsTheWait(t *testing.T) {
 	started := time.Now()
 	outcome, err := f.Engine().Run(ctx, f.Task(model))
 
-	if err != nil || outcome.Status != agent.StatusInterrupted || attempts != 1 {
+	if err != nil || !outcome.Interrupted || outcome.Status != "" || attempts != 1 {
 		t.Fatalf("outcome = %+v err = %v attempts = %d", outcome, err, attempts)
 	}
 	if elapsed := time.Since(started); elapsed >= 200*time.Millisecond {
@@ -824,7 +818,7 @@ func TestStoppedContextWithOpenApprovalReportsTheParkedState(t *testing.T) {
 
 	outcome, err := f.Engine().Run(ctx, f.Task(agenttest.NewScriptedModel(calls(call("w1", "write")))))
 
-	if err != nil || outcome.Status != agent.StatusInterrupted || outcome.Reached != agent.StatusWaitingApproval || len(f.Approvals.Requests) != 1 {
+	if err != nil || !outcome.Interrupted || outcome.Status != agent.StatusWaitingApproval || len(f.Approvals.Requests) != 1 {
 		t.Fatalf("outcome = %+v err = %v requests = %+v", outcome, err, f.Approvals.Requests)
 	}
 }
@@ -854,7 +848,7 @@ func TestDeniedCallGetsTheDenialAsItsResult(t *testing.T) {
 		f.Tools.Funcs["write"] = writeTool
 		f.Tools.Asks["write"] = true
 		f.Journal.Seed(agent.ToolCallMessage("w1", agenttest.SessionID, agenttest.RunID, "write", []byte(`{}`), false, f.Clock))
-		f.Inbox.Decided = []agent.Input{{Kind: agent.InputDecided, ToolCallID: "w1", ToolName: "write", WorkingDir: "/work", Args: []byte(`{}`), Denied: true, Reason: tc.reason}}
+		f.Inbox.Deny("w1", tc.reason)
 		model := agenttest.NewScriptedModel(text("Understood."))
 
 		outcome := run(t, f, model)

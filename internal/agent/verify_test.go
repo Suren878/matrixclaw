@@ -142,8 +142,7 @@ func TestVerificationStateSurvivesAPark(t *testing.T) {
 	if outcome.Status != agent.StatusWaitingApproval || !parked.Unverified {
 		t.Fatalf("outcome = %+v parked checkpoint = %+v", outcome, parked)
 	}
-	f.Inbox.Decided = []agent.Input{{Kind: agent.InputDecided, ToolCallID: "d1", ToolName: "deploy", WorkingDir: "/work", Args: []byte(`{}`)}}
-	f.Approvals.Open = false
+	f.Inbox.Grant("d1")
 	resumed := agenttest.NewScriptedModel(text("Done."), text("Done, not verified."))
 	task := f.Task(resumed)
 	task.Resume = parked

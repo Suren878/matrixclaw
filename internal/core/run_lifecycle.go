@@ -233,9 +233,15 @@ func (c *Core) sealCanceledReply(ctx context.Context, reply *transcript.Message,
 }
 
 // applyOutcome persists how the engine left a native run and reports whether
-// the run was kept for recovery. A run canceled while its engine finished stays
-// canceled, with its reply marked so.
+// the run was kept for recovery. An interrupted run commits what it reached,
+// in a context of its own as the run's has stopped. A run canceled while its
+// engine finished stays canceled, with its reply marked so.
 func (c *Core) applyOutcome(ctx context.Context, run Run, outcome agent.Outcome) (bool, error) {
+	if outcome.Interrupted {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.Background(), runInterruptionPersistenceTimeout)
+		defer cancel()
+	}
 	kept, err := c.writeOutcome(ctx, run, outcome)
 	if !errors.Is(err, ErrRunEnded) {
 		return kept, err
@@ -250,11 +256,18 @@ func (c *Core) applyOutcome(ctx context.Context, run Run, outcome agent.Outcome)
 func (c *Core) writeOutcome(ctx context.Context, run Run, outcome agent.Outcome) (bool, error) {
 	switch outcome.Status {
 	case agent.StatusCompleted:
-		if outcome.Assistant == nil {
-			return false, nil
-		}
 		return false, c.transition(ctx, &run, runChange{To: RunStatusCompleted, Stop: outcome.StopReason, Reply: outcome.Assistant, ReplySaved: outcome.AssistantSaved})
 	case agent.StatusWaitingApproval:
+		if outcome.Interrupted {
+			// A decision may have come in after the engine asked.
+			pending, err := c.runHasPendingApprovals(ctx, run.SessionID, run.ID)
+			if err != nil {
+				return false, err
+			}
+			if !pending {
+				return c.keepForRecovery(ctx, run, outcome)
+			}
+		}
 		return false, c.transition(ctx, &run, runChange{To: RunStatusWaitingApproval})
 	case agent.StatusWaitingEvents:
 		return false, c.transition(ctx, &run, runChange{To: RunStatusWaitingEvents, Await: outcome.RunState.Await})
@@ -268,18 +281,17 @@ func (c *Core) writeOutcome(ctx context.Context, run Run, outcome agent.Outcome)
 			return false, err
 		}
 		return false, outcome.Err
-	case agent.StatusInterrupted:
-		return c.applyInterruptedOutcome(run, outcome)
-	default:
-		return false, fmt.Errorf("core: unknown run outcome %q", outcome.Status)
+	case "":
+		if outcome.Interrupted {
+			return c.keepForRecovery(ctx, run, outcome)
+		}
 	}
+	return false, fmt.Errorf("core: unknown run outcome %q", outcome.Status)
 }
 
-// applyInterruptedOutcome commits what the run reached before its context
-// stopped, or leaves it running, its reply sealed, for recovery (reported as true).
-func (c *Core) applyInterruptedOutcome(run Run, outcome agent.Outcome) (bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), runInterruptionPersistenceTimeout)
-	defer cancel()
+// keepForRecovery leaves an interrupted run running, its reply sealed, for
+// recovery (reported as true), unless it ended meanwhile.
+func (c *Core) keepForRecovery(ctx context.Context, run Run, outcome agent.Outcome) (bool, error) {
 	latest, err := c.store.GetRun(ctx, run.ID)
 	if err != nil {
 		return false, err
@@ -289,20 +301,6 @@ func (c *Core) applyInterruptedOutcome(run Run, outcome agent.Outcome) (bool, er
 	}
 	if latest.Status.Terminal() {
 		return false, nil
-	}
-	switch outcome.Reached {
-	case agent.StatusCompleted:
-		return false, c.transition(ctx, &latest, runChange{To: RunStatusCompleted, Stop: outcome.StopReason, Reply: outcome.Assistant, ReplySaved: outcome.AssistantSaved})
-	case agent.StatusWaitingApproval:
-		pending, err := c.runHasPendingApprovals(ctx, latest.SessionID, latest.ID)
-		if err != nil {
-			return false, err
-		}
-		if pending {
-			return false, c.transition(ctx, &latest, runChange{To: RunStatusWaitingApproval})
-		}
-	case agent.StatusWaitingEvents:
-		return false, c.transition(ctx, &latest, runChange{To: RunStatusWaitingEvents, Await: outcome.RunState.Await})
 	}
 	return true, c.sealInterruptedReply(ctx, outcome.Assistant, outcome.AssistantSaved)
 }

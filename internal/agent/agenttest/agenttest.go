@@ -220,22 +220,30 @@ func (j *Journal) replace(msg transcript.Message) error {
 type ToolFunc func(call tools.Call) tools.Result
 
 // Tools authorizes registered names only (Mutating ones are barriers until
-// granted, Keys and Delegated fill the decision) and records executed calls in
+// granted, Keys and Delegated fill the admission) and records executed calls in
 // start order (read Calls after Run returns). A call of an Asks tool returns an
 // approval request until Inbox holds its grant, as core does. OnExecute runs
 // first, on the call's goroutine, and fails the call with its error.
+// Recoveries settles interrupted calls by ID; a call it does not name reruns.
 type Tools struct {
-	Funcs     map[string]ToolFunc
-	Mutating  map[string]bool
-	Asks      map[string]bool
-	Keys      map[string]string
-	Delegated map[string]bool
-	Inbox     *Inbox
-	Calls     []tools.Call
-	OnExecute func(ctx context.Context, name string, call tools.Call) error
+	Funcs      map[string]ToolFunc
+	Mutating   map[string]bool
+	Asks       map[string]bool
+	Keys       map[string]string
+	Delegated  map[string]bool
+	Recoveries map[string]agent.Recovery
+	Inbox      *Inbox
+	Calls      []tools.Call
+	OnExecute  func(ctx context.Context, name string, call tools.Call) error
 	// SpecReads counts tool listings.
 	SpecReads int
 	mu        sync.Mutex
+}
+
+// grant is what Tools hands the engine for an authorized call.
+type grant struct {
+	name string
+	call tools.Call
 }
 
 func (t *Tools) Specs(context.Context) []tools.Spec {
@@ -252,14 +260,15 @@ func (t *Tools) Specs(context.Context) []tools.Spec {
 	return specs
 }
 
-func (t *Tools) Authorize(_ context.Context, name string, call tools.Call) (agent.Decision, error) {
+func (t *Tools) Authorize(_ context.Context, name string, call tools.Call) (agent.Admission, error) {
 	if _, ok := t.Funcs[name]; !ok {
-		return agent.Decision{Reason: fmt.Sprintf("invalid input: unknown tool %q", name)}, nil
+		return agent.Admission{Reason: fmt.Sprintf("invalid input: unknown tool %q", name)}, nil
 	}
-	return agent.Decision{Allowed: true, Barrier: t.Mutating[name] && !t.granted(call.ToolCallID), Key: t.Keys[name], Delegated: t.Delegated[name]}, nil
+	return agent.Admission{Allowed: true, Barrier: t.Mutating[name] && !t.granted(call.ToolCallID), Key: t.Keys[name], Delegated: t.Delegated[name], Grant: grant{name: name, call: call}}, nil
 }
 
-func (t *Tools) Execute(ctx context.Context, name string, call tools.Call) (tools.Result, *tools.ApprovalRequest, error) {
+func (t *Tools) Execute(ctx context.Context, g agent.Grant) (tools.Result, *tools.ApprovalRequest, error) {
+	name, call := g.(grant).name, g.(grant).call
 	if t.OnExecute != nil {
 		if err := t.OnExecute(ctx, name, call); err != nil {
 			return tools.Result{}, nil, err
@@ -274,22 +283,34 @@ func (t *Tools) Execute(ctx context.Context, name string, call tools.Call) (tool
 	return t.Funcs[name](call), nil, nil
 }
 
+func (t *Tools) Recovery(ctx context.Context, _ string, call tools.Call) (agent.Recovery, error) {
+	if err := ctx.Err(); err != nil {
+		return agent.Recovery{}, err
+	}
+	if recovery, ok := t.Recoveries[call.ToolCallID]; ok {
+		return recovery, nil
+	}
+	return agent.Recovery{Settle: agent.SettleRerun}, nil
+}
+
 // granted reports whether Inbox holds a grant for the call.
 func (t *Tools) granted(callID string) bool {
 	if t.Inbox == nil {
 		return false
 	}
-	return slices.ContainsFunc(t.Inbox.Decided, func(input agent.Input) bool { return input.ToolCallID == callID && !input.Denied })
+	return slices.ContainsFunc(t.Inbox.Decided, func(decision agent.Decision) bool {
+		return decision.ToolCallID == callID && !decision.Pending && !decision.Denied
+	})
 }
 
-// Approvals records requests; Grant, when set, resolves each request at once.
-// OnRequest runs first and fails the request with its error. Like the store, both
-// methods fail on a stopped context.
+// Approvals records requests, each a pending decision in Inbox, which
+// AutoGrant grants at once. OnRequest runs first and fails the request with
+// its error. Like the store, it fails on a stopped context.
 type Approvals struct {
 	Requests  []agent.Pending
-	Open      bool
-	Grant     func(agent.Pending)
+	AutoGrant bool
 	OnRequest func(agent.Pending) error
+	Inbox     *Inbox
 }
 
 func (a *Approvals) Request(ctx context.Context, p agent.Pending) error {
@@ -302,65 +323,88 @@ func (a *Approvals) Request(ctx context.Context, p agent.Pending) error {
 		}
 	}
 	a.Requests = append(a.Requests, p)
-	if a.Grant != nil {
-		a.Grant(p)
+	if a.AutoGrant {
+		a.Inbox.Grant(p.ToolCallID)
 		return nil
 	}
-	a.Open = true
+	a.Inbox.decide(agent.Decision{ToolCallID: p.ToolCallID, Pending: true})
 	return nil
-}
-
-func (a *Approvals) Pending(ctx context.Context, _ string) (bool, error) {
-	if err := ctx.Err(); err != nil {
-		return false, err
-	}
-	return a.Open, nil
 }
 
 // Inbox hands out pending steers, whose IDs are their text, and events until
-// they are consumed, and decided approvals on every peek; Ended lists tasks that
-// finished without an event. Like the store, it fails on a stopped context.
+// they are consumed, and the newest decision of each call (Grant and Deny
+// decide one); Ended lists tasks that finished without an event. Like the
+// store, it fails on a stopped context.
 type Inbox struct {
-	Steers  []string
-	Decided []agent.Input
-	Events  []agent.Input
-	Ended   []string
+	SteerTexts []string
+	Decided    []agent.Decision
+	TaskEvents []agent.TaskEvent
+	Ended      []string
 }
 
-func (in *Inbox) Peek(ctx context.Context, _ string, kind agent.InputKind) ([]agent.Input, error) {
+// Grant grants the call's approval.
+func (in *Inbox) Grant(callID string) {
+	in.decide(agent.Decision{ToolCallID: callID})
+}
+
+// Deny denies the call's approval with reason.
+func (in *Inbox) Deny(callID string, reason string) {
+	in.decide(agent.Decision{ToolCallID: callID, Denied: true, Reason: reason})
+}
+
+func (in *Inbox) decide(decision agent.Decision) {
+	in.Decided = slices.DeleteFunc(in.Decided, func(d agent.Decision) bool { return d.ToolCallID == decision.ToolCallID })
+	in.Decided = append(in.Decided, decision)
+}
+
+func (in *Inbox) Steers(ctx context.Context) ([]agent.Steer, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	switch kind {
-	case agent.InputSteer:
-		out := make([]agent.Input, 0, len(in.Steers))
-		for _, text := range in.Steers {
-			out = append(out, agent.Input{Kind: agent.InputSteer, ID: text, Text: text})
-		}
-		return out, nil
-	case agent.InputDecided:
-		return in.Decided, nil
-	case agent.InputEvent:
-		return slices.Clone(in.Events), nil
-	default:
-		return nil, fmt.Errorf("agenttest: unknown input kind %q", kind)
+	out := make([]agent.Steer, 0, len(in.SteerTexts))
+	for _, text := range in.SteerTexts {
+		out = append(out, agent.Steer{ID: text, Text: text})
 	}
+	return out, nil
 }
 
-func (in *Inbox) Consume(ctx context.Context, _ string, ids []string) error {
+func (in *Inbox) ConsumeSteers(ctx context.Context, ids []string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	in.Steers = slices.DeleteFunc(in.Steers, func(text string) bool { return slices.Contains(ids, text) })
-	in.Events = slices.DeleteFunc(in.Events, func(event agent.Input) bool { return slices.Contains(ids, event.ID) })
+	in.SteerTexts = slices.DeleteFunc(in.SteerTexts, func(text string) bool { return slices.Contains(ids, text) })
 	return nil
+}
+
+func (in *Inbox) Events(ctx context.Context) ([]agent.TaskEvent, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return slices.Clone(in.TaskEvents), nil
+}
+
+func (in *Inbox) ConsumeEvents(ctx context.Context, taskIDs []string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	in.TaskEvents = slices.DeleteFunc(in.TaskEvents, func(event agent.TaskEvent) bool { return slices.Contains(taskIDs, event.TaskID) })
+	return nil
+}
+
+func (in *Inbox) Decisions(ctx context.Context) ([]agent.Decision, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return slices.Clone(in.Decided), nil
 }
 
 func (in *Inbox) Finished(ctx context.Context, taskIDs []string) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
-	return slices.ContainsFunc(taskIDs, func(id string) bool { return slices.Contains(in.Ended, id) }), nil
+	return slices.ContainsFunc(taskIDs, func(id string) bool {
+		return slices.Contains(in.Ended, id) || slices.ContainsFunc(in.TaskEvents, func(event agent.TaskEvent) bool { return event.TaskID == id })
+	}), nil
 }
 
 // Sink records every event.
@@ -449,7 +493,7 @@ func NewFixture() *Fixture {
 	f := &Fixture{
 		Journal:   &Journal{},
 		Tools:     &Tools{Funcs: map[string]ToolFunc{}, Asks: map[string]bool{}, Inbox: inbox},
-		Approvals: &Approvals{},
+		Approvals: &Approvals{Inbox: inbox},
 		Inbox:     inbox,
 		Sink:      &Sink{},
 		Prompts:   &Prompts{Text: "system"},

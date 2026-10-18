@@ -79,61 +79,38 @@ func (c *Core) claimGated(ctx context.Context, runID string) (claimedRun, bool, 
 	return claimedRun{Run: run, Recovering: true, Batch: checkpoint.Batch}, true, checkpoint.RecoveryCount, nil
 }
 
-// interruptedCalls says how a recovered run settles each of its calls without
-// a result: a call waiting for a decision waits on; a call never started (its
-// batch checkpoint says so), a read-only one and an agent call that started its
+// Recovery says how the recovered run settles a call its interrupted
+// execution left without a result: a call never started (the checkpointed
+// batch held it back), a read-only one and an agent call that started its
 // child run again; an unknown tool's call is answered; any other call changes
 // things and is asked about first, as it may have run.
-func (c *Core) interruptedCalls(ctx context.Context, run Run, batch *agent.ToolBatch) ([]agent.InterruptedCall, error) {
-	messages, err := c.store.ListRunMessages(ctx, run.SessionID, run.ID)
-	if err != nil {
-		return nil, err
-	}
-	approvals, err := c.store.ListRunApprovals(ctx, run.SessionID, run.ID)
-	if err != nil {
-		return nil, err
-	}
-	var out []agent.InterruptedCall
-	for _, call := range incompleteToolCalls(messages, run.ID) {
-		if latest, ok := latestApprovalForCall(approvals, call.ID); ok && latest.State != ApprovalStateApproved {
-			continue
-		}
-		settle, err := c.settleInterrupted(ctx, run, call, batch)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, settle)
-	}
-	return out, nil
-}
-
-func (c *Core) settleInterrupted(ctx context.Context, run Run, call transcript.ToolCallPart, batch *agent.ToolBatch) (agent.InterruptedCall, error) {
-	rerun := agent.InterruptedCall{ToolCallID: call.ID, Settle: agent.SettleRerun}
-	if batch != nil && slices.Contains(batch.DeferredIDs, call.ID) {
+func (t coreTools) Recovery(ctx context.Context, name string, call tools.Call) (agent.Recovery, error) {
+	rerun := agent.Recovery{Settle: agent.SettleRerun}
+	if t.interrupted != nil && slices.Contains(t.interrupted.DeferredIDs, call.ToolCallID) {
 		return rerun, nil
 	}
-	if _, err := c.subagentTaskOfCall(ctx, run.SessionID, run.ID, call.ID); err == nil {
+	if _, err := t.c.subagentTaskOfCall(ctx, call.SessionID, call.RunID, call.ToolCallID); err == nil {
 		return rerun, nil
 	} else if !errors.Is(err, ErrNotFound) {
-		return agent.InterruptedCall{}, err
+		return agent.Recovery{}, err
 	}
 	var spec tools.Spec
 	known := false
-	if c.tools != nil {
-		spec, known = c.tools.Spec(call.Name)
+	if t.c.tools != nil {
+		spec, known = t.c.tools.Spec(name)
 	}
 	switch {
 	case !known:
-		return agent.InterruptedCall{ToolCallID: call.ID, Settle: agent.SettleAnswer, Result: tools.Result{
+		return agent.Recovery{Settle: agent.SettleAnswer, Result: tools.Result{
 			Content: "The daemon restarted while this tool was active. Its completion state is unknown, and MatrixClaw did not replay the unavailable tool.",
 			Status:  tools.ResultStatusError,
 		}}, nil
 	case !spec.Mutates():
 		return rerun, nil
 	}
-	return agent.InterruptedCall{ToolCallID: call.ID, Settle: agent.SettleAsk, Request: tools.ApprovalRequest{
-		Description: fmt.Sprintf("The daemon restarted while %s may have been executing. Retry this mutating tool? MatrixClaw will not replay it without confirmation.", cmp.Or(call.Name, "a tool")),
-		Suggestion:  c.suggestRule(ctx, run.SessionID, call.Name, []byte(call.Input)),
+	return agent.Recovery{Settle: agent.SettleAsk, Request: tools.ApprovalRequest{
+		Description: fmt.Sprintf("The daemon restarted while %s may have been executing. Retry this mutating tool? MatrixClaw will not replay it without confirmation.", cmp.Or(name, "a tool")),
+		Suggestion:  t.c.suggestRule(ctx, call.SessionID, name, call.Args),
 	}}, nil
 }
 
@@ -147,30 +124,6 @@ func latestApprovalForCall(approvals []Approval, callID string) (Approval, bool)
 		}
 	}
 	return latest, found
-}
-
-// incompleteToolCalls lists the run's calls that are neither deferred nor answered.
-func incompleteToolCalls(messages []transcript.Message, runID string) []transcript.ToolCallPart {
-	answered := toolResultCallIDs(messages)
-	seen := map[string]bool{}
-	var calls []transcript.ToolCallPart
-	for _, message := range messages {
-		if message.RunID != runID {
-			continue
-		}
-		for _, part := range message.Parts {
-			call := part.ToolCall
-			if call == nil || call.Deferred || call.ID == "" || seen[call.ID] {
-				continue
-			}
-			if _, ok := answered[call.ID]; ok {
-				continue
-			}
-			seen[call.ID] = true
-			calls = append(calls, *call)
-		}
-	}
-	return calls
 }
 
 // sealExternalReply marks the newest reply of an external agent's run, cut off
@@ -195,10 +148,7 @@ func (c *Core) sealInterruptedReply(ctx context.Context, reply *transcript.Messa
 	if reply == nil || !saved && strings.TrimSpace(reply.Content) == "" && len(reply.Parts) == 0 || transcript.HasFinishReason(*reply, transcript.FinishReasonDaemonRestart) {
 		return nil
 	}
-	reply.Parts = append(transcript.NormalizeMessageParts(reply.Content, reply.Parts), transcript.MessagePart{
-		Kind:   transcript.MessagePartKindFinish,
-		Finish: &transcript.FinishPart{Reason: transcript.FinishReasonDaemonRestart, Message: "Generation was interrupted by a daemon restart; a recovered continuation follows."},
-	})
+	*reply = transcript.SealInterrupted(*reply, "")
 	return c.sealReply(ctx, reply, saved)
 }
 

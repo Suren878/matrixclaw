@@ -153,10 +153,7 @@ func (r *run) dropPartial(ctx context.Context, gen generation, note string) erro
 
 // sealDropped finishes message with a note that drops it from every request.
 func (r *run) sealDropped(ctx context.Context, message transcript.Message, note string) error {
-	message.Parts = append(transcript.NormalizeMessageParts(message.Content, message.Parts), transcript.MessagePart{
-		Kind:   transcript.MessagePartKindFinish,
-		Finish: &transcript.FinishPart{Reason: transcript.FinishReasonDaemonRestart, Message: note},
-	})
+	message = transcript.SealInterrupted(message, note)
 	message.UpdatedAt = r.Now()
 	return r.history.finish(ctx, message)
 }

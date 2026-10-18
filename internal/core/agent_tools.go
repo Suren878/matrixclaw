@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"sync"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -35,13 +34,38 @@ type nativeTurn struct {
 	PatchEdits bool
 }
 
-// coreTools is the Tools port of one native run. authorized holds the verdict
-// Authorize reached for a call until its Execute takes it; it ends with the run.
+// coreTools is the Tools port of one native run; interrupted is the tool
+// batch the run's interrupted execution last checkpointed.
 type coreTools struct {
-	c          *Core
-	turn       nativeTurn
-	authorized *sync.Map
-	batch      *batchSnapshot
+	c           *Core
+	turn        nativeTurn
+	batch       *toolBatch
+	interrupted *agent.ToolBatch
+}
+
+// toolBatch is what the Journal and Tools ports of one run share about the
+// calls being admitted, all on the engine goroutine. Every engine checkpoint
+// ends a group of admitted calls, whose scope is read once; the checkpoint
+// before a model call starts a new batch, whose first call that may change
+// files takes the file checkpoint.
+type toolBatch struct {
+	scope    *callScope
+	snapshot bool
+}
+
+// checkpointed is told of each engine checkpoint.
+func (b *toolBatch) checkpointed(phase agent.Phase) {
+	b.scope = nil
+	if phase == agent.PhaseModel {
+		b.snapshot = false
+	}
+}
+
+// coreGrant is a call Authorize allowed, as Execute runs it.
+type coreGrant struct {
+	prepared preparedToolCall
+	input    ExecuteToolInput
+	check    callPermission
 }
 
 func (t coreTools) Specs(ctx context.Context) []tools.Spec {
@@ -54,67 +78,66 @@ func (t coreTools) Specs(ctx context.Context) []tools.Spec {
 	return specs
 }
 
-// Authorize rejects invalid calls and those a deny rule blocks; Execute acts on
-// the verdict it kept for the call. A mutating call that waits for approval is
-// a barrier, and so is a child writing the parent's directory. A blocking
+// scope is the run session's call scope, read once per group of calls.
+func (t coreTools) scope(ctx context.Context) (callScope, error) {
+	if t.batch.scope == nil {
+		scope, err := t.c.callScope(ctx, t.turn.SessionID)
+		if err != nil {
+			return callScope{}, err
+		}
+		t.batch.scope = &scope
+	}
+	return *t.batch.scope, nil
+}
+
+// Authorize rejects invalid calls and those a deny rule blocks; the grant
+// keeps the verdict Execute acts on. A mutating call that waits for approval
+// is a barrier, and so is a child writing the parent's directory. A blocking
 // child's time is its own. The batch's first call that may change files takes
 // its file checkpoint before any call of the batch starts.
-func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) (agent.Decision, error) {
-	// A call ID owned by another session fails the run with a clear error instead of
-	// a primary-key conflict on the first journal write.
-	if _, err := t.c.isNewToolCallMessage(ctx, call.SessionID, call.ToolCallID); err != nil {
-		return agent.Decision{}, err
+func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) (agent.Admission, error) {
+	scope, err := t.scope(ctx)
+	if err != nil {
+		return agent.Admission{}, err
 	}
-	session, spec, err := t.c.checkToolCall(ctx, name, call)
+	spec, err := t.c.checkToolCall(scope, name, call)
 	if errors.Is(err, ErrInvalidInput) {
-		return agent.Decision{Reason: err.Error()}, nil
+		return agent.Admission{Reason: err.Error()}, nil
 	}
 	if err != nil {
-		return agent.Decision{}, err
+		return agent.Admission{}, err
 	}
 	if call.WorkingDir = normalizeWorkingDir(call.WorkingDir); call.WorkingDir == "" {
-		call.WorkingDir = session.WorkingDir
+		call.WorkingDir = scope.session.WorkingDir
 	}
-	t.authorized.Delete(call.ToolCallID)
-	check, err := t.c.permitCall(ctx, name, spec, call)
+	check, err := t.c.permitCall(ctx, scope, name, spec, call)
 	if err != nil {
-		return agent.Decision{}, err
+		return agent.Admission{}, err
 	}
 	if refusal, refused := check.refusal(); refused {
-		return agent.Decision{Reason: refusal}, nil
+		return agent.Admission{Reason: refusal}, nil
 	}
-	if call.ToolCallID != "" {
-		t.authorized.Store(call.ToolCallID, check)
+	grant := coreGrant{
+		prepared: preparedToolCall{SessionID: call.SessionID, RunID: call.RunID, ToolName: name, Spec: spec, ToolCallID: call.ToolCallID, WorkingDir: call.WorkingDir},
+		input:    ExecuteToolInput{Client: call.Client, ExternalKey: call.ExternalKey, Args: call.Args},
+		check:    check,
 	}
 	call = check.input(call)
 	t.checkpointBatch(ctx, spec, call)
-	decision := agent.Decision{Allowed: true, Barrier: spec.Mutates() && check.ask, Key: t.c.tools.ConcurrencyKey(spec.ID, call)}
+	admission := agent.Admission{Allowed: true, Barrier: spec.Mutates() && check.ask, Key: t.c.tools.ConcurrencyKey(spec.ID, call), Grant: grant}
 	if spec.ID == agentToolName {
-		decision.Barrier = t.c.agentCallWritesSharedDir(call)
-		decision.Delegated = !parseAgentInput(call.Args).Background
+		admission.Barrier = t.c.agentCallWritesSharedDir(call)
+		admission.Delegated = !parseAgentInput(call.Args).Background
 	}
-	return decision, nil
+	return admission, nil
 }
 
-func (t coreTools) Execute(ctx context.Context, name string, call tools.Call) (tools.Result, *tools.ApprovalRequest, error) {
-	session, spec, err := t.c.checkToolCall(ctx, name, call)
+// Execute runs a call as Authorize granted it; a tool's failure is its result.
+func (t coreTools) Execute(ctx context.Context, grant agent.Grant) (tools.Result, *tools.ApprovalRequest, error) {
+	g := grant.(coreGrant)
+	result, ask, err := t.c.runToolCall(ctx, g.prepared, g.input, g.check)
 	if err != nil {
-		return tools.Result{}, nil, err
-	}
-	workingDir := normalizeWorkingDir(call.WorkingDir)
-	if workingDir == "" {
-		workingDir = session.WorkingDir
-	}
-	prepared := preparedToolCall{SessionID: call.SessionID, RunID: call.RunID, ToolName: name, Spec: spec, ToolCallID: call.ToolCallID, WorkingDir: workingDir}
-	input := ExecuteToolInput{Client: call.Client, ExternalKey: call.ExternalKey, Args: call.Args}
-	var check *callPermission
-	if kept, ok := t.authorized.LoadAndDelete(call.ToolCallID); ok {
-		authorized := kept.(callPermission)
-		check = &authorized
-	}
-	result, ask, execErr := t.c.runToolCall(ctx, prepared, input, check)
-	if execErr != nil {
-		result = t.c.toolFailure(call.SessionID, execErr)
+		result = t.c.toolFailure(g.prepared.SessionID, err)
 	}
 	return result, ask, nil
 }
