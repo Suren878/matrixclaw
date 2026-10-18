@@ -7,8 +7,11 @@ import (
 	"github.com/Suren878/matrixclaw/internal/automation"
 )
 
-func (d *Dispatcher) handleRemind(ctx context.Context, args string) (Result, error) {
-	args = strings.TrimSpace(args)
+// The time and message are the value of /remind.
+var _ = valueVerb(CommandRemind, "", 0)
+
+func (d *Dispatcher) handleRemind(ctx context.Context, r Route) (Result, error) {
+	args := r.Value
 	if args == "" {
 		return textResult("Usage:\n/remind in 10m -- message\n/remind 2026-04-26 16:00 -- message"), nil
 	}

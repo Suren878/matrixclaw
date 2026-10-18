@@ -8,8 +8,11 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-func (d *Dispatcher) handleSearch(ctx context.Context, args string) (Result, error) {
-	query := strings.TrimSpace(args)
+// The query is the value of /search.
+var _ = valueVerb(CommandSearch, "", 0)
+
+func (d *Dispatcher) handleSearch(ctx context.Context, r Route) (Result, error) {
+	query := r.Value
 	if query == "" {
 		return textResult("Usage: /search <query>"), nil
 	}
@@ -25,8 +28,7 @@ func (d *Dispatcher) handleSearch(ctx context.Context, args string) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
-	info := searchInfoData(report)
-	return Result{Screen: *&info}, nil
+	return Result{Screen: searchInfoData(report)}, nil
 }
 
 func searchInfoData(report core.SearchReport) InfoData {

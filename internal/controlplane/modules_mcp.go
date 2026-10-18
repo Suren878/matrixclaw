@@ -11,45 +11,60 @@ import (
 
 const managedBrowserMCPServerID = "browser"
 
-func (d *Dispatcher) handleMCP(ctx context.Context, args string) (Result, error) {
-	step, rest := firstCommandStep(args)
-	switch step {
-	case "":
-		return d.mcpPicker(ctx)
-	case "enabled":
+var (
+	mcpRoot             = verb(CommandModules, "mcp", 0)
+	mcpEnabled          = verb(CommandModules, "mcp enabled", 0)
+	mcpSetEnabled       = verb(CommandModules, "mcp set-enabled", 1)
+	mcpAdd              = verb(CommandModules, "mcp add", 0)
+	mcpCreate           = valueVerb(CommandModules, "mcp create", 0)
+	mcpOpen             = verb(CommandModules, "mcp open", 1)
+	mcpServerEnabled    = verb(CommandModules, "mcp server-enabled", 1)
+	mcpServerSetEnabled = verb(CommandModules, "mcp server-set-enabled", 2)
+	mcpInfo             = verb(CommandModules, "mcp info", 1)
+	mcpEdit             = verb(CommandModules, "mcp edit", 1)
+	mcpField            = verb(CommandModules, "mcp field", 2)
+	mcpSet              = valueVerb(CommandModules, "mcp set", 2)
+	mcpSetTransport     = valueVerb(CommandModules, "mcp set-transport", 2)
+	mcpDelete           = verb(CommandModules, "mcp delete", 1)
+	mcpDeleteConfirm    = verb(CommandModules, "mcp delete-confirm", 1)
+)
+
+func (d *Dispatcher) handleMCP(ctx context.Context, r Route) (Result, error) {
+	switch r.Verb {
+	case mcpEnabled:
 		return d.mcpEnabledPicker(ctx)
-	case "set-enabled":
-		return d.setMCPEnabled(ctx, rest)
-	case "add":
+	case mcpSetEnabled:
+		return d.setMCPEnabled(ctx, r.arg(0))
+	case mcpAdd:
 		return d.mcpServerAddPrompt(), nil
-	case "create":
-		return d.createMCPServer(ctx, rest)
+	case mcpCreate:
+		return d.createMCPServer(ctx, r.Value)
+	}
+	serverID := r.arg(0)
+	if serverID == "" {
+		return d.mcpPicker(ctx)
+	}
+	switch r.Verb {
+	case mcpServerEnabled:
+		return d.mcpServerEnabledPicker(ctx, serverID)
+	case mcpServerSetEnabled:
+		return d.setMCPServerEnabled(ctx, serverID, r.arg(1))
+	case mcpInfo:
+		return d.mcpServerInfo(ctx, serverID)
+	case mcpEdit:
+		return d.mcpServerEditForm(ctx, serverID)
+	case mcpField:
+		return d.mcpServerFieldPrompt(ctx, serverID, r.arg(1))
+	case mcpSet:
+		return d.setMCPServerField(ctx, serverID, r.arg(1), r.Value)
+	case mcpSetTransport:
+		return d.setMCPServerTransport(ctx, serverID, r.arg(1), r.Value)
+	case mcpDelete:
+		return d.mcpServerDeleteConfirm(ctx, serverID)
+	case mcpDeleteConfirm:
+		return d.deleteMCPServer(ctx, serverID)
 	default:
-		action, actionRest := firstCommandStep(rest)
-		switch action {
-		case "":
-			return d.mcpServerPicker(ctx, step)
-		case "enabled":
-			return d.mcpServerEnabledPicker(ctx, step)
-		case "set-enabled":
-			return d.setMCPServerEnabled(ctx, step, actionRest)
-		case "info":
-			return d.mcpServerInfo(ctx, step)
-		case "edit":
-			return d.mcpServerEditForm(ctx, step)
-		case "field":
-			field, _ := firstCommandStep(actionRest)
-			return d.mcpServerFieldPrompt(ctx, step, field)
-		case "set":
-			field, value := firstCommandStep(actionRest)
-			return d.setMCPServerField(ctx, step, field, value)
-		case "delete":
-			return d.mcpServerDeleteConfirm(ctx, step)
-		case "delete-confirm":
-			return d.deleteMCPServer(ctx, step)
-		default:
-			return d.mcpServerPicker(ctx, step)
-		}
+		return d.mcpServerPicker(ctx, serverID)
 	}
 }
 
@@ -60,17 +75,17 @@ func (d *Dispatcher) mcpPicker(ctx context.Context) (Result, error) {
 	}
 	servers := externalMCPServers(resp.Config.Servers)
 	picker := NewPickerData(PickerMCP, "External MCP Servers").
-		Command(mcpCommand()).
-		Back(modulesCommand()).
-		Row("enabled", "External MCP", formatEnabled(resp.Config.Enabled), mcpCommand("enabled")).
-		Action("add", "Add Server", "", mcpCommand("add"))
+		Command(mcpRoot.command()).
+		Back(modulesRoot.command()).
+		Row("enabled", "External MCP", formatEnabled(resp.Config.Enabled), mcpEnabled.command()).
+		Action("add", "Add Server", "", mcpAdd.command())
 	for _, server := range servers {
 		picker.Item(PickerItem{
 			ID:       server.ID,
 			Title:    mcpServerTitle(server),
 			Info:     mcpServerInfoText(server),
 			Selected: resp.Config.Enabled && server.Enabled,
-			Command:  mcpServerCommand(server.ID),
+			Command:  mcpOpen.command(server.ID),
 		})
 	}
 	if len(servers) == 0 {
@@ -86,9 +101,9 @@ func (d *Dispatcher) mcpEnabledPicker(ctx context.Context) (Result, error) {
 	}
 	return Result{Screen: NewPickerData(PickerMCP, "External MCP").
 		Meta("Currently " + strings.ToLower(formatEnabled(resp.Config.Enabled))).
-		Select(mcpCommand()).
-		Item(PickerItem{ID: "on", Title: "On", Selected: resp.Config.Enabled, Command: mcpCommand("set-enabled", "on")}).
-		Item(PickerItem{ID: "off", Title: "Off", Selected: !resp.Config.Enabled, Command: mcpCommand("set-enabled", "off")}).
+		Select(mcpRoot.command()).
+		Item(PickerItem{ID: "on", Title: "On", Selected: resp.Config.Enabled, Command: mcpSetEnabled.command("on")}).
+		Item(PickerItem{ID: "off", Title: "Off", Selected: !resp.Config.Enabled, Command: mcpSetEnabled.command("off")}).
 		Build()}, nil
 }
 
@@ -105,10 +120,10 @@ func (d *Dispatcher) setMCPEnabled(ctx context.Context, value string) (Result, e
 
 func (d *Dispatcher) mcpServerAddPrompt() Result {
 	return Result{Screen: PromptData{
-		Title:               "MCP Server ID",
-		Placeholder:         "docs",
-		SubmitCommandPrefix: mcpCommand("create") + " ",
-		CancelCommand:       mcpCommand(),
+		Title:         "MCP Server ID",
+		Placeholder:   "docs",
+		Submit:        mcpCreate.command(),
+		CancelCommand: mcpRoot.command(),
 	}}
 }
 
@@ -150,11 +165,11 @@ func (d *Dispatcher) mcpServerPicker(ctx context.Context, serverID string) (Resu
 	}
 	return Result{Screen: NewPickerData(PickerMCPServer, mcpServerTitle(server)).
 		Meta(mcpServerInfoText(server)).
-		Back(mcpCommand()).
-		Row("enabled", "Enabled", formatEnabled(server.Enabled), mcpServerCommand(server.ID, "enabled")).
-		Row("info", "Details", mcpServerTarget(server), mcpServerCommand(server.ID, "info")).
-		Action("edit", "Edit Config", "", mcpServerCommand(server.ID, "edit")).
-		Danger("delete", "Delete Server", "", mcpServerCommand(server.ID, "delete")).
+		Back(mcpRoot.command()).
+		Row("enabled", "Enabled", formatEnabled(server.Enabled), mcpServerEnabled.command(server.ID)).
+		Row("info", "Details", mcpServerTarget(server), mcpInfo.command(server.ID)).
+		Action("edit", "Edit Config", "", mcpEdit.command(server.ID)).
+		Danger("delete", "Delete Server", "", mcpDelete.command(server.ID)).
 		Build()}, nil
 }
 
@@ -168,22 +183,25 @@ func (d *Dispatcher) mcpServerEditForm(ctx context.Context, serverID string) (Re
 		return textResult("MCP server not found: " + strings.TrimSpace(serverID)), nil
 	}
 	fields := []FormField{
-		{ID: "name", Label: "Name", Value: server.Name, EditCommand: mcpServerCommand(server.ID, "field", "name")},
-		{ID: "transport", Label: "Transport", Value: server.Transport, EditCommand: mcpServerCommand(server.ID, "field", "transport")},
-		{ID: "command", Label: "Command", Value: server.Command, EditCommand: mcpServerCommand(server.ID, "field", "command")},
-		{ID: "args", Label: "Args", Value: strings.Join(server.Args, " "), EditCommand: mcpServerCommand(server.ID, "field", "args")},
-		{ID: "endpoint", Label: "Endpoint", Value: server.Endpoint, EditCommand: mcpServerCommand(server.ID, "field", "endpoint")},
-		{ID: "tool_prefix", Label: "Tool Prefix", Value: server.ToolPrefix, EditCommand: mcpServerCommand(server.ID, "field", "tool_prefix")},
-		{ID: "read_only", Label: "Read Only", Value: formatEnabled(server.ReadOnly), EditCommand: mcpServerCommand(server.ID, "field", "read_only")},
-		{ID: "timeout", Label: "Timeout Seconds", Value: formatInt(server.TimeoutSeconds), EditCommand: mcpServerCommand(server.ID, "field", "timeout")},
+		{ID: "name", Label: "Name", Value: server.Name},
+		{ID: "transport", Label: "Transport", Value: server.Transport},
+		{ID: "command", Label: "Command", Value: server.Command},
+		{ID: "args", Label: "Args", Value: strings.Join(server.Args, " ")},
+		{ID: "endpoint", Label: "Endpoint", Value: server.Endpoint},
+		{ID: "tool_prefix", Label: "Tool Prefix", Value: server.ToolPrefix},
+		{ID: "read_only", Label: "Read Only", Value: formatEnabled(server.ReadOnly)},
+		{ID: "timeout", Label: "Timeout Seconds", Value: formatInt(server.TimeoutSeconds)},
+	}
+	for i := range fields {
+		fields[i].EditCommand = mcpField.command(server.ID, fields[i].ID)
 	}
 	return Result{Screen: FormData{
 		Title:         "Edit " + mcpServerTitle(server),
 		Fields:        fields,
 		SubmitLabel:   "Done",
 		CancelLabel:   "Close",
-		SubmitCommand: mcpServerCommand(server.ID),
-		CancelCommand: mcpServerCommand(server.ID),
+		SubmitCommand: mcpOpen.command(server.ID),
+		CancelCommand: mcpOpen.command(server.ID),
 	}}, nil
 }
 
@@ -198,19 +216,18 @@ func (d *Dispatcher) mcpServerFieldPrompt(ctx context.Context, serverID string, 
 	}
 	title, value, placeholder := mcpServerFieldPromptText(server, field)
 	return Result{Screen: PromptData{
-		Title:               title,
-		Placeholder:         placeholder,
-		Value:               value,
-		SubmitCommandPrefix: mcpServerCommand(server.ID, "set", field) + " ",
-		CancelCommand:       mcpServerCommand(server.ID, "edit"),
+		Title:         title,
+		Placeholder:   placeholder,
+		Value:         value,
+		Submit:        mcpSet.command(server.ID, field),
+		CancelCommand: mcpEdit.command(server.ID),
 	}}, nil
 }
 
 func (d *Dispatcher) setMCPServerField(ctx context.Context, serverID string, field string, value string) (Result, error) {
 	if field == "transport" {
-		if prompt, ok, err := d.mcpServerTargetPrompt(ctx, serverID, value); err != nil || ok {
-			return prompt, err
-		}
+		transport, target, _ := strings.Cut(value, " ")
+		return d.setMCPServerTransport(ctx, serverID, transport, target)
 	}
 	update, ok := mcpServerUpdateForField(field, value)
 	if !ok {
@@ -222,34 +239,48 @@ func (d *Dispatcher) setMCPServerField(ctx context.Context, serverID string, fie
 	return d.mcpServerEditForm(ctx, serverID)
 }
 
-// mcpServerTargetPrompt asks for the endpoint or command a server lacks for
-// the transport it switches to, so both are saved together.
-func (d *Dispatcher) mcpServerTargetPrompt(ctx context.Context, serverID string, value string) (Result, bool, error) {
-	transport, target := firstCommandToken(value)
-	if transport == "" || target != "" {
-		return Result{}, false, nil
-	}
-	resp, err := d.daemon.MCPConfig(ctx)
-	if err != nil {
-		return Result{}, false, err
-	}
-	server, ok := findExternalMCPServer(resp.Config.Servers, serverID)
-	if !ok {
-		return Result{}, false, nil
+// setMCPServerTransport switches a server's transport with the endpoint or
+// command it needs; when it lacks one and target is empty, it asks for it so
+// both are saved together.
+func (d *Dispatcher) setMCPServerTransport(ctx context.Context, serverID string, transport string, target string) (Result, error) {
+	transport, target = strings.TrimSpace(transport), strings.TrimSpace(target)
+	if transport == "" {
+		return d.mcpServerEditForm(ctx, serverID)
 	}
 	field := "command"
 	if setup.NormalizeMCPTransport(transport) == "http" {
 		field = "endpoint"
 	}
-	if title, current, placeholder := mcpServerFieldPromptText(server, field); current == "" {
-		return Result{Screen: PromptData{
-			Title:               title,
-			Placeholder:         placeholder,
-			SubmitCommandPrefix: mcpServerCommand(server.ID, "set", "transport", transport) + " ",
-			CancelCommand:       mcpServerCommand(server.ID, "edit"),
-		}}, true, nil
+	if target == "" {
+		resp, err := d.daemon.MCPConfig(ctx)
+		if err != nil {
+			return Result{}, err
+		}
+		server, ok := findExternalMCPServer(resp.Config.Servers, serverID)
+		if !ok {
+			return textResult("MCP server not found: " + strings.TrimSpace(serverID)), nil
+		}
+		if title, current, placeholder := mcpServerFieldPromptText(server, field); current == "" {
+			return Result{Screen: PromptData{
+				Title:         title,
+				Placeholder:   placeholder,
+				Submit:        mcpSetTransport.command(server.ID, transport),
+				CancelCommand: mcpEdit.command(server.ID),
+			}}, nil
+		}
 	}
-	return Result{}, false, nil
+	update := setup.MCPServerUpdate{Transport: &transport}
+	switch {
+	case target == "":
+	case field == "endpoint":
+		update.Endpoint = &target
+	default:
+		update.Command = &target
+	}
+	if _, err := d.daemon.UpdateMCPServer(ctx, serverID, update); err != nil {
+		return textResult(err.Error()), nil
+	}
+	return d.mcpServerEditForm(ctx, serverID)
 }
 
 func (d *Dispatcher) mcpServerEnabledPicker(ctx context.Context, serverID string) (Result, error) {
@@ -263,9 +294,9 @@ func (d *Dispatcher) mcpServerEnabledPicker(ctx context.Context, serverID string
 	}
 	return Result{Screen: NewPickerData(PickerMCPServer, mcpServerTitle(server)).
 		Meta("Currently " + strings.ToLower(formatEnabled(server.Enabled))).
-		Select(mcpServerCommand(server.ID)).
-		Item(PickerItem{ID: "on", Title: "On", Selected: server.Enabled, Command: mcpServerCommand(server.ID, "set-enabled", "on")}).
-		Item(PickerItem{ID: "off", Title: "Off", Selected: !server.Enabled, Command: mcpServerCommand(server.ID, "set-enabled", "off")}).
+		Select(mcpOpen.command(server.ID)).
+		Item(PickerItem{ID: "on", Title: "On", Selected: server.Enabled, Command: mcpServerSetEnabled.command(server.ID, "on")}).
+		Item(PickerItem{ID: "off", Title: "Off", Selected: !server.Enabled, Command: mcpServerSetEnabled.command(server.ID, "off")}).
 		Build()}, nil
 }
 
@@ -294,8 +325,8 @@ func (d *Dispatcher) mcpServerDeleteConfirm(ctx context.Context, serverID string
 		Message:        "Delete external MCP server " + mcpServerTitle(server) + "?",
 		ConfirmLabel:   "Delete",
 		CancelLabel:    "Close",
-		ConfirmCommand: mcpServerCommand(server.ID, "delete-confirm"),
-		CancelCommand:  mcpServerCommand(server.ID),
+		ConfirmCommand: mcpDeleteConfirm.command(server.ID),
+		CancelCommand:  mcpOpen.command(server.ID),
 		ConfirmDanger:  true,
 	}}, nil
 }
@@ -422,17 +453,6 @@ func mcpServerUpdateForField(field string, value string) (setup.MCPServerUpdate,
 	switch field {
 	case "name":
 		return setup.MCPServerUpdate{Name: &value}, true
-	case "transport":
-		transport, target := firstCommandToken(value)
-		update := setup.MCPServerUpdate{Transport: &transport}
-		switch {
-		case target == "":
-		case setup.NormalizeMCPTransport(transport) == "http":
-			update.Endpoint = &target
-		default:
-			update.Command = &target
-		}
-		return update, true
 	case "command":
 		return setup.MCPServerUpdate{Command: &value}, true
 	case "args":

@@ -2,11 +2,7 @@ package controlplane
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"strings"
-	"sync"
-	"time"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -22,79 +18,6 @@ import (
 type providerForm struct {
 	Provider setup.ProviderSetupItem
 	Update   setup.ProviderSetupUpdate
-}
-
-// formStore keeps open provider forms by a random id, so commands carry the
-// id and never the form's values, the API key among them.
-type formStore struct {
-	mu    sync.Mutex
-	forms map[string]storedProviderForm
-	ttl   time.Duration
-	limit int
-	now   func() time.Time
-}
-
-type storedProviderForm struct {
-	form    providerForm
-	expires time.Time
-}
-
-var providerForms = &formStore{forms: map[string]storedProviderForm{}, ttl: 30 * time.Minute, limit: 64, now: time.Now}
-
-func (s *formStore) open(form providerForm) string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.pruneLocked()
-	for len(s.forms) >= s.limit {
-		oldest := ""
-		for id, entry := range s.forms {
-			if oldest == "" || entry.expires.Before(s.forms[oldest].expires) {
-				oldest = id
-			}
-		}
-		delete(s.forms, oldest)
-	}
-	var raw [16]byte
-	_, _ = rand.Read(raw[:])
-	id := hex.EncodeToString(raw[:])
-	s.forms[id] = storedProviderForm{form: form, expires: s.now().Add(s.ttl)}
-	return id
-}
-
-func (s *formStore) get(id string) (providerForm, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.pruneLocked()
-	entry, ok := s.forms[id]
-	if !ok {
-		return providerForm{}, false
-	}
-	entry.expires = s.now().Add(s.ttl)
-	s.forms[id] = entry
-	return entry.form, true
-}
-
-func (s *formStore) put(id string, form providerForm) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.forms[id]; ok {
-		s.forms[id] = storedProviderForm{form: form, expires: s.now().Add(s.ttl)}
-	}
-}
-
-func (s *formStore) close(id string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.forms, id)
-}
-
-func (s *formStore) pruneLocked() {
-	now := s.now()
-	for id, entry := range s.forms {
-		if !now.Before(entry.expires) {
-			delete(s.forms, id)
-		}
-	}
 }
 
 func (f providerForm) policy() providers.ProviderPolicy {
@@ -243,13 +166,8 @@ func (f providerForm) missing() string {
 	return ""
 }
 
-func providerFormCommand(formID string, parts ...string) string {
-	return providerCommand(append([]string{"form", formID}, parts...)...)
-}
-
-func openProviderForm(form providerForm) Result {
-	formID := providerForms.open(form)
-	return providerFormResult(formID, form, "")
+func (d *Dispatcher) openProviderForm(form providerForm) Result {
+	return providerFormResult(d.forms.open(form), form, "")
 }
 
 func providerFormResult(formID string, form providerForm, message string) Result {
@@ -259,7 +177,7 @@ func providerFormResult(formID string, form providerForm, message string) Result
 			ID:          "auth",
 			Label:       "Authorization",
 			Value:       openAICodexAuthInfo(),
-			EditCommand: providerCommand("auth", providerEncodedID(form.Provider.ID)),
+			EditCommand: providerAuth.command(form.Provider.ID),
 		})
 	}
 	for _, field := range form.fields() {
@@ -269,7 +187,7 @@ func providerFormResult(formID string, form providerForm, message string) Result
 		}
 		edit := ""
 		if !field.disabled {
-			edit = providerFormCommand(formID, "field", field.id)
+			edit = providerFormEdit.command(formID, field.id)
 		}
 		fields = append(fields, FormField{ID: field.id, Label: field.label, Value: value, EditCommand: edit, Disabled: field.disabled})
 	}
@@ -279,36 +197,34 @@ func providerFormResult(formID string, form providerForm, message string) Result
 			Fields:        fields,
 			SubmitLabel:   "Save",
 			CancelLabel:   "Close",
-			SubmitCommand: providerFormCommand(formID, "save"),
-			CancelCommand: providerCommand(),
+			SubmitCommand: providerFormSave.command(formID),
+			CancelCommand: providerRoot.command(),
 			Error:         strings.TrimSpace(message),
 		},
 	}
 }
 
-func (d *Dispatcher) handleProviderForm(ctx context.Context, session *core.Session, args string) (Result, error) {
-	formID, rest := firstCommandToken(args)
-	form, ok := providerForms.get(formID)
+func (d *Dispatcher) handleProviderForm(ctx context.Context, session *core.Session, r Route) (Result, error) {
+	formID := r.arg(0)
+	form, ok := formValue[providerForm](d.forms, formID)
 	if !ok {
 		return textResult("This provider form has expired. Open it again with /provider."), nil
 	}
-	step, rest := firstCommandStep(rest)
-	switch step {
-	case "field":
-		return d.providerFormField(ctx, formID, form, firstField(rest))
-	case "set":
-		field, value := firstCommandStep(rest)
-		form.set(field, value)
-		providerForms.put(formID, form)
-	case "save":
+	switch r.Verb {
+	case providerFormEdit:
+		return d.providerFormField(ctx, formID, form, r.arg(1))
+	case providerFormSet:
+		form.set(r.arg(1), r.Value)
+		d.forms.put(formID, form)
+	case providerFormSave:
 		return d.saveProviderForm(ctx, session, formID, form)
 	}
 	return providerFormResult(formID, form, ""), nil
 }
 
 func (d *Dispatcher) providerFormField(ctx context.Context, formID string, form providerForm, field string) (Result, error) {
-	back := providerFormCommand(formID)
-	set := func(value string) string { return providerFormCommand(formID, "set", field, value) }
+	back := providerFormShow.command(formID)
+	set := func(value string) string { return providerFormSet.commandValue(value, formID, field) }
 	picker := func(title string, items []PickerItem) Result {
 		return Result{Screen: NewPickerData(PickerProviderCustom, form.title()+": "+title).Select(back).Items(items...).Build()}
 	}
@@ -367,12 +283,12 @@ func providerFieldPrompt(formID string, form providerForm, field string, placeho
 	}
 	return Result{
 		Screen: PromptData{
-			Title:               form.title() + ": " + title,
-			Placeholder:         placeholder,
-			Value:               value,
-			SubmitCommandPrefix: providerFormCommand(formID, "set", field) + " ",
-			CancelCommand:       providerFormCommand(formID),
-			Sensitive:           field == "key",
+			Title:         form.title() + ": " + title,
+			Placeholder:   placeholder,
+			Value:         value,
+			Submit:        providerFormSet.command(formID, field),
+			CancelCommand: providerFormShow.command(formID),
+			Sensitive:     field == "key",
 		},
 	}
 }
@@ -390,10 +306,10 @@ func (d *Dispatcher) providerModelPicker(ctx context.Context, formID string, for
 	}
 	items := make([]PickerItem, 0, len(response.Models))
 	for _, modelID := range response.Models {
-		items = append(items, PickerItem{ID: modelID, Title: modelID, Selected: modelID == form.model(), Command: providerFormCommand(formID, "set", "model", modelID)})
+		items = append(items, PickerItem{ID: modelID, Title: modelID, Selected: modelID == form.model(), Command: providerFormSet.commandValue(modelID, formID, "model")})
 	}
 	return Result{
-		Screen: NewPickerData(PickerProviderCustom, "Model").Select(providerFormCommand(formID)).Items(items...).Build(),
+		Screen: NewPickerData(PickerProviderCustom, "Model").Select(providerFormShow.command(formID)).Items(items...).Build(),
 	}, nil
 }
 
@@ -413,7 +329,7 @@ func (d *Dispatcher) saveProviderForm(ctx context.Context, session *core.Session
 	if err != nil {
 		return providerFormResult(formID, form, err.Error()), nil
 	}
-	providerForms.close(formID)
+	d.forms.close(formID)
 	return d.providerSaved(ctx, session, configured)
 }
 
@@ -431,20 +347,20 @@ func (d *Dispatcher) providerSaved(ctx context.Context, session *core.Session, c
 		return Result{}, err
 	}
 	return Result{
-		Screen:         NewPickerData(PickerProvider, "Provider").Command(providerCommand()).Items(providerPickerItems(list, selectedSession, d.owner())...).Build(),
+		Screen:         NewPickerData(PickerProvider, "Provider").Command(providerRoot.command()).Items(providerPickerItems(list, selectedSession, d.owner())...).Build(),
 		ReloadSnapshot: true,
 	}, nil
 }
 
-func (d *Dispatcher) handleProviderEdit(ctx context.Context, args string) (Result, error) {
-	provider, err := d.setupProvider(ctx, firstField(args))
+func (d *Dispatcher) handleProviderEdit(ctx context.Context, providerID string) (Result, error) {
+	provider, err := d.setupProvider(ctx, providerID)
 	if err != nil {
 		return Result{}, err
 	}
-	return openProviderForm(providerForm{Provider: provider}), nil
+	return d.openProviderForm(providerForm{Provider: provider}), nil
 }
 
-func openCustomProviderForm(kind string) Result {
+func (d *Dispatcher) openCustomProviderForm(kind string) Result {
 	var providerType string
 	switch strings.ToLower(strings.TrimSpace(kind)) {
 	case "openai":
@@ -454,7 +370,7 @@ func openCustomProviderForm(kind string) Result {
 	default:
 		return customProviderTypePicker()
 	}
-	return openProviderForm(providerForm{
+	return d.openProviderForm(providerForm{
 		Provider: setup.ProviderSetupItem{Type: providerType},
 		Update:   setup.ProviderSetupUpdate{Type: &providerType},
 	})

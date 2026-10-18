@@ -42,15 +42,16 @@ func (a *telegramClientAdapter) Apply(ctx context.Context, bootstrap bootstrapCo
 	cfg := telegram.Config{}
 	if boot.Enabled {
 		cfg = telegram.Config{
-			BaseURL:         daemonclient.BaseURL(bootstrap.Addr),
-			APIToken:        bootstrap.APIToken,
-			BotToken:        boot.BotToken,
-			TelegramBaseURL: a.botAPIURL,
-			AllowedUserID:   boot.AllowedUserID,
-			InlineCachePath: telegramStatePath(bootstrap.DBPath, "telegram-inline-cache.json"),
-			RenderStatePath: telegramStatePath(bootstrap.DBPath, "telegram-render-state.json"),
-			Offset:          &a.offset,
-			Geo:             a.geo,
+			BaseURL:           daemonclient.BaseURL(bootstrap.Addr),
+			APIToken:          bootstrap.APIToken,
+			BotToken:          boot.BotToken,
+			TelegramBaseURL:   a.botAPIURL,
+			AllowedUserID:     boot.AllowedUserID,
+			InlineCachePath:   telegramStatePath(bootstrap.DBPath, "telegram-inline-cache.json"),
+			CallbackCachePath: telegramStatePath(bootstrap.DBPath, "telegram-callbacks.json"),
+			RenderStatePath:   telegramStatePath(bootstrap.DBPath, "telegram-render-state.json"),
+			Offset:            &a.offset,
+			Geo:               a.geo,
 		}
 	}
 	a.mu.Lock()

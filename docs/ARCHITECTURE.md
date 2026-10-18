@@ -129,11 +129,24 @@ one `*daemonclient.Client` (client name, external key, role) and answers with a
 `Result`: one `Screen` (text, picker, form, prompt, confirm or info; a
 multiline prompt is a text to edit) and whether to reload the snapshot. Clients render
 pickers themselves (Telegram buttons and paging, terminal menus); a picker
-carries the command that shows it again. Module settings are drawn by one
-generic screen, `/modules <id> [open|confirm|set] <path>`; external agents,
-skills, MCP and storage have screens of their own. Provider forms are kept by
-an opaque id (`/provider form <id> ...`) so the API key never travels inside a
-command string.
+carries the command that shows it again.
+
+Every screen and action is a route (`route.go`): a `Verb` declared once with
+the words naming it and the operands it takes, which encodes, decodes and
+dispatches it. A command line is `/<command> <verb words> <operands>
+<value>`: each operand is one token (`%`, spaces and control characters
+percent-escaped), and the value is free text after them. A verb that takes
+operands never starts a longer verb, so an operand is never read as a verb (an
+MCP server named `add` opens with `/modules mcp open add`). Module settings
+are one generic screen: `/modules settings|open|confirm|set <id> <path>`
+(`/modules <id>` typed opens a module's page).
+
+A prompt's answer never becomes part of a command line: clients hand it to
+`Dispatcher.Answer` with the prompt's `Submit` command. What a screen needs
+between commands (an open provider form with its API key, a skill draft, a
+Codex sign-in) lives in the dispatcher's form store under a random id that
+commands carry, in memory only and for 30 minutes after last use; each client
+keeps its dispatchers (the terminal one, Telegram one per chat and role).
 
 ## Runs
 

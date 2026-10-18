@@ -16,7 +16,7 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 		return nil
 	}
 	m.dialog.StopLoading()
-	if isContextCompactCommand(msg.command) {
+	if controlplane.CompactRequested(msg.command) {
 		return m.handleContextCompactResult(msg)
 	}
 	if msg.err != nil {

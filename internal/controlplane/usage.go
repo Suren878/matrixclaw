@@ -20,8 +20,7 @@ func (d *Dispatcher) handleUsage(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	info := usageInfoData(report)
-	return Result{Screen: *&info}, nil
+	return Result{Screen: usageInfoData(report)}, nil
 }
 
 func usageInfoData(report core.UsageReport) InfoData {

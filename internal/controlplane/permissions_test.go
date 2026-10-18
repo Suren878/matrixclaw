@@ -78,7 +78,7 @@ func TestPermissionsDeleteAsksThenDeletes(t *testing.T) {
 	daemon := newRulesDaemon(t)
 
 	result := daemon.run("/permissions delete rule_own")
-	if screenOf[ConfirmData](t, result).ConfirmCommand != "/permissions delete rule_own confirm" || len(daemon.deleted) != 0 {
+	if screenOf[ConfirmData](t, result).ConfirmCommand != "/permissions delete-confirm rule_own" || len(daemon.deleted) != 0 {
 		t.Fatalf("result = %+v deleted = %v", result, daemon.deleted)
 	}
 	result = daemon.run(screenOf[ConfirmData](t, result).ConfirmCommand)
@@ -92,7 +92,7 @@ func TestOnlyTheOwnerChangesGlobalRules(t *testing.T) {
 		daemon := newRulesDaemon(t)
 		owner := role == core.RoleOwner
 
-		deleted := daemon.runAs(role, "/permissions delete rule_global confirm")
+		deleted := daemon.runAs(role, "/permissions delete-confirm rule_global")
 		added := daemon.runAs(role, "/permissions add deny read ~/.ssh/** global")
 
 		if owner != (len(daemon.deleted) == 1 && len(daemon.added) == 1) {
@@ -139,7 +139,7 @@ func TestPlanSwitchesToPlanModeForTheOwnerOnly(t *testing.T) {
 func TestGuestsChangeNoRules(t *testing.T) {
 	daemon := newRulesDaemon(t)
 
-	deleted := daemon.runAs(core.RoleGuest, "/permissions delete rule_own confirm")
+	deleted := daemon.runAs(core.RoleGuest, "/permissions delete-confirm rule_own")
 	added := daemon.runAs(core.RoleGuest, "/permissions add allow bash go test:*")
 
 	if len(daemon.deleted) != 0 || len(daemon.added) != 0 || deleted.Text() != "Guests cannot change permission rules." || added.Text() != deleted.Text() {

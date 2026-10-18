@@ -156,7 +156,9 @@ type appModel struct {
 	stream  stream
 
 	// notes are the terminal's own lines in the transcript (busy mode, compaction).
-	notes        []surfacemessage.Message
+	notes []surfacemessage.Message
+	// commands runs slash commands and keeps their open forms.
+	commands     *controlplane.Dispatcher
 	workingDir   string
 	version      string
 	now          time.Time
@@ -179,7 +181,12 @@ func newApp(ctx context.Context, rt *Runtime) *appModel {
 	}
 	h := help.New()
 	h.Styles = styles.Help
+	var commands *controlplane.Dispatcher
+	if rt != nil {
+		commands = controlplane.New(rt.client, workingDir)
+	}
 	return &appModel{
+		commands:   commands,
 		ctx:        ctx,
 		rt:         rt,
 		com:        com,

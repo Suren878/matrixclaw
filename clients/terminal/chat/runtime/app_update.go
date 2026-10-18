@@ -62,6 +62,8 @@ func (m *appModel) update(msg tea.Msg) tea.Cmd {
 		return nil
 	case surfacedialog.ActionRunControlplaneCommand:
 		return m.handleRunControlplaneCommand(msg)
+	case surfacedialog.ActionAnswerControlplanePrompt:
+		return m.handleAnswerControlplanePrompt(msg)
 	case surfacedialog.ActionQuit:
 		return tea.Quit
 	case surfacedialog.ActionCmd:

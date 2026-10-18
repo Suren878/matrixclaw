@@ -1,8 +1,6 @@
 package controlplane
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -229,27 +227,12 @@ func parseTags(value string) []string {
 	return out
 }
 
+// skillDraftState is a skill being created step by step, kept in the form
+// store.
 type skillDraftState struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Tags        []string `json:"tags,omitempty"`
-}
-
-func encodeSkillDraftState(state skillDraftState) string {
-	raw, _ := json.Marshal(state)
-	return base64.RawURLEncoding.EncodeToString(raw)
-}
-
-func decodeSkillDraftState(value string) (skillDraftState, bool) {
-	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(value))
-	if err != nil {
-		return skillDraftState{}, false
-	}
-	var state skillDraftState
-	if err := json.Unmarshal(raw, &state); err != nil {
-		return skillDraftState{}, false
-	}
-	return state, true
+	Name        string
+	Description string
+	Tags        []string
 }
 
 func defaultSkillDraftBody(state skillDraftState) string {

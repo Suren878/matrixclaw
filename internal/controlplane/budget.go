@@ -11,7 +11,10 @@ import (
 
 const budgetUsage = "Usage: /budget [steps N | time 2h | tokens N | tokens off | reset]"
 
-func (d *Dispatcher) handleBudget(ctx context.Context, args string) (Result, error) {
+// The change to make is the value of /budget.
+var _ = valueVerb(CommandBudget, "", 0)
+
+func (d *Dispatcher) handleBudget(ctx context.Context, r Route) (Result, error) {
 	sessionID, err := d.currentSessionID(ctx)
 	if err != nil {
 		return Result{}, err
@@ -23,7 +26,7 @@ func (d *Dispatcher) handleBudget(ctx context.Context, args string) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
-	if fields := strings.Fields(strings.ToLower(args)); len(fields) > 0 {
+	if fields := strings.Fields(strings.ToLower(r.Value)); len(fields) > 0 {
 		override, ok := budgetOverride(report.Override, fields)
 		if !ok {
 			return textResult(budgetUsage), nil
@@ -32,8 +35,7 @@ func (d *Dispatcher) handleBudget(ctx context.Context, args string) (Result, err
 			return Result{}, err
 		}
 	}
-	info := budgetInfoData(report)
-	return Result{Screen: *&info}, nil
+	return Result{Screen: budgetInfoData(report)}, nil
 }
 
 // budgetOverride applies one /budget change to the session's overrides.

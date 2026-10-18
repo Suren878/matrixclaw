@@ -17,13 +17,14 @@ import (
 // fakeDaemon serves the daemon HTTP API the dispatcher tests need: a bound
 // session list by default, and whatever routes a test adds with on.
 type fakeDaemon struct {
-	t        *testing.T
-	mu       sync.Mutex
-	routes   map[string]func(*http.Request) any
-	calls    []string
-	sessions []core.Session
-	bound    string
-	server   *httptest.Server
+	t           *testing.T
+	mu          sync.Mutex
+	dispatchers map[core.Role]*Dispatcher
+	routes      map[string]func(*http.Request) any
+	calls       []string
+	sessions    []core.Session
+	bound       string
+	server      *httptest.Server
 }
 
 func newFakeDaemon(t *testing.T) *fakeDaemon {
@@ -43,13 +44,30 @@ func (f *fakeDaemon) on(pattern string, handler func(*http.Request) any) *fakeDa
 	return f
 }
 
+// dispatcher is the role's one dispatcher, which keeps its open forms.
 func (f *fakeDaemon) dispatcher(role core.Role) *Dispatcher {
 	if f.server == nil {
 		f.start()
 	}
-	client := daemonclient.New(f.server.URL, "test", "key")
-	client.Role = role
-	return New(client, "")
+	if f.dispatchers == nil {
+		f.dispatchers = map[core.Role]*Dispatcher{}
+	}
+	if f.dispatchers[role] == nil {
+		client := daemonclient.New(f.server.URL, "test", "key")
+		client.Role = role
+		f.dispatchers[role] = New(client, "")
+	}
+	return f.dispatchers[role]
+}
+
+// answer answers the prompt result shows as the owner.
+func (f *fakeDaemon) answer(prompt Result, value string) Result {
+	f.t.Helper()
+	result, err := f.dispatcher(core.RoleOwner).Answer(context.Background(), screenOf[PromptData](f.t, prompt).Submit, value)
+	if err != nil {
+		f.t.Fatalf("answer %q: %v", value, err)
+	}
+	return result
 }
 
 // run handles command as the owner and fails the test on an error.

@@ -114,11 +114,15 @@ func (m *appModel) handleDialogInput(msg tea.Msg) tea.Cmd {
 	if action == nil {
 		return nil
 	}
-	if command, ok := action.(surfacedialog.ActionRunControlplaneCommand); ok {
+	switch action := action.(type) {
+	case surfacedialog.ActionRunControlplaneCommand:
 		if sourceID != "" && sourceID != surfacedialog.CommandsID {
 			m.dialog.CloseDialog(sourceID)
 		}
-		return m.handleRunControlplaneCommand(command)
+		return m.handleRunControlplaneCommand(action)
+	case surfacedialog.ActionAnswerControlplanePrompt:
+		m.dialog.CloseDialog(sourceID)
+		return m.handleAnswerControlplanePrompt(action)
 	}
 	return m.update(action)
 }

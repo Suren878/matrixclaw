@@ -63,7 +63,7 @@ func (w *Worker) handleTextMessage(ctx context.Context, message *Message) error 
 	if handled, err := w.handlePendingPrompt(ctx, target, text); handled || err != nil {
 		return err
 	}
-	if isDaemonRestartCommand(text) {
+	if controlplane.RestartRequested(text) {
 		return w.dispatchRestartCommandAndEdit(target, 0)
 	}
 	if isCancelRunCommand(text) && target.isChat() {
@@ -721,13 +721,13 @@ func (w *Worker) handleSessionSelectionRequired(ctx context.Context, target chat
 		return w.sendText(ctx, target, fmt.Sprintf("Load sessions failed: %v", err))
 	}
 	if len(sessions) == 0 {
-		result, err := w.dispatcher(target).Handle(ctx, catalogCommand(controlplane.CommandNewSession, ""))
+		result, err := w.dispatcher(target).Handle(ctx, controlplane.CommandText(controlplane.CommandNewSession))
 		if err != nil {
 			return w.sendText(ctx, target, fmt.Sprintf("Create session failed: %v", err))
 		}
 		return w.renderCommandResult(ctx, target, withSessionSelectionPrompt(result))
 	}
-	result, err := w.dispatcher(target).Handle(ctx, catalogCommand(controlplane.CommandSessions, ""))
+	result, err := w.dispatcher(target).Handle(ctx, controlplane.CommandText(controlplane.CommandSessions))
 	if err != nil {
 		return w.sendText(ctx, target, fmt.Sprintf("Load sessions failed: %v", err))
 	}

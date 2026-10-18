@@ -19,7 +19,7 @@ func (d *Dispatcher) storageFilesPicker(ctx context.Context) (Result, error) {
 			ID:      "file:" + file.Path,
 			Title:   storageFileTitle(file),
 			Info:    storageFileInfo(file),
-			Command: storageFileCommand(file.Path),
+			Command: storageFileVerb.command(file.Path),
 		})
 	}
 	if len(items) == 0 {
@@ -34,12 +34,12 @@ func (d *Dispatcher) storageFilesPicker(ctx context.Context) (Result, error) {
 			ID:      "clear",
 			Title:   "Clear All",
 			Info:    "Delete all files",
-			Command: storageClearCommand(),
+			Command: storageClearVerb.command(),
 			Role:    PickerItemRoleDanger,
 		})
 	}
 	return Result{
-		Screen: NewPickerData(PickerStorageFiles, "Stored Files").Command(storageFilesCommand()).Back(storageCommand()).Items(items...).Build(),
+		Screen: NewPickerData(PickerStorageFiles, "Stored Files").Command(storageFilesVerb.command()).Back(storageRootVerb.command()).Items(items...).Build(),
 	}, nil
 }
 
@@ -54,9 +54,9 @@ func (d *Dispatcher) storageFilePicker(ctx context.Context, storagePath string) 
 	}
 	return Result{
 		Screen: NewPickerData(PickerStorageFile, "Storage File").
-			Back(storageFilesCommand()).
-			Row("read", "Preview", storageFileTitle(read.File), storageReadCommand(read.File.Path)).
-			Danger("delete", "Delete", "", storageDeleteCommand(read.File.Path)).
+			Back(storageFilesVerb.command()).
+			Row("read", "Preview", storageFileTitle(read.File), storageReadVerb.command(read.File.Path)).
+			Danger("delete", "Delete", "", storageDeleteVerb.command(read.File.Path)).
 			Build(),
 	}, nil
 }
@@ -84,7 +84,7 @@ func (d *Dispatcher) storageDeleteConfirm(storagePath string) Result {
 		return textResult("Storage path is required.")
 	}
 	return Result{
-		Screen: deleteConfirmData("Delete "+storagePath+"?", storageDeleteConfirmCommand(storagePath), storageFileCommand(storagePath)),
+		Screen: deleteConfirmData("Delete "+storagePath+"?", storageDeleteConfirmVerb.command(storagePath), storageFileVerb.command(storagePath)),
 	}
 }
 
@@ -97,7 +97,7 @@ func (d *Dispatcher) storageDelete(ctx context.Context, storagePath string) (Res
 
 func (d *Dispatcher) storageClearConfirm() Result {
 	return Result{
-		Screen: deleteConfirmData("Delete all files?", storageClearConfirmCommand(), storageFilesCommand()),
+		Screen: deleteConfirmData("Delete all files?", storageClearConfirmVerb.command(), storageFilesVerb.command()),
 	}
 }
 

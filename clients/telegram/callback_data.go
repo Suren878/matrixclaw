@@ -3,63 +3,38 @@ package telegram
 import (
 	"crypto/sha256"
 	"encoding/base64"
-	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 )
 
-const (
-	callbackKindCommand = "confirm"
-	callbackKindDismiss = "dismiss"
-)
+// A button runs a controlplane command line, which keeps every operand one
+// token: "pk:<command>" runs it ("pk:" alone closes the menu) and
+// "pg:<page>:<command>" shows a page of the picker it shows. Data over
+// Telegram's 64 bytes travels as "rf:<hash>", resolved from w.callbacks, which
+// is kept on disk so menus sent before a restart still work.
 
 func commandCallbackData(command string) string {
-	command = strings.TrimSpace(command)
-	if command == "" {
-		return cbPicker + string(callbackKindDismiss) + "::"
-	}
-	return cbPicker + string(callbackKindCommand) + ":" + url.QueryEscape(command) + ":"
+	return cbPicker + strings.TrimSpace(command)
 }
 
 // pickerPageCallbackData shows page of the picker that command shows.
 func pickerPageCallbackData(command string, page int) string {
-	return cbPickerPage + url.QueryEscape(strings.TrimSpace(command)) + ":" + fmt.Sprint(page)
+	return cbPickerPage + strconv.Itoa(page) + ":" + strings.TrimSpace(command)
 }
 
-func parsePickerCallbackData(data string) (string, string, bool) {
-	payload := strings.TrimSpace(strings.TrimPrefix(data, cbPicker))
-	parts := strings.SplitN(payload, ":", 3)
-	if len(parts) != 3 {
-		return "", "", false
-	}
-	command, ok := unescapeCallbackPart(parts[1])
-	if !ok {
-		return "", "", false
-	}
-	return strings.TrimSpace(parts[0]), command, true
+// parsePickerCallbackData is the command a button runs, "" for one that
+// closes the menu.
+func parsePickerCallbackData(data string) string {
+	return strings.TrimSpace(strings.TrimPrefix(data, cbPicker))
 }
 
 func parsePickerPageCallbackData(data string) (string, int, bool) {
-	payload := strings.TrimSpace(strings.TrimPrefix(data, cbPickerPage))
-	escaped, rawPage, ok := strings.Cut(payload, ":")
-	if !ok {
+	rawPage, command, ok := strings.Cut(strings.TrimPrefix(data, cbPickerPage), ":")
+	page, err := strconv.Atoi(rawPage)
+	if !ok || err != nil {
 		return "", 0, false
 	}
-	page, err := strconv.Atoi(strings.TrimSpace(rawPage))
-	if err != nil {
-		return "", 0, false
-	}
-	command, ok := unescapeCallbackPart(escaped)
-	return command, page, ok
-}
-
-func unescapeCallbackPart(value string) (string, bool) {
-	decoded, err := url.QueryUnescape(strings.TrimSpace(value))
-	if err != nil {
-		return "", false
-	}
-	return decoded, true
+	return strings.TrimSpace(command), page, true
 }
 
 func (w *Worker) compactInlineKeyboardMarkup(markup *InlineKeyboardMarkup) *InlineKeyboardMarkup {
@@ -86,31 +61,23 @@ func (w *Worker) compactInlineKeyboardMarkup(markup *InlineKeyboardMarkup) *Inli
 }
 
 func (w *Worker) compactCallbackData(data string) string {
-	if data == "" || len([]byte(data)) <= maxCallbackDataBytes {
+	if len(data) <= maxCallbackDataBytes {
 		return data
 	}
-	ref := callbackRefData(data)
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	sum := sha256.Sum256([]byte(data))
+	ref := cbCallbackRef + base64.RawURLEncoding.EncodeToString(sum[:12])
 	w.callbacks.put(ref, data)
 	return ref
 }
 
+// resolveCallbackData is the data a short reference stands for; data that is
+// no reference, or one no longer kept, is returned as is.
 func (w *Worker) resolveCallbackData(data string) string {
 	if !strings.HasPrefix(data, cbCallbackRef) {
 		return data
 	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	resolved, _ := w.callbacks.get(data)
-	if resolved == "" {
-		return data
+	if resolved, ok := w.callbacks.get(data); ok {
+		return resolved
 	}
-	return resolved
-}
-
-func callbackRefData(data string) string {
-	sum := sha256.Sum256([]byte(data))
-	token := base64.RawURLEncoding.EncodeToString(sum[:12])
-	return cbCallbackRef + token
+	return data
 }

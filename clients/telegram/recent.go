@@ -30,11 +30,3 @@ func (m *recentMap[V]) put(key string, value V) bool {
 	}
 	return false
 }
-
-func (m *recentMap[V]) snapshot() map[string]V {
-	out := make(map[string]V, len(m.values))
-	for key, value := range m.values {
-		out[key] = value
-	}
-	return out
-}

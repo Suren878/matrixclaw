@@ -8,7 +8,6 @@ import (
 )
 
 func (d *Dispatcher) handleTaskAdd(ctx context.Context, args string) (Result, error) {
-	args = strings.TrimSpace(args)
 	fields := strings.Fields(args)
 	if len(fields) == 0 {
 		return textResult("Usage: /tasks add once 2026-04-26 16:00 -- prompt"), nil

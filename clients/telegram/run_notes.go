@@ -38,7 +38,7 @@ func (w *Worker) offerContinue(ctx context.Context, target chatTarget, run core.
 	if notice == "" || state.continueOffered {
 		return nil
 	}
-	markup := &InlineKeyboardMarkup{InlineKeyboard: [][]InlineKeyboardButton{{commandButton("Continue", catalogCommand(controlplane.CommandContinue, ""))}}}
+	markup := &InlineKeyboardMarkup{InlineKeyboard: [][]InlineKeyboardButton{{commandButton("Continue", controlplane.CommandText(controlplane.CommandContinue))}}}
 	if _, err := w.sendTelegramMessage(ctx, SendMessageRequest{ChatID: target.chatID, Text: notice, ReplyMarkup: markup}); err != nil {
 		return err
 	}

@@ -2,90 +2,84 @@ package controlplane
 
 import "context"
 
-func (d *Dispatcher) handleTasks(ctx context.Context, args string) (Result, error) {
-	step, rest := firstCommandStep(args)
-	switch step {
-	case "":
+var (
+	tasksRoot                = verb(CommandTasks, "", 0)
+	tasksAdd                 = valueVerb(CommandTasks, "add", 0)
+	tasksArchive             = verb(CommandTasks, "archive", 0)
+	tasksMenu                = verb(CommandTasks, "menu", 1)
+	tasksPause               = verb(CommandTasks, "pause", 1)
+	tasksResume              = verb(CommandTasks, "resume", 1)
+	tasksComplete            = verb(CommandTasks, "complete", 1)
+	tasksDelete              = verb(CommandTasks, "delete", 1)
+	tasksDeleteConfirm       = verb(CommandTasks, "delete-confirm", 1)
+	tasksDeleteClosed        = verb(CommandTasks, "delete-closed", 0)
+	tasksDeleteClosedConfirm = verb(CommandTasks, "delete-closed-confirm", 0)
+	tasksRun                 = verb(CommandTasks, "run", 1)
+	tasksBackground          = verb(CommandTasks, "bg", 1)
+	tasksBackgroundOutput    = verb(CommandTasks, "bg-output", 1)
+	tasksBackgroundStop      = verb(CommandTasks, "bg-stop", 1)
+	tasksBackgroundStopNow   = verb(CommandTasks, "bg-stop-confirm", 1)
+)
+
+const tasksUsage = "Usage:\n/tasks\n/tasks bg <id>\n/tasks add once 2026-04-26 16:00 -- prompt\n/tasks add cron \"0 10 1 * *\" -- prompt\n/tasks complete <id>\n/tasks delete <id>\n/tasks run <id>"
+
+func (d *Dispatcher) handleTasks(ctx context.Context, r Route) (Result, error) {
+	jobID := r.arg(0)
+	switch r.Verb {
+	case tasksRoot:
+		if r.Value != "" {
+			return textResult(tasksUsage), nil
+		}
 		return d.tasksPicker(ctx)
-	case "bg":
-		return d.handleBackgroundTask(ctx, rest)
-	}
-	switch step {
-	case "add":
-		return d.handleTaskAdd(ctx, rest)
-	case "archive":
+	case tasksAdd:
+		return d.handleTaskAdd(ctx, r.Value)
+	case tasksArchive:
 		return d.tasksArchivePicker(ctx)
-	case "menu":
-		jobID, _ := firstCommandToken(rest)
-		if jobID == "" {
-			return d.tasksPicker(ctx)
-		}
+	case tasksDeleteClosed:
+		return Result{Screen: deleteConfirmData("Delete completed tasks?", tasksDeleteClosedConfirm.command(), tasksArchive.command())}, nil
+	case tasksDeleteClosedConfirm:
+		return d.deleteClosedTasks(ctx)
+	}
+	if jobID == "" {
+		return textResult(tasksUsage), nil
+	}
+	switch r.Verb {
+	case tasksBackground, tasksBackgroundOutput, tasksBackgroundStop, tasksBackgroundStopNow:
+		return d.handleBackgroundTask(ctx, r.Verb, jobID)
+	case tasksMenu:
 		return d.taskActionsPicker(ctx, jobID)
-	case "pause":
-		jobID, _ := firstCommandToken(rest)
-		if jobID == "" {
-			return textResult("Usage: /tasks pause <id>"), nil
-		}
+	case tasksPause:
 		job, err := d.daemon.PauseAutomationJob(ctx, jobID)
 		if err != nil {
 			return Result{}, err
 		}
 		return textResult("Paused: " + formatAutomationJob(job)), nil
-	case "resume":
-		jobID, _ := firstCommandToken(rest)
-		if jobID == "" {
-			return textResult("Usage: /tasks resume <id>"), nil
-		}
+	case tasksResume:
 		job, err := d.daemon.ResumeAutomationJob(ctx, jobID)
 		if err != nil {
 			return Result{}, err
 		}
 		return textResult("Resumed: " + formatAutomationJob(job)), nil
-	case "complete":
-		jobID, _ := firstCommandToken(rest)
-		if jobID == "" {
-			return textResult("Usage: /tasks complete <id>"), nil
-		}
+	case tasksComplete:
 		job, err := d.daemon.CompleteAutomationJob(ctx, jobID)
 		if err != nil {
 			return Result{}, err
 		}
 		return textResult("Archived: " + formatAutomationJob(job)), nil
-	case "delete":
-		jobID, _ := firstCommandToken(rest)
-		if jobID == "" {
-			return textResult("Usage: /tasks delete <id>"), nil
-		}
-		return Result{
-			Screen: deleteConfirmData("Delete task?", taskDeleteConfirmCommand(jobID), taskMenuCommand(jobID)),
-		}, nil
-	case "delete-confirm":
-		jobID, _ := firstCommandToken(rest)
-		if jobID == "" {
-			return textResult("Usage: /tasks delete-confirm <id>"), nil
-		}
+	case tasksDelete:
+		return Result{Screen: deleteConfirmData("Delete task?", tasksDeleteConfirm.command(jobID), tasksMenu.command(jobID))}, nil
+	case tasksDeleteConfirm:
 		job, err := d.daemon.DeleteAutomationJob(ctx, jobID)
 		if err != nil {
 			return Result{}, err
 		}
 		return textResult("Deleted: " + formatAutomationJob(job)), nil
-	case "delete-closed":
-		return Result{
-			Screen: deleteConfirmData("Delete completed tasks?", tasksDeleteClosedConfirmCommand(), tasksArchiveCommand()),
-		}, nil
-	case "delete-closed-confirm":
-		return d.deleteClosedTasks(ctx)
-	case "run":
-		jobID, _ := firstCommandToken(rest)
-		if jobID == "" {
-			return textResult("Usage: /tasks run <id>"), nil
-		}
+	case tasksRun:
 		fire, err := d.daemon.RunAutomationJobNow(ctx, jobID)
 		if err != nil {
 			return Result{}, err
 		}
 		return textResult("Task started: " + fire.RunID), nil
-	default:
-		return textResult("Usage:\n/tasks\n/tasks bg <id> [output|stop]\n/tasks add once 2026-04-26 16:00 -- prompt\n/tasks add cron \"0 10 1 * *\" -- prompt\n/tasks complete <id>\n/tasks delete <id>\n/tasks run <id>"), nil
 	}
+	return textResult(tasksUsage), nil
 }

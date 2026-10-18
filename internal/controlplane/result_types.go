@@ -16,16 +16,17 @@ type TextData struct {
 	Text string
 }
 
-// PromptData asks for one value; Multiline asks for a text to edit rather
-// than a line.
+// PromptData asks for one value, which the client hands to
+// Dispatcher.Answer with Submit; Multiline asks for a text to edit rather
+// than a line, and Sensitive for a secret the client neither shows nor keeps.
 type PromptData struct {
-	Title               string
-	Placeholder         string
-	Value               string
-	SubmitCommandPrefix string
-	CancelCommand       string
-	Sensitive           bool
-	Multiline           bool
+	Title         string
+	Placeholder   string
+	Value         string
+	Submit        string
+	CancelCommand string
+	Sensitive     bool
+	Multiline     bool
 }
 
 type FormData struct {

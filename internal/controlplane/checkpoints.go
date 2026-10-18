@@ -11,23 +11,22 @@ import (
 // maxStatLines bounds the files a confirmation lists.
 const maxStatLines = 15
 
-func undoCommand(parts ...string) string {
-	return controlplaneCommand(append([]string{"undo"}, parts...)...)
-}
-
-func rewindCommand(parts ...string) string {
-	return controlplaneCommand(append([]string{"rewind"}, parts...)...)
-}
+var (
+	undoConfirm   = verb(CommandUndo, "confirm", 1)
+	rewindRoot    = verb(CommandRewind, "", 0)
+	rewindShow    = verb(CommandRewind, "show", 1)
+	rewindConfirm = verb(CommandRewind, "confirm", 1)
+)
 
 // handleUndo restores the files to their state before the last run that
 // changed them, after a confirmation showing what changes.
-func (d *Dispatcher) handleUndo(ctx context.Context, args string) (Result, error) {
+func (d *Dispatcher) handleUndo(ctx context.Context, r Route) (Result, error) {
 	sessionID, list, refusal, err := d.checkpoints(ctx)
 	if err != nil || refusal != "" {
 		return textResult(refusal), err
 	}
-	if id, ok := strings.CutPrefix(strings.TrimSpace(args), "confirm "); ok {
-		return d.restoreCheckpoint(ctx, sessionID, strings.TrimSpace(id))
+	if r.Is(undoConfirm) {
+		return d.restoreCheckpoint(ctx, sessionID, r.arg(0))
 	}
 	target, ok := undoTarget(list.Checkpoints)
 	if !ok {
@@ -40,25 +39,24 @@ func (d *Dispatcher) handleUndo(ctx context.Context, args string) (Result, error
 		Title:          "Undo",
 		Message:        "Restore the files to their state before the last run (" + checkpointTime(target) + ")?\n\n" + statPreview(target),
 		ConfirmLabel:   "Restore",
-		ConfirmCommand: undoCommand("confirm", target.ID),
+		ConfirmCommand: undoConfirm.command(target.ID),
 		ConfirmDanger:  true,
 	}}, nil
 }
 
 // handleRewind lists the session's checkpoints, confirms one with what
 // restoring it changes, and restores it.
-func (d *Dispatcher) handleRewind(ctx context.Context, args string) (Result, error) {
+func (d *Dispatcher) handleRewind(ctx context.Context, r Route) (Result, error) {
 	sessionID, list, refusal, err := d.checkpoints(ctx)
 	if err != nil || refusal != "" {
 		return textResult(refusal), err
 	}
-	args = strings.TrimSpace(args)
-	if id, ok := strings.CutPrefix(args, "confirm "); ok {
-		return d.restoreCheckpoint(ctx, sessionID, strings.TrimSpace(id))
+	if r.Is(rewindConfirm) {
+		return d.restoreCheckpoint(ctx, sessionID, r.arg(0))
 	}
-	if args != "" {
+	if r.Is(rewindShow) {
 		for _, cp := range list.Checkpoints {
-			if cp.ID != args {
+			if cp.ID != r.arg(0) {
 				continue
 			}
 			if len(cp.Changes) == 0 {
@@ -68,8 +66,8 @@ func (d *Dispatcher) handleRewind(ctx context.Context, args string) (Result, err
 				Title:          "Rewind",
 				Message:        "Restore the files to checkpoint " + checkpointLabel(cp) + "?\n\n" + statPreview(cp),
 				ConfirmLabel:   "Restore",
-				CancelCommand:  rewindCommand(),
-				ConfirmCommand: rewindCommand("confirm", cp.ID),
+				CancelCommand:  rewindRoot.command(),
+				ConfirmCommand: rewindConfirm.command(cp.ID),
 				ConfirmDanger:  true,
 			}}, nil
 		}
@@ -80,11 +78,11 @@ func (d *Dispatcher) handleRewind(ctx context.Context, args string) (Result, err
 	}
 	items := make([]PickerItem, 0, len(list.Checkpoints))
 	for _, cp := range list.Checkpoints {
-		items = append(items, PickerItem{ID: cp.ID, Title: checkpointLabel(cp), Info: changesSummary(cp), Command: rewindCommand(cp.ID)})
+		items = append(items, PickerItem{ID: cp.ID, Title: checkpointLabel(cp), Info: changesSummary(cp), Command: rewindShow.command(cp.ID)})
 	}
 	return Result{Screen: NewPickerData(PickerCheckpoints, "Rewind files").
 		Meta("Restoring a checkpoint changes the files listed with it.").
-		Command(rewindCommand()).Items(items...).Build()}, nil
+		Command(rewindRoot.command()).Items(items...).Build()}, nil
 }
 
 // checkpoints loads the current session's checkpoints; refusal is the text

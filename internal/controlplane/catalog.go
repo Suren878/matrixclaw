@@ -1,7 +1,5 @@
 package controlplane
 
-import "strings"
-
 type CommandID string
 
 const (
@@ -75,20 +73,6 @@ var commandCatalog = []CommandSpec{
 
 func Catalog() []CommandSpec {
 	return commandCatalog
-}
-
-// CommandLine is the command text that runs id with args.
-func CommandLine(id CommandID, args string) string {
-	for _, spec := range commandCatalog {
-		if spec.ID != id {
-			continue
-		}
-		if args = strings.TrimSpace(args); args != "" {
-			return spec.Command + " " + args
-		}
-		return spec.Command
-	}
-	return ""
 }
 
 type PickerKind string

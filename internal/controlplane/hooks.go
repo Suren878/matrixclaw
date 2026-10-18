@@ -11,7 +11,12 @@ import (
 
 const hooksUsage = "Usage: /hooks, /hooks trust"
 
-func (d *Dispatcher) handleHooks(ctx context.Context, args string) (Result, error) {
+var (
+	hooksRoot  = verb(CommandHooks, "", 0)
+	hooksTrust = verb(CommandHooks, "trust", 1)
+)
+
+func (d *Dispatcher) handleHooks(ctx context.Context, r Route) (Result, error) {
 	_, session, err := d.currentSession(ctx)
 	if err != nil {
 		return Result{}, err
@@ -22,22 +27,21 @@ func (d *Dispatcher) handleHooks(ctx context.Context, args string) (Result, erro
 	if !core.CapabilitiesForSession(*session).NativeTools {
 		return textResult("Hooks run in Matrixclaw sessions only."), nil
 	}
-	fields := strings.Fields(args)
-	if len(fields) == 0 {
+	if r.Value != "" {
+		return textResult(hooksUsage), nil
+	}
+	if r.Is(hooksRoot) {
 		listing, err := d.daemon.SessionHooks(ctx, session.ID)
 		if err != nil {
 			return Result{}, err
 		}
 		return Result{Screen: InfoData{Title: "Hooks", Text: hooksText(listing)}}, nil
 	}
-	if strings.ToLower(fields[0]) != "trust" || len(fields) > 2 {
-		return textResult(hooksUsage), nil
-	}
 	if !d.owner() {
 		return textResult("Only the owner can trust a project's hooks."), nil
 	}
-	if len(fields) == 2 {
-		listing, err := d.daemon.TrustSessionHooks(ctx, session.ID, fields[1])
+	if sha := r.arg(0); sha != "" {
+		listing, err := d.daemon.TrustSessionHooks(ctx, session.ID, sha)
 		if err != nil {
 			return Result{}, err
 		}
@@ -61,8 +65,8 @@ func (d *Dispatcher) handleHooks(ctx context.Context, args string) (Result, erro
 		Message:        "Run these commands of " + project.Path + " in this project's sessions?\n\n" + hookLines(project.Hooks),
 		ConfirmLabel:   "Trust",
 		CancelLabel:    "Close",
-		ConfirmCommand: "/hooks trust " + project.SHA256,
-		CancelCommand:  "/hooks",
+		ConfirmCommand: hooksTrust.command(project.SHA256),
+		CancelCommand:  hooksRoot.command(),
 		ConfirmDanger:  true,
 	}}, nil
 }

@@ -12,7 +12,15 @@ import (
 const goalUsage = `Usage: /goal <objective> [--check "go test ./..."] [--max-runs N] [--tokens N]
 /goal shows the goal; /goal pause, /goal resume, /goal clear`
 
-func (d *Dispatcher) handleGoal(ctx context.Context, args string) (Result, error) {
+var (
+	goalRoot         = valueVerb(CommandGoal, "", 0)
+	goalPause        = verb(CommandGoal, "pause", 0)
+	goalResume       = verb(CommandGoal, "resume", 0)
+	goalClear        = verb(CommandGoal, "clear", 0)
+	goalClearConfirm = verb(CommandGoal, "clear confirm", 0)
+)
+
+func (d *Dispatcher) handleGoal(ctx context.Context, r Route) (Result, error) {
 	_, session, err := d.currentSession(ctx)
 	if err != nil {
 		return Result{}, err
@@ -23,39 +31,38 @@ func (d *Dispatcher) handleGoal(ctx context.Context, args string) (Result, error
 	if !core.CapabilitiesForSession(*session).NativeTools {
 		return textResult("Goals are kept by Matrixclaw sessions only."), nil
 	}
-	args = strings.TrimSpace(args)
-	if args != "" && !d.mayUse(*session) {
+	if (!r.Is(goalRoot) || r.Value != "") && !d.mayUse(*session) {
 		return textResult(unattendedRefusal), nil
 	}
-	switch strings.ToLower(args) {
-	case "":
-		goal, err := d.daemon.SessionGoal(ctx, session.ID)
-		if err != nil {
-			return Result{}, err
-		}
-		info := goalInfoData(goal)
-		return Result{Screen: *&info}, nil
-	case "pause", "resume":
-		goal, err := d.daemon.ChangeSessionGoal(ctx, session.ID, core.GoalAction(strings.ToLower(args)))
+	switch r.Verb {
+	case goalPause, goalResume:
+		goal, err := d.daemon.ChangeSessionGoal(ctx, session.ID, core.GoalAction(r.Verb.words))
 		if err != nil {
 			return Result{}, err
 		}
 		return Result{Screen: TextData{Text: "Goal " + string(goal.Status) + "."}, ReloadSnapshot: true}, nil
-	case "clear":
+	case goalClear:
 		return Result{Screen: ConfirmData{
 			Message:        "Clear the session goal?",
 			ConfirmLabel:   "Clear",
 			CancelLabel:    "Close",
-			ConfirmCommand: "/goal clear confirm",
-			CancelCommand:  "/goal",
+			ConfirmCommand: goalClearConfirm.command(),
+			CancelCommand:  goalRoot.command(),
 		}}, nil
-	case "clear confirm":
+	case goalClearConfirm:
 		if err := d.daemon.ClearSessionGoal(ctx, session.ID); err != nil {
 			return Result{}, err
 		}
 		return Result{Screen: TextData{Text: "Goal cleared."}, ReloadSnapshot: true}, nil
 	}
-	input, ok := parseGoalInput(args)
+	if r.Value == "" {
+		goal, err := d.daemon.SessionGoal(ctx, session.ID)
+		if err != nil {
+			return Result{}, err
+		}
+		return Result{Screen: goalInfoData(goal)}, nil
+	}
+	input, ok := parseGoalInput(r.Value)
 	if !ok {
 		return textResult(goalUsage), nil
 	}

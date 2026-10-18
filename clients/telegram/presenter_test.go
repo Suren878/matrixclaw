@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -47,7 +48,7 @@ func TestDisabledPickerRowsKeepTheMenu(t *testing.T) {
 	_, markup := presentPicker(picker, 0)
 
 	data := markup.InlineKeyboard[0][0].CallbackData
-	if kind, _, ok := parsePickerCallbackData(data); strings.HasPrefix(data, cbPicker) && ok && kind == callbackKindDismiss {
+	if strings.HasPrefix(data, cbPicker) && parsePickerCallbackData(data) == "" {
 		t.Fatalf("a disabled row dismisses the menu: %q", data)
 	}
 }
@@ -60,5 +61,24 @@ func TestInfoShowsEachValueOnce(t *testing.T) {
 	rowsOnly := controlplane.InfoData{Title: "Server Status", Rows: []controlplane.InfoRow{{Label: "Uptime", Value: "1h"}}}
 	if text := infoText(rowsOnly); text != "Server Status\nUptime: 1h" {
 		t.Fatalf("rows only info text = %q", text)
+	}
+}
+
+func TestLongButtonDataResolvesAfterARestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "callbacks.json")
+	command := "/modules storage file " + strings.Repeat("notes/", 12) + "plan%20v2.md"
+	long := commandCallbackData(command)
+	markup := newWorker(Config{CallbackCachePath: path}, nil).compactInlineKeyboardMarkup(&InlineKeyboardMarkup{InlineKeyboard: [][]InlineKeyboardButton{{{Text: "Open", CallbackData: long}, {Text: "Close", CallbackData: commandCallbackData("")}}}})
+
+	ref := markup.InlineKeyboard[0][0].CallbackData
+	if len(ref) > maxCallbackDataBytes || !strings.HasPrefix(ref, cbCallbackRef) {
+		t.Fatalf("long button data sent as %q", ref)
+	}
+	if short := markup.InlineKeyboard[0][1].CallbackData; short != cbPicker {
+		t.Fatalf("short button data = %q", short)
+	}
+	restarted := newWorker(Config{CallbackCachePath: path}, nil)
+	if got := parsePickerCallbackData(restarted.resolveCallbackData(ref)); got != command {
+		t.Fatalf("after a restart the button runs %q, want %q", got, command)
 	}
 }

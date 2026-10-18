@@ -14,7 +14,7 @@ func (d *Dispatcher) customProviderDeleteConfirm(ctx context.Context, providerID
 	}
 	name := textutil.FirstNonEmpty(provider.Name, provider.ID)
 	return Result{
-		Screen: deleteConfirmData("Delete custom provider `"+name+"`?", customProviderCommand("delete-confirm", providerEncodedID(provider.ID)), providerCommand(providerEncodedID(provider.ID))),
+		Screen: deleteConfirmData("Delete custom provider `"+name+"`?", providerCustomDrop.command(provider.ID), providerEdit.command(provider.ID)),
 	}, nil
 }
 

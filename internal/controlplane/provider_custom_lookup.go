@@ -21,10 +21,6 @@ func (d *Dispatcher) customSetupProvider(ctx context.Context, providerID string)
 }
 
 func (d *Dispatcher) setupProvider(ctx context.Context, providerID string) (setup.ProviderSetupItem, error) {
-	providerID, err := decodeProviderID(providerID)
-	if err != nil {
-		return setup.ProviderSetupItem{}, err
-	}
 	providers, err := d.daemon.ListSetupProviders(ctx)
 	if err != nil {
 		return setup.ProviderSetupItem{}, err

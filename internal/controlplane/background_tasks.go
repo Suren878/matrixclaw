@@ -29,18 +29,15 @@ func (d *Dispatcher) backgroundTaskItems(ctx context.Context) ([]PickerItem, err
 			ID:      "bg:" + task.ID,
 			Title:   backgroundTaskTitle(task),
 			Info:    backgroundTaskStatus(task),
-			Command: tasksCommand("bg", task.ID),
+			Command: tasksBackground.command(task.ID),
 		})
 	}
 	return items, nil
 }
 
-// handleBackgroundTask serves /tasks bg <id> [output | stop [confirm]].
-func (d *Dispatcher) handleBackgroundTask(ctx context.Context, args string) (Result, error) {
-	taskID, action := firstCommandToken(args)
-	if taskID == "" {
-		return textResult("Usage: /tasks bg <id> [output|stop]"), nil
-	}
+// handleBackgroundTask serves the screens of one background task of the
+// bound session.
+func (d *Dispatcher) handleBackgroundTask(ctx context.Context, action Verb, taskID string) (Result, error) {
 	detail, err := d.daemon.TaskDetail(ctx, taskID)
 	if errors.Is(err, core.ErrNotFound) {
 		return textResult("Task not found."), nil
@@ -56,34 +53,30 @@ func (d *Dispatcher) handleBackgroundTask(ctx context.Context, args string) (Res
 	if task.SessionID != sessionID {
 		return textResult("Task not found."), nil
 	}
-	switch strings.ToLower(strings.TrimSpace(action)) {
-	case "":
-		items := []PickerItem{{ID: "output", Title: "Output", Info: backgroundTaskStatus(task), Command: tasksCommand("bg", task.ID, "output")}}
-		if !backgroundTaskFinished(task) {
-			items = append(items, PickerItem{ID: "stop", Title: "Stop", Command: tasksCommand("bg", task.ID, "stop"), Role: PickerItemRoleDanger})
-		}
-		return Result{Screen: NewPickerData(PickerTaskActions, backgroundTaskTitle(task)).Back(tasksCommand()).Items(items...).Build()}, nil
-	case "output":
-		info := backgroundTaskInfo(detail)
-		return Result{Screen: *&info}, nil
-	case "stop":
+	switch action {
+	case tasksBackgroundOutput:
+		return Result{Screen: backgroundTaskInfo(detail)}, nil
+	case tasksBackgroundStop:
 		return Result{Screen: ConfirmData{
 			Message:        "Stop " + backgroundTaskTitle(task) + "?",
 			ConfirmLabel:   "Stop",
 			CancelLabel:    "Close",
-			ConfirmCommand: tasksCommand("bg", task.ID, "stop", "confirm"),
-			CancelCommand:  tasksCommand("bg", task.ID),
+			ConfirmCommand: tasksBackgroundStopNow.command(task.ID),
+			CancelCommand:  tasksBackground.command(task.ID),
 			ConfirmDanger:  true,
 		}}, nil
-	case "stop confirm":
+	case tasksBackgroundStopNow:
 		stopped, err := d.daemon.CancelTask(ctx, task.ID)
 		if err != nil {
 			return Result{}, err
 		}
 		return textResult(fmt.Sprintf("%s: %s.", backgroundTaskTitle(stopped), backgroundTaskStatus(stopped))), nil
-	default:
-		return textResult("Usage: /tasks bg <id> [output|stop]"), nil
 	}
+	items := []PickerItem{{ID: "output", Title: "Output", Info: backgroundTaskStatus(task), Command: tasksBackgroundOutput.command(task.ID)}}
+	if !backgroundTaskFinished(task) {
+		items = append(items, PickerItem{ID: "stop", Title: "Stop", Command: tasksBackgroundStop.command(task.ID), Role: PickerItemRoleDanger})
+	}
+	return Result{Screen: NewPickerData(PickerTaskActions, backgroundTaskTitle(task)).Back(tasksRoot.command()).Items(items...).Build()}, nil
 }
 
 func backgroundTaskTitle(task core.Task) string {
@@ -122,5 +115,5 @@ func backgroundTaskInfo(detail core.TaskDetailResponse) InfoData {
 	if text == "" {
 		text = "No output yet."
 	}
-	return InfoData{Title: backgroundTaskTitle(task), Text: text, Rows: rows, CloseCommand: tasksCommand("bg", task.ID)}
+	return InfoData{Title: backgroundTaskTitle(task), Text: text, Rows: rows, CloseCommand: tasksBackground.command(task.ID)}
 }

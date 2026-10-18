@@ -20,7 +20,7 @@ func (d *Dispatcher) storageTempPicker(ctx context.Context) (Result, error) {
 			ID:      "temp:" + file.Path,
 			Title:   storageTempTitle(file),
 			Info:    storageTempInfo(file),
-			Command: storageTempFileCommand(file.Path),
+			Command: storageTempFileVerb.command(file.Path),
 		})
 	}
 	if len(result.Files) == 0 {
@@ -35,11 +35,11 @@ func (d *Dispatcher) storageTempPicker(ctx context.Context) (Result, error) {
 		ID:      "settings",
 		Title:   "Cleanup Settings",
 		Info:    formatEnabled(result.Settings.AutoCleanup) + " · " + formatTempSettings(result.Settings),
-		Command: storageTempCleanupSettingsCommand(),
+		Command: storageTempCleanupSettingsVerb.command(),
 		Role:    PickerItemRoleAction,
 	})
 	return Result{
-		Screen: NewPickerData(PickerStorageTemp, "Temporary Files").Command(storageTempCommand()).Back(storageCommand()).Items(items...).Build(),
+		Screen: NewPickerData(PickerStorageTemp, "Temporary Files").Command(storageTempVerb.command()).Back(storageRootVerb.command()).Items(items...).Build(),
 	}, nil
 }
 
@@ -50,9 +50,9 @@ func (d *Dispatcher) storageTempFilePicker(ctx context.Context, tempPath string)
 	}
 	return Result{
 		Screen: NewPickerData(PickerStorageTempFile, "Temporary File").
-			Back(storageTempCommand()).
-			Row("promote", "Save", tempPath, storageTempPromoteCommand(tempPath)).
-			Danger("delete", "Delete", "", storageTempDeleteCommand(tempPath)).
+			Back(storageTempVerb.command()).
+			Row("promote", "Save", tempPath, storageTempPromoteVerb.command(tempPath)).
+			Danger("delete", "Delete", "", storageTempDeleteVerb.command(tempPath)).
 			Build(),
 	}, nil
 }
@@ -71,7 +71,7 @@ func (d *Dispatcher) storageTempDeleteConfirm(tempPath string) Result {
 		return textResult("Temporary file path is required.")
 	}
 	return Result{
-		Screen: deleteConfirmData("Delete temporary file "+tempPath+"?", storageTempDeleteConfirmCommand(tempPath), storageTempFileCommand(tempPath)),
+		Screen: deleteConfirmData("Delete temporary file "+tempPath+"?", storageTempDeleteConfirmVerb.command(tempPath), storageTempFileVerb.command(tempPath)),
 	}
 }
 
@@ -85,7 +85,7 @@ func (d *Dispatcher) storageTempDelete(ctx context.Context, tempPath string) (Re
 
 func (d *Dispatcher) storageTempCleanup() (Result, error) {
 	return Result{
-		Screen: deleteConfirmData("Delete all temporary files?", storageTempCleanupConfirmCommand(), storageTempCleanupSettingsCommand()),
+		Screen: deleteConfirmData("Delete all temporary files?", storageTempCleanupConfirmVerb.command(), storageTempCleanupSettingsVerb.command()),
 	}, nil
 }
 
@@ -109,11 +109,11 @@ func (d *Dispatcher) storageTempCleanupSettings(ctx context.Context) (Result, er
 	settings := result.Settings
 	return Result{
 		Screen: NewPickerData(PickerStorageCleanup, "Cleanup Settings").
-			Back(storageTempCommand()).
-			Row("toggle", "Auto Cleanup", formatEnabled(settings.AutoCleanup), storageTempCleanupModeCommand()).
-			Row("days", "Retention", formatTempRetention(settings), storageTempDaysCommand()).
-			Row("max", "Max Size", formatStorageGB(settings.MaxBytes), storageTempMaxCommand()).
-			Action("cleanup", "Cleanup Now", formatTempCleanupImpact(settings), storageTempCleanupCommand()).
+			Back(storageTempVerb.command()).
+			Row("toggle", "Auto Cleanup", formatEnabled(settings.AutoCleanup), storageTempCleanupModeVerb.command()).
+			Row("days", "Retention", formatTempRetention(settings), storageTempDaysVerb.command()).
+			Row("max", "Max Size", formatStorageGB(settings.MaxBytes), storageTempMaxVerb.command()).
+			Action("cleanup", "Cleanup Now", formatTempCleanupImpact(settings), storageTempCleanupVerb.command()).
 			Build(),
 	}, nil
 }
@@ -126,9 +126,9 @@ func (d *Dispatcher) storageTempCleanupModePicker(ctx context.Context) (Result, 
 	current := result.Settings.AutoCleanup
 	return Result{
 		Screen: NewPickerData(PickerStorageCleanup, "Auto Cleanup").
-			Select(storageTempCleanupSettingsCommand()).
-			Item(PickerItem{ID: "on", Title: "On", Selected: current, Command: storageTempToggleCommand("on")}).
-			Item(PickerItem{ID: "off", Title: "Off", Selected: !current, Command: storageTempToggleCommand("off")}).
+			Select(storageTempCleanupSettingsVerb.command()).
+			Item(PickerItem{ID: "on", Title: "On", Selected: current, Command: storageTempToggleVerb.command("on")}).
+			Item(PickerItem{ID: "off", Title: "Off", Selected: !current, Command: storageTempToggleVerb.command("off")}).
 			Build(),
 	}, nil
 }
@@ -158,10 +158,10 @@ func (d *Dispatcher) storageTempDays(ctx context.Context, raw string) (Result, e
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return Result{Screen: PromptData{
-			Title:               "Delete Temporary Files After",
-			Placeholder:         "7",
-			SubmitCommandPrefix: storageTempDaysCommandPrefix(),
-			CancelCommand:       storageTempCleanupSettingsCommand(),
+			Title:         "Delete Temporary Files After",
+			Placeholder:   "7",
+			Submit:        storageTempDaysVerb.command(),
+			CancelCommand: storageTempCleanupSettingsVerb.command(),
 		}}, nil
 	}
 	days, err := strconv.ParseInt(raw, 10, 64)
@@ -178,10 +178,10 @@ func (d *Dispatcher) storageTempMax(ctx context.Context, raw string) (Result, er
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return Result{Screen: PromptData{
-			Title:               "Temporary Files Max Size",
-			Placeholder:         "0.1",
-			SubmitCommandPrefix: storageTempMaxCommandPrefix(),
-			CancelCommand:       storageTempCleanupSettingsCommand(),
+			Title:         "Temporary Files Max Size",
+			Placeholder:   "0.1",
+			Submit:        storageTempMaxVerb.command(),
+			CancelCommand: storageTempCleanupSettingsVerb.command(),
 		}}, nil
 	}
 	gb, err := strconv.ParseFloat(raw, 64)

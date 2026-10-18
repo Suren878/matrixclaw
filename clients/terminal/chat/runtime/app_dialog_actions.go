@@ -63,21 +63,30 @@ func (m *appModel) handleRunControlplaneCommand(msg surfacedialog.ActionRunContr
 	if strings.HasPrefix(command, "/update ") {
 		return m.handleUpdateCommand(command)
 	}
-	if isContextCompactCommand(command) {
+	if controlplane.CompactRequested(command) {
 		m.closeAllDialogs()
 		m.startContextCompactProgress()
 		return m.controlplaneCmd(command)
 	}
-	if command == "/server" {
+	if isCommand(command, controlplane.CommandServer) {
 		m.dialog.CloseDialog(surfacedialog.ServerStatusInfoID)
 	}
-	if command == "/status" {
+	if isCommand(command, controlplane.CommandStatus) {
 		return m.openServerStatusDialog()
 	}
-	if isDaemonRestartCommand(command) {
+	if controlplane.RestartRequested(command) {
 		return m.openServerRestartDialog(false)
 	}
 	return tea.Batch(m.dialog.StartLoading(), m.controlplaneCmd(command))
+}
+
+func (m *appModel) handleAnswerControlplanePrompt(msg surfacedialog.ActionAnswerControlplanePrompt) tea.Cmd {
+	m.dialog.commandStarted()
+	seq := m.nextControlplaneSeq()
+	return tea.Batch(m.dialog.StartLoading(), func() tea.Msg {
+		result, err := m.commands.Answer(m.ctx, msg.Submit, msg.Answer)
+		return controlplaneResultMsg{command: msg.Submit, seq: seq, result: result, err: err}
+	})
 }
 
 func (m *appModel) handleResolveApproval(msg resolveApprovalMsg) tea.Cmd {

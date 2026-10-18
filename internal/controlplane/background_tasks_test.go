@@ -62,13 +62,13 @@ func TestBackgroundTaskShowsOutputAndStopsAfterConfirmation(t *testing.T) {
 	daemon, canceled := backgroundTaskDaemon(t)
 
 	actions := daemon.run("/tasks bg task_dev")
-	if !isScreen[PickerData](actions) || len(screenOf[PickerData](t, actions).Items) != 2 || screenOf[PickerData](t, actions).Items[1].Command != "/tasks bg task_dev stop" {
+	if !isScreen[PickerData](actions) || len(screenOf[PickerData](t, actions).Items) != 2 || screenOf[PickerData](t, actions).Items[1].Command != "/tasks bg-stop task_dev" {
 		t.Fatalf("actions = %+v", actions)
 	}
-	if output := daemon.run("/tasks bg task_dev output"); screenOf[InfoData](t, output).Text != "listening on :3000" {
+	if output := daemon.run("/tasks bg-output task_dev"); screenOf[InfoData](t, output).Text != "listening on :3000" {
 		t.Fatalf("output = %+v", output)
 	}
-	asked := daemon.run("/tasks bg task_dev stop")
+	asked := daemon.run("/tasks bg-stop task_dev")
 	if !isScreen[ConfirmData](asked) || len(*canceled) != 0 {
 		t.Fatalf("asked = %+v", asked)
 	}
@@ -79,7 +79,7 @@ func TestBackgroundTaskShowsOutputAndStopsAfterConfirmation(t *testing.T) {
 	if finished := daemon.run("/tasks bg task_test"); !isScreen[PickerData](finished) || len(screenOf[PickerData](t, finished).Items) != 1 {
 		t.Fatalf("a finished task offers %+v", finished)
 	}
-	if other := daemon.run("/tasks bg task_other stop confirm"); other.Text() != "Task not found." || len(*canceled) != 1 {
+	if other := daemon.run("/tasks bg-stop-confirm task_other"); other.Text() != "Task not found." || len(*canceled) != 1 {
 		t.Fatalf("another session's task = %+v", other)
 	}
 }

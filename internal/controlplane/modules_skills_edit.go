@@ -15,16 +15,16 @@ func (d *Dispatcher) skillBodyEditor(ctx context.Context, section string, skillI
 		return textResult(err.Error()), nil
 	}
 	return Result{Screen: PromptData{
-		Title:               "Edit " + skillTitle(detail.Skill),
-		Placeholder:         "Skill instructions",
-		Value:               detail.Body,
-		SubmitCommandPrefix: skillsCommandPrefix(section, skillID, "save-body"),
-		CancelCommand:       skillsCommand(section, skillID, "edit"),
-		Multiline:           true,
+		Title:         "Edit " + skillTitle(detail.Skill),
+		Placeholder:   "Skill instructions",
+		Value:         detail.Body,
+		Submit:        skillsSaveBody.command(section, skillID),
+		CancelCommand: skillsEdit.command(section, skillID),
+		Multiline:     true,
 	}}, nil
 }
 
-func (d *Dispatcher) skillView(ctx context.Context, skillID string, _ string) (Result, error) {
+func (d *Dispatcher) skillView(ctx context.Context, skillID string) (Result, error) {
 	detail, err := d.daemon.GetSkill(ctx, skillID)
 	if err != nil {
 		return Result{}, err
@@ -43,81 +43,85 @@ func (d *Dispatcher) skillView(ctx context.Context, skillID string, _ string) (R
 
 func (d *Dispatcher) skillSearchPrompt() Result {
 	return Result{Screen: PromptData{
-		Title:               "Search Skills",
-		Placeholder:         "deploy, review, docs",
-		SubmitCommandPrefix: skillSearchCommandPrefix(),
-		CancelCommand:       skillsCommand(),
+		Title:         "Search Skills",
+		Placeholder:   "deploy, review, docs",
+		Submit:        skillsSearch.command(),
+		CancelCommand: skillsRoot.command(),
 	}}
 }
 
 func (d *Dispatcher) skillInstallPrompt() Result {
 	return Result{Screen: PromptData{
-		Title:               "Skill or Plugin Path",
-		Placeholder:         "/path/to/skill-or-plugin",
-		SubmitCommandPrefix: skillInstallCommandPrefix(),
-		CancelCommand:       skillsCommand("add"),
+		Title:         "Skill or Plugin Path",
+		Placeholder:   "/path/to/skill-or-plugin",
+		Submit:        skillsImport.command(),
+		CancelCommand: skillsAdd.command(),
 	}}
 }
 
 func (d *Dispatcher) skillAICreatePrompt() Result {
 	return Result{Screen: PromptData{
-		Title:               "Describe Skill",
-		Placeholder:         "When should this skill be used?",
-		SubmitCommandPrefix: skillsCommandPrefix("ai-create"),
-		CancelCommand:       skillsCommand("add"),
+		Title:         "Describe Skill",
+		Placeholder:   "When should this skill be used?",
+		Submit:        skillsAICreate.command(),
+		CancelCommand: skillsAdd.command(),
 	}}
 }
 
 func (d *Dispatcher) skillCreateNamePrompt() Result {
 	return Result{Screen: PromptData{
-		Title:               "Skill Name",
-		Placeholder:         "Matrix UI Editing",
-		SubmitCommandPrefix: skillsCommandPrefix("create-name"),
-		CancelCommand:       skillsCommand("add"),
+		Title:         "Skill Name",
+		Placeholder:   "Matrix UI Editing",
+		Submit:        skillsCreateName.command(),
+		CancelCommand: skillsAdd.command(),
 	}}
 }
 
+// skillCreateDescriptionPrompt opens a draft in the form store; the next
+// prompts fill it in by its id.
 func (d *Dispatcher) skillCreateDescriptionPrompt(name string) Result {
-	state := skillDraftState{Name: strings.TrimSpace(name)}
+	draftID := d.forms.open(skillDraftState{Name: strings.TrimSpace(name)})
 	return Result{Screen: PromptData{
-		Title:               "Skill Description",
-		Placeholder:         "When this skill should be used",
-		SubmitCommandPrefix: skillsCommandPrefix("create-description", encodeSkillDraftState(state)),
-		CancelCommand:       skillsCommand("add"),
+		Title:         "Skill Description",
+		Placeholder:   "When this skill should be used",
+		Submit:        skillsCreateDescription.command(draftID),
+		CancelCommand: skillsAdd.command(),
 	}}
 }
 
-func (d *Dispatcher) skillCreateTagsPrompt(rest string) (Result, error) {
-	token, description := firstCommandToken(rest)
-	state, ok := decodeSkillDraftState(token)
+func (d *Dispatcher) skillCreateTagsPrompt(draftID string, description string) Result {
+	state, ok := formValue[skillDraftState](d.forms, draftID)
 	if !ok {
-		return textResult("Invalid skill draft state."), nil
+		return textResult(skillDraftExpired)
 	}
 	state.Description = strings.TrimSpace(description)
+	d.forms.put(draftID, state)
 	return Result{Screen: PromptData{
-		Title:               "Skill Tags",
-		Placeholder:         "ui, matrix, review",
-		SubmitCommandPrefix: skillsCommandPrefix("create-tags", encodeSkillDraftState(state)),
-		CancelCommand:       skillsCommand("add"),
-	}}, nil
+		Title:         "Skill Tags",
+		Placeholder:   "ui, matrix, review",
+		Submit:        skillsCreateTags.command(draftID),
+		CancelCommand: skillsAdd.command(),
+	}}
 }
 
-func (d *Dispatcher) skillCreateBodyEditor(rest string) (Result, error) {
-	token, tags := firstCommandToken(rest)
-	state, ok := decodeSkillDraftState(token)
+func (d *Dispatcher) skillCreateBodyEditor(draftID string, tags string) Result {
+	state, ok := formValue[skillDraftState](d.forms, draftID)
 	if !ok {
-		return textResult("Invalid skill draft state."), nil
+		return textResult(skillDraftExpired)
 	}
 	state.Tags = parseTags(tags)
+	d.forms.put(draftID, state)
 	return Result{Screen: PromptData{
-		Title:               "Skill Instructions",
-		Placeholder:         "Write the reusable instructions for this skill",
-		Value:               defaultSkillDraftBody(state),
-		SubmitCommandPrefix: skillsCommandPrefix("create-save", encodeSkillDraftState(state)),
-		CancelCommand:       skillsCommand("add"),
-		Multiline:           true,
-	}}, nil
+		Title:         "Skill Instructions",
+		Placeholder:   "Write the reusable instructions for this skill",
+		Value:         defaultSkillDraftBody(state),
+		Submit:        skillsCreateSave.command(draftID),
+		CancelCommand: skillsAdd.command(),
+		Multiline:     true,
+	}}
 }
+
+const skillDraftExpired = "This skill draft has expired. Start again with Add Skill."
 
 func (d *Dispatcher) skillEditPrompt(ctx context.Context, section string, skillID string) (Result, error) {
 	detail, err := d.daemon.GetSkill(ctx, skillID)
@@ -126,11 +130,11 @@ func (d *Dispatcher) skillEditPrompt(ctx context.Context, section string, skillI
 	}
 	value := strings.Join([]string{detail.Skill.Name, detail.Skill.Description, strings.Join(detail.Skill.Tags, ","), detail.Skill.Category}, " | ")
 	return Result{Screen: PromptData{
-		Title:               "Edit Skill Metadata",
-		Placeholder:         "name | description | tag1,tag2 | category",
-		Value:               value,
-		SubmitCommandPrefix: skillsCommandPrefix(section, skillID, "edit"),
-		CancelCommand:       skillsCommand(section, skillID, "edit"),
+		Title:         "Edit Skill Metadata",
+		Placeholder:   "name | description | tag1,tag2 | category",
+		Value:         value,
+		Submit:        skillsEdit.command(section, skillID),
+		CancelCommand: skillsEdit.command(section, skillID),
 	}}, nil
 }
 
@@ -150,16 +154,16 @@ func (d *Dispatcher) skillInstall(ctx context.Context, path string) (Result, err
 	return result.withPickerMeta(fmt.Sprintf("Installed %d skill(s). Review before use.", len(installed))), nil
 }
 
-func (d *Dispatcher) skillCreateSave(ctx context.Context, rest string) (Result, error) {
-	token, body := firstCommandToken(rest)
-	state, ok := decodeSkillDraftState(token)
+func (d *Dispatcher) skillCreateSave(ctx context.Context, draftID string, body string) (Result, error) {
+	state, ok := formValue[skillDraftState](d.forms, draftID)
 	if !ok {
-		return textResult("Invalid skill draft state."), nil
+		return textResult(skillDraftExpired), nil
 	}
 	draft, err := d.daemon.CreateSkillDraft(ctx, skills.DraftRequest{Name: state.Name, Description: state.Description, Tags: state.Tags, Body: body})
 	if err != nil {
 		return textResult(err.Error()), nil
 	}
+	d.forms.close(draftID)
 	return d.skillPicker(ctx, "review", draft.ID)
 }
 
@@ -211,6 +215,6 @@ func (d *Dispatcher) skillEdit(ctx context.Context, section string, skillID stri
 
 func (d *Dispatcher) skillRemoveConfirm(section string, skillID string) Result {
 	return Result{
-		Screen: deleteConfirmData("Remove skill "+strings.TrimSpace(skillID)+"?", skillsCommand(section, skillID, "remove", "confirm"), skillsCommand(section, skillID)),
+		Screen: deleteConfirmData("Remove skill "+strings.TrimSpace(skillID)+"?", skillsRemoveConfirm.command(section, skillID), skillsOpen.command(section, skillID)),
 	}
 }
