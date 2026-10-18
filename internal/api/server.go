@@ -141,6 +141,8 @@ func (s *Server) routes() {
 		{"PUT /v1/sessions/{id}/budget", s.handleSessionBudgetUpdate},
 		{"GET /v1/sessions/{id}/todo", s.handleSessionTodo},
 		{"DELETE /v1/sessions/{id}/todo", s.handleSessionTodoClear},
+		{"GET /v1/sessions/{id}/hooks", s.handleSessionHooks},
+		{"POST /v1/sessions/{id}/hooks/trust", ownerOnly(s.handleSessionHooksTrust)},
 		{"GET /v1/sessions/{id}/tasks", s.handleSessionTasks},
 		{"POST /v1/sessions/{id}/compact", s.handleSessionCompact},
 		{"POST /v1/sessions/{id}/clear", s.handleSessionClear},
