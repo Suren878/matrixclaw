@@ -85,7 +85,7 @@ func (c *Core) nativeSystemPrompt(ctx context.Context, turn nativeTurn, assistan
 		sections = append(sections, prompt.ToolUseDiscipline(tools, turn.Subagent))
 	}
 	if turn.Subagent {
-		sections = append(sections, prompt.SubagentMode(tools, turn.Readonly))
+		sections = append(sections, prompt.SubagentMode(tools, turn.Readonly), prompt.SubagentType(turn.Agent.Name, turn.Agent.Prompt))
 	} else {
 		sections = append(sections, prompt.LanguageGuidance())
 	}
@@ -96,7 +96,7 @@ func (c *Core) nativeSystemPrompt(ctx context.Context, turn nativeTurn, assistan
 		sections = append(sections, prompt.WebGuidance(tools))
 	}
 	if tools.Has(agentToolName) {
-		sections = append(sections, c.subagentsPrompt(ctx, facts.coding))
+		sections = append(sections, c.subagentsPrompt(ctx, facts.coding, turn.WorkingDir))
 	}
 	if tools.Has("text_to_speech") {
 		sections = append(sections, prompt.VoiceOutputGuidance())

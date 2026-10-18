@@ -45,11 +45,14 @@ func (b *batchSnapshot) next() {
 }
 
 // changesFiles reports whether a call may change files in the run's working
-// directory: a mutating file or shell tool, or a child agent writing it.
-func changesFiles(spec tools.Spec, call tools.Call) bool {
-	if spec.ID == agentToolName {
-		input := parseAgentInput(call.Args)
-		return !input.Readonly && normalizeSubagentIsolation(input.Isolation) == SubagentIsolationShared
+// directory: a mutating file or shell tool, a child agent writing it, or a
+// worktree merge.
+func (c *Core) changesFiles(spec tools.Spec, call tools.Call) bool {
+	switch spec.ID {
+	case agentToolName:
+		return c.agentCallWrites(call)
+	case worktreeMergeToolName:
+		return true
 	}
 	return spec.Mutates() && (spec.Category == tools.CategoryFilesystem || spec.Category == tools.CategoryShell)
 }
@@ -57,7 +60,7 @@ func changesFiles(spec tools.Spec, call tools.Call) bool {
 // checkpointBatch takes the batch's file checkpoint once, before its first
 // call that may change files starts. A failure is logged and the run goes on.
 func (t coreTools) checkpointBatch(ctx context.Context, spec tools.Spec, call tools.Call) {
-	if t.c.checkpoints == nil || t.batch == nil || t.turn.Readonly || !changesFiles(spec, call) || t.batch.taken.Swap(true) {
+	if t.c.checkpoints == nil || t.batch == nil || t.turn.Readonly || !t.c.changesFiles(spec, call) || t.batch.taken.Swap(true) {
 		return
 	}
 	if _, err := t.c.takeFileCheckpoint(ctx, t.turn.SessionID, t.turn.RunID, t.turn.WorkingDir, spec.ID); err != nil {

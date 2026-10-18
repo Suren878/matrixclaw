@@ -9,6 +9,8 @@ import (
 	"log"
 	"slices"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 // findTask is the one task the filter selects; ErrNotFound when none does.
@@ -110,7 +112,30 @@ func (c *Core) syncSubagentTask(ctx context.Context, run Run) (Task, error) {
 	case !run.Status.Terminal():
 		return task, nil
 	}
+	task, ended, err := c.endSubagentTask(ctx, task, c.subagentEnd(ctx, task, run))
+	if err == nil && ended {
+		c.taskFinished(ctx, task)
+	}
+	return task, err
+}
+
+// subagentEnd is how the task of a child whose run ended ends: with the
+// run's reply, checked against the task's output schema, and for a worktree
+// child what its branch holds.
+func (c *Core) subagentEnd(ctx context.Context, task Task, run Run) TaskEnd {
 	summary, failed := c.subagentRunSummary(ctx, run)
+	if !failed && len(task.OutputSchema) > 0 {
+		answer, err := checkOutputSchema(task.OutputSchema, summary)
+		if err != nil {
+			summary += "\n\nThis answer does not match output_schema: " + err.Error()
+			failed = true
+		} else {
+			summary = answer
+		}
+	}
+	if task.Isolation == SubagentIsolationWorktree && task.WorktreeBase != "" {
+		summary += "\n\n" + c.finishSubagentWorktree(ctx, task)
+	}
 	end := TaskEnd{Status: TaskStatusCompleted, Summary: summary, Delivered: !task.Background}
 	switch {
 	case run.Status == RunStatusCanceled:
@@ -118,28 +143,18 @@ func (c *Core) syncSubagentTask(ctx context.Context, run Run) (Task, error) {
 	case failed:
 		end.Status, end.Error = TaskStatusFailed, summary
 	}
-	task, ended, err := c.endSubagentTask(ctx, task, end)
-	if err == nil && ended {
-		c.taskFinished(ctx, task)
-	}
-	return task, err
+	return end
 }
 
 // discardSubagent undoes the start of a subagent whose task could not be
 // recorded, in reverse order: its session with its run, then its worktree.
 // Failures are only logged, as the start already failed.
-func (c *Core) discardSubagent(ctx context.Context, childSessionID string, isolation SubagentIsolation) {
-	child, err := c.store.GetSession(ctx, childSessionID)
-	if err == nil {
-		err = c.DeleteSession(context.WithoutCancel(ctx), child.ID)
-	}
-	if err != nil {
-		log.Printf("core: discard subagent session %q that did not start: %v", childSessionID, err)
+func (c *Core) discardSubagent(ctx context.Context, task Task) {
+	if err := c.DeleteSession(context.WithoutCancel(ctx), task.ChildSessionID); err != nil {
+		log.Printf("core: discard subagent session %q that did not start: %v", task.ChildSessionID, err)
 		return
 	}
-	if isolation == SubagentIsolationWorktree {
-		removeSubagentWorktree(child.WorkingDir)
-	}
+	c.removeSubagentWorktree(task)
 }
 
 // recoverSubagentTasks ends the tasks whose child run ended before the daemon
@@ -248,4 +263,45 @@ func subagentApprovalSummary(approval Approval) string {
 		summary += ": " + detail
 	}
 	return summary
+}
+
+// SteerSubagent sends a running background child of the parent session a
+// message, as a steer its run reads before its next step.
+func (c *Core) SteerSubagent(ctx context.Context, parentSessionID string, taskID string, message string) (Task, error) {
+	if message = strings.TrimSpace(message); message == "" {
+		return Task{}, fmt.Errorf("%w: message is required", ErrInvalidInput)
+	}
+	task, err := c.store.GetTask(ctx, strings.TrimSpace(taskID))
+	if errors.Is(err, ErrNotFound) || err == nil && (task.SessionID != parentSessionID || task.Kind != TaskKindSubagent) {
+		return Task{}, fmt.Errorf("%w: this session has no subagent task %q", ErrInvalidInput, taskID)
+	}
+	switch {
+	case err != nil:
+		return Task{}, err
+	case !task.Background:
+		return Task{}, fmt.Errorf("%w: only background children take messages", ErrInvalidInput)
+	case task.Status.Terminal():
+		return Task{}, fmt.Errorf("%w: task %s has ended", ErrInvalidInput, task.ID)
+	}
+	child, err := c.store.GetSession(ctx, task.ChildSessionID)
+	if err != nil {
+		return Task{}, err
+	}
+	if !sessionAcceptsNativeSteer(child) {
+		return Task{}, fmt.Errorf("%w: a child on an external runtime takes no messages", ErrInvalidInput)
+	}
+	text := "Message from your parent agent:\n" + message
+	gate := c.sessionGate(child.ID)
+	gate.Lock()
+	defer gate.Unlock()
+	run, err := c.store.GetActiveRunBySession(ctx, child.ID)
+	if errors.Is(err, ErrNotFound) {
+		return Task{}, fmt.Errorf("%w: task %s has ended", ErrInvalidInput, task.ID)
+	}
+	if err != nil {
+		return Task{}, err
+	}
+	input := HandleMessageInput{SessionID: child.ID, Text: text, BusyMode: BusyInputModeSteer}
+	_, err = c.createPendingSessionInput(ctx, child, run, input, text, transcript.NormalizeMessageParts(text, nil))
+	return task, err
 }

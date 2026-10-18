@@ -13,9 +13,12 @@ var initSchemaSQL string
 //go:embed migrations/002_file_checkpoints.sql
 var fileCheckpointsSQL string
 
+//go:embed migrations/005_subagent_agents.sql
+var subagentAgentsSQL string
+
 // migrations are applied in order; a database at user_version n has applied
 // the first n. 001_init.sql is the base schema a v0.2 database is converted to.
-var migrations = []string{initSchemaSQL, fileCheckpointsSQL}
+var migrations = []string{initSchemaSQL, fileCheckpointsSQL, subagentAgentsSQL}
 
 // schemaVersion is the user_version of a database this binary has migrated.
 var schemaVersion = len(migrations)

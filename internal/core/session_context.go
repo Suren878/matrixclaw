@@ -157,17 +157,19 @@ func (c *Core) sessionEngine() *agent.Engine {
 }
 
 // sessionTurn is the turn a run of the session gets on runtime, named model to
-// the model; the caller adds what belongs to the run. On an error the turn is
-// not read-only.
+// the model, with the profile of the subagent task it works for; the caller
+// adds what belongs to the run. On an error the turn has no profile.
 func (c *Core) sessionTurn(ctx context.Context, session Session, runtime agent.Model, model string) (nativeTurn, error) {
-	readonly, err := c.readonlySubagent(ctx, session.ID)
+	task, _, err := c.subagentTaskOf(ctx, session.ID)
 	return nativeTurn{
-		SessionID:  session.ID,
-		WorkingDir: session.WorkingDir,
-		Subagent:   isSubagentSession(session),
-		Readonly:   readonly,
-		ToolUse:    agent.ToolUseAllowed(runtime),
-		Model:      model,
+		SessionID:    session.ID,
+		WorkingDir:   session.WorkingDir,
+		Subagent:     isSubagentSession(session),
+		Readonly:     task.Readonly,
+		Agent:        task.Agent,
+		OutputSchema: task.OutputSchema,
+		ToolUse:      agent.ToolUseAllowed(runtime),
+		Model:        model,
 	}, err
 }
 

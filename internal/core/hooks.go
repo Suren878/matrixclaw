@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -111,36 +112,55 @@ func (c *Core) preCompact(ctx context.Context, session Session, trigger string) 
 	}
 }
 
-// engineHooks is the Hooks port of a native run; nil without a runner.
+// engineHooks is the Hooks port of a native run: the user's hooks, and for
+// a child with an output schema the check of its final answer; nil when
+// neither applies.
 func (c *Core) engineHooks(session Session, turn nativeTurn) agent.Hooks {
-	if c.hooks == nil {
+	if c.hooks == nil && len(turn.OutputSchema) == 0 {
 		return nil
 	}
-	return coreHooks{runner: c.hooks, scope: hookScope(session, turn.RunID, turn.WorkingDir), subagent: turn.Subagent}
+	return coreHooks{runner: c.hooks, scope: hookScope(session, turn.RunID, turn.WorkingDir), subagent: turn.Subagent, outputSchema: turn.OutputSchema}
 }
 
-// coreHooks runs the hooks of one native run's seams.
+// coreHooks runs the hooks of one native run's seams; runner is nil when
+// the user has none.
 type coreHooks struct {
-	runner   *hooks.Runner
-	scope    hooks.Scope
-	subagent bool
+	runner       *hooks.Runner
+	scope        hooks.Scope
+	subagent     bool
+	outputSchema json.RawMessage
 }
 
 func (h coreHooks) SessionStart(ctx context.Context, source string) string {
+	if h.runner == nil {
+		return ""
+	}
 	return h.runner.SessionStart(ctx, h.scope, source)
 }
 
-// Stop runs SubagentStop hooks for a child run and Stop hooks otherwise.
+// Stop runs SubagentStop hooks for a child run and Stop hooks otherwise;
+// then a child's answer that does not match its output schema is sent back
+// once (while no Stop hook keeps the run going).
 func (h coreHooks) Stop(ctx context.Context, reply string, active bool) string {
-	event := hooks.Stop
-	if h.subagent {
-		event = hooks.SubagentStop
+	if h.runner != nil {
+		event := hooks.Stop
+		if h.subagent {
+			event = hooks.SubagentStop
+		}
+		if reason := h.runner.Stop(ctx, h.scope, event, active, reply); reason != "" {
+			return reason
+		}
 	}
-	return h.runner.Stop(ctx, h.scope, event, active, reply)
+	if active {
+		return ""
+	}
+	return outputSchemaNote(h.outputSchema, reply)
 }
 
 func (h coreHooks) PreCompact(ctx context.Context, trigger string) {
-	h.runner.PreCompact(ctx, h.scope, trigger)
+	if h.runner != nil {
+		h.runner.PreCompact(ctx, h.scope, trigger)
+	}
 }
 
 // TrustHooksRequest trusts a session's project hooks file with the SHA256 sum

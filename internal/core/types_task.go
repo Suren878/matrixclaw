@@ -1,6 +1,9 @@
 package core
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // TaskStatus is where a background task stands.
 type TaskStatus string
@@ -50,7 +53,8 @@ const (
 
 // Task is work a session runs besides its runs: a shell command or a subagent
 // that SessionID's run RunID started with its call ParentToolCallID. Command is
-// the shell command or the subagent's prompt, Description its label; a blocking
+// the shell command or the subagent's prompt, Description its label,
+// WorkingDir where it runs (a worktree subagent's worktree); a blocking
 // subagent is not Background. A finished background task whose DeliveredAt is
 // nil is an event its session has not seen yet.
 type Task struct {
@@ -69,7 +73,14 @@ type Task struct {
 	Model            string            `json:"model,omitempty"`
 	Isolation        SubagentIsolation `json:"isolation,omitempty"`
 	// Readonly subagents get read-only tools only.
-	Readonly       bool       `json:"readonly,omitempty"`
+	Readonly bool `json:"readonly,omitempty"`
+	// Agent is the profile a subagent runs with; OutputSchema the JSON schema
+	// its final answer must match, if any.
+	Agent        AgentProfile    `json:"-"`
+	OutputSchema json.RawMessage `json:"-"`
+	// WorktreeBase is the commit a worktree subagent's branch started from,
+	// kept while its worktree (WorkingDir) waits to be merged or discarded.
+	WorktreeBase   string     `json:"worktree_base,omitempty"`
 	PID            int        `json:"pid,omitempty"`
 	PGID           int        `json:"pgid,omitempty"`
 	LeaderStart    string     `json:"-"`

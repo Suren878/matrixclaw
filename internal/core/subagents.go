@@ -1,7 +1,9 @@
 package core
 
 import (
+	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -34,6 +36,10 @@ type AgentInput struct {
 	Readonly         bool
 	Runtime          string
 	Model            string
+	// AgentType names the child's profile; "" is general.
+	AgentType string
+	// OutputSchema is the JSON schema the child's final answer must match.
+	OutputSchema json.RawMessage
 }
 
 // AgentResult is how a blocking child ended, or the task a background child
@@ -66,6 +72,10 @@ func (c *Core) RunAgent(ctx context.Context, input AgentInput) (AgentResult, err
 	if isSubagentSession(parent) {
 		return AgentResult{}, fmt.Errorf("%w: child subagents cannot start agents", ErrInvalidInput)
 	}
+	profile, err := c.subagentProfile(ctx, parent, input)
+	if err != nil {
+		return AgentResult{}, err
+	}
 	parentRunID := input.ParentRunID
 	parentToolCallID := input.ParentToolCallID
 	if parentRunID != "" && parentToolCallID != "" {
@@ -79,7 +89,7 @@ func (c *Core) RunAgent(ctx context.Context, input AgentInput) (AgentResult, err
 			return AgentResult{}, err
 		}
 	}
-	task, run, err := c.startSubagent(ctx, parent, input, prompt, parentRunID, parentToolCallID)
+	task, run, err := c.startSubagent(ctx, parent, input, profile, prompt, parentRunID, parentToolCallID)
 	if err != nil {
 		return AgentResult{}, err
 	}
@@ -108,14 +118,7 @@ func (c *Core) awaitSubagent(ctx context.Context, task Task) (AgentResult, error
 		return AgentResult{}, err
 	}
 	if !task.Status.Terminal() {
-		// The run ended before its task was told, under an older daemon.
-		run, err := c.store.GetRun(ctx, task.ChildRunID)
-		if err != nil {
-			return AgentResult{}, err
-		}
-		if task, err = c.syncSubagentTask(ctx, run); err != nil {
-			return AgentResult{}, err
-		}
+		return AgentResult{}, fmt.Errorf("subagent task %s did not end with its run", task.ID)
 	}
 	return AgentResult{Task: task, Summary: task.Summary, IsError: task.Status != TaskStatusCompleted}, nil
 }
@@ -123,18 +126,18 @@ func (c *Core) awaitSubagent(ctx context.Context, task Task) (AgentResult, error
 // startSubagent creates the child session, its run and the task that links
 // them to the parent's call; a worktree child gets its own git worktree. The
 // parent's session gate is held only to reserve the child and record its task.
-func (c *Core) startSubagent(ctx context.Context, parent Session, input AgentInput, prompt string, parentRunID string, parentToolCallID string) (Task, Run, error) {
+func (c *Core) startSubagent(ctx context.Context, parent Session, input AgentInput, profile AgentProfile, prompt string, parentRunID string, parentToolCallID string) (Task, Run, error) {
 	agentName, err := c.reserveSubagent(ctx, parent.ID, input.Background)
 	if err != nil {
 		return Task{}, Run{}, err
 	}
-	task, run, err := c.createSubagent(ctx, parent, input, prompt, parentRunID, parentToolCallID, agentName)
+	task, run, err := c.createSubagent(ctx, parent, input, profile, prompt, parentRunID, parentToolCallID, agentName)
 	if err != nil {
 		_ = c.endSubagentStart(ctx, parent.ID, agentName, nil)
 		return Task{}, Run{}, err
 	}
 	if err := c.endSubagentStart(ctx, parent.ID, agentName, &task); err != nil {
-		c.discardSubagent(ctx, task.ChildSessionID, task.Isolation)
+		c.discardSubagent(ctx, task)
 		return Task{}, Run{}, err
 	}
 	return task, run, nil
@@ -200,35 +203,45 @@ func (c *Core) endSubagentStart(ctx context.Context, parentID string, name strin
 	return err
 }
 
-func (c *Core) createSubagent(ctx context.Context, parent Session, input AgentInput, prompt string, parentRunID string, parentToolCallID string, agentName string) (Task, Run, error) {
+// subagentProfile is the profile the call's child runs with: its agent type
+// among those the parent may pick, read-only when the call asks for it. A
+// coding parent may pick the user's agent types; other runs (such as a
+// guest's reply-once answer) only the builtins.
+func (c *Core) subagentProfile(ctx context.Context, parent Session, input AgentInput) (AgentProfile, error) {
+	userAgents := c.codingRun(ctx, nativeTurn{RunID: input.ParentRunID, WorkingDir: parent.WorkingDir, ToolUse: true})
+	profile, ok := c.agentProfile(parent.WorkingDir, userAgents, input.AgentType)
+	if !ok {
+		return AgentProfile{}, fmt.Errorf("%w: unknown agent_type %q; available: %s", ErrInvalidInput, input.AgentType, strings.Join(agentTypeNames(c.agentProfiles(parent.WorkingDir, userAgents)), ", "))
+	}
+	if normalizeSubagentRuntime(input.Runtime) != SubagentRuntimeMatrixClaw && (profile.Name != defaultAgentType || len(input.OutputSchema) > 0) {
+		return AgentProfile{}, fmt.Errorf("%w: agent_type and output_schema work with the matrixclaw runtime only", ErrInvalidInput)
+	}
+	if _, err := compileOutputSchema(input.OutputSchema); err != nil {
+		return AgentProfile{}, err
+	}
+	profile.Readonly = profile.Readonly || input.Readonly
+	return profile, nil
+}
+
+func (c *Core) createSubagent(ctx context.Context, parent Session, input AgentInput, profile AgentProfile, prompt string, parentRunID string, parentToolCallID string, agentName string) (Task, Run, error) {
 	runtime := normalizeSubagentRuntime(input.Runtime)
 	isolation := normalizeSubagentIsolation(input.Isolation)
-	if input.Readonly {
+	if profile.Readonly {
 		isolation = SubagentIsolationShared
 	}
+	model := cmp.Or(input.Model, profile.Model)
 	taskID := c.newID("task")
+	var tree subagentWorktree
 	workingDir := parent.WorkingDir
 	if isolation == SubagentIsolationWorktree {
-		dir, err := prepareSubagentWorktree(ctx, workingDir, taskID)
-		if err != nil {
+		var err error
+		if tree, err = c.prepareSubagentWorktree(ctx, parent.WorkingDir, taskID); err != nil {
 			return Task{}, Run{}, err
 		}
-		workingDir = dir
-	}
-	child, err := c.createSubagentSession(ctx, parent, runtime, input.Model, workingDir, agentName, input.Readonly)
-	if err != nil {
-		if isolation == SubagentIsolationWorktree {
-			removeSubagentWorktree(workingDir)
-		}
-		return Task{}, Run{}, err
-	}
-	run, err := c.createSubagentRun(ctx, child, subagentUserPrompt(prompt, workingDir, isolation, input.Readonly))
-	if err != nil {
-		c.discardSubagent(ctx, child.ID, isolation)
-		return Task{}, Run{}, err
+		workingDir = tree.dir
 	}
 	now := c.now().UTC()
-	return Task{
+	task := Task{
 		ID:               taskID,
 		SessionID:        parent.ID,
 		RunID:            parentRunID,
@@ -237,15 +250,46 @@ func (c *Core) createSubagent(ctx context.Context, parent Session, input AgentIn
 		Status:           TaskStatusRunning,
 		Command:          prompt,
 		Description:      subagentDisplayName(input.Description, prompt),
+		WorkingDir:       tree.root,
 		Background:       input.Background,
 		AgentName:        agentName,
-		Runtime:          subagentTaskRuntimeLabel(runtime, child),
-		Model:            input.Model,
+		Model:            model,
 		Isolation:        isolation,
-		Readonly:         input.Readonly,
-		ChildSessionID:   child.ID,
-		ChildRunID:       run.ID,
+		Readonly:         profile.Readonly,
+		Agent:            profile,
+		OutputSchema:     input.OutputSchema,
+		WorktreeBase:     tree.base,
 		StartedAt:        now,
 		UpdatedAt:        now,
-	}, run, nil
+	}
+	child, err := c.createSubagentSession(ctx, parent, runtime, model, workingDir, agentName, profile.Readonly)
+	if err != nil {
+		c.removeSubagentWorktree(task)
+		return Task{}, Run{}, err
+	}
+	task.ChildSessionID, task.Runtime = child.ID, subagentTaskRuntimeLabel(runtime, child)
+	if err := c.limitSubagentSteps(ctx, child, profile); err != nil {
+		c.discardSubagent(ctx, task)
+		return Task{}, Run{}, err
+	}
+	run, err := c.createSubagentRun(ctx, child, subagentUserPrompt(prompt, workingDir, task))
+	if err != nil {
+		c.discardSubagent(ctx, task)
+		return Task{}, Run{}, err
+	}
+	task.ChildRunID = run.ID
+	return task, run, nil
+}
+
+// limitSubagentSteps gives a child whose profile names a step budget that
+// budget, never more than the daemon's budget for children.
+func (c *Core) limitSubagentSteps(ctx context.Context, child Session, profile AgentProfile) error {
+	steps := profile.BudgetSteps
+	if steps <= 0 {
+		return nil
+	}
+	if limit := c.budgets.Subagent.Steps; limit > 0 {
+		steps = min(steps, limit)
+	}
+	return c.store.SaveSessionBudget(ctx, child.ID, SessionBudget{Steps: &steps}, c.now().UTC())
 }

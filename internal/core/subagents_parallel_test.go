@@ -55,6 +55,7 @@ func TestDecidingOneOfTwoAskingChildrenLeavesTheParentWaiting(t *testing.T) {
 	defer cleanup()
 	starter := &executingRunStarter{app: app}
 	app.WithRunStarter(starter)
+	app.WithWorktrees(t.TempDir())
 	mutations := 0
 	mutate, _ := approvalTools(&mutations)
 	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), mutate)...))
@@ -99,7 +100,7 @@ func TestDecidingOneOfTwoAskingChildrenLeavesTheParentWaiting(t *testing.T) {
 	}
 	starter.wait(t)
 	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
-	if a, b := storedToolResult(t, db, session.ID, "call-a"), storedToolResult(t, db, session.ID, "call-b"); a != "changed alpha" || b != "changed beta" {
+	if a, b := storedToolResult(t, db, session.ID, "call-a"), storedToolResult(t, db, session.ID, "call-b"); !strings.HasPrefix(a, "changed alpha") || !strings.HasPrefix(b, "changed beta") {
 		t.Fatalf("results = %q, %q", a, b)
 	}
 }
@@ -184,6 +185,7 @@ func writingChildren(t *testing.T, args string, dir string, on func(task string,
 	t.Helper()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	t.Cleanup(cleanup)
+	app.WithWorktrees(t.TempDir())
 	editTool := funcTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation), fn: func(_ context.Context, call tools.Call) (tools.Result, error) {
 		on(strings.TrimPrefix(call.ToolCallID, "edit-"), "edits", call)
 		return tools.Result{Content: "mutated"}, nil
@@ -213,7 +215,7 @@ func writingChildren(t *testing.T, args string, dir string, on func(task string,
 		t.Fatal(err)
 	}
 	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
-	if a, b := storedToolResult(t, db, session.ID, "call-a"), storedToolResult(t, db, session.ID, "call-b"); a != "changed alpha" || b != "changed beta" {
+	if a, b := storedToolResult(t, db, session.ID, "call-a"), storedToolResult(t, db, session.ID, "call-b"); !strings.HasPrefix(a, "changed alpha") || !strings.HasPrefix(b, "changed beta") {
 		t.Fatalf("results = %q, %q", a, b)
 	}
 }

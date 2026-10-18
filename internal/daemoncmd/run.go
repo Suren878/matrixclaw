@@ -82,7 +82,8 @@ func Run(ctx context.Context) error {
 		WithBackgroundAgents(bootstrap.BackgroundAgents).
 		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()}).
 		WithSkillsContext(skillsModule).
-		WithPromptEnvironment(promptEnvironment(bootstrap))
+		WithPromptEnvironment(promptEnvironment(bootstrap)).
+		WithWorktrees(filepath.Join(dataDir(bootstrap.DBPath), "worktrees"))
 	if bootstrap.Setup.Daemon.Checkpoints.On() {
 		app.WithCheckpoints(checkpoint.New(filepath.Join(dataDir(bootstrap.DBPath), "checkpoints")))
 	}
