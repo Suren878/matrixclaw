@@ -12,13 +12,14 @@ import (
 
 func (s *SQLiteStore) CreateMemory(ctx context.Context, entry core.MemoryEntry) error {
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO memories(id, scope, key, content, working_dir, created_at, updated_at)
-VALUES(?, ?, ?, ?, ?, ?, ?)`,
+INSERT INTO memories(id, scope, key, content, working_dir, pending, created_at, updated_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
 		entry.ID,
 		string(entry.Scope),
 		entry.Key,
 		entry.Content,
 		entry.WorkingDir,
+		boolInt(entry.Pending),
 		formatTime(entry.CreatedAt),
 		formatTime(entry.UpdatedAt),
 	)
@@ -31,12 +32,13 @@ VALUES(?, ?, ?, ?, ?, ?, ?)`,
 func (s *SQLiteStore) UpdateMemory(ctx context.Context, entry core.MemoryEntry) error {
 	result, err := s.db.ExecContext(ctx, `
 UPDATE memories
-SET scope = ?, key = ?, content = ?, working_dir = ?, updated_at = ?
+SET scope = ?, key = ?, content = ?, working_dir = ?, pending = ?, updated_at = ?
 WHERE id = ?`,
 		string(entry.Scope),
 		entry.Key,
 		entry.Content,
 		entry.WorkingDir,
+		boolInt(entry.Pending),
 		formatTime(entry.UpdatedAt),
 		entry.ID,
 	)
@@ -66,7 +68,7 @@ func (s *SQLiteStore) DeleteMemory(ctx context.Context, id string) error {
 
 func (s *SQLiteStore) GetMemory(ctx context.Context, id string) (core.MemoryEntry, error) {
 	row := s.db.QueryRowContext(ctx, `
-SELECT id, scope, key, content, working_dir, created_at, updated_at
+SELECT id, scope, key, content, working_dir, pending, created_at, updated_at
 FROM memories
 WHERE id = ?`, id)
 	entry, err := scanMemory(row)
@@ -81,10 +83,10 @@ WHERE id = ?`, id)
 
 func (s *SQLiteStore) ListMemories(ctx context.Context, filter core.MemoryFilter) ([]core.MemoryEntry, error) {
 	query := `
-SELECT id, scope, key, content, working_dir, created_at, updated_at
+SELECT id, scope, key, content, working_dir, pending, created_at, updated_at
 FROM memories`
-	args := []any{}
-	clauses := []string{}
+	args := []any{boolInt(filter.Pending)}
+	clauses := []string{"pending = ?"}
 	if filter.Scope != "" {
 		clauses = append(clauses, "scope = ?")
 		args = append(args, string(filter.Scope))
@@ -93,9 +95,7 @@ FROM memories`
 		clauses = append(clauses, "(working_dir = '' OR working_dir = ?)")
 		args = append(args, filter.WorkingDir)
 	}
-	if len(clauses) > 0 {
-		query += " WHERE " + strings.Join(clauses, " AND ")
-	}
+	query += " WHERE " + strings.Join(clauses, " AND ")
 	query += " ORDER BY updated_at DESC, created_at DESC"
 	if filter.Limit > 0 {
 		query += " LIMIT ?"
@@ -109,9 +109,11 @@ func scanMemory(scanner rowScanner) (core.MemoryEntry, error) {
 	var scope string
 	var createdAt string
 	var updatedAt string
-	if err := scanner.Scan(&entry.ID, &scope, &entry.Key, &entry.Content, &entry.WorkingDir, &createdAt, &updatedAt); err != nil {
+	var pending int
+	if err := scanner.Scan(&entry.ID, &scope, &entry.Key, &entry.Content, &entry.WorkingDir, &pending, &createdAt, &updatedAt); err != nil {
 		return core.MemoryEntry{}, err
 	}
+	entry.Pending = pending != 0
 	entry.Scope = core.MemoryScope(scope)
 	entry.CreatedAt = mustParseTime(createdAt)
 	entry.UpdatedAt = mustParseTime(updatedAt)

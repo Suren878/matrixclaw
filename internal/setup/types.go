@@ -126,9 +126,10 @@ type ModulesConfig struct {
 // SkillsConfig leaves Enabled and AutoInvoke unset unless the user turned
 // them off; unset means on.
 type SkillsConfig struct {
-	Enabled     *bool  `json:"enabled,omitempty"`
-	AutoInvoke  *bool  `json:"auto_invoke,omitempty"`
-	TrustPolicy string `json:"trust_policy,omitempty"`
+	Enabled     *bool              `json:"enabled,omitempty"`
+	AutoInvoke  *bool              `json:"auto_invoke,omitempty"`
+	TrustPolicy string             `json:"trust_policy,omitempty"`
+	Review      SkillsReviewConfig `json:"review,omitzero"`
 }
 
 func (c SkillsConfig) IsEnabled() bool {
@@ -137,6 +138,25 @@ func (c SkillsConfig) IsEnabled() bool {
 
 func (c SkillsConfig) IsAutoInvoke() bool {
 	return c.AutoInvoke == nil || *c.AutoInvoke
+}
+
+// SkillsReviewConfig sets the review of finished sessions that proposes skill
+// drafts and memory entries. Enabled unset follows the skills module; a zero
+// number keeps its default.
+type SkillsReviewConfig struct {
+	Enabled *bool `json:"enabled,omitempty"`
+	// MinToolSteps is how many model steps that called tools a session needs
+	// since its last review; 0 keeps the default of 10.
+	MinToolSteps int `json:"min_tool_steps,omitempty"`
+	// IntervalHours is the least time between two reviews of a session; 0
+	// keeps the default of 6.
+	IntervalHours int `json:"interval_hours,omitempty"`
+}
+
+// IsReviewEnabled reports whether finished sessions are reviewed: only while
+// the skills module is on, and unless the review is turned off.
+func (c SkillsConfig) IsReviewEnabled() bool {
+	return c.IsEnabled() && (c.Review.Enabled == nil || *c.Review.Enabled)
 }
 
 type MCPConfig struct {

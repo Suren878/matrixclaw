@@ -104,3 +104,21 @@ func TestAnOverlongPieceIsCutToAboutAChunkInAnyScript(t *testing.T) {
 		}
 	}
 }
+
+func TestTranscriptTailKeepsTheNewestGroupsThatFit(t *testing.T) {
+	messages := []transcript.Message{
+		textMessage(1, transcript.MessageRoleUser, "r1", "OLDEST "+strings.Repeat("o", 4_000)),
+		textMessage(2, transcript.MessageRoleSystem, "r1", "engine note"),
+		textMessage(3, transcript.MessageRoleUser, "r1", "MIDDLE"),
+		textMessage(4, transcript.MessageRoleAssistant, "r1", "NEWEST"),
+	}
+
+	tail := TranscriptTail(messages, 200)
+
+	if tail != "user: MIDDLE\n\nassistant: NEWEST" {
+		t.Fatalf("tail = %q", tail)
+	}
+	if cut := TranscriptTail(messages[:1], 100); !strings.HasPrefix(cut, "user: OLDEST") || EstimateTextTokens(cut) > 110 {
+		t.Fatalf("a group longer than the room is not cut: %d tokens", EstimateTextTokens(cut))
+	}
+}

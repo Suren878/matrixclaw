@@ -12,6 +12,9 @@ import (
 var _ = valueVerb(CommandMemory, "", 0)
 
 func (d *Dispatcher) handleMemory(ctx context.Context, r Route) (Result, error) {
+	if r.Verb.words != "" {
+		return d.handleMemorySuggestions(ctx, r)
+	}
 	filter := core.MemoryFilter{
 		Scope:      memoryScopeArg(r.Value),
 		WorkingDir: d.workingDir,
