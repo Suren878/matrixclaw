@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"github.com/Suren878/matrixclaw/internal/hooks"
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
@@ -14,6 +15,10 @@ type Config struct {
 	Daemon           DaemonConfig     `json:"daemon"`
 	Clients          ClientsConfig    `json:"clients"`
 	Modules          ModulesConfig    `json:"modules,omitempty"`
+	// Hooks are commands run at the agent's seams (docs/HOOKS.md).
+	Hooks []hooks.Hook `json:"hooks,omitempty"`
+	// Diagnostics overrides or turns off the checks after file edits.
+	Diagnostics hooks.Diagnostics `json:"diagnostics,omitzero"`
 }
 
 type AssistantConfig struct {

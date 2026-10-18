@@ -87,7 +87,8 @@ func unknownKeys(raw any, t reflect.Type, path string) []string {
 // runtimeModes are the stored runtime modes of local browser and voice runtimes.
 var runtimeModes = []string{"per_task", "always_running"}
 
-// checkStoredValues rejects stored values outside their closed lists.
+// checkStoredValues rejects stored values outside their closed lists, hooks
+// that cannot run and diagnostics keys that are not file extensions.
 func checkStoredValues(cfg Config) error {
 	var problems []error
 	check := func(key, value string, allowed ...string) {
@@ -136,6 +137,14 @@ func checkStoredValues(cfg Config) error {
 	check("modules.web_search.provider", modules.WebSearch.Provider, WebSearchProviderDDG, WebSearchProviderTavily, WebSearchProviderSerper, WebSearchProviderSearXNG)
 	for i, server := range modules.MCP.Servers {
 		check("modules.mcp.servers["+strconv.Itoa(i)+"].transport", server.Transport, "stdio", "http")
+	}
+	for i, hook := range cfg.Hooks {
+		if err := hook.Validate(); err != nil {
+			problems = append(problems, fmt.Errorf("hooks[%d]: %w", i, err))
+		}
+	}
+	if err := cfg.Diagnostics.Validate(); err != nil {
+		problems = append(problems, fmt.Errorf("diagnostics: %w", err))
 	}
 	return errors.Join(problems...)
 }

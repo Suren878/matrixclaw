@@ -264,3 +264,29 @@ func TestVersion3SetupFileThatCannotConvertIsLeftAlone(t *testing.T) {
 		t.Fatalf("backup written: %v", err)
 	}
 }
+
+func TestSetupHooksAreValidatedOnLoad(t *testing.T) {
+	for _, tc := range []struct{ hooks, want string }{
+		{`"hooks": [{"event": "AfterEdit", "command": "x"}]`, `hooks[0]: event is "AfterEdit"`},
+		{`"hooks": [{"event": "PreToolUse", "matcher": "bash", "command": "x", "async": true}]`, `unknown keys hooks[0].async`},
+		{`"diagnostics": {"commands": {"go": "x"}}`, `diagnostics: commands key "go"`},
+	} {
+		path := filepath.Join(t.TempDir(), "setup.json")
+		file := `{"version": 4, "daemon": {"http_addr": "127.0.0.1:7777", "db_path": "/tmp/m.db"}, "clients": {"telegram": {"enabled": false}}, ` + tc.hooks + `}`
+		if err := os.WriteFile(path, []byte(file), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := NewFileStore(path).Load(); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("load error = %v, want %s", err, tc.want)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "setup.json")
+	file := `{"version": 4, "daemon": {"http_addr": "127.0.0.1:7777", "db_path": "/tmp/m.db"}, "clients": {"telegram": {"enabled": false}}, "hooks": [{"event": "Stop", "command": "make test", "timeout": 300}], "diagnostics": {"commands": {".py": ""}}}`
+	if err := os.WriteFile(path, []byte(file), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := NewFileStore(path).Load()
+	if err != nil || len(cfg.Hooks) != 1 || cfg.Hooks[0].Timeout != 300 {
+		t.Fatalf("cfg = %+v, err = %v", cfg.Hooks, err)
+	}
+}
