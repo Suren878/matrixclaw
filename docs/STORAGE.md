@@ -19,7 +19,7 @@ Next to the database (the data directory):
 | `storage/` | storage module root (below) |
 | `sessions/<session id>/tool-output/` | full tool results too large for the model's context (the model gets head, tail and path) |
 | `sessions/<session id>/tasks/<task id>.log` | background command output, mode 0600, capped at 20 MB (keeps the first 1 MB and the newest part) |
-| `skills/` | skills library: `installed`, `quarantine`, `archive`, `plugins`, `drafts` |
+| `skills/` | skills library: `installed` (trusted), `quarantine`, `drafts` |
 | `runtime/context-windows.json` | model metadata learned from provider listings, by provider |
 | `checkpoints/<hash>/` | shadow git repository of one work tree, holding its file checkpoints ([CHECKPOINTS.md](CHECKPOINTS.md)) |
 
@@ -38,14 +38,18 @@ independent of the database path:
 ## Database
 
 `internal/store` opens SQLite with WAL, `synchronous = NORMAL`, foreign keys
-and a 5 s busy timeout. A daemon crash loses nothing; a power loss or OS crash
+and a 5 s busy timeout, on one connection that the skills library and
+automation share (`SQLiteStore.DB`). A daemon crash loses nothing; a power loss or OS crash
 can lose the last commits since the previous checkpoint.
 
 The schema is `internal/store/migrations/001_init.sql` followed by the
 numbered migrations listed in `internal/store/schema.go` (`002` adds
 `file_checkpoints`; `003` drops `sessions.runtime_id`, which repeated
 `kind`, and `external_agent_sessions.approval_policy` and `sandbox`, since an
-external agent's permissions follow its session); the database records in
+external agent's permissions follow its session; `006` gives automation jobs
+their client's capabilities and delivery address, marking existing Telegram
+jobs as receiving deliveries, and drops the unread
+`skill_plugin_mcp_candidates`); the database records in
 `PRAGMA user_version` how many migrations it has applied. Each migration is applied once and in order, to a new
 database too. A database newer than the binary is refused.
 Upgrades are one-way. Back up before upgrading (the daemon may keep running):
@@ -95,7 +99,7 @@ Tables:
 | Clients | `client_deliveries` |
 | Automation | `automation_jobs`, `automation_fires` |
 | External agents | `external_agent_sessions` |
-| Skills | `skills`, `skill_fts`, `skill_sessions`, `skill_plugin_mcp_candidates` |
+| Skills | `skills`, `skill_fts`, `skill_sessions` |
 
 ## Storage module
 

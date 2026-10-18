@@ -51,8 +51,8 @@ flowchart LR
 | `internal/sessionllm` | the provider runtimes sessions pick from |
 | `internal/externalagents` | external agent registry, adapters (`claudecode`, `codexapp`) and the reply builder (`reply`) |
 | `internal/mcp` | MCP client and the `matrixclaw mcp serve` stdio server |
-| `internal/automation` | reminders and scheduled AI tasks |
-| `internal/skills` | skills library (files plus its own tables) |
+| `internal/automation` | reminders and scheduled AI tasks; each job keeps its client's capabilities and delivery address |
+| `internal/skills` | skills library: skill directories, their rows in the store's schema, install (local, plugin, Hermes tree, GitHub clone), the `skill_*` tools |
 | `internal/setup` | typed `setup.json`, provider config, service files |
 | `internal/store` | SQLite persistence (see [STORAGE.md](STORAGE.md)) |
 | `internal/toolview` | how a tool call is shown, shared by the TUI and Telegram |
@@ -62,7 +62,8 @@ flowchart LR
 ## Daemon start
 
 `daemoncmd.Run`: load setup, take `matrixclawd.lock` next to the database (a
-second daemon on the same data exits), open the store, build `core.Core` and
+second daemon on the same data exits), open the store (its one connection
+also serves the skills library and automation), build `core.Core` and
 every module once (`daemoncmd/modules.go`), bind the listener, apply the setup
 (`supervisor.ApplyBootstrap`), then serve. After that, in the background: the
 automation scheduler, release of held deliveries, and `Core.Recover`. Shutdown
@@ -546,10 +547,15 @@ Close() error
   current tools, in a registry swapped atomically after each `Apply`.
 - `supervisor.Reload` (`POST /v1/admin/reload`, the wizard, every API handler
   after a setup write) loads setup.json and, under one lock, applies external
-  agents, the module set, session LLMs, the assistant profile, and
-  Telegram. Each part does nothing when its settings did not
-  change; MCP reconnects only changed servers, and one failing server does not
-  disable the others.
+  agents, the module set, session LLMs, the assistant profile, the run limits
+  (`core.Tuning`: budgets, compact model, context window cap, model
+  concurrency, background commands and subagents), automation's timezone and
+  delivery targets, and Telegram. The start applies the same way
+  (`ApplyBootstrap`), so nothing in setup.json waits for a restart. Each part
+  does nothing when its settings did not change; MCP reconnects only changed
+  servers, and one failing server does not disable the others. Run limits
+  apply to runs as they go: model slots resize in place, and a lower limit
+  only stops new holders.
 - `GET /v1/modules` lists statuses; the model's runtime note is built from
   them (without `state`, so it stays stable): modules grouped as usable in
   this run, enabled without tools here, not ready, and off, with facts only
@@ -566,6 +572,12 @@ Close() error
   Playwright MCP server is owned by its MCP session.
 - Realtime voice providers are `realtime.ProviderSpec`s with a codec over one
   websocket session engine.
+- Skills: installed skills land quarantined (disabled, under `quarantine/`)
+  unless `trust_policy` is `trusted`; `skills.Action` is the one list of
+  library actions the API, CLI, screens and `skill_manage` share. A GitHub
+  install is a shallow `git clone` with a timeout, no prompts and the
+  environment of agent commands (no daemon keys); its subpath and every bundle
+  must stay inside the clone. Skill file writes go through `os.Root`.
 
 ## Deliveries
 
@@ -574,7 +586,10 @@ Clients that cannot hold an event stream fetch work from a delivery queue
 Types: `run` (a run's reply), `document` (`send_file`), `notice`, `approval`
 (a subagent's approval sent to the parent's chat). A run gets a delivery only
 when its client sets `ReceivesDeliveries` in its capabilities (Telegram,
-automation); the terminal follows events instead. `reply_once` marks a target
+automation); the terminal follows events instead. An automation job keeps the
+capabilities and delivery address of the run or client that created it (an
+address that takes one reply is not kept), and each fire's result also goes to
+the configured targets (the owner's Telegram chat), once per chat. `reply_once` marks a target
 that takes a single reply (Telegram inline and guest). Restart notices are
 `held` until the next start releases them.
 
