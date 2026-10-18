@@ -56,6 +56,8 @@ var clientRoutes = []struct {
 	{"POST", "/v1/sessions/s1/compact", "POST /v1/sessions/{id}/compact"},
 	{"POST", "/v1/sessions/s1/clear", "POST /v1/sessions/{id}/clear"},
 	{"POST", "/v1/sessions/s1/system-message", "POST /v1/sessions/{id}/system-message"},
+	{"GET", "/v1/sessions/s1/checkpoints", "GET /v1/sessions/{id}/checkpoints"},
+	{"POST", "/v1/sessions/s1/checkpoints/fcp1/restore", "POST /v1/sessions/{id}/checkpoints/{checkpoint}/restore"},
 	{"GET", "/v1/bindings/current?client=terminal&external_key=local", "GET /v1/bindings/current"},
 	{"POST", "/v1/bindings/use", "POST /v1/bindings/use"},
 	{"GET", "/v1/snapshot?client=ios&external_key=phone", "GET /v1/snapshot"},

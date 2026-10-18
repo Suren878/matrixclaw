@@ -61,6 +61,10 @@ func (d *Dispatcher) Handle(ctx context.Context, text string) (Result, error) {
 		return d.handleContinue(ctx)
 	case CommandBudget:
 		return d.handleBudget(ctx, args)
+	case CommandUndo:
+		return d.handleUndo(ctx, args)
+	case CommandRewind:
+		return d.handleRewind(ctx, args)
 	case CommandTodo:
 		return d.handleTodo(ctx, args)
 	case CommandMemory:

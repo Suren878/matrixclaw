@@ -39,6 +39,7 @@ flowchart LR
 | `internal/agent` | the native agent engine (below) |
 | `internal/transcript` | message, part, finish and origin types shared by core, store, api and agent |
 | `internal/tools` | tool contract and the built-in file, shell and task tools |
+| `internal/checkpoint` | file checkpoints: shadow git snapshots of working directories, diff, restore (see [CHECKPOINTS.md](CHECKPOINTS.md)) |
 | `internal/permission` | permission rules, subjects, bash parsing, mode presets |
 | `internal/glob` | the one glob matcher (`**`, classes, braces) and `.gitignore` rules, for path rules and the search tools |
 | `internal/shelltask` | background shell processes and their output files |
@@ -82,8 +83,8 @@ recovery), waits for them, then closes external agents and modules.
   daemon trusts the header as it trusts the token. Telegram sets it from the
   chat an update came from, never from message text.
 - `ownerOnly` routes: admin reload/restart/stop, the session permission mode,
-  and writes to setup providers, external agents, module settings, MCP, the
-  skills library and temporary-storage settings. Reads stay open. Global permission rules are owner-only,
+  file checkpoint restores, and writes to setup providers, external agents,
+  module settings, MCP, the skills library and temporary-storage settings. Reads stay open. Global permission rules are owner-only,
   guests keep no rules, and members and guests are refused (403) in sessions
   that run unattended (`core.RunsUnattended`: full_auto or external agent).
   Clients only hide what the daemon would refuse.
@@ -358,6 +359,17 @@ provider and model.
   numbered like `read`; its metadata (`tools.FileChange`) keeps only the
   changed regions, at most 16 KB a side, while an approval shows a file up to
   64 KB whole.
+
+### File checkpoints
+
+Before the first call of a tool batch that may change files (file and shell
+mutations, a child agent in the shared directory), core snapshots the
+session's working directory into a shadow git repository under the data
+directory (`internal/checkpoint`) and records it in `file_checkpoints`.
+`/undo` and `/rewind` restore a checkpoint and leave the model a note naming
+the restored files; `checkpoint_diff` shows the model its whole change. Off
+with `daemon.checkpoints.enabled: false`. Details in
+[CHECKPOINTS.md](CHECKPOINTS.md).
 
 ## Web tools
 

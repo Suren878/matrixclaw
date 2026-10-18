@@ -145,6 +145,8 @@ func (s *Server) routes() {
 		{"POST /v1/sessions/{id}/compact", s.handleSessionCompact},
 		{"POST /v1/sessions/{id}/clear", s.handleSessionClear},
 		{"POST /v1/sessions/{id}/system-message", s.handleSessionSystemMessage},
+		{"GET /v1/sessions/{id}/checkpoints", s.handleSessionCheckpoints},
+		{"POST /v1/sessions/{id}/checkpoints/{checkpoint}/restore", ownerOnly(s.handleSessionCheckpointRestore)},
 		{"GET /v1/bindings/current", s.handleCurrentBinding},
 		{"POST /v1/bindings/use", s.handleUseBinding},
 		{"GET /v1/snapshot", s.handleSnapshot},
