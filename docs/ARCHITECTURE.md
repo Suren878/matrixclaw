@@ -92,7 +92,7 @@ servers and closes external agents and modules.
   (admin reload/restart/stop, the session permission mode, writes to setup
   providers, external agents, module settings, MCP and the skills library,
   storage deletes, temporary-storage cleanup and settings, file checkpoint
-  restores, trusting a project's hooks); or `session`,
+  restores, trusting a project's hooks, approving and deleting memory entries); or `session`,
   for every write that acts in a session (named by the path, by the run, task,
   approval, automation job or permission rule it names, or by the JSON body's
   `session_id` or client binding): members and guests are refused (403) there when the session
@@ -195,7 +195,9 @@ parked one): for an ended run it counts the run against the session goal,
 then starts the session's next queued message, wakes the session for finished
 background work, or starts the goal's next run ([GOALS.md](GOALS.md)); a
 parked run whose decision or event arrived meanwhile resumes. Every step is
-idempotent.
+idempotent. A session left idle may then get a background review that turns
+what it learned into skill drafts and memory suggestions for the owner
+([SKILLS.md](SKILLS.md#learning-from-sessions)).
 
 **Cancel.** `CancelRun` writes `canceled`, then cancels the run's context with
 the cause `agent.ErrCanceled`. Any other stop (shutdown, release) cancels
@@ -639,6 +641,16 @@ Close() error
   install is a shallow `git clone` with a timeout, no prompts and the
   environment of agent commands (no daemon keys); its subpath and every bundle
   must stay inside the clone. Skill file writes go through `os.Root`.
+- Session reviews (`core/session_review.go`, `modules.skills.review`): after
+  enough work, an idle top-level native session gets one background model
+  call over its conversation tail (`agentcontext.TranscriptTail`, the summary
+  rendering); proposed skills become quarantined drafts through
+  `core.SkillLearning` (the skills module), proposed memory becomes pending
+  `memories` rows that runs do not see until the owner approves them on
+  `/memory pending`. No run, no gate; the call takes a model slot, counts in
+  `executing` (shutdown cancels and waits for it) and is recorded as a
+  `run_steps` row with stop reason `review` on the session's latest run. See
+  [SKILLS.md](SKILLS.md).
 
 ## Deliveries
 

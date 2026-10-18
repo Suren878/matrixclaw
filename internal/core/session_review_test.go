@@ -159,7 +159,7 @@ func TestSessionReviewFilesQuarantinedDraftsAndPendingMemory(t *testing.T) {
 	if approved, _ := app.ListMemories(ctx, core.MemoryFilter{}); len(approved) != 0 || app.MemoryPromptContext(ctx, session.WorkingDir) != "" {
 		t.Fatalf("runs see unapproved memory: %+v", approved)
 	}
-	if notices := systemNotices(t, h.db, session.ID); len(notices) != 1 || !strings.Contains(notices[0], "/modules skills review") || !strings.Contains(notices[0], "/memory pending") {
+	if notices := systemNotices(t, h.db, session.ID); len(notices) != 1 || !strings.Contains(notices[0], "/modules skills section review") || !strings.Contains(notices[0], "/memory pending") {
 		t.Fatalf("notices = %q", notices)
 	}
 

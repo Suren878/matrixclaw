@@ -53,7 +53,8 @@ external agent's permissions follow its session; `004` adds
 `output_schema` and `worktree_base`; `006` gives automation jobs
 their client's capabilities and delivery address, marking existing Telegram
 jobs as receiving deliveries, and drops the unread
-`skill_plugin_mcp_candidates`); the database records in
+`skill_plugin_mcp_candidates`; `007` adds `memories.pending`, marking the
+memory suggestions of session reviews); the database records in
 `PRAGMA user_version` how many migrations it has applied. Each migration is applied once and in order, to a new
 database too. A database newer than the binary is refused.
 Upgrades are one-way. Back up before upgrading (the daemon may keep running):

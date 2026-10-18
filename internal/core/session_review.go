@@ -310,7 +310,7 @@ func reviewNoticeText(drafts int, suggested int) string {
 	var found, places []string
 	if drafts > 0 {
 		found = append(found, quantityText(drafts, "skill draft"))
-		places = append(places, "skills in /modules skills review")
+		places = append(places, "skills in /modules skills section review")
 	}
 	if suggested > 0 {
 		found = append(found, quantityText(suggested, "memory suggestion"))
