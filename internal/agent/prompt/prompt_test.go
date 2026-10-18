@@ -16,7 +16,7 @@ import (
 var update = flag.Bool("update", false, "rewrite the golden files")
 
 var (
-	parentTools   = NewTools("read", "glob", "grep", "ls", "repo_map", "write", "edit", "multiedit", "bash", "task_output", "task_kill", "todo_write", "await", "agent", "web_fetch", "web_search")
+	parentTools   = NewTools("read", "glob", "grep", "ls", "repo_map", "lsp", "write", "edit", "multiedit", "bash", "task_output", "task_kill", "todo_write", "await", "agent", "web_fetch", "web_search")
 	writerTools   = NewTools("read", "glob", "grep", "ls", "write", "edit", "multiedit", "bash", "task_output", "task_kill", "todo_write", "web_fetch", "web_search")
 	readonlyTools = NewTools("read", "glob", "grep", "ls", "repo_map", "bash", "task_output", "todo_write", "web_fetch", "web_search")
 )
@@ -82,7 +82,7 @@ func TestGoldenPrompts(t *testing.T) {
 
 func TestGuidanceNamesOnlyToolsTheRunHas(t *testing.T) {
 	// Tool names that are not also plain words (read, edit, agent, ...).
-	names := []string{"glob", "repo_map", "multiedit", "bash", "task_output", "task_kill", "todo_write", "await", "web_fetch"}
+	names := []string{"glob", "repo_map", "lsp", "multiedit", "bash", "task_output", "task_kill", "todo_write", "await", "web_fetch"}
 	for name, tools := range map[string]Tools{"writer": writerTools, "readonly": readonlyTools, "files only": NewTools("read", "grep")} {
 		texts := []string{CodingGuidance(tools, true), SubagentMode(tools, name == "readonly"), ToolUseDiscipline(tools, true)}
 		for _, tool := range names {

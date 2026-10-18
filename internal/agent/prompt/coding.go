@@ -117,6 +117,9 @@ func toolsSection(tools Tools) string {
 	if tools.Has("repo_map") {
 		lines = append(lines, "- In an unfamiliar or large repository, start with repo_map to see its main definitions and where they live; before a change that spans many files, call it with focus_files or focus_symbols to see what the change touches.")
 	}
+	if tools.Has("lsp") {
+		lines = append(lines, "- For where a symbol is defined, who calls it or what implements an interface, use lsp; it follows the language's real scopes, which grep cannot.")
+	}
 	lines = append(lines, "- Calls in one reply run at the same time and may finish in any order; their results come back in the order you made them. Put independent reads and searches in one reply; a call that needs another call's result goes in a later reply.")
 	if tools.Has("bash") && writes {
 		lines = append(lines, backgroundLine(tools))
