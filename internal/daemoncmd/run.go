@@ -51,11 +51,6 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = sqliteStore.Close() }()
-	automationStore, err := automation.NewSQLiteStore(bootstrap.DBPath)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = automationStore.Close() }()
 
 	localRuntime := localruntime.New("")
 	defer func() { _ = localRuntime.Close() }()
@@ -90,8 +85,8 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	app.WithExternalAgents(externalRegistry, sqliteStore)
-	automationService := automation.NewService(automationStore, app, bootstrap.Timezone).
-		WithDeliveryTargets(automationDeliveryTargets(bootstrap))
+	automationService := automation.NewService(automation.NewSQLiteStore(sqliteStore.DB()), app)
+	automationService.Configure(automation.Settings{Timezone: bootstrap.Timezone, Targets: automationDeliveryTargets(bootstrap)})
 	osmGeo := geo.NewOSMServiceFromEnv()
 	realtimeVoice := realtime.NewManager(app, geminilive.Spec, grokvoice.Spec, openairealtime.Spec)
 	daemon, err := buildModules(moduleDeps{

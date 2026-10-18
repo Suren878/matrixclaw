@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -10,55 +11,34 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
-
-	_ "modernc.org/sqlite"
 )
 
+// SQLiteStore keeps jobs and fires in the store's database.
 type SQLiteStore struct {
 	db *sql.DB
 }
 
 var _ Store = (*SQLiteStore)(nil)
 
-func NewSQLiteStore(path string) (*SQLiteStore, error) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return nil, fmt.Errorf("automation store: sqlite path is required")
-	}
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		return nil, fmt.Errorf("automation store: open sqlite: %w", err)
-	}
-	// Automation runs inside one daemon process; keep SQLite access serialized
-	// so scheduled job state transitions remain simple and deterministic.
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
-	for _, stmt := range []string{
-		`PRAGMA foreign_keys = ON`,
-		`PRAGMA busy_timeout = 5000`,
-	} {
-		if _, err := db.Exec(stmt); err != nil {
-			_ = db.Close()
-			return nil, fmt.Errorf("automation store: bootstrap pragma %q: %w", stmt, err)
-		}
-	}
-	return &SQLiteStore{db: db}, nil
+// NewSQLiteStore uses the store's connection; the tables are in its schema.
+func NewSQLiteStore(db *sql.DB) *SQLiteStore {
+	return &SQLiteStore{db: db}
 }
 
-func (s *SQLiteStore) Close() error {
-	return s.db.Close()
-}
+const jobColumns = `id, kind, status, session_id, client, external_key, client_capabilities_json, delivery_address_json, title, timezone, schedule_mode, run_at, interval_seconds, cron_expr, next_due_at, last_scheduled_for, prompt, created_at, updated_at, deleted_at`
 
 func (s *SQLiteStore) CreateAutomationJob(ctx context.Context, job Job) error {
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO automation_jobs(id, kind, status, session_id, client, external_key, title, timezone, schedule_mode, run_at, interval_seconds, cron_expr, next_due_at, last_scheduled_for, prompt, created_at, updated_at, deleted_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+INSERT INTO automation_jobs(`+jobColumns+`)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		job.ID,
 		string(job.Kind),
 		string(job.Status),
 		job.SessionID,
 		job.Client,
 		job.ExternalKey,
+		marshalCapabilities(job.ClientCapabilities),
+		string(job.DeliveryAddress),
 		job.Title,
 		job.Timezone,
 		string(job.ScheduleMode),
@@ -79,10 +59,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 }
 
 func (s *SQLiteStore) GetAutomationJob(ctx context.Context, jobID string) (Job, error) {
-	row := s.db.QueryRowContext(ctx, `
-SELECT id, kind, status, session_id, client, external_key, title, timezone, schedule_mode, run_at, interval_seconds, cron_expr, next_due_at, last_scheduled_for, prompt, created_at, updated_at, deleted_at
-FROM automation_jobs
-WHERE id = ?`, jobID)
+	row := s.db.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM automation_jobs WHERE id = ?`, jobID)
 	job, err := scanSQLiteAutomationJob(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -94,9 +71,7 @@ WHERE id = ?`, jobID)
 }
 
 func (s *SQLiteStore) ListAutomationJobs(ctx context.Context, filter JobFilter) ([]Job, error) {
-	query := `
-SELECT id, kind, status, session_id, client, external_key, title, timezone, schedule_mode, run_at, interval_seconds, cron_expr, next_due_at, last_scheduled_for, prompt, created_at, updated_at, deleted_at
-FROM automation_jobs`
+	query := `SELECT ` + jobColumns + ` FROM automation_jobs`
 	args := []any{}
 	clauses := []string{}
 	if !filter.IncludeDeleted {
@@ -110,6 +85,11 @@ FROM automation_jobs`
 	if strings.TrimSpace(filter.SessionID) != "" {
 		clauses = append(clauses, "session_id = ?")
 		args = append(args, strings.TrimSpace(filter.SessionID))
+	}
+	if !filter.DueBy.IsZero() {
+		// RFC 3339 text of varying precision does not sort as time; julianday does.
+		clauses = append(clauses, "next_due_at IS NOT NULL AND julianday(next_due_at) <= julianday(?)")
+		args = append(args, sqliteFormatTime(filter.DueBy))
 	}
 	if len(clauses) > 0 {
 		query += " WHERE " + strings.Join(clauses, " AND ")
@@ -141,13 +121,15 @@ FROM automation_jobs`
 func (s *SQLiteStore) UpdateAutomationJob(ctx context.Context, job Job) error {
 	result, err := s.db.ExecContext(ctx, `
 UPDATE automation_jobs
-SET kind = ?, status = ?, session_id = ?, client = ?, external_key = ?, title = ?, timezone = ?, schedule_mode = ?, run_at = ?, interval_seconds = ?, cron_expr = ?, next_due_at = ?, last_scheduled_for = ?, prompt = ?, updated_at = ?, deleted_at = ?
+SET kind = ?, status = ?, session_id = ?, client = ?, external_key = ?, client_capabilities_json = ?, delivery_address_json = ?, title = ?, timezone = ?, schedule_mode = ?, run_at = ?, interval_seconds = ?, cron_expr = ?, next_due_at = ?, last_scheduled_for = ?, prompt = ?, updated_at = ?, deleted_at = ?
 WHERE id = ?`,
 		string(job.Kind),
 		string(job.Status),
 		job.SessionID,
 		job.Client,
 		job.ExternalKey,
+		marshalCapabilities(job.ClientCapabilities),
+		string(job.DeliveryAddress),
 		job.Title,
 		job.Timezone,
 		string(job.ScheduleMode),
@@ -233,18 +215,16 @@ WHERE id = ?`,
 	return nil
 }
 
-type sqliteAutomationJobScanner interface {
+type rowScanner interface {
 	Scan(dest ...any) error
 }
 
-type sqliteAutomationFireScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanSQLiteAutomationJob(scanner sqliteAutomationJobScanner) (Job, error) {
+func scanSQLiteAutomationJob(scanner rowScanner) (Job, error) {
 	var job Job
 	var kind string
 	var status string
+	var capabilities string
+	var address string
 	var scheduleMode string
 	var runAt sql.NullString
 	var nextDueAt sql.NullString
@@ -259,6 +239,8 @@ func scanSQLiteAutomationJob(scanner sqliteAutomationJobScanner) (Job, error) {
 		&job.SessionID,
 		&job.Client,
 		&job.ExternalKey,
+		&capabilities,
+		&address,
 		&job.Title,
 		&job.Timezone,
 		&scheduleMode,
@@ -277,6 +259,14 @@ func scanSQLiteAutomationJob(scanner sqliteAutomationJobScanner) (Job, error) {
 	job.Kind = JobKind(kind)
 	job.Status = JobStatus(status)
 	job.ScheduleMode = ScheduleMode(scheduleMode)
+	if capabilities != "" {
+		if err := json.Unmarshal([]byte(capabilities), &job.ClientCapabilities); err != nil {
+			return Job{}, fmt.Errorf("automation store: job %s capabilities: %w", job.ID, err)
+		}
+	}
+	if address != "" {
+		job.DeliveryAddress = json.RawMessage(address)
+	}
 	if runAt.Valid {
 		parsed := sqliteParseTime(runAt.String)
 		job.RunAt = &parsed
@@ -298,7 +288,7 @@ func scanSQLiteAutomationJob(scanner sqliteAutomationJobScanner) (Job, error) {
 	return job, nil
 }
 
-func scanSQLiteAutomationFire(scanner sqliteAutomationFireScanner) (Fire, error) {
+func scanSQLiteAutomationFire(scanner rowScanner) (Fire, error) {
 	var fire Fire
 	var status string
 	var scheduledFor string
@@ -327,6 +317,14 @@ func scanSQLiteAutomationFire(scanner sqliteAutomationFireScanner) (Fire, error)
 		fire.FinishedAt = &parsed
 	}
 	return fire, nil
+}
+
+func marshalCapabilities(capabilities core.ClientCapabilities) string {
+	if capabilities == (core.ClientCapabilities{}) {
+		return ""
+	}
+	raw, _ := json.Marshal(capabilities)
+	return string(raw)
 }
 
 func sqliteFormatTime(value time.Time) string {

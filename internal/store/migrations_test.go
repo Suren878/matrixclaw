@@ -58,3 +58,45 @@ func TestSessionKindMigrationKeepsSessionsAndAttachments(t *testing.T) {
 		}
 	}
 }
+
+func TestAutomationMigrationKeepsTelegramJobsDelivering(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "matrixclaw.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := slices.Index(migrations, automationSkillsSQL)
+	for i, script := range migrations[:before] {
+		if err := applyMigration(db, i+1, script); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, statement := range []string{
+		`INSERT INTO sessions(id, title, kind, permission_mode, status, created_at, updated_at) VALUES ('s', 's', 'assistant', 'default', 'active', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')`,
+		`INSERT INTO automation_jobs(id, kind, status, session_id, client, external_key, schedule_mode, created_at, updated_at) VALUES
+			('tg', 'reminder', 'active', 's', 'telegram', '7', 'once', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z'),
+			('tui', 'reminder', 'active', 's', 'terminal', 'host', 'once', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := NewSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	for id, want := range map[string]bool{"tg": true, "tui": false} {
+		var raw string
+		if err := st.db.QueryRow(`SELECT client_capabilities_json FROM automation_jobs WHERE id = ?`, id).Scan(&raw); err != nil {
+			t.Fatal(err)
+		}
+		if got := unmarshalClientCapabilities(raw).ReceivesDeliveries; got != want {
+			t.Fatalf("job %s receives deliveries = %v, want %v (%q)", id, got, want, raw)
+		}
+	}
+}

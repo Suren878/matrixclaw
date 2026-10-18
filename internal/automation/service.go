@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -17,49 +17,44 @@ import (
 )
 
 const (
-	DefaultTickInterval = 30 * time.Second
-	DefaultTimezone     = "UTC"
-	telegramClientName  = "telegram"
+	tickInterval    = 30 * time.Second
+	defaultTimezone = "UTC"
 	// busyRetryWindow is how long past its time a job whose session is busy
 	// with another run is tried again on every tick before its fire fails.
 	busyRetryWindow = time.Hour
+	// dueBatch bounds the jobs one tick fires; the rest fire on the next.
+	dueBatch = 100
 )
 
+// Runner is what automation needs of core: it starts the job runs, reads the
+// run a job is created from and queues the deliveries of results.
 type Runner interface {
 	AcceptTriggeredRun(ctx context.Context, input core.HandleTriggeredRunInput) (core.AcceptRunResult, error)
-}
-
-type RunGetter interface {
 	GetRun(ctx context.Context, runID string) (core.Run, error)
+	CreateClientDelivery(ctx context.Context, delivery core.ClientDelivery) (core.ClientDelivery, error)
+	ListClientDeliveries(ctx context.Context, filter core.ClientDeliveryFilter) ([]core.ClientDelivery, error)
 }
 
-type DeliveryCreator interface {
-	CreateClientDelivery(ctx context.Context, delivery core.ClientDelivery) (core.ClientDelivery, error)
+// Settings are automation's settings from setup.json: the timezone of jobs
+// created without one and the targets every job's results also go to.
+type Settings struct {
+	Timezone string
+	Targets  []core.ClientDeliveryTarget
 }
 
 type Service struct {
-	store        Store
-	runner       Runner
-	timezone     string
-	tickInterval time.Duration
-	now          func() time.Time
-	newID        func(prefix string) string
-	deliveries   []core.ClientDeliveryTarget
-	mu           sync.Mutex
+	store    Store
+	runner   Runner
+	now      func() time.Time
+	newID    func(prefix string) string
+	settings atomic.Pointer[Settings]
+	mu       sync.Mutex
 }
 
-func NewService(store Store, runner Runner, timezone string) *Service {
-	if strings.TrimSpace(timezone) == "" {
-		timezone = DefaultTimezone
-	}
-	return &Service{
-		store:        store,
-		runner:       runner,
-		timezone:     strings.TrimSpace(timezone),
-		tickInterval: DefaultTickInterval,
-		now:          time.Now,
-		newID:        ids.New,
-	}
+func NewService(store Store, runner Runner) *Service {
+	s := &Service{store: store, runner: runner, now: time.Now, newID: ids.New}
+	s.Configure(Settings{})
+	return s
 }
 
 func (s *Service) WithClock(now func() time.Time) *Service {
@@ -69,19 +64,17 @@ func (s *Service) WithClock(now func() time.Time) *Service {
 	return s
 }
 
-func (s *Service) WithTickInterval(interval time.Duration) *Service {
-	if interval > 0 {
-		s.tickInterval = interval
+// Configure applies the settings; it is safe while jobs fire.
+func (s *Service) Configure(settings Settings) {
+	settings.Timezone = strings.TrimSpace(settings.Timezone)
+	if settings.Timezone == "" {
+		settings.Timezone = defaultTimezone
 	}
-	return s
+	s.settings.Store(&settings)
 }
 
-func (s *Service) WithDeliveryTargets(targets []core.ClientDeliveryTarget) *Service {
-	if s == nil {
-		return s
-	}
-	s.deliveries = normalizeDeliveryTargets(targets)
-	return s
+func (s *Service) currentSettings() Settings {
+	return *s.settings.Load()
 }
 
 func (s *Service) Run(ctx context.Context) {
@@ -89,7 +82,7 @@ func (s *Service) Run(ctx context.Context) {
 		return
 	}
 	s.tickAndLog(ctx)
-	ticker := time.NewTicker(s.tickInterval)
+	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -121,28 +114,32 @@ func (s *Service) CreateJob(ctx context.Context, input CreateJobInput) (Job, err
 	return job, nil
 }
 
+// CreateJobForRun creates a job for the session, client and delivery address
+// of the run that asks for it.
 func (s *Service) CreateJobForRun(ctx context.Context, runID string, input CreateJobInput) (Job, error) {
-	if s == nil {
-		return Job{}, fmt.Errorf("%w: automation run lookup not configured", core.ErrExecutionUnavailable)
-	}
-	runGetter, ok := s.runner.(RunGetter)
-	if !ok {
-		return Job{}, fmt.Errorf("%w: automation run lookup not configured", core.ErrExecutionUnavailable)
-	}
-	run, err := runGetter.GetRun(ctx, strings.TrimSpace(runID))
+	run, err := s.runner.GetRun(ctx, strings.TrimSpace(runID))
 	if err != nil {
 		return Job{}, err
 	}
-	if strings.TrimSpace(input.SessionID) == "" {
-		input.SessionID = run.SessionID
-	}
-	if strings.TrimSpace(input.Client) == "" {
-		input.Client = run.Client
-	}
-	if strings.TrimSpace(input.ExternalKey) == "" {
-		input.ExternalKey = run.ExternalKey
+	input.SessionID, input.Client, input.ExternalKey = run.SessionID, run.Client, run.ExternalKey
+	input.ClientCapabilities = run.ClientCapabilities
+	if input.DeliveryAddress, err = s.runDeliveryAddress(ctx, run); err != nil {
+		return Job{}, err
 	}
 	return s.CreateJob(ctx, input)
+}
+
+// runDeliveryAddress is where the run's reply goes, unless that address takes
+// one reply only.
+func (s *Service) runDeliveryAddress(ctx context.Context, run core.Run) (json.RawMessage, error) {
+	if !run.ClientCapabilities.ReceivesDeliveries {
+		return nil, nil
+	}
+	deliveries, err := s.runner.ListClientDeliveries(ctx, core.ClientDeliveryFilter{Client: run.Client, ExternalKey: run.ExternalKey, RunID: run.ID, Type: core.ClientDeliveryTypeRun, Limit: 1})
+	if err != nil || len(deliveries) == 0 || deliveries[0].ReplyOnce {
+		return nil, err
+	}
+	return deliveries[0].Address, nil
 }
 
 func (s *Service) ListJobs(ctx context.Context, filter JobFilter) ([]Job, error) {
@@ -224,19 +221,16 @@ func (s *Service) Tick(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := s.now().UTC()
 	jobs, err := s.store.ListAutomationJobs(ctx, JobFilter{
 		Status: JobStatusActive,
-		Limit:  100,
+		DueBy:  s.now().UTC(),
+		Limit:  dueBatch,
 	})
 	if err != nil {
 		return err
 	}
 	var firstErr error
 	for _, job := range jobs {
-		if job.NextDueAt == nil || job.NextDueAt.After(now) {
-			continue
-		}
 		scheduledFor := *job.NextDueAt
 		if _, err := s.fireJob(ctx, job, scheduledFor); err != nil && firstErr == nil {
 			firstErr = err
@@ -263,10 +257,7 @@ func (s *Service) buildJob(input CreateJobInput) (Job, error) {
 	if prompt == "" {
 		return Job{}, fmt.Errorf("%w: prompt is required", core.ErrInvalidInput)
 	}
-	timezone := strings.TrimSpace(input.Timezone)
-	if timezone == "" {
-		timezone = s.timezone
-	}
+	timezone := textutil.FirstNonEmpty(strings.TrimSpace(input.Timezone), s.currentSettings().Timezone)
 	if _, err := time.LoadLocation(timezone); err != nil {
 		return Job{}, fmt.Errorf("%w: invalid timezone %q", core.ErrInvalidInput, timezone)
 	}
@@ -276,21 +267,23 @@ func (s *Service) buildJob(input CreateJobInput) (Job, error) {
 	}
 	now := s.now().UTC()
 	job := Job{
-		ID:              s.newID("job"),
-		Kind:            kind,
-		Status:          JobStatusActive,
-		SessionID:       sessionID,
-		Client:          strings.TrimSpace(input.Client),
-		ExternalKey:     strings.TrimSpace(input.ExternalKey),
-		Title:           strings.TrimSpace(input.Title),
-		Timezone:        timezone,
-		ScheduleMode:    mode,
-		RunAt:           input.RunAt,
-		IntervalSeconds: input.IntervalSeconds,
-		CronExpr:        strings.TrimSpace(input.CronExpr),
-		Prompt:          prompt,
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		ID:                 s.newID("job"),
+		Kind:               kind,
+		Status:             JobStatusActive,
+		SessionID:          sessionID,
+		Client:             strings.TrimSpace(input.Client),
+		ExternalKey:        strings.TrimSpace(input.ExternalKey),
+		ClientCapabilities: input.ClientCapabilities,
+		DeliveryAddress:    input.DeliveryAddress,
+		Title:              strings.TrimSpace(input.Title),
+		Timezone:           timezone,
+		ScheduleMode:       mode,
+		RunAt:              input.RunAt,
+		IntervalSeconds:    input.IntervalSeconds,
+		CronExpr:           strings.TrimSpace(input.CronExpr),
+		Prompt:             prompt,
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 	if job.Title == "" {
 		job.Title = titleFromPrompt(prompt)
@@ -351,7 +344,7 @@ func (s *Service) runFire(ctx context.Context, job Job, fire Fire, scheduledFor 
 		TriggerID:          fire.ID,
 		Client:             job.Client,
 		ExternalKey:        job.ExternalKey,
-		ClientCapabilities: automationClientCapabilities(job.Client),
+		ClientCapabilities: job.ClientCapabilities,
 		SessionID:          job.SessionID,
 		Text:               renderPrompt(job, scheduledFor, now),
 	})
@@ -383,26 +376,13 @@ func (s *Service) runFire(ctx context.Context, job Job, fire Fire, scheduledFor 
 	if err := s.store.UpdateAutomationFire(ctx, fire); err != nil {
 		return fire, err
 	}
-	if len(s.deliveryTargetsForJob(job)) > 0 {
-		if err := s.createRunDeliveries(ctx, job, result); err != nil {
-			return fire, err
-		}
+	if err := s.createRunDeliveries(ctx, job, result); err != nil {
+		return fire, err
 	}
 	if err := s.advanceJob(ctx, job, scheduledFor); err != nil {
 		return fire, err
 	}
 	return fire, nil
-}
-
-func automationClientCapabilities(client string) core.ClientCapabilities {
-	if strings.EqualFold(strings.TrimSpace(client), telegramClientName) {
-		return core.ClientCapabilities{
-			SupportsVoiceDelivery:    true,
-			SupportsDocumentDelivery: true,
-			ReceivesDeliveries:       true,
-		}
-	}
-	return core.ClientCapabilities{}
 }
 
 func (s *Service) advanceJob(ctx context.Context, job Job, scheduledFor time.Time) error {
@@ -451,122 +431,49 @@ func (s *Service) setJobStatus(ctx context.Context, jobID string, status JobStat
 }
 
 func (s *Service) createRunDeliveries(ctx context.Context, job Job, result core.AcceptRunResult) error {
-	if s == nil {
-		return fmt.Errorf("%w: automation delivery creator not configured", core.ErrExecutionUnavailable)
-	}
-	deliveryCreator, ok := s.runner.(DeliveryCreator)
-	if !ok {
-		return fmt.Errorf("%w: automation delivery creator not configured", core.ErrExecutionUnavailable)
-	}
-	var firstErr error
+	var errs []error
 	for _, target := range s.deliveryTargetsForJob(job) {
-		_, err := deliveryCreator.CreateClientDelivery(ctx, core.ClientDelivery{
+		_, err := s.runner.CreateClientDelivery(ctx, core.ClientDelivery{
 			Type:        core.ClientDeliveryTypeRun,
 			Client:      target.Client,
 			ExternalKey: target.ExternalKey,
-			SessionID:   textutil.FirstNonEmpty(result.SessionID, target.SessionID),
-			RunID:       textutil.FirstNonEmpty(result.Run.ID, target.RunID),
-			TaskID:      textutil.FirstNonEmpty(job.ID, target.TaskID),
-			Summary:     textutil.FirstNonEmpty(job.Title, target.Summary),
+			SessionID:   result.SessionID,
+			RunID:       result.Run.ID,
+			TaskID:      job.ID,
+			Summary:     job.Title,
 			Address:     target.Address,
 			Status:      core.ClientDeliveryStatusPending,
 		})
-		if err != nil && firstErr == nil {
-			firstErr = err
-		}
+		errs = append(errs, err)
 	}
-	return firstErr
+	return errors.Join(errs...)
 }
 
+// deliveryTargetsForJob is the job's own client when it receives deliveries,
+// and the configured targets.
 func (s *Service) deliveryTargetsForJob(job Job) []core.ClientDeliveryTarget {
-	targets := []core.ClientDeliveryTarget{}
-	if strings.TrimSpace(job.Client) != "" && strings.TrimSpace(job.ExternalKey) != "" {
-		targets = append(targets, core.ClientDeliveryTarget{
-			Client:      job.Client,
-			ExternalKey: job.ExternalKey,
-			Address:     deliveryAddressForJob(job),
-		})
+	var targets []core.ClientDeliveryTarget
+	if job.ClientCapabilities.ReceivesDeliveries {
+		targets = append(targets, core.ClientDeliveryTarget{Client: job.Client, ExternalKey: job.ExternalKey, Address: job.DeliveryAddress})
 	}
-	targets = append(targets, s.deliveries...)
-	return dedupeDeliveryTargets(targets)
+	return dedupeDeliveryTargets(append(targets, s.currentSettings().Targets...))
 }
 
-func normalizeDeliveryTargets(targets []core.ClientDeliveryTarget) []core.ClientDeliveryTarget {
-	normalized := make([]core.ClientDeliveryTarget, 0, len(targets))
+// dedupeDeliveryTargets drops targets without a client or place and repeats
+// of one client's chat, the first kept.
+func dedupeDeliveryTargets(targets []core.ClientDeliveryTarget) []core.ClientDeliveryTarget {
+	deduped := make([]core.ClientDeliveryTarget, 0, len(targets))
+	seen := map[string]bool{}
 	for _, target := range targets {
 		target.Client = strings.TrimSpace(target.Client)
 		target.ExternalKey = strings.TrimSpace(target.ExternalKey)
-		target.SessionID = strings.TrimSpace(target.SessionID)
-		target.RunID = strings.TrimSpace(target.RunID)
-		target.TaskID = strings.TrimSpace(target.TaskID)
-		target.Summary = strings.TrimSpace(target.Summary)
-		if target.Client == "" {
-			continue
-		}
-		if target.ExternalKey == "" && len(target.Address) == 0 {
-			continue
-		}
-		if len(target.Address) == 0 {
-			target.Address = nil
-		}
-		normalized = append(normalized, target)
-	}
-	return normalized
-}
-
-func dedupeDeliveryTargets(targets []core.ClientDeliveryTarget) []core.ClientDeliveryTarget {
-	normalized := normalizeDeliveryTargets(targets)
-	deduped := make([]core.ClientDeliveryTarget, 0, len(normalized))
-	seen := map[string]bool{}
-	for _, target := range normalized {
-		keyPart := target.ExternalKey
-		if len(target.Address) > 0 {
-			keyPart = string(target.Address)
-		}
-		key := strings.ToLower(target.Client) + "\x00" + keyPart
-		if seen[key] {
+		place := textutil.FirstNonEmpty(target.ExternalKey, string(target.Address))
+		key := strings.ToLower(target.Client) + "\x00" + place
+		if target.Client == "" || place == "" || seen[key] {
 			continue
 		}
 		seen[key] = true
 		deduped = append(deduped, target)
 	}
 	return deduped
-}
-
-func deliveryAddressForJob(job Job) json.RawMessage {
-	if !strings.EqualFold(strings.TrimSpace(job.Client), telegramClientName) {
-		return nil
-	}
-	chatID, ok := telegramDeliveryAddressFromExternalKey(job.ExternalKey)
-	if !ok {
-		return nil
-	}
-	address := struct {
-		ChatID int64 `json:"chat_id"`
-	}{
-		ChatID: chatID,
-	}
-	data, err := json.Marshal(address)
-	if err != nil {
-		return nil
-	}
-	return data
-}
-
-func telegramDeliveryAddressFromExternalKey(value string) (int64, bool) {
-	parts := strings.Split(strings.TrimSpace(value), ":")
-	if len(parts) == 0 || len(parts) > 2 {
-		return 0, false
-	}
-	chatID, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil || chatID == 0 {
-		return 0, false
-	}
-	if len(parts) == 1 {
-		return chatID, true
-	}
-	if _, err := strconv.ParseInt(parts[1], 10, 64); err != nil {
-		return 0, false
-	}
-	return chatID, true
 }

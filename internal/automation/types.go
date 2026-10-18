@@ -1,6 +1,11 @@
 package automation
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+
+	"github.com/Suren878/matrixclaw/internal/core"
+)
 
 type JobKind string
 
@@ -35,31 +40,37 @@ const (
 )
 
 type Job struct {
-	ID               string       `json:"id"`
-	Kind             JobKind      `json:"kind"`
-	Status           JobStatus    `json:"status"`
-	SessionID        string       `json:"session_id"`
-	Client           string       `json:"client,omitempty"`
-	ExternalKey      string       `json:"external_key,omitempty"`
-	Title            string       `json:"title,omitempty"`
-	Timezone         string       `json:"timezone"`
-	ScheduleMode     ScheduleMode `json:"schedule_mode"`
-	RunAt            *time.Time   `json:"run_at,omitempty"`
-	IntervalSeconds  int          `json:"interval_seconds,omitempty"`
-	CronExpr         string       `json:"cron_expr,omitempty"`
-	NextDueAt        *time.Time   `json:"next_due_at,omitempty"`
-	LastScheduledFor *time.Time   `json:"last_scheduled_for,omitempty"`
-	Prompt           string       `json:"prompt"`
-	CreatedAt        time.Time    `json:"created_at"`
-	UpdatedAt        time.Time    `json:"updated_at"`
-	DeletedAt        *time.Time   `json:"deleted_at,omitempty"`
+	ID          string    `json:"id"`
+	Kind        JobKind   `json:"kind"`
+	Status      JobStatus `json:"status"`
+	SessionID   string    `json:"session_id"`
+	Client      string    `json:"client,omitempty"`
+	ExternalKey string    `json:"external_key,omitempty"`
+	// ClientCapabilities and DeliveryAddress are how the client takes the
+	// job's results; a client that receives deliveries gets each one there.
+	ClientCapabilities core.ClientCapabilities `json:"client_capabilities,omitempty"`
+	DeliveryAddress    json.RawMessage         `json:"delivery_address,omitempty"`
+	Title              string                  `json:"title,omitempty"`
+	Timezone           string                  `json:"timezone"`
+	ScheduleMode       ScheduleMode            `json:"schedule_mode"`
+	RunAt              *time.Time              `json:"run_at,omitempty"`
+	IntervalSeconds    int                     `json:"interval_seconds,omitempty"`
+	CronExpr           string                  `json:"cron_expr,omitempty"`
+	NextDueAt          *time.Time              `json:"next_due_at,omitempty"`
+	LastScheduledFor   *time.Time              `json:"last_scheduled_for,omitempty"`
+	Prompt             string                  `json:"prompt"`
+	CreatedAt          time.Time               `json:"created_at"`
+	UpdatedAt          time.Time               `json:"updated_at"`
+	DeletedAt          *time.Time              `json:"deleted_at,omitempty"`
 }
 
 type JobFilter struct {
 	IncludeDeleted bool
 	Status         JobStatus
 	SessionID      string
-	Limit          int
+	// DueBy keeps the jobs due at or before it.
+	DueBy time.Time
+	Limit int
 }
 
 type Fire struct {
@@ -75,15 +86,17 @@ type Fire struct {
 }
 
 type CreateJobInput struct {
-	Kind            JobKind
-	SessionID       string
-	Client          string
-	ExternalKey     string
-	Title           string
-	Timezone        string
-	ScheduleMode    ScheduleMode
-	RunAt           *time.Time
-	IntervalSeconds int
-	CronExpr        string
-	Prompt          string
+	Kind               JobKind
+	SessionID          string
+	Client             string
+	ExternalKey        string
+	ClientCapabilities core.ClientCapabilities
+	DeliveryAddress    json.RawMessage
+	Title              string
+	Timezone           string
+	ScheduleMode       ScheduleMode
+	RunAt              *time.Time
+	IntervalSeconds    int
+	CronExpr           string
+	Prompt             string
 }
