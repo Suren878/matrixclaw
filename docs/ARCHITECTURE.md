@@ -44,9 +44,10 @@ flowchart LR
 | `internal/glob` | the one glob matcher (`**`, classes, braces) and `.gitignore` rules, for path rules and the search tools |
 | `internal/shelltask` | background shell processes and their output files |
 | `internal/hooks` | user hooks (Claude Code protocol) and the checks after edits (see [HOOKS.md](HOOKS.md)) |
+| `internal/lsp` | language servers: JSON-RPC client, one server per language and project root, diagnostics after edits, the `lsp` tool (see [LSP.md](LSP.md)) |
 | `internal/webtools` | `web_search` and `web_fetch` |
 | `internal/modules` | module lifecycle, settings contract, and the modules: `storage`, `delivery`, `geo`, `web`, `voice` (+ `voice/realtime`), `telephony`, `browser`, `mcp`, `skills`; `localruntime` holds local voice/browser runtimes |
-| `internal/procsup` | supervised local helper processes |
+| `internal/procsup` | supervised local helper processes (voice and language servers) |
 | `internal/providers` | provider adapters (`ai/*`), catalog, model metadata, wire quirks |
 | `internal/sessionllm` | the provider runtimes sessions pick from |
 | `internal/externalagents` | external agent registry, adapters (`claudecode`, `codexapp`) and the reply builder (`reply`) |
@@ -67,7 +68,8 @@ every module once (`daemoncmd/modules.go`), bind the listener, apply the setup
 (`supervisor.ApplyBootstrap`), then serve. After that, in the background: the
 automation scheduler, release of held deliveries, and `Core.Recover`. Shutdown
 cancels the daemon lifetime, which interrupts executing runs (they are kept for
-recovery), waits for them, then closes external agents and modules.
+recovery), waits for them, then stops background commands and language
+servers and closes external agents and modules.
 
 ## HTTP API
 
@@ -360,7 +362,7 @@ provider and model.
   the mode preset (`default`, `accept_edits`, `full_auto`, `plan`); deny wins
   over ask over allow, and a preset's deny rule over stored allow rules. A
   rule names its tool or a tool listed in `Spec.CoveredBy` (`read` rules cover
-  `grep`, `glob` and `ls`; `edit` rules cover `apply_patch`).
+  `grep`, `glob`, `ls` and `lsp`; `edit` rules cover `apply_patch`).
   `permission.Builtin` (`memory: list` = allow) is in every preset and cannot
   be deleted; a stored ask/deny rule on `memory` still wins. The same check
   covers runs, the tools API, voice and the MCP server.
@@ -474,11 +476,21 @@ provider and model.
   numbered like `read`; its metadata (`tools.FileChange`) keeps only the
   changed regions, at most 16 KB a side, while an approval shows a file up to
   64 KB whole.
-- After a successful `edit`, `multiedit` or `write`, the file is checked
-  (`internal/hooks/diagnostics.go`: gofmt and go vet, tsc, Python compile,
-  cargo check, JSON parse; overridable in setup.json `diagnostics`) for up to
-  20 s under the call's directory key, and up to 30 lines that name the file
-  end the result as "Diagnostics after edit:". The edit is never undone.
+- After a successful `edit`, `multiedit`, `write` or `apply_patch`, the
+  edited files are checked for up to 20 s under the call's directory key and
+  their errors end the result as "Diagnostics after edit:"
+  (`internal/hooks/diagnostics.go`). A file in a project whose language
+  server is installed goes to that server (`internal/lsp`): it waits for
+  diagnostics newer than the version sent, reports at most 20 errors a file
+  and the errors in up to five other files (gopls is asked to finish the
+  importers first, `gopls.diagnose_files`). Other files get a command:
+  gofmt and go vet, tsc, Python compile, cargo check, JSON parse, up to 30
+  lines naming the file. Both are configured in setup.json `diagnostics`;
+  the edit is never undone. See [LSP.md](LSP.md).
+- `lsp {operation, file_path, line, character, query}` asks the language
+  server for definition, references, implementation, hover and symbols. It
+  is read-only, covered by `read` rules, and offered only when a server
+  would serve the session's working directory (`core.WithLSP`).
 
 ### File checkpoints
 

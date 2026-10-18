@@ -208,14 +208,22 @@ Desktop notification when an approval waits:
 
 After a successful `edit`, `multiedit`, `write` or `apply_patch` (not one
 that changed nothing), the edited files (the first five of a patch) are
-checked and up to 30 lines that name them are appended to the result:
+checked and their errors are appended to the result:
 
 ```text
 Diagnostics after edit:
 /home/me/project/parse.go:42:9: cannot use "one" (untyped string constant) as int value in return statement
+Errors in other files:
+/home/me/project/cmd/main.go:17:21: not enough arguments in call to parse.Parse
 ```
 
-Built-in checks, each skipped when its tool is not installed:
+A file whose language has a server installed (gopls, typescript-language-server,
+pyright or pylsp, rust-analyzer) and that lies in a project of that language
+is checked by the server: its errors, at most 20, and those the edit caused
+in up to five other files, such as the callers a changed signature broke.
+See [LSP.md](LSP.md) for the servers, timing and limits. Every other file,
+and a file whose server is missing, still starting or silent, gets a
+built-in command check, each skipped when its tool is not installed:
 
 | Extension | Check | Runs in |
 |---|---|---|
@@ -225,12 +233,13 @@ Built-in checks, each skipped when its tool is not installed:
 | `.rs` | `cargo check --message-format short`, errors only | the nearest directory with `Cargo.toml` |
 | `.json` | parsed in the daemon (tsconfig, jsconfig and `.vscode` files are skipped, they allow comments) | |
 
-The checks of one call run for at most 20 seconds together, under the call's working-directory key,
-so edits in one directory do not check concurrently. Only lines naming the
-edited file (by absolute path or a path relative to a directory above it) and
-the indented lines after them are kept; errors in other files are not reported.
-A check never blocks or undoes the edit, and a failing or slow check adds
-nothing.
+The checks of one call run for at most 20 seconds together (the servers'
+part for at most 10), under the call's working-directory key, so edits in
+one directory do not check concurrently. Of a command's output only lines
+naming the edited file (by absolute path or a path relative to a directory
+above it) and the indented lines after them are kept, at most 30; a command
+does not report other files. A check never blocks or undoes the edit, and a
+failing or slow check adds nothing.
 
 Override or turn checks off in setup.json:
 
@@ -239,11 +248,13 @@ Override or turn checks off in setup.json:
   "commands": {
     ".py": "ruff check --output-format concise \"$MATRIXCLAW_FILE\"",
     ".rs": ""
-  }
+  },
+  "lsp": {"servers": {"python": ["pylsp"]}}
 }
 ```
 
-A command replaces the built-in check of its extension and runs in the
-session's working directory with the hook environment; an empty command turns
-that extension off. `"disabled": true` turns all checks off. Extension keys are
-lowercase with their dot (`.go`).
+A command replaces the check of its extension, language server included, and
+runs in the session's working directory with the hook environment; an empty
+command turns that extension off. `"disabled": true` turns all checks off.
+Extension keys are lowercase with their dot (`.go`). `lsp` sets the language
+servers ([LSP.md](LSP.md#configuration)).
