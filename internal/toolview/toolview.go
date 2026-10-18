@@ -54,6 +54,13 @@ var specs = map[string]spec{
 		input, _ := params["input"].(string)
 		return strings.Join(tools.PatchPaths(input), ", ")
 	}},
+	"lsp": {title: "Code", verb: "Asking the language server", detail: func(params map[string]any) string {
+		at := Value(params, "file_path")
+		if line := Value(params, "line"); line != "" {
+			at += ":" + line
+		}
+		return strings.Join(strings.Fields(Value(params, "operation")+" "+at+" "+Value(params, "query")), " ")
+	}},
 	"exit_plan_mode":           {title: "Plan", verb: "Presenting the plan", primary: []string{"plan"}},
 	"glob":                     {title: "Glob", verb: "Searching files", primary: []string{"pattern"}, extra: []string{"path"}},
 	"grep":                     {title: "Grep", verb: "Searching files", primary: []string{"pattern"}, extra: []string{"path", "include", "literal_text"}},

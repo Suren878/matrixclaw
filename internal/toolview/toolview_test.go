@@ -23,6 +23,7 @@ func TestDescribe(t *testing.T) {
 		{"nearby_places_osm", `{"latitude":55.75,"longitude":37.6}`, Call{Name: "nearby_places_osm", Title: "Nearby Places", Verb: "Checking nearby places", Detail: "55.75, 37.6", Known: true}},
 		{"create_reminder", `{"title":"Call","run_at":"2026-10-03T09:00:00+03:00","text":"call mom"}`, Call{Name: "create_reminder", Title: "⏰ Reminder", Verb: "Creating reminder", Detail: "Call · 2026-10-03 09:00 +03:00", Known: true}},
 		{"lookup_thing", `{"urls":["a","b","c"],"path":"x","mode":"fast"}`, Call{Name: "lookup_thing", Title: "Lookup Thing", Verb: "Using lookup thing", Detail: "x", Params: []Param{{"mode", "fast"}}}},
+		{"lsp", `{"operation":"references","file_path":"a.go","line":4,"character":6}`, Call{Name: "lsp", Title: "Code", Verb: "Asking the language server", Detail: "references a.go:4", Known: true}},
 		{"write", `not json`, Call{Name: "write", Title: "Write", Verb: "Writing file", Known: true}},
 	}
 	for _, tt := range tests {

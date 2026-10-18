@@ -23,6 +23,7 @@ Next to the database (the data directory):
 | `runtime/context-windows.json` | model metadata learned from provider listings, by provider |
 | `checkpoints/<hash>/` | shadow git repository of one work tree, holding its file checkpoints ([CHECKPOINTS.md](CHECKPOINTS.md)) |
 | `worktrees/<repo>-<hash>/<task id>/` | git worktree of a worktree subagent, on branch `mc/<task id>`, kept until merged, discarded or 7 days after its task ended ([SUBAGENTS.md](SUBAGENTS.md)) |
+| `lsp/lsp-<language>.log` | stderr of the language servers ([LSP.md](LSP.md)), appended |
 
 Session directories are removed with their session; `/clear` removes the tool
 outputs of the cleared history.

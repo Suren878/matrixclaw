@@ -21,7 +21,9 @@ func ProtectCredentials(sources ...func() []string) {
 	credentials.sources = append(credentials.sources, sources...)
 }
 
-func isProtectedCredentialPath(path string) bool {
+// IsCredentialPath reports whether file tools refuse path as a protected
+// credential place.
+func IsCredentialPath(path string) bool {
 	path = comparableFilesystemPath(path)
 	return path != "" && protectedCredentials()(path)
 }

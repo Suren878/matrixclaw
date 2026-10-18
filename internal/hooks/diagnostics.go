@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -57,9 +58,10 @@ const tscCheck = `if [ -x node_modules/.bin/tsc ]; then tsc=node_modules/.bin/ts
 "$tsc" --noEmit --pretty false -p . 2>&1`
 
 // diagnose checks the files a successful edit changed, the first
-// maxDiagnosedFiles of them within one diagnosticsTimeout, and reports the
-// errors that mention them, "" when there are none or no check applies. It
-// never fails.
+// maxDiagnosedFiles of them within one diagnosticsTimeout, and reports their
+// errors, "" when there are none or no check applies. A file goes to its
+// language server unless its extension has a command of its own; the files no
+// server checked get the command check. It never fails.
 func (r *Runner) diagnose(ctx context.Context, scope Scope, call ToolCall) string {
 	cfg := r.config().Diagnostics
 	if cfg.Disabled || !editTools[call.Name] || len(call.Files) == 0 {
@@ -67,11 +69,21 @@ func (r *Runner) diagnose(ctx context.Context, scope Scope, call ToolCall) strin
 	}
 	ctx, cancel := context.WithTimeout(ctx, diagnosticsTimeout)
 	defer cancel()
-	var lines []string
-	for _, file := range call.Files[:min(len(call.Files), maxDiagnosedFiles)] {
-		lines = append(lines, r.diagnoseFile(ctx, scope, call, file)...)
+	files := call.Files[:min(len(call.Files), maxDiagnosedFiles)]
+	var served []string
+	for _, file := range files {
+		if _, custom := cfg.Commands[strings.ToLower(filepath.Ext(file))]; !custom {
+			served = append(served, file)
+		}
 	}
-	return report(lines)
+	servers := r.servers.Diagnose(ctx, served)
+	var lines []string
+	for _, file := range files {
+		if !slices.Contains(servers.Checked, file) {
+			lines = append(lines, r.diagnoseFile(ctx, scope, call, file)...)
+		}
+	}
+	return report(servers.Lines(), lines, servers.OtherLines())
 }
 
 // diagnoseFile runs the check for file's language and keeps the lines naming it.
@@ -166,18 +178,20 @@ func mentions(line, file string) bool {
 	}
 }
 
-// report renders kept diagnostic lines for the tool result.
-func report(lines []string) string {
+// report renders the diagnostics for the tool result: the language servers'
+// errors in the edited files, at most maxDiagnosticLines of the commands'
+// lines, then the servers' errors in other files.
+func report(served, commands, others []string) string {
+	if len(commands) > maxDiagnosticLines {
+		commands = append(commands[:maxDiagnosticLines:maxDiagnosticLines], fmt.Sprintf("... and %d more lines", len(commands)-maxDiagnosticLines))
+	}
+	lines := slices.Concat(served, commands, others)
 	if len(lines) == 0 {
 		return ""
 	}
 	var text strings.Builder
 	text.WriteString("Diagnostics after edit:")
-	for i, line := range lines {
-		if i == maxDiagnosticLines {
-			fmt.Fprintf(&text, "\n... and %d more lines", len(lines)-i)
-			break
-		}
+	for _, line := range lines {
 		if runes := []rune(line); len(runes) > maxDiagnosticWidth {
 			line = string(runes[:maxDiagnosticWidth]) + "..."
 		}
