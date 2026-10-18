@@ -57,6 +57,14 @@ const (
 		"dependency and build directories such as node_modules. `ignore` globs leave out more: a glob without `/` matches names at any depth " +
 		"(`*.log`, `testdata`), one with `/` matches paths relative to `path`. For a file it gives its size. " +
 		"Use glob to find files by pattern and read to see a file."
+	repoMapDescription = "Show a map of a code base: its most important definitions (functions, methods, types, classes) as signature lines " +
+		"with line numbers, grouped by file, most important files first. Importance is PageRank over which files use which definitions, " +
+		"so the map shows the code the rest of the project leans on. Use it first when you start work in an unfamiliar or large repository, " +
+		"and before a broad refactor, to learn where things are; then read the files it points to. " +
+		"Pass `focus_files` (the files you work on) and `focus_symbols` (identifiers the task names) to rank what they use and relate to higher; " +
+		"focus files themselves are left out. The map fits in about `max_tokens` (default 2048). " +
+		"Reads Go, Python, JavaScript, TypeScript, Rust, Java, Kotlin, Scala, C#, C, C++, Swift, Ruby and PHP; leaves out hidden, git-ignored, " +
+		"vendored, generated and testdata files. A repeated call on an unchanged tree is fast. To find files by name use glob; to search text use grep."
 	readDescription = `Read a text file. Each line comes back prefixed with its line number and a tab; the prefix is not part of the file, so never copy it into edit strings. ` +
 		`One call returns at most 2000 lines and about 24 KB; when more follows, the result ends with the offset to pass next. Lines over 2000 characters are cut. ` +
 		`For a long file, locate the part you need with grep first and read it with offset and limit. Binary files are refused. ` +
@@ -138,6 +146,18 @@ var coreDefinitions = []Definition{
 			InputJSONSchema: lsInputSchema,
 		},
 		NewExecutor: NewLSExecutor,
+	},
+	{
+		Spec: Spec{
+			ID:              repoMapToolName,
+			Description:     repoMapDescription,
+			Effect:          EffectReadOnly,
+			CoveredBy:       []string{readToolName},
+			Namespace:       namespaceCoreFilesystem,
+			Category:        CategoryFilesystem,
+			InputJSONSchema: repoMapInputSchema,
+		},
+		NewExecutor: NewRepoMapExecutor,
 	},
 	{
 		Spec: Spec{

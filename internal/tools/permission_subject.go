@@ -116,6 +116,11 @@ func (e *lsExecutor) PermissionSubject(call Call) permission.Subject {
 	return directorySubject(call, &params, func() string { return params.Path })
 }
 
+func (e *repoMapExecutor) PermissionSubject(call Call) permission.Subject {
+	var params RepoMapParams
+	return directorySubject(call, &params, func() string { return params.Path })
+}
+
 // fileSubject is the file a call names, as an absolute path with symlinks resolved.
 func fileSubject(call Call, params any, path func() string) permission.Subject {
 	if json.Unmarshal(call.Args, params) != nil || strings.TrimSpace(path()) == "" {

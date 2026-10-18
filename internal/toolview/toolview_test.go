@@ -16,6 +16,7 @@ func TestDescribe(t *testing.T) {
 		{"web_fetch", `{"url":"https://example.com","task":"ignored"}`, Call{Name: "web_fetch", Title: "Fetch Web Page", Verb: "Fetching web page", Detail: "https://example.com", Known: true}},
 		{"agent", `{"description":"Scan","prompt":"scan","background":true}`, Call{Name: "agent", Title: "Agent", Verb: "Starting subagent", Detail: "Scan", Known: true}},
 		{"ls", `{}`, Call{Name: "ls", Title: "List", Verb: "Listing files", Detail: ".", Known: true}},
+		{"repo_map", `{"focus_files":["a.go","b.go"]}`, Call{Name: "repo_map", Title: "Repo Map", Verb: "Mapping repository", Detail: ".", Params: []Param{{"focus_files", "a.go (+1)"}}, Known: true}},
 		{"mcp_browser_click", `{"selector":"#go","ref":"e5"}`, Call{Name: "mcp_browser_click", Title: "Mcp Browser Click", Verb: "Clicking in browser", Detail: "#go", Known: true}},
 		{"mcp_browser_browser_navigate", `{"url":"https://example.com"}`, Call{Name: "mcp_browser_browser_navigate", Title: "Mcp Browser Browser Navigate", Verb: "Opening page", Detail: "https://example.com", Known: true}},
 		{"mcp_browser_browser_take_screenshot", `{}`, Call{Name: "mcp_browser_browser_take_screenshot", Title: "Mcp Browser Browser Take Screenshot", Verb: "Taking browser screenshot", Known: true}},
