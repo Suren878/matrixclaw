@@ -151,6 +151,7 @@ func (c *Core) nativeEngine(ctx context.Context, claimed claimedRun, session Ses
 		Prompts:     &corePrompts{c: c, turn: turn},
 		Todos:       coreTodos{c: c},
 		Hooks:       c.engineHooks(session, turn),
+		Verifier:    coreVerifier{c: c},
 		Attachments: c.attachments,
 		Now:         func() time.Time { return c.now().UTC() },
 		NewID:       c.newID,

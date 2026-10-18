@@ -49,7 +49,7 @@ func (c *Core) runBudget(ctx context.Context, run Run, session Session) (agent.B
 	if err != nil {
 		return agent.Budget{}, err
 	}
-	return override.apply(c.defaultRunBudget(run, session)), nil
+	return c.goalBudget(ctx, run, override.apply(c.defaultRunBudget(run, session)))
 }
 
 // SessionBudget reports the session's overrides and the budget of its next run.

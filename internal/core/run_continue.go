@@ -12,8 +12,9 @@ import (
 // continueRunText is the user message of a run started by /continue.
 const continueRunText = "Continue"
 
-// maxContinuedRuns bounds how far back a chain of /continue runs is followed.
-const maxContinuedRuns = 32
+// maxContinuedRuns bounds how far back a chain of /continue runs is followed;
+// it covers a goal's whole allowance of runs (MaxGoalRuns).
+const maxContinuedRuns = 64
 
 // acceptContinueRun starts a run that continues the session's latest run over the
 // same history with a fresh budget.

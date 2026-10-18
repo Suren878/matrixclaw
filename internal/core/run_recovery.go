@@ -228,14 +228,15 @@ func (c *Core) recoverRuns(ctx context.Context) error {
 
 // Recover resumes what the previous daemon left, once, at daemon start: its
 // shell tasks are lost; each run it left active resumes; a subagent task whose
-// child run ended is told; an idle session starts its next queued message, or
-// a run for background work that finished meanwhile.
+// child run ended is told; an idle session starts its next queued message, a
+// run for background work that finished meanwhile, or its goal's next run.
 func (c *Core) Recover(ctx context.Context) error {
 	return errors.Join(c.recoverShellTasks(ctx), c.recoverRuns(ctx), c.recoverSubagentTasks(ctx), c.settleIdleSessions(ctx))
 }
 
-// settleIdleSessions starts what the sessions with queued messages or unseen
-// finished tasks owe them; sessions busy with a run are left to it.
+// settleIdleSessions starts what the sessions with queued messages, unseen
+// finished tasks or an active goal owe them; sessions busy with a run are left
+// to it.
 func (c *Core) settleIdleSessions(ctx context.Context) error {
 	inputs, err := c.store.ListPendingSessionInputs(ctx, "")
 	if err != nil {
@@ -245,7 +246,14 @@ func (c *Core) settleIdleSessions(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	goals, err := c.store.ListActiveSessionGoals(ctx)
+	if err != nil {
+		return err
+	}
 	var sessions []string
+	for _, goal := range goals {
+		sessions = append(sessions, goal.SessionID)
+	}
 	for _, input := range inputs {
 		sessions = append(sessions, input.SessionID)
 	}
@@ -262,6 +270,9 @@ func (c *Core) settleIdleSessions(ctx context.Context) error {
 		started, err := c.startNextPendingSessionInput(ctx, sessionID)
 		if err == nil && !started {
 			err = c.wakeSession(ctx, sessionID, nil)
+		}
+		if err == nil && !started {
+			err = c.continueGoal(ctx, sessionID)
 		}
 		if err != nil {
 			errs = append(errs, fmt.Errorf("session %s: %w", sessionID, err))

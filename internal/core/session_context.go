@@ -161,11 +161,16 @@ func (c *Core) sessionEngine() *agent.Engine {
 // not read-only.
 func (c *Core) sessionTurn(ctx context.Context, session Session, runtime agent.Model, model string) (nativeTurn, error) {
 	readonly, err := c.readonlySubagent(ctx, session.ID)
+	if err != nil {
+		return nativeTurn{}, err
+	}
+	_, goal, err := c.activeGoal(ctx, session.ID)
 	return nativeTurn{
 		SessionID:  session.ID,
 		WorkingDir: session.WorkingDir,
 		Subagent:   isSubagentSession(session),
 		Readonly:   readonly,
+		Goal:       goal,
 		ToolUse:    agent.ToolUseAllowed(runtime),
 		Model:      model,
 	}, err

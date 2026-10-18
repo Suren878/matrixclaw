@@ -170,6 +170,7 @@ func TestPlanningTablesAreDroppedOnOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, statement := range []string{
+		`DROP TABLE session_goals`,
 		`CREATE TABLE session_goals (session_id TEXT PRIMARY KEY, goal TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL)`,
 		`CREATE TABLE session_plan_items (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, text TEXT NOT NULL)`,
 		`CREATE INDEX idx_session_plan_items_session_position ON session_plan_items(session_id)`,
@@ -194,8 +195,13 @@ func TestPlanningTablesAreDroppedOnOpen(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	var left int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name IN ('session_goals', 'session_plan_items', 'plan_runs') OR name LIKE 'idx_session_plan_items%'`).Scan(&left); err != nil || left != 0 {
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name IN ('session_plan_items', 'plan_runs') OR name LIKE 'idx_session_plan_items%'`).Scan(&left); err != nil || left != 0 {
 		t.Fatalf("planning tables left = %d err = %v", left, err)
+	}
+	// Migration 004 makes session_goals anew.
+	var goals int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('session_goals') WHERE name = 'objective'`).Scan(&goals); err != nil || goals != 1 {
+		t.Fatalf("session_goals objective columns = %d, err = %v", goals, err)
 	}
 }
 
