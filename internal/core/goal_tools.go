@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -180,6 +181,9 @@ func (c *Core) reportGoalBlocker(ctx context.Context, call tools.Call, blocker s
 		return goalError("Describe the blocker: what stops you and what you need from the user."), nil
 	}
 	run, err := c.store.GetRun(ctx, call.RunID)
+	if errors.Is(err, ErrNotFound) {
+		return goalError("Only a run working on the goal reports a blocker."), nil
+	}
 	if err != nil {
 		return tools.Result{}, err
 	}
