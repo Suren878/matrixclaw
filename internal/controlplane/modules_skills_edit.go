@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/skills"
 )
 
@@ -193,7 +194,7 @@ func (d *Dispatcher) skillAICreate(ctx context.Context, description string) (Res
 		"Then show a draft SKILL.md. I may ask for changes before saving.",
 		"Save the skill only when I explicitly say to save or create it. After that, call skill_manage create so an approval opens with the draft. If I reject it, continue revising in chat.",
 	}, "\n")
-	if _, err := d.daemon.SendMessage(ctx, sessionID, prompt, d.workingDir); err != nil {
+	if _, err := d.daemon.Send(ctx, core.HandleMessageInput{SessionID: sessionID, Text: prompt, WorkingDir: d.workingDir}); err != nil {
 		return Result{}, err
 	}
 	return Result{

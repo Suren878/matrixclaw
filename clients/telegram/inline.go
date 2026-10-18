@@ -141,16 +141,12 @@ func (w *Worker) startInlineUserMessage(ctx context.Context, target chatTarget, 
 
 func (w *Worker) sendInlineUserMessageInSession(ctx context.Context, target chatTarget, text string, sessionID string) error {
 	daemon := w.daemonFor(target, target.externalKey)
-	result, err := daemon.SendMessagePartsModeWithDelivery(
-		ctx,
-		strings.TrimSpace(sessionID),
-		inlineRunPrompt(text),
-		nil,
-		"",
-		"",
-		encodeDeliveryAddress(deliveryAddressFromTarget(target, 0)),
-		target.repliesOnce(),
-	)
+	result, err := daemon.Send(ctx, core.HandleMessageInput{
+		SessionID:       sessionID,
+		Text:            inlineRunPrompt(text),
+		DeliveryAddress: encodeDeliveryAddress(deliveryAddressFromTarget(target, 0)),
+		ReplyOnce:       target.repliesOnce(),
+	})
 	if err != nil {
 		return err
 	}

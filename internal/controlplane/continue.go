@@ -1,6 +1,10 @@
 package controlplane
 
-import "context"
+import (
+	"context"
+
+	"github.com/Suren878/matrixclaw/internal/core"
+)
 
 func (d *Dispatcher) handleContinue(ctx context.Context) (Result, error) {
 	sessionID, session, err := d.currentSession(ctx)
@@ -13,7 +17,7 @@ func (d *Dispatcher) handleContinue(ctx context.Context) (Result, error) {
 	if session != nil && !d.mayUse(*session) {
 		return Result{Handled: true, Text: unattendedRefusal}, nil
 	}
-	if _, err := d.daemon.ContinueSession(ctx, sessionID, d.workingDir); err != nil {
+	if _, err := d.daemon.Send(ctx, core.HandleMessageInput{SessionID: sessionID, WorkingDir: d.workingDir, Continue: true}); err != nil {
 		return Result{}, err
 	}
 	return Result{Handled: true, Text: "Continuing the last run."}, nil

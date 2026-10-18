@@ -2,7 +2,6 @@ package daemonclient
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -203,55 +202,18 @@ func (c *Client) UseSession(ctx context.Context, sessionID string) (core.ClientB
 	return response.Binding, nil
 }
 
-func (c *Client) SendMessage(ctx context.Context, sessionID string, text string, workingDir string) (core.AcceptRunResult, error) {
-	return c.SendMessagePartsMode(ctx, sessionID, text, nil, workingDir, "")
-}
-
-func (c *Client) SendMessageMode(ctx context.Context, sessionID string, text string, workingDir string, busyMode core.BusyInputMode) (core.AcceptRunResult, error) {
-	return c.SendMessagePartsMode(ctx, sessionID, text, nil, workingDir, busyMode)
-}
-
-func (c *Client) SendMessagePartsMode(ctx context.Context, sessionID string, text string, parts []transcript.MessagePart, workingDir string, busyMode core.BusyInputMode) (core.AcceptRunResult, error) {
-	return c.SendMessagePartsModeWithDelivery(ctx, sessionID, text, parts, workingDir, busyMode, nil, false)
-}
-
-// SendMessagePartsModeWithDelivery sends a message whose run is delivered to
-// deliveryAddress; replyOnce marks an address that takes one reply only.
-func (c *Client) SendMessagePartsModeWithDelivery(ctx context.Context, sessionID string, text string, parts []transcript.MessagePart, workingDir string, busyMode core.BusyInputMode, deliveryAddress json.RawMessage, replyOnce bool) (core.AcceptRunResult, error) {
+// Send posts a message (or, with Continue, a continuation of the latest run)
+// as this client: its name, external key and capabilities fill input, and a
+// client bound to no session may be bound to the only one there is.
+func (c *Client) Send(ctx context.Context, input core.HandleMessageInput) (core.AcceptRunResult, error) {
+	input.Client = c.ClientName
+	input.ExternalKey = c.ExternalKey
+	input.ClientCapabilities = c.Capabilities
+	input.SessionID = strings.TrimSpace(input.SessionID)
+	input.WorkingDir = strings.TrimSpace(input.WorkingDir)
+	input.AllowAutoBindOne = true
 	var response core.AcceptRunResult
-	request := core.HandleMessageInput{
-		Client:             c.ClientName,
-		ExternalKey:        c.ExternalKey,
-		ClientCapabilities: c.Capabilities,
-		SessionID:          strings.TrimSpace(sessionID),
-		Text:               text,
-		Parts:              parts,
-		BusyMode:           busyMode,
-		WorkingDir:         strings.TrimSpace(workingDir),
-		DeliveryAddress:    deliveryAddress,
-		ReplyOnce:          replyOnce,
-		AllowAutoBindOne:   true,
-	}
-	if err := c.doJSON(ctx, http.MethodPost, "/v1/messages", request, &response); err != nil {
-		return core.AcceptRunResult{}, err
-	}
-	return response, nil
-}
-
-// ContinueSession starts a run that continues the session's latest run with a
-// fresh budget.
-func (c *Client) ContinueSession(ctx context.Context, sessionID string, workingDir string) (core.AcceptRunResult, error) {
-	var response core.AcceptRunResult
-	request := core.HandleMessageInput{
-		Client:             c.ClientName,
-		ExternalKey:        c.ExternalKey,
-		ClientCapabilities: c.Capabilities,
-		SessionID:          strings.TrimSpace(sessionID),
-		WorkingDir:         strings.TrimSpace(workingDir),
-		AllowAutoBindOne:   true,
-		Continue:           true,
-	}
-	if err := c.doJSON(ctx, http.MethodPost, "/v1/messages", request, &response); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, "/v1/messages", input, &response); err != nil {
 		return core.AcceptRunResult{}, err
 	}
 	return response, nil

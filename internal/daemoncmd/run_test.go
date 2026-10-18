@@ -91,7 +91,7 @@ func TestRunShutsDownWithActiveRunAndOpenStream(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 	openEventStream(t, addr, session.ID)
-	accepted, err := client.SendMessage(context.Background(), session.ID, "hello", dir)
+	accepted, err := client.Send(context.Background(), core.HandleMessageInput{SessionID: session.ID, Text: "hello", WorkingDir: dir})
 	if err != nil {
 		t.Fatalf("send message: %v", err)
 	}
