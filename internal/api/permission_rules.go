@@ -2,10 +2,8 @@ package api
 
 import (
 	"net/http"
-	"slices"
 
 	"github.com/Suren878/matrixclaw/internal/core"
-	"github.com/Suren878/matrixclaw/internal/permission"
 )
 
 func (s *Server) handleSessionPermissionRules(w http.ResponseWriter, r *http.Request) {
@@ -35,23 +33,16 @@ func (s *Server) handlePermissionRuleCreate(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) handlePermissionRuleDelete(w http.ResponseWriter, r *http.Request) {
-	ruleID := r.PathValue("id")
-	scope := permission.ScopeSession
-	if roleOf(r) != core.RoleOwner {
-		global, err := s.Core.GlobalPermissionRules(r.Context())
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		if slices.ContainsFunc(global, func(rule permission.Rule) bool { return rule.ID == ruleID }) {
-			scope = permission.ScopeGlobal
-		}
+	rule, err := s.Core.GetPermissionRule(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeError(w, err)
+		return
 	}
-	if !keepsRules(r, scope) {
+	if !keepsRules(r, rule.Scope) {
 		writeError(w, core.ErrOwnerOnly)
 		return
 	}
-	if err := s.Core.DeletePermissionRule(r.Context(), ruleID); err != nil {
+	if err := s.Core.DeletePermissionRule(r.Context(), rule.ID); err != nil {
 		writeError(w, err)
 		return
 	}
