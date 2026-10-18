@@ -32,6 +32,11 @@ up again later without losing anything.
 - **Tools with approvals.** File, shell, web and MCP tools pause before risky
   actions; allow / ask / deny rules per session or globally decide what asks.
   A denial with a reason goes back to the model instead of failing the run.
+- **Plan mode.** `/plan` lets the agent explore read-only and present a plan
+  for approval; approving it lets the agent carry the plan out in the same run.
+- **Edit tools per model.** GPT-5 and Codex models edit with `apply_patch`, the
+  multi-file patch format they were trained on; other models use `edit` and
+  `multiedit`.
 - **Long runs.** A native run works through many tool calls within a step,
   time and token budget, summarises its own context, runs independent tool
   calls in parallel, and keeps long commands in the background. `/continue`
@@ -177,6 +182,7 @@ visible in the other. These are client commands, not model tools.
 /sessions             list, select, rename or delete sessions
 /provider             provider and model for the current session
 /permissions          permission mode and allow/ask/deny rules
+/plan                 plan mode: explore read-only, then approve the agent's plan
 /context              inspect, compact or clear the session context
 /usage                runs, steps and token usage
 /continue             continue the latest run with a fresh budget

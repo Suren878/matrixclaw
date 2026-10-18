@@ -3,6 +3,8 @@ package toolview
 import (
 	"reflect"
 	"testing"
+
+	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 func TestDescribe(t *testing.T) {
@@ -46,12 +48,17 @@ func TestShortenCutsAtRunesWithAnEllipsis(t *testing.T) {
 
 func TestFileChangeOfReadsInputAndResult(t *testing.T) {
 	change, ok := FileChangeOf("multiedit", `{"file_path":"a.go","edits":[{},{},{}]}`, `{"file_path":"/w/a.go","additions":2,"removals":1,"old_content":"x","new_content":"y"}`)
-	want := FileChange{Path: "a.go", Edits: 3, Done: true, Old: "x", New: "y", Additions: 2, Removals: 1}
-	if !ok || change != want {
+	want := FileChange{Paths: []string{"a.go"}, Edits: 3, Done: true, Files: []tools.FileChange{{Path: "/w/a.go", OldContent: "x", NewContent: "y", Additions: 2, Removals: 1}}, Additions: 2, Removals: 1}
+	if !ok || !reflect.DeepEqual(change, want) {
 		t.Fatalf("change = %+v, want %+v", change, want)
 	}
-	if pending, ok := FileChangeOf("write", `{"file_path":"b.go","content":"z"}`, ""); !ok || pending.Done || pending.Path != "b.go" {
+	if pending, ok := FileChangeOf("write", `{"file_path":"b.go","content":"z"}`, ""); !ok || pending.Done || pending.Paths[0] != "b.go" {
 		t.Fatalf("pending write = %+v", pending)
+	}
+	patch := `{"input":"*** Begin Patch\n*** Add File: a.go\n+x\n*** Update File: b.go\n*** Move to: c.go\n@@\n-y\n+z\n*** End Patch"}`
+	meta := `{"files":[{"file_path":"/w/a.go","new_content":"x\n","additions":1},{"file_path":"/w/c.go","moved_from":"/w/b.go","additions":1,"removals":1}]}`
+	if change, ok := FileChangeOf("apply_patch", patch, meta); !ok || !reflect.DeepEqual(change.Paths, []string{"a.go", "b.go", "c.go"}) || len(change.Files) != 2 || change.Additions != 2 || change.Removals != 1 {
+		t.Fatalf("patch = %+v", change)
 	}
 	if _, ok := FileChangeOf("bash", `{}`, ""); ok {
 		t.Fatal("bash is not a file change")

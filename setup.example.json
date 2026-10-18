@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "active_provider_id": "openai",
   "assistant": {
     "name": "matrixclaw",
@@ -8,7 +8,6 @@
   "providers": [
     {
       "id": "openai",
-      "catalog_id": "openai",
       "name": "OpenAI",
       "type": "openai-compatible",
       "api_key": "",

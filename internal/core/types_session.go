@@ -92,6 +92,7 @@ const (
 	PermissionModeDefault     PermissionMode = permission.ModeDefault
 	PermissionModeAcceptEdits PermissionMode = permission.ModeAcceptEdits
 	PermissionModeFullAuto    PermissionMode = permission.ModeFullAuto
+	PermissionModePlan        PermissionMode = permission.ModePlan
 )
 
 type UpdateSessionPermissionModeInput struct {

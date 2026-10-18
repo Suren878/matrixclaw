@@ -14,7 +14,7 @@ func (p *Permissions) renderContent(width int) string {
 	switch p.permission.ToolName {
 	case toolNameBash:
 		return p.renderBashContent(width)
-	case toolNameEdit, toolNameWrite, toolNameMultiEdit:
+	case toolNameEdit, toolNameWrite, toolNameMultiEdit, toolNameApplyPatch:
 		return p.renderFileChangeContent(width)
 	case toolNameRead:
 		return p.renderReadContent(width)
@@ -37,15 +37,22 @@ func (p *Permissions) renderBashContent(width int) string {
 }
 
 func (p *Permissions) renderFileChangeContent(contentWidth int) string {
-	change, ok := surfacepermission.DecodeParams[tools.FileChange](p.permission.Params)
+	changes, ok := p.fileChanges()
 	if !ok {
 		return ""
 	}
-	return p.renderDiff(change.Path, change.OldContent, change.NewContent, contentWidth)
+	return p.diff.render(p.com.Styles, fileDiffs(changes...), contentWidth)
 }
 
-func (p *Permissions) renderDiff(filePath, oldContent, newContent string, contentWidth int) string {
-	return p.diff.render(p.com.Styles, filePath, oldContent, newContent, contentWidth)
+// fileChanges are the files the call changes: apply_patch's every file, one
+// file for the other file tools.
+func (p *Permissions) fileChanges() ([]tools.FileChange, bool) {
+	if p.permission.ToolName == toolNameApplyPatch {
+		patch, ok := surfacepermission.DecodeParams[tools.PatchChange](p.permission.Params)
+		return patch.Files, ok
+	}
+	change, ok := surfacepermission.DecodeParams[tools.FileChange](p.permission.Params)
+	return []tools.FileChange{change}, ok
 }
 
 func (p *Permissions) renderReadContent(width int) string {

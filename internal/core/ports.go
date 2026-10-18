@@ -164,8 +164,10 @@ type ToolExecutor interface {
 	Execute(ctx context.Context, toolID string, call tools.Call) (tools.Result, error)
 	// Preview is the approval a call shows, or the result that answers it instead.
 	Preview(ctx context.Context, toolID string, call tools.Call) (tools.ApprovalRequest, *tools.Result)
-	// Subject is what permission rules match of a call.
-	Subject(toolID string, call tools.Call) permission.Subject
+	// Subjects is every subject permission rules match of a call.
+	Subjects(toolID string, call tools.Call) []permission.Subject
+	// ReadsOnly reports whether a call changes nothing.
+	ReadsOnly(toolID string, call tools.Call) bool
 	// ConcurrencyKey names what the call must not share with a concurrent call.
 	ConcurrencyKey(toolID string, call tools.Call) string
 }

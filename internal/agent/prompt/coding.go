@@ -24,6 +24,20 @@ func (t Tools) Has(names ...string) bool {
 	return len(names) > 0
 }
 
+// Edits reports whether the run can change files: edit, or apply_patch for
+// the models that get it instead.
+func (t Tools) Edits() bool {
+	return t["edit"] || t["apply_patch"]
+}
+
+// editTools names the tools the run changes existing files with.
+func (t Tools) editTools() string {
+	if t["apply_patch"] {
+		return "apply_patch"
+	}
+	return "edit or multiedit"
+}
+
 // CodingGuidance is the operating manual for a session with a working
 // directory: autonomy, verification, code changes, tools, git, todo and the
 // final reply. A subagent reports to its parent and never asks the user.
@@ -66,7 +80,7 @@ func autonomySection(tools Tools, subagent bool) string {
 }
 
 func verifySection(tools Tools) string {
-	if !tools.Has("bash", "edit") {
+	if !tools.Has("bash") || !tools.Edits() {
 		return ""
 	}
 	return `Verifying your work:
@@ -76,11 +90,11 @@ func verifySection(tools Tools) string {
 }
 
 func changesSection(tools Tools) string {
-	if !tools.Has("read", "edit", "multiedit", "write") {
+	if !tools.Has("read", "write") || !tools.Edits() {
 		return ""
 	}
 	return `Making code changes:
-- Read a file, or at least the part you change, before editing it. Change existing files with edit or multiedit; use write only for new files or deliberate full rewrites.
+- Read a file, or at least the part you change, before editing it. Change existing files with ` + tools.editTools() + `; use write only for new files or deliberate full rewrites.
 - Match the surrounding code: style, naming, formatting, error handling, comment density, and the libraries and frameworks already in use. Check that the project already depends on a library before you use it.
 - Change what the task needs and nothing else: no unrequested refactors, renames, reformatting, features, or comments on code you did not touch. Mention unrelated problems you notice instead of fixing them silently.
 - Keep the project building: update the callers, imports, tests and docs your change affects. Remove debug output, temporary files and commented-out code you added.
@@ -89,8 +103,8 @@ func changesSection(tools Tools) string {
 
 func toolsSection(tools Tools) string {
 	lines := []string{"Using tools:"}
-	// Without edit the run's bash is the read-only one: no builds, no servers.
-	writes := tools.Has("edit")
+	// Without an edit tool the run's bash is the read-only one: no builds, no servers.
+	writes := tools.Edits()
 	if tools.Has("bash") {
 		use := " Use bash for builds, tests, git, package managers and running programs."
 		if !writes {
@@ -119,6 +133,7 @@ func dedicatedTools(tools Tools) string {
 		{"glob", "find"},
 		{"ls", "ls or tree"},
 		{"edit", "sed, awk or perl -i"},
+		{"apply_patch", "sed, awk or perl -i"},
 		{"write", "echo or cat redirection"},
 	}
 	var parts []string
@@ -145,7 +160,7 @@ func backgroundLine(tools Tools) string {
 }
 
 func gitSection(tools Tools, subagent bool) string {
-	if !tools.Has("bash", "edit") {
+	if !tools.Has("bash") || !tools.Edits() {
 		return ""
 	}
 	blocked := "stop and ask"

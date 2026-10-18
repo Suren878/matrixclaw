@@ -64,6 +64,7 @@ func TestPermissionsListsModesAndRules(t *testing.T) {
 		"Ask First |  | /permissions default",
 		"Edits Only |  | /permissions accept_edits",
 		"Full Auto |  | /permissions full_auto",
+		"Plan |  | /permissions plan",
 		"deny read: /home/u/.ssh/** | global | /permissions delete rule_global",
 		"allow bash: go test:* | parent session | /permissions delete rule_parent",
 		"allow edit: /work/** | this session | /permissions delete rule_own",
@@ -119,6 +120,19 @@ func TestOnlyTheOwnerSwitchesThePermissionMode(t *testing.T) {
 		if !owner && result.Text != "Only the owner can switch the permission mode." {
 			t.Fatalf("non-owner reply = %q", result.Text)
 		}
+	}
+}
+
+func TestPlanSwitchesToPlanModeForTheOwnerOnly(t *testing.T) {
+	daemon := newRulesDaemon(t)
+	daemon.run("/plan")
+	if len(daemon.modes) != 1 || daemon.modes[0] != core.PermissionModePlan {
+		t.Fatalf("modes = %v", daemon.modes)
+	}
+	daemon.runAs(core.RoleMember, "/plan")
+	daemon.run("/plan add tests")
+	if len(daemon.modes) != 1 {
+		t.Fatalf("modes = %v", daemon.modes)
 	}
 }
 

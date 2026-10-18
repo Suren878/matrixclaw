@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 // Call is the presentation of one tool call.
@@ -41,13 +43,18 @@ type spec struct {
 }
 
 var specs = map[string]spec{
-	"bash":                     {title: "Run", verb: "Executing command", primary: []string{"command"}},
-	"task_output":              {title: "Task Output", verb: "Reading task output", primary: []string{"id"}},
-	"task_kill":                {title: "Task Kill", verb: "Stopping task", primary: []string{"id"}},
-	"read":                     {title: "Read", verb: "Reading file", primary: []string{"file_path"}, extra: []string{"offset"}},
-	"write":                    {title: "Write", verb: "Writing file", primary: []string{"file_path"}},
-	"edit":                     {title: "Edit", verb: "Editing file", primary: []string{"file_path"}},
-	"multiedit":                {title: "Multi-Edit", verb: "Editing file", primary: []string{"file_path"}},
+	"bash":        {title: "Run", verb: "Executing command", primary: []string{"command"}},
+	"task_output": {title: "Task Output", verb: "Reading task output", primary: []string{"id"}},
+	"task_kill":   {title: "Task Kill", verb: "Stopping task", primary: []string{"id"}},
+	"read":        {title: "Read", verb: "Reading file", primary: []string{"file_path"}, extra: []string{"offset"}},
+	"write":       {title: "Write", verb: "Writing file", primary: []string{"file_path"}},
+	"edit":        {title: "Edit", verb: "Editing file", primary: []string{"file_path"}},
+	"multiedit":   {title: "Multi-Edit", verb: "Editing file", primary: []string{"file_path"}},
+	"apply_patch": {title: "Patch", verb: "Patching files", detail: func(params map[string]any) string {
+		input, _ := params["input"].(string)
+		return strings.Join(tools.PatchPaths(input), ", ")
+	}},
+	"exit_plan_mode":           {title: "Plan", verb: "Presenting the plan", primary: []string{"plan"}},
 	"glob":                     {title: "Glob", verb: "Searching files", primary: []string{"pattern"}, extra: []string{"path"}},
 	"grep":                     {title: "Grep", verb: "Searching files", primary: []string{"pattern"}, extra: []string{"path", "include", "literal_text"}},
 	"ls":                       {title: "List", verb: "Listing files", detail: func(params map[string]any) string { return cmp.Or(Value(params, "path"), ".") }},
