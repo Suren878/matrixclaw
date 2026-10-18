@@ -3,6 +3,7 @@ package hooks
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -193,7 +194,7 @@ func TestProjectHooksRunOnlyOnceTrusted(t *testing.T) {
 	if got := runner.SessionStart(context.Background(), scope, "startup"); got != "" || len(*logged) != 1 {
 		t.Fatalf("untrusted hooks ran: %q, logged %q", got, *logged)
 	}
-	if _, err := runner.Trust(sub, "0000"); err != ErrProjectChanged {
+	if _, err := runner.Trust(sub, "0000"); !errors.Is(err, ErrProjectChanged) {
 		t.Fatalf("trust with a stale sum: %v", err)
 	}
 	if _, err := runner.Trust(sub, listing.Project.SHA256); err != nil {
