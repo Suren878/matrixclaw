@@ -6,6 +6,7 @@ import (
 	"unicode"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -155,11 +156,7 @@ func HeadTail(text string, maxTokens int) string {
 
 // trimRunes keeps the first maxRunes runes of the trimmed value and marks a cut.
 func trimRunes(value string, maxRunes int) string {
-	value = strings.TrimSpace(value)
-	if runes := []rune(value); len(runes) > maxRunes {
-		return string(runes[:maxRunes]) + "…"
-	}
-	return value
+	return textutil.Clip(strings.TrimSpace(value), maxRunes, "…")
 }
 
 // runesWithin is how many runes from the start of runes, or from its end, fit

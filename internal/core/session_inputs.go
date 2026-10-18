@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -310,11 +311,7 @@ func sessionRunDeliverySummary(text string, parts []transcript.MessagePart) stri
 	if summary == "" {
 		summary = "User message"
 	}
-	runes := []rune(summary)
-	if len(runes) > 240 {
-		return string(runes[:237]) + "..."
-	}
-	return summary
+	return textutil.Clip(summary, 240, "...")
 }
 
 func cloneRawMessage(raw json.RawMessage) json.RawMessage {

@@ -161,15 +161,6 @@ func Value(params map[string]any, key string) string {
 	}
 }
 
-// Shorten cuts text to at most maxRunes runes, ending it with "…" when cut.
-func Shorten(text string, maxRunes int) string {
-	runes := []rune(text)
-	if len(runes) <= maxRunes || maxRunes < 1 {
-		return text
-	}
-	return strings.TrimSpace(string(runes[:maxRunes-1])) + "…"
-}
-
 // PrettyName turns a tool id into words: "skill_view" becomes "Skill View".
 func PrettyName(name string) string {
 	words := strings.FieldsFunc(name, func(r rune) bool { return r == '_' || r == '-' || unicode.IsSpace(r) })

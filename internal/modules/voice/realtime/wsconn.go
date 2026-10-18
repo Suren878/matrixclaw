@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/safego"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/coder/websocket"
 )
 
@@ -116,7 +117,7 @@ func (c *wsConnection) Close(reason error) error {
 	c.closeOnce.Do(func() {
 		status, message := websocket.StatusNormalClosure, ""
 		if reason != nil {
-			status, message = websocket.StatusInternalError, truncate(strings.TrimSpace(reason.Error()), 120)
+			status, message = websocket.StatusInternalError, textutil.ClipBytes(strings.TrimSpace(reason.Error()), 120)
 		}
 		err = c.conn.Close(status, message)
 	})
@@ -157,11 +158,4 @@ func (c *wsConnection) write(ctx context.Context, message any) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 	return c.conn.Write(ctx, websocket.MessageText, body)
-}
-
-func truncate(value string, limit int) string {
-	if len(value) <= limit {
-		return value
-	}
-	return value[:limit]
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/shelltask"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 const (
@@ -178,10 +179,7 @@ func report(lines []string) string {
 			fmt.Fprintf(&text, "\n... and %d more lines", len(lines)-i)
 			break
 		}
-		if runes := []rune(line); len(runes) > maxDiagnosticWidth {
-			line = string(runes[:maxDiagnosticWidth]) + "..."
-		}
-		text.WriteString("\n" + line)
+		text.WriteString("\n" + textutil.Clip(line, maxDiagnosticWidth, "..."))
 	}
 	return text.String()
 }

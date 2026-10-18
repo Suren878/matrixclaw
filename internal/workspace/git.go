@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 // gitTimeout bounds all git calls of one snapshot.
@@ -90,7 +92,7 @@ func parseStatus(out string) (string, []string, int) {
 			continue
 		}
 		if strings.TrimSpace(line) != "" {
-			entries = append(entries, truncateRunes(line, maxLineRunes))
+			entries = append(entries, textutil.Clip(line, maxLineRunes, "..."))
 		}
 	}
 	if len(entries) <= maxStatusLines {
@@ -128,7 +130,7 @@ func boundedLines(out string, limit int) []string {
 	var lines []string
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
 		if line = strings.TrimSpace(line); line != "" && len(lines) < limit {
-			lines = append(lines, truncateRunes(line, maxLineRunes))
+			lines = append(lines, textutil.Clip(line, maxLineRunes, "..."))
 		}
 	}
 	return lines
@@ -137,14 +139,6 @@ func boundedLines(out string, limit int) []string {
 func firstLine(text string) string {
 	line, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
 	return strings.TrimSpace(line)
-}
-
-func truncateRunes(text string, limit int) string {
-	runes := []rune(text)
-	if len(runes) <= limit {
-		return text
-	}
-	return string(runes[:limit]) + "..."
 }
 
 // Platform names the OS and architecture, with the distribution on Linux.

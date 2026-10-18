@@ -13,6 +13,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 const inlineCallbackPrefix = "inline:"
@@ -382,10 +383,5 @@ func inlinePlaceholderText(query string) string {
 }
 
 func clipInlineDescription(text string) string {
-	text = strings.Join(strings.Fields(text), " ")
-	runes := []rune(text)
-	if len(runes) <= 96 {
-		return text
-	}
-	return strings.TrimSpace(string(runes[:93])) + "..."
+	return textutil.Clip(strings.Join(strings.Fields(text), " "), 96, "...")
 }

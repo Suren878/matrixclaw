@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -72,9 +73,5 @@ func clipTelegramText(text string) string {
 	if text == "" {
 		return ""
 	}
-	runes := []rune(text)
-	if len(runes) <= defaultMessageLimit {
-		return text
-	}
-	return strings.TrimSpace(string(runes[:defaultMessageLimit-1])) + "…"
+	return textutil.Clip(text, defaultMessageLimit, "…")
 }

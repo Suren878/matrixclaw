@@ -37,15 +37,6 @@ func TestValueShowsTheFirstListItemAndTheRestAsACount(t *testing.T) {
 	}
 }
 
-func TestShortenCutsAtRunesWithAnEllipsis(t *testing.T) {
-	if got := Shorten("привет мир", 7); got != "привет…" {
-		t.Fatalf("Shorten = %q", got)
-	}
-	if got := Shorten("short", 7); got != "short" {
-		t.Fatalf("Shorten = %q", got)
-	}
-}
-
 func TestFileChangeOfReadsInputAndResult(t *testing.T) {
 	change, ok := FileChangeOf("multiedit", `{"file_path":"a.go","edits":[{},{},{}]}`, `{"file_path":"/w/a.go","additions":2,"removals":1,"old_content":"x","new_content":"y"}`)
 	want := FileChange{Paths: []string{"a.go"}, Edits: 3, Done: true, Files: []tools.FileChange{{Path: "/w/a.go", OldContent: "x", NewContent: "y", Additions: 2, Removals: 1}}, Additions: 2, Removals: 1}

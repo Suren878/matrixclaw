@@ -72,13 +72,5 @@ func clippedCommandButton(text string, command string) InlineKeyboardButton {
 }
 
 func clipTelegramButtonText(text string) string {
-	text = strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
-	if text == "" {
-		return ""
-	}
-	runes := []rune(text)
-	if len(runes) <= defaultButtonTextLimit {
-		return text
-	}
-	return strings.TrimSpace(string(runes[:defaultButtonTextLimit-1])) + "…"
+	return textutil.Clip(strings.Join(strings.Fields(text), " "), defaultButtonTextLimit, "…")
 }

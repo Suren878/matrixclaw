@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -193,22 +194,11 @@ func clip(value string, limit int) string {
 		return value
 	}
 	if limit <= len(truncationMarker) {
-		return prefix(truncationMarker, limit)
+		return textutil.ClipBytes(truncationMarker, limit)
 	}
 	available := limit - len(truncationMarker)
 	head := available * 3 / 4
-	return prefix(value, head) + truncationMarker + suffix(value, available-head)
-}
-
-func prefix(value string, limit int) string {
-	if len(value) <= limit {
-		return value
-	}
-	end := limit
-	for end > 0 && !utf8.RuneStart(value[end]) {
-		end--
-	}
-	return value[:end]
+	return textutil.ClipBytes(value, head) + truncationMarker + suffix(value, available-head)
 }
 
 func suffix(value string, limit int) string {
