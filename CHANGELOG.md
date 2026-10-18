@@ -1,5 +1,118 @@
 # Changelog
 
+## Unreleased
+
+The native agent now works on large coding tasks by itself: it knows the
+project, edits robustly, checks its own work, can be undone, splits work
+across isolated subagents and keeps going on a goal until it is verifiably
+done.
+
+### Coding agent
+
+- Coding runs (a working directory and tools) get an operating manual:
+  autonomy, verification after changes, reading before editing, matching the
+  code's style, git safety, todo discipline, prompt-injection caution. The
+  manual names only the tools the run has; subagents get the same manual.
+- Project instructions: `~/.config/matrixclaw/AGENTS.md`, then `AGENTS.md`
+  (or `CLAUDE.md`) and `.matrixclaw/instructions.md` from the project top down
+  to the working directory, 32 KiB at most. Runs also get the date, timezone,
+  client, permission mode, OS and a git snapshot (branch, status, recent
+  commits) in the context note.
+- `read` pages within a token budget, cuts very long lines and refuses binary
+  files. `edit`/`multiedit`/`write` refuse a file the session has not read or
+  that changed since; edits fall back from exact matching to indentation-,
+  whitespace- and quote-tolerant matching with guards, report the closest
+  lines on a miss, return a numbered snippet and write atomically.
+- `apply_patch` (Codex patch format, multi-file and all-or-nothing) replaces
+  `edit`/`multiedit` for GPT and Codex models.
+- `glob`, `grep` and `ls` use one matcher (`**/` matches zero directories,
+  braces, classes) and follow `.gitignore`; `grep` gained case-insensitive,
+  context, output modes and paging. A deny rule on a path no longer blocks a
+  whole search; matches under it are left out.
+- `bash` results always state the exit code, keep the head and the tail of
+  long output, and kill processes the command left behind. Commands, hooks,
+  MCP stdio servers and language servers no longer inherit provider API keys.
+- Diagnostics after edits: gofmt and `go vet`, `tsc`, Python compile, `cargo
+  check` or JSON parsing, and language servers (gopls, typescript-language-
+  server, pyright/pylsp, rust-analyzer) when installed, including errors in
+  other files a change broke. New `lsp` tool for definitions, references,
+  hover, symbols and implementations; new `repo_map` tool with an Aider-style
+  ranked map of a code base.
+- Verification gate: a run that changed files and did not build or test
+  afterwards is asked once to verify before it ends.
+- File checkpoints: a shadow git snapshot before each tool batch that may
+  change files (bash included). `/undo`, `/rewind` and the `checkpoint_diff`
+  tool.
+- Plan mode (`/plan`): read-only work, then `exit_plan_mode` shows the plan
+  for approval and switches the session to `accept_edits`.
+- Hooks compatible with the Claude Code protocol (PreToolUse, PostToolUse,
+  Stop, SubagentStop, SessionStart, PreCompact, Notification) from setup.json
+  and from a project's `.matrixclaw/hooks.json` once the owner trusts it.
+- Goals: `/goal <objective> [--check cmd] [--max-runs N] [--tokens N]` keeps
+  starting runs until the model reports the goal complete with evidence, the
+  check passes and no todo item is open; the same failure three times blocks
+  it.
+- Subagents: `agent_type` (`general`, `explore`, `plan`, `review`, `verify`
+  and user agents from `.matrixclaw/agents/*.md` or
+  `~/.config/matrixclaw/agents/*.md`), `output_schema`, `agent_steer`.
+  Worktree children start from the parent's current files, commit to
+  `mc/<task>` and are brought back with `worktree_merge` or dropped with
+  `worktree_discard`.
+- Session learning: an idle session that did enough work gets one background
+  review that files quarantined skill drafts and memory suggestions for the
+  owner to approve (`modules.skills.review`; on when skills are on).
+
+### Reliability
+
+- One retry policy for generations and summaries (6 attempts, server-requested
+  waits honoured); a reply cut mid-stream is generated again; malformed tool
+  arguments go back to the model as an error. Provider errors are classified
+  (rate limit, overloaded, auth, quota, transient), and quota errors are no
+  longer retried.
+- The reasoning-text filter no longer cuts replies that mention a tag.
+- The loop guard catches failing repeats, two-call cycles and echoed replies.
+- One compaction path for runs and `/compact`; summaries keep work state,
+  tests and version-control status, and the files edited last are re-attached
+  after a summary.
+- Events are delivered in order; a lagging client is disconnected and reloads
+  instead of silently missing events. SSE sends a keepalive.
+- A run's end always notifies waiting parents; blocking subagent calls no
+  longer fail when the child ends first.
+- Learned model metadata stays with the provider that listed it. Codex token
+  refreshes are locked across processes and a 401 refreshes once.
+- Reload re-applies run budgets, model concurrency, background limits, the
+  automation timezone and delivery targets.
+
+### Security
+
+- Every API route has one policy (`open`, `owner`, `session`); members and
+  guests are refused on all session writes in unattended sessions.
+- Deny rules reach commands run through package runners and wrappers
+  (`npx`, `pnpm exec`, `uv run`, `docker run`, `sh -c`, ...); in-place editors
+  (`sed -i`, `perl -i`) count as risky.
+- Skills installs run with a timeout, no prompts, the keyless environment and
+  path checks.
+
+### Upgrade notes (breaking)
+
+- Back up first. The first start converts the database once to a canonical
+  schema (`PRAGMA user_version`), keeping `matrixclaw.db.pre-v1` next to it,
+  drops tables and columns nothing reads, then applies migrations 002-007.
+  Installs older than v0.2.0 must upgrade through v0.2.0 first.
+- setup.json is converted once to version 4, keeping `setup.json.pre-v4`;
+  from then on unknown keys and alias values are refused with an error naming
+  them.
+- Rollback: stop the daemon, restore `matrixclaw.db.pre-v1` (delete the
+  `-wal`/`-shm` files) and `setup.json.pre-v4`, start the old binary.
+- The built-in default assistant system prompt is gone; a `system_prompt`
+  saved in setup.json by an older wizard still applies and may contradict the
+  coding manual. Clear it unless you wrote it.
+- Some typed controlplane commands changed (`/modules mcp delete <id>`,
+  `/tasks bg-output <id>`); `/provider key` is gone. Telegram buttons sent
+  before the upgrade answer "Unknown command".
+- API: sessions lost `runtime_id` (use `kind`); new routes for checkpoints,
+  hooks, goals and memory approval.
+
 ## v0.2.0
 
 Native runs now use a new agent engine built for long tasks.
