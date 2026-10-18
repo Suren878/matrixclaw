@@ -43,8 +43,8 @@ can lose the last commits since the previous checkpoint.
 
 The schema is `internal/store/migrations/001_init.sql` followed by the
 numbered migrations listed in `internal/store/schema.go` (`002` adds
-`file_checkpoints`); the database records its version in `PRAGMA
-user_version` (2 today). Each migration is applied once and in order, to a new
+`file_checkpoints`, `004` `session_goals`); the database records its version
+in `PRAGMA user_version` (4 today). Each migration is applied once and in order, to a new
 database too. A database newer than the binary is refused.
 Upgrades are one-way. Back up before upgrading (the daemon may keep running):
 
@@ -88,7 +88,7 @@ Tables:
 | Sessions | `sessions`, `messages` (ordered by `seq`), `message_fts` (search), `client_bindings`, `session_inputs` (queued and steer messages), `memories` |
 | Runs | `runs`, `run_steps` (one row per model generation), `run_checkpoints`, `run_wakeups` |
 | Approvals and rules | `approvals`, `permission_rules` |
-| Per-session engine state | `session_budgets`, `session_engine_state`, `session_todos` |
+| Per-session engine state | `session_budgets`, `session_engine_state`, `session_todos`, `session_goals` |
 | Background work | `tasks` (shell commands and subagents) |
 | Clients | `client_deliveries` |
 | Automation | `automation_jobs`, `automation_fires` |

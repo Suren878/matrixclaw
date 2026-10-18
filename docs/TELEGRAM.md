@@ -64,8 +64,9 @@ the provider has more than one model, the model picker opens next.
   status message that is edited in place (at most every 2 s): the state
   (working, waiting for approval, waiting for background work, done, stopped,
   failed, canceled), `step n/limit`, the running tool ("Using bash: go test
-  ./..."; parallel calls add "(+N more)"), running background tasks and the
-  todo list. A plain answer without tools gets no status message.
+  ./..."; parallel calls add "(+N more)"), running background tasks, the
+  todo list and the session goal ("Goal active · run 2/10",
+  [GOALS.md](GOALS.md)). A plain answer without tools gets no status message.
 - **Cancel.** The status message has a **⛔ Cancel** button while the run is
   active. `/cancel` cancels the running task of the chat's session and replies
   "Nothing is running." when there is none. While the bot waits for a typed
