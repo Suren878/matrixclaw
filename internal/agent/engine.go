@@ -24,7 +24,9 @@ type Config struct {
 	Prompts   Prompts
 	Todos     Todos
 	// Hooks runs the user's hooks; nil runs none.
-	Hooks       Hooks
+	Hooks Hooks
+	// Verifier checks the session goal when a run would end; nil checks none.
+	Verifier    Verifier
 	Attachments agentcontext.AttachmentReader
 	Now         func() time.Time
 	NewID       func(prefix string) string

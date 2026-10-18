@@ -94,8 +94,8 @@ recovery), waits for them, then closes external agents and modules.
   `session_id` or client binding): members and guests are refused (403) there when the session
   runs unattended (`core.RunsUnattended`: full_auto or external agent). Reads
   stay open. Only the owner creates a session with an external agent or a
-  permission mode, global permission rules are owner-only, and guests keep no
-  rules. Core knows nothing of roles. Clients only hide what the daemon would
+  permission mode, global permission rules and a goal's check command are
+  owner-only, and guests keep no rules. Core knows nothing of roles. Clients only hide what the daemon would
   refuse.
 - `writeError` is the one error answer: the status of the first sentinel the
   error wraps (`core.ErrNotFound` 404, `core.ErrInvalidInput` 400, ...), else
@@ -105,7 +105,7 @@ recovery), waits for them, then closes external agents and modules.
 
 - `GET /v1/events` is a per-session SSE stream: `message.created|updated`,
   `run.updated`, `tool.updated`, `approval.requested|resolved`,
-  `input.updated`, `task.updated`, `todo.updated`, `context.updated` (context
+  `input.updated`, `task.updated`, `todo.updated`, `goal.updated`, `context.updated` (context
   size the engine measured after each step). Replay with `?after=` covers only
   a 256-event ring shared by all sessions.
 - Each subscriber gets events in ID order. One that falls 512 events behind
@@ -169,9 +169,11 @@ gate (the finished task wakes the parent), so no subagent run ends while a
 gate is held.
 
 `afterRun` runs when the executor lets go of a run (or from `CancelRun` for a
-parked one): it starts the session's next queued message, wakes the session
-for finished background work, or resumes a parked run whose decision or event
-arrived meanwhile. Every step is idempotent.
+parked one): for an ended run it counts the run against the session goal,
+then starts the session's next queued message, wakes the session for finished
+background work, or starts the goal's next run ([GOALS.md](GOALS.md)); a
+parked run whose decision or event arrived meanwhile resumes. Every step is
+idempotent.
 
 **Cancel.** `CancelRun` writes `canceled`, then cancels the run's context with
 the cause `agent.ErrCanceled`. Any other stop (shutdown, release) cancels
@@ -186,8 +188,8 @@ read-only and deferred calls, `ask` again for a mutating call, `answer` an
 unknown tool with an error. A mutating call never reruns without a fresh
 approval. `Core.Recover`, called once at daemon start, marks leftover shell
 tasks `lost`, resumes each active run once, syncs subagent tasks whose child
-run already ended, and settles idle sessions (next queued message or a wake
-run). External-agent runs keep their own recovery in core.
+run already ended, and settles idle sessions (next queued message, a wake
+run or the next run of an active goal). External-agent runs keep their own recovery in core.
 
 ## Agent engine
 
@@ -207,6 +209,7 @@ and talks to core through ports (`internal/agent/ports.go`):
 | `Prompts` | `corePrompts` | fixed system prompt per run; changing state as a context note |
 | `Todos` | `coreTodos` | open todo items of the run's `/continue` chain |
 | `Hooks` | `coreHooks` | SessionStart context, Stop/SubagentStop verdict, PreCompact; nil without hooks |
+| `Verifier` | `coreVerifier` | the session goal's check command when a run would end |
 
 What the engine remembers between steps (`agent.RunState`) is checkpointed with
 the phase, so a parked or restarted run keeps it. How a step can go wrong:
@@ -241,8 +244,11 @@ the phase, so a parked or restarted run keeps it. How a step can go wrong:
   run's todo list has open items, and once when the run changed files (edit
   tools, or a bash command that writes files) after its last successful
   build, test, lint or type-check command; only while budget remains and the
-  run has bash. Then the Stop hooks (SubagentStop in a child run) may hold it
-  back with a reason, at most 5 times a run (`RunState.StopHooks`).
+  run has bash. Then a session goal's failing check command holds it back
+  with the exit code and output tail, at most 5 times a run
+  (`RunState.GoalHolds`; [GOALS.md](GOALS.md)). Then the Stop hooks
+  (SubagentStop in a child run) may hold it back with a reason, at most 5
+  times a run (`RunState.StopHooks`).
 - **Reasoning text:** a reasoning block the reply opens with, or a closed one
   starting a later line, is stripped as the reply streams; code fences are left
   alone.

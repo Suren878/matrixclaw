@@ -1,6 +1,7 @@
 package agent_test
 
 import (
+	"context"
 	"reflect"
 	"strings"
 	"testing"
@@ -109,5 +110,66 @@ func TestOpenTodoItemsDoNotHoldARunWhoseModelCannotUseTools(t *testing.T) {
 
 	if outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != "Stopping here." || len(model.Requests()) != 1 {
 		t.Fatalf("outcome = %+v, requests = %d", outcome, len(model.Requests()))
+	}
+}
+
+// scriptedVerifier answers each Verify with the next verdict, then with none.
+type scriptedVerifier struct {
+	verdicts []agent.Verdict
+	calls    int
+}
+
+func (v *scriptedVerifier) Verify(context.Context, string, string) (agent.Verdict, error) {
+	v.calls++
+	if len(v.verdicts) == 0 {
+		return agent.Verdict{}, nil
+	}
+	verdict := v.verdicts[0]
+	v.verdicts = v.verdicts[1:]
+	return verdict, nil
+}
+
+func TestFailingGoalCheckKeepsTheRunGoingUntilItPasses(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Verifier = &scriptedVerifier{verdicts: []agent.Verdict{
+		{Hold: true, Note: "Goal check failed (exit 1)."},
+		{Note: "Verification passed."},
+	}}
+	model := agenttest.NewScriptedModel(text("Done, I think."), text("Fixed and done."))
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted || outcome.Assistant.Content != "Fixed and done." || len(model.Requests()) != 2 {
+		t.Fatalf("outcome = %+v, requests = %d", outcome, len(model.Requests()))
+	}
+	if held := lastMessage(model.Requests()[1]); held.Role != "user" || held.Content != "Goal check failed (exit 1)." {
+		t.Fatalf("held with %+v", held)
+	}
+	notes := engineNotes(f.Journal.Messages)
+	if len(notes) != 2 || notes[0].Origin != transcript.OriginEngineModel || notes[1].Origin != transcript.OriginEngine || notes[1].Content != "Verification passed." {
+		t.Fatalf("engine notes = %+v", notes)
+	}
+	if outcome.RunState.GoalHolds != 1 {
+		t.Fatalf("state = %+v", outcome.RunState)
+	}
+}
+
+func TestGoalChecksHoldARunBackABoundedNumberOfTimes(t *testing.T) {
+	f := agenttest.NewFixture()
+	verifier := &scriptedVerifier{}
+	for range 10 {
+		verifier.verdicts = append(verifier.verdicts, agent.Verdict{Hold: true, Note: "Goal check failed."})
+	}
+	f.Verifier = verifier
+	turns := make([]agenttest.Turn, 10)
+	for i := range turns {
+		turns[i] = text("Stopping.")
+	}
+	model := agenttest.NewScriptedModel(turns...)
+
+	outcome := run(t, f, model)
+
+	if outcome.Status != agent.StatusCompleted || len(model.Requests()) != 6 || verifier.calls != 5 {
+		t.Fatalf("outcome = %+v, requests = %d, checks = %d", outcome, len(model.Requests()), verifier.calls)
 	}
 }

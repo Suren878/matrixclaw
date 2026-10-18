@@ -9,6 +9,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
+	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
 	"github.com/Suren878/matrixclaw/internal/toolview"
@@ -26,9 +27,10 @@ type runStatusMessage struct {
 }
 
 // renderRunStatusMessage keeps one silent message per run with its state, steps,
-// running tools, background tasks and todo list. It appears once the run calls a
-// tool or waits and is edited when its text changes; a flood wait is returned so
-// the delivery retries after it, other refusals only skip the edit.
+// running tools, background tasks, todo list and session goal. It appears once
+// the run calls a tool or waits and is edited when its text changes; a flood
+// wait is returned so the delivery retries after it, other refusals only skip
+// the edit.
 func (w *Worker) renderRunStatusMessage(ctx context.Context, target chatTarget, daemon *daemonclient.Client, run core.Run, messages []transcript.Message, state *runDeliveryState) error {
 	status := &state.status
 	final := runFinished(run.Status)
@@ -46,8 +48,15 @@ func (w *Worker) renderRunStatusMessage(ctx context.Context, target chatTarget, 
 	if retryableDeliveryError(err) {
 		return err
 	}
+	goal, err := daemon.SessionGoal(ctx, run.SessionID)
+	if retryableDeliveryError(err) {
+		return err
+	}
 	// Without progress the message still shows the state, tools and todo.
 	text := renderRunStatusText(run, progress, messages, askedCalls(approvals, run.ID))
+	if line := controlplane.GoalLine(goal); line != "" {
+		text = clipTelegramText(text + "\n🎯 " + line)
+	}
 	if text == status.text {
 		return nil
 	}

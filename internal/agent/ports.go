@@ -210,3 +210,17 @@ type Hooks interface {
 	Stop(ctx context.Context, reply string, active bool) string
 	PreCompact(ctx context.Context, trigger string)
 }
+
+// Verifier checks the session's goal when a run would end with a reply.
+// Hold keeps the run going with Note (a failed check); otherwise a Note (a
+// passed check, a goal marked blocked) is journaled for the user and the run
+// ends. A session without an active goal or check gets the zero Verdict.
+type Verifier interface {
+	Verify(ctx context.Context, sessionID, runID string) (Verdict, error)
+}
+
+// Verdict is what a goal check found.
+type Verdict struct {
+	Hold bool
+	Note string
+}

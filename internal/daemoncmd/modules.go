@@ -62,6 +62,7 @@ func buildModules(deps moduleDeps) (daemonModules, error) {
 	base = append(base, core.AwaitToolExecutors(app)...)
 	base = append(base, core.MemoryToolExecutors(app)...)
 	base = append(base, core.CheckpointToolExecutors(app)...)
+	base = append(base, core.GoalToolExecutors(app)...)
 	base = append(base, core.AgentToolExecutors(app)...)
 	base = append(base, core.PlanModeToolExecutors(app)...)
 	set, err := modules.NewSet(base,

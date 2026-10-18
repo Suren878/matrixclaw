@@ -331,8 +331,9 @@ func (c *Core) afterRun(ctx context.Context, runID string) {
 }
 
 // afterEnd lets the session of an ended run go on: a subagent's commands stop,
-// steers that missed the run are queued, and the next queued message starts,
-// or else the session wakes for background work that finished.
+// steers that missed the run are queued, the run counts against the session
+// goal, and the next queued message starts, or else the session wakes for
+// background work that finished, or else the goal's next run starts.
 func (c *Core) afterEnd(ctx context.Context, run Run) error {
 	session, err := c.store.GetSession(ctx, run.SessionID)
 	if err != nil {
@@ -347,9 +348,15 @@ func (c *Core) afterEnd(ctx context.Context, run Run) error {
 	if err := c.queuePendingSteersForRun(ctx, session.ID, run.ID); err != nil {
 		return err
 	}
+	if err := c.settleGoalRun(ctx, run); err != nil {
+		return err
+	}
 	started, err := c.startNextPendingSessionInput(ctx, session.ID)
 	if err != nil || started {
 		return err
 	}
-	return c.wakeSession(ctx, session.ID, nil)
+	if err := c.wakeSession(ctx, session.ID, nil); err != nil {
+		return err
+	}
+	return c.continueGoal(ctx, session.ID)
 }

@@ -12,12 +12,14 @@ import (
 // nativeTurn is what the per-step prompt and tool list of a native run depend
 // on; Continues lists the runs this one continues, latest first.
 type nativeTurn struct {
-	RunID              string
-	Continues          []string
-	SessionID          string
-	WorkingDir         string
-	Subagent           bool
-	Readonly           bool
+	RunID      string
+	Continues  []string
+	SessionID  string
+	WorkingDir string
+	Subagent   bool
+	Readonly   bool
+	// Goal is set when the session had an active goal as the run started.
+	Goal               bool
 	ClientCapabilities ClientCapabilities
 	ToolUse            bool
 	// Model names the provider and model the run talks to.
@@ -123,7 +125,7 @@ func (c *Core) nativeToolSpecs(turn nativeTurn) []tools.Spec {
 	specs := c.tools.List()
 	out := make([]tools.Spec, 0, len(specs))
 	for _, spec := range specs {
-		if turn.Subagent && !subagentToolAllowed(spec) {
+		if turn.Subagent && !subagentToolAllowed(spec) || goalTools[spec.ID] && !turn.Goal {
 			continue
 		}
 		switch spec.ID {

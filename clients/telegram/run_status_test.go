@@ -185,3 +185,14 @@ func TestRunStatusCountsOnlyCallsThatRun(t *testing.T) {
 		t.Fatalf("messages = %q", texts)
 	}
 }
+
+func TestRunStatusShowsTheSessionGoal(t *testing.T) {
+	h := newRunStatusHarness(t)
+	h.daemon.goal = &core.SessionGoal{Objective: "Make the build green", Status: core.GoalActive, RunsUsed: 2, MaxRuns: 10}
+	h.daemon.add(toolCallMessage("call-1", "bash", `{"command":"make"}`, false))
+	h.mustDeliver(0)
+
+	if texts := h.api.messageTexts(); len(texts) != 1 || texts[0] != "⏳ Working · step 1/300\nExecuting command: make\n🎯 Goal active · run 2/10" {
+		t.Fatalf("status = %q", texts)
+	}
+}
