@@ -3,7 +3,6 @@ package telegram
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 )
@@ -25,14 +24,6 @@ func (w *Worker) dispatchCommandAndEditPage(ctx context.Context, target chatTarg
 }
 
 func controlplaneResultIsCommandMenu(result controlplane.Result) bool {
-	return result.Picker != nil && result.Picker.Kind == controlplane.PickerCommandMenu
-}
-
-func catalogCommand(id controlplane.CommandID, args string) string {
-	return controlplane.CommandLine(id, args)
-}
-
-func matchesCatalogCommand(text string, id controlplane.CommandID, args string) bool {
-	spec, parsedArgs, ok := controlplane.Parse(text)
-	return ok && spec.ID == id && strings.EqualFold(strings.TrimSpace(parsedArgs), strings.TrimSpace(args))
+	picker, ok := result.Screen.(controlplane.PickerData)
+	return ok && picker.Kind == controlplane.PickerCommandMenu
 }

@@ -150,7 +150,7 @@ func TestSummaryKeepsTheAssignmentStepsAndWholeToolSteps(t *testing.T) {
 	f.Window = 20_000
 	big := strings.Repeat("b", 3_800)
 	f.Tools.Funcs["read"] = func(call tools.Call) tools.Result { return tools.Result{Content: call.ToolCallID + big} }
-	f.Inbox.Steers = []string{"focus on the parser"}
+	f.Inbox.SteerTexts = []string{"focus on the parser"}
 	third := talkingCall(1_600, call("r3", "read"))
 	third.Response.Usage.PromptTokens = 7_000
 	model := agenttest.NewScriptedModel(talkingCall(1_600, call("r1", "read")), talkingCall(1_600, call("r2", "read")), third, text("SUMMARY"), text("Done."))
@@ -423,7 +423,7 @@ func TestElisionThenSummaryKeepsTheRequestOrderAndPrefix(t *testing.T) {
 	f := agenttest.NewFixture()
 	f.Window = 100_000
 	f.Prompts.ContextText = "plan: write the parser"
-	f.Inbox.Steers = []string{"focus on the parser"}
+	f.Inbox.SteerTexts = []string{"focus on the parser"}
 	f.Tools.Funcs["read"] = func(call tools.Call) tools.Result {
 		return tools.Result{Content: call.ToolCallID + " " + strings.Repeat("x", 8_000)}
 	}

@@ -7,32 +7,32 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-// memoryPendingCommand is the screen of the memory entries session reviews
-// suggested, which runs see once the owner approves them.
-func memoryPendingCommand(parts ...string) string {
-	return controlplaneCommand(append([]string{"memory", "pending"}, parts...)...)
-}
+// The memory entries session reviews suggested, which runs see once the
+// owner approves them.
+var (
+	memoryPending        = verb(CommandMemory, "pending", 0)
+	memoryPendingShow    = verb(CommandMemory, "pending show", 1)
+	memoryPendingApprove = verb(CommandMemory, "pending approve", 1)
+	memoryPendingReject  = verb(CommandMemory, "pending reject", 1)
+)
 
-// handleMemorySuggestions serves /memory pending [<id> [approve|reject]].
-func (d *Dispatcher) handleMemorySuggestions(ctx context.Context, args string) (Result, error) {
+// handleMemorySuggestions lists the suggestions, shows one, and approves or
+// rejects it.
+func (d *Dispatcher) handleMemorySuggestions(ctx context.Context, r Route) (Result, error) {
 	if !d.owner() {
-		return Result{Handled: true, Text: "Only the owner can review memory suggestions."}, nil
+		return textResult("Only the owner can review memory suggestions."), nil
 	}
-	id, rest := firstCommandToken(args)
-	action, _ := firstCommandStep(rest)
 	var err error
 	switch {
-	case id == "":
-		return d.memorySuggestionsPicker(ctx)
-	case action == "approve":
-		err = d.daemon.ApproveMemory(ctx, id)
-	case action == "reject":
-		err = d.daemon.DeleteMemory(ctx, id)
-	default:
-		return d.memorySuggestionPicker(ctx, id)
+	case r.Is(memoryPendingShow):
+		return d.memorySuggestionPicker(ctx, r.arg(0))
+	case r.Is(memoryPendingApprove):
+		err = d.daemon.ApproveMemory(ctx, r.arg(0))
+	case r.Is(memoryPendingReject):
+		err = d.daemon.DeleteMemory(ctx, r.arg(0))
 	}
 	if err != nil {
-		return Result{Handled: true, Text: err.Error()}, nil
+		return textResult(err.Error()), nil
 	}
 	return d.memorySuggestionsPicker(ctx)
 }
@@ -48,14 +48,14 @@ func (d *Dispatcher) memorySuggestionsPicker(ctx context.Context) (Result, error
 	}
 	picker := NewPickerData(PickerMemoryPending, "Memory Suggestions").
 		Meta("Session reviews suggested these; runs see an entry once you approve it.").
-		Command(memoryPendingCommand())
+		Command(memoryPending.command())
 	for _, entry := range entries {
-		picker.Item(PickerItem{ID: entry.ID, Title: entry.Content, Info: memorySuggestionScope(entry), Command: memoryPendingCommand(entry.ID)})
+		picker.Item(PickerItem{ID: entry.ID, Title: entry.Content, Info: memorySuggestionScope(entry), Command: memoryPendingShow.command(entry.ID)})
 	}
 	if len(entries) == 0 {
 		picker.Static("empty", "No suggestions", "Session reviews leave memory suggestions here.")
 	}
-	return Result{Handled: true, Picker: picker.Ptr()}, nil
+	return Result{Screen: picker.Build()}, nil
 }
 
 func (d *Dispatcher) memorySuggestionPicker(ctx context.Context, id string) (Result, error) {
@@ -69,10 +69,10 @@ func (d *Dispatcher) memorySuggestionPicker(ctx context.Context, id string) (Res
 		}
 		picker := NewPickerData(PickerMemoryPending, "Memory Suggestion").
 			Meta(memorySuggestionScope(entry)+": "+entry.Content).
-			Back(memoryPendingCommand()).
-			Action("approve", "Approve", "Remember it in every later run", memoryPendingCommand(entry.ID, "approve")).
-			Danger("reject", "Reject", "", memoryPendingCommand(entry.ID, "reject"))
-		return Result{Handled: true, Picker: picker.Ptr()}, nil
+			Back(memoryPending.command()).
+			Action("approve", "Approve", "Remember it in every later run", memoryPendingApprove.command(entry.ID)).
+			Danger("reject", "Reject", "", memoryPendingReject.command(entry.ID))
+		return Result{Screen: picker.Build()}, nil
 	}
 	return d.memorySuggestionsPicker(ctx)
 }

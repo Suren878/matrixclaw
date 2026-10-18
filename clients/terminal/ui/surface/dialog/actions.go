@@ -25,6 +25,13 @@ type ActionRunControlplaneCommand struct {
 	Command string
 }
 
+// ActionAnswerControlplanePrompt hands a prompt's answer to the command it
+// submits; the answer stays out of the command line.
+type ActionAnswerControlplanePrompt struct {
+	Submit string
+	Answer string
+}
+
 // ActionPermissionResponse is emitted when the user responds to a permission dialog.
 type ActionPermissionResponse struct {
 	Permission surfacepermission.PermissionRequest

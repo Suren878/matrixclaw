@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
@@ -68,15 +69,7 @@ func subagentToolAllowed(spec tools.Spec) bool {
 }
 
 func truncateForTitle(value string, maxRunes int) string {
-	value = strings.Join(strings.Fields(value), " ")
-	if maxRunes <= 0 {
-		return value
-	}
-	runes := []rune(value)
-	if len(runes) <= maxRunes {
-		return value
-	}
-	return string(runes[:maxRunes])
+	return textutil.Clip(strings.Join(strings.Fields(value), " "), maxRunes, "")
 }
 
 func agentResultContent(result AgentResult) string {

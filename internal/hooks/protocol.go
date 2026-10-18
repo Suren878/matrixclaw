@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 // input is what a hook reads on stdin, the fields of the Claude Code protocol
@@ -70,9 +72,5 @@ func (o output) stopped() bool {
 
 // clip cuts text a hook adds for the model to maxContext characters.
 func clip(text string) string {
-	text = strings.TrimSpace(text)
-	if runes := []rune(text); len(runes) > maxContext {
-		return string(runes[:maxContext]) + "\n[cut at 10000 characters]"
-	}
-	return text
+	return textutil.Clip(strings.TrimSpace(text), maxContext, "\n[cut at 10000 characters]")
 }

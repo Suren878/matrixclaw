@@ -110,7 +110,7 @@ func (w *Worker) handlePendingPrompt(ctx context.Context, target chatTarget, tex
 			return false, nil
 		}
 	}
-	result, err := w.dispatcher(target).Handle(ctx, prompt.SubmitCommandPrefix+strings.TrimSpace(text))
+	result, err := w.dispatcher(target).Answer(ctx, prompt.Submit, text)
 	if err != nil {
 		return true, w.sendText(ctx, target, fmt.Sprintf("Command failed: %v", err))
 	}

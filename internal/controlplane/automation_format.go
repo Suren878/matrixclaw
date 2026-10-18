@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/automation"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 func formatAutomationJob(job automation.Job) string {
@@ -62,15 +63,7 @@ func nextAutomationLabel(job automation.Job) string {
 }
 
 func truncateTaskText(text string, limit int) string {
-	text = strings.Join(strings.Fields(text), " ")
-	runes := []rune(text)
-	if limit <= 0 || len(runes) <= limit {
-		return text
-	}
-	if limit <= 3 {
-		return string(runes[:limit])
-	}
-	return strings.TrimSpace(string(runes[:limit-3])) + "..."
+	return textutil.Clip(strings.Join(strings.Fields(text), " "), limit, "...")
 }
 
 func firstTaskText(values ...string) string {

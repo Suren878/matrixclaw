@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/shelltask"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 const (
@@ -192,10 +193,7 @@ func report(served, commands, others []string) string {
 	var text strings.Builder
 	text.WriteString("Diagnostics after edit:")
 	for _, line := range lines {
-		if runes := []rune(line); len(runes) > maxDiagnosticWidth {
-			line = string(runes[:maxDiagnosticWidth]) + "..."
-		}
-		text.WriteString("\n" + line)
+		text.WriteString("\n" + textutil.Clip(line, maxDiagnosticWidth, "..."))
 	}
 	return text.String()
 }

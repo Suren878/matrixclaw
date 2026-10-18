@@ -353,7 +353,7 @@ func TestACallThatFinishedAsTheRunWasCanceledKeepsItsResult(t *testing.T) {
 func TestInterruptedBatchLeavesUnfinishedCallsToRecovery(t *testing.T) {
 	f, outcome := stoppedBatch(t, false)
 
-	if outcome.Status != agent.StatusInterrupted {
+	if !outcome.Interrupted || outcome.Status != "" {
 		t.Fatalf("outcome = %+v", outcome)
 	}
 	if got := resultOrder(f); got != "r1" {

@@ -4,14 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/controlplane"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/modules"
 	"github.com/Suren878/matrixclaw/internal/permission"
 )
 
@@ -359,7 +362,7 @@ func TestAnIgnoredPromptExpires(t *testing.T) {
 	worker := newWorker(Config{BaseURL: server.URL}, api)
 	worker.now = func() time.Time { return now }
 	target := chatTarget{kind: telegramTargetChat, chatID: 42, externalKey: "42"}
-	worker.replacePrompt(context.Background(), target, &pendingPrompt{PromptData: controlplane.PromptData{SubmitCommandPrefix: "/modules web_search set tavily_key ", Sensitive: true}})
+	worker.replacePrompt(context.Background(), target, &pendingPrompt{PromptData: controlplane.PromptData{Submit: "/modules set web_search tavily_key", Sensitive: true}})
 
 	now = now.Add(promptLifetime + time.Minute)
 	if err := worker.handleTextMessage(context.Background(), &Message{MessageID: 8, Chat: Chat{ID: 42, Type: "private"}, From: &User{ID: 42}, Text: "what's the weather?"}); err != nil {
@@ -394,5 +397,47 @@ func TestASubagentsApprovalNamesTheSubagent(t *testing.T) {
 	text := renderApprovalText(core.Approval{ToolName: "bash", AgentName: "Neo", Description: "run go test"})
 	if !strings.HasPrefix(text, "Subagent: Neo\nTool: bash") {
 		t.Fatalf("approval text = %q", text)
+	}
+}
+
+func TestASecretAnswerGoesToItsSettingAndLeavesTheChat(t *testing.T) {
+	var changes []modules.ChangeRequest
+	var requested []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested = append(requested, r.Method+" "+r.URL.String())
+		w.Header().Set("Content-Type", "application/json")
+		settings := modules.Settings{Items: []modules.Item{{Key: "tavily_key", Kind: modules.ItemSecret}}}
+		if r.Method != http.MethodPost {
+			_ = json.NewEncoder(w).Encode(settings)
+			return
+		}
+		var change modules.ChangeRequest
+		_ = json.NewDecoder(r.Body).Decode(&change)
+		changes = append(changes, change)
+		_ = json.NewEncoder(w).Encode(modules.ChangeResponse{Settings: settings})
+	}))
+	defer server.Close()
+	var logged strings.Builder
+	log.SetOutput(&logged)
+	defer log.SetOutput(os.Stderr)
+	api := &approvalBotAPI{}
+	worker := newWorker(Config{BaseURL: server.URL}, api)
+	target := chatTarget{kind: telegramTargetChat, chatID: 42, externalKey: "42"}
+	worker.replacePrompt(context.Background(), target, &pendingPrompt{PromptData: controlplane.PromptData{Submit: "/modules set web_search tavily_key", Sensitive: true}})
+
+	if err := worker.handleTextMessage(context.Background(), &Message{MessageID: 8, Chat: Chat{ID: 42, Type: "private"}, From: &User{ID: 42}, Text: "tvly-secret-1234"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(changes) != 1 || changes[0].Value != "tvly-secret-1234" || strings.Join(changes[0].Path, "/") != "tavily_key" {
+		t.Fatalf("changes = %+v", changes)
+	}
+	if len(api.deleted) != 1 || api.deleted[0] != 8 {
+		t.Fatalf("deleted = %v, want the answer removed from the chat", api.deleted)
+	}
+	for _, text := range append(requested, logged.String()) {
+		if strings.Contains(text, "tvly-secret") {
+			t.Fatalf("the secret leaked into %q", text)
+		}
 	}
 }

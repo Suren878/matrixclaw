@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
+	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -21,73 +22,104 @@ type preparedToolCall struct {
 	Message    transcript.Message
 }
 
-// checkToolCall validates a tool call against its session before anything is
-// written; ErrInvalidInput errors are returned to the model, others fail the
-// run. A read-only subagent's call of bash gets bash's read-only spec.
-func (c *Core) checkToolCall(ctx context.Context, toolName string, call tools.Call) (Session, tools.Spec, error) {
-	sessionID := call.SessionID
-	if c.tools == nil {
-		return Session{}, tools.Spec{}, fmt.Errorf("%w: tools are not configured", ErrExecutionUnavailable)
-	}
-	toolName = strings.TrimSpace(toolName)
+// callScope is what checking a session's tool calls reads from the store:
+// the session, its subagent task when it is a subagent's, and the permission
+// rules over it. A run reads it once for each group of calls it admits.
+type callScope struct {
+	session  Session
+	task     Task
+	subagent bool
+	rules    []permission.Rule
+}
+
+// callScope reads the scope of a session's calls.
+func (c *Core) callScope(ctx context.Context, sessionID string) (callScope, error) {
 	if sessionID == "" {
-		return Session{}, tools.Spec{}, fmt.Errorf("%w: session_id is required", ErrInvalidInput)
-	}
-	if toolName == "" {
-		return Session{}, tools.Spec{}, fmt.Errorf("%w: tool_name is required", ErrInvalidInput)
-	}
-	spec, ok := c.tools.Spec(toolName)
-	if !ok {
-		return Session{}, tools.Spec{}, fmt.Errorf("%w: unknown tool %q", ErrInvalidInput, toolName)
+		return callScope{}, fmt.Errorf("%w: session_id is required", ErrInvalidInput)
 	}
 	session, err := c.store.GetSession(ctx, sessionID)
 	if err != nil {
-		return Session{}, tools.Spec{}, err
+		return callScope{}, err
 	}
+	scope := callScope{session: session, subagent: isSubagentSession(session)}
+	if scope.subagent {
+		if scope.task, _, err = c.subagentTaskOf(ctx, session.ID); err != nil {
+			return callScope{}, err
+		}
+	}
+	if scope.rules, err = c.permissionRules(ctx, session); err != nil {
+		return callScope{}, err
+	}
+	return scope, nil
+}
+
+// checkToolCall validates a tool call of the scope's session before anything
+// is written; ErrInvalidInput errors are returned to the model, others fail
+// the run. A read-only subagent's call of bash gets bash's read-only spec.
+func (c *Core) checkToolCall(scope callScope, toolName string, call tools.Call) (tools.Spec, error) {
+	if c.tools == nil {
+		return tools.Spec{}, fmt.Errorf("%w: tools are not configured", ErrExecutionUnavailable)
+	}
+	toolName = strings.TrimSpace(toolName)
+	if toolName == "" {
+		return tools.Spec{}, fmt.Errorf("%w: tool_name is required", ErrInvalidInput)
+	}
+	spec, ok := c.tools.Spec(toolName)
+	if !ok {
+		return tools.Spec{}, fmt.Errorf("%w: unknown tool %q", ErrInvalidInput, toolName)
+	}
+	session := scope.session
 	if toolName == agentToolName && CoreSessionIsExternalAgent(session) {
-		return Session{}, tools.Spec{}, fmt.Errorf("%w: the agent tool is available for Matrixclaw sessions only", ErrInvalidInput)
+		return tools.Spec{}, fmt.Errorf("%w: the agent tool is available for Matrixclaw sessions only", ErrInvalidInput)
 	}
-	if !isSubagentSession(session) {
-		return session, spec, nil
+	if !scope.subagent {
+		return spec, nil
 	}
-	task, _, err := c.subagentTaskOf(ctx, session.ID)
-	if err != nil {
-		return Session{}, tools.Spec{}, err
-	}
+	task := scope.task
 	if !subagentToolAllowed(spec) || !task.Agent.allows(spec.ID) {
-		return Session{}, tools.Spec{}, fmt.Errorf("%w: tool %q is not available to this subagent", ErrInvalidInput, toolName)
+		return tools.Spec{}, fmt.Errorf("%w: tool %q is not available to this subagent", ErrInvalidInput, toolName)
 	}
 	if call.WorkingDir = normalizeWorkingDir(call.WorkingDir); call.WorkingDir == "" {
 		call.WorkingDir = session.WorkingDir
 	}
 	if task.Isolation == SubagentIsolationWorktree && task.WorkingDir != "" {
 		if err := tools.CheckConfinedCall(spec, call, c.tools.Subjects(spec.ID, call), !c.tools.ReadsOnly(spec.ID, call), task.WorkingDir); err != nil {
-			return Session{}, tools.Spec{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
+			return tools.Spec{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 		}
 	}
 	if spec.Mutates() && task.Readonly {
-		return readOnlyCall(session, spec, call)
+		return readOnlyCall(spec, call)
 	}
-	return session, spec, nil
+	return spec, nil
 }
 
 // readOnlyCall is how a read-only subagent may call a mutating tool: only
 // through the tool's read-only spec, with arguments that change nothing.
-func readOnlyCall(session Session, spec tools.Spec, call tools.Call) (Session, tools.Spec, error) {
+func readOnlyCall(spec tools.Spec, call tools.Call) (tools.Spec, error) {
 	readOnly, ok := tools.ReadOnlySpec(spec)
 	if !ok {
-		return Session{}, tools.Spec{}, fmt.Errorf("%w: tool %q changes things, and this subagent is read-only", ErrInvalidInput, spec.ID)
+		return tools.Spec{}, fmt.Errorf("%w: tool %q changes things, and this subagent is read-only", ErrInvalidInput, spec.ID)
 	}
 	if err := tools.CheckReadOnlyCall(call); err != nil {
-		return Session{}, tools.Spec{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
+		return tools.Spec{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 	}
-	return session, readOnly, nil
+	return readOnly, nil
 }
 
-func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (preparedToolCall, error) {
-	session, spec, err := c.checkToolCall(ctx, input.ToolName, tools.Call{SessionID: input.SessionID, WorkingDir: input.WorkingDir, Args: input.Args})
+// prepareToolCall checks a call made outside a run and journals it unless it
+// was journaled before; it returns the scope it checked the call in.
+func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (preparedToolCall, callScope, error) {
+	if c.tools == nil {
+		return preparedToolCall{}, callScope{}, fmt.Errorf("%w: tools are not configured", ErrExecutionUnavailable)
+	}
+	scope, err := c.callScope(ctx, input.SessionID)
 	if err != nil {
-		return preparedToolCall{}, err
+		return preparedToolCall{}, callScope{}, err
+	}
+	session := scope.session
+	spec, err := c.checkToolCall(scope, input.ToolName, tools.Call{SessionID: input.SessionID, WorkingDir: input.WorkingDir, Args: input.Args})
+	if err != nil {
+		return preparedToolCall{}, callScope{}, err
 	}
 	sessionID := input.SessionID
 	toolName := input.ToolName
@@ -112,13 +144,13 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 
 	isNewCall, err := c.isNewToolCallMessage(ctx, sessionID, toolCallID)
 	if err != nil {
-		return preparedToolCall{}, err
+		return preparedToolCall{}, callScope{}, err
 	}
 	if !isNewCall {
-		return prepared, nil
+		return prepared, scope, nil
 	}
 	if _, err := c.store.AppendMessage(ctx, message); err != nil {
-		return preparedToolCall{}, err
+		return preparedToolCall{}, callScope{}, err
 	}
 	c.publishEvent(Event{
 		Type:      EventMessageCreated,
@@ -133,7 +165,7 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 		RunID:      message.RunID,
 		SessionID:  sessionID,
 	})
-	return prepared, nil
+	return prepared, scope, nil
 }
 
 func (c *Core) isNewToolCallMessage(ctx context.Context, sessionID string, toolCallID string) (bool, error) {

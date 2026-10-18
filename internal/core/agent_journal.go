@@ -3,17 +3,18 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-// coreJournal persists engine writes through the store; its checkpoint
-// before a model call starts the run's next tool batch.
+// coreJournal persists engine writes through the store and tells the run's
+// tool batch of each checkpoint.
 type coreJournal struct {
 	c     *Core
-	batch *batchSnapshot
+	batch *toolBatch
 }
 
 func (j coreJournal) Load(ctx context.Context, sessionID string) (agent.Window, error) {
@@ -51,12 +52,17 @@ func (c *Core) contextWindow(ctx context.Context, sessionID string) (agent.Windo
 	return window, nil
 }
 
+// Append writes a new message; one whose ID another session's message has
+// (a provider reusing a tool call ID) fails with a clear error.
 func (j coreJournal) Append(ctx context.Context, message transcript.Message) (int64, error) {
 	seq, err := j.c.store.AppendMessage(ctx, message)
-	if err != nil {
-		return 0, err
+	if err == nil {
+		return seq, nil
 	}
-	return seq, nil
+	if existing, getErr := j.c.store.GetMessage(ctx, message.ID); getErr == nil && existing.SessionID != message.SessionID {
+		return 0, fmt.Errorf("tool call id %q already belongs to another session", message.ID)
+	}
+	return 0, err
 }
 
 func (j coreJournal) BeginStreaming(ctx context.Context, message transcript.Message) (int64, error) {
@@ -82,9 +88,7 @@ func (j coreJournal) FinishStreaming(ctx context.Context, message transcript.Mes
 }
 
 func (j coreJournal) Checkpoint(ctx context.Context, state agent.State) error {
-	if state.Phase == agent.PhaseModel {
-		j.batch.next()
-	}
+	j.batch.checkpointed(state.Phase)
 	return j.c.saveEngineCheckpoint(ctx, state)
 }
 

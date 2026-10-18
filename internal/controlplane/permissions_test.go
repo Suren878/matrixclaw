@@ -53,11 +53,11 @@ func testRules() []permission.Rule {
 func TestPermissionsListsModesAndRules(t *testing.T) {
 	result := newRulesDaemon(t).run("/permissions")
 
-	if result.Picker == nil {
+	if !isScreen[PickerData](result) {
 		t.Fatalf("result = %+v", result)
 	}
 	var rows []string
-	for _, item := range result.Picker.Items {
+	for _, item := range screenOf[PickerData](t, result).Items {
 		rows = append(rows, item.Title+" | "+item.Info+" | "+item.Command)
 	}
 	want := []string{
@@ -78,11 +78,11 @@ func TestPermissionsDeleteAsksThenDeletes(t *testing.T) {
 	daemon := newRulesDaemon(t)
 
 	result := daemon.run("/permissions delete rule_own")
-	if result.Confirm == nil || result.Confirm.ConfirmCommand != "/permissions delete rule_own confirm" || len(daemon.deleted) != 0 {
+	if screenOf[ConfirmData](t, result).ConfirmCommand != "/permissions delete-confirm rule_own" || len(daemon.deleted) != 0 {
 		t.Fatalf("result = %+v deleted = %v", result, daemon.deleted)
 	}
-	result = daemon.run(result.Confirm.ConfirmCommand)
-	if len(daemon.deleted) != 1 || daemon.deleted[0] != "rule_own" || result.Text != "🗑️ Rule deleted: allow edit: /work/**" {
+	result = daemon.run(screenOf[ConfirmData](t, result).ConfirmCommand)
+	if len(daemon.deleted) != 1 || daemon.deleted[0] != "rule_own" || result.Text() != "🗑️ Rule deleted: allow edit: /work/**" {
 		t.Fatalf("result = %+v deleted = %v", result, daemon.deleted)
 	}
 }
@@ -92,14 +92,14 @@ func TestOnlyTheOwnerChangesGlobalRules(t *testing.T) {
 		daemon := newRulesDaemon(t)
 		owner := role == core.RoleOwner
 
-		deleted := daemon.runAs(role, "/permissions delete rule_global confirm")
+		deleted := daemon.runAs(role, "/permissions delete-confirm rule_global")
 		added := daemon.runAs(role, "/permissions add deny read ~/.ssh/** global")
 
 		if owner != (len(daemon.deleted) == 1 && len(daemon.added) == 1) {
-			t.Fatalf("%s: deleted = %v added = %+v (%q, %q)", role, daemon.deleted, daemon.added, deleted.Text, added.Text)
+			t.Fatalf("%s: deleted = %v added = %+v (%q, %q)", role, daemon.deleted, daemon.added, deleted.Text(), added.Text())
 		}
-		if !owner && (deleted.Text != "Only the owner can change global rules." || added.Text != deleted.Text) {
-			t.Fatalf("non-owner replies = %q, %q", deleted.Text, added.Text)
+		if !owner && (deleted.Text() != "Only the owner can change global rules." || added.Text() != deleted.Text()) {
+			t.Fatalf("non-owner replies = %q, %q", deleted.Text(), added.Text())
 		}
 		if owner && daemon.added[0] != (core.PermissionRuleRequest{Tool: "read", Pattern: "~/.ssh/**", Effect: permission.Deny, Scope: permission.ScopeGlobal}) {
 			t.Fatalf("added = %+v", daemon.added[0])
@@ -115,10 +115,10 @@ func TestOnlyTheOwnerSwitchesThePermissionMode(t *testing.T) {
 		result := daemon.runAs(role, "/permissions full_auto")
 
 		if owner != (len(daemon.modes) == 1) {
-			t.Fatalf("%s: modes = %v result = %q", role, daemon.modes, result.Text)
+			t.Fatalf("%s: modes = %v result = %q", role, daemon.modes, result.Text())
 		}
-		if !owner && result.Text != "Only the owner can switch the permission mode." {
-			t.Fatalf("non-owner reply = %q", result.Text)
+		if !owner && result.Text() != "Only the owner can switch the permission mode." {
+			t.Fatalf("non-owner reply = %q", result.Text())
 		}
 	}
 }
@@ -139,18 +139,18 @@ func TestPlanSwitchesToPlanModeForTheOwnerOnly(t *testing.T) {
 func TestGuestsChangeNoRules(t *testing.T) {
 	daemon := newRulesDaemon(t)
 
-	deleted := daemon.runAs(core.RoleGuest, "/permissions delete rule_own confirm")
+	deleted := daemon.runAs(core.RoleGuest, "/permissions delete-confirm rule_own")
 	added := daemon.runAs(core.RoleGuest, "/permissions add allow bash go test:*")
 
-	if len(daemon.deleted) != 0 || len(daemon.added) != 0 || deleted.Text != "Guests cannot change permission rules." || added.Text != deleted.Text {
-		t.Fatalf("deleted = %v added = %+v (%q, %q)", daemon.deleted, daemon.added, deleted.Text, added.Text)
+	if len(daemon.deleted) != 0 || len(daemon.added) != 0 || deleted.Text() != "Guests cannot change permission rules." || added.Text() != deleted.Text() {
+		t.Fatalf("deleted = %v added = %+v (%q, %q)", daemon.deleted, daemon.added, deleted.Text(), added.Text())
 	}
 }
 
 func TestPermissionsUsageWarnsThatTestRunnersRunCode(t *testing.T) {
 	result := newRulesDaemon(t).run("/permissions nonsense")
-	if !strings.Contains(result.Text, "accept_edits") || !strings.Contains(result.Text, "runs code") || !strings.Contains(result.Text, "redirects included") {
-		t.Fatalf("usage = %q", result.Text)
+	if !strings.Contains(result.Text(), "accept_edits") || !strings.Contains(result.Text(), "runs code") || !strings.Contains(result.Text(), "redirects included") {
+		t.Fatalf("usage = %q", result.Text())
 	}
 }
 
@@ -170,7 +170,7 @@ func TestPermissionsAddReadsEffectToolAndPattern(t *testing.T) {
 	for _, command := range []string{"/permissions add", "/permissions add allow", "/permissions add maybe bash ls:*", "/permissions sometimes"} {
 		daemon := newRulesDaemon(t)
 
-		if result := daemon.runAs(core.RoleMember, command); result.Text != permissionsUsage || len(daemon.added) != 0 {
+		if result := daemon.runAs(core.RoleMember, command); result.Text() != permissionsUsage || len(daemon.added) != 0 {
 			t.Errorf("%s: result = %+v", command, result)
 		}
 	}

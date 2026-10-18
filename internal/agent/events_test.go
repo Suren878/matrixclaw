@@ -14,7 +14,7 @@ import (
 
 func TestEachEventIsConsumedOnceItIsJournaled(t *testing.T) {
 	f := agenttest.NewFixture()
-	f.Inbox.Events = []agent.Input{{Kind: agent.InputEvent, ID: "task_1", Text: "first"}, {Kind: agent.InputEvent, ID: "task_2", Text: "second"}}
+	f.Inbox.TaskEvents = []agent.TaskEvent{{TaskID: "task_1", Text: "first"}, {TaskID: "task_2", Text: "second"}}
 	f.Journal.OnAppend = func(message transcript.Message) error {
 		if message.Content == "second" {
 			return errors.New("disk full")
@@ -24,24 +24,24 @@ func TestEachEventIsConsumedOnceItIsJournaled(t *testing.T) {
 
 	_, _ = f.Engine().Run(context.Background(), f.Task(agenttest.NewScriptedModel(text("Done."))))
 
-	if len(f.Inbox.Events) != 1 || f.Inbox.Events[0].ID != "task_2" {
-		t.Fatalf("events left = %+v", f.Inbox.Events)
+	if len(f.Inbox.TaskEvents) != 1 || f.Inbox.TaskEvents[0].TaskID != "task_2" {
+		t.Fatalf("events left = %+v", f.Inbox.TaskEvents)
 	}
 }
 
 func TestFinishedTasksReachTheModelAsNotesBeforeItsNextStep(t *testing.T) {
 	f := agenttest.NewFixture()
-	f.Inbox.Events = []agent.Input{{Kind: agent.InputEvent, ID: "task_1", Text: "Background task task_1 finished with exit code 0: go test ./..."}}
+	f.Inbox.TaskEvents = []agent.TaskEvent{{TaskID: "task_1", Text: "Background task task_1 finished with exit code 0: go test ./..."}}
 	f.Tools.Funcs["read"] = func(tools.Call) tools.Result {
-		f.Inbox.Events = append(f.Inbox.Events, agent.Input{Kind: agent.InputEvent, ID: "task_2", Text: "Background task task_2 finished with exit code 1: make"})
+		f.Inbox.TaskEvents = append(f.Inbox.TaskEvents, agent.TaskEvent{TaskID: "task_2", Text: "Background task task_2 finished with exit code 1: make"})
 		return tools.Result{Content: "file body"}
 	}
 	model := agenttest.NewScriptedModel(calls(call("c1", "read")), text("Both done."))
 
 	outcome := run(t, f, model)
 
-	if outcome.Status != agent.StatusCompleted || len(f.Inbox.Events) != 0 {
-		t.Fatalf("outcome = %+v, events left = %+v", outcome, f.Inbox.Events)
+	if outcome.Status != agent.StatusCompleted || len(f.Inbox.TaskEvents) != 0 {
+		t.Fatalf("outcome = %+v, events left = %+v", outcome, f.Inbox.TaskEvents)
 	}
 	var notes []string
 	for _, message := range f.Journal.Messages {
@@ -94,16 +94,16 @@ func TestAwaitParksTheRunUntilAnAwaitedTaskFinishes(t *testing.T) {
 		t.Fatalf("the park checkpoint lacks the await: %+v", last)
 	}
 
-	f.Inbox.Events = []agent.Input{{Kind: agent.InputEvent, ID: "task_b", Text: "Background task task_b finished with exit code 0."}}
+	f.Inbox.TaskEvents = []agent.TaskEvent{{TaskID: "task_b", Text: "Background task task_b finished with exit code 0."}}
 	still := resume(t, f, model, parked.RunState)
-	if still.Status != agent.StatusWaitingEvents || len(model.Requests()) != 1 || len(f.Inbox.Events) != 1 {
+	if still.Status != agent.StatusWaitingEvents || len(model.Requests()) != 1 || len(f.Inbox.TaskEvents) != 1 {
 		t.Fatalf("an unawaited task woke the run: %+v, requests %d", still, len(model.Requests()))
 	}
 
-	f.Inbox.Events = append(f.Inbox.Events, agent.Input{Kind: agent.InputEvent, ID: "task_a", Text: "Background task task_a finished with exit code 0."})
+	f.Inbox.TaskEvents = append(f.Inbox.TaskEvents, agent.TaskEvent{TaskID: "task_a", Text: "Background task task_a finished with exit code 0."})
 	done := resume(t, f, model, still.RunState)
-	if done.Status != agent.StatusCompleted || done.Assistant.Content != "Tests passed." || done.RunState.Await != nil || len(f.Inbox.Events) != 0 {
-		t.Fatalf("done = %+v, events left %+v", done, f.Inbox.Events)
+	if done.Status != agent.StatusCompleted || done.Assistant.Content != "Tests passed." || done.RunState.Await != nil || len(f.Inbox.TaskEvents) != 0 {
+		t.Fatalf("done = %+v, events left %+v", done, f.Inbox.TaskEvents)
 	}
 	last := model.Requests()[1].Messages
 	if got := last[len(last)-1].Content; got != "Background task task_a finished with exit code 0." {
@@ -131,11 +131,11 @@ func TestUserInputWakesAnAwaitingRun(t *testing.T) {
 	model := agenttest.NewScriptedModel(calls(call("w1", "await")), text("Stopped the build."))
 	parked := run(t, f, model)
 
-	f.Inbox.Steers = []string{"stop waiting and cancel the build"}
+	f.Inbox.SteerTexts = []string{"stop waiting and cancel the build"}
 	done := resume(t, f, model, parked.RunState)
 
-	if done.Status != agent.StatusCompleted || len(f.Inbox.Steers) != 0 {
-		t.Fatalf("done = %+v, steers left %v", done, f.Inbox.Steers)
+	if done.Status != agent.StatusCompleted || len(f.Inbox.SteerTexts) != 0 {
+		t.Fatalf("done = %+v, steers left %v", done, f.Inbox.SteerTexts)
 	}
 	var user []string
 	for _, message := range f.Journal.Messages {
@@ -176,7 +176,7 @@ func TestTimeParkedInAwaitIsNotActiveTime(t *testing.T) {
 	}
 
 	f.Clock = f.Clock.Add(5 * time.Minute)
-	f.Inbox.Events = []agent.Input{{Kind: agent.InputEvent, ID: "task_a", Text: "Background task task_a finished with exit code 0."}}
+	f.Inbox.TaskEvents = []agent.TaskEvent{{TaskID: "task_a", Text: "Background task task_a finished with exit code 0."}}
 	done := resume(t, f, model, parked.RunState)
 
 	if done.RunState.Active != time.Minute {

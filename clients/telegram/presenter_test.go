@@ -1,7 +1,9 @@
 package telegram
 
 import (
+	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -47,7 +49,7 @@ func TestDisabledPickerRowsKeepTheMenu(t *testing.T) {
 	_, markup := presentPicker(picker, 0)
 
 	data := markup.InlineKeyboard[0][0].CallbackData
-	if kind, _, ok := parsePickerCallbackData(data); strings.HasPrefix(data, cbPicker) && ok && kind == callbackKindDismiss {
+	if strings.HasPrefix(data, cbPicker) && parsePickerCallbackData(data) == "" {
 		t.Fatalf("a disabled row dismisses the menu: %q", data)
 	}
 }
@@ -60,5 +62,41 @@ func TestInfoShowsEachValueOnce(t *testing.T) {
 	rowsOnly := controlplane.InfoData{Title: "Server Status", Rows: []controlplane.InfoRow{{Label: "Uptime", Value: "1h"}}}
 	if text := infoText(rowsOnly); text != "Server Status\nUptime: 1h" {
 		t.Fatalf("rows only info text = %q", text)
+	}
+}
+
+func TestLongButtonDataResolvesAfterARestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "callbacks.json")
+	command := "/modules storage file " + strings.Repeat("notes/", 12) + "plan%20v2.md"
+	long := commandCallbackData(command)
+	markup := newWorker(Config{CallbackCachePath: path}, nil).compactInlineKeyboardMarkup(&InlineKeyboardMarkup{InlineKeyboard: [][]InlineKeyboardButton{{{Text: "Open", CallbackData: long}, {Text: "Close", CallbackData: commandCallbackData("")}}}})
+
+	ref := markup.InlineKeyboard[0][0].CallbackData
+	if len(ref) > maxCallbackDataBytes || !strings.HasPrefix(ref, cbCallbackRef) {
+		t.Fatalf("long button data sent as %q", ref)
+	}
+	if short := markup.InlineKeyboard[0][1].CallbackData; short != cbPicker {
+		t.Fatalf("short button data = %q", short)
+	}
+	restarted := newWorker(Config{CallbackCachePath: path}, nil)
+	if got := parsePickerCallbackData(restarted.resolveCallbackData(ref)); got != command {
+		t.Fatalf("after a restart the button runs %q, want %q", got, command)
+	}
+}
+
+func TestATextToEditIsShownAndTakesTheNextMessage(t *testing.T) {
+	worker := newWorker(Config{}, &approvalBotAPI{})
+	target := chatTarget{kind: telegramTargetChat, chatID: 42, externalKey: "42"}
+	prompt := controlplane.PromptData{Title: "Edit Review", Value: "Read the diff twice.", Submit: "/modules skills save-body library review", Multiline: true}
+
+	if err := worker.renderCommandResult(context.Background(), target, controlplane.Result{Screen: prompt}); err != nil {
+		t.Fatal(err)
+	}
+
+	if text := presentCommandResult(controlplane.Result{Screen: prompt}, 0).Text; !strings.Contains(text, "Edit Review") || !strings.Contains(text, "Read the diff twice.") {
+		t.Fatalf("text to edit shown as %q", text)
+	}
+	if pending, ok := worker.takePrompt("42"); !ok || pending.Submit != prompt.Submit {
+		t.Fatalf("pending prompt = %+v, %v", pending, ok)
 	}
 }

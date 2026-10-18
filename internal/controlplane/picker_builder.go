@@ -59,7 +59,6 @@ func (b *PickerBuilder) Static(id string, title string, info string) *PickerBuil
 	return b.Item(PickerItem{ID: id, Title: title, Info: info, Disabled: true})
 }
 
-func (b *PickerBuilder) Ptr() *PickerData {
-	data := b.data
-	return &data
+func (b *PickerBuilder) Build() PickerData {
+	return b.data
 }

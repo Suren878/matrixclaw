@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-
-	"github.com/Suren878/matrixclaw/internal/controlplane"
 )
 
 func (w *Worker) dispatchRestartCommandAndEdit(target chatTarget, messageID int64) error {
@@ -40,8 +38,4 @@ func (w *Worker) dispatchRestartCommandAndEdit(target chatTarget, messageID int6
 		return w.editOrSend(telegramCtx, target, messageID, fmt.Sprintf("Architect restart failed: %v", err), nil)
 	}
 	return nil
-}
-
-func isDaemonRestartCommand(text string) bool {
-	return matchesCatalogCommand(text, controlplane.CommandRestart, "confirm")
 }

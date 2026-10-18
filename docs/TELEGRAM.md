@@ -19,8 +19,12 @@ started in the terminal can be continued from Telegram and back.
 
 The daemon starts the bot when the config is saved; there is no separate
 process. It registers its command menu with Telegram on start. The worker keeps
-two small state files next to the database: `telegram-inline-cache.json` and
-`telegram-render-state.json`.
+three small state files next to the database: `telegram-inline-cache.json`
+(inline requests), `telegram-callbacks.json` (button data over Telegram's 64
+bytes, kept by a short reference, so menus sent before a restart keep
+working) and `telegram-render-state.json`. Open forms (a provider's API key
+among them) are kept in memory only; after a restart their buttons say the
+form expired.
 
 ## Who can use it
 
@@ -88,8 +92,10 @@ An approval message offers **Allow**, **Deny** and **Deny with reason**. When th
 daemon suggests a rule (for example `bash: go test:*`) it also offers
 **Always: session**, and in the owner chat **Always: global**. Deny with reason
 takes the next message as the reason (`/cancel` aborts); the model receives
-`User denied: <reason>` and continues. An open prompt expires after 10 minutes,
-after which your next message is an ordinary one.
+`User denied: <reason>` and continues. Other prompts (a setting, a text to
+edit) take the next message the same way; a secret's message is deleted from
+the chat. An open prompt expires after 10 minutes, after which your next
+message is an ordinary one.
 
 A subagent's approval is asked in its parent's chat, headed with the
 subagent's name.

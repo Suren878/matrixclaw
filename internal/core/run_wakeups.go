@@ -5,6 +5,9 @@ import (
 	"errors"
 	"log"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/agent"
+	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 // wakeupInterval is how often due run wakeups are looked for.
@@ -57,7 +60,8 @@ func (c *Core) steerQueuedInputs(ctx context.Context, run Run) error {
 	return nil
 }
 
-// waitOver reports whether a waiting run has something to go on with.
+// waitOver reports whether a waiting run has something to go on with, as
+// agent.AwaitOver judges it.
 func (c *Core) waitOver(ctx context.Context, run Run) (bool, error) {
 	wakeup, err := c.store.GetRunWakeup(ctx, run.ID)
 	if errors.Is(err, ErrNotFound) {
@@ -66,18 +70,23 @@ func (c *Core) waitOver(ctx context.Context, run Run) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if !c.now().Before(wakeup.WakeAt) {
-		return true, nil
-	}
 	steers, err := c.store.ListPendingSteerInputs(ctx, run.SessionID, run.ID)
-	if err != nil || len(steers) > 0 {
-		return len(steers) > 0, err
+	if err != nil {
+		return false, err
 	}
+	signals := agent.AwaitSignals{Steered: len(steers) > 0}
 	if len(wakeup.TaskIDs) > 0 {
-		return c.anyTaskFinished(ctx, wakeup.TaskIDs)
+		signals.Ended, err = c.anyTaskFinished(ctx, wakeup.TaskIDs)
+	} else {
+		var events []Task
+		events, err = c.store.ListTasks(ctx, TaskFilter{SessionID: run.SessionID, Undelivered: true})
+		signals.Events = len(events) > 0
 	}
-	events, err := c.store.ListTasks(ctx, TaskFilter{SessionID: run.SessionID, Undelivered: true})
-	return len(events) > 0, err
+	if err != nil {
+		return false, err
+	}
+	await := tools.Await{TaskIDs: wakeup.TaskIDs, Until: wakeup.WakeAt}
+	return agent.AwaitOver(await, c.now(), signals) != agent.AwaitParked, nil
 }
 
 // anyTaskFinished reports whether any of the tasks ended, whether or not its

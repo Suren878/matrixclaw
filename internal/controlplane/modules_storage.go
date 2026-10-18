@@ -1,58 +1,70 @@
 package controlplane
 
-import (
-	"context"
-	"strings"
+import "context"
+
+var (
+	storageRootVerb                = verb(CommandModules, "storage", 0)
+	storageFilesVerb               = verb(CommandModules, "storage files", 0)
+	storageFileVerb                = verb(CommandModules, "storage file", 1)
+	storageReadVerb                = verb(CommandModules, "storage read", 1)
+	storageDeleteVerb              = verb(CommandModules, "storage delete", 1)
+	storageDeleteConfirmVerb       = verb(CommandModules, "storage delete-confirm", 1)
+	storageClearVerb               = verb(CommandModules, "storage clear", 0)
+	storageClearConfirmVerb        = verb(CommandModules, "storage clear-confirm", 0)
+	storageTempVerb                = verb(CommandModules, "storage temp", 0)
+	storageTempFileVerb            = verb(CommandModules, "storage temp-file", 1)
+	storageTempPromoteVerb         = verb(CommandModules, "storage temp-promote", 1)
+	storageTempDeleteVerb          = verb(CommandModules, "storage temp-delete", 1)
+	storageTempDeleteConfirmVerb   = verb(CommandModules, "storage temp-delete-confirm", 1)
+	storageTempCleanupVerb         = verb(CommandModules, "storage temp-cleanup", 0)
+	storageTempCleanupConfirmVerb  = verb(CommandModules, "storage temp-cleanup-confirm", 0)
+	storageTempCleanupSettingsVerb = verb(CommandModules, "storage temp-cleanup-settings", 0)
+	storageTempCleanupModeVerb     = verb(CommandModules, "storage temp-cleanup-mode", 0)
+	storageTempToggleVerb          = verb(CommandModules, "storage temp-toggle", 1)
+	storageTempDaysVerb            = valueVerb(CommandModules, "storage temp-days", 0)
+	storageTempMaxVerb             = valueVerb(CommandModules, "storage temp-max", 0)
 )
 
-func (d *Dispatcher) handleStorage(ctx context.Context, args string) (Result, error) {
-	args = strings.TrimSpace(args)
-	if args == "" {
-		return d.storagePicker(ctx)
-	}
-	fields := strings.Fields(args)
-	if len(fields) == 0 {
-		return d.storagePicker(ctx)
-	}
-	rest := strings.TrimSpace(strings.TrimPrefix(args, fields[0]))
-	switch strings.ToLower(fields[0]) {
-	case "temp":
+func (d *Dispatcher) handleStorage(ctx context.Context, r Route) (Result, error) {
+	path := r.arg(0)
+	switch r.Verb {
+	case storageTempVerb:
 		return d.storageTempPicker(ctx)
-	case "temp-file":
-		return d.storageTempFilePicker(ctx, rest)
-	case "temp-promote":
-		return d.storageTempPromote(ctx, rest)
-	case "temp-delete":
-		return d.storageTempDeleteConfirm(rest), nil
-	case "temp-delete-confirm":
-		return d.storageTempDelete(ctx, rest)
-	case "temp-cleanup":
+	case storageTempFileVerb:
+		return d.storageTempFilePicker(ctx, path)
+	case storageTempPromoteVerb:
+		return d.storageTempPromote(ctx, path)
+	case storageTempDeleteVerb:
+		return d.storageTempDeleteConfirm(path), nil
+	case storageTempDeleteConfirmVerb:
+		return d.storageTempDelete(ctx, path)
+	case storageTempCleanupVerb:
 		return d.storageTempCleanup()
-	case "temp-cleanup-confirm":
+	case storageTempCleanupConfirmVerb:
 		return d.storageTempCleanupConfirmed(ctx)
-	case "temp-cleanup-settings":
+	case storageTempCleanupSettingsVerb:
 		return d.storageTempCleanupSettings(ctx)
-	case "temp-cleanup-mode":
+	case storageTempCleanupModeVerb:
 		return d.storageTempCleanupModePicker(ctx)
-	case "temp-toggle":
-		return d.storageTempToggle(ctx, rest)
-	case "temp-days":
-		return d.storageTempDays(ctx, rest)
-	case "temp-max":
-		return d.storageTempMax(ctx, rest)
-	case "files":
+	case storageTempToggleVerb:
+		return d.storageTempToggle(ctx, path)
+	case storageTempDaysVerb:
+		return d.storageTempDays(ctx, r.Value)
+	case storageTempMaxVerb:
+		return d.storageTempMax(ctx, r.Value)
+	case storageFilesVerb:
 		return d.storageFilesPicker(ctx)
-	case "file":
-		return d.storageFilePicker(ctx, rest)
-	case "read":
-		return d.storageRead(ctx, rest)
-	case "delete":
-		return d.storageDeleteConfirm(rest), nil
-	case "delete-confirm":
-		return d.storageDelete(ctx, rest)
-	case "clear":
+	case storageFileVerb:
+		return d.storageFilePicker(ctx, path)
+	case storageReadVerb:
+		return d.storageRead(ctx, path)
+	case storageDeleteVerb:
+		return d.storageDeleteConfirm(path), nil
+	case storageDeleteConfirmVerb:
+		return d.storageDelete(ctx, path)
+	case storageClearVerb:
 		return d.storageClearConfirm(), nil
-	case "clear-confirm":
+	case storageClearConfirmVerb:
 		return d.storageClear(ctx)
 	default:
 		return d.storagePicker(ctx)

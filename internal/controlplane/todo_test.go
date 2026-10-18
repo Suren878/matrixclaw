@@ -29,8 +29,8 @@ func TestTodoCommandShowsTheList(t *testing.T) {
 	result := daemon.run("/todo")
 
 	want := "1 of 2 done\n\n1. [completed] Fix the bug\n2. [pending] Run the tests\n\n" + todoUsage
-	if result.Info == nil || result.Info.Text != want || len(result.Info.Rows) != 2 {
-		t.Fatalf("info = %+v", result.Info)
+	if screenOf[InfoData](t, result).Text != want || len(screenOf[InfoData](t, result).Rows) != 2 {
+		t.Fatalf("info = %+v", screenOf[InfoData](t, result))
 	}
 }
 
@@ -38,10 +38,10 @@ func TestTodoCommandClearsAfterConfirmation(t *testing.T) {
 	daemon, cleared := todoDaemon(t, todo.List{SessionID: "s1", Items: []todo.Item{{Content: "Run the tests", Status: todo.Pending}}})
 
 	asked := daemon.run("/todo clear")
-	if asked.Confirm == nil || asked.Confirm.ConfirmCommand != "/todo clear confirm" || *cleared != 0 {
+	if screenOf[ConfirmData](t, asked).ConfirmCommand != "/todo clear confirm" || *cleared != 0 {
 		t.Fatalf("clear = %+v", asked)
 	}
-	if confirmed := daemon.run(asked.Confirm.ConfirmCommand); confirmed.Text != "Todo list cleared." || !confirmed.ReloadSnapshot || *cleared != 1 {
+	if confirmed := daemon.run(screenOf[ConfirmData](t, asked).ConfirmCommand); confirmed.Text() != "Todo list cleared." || !confirmed.ReloadSnapshot || *cleared != 1 {
 		t.Fatalf("confirm = %+v", confirmed)
 	}
 }
@@ -50,7 +50,7 @@ func TestTodoCommandIsForMatrixclawSessionsOnly(t *testing.T) {
 	daemon, _ := todoDaemon(t, todo.List{})
 	daemon.sessions = []core.Session{{ID: "s1", Title: "s1", Kind: core.SessionKindExternalAgent}}
 
-	if result := daemon.run("/todo"); result.Text != "Todo lists are kept by Matrixclaw sessions only." {
+	if result := daemon.run("/todo"); result.Text() != "Todo lists are kept by Matrixclaw sessions only." {
 		t.Fatalf("result = %+v", result)
 	}
 }

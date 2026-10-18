@@ -8,12 +8,15 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-func (d *Dispatcher) handleMemory(ctx context.Context, args string) (Result, error) {
-	if step, rest := firstCommandStep(args); step == "pending" {
-		return d.handleMemorySuggestions(ctx, rest)
+// A scope to list is the value of /memory.
+var _ = valueVerb(CommandMemory, "", 0)
+
+func (d *Dispatcher) handleMemory(ctx context.Context, r Route) (Result, error) {
+	if r.Verb.words != "" {
+		return d.handleMemorySuggestions(ctx, r)
 	}
 	filter := core.MemoryFilter{
-		Scope:      memoryScopeArg(args),
+		Scope:      memoryScopeArg(r.Value),
 		WorkingDir: d.workingDir,
 		Limit:      50,
 	}
@@ -21,8 +24,7 @@ func (d *Dispatcher) handleMemory(ctx context.Context, args string) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
-	info := memoryInfoData(entries)
-	return Result{Handled: true, Info: &info}, nil
+	return Result{Screen: memoryInfoData(entries)}, nil
 }
 
 func memoryScopeArg(args string) core.MemoryScope {

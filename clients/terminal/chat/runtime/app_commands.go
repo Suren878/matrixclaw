@@ -16,15 +16,15 @@ func (m *appModel) handleControlplaneSubmit(content string, attachments []surfac
 	if _, _, ok := controlplane.Parse(content); !ok {
 		return false, nil
 	}
-	if strings.TrimSpace(content) == "/status" {
+	if isCommand(content, controlplane.CommandStatus) {
 		m.dialog.menu = menuNone
 		return true, m.openServerStatusDialog()
 	}
-	if isDaemonRestartCommand(content) {
+	if controlplane.RestartRequested(content) {
 		m.dialog.menu = menuNone
 		return true, m.openServerRestartDialog(false)
 	}
-	if isContextCompactCommand(content) {
+	if controlplane.CompactRequested(content) {
 		m.dialog.menu = menuNone
 		m.startContextCompactProgress()
 		return true, m.controlplaneCmd(content)
@@ -36,7 +36,7 @@ func (m *appModel) handleControlplaneSubmit(content string, attachments []surfac
 func (m *appModel) controlplaneCmd(content string) tea.Cmd {
 	seq := m.nextControlplaneSeq()
 	return func() tea.Msg {
-		result, err := controlplane.New(m.rt.client, m.workingDir).Handle(m.ctx, content)
+		result, err := m.commands.Handle(m.ctx, content)
 		return controlplaneResultMsg{command: strings.TrimSpace(content), seq: seq, result: result, err: err}
 	}
 }

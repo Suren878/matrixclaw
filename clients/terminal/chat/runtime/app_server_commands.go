@@ -58,9 +58,10 @@ func (m *appModel) openServerRestartDialog(reopenTerminal bool) tea.Cmd {
 	return tea.Batch(m.restartDaemonCmd(), m.serverRestartTickCmd())
 }
 
-func isDaemonRestartCommand(text string) bool {
-	spec, args, ok := controlplane.Parse(text)
-	return ok && spec.ID == controlplane.CommandRestart && strings.EqualFold(strings.TrimSpace(args), "confirm")
+// isCommand reports whether text runs command id.
+func isCommand(text string, id controlplane.CommandID) bool {
+	route, ok := controlplane.DecodeRoute(text)
+	return ok && route.Command() == id
 }
 
 func (m *appModel) restartDaemonCmd() tea.Cmd {

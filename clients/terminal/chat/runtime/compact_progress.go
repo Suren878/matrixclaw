@@ -14,10 +14,6 @@ const (
 	compactFailedPrefix      = "❌ Summarizing failed"
 )
 
-func isContextCompactCommand(command string) bool {
-	return strings.EqualFold(strings.TrimSpace(command), "/context compact confirm")
-}
-
 func (m *appModel) startContextCompactProgress() {
 	m.clearNotice()
 	m.upsertTransientMessage(newCompactTransientMessage(compactProgressText))

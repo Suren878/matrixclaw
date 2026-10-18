@@ -3,7 +3,6 @@ package openaicodex
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -168,70 +167,4 @@ func pollDeviceLogin(ctx context.Context, client *http.Client, device LoginDevic
 		}
 		return code, verifier, nil
 	}
-}
-
-// loginDeviceToken is how a pending device login travels through a client.
-type loginDeviceToken struct {
-	UserCode    string `json:"user_code"`
-	VerifyURL   string `json:"verify_url"`
-	IntervalMS  int64  `json:"interval_ms"`
-	ExpiresMS   int64  `json:"expires_ms"`
-	AuthID      string `json:"auth_id"`
-	RequestedAt int64  `json:"requested_at"`
-}
-
-func EncodeLoginDevice(device LoginDevice) (string, error) {
-	if strings.TrimSpace(device.authID) == "" || strings.TrimSpace(device.UserCode) == "" {
-		return "", errors.New("openai-codex: incomplete device login")
-	}
-	raw, err := json.Marshal(loginDeviceToken{
-		UserCode:    strings.TrimSpace(device.UserCode),
-		VerifyURL:   strings.TrimSpace(device.VerifyURL),
-		IntervalMS:  device.Interval.Milliseconds(),
-		ExpiresMS:   device.ExpiresIn.Milliseconds(),
-		AuthID:      strings.TrimSpace(device.authID),
-		RequestedAt: device.requestedAt.UnixMilli(),
-	})
-	if err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(raw), nil
-}
-
-func DecodeLoginDevice(token string) (LoginDevice, error) {
-	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(token))
-	if err != nil {
-		return LoginDevice{}, fmt.Errorf("openai-codex: decode login session: %w", err)
-	}
-	var payload loginDeviceToken
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return LoginDevice{}, fmt.Errorf("openai-codex: decode login session: %w", err)
-	}
-	if strings.TrimSpace(payload.UserCode) == "" || strings.TrimSpace(payload.AuthID) == "" {
-		return LoginDevice{}, errors.New("openai-codex: incomplete device login")
-	}
-	interval := time.Duration(payload.IntervalMS) * time.Millisecond
-	if interval <= 0 {
-		interval = 5 * time.Second
-	}
-	expires := time.Duration(payload.ExpiresMS) * time.Millisecond
-	if expires <= 0 {
-		expires = 15 * time.Minute
-	}
-	requestedAt := time.Now()
-	if payload.RequestedAt > 0 {
-		requestedAt = time.UnixMilli(payload.RequestedAt)
-	}
-	verifyURL := strings.TrimSpace(payload.VerifyURL)
-	if verifyURL == "" {
-		verifyURL = oauthIssuer + "/codex/device"
-	}
-	return LoginDevice{
-		UserCode:    strings.TrimSpace(payload.UserCode),
-		VerifyURL:   verifyURL,
-		Interval:    interval,
-		ExpiresIn:   expires,
-		authID:      strings.TrimSpace(payload.AuthID),
-		requestedAt: requestedAt,
-	}, nil
 }

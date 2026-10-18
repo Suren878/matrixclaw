@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -34,11 +35,17 @@ func TestRunStatusEdges(t *testing.T) {
 // runStatusStore answers GetRun with a run in status.
 type runStatusStore struct {
 	Store
-	status RunStatus
+	status *atomic.Value
+}
+
+func statusStore(status RunStatus) runStatusStore {
+	s := runStatusStore{status: &atomic.Value{}}
+	s.status.Store(status)
+	return s
 }
 
 func (s runStatusStore) GetRun(_ context.Context, runID string) (Run, error) {
-	return Run{ID: runID, Status: s.status}, nil
+	return Run{ID: runID, Status: s.status.Load().(RunStatus)}, nil
 }
 
 // runEndWaiters counts the callers waiting for runs to end.
@@ -54,7 +61,7 @@ func (c *Core) runEndWaiters() int {
 
 func TestWaitingForARunThatEndedReturnsAtOnce(t *testing.T) {
 	t.Parallel()
-	c := New(runStatusStore{status: RunStatusCompleted})
+	c := New(statusStore(RunStatusCompleted))
 
 	if err := c.waitRunEnd(context.Background(), "run_done"); err != nil {
 		t.Fatal(err)
@@ -66,7 +73,8 @@ func TestWaitingForARunThatEndedReturnsAtOnce(t *testing.T) {
 
 func TestARunEndWakesItsWaitersAndForgetsThem(t *testing.T) {
 	t.Parallel()
-	c := New(runStatusStore{status: RunStatusRunning})
+	store := statusStore(RunStatusRunning)
+	c := New(store)
 	done := make(chan error, 2)
 	for range 2 {
 		go func() { done <- c.waitRunEnd(context.Background(), "run_child") }()
@@ -75,7 +83,9 @@ func TestARunEndWakesItsWaitersAndForgetsThem(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 
-	c.notifyRunEnd("run_child")
+	c.beginRunEnd("run_child")
+	store.status.Store(RunStatusCompleted)
+	c.endRunEnd("run_child")
 
 	for range 2 {
 		if err := <-done; err != nil {
@@ -87,9 +97,31 @@ func TestARunEndWakesItsWaitersAndForgetsThem(t *testing.T) {
 	}
 }
 
+func TestAWaiterWaitsForWhatFollowsTheEndItSees(t *testing.T) {
+	t.Parallel()
+	c := New(statusStore(RunStatusCompleted))
+	c.beginRunEnd("run_child")
+	done := make(chan error, 1)
+	go func() { done <- c.waitRunEnd(context.Background(), "run_child") }()
+	for c.runEndWaiters() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("returned before the follow-up finished: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	c.endRunEnd("run_child")
+
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAWaiterThatStopsIsForgotten(t *testing.T) {
 	t.Parallel()
-	c := New(runStatusStore{status: RunStatusWaitingApproval})
+	c := New(statusStore(RunStatusWaitingApproval))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- c.waitRunEnd(ctx, "run_child") }()
@@ -112,7 +144,8 @@ type failingFollowUpStore struct {
 	runStatusStore
 }
 
-func (failingFollowUpStore) SealRun(context.Context, Run, *transcript.Message, bool) error {
+func (s failingFollowUpStore) SealRun(_ context.Context, run Run, _ *transcript.Message, _ bool) error {
+	s.status.Store(run.Status)
 	return nil
 }
 func (failingFollowUpStore) DeleteRunWakeup(context.Context, string) error { return nil }
@@ -126,7 +159,7 @@ func (failingFollowUpStore) ListTasks(context.Context, TaskFilter) ([]Task, erro
 
 func TestARunEndWakesItsWaitersWhenTheStepsAfterItFail(t *testing.T) {
 	t.Parallel()
-	c := New(failingFollowUpStore{runStatusStore{status: RunStatusRunning}})
+	c := New(failingFollowUpStore{statusStore(RunStatusRunning)})
 	done := make(chan error, 1)
 	go func() { done <- c.waitRunEnd(context.Background(), "run_child") }()
 	for c.runEndWaiters() < 1 {

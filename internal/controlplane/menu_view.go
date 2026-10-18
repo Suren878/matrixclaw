@@ -75,8 +75,10 @@ func hasSessionCapabilities(capabilities core.SessionCapabilities) bool {
 		capabilities.ExternalAgent
 }
 
-func commandMenuPicker() *PickerData {
-	return NewPickerData(PickerCommandMenu, "Menu").Command(helpCommand()).Items(Menu(MenuState{})...).Ptr()
+var helpRoot = verb(CommandHelp, "", 0)
+
+func commandMenuPicker() PickerData {
+	return NewPickerData(PickerCommandMenu, "Menu").Command(helpRoot.command()).Items(Menu(MenuState{})...).Build()
 }
 
 func permissionModeStatus(mode core.PermissionMode) string {

@@ -1,20 +1,32 @@
 package controlplane
 
-type PromptData struct {
-	Title               string
-	Placeholder         string
-	Value               string
-	SubmitCommandPrefix string
-	CancelCommand       string
-	Sensitive           bool
+// Screen is what a client shows: TextData, PickerData, FormData,
+// PromptData, ConfirmData or InfoData.
+type Screen interface{ screen() }
+
+func (TextData) screen()    {}
+func (PickerData) screen()  {}
+func (FormData) screen()    {}
+func (PromptData) screen()  {}
+func (ConfirmData) screen() {}
+func (InfoData) screen()    {}
+
+// TextData is a plain answer.
+type TextData struct {
+	Text string
 }
 
-type TextEditData struct {
-	Title               string
-	Placeholder         string
-	Value               string
-	SubmitCommandPrefix string
-	CancelCommand       string
+// PromptData asks for one value, which the client hands to
+// Dispatcher.Answer with Submit; Multiline asks for a text to edit rather
+// than a line, and Sensitive for a secret the client neither shows nor keeps.
+type PromptData struct {
+	Title         string
+	Placeholder   string
+	Value         string
+	Submit        string
+	CancelCommand string
+	Sensitive     bool
+	Multiline     bool
 }
 
 type FormData struct {
@@ -58,8 +70,8 @@ type InfoRow struct {
 	Value string
 }
 
-func deleteConfirmData(message string, confirmCommand string, cancelCommand string) *ConfirmData {
-	return &ConfirmData{
+func deleteConfirmData(message string, confirmCommand string, cancelCommand string) ConfirmData {
+	return ConfirmData{
 		Message:        message,
 		ConfirmLabel:   "Delete",
 		CancelLabel:    "Close",

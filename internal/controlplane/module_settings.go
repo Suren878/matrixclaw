@@ -11,26 +11,30 @@ import (
 
 // Module settings screens are drawn from the daemon's settings items:
 //
-//	/modules <id>                     the module's page
-//	/modules <id> open <path> [group] a page, info, choice or prompt
-//	/modules <id> confirm <path> [v]  ask, then set
-//	/modules <id> set <path> [value]  change and show what the daemon opens
+//	/modules <id>                       the module's page (typed)
+//	/modules settings <id>              the module's page
+//	/modules open <id> <path> [group]   a page, info, choice or prompt
+//	/modules confirm <id> <path> [v]    ask, then set
+//	/modules set <id> <path> [value]    change and show what the daemon opens
 //
 // A path is item keys joined by "/". Non-owners see the pages read-only.
 
-func (d *Dispatcher) handleModuleSettings(ctx context.Context, moduleID string, args string) (Result, error) {
-	step, rest := firstCommandStep(args)
-	rawPath, value := firstCommandToken(rest)
-	path := splitSettingPath(rawPath)
-	switch step {
-	case "":
-		return d.moduleSettingsPage(ctx, moduleID, nil, "")
-	case "open":
-		return d.openModuleSetting(ctx, moduleID, path, strings.TrimSpace(value), "")
-	case "confirm":
-		return d.confirmModuleSetting(ctx, moduleID, path, strings.TrimSpace(value))
-	case "set":
-		return d.setModuleSetting(ctx, moduleID, path, strings.TrimSpace(value))
+var (
+	settingsPageVerb    = verb(CommandModules, "settings", 1)
+	settingsOpenVerb    = valueVerb(CommandModules, "open", 2)
+	settingsConfirmVerb = valueVerb(CommandModules, "confirm", 2)
+	settingsSetVerb     = valueVerb(CommandModules, "set", 2)
+)
+
+func (d *Dispatcher) handleModuleSettings(ctx context.Context, r Route) (Result, error) {
+	moduleID, path := r.arg(0), splitSettingPath(r.arg(1))
+	switch r.Verb {
+	case settingsOpenVerb:
+		return d.openModuleSetting(ctx, moduleID, path, r.Value, "")
+	case settingsConfirmVerb:
+		return d.confirmModuleSetting(ctx, moduleID, path, r.Value)
+	case settingsSetVerb:
+		return d.setModuleSetting(ctx, moduleID, path, r.Value)
 	default:
 		return d.moduleSettingsPage(ctx, moduleID, nil, "")
 	}
@@ -48,7 +52,7 @@ func (d *Dispatcher) moduleSettingsPage(ctx context.Context, moduleID string, pa
 func (d *Dispatcher) settingsPage(moduleID string, settings modules.Settings, path []string, message string) Result {
 	title, items := settings.Status.Title, settings.Items
 	meta := strings.Join(textutil.NonBlank(message, settings.Status.State, settings.Status.Detail), "\n")
-	back := modulesCommand()
+	back := modulesRoot.command()
 	if len(path) > 0 {
 		page, ok := modules.Find(settings.Items, path)
 		if !ok || page.Kind != modules.ItemPage {
@@ -61,16 +65,16 @@ func (d *Dispatcher) settingsPage(moduleID string, settings modules.Settings, pa
 	for _, item := range items {
 		picker.Item(d.settingsRow(moduleID, append(append([]string(nil), path...), item.Key), item))
 	}
-	return Result{Handled: true, Picker: picker.Ptr()}
+	return Result{Screen: picker.Build()}
 }
 
 func (d *Dispatcher) settingsRow(moduleID string, path []string, item modules.Item) PickerItem {
 	row := PickerItem{ID: item.Key, Title: item.Label, Info: settingDisplay(item), Disabled: item.Disabled}
 	switch {
 	case item.Kind == modules.ItemAction && item.Confirm != "":
-		row.Command = settingsCommand(moduleID, "confirm", path, "")
+		row.Command = settingsCommand(settingsConfirmVerb, moduleID, path, "")
 	case item.Kind == modules.ItemAction:
-		row.Command = settingsCommand(moduleID, "set", path, "")
+		row.Command = settingsCommand(settingsSetVerb, moduleID, path, "")
 	default:
 		row.Command = settingsOpenCommand(moduleID, path)
 	}
@@ -135,22 +139,22 @@ func (d *Dispatcher) openSetting(moduleID string, settings modules.Settings, pat
 		for _, fact := range item.Facts {
 			rows = append(rows, InfoRow{Label: fact.Label, Value: fact.Value})
 		}
-		return Result{Handled: true, Info: &InfoData{Title: item.Label, Rows: rows}}
+		return Result{Screen: InfoData{Title: item.Label, Rows: rows}}
 	case modules.ItemToggle:
 		if !editable {
 			break
 		}
-		return Result{Handled: true, Picker: NewPickerData(PickerModule, item.Label).
+		return Result{Screen: NewPickerData(PickerModule, item.Label).
 			Meta(message).
 			Select(parent).
-			Item(PickerItem{ID: "on", Title: "On", Selected: item.Value == "on", Command: settingsCommand(moduleID, "set", path, "on")}).
-			Item(PickerItem{ID: "off", Title: "Off", Selected: item.Value == "off", Command: settingsCommand(moduleID, "set", path, "off")}).
-			Ptr()}
+			Item(PickerItem{ID: "on", Title: "On", Selected: item.Value == "on", Command: settingsCommand(settingsSetVerb, moduleID, path, "on")}).
+			Item(PickerItem{ID: "off", Title: "Off", Selected: item.Value == "off", Command: settingsCommand(settingsSetVerb, moduleID, path, "off")}).
+			Build()}
 	case modules.ItemChoice:
 		if !editable {
 			break
 		}
-		return Result{Handled: true, Picker: d.choicePicker(moduleID, path, item, group, message, parent)}
+		return Result{Screen: d.choicePicker(moduleID, path, item, group, message, parent)}
 	case modules.ItemText, modules.ItemSecret:
 		if !editable {
 			break
@@ -159,13 +163,13 @@ func (d *Dispatcher) openSetting(moduleID string, settings modules.Settings, pat
 		if item.Kind == modules.ItemSecret && item.Display != "" && item.Display != "Not set" {
 			placeholder = item.Display
 		}
-		return Result{Handled: true, Prompt: &PromptData{
-			Title:               strings.Join(textutil.NonBlank(message, item.Label), "\n"),
-			Placeholder:         placeholder + " · - to clear",
-			Value:               item.Value,
-			SubmitCommandPrefix: settingsCommand(moduleID, "set", path, "") + " ",
-			CancelCommand:       parent,
-			Sensitive:           item.Kind == modules.ItemSecret,
+		return Result{Screen: PromptData{
+			Title:         strings.Join(textutil.NonBlank(message, item.Label), "\n"),
+			Placeholder:   placeholder + " · - to clear",
+			Value:         item.Value,
+			Submit:        settingsCommand(settingsSetVerb, moduleID, path, ""),
+			CancelCommand: parent,
+			Sensitive:     item.Kind == modules.ItemSecret,
 		}}
 	case modules.ItemAction:
 		if editable && item.Confirm != "" {
@@ -177,7 +181,7 @@ func (d *Dispatcher) openSetting(moduleID string, settings modules.Settings, pat
 
 // choicePicker lists a choice's options; grouped options are picked group
 // first.
-func (d *Dispatcher) choicePicker(moduleID string, path []string, item modules.Item, group string, message string, parent string) *PickerData {
+func (d *Dispatcher) choicePicker(moduleID string, path []string, item modules.Item, group string, message string, parent string) PickerData {
 	grouped := false
 	for _, option := range item.Options {
 		grouped = grouped || option.Group != ""
@@ -193,13 +197,13 @@ func (d *Dispatcher) choicePicker(moduleID string, path []string, item modules.I
 		for _, option := range item.Options {
 			if option.Group != "" && !slices.Contains(groups, option.Group) {
 				groups = append(groups, option.Group)
-				picker.Item(PickerItem{ID: option.Group, Title: option.Group, Command: settingsOpenCommand(moduleID, path) + " " + option.Group})
+				picker.Item(PickerItem{ID: option.Group, Title: option.Group, Command: settingsCommand(settingsOpenVerb, moduleID, path, option.Group)})
 			}
 		}
-		return picker.Ptr()
+		return picker.Build()
 	}
 	if grouped {
-		picker.Command(settingsOpenCommand(moduleID, path) + " " + group).Back(settingsOpenCommand(moduleID, path))
+		picker.Command(settingsCommand(settingsOpenVerb, moduleID, path, group)).Back(settingsOpenCommand(moduleID, path))
 	} else {
 		picker.Command(settingsOpenCommand(moduleID, path)).Select(parent)
 	}
@@ -207,9 +211,9 @@ func (d *Dispatcher) choicePicker(moduleID string, path []string, item modules.I
 		if grouped && option.Group != group {
 			continue
 		}
-		verb := "set"
+		verb := settingsSetVerb
 		if option.Confirm != "" {
-			verb = "confirm"
+			verb = settingsConfirmVerb
 		}
 		picker.Item(PickerItem{
 			ID:       option.Value,
@@ -217,10 +221,10 @@ func (d *Dispatcher) choicePicker(moduleID string, path []string, item modules.I
 			Info:     option.Info,
 			Selected: option.Value == item.Value,
 			Disabled: option.Disabled,
-			Command:  settingsCommand(moduleID, verb, path, option.Value),
+			Command:  settingsCommand(verb, moduleID, path, option.Value),
 		})
 	}
-	return picker.Ptr()
+	return picker.Build()
 }
 
 func (d *Dispatcher) confirmModuleSetting(ctx context.Context, moduleID string, path []string, value string) (Result, error) {
@@ -249,11 +253,11 @@ func (d *Dispatcher) confirmSetting(moduleID string, path []string, question str
 	if danger {
 		label = "Delete"
 	}
-	return Result{Handled: true, Confirm: &ConfirmData{
+	return Result{Screen: ConfirmData{
 		Message:        question,
 		ConfirmLabel:   label,
 		CancelLabel:    "Close",
-		ConfirmCommand: settingsCommand(moduleID, "set", path, value),
+		ConfirmCommand: settingsCommand(settingsSetVerb, moduleID, path, value),
 		CancelCommand:  settingsOpenCommand(moduleID, path[:len(path)-1]),
 		ConfirmDanger:  danger,
 	}}
@@ -296,11 +300,11 @@ func splitSettingPath(raw string) []string {
 
 func settingsOpenCommand(moduleID string, path []string) string {
 	if len(path) == 0 {
-		return modulesCommand(moduleID)
+		return settingsPageVerb.command(moduleID)
 	}
-	return settingsCommand(moduleID, "open", path, "")
+	return settingsCommand(settingsOpenVerb, moduleID, path, "")
 }
 
-func settingsCommand(moduleID string, verb string, path []string, value string) string {
-	return modulesCommand(moduleID, verb, strings.Join(path, "/"), value)
+func settingsCommand(verb Verb, moduleID string, path []string, value string) string {
+	return verb.commandValue(value, moduleID, strings.Join(path, "/"))
 }

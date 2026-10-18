@@ -9,14 +9,30 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
+var (
+	serverRoot     = verb(CommandServer, "", 0)
+	statusRoot     = verb(CommandStatus, "", 0)
+	restartRoot    = verb(CommandRestart, "", 0)
+	restartConfirm = verb(CommandRestart, "confirm", 0)
+	stopRoot       = verb(CommandStop, "", 0)
+	stopConfirm    = verb(CommandStop, "confirm", 0)
+)
+
+// RestartRequested reports whether command is the confirmed daemon restart,
+// which clients run themselves to show its progress and the notice after it.
+func RestartRequested(command string) bool {
+	route, ok := DecodeRoute(command)
+	return ok && route.Is(restartConfirm)
+}
+
 func (d *Dispatcher) handleServer() Result {
 	picker := NewPickerData(PickerServer, "Server").
-		Row("status", "Status", "Uptime, CPU, memory", statusCommand())
+		Row("status", "Status", "Uptime, CPU, memory", statusRoot.command())
 	if d.owner() {
-		picker.Row("restart", "Restart", "", restartCommand()).
-			Row("stop", "Stop", "", stopCommand())
+		picker.Row("restart", "Restart", "", restartRoot.command()).
+			Row("stop", "Stop", "", stopRoot.command())
 	}
-	return Result{Handled: true, Picker: picker.Ptr()}
+	return Result{Screen: picker.Build()}
 }
 
 func (d *Dispatcher) handleStatus(ctx context.Context) (Result, error) {
@@ -24,56 +40,42 @@ func (d *Dispatcher) handleStatus(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{
-		Handled: true,
-		Text:    FormatServerStatus(status),
-		Info: &InfoData{
-			Title: "Server Status",
-			Rows:  FormatServerStatusRows(status),
-		},
-	}, nil
+	return Result{Screen: InfoData{Title: "Server Status", Rows: FormatServerStatusRows(status)}}, nil
 }
 
-// handleRestart asks to confirm; clients run the confirmed restart themselves
-// so they can show its progress and the notice after it.
+// handleRestart asks to confirm; clients run the confirmed restart themselves.
 func (d *Dispatcher) handleRestart() Result {
 	if !d.owner() {
-		return Result{Handled: true, Text: "Only the owner can restart the daemon."}
+		return textResult("Only the owner can restart the daemon.")
 	}
-	return Result{
-		Handled: true,
-		Confirm: &ConfirmData{
-			Message:        "Restart server daemon?",
-			ConfirmLabel:   "Restart",
-			CancelLabel:    "Close",
-			ConfirmCommand: restartConfirmCommand(),
-			CancelCommand:  serverCommand(),
-			ConfirmDanger:  true,
-		},
-	}
+	return Result{Screen: ConfirmData{
+		Message:        "Restart server daemon?",
+		ConfirmLabel:   "Restart",
+		CancelLabel:    "Close",
+		ConfirmCommand: restartConfirm.command(),
+		CancelCommand:  serverRoot.command(),
+		ConfirmDanger:  true,
+	}}
 }
 
-func (d *Dispatcher) handleStop(ctx context.Context, args string) (Result, error) {
+func (d *Dispatcher) handleStop(ctx context.Context, r Route) (Result, error) {
 	if !d.owner() {
-		return Result{Handled: true, Text: "Only the owner can stop the daemon."}, nil
+		return textResult("Only the owner can stop the daemon."), nil
 	}
-	if !strings.EqualFold(strings.TrimSpace(args), "confirm") {
-		return Result{
-			Handled: true,
-			Confirm: &ConfirmData{
-				Message:        "Stop server daemon?",
-				ConfirmLabel:   "Stop",
-				CancelLabel:    "Close",
-				ConfirmCommand: stopConfirmCommand(),
-				CancelCommand:  serverCommand(),
-				ConfirmDanger:  true,
-			},
-		}, nil
+	if !r.Is(stopConfirm) {
+		return Result{Screen: ConfirmData{
+			Message:        "Stop server daemon?",
+			ConfirmLabel:   "Stop",
+			CancelLabel:    "Close",
+			ConfirmCommand: stopConfirm.command(),
+			CancelCommand:  serverRoot.command(),
+			ConfirmDanger:  true,
+		}}, nil
 	}
 	if err := d.daemon.StopDaemon(ctx); err != nil {
 		return Result{}, err
 	}
-	return Result{Handled: true, Text: "Server daemon stop requested."}, nil
+	return textResult("Server daemon stop requested."), nil
 }
 
 func FormatServerStatus(status core.ServerStatus) string {

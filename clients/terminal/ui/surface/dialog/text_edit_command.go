@@ -14,7 +14,7 @@ import (
 
 const TextEditCommandID = "text_edit_command"
 
-type TextEditCommandData = controlplane.TextEditData
+type TextEditCommandData = controlplane.PromptData
 
 type TextEditCommand struct {
 	data      TextEditCommandData
@@ -54,7 +54,7 @@ func (d *TextEditCommand) HandleMsg(msg tea.Msg) Action {
 			}
 			return ActionClose{}
 		case "enter", "ctrl+s":
-			return ActionRunControlplaneCommand{Command: d.data.SubmitCommandPrefix + d.input.Value()}
+			return ActionAnswerControlplanePrompt{Submit: d.data.Submit, Answer: d.input.Value()}
 		}
 	}
 	var cmd tea.Cmd

@@ -13,7 +13,7 @@ func TestMemoryCommandListsDaemonMemories(t *testing.T) {
 		return core.MemoryResponse{Memories: []core.MemoryEntry{{Scope: core.MemoryScopeGlobal, Key: "lang", Content: "Go"}}}
 	})
 
-	if result := daemon.run("/memory"); result.Info == nil || !strings.Contains(result.Info.Text, "global/lang: Go") {
+	if result := daemon.run("/memory"); !isScreen[InfoData](result) || !strings.Contains(screenOf[InfoData](t, result).Text, "global/lang: Go") {
 		t.Fatalf("result = %+v, want memory info with the daemon entry", result)
 	}
 }
@@ -28,16 +28,16 @@ func TestMemoryPendingApprovesASuggestionForTheOwnerOnly(t *testing.T) {
 		}).
 		on("POST /v1/memory/{id}/approve", func(*http.Request) any { return nil })
 
-	if result := daemon.runAs(core.RoleMember, "/memory pending"); result.Picker != nil {
-		t.Fatalf("a member sees suggestions: %+v", result.Picker)
+	if result := daemon.runAs(core.RoleMember, "/memory pending"); isScreen[PickerData](result) {
+		t.Fatalf("a member sees suggestions: %+v", result)
 	}
 	if ids := pickerItemIDs(daemon.run("/memory pending")); len(ids) != 1 || ids[0] != "m1" {
 		t.Fatalf("suggestions = %v", ids)
 	}
-	if ids := pickerItemIDs(daemon.run("/memory pending m1")); len(ids) != 2 || ids[0] != "approve" || ids[1] != "reject" {
+	if ids := pickerItemIDs(daemon.run("/memory pending show m1")); len(ids) != 2 || ids[0] != "approve" || ids[1] != "reject" {
 		t.Fatalf("suggestion actions = %v", ids)
 	}
-	daemon.run("/memory pending m1 approve")
+	daemon.run("/memory pending approve m1")
 	if daemon.called("POST /v1/memory/m1/approve") != 1 {
 		t.Fatal("the suggestion was not approved")
 	}

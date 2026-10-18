@@ -429,11 +429,7 @@ func documentFileName(values ...string) string {
 }
 
 func telegramDocumentCaption(caption string) string {
-	runes := []rune(strings.TrimSpace(caption))
-	if len(runes) <= 1024 {
-		return string(runes)
-	}
-	return string(runes[:1021]) + "..."
+	return textutil.Clip(strings.TrimSpace(caption), 1024, "...")
 }
 
 // deliverNotice sends a notice's text to its chat.

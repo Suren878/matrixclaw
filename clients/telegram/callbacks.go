@@ -67,20 +67,11 @@ func (w *Worker) handleCallbackQuery(ctx context.Context, cq *CallbackQuery) err
 }
 
 func (w *Worker) handlePickerCallback(ctx context.Context, target chatTarget, cq *CallbackQuery) error {
-	kind, command, ok := parsePickerCallbackData(cq.Data)
-	if !ok {
-		return nil
-	}
-	switch kind {
-	case callbackKindCommand:
-		if strings.TrimSpace(command) == "" {
-			return nil
-		}
-		return w.dispatchPickerCommand(ctx, target, cq.Message.MessageID, command)
-	case callbackKindDismiss:
+	command := parsePickerCallbackData(cq.Data)
+	if command == "" {
 		return w.deleteMenuMessage(ctx, target, cq.Message.MessageID, cq.Message.Text)
 	}
-	return nil
+	return w.dispatchPickerCommand(ctx, target, cq.Message.MessageID, command)
 }
 
 func (w *Worker) handlePickerPageCallback(ctx context.Context, target chatTarget, cq *CallbackQuery) error {
@@ -92,10 +83,10 @@ func (w *Worker) handlePickerPageCallback(ctx context.Context, target chatTarget
 }
 
 func (w *Worker) dispatchPickerCommand(ctx context.Context, target chatTarget, messageID int64, command string) error {
-	if isDaemonRestartCommand(command) {
+	if controlplane.RestartRequested(command) {
 		return w.dispatchRestartCommandAndEdit(target, messageID)
 	}
-	if isContextCompactCommand(command) {
+	if controlplane.CompactRequested(command) {
 		if err := w.editOrSend(ctx, target, messageID, compactProgressText, nil); err != nil {
 			return err
 		}
@@ -114,10 +105,6 @@ func (w *Worker) deleteMenuMessage(ctx context.Context, target chatTarget, messa
 }
 
 const compactProgressText = "🧠 Compact started..."
-
-func isContextCompactCommand(command string) bool {
-	return matchesCatalogCommand(command, controlplane.CommandContext, "compact confirm")
-}
 
 // askDenialReason makes the chat's next message the reason for denying the
 // approval ("<approval id>:<session id>"); its message loses the buttons, which

@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/tools"
-	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 func marshalJSONRaw(value any) (json.RawMessage, error) {
@@ -24,21 +23,4 @@ func errorText(result tools.Result) string {
 		return strings.TrimSpace(result.Content)
 	}
 	return ""
-}
-
-func toolResultCallIDs(messages []transcript.Message) map[string]struct{} {
-	resultIDs := make(map[string]struct{})
-	for _, message := range messages {
-		for _, part := range message.Parts {
-			if part.ToolResult == nil {
-				continue
-			}
-			toolCallID := part.ToolResult.ToolCallID
-			if toolCallID == "" {
-				continue
-			}
-			resultIDs[toolCallID] = struct{}{}
-		}
-	}
-	return resultIDs
 }

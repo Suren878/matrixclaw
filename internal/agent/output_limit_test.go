@@ -276,7 +276,7 @@ func TestCancelAfterACutReplyKeepsTheStreamedPreview(t *testing.T) {
 
 	outcome, err := f.Engine().Run(ctx, f.Task(model))
 
-	if err != nil || outcome.Status != agent.StatusInterrupted || outcome.Assistant == nil || !outcome.AssistantSaved || outcome.Assistant.Content != "Writing" {
+	if err != nil || !outcome.Interrupted || outcome.Status != "" || outcome.Assistant == nil || !outcome.AssistantSaved || outcome.Assistant.Content != "Writing" {
 		t.Fatalf("outcome = %+v err = %v, want the streamed preview to seal", outcome, err)
 	}
 }

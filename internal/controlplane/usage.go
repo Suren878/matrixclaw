@@ -14,14 +14,13 @@ func (d *Dispatcher) handleUsage(ctx context.Context) (Result, error) {
 		return Result{}, err
 	}
 	if session == nil {
-		return Result{Handled: true, Text: "Select or create a session first."}, nil
+		return textResult("Select or create a session first."), nil
 	}
 	report, err := d.daemon.SessionUsage(ctx, session.ID)
 	if err != nil {
 		return Result{}, err
 	}
-	info := usageInfoData(report)
-	return Result{Handled: true, Info: &info}, nil
+	return Result{Screen: usageInfoData(report)}, nil
 }
 
 func usageInfoData(report core.UsageReport) InfoData {

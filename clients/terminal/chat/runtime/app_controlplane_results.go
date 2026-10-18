@@ -16,7 +16,7 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 		return nil
 	}
 	m.dialog.StopLoading()
-	if isContextCompactCommand(msg.command) {
+	if controlplane.CompactRequested(msg.command) {
 		return m.handleContextCompactResult(msg)
 	}
 	if msg.err != nil {
@@ -28,7 +28,7 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 		}
 		return nil
 	}
-	if dialog := m.controlplaneDialog(msg.result); dialog != nil {
+	if dialog := m.controlplaneDialog(msg.result.Screen); dialog != nil {
 		m.showControlplaneDialog(dialog)
 		if msg.result.ReloadSnapshot {
 			return m.reloadSnapshotCmd()
@@ -45,7 +45,7 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 		m.closeAllDialogs()
 	}
 	m.dialog.menu = menuNone
-	text := strings.TrimSpace(msg.result.Text)
+	text := strings.TrimSpace(msg.result.Text())
 	switch {
 	case text != "" && !msg.result.ReloadSnapshot:
 		m.clearNotice()
@@ -60,7 +60,7 @@ func (m *appModel) handleControlplaneResult(msg controlplaneResultMsg) tea.Cmd {
 }
 
 func (m *appModel) showControlplaneTextResult(result controlplane.Result) bool {
-	text := strings.TrimSpace(result.Text)
+	text := strings.TrimSpace(result.Text())
 	if text == "" || (!m.dialog.fromMenu() && !m.dialog.HasDialogs()) {
 		return false
 	}
@@ -104,7 +104,7 @@ func (m *appModel) handleContextCompactResult(msg controlplaneResultMsg) tea.Cmd
 		m.failContextCompactProgress(msg.err)
 		return nil
 	}
-	text := strings.TrimSpace(msg.result.Text)
+	text := strings.TrimSpace(msg.result.Text())
 	if msg.result.ReloadSnapshot {
 		m.completeContextCompactProgress(compactCompleteText)
 		return m.reloadSnapshotCmd()
@@ -116,20 +116,23 @@ func (m *appModel) handleContextCompactResult(msg controlplaneResultMsg) tea.Cmd
 	return nil
 }
 
-func (m *appModel) controlplaneDialog(result controlplane.Result) surfacedialog.Dialog {
-	switch {
-	case result.Picker != nil:
-		return m.controlplanePickerDialog(*result.Picker)
-	case result.Form != nil:
-		return surfacedialog.NewFormCommand(m.com, *result.Form)
-	case result.Prompt != nil:
-		return surfacedialog.NewPromptCommand(m.com, *result.Prompt)
-	case result.TextEdit != nil:
-		return surfacedialog.NewTextEditCommand(m.com, *result.TextEdit)
-	case result.Confirm != nil:
-		return surfacedialog.NewConfirmCommand(m.com, *result.Confirm)
-	case result.Info != nil:
-		return surfacedialog.NewInfo(m.com, infoData(*result.Info))
+// controlplaneDialog is the dialog that shows screen; nil for text, which is
+// shown as a notice or an info dialog.
+func (m *appModel) controlplaneDialog(screen controlplane.Screen) surfacedialog.Dialog {
+	switch screen := screen.(type) {
+	case controlplane.PickerData:
+		return m.controlplanePickerDialog(screen)
+	case controlplane.FormData:
+		return surfacedialog.NewFormCommand(m.com, screen)
+	case controlplane.PromptData:
+		if screen.Multiline {
+			return surfacedialog.NewTextEditCommand(m.com, screen)
+		}
+		return surfacedialog.NewPromptCommand(m.com, screen)
+	case controlplane.ConfirmData:
+		return surfacedialog.NewConfirmCommand(m.com, screen)
+	case controlplane.InfoData:
+		return surfacedialog.NewInfo(m.com, infoData(screen))
 	default:
 		return nil
 	}

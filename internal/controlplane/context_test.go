@@ -15,7 +15,7 @@ func TestContextClearConfirmClearsTheSession(t *testing.T) {
 
 	result := daemon.run("/context clear confirm")
 
-	if result.Text != "Context cleared." || !result.ReloadSnapshot || daemon.called("POST /v1/sessions/s1/clear") != 1 {
+	if result.Text() != "Context cleared." || !result.ReloadSnapshot || daemon.called("POST /v1/sessions/s1/clear") != 1 {
 		t.Fatalf("result = %+v", result)
 	}
 }

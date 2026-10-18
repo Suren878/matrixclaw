@@ -18,9 +18,10 @@ import (
 // apiDaemon runs the real daemon API over a fresh store with session s1 bound
 // to the test client; deps adds the services a test needs.
 type apiDaemon struct {
-	t    *testing.T
-	core *core.Core
-	url  string
+	t           *testing.T
+	core        *core.Core
+	url         string
+	dispatchers map[core.Role]*Dispatcher
 }
 
 func newAPIDaemon(t *testing.T, deps api.Deps) *apiDaemon {
@@ -47,10 +48,27 @@ func newAPIDaemon(t *testing.T, deps api.Deps) *apiDaemon {
 	return &apiDaemon{t: t, core: deps.Core, url: server.URL}
 }
 
+// dispatcher is the role's one dispatcher, which keeps its open forms.
 func (d *apiDaemon) dispatcher(role core.Role) *Dispatcher {
-	client := daemonclient.New(d.url, "test", "key")
-	client.Role = role
-	return New(client, "")
+	if d.dispatchers == nil {
+		d.dispatchers = map[core.Role]*Dispatcher{}
+	}
+	if d.dispatchers[role] == nil {
+		client := daemonclient.New(d.url, "test", "key")
+		client.Role = role
+		d.dispatchers[role] = New(client, "")
+	}
+	return d.dispatchers[role]
+}
+
+// answer answers the prompt result shows as the owner.
+func (d *apiDaemon) answer(prompt Result, value string) Result {
+	d.t.Helper()
+	result, err := d.dispatcher(core.RoleOwner).Answer(context.Background(), screenOf[PromptData](d.t, prompt).Submit, value)
+	if err != nil {
+		d.t.Fatalf("answer %q: %v", value, err)
+	}
+	return result
 }
 
 func (d *apiDaemon) runAs(role core.Role, command string) Result {
