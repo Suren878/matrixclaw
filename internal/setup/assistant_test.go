@@ -32,7 +32,7 @@ func loadAssistant(t *testing.T, prompt string) AssistantConfig {
 func TestSavedBuiltInPromptIsNotAnOverride(t *testing.T) {
 	for _, stored := range []string{
 		"",
-		DefaultAssistantSystemPrompt,
+		"You are matrixclaw, a personal AI operator in matrixclaw's local background runtime across terminal and Telegram durable sessions. Use available tools only; risky mutations require approval.",
 		"You are matrixclaw, a personal AI operator in matrixclaw's local background runtime. Keep replies concise, preserve user files, and update visible plans for multi-step work.",
 		"You are matrixclaw, a personal AI operator running through matrixclaw's local background runtime.\n\nProject context:\n- project_root=/home/u/matrixclaw\n- approvals=write_shell_skill_manage_and_risky_tools_need_permission",
 	} {
@@ -40,15 +40,12 @@ func TestSavedBuiltInPromptIsNotAnOverride(t *testing.T) {
 		if assistant.SystemPrompt != "" {
 			t.Fatalf("stored %q kept as override %q", stored, assistant.SystemPrompt)
 		}
-		if got := assistant.SystemPromptOrDefault(); got != DefaultAssistantSystemPrompt {
-			t.Fatalf("effective prompt = %q", got)
-		}
 	}
 }
 
 func TestUserPromptIsKeptWithoutProjectContext(t *testing.T) {
 	assistant := loadAssistant(t, "Answer like a pirate.\n\nProject context:\n- project_root=/tmp")
-	if assistant.SystemPrompt != "Answer like a pirate." || assistant.SystemPromptOrDefault() != "Answer like a pirate." {
+	if assistant.SystemPrompt != "Answer like a pirate." {
 		t.Fatalf("system prompt = %q", assistant.SystemPrompt)
 	}
 }

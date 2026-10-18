@@ -37,6 +37,8 @@ type Core struct {
 	compactProvider string
 	compactModel    string
 	windowCap       int
+	// promptEnv is where native runs are told they work.
+	promptEnv PromptEnvironment
 	// modelSlots bounds the model requests of all native runs at once.
 	modelSlots *toolsched.Semaphore
 	// toolLocks serialises tool calls sharing a concurrency key across runs.

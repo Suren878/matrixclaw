@@ -2,7 +2,6 @@ package skills
 
 import (
 	"context"
-	"strings"
 	"sync/atomic"
 
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -58,13 +57,6 @@ func (m *Module) Tools() []tools.Executor {
 		return nil
 	}
 	return coreskills.ToolExecutors(m.service)
-}
-
-func (m *Module) Context() string {
-	if !m.enabled.Load() {
-		return ""
-	}
-	return strings.TrimSpace(`Skills: skill_search finds trusted workflows; skill_use activates one for this session; skill_manage creates/edits skills only through approval. Quarantined skills are inactive until trusted.`)
 }
 
 func (m *Module) SkillsPromptContext(_ context.Context, req core.SkillsPromptContextRequest) string {

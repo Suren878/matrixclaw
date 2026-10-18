@@ -173,20 +173,6 @@ func (m *Module) Tools() []tools.Executor {
 	return out
 }
 
-func (m *Module) Context() string {
-	servers := m.connectedServers()
-	if len(servers) == 0 {
-		return ""
-	}
-	names := make([]string, 0, len(servers))
-	count := 0
-	for _, conn := range servers {
-		names = append(names, conn.session.Name())
-		count += len(conn.tools)
-	}
-	return fmt.Sprintf("MCP module:\n- Connected MCP servers: %s.\n- Remote MCP tools are available as matrixclaw tools prefixed with mcp_<server>_. Use them when they directly match the task.\n- Remote MCP tool count: %d.", strings.Join(names, ", "), count)
-}
-
 func (m *Module) Status(context.Context) modules.Status {
 	connectedCount := 0
 	failures := []string{}

@@ -1,0 +1,10 @@
+Run context (as of the start of this run):
+- Today: Sunday 2026-10-18, timezone Asia/Almaty (UTC+05:00).
+- Client: terminal; Markdown is rendered.
+- Permission mode default: bash, write, edit and other changing calls wait for the user's approval, so group related changes and skip commands you do not need; reading and searching run at once.
+- Git: branch main (upstream origin/main, ahead 1); 5 changed paths:
+   M internal/foo.go
+  ?? notes.txt
+  ... and 3 more
+- Recent commits:
+  a1b2c3d fix(parser): handle empty input

@@ -233,8 +233,6 @@ func (m *Manager) ID() string { return ModuleID }
 
 func (m *Manager) Tools() []tools.Executor { return nil }
 
-func (m *Manager) Context() string { return "" }
-
 // Close leaves running sessions to end with their streams.
 func (m *Manager) Close() error { return nil }
 

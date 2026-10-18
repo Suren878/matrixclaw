@@ -109,7 +109,7 @@ func (c *Core) CompactSession(ctx context.Context, sessionID string) (CompactSes
 		windowTokens = c.sessionContextWindowTokens(session)
 	}
 	previous := window.Compaction()
-	base := c.contextBaseTokens()
+	base := c.contextBaseTokens(session)
 	limit := agent.ContextLimit(runtime, windowTokens, 0)
 	summary, err := agentcontext.Summarize(ctx, runtime, agentcontext.SummaryInput{
 		Previous:    agentcontext.SummaryText(previous),
@@ -150,17 +150,32 @@ func (c *Core) sessionRunActive(ctx context.Context, sessionID string) (bool, er
 }
 
 // contextBaseTokens estimates the parts of every request that are not history.
-func (c *Core) contextBaseTokens() int {
-	assistant := c.assistantProfile()
-	return agentcontext.EstimateTextTokens(prompt.AssistantSystemPrompt(assistant.Name, assistant.SystemPrompt)) +
-		agentcontext.EstimateTextTokens(assistant.CustomInstructions) +
+func (c *Core) contextBaseTokens(session Session) int {
+	return agentcontext.EstimateTextTokens(c.systemPromptEstimate(session)) +
+		agentcontext.EstimateTextTokens(c.assistantProfile().CustomInstructions) +
 		c.estimateToolSchemaTokens()
+}
+
+// systemPromptEstimate is the part of a run's system prompt known without
+// the run: persona and operating manual, not environment, memory or skills.
+func (c *Core) systemPromptEstimate(session Session) string {
+	assistant := c.assistantProfile()
+	coding := session.WorkingDir != ""
+	text := prompt.Persona(assistant.Name, assistant.SystemPrompt, coding)
+	if !coding || c.tools == nil {
+		return text
+	}
+	var names []string
+	for _, spec := range c.tools.List() {
+		names = append(names, spec.ID)
+	}
+	return prompt.JoinSections(text, prompt.CodingGuidance(prompt.NewTools(names...), isSubagentSession(session)))
 }
 
 // contextReportForSession reports the session's context against the prompt room
 // its runs get; without a resolvable model, the default output limit applies.
 func (c *Core) contextReportForSession(ctx context.Context, session Session, window agent.Window) ContextReport {
-	report := c.contextReport(session.ID, window)
+	report := c.contextReport(session, window)
 	report.WindowTokens = c.sessionContextWindowTokens(session)
 	var model agent.Model
 	if runtime, _, err := c.resolveSessionRuntime(ctx, session); err == nil {
@@ -173,10 +188,9 @@ func (c *Core) contextReportForSession(ctx context.Context, session Session, win
 	return report
 }
 
-func (c *Core) contextReport(sessionID string, window agent.Window) ContextReport {
-	assistant := c.assistantProfile()
-	systemPrompt := prompt.AssistantSystemPrompt(assistant.Name, assistant.SystemPrompt)
-	customInstructions := strings.TrimSpace(assistant.CustomInstructions)
+func (c *Core) contextReport(session Session, window agent.Window) ContextReport {
+	systemPrompt := c.systemPromptEstimate(session)
+	customInstructions := strings.TrimSpace(c.assistantProfile().CustomInstructions)
 	blocks := make([]ContextBlock, 0, 5)
 	if systemPrompt != "" {
 		blocks = append(blocks, ContextBlock{ID: "system", Kind: ContextBlockSystemPrompt, Source: "assistant_profile", TokenEstimate: agentcontext.EstimateTextTokens(systemPrompt), Included: true, CacheStability: "stable"})
@@ -204,7 +218,7 @@ func (c *Core) contextReport(sessionID string, window agent.Window) ContextRepor
 		}
 	}
 	return ContextReport{
-		SessionID:         sessionID,
+		SessionID:         session.ID,
 		Estimated:         true,
 		TokenEstimate:     total,
 		MessageCount:      len(window.Messages),

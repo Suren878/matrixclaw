@@ -9,8 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
+	"github.com/Suren878/matrixclaw/internal/core"
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
@@ -97,17 +99,15 @@ func sessionFilesRoot(dbPath string) string {
 	return filepath.Join(dataDir(dbPath), "sessions")
 }
 
-func appendModuleContext(systemPrompt string, contexts []string) string {
-	if len(contexts) == 0 {
-		return strings.TrimSpace(systemPrompt)
+// promptEnvironment is where native runs are told they work: the daemon
+// timezone and the user's AGENTS.md next to setup.json.
+func promptEnvironment(bootstrap bootstrapConfig) core.PromptEnvironment {
+	env := core.PromptEnvironment{}
+	if location, err := time.LoadLocation(bootstrap.Timezone); err == nil {
+		env.Timezone = location
 	}
-	context := strings.TrimSpace(strings.Join(contexts, "\n"))
-	if context == "" {
-		return strings.TrimSpace(systemPrompt)
+	if bootstrap.SetupService != nil {
+		env.UserInstructions = filepath.Join(filepath.Dir(bootstrap.SetupService.Path()), "AGENTS.md")
 	}
-	systemPrompt = strings.TrimSpace(systemPrompt)
-	if systemPrompt == "" {
-		return "Enabled modules:\n" + context
-	}
-	return systemPrompt + "\n\nEnabled modules:\n" + context
+	return env
 }

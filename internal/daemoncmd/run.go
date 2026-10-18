@@ -75,7 +75,8 @@ func Run(ctx context.Context) error {
 		WithBackgroundTaskLimit(bootstrap.BackgroundTasks).
 		WithBackgroundAgents(bootstrap.BackgroundAgents).
 		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()}).
-		WithSkillsContext(skillsModule)
+		WithSkillsContext(skillsModule).
+		WithPromptEnvironment(promptEnvironment(bootstrap))
 	externalRegistry, externalRuntimes, err := builtins.BuildRegistry(bootstrap.Setup.Modules)
 	if err != nil {
 		return err

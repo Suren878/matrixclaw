@@ -46,24 +46,6 @@ type supervisor struct {
 	restarting bool
 }
 
-// assistantProfileSetter is the minimal seam applyAssistantProfile needs;
-// *core.Core satisfies it. Lets tests substitute a fake profile sink.
-type assistantProfileSetter interface {
-	SetAssistantProfile(core.AssistantProfile)
-}
-
-// applyAssistantProfile appends the current module context (storage/MCP/skills)
-// to base.SystemPrompt and sets the resulting profile on app.
-func applyAssistantProfile(app assistantProfileSetter, base core.AssistantProfile, moduleContext func() []string) {
-	if app == nil {
-		return
-	}
-	if moduleContext != nil {
-		base.SystemPrompt = appendModuleContext(base.SystemPrompt, moduleContext())
-	}
-	app.SetAssistantProfile(base)
-}
-
 func newSupervisor(ctx context.Context, app *core.Core, geo *geo.OSMService, set *modules.Set) *supervisor {
 	return &supervisor{
 		ctx:      ctx,
@@ -92,11 +74,7 @@ func (s *supervisor) applyBootstrap(bootstrap bootstrapConfig) error {
 	}
 	if s.app != nil {
 		s.app.SetSessionLLMs(bootstrap.SessionLLMs)
-		var moduleContext func() []string
-		if s.modules != nil {
-			moduleContext = s.modules.Context
-		}
-		applyAssistantProfile(s.app, bootstrap.Assistant, moduleContext)
+		s.app.SetAssistantProfile(bootstrap.Assistant)
 	}
 	if err := s.telegram.Apply(s.ctx, bootstrap); err != nil {
 		errs = append(errs, err)

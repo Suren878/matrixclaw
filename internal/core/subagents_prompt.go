@@ -2,61 +2,43 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/agent/prompt"
 	"github.com/Suren878/matrixclaw/internal/textutil"
+	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-func (c *Core) agentGuidancePrompt(ctx context.Context) string {
-	lines := []string{
-		"Subagents:",
-		"- The agent tool runs a child agent on a bounded task. Give it a short description and a prompt with everything it needs: the goal, the context and what to report back. It sees nothing of this conversation.",
-		"- Use readonly:true for research, reviews and questions: the child gets read-only tools, and read-only children in one reply run in parallel.",
-		"- A child that changes files works in your directory (isolation shared: children you wait for run one at a time, background ones alongside you and each other with only single edits taking turns) or in its own git worktree (isolation worktree, several at once; you merge their work).",
-		"- Without background the call returns the child's result, and several such calls in one reply run together; their time does not count against your budget.",
-		fmt.Sprintf("- With background:true the call returns a task id at once and the result arrives as a message when the child finishes; wait for it with await. At most %d background children run at once.", c.backgroundAgents),
-		"- Children cannot start agents or await; they may use todo_write and background commands. Results return to you, the parent agent.",
-		"- Available runtime configuration:",
-	}
+// subagentsPrompt is the parent's guidance for the agent tool with the
+// runtimes it may pick now.
+func (c *Core) subagentsPrompt(ctx context.Context, coding bool) string {
 	runtimes := c.subagentRuntimeInfo(ctx)
-	available := 0
-	for _, runtime := range runtimes {
-		if runtime.Available {
-			available++
-		}
-		lines = append(lines, "- "+runtime.PromptLine())
+	var external []string
+	for _, runtime := range runtimes[1:] { // the native runtime comes first
+		external = append(external, runtime.PromptLine())
 	}
-	if ids := availableSubagentRuntimeIDs(runtimes); len(ids) > 0 {
-		lines = append(lines,
-			"- Runtime IDs available for the agent tool: "+strings.Join(ids, ", ")+".",
-			"- When asked which subagent runtimes are available, answer from that Runtime IDs list and include the native matrixclaw runtime.",
-			"- Treat user questions in any language about available or connected subagents as questions about that Runtime IDs list, not only about your base model/provider.",
-			"- For the current configuration, if asked which subagents or subagent runtimes are available or connected, answer exactly: "+strings.Join(ids, ", ")+".",
-		)
-	}
-	lines = append(lines,
-		"- Do not select unavailable runtimes.",
-		"- If the user names an unavailable runtime, say it is unavailable and offer the available alternatives.",
-	)
-	if available <= 1 {
-		lines = append(lines, "- If the user asks for a subagent without naming a runtime, use matrixclaw and do not ask which runtime.")
-	} else {
-		lines = append(lines, "- If the user asks for a subagent without naming a runtime, ask the user which runtime to use unless the request itself makes the runtime obvious.")
-	}
-	return strings.Join(lines, "\n")
+	return prompt.Subagents(coding, availableSubagentRuntimeIDs(runtimes), external, c.backgroundAgents, c.budgets.Subagent.Steps)
 }
 
-func (c *Core) agentToolDescription(ctx context.Context, base string) string {
-	runtimes := c.subagentRuntimeInfo(ctx)
-	if len(runtimes) == 0 {
-		return base
+// agentToolSpec limits the agent tool's runtime choices to the runtimes
+// available now.
+func (c *Core) agentToolSpec(ctx context.Context, spec tools.Spec) tools.Spec {
+	var schema map[string]any
+	if err := json.Unmarshal(spec.InputJSONSchema, &schema); err != nil {
+		return spec
 	}
-	lines := []string{strings.TrimSpace(base), "Runtime choices:"}
-	for _, runtime := range runtimes {
-		lines = append(lines, "- "+runtime.PromptLine())
+	properties, _ := schema["properties"].(map[string]any)
+	runtime, _ := properties["runtime"].(map[string]any)
+	if runtime == nil {
+		return spec
 	}
-	return strings.Join(lines, "\n")
+	runtime["enum"] = availableSubagentRuntimeIDs(c.subagentRuntimeInfo(ctx))
+	if raw, err := json.Marshal(schema); err == nil {
+		spec.InputJSONSchema = raw
+	}
+	return spec
 }
 
 type subagentRuntimeInfo struct {

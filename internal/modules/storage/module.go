@@ -2,7 +2,6 @@ package storage
 
 import (
 	"path/filepath"
-	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
@@ -44,8 +43,4 @@ func (m *Module) Tools() []tools.Executor {
 		NewDeleteTool(m.store),
 		NewSaveTemporaryTool(m.store),
 	}
-}
-
-func (m *Module) Context() string {
-	return strings.TrimSpace(`Local storage is available. Use storage_save to save user documents or generated text into matrixclaw storage, storage_list to find saved files by path/title/tags/query, and storage_read to retrieve saved text. Uploaded files may appear in messages as temp_path values; use storage_save_temp with temp_path and a permanent dest_path when the user asks to keep an uploaded image or file.`)
 }
