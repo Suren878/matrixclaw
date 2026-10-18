@@ -247,6 +247,7 @@ func (r *run) step(ctx context.Context) stepResult {
 func (r *run) handleResponse(ctx context.Context, gen generation) stepResult {
 	response := gen.response
 	response.Text = r.replyText(response)
+	r.state.observeReply(response.Text)
 	assistant := gen.assistant
 	if len(response.ToolCalls) > 0 {
 		r.state.Continuations = 0

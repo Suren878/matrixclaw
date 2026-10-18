@@ -200,3 +200,80 @@ func TestRepeatedCallIsCaughtWhateverItsPlaceInTheBatch(t *testing.T) {
 		}
 	}
 }
+
+func TestTheSameCallFailingWithNewErrorsWarnsThenStops(t *testing.T) {
+	f := agenttest.NewFixture()
+	failures := 0
+	f.Tools.Funcs["build"] = func(tools.Call) tools.Result {
+		failures++
+		return tools.Result{Content: fmt.Sprintf("build failed at %d", failures), Status: tools.ResultStatusError}
+	}
+	model := agenttest.NewScriptedModel(append(toolSteps(5, "build"), text("The build keeps failing."))...)
+
+	outcome := run(t, f, model)
+
+	requests := model.Requests()
+	if outcome.StopReason != agent.StopLoopDetected || len(requests) != 6 {
+		t.Fatalf("outcome = %+v requests = %d", outcome, len(requests))
+	}
+	if notes := engineNotes(f.Journal.Messages); len(notes) != 2 || notes[0].Origin != transcript.OriginEngine {
+		t.Fatalf("engine notes = %+v, want a warning, then the stop", notes)
+	}
+}
+
+func TestTwoCallsTakingTurnsStopAfterThreeRounds(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["open"] = statusTool
+	f.Tools.Funcs["close"] = statusTool
+	turns := make([]agenttest.Turn, 0, 7)
+	for i := 0; i < 6; i++ {
+		turns = append(turns, calls(call(fmt.Sprintf("c%d", i), []string{"open", "close"}[i%2])))
+	}
+	model := agenttest.NewScriptedModel(append(turns, text("Going back and forth."))...)
+
+	outcome := run(t, f, model)
+
+	if outcome.StopReason != agent.StopLoopDetected || len(f.Tools.Calls) != 6 || model.Requests()[6].ToolChoice != providers.ToolChoiceNone {
+		t.Fatalf("outcome = %+v tool calls = %d", outcome, len(f.Tools.Calls))
+	}
+}
+
+func TestRepeatingTheSameLongReplyWarnsThenStops(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["read"] = counterTool()
+	reply := "Let me look at this once more from the beginning to find what is wrong."
+	turns := make([]agenttest.Turn, 0, 6)
+	for i := 1; i <= 5; i++ {
+		turn := calls(call(fmt.Sprintf("r%d", i), "read"))
+		turn.Response.Text = reply
+		turns = append(turns, turn)
+	}
+	model := agenttest.NewScriptedModel(append(turns, text("Stuck."))...)
+
+	outcome := run(t, f, model)
+
+	if outcome.StopReason != agent.StopLoopDetected || len(model.Requests()) != 6 {
+		t.Fatalf("outcome = %+v requests = %d", outcome, len(model.Requests()))
+	}
+	if notes := engineNotes(f.Journal.Messages); len(notes) != 2 || notes[0].Origin != transcript.OriginEngine {
+		t.Fatalf("engine notes = %+v, want a warning, then the stop", notes)
+	}
+}
+
+func TestShortRepeatedRepliesAreNotALoop(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["read"] = counterTool()
+	turns := make([]agenttest.Turn, 0, 7)
+	for i := 1; i <= 6; i++ {
+		turn := calls(call(fmt.Sprintf("r%d", i), "read"))
+		turn.Response.Text = "Reading the next file."
+		turns = append(turns, turn)
+	}
+	model := agenttest.NewScriptedModel(append(turns, text("Done."))...)
+
+	outcome := run(t, f, model)
+
+	if outcome.StopReason != agent.StopDone || len(engineNotes(f.Journal.Messages)) != 0 {
+		t.Fatalf("outcome = %+v notes = %+v", outcome, engineNotes(f.Journal.Messages))
+	}
+}

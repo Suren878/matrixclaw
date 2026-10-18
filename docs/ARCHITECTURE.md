@@ -194,8 +194,21 @@ the phase, so a parked or restarted run keeps it. How a step can go wrong:
   once; a cut tool step runs its complete calls and tells the model a cut call
   was dropped. The fourth cut in a row turns the next step into the final turn (stop reason
   `budget_exhausted`).
-- **Loop guard:** the most repeated (tool, arguments, result) among the last 20
-  calls warns at 3 and stops the run at 5, whatever the order inside a batch.
+- **Context:** old bulky results are elided at 60% of the usable window, and
+  one tool round's results share 30% of it; at 80% the older history becomes
+  a summary boundary that keeps the run's user messages verbatim. Every
+  summary takes one path (`run.compact`), whether a run's or `/compact`'s
+  (`Engine.Compact`): compact model or else the run's, a model slot, retries,
+  `run_steps` rows with stop reason `compact` (for `/compact`, on the
+  session's latest run). After a summary the current text of the five files
+  edited last is re-attached (at most 8k tokens, a tenth of a smaller window),
+  and the context note with the todo list is sent again. `/context` estimates
+  the system prompt and tools a run would get, so its hint matches the 80%.
+- **Loop guard:** among the last 20 calls, the most repeated call with the
+  same result, or the same call failing whatever its error says, warns at 3
+  and stops the run at 5, whatever the order inside a batch; so does the same
+  reply text of 60 runes or more. Two calls taking turns with the same results
+  over the last 6 calls stop the run.
 - **Completion checks:** a reply without tools is held back once while the
   run's todo list has open items, and once when the run changed files (edit
   tools, or a bash command that writes files) after its last successful
