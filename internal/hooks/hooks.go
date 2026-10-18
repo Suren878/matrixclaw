@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/lsp"
 )
 
 // Event names when a hook runs.
@@ -93,23 +95,29 @@ func compileMatcher(matcher string) (func(string) bool, error) {
 }
 
 // Diagnostics configures the checks after edits: Disabled turns them all off;
-// Commands replaces the built-in check of a file extension (".go") with a bash
-// command run in the session's working directory, and an empty command turns
-// that extension's check off.
+// Commands replaces the check of a file extension (".go"), language server or
+// built-in command, with a bash command run in the session's working
+// directory, and an empty command turns that extension's check off; LSP
+// configures the language servers.
 type Diagnostics struct {
 	Disabled bool              `json:"disabled,omitempty"`
 	Commands map[string]string `json:"commands,omitempty"`
+	LSP      lsp.Config        `json:"lsp,omitzero"`
 }
 
 var extension = regexp.MustCompile(`^\.[a-z0-9]+$`)
 
-// Validate reports extension keys that are not like ".go".
+// Validate reports extension keys that are not like ".go" and what makes the
+// language server settings unusable.
 func (d Diagnostics) Validate() error {
 	var problems []error
 	for _, ext := range slices.Sorted(maps.Keys(d.Commands)) {
 		if !extension.MatchString(ext) {
 			problems = append(problems, fmt.Errorf("commands key %q is not a lowercase file extension such as \".go\"", ext))
 		}
+	}
+	if err := d.LSP.Validate(); err != nil {
+		problems = append(problems, fmt.Errorf("lsp: %w", err))
 	}
 	return errors.Join(problems...)
 }

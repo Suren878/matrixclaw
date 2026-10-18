@@ -30,12 +30,13 @@ type Task struct {
 	// verbatim past a summary stays kept.
 	Continues []string
 	// Recovering is set when a restart or an interruption stopped the run's
-	// previous execution; Interrupted settles the calls it left without a result.
-	Recovering  bool
-	Interrupted []InterruptedCall
+	// previous execution; the calls it left without a result are settled as
+	// Tools.Recovery says.
+	Recovering bool
 }
 
-// Settle is how a resumed run settles a call a restart left without a result.
+// Settle is how a resumed run settles a call its interrupted execution left
+// without a result.
 type Settle string
 
 const (
@@ -47,12 +48,12 @@ const (
 	SettleAnswer Settle = "answer"
 )
 
-// InterruptedCall is a call of the run a restart left without a result.
-type InterruptedCall struct {
-	ToolCallID string
-	Settle     Settle
-	Request    tools.ApprovalRequest
-	Result     tools.Result
+// Recovery settles one interrupted call: Request is what SettleAsk asks,
+// Result what SettleAnswer journals.
+type Recovery struct {
+	Settle  Settle
+	Request tools.ApprovalRequest
+	Result  tools.Result
 }
 
 // Budget limits one run; a zero field is unlimited.
@@ -62,31 +63,31 @@ type Budget struct {
 	Tokens     int64
 }
 
-// Status is how a Run call ended.
+// Status is what a Run call reached.
 type Status string
 
 const (
 	StatusCompleted       Status = "completed"
 	StatusWaitingApproval Status = "waiting_approval"
 	StatusWaitingEvents   Status = "waiting_events"
-	StatusInterrupted     Status = "interrupted"
 	StatusCanceled        Status = "canceled"
 	StatusFailed          Status = "failed"
 )
 
-// Outcome is applied by core. Assistant is the final reply (completed), the reply to
-// seal (canceled, interrupted) or the errored reply (failed with MarkErrored).
-// Reached is what the last step produced before an interruption; StopReason is set
-// whenever the run completed or reached completion, and for a context-exhausted failure.
-// RunState is the run's state when it stopped.
+// Outcome is applied by core. Interrupted is set when ctx stopped for a cause
+// other than the user's cancel; Status is then what the last step reached, or
+// empty when it reached nothing to commit. Assistant is the final reply
+// (completed), the reply to seal (canceled, interrupted) or the errored reply
+// (failed with MarkErrored). StopReason is set whenever the run completed, and
+// for a context-exhausted failure. RunState is the run's state when it stopped.
 type Outcome struct {
 	Status         Status
+	Interrupted    bool
 	StopReason     StopReason
 	Assistant      *transcript.Message
 	AssistantSaved bool
 	Err            error
 	MarkErrored    bool
-	Reached        Status
 	RunState       RunState
 }
 

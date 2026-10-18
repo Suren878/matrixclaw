@@ -2,11 +2,9 @@ package core
 
 import (
 	"context"
-	"fmt"
 	"slices"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
-	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -14,48 +12,28 @@ import (
 type coreInbox struct {
 	c       *Core
 	session Session
+	runID   string
 }
 
-func (in coreInbox) Peek(ctx context.Context, runID string, kind agent.InputKind) ([]agent.Input, error) {
-	switch kind {
-	case agent.InputSteer:
-		return in.steers(ctx, runID)
-	case agent.InputDecided:
-		return in.decided(ctx, runID)
-	case agent.InputEvent:
-		return in.events(ctx)
-	default:
-		return nil, fmt.Errorf("core: unknown inbox input %q", kind)
-	}
-}
-
-func (in coreInbox) Finished(ctx context.Context, taskIDs []string) (bool, error) {
-	return in.c.anyTaskFinished(ctx, taskIDs)
-}
-
-// steers lists the run's pending steer input in arrival order.
-func (in coreInbox) steers(ctx context.Context, runID string) ([]agent.Input, error) {
-	inputs, err := in.c.store.ListPendingSteerInputs(ctx, in.session.ID, runID)
+// Steers lists the run's pending steer input in arrival order.
+func (in coreInbox) Steers(ctx context.Context) ([]agent.Steer, error) {
+	inputs, err := in.c.store.ListPendingSteerInputs(ctx, in.session.ID, in.runID)
 	if err != nil {
 		return nil, err
 	}
-	var out []agent.Input
+	var out []agent.Steer
 	for _, input := range inputs {
 		images := slices.DeleteFunc(slices.Clone(input.Parts), func(part transcript.MessagePart) bool { return part.Kind != transcript.MessagePartKindImage })
 		if input.Text != "" || len(images) > 0 {
-			out = append(out, agent.Input{Kind: agent.InputSteer, ID: input.ID, Text: input.Text, Images: images})
+			out = append(out, agent.Steer{ID: input.ID, Text: input.Text, Images: images})
 		}
 	}
 	return out, nil
 }
 
-// Consume marks the run's pending steers and the events with the given IDs
-// consumed by it.
-func (in coreInbox) Consume(ctx context.Context, runID string, ids []string) error {
-	if err := in.c.store.MarkTasksDelivered(ctx, ids, runID, in.c.now().UTC()); err != nil {
-		return err
-	}
-	inputs, err := in.c.store.ListPendingSteerInputs(ctx, in.session.ID, runID)
+// ConsumeSteers marks the run's pending steers with the given IDs consumed by it.
+func (in coreInbox) ConsumeSteers(ctx context.Context, ids []string) error {
+	inputs, err := in.c.store.ListPendingSteerInputs(ctx, in.session.ID, in.runID)
 	if err != nil {
 		return err
 	}
@@ -65,7 +43,7 @@ func (in coreInbox) Consume(ctx context.Context, runID string, ids []string) err
 		}
 		consumedAt := in.c.now().UTC()
 		input.Status = SessionInputStatusConsumed
-		input.ConsumedRunID = runID
+		input.ConsumedRunID = in.runID
 		input.ConsumedAt = &consumedAt
 		input.UpdatedAt = consumedAt
 		if err := in.c.store.UpdateSessionInput(ctx, input); err != nil {
@@ -76,52 +54,42 @@ func (in coreInbox) Consume(ctx context.Context, runID string, ids []string) err
 	return nil
 }
 
-// decided returns the run's decided approvals whose call has no result yet, oldest
-// first; a call's newest approval decides it.
-func (in coreInbox) decided(ctx context.Context, runID string) ([]agent.Input, error) {
-	approvals, err := in.c.store.ListRunApprovals(ctx, in.session.ID, runID)
+// Events are the session's task events.
+func (in coreInbox) Events(ctx context.Context) ([]agent.TaskEvent, error) {
+	tasks, err := in.c.taskEvents(ctx, in.session.ID)
 	if err != nil {
 		return nil, err
 	}
-	seen := map[string]struct{}{}
-	var out []agent.Input
+	out := make([]agent.TaskEvent, 0, len(tasks))
+	for _, task := range tasks {
+		out = append(out, agent.TaskEvent{TaskID: task.ID, Text: taskEventText(task)})
+	}
+	return out, nil
+}
+
+// ConsumeEvents marks the tasks' ends delivered to the run.
+func (in coreInbox) ConsumeEvents(ctx context.Context, taskIDs []string) error {
+	return in.c.store.MarkTasksDelivered(ctx, taskIDs, in.runID, in.c.now().UTC())
+}
+
+// Decisions lists where the newest approval of each of the run's calls
+// stands, oldest first.
+func (in coreInbox) Decisions(ctx context.Context) ([]agent.Decision, error) {
+	approvals, err := in.c.store.ListRunApprovals(ctx, in.session.ID, in.runID)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var out []agent.Decision
 	for _, approval := range approvals {
 		callID := approval.ToolCallRef
-		if callID == "" {
+		if callID == "" || seen[callID] {
 			continue
 		}
-		if _, ok := seen[callID]; ok {
-			continue
-		}
-		seen[callID] = struct{}{}
-		if approval.State == ApprovalStatePending {
-			continue
-		}
-		done, err := in.c.store.HasToolResult(ctx, in.session.ID, runID, callID)
-		if err != nil {
-			return nil, err
-		}
-		if done {
-			continue
-		}
-		toolCall, err := in.c.sessionToolCallMessage(ctx, in.session.ID, callID)
-		if err != nil {
-			return nil, err
-		}
-		args, found := toolCallArgs(toolCall)
-		if !found {
-			return nil, fmt.Errorf("%w: tool call %s", ErrNotFound, toolCall.ID)
-		}
-		var spec tools.Spec
-		if in.c.tools != nil {
-			spec, _ = in.c.tools.Spec(approval.ToolName)
-		}
-		out = append(out, agent.Input{
-			Kind:       agent.InputDecided,
+		seen[callID] = true
+		out = append(out, agent.Decision{
 			ToolCallID: callID,
-			ToolName:   approval.ToolName,
-			WorkingDir: workingDirForApprovalResume(in.session.WorkingDir, spec, approval.Path),
-			Args:       args,
+			Pending:    approval.State == ApprovalStatePending,
 			Denied:     approval.State == ApprovalStateRejected,
 			Reason:     approval.Reason,
 		})
@@ -130,31 +98,17 @@ func (in coreInbox) decided(ctx context.Context, runID string) ([]agent.Input, e
 	return out, nil
 }
 
+func (in coreInbox) Finished(ctx context.Context, taskIDs []string) (bool, error) {
+	return in.c.anyTaskFinished(ctx, taskIDs)
+}
+
 // coreApprovals is the Approvals port of one native run.
 type coreApprovals struct {
-	c         *Core
-	sessionID string
+	c *Core
 }
 
 func (a coreApprovals) Request(ctx context.Context, p agent.Pending) error {
 	prepared := preparedToolCall{SessionID: p.SessionID, RunID: p.RunID, ToolName: p.ToolName, ToolCallID: p.ToolCallID}
 	_, err := a.c.requestApproval(ctx, prepared, p.Request)
 	return err
-}
-
-func (a coreApprovals) Pending(ctx context.Context, runID string) (bool, error) {
-	return a.c.runHasPendingApprovals(ctx, a.sessionID, runID)
-}
-
-// events are the session's task events.
-func (in coreInbox) events(ctx context.Context) ([]agent.Input, error) {
-	tasks, err := in.c.taskEvents(ctx, in.session.ID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]agent.Input, 0, len(tasks))
-	for _, task := range tasks {
-		out = append(out, agent.Input{Kind: agent.InputEvent, ID: task.ID, Text: taskEventText(task)})
-	}
-	return out, nil
 }

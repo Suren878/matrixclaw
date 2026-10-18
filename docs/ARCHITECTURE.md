@@ -42,17 +42,19 @@ flowchart LR
 | `internal/checkpoint` | file checkpoints: shadow git snapshots of working directories, diff, restore (see [CHECKPOINTS.md](CHECKPOINTS.md)) |
 | `internal/permission` | permission rules, subjects, bash parsing, mode presets |
 | `internal/glob` | the one glob matcher (`**`, classes, braces) and `.gitignore` rules, for path rules and the search tools |
+| `internal/repomap` | ranked map of a code base's definitions (Go parser, chroma lexers, PageRank) for the `repo_map` tool (see [REPO_MAP.md](REPO_MAP.md)) |
 | `internal/shelltask` | background shell processes and their output files |
 | `internal/hooks` | user hooks (Claude Code protocol) and the checks after edits (see [HOOKS.md](HOOKS.md)) |
+| `internal/lsp` | language servers: JSON-RPC client, one server per language and project root, diagnostics after edits, the `lsp` tool (see [LSP.md](LSP.md)) |
 | `internal/webtools` | `web_search` and `web_fetch` |
 | `internal/modules` | module lifecycle, settings contract, and the modules: `storage`, `delivery`, `geo`, `web`, `voice` (+ `voice/realtime`), `telephony`, `browser`, `mcp`, `skills`; `localruntime` holds local voice/browser runtimes |
-| `internal/procsup` | supervised local helper processes |
+| `internal/procsup` | supervised local helper processes (voice and language servers) |
 | `internal/providers` | provider adapters (`ai/*`), catalog, model metadata, wire quirks |
 | `internal/sessionllm` | the provider runtimes sessions pick from |
 | `internal/externalagents` | external agent registry, adapters (`claudecode`, `codexapp`) and the reply builder (`reply`) |
 | `internal/mcp` | MCP client and the `matrixclaw mcp serve` stdio server |
-| `internal/automation` | reminders and scheduled AI tasks |
-| `internal/skills` | skills library (files plus its own tables) |
+| `internal/automation` | reminders and scheduled AI tasks; each job keeps its client's capabilities and delivery address |
+| `internal/skills` | skills library: skill directories, their rows in the store's schema, install (local, plugin, Hermes tree, GitHub clone), the `skill_*` tools |
 | `internal/setup` | typed `setup.json`, provider config, service files |
 | `internal/store` | SQLite persistence (see [STORAGE.md](STORAGE.md)) |
 | `internal/toolview` | how a tool call is shown, shared by the TUI and Telegram |
@@ -62,12 +64,14 @@ flowchart LR
 ## Daemon start
 
 `daemoncmd.Run`: load setup, take `matrixclawd.lock` next to the database (a
-second daemon on the same data exits), open the store, build `core.Core` and
+second daemon on the same data exits), open the store (its one connection
+also serves the skills library and automation), build `core.Core` and
 every module once (`daemoncmd/modules.go`), bind the listener, apply the setup
 (`supervisor.ApplyBootstrap`), then serve. After that, in the background: the
 automation scheduler, release of held deliveries, and `Core.Recover`. Shutdown
 cancels the daemon lifetime, which interrupts executing runs (they are kept for
-recovery), waits for them, then closes external agents and modules.
+recovery), waits for them, then stops background commands and language
+servers and closes external agents and modules.
 
 ## HTTP API
 
@@ -153,9 +157,11 @@ keeps its dispatchers (the terminal one, Telegram one per chat and role).
 A message is accepted by `core` as a run (`accepted`) and executed on its own
 goroutine by `Core.ExecuteRun`: `claim` (under the session gate) makes it
 `running`; external-agent sessions go to their adapter, native ones build an
-`agent.Engine` and call `Engine.Run(ctx, Task)`. Its `Outcome` (`completed`
-with a stop reason, `waiting_approval`, `waiting_events`, `interrupted`,
-`canceled`, `failed`) is applied by core.
+`agent.Engine` and call `Engine.Run(ctx, Task)`. Its `Outcome` is the status
+the run reached (`completed` with a stop reason, `waiting_approval`,
+`waiting_events`, `canceled`, `failed`) and whether a stop that was not the
+user's interrupted it; core applies it with one switch. An interrupted run
+commits what it reached, or stays `running`, its reply sealed, for recovery.
 
 Run status has one writer, `transition` (`internal/core/run_lifecycle.go`),
 with one edge table (`runEdges`):
@@ -176,7 +182,9 @@ their errors are joined and logged: drop a wakeup the run no longer has,
 publish `run.updated`, sync the subagent task the run works for, and for an
 ended run clear its checkpoint, reject its open approvals, cancel the blocking
 subagents of a failed run and tell the user of a failed wake run. Callers
-waiting for the end (a blocking `agent` call) are woken in any case.
+waiting for the end (a blocking `agent` call) are woken once these steps are
+done, whether or not they failed, and a caller that finds the run ended while
+they run waits for them too.
 
 Session gates never nest: ending a subagent's run takes its parent session's
 gate (the finished task wakes the parent), so no subagent run ends while a
@@ -196,14 +204,15 @@ shell tasks and subagents it started.
 
 **Recovery.** A run found `running` without an executor was interrupted.
 `claim` counts the recovery; the count resets once a step finishes, and more
-than 8 recoveries in a row without one fail the run. It builds a plan for
-every call left without a result (`agent.Task.Interrupted`, `Settle`): `rerun`
-read-only and deferred calls, `ask` again for a mutating call, `answer` an
-unknown tool with an error. A mutating call never reruns without a fresh
-approval. `Core.Recover`, called once at daemon start, marks leftover shell
-tasks `lost`, resumes each active run once, syncs subagent tasks whose child
-run already ended, prunes worktrees no subagent task keeps, and settles idle
-sessions (next queued message, a wake run or the next run of an active goal).
+than 8 recoveries in a row without one fail the run. The engine finds the
+calls left without a result whose approval is neither pending nor denied and
+settles each as `Tools.Recovery` says: `rerun` read-only, agent and deferred
+calls, `ask` again for a mutating call, `answer` an unknown tool with an
+error. A mutating call never reruns without a fresh approval. `Core.Recover`,
+called once at daemon start, marks leftover shell tasks `lost`, resumes each
+active run once, syncs subagent tasks whose child run already ended, prunes
+worktrees no subagent task keeps, and settles idle sessions (next queued
+message, a wake run or the next run of an active goal).
 External-agent runs keep their own recovery in core.
 
 ## Agent engine
@@ -217,9 +226,9 @@ and talks to core through ports (`internal/agent/ports.go`):
 |---|---|---|
 | `Model` | `providers.Runtime` | one generation |
 | `Journal` | `coreJournal` | load the window from the latest boundary, append and stream messages, checkpoint, record `run_steps` |
-| `Tools` | `coreTools` | specs, `Authorize` (rules, concurrency key, barrier), `Execute` (result or approval request) |
-| `Approvals` | `coreApprovals` | record an approval request, report open ones |
-| `Inbox` | `coreInbox` | steer input, decided approvals, finished background tasks |
+| `Tools` | `coreTools` | specs, `Authorize` (rules, concurrency key, barrier, an opaque grant), `Execute` (the grant: result or approval request), `Recovery` (how to settle an interrupted call) |
+| `Approvals` | `coreApprovals` | record an approval request |
+| `Inbox` | `coreInbox` | steers, task events, where each call's newest approval stands, whether awaited tasks ended |
 | `Sink` | `coreSink` | live events to clients |
 | `Prompts` | `corePrompts` | fixed system prompt per run; changing state as a context note |
 | `Todos` | `coreTodos` | open todo items of the run's `/continue` chain |
@@ -269,9 +278,11 @@ the phase, so a parked or restarted run keeps it. How a step can go wrong:
   alone.
 
 While a native run is active the engine is the only writer of its session's
-transcript; everything else reaches it through the inbox. Messages are ordered
-by an integer `seq` and never rewritten. `Core.ExecuteTool` serves run-less
-calls only (tools API, voice, MCP server).
+transcript; everything else reaches it through the inbox. Steers without
+images are merged into the last result a tool batch writes (one inbox read a
+batch); steers with images become a user message before the next model call.
+Messages are ordered by an integer `seq` and never rewritten.
+`Core.ExecuteTool` serves run-less calls only (tools API, voice, MCP server).
 
 Subpackages: `context` (token estimates, conversation building, elision,
 summary boundaries), `toolsched` (parallel batches of up to 8 calls, daemon-wide
@@ -392,7 +403,7 @@ provider and model.
   the mode preset (`default`, `accept_edits`, `full_auto`, `plan`); deny wins
   over ask over allow, and a preset's deny rule over stored allow rules. A
   rule names its tool or a tool listed in `Spec.CoveredBy` (`read` rules cover
-  `grep`, `glob` and `ls`; `edit` rules cover `apply_patch`).
+  `grep`, `glob`, `ls`, `repo_map` and `lsp`; `edit` rules cover `apply_patch`).
   `permission.Builtin` (`memory: list` = allow) is in every preset and cannot
   be deleted; a stored ask/deny rule on `memory` still wins. The same check
   covers runs, the tools API, voice and the MCP server.
@@ -414,8 +425,8 @@ provider and model.
   "Always allow". Enter with `/plan`, `/permissions plan`, the mode picker or
   `PATCH /v1/sessions/{id}/permissions` (owner only). Subagents inherit the
   mode; the engine fixes its tool list when a run starts or resumes, so
-  `/plan` during a run blocks changes at once and offers `exit_plan_mode` from
-  the next start or resume.
+  `/plan` during a run blocks changes from its next tool batch and offers
+  `exit_plan_mode` from the next start or resume.
 - PreToolUse hooks (`core.permitCall`) are one more rule source below the
   stored deny rules: they run only for a call no deny rule blocks and may block
   it, make it ask or allow it (over ask rules and the preset). Arguments they
@@ -424,6 +435,10 @@ provider and model.
 - A call that asks runs only with a grant: its newest approval is approved and
   it has no result yet, read from the store per run, so a grant runs it once.
   Executors never see approvals.
+- A run reads the session, its subagent task and the rules once for each group
+  of calls it admits (a tool batch, or the calls after a barrier), so a call
+  costs no store read of its own; Authorize's verdict, with the arguments
+  hooks rewrote, reaches Execute as the call's grant.
 - What the approval shows comes from the tool's optional `tools.Previewer`
   (side-effect free: a `tools.FileChange` diff, the command and its
   directory), built on the call's goroutine under its concurrency key; a
@@ -441,12 +456,12 @@ provider and model.
 - `tools.Result.Status` (`success`/`error`/`neutral`, empty = success) is the
   only status field. Results over about 8k tokens go to
   `sessions/<id>/tool-output/`, and the model gets head, tail and path.
-- A search (`grep`, `glob`, `ls`) meets the rules by its directory: a deny or
-  ask rule matching the directory decides the whole call. Below it, core passes
-  `Call.Skip` (`permission.SearchSkip`: the deny and ask rules that did not
-  match the directory) and the walkers drop matching paths, saying how many
-  they left out. Places that hold keys are dropped the same way unless the
-  search starts inside one.
+- A search (`grep`, `glob`, `ls`, `repo_map`) meets the rules by its
+  directory: a deny or ask rule matching the directory decides the whole call.
+  Below it, core passes `Call.Skip` (`permission.SearchSkip`: the deny and ask
+  rules that did not match the directory) and the walkers drop matching paths,
+  saying how many they left out. Places that hold keys are dropped the same
+  way unless the search starts inside one.
 - Searches list files with `git ls-files -co --exclude-standard` inside a git
   repository; otherwise, or when git lists nothing (an ignored directory named
   in `path`), they walk the tree following `.gitignore` files (and outside a
@@ -470,6 +485,11 @@ provider and model.
   the result cut, ending with the offset to read on. Lines over 2000
   characters are cut; a file with a NUL byte in its first 8 KB is refused as
   binary.
+- `repo_map` lists the files as the searches do and shows the definitions
+  the rest of the code uses most, ranked by PageRank as Aider's repo map, in
+  about 2048 tokens; `focus_files` and `focus_symbols` steer the ranking.
+  Tags are cached in memory per file by size and modification time
+  ([REPO_MAP.md](REPO_MAP.md)).
 - File state (`tools/file_ledger.go`): one in-memory ledger shared by `read`
   and the file-changing tools holds, per session, the xxh3 hash of each
   file the session read (any part) or wrote. Changing an existing file the
@@ -506,11 +526,21 @@ provider and model.
   numbered like `read`; its metadata (`tools.FileChange`) keeps only the
   changed regions, at most 16 KB a side, while an approval shows a file up to
   64 KB whole.
-- After a successful `edit`, `multiedit` or `write`, the file is checked
-  (`internal/hooks/diagnostics.go`: gofmt and go vet, tsc, Python compile,
-  cargo check, JSON parse; overridable in setup.json `diagnostics`) for up to
-  20 s under the call's directory key, and up to 30 lines that name the file
-  end the result as "Diagnostics after edit:". The edit is never undone.
+- After a successful `edit`, `multiedit`, `write` or `apply_patch`, the
+  edited files are checked for up to 20 s under the call's directory key and
+  their errors end the result as "Diagnostics after edit:"
+  (`internal/hooks/diagnostics.go`). A file in a project whose language
+  server is installed goes to that server (`internal/lsp`): it waits for
+  diagnostics newer than the version sent, reports at most 20 errors a file
+  and the errors in up to five other files (gopls is asked to finish the
+  importers first, `gopls.diagnose_files`). Other files get a command:
+  gofmt and go vet, tsc, Python compile, cargo check, JSON parse, up to 30
+  lines naming the file. Both are configured in setup.json `diagnostics`;
+  the edit is never undone. See [LSP.md](LSP.md).
+- `lsp {operation, file_path, line, character, query}` asks the language
+  server for definition, references, implementation, hover and symbols. It
+  is read-only, covered by `read` rules, and offered only when a server
+  would serve the session's working directory (`core.WithLSP`).
 
 ### File checkpoints
 
@@ -578,10 +608,15 @@ Close() error
   current tools, in a registry swapped atomically after each `Apply`.
 - `supervisor.Reload` (`POST /v1/admin/reload`, the wizard, every API handler
   after a setup write) loads setup.json and, under one lock, applies external
-  agents, the module set, session LLMs, the assistant profile, and
-  Telegram. Each part does nothing when its settings did not
-  change; MCP reconnects only changed servers, and one failing server does not
-  disable the others.
+  agents, the module set, session LLMs, the assistant profile, the run limits
+  (`core.Tuning`: budgets, compact model, context window cap, model
+  concurrency, background commands and subagents), automation's timezone and
+  delivery targets, and Telegram. The start applies the same way
+  (`ApplyBootstrap`), so nothing in setup.json waits for a restart. Each part
+  does nothing when its settings did not change; MCP reconnects only changed
+  servers, and one failing server does not disable the others. Run limits
+  apply to runs as they go: model slots resize in place, and a lower limit
+  only stops new holders.
 - `GET /v1/modules` lists statuses; the model's runtime note is built from
   them (without `state`, so it stays stable): modules grouped as usable in
   this run, enabled without tools here, not ready, and off, with facts only
@@ -598,6 +633,12 @@ Close() error
   Playwright MCP server is owned by its MCP session.
 - Realtime voice providers are `realtime.ProviderSpec`s with a codec over one
   websocket session engine.
+- Skills: installed skills land quarantined (disabled, under `quarantine/`)
+  unless `trust_policy` is `trusted`; `skills.Action` is the one list of
+  library actions the API, CLI, screens and `skill_manage` share. A GitHub
+  install is a shallow `git clone` with a timeout, no prompts and the
+  environment of agent commands (no daemon keys); its subpath and every bundle
+  must stay inside the clone. Skill file writes go through `os.Root`.
 
 ## Deliveries
 
@@ -606,7 +647,10 @@ Clients that cannot hold an event stream fetch work from a delivery queue
 Types: `run` (a run's reply), `document` (`send_file`), `notice`, `approval`
 (a subagent's approval sent to the parent's chat). A run gets a delivery only
 when its client sets `ReceivesDeliveries` in its capabilities (Telegram,
-automation); the terminal follows events instead. `reply_once` marks a target
+automation); the terminal follows events instead. An automation job keeps the
+capabilities and delivery address of the run or client that created it (an
+address that takes one reply is not kept), and each fire's result also goes to
+the configured targets (the owner's Telegram chat), once per chat. `reply_once` marks a target
 that takes a single reply (Telegram inline and guest). Restart notices are
 `held` until the next start releases them.
 

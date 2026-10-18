@@ -79,7 +79,7 @@ func (e *readExecutor) Execute(_ context.Context, call Call) (Result, error) {
 	fail := func(format string, args ...any) (Result, error) {
 		return Result{Content: fmt.Sprintf(format, args...), Metadata: meta, Status: ResultStatusError}, nil
 	}
-	if isProtectedCredentialPath(policy.RealPath) || isProtectedCredentialPath(path) {
+	if IsCredentialPath(policy.RealPath) || IsCredentialPath(path) {
 		return fail("Reading MatrixClaw credential files is blocked. Use provider or module status controls; secret values are never returned to model tools.")
 	}
 	file, err := os.Open(path)

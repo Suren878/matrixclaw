@@ -91,14 +91,9 @@ func (c *Client) UpdateSkillBody(ctx context.Context, id string, body string) er
 	return c.doJSON(ctx, http.MethodPut, skillPath(id)+"/body", skills.BodyRequest{Body: body}, nil)
 }
 
-// SkillAction runs trust, quarantine, enable, disable, archive, restore, pin
-// or unpin on a skill.
-func (c *Client) SkillAction(ctx context.Context, id string, action string) error {
-	return c.doJSON(ctx, http.MethodPost, skillPath(id)+"/"+escapedPath(action), nil, nil)
-}
-
-func (c *Client) RemoveSkill(ctx context.Context, id string) error {
-	return c.doJSON(ctx, http.MethodDelete, skillPath(id), nil, nil)
+// SkillAction runs a library action on a skill.
+func (c *Client) SkillAction(ctx context.Context, id string, action skills.Action) error {
+	return c.doJSON(ctx, http.MethodPost, skillPath(id)+"/"+escapedPath(string(action)), nil, nil)
 }
 
 func (c *Client) SessionSkills(ctx context.Context, sessionID string) ([]skills.Skill, error) {

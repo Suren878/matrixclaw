@@ -1,6 +1,7 @@
 package controlplane
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 
@@ -17,12 +18,11 @@ func skillsDaemon(t *testing.T) (*apiDaemon, *skills.Service, skills.Skill) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	service, err := skills.NewService(skills.Config{DBPath: dbPath, Enabled: true})
+	service, err := skills.NewService(st.DB(), filepath.Join(t.TempDir(), "skills"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = service.Close() })
-	draft, err := service.CreateDraft("Review", "Review a diff", nil, "Read the diff twice.")
+	draft, err := service.CreateDraft(context.Background(), "Review", "Review a diff", nil, "Read the diff twice.")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,17 +54,17 @@ func TestSkillsReviewTrustUseAndRemove(t *testing.T) {
 	if screenOf[PickerData](t, trusted).Title != "Review" {
 		t.Fatalf("trust-enable = %+v", trusted)
 	}
-	if detail, _ := service.Get(draft.ID); detail.Skill.TrustState != skills.TrustTrusted || !detail.Skill.Enabled {
+	if detail, _ := service.Get(context.Background(), draft.ID); detail.Skill.TrustState != skills.TrustTrusted || !detail.Skill.Enabled {
 		t.Fatalf("skill after trust-enable = %+v", detail.Skill)
 	}
 
 	daemon.run("/skills use " + draft.ID)
-	if active, _ := service.SessionSkills("s1"); len(active) != 1 {
+	if active, _ := service.SessionSkills(context.Background(), "s1"); len(active) != 1 {
 		t.Fatalf("session skills = %+v", active)
 	}
 
 	daemon.run("/modules skills set-enabled library " + draft.ID + " off")
-	if detail, _ := service.Get(draft.ID); detail.Skill.Enabled {
+	if detail, _ := service.Get(context.Background(), draft.ID); detail.Skill.Enabled {
 		t.Fatal("skill still enabled")
 	}
 
@@ -73,7 +73,7 @@ func TestSkillsReviewTrustUseAndRemove(t *testing.T) {
 		t.Fatalf("remove = %+v, want a confirmation", asked)
 	}
 	removed := daemon.run(screenOf[ConfirmData](t, asked).ConfirmCommand)
-	if _, err := service.Get(draft.ID); err == nil || !isScreen[PickerData](removed) {
+	if _, err := service.Get(context.Background(), draft.ID); err == nil || !isScreen[PickerData](removed) {
 		t.Fatalf("after remove: picker %+v, skill still there", removed)
 	}
 }
@@ -83,7 +83,7 @@ func TestSkillLibraryWritesAreTheOwners(t *testing.T) {
 
 	result := daemon.runAs(core.RoleMember, "/modules skills action review "+draft.ID+" trust-enable")
 
-	if detail, _ := service.Get(draft.ID); detail.Skill.TrustState == skills.TrustTrusted || result.Text() == "" {
+	if detail, _ := service.Get(context.Background(), draft.ID); detail.Skill.TrustState == skills.TrustTrusted || result.Text() == "" {
 		t.Fatalf("member trusted a skill: %+v", result)
 	}
 }

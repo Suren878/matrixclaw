@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Suren878/matrixclaw/internal/lsp"
 	"github.com/Suren878/matrixclaw/internal/shelltask"
 )
 
@@ -38,20 +39,23 @@ type Config struct {
 }
 
 // Runner runs setup.json's hooks, the hooks of trusted project files and the
-// checks after edits as bash commands with the environment of shell commands.
+// checks after edits: language servers, else bash commands with the
+// environment of shell commands.
 type Runner struct {
-	env    func() []string
-	config func() Config
-	trust  *trustStore
-	logf   func(format string, args ...any)
+	env     func() []string
+	config  func() Config
+	servers *lsp.Manager
+	trust   *trustStore
+	logf    func(format string, args ...any)
 	// reported holds the project files already logged as not run.
 	reported sync.Map
 }
 
 // NewRunner returns a runner; env (nil for the daemon's) is the commands'
-// environment, trustPath the file keeping trusted project hooks files.
-func NewRunner(env func() []string, config func() Config, trustPath string) *Runner {
-	return &Runner{env: env, config: config, trust: &trustStore{path: trustPath}, logf: log.Printf}
+// environment, trustPath the file keeping trusted project hooks files and
+// servers the language servers that check edits (nil for none).
+func NewRunner(env func() []string, config func() Config, trustPath string, servers *lsp.Manager) *Runner {
+	return &Runner{env: env, config: config, servers: servers, trust: &trustStore{path: trustPath}, logf: log.Printf}
 }
 
 // Scope is the session a hook runs for.

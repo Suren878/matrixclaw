@@ -29,8 +29,8 @@ func (c *Core) subagentsPrompt(ctx context.Context, coding bool, workingDir stri
 		Runtimes:   availableSubagentRuntimeIDs(runtimes),
 		External:   external,
 		Types:      types,
-		Background: c.backgroundAgents,
-		Steps:      c.budgets.Subagent.Steps,
+		Background: c.Tuning().BackgroundAgents,
+		Steps:      c.Tuning().Budgets.Subagent.Steps,
 	})
 }
 

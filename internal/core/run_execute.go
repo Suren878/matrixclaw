@@ -5,11 +5,9 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
-	"github.com/Suren878/matrixclaw/internal/agent/toolsched"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/safego"
 )
@@ -17,16 +15,6 @@ import (
 // DefaultModelConcurrency is how many model requests native runs make at once
 // unless the daemon configures another limit.
 const DefaultModelConcurrency = 4
-
-// WithModelConcurrency bounds the model requests all native runs, subagents
-// included, make at once; 0 or less keeps the default.
-func (c *Core) WithModelConcurrency(n int) *Core {
-	if n <= 0 {
-		n = DefaultModelConcurrency
-	}
-	c.modelSlots = toolsched.NewSemaphore(n)
-	return c
-}
 
 // ExecuteRun claims a run and executes it with its external agent or the native engine.
 func (c *Core) ExecuteRun(ctx context.Context, runID string) error {
@@ -141,12 +129,12 @@ func (c *Core) nativeEngine(ctx context.Context, claimed claimedRun, session Ses
 		return agent.Task{}, nil, err
 	}
 	turn.RunID, turn.Continues, turn.ClientCapabilities = run.ID, continues, run.ClientCapabilities
-	batch := &batchSnapshot{}
+	batch := &toolBatch{}
 	engine := agent.New(agent.Config{
 		Journal:     coreJournal{c: c, batch: batch},
-		Tools:       coreTools{c: c, turn: turn, authorized: &sync.Map{}, batch: batch},
-		Approvals:   coreApprovals{c: c, sessionID: session.ID},
-		Inbox:       coreInbox{c: c, session: session},
+		Tools:       coreTools{c: c, turn: turn, batch: batch, interrupted: claimed.Batch},
+		Approvals:   coreApprovals{c: c},
+		Inbox:       coreInbox{c: c, session: session, runID: run.ID},
 		Sink:        coreSink{c: c},
 		Prompts:     &corePrompts{c: c, turn: turn},
 		Todos:       coreTodos{c: c},
@@ -169,15 +157,10 @@ func (c *Core) nativeEngine(ctx context.Context, claimed claimedRun, session Ses
 		Budget:       budget,
 		Resume:       resume,
 		Continues:    continues,
+		Recovering:   claimed.Recovering,
 	}
 	if compact, windowTokens := c.compactRuntime(ctx); compact != nil {
 		task.CompactModel, task.CompactWindowTokens = compact, windowTokens
-	}
-	if claimed.Recovering {
-		task.Recovering = true
-		if task.Interrupted, err = c.interruptedCalls(ctx, run, claimed.Batch); err != nil {
-			return agent.Task{}, nil, err
-		}
 	}
 	return task, engine, nil
 }

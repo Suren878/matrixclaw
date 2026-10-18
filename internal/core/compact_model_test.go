@@ -40,7 +40,7 @@ func TestManualCompactUsesTheCompactModel(t *testing.T) {
 			return providers.Response{Text: "CHEAP SUMMARY"}, nil
 		}),
 	})
-	app.WithCompactModel("cheap", "small")
+	app.SetTuning(core.Tuning{CompactProvider: "cheap", CompactModel: "small"})
 	session, _ := saveCrashRecoveryRun(t, db, "cheap", core.RunStatusCompleted, false)
 
 	result, err := app.CompactSession(context.Background(), session.ID)
@@ -56,7 +56,7 @@ func TestUnavailableCompactModelIsLoggedOnce(t *testing.T) {
 	app.WithSessionLLMs(twoModelLLMs{recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		return providers.Response{Text: "main summary"}, nil
 	})}})
-	app.WithCompactModel("cheap", "small")
+	app.SetTuning(core.Tuning{CompactProvider: "cheap", CompactModel: "small"})
 	var logs bytes.Buffer
 	log.SetOutput(&logs)
 	defer log.SetOutput(os.Stderr)

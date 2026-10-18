@@ -3,35 +3,28 @@ package core
 import (
 	"context"
 	"log"
-	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
-// WithCompactModel names the provider and model that write context summaries;
-// empty keeps each run's own model.
-func (c *Core) WithCompactModel(providerID string, modelID string) *Core {
-	c.compactProvider, c.compactModel = strings.TrimSpace(providerID), strings.TrimSpace(modelID)
-	return c
-}
-
 // compactRuntime is the configured summary model and its context window; nil
 // means the run's own model, also when the configured one cannot be resolved.
 func (c *Core) compactRuntime(ctx context.Context) (providers.Runtime, int) {
-	if c.compactProvider == "" {
+	tuning := c.Tuning()
+	if tuning.CompactProvider == "" {
 		return nil, 0
 	}
 	llms := c.sessionLLMs()
 	if llms == nil {
 		return nil, 0
 	}
-	runtime, _, modelID, err := llms.Resolve(ctx, c.compactProvider, c.compactModel)
+	runtime, _, modelID, err := llms.Resolve(ctx, tuning.CompactProvider, tuning.CompactModel)
 	if err != nil || runtime == nil {
 		if !c.compactUnavailable.Swap(true) {
-			log.Printf("core: compact model %s/%s is unavailable, summaries use the run's model: %v", c.compactProvider, c.compactModel, err)
+			log.Printf("core: compact model %s/%s is unavailable, summaries use the run's model: %v", tuning.CompactProvider, tuning.CompactModel, err)
 		}
 		return nil, 0
 	}
 	c.compactUnavailable.Store(false)
-	return runtime, c.modelContextWindowTokens(c.compactProvider, modelID)
+	return runtime, c.modelContextWindowTokens(tuning.CompactProvider, modelID)
 }

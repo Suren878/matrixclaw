@@ -85,20 +85,13 @@ func (check callPermission) recheck(_ context.Context, subject permission.Subjec
 	return nil
 }
 
-// checkPermission evaluates a call against the global rules, the rules of its
-// session and the session's parents, then the preset of the session's mode; a
-// call that no rule decides asks when its spec does. A call that asks runs once
-// its grant is stored. Engine runs and ExecuteTool (API, voice, MCP server,
-// replays) both ask here.
-func (c *Core) checkPermission(ctx context.Context, sessionID string, spec tools.Spec, call tools.Call) (callPermission, error) {
-	session, err := c.store.GetSession(ctx, sessionID)
-	if err != nil {
-		return callPermission{}, err
-	}
-	rules, err := c.permissionRules(ctx, session)
-	if err != nil {
-		return callPermission{}, err
-	}
+// checkPermission evaluates a call against the scope's rules (global ones and
+// those of its session and the session's parents), then the preset of the
+// session's mode; a call that no rule decides asks when its spec does. A call
+// that asks runs once its grant is stored. Engine runs and ExecuteTool (API,
+// voice, MCP server, replays) both ask here.
+func (c *Core) checkPermission(ctx context.Context, scope callScope, spec tools.Spec, call tools.Call) (callPermission, error) {
+	session, rules := scope.session, scope.rules
 	if call.WorkingDir == "" {
 		call.WorkingDir = session.WorkingDir
 	}
@@ -111,7 +104,8 @@ func (c *Core) checkPermission(ctx context.Context, sessionID string, spec tools
 	check.secret = verdict.Effect == "" && spec.Effect == tools.EffectReadOnly && holdsSecrets(request.Subject)
 	check.ask = verdict.Effect == permission.Ask || verdict.Effect == "" && (spec.Asks || check.secret)
 	if check.ask && call.ToolCallID != "" {
-		if check.granted, err = c.callGranted(ctx, sessionID, call.RunID, call.ToolCallID); err != nil {
+		var err error
+		if check.granted, err = c.callGranted(ctx, session.ID, call.RunID, call.ToolCallID); err != nil {
 			return callPermission{}, err
 		}
 		check.ask = !check.granted
@@ -123,23 +117,22 @@ func (c *Core) checkPermission(ctx context.Context, sessionID string, spec tools
 // source below the stored deny rules: they run for a call no deny rule blocks
 // and may block it, make it ask or allow it. Arguments they rewrite must pass
 // the call's checks and meet the rules again.
-func (c *Core) permitCall(ctx context.Context, name string, spec tools.Spec, call tools.Call) (callPermission, error) {
-	check, err := c.checkPermission(ctx, call.SessionID, spec, call)
+func (c *Core) permitCall(ctx context.Context, scope callScope, name string, spec tools.Spec, call tools.Call) (callPermission, error) {
+	check, err := c.checkPermission(ctx, scope, spec, call)
 	if err != nil || check.verdict.Effect == permission.Deny || c.hooks == nil {
 		return check, err
 	}
-	scope := hookScope(check.session, call.RunID, call.WorkingDir)
-	decision := c.hooks.PreToolUse(ctx, scope, hooks.ToolCall{ID: call.ToolCallID, Name: name, Input: call.Args, Files: subjectFiles(check.subjects)})
+	decision := c.hooks.PreToolUse(ctx, hookScope(check.session, call.RunID, call.WorkingDir), hooks.ToolCall{ID: call.ToolCallID, Name: name, Input: call.Args, Files: subjectFiles(check.subjects)})
 	if decision.Input != nil {
 		call.Args = decision.Input
-		if _, _, err := c.checkToolCall(ctx, name, call); err != nil {
+		if _, err := c.checkToolCall(scope, name, call); err != nil {
 			if !errors.Is(err, ErrInvalidInput) {
 				return callPermission{}, err
 			}
 			check.hook.blocked = "its PreToolUse hook rewrote the input to one that fails: " + err.Error()
 			return check, nil
 		}
-		if check, err = c.checkPermission(ctx, call.SessionID, spec, call); err != nil || check.verdict.Effect == permission.Deny {
+		if check, err = c.checkPermission(ctx, scope, spec, call); err != nil || check.verdict.Effect == permission.Deny {
 			return check, err
 		}
 		check.hook.args = decision.Input
@@ -183,7 +176,11 @@ func (c *Core) suggestRule(ctx context.Context, sessionID string, toolName strin
 	if !ok {
 		return nil
 	}
-	check, err := c.checkPermission(ctx, sessionID, spec, tools.Call{SessionID: sessionID, Args: args})
+	scope, err := c.callScope(ctx, sessionID)
+	if err != nil {
+		return nil
+	}
+	check, err := c.checkPermission(ctx, scope, spec, tools.Call{SessionID: sessionID, Args: args})
 	if err != nil {
 		return nil
 	}

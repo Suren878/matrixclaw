@@ -31,24 +31,15 @@ type bootstrapConfig struct {
 	Timezone     string
 	APIToken     string
 	Telegram     telegramClientBootstrap
-	// Setup is setup.json as loaded at start.
-	Setup        setup.Config
-	Budgets      core.RunBudgets
-	CompactModel setup.CompactModelConfig
-	WindowCap    int
-	// ModelConcurrency bounds concurrent model requests; 0 keeps core's default.
-	ModelConcurrency int
-	// BackgroundTasks bounds a session's background commands; 0 keeps core's default.
-	BackgroundTasks int
-	// BackgroundAgents bounds a session's background subagents; 0 keeps core's default.
-	BackgroundAgents int
+	// Setup is setup.json as loaded.
+	Setup  setup.Config
+	Tuning core.Tuning
 }
 
 func loadBootstrap() (bootstrapConfig, error) {
 	cfg := bootstrapConfig{
-		Addr:    defaultDaemonAddr,
-		DBPath:  setup.DefaultDBPath(),
-		Budgets: core.DefaultRunBudgets(),
+		Addr:   defaultDaemonAddr,
+		DBPath: setup.DefaultDBPath(),
 	}
 
 	service, err := setup.NewDefaultService()
@@ -84,12 +75,15 @@ func loadBootstrap() (bootstrapConfig, error) {
 		if err != nil {
 			return bootstrapConfig{}, fmt.Errorf("load setup config %s: %w", service.Path(), err)
 		}
-		cfg.Budgets = budgets
-		cfg.CompactModel = setupCfg.Daemon.CompactModel
-		cfg.WindowCap = setupCfg.Daemon.ContextWindowCap
-		cfg.ModelConcurrency = setupCfg.Daemon.ModelConcurrency
-		cfg.BackgroundTasks = setupCfg.Daemon.BackgroundTasks
-		cfg.BackgroundAgents = setupCfg.Daemon.BackgroundAgents
+		cfg.Tuning = core.Tuning{
+			Budgets:          budgets,
+			CompactProvider:  setupCfg.Daemon.CompactModel.Provider,
+			CompactModel:     setupCfg.Daemon.CompactModel.Model,
+			WindowCap:        setupCfg.Daemon.ContextWindowCap,
+			ModelConcurrency: setupCfg.Daemon.ModelConcurrency,
+			BackgroundTasks:  setupCfg.Daemon.BackgroundTasks,
+			BackgroundAgents: setupCfg.Daemon.BackgroundAgents,
+		}
 
 		if err := setup.ImportDaemonEnvironmentFile(service.Path(), setupCfg); err != nil {
 			return bootstrapConfig{}, fmt.Errorf("load setup daemon environment %s: %w", setup.DaemonEnvironmentFilePath(service.Path()), err)

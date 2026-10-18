@@ -53,6 +53,12 @@ func (s *SQLiteStore) Close() error {
 	return s.db.Close()
 }
 
+// DB is the store's one connection, shared by the packages whose tables are in
+// the schema (skills, automation).
+func (s *SQLiteStore) DB() *sql.DB {
+	return s.db
+}
+
 func secureSQLiteFiles(path string) error {
 	for _, candidate := range []string{path, path + "-wal", path + "-shm"} {
 		if err := os.Chmod(candidate, 0o600); err != nil && !os.IsNotExist(err) {

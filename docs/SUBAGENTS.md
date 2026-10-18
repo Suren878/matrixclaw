@@ -38,8 +38,8 @@ project instructions over 2 KB out). The profile is stored with the task
 | Type | Tools | Notes |
 |---|---|---|
 | `general` | every child tool | today's child |
-| `explore` | read, grep, glob, ls, read-only bash | read-only; reports `path:line`; lean context |
-| `plan` | read, grep, glob, ls, read-only bash, checkpoint_diff | read-only; numbered plan with files and risks |
+| `explore` | read, grep, glob, ls, repo_map, read-only bash | read-only; reports `path:line`; lean context |
+| `plan` | read, grep, glob, ls, repo_map, read-only bash, checkpoint_diff | read-only; numbered plan with files and risks |
 | `review` | as plan | read-only; reviews the diff (git, checkpoint_diff), findings by severity |
 | `verify` | as plan, plus task_output, task_kill, todo_write and full bash | runs builds, tests and linters, never edits; failures with minimal repros |
 

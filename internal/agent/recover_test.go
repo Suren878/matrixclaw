@@ -22,13 +22,12 @@ func TestRecoveryRerunsAsksAndAnswersTheInterruptedCalls(t *testing.T) {
 	seedCall(f, "r1", "read")
 	seedCall(f, "w1", "write")
 	seedCall(f, "u1", "gone")
+	f.Tools.Recoveries = map[string]agent.Recovery{
+		"w1": {Settle: agent.SettleAsk, Request: tools.ApprovalRequest{Description: "retry after the restart"}},
+		"u1": {Settle: agent.SettleAnswer, Result: tools.Result{Content: "unknown after restart", Status: tools.ResultStatusError}},
+	}
 	task := f.Task(agenttest.NewScriptedModel(text("never asked")))
 	task.Recovering = true
-	task.Interrupted = []agent.InterruptedCall{
-		{ToolCallID: "r1", Settle: agent.SettleRerun},
-		{ToolCallID: "w1", Settle: agent.SettleAsk, Request: tools.ApprovalRequest{Description: "retry after the restart"}},
-		{ToolCallID: "u1", Settle: agent.SettleAnswer, Result: tools.Result{Content: "unknown after restart", Status: tools.ResultStatusError}},
-	}
 
 	outcome, err := f.Engine().Run(t.Context(), task)
 
@@ -56,7 +55,6 @@ func TestRecoveryRerunsTheDeferredCallsWhenNothingIsAsked(t *testing.T) {
 	model := agenttest.NewScriptedModel(text("Read it."))
 	task := f.Task(model)
 	task.Recovering = true
-	task.Interrupted = []agent.InterruptedCall{{ToolCallID: "r1", Settle: agent.SettleRerun}}
 
 	outcome, err := f.Engine().Run(t.Context(), task)
 
@@ -65,6 +63,25 @@ func TestRecoveryRerunsTheDeferredCallsWhenNothingIsAsked(t *testing.T) {
 	}
 	if result, ok := f.Journal.Result("r1"); !ok || result.Content != "file body" || len(f.Tools.Calls) != 1 {
 		t.Fatalf("r1 result = %+v, calls = %d", result, len(f.Tools.Calls))
+	}
+}
+
+func TestRecoveryLeavesACallWaitingForItsDecision(t *testing.T) {
+	f := agenttest.NewFixture()
+	f.Tools.Funcs["write"] = writeTool
+	f.Tools.Asks["write"] = true
+	seedCall(f, "w1", "write")
+	if err := f.Approvals.Request(t.Context(), agent.Pending{RunID: agenttest.RunID, SessionID: agenttest.SessionID, ToolCallID: "w1", ToolName: "write"}); err != nil {
+		t.Fatal(err)
+	}
+	f.Tools.Recoveries = map[string]agent.Recovery{"w1": {Settle: agent.SettleAsk}}
+	task := f.Task(agenttest.NewScriptedModel())
+	task.Recovering = true
+
+	outcome := runTask(t, f, task)
+
+	if outcome.Status != agent.StatusWaitingApproval || len(f.Approvals.Requests) != 1 || len(f.Tools.Calls) != 0 {
+		t.Fatalf("outcome = %+v requests = %+v calls = %d", outcome, f.Approvals.Requests, len(f.Tools.Calls))
 	}
 }
 

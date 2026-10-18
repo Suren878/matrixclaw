@@ -27,13 +27,14 @@ func (d *Dispatcher) handleRemind(ctx context.Context, r Route) (Result, error) 
 		return textResult("Choose a session or create a new one before creating reminders."), nil
 	}
 	job, err := d.daemon.CreateAutomationJob(ctx, automation.CreateJobInput{
-		Kind:         automation.JobKindReminder,
-		SessionID:    binding.SessionID,
-		Client:       d.daemon.ClientName,
-		ExternalKey:  d.daemon.ExternalKey,
-		ScheduleMode: automation.ScheduleModeOnce,
-		RunAt:        &runAt,
-		Prompt:       prompt,
+		Kind:               automation.JobKindReminder,
+		SessionID:          binding.SessionID,
+		Client:             d.daemon.ClientName,
+		ExternalKey:        d.daemon.ExternalKey,
+		ClientCapabilities: d.daemon.Capabilities,
+		ScheduleMode:       automation.ScheduleModeOnce,
+		RunAt:              &runAt,
+		Prompt:             prompt,
 	})
 	if err != nil {
 		return Result{}, err

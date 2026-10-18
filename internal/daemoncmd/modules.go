@@ -10,6 +10,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/automation"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents/claudecode"
+	"github.com/Suren878/matrixclaw/internal/lsp"
 	"github.com/Suren878/matrixclaw/internal/modules"
 	browsermodule "github.com/Suren878/matrixclaw/internal/modules/browser"
 	deliverymodule "github.com/Suren878/matrixclaw/internal/modules/delivery"
@@ -42,6 +43,7 @@ type moduleDeps struct {
 	skills     *skillsmodule.Module
 	realtime   *realtime.Manager
 	geo        *geo.OSMService
+	servers    *lsp.Manager
 }
 
 // buildModules builds every module once and the set that applies them.
@@ -65,6 +67,7 @@ func buildModules(deps moduleDeps) (daemonModules, error) {
 	base = append(base, core.GoalToolExecutors(app)...)
 	base = append(base, core.AgentToolExecutors(app)...)
 	base = append(base, core.PlanModeToolExecutors(app)...)
+	base = append(base, lsp.NewTool(deps.servers))
 	set, err := modules.NewSet(base,
 		modules.Static("storage", "Storage", deps.storage.Tools()...),
 		modules.Static("delivery", "File delivery", deliverymodule.NewSendFileTool(deps.storage.Store(), app)),

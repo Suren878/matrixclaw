@@ -112,7 +112,6 @@ var routePolicies = map[string]string{
 	"POST /v1/modules/skills/drafts":               "owner",
 	"GET /v1/modules/skills/{id}":                  "open",
 	"PATCH /v1/modules/skills/{id}":                "owner",
-	"DELETE /v1/modules/skills/{id}":               "owner",
 	"PUT /v1/modules/skills/{id}/body":             "owner",
 	"POST /v1/modules/skills/{id}/{action}":        "owner",
 	"GET /v1/sessions/{id}/skills":                 "open",

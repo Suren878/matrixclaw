@@ -178,7 +178,7 @@ func TestTheSameCheckFailureThreeTimesBlocksTheGoal(t *testing.T) {
 		t.Fatalf("runs = %+v, requests = %d", runs, s.requestCount())
 	}
 	goal := s.goal(t)
-	if goal.Status != core.GoalBlocked || goal.CheckFailures != 3 || goal.RunsUsed != 0 {
+	if goal.Status != core.GoalBlocked || goal.CheckFailures != 3 || goal.RunsUsed != 1 {
 		t.Fatalf("goal = %+v", goal)
 	}
 }
@@ -320,7 +320,7 @@ func TestGoalCompletesOnlyWithEvidenceNoOpenTodoAndAPassingCheck(t *testing.T) {
 		}
 	}
 	goal := s.goal(t)
-	if goal.Status != core.GoalComplete || goal.Reason != "ported; the check passes" || goal.RunsUsed != 0 {
+	if goal.Status != core.GoalComplete || goal.Reason != "ported; the check passes" || goal.RunsUsed != 1 {
 		t.Fatalf("goal = %+v", goal)
 	}
 	if runs := s.runs(t); len(runs) != 1 || s.requestCount() != len(steps) {

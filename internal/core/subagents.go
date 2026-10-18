@@ -14,16 +14,6 @@ import (
 // at once unless the daemon configures another limit.
 const DefaultBackgroundAgents = 4
 
-// WithBackgroundAgents bounds the background subagents one session runs at
-// once; 0 or less keeps the default.
-func (c *Core) WithBackgroundAgents(n int) *Core {
-	if n <= 0 {
-		n = DefaultBackgroundAgents
-	}
-	c.backgroundAgents = n
-	return c
-}
-
 // AgentInput is one agent tool call: a child agent on a bounded task.
 type AgentInput struct {
 	ParentSessionID  string
@@ -118,7 +108,18 @@ func (c *Core) awaitSubagent(ctx context.Context, task Task) (AgentResult, error
 		return AgentResult{}, err
 	}
 	if !task.Status.Terminal() {
-		return AgentResult{}, fmt.Errorf("subagent task %s did not end with its run", task.ID)
+		// A daemon that stopped between the run's end and its follow-up left
+		// the task running; the waiter ends it, as Recover would later.
+		run, err := c.store.GetRun(ctx, task.ChildRunID)
+		if err != nil {
+			return AgentResult{}, err
+		}
+		if task, err = c.syncSubagentTask(ctx, run); err != nil {
+			return AgentResult{}, err
+		}
+		if !task.Status.Terminal() {
+			return AgentResult{}, fmt.Errorf("subagent task %s did not end with its run", task.ID)
+		}
 	}
 	return AgentResult{Task: task, Summary: task.Summary, IsError: task.Status != TaskStatusCompleted}, nil
 }
@@ -164,8 +165,8 @@ func (c *Core) reserveSubagent(ctx context.Context, parentID string, background 
 				count++
 			}
 		}
-		if count >= c.backgroundAgents {
-			return "", fmt.Errorf("%w: at most %d background subagents run at once in a session; await one of them first", ErrInvalidInput, c.backgroundAgents)
+		if limit := c.Tuning().BackgroundAgents; count >= limit {
+			return "", fmt.Errorf("%w: at most %d background subagents run at once in a session; await one of them first", ErrInvalidInput, limit)
 		}
 	}
 	name, err := c.assignSubagentAgentName(ctx, parentID, starting)
@@ -288,7 +289,7 @@ func (c *Core) limitSubagentSteps(ctx context.Context, child Session, profile Ag
 	if steps <= 0 {
 		return nil
 	}
-	if limit := c.budgets.Subagent.Steps; limit > 0 {
+	if limit := c.Tuning().Budgets.Subagent.Steps; limit > 0 {
 		steps = min(steps, limit)
 	}
 	return c.store.SaveSessionBudget(ctx, child.ID, SessionBudget{Steps: &steps}, c.now().UTC())

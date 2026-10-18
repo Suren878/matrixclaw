@@ -179,7 +179,7 @@ func (d *Dispatcher) handleSkillsForExternal(ctx context.Context, r Route) (Resu
 		}
 		return d.skillEditMenu(ctx, section, skillID)
 	case skillsRemoveConfirm:
-		if err := d.daemon.RemoveSkill(ctx, skillID); err != nil {
+		if err := d.daemon.SkillAction(ctx, skillID, skills.ActionRemove); err != nil {
 			return textResult(err.Error()), nil
 		}
 		return d.skillsSectionPicker(ctx, section, "")
@@ -330,9 +330,9 @@ func (d *Dispatcher) skillSetEnabled(ctx context.Context, section string, skillI
 	if !ok {
 		return d.skillEnabledPicker(ctx, section, skillID)
 	}
-	action := "disable"
+	action := skills.ActionDisable
 	if enabled {
-		action = "enable"
+		action = skills.ActionEnable
 	}
 	if err := d.daemon.SkillAction(ctx, skillID, action); err != nil {
 		return textResult(err.Error()), nil
@@ -347,18 +347,10 @@ func (d *Dispatcher) handleLibrarySkillAction(ctx context.Context, section strin
 	case "enabled":
 		return d.skillEnabledPicker(ctx, section, skillID)
 	case "trust-enable":
-		if err := d.daemon.SkillAction(ctx, skillID, "trust"); err != nil {
-			return textResult(err.Error()), nil
-		}
-		if err := d.daemon.SkillAction(ctx, skillID, "enable"); err != nil {
+		if err := d.daemon.SkillAction(ctx, skillID, skills.ActionTrust); err != nil {
 			return textResult(err.Error()), nil
 		}
 		return d.skillPicker(ctx, "library", skillID)
-	case "enable", "disable", "trust", "quarantine", "archive", "restore", "pin", "unpin":
-		if err := d.daemon.SkillAction(ctx, skillID, action); err != nil {
-			return textResult(err.Error()), nil
-		}
-		return d.skillPicker(ctx, section, skillID)
 	case "keep":
 		return d.skillsSectionPicker(ctx, section, "")
 	case "edit-metadata":
@@ -368,6 +360,13 @@ func (d *Dispatcher) handleLibrarySkillAction(ctx context.Context, section strin
 	case "remove":
 		return d.skillRemoveConfirm(section, skillID), nil
 	default:
+		library, ok := skills.ParseAction(action)
+		if !ok {
+			return d.skillPicker(ctx, section, skillID)
+		}
+		if err := d.daemon.SkillAction(ctx, skillID, library); err != nil {
+			return textResult(err.Error()), nil
+		}
 		return d.skillPicker(ctx, section, skillID)
 	}
 }

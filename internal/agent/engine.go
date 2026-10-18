@@ -75,7 +75,7 @@ func (e *Engine) Run(ctx context.Context, task Task) (outcome Outcome, err error
 	window, err := e.cfg.Journal.Load(ctx, task.SessionID)
 	if err != nil {
 		if ctx.Err() != nil {
-			return Outcome{Status: StatusInterrupted}, nil
+			return Outcome{Interrupted: true}, nil
 		}
 		return Outcome{Status: StatusFailed, Err: err}, nil
 	}
@@ -92,14 +92,14 @@ func (e *Engine) Run(ctx context.Context, task Task) (outcome Outcome, err error
 	if task.Recovering {
 		if err := r.recover(ctx); err != nil {
 			if ctx.Err() != nil {
-				return Outcome{Status: StatusInterrupted}, nil
+				return Outcome{Interrupted: true}, nil
 			}
 			return Outcome{Status: StatusFailed, Err: err}, nil
 		}
 	}
 	if err := r.sessionStart(ctx, window); err != nil {
 		if ctx.Err() != nil {
-			return Outcome{Status: StatusInterrupted}, nil
+			return Outcome{Interrupted: true}, nil
 		}
 		return Outcome{Status: StatusFailed, Err: err}, nil
 	}
@@ -338,60 +338,6 @@ func unfinishedTurn(ctx context.Context, gen generation, err error) stepResult {
 		return stepResult{kind: stepDone, assistant: &gen.assistant, saved: gen.saved, err: err}
 	}
 	return failedStep(err)
-}
-
-func (r *run) settle(ctx context.Context, result stepResult) (Outcome, bool, error) {
-	if result.assistant != nil && canceled(ctx) {
-		return Outcome{Status: StatusCanceled, Assistant: result.assistant, AssistantSaved: result.saved}, true, nil
-	}
-	if result.err != nil {
-		outcome := Outcome{Status: StatusFailed, Err: result.err, StopReason: result.stop}
-		if result.markErrored && result.assistant != nil {
-			outcome.Assistant, outcome.AssistantSaved, outcome.MarkErrored = result.assistant, result.saved, true
-		}
-		return outcome, true, nil
-	}
-	switch result.kind {
-	case stepWaitingApproval:
-		pending, err := r.Approvals.Pending(ctx, r.task.RunID)
-		if err != nil {
-			return Outcome{}, true, err
-		}
-		if !pending {
-			return Outcome{}, false, nil
-		}
-		if err := r.checkpoint(ctx, PhaseModel, nil); err != nil {
-			return Outcome{}, true, err
-		}
-		return Outcome{Status: StatusWaitingApproval}, true, nil
-	case stepWaitingEvents:
-		if err := r.checkpoint(ctx, PhaseModel, nil); err != nil {
-			return Outcome{}, true, err
-		}
-		return Outcome{Status: StatusWaitingEvents}, true, nil
-	case stepDone:
-		reply := finalReply(*result.assistant, result.response)
-		return Outcome{Status: StatusCompleted, StopReason: result.stopReason(), Assistant: &reply, AssistantSaved: result.saved}, true, nil
-	default:
-		return Outcome{}, false, nil
-	}
-}
-
-func (r *run) interrupted(result stepResult) Outcome {
-	outcome := Outcome{Status: StatusInterrupted, Assistant: result.assistant, AssistantSaved: result.saved}
-	if result.err != nil {
-		return outcome
-	}
-	switch result.kind {
-	case stepDone:
-		reply := finalReply(*result.assistant, result.response)
-		outcome.Assistant, outcome.Reached, outcome.StopReason = &reply, StatusCompleted, result.stopReason()
-	case stepWaitingApproval:
-		outcome.Reached = StatusWaitingApproval
-	case stepWaitingEvents:
-		outcome.Reached = StatusWaitingEvents
-	}
-	return outcome
 }
 
 // ErrCanceled is the cause of a run's context when the user canceled the run;

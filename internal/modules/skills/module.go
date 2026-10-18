@@ -2,6 +2,8 @@ package skills
 
 import (
 	"context"
+	"database/sql"
+	"os"
 	"sync/atomic"
 
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -16,22 +18,27 @@ type Module struct {
 	enabled atomic.Bool
 }
 
-func New(cfg coreskills.Config) (*Module, error) {
-	service, err := coreskills.NewService(cfg)
+// New opens the library at root on the store's database; it is off until
+// the first Apply.
+func New(db *sql.DB, root string) (*Module, error) {
+	service, err := coreskills.NewService(db, root)
 	if err != nil {
 		return nil, err
 	}
-	module := &Module{service: service}
-	module.enabled.Store(cfg.Enabled)
-	return module, nil
+	return &Module{service: service}, nil
 }
 
 func (m *Module) ID() string { return "skills" }
 
-// Apply shows or hides the skill tools; the trust policy and auto-invoke
-// settings apply at the next start.
+// Apply shows or hides the skill tools and applies the library settings.
 func (m *Module) Apply(_ context.Context, cfg setup.Config) error {
-	m.enabled.Store(cfg.Modules.Skills.IsEnabled())
+	skills := cfg.Modules.Skills
+	m.service.Configure(coreskills.Settings{
+		AutoInvoke:  skills.IsAutoInvoke(),
+		TrustPolicy: skills.TrustPolicy,
+		GitEnv:      setup.ChildEnvironment(cfg, os.Environ()),
+	})
+	m.enabled.Store(skills.IsEnabled())
 	return nil
 }
 
@@ -45,7 +52,7 @@ func (m *Module) Status(context.Context) modules.Status {
 }
 
 func (m *Module) Close() error {
-	return m.service.Close()
+	return nil
 }
 
 func (m *Module) Service() *coreskills.Service {
@@ -59,7 +66,7 @@ func (m *Module) Tools() []tools.Executor {
 	return coreskills.ToolExecutors(m.service)
 }
 
-func (m *Module) SkillsPromptContext(_ context.Context, req core.SkillsPromptContextRequest) string {
+func (m *Module) SkillsPromptContext(ctx context.Context, req core.SkillsPromptContextRequest) string {
 	if !m.enabled.Load() {
 		return ""
 	}
@@ -67,7 +74,7 @@ func (m *Module) SkillsPromptContext(_ context.Context, req core.SkillsPromptCon
 	for _, message := range req.Messages {
 		messages = append(messages, coreskills.PromptMessage{Role: message.Role, Content: message.Content})
 	}
-	return m.service.PromptContext(coreskills.PromptRequest{
+	return m.service.PromptContext(ctx, coreskills.PromptRequest{
 		SessionID:  req.SessionID,
 		RunID:      req.RunID,
 		WorkingDir: req.WorkingDir,

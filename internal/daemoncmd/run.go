@@ -16,6 +16,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
 	"github.com/Suren878/matrixclaw/internal/hooks"
+	"github.com/Suren878/matrixclaw/internal/lsp"
 	"github.com/Suren878/matrixclaw/internal/modules/geo"
 	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
 	skillsmodule "github.com/Suren878/matrixclaw/internal/modules/skills"
@@ -28,7 +29,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/shelltask"
-	"github.com/Suren878/matrixclaw/internal/skills"
 	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
@@ -52,11 +52,6 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = sqliteStore.Close() }()
-	automationStore, err := automation.NewSQLiteStore(bootstrap.DBPath)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = automationStore.Close() }()
 
 	localRuntime := localruntime.New("")
 	defer func() { _ = localRuntime.Close() }()
@@ -66,20 +61,14 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	skillsModule, err := skillsmodule.New(skillsConfigFromBootstrap(bootstrap))
+	skillsModule, err := skillsmodule.New(sqliteStore.DB(), filepath.Join(dataDir(bootstrap.DBPath), "skills"))
 	if err != nil {
 		return err
 	}
 
 	app := core.New(sqliteStore).
 		WithSessionLLMs(bootstrap.SessionLLMs).
-		WithRunBudgets(bootstrap.Budgets).
 		WithSessionFiles(sessionFilesRoot(bootstrap.DBPath)).
-		WithCompactModel(bootstrap.CompactModel.Provider, bootstrap.CompactModel.Model).
-		WithContextWindowCap(bootstrap.WindowCap).
-		WithModelConcurrency(bootstrap.ModelConcurrency).
-		WithBackgroundTaskLimit(bootstrap.BackgroundTasks).
-		WithBackgroundAgents(bootstrap.BackgroundAgents).
 		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()}).
 		WithSkillsContext(skillsModule).
 		WithPromptEnvironment(promptEnvironment(bootstrap)).
@@ -92,10 +81,16 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	app.WithExternalAgents(externalRegistry, sqliteStore)
-	automationService := automation.NewService(automationStore, app, bootstrap.Timezone).
-		WithDeliveryTargets(automationDeliveryTargets(bootstrap))
+	automationService := automation.NewService(automation.NewSQLiteStore(sqliteStore.DB()), app)
 	osmGeo := geo.NewOSMServiceFromEnv()
 	realtimeVoice := realtime.NewManager(app, geminilive.Spec, grokvoice.Spec, openairealtime.Spec)
+	// Commands and language servers follow the setup the supervisor applies;
+	// it is built after the modules, which offer the lsp tool.
+	var appliedConfig func() setup.Config
+	commandEnv := commandEnvironment(bootstrap.Setup, func() setup.Config { return appliedConfig() })
+	servers := lsp.NewManager(filepath.Join(dataDir(bootstrap.DBPath), "lsp"), commandEnv, func() lsp.Config {
+		return appliedConfig().Diagnostics.LSP
+	})
 	daemon, err := buildModules(moduleDeps{
 		app:        app,
 		automation: automationService,
@@ -104,6 +99,7 @@ func Run(ctx context.Context) error {
 		skills:     skillsModule,
 		realtime:   realtimeVoice,
 		geo:        osmGeo,
+		servers:    servers,
 	})
 	if err != nil {
 		return err
@@ -112,8 +108,8 @@ func Run(ctx context.Context) error {
 	lifetime, stopLifetime := context.WithCancel(ctx)
 	defer stopLifetime()
 	app.WithLifetime(lifetime)
-	safego.Go("core.runWakeups", func() { app.RunWakeups(lifetime) })
-	supervisor := newSupervisor(ctx, app, osmGeo, daemon.set)
+	supervisor := newSupervisor(ctx, app, automationService, osmGeo, daemon.set)
+	appliedConfig = supervisor.appliedConfig
 	server := api.New(api.Deps{
 		Core:       app,
 		Automation: automationService,
@@ -128,7 +124,6 @@ func Run(ctx context.Context) error {
 		APIToken:   bootstrap.APIToken,
 	})
 	app.WithRuntimeStatusContext(supervisor)
-	commandEnv := commandEnvironment(bootstrap.Setup, supervisor.appliedConfig)
 	app.WithCommandEnvironment(commandEnv)
 	// The agent's file tools may not trust a project's hooks for the owner.
 	hooksTrust := filepath.Join(dataDir(bootstrap.DBPath), "hooks-trust.json")
@@ -136,7 +131,8 @@ func Run(ctx context.Context) error {
 	app.WithHooks(hooks.NewRunner(commandEnv, func() hooks.Config {
 		cfg := supervisor.appliedConfig()
 		return hooks.Config{Hooks: cfg.Hooks, Diagnostics: cfg.Diagnostics}
-	}, hooksTrust))
+	}, hooksTrust, servers))
+	app.WithLSP(servers.Available)
 	supervisor.SetExternalAgents(sqliteStore, externalRuntimes, bootstrap.Setup.Modules.ExternalAgents)
 	defer func() {
 		// Ending the lifetime interrupts the executing runs and keeps them for
@@ -145,6 +141,7 @@ func Run(ctx context.Context) error {
 		stopLifetime()
 		app.WaitRuns()
 		app.StopShellTasks()
+		servers.Close()
 		supervisor.CloseExternalAgents()
 		_ = daemon.set.Close()
 	}()
@@ -166,6 +163,7 @@ func Run(ctx context.Context) error {
 	if err := supervisor.ApplyBootstrap(bootstrap); err != nil {
 		log.Printf("matrixclawd apply setup: %v", err)
 	}
+	safego.Go("core.runWakeups", func() { app.RunWakeups(lifetime) })
 	errCh := make(chan error, 2)
 	safego.Go("daemon.httpServer", func() {
 		err := httpServer.Serve(listener)
@@ -196,16 +194,6 @@ func Run(ctx context.Context) error {
 		return httpServer.Shutdown(shutdownCtx)
 	case err := <-errCh:
 		return err
-	}
-}
-
-func skillsConfigFromBootstrap(bootstrap bootstrapConfig) skills.Config {
-	cfg := bootstrap.Setup.Modules.Skills
-	return skills.Config{
-		DBPath:      bootstrap.DBPath,
-		Enabled:     cfg.IsEnabled(),
-		AutoInvoke:  cfg.IsAutoInvoke(),
-		TrustPolicy: cfg.TrustPolicy,
 	}
 }
 
