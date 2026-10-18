@@ -3,6 +3,8 @@ package core
 import (
 	"context"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
 // ExecuteTool runs one tool call outside the agent loop.
@@ -10,12 +12,17 @@ func (c *Core) ExecuteTool(ctx context.Context, input ExecuteToolInput) (Execute
 	input.SessionID = strings.TrimSpace(input.SessionID)
 	input.ToolName = strings.TrimSpace(input.ToolName)
 	input.ToolCallID = strings.TrimSpace(input.ToolCallID)
-	prepared, err := c.prepareToolCall(ctx, input)
+	prepared, scope, err := c.prepareToolCall(ctx, input)
 	if err != nil {
 		return ExecuteToolResult{}, err
 	}
 
-	toolResult, ask, execErr := c.runToolCall(ctx, prepared, input, nil)
+	var toolResult tools.Result
+	var ask *tools.ApprovalRequest
+	check, execErr := c.permitCall(ctx, scope, prepared.ToolName, prepared.Spec, prepared.call(input))
+	if execErr == nil {
+		toolResult, ask, execErr = c.runToolCall(ctx, prepared, input, check)
+	}
 	if ask != nil {
 		approval, err := c.requestApproval(ctx, prepared, *ask)
 		if err != nil {

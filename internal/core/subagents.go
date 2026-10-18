@@ -108,8 +108,8 @@ func (c *Core) awaitSubagent(ctx context.Context, task Task) (AgentResult, error
 		return AgentResult{}, err
 	}
 	if !task.Status.Terminal() {
-		// The run's end is committed before afterCommit syncs its task, so a
-		// waiter that read the ended run first ends the task itself.
+		// A daemon that stopped between the run's end and its follow-up left
+		// the task running; the waiter ends it, as Recover would later.
 		run, err := c.store.GetRun(ctx, task.ChildRunID)
 		if err != nil {
 			return AgentResult{}, err

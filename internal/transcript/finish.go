@@ -26,3 +26,19 @@ func HasFinishReason(message Message, reason string) bool {
 	}
 	return false
 }
+
+// restartNote is the finish message of a reply a daemon restart cut off.
+const restartNote = "Generation was interrupted by a daemon restart; a recovered continuation follows."
+
+// SealInterrupted ends message with a daemon_restart finish part, which keeps
+// it out of every later request; note says why ("" for a daemon restart).
+func SealInterrupted(message Message, note string) Message {
+	if note == "" {
+		note = restartNote
+	}
+	message.Parts = append(NormalizeMessageParts(message.Content, message.Parts), MessagePart{
+		Kind:   MessagePartKindFinish,
+		Finish: &FinishPart{Reason: FinishReasonDaemonRestart, Message: note},
+	})
+	return message
+}

@@ -3,7 +3,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
@@ -84,27 +83,35 @@ type Step struct {
 	ToolCalls  int
 }
 
-// Decision says whether a requested tool call may run; Reason goes back to the model.
-// A Barrier call that waits for approval holds back the calls after it in its batch.
-// Calls sharing a non-empty Key run one at a time, across runs too. A Delegated
-// call runs another agent, whose time is not this run's.
-type Decision struct {
+// Admission is Authorize's answer for one call; Reason goes back to the model
+// when it may not run. A Barrier call that waits for approval holds back the
+// calls after it in its batch. Calls sharing a non-empty Key run one at a time,
+// across runs too. A Delegated call runs another agent, whose time is not this
+// run's. Grant is opaque to the engine, which hands it to Execute unchanged.
+type Admission struct {
 	Allowed   bool
 	Reason    string
 	Barrier   bool
 	Key       string
 	Delegated bool
+	Grant     Grant
 }
 
-// Tools lists, authorizes and executes the tools of one run. Execute returns
-// either a result or, for a call that waits for the user, its approval request.
-// Execute errors are fatal; tool failures come back as error results. Execute
-// runs on a goroutine of its own, concurrently with other calls of the batch;
-// the other methods run on the engine goroutine.
+// Grant is the Tools port's own record of a call it authorized.
+type Grant any
+
+// Tools lists, authorizes and executes the tools of one run. Execute runs a
+// call Authorize allowed and returns either a result or, for a call that waits
+// for the user, its approval request. Execute errors are fatal; tool failures
+// come back as error results. Execute runs on a goroutine of its own,
+// concurrently with other calls of the batch; the other methods run on the
+// engine goroutine. Recovery says how a resumed run settles a call its
+// interrupted execution left without a result.
 type Tools interface {
 	Specs(ctx context.Context) []tools.Spec
-	Authorize(ctx context.Context, name string, call tools.Call) (Decision, error)
-	Execute(ctx context.Context, name string, call tools.Call) (tools.Result, *tools.ApprovalRequest, error)
+	Authorize(ctx context.Context, name string, call tools.Call) (Admission, error)
+	Execute(ctx context.Context, grant Grant) (tools.Result, *tools.ApprovalRequest, error)
+	Recovery(ctx context.Context, name string, call tools.Call) (Recovery, error)
 }
 
 // Pending is a tool call that waits for a user decision.
@@ -116,44 +123,43 @@ type Pending struct {
 	Request    tools.ApprovalRequest
 }
 
-// Approvals records approval requests and reports whether any are still open.
+// Approvals records approval requests.
 type Approvals interface {
 	Request(ctx context.Context, p Pending) error
-	Pending(ctx context.Context, runID string) (bool, error)
 }
 
-// InputKind selects what Inbox.Peek returns.
-type InputKind string
+// Steer is input the user sent the running run: Text with the Images sent with it.
+type Steer struct {
+	ID     string
+	Text   string
+	Images []transcript.MessagePart
+}
 
-const (
-	InputSteer   InputKind = "steer"
-	InputDecided InputKind = "decided"
-	InputEvent   InputKind = "event"
-)
+// TaskEvent says a background task ended; the model reads Text.
+type TaskEvent struct {
+	TaskID string
+	Text   string
+}
 
-// Input arrives from outside the engine: steer Text with the Images sent with
-// it, a decided approval, or an event such as a finished background task, whose
-// Text the model reads. Denied approvals carry the user's Reason.
-type Input struct {
-	Kind       InputKind
-	ID         string
-	Text       string
-	Images     []transcript.MessagePart
+// Decision is where the newest approval of a call stands: Pending until the
+// user answers, then granted or Denied with the user's Reason.
+type Decision struct {
 	ToolCallID string
-	ToolName   string
-	WorkingDir string
-	Args       json.RawMessage
+	Pending    bool
 	Denied     bool
 	Reason     string
 }
 
-// Inbox delivers outside input. Peek never consumes: steers and events stay
-// pending until the engine consumes their IDs, and InputDecided returns decided
-// approvals whose call has no result yet. Finished reports whether any of the
-// background tasks ended, even if its event went elsewhere.
+// Inbox delivers outside input to one run. Steers and events stay pending
+// until the engine consumes them; Decisions lists the newest approval of each
+// call that asked, oldest first. Finished reports whether any of the background
+// tasks ended, even if its event went elsewhere.
 type Inbox interface {
-	Peek(ctx context.Context, runID string, kind InputKind) ([]Input, error)
-	Consume(ctx context.Context, runID string, ids []string) error
+	Steers(ctx context.Context) ([]Steer, error)
+	ConsumeSteers(ctx context.Context, ids []string) error
+	Events(ctx context.Context) ([]TaskEvent, error)
+	ConsumeEvents(ctx context.Context, taskIDs []string) error
+	Decisions(ctx context.Context) ([]Decision, error)
 	Finished(ctx context.Context, taskIDs []string) (bool, error)
 }
 

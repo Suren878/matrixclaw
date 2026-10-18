@@ -143,9 +143,11 @@ command string.
 A message is accepted by `core` as a run (`accepted`) and executed on its own
 goroutine by `Core.ExecuteRun`: `claim` (under the session gate) makes it
 `running`; external-agent sessions go to their adapter, native ones build an
-`agent.Engine` and call `Engine.Run(ctx, Task)`. Its `Outcome` (`completed`
-with a stop reason, `waiting_approval`, `waiting_events`, `interrupted`,
-`canceled`, `failed`) is applied by core.
+`agent.Engine` and call `Engine.Run(ctx, Task)`. Its `Outcome` is the status
+the run reached (`completed` with a stop reason, `waiting_approval`,
+`waiting_events`, `canceled`, `failed`) and whether a stop that was not the
+user's interrupted it; core applies it with one switch. An interrupted run
+commits what it reached, or stays `running`, its reply sealed, for recovery.
 
 Run status has one writer, `transition` (`internal/core/run_lifecycle.go`),
 with one edge table (`runEdges`):
@@ -166,7 +168,9 @@ their errors are joined and logged: drop a wakeup the run no longer has,
 publish `run.updated`, sync the subagent task the run works for, and for an
 ended run clear its checkpoint, reject its open approvals, cancel the blocking
 subagents of a failed run and tell the user of a failed wake run. Callers
-waiting for the end (a blocking `agent` call) are woken in any case.
+waiting for the end (a blocking `agent` call) are woken once these steps are
+done, whether or not they failed, and a caller that finds the run ended while
+they run waits for them too.
 
 Session gates never nest: ending a subagent's run takes its parent session's
 gate (the finished task wakes the parent), so no subagent run ends while a
@@ -186,14 +190,15 @@ shell tasks and subagents it started.
 
 **Recovery.** A run found `running` without an executor was interrupted.
 `claim` counts the recovery; the count resets once a step finishes, and more
-than 8 recoveries in a row without one fail the run. It builds a plan for
-every call left without a result (`agent.Task.Interrupted`, `Settle`): `rerun`
-read-only and deferred calls, `ask` again for a mutating call, `answer` an
-unknown tool with an error. A mutating call never reruns without a fresh
-approval. `Core.Recover`, called once at daemon start, marks leftover shell
-tasks `lost`, resumes each active run once, syncs subagent tasks whose child
-run already ended, prunes worktrees no subagent task keeps, and settles idle
-sessions (next queued message, a wake run or the next run of an active goal).
+than 8 recoveries in a row without one fail the run. The engine finds the
+calls left without a result whose approval is neither pending nor denied and
+settles each as `Tools.Recovery` says: `rerun` read-only, agent and deferred
+calls, `ask` again for a mutating call, `answer` an unknown tool with an
+error. A mutating call never reruns without a fresh approval. `Core.Recover`,
+called once at daemon start, marks leftover shell tasks `lost`, resumes each
+active run once, syncs subagent tasks whose child run already ended, prunes
+worktrees no subagent task keeps, and settles idle sessions (next queued
+message, a wake run or the next run of an active goal).
 External-agent runs keep their own recovery in core.
 
 ## Agent engine
@@ -207,9 +212,9 @@ and talks to core through ports (`internal/agent/ports.go`):
 |---|---|---|
 | `Model` | `providers.Runtime` | one generation |
 | `Journal` | `coreJournal` | load the window from the latest boundary, append and stream messages, checkpoint, record `run_steps` |
-| `Tools` | `coreTools` | specs, `Authorize` (rules, concurrency key, barrier), `Execute` (result or approval request) |
-| `Approvals` | `coreApprovals` | record an approval request, report open ones |
-| `Inbox` | `coreInbox` | steer input, decided approvals, finished background tasks |
+| `Tools` | `coreTools` | specs, `Authorize` (rules, concurrency key, barrier, an opaque grant), `Execute` (the grant: result or approval request), `Recovery` (how to settle an interrupted call) |
+| `Approvals` | `coreApprovals` | record an approval request |
+| `Inbox` | `coreInbox` | steers, task events, where each call's newest approval stands, whether awaited tasks ended |
 | `Sink` | `coreSink` | live events to clients |
 | `Prompts` | `corePrompts` | fixed system prompt per run; changing state as a context note |
 | `Todos` | `coreTodos` | open todo items of the run's `/continue` chain |
@@ -259,9 +264,11 @@ the phase, so a parked or restarted run keeps it. How a step can go wrong:
   alone.
 
 While a native run is active the engine is the only writer of its session's
-transcript; everything else reaches it through the inbox. Messages are ordered
-by an integer `seq` and never rewritten. `Core.ExecuteTool` serves run-less
-calls only (tools API, voice, MCP server).
+transcript; everything else reaches it through the inbox. Steers without
+images are merged into the last result a tool batch writes (one inbox read a
+batch); steers with images become a user message before the next model call.
+Messages are ordered by an integer `seq` and never rewritten.
+`Core.ExecuteTool` serves run-less calls only (tools API, voice, MCP server).
 
 Subpackages: `context` (token estimates, conversation building, elision,
 summary boundaries), `toolsched` (parallel batches of up to 8 calls, daemon-wide
@@ -404,8 +411,8 @@ provider and model.
   "Always allow". Enter with `/plan`, `/permissions plan`, the mode picker or
   `PATCH /v1/sessions/{id}/permissions` (owner only). Subagents inherit the
   mode; the engine fixes its tool list when a run starts or resumes, so
-  `/plan` during a run blocks changes at once and offers `exit_plan_mode` from
-  the next start or resume.
+  `/plan` during a run blocks changes from its next tool batch and offers
+  `exit_plan_mode` from the next start or resume.
 - PreToolUse hooks (`core.permitCall`) are one more rule source below the
   stored deny rules: they run only for a call no deny rule blocks and may block
   it, make it ask or allow it (over ask rules and the preset). Arguments they
@@ -414,6 +421,10 @@ provider and model.
 - A call that asks runs only with a grant: its newest approval is approved and
   it has no result yet, read from the store per run, so a grant runs it once.
   Executors never see approvals.
+- A run reads the session, its subagent task and the rules once for each group
+  of calls it admits (a tool batch, or the calls after a barrier), so a call
+  costs no store read of its own; Authorize's verdict, with the arguments
+  hooks rewrote, reaches Execute as the call's grant.
 - What the approval shows comes from the tool's optional `tools.Previewer`
   (side-effect free: a `tools.FileChange` diff, the command and its
   directory), built on the call's goroutine under its concurrency key; a

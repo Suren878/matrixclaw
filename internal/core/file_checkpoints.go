@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/checkpoint"
@@ -31,19 +30,6 @@ func (c *Core) WithCheckpoints(store *checkpoint.Store) *Core {
 	return c
 }
 
-// batchSnapshot is shared by the Journal and Tools ports of one run: the
-// engine's checkpoint before a model call starts a new batch, and the batch's
-// first call that may change files takes its file checkpoint.
-type batchSnapshot struct {
-	taken atomic.Bool
-}
-
-func (b *batchSnapshot) next() {
-	if b != nil {
-		b.taken.Store(false)
-	}
-}
-
 // changesFiles reports whether a call may change files in the run's working
 // directory: a mutating file or shell tool, a child agent writing it, or a
 // worktree merge.
@@ -60,9 +46,10 @@ func (c *Core) changesFiles(spec tools.Spec, call tools.Call) bool {
 // checkpointBatch takes the batch's file checkpoint once, before its first
 // call that may change files starts. A failure is logged and the run goes on.
 func (t coreTools) checkpointBatch(ctx context.Context, spec tools.Spec, call tools.Call) {
-	if t.c.checkpoints == nil || t.batch == nil || t.turn.Readonly || !t.c.changesFiles(spec, call) || t.batch.taken.Swap(true) {
+	if t.c.checkpoints == nil || t.turn.Readonly || t.batch.snapshot || !t.c.changesFiles(spec, call) {
 		return
 	}
+	t.batch.snapshot = true
 	if _, err := t.c.takeFileCheckpoint(ctx, t.turn.SessionID, t.turn.RunID, t.turn.WorkingDir, spec.ID); err != nil {
 		t.c.logCheckpointFailure(t.turn.WorkingDir, err)
 	}

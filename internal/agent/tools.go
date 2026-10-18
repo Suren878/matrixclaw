@@ -79,35 +79,37 @@ func (r *run) batchRequests(response providers.Response) ([]callRequest, error) 
 	return requests, nil
 }
 
-// resumeDecided answers the run's decided approvals that have no result yet: a
-// denied call gets the denial as its result and the calls it held back are not
-// run, the granted ones run. Once none is pending, the calls deferred behind a
-// barrier run. It reports whether the run still waits for approval.
+// resumeDecided answers the run's decided approvals whose call has no result
+// yet: a denied call gets the denial as its result and the calls it held back
+// are not run, the granted ones run. Once none is pending, the calls deferred
+// behind a barrier run. It reports whether the run still waits for approval.
 func (r *run) resumeDecided(ctx context.Context) (bool, error) {
-	decided, err := r.Inbox.Peek(ctx, r.task.RunID, InputDecided)
+	decisions, err := r.Inbox.Decisions(ctx)
 	if err != nil {
 		return false, err
 	}
+	pending := false
 	var granted []callRequest
-	for _, input := range decided {
-		if r.history.hasResult(input.ToolCallID) {
+	for _, decision := range decisions {
+		if decision.Pending {
+			pending = true
 			continue
 		}
-		request := callRequest{id: input.ToolCallID, name: input.ToolName, args: input.Args, workingDir: input.WorkingDir}
-		if !input.Denied {
+		request, ok := r.callRequest(decision.ToolCallID)
+		if !ok || r.history.hasResult(decision.ToolCallID) {
+			continue
+		}
+		if !decision.Denied {
 			granted = append(granted, request)
 			continue
 		}
-		if err := r.denyCall(ctx, request, input.Reason); err != nil {
+		if err := r.denyCall(ctx, request, decision.Reason); err != nil {
 			return false, err
 		}
 	}
-	if _, err := r.runCalls(ctx, granted); err != nil {
-		return false, err
-	}
-	pending, err := r.Approvals.Pending(ctx, r.task.RunID)
-	if err != nil || pending {
-		return pending, err
+	waiting, err := r.runCalls(ctx, granted)
+	if err != nil || waiting || pending {
+		return waiting || pending, err
 	}
 	return r.runCalls(ctx, r.deferredCalls(""))
 }
@@ -116,11 +118,11 @@ func (r *run) resumeDecided(ctx context.Context) (bool, error) {
 // back with an error, so the model re-plans instead of running them.
 func (r *run) denyCall(ctx context.Context, req callRequest, reason string) error {
 	for _, held := range r.deferredCalls(req.id) {
-		if err := r.rejectCall(ctx, held, tools.Result{Content: fmt.Sprintf("Not run: an earlier call in this batch was denied (%s).", req.name), Status: tools.ResultStatusError}); err != nil {
+		if err := r.rejectCall(ctx, held, tools.Result{Content: fmt.Sprintf("Not run: an earlier call in this batch was denied (%s).", req.name), Status: tools.ResultStatusError}, false); err != nil {
 			return err
 		}
 	}
-	return r.finishCall(ctx, req, DenialResult(reason))
+	return r.finishCall(ctx, req, DenialResult(reason), true)
 }
 
 // deferredCalls lists the run's calls still held back, in call order: behind
@@ -205,28 +207,28 @@ func (r *run) toolCall(req callRequest) tools.Call {
 }
 
 // rejectCall journals a call that did not run with result, an error the model
-// can act on.
-func (r *run) rejectCall(ctx context.Context, req callRequest, result tools.Result) error {
+// can act on; steers merges the pending steers into it.
+func (r *run) rejectCall(ctx context.Context, req callRequest, result tools.Result, steers bool) error {
 	if err := r.writeCall(ctx, req, true); err != nil {
 		return err
 	}
-	return r.answerCall(ctx, req, result)
+	return r.answerCall(ctx, req, result, steers)
 }
 
 // answerCall journals the result of a call already journaled as finished.
-func (r *run) answerCall(ctx context.Context, req callRequest, result tools.Result) error {
-	if _, err := r.appendResult(ctx, req, result); err != nil {
+func (r *run) answerCall(ctx context.Context, req callRequest, result tools.Result, steers bool) error {
+	if _, err := r.appendResult(ctx, req, result, steers); err != nil {
 		return err
 	}
 	r.observe(req, result)
 	return nil
 }
 
-func (r *run) finishCall(ctx context.Context, req callRequest, result tools.Result) error {
+func (r *run) finishCall(ctx context.Context, req callRequest, result tools.Result, steers bool) error {
 	if err := r.writeCall(ctx, req, true); err != nil {
 		return err
 	}
-	message, err := r.appendResult(ctx, req, result)
+	message, err := r.appendResult(ctx, req, result, steers)
 	if err != nil {
 		return err
 	}
@@ -235,25 +237,28 @@ func (r *run) finishCall(ctx context.Context, req callRequest, result tools.Resu
 	return nil
 }
 
-// appendResult writes a tool result with any pending steer guidance merged into it.
-// The steers are consumed only once the result is written, even if ctx stops then.
-func (r *run) appendResult(ctx context.Context, req callRequest, result tools.Result) (transcript.Message, error) {
+// appendResult writes a tool result, with the pending steer guidance merged
+// into it when steers is set. The steers are consumed only once the result is
+// written, even if ctx stops then.
+func (r *run) appendResult(ctx context.Context, req callRequest, result tools.Result, steers bool) (transcript.Message, error) {
 	message, err := ToolResultMessage(r.NewID("tool_result"), r.task.SessionID, r.task.RunID, req.id, req.name, result, r.Now())
 	if err != nil {
 		return transcript.Message{}, err
 	}
-	steers, err := r.Inbox.Peek(ctx, r.task.RunID, InputSteer)
-	if err != nil {
-		return transcript.Message{}, err
-	}
-	ids := make([]string, 0, len(steers))
-	for _, steer := range steers {
-		if len(steer.Images) > 0 {
-			// A tool result carries no images; the next step journals it.
-			continue
+	var ids []string
+	if steers {
+		pending, err := r.Inbox.Steers(ctx)
+		if err != nil {
+			return transcript.Message{}, err
 		}
-		appendUserGuidanceToToolResult(&message, steer.Text)
-		ids = append(ids, steer.ID)
+		for _, steer := range pending {
+			if len(steer.Images) > 0 {
+				// A tool result carries no images; the next step journals it.
+				continue
+			}
+			appendUserGuidanceToToolResult(&message, steer.Text)
+			ids = append(ids, steer.ID)
+		}
 	}
 	if err := r.history.append(ctx, message); err != nil {
 		return transcript.Message{}, err
@@ -261,7 +266,7 @@ func (r *run) appendResult(ctx context.Context, req callRequest, result tools.Re
 	if len(ids) == 0 {
 		return message, nil
 	}
-	return message, r.Inbox.Consume(context.WithoutCancel(ctx), r.task.RunID, ids)
+	return message, r.Inbox.ConsumeSteers(context.WithoutCancel(ctx), ids)
 }
 
 func (r *run) callMessage(req callRequest, finished bool) transcript.Message {

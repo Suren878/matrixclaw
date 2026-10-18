@@ -7,21 +7,13 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-// runToolCall runs a call as its permission says (check, or evaluated now when
-// nil): a deny rule or a hook blocks it; a call that waits for approval returns
-// the tool's preview as its request instead of a result; any other call runs,
-// with the arguments its hooks rewrote, and may recheck the rules for subjects
-// it reaches later. What hooks and checks after it say ends its result.
-func (c *Core) runToolCall(ctx context.Context, prepared preparedToolCall, input ExecuteToolInput, check *callPermission) (tools.Result, *tools.ApprovalRequest, error) {
-	call := prepared.call(input)
-	if check == nil {
-		evaluated, err := c.permitCall(ctx, prepared.ToolName, prepared.Spec, call)
-		if err != nil {
-			return tools.Result{}, nil, err
-		}
-		check = &evaluated
-	}
-	call = check.input(call)
+// runToolCall runs a call as its permission check says: a deny rule or a hook
+// blocks it; a call that waits for approval returns the tool's preview as its
+// request instead of a result; any other call runs, with the arguments its
+// hooks rewrote, and may recheck the rules for subjects it reaches later. What
+// hooks and checks after it say ends its result.
+func (c *Core) runToolCall(ctx context.Context, prepared preparedToolCall, input ExecuteToolInput, check callPermission) (tools.Result, *tools.ApprovalRequest, error) {
+	call := check.input(prepared.call(input))
 	if refusal, refused := check.refusal(); refused {
 		return tools.Result{Content: refusal, Status: tools.ResultStatusError}, nil, nil
 	}
@@ -48,7 +40,7 @@ func (c *Core) runToolCall(ctx context.Context, prepared preparedToolCall, input
 		return result, nil, err
 	}
 	result = c.keepLargeOutput(prepared.SessionID, result)
-	return c.afterToolUse(ctx, *check, call, prepared.ToolName, result), nil, nil
+	return c.afterToolUse(ctx, check, call, prepared.ToolName, result), nil, nil
 }
 
 func (prepared preparedToolCall) call(input ExecuteToolInput) tools.Call {
