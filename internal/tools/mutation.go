@@ -211,7 +211,7 @@ func (e *mutationExecutor) mutation(call Call) (fileMutation, error) {
 	if err != nil {
 		return fileMutation{}, fmt.Errorf("invalid path: %w", err)
 	}
-	if isProtectedCredentialPath(policy.RealPath) {
+	if IsCredentialPath(policy.RealPath) {
 		return fileMutation{}, errors.New("changing MatrixClaw credential files is blocked; use the setup and provider controls")
 	}
 	m.path = policy.RealPath

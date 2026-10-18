@@ -399,7 +399,7 @@ func checkReadOnlyPaths(params BashParams, dir string) error {
 			if !pathWithin(root, resolved) {
 				return fmt.Errorf("%s is outside %s", word, dir)
 			}
-			if HoldsSecrets(resolved) || isProtectedCredentialPath(resolved) {
+			if HoldsSecrets(resolved) || IsCredentialPath(resolved) {
 				return fmt.Errorf("%s holds secrets", word)
 			}
 		}

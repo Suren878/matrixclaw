@@ -341,7 +341,7 @@ func (p *patchPlan) file(path string, call Call, ledger *fileLedger) (*patchFile
 	if f, ok := p.byPath[real]; ok {
 		return f, nil
 	}
-	if isProtectedCredentialPath(real) {
+	if IsCredentialPath(real) {
 		return nil, errors.New("changing MatrixClaw credential files is blocked; use the setup and provider controls")
 	}
 	f := &patchFile{path: real, mode: 0o644}
