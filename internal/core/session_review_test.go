@@ -258,10 +258,10 @@ func TestSessionReviewSkipsSessionsItMustNotLearnFrom(t *testing.T) {
 		session func(*core.Session)
 		run     func(*reviewHarness, core.Run)
 	}{
-		"review off":    {cfg: setup.SkillsConfig{Review: setup.SkillsReviewConfig{Enabled: new(false)}}},
-		"skills off":    {cfg: setup.SkillsConfig{Enabled: new(false)}},
-		"subagent":      {session: func(s *core.Session) { s.ParentSessionID, s.Hidden = "parent", true }},
-		"external":      {session: func(s *core.Session) { s.Kind, s.ExternalAgentID = core.SessionKindExternalAgent, "codex-app" }},
+		"review off": {cfg: setup.SkillsConfig{Review: setup.SkillsReviewConfig{Enabled: new(false)}}},
+		"skills off": {cfg: setup.SkillsConfig{Enabled: new(false)}},
+		"subagent":   {session: func(s *core.Session) { s.ParentSessionID, s.Hidden = "parent", true }},
+		"external":   {session: func(s *core.Session) { s.Kind, s.ExternalAgentID = core.SessionKindExternalAgent, "codex-app" }},
 		"reply once": {run: func(h *reviewHarness, run core.Run) {
 			if err := h.db.CreateClientDelivery(context.Background(), core.ClientDelivery{ID: "d1", Type: core.ClientDeliveryTypeRun, Client: "telegram", ExternalKey: "guest", SessionID: run.SessionID, RunID: run.ID, ReplyOnce: true, Status: core.ClientDeliveryStatusPending, CreatedAt: run.StartedAt, UpdatedAt: run.StartedAt}); err != nil {
 				h.t.Fatal(err)
