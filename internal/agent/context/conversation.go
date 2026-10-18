@@ -1,6 +1,7 @@
 package agentcontext
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -20,9 +21,13 @@ type Identity struct {
 	Model    string
 }
 
-// Conversation converts history into provider messages, pairing every tool call with its result; signed reasoning is kept only for target.
-func Conversation(ctx context.Context, history []transcript.Message, reader AttachmentReader, allowImageInput bool, target Identity) ([]providers.Message, error) {
-	entries, err := convertProviderConversationHistory(ctx, history, reader, allowImageInput, target)
+// Conversation converts history into provider messages, pairing every tool call
+// with its result; signed reasoning is kept only for target. Stored images come
+// from images.
+func Conversation(ctx context.Context, history []transcript.Message, images *ImageCache, allowImageInput bool, target Identity) ([]providers.Message, error) {
+	images.begin()
+	entries, err := convertProviderConversationHistory(ctx, history, images, allowImageInput, target)
+	images.sweep()
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +60,8 @@ type providerConversationEntry struct {
 }
 
 // isToolStepStart: a model response that called tools starts with its saved
-// reply (finish reason tool_calls) or, in older histories, with its first call.
+// reply (finish reason tool_calls) or, for calls journaled without such a
+// reply, with its first call.
 func isToolStepStart(entry providerConversationEntry) bool {
 	return isToolStepReply(entry.source) || (len(entry.messages) == 1 && len(entry.messages[0].ToolCalls) > 0)
 }
@@ -74,7 +80,7 @@ func isToolStepReply(message transcript.Message) bool {
 
 // collectToolStep merges one model response (its reply, reasoning and every call
 // it made) into one assistant message; results are paired after it in call order.
-// Without a reply, a step ends at its first result, so older responses stay apart.
+// Without a reply, a step ends at its first result, so separate responses stay apart.
 func collectToolStep(entries []providerConversationEntry, start int) (providers.Message, int) {
 	step := providers.Message{Role: string(transcript.MessageRoleAssistant)}
 	var parts []transcript.MessagePart
@@ -104,14 +110,14 @@ collect:
 	return step, i
 }
 
-func convertProviderConversationHistory(ctx context.Context, history []transcript.Message, reader AttachmentReader, allowImageInput bool, target Identity) ([]providerConversationEntry, error) {
+func convertProviderConversationHistory(ctx context.Context, history []transcript.Message, images *ImageCache, allowImageInput bool, target Identity) ([]providerConversationEntry, error) {
 	entries := make([]providerConversationEntry, 0, len(history))
 	for _, message := range history {
 		if transcript.HasFinishReason(message, transcript.FinishReasonDaemonRestart) {
 			continue
 		}
 		message = withoutForeignSignedReasoning(message, target)
-		providerMessages, err := toProviderMessages(ctx, message, reader, allowImageInput)
+		providerMessages, err := toProviderMessages(ctx, message, images, allowImageInput)
 		if err != nil {
 			return nil, err
 		}
@@ -301,7 +307,7 @@ func formatToolResultAsText(part transcript.ToolResultPart, fallbackContent stri
 	return "Previous tool result from " + name + ":\n" + content
 }
 
-func toProviderMessages(ctx context.Context, message transcript.Message, reader AttachmentReader, allowImageInput bool) ([]providers.Message, error) {
+func toProviderMessages(ctx context.Context, message transcript.Message, images *ImageCache, allowImageInput bool) ([]providers.Message, error) {
 	if message.Role == transcript.MessageRoleSystem {
 		if note, ok := engineNoteMessage(message); ok {
 			return []providers.Message{note}, nil
@@ -312,66 +318,84 @@ func toProviderMessages(ctx context.Context, message transcript.Message, reader 
 		if strings.TrimSpace(message.Content) == "" {
 			return nil, nil
 		}
-		return []providers.Message{{
-			Role:    string(message.Role),
-			Content: message.Content,
-		}}, nil
+		return []providers.Message{{Role: string(message.Role), Content: message.Content}}, nil
 	}
-
-	var toolCalls []providers.ToolCall
-	var imageParts []transcript.ImagePart
-	var images []providers.ImageContent
-	var attachmentWarnings []string
-	reasoningContent := messageReasoningContent(message.Parts)
-	for _, part := range message.Parts {
-		if part.Image != nil {
-			imagePart := *part.Image
-			imageParts = append(imageParts, imagePart)
-			// Do not try to read formats that cannot be sent to a provider in the
-			// first place. In particular, an expired temporary SVG attachment in
-			// conversation history must not make every later run fail.
-			if strings.TrimSpace(imagePart.MIMEType) != "" && !providers.IsSupportedImageMIMEType(imagePart.MIMEType) {
-				continue
-			}
-			if !allowImageInput {
-				attachmentWarnings = append(attachmentWarnings, unsupportedModelImageWarning(imagePart))
-				continue
-			}
-			image, err := providerImageContent(ctx, imagePart, reader)
-			if err != nil {
-				if errors.Is(err, ErrAttachmentUnavailable) {
-					attachmentWarnings = append(attachmentWarnings, unavailableImageWarning(imagePart))
-					continue
-				}
-				return nil, err
-			}
-			if strings.TrimSpace(image.DataBase64) != "" && providers.IsSupportedImageMIMEType(image.MIMEType) {
-				images = append(images, image)
-			}
+	content, sent, err := attachedContent(ctx, message, images, allowImageInput)
+	if err != nil {
+		return nil, err
+	}
+	calls := toolCalls(message.Parts)
+	if len(calls) == 0 {
+		if result, ok := toolResultMessage(message); ok {
+			return []providers.Message{result}, nil
 		}
+		if strings.TrimSpace(content) == "" && len(sent) == 0 {
+			return nil, nil
+		}
+	}
+	return []providers.Message{{
+		Role:             string(message.Role),
+		Content:          content,
+		ReasoningContent: messageReasoningContent(message.Parts),
+		Reasoning:        messageReasoningBlocks(message.Parts),
+		Images:           sent,
+		ToolCalls:        calls,
+	}}, nil
+}
+
+// attachedContent is the message text with references to its images and notes
+// on the ones not sent, and the images the model receives.
+func attachedContent(ctx context.Context, message transcript.Message, images *ImageCache, allowImageInput bool) (string, []providers.ImageContent, error) {
+	var attached []transcript.ImagePart
+	var sent []providers.ImageContent
+	var warnings []string
+	for _, part := range message.Parts {
+		if part.Image == nil {
+			continue
+		}
+		imagePart := *part.Image
+		attached = append(attached, imagePart)
+		// A format no provider takes is not read: an expired temporary SVG in the
+		// history must not fail every later run.
+		if strings.TrimSpace(imagePart.MIMEType) != "" && !providers.IsSupportedImageMIMEType(imagePart.MIMEType) {
+			continue
+		}
+		if !allowImageInput {
+			warnings = append(warnings, unsupportedModelImageWarning(imagePart))
+			continue
+		}
+		image, err := images.content(ctx, imagePart)
+		if errors.Is(err, ErrAttachmentUnavailable) {
+			warnings = append(warnings, unavailableImageWarning(imagePart))
+			continue
+		}
+		if err != nil {
+			return "", nil, err
+		}
+		if strings.TrimSpace(image.DataBase64) != "" && providers.IsSupportedImageMIMEType(image.MIMEType) {
+			sent = append(sent, image)
+		}
+	}
+	content := messageContentWithAttachmentRefs(message.Content, attached)
+	return messageContentWithAttachmentWarnings(content, warnings), sent, nil
+}
+
+func toolCalls(parts []transcript.MessagePart) []providers.ToolCall {
+	var calls []providers.ToolCall
+	for _, part := range parts {
 		if part.ToolCall != nil {
-			toolName := strings.TrimSpace(part.ToolCall.Name)
-			toolInput := strings.TrimSpace(part.ToolCall.Input)
-			toolCalls = append(toolCalls, providers.ToolCall{
+			calls = append(calls, providers.ToolCall{
 				ID:        strings.TrimSpace(part.ToolCall.ID),
-				Name:      toolName,
-				Arguments: []byte(toolInput),
+				Name:      strings.TrimSpace(part.ToolCall.Name),
+				Arguments: []byte(strings.TrimSpace(part.ToolCall.Input)),
 			})
 		}
 	}
-	providerContent := messageContentWithAttachmentRefs(message.Content, imageParts)
-	providerContent = messageContentWithAttachmentWarnings(providerContent, attachmentWarnings)
-	if len(toolCalls) > 0 {
-		return []providers.Message{{
-			Role:             string(message.Role),
-			Content:          providerContent,
-			ReasoningContent: reasoningContent,
-			Reasoning:        messageReasoningBlocks(message.Parts),
-			Images:           images,
-			ToolCalls:        toolCalls,
-		}}, nil
-	}
+	return calls
+}
 
+// toolResultMessage is the message's first tool result as the model reads it.
+func toolResultMessage(message transcript.Message) (providers.Message, bool) {
 	for _, part := range message.Parts {
 		if part.ToolResult == nil {
 			continue
@@ -383,24 +407,14 @@ func toProviderMessages(ctx context.Context, message transcript.Message, reader 
 		if strings.TrimSpace(content) == "" {
 			content = "(empty result)"
 		}
-		return []providers.Message{{
+		return providers.Message{
 			Role:       string(message.Role),
 			Content:    content,
 			ToolCallID: strings.TrimSpace(part.ToolResult.ToolCallID),
 			IsError:    part.ToolResult.IsError(),
-		}}, nil
+		}, true
 	}
-
-	if strings.TrimSpace(providerContent) == "" && len(images) == 0 {
-		return nil, nil
-	}
-	return []providers.Message{{
-		Role:             string(message.Role),
-		Content:          providerContent,
-		ReasoningContent: reasoningContent,
-		Reasoning:        messageReasoningBlocks(message.Parts),
-		Images:           images,
-	}}, nil
+	return providers.Message{}, false
 }
 
 func unsupportedModelImageWarning(part transcript.ImagePart) string {
@@ -507,7 +521,52 @@ func imagePartLabel(part transcript.ImagePart) string {
 	}
 }
 
-func providerImageContent(ctx context.Context, part transcript.ImagePart, reader AttachmentReader) (providers.ImageContent, error) {
+// ImageCache keeps the images one run's requests sent, read and encoded once
+// instead of for every request; a build forgets the images it no longer sends.
+// A nil cache reads nothing, so only inline images can be sent.
+type ImageCache struct {
+	reader  AttachmentReader
+	encoded map[imageKey]encodedImage
+	sent    map[imageKey]bool
+}
+
+type imageKey struct {
+	path      string
+	temporary bool
+}
+
+type encodedImage struct {
+	data AttachmentData
+	b64  string
+	err  error
+}
+
+// NewImageCache returns an empty cache over reader.
+func NewImageCache(reader AttachmentReader) *ImageCache {
+	return &ImageCache{reader: reader, encoded: map[imageKey]encodedImage{}, sent: map[imageKey]bool{}}
+}
+
+func (c *ImageCache) begin() {
+	if c != nil {
+		c.sent = map[imageKey]bool{}
+	}
+}
+
+// sweep forgets the images the build that just ended did not send.
+func (c *ImageCache) sweep() {
+	if c == nil {
+		return
+	}
+	for key := range c.encoded {
+		if !c.sent[key] {
+			delete(c.encoded, key)
+		}
+	}
+}
+
+// content is part as a provider image, its data read from storage unless the
+// part carries it inline; an unavailable attachment stays unavailable.
+func (c *ImageCache) content(ctx context.Context, part transcript.ImagePart) (providers.ImageContent, error) {
 	image := providers.ImageContent{
 		MIMEType:    strings.TrimSpace(part.MIMEType),
 		DataBase64:  strings.TrimSpace(part.DataBase64),
@@ -516,33 +575,43 @@ func providerImageContent(ctx context.Context, part transcript.ImagePart, reader
 		Temporary:   part.Temporary,
 		Size:        part.Size,
 	}
-	if image.DataBase64 != "" {
+	if image.DataBase64 != "" || image.StoragePath == "" {
 		return image, nil
 	}
-	if image.StoragePath == "" {
-		return image, nil
-	}
-	if reader == nil {
+	if c == nil || c.reader == nil {
 		return image, fmt.Errorf("read image attachment %s: attachment storage is not configured", image.StoragePath)
 	}
-	data, err := reader.ReadAttachment(ctx, image.StoragePath, image.Temporary, maxProviderImageBytes)
+	key := imageKey{path: image.StoragePath, temporary: image.Temporary}
+	encoded, ok := c.encoded[key]
+	if !ok {
+		encoded = c.read(ctx, key)
+		if encoded.err != nil && !errors.Is(encoded.err, ErrAttachmentUnavailable) {
+			return image, encoded.err
+		}
+		c.encoded[key] = encoded
+	}
+	c.sent[key] = true
+	if encoded.err != nil {
+		return image, encoded.err
+	}
+	image.MIMEType = cmp.Or(image.MIMEType, strings.TrimSpace(encoded.data.MIMEType))
+	image.Name = cmp.Or(image.Name, strings.TrimSpace(encoded.data.Name))
+	image.Size = cmp.Or(image.Size, encoded.data.Size)
+	image.DataBase64 = encoded.b64
+	return image, nil
+}
+
+func (c *ImageCache) read(ctx context.Context, key imageKey) encodedImage {
+	data, err := c.reader.ReadAttachment(ctx, key.path, key.temporary, maxProviderImageBytes)
 	if err != nil {
-		return image, fmt.Errorf("read image attachment %s: %w", image.StoragePath, err)
+		return encodedImage{err: fmt.Errorf("read image attachment %s: %w", key.path, err)}
 	}
 	if int64(len(data.Data)) > maxProviderImageBytes {
-		return image, fmt.Errorf("read image attachment %s: image is too large: %d bytes exceeds %d", image.StoragePath, len(data.Data), maxProviderImageBytes)
+		return encodedImage{err: fmt.Errorf("read image attachment %s: image is too large: %d bytes exceeds %d", key.path, len(data.Data), maxProviderImageBytes)}
 	}
-	if image.MIMEType == "" {
-		image.MIMEType = strings.TrimSpace(data.MIMEType)
-	}
-	if image.Name == "" {
-		image.Name = strings.TrimSpace(data.Name)
-	}
-	if image.Size == 0 {
-		image.Size = data.Size
-	}
-	image.DataBase64 = base64.StdEncoding.EncodeToString(data.Data)
-	return image, nil
+	b64 := base64.StdEncoding.EncodeToString(data.Data)
+	data.Data = nil
+	return encodedImage{data: data, b64: b64}
 }
 
 func messageContentWithAttachmentRefs(content string, images []transcript.ImagePart) string {

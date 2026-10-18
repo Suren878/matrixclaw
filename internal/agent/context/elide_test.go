@@ -127,3 +127,38 @@ func TestAdvanceElisionDoesNotMoveWithoutHidingAnything(t *testing.T) {
 		}
 	}
 }
+
+func TestCapRoundResultsSharesTheRoundBudgetEvenly(t *testing.T) {
+	big := strings.Repeat("x", 16_000)
+	messages := toolStep(1, "c1", big)
+	for i, seq := 2, int64(4); i <= 4; i, seq = i+1, seq+2 {
+		id := fmt.Sprintf("c%d", i)
+		output := big
+		if i == 4 {
+			output = "short"
+		}
+		call := transcript.Message{ID: id, Seq: seq, Role: transcript.MessageRoleAssistant, Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindToolCall, ToolCall: &transcript.ToolCallPart{ID: id, Name: "read", Input: "{}"}}}}
+		result := transcript.Message{ID: id + "_result", Seq: seq + 1, Role: transcript.MessageRoleTool, Parts: []transcript.MessagePart{{Kind: transcript.MessagePartKindToolResult, ToolResult: &transcript.ToolResultPart{ToolCallID: id, Name: "read", Content: output, OutputPath: "/tmp/" + id}}}}
+		messages = append(messages, call, result)
+	}
+
+	capped := CapRoundResults(messages, 10_000)
+
+	sizes := map[string]int{}
+	for _, message := range capped {
+		for _, part := range message.Parts {
+			if part.ToolResult != nil {
+				sizes[part.ToolResult.ToolCallID] = EstimateTextTokens(part.ToolResult.Content)
+			}
+		}
+	}
+	if sizes["c4"] != EstimateTextTokens("short") || sizes["c1"] > 1_100 || sizes["c2"] > 1_100 || sizes["c1"] < 900 {
+		t.Fatalf("result sizes = %v, want the short one whole and the others near a third of 3k", sizes)
+	}
+	if messages[2].Parts[0].ToolResult.Content != big {
+		t.Fatal("the transcript's messages changed")
+	}
+	if same := CapRoundResults(messages, wideLimit); &same[0] != &messages[0] {
+		t.Fatal("a round within its share was copied")
+	}
+}
