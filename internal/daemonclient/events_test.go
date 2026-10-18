@@ -11,8 +11,8 @@ import (
 	"github.com/Suren878/matrixclaw/internal/safego"
 )
 
-func TestReadSSEPublishesEventAndClosesOnEOF(t *testing.T) {
-	body := io.NopCloser(strings.NewReader("id: 12\nevent: message\ndata: {\"type\":\"message.created\",\"session_id\":\"session-1\",\"run_id\":\"run-1\"}\n\n"))
+func TestReadSSEPublishesEventSkipsKeepaliveAndClosesOnEOF(t *testing.T) {
+	body := io.NopCloser(strings.NewReader(": ping\n\nid: 12\nevent: message\ndata: {\"type\":\"message.created\",\"session_id\":\"session-1\",\"run_id\":\"run-1\"}\n\n: ping\n\n"))
 	events := make(chan LiveEvent, 16)
 	errs := make(chan error, 1)
 

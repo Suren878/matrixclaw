@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -20,7 +21,7 @@ func (s *Server) handleSessionLLMModels(w http.ResponseWriter, r *http.Request) 
 	providerID, modelID, models, err := s.Core.ModelsForSession(r.Context(), sessionID)
 	if shouldReloadSessionLLM(err) {
 		if reloadErr := s.reloadSessionLLMRegistry(r.Context()); reloadErr != nil {
-			writeErrorMessage(w, http.StatusInternalServerError, "reload provider registry: "+reloadErr.Error())
+			writeError(w, fmt.Errorf("reload provider registry: %w", reloadErr))
 			return
 		}
 		providerID, modelID, models, err = s.Core.ModelsForSession(r.Context(), sessionID)
@@ -48,7 +49,7 @@ func (s *Server) handleSessionLLMUpdate(w http.ResponseWriter, r *http.Request) 
 		session, err := s.Core.UpdateSessionProvider(r.Context(), sessionID, req.ProviderID)
 		if shouldReloadSessionLLM(err) {
 			if reloadErr := s.reloadSessionLLMRegistry(r.Context()); reloadErr != nil {
-				writeErrorMessage(w, http.StatusInternalServerError, "reload provider registry: "+reloadErr.Error())
+				writeError(w, fmt.Errorf("reload provider registry: %w", reloadErr))
 				return
 			}
 			session, err = s.Core.UpdateSessionProvider(r.Context(), sessionID, req.ProviderID)
@@ -62,7 +63,7 @@ func (s *Server) handleSessionLLMUpdate(w http.ResponseWriter, r *http.Request) 
 		session, err := s.Core.UpdateSessionModel(r.Context(), sessionID, req.ModelID)
 		if shouldReloadSessionLLM(err) {
 			if reloadErr := s.reloadSessionLLMRegistry(r.Context()); reloadErr != nil {
-				writeErrorMessage(w, http.StatusInternalServerError, "reload provider registry: "+reloadErr.Error())
+				writeError(w, fmt.Errorf("reload provider registry: %w", reloadErr))
 				return
 			}
 			session, err = s.Core.UpdateSessionModel(r.Context(), sessionID, req.ModelID)

@@ -15,6 +15,11 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
+// GetApproval returns one approval.
+func (c *Core) GetApproval(ctx context.Context, approvalID string) (Approval, error) {
+	return c.store.GetApproval(ctx, strings.TrimSpace(approvalID))
+}
+
 // ResolveApproval records the user's decision on an approval. A run resumes once
 // none of its approvals is pending and reads a denial as the call's result; a
 // call made outside a run is replayed or answered here.
@@ -25,9 +30,6 @@ func (c *Core) ResolveApproval(ctx context.Context, approvalID string, decision 
 	}
 	if approval.State != ApprovalStatePending {
 		return alreadyDecided(approval, decision)
-	}
-	if decision.Approved && decision.Always == permission.ScopeGlobal && decision.Restricted {
-		return Approval{}, fmt.Errorf("%w: keep a rule for every session", ErrOwnerOnly)
 	}
 	if decision.Approved && decision.Always != "" {
 		if err := c.keepSuggestedRule(ctx, approval, decision.Always); err != nil {

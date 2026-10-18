@@ -136,21 +136,11 @@ func (c *Core) nativeEngine(ctx context.Context, claimed claimedRun, session Ses
 	if err != nil {
 		return agent.Task{}, nil, err
 	}
-	readonly, err := c.readonlySubagent(ctx, session.ID)
+	turn, err := c.sessionTurn(ctx, session, runtime, model)
 	if err != nil {
 		return agent.Task{}, nil, err
 	}
-	turn := nativeTurn{
-		RunID:              run.ID,
-		Continues:          continues,
-		SessionID:          session.ID,
-		WorkingDir:         session.WorkingDir,
-		Subagent:           isSubagentSession(session),
-		Readonly:           readonly,
-		ClientCapabilities: run.ClientCapabilities,
-		ToolUse:            agent.ToolUseAllowed(runtime),
-		Model:              model,
-	}
+	turn.RunID, turn.Continues, turn.ClientCapabilities = run.ID, continues, run.ClientCapabilities
 	batch := &batchSnapshot{}
 	engine := agent.New(agent.Config{
 		Journal:     coreJournal{c: c, batch: batch},

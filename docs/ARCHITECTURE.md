@@ -82,12 +82,23 @@ recovery), waits for them, then closes external agents and modules.
   `member`, `guest`; absent means owner). Every caller holds the token, so the
   daemon trusts the header as it trusts the token. Telegram sets it from the
   chat an update came from, never from message text.
-- `ownerOnly` routes: admin reload/restart/stop, the session permission mode,
-  file checkpoint restores, and writes to setup providers, external agents,
-  module settings, MCP, the skills library and temporary-storage settings. Reads stay open. Global permission rules are owner-only,
-  guests keep no rules, and members and guests are refused (403) in sessions
-  that run unattended (`core.RunsUnattended`: full_auto or external agent).
-  Clients only hide what the daemon would refuse.
+- Every route in the table has a policy, enforced by one middleware
+  (`internal/api/role.go`; `policy_test.go` lists them): `open`; `owner`
+  (admin reload/restart/stop, the session permission mode, writes to setup
+  providers, external agents, module settings, MCP and the skills library,
+  storage deletes, temporary-storage cleanup and settings, file checkpoint
+  restores); or `session`,
+  for every write that acts in a session (named by the path, by the run, task,
+  approval or automation job it names, or by the JSON body's `session_id` or
+  client binding): members and guests are refused (403) there when the session
+  runs unattended (`core.RunsUnattended`: full_auto or external agent). Reads
+  stay open. Only the owner creates a session with an external agent or a
+  permission mode, global permission rules are owner-only, and guests keep no
+  rules. Core knows nothing of roles. Clients only hide what the daemon would
+  refuse.
+- `writeError` is the one error answer: the status of the first sentinel the
+  error wraps (`core.ErrNotFound` 404, `core.ErrInvalidInput` 400, ...), else
+  the status a handler gave it with `withStatus`, else 500.
 
 ## Live events and the terminal read model
 
@@ -95,11 +106,16 @@ recovery), waits for them, then closes external agents and modules.
   `run.updated`, `tool.updated`, `approval.requested|resolved`,
   `input.updated`, `task.updated`, `todo.updated`, `context.updated` (context
   size the engine measured after each step). Replay with `?after=` covers only
-  a 256-event history shared by all sessions.
+  a 256-event ring shared by all sessions.
+- Each subscriber gets events in ID order. One that falls 512 events behind
+  is closed, never skipped silently; its client reconnects and reloads. An
+  event that cannot be encoded is logged and ends the stream the same way. An
+  open stream sends a `: ping` comment every 20 s.
 - So the terminal subscribes first, then loads `GET /v1/snapshot`, and drops
   events at or below the snapshot's `event_id`. After that it changes only
-  through events (`clients/terminal/chat/readmodel`), reloading on reconnect,
-  session switch and commands that ask for it (`ReloadSnapshot`).
+  through events (`clients/terminal/chat/readmodel`), reloading on reconnect
+  (also after the daemon closed the stream), session switch and commands that
+  ask for it (`ReloadSnapshot`).
 - Chat rows are reconciled by ID and revision, so expanded output stays
   expanded. Context usage in the header comes only from the daemon.
 - `internal/toolview` (`Describe`, `FileChangeOf`) gives a tool call's title,
@@ -137,11 +153,19 @@ accepted ─▶ running ─▶ completed
 any status that has not ended ─▶ failed | canceled
 ```
 
-`transition` sets `finished_at`, saves or deletes the wakeup of a run waiting
-for events, clears the checkpoint on the end, seals the reply in the same write
-(`store.SealRun`; an ended run stays ended, `ErrRunEnded`), rejects an ended
-run's open approvals, syncs the subagent task the run works for, and publishes
-`run.updated`. A failed run cancels its blocking subagents.
+`transition` commits, then follows up. The commit checks the edge, sets
+`finished_at`, saves the wakeup of a run parking in `waiting_events` and seals
+the reply in the same write (`store.SealRun`; an ended run stays ended,
+`ErrRunEnded`); only its failure is returned. After it every step runs and
+their errors are joined and logged: drop a wakeup the run no longer has,
+publish `run.updated`, sync the subagent task the run works for, and for an
+ended run clear its checkpoint, reject its open approvals, cancel the blocking
+subagents of a failed run and tell the user of a failed wake run. Callers
+waiting for the end (a blocking `agent` call) are woken in any case.
+
+Session gates never nest: ending a subagent's run takes its parent session's
+gate (the finished task wakes the parent), so no subagent run ends while a
+gate is held.
 
 `afterRun` runs when the executor lets go of a run (or from `CancelRun` for a
 parked one): it starts the session's next queued message, wakes the session
@@ -154,7 +178,8 @@ without that cause and counts as an interrupt. Canceling a run also stops the
 shell tasks and subagents it started.
 
 **Recovery.** A run found `running` without an executor was interrupted.
-`claim` counts the recovery (more than 8 fails the run) and builds a plan for
+`claim` counts the recovery; the count resets once a step finishes, and more
+than 8 recoveries in a row without one fail the run. It builds a plan for
 every call left without a result (`agent.Task.Interrupted`, `Settle`): `rerun`
 read-only and deferred calls, `ask` again for a mutating call, `answer` an
 unknown tool with an error. A mutating call never reruns without a fresh
@@ -195,8 +220,21 @@ the phase, so a parked or restarted run keeps it. How a step can go wrong:
   once; a cut tool step runs its complete calls and tells the model a cut call
   was dropped. The fourth cut in a row turns the next step into the final turn (stop reason
   `budget_exhausted`).
-- **Loop guard:** the most repeated (tool, arguments, result) among the last 20
-  calls warns at 3 and stops the run at 5, whatever the order inside a batch.
+- **Context:** old bulky results are elided at 60% of the usable window, and
+  one tool round's results share 30% of it; at 80% the older history becomes
+  a summary boundary that keeps the run's user messages verbatim. Every
+  summary takes one path (`run.compact`), whether a run's or `/compact`'s
+  (`Engine.Compact`): compact model or else the run's, a model slot, retries,
+  `run_steps` rows with stop reason `compact` (for `/compact`, on the
+  session's latest run). After a summary the current text of the five files
+  edited last is re-attached (at most 8k tokens, a tenth of a smaller window),
+  and the context note with the todo list is sent again. `/context` estimates
+  the system prompt and tools a run would get, so its hint matches the 80%.
+- **Loop guard:** among the last 20 calls, the most repeated call with the
+  same result, or the same call failing whatever its error says, warns at 3
+  and stops the run at 5, whatever the order inside a batch; so does the same
+  reply text of 60 runes or more. Two calls taking turns with the same results
+  over the last 6 calls stop the run.
 - **Completion checks:** a reply without tools is held back once while the
   run's todo list has open items, and once when the run changed files (edit
   tools, or a bash command that writes files) after its last successful
@@ -248,7 +286,8 @@ provider and model.
   `task.updated` event) with two kinds. `shell`: a command run with `bash -c`
   in its own process group (`internal/shelltask`) with a size-capped output
   file; `bash` moves a command still running after 120 s to the background.
-  `subagent`: a child run started by the `agent` tool.
+  `subagent`: a child run started by the `agent` tool. A child that cannot be
+  started leaves no session, run or worktree behind.
 - Commands get the environment of a login shell, read once at the first
   command (`shelltask.LoginEnvironment`), without API key variables and
   `MATRIXCLAW_*` (`setup.ChildEnvironment`, with the setup applied now). MCP

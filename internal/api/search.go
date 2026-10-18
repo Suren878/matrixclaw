@@ -2,13 +2,15 @@ package api
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	limit, ok := queryInt(w, r, "limit", 0)
+	if !ok {
+		return
+	}
 	report, err := s.Core.Search(r.Context(), core.SearchFilter{
 		Query:     r.URL.Query().Get("q"),
 		SessionID: r.URL.Query().Get("session_id"),

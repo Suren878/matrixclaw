@@ -16,9 +16,6 @@ func (m *Manager) resolveCoreSession(ctx context.Context, req SessionCreateReque
 		if err != nil {
 			return core.Session{}, err
 		}
-		if req.Restricted && core.RunsUnattended(session) {
-			return core.Session{}, core.ErrSessionRestricted
-		}
 		if strings.TrimSpace(req.Client) != "" && strings.TrimSpace(req.ExternalKey) != "" {
 			if _, err := m.core.UseBinding(ctx, core.UseBindingInput{Client: req.Client, ExternalKey: req.ExternalKey, SessionID: session.ID}); err != nil {
 				return core.Session{}, err
@@ -29,11 +26,7 @@ func (m *Manager) resolveCoreSession(ctx context.Context, req SessionCreateReque
 	if strings.TrimSpace(req.Client) != "" && strings.TrimSpace(req.ExternalKey) != "" {
 		binding, err := m.core.CurrentBinding(ctx, req.Client, req.ExternalKey)
 		if err == nil {
-			session, err := m.core.GetSession(ctx, binding.SessionID)
-			if err == nil && req.Restricted && core.RunsUnattended(session) {
-				return core.Session{}, core.ErrSessionRestricted
-			}
-			return session, err
+			return m.core.GetSession(ctx, binding.SessionID)
 		}
 		if !errors.Is(err, core.ErrBindingNotFound) && !errors.Is(err, core.ErrNotFound) {
 			return core.Session{}, err

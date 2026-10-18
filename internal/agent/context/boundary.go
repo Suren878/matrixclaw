@@ -108,6 +108,10 @@ func Kept(previous *transcript.Compaction, covered []transcript.Message, runIDs 
 	return kept
 }
 
+// summaryHeader opens every summary the model reads: models tended to stop
+// calling tools, or to redo old requests, after a summary.
+const summaryHeader = "Summary of the earlier conversation, which it replaces. Your tools remain fully active: keep using them as before. Only the latest user request is the active task; earlier requests here are background, not work to redo.\n\n"
+
 // SummaryText is the user text that stands for the history a boundary covers;
 // empty for a /clear or no boundary.
 func SummaryText(compaction *transcript.Compaction) string {
@@ -119,7 +123,7 @@ func SummaryText(compaction *transcript.Compaction) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("Summary of the earlier conversation, which it replaces:\n\n")
+	b.WriteString(summaryHeader)
 	b.WriteString(summary)
 	if len(compaction.Kept) > 0 {
 		b.WriteString("\n\nKept verbatim from that part:")

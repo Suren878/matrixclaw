@@ -1,7 +1,6 @@
 package api
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -51,20 +50,13 @@ func (s *Server) handleModuleSettingsChange(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	change, err := module.Change(r.Context(), request.Path, request.Value)
-	switch {
-	case errors.Is(err, modules.ErrUnknownSetting):
-		writeErrorMessage(w, http.StatusNotFound, err.Error())
-		return
-	case errors.Is(err, modules.ErrInvalidSetting):
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
-		return
-	case err != nil:
-		writeErrorMessage(w, http.StatusInternalServerError, err.Error())
+	if err != nil {
+		writeError(w, err)
 		return
 	}
 	if change.Config != nil {
 		if _, err := s.Setup.Update(change.Config); err != nil {
-			writeErrorMessage(w, http.StatusBadRequest, err.Error())
+			writeError(w, withStatus(http.StatusBadRequest, err))
 			return
 		}
 	}

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -15,27 +16,124 @@ import (
 // the prompt before the run stops summarising.
 const lowYieldLimit = 2
 
+// CompactRequest asks Engine.Compact for a summary of everything the model sees
+// of a session. RunID, when set, is the run whose steps record the summary's
+// usage and whose user messages, with those of Continues, stay verbatim.
+type CompactRequest struct {
+	SessionID  string
+	RunID      string
+	Continues  []string
+	WorkingDir string
+	// Model summarises unless CompactModel is set and succeeds; a window of 0
+	// is unknown.
+	Model               Model
+	WindowTokens        int
+	CompactModel        Model
+	CompactWindowTokens int
+	// BaseTokens estimates what every request sends besides the history.
+	BaseTokens int
+}
+
+// Compact summarises the session's whole context into a new boundary outside a
+// run, the way a run does when its context fills up. ErrNothingToSummarise
+// means the context holds nothing a summary could keep.
+func (e *Engine) Compact(ctx context.Context, req CompactRequest) (transcript.Message, error) {
+	if req.SessionID == "" || req.Model == nil {
+		return transcript.Message{}, errors.New("agent: compact requires session and model")
+	}
+	window, err := e.cfg.Journal.Load(ctx, req.SessionID)
+	if err != nil {
+		return transcript.Message{}, err
+	}
+	r := e.newRun(Task{
+		RunID:               req.RunID,
+		SessionID:           req.SessionID,
+		WorkingDir:          req.WorkingDir,
+		Model:               req.Model,
+		WindowTokens:        req.WindowTokens,
+		CompactModel:        req.CompactModel,
+		CompactWindowTokens: req.CompactWindowTokens,
+		Continues:           req.Continues,
+	}, window)
+	previous, messages := r.history.window()
+	if len(messages) == 0 {
+		return transcript.Message{}, agentcontext.ErrNothingToSummarise
+	}
+	before := agentcontext.SessionTokens(req.BaseTokens, previous, messages)
+	return r.compact(ctx, nil, len(messages), before, before-agentcontext.EstimateMessageTokens(messages))
+}
+
+// ClearContext starts the session's model context afresh with a boundary that
+// covers every message so far.
+func (e *Engine) ClearContext(ctx context.Context, sessionID string) (transcript.Message, error) {
+	window, err := e.cfg.Journal.Load(ctx, sessionID)
+	if err != nil {
+		return transcript.Message{}, err
+	}
+	compaction := transcript.Compaction{Cleared: true}
+	if window.Boundary != nil {
+		compaction.CoversThroughSeq = window.Boundary.Seq
+	}
+	if n := len(window.Messages); n > 0 {
+		compaction.CoversThroughSeq = max(compaction.CoversThroughSeq, window.Messages[n-1].Seq)
+	}
+	return e.newRun(Task{SessionID: sessionID}, window).appendBoundary(ctx, compaction)
+}
+
 // compactHistory summarises the history before the newest turns that fit in
 // tailPercent of the window into a boundary; reuse, when set, is the step's
 // request to ask for the summary with. False means nothing worth summarising:
 // no history before the tail, or under a tenth of the prompt.
 func (r *run) compactHistory(ctx context.Context, reuse *providers.Request, before int, tailPercent int) (bool, error) {
-	previous, messages := r.history.window()
+	_, messages := r.history.window()
 	sent := r.sent(messages)
-	limit := r.contextLimit()
-	cut := agentcontext.TailStart(sent, limit*tailPercent/100)
+	cut := agentcontext.TailStart(sent, r.contextLimit()*tailPercent/100)
 	if cut == 0 {
 		return false, nil
 	}
-	covered, coveredTokens := messages[:cut], agentcontext.EstimateMessageTokens(sent[:cut])
+	coveredTokens := agentcontext.EstimateMessageTokens(sent[:cut])
 	if coveredTokens*10 < before {
 		return false, nil
 	}
-	summary, err := r.summary(ctx, reuse, previous, covered)
-	if err != nil {
+	if _, err := r.compact(ctx, reuse, cut, before, before-coveredTokens); err != nil {
 		return false, fmt.Errorf("auto compact session: %w", err)
 	}
-	return true, r.writeBoundary(ctx, previous, covered, summary, before, before-coveredTokens)
+	return true, nil
+}
+
+// compact is the one path every summary takes, a run's and /compact's: the
+// first cut messages of the window become a boundary, which brings a prompt of
+// before tokens down to rest plus the new summary; then the files the session
+// edited last are re-attached.
+func (r *run) compact(ctx context.Context, reuse *providers.Request, cut int, before int, rest int) (transcript.Message, error) {
+	previous, messages := r.history.window()
+	covered := messages[:cut]
+	summary, err := r.summary(ctx, reuse, previous, covered)
+	if err != nil {
+		return transcript.Message{}, err
+	}
+	compaction := transcript.Compaction{
+		Summary:          strings.TrimSpace(summary),
+		Kept:             agentcontext.Kept(previous, covered, r.chain()),
+		CoversThroughSeq: covered[len(covered)-1].Seq,
+		RunID:            r.task.RunID,
+		TokensBefore:     before,
+	}
+	compaction.TokensAfter = max(0, rest-agentcontext.EstimateTextTokens(agentcontext.SummaryText(previous))+agentcontext.EstimateTextTokens(agentcontext.SummaryText(&compaction)))
+	r.state.observeSummary(compaction.TokensBefore, compaction.TokensAfter)
+	boundary, err := r.appendBoundary(ctx, compaction)
+	if err != nil {
+		return transcript.Message{}, err
+	}
+	return boundary, r.rehydrate(ctx)
+}
+
+// chain is the run and the runs it continues; none outside a run.
+func (r *run) chain() []string {
+	if r.task.RunID == "" {
+		return nil
+	}
+	return append([]string{r.task.RunID}, r.task.Continues...)
 }
 
 // summary asks the compact model, when set, or else the step's own request, so
@@ -81,18 +179,9 @@ func (r *run) prefixSummary(ctx context.Context, request providers.Request) (str
 	return agentcontext.SummaryReply(response)
 }
 
-// writeBoundary journals the boundary whose summary replaces covered and the
-// boundary before it; before is the prompt size, rest the part of it that stays.
-func (r *run) writeBoundary(ctx context.Context, previous *transcript.Compaction, covered []transcript.Message, summary string, before int, rest int) error {
-	compaction := transcript.Compaction{
-		Summary:          strings.TrimSpace(summary),
-		Kept:             agentcontext.Kept(previous, covered, append([]string{r.task.RunID}, r.task.Continues...)),
-		CoversThroughSeq: covered[len(covered)-1].Seq,
-		RunID:            r.task.RunID,
-		TokensBefore:     before,
-	}
-	compaction.TokensAfter = max(0, rest-agentcontext.EstimateTextTokens(agentcontext.SummaryText(previous))+agentcontext.EstimateTextTokens(agentcontext.SummaryText(&compaction)))
-	r.state.observeSummary(compaction.TokensBefore, compaction.TokensAfter)
+// appendBoundary journals a context boundary of the session; it is the only
+// writer of one.
+func (r *run) appendBoundary(ctx context.Context, compaction transcript.Compaction) (transcript.Message, error) {
 	content := agentcontext.BoundaryLabel(compaction)
 	now := r.Now()
 	err := r.history.append(ctx, transcript.Message{
@@ -106,10 +195,10 @@ func (r *run) writeBoundary(ctx context.Context, previous *transcript.Compaction
 		UpdatedAt:  now,
 	})
 	if err != nil {
-		return fmt.Errorf("auto compact session: %w", err)
+		return transcript.Message{}, err
 	}
 	r.editedHistory()
-	return nil
+	return *r.history.boundary, nil
 }
 
 // observeSummary counts the summaries in a row that saved under a tenth of the prompt.

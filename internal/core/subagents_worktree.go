@@ -6,10 +6,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 func normalizeSubagentIsolation(value string) SubagentIsolation {
@@ -61,6 +63,16 @@ func prepareSubagentWorktree(ctx context.Context, workingDir string, taskID stri
 		return "", fmt.Errorf("%w: create subagent worktree: %w", ErrExecutionUnavailable, err)
 	}
 	return target, nil
+}
+
+// removeSubagentWorktree removes the worktree of a subagent that never
+// started; a failure is only logged.
+func removeSubagentWorktree(dir string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if _, err := gitCommandOutput(ctx, dir, "worktree", "remove", "--force", dir); err != nil {
+		log.Printf("core: remove the worktree of a subagent that did not start: %v", err)
+	}
 }
 
 func subagentWorktreeRepoID(repoRoot string) string {

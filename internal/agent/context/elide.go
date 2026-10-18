@@ -229,3 +229,114 @@ func elideImages(message transcript.Message) transcript.Message {
 	message.Content = strings.TrimSpace(strings.Join(append([]string{message.Content}, notes...), "\n\n"))
 	return message
 }
+
+// roundResultsPercent of the usable window bounds the results one tool round
+// sends together: eight results near the 8k-token output cut would fill a
+// small window at once.
+const roundResultsPercent = 30
+
+// resultRef is one tool result of messages: its message, part and size.
+type resultRef struct {
+	message, part, tokens int
+}
+
+// CapRoundResults returns messages with the results of each tool round within
+// roundResultsPercent of a usable window of limit tokens: results over their
+// even share of it keep their head and tail. messages itself is not changed.
+func CapRoundResults(messages []transcript.Message, limit int) []transcript.Message {
+	budget := limit * roundResultsPercent / 100
+	rounds := roundResults(messages)
+	var out []transcript.Message
+	for _, refs := range rounds {
+		total := 0
+		for _, ref := range refs {
+			total += ref.tokens
+		}
+		if total <= budget {
+			continue
+		}
+		if out == nil {
+			out = slices.Clone(messages)
+		}
+		for _, ref := range evenShares(refs, budget) {
+			message := &out[ref.message]
+			message.Parts = slices.Clone(message.Parts)
+			result := *message.Parts[ref.part].ToolResult
+			result.Content = cappedResult(result, ref.tokens)
+			message.Parts[ref.part].ToolResult = &result
+		}
+	}
+	if out == nil {
+		return messages
+	}
+	return out
+}
+
+// roundResults groups the tool results of messages by the round whose calls
+// they answer; a round starts at a reply that called tools, and call-only
+// messages right after it belong to it.
+func roundResults(messages []transcript.Message) map[int][]resultRef {
+	roundOf := map[string]int{}
+	round := -1
+	rounds := map[int][]resultRef{}
+	for i, message := range messages {
+		if message.Role == transcript.MessageRoleAssistant {
+			if ids := messageToolCallIDs(message); len(ids) > 0 {
+				if round < 0 || isToolStepReply(message) || strings.TrimSpace(message.Content) != "" {
+					round = i
+				}
+				for id := range ids {
+					roundOf[id] = round
+				}
+			} else {
+				round = -1
+			}
+			continue
+		}
+		if message.Role != transcript.MessageRoleTool {
+			continue
+		}
+		for j, part := range message.Parts {
+			if part.ToolResult == nil {
+				continue
+			}
+			if r, ok := roundOf[strings.TrimSpace(part.ToolResult.ToolCallID)]; ok {
+				rounds[r] = append(rounds[r], resultRef{message: i, part: j, tokens: EstimateTextTokens(part.ToolResult.Content)})
+			}
+		}
+	}
+	return rounds
+}
+
+// evenShares splits budget among refs, smallest first: a result within its even
+// share of what is left stays whole, the others get that share. It returns the
+// results to cut with their share as tokens.
+func evenShares(refs []resultRef, budget int) []resultRef {
+	sorted := slices.Clone(refs)
+	slices.SortStableFunc(sorted, func(a, b resultRef) int { return a.tokens - b.tokens })
+	var cut []resultRef
+	for i, ref := range sorted {
+		share := budget / (len(sorted) - i)
+		if ref.tokens > share {
+			ref.tokens = share
+			cut = append(cut, ref)
+		}
+		budget -= ref.tokens
+	}
+	return cut
+}
+
+// cappedResult is result's content within about tokens, still carrying the
+// user guidance steered into it and naming the file with the full output.
+func cappedResult(result transcript.ToolResultPart, tokens int) string {
+	content := HeadTail(result.Content, tokens)
+	for _, guidance := range result.Guidance {
+		if !strings.Contains(content, guidance) {
+			content += "\n\nUser guidance: " + guidance
+		}
+	}
+	if result.OutputPath != "" {
+		content += "\n\n[cut to fit this round's results in the context; the full output is in " + result.OutputPath + "]"
+	}
+	return content
+}

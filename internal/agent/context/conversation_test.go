@@ -23,9 +23,9 @@ func TestToProviderMessagesKeepsSVGAsAttachmentReference(t *testing.T) {
 				Temporary:   true,
 			},
 		}},
-	}, staticAttachmentReader{
+	}, NewImageCache(staticAttachmentReader{
 		err: errors.New("storage file not found"),
-	}, true)
+	}), true)
 	if err != nil {
 		t.Fatalf("toProviderMessages: %v", err)
 	}
@@ -51,9 +51,9 @@ func TestToProviderMessagesKeepsRasterImageInline(t *testing.T) {
 				StoragePath: "telegram/images/photo.png",
 			},
 		}},
-	}, staticAttachmentReader{
+	}, NewImageCache(staticAttachmentReader{
 		data: AttachmentData{MIMEType: "image/png", Data: []byte("png")},
-	}, true)
+	}), true)
 	if err != nil {
 		t.Fatalf("toProviderMessages: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestToProviderMessagesDoesNotFailForExpiredRasterImage(t *testing.T) {
 				Temporary:   true,
 			},
 		}},
-	}, staticAttachmentReader{err: fmt.Errorf("%w: storage file not found", ErrAttachmentUnavailable)}, true)
+	}, NewImageCache(staticAttachmentReader{err: fmt.Errorf("%w: storage file not found", ErrAttachmentUnavailable)}), true)
 	if err != nil {
 		t.Fatalf("toProviderMessages: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestToProviderMessagesDoesNotReadImageForTextOnlyModel(t *testing.T) {
 				StoragePath: "telegram/images/photo.png",
 			},
 		}},
-	}, staticAttachmentReader{err: errors.New("reader must not be called")}, false)
+	}, NewImageCache(staticAttachmentReader{err: errors.New("reader must not be called")}), false)
 	if err != nil {
 		t.Fatalf("toProviderMessages: %v", err)
 	}
@@ -166,4 +166,34 @@ func TestUnansweredCallsOfAnEndedRunGetAClosingResult(t *testing.T) {
 
 func (r staticAttachmentReader) ReadAttachment(context.Context, string, bool, int64) (AttachmentData, error) {
 	return r.data, r.err
+}
+
+type countingAttachmentReader struct{ reads int }
+
+func (r *countingAttachmentReader) ReadAttachment(context.Context, string, bool, int64) (AttachmentData, error) {
+	r.reads++
+	return AttachmentData{MIMEType: "image/png", Data: []byte("png")}, nil
+}
+
+func TestImageCacheReadsAnImageOnceWhileRequestsSendIt(t *testing.T) {
+	photo := transcript.Message{Role: transcript.MessageRoleUser, Content: "Look.", Parts: []transcript.MessagePart{{
+		Kind: transcript.MessagePartKindImage, Image: &transcript.ImagePart{MIMEType: "image/png", StoragePath: "images/photo.png"},
+	}}}
+	reader := &countingAttachmentReader{}
+	images := NewImageCache(reader)
+	for range 3 {
+		conversation, err := Conversation(context.Background(), []transcript.Message{photo}, images, true, Identity{})
+		if err != nil || len(conversation) != 1 || len(conversation[0].Images) != 1 || conversation[0].Images[0].DataBase64 != "cG5n" {
+			t.Fatalf("conversation = %+v err = %v", conversation, err)
+		}
+	}
+	if _, err := Conversation(context.Background(), nil, images, true, Identity{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Conversation(context.Background(), []transcript.Message{photo}, images, true, Identity{}); err != nil {
+		t.Fatal(err)
+	}
+	if reader.reads != 2 {
+		t.Fatalf("reads = %d, want one, and one more after a request stopped sending it", reader.reads)
+	}
 }

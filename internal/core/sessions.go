@@ -11,6 +11,16 @@ import (
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 )
 
+// KindAndMode is the kind and permission mode of the session the input
+// creates; an external agent runs full_auto unless a mode is given.
+func (input CreateSessionInput) KindAndMode() (SessionKind, PermissionMode) {
+	kind := sessionKindForRuntime(sessionRuntimeForCreate(input.RuntimeID, input.Kind, input.ExternalAgentID))
+	if kind == SessionKindExternalAgent && strings.TrimSpace(string(input.PermissionMode)) == "" {
+		return kind, PermissionModeFullAuto
+	}
+	return kind, NormalizePermissionMode(string(input.PermissionMode))
+}
+
 func (c *Core) CreateSession(ctx context.Context, input CreateSessionInput) (Session, error) {
 	input.ModelID = strings.TrimSpace(input.ModelID)
 	title := strings.TrimSpace(input.Title)
@@ -18,18 +28,10 @@ func (c *Core) CreateSession(ctx context.Context, input CreateSessionInput) (Ses
 		return Session{}, fmt.Errorf("%w: session title is required", ErrInvalidInput)
 	}
 	runtimeID := sessionRuntimeForCreate(input.RuntimeID, input.Kind, input.ExternalAgentID)
-	kind := sessionKindForRuntime(runtimeID)
+	kind, permissionMode := input.KindAndMode()
 	workingDir := normalizeWorkingDir(input.WorkingDir)
 	providerID := strings.TrimSpace(input.ProviderID)
 	modelID := input.ModelID
-	rawPermissionMode := strings.TrimSpace(string(input.PermissionMode))
-	permissionMode := NormalizePermissionMode(string(input.PermissionMode))
-	if kind == SessionKindExternalAgent && rawPermissionMode == "" {
-		permissionMode = PermissionModeFullAuto
-	}
-	if input.Restricted && (kind == SessionKindExternalAgent || permissionMode != PermissionModeDefault) {
-		return Session{}, ErrOwnerOnly
-	}
 	if kind == SessionKindAssistant {
 		llms := c.sessionLLMs()
 		if llms != nil {
@@ -179,88 +181,59 @@ func (c *Core) DeleteSession(ctx context.Context, sessionID string) error {
 	return nil
 }
 
-func (c *Core) resolveSession(ctx context.Context, input HandleMessageInput) (Session, error) {
-	workingDir := normalizeWorkingDir(input.WorkingDir)
+// MessageSession is the session a message goes to: the one it names, the
+// client's binding, or the only session when the client may bind to it.
+func (c *Core) MessageSession(ctx context.Context, input HandleMessageInput) (Session, error) {
+	session, _, err := c.findMessageSession(ctx, input)
+	return session, err
+}
 
-	if input.SessionID != "" {
-		session, err := c.store.GetSession(ctx, input.SessionID)
-		if err != nil {
-			return Session{}, err
-		}
-		if input.Restricted && RunsUnattended(session) {
-			return Session{}, ErrSessionRestricted
-		}
-		session = c.decorateSessionLLM(session)
-		if workingDir != "" && workingDir != session.WorkingDir {
-			session.WorkingDir = workingDir
-			session.UpdatedAt = c.now().UTC()
-			if err := c.store.UpdateSession(ctx, session); err != nil {
-				return Session{}, err
-			}
-		}
-		if input.Client != "" && input.ExternalKey != "" {
-			if _, err := c.UseBinding(ctx, UseBindingInput{
-				Client:      input.Client,
-				ExternalKey: input.ExternalKey,
-				SessionID:   input.SessionID,
-			}); err != nil {
-				return Session{}, err
-			}
-		}
-		return session, nil
+// findMessageSession is MessageSession; bind reports that the client is to
+// be bound to the session.
+func (c *Core) findMessageSession(ctx context.Context, input HandleMessageInput) (session Session, bind bool, err error) {
+	hasClient := input.Client != "" && input.ExternalKey != ""
+	if id := strings.TrimSpace(input.SessionID); id != "" {
+		session, err = c.store.GetSession(ctx, id)
+		return session, hasClient, err
 	}
-
-	if input.Client == "" || input.ExternalKey == "" {
-		return Session{}, ErrSessionSelectionRequired
+	if !hasClient {
+		return Session{}, false, ErrSessionSelectionRequired
 	}
-
 	binding, err := c.store.GetBinding(ctx, input.Client, input.ExternalKey)
 	if err == nil {
-		session, err := c.store.GetSession(ctx, binding.SessionID)
-		if err != nil {
-			return Session{}, err
-		}
-		if input.Restricted && RunsUnattended(session) {
-			return Session{}, ErrSessionRestricted
-		}
-		session = c.decorateSessionLLM(session)
-		if workingDir != "" && workingDir != session.WorkingDir {
-			session.WorkingDir = workingDir
-			session.UpdatedAt = c.now().UTC()
-			if err := c.store.UpdateSession(ctx, session); err != nil {
-				return Session{}, err
-			}
-		}
-		return session, nil
+		session, err = c.store.GetSession(ctx, binding.SessionID)
+		return session, false, err
 	}
 	if !errors.Is(err, ErrBindingNotFound) && !errors.Is(err, ErrNotFound) {
-		return Session{}, err
+		return Session{}, false, err
 	}
-
 	if !input.AllowAutoBindOne {
-		return Session{}, ErrSessionSelectionRequired
+		return Session{}, false, ErrSessionSelectionRequired
 	}
-
 	sessions, err := c.store.ListSessions(ctx, SessionListFilter{})
+	if err != nil {
+		return Session{}, false, err
+	}
+	if len(sessions) != 1 {
+		return Session{}, false, ErrSessionSelectionRequired
+	}
+	return sessions[0], true, nil
+}
+
+// resolveSession finds the message's session, binds the client to it when
+// due and moves it to the message's working directory.
+func (c *Core) resolveSession(ctx context.Context, input HandleMessageInput) (Session, error) {
+	session, bind, err := c.findMessageSession(ctx, input)
 	if err != nil {
 		return Session{}, err
 	}
-	if len(sessions) != 1 {
-		return Session{}, ErrSessionSelectionRequired
+	if bind {
+		if _, err := c.UseBinding(ctx, UseBindingInput{Client: input.Client, ExternalKey: input.ExternalKey, SessionID: session.ID}); err != nil {
+			return Session{}, err
+		}
 	}
-	if input.Restricted && RunsUnattended(sessions[0]) {
-		return Session{}, ErrSessionRestricted
-	}
-	if _, err := c.UseBinding(ctx, UseBindingInput{
-		Client:      input.Client,
-		ExternalKey: input.ExternalKey,
-		SessionID:   sessions[0].ID,
-	}); err != nil {
-		return Session{}, err
-	}
-	session := sessions[0]
 	session = c.decorateSessionLLM(session)
-	if workingDir != "" && workingDir != session.WorkingDir {
+	if workingDir := normalizeWorkingDir(input.WorkingDir); workingDir != "" && workingDir != session.WorkingDir {
 		session.WorkingDir = workingDir
 		session.UpdatedAt = c.now().UTC()
 		if err := c.store.UpdateSession(ctx, session); err != nil {
